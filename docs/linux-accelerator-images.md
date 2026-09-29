@@ -307,18 +307,14 @@ Same variant rules as NVIDIA (starts at `gpu`, own state, one chain at a time),
 plus: **amd64 only** — any other `--target-arches` is refused. The runtime lane
 copies `/opt/rocm` into the package (`copy-media-payloads.sh`
 `copy_rocm_payload`; `publish_rocm_ld_path` writes `/etc/ld.so.conf.d/000-rocm.conf`), and the wrappers
-take `onnxruntime-migraphx` + the app's `pytorch-rocm71` extra. The app's
-`rocm7.1` index stops at torch 2.13, so `assemble-torch-app.sh` re-installs the
-`PYTORCH_VERSION` pair from the pinned `PYTORCH_ROCM_INDEX` line (`rocm7.14`,
-the newest carrying torch 2.14 for cp314 — there is no rocm10 line), with deps
-so `triton-rocm` moves with it.
-
-That extra name belongs to the app tag `APP_REF` clones (v0.0.28). OrchestrANT
-renamed it `pytorch-rocm10` after that tag (2026-09-29), on the same `rocm7.14`
-line, so the change that moves `APP_REF` past v0.0.28 must also pass
-`pytorch-rocm10` in `runtime-build-fns.sh` (`runtime_gpu_backend_pair`) and map
-it in `smoke-torch-venv.sh`. Missing it fails loudly: uv refuses an extra the
-project does not define.
+take `onnxruntime-migraphx` + the app's `pytorch-rocm10` extra. That extra reads
+the same wheel line as the pinned `PYTORCH_ROCM_INDEX` (`rocm7.14`, the newest
+carrying torch 2.14 for cp314 — there is no rocm10 line), so
+`assemble-torch-app.sh`'s re-install of the `PYTORCH_VERSION` pair from it (with
+deps, so `triton-rocm` moves with it) only acts if the two drift. The extra was
+`pytorch-rocm71` up to OrchestrANT v0.0.28; the wrapper builds the app's
+`develop` since 2026-09-29
+([`linux-cross-builds.md`](linux-cross-builds.md#the-app-the-wrapper-builds)).
 
 **Run with GPU access:**
 

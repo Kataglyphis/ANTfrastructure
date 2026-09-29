@@ -42,7 +42,7 @@ Import-Module $nativeModulePath -Force
 # The else-literal must equal versions.env APP_REF; SourceBuild.PinParity gates
 # exactly that, and it had drifted a patch behind (v0.0.27 vs v0.0.28), which
 # means an unattended run with no APP_REF in the environment built the wrong tag.
-if ([string]::IsNullOrWhiteSpace($AppRef)) { $AppRef = if ($env:APP_REF) { $env:APP_REF } else { 'v0.0.28' } }
+if ([string]::IsNullOrWhiteSpace($AppRef)) { $AppRef = if ($env:APP_REF) { $env:APP_REF } else { 'develop' } }
 if ([string]::IsNullOrWhiteSpace($PytorchExtra)) { $PytorchExtra = if ($env:PYTORCH_EXTRA) { $env:PYTORCH_EXTRA } else { 'pytorch-cpu' } }
 
 $cpythonExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'
@@ -354,7 +354,16 @@ function Install-TorchAppEnvironment {
     Write-Host "=== torch app: clone $AppRef + uv sync (extras: ml-ai docs $PytorchExtra test) ==="
     if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force }
     New-Item -ItemType Directory -Force -Path (Split-Path $AppDir -Parent) | Out-Null
-    [void](Invoke-ShieldedNative -Label 'git clone (app)' -CommandLine "git clone --branch $AppRef --depth 1 https://github.com/Kataglyphis/OrchestrANT.git ""$AppDir""")
+    $appRepo = 'https://github.com/Kataglyphis/OrchestrANT.git'
+    if ($AppRef -match '^[0-9a-f]{40}$') {
+        # A commit is fetched as itself: clone --branch takes names only.
+        [void](Invoke-ShieldedNative -Label 'git init (app)' -CommandLine "git init -q ""$AppDir""")
+        [void](Invoke-ShieldedNative -Label 'git fetch (app)' -CommandLine "git -C ""$AppDir"" fetch -q --depth 1 $appRepo $AppRef")
+        [void](Invoke-ShieldedNative -Label 'git checkout (app)' -CommandLine "git -C ""$AppDir"" checkout -q --detach FETCH_HEAD")
+    } else {
+        Write-Warning "APP_REF '$AppRef' is a name, not a commit: a cached build of this stage does not see it move"
+        [void](Invoke-ShieldedNative -Label 'git clone (app)' -CommandLine "git clone --branch $AppRef --depth 1 $appRepo ""$AppDir""")
+    }
 
     # Venv on the SOURCE-built CPython (matches our cp314 wheels; see the
     # media-merge UV_PYTHON seeding fix). copy link mode: hardlinks don't

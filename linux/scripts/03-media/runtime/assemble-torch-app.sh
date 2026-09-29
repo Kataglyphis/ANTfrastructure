@@ -12,7 +12,7 @@ install_err_trap
 : "${PYTORCH_EXTRA:=pytorch-cpu}"
 
 APP_DIR="/opt/OrchestrANT"
-APP_REF="${APP_REF:-v0.0.28}"
+APP_REF="${APP_REF:-develop}"
 
 # Single list of the PyPI opencv-family names, so the call sites cannot drift.
 uv_uninstall_pip_opencv() {
@@ -30,13 +30,29 @@ activate_project_environment() {
   export MEDIA_HOST_PYTHON="${VENV}/bin/python"
 }
 
+# APP_REF into APP_DIR: a commit is fetched as itself (clone --branch takes names only).
+fetch_app_tree() {
+  local _fat_url=https://github.com/Kataglyphis/OrchestrANT.git
+  if [[ "${APP_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+    git init -q "${APP_DIR}" \
+      && git -C "${APP_DIR}" fetch -q --depth 1 "${_fat_url}" "${APP_REF}" \
+      && git -C "${APP_DIR}" checkout -q --detach FETCH_HEAD
+  else
+    git clone --branch "${APP_REF}" --depth 1 "${_fat_url}" "${APP_DIR}"
+  fi
+}
+
 prepare_project_tree() {
   local _attempt
   rm -rf "${APP_DIR}"
+  if ! [[ "${APP_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "WARNING: APP_REF=${APP_REF} is a name, not a commit: a cached build of this step does not see it move" >&2
+  fi
   # Retry inlined rather than reusing 01-core's retry(): this script ships
   # standalone into images (Dockerfile.torch) that carry no 01-core.
   for _attempt in 1 2 3; do
-    if git clone --branch "${APP_REF}" --depth 1 https://github.com/Kataglyphis/OrchestrANT.git "${APP_DIR}"; then
+    if fetch_app_tree; then
+      echo "OrchestrANT ${APP_REF} is commit $(git -C "${APP_DIR}" rev-parse HEAD)"
       break
     fi
     rm -rf "${APP_DIR}"
@@ -595,7 +611,7 @@ enforce_torch_version_pins() {
 
 # The download.pytorch.org line a GPU extra's pinned torch comes from, or empty
 # for the CPU path. CUDA uses the extra's own index (pytorch-cu130 -> cu130).
-# ROCm uses the PINNED line: the app's pytorch-rocm71 index has no torch 2.14,
+# ROCm uses the PINNED line (the app's pytorch-rocm10 extra reads the same one),
 # and the CPU path would swap the ROCm torch for a CPU one without a word.
 _torch_pin_gpu_index() {
   case "$1" in

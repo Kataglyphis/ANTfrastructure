@@ -7,6 +7,35 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-29 - The torch stage builds OrchestrANT's `develop`, at the commit it points to
+
+Owner decision: the images take the app from its `develop` branch, and a fix the build
+needs goes to `develop` directly instead of into a release tag. `APP_REF` in `versions.env`
+is now `develop` and names what to track.
+
+- **Resolved to a commit when the run starts, never used as a name.** BuildKit keys the
+  torch RUN on its build args, so a fixed `develop` would reuse the first clone forever and
+  ship a stale app behind a green build. `runtime_resolve_app_ref` (Linux, once per run
+  before the per-arch loop) and `Resolve-TorchAppRef` / `Resolve-GitRefCommit` (Windows)
+  resolve the ref with `git ls-remote`. The torch layer then rebuilds exactly when the app
+  moved, every arch of one index builds the same commit, and the commit is the image's
+  version label. A 40-hex `APP_REF` is built as given.
+- **Fetched as a commit.** `assemble-torch-app.sh` and `Build-TorchApp.ps1` fetch a 40-hex
+  ref with `git init` + `fetch --depth 1` + `checkout FETCH_HEAD`; a name still clones, with
+  a warning, for a plain `docker build`.
+- **The ROCm extra is `pytorch-rocm10`** (`runtime_gpu_backend_pair`, `smoke-torch-venv.sh`),
+  as the app names it on `develop`.
+- **Cost:** the `versions.env` edit re-keys the Linux chain once; later app moves rebuild the
+  torch stage only. An unreachable remote stops a real run; `--dry-run` only warns.
+- **Known gap:** the Windows ROCm variant installs AMD's ROCm 10 wheels, which stop at torch
+  2.13.0, and refuses an app lock on 2.14 (`Assert-TorchRocmVenvMatch`), so `-Variant rocm`
+  on Windows fails its torch stage until torch 2.14 is built from source here.
+- **Removed:** `bump_versions.py`'s unregistered `spec_app_ref`, which proposed the newest
+  release tag for `APP_REF`.
+- Tests: `test-app-ref.sh` (resolution, precedence, failure, the commit fetch, both entry
+  points wired) and `BuildDriver.AppRef.Tests.ps1`.
+  [`linux-cross-builds.md`](docs/linux-cross-builds.md#the-app-the-wrapper-builds).
+
 ## 2026-09-29 - Linux lanes can keep their compiler cache across runs
 
 Two new actions, `compiler-cache-restore` and `compiler-cache-save`, carry a Linux container

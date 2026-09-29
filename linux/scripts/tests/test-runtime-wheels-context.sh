@@ -61,7 +61,7 @@ t_assert_contains "${_out}" "PYTORCH_EXTRA=pytorch-cu130" \
   "the CPU torch default failed the torch.version.cuda gate"
 _out="$(ENABLE_AMD=true _args)"
 t_assert_contains "${_out}" "ONNX_PACKAGE=onnxruntime-migraphx" "a rocm wrapper gets the MIGraphX ORT"
-t_assert_contains "${_out}" "PYTORCH_EXTRA=pytorch-rocm71" "and the app's ROCm torch extra"
+t_assert_contains "${_out}" "PYTORCH_EXTRA=pytorch-rocm10" "and the app's ROCm torch extra"
 _out="$(ENABLE_NVIDIA=true PYTORCH_EXTRA=pytorch-custom ONNX_PACKAGE=onnxruntime _args)"
 t_assert_contains "${_out}" "PYTORCH_EXTRA=pytorch-custom" "a pinned torch extra is kept"
 t_assert_contains "${_out}" "ONNX_PACKAGE=onnxruntime" "a pinned ORT package is kept"

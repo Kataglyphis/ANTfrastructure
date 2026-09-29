@@ -210,17 +210,39 @@ function Get-BuildVcsRef {
     catch { return '' }
 }
 
+function Resolve-GitRefCommit {
+    <#
+    .SYNOPSIS
+        The commit `git ls-remote <repo> refs/heads/<ref> refs/tags/<ref> refs/tags/<ref>^{}`
+        names for $Ref: a branch wins over a same-named tag, an annotated tag gives the
+        commit it peels to. Returns '' (never throws) when nothing matches.
+    #>
+    param([string[]]$LsRemoteOutput, [string]$Ref)
+    if (-not $LsRemoteOutput -or -not $Ref) { return '' }
+    $byRef = @{}
+    foreach ($line in @($LsRemoteOutput | Where-Object { $_ -match "^[0-9a-f]{40}`t" })) {
+        $sha, $name = $line -split "`t", 2
+        $byRef[$name.Trim()] = $sha
+    }
+    foreach ($name in "refs/heads/$Ref", "refs/tags/$Ref^{}", "refs/tags/$Ref") {
+        if ($byRef.ContainsKey($name)) { return $byRef[$name] }
+    }
+    return ''
+}
+
 function Resolve-TorchAppRef {
-    # OrchestrANT ref: DETERMINISTIC by default (versions.env APP_REF pin). -LatestApp
-    # resolves the app repo's newest release tag, falling back to the pin when offline.
+    # versions.env APP_REF names the OrchestrANT ref the torch stage tracks; the stage
+    # builds the COMMIT it points at now, so the layer moves exactly when the app does.
+    # -LatestApp tracks the newest release tag instead. docs/windows-builds.md § Ref
     param(
         [Parameter(Mandatory)][hashtable]$VersionTable,
         [switch]$LatestApp
     )
+    $url = 'https://github.com/Kataglyphis/OrchestrANT.git'
     $ref = Get-VersionTableValue $VersionTable 'APP_REF'
     if ($LatestApp) {
         try {
-            $tagRaw = & git ls-remote --tags https://github.com/Kataglyphis/OrchestrANT.git 2>$null
+            $tagRaw = & git ls-remote --tags $url 2>$null
             if ($LASTEXITCODE -eq 0 -and $tagRaw) {
                 $latest = Resolve-LatestVersionTag -LsRemoteOutput @($tagRaw)
                 if (-not [string]::IsNullOrWhiteSpace($latest)) { $ref = $latest }
@@ -230,7 +252,12 @@ function Resolve-TorchAppRef {
         }
         Write-Host "-LatestApp: resolved OrchestrANT ref: $ref (versions.env pin: $(Get-VersionTableValue $VersionTable 'APP_REF'))"
     }
-    return $ref
+    if ($ref -match '^[0-9a-f]{40}$') { return $ref }
+    $raw = @(& git ls-remote $url "refs/heads/$ref" "refs/tags/$ref" "refs/tags/$ref^{}" 2>$null)
+    $sha = if ($LASTEXITCODE -eq 0) { Resolve-GitRefCommit -LsRemoteOutput $raw -Ref $ref } else { '' }
+    if (-not $sha) { throw "APP_REF '$ref' resolves to no commit of $url (no such branch or tag, or the remote is unreachable)" }
+    Write-Host "OrchestrANT ref: $ref -> $sha"
+    return $sha
 }
 
 function Assert-SccacheEndpoint {
@@ -636,7 +663,7 @@ function Get-MediaMemoryBudget {
 Export-ModuleMember -Function Initialize-BuildDriverContext,
     Test-TransientDockerFailure, Invoke-TransientCooldown,
     Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
-    Get-BuildVcsRef, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget,
+    Get-BuildVcsRef, Resolve-GitRefCommit, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget,
     Assert-DiskHeadroom, Assert-ShimPatch,
     Get-ShimPatchStatePath, Write-ShimPatchState,
     Get-StageDiskFloorGb, Assert-StageDiskHeadroom, Assert-NoActiveRdna4Gpu,

@@ -324,14 +324,48 @@ _append_wheels_image_args() {
 }
 
 # The GPU wrapper's "<ONNX_PACKAGE> <PYTORCH_EXTRA>" pair, or empty for a CPU
-# image. rocm takes the app's only ROCm extra; assemble-torch-app.sh then
+# image. rocm takes the app's ROCm extra; assemble-torch-app.sh then
 # enforces the torch pin from PYTORCH_ROCM_INDEX (versions.env).
 runtime_gpu_backend_pair() {
   if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     printf '%s' 'onnxruntime-gpu pytorch-cu130'
   elif [ "${ENABLE_AMD:-false}" = "true" ]; then
-    printf '%s' 'onnxruntime-migraphx pytorch-rocm71'
+    printf '%s' 'onnxruntime-migraphx pytorch-rocm10'
   fi
+}
+
+# APP_REF names the OrchestrANT ref the wrapper tracks; resolve it to a commit ONCE
+# per run. docs/linux-cross-builds.md#the-app-the-wrapper-builds
+runtime_resolve_app_ref() {
+  local _rar_ref="${APP_REF:-}" _rar_out _rar_sha
+  local _rar_url='https://github.com/Kataglyphis/OrchestrANT.git'
+  if [ -z "${_rar_ref}" ]; then
+    err "APP_REF is empty: versions.env names the OrchestrANT ref the wrapper builds"
+  fi
+  if [[ "${_rar_ref}" =~ ^[0-9a-f]{40}$ ]]; then
+    log "APP_REF ${_rar_ref} is a commit; building it as given"
+    return 0
+  fi
+  if ! _rar_out="$(GIT_TERMINAL_PROMPT=0 git ls-remote "${_rar_url}" \
+      "refs/heads/${_rar_ref}" "refs/tags/${_rar_ref}" "refs/tags/${_rar_ref}^{}" 2>&1)"; then
+    if is_dry_run; then
+      warn "[DRY RUN] cannot reach ${_rar_url}; APP_REF stays ${_rar_ref}"
+      return 0
+    fi
+    err "cannot resolve APP_REF=${_rar_ref} at ${_rar_url}: ${_rar_out}"
+  fi
+  # A branch wins over a same-named tag; an annotated tag gives the commit it peels to.
+  _rar_sha="$(printf '%s\n' "${_rar_out}" | awk -v r="${_rar_ref}" '
+    $2 == "refs/heads/" r      { head = $1 }
+    $2 == "refs/tags/" r "^{}" { peeled = $1 }
+    $2 == "refs/tags/" r       { tag = $1 }
+    END { print (head != "" ? head : (peeled != "" ? peeled : tag)) }')"
+  if [ -z "${_rar_sha}" ]; then
+    err "APP_REF=${_rar_ref} names no branch or tag of ${_rar_url}"
+  fi
+  log "APP_REF ${_rar_ref} -> ${_rar_sha}"
+  APP_REF="${_rar_sha}"
+  export APP_REF
 }
 
 runtime_build_package_image() {

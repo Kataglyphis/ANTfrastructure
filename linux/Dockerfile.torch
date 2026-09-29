@@ -33,12 +33,11 @@ ARG TORCH_APP_MODE=all
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
-# APP_REF: the OrchestrANT tag assemble-torch-app.sh clones. The runtime
-# orchestrator already forwards --build-arg APP_REF from versions.env; this ARG +
-# ENV is what actually lets it reach the assemble RUN (previously unconsumed, so the
-# clone always fell back to the script default). Default kept in sync with
-# versions.env so a plain `docker build` matches the orchestrated build.
-ARG APP_REF=v0.0.28
+# APP_REF: the OrchestrANT commit assemble-torch-app.sh fetches. The runtime
+# orchestrator resolves versions.env's branch to a commit once per run and forwards
+# it, so this layer rebuilds exactly when the app moved. The default is the branch
+# itself, for a plain `docker build`. docs/linux-cross-builds.md#the-app-the-wrapper-builds
+ARG APP_REF=develop
 # ONNX_PACKAGE / PYTORCH_EXTRA: documented operator overrides (runtime-build-fns.sh
 # usage). These ARGs are what let the orchestrator's --build-arg reach the venv
 # setup (previously hardcoded here, so a documented GPU override silently baked
@@ -125,7 +124,7 @@ ARG BUILD_DATE=""
 ARG VCS_REF=""
 # POS2: re-declared for the version LABEL below (ARGs are per-stage; the torch
 # stage's APP_REF does not reach this stage). Default matches versions.env.
-ARG APP_REF=v0.0.28
+ARG APP_REF=develop
 
 # Runtime scripts, entrypoint, CMD, VOLUME, HEALTHCHECK, user, and OCI
 # labels.  This is the canonical source for shared final-stage elements.
@@ -248,7 +247,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=30s --retries=3 \
   CMD /opt/venv/bin/python3 -c "import onnxruntime" || exit 1
 
 # POS2 (2026-08-17): image.version used to carry BUILD_TYPE ("Release") — not a
-# version. Point it at the shipped app ref (APP_REF, versions.env-driven) and
+# version. Point it at the shipped app commit (APP_REF, resolved per run) and
 # keep the build type as a custom label.
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
       org.opencontainers.image.description="My beschleuniger image for 2D AI" \
