@@ -954,7 +954,7 @@ if ($Stages -contains 'torch') {
         BASE_IMAGE = $(if ($Variant -eq 'rocm') { $llamaTag } else { Get-BkTag 'windows-media' })
         APP_REF    = Resolve-TorchAppRef -VersionTable $versions -LatestApp:$LatestApp
         # Without this a -Gpu chain ships CPU torch (Dockerfile default). The rocm lane keeps the
-        # cpu extra; TORCH_ROCM + its pins below swap in AMD's torch (docs/windows-builds.md § ROCm layer).
+        # cpu extra; TORCH_ROCM swaps in torch built from source (docs/windows-rocm.md § PyTorch on the rocm lane).
         PYTORCH_EXTRA = $(if ($isNvidia) { 'pytorch-cu130' } else { 'pytorch-cpu' })
     } + (Get-BkRocmStageArg -Variant $Variant -Stage 'torch' -VersionTable $versions) +
         # rocm compiles torch from source in this Dockerfile (torch-rocm-wheels); cpu/nvidia solve args stay as they were.

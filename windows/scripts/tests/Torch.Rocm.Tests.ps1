@@ -864,15 +864,10 @@ Describe 'Dockerfile.torch: cpu and nvidia build the unchanged app stage' {
         Assert-Equal 1 @($w.Lines | Where-Object { $_ -match '^ARG SCCACHE_WEBDAV_ENDPOINT$' }).Count 'a compiling stage declares the build-host sccache ARG'
     }
 
-    It 'torch-rocm-wheels mounts the builder, Import-Versions, both sccache caches and the builder''s whole module closure' {
-        $run = @($byName['torch-rocm-wheels'].Lines | Where-Object { $_ -match '^RUN\s' })
-        Assert-Equal 1 $run.Count 'one RUN'
-        $run = $run[0]
-        foreach ($m in 'target=C:\sccache,id=sccache-winamd64-2', 'target=C:\sccache-logs,id=sccache-logs-winamd64',
-            'source=windows/scripts/build/Build-TorchRocmFromSource.ps1,target=C:\bkmnt\Build-TorchRocmFromSource.ps1',
-            'source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1') {
-            Assert-True $run.Contains($m) "mount $m"
-        }
+    It 'torch-rocm-wheels: a torch RUN, then a torchvision RUN, each with Import-Versions, both sccache caches and the module closure' {
+        $lines = @($byName['torch-rocm-wheels'].Lines)
+        $runs = @($lines | Where-Object { $_ -match '^RUN\s' })
+        Assert-Equal 2 $runs.Count 'torch and torchvision are two RUNs, so a torchvision failure keeps the torch layer'
         $builder = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-TorchRocmFromSource.ps1'))
         $closure = [System.Collections.Generic.List[string]]::new()
         $queue = [System.Collections.Generic.Queue[string]]::new()
@@ -884,10 +879,26 @@ Describe 'Dockerfile.torch: cpu and nvidia build the unchanged app stage' {
             $text = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) "windows\scripts\modules\$m.psm1"))
             foreach ($s in [regex]::Matches($text, "PSScriptRoot\s+'([A-Za-z0-9._]+)\.psm1'")) { $queue.Enqueue($s.Groups[1].Value) }
         }
-        foreach ($m in $closure) {
-            Assert-True $run.Contains("source=windows/scripts/modules/$m.psm1,target=C:\bkmnt\modules\$m.psm1") "module $m not mounted"
+        foreach ($run in $runs) {
+            foreach ($m in 'target=C:\sccache,id=sccache-winamd64-2', 'target=C:\sccache-logs,id=sccache-logs-winamd64',
+                'source=windows/scripts/build/Build-TorchRocmFromSource.ps1,target=C:\bkmnt\Build-TorchRocmFromSource.ps1',
+                'source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1') {
+                Assert-True $run.Contains($m) "mount $m"
+            }
+            foreach ($m in $closure) {
+                Assert-True $run.Contains("source=windows/scripts/modules/$m.psm1,target=C:\bkmnt\modules\$m.psm1") "module $m not mounted"
+            }
         }
-        Assert-Match "Build-TorchRocmFromSource\.ps1' -OutputDir 'C:\\torch-rocm-wheels'" $run 'writes where rocm-1 mounts from'
+        Assert-Match "Build-TorchRocmFromSource\.ps1' -OutputDir 'C:\\torch-rocm-wheels' -WorkDir 'C:\\b'$" $runs[0] 'the torch RUN'
+        Assert-False $runs[0].Contains('Build-TorchvisionRocmFromSource') 'the torch RUN is not keyed by the torchvision script'
+        Assert-True $runs[1].Contains('source=windows/scripts/build/Build-TorchvisionRocmFromSource.ps1,target=C:\bkmnt\Build-TorchvisionRocmFromSource.ps1') 'torchvision script mount'
+        Assert-Match "Build-TorchvisionRocmFromSource\.ps1' -OutputDir 'C:\\torch-rocm-wheels' -WorkDir 'C:\\b'$" $runs[1] 'same output and work dir'
+        $torchRun = [array]::IndexOf($lines, $runs[0])
+        foreach ($k in 'TORCHVISION_VERSION', 'TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT') {
+            $at = @(for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match "^ARG $k=") { $i } })
+            Assert-Equal 1 $at.Count "one ARG $k"
+            Assert-True ($at[0] -gt $torchRun) "ARG $k comes after the torch RUN, so a torchvision bump keeps its cache"
+        }
     }
 
     It 'rocm-1 mounts the installer, its check and its whole module closure, then re-verifies the app' {

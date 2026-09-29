@@ -7,6 +7,27 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-29 - Windows ROCm torch source build: first rocm build green, after three fixes
+
+`-Variant rocm -Stages torch,final` on the 2026-09-28 rocm parent is green: `BUILD_RC=0`, smoke gate 215
+assertions (1 skipped), `rocm-checks\Torch.ps1` reports torch 2.14.0+rocm10.0.0 (HIP 7.15.26333) and
+torchvision 0.29.0+rocm10.0.0 compiled for gfx1200 and gfx1201. The first three runs each died on one of these:
+
+- **The build venv reported `win32`.** The image's clang-built CPython needs the base `sitecustomize.py` shim,
+  and a venv does not load it: uv resolved 32-bit wheels (pyyaml's sdist build then died on a 32-bit Cython).
+  `Copy-TorchRocmVenvShim` copies the shim and `python3.dll` in, as `Build-TorchApp.ps1` does, and the builder
+  stops unless the venv reports `win-amd64`.
+- **No `libomp140.x86_64.dll` in the VS 18 redist.** MSVC 14.51 ships the release DLL only under
+  `debug_nonredist`, so the wheel no longer carries it. `torch_cpu.dll` resolves it from System32, where the
+  image's VS install puts it, and `Assert-TorchRocmSystemLibomp` checks that before the compile.
+- **torchvision's import check had no PIL, and took a finished torch build with it.** torch and torchvision
+  are now two RUNs (new `Build-TorchvisionRocmFromSource.ps1`, with pillow and on the torch RUN's venv). The
+  torchvision ARGs sit below the torch RUN, so a torchvision failure, edit or bump keeps the torch layer.
+
+Measured: torch 4051 s cold, 1719 s with sccache warm; torchvision 228 s; the whole driver run 54 min.
+Also: `failure-modes.md` gains the containerd snapshot sweep that stalled every new RUN for 50 minutes on the
+same evening (about 440 GB deleted, nothing wrong), and a driver comment now points at `windows-rocm.md`.
+
 ## 2026-09-29 - compiler caches save on the default branch only
 
 - **`compiler-cache-save`'s `enabled: auto` now saves on pushes to the default branch only**, and
