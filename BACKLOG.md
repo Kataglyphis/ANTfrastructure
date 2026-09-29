@@ -15,8 +15,9 @@ acting; a number here is a date's measurement.**
 **Swept 2026-09-26.** Every open item was fixed in source, decided (§ Deliberate), or
 is blocked on the owner. A fix in source is not a fix in an image: the Linux ones ship
 with CON11, the Windows ones with CON12, and each item says what to check afterwards.
-**CON11 shipped 2026-09-29** (`:latest` index `sha256:696642b2…`); what the consumers still
-have to do is CON37.
+**CON11 shipped 2026-09-29** (`:latest` index `sha256:696642b2…`), and CON37 retired the
+consumer workarounds it made unnecessary the same day (git history, 2026-09-29/30). The
+consumers measured four gaps it did not close: CON38–CON41.
 
 ## Protocol
 
@@ -30,40 +31,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
-- [ ] **CON37 — Consumers retire the workarounds `:latest` made unnecessary** [M, ★★].
-      CON11 shipped on 2026-09-29: `:latest` is index `sha256:696642b2…` (amd64 `e1bc35af…`,
-      arm64 `116cd03c…`, riscv64 `b3d0919d…`), built at 53c1d502. Proven in the published
-      children as uid 1001 through the entrypoint, amd64 native and arm64/riscv64 under QEMU:
-      - API 37 (`platforms/android-37.0`, `build-tools/37.0.0`) on all three (CON14);
-      - `clang-tidy`, `llvm-profdata`, `llvm-cov`, `llvm-nm`, `llvm-symbolizer`, `llvm-objdump`
-        and `ld.lld` are 23.1.1, `clang-format` 21.1.8 (CON15);
-      - a bare `clang++` selects `/opt/gcc-16.2.0` (CON16);
-      - an ASan fuzz target links, runs and finds a planted crash, and atheris' probe
-        resolves (CON17);
-      - `VIRTUAL_ENV` and `UV_PYTHON` unset (CON18), `llvmpipe` as a CPU Vulkan device (CON19);
-      - `perf`, `jq`, `xvfb-run` and `libprofiler.so` (CON20);
-      - no distro `libgstreamer1.0-0` on amd64, kept on arm64/riscv64 as § Deliberate says (CON21);
-      - `smoke-torch-venv.sh`: `PASS tvm codegen` on all three (CON35);
-      - `/opt/gcc-16.2.0` at 1.4 GB on amd64 (CON36);
-      - `sanitizer/common_interface_defs.h` and `-print-multiarch` on arm64/riscv64 (CON7, CON8);
-      - `import hailo_platform` 5.4.0 on amd64 and arm64.
-      - the consumers' `Linux arm64 · build + test` re-ran green on it the same day:
-        AccelerANTgine run 36568033223 (its `gcc` job compiles abseil with ASan, CON7) and
-        BeschleunigerBallett run 36580604128 (all nine jobs, both GNU presets find X11, CON8).
-      - OmniAccelerANT (2026-09-29, its native, android and web lanes run locally on the published
-        amd64 child): no injected `--gcc-toolchain`, compileSdk 37 and no
-        `permission_handler_android` pin. API 37 also needed a Cargokit patch: AGP reports
-        `android-37.0`, which upstream Cargokit's `substring(8) as int` cannot parse.
-
-      The media lanes first died in GenAI's G2 on a bare `/` record token (53c1d502).
-
-      Left for the consumers, one commit each, proven by the consumer's own lane:
-      - The injected `--gcc-toolchain` goes (BeschleunigerBallett, AccelerANTgine).
-      - WebDavClient and OrchestrANT drop their `unset VIRTUAL_ENV UV_PYTHON` lines, and
-        WebDavClient its Python 3.13 pin for atheris.
-      - OxidANT's Pi runners drop `--entrypoint` (CON23), and OxidANT sets `KATAGLYPHIS_REQUIRE_GPU=1`.
-      - BeschleunigerBallett drops its GPU-suite exclusions (CON19).
-      - `riscv64` ships no `clang-format` (none on `PATH`); nothing in the fleet lints on riscv64 today.
 - [b] **CON12 — Republish `:winamd64`, and publish `:winamd64-nvidia`** [M, ★★★]. Blocked on the owner. The published
       image (2026-09-22, hub 0d85b8c1) has three problems:
       - **A LAN sccache endpoint in its ENV.** It is the build host's LAN WebDAV,
@@ -112,11 +79,37 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux image (all arches)
 
-None open. CON15–CON21, CON35 and CON36 shipped with CON11 on 2026-09-29 (CON37 has the proof).
+- [ ] **CON38 — atheris cannot find the image's libFuzzer** [S, ★]. CON17's proof checked
+      `clang -print-file-name=libclang_rt.fuzzer_no_main.a`, which resolves (per-target layout,
+      `lib/clang/23/lib/<triple>/`). atheris' own probe (`setup_utils/find_libfuzzer.sh`, 3.0.0
+      and upstream) looks for the old layout, `lib/linux/libclang_rt.fuzzer_no_main-<arch>.a`, so
+      an atheris SOURCE build in the image still fails with `Failed to find libFuzzer`
+      (WebDavClient, 2026-09-29). Its 3.1.0 cp314 wheel needs no build, which is how WebDavClient
+      dropped its 3.13 pin. Fix: a compatibility link in the old layout in `llvm-cross.sh`'s
+      compiler-rt install, plus a smoke that runs atheris' probe, not clang's.
+- [ ] **CON39 — clang-tidy misses the clang cfg** [S, ★★]. CON16's
+      `<native-triple>-clang{,++}.cfg` sit beside the real compiler; clang-tidy resolves the
+      driver through `/usr/bin/clang++` (a link) and looks for the cfg there, so it selects the
+      distro GCC. BeschleunigerBallett passes `--extra-arg=--gcc-toolchain=${GCC_PREFIX}` to
+      clang-tidy until this is fixed (measured 2026-09-29 in `:latest`). Fix: install the cfg
+      pair beside every name the driver is reached by, and let `validate-compilers.sh smoke`
+      check the selection through clang-tidy too.
+- [ ] **CON40 — `uv_ensure_python_available` drops a free-threaded suffix** [S, ★].
+      `01-core/python_uv.sh` strips the `t` from `3.14t`; after a `3.14t` leg in the same
+      container, a later `uv venv --python 3.14` picked `3.14.7+freethreaded` (WebDavClient,
+      2026-09-29, one container for several legs). CI gives every leg a fresh container, so no
+      lane is red today.
 
 ## Open — Linux arm64 and riscv64
 
-None open. CON7, CON8 and CON23 shipped with CON11 on 2026-09-29 (CON37 has the proof).
+- [ ] **CON41 — The arm64 Vulkan loader has no window-system support** [M, ★★].
+      `/opt/vulkan/1.4.357.0/aarch64`'s loader offers no X11 or Wayland surface extension, so
+      every GPU test that opens a window aborts on arm64 (BeschleunigerBallett run 36615897603),
+      while amd64's loader drives llvmpipe under `xvfb-run`. BeschleunigerBallett runs its GPU
+      suites on x64 only until this is fixed. riscv64 is unmeasured. Note for any lane:
+      `xvfb-run` must not be the container's PID 1, where it never receives Xvfb's ready signal
+      and hangs. Also measured: riscv64 ships no `clang-format` on `PATH`; nothing in the fleet
+      lints there today.
 
 ## Open — Windows `:winamd64`
 
