@@ -7,6 +7,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-29 - compiler caches save on the default branch only
+
+- **`compiler-cache-save`'s `enabled: auto` now saves on pushes to the default branch only**, and
+  `container-ci-windows.yml`'s save step does the same. It used to save on every push, and the
+  deletion of older entries works per branch: a release push to `main` would have stored a
+  second generation of every key, about 7.3 GB more in BeschleunigerBallett.
+- **Nothing is lost on other branches:** every other branch, pull request and dispatch restores
+  the default branch's entry, which GitHub lets any branch read.
+- **Docs:** [`build-cache-tiers.md`](docs/build-cache-tiers.md#keeping-the-compiler-cache-across-ci-runs)
+  and the actions README.
+
 ## 2026-09-29 - compiler caches keep one entry per key
 
 - **`compiler-cache-save` deletes the key's entries from older runs on the same ref before it saves.**
