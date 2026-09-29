@@ -16,7 +16,9 @@ twice in OrchestrANT (`"ruff==..."` in pyproject.toml, `rev:` in
 drifted once: the consumer sat on 0.15.21 while this repo graded the Linux lane
 with 0.16.4, so the same tree passed locally and failed in CI on rules that moved
 between the two versions. Nothing in the fleet could see that, because every gate
-that knew the number only looked at its own tree.
+that knew the number only looked at its own tree. torch, torchvision and
+onnxruntime-genai joined on 2026-09-29: the image build force-installs the hub's
+versions over the app lock, so a lagging pin is a dev box and an image apart.
 
 DETECTION ONLY, deliberately. This repo does not own a consumer's files, so there
 is no `--write` pass here and NEITHER mode writes outside the hub; the report
@@ -104,7 +106,52 @@ CONSUMER_PIN_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
         ),
         "the ruff-pre-commit `rev:`",
     ),
+    # The image build forces these over the app lock (assemble-torch-app.sh),
+    # so a lagging consumer pin is a dev box and an image on different torch.
+    (
+        "PYTORCH_VERSION",
+        "pyproject.toml",
+        r'"torch(?=[=<>~!\[",;])',
+        r'"torch==([^"\s;,]+)',
+        'the `"torch==<version>"` pin',
+    ),
+    (
+        "PYTORCH_VERSION",
+        "pyproject.toml",
+        r"github\.com/pytorch/pytorch(?:\.git)?@",
+        r"github\.com/pytorch/pytorch(?:\.git)?@v?([^\s\"';]+)",
+        "the riscv64 `pytorch.git@<tag>` source pin",
+    ),
+    (
+        "TORCHVISION_VERSION",
+        "pyproject.toml",
+        r'"torchvision(?=[=<>~!\[",;])',
+        r'"torchvision==([^"\s;,]+)',
+        'the `"torchvision==<version>"` pin',
+    ),
+    (
+        "TORCHVISION_VERSION",
+        "pyproject.toml",
+        r"github\.com/pytorch/vision(?:\.git)?@",
+        r"github\.com/pytorch/vision(?:\.git)?@v?([^\s\"';]+)",
+        "the riscv64 `vision.git@<tag>` source pin",
+    ),
+    # -cuda is the same release under a second name; -directml is unpinned on
+    # purpose (PyPI ships no wheel at the hub version), so it is not a mention.
+    (
+        "ONNXRUNTIME_GENAI_VERSION",
+        "pyproject.toml",
+        r'"onnxruntime-genai(?:-cuda)?(?=[=<>~!\[",;])',
+        r'"onnxruntime-genai(?:-cuda)?==([^"\s;,]+)',
+        'the `"onnxruntime-genai[-cuda]==<version>"` pin',
+    ),
 )
+
+
+def _bare(version: str) -> str:
+    """versions.env spells some keys as the GitHub tag (`v2.14.0`); a PEP 440
+    pin and the tag extractors above carry the bare number."""
+    return re.sub(r"^v(?=\d)", "", version)
 
 
 def _strip_hash_comments(text: str) -> str:
@@ -202,7 +249,7 @@ def _grade_pin(
         )
         return 1
     found = values[0]
-    if found != expected:
+    if found != _bare(expected):
         print(
             f"{path}: {what} is {found}, versions.env has {key}={expected}. "
             f"versions.env is the source of truth: change the consumer, "

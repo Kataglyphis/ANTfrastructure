@@ -313,6 +313,13 @@ take `onnxruntime-migraphx` + the app's `pytorch-rocm71` extra. The app's
 the newest carrying torch 2.14 for cp314 — there is no rocm10 line), with deps
 so `triton-rocm` moves with it.
 
+That extra name belongs to the app tag `APP_REF` clones (v0.0.28). OrchestrANT
+renamed it `pytorch-rocm10` after that tag (2026-09-29), on the same `rocm7.14`
+line, so the change that moves `APP_REF` past v0.0.28 must also pass
+`pytorch-rocm10` in `runtime-build-fns.sh` (`runtime_gpu_backend_pair`) and map
+it in `smoke-torch-venv.sh`. Missing it fails loudly: uv refuses an extra the
+project does not define.
+
 **Run with GPU access:**
 
 ```bash

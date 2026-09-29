@@ -507,7 +507,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1364 entries** over **112 distinct test commands**; both digits are
+manifest holds **1367 entries** over **112 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2796,8 +2796,8 @@ check now runs as `run-lint-gates.sh`'s `consumer pins` gate in a CONSUMER's
 lane (that aggregator takes the consumer root as a mandatory argument, which is
 the thing the hub lane does not have), and the suite's 8/8 cases now drive it
 (a drifted pin fails through the same `result |=`, two declarations in one file
-are refused, an empty `--consumer-pins` run is refused) — but no mutation targets
-`check_consumer_pins` yet, so the slug is still credited on its nine older ids. **The generalisable part:
+are refused, an empty `--consumer-pins` run is refused) — but until 2026-09-29 no
+mutation targeted `check_consumer_pins`, so the slug was credited on its nine older ids. **The generalisable part:
 "a check exists" and "a check runs" are different claims, and a registry can
 only see the first one.**
 
@@ -2825,6 +2825,22 @@ The eighth sub-check is the one the farm cannot supply a subject for: its
 subject is a different repository, so the suite writes a two-file consumer of
 its own (a matching one that rides along in every case, and perturbed copies for
 the reds) rather than reading a sibling checkout that a CI runner does not have.
+
+**Since 2026-09-29 the eighth also holds torch, torchvision and
+onnxruntime-genai.** The image build force-installs `PYTORCH_VERSION` and
+`TORCHVISION_VERSION` over the app lock (`enforce_torch_version_pins` in
+`assemble-torch-app.sh`). So a consumer pinning an older torch ran one torch on a
+dev box and another in the image, and nothing went red: OrchestrANT sat on 2.13.0
+against the hub's 2.14.0 when the rows landed. Each package has two rows, the
+PEP 621 `"<name>==<version>"` pins and the riscv64 `pytorch.git@v<tag>` /
+`vision.git@v<tag>` source pins. `onnxruntime-genai-cuda` is graded as
+`onnxruntime-genai`; the deliberately unpinned `-directml` is not a mention. These
+keys carry the GitHub tag (`v2.14.0`), so `_bare()` drops a leading `v` before
+comparing. Two mutations prove the rows bite: `consumer-pins-tag-prefix` (every
+correct consumer reads as drifted) and `consumer-pins-torch-row` (the torch row
+skips silently). The consumer's `lint-gates.yml` checks the hub out at `develop`,
+not at the consumer's gitlink, so a lagging consumer goes red on its next push
+once a new row is on `develop`.
 
 **Writing that suite found a sub-check that had never checked anything.**
 `script_default_target_files()` globbed `windows/scripts/build-*-from-source.ps1`
