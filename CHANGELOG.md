@@ -21,6 +21,11 @@ are not covered yet.
 and now compares the Windows deep lane's action-directory count with the host checkout instead
 of a literal 11, which had been wrong since the twelfth action.
 
+`container-ci-windows.yml` takes a `compiler-cache-key` too. It restores the cache into the
+workspace and hands the container `CI_COMPILER_CACHE`; the build script moves it into
+container-local directories, because sccache cannot write to a mounted one on Windows. Not for
+clang-cl module builds until mozilla/sccache#2876 ships.
+
 
 ## 2026-09-29 - The consumer-pins gate holds torch, torchvision and onnxruntime-genai
 

@@ -1393,12 +1393,21 @@ inside the quota: one key per preset that is worth it, capped with the `env`
 input (sccache keeps its most recent entries under the cap). `enabled: auto`
 saves on pushes only, which keeps pull requests and dispatches from spending it.
 
-**Windows is not covered.** A Windows container lane has no restore/save yet:
-an `SCCACHE_DIR` on a mounted volume stored nothing on the dev host
+**Windows container lanes** take `container-ci-windows.yml`'s `compiler-cache-key`
+input (2026-09-29). An `SCCACHE_DIR` on a mounted volume stored nothing on the dev host
 ([§ sccache's cache directory on a Windows container volume](windows-container-build-performance.md)),
-a bind mount on a `windows-2025` runner is unmeasured, and the released sccache
-serves stale objects for clang-cl module importers until mozilla/sccache#2876
-ships.
+so the cache is not mounted for sccache to write into. `actions/cache` restores it into the
+workspace as `.ci-cache`, the container gets `CI_COMPILER_CACHE=C:\ws\.ci-cache`, and the
+build script moves it into container-local directories before the build and back after it
+(OxidANT's `Invoke-WindowsLane.ps1`). Pushes save it. A clang-cl C++20 module build must not
+use it: the released sccache serves stale objects for module importers until
+mozilla/sccache#2876 ships.
+
+**A cap below the working set is worse than no cache.** BeschleunigerBallett's release and
+profile caches filled their first caps (489/500 MB, 981/1000 MB): sccache evicted entries during
+the cold build, and the warm release build took 782 s against 533 s without a cache, paying the
+hashing for no hits. With room (1.1 GB each) the same builds took 257 s and 349 s. Size a cap
+from a cold run's saved size, with headroom.
 
 ## The shipped image carries no build-host setting
 

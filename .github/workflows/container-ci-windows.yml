@@ -131,6 +131,18 @@ on:
         required: false
         type: string
         default: ''
+      compiler-cache-key:
+        description: >-
+          Keep the build's compiler cache across runs: a lane id for the actions/cache key,
+          empty (the default) for none. The cache is restored into the workspace as
+          .ci-cache, the container gets CI_COMPILER_CACHE=C:\ws\.ci-cache, and pushes save
+          it after the build. The build script must move it to container-local
+          directories and back: sccache cannot write to a mounted directory
+          (docs/build-cache-tiers.md). Not for clang-cl C++20 module builds until
+          mozilla/sccache#2876 ships.
+        required: false
+        type: string
+        default: ''
     secrets:
       GHCR_PAT:
         description: Token to pull the image from ghcr. Only needed while the image is private.
@@ -172,6 +184,16 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: bash third_party/ANTfrastructure/linux/scripts/02-toolchain/rust/version_util.sh --github-env "$VERSION_FILE"
 
+      # Inside the workspace, so the container sees it through the one bind mount it
+      # already has; the ladder in run-in-windows-container rewrites only that mount.
+      - name: Restore the compiler cache
+        if: ${{ inputs.compiler-cache-key != '' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.prep.outputs.workspace }}\.ci-cache
+          key: compiler-cache-${{ inputs.compiler-cache-key }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: compiler-cache-${{ inputs.compiler-cache-key }}-
+
       # run-in-windows-container takes docker arguments one per line.
       - name: Compose the container environment
         id: env
@@ -181,10 +203,17 @@ jobs:
           CONTAINER_SECRET_ENV: ${{ secrets.CONTAINER_SECRET_ENV }}
           RESOLVED_VERSION: ${{ steps.version.outputs.VERSION }}
           RESOLVED_MSIX_VERSION: ${{ steps.version.outputs.MSIX_VERSION }}
+          COMPILER_CACHE_KEY: ${{ inputs.compiler-cache-key }}
+          WORKSPACE: ${{ steps.prep.outputs.workspace }}
         run: |
           $ErrorActionPreference = 'Stop'
           $pairs = @($env:CONTAINER_ENV -split "\r?\n" | ForEach-Object Trim | Where-Object { $_ })
           if ($env:RESOLVED_VERSION) { $pairs += "VERSION=$env:RESOLVED_VERSION", "MSIX_VERSION=$env:RESOLVED_MSIX_VERSION" }
+          if ($env:COMPILER_CACHE_KEY) {
+            # Present on a miss too, so the build script can fill it for the save.
+            New-Item -ItemType Directory -Force -Path (Join-Path $env:WORKSPACE '.ci-cache') | Out-Null
+            $pairs += 'CI_COMPILER_CACHE=C:\ws\.ci-cache'
+          }
           $lines = @(foreach ($pair in $pairs) {
               if ($pair -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') { throw "container-env line is not KEY=value: '$pair'" }
               '--env'; $pair
@@ -214,6 +243,14 @@ jobs:
           file: C:\ws\${{ inputs.build-script }}
           file-args: ${{ inputs.build-args }}
           extra-args: ${{ steps.env.outputs.args }}
+
+      # Pushes only, so pull requests and dispatches restore without spending quota.
+      - name: Save the compiler cache
+        if: ${{ always() && inputs.compiler-cache-key != '' && github.event_name == 'push' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.prep.outputs.workspace }}\.ci-cache
+          key: compiler-cache-${{ inputs.compiler-cache-key }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       # The workspace is the bind mount the container built into, so the host sees
       # every file the build left, at the same relative paths.
