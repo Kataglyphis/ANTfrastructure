@@ -403,7 +403,7 @@ These are paths, not versions, so they are outside the advertised-version-key ga
 
 ## What changes with the image after CON11
 
-In source since 2026-09-26, shipped by the next `:latest` (BACKLOG CON11). Each item
+In source since 2026-09-26; shipped in `:latest` on 2026-09-29 (index `sha256:696642b2…`, BACKLOG CON37). Each item
 retires a workaround a consumer carries today; drop it once your lane runs on that image.
 
 | What | Before | After |

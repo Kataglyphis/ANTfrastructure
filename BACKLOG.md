@@ -15,6 +15,8 @@ acting; a number here is a date's measurement.**
 **Swept 2026-09-26.** Every open item was fixed in source, decided (§ Deliberate), or
 is blocked on the owner. A fix in source is not a fix in an image: the Linux ones ship
 with CON11, the Windows ones with CON12, and each item says what to check afterwards.
+**CON11 shipped 2026-09-29** (`:latest` index `sha256:696642b2…`); what the consumers still
+have to do is CON37.
 
 ## Protocol
 
@@ -28,37 +30,37 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
-- [b] **CON11 — Republish the Linux `:latest`** [S, ★★★]. Blocked on the owner, because
-      a push is the owner's call. These fixes are in source and in no published image:
-      - CON7: libsanitizer in the arm64/riscv64 GCC (e2de5852).
-      - CON8: multiarch in the arm64/riscv64 GCC (2026-09-25).
-      - CON14: API 37, behind a cache id that finally names it (2026-09-26).
-      - CON15–CON21, CON23 and CON36: the toolchain, Python, Vulkan, tool, libcamera and
-        strip fixes of 2026-09-26. `docs/consumer-image-contract.md` § What changes with the image
-        after CON11 lists them for consumers.
-      - CON35: amd64's TVM links the LLVM the image ships, and the venv smoke fails a TVM
-        that cannot compile (2026-09-26).
-      - pyhailort: a real module instead of the empty one
-        (889417c7/0ef22316; `docs/hailo-support.md`).
+- [ ] **CON37 — Consumers retire the workarounds `:latest` made unnecessary** [M, ★★].
+      CON11 shipped on 2026-09-29: `:latest` is index `sha256:696642b2…` (amd64 `e1bc35af…`,
+      arm64 `116cd03c…`, riscv64 `b3d0919d…`), built at 53c1d502. Proven in the published
+      children as uid 1001 through the entrypoint, amd64 native and arm64/riscv64 under QEMU:
+      - API 37 (`platforms/android-37.0`, `build-tools/37.0.0`) on all three (CON14);
+      - `clang-tidy`, `llvm-profdata`, `llvm-cov`, `llvm-nm`, `llvm-symbolizer`, `llvm-objdump`
+        and `ld.lld` are 23.1.1, `clang-format` 21.1.8 (CON15);
+      - a bare `clang++` selects `/opt/gcc-16.2.0` (CON16);
+      - an ASan fuzz target links, runs and finds a planted crash, and atheris' probe
+        resolves (CON17);
+      - `VIRTUAL_ENV` and `UV_PYTHON` unset (CON18), `llvmpipe` as a CPU Vulkan device (CON19);
+      - `perf`, `jq`, `xvfb-run` and `libprofiler.so` (CON20);
+      - no distro `libgstreamer1.0-0` on amd64, kept on arm64/riscv64 as § Deliberate says (CON21);
+      - `smoke-torch-venv.sh`: `PASS tvm codegen` on all three (CON35);
+      - `/opt/gcc-16.2.0` at 1.4 GB on amd64 (CON36);
+      - `sanitizer/common_interface_defs.h` and `-print-multiarch` on arm64/riscv64 (CON7, CON8);
+      - `import hailo_platform` 5.4.0 on amd64 and arm64.
 
-      Afterwards:
-      - Re-run AccelerANTgine's `Linux arm64 · build + test`. Its `gcc` job must
-        compile abseil with ASan.
-      - Re-run BeschleunigerBallett's `Linux arm64 · build + test`. Both GNU presets
-        must find X11.
-      - Check `platforms/android-37.0` in the image, then drop OmniAccelerANT's
-        `permission_handler_android` pin.
-      - Check that `import hailo_platform` works on amd64 and arm64.
-      - Check the venv smoke's `tvm codegen` line: it must PASS on amd64 and arm64, and
-        riscv64 reports what it has.
-      - Retire the consumer workarounds the contract table names: the injected
-        `--gcc-toolchain` (BeschleunigerBallett, OmniAccelerANT, AccelerANTgine), the
-        `unset VIRTUAL_ENV UV_PYTHON` lines (WebDavClient, OrchestrANT), the Pi runners'
-        `--entrypoint` bypass (OxidANT), WebDavClient's Python 3.13 pin for atheris and
-        BeschleunigerBallett's GPU-suite exclusions. OxidANT sets `KATAGLYPHIS_REQUIRE_GPU=1`.
+      The media lanes first died in GenAI's G2 on a bare `/` record token (53c1d502).
 
-      `versions.env` and `01-core` changed after the published image's commit
-      (7a43905a), so the chain rebuilds from base anyway; none of the above adds a re-key.
+      Left for the consumers, one commit each, proven by the consumer's own lane:
+      - AccelerANTgine and BeschleunigerBallett: `Linux arm64 · build + test` re-run on the new
+        image (runs 36568033223 and 36580604128). AccelerANTgine's `gcc` job must compile
+        abseil with ASan, and BeschleunigerBallett's GNU presets must find X11.
+      - OmniAccelerANT drops its `permission_handler_android` pin (and moves compileSdk to 37).
+      - The injected `--gcc-toolchain` goes (BeschleunigerBallett, OmniAccelerANT, AccelerANTgine).
+      - WebDavClient and OrchestrANT drop their `unset VIRTUAL_ENV UV_PYTHON` lines, and
+        WebDavClient its Python 3.13 pin for atheris.
+      - OxidANT's Pi runners drop `--entrypoint` (CON23), and OxidANT sets `KATAGLYPHIS_REQUIRE_GPU=1`.
+      - BeschleunigerBallett drops its GPU-suite exclusions (CON19).
+      - `riscv64` ships no `clang-format` (none on `PATH`); nothing in the fleet lints on riscv64 today.
 - [b] **CON12 — Republish `:winamd64`, and publish `:winamd64-nvidia`** [M, ★★★]. Blocked on the owner. The published
       image (2026-09-22, hub 0d85b8c1) has three problems:
       - **A LAN sccache endpoint in its ENV.** It is the build host's LAN WebDAV,
@@ -110,147 +112,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       naming). `main` still names `:latest-cross`, and the two tags are one GHCR
       version. Make the old name a version of its own first, then delete it;
       `ghcr-delete-tags.sh` refuses the unsafe order.
-- [b] **CON14 — API 37 reaches the image** [S, ★★]. Blocked on CON11. Root cause
-      (2026-09-26): `Dockerfile.android`'s `android-sdk-shared` cache id never named the
-      two API 37 pins, so every build after 2bb0410f restored the SDK tree cached on
-      2026-08-22, skipped the install, and passed a smoke that checked build-tools 36
-      only. Fixed in source:
-      - the id names every pin in `android-sdk.sh`'s `sdk_components`, and
-        `tests/test-android-sdk-cache-key.sh` holds it (it names the two pins against
-        the old Dockerfile);
-      - a restored tree is checked against the list by the paths sdkmanager records in
-        each `package.xml`: what it lacks is installed and the cache refreshed
-        (`android-sdk shared cache STALE`), and any package still missing fails the stage;
-      - `smoke-android.sh` checks every platform and the extra build-tools.
-
-      Proven in a container on `ec4bb68b`'s own stale tree: STALE, install, refresh,
-      then a clean HIT with `android-37.0` and `37.0.0`.
-
 ## Open — Linux image (all arches)
 
-- [b] **CON15 — The LLVM tools on PATH are clang's own** [S, ★★]. Blocked on CON11.
-      Measured on `ec4bb68b`: `clang` is 23.1.1, but `clang-tidy`, `llvm-profdata`,
-      `llvm-cov`, `llvm-nm`, `llvm-symbolizer`, `llvm-objdump` and `ld.lld` resolve to LLVM
-      21. Fixed in source (2026-09-26): `setup-package-image.sh` `wire_clang_llvm_tools`
-      links 21 of clang's own tools into `/usr/local/bin`, ahead of `/usr/bin`, and
-      `validate-compilers.sh smoke` fails a tool that is not clang's version. Decided:
-      `clang-format` stays 21, since its version is a formatting verdict the fleet pins
-      (AccelerANTgine keeps 21), and so does `llvm-config`, since llvm-target's libLLVM is
-      not all-targets (CON35). `lib/compiler-llvm-tools.sh` stays for older images.
-- [b] **CON16 — A bare `clang++` selects the image's GCC** [S, ★★]. Blocked on CON11.
-      Measured: `Selected GCC installation: /usr/lib/gcc/x86_64-linux-gnu/16`, and linking
-      the chain ONNX Runtime fails on undefined `std::format` symbols. Fixed in source
-      (2026-09-26): `write_clang_gcc_toolchain_cfg` puts `<native-triple>-clang.cfg` and
-      `-clang++.cfg`, holding `--gcc-toolchain=${GCC_PREFIX}`, beside the compiler. Clang
-      reads them for a native build only; a `--target` build loads neither. Proven on
-      `ec4bb68b`: `/opt/gcc-16.2.0` selected, and the ORT program links and runs. The
-      smoke fails a bare `clang++` that selects anything else.
-- [b] **CON17 — The image's clang ships libFuzzer** [S, ★★]. Blocked on CON11.
-      `llvm-cross.sh` had `COMPILER_RT_BUILD_LIBFUZZER=OFF` with no stated reason. Fixed in
-      source (2026-09-26): ON, with `COMPILER_RT_USE_LIBCXX=OFF`, so no private-libc++
-      ExternalProject rides a cross build. Proven by building compiler-rt 23.1.1 with those
-      options and the image's clang: an ASan fuzz target links and finds a planted crash,
-      and atheris' probe (`-print-file-name=libclang_rt.fuzzer_no_main.a`) resolves. The
-      smoke links and runs a fuzz target.
-- [b] **CON18 — `VIRTUAL_ENV` and `UV_PYTHON` no longer point uv at `/opt/venv`**
-      [S, ★★]. Blocked on CON11. Fixed in source (2026-09-26): `Dockerfile.torch` empties
-      both, because Docker cannot unset what the toolchain stage exported and uv reads empty
-      as unset, and the entrypoint unsets them; `/opt/venv/bin` stays first on PATH.
-      Measured on `ec4bb68b`: an activated venv's `uv pip install` went to `/opt/venv`
-      before and lands in the venv after. uv 0.12's plain `uv sync` already used the
-      project's `.venv`.
-- [b] **CON19 — A software Vulkan device** [S, ★★]. Blocked on CON11. Fixed in source
-      (2026-09-26): `mesa-vulkan-drivers` in the package stage. Measured on `ec4bb68b`: the
-      runtime user sees `llvmpipe` as a CPU device. Afterwards OxidANT sets
-      `KATAGLYPHIS_REQUIRE_GPU=1` and BeschleunigerBallett drops its GPU-suite exclusions.
-- [b] **CON20 — Tools a consumer needs** [S each, ★]. Blocked on CON11 for four of the
-      six. `linux-perf` (26.04 moved `perf` there, out of `linux-tools`), gperftools
-      (`libgoogle-perftools-dev`), `jq` and `xvfb` join the package stage (2026-09-26,
-      measured working on `ec4bb68b`; `perf stat` counts in a container). They unblock
-      AccelerANTgine's profile lane and `-pg` fallback, BeschleunigerBallett's and this
-      hub's `python3` JSON reads, and OmniAccelerANT's first-frame check. `cargo-audit`,
-      `cargo-deny` and `pwsh` are decisions in § Deliberate.
-- [b] **CON21 — The distro GStreamer runtime beside `/opt/gstreamer`** [S, ★]. Blocked on
-      CON11. What pulls it in: Ubuntu's `libgtk-4-1`, which `install-deps.sh` adds after it
-      purges the distro GStreamer. Fixed in source for amd64 (2026-09-26):
-      `drop_redundant_distro_gtk4` purges the five packages when `/opt/gstreamer` carries its
-      own GTK 4, and keeps them with a warning if anything else would go with them. Measured
-      on `ec4bb68b`: the registry (308 plugins, 1601 features), `gtk4paintablesink` and
-      OpenCV's GStreamer backend are unchanged. arm64 and riscv64: § Deliberate.
-- [b] **CON35 — amd64's TVM cannot generate code** [S–M, ★★]. Blocked on CON11.
-      `libtvm_compiler.so` was linked against an all-targets `libLLVM.so.23.1`. At run time
-      the loader finds the only 23.1 in the image, `/usr/local/llvm-target/lib`'s X86-only
-      copy: `undefined symbol: LLVMInitializeAArch64TargetInfo`. `tvm/base.py` then falls back
-      to the runtime (`tvm.base._RUNTIME_ONLY`), and nothing fails loudly. Found 2026-09-26 in
-      the CON24 sweep. Root cause: a native build took `llvm-config-23`, apt's bootstrap LLVM
-      (branch head, every target), which never reaches the final image. Fixed in source
-      (2026-09-26):
-      - `tvm.sh` `resolve_tvm_llvm` links a native build against the CMake package at
-        `/opt/llvm-target`, the tree `Dockerfile.package` ships as `/usr/local/llvm-target`,
-        as a cross build links its target's. amd64's TVM then emits X86 code only, as arm64's
-        emits AArch64 only. `tests/test-tvm-llvm-resolve.sh` and two `mutations.json` entries
-        hold it.
-      - `smoke-torch-venv.sh` `assert_tvm_codegen` fails a TVM whose compiler ships but does
-        not load, and one built with LLVM that cannot compile a PrimFunc. Measured on
-        `ec4bb68b`: red on amd64, green on arm64 under QEMU. riscv64 is unverified, and the
-        smoke will say.
-      - Not yet proven: a TVM built by the new `tvm.sh`. In the amd64 `:latest`, as root, with
-        the hub mounted read-only at `/hub` and `/opt/llvm-target` linked to
-        `/usr/local/llvm-target`, run `tvm.sh --ref v0.26.0 --no-apt --no-python` with its
-        prefix and workdir under `/work`. Its log must name the package at
-        `/usr/local/llvm-target/lib/cmake/llvm`, and the new `libtvm_compiler.so`, copied with
-        `libtvm_runtime.so` into `/opt/venv`'s `tvm/lib`, must pass `assert_tvm_codegen`.
-- [b] **CON36 — amd64's GCC carries 4.4 GB of unstripped cross compilers** [S, ★].
-      Blocked on CON11. `/opt/gcc-16.2.0` is 4.9 GB, and 52 of its 99 x86-64 binaries are
-      unstripped: the `aarch64-` and `riscv64-linux-gnu` compilers' (their `cc1plus` 444 and
-      534 MB). `build-gcc.sh` stripped with `${TARGET_TRIPLET}-strip` alone, which cannot read
-      an x86-64 executable, and swallowed the error. Fixed in source (2026-09-26): the build
-      machine's `strip` runs too. Proven on `ec4bb68b`: the new step takes `/opt/gcc-16.2.0`
-      from 4.9 to 1.4 GB, and the cross and host compilers still compile. Found in the
-      CON22 sweep.
+None open. CON15–CON21, CON35 and CON36 shipped with CON11 on 2026-09-29 (CON37 has the proof).
 
 ## Open — Linux arm64 and riscv64
 
-- [b] **CON7 — The arm64/riscv64 native GCC has no libsanitizer** [S, ★★]. Blocked on
-      CON11.
-      - Symptom: AccelerANTgine's `Linux arm64 · build + test` `gcc` job, runs
-        36045732850 and 36052808210, fails at
-        `absl/base/internal/dynamic_annotations.h:369:10: fatal error:
-        sanitizer/common_interface_defs.h: No such file or directory`. The `clang`
-        job passes.
-      - Fixed in source by e2de5852 (committed 2026-09-24):
-        `_gcc_extra_target_libs` in `linux/scripts/02-toolchain/build-gcc.sh`; see
-        [`cross-build-verification.md` § The native GCC ships libsanitizer](docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer).
-      - riscv64 has the same defect. No riscv64 consumer lane exercises it.
-- [b] **CON8 — On arm64, CMake with the image's GCC does not find libX11** [M, ★★].
-      Blocked on CON11.
-      - Symptom: BeschleunigerBallett's `Linux arm64 · build + test` (run
-        36042437555). Both GNU 16.2.0 presets stop at `Could NOT find X11 (missing:
-        X11_X11_LIB)`, while the same run's Clang 23.1.1 preset prints
-        `Found X11: /usr/include`.
-      - Cause, measured 2026-09-25 in `:latest` `ec4bb68b` under qemu: the arm64
-        Canadian-native GCC prints no `-print-multiarch`, its implicit link dirs
-        hold no `/usr/lib/aarch64-linux-gnu`, and CMake leaves
-        `CMAKE_LIBRARY_ARCHITECTURE` empty. `--with-native-system-header-dir`
-        switches GCC's multiarch auto-check off. amd64's full-make GCC prints
-        `x86_64-linux-gnu`.
-      - Fixed in source (2026-09-25): `_gcc_native_multiarch` in
-        `linux/scripts/02-toolchain/build-gcc.sh` passes `--enable-multiarch` to the
-        Canadian native, and `swap-native-gcc.sh` refuses a GCC that prints another
-        triplet; see
-        [`cross-build-verification.md` § The native GCC has multiarch](docs/cross-build-verification.md#the-native-gcc-has-multiarch).
-      - riscv64 has the same defect. No riscv64 consumer lane exercises it.
-- [b] **CON23 — A Raspberry Pi run with the host's libcamera needs no bypass** [M, ★].
-      Blocked on CON11. The image's upstream libcamera 0.7.2 still cannot drive Pi cameras,
-      so the host swap stays, but its two traps are fixed in source (2026-09-26):
-      - `libcamera-env.sh` appends the image's libcamera after whatever the caller set,
-        instead of prepending it;
-      - the entrypoint puts `${GCC_PREFIX}`'s runtime ahead of a caller's
-        `LD_LIBRARY_PATH`. `GLIBCXX_3.4.36 not found` was reproduced and fixed on amd64,
-        with the distro libstdc++ standing in for a Pi host's.
-
-      Afterwards the Pi runners drop `--entrypoint` (OxidANT `run-producer-pi.sh`,
-      OmniAccelerANT `camera-streaming.md`).
+None open. CON7, CON8 and CON23 shipped with CON11 on 2026-09-29 (CON37 has the proof).
 
 ## Open — Windows `:winamd64`
 
