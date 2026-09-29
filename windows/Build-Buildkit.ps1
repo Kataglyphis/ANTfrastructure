@@ -244,6 +244,10 @@ function Get-BkRocmStageArg {
         'torch' {
             $torchArgs = @{ TORCH_ROCM = '1' }
             foreach ($k in @($VersionTable.Keys | Where-Object { $_ -like 'TORCH_ROCM_WINDOWS_*' })) { $torchArgs[$k] = $VersionTable[$k] }
+            # The torch-rocm-wheels stage's source build: its versions and GPU family (docs/windows-rocm.md).
+            foreach ($k in 'PYTORCH_VERSION', 'TORCHVISION_VERSION', 'ROCM_WINDOWS_GFX_FAMILY') {
+                if ($VersionTable.ContainsKey($k)) { $torchArgs[$k] = $VersionTable[$k] }
+            }
             return $torchArgs
         }
         default     { return @{} }
@@ -952,7 +956,9 @@ if ($Stages -contains 'torch') {
         # Without this a -Gpu chain ships CPU torch (Dockerfile default). The rocm lane keeps the
         # cpu extra; TORCH_ROCM + its pins below swap in AMD's torch (docs/windows-builds.md § ROCm layer).
         PYTORCH_EXTRA = $(if ($isNvidia) { 'pytorch-cu130' } else { 'pytorch-cpu' })
-    } + (Get-BkRocmStageArg -Variant $Variant -Stage 'torch' -VersionTable $versions))
+    } + (Get-BkRocmStageArg -Variant $Variant -Stage 'torch' -VersionTable $versions) +
+        # rocm compiles torch from source in this Dockerfile (torch-rocm-wheels); cpu/nvidia solve args stay as they were.
+        $(if ($Variant -eq 'rocm') { $sccache } else { @{} }))
 }
 
 if ($Stages -contains 'final') {

@@ -7,6 +7,38 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-29 - Windows ROCm: torch 2.14.0 / torchvision 0.29.0 built from source against ROCm 10.0
+
+Owner decision: the Windows rocm image builds PyTorch here instead of installing AMD's wheels.
+AMD's ROCm 10.0 Windows wheels stop at torch 2.13.0, the app locks 2.14.0, and `Assert-TorchRocmVenvMatch`
+refused the pair as soon as the torch stage tracked the app's `develop`.
+
+- **`Dockerfile.torch` gains a `torch-rocm-wheels` stage** (`Build-TorchRocmFromSource.ps1`). It builds on the rocm
+  `BASE_IMAGE`, never on `app`, so an app move cannot re-run the compile, and only `rocm-1` mounts it, so cpu and
+  nvidia never build it.
+- **Sources** are upstream `v2.14.0` / `v0.29.0` at `PYTORCH_VERSION` / `TORCHVISION_VERSION`, fetched by the
+  new `TORCH_ROCM_WINDOWS_PYTORCH_COMMIT` / `_TORCHVISION_COMMIT`. They are compiled against the image's TheRock
+  SDK for the `ROCM_WINDOWS_GFX_FAMILY` targets (gfx1200, gfx1201).
+- **The recipe is TheRock's** `external-builds/pytorch/build_prod_wheels.py`: HIPIFY, TheRock's clang-cl,
+  `torch/_rocm_init.py` and `rocm[libraries]==<release>`, so the wheels load ROCm like AMD's.
+- **Off in this first build:** AOTriton (flash / memory-efficient SDPA; its CMake fetches unpinned sources at
+  build time), `torch.distributed` and torchvision's image IO.
+- **`Install-TorchRocm.ps1`** installs the two built wheels (exactly one each, `+rocm<release>`, hashed on the
+  spot) with AMD's pinned runtime: `rocm`, `rocm-sdk-core`, `rocm-sdk-libraries` and a device wheel per GPU.
+  The eight AMD torch, torchvision, device and bootstrap pin pairs are gone from `versions.env`.
+- **`rocm-checks\Torch.ps1`** now asserts torch was compiled for every GPU rocBLAS serves
+  (`torch._C._cuda_getArchFlags()`), instead of AMD's per-GPU torch device wheels.
+- **The driver** forwards `PYTORCH_VERSION`, `TORCHVISION_VERSION`, `ROCM_WINDOWS_GFX_FAMILY` and the sccache
+  endpoint to the torch solve on rocm only.
+- **Records:** `deps.json`, the curated SBOM and the licence tables describe the source build;
+  `bump_versions.py` registers the two commits.
+- **Tests:** `Torch.Rocm.Tests.ps1` rewritten for the new set, `Torch.RocmSourceBuild.Tests.ps1` for the
+  builder's pure parts. `Rocm.Migraphx.Tests.ps1` lets only that one rocm-only stage mount
+  `WindowsMigraphx.Common`.
+- **Not yet proven:** no rocm build has run this stage. Building against AMD's SDK tarball rather than the
+  `rocm-sdk-devel` wheel has no public precedent:
+  [`windows-rocm.md` § PyTorch on the rocm lane](docs/windows-rocm.md#pytorch-on-the-rocm-lane-torch-stage).
+
 ## 2026-09-29 - The torch stage builds OrchestrANT's `develop`, at the commit it points to
 
 Owner decision: the images take the app from its `develop` branch, and a fix the build

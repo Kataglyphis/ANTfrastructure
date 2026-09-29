@@ -104,7 +104,7 @@ Describe 'Get-BkRocmStageArg (rocm-only build-args)' {
         $h = Get-BkRocmStageArg -Variant $Variant -Stage $Stage -NoRocmSpikes $NoRocmSpikes -VersionTable $Pins
         return (($h.GetEnumerator() | Sort-Object Key | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ',')
     }
-    $script:FakePins = @{ TORCH_ROCM_WINDOWS_TORCH_URL = 'u'; TORCH_ROCM_WINDOWS_TORCH_SHA256 = 's'; TVM_REF = 'v1'; ROCM_WINDOWS_RELEASE = '10.0.0' }
+    $script:FakePins = @{ TORCH_ROCM_WINDOWS_ROCM_URL = 'u'; TORCH_ROCM_WINDOWS_ROCM_SHA256 = 's'; TVM_REF = 'v1'; ROCM_WINDOWS_RELEASE = '10.0.0' }
 
     It 'adds nothing on the default and nvidia lanes, whatever -NoRocmSpikes or the pins say' {
         foreach ($s in 'base', 'sdk', 'toolchain', 'media-core', 'media-litert', 'media-tvm', 'migraphx', 'llama', 'torch', 'final', 'smoke-gate') {
@@ -118,7 +118,7 @@ Describe 'Get-BkRocmStageArg (rocm-only build-args)' {
     It 'passes TVM_ROCM to media-tvm and TORCH_ROCM plus the TORCH_ROCM_WINDOWS_* pins to torch on the rocm lane only' {
         Assert-Equal 'TVM_ROCM=1' (Format-StageArg 'rocm' 'media-tvm' -Pins $script:FakePins) 'media-tvm'
         Assert-Equal 'TVM_ROCM=0' (Format-StageArg 'rocm' 'media-tvm' $true) 'media-tvm -NoRocmSpikes'
-        Assert-Equal 'TORCH_ROCM=1,TORCH_ROCM_WINDOWS_TORCH_SHA256=s,TORCH_ROCM_WINDOWS_TORCH_URL=u' (Format-StageArg 'rocm' 'torch' -Pins $script:FakePins) 'torch'
+        Assert-Equal 'TORCH_ROCM=1,TORCH_ROCM_WINDOWS_ROCM_SHA256=s,TORCH_ROCM_WINDOWS_ROCM_URL=u' (Format-StageArg 'rocm' 'torch' -Pins $script:FakePins) 'torch'
         foreach ($s in 'media-litert', 'sdk', 'final') {
             Assert-Equal '' (Format-StageArg 'rocm' $s -Pins $script:FakePins) "rocm stage $s"
         }
@@ -146,10 +146,12 @@ Describe 'Get-BkRocmStageArg (rocm-only build-args)' {
     }
 
     It 'sends Dockerfile.torch and the onnx stage exactly the pins each declares' {
-        foreach ($c in @(@{ Stage = 'torch'; Df = 'windows\Dockerfile.torch'; Pin = 'TORCH_ROCM_WINDOWS_\w+'; Switch = 'TORCH_ROCM' }
+        # torch: the pins, plus the torch-rocm-wheels stage's versions and GPU family; a pin two of its
+        # stages declare (rocm-1 and torch-rocm-wheels) is still one build-arg.
+        foreach ($c in @(@{ Stage = 'torch'; Df = 'windows\Dockerfile.torch'; Pin = 'TORCH_ROCM_WINDOWS_\w+|PYTORCH_VERSION|TORCHVISION_VERSION|ROCM_WINDOWS_GFX_FAMILY'; Switch = 'TORCH_ROCM' }
                 @{ Stage = 'media-core'; Df = 'windows\Dockerfile.media-builder'; Pin = 'ORT_WEBGPU_WINDOWS_\w+'; Switch = 'ORT_WEBGPU' })) {
             $sent = @((Get-BkRocmStageArg -Variant 'rocm' -Stage $c.Stage -VersionTable (Get-DriverVariantPin)).Keys | Where-Object { $_ -ne $c.Switch })
-            $declared = @(Get-DriverVariantDeclaredArg $c.Df $c.Pin)
+            $declared = @(Get-DriverVariantDeclaredArg $c.Df $c.Pin | Sort-Object -Unique)
             Assert-True ($declared.Count -gt 0) "$($c.Df) declares no $($c.Pin) pin"
             Assert-Equal (($declared | Sort-Object) -join ',') (($sent | Sort-Object) -join ',') "declared vs sent, $($c.Stage)"
         }
@@ -338,7 +340,8 @@ Describe 'Build-Buildkit.ps1: rocm chain wiring' {
         Assert-Match "\`$torchTag = Get-BkTag 'windows-torch'" $src 'one torch tag expression'
         Assert-Match "BASE_IMAGE = \`$\(if \(\`$Variant -eq 'rocm'\) \{ \`$llamaTag \} else \{ Get-BkTag 'windows-media' \}\)" $src 'torch base'
         Assert-Match "PYTORCH_EXTRA = \`$\(if \(\`$isNvidia\) \{ 'pytorch-cu130' \} else \{ 'pytorch-cpu' \}\)" $src 'torch extra'
-        Assert-Match "\} \+ \(Get-BkRocmStageArg -Variant \`$Variant -Stage 'torch' -VersionTable \`$versions\)\)" $src 'TORCH_ROCM only through the rocm helper'
+        Assert-Match "\} \+ \(Get-BkRocmStageArg -Variant \`$Variant -Stage 'torch' -VersionTable \`$versions\) \+" $src 'TORCH_ROCM only through the rocm helper'
+        Assert-Match "\`$\(if \(\`$Variant -eq 'rocm'\) \{ \`$sccache \} else \{ @\{\} \}\)\)" $src 'the sccache endpoint reaches the torch solve on rocm only (torch-rocm-wheels compiles)'
     }
 
     It 'sends TVM_ROCM and ORT_WEBGPU through the media branch loop, and forwards the lane to the -ConcurrentAux children' {
