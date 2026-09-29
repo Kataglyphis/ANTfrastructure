@@ -283,8 +283,9 @@ Outputs: `docker-args`, `path`, `restored-key`.
 
 Save inputs:
 - `key`.
-- `enabled`: `auto`, the default, saves on push events only, so pull requests and
-  dispatches restore without spending quota.
+- `enabled`: `auto`, the default, saves on pushes to the default branch only. Pull
+  requests, dispatches and pushes to other branches (a release push to `main`) restore
+  the default branch's entry without spending quota.
 - `path`: the directory to save; the default is what restore prepared.
 - `token`: lists and deletes cache entries.
 

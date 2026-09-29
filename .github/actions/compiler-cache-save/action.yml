@@ -12,8 +12,11 @@ inputs:
     required: true
   enabled:
     description: >-
-      `auto` saves on push events only, so pull-request and dispatch runs
-      restore without spending cache quota. `true` always saves, `false` never.
+      `auto` saves on pushes to the default branch only. Pull requests,
+      dispatches and pushes to other branches (a release push to `main`)
+      restore the default branch's entry without spending cache quota: the
+      deletion before a save works per branch, so a second branch would hold
+      a second generation of every key. `true` always saves, `false` never.
     required: false
     default: 'auto'
   path:
@@ -46,13 +49,18 @@ runs:
       env:
         SAVE_ENABLED: ${{ inputs.enabled }}
         EVENT_NAME: ${{ github.event_name }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         SAVE_PATH: ${{ inputs.path != '' && inputs.path || format('{0}/compiler-cache', runner.temp) }}
       run: |
         set -euo pipefail
+        on_default=false
+        if [[ "${EVENT_NAME}" == push && -n "${DEFAULT_BRANCH}" && "${GITHUB_REF}" == "refs/heads/${DEFAULT_BRANCH}" ]]; then
+          on_default=true
+        fi
         case "${SAVE_ENABLED}" in
           true) saved=true ;;
           false) saved=false ;;
-          auto) [[ "${EVENT_NAME}" == push ]] && saved=true || saved=false ;;
+          auto) saved="${on_default}" ;;
           *) echo "::error::enabled must be auto, true or false, not '${SAVE_ENABLED}'"; exit 1 ;;
         esac
         echo "saved=${saved}" >> "${GITHUB_OUTPUT}"

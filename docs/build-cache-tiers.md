@@ -1404,8 +1404,11 @@ lanes, plus one entry being saved, fits inside the quota:
 - one key per preset that is worth it;
 - each capped with the `env` input (sccache keeps its most recent entries under the cap).
 
-`enabled: auto` saves on pushes only, which keeps pull requests and dispatches from
-spending the quota.
+`enabled: auto` saves on pushes to the default branch only (since 2026-09-29). The
+deletion works per branch, so a release push to `main` would otherwise have stored a
+second generation of every key: about 7.3 GB more in BeschleunigerBallett. Every other
+branch, and every pull request and dispatch, restores the default branch's entry, which
+GitHub lets any branch read.
 
 **Windows container lanes** take `container-ci-windows.yml`'s `compiler-cache-key`
 input (2026-09-29). An `SCCACHE_DIR` on a mounted volume stored nothing on the dev host
@@ -1413,7 +1416,7 @@ input (2026-09-29). An `SCCACHE_DIR` on a mounted volume stored nothing on the d
 so the cache is not mounted for sccache to write into. `actions/cache` restores it into the
 workspace as `.ci-cache`, the container gets `CI_COMPILER_CACHE=C:\ws\.ci-cache`, and the
 build script moves it into container-local directories before the build and back after it
-(OxidANT's `Invoke-WindowsLane.ps1`). Pushes save it.
+(OxidANT's `Invoke-WindowsLane.ps1`). Pushes to the default branch save it.
 
 That reusable workflow saves with `actions/cache/save` and deletes nothing. Its job
 grants only `contents: read`, and a reusable workflow cannot ask for more than every

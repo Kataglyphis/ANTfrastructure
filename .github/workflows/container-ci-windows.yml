@@ -135,8 +135,9 @@ on:
         description: >-
           Keep the build's compiler cache across runs: a lane id for the actions/cache key,
           empty (the default) for none. The cache is restored into the workspace as
-          .ci-cache, the container gets CI_COMPILER_CACHE=C:\ws\.ci-cache, and pushes save
-          it after the build. The build script must move it to container-local
+          .ci-cache, the container gets CI_COMPILER_CACHE=C:\ws\.ci-cache, and pushes
+          to the default branch save it after the build. The build script must move it
+          to container-local
           directories and back: sccache cannot write to a mounted directory
           (docs/build-cache-tiers.md). Not for clang-cl C++20 module builds until
           mozilla/sccache#2876 ships. This job cannot delete the entries older runs
@@ -246,9 +247,12 @@ jobs:
           file-args: ${{ inputs.build-args }}
           extra-args: ${{ steps.env.outputs.args }}
 
-      # Pushes only, so pull requests and dispatches restore without spending quota.
+      # Pushes to the default branch only, like compiler-cache-save's `auto`: pull
+      # requests, dispatches and release pushes restore without spending quota.
       - name: Save the compiler cache
-        if: ${{ always() && inputs.compiler-cache-key != '' && github.event_name == 'push' }}
+        if: >-
+          ${{ always() && inputs.compiler-cache-key != '' && github.event_name == 'push'
+          && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.prep.outputs.workspace }}\.ci-cache
