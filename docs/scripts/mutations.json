@@ -6464,6 +6464,22 @@
     "why": "rewriting every scanned file on every --write churns files nothing changed in, and the shared owner is now the only place that decision lives"
   },
   {
+    "id": "version-snapshot.consumer-pins-tag-prefix",
+    "target": "docs/scripts/consumer_pins.py",
+    "find": "    return re.sub(r\"^v(?=\\d)\", \"\", version)",
+    "replace": "    return version",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "versions.env spells PYTORCH_VERSION, TORCHVISION_VERSION and ONNXRUNTIME_GENAI_VERSION as GitHub tags (v2.14.0) while a consumer pins the bare number, so without the strip every correctly pinned consumer reads as drifted and the gate is red on a tree that agrees with the hub"
+  },
+  {
+    "id": "version-snapshot.consumer-pins-torch-row",
+    "target": "docs/scripts/consumer_pins.py",
+    "find": "        r'\"torch(?=[=<>~!\\[\",;])',",
+    "replace": "        r'\"torch(?=NEVER)',",
+    "test": "bash linux/scripts/tests/test-version-snapshot.sh",
+    "why": "a torch row that never finds its mention skips silently, so a consumer pinning an older torch than the image force-installs passes the gate and a dev box and the image run different torch with nothing red"
+  },
+  {
     "id": "lib.cgroup-remaining-clamps-at-zero",
     "target": "linux/scripts/01-core/parallelism.sh",
     "find": "    [ \"${remaining}\" -lt 0 ] 2>/dev/null && remaining=0",

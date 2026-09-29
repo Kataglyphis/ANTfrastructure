@@ -248,6 +248,54 @@ t_assert_eq "0" "$(t_rc _pins_only "${_ok}" --consumer-root "${_none}")" \
 t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "${_none}")" "0 pins compared" \
   "but it must never read as 'checked and passed'"
 
+# versions.env spells these three as GitHub tags (v2.14.0); a consumer pins the
+# bare number, and a riscv64 source pin carries the tag again.
+_env() { sed -n "s/^$1=v\{0,1\}//p" "${REPO}/linux/scripts/01-core/versions.env"; }
+_TORCH="$(_env PYTORCH_VERSION)"
+_VISION="$(_env TORCHVISION_VERSION)"
+_GENAI="$(_env ONNXRUNTIME_GENAI_VERSION)"
+# _ml <torch> <torchvision> <genai> -> a consumer shaped like OrchestrANT's extras
+_ml() {
+  _consumer "${_PIN}" "dependencies = [
+    \"ruff==${_PIN}\",
+    \"onnxruntime-genai==$3; platform_machine != 'riscv64'\",
+    \"onnxruntime-genai-cuda==$3; sys_platform != 'darwin'\",
+    \"onnxruntime-genai-directml; sys_platform == 'win32'\",
+]
+pytorch-cpu = [
+    \"torch==$1; platform_machine != 'riscv64'\",
+    \"torchvision==$2; platform_machine != 'riscv64'\",
+    \"torch @ git+https://github.com/pytorch/pytorch.git@v$1 ; platform_machine == 'riscv64'\",
+    \"torchvision @ git+https://github.com/pytorch/vision.git@v$2 ; platform_machine == 'riscv64'\",
+]"
+}
+
+t_case "8/8 torch, torchvision and onnxruntime-genai are held to versions.env too"
+_ml_ok="$(_ml "${_TORCH}" "${_VISION}" "${_GENAI}")"
+t_assert_eq "0" "$(t_rc _pins_only "${_ok}" --consumer-root "${_ml_ok}")" \
+  "a bare 2.14.0 IS versions.env's v2.14.0 -- the tag prefix is spelling, not drift"
+t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "${_ml_ok}")" "(7 compared)" \
+  "every row must be COMPARED; an unpinned -directml is not a mention, so it adds none"
+
+t_case "8/8 a drifted torch fails, and torchvision is not read as torch"
+_ml_torch="$(_ml 0.0.0 "${_VISION}" "${_GENAI}")"
+t_assert_eq "1" "$(t_rc _pins_only "${_ok}" --consumer-root "${_ml_torch}")" \
+  "a torch pin behind the image's must fail"
+_ml_torch_out="$(t_out _pins_only "${_ok}" --consumer-root "${_ml_torch}")"
+t_assert_contains "${_ml_torch_out}" "the \`\"torch==<version>\"\` pin is 0.0.0" \
+  "the wheel pin names the value it read"
+t_assert_contains "${_ml_torch_out}" "the riscv64 \`pytorch.git@<tag>\` source pin is 0.0.0" \
+  "and so does the riscv64 source pin"
+t_assert_contains "${_ml_torch_out}" "(2 of 7 checked pin(s) wrong)" \
+  "torchvision and genai stay green beside it"
+_ml_vision_out="$(t_out _pins_only "${_ok}" --consumer-root "$(_ml "${_TORCH}" 0.0.0 "${_GENAI}")")"
+t_assert_contains "${_ml_vision_out}" "the \`\"torchvision==<version>\"\` pin is 0.0.0" \
+  "a torchvision drift is named as torchvision"
+t_assert_fails grep -q -e 'the `"torch==<version>"` pin is' <<<"${_ml_vision_out}"
+t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "$(_ml "${_TORCH}" "${_VISION}" 0.0.0)")" \
+  "the \`\"onnxruntime-genai[-cuda]==<version>\"\` pin is 0.0.0" \
+  "and the genai pin is graded against its own key"
+
 t_case "--write repairs the drift, and repairs NOTHING on the second run"
 # The --check half above never reaches the write path; both syncers share one
 # _rewrite_lines owner, and "write only when something changed" is the property

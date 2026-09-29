@@ -7,6 +7,29 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-29 - The consumer-pins gate holds torch, torchvision and onnxruntime-genai
+
+`consumer_pins.py` compared only a consumer's ruff pins with `versions.env`. The image build
+force-installs `PYTORCH_VERSION` and `TORCHVISION_VERSION` over the app lock, so OrchestrANT's
+`torch==2.13.0` meant 2.13.0 on a dev box and 2.14.0 in the image, and no gate said so.
+
+- **Five new rows:** the `"torch=="` and `"torchvision=="` pins, their riscv64
+  `pytorch.git@v<tag>` / `vision.git@v<tag>` source pins, and `"onnxruntime-genai[-cuda]=="`.
+  The unpinned `onnxruntime-genai-directml` is not a mention.
+- **A leading `v` is dropped before comparing.** These three keys carry the GitHub tag
+  (`v2.14.0`); a consumer pins the bare number.
+- **Proven:** new cases in `test-version-snapshot.sh`, and the gate's first two mutations
+  (`version-snapshot.consumer-pins-tag-prefix`, `version-snapshot.consumer-pins-torch-row`).
+- **Rollout:** a consumer's `lint-gates.yml` runs this from `develop`, so a lagging consumer goes
+  red on its next push. OrchestrANT moved first (`febd7ea`: torch 2.14.0 / torchvision 0.29.0),
+  so its lane stays green.
+  [`code-quality-tooling.md`](docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons).
+- **OrchestrANT's ROCm extra is now `pytorch-rocm10`** (the `rocm7.14` wheel line, as
+  `PYTORCH_ROCM_INDEX`). The ROCm wrapper keeps passing `pytorch-rocm71`, which the pinned
+  `APP_REF=v0.0.28` defines; the change that moves `APP_REF` must switch
+  `runtime_gpu_backend_pair` and `smoke-torch-venv.sh` with it:
+  [`linux-accelerator-images.md`](docs/linux-accelerator-images.md).
+
 ## 2026-09-28 - Windows images: faster native libraries, KleidiAI on arm64
 
 An audit of the Windows build before the CON12 rebuild found four things that left runtime
