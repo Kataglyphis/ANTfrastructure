@@ -93,12 +93,12 @@ t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '--no-deps')" \
 _out="$(PYTORCH_EXTRA=pytorch-cpu _enforce)"
 t_assert_contains "${_out}" "--force-reinstall --no-deps --index-url https://download.pytorch.org/whl/cpu" \
   "the CPU path is unchanged"
-_out="$(PYTORCH_EXTRA=pytorch-rocm71 PYTORCH_ROCM_INDEX=rocm7.14 _enforce)"
+_out="$(PYTORCH_EXTRA=pytorch-rocm10 PYTORCH_ROCM_INDEX=rocm7.14 _enforce)"
 t_assert_contains "${_out}" "--index-url https://download.pytorch.org/whl/rocm7.14" \
-  "a ROCm torch comes from the PINNED line, not the app extra's rocm7.1 index (no torch 2.14 there)"
+  "a ROCm torch comes from the PINNED line, whatever index the app extra names"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'whl/cpu')" \
   "and never falls through to the CPU index"
-_out="$(PYTORCH_EXTRA=pytorch-rocm71 _enforce; echo "rc=$?")"
+_out="$(PYTORCH_EXTRA=pytorch-rocm10 _enforce; echo "rc=$?")"
 t_assert_contains "${_out}" "PYTORCH_ROCM_INDEX unset" "an unset pin fails loudly instead of guessing"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'uv pip install')" "and installs NOTHING (no quiet CPU fallback)"
 t_assert_contains "${_out}" "rc=1" "with a failing exit status"

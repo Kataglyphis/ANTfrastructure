@@ -380,10 +380,10 @@ fallbacks), builds the stages in order, and applies the correct tags:
 
 # OrchestrANT app stage (windows/Dockerfile.torch, mirror of linux/Dockerfile.torch):
 # a chain stage between media and final (media -> torch -> final) — it assembles the
-# app env at APP_REF on windows-media, and the final image builds FROM it. An APP_REF
-# bump therefore rebuilds torch + the cheap final tail only (minutes, network-bound):
-.\windows\Build-Buildkit.ps1 -Stages torch,final               # versions.env APP_REF pin
-.\windows\Build-Buildkit.ps1 -Stages torch,final -LatestApp    # newest release tag
+# app env at APP_REF on windows-media, and the final image builds FROM it. A new app
+# commit therefore rebuilds torch + the cheap final tail only (minutes, network-bound):
+.\windows\Build-Buildkit.ps1 -Stages torch,final               # APP_REF (develop) at its current commit
+.\windows\Build-Buildkit.ps1 -Stages torch,final -LatestApp    # newest release tag instead
 ```
 
 Stage results land in the CONTAINERD store as `docker.io/local/kataglyphis:bk-<stage>`
@@ -829,12 +829,16 @@ The final image bakes the runtime orchestrator at
 `assemble-torch-app.sh` stage) in the torch stage (`windows/Dockerfile.torch`),
 which the final image builds FROM:
 
-- **Ref**: `Build-Buildkit.ps1` uses versions.env's **`APP_REF` pin by default** (the
-  same commit always builds the same final image); pass `-LatestApp` to opt
-  into resolving the app repo's newest release tag at build time via a live
-  `git ls-remote` (the old always-on behavior). The resolved ref reaches the
-  Dockerfile as the `APP_REF` build-arg, so moving the app busts exactly the
-  torch-step layer.
+- **Ref**: versions.env's **`APP_REF` names the branch the stage tracks**
+  (`develop`, owner decision 2026-09-29). `Resolve-TorchAppRef` resolves it to the
+  commit it points at when the torch stage starts (`git ls-remote`, via
+  `Resolve-GitRefCommit`), and that commit reaches the Dockerfile as the `APP_REF`
+  build-arg. So the torch-step layer rebuilds exactly when the app moved, and the
+  commit is the image's version label. `Build-TorchApp.ps1` fetches a commit as
+  itself (`clone --branch` takes names only). A 40-hex `APP_REF` is built as
+  given, with no lookup; an unreachable remote stops the stage. `-LatestApp`
+  tracks the newest release tag instead. The Linux lane does the same:
+  [`linux-cross-builds.md`](linux-cross-builds.md#the-app-the-wrapper-builds).
 - **Environment**: `uv sync` on the source-built CPython (extras `ml-ai`,
   `docs`, `pytorch-cpu` — `pytorch-cu130` on the nvidia lane — and `test`; the
   wxPython GUI extra excluded, like linux),
@@ -862,11 +866,11 @@ which the final image builds FROM:
   battery (numpy/cv2/torch/onnxruntime with a CUDA-EP build assert/genai/tvm)
   **and the app's own wheel-smoke suite** (`python -m orchestrant.smoke`
   — real torch/torchvision/ORT-inference/OpenCV work). The check inventory is
-  the app's per-tag choice, so the expected pass count moves with `APP_REF`;
+  the app's own choice, so the expected pass count moves with the app commit;
   the rule on this lane is: **all checks pass except a single WARN for the
   litert skip** on cpu/nvidia (the `ai-edge-litert` limitation above; the rocm
-  verify finds it installed), plus any checks the pinned app tag does not yet
-  ship (e.g. an iree check counts only once a tag includes it). `-Mode verify`
+  verify finds it installed), plus any checks the built app commit does not yet
+  ship (e.g. an iree check counts only once the app includes it). `-Mode verify`
   runs the ORT census first, so the rocm-1 stage and smoke section 21 enforce it
   too. Smoke section 21 re-runs the same verification offline on every suite
   run; its app-verify assertion also requires the `ORT-CENSUS PASS` line and

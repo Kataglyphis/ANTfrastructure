@@ -1589,9 +1589,9 @@ the real tag. `-ResumeFrom`/`-Until` outlived the driver — the BK Dockerfiles
 use them to split media-core into its chained solves (all but the HailoRT one,
 which runs its own script).
 
-**Determinism:** the final stage uses the versions.env `APP_REF` pin by
-default; pass `-LatestApp` to `Build-Buildkit.ps1` to resolve the app repo's
-newest release tag at build time (`Resolve-TorchAppRef`). Every local
+**App ref:** the torch stage builds the commit versions.env's `APP_REF` branch
+points at when it starts (`Resolve-TorchAppRef`), or the newest release tag's
+with `-LatestApp`; the commit is the image's version label. Every local
 intermediate tag comes from **`Get-BkTag`** in `Build-Buildkit.ps1` (which also
 appends the `-arm64` suffix for a cross target and, on `-Variant rocm`, a
 `-rocm` infix after `bk-windows-base`) — never type a

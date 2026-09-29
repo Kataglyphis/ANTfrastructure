@@ -25,8 +25,8 @@ ARG TORCH_ROCM=0
 FROM ${BASE_IMAGE} AS app
 
 # Kept in sync with versions.env by sync_versions.py; Build-Buildkit.ps1 overrides it
-# (versions.env pin, or the latest release tag with -LatestApp).
-ARG APP_REF=v0.0.28
+# with the COMMIT that ref points at now (or the latest release tag's, with -LatestApp).
+ARG APP_REF=develop
 # Torch BACKEND extra from the app's pyproject: pytorch-cpu (default),
 # pytorch-cu130, ... 'none' disables (torch is only declared inside the extras).
 ARG PYTORCH_EXTRA=pytorch-cpu
@@ -116,7 +116,7 @@ RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
 
 FROM rocm-${TORCH_ROCM}
 # ARGs stop at FROM: the LABEL reads APP_REF, so redeclare it (sync_versions.py syncs both).
-ARG APP_REF=v0.0.28
+ARG APP_REF=develop
 
 # Provenance stamps DELIBERATELY declared below the assembly RUN: ARGs enter
 # the env (and thus the cache key) of every later instruction, and the drivers

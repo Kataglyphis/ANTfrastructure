@@ -89,7 +89,7 @@ t_assert_eq "" "$(_args media | grep -o 'ENABLE_[A-Z]*=')" "the default media st
 t_case "the runtime lane refuses to write default tags under a variant"
 RFNS="${CORE}/runtime-build-fns.sh"
 t_assert_eq "onnxruntime-gpu pytorch-cu130" "$(ENABLE_NVIDIA=true bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')"
-t_assert_eq "onnxruntime-migraphx pytorch-rocm71" "$(ENABLE_AMD=true bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')"
+t_assert_eq "onnxruntime-migraphx pytorch-rocm10" "$(ENABLE_AMD=true bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')"
 t_assert_eq "" "$(bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')" "a CPU image keeps the Dockerfile defaults"
 # --dry-run is a FLAG here (DRY_RUN in the environment is not read), and every
 # call is time-boxed: a regression must fail the suite, never start a real build.

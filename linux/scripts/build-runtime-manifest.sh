@@ -329,6 +329,8 @@ main() {
   : "${CROSS_BUILD_DATE:=$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
   : "${CROSS_VCS_REF:=$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)}"
   export CROSS_BUILD_DATE CROSS_VCS_REF
+  # The app too: every arch of one index builds the same OrchestrANT commit.
+  runtime_resolve_app_ref
 
   # CROSS_NO_PUSH=1: nothing is pushed, so a registry-based `manifest create` has
   # no descriptors and dies "no such manifest". Images are still built + smoked.

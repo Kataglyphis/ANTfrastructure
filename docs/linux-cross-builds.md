@@ -1464,6 +1464,36 @@ bash linux/scripts/build-runtime-manifest.sh \
   --target-arches amd64,arm64,riscv64 --repair --push-manifest
 ```
 
+## The app the wrapper builds
+
+The torch stage builds OrchestrANT's **`develop`** branch (owner decision
+2026-09-29). Fixes the build needs go to `develop` directly; there is no release
+tag to cut. `versions.env` `APP_REF=develop` names what to track, not what to build:
+
+- **The commit, resolved once per run.** `build-runtime-manifest.sh` and
+  `build-runtime-artifacts.sh` call `runtime_resolve_app_ref` before the per-arch
+  loop. It resolves the ref with `git ls-remote` and exports `APP_REF=<commit>`,
+  which the versions.env forwarding then passes to every arch. All arches of one
+  index build the same app, even if `develop` moves mid-run. A branch wins over a
+  same-named tag, and an annotated tag gives the commit it peels to.
+- **Why a commit, never the name.** BuildKit keys the torch RUN on its build args.
+  With the arg fixed at `develop`, the cache would reuse the first clone forever and
+  ship a stale app behind a green build. With the commit as the arg, the layer
+  rebuilds exactly when `develop` moved and stays cached when it did not.
+- **The fetch.** `assemble-torch-app.sh` fetches a 40-hex `APP_REF` by itself
+  (`git init` + `fetch --depth 1 <commit>` + `checkout FETCH_HEAD`); `clone --branch`
+  takes names only. A name still clones, with a warning, for a plain `docker build`
+  that runs on the Dockerfile default.
+- **The record.** The commit is the image's `org.opencontainers.image.version`
+  label. To rebuild an old image exactly, export `APP_REF=<that commit>` (or a tag)
+  before the run; a 40-hex value is built as given, with no lookup.
+- **Failure.** An unreachable remote or an unknown ref stops a real run before
+  anything builds; `--dry-run` only warns. A broken `develop` fails the torch stage
+  near the end of the chain, with every earlier stage cached.
+
+The Windows lane does the same in `Resolve-TorchAppRef` and `Build-TorchApp.ps1`:
+[`windows-builds.md`](windows-builds.md).
+
 ## Orchestrator stage selection
 
 Resuming mid-chain, building one stage, and the parallel-arch knobs.

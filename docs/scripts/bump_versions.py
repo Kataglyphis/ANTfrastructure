@@ -741,12 +741,6 @@ def spec_appimagetool(cur):
     return v, extras
 
 
-def spec_app_ref(cur):
-    # The app repo publishes TAGS, not GitHub releases — same tag-scan
-    # Build-Buildkit.ps1's -LatestApp uses via ls-remote.
-    return gh_latest("Kataglyphis/OrchestrANT", pattern=r"^v?\d+(\.\d+)*$"), {}
-
-
 def spec_ubuntu_digest(cur):
     env = read_env()
     return dockerhub_manifest_digest("library/ubuntu", env["UBUNTU_VERSION"]), {}
