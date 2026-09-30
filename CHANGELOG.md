@@ -7,6 +7,15 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - python-ci-linux: a pull request no longer publishes the docs
+
+- **What went wrong.** The *Sync files to domain* step ran on every event. On a Dependabot pull
+  request the FTP secrets are empty, so WebDavClient's PR builds failed with `Input required and
+  not supplied: server`. A PR opened from the repository itself has the secrets, and its docs
+  would have replaced the live site.
+- **The fix.** The step also needs `github.event_name == 'push'`, the gate `build-docs.yml`
+  already had. A push to a caller's branches publishes as before.
+
 ## 2026-09-30 - Windows: the source-built CPython reports win-amd64 in a venv again
 
 - **What went wrong.** `Py_GetVersion()` keeps 80 characters of `COMPILER`. For clang, CPython
