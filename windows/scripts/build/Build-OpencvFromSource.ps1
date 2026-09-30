@@ -73,6 +73,8 @@ if ($contribSrc) {
     Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\001-cudev-windows-llp64.patch') -SourceDir $contribSrc -Description 'opencv_contrib: cudev Windows LLP64 64-bit VecTraits'
     # cudafilters picks the x86 _mm_popcnt_u64 for any _MSC_VER; the fallthrough to __builtin_popcountll is a no-op on x64.
     Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\002-arm64-cudafilters-popcount.patch') -SourceDir $contribSrc -Description 'opencv_contrib: cudafilters popcount for Windows ARM64'
+    # gapi fluid takes MSVC's _mm_setr_epi64x for any _MSC_VER; clang-cl defines _MSC_VER but has no such intrinsic.
+    Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\003-gapi-fluid-clangcl-setr-epi64x.patch') -SourceDir $contribSrc -Description 'opencv_contrib: gapi fluid SSE4.1 under clang-cl'
 }
 
 # FFmpeg 9 compat as a self-asserting script, not a .patch: it matches two accessor expressions, not context.

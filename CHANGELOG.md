@@ -7,6 +7,18 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - OpenCV: gapi's fluid SSE4.1 kernels build under clang-cl
+
+- **What went wrong.** The first BuildKit run of the default (CPU + DirectML) `:winamd64` stopped in
+  `media-core-built-opencv`:
+  `gfluidcore_simd_sse41.hpp(308,35): error: use of undeclared identifier '_mm_setr_epi64x'`, five
+  times. opencv_contrib 5.0.0 takes MSVC's `_mm_setr_epi64x` under `#ifdef _MSC_VER`. clang-cl
+  defines `_MSC_VER`, and its intrinsic headers have no such function.
+- **The fix.** `windows/scripts/patches/opencv_contrib/003-gapi-fluid-clangcl-setr-epi64x.patch`
+  takes that branch only for real MSVC (`&& !defined(__clang__)`). clang-cl then uses the portable
+  `_mm_setr_epi64` branch. It is the only file in contrib's gapi that names the intrinsic.
+  `git apply --check` is clean against the 5.0.0 tag (755e5067).
+
 ## 2026-09-30 - Windows base: both OpenSSL installers come from the LAN preseed
 
 - **What went wrong.** A `:winamd64` base build sat 3.6 h in `scoop install main/openssl`,

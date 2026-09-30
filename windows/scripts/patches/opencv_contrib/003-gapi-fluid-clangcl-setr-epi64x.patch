@@ -1,0 +1,49 @@
+diff --git a/modules/gapi/src/backends/fluid/gfluidcore_simd_sse41.hpp b/modules/gapi/src/backends/fluid/gfluidcore_simd_sse41.hpp
+index 3f20128..0ee4eb6 100644
+--- a/modules/gapi/src/backends/fluid/gfluidcore_simd_sse41.hpp
++++ b/modules/gapi/src/backends/fluid/gfluidcore_simd_sse41.hpp
+@@ -304,7 +304,7 @@ CV_ALWAYS_INLINE void calcRowLinear_8UC_Impl_<3>(uint8_t* dst[],
+             {
+                 for (; x <= outSz.width - (nproc_pixels + 1); x += nproc_pixels)
+                 {
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) && !defined(__clang__)
+                     __m128i a00 = _mm_setr_epi64x(*reinterpret_cast<const int64_t*>(&clone[4 * x]), *reinterpret_cast<const int64_t*>(&clone[4 * x]));
+ #else
+                     __m128i a00 = _mm_setr_epi64(*reinterpret_cast<const __m64*>(&clone[4 * x]), *reinterpret_cast<const __m64*>(&clone[4 * x]));
+@@ -336,7 +336,7 @@ CV_ALWAYS_INLINE void calcRowLinear_8UC_Impl_<3>(uint8_t* dst[],
+                     // gather data from the same lines together
+                     __m128i res1 = _mm_shuffle_epi8(q0_0, horizontal_shuf_mask);
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) && !defined(__clang__)
+                     __m128i a11 = _mm_setr_epi64x(*reinterpret_cast<const int64_t*>(&clone[4 * (x + 1)]), *reinterpret_cast<const int64_t*>(&clone[4 * (x + 1)]));
+ #else
+                     __m128i a11 = _mm_setr_epi64(*reinterpret_cast<const __m64*>(&clone[4 * (x + 1)]), *reinterpret_cast<const __m64*>(&clone[4 * (x + 1)]));
+@@ -367,7 +367,7 @@ CV_ALWAYS_INLINE void calcRowLinear_8UC_Impl_<3>(uint8_t* dst[],
+                     // gather data from the same lines together
+                     __m128i res2 = _mm_shuffle_epi8(q0_0, horizontal_shuf_mask);
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) && !defined(__clang__)
+                     __m128i a22 = _mm_setr_epi64x(*reinterpret_cast<const int64_t*>(&clone[4 * (x + 2)]), *reinterpret_cast<const int64_t*>(&clone[4 * (x + 2)]));
+ #else
+                     __m128i a22 = _mm_setr_epi64(*reinterpret_cast<const __m64*>(&clone[4 * (x + 2)]), *reinterpret_cast<const __m64*>(&clone[4 * (x + 2)]));
+@@ -398,7 +398,7 @@ CV_ALWAYS_INLINE void calcRowLinear_8UC_Impl_<3>(uint8_t* dst[],
+                     // gather data from the same lines together
+                     __m128i res3 = _mm_shuffle_epi8(q0_0, horizontal_shuf_mask);
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) && !defined(__clang__)
+                     __m128i a33 = _mm_setr_epi64x(*reinterpret_cast<const int64_t*>(&clone[4 * (x + 3)]), *reinterpret_cast<const int64_t*>(&clone[4 * (x + 3)]));
+ #else
+                     __m128i a33 = _mm_setr_epi64(*reinterpret_cast<const __m64*>(&clone[4 * (x + 3)]), *reinterpret_cast<const __m64*>(&clone[4 * (x + 3)]));
+@@ -429,7 +429,7 @@ CV_ALWAYS_INLINE void calcRowLinear_8UC_Impl_<3>(uint8_t* dst[],
+                     // gather data from the same lines together
+                     __m128i res4 = _mm_shuffle_epi8(q0_0, horizontal_shuf_mask);
+ 
+-#ifdef _MSC_VER
++#if defined(_MSC_VER) && !defined(__clang__)
+                     __m128i a44 = _mm_setr_epi64x(*reinterpret_cast<const int64_t*>(&clone[4 * (x + 4)]), *reinterpret_cast<const int64_t*>(&clone[4 * (x + 4)]));
+ #else
+                     __m128i a44 = _mm_setr_epi64(*reinterpret_cast<const __m64*>(&clone[4 * (x + 4)]), *reinterpret_cast<const __m64*>(&clone[4 * (x + 4)]));
