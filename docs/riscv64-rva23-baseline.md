@@ -91,7 +91,7 @@ riscv64 ships no IREE compiler (a documented parity exemption). Compile for it e
 and the same `--iree-llvmcpu-target-cpu-features`, or `--iree-llvmcpu-target-cpu=spacemit-x100`.
 Measured 2026-09-26 with amd64 `:latest`'s `iree-compile`: without the features the link
 fails on `__mulsf3`; with them the module holds 31 vector instructions in 153. Recorded
-in the root [`BACKLOG.md`](../BACKLOG.md) § Deliberate (CON24).
+(CON24) in [`image-decisions.md`](image-decisions.md) § Deliberate — not gaps.
 
 ## The gate
 

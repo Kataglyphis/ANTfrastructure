@@ -6,24 +6,13 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**Measured 2026-09-25** against `:latest` index `ec4bb68b` (amd64 image built
-2026-09-22), run as uid 1001 through the image's own entrypoint. Windows and
-arm64 items rest on the CI runs and hub documents they cite. The same day's sweep
-covered all nine repositories in `.github/consumers.json`. **Re-derive before
-acting; a number here is a date's measurement.**
-
-**Swept 2026-09-26.** Every open item was fixed in source, decided (§ Deliberate), or
-is blocked on the owner. A fix in source is not a fix in an image: the Linux ones ship
-with CON11, the Windows ones with CON12, and each item says what to check afterwards.
-**CON11 shipped 2026-09-29** (`:latest` index `sha256:696642b2…`), and CON37 retired the
-consumer workarounds it made unnecessary the same day (git history, 2026-09-29/30). The
-consumers measured four gaps it did not close, CON38–CON41, and all four are closed: CON40
-(a lane-time script) in source, CON38, CON39 and CON41 in the `:latest` of 2026-09-30 (amd64
-`502a5e9d…`, arm64 `4446422d…`, riscv64 `d5e4db6b…`), checked in each published child as
-uid 1001: atheris' `lib/linux/libclang_rt.fuzzer_no_main-<arch>.a`, clang-tidy through
-`/usr/bin/clang{,++}` selecting `/opt/gcc-16.2.0`, the loader's xcb/xlib/wayland surfaces and
-`vkcube` under `xvfb-run` on all three; gtk4 now loads on arm64, so the smoke's arm64 exception
-is gone. riscv64 builds no `libgstgtk4.so` at all (unchanged).
+**State 2026-09-30.** Published: `:latest` (2026-09-30, hub 9e9d9828; amd64 `502a5e9d…`,
+arm64 `4446422d…`, riscv64 `d5e4db6b…`), `:winamd64` and `:winamd64-nvidia` (2026-09-27, hub
+a33a460b), `:winamd64-rocm` (2026-09-28), `:latest-rocm` (2026-09-28, hub 1754a1dd).
+`:latest-nvidia` is not published. Every Linux image gap up to CON41 shipped and was checked
+in the published children (git history). Decisions and gaps checked closed live in
+[`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
+here is a date's measurement.**
 
 ## Protocol
 
@@ -37,55 +26,37 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
-- [b] **CON12 — Republish `:winamd64`, and publish `:winamd64-nvidia`** [M, ★★★]. Blocked on the owner. The published
-      image (2026-09-22, hub 0d85b8c1) has three problems:
-      - **A LAN sccache endpoint in its ENV.** It is the build host's LAN WebDAV,
-        unreachable from CI, so sccache exits and CMake reports clang-cl as broken.
-        Consumers survive only through `Clear-UnreachableSccacheEndpoint` in their
-        hub pin (`docs/windows-build-resources.md`).
-      - **ONNX Runtime from outside the chain.** OpenCV dnn/G-API was compiled
-        against a downloaded ONNX Runtime zip and GenAI against a NuGet DirectML
-        package, so G-API's DirectML EP is a stub that throws. 57bec177 fixes it,
-        but no container build has run it yet (`docs/onnxruntime-single-source.md`).
-      - **The old CUDA arch set, `80;86;87;89;90`.** It has no Blackwell `sm_120`,
-        which README and AGENTS.md now advertise (d3f5fe42, d8c31072).
-
-      In source since and shipped by the same rebuild (2026-09-26): CON9 and CON10
-      (`clang_rt.profile` and a matching clang-tidy), CON25's Vulkan loader on PATH,
-      CON28 (LiteRT Python and the `gdkpixbuf` plugin), CON29 (no baked
-      `C:\workspace`), and 7.1 GB less image, because the patched LLVM's
-      source and Ninja tree no longer stay in its layer. `versions.env` changed after
-      0d85b8c1, so the chain rebuilds from base anyway.
-
-      The first local rebuild (2026-09-26) found one more: with Blackwell in the arch set,
-      ORT's LLM kernels compile as PTX only on MSVC, and sccache 0.18 aborts those nvcc
-      compiles (mozilla/sccache#2862). ORT's nvcc now stays bare for such an arch list.
-
-      The local rebuild of 2026-09-26/27 (`windows\Build-Buildkit.ps1 -Gpu`, at 6fe2992f and
-      then 738d07e3) passed the ENV gate (`Assert-ImageEnvPublishable`), the ORT census and the
-      smoke gate (245 passed, 0 skipped); ORT took 1:59 with its nvcc bare.
-
-      **Two tags since 2026-09-27** (owner decision: Windows follows the variant rule). The
-      `-Gpu` build is the nvidia variant and publishes as `:winamd64-nvidia`; `:winamd64`
-      becomes the build without `-Gpu`, CPU + DirectML:
-      - `:winamd64-nvidia`: `-Gpu -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64-nvidia`
-        at the rename's commit or later. The local run predates the rename, so its stages
-        re-solve under the new `bk-*-nvidia` names.
-      - `:winamd64`: the default build, not run yet. The consumers use its chain ORT (DirectML
-        and `onnxruntime_providers_shared.dll`), its media runtime and its cp314 ORT wheels in
-        `C:\runtime\wheels`, so those must stay.
-
-      No consumer needs CUDA from the Windows image (all eight repos surveyed 2026-09-27).
-      Every lane inherits `:winamd64` through the hub's actions at `@develop`, so publishing the
-      default build moves them all with no consumer commit. A lane that wants CUDA later needs
-      a variant input first: `container-ci-windows.yml` has no `image` input, and
-      `Get-CiImageReference` has no variant. After the publishes, run one DirectML G-API session, set BeschleunigerBallett's
-      ClangCL coverage back ON and drop its container `-SkipTidy` (CON9, CON10), and
-      let AccelerANTgine tidy every `Src/` TU.
+- [ ] **CON45 — Follow-ups of the `:winamd64` published 2026-09-27** [M, ★★]. CON12 shipped:
+      `:winamd64` (15:44) and `:winamd64-nvidia` (16:33) were built at a33a460b, which carries
+      every fix CON9, CON10, CON25, CON28 and CON29 were blocked on (checked by git ancestry
+      2026-09-30: a93d5144, 57bec177, 738d07e3, d8c31072). No Windows host has checked them in the
+      published image yet, and the consumers still carry the workarounds (checked 2026-09-30):
+      - Prove in the published image on a Windows host: `clang_rt.profile-x86_64.lib` and a
+        clang-cl coverage run (CON9); `C:\llvm-patched\bin\clang-tidy.exe` reads a clang-cl
+        C++23 BMI (CON10); `vulkan-1.dll` from `C:\vulkan-loader` on PATH (CON25); LiteRT
+        Python in the app venv and `gstgdkpixbuf.dll` (CON28); no `VOLUME C:\workspace`
+        (CON29); no LAN sccache endpoint in the ENV; one DirectML G-API session.
+      - BeschleunigerBallett: `myproject_ENABLE_COVERAGE` in `x64-ClangCL-Windows-Base` is still
+        OFF (CON9), and `-SkipTidy` is still passed by `Build-Windows-Container.ps1` and
+        `Invoke-WindowsLane.ps1` (CON10).
+      - AccelerANTgine: `Build-Windows.ps1` still sets the module-file skip
+        (`ModuleImportPattern`); set `'(?!)'` so clang-tidy reads every `Src/` TU (CON10).
+      - Consumers: drop `Clear-UnreachableSccacheEndpoint` from the hub path once no published
+        image carries the endpoint (it was the first CON12 problem).
 
 ## Open — Linux image (all arches)
 
-None open.
+- [ ] **CON44 — `LP_NATIVE_VECTOR_WIDTH=256` in the image** [S, ★★]. Mesa 26.0.8's lavapipe
+      compiles its BVH radix sort (`lvp_acceleration_structure.c`, `subgroup_size_log2 = 3`) for
+      8-lane subgroups; llvmpipe's subgroup is its vector width / 32, so 4 lanes on arm64 NEON,
+      and the sort's scatter writes through garbage addresses: every lavapipe draw that builds an
+      acceleration structure SEGVs on arm64 (BeschleunigerBallett run 36746313937, root-caused
+      2026-09-30 from a core: a 4-lane `st1` in `rs_scatter_smem`; x64 with 128 reproduces it,
+      arm64 with 256 draws). BeschleunigerBallett sets it in `run-ctest.sh` (2ac0e785) and its
+      arm64 GPU suites pass 687/687. Set `ENV LP_NATIVE_VECTOR_WIDTH=256` in the package image
+      for every arch (x64's default already) so every consumer gets it, check it in the runtime
+      smoke, then let BeschleunigerBallett drop its own. Retire it once the image's Mesa has
+      upstream ebcfbe60 (2026-08-22), which deletes that sort. Ships with the next `:latest`.
 
 ## Open — Linux arm64 and riscv64
 
@@ -93,32 +64,6 @@ None open.
 
 ## Open — Windows `:winamd64`
 
-- [b] **CON9 — The patched LLVM ships `clang_rt.profile`** [M, ★]. Blocked on CON12.
-      No record backed the "profile fails to compile under clang-cl" that switched it off,
-      and the same list spelled libFuzzer's switch `COMPILER_RT_BUILD_FUZZER`, which names
-      no option, so libFuzzer shipped all along. Fixed in source (2026-09-26):
-      `COMPILER_RT_BUILD_PROFILE=ON`, `COMPILER_RT_BUILD_PROFILE_ROCM=OFF` (the HIP-offload
-      twin new in 23.x; this LLVM has no AMDGPU target), libFuzzer's switch spelled right,
-      and the stage fails without `clang_rt.profile-x86_64.lib`. Proven on 2026-09-26 by
-      rebuilding the tree that ships in `:winamd64` with those deltas: the runtime builds,
-      and clang-cl coverage runs to an `llvm-cov` report for `/MDd`, for `/MD` with ASan and
-      through `cmake/Tests.cmake`. Afterwards
-      set BeschleunigerBallett's `myproject_ENABLE_COVERAGE` in `x64-ClangCL-Windows-Base`
-      back to ON.
-- [b] **CON10 — The patched LLVM ships a clang-tidy that reads its BMIs** [M, ★★].
-      Blocked on CON12. Fixed in source (2026-09-26): `clang-tools-extra` without clangd,
-      and the stage fails without `clang-tidy.exe` and `clang-apply-replacements.exe`.
-      Proven in the same rebuild: 501 clang-tools-extra TUs (7.5 min on a warm cache), and
-      the new clang-tidy reads a clang-cl C++23 BMI that scoop's release clang-tidy refuses
-      ("built from a different branch"). Afterwards AccelerANTgine tidies every `Src/` TU: its lookup already
-      finds `C:\llvm-patched\bin\clang-tidy.exe`, but that branch keeps the hub's
-      module-file skip (set `ModuleImportPattern='(?!)'`). BeschleunigerBallett drops its
-      container `-SkipTidy`.
-- [b] **CON25 — Server Core has no Vulkan loader outside rocm** [M, ★★]. Blocked on
-      CON12. Fixed in source (2026-09-26): the final stage installs LunarG's pinned
-      `vulkan-1.dll` into `C:\vulkan-loader` and appends it to PATH, never System32. Proven
-      in `:winamd64`: a program importing `vulkan-1.dll` went from `0xC0000135` to running
-      (zero devices, no ICD), and `gstvulkan` loads. OpenGL stays host-only (§ Deliberate).
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-09-26): microsoft/STL#6294
       is open, its fix #6298 awaits review, and neither 14.52 nor 14.53 Preview carries it.
@@ -126,27 +71,6 @@ None open.
       BeschleunigerBallett's `find_if` stands (a2793e6c). Never set
       `_USE_STD_VECTOR_ALGORITHMS=0` image-wide: it turns every vectorized algorithm off.
       Close when a production toolset ships #6298.
-- [b] **CON28 — Smaller Windows absences** [S, ★]. Blocked on CON12. Swept 2026-09-26:
-      - LiteRT Python is fixed in source and ships with CON12. Its exclusion from `uv sync`
-        outlived its reason (2.1.3 had no cp314 wheel; the locked 2.1.6 has one). Measured
-        in `:winamd64`'s app venv: it installs, and the app smoke passes it (13/15, 0 failed).
-      - TAPPAS, `cargo-cbuild`, opus SIMD, Hailo's Windows pyhailort and `hailonet` are
-        decided (§ Deliberate).
-      - GStreamer's `gdkpixbuf` plugin on amd64 is fixed in source (2026-09-26). gdk-pixbuf
-        2.44.6 defaults `man=true` and fails setup without rst2man, so the plugin fell out
-        of auto-features unseen. `Get-GstGdkPixbufMesonArgs` turns its man pages, tests and
-        typelib off and passes `gst-plugins-good:gdk-pixbuf=enabled`, so the next such loss
-        fails meson setup. Proven 2026-09-27 by the local CON12 rebuild at 738d07e3: the
-        subproject configures, and `gdk_pixbuf-2.0-0.dll` and `gstgdkpixbuf.dll` link and
-        install; the smoke gate still passes 245/0. arm64 keeps it off (§ Deliberate).
-- [b] **CON29 — The baked `VOLUME C:\workspace`** [S, ★]. Blocked on CON12. Dropped in
-      source with its `WORKDIR` (2026-09-26): nothing needed the directory, every caller
-      passes `-w`, and the VOLUME left an anonymous volume per container.
-      `Update-CTestMetadataPaths` takes `-ContainerRoot` (default `C:/workspace`). The old
-      claim that every consumer mounts at `C:\ws` was wrong: `python-ci-windows.yml`,
-      OrchestrANT and WebDavClient mount at `C:\workspace`, which works only on
-      version-matched hosts today and on every host after CON12.
-
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
@@ -167,7 +91,8 @@ None open.
       - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
         the device as shipped.
-      - `:winamd64-rocm`: pushing it waits on a redistribution decision.
+      - `:winamd64-rocm`: published 2026-09-28 (built at ad08bc30); record the redistribution
+        decision that allowed it in `docs/windows-rocm.md` § Redistribution.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
 - [ ] **CON43 — The Windows arm64 lanes become `build + test`** [M, ★★]. Owner request
@@ -212,9 +137,36 @@ None open.
       Order: the hub inputs first (consumers call it at `@develop`, so push it before any
       consumer uses the new inputs), then one consumer at a time, each proven by its green
       arm64 run with a non-zero test count.
-- [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Blocked on the running
-      `:latest` rebuild (2026-09-30) and on CON31's `:latest-nvidia` amd64 publish; owner
-      request 2026-09-30, planned for after that build.
+- [ ] **CON46 — Renovate detects and bumps the CMake third-party deps** [M, ★★]. Owner request
+      2026-10-01. The consumers declare C++ dependencies in CMake, and the shared preset
+      (`default.json`) has no `customManagers` at all, so Renovate sees none of them (checked
+      2026-10-01):
+      - `FetchContent_Declare(googletest URL https://github.com/google/googletest/archive/<sha>.zip)`:
+        AccelerANTgine and BeschleunigerBallett `third_party/CMakeLists.txt`, OmniAccelerANT's
+        plugin `linux/` and `windows/CMakeLists.txt` (the same commit in all four).
+      - `GIT_REPOSITORY … GIT_TAG …`: abseil (BeschleunigerBallett through `set(ABSL_TAG …)`),
+        microsoft/GSL, and corrosion at `GIT_TAG master` — a floating ref, so no build is
+        reproducible until it is pinned.
+
+      Plan:
+      1. Inventory every `FetchContent_Declare`, `ExternalProject_Add`, `CPMAddPackage` and
+         `set(<X>_TAG …)` feeding one, across the fleet (`.github/consumers.json`), skipping
+         vendored trees.
+      2. Pin the floating refs (corrosion `master`) to a tag or commit first.
+      3. Add regex `customManagers` to `default.json`: the archive-URL form (datasource
+         `github-tags` with `currentDigest`, or `git-refs`), the `GIT_REPOSITORY`/`GIT_TAG` form
+         across lines, and the `set(<X>_TAG …)` indirection. Where a declaration is too irregular
+         for a safe regex, a `# renovate: datasource=… depName=…` comment above it (one convention,
+         documented in `docs/dependency-updates.md`).
+      4. Make `renovate-local.sh --apply` rewrite what those managers report (it rewrites the
+         manifests Renovate reports today); a SHA-pinned archive URL must move to the new
+         commit's archive, and a `URL_HASH`, where present, with it.
+      5. Tests: fixtures for each form in the renovate test suite (detect, then apply), and
+         a mutation entry per manager.
+      6. Prove it with a report run over the fleet (`Invoke-Renovate.ps1 -Recurse`, report-first:
+         `-Apply` only on the owner's word), each dep listed with its current and newest version.
+- [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Blocked on CON31's
+      `:latest-nvidia` amd64 publish; owner request 2026-09-30.
 
       Today (checked 2026-09-30): the one GStreamer build (media stage, same options for
       every variant) ships gst-plugins-bad's `nvcodec` (NVDEC/NVENC + CUDA memory elements,
@@ -312,92 +264,3 @@ None open.
 
       Retire the overlay itself when `Test-HipMsvcCmath.ps1` reports that the
       `--no-default-config` compile passes too.
-
-## Checked 2026-09-25 and closed — the consumer notes are stale
-
-Each item below is still described as a gap in a consumer file. The image says
-otherwise. The consumer notes are theirs to update; do not re-open these here.
-
-- **`CARGO_HOME`/`RUSTUP_HOME` are root-owned.** Both are writable by uid 1001.
-  Stale in AccelerANTgine (`-e CARGO_HOME=/tmp/cargo`), OxidANT
-  (`/tmp/cargo-home`) and BeschleunigerBallett (`common.sh` fallback).
-- **No rustup, no wasm32 std.** rustup 1.29.1 is present, and 1.98.1 plus the
-  dated `nightly-2026-06-28` both carry wasm32, aarch64 and riscv64.
-  BeschleunigerBallett's `wasm-size-budget.sh` still carries a skip for it.
-- **Adding a component to the baked nightly fails with EXDEV.** Not reproduced:
-  `rustup component add llvm-tools` exits 0 (OmniAccelerANT BACKLOG).
-- **`CCACHE_SECONDARY_STORAGE=true`.** Absent. `CCACHE_DIR` and `SCCACHE_DIR`
-  are writable `/var/cache` paths.
-- **`GSTREAMER_ROOT_ANDROID` is not exported.** It is:
-  `/opt/android/gstreamer` (OmniAccelerANT AGENTS.md and BACKLOG).
-- **slangc is below the WGSL floor.** It is 2026.13.1, with Vulkan SDK
-  1.4.357.0 (BeschleunigerBallett BACKLOG and `getting_started.md`).
-- **A second ONNX Runtime in `/opt/opencv5/lib`.** It is byte-identical to the
-  chain build: same sha256, and both carry the chain's source path 127 times.
-  The ld.so cache listing it first is therefore harmless.
-- **Flutter differs between the images.** Both carry 3.47.4: Linux measured,
-  and the Windows 2026-09-22 build log shows `FLUTTER_VERSION = 3.47.4`
-  (OmniAccelerANT BACKLOG).
-- **The Windows image has no pkg-config and scoop-only Rust.** Both are
-  present: `Install-ScoopTools.ps1` installs `pkg-config`, and
-  `Install-RustToolchain.ps1` installs rustup (OmniAccelerANT `platforms.md`).
-- **`:latest`'s children 404.** `ec4bb68b` resolves and pulls
-  (BeschleunigerBallett `ci-image-ref.sh`).
-- **No patchelf.** `/usr/bin/patchelf` 0.18.0 is present (WebDavClient's lane
-  `apt-get`).
-
-## Deliberate — not gaps
-
-These are recorded so nobody files them as gaps:
-- No GTK4 dev headers.
-- The distro `libgstreamer*-dev` packages are purged.
-- CPython 3.14 only.
-- The CUDA arch set is `86;87;89;120`, with no PTX.
-- riscv64 is built for the RVA23 baseline.
-- riscv64 uses the distro CMake 4.2.3.
-- riscv64 has no IREE compiler, no `ml-ai` extra, no Flutter, appimagetool,
-  Flatpak runtimes or Hailo, because upstream ships none for it.
-- ORT QNN is opt-in on arm64.
-- The Android host tools are x86-64 only (upstream's shape).
-- `wasm-bindgen-cli` and `cxxbridge-cmd` are installed at lane time, because
-  their version must match the consumer's own `Cargo.lock`.
-- `:latest` is not pinned by digest.
-- No GPU inside a Windows container.
-- There is no ATL in the VS Build Tools. It affects only this hub's own builds.
-- arm64 and riscv64 keep a distro GStreamer 1.28 runtime beside `/opt/gstreamer`: their
-  cross-built GStreamer has no GTK, so `libgstgtk4.so` needs Ubuntu's `libgtk-4-1`, which
-  depends on it. `000-gstreamer.conf` sorts ours first and SHIPPED-TRUTH D fails any
-  soname a distro copy wins; bundle from pkg-config, not `ldd`, and never prepend
-  `/usr/lib/<triplet>/gstreamer-1.0` to `GST_PLUGIN_PATH` (CON21).
-- The arm64 and riscv64 GCC has no libgomp, libitm or gfortran, and amd64's plain cross
-  GCCs no target libasan: no consumer uses OpenMP, Fortran, `-fgnu-tm` or a sanitized
-  amd64-hosted GCC cross build (swept 2026-09-26). libgomp is `all-`/`install-target-libgomp`
-  in `build-gcc.sh` the day one does; Fortran needs it in the plain cross compilers first
-  (four compilers rebuilt cold); the image ships the cross GCCs no binutils or sysroot (CON22).
-- riscv64 TVM's `llvm` target defaults to LLVM's generic CPU (soft-float, no vector), since
-  TVM has no host-CPU default on any arch: name the baseline or `riscv/spacemit-k3`, and
-  compile IREE for riscv64 elsewhere with explicit `--iree-llvmcpu-*` flags
-  (`docs/riscv64-rva23-baseline.md`, CON24).
-- `cargo-audit` and `cargo-deny` stay lane-installed at their `versions.env` pins. Shipping
-  them takes per-arch release pins (riscv64 has no release binary), and a lane's
-  `cargo install` of a binary cargo did not install then fails, so both lanes' install
-  steps would change with it (CON20).
-- No `pwsh` in the Linux image: Microsoft ships no riscv64 build, feature parity allows no
-  third exemption, and OmniAccelerANT's Pester suite tests Windows modules on the Windows
-  runner (CON20).
-- No OpenGL in the Windows image (owner decision 2026-09-26, CON25): Server Core has no
-  `opengl32.dll`, and the only software one, Mesa's llvmpipe, exists as unsigned
-  third-party builds (pal1000/mesa-dist-win). wgpu-linked binaries run on the host, as
-  OxidANT's renderer tests do. A lavapipe device would also need an HKLM ICD
-  registration, because the loader ignores `VK_DRIVER_FILES` in an elevated process.
-- No slim `:winamd64-toolchain` tag (owner decision 2026-09-28, CON26). `:winamd64`'s
-  ~54 GB of layers exhaust a stock `windows-2025` runner's `C:` (`hcsshim::ImportLayer …
-  not enough space on the disk (0x70)`, BeschleunigerBallett, 2026-07-21); the
-  `set-docker-data-root` action, which moves the data root to `D:`, stays the answer for
-  every lane. CON12 takes 7.1 GB off the image regardless.
-- Windows (CON28): no TAPPAS (upstream supports Ubuntu, Raspberry Pi OS and Yocto only); no
-  `cargo-cbuild` (no Windows consumer builds a Rust GStreamer plugin); opus SIMD off on
-  both lanes, performance only (arm64's RTCD passes `-mfpu=neon` and `__emit`, which
-  clang-cl rejects, and opus's meson gives clang-cl no per-file SSE4.1/AVX2 flags); no
-  Windows pyhailort wheel or `hailonet` (no Windows consumer and no Hailo device); no
-  `gdkpixbuf` on arm64 (it needs a build-machine `glib-compile-resources`).

@@ -1311,7 +1311,7 @@ affected.
 **Not covered.** The amd64 image's plain cross compilers still have no target
 `libasan`, so `aarch64-linux-gnu-g++ -fsanitize=address` from amd64 still fails. The
 arm64 and riscv64 GCCs still lack libgomp (`omp.h`), libitm and gfortran. Both are
-§ Deliberate in the root `BACKLOG.md` since 2026-09-26 (CON22): no consumer uses them.
+recorded as decided in [`image-decisions.md`](image-decisions.md) § Deliberate — not gaps (CON22, 2026-09-26): no consumer uses them.
 TSan on riscv64 needs an sv39 or sv48 VMA, which is unverified on the X100.
 
 ### The native GCC has multiarch
