@@ -204,6 +204,88 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - `:winamd64-rocm`: pushing it waits on a redistribution decision.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
+- [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Blocked on the running
+      `:latest` rebuild (2026-09-30) and on CON31's `:latest-nvidia` amd64 publish; owner
+      request 2026-09-30, planned for after that build.
+
+      Today (checked 2026-09-30): the one GStreamer build (media stage, same options for
+      every variant) ships gst-plugins-bad's `nvcodec` (NVDEC/NVENC + CUDA memory elements,
+      driver loaded at run time) in every image, `:latest` included; nothing in
+      `03-media/build/gstreamer/` reads `ENABLE_NVIDIA`, and nothing in the hub names
+      DeepStream. Upstream is [NVIDIA/deepstream](https://github.com/nvidia/deepstream),
+      tag `v9.1.0`: a monorepo whose `src/gst-plugins/`, `src/utils/` and sample/reference
+      apps are source (Apache-2.0, `make && make install` per component, `build/build.sh`
+      for all), while the runtime (`deepstream-binaries-{x86,aarch64}_9.1.0`,
+      `deepstream-9.1_9.1.0-1_{amd64,arm64}.deb`, installed to
+      `/opt/nvidia/deepstream/deepstream-9.1/`) is proprietary, under NVIDIA's SDK licence.
+      It targets Ubuntu 24.04, CUDA 13.2, TensorRT 10.16.x, driver 595+; Jetson through
+      JetPack 7.2; SBSA only inside NVIDIA's container.
+
+      The gaps against this image:
+
+      | | DeepStream 9.1 | `:latest-nvidia` source |
+      | --- | --- | --- |
+      | OS | Ubuntu 24.04 | Ubuntu 26.04 |
+      | CUDA | 13.2 | 13.4.2 |
+      | TensorRT | 10.16.x (`nvinfer`) | 11.3.0.99 pinned, `ENABLE_TENSORRT=false` |
+      | GStreamer | the 24.04 distro 1.24 | the hub's own 1.29.2 |
+      | arm64 | Jetson / SBSA container | no route yet (CON31) |
+
+      Plan, one gate per phase; stop and record the measurement where a gate fails:
+      1. **Feasibility spike, no chain.** In a throwaway container FROM the published
+         `:latest-nvidia` amd64 child: build `src/gst-plugins/` and `src/utils/` against
+         `/opt/gstreamer` (pkg-config from the image), install the x86 runtime `.deb`
+         contents unpacked into a prefix (not `dpkg -i`, which pulls 24.04 deps), and run
+         `gst-inspect-1.0` on `nvinfer`, `nvstreammux`, `nvvideoconvert`, `nvtracker`,
+         `nvdsosd`. Record every unresolved soname (`ldd`, pkg-config, never a guess) and
+         every GStreamer/GLib ABI symbol the binaries miss against 1.29.2.
+         Gate: all five load. Otherwise decide between (a) pinning a GStreamer 1.24 build
+         for this variant only, (b) waiting for a DeepStream built against newer
+         GStreamer, (c) dropping CON42.
+      2. **TensorRT.** `nvinfer` links TensorRT 10.16.x; the hub pins 11.3. Decide: a
+         DeepStream-only 10.16 beside 11.3 (two sonames, `libnvinfer.so.10` vs `.11`,
+         `RUNPATH` from DeepStream's libs), or moving the variant's pin to 10.16, or waiting
+         for a DeepStream on TensorRT 11. Whichever wins also closes CON31's "no
+         `libnvinfer` in the runtime payload", so it turns `ENABLE_TENSORRT` on for the
+         nvidia variant (owner decision 2026-09-22 kept it off; this revisits it).
+         Gate: `gst-launch-1.0` of `nvstreammux ! nvinfer config-file-path=<sample> !
+         fakesink` runs on a real GPU (this host's RTX 2080 needs its NVIDIA driver loaded
+         first, a root action) — and `nvinfer`'s TensorRT engine build succeeds on sm_75,
+         which the variant's `CUDA_ARCHITECTURES` (86;87;89;120) does not compile for:
+         note what that means for the 2080 or test on a newer card.
+      3. **CUDA 13.4 vs 13.2.** The runtime is built against 13.2; confirm it loads and
+         runs on 13.4.2 (minor-version compatibility) in the phase-2 run. If not, record
+         the symbol and decide per phase-1 options.
+      4. **Source, pins and provenance.** New `versions.env` pins: `DEEPSTREAM_VERSION=9.1.0`,
+         the tag's commit, and a SHA256 per release asset and arch, checked like every
+         other download (never a floating `latest` release). A new
+         `05-frameworks/deepstream.sh` builds the open-source part against `/opt/gstreamer`
+         and stages the runtime; a `Dockerfile.nvidia`- or media-stage RUN gated on
+         `ENABLE_NVIDIA` + a new `ENABLE_DEEPSTREAM` (default false), so `:latest` and
+         `:latest-rocm` never carry it. Renovate: add the GitHub release as a datasource,
+         reported only (report-first).
+      5. **Licence.** The runtime is proprietary: record what is redistributed in
+         `docs/third-party-licenses.md`, ship NVIDIA's EULA text in the image, and get an
+         owner decision on publishing it on GHCR at all (the same question as
+         `:winamd64-rocm`'s redistribution decision in CON31). Fallback: install at lane
+         time from the checksum-pinned asset instead of baking it in.
+      6. **Gates in the image.** Smoke (wrapper and runtime-image smoke): the five
+         elements `gst-inspect` clean without a GPU (they register; inference needs one),
+         the runtime libraries resolve (DT_NEEDED against the image, the same closure
+         discipline as `check-bundle-closure.sh`), and no second GStreamer copy wins a
+         soname over `/opt/gstreamer` (SHIPPED-TRUTH D). Unit tests for the script's pin
+         and checksum handling; mutation entries for each refusal.
+      7. **arm64.** Only after CON31 has an arm64 CUDA route: Jetson (JetPack 7.2) and SBSA
+         are different targets, and NVIDIA supports SBSA only in its container. Scope it as
+         its own item then; amd64 first.
+      8. **Consumers and docs.** `docs/linux-accelerator-images.md` gets a DeepStream
+         section (what ships, what needs a driver, the licence); `consumer-image-contract.md`
+         lists the new names (`DEEPSTREAM_ROOT`, the plugin path); OmniAccelerANT's Stream
+         page is the first consumer to evaluate (an `nvinfer` path beside its ONNX Runtime
+         one), as its own item there.
+
+      Effort: phases 1-3 are a spike of a day or two and decide everything else; 4-6 are
+      one chain run of the nvidia variant (amd64 only, ~hours with a warm cache).
 - [b] **CON34 — The rocm image's HIP/MSVC `<cmath>` overlay is installed by the llama
       stage, not by `Dockerfile.rocm`** [S, ★]. Blocked on the next rocm build (owner):
       it re-keys from base anyway since `versions.env` changed, so the move adds no rebuild
