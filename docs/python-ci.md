@@ -15,6 +15,8 @@ share their whole CI surface with this repository:
 | Step drivers | `linux/scripts/02-toolchain/python/ci_{tests,static_analysis,build_docs,packaging}.sh` |
 | uv primitives | `linux/scripts/01-core/python_uv.sh` |
 | Chain ORT reconcile | `uv_reconcile_chain_ort` in `python_uv.sh`, `Sync-UvChainOnnxRuntime` in `windows/scripts/modules/WindowsUv.Common.psm1`; both run the ORT census `linux/scripts/03-media/runtime/ort-venv-census.py` (the Windows image's module copy runs the one `windows/Dockerfile` puts in `C:\temp\scripts\`) |
+| Chain OpenCV (Windows) | `Sync-UvChainOpenCv` in `WindowsUv.Common.psm1`, over `Copy-ChainOpenCvPackage` in `WindowsPythonApp.Common.psm1` |
+| App bundles (zip/MSI/deb/… inputs) | [`python-app-bundles.md`](python-app-bundles.md) |
 
 A consumer's workflow is configuration, not steps. Its `scripts/linux/ci_*.sh`
 are wrappers that `antfrastructure_exec` into the drivers above — see
@@ -312,6 +314,17 @@ with a uv stand-in), `windows/scripts/tests/Uv.ChainOrt.Tests.ps1` (including th
 module copy in the layout `windows/Dockerfile` builds), and the mutation family
 `uv-chain-ort` in `docs/scripts/mutations.json`.
 
+**On Windows, OpenCV comes from the image too.** PyPI's `cv2.pyd` imports Media Foundation,
+which Server Core lacks, so `import cv2` fails in every `:winamd64` venv. After the ORT
+reconcile, `Sync-UvProjectDependencies` calls `Sync-UvChainOpenCv`. It uninstalls every
+`opencv*` distribution and copies the image's cv2 into the venv. The copy's config names the
+image dirs its DLL closure lives in: OpenCV's `bin`, the chain ORT and FFmpeg. Then it holds
+`uv run` off the lock with `UV_NO_SYNC`, as the ORT reconcile does, because a re-sync would
+put PyPI's opencv back. It is a no-op outside the image and in a venv without OpenCV. Why the config must be rewritten, and the
+bundle's variant of the same copy:
+[`python-app-bundles.md` § Windows: the image's OpenCV](python-app-bundles.md#windows-the-images-opencv-not-pypis).
+Test: `windows/scripts/tests/Uv.ChainOpenCv.Tests.ps1`.
+
 ## Free-threaded and GIL legs in one container
 
 uv 0.12 lets a plain `3.14` request take a free-threaded build: once a `3.14t` leg has
@@ -326,6 +339,11 @@ takes `+gil`; `uv python install 3.14+gil` fails with `No download found`, so th
 step passes the bare version, which installs the GIL build. Measured in `:latest` on
 2026-09-30: legs 3.14t, 3.14, 3.13, 3.15, 3.14t, 3.14 in one container each got the
 interpreter they named. Test: `linux/scripts/tests/test-uv-python-request.sh`.
+
+Windows has the same trap and the same cure. `New-UvProjectEnvironment` asks uv for
+`Get-UvPythonRequest`'s form. OrchestrANT's 3.14 leg took a free-threaded 3.14.7, which has
+no wheel for one of its locked packages (2026-09-30). Test:
+`windows/scripts/tests/Uv.PythonRequest.Tests.ps1`.
 
 ## Which Linux image
 

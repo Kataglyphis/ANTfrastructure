@@ -204,6 +204,7 @@ Common development targets:
    shared-script-libraries
    slang-shader-compilation
    python-ci
+   python-app-bundles
    ci-build-triggers
    ftp-deploys
    github-cli-pipeline-monitoring

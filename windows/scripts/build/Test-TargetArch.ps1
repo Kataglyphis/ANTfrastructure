@@ -38,6 +38,8 @@ param(
     [string]$ImportAllowlist = '^(nvcuda|nvml|nvapi64|cudart64_[0-9]+|cublas|cublasLt|cudnn|nvinfer|nvonnxparser|nvrtc|cufft|curand|cusparse|cusolver|nvjitlink|nvcomp|vulkan-1|opengl32|d3d12core|QnnHtp|QnnCpu|QnnSystem)[A-Za-z0-9_-]*\.dll$',
     # DLLs every client SKU ships but Server Core lacks, plus Qualcomm's FastRPC drivers; reported as device OS, never counted.
     [string]$ClientOsPattern = '^(dsound|mf|mfplat|mfreadwrite|mfcore|winspool)\.(dll|drv)$|^lib(cds|ads)prpc\.dll$',
+    # The tree ships without the image behind it (a relocatable app bundle): the walk gates as on a cross lane.
+    [switch]$Standalone,
     # Required for -MinInspected 0 or less, so a dropped build-arg cannot disable the floor.
     [switch]$AllowEmptyTree
 )
@@ -230,7 +232,8 @@ if ($ImportWalk) {
     foreach ($f in $walkFiles) { $bundleNames[([IO.Path]::GetFileName($f)).ToLowerInvariant()] = $true }
     $systemNames = @{}
     foreach ($d in @(Get-ChildItem -Path (Join-Path $env:SystemRoot 'System32') -Filter '*.dll' -File -ErrorAction SilentlyContinue)) { $systemNames[$d.Name.ToLowerInvariant()] = $true }
-    $crossLane = Test-WindowsCrossTarget -Arch $targetArch
+    # A cross device or a standalone bundle has no image PATH behind it.
+    $standsAlone = (Test-WindowsCrossTarget -Arch $targetArch) -or $Standalone
     $crtPattern = '^(vcruntime|msvcp|concrt|vcomp|vccorlib|vcamp|msvcr|mfc)[0-9]'
     foreach ($f in $walkFiles) {
         $imports = try { Get-PeImportNames -Path $f -IncludeDelayLoad } catch { $unreadable += $f; continue }
@@ -241,7 +244,7 @@ if ($ImportWalk) {
             if ($bundleNames.ContainsKey($n)) { continue }
             if ($ImportAllowlist -and $imp -match $ImportAllowlist) { $importExternal += "$f -> $imp"; continue }
             $isCrt = ($n -match $crtPattern)
-            if ($systemNames.ContainsKey($n) -and -not ($crossLane -and $isCrt)) { continue }
+            if ($systemNames.ContainsKey($n) -and -not ($standsAlone -and $isCrt)) { continue }
             if ($ClientOsPattern -and $n -match $ClientOsPattern) { $importClientOs += "$f -> $imp"; continue }
             $importUnresolved += [pscustomobject]@{ File = $f; Import = $imp; Crt = $isCrt }
         }
@@ -261,8 +264,8 @@ if ($ImportWalk) {
     if ($importUnresolved.Count -gt 0) {
         # By name first: hundreds of edges are usually a few DLLs, and the name says whether the gap is real.
         $byName = $importUnresolved | Group-Object { $_.Import.ToLowerInvariant() } | Sort-Object Count -Descending
-        $heading = if ($crossLane) { '  UNRESOLVED IMPORTS (the device loader could not satisfy these):' } else { '  unresolved against the roots + System32 (native lane: the image PATH resolves these -- informational):' }
-        Write-Host $heading -ForegroundColor $(if ($crossLane) { 'Red' } else { 'Yellow' })
+        $heading = if ($standsAlone) { '  UNRESOLVED IMPORTS (the device loader could not satisfy these):' } else { '  unresolved against the roots + System32 (native lane: the image PATH resolves these -- informational):' }
+        Write-Host $heading -ForegroundColor $(if ($standsAlone) { 'Red' } else { 'Yellow' })
         foreach ($g in $byName) { Write-Host ("    {0,5}x  {1}" -f $g.Count, $g.Name) }
         foreach ($u in ($importUnresolved | Select-Object -First 40)) {
             $why = if ($u.Crt) { ' [CRT: must ship inside the bundle on a cross lane -- a clean device has no redist]' } else { '' }
@@ -285,7 +288,7 @@ if ($unreadable.Count -gt 0) {
 $failed = $false
 
 if ($ImportWalk -and $importUnresolved.Count -gt 0) {
-    if ($crossLane) {
+    if ($standsAlone) {
         throw "target-arch verification FAILED for $targetArch`: $($importUnresolved.Count) unresolved import(s) across $importWalked walked file(s) -- see the list above (#127)"
     }
     # The native lane ships the image, whose PATH supplies these; the walk gates only where the bundle stands alone.

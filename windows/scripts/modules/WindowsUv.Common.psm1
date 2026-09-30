@@ -86,6 +86,19 @@ function Remove-UvProjectEnvironment {
     }
 }
 
+function Get-UvPythonRequest {
+    <#
+    .SYNOPSIS
+        uv's discovery request for a version: X.Y[.Z] becomes X.Y[.Z]+gil; 3.14t, paths and variants pass unchanged.
+    .DESCRIPTION
+        uv 0.12 lets a plain 3.14 take a free-threaded build a 3.14t leg downloaded; the twin of python_uv.sh's uv_python_request.
+    #>
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$Version)
+    if ($Version -match '^\d+(\.\d+)*$') { return "$Version+gil" }
+    return $Version
+}
+
 function New-UvProjectEnvironment {
     param(
         [Parameter(Mandatory)]
@@ -118,7 +131,8 @@ function New-UvProjectEnvironment {
         Remove-UvProjectEnvironment -EnvPath $envPath -LogInfo $LogInfo -LogWarning $LogWarning
     }
 
-    Invoke-UvCommand -Arguments @('venv', '--python', $PythonVersion, '--clear', $envPath) -CommandRunner $CommandRunner -LogInfo $null
+    $request = Get-UvPythonRequest -Version $PythonVersion
+    Invoke-UvCommand -Arguments @('venv', '--python', $request, '--clear', $envPath) -CommandRunner $CommandRunner -LogInfo $null
 
     $env:UV_PROJECT_ENVIRONMENT = $envPath
     return $envPath
@@ -330,6 +344,42 @@ function Sync-UvProjectDependencies {
 
     $projectEnv = if ($env:UV_PROJECT_ENVIRONMENT) { $env:UV_PROJECT_ENVIRONMENT } else { Join-Path (Split-Path -Parent $PyprojectPath) '.venv' }
     Sync-UvChainOnnxRuntime -VenvPath $projectEnv -CommandRunner $CommandRunner -LogInfo $LogInfo -LogWarning $LogWarning
+    Sync-UvChainOpenCv -VenvPath $projectEnv -CommandRunner $CommandRunner -LogInfo $LogInfo
+}
+
+function Sync-UvChainOpenCv {
+    <#
+    .SYNOPSIS
+        Swaps a PyPI OpenCV in the venv for the image's own cv2; a no-op outside our images or without OpenCV.
+    .DESCRIPTION
+        PyPI's cv2.pyd imports Media Foundation, which the Server Core image lacks, so `import cv2` fails there.
+        The copy's config names the image dirs its DLL closure lives in (Copy-ChainOpenCvPackage -ReferenceImage).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$VenvPath,
+        [string]$Source = 'C:\temp\cpython\Lib\site-packages\cv2',
+        [string]$RuntimeRoot = 'C:\runtime',
+        [scriptblock]$CommandRunner,
+        [scriptblock]$LogInfo
+    )
+
+    $sitePackages = Join-Path $VenvPath 'Lib\site-packages'
+    if (-not (Test-Path -LiteralPath (Join-Path $Source '__init__.py') -PathType Leaf) -or -not (Test-Path -LiteralPath $sitePackages)) { return }
+    $installed = @(Get-ChildItem -LiteralPath $sitePackages -Directory -Filter 'opencv*.dist-info' |
+        ForEach-Object { $_.Name -replace '-[^-]+\.dist-info$', '' })
+    if ($installed.Count -eq 0) { return }
+    $message = "chain OpenCV: replacing $($installed -join ', ') in $VenvPath with the image's cv2 (PyPI's imports Media Foundation)"
+    if ($LogInfo) { & $LogInfo $message } else { Write-Host $message }
+    $python = Join-Path $VenvPath 'Scripts\python.exe'
+    Invoke-UvCommand -Arguments (@('pip', 'uninstall', '--python', $python) + $installed) -CommandRunner $CommandRunner -LogInfo $null
+    # Only here, inside the image: the host-side lanes never load the PE walker.
+    if (-not (Get-Module -Name 'WindowsPythonApp.Common')) { Import-Module (Join-Path $PSScriptRoot 'WindowsPythonApp.Common.psm1') -DisableNameChecking }
+    $dirs = @(Copy-ChainOpenCvPackage -SitePackages $sitePackages -Source $Source -RuntimeRoot $RuntimeRoot -ReferenceImage)
+    # `uv run` would reinstall PyPI's opencv just as it would PyPI ORT, also in a venv the ORT reconcile left alone.
+    Set-UvChainOrtSyncHold -Hold $true
+    $message = "chain OpenCV: cv2 loads its DLLs from $($dirs -join '; ')"
+    if ($LogInfo) { & $LogInfo $message } else { Write-Host $message }
 }
 
 <#
@@ -565,13 +615,15 @@ function Test-ExperimentalPython {
     return ($permitted -contains $Version)
 }
 
-Export-ModuleMember -Function @(    'New-UvProjectEnvironment',
+Export-ModuleMember -Function @(    'Get-UvPythonRequest',
+    'New-UvProjectEnvironment',
     'Remove-UvProjectEnvironment',
     'New-TrackedUvEnvironment',
     'Remove-TrackedUvEnvironment',
     'Test-ExperimentalPython',
     'Sync-UvProjectDependencies',
     'Sync-UvChainOnnxRuntime',
+    'Sync-UvChainOpenCv',
     'Get-ChainOrtWheelStore',
     'Get-UvOrtCensusPath',
     'Get-UvConflictGroups',

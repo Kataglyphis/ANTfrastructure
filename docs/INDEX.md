@@ -129,6 +129,7 @@ The two halves of one topic often split:
 |---|---|
 | **What is cached where**, and which tier a miss came from | [`build-cache-tiers.md`](build-cache-tiers.md) |
 | **Wiring a new project to this repo** — start here | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
+| **A Python app as a relocatable folder** — the input to its zip/MSI/MSIX/tar.gz/deb/AppImage packages: `packaging/app.json`, both builders, the import walk + G6 + self-test gates, and why Windows ships the image's OpenCV instead of PyPI's | [`python-app-bundles.md`](python-app-bundles.md) |
 | Python CI: the shared lanes, and the three `uv` traps (`--all-extras` vs declared conflicts, `UV_PYTHON` beating the venv, a synced venv's ONNX Runtime reconciled onto the chain wheels), and GIL vs free-threaded legs in one container | [`python-ci.md`](python-ci.md) |
 | Code quality: C++ formatter guidance + this repo's own gates (design notes per slug) | [`code-quality-tooling.md`](code-quality-tooling.md) |
 | Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
