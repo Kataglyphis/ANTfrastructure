@@ -7,6 +7,28 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - CON38-CON40, and the code-dupes gate green again
+
+- **CON39: clang-tidy selects the image's GCC.** Clang reads `<triple>-<driver>.cfg` from the
+  directory it was reached through, and clang-tidy reaches it as the compile database's
+  `/usr/bin/clang++`, where no cfg was: it selected the distro GCC 16 on all three arches.
+  `write_clang_gcc_toolchain_cfg` now writes the pair into every directory of `/usr/bin` and
+  `/usr/local/bin` that links to the driver; the smoke grades clang-tidy too. Package stage.
+- **CON38: atheris finds libFuzzer.** Its `find_libfuzzer.sh` probes only the pre-per-target name
+  `lib/linux/libclang_rt.fuzzer_no_main-<arch>.a`. `link_compiler_rt_legacy_names` links the fuzzer,
+  asan and ubsan archives there, and the smoke runs atheris' probe. atheris 3.0.0 and upstream build
+  from source on 3.14 in the published image with the links recreated. Package stage.
+- **CON40: a `3.14` venv after a `3.14t` one is a GIL venv.** uv 0.12 lets a plain `3.14` take a
+  cached free-threaded build, and `uv_ensure_python_available` stripped the `t`. `uv_venv_create`
+  asks uv for `3.14+gil`, and `python3.14` no longer satisfies `3.14t`
+  ([`python-ci.md`](docs/python-ci.md#free-threaded-and-gil-legs-in-one-container)). Lane-time only.
+- **code-dupes:** the torch and torchvision builders share one owner for their repeated steps
+  (`Save-TorchRocmTree`, `Get-TorchRocmPythonTag`, `Install-TorchRocmBuiltWheel`,
+  `Copy-TorchRocmEnv`); the test harness owns the module-import closure two suites spelled
+  (`Get-ModuleImportClosure`), and `Torch.Rocm.Tests.ps1` one refusal assertion. The rest are
+  recorded with a measured reason, six shrunk budgets written down and two stale rows dropped.
+  The builder edit re-keys the Windows rocm `torch-rocm-wheels` stage.
+
 ## 2026-09-30 - The arm64 and riscv64 Vulkan loaders carry X11, XCB and Wayland (CON41)
 
 - **Measured on the `:latest` of 2026-09-29.** amd64's LunarG loader lists 26 instance extensions,
