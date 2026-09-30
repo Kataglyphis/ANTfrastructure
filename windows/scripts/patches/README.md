@@ -55,6 +55,7 @@ All paths are `-p1`, applied to the root of the named upstream checkout. Pinned 
 | `migraphx/001-mlir-off-stubs.patch` | ROCm/AMDMIGraphX **`MIGRAPHX_WINDOWS_COMMIT`** (a commit: `rocm-10.0`'s) | `src/targets/gpu/mlir.cpp`: upstream 5a80dc91ba's four `#else`-path MLIR stubs, which the pin predates. Without them the rocm lane's `MIGRAPHX_ENABLE_MLIR=OFF` build cannot link `migraphx_gpu.dll`. Not a clang-cl fix; drop with a bump past 5a80dc91ba. | ✅ `index` |
 | `ffmpeg/001-allow-msys-builds.patch` | FFmpeg/FFmpeg **`FFMPEG_VERSION`** | `configure`: turn the `msys*` "native builds discouraged" `die` into an informational echo. | ✅ `index` |
 | `gstreamer/001-ges-commit-rename.patch` | gstreamer/gstreamer **`GSTREAMER_VERSION`** | `ges-validate.c`: `#define _commit ges__commit` before clang-cl's `-FIio.h` force-include exposes a colliding CRT `_commit`. | ✅ `index` |
+| `cpython/001-short-clang-compiler-id.patch` | python/cpython **`v<PYTHON_VERSION>`** | `PC/pyconfig.h`: name clang by `major.minor.patch` in `COMPILER`. `Py_GetVersion()` keeps 80 characters of it, and VS clang's `__clang_version__` (git URL and hash) pushed `64 bit (AMD64)` out of `sys.version`, so every venv's `sysconfig.get_platform()` said `win32` and uv/pip resolved 32-bit wheels. Applied by `Build-ToolchainAll.ps1`, which then refuses a `sys.version` without `AMD64`. | `diff --git`, no `index` |
 
 `ffmpeg/makedef` is **not** a patch — it is a replacement `makedef` script staged over FFmpeg's (a
 whole-file swap, not a diff).

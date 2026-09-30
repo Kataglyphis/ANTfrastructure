@@ -59,6 +59,9 @@ if (-not (Test-Path $nugetExe)) {
 # find_python.bat's own fallback download, should the seed ever be absent.
 $env:NUGET_URL = $nugetUrl
 
+# VS clang's long __clang_version__ pushed "64 bit (AMD64)" out of sys.version, and every venv then reported win32.
+Invoke-SourcePatch -PatchFile (Join-Path $scriptAssetRoot 'patches\cpython\001-short-clang-compiler-id.patch') -SourceDir $src -IgnoreWhitespace
+
 # -p x64 on every lane: this is the build interpreter, the toolchain image is shared, and Build-TargetCpython.ps1 builds the target one.
 & cmd /c "cd /d $src && PCbuild\build.bat -e -p x64 -c Release"
 if ($LASTEXITCODE -ne 0) { throw "CPython build.bat failed (exit $LASTEXITCODE)" }
@@ -76,6 +79,9 @@ if (-not (Test-Path $pyExe)) { throw 'Python build failed - interpreter not foun
 $pyVersionLine = & $pyExe --version 2>&1 | Select-Object -First 1
 if ($LASTEXITCODE -ne 0) { throw "source-built python failed to run (exit $LASTEXITCODE)" }
 Write-Host "Python version: $pyVersionLine"
+# sysconfig.get_platform() reads the architecture out of sys.version; without it uv and pip resolve win32 wheels.
+$pyArchTag = & $pyExe -c "import sys; print('AMD64' in sys.version)"
+if ($pyArchTag -ne 'True') { throw "source-built python's sys.version lost '64 bit (AMD64)': $(& $pyExe -c 'import sys; print(sys.version)')" }
 Write-Host "Python built at: $pyExe"
 
 # Explicit success -- see Complete-SourceBuild in WindowsSourceBuild.Common.psm1 for why.
