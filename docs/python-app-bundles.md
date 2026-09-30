@@ -155,12 +155,60 @@ them.
 but oneDNN is missing from the image itself, so that provider cannot load anywhere. Nothing
 loads it unless DNNL is requested.
 
+## Packages
+
+The packagers wrap a finished bundle; they never rebuild it. Each package is then started once,
+the way a user would start it, through the same self-test checker the builders use. The
+checker also requires ONNX Runtime to load from inside the package.
+
+The lanes run all of this when the consumer has `packaging/app.json`. The hub's
+`ci_packaging.sh` and `Invoke-CiPackaging.ps1` build the bundle into `build/app-bundle` after
+the wheels and write the packages to `dist/packages`, so the lanes' existing `dist/` artifact
+carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
+
+| Package | Built by | Started as |
+|---|---|---|
+| `<id>-<version>-linux-x86_64.tar.gz` | `python-app-package.sh` | unpacked, then `bin/<script>` |
+| `<id>_<version>_amd64.deb` | `python-app-package.sh` | as root: installed with `dpkg -i`, started as `/usr/bin/<script>`, removed again, and `/opt/<id>` must then be gone. Without root (CI's uid 1001), the payload is unpacked with `dpkg-deb -x` instead |
+| `<id>-<version>-x86_64.AppImage` | `python-app-package.sh` | `APPIMAGE_EXTRACT_AND_RUN=1` (no FUSE in a container), started under a script's name |
+| `<id>-<version>-windows-x64.zip` | `New-PythonAppPackage.ps1` | unpacked, then `<script>.exe` |
+| `<id>-<version>-windows-x64.msi` | `New-PythonAppPackage.ps1` | inside an elevated Windows container only: installed, the installed `<script>.exe` started, the system `PATH` checked, removed again, and the install folder must then be gone. Anywhere else (a developer's machine), an administrative unpack (`msiexec /a`) proves the payload without touching the machine |
+
+- **deb:** the bundle goes to `/opt/<id>`, with one `/usr/bin` symlink per script; the
+  launchers resolve themselves with `readlink -f`. There is also a desktop file for
+  `gui_script` and the icon at its real size.
+  - `Depends` is computed, not written by hand: `libc6` at the newest `GLIBC_` version any
+    bundled ELF asks for, plus the packages (`dpkg -S`) owning every library the bundle leaves
+    to the host. A soname that no installed package provides fails the build. The builder's
+    waived sonames (`unresolved_allowed` in `bundle.json`) are skipped.
+  - `Maintainer` comes from `app.json`'s `maintainer`. Without one it is
+    `<publisher> <noreply@invalid>`, which says plainly that no address was given.
+- **AppImage:** `AppRun` starts `gui_script`. Started through a symlink named after another
+  script, it runs that script instead (`$ARGV0`).
+- **MSI** (WiX 4.0.6, which has no `<Files>` harvesting): `New-PythonAppWxs` writes the whole
+  tree out, so every file gets WiX's own component. The install is per machine into
+  `Program Files\<name>`. `msi_upgrade_code` keys a major upgrade, a Start menu shortcut
+  points to `gui_script`, and the folder goes on the system `PATH` for the CLIs. The PNG icon
+  is wrapped as an `.ico`. Paths that would pass MAX_PATH under `C:\Program Files` are
+  refused at build time.
+- **Nothing writes into an installed package.** The builders compile all bytecode
+  (`uv pip install --compile-bytecode`; python-build-standalone's stdlib and the chain cv2
+  separately), and the launchers pass `-B`. Otherwise an admin's first start leaves
+  `__pycache__` behind, which the removal does not delete, and the install folder survives.
+
+**The Linux packages need glibc 2.43 (Ubuntu 26.04 or newer).** Measured on 2026-10-01: the
+deb's computed `Depends` is `libc6 (>= 2.43), libgl1, libglib2.0-0t64, libice6, libsm6,
+libx11-6, libxext6`. Only 2 of the bundle's 142 ELF files ask for `GLIBC_2.43`: the chain
+ORT's `libonnxruntime.so` and its Python binding, both built in the Ubuntu 26.04 image. The
+next newest need 2.38: GCC 16's `libstdc++` and the closure's `libxcb`. Reaching older
+distributions means building the chain ORT against an older glibc, not changing the packager.
+
 ## Not yet
 
-- **Packagers** wrapping the folder: Windows zip, MSI (WiX 4) and MSIX; Linux tar.gz, deb and
-  AppImage, each with an install-and-start test.
-- **flatpak**, only after measuring the GLIBC symbols the bundle needs against the flatpak
-  runtime's older glibc.
+- **MSIX**, through the hub's `Invoke-MsixPackage`. A Server Core container cannot install an
+  MSIX, so its test there can only be structural.
+- **flatpak.** The bundle needs glibc 2.43 (above), and org.freedesktop.Platform 24.08 ships
+  an older one, so it does not fit that runtime as built.
 - **arm64 on Linux**: the script knows `aarch64`, but it has not been run there.
 - **Size.** OrchestrANT's core dependencies pull in Cython and matplotlib at runtime, and on
   Windows the chain ORT ships twice: in `onnxruntime\capi` and in `cv2\bin`.

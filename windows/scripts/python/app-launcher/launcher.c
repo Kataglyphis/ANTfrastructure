@@ -64,13 +64,13 @@ int wmain(void) {
     }
 #endif
 
-    // -I keeps PYTHON* variables and the user site out; sys.argv[0] gets the launcher's name back for --help.
+    // -I keeps PYTHON* variables and the user site out, -B the install dir unwritten; argv[0] gets the launcher's name back.
     const wchar_t *args = skip_program_name(GetCommandLineW());
     size_t len = wcslen(python) + wcslen(args) + wcslen(prog) + 512;
     wchar_t *cmd = malloc(len * sizeof(wchar_t));
     if (!cmd) return 124;
     swprintf(cmd, len,
-             L"\"%ls\" -I -c \"import sys; sys.argv[0] = '%ls'; from %ls import %ls as _entry; sys.exit(_entry())\" %ls",
+             L"\"%ls\" -I -B -c \"import sys; sys.argv[0] = '%ls'; from %ls import %ls as _entry; sys.exit(_entry())\" %ls",
              python, prog, ENTRY_MODULE, ENTRY_FUNC, args);
 
     // A job that dies with the launcher, so a killed launcher never leaves Python running.

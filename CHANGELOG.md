@@ -7,6 +7,64 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - Python app bundles become tar.gz, deb, AppImage, zip and MSI, each started once
+
+- **Packagers.** `linux/scripts/06-packaging/python-app-package.sh` (tar.gz, deb, AppImage) and
+  `windows/scripts/python/New-PythonAppPackage.ps1` (zip, MSI) wrap a finished bundle. They then
+  start each package through `python-app-selftest.py` / `Invoke-PythonAppSelfTest -Root`, which
+  also requires ONNX Runtime to load from inside it. The deb is installed with `dpkg -i`,
+  started and removed when root. The MSI is installed, started, checked on the system `PATH`
+  and removed, but only inside an elevated Windows container: on any other machine it is
+  proven by an administrative unpack, so a developer's run changes nothing.
+- **The lanes build them.** When a consumer has `packaging/app.json`, `ci_packaging.sh` and
+  `Invoke-CiPackaging.ps1` build the bundle into `build/app-bundle` and the packages into
+  `dist/packages`, which the lanes' `dist/` artifact already uploads. Linux does this on
+  x86_64 only, until an aarch64 bundle is proven.
+- **The deb's `Depends` is measured.** It is `libc6` at the newest `GLIBC_` any bundled ELF
+  asks for, plus the `dpkg -S` owners of every library left to the host. A waived soname
+  (`unresolved_allowed`, now in `bundle.json`) is skipped, and an unowned one fails. For
+  OrchestrANT it is `libc6 (>= 2.43)` and six X/GL/GLib packages, so the Linux packages need
+  Ubuntu 26.04 or newer, and the flatpak 24.08 runtime does not fit. Only the chain ORT (2 of
+  142 ELF files) asks for 2.43; the next newest is 2.38.
+- **Nothing writes into an installed package.** The builders compile all bytecode, and the
+  launchers pass `-B`. Before this, the first start as admin or root left `__pycache__` that
+  the removal did not delete.
+- **MSI:** WiX 4.0.6 has no harvesting, so `New-PythonAppWxs` writes the tree out. It installs
+  per machine, keys a major upgrade on `msi_upgrade_code`, adds a Start menu shortcut and the
+  system `PATH` entry, and refuses paths past MAX_PATH. Windows' `tar.exe` has no `-s`, so the
+  zip names its top folder by renaming the bundle while it zips.
+- Tests: `linux/scripts/tests/test-python-app-selftest.sh`,
+  `windows/scripts/tests/PythonApp.Msi.Tests.ps1`.
+
+## 2026-10-01 - Python apps ship as relocatable bundles; Windows venvs get the image's OpenCV
+
+- **Bundle builders.** A Python consumer can now turn its app into one folder: its own
+  CPython, the locked wheels, the chain ORT, its data and one launcher per console script.
+  `windows/scripts/python/New-PythonAppBundle.ps1` (module `WindowsPythonApp.Common`, C
+  launcher in `windows/scripts/python/app-launcher/`) and
+  `linux/scripts/06-packaging/python-app-bundle.sh` (+ `python-app-closure.sh`) both read the
+  consumer's `packaging/app.json`. The gates are the import walk, G6 and the app's own
+  self-test. Proven on OrchestrANT: Windows 561 MB, Linux 666 MB, each run again after being
+  moved. See [`docs/python-app-bundles.md`](docs/python-app-bundles.md).
+- **`Test-TargetArch.ps1 -Standalone`.** On a native lane the import walk only reports, because
+  the image's `PATH` supplies what is missing. A bundle has no image behind it, so `-Standalone`
+  makes the walk fatal there, as it is on a cross lane. It caught the gap below by name, where the
+  self-test had only said `DLL load failed`.
+- **Windows: OpenCV comes from the image, in bundles and in CI venvs.** PyPI's `cv2.pyd`
+  imports Media Foundation, which Server Core and Windows N lack. Copying the image's cv2 package
+  was not enough: its `config.py` names only OpenCV's `bin`, while the image's base
+  `sitecustomize.py` registers the other DLL homes. A venv or a bundle never runs that file, so
+  `import cv2` failed in both. The PE walk showed five FFmpeg DLLs as the gap.
+  - `Copy-ChainOpenCvPackage` walks the `.pyd`'s closure over the config dirs, `ONNX_ROOT\bin`
+    and every `C:\runtime` dir on `PATH`. The bundle copies the closure (56 DLLs) into `cv2\bin`;
+    a CI venv (`-ReferenceImage`) names the three image dirs instead.
+  - `Sync-UvProjectDependencies` now ends with `Sync-UvChainOpenCv`. Measured in `:winamd64`:
+    the CI venv imports cv2 5.0.0 with FFmpeg and DirectShow.
+  - `Get-PeImportClosure` is split out of `Copy-PeImportClosure` for that walk.
+- **Windows venvs ask uv for the GIL build.** `New-UvProjectEnvironment` passes
+  `Get-UvPythonRequest`'s `X.Y+gil`, the twin of Linux's `uv_python_request`. A plain `3.14`
+  took a free-threaded download in OrchestrANT's Windows CI.
+
 ## 2026-10-01 - DeepStream may be published: the owner's licence decision (CON42)
 
 - **The owner allowed publishing NVIDIA's DeepStream runtime in `:latest-nvidia`.** The
@@ -60,35 +118,6 @@
   base on its next build, as any pin bump does.
 - **Not done.** No GPU run (this host's NVIDIA driver is not loaded) and no variant chain
   run: `BACKLOG.md` CON42.
-## 2026-10-01 - Python apps ship as relocatable bundles; Windows venvs get the image's OpenCV
-
-- **Bundle builders.** A Python consumer can now turn its app into one folder: its own
-  CPython, the locked wheels, the chain ORT, its data and one launcher per console script.
-  `windows/scripts/python/New-PythonAppBundle.ps1` (module `WindowsPythonApp.Common`, C
-  launcher in `windows/scripts/python/app-launcher/`) and
-  `linux/scripts/06-packaging/python-app-bundle.sh` (+ `python-app-closure.sh`) both read the
-  consumer's `packaging/app.json`. The gates are the import walk, G6 and the app's own
-  self-test. Proven on OrchestrANT: Windows 561 MB, Linux 666 MB, each run again after being
-  moved. See [`docs/python-app-bundles.md`](docs/python-app-bundles.md).
-- **`Test-TargetArch.ps1 -Standalone`.** On a native lane the import walk only reports, because
-  the image's `PATH` supplies what is missing. A bundle has no image behind it, so `-Standalone`
-  makes the walk fatal there, as it is on a cross lane. It caught the gap below by name, where the
-  self-test had only said `DLL load failed`.
-- **Windows: OpenCV comes from the image, in bundles and in CI venvs.** PyPI's `cv2.pyd`
-  imports Media Foundation, which Server Core and Windows N lack. Copying the image's cv2 package
-  was not enough: its `config.py` names only OpenCV's `bin`, while the image's base
-  `sitecustomize.py` registers the other DLL homes. A venv or a bundle never runs that file, so
-  `import cv2` failed in both. The PE walk showed five FFmpeg DLLs as the gap.
-  - `Copy-ChainOpenCvPackage` walks the `.pyd`'s closure over the config dirs, `ONNX_ROOT\bin`
-    and every `C:\runtime` dir on `PATH`. The bundle copies the closure (56 DLLs) into `cv2\bin`;
-    a CI venv (`-ReferenceImage`) names the three image dirs instead.
-  - `Sync-UvProjectDependencies` now ends with `Sync-UvChainOpenCv`. Measured in `:winamd64`:
-    the CI venv imports cv2 5.0.0 with FFmpeg and DirectShow.
-  - `Get-PeImportClosure` is split out of `Copy-PeImportClosure` for that walk.
-- **Windows venvs ask uv for the GIL build.** `New-UvProjectEnvironment` passes
-  `Get-UvPythonRequest`'s `X.Y+gil`, the twin of Linux's `uv_python_request`. A plain `3.14`
-  took a free-threaded download in OrchestrANT's Windows CI.
-
 
 ## 2026-09-30 - GStreamer: a meson inherited without its launcher is reinstalled
 

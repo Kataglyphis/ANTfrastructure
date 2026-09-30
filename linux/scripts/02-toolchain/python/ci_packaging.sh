@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the sdist and wheels, auditwheel-repairing platform wheels; PYTHON_VERSION (arg 1) defaults to 3.14.
+# Builds the sdist and wheels, auditwheel-repairing platform wheels, then any packaging/app.json app; PYTHON_VERSION (arg 1) defaults to 3.14.
 
 set -euo pipefail
 
@@ -62,3 +62,13 @@ rmdir repaired || true
 
 info "Final wheels in dist/:"
 ls -la dist || true
+
+# packaging/app.json opts a consumer in: the app bundle, then its packages, each started once (docs/python-app-bundles.md § Packages).
+if [ -f packaging/app.json ]; then
+  if [ "$(uname -m)" = x86_64 ]; then
+    bash "$SCRIPT_DIR/../../06-packaging/python-app-bundle.sh" --wheel-dir dist --out-dir build/app-bundle
+    bash "$SCRIPT_DIR/../../06-packaging/python-app-package.sh" --bundle build/app-bundle --out-dir dist/packages
+  else
+    warn "packaging/app.json: the app bundle is proven on x86_64 only so far, so $(uname -m) ships wheels alone"
+  fi
+fi

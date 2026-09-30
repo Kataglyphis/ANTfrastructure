@@ -22,20 +22,15 @@ Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsOrtPayload.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
 
-function Resolve-RepoPath([string]$Path) {
-    if ([IO.Path]::IsPathRooted($Path)) { return $Path }
-    return Join-Path $RepoRoot $Path
-}
-
-$app = Get-PythonAppConfig -Path (Resolve-RepoPath $Config)
-$bundle = Resolve-RepoPath $OutDir
+$app = Get-PythonAppConfig -Path (Resolve-PythonAppPath $RepoRoot $Config)
+$bundle = Resolve-PythonAppPath $RepoRoot $OutDir
 if (-not $WorkDir) { $WorkDir = Join-Path ([IO.Path]::GetTempPath()) "python-app-$($app['id'])" }
 $null = New-Item -ItemType Directory -Force -Path $WorkDir
 if (Test-Path -LiteralPath $bundle) { Remove-Item -LiteralPath $bundle -Recurse -Force }
 $null = New-Item -ItemType Directory -Force -Path $bundle
 
 # The compiled wheel when there is one: the bundle ships binaries, not source.
-$wheels = @(Get-ChildItem -LiteralPath (Resolve-RepoPath $WheelDir) -Filter '*.whl' -File |
+$wheels = @(Get-ChildItem -LiteralPath (Resolve-PythonAppPath $RepoRoot $WheelDir) -Filter '*.whl' -File |
     Where-Object { (($_.Name -split '-')[0] -replace '[-_.]+', '_').ToLowerInvariant() -eq ($app['distribution'] -replace '[-_.]+', '_').ToLowerInvariant() })
 $appWheel = @($wheels | Where-Object { $_.Name -match '-win_amd64\.whl$' }) + @($wheels | Where-Object { $_.Name -match '-none-any\.whl$' }) | Select-Object -First 1
 if (-not $appWheel) { throw "No $($app['distribution']) wheel in $WheelDir; build it first (Invoke-CiPackaging.ps1)" }
@@ -73,7 +68,7 @@ foreach ($item in @($app['data'])) {
     if (-not $item) { continue }
     $to = Join-Path $bundle $item['to']
     $null = New-Item -ItemType Directory -Force -Path (Split-Path $to -Parent)
-    Copy-Item -LiteralPath (Resolve-RepoPath $item['from']) -Destination $to -Force
+    Copy-Item -LiteralPath (Resolve-PythonAppPath $RepoRoot $item['from']) -Destination $to -Force
     Write-Host "  $($item['from']) -> $($item['to'])"
 }
 
@@ -94,10 +89,7 @@ $ortDir = Join-Path $sitePackages 'onnxruntime\capi'
 $null = Assert-ChainOrtTree -Root $bundle -OrtDirectory $ortDir -WaiveUnresolved
 
 Write-Host '== self-test'
-$report = Invoke-PythonAppSelfTest -Bundle $bundle -Command $app['self_test']
-if ($report.ContainsKey('onnxruntime_module') -and -not ([string]$report['onnxruntime_module']).StartsWith($bundle, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "The self-test loaded ONNX Runtime from $($report['onnxruntime_module']), outside the bundle"
-}
+$report = Invoke-PythonAppSelfTest -Bundle $bundle -Command $app['self_test'] -Root $bundle
 
 $manifest = [ordered]@{
     name = $app['name']

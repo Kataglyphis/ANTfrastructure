@@ -27,6 +27,22 @@ function Get-PythonAppConfig {
     return $config
 }
 
+function Resolve-PythonAppPath {
+    <#
+    .SYNOPSIS
+        -Path as given when rooted, else under -RepoRoot: app.json and the scripts' defaults are repo-relative.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory, Position = 0)][string]$RepoRoot,
+        [Parameter(Mandatory, Position = 1)][string]$Path
+    )
+
+    if ([IO.Path]::IsPathRooted($Path)) { return $Path }
+    return Join-Path $RepoRoot $Path
+}
+
 function New-PythonAppRuntime {
     <#
     .SYNOPSIS
@@ -94,11 +110,11 @@ function Install-PythonAppPackage {
         Invoke-AppUv -What 'uv export' -Arguments (@('export', '--locked', '--no-dev', '--no-emit-project', '--format', 'requirements.txt') + $extraArgs + @('--output-file', $requirements))
     } finally { Pop-Location }
 
-    Invoke-AppUv -What 'installing the locked dependencies' -Arguments @('pip', 'install', '--python', $Python, '--requirement', $requirements)
-    Invoke-AppUv -What "installing $AppWheel" -Arguments @('pip', 'install', '--python', $Python, '--no-deps', $AppWheel)
+    Invoke-AppUv -What 'installing the locked dependencies' -Arguments @('pip', 'install', '--python', $Python, '--compile-bytecode', '--requirement', $requirements)
+    Invoke-AppUv -What "installing $AppWheel" -Arguments @('pip', 'install', '--python', $Python, '--compile-bytecode', '--no-deps', $AppWheel)
     # onnxruntime-genai is a package of its own, not an ORT build; G6 still proves every ORT binary in the tree.
     Remove-AppDistribution -Python $Python -Pattern '^onnxruntime($|[-_](?!genai))'
-    Invoke-AppUv -What "installing the chain ORT wheel $OrtWheel" -Arguments @('pip', 'install', '--python', $Python, '--no-index', '--no-deps', $OrtWheel)
+    Invoke-AppUv -What "installing the chain ORT wheel $OrtWheel" -Arguments @('pip', 'install', '--python', $Python, '--compile-bytecode', '--no-index', '--no-deps', $OrtWheel)
 }
 
 function Copy-ChainOpenCvPackage {
@@ -171,7 +187,11 @@ function Install-PythonAppChainOpenCv {
     )
 
     Remove-AppDistribution -Python $Python -Pattern '^opencv(-contrib)?-python(-headless)?$'
-    return @(Copy-ChainOpenCvPackage -SitePackages $SitePackages -Source $Source -RuntimeRoot $RuntimeRoot)
+    $copied = @(Copy-ChainOpenCvPackage -SitePackages $SitePackages -Source $Source -RuntimeRoot $RuntimeRoot)
+    # The launchers pass -B, so bytecode the bundle does not ship is recompiled on every start.
+    & $Python -m compileall -q (Join-Path $SitePackages 'cv2')
+    if ($LASTEXITCODE -ne 0) { throw "compiling the chain cv2 package failed (exit $LASTEXITCODE)" }
+    return $copied
 }
 
 function Get-PythonAppEntryPoint {
@@ -260,7 +280,9 @@ function Invoke-PythonAppSelfTest {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Bundle,
-        [Parameter(Mandatory)][string[]]$Command
+        [Parameter(Mandatory)][string[]]$Command,
+        # The report's onnxruntime_module must lie under it: an installed app must not load another copy of ORT.
+        [string]$Root = ''
     )
 
     $exe = Join-Path $Bundle "$($Command[0]).exe"
@@ -283,8 +305,132 @@ function Invoke-PythonAppSelfTest {
     if ($start -lt 0 -or $end -lt $start) { throw "self-test '$($Command -join ' ')' printed no JSON report" }
     $report = ($lines[$start..$end] -join "`n") | ConvertFrom-Json -AsHashtable
     if (-not $report['ok']) { throw "self-test '$($Command -join ' ')' did not report ok" }
+    $module = [string]$report['onnxruntime_module']
+    if ($Root -and $module -and -not $module.StartsWith($Root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw "The self-test loaded ONNX Runtime from $module, outside $Root"
+    }
     return $report
 }
 
-Export-ModuleMember -Function Get-PythonAppConfig, New-PythonAppRuntime, Install-PythonAppPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
-    New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest
+function ConvertTo-PythonAppIcon {
+    <#
+    .SYNOPSIS
+        Wraps a PNG as a one-image .ico, which MSI shortcuts and Add/Remove Programs need; Windows reads PNG frames.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$PngPath,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    $png = [IO.File]::ReadAllBytes($PngPath)
+    if ($png.Length -lt 24 -or [Text.Encoding]::ASCII.GetString($png, 1, 3) -cne 'PNG') { throw "$PngPath is not a PNG" }
+    # IHDR's width and height are big-endian; an .ico entry stores 256 as 0.
+    $width = ([int]$png[16] -shl 24) -bor ([int]$png[17] -shl 16) -bor ([int]$png[18] -shl 8) -bor [int]$png[19]
+    $height = ([int]$png[20] -shl 24) -bor ([int]$png[21] -shl 16) -bor ([int]$png[22] -shl 8) -bor [int]$png[23]
+    if ($width -gt 256 -or $height -gt 256) { throw "$PngPath is ${width}x${height}; an .ico image is at most 256x256" }
+    $stream = [IO.MemoryStream]::new()
+    $writer = [IO.BinaryWriter]::new($stream)
+    $writer.Write([uint16]0); $writer.Write([uint16]1); $writer.Write([uint16]1)
+    $writer.Write([byte]($width % 256)); $writer.Write([byte]($height % 256)); $writer.Write([byte]0); $writer.Write([byte]0)
+    $writer.Write([uint16]1); $writer.Write([uint16]32); $writer.Write([uint32]$png.Length); $writer.Write([uint32]22)
+    $writer.Write($png)
+    $writer.Flush()
+    [IO.File]::WriteAllBytes($Destination, $stream.ToArray())
+    return $Destination
+}
+
+# WiX 4.0.6 takes no File directly under a Directory and has no <Files> harvesting: one Component per file, ids counted.
+function Add-WxsTree {
+    param([Text.StringBuilder]$Tree, [Text.StringBuilder]$Files, [IO.DirectoryInfo]$Directory, [string]$DirectoryId, [int]$Depth, [hashtable]$Counter)
+    foreach ($file in @(Get-ChildItem -LiteralPath $Directory.FullName -File | Sort-Object Name)) {
+        $Counter.n++
+        $null = $Files.AppendLine("      <Component Id=`"c$($Counter.n)`" Directory=`"$DirectoryId`"><File Id=`"f$($Counter.n)`" Source=`"$([Security.SecurityElement]::Escape($file.FullName))`" /></Component>")
+    }
+    $pad = ' ' * (2 * $Depth)
+    foreach ($sub in @(Get-ChildItem -LiteralPath $Directory.FullName -Directory | Sort-Object Name)) {
+        $Counter.n++
+        $id = "d$($Counter.n)"
+        $null = $Tree.AppendLine("$pad<Directory Id=`"$id`" Name=`"$([Security.SecurityElement]::Escape($sub.Name))`">")
+        Add-WxsTree -Tree $Tree -Files $Files -Directory $sub -DirectoryId $id -Depth ($Depth + 1) -Counter $Counter
+        $null = $Tree.AppendLine("$pad</Directory>")
+    }
+}
+
+function New-PythonAppWxs {
+    <#
+    .SYNOPSIS
+        WiX 4 source for a per-machine MSI of -Bundle: every file, a Start menu shortcut to gui_script, the folder on PATH.
+    .DESCRIPTION
+        A major upgrade keyed on app.json's msi_upgrade_code replaces any older version; the CLIs reach PATH through a
+        system Environment entry that the uninstall removes again.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][string]$Bundle,
+        [Parameter(Mandatory)][hashtable]$App,
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$IconPath,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    foreach ($key in 'msi_upgrade_code', 'publisher') {
+        if (-not $App.ContainsKey($key) -or -not $App[$key]) { throw "app.json needs '$key' for an MSI" }
+    }
+    if ($Version -notmatch '^\d{1,3}\.\d{1,3}\.\d{1,5}$') { throw "MSI versions are major.minor.build (255.255.65535); '$Version' is not" }
+    $name = $App['name']
+    # MSI cannot install below MAX_PATH; measured against the default install dir.
+    $installRoot = "C:\Program Files\$name\"
+    $longest = Get-ChildItem -LiteralPath $Bundle -Recurse -File | ForEach-Object { $_.FullName.Substring($Bundle.TrimEnd('\').Length + 1) } |
+        Sort-Object Length -Descending | Select-Object -First 1
+    if ($longest -and ($installRoot.Length + $longest.Length) -ge 260) { throw "$installRoot$longest is $($installRoot.Length + $longest.Length) characters; MSI stops at 259" }
+
+    $gui = if ($App.ContainsKey('gui_script') -and $App['gui_script']) { $App['gui_script'] } else { @($App['scripts'])[0] }
+    $x = { param($text) [Security.SecurityElement]::Escape([string]$text) }
+    $key = "Software\$($App['publisher'])\$name"
+    $tree = [Text.StringBuilder]::new()
+    $files = [Text.StringBuilder]::new()
+    Add-WxsTree -Tree $tree -Files $files -Directory (Get-Item -LiteralPath $Bundle) -DirectoryId 'INSTALLFOLDER' -Depth 4 -Counter @{ n = 0 }
+    $homepage = if ($App.ContainsKey('homepage')) { "`n    <Property Id=`"ARPURLINFOABOUT`" Value=`"$(& $x $App['homepage'])`" />" } else { '' }
+    $description = if ($App.ContainsKey('description')) { $App['description'] } else { $name }
+    $wxs = @"
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="$(& $x $name)" Manufacturer="$(& $x $App['publisher'])" Version="$Version" UpgradeCode="$($App['msi_upgrade_code'])" Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="app.ico" SourceFile="$(& $x $IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="app.ico" />$homepage
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="$(& $x $name)">
+$($tree.ToString().TrimEnd())
+        <Component Id="PathEntry">
+          <Environment Id="PathEntry" Name="PATH" Value="[INSTALLFOLDER]" Action="set" Part="last" System="yes" Permanent="no" />
+          <RegistryValue Root="HKLM" Key="$(& $x $key)" Name="PathEntry" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="AppShortcut" Name="$(& $x $name)" Description="$(& $x $description)" Target="[INSTALLFOLDER]$(& $x $gui).exe" WorkingDirectory="INSTALLFOLDER" Icon="app.ico" />
+        <RegistryValue Root="HKLM" Key="$(& $x $key)" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+    <ComponentGroup Id="AppFiles">
+$($files.ToString().TrimEnd())
+    </ComponentGroup>
+    <Feature Id="Main" Title="$(& $x $name)">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="PathEntry" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Package>
+</Wix>
+"@
+    Set-Content -LiteralPath $Destination -Value $wxs -Encoding utf8NoBOM
+    return $Destination
+}
+
+Export-ModuleMember -Function Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, Install-PythonAppPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
+    New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-PythonAppWxs
