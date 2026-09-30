@@ -7,6 +7,20 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - Windows base: aarch64 OpenSSL follows scoop's manifest instead of a pin
+
+- **What went wrong.** `Install-ScoopTools.ps1` fetched a literal `Win64ARMOpenSSL-4_0_2.exe`.
+  slproweb had replaced it with 4.0.3, so the URL answered 404. The step only warns, so
+  that day's `:winamd64` base build went on without `C:\opt\openssl-arm64`. The next `:winarm64`
+  GStreamer cross build would have thrown on it. This is the second time: the 4.0.1 → 4.0.2
+  bump in `docs/changelog-archive-2026-08-28.md` was the same break.
+- **The fix.** The URL and SHA256 come from `architecture.arm64` in
+  `buckets\main\bucket\openssl.json`. The x64 `scoop install main/openssl` reads the same
+  manifest, so both architectures move together and the hash is still verified. Checked against
+  the live bucket: 4.0.3, `Win64ARMOpenSSL-4_0_3.exe`, `afc17720…`.
+- **Not proven in a container yet.** It takes effect with the next base build.
+  `docs/windows-cross-builds.md` § *aarch64 OpenSSL is a base prerequisite too* records the rule.
+
 ## 2026-09-30 - SBOM: the amd64 and arm64 scans get swap
 
 - **What went wrong.** Every SBOM run since at least 2026-08-31 lost amd64 and arm64 with

@@ -283,11 +283,14 @@ $sslArm64Lib = @(Get-ChildItem -Path $sslArm64Root -Recurse -Filter 'libcrypto.l
 if ($sslArm64Lib.Count -gt 0) {
     Write-Host "OpenSSL (aarch64) already present ($($sslArm64Lib[0].FullName))."
 } else {
-    $sslUrl  = 'https://slproweb.com/download/Win64ARMOpenSSL-4_0_2.exe'
-    $sslSha  = '5d2653ef3045a4090d448b5b9d4b85ca5277cc2d410aade9523e9bc0275b7e51'
     $sslExe  = Join-Path $env:TEMP 'Win64ARMOpenSSL.exe'
     try {
-        Write-Host "Fetching aarch64 OpenSSL from $sslUrl (installed beside the x64 build, never replacing it)"
+        # From the bucket manifest the x64 install below reads: slproweb deletes superseded installers, so a literal pin 404s.
+        $sslManifest = Get-Content -Raw -LiteralPath (Join-Path $scoopRoot 'buckets\main\bucket\openssl.json') | ConvertFrom-Json
+        $sslUrl = $sslManifest.architecture.arm64.url
+        $sslSha = $sslManifest.architecture.arm64.hash
+        if (-not $sslUrl -or -not $sslSha) { throw "the main bucket's openssl manifest ($($sslManifest.version)) names no arm64 url and hash" }
+        Write-Host "Fetching aarch64 OpenSSL $($sslManifest.version) from $sslUrl (installed beside the x64 build, never replacing it)"
         Invoke-DownloadWithRetry -Url $sslUrl -DestinationPath $sslExe
         $got = (Get-FileHash -LiteralPath $sslExe -Algorithm SHA256).Hash
         if ($got -ine $sslSha) { throw "sha256 mismatch: got $got, expected $sslSha (this is the hash scoop's own openssl manifest pins for the arm64 asset)" }

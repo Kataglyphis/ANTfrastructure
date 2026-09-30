@@ -1051,6 +1051,11 @@ entry. Three things about that step are load-bearing:
   `{app}` directory, so the real paths are `…\{app}\lib\VC\arm64\MD\libcrypto.lib` and
   `…\{app}\include\openssl\opensslv.h`. Both the lib dir and the include dir are located by
   searching for a known file; a `Join-Path $root 'include'` would silently point at nothing.
+- **Read the URL and hash, never pin them.** slproweb deletes an installer once its successor
+  ships. A literal `Win64ARMOpenSSL-4_0_2.exe` answered 404 on 2026-09-30, and a base built that
+  day came out without aarch64 OpenSSL, because this step only warns. The step now reads
+  `architecture.arm64` from `buckets\main\bucket\openssl.json`, the manifest the x64 install
+  resolves as well. The two architectures therefore move together, and the hash is still checked.
 
 The package ships **no** `.pc` files, so the GStreamer build authors `libcrypto`, `libssl` and
 `openssl` with `Write-PkgConfigFile` — the same helper OpenCV and ONNX Runtime already need for
