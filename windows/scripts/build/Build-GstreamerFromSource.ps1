@@ -222,13 +222,22 @@ try {
     if ($pipExit -ne 0) { throw "pip install meson failed (exit $pipExit) -- see $pipLog (logged above)" }
 
     # The in-tree PCbuild layout puts console scripts under the source root, not beside python.exe.
-    $pythonScripts = (cmd.exe /c """$pyExe"" -c ""import sysconfig; print(sysconfig.get_path('scripts'))""" | Select-Object -First 1)
-    if ($pythonScripts) { $pythonScripts = "$pythonScripts".Trim() }
-    if (-not $pythonScripts -or -not (Test-Path (Join-Path $pythonScripts 'meson.exe'))) {
-        $pythonScripts = @(
+    $findMesonScripts = {
+        $dir = (cmd.exe /c """$pyExe"" -c ""import sysconfig; print(sysconfig.get_path('scripts'))""" | Select-Object -First 1)
+        if ($dir) { $dir = "$dir".Trim() }
+        if ($dir -and (Test-Path (Join-Path $dir 'meson.exe'))) { return $dir }
+        @(
             (Join-Path (Split-Path $pyExe -Parent) 'Scripts'),
             (Join-Path $env:TEMP_DIR 'cpython\Scripts')
         ) | Where-Object { Test-Path (Join-Path $_ 'meson.exe') } | Select-Object -First 1
+    }
+    $pythonScripts = & $findMesonScripts
+    # The merge copies media-core's site-packages without their Scripts dir: pip finds meson installed and writes no meson.exe.
+    if (-not $pythonScripts) {
+        log 'meson is installed but meson.exe is missing; reinstalling it to regenerate the launcher...'
+        & cmd.exe /c """$pyExe"" -m pip install --force-reinstall --no-deps meson >> ""$pipLog"" 2>&1"
+        if ($LASTEXITCODE -ne 0) { throw "pip reinstall of meson failed (exit $LASTEXITCODE) -- see $pipLog" }
+        $pythonScripts = & $findMesonScripts
     }
     if (-not $pythonScripts) { throw 'meson.exe not found after pip install' }
     $mesonExe = Join-Path $pythonScripts 'meson.exe'
