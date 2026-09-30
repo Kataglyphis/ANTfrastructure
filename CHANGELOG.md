@@ -7,6 +7,20 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - SBOM: the amd64 and arm64 scans get swap
+
+- **What went wrong.** Every SBOM run since at least 2026-08-31 lost amd64 and arm64 with
+  "The runner has received a shutdown signal". riscv64, the smallest image, passed.
+- **The cause, measured.** syft 1.52 on `:latest` amd64 indexes the image's files into 11 GB
+  before any cataloguer runs, then peaks at 24 GB unconstrained. The runner has 16 GB, so the
+  kernel killed the runner. Under a 15 GB cap:
+  - `GOMEMLIMIT=10GiB` still died;
+  - `SYFT_PARALLELISM=4` still died, because the index is live heap;
+  - 16 GB of swap finished in 15.5 minutes with the same 4056 packages.
+- **The fix.** `sbom.yml` adds a 24 GB swap file on `/mnt` before the scan. The job timeout goes
+  from 30 to 60 minutes, because paging doubles the scan time. `docs/sbom.md` § *Generating
+  them* records the budget.
+
 ## 2026-09-30 - python-ci-linux: a pull request no longer publishes the docs
 
 - **What went wrong.** The *Sync files to domain* step ran on every event. On a Dependabot pull

@@ -113,6 +113,15 @@ python3 docs/scripts/compare_sbom.py out/sbom/scanned-linux-amd64.spdx.json
 `:latest` is a **manifest list** — a scan without `--platform` silently
 picks one architecture. Scan each one you publish.
 
+**Budget memory, not just disk.** On `:latest` amd64 (2026-09-30) syft's
+index of the image's files reached 11 GB before the first cataloguer ran. The
+scan peaked at 31 GB with runner-sized parallelism, and at 24 GB unconstrained.
+A 16 GB machine is OOM-killed; on a GitHub runner that surfaces as "The runner
+has received a shutdown signal", not as an error from syft. `SYFT_PARALLELISM`
+and `GOMEMLIMIT` do not help, because the index is live heap. Swap does: 15 GB
+of RAM plus 16 GB of swap finished in 16 minutes with the same 4056 packages.
+That is what `sbom.yml` gives each scan job.
+
 CI runs the scan weekly in [`sbom.yml`](../.github/workflows/sbom.yml) — the
 same `scan-image-sbom.sh` invocation, once per published platform — and
 verifies the curated document has not drifted from `deps.json`.
