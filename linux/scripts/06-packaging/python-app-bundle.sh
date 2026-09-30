@@ -93,11 +93,13 @@ info "== packages from uv.lock (${EXTRAS[*]}), the app wheel, then the chain ORT
 extra_args=()
 for extra in "${EXTRAS[@]}"; do extra_args+=(--extra "${extra}"); done
 uv export --locked --no-dev --no-emit-project --format requirements.txt "${extra_args[@]}" --output-file "${WORK_DIR}/requirements.lock.txt"
-uv pip install --python "${PY}" --break-system-packages --requirement "${WORK_DIR}/requirements.lock.txt"
-uv pip install --python "${PY}" --break-system-packages --no-deps "${app_wheel}"
+uv pip install --python "${PY}" --break-system-packages --compile-bytecode --requirement "${WORK_DIR}/requirements.lock.txt"
+uv pip install --python "${PY}" --break-system-packages --compile-bytecode --no-deps "${app_wheel}"
 mapfile -t pypi_ort < <(uv pip list --python "${PY}" --format freeze | sed -n 's/^\(onnxruntime[a-z0-9_-]*\)==.*/\1/p' | grep -v genai || true)
 [ "${#pypi_ort[@]}" -eq 0 ] || uv pip uninstall --python "${PY}" --break-system-packages "${pypi_ort[@]}"
-uv pip install --python "${PY}" --break-system-packages --no-index --no-deps "${ort_wheel}"
+uv pip install --python "${PY}" --break-system-packages --compile-bytecode --no-index --no-deps "${ort_wheel}"
+# python-build-standalone ships its stdlib without bytecode, which the launchers' -B would recompile on every start.
+"${PY}" -m compileall -q -j 0 -x '/(site-packages|test|tests|idlelib)/' "$("${PY}" -I -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
 
 info "== launchers"
 entry_points="$("${PY}" -I -c 'import sys
@@ -111,11 +113,11 @@ for script in "${SCRIPTS[@]}"; do
   func="${target##*:}"
   cat > "${BUNDLE}/bin/${script}" <<EOF
 #!/bin/sh
-# ${script}: runs ${target} on the bundle's own CPython; -I keeps PYTHON* variables and the user site out.
+# ${script}: runs ${target} on the bundle's own CPython; -I keeps PYTHON* variables and the user site out, -B leaves the install dir unwritten.
 here=\$(dirname "\$(readlink -f "\$0")")
 root=\$(dirname "\$here")
 export ${DATA_ENV}="\$root/${DATA_DIR}"
-exec "\$root/runtime/bin/python3" -I -c 'import sys; sys.argv[0] = "${script}"; from ${module} import ${func} as _entry; sys.exit(_entry())' "\$@"
+exec "\$root/runtime/bin/python3" -I -B -c 'import sys; sys.argv[0] = "${script}"; from ${module} import ${func} as _entry; sys.exit(_entry())' "\$@"
 EOF
   chmod 0755 "${BUNDLE}/bin/${script}"
   info "  ${script} -> ${target}"
@@ -134,9 +136,12 @@ PY
 
 info "== ELF closure"
 # G6 needs the chain ORT byte-identical, so it is protected and preloaded; oneDNN is absent image-wide, unloaded unless asked for.
+ALLOWED_UNRESOLVED=(libdnnl.so.3)
+closure_args=()
+for soname in "${ALLOWED_UNRESOLVED[@]}"; do closure_args+=(--allow-unresolved "${soname}"); done
 bash "${SCRIPT_DIR}/python-app-closure.sh" --bundle "${BUNDLE}" --lib-dir "${RUNTIME}/lib" \
   --search /opt/gcc-*/lib64 --search "/usr/lib/${MULTIARCH}" --search "/lib/${MULTIARCH}" \
-  --protect '*/site-packages/onnxruntime/*' --allow-unresolved libdnnl.so.3
+  --protect '*/site-packages/onnxruntime/*' "${closure_args[@]}"
 site_packages="$("${PY}" -I -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
 cat > "${site_packages}/sitecustomize.py" <<'PY'
 # Written by python-app-bundle.sh: loads what the protected chain ORT needs from runtime/lib, so its sonames resolve.
@@ -156,24 +161,14 @@ info "== G6: ONNX Runtime is the chain build"
 bash "${SCRIPT_DIR}/check-ort-provenance.sh" "${BUNDLE}"
 
 info "== self-test: ${SELF_TEST[*]}"
-report="$("${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}")" || err "self-test '${SELF_TEST[*]}' failed"
-printf '%s\n' "${report}"
-# The report is the last block from a bare '{' line to a bare '}' line: ORT may print notices with braces first.
-python3 - "${BUNDLE}" "${report}" "$(basename "${app_wheel}")" "$(basename "${ort_wheel}")" "${PYTHON_VERSION}" "${SCRIPTS[@]}" <<'PY'
+report="$(python3 "${SCRIPT_DIR}/python-app-selftest.py" --root "${BUNDLE}" -- "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}")" ||
+  err "self-test '${SELF_TEST[*]}' failed"
+# The packagers read the waived sonames back: a deb must not depend on a library nothing loads.
+python3 - "${BUNDLE}" "${report}" "$(basename "${app_wheel}")" "$(basename "${ort_wheel}")" "${PYTHON_VERSION}" "${ALLOWED_UNRESOLVED[*]}" "${SCRIPTS[@]}" <<'PY'
 import json, sys
-bundle, text, wheel, ort, python, *scripts = sys.argv[1:]
-lines = text.splitlines()
-ends = [i for i, line in enumerate(lines) if line == "}"]
-starts = [i for i in range(ends[-1] + 1) if lines[i] == "{"] if ends else []
-if not starts:
-    sys.exit("the self-test printed no JSON report")
-report = json.loads("\n".join(lines[starts[-1]:ends[-1] + 1]))
-if not report.get("ok"):
-    sys.exit("the self-test did not report ok")
-module = report.get("onnxruntime_module", "")
-if module and not module.startswith(bundle):
-    sys.exit(f"the self-test loaded ONNX Runtime from {module}, outside the bundle")
-manifest = {"wheel": wheel, "ort_wheel": ort, "python": python, "scripts": scripts, "self_test": report}
+bundle, report, wheel, ort, python, allowed, *scripts = sys.argv[1:]
+manifest = {"wheel": wheel, "ort_wheel": ort, "python": python, "scripts": scripts,
+            "unresolved_allowed": allowed.split(), "self_test": json.loads(report)}
 open(f"{bundle}/bundle.json", "w").write(json.dumps(manifest, indent=2) + "\n")
 PY
 info "bundle ready: ${BUNDLE} (${APP_ID})"

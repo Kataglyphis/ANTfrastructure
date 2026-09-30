@@ -1,0 +1,52 @@
+# Attaches a consumer lane's packages to its v* tag's GitHub release; called after the lane, only on a tag (docs/python-app-bundles.md § Packages).
+name: Release packages (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      artifact-pattern:
+        description: >-
+          Which of the run's artifacts hold the packages, as download-artifact's
+          pattern (the Python lanes: python-package-windows-*, packages-linux-*).
+        required: true
+        type: string
+      runner:
+        description: Runner label; any Linux one with gh.
+        type: string
+        default: ubuntu-26.04
+
+# Its own workflow, not a step of the lanes: a nested job asking for contents: write fails to load for every caller that grants only read, even when skipped.
+permissions:
+  contents: write
+
+jobs:
+  attach:
+    name: Attach packages to the release
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: Download the lane's artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ${{ inputs.artifact-pattern }}
+          path: artifacts
+
+      # Two lanes reach here for one tag; whichever creates the release second finds it and only uploads.
+      - name: Attach to ${{ github.ref_name }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find artifacts -type f -path '*/packages/*' | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::no packages/ in the artifacts matching the pattern; did the lane find packaging/app.json?"
+            exit 1
+          fi
+          printf '  %s\n' "${files[@]}"
+          gh release view "${TAG}" > /dev/null 2>&1 ||
+            gh release create "${TAG}" --verify-tag --title "${TAG}" --generate-notes ||
+            gh release view "${TAG}" > /dev/null
+          gh release upload "${TAG}" "${files[@]}" --clobber

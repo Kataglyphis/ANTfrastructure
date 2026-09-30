@@ -57,6 +57,17 @@ try {
         }
     } | Out-Null
 
+    # packaging/app.json opts a consumer in: the app bundle, then its packages, each started once (docs/python-app-bundles.md § Packages).
+    if (Test-Path -LiteralPath (Join-Path $repoRoot 'packaging\app.json') -PathType Leaf) {
+        Invoke-BuildStep -Context $script:BuildContext -StepName "Packaging (app bundle + installers)" -Script {
+            $bundle = Join-Path $repoRoot 'build\app-bundle'
+            Invoke-BuildExternal -Context $script:BuildContext -File 'pwsh' -Parameters @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'New-PythonAppBundle.ps1'),
+                '-RepoRoot', $repoRoot, '-WheelDir', 'dist', '-OutDir', $bundle) | Out-Null
+            Invoke-BuildExternal -Context $script:BuildContext -File 'pwsh' -Parameters @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'New-PythonAppPackage.ps1'),
+                '-RepoRoot', $repoRoot, '-Bundle', $bundle, '-OutDir', (Join-Path $repoRoot 'dist\packages')) | Out-Null
+        } | Out-Null
+    }
+
     Write-CiLog "=== Packaging completed ==="
 
 } finally {
