@@ -50,8 +50,8 @@ on:
         default: ''
       deploy-docs:
         description: >-
-          Whether to FTP-sync the built docs. Set false to build docs without
-          publishing (and then the FTP secrets are not required).
+          Whether to FTP-sync the built docs on a push. Set false to build docs without
+          publishing (and then the FTP secrets are not required). A pull request never publishes.
         required: false
         type: boolean
         default: true
@@ -185,9 +185,9 @@ jobs:
             bash -lc "bash scripts/linux/ci_build_docs.sh
             '${{ inputs.docs-python-version }}'"
 
-      # @develop, not ./: a workflow_call workflow runs in the caller's checkout.
+      # @develop, not ./: a workflow_call workflow runs in the caller's checkout. Push only: a PR must not publish.
       - name: 📂 Sync files to domain
-        if: ${{ matrix.arch == 'x64' && inputs.deploy-docs }}
+        if: ${{ matrix.arch == 'x64' && inputs.deploy-docs && github.event_name == 'push' }}
         uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@develop
         with:
           server: ${{ secrets.FTP_SERVER }}
