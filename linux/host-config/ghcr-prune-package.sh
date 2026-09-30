@@ -65,18 +65,22 @@ d = json.load(sys.stdin)
 for entry in d.get("manifests", []):     # index children; plain manifests have none
     print(entry["digest"])' >> "${WORK}/keep.digests"
   # Also keep what the tag resolves to now: the API snapshot may lag a re-tag onto an old digest.
-  curl -fsSI -H "Authorization: Bearer ${REG_TOKEN}" -H "Accept: ${ACCEPT}" \
-      "https://ghcr.io/v2/${GHCR_OWNER}/${GHCR_PKG}/manifests/${tag}" 2>/dev/null \
-    | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}' \
-    >> "${WORK}/keep.digests"
+  d="$(curl -fsSI -H "Authorization: Bearer ${REG_TOKEN}" -H "Accept: ${ACCEPT}" \
+        "https://ghcr.io/v2/${GHCR_OWNER}/${GHCR_PKG}/manifests/${tag}" 2>/dev/null \
+      | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}')"
+  [ -n "${d}" ] || err "cannot read the digest of tag '${tag}' — keep-set would be incomplete, refusing to continue"
+  printf '%s\n' "${d}" | tee -a "${WORK}/tag.digests" >> "${WORK}/keep.digests"
 done
 sort -u "${WORK}/keep.digests" -o "${WORK}/keep.digests"
+sort -u "${WORK}/tag.digests" -o "${WORK}/tag.digests"
 # Kept digests missing from the inventory are harmless for safety but pad the sanity gate, so report them.
 _phantoms="$(comm -23 "${WORK}/keep.digests" <(cut -f2 "${WORK}/versions.tsv" | sort -u) | wc -l)"
 [ "${_phantoms}" -eq 0 ] || log "  note: ${_phantoms} kept digest(s) not in the inventory (children of already-dangling legacy tags — those tags are unpullable TODAY, independent of pruning)"
 KEEPN="$(wc -l < "${WORK}/keep.digests")"
-log "  keep-set: ${KEEPN} digest(s) (tagged + index children)"
-[ "${KEEPN}" -ge "${#ALL_TAGS[@]}" ] || err "keep-set smaller than tag count — refusing"
+log "  keep-set: ${KEEPN} digest(s) (tagged + index children); ${#ALL_TAGS[@]} tag(s) on $(wc -l < "${WORK}/tag.digests") digest(s)"
+# Per digest, not per tag name: two tags may name one image (a rename in flight), which failed 2026-09-27.
+_unkept="$(comm -23 "${WORK}/tag.digests" "${WORK}/keep.digests" | wc -l)"
+[ "${_unkept}" -eq 0 ] || err "${_unkept} tag digest(s) missing from the keep-set — refusing"
 
 # 3) Candidates: untagged, unreferenced, older than KEEP_DAYS
 CUTOFF="$(date -u -d "-${KEEP_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
