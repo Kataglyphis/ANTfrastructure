@@ -7,6 +7,20 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - GStreamer: a meson inherited without its launcher is reinstalled
+
+- **What went wrong.** The default `:winamd64` merge stopped in `Build-GstreamerFromSource.ps1`
+  with `meson.exe not found after pip install`. The FFmpeg stage, rebuilt that day, pip-installs
+  meson into the source CPython. The merge copies media-core's `Lib\site-packages` but not its
+  `Scripts`, so `pip install meson` answered "Requirement already satisfied" and wrote no
+  `meson.exe`. On 2026-09-27 the FFmpeg layer came from cache without meson, and the merge's pip
+  installed it fresh.
+- **The fix.** When no `meson.exe` is found after the install, the script runs
+  `pip install --force-reinstall --no-deps meson`, which writes the launcher again, and then
+  looks once more. It still refuses if that fails.
+- **Proven with a scratch venv.** With the launcher removed, pip reports "already satisfied" and
+  writes nothing. The forced reinstall restores it: `meson.exe --version` prints 1.12.1.
+
 ## 2026-09-30 - OpenCV: gapi's fluid SSE4.1 kernels build under clang-cl
 
 - **What went wrong.** The first BuildKit run of the default (CPU + DirectML) `:winamd64` stopped in
