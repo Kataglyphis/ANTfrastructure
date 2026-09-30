@@ -562,7 +562,10 @@ not.
 index are themselves untagged manifests, and a chain that is pushing creates
 untagged manifests seconds before it tags them. The keep-set is: every tag,
 plus every index CHILD resolved live (abort on any unresolvable tag), plus
-everything younger than `KEEP_DAYS`.
+everything younger than `KEEP_DAYS`. The sanity gate checks digests, not tag
+names: every tag's live digest must be readable and in the keep-set. Two tags
+on one image are fine. The tag-count gate it replaced refused one on 2026-09-27,
+during the `:latest-cross` rename.
 
 Runs: 604 versions deleted on 2026-08-24; then on 2026-08-27, 23 untagged plus
 47 tags with 0 failures — **81 → 34 tags, 204 → 134 versions** — with

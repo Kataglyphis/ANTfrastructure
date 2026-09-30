@@ -7,6 +7,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - GHCR prune: the keep-set gate counts digests, not tag names
+
+- **What went wrong.** `ghcr-prune-package.sh` refused on 2026-09-27 with "keep-set smaller than tag
+  count": 22 tags, 21 kept digests, because two tags named one image during the `:latest-cross`
+  rename. The weekly `GHCR · cleanup` run has been red since then.
+- **The fix.** The gate now requires every tag's live digest to be readable and in the keep-set.
+  An unreadable digest aborts; the old code dropped it silently.
+- **Test:** `linux/scripts/tests/test-ghcr-prune-keepset.sh`. With the old gate put back, it fails
+  with the 2026-09-27 message.
+- **Docs:** [`linux-host-setup.md`](docs/linux-host-setup.md).
+
 ## 2026-09-30 - One-line comments, only the why, in every language
 
 - **The rule.** `AGENTS.md` § *Comments: one line, only the why* replaces the two-line ceiling
