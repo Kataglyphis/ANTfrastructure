@@ -10993,5 +10993,29 @@
     "replace": "    case \" ${exts} \" in *\" ${e}\"*) ;; *) missing=\"${missing} ${e}\" ;; esac",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "VK_KHR_surface_maintenance1 is listed by every loader, WSI or not; a prefix match would accept it as VK_KHR_surface"
+  },
+  {
+    "id": "python.uv-request-gil-suffix",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "then printf '%s+gil' \"$1\";",
+    "replace": "then printf '%s' \"$1\";",
+    "test": "bash linux/scripts/tests/test-uv-python-request.sh",
+    "why": "a bare 3.14 must not let uv pick a cached free-threaded build (CON40)"
+  },
+  {
+    "id": "python.uv-request-venv-uses-request",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "    uv_args+=(\"--python=$(uv_python_request \"$python_version\")\")",
+    "replace": "    uv_args+=(\"--python=$python_version\")",
+    "test": "bash linux/scripts/tests/test-uv-python-request.sh",
+    "why": "uv_venv_create must hand uv the GIL request, not the bare version (CON40)"
+  },
+  {
+    "id": "python.uv-request-keeps-t",
+    "target": "linux/scripts/01-core/python_uv.sh",
+    "find": "    exe_ver=\"${req_version}\"",
+    "replace": "    exe_ver=\"${req_version%t}\"",
+    "test": "bash linux/scripts/tests/test-uv-python-request.sh",
+    "why": "python3.14 must not satisfy a 3.14t request (CON40)"
   }
 ]

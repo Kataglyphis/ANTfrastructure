@@ -128,7 +128,7 @@ The two halves of one topic often split:
 |---|---|
 | **What is cached where**, and which tier a miss came from | [`build-cache-tiers.md`](build-cache-tiers.md) |
 | **Wiring a new project to this repo** — start here | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
-| Python CI: the shared lanes, and the three `uv` traps (`--all-extras` vs declared conflicts, `UV_PYTHON` beating the venv, a synced venv's ONNX Runtime reconciled onto the chain wheels) | [`python-ci.md`](python-ci.md) |
+| Python CI: the shared lanes, and the three `uv` traps (`--all-extras` vs declared conflicts, `UV_PYTHON` beating the venv, a synced venv's ONNX Runtime reconciled onto the chain wheels), and GIL vs free-threaded legs in one container | [`python-ci.md`](python-ci.md) |
 | Code quality: C++ formatter guidance + this repo's own gates (design notes per slug) | [`code-quality-tooling.md`](code-quality-tooling.md) |
 | Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |

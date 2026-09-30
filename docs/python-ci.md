@@ -312,6 +312,21 @@ with a uv stand-in), `windows/scripts/tests/Uv.ChainOrt.Tests.ps1` (including th
 module copy in the layout `windows/Dockerfile` builds), and the mutation family
 `uv-chain-ort` in `docs/scripts/mutations.json`.
 
+## Free-threaded and GIL legs in one container
+
+uv 0.12 lets a plain `3.14` request take a free-threaded build: once a `3.14t` leg has
+downloaded `3.14.7+freethreaded` into uv's managed store, a later `uv venv --python 3.14`
+in the same container picks it over the image's GIL `3.14.4` (WebDavClient, 2026-09-29,
+BACKLOG CON40). `uv_ensure_python_available` also stripped the `t`, so `python3.14`
+counted as having `3.14t`.
+
+`uv_venv_create` therefore hands uv `uv_python_request`'s form: a bare `X.Y[.Z]` becomes
+`X.Y[.Z]+gil`, and `3.14t`, paths and explicit variants pass unchanged. Only discovery
+takes `+gil`; `uv python install 3.14+gil` fails with `No download found`, so the install
+step passes the bare version, which installs the GIL build. Measured in `:latest` on
+2026-09-30: legs 3.14t, 3.14, 3.13, 3.15, 3.14t, 3.14 in one container each got the
+interpreter they named. Test: `linux/scripts/tests/test-uv-python-request.sh`.
+
 ## Which Linux image
 
 **`:latest`, on every architecture.** It is a multi-arch index —
