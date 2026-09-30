@@ -47,6 +47,7 @@ $defaultRefs = @{
     LLVM        = 'llvmorg-23.1.0'
     HAILORT     = 'v5.4.0'
     MIGRAPHX    = 'becdb3da862f2297041b746b90bc6130e2b1d1f7'
+    CPYTHON     = 'v3.14.7'
 }
 if (Test-Path $versionsFile) {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force
@@ -60,7 +61,9 @@ if (Test-Path $versionsFile) {
             # The tag Build-HailortFromSource.ps1 downloads (archive/refs/tags/v<ver>).
             @{ Ref = 'HAILORT';     Key = 'HAILORT_VERSION';      Fmt = 'v{0}' },
             # A commit, not a tag: the one Build-MigraphxFromSource.ps1 downloads (archive/<sha>).
-            @{ Ref = 'MIGRAPHX';    Key = 'MIGRAPHX_WINDOWS_COMMIT' }
+            @{ Ref = 'MIGRAPHX';    Key = 'MIGRAPHX_WINDOWS_COMMIT' },
+            # The tag Dockerfile.toolchain-builder clones.
+            @{ Ref = 'CPYTHON';     Key = 'PYTHON_VERSION';       Fmt = 'v{0}' }
         )) {
         if ($fileVersions.Contains($entry.Key)) {
             $val = $fileVersions[$entry.Key]
@@ -80,6 +83,7 @@ $repoMap = @{
     'llvm'           = @{ Url = 'https://github.com/llvm/llvm-project.git';       Ref = $defaultRefs.LLVM }
     'hailo'          = @{ Url = 'https://github.com/hailo-ai/hailort.git';        Ref = $defaultRefs.HAILORT }
     'migraphx'       = @{ Url = 'https://github.com/ROCm/AMDMIGraphX.git';        Ref = $defaultRefs.MIGRAPHX }
+    'cpython'        = @{ Url = 'https://github.com/python/cpython.git';          Ref = $defaultRefs.CPYTHON }
 }
 
 function Get-PatchTargetPaths {

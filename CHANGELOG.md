@@ -7,6 +7,24 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - Windows: the source-built CPython reports win-amd64 in a venv again
+
+- **What went wrong.** `Py_GetVersion()` keeps 80 characters of `COMPILER`. For clang, CPython
+  writes `__clang_version__` there, and Visual Studio's clang puts its git URL and hash in it. So
+  `64 bit (AMD64)` fell off `sys.version`.
+- **The effect.** `sysconfig.get_platform()` read `win32` in every venv of the image's CPython.
+  uv, pip and `bdist_wheel` then treated the x64 interpreter as 32-bit. OrchestrANT's Windows lane
+  has failed on this since it was created: `onnxruntime-genai-cuda` has no win32 wheel.
+- **The fix.** `windows/scripts/patches/cpython/001-short-clang-compiler-id.patch` names clang by
+  major.minor.patch (`[Clang 22.1.3] 64 bit (AMD64) …`). `Build-ToolchainAll.ps1` applies it and
+  refuses a `sys.version` without `AMD64`. `Test-PatchesApplyClean.ps1` now maps `cpython` to
+  `PYTHON_VERSION`.
+- **Proven** by rebuilding CPython in the published `:winamd64`, with the later `Include\pyconfig.h`
+  copy removed as a fresh build has it:
+  - the venv reports `win-amd64`;
+  - uv resolves `onnxruntime-genai-cuda` 0.15.2.
+- **Takes effect** with the next image build.
+
 ## 2026-09-30 - GHCR prune: the keep-set gate counts digests, not tag names
 
 - **What went wrong.** `ghcr-prune-package.sh` refused on 2026-09-27 with "keep-set smaller than tag
