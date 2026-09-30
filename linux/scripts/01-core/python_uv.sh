@@ -16,6 +16,7 @@
 #   timestamp                                   - Get timestamp for logs
 #   detect_workspace                            - Detect and export WORKSPACE_ROOT
 #   is_experimental_python <version>            - Check if Python version is experimental
+#   uv_python_request <version>                 - The uv request for a version (3.14 -> 3.14+gil)
 
 _PYTHON_UV_LOADED="${_PYTHON_UV_LOADED:-}"
 
@@ -94,16 +95,23 @@ uv_ensure_installed() {
   info "uv version: $(uv --version)"
 }
 
-# Ensure a given Python interpreter is available, attempting to install it via
-# Astral uv if it's missing. The function is conservative: it strips any
-# non-digit/dot suffix from the requested version to form an executable name
-# like `python3.14`, then tries `uv python install <version>` and re-checks.
+# The uv DISCOVERY request for a version: a bare X.Y[.Z] gets `+gil`, since uv lets a plain 3.14+ request
+# take a free-threaded build (BACKLOG CON40). `uv python install` rejects `+gil`; it installs the GIL build.
+uv_python_request() {
+  if [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then printf '%s+gil' "$1"; else printf '%s' "$1"; fi
+}
+
+# Ensure the requested interpreter exists, installing it through uv when missing. The executable
+# name keeps a free-threaded `t` (`python3.14t`), so `3.14t` is never satisfied by `python3.14`.
 uv_ensure_python_available() {
   local req_version="$1"
-  # Normalize version to numeric+dot only for executable name
   local exe_ver
-  exe_ver="$(printf '%s' "$req_version" | sed 's/[^0-9.]//g')"
-  [ -n "$exe_ver" ] || exe_ver="$req_version"
+  if [[ "${req_version}" =~ ^[0-9]+(\.[0-9]+)*t?$ ]]; then
+    exe_ver="${req_version}"
+  else
+    exe_ver="$(printf '%s' "$req_version" | sed 's/[^0-9.]//g')"
+    [ -n "$exe_ver" ] || exe_ver="$req_version"
+  fi
 
   local exe_name="python${exe_ver}"
   if command -v "${exe_name}" >/dev/null 2>&1; then
@@ -155,7 +163,7 @@ uv_venv_create() {
     # still attempt to create the venv with whatever python is available and
     # may fail; callers can override by passing an explicit python path.
     uv_ensure_python_available "$python_version" || true
-    uv_args+=("--python=$python_version")
+    uv_args+=("--python=$(uv_python_request "$python_version")")
   fi
 
   uv "${uv_args[@]}" $clear_flag || return 1
