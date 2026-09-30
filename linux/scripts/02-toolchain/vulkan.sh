@@ -591,8 +591,27 @@ _vulkan_target_copy_headers() {
   fi
 }
 
-# Vulkan loader (libvulkan.so). WSI off: TVM uses Vulkan for compute only, so we
-# avoid needing target windowing-system dev libraries.
+# The loader's surface entry points, one per window system it must drive; each
+# exists only when its BUILD_WSI_* option compiled in (CON41).
+# docs/vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems
+_VK_LOADER_WSI_SYMBOLS="vkCreateXcbSurfaceKHR vkCreateXlibSurfaceKHR vkCreateWaylandSurfaceKHR"
+
+# Prints the WSI entry points the loader at $1 does NOT export; empty = all there.
+# readelf, not nm: it reads a foreign-arch ELF without a multi-target binutils.
+_vulkan_loader_wsi_missing() {
+  local lib="$1" syms="" s missing=""
+  if [ -f "${lib}" ]; then
+    syms="$(readelf -W --dyn-syms "${lib}" 2>/dev/null || true)"
+  fi
+  for s in ${_VK_LOADER_WSI_SYMBOLS}; do
+    grep -qw -- "${s}" <<<"${syms}" || missing="${missing} ${s}"
+  done
+  printf '%s' "${missing# }"
+}
+
+# Vulkan loader (libvulkan.so) with X11/XCB/Wayland WSI, like LunarG's amd64 one.
+# The options are REQUIRED pkg-config lookups upstream, so a missing target dev
+# package fails the configure, and the export check catches any silent drop.
 _vulkan_target_build_loader() {
   local arch_suffix="$1" host_archdir="$2" archdir="$3" loader_src="$4"
 
@@ -603,12 +622,19 @@ _vulkan_target_build_loader() {
         -DCMAKE_INSTALL_PREFIX="${archdir}" \
         -DVULKAN_HEADERS_INSTALL_DIR="${host_archdir}" \
         -DBUILD_TESTS=OFF \
-        -DBUILD_WSI_XCB_SUPPORT=OFF \
-        -DBUILD_WSI_XLIB_SUPPORT=OFF \
-        -DBUILD_WSI_WAYLAND_SUPPORT=OFF \
+        -DBUILD_WSI_XCB_SUPPORT=ON \
+        -DBUILD_WSI_XLIB_SUPPORT=ON \
+        -DBUILD_WSI_XLIB_XRANDR_SUPPORT=ON \
+        -DBUILD_WSI_WAYLAND_SUPPORT=ON \
         -DBUILD_WSI_DIRECTFB_SUPPORT=OFF; then
-      _vk_ok=$((_vk_ok + 1))
-      log "Installed target Vulkan loader: $(ls "${archdir}"/lib/libvulkan.so* 2>/dev/null | tr '\n' ' ')"
+      local _wsi_missing
+      _wsi_missing="$(_vulkan_loader_wsi_missing "${archdir}/lib/libvulkan.so.1")"
+      if [ -n "${_wsi_missing}" ]; then
+        _vk_note_failure vulkan-loader "Target Vulkan loader for ${arch_suffix} does not export ${_wsi_missing}; every windowed Vulkan app would abort"
+      else
+        _vk_ok=$((_vk_ok + 1))
+        log "Installed target Vulkan loader with X11/XCB/Wayland WSI: $(ls "${archdir}"/lib/libvulkan.so* 2>/dev/null | tr '\n' ' ')"
+      fi
     else
       _vk_note_failure vulkan-loader "Target Vulkan loader unavailable; cross Vulkan will be disabled downstream"
     fi
@@ -943,7 +969,7 @@ _vulkan_target_verdict() {
 # detect_vulkan_library / detect_spirv_tools_library already look). Each component
 # is non-fatal: if one can't build, the downstream guard disables that capability
 # rather than failing the whole stage. Vulkan headers are arch-independent, so the
-# host archdir's copy is reused. Loader WSI is off (Vulkan is used for compute).
+# host archdir's copy is reused. The loader carries X11/XCB/Wayland WSI (CON41).
 # Step ORDER is a contract: headers before loader (the loader build needs them).
 _build_vulkan_targets() {
   local arch_suffix="$1"

@@ -102,14 +102,24 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux arm64 and riscv64
 
-- [ ] **CON41 — The arm64 Vulkan loader has no window-system support** [M, ★★].
-      `/opt/vulkan/1.4.357.0/aarch64`'s loader offers no X11 or Wayland surface extension, so
-      every GPU test that opens a window aborts on arm64 (BeschleunigerBallett run 36615897603),
-      while amd64's loader drives llvmpipe under `xvfb-run`. BeschleunigerBallett runs its GPU
-      suites on x64 only until this is fixed. riscv64 is unmeasured. Note for any lane:
-      `xvfb-run` must not be the container's PID 1, where it never receives Xvfb's ready signal
-      and hangs. Also measured: riscv64 ships no `clang-format` on `PATH`; nothing in the fleet
-      lints there today.
+- [b] **CON41 — The arm64 and riscv64 Vulkan loaders have no window-system support** [M, ★★].
+      Blocked on the next `:latest`. Measured on the 2026-09-29 image: amd64's LunarG loader
+      lists 26 instance extensions, and the cross-built `aarch64` and `riscv64` loaders list 22,
+      without `VK_KHR_{xcb,xlib,wayland}_surface`. So every GPU test that opens a window aborts
+      there (BeschleunigerBallett run 36615897603), and vkcube under `xvfb-run` gets no ICD
+      able to present. Cause: `_vulkan_target_build_loader` turned WSI `OFF` for a compute-only
+      TVM. Fixed in source (2026-09-30): X11, XCB, Xlib-XRandR and Wayland WSI are `ON`. The
+      stage dies if the built loader lacks `vkCreate{Xcb,Xlib,Wayland}SurfaceKHR`, and the
+      runtime smoke fails any arch whose loader does not list the four surface extensions.
+      Proven by cross-building the loader through the real function for both arches, swapping
+      it into the published images, and seeing vkcube render on llvmpipe over xcb. The fix
+      ships with the next `:latest`, and the rebuild starts at the sdk stage. Afterwards:
+      BeschleunigerBallett runs its GPU suites on arm64 again. The smoke's
+      `arm64:libgstgtk4.so` parity exception came from the same gap, so drop it once the
+      stale-exception walker reports that gtk4 loads. Note for any lane: `xvfb-run` must not
+      be the container's PID 1, where it never receives Xvfb's ready signal and hangs. Also
+      measured: riscv64 ships no `clang-format` on `PATH`; nothing in the fleet lints there
+      today.
 
 ## Open — Windows `:winamd64`
 

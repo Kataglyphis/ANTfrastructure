@@ -24,7 +24,7 @@ own-arch prefix is usable at runtime, and `VULKAN_SDK` points at it.
 | Component | Gives you |
 | --- | --- |
 | headers | `vulkan/vulkan.h` and the registry |
-| Vulkan-Loader | `libvulkan.so.1` — the ICD loader |
+| Vulkan-Loader | `libvulkan.so.1` — the ICD loader, with X11/XCB/Wayland WSI ([below](#the-loader-carries-the-window-systems)) |
 | SPIRV-Tools | `libSPIRV-Tools*` **and** `spirv-opt`, `spirv-val`, `spirv-dis`, `spirv-as`, `spirv-link`, `spirv-lint`, `spirv-reduce` |
 | glslang | `glslang` / `glslangValidator` |
 | Vulkan-Headers, SPIRV-Headers, Vulkan-Utility-Libraries | the `find_package(CONFIG)` packages the layers resolve through |
@@ -118,6 +118,52 @@ the target's own libraries are findable the way the host's are. It cannot make a
 host library reachable by accident: `/usr/lib/aarch64-linux-gnu` holds nothing
 else. `CMAKE_INSTALL_LIBDIR=lib` is passed explicitly, which is what keeps
 `GNUInstallDirs` from relocating the install into `lib/<triplet>` in reply.
+
+## The loader carries the window systems
+
+Until CON41 (fixed in source 2026-09-30) the target loader was configured with
+`BUILD_WSI_XCB_SUPPORT`, `_XLIB_` and `_WAYLAND_` all `OFF`, on the grounds that TVM
+uses Vulkan for compute only. The image has more consumers than TVM. Measured on the
+`:latest` of 2026-09-29 through `vkEnumerateInstanceExtensionProperties`:
+
+| Arch | Loader | Instance extensions | `VK_KHR_{xcb,xlib,wayland}_surface` |
+| --- | --- | --- | --- |
+| amd64 | LunarG's prebuilt | 26 | all three |
+| arm64 | cross-built | 22 | none |
+| riscv64 | cross-built | 22 | none |
+
+`VK_KHR_surface` alone was there, so a windowed test got as far as picking a surface
+type and then aborted: vkcube under `xvfb-run` with lavapipe says *no compatible ICD
+... or not configured to present to the screen* on arm64 and riscv64. With the options
+`ON` (plus `BUILD_WSI_XLIB_XRANDR_SUPPORT`, for amd64's `VK_EXT_acquire_xlib_display`),
+the same cross build lists all 26, and vkcube renders three frames on llvmpipe over
+xcb on both arches.
+
+What it costs: nothing at run time. The loader takes only the headers from those
+packages. Its `NEEDED` stays `libc.so.6` plus the dynamic linker, so the image gains no
+library dependency. The build needs the target's `xcb`, `x11` and `xrandr` `.pc` files,
+which [the target dev packages](#the-target-needs-its-own-dev-packages) already install
+for Vulkan-Tools.
+
+Two gates keep it from being dropped silently again:
+
+- **Build time.** Upstream resolves each option with a REQUIRED `pkg_check_modules`, so
+  a missing `.pc` fails the configure. Then `_vulkan_loader_wsi_missing` reads the
+  installed `libvulkan.so.1` with `readelf --dyn-syms`. It uses readelf rather than nm
+  because readelf reads a foreign-arch ELF. A loader without
+  `vkCreate{Xcb,Xlib,Wayland}SurfaceKHR` counts as a failed `vulkan-loader`, which is a
+  REQUIRED component, so the stage dies. The pkg-config check alone is not enough:
+  `cross_pkg_config_libdir` also searches the builder's own pkgconfig directories, so a
+  builder `xcb.pc` can satisfy it. That is harmless for the headers, but it means a
+  configure that passes proves nothing about the target.
+- **Run time.** `check_vulkan_loader` in `smoke-runtime-image.sh` also lists the
+  instance extensions, which needs no ICD and no display. `_vk_wsi_verdict` then fails
+  any arch whose loader lacks one of `_VK_WSI_REQUIRED`. amd64 is held to the same
+  list, so a LunarG tarball that dropped a surface type would fail as well.
+
+`libgstgtk4.so`'s arm64 entry in the smoke's `_PARITY_GST_KNOWN_BROKEN` came from the
+same gap (`libgtk-4` wants `vkCreateWaylandSurfaceKHR`). The stale-exception walker
+reports it as fixed once a rebuilt image loads the plugin. Drop the entry then.
 
 ## amd64 is the reference: all three arches build the same set
 

@@ -7,6 +7,30 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - The arm64 and riscv64 Vulkan loaders carry X11, XCB and Wayland (CON41)
+
+- **Measured on the `:latest` of 2026-09-29.** amd64's LunarG loader lists 26 instance extensions,
+  including `VK_KHR_xcb_surface`, `_xlib_` and `_wayland_`. The cross-built arm64 and riscv64 loaders
+  list 22 and none of those three, so vkcube under `xvfb-run` with lavapipe aborts there. That is
+  what stops BeschleunigerBallett's windowed GPU suites on arm64 (run 36615897603).
+- **Cause:** `_vulkan_target_build_loader` passed `BUILD_WSI_{XCB,XLIB,WAYLAND}_SUPPORT=OFF` on
+  purpose, from when TVM's compute-only use was the loader's only consumer.
+- **Fix (sdk stage, `02-toolchain/vulkan.sh`):** the three options, plus `BUILD_WSI_XLIB_XRANDR_SUPPORT`,
+  are `ON`. Upstream makes each one a REQUIRED pkg-config lookup. A new export check
+  (`_vulkan_loader_wsi_missing`, via `readelf`) fails the REQUIRED `vulkan-loader` component when
+  `vkCreate{Xcb,Xlib,Wayland}SurfaceKHR` is missing. The loader still needs only `libc`.
+- **Smoke:** `check_vulkan_loader` also lists the instance extensions (this needs no ICD and no
+  display). `_vk_wsi_verdict` then fails any arch, amd64 included, whose loader lacks `VK_KHR_surface`
+  or one of the three platform surfaces.
+- **Proven without the chain:** the loader was cross-built through the real
+  `_vulkan_target_build_loader` for both arches, with Ubuntu's cross GCC. Both builds export all three
+  entry points and list 26 extensions. Swapped into the published images, vkcube renders on llvmpipe
+  over xcb on arm64 and riscv64. With the target xcb/x11 dev packages missing, the configure fails.
+- **Tests:** `test-vulkan-target-decomposition.sh` (the WSI-on argv, and a WSI-less or absent loader is
+  fatal) and `test-runtime-image-gates.sh` (the verdict's cases). Seven new mutations, all of which bite.
+- **Docs:** [`vulkan-foreign-arch-sdk.md` § The loader carries the window systems](docs/vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems).
+  The change ships with the next `:latest`. The rebuild starts at the sdk stage.
+
 ## 2026-09-29 - Windows ROCm torch source build: first rocm build green, after three fixes
 
 `-Variant rocm -Stages torch,final` on the 2026-09-28 rocm parent is green: `BUILD_RC=0`, smoke gate 215
