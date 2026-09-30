@@ -44,28 +44,22 @@ Start-SccacheServerSession
 $jobs = Get-BuildJobCount -MemGBPerJob 5
 try {
     Switch-BuildPhase '1. sources'
-    & git config --global core.longpaths true
-    $visionSrc = Save-GitCommitSource -Name 'vision' -Repository 'https://github.com/pytorch/vision.git' `
-        -Commit "$env:TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT".Trim() -WorkDir $WorkDir
-    Assert-TorchRocmTreeVersion -Name 'TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT' -Version "$env:TORCHVISION_VERSION".Trim() `
-        -VersionText ([System.IO.File]::ReadAllText((Join-Path $visionSrc 'version.txt')))
+    $visionSrc = Save-TorchRocmTree -Name 'vision' -Repository 'https://github.com/pytorch/vision.git' `
+        -CommitKey 'TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT' -VersionKey 'TORCHVISION_VERSION' -WorkDir $WorkDir
 
     Switch-BuildPhase '2. torchvision'
     $env:UV_NO_CACHE = '1'; $env:UV_LINK_MODE = 'copy'
     # `import torchvision` imports PIL; torch's build requirements do not bring it.
     Invoke-TorchRocmLogged -CommandLine "uv pip install --python ""$venvPy"" pillow" -WorkingDir $WorkDir -LogName 'torchvision-rocm-deps.log'
     $env:ROCM_SDK_TARGET_FAMILY = ($build.GpuTargets -split ';')[-1]; $env:ROCM_BOOTSTRAP_DISABLE_DETECTION = '1'
-    $pyTag = "$(& $venvPy -c "import sys; print('cp' + str(sys.version_info[0]) + str(sys.version_info[1]))")".Trim()
-    if ($pyTag -notmatch '^cp3\d+$') { throw "build venv python reports tag '$pyTag'" }
+    $pyTag = Get-TorchRocmPythonTag -Python $venvPy
     $common = Get-TorchRocmCommonEnv -RocmRoot $build.RocmRoot -GpuTargets $build.GpuTargets
     Set-TorchRocmProcessEnv -Env (Get-TorchRocmVisionEnv -Common $common -BuildVersion $visionVersion -Jobs $jobs)
     $env:PATH = "$(Join-Path $build.RocmRoot 'bin');$env:PATH"
     Invoke-TorchRocmLogged -CommandLine """$venvPy"" setup.py bdist_wheel" -WorkingDir $visionSrc -LogName 'torchvision-rocm-wheel.log'
-    $visionWheel = Join-Path $visionSrc "dist\$(Get-TorchRocmWheelName -Distribution 'torchvision' -BuildVersion $visionVersion -PythonTag $pyTag)"
-    if (-not (Test-Path -LiteralPath $visionWheel -PathType Leaf)) { throw "torchvision build left no $visionWheel" }
-    Invoke-TorchRocmLogged -CommandLine "uv pip install --python ""$venvPy"" --no-deps ""$visionWheel""" -WorkingDir $WorkDir -LogName 'torchvision-rocm-install.log'
-    Invoke-TorchRocmLogged -WorkingDir $WorkDir -LogName 'torchvision-rocm-import.log' -CommandLine ("""$venvPy"" -c ""import torchvision; " +
-        "from torchvision.extension import _has_ops; assert _has_ops(), 'torchvision C++ ops missing'; print(torchvision.__version__)""")
+    $visionWheel = Install-TorchRocmBuiltWheel -Python $venvPy -SourceDir $visionSrc -Distribution 'torchvision' -BuildVersion $visionVersion `
+        -PythonTag $pyTag -WorkDir $WorkDir -LogPrefix 'torchvision-rocm' -ImportCode ('import torchvision; from torchvision.extension import _has_ops; ' +
+            "assert _has_ops(), 'torchvision C++ ops missing'; print(torchvision.__version__)")
 
     Switch-BuildPhase '3. stage the wheels'
     Copy-Item -LiteralPath $visionWheel -Destination $OutputDir -Force

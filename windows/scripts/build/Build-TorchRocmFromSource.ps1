@@ -99,15 +99,13 @@ function Get-TorchRocmTorchEnv {
         [Parameter(Mandatory)][int]$Jobs,
         [switch]$Sccache
     )
-    $vars = [ordered]@{}
-    foreach ($k in $Common.Keys) { $vars[$k] = $Common[$k] }
+    $vars = Copy-TorchRocmEnv -Common $Common -Jobs $Jobs
     $vars['USE_ROCM'] = 'ON'; $vars['USE_CUDA'] = 'OFF'; $vars['USE_MPI'] = 'OFF'; $vars['USE_NUMA'] = 'OFF'
     $vars['USE_FLASH_ATTENTION'] = 'OFF'; $vars['USE_MEM_EFF_ATTENTION'] = 'OFF'
     $vars['USE_DISTRIBUTED'] = '0'; $vars['USE_GLOO'] = 'OFF'
     $vars['BUILD_TEST'] = '0'
     $vars['PYTORCH_BUILD_VERSION'] = $BuildVersion; $vars['PYTORCH_BUILD_NUMBER'] = '1'
     $vars['PYTORCH_EXTRA_INSTALL_REQUIREMENTS'] = "rocm[libraries]==$Release"
-    $vars['MAX_JOBS'] = "$Jobs"
     if ($Sccache) { $vars['CMAKE_C_COMPILER_LAUNCHER'] = 'sccache'; $vars['CMAKE_CXX_COMPILER_LAUNCHER'] = 'sccache' }
     return $vars
 }
@@ -115,10 +113,17 @@ function Get-TorchRocmTorchEnv {
 function Get-TorchRocmVisionEnv {
     # do_build_pytorch_vision: a fresh copy of the common env, HIP forced on a GPU-less host.
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Common, [Parameter(Mandatory)][string]$BuildVersion, [Parameter(Mandatory)][int]$Jobs)
-    $vars = [ordered]@{}
-    foreach ($k in $Common.Keys) { $vars[$k] = $Common[$k] }
+    $vars = Copy-TorchRocmEnv -Common $Common -Jobs $Jobs
     $vars['BUILD_VERSION'] = $BuildVersion; $vars['FORCE_CUDA'] = '1'
     $vars['TORCHVISION_USE_NVJPEG'] = '0'; $vars['TORCHVISION_USE_VIDEO_CODEC'] = '0'
+    return $vars
+}
+
+function Copy-TorchRocmEnv {
+    # Each build's env starts as its own copy of the common env, with the job count.
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Common, [Parameter(Mandatory)][int]$Jobs)
+    $vars = [ordered]@{}
+    foreach ($k in $Common.Keys) { $vars[$k] = $Common[$k] }
     $vars['MAX_JOBS'] = "$Jobs"
     return $vars
 }
@@ -180,6 +185,37 @@ function Invoke-TorchRocmLogged {
     $global:LASTEXITCODE = 0
 }
 
+function Save-TorchRocmTree {
+    # One upstream tree at its pinned commit, held to its version pin; both RUNs start with it.
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Repository, [Parameter(Mandatory)][string]$CommitKey,
+        [Parameter(Mandatory)][string]$VersionKey, [Parameter(Mandatory)][string]$WorkDir)
+    & git config --global core.longpaths true
+    $src = Save-GitCommitSource -Name $Name -Repository $Repository -Commit "$([Environment]::GetEnvironmentVariable($CommitKey))".Trim() -WorkDir $WorkDir
+    Assert-TorchRocmTreeVersion -Name $CommitKey -Version "$([Environment]::GetEnvironmentVariable($VersionKey))".Trim() `
+        -VersionText ([System.IO.File]::ReadAllText((Join-Path $src 'version.txt')))
+    return $src
+}
+
+function Get-TorchRocmPythonTag {
+    # The build venv's cpXY tag, which names the wheel a build must leave.
+    param([Parameter(Mandatory)][string]$Python)
+    $tag = "$(& $Python -c "import sys; print('cp' + str(sys.version_info[0]) + str(sys.version_info[1]))")".Trim()
+    if ($tag -notmatch '^cp3\d+$') { throw "build venv python reports tag '$tag'" }
+    return $tag
+}
+
+function Install-TorchRocmBuiltWheel {
+    # The wheel a build left, by its exact name, installed into the build venv and imported there.
+    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$SourceDir, [Parameter(Mandatory)][string]$Distribution,
+        [Parameter(Mandatory)][string]$BuildVersion, [Parameter(Mandatory)][string]$PythonTag, [Parameter(Mandatory)][string]$WorkDir,
+        [Parameter(Mandatory)][string]$LogPrefix, [Parameter(Mandatory)][string]$ImportCode)
+    $wheel = Join-Path $SourceDir "dist\$(Get-TorchRocmWheelName -Distribution $Distribution -BuildVersion $BuildVersion -PythonTag $PythonTag)"
+    if (-not (Test-Path -LiteralPath $wheel -PathType Leaf)) { throw "$Distribution build left no $wheel" }
+    Invoke-TorchRocmLogged -CommandLine "uv pip install --python ""$Python"" --no-deps ""$wheel""" -WorkingDir $WorkDir -LogName "$LogPrefix-install.log"
+    Invoke-TorchRocmLogged -CommandLine """$Python"" -c ""$ImportCode""" -WorkingDir $WorkDir -LogName "$LogPrefix-import.log"
+    return $wheel
+}
+
 function Get-TorchRocmRuntimePin {
     # The pinned rocm sdist + core + libraries (TORCH_ROCM_WINDOWS_*), as rocm-1 installs them at run time.
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Pins)
@@ -219,11 +255,8 @@ $python = Start-MigraphxBuildSession -WorkDir $WorkDir
 $jobs = Get-BuildJobCount -MemGBPerJob 5
 try {
     Switch-BuildPhase '1. sources'
-    & git config --global core.longpaths true
-    $torchSrc = Save-GitCommitSource -Name 'pytorch' -Repository 'https://github.com/pytorch/pytorch.git' `
-        -Commit "$env:TORCH_ROCM_WINDOWS_PYTORCH_COMMIT".Trim() -WorkDir $WorkDir
-    Assert-TorchRocmTreeVersion -Name 'TORCH_ROCM_WINDOWS_PYTORCH_COMMIT' -Version "$env:PYTORCH_VERSION".Trim() `
-        -VersionText ([System.IO.File]::ReadAllText((Join-Path $torchSrc 'version.txt')))
+    $torchSrc = Save-TorchRocmTree -Name 'pytorch' -Repository 'https://github.com/pytorch/pytorch.git' `
+        -CommitKey 'TORCH_ROCM_WINDOWS_PYTORCH_COMMIT' -VersionKey 'PYTORCH_VERSION' -WorkDir $WorkDir
     # Submodule commits are the superproject's gitlinks: git verifies every object against them.
     Invoke-TorchRocmLogged -CommandLine 'git submodule update --init --recursive --depth 1 --jobs 8' -WorkingDir $torchSrc -LogName 'torch-rocm-submodules.log'
 
@@ -247,8 +280,7 @@ try {
     $env:ROCM_SDK_TARGET_FAMILY = ($build.GpuTargets -split ';')[-1]; $env:ROCM_BOOTSTRAP_DISABLE_DETECTION = '1'
     Invoke-TorchRocmLogged -CommandLine ("uv pip install --python ""$venvPy"" --no-deps --no-index --no-build-isolation --require-hashes -r ""$req""") `
         -WorkingDir $WorkDir -LogName 'torch-rocm-runtime.log'
-    $pyTag = "$(& $venvPy -c "import sys; print('cp' + str(sys.version_info[0]) + str(sys.version_info[1]))")".Trim()
-    if ($pyTag -notmatch '^cp3\d+$') { throw "build venv python reports tag '$pyTag'" }
+    $pyTag = Get-TorchRocmPythonTag -Python $venvPy
 
     Switch-BuildPhase '3. torch (HIPIFY + wheel)'
     Invoke-TorchRocmLogged -CommandLine """$venvPy"" tools/amd_build/build_amd.py" -WorkingDir $torchSrc -LogName 'torch-rocm-hipify.log'
@@ -260,11 +292,9 @@ try {
     $env:PATH = "$(Join-Path $rocmRoot 'bin');$env:PATH"
     Invoke-TorchRocmLogged -WorkingDir $torchSrc -LogName 'torch-rocm-wheel.log' -CommandLine ("""$venvPy"" -m build --wheel --no-isolation --skip-dependency-check " +
         '-Cwheel.force-include.torch/_rocm_init.py=torch/_rocm_init.py')
-    $torchWheel = Join-Path $torchSrc "dist\$(Get-TorchRocmWheelName -Distribution 'torch' -BuildVersion $torchVersion -PythonTag $pyTag)"
-    if (-not (Test-Path -LiteralPath $torchWheel -PathType Leaf)) { throw "torch build left no $torchWheel" }
-    Invoke-TorchRocmLogged -CommandLine "uv pip install --python ""$venvPy"" --no-deps ""$torchWheel""" -WorkingDir $WorkDir -LogName 'torch-rocm-install.log'
-    Invoke-TorchRocmLogged -WorkingDir $WorkDir -LogName 'torch-rocm-import.log' -CommandLine ("""$venvPy"" -c ""import torch; " +
-        "print(torch.__version__, torch.version.hip, torch.version.rocm, torch._C._cuda_getArchFlags())""")
+    $torchWheel = Install-TorchRocmBuiltWheel -Python $venvPy -SourceDir $torchSrc -Distribution 'torch' -BuildVersion $torchVersion `
+        -PythonTag $pyTag -WorkDir $WorkDir -LogPrefix 'torch-rocm' `
+        -ImportCode 'import torch; print(torch.__version__, torch.version.hip, torch.version.rocm, torch._C._cuda_getArchFlags())'
 
     Switch-BuildPhase '4. stage the torch wheel'
     New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null

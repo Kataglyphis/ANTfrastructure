@@ -40,28 +40,6 @@ Describe 'BuildKit module closure' {
             @($names | Sort-Object -Unique)
         }
 
-        # A module's own sibling imports: Join-Path $PSScriptRoot 'X.psm1'.
-        function script:Get-ModuleSiblingImports {
-            param([string]$ModuleName)
-            $p = Join-Path $script:moduleDir "$ModuleName.psm1"
-            if (-not (Test-Path $p)) { return @() }
-            $t = [System.IO.File]::ReadAllText($p)
-            @([regex]::Matches($t, "(?i)PSScriptRoot\s+'([A-Za-z0-9._]+)\.psm1'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-        }
-
-        function script:Get-TransitiveClosure {
-            param([string[]]$Seed)
-            $seen = [System.Collections.Generic.HashSet[string]]::new()
-            $queue = [System.Collections.Generic.Queue[string]]::new()
-            foreach ($s in $Seed) { [void]$queue.Enqueue($s) }
-            while ($queue.Count -gt 0) {
-                $n = $queue.Dequeue()
-                if (-not $seen.Add($n)) { continue }
-                foreach ($sib in (Get-ModuleSiblingImports -ModuleName $n)) { [void]$queue.Enqueue($sib) }
-            }
-            @($seen) | Sort-Object
-        }
-
         # Parse a Dockerfile into RUN records: which module-carrying stage it
         # mounts (from=<stage>) or which single modules it mounts by file, and
         # which build scripts it mounts.
@@ -131,7 +109,7 @@ Describe 'BuildKit module closure' {
                 foreach ($s in $run.Scripts) {
                     $sp = Join-Path $script:buildDir "$s.ps1"
                     if (-not (Test-Path $sp)) { continue }
-                    $needed = Get-TransitiveClosure -Seed (Get-ReferencedModules -Path $sp)
+                    $needed = Get-ModuleImportClosure -Seed (Get-ReferencedModules -Path $sp) -ModuleDir $script:moduleDir
                     $missing = @($needed | Where-Object { $_ -notin $available })
                     if ($missing) { $bad += "$(Split-Path $df -Leaf) / $s.ps1 -> missing [$($missing -join ', ')]; mounted [$($available -join ', ')]" }
                 }

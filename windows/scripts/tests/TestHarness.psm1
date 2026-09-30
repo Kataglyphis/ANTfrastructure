@@ -238,6 +238,23 @@ function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 }
 
+# The seed modules plus every sibling each one imports (PSScriptRoot 'X.psm1'), transitively: the set a
+# RUN must mount. A seed with no file stays in the set, so the caller's mount check names it.
+function Get-ModuleImportClosure {
+    param([string[]]$Seed = @(), [string]$ModuleDir = (Join-Path (Get-RepoRoot) 'windows' 'scripts' 'modules'))
+    $seen = [System.Collections.Generic.HashSet[string]]::new()
+    $queue = [System.Collections.Generic.Queue[string]]::new()
+    foreach ($s in @($Seed)) { $queue.Enqueue($s) }
+    while ($queue.Count -gt 0) {
+        $n = $queue.Dequeue()
+        if (-not $seen.Add($n)) { continue }
+        $p = Join-Path $ModuleDir "$n.psm1"
+        if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
+        foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($p), "(?i)PSScriptRoot\s+'([A-Za-z0-9._]+)\.psm1'")) { $queue.Enqueue($m.Groups[1].Value) }
+    }
+    return @(@($seen) | Sort-Object)
+}
+
 <#
 .SYNOPSIS
     Returns the named functions of a build script as ONE scriptblock, for a
@@ -334,6 +351,6 @@ function Invoke-WithFunctionModule {
     }
 }
 
-Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-ScriptFunctionDefinition, `
+Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, `
     Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
     Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe
