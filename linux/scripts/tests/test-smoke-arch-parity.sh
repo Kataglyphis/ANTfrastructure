@@ -115,7 +115,7 @@ t_assert_contains "$(t_fn_src "${RT_SMOKE}" check_arch_parity)" 'printf "NVIDIA 
   "the in-image probe reports the image's own ENABLE_NVIDIA"
 
 t_case "the gtk4 arm64 load failure is documented, and only for arm64"
-t_assert_ok    _rt_table '_parity_gst_plugin_known arm64 libgstgtk4.so'
+t_assert_fails _rt_table '_parity_gst_plugin_known arm64 libgstgtk4.so'
 t_assert_fails _rt_table '_parity_gst_plugin_known amd64 libgstgtk4.so'
 t_assert_fails _rt_table '_parity_gst_plugin_known arm64 libgstcoreelements.so'
 
@@ -301,6 +301,8 @@ _gst_drive() {
   bash -c '
 S="$1"; SCAN="$2"
 source "${S}/rt.sh" >/dev/null 2>&1
+# The shipped list is empty (CON41); a fixture entry keeps the exception machinery under test.
+_PARITY_GST_KNOWN_BROKEN="arm64:libgstgtk4.so"
 _rt_run() { printf "%s\n" "${SCAN}"; }
 FAILURES=0
 check_gstreamer_plugin_health "sandbox-image" "arm64" 2>&1
