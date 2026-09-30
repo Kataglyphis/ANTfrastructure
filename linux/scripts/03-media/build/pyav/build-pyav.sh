@@ -2,10 +2,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Build the PyAV (`import av`) wheel against the source-built FFmpeg (backlog
-# ORPHAN-PINS). Best-effort like the other optional media payloads: every
-# failure path leaves the wheel dir empty instead of aborting the media lane.
-# Cross-wheel setuptools knobs: docs/linux-cross-builds.md § Cross Python wheels.
+# Best-effort PyAV wheel against our FFmpeg: every failure leaves the wheel dir empty. See docs/linux-cross-builds.md § Cross Python wheels
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -27,8 +24,7 @@ case "${1:-}" in
     ;;
 esac
 
-# PYAV_VERSION has two agreeing sources and deliberately no literal default here
-# (C3): Dockerfile.media's ARG/ENV, and versions.env via media_common_init.
+# No PYAV_VERSION default on purpose: Dockerfile.media and versions.env (via media_common_init) set it.
 : "${FFMPEG_PREFIX:=/opt/ffmpeg}"
 : "${PYAV_WHEELS_DIR:=/opt/pyav/wheels}"
 : "${PYAV_SRC:=${TMPDIR:-/tmp}/pyav-$$}"
@@ -62,8 +58,7 @@ pyav_preflight() {
     [ -n "${FFMPEG_LIBDIR}" ] || pyav_skip "no libavcodec.so under ${FFMPEG_PREFIX}/lib or ${FFMPEG_PREFIX}/lib64"
     [ -f "${FFMPEG_PREFIX}/include/libavcodec/avcodec.h" ] \
         || pyav_skip "no ${FFMPEG_PREFIX}/include/libavcodec/avcodec.h"
-    # --ffmpeg-dir pins the link to this prefix, never the cross pkg-config sysroot
-    # (RV1-GST-PC); it hard-codes <dir>/lib, so lib64 rides on pyav_link_flags.
+    # --ffmpeg-dir pins this prefix over the cross pkg-config sysroot; it assumes <dir>/lib, so pyav_link_flags carries lib64.
     info "FFmpeg for PyAV: headers=${FFMPEG_PREFIX}/include libs=${FFMPEG_LIBDIR}"
 
     BUILD_PYTHON="$(host_python_bin)" || pyav_skip "no host Python interpreter"
@@ -71,8 +66,7 @@ pyav_preflight() {
     info "Build interpreter: ${BUILD_PYTHON} ($("${BUILD_PYTHON}" --version 2>&1))"
 }
 
-# The base stage already installs these; this only re-pins the range PyAV's
-# pyproject requires (a base `--upgrade cython` could have moved past its `<4`).
+# Re-pins PyAV's range: the base stage's `--upgrade cython` could have moved past its `<4`.
 pyav_install_build_requirements() {
     if command -v uv >/dev/null 2>&1; then
         UV_PYTHON="${BUILD_PYTHON}" uv pip install --quiet \
@@ -113,8 +107,7 @@ pyav_compile_cc() {
     printf '%s' "${cc}"
 }
 
-# -rpath-link, not just -L: GNU ld does not consult -L for the transitive
-# DT_NEEDED entries of libav*.so, so a cross link dies on "libx264.so.NNN ... not found".
+# -rpath-link, not just -L: GNU ld ignores -L for libav*.so's transitive DT_NEEDED entries.
 pyav_link_flags() {
     local flags="-L${FFMPEG_LIBDIR} -Wl,-rpath,${FFMPEG_LIBDIR} -Wl,-rpath-link,${FFMPEG_LIBDIR}"
     local triplet="${CROSS_TARGET_TRIPLET:-}"

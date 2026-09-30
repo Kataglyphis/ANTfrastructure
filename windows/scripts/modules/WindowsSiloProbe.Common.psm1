@@ -5,19 +5,13 @@
 
 Set-StrictMode -Version Latest
 
-# Shared SETUP for the LSM / silo boot-hang probes in windows\scripts\diagnostics
-# (Find-LsmEventHolder, Get-HostLsm, Get-LsmWaitObject, Get-LsmWaitstack,
-# Get-SiloProcesses). Debugger commands, dump capture, register reads and handle
-# scans stay in each probe: they are the measurement and differ per probe.
+# Setup only for the LSM/silo probes; the measurement itself differs per probe and stays in each.
 
 <#
 .SYNOPSIS
     Full path to the WinDbg package's x64 cdb.exe.
 .DESCRIPTION
-    The WinDbg store package installs under C:\Program Files\WindowsApps in a
-    versioned directory, so the path cannot be spelled literally; the amd64
-    filter excludes the arm64 payload that ships in the same package.
-    Throws when absent -- a probe with no debugger has nothing to report.
+    The store package's path is versioned, so it is globbed, amd64 only; throws when absent.
 .OUTPUTS
     [string] Path to cdb.exe.
 #>
@@ -31,15 +25,10 @@ function Get-CdbPath {
 <#
 .SYNOPSIS
     Resolves and creates a probe's output directory.
-.DESCRIPTION
-    An empty -OutDir means "the repo's own out\ tree", resolved from this
-    module's location so the probes stay runnable from a bare checkout with no
-    working-directory assumption.
 .PARAMETER OutDir
-    Caller's -OutDir. Empty selects the repo-relative default.
+    Caller's -OutDir; empty resolves the repo default from this module's location, not the working directory.
 .PARAMETER DefaultSubPath
-    Repo-relative default. The attach probes share out\lsm-attach; the dump
-    probe writes .dmp files and keeps its own out\lsm-dumps.
+    Repo-relative default: out\lsm-attach for the attach probes, out\lsm-dumps for the dump probe.
 .OUTPUTS
     [string] The directory, which exists on return.
 #>
@@ -61,19 +50,11 @@ function Initialize-LsmProbeOutDir {
 .SYNOPSIS
     Starts a throwaway buildctl solve whose container is the one to inspect.
 .DESCRIPTION
-    Coordinating an elevated watcher with a build somebody else starts is what
-    made the first attempts at this diagnosis miss the hang window entirely, so
-    each probe starts its own bait.
-
-    The NONCE build-arg is load-bearing: it keeps every launch a cache MISS. A
-    cached solve starts no container, and there would be nothing to attach to.
+    Its own bait, so the watcher cannot miss the hang window; the NONCE build-arg forces a cache miss, hence a container.
 .PARAMETER Tag
-    Names both the bait context directory under $env:TEMP and the local image
-    the solve produces (docker.io/local/kataglyphis:diag-<Tag>-<nonce>), so
-    concurrent probes cannot collide and a stray image says which probe left it.
+    Names the bait context dir and the image (diag-<Tag>-<nonce>), so concurrent probes cannot collide.
 .PARAMETER PassThru
-    Emit the buildctl process object. Callers that only need the side effect
-    omit it; Find-LsmEventHolder reports its pid.
+    Emit the buildctl process object.
 .OUTPUTS
     [System.Diagnostics.Process] with -PassThru; nothing otherwise.
 #>
@@ -107,16 +88,11 @@ RUN echo bait-$NONCE > C:bait.txt
 .SYNOPSIS
     Waits for a wininit.exe that was not in the baseline -- i.e. a new silo.
 .DESCRIPTION
-    Returns the new process, or $null on timeout. Deliberately does NOT throw:
-    each probe reacts differently to a missed window (Get-HostLsm warns and
-    takes a second idle sample; the rest throw with their own retry advice), and
-    that message is the useful half of the failure.
+    $null on timeout rather than a throw: each probe reacts to a missed window with its own advice.
 .PARAMETER BaselinePid
-    Ids captured BEFORE the container was started:
-    @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
+    wininit.exe process ids captured BEFORE the container was started.
 .PARAMETER TimeoutSec
-    How long to wait. 900 s when watching for somebody else's build; shorter
-    when the probe started its own bait and knows roughly when it lands.
+    How long to wait; shorter when the probe started its own bait.
 .PARAMETER PollSec
     Interval between samples.
 .OUTPUTS
@@ -142,18 +118,8 @@ function Wait-ForNewSilo {
 .SYNOPSIS
     The silo's svchost processes, oldest first.
 .DESCRIPTION
-    Win32_Process.ExecutablePath and .CommandLine are EMPTY for silo processes
-    even when elevated (measured 2026-09-01/02), so the process TREE is the only
-    thing that identifies a silo. This descends wininit.exe -> its services.exe
-    -> their svchost.exe, polling while the silo boots because each level
-    appears some seconds after the one above it.
-
-    Sorted by CreationDate because the EARLIEST svchosts are the interesting
-    ones: one of them hosts DcomLaunch and with it LSM. Callers take as many as
-    they want; the count is a call-site decision, not a parameter here.
-
-    Throws when the services.exe descent itself never lands; an empty array
-    otherwise means the silo got no svchost, which is the caller's finding.
+    Silo processes have empty paths even elevated, so it walks the tree wininit -> services -> svchost while the silo boots.
+    Oldest first, as one early svchost hosts DcomLaunch and LSM; throws only when services.exe never appears.
 .PARAMETER ServicesParentPid
     Pid of the silo's wininit.exe -- the parent of its services.exe.
 .PARAMETER TimeoutSec

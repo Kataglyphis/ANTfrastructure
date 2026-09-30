@@ -59,8 +59,7 @@ function Test-OrtWebGpuOutcome {
     return ($Outcome -in @('webgpu', 'created')) -or $Outcome.Contains('Failed to get a WebGPU adapter')
 }
 
-# One JSON line. argv[1] == "webgpu" adds the session, GenAI and DXC-load probes. Python's
-# InferenceSession falls back to CPU and PRINTS the EP error, so stdout is captured around it.
+# InferenceSession falls back to CPU and only prints the EP error, so the probe captures stdout around it.
 function Get-OrtWebGpuProbeSource {
     return @'
 import contextlib, ctypes, hashlib, io, json, os, re, sys, tempfile

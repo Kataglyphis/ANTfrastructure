@@ -1,7 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Sync-UvChainOnnxRuntime: inside our images a synced venv ends on the chain ORT wheels or throws; outside only a notice.
 # NOT covered: a real interpreter or census run (seams; test-uv-chain-ort.sh runs both on Linux), real uv.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsUv.Common.psm1') -Force -DisableNameChecking
@@ -22,8 +21,7 @@ function script:New-ChainOrtFixture {
     return [pscustomobject]@{ Venv = $venv; Store = $store }
 }
 
-# Runs the reconcile with scripted census answers; returns what uv was asked, what was logged, and UV_NO_SYNC.
-# -ViaSync goes through Sync-UvProjectDependencies instead, with the REAL interpreter runner.
+# -ViaSync goes through Sync-UvProjectDependencies instead, with the real interpreter runner.
 function script:Invoke-ChainOrtCase {
     param(
         [Parameter(Mandatory)][pscustomobject]$Fixture,
@@ -95,8 +93,7 @@ Describe 'WindowsUv.Common: where the ORT census is, in the hub checkout and in 
         Assert-True (Test-Path -LiteralPath $want -PathType Leaf) 'and it exists'
     }
 
-    # The image sets PYTHON_WHEELS image-wide, so its module copy runs the census on every sync: a fresh pwsh imports
-    # that copy from the layout windows/Dockerfile builds, and the census it hands the interpreter must be the COPYed one.
+    # PYTHON_WHEELS is image-wide, so the image's module copy runs the census on every sync and must find the COPYed one.
     It 'the image copy of the module runs the census windows/Dockerfile COPYs beside its modules dir' {
         Invoke-InTestDir { param($d)
             $modules = Get-ImageCopyDest -Source 'windows\scripts\modules' -Root $d
@@ -156,8 +153,7 @@ Describe 'WindowsUv.Common: Sync-UvChainOnnxRuntime, and Sync-UvProjectDependenc
         }
     }
 
-    # Each check failing alone. After uv (2 calls): the census (bytes), the import (a DLL the venv lacks). Before uv
-    # (0 calls): wheels the venv's ABI tag cannot load (abi3 fits any), an ORT import package no distribution owns.
+    # Each check failing alone: census and import run after uv's 2 calls, the ABI and ownership checks before any.
     foreach ($failure in @(
             @{ Name = 'the census still finds a non-chain dist after uv ran'; Case = @{ CheckExit = 1 }; Uv = 2; Want = 'still carries a non-chain ONNX Runtime:\n.*onnxruntime-directml 1\.24\.4' },
             @{ Name = 'the proven chain onnxruntime does not import'; Case = @{ ImportExit = 1 }; Uv = 2; Want = 'does not import in .*\n3\.13\.15\nImportError: DLL load failed' },

@@ -9,9 +9,7 @@ source "${SCRIPT_DIR}/lib/common.sh"
 parse_common_args "$@"
 detect_jobs
 
-# ----------------------------
-# Clone repo and submodules
-# ----------------------------
+# ONNX Runtime source
 if [ ! -d "${ORT_SRC_DIR}" ]; then
   info "Cloning ONNX Runtime ${ORT_VERSION} into ${ORT_SRC_DIR}"
   retry 3 10 "ONNX Runtime git clone" git clone --branch "${ORT_VERSION}" --depth 1 "${ORT_REPO}" "${ORT_SRC_DIR}"
@@ -22,9 +20,7 @@ cd "${ORT_SRC_DIR}"
 retry 3 10 "ONNX Runtime submodule sync" git submodule sync --recursive || true
 retry 3 10 "ONNX Runtime submodule update" git submodule update --init --recursive
 
-# ----------------------------
-# Clone GenAI repo if enabled
-# ----------------------------
+# GenAI source
 if [[ "${BUILD_GENAI}" == "true" ]]; then
   if [ ! -d "${GENAI_SRC_DIR}" ]; then
     info "Cloning ONNX Runtime GenAI ${GENAI_VERSION} into ${GENAI_SRC_DIR}"
@@ -39,9 +35,7 @@ if [[ "${BUILD_GENAI}" == "true" ]]; then
   cd "${ORT_SRC_DIR}"
 fi
 
-# ----------------------------
-# Python env (uv venv) to avoid PEP 668 issues
-# ----------------------------
+# Python requirements go into the uv venv because the system Python is PEP 668 managed
 if [ "${USE_UV_VENV}" = "true" ]; then
   require_cmd uv
 
@@ -55,9 +49,7 @@ if [ "${USE_UV_VENV}" = "true" ]; then
   fi
 fi
 
-# ----------------------------
-# Setup emsdk (if present in repo)
-# ----------------------------
+# emsdk
 if command -v build_arch_oci >/dev/null 2>&1 && [ "$(build_arch_oci)" != "amd64" ]; then
   info "Skipping emsdk setup on non-amd64 build host"
   info "Fetch step complete (ORT_VERSION=${ORT_VERSION})"

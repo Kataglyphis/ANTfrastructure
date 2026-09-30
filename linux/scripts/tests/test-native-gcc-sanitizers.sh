@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# The Canadian native GCC (host == target) builds, installs and ships libsanitizer; the swap
-# and the wrapper smoke refuse an image without it; the runtime battery RUNs a sanitized
-# binary only natively. build-gcc.sh is top-level, so its regions run with make stubbed.
-# NOT covered: whether libsanitizer builds in a Canadian cross, or a sanitized binary really
-# runs -- only a Linux chain run shows that. docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
+# make is stubbed, so a real libsanitizer build is not covered; see docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -46,8 +42,7 @@ t_assert_eq "" "$(_extra_for "" aarch64-linux-gnu)" "a plain cross compiler is n
 t_assert_eq "" "$(_extra_for x86_64-linux-gnu aarch64-linux-gnu)" "a Canadian with host != target"
 t_assert_eq "" "$(_extra_for "" "")" "the full make already builds it"
 
-# Both regions -- the make block, and install through finish_libtool_dirs -- run under the
-# script's own IFS with make stubbed to print its targets, so an empty word shows as [].
+# Both regions run under the script's own IFS with make printing its targets, so an empty word shows as [].
 printf '%s\n' "${_canadian}" > "${_work}/regions.sh"
 awk '/^_gcc_extra_target_libs\(\) \{$/{p=1} p{print} p && /^fi$/{exit}' "${BUILD_GCC}" >> "${_work}/regions.sh"
 awk '/^echo "Installing to /{p=1} p{print} p && /^finish_libtool_dirs$/{exit}' "${BUILD_GCC}" >> "${_work}/regions.sh"
@@ -181,8 +176,7 @@ _tree "${_P}" aarch64-linux-gnu lib64 183
 _out="$(_swap_main arm64 amd64)"
 t_assert_eq "1" "$(_rc_of "${_out}")" "the arm64 image's cc ships without libasan: the defect itself"
 
-# ── A modelled GCC for both smokes: its "link" writes a script whose NEEDED lines readelf prints
-# STUB_NO_SAN_HEADER/_LIBS are the defect's halves; STUB_AS_NEEDED keeps libubsan only for a UBSan call.
+# A modelled GCC whose link writes NEEDED lines for readelf; STUB_* knobs switch on each half of the defect.
 _STUB="${_work}/bin"
 mkdir -p "${_STUB}" "${_work}/bt"
 cat > "${_STUB}/g++" <<'EOF'
@@ -261,9 +255,7 @@ else
   echo "  SKIP real-toolchain case: this host's g++ cannot link -fsanitize=address,undefined (not counted)"
 fi
 
-# ── smoke-runtime-image.sh: the battery's sanitizer case ────────────────────
-# Here, not in test-runtime-image-gates.sh: that suite is red on a Windows host, where
-# neither a mutation proof nor the hook could run against it.
+# The battery's sanitizer case lives here: test-runtime-image-gates.sh is red on a Windows host.
 _bat_fn="$(t_fn_src "${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh" check_native_compiler_battery)" || exit 1
 _battery() {  # <target-arch> <host-arch> [VAR=val...] -> its report, the bash -lc body RUN on the modelled GCC
   local target="$1" host="$2"; shift 2

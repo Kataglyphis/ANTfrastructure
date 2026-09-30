@@ -1,40 +1,5 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# probe-sccache.sh — does sccache actually work for THIS chain's compilers?
-#
-# WHY THIS EXISTS (2026-08-26, the ccache->sccache switch)
-# -------------------------------------------------------
-# ccache and sccache differ in a way that matters more than hit rate: on a
-# compiler it cannot identify, sccache does NOT fall through to running it.
-# server.rs returns UnsupportedCompiler and the client turns that into
-# `bail!("Compiler not supported")` — a non-zero exit, i.e. a BUILD BREAK.
-# ccache in the same position simply execs the compiler.
-#
-# This chain feeds a compiler launcher several shapes that are not a plain
-# /usr/bin/gcc:
-#   * triplet-prefixed cross compilers      (aarch64-linux-gnu-gcc)
-#   * generated bash wrapper scripts        (cross-gcc.sh writes them)
-#   * a compiler reached through -B         (llvm-cross.sh)
-# The -B case is an OPEN upstream bug (mozilla/sccache#1102, since 2022):
-# detection runs `<compiler> -E` without -B, so the compiler cannot find cc1.
-#
-# Discovering that at hour 9 of a three-lane from-base rebuild is the expensive
-# way to find out. This probe costs seconds and answers it up front.
-#
-# It checks TWO things per compiler, because either alone is misleading:
-#   1. the compile SUCCEEDS through sccache (no UnsupportedCompiler bail), and
-#   2. sccache actually CACHED it — a compile that silently falls back to
-#      "non-cacheable" passes check 1 while caching nothing, which is exactly
-#      the silent-cache-loss failure this migration risks.
-#
-# USAGE
-#   bash linux/scripts/02-toolchain/probe-sccache.sh              # probe what is present
-#   bash .../probe-sccache.sh gcc aarch64-linux-gnu-gcc           # probe specific ones
-#   PROBE_STRICT=1 bash .../probe-sccache.sh                      # non-zero exit on any failure
-#
-# Exit: 0 = every probed compiler is usable and caching (or PROBE_STRICT unset),
-#       1 = at least one compiler failed and PROBE_STRICT=1.
-# ==============================================================================
+# sccache fails on a compiler it cannot identify, so check each compiles and caches; PROBE_STRICT=1 exits 1.
 set -uo pipefail
 
 STRICT="${PROBE_STRICT:-0}"
@@ -99,7 +64,7 @@ probe_one() {
   return 0
 }
 
-# ── which compilers to probe ─────────────────────────────────────────────────
+# Compilers to probe
 declare -a CCS=()
 if [ "$#" -gt 0 ]; then
   CCS=("$@")
@@ -122,14 +87,7 @@ for cc in "${CCS[@]}"; do
   probe_one "${cc}"
 done
 
-# The -B shape, which is the one with the open upstream bug. Only meaningful
-# when a staged toolchain dir exists to point at.
-# The -B directories in THIS chain live under /opt, not /usr/local. The first
-# version of this loop globbed only /usr/local/gcc-*/bin and therefore never
-# fired -- a guard that cannot run, which is the exact class this repo keeps
-# getting bitten by. Verified 2026-08-26 against the real toolchain image:
-# /opt/gcc-16.2.0/bin, /opt/gcc-16.2.0-native-arm64/bin,
-# /opt/gcc-16.2.0-native-riscv64/bin.
+# The -B shape hits mozilla/sccache#1102; this chain's -B dirs live under /opt, not /usr/local.
 for bdir in /opt/gcc-*/bin /usr/local/llvm-target/bin /usr/local/gcc-*/bin; do
   if [ -d "${bdir}" ] && command -v gcc >/dev/null 2>&1; then
     say "probing the -B shape (mozilla/sccache#1102): ${bdir}"

@@ -1,14 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Covers the pure parts of WindowsSlang.Common: the WGSL varying-location
-# validator that stops a broken combined emit from being copied, the
-# minSlangcVersionForWgsl floor comparison, the -I expansion and slangc
-# resolution. Compiling shaders needs a real slangc and is not exercised here.
-#
-# The bash twin (linux/scripts/lib/slang-compile.sh) implements the same rules;
-# when one side changes, change both.
+# The bash twin linux/scripts/lib/slang-compile.sh implements the same rules; change both together.
 
 Describe 'WindowsSlang.Common' {
   BeforeAll {
@@ -17,8 +10,7 @@ Describe 'WindowsSlang.Common' {
 
     $script:root = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('slang-' + (Get-Random))) -Force).FullName
 
-    # An IO struct (it has @builtin/@location members) with one member carrying
-    # neither - exactly what slangc < 2026.8 emitted in combined mode.
+    # An IO struct with one member lacking @builtin and @location, as slangc < 2026.8 emitted in combined mode.
     $script:badWgsl = Join-Path $script:root 'bad.wgsl'
     Set-Content -Path $script:badWgsl -Encoding utf8 -Value @(
       'struct VertexOut'

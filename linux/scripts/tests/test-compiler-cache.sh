@@ -1,27 +1,12 @@
 #!/usr/bin/env bash
-# Tests for 01-core/compiler-cache.sh launcher resolution (backlog F2).
-#
-# WHY THIS SUITE EXISTS (2026-08-30)
-# ----------------------------------
-# F2 consolidated the launcher decision onto ONE resolver: setup_ccache and
-# setup_sccache now route through common.sh's compiler_cache_launcher() when
-# the 01-core framework is loaded, and fall back to an inline bootstrap when
-# it is not (the android preamble sources compiler-cache.sh standalone). The
-# two paths must agree -- a divergence means one caller silently caches
-# differently from the rest. These tests pin the agreement:
-#   * framework path: setup_ccache honors the resolver's verdict verbatim
-#   * bootstrap path: sccache + guarded launcher -> the guarded launcher
-#   * bootstrap path: dead server -> ccache, never an empty launcher
-#   * setup_sccache: a non-sccache resolver verdict keeps bare sccache
+# compiler-cache.sh (F2): the framework resolver and the standalone bootstrap must pick the same launcher.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
 CCSH="${TESTS_DIR}/../01-core/compiler-cache.sh"
 
-# Stub compiler binaries on a private PATH so `command -v` resolves them and
-# their --version/--start-server/--show-stats behave per-test. $1 = sccache
-# mode: ok | dead | absent. $2 = ccache mode: present | absent.
+# _mk_fakes <sccache: ok|dead|absent> <ccache: present|absent>: stub binaries first on PATH.
 _mk_fakes() {
   _fake_bin="${TMPDIR:-/tmp}/cc-test-bin.$$"
   rm -rf "${_fake_bin}"; mkdir -p "${_fake_bin}"
@@ -70,8 +55,7 @@ t_case "setup_ccache (framework path) falls back to ccache on a dead-server verd
 _out2="$(cat "${TMPDIR:-/tmp}/ccf_out2.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out2.$$"
 t_assert_eq "${_out2}" "ccache"
 
-# Bootstrap path: no compiler_cache_launcher (android preamble). The repo's own
-# guarded launcher sits next to compiler-cache.sh and must win over bare sccache.
+# Bootstrap path (android preamble): the guarded launcher beside compiler-cache.sh beats bare sccache.
 t_case "setup_ccache (bootstrap path) resolves the guarded launcher when sccache answers"
 (
   set -u
@@ -115,8 +99,7 @@ t_case "setup_ccache (bootstrap path) stays ccache when sccache is absent"
 _out5="$(cat "${TMPDIR:-/tmp}/ccf_out5.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out5.$$"
 t_assert_eq "${_out5}" "ccache"
 
-# setup_sccache: Rust has no ccache fallback, so a ccache verdict keeps the
-# sccache-class default rather than pointing RUSTC_WRAPPER at ccache.
+# Rust has no ccache fallback, so a ccache verdict keeps RUSTC_WRAPPER sccache-class.
 t_case "setup_sccache keeps RUSTC_WRAPPER sccache-class on a ccache verdict"
 (
   set -u
@@ -156,8 +139,7 @@ t_case "MUTATION: bootstrap path must NOT fall to bare sccache when the launcher
   # shellcheck disable=SC1090
   source "${CCSH}"
   _cc_info() { printf "[CACHE] %s\n" "$*" >&2; }
-  # Sabotage: make the guarded launcher un-findable; the resolver must then
-  # report bare sccache, NOT ccache (sccache is healthy).
+  # Sabotage: no guarded launcher, so a healthy sccache must yield bare sccache, not ccache.
   _resolve_compiler_cache_launcher() {
     command -v sccache >/dev/null 2>&1 || { printf '%s' ccache; return 0; }
     if sccache --show-stats >/dev/null 2>&1; then printf '%s' sccache; else printf '%s' ccache; fi
@@ -168,10 +150,7 @@ t_case "MUTATION: bootstrap path must NOT fall to bare sccache when the launcher
 _out8="$(cat "${TMPDIR:-/tmp}/ccf_out8.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out8.$$"
 t_assert_eq "${_out8}" "sccache"
 
-# The shipped runtime image's cache dirs (defect 1, 2026-09-04): Dockerfile.package
-# re-declares them because the rootfs-export context drops the parent image config,
-# so its ENV must equal the defaults THIS file owns and must never point into the
-# consumer's /workspace bind mount. docs/build-cache-tiers.md#the-shipped-images-cache-dirs
+# Dockerfile.package repeats the cache dirs, as the rootfs export drops the parent config. See docs/build-cache-tiers.md#the-shipped-images-cache-dirs
 PKG_DF="${TESTS_DIR}/../../Dockerfile.package"
 BASE_DF="${TESTS_DIR}/../../Dockerfile.base"
 
@@ -192,8 +171,7 @@ _lib_dirs="$(env -u CCACHE_DIR -u SCCACHE_DIR bash -c '
   source "$1" >/dev/null 2>&1; printf "%s %s" "${CCACHE_DIR}" "${SCCACHE_DIR}"' _ "${CCSH}")"
 t_assert_eq "$(_pkg_env_dirs CCACHE_DIR SCCACHE_DIR)" "${_lib_dirs}"
 
-# The caps and server knobs reach the shipped image only through Dockerfile.package's
-# own ENV (same rootfs handoff), so they must repeat Dockerfile.base's four values.
+# The caps and server knobs cross the same rootfs handoff, so they repeat Dockerfile.base's four.
 _cache_knobs=(CCACHE_MAXSIZE SCCACHE_CACHE_SIZE SCCACHE_IDLE_TIMEOUT SCCACHE_ERROR_LOG)
 t_case "Dockerfile.package's cache caps equal Dockerfile.base's"
 _base_knobs="$(_df_env "${BASE_DF}" "${_cache_knobs[@]}")"
@@ -203,10 +181,7 @@ t_assert_eq "$(_pkg_env_dirs "${_cache_knobs[@]}")" "${_base_knobs}"
 t_case "MUTATION: the shipped cache dirs must not sit in the consumer's /workspace"
 t_assert_eq "$(_pkg_env_dirs CCACHE_DIR SCCACHE_DIR | grep -c -e '/workspace' || true)" "0"
 
-# YB (2026-09-05): the server ADDRESS must reach the caller's environment, because
-# that is the environment ninja hands to every sccache client. Computing it inside
-# a $( ) substitution is what re-opened the cross-container-server bug on 2026-08-30.
-# docs/build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run
+# YB: ninja hands the caller's environment to every client. See docs/build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run
 _expected_uds="/tmp/sccache-$(id -u).sock"
 
 t_case "setup_ccache exports the server address to its CALLER"
@@ -272,11 +247,7 @@ _uds4="$(cat "${TMPDIR:-/tmp}/ccf_uds4.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_uds4.$$
 t_assert_eq "${_uds4}" "UNSET|24226"
 
 
-# ── the server address has to be READABLE in the run log (YB) ───────────────
-# Both setters establish the address; neither ever PRINTED it. sccache-launcher.sh's
-# [server=] field appears only when sccache FAILS, so on the chain where the YB fix
-# works there would have been nothing to grep — the verdict and its only evidence
-# cancelling each other out.
+# ── the address must be readable in the log (YB): the launcher prints it only on failure ──
 t_case "ensure_sccache_env's setup line NAMES the address it just exported"
 _addr_out="$(
   # shellcheck disable=SC1090
@@ -298,10 +269,7 @@ t_assert_contains "$(cat "${CCSH}")" '[server=${SCCACHE_SERVER_UDS:-tcp:${SCCACH
   "the media-side setter must carry the identical field"
 
 t_case "the stats dump reads sccache's REAL two-line shape, not the first match"
-# sccache prints "Compile requests" AND "Compile requests executed" (and "Cache
-# hits (C/C++)" beside "Cache hits"). The unanchored sed took the second line
-# too, put "executed<TAB>559" in the counter, and every media build ended with
-# "[: 559\nexecuted: integer expected" on stderr.
+# sccache prints "Compile requests" and "Compile requests executed"; an unanchored sed reads both.
 _SC_BIN="$(mktemp -d)"
 cat > "${_SC_BIN}/sccache" <<'STATS'
 #!/usr/bin/env bash

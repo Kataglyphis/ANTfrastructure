@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# linux/jetson-webcam: run.sh refuses a missing prerequisite by name, passes the
-# three Jetson GPU flags, and app.py cannot stream on after inference died.
-# Does NOT cover: the camera, the GPU, the model, or whether the CUDA graph is
-# actually replayed -- those are the README's measured run.
+# linux/jetson-webcam read statically; the camera, GPU, model and graph replay are the README's measured run.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

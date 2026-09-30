@@ -3,44 +3,20 @@
 
 #requires -Version 7.0
 
-# WindowsBuildSweep.Common - run several builds in one session and report one
-# aggregate result.
-#
-# Lifted out of a consumer repo (BeschleunigerBallett,
-# scripts/Test-AllConfigs.ps1) on 2026-08-07. Everything here is the harness;
-# WHICH builds to run - configuration names, CMake presets, image tags, build
-# directories - stays in the consuming script, which is the only part that knows
-# about a particular project.
-#
-# The two things every such sweep re-implements and gets subtly wrong:
-#
-#   1. Failure aggregation. A step can fail by THROWING or by leaving a non-zero
-#      $LASTEXITCODE, and a sweep that only checks one of them reports green over
-#      a broken build. Invoke-SweepStep treats both as failure and never lets one
-#      failing step abort the remaining ones - the point of a sweep is to learn
-#      about every configuration in one pass, not just the first broken one.
-#
-#   2. "Can this host run Linux containers?" Answering it by inspecting the
-#      Docker context, the OS, or whether `docker` is on PATH all give wrong
-#      answers on at least one of Rancher Desktop / Docker Desktop in Linux mode
-#      / Docker Desktop in Windows mode. Actually running a trivial Linux
-#      container is the only check that cannot lie.
+# Build-sweep harness only; which builds to run stays in the consuming script.
 
 Set-StrictMode -Version Latest
 
 function Invoke-SweepStep {
   <#
     .SYNOPSIS
-      Runs one step of a build sweep and returns a structured result instead of
-      throwing.
+      Runs one sweep step and returns a result instead of throwing, so one failure never aborts the rest.
     .PARAMETER Name
       Human-readable step name, used in the progress and summary output.
     .PARAMETER Action
-      Scriptblock performing the build. Failure is either a thrown exception or
-      a non-zero $LASTEXITCODE left by a native command.
+      The build; a thrown exception or a non-zero $LASTEXITCODE both count as failure.
     .PARAMETER Skip
-      Report the step as skipped without running it. A skipped step is NOT a
-      failure and does not contribute to the aggregate exit code.
+      Report the step as skipped without running it; not a failure.
     .PARAMETER SkipReason
       Shown next to a skipped step so the log says why coverage is missing.
     .OUTPUTS
@@ -61,8 +37,7 @@ function Invoke-SweepStep {
     return [pscustomobject]@{ Name = $Name; Ok = $true; Skipped = $true; ExitCode = 0; Message = $SkipReason }
   }
 
-  # Cleared so a stale code from an earlier native command in this session
-  # cannot be misread as this step's result.
+  # Cleared so an earlier native command's code cannot be misread as this step's.
   $global:LASTEXITCODE = 0
   try {
     & $Action
@@ -76,8 +51,7 @@ function Invoke-SweepStep {
     Write-Host "$Name PASSED." -ForegroundColor Green
     return [pscustomobject]@{ Name = $Name; Ok = $true; Skipped = $false; ExitCode = 0; Message = '' }
   } catch {
-    # Caught, never rethrown: one broken configuration must not cost the sweep
-    # the results of every configuration after it.
+    # Never rethrown: one broken configuration must not cost the results after it.
     Write-Host "$Name threw: $_" -ForegroundColor Red
     return [pscustomobject]@{ Name = $Name; Ok = $false; Skipped = $false; ExitCode = 1; Message = "$_" }
   }
@@ -88,10 +62,7 @@ function Test-LinuxContainerSupport {
     .SYNOPSIS
       Returns $true when this host can actually run a Linux container.
     .DESCRIPTION
-      Runs a trivial Linux image and checks it printed what it was told to.
-      Works with Rancher Desktop, Docker Desktop in Linux mode, or any docker
-      that can run linux/amd64 - and correctly says $false for Docker Desktop
-      switched to Windows containers, which every static check gets wrong.
+      Runs a trivial Linux image: every static check misjudges some Rancher/Docker Desktop mode.
     .PARAMETER Image
       Probe image. Must be tiny and must exist for linux/amd64.
   #>
@@ -118,28 +89,15 @@ function Invoke-InLinuxContainerBuild {
     .PARAMETER Image
       Fully qualified image reference to run.
     .PARAMETER Command
-      Bash command executed inside the container. Run with `set -e` prepended so
-      a failing line fails the step instead of being swallowed by the last
-      command's status.
+      Bash command run with `set -e` prepended, so a failing line fails the step.
     .PARAMETER Engine
-      docker (default) or nerdctl. -DockerExe still wins when given: a caller
-      that already resolved a full path keeps it. Rancher Desktop's nerdctl is
-      the local Linux engine on this family's Windows box, and every consumer
-      that wanted it had re-implemented the whole run instead.
+      docker (default) or nerdctl; an explicit -DockerExe still wins.
     .PARAMETER Platform
-      Overrides linux/amd64. An arm64 run needs binfmt registered per VM boot --
-      docs/rancher-desktop-linux-containers.md says how, and what does not work
-      under emulation.
+      Overrides linux/amd64; arm64 needs binfmt per VM boot (docs/rancher-desktop-linux-containers.md).
     .PARAMETER Name / -KeepContainer
-      Name the container, and keep it after it exits, so a failed run can be
-      inspected instead of re-run with the flags changed.
+      Name the container and keep it after exit, so a failed run can be inspected.
     .PARAMETER NamedVolumes
-      'volume-name:/mount/path' entries. Created if absent and chowned to uid
-      1001 (the image's user) through a throwaway alpine run, because a fresh
-      volume is root-owned and every write from the build user then fails. The
-      LONG --mount form is used deliberately: Windows nerdctl reads
-      `-v name:/path` as a BIND of ./name and silently mounts a directory
-      instead of the volume.
+      'volume-name:/mount/path' entries, chowned to uid 1001; long --mount form, as Windows nerdctl binds `-v name:/path`.
     .PARAMETER EnvFile
       Passed through as --env-file.
   #>
@@ -161,8 +119,7 @@ function Invoke-InLinuxContainerBuild {
 
   foreach ($spec in $NamedVolumes) {
     $volume = $spec.Split(':')[0]
-    # `volume create` is idempotent, so no exists-check to get wrong; the chown
-    # is not, but it is cheap and correct to repeat.
+    # Both steps are safe to repeat, so no exists-check to get wrong.
     & $exe volume create $volume | Out-Null
     & $exe run --rm --user root --mount "type=volume,source=$volume,target=/v" `
       alpine:3.20 chown -R 1001:1001 /v | Out-Null
@@ -188,9 +145,7 @@ function Write-SweepSummary {
     .SYNOPSIS
       Prints the per-step summary and returns the aggregate exit code.
     .DESCRIPTION
-      Returns the FIRST non-zero exit code seen, so the caller's `exit` carries a
-      real build's code rather than a synthesised 1. Zero means every non-skipped
-      step passed.
+      The first non-zero exit code, so the caller exits with a real build's code; 0 when every run step passed.
   #>
   param(
     [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]]$Result
@@ -214,10 +169,7 @@ function Write-SweepSummary {
     return 0
   }
 
-  # Bound to a variable first: under Set-StrictMode -Version Latest, reading
-  # .ExitCode straight off a Select-Object that matched nothing throws
-  # "property cannot be found on this object" - which is exactly the case where
-  # every failure was a thrown exception rather than a native exit code.
+  # Bound first: under StrictMode .ExitCode on an empty Select-Object throws, the all-thrown case.
   $firstCoded = @($failed | Where-Object { $_.ExitCode -ne 0 }) | Select-Object -First 1
   $aggregate = if ($firstCoded) { $firstCoded.ExitCode } else { 1 }
   Write-Host "=== $($failed.Count) BUILD(S) FAILED (aggregate exit code $aggregate) ===" -ForegroundColor Red

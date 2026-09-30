@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# The ORT census (06-packaging/check-ort-provenance.sh + ort_census_probe.py): one verdict per case, the
-# pure verdicts driven by recorded facts, the probe by synthetic ELF trees, and the smoke wiring.
-# NOT covered here: a real image (the smoke runs it) or a real ORT build (fingerprints are typed in).
-# docs/cross-build-verification.md#e-ort-single-source
+# The ORT census over recorded facts and synthetic ELF trees, not a real image; see docs/cross-build-verification.md#e-ort-single-source
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -132,8 +129,7 @@ t_assert_contains "$(_v "$(_base; _done)" 0 'no-colons')" "EXEMPT-STALE	no-colon
 # ---- the probe, over synthetic ELF trees ------------------------------------------------------------
 PROBE="$(_ort_host_dir "${PKG}")/ort_census_probe.py"
 _probe() { MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "${PY}" "${PROBE}" "$@"; }
-# _elf <path> <needed,csv> <runpath> <text>... : an x86-64 ELF .so with a dynamic section and strings.
-# ORT_TEST_SYM=<gnu|sysv>:<shndx> adds OrtGetApiBase to its dynamic symbols behind that hash table (shndx 0 = an import).
+# _elf <path> <needed,csv> <runpath> <text>...: an x86-64 .so; ORT_TEST_SYM=<gnu|sysv>:<shndx> adds OrtGetApiBase.
 _elf() {
   mkdir -p "$(dirname "$1")"
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "${PY}" - "$(_ort_host_dir "$(dirname "$1")")/$(basename "$1")" "${@:2}" <<'PY'

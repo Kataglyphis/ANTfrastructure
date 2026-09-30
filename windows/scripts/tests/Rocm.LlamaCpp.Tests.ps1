@@ -1,7 +1,5 @@
 #requires -Version 7.0
-# llama.cpp HIP + Vulkan on the rocm lane (Install-LlamaCpp.ps1, rocm-checks\LlamaCpp.ps1, Dockerfile.rocm-llama):
-# lane gate, pins, install with downloads stubbed, zip layout, manifest, PE walk, offload targets, HIP runtime,
-# Vulkan loader resolution and load probe, PATH rule, --version, wiring, deps.json rows. NOT covered: real downloads, a real zip.
+# llama.cpp HIP + Vulkan on the rocm lane with downloads stubbed: gate, pins, layout, PE walk, loaders and wiring.
 
 $script:LlamaInstall = 'windows\scripts\build\Install-LlamaCpp.ps1'
 $script:LlamaCheck = 'windows\scripts\build\rocm-checks\LlamaCpp.ps1'

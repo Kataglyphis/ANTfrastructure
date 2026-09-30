@@ -1,18 +1,5 @@
 #requires -Version 7.0
-# Backlog #40: the scripted resume (-ResumeStage) NEVER worked. Its retry
-# blocks use .GetNewClosure(), which snapshots the LOCAL scope only — but
-# $Docker / $MediaCoreCpus / $MediaMemoryGb / $ResumeStage are script-level
-# param() variables, so inside the blocks they resolved to EMPTY and the run
-# degraded to `[] run --isolation hyperv --cpu-count  --memory "g" ...`, dying
-# with a PowerShell PARSER error that pointed nowhere.
-#
-# The identical fix ($dockerExe = $Docker, etc.) had been on the sibling
-# Invoke-RunCommitStage since 2026-07 and carried an explanatory comment — the
-# resume path simply never got it, and NOTHING tested this file's closures.
-#
-# So this suite does not test the one bug; it tests the CLASS. Any
-# .GetNewClosure() block anywhere in either driver that reads a top-level
-# param() variable is a latent copy of the same defect, and fails here.
+# .GetNewClosure() snapshots only the local scope, so a closure in a function sees script-level param() variables empty.
 
 
 Describe 'driver .GetNewClosure() blocks never read script-scope param() vars' {
@@ -21,8 +8,7 @@ Describe 'driver .GetNewClosure() blocks never read script-scope param() vars' {
 
     function Get-ScriptParamNames {
         param([System.Management.Automation.Language.ScriptBlockAst]$Ast)
-        # The top-level param() block only — NOT function parameters, which are
-        # locals of their function and therefore captured correctly.
+        # Top-level param() only: function parameters are locals and captured correctly.
         if (-not $Ast.ParamBlock) { return @() }
         return @($Ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
     }
@@ -40,18 +26,12 @@ Describe 'driver .GetNewClosure() blocks never read script-scope param() vars' {
                 $n.Expression -is [System.Management.Automation.Language.ScriptBlockExpressionAst]
             }, $true)
         foreach ($call in $closureCalls) {
-            # The defect only exists INSIDE a function. At script top level the
-            # param() variables ARE locals of the script scope, so a closure
-            # there captures them correctly — flagging those would be a false
-            # positive, and a test that cries wolf gets muted.
+            # At script top level param() variables are locals, so flagging them would be a false positive.
             $fn = $call.Parent
             while ($fn -and $fn -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) { $fn = $fn.Parent }
             if (-not $fn) { continue }
 
-            # Locals of the enclosing function: its parameters, plus everything
-            # assigned anywhere in its body. An assignment like
-            # `$isolation = $script:BuildIsolation` SHADOWS a same-named script
-            # param (PowerShell names are case-insensitive) and is captured fine.
+            # A same-named local assignment (names are case-insensitive) shadows the script param and is captured fine.
             $locals = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
             if ($fn.Body.ParamBlock) {
                 foreach ($p in $fn.Body.ParamBlock.Parameters) { [void]$locals.Add($p.Name.VariablePath.UserPath) }
@@ -83,12 +63,10 @@ Describe 'driver .GetNewClosure() blocks never read script-scope param() vars' {
                 }
             }
         }
-        # Comma-wrap: an empty array unrolls to $null on return, and the callers
-        # need .Count.
+        # Comma-wrap: an empty array unrolls to $null on return, and callers need .Count.
         return , $violations
     }
 
-    # The #40 defect was found in build.ps1 (deleted 2026-08-31); the rule outlived it.
     It 'Build-Buildkit.ps1 has no closure reading a script param (the #40 defect)' {
         $bad = Get-ClosureViolation -Path (Join-Path $windowsDir 'Build-Buildkit.ps1')
         $detail = ($bad | ForEach-Object { "`$$($_.Variable) at line $($_.Line)" }) -join '; '
@@ -96,8 +74,7 @@ Describe 'driver .GetNewClosure() blocks never read script-scope param() vars' {
     }
 
     It 'still detects the defect when it is reintroduced (the test is not vacuous)' {
-        # A tautological guard would pass on a file with no closures at all.
-        # Prove the detector fires on the exact shape backlog #40 described.
+        # Prove the detector fires, or a file with no closures would pass tautologically.
         $tmp = Join-Path ([IO.Path]::GetTempPath()) ("closure-probe-" + [guid]::NewGuid().ToString('N') + '.ps1')
         @'
 param([string]$Docker, [int]$MediaCoreCpus)

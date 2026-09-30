@@ -7,23 +7,10 @@
 .SYNOPSIS
     Builds HailoRT for Windows (library + hailortcli) and installs it to a prefix.
 .DESCRIPTION
-    The Windows twin of linux/scripts/03-media/build/hailo/build-hailort.sh
-    (docs/hailo-support.md, #176-adjacent Phase 3): Hailo-10/15 family, v5.4.0,
-    built with clang-cl + Ninja from the SHA-pinned source tarball.
-
-    TAPPAS is Linux-only (GStreamer apps) and is NOT built here; pyhailort's
-    Windows wheel is a later phase. HAILO_BUILD_GSTREAMER stays OFF for the same
-    reason the Linux lane builds it ON: the Windows GStreamer binding exists
-    upstream but is a separate gate - do not flip it on without a device test.
-
-    OFFLINE EXTERNALS: upstream's FetchContent clones ten repositories at
-    configure time (unpinned). This script stages each at the SAME commits the
-    Linux lane pins (windows/scripts/... mirrors that table 1:1) plus protobuf
-    21.12 from its SHA-verified tarball, and configures with
-    HAILO_OFFLINE_COMPILATION=ON so nothing is fetched.
+    The Windows twin of build-hailort.sh (docs/hailo-support.md), without TAPPAS or the GStreamer
+    binding; FetchContent's externals are staged at the Linux lane's commits for an offline configure.
 .PARAMETER TargetArch
-    '' resolves WINDOWS_TARGET_ARCH; 'arm64' cross-builds with the image's
-    clang-cl target flag (the same flow as every other media branch).
+    '' resolves WINDOWS_TARGET_ARCH; 'arm64' cross-builds with clang-cl's target flag.
 #>
 param(
     [string]$SourceDir = 'C:\temp\hailort-src',
@@ -38,7 +25,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: shared assets sit beside this script in the FLAT container mount, one level up in the repo.
+# Shared assets sit beside this script in the flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
@@ -46,10 +33,7 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 $HailortVersion = Get-SourceBuildVersion -Value $HailortVersion -EnvironmentVariables @('HAILORT_VERSION') -DefaultValue '5.4.0'
 
-# FAIL LOUDLY on missing pins: Invoke-DownloadWithRetry treats an empty
-# -ExpectedSha256 as "no check", so a stale versions.env (the base image bakes a
-# copy at ITS build time) would silently download unverified sources. The Linux
-# script's `: "${HAILO_PROTOBUF_VERSION:?}"` guard exists for the same reason.
+# Fail on missing pins: an empty -ExpectedSha256 means "no check", so a stale versions.env would download unverified.
 $hailortSourceSha = Get-SourceBuildVersion -EnvironmentVariables @('HAILORT_SOURCE_SHA256')
 $protobufVersion = Get-SourceBuildVersion -EnvironmentVariables @('HAILO_PROTOBUF_VERSION')
 $protobufSha = Get-SourceBuildVersion -EnvironmentVariables @('HAILO_PROTOBUF_SHA256')
@@ -59,10 +43,7 @@ if (-not $protobufVersion -or -not $protobufSha) { throw 'HAILO_PROTOBUF_VERSION
 $targetArch = if ($TargetArch) { $TargetArch } else { Get-WindowsTargetArch }
 Write-Host "=== HailoRT source build ($HailortVersion, $targetArch, Ninja+clang-cl) ==="
 
-# --- source + offline externals -------------------------------------------------
-# Same commits as the Linux lane's HAILO_EXTERNALS table (docs/hailo-support.md).
-# Re-derive from hailort/cmake/external/*.cmake at a bump; a wrong commit fails
-# the checkout assertion below rather than silently building something else.
+# The Linux lane's HAILO_EXTERNALS commits; re-derive from hailort/cmake/external/*.cmake at a bump.
 $hailoExternals = @(
     @{ Name = 'cli11'; Url = 'https://github.com/hailo-ai/CLI11.git'; Commit = '242adfdb23957d30e3e56831e474020d0ac6c86c' },
     @{ Name = 'cpp-httplib'; Url = 'https://github.com/yhirose/cpp-httplib.git'; Commit = '51dee793fec2fa70239f5cf190e165b54803880f' },
@@ -77,10 +58,7 @@ $hailoExternals = @(
 )
 
 function Resolve-HailortSourceRoot {
-    # The tarball's single top-level dir (hailort-<version>) is the repo root - the
-    # one with CMakeLists.txt + hailort\. Test-Path first: Get-ChildItem on a
-    # missing path is an error even with -ErrorAction SilentlyContinue under
-    # EAP=Stop, and on the first run the scratch dir does not exist yet.
+    # Test-Path first: under EAP=Stop, Get-ChildItem on a missing path errors despite SilentlyContinue.
     param([Parameter(Mandatory)][string]$Root)
     if (-not (Test-Path -LiteralPath $Root)) { return $null }
     $hit = Get-ChildItem -LiteralPath $Root -Directory -ErrorAction SilentlyContinue |
@@ -97,7 +75,6 @@ if (-not $sourceRoot) {
     Invoke-DownloadWithRetry -Url "https://github.com/hailo-ai/hailort/archive/refs/tags/v$HailortVersion.tar.gz" `
         -DestinationPath $tarball -Description "HailoRT $HailortVersion source" -ExpectSignature '' `
         -ExpectedSha256 $hailortSourceSha
-    # Expand-SourceTarball extracts AND returns the tarball's single top-level dir.
     $extracted = Expand-SourceTarball -Archive $tarball -Destination $SourceDir
     Remove-Item $tarball -Force -ErrorAction SilentlyContinue
     Write-Host "HailoRT source at $extracted"
@@ -105,9 +82,7 @@ if (-not $sourceRoot) {
 }
 if (-not $sourceRoot) { throw "HailoRT source tree (hailort\CMakeLists.txt) not found under $SourceDir" }
 
-# One owner for the patch-with-inline-fallback shape (repo Source Patch Policy):
-# four call sites would otherwise repeat the same Invoke-SourcePatchWithFallback
-# skeleton, which the code-dupes gate counts as a copied block.
+# One owner for the four patch-with-fallback call sites, which the code-dupes gate would count as copies.
 function Invoke-HailortSourcePatch {
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -118,9 +93,7 @@ function Invoke-HailortSourcePatch {
         -FallbackNote $FallbackNote -Fallback $Fallback
 }
 
-# Upstream's bankers_round keys on _MSC_VER, which clang-cl defines on EVERY arch,
-# so the x86 intrinsics compile on ARM64 (undefined) and on a bare x64 clang-cl
-# without -msse4.1 (error: needs target feature sse4.1).
+# bankers_round keys its x86 intrinsics on _MSC_VER, which clang-cl defines on every arch.
 Invoke-HailortSourcePatch -Name '001-quantization-msvc-guard.patch' -FallbackNote 'falling back to an inline guard rewrite' -Fallback {
     Invoke-InlineRegexPatch -Path (Join-Path $sourceRoot 'hailort\libhailort\include\hailo\quantization.hpp') `
         -SkipIfMatch '!defined\(__clang__\)' `
@@ -130,8 +103,7 @@ Invoke-HailortSourcePatch -Name '001-quantization-msvc-guard.patch' -FallbackNot
         -WarnMessage 'quantization.hpp: the _MSC_VER guard was not found; the x86 intrinsics will fail on ARM64 or a bare x64 clang-cl. Verify the file.' | Out-Null
 }
 
-# clang-cl enforces `template<>` on an explicit specialization's member definitions
-# (MSVC accepts the bare form); upstream's Windows driver code has two of them.
+# clang-cl, unlike MSVC, requires `template<>` on an explicit specialization's member definitions.
 Invoke-HailortSourcePatch -Name '002-ioctl-nullptr-template-specialization.patch' -FallbackNote 'falling back to inline template<> insertion' -Fallback {
     $ioctl = Join-Path $sourceRoot 'hailort\libhailort\src\vdma\driver\os\windows\driver_os_specific.cpp'
     foreach ($member in @('to_compatible', 'from_compatible')) {
@@ -144,9 +116,7 @@ Invoke-HailortSourcePatch -Name '002-ioctl-nullptr-template-specialization.patch
     }
 }
 
-# Upstream's Windows filesystem.cpp is a stub that omits LockedFile's virtual
-# destructor while the header declares it -- hailortcli then fails to link with
-# `undefined symbol: hailort::LockedFile::~LockedFile` (lld-link).
+# The Windows filesystem.cpp omits the LockedFile destructor its header declares, so hailortcli does not link.
 Invoke-HailortSourcePatch -Name '003-windows-lockedfile-dtor.patch' -FallbackNote 'falling back to inline destructor insertion' -Fallback {
     $fs = Join-Path $sourceRoot 'hailort\common\os\windows\filesystem.cpp'
     Invoke-InlineRegexPatch -Path $fs `
@@ -157,9 +127,7 @@ Invoke-HailortSourcePatch -Name '003-windows-lockedfile-dtor.patch' -FallbackNot
         -WarnMessage 'filesystem.cpp: TempFile::~TempFile not found; the LockedFile destructor cannot be inserted and hailortcli will not link. Verify it.' | Out-Null
 }
 
-# Upstream defines _AMD64_=1 for ANY 64-bit Windows build, so an aarch64 cross
-# build makes winnt.h take the x86 intrinsic path (ReadAcquire8/WriteRelease
-# undeclared under clang-cl). The patch makes the macro follow the target arch.
+# Upstream defines _AMD64_=1 for any 64-bit build, sending an aarch64 winnt.h down the x86 intrinsic path.
 Invoke-HailortSourcePatch -Name '004-cmake-target-arch-macro.patch' -FallbackNote 'falling back to an inline arch-macro rewrite' -Fallback {
     $top = Join-Path $sourceRoot 'hailort\CMakeLists.txt'
     Invoke-InlineRegexPatch -Path $top `
@@ -171,9 +139,7 @@ Invoke-HailortSourcePatch -Name '004-cmake-target-arch-macro.patch' -FallbackNot
 }
 
 if (-not $SkipExternals) {
-    # protobuf: HailoRT's external cmake builds from the LITERAL
-    # <src>/hailort/external/protobuf-src path - FETCHCONTENT_SOURCE_DIR_* does
-    # not reach execute_process (same trap the Linux script documents).
+    # HailoRT builds protobuf from the literal external/protobuf-src path; FETCHCONTENT_SOURCE_DIR_* does not reach it.
     $protobufSrc = Join-Path $sourceRoot 'hailort\external\protobuf-src'
     if (-not (Test-Path (Join-Path $protobufSrc 'CMakeLists.txt'))) {
         Write-Host "Staging protobuf v$protobufVersion (SHA-verified)"
@@ -181,9 +147,7 @@ if (-not $SkipExternals) {
         Invoke-DownloadWithRetry -Url "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v$protobufVersion.tar.gz" `
             -DestinationPath $protobufTar -Description "protobuf $protobufVersion source" -ExpectSignature '' `
             -ExpectedSha256 $protobufSha
-        # --strip-components=1 equivalent: extract to scratch, then move the inner
-        # dir's contents into protobuf-src (7z, not tar: git's MSYS tar mangles
-        # Windows paths and died on this exact file).
+        # A --strip-components=1 via 7z, since git's MSYS tar mangles Windows paths.
         $extractRoot = Join-Path $env:TEMP "protobuf-$protobufVersion-extract"
         Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
         $inner = Expand-SourceTarball -Archive $protobufTar -Destination $extractRoot
@@ -196,9 +160,7 @@ if (-not $SkipExternals) {
         $dir = Join-Path $sourceRoot "hailort\external\$($ext.Name)-src"
         if ((Test-Path $dir) -and (Get-ChildItem $dir -ErrorAction SilentlyContinue | Select-Object -First 1)) { continue }
         Write-Host "Staging external $($ext.Name) @ $($ext.Commit.Substring(0, 10))"
-        # -Tag with a 40-char hex commit: Invoke-GitClone detects the hash, clones
-        # the default branch and fetches+checks out that commit (git clone --branch
-        # <hash> fails outright). It retries and wipes half-transferred clones.
+        # Invoke-GitClone fetches a 40-hex -Tag as a commit; git clone --branch <hash> would fail.
         Invoke-GitClone -RepoUrl $ext.Url -Tag $ext.Commit -SourceDir $dir | Out-Null
         $head = (& git -C $dir rev-parse HEAD).Trim()
         if ($head -ne $ext.Commit) { throw "external $($ext.Name) is $head, expected $($ext.Commit)" }
@@ -207,7 +169,7 @@ if (-not $SkipExternals) {
     }
 }
 
-# --- configure + build ----------------------------------------------------------
+# Configure and build
 $cmakeExtra = @(
     '-DHAILO_BUILD_TOOLS=OFF'
     '-DHAILO_BUILD_GSTREAMER=OFF'
@@ -216,13 +178,9 @@ $cmakeExtra = @(
     '-DHAILO_OFFLINE_COMPILATION=ON'
     "-DFETCHCONTENT_SOURCE_DIR_PROTOBUF=$((Join-Path $sourceRoot 'hailort\external\protobuf-src') -replace '\\', '/')"
 )
-# CMAKE_AR as a FULL :FILEPATH -- the shared owner (same reason as OpenCV/TVM):
-# a bare -DCMAKE_AR=llvm-lib gets absolutized to C:\llvm-lib and every static-lib
-# step dies. Here that surfaced as protobuf's libprotobuf-lite.lib link failing
-# with NO output at all (2026-09-21 probe).
+# A full :FILEPATH, or a bare llvm-lib becomes C:\llvm-lib and every static-lib step dies silently.
 $cmakeExtra += Get-LlvmArchiverCmakeArg
-# The nested FetchContent builds survive a top-level clean and a stale cache
-# from an earlier compiler poisons the configure (the Linux script's lesson).
+# Nested FetchContent builds survive a top-level clean, and a stale compiler cache poisons configure.
 Get-ChildItem (Join-Path $sourceRoot 'hailort\external') -Directory -Filter '*-build' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 Get-ChildItem (Join-Path $sourceRoot 'hailort\external') -Directory -Filter '*-install' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $BuildDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -232,18 +190,15 @@ Invoke-CmakeConfigure -SourceDir $sourceRoot -BuildDir $BuildDir -InstallPrefix 
 
 $jobs = Get-BuildJobCount
 Write-Host "Building HailoRT (jobs=$jobs)"
-# NOT piped to Out-Null: the helper streams ninja's output on the success stream,
-# so a pipe here would swallow the compiler errors a failed build needs.
+# Not piped to Out-Null: ninja's output, compiler errors included, is on the success stream.
 Invoke-NinjaBuildWithRetry -BuildDir $BuildDir -Install -InstallConfig $BuildType
 
-# --- verify ---------------------------------------------------------------------
-# The Windows install names the library libhailort.dll (the Linux lane's libhailort.so).
+# Verify
 $hailortDll = Get-ChildItem -Path $InstallDir -Filter 'libhailort.dll' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
 $hailortCli = Get-ChildItem -Path $InstallDir -Filter 'hailortcli.exe' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $hailortDll) { throw "libhailort.dll not found under $InstallDir after install" }
 if (-not $hailortCli) { throw "hailortcli.exe not found under $InstallDir after install" }
-# The payload must be the TARGET arch - the arch gate re-checks the whole image,
-# but a mismatch here names the component instead of the bundle.
+# The image-wide arch gate checks this too, but a mismatch here names the component.
 $expectedMachine = Get-PeMachineType -Arch $targetArch
 $actualMachine = Get-PeFileMachine -Path $hailortDll.FullName
 if ($actualMachine -ne $expectedMachine) {

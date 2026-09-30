@@ -10,16 +10,13 @@
     Default is NPU + GPU; -WithCpu and -WithHybrid are opt-in and not recommended.
 
 .PARAMETER Models
-    Hashtable of compute -> model id, e.g. @{ npu = 'qualcomm/Qwen3-4B-Instruct-2507:W4A16' }.
-    Overrides backends.json for the named lanes only.
+    Compute -> model id, e.g. @{ npu = 'qualcomm/Qwen3-4B-Instruct-2507:W4A16' }; overrides backends.json for those lanes.
 
 .PARAMETER Pull
     Run `geniex pull <model>` for any model the local store does not list.
 
 .PARAMETER BindAddress
-    The IPv4 address every lane listens on. Default 0.0.0.0, so WSL2 in NAT mode
-    reaches the lanes; 127.0.0.1 keeps them off the LAN and is enough for WSL2 in
-    mirrored mode and for the llm-stack gateway (linux/llm-stack/README.md § Gateway).
+    Listen address; 0.0.0.0 reaches WSL2 in NAT mode, 127.0.0.1 suffices for mirrored mode and the gateway.
 
 .EXAMPLE
     pwsh -File windows/scripts/host/Start-GeniexServers.ps1
@@ -49,20 +46,14 @@ param(
     [switch]$WithHybrid,
     [switch]$WithCpu,
     [switch]$Restart,
-    # Where each lane's stdout/stderr lands. Defaults under LOCALAPPDATA so WSL
-    # can read it back as /mnt/c/Users/<you>/AppData/Local/GenieX CLI/lane-logs.
+    # Each lane's stdout/stderr; under LOCALAPPDATA so WSL can read it back through /mnt/c.
     [string]$LaneLogDir = (Join-Path $env:LOCALAPPDATA 'GenieX CLI\lane-logs'),
-    # Passed to geniex as --log when that build has it. The CLI defaults to
-    # 'none', which makes the lane log an empty file on a silent failure.
+    # geniex --log, when the build has it; the CLI default 'none' leaves an empty log on a silent failure.
     [ValidateSet('none', 'error', 'warn', 'info', 'debug', 'trace')]
     [string]$LogLevel = 'info',
-    # Layers to offload to the accelerator, -1 = all (llama.cpp lanes only).
-    # Passed only when non-null, so the CLI default stays the default.
+    # Layers to offload, -1 = all (llama.cpp lanes only); passed only when set.
     [Nullable[int]]$Ngl = $null,
-    # Environment variables set for the SERVER PROCESS ONLY, e.g.
-    # @{ LLAMA_ARG_NO_MMPROJ_OFFLOAD = '1' }. GenieX exposes no llama.cpp flags
-    # beyond --ngl, so env is the only way to reach the embedded plugin; whether
-    # it honours a given variable is an experiment, not a promise.
+    # Env for the server process only: the one way to reach the embedded llama.cpp beyond --ngl.
     [hashtable]$ServerEnv = @{}
 )
 
@@ -74,9 +65,7 @@ $ErrorActionPreference = 'Stop'
 $exe = Join-Path $env:LOCALAPPDATA 'GenieX CLI\geniex.exe'
 if (-not (Test-Path $exe)) { throw "GenieX CLI not found at $exe -- install it from https://github.com/qualcomm/GenieX/releases" }
 
-# backends.json is the one place a model id is written down. Under StrictMode
-# every property access on parsed JSON has to be guarded: a missing key throws
-# rather than returning $null.
+# Every property access is guarded: under StrictMode a missing JSON key throws instead of returning $null.
 function Get-BackendModels {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -108,9 +97,7 @@ function Get-BackendModels {
     return $map
 }
 
-# Does THIS geniex build accept that serve flag? The CLI's surface moves between
-# releases (v0.6.1 dropped --max-tokens), and a flag it does not know is fatal at
-# startup, not ignored. Cached: one --help per run, not one per lane.
+# The serve flags move between geniex releases, and an unknown flag is fatal at startup.
 $script:ServeHelp = $null
 $script:WarnedNoMaxTokens = $false
 function Test-ServeFlag {
@@ -122,8 +109,7 @@ function Test-ServeFlag {
     return ($script:ServeHelp -match [regex]::Escape($Flag))
 }
 
-# QAIRT bundle or GGUF? Loading a GGUF into a lane that already holds a QAIRT
-# bundle crashes the NPU server, and the crash looks like a bad model.
+# Loading a GGUF into a lane holding a QAIRT bundle crashes the NPU server, which looks like a bad model.
 function Get-BundleKind {
     param([string]$Model)
     if ([string]::IsNullOrWhiteSpace($Model)) { return 'unknown' }
@@ -165,9 +151,7 @@ function Get-LaneModel {
     return ''
 }
 
-# `geniex list` once, not per lane: it is the only way to tell a missing model
-# from one already in the store, and an unreadable list must not silently skip
-# every pull.
+# An unreadable store listing must not silently skip every pull.
 $storeListing = $null
 if ($Pull) {
     try {
@@ -188,8 +172,7 @@ function Invoke-PullIfMissing {
         return
     }
     Write-Host ("  pull   {0}" -f $Model) -ForegroundColor Yellow
-    # A failed pull must not abort the fleet: PS 7.4 turns a non-zero native
-    # exit into a terminating error under $ErrorActionPreference = 'Stop'.
+    # A failed pull must not abort the fleet; PS 7.4 makes a non-zero native exit terminating under Stop.
     try {
         & $exe pull $Model
         if ($LASTEXITCODE -ne 0) { Write-Warning ("geniex pull {0} exited {1}" -f $Model, $LASTEXITCODE) }
@@ -204,9 +187,7 @@ if ($Restart) {
     Start-Sleep -Seconds 3
 }
 
-# One tiny request per lane. /v1/models answers before any weights are loaded,
-# so "up" without a warmup still means the first real request pays a 15 s cold
-# load -- which lands in the first measured task.
+# /v1/models answers before weights load, so without a warmup the first measured request pays the cold load.
 function Invoke-Warmup {
     param([string]$Compute, [int]$Port, [string]$Model)
 
@@ -242,10 +223,7 @@ function Start-Lane {
         if ($bound -notcontains $BindAddress) {
             Write-Warning ("  {0,-6} :{1}  listens on {2}, not the requested {3} -- re-run with -Restart to rebind it." -f $Compute, $Port, ($bound -join ', '), $BindAddress)
         }
-        # A lane already holding a different KIND of bundle will not take this
-        # model; on the NPU that is a server crash, not an error message.
-        # @(): a function returning an empty array unrolls to $null, and
-        # $null.Count is an error under StrictMode.
+        # @(): an empty array return unrolls to $null, whose .Count throws under StrictMode.
         $served = @(Get-ServedModels -Port $Port)
         if ($served.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($model)) {
             $wantKind = Get-BundleKind -Model $model
@@ -259,13 +237,7 @@ function Start-Lane {
 
     Invoke-PullIfMissing -Model $model
 
-    # --nctx passed EXPLICITLY: the CLI's own default (4096) is invisible in a
-    # benchmark report. --max-tokens was passed the same way and for the same
-    # reason -- until GenieX v0.6.1 dropped it from `serve`, and every lane died
-    # on "Error: unknown flag: --max-tokens" (2026-09-07, all four at once, with
-    # no log to say so). So ASK the binary instead of assuming: the flag list is
-    # one --help away. When it is gone, max_tokens is a per-request field and the
-    # client owns it -- which is what the benchmark tools already send.
+    # --nctx explicit so a report shows it; --max-tokens only where serve still has it, else clients send max_tokens.
     $argList = @('serve', '--compute', $Compute, '--host', "${BindAddress}:$Port",
                  '--nctx', $Nctx, '--keepalive', $Keepalive)
     if (Test-ServeFlag '--max-tokens') {
@@ -277,8 +249,7 @@ function Start-Lane {
     if ($LogLevel -and (Test-ServeFlag '--log')) { $argList += @('--log', $LogLevel) }
     if ($null -ne $Ngl -and (Test-ServeFlag '--ngl')) { $argList += @('--ngl', $Ngl) }
 
-    # Env for the child only. Set before Start-Process, restored after, so one
-    # experimental lane cannot leak a variable into the next lane or the shell.
+    # Restored after Start-Process so one lane's env cannot leak into the next lane or the shell.
     $savedEnv = @{}
     foreach ($k in $ServerEnv.Keys) {
         $savedEnv[$k] = [Environment]::GetEnvironmentVariable($k)
@@ -286,11 +257,7 @@ function Start-Lane {
         Write-Host ("  {0,-6} :{1}  env {2}={3}" -f $Compute, $Port, $k, $ServerEnv[$k]) -ForegroundColor DarkGray
     }
 
-    # A hidden Start-Process with no redirect throws its output away, so a lane
-    # that dies on startup leaves NOTHING to read -- "did not answer within 20s"
-    # was the whole diagnosis on 2026-09-07, for four lanes at once. Both streams
-    # go to $LaneLogDir (WSL reads it as /mnt/c/...); stdout and stderr must be
-    # DIFFERENT files or Start-Process refuses to launch.
+    # Unredirected, a hidden lane that dies on startup leaves nothing to read; the two streams need separate files.
     if (-not (Test-Path $LaneLogDir)) {
         New-Item -ItemType Directory -Force -Path $LaneLogDir | Out-Null
     }
@@ -309,15 +276,11 @@ function Start-Lane {
             Invoke-Warmup -Compute $Compute -Port $Port -Model $model
             return
         } catch {
-            # Expected every second until the lane binds its port -- this IS the
-            # readiness poll. Not silent overall: exhausting the 20 attempts
-            # falls through to the Write-Warning below, which names the log and
-            # quotes it.
+            # Expected until the port binds; running out of attempts warns below.
             Write-Debug ("  {0} :{1} not ready after {2}s: {3}" -f $Compute, $Port, $i, $_.Exception.Message)
         }
     }
-    # Name the log AND quote what it already says: a lane that exits immediately
-    # has written its reason before this loop ends.
+    # A lane that exits immediately has already written its reason, so quote it.
     Write-Warning ("  {0,-6} :{1}  did not answer within 20s -- log: {2}" -f $Compute, $Port, $errLog)
     foreach ($log in @($errLog, $outLog)) {
         if (Test-Path $log) {
@@ -334,8 +297,7 @@ Start-Lane -Compute 'gpu' -Port $GpuPort
 if ($WithHybrid) { Start-Lane -Compute 'hybrid' -Port $HybridPort }
 if ($WithCpu)    { Start-Lane -Compute 'cpu'    -Port $CpuPort }
 
-# What each lane REPORTS serving, not what we asked for: the two differ after a
-# lane was started by hand or by an earlier run with other flags.
+# What each lane reports serving, which differs from the request when an earlier run started it.
 Write-Host ''
 Write-Host 'Point the agent at:' -ForegroundColor Cyan
 $lanes = @(

@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Patch files live in linux/scripts/patches/gstreamer/ and are applied via
-# apply-patch.sh (idempotent git apply with reverse-check skip).
-
-# Resolve paths: in Docker builds 01-core is at /opt/scripts/core, patches at
-# /opt/scripts/patches. Fall back to relative paths for standalone/local use.
+# Docker builds flatten the tree under /opt/scripts, so the repo-relative paths only work standalone.
 if [ -f "/opt/scripts/core/apply-patch.sh" ] && [ -d "/opt/scripts/patches/gstreamer" ]; then
     _apply_patch="/opt/scripts/core/apply-patch.sh"
     _patch_dir="/opt/scripts/patches/gstreamer"
@@ -14,13 +10,6 @@ else
     _apply_patch="${_script_dir}/../../../../01-core/apply-patch.sh"
     _patch_dir="${_script_dir}/../../../../patches/gstreamer"
 fi
-
-# 001 (webrtc-ice-gtkdoc-downgrade) was eliminated: gst-plugins-bad introspection
-# is now disabled via -Dgst-plugins-bad:introspection=disabled in
-# build-gstreamer-monorepo.sh, avoiding the gtk-doc block issue entirely.
-#
-# 007 (prune-analytics-burn-workspace) was eliminated: the burn plugin is never
-# disabled in any build configuration, so the code path was dead.
 
 patch_gstreamer_sources() {
   local repo_root="$1"

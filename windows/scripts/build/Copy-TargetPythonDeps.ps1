@@ -4,38 +4,16 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Stages the PyPI runtime dependencies of the bundle's own wheels for the
-    TARGET platform tag, and gates that every Requires-Dist resolves inside the
-    wheel store (backlog #126, 2026-08-25).
+    Stages the target-tagged PyPI dependencies of the bundle's wheels and gates that every Requires-Dist resolves in the store.
 .DESCRIPTION
-    On the amd64 lane every dependency is pip-installed into the shipped
-    interpreter itself. On a cross lane nothing can be installed into the target
-    interpreter (it cannot run here), so the consumer-side audit found the
-    device would have our onnxruntime / onnxruntime_genai / av wheels and cv2 --
-    and no numpy, no packaging, no protobuf, nothing they import. This stage:
-      1. reads Requires-Dist from every wheel in the store (its dist-info
-         METADATA), drops `extra ==` markers, adds numpy for cv2 (which ships
-         no metadata of its own);
-      2. runs the HOST pip in DOWNLOAD mode for the TARGET: --platform
-         <win_arm64> --python-version <X.Y> --implementation cp --only-binary=:all:
-         -- pip resolves transitively and picks pure (`none-any`) or
-         target-tagged wheels, never a host one;
-      3. gates: every Requires-Dist name of every wheel in the store must map
-         to a wheel in the store, and every downloaded wheel must be pure or
-         carry the target tag (native members PE-checked through
-         Assert-WheelTargetArch). A missing upstream wheel FAILS the lane --
-         that is the honest answer; add it to -KnownUnavailable WITH a reason
-         only after measuring.
-    Runs in the merge stage (both lanes present there): a notice and exit 0
-    on the native lane, the full staging + gate on a cross lane.
+    Cross lanes only (the target interpreter cannot run here); the native lane installs its deps into the shipped interpreter.
+    See docs/windows-build-invariants.md § Python bindings plumbing is load-bearing.
 #>
 param(
     [string]$WheelDir = 'C:\runtime\wheels',
-    # Regex of distribution names allowed to be missing, each with a recorded
-    # reason in docs/windows-builds.md (#126). Empty = nothing may be missing.
+    # Regex of distributions allowed to be missing, each only with a measured reason; empty = none.
     [string]$KnownUnavailable = '',
-    # Floors: a drop in either count is a finding (requirements disappeared =
-    # greener gate hiding a defect). Set by the driver; 0 = no floor (legacy).
+    # Floors set by the driver, since vanishing requirements make the gate greener; 0 = no floor.
     [int]$MinBundleWheels = 0,
     [int]$MinFirstTouchRequirements = 0,
     [string]$ScriptDir = ''
@@ -104,9 +82,7 @@ foreach ($w in $ourWheels) {
 if (-not ($requirements | Where-Object { (Get-RequirementName $_) -eq 'numpy' })) { $requirements.Add('numpy') }   # cv2 imports numpy; the installed module carries no metadata
 Write-Host "Target python deps: $($ourWheels.Count) bundle wheel(s) declare $($requirements.Count) first-touch requirement(s): $($requirements -join ' | ')"
 
-# Floor check: a drop in wheel or requirement count means something
-# disappeared — a gate that gets greener as requirements vanish hides
-# defects (run-34/35 class: empty Requires-Dist from a CRLF regex bug).
+# A gate that gets greener as requirements vanish hides defects, such as an empty Requires-Dist parse.
 if ($MinBundleWheels -gt 0 -and $ourWheels.Count -lt $MinBundleWheels) {
     throw "Target python deps: $($ourWheels.Count) bundle wheel(s) is below the floor of $MinBundleWheels — a wheel disappeared from the bundle (run-34/35 defect class)."
 }
@@ -114,13 +90,7 @@ if ($MinFirstTouchRequirements -gt 0 -and $requirements.Count -lt $MinFirstTouch
     throw "Target python deps: $($requirements.Count) first-touch requirement(s) is below the floor of $MinFirstTouchRequirements — requirements disappeared (empty Requires-Dist = greener gate hiding a defect, run-34/35 class)."
 }
 
-# 2. Download for the TARGET with the HOST pip -- but only what the bundle does not
-#    provide itself. onnxruntime-genai's METADATA says `onnxruntime-directml>=1.29`,
-#    and that wheel IS the bundle's own ORT wheel sitting next to it; asking PyPI for
-#    it fails on arm64 ("from versions: none" -- Microsoft publishes no win_arm64
-#    onnxruntime-directml wheel; measured arm64 run 12, 2026-08-25). Gate (b) below
-#    still checks that edge against the store, so nothing is skipped, only not
-#    re-downloaded.
+# 2. Download for the target only what the bundle lacks: PyPI has no win_arm64 build of our own ORT wheel; gate (b) still checks it.
 $bundled = @{}
 foreach ($w in $ourWheels) { $bundled[(Get-WheelDistName $w.Name)] = $w.Name }
 $external = @($requirements | Where-Object { $n = Get-RequirementName $_; -not ($n -and $bundled.ContainsKey($n)) })
@@ -135,8 +105,7 @@ if ($external.Count -gt 0) {
     Write-Host "Target python deps: nothing external to download -- every first-touch requirement is a bundle wheel"
 }
 
-# 3. Gate. (a) every wheel in the store is pure or target-tagged (natives PE-checked);
-#          (b) every Requires-Dist of every wheel in the store resolves to a wheel in the store.
+# 3. Gate: (a) every wheel is pure or target-tagged, (b) every Requires-Dist resolves inside the store.
 $store = @(Get-ChildItem -Path $WheelDir -Filter '*.whl' -File)
 $available = @{}
 foreach ($w in $store) {

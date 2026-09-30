@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
-# cmake-cache-linker.sh - shared CMake LLD/ccache fallback flag helpers.
-#
-# Provides:
-#   append_cmake_cache_linker_args <array_ref>
-#
-# Usage:
-#   source /path/to/cmake-cache-linker.sh
-#   local -a cmake_opts=()
-#   append_cmake_cache_linker_args cmake_opts
+# append_cmake_cache_linker_args <array_ref>: LLD and compiler-cache launcher flags for CMake.
 
 [ -n "${_CMAKE_CACHE_LINKER_LOADED:-}" ] && return 0
 _CMAKE_CACHE_LINKER_LOADED=1
 
-# Boolean-off check for the cache/linker toggles: accept the fleet's BOTH
-# truthiness spellings (0/false/no/off, any case) — "USE_CCACHE=0" used to be
-# silently ignored because only the literal string "false" disabled anything.
+# Accepts every off spelling (0/false/no/off); only "false" used to work, so USE_CCACHE=0 was ignored.
 _flag_disabled() {
   case "${1:-}" in
     0|false|FALSE|False|no|NO|off|OFF) return 0 ;;
@@ -36,9 +26,7 @@ append_cmake_cache_linker_args() {
 
   if command -v ccache >/dev/null 2>&1 && ! _flag_disabled "${USE_CCACHE:-true}"; then
     if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
-      # 2026-08-26: sccache when usable, ccache otherwise. Hardcoding ccache
-      # here would have quietly overridden the switch for every consumer of
-      # this shared helper.
+      # sccache when usable, else ccache; hardcoding ccache would override the switch for every consumer.
       compiler_cache_launcher_env 2>/dev/null || true
       _accla_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
       _accla_args+=("-DCMAKE_C_COMPILER_LAUNCHER=${_accla_launcher}")

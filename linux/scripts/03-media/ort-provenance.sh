@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# ort-provenance.sh - G2 (owner rule 2026-09-23): a consumer's build tree (dir links followed), records, logs and fetch caches hold
-# no ORT but the chain's; a pass stamps it for G1. Source-only, mounted per file. NOT covered: a foreign ORT under a non-ORT name.
+# G2: a consumer's tree, records, logs and fetch caches hold no ORT but the chain's. See docs/onnxruntime-single-source.md § The guards
 
 # ORT headers and binaries, compared byte for byte by name (.pc/.cmake metadata is not ORT code). Matched lower-cased.
 _ORTG_CODE_RE='^(lib)?onnxruntime[^/]*\.(h|hpp|inc|lib|dll|pyd|a|so(\.[0-9]+)*)$|_provider_factory\.h$|^onnxruntime_pybind11_state'
@@ -154,8 +153,7 @@ _ortg_pyke_findings() {  # <cache-dir>...: anything in pyke's ORT download cache
   return 0
 }
 
-# ort_gate_default_caches: "<kind>TAB<dir>" per fetch cache G2 always grades, each at its tool's override, else its default.
-# They cover every fetch-cache mount of a G2 RUN; docs/onnxruntime-single-source.md#the-fetch-caches-g2-grades
+# "<kind>TAB<dir>" per fetch cache G2 always grades. See docs/onnxruntime-single-source.md § The fetch caches G2 grades
 ort_gate_default_caches() {
   local xdg="${XDG_CACHE_HOME:-${HOME:-/root}/.cache}" cargo="${CARGO_HOME:-${HOME:-/root}/.cargo}"
   printf '%s\t%s\n' pyke "${xdg}/ort.pyke.io" pip "${PIP_CACHE_DIR:-${xdg}/pip}" uv "${UV_CACHE_DIR:-${xdg}/uv}" \
@@ -294,9 +292,7 @@ _ortg_record_roots() {  # what a record path is judged against: _ORTG_REFS_AT (c
 }
 
 _ortg_intree() {  # <path>: a tree path a record names; an ORT file name lands in _ORTG_INTREE to be graded
-  # A trailing-slash token basenames to EMPTY; under set -u that empty subscript is a fatal
-  # "bad array subscript" (same class as _ortg_token_finding). A dir name can never match a file
-  # index, so an empty name simply grades nothing.
+  # A trailing-slash token basenames to empty, a fatal "bad array subscript" under set -u.
   local name="${1##*/}"
   [ -n "${name}" ] || return 0
   if [ -n "${_ORTG_SHA[${name}]:-}" ] || _ortg_is_bin "${name}"; then _ORTG_INTREE+=("$1"); fi
@@ -339,8 +335,7 @@ _ortg_token_dirname() {  # <tok ending in />: its last non-empty segment; a bare
 
 _ortg_token_finding() {  # <record> <path> <real path>: one path outside the chain, shims and trees; a dir to search lands in _ORTG_DIRS
   local rec="$1" tok="$2" name="${2##*/}" sub
-  # A trailing-slash token (CMakeCache holds them) basenames to EMPTY, and ${arr[${name}]} with an
-  # empty subscript is a fatal "bad array subscript" under set -u. Treat it as the dir it is.
+  # A trailing-slash token (CMakeCache has them) basenames to empty, a fatal subscript under set -u.
   if [ -z "${name}" ]; then name=$(_ortg_token_dirname "${tok}"); fi
   # '/' (a cross build's CMAKE_FIND_ROOT_PATH) has no segment left: it names no ORT and is no dir to search.
   [ -n "${name}" ] || return 0
@@ -411,8 +406,7 @@ _ortg_parse() {  # <option>...: fills the _ORTG_* inputs; a malformed call is a 
   return 0
 }
 
-# ort_chain_only_findings <consumer> --chain DIR... --tree DIR... --log F... [--shim DIR]... [--record F]... [--cache DIR]...
-# One finding per line; nothing = the chain only. The counters land in _ORTG_* for the stamp.
+# <consumer> --chain DIR... --tree DIR... --log F... [--shim|--record|--cache X]...: one finding per line.
 ort_chain_only_findings() {
   local consumer="${1:-}" c s
   local -a scan=()
@@ -449,8 +443,7 @@ _ortg_json() {  # <string>: a JSON string literal
   printf '"%s"' "${s}"
 }
 
-# ort_assert_chain_only <consumer> --stamp FILE <ort_chain_only_findings options>: 1 on any finding, and no stamp;
-# 0 after writing FILE, {consumer, the chain core lib's sha256 per root, ...}, which G1 (check-ort-provenance.sh) reads.
+# <consumer> --stamp FILE <findings options>: 1 on any finding, else writes the stamp G1 reads and returns 0.
 ort_assert_chain_only() {
   local consumer="${1:-}" stamp="" out root body line n
   local -a args=("$@")

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# 3.14 and 3.14t are two requests in 01-core/python_uv.sh (BACKLOG CON40): uv lets a plain
-# 3.14 take a free-threaded build it already has, and `python3.14` never satisfies `3.14t`.
-# docs/python-ci.md#free-threaded-and-gil-legs-in-one-container
+# 3.14 and 3.14t are two uv requests (CON40); see docs/python-ci.md#free-threaded-and-gil-legs-in-one-container
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

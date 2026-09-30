@@ -1,13 +1,5 @@
 #requires -Version 7.0
-# Tests for WindowsTargetArch.Common - the single source of TARGET-architecture
-# facts on the Windows lane (clang triple, PE machine, vcpkg triplet, SIMD flag
-# sets, CMake cross args).
-#
-# Two properties matter most and are asserted hardest:
-#   1. The amd64 lane is BYTE-IDENTICAL to what shipped before this module
-#      existed. Introducing an arch dimension must not perturb the working lane.
-#   2. An unknown/typo'd arch THROWS. Silently degrading to amd64 would emit an
-#      x64 build labelled arm64, which no downstream gate would catch.
+# See docs/windows-cross-builds.md § Where arch facts live
 
 Describe 'Get-WindowsTargetArch resolution' {
 
@@ -128,8 +120,7 @@ Describe 'Per-arch fact mapping' {
     }
 
     It 'returns a defensive copy of the fact record' {
-        # A caller mutating the result must not corrupt the table for the rest
-        # of the session.
+        # A caller mutating the result must not corrupt the table for the session.
         $a = Get-WindowsTargetArchInfo -Arch 'arm64'
         $a.ClangTriple = 'MUTATED'
         Assert-Equal 'aarch64-pc-windows-msvc' (Get-WindowsTargetArchInfo -Arch 'arm64').ClangTriple
@@ -158,10 +149,7 @@ Describe 'SIMD flag sets' {
     }
 
     It 'arm64 adds NO global optional features' {
-        # AArch64 baseline already mandates NEON, and a globally-enabled optional
-        # feature (dotprod/i8mm/SVE) produces SIGILL on hardware without it -
-        # the same class of failure AVX-512 caused on x86. Optional features
-        # belong only on runtime-dispatched kernels.
+        # A global optional AArch64 feature SIGILLs on hardware without it; those belong on dispatched kernels only.
         Assert-Equal '' (Get-WindowsTargetSimdFlags -Arch 'arm64')
     }
 
@@ -188,19 +176,13 @@ Describe 'MLAS per-TU patch targeting' {
     }
 
     It 'the x64 pattern does NOT match aarch64 kernels - the whole reason this is parameterized' {
-        # An unparameterized pattern would match nothing in an arm64 build and
-        # SUCCEED silently, shipping dispatched kernels compiled without their
-        # features. This assertion is the regression guard for that failure.
+        # An unparameterized pattern matches nothing on arm64 and the patch succeeds silently.
         $p = Get-MlasKernelTuPattern -Arch 'amd64'
         Assert-False ('build/x/mlas/lib/sqnbitgemm_kernel_neon.cpp.obj' -match $p)
     }
 
     It 'the arm64 pattern matches every aarch64 kernel TU that needs per-TU features' {
-        # VERBATIM from ONNX Runtime v1.29.0's aarch64 MLAS build (measured
-        # 2026-08-23 in a real cross build), not invented names. The *_fp16
-        # entries are the ones the first pattern missed, which made
-        # activate_fp16.cpp fail to compile with "requires target feature
-        # 'fullfp16'".
+        # Verbatim from ONNX Runtime v1.29.0's aarch64 MLAS build, not invented names.
         $p = Get-MlasKernelTuPattern -Arch 'arm64'
         foreach ($tu in @(
                 'activate_fp16.cpp', 'pooling_fp16.cpp',
@@ -215,9 +197,7 @@ Describe 'MLAS per-TU patch targeting' {
     }
 
     It 'the arm64 pattern leaves the runtime DISPATCHERS alone' {
-        # These select a kernel at run time. Compiling them WITH the optional
-        # features would make the dispatch decision itself fault on hardware
-        # that lacks them - the exact failure the per-TU design prevents.
+        # Dispatchers built with the optional features would fault before choosing a kernel.
         $p = Get-MlasKernelTuPattern -Arch 'arm64'
         foreach ($tu in @('cast.cpp', 'halfconv.cpp', 'halfgemm.cpp', 'platform.cpp')) {
             Assert-False ("build/x/mlas/lib/$tu.obj" -match $p) "arm64 pattern must NOT match the dispatcher $tu"
@@ -226,14 +206,12 @@ Describe 'MLAS per-TU patch targeting' {
     }
 
     It 'the arm64 floor would have caught the incomplete first pattern' {
-        # The original pattern matched 10 of 16 TUs and passed a floor of 2,
-        # so the miss surfaced as a compile error instead of a gate failure.
+        # The first pattern matched 10 of 16 TUs; the floor must reject that state.
         Assert-True ((Get-MlasKernelTuMinimum -Arch 'arm64') -gt 10) 'the floor must reject a 10-TU match'
     }
 
     It 'declares a nonzero minimum match count per arch' {
-        # The floor is what turns "patch matched nothing" from a silent success
-        # into a build failure.
+        # The floor turns "patch matched nothing" into a build failure.
         Assert-True ((Get-MlasKernelTuMinimum -Arch 'amd64') -gt 0)
         Assert-True ((Get-MlasKernelTuMinimum -Arch 'arm64') -gt 0)
     }
@@ -261,8 +239,7 @@ Describe 'CMake cross arguments' {
     }
 
     It 'never mentions a Visual Studio generator or -A platform' {
-        # The whole lane is Ninja + clang-cl + lld-link; a VS generator would
-        # ignore -DCMAKE_CXX_COMPILER entirely.
+        # A VS generator would ignore -DCMAKE_CXX_COMPILER; the lane is Ninja + clang-cl.
         $a = (@(Get-CMakeCrossArgs -Arch 'arm64')) -join ' '
         Assert-False ($a -match 'CMAKE_GENERATOR_PLATFORM') 'cross args leaked a VS generator platform'
     }
@@ -270,10 +247,7 @@ Describe 'CMake cross arguments' {
 
 Describe 'versions.env parity' {
 
-    # WINDOWS_TARGET_ARCHES mirrors the module's arch table. A mirrored key with
-    # no reader is a second source of truth that drifts silently, so it is read
-    # HERE and asserted against the table - the same shape as the versions.env
-    # parity assertions in Shared.VersionsEnv.Tests.ps1.
+    # A mirrored key with no reader drifts silently, so WINDOWS_TARGET_ARCHES is read and asserted here.
     It 'WINDOWS_TARGET_ARCHES matches the module arch table' {
         $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
         $v = ConvertFrom-VersionsEnv -Path $envPath
@@ -285,12 +259,7 @@ Describe 'versions.env parity' {
     }
 
     It 'WINDOWS_TARGET_ARCH is NOT a versions.env key' {
-        # It is a per-BUILD switch, not a pin. Keeping it here made
-        # Import-Versions.ps1 rewrite the value in any stage where process and
-        # machine env agreed -- which is exactly what happens in a stage built
-        # FROM a previous arm64 stage, and it silently reverted the lane to
-        # amd64 (measured 2026-08-23; FFmpeg then failed as "libonnxruntime not
-        # found"). The Dockerfile ARG defaults supply the default instead.
+        # See docs/windows-cross-builds.md § Cache discipline: the base image is shared
         $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
         $v = ConvertFrom-VersionsEnv -Path $envPath
         Assert-False ($v.Contains('WINDOWS_TARGET_ARCH')) `
@@ -300,13 +269,7 @@ Describe 'versions.env parity' {
 
 Describe 'COFF machine decoding (byte-shift trap)' {
 
-    # PowerShell's -shl keeps the LEFT operand's TYPE. [byte]0xAA -shl 8 is 0,
-    # not 0xAA00, so `$bytes[0] -bor ($bytes[1] -shl 8)` silently reads only the
-    # low byte and reports 0x0064 for a genuine ARM64 object.
-    #
-    # That is the most damaging way an arch check can be wrong: a false FAIL on
-    # the very probe that decides whether the cross toolchain works at all. It
-    # was live in Test-Toolchain.ps1 and the arm64 prereq probe on 2026-08-23.
+    # -shl keeps the left operand's type: [byte]0xAA -shl 8 is 0, so an uncast decode reads ARM64 as 0x0064.
     It 'demonstrates why the [int] casts are load-bearing' {
         $b = [byte[]](0x64, 0xAA)
         Assert-Equal 0x0064 ($b[0] -bor ($b[1] -shl 8))            # the trap
@@ -314,9 +277,7 @@ Describe 'COFF machine decoding (byte-shift trap)' {
     }
 
     It 'no shipped script decodes a machine word without an [int] cast' {
-        # SHIPPED code only. This test file itself deliberately contains the
-        # broken form above to demonstrate the trap, and scanning tests/ would
-        # make the guard flag its own documentation.
+        # Shipped code only: this file contains the broken form on purpose.
         $shipped = @('build', 'host', 'modules', 'diagnostics') |
             ForEach-Object { Join-Path (Get-RepoRoot) "windows\scripts\$_" } |
             Where-Object { Test-Path $_ }
@@ -325,9 +286,7 @@ Describe 'COFF machine decoding (byte-shift trap)' {
             foreach ($line in (Get-Content -LiteralPath $f.FullName)) {
                 # Comments explain the trap; only real code can fall into it.
                 if ($line.TrimStart().StartsWith('#')) { continue }
-                # A shift-by-8 combined with -bor is the machine-word idiom.
-                # Require an [int] cast on the shifted operand; anything else
-                # silently truncates to the low byte.
+                # The machine-word idiom (-shl 8 with -bor) needs an [int] cast on the shifted operand.
                 if ($line -match '-bor' -and $line -match '-shl\s+8') {
                     if ($line -notmatch '\[int\][^-]*-shl\s+8') {
                         $offenders += ('{0}: {1}' -f $f.Name, $line.Trim())
@@ -341,21 +300,9 @@ Describe 'COFF machine decoding (byte-shift trap)' {
 
 Describe 'WINDOWS_TARGET_ARCH crosses stage boundaries' {
 
-    # ARGs do NOT cross a FROM boundary. Every stage that RUNs a build script has
-    # to redeclare WINDOWS_TARGET_ARCH, or it silently falls back to the amd64
-    # default while its parent image was built for arm64.
-    #
-    # Measured 2026-08-23: media-core-built-ffmpeg was FROM the arm64 onnx image
-    # but did not redeclare, so the FFmpeg cross block never ran, configure
-    # link-probed as x64, and lld-link rejected the arm64 onnxruntime.lib. The
-    # symptom configure prints -- "libonnxruntime not found" -- points nowhere
-    # near the cause, which is exactly why this needs a static gate.
+    # See docs/windows-cross-builds.md § Cache discipline: the base image is shared
     It 'every stage built FROM an external image reference redeclares the ARG' {
-        # Derived, not listed: a stage whose FROM is `${SOMETHING}` starts from an
-        # image built by a SEPARATE solve, so nothing in this file's ENV chain
-        # reaches it. A stage whose FROM names an in-file stage (e.g. `FROM common`)
-        # inherits ENV normally and must NOT be required to redeclare -- requiring
-        # it there would be cargo cult.
+        # Only a `${...}` FROM starts from a separate solve; an in-file parent passes its ENV down.
         $repo = Get-RepoRoot
         $missing = @()
         foreach ($rel in @('windows\Dockerfile.media-builder', 'windows\Dockerfile.media-merge-builder')) {

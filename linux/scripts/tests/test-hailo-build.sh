@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# 03-media/build/hailo/hailo-build-lib.sh off-target: the two switches, the nested-build carrier and
-# its gate, the cache counters, the pyhailort LTO patch and module check, install_pyhailort, and the
-# wiring around them. Not covered: a real HailoRT or pyhailort build, which needs the build host.
-# docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches
+# hailo-build-lib.sh off-target; a real HailoRT build needs the build host; see docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -16,9 +13,7 @@ CCSH="${SCRIPTS}/01-core/compiler-cache.sh"
 _SB_ROOT="$(mktemp -d)"
 trap 'rm -rf "${_SB_ROOT}"' EXIT
 
-# The fakes every sandbox gets. sccache and ccache report counters from files in $SB; readelf
-# prints $SB/machine and $SB/dynsym for a file that exists; cmake spawns a nested build the way
-# HailoRT's execute_cmake does and records what that build saw.
+# Fakes read their answers from files in $SB; cmake spawns a nested build as HailoRT's execute_cmake does.
 _fakes() {
   local b="$1/bin"
   cat > "${b}/sccache" <<'SH'
@@ -80,8 +75,7 @@ SH
   printf '%s\n' AArch64 > "$1/machine"
 }
 
-# _hb <snippet>: <snippet> in a child bash with the library loaded, a sandbox $SB (the fakes first on
-# PATH, TMPDIR and HOME inside it) and no cache env inherited from the caller; then "rc=<n>".
+# _hb <snippet>: runs it with the library loaded in a sandbox $SB and no inherited cache env, then prints rc=<n>.
 _hb() {
   local sb
   sb="$(mktemp -d "${_SB_ROOT}/sb.XXXXXX")"
@@ -230,8 +224,7 @@ t_assert_contains "${_out}" "the nested build runs through sccache" "the configu
 t_assert_contains "${_out}" "rc=7"
 t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c -e '\[CACHE\]' -e 'objects')" "no gate verdict on a build that never ran"
 
-# ---- 4. the gate, against a 200-object nested build --------------------------------------------
-# $1 mode, $2 launcher, $3 compile requests after (before is 0), $4 nolog|dead|"".
+# 4. The gate. _gate <mode> <launcher> <compile requests> [nolog|dead]: over a 200-object nested build.
 _gate() {
   _hb "mkdir -p \"\${SB}/n\"
     [ '${4:-}' = nolog ] || { printf '# ninja log v5\n'

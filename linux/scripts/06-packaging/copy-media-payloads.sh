@@ -1,21 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# copy-media-payloads.sh
-# Shared helper to copy lightweight media library payloads (LiteRT, VVdec,
-# ONNX Runtime GenAI/GPU, and CUDA/cuDNN/NCCL when ENABLE_NVIDIA=true) from the
-# artifact image into the package image.
-#
-# Usage:
-#   copy-media-payloads.sh              Copy onto the local filesystem.
-#   copy-media-payloads.sh /payload     Copy into a staging prefix.
-#   SRCPREFIX=/runtime_artifact \
-#     copy-media-payloads.sh            Copy from a bind-mounted source prefix.
+# Usage: [SRCPREFIX=<artifact mount>] copy-media-payloads.sh [dest-prefix]
 
 SRCPREFIX="${SRCPREFIX:-}"
 
-# This script historically called warn without defining it (it was never
-# invoked anywhere, so the bug was latent). Provide a fallback.
+# warn is undefined when this runs standalone.
 if ! command -v warn >/dev/null 2>&1; then
   warn() { printf '[WARN] %s\n' "$*" >&2; }
 fi
@@ -35,8 +25,7 @@ copy_path() {
     return 0
   fi
   mkdir -p "$(dirname "${dst}")"
-  # -T: treat dst as the exact destination — plain cp -a into an existing
-  # directory would NEST (dst/srcname) instead of overlaying.
+  # -T: cp -a into an existing directory would nest instead of overlay.
   cp -aT "${src}" "${dst}"
 }
 
@@ -94,10 +83,7 @@ copy_media_payloads() {
   unset COPY_TARGET_DIR
 }
 
-# The GPU variant's CUDA toolkit, cuDNN and NCCL. The media image carries them,
-# but nothing copied them past this boundary: every CUDA-built library (OpenCV,
-# ORT's CUDA EP, TVM's CUDA runtime) shipped without libcudart/libcudnn and
-# could not load. ENABLE_NVIDIA=true with no toolkit in the artifact is fatal.
+# Every CUDA-built library needs the toolkit, cuDNN and NCCL to load; ENABLE_NVIDIA=true without them is fatal.
 copy_cuda_payload() {
   [ "${ENABLE_NVIDIA:-false}" = "true" ] || return 0
   local dir ver="" pattern
@@ -111,8 +97,7 @@ copy_cuda_payload() {
     printf '[ERROR] ENABLE_NVIDIA=true but the artifact has no /usr/local/cuda-X.Y\n' >&2
     return 1
   fi
-  # The artifact's cuda and cuda-MAJOR links go through /etc/alternatives, which
-  # through a bind mount resolves against the BUILD container. Relink relatively.
+  # Relink relatively: through the bind mount /etc/alternatives resolves in the build container.
   ln -sfn "cuda-${ver}" "$(_dest /usr/local/cuda)"
   ln -sfn "cuda-${ver}" "$(_dest "/usr/local/cuda-${ver%%.*}")"
   for pattern in \
@@ -124,9 +109,7 @@ copy_cuda_payload() {
   done
 }
 
-# Where an artifact path really lands, resolved as the SHIPPED image will see it:
-# every hop of a link is re-read under SRCPREFIX, because through the bind mount
-# an absolute target (/etc/alternatives/...) resolves in the BUILD container.
+# Every link hop re-read under SRCPREFIX: through the bind mount an absolute target resolves in the build container.
 _src_resolve() {
   local p="$1" t hops=0
   while [ -L "${SRCPREFIX}${p}" ]; do
@@ -138,16 +121,7 @@ _src_resolve() {
   printf '%s' "${p}"
 }
 
-# The rocm variant's ROCm/MIGraphX userspace (HIP, MIOpen, rocBLAS, MIGraphX),
-# the same gap copy_cuda_payload closes for CUDA: the ORT MIGraphX EP and a ROCm
-# torch load these at runtime, and nothing copied /opt/rocm past this boundary.
-# TheRock (Dockerfile.amd) makes /opt/rocm a real directory whose `core` is an
-# update-alternatives link (/etc/alternatives/... -> /opt/rocm/core-X.Y) and
-# whose bin/include/lib point at core/ (setup-rocm-repo.sh); older releases made
-# /opt/rocm itself such a link. cp -a keeps links verbatim, so every ABSOLUTE
-# link in the copied tree is re-made relative to its real artifact target, and
-# a target outside the tree is copied too. ENABLE_AMD=true without a usable
-# /opt/rocm/lib (libamdhip64) in the result is fatal.
+# ROCm userspace; cp -a keeps /opt/rocm's alternatives links verbatim, so absolute links are remade relative.
 copy_rocm_payload() {
   [ "${ENABLE_AMD:-false}" = "true" ] || return 0
   local root link img t real
@@ -157,8 +131,7 @@ copy_rocm_payload() {
     return 1
   fi
   copy_path "${root}"
-  # The ASAN tree lives INSIDE /opt/rocm (core-asan-<ver>) and is ~135 GiB, so
-  # the default image drops it even when the builder installed it.
+  # The ASAN tree inside /opt/rocm is ~135 GiB; ship it only when asked.
   if [ "${ENABLE_ROCM_ASAN:-false}" != "true" ]; then
     rm -rf "$(_dest "${root}")"/core-asan-* 2>/dev/null || true
   fi
@@ -173,22 +146,14 @@ copy_rocm_payload() {
     case "${real}" in "${root}"|"${root}"/*) ;; *) copy_path "${real}" ;; esac
     ln -sfn "$(realpath -m -s --relative-to="$(dirname "${img}")" "${real}")" "${link}"
   done < <(find "$(_dest "${root}")" -type l -print0)
-  # TheRock's versioned tree beats the flat layout check: MIGraphX's share
-  # pre-created /opt/rocm/lib as a REAL dir (migraphx libs only), so HIP lives
-  # in core-<ver>/lib — the same flat-layout trap the G2 gate hit on the cmake
-  # configs. Grade the whole /opt/rocm tree, not one lib dir; publish_rocm_ld_path
-  # makes every libamdhip64-bearing dir visible to the loader.
-  # -print -quit, NO pipe: under pipefail a `find | grep -q .` dies of SIGPIPE
-  # (rc 141) on this ~20 GiB tree and the `!` inverts the false into failure
-  # (the very shell-safety class the family lints for).
+  # The whole tree, as HIP sits in core-<ver>/lib; -print -quit, since `find | grep -q` dies of SIGPIPE.
   [ -n "$(find "$(_dest /opt/rocm)" \( -type f -o -type l \) -name 'libamdhip64.so*' -print -quit 2>/dev/null)" ] || {
     printf '[ERROR] ENABLE_AMD=true but /opt/rocm in the package has no libamdhip64 anywhere (links unresolved?)\n' >&2
     return 1
   }
 }
 
-# The toolkit's libs live under targets/<arch>-linux/lib, which no default
-# loader path reaches. No-op on a CPU image, where /usr/local/cuda is absent.
+# targets/<arch>-linux/lib is on no default loader path; no-op on a CPU image.
 publish_cuda_ld_path() {
   local lib
   : > /etc/ld.so.conf.d/000-cuda.conf
@@ -198,32 +163,22 @@ publish_cuda_ld_path() {
   [ -s /etc/ld.so.conf.d/000-cuda.conf ] || rm -f /etc/ld.so.conf.d/000-cuda.conf
 }
 
-# ROCm's libraries live under /opt/rocm/lib (-> core/lib -> core-X.Y/lib),
-# which no default loader path reaches. No-op without /opt/rocm.
+# /opt/rocm is on no default loader path; no-op without it.
 publish_rocm_ld_path() {
   local lib
   : > /etc/ld.so.conf.d/000-rocm.conf
-  # /opt/rocm/lib is MIGraphX's REAL dir (its share created it ahead of the
-  # convenience symlinks); HIP sits in core-<ver>/lib. Write every dir that
-  # carries a HIP library plus the flat ones — the literal /opt/rocm/lib alone
-  # leaves the loader without libamdhip64 (the flat-layout trap, non-ASAN sweep
-  # item 4: write the RESOLVED path).
+  # Every dir holding libamdhip64: /opt/rocm/lib is MIGraphX's real dir and lacks it.
   {
     find /opt/rocm -name 'libamdhip64.so*' -printf '%h\n' 2>/dev/null || true
     printf '%s\n' /opt/rocm/lib /opt/rocm/lib64
   } | LC_ALL=C sort -u | while IFS= read -r lib; do
-    # if, NOT a bare [ ] && printf chain: a false final iteration makes the
-    # while's status 1 and, under set -e, kills the RUN message-less
-    # (shell-safety class 5; run 20260927-192623, package-image exit 1).
+    # if, not `[ ] && printf`: a false last iteration would fail the while under set -e.
     if [ -n "${lib}" ] && [ -d "${lib}" ]; then printf '%s\n' "${lib}" >> /etc/ld.so.conf.d/000-rocm.conf; fi
   done
   [ -s /etc/ld.so.conf.d/000-rocm.conf ] || rm -f /etc/ld.so.conf.d/000-rocm.conf
 }
 
-# Give /usr/local/llvm-target/lib loader priority over the distro multiarch dir:
-# libtvm_compiler.so's DT_NEEDED libLLVM.so.<ver> resolves through this and nothing
-# else, so `import tvm` dies without it.
-# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+# libtvm_compiler.so's libLLVM resolves only through this. See docs/artifact-copy-completeness.md § The llvm-target prefix fills what it needs, and nothing else
 publish_llvm_target_ld_path() {
   printf '/usr/local/llvm-target/lib\n' > /etc/ld.so.conf.d/000-llvm-target.conf
   ldconfig

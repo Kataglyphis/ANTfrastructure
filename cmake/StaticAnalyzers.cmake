@@ -64,12 +64,10 @@ macro(myproject_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS)
       endif()
 
       if("${CPPCHECK_OPTIONS}" STREQUAL "")
-        # Enable all warnings that are actionable by the user of this toolset
-        # style should enable the other 3, but we'll be explicit just in case
+        # --enable names every actionable class, although style implies the other three.
         set(SUPPRESS_DIR "*:${CMAKE_CURRENT_BINARY_DIR}/_deps/*.h")
         message(STATUS "CPPCHECK_OPTIONS suppress: ${SUPPRESS_DIR}")
-        # Keep this list analysis-only: --check-config validates the config and analyses nothing,
-        # so adding it here turns the whole gate into a no-op (AccelerANTgine, 2026-09).
+        # Analysis-only: --check-config analyses nothing and would turn the gate into a no-op.
         set(CMAKE_CXX_CPPCHECK
             ${CPPCHECK}
             --template=${CPPCHECK_TEMPLATE}
@@ -110,8 +108,7 @@ macro(myproject_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS)
 endmacro()
 
 macro(myproject_enable_clang_tidy target WARNINGS_AS_ERRORS)
-  # Optional 3rd argument: a --header-filter regex (AccelerANTgine passes "Src/.*").
-  # Absent or empty appends nothing, so the consumer's .clang-tidy HeaderFilterRegex decides.
+  # Optional 3rd argument: a --header-filter regex; absent or empty defers to the consumer's .clang-tidy.
   set(CLANG_TIDY_HEADER_FILTER "")
   if(${ARGC} GREATER 2)
     set(CLANG_TIDY_HEADER_FILTER "${ARGV2}")
@@ -137,8 +134,7 @@ macro(myproject_enable_clang_tidy target WARNINGS_AS_ERRORS)
       endif()
     endif()
 
-    # construct the clang-tidy command line
-    # Report-only gate: never add --fix here - it rewrites sources mid-build (autofix belongs in scripts).
+    # Report-only: --fix would rewrite sources mid-build.
     set(CLANG_TIDY_OPTIONS
         ${CLANGTIDY}
         -extra-arg=-Wno-unknown-warning-option

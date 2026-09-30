@@ -1,38 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""verify_doc_dupes.py -- the docs duplication gate.
-
-Why this exists
----------------
-``docs/INDEX.md`` opens with the reason: on 2026-08-11 one Dev Drive command
-existed in three places, all three were wrong the same way, and the page that
-had it right was never consulted. Copying is what caused it.
-
-That rule was written down and then enforced by nobody. Three rounds of manual
-de-duplication in one day each declared the tree clean, and each was measuring
-*verbatim lines* -- the wrong instrument, because prose gets reflowed. A
-paragraph reworded across two pages shares no whole line while still being the
-same paragraph. This finds those.
-
-How
----
-Every paragraph is reduced to its set of 8-word shingles (code fences, tables
-and headings excluded). Two paragraphs in DIFFERENT files sharing more than the
-threshold are reported. Shingles owned by many files are ignored: a phrase that
-appears everywhere is vocabulary, not duplication.
-
-Some overlap is correct and permanent -- a rule page states the rule, a
-mechanism page explains the mechanism, and both name the same thing. Those pairs
-live in ``doc-dupes.allow`` with a budget and a reason, so a *deliberate* twin
-stays quiet while a *regression* past its budget fails.
-
-No network; the one project import is the shared allowlist reader
-(``linux/scripts/quality_allow.py``). Safe for hooks and CI.
-
-Usage:  python3 docs/scripts/verify_doc_dupes.py [--report] [--threshold N]
-Exit:   0 = clean, 1 = findings, 2 = usage/tree error.
-"""
+"""Docs duplication gate (docs/INDEX.md: one owner per passage): cross-file paragraphs sharing too many 8-word shingles."""
 
 from __future__ import annotations
 
@@ -43,11 +12,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-# HUB_ROOT is where this gate LIVES; REPO_ROOT is the tree it GRADES, and
-# main() re-points the second one from --root. In a consumer's
-# third_party/ANTfrastructure checkout __file__ is the HUB, so a gate that never
-# asked would grade the wrong tree and report green.
-# docs/code-quality-tooling.md#the-scan-root-contract
+# HUB_ROOT is where the gate lives, REPO_ROOT the tree it grades (--root): docs/code-quality-tooling.md#the-scan-root-contract
 HUB_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = HUB_ROOT
 DOCS = REPO_ROOT / "docs"
@@ -60,14 +25,12 @@ import gate_scope  # noqa: E402
 
 ROOT_DOCS = ("README.md", "AGENTS.md")
 
-# Records, not rules: these narrate the same work on purpose and must never be
-# edited to satisfy a gate.
+# Records, not rules: they narrate the same work on purpose and are never edited for a gate.
 SKIP_MARKERS = ("archive", "refactor-backlog", "CHANGELOG")
 
 SHINGLE = 8
 MIN_WORDS = SHINGLE + 4
-# A shingle shared by more than this many paragraphs is shared vocabulary
-# ("the build fails with", "see the section below"), not a copied passage.
+# A shingle held by more paragraphs than this is vocabulary, not a copied passage.
 MAX_OWNERS = 5
 DEFAULT_THRESHOLD = 12
 
@@ -98,13 +61,7 @@ def paragraphs(path: Path) -> list[str]:
 
 
 def collect() -> list[Path]:
-    """The hub keeps its curated page set; a consumer gets every tracked page.
-
-    The hub's set is deliberate — README, AGENTS and the flat ``docs/`` pages —
-    and changing it would re-budget every allowlisted pair for no reason. A
-    consumer has no such curation to inherit, so the scan-root contract answers
-    instead: tracked Markdown, vendored subtrees excluded by ``gate_scope``.
-    """
+    """The hub's curated page set (changing it re-budgets every pair), or every tracked page for a consumer."""
     if gate_scope.is_hub(str(REPO_ROOT), str(HUB_ROOT)):
         paths = [REPO_ROOT / n for n in ROOT_DOCS]
         paths += sorted(DOCS.glob("*.md"))
@@ -135,11 +92,7 @@ def load_allow() -> dict[frozenset[str], tuple[int, str]]:
 
 
 def _index_paragraphs(files):
-    """Shingle-index every prose paragraph in scope.
-
-    Returns (owners, texts): which paragraphs hold each 8-word shingle, and the
-    text of each paragraph for later reporting.
-    """
+    """(owners, texts): which paragraphs hold each 8-word shingle, and each paragraph's text for reporting."""
     owners: dict[tuple, set[tuple[str, int]]] = defaultdict(set)
     texts: dict[tuple[str, int], str] = {}
     for path in files:
@@ -155,11 +108,7 @@ def _index_paragraphs(files):
 
 
 def _collect_shared(owners) -> Counter:
-    """Turn the shingle index into cross-file paragraph-pair counts.
-
-    A shingle held by more than MAX_OWNERS paragraphs is shared vocabulary, and
-    same-file pairs are a page restating itself -- neither is duplication here.
-    """
+    """Cross-file paragraph-pair counts, skipping vocabulary shingles and same-file pairs."""
     shared: Counter = Counter()
     for holders in owners.values():
         if 1 < len(holders) <= MAX_OWNERS:

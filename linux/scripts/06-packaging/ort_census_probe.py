@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""ORT census probe (G1/G6): facts about every ONNX Runtime binary and consumer under a root.
-
-Prints TAB-separated fact lines and decides nothing: ort_census_verdicts in
-check-ort-provenance.sh reads them. Paths are IMAGE paths; --root is where the image's
-/ lives ('/' inside the image, a directory for a bundle). Does NOT see provenance that
-ships no bytes (a consumer compiled against foreign headers), nor what the running user
-cannot read. docs/cross-build-verification.md#e-ort-single-source
-"""
+"""ORT census probe (G1/G6): facts about every ONNX Runtime binary and consumer under a root."""
 import argparse
 import fnmatch
 import hashlib
@@ -20,8 +13,7 @@ import struct
 import zipfile
 
 ABI = (b"OrtGetApiBase", b"CreateEpFactories", b"RegisterCustomOps")
-# A whole ORT source-file path ending in NUL, as __FILE__ puts it into every ORT build. A consumer that
-# names the chain DIRECTORY as data is not ORT: docs/onnxruntime-single-source.md#what-the-chain-ort-is
+# An ORT source path plus NUL, as __FILE__ embeds it; a bare chain dir is not ORT. See docs/onnxruntime-single-source.md
 MARK = re.compile(rb"onnxruntime[\\/](?:core|contrib_ops)[\\/][\w.+\\/-]*?\.(?:cc|cpp|cxx|c|h|hpp|inc|cu|cuh)(?:\x00|\Z)")
 INSTANCE = re.compile(r"^(?:lib)?onnxruntime(?:_providers_[a-z0-9_]+)?\.(?:dll|so(?:\.[0-9]+)*)$"
                       r"|^onnxruntime_pybind11_state[^/]*\.(?:pyd|so)$", re.IGNORECASE)

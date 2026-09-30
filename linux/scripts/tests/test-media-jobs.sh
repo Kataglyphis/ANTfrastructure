@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# media_jobs, both definitions of it. The name has TWO owners on purpose -- one
-# assumes media_common_init pre-loaded parallelism.sh, the other sources it on
-# demand -- so what has to hold is that they take the SAME argument and mean the
-# same thing by it. The android gstreamer lane's 1500 MB was a fourth copy of the
-# block until the cap became a parameter.
-# docs/cross-build-verification.md#the-linuxscriptstests-suites
+# media_jobs has two owners on purpose, so they must agree on the argument; see docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -13,9 +8,7 @@ SCRIPTS="${TESTS_DIR}/.."
 _common_src="$(t_fn_src "${SCRIPTS}/03-media/core/common.sh" media_jobs)" || exit 1
 _preamble_src="$(t_fn_src "${SCRIPTS}/03-media/android-build-preamble.sh" media_jobs)" || exit 1
 
-# _jobs <definition source> <helper stub> [cap] -- runs one media_jobs in its own
-# shell. The helper stub decides which branch is reachable: a compute_jobs_with_mem_cap
-# that records its cap, or nothing at all for the nproc fallback.
+# _jobs <definition source> <helper stub> [cap]: one media_jobs in its own shell; the stub picks the branch.
 _jobs() {
   bash -c '
     nproc() { printf "NPROC\n"; }
@@ -26,9 +19,7 @@ _jobs() {
 _CAP_STUB='compute_jobs_with_mem_cap() { printf "CAP %s\n" "$2"; }'
 _run_common()      { _jobs "${_common_src}"   "${_CAP_STUB}" "${1:-}"; }
 _run_common_bare() { _jobs "${_common_src}"   ""             "${1:-}"; }
-# The on-demand copy reads /opt/scripts/core/parallelism.sh -- an absolute
-# container path no host fixture can stand in for -- so its cap branch is asserted
-# on the SOURCE and its fallback is driven for real.
+# The on-demand copy reads an absolute container path, so its cap branch is asserted on the source.
 _run_preamble()    { _jobs "${_preamble_src}" ""             "${1:-}"; }
 
 t_case "the default cap is 2000 MB in BOTH definitions"

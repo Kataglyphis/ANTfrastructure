@@ -4,21 +4,10 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Writes the bundle's self-description into C:\runtime: BUNDLE-ENV.cmd,
-    BUNDLE-ENV.ps1 and BUNDLE-README.md (backlog #130, 2026-08-25).
+    Writes the bundle's self-description into C:\runtime: BUNDLE-ENV.cmd, BUNDLE-ENV.ps1 and BUNDLE-README.md.
 .DESCRIPTION
-    Until this script existed nothing INSIDE the bundle named its own layout:
-    every pointer was a Dockerfile ENV of a windows/amd64 image, PATH's python
-    was the host x64 one, and C:\runtime\python (the arm64 target interpreter)
-    appeared in no ENV at all. A consumer who copies C:\runtime to a device had
-    to reverse-engineer the DLL homes from the tree.
-
-    Runs in the merge stage on BOTH lanes (parity: the amd64 image gets the same
-    files, they simply restate its ENV). Everything it writes is derived from
-    facts it can check right here -- the arch table, the ENV of the merge RUN
-    and the directories that actually exist -- and the absent-on-this-lane
-    markers the branches wrote (ABSENT-ON-<ARCH>.txt, COMPILER-ABSENT-...).
-    Three text files, no PE -- invisible to the arch gate that runs after it.
+    A copied C:\runtime otherwise names none of its DLL homes. Runs in the merge stage on both lanes and writes
+    only what it can check there: the arch table, the merge RUN's ENV, existing dirs and the branches' ABSENT markers.
 #>
 param(
     [string]$InstallDir = 'C:\runtime',
@@ -28,9 +17,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# -ScriptDir is accepted for command-line parity with the other merge-stage
-# scripts; the canonical resolver below finds C:\bkmnt\modules beside this
-# script in the flat mount layout without it.
+# -ScriptDir is accepted only for parity with the other merge-stage scripts; the resolver needs no hint.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
@@ -43,9 +30,7 @@ $arch  = Get-WindowsTargetArch
 $info  = Get-WindowsTargetArchInfo -Arch $arch
 $cross = Test-WindowsCrossTarget -Arch $arch
 
-# ── 1. DLL homes and tool roots: the ENV the merge RUN inherited, filtered to
-#       what exists. The names are the ones the GStreamer load probe and the
-#       final Dockerfile PATH use; a consumer registers exactly these.
+# 1. DLL homes: the merge RUN's ENV that exists, named as the GStreamer probe and the final PATH name them
 $envNames = @('FFMPEG_BIN', 'OPENCV_BIN', 'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'LITERT_BIN', 'LITERT_LM_ROOT', 'GSTREAMER_BIN',
               'GST_PLUGIN_PATH', 'GST_PLUGIN_SYSTEM_PATH', 'TVM_ROOT', 'IREE_ROOT', 'IREE_BIN', 'PYTHON_WHEELS', 'VULKAN_SDK')
 $envRows = @()
@@ -62,23 +47,22 @@ foreach ($extra in @((Join-Path $InstallDir "lib\opencv5\$($info.OpenCvArchDir)\
 }
 $dllHomes = @($dllHomes | Select-Object -Unique)
 
-# ── 2. Python: the TARGET interpreter on a cross lane (C:\runtime\python,
-#       #120/#124/#125), the image's host CPython on the native lane.
+# 2. Python: the target interpreter on a cross lane, the image's host CPython on the native lane
 $targetPython = Join-Path $InstallDir 'python'
 $pythonRoot = if (Test-Path (Join-Path $targetPython 'python.exe')) { $targetPython } else { '' }
 $wheelDir = Join-Path $InstallDir 'wheels'
 $wheels = @(if (Test-Path $wheelDir) { Get-ChildItem -Path $wheelDir -Filter '*.whl' -File | ForEach-Object { $_.Name } })
 
-# ── 3. What is absent by construction on this lane, in the branches' own words.
+# 3. What is absent by construction on this lane, in the branches' own words
 $absent = @(Get-ChildItem -Path $InstallDir -Recurse -File -Include 'ABSENT-ON-*.txt', 'COMPILER-ABSENT-*.txt' -ErrorAction SilentlyContinue |
         ForEach-Object { [pscustomobject]@{ Path = $_.FullName.Substring($InstallDir.Length).TrimStart('\'); First = (Get-Content $_.FullName -TotalCount 1) } })
 
-# ── 4. The GStreamer plugin contract this lane was gated on.
+# 4. The GStreamer plugin contract this lane was gated on
 $plugins = @(if (Get-Command Get-RequiredGstPlugin -ErrorAction SilentlyContinue) { Get-RequiredGstPlugin -Arch $arch | ForEach-Object { $_.Name } })
 
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + 'Z'
 
-# ── BUNDLE-ENV.cmd ────────────────────────────────────────────────────────────
+# BUNDLE-ENV.cmd
 $cmd = [System.Collections.Generic.List[string]]::new()
 $cmd.Add('@echo off')
 $cmd.Add("rem Kataglyphis Windows media bundle -- $arch ($($info.PeMachineName)), written $stamp by Write-BundleManifest.ps1 (#130)")
@@ -93,7 +77,7 @@ if ($pythonRoot) {
 }
 $cmd.Add("set ""KATA_WHEELS=$wheelDir""")
 
-# ── BUNDLE-ENV.ps1 ────────────────────────────────────────────────────────────
+# BUNDLE-ENV.ps1
 $ps = [System.Collections.Generic.List[string]]::new()
 $ps.Add("# Kataglyphis Windows media bundle -- $arch ($($info.PeMachineName)), written $stamp by Write-BundleManifest.ps1 (#130)")
 $ps.Add('# Dot-source this file: . C:\runtime\BUNDLE-ENV.ps1')
@@ -107,7 +91,7 @@ if ($pythonRoot) {
 }
 $ps.Add("`$env:KATA_WHEELS = '$wheelDir'")
 
-# ── BUNDLE-README.md ──────────────────────────────────────────────────────────
+# BUNDLE-README.md
 $md = [System.Collections.Generic.List[string]]::new()
 $md.Add("# Kataglyphis Windows media bundle -- $arch")
 $md.Add('')

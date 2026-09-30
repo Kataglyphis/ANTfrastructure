@@ -3,24 +3,6 @@
 # SPDX-License-Identifier: MIT
 """Who actually calls this hub -- answered from clones, not from a local grep.
 
-Every dead-code decision here has rested on grepping the repos that happen to be
-checked out on one machine. That is how three deletions had to be restored: the
-caller existed, in a repo nobody had cloned. This reads the declared list in
-.github/consumers.json, obtains every listed repository, and grades each hub
-entry point into one of four states -- reached by an external consumer, reached
-only by the hub itself, merely mentioned in prose, or named by nobody.
-
-Two rules keep the answer honest. A consumer that cannot be obtained is a hard
-failure, never a skip: a silent skip turns "no caller found" into a lie with the
-same shape as the truth. And a mention is not a call -- a hub script named in a
-consumer's CHANGELOG keeps nothing alive, so prose and comment hits are counted
-apart from executable ones.
-
-Usage:
-    python3 linux/scripts/verify_consumer_inventory.py --report out/consumers.md
-    python3 linux/scripts/verify_consumer_inventory.py --offline
-        --local-root /c/GitHub --report out/consumers.md
-
 docs/consumer-inventory.md#the-consumer-inventory
 """
 from __future__ import annotations
@@ -39,9 +21,7 @@ HUB_ROOT = HERE.parent.parent
 DEFAULT_INVENTORY = HUB_ROOT / ".github" / "consumers.json"
 TOKEN_ENV = "CONSUMER_INVENTORY_TOKEN"
 
-# A hit in one of these files, or on a line that opens with one of these, is a
-# MENTION: prose, a changelog, or an allow-file row -- none of which runs
-# anything. `.txt` is deliberately absent: CMakeLists.txt ends in it.
+# Hits in these files or on these line heads are mentions, not calls; `.txt` is absent for CMakeLists.txt.
 DOC_SUFFIXES = {".md", ".rst", ".log", ".patch", ".diff", ".po", ".allow"}
 COMMENT_HEADS = ("#", "//", "/*", "*", "<!--", "::", ";", "rem ", "REM ")
 BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip",
@@ -49,17 +29,7 @@ BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip",
                    ".pyc", ".woff", ".woff2", ".ttf", ".otf", ".bin", ".ninja"}
 MAX_FILE_BYTES = 4 * 1024 * 1024
 
-# Test suites build FAKE consumer trees and name fixture paths that must not
-# exist -- a dangling hit there is the fixture doing its job, not a stale
-# reference. A real call in a test fails the suite itself, which is the better
-# gate for it.
-#
-# Matched on a path SEGMENT rather than on the hub's own two prefixes: a
-# consumer spells the same directory `scripts/windows/tests/`, which neither
-# prefix here covered. That went unnoticed while Windows-side references were
-# invisible; the moment backslash spellings became visible, a consumer's
-# NEGATIVE test -- one asserting that resolving 'NoSuchModule' names both the
-# locations it searched -- read as a broken call to a hub path.
+# Suites name fixture paths that must not exist; matched as a path segment to cover every repo's layout.
 FIXTURE_DIR = "tests"
 
 
@@ -79,10 +49,7 @@ STATUS_ORDER = (UNREFERENCED, MENTIONED_ONLY, SELF_ONLY, EXTERNAL)
 # Characters that end a path reference in prose or in a `uses:` value.
 REF_TRAIL = "`'\").,;:)]}>*_"
 
-# Not every entry point is reached by its path. A PowerShell module is asked for
-# by NAME (Resolve-BuildModulePath -Name 'WindowsBuild.Common') and a CMake module
-# by include(Sanitizers), so a path-only scan would report both as dead. A class
-# declares the extra shape it is reached through; %s is the file's stem.
+# By-name reach (PowerShell modules, CMake include()) a path scan would miss; %s is the file's stem.
 STEM_ALIASES = {
     "stem-word": r"(?<![\w.-])%s(?![\w.-])",
     "cmake-include": r"include\s*\(\s*%s\s*\)",
@@ -125,8 +92,7 @@ def load_inventory(path):
 
 
 def entry_forms(spec, path, rel):
-    """One entry point: its path needle plus, if the class declares one, the
-    by-name form it is really reached through."""
+    """One entry point: its path needle plus any by-name form its class declares."""
     needle = rel.rsplit("/", 1)[0] if spec.get("needle") == "dir" else rel
     entry = {"kind": spec["kind"], "needle": needle, "alias_stem": None,
              "alias_re": None, "alias_name": None}
@@ -209,12 +175,7 @@ def use_kind(rel, line):
 
 
 def entry_hits(text, entry):
-    """(offset, matched text) for every occurrence of one entry point in a file.
-
-    str.find over the path form rather than one giant alternation: 149 literal
-    scans of a file are a fraction of the cost of one 149-branch regex, and this
-    gate walks five whole repositories.
-    """
+    """(offset, matched text) per occurrence; str.find per entry is far cheaper than one giant alternation."""
     out = []
     needle = entry["needle"]
     pos = text.find(needle)
@@ -238,13 +199,7 @@ def path_universe(files):
 
 
 def is_hub_reference(text, start, matched, entry, ctx):
-    """Does this hit mean the HUB's copy of that entry point?
-
-    In the hub itself every hit does. In a consumer the reference may be to its
-    own file of the same path or module name, so it counts only when qualified
-    (third_party/ANTfrastructure/..., owner/ANTfrastructure/...) or when the consumer
-    owns no such path -- and, for a by-name alias, no file of that basename.
-    """
+    """Does this hit mean the hub's copy? In a consumer only when qualified or the consumer has no such file."""
     if ctx["is_self"]:
         return True
     before = text[max(0, start - 64):start]
@@ -284,24 +239,14 @@ def scan_consumer(root, files, entries, ctx):
 
 
 def inside_url(text, start):
-    """Is this hit part of an http(s) URL rather than a path in a tree?
-
-    github.com/<owner>/ANTfrastructure/actions/... and .../blob/main/... look
-    exactly like repository paths and are not ones.
-    """
+    """Is this hit inside an http(s) URL, which looks like a repository path but is not one?"""
     before = text[max(0, start - 96):start]
     cut = before.rfind("://")
     return cut >= 0 and not re.search(r"[\s'\"`<>]", before[cut:])
 
 
 def submodule_prefixes(hub_root):
-    """Paths declared in the hub's .gitmodules.
-
-    A fresh CI clone leaves submodule worktrees EMPTY, so a reference into one
-    (e.g. .../third_party/DocumANTation/docs-tooling/...) looks like a path that
-    does not exist. Those files are vendored, not hub entry points, so a
-    reference into one is not a dangling hub path and this gate must not grade it.
-    """
+    """Submodule paths from .gitmodules, whose worktrees a fresh clone leaves empty and which are not graded."""
     gitmodules = hub_root / ".gitmodules"
     prefixes = []
     if gitmodules.is_file():
@@ -313,12 +258,7 @@ def submodule_prefixes(hub_root):
 
 
 def dangling_refs(root, files, hub_root, ref_re, vendored):
-    """Executable references to hub paths that do not exist -- a caller pointing
-    at nothing is the other half of the question this inventory asks.
-
-    Only REACHED positions count. A comment recording that a path was removed,
-    or naming one as an example, is prose about a hub path, not a broken call.
-    """
+    """Executable (reached, not prose) references to hub paths that do not exist."""
     found = []
     for rel in files:
         if is_fixture(rel):
@@ -328,18 +268,11 @@ def dangling_refs(root, files, hub_root, ref_re, vendored):
             continue
         for match in ref_re.finditer(text):
             body = match.group(1)
-            # A backslash separates path segments only in a reference SPELLED
-            # with them. Where the qualifier that matched used slashes, the
-            # first backslash ENDS the path: a shell line that prints a hub
-            # path, `printf 'shared/config/shared-assets.manifest\n'`, is a
-            # slash path followed by a C string escape, and reading that escape
-            # as a separator invented `shared-assets.manifest/n` below and
-            # reported a file that is right there as a dangling reference.
+            # After a slash-spelled qualifier a backslash ends the path, e.g. a printf `\n` escape.
             if "\\" not in text[match.start(0):match.start(1)]:
                 body = body.split("\\", 1)[0]
             target = body.split("@", 1)[0].rstrip(REF_TRAIL)
-            # One spelling from here on: the path is checked against a POSIX
-            # checkout, and `windows\scripts` is not a file there.
+            # Checked against a POSIX checkout, so normalise to slashes.
             target = target.replace("\\", "/").rstrip("/")
             if (not target or target.startswith(vendored)
                     or (hub_root / target).exists() or inside_url(text, match.start())):
@@ -350,17 +283,7 @@ def dangling_refs(root, files, hub_root, ref_re, vendored):
     return sorted(set(found))
 
 
-# A PowerShell module is asked for by NAME, never by path, so a path-only scan
-# can never see one dangle -- and a dangling module name fails at RUNTIME, inside
-# a build, with "module not found". Three shapes reach one:
-#
-#   Import-BuildModule @('WindowsBuild.Common', 'WindowsOnnx.Common')
-#   Resolve-BuildModule -Name 'WindowsContainerLog.Common'
-#   Join-Path $modulesDir 'WindowsMsix.Common.psm1'
-#
-# Every name they mention whose stem is not a file under windows/scripts/modules/
-# at HEAD is dangling. This is the reachability question STEM_ALIASES answers for
-# the other direction (is this hub module named by anybody), asked backwards.
+# Modules are reached by name (Import-BuildModule, Resolve-BuildModule -Name, Join-Path), so a dangling one fails only at runtime.
 MODULE_DIR = "windows/scripts/modules"
 MODULE_REFS = (
     re.compile(r"Import-BuildModule\s*(?:-Name\s*)?@?\s*\(?([^)\n]*)\)?"),
@@ -373,9 +296,7 @@ MODULE_NAME = re.compile(r"['{q}]([A-Za-z0-9_.]+?)(?:\.psm1)?['{q}]".replace("{q
 def dangling_modules(root, files, hub_root):
     """Module NAMES a consumer imports that the hub no longer ships."""
     have = {p.stem for p in (hub_root / MODULE_DIR).glob("*.psm1")}
-    # The consumer's own modules: Resolve-BuildModule falls back to them, so a
-    # name found here resolves at runtime whatever the hub ships. A fixture's
-    # .psm1 is not one -- it exists to be absent from the hub.
+    # Resolve-BuildModule falls back to the consumer's own modules; fixture modules do not count.
     own = {Path(rel).stem for rel in files if rel.endswith(".psm1") and not is_fixture(rel)}
     found = []
     for rel in files:
@@ -390,9 +311,7 @@ def dangling_modules(root, files, hub_root):
                 if use_kind(rel, line) != REACHED:
                     continue
                 for name in MODULE_NAME.findall(match.group(1)):
-                    # A local fallback module is the consumer's own and is not
-                    # this inventory's business; only a name the HUB is expected
-                    # to carry can dangle here.
+                    # Only a name the hub is expected to carry can dangle.
                     if name in have or name in own or not name.startswith("Windows"):
                         continue
                     found.append("%s:%d -> %s.psm1 (module name)" % (rel, lineno, name))
@@ -554,13 +473,7 @@ def qualifier_set(hub):
 
 
 def ref_qualifiers(hub):
-    r"""The same two path qualifiers, in BOTH separator spellings.
-
-    A PowerShell caller writes `third_party\ANTfrastructure\windows\...`, and a
-    slash-only qualifier matched none of them -- so every Windows-side reference
-    to a hub path was invisible to the dangling check, which is exactly the half
-    of the fleet where three files were deleted for having "no callers".
-    """
+    r"""The two path qualifiers in both separator spellings, since PowerShell callers write backslashes."""
     out = []
     for qualifier in qualifier_set(hub)[:2]:
         out.append(qualifier)
@@ -574,9 +487,7 @@ def collect(data, args, hub_root, entries, work):
     local = parse_local(args.local, args.local_root, names)
     qualifiers = qualifier_set(data["hub"])
     vendored = submodule_prefixes(hub_root)
-    # The character class carries the backslash for the same reason the
-    # qualifiers do: a Windows path is separated by them, and stopping at the
-    # first one truncated every such reference to its first segment.
+    # The class includes the backslash, or a Windows path would stop at its first segment.
     ref_re = re.compile(r"(?:%s)([A-Za-z0-9_./@\\-]+)"
                         % "|".join(re.escape(q) for q in ref_qualifiers(data["hub"])))
     per_consumer = {}

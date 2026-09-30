@@ -5,48 +5,25 @@
 
 <#
 .SYNOPSIS
-    Generic Python package builder for Windows
-
-.DESCRIPTION
-    Builds source distribution and binary wheels for Python packages.
-    Uses shared modules from ANTfrastructure.
-
+    Builds the sdist and the Windows wheels of a Python package.
 .PARAMETER PythonVersion
-    Python version to use (default: "3.14")
-
+    Python version to use.
 .PARAMETER RepoRoot
-    Root of the repo being built. Default (empty) keeps today's behaviour:
-    Initialize-CiEnvironment resolves three levels above this script, i.e. the
-    ANTfrastructure checkout itself. A consumer that vendors or submodules
-    ANTfrastructure passes ITS OWN root here.
-
-.EXAMPLE
-    Invoke-CiPackaging.ps1 -PythonVersion "3.13"
+    Root of the repo being built; empty means the ANTfrastructure checkout, so a consumer must pass its own.
 #>
 
 [CmdletBinding()]
 Param(
     [string]$PythonVersion = "3.14",
-    # Root of the repo being built. Empty = today's behaviour, where
-    # Initialize-CiEnvironment resolves three levels above this script and lands
-    # in the ANTfrastructure checkout. A consumer that vendors or submodules
-    # ANTfrastructure (<consumer>/third_party/ANTfrastructure/windows/scripts/python)
-    # MUST pass its own root, or every path derived below -- pyproject.toml, the
-    # venvs, the log dir -- is read from and written into the hub checkout
-    # instead of the repo under test.
     [string]$RepoRoot = ''
 )
 
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
-# $RepoRoot and $repoRoot are ONE variable (PowerShell identifiers are
-# case-insensitive): the assignment deliberately replaces the caller's raw value
-# with the RESOLVED absolute path Initialize-CiEnvironment returns.
+# $RepoRoot and $repoRoot are one variable: this deliberately replaces the raw value with the resolved path.
 $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot -RepoRoot $RepoRoot
 
-# #141: shared preamble — context/log/wrappers/uv delegates come from
-# New-CiSession (Initialize-CiEnvironment.ps1).
 $script:BuildContext = New-CiSession -RepoRoot $repoRoot -WithUvDelegates
 
 Write-CiLog "Using Python version: $PythonVersion"

@@ -1,10 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The failure-aggregation cases use `cmd /c exit N` rather than a mock, because
-# the bug this module exists to prevent is specifically about $LASTEXITCODE from
-# a NATIVE command - a PowerShell-only fake would never reproduce it.
+# `cmd /c exit N`, not a mock: the bug is about a native command's $LASTEXITCODE, which a PowerShell fake never sets.
 
 Describe 'WindowsBuildSweep.Common' {
   BeforeAll {

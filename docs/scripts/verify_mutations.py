@@ -1,46 +1,8 @@
 #!/usr/bin/env python3
-"""Prove that a gate's tests can actually fail.
+"""Prove a gate's tests can fail: apply each mutations.json edit in a throwaway copy and require its test to fail.
 
-The repeated failure this repo keeps finding is a check that looks green while
-proving nothing. Reading a test cannot tell you which it is; only breaking the
-thing it guards can. This session alone, EIGHT tests written to guard a fix
-turned out to pass with the fix removed -- a window-grep that caught the wrong
-`|| die`, a stub that bypassed the very extraction under test, an `if` wrapper
-that suppressed the errexit it was meant to prove, a fixture whose short
-definition came first.
-
-Each entry in mutations.json names a file, a literal edit that NEUTERS one
-guarantee, and the test command that must then FAIL. A mutation the tests survive
-is reported: either the test is vacuous, or the mutation is not the guarantee you
-thought it was. Both are worth knowing.
-
-Each distinct test command is also run ONCE unmutated first: a bite recorded
-while the suite was already red proves nothing.
-
-Every mutation runs in a throwaway COPY of the tree, never in the tree it was
-pointed at: this repo builds from its own working directory, so an in-place edit
-could be snapshotted into a shipped image. The copy keeps symlinks AS symlinks
-rather than dereferencing whatever they point at into it, drops the ones that
-resolve outside the tree, and a symlink is therefore refused as a mutation target
--- writing through one would land outside the copy. --in-place opts out (its own
-fixtures).
-
-Every mutation is still proven on its own, but --jobs of them run at once, each
-shard in its own mirror. Each verdict is printed, flushed and tagged [j/J] with
-its shard as soon as its entry completes, so a run killed by a timeout still names
-what it found; the failures are summarised in manifest order at the end.
-
-Runs from a pre-commit hook or CI: --only <id> for one entry, --changed to pick
-the entries whose target -- or whose test file -- is in the diff, plain for all.
---shard K/N proves entries[K::N] of that selection: CI splits the manifest over N
-jobs this way.
-
---stale-check runs NO test: it only asks whether every recorded edit still
-applies. That is the half of the manifest that rots on its own, and it costs a
-read per target instead of a suite per entry, so the whole manifest fits in the
-seconds a hook has.
-
-See docs/code-quality-tooling.md#the-mutation-gate-mutations.
+Each test command first runs once unmutated, since a bite recorded on a red suite proves nothing.
+See docs/code-quality-tooling.md#the-mutation-gate-mutations
 """
 import argparse
 import concurrent.futures
@@ -56,9 +18,7 @@ import threading
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
 COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/dist",
-                 # 1.5 GB, gitignored, read by no gate test -- and it was
-                 # copied into every mirrored workspace, including the hook's.
-                 # With --jobs that cost is paid once per shard.
+                 # 1.5 GB, gitignored, read by no test, and otherwise copied into every mirror.
                  "linux/llm-stack/ollama-binary.tar.zst")
 _IGNORED_CACHE = {}
 _IGNORED_LOCK = threading.Lock()
@@ -66,17 +26,7 @@ DEFAULT_JOBS = min(8, os.cpu_count() or 1)
 
 
 def _git_ignored(src):
-    """Every path git ignores under src, or an empty set when git cannot answer.
-
-    Asked at the SOURCE, where .git still exists. The mirror is exactly the
-    place where it will not, so this is the last moment the question can be
-    put -- and the answer is what keeps a 1.5 GB gitignored tarball out of a
-    3 GB tmpfs. A hand-kept list could not: COPY_EXCLUDES was only ever applied
-    to directories, so a file listed there was still copied.
-
-    Cached per source tree: --jobs mirrors the tree once per shard, and the
-    answer cannot differ between them.
-    """
+    """Every path git ignores under src (empty when git cannot answer), asked at the source since mirrors have no .git."""
     with _IGNORED_LOCK:
         if src in _IGNORED_CACHE:
             return _IGNORED_CACHE[src]
@@ -104,17 +54,7 @@ def within(root, path):
 
 
 def mirror_tree(src, dst):
-    """Throwaway copy of src, minus what no gate test reads.
-
-    Skips git-ignored paths (build output, caches, downloaded binaries) and the
-    COPY_EXCLUDES fallback -- both as directories AND as files. Keeps symlinks
-    as symlinks, and drops the ones resolving outside the tree.
-
-    A copy that fails is an error, never a shrug. This used to `except OSError:
-    pass`; on a full tmpfs that produced 0-byte test files, pytest collected
-    nothing, and every entry was reported as a vacuous bite -- a verdict about
-    the tests that was really a verdict about disk space.
-    """
+    """Throwaway copy of src minus ignored and excluded paths; symlinks stay links, and a failed copy is fatal, never skipped."""
     skip = {os.path.normpath(os.path.join(src, rel)) for rel in COPY_EXCLUDES}
     skip |= {os.path.normpath(dst)} | _git_ignored(src)
     home = os.path.realpath(src)
@@ -165,16 +105,7 @@ def changed_files():
 
 
 def _run_test(cmd, root, timeout):
-    """Run one test command; on timeout kill the WHOLE tree, not just the shell.
-
-    subprocess.run(timeout=) kills only its direct child. A test that spawns a
-    pytest which spawns a candidate left the grandchildren alive when the gate
-    was interrupted -- one orphan burned CPU for twenty minutes beside the
-    timing-sensitive tests of the next run. Own session, then kill the group.
-    A Windows python has no process groups (os.killpg is missing and the
-    first timeout crashed the gate): taskkill /T walks the same tree there.
-    Returns (returncode, timed_out).
-    """
+    """Run one test command, killing its whole process tree on timeout; returns (returncode, timed_out, output)."""
     proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
     try:
@@ -195,13 +126,7 @@ def _run_test(cmd, root, timeout):
 
 
 def passes(cmd, root, timeout):
-    """Run one test command unmutated; a timeout is not a pass.
-
-    Returns (ok, why). The why names the failure SHAPE: "vacuous bite" spent
-    2026-09-07 meaning three different root causes (pytest missing on the
-    runner, a stale assert, shard-contention timeout) that all printed the same
-    line, and each cost a full CI round to tell apart.
-    """
+    """Run one test command unmutated; returns (ok, why), why naming the failure shape. A timeout is not a pass."""
     rc, timed_out, output = _run_test(cmd, root, timeout)
     if timed_out:
         return False, "timed out after %ss (a timeout is not a pass)" % timeout
@@ -229,11 +154,7 @@ class Baselines:
 
 
 class Report:
-    """Prints each verdict the moment its entry completes, tagged with the shard
-    that proved it, and flushed: Python block-buffers a piped stdout, so the old
-    report -- buffered and printed in manifest order at the end -- showed nothing,
-    not even its header, when CI killed the job at its timeout (2026-09-23).
-    summary() names the failures in manifest order once every shard is done."""
+    """Prints and flushes each verdict as it completes, so a run killed at its timeout still reports; summary() lists failures."""
 
     def __init__(self):
         self.failed = set()
@@ -271,8 +192,7 @@ def say(text):
 
 
 def applicable(entry, root):
-    """(original, mutated, reason) -- the precondition half of a bite, and the half
-    that ROTS: mutated is None with the reason when the edit cannot be applied."""
+    """(original, mutated, reason); mutated is None, with the reason, when the edit no longer applies."""
     target = os.path.join(root, entry["target"])
     if os.path.islink(target):
         return None, None, "target is a symlink -- a write through it escapes the copy"
@@ -365,13 +285,7 @@ def run_shard(args, entries, root, report, baselines, tag=""):
 
 
 def run_shards(args, entries, src, report):
-    """Deal the entries round-robin over --jobs mirrors and run the shards at once.
-
-    Every mirror is materialized BEFORE any shard starts. The first shard runs
-    in the repo root and mutates IN PLACE, so a mirror copied while one of its
-    files is mid-mutation captures the mutation and its baseline reads as an
-    unmutated failure (vacuous bite) -- the race a --jobs > 1 run lost.
-    """
+    """Deal entries round-robin over --jobs mirrors, all copied before the first shard mutates its root in place."""
     jobs = max(1, min(args.jobs, len(entries)))
     shards = [entries[n::jobs] for n in range(jobs)]
     extra = [tempfile.mkdtemp(prefix="mutation-gate-") for _ in shards[1:]]
@@ -390,16 +304,7 @@ def run_shards(args, entries, src, report):
 
 
 def select_only(entries, only, manifest):
-    """The --only subset, or SystemExit(2) if it names an id that does not exist.
-
-    EXACT ids, never globs. An unknown id used to select nothing and exit 0,
-    so `--only workflow-lint.*` -- which LOOKS like a wildcard and matches no
-    id -- printed "nothing selected" and read as proof. That exact string was
-    quoted as evidence in a report on 2026-09-09; it can no longer be produced.
-
-    --changed selecting nothing stays legitimate: a commit can touch no
-    target. An id that does not exist cannot.
-    """
+    """The --only subset of exact ids, never globs; an unknown id exits 2 instead of selecting nothing."""
     if not only:
         return entries
     known = {e["id"] for e in entries}
@@ -416,11 +321,7 @@ def select_only(entries, only, manifest):
 
 
 def select_shard(entries, spec):
-    """--shard K/N: entries[K::N], K counted from 0, or SystemExit(2) on a bad spec.
-
-    Deterministic, so N CI jobs over the same manifest prove every entry exactly
-    once between them; test-mutation-gate.sh pins that the slices partition it.
-    """
+    """--shard K/N: entries[K::N] (K from 0), a partition across N CI jobs; a bad spec exits 2."""
     if not spec:
         return entries
     try:
@@ -438,8 +339,7 @@ def select(args):
     entries = select_only(load(args.manifest), args.only, args.manifest)
     if args.changed:
         touched = changed_files()
-        # By target OR by the test the entry runs: a commit that only weakens
-        # tests/test_x.py touched no target and selected nothing.
+        # By target or by test: a commit that only weakens a test touches no target.
         entries = [e for e in entries
                    if e["target"] in touched or any(t in e["test"] for t in touched)]
     return select_shard(entries, args.shard)

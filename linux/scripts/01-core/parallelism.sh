@@ -2,34 +2,7 @@
 # parallelism.sh - build parallelism helpers (CPU quota + memory cap)
 [ -n "${_PARALLELISM_SH_LOADED:-}" ] && return 0
 _PARALLELISM_SH_LOADED=1
-#
-# ONE model, used by every helper:
-#
-#     jobs = min( cores , usable_RAM / BUILD_MEM_DIVISOR / peak_MB_per_job )
-#
-#   cores        detected CPU cores, honoring any cgroup CPU quota.
-#   usable_RAM   MemAvailable, or the cgroup memory limit remaining (smaller wins).
-#   peak_MB      the PEAK per-translation-unit RSS of the workload (NOT average) --
-#                one value per "profile" (generic / rust / heavy), see _profile_mb.
-#   DIVISOR      how many builds share this host's RAM concurrently (default 1).
-#                Set BUILD_MEM_DIVISOR=N when running N per-arch builds in parallel
-#                (--parallel-archs) so N concurrent builds don't N-times overcommit.
-#
-# BEFORE changing any *_MB_PER_JOB value, read
-#   docs/build-parallelism-memory-tuning.md
-# The peak numbers are CALIBRATED to host RAM. Lowering them by eyeballing "free"
-# RAM OOM-kills multi-hour builds -- the average usage lies because heavy TUs are
-# staggered. torch's aten TUs peak ~4GB; that is why heavy stays at 4096.
-#
-# Environment Variables:
-#   PARALLEL_JOBS           - Hard override: exact job count for every helper.
-#   AGGRESSIVE_PARALLELISM  - "true" lowers the LIGHT profiles (faster); auto-on
-#                             when usable RAM >= 16GB. "false" forces it off.
-#   BUILD_MEM_DIVISOR       - Divide usable RAM by this (default 1). Injected by
-#                             the orchestrator under --parallel-archs = #arches.
-#   DEFAULT_MB_PER_JOB      - Override generic peak (default 2000, or 800 aggressive)
-#   RUST_MB_PER_JOB         - Override rust peak    (default 2500, or 1200 aggressive)
-#   CPP_HEAVY_MB_PER_JOB    - Override torch/heavy peak (default 4096; see doc)
+# Peak MB per job are calibrated, not averages. docs/build-parallelism-memory-tuning.md#how-to-tune-safely-procedure-for-an-agent
 
 _cgroup_cpu_quota_cores() {
   local quota=""
@@ -86,7 +59,6 @@ compute_jobs() {
     jobs="${requested}"
   fi
 
-  # Cap to detected available cores
   if [ "${jobs}" -gt "${cores}" ] 2>/dev/null; then
     jobs="${cores}"
   fi
@@ -114,19 +86,12 @@ _mem_available_mb() {
   fi
 }
 
-# Remaining memory under ONE cgroup generation's limit, in MB; returns non-zero
-# when that generation says "no limit" or is not mounted. The two generations
-# differ only in their file names and in how they spell unlimited -- v2 writes the
-# literal `max`, v1 a number at or above the kernel's effectively-infinite value --
-# so everything after that is the same arithmetic, written once.
-# docs/build-parallelism-memory-tuning.md
+# Remaining MB under one cgroup generation; non-zero when it sets no limit (v2 `max`, v1 a near-infinite number).
 _cgroup_remaining_mb_from() {
   local max_file="$1" current_file="$2" max current="" remaining
   [ -r "${max_file}" ] || return 1
   max="$(cat "${max_file}" 2>/dev/null || printf '')"
-  # `max`, empty, or anything non-numeric is "this generation sets no usable
-  # limit". The digit test also keeps garbage out of the arithmetic below, which
-  # under errexit would kill the caller rather than fall through.
+  # Non-numeric means no usable limit; it would also kill an errexit caller in the arithmetic below.
   case "${max}" in ''|*[!0-9]*) return 1 ;; esac
   { [ "${max}" -gt 0 ] && [ "${max}" -lt 9223372036854771712 ]; } 2>/dev/null || return 1
 
@@ -140,10 +105,7 @@ _cgroup_remaining_mb_from() {
   printf '%s\n' $(( max / 1024 / 1024 ))
 }
 
-# Approximate remaining memory under cgroup limits (MB), v2 first then v1.
-# Empty when neither is limited -- callers treat empty as "unknown, ignore".
-# CGROUP_ROOT exists for the unit suite: these are absolute kernel paths, and a
-# test that cannot point them somewhere else can only assert on this host's.
+# Remaining cgroup MB, v2 then v1, empty when unlimited; CGROUP_ROOT lets tests redirect the kernel paths.
 _cgroup_mem_remaining_mb() {
   local root="${CGROUP_ROOT:-/sys/fs/cgroup}"
   _cgroup_remaining_mb_from "${root}/memory.max" "${root}/memory.current" && return 0
@@ -153,8 +115,7 @@ _cgroup_mem_remaining_mb() {
 }
 
 _auto_aggressive_parallelism() {
-  # Enable AGGRESSIVE_PARALLELISM automatically when host has plenty of RAM.
-  # Explicit AGGRESSIVE_PARALLELISM=false disables this auto-detection.
+  # Auto-on at >= 16 GB available; an explicit true/false wins.
   case "${AGGRESSIVE_PARALLELISM:-}" in true|false) return 0 ;; esac
   local avail_mb
   avail_mb="$(_mem_available_mb)"
@@ -164,10 +125,7 @@ _auto_aggressive_parallelism() {
 }
 
 _usable_mem_mb() {
-  # usable RAM this build may assume, after dividing the host pool by the number
-  # of builds sharing it concurrently (BUILD_MEM_DIVISOR, default 1). This is the
-  # ONLY concurrency knob: N parallel per-arch builds each pass DIVISOR=N so the
-  # sum of their job counts still fits one host's RAM.
+  # The one concurrency knob: N parallel builds each pass BUILD_MEM_DIVISOR=N so together they fit the host.
   local avail_mb divisor
   avail_mb="$(_mem_available_mb)"
   [ -z "${avail_mb}" ] && { printf '%s\n' ""; return 0; }
@@ -177,9 +135,7 @@ _usable_mem_mb() {
 }
 
 _profile_mb() {
-  # Peak per-TU RAM (MB) for a workload profile. Aggressive mode lowers only the
-  # LIGHT profiles -- heavy (torch) TUs do not get cheaper on a big host, so the
-  # 4GB floor is unconditional. See docs/build-parallelism-memory-tuning.md.
+  # Peak per-TU MB; aggressive mode lowers only light profiles, since heavy (torch) TUs never get cheaper.
   local aggressive="${AGGRESSIVE_PARALLELISM:-false}"
   case "$1" in
     generic) [ "${aggressive}" = "true" ] && printf '%s\n' "${DEFAULT_MB_PER_JOB:-800}"  || printf '%s\n' "${DEFAULT_MB_PER_JOB:-2000}" ;;
@@ -190,14 +146,10 @@ _profile_mb() {
 }
 
 mem_capped_jobs() {
-  # THE core helper: jobs = min(cores, usable_RAM / peak_mb).
-  # Usage: mem_capped_jobs <peak_mb> [requested]
+  # mem_capped_jobs <peak_mb> [requested]: min(cores, usable RAM / peak_mb).
   local peak_mb="$1" requested="${2:-}"
 
-  # Hard override wins over everything — but only a VALID one. The raw
-  # passthrough this replaces emitted the value unvalidated and unclamped:
-  # PARALLEL_JOBS=0 (or a non-numeric leftover from a stale env) went
-  # straight into `make -j0`/`ninja -j0`, bypassing the >=1 floor below.
+  # Only a valid PARALLEL_JOBS overrides; 0 or junk would otherwise reach make -j0.
   if [ -n "${PARALLEL_JOBS:-}" ]; then
     case "${PARALLEL_JOBS}" in
       *[!0-9]*)
@@ -224,11 +176,9 @@ mem_capped_jobs() {
   printf '%s\n' "${jobs}"
 }
 
-# --- Named wrappers (stable API for callers) --------------------------------
-# Each just names a profile; all the logic lives in mem_capped_jobs.
+# Named wrappers (stable API): each only picks a profile
 
-# Generic C/C++ (OpenCV, ONNX, ...). Optional 2nd arg overrides the peak MB.
-# Usage: compute_jobs_with_mem_cap [requested] [mb_per_job]
+# Generic C/C++: compute_jobs_with_mem_cap [requested] [mb_per_job]
 compute_jobs_with_mem_cap() {
   local requested="${1:-}" mb_per_job="${2:-}"
   _auto_aggressive_parallelism
@@ -236,18 +186,13 @@ compute_jobs_with_mem_cap() {
   mem_capped_jobs "${mb_per_job}" "${requested}"
 }
 
-# Rust/Cargo (gst-plugins-rs) -- heavier link steps than generic C++.
-# Usage: compute_rust_jobs [requested]
+# Rust/Cargo: heavier link steps than generic C++.
 compute_rust_jobs() {
   _auto_aggressive_parallelism
   mem_capped_jobs "$(_profile_mb rust)" "${1:-}"
 }
 
-# Memory-HEAVY C++ (PyTorch/torch_cpu, large LTO). aten/autograd TUs peak
-# ~4GB/cc1plus; the generic 2GB estimate overcommits and the OOM-killer kills
-# cc1plus (observed: riscv64 litert, 27 jobs x 4GB on a 60GB host). Ignores
-# aggressive mode -- these TUs never get cheaper; more RAM just fits more at once.
-# Usage: compute_cpp_heavy_jobs [requested]
+# Memory-heavy C++ (torch, large LTO): ~4 GB per cc1plus, so the generic estimate would OOM.
 compute_cpp_heavy_jobs() {
   mem_capped_jobs "$(_profile_mb heavy)" "${1:-}"
 }

@@ -1,18 +1,5 @@
 #requires -Version 7.0
-# Guard for the $scriptAssetRoot bootstrap resolver (#108 dual-layout).
-#
-# The resolver CANNOT live in a module — its whole job is to locate modules\
-# before the first Import-Module (repo layout: one level up from the script's
-# group dir; container layout: flat beside it). So it exists as an inline copy
-# in every grouped script, and copies rot: the 2026-08-21 audit found one
-# script USING the variable without ever defining it (repair-windows-
-# componentstore, StrictMode off -> silent $null -> runtime bind error at the
-# END of a 40-min elevated repair) and two copies injected INSIDE nested
-# blocks (skipped under a switch / swallowed by a catch). This suite pins the
-# three invariants that made those bugs possible:
-#   1. every file that references $scriptAssetRoot also assigns it,
-#   2. the assignment is the one canonical line (byte-identical everywhere),
-#   3. the assignment sits at top level (column 0), never inside a block.
+# $scriptAssetRoot locates modules\ before any import, so it cannot live in one: each copy must be assigned, canonical, at column 0.
 
 Describe 'scriptAssetRoot resolver parity' {
 
@@ -24,8 +11,7 @@ Describe 'scriptAssetRoot resolver parity' {
         Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match '\$scriptAssetRoot' }
 
     It 'finds the resolver population at all (guards the scan itself)' {
-        # If a rename ever moves the convention, this fails loudly instead of
-        # the three assertions below passing on an empty set.
+        # A convention rename fails loudly here instead of passing on an empty set.
         Assert-True ($files.Count -ge 30) "expected >=30 scripts referencing `$scriptAssetRoot, found $($files.Count) — did the convention change?"
     }
 

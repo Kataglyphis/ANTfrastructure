@@ -6,22 +6,9 @@
 
 <#
 .SYNOPSIS
-    Walks EVERY process in a hung container's silo, not just the svchost that
-    hosts LSM. Answers whether LSM waits because something upstream in the silo
-    boot - smss, csrss, wininit, services, lsass - is stuck first.
-
+    Walks every process of a hung container's silo to see whether something upstream of LSM is stuck first.
 .DESCRIPTION
-    All previous probes went straight to the LSM svchost, so the processes that
-    actually create the session were never looked at. This starts its own bait
-    container, waits for the silo, and attaches NON-INVASIVELY to each of its
-    processes in turn.
-
-    csrss.exe and (on some builds) smss.exe run as protected processes and will
-    refuse even a read-only attach; that is reported per process rather than
-    treated as a finding.
-
-.EXAMPLE
-    pwsh -File windows\scripts\diagnostics\Get-SiloProcesses.ps1
+    Starts its own bait container and attaches non-invasively to each silo process; a protected process's refusal is reported, not treated as a finding.
 #>
 [CmdletBinding()]
 param(
@@ -31,8 +18,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Setup only (cdb discovery, out dir, bait, silo wait) is shared with the other
-# LSM probes; the per-process attach and its summary stay here.
+# Only the setup is shared with the other LSM probes; the per-process attach stays here.
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
@@ -47,8 +33,7 @@ if (-not $newWininit) { throw 'No new silo appeared.' }
 Write-Host "silo wininit: pid $($newWininit.ProcessId)"
 Start-Sleep -Seconds 15   # land inside the ~141 s stall
 
-# Collect the silo by descent from its wininit, plus the smss/csrss that were
-# created alongside it (they are not its children).
+# The silo's smss/csrss are not wininit's children, so they are matched by creation time.
 $silo = [System.Collections.Generic.List[object]]::new()
 $silo.Add($newWininit)
 $services = Get-CimInstance Win32_Process -Filter "ParentProcessId=$($newWininit.ProcessId)"
@@ -75,8 +60,7 @@ foreach ($p in $silo) {
     & $cdb -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
     $stacks = @(Select-String -Path $log -Pattern 'Call Site' -ErrorAction SilentlyContinue).Count
     if ($stacks -lt 1) {
-        # smss/csrss/wininit/services are PPL - 0n5 here is the OS refusing a
-        # read-only attach, not a hang. Only a kernel debugger sees these.
+        # 0n5 is a protected process refusing even a read-only attach, not a hang.
         $why = if (Select-String -Path $log -Pattern 'error 0n5|Access is denied|protected' -Quiet -ErrorAction SilentlyContinue) { 'attach refused - protected process (PPL)' } else { 'no stacks' }
         $summary.Add(("{0,-16} pid {1,-7} -- {2}" -f $p.Name, $p.ProcessId, $why))
         continue

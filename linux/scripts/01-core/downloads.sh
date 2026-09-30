@@ -2,24 +2,13 @@
 # downloads.sh - shared download and checksum helpers
 [ -n "${_DOWNLOADS_SH_LOADED:-}" ] && return 0
 _DOWNLOADS_SH_LOADED=1
-#
-# NOTE: download_file() calls die() which requires logging.sh to be sourced
-# before this file.  When sourced through common.sh this is guaranteed;
-# if sourcing independently, source logging.sh first.
 
 # Fallback die() in case logging.sh is not sourced before this file.
 if ! command -v die >/dev/null 2>&1; then
   die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 fi
 
-# download_file <url> <dest> [retries] [connect_timeout] [max_time]
-#   retries          number of retry attempts (default 3, the historical value)
-#   connect_timeout  per-connection timeout in seconds (default: tool default)
-#   max_time         hard cap on total transfer time in seconds (curl only;
-#                    wget has no equivalent, so it is ignored there)
-# With only <url> <dest> the invocation is flag-identical to the historical
-# behaviour; the optional arguments exist so call sites migrated from bespoke
-# wget/curl invocations can keep their exact retry/timeout characteristics.
+# download_file <url> <dest> [retries=3] [connect_timeout] [max_time]; max_time is curl-only (wget has none).
 download_file() {
   local url="$1"
   local dest="$2"
@@ -35,22 +24,14 @@ download_file() {
   elif command -v wget >/dev/null 2>&1; then
     local -a wget_opts=()
     [ -n "${connect_timeout}" ] && wget_opts+=(--timeout="${connect_timeout}")
-    # Same TLS guarantees as the curl branch (supply-chain audit: the shared
-    # helper was WEAKER than the bespoke wget calls it replaced — build-gcc.sh
-    # passes --https-only itself). curl side additionally forbids https→http
-    # redirects via --proto-redir.
+    # Same TLS floor as the curl branch, which additionally refuses https->http redirects.
     wget -q --https-only --secure-protocol=TLSv1_2 --tries="${retries}" ${wget_opts[@]+"${wget_opts[@]}"} -O "$dest" "$url"
   else
     die "Neither curl nor wget is available for downloads"
   fi
 }
 
-# download_and_extract <url> <dest_dir> [strip_components] [retries] [connect_timeout] [max_time]
-# Fetch a tarball to a temp file and extract it into <dest_dir>
-# (tar auto-detects gz/xz/bz2 compression). The temp file is always
-# removed, including on download or extraction failure, so a partial
-# download never leaks. Returns non-zero on failure; caller decides
-# whether that is fatal.
+# download_and_extract <url> <dest_dir> [strip] [retries] [connect_timeout] [max_time]; the caller decides if failure is fatal.
 download_and_extract() {
   local url="$1"
   local dest_dir="$2"
@@ -76,14 +57,7 @@ download_and_extract() {
   rm -f "${tmp_tar}"
 }
 
-# $4 (optional): hash mode -- "file" (default) hashes the bytes as downloaded,
-# "stream" hashes the DECOMPRESSED stream. F6 (2026-08-27): GitHub's codeload
-# archives are byte-stable for "no less than a year", not forever, because the
-# gzip container may be re-encoded. The decompressed stream is stable for as
-# long as the commit exists, so a pin that must outlive that pledge should be
-# taken in stream form -- but ONLY together with a consumer that hashes the same
-# way, which is what this parameter provides. Verified on the abseil tarball:
-# file 7f4240fe..., stream ec28d875..., same 2 431 922 B download.
+# $4=stream hashes the decompressed bytes: GitHub may re-encode codeload gzip, the stream stays stable.
 download_verified_file() {
   local url="$1"
   local expected_sha256="$2"
@@ -109,18 +83,12 @@ download_verified_file() {
   }
 }
 
-# Clone or update a git repository. Uses shallow clone (--depth 1) to
-# minimize bandwidth. If the repo already exists, does a git fetch in-place.
 clone_or_update_repo() {
   local repo_url="$1"
   local dest_dir="$2"
   local branch="${3:-}"
 
-  # A 40-hex "branch" is an opt-in commit-SHA pin (reproducible builds). git's
-  # --branch only accepts refs, so fetch the exact commit instead. GitHub
-  # supports shallow fetch-by-SHA; failure here is loud (callers wrap this in
-  # retry ... || exit 1), never a silent wrong checkout. Tags/branches keep the
-  # existing shallow-clone path below unchanged.
+  # A 40-hex "branch" is a commit pin; --branch accepts only refs, so fetch that exact commit.
   if [[ "${branch}" =~ ^[0-9a-f]{40}$ ]]; then
     rm -rf "${dest_dir}"
     mkdir -p "${dest_dir}"
@@ -135,16 +103,11 @@ clone_or_update_repo() {
     git -C "${dest_dir}" fetch --depth 1 origin "${branch}" 2>/dev/null || git -C "${dest_dir}" fetch --depth 1 --tags 2>/dev/null || true
     if [ -n "${branch}" ]; then
       git -C "${dest_dir}" checkout "${branch}" 2>/dev/null || true
-      # The fetch||fetch||true + checkout||true above is deliberately tolerant
-      # (reusing a source cache to build slightly-stale is sometimes intended),
-      # but a silent miss produced builds from an unknown ref. Verify that the
-      # requested ref actually checked out, and be LOUD when it did not.
+      # The fetch/checkout above tolerate failure on purpose, so say loudly when the ref did not land.
       local _want _have _have_desc
       _want="$(git -C "${dest_dir}" rev-parse --verify --quiet "${branch}^{commit}" 2>/dev/null || true)"
       _have="$(git -C "${dest_dir}" rev-parse --verify --quiet HEAD 2>/dev/null || true)"
-      # Severity split: a stale-but-present checkout is tolerated (warned below),
-      # but NO usable HEAD at all means the previous clone crashed mid-flight —
-      # there is nothing to build from, so fail instead of laundering rc 0.
+      # A stale checkout only warns; no HEAD at all means a crashed clone with nothing to build from.
       if [ -z "${_have}" ]; then
         printf 'ERROR: no usable HEAD in %s (requested ref: %s); previous clone/fetch failed. Delete the directory and retry.\n' \
           "${dest_dir}" "${branch}" >&2

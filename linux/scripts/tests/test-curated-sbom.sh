@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Tests for generate_sbom.py's --check mode, the `sbom` preflight slug. The gate
-# is only worth anything if the document is byte-REPRODUCIBLE (hence the frozen
-# timestamp) and if a stale committed copy actually goes red -- an SBOM that
-# silently drifts from versions.env is worse than none, because it is published
-# as the corresponding-source record for the copyleft half of the image.
-# docs/code-quality-tooling.md#curated-sbom-sbom
+# generate_sbom.py --check, the `sbom` slug; see docs/code-quality-tooling.md#curated-sbom-sbom
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -15,9 +10,7 @@ REPO="$(cd "${TESTS_DIR}/../../.." && pwd)"
 GATE="${REPO}/docs/scripts/generate_sbom.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
 
-# _tree: a throwaway repo root with the generator, the two modules it imports,
-# the real deps.json and versions.env -- the gate resolves all four from its own
-# path, so a fixture is the only way to make its inputs move.
+# _tree: a fixture root, because the gate resolves its inputs from its own path.
 _tree() {
   local d; d="$(mktemp -d "${_work}/tree.XXXXXX")"
   mkdir -p "${d}/docs/scripts" "${d}/docs/deps" "${d}/linux/scripts/01-core"
@@ -45,8 +38,7 @@ t_assert_eq "0" "$(t_rc _sbom "${fix}" --check)" \
 t_assert_contains "$(t_out _sbom "${fix}" --check)" "up to date"
 
 t_case "the document is byte-reproducible, which is what makes it gateable"
-# The creation timestamp is frozen for exactly this reason. A wall-clock stamp
-# would make --check fail on every run and the gate would be switched off.
+# The frozen creation timestamp is what keeps --check from failing on every run.
 a="$(_sbom "${fix}" --stdout)"
 b="$(_sbom "${fix}" --stdout)"
 t_assert_eq "${a}" "${b}" "two runs a moment apart must produce identical bytes"
@@ -57,8 +49,7 @@ printf 'tampered\n' >> "$(_out_file "${fix}")"
 t_assert_eq "1" "$(t_rc _sbom "${fix}" --check)" "byte equality is the contract; anything less is not a gate"
 
 t_case "a versions.env bump moves the SBOM, and --check notices"
-# The point of the curated half: it tracks the source-built inventory. A gate
-# that only compared the file against itself would never see this.
+# A gate that only compared the file against itself would never see this.
 fix="$(_tree)"
 _sbom "${fix}" --write >/dev/null
 t_assert_eq "0" "$(t_rc _sbom "${fix}" --check)"

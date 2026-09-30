@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build-cross-compiler.sh — standalone entry point for the cross-compiler image.
-# --push pins the base digest; without it the image stays local.
+# Cross-compiler image entry point; --push pins the base digest, otherwise the image stays local.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -10,8 +9,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
 orchestrator_preamble
 
-# CROSS_TARGETS is the compiler target arch list — distinct from TARGET_ARCHES
-# (which is for which arches to build per-arch stages for).
+# Compiler target arches, distinct from TARGET_ARCHES (which per-arch stages to build).
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 
 PUSH_IMAGES=0
@@ -60,7 +58,7 @@ Environment overrides:
 EOF
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# Main
 _compiler_extra_arg() {
   case "$1" in
     --cross-targets) CROSS_TARGETS="$2"; _OARG_SHIFT=2 ;;

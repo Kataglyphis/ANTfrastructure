@@ -1,34 +1,7 @@
 #!/usr/bin/env bash
-# app-runner.sh - generic launcher core for per-profile "run the built app" scripts.
-#
-# This library is project-agnostic: nothing project-specific is hard-coded here.
-# A thin wrapper script sets the variables below (its per-profile defaults),
-# optionally declares hook functions, sources this file, and calls
-# app_runner_main "$@".
-#
-# Required caller variables:
-#   APP_RUNNER_DEFAULT_EXE_NAME     default executable name (e.g. MyApp)
-#   APP_RUNNER_DEFAULT_BUILD_DIR    default build directory (abs or repo-relative)
-#   APP_RUNNER_DEFAULT_BUILD_TYPE   default CMake build type (Debug/Release/...)
-#
-# Optional caller variables:
-#   APP_RUNNER_LABEL                label for the "Starting" log line, e.g. "release"
-#   APP_RUNNER_USAGE_INTRO          one-line description shown in --help
-#   APP_RUNNER_ENABLE_SHADER_CLEAN  "true" to accept --clean-and-rebuild-shaders
-#   APP_RUNNER_SHADER_CLEAN_DIR     dir whose *.spv files are deleted by the clean
-#                                   step (relative paths resolve against the
-#                                   project root)
-#   APP_RUNNER_SHADER_COMPILE_SCRIPT  shader compile script re-run after cleaning
-#
-# Optional hook functions (called only when declared by the wrapper):
-#   app_runner_post_vulkan_hook   after Vulkan env sourcing, before executable
-#                                 discovery (e.g. auto-install a missing SDK)
-#   app_runner_env_hook           after LD_LIBRARY_PATH export, before launch
-#                                 (e.g. force/clear validation layers)
-#
-# The wrapper's environment is expected to provide get_project_root and
-# source_vulkan_env (e.g. from a project common.sh); logging comes from
-# log-bootstrap.sh, so the library also works standalone.
+# Launcher core: the wrapper sets APP_RUNNER_DEFAULT_{EXE_NAME,BUILD_DIR,BUILD_TYPE}, then calls app_runner_main "$@".
+# Optional: APP_RUNNER_{LABEL,USAGE_INTRO,ENABLE_SHADER_CLEAN,SHADER_CLEAN_DIR,SHADER_COMPILE_SCRIPT},
+# hooks app_runner_post_vulkan_hook / app_runner_env_hook; the wrapper provides get_project_root and source_vulkan_env.
 [ -n "${_APP_RUNNER_LIB_LOADED:-}" ] && return 0
 _APP_RUNNER_LIB_LOADED=1
 # shellcheck source=./log-bootstrap.sh
@@ -53,8 +26,7 @@ ${APP_RUNNER_USAGE_INTRO:-Starts the built application.} Defaults:
 EOF
 }
 
-# Parses the standard runner CLI into EXE_NAME, BUILD_DIR, BUILD_TYPE,
-# APP_ARGS and CLEAN_AND_REBUILD_SHADERS.
+# Fills EXE_NAME, BUILD_DIR, BUILD_TYPE, APP_ARGS and CLEAN_AND_REBUILD_SHADERS.
 app_runner_parse_args() {
   EXE_NAME="${APP_RUNNER_DEFAULT_EXE_NAME}"
   BUILD_DIR="${APP_RUNNER_DEFAULT_BUILD_DIR}"
@@ -103,8 +75,7 @@ app_runner_parse_args() {
   done
 }
 
-# Resolves the project root: prefers the caller's get_project_root (from its
-# common.sh), then the enclosing git worktree, then the current directory.
+# The caller's get_project_root wins, then the git worktree, then $PWD.
 app_runner_project_root() {
   if declare -F get_project_root >/dev/null 2>&1; then
     get_project_root
@@ -115,9 +86,7 @@ app_runner_project_root() {
   fi
 }
 
-# Locates the built executable inside a build tree.
-#   $1 = absolute build dir, $2 = executable name, $3 = build type
-# Prints the resolved path; returns 1 when nothing was found.
+# <abs_build_dir> <exe_name> <build_type>; prints the path, returns 1 when nothing is found.
 app_runner_find_executable() {
   local abs_build_dir="$1"
   local exe_name="$2"
@@ -151,8 +120,6 @@ app_runner_find_executable() {
   return 1
 }
 
-# Deletes compiled .spv shader artifacts and re-runs the compile script.
-# Controlled by APP_RUNNER_SHADER_CLEAN_DIR / APP_RUNNER_SHADER_COMPILE_SCRIPT.
 app_runner_clean_and_rebuild_shaders() {
   local clean_dir="${APP_RUNNER_SHADER_CLEAN_DIR:-}"
   if [[ -n "${clean_dir}" && "${clean_dir}" != /* ]]; then
@@ -170,8 +137,6 @@ app_runner_clean_and_rebuild_shaders() {
   fi
 }
 
-# Full pipeline: parse args, resolve paths, source the Vulkan env, discover the
-# executable, set up the runtime environment and exec the application.
 app_runner_main() {
   app_runner_parse_args "$@"
 

@@ -22,9 +22,7 @@ source_module package-lists.sh
 source_module cmake.sh
 
 BASE_IMAGE_CMAKE_VERSION="${CMAKE_VERSION:-4.4.2}"
-# versions.env (loaded via common.sh above) is authoritative for these; no
-# fallback literals — a stale third channel here silently unpins, and a
-# half-loaded env must fail loud instead.
+# No fallback literals: a stale third channel silently unpins, and a half-loaded versions.env must fail loud.
 BASE_IMAGE_NODE_VERSION="${NODE_VERSION:?NODE_VERSION not set - versions.env half-loaded?}"
 BASE_IMAGE_UV_VERSION="${UV_VERSION:?UV_VERSION not set - versions.env half-loaded?}"
 BASE_IMAGE_VULKAN_VERSION="${VULKAN_VERSION}"
@@ -84,9 +82,7 @@ parse_bool_flag() {
   esac
 }
 
-# parse_options table: "<cmd> <flag>" -> "<target-var>|<value-mode>|<side-effect>".
-# Modes, and the deliberate --ports-url/--archive-url empty-value asymmetry:
-# docs/refactoring-backlog-archive-2026-08-31.md
+# "<cmd> <flag>" -> "<target-var>|<required|optional|bool>|<side-effect>"; only --ports-url may be empty.
 declare -A BASE_IMAGE_OPTION_SPECS=(
   ["configure-fast-mirror --archive-url"]="FAST_UBUNTU_MIRROR_URL|required|use-fast-mirror"
   ["configure-fast-mirror --ports-url"]="FAST_UBUNTU_PORTS_MIRROR_URL|optional|use-fast-mirror"
@@ -98,8 +94,7 @@ declare -A BASE_IMAGE_OPTION_SPECS=(
   ["init-compiler-caches --max-size"]="BASE_IMAGE_CCACHE_MAXSIZE|required|"
 )
 
-# Apply one <flag> <value> pair for <cmd>, or die. <value> is the caller's
-# "${2-}", so an absent value collapses to empty; every mode handles that.
+# base_image_apply_option <cmd> <flag> <value>: an absent value arrives empty, and every mode handles that.
 base_image_apply_option() {
   local cmd="$1"
   local flag="$2"
@@ -122,8 +117,7 @@ base_image_apply_option() {
       ;;
     bool)
       require_single_value "${flag}" "${value}"
-      # Assign THROUGH the nameref: parse_bool_flag's die must still end the
-      # process here. docs/refactoring-backlog-archive-2026-08-31.md
+      # Assign through the nameref so parse_bool_flag's die still ends the process.
       target_ref="$(parse_bool_flag "${flag}" "${value}")"
       ;;
     optional)
@@ -152,8 +146,7 @@ parse_options() {
       done
       ;;
     install-vulkan-runtime-files)
-      # The ONLY command taking positionals: stops at the first non-flag (or
-      # `--`) and passes the rest on via REMAINING_ARGS, which nothing else sets.
+      # The only command with positionals: the rest after the first non-flag go to REMAINING_ARGS.
       while [ "$#" -gt 0 ]; do
         case "$1" in
           --)
@@ -191,19 +184,13 @@ bootstrap_ca() {
 
   use_fast_mirror="${USE_FAST_UBUNTU_MIRROR:-false}"
   archive_mirror_url="${FAST_UBUNTU_MIRROR_URL:-$(ubuntu_default_archive_mirror_url)}"
-  # AS1: defaults TRUE. Leaving the host -security on security.ubuntu.com while
-  # the target pocket comes from the fast mirror is the same pocket from two
-  # archives, and a lagging mirror then reproduces the Multi-Arch:same skew
-  # that cost riscv64 its Qt6. A mirror that cannot serve -security already
-  # fails the media stage, so false bought no compatibility -- it stays the
-  # explicit opt-out. docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
+  # Default true: docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
   rewrite_security="${FAST_UBUNTU_REWRITE_SECURITY:-true}"
 
   if ubuntu_mirror_is_truthy "${use_fast_mirror}"; then
     bootstrap_archive_mirror_url="$(ubuntu_mirror_normalize_url "${archive_mirror_url}")"
 
-    # Fresh Ubuntu base images do not ship a trusted CA bundle yet, so bootstrap
-    # the archive over HTTP first when a fast mirror was requested.
+    # No CA bundle yet in a fresh base, so bootstrap over http; restore_mirror_https_scheme undoes it.
     case "${bootstrap_archive_mirror_url}" in
       https://*)
         bootstrap_archive_mirror_url="http://${bootstrap_archive_mirror_url#https://}"
@@ -217,18 +204,11 @@ bootstrap_ca() {
     bash "${SCRIPT_DIR}/use-fast-ubuntu-mirror.sh"
   fi
 
-  # Make EVERY apt-get in EVERY subsequent build layer retry transient network
-  # failures. QEMU-emulated arm64/riscv64 networks are flaky, and this is the
-  # first RUN in the base image, so dropping the config here covers the whole
-  # chain (install_os_packages, packaging-deps, media/android stages, ...) with
-  # one line -- not just this bootstrap function's own retry loop below.
+  # The base image's first RUN, so this retry config covers every later apt-get under flaky QEMU networking.
   mkdir -p /etc/apt/apt.conf.d
   printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80-retries
 
-  # Retry apt-get under QEMU emulation (network can be flaky). After the last
-  # attempt, FAIL — the old `break` discarded the terminal rc, and a base image
-  # whose apt/mirror is broken only surfaces hours later as an opaque TLS or
-  # 404 failure deep in the chain. Failing fast here names the real culprit.
+  # Fail after the last retry: a broken mirror otherwise surfaces hours later as an opaque TLS or 404 error.
   local _retry=0 _max=3
   until apt-get update -qq; do
     _retry=$((_retry + 1))
@@ -239,8 +219,7 @@ bootstrap_ca() {
     log "apt-get update failed (attempt ${_retry}/${_max}), retrying..."
     sleep 5
   done
-  # ca-certificates: tolerate a failed (re)install ONLY if the package is
-  # already present — a base without a CA store breaks every later download.
+  # A failed reinstall is tolerated only when the package is present: without a CA store every download breaks.
   apt-get install -y --no-install-recommends ca-certificates || {
     if dpkg -s ca-certificates >/dev/null 2>&1; then
       log "WARNING: ca-certificates reinstall failed but package already present (non-fatal)"
@@ -252,35 +231,11 @@ bootstrap_ca() {
   update-ca-certificates || \
     log "WARNING: update-ca-certificates failed (non-fatal during emulated build)"
 
-  # THE restore point for the deliberate http downgrade above (APT-HTTP): the
-  # CA store now exists, so put the mirror entries back on the https scheme
-  # the user actually configured. The standalone use-fast-ubuntu-mirror.sh RUN
-  # in Dockerfile.base can NOT do this for a custom mirror — its regexes only
-  # match upstream archive/security/ports hosts, and by this point the sources
-  # name the MIRROR, so it returns without writing (latent since the bootstrap
-  # downgrade was introduced; caught 2026-08-24).
+  # Nothing downstream can restore https for a custom mirror: use-fast-ubuntu-mirror.sh only matches upstream hosts.
   restore_mirror_https_scheme
 }
 
-# Undo the CA-bootstrap http downgrade: bootstrap_ca() rewrites the fast-mirror
-# URL to http:// so apt can fetch ca-certificates before a CA store exists, and
-# nothing downstream restores https for a custom (non-upstream-host) mirror.
-# This function is the restore. It is TARGETED — a fixed-string rewrite of the
-# exact downgraded URL the bootstrap wrote (plus the ports URL derived from
-# it), never a regex over upstream hosts — and safe to call any time:
-#   - no-op when USE_FAST_UBUNTU_MIRROR is off (no downgrade ever happened);
-#   - no-op when the configured mirror is already http:// (the user's explicit
-#     scheme choice is respected, not "fixed");
-#   - idempotent (once restored, the downgraded string no longer matches);
-#   - loud: echoes the resulting URI/deb lines of every sources file — the
-#     PKGCFG-MIRROR verdict discipline: echo the RESULT, never the intent.
-# Security entries need no separate pair: when FAST_UBUNTU_REWRITE_SECURITY
-# was on, the bootstrap pointed them at the SAME downgraded archive URL, so the
-# archive pair restores them too. An explicit FAST_UBUNTU_PORTS_MIRROR_URL was
-# passed through the bootstrap unchanged, so it needs no restore either.
-# Exposed as the `restore-mirror-scheme` subcommand (honoring
-# UBUNTU_SOURCES_ROOT like use-fast-ubuntu-mirror.sh) so host-side gates and
-# tests can assert the scheme OUTCOME on a fixture instead of trusting wiring.
+# Fixed-string rewrite of exactly the URLs bootstrap_ca downgraded; idempotent, and a no-op for an http mirror.
 restore_mirror_https_scheme() {
   local use_fast_mirror archive_url downgraded_url sources_root
   local ports_wanted ports_downgraded
@@ -305,15 +260,12 @@ restore_mirror_https_scheme() {
       ;;
   esac
 
-  # Pair 1: the exact URL bootstrap_ca wrote -> the URL the user configured.
+  # Security entries share this archive URL, so this pair restores them too.
   downgraded_url="http://${archive_url#https://}"
   rewrite_from+=("${downgraded_url}")
   rewrite_to+=("${archive_url}")
 
-  # Pair 2: the ports URL DERIVED from the downgraded archive URL (only when no
-  # explicit ports URL was given — an explicit one was never downgraded). For
-  # the official archive both derivations collapse to the upstream ports
-  # default and no pair is added.
+  # A derived ports URL was downgraded with the archive; an explicit one never was.
   if [ -z "${FAST_UBUNTU_PORTS_MIRROR_URL:-}" ]; then
     ports_wanted="$(ubuntu_effective_ports_mirror_url "${archive_url}" "")"
     ports_downgraded="$(ubuntu_effective_ports_mirror_url "${downgraded_url}" "")"
@@ -346,7 +298,7 @@ restore_mirror_https_scheme() {
       printf '%s\n' "${new_content}" > "${sources_file}"
       changed=1
     fi
-    # PKGCFG-MIRROR verdict: the lines apt will actually read, post-restore.
+    # Log the lines apt will actually read, not the intent.
     while IFS= read -r line; do
       log "PKGCFG-MIRROR verdict ${sources_file}: ${line}"
     done < <(grep -hE '^(URIs:|deb )' "${sources_file}" || true)
@@ -378,10 +330,7 @@ install_os_packages() {
   base_image_os_packages "${arch}" packages
   apt-get install -y --no-install-recommends "${packages[@]}"
 
-  # Postcondition: the must-have core of this ~90-package root layer actually
-  # landed (append_available_packages silently filters optional packages, so
-  # the install line alone proves nothing about what was requested). Failing
-  # here names the culprit instead of surfacing layers later as a missing tool.
+  # append_available_packages silently drops packages, so assert the must-have tools landed.
   for tool in git ninja ccache python3 pkg-config; do
     command -v "${tool}" >/dev/null 2>&1 || \
       die "install_os_packages postcondition failed: required tool '${tool}' missing after base package install"
@@ -408,8 +357,7 @@ install_nodejs() {
   case "${arch}" in
     amd64|x86_64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-x64.tar.xz"
-      # No SHA fallback literals: versions.env is authoritative, and a
-      # half-loaded env must fail HERE, not as a tamper-shaped checksum error.
+      # A half-loaded versions.env must fail here, not as a tamper-shaped checksum error.
       node_sha256="${NODE_AMD64_SHA256:?NODE_AMD64_SHA256 not set - versions.env half-loaded?}"
       ;;
     arm64|aarch64)
@@ -417,15 +365,13 @@ install_nodejs() {
       node_sha256="${NODE_ARM64_SHA256:?NODE_ARM64_SHA256 not set - versions.env half-loaded?}"
       ;;
     riscv64)
-      # RISC-V: no official Node.js tarball. Pin to a known version from distro packages.
+      # No official riscv64 tarball: pin the distro package instead.
       log "Installing pinned Node.js distro packages on riscv64"
       apt-get update -qq
       if ! apt_install "nodejs=${BASE_IMAGE_NODE_VERSION}-1~ubuntu26.04.1"; then
         warn "Exact Node.js pin nodejs=${BASE_IMAGE_NODE_VERSION}-1~ubuntu26.04.1 unavailable on riscv64; falling back to the distro default version"
         apt_install nodejs
-        # `node --version` prints v-prefixed; comparing it to the bare pin
-        # warned about a version EQUAL to the pin on every riscv64 build. Only
-        # the package revision differs there, which is what the fallback is for.
+        # `node --version` is v-prefixed; the bare pin must not warn about an equal version.
         _node_have="$(node --version 2>/dev/null)"; _node_have="${_node_have#v}"
         if [ "${_node_have}" = "${BASE_IMAGE_NODE_VERSION}" ]; then
           log "Distro Node.js ${_node_have} matches the pin; only the package revision differed"
@@ -433,19 +379,9 @@ install_nodejs() {
           warn "Installed Node.js ${_node_have} instead of pinned ${BASE_IMAGE_NODE_VERSION}"
         fi
       fi
-      # npm is REQUIRED here: `npm --version` below asserts it under set -e,
-      # so swallowing a failed install (the old `|| true`) only deferred and
-      # obscured the error. Fail at the install step, which names the culprit.
+      # Required: fail at the install, which names the culprit.
       apt_install npm
-      # A fallback install may have unpinned entirely — surface the installed
-      # major vs the pin LOUDLY so a drift is never silent (BS5). It is NOT
-      # fatal on riscv64: there is no official Node tarball for this arch (see
-      # above), so we are at the mercy of ubuntu-ports, which lags the pinned
-      # major and drops the exact `-1~ubuntu26.04.1` build as ports advances.
-      # Node on riscv64 only backs optional JS/web tooling (litert-web /
-      # onnx-web) the Python/native runtime never imports, so a major lag must
-      # not abort the whole build. Set NODE_RISCV64_MAJOR_REQUIRED=1 to restore
-      # a hard failure.
+      # A major lag behind ubuntu-ports only warns (Node backs optional web tooling); NODE_RISCV64_MAJOR_REQUIRED=1 makes it fatal.
       installed_node="$(node --version)"
       installed_major="${installed_node#v}"
       installed_major="${installed_major%%.*}"
@@ -511,8 +447,7 @@ install_uv() {
   case "${arch}" in
     amd64|x86_64)
       uv_asset="uv-x86_64-unknown-linux-gnu.tar.gz"
-      # No SHA fallback literals: versions.env is authoritative, and a
-      # half-loaded env must fail HERE, not as a tamper-shaped checksum error.
+      # A half-loaded versions.env must fail here, not as a tamper-shaped checksum error.
       uv_sha256="${UV_AMD64_SHA256:?UV_AMD64_SHA256 not set - versions.env half-loaded?}"
       ;;
     arm64|aarch64)
@@ -545,21 +480,7 @@ install_uv() {
   uv --version
 }
 
-# Install the PINNED sccache over whatever apt provided (2026-08-26, the
-# ccache->sccache switch).
-#
-# Why not just use the apt package: Ubuntu 26.04 ships sccache 0.13.0, which has
-# no SCCACHE_BASEDIRS. The GCC lane relies on CCACHE_BASEDIR="${BUILD_DIR}" so
-# the three arch lanes -- whose build dirs differ only by triplet -- can share
-# entries for identical translation units. Without basedir relativization they
-# never share, and sccache additionally hashes the working directory. That
-# failure is SILENT: the build stays green and simply stops hitting cache.
-# SCCACHE_BASEDIRS first shipped in v0.14.0, so the distro build is on the
-# wrong side of it. versions.env pins 0.17.0, the release the Windows lane
-# already uses.
-#
-# Non-fatal by design: upstream publishes no riscv64 asset, and a missing
-# sccache must degrade to "no compiler cache", never fail the base image.
+# The distro sccache lacks SCCACHE_BASEDIRS, so lanes silently stop sharing; non-fatal, riscv64 has no asset.
 install_sccache_pinned() {
   local ver="${SCCACHE_LINUX_VERSION:-}"
   if [ -z "${ver}" ]; then
@@ -598,13 +519,10 @@ install_sccache_pinned() {
 
 init_compiler_caches() {
   log "Initializing compiler cache settings"
-  # ccache stays installed through the transition: it is the fallback for any
-  # invocation sccache refuses. sccache HARD-FAILS on a compiler it cannot
-  # identify, where ccache would simply run it.
+  # ccache stays as the fallback: sccache hard-fails on a compiler it cannot identify.
   ccache -M "${BASE_IMAGE_CCACHE_MAXSIZE}" || true
   install_sccache_pinned
-  # sccache takes its cap from SCCACHE_CACHE_SIZE plus the config file baked in
-  # Dockerfile.base; there is no `ccache -M` equivalent to call here.
+  # sccache's cap comes from SCCACHE_CACHE_SIZE and Dockerfile.base's config file.
   log "sccache dir=${SCCACHE_DIR:-unset} cap=${SCCACHE_CACHE_SIZE:-unset} conf=${SCCACHE_CONF:-unset}"
 }
 

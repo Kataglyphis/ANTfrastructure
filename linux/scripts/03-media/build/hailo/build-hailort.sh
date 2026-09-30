@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Build HailoRT (libhailort + hailortcli + the hailonet GStreamer element) from
-# the pinned hailo8 source for the opt-in Hailo variant image.
-# Plan and upstream matrix: docs/hailo-support.md § What exists (2026-09-20).
+# Builds the Hailo payload (HailoRT, hailonet, pyhailort, TAPPAS) from pinned sources; see docs/hailo-support.md § Integration design (Linux lane)
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -58,17 +56,14 @@ warn() { printf 'WARN: %s\n' "$*" >&2; }
 # HailoRT ships no riscv64 support at any version; the variant is amd64/arm64.
 [ "${TARGET_ARCH:-amd64}" != "riscv64" ] || die "Hailo is not supported on riscv64"
 
-# The cross builder carries these; the runtime image (the native arm64 builder)
-# already has cmake/ninja/pkg-config/git and the ssl/zlib headers, and its apt
-# lists are not usable — install only what is genuinely missing.
+# The runtime image's apt lists are unusable, so install only what is missing.
 if ! command -v cmake >/dev/null 2>&1 || ! command -v ninja >/dev/null 2>&1 \
    || ! command -v pkg-config >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1 \
    || [ ! -f /usr/include/openssl/ssl.h ] || [ ! -f /usr/include/zlib.h ]; then
   install_deps_preamble cmake ninja-build pkg-config git libssl-dev zlib1g-dev
 fi
 
-# The media GStreamer is a multiarch install: .pc files live under
-# lib/<triple>/pkgconfig, not lib/pkgconfig.
+# The media GStreamer is multiarch: its .pc files live under lib/<triple>/pkgconfig.
 gst_pkgconfig_dir() {
   local d
   for d in "${GSTREAMER_PREFIX}"/lib/*/pkgconfig; do
@@ -88,10 +83,7 @@ fetch_sources() {
     tar -xf "${WORK}/hailort.tar.gz" -C "${WORK}"
   fi
 
-  # HailoRT's external cmake scripts build from the LITERAL
-  # <src>/hailort/external/protobuf-src path — FetchContent's
-  # FETCHCONTENT_SOURCE_DIR_* override does not reach execute_cmake, so the
-  # sources must sit exactly there.
+  # The literal path HailoRT's external cmake builds from: FETCHCONTENT_SOURCE_DIR_* does not reach execute_cmake.
   HAILO_PROTOBUF_SRC="${HAILORT_SRC}/hailort/external/protobuf-src"
   if [ ! -f "${HAILO_PROTOBUF_SRC}/CMakeLists.txt" ]; then
     info "fetching protobuf v${HAILO_PROTOBUF_VERSION}"
@@ -105,14 +97,7 @@ fetch_sources() {
   stage_remaining_externals
 }
 
-# HailoRT (master, Hailo-10/15) FetchContent externals for a GSTREAMER build.
-# With HAILO_OFFLINE_COMPILATION=ON each source must already sit at the LITERAL
-# <src>/hailort/external/<name>-src path its cmake builds from; commits are
-# verified after checkout. protobuf (verified tarball) is staged above; libusb,
-# tokenizers, slint, montserrat, benchmark and catch2 stay unstaged (their
-# features are off). Re-derive from hailort/cmake/external/*.cmake at a bump.
-# docs/hailo-support.md
-# name|repository|commit
+# name|repository|commit, staged at <src>/hailort/external/<name>-src for offline compilation; re-derive from hailort/cmake/external/*.cmake at a bump.
 HAILO_EXTERNALS=(
   "cli11|https://github.com/hailo-ai/CLI11.git|242adfdb23957d30e3e56831e474020d0ac6c86c"
   "cpp-httplib|https://github.com/yhirose/cpp-httplib.git|51dee793fec2fa70239f5cf190e165b54803880f"
@@ -150,22 +135,14 @@ build_hailort() {
     -DCMAKE_BUILD_TYPE=Release
     -DCMAKE_INSTALL_PREFIX="${HAILO_PREFIX}"
     -DHAILO_BUILD_GSTREAMER=ON
-    # The public v5.4.0 tarball ships no tools/ dir (HAILO_BUILD_TOOLS=ON makes
-    # CMake add_subdirectory it and die); hailortcli is built unconditionally.
+    # ON adds a tools/ dir the public tarball lacks; hailortcli builds regardless.
     -DHAILO_BUILD_TOOLS=OFF
     -DHAILO_BUILD_EXAMPLES=OFF
     -DHAILO_OFFLINE_COMPILATION=ON
     -DFETCHCONTENT_SOURCE_DIR_PROTOBUF="${HAILO_PROTOBUF_SRC}"
   )
 
-  # The cross-android builder is an amd64 image carrying the TARGET cross
-  # toolchain (every cross stage is built on amd64). A bare `gcc` there is the
-  # HOST compiler: its driver then hands aarch64 flags to the x86 assembler
-  # (`as: unrecognized option '-EL'`), and the image ships no prefixed binutils
-  # for it to fall back on. The repo's own cross builds use the LLVM wrappers
-  # installed by 02-toolchain/llvm.sh — `clang-<arch>` execs clang with
-  # `--target=<triplet> --sysroot=... --gcc-toolchain=<prefix>`, so the
-  # integrated assembler needs no binutils at all.
+  # Cross uses the clang-<arch> LLVM wrappers: a bare gcc is the host compiler, and the image has no prefixed binutils.
   local target_arch="${TARGET_ARCH:-amd64}" build_arch cc cxx
   build_arch="$(build_arch_oci 2>/dev/null || printf 'amd64')"
   if [ "${target_arch}" != "${build_arch}" ]; then
@@ -180,10 +157,7 @@ build_hailort() {
   append_cmake_cache_linker_args cmake_opts
 
   rm -rf "${build_dir}"
-  # The nested FetchContent builds live beside the sources and survive the
-  # top-level clean; a stale cache from an earlier attempt carries a DIFFERENT
-  # compiler and poisons the configure (observed as CMake's Ninja/RPATH
-  # "not ELF-based" error when a cross-attempt cache met the native build).
+  # The nested builds sit beside the sources and survive the clean; a stale one's different compiler poisons the configure.
   rm -rf "${HAILORT_SRC}/hailort/external"/*-build "${HAILORT_SRC}/hailort/external"/*-install
   info "configuring HailoRT (GStreamer element ON, offline externals)"
   # The configure itself builds protobuf, under `env -i`. docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches
@@ -203,8 +177,7 @@ build_hailort() {
 }
 
 normalize_layout() {
-  # The plugin installs under lib/<triple>-linux-gnu/gstreamer-1.0 inside the
-  # prefix; the image points GST_PLUGIN_PATH at one fixed dir instead.
+  # The image's GST_PLUGIN_PATH names one fixed dir, not the prefix's lib/<triple>/gstreamer-1.0.
   mkdir -p "${HAILO_PREFIX}/lib/gstreamer-1.0"
   local plugin
   plugin="$(find "${HAILO_PREFIX}" -name 'gsthailo.so' -o -name 'libgsthailo.so' 2>/dev/null | head -1)"
@@ -225,11 +198,7 @@ verify_install() {
   info "hailortcli runs and the hailonet element loads"
 }
 
-# pyhailort ships from the platform/ directory as a scikit-build-core project
-# (distribution `hailort`, import `hailo_platform`), built against the HailoRT
-# just installed. Upstream declares requires-python <3.14 while the image runs
-# 3.14, so the install relaxes that metadata and PROVES the import — a failure
-# is reported, never hidden. docs/hailo-support.md
+# See docs/hailo-support.md § pyhailort
 build_pyhailort() {
   local platform_dir="${HAILORT_SRC}/hailort/libhailort/bindings/python/platform"
   [ -d "${platform_dir}" ] || { warn "pyhailort packaging dir absent; skipping"; return 0; }
@@ -239,16 +208,12 @@ build_pyhailort() {
     || die "pyhailort: cannot apply HAILO_PYHAILORT_IPO=${ipo}"
   mkdir -p "${wheel_dir}"
   info "building the pyhailort wheel (scikit-build-core)"
-  # pip refuses to even BUILD a wheel whose project rejects the interpreter
-  # (upstream: <3.14; the image runs 3.14), so relax the cached source's
-  # metadata first; the built wheel's copy is relaxed again at install time.
+  # pip will not even build a wheel whose requires-python (upstream: <3.14) rejects the image's 3.14.
   sed -i 's/^requires-python = .*/requires-python = ">=3.10"/' "${platform_dir}/pyproject.toml"
   python3 -m pip install --quiet --disable-pip-version-check \
     "scikit-build-core>=0.10" "pybind11>=2.13.6,<3" \
     || die "could not install the pyhailort build backend"
-  # pip-installed pybind11 lives in site-packages, which find_package() does not
-  # search — without the cmakedir the extension silently builds as a stub (a
-  # two-second wheel with no PyInit symbol).
+  # find_package() does not search site-packages; without the cmakedir the extension silently builds as a stub.
   local pybind_dir
   pybind_dir="$(python3 -m pybind11 --cmakedir 2>/dev/null || true)"
   [ -n "${pybind_dir}" ] || die "pybind11 --cmakedir produced nothing; the pyhailort wheel would be a stub"
@@ -280,9 +245,7 @@ install_pyhailort() {
   fi
   [ -x /opt/venv/bin/python ] || { info "no /opt/venv; pyhailort wheel stays staged at ${wheel}"; return 0; }
 
-  # The pyproject sed above already relaxed Requires-Python before the build,
-  # so the wheel installs as-is — proven; a zip-rewrite of the metadata only
-  # corrupted it once. Then PROVE the import under the image's 3.14.
+  # Requires-Python was relaxed before the build, so the wheel installs as-is; never rewrite its zipped metadata.
   if out="$(uv pip install --python /opt/venv/bin/python --no-deps --reinstall "${wheel}" 2>&1)"; then
     # The installed bytes are what ships: check them, not only the wheel.
     so="$(/opt/venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["platlib"])' 2>/dev/null || true)"
@@ -302,13 +265,7 @@ install_pyhailort() {
   fi
 }
 
-# TAPPAS's core/hailo meson build compiles against header-only libraries that
-# upstream clones into core/open_source/ from BRANCHES (rapidjson: master). This
-# list pins every one to a commit, verified after checkout. dest = the
-# open_source/ subdir; subdir = the path inside the repo that holds the headers.
-# name|repository|commit|dest|subdir|sentinel — the sentinel is a header only
-# this external provides, because xtensor and xtl SHARE xtensor_stack/base and
-# a dest-level "non-empty" guard skips the second one.
+# name|repository|commit|dest|subdir|sentinel; staged means the sentinel header exists, since xtensor and xtl share one dest.
 TAPPAS_EXTERNALS=(
   "xtensor|https://github.com/xtensor-stack/xtensor.git|825c0fd8a465049c06ad89fa3911b342dbffcabf|xtensor_stack/base|include|xtensor/xarray.hpp"
   "xtl|https://github.com/xtensor-stack/xtl.git|46f8a9390db2c52aaf41de8f93ed0dab97af012d|xtensor_stack/base|include|xtl/xsequence.hpp"
@@ -347,8 +304,7 @@ fetch_tappas() {
   done
 }
 
-# TAPPAS's hailoexportzmq/hailoimportzmq elements need libzmq, and the runtime
-# image's apt lists are unusable — build it into the Hailo prefix (MPL-2.0).
+# TAPPAS's zmq elements need libzmq, and the runtime image's apt lists are unusable.
 build_libzmq() {
   local src="${WORK}/libzmq-${HAILO_LIBZMQ_VERSION}" build="${WORK}/libzmq-build"
   if [ -f "${HAILO_PREFIX}/lib/pkgconfig/libzmq.pc" ]; then
@@ -376,8 +332,7 @@ build_libzmq() {
   hailo_cache_report libzmq "${CMAKE_CXX_COMPILER_LAUNCHER:-}" "${mark}"
   cmake --install "${build}" || die "libzmq install failed"
 
-  # libzmq ships the C API only; TAPPAS's zmq elements include the C++ header
-  # `zmq.hpp`, which lives in cppzmq (header-only, MIT).
+  # TAPPAS includes zmq.hpp, which ships in cppzmq, not libzmq.
   info "installing cppzmq v${HAILO_CPPZMQ_VERSION}"
   download_verified_file \
     "https://github.com/zeromq/cppzmq/archive/refs/tags/v${HAILO_CPPZMQ_VERSION}.tar.gz" \
@@ -391,13 +346,7 @@ build_libzmq() {
   return 0
 }
 
-# TAPPAS against the image's GStreamer. Its README's "1.16-1.20" is the TESTED
-# matrix; the meson constraint is >= 1.0 and 1.29.2 builds clean (proven
-# 2026-09-20). The two non-obvious build-args are load-bearing:
-#   - libargs is an ARRAY option: elements must be comma-separated, or only the
-#     last survives and every HailoRT header goes missing;
-#   - libxtensor/libcxxopts/librapidjson default to a repo-root open_source/,
-#     while the sources live under core/open_source/.
+# libargs is a Meson array: comma-separate its elements, or only the last survives and the HailoRT headers go missing.
 build_tappas() {
   local build="${WORK}/tappas-build" triple plugin_dir mark
   rm -rf "${build}"
@@ -416,9 +365,7 @@ build_tappas() {
   hailo_cache_report tappas "${CMAKE_CXX_COMPILER_LAUNCHER:-}" "${mark}"
   ninja -C "${build}" install || die "TAPPAS install failed"
 
-  # TAPPAS installs its libraries into the system multiarch dirs (its meson
-  # hardcodes libdir) — already on the loader path. Its GStreamer plugin must
-  # join the image's GST_PLUGIN_PATH dir, exactly like hailonet.
+  # TAPPAS's meson hardcodes the system multiarch libdir, so its plugin is copied into the image's GST_PLUGIN_PATH dir.
   triple="$(cross_target_triplet_for_arch "${TARGET_ARCH:-amd64}" 2>/dev/null || printf '%s-linux-gnu' "${TARGET_ARCH:-amd64}")"
   plugin_dir="/usr/lib/${triple}/gstreamer-1.0"
   compgen -G "${plugin_dir}/libgsthailotools.so*" >/dev/null \

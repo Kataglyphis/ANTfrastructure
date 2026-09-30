@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# core.sh - base packages
-#
-# Depends on logging.sh (log) and common.sh (apt_install) which must be
-# sourced by the caller before calling install_core_tools().
+# Base packages; the caller sources logging.sh and common.sh first.
 
 install_core_tools() {
   log "Installing core tools"

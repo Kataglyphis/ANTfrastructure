@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Which LLVM TVM links (BACKLOG CON35): 05-frameworks/tvm-detect.sh's
-# detect_native_llvm_cmake_dir and tvm.sh's resolve_tvm_llvm. A native build takes
-# the CMake package the image ships as /usr/local/llvm-target, never llvm-config's
-# apt bootstrap; a cross build keeps its target's. Fixture package trees and
-# stubbed collaborators; no TVM, no cmake.
-# docs/cross-build-verification.md#the-linuxscriptstests-suites
+# A native TVM links /usr/local/llvm-target's CMake package, never apt's llvm-config; see docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

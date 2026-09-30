@@ -5,26 +5,9 @@
 
 Set-StrictMode -Version Latest
 
-# Single source of truth for TARGET-architecture facts on the Windows lane.
-#
-# The Windows BUILD HOST is always windows/amd64 -- there is no arm64 Windows
-# container base image (servercore/nanoserver are amd64-only and Windows Server
-# has no arm64 release), so the arm64 lane is a CROSS build: an x64 container
-# emitting aarch64 binaries. Only the compile TARGET varies; the toolchain that
-# runs is always x64.
-#
-# This module is the Windows twin of linux/scripts/01-core/arch-mapping.sh. Every
-# arch-dependent literal in the build scripts should resolve through here rather
-# than being spelled inline, so that adding a target is a table edit and a
-# missing case is a loud throw instead of a silently x64-shaped build.
-#
-# DELIBERATELY DEPENDENCY-FREE: no Import-Module of Shared/SourceBuild. It is
-# imported very early (including by host provisioning scripts that run before
-# the full module set is COPY'd) and must never drag the module graph in.
+# Target-arch facts; dependency-free because host provisioning imports it before the module set is copied.
 
-# ---------------------------------------------------------------------------
-# The table. Every accessor below reads from this; nothing hardcodes an arch.
-# ---------------------------------------------------------------------------
+# The table: adding a target is a table edit, and a missing case throws instead of building x64.
 $script:TargetArchTable = @{
     amd64 = @{
         Arch = 'amd64'
@@ -39,12 +22,9 @@ $script:TargetArchTable = @{
         VcpkgTriplet = 'x64-windows'
         # VC\Tools\MSVC\<ver>\bin\Hostx64\<this>  -- the cross toolset directory.
         MsvcTargetBinDir = 'x64'
-        # VC\Tools\MSVC\<ver>\lib\<this> and Windows Kits\10\Lib\<ver>\um\<this>.
-        # These are what clang-cl LINKS against and are the reason the ARM64 VS
-        # component is installed at all (we never invoke its cl.exe).
+        # MSVC and Windows Kits lib\<this>: what clang-cl links against, the only reason the ARM64 VS component is installed.
         MsvcTargetLibDir = 'x64'
-        # Vulkan SDK subdirectories. The x64 SDK ships Lib-ARM64/Bin-ARM64 only
-        # when the OPTIONAL com.lunarg.vulkan.arm64 component is selected.
+        # The x64 Vulkan SDK ships Lib-ARM64/Bin-ARM64 only with the optional com.lunarg.vulkan.arm64 component.
         VulkanLibDir = 'Lib'
         VulkanBinDir = 'Bin'
         # PEP 425 platform tag / sysconfig.get_platform().
@@ -67,8 +47,7 @@ $script:TargetArchTable = @{
         LibMachine = 'x64'
         # CMAKE_SYSTEM_PROCESSOR
         CMakeSystemProcessor = 'AMD64'
-        # Qualcomm AI Engine Direct (QAIRT) SDK: lib\<this>\ holds the per-arch
-        # QNN backend DLLs (QnnCpu on x64; QnnHtp/NPU + QnnCpu on arm64). #121.
+        # QAIRT SDK lib\<this>\ holds the per-arch QNN backend DLLs.
         QnnLibDir = 'x86_64-windows-msvc'
     }
     arm64 = @{
@@ -98,15 +77,12 @@ $script:TargetArchTable = @{
     }
 }
 
-# The build host. Not a table entry: it is a fact about where we run, not a
-# target we select. Every cross decision is "target != this".
+# Always amd64: there is no arm64 Windows container base image, so arm64 is a cross build.
 $script:WindowsHostArch = 'amd64'
 
 <#
 .SYNOPSIS
-    The list of supported Windows target architectures.
-.OUTPUTS
-    [string[]] Sorted arch names.
+    The supported Windows target architectures, sorted.
 #>
 function Get-SupportedWindowsTargetArches {
     return @($script:TargetArchTable.Keys | Sort-Object)
@@ -114,19 +90,11 @@ function Get-SupportedWindowsTargetArches {
 
 <#
 .SYNOPSIS
-    Resolves the active Windows target architecture.
+    Resolves the target arch: -Arch, then $env:WINDOWS_TARGET_ARCH, then 'amd64'.
 .DESCRIPTION
-    Precedence: explicit -Arch parameter, then $env:WINDOWS_TARGET_ARCH, then
-    'amd64'. Defaulting to amd64 keeps every existing caller byte-identical:
-    a tree with no WINDOWS_TARGET_ARCH anywhere behaves exactly as before.
-
-    Unknown values THROW rather than falling back. A typo'd arch that silently
-    degraded to amd64 would produce an x64 build labelled arm64 -- the single
-    worst failure this module exists to prevent.
+    Unknown values throw: a typo degraded to amd64 would produce an x64 build labelled arm64.
 .PARAMETER Arch
-    Explicit override. Empty/whitespace means "consult the environment".
-.OUTPUTS
-    [string] 'amd64' or 'arm64'.
+    Explicit override; empty consults the environment.
 #>
 function Get-WindowsTargetArch {
     param(
@@ -138,8 +106,7 @@ function Get-WindowsTargetArch {
     if ([string]::IsNullOrWhiteSpace($resolved)) { $resolved = 'amd64' }
 
     $resolved = $resolved.Trim().ToLowerInvariant()
-    # Accept the common spellings of each target so a caller passing a CMake or
-    # Docker-flavoured name is not silently wrong. The canonical form is returned.
+    # Accept CMake/Docker spellings; the canonical form is returned.
     switch ($resolved) {
         'x64'     { $resolved = 'amd64' }
         'x86_64'  { $resolved = 'amd64' }
@@ -155,14 +122,9 @@ function Get-WindowsTargetArch {
 
 <#
 .SYNOPSIS
-    Returns the full fact record for a Windows target architecture.
-.DESCRIPTION
-    Returns a COPY of the table row, so a caller mutating the result cannot
-    corrupt the module-scoped table for every subsequent caller in the session.
+    Returns a copy of the fact record for a target arch, so callers cannot corrupt the table.
 .PARAMETER Arch
     Target arch; resolved via Get-WindowsTargetArch.
-.OUTPUTS
-    [hashtable] All arch facts. See the table at the top of this module.
 #>
 function Get-WindowsTargetArchInfo {
     param(
@@ -174,9 +136,7 @@ function Get-WindowsTargetArchInfo {
 
 <#
 .SYNOPSIS
-    The architecture the Windows build host always runs as.
-.OUTPUTS
-    [string] Always 'amd64' -- there is no arm64 Windows container base image.
+    The build host's arch, always 'amd64'.
 #>
 function Get-WindowsHostArch {
     return $script:WindowsHostArch
@@ -187,8 +147,6 @@ function Get-WindowsHostArch {
     True when building for an architecture other than the build host's.
 .PARAMETER Arch
     Target arch; resolved via Get-WindowsTargetArch.
-.OUTPUTS
-    [bool]
 #>
 function Test-WindowsCrossTarget {
     param(
@@ -197,11 +155,7 @@ function Test-WindowsCrossTarget {
     return (Get-WindowsTargetArch -Arch $Arch) -ne $script:WindowsHostArch
 }
 
-# ---------------------------------------------------------------------------
-# Thin per-fact accessors. These exist so call sites read as intent
-# ("Get-VcpkgTriplet") rather than as table plumbing, and so a rename of a
-# table key touches one line here instead of every build script.
-# ---------------------------------------------------------------------------
+# Per-fact accessors, so a table key rename touches one line here instead of every build script.
 
 function Get-ClangTargetTriple {
     param([string]$Arch = '')
@@ -220,14 +174,9 @@ function Get-PeMachineType {
 
 <#
 .SYNOPSIS
-    Reads IMAGE_FILE_HEADER.Machine from a PE file (.exe/.dll/.pyd).
+    Reads IMAGE_FILE_HEADER.Machine from a PE file; compare against Get-PeMachineType.
 .DESCRIPTION
-    The one 12-line read that was inlined in three places (verify-target-arch,
-    build-target-cpython, smoke sections 14/15) before 2026-08-24. Lives here
-    because this module is dependency-free and every arch decision already
-    resolves through it. Returns the raw UInt16 (0x8664 / 0xAA64 / 0x014C);
-    compare against Get-PeMachineType. Throws on a non-PE file rather than
-    returning 0, so a caller can never mistake "not a PE" for "matches nothing".
+    Throws on a non-PE file, so "not a PE" can never pass as "matches nothing".
 #>
 function Get-PeFileMachine {
     param([Parameter(Mandatory)][string]$Path)
@@ -245,24 +194,6 @@ function Get-PeFileMachine {
     } finally { $fs.Dispose() }
 }
 
-<#
-.SYNOPSIS
-    Lists the DLL names a PE file imports (import directory, optionally the
-    delay-load directory), by parsing the file -- no dumpbin, no admin.
-.DESCRIPTION
-    Backlog #127 (2026-08-25): the merge arch gate answered "is every byte the
-    right machine?" and nothing answered "can the loader resolve this file on
-    the target?" -- which is how an arm64 python.exe shipped with its CRT in a
-    directory the loader never searches (#124). This is the primitive for a
-    whole-tree static import walk; dependency-free like the rest of this
-    module so the gate can use it. PE32 and PE32+ (x64/ARM64). Throws on a
-    non-PE, like Get-PeFileMachine.
-.PARAMETER IncludeDelayLoad
-    Also list DataDirectory[13] (delay-load) imports. Delay-loaded DLLs are
-    resolved at first call, so a missing one is a runtime failure too.
-.OUTPUTS
-    [string[]] DLL names as written in the file (case preserved), unique.
-#>
 function Read-PeLayout {
     # The bytes, sections and data directories every PE directory reader needs; throws on a non-PE, naming $Caller.
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Caller)
@@ -327,6 +258,12 @@ function Add-PeDescriptorName {
     }
 }
 
+<#
+.SYNOPSIS
+    Lists the unique DLL names a PE file imports, by parsing the file (no dumpbin, no admin).
+.PARAMETER IncludeDelayLoad
+    Also list delay-load imports: a missing one is a runtime failure too.
+#>
 function Get-PeImportNames {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -347,15 +284,9 @@ function Get-PeImportNames {
 
 <#
 .SYNOPSIS
-    Lists the names a PE file exports (export directory), by parsing the file.
+    Lists the names a PE file exports, by parsing the file.
 .DESCRIPTION
-    A forwarded export, whose address points back into the export directory
-    (kernel32's AcquireSRWLockExclusive -> NTDLL), is another DLL's code, so it
-    is left out unless -IncludeForwarded. The ORT census uses this to tell an ORT
-    under another name, which exports OrtGetApiBase, from a consumer of one.
-    Throws on a non-PE, like Get-PeImportNames.
-.OUTPUTS
-    [string[]] export names as written in the file.
+    A forwarded export is another DLL's code, so it is left out unless -IncludeForwarded.
 #>
 function Get-PeExportNames {
     param(
@@ -384,11 +315,7 @@ function Get-PeExportNames {
 
 <#
 .SYNOPSIS
-    Asserts every given PE file is the TARGET machine; throws naming the first
-    offender with both machine values. Returns the number checked.
-.DESCRIPTION
-    The static gate that used to be re-inlined per script (TVM/IREE installs,
-    cv2, cpython staging, smoke sections 14/15) -- #131, 2026-08-25.
+    Asserts every given PE file is the target machine; throws naming the first offender, returns the count.
 #>
 function Assert-PeTargetMachine {
     param(
@@ -409,9 +336,7 @@ function Assert-PeTargetMachine {
 
 <#
 .SYNOPSIS
-    Asserts every PE under a directory is the TARGET machine and that at least
-    -MinCount files were found (an empty tree is a failure, never a pass).
-    Returns the count.
+    Asserts every PE under a directory is the target machine and at least -MinCount exist; returns the count.
 #>
 function Assert-DirectoryTargetArch {
     param(
@@ -433,10 +358,9 @@ function Assert-DirectoryTargetArch {
 
 <#
 .SYNOPSIS
-    Asserts a python extension module NAME carries the target's EXT_SUFFIX tag
-    when it carries one at all (`<mod>.cp314-win_arm64.pyd`); bare `<mod>.pyd`
-    passes. A host-tagged name is unloadable on the target however correct the
-    machine field is (measured 2026-08-24: cv2.cp314-win_amd64.pyd, 0xAA64).
+    Asserts a tagged extension module name carries the target's EXT_SUFFIX tag; a bare `<mod>.pyd` passes.
+.DESCRIPTION
+    A host-tagged name is unloadable on the target, however correct its PE machine field is.
 #>
 function Assert-PythonExtensionTag {
     param(
@@ -534,27 +458,16 @@ function Get-LibMachineArg {
     return (Get-WindowsTargetArchInfo -Arch $Arch).LibMachine
 }
 
-# ---------------------------------------------------------------------------
-# SIMD / vectorisation
-# ---------------------------------------------------------------------------
+# SIMD
 
 <#
 .SYNOPSIS
-    Baseline SIMD flags safe to apply to a whole target's compilation.
+    Baseline SIMD flags safe for a whole target's compilation; may be empty.
 .DESCRIPTION
-    amd64 returns the historical Get-WindowsX86SimdFlags string verbatim, so the
-    existing lane's emitted flags are provably unchanged.
-
-    arm64 returns nothing by default. AArch64 already mandates NEON in its
-    baseline, and unlike x86 there is no safe "everything modern" set: dotprod /
-    i8mm / SVE are optional features and a globally-enabled one produces
-    SIGILL on hardware that lacks it -- the exact class of failure documented
-    for AVX-512 in Get-WindowsTargetKernelSimdFlags. Optional AArch64 features
-    belong ONLY on runtime-dispatched kernels, via that function.
+    arm64 gets none: NEON is baseline, and a globally enabled optional feature (dotprod, i8mm, SVE) is SIGILL on
+    hardware without it. Optional features belong on runtime-dispatched kernels only.
 .PARAMETER Arch
     Target arch; resolved via Get-WindowsTargetArch.
-.OUTPUTS
-    [string] Space-separated compiler flags; may be empty.
 #>
 function Get-WindowsTargetSimdFlags {
     param([string]$Arch = '')
@@ -565,8 +478,7 @@ function Get-WindowsTargetSimdFlags {
             return '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-msse3 /clang:-msse4.1 /clang:-msse4.2 /clang:-mpopcnt'
         }
         'arm64' {
-            # Baseline armv8-a (NEON) is implied by the target triple. See above
-            # for why nothing optional is added globally.
+            # NEON is implied by the target triple.
             return ''
         }
     }
@@ -575,29 +487,11 @@ function Get-WindowsTargetSimdFlags {
 
 <#
 .SYNOPSIS
-    Per-TU SIMD flags for runtime-dispatched math kernels (MLAS).
+    Per-TU SIMD flags for runtime-dispatched MLAS kernels; never global CXX flags.
 .DESCRIPTION
-    NEVER put these in global CXX flags -- see the x86 history below.
-
-    x86 field history (2026-08-03, ORT v1.28, AVX2-only 5950X): globally, clang
-    may emit AVX-512 anywhere, and the in-tree protoc AND onnxruntime.dll's
-    static initializers both crashed at RUN/LOAD time with
-    STATUS_ILLEGAL_INSTRUCTION. But entirely without them MLAS's arch TUs
-    (qgemm_kernel_amx, intrinsics/avx512/*) fail to COMPILE: clang-cl gates
-    intrinsics behind target features and ORT's mlas.cmake adds no per-file -m
-    flags on its MSVC branch. The settled design: Build-OnnxFromSource.ps1
-    appends this string per-TU to exactly the MLAS FLAGS lines matched by
-    Get-MlasKernelTuPattern in build.ninja post-configure -- the only place the
-    features may be assumed, because those kernels are runtime-dispatched.
-
-    AArch64 is the same shape of problem with different features: dotprod, i8mm
-    and bf16 are optional extensions that MLAS dispatches on at runtime, so the
-    kernels that implement them must be compiled with the feature enabled while
-    the rest of the library must not be.
+    See docs/windows-build-invariants.md § AVX-512/AMX flags never go in global CXX flags.
 .PARAMETER Arch
     Target arch; resolved via Get-WindowsTargetArch.
-.OUTPUTS
-    [string] Space-separated compiler flags.
 #>
 function Get-WindowsTargetKernelSimdFlags {
     param([string]$Arch = '')
@@ -617,67 +511,20 @@ function Get-WindowsTargetKernelSimdFlags {
 
 <#
 .SYNOPSIS
-    Regex matching the MLAS translation units that need per-TU kernel flags.
+    Regex for the build.ninja lines of the MLAS TUs that need per-TU kernel flags.
 .DESCRIPTION
-    Consumed by Build-OnnxFromSource.ps1's post-configure build.ninja patch.
-
-    This is arch-specific and MUST be, because the x86 pattern
-    (qgemm_kernel_amx / intrinsics/avx512) matches NOTHING in an aarch64 build.
-    A patch that matches nothing SUCCEEDS silently, so an unparameterized
-    pattern would yield a green arm64 build whose dispatched kernels were
-    compiled without their features -- unoptimised at best, absent at worst.
-    Callers must assert a minimum match count; see Get-MlasKernelTuMinimum.
+    Arch-specific because a pattern that matches nothing succeeds silently; callers assert Get-MlasKernelTuMinimum.
 .PARAMETER Arch
     Target arch; resolved via Get-WindowsTargetArch.
-.OUTPUTS
-    [string] A regex suitable for -match against a build.ninja FLAGS line.
 #>
 function Get-MlasKernelTuPattern {
     param([string]$Arch = '')
 
     $key = Get-WindowsTargetArch -Arch $Arch
     switch ($key) {
-        # MEASURED against ONNX Runtime v1.29.0's x86 MLAS tree (2026-08-24), not
-        # guessed -- and the previous value was WRONG, which broke the amd64 lane.
-        #
-        # The old pattern was 'qgemm_kernel_amx|intrinsics[\\/]avx512'. It matched
-        # exactly 5 ninja lines: qgemm_kernel_amx.cpp plus the four files under
-        # lib/intrinsics/avx512/. That was complete for an older ORT, but v1.29.0
-        # keeps six more AVX-512 kernel TUs directly in lib/, outside the
-        # intrinsics/ subtree:
-        #     q4gemm_avx512.cpp                      sqnbitgemm_kernel_avx512.cpp
-        #     qkv_quant_kernel_avx512vnni.cpp        sqnbitgemm_kernel_avx512_2bit.cpp
-        #     sqnbitgemm_kernel_avx512vnni.cpp       sqnbitgemm_kernel_avx512vnni_2bit.cpp
-        # Five of those failed to COMPILE ("always_inline function '_mm512_set1_ps'
-        # requires target feature 'avx512f'"), and the floor of 4 did not catch it
-        # because 5 >= 4. Same failure shape the arm64 branch below already
-        # documents: the pattern silently under-matches, the floor rubber-stamps it,
-        # and the compiler is what tells you 30 seconds later.
-        #
-        # The third alternative is deliberately anchored to \.cpp. lib/amd64/ holds
-        # MASM kernels with names like QgemmU8X8KernelAvx512Core.asm, and -match is
-        # case-INSENSITIVE in PowerShell; anchoring on .cpp makes it structurally
-        # impossible to tag an ASM_MASM FLAGS line and hand ml64 a /clang: flag,
-        # rather than relying on none of those names happening to contain an
-        # underscore before "Avx512".
+        # Anchored to \.cpp: -match is case-insensitive and lib/amd64 holds MASM *Avx512*.asm kernels.
         'amd64' { return 'qgemm_kernel_amx|intrinsics[\\/]avx512|_avx512[a-z0-9_]*\.cpp' }
-        # MEASURED against ONNX Runtime v1.29.0's aarch64 MLAS tree (2026-08-23),
-        # not guessed. Three families need per-TU features:
-        #   *_fp16.cpp          -> FEAT_FP16 intrinsics (vaddq_f16, vfmaq_f16, ...)
-        #                          which clang gates behind target feature 'fullfp16'
-        #   *_kernel_neon*.cpp  -> the NEON kernel family (qgemm, qnbitgemm,
-        #                          sqnbitgemm, halfgemm, cast, qkv_quant,
-        #                          rotary_embedding)
-        #   qgemm_kernel_{udot,sdot,smmla,ummla} -> dotprod / i8mm kernels
-        #
-        # The first version of this pattern listed individual kernel names and
-        # matched 10 of 16, silently missing every *_fp16 TU. That did not fail
-        # the floor (then 2), it failed the COMPILE: activate_fp16.cpp and
-        # pooling_fp16.cpp died with "always_inline function 'vaddq_f16' requires
-        # target feature 'fullfp16'". Deliberately NOT matched: cast.cpp,
-        # halfconv.cpp, halfgemm.cpp -- those are the runtime DISPATCHERS and must
-        # stay feature-free, or the dispatch decision itself becomes unrunnable
-        # on hardware lacking the feature.
+        # Not matched on purpose: the dispatchers (cast.cpp, halfconv.cpp, halfgemm.cpp) must stay feature-free.
         'arm64' { return '_fp16|_kernel_neon|qgemm_kernel_(udot|sdot|smmla|ummla)' }
     }
     throw "Get-MlasKernelTuPattern: no TU pattern defined for '$key'"
@@ -687,59 +534,30 @@ function Get-MlasKernelTuPattern {
 .SYNOPSIS
     Minimum number of MLAS TUs the kernel-flag patch must match to be trusted.
 .DESCRIPTION
-    The guard against a silently no-op patch. Deliberately conservative: it is
-    a floor that proves the pattern still matches the upstream tree, not an
-    exact count that would break on every ORT bump.
+    A floor, not an exact count, so ordinary upstream churn passes but the previous broken state trips it.
 .PARAMETER Arch
     Target arch; resolved via Get-WindowsTargetArch.
-.OUTPUTS
-    [int]
 #>
 function Get-MlasKernelTuMinimum {
     param([string]$Arch = '')
 
     $key = Get-WindowsTargetArch -Arch $Arch
     switch ($key) {
-        # 11 x86 kernel TUs matched in ONNX Runtime v1.29.0 (measured 2026-08-24):
-        # 4 under lib/intrinsics/avx512/, qgemm_kernel_amx.cpp, and 6 *_avx512*.cpp
-        # in lib/ itself. The floor is 8, leaving room for ordinary upstream churn.
-        #
-        # RAISED FROM 4 on 2026-08-24, and the old value is why this exists. With a
-        # floor of 4 the stale pattern's 5 matches sailed through, and the amd64
-        # build then died compiling sqnbitgemm_kernel_avx512.cpp. A floor only earns
-        # its keep if it is high enough that the PREVIOUS broken state would trip
-        # it: 5 < 8, so this specific regression can no longer pass silently.
+        # ORT v1.29.0 matches 11; the stale pattern matched 5.
         'amd64' { return 8 }
-        # 16 aarch64 kernel TUs matched in ONNX Runtime v1.29.0 (measured
-        # 2026-08-23). The floor is 12, not 16, so ordinary upstream churn does
-        # not fail the build -- but the 10 that the first, incomplete pattern
-        # matched WOULD now fail here instead of surfacing as a compile error
-        # 30 seconds later, which is the entire point of having a floor.
+        # ORT v1.29.0 matches 16; the first, incomplete pattern matched 10.
         'arm64' { return 12 }
     }
     throw "Get-MlasKernelTuMinimum: no minimum defined for '$key'"
 }
 
-# ---------------------------------------------------------------------------
 # CMake
-# ---------------------------------------------------------------------------
 
 <#
 .SYNOPSIS
-    The CMake arguments that turn a native configure into a cross configure.
-.DESCRIPTION
-    Returns an EMPTY array for the host arch, so the amd64 lane's configure
-    command line is provably unchanged by this module's introduction.
-
-    For a cross target it returns CMAKE_SYSTEM_NAME/PROCESSOR (which is what
-    puts CMake into CMAKE_CROSSCOMPILING mode) plus the clang-cl target triple
-    on the compiler and linker flag variables. The triple is passed through
-    /clang: on the compilers and directly to lld-link, because clang-cl only
-    forwards --target to the compiler driver.
+    The CMake arguments that turn a native configure into a cross configure; empty for the host arch.
 .PARAMETER Arch
     Target arch; resolved via Get-WindowsTargetArch.
-.OUTPUTS
-    [string[]] CMake -D arguments; empty when not cross-compiling.
 #>
 function Get-CMakeCrossArgs {
     param([string]$Arch = '')
@@ -757,31 +575,13 @@ function Get-CMakeCrossArgs {
         "-DCMAKE_CXX_COMPILER_TARGET=$triple",
         "-DCMAKE_C_FLAGS_INIT=--target=$triple",
         "-DCMAKE_CXX_FLAGS_INIT=--target=$triple",
-        # ASM too (added 2026-08-24, found by LiteRT/XNNPACK's .S kernels): a
-        # project that enables the ASM language gets a clang-cl whose DEFAULT
-        # target is the x64 host, and every aarch64 assembly file then dies in
-        # the X86 assembler ("brackets expression not supported on this
-        # target") -- with the extra trap that an -march=armv8.2-a+... handed
-        # to that x86 driver is misread as a CPU name ("unknown target CPU"),
-        # which pointed the first diagnosis at a nonexistent driver gap.
-        # Projects that never enable ASM simply ignore these.
+        # See docs/windows-build-invariants.md § CMake cross configures must carry the ASM language target too
         "-DCMAKE_ASM_COMPILER_TARGET=$triple",
         "-DCMAKE_ASM_FLAGS_INIT=--target=$triple"
     )
 }
 
-# The x64-targeting MSVC program the BUILD machine needs by name (cl.exe,
-# ml64.exe -- see the native-file comment at the GStreamer call site, arm64
-# run 26). Returns the forward-slash path meson's [binaries] wants; throws when
-# the tool is not under <VC tools root>\bin\HostX64\x64, because a silent
-# fallback to PATH is exactly the ARM64-cl failure this exists to prevent.
-#
-# Here rather than in the merge-lane leaf modules (#134): this is a TARGET-vs-
-# BUILD machine fact, the same axis as every other accessor in this file, and
-# the next cross consumer that needs a build-machine tool by name will look
-# here first. Pure function, no dependency -- it does not break the
-# dependency-free rule above. Fixture test:
-# SourceBuild.BuildMachineMsvcTool.Tests.ps1.
+# The build machine's x64-targeting MSVC tool for meson; throws instead of falling back to PATH's ARM64 cl.
 function Resolve-BuildMachineMsvcTool {
     param(
         [Parameter(Mandatory)]

@@ -1,19 +1,12 @@
 #!/usr/bin/env bash
-# Two gates in smoke-runtime-image.sh that could not fail, and now can:
-#   * the app-wheel ratchet fell back to exit-status-only when its ok-count did
-#     not parse -- the very thing it exists to distrust (backlog WF);
-#   * the HEALTHCHECK gates ran a hardcoded copy of the probe and read only
-#     Test[0], the OCI verb, so a wrong HEALTHCHECK shipped green (backlog WE).
-# smoke-runtime-image.sh runs against a live image, so the functions are
-# extracted and their collaborators stubbed.
+# smoke-runtime-image.sh gates, extracted and run with stubbed collaborators because the script needs a live image.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SMOKE="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
 
 _extract() {
-  # Heredoc-aware: an awk that stops at the first ^} cuts these functions in half,
-  # because the emitted probe text contains such lines itself.
+  # Heredoc-aware: the probe text these functions emit contains `}` lines of its own.
   python3 - "${SMOKE}" "$1" <<'EXTRACT'
 import io, sys
 lines = io.open(sys.argv[1], encoding="utf-8").read().splitlines(True)
@@ -40,9 +33,7 @@ _STUBS='set -u
     fail() { printf "FAIL %s\n" "$*"; FAILURES=$((FAILURES+1)); }
     pass() { printf "PASS %s\n" "$*"; }'
 
-# One run of a gate with its collaborators stubbed. HC is what the image reports
-# as its healthcheck; WHEEL_OUT is what the app smoke prints; RUN_RC is what a
-# command executed in the image returns.
+# _gate <fn> [healthcheck] [app smoke output] [in-image rc]
 _gate() {
   local fn="$1" hc="${2-}" wheel_out="${3-}" run_rc="${4-0}" hc_json
   if [ -n "${hc}" ]; then
@@ -52,8 +43,7 @@ _gate() {
   fi
   HC_JSON="${hc_json}" WHEEL_OUT="${wheel_out}" RUN_RC="${run_rc}" bash -c '
     '"${_STUBS}"'
-    # Runs the REAL extraction program against a fixture, exactly as the live
-    # helper does. Returning ${HC} directly would bypass the code under test.
+    # Runs the real extraction program; returning ${HC} directly would bypass the code under test.
     inspect_image_config() { printf "%s" "${HC_JSON}" | python3 -c "$1" 2>/dev/null || true; }
     _rt_run() { printf "%s\n" "${WHEEL_OUT}"; return "${RUN_RC}"; }
     _SMOKE_TORCH_EXPECTED=1
@@ -80,7 +70,7 @@ t_case "a full count passes"
 _ratchet_says "=== 15/15 ok, 0 failure(s) ===" "PASS app wheel smoke passed" \
   "at the floor must pass"
 
-# ── WE: the healthcheck ──────────────────────────────────────────────────────
+# WE: the healthcheck
 t_case "the healthcheck gate reads the command, not the OCI verb"
 _out="$(_gate check_healthcheck_config '/opt/venv/bin/python3 -c "import onnxruntime" || exit 1')"
 t_assert_contains "${_out}" "import onnxruntime" \
@@ -95,10 +85,9 @@ _out="$(_gate check_healthcheck_exec '/opt/venv/bin/python3 -c "import onnxrunti
 t_assert_contains "${_out}" "import onnxruntime" \
   "a failing healthcheck must name the command it actually ran"
 
-# ── the probe is emitted in three parts and must still be one program ────────
+# The probe is emitted in parts and must still be one program
 t_case "the shipped-truth probe still emits all three of its sections"
-# Nothing else guards the concatenation: the ADV printfs stay in the file even if
-# a part is dropped from the caller, so the advertised-keys gate would not notice.
+# The advertised-keys gate would not notice a part dropped from the caller.
 _probe="$(bash -c '
   '"$(_extract _probe_advertised)"'
   '"$(_extract _probe_actual_versions)"'
@@ -111,7 +100,7 @@ t_assert_contains "${_probe}" "HAVE PYTHON_MAJOR_MINOR" "the actual-versions sec
 t_assert_contains "${_probe}" "REQ"                 "the venv inventory section must be there"
 t_assert_contains "${_probe}" "SONAME"              "the inventory section must be there"
 
-# ── XQ: the default-boot gate must test what only the entrypoint provides ────
+# XQ: the default-boot gate must test what only the entrypoint provides
 _boot() {
   bash -c '
     '"${_STUBS}"'
@@ -123,9 +112,7 @@ t_case "a boot that did not reach the script fails"
 t_assert_contains "$(_boot 1 "")" "FAIL" "the entrypoint must exec the command and propagate 42"
 
 t_case "the image ENV alone is NOT enough to pass"
-# This is the whole point: GST_PLUGIN_PATH and VULKAN_SDK are set by the image
-# ENV, so the old gst=set/vulkan=set assertion answered yes with the entrypoint's
-# sourcing gone. Measured in the shipped image before changing this.
+# The image ENV already sets GST_PLUGIN_PATH and VULKAN_SDK, so their presence proves no sourcing.
 t_assert_contains "$(_boot 42 "BOOT uid=0 gst=set vulkan=set
 gstma=no
 vkres=no")" "did not source gstreamer-env.sh" \
@@ -140,8 +127,7 @@ t_assert_contains "$(_boot 42 "BOOT uid=0 gst=set vulkan=set
 gstma=yes
 vkres=yes")" "PASS" "what the published image actually prints"
 
-# The rust gate with the container stubbed: RUST_OUT is what the image prints for
-# rustc --version / rustup show active-toolchain / command -v cargo-cbuild.
+# _rust <what the image prints for rustc --version, rustup show active-toolchain, command -v cargo-cbuild>
 _rust() {
   RUST_OUT="$1" bash -c '
     '"${_STUBS}"'
@@ -174,9 +160,7 @@ t_assert_contains "$(_rust "rustc 1.98.0 (88d9e12ae 2026-08-18)
 1.98.0-x86_64-unknown-linux-gnu (default)
 /usr/local/cargo/bin/cargo-cbuild")" "PASS rustc 1.98.0 runs natively as x86_64-unknown-linux-gnu" "what a correct image prints"
 
-# The flutter gate with the container stubbed: FLUTTER_OUT is what the image prints
-# for `flutter --version | grep ^Flutter` and `readelf -h dart | grep Machine`; ARGS
-# records the nerdctl options the gate asked for. $2 = target arch.
+# _flutter <flutter --version and readelf Machine output> [arch]: prints the gate's output, then the nerdctl options it used.
 _flutter() {
   local opts; opts="$(mktemp)"
   FLUTTER_OUT="$1" OPTS="${opts}" bash -c '
@@ -230,9 +214,7 @@ FOREIGN /opt/flutter/.git/FETCH_HEAD")" \
   "the 34 git internals a root-run flutter fetch left behind are the same defect, one command later"
 
 
-# ── advertised keys: neither "the image did not tell us" arm may be a SKIP ───
-# check_advertised_versions with the verdict function stubbed: VERDICTS is what
-# _advert_verdicts would print for the probe.
+# Advertised keys: neither "the image did not tell us" arm may be a SKIP
 _advert_gate() {
   VERDICTS="$1" bash -c '
     '"${_STUBS}"'
@@ -252,14 +234,12 @@ t_assert_contains "$(_advert_gate "UNREAD RUST_VERSION 1.98.0")" "could NOT read
   "the rust defect shape: rustc did not run and the gate said SKIP"
 
 t_case "a verdict verb no arm handles fails instead of being dropped"
-# The case had no default arm, so any new verb would have vanished silently --
-# the same class as the SKIP arms themselves.
+# Without a default arm a new verb vanishes silently.
 t_assert_contains "$(_advert_gate "WHAT RUST_VERSION 1.98.0")" "unknown verdict" \
   "an unhandled verb is a silently dropped row"
 
 t_case "an EMPTY verdict table is a vacuous pass, not a green image"
-# The whole gate reduces to "check every advertised key" -- so a key list that
-# came back empty asserts nothing at all, which is the same hole one level up.
+# An empty key list asserts nothing at all.
 t_assert_contains "$(_advert_gate "")" "asserted NOTHING" \
   "an empty table must fail, not print PASS all 0"
 t_assert_eq 0 "$(printf '%s' "$(_advert_gate "")" | grep -c 'PASS all')" \
@@ -269,10 +249,7 @@ t_case "a clean table still passes"
 t_assert_contains "$(_advert_gate "OK RUST_VERSION 1.98.0")" "PASS all 1 advertised" \
   "the gate must still be able to pass"
 
-# ── HT1: the manifest trees must carry the image's own arch ──────────────────
-# The scanner is the real program from the smoke, run against a fixture tree of
-# hand-written ELF headers -- the only way to prove it reads e_machine and not
-# some other header word.
+# HT1: the manifest trees must carry the image's own arch (hand-written ELF headers prove the scanner reads e_machine)
 _HT1_FIX="$(mktemp -d)"
 mkdir -p "${_HT1_FIX}"/{native,builder,empty}/bin
 t_fake_elf "${_HT1_FIX}/native/bin/dart" 183
@@ -314,9 +291,7 @@ t_case "a scan that found no tree at all is a vacuous pass, not a pass"
 t_assert_contains "$(_verdicts "TREESCAN_DONE" AArch64)" "NONE" "nothing asserted must be reportable"
 
 t_case "a cross toolchain's target payload is not a defect, but its own binaries still are"
-# The 2026-09-05 false positives: /opt/gcc-*/aarch64-linux-gnu, rustup's
-# lib/rustlib/<triple> and clang's lib/clang/*/lib/linux hold foreign ELF BY DESIGN.
-# The exemption must not reach the thing HT1 was written for: a builder-arch rustc.
+# Cross toolchains' target dirs hold foreign ELF by design; the exemption must not reach a builder-arch rustc.
 _XT="$(mktemp -d)"
 mkdir -p "${_XT}/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu"/{bin,lib/rustlib/aarch64-unknown-linux-gnu/lib}
 mkdir -p "${_XT}/gcc-16.2.0"/{bin,aarch64-linux-gnu/lib64,lib/gcc/riscv64-linux-gnu/16.2.0} "${_XT}/llvm/lib/clang/23/lib/linux" "${_XT}/llvm/bin"
@@ -336,11 +311,7 @@ done
 rm -rf "${_XT}"
 
 t_case "a huge tree cannot crowd the shipped binaries out of the scan"
-# The rustup layout that motivated this gate carries tens of thousands of rust-src
-# .rs files under toolchains/*/lib, sorted BEFORE toolchains/*/bin/rustc — the one
-# object that shipped as x86_64 for months. Candidates are read first for that reason.
-# The real shape: /usr/local/rustup holds TWO toolchains, so the first one's
-# rust-src sorts ahead of the second one's bin/ and starves it.
+# Two rustup toolchains: the first one's rust-src sorts ahead of the second one's bin/ and would starve it.
 _HT1_BIG="$(mktemp -d)"
 mkdir -p "${_HT1_BIG}/tree/toolchains/a-stable/lib/src" "${_HT1_BIG}/tree/toolchains/b-nightly/bin"
 _i=0; while [ "${_i}" -lt 60 ]; do printf 'source\n' > "${_HT1_BIG}/tree/toolchains/a-stable/lib/src/mod_${_i}.rs"; _i=$((_i + 1)); done
@@ -382,7 +353,7 @@ TREESCAN_DONE" AArch64)" "PASS all 1 asserted artifact tree(s)" "what a correct 
 
 rm -rf "${_HT1_FIX}"
 
-# ── HT1: the host-side halves of the gate agree with their other owners ──────
+# HT1: the host-side halves of the gate agree with their other owners
 t_case "every manifest path resolves to a real absolute path"
 _TREES="$(bash -c '
   _SCRIPT_DIR="'"${TESTS_DIR}/../06-packaging"'"
@@ -396,16 +367,12 @@ t_assert_eq "" "$(printf '%s\n' "${_TREES}" | grep -ve '^/')" \
 t_assert_contains "${_TREES}" "/opt/opencv5" "\${OPENCV_OUTPUT_DIR} comes from Dockerfile.package's ARG default"
 
 t_case "the Vulkan tree is probed WHOLE, not narrowed to active/"
-# The narrowing existed because /opt/vulkan shipped the SDK's 1.8 GB x86-64 host
-# prefix plus a 3.9 GB build tree into every foreign image. Both are pruned before
-# the COPY now (backlog HT5), so every byte of the tree is the image's own arch.
+# The SDK's host prefix and build tree are pruned before the COPY, so all of /opt/vulkan is the image's arch.
 t_assert_contains "${_TREES}" "/opt/vulkan" "the manifest tree must still reach the scanner"
 t_assert_eq "" "$(printf '%s\n' "${_TREES}" | grep -e '/opt/vulkan/active')" \
   "a re-narrowed probe would stop seeing a builder-arch prefix that came back"
 
-# Every needle of a table read out of ANOTHER owner of the same fact must appear in
-# ${haystack}, sentinel first so a table that moved fails loudly instead of iterating
-# over nothing. Three cross-checks had copied this shape.
+# Sentinel first, so a source table that moved fails loudly instead of iterating over nothing.
 _t_all_present() {
   local haystack="$1" needles="$2" sentinel="$3" why="$4" n
   t_assert_contains "${needles}" "${sentinel}" "the source table moved -- '${why}' reads nothing"
@@ -416,8 +383,7 @@ _t_all_present() {
 }
 
 t_case "the one documented COPY relocation is applied, not the source path"
-# verify-artifact-copy-parity.sh's ALLOWED_RELOCATIONS is the other owner of this
-# fact; the manifest carries the COPY SOURCE, which does not exist in the image.
+# The manifest carries the COPY source; verify-artifact-copy-parity.sh's ALLOWED_RELOCATIONS owns the destination.
 _RELOC="$(sed -n 's/^  "\/[^ ]* \(\/[^"]*\)"$/\1/p' "${TESTS_DIR}/../verify-artifact-copy-parity.sh")"
 _t_all_present "${_TREES}" "${_RELOC}" "/" "every ALLOWED_RELOCATIONS destination must be the path the gate probes"
 
@@ -428,13 +394,7 @@ _t_all_present "${_TREES}" "$(printf '%s\n' ${_RT_TREE_ARCH_EXEMPT})" "/opt/" \
   "every arch-exempt tree must still be a declared artifact"
 
 t_case "the arch-exempt table is what the images MEASURED, not what the graph suggested"
-# HT2, measured on the three images shipped 2026-09-05. /opt/android-sdk is one
-# linux-x86_64 tree copied unchanged into all three (582 X86-64 objects in the arm64
-# and riscv64 images), so it stays.
-# /opt/android is exempt again, for the OPPOSITE reason to the one that removed it:
-# the old scan matched the image everywhere only because the ABI was derived from
-# the image arch, and that derivation WAS the defect (AB1).
-# docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
+# See docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
 t_assert_contains " ${_RT_TREE_ARCH_EXEMPT} " " /opt/android-sdk " \
   "the SDK's host toolchain is genuinely not this image's to assert"
 t_assert_contains " ${_RT_TREE_ARCH_EXEMPT} " " /opt/android " \
@@ -443,10 +403,7 @@ t_assert_contains "$(sed -n '/^arch_android_abi_for() {$/,/^}$/p' "${TESTS_DIR}/
   'arm64) printf '"'"'%s'"'"' "arm64-v8a"' "the mapping the deletion rests on: one ABI per arch, same machine"
 
 t_case "an ELF machine label may not contain a space"
-# The verdict line is read back with `read -r verb tree machine count sample`, so a
-# label with a space eats the count column: the 2026-09-04 run printed
-# "ships 80386 Intel object(s) ... e.g. 6 /usr/local/llvm-target/..." and the frozen
-# lookup, which keys on the machine, could never have matched it.
+# Verdicts are read with `read -r verb tree machine count sample`, so a spaced label eats the count column.
 _EM_LABELS="$(_extract _tree_arch_py | sed -n 's/^EM = {\(.*\)}$/\1/p' | tr ',' '\n' \
                 | sed -n 's/.*: "\([^"]*\)".*/\1/p')"
 t_assert_contains "${_EM_LABELS}" "X86-64" "the EM table moved -- this case reads nothing"
@@ -459,9 +416,7 @@ t_assert_contains "$(_verdicts "TREE /x Intel-80386 6 /x/libclang_rt.asan-i386.s
 TREESCAN_DONE" AArch64)" "BAD /x Intel-80386 6 /x/libclang_rt.asan-i386.so" \
   "count and sample must survive a non-target machine name"
 
-# ── the consumer contract: the four defects a consuming lane reported ────────
-# Probe text as the gate would have seen it in :latest-cross-amd64 on 2026-09-04.
-# Every line was measured in the shipped image, not invented.
+# Consumer contract; _CC_SHIPPED is probe output measured in a shipped image, not invented
 _CC_SHIPPED='WHO 1001 kataglyphis
 WRITE ccache-dir no
 ENV ccache-dir /workspace/.ccache
@@ -505,8 +460,7 @@ FACT flutter-foreign 0
 FACT flutter-foreign-examples
 CCPROBE_DONE'
 
-# The row list is read from the smoke itself, so a shortened table shortens the
-# tests too instead of leaving them asserting a copy.
+# Rows are read from the smoke itself, so the tests never assert a stale copy.
 _CC_ROWS_SRC="$(sed -n '/^_CONSUMER_CONTRACT_ROWS=/p' "${SMOKE}")"
 t_assert_contains "${_CC_ROWS_SRC}" "ccache-dir" "the row list moved -- every case below reads nothing"
 eval "${_CC_ROWS_SRC}"
@@ -549,12 +503,7 @@ t_assert_contains "${_CC_OUT}" "BAD flutter-owner 37 path(s) under /opt/flutter 
 t_assert_contains "${_CC_OUT}" "ASSERTED 0" "a wholly non-compliant image asserts nothing"
 
 t_case "with only the ENV half of the fix, today's bytes leave exactly the two ownership rows red"
-# MEASURED 2026-09-04: _consumer_contract_probe run verbatim in :latest-cross-amd64
-# as uid 1001 with the ENV Dockerfile.package now bakes returned _CC_FIXED except
-# for the three ownership facts below. It separates what this session could confirm
-# on shipped bytes -- defects 1 and 3 are ENV-only, /var/cache/{c,sc}cache is already
-# 1777 and the appended PATH survives bash -lc -- from what only the rebuild's
-# chown can settle. Derived from _CC_FIXED so the two captures cannot drift apart.
+# Derived from _CC_FIXED so the two captures cannot drift; only the ownership facts differ.
 _CC_ENVFIX="$(printf '%s\n' "${_CC_FIXED}" \
   | sed -e 's#^WRITE rustup-tmp yes#WRITE rustup-tmp no#' \
         -e 's#^WRITE cargo-home yes#WRITE cargo-home no#' \
@@ -570,8 +519,7 @@ t_assert_contains "${_CC_ENVFIX}" "BAD flutter-owner 37 path(s)" "defect 4 still
 t_assert_contains "${_CC_ENVFIX}" "ASSERTED 3" "three of the seven rows hold on today's bytes"
 
 t_case "a cache dir inside the checkout fails even when it IS writable"
-# The writable arm alone would have passed the shipped shape on a host where
-# /workspace is a writable bind mount, which is every consumer's normal case.
+# /workspace is a writable bind mount for every consumer, so writability alone proves nothing.
 t_assert_contains "$(_cc_verdicts 'WRITE ccache-dir yes
 ENV ccache-dir /workspace/.ccache
 CCPROBE_DONE' amd64 ccache-dir)" "BAD ccache-dir points into the bind-mounted checkout" \
@@ -596,10 +544,7 @@ t_assert_contains "$(_cc_verdicts 'CCPROBE_DONE' amd64 flutter-owner)" "NOFACT f
 t_assert_contains "$(_cc_verdicts 'CCPROBE_DONE' amd64 android-home)" "NOFACT android-home" \
   "a missing DIR line must not read as an existing platform-tools"
 
-# An android capture with both variables set: $1 = DIR android-platform-tools,
-# $2 = FACT android-path, $3 = FACT android-payload-off (default no, i.e. an
-# amd64-hosted build that DID ship an SDK). One shape, so the halves of the row
-# differ by the fact under test and nothing else.
+# _cc_android <platform-tools dir> <on PATH> [payload-off, default no]: yes/no facts
 _cc_android() {
   _cc_verdicts "ENV android-home /opt/android-sdk
 ENV android-sdk-root /opt/android-sdk
@@ -614,20 +559,16 @@ t_assert_contains "$(_cc_android no yes)" "platform-tools does not exist" \
   "an exported variable is not an SDK"
 
 t_case "an SDK that is set and present but not on PATH still fails"
-# flutter finds it by variable; sdkmanager, adb and avdmanager are found by PATH,
-# and the consumer asked for both halves.
+# flutter finds the SDK by variable, but sdkmanager, adb and avdmanager by PATH.
 t_assert_contains "$(_cc_android yes no)" "is on PATH" "half a wiring is not the contract"
 
 t_case "a payload-off image SKIPs the row instead of failing it"
-# The NDK is prebuilt/linux-x86_64 only, so a non-amd64-hosted android stage
-# ships empty directories. Failing that image would make the runtime lane
-# unreachable on exactly the hosts native builds exist for.
+# The NDK is linux-x86_64 only, so a non-amd64-hosted android stage legitimately ships empty directories.
 t_assert_contains "$(_cc_android no no yes)" "SKIP android-home" \
   "an image that RECORDED why the SDK is absent must not be judged as if it hid it"
 
 t_case "a MISSING payload-off fact is NOFACT, never a silent grant"
-# The whole point of reading a recorded fact is that its ABSENCE is unknown, not
-# false — an old probe must not restore the pre-marker verdict by omission.
+# An absent fact is unknown, not false, so an old probe cannot restore the old verdict by omission.
 t_assert_contains "$(_cc_verdicts "ENV android-home /opt/android-sdk
 ENV android-sdk-root /opt/android-sdk
 DIR android-platform-tools yes
@@ -639,10 +580,7 @@ t_case "the android row asserts exactly the two PATH entries Dockerfile.package 
 t_assert_contains "$(_cc_android yes yes)" "OK android-home" \
   "platform-tools + cmdline-tools/latest/bin is the whole claim -- build-tools and the NDK are deliberately off PATH"
 
-# HT2: what the riscv64 image ACTUALLY reports, read out of the shipped bytes on
-# 2026-09-05 -- /opt/flutter exists and is empty, so .dart_tool is absent (the row
-# would read unwritable) while `find /opt/flutter ! -uid 1001` is 0 (the row holds).
-# Only the first of those needs an exemption.
+# The riscv64 /opt/flutter is empty: .dart_tool is absent (exempt) but ownership still holds.
 t_case "the riscv64 flutter rows: dart-tool is exempt, flutter-owner is ASSERTED"
 _CC_RV="$(_cc_verdicts 'WRITE ccache-dir yes
 ENV ccache-dir /var/cache/ccache
@@ -658,8 +596,7 @@ t_assert_eq 0 "$(printf '%s\n' "${_CC_RV}" | grep -c '^BAD dart-tool')" \
   "the unwritable .dart_tool of an EMPTY riscv64 tree is not a defect"
 
 t_case "a root-owned riscv64 /opt/flutter is now a DEFECT there too"
-# The exemption used to hide CC1 defect 4 on riscv64: 37 root-owned paths would
-# have read as a documented exception.
+# The dart-tool exemption must not hide root-owned paths.
 t_assert_contains "$(_cc_verdicts 'FACT flutter-sdk no
 FACT flutter-foreign 37
 FACT flutter-foreign-examples /opt/flutter/bin
@@ -672,8 +609,7 @@ CCPROBE_DONE' riscv64 dart-tool)" "STALE dart-tool FACT flutter-sdk says it IS p
   "a table that cannot rot: the arm names itself for deletion"
 
 t_case "each exemption is re-checked by its OWN fact, not by another row's"
-# appimagetool's arm was re-checked with FACT flutter-sdk, so a riscv64 appimagetool
-# would have read EXEMPT forever -- the one thing the rot signal exists to prevent.
+# Checked against another row's fact, a riscv64 appimagetool would read EXEMPT forever.
 _CC_AI="$(_cc_verdicts 'FACT flutter-sdk no
 FACT appimagetool-readable yes
 ENV appimagetool /usr/local/bin/appimagetool
@@ -686,8 +622,7 @@ CCPROBE_DONE' riscv64 appimagetool)" "EXEMPT appimagetool" \
   "and the measured riscv64 shape -- packaging-deps.sh ships no riscv64 asset -- stays exempt"
 
 t_case "every per-arch exemption's rot fact is a fact the probe really emits"
-# A rot signal the probe never prints is a NOFACT on every run: the row can then
-# never be granted, and the gate reds for a reason that has nothing to do with it.
+# A rot fact the probe never prints is a NOFACT on every run.
 _CC_PROBE_SRC="$(_extract _consumer_contract_probe)"
 while IFS= read -r _row; do
   [ -n "${_row}" ] || continue
@@ -722,11 +657,9 @@ _cc_gate() {
 }
 
 t_case "the probe is one program and reports every verb the verdicts read"
-# Run against the HOST: the shell is the code under test, not the image. A dropped
-# _w line or a renamed verb is otherwise invisible until a chain runs.
+# Run on the host: the probe's shell is the code under test, not the image.
 _CC_TMP="$(mktemp -d)"
-# The fixture creates them: a probe that mkdir'd its own targets would answer
-# "writable" for a directory the consumer's `[ -w ]` calls false.
+# The fixture, not the probe, creates the dirs: a missing dir is one the consumer's `[ -w ]` calls false.
 mkdir -p "${_CC_TMP}"/{cc,sc,ru/tmp,ca,sdk/platform-tools,ort}
 : > "${_CC_TMP}/ort/libonnxruntime.so"
 _CC_RAW="$(CCACHE_DIR="${_CC_TMP}/cc" SCCACHE_DIR="${_CC_TMP}/sc" RUSTUP_HOME="${_CC_TMP}/ru" \
@@ -772,8 +705,7 @@ t_assert_contains "$(_cc_gate "bash: line 1: id: command not found")" "asserted 
   "no CCPROBE_DONE marker means the gate proved nothing"
 
 t_case "a probe that ran as root proves nothing and fails"
-# Every directory answers writable to uid 0, so the answers are only evidence if
-# the probe ran as the user the image ships.
+# Every directory is writable to uid 0.
 t_assert_contains "$(_cc_gate "$(printf '%s\n' "${_CC_FIXED}" | sed 's/^WHO .*/WHO 0 root/')")" \
   "not the image's own USER" "a root probe is not a consumer"
 
@@ -834,9 +766,7 @@ FACT javac yes
 ENV java-home /usr/lib/jvm/default-java")" "OK jdk" "the fixed shape"
 t_assert_contains "$(_jdkv "ENV java-home /x")" "NOFACT jdk" "a probe that emitted no java facts proves nothing"
 
-# ── The Vulkan loader gate: WHICH libvulkan answered ────────────────────────
-# Ubuntu's multiarch loader is in every image, so "it loaded" was never evidence
-# that the shipped /opt/vulkan prefix is the one in use.
+# Vulkan loader: Ubuntu's multiarch libvulkan is in every image, so which one answered matters
 _vk_gate() {
   VK_OUT="$1" bash -c '
     '"${_STUBS}"'
@@ -848,9 +778,7 @@ _vk_gate() {
     check_vulkan_loader img arm64'
 }
 
-# The loader's instance extensions as the probe prints them. WSI_OK is the set the
-# CON41 fix measured on arm64 and riscv64 (and LunarG's amd64 loader lists);
-# WSI_NONE is what the arm64/riscv64 :latest of 2026-09-29 listed.
+# Probe output: WSI_OK is what the CON41 fix lists on every arch, WSI_NONE what arm64/riscv64 listed before it.
 _VK_EXT_WSI_OK='VKEXT VK_KHR_display VK_KHR_get_surface_capabilities2 VK_KHR_surface VK_KHR_wayland_surface VK_KHR_xcb_surface VK_KHR_xlib_surface VK_EXT_acquire_xlib_display VK_EXT_headless_surface'
 _VK_EXT_WSI_NONE='VKEXT VK_KHR_display VK_KHR_get_surface_capabilities2 VK_KHR_surface VK_EXT_acquire_drm_display VK_EXT_headless_surface'
 
@@ -909,8 +837,7 @@ _VK="$(_vk_gate 'OSError: libvulkan.so.1: cannot open shared object file: No suc
 t_assert_contains "${_VK}" "FAIL libvulkan.so.1 missing/unloadable" "the pre-existing arm must survive the sharpening"
 
 t_case "every gate this suite pins is actually CALLED by the smoke"
-# A gate can be perfect and never run. Each of these is extracted and driven
-# above, which proves the function and says nothing about the call list.
+# Driving an extracted gate proves the function, not that the smoke calls it.
 _SMOKE_SRC="$(cat "${SMOKE}")"
 for _g in check_consumer_contract check_flutter check_rust_toolchain check_manifest_tree_arch check_advertised_versions check_vulkan_loader; do
   t_assert_eq 1 "$(printf '%s\n' "${_SMOKE_SRC}" | grep -c "^    ${_g} \"\${image_tag}\"")" \
@@ -918,16 +845,14 @@ for _g in check_consumer_contract check_flutter check_rust_toolchain check_manif
 done
 
 t_case "the contract asserts every promise the consuming lane depends on"
-# The row list IS the contract. A row quietly dropped here takes its guarantee
-# with it and every suite below still passes, because they iterate the list.
+# The suites iterate the row list, so a dropped row would take its guarantee with it silently.
 for _r in ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner ort-crate-env; do
   t_assert_contains " ${_CONSUMER_CONTRACT_ROWS} " " ${_r} " \
     "${_r} is a promise the consumer's acceptance check makes; it must stay in the table"
 done
 
 t_case "every contract row carries the consumer symptom it prevents"
-# A row with no recorded symptom would fail with our path only -- which is how the
-# android defect reached the consumer's log three steps from its cause.
+# Without the symptom a red row names only our path, not what the consumer's log shows.
 _CC_SYM="$(_extract _consumer_contract_symptom)"
 for _r in ${_CONSUMER_CONTRACT_ROWS}; do
   t_assert_eq "" "$(bash -c "${_CC_SYM}"$'\n'"_consumer_contract_symptom ${_r}" | grep -e 'no symptom recorded')" \
@@ -940,8 +865,7 @@ _CC_EX="$(_extract _consumer_contract_exempt | sed -n 's/^ *\([a-z0-9|:-]*\)) re
 _t_all_present " ${_CONSUMER_CONTRACT_ROWS} " "${_CC_EX}" "-" \
   "every per-arch exemption must name a row the gate still asserts"
 
-# ── G3: the ort crate env row (docs/consumer-image-contract.md) ─────────────
-# What Dockerfile.package bakes, as the probe reports it; each case below edits one line.
+# G3: the ort crate env row as Dockerfile.package bakes it; see docs/consumer-image-contract.md
 _CC_ORT_OK='ENV ort-lib-location /usr/local/lib/onnxruntime-cpu/lib
 ENV ort-dylib-path /usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so
 ENV ort-prefer-dynamic 1
@@ -993,11 +917,7 @@ t_case "G3: a probe without its completion fact is NOFACT, never an empty-but-he
 t_assert_contains "$(_ortv "$(_ort_edit '/^FACT ort-probe/d')")" "NOFACT ort-crate-env" \
   "a probe that never finished proves nothing, whatever lines it printed"
 
-# ── the Vulkan SDK toolset gate ─────────────────────────────────────────────
-# VK_OUT is the inventory the probe prints for ${VULKAN_SDK}: one TOOL line per
-# tool found, then the two counts and the validation-manifest flag. The lists and
-# the frozen floors come from the source, so the suite cannot drift from what the
-# gate requires.
+# Vulkan SDK toolset; tool lists and frozen floors are read from the smoke so the suite cannot drift
 _VK_TOOL_VARS="$(grep -E '^_VK_(REQUIRED|REPORTED)_TOOLS=|^_VK_TOOLSET_FROZEN=' "${SMOKE}")"
 eval "${_VK_TOOL_VARS}"
 _vk_inventory() { for _t in $1; do printf 'TOOL %s\n' "${_t}"; done; }
@@ -1051,7 +971,7 @@ t_case "the layer manifest is reported when the prefix carries it"
 t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
 $(_vk_counts)")" "validation layer manifest present" "the good shape is stated too"
 
-# ── the frozen floors: 2 of 52 shipped for months because nothing said 52 ────
+# Frozen floors: without a floor, a shrinking toolset passes
 t_case "a prefix below its frozen tool count fails, and says what it is below"
 t_assert_contains "$(_vk_toolset "$(_vk_inventory "${_VK_REQUIRED_TOOLS}")
 $(_vk_counts 19)")" \
@@ -1081,11 +1001,7 @@ $(_vk_counts)" ppc64le)" \
   "FAIL no _VK_TOOLSET_FROZEN row for ppc64le" \
   "a WARN here is the same silence the floors exist to end"
 
-# ── the llvm-target startability gate (R1.1) ────────────────────────────────
-# The sdk stage's self-containment walk resolves NEEDED sonames against the
-# BUILDER's ldconfig cache, so a soname present there and absent in the runtime
-# ships a binary that cannot start. liblldb was the instance -- lldb, lldb-dap
-# and lldb-mcp, 3 of amd64's 142 -- and only a RUNTIME-side walk catches the next.
+# llvm-target startability: the sdk walk resolves sonames on the builder, so only a runtime-side walk catches a missing one
 _llvm_startable() {
   LT_OUT="$1" bash -c '
     '"${_STUBS}"'
@@ -1119,10 +1035,7 @@ _lt_out="$(_llvm_startable "ABSENT")"
 t_assert_contains "${_lt_out}" "WARN /usr/local/llvm-target/bin absent"
 t_assert_eq "0" "$(printf '%s\n' "${_lt_out}" | grep -c '^FAIL')"
 
-# ── the Android SDK ABI gate ────────────────────────────────────────────────
-# ABI_OUT is what the probe prints: the image's advertised ABI, then one MACH row
-# per ELF machine found under /opt/android. The ABI->machine table is read out of
-# the source so the suite cannot drift from what the gate accepts.
+# Android SDK ABI; the ABI->machine table is read from the smoke so the suite cannot drift
 _ABI_TABLE="$(grep -E '^_ANDROID_ABI_MACHINE=' "${SMOKE}")"
 _abi_gate() {
   ABI_OUT="$1" bash -c '
@@ -1134,8 +1047,7 @@ _abi_gate() {
     check_android_abi img arm64' 2>&1
 }
 
-# Measured on the 2026-09-05 image: 420 objects under /opt/android, every one of
-# them machine 62. Same row with 183 is what the fixed android stage produces.
+# Machine 62 (x86-64) is the broken stage's output; 183 (AArch64) is the fixed one's.
 _ABI_SAMPLE=/opt/android/litert/lib/libbenchmark_main.a
 _abi_shipped="ABI arm64-v8a
 MACH 62 420 ${_ABI_SAMPLE}"
@@ -1173,10 +1085,7 @@ t_case "an empty tree warns instead of passing silently"
 t_assert_contains "$(_abi_gate "ABI arm64-v8a")" \
   "no Android ELF objects" "nothing found is not the same as everything correct"
 
-# An exemption is only legitimate when another gate takes the tree over. /opt/android
-# is exempt from tree-arch because its arch is the ANDROID target's, never the
-# image's -- and check_android_abi asserts it against the ABI the image advertises,
-# which is stricter than "matches the image".
+# An exemption is only legitimate when another gate, here check_android_abi, takes the tree over.
 t_case "/opt/android is exempt from tree-arch and owned by the ABI gate instead"
 _EXEMPT="$(grep -E '^_RT_TREE_ARCH_EXEMPT=' "${SMOKE}")"
 t_assert_contains "${_EXEMPT}" "/opt/android" \
@@ -1186,11 +1095,7 @@ t_assert_contains "$(_extract _android_abi_py)" "/opt/android" \
 t_assert_contains "$(_extract check_android_abi)" "ANDROID_TARGET_ABI" \
   "and judges it against the ABI the image advertises, not against the image arch"
 
-# Every verb a verdict function can emit must be one check_consumer_contract's
-# reader handles. It reads `verb row rest` and has a case list; an unknown verb
-# is reported as a dropped row -- which is what a FAIL-instead-of-BAD verdict did
-# on 2026-09-06, turning three healthy rows into one gate failure. The suite
-# checked that each row HAS a symptom, never that its verdict could be read.
+# check_consumer_contract's reader reports an unknown verb as a dropped row.
 t_case "every verdict verb a producer emits is one the reader's case list handles"
 _VERBS_READ="$(_extract check_consumer_contract | sed -n 's/^ *\([A-Z]\{2,\}\)).*/\1/p' | sort -u)"
 _VERBS_EMITTED="$(for _f in _consumer_present_verdict _consumer_dir_verdict _consumer_jdk_verdict \

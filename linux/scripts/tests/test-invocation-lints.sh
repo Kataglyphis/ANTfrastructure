@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-# Invocation-idiom lints (backlog 0711f) for latent-bug classes shellcheck misses.
-# Keep the positive controls: a scan that reaches no files looks exactly like a clean one.
+# Lints for bug classes shellcheck misses; the controls matter, as a scan of no files looks clean.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-# cd+pwd, NOT "${TESTS_DIR}/..": the `tests/` exclusion below matches on the
-# printed path, so an unresolved `..` here silently excludes the entire tree.
+# cd+pwd: the tests/ exclusion matches the printed path, so an unresolved `..` would exclude everything.
 SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"
 
-# Lookback for a guard that makes a banned line safe: 3 lines fits `if <guard>;
-# then` + a comment without letting an unrelated guard mask a real hit.
+# 3 lines fit `if <guard>; then` plus a comment without letting an unrelated guard mask a hit.
 _LINT_GUARD_LOOKBACK=3
 
 # tests/ is excluded: those suites quote the banned patterns verbatim as fixtures.
@@ -17,15 +14,12 @@ _lint_files() {  # <root>
   find "$1" -name '*.sh' -not -path '*/tests/*' -type f | LC_ALL=C sort
 }
 
-# Full-line comments blanked, not dropped (line numbers stay true; the ban is on
-# code, not prose) BEFORE `\` joins, or a comment ending in `\` eats the line under it.
+# Comments blanked (line numbers stay true) before `\` joins, or a comment ending in `\` eats the next line.
 _lint_normalize() {  # <file>
   sed -e 's/^[[:space:]]*#.*$//' -e ':a' -e '/\\$/{N;s/\\\n/ /;ba}' "$1" 2>/dev/null
 }
 
-# _lint_tree <regex> <root> [guard-regex] -> one "relpath:LINE:text" per hit. A hit
-# is suppressed when a guard matches within _LINT_GUARD_LOOKBACK lines above it,
-# so an already-correct guarded call site needs no opt-out marker in the source.
+# _lint_tree <regex> <root> [guard-regex]: "relpath:LINE:text" per hit not guarded within the lookback.
 _lint_tree() {
   local pattern="$1" root="$2" guard="${3:-}"
   local f rel n i j lo _before _quotes
@@ -37,12 +31,7 @@ _lint_tree() {
     n="${#lines[@]}"
     for (( i = 0; i < n; i++ )); do
       [[ "${lines[i]}" =~ $pattern ]] || continue
-      # A match inside a double-quoted string is a MESSAGE, not a call:
-      # `info "Using existing uv venv (expected at ...)"` is not an invocation.
-      # Odd number of `"` before the match => we are inside one. Cheap and
-      # general (it covers `sudo uv venv`, `if uv venv`, env-assign prefixes and
-      # every other command-position spelling without enumerating them). Known
-      # blind spot: a genuine violation built inside `eval "..."` is skipped.
+      # An odd number of `"` before the match means a message, not a call; this misses violations inside eval.
       _before="${lines[i]%%"${BASH_REMATCH[0]}"*}"
       _quotes="${_before//[^\"]/}"
       [ $(( ${#_quotes} % 2 )) -eq 1 ] && continue
@@ -58,39 +47,17 @@ _lint_tree() {
   done < <(_lint_files "${root}")
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# LINT 1 — a bare flag directly after an inline ${SUDO} command prefix.
-#
-# The prefix idiom is only safe when the next token is a real command; with SUDO
-# empty (already root — every foreign-arch cross container) a bare FLAG becomes
-# the command and the shell exits 127. Bug 7e6d627 shipped exactly that, masked
-# by the sdk cache until a no-cache run. 01-core/common.sh's run_priv is the
-# replacement; 02-toolchain/vulkan.sh:346 is the fixed-in-place variant and is
-# why this lint understands guards.
+# LINT 1: with SUDO empty (root containers), a flag after an inline ${SUDO} prefix becomes the command.
 _SUDO_PATTERN='\$\{SUDO(:-[^}]*)?\}[[:space:]]+-'
 _SUDO_GUARD='-n[[:space:]]+"?\$\{SUDO'
 
-# LINT 2 — `uv venv` without an explicit `--python`.
-#
-# uv then seeds from ambient discovery (UV_PYTHON, PATH), which inside images
-# can point at the very venv being (re)created: bug e3ffb0a ran `uv venv
-# --clear` seeded from the interpreter that --clear deletes ("No interpreter
-# found", exit 2).
+# LINT 2: without --python, `uv venv` may seed from the very venv it is recreating.
 _UV_PATTERN='uv[[:space:]]+venv'
 
-# LINT 3 — `uv pip install --force-reinstall` without `--no-deps`.
-#
-# A full-deps force-reinstall RE-RESOLVES the wheel's dependency tree to latest,
-# silently floating the venv off the lock. Caught live 2026-08-11 by
-# assert_pinned_versions: numpy 2.5.1->2.5.2 and protobuf 6.33.6->7.35.1 (a
-# MAJOR bump no gate covered) — 8 sites fixed at once (fix #7).
+# LINT 3: --force-reinstall without --no-deps re-resolves dependencies and floats the venv off the lock.
 _FR_PATTERN='uv[[:space:]]+pip[[:space:]]+install[[:space:]][^#]*--force-reinstall'
 
-# ${name[@]} indirection for LINT 2. `uv venv "${venv_args[@]}"` builds its argv
-# in an array, so --python sits in the array literal a few lines up rather than
-# on the invocation line (06-packaging/setup-torch-venv.sh:99 does exactly
-# this). Resolve that ONE indirection. An array whose literal cannot be found
-# stays a HIT — unresolvable is loud, never quietly exempt.
+# LINT 2 follows one ${name[@]} to find --python in the array literal; an unresolvable array stays a hit.
 _uv_python_reachable() {  # <abs-file> <hit-text>
   local file="$1" rest="$2" name
   while [[ "${rest}" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\[@\]\} ]]; do
@@ -120,10 +87,7 @@ _fr_violations() {  # <root>
   _lint_tree "${_FR_PATTERN}" "$1" | grep -v -- '--no-deps' || true
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# POSITIVE CONTROLS. Without these the lints have no way to fail loudly, which
-# is precisely how they sat inert for two weeks. Each fixture is a file the lint
-# MUST flag or MUST ignore; a scan that reaches nothing fails half of them.
+# Positive controls: each fixture must be flagged or ignored, so a scan that reaches nothing fails.
 _FIX="$(mktemp -d)"
 trap 'rm -rf "${_FIX}"' EXIT
 mkdir -p "${_FIX}/tests"
@@ -240,8 +204,7 @@ t_assert_eq "yes" "${_enough}" \
 t_assert_contains "$(_lint_files "${SCRIPTS_DIR}")" "/01-core/common.sh" \
   "a known file must be in the scan list, so the exclusion is not over-broad"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# THE ACTUAL LINTS, against the real tree.
+# The lints, against the real tree.
 t_case "no bare flag directly after an inline \${SUDO} command prefix"
 _sudo_hits="$(_lint_tree "${_SUDO_PATTERN}" "${SCRIPTS_DIR}" "${_SUDO_GUARD}")"
 t_assert_eq "" "${_sudo_hits}" \

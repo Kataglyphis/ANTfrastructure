@@ -1,20 +1,4 @@
-# gitleaks config for linux/scripts/lint-secrets.sh (preflight + CI + hook).
-#
-# Extends the built-in rule set — this file only ADDS allowlist entries, it
-# never disables a rule.
-#
-# Why this exists instead of .gitleaksignore: .gitleaksignore entries are
-# `file:rule:line` fingerprints, so they silently stop matching the moment an
-# unrelated edit shifts the line. That is what turned main red — both triaged
-# false positives below drifted (build-gcc.sh 332 -> 339, versions.env
-# 408 -> 420) and the gate started reporting them as fresh leaks.
-#
-# Allowlisting the exact secret VALUE instead is stable across refactors and
-# stays narrow: each regex below pins one specific literal, so a genuinely new
-# high-entropy string in the same file is still reported.
-#
-# RULE, unchanged: every entry needs a justification comment saying why the
-# matched value is not a credential.
+# Allowlists exact values, not .gitleaksignore fingerprints that drift with line numbers; every entry says why it is no credential.
 
 [extend]
 useDefault = true

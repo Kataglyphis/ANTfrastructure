@@ -1,48 +1,9 @@
-# ==============================================================================
-# Kataglyphis ANTfrastructure — cross-build entrypoint
-#
-# Thin, discoverable wrappers over linux/scripts/*. The scripts remain the
-# source of truth; this file just gives a stable `make <target>` surface and
-# documents the environment knobs that materially change build behavior.
-#
-#   make help            list targets
-#   make preflight       fast, no-build gate (shellcheck + verify-* suite)
-#   make cross-build     full base -> :latest for ARCHES
-#   make cross-stage     rebuild one STAGE for ARCHES
-#   make verify-chain    resolve digests; exit 2 if any downstream image is STALE
-#   make lint            shellcheck the tree at -S error
-#
-# Common variables (override on the command line, e.g. `make cross-build ARCHES=arm64`):
-#   ARCHES   = amd64,arm64,riscv64   target architectures
-#   STAGE    = base                  base|compiler|sdk|media|android|runtime
-#   REPO     = ghcr.io/kataglyphis/kataglyphis_beschleuniger
-#   LOG_DIR  = out/build-logs        per-stage build logs (same default as
-#                                    build-cross-chain.sh — do NOT diverge:
-#                                    two defaults meant `make cross-build` and
-#                                    a bare script call wrote the same artifact
-#                                    to two places, and each looked stale from
-#                                    the other's directory)
-#
-# Environment knobs honored by the underlying scripts (export before make):
-#   NO_CACHE=1              disable ALL build cache (force full rebuild)
-#   NO_CACHE_EXPORT=1       keep local cache but skip the registry/inline export
-#   BUILDKIT_CACHE_DIR=DIR  local buildkit cache root (default ~/.cache/kata-buildcache)
-#   MAX_PARALLEL_ARCHS=N    concurrent per-arch stage builds (with --parallel-archs)
-#   PARALLEL_ARCHS=1        build sdk/media/android arches in parallel
-#   RUNTIME_IMAGE_SMOKE=0   skip the runtime-image boot smoke and wrapper content gate
-#                           (never the manifest image-env gate, which has no switch)
-#   CROSS_LOG_ARCHIVE_KEEP=N  run dirs kept under LOG_DIR/archive (default 5;
-#                             0 = keep all — the archive reached 12G unbounded)
-#   BUILD_ATTEST=1          attach SLSA provenance + SBOM to pushed images (slower)
-#
-# Reproducibility pins (opt-in, see linux/scripts/01-core/versions.env):
-#   OPENCV_COMMIT / OPENCV_CONTRIB_COMMIT / FFMPEG_COMMIT = 40-hex SHA to freeze
-#   those branch-tracked sources to an immutable commit (empty = bleeding edge).
-# ==============================================================================
+# `make help` lists targets over linux/scripts; env knobs: docs/linux-cross-builds.md § Operational env knobs (not versions.env)
 
 ARCHES  ?= amd64,arm64,riscv64
 STAGE   ?= base
 REPO    ?= ghcr.io/kataglyphis/kataglyphis_beschleuniger
+# Must equal build-cross-chain.sh's default, or make and a bare script call log to different places.
 LOG_DIR ?= out/build-logs
 
 SCRIPTS := linux/scripts

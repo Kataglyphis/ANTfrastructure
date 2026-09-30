@@ -12,18 +12,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceBuildChain sets this in-scope for the media run)
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in the flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-# LITERT REF SYNC: this default is the AUTHORITATIVE one. The v0.14
-# support-graft in Export-LitertLmBridge.ps1 resolves the same LITERT_VERSION
-# env with the same fallback -- a LiteRT bump must update BOTH defaults.
+# Export-LitertLmBridge.ps1 carries the same default: a LiteRT bump updates both.
 $LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.2.0'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 
@@ -33,13 +29,7 @@ Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT.git' -Tag "$L
 
 $tfliteSrc = Join-Path $SourceDir 'tflite'
 
-# Inline patch (kept inline, NOT a .patch file): LiteRT ships ~17 proto/CMakeLists.txt
-# files across nested subprojects, and the set of patched files varies between
-# versions (new tables land in minor releases). The loop's predicate (presence of
-# `protobuf_generate|protoc`) drives a per-file conditional stub. A static .patch
-# against a pinned tag would silently rot when the proto set changes. Removed the
-# orphaned windows/scripts/patches/litert/001-disable-proto-generation.patch (it
-# only covered 2 of the ~15 files). See docs/windows-builds.md "Source Patch Policy".
+# Inline, not a .patch: the set of proto CMakeLists changes between versions. See docs/windows-builds.md § Source Patch Policy
 $patchedIndex = 0
 Get-ChildItem -Path $tfliteSrc -Filter 'CMakeLists.txt' -Recurse -ErrorAction SilentlyContinue | Where-Object {
     $_.FullName -match 'proto\\CMakeLists\.txt'
@@ -58,18 +48,7 @@ add_library($targetName INTERFACE)
     }
 }
 
-# Inject the TFLite C API shared lib (tensorflowlite_c) into the MAIN build.
-# gst-plugins-bad's tflite plugin resolves cc.find_library('tensorflowlite_c')
-# FIRST and only falls back to the C++ `tensorflow-lite` lib -- which lacks the
-# C API symbols like TfLiteInterpreterCreate -- when it is absent, so without
-# this the gst tflite plugin fails meson configure. Upstream's own
-# tflite/c/CMakeLists.txt CANNOT be reused: it is a STANDALONE project() that
-# re-adds the whole tflite tree (a duplicate `tensorflow-lite` target) and
-# hardcodes the pre-rename `tensorflow/lite/` layout that LiteRT no longer has.
-# So append the target directly against THIS build's tensorflow-lite target and
-# TFLITE_SOURCE_DIR (=CMAKE_CURRENT_LIST_DIR, the tflite dir). On WIN32,
-# TFL_COMPILE_LIBRARY dllexports the C API and there are no version-script link
-# flags, so it links cleanly under clang-cl. All four sources verified present.
+# gst's tflite plugin needs tensorflowlite_c; upstream's tflite/c project re-adds the whole tree, so inject the target.
 $mainCmake = Join-Path $tfliteSrc 'CMakeLists.txt'
 $capiSnippet = @'
 
@@ -109,13 +88,10 @@ Add-Content -Path $mainCmake -Value $capiSnippet -Encoding ASCII
 Write-Host "Injected tensorflowlite_c (TFLite C API) target into $mainCmake"
 
 $buildDir = Join-Path $SourceDir 'build'
-# Clean any stale build artifacts (CMake pkgRedirects path casing issues).
-# -ErrorAction Stop: this cleanup EXISTS to prevent stale caches -- silently
-# leaving residue behind defeats its purpose, so a failed delete must be loud.
+# Stale pkgRedirects break on path casing, so a failed delete must be loud.
 if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force -ErrorAction Stop }
 if (Test-Path (Join-Path $SourceDir 'BUILD')) { Remove-Item (Join-Path $SourceDir 'BUILD') -Recurse -Force -ErrorAction Stop }
 
-# Detect GPU environment via the canonical helper (single source of truth for CUDA/cuDNN/TRT).
 $gpuEnv = Get-GpuEnvironment
 $cmakeExtra = @(
     '-DTFLITE_ENABLE_INSTALL=OFF'
@@ -131,70 +107,29 @@ $cmakeExtra = @(
     '-DTFLITE_ENABLE_MMAP=OFF'
     '-DTFLITE_ENABLE_NNAPI=OFF'
 )
-# amd64: the image's AVX2+FMA baseline (ORT and OpenCV already build with it, so the image needs an
-# AVX2 CPU regardless). Without it tflite's own kernels (Eigen, optimized_ops) compile at SSE2;
-# XNNPACK's microkernels carry their own per-family flags either way. Through *_FLAGS_INIT, not
-# CMAKE_*_FLAGS: the platform module appends /DWIN32 /GR /EHsc to _INIT, a CMAKE_*_FLAGS value
-# would replace them. The cross lane's _INIT carries --target (Get-CMakeCrossArgs) and is left alone.
+# The image's AVX2+FMA baseline via *_FLAGS_INIT, which keep the platform's /GR /EHsc that CMAKE_*_FLAGS would replace.
 if (-not (Test-WindowsCrossTarget)) {
     $litertSimd = Get-WindowsTargetSimdFlags
     $cmakeExtra += @("-DCMAKE_C_FLAGS_INIT=$litertSimd", "-DCMAKE_CXX_FLAGS_INIT=$litertSimd")
 }
-# NO QNN FLAGS HERE (corrected 2026-08-31, backlog #154). This block used to pass
-# -DTFLITE_ENABLE_QNN / -DQNN_HOME and print "QNN delegate ON". No such option
-# exists: a GitHub-wide search for TFLITE_ENABLE_QNN finds it only in THIS repo, and
-# CMake reported both flags "not used by the project". LiteRT's Qualcomm NPU support
-# is real at v2.2.0 but lives in the OTHER CMake tree (`litert/`, not the `tflite/`
-# tree this script configures) — see #154 before trying again. The QAIRT runtime is
-# still staged beside the install below — loaded by the ONNX Runtime QNN EP, not here.
+# No QNN flags: LiteRT's Qualcomm support lives in the litert/ tree, not this tflite/ one; QAIRT below serves ORT.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
 
-# Add CUDA paths for external delegate compilation if available
 $cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv
 
-# Fix CMAKE_AR path for llvm-lib (CMake resolves llvm-lib to C:\llvm-lib incorrectly)
 $cmakeExtra += Get-LlvmArchiverCmakeArg
 
-# Vulkan SDK is auto-detected by LiteRT via VULKAN_SDK env var; no need for explicit paths.
-
-# CROSS LANE (#115, 2026-08-24): upstream's tflite/CMakeLists.txt FATAL_ERRORs
-# under CMAKE_CROSSCOMPILING unless TFLITE_HOST_TOOLS_DIR names a directory with
-# a HOST flatc.exe -- the schema compiler must RUN during the build. Exactly the
-# knob upstream asks for, supplied the way upstream documents: configure the
-# same tree NATIVELY (per-call -TargetArch override on the choke point, the
-# same shape as TVM's minimal-LLVM host build) and build only the
-# flatbuffers-flatc target. This keeps the flatc version pinned to whatever
-# THIS LiteRT tree vendors -- no separate flatbuffers checkout to drift.
-# NB flatc.exe is already on the merge arch gate's host-tool allowlist, and it
-# never ships (build tree only).
-# XNNPACK note, checked against the tree rather than assumed: its arch
-# detection matches ^(aarch64|ARM64)$ case-exactly, which is what this repo's
-# CMAKE_SYSTEM_PROCESSOR=ARM64 satisfies; the NEON_2_SSE shim is skipped
-# off-x86. TFLITE_ENABLE_GPU stays ON deliberately -- first cross run is the
-# probe for whether its GL/Vulkan path configures for aarch64-windows; if it
-# breaks, THAT run names the flag, and OFF is the recorded fallback.
+# Cross needs a host flatc in TFLITE_HOST_TOOLS_DIR, built natively from this tree so its version cannot drift.
 if (Test-WindowsCrossTarget) {
     $hostToolsBuild = Join-Path $SourceDir 'build-host-tools'
     if (Test-Path $hostToolsBuild) { Remove-Item $hostToolsBuild -Recurse -Force -ErrorAction Stop }
     Write-Host 'LiteRT cross: building HOST flatc (flatbuffers-flatc, native configure) for TFLITE_HOST_TOOLS_DIR...'
-    # Composed FIRST, then passed: `-ExtraArgs @(...) + (...)` binds the `+` as a
-    # POSITIONAL argument (it is outside the parameter expression), which put
-    # garbage into -Platform and produced cmake's "No platform specified for -A"
-    # (measured 2026-08-24, first cross run of this block). Same family as the
-    # documented comma-doesn't-flatten trap in Build-OnnxGenaiFromSource.ps1.
+    # Composed first: `-ExtraArgs @(...) + (...)` would bind the `+` operand as a positional argument.
     $hostToolArgs = @(
         '-DTFLITE_ENABLE_INSTALL=OFF', '-DTFLITE_ENABLE_XNNPACK=OFF', '-DTFLITE_ENABLE_GPU=OFF',
         '-DTFLITE_ENABLE_RUY=OFF', '-DTFLITE_ENABLE_LABEL_IMAGE=OFF', '-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF'
     ) + @(Get-LlvmArchiverCmakeArg)
-    # Shared host-tool shape (#131): host target on the choke point AND the
-    # host's LIB for the pass (a no-op here -- this script never enters VsDevCmd,
-    # which is the only reason the plain configure worked before), with the
-    # retry ladder and a persistent log the raw `cmake --build` never had.
-    # Environment probe (arm64 run 17, 2026-08-25): run 16 died in the TARGET
-    # configure right after this host pass ("could not open kernel32.lib") with
-    # a configure line byte-identical to the green run 14 -- so the difference
-    # is the process environment. Print the link-relevant variables around the
-    # pass so the log carries the answer instead of a guess.
+    # The link environment around the host pass is logged: a target configure after it once lost kernel32.lib.
     $probeVars = @('LIB', 'LIBPATH', 'VCToolsInstallDir', 'VSCMD_ARG_TGT_ARCH', 'WindowsSdkDir', 'UniversalCRTSdkDir')
     Write-Host ('LiteRT env probe BEFORE host pass: ' + (($probeVars | ForEach-Object { "$_=[$([Environment]::GetEnvironmentVariable($_, 'Process'))]" }) -join ' '))
     [void](Invoke-HostToolCmakeBuild -SourceDir $tfliteSrc -BuildDir $hostToolsBuild -InstallPrefix (Join-Path $SourceDir 'host-tools-prefix') `
@@ -205,29 +140,7 @@ if (Test-WindowsCrossTarget) {
     Write-Host "LiteRT cross: host flatc at $($flatc.FullName)"
     $cmakeExtra += "-DTFLITE_HOST_TOOLS_DIR=$($flatc.DirectoryName)"
 
-    # protoc is the SECOND host tool (found 2026-08-24, run 9): natively the
-    # example-proto codegen rule uses $<TARGET_FILE:protobuf::protoc> -- the
-    # in-tree TARGET protoc, runnable on amd64 -- but under CMAKE_CROSSCOMPILING
-    # that binary is aarch64, so upstream degrades the rule to a bare `protoc`
-    # from PATH ("'protoc' is not recognized ..."). Reuse the proven pattern
-    # from Build-LitertLmFromSource.ps1: the official release protoc at the
-    # PINNED version (PROTOC_VERSION is baked into media-litert-env; it must
-    # match the vendored protobuf runtime or the generated .pb.cc #errors at
-    # compile -- which is exactly the loud failure we want on a drift). Placed
-    # BOTH on PATH (what the degraded rule resolves) and beside flatc in
-    # TFLITE_HOST_TOOLS_DIR (what upstream's host-tools probing searches).
-    # NB Install-PortableZipTool is a LOCAL function of the LM script, not a
-    # module export (run-10 lesson: 'not recognized' inside this stage), so the
-    # fetch goes through the module-level Invoke-DownloadWithRetry instead.
-    #
-    # VERSION: deliberately NOT $env:PROTOC_VERSION -- that pin (31.1) belongs
-    # to LiteRT-LM's protobuf 6.31.x and generates gencode including
-    # google/protobuf/runtime_version.h, which the protobuf THIS build vendors
-    # does not ship (run-11 lesson: 'runtime_version.h file not found').
-    # tflite/tools/cmake/modules/protobuf.cmake pins GIT_TAG 90b73ac3... =
-    # protobuf 21.9 (C++ runtime 3.21.9, 2022-10-26); the host protoc must
-    # match THAT. Moves with LITERT_VERSION: re-derive from the module file on
-    # a LiteRT bump, and the loud gencode/#include clash is the drift detector.
+    # Cross degrades codegen to protoc on PATH; it must match the vendored protobuf (tflite's protobuf.cmake), not PROTOC_VERSION.
     $protocVer = Get-SourceBuildVersion -EnvironmentVariables @('LITERT_TFLITE_PROTOC_VERSION') -DefaultValue '21.9'
     $hostProtocDir = "C:\temp\protoc-$protocVer"
     $hostProtoc = Join-Path $hostProtocDir 'bin\protoc.exe'
@@ -244,36 +157,12 @@ if (Test-WindowsCrossTarget) {
     Write-Host "LiteRT cross: host protoc at $hostProtoc ($(& $hostProtoc --version)) - on PATH and beside flatc"
 }
 
-# InstallPrefix passed for CMake generator expressions even though TFLITE_ENABLE_INSTALL=OFF
+# InstallPrefix for generator expressions, even with TFLITE_ENABLE_INSTALL=OFF.
 Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $litertInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
-# CROSS LANE: per-TU feature flags for XNNPACK's aarch64 microkernels -- the
-# EXACT failure class ORT's MLAS already documents (AGENTS.md § AVX-512/AMX):
-# clang-cl gates NEON-extension intrinsics behind target features, and
-# XNNPACK's CMake adds its per-file -march flags only on its GNU-frontend
-# branch, so under the MSVC frontend every f16-*-neonfp16arith.c (measured
-# 2026-08-24, first cross run: "FAILED ... f16-avgpool-9p-minmax-
-# neonfp16arith.c.obj" et al.) compiles with bare armv8-a and dies.
-#
-# Same remedy, same discipline: append the feature per-TU in build.ninja
-# post-configure -- these are runtime-dispatched microkernels, the only code
-# allowed to assume the features -- and THROW below a floor, because a pattern
-# that matches nothing succeeds silently (the MLAS lesson, twice-learned).
-# Features are per-FAMILY from the filename token, never blanket: a plain-neon
-# kernel runs on every core, so handing it +i8mm would let the compiler emit
-# instructions the dispatcher never guarded.
+# XNNPACK adds per-kernel -march only for GNU frontends, so add it per TU and per family, never blanket, with a floor.
 if (Test-WindowsCrossTarget) {
-    # ORDERED: longer/more-specific tokens first, because matching breaks on the
-    # first hit and several names are substrings of others (neondotfp16arith ⊃
-    # neonfp16arith ⊃ fp16arith). 'fp16arith' without the neon prefix is the
-    # SCALAR FEAT_FP16 family (f16-vbinary/f16-vdivc-fp16arith-*.c, found run 7)
-    # and needs +fp16 exactly like its vector sibling.
-    # Complete against upstream's PROD_*_MICROKERNEL_SRCS family list (checked
-    # 2026-08-24 rather than discovered one failing family per run): the ARM
-    # families are neon/neonv8/neonfma (baseline on aarch64, no flag),
-    # neonfp16, neonfp16arith, fp16arith (scalar), neondot, neondotfp16arith,
-    # neonbf16, neoni8mm, neoni8mmbf16, neonsme/neonsme2 (skipped), plus the
-    # aarch64 .S set handled below.
+    # Ordered longest token first: matching stops at the first hit and names nest (neondotfp16arith, neonfp16arith).
     $xnnFeatureMap = [ordered]@{
         'neoni8mmbf16'  = 'i8mm+bf16'
         'neonbf16'      = 'bf16'
@@ -286,15 +175,7 @@ if (Test-WindowsCrossTarget) {
         'neonsme2'      = ''   # SME needs armv9 + streaming mode: skip, dispatcher-gated out
         'neonsme'       = ''
     }
-    # .S statements are EXCLUDED from the C-flag tagging. CORRECTED ROOT CAUSE
-    # (2026-08-24, two diagnoses later): the "unknown target CPU
-    # 'armv8.2-a+fp16'" first blamed on a driver gap was the X86 driver reading
-    # an aarch64 -march value -- CMake's ASM language had no cross target until
-    # Get-CMakeCrossArgs gained CMAKE_ASM_COMPILER_TARGET/FLAGS_INIT. The
-    # in-source `.arch` directives (prepended below) stay the feature mechanism
-    # for .S: they survive independent of driver translation, and double-tagging
-    # buys nothing. Floor 100: the first measured run tags several hundred TUs,
-    # far over "the pattern matches nothing" (the MLAS lesson).
+    # .S files are excluded: their features come from in-source .arch directives, prepended below.
     [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $buildDir 'build.ninja') -Label 'XNNPACK microkernel' -Floor 100 -AlreadyTaggedPattern 'armv8\.2-a' -Select {
         param($line)
         if ($line -match 'xnnpack-' -and $line -notmatch '\.S\.obj') {
@@ -305,27 +186,10 @@ if (Test-WindowsCrossTarget) {
         return ''
     })
 
-    # The .S half of the same problem (see the exclusion note above): give each
-    # hand-written aarch64 assembly kernel its feature set as an IN-SOURCE
-    # `.arch` directive. The integrated assembler honors the directive exactly
-    # like the flag, and no clang-cl driver translation is involved. Idempotent
-    # (skips files already carrying a .arch line), family-mapped from the same
-    # token table, floored like everything else in this class.
-    # Located by SEARCHING for the kernels, not by assuming the FetchContent
-    # layout: the first guess (_deps\xnnpack-src\src) found 0 files and the
-    # floor below rightly killed the run (2026-08-24) -- LiteRT's
-    # FindXNNPACK.cmake wrapper places the checkout elsewhere. The filename
-    # convention (*-asm-aarch64-*.S) is the stable anchor; the directory is not.
+    # Found by the *-asm-aarch64-*.S name, not the FetchContent layout, which LiteRT's FindXNNPACK wrapper moves.
     $xnnAsmPatched = 0
     $xnnAsmDirs = [System.Collections.Generic.HashSet[string]]::new()
-    # Every .S gets the FULL feature union, deliberately NOT the per-family
-    # mapping the C kernels use. The per-family rule exists because a COMPILER
-    # may auto-vectorize un-guarded code with any enabled feature; an ASSEMBLER
-    # emits nothing on its own -- it only validates the hand-written mnemonics,
-    # so a broader .arch cannot change a single emitted byte. The per-family
-    # attempt also demonstrably under-provisions: mixed kernels like
-    # qd8-f16-...-neondot-ld128.S need fp16 AND dotprod while carrying only the
-    # -neondot token (measured 2026-08-24, run 8).
+    # The full feature union, unlike C: an assembler emits only the written mnemonics, and mixed kernels need several.
     foreach ($asm in (Get-ChildItem -Path @($buildDir, $SourceDir) -Recurse -Filter '*.S' -File -ErrorAction SilentlyContinue |
                       Where-Object { $_.Name -match 'asm-aarch64' })) {
         $asmText = Get-Content -LiteralPath $asm.FullName -Raw
@@ -336,9 +200,6 @@ if (Test-WindowsCrossTarget) {
     }
     if ($xnnAsmDirs.Count -gt 0) { Write-Host "XNNPACK asm: kernel roots: $(@($xnnAsmDirs) -join '; ')" }
     if ($xnnAsmPatched -lt 10) {
-        # $buildDir/$SourceDir, not a $xnnSrcRoot that was never assigned: interpolating
-        # an undefined variable throws under this script's StrictMode, so the fail-closed
-        # diagnostic died with a PowerShell error instead of naming the moved layout.
         throw ("XNNPACK asm: prepended .arch to only $xnnAsmPatched aarch64 .S kernel(s), expected >= 10. " +
                "Either the FetchContent layout moved (searched $buildDir and $SourceDir) or the " +
                'filename convention changed; without the directive every asm-aarch64-neonfp16arith ' +
@@ -347,30 +208,19 @@ if (Test-WindowsCrossTarget) {
     Write-Host "XNNPACK asm: prepended full-union .arch directives to $xnnAsmPatched aarch64 .S kernel(s)"
 }
 
-# Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
+# A persistent log: inside $buildDir it dies with the failed solve.
 $buildLog = Get-PersistentBuildLogPath -Name 'litert-build.log' -FallbackDir $buildDir
-# The injected tensorflowlite_c target (see above) is a normal add_library, so
-# `all` builds it alongside tensorflow-lite -- no separate target invocation
-# needed. The manual-install gate below hard-fails if its import lib is missing.
-# MemGBPerJob 2, not 4 (backlog #74) — see the note in build-onnx-genai.
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
-# Manual install (TFLITE_ENABLE_INSTALL=OFF disables cmake --install)
-# -InstallPrefix is still passed to Invoke-CmakeConfigure because CMake generator
-# expressions and INTERFACE targets reference CMAKE_INSTALL_PREFIX even when
-# the install() commands are no-ops. Without it, header search paths and
-# pkg-config .pc files may resolve incorrectly.
+# Manual install: TFLITE_ENABLE_INSTALL=OFF disables cmake --install.
 Write-Host 'Installing LiteRT artifacts manually...'
 Copy-BuildArtifact -BuildDir $buildDir -InstallDir $litertInstallDir -Recurse -Map @(
     @{ Filter = '*.dll'; Dest = 'bin' }
     @{ Filter = '*.lib'; Dest = 'lib' }
 )
-# Copy headers. LiteRT ships NO include/ directory — its public headers live
-# in-tree (tflite\c\c_api.h, tflite\interpreter.h, ...). Mirror the header tree
-# under include\tflite\ preserving relative paths so consumers can
-# #include "tflite/c/c_api.h".
+# LiteRT ships no include\; mirror its in-tree headers so consumers can #include "tflite/c/c_api.h".
 Write-Host 'Copying LiteRT headers (tflite/ tree)...'
 $includeRoot = Join-Path $litertInstallDir 'include\tflite'
 New-Item -Path $includeRoot -ItemType Directory -Force | Out-Null
@@ -384,22 +234,18 @@ Get-ChildItem -Path $tfliteSrc -Filter '*.h' -Recurse -ErrorAction SilentlyConti
     $headerCount++
 }
 Write-Host "Copied $headerCount headers to $includeRoot"
-# Hard gates on the manual install (Copy-BuildArtifact is silent-by-design):
-# an empty header tree or a lib\ without a single .lib means the litert-lm
-# stage would only fail hours later against a hollow install dir.
+# Copy-BuildArtifact is silent by design; a hollow install would only fail hours later in litert-lm.
 if ($headerCount -eq 0) { throw "LiteRT manual install copied 0 headers to $includeRoot (source tree layout changed?)" }
 $installedLibs = @(Get-ChildItem -Path (Join-Path $litertInstallDir 'lib') -Filter '*.lib' -File -ErrorAction SilentlyContinue)
 if ($installedLibs.Count -lt 1) { throw "LiteRT manual install staged no .lib files into $(Join-Path $litertInstallDir 'lib') (build produced none under $buildDir?)" }
-# The TFLite C API import lib is a hard requirement for the gst-plugins-bad tflite
-# plugin (fails loud HERE instead of hours later in the merge's meson configure).
+# gst's tflite plugin needs it; fail here, not hours later in the merge's meson configure.
 if ('tensorflowlite_c.lib' -notin $installedLibs.Name) {
     throw ("LiteRT install is missing tensorflowlite_c.lib (the TFLite C API import lib) in $(Join-Path $litertInstallDir 'lib'). " +
         "The explicit tensorflowlite_c target build produced no import lib. Present: $($installedLibs.Name -join ', ')")
 }
 Write-Host "LiteRT manual install completed ($($installedLibs.Count) libs incl. tensorflowlite_c.lib)"
 
-# QNN runtime staging (#121): stage the backend DLLs beside the LiteRT install
-# so a consumer calling the QNN delegate finds the backends on the DLL search path.
+# Beside the install, so a QNN delegate consumer finds the backends on the DLL search path.
 if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $litertInstallDir) }
 
 Remove-SourceBuildTree -Path $SourceDir

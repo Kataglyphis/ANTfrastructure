@@ -1,27 +1,10 @@
 #!/usr/bin/env bash
-# build-helpers.sh — nerdctl build wrappers and build-arg helpers.
-#
+# nerdctl build wrappers and build-arg helpers.
 [ -n "${_BUILD_HELPERS_LOADED:-}" ] && return 0
 _BUILD_HELPERS_LOADED=1
 : "${MEDIA_STRIP:=1}"
-#
-# Provides:
-#   _bool_truthy()                — test a value for boolean truthiness
-#   is_dry_run()                  — return 0 if DRY_RUN is set to a truthy value
-#   arch_list_to_words()          — convert comma-separated arch list to newline-separated (IFS-safe)
-#   trap_push()                   — push an EXIT trap handler (preserves existing handlers)
-#   run()                         — echo + execute (DO NOT use for secret-bearing args)
-#   (run_quiet removed 2026-08-08: zero callers; recover from git history)
-#   append_buildkit_host_arg()    — add --buildkit-host if BUILDKIT_HOST is set
-#   append_mirror_build_args()    — add USE_FAST_UBUNTU_MIRROR args
-#   append_mirror_build_args_from_env() — convenience wrapper
-#   append_optional_build_arg()   — add --build-arg only if value is non-empty
-#   append_runtime_base_parent_build_arg() — optional BASE_IMAGE for base build
-#   append_runtime_accelerator_build_args() — ENABLE_NVIDIA / ENABLE_AMD
-#   image_exists()                — check if an image exists locally
-#   run_nerdctl_build()           — nerdctl build with BUILDKIT_HOST support
-#   strip_elf_tree()              — parallel `strip --strip-all` over an ELF tree
 
+# Echoes its argv, so never pass secrets through it.
 run() {
   printf '+ '
   printf '%q ' "$@"
@@ -29,37 +12,21 @@ run() {
   "$@"
 }
 
-# Test whether a value is boolean-truthy (1, true, TRUE, yes, YES, on, ON).
-# Thin alias delegating to the canonical is_truthy() (platform.sh). Kept for
-# the existing callers in cross-stage-build.sh, parallel-loop.sh, and
-# context-management.sh.
-# Usage: _bool_truthy "${DRY_RUN}" && echo "dry run"
-#        _bool_truthy "${PARALLEL_ARCHS}" && echo "parallel"
+# Alias of platform.sh's is_truthy, kept for existing callers.
 _bool_truthy() {
   is_truthy "${1:-0}"
 }
 
-# Returns 0 (true) when DRY_RUN is set to a truthy value (1, true, yes).
-# Use this instead of repeating [ "${DRY_RUN:-0}" -eq 1 ] across scripts.
 is_dry_run() {
   _bool_truthy "${DRY_RUN:-0}"
 }
 
-# Convert a comma/space-separated architecture list to NEWLINE-separated words.
-#
-# Newlines on purpose: the old space-separated output made every
-# `for arch in $(arch_list_to_words ...)` silently stop splitting in scripts
-# that set IFS=$'\n\t' (16 call sites carried that latent bug). Both the
-# default IFS and the strict $'\n\t' contain \n, so newline output splits
-# correctly under either — the bug class is now impossible by construction.
-# (`wc -w` and unquoted argv expansion are unaffected.)
+# Newline-separated on purpose: space-separated words stop splitting under IFS=$'\n\t'.
 arch_list_to_words() {
   printf '%s\n' "${1:-}" | tr ', ' '\n\n'
 }
 
-# ── EXIT trap stack ───────────────────────────────────────────────────────────
-# Push a handler onto the EXIT trap.  Preserves existing handlers so multiple
-# modules can register cleanup without overwriting each other.
+# EXIT trap stack: several modules register cleanup without overwriting each other.
 declare -a _EXIT_TRAP_STACK=()
 
 trap_push() {
@@ -91,8 +58,6 @@ append_mirror_build_args() {
   fi
 }
 
-# Convenience wrapper that reads mirror defaults from the environment so callers
-# don't need to repeat the same fallback chain.
 append_mirror_build_args_from_env() {
   local -n _amfe_out=$1
   append_mirror_build_args _amfe_out \
@@ -147,17 +112,7 @@ run_nerdctl_build() {
   run "${build_cmd[@]}"
 }
 
-# ── ELF tree stripping ────────────────────────────────────────────────────────
-# Strip every ELF object under <dir> in parallel. Detects ELF files via `file`
-# (both executables and shared objects), then pipes them to `strip --strip-all`
-# through `xargs -P<jobs>`. Honors ${SUDO}. Best-effort: it never aborts the
-# caller (mirrors the `|| true` used by build-clang.sh / build-gcc.sh).
-# Centralizes the find|file|awk|xargs strip pattern duplicated in 02-toolchain.
-#
-# Usage: strip_elf_tree <dir> <jobs> [strip-bin]
-#   <jobs>      defaults to $(nproc)
-#   <strip-bin> defaults to `strip`; pass a cross <triplet>-strip when stripping
-#               a foreign-arch tree.
+# strip_elf_tree <dir> [jobs] [strip-bin]: best-effort parallel strip; pass <triplet>-strip for a foreign tree.
 strip_elf_tree() {
   local dir="$1" jobs="${2:-$(nproc)}" strip_bin="${3:-strip}"
   [ -n "${dir}" ] || return 0
@@ -167,14 +122,7 @@ strip_elf_tree() {
     | xargs -r -P"${jobs}" "${strip_bin}" --strip-all 2>/dev/null || true
 }
 
-# _resolve_media_strip_bin — pick the right `strip` for strip_media_prefixes.
-# Prefers ${STRIP} (setup_linux_cross_env exports the target <triplet>-strip),
-# else derives the cross <triplet>-strip when a cross build is active and the
-# cross bin symlinks are on PATH (opencv/litert/onnxruntime build scripts do NOT
-# call setup_linux_cross_env, so STRIP is unset there — without this they'd fall
-# back to host `strip`, a no-op on foreign ELFs, the AP1 finding). Falls back to
-# plain `strip` for native. Fully guarded: every probe `|| true`, missing helpers
-# just yield host strip — never aborts a set -e caller.
+# ${STRIP}, else the cross <triplet>-strip: several build scripts never set STRIP, and host strip no-ops on foreign ELFs.
 _resolve_media_strip_bin() {
   local bin="${STRIP:-}"
   if [ -z "${bin}" ] \
@@ -190,20 +138,9 @@ _resolve_media_strip_bin() {
   printf '%s' "${bin:-strip}"
 }
 
-# strip_media_prefixes [prefix...] — AP4: strip symbol tables from the media
-# install prefixes. Resolves the strip binary via _resolve_media_strip_bin (cross
-# <triplet>-strip when cross, host strip when native), so it works whether or not
-# the caller exported ${STRIP}. Best-effort per prefix (each goes through
-# strip_elf_tree, which never aborts the caller). With no args, strips the default
-# media set. If no cross-strip is resolvable it falls back to host strip and
-# leaves foreign ELFs unstripped (a missed size win, never a build break).
-#
-# NB: not a wheel stripper — wheels carry per-file <triplet>.so that a tree walk
-# would still strip correctly, but AP1's wheel-env forwarding is the dedicated
-# path for those. This is for the plain /opt/<lib> and /usr/local trees.
+# strip_media_prefixes [prefix...]: best-effort strip of the media install trees (default set without args), not wheels.
 strip_media_prefixes() {
-  # DUPN1: the MEDIA_STRIP gate lives HERE (not at the 9 call sites) — one
-  # authority, call sites keep only the declare -F guard + `|| true`.
+  # The MEDIA_STRIP gate lives here, not at the call sites.
   [ "${MEDIA_STRIP}" = "1" ] || return 0
   local strip_bin jobs="${STRIP_JOBS:-$(nproc)}" p
   strip_bin="$(_resolve_media_strip_bin)"
@@ -221,13 +158,7 @@ strip_media_prefixes() {
   done
 }
 
-# strip_media_libs <dir> <name-glob> [name-glob...] — AP4: strip ONLY the libs
-# matching <name-glob>s directly under <dir> (maxdepth 1). For a library that
-# installs into a SHARED prefix (e.g. litert into /usr/local/lib, next to the
-# base CPython libs) where strip_media_prefixes' whole-tree walk would wrongly
-# strip unrelated base libs. Resolves the cross/host strip via
-# _resolve_media_strip_bin; --strip-all keeps .dynsym. Best-effort; the caller
-# owns the MEDIA_STRIP gate (mirrors strip_media_prefixes).
+# strip_media_libs <dir> <glob>...: only matching libs directly under <dir>, for shared prefixes like /usr/local/lib.
 strip_media_libs() {
   [ "${MEDIA_STRIP}" = "1" ] || return 0   # DUPN1: gate lives in the helper
   local dir="$1"; shift

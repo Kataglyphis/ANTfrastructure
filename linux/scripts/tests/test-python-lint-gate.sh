@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Tests for lint-python.sh, the python-lint gate. It cds to a root derived from
-# its own path, so each case builds a throwaway tree and runs the REAL script in
-# it -- proving both TIERS (gate hard-fails, advisory reports and passes) and the
-# TARGET SET (plain .py, heredoc Python in linux/scripts AND in the extensionless
-# git hooks, non-Python heredocs excluded).
-# docs/code-quality-tooling.md#proving-a-gate-can-go-red
+# lint-python.sh's two tiers and target set, each case in a fixture tree; see docs/code-quality-tooling.md#proving-a-gate-can-go-red
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -17,22 +12,14 @@ if ! command -v ruff >/dev/null 2>&1 && ! command -v uvx >/dev/null 2>&1; then
   t_summary
 fi
 
-# A throwaway repo root carrying the gate and its pin, printed on stdout so
-# callers can drop fixtures into it. The extractor is copied in only by _targets:
-# it is itself first-party Python, so its advisory findings would drown the
-# advisory-clean assertion below.
+# _mkroot: prints a fixture root with the gate and its pin; only _targets adds the extractor, whose own findings are noise.
 _mkroot() {
   local d
   d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts/01-core" "${d}/docs/scripts" \
            "${d}/linux/host-config/git-hooks"
   cp "${S}/lint-python.sh" "${d}/linux/scripts/"
-  # lint-python.sh sources the consumer-root contract from 01-core beside it, so
-  # the fixture has to carry it: without it the gate dies on line 1 and every
-  # assertion below would be about a broken copy rather than about the gate.
-  # python-probe.sh too: the gate sources it since 2026-09-15 to resolve the
-  # interpreter for the embedded-Python extractor, and a fixture without it
-  # makes every case fail on a missing source rather than on its own subject.
+  # The gate sources these 01-core files; without them every case fails on a missing source.
   cp "${S}/01-core/load-versions-env.sh" "${S}/01-core/lint-root.sh" \
      "${S}/01-core/python-probe.sh" \
      "${d}/linux/scripts/01-core/"
@@ -56,13 +43,7 @@ _lint() {
   _run "${d}"
 }
 
-# _targets <subject.py body> <heredoc python body> [hook heredoc python body]
-# -> the gate's output plus rc. The tree carries every target shape at once: a
-# plain .py, a directly-run heredoc opened on line 2 of probe.sh, the same shape
-# opened on line 3 of an EXTENSIONLESS git hook, and a cat'ed TPL_PY_* family that
-# is nginx config, not Python, and must never reach ruff. Openers are printf
-# ARGUMENTS so this suite is not itself an extraction target.
-# docs/code-quality-tooling.md
+# _targets <subject.py> <heredoc py> [hook heredoc py]: every target shape; openers are printf args, so this suite is not extracted.
 _targets() {
   local d
   d="$(_mkroot)"
@@ -91,8 +72,7 @@ t_case "the pin the fixture carries is the one versions.env holds"
 t_assert_ok test -n "${PIN}"
 
 t_case "reading the pin makes no noise: versions.env is data, and is never sourced"
-# CUDA_ARCHITECTURES=80;86;89;90 -- `source` runs 86, 89 and 90 as commands, three
-# `command not found` lines on stderr for every hook run.
+# `source versions.env` would run 86, 89 and 90 from CUDA_ARCHITECTURES as commands.
 _d="$(_mkroot)"
 printf 'CUDA_ARCHITECTURES=80;86;89;90\nRUFF_VERSION=%s\n' "${PIN}" \
   > "${_d}/linux/scripts/01-core/versions.env"
@@ -162,12 +142,7 @@ t_assert_contains "${_out}" "linux/host-config/git-hooks/pre-commit:4:" \
 t_case "the gate is registered in preflight"
 t_assert_contains "$(cat "${S}/preflight.sh")" "python-lint" "an unwired gate is not a gate"
 
-# --- the consumer root (--root) ----------------------------------------------
-# Every case above builds a throwaway HUB. These build a throwaway CONSUMER and
-# run the SHIPPED gate against it, because that is the invocation that was
-# impossible: a submodule checkout puts this script inside the consumer, where
-# the default root resolves to ANTfrastructure and OrchestrANT's 65 Python files
-# were reachable by no lint gate in the fleet.
+# The consumer root (--root): the SHIPPED gate over a throwaway consumer, the invocation a submodule checkout needs.
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 # Heredoc openers are printf ARGUMENTS so this suite is not itself a target.
@@ -213,9 +188,7 @@ t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" \
   "and the vendored file really is broken, so the green above is about scope, not a clean file"
 
 t_case "heredoc Python in the CONSUMER's shell reaches ruff too"
-# Skipping the extraction step under a root would be the quiet half-gate this
-# file argues against: heredoc Python is no more visible to ruff in a consumer
-# than it is here.
+# Heredoc Python in a consumer must reach ruff too; skipping extraction under --root would be a half-gate.
 _c_heredoc="$(_consumer heredoc)"
 t_assert_contains "$(_at_root "${_c_heredoc}")" "nope_in_consumer_heredoc"
 t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_heredoc}")"

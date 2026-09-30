@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# web-lane-fixtures.sh -- stubs for the suites that drive 06-packaging/web-lane-tools.sh
-# off-target (test-web-lane-tools.sh, test-setup-package-image.sh). Not a suite itself:
-# run-tests.sh discovers test-*.sh only. Nothing here reaches a network or a toolchain.
+# Offline stubs for the suites that drive web-lane-tools.sh; not a suite, since run-tests.sh runs test-*.sh only.
 _WLT_FX_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/web-lane-fixtures.sh"
 
-# wlt_fx_bin <path> <tool> <version> [fact=value...]: a fake built tool. It answers
-# --version, and carries the ELF facts the readelf stub reports for its bytes, so a
-# copy keeps them. Facts: arch class machine flags interp needed glibc (default: healthy;
-# glibc=none: no GLIBC_ version needs at all).
+# wlt_fx_bin <path> <tool> <version> [arch|class|machine|flags|interp|needed|glibc=value...]: facts live in the file, so copies keep them.
 wlt_fx_bin() {
   local path="$1" tool="$2" version="$3" kv
   shift 3
@@ -53,8 +48,7 @@ readelf() {
   return 0
 }
 
-# timeout as the library calls it: "<seconds> <command basename>" is appended to
-# FAKE_TIMEOUT_LOG, then the real timeout runs the command.
+# Logs "<seconds> <command>" to FAKE_TIMEOUT_LOG, then runs the real timeout.
 timeout() {
   printf 'TIMEOUT %s %s\n' "$1" "${2##*/}" >> "${FAKE_TIMEOUT_LOG:-/dev/null}"
   command timeout "$@"
@@ -64,9 +58,7 @@ getconf() { printf 'glibc %s\n' "${FAKE_GLIBC-2.43}"; }
 dpkg() { printf '%s\n' "${FAKE_BUILD_ARCH-amd64}"; }
 dpkg-query() { printf '%s' "${FAKE_SYSROOT_GLIBC-2.43-2ubuntu2cross1}"; }
 
-# The cargo a fake CARGO_HOME runs: records argv and the build env, then (FAKE_CARGO_RC=0)
-# leaves <root>/bin/<tool> for TARGET_ARCH, with FAKE_BUILD_FACTS (';'-separated facts),
-# and records it in <root>/.crates.toml as cargo does. <root> is --root, else CARGO_HOME.
+# Fake cargo: records argv and env, then installs <tool> for TARGET_ARCH under --root (else CARGO_HOME) as cargo would.
 _wlt_fx_cargo() {
   local root="" tool="" ver="" rc="${FAKE_CARGO_RC-0}"
   local -a facts=()
@@ -93,8 +85,7 @@ _wlt_fx_cargo() {
     "${tool}" "${ver}" "${tool}" >> "${root}/.crates.toml"
 }
 
-# wlt_fx_home <dir>: a CARGO_HOME whose rustup/rustc/cargo are recorders (FAKE_RUSTUP_RC,
-# FAKE_RUSTC, and _wlt_fx_cargo above).
+# wlt_fx_home <dir>: a CARGO_HOME whose rustup, rustc and cargo are recorders.
 wlt_fx_home() {
   mkdir -p "$1/bin"
   printf '#!/usr/bin/env bash\nprintf "RUSTUP %%s\\n" "$*"\nexit "${FAKE_RUSTUP_RC-0}"\n' > "$1/bin/rustup"
@@ -103,8 +94,7 @@ wlt_fx_home() {
   chmod +x "$1/bin/rustup" "$1/bin/rustc" "$1/bin/cargo"
 }
 
-# wlt_fx_artifact <tool> <version> <arch> [fact=value...]: a status=ok producer output
-# under WLT_ARTIFACT_DIR, keyed the way the producer keys it (needs the library loaded).
+# wlt_fx_artifact <tool> <version> <arch> [fact=value...]: a status=ok producer output, keyed by the loaded library.
 wlt_fx_artifact() {
   local tool="$1" version="$2" arch="$3" dir keytext
   shift 3
@@ -115,8 +105,7 @@ wlt_fx_artifact() {
     "sha256=$(wlt_sha256 "${dir}/bin/${tool}")" status=ok built_by=cross:amd64
 }
 
-# wlt_fx_core <dir>: a producer 01-core -- the real platform.sh, a cross-env.sh whose
-# setup_linux_cross_env exports FAKE_CROSS_RUSTFLAGS (or fails, FAKE_CROSS_ENV_RC).
+# wlt_fx_core <dir>: the real platform.sh plus a stub cross-env.sh driven by FAKE_CROSS_RUSTFLAGS/FAKE_CROSS_ENV_RC.
 wlt_fx_core() {
   local f
   mkdir -p "$1"

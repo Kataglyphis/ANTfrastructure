@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Regression cover for the logging.sh ERR-trap dynamic-scope bug; each case runs
-# a real `bash -c`, the only place it reproduces.
-# docs/failure-modes.md#loggingsh-line-nnn-action-unbound-variable-instead-of-the-real-error
+# The ERR-trap bug only reproduces in a real `bash -c`; see docs/failure-modes.md#loggingsh-line-nnn-action-unbound-variable-instead-of-the-real-error
 set -uo pipefail
 
 _TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,8 +8,7 @@ source "${_TEST_DIR}/test-harness.sh"
 
 LOGGING_SH="${_TEST_DIR}/../01-core/logging.sh"
 
-# Runs a body in a fresh `bash -c`; sets _OUT (stdout+stderr) and _RC.
-# Not a command substitution: a subshell would swallow _RC.
+# _run_trap_script <body>: sets _OUT and _RC; no command substitution, which would swallow _RC.
 _OUT=""
 _RC=0
 _run_trap_script() {
@@ -28,9 +25,7 @@ ${body}
   rm -f "${tmp}"
 }
 
-# ── warn trap: reports, does not exit, script runs to completion ──────────────
-# The `set +e` window is what makes that observable: under plain `set -e` the
-# two traps would be indistinguishable.
+# Warn trap: the `set +e` window is what tells it apart from the err trap.
 t_case "install_warn_trap reports via warn() and lets the script continue"
 _run_trap_script '
 install_warn_trap
@@ -70,9 +65,7 @@ case "${_OUT}" in
   *) t_assert_eq "0" "0" ;;
 esac
 
-# ── LINENO/BASH_COMMAND expand at FIRE time, not install time ─────────────────
-# Body passed WITHOUT a leading newline: install is line 4, the failing `false`
-# line 6. Baking LINENO in at install time would report line 4 forever.
+# No leading newline: install is line 4 and `false` line 6, so an install-time LINENO shows.
 t_case "the trap reports the failing line, not the install site"
 _run_trap_script 'install_warn_trap
 set +e
@@ -146,8 +139,7 @@ echo "REACHED-END"
 t_assert_contains "${_OUT}" "[ERROR]" "last install must win"
 t_assert_eq "1" "${_RC}" "err semantics must exit 1"
 
-# ── build-gcc.sh re-arms the BARE two-argument trap by hand ───────────────────
-# It must keep the installed err semantics; see docs/failure-modes.md
+# build-gcc.sh re-arms the bare two-argument trap by hand and must keep err semantics; see docs/failure-modes.md
 t_case "a hand-re-armed bare on_err trap keeps the installed action"
 _run_trap_script '
 install_err_trap

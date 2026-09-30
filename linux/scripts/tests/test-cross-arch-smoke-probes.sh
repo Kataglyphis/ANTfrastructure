@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# smoke-cross-all-arches.sh's five probe sections, driven one at a time. The
-# clang sweep is the reason this suite exists: it reports on ONE default triple
-# and used to break after the first arch, so a wrong -dumpmachine passed
-# silently. docs/cross-build-verification.md#cross-compiler-multi-arch-smoke
+# smoke-cross-all-arches.sh's probe sections one at a time; see docs/cross-build-verification.md#cross-compiler-multi-arch-smoke
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

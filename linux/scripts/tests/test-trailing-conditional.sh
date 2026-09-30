@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_trailing_conditional.py and for the functions it found.
-# Part A plants one subject.sh per rule in a throwaway tree (the gate derives its
-# root from its own path); part B evals each fixed function under `set -e` and
-# asserts the "nothing to do" path returns 0.
-# docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional
+# verify_trailing_conditional.py (part A) and the functions it found (part B); see docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"
@@ -120,8 +116,7 @@ _verdict 0 "read alone the second line is a bare && list; joined it is inside $(
   $'f() {\n  out="$(a \\\n    && b)"\n}'
 
 t_case "a brace group is a closer, and one opened on its own line is not a continuation"
-# Both arms survived a mutation sweep: CLOSERS carries `}` that no case exercised, and
-# CONT_END carries `{`, which joins a bare `{` line forward and hid the finding behind it.
+# Pins CLOSERS' `}` and CONT_END's `{`, which would otherwise join a bare `{` line forward.
 _verdict 1 "a predicate as the last statement of a brace group still ends the function" \
   $'f() {\n  { do_thing; [ -n "${x}" ]; }\n}'
 _verdict 1 "the group opened on its own line does not swallow the predicate after it" \
@@ -149,9 +144,7 @@ t_case "the allowlist keys on file+function, not line number"
 t_assert_eq "0" "$(grep -c -E '\t[0-9]+' "${SCRIPTS_DIR}/trailing-conditional.allow")" \
   "a line number would re-flag every site whenever something above it moves"
 
-# ---------------------------------------------------------------------------
-# Part B — the live defects. Each function is lifted out of its file and run
-# under `set -e`, because none of these files can be sourced whole.
+# Part B: the live defects, each function lifted out of its file and run under `set -e`.
 _fn() { sed -n "/^$2() {/,/^}/p" "${SCRIPTS_DIR}/$1"; }
 # _rc_of <rc-var-name> <preamble> <file> <fn> <call>
 _rc_of() {
@@ -217,9 +210,7 @@ t_assert_eq "0" "$(_rc_of "_WASM_OPT_CORE_DIR=${_tmp}; export BINARYEN_VERSION=9
   "the documented contract is UNLESS already set, so an env-set pin is the normal path"
 rm -rf "${_tmp}"
 
-# The --root arm, which no case above reaches: every fixture here is a tree
-# planted AROUND the gate, so it cannot tell --root from its own repo.
-# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a function ending on `&&` in the fixture.
+# The --root arm (gate-tree.sh#gate_root_arm): the fixtures above plant the tree around the gate, so only this reaches --root.
 t_case "--root grades the named tree, and reads its freeze file"
 _root_subject=$'f() {\n  [ -n "${x}" ] && do_thing\n}'
 gate_root_arm "${PY}" "${GATE}" "${_root_subject}" trailing-conditional.allow $'zz-sentinel.sh\tzz_sentinel' zz_sentinel

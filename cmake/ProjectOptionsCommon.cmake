@@ -1,56 +1,19 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The build-options MECHANISM shared by every consumer: which options exist,
-# and the machinery that turns them into target properties.
-#
-# Hoisted on 2026-09-09 from two consumers whose ProjectOptions.cmake had drifted
-# into near-copies of each other:
-#
-#   BeschleunigerBallett/cmake/ProjectOptions.cmake            (326 lines)
-#   AccelerANTgine/cmake/ProjectOptions.cmake                  (472 lines)
-#
-# The line this module sits on is the one CPackCommon.cmake already draws (see
-# cmake/README.md, "What does NOT belong here"): the branch structure is here,
-# every project-specific VALUE arrives as an argument. Concretely:
-#
-#   here    the option NAMES - because they are the interface the other modules
-#           in this directory read (Sanitizers, StaticAnalyzers, Cache, Tests,
-#           InterproceduralOptimization all key off myproject_ENABLE_*), and the
-#           dispatch that feeds them
-#   there   every DEFAULT that the two consumers disagree on (passed in), the
-#           language standard, the exceptions policy, whether C++ modules are
-#           mandatory, the build-type gating, the hardening policy, and the
-#           per-compiler flag blocks
-#
-# Deliberately NOT here: myproject_supports_sanitizers / the Debug sanitizer
-# defaults. Those live in SanitizerSupport.cmake, which the two consumers do not
-# yet agree on - AccelerANTgine still carries its own copy of the first macro.
-# Reconciling that is a separate change, and pulling SanitizerSupport in from
-# here would silently pick a winner between two live definitions.
+
+# Option names and dispatch only, values arrive as arguments; SanitizerSupport stays out until the consumers agree on it.
 
 include_guard(GLOBAL)
 
 include(CheckCXXCompilerFlag)
 
-# Bumped when a macro is added or its signature changes, so a consumer can
-# assert it did not load a stale same-named file from its own cmake/ directory
-# (which is first on CMAKE_MODULE_PATH and would therefore win silently).
+# Bump on any macro change, so a consumer can detect a stale same-named file in its own cmake/, which wins silently.
 set(MYPROJECT_PROJECT_OPTIONS_COMMON_VERSION 1)
 
-# ---------------------------------------------------------------------------
 # Option declarations
-# ---------------------------------------------------------------------------
 
-# The core option set. Every default that both consumers already agreed on is
-# baked in; the four they disagree on are REQUIRED keyword arguments, so a
-# caller cannot get a silent OFF by forgetting one.
-#
-#   myproject_define_core_options(
-#     ASAN_DEFAULT     ${DEFAULT_ASAN}
-#     UBSAN_DEFAULT    ${DEFAULT_UBSAN}
-#     TSAN_DEFAULT     OFF
-#     CPPCHECK_DEFAULT ON)
+# Declares the core options; the four defaults the consumers disagree on are required, so none silently becomes OFF.
+#   myproject_define_core_options(ASAN_DEFAULT <ON|OFF> UBSAN_DEFAULT <ON|OFF> TSAN_DEFAULT <ON|OFF> CPPCHECK_DEFAULT <ON|OFF>)
 function(myproject_define_core_options)
   cmake_parse_arguments(
     _MPCO
@@ -63,9 +26,7 @@ function(myproject_define_core_options)
     message(FATAL_ERROR "myproject_define_core_options: unexpected argument(s): ${_MPCO_UNPARSED_ARGUMENTS}")
   endif()
 
-  # An empty value here would reach option() as a missing third argument and
-  # quietly become OFF, which is exactly the silent regression this module has
-  # to be incapable of. Fail instead.
+  # An empty value would reach option() as a missing default and silently become OFF.
   foreach(
     _mpco_required IN
     ITEMS ASAN_DEFAULT
@@ -94,8 +55,7 @@ function(myproject_define_core_options)
   option(myproject_ENABLE_IWYU "Enable IWYU" ON)
 endfunction()
 
-# Hide the core options in a consumer that is being built as a subproject.
-# Extra project-specific option names can be appended as arguments.
+# Hides the core options when built as a subproject; extra option names may be appended.
 function(myproject_mark_core_options_advanced)
   if(PROJECT_IS_TOP_LEVEL)
     return()
@@ -119,15 +79,9 @@ function(myproject_mark_core_options_advanced)
     ${ARGN})
 endfunction()
 
-# ---------------------------------------------------------------------------
 # Toolchain probes
-# ---------------------------------------------------------------------------
 
-# Sets myproject_CPP_MODULES_SUPPORTED for the current toolchain.
-#
-# Knowledge about COMPILERS, like SanitizerSupport.cmake. What a project DOES
-# about an unsupported toolchain - hard error, or fall back to headers - is
-# policy and stays in the consumer.
+# Sets myproject_CPP_MODULES_SUPPORTED; what to do on an unsupported toolchain is the consumer's policy.
 macro(myproject_cpp_modules_supported)
   set(myproject_CPP_MODULES_SUPPORTED OFF)
   if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
@@ -151,12 +105,9 @@ macro(myproject_cpp_modules_supported)
   endif()
 endmacro()
 
-# ---------------------------------------------------------------------------
 # Global (directory-scope) settings
-# ---------------------------------------------------------------------------
 
-# Put archives, libraries and runtimes side by side in the build root, so a
-# Windows executable finds its DLLs without PATH surgery.
+# Side by side in the build root, so a Windows executable finds its DLLs without PATH changes.
 macro(myproject_set_output_directories)
   set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
   set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
@@ -179,12 +130,9 @@ macro(myproject_configure_lwyu_and_ipo)
   endif()
 endmacro()
 
-# ---------------------------------------------------------------------------
 # The two INTERFACE targets everything else hangs off
-# ---------------------------------------------------------------------------
 
-# Creates myproject_warnings and myproject_options and applies the shared
-# warning set. Every macro below takes one of these targets as its argument.
+# Creates myproject_warnings and myproject_options, the targets every macro below takes.
 macro(myproject_create_option_targets)
   if(PROJECT_IS_TOP_LEVEL)
     include(StandardProjectSettings)
@@ -205,15 +153,10 @@ macro(myproject_create_option_targets)
     "")
 endmacro()
 
-# ---------------------------------------------------------------------------
 # Per-target application of the options
-# ---------------------------------------------------------------------------
 
-# CPU profiling for RelWithDebInfo on non-Windows GCC/Clang: gperftools when it
-# is installed, plain -pg otherwise.
+# CPU profiling for RelWithDebInfo on non-Windows GCC/Clang: gperftools if installed, else -pg.
 macro(myproject_enable_profiling target)
-  # Only when building with -DCMAKE_BUILD_TYPE=RelWithDebInfo,
-  # on non-Windows and using GCC or Clang
   if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"
      AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
      AND NOT WIN32)
@@ -223,8 +166,7 @@ macro(myproject_enable_profiling target)
     if(PROFILER_LIB)
       message(STATUS "Enabling CPU profiling with gperftools (libprofiler)")
       message(STATUS "Found libprofiler: ${PROFILER_LIB}")
-      # The resolved absolute path, not -lprofiler: the find_library result does
-      # not depend on the linker's search path being right.
+      # The absolute path, not -lprofiler, does not depend on the linker's search path.
       target_link_libraries(${target} INTERFACE ${PROFILER_LIB})
     else()
       message(WARNING "libprofiler not found, falling back to gprof (-pg)")
@@ -237,8 +179,7 @@ macro(myproject_enable_profiling target)
   endif()
 endmacro()
 
-# Applies the selected sanitizer set. Callers that only want sanitizers in some
-# build types wrap the call, not this macro.
+# Callers wanting sanitizers only in some build types wrap the call, not this macro.
 macro(myproject_apply_sanitizers target)
   include(Sanitizers)
   myproject_enable_sanitizers(
@@ -269,8 +210,7 @@ macro(myproject_apply_unity_pch_cache target)
   endif()
 endmacro()
 
-# clang-tidy, cppcheck and coverage. Optional 2nd argument is the clang-tidy
-# --header-filter regex; empty or absent leaves the decision to .clang-tidy.
+# clang-tidy, cppcheck and coverage; an optional 2nd argument is the --header-filter regex (empty defers to .clang-tidy).
 macro(myproject_apply_static_analysis target)
   set(_MYPROJECT_TIDY_HEADER_FILTER "")
   if(${ARGC} GREATER 1)
@@ -293,16 +233,12 @@ macro(myproject_apply_static_analysis target)
   endif()
 endmacro()
 
-# Probes -Wl,--fatal-warnings so LINKER_FATAL_WARNINGS is available to a
-# consumer that wants it. Applying it is still commented out in both consumers
-# because it did not behave consistently; the probe is kept so the finding does
-# not have to be rediscovered.
+# Only probes -Wl,--fatal-warnings for consumers: applying it did not behave consistently.
 macro(myproject_apply_warnings_as_errors_linker_check)
   if(myproject_WARNINGS_AS_ERRORS)
     check_cxx_compiler_flag("-Wl,--fatal-warnings" LINKER_FATAL_WARNINGS)
     if(LINKER_FATAL_WARNINGS)
-      # This is not working consistently, so disabling for now
-      # target_link_options(myproject_options INTERFACE -Wl,--fatal-warnings)
+      # -Wl,--fatal-warnings is deliberately not applied: it fired inconsistently.
     endif()
   endif()
 endmacro()
@@ -329,12 +265,10 @@ macro(myproject_apply_static_analyzer_flags target)
       target_compile_options(${target} INTERFACE /analyze)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       target_compile_options(${target} INTERFACE -fanalyzer)
-      # https://clang.llvm.org/docs/UsersManual.html
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND MSVC)
-      #target_compile_options(${target} INTERFACE --analyze)
-      # https://clang.llvm.org/docs/ClangCommandLineReference.html
+      # Clang's --analyze is not applied (https://clang.llvm.org/docs/ClangCommandLineReference.html).
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-      #target_compile_options(${target} INTERFACE --analyze --analyzer-output html)
+      # Clang's --analyze is not applied here either.
     endif()
   endif()
 endmacro()

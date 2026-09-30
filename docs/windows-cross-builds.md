@@ -192,6 +192,12 @@ a target is a one-line table edit.
 The one-time cost is a single base rebuild for the VS ARM64 component + the Vulkan component.
 **Batch them**, and see the sequencing warning below.
 
+**An ARG does not cross a `FROM` boundary**, so every stage whose `FROM` is a `${...}` image
+reference and that RUNs a build script redeclares `ARG WINDOWS_TARGET_ARCH`; without it the stage
+silently builds amd64 on top of an arm64 parent. The arch is never a `versions.env` key either:
+`Import-Versions.ps1` would overwrite the build-arg in inherited stages.
+`TargetArch.Common.Tests.ps1` gates both.
+
 ## Where arch facts live
 
 `windows/scripts/modules/WindowsTargetArch.Common.psm1` is the single source of truth — the

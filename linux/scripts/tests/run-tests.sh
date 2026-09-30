@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# run-tests.sh — discover and run every linux/scripts/tests/test-*.sh in its
-# own bash process (full isolation: a test cannot leak env/functions into the
-# next). Non-zero exit iff any suite fails. Wired into preflight.sh (slug
-# script-tests) and `make test-linux-scripts`.
+# run-tests.sh — every test-*.sh in its own bash process, so no suite leaks env or functions into the next.
 set -uo pipefail
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,8 +12,7 @@ for suite in "${TESTS_DIR}"/test-*.sh; do
   [ "$(basename "${suite}")" = "test-harness.sh" ] && continue   # the harness, not a suite
   printf '== %s ==\n' "$(basename "${suite}")"
   SUITES=$((SUITES + 1))
-  # Capture output to aggregate the per-suite assertion count (the harness
-  # prints "N assertion(s) passed"); still stream it for the reader.
+  # Captured to sum the harness's "N assertion(s) passed" lines, then streamed.
   _out="$(bash "${suite}" 2>&1)"; _rc=$?
   printf '%s\n' "${_out}"
   if [ "${_rc}" -ne 0 ]; then
@@ -31,6 +27,5 @@ if [ "${#FAILED[@]}" -gt 0 ]; then
   printf '\n%d suite(s) failed: %s\n' "${#FAILED[@]}" "${FAILED[*]}" >&2
   exit 1
 fi
-# The aggregate makes a silent coverage collapse visible in every log line
-# ("24 suites, 3 assertions" reads as the alarm it is).
+# The aggregate makes a coverage collapse visible ("24 suites, 3 assertions" reads as the alarm it is).
 printf '\nAll linux script test suites passed (%d suites, %d assertions).\n' "${SUITES}" "${TOTAL_ASSERTS}"

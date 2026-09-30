@@ -1,22 +1,12 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Repair the Windows component store on this host: the container layer-fs
-# failures in BOTH engines + a broken DISM COM API ("Klasse nicht registriert"
-# from Get-WindowsOptionalFeature) point at a damaged Windows install. The
-# canonical repair: DISM /RestoreHealth (repairs the component store, needs
-# internet/WU), then sfc /scannow. Then re-test whether DISM works again.
-# ELEVATED. Long-running (10-40 min). Safe with nothing building.
-#
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Repair-WindowsComponentstore.ps1'
+# Elevated, 10-40 min, with nothing building: DISM /RestoreHealth then sfc, for a host whose DISM COM API is broken.
 
 $ErrorActionPreference = 'Continue'
 Set-StrictMode -Off
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
@@ -46,12 +36,7 @@ try {
 }
 
 Say '== 4. committed build probe (image export, -Heavy) ==' 'Cyan'
-# Delegates to the canonical probe: it exports type=image (a type=local export
-# of a Windows rootfs dies in the receiver even on a HEALTHY host and reads
-# like a defect - the false signal this script used to produce), exits
-# non-zero per failing lane, and Tee's full lane logs to out\build-logs.
-# Absolute path: this script is documented to launch elevated via
-# Start-Process, where cwd is System32 and relative paths break.
+# Absolute path: an elevated Start-Process runs in System32. The probe exports type=image; type=local fails even on a healthy host.
 $probeScript = Join-Path $scriptAssetRoot 'diagnostics\Test-BuildCopy.ps1'
 & pwsh -NoProfile -File $probeScript -Heavy 2>&1 | Select-Object -Last 12 | ForEach-Object { Write-Host $_ }
 Say ('probe exit: ' + $LASTEXITCODE)

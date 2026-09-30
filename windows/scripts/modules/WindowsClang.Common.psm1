@@ -3,25 +3,13 @@
 
 #requires -Version 7.0
 
-# clang-tidy driving. The sibling of WindowsFormatting.Common (clang-format /
-# cmake-format), kept separate because tidy needs a compile-commands database
-# and formatting does not.
-#
-# Upstreamed from BeschleunigerBallett's vendored
-# scripts/windows/modules copy (2026-08-11). The only two project-specific
-# things in it -- the source subdirectory and the C++20-module import pattern --
-# are now parameters with the previous values as defaults, so the vendored copy
-# can be deleted without changing that repo's behaviour.
+# clang-tidy, apart from WindowsFormatting.Common because tidy needs a compile-commands database.
 
 Set-StrictMode -Version Latest
 
-# Write-BuildLog*, Invoke-BuildExternal. Plain, unforced imports: an entry
-# script's -Force -Global copies must not be displaced (see WindowsCMake.Common).
+# Unforced: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
-# Get-ProjectCppFiles - the git-ls-files fast path with build/_deps/.venv exclusions.
 Import-Module (Join-Path $PSScriptRoot 'WindowsFormatting.Common.psm1')
-# Get-CompileCommandsDatabase - generates compile_commands.json from the ninja
-# graph when CMake did not emit one.
 Import-Module (Join-Path $PSScriptRoot 'WindowsCMake.Common.psm1')
 
 function Test-IsCxxModuleTranslationUnit {
@@ -29,13 +17,9 @@ function Test-IsCxxModuleTranslationUnit {
   .SYNOPSIS
       True when a translation unit imports a C++20 named module.
   .DESCRIPTION
-      clang-tidy cannot analyse a TU that imports a named module without the
-      BMIs on its command line, and the compile-commands database does not
-      carry them -- so such files must be skipped rather than reported as
-      thousands of bogus diagnostics.
+      clang-tidy needs the BMIs, which the compile-commands database lacks, so such TUs are skipped.
   .PARAMETER Pattern
-      Regex identifying a module import. Defaults to this org's module prefix;
-      pass e.g. '(?m)^\s*import\s+\w' to skip every named-module import.
+      Module-import regex; defaults to this org's prefix, '(?m)^\s*import\s+\w' skips every named module.
   #>
   param(
     [string]$Content,
@@ -55,12 +39,9 @@ function Invoke-ClangTidyFixStep {
   .SYNOPSIS
       Runs clang-tidy over a project's own C++ sources.
   .PARAMETER SourceSubdirectory
-      Workspace-relative directory to analyse, also used for --header-filter so
-      dependency headers stay out of the report. Defaults to 'Src'.
+      Workspace-relative directory to analyse and --header-filter on (default 'Src').
   .PARAMETER Checks
-      Extra clang-tidy arguments (e.g. --checks=...). Empty by default and
-      deliberately so: this module used to force --checks=-misc-include-cleaner,
-      which crashed some clang-tidy versions. Opt in per project instead.
+      Extra clang-tidy arguments, empty by default: a forced --checks crashed some clang-tidy versions.
   #>
   param(
     [Parameter(Mandatory)]
@@ -105,7 +86,7 @@ function Invoke-ClangTidyFixStep {
   }
 
   $baseParams = @('-p', $BuildRoot) + $Checks
-  # Restrict analysis to the source directory to avoid noise from dependency headers.
+  # Keeps dependency headers out of the report.
   $baseParams += "--header-filter=$([regex]::Escape($srcDir)).*"
   if ($Fix) { $baseParams += '--fix' }
 

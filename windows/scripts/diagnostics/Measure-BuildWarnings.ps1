@@ -8,30 +8,13 @@
     Count compiler warnings in a build log, grouped by diagnostic family.
 
 .DESCRIPTION
-    Written because 16 % of one chain's build log (72 864 of 459 061 lines) was
-    upstream compiler warnings, and four families accounted for nearly all of
-    it. That is not merely untidy: buildkitd clips each RUN step's log at 2 MiB
-    and then DEADLOCKS the step (see docs/windows-builds.md, § BuildKit lane),
-    which is why BUILDKIT_STEP_LOG_MAX_SIZE=-1 is a required host setting. A
-    real failure signal also hides badly among ~73 000 warnings.
-
-    Targeted -Wno- suppressions were added for those four families. This script
-    exists so the next run can PROVE each one still earns its place, instead of
-    the suppressions becoming folklore nobody dares remove. Run it against a
-    build log and compare with -Baseline.
-
+    Proves each targeted -Wno- suppression still earns its place: warning floods bury real failures.
 .PARAMETER LogPath
-    Build log to analyse. Accepts the raw buildctl/nerdctl output.
-
+    Build log to analyse, raw buildctl/nerdctl output included.
 .PARAMETER Top
-    How many families to list (default 15). 0 lists all.
-
+    How many families to list (default 15); 0 lists all.
 .PARAMETER Baseline
-    Also print the four known floods with their pre-suppression counts and a
-    verdict per family. This is the mode to use after a chain rebuild.
-
-.EXAMPLE
-    .\Measure-BuildWarnings.ps1 -LogPath .\logs\chain.log -Baseline
+    Also compare the four known floods with their pre-suppression counts, after a chain rebuild.
 #>
 
 param(
@@ -44,29 +27,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Get-WarningFamily {
-    <#
-    Reduce one log line to a diagnostic-family key, or $null when the line is
-    not a warning.
-
-    Two shapes matter here:
-      clang-cl  ...: warning: <text> [-Wunused-value]
-      MSVC STL  ...: warning STL4037: <text>
-      MSVC      ...: warning C4996: <text>
-
-    The clang form is keyed by its bracketed group because that is exactly what
-    a -Wno- flag switches off -- keying by message text would split one family
-    across every distinct wording. Bracket-less clang warnings fall back to a
-    normalised message, so they are not silently dropped from the totals.
-    #>
+    # A warning line's family, else $null; clang keys on its -W group, which is what a -Wno- flag switches off.
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Line)
 
     if ($Line -match 'warning\s+(STL\d+|C\d{4,5})\s*:') { return $Matches[1] }
     if ($Line -notmatch 'warning:') { return $null }
     if ($Line -match '\[(-W[a-z0-9-]+)\]\s*$') { return $Matches[1] }
 
-    # No group: normalise the message so near-identical texts collapse. Quoted
-    # identifiers and numbers are the parts that vary between otherwise
-    # identical diagnostics.
+    # No group: normalise quoted identifiers and numbers so near-identical texts collapse.
     $msg = ($Line -replace '^.*?warning:\s*', '').Trim()
     $msg = $msg -replace "'[^']*'", "'?'" -replace '\d+', 'N'
     if ($msg.Length -gt 80) { $msg = $msg.Substring(0, 80) }
@@ -80,8 +48,7 @@ if (-not (Test-Path $LogPath -PathType Leaf)) {
 $total = 0
 $warnings = 0
 $families = @{}
-# Stream the file: chain logs run to hundreds of MB and Get-Content -Raw on one
-# would be a needless several-GB allocation.
+# Streamed: chain logs run to hundreds of MB.
 foreach ($line in [System.IO.File]::ReadLines((Resolve-Path $LogPath))) {
     $total++
     $family = Get-WarningFamily -Line $line
@@ -105,11 +72,7 @@ foreach ($entry in $ranked) {
 }
 
 if ($Baseline) {
-    # Measured on the 2026-08-07 from-base chain, BEFORE the suppressions landed
-    # on 2026-08-08. A family at or near its baseline means its suppression did
-    # not take -- most likely the flag reached the compiler but was overridden
-    # by a later -W flag from the project's own warning machinery, or the
-    # upstream construct moved to a different diagnostic group.
+    # Pre-suppression counts; near-baseline means a later -W flag overrode the suppression or the group moved.
     $known = [ordered]@{
         '-Wdeprecated-copy'                = @{ Was = 7700; Where = 'OpenCV core/matx.hpp'; Flag = '-Wno-deprecated-copy (Build-OpencvFromSource.ps1)' }
         '-Wunused-value'                   = @{ Was = 2460; Where = 'ONNX stream_handles.h / execution_provider.h'; Flag = '/clang:-Wno-unused-value (Build-OnnxFromSource.ps1)' }
@@ -121,8 +84,7 @@ if ($Baseline) {
     foreach ($name in $known.Keys) {
         $info = $known[$name]
         $now = if ($families.ContainsKey($name)) { $families[$name] } else { 0 }
-        # -Wdeprecated-copy is a parent group; clang reports the narrower
-        # subgroup in the bracket, so count that toward the same family.
+        # clang reports the narrower subgroup, so it counts toward -Wdeprecated-copy.
         if ($name -eq '-Wdeprecated-copy' -and $families.ContainsKey('-Wdeprecated-copy-with-user-provided-copy')) {
             $now += $families['-Wdeprecated-copy-with-user-provided-copy']
         }

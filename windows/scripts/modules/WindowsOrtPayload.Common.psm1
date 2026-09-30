@@ -1,19 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# What a consumer's shipped Windows tree needs to carry the image's chain ONNX Runtime and no other
-# (owner rule 2026-09-23, docs/onnxruntime-single-source.md): the ORT family's names, the chain's
-# DLLs staged beside an exe, and the proof -- G6 (WindowsOrtProvenance.Common) over the tree plus
-# what G6 does not grade: onnxruntime.dll missing where the exe looks for it (a client host then
-# loads System32's Windows ML build), an ORT-family name the chain has not got, another DirectML.dll.
-#
-# Three consumers each carried this glue under their own names until 2026-09-25: OxidANT's
-# WindowsOrtPayload.Common, OmniAccelerANT's WindowsOrtRunner.Common and AccelerANTgine's
-# WindowsOrtBundle.Common. What stays with them is their layout: OmniAccelerANT's runner stamp,
-# AccelerANTgine's install tree and Python package. A consumer-side module: no image stage loads it.
-#
-# NOT covered: which copy a process loads beyond G6's modelled loader order.
+# Consumer-side proof a shipped tree carries only the chain ORT, no image stage loads it; see docs/onnxruntime-single-source.md
 
 Set-StrictMode -Version Latest
 
@@ -51,11 +39,8 @@ function Copy-ChainOrtBeside {
     .SYNOPSIS
         Replaces every ORT-family DLL at the top of -Destination with the chain install's; returns the copies.
     .DESCRIPTION
-        The chain install is Get-OnnxChainLayout's, which throws for an unset ONNX_ROOT, a NuGet tree, a
-        release zip and another arch's onnxruntime.dll. Staged are the core, the provider bridge and
-        DirectML.dll, each when the chain has it; -All stages every DLL of the chain's runtime directories,
-        EP sidecars (QNN's backends, WebGPU's DXC) included. bin wins a name both directories hold.
-        Provenance is judged afterwards, by Assert-ChainOrtTree (G6).
+        Core, provider bridge and DirectML.dll when the chain has them; -All adds every runtime DLL, EP sidecars included.
+        Get-OnnxChainLayout validates the source; Assert-ChainOrtTree (G6) judges provenance afterwards.
     #>
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([string[]])]
@@ -84,12 +69,9 @@ function Copy-ChainOrtBeside {
 function Get-OrtPayloadFinding {
     <#
     .SYNOPSIS
-        What G6 does not grade, one line per finding: onnxruntime.dll missing from -OrtDirectory (MISSING),
-        an ORT-family DLL there that the chain installs have not got (STRAY), and one that is no ORT
-        instance, DirectML.dll or GenAI's, with other bytes than the chain's (CHANGED).
+        What G6 does not grade, one finding per line: MISSING onnxruntime.dll, STRAY ORT-family DLLs, CHANGED non-ORT bytes.
     .DESCRIPTION
-        The chain installs are ORT's prefix and, when ONNX_GENAI_ROOT names one, the chain GenAI install,
-        which the media runtime stages beside ORT.
+        The chain installs are ORT's prefix plus, when ONNX_GENAI_ROOT names one, the chain GenAI install.
     #>
     [OutputType([string[]])]
     param([Parameter(Mandatory)][string]$OrtDirectory)
@@ -125,15 +107,11 @@ function Stop-OrtPayloadProof {
 function Assert-ChainOrtTree {
     <#
     .SYNOPSIS
-        Proves -Root carries exactly the image's chain ONNX Runtime: throws with every fatal finding, else
-        returns G6's census.
+        Proves -Root carries exactly the chain ONNX Runtime: throws with every fatal finding, else returns G6's census.
     .DESCRIPTION
-        G6 (Test-OrtProvenanceTree) over all of -Root, plus Get-OrtPayloadFinding for -OrtDirectory, the
-        directory the exe loads ORT from (default: -Root).
+        G6 over all of -Root plus Get-OrtPayloadFinding for -OrtDirectory, where the exe loads ORT from (default -Root).
     .PARAMETER WaiveUnresolved
-        For a Python package whose __init__ registers -OrtDirectory with os.add_dll_directory, which Windows
-        searches before System32. G6 models an exe's loader, not that call, so its UNRESOLVED verdicts are
-        reported and not fatal; every byte verdict still is.
+        For a Python package using os.add_dll_directory, which G6 does not model: UNRESOLVED only reports, byte verdicts stay fatal.
     #>
     [CmdletBinding()]
     param(
@@ -157,8 +135,7 @@ function Assert-ChainOrtTree {
 function Test-ExeLoadsOrt {
     <#
     .SYNOPSIS
-        True when G6 counts the binary as an ORT consumer: it names the ORT ABI (OrtGetApiBase, which a
-        load-dynamic binding resolves) or imports an ORT DLL.
+        True when G6 counts the binary as an ORT consumer: it names OrtGetApiBase or imports an ORT DLL.
     #>
     [CmdletBinding()]
     [OutputType([bool])]
@@ -172,9 +149,7 @@ function Test-ExeLoadsOrt {
 function Test-PayloadLoadsOrt {
     <#
     .SYNOPSIS
-        True when the exe, or any non-ORT DLL a payload ships (beside it, or under an -IncludeDirectory
-        tree), is an ORT consumer (Test-ExeLoadsOrt): a consumer DLL beside a plain exe still loads ORT,
-        System32's if none ships.
+        True when the exe or any shipped non-ORT DLL is an ORT consumer, which loads System32's ORT if none ships.
     #>
     param([Parameter(Mandatory)][string]$ExePath, [string[]]$IncludeDirectory = @())
 
@@ -188,12 +163,9 @@ function Test-PayloadLoadsOrt {
 function New-OrtProvenPayload {
     <#
     .SYNOPSIS
-        Copies the exe and the DLLs beside it into a fresh -Destination and proves that payload: when it
-        loads ONNX Runtime (Test-PayloadLoadsOrt), Assert-ChainOrtTree must pass; otherwise it carries no
-        ORT at all. A package ships from -Destination, so the bytes proved are the bytes shipped.
+        Copies the exe and its DLLs into a fresh -Destination and proves that copy, so the bytes proved are the bytes shipped.
     .PARAMETER IncludeDirectory
-        Subdirectories beside the exe that ship whole with it (lib, for its GStreamer plugins). Copied
-        before the proof, so G6 grades them with everything else; a missing one is skipped.
+        Subdirectories that ship whole with the exe (lib, for GStreamer plugins), copied before the proof; missing ones skipped.
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(

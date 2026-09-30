@@ -1,51 +1,6 @@
-# buildkitd worker GC policy for the Windows BK lane host.
-# Deployed to C:\ProgramData\buildkitd\buildkitd.toml by
-# windows\scripts\Set-BuildkitdGcpolicy.ps1 (admin; restarts buildkitd —
-# NEVER while a build is running).
-#
-# Why this exists (2026-08-04 incident): with no config file buildkitd runs on
-# computed defaults — maxUsedSpace 100GB, minFreeSpace 187GB. The warm chain's
-# cache is ~237GB on a 999GB disk with ~92GB free, so BOTH triggers fired on
-# every GC pass: the moment a build finished and its references dropped, GC
-# evicted everything reclaimable, INCLUDING the multi-hour VS Build Tools
-# layer — every following run re-paid the full base rebuild.
-#
-# The load-bearing knob is reservedSpace: GC never prunes the cache below it,
-# which is what actually protects the ~35GB VS-class layers. minFreeSpace
-# drops to 25-30GB so GC stops fighting the mostly-full disk (free real space
-# by pruning the classic docker lane instead). Warm-solve scratch (the
-# never-finalized snapshots of the ExportLayer-0x3 workaround) needs no
-# special rule — the keepDuration tier ages it out.
-#
-# v0.32 key names: reservedSpace / maxUsedSpace / minFreeSpace
-# (docs/windows-builds.md's older gckeepstorage snippet was the legacy form).
-#
-# SIZING FOR OTHER MACHINES (values below assume this host's ~930 GB C:):
-# the invariants, not the literals, are what to reproduce —
-#   reservedSpace: must exceed the fresh chain spine (~120-150 GB: base incl.
-#     VS + sdk + toolchain + branch images) or GC evicts mid-chain layers;
-#     rule of thumb ~20-25% of the disk, floor 150 GB.
-#   maxUsedSpace: ~reservedSpace * 1.5, so scratch can churn above the spine.
-#   minFreeSpace: this is a TRIGGER, not a floor - GC starts evicting when free
-#     space reaches it, and a heavy media stage keeps consuming while GC works.
-#     Set it well ABOVE the danger band, not at it. Measured 2026-08-07 with
-#     minFreeSpace = 30GB: a full chain dipped to 25.1 GB and later 22.7 GB and
-#     needed MANUAL `buildctl prune --free-storage` twice mid-build, because a
-#     single media layer eats 6-10 GB faster than GC frees it. Below ~25 GB
-#     hcsshim finalize/export turns flaky long before a clean disk-full error
-#     (2026-08-06: a chain died with "ninja is not recognized" at 4.8 GB and
-#     left two poisoned snapshots). 60 GB gives GC roughly one heavy layer of
-#     runway. Cost: more cache eviction, so cold rebuilds are likelier - that
-#     is the right trade against an unattended run dying at 3 a.m.
-#   history tier: keep as-is on every machine (time/count-based, size-free).
-# A disk under ~400 GB cannot hold the full warm chain comfortably - expect
-# to prune between runs and keep reservedSpace >= 150 GB regardless.
+# Windows buildkitd GC policy (Set-BuildkitdGcpolicy.ps1 deploys it); sizing: docs/windows-host-setup.md § C3. Deploy the GC policy + build-history cap (REQUIRED — not optional tuning).
 
-# Build-history retention: WITHOUT this, every build record (including failed
-# attempts) pins its cache refs INDEFINITELY — on 2026-08-05 the store sat at
-# 414 GB with "Reclaimable: 0B" because ~10 grind runs' histories held
-# everything; `buildctl prune-histories` released 289 GB in one stroke while
-# a build was running. This cap keeps the store self-cleaning.
+# Without this cap every build record pins its cache refs indefinitely.
 [history]
   maxAge = 172800   # seconds (48h)
   maxEntries = 10
@@ -53,80 +8,9 @@
 [worker.containerd]
   gc = true
 
-  # Snapshotter experiments 2026-08-09 (kept as a record; REVERTED to the
-  # default `windows`): on this host the default windows snapshotter fails
-  # ActivateLayer 0x20 when committing any layer whose diff writes into an
-  # existing parent dir. Alternatives tried and NOT available on Windows
-  # buildkit here: "native" (snapshotter not loaded: native: invalid
-  # argument), "windows-uvm" (silently falls back to windows - worker still
-  # reports snapshotter=windows). The identical Stevedore stack (containerd
-  # 2.3.3 + buildkit 0.32.0) builds fine on a working machine, so this is a
-  # HOST hcs/VHD behavior, not the engine. Classic lane (dockerd) builds the
-  # same shapes on this host. See AGENTS.md Common Failure Modes.
+  # Only the default windows snapshotter loads here: native fails to load and windows-uvm silently falls back.
 
-  # ATTEMPTED 2026-08-09 (kept as a record, REVERTED): setting
-  #   snapshotter = "native"
-  # looked like the way around this host's ActivateLayer-0x20-on-multi-level-
-  # writes defect (native skips hcsshim VHD activation), but buildkit's
-  # containerd worker on Windows cannot load "native" at all:
-  #   snapshotter not loaded: native: invalid argument
-  # So ONLY the default windows snapshotter is available to buildkit here; the
-  # 0x20 on "commit a layer whose diff writes into an existing parent dir" is a
-  # buildkit reimport/VHD re-activation lifecycle issue on this host's hcs, not
-  # a config knob. docker-classic (dockerd windowsfilter) proves the shapes are
-  # fine otherwise. Tracked in AGENTS.md Common Failure Modes.
-
-  # Tier 0: local sources, git checkouts and cache mounts (C:\bkhandoff etc).
-  # The default caps these at 512MB/48h — far too small for a week of chain
-  # iterations over multi-GB handoffs.
-  #
-  # 20GB -> 40GB (2026-08-08). This tier stopped being scratch on that date: the
-  # Windows chain gained real, load-bearing cache mounts, and they SHARE this
-  # one budget with local sources and git checkouts —
-  #   sccache L0  (id=sccache-winamd64-2)       SCCACHE_CACHE_SIZE = 15G
-  #     DORMANT since 2026-08-16: SCCACHE_MULTILEVEL_CHAIN defaults to "" (WebDAV
-  #     only), so this mount is still ATTACHED to every compiling RUN but nothing
-  #     writes to it -- the 15G is reserved-in-name, not consumed. Do not reclaim
-  #     the budget on that basis: the two-tier layout is meant to come back once
-  #     BuildKit's WCOW cache mounts stop losing writes into an inherited
-  #     directory (docs/windows-builds.md #99), and it needs this headroom again.
-  #   uv/pip      (id=uv-wheels-winamd64)                          ~10G
-  #   sccache log (id=sccache-logs-winamd64)                        <1G
-  #     Added 2026-08-15 (backlog #90). SCCACHE_ERROR_LOG used to live inside
-  #     SCCACHE_DIR, i.e. inside the directory sccache manages by LRU — and
-  #     sccache deleted it, which is why its error trail was unobtainable
-  #     through the whole write-failure investigation. It needs its own mount
-  #     so nothing else holds a delete policy over it. Tiny by nature, but it
-  #     counts against this budget like the others.
-  # 2026-08-10: the L0 id was bumped -1 -> -2 (fresh-mount discriminator for
-  # the run-10/11 link-failure forensics). The ORPHANED -1 mount keeps
-  # counting against this 40GB budget until its 168h keepDuration lapses
-  # (~2026-08-17) - transient over-budget by up to 15G; LRU pressure in that
-  # window can evict uv wheels/fresh L0 between chains. Self-heals; prune
-  # earlier only via a full exec.cachemount prune (which also drops the live
-  # mounts - usually not worth it).
-  # which alone is 25G against the old 20GB cap. Left at 20GB the two caches
-  # would have evicted each other between chains and bought nothing, while every
-  # log still reported a cache hit rate — the silent-degradation shape this repo
-  # keeps designing against. Whoever grows either cache raises this number in
-  # the SAME change: the sizes and this cap are one decision, not two.
-  # 2026-08-15 (backlog #89): this tier had NO reservedSpace, so GC was free to
-  # evict the compiler cache down to nothing — and the evidence says it did.
-  # On the first fully-captured chain the sccache write path worked in the FIRST
-  # media stage (onnx: 1488 misses, 0 write errors) and then failed 100 % in
-  # EVERY stage after it (opencv 1849, genai 157, litert 5037, tvm 596, iree
-  # 6686). Two observations separate "GC ate it" from "sccache hit its own 15G
-  # ceiling": `buildctl du` lists NO sccache cachemount record at all (only the
-  # 1.2 GB bazel one), and a probe found the mount present but EMPTY. A cache
-  # that hit its own size limit would be FULL and accounted for; one that is
-  # absent and empty was reclaimed.
-  #
-  # reservedSpace is the only knob GC will not prune below. Sized to hold both
-  # live mounts with headroom (15G sccache + ~10G uv = 25G), leaving the 40GB
-  # cap as the churn ceiling above it. Note the orphaned -1 mount described
-  # above lapsed ~2026-08-17, so the transient over-budget window is closing;
-  # do NOT read a low hit rate as "cold cache" until this is deployed and a
-  # chain has run — that misreading is what cost this defect a month.
+  # Tier 0 inventory: sccache L0 (15G, dormant), uv wheels (~10G), sccache logs (<1G); cache sizes and this reserve are one decision.
   [[worker.containerd.gcpolicy]]
     filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
     keepDuration = "168h"
@@ -136,66 +20,17 @@
   # Tier 1: anything unused for >30 days goes first.
   [[worker.containerd.gcpolicy]]
     keepDuration  = "720h"
-    # 200GB -> 150GB (2026-08-08). 200 GiB = 214.75 GB was ARITHMETICALLY
-    # UNSATISFIABLE on this host, and it deadlocked a rebuild:
-    #
-    #   disk 930.8 GB - non-buildkit content ~637 GB = ~294 GB for buildkit
-    #   reservedSpace 214.75 GB  =>  ~79 GB of working room
-    #   highest stage disk floor (sdk) = 60 GB, and a heavy media layer eats
-    #   6-10 GB of scratch that GC may not touch
-    #
-    # GC never prunes below reservedSpace, so with the store at 207.63 GB --
-    # just UNDER the reserve -- `du` reported "Reclaimable: 0B" for all 37
-    # records and EVERY lever returned "Total: 0B": plain prune,
-    # --free-storage 950000, --all --keep-storage-min 0, and prune-histories.
-    # Not a bug in any of them; the reserve simply forbade it. The chain then
-    # ran out of room mid-media and the stage gate refused at 53.5 GB.
-    #
-    # 150GB is the floor this file's own sizing note gives, and still exceeds
-    # the ~120-150 GB fresh chain spine it exists to protect (base incl. VS +
-    # sdk + toolchain + branch images). Working room becomes ~144 GB.
-    # The "~20-25% of the disk" rule of thumb does NOT apply here: it assumes
-    # the disk is mostly buildkit's, and on this host ~68 % is other content.
-    # Size against FREE space, not total.
-    # 40GB -> 150GB (2026-08-26): the value contradicted the sizing note directly
-    # above it, which concludes "150GB is the floor this file's own sizing note
-    # gives" and "keep reservedSpace >= 150 GB regardless". At 40 GB the reserve
-    # was BELOW the single ~37 GB VS-class layer, so the base spine could not
-    # survive between driver runs -- measured: six consecutive Windows base builds
-    # on 2026-08-26 all re-ran `#9 RUN Install-Vs.ps1` (260-431 s each) while `#8`,
-    # the COPY of that very script, reported CACHED every time. That is exactly
-    # the symptom the maxUsedSpace note below records from 2026-08-11, and it was
-    # only half-fixed then: maxUsedSpace was raised, the reserve was not.
-    # Arithmetic at the time of this edit: C: 824 GB free of 1861 GB, buildkit
-    # store 545 GB, other content ~492 GB. 150 GB is comfortably satisfiable --
-    # the 2026-08-08 deadlock happened at 214.75 GB when only ~294 GB was
-    # available to buildkit, which is not this host's situation any more.
+    # Above the fresh chain spine, sized against free space; a reserve below the VS layer evicts it between runs.
     reservedSpace = "150GB"
-    # 225GB -> 400GB (2026-08-11, backlog item 34): one night's vertex churn
-    # (several ONNX/OpenCV generations at tens of GB each) exceeded 225GB,
-    # so GC evicted the OLDEST snapshots = the base/sdk/toolchain spine
-    # between driver runs -> every run re-solved the prefix (73/35 min
-    # instead of seconds) and the re-built layers' fresh digests cascaded
-    # cache-misses through every downstream FROM. Free-space doctrine holds:
-    # C: had ~790 GB free at edit time (the "~637 GB other content" figure
-    # above is stale); minFreeSpace still backstops if that changes.
-    # 400GB -> 650GB (2026-08-26): the store had grown to 545 GB, i.e. ABOVE this
-    # ceiling AND above tier 2's, so GC was evicting on every run no matter what
-    # the reserve said. A ceiling under the working-set size turns the reserve
-    # into the only thing standing between a run and a cold prefix. 650 GB leaves
-    # ~105 GB of headroom before GC touches anything -- roughly one media
-    # generation -- and minFreeSpace below remains the real backstop.
+    # Above the store's working set, or GC evicts the oldest spine layers on every run.
     maxUsedSpace  = "650GB"
-    # 30GB -> 60GB (2026-08-07): 30 GB left GC no runway and forced two manual
-    # prunes mid-chain. Still far below reservedSpace, so the VS-class spine
-    # this tier protects is untouched by the change.
+    # A trigger, not a floor: it leaves GC about one heavy layer of runway.
     minFreeSpace  = "60GB"
 
   # Tier 2: hard ceiling.
   [[worker.containerd.gcpolicy]]
     all = true
     reservedSpace = "150GB"  # keep in step with tier 1 (see its note)
-    # 240GB -> 450GB (2026-08-11, item 34), 450GB -> 700GB (2026-08-26): stays
-    # above the mid tier's ceiling; minFreeSpace remains the safety backstop.
+    # Stays above tier 1's ceiling.
     maxUsedSpace  = "700GB"
     minFreeSpace  = "25GB"

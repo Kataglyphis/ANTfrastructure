@@ -11,11 +11,7 @@ install_cmake() {
   local tmpdir=""
   local install_root="/opt/cmake-${version}"
 
-  # The hardcoded SHA fallbacks below belong to the DEFAULT version. If someone
-  # bumps CMAKE_VERSION without the matching CMAKE_*_SHA256 reaching this
-  # process, the fallback SHA is for the OLD tarball and the download would die
-  # as a "checksum mismatch" that reads like tampering. Fail with the real
-  # cause instead.
+  # The SHA fallbacks match only the default version; a bump without its SHAs would fail as if tampered with.
   if [ "${version}" != "4.4.2" ] && [ -z "${CMAKE_AMD64_SHA256:-}${CMAKE_ARM64_SHA256:-}" ]; then
     die "CMAKE_VERSION=${version} but no CMAKE_*_SHA256 env set — the built-in SHA fallbacks only match 4.4.2 (update versions.env / pass the SHAs)"
   fi

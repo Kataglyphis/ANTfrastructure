@@ -1,36 +1,5 @@
 #!/usr/bin/env bash
-# lint-workflows.sh — actionlint over .github/workflows/*.yml (composite
-# actions under .github/actions are pulled in automatically when referenced),
-# PLUS two gates over what valid YAML cannot say. verify_ci_image_refs.py: a
-# stale image tag is valid YAML, so actionlint cannot see the drift the fleet
-# actually suffers. verify_workflow_conventions.py: the four fleet conventions
-# that were transmitted as copied header comments and enforced by nobody - the
-# `*-latest` runner ban, job-level `timeout-minutes`, a `permissions:` block and
-# `if-no-files-found: error`. Three of the four are ADVISORY until armed with
-# WORKFLOW_CONVENTIONS_GATE (preflight.sh arms `permissions` here); the runner
-# ban is enforced always, and workflow-conventions.allow freezes every
-# repository's remaining count so an advisory check cannot grow. That script's
-# header carries the ramp, the ratchet and the reason for both.
-#
-# actionlint is bootstrapped on demand: PATH copy preferred, otherwise the
-# pinned release (ACTIONLINT_VERSION / ACTIONLINT_*_SHA256 in versions.env) is
-# downloaded once into a version-keyed cache dir and SHA256-verified — the same
-# pattern as lint-dockerfiles.sh / lib/wasm-opt.sh.
-#
-# actionlint's SHELL half is bootstrapped too, and is not optional here — see
-# the shellcheck_for_actionlint function below. Without it actionlint grades no
-# `run:` block and still exits 0, which is this file's own hazard from inside.
-#
-# Usage:
-#   linux/scripts/lint-workflows.sh          # lint THIS repo's workflows
-#   linux/scripts/lint-workflows.sh <root>   # lint a CONSUMER repo's workflows
-#
-# The optional root exists so consumers can lint their workflows with the same
-# pinned, SHA-verified actionlint instead of bootstrapping their own. It is
-# needed because a submodule checkout puts this script INSIDE the consumer,
-# where the default root resolves to ANTfrastructure and would silently lint the
-# wrong tree - and a lint gate that checks nothing still reports green. The
-# bootstrap cache and versions.env always come from THIS repo regardless.
+# [root]: pinned actionlint with its shellcheck half, plus the image-ref and workflow-convention gates.
 set -uo pipefail
 
 SCRIPT_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -94,22 +63,9 @@ actionlint_ensure() {
   fi
 }
 
-# --- actionlint's shell half -------------------------------------------------
-# actionlint embeds a shellcheck pass over every `run:` block, and it reaches
-# that tool by exec'ing the command NAME. When that name is not on PATH it
-# DISABLES the rule and says nothing at normal verbosity -- measured on this
-# host as
-#   verbose: Rule "shellcheck" was disabled: exec: "shellcheck": executable
-#            file not found in %PATH%
-# while the gate went on printing WORKFLOW LINT OK: half of what it advertises
-# was covering nothing, which is the failure its own header warns about.
+# actionlint's shell half: without shellcheck on PATH it silently disables the rule.
 
-# lint-shell.sh is the ONE owner of that binary (a PATH copy only AT the pin,
-# otherwise the pinned SHA256-verified release), so resolve through its
-# --print-bin accessor and put its DIRECTORY in front of PATH -- a name lookup
-# is what actionlint does, so a name is what it has to find. A resolution that
-# fails FAILS the gate: running the workflow lint without its shell half is the
-# defect, not a degraded mode.
+# lint-shell.sh --print-bin owns the binary; its dir goes on PATH since actionlint looks up the name.
 shellcheck_for_actionlint() {
   local bin dir named
   bin="$(bash "${REPO_ROOT}/linux/scripts/lint-shell.sh" --print-bin)" || bin=""
@@ -119,23 +75,13 @@ shellcheck_for_actionlint() {
     || err "the resolved shellcheck (${bin}) is not in a readable directory."
   PATH="${dir}:${PATH}"
   export PATH
-  # A resolved PATH is not yet a usable rule: actionlint looks the command up by
-  # NAME. Prove the name resolves here, where the message can say what is wrong,
-  # rather than letting actionlint quietly turn the rule off.
+  # Prove the name resolves here, where the error can say why, before actionlint drops the rule.
   named="$(command -v shellcheck)" || err \
     "shellcheck resolved to ${bin} but the NAME does not resolve on PATH after adding ${dir}; actionlint looks it up by name and would disable the rule."
   printf '== shellcheck for run: blocks (%s) ==\n' "$("${named}" --version | sed -n 's/^version: //p')"
 }
 
-# A resolved binary is a PRECONDITION; a rule that actually fired is the
-# guarantee, and only one of those is what the gate claims. So: lint one
-# workflow whose ONLY defect is a shell one (SC1010 -- `[ ... ] then` with no
-# separator, which actionlint's own YAML/expression rules cannot see) and
-# require it to be reported. Reading it off `--verbose` instead was tried and
-# discarded: actionlint lints files concurrently and its unsynchronised writes
-# mangle the "verbose: " prefix, so the trace cannot be filtered or matched
-# reliably. This costs one stdin-sized lint, needs no fixture on disk and no
-# enclosing checkout, and it fails for the one reason it is asked about.
+# Proves the rule fires on a shell-only defect (SC1010); --verbose output interleaves too badly to parse.
 shellcheck_rule_selftest() {
   local out
   out="$(printf 'name: probe\non: push\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n          if [ "x" = "y" ] then\n            echo hi\n          fi\n' \
@@ -155,20 +101,13 @@ shellcheck_rule_selftest
 FAILED=0
 "${ACTIONLINT_BIN}" || FAILED=1
 
-# Run from the SCRIPT's repo so the relative path resolves to this checkout's
-# copy, and hand it the tree actually being linted - the same split, and the
-# reason this script takes a root at all.
-# Interpreter: the contract preflight.sh documents at its top, owned by
-# 01-core/python-probe.sh since 2026-09-14 (run-lint-gates.sh shares it).
+# This checkout's copy of the script, run against the handed tree.
 # shellcheck source=01-core/python-probe.sh
 source "${CORE_DIR}/python-probe.sh"
 preflight_python_require lint-workflows.sh || exit 1
 ( cd "${REPO_ROOT}" && ${PREFLIGHT_PYTHON} linux/scripts/verify_ci_image_refs.py "${LINT_ROOT}" ) || FAILED=1
 
-# The conventions half runs on the same terms: this checkout's copy, the handed
-# tree, and its own exit status folded into the one verdict. Its allow file is
-# read from THIS repo too, which is what lets one table hold the deviations of
-# every consumer that vendors this hub.
+# Its workflow-conventions.allow comes from this repo too, so one table holds every consumer's deviations.
 ( cd "${REPO_ROOT}" && ${PREFLIGHT_PYTHON} linux/scripts/verify_workflow_conventions.py "${LINT_ROOT}" ) || FAILED=1
 
 if [ "${FAILED}" -eq 0 ]; then

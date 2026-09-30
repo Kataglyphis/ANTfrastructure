@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Tests for 01-core/parallelism.sh — the build-speed/OOM knob (15 caller
-# files). mem_capped_jobs' formula is documented in the module header; these
-# assertions pin it, plus the PARALLEL_JOBS-override validation (a raw
-# passthrough used to feed PARALLEL_JOBS=0 straight into `ninja -j0`).
+# 01-core/parallelism.sh: mem_capped_jobs' formula, and a PARALLEL_JOBS override that must never reach `-j0`.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -41,19 +38,13 @@ _rust="$(_profile_mb rust 2>/dev/null || true)"
 if [ -n "${_gen}" ] && [ -n "${_rust}" ]; then
   t_assert_ok test "${_rust}" -gt "${_gen}"
 else
-  # profile helper not present in this revision — assert the documented
-  # heavy peak constant is still what the media stages size against
+  # No profile helper in this revision, so there is nothing to compare.
   t_assert_eq "1" "1" "profile helper absent; skipping relative check"
 fi
 
 # ---------------------------------------------------------------------------
 t_case "BUILD_MEM_DIVISOR=3 yields exactly 1/3 of the divisor=1 jobs"
-# The divisor is applied inside the REAL _usable_mem_mb (parallelism.sh
-# ~173-184: usable = avail / BUILD_MEM_DIVISOR), which this file's stub above
-# bypasses — so run the case in a fresh child bash and stub one level LOWER
-# (_mem_available_mb, the raw probe). Math with avail=24000, peak=1000,
-# cores=64:  divisor=1 -> min(64, 24000/1000) = 24;  divisor=3 ->
-# min(64, 8000/1000) = 8;  an invalid divisor must fall back to 1 -> 24.
+# The divisor lives in the real _usable_mem_mb, which the stub above bypasses, so a child bash stubs the raw probe.
 _div_out="$(bash -c '
   set -u
   source "'"${TESTS_DIR}"'/../01-core/parallelism.sh"
@@ -69,10 +60,7 @@ _div_out="$(bash -c '
 t_assert_eq "24;8;24" "${_div_out}" \
   "divisor must divide usable RAM (3x concurrency -> 1/3 jobs each; invalid divisor -> 1)"
 
-# ── _cgroup_mem_remaining_mb: one owner for two cgroup generations (F1) ──────
-# The two halves were the same four tests twice over. CGROUP_ROOT lets the suite
-# stand a fixture in for absolute kernel paths, which is what made this
-# untestable before. docs/build-parallelism-memory-tuning.md
+# CGROUP_ROOT lets a fixture stand in for the kernel's cgroup paths; see docs/build-parallelism-memory-tuning.md
 _cg() {
   local root; root="$(mktemp -d)"
   mkdir -p "${root}/memory"

@@ -1,129 +1,30 @@
 # syntax=docker/dockerfile:1.27.0
-#
-# Dockerfile.media — media libraries layer (ONNX Runtime, LiteRT, OpenCV,
-# FFmpeg, GStreamer, libcamera).
-#
-# BuildKit feature summary used in this file:
-#   # syntax=docker/dockerfile:1.27.0  — enables BuildKit frontend extensions.
-#   --mount=type=cache   — persistent cross-build cache. The ids are NOT keyed
-#                          uniformly; read the split off the mounts themselves,
-#                          not off a rule of thumb:
-#                          * ${TARGET_ARCH} — one store per LANE: apt
-#                            (/var/cache/apt, /var/lib/apt), the ffmpeg SDK
-#                            store, and the gstreamer stage's cargo
-#                            registry/git. Each for its own reason: apt is
-#                            `sharing=locked` AND holds arch-specific packages,
-#                            ffmpeg-sdks holds arch-specific SDK downloads
-#                            (tensorflow-c, openvino) plus the .pc files
-#                            synthesized for them, and the
-#                            cargo store — arch-independent content, but
-#                            MUTATED in place and unguarded across containers
-#                            (see the gstreamer RUN). A lane-COLLIDING id on
-#                            the locked apt mounts is what PAR2 fixed
-#                            (CHANGELOG 2026-08-18: ${TARGETARCH} resolved to
-#                            amd64 for every lane, so the lock became a lane
-#                            serializer).
-#                          * ${TARGETARCH} — ccache, sccache, uv, pip. Left as
-#                            they are ON PURPOSE: they are unlocked (default
-#                            sharing) and content-addressed (compiler/source
-#                            hashes, wheel filenames), so a lane collision is
-#                            free, while splitting them would triple the cold
-#                            compile. Do NOT "align" these with the apt ids.
-#                          * no arch at all — onnxruntime-web, keyed on
-#                            ONNXRUNTIME_VERSION. Its wasm output really is
-#                            arch-independent: one lane compiles it, the others
-#                            copy it out, so `sharing=locked` there is the
-#                            design and not an accident. Note the consequence
-#                            under --parallel-archs: the lanes DO serialize on
-#                            that one RUN. That is the trade being made (one
-#                            emscripten compile instead of three), not an
-#                            oversight — see the stage comment.
-#                          Mode semantics that decide the above: `locked`
-#                          serializes EVERY consumer of an id, concurrent lanes
-#                          included — use it only where the serialization
-#                          itself is the win. `private` hands each CONCURRENT
-#                          consumer a NEW EMPTY dir, so it never buys sharing;
-#                          it only bounds corruption, at the cost of the disk a
-#                          per-lane id would have used anyway.
-#   --mount=type=bind    — read-only mount of build scripts for a single RUN.
-#                          Unlike COPY, a bind mount does NOT create an image
-#                          layer, so editing a library's scripts invalidates
-#                          only the RUNs that mount them — not downstream layers.
-#   --mount=type=tmpfs   — scratch /tmp wiped after the RUN (no layer bloat).
-#   COPY --link          — layer-parallel COPY that skips ordering against the
-#                          previous RUN, so independent stages build concurrently.
-#
-# Source checkouts are deliberately NOT cache-mounted. Investigated 2026-08-23
-# (backlog "Media source-cache mounts"); every candidate is blocked SCRIPT-side,
-# not here, so a mount added at these paths could never be populated:
-# build-opencv.sh and build-ffmpeg.sh both `rm -rf` their source dir in the
-# cleanup() their main() calls, setup-gstreamer.sh hard-assigns a PID-suffixed
-# BUILD_DIR=/opt/tmp/gstreamer-build-$$ (a plain assignment, not env-
-# overridable) and removes it, and ONNX Runtime does not re-clone on a cache hit
-# at all — ORT_SRC_DIR is /opt/onnxruntime, an IMAGE path, so the clone lives in
-# the deps+fetch layer and is only redone when that RUN re-executes. Whoever
-# revisits this must also key the id on the pinned version: clone_or_update_repo
-# (01-core/downloads.sh) deliberately WARNS-and-continues on a stale checkout,
-# so an unkeyed source cache would silently build the previous version's tree.
-# Version-keyed ids DO work, and the mechanism decides where the ARG must sit:
-# BuildKit expands a mount id from the args/env in scope AT THAT INSTRUCTION, so
-# `id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-wgpu1` in the onnxruntime
-# stage below is a live, shipped example precisely because `ARG ONNXRUNTIME_VERSION`
-# is declared in that same stage above the RUN. Name a variable that is NOT in
-# scope and the id expands to the bare prefix, silently collapsing every version
-# onto one store — the failure the keying was meant to prevent.
-# Keying is necessary but not sufficient: whenever a ref is a BRANCH rather than
-# a tag — the script-side fallbacks are OPENCV_VERSION=5.x and
-# FFMPEG_VERSION=master, though versions.env currently pins the tags 5.0.0 and
-# n9.0 — even a version-keyed id serves one frozen branch tip forever.
-#
-# Stage dependency DAG — BuildKit parallelizes independent stages automatically:
-#
-#   base ─┬─ onnxruntime ───────┐
-#         ├─ litert ────────────┤
-#         ├─ opencv ────────────┼─ media-inputs ─ gstreamer ─ libcamera ─ final
-#         ├─ ffmpeg ──┬─────────┤                                          │
-#         │           └─ pyav ──────────────── (av wheel) ─────────────────┘
-#         └─ app-wheelhouse ────┘
-#
-# Ordering is least-likely-to-change (base/OS, shared core) → most-likely-to-
-# change (per-library build scripts) → aggregation (media-inputs) → final.
+# Media libraries layer; cache-id keying: docs/build-cache-tiers.md#13-cache-mount-ids-and-source-checkouts
 
-# Global Version Arguments (safety-net defaults; orchestrator passes canonical
-# values from linux/scripts/01-core/versions.env via append_version_build_args).
+# Safety-net defaults; the orchestrator passes versions.env values via append_version_build_args.
 ARG ONNXRUNTIME_VERSION="v1.30.0"
 ARG ONNXRUNTIME_GENAI_VERSION="v0.15.2"
 ARG LITERT_VERSION="v2.2.0"
 ARG OPENCV_VERSION="5.0.0"
 ARG GSTREAMER_VERSION="1.29.2"
 
-# Build Acceleration Arguments
-# Set AGGRESSIVE_PARALLELISM=true for faster builds on high-memory machines (16GB+)
-# Set USE_LLD=false to disable lld linker
-# Set USE_CCACHE=0 (or false/no/off) to disable ccache
+# AGGRESSIVE_PARALLELISM=true only on 16GB+ hosts.
 ARG AGGRESSIVE_PARALLELISM=false
 ARG USE_LLD=true
 ARG USE_CCACHE=true
 ARG USE_SCCACHE=true
 
-# ==============================================================================
-# Base stage — common setup. Shared, rarely-changing files are COPY'd here so
-# they are available to every downstream stage. Per-library build scripts are
-# NOT copied here; they are bind-mounted per RUN in each library stage for
-# maximum cache isolation.
-# ==============================================================================
+# Base stage: only shared, rarely-changing files are COPY'd; per-library scripts are bind-mounted per RUN.
 ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE} AS base
 
 SHELL ["bash", "-lc"]
 
 ARG BUILD_MODE=native
-# Divide usable RAM by this in parallelism.sh so N concurrent per-arch builds
-# (--parallel-archs) don't collectively overcommit the host. 1 = serial default.
+# Divides usable RAM so --parallel-archs builds don't collectively overcommit the host.
 ARG BUILD_MEM_DIVISOR=1
 ARG TARGETARCH
-# Defaulted from TARGETARCH so a hand-run build without --build-arg still
-# resolves the per-arch COPY below to a real file.
+# Defaulted so a hand-run build still resolves the per-arch COPY below.
 ARG TARGET_ARCH=${TARGETARCH}
 ARG GCC_VERSION=16.2.0
 ARG TARGETPLATFORM
@@ -131,26 +32,13 @@ ARG BUILDARCH
 ARG BUILDPLATFORM
 ARG ENABLE_NVIDIA=false
 ARG ENABLE_AMD=false
-# ENABLE_TENSORRT=false builds the ONNX Runtime CUDA EP WITHOUT the TensorRT EP.
-# 30-build-native-nvidia.sh used to err() on a missing NvInfer.h unconditionally,
-# so a CUDA+cuDNN image with no TensorRT (the Jetson lane) could not complete the
-# GPU step at all. The knob lives here because that script reads it as an env var.
+# false builds the CUDA EP without TensorRT (the Jetson lane has none); read as env by 30-build-native-nvidia.sh.
 ARG ENABLE_TENSORRT=true
-# Peak RSS of ONE nvcc front-end, used by 30-build-native-nvidia.sh to size the
-# CUDA job count. It MUST be an ARG here: that script reads it as an env var
-# inside the build, and an env var exported around the orchestrator never
-# reaches the container -- set that way on 2026-09-17 it silently did nothing.
-# The value is a PEAK, not an average: ordinary kernels sit under 1 GB, but the
-# kernel OOM killer recorded moe_gemm/flash_attention cicc at 3.8 GB and 6.2 GB
-# on this host. Sizing from a snapshot of ordinary kernels is how two runs died.
+# Peak (not average) RSS of one cicc; must be an ARG since an env var set around the orchestrator never arrives.
 ARG CUDA_MB_PER_CICC=3500
-# Rust compile caching via sccache (media rust builds: gst-plugins-rs,
-# cargo-c consumers, the riscv64 wheelhouse). Default OFF pending a controlled
-# cross-arch validation — see 03-media/core/common.sh for the full story.
+# Off pending a cross-arch validation; see 03-media/core/common.sh.
 ARG ENABLE_SCCACHE_RUST=0
-# GPU compile caching via sccache (nvcc for CUDA, hipcc for HIP/ROCm — both
-# unreachable for ccache; with 4 CUDA archs every kernel compiles 4x, the
-# dominant cost of the GPU onnxruntime/opencv builds). Same gated pattern.
+# sccache for nvcc/hipcc, which ccache cannot wrap.
 ARG ENABLE_SCCACHE_CUDA=0
 ARG AGGRESSIVE_PARALLELISM
 ARG USE_LLD
@@ -180,13 +68,8 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
     USE_CCACHE=${USE_CCACHE} \
     USE_SCCACHE=${USE_SCCACHE}
 
-# Shared bootstrap + activation scripts (small, rarely change → COPY in base).
 COPY --chmod=755 linux/scripts/03-media/core/common.sh              /opt/scripts/03-media/core/common.sh
-# Data-driven per-arch MEDIA_SKIP_* flag file consumed by media_load_arch_flags()
-# (03-media/core/common.sh). In base so every derived stage has it, including
-# install-deps RUNs that bind-mount only their own script. ONLY this arch's file:
-# copying all three re-keyed base on every lane whenever one arch's flags changed.
-# docs/refactoring-backlog.md WA
+# Only this arch's flag file: copying all three re-keyed base on every lane when one arch's flags changed.
 COPY --chmod=644 linux/scripts/03-media/core/arch-flags-${TARGET_ARCH}.env /opt/scripts/03-media/core/arch-flags-${TARGET_ARCH}.env
 COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh    /opt/scripts/03-media/activate-cross-python.sh
 COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh  /opt/scripts/core/install-deps-preamble.sh
@@ -194,16 +77,7 @@ COPY --chmod=755 linux/scripts/01-core/python-host.sh            /opt/scripts/co
 COPY --chmod=755 linux/scripts/01-core/cmake-cache-linker.sh     /opt/scripts/core/cmake-cache-linker.sh
 COPY --chmod=755 linux/scripts/01-core/modules.sh                /opt/scripts/core/modules.sh
 
-# FAIL FAST ON A GPU BUILD WITH NO CUDA. ENABLE_NVIDIA=true used to be a trap:
-# stage-defs forwards it here, but this stage's parent is :sdk, which has no
-# nvcc -- so the build ran ~20 minutes of ONNX Runtime configure before dying in
-# 30-build-native-nvidia.sh with a bare "nvcc not found at /usr/local/cuda/bin/
-# nvcc", hours into a chain and nowhere near the actual cause. Every CUDA
-# consumer in this file (onnxruntime, opencv, tvm, the torch wheelhouse) has the
-# same prerequisite, so assert it ONCE, here, before any of them start.
-# The fix when this fires is to point this stage at the NVIDIA layer:
-#   CROSS_MEDIA_BASE_IMAGE=<repo>:cross-toolchain-nvidia-<arch>
-# docs/linux-accelerator-images.md
+# Fail fast: :sdk has no nvcc, and every CUDA consumer below would otherwise die deep in a build.
 RUN set -euo pipefail; \
     if [ "${ENABLE_NVIDIA}" = "true" ] && [ ! -x "${CUDA_HOME:-/usr/local/cuda}/bin/nvcc" ]; then \
         echo "ERROR: ENABLE_NVIDIA=true but no nvcc at ${CUDA_HOME:-/usr/local/cuda}/bin/nvcc." >&2; \
@@ -217,14 +91,7 @@ RUN set -euo pipefail; \
     fi; \
     bash /opt/scripts/03-media/activate-cross-python.sh
 
-# Strip all external apt sources and configure only standard Ubuntu repos.
-# The SDK base image may carry external repo traces (ROCm, Kitware, etc.)
-# that cause package version conflicts.  We start fresh here.
-# Uses the UBUNTU_CODENAME build arg (from versions.env) so the codename
-# stays in sync with the base image's Ubuntu version.
-# Per-file mounts: this RUN sources only ubuntu-mirror.sh (which pulls in its
-# platform.sh leaf) — a whole-01-core mount here re-paid the entire base stage
-# (and everything after it) for ANY 01-core edit.
+# External repos inherited from :sdk (ROCm, Kitware) cause version conflicts; per-file mounts keep 01-core edits from re-keying base.
 RUN --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core-scripts/ubuntu-mirror.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/core-scripts/platform.sh,readonly \
     set -euo pipefail; \
@@ -233,26 +100,12 @@ RUN --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/
     . /tmp/core-scripts/ubuntu-mirror.sh; \
     _archive_url="${FAST_UBUNTU_MIRROR_URL:-https://archive.ubuntu.com/ubuntu/}"; \
     _ports_url="$(ubuntu_effective_ports_mirror_url "${_archive_url}" "${FAST_UBUNTU_PORTS_MIRROR_URL:-}")"; \
-    # The HOST source serves the BUILD host's own arch from the archive that
-    # actually publishes it: amd64 on archive.ubuntu.com, arm64/riscv64 on
-    # ports. Hard-coded amd64 here made a native arm64 host resolve every
-    # unqualified name to :amd64 — binutils:amd64 replaced the aarch64
-    # assembler and `as -EL` failed. amd64 hosts are unchanged.
-    # AS1: which archive an arch lives on is ubuntu_arch_uses_ports' answer, not
-    # a second inline list -- the host and target halves disagreeing is the class
-    # of bug that cost riscv64 its Qt6.
+    # Host source serves the build host's own arch; hard-coded amd64 broke native arm64 hosts.
     _build_arch="$(build_arch_oci 2>/dev/null || echo amd64)"; \
     _host_url="${_archive_url}"; \
     ubuntu_arch_uses_ports "${_build_arch}" && _host_url="${_ports_url}"; \
     ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu.sources "${_host_url}" "${UBUNTU_CODENAME}" "${_build_arch}" 1; \
-    # Ports sources: ONLY for the actual cross target, under the canonical
-    # per-arch filename (cross-apt.sh's prune globs ubuntu-ports*.sources and
-    # keeps the per-arch file). The old unconditional ubuntu-ports.sources with
-    # "Architectures: arm64 riscv64" double-defined the target arch once
-    # cross_configure_foreign_arch_apt_sources wrote the per-arch file (~16
-    # "configured multiple times" warnings per apt call, 1300+/build) and made
-    # every build download the OTHER arch's package indexes for nothing.
-    # ... and only when the target is not the build host itself.
+    # Target source only for a foreign target, under the per-arch name cross-apt.sh's prune keeps.
     _tgt="${TARGET_ARCH:-amd64}"; \
     if [ "${_tgt}" != "${_build_arch}" ]; then \
       _tgt_url="${_archive_url}"; \
@@ -261,13 +114,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/
     fi; \
     apt-get update -qq
 
-# Ensure Python venv exists for downstream stages (OpenCV, LiteRT, ONNX build scripts).
-# The base image sets UV_PYTHON=/opt/python/.venv/bin/python — the very venv this
-# step (re)creates. `uv venv --clear` deletes that interpreter first, so uv would
-# have nothing to seed the new venv from ("No interpreter found at path
-# /opt/python/.venv/bin/python"). Seed explicitly from the source-built base
-# CPython (build_python.sh installs it under /usr/local) and drop the inherited
-# UV_PYTHON for the create step so uv can't chase the just-cleared venv.
+# Inherited UV_PYTHON points into the venv `--clear` deletes, so seed from the base CPython without it.
 RUN set -euo pipefail; \
     _base_py=/usr/local/bin/python3; \
     [ -x "${_base_py}" ] || _base_py="$(command -v python3.14 || command -v python3)"; \
@@ -275,27 +122,15 @@ RUN set -euo pipefail; \
     UV_PYTHON="/opt/python/.venv/bin/python" uv pip install \
         --upgrade pip setuptools wheel cython pybind11 numpy
 
-# Re-register GCC as the default after install-deps reset alternatives.
-# register-gcc-alternatives.sh is self-contained (sources nothing) → mount it alone.
+# install-deps resets the alternatives, so GCC is registered as default again.
 RUN --mount=type=bind,source=linux/scripts/01-core/register-gcc-alternatives.sh,target=/tmp/core-scripts/register-gcc-alternatives.sh,ro \
     set -euo pipefail; \
     bash /tmp/core-scripts/register-gcc-alternatives.sh
 
-# nvcc drives the image's OWN compiler -- GCC 16.2.0, the same CC/CXX everything
-# else uses. CUDA 13.3's crt/host_config.h:137 is `#if __GNUC__ > 15` and refuses
-# it, so -allow-unsupported-compiler goes in via NVCC_PREPEND_FLAGS, which nvcc
-# reads for EVERY invocation -- one place covers the ONNX Runtime CUDA EP, OpenCV
-# and TVM without touching their cmake lines.
-# The alternative (CUDAHOSTCXX=g++-15) was tried on 2026-09-17 and is WORSE: it
-# compiles device code against a different libstdc++ than the rest of the image,
-# and anything linking both worlds dies on
-#   undefined reference: std::__format::…@GLIBCXX_3.4.36
-# A single consistent toolchain is the point; the version gate is a policy check,
-# not an ABI boundary. Verified in-image: GCC 16.2.0 + this flag produces a real
-# sm_87 cubin.
+# CUDA refuses GCC > 15; a second host compiler (g++-15) splits libstdc++ and breaks linking, so waive the gate instead.
 ARG NVCC_ALLOW_UNSUPPORTED_COMPILER=-allow-unsupported-compiler
 
-# Also export CC/CXX so CMake (which searches PATH) always gets GCC
+# CMake searches PATH, so CC/CXX pin it to this GCC.
 ENV NVIDIA_CODEC_HEADERS=auto \
     UV_PYTHON="/opt/python/.venv/bin/python" \
     VIRTUAL_ENV="/opt/python/.venv" \
@@ -303,12 +138,9 @@ ENV NVIDIA_CODEC_HEADERS=auto \
     CC=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/gcc \
     CXX=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/g++
 
-# ==============================================================================
 # ONNX Runtime stage
-# ==============================================================================
 FROM base AS onnxruntime
-# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
-# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
+# Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
 
 ARG ONNXRUNTIME_VERSION
@@ -319,13 +151,10 @@ ARG ONNXRUNTIME_GENAI_BUILD_TYPE=Release
 ARG BUILD_GENAI=true
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
-# WebGPU (Dawn) execution provider. Default off; amd64 lights up when
-# ORT_ENABLE_WEBGPU=true, arm64/riscv64 additionally need ORT_WEBGPU_ALLOW_CROSS=true
-# (Dawn cross-build unproven). See onnxruntime/build/lib/common.sh.
+# Cross arches also need ORT_WEBGPU_ALLOW_CROSS (Dawn cross-build unproven); see onnxruntime/build/lib/common.sh.
 ARG ORT_ENABLE_WEBGPU=true
 ARG ORT_WEBGPU_ALLOW_CROSS=true
-# GEN1: riscv64 onnxruntime-genai lane. Default must equal versions.env
-# (verify-arg-consistency.sh). docs/gen1-riscv64-genai.md
+# Default must equal versions.env (verify-arg-consistency.sh); docs/gen1-riscv64-genai.md
 ARG GENAI_ALLOW_RISCV64=true
 
 ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
@@ -340,12 +169,7 @@ ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
     ORT_WEBGPU_ALLOW_CROSS=${ORT_WEBGPU_ALLOW_CROSS} \
     GENAI_ALLOW_RISCV64=${GENAI_ALLOW_RISCV64}
 
-# deps + fetch combined: both are fast IO-bound operations.
-# Per-file mounts: --step deps/fetch only execute build-onnxruntime.sh →
-# 10-deps.sh / 20-fetch.sh (all sourcing lib/common.sh), so mounting the whole
-# onnxruntime dir made every 30-*/40-*/50-*/60-*/70-* build-script edit re-pay
-# this apt+clone+submodule layer. 01-core stays whole-dir: lib/common.sh runs
-# media_common_init, whose source_module loader pulls most of 01-core by design.
+# Per-file mounts so later build-step edits don't re-pay this layer; 01-core stays whole (source_module pulls most of it).
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,target=/opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/10-deps.sh,target=/opt/scripts/03-media/build/onnxruntime/build/10-deps.sh,readonly \
@@ -359,10 +183,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     SKIP_DEP_INSTALL=true bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step deps && \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step fetch
 
-# F6: per-FILE mounts, mirroring the deps RUN above. `--step cpu` dispatches to
-# 30-build-native.sh and nothing else, so mounting the whole onnxruntime tree made
-# an edit to 60-build-genai.sh (5 commits in one month) re-pay this 24-minute
-# build. docs/refactoring-backlog.md F6
+# Per-file mounts: `--step cpu` runs only 30-build-native.sh, so other step edits must not re-key this build.
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,target=/opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh,target=/opt/scripts/03-media/build/onnxruntime/build/30-build-native.sh,readonly \
@@ -374,7 +195,6 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu
 
-# Validate ONNX Runtime CPU artifacts before downstream stages consume them.
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
@@ -391,16 +211,12 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     if [ "${ENABLE_NVIDIA}" = "true" ] || [ "${ENABLE_AMD}" = "true" ]; then \
         bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step gpu; \
-        # Wire the verify that existed as a caller-less branch since its
-        # creation (audit round 2, F11): GPU-enabled images had NO gate on
-        # the GPU EP artifacts actually existing.
         bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-gpu; \
     else \
         echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"; \
     fi
 
-# GEN1: patches mount for the riscv64 genai target_platform patch, applied only
-# when ARCH=riscv64. docs/gen1-riscv64-genai.md
+# The patches mount carries the riscv64 target_platform patch; docs/gen1-riscv64-genai.md
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/onnxruntime-genai,target=/opt/scripts/patches/onnxruntime-genai,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
@@ -413,8 +229,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step genai
 
-# GenAI's ORT proof runs HERE over the build RUN's tree, mounted per file from 03-media/: build/onnxruntime/ is mounted
-# whole into the GPU ORT RUN, and runtime/ is copied whole into final and Dockerfile.package, so either dir re-keys them.
+# Mounted per file: build/onnxruntime/ and runtime/ are mounted/copied whole elsewhere, so either dir would re-key them.
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/verify-genai-ort.sh,target=/opt/scripts/03-media/verify-genai-ort.sh,readonly \
@@ -430,24 +245,7 @@ RUN --mount=type=tmpfs,target=/tmp \
       echo "Skipping onnxruntime-genai verification (BUILD_GENAI=${BUILD_GENAI:-true})"; \
     fi
 
-# onnxruntime-web (WASM/JS) — BUILD ONCE, SHIP TO ALL ARCHES.
-# The browser WASM runtime is arch-INDEPENDENT (emscripten targets wasm32 on the
-# amd64 host regardless of TARGET_ARCH), but its emscripten compile is expensive
-# (~45 min, and 40-build-wasm.sh only runs on the amd64 target). So compile it ONCE
-# and share the identical assets to every arch via a cross-arch cache mount
-# (id keyed on the onnxruntime VERSION, NOT on TARGETARCH): the amd64 media build
-# compiles + populates it; the arm64/riscv64 media builds (later in the sequential
-# chain, same buildkitd) READ the assets from it instead of recompiling. Output dir
-# is always created so the final-stage COPY stays valid on every arch. Versioned id
-# means an ONNXRUNTIME_VERSION bump invalidates the shared cache and recompiles.
-# The -wgpu1 suffix is a FLAVOR-SET epoch (LOG2): the flavor set grew (.asyncify +
-# .jspi WebGPU wasm added by 40-build-wasm.sh) without an ORT version bump, and the
-# reuse check served a pre-flavor cache forever. Bump the suffix whenever the
-# built flavor set changes again.
-# Reuse is gated on a .complete stamp written AFTER a successful copy, not on
-# "any *.wasm present": a half-finished copy (a full disk) would otherwise freeze
-# a partial asset set for every later arch AND every later run, since this cache
-# outlives the build. docs/failure-modes.md
+# Arch-independent wasm, compiled once per ORT version and shared; bump -wgpu1 whenever the built flavor set changes.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -462,10 +260,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
         cp -a "${_shared}/." "${_ortweb}/"; \
     else \
         echo "Shared onnxruntime-web cache empty on target=${TARGET_ARCH}; compiling (arch-independent, runs on the amd64 host) and populating the cache for the other arches"; \
-        # BEST-EFFORT: onnxruntime-web is an OPTIONAL browser asset. Now that any
-        # arch may carry the emscripten compile (the amd64-only skip was removed for
-        # coverage), a wasm build failure must NOT break that arch's media build — it
-        # ships empty (INFO in the smoke) exactly as a skipped arch did before.
+        # Optional browser asset: a wasm failure ships it empty instead of failing the media build.
         if bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step wasm; then \
             if cp -a "${_ortweb}/." "${_shared}/"; then \
                 : > "${_shared}/.complete"; \
@@ -478,7 +273,6 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
         fi; \
     fi
 
-# js + pkgconfig steps (fast, IO-bound)
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -492,12 +286,9 @@ RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-pkgconfig
 
-# ==============================================================================
-# LiteRT stage (Critical Fix #2: abseil span.h copy lives in build-litert.sh)
-# ==============================================================================
+# LiteRT stage
 FROM base AS litert
-# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
-# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
+# Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
 
 ARG LITERT_VERSION
@@ -505,13 +296,7 @@ ARG LITERT_OUTPUT_DIR=/usr/local
 ARG LITERTJS_VERSION=2.5.3
 ARG MEDIAPIPE_GENAI_VERSION=0.10.29
 
-# Per-file install-deps mounts (pattern shared by every media install-deps RUN
-# below): each install-deps.sh sources ../../core/common.sh (base COPY) →
-# media_install_deps_init → /opt/scripts/core/install-deps-preamble.sh (base
-# COPY) → cross-env.sh → its module closure {platform, ubuntu-mirror, cross-gcc,
-# cross-python, cross-apt, cross-meson}. Mounting the whole component dir +
-# whole 01-core made every build-script edit re-pay this 10-20 min/arch apt
-# layer; the narrowed mounts below are exactly that traced source chain.
+# Every install-deps RUN mounts exactly cross-env.sh's source closure, so build-script edits don't re-pay the apt layer.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/litert/install-deps.sh,target=/opt/scripts/03-media/build/litert/install-deps.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,readonly \
@@ -525,11 +310,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/litert/install-deps.sh
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/litert/install-deps.sh
 
-# LiteRT web runtimes (LiteRT.js @litertjs/core + LiteRT-LM's @mediapipe/tasks-genai).
-# Prebuilt WASM/JS npm packages, so this is a pinned download + extract (no compile)
-# and arch-INDEPENDENT — it runs for every target arch and ships identical assets to
-# amd64/arm64/riscv64. Best-effort (script exits 0) so a registry hiccup can't break
-# the media build. Output: /usr/local/lib/litert-web + /usr/local/lib/litert-lm-web.
+# Prebuilt npm web runtimes; best-effort (exits 0) so a registry hiccup can't break the media build.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=tmpfs,target=/tmp \
@@ -553,43 +334,19 @@ RUN --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh litert && \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh litert-headers
 
-# ==============================================================================
-# TVM stage — Apache TVM ML compiler.
-# amd64 builds natively (tvm.sh) and stages the apache-tvm AND apache-tvm-ffi
-# wheels + libtvm into the final image so `import tvm` works in /opt/venv. BOTH
-# wheels are load-bearing for that promise: the consumer half
-# (assemble-torch-app.sh) installs the tvm wheel family --no-deps into a venv
-# whose app lock has no apache-tvm-ffi, and `import tvm`'s first statement is
-# `from tvm_ffi import ...` — a lone apache_tvm wheel ships an unimportable tvm.
-# arm64/riscv64 attempt the same wheels through the cross toolchain (best-effort,
-# newly exercised — see the RUN comment below); the always-present
-# /opt/tvm/{wheels,lib} dirs keep the final-stage COPYs valid across arches.
-# The build is BEST-EFFORT: a failure warns and continues so it can
-# never break the media image (TVM was absent before this stage existed).
-# ==============================================================================
+# TVM stage: best-effort on every arch; both wheels are needed, see docs/linux-cross-builds.md#tvm-cross-wheels-what-must-not-be-simplified-away
 FROM base AS tvm
 
 ARG TVM_REF=v0.26.0
-# CORRECTION to this comment's first version: tvm.sh DOES see versions.env --
-# common.sh:12-14 sources load-versions-env.sh against the bind-mounted copy --
-# so TVM_COMMIT was reachable all along and was simply always EMPTY. This ARG is
-# belt-and-braces so an explicit --build-arg also lands, not the thing that made
-# the pin work.
+# tvm.sh reads versions.env itself; this ARG only lets an explicit --build-arg land too.
 ARG TVM_COMMIT=
-# TVM_USE_CUDA is baked into the base image ENV as 0 by Dockerfile.sdk and was not
-# an ARG anywhere in this file, so NOTHING in the media lane could turn TVM's CUDA
-# backend on -- -DUSE_CUDA stayed OFF and the USE_CUDNN/USE_CUBLAS companions in
-# tvm-config.sh never fired. Re-declaring it here lets the GPU lane pass 1.
+# Re-declared: Dockerfile.sdk bakes 0 into ENV, and without an ARG the GPU lane could not pass 1.
 ARG TVM_USE_CUDA=0
 ENV TVM_USE_CUDA=${TVM_USE_CUDA}
 ARG TARGET_ARCH
 ARG TARGETARCH
 
-# F6: the five tvm*.sh files, not the whole 05-frameworks tree. tvm.sh sources
-# only its four siblings (none of which source anything further here), so the
-# directory mount was pulling in torch/ and flutter/ and making a
-# build-app-wheelhouse.sh edit re-pay this 23-minute build.
-# docs/refactoring-backlog.md F6
+# Only the five tvm*.sh files, so unrelated 05-frameworks edits don't re-pay this build.
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scripts/05-frameworks/tvm.sh,readonly \
     --mount=type=bind,source=linux/scripts/05-frameworks/tvm-detect.sh,target=/opt/scripts/05-frameworks/tvm-detect.sh,readonly \
     --mount=type=bind,source=linux/scripts/05-frameworks/tvm-config.sh,target=/opt/scripts/05-frameworks/tvm-config.sh,readonly \
@@ -604,42 +361,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scri
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     mkdir -p /opt/tvm/wheels /opt/tvm/lib; \
-    # tvm.sh auto-selects native (amd64, BUILD_MODE=native) vs the 2-stage LLVM
-    # cross (arm64/riscv64, BUILD_MODE=cross inherited from base) via its own
-    # cross-env: detect_cross_llvm_cmake_dir finds the target LLVM from the cross-sdk
-    # base, append_cmake_cross_args wires the cross toolchain, and _tvm_build_wheel_cross
-    # produces a target-arch wheel.
-    #
-    # Why USE_LLVM=ON is even reachable cross (the classic trap is a host-runnable
-    # llvm-config for the TARGET triple): TVM's FindLLVM only EXECUTES llvm-config on
-    # the fallback path, and tvm.sh's patch_tvm_findllvm_dylib_fallback rewrites that
-    # fallback to link the imported LLVM dylib target instead. The target package at
-    # /opt/llvm-cross/<triplet> is built LLVM_LINK_LLVM_DYLIB=ON (02-toolchain/
-    # llvm-cross.sh), so libtvm_compiler.so ends up with a DT_NEEDED on libLLVM.so.<ver>
-    # rather than static LLVM archives. That soname RESOLVES at runtime: the same
-    # unified build installs /opt/llvm-target-<arch>, Dockerfile.package COPYs it to
-    # /usr/local/llvm-target, and 06-packaging/copy-media-payloads.sh writes
-    # /etc/ld.so.conf.d/000-llvm-target.conf + ldconfig. Do not "simplify" either half
-    # away: dropping the dylib package makes CMake exec a foreign-arch llvm-config,
-    # dropping the ld.so.conf entry makes `import tvm` die on a missing libLLVM.
-    #
-    # CORRECTED 2026-08-26 (this comment used to claim "TVM's compiled ext is
-    # tvm_ffi/core.abi3.so — an arch-agnostic abi3 FILENAME, so no host-SOABI-naming
-    # bug like IREE/litert"). Verified false against the pinned sources: apache-tvm
-    # ships NO extension at all (pyproject wheel.py-api="py3"; CMake only installs the
-    # libs), while apache-tvm-ffi builds its Cython core with
-    # python_add_library(... WITH_SOABI) and its pyproject rules abi3 out in writing.
-    # It IS the IREE/litert host-SOABI class. tvm-python.sh now redirects the build
-    # interpreter's sysconfig to the staged target Python and then PROVES the staged
-    # wheels carry .cpython-<ver>-<target-triplet>.so, withdrawing them (loud verdict,
-    # still non-fatal) when they do not.
-    # BEST-EFFORT on EVERY arch: a build failure ships the media image without TVM
-    # python (WARN) exactly as before — it can never break the media build. The cross
-    # path is newly exercised here. Visibility (NOT a gate — TVM stays best-effort):
-    # smoke-torch-venv.sh reports tvm presence/version per-arch, and EXP_TVM=<ver>
-    # turns that report into a hard assertion for images that must ship TVM.
-    # (An earlier revision of this comment claimed a runtime `import tvm` gate
-    # that never existed — audit round 2 finding.)
+    # Best-effort: a failure ships without TVM; EXP_TVM=<ver> in the smoke is what makes it mandatory.
     echo "TVM build: target=${TARGET_ARCH:-amd64} BUILD_MODE=${BUILD_MODE:-native}"; \
     if bash /opt/scripts/05-frameworks/tvm.sh --ref "${TVM_REF}" --prefix /opt/tvm --workdir /tmp/tvm-src; then \
         echo "TVM build OK; wheel(s):"; ls -1 /opt/tvm/wheels/ 2>/dev/null || true; \
@@ -649,17 +371,13 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scri
         rm -f /opt/tvm/wheels/*.whl 2>/dev/null || true; \
     fi
 
-# ==============================================================================
 # OpenCV stage
-# ==============================================================================
 FROM base AS opencv
-# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
-# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
+# Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
 
 ARG OPENCV_VERSION
-# Opt-in reproducibility: 40-hex SHAs pin core/contrib to immutable commits;
-# empty (default) tracks the OPENCV_VERSION branch. core and contrib pin separately.
+# Optional 40-hex SHAs, pinned separately; empty tracks the OPENCV_VERSION branch.
 ARG OPENCV_COMMIT=""
 ARG OPENCV_CONTRIB_COMMIT=""
 ARG OPENCV_BUILD_TYPE=Release
@@ -701,31 +419,16 @@ RUN --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv-core && \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv
 
-# ==============================================================================
 # App wheelhouse stage (riscv64: torch+vision+IREE cross; amd64/arm64: IREE only)
-# ==============================================================================
 FROM base AS app-wheelhouse
 
 ARG TARGET_ARCH
-# The wheelhouse builds torch/torchvision FROM SOURCE at these refs. Without the
-# ARGs it silently used its built-in fallbacks and ignored versions.env (WH1);
-# the runtime then had to force-install the pinned pair on the archs that have
-# wheels, and riscv64 (no wheels) could not follow a pin bump at all.
+# Without these ARGs the source build ignores versions.env and riscv64 cannot follow a pin bump.
 ARG PYTORCH_VERSION=v2.14.0
 ARG TORCHVISION_VERSION=v0.29.0
 ARG IREE_VERSION=v3.11.0
 
-# NO cargo mount here, deliberately (verified 2026-08-23). This RUN executes
-# exactly one script, build-app-wheelhouse.sh, and that script never invokes
-# cargo: it drives pytorch / torchvision / IREE through setup.py + cmake and
-# `uv pip install`s only pure-python or C/C++ build executors (setuptools,
-# wheel, build, cmake, ninja, numpy, packaging, pyyaml, requests, six,
-# typing-extensions, sympy, filelock, networkx, jinja2) —
-# `grep -rniE 'cargo|maturin|setuptools[-_]rust' linux/scripts/05-frameworks/torch/`
-# is empty. The cargo registry/git mounts that used to sit on this RUN were
-# therefore inert; they now live on the gstreamer stage RUN, the one place this
-# image actually runs cargo (gst-plugins-rs + rice-proto). Do not add them back
-# here — an inert mount reads as coverage that does not exist.
+# No cargo mount: build-app-wheelhouse.sh never runs cargo, and an inert mount reads as coverage.
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/torchvision,target=/opt/scripts/patches/torchvision,readonly \
@@ -761,21 +464,13 @@ RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh app-wheels
 
-# ==============================================================================
 # Arm NN stage (arm64 only; provides ONNX Runtime Arm NN EP)
-# ==============================================================================
 FROM base AS armnn
 
 ARG TARGET_ARCH
 ARG BUILD_MODE
 
-# The apt ids carry an `-armnn` suffix instead of joining the lane-wide store:
-# on every non-arm64 lane this RUN only echoes, yet it still queued for the
-# `sharing=locked` lane store — 2026-08-27 riscv64 spent 36 min there
-# ("#25 2172.4 Skipping Arm NN deps (arm64 only, got riscv64)" / "#25 DONE
-# 2172.4s"). Own id = no contenders. Cost is arm64-only and one-time: an empty
-# store means one extra list+deb download, and install-deps.sh opens with
-# install_deps_preamble → apt_update_smart, which always runs apt-get update.
+# Own apt ids: on other lanes this RUN only echoes, yet it queued for the locked lane-wide store.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-armnn \
@@ -796,35 +491,24 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scri
         arm64|aarch64) \
             bash /opt/scripts/03-media/build/armnn/build-arm-compute-library.sh && \
             bash /opt/scripts/03-media/build/armnn/build-armnn.sh && \
-            # Wire the verify that existed as a caller-less branch since its
-            # creation (audit round 2, F11): a failed ACL/ArmNN build left
-            # empty /opt/armnn + /opt/acl dirs that shipped unexamined.
             bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh armnn ;; \
         *) \
             echo "Skipping Arm NN build (arm64 only, got ${TARGET_ARCH:-${TARGETARCH:-}})"; \
             mkdir -p /opt/armnn /opt/acl ;; \
     esac
 
-# ==============================================================================
 # FFmpeg stage
-# ==============================================================================
 FROM base AS ffmpeg
-# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
-# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
+# Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
 
-# Opt-in reproducibility: set FFMPEG_COMMIT to a 40-hex SHA to pin FFmpeg to an
-# immutable commit archive; empty (default) tracks FFMPEG_VERSION/master.
+# Optional 40-hex SHA; empty tracks FFMPEG_VERSION.
 ARG FFMPEG_COMMIT=""
 
-# HEVC (libx265) encoding. Default 0 = disabled (historical behavior); set to 1
-# (forwarded from versions.env) to probe-gate --enable-libx265. See build-ffmpeg.sh.
+# 1 probe-gates --enable-libx265; see build-ffmpeg.sh.
 ARG FFMPEG_ENABLE_X265=1
 
-# TensorFlow DNN backend (--enable-libtensorflow). Default 0 = disabled: the TF
-# C SDK adds ~500 MB to the amd64 image for one optional DNN backend. Set to 1
-# (forwarded from versions.env) to probe-gate it. ONNX backend is unaffected
-# (always on). See build-ffmpeg.sh / ffmpeg-dnn-backends.sh.
+# Off by default: the TF C SDK adds ~500 MB for one optional DNN backend.
 ARG FFMPEG_ENABLE_TF=0
 
 ENV FFMPEG_PREFIX=/opt/ffmpeg \
@@ -860,23 +544,9 @@ RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh ffmpeg
 
-# ==============================================================================
-# PyAV stage - the FFmpeg->Python bridge (`import av`).
-#
-# ORPHAN-PINS: versions.env pinned PYAV_VERSION while nothing under linux/ built
-# it, so every runtime smoke reported "No module named 'av'". PyAV is a plain
-# setuptools+Cython C extension over libav*, so it belongs next to the FFmpeg it
-# links against - see build-pyav.sh for the cross contract.
-#
-# Layered ON `ffmpeg` rather than appended to it, deliberately: /opt/ffmpeg stays
-# byte-identical, so media-inputs/gstreamer/opencv-gst keep their cache and the
-# wheel dir does not ride inside /opt/ffmpeg into every downstream image. The
-# stage never fails the lane - build-pyav.sh degrades to an EMPTY
-# /opt/pyav/wheels, which is exactly today's behaviour (app smoke check_pyav
-# optional-fails).
-# ==============================================================================
+# PyAV stage: layered on ffmpeg, not inside it, so /opt/ffmpeg stays byte-identical for downstream caches.
 FROM ffmpeg AS pyav
-# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
+# Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
 ARG PYAV_VERSION=18.1.0
 
@@ -891,10 +561,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/pyav/build-pyav.sh
 
-# ==============================================================================
-# Shared media build inputs stage — aggregates all library outputs.
-# COPY --link enables layer-parallel copying from the independent build stages.
-# ==============================================================================
+# Media inputs stage: aggregates the library outputs
 FROM base AS media-inputs
 
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
@@ -922,17 +589,11 @@ RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh media-inputs
 
-# Smoke-build alias: `nerdctl build --target media-smoke -f linux/Dockerfile.media`
-# Skips the slow gstreamer → libcamera serial tail (matches the `wrapper-smoke`
-# alias in Dockerfile.package). Useful for media-build validation before
-# kicking off the expensive full chain.
+# `--target media-smoke` skips the slow gstreamer/libcamera tail.
 FROM media-inputs AS media-smoke
 
 
-# ==============================================================================
-# GStreamer stage (depends on media-inputs; Critical Fix #5: OpenCV 5 compat
-# patch lives in build/gstreamer/common/patch-gstreamer-sources.sh)
-# ==============================================================================
+# GStreamer stage
 FROM media-inputs AS gstreamer
 
 ARG GSTREAMER_VERSION
@@ -957,40 +618,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/gstreamer/install-deps.sh
 
-# THE cargo consumer of this image, and the only one: build-gstreamer-stage.sh
-# runs install-rice-proto.sh (`cargo cinstall`) and, through setup-gstreamer.sh,
-# build-gst-plugins-rs.sh — several hundred crates. Without a mount every
-# re-execution of this RUN re-downloads and re-unpacks all of them into the
-# layer. build-gstreamer-monorepo.sh already assumes this mount exists: its
-# _gst_monorepo_compile patches csound-sys BEFORE compiling because "on warm
-# caches the csound-sys crate is already extracted in the persistent
-# cargo-registry mount" — a warm path that has never been reachable in the
-# media lane, because the mounts were sitting on two cargo-less RUNs instead.
-# CARGO_HOME is /usr/local/cargo (ENV from Dockerfile.toolchain, inherited
-# base -> compiler -> sdk -> media) and build RUNs are root, so the cargo-home
-# guard never redirects and these two paths are the real stores. SOURCE only:
-# cross-env.sh exports CARGO_TARGET_DIR=/opt/cargo-target/<target_arch>, so no
-# object files land here.
-# PER-LANE ids with default sharing, NOT one shared id:
-#   * the lanes MUTATE this store in place —
-#     patch_csound_sys_char_signedness seds registry/src/csound-sys-*/src/*.rs —
-#     and cargo's cross-process mutex is ${CARGO_HOME}/.package-cache, a file at
-#     the CARGO_HOME ROOT, OUTSIDE both mounted subtrees — so each container
-#     locks its own copy while writing one store. That is the premise the
-#     archived S5 item got wrong ("cargo's own flock makes a shared id safe");
-#     re-verify it in one command whenever this is revisited:
-#       CARGO_HOME=$(mktemp -d) cargo fetch --offline --manifest-path <any>
-#     and list CARGO_HOME — .package-cache appears at its root, next to
-#     registry/, never inside it (checked with cargo 1.96.0). A shared id would
-#     therefore hand three concurrent --parallel-archs lanes an UNGUARDED store,
-#     where one cargo re-unpacking a crate (delete the src dir, re-extract,
-#     write .cargo-ok) lands under another lane's in-flight compile.
-#   * `sharing=locked` on a shared id would serialize this multi-hour RUN across
-#     lanes: the PAR2 incident verbatim.
-#   * `sharing=private` on a shared id forks a NEW EMPTY dir per concurrent
-#     lane, i.e. the same disk as per-lane ids with none of the determinism.
-#   Per-lane means exactly one consumer per id per build, so the sharing mode
-#   stops mattering and each lane always reuses its own warm store.
+# The only cargo consumer; its lock sits outside these mounts: docs/build-cache-tiers.md#13-cache-mount-ids-and-source-checkouts
 RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/gstreamer,target=/opt/scripts/patches/gstreamer,readonly \
@@ -998,12 +626,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
-    # ${TARGETARCH}, matching Dockerfile.toolchain:228-229 (fixed 2026-08-27).
-    # These two lines used to say ${TARGET_ARCH}, so the SAME cargo caches got
-    # two different ids: cargo-registry-amd64 from the toolchain stage and
-    # cargo-registry-<target> here. Cargo's registry/git hold crate SOURCES,
-    # which are arch-independent, so the split bought nothing and cost three
-    # copies plus a toolchain cache that could never help this stage.
+    # Same ids as Dockerfile.toolchain: crate sources are arch-independent.
     --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
@@ -1022,12 +645,9 @@ RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh gstreamer
 
-# ==============================================================================
 # libcamera stage
-# ==============================================================================
 FROM gstreamer AS libcamera
-# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
-# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
+# Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
@@ -1037,12 +657,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/libcamera/install-deps.sh
 
-# NO cargo mount here either (verified 2026-08-23): build-libcamera.sh is a
-# meson/ninja build that never invokes cargo — its only package installs are
-# setuptools, wheel, meson, ninja, jinja2, pyyaml, ply and pybind11, and
-# `grep -rniE 'cargo|maturin|setuptools[-_]rust' linux/scripts/03-media/build/libcamera/`
-# is empty. Same story as app-wheelhouse: the mounts that used to be here were
-# inert and now sit on the gstreamer stage RUN.
+# No cargo mount: build-libcamera.sh never runs cargo.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/libcamera,target=/opt/scripts/patches/libcamera,readonly \
@@ -1063,23 +678,9 @@ RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh libcamera
 
-# ==============================================================================
-# OpenCV PASS 2 (opencv-gst) — rebuild OpenCV WITH the source-built GStreamer.
-# ------------------------------------------------------------------------------
-# Owner-decided two-pass build: PASS 1 (the `opencv` stage, FROM base, NO
-# gstreamer) produces the OpenCV that GStreamer's OWN opencv plugin links
-# against — that is why opencv must build BEFORE gstreamer. PASS 2 here rebuilds
-# OpenCV FROM the gstreamer stage so OpenCV's videoio backend links the
-# SOURCE-built /opt/gstreamer (1.29.x), not apt's older gstreamer. `final` COPYs
-# OpenCV from HERE, overwriting the pass-1 tree it inherits from media-inputs.
-# FORCE_REBUILD=1 is required — pass-1 opencv5.pc is present, so build-opencv
-# would otherwise skip. riscv64: build-opencv forces WITH_GSTREAMER=OFF (Ubuntu
-# Ports lacks the riscv64 gstreamer dev chain) so this pass reproduces pass 1
-# there (a deliberate, tolerated extra build for layout uniformity).
-# ==============================================================================
+# OpenCV pass 2: pass 1 feeds GStreamer's opencv plugin, this pass links videoio against the source-built GStreamer.
 FROM gstreamer AS opencv-gst
-# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
-# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
+# Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
 
 ARG OPENCV_VERSION
@@ -1125,20 +726,13 @@ RUN --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv-core && \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv
 
-# ==============================================================================
-# Final stage — combine all artifacts; COPY only the runtime scripts that must
-# persist in the published image (build scripts are NOT shipped).
-# ==============================================================================
+# Final stage: build scripts are not shipped, only runtime ones
 FROM media-inputs AS final
-# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
-# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
+# Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
 
 ARG GSTREAMER_VERSION
-# OPENCV_VERSION rides the same ENV channel as GSTREAMER_VERSION below: the
-# android stages (FROM this image) mount no versions.env, so inherited ENV is
-# their only version source — without it, opencv/android/build-android.sh
-# fell back to the moving `5.x` branch while the chain ships tag 5.0.0.
+# Exported as ENV: the android stages mount no versions.env, so inherited ENV is their only version source.
 ARG OPENCV_VERSION
 ARG OPENCV_OUTPUT_DIR=/opt/opencv5
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
@@ -1149,8 +743,7 @@ ARG FFMPEG_PREFIX=/opt/ffmpeg
 ARG LIBCAMERA_PREFIX=/opt/libcamera
 ARG GCC_VERSION=16.2.0
 ARG PYTHON_VERSION=3.14.7
-# Derived — versions.env only defines PYTHON_VERSION (empty PYTHON_VERSION falls
-# through to the :-3.14 defaults below, matching the previous behavior)
+# Derived; an empty PYTHON_VERSION falls through to the :-3.14 defaults below.
 ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}
 
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
@@ -1168,54 +761,27 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 
 COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
-# LiteRT web runtimes (prebuilt WASM/JS, arch-independent) — served like
-# onnxruntime-web. Ship on every arch. Dirs always exist (script mkdir's them).
 COPY --link --from=litert /usr/local/lib/litert-web /usr/local/lib/litert-web
 COPY --link --from=litert /usr/local/lib/litert-lm-web /usr/local/lib/litert-lm-web
-# onnxruntime-web (WASM/JS) — compiled once on amd64, shared to every arch via the
-# versioned cache mount; the onnxruntime stage always creates the dir so this COPY
-# is valid on all arches (empty only if amd64 hasn't populated the shared cache).
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-web /usr/local/lib/onnxruntime-web
 COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
-# TVM (amd64 native; empty dirs on other arches). The wheel goes to /opt/tvm-wheels
-# where collect-artifacts.sh gathers it into /opt/wheels; libtvm.so goes to
-# /usr/local/lib (already on the runtime LD path) so `import tvm` resolves it.
-# Dir-to-dir COPYs are tolerant of the empty (non-amd64 / build-failed) case.
+# Dir-to-dir COPYs tolerate the empty (skipped or failed) TVM build.
 COPY --link --from=tvm /opt/tvm/wheels /opt/tvm-wheels
 COPY --link --from=tvm /opt/tvm/lib/ /usr/local/lib/
-# PyAV: straight into the canonical wheelhouse. collect-artifacts.sh only
-# `mkdir -p`s /opt/wheels and MOVES the other components' wheels into it, so a
-# wheel already sitting there is preserved and then flows through the normal
-# repair-wheels.sh (strip + retag) / verify-wheels.sh (tag + SOABI) /
-# reconcile_local_wheels (venv install) path with its siblings. Dir-to-dir COPY,
-# so an empty (build-skipped) /opt/pyav/wheels is tolerated.
+# collect-artifacts.sh keeps wheels already in /opt/wheels, so PyAV joins the normal repair/verify path.
 COPY --link --from=pyav /opt/pyav/wheels /opt/wheels
-# OpenCV two-pass: OVERWRITE the pass-1 OpenCV inherited from media-inputs with
-# the pass-2 tree (opencv-gst), which linked the source-built GStreamer videoio.
-# Must come AFTER any media-inputs-inherited /opt/opencv5 content; a dir COPY
-# replaces the tree. See the `opencv-gst` stage header for the two-pass rationale.
+# Must follow the media-inputs tree: the pass-2 OpenCV replaces pass 1.
 COPY --link --from=opencv-gst ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
-# libvvdec.pc lives in the pkgconfig/ subdir, which the libvvdec* glob above does
-# NOT match — without this the .pc is dropped and copy-media-payloads later warns
-# "optional payload missing: libvvdec.pc", disabling downstream VVC/H.266 pkg-config
-# detection even though libvvdec.so was shipped.
+# The libvvdec* glob above does not reach the pkgconfig/ subdir.
 COPY --link --from=gstreamer /usr/local/lib/pkgconfig/libvvdec.pc /usr/local/lib/pkgconfig/libvvdec.pc
-# NOTE: rice-proto (librice-proto.so.0, needed by gst-plugins-rs webrtcbin2) is a
-# BEST-EFFORT build (install-rice-proto.sh exits 0 if cargo-c is unavailable), so
-# it cannot be pulled with a hard `COPY /usr/local/lib/librice-proto.so*` (that
-# fails the whole build when absent). Instead install-rice-proto.sh mirrors the
-# built lib into ${GSTREAMER_PREFIX}/lib on success, so it rides the existing
-# `COPY --from=gstreamer ${GSTREAMER_PREFIX}` above and stays tolerant of a skip.
+# Best-effort rice-proto rides ${GSTREAMER_PREFIX}/lib; a hard COPY of it would fail when skipped.
 COPY --link --from=libcamera /opt/libcamera /opt/libcamera
 
-# Runtime scripts (must persist in the final image) + smoke-test harness.
 COPY --chmod=755 linux/scripts/03-media/runtime /opt/scripts/03-media/runtime
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh
-# Canonical media ENV definitions (shared with Dockerfile.package):
-# linux/scripts/03-media/runtime/media-env.sh
 
 RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
@@ -1236,7 +802,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/
     PYTHONPATH="$(echo /opt/opencv5/lib/python*/site-packages 2>/dev/null):${PYTHONPATH:-}" \
     bash /opt/scripts/packaging/smoke-media.sh
 
-# Keep in sync with linux/scripts/03-media/runtime/media-env.sh (canonical definition)
+# Keep in sync with linux/scripts/03-media/runtime/media-env.sh (canonical definition).
 ENV PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:${PATH}" \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
     LD_LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib:/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${GSTREAMER_PREFIX}/lib:${OPENCV_PREFIX}/lib:${OPENCV_PREFIX}/lib64:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib:${FFMPEG_PREFIX}/lib64:${LD_LIBRARY_PATH}" \

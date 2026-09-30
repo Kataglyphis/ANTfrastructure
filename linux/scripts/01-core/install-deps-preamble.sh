@@ -1,25 +1,5 @@
 #!/usr/bin/env bash
-# install-deps-preamble.sh - convenience preamble for install-deps scripts.
-#
-# Sources cross-env.sh (if available) and provides install_deps_preamble().
-# The CANONICAL definitions of every helper below live in cross-env.sh and the
-# files it sources (cross-apt.sh: install_deps_preamble, install_host_packages,
-# install_target_packages, ...; cross-python.sh: host_python_major_minor).
-#
-# The fallback definitions below are NOT dead weight: linux/Dockerfile.media
-# COPYs only install-deps-preamble.sh, python-host.sh, cmake-cache-linker.sh
-# and modules.sh into /opt/scripts/core. The install-deps RUN steps currently
-# also bind-mount the full 01-core there, but any RUN step (present or future)
-# that does not gets no cross-env.sh — and then these fallbacks are what
-# actually runs. Do not remove them without changing that deployment.
-#
-# This file is the single entry point for install-deps scripts: it locates and
-# sources cross-env.sh itself (container path first, then the repo layout next
-# to this file), so callers only need to source this one file.
-#
-# Usage:
-#   source /path/to/install-deps-preamble.sh
-#   install_deps_preamble [extra_host_packages...]
+# Sources cross-env.sh; the fallbacks below are what runs where Dockerfile.media ships this file without it.
 
 [ -n "${_INSTALL_DEPS_PREAMBLE_LOADED:-}" ] && return 0
 _INSTALL_DEPS_PREAMBLE_LOADED=1
@@ -28,10 +8,7 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-env.sh
 else
-  # Repo / local-dev layout: cross-env.sh sits next to this file in
-  # linux/scripts/01-core. Fail loudly if it exists but cannot be loaded
-  # (mirrors the FATAL semantics the install-deps callers used to apply when
-  # sourcing cross-env.sh directly).
+  # Repo layout: cross-env.sh sits next to this file, and one that fails to load is fatal.
   _preamble_repo_cross_env="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cross-env.sh"
   if [ -f "${_preamble_repo_cross_env}" ]; then
     # shellcheck disable=SC1090
@@ -59,8 +36,7 @@ if ! command -v install_deps_preamble >/dev/null 2>&1; then
   }
 fi
 
-# Fallback: define cross-build helpers for native (non-cross) builds.
-# These are needed by install-deps scripts even when not cross-compiling.
+# Native-build fallbacks for the cross helpers install-deps scripts always call.
 if ! command -v is_cross >/dev/null 2>&1; then
   is_cross() { false; }
 fi

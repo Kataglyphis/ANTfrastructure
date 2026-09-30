@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the host-tool detector in 03-media/.../gstreamer/common/pre-setup.sh,
-# the phase that names every cross gobject-introspection wrapper the monorepo
-# stage later execs. Extracted, not sourced: pre-setup.sh is a stage script that
-# installs packages at top level.
-# docs/cross-build-verification.md#cross-gobject-introspection-naming-the-wrappers-before-writing-them
-#
-# The subject communicates through FILE-SCOPE variables by design (its own
-# header says so), so both halves of that contract read as unassigned here.
+# The detector talks through file-scope variables, hence the disable; see docs/cross-build-verification.md#cross-gobject-introspection-naming-the-wrappers-before-writing-them
 # shellcheck disable=SC2034,SC2154
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,8 +9,7 @@ SUBJECT="${TESTS_DIR}/../03-media/build/gstreamer/common/pre-setup.sh"
 _src="$(t_fn_src "${SUBJECT}" _gi_cross_detect_host_tools)" || exit 1
 eval "${_src}"
 
-# No dpkg-query: the version then comes from the pinned default, which is what a
-# scratch cross stage sees.
+# No dpkg-query, so the version comes from the pinned default, as in a scratch cross stage.
 _stub="$(mktemp -d)"
 printf '#!/usr/bin/env bash\nexit 1\n' > "${_stub}/dpkg-query"
 chmod +x "${_stub}/dpkg-query"
@@ -44,9 +36,7 @@ t_case "ldd always resolves to something the wrapper can exec"
 t_assert_eq "0" "$(t_rc test -n "${gi_host_ldd}")"
 
 t_case "the detector computes no host bindir/libdir any more (CL6)"
-# gi_bindir/gi_libdir were assigned here and read by nothing: the .pc metadata is
-# written from target_gi_bindir/target_gi_libdir, which _gi_cross_detect_target_metadata
-# owns. Set-ness, not emptiness — an assignment of "" would still be dead state.
+# Set-ness, not emptiness: an assignment of "" would still be dead state.
 t_assert_eq "" "${gi_bindir+set}"
 t_assert_eq "" "${gi_libdir+set}"
 

@@ -6,8 +6,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 1
 fi
 
-# download_file lives in 01-core/downloads.sh (normally loaded via common.sh);
-# load it directly when a caller sourced this file without the module chain.
+# Load downloads.sh directly when this file is sourced without the common.sh module chain.
 if ! command -v download_file >/dev/null 2>&1; then
   for _vulkan_dl in \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/downloads.sh" \
@@ -21,9 +20,7 @@ if ! command -v download_file >/dev/null 2>&1; then
   unset _vulkan_dl
 fi
 
-# State, not guesswork: a later "cannot find -lxcb" must be diagnosable from the
-# log alone. These three link-time symlinks decide whether vulkan-tools links at
-# all, and they are exactly what went missing on 2026-09-09.
+# Logs the link-time .so symlinks vulkan-tools needs, so a later "cannot find -lxcb" is diagnosable.
 _vulkan_report_wsi_link_libs() {
   local t l
   t="$(arch_deb_multiarch_triplet_for "$(cross_target_arch)" 2>/dev/null || true)"
@@ -71,10 +68,7 @@ install_vulkan_prereqs() {
     wayland-protocols
   )
 
-  # The TARGET halves of what gfxreconstruct, vkcube's WSI and the caps viewer
-  # link against. Optional: a ports arch that lacks one degrades that component,
-  # it does not sink the stage.
-  # docs/vulkan-foreign-arch-sdk.md#the-target-needs-its-own-dev-packages
+  # See docs/vulkan-foreign-arch-sdk.md § The target needs its own dev packages
   local -a target_optional_packages=(
     libgl-dev libglx-dev libopengl-dev libegl-dev
     qt6-base-dev
@@ -82,37 +76,22 @@ install_vulkan_prereqs() {
 
   apt_install "${host_packages[@]}"
 
-  # LOG6 (2026-08-17): the Vulkan-Profiles generator validated ×0 profiles —
-  # "`jsonschema` module is not installed, schema validation skip" — because the
-  # SDK builder picks the ACTIVE python (the uv venv when present), where apt's
-  # python3-jsonschema (system dist-packages, installed above) is invisible.
-  # Best-effort install into the venv python too so the validation actually runs.
+  # The SDK builder runs the active venv python, which cannot see apt's python3-jsonschema.
   if command -v uv >/dev/null 2>&1 && [ -x /opt/python/.venv/bin/python ]; then
     UV_PYTHON=/opt/python/.venv/bin/python uv pip install jsonschema >/dev/null 2>&1 \
       || log "jsonschema venv install failed (schema validation will be skipped — non-fatal)"
   fi
 
-  # REVERTED 2026-09-10. Dropping this guard for the native-target case was
-  # WRONG: with it gone, install_target_packages ran on an arm64 host and
-  # installed 60 packages as :amd64 — every one of them displacing the arm64
-  # dev package it was supposed to complement, which is what actually deletes
-  # /usr/lib/aarch64-linux-gnu/lib{xcb,X11,wayland-client}.so. The guard was
-  # never the cause; it was the thing preventing the damage. Why plain names
-  # resolve to :amd64 on a host whose dpkg --print-architecture is arm64 is
-  # still UNEXPLAINED — see the WSI report below, which makes it visible in
-  # minutes instead of after a 7 h build.
+  # Keep this guard. See docs/vulkan-foreign-arch-sdk.md § Building on a native arm64 host
   if cross_build_is_active && \
      command -v install_target_packages >/dev/null 2>&1; then
-    # Cross Vulkan builds keep pkg-config pointed at target multiarch roots.
-    # Install the WSI and compression dev packages for that target too.
     install_target_packages "${target_pkgconfig_packages[@]}"
     if command -v install_optional_target_packages >/dev/null 2>&1; then
       install_optional_target_packages "${target_optional_packages[@]}"
     fi
   fi
 
-  # OUTSIDE the guard on purpose: the native-target case is exactly the one
-  # where the packages are NOT installed, so that is when the report matters.
+  # Outside the guard: the native-target case, which installs nothing, is when the report matters.
   _vulkan_report_wsi_link_libs
 }
 
@@ -167,14 +146,7 @@ sanitize_vulkan_sdk_env() {
   fi
 }
 
-# The resolve-and-source half of source_vulkan_sdk_env now lives in
-# 01-core/vulkan-env.sh, so dev-side launchers can reuse it (with the opposite,
-# non-strict miss contract) without sourcing this 23 KB SDK installer and
-# inheriting its file-scope `set -euo pipefail`. Load it exactly the way
-# downloads.sh is loaded above: via the sibling 01-core dir in a repo checkout,
-# or /opt/scripts/core in an image. Every image that ships
-# /opt/scripts/toolchain/vulkan.sh (or the /usr/local/bin/vulkan.sh copy made by
-# Dockerfile.torch) also ships the whole 01-core tree under /opt/scripts/core.
+# vulkan-env.sh is split out so launchers can reuse it without this file's `set -euo pipefail`.
 if ! declare -F vulkan_env_source >/dev/null 2>&1; then
   for _vulkan_env_mod in \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/vulkan-env.sh" \
@@ -193,14 +165,10 @@ source_vulkan_sdk_env() {
   local prefix="${1:-${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT}}}"
   local sanitize_mode="${2:-keep-libs}"
 
-  # Without the module there is nothing to probe with; report a miss so the
-  # callers below take their own fallback path instead of dying on exit 127.
+  # Report a miss so callers take their fallback instead of dying on exit 127.
   declare -F vulkan_env_source >/dev/null 2>&1 || return 1
 
-  # strict=1 is passed explicitly (not left to ${VULKAN_ENV_STRICT}) because the
-  # callers of THIS function gate on the `return 1`: 04-runtime/entrypoint.sh,
-  # 05-frameworks/tvm-detect.sh::try_source_vulkan_env,
-  # 03-media/build/gstreamer/install-deps.sh and .../common/pre-setup.sh.
+  # strict=1 explicitly: this function's callers gate on its `return 1`.
   vulkan_env_source "${prefix}" "${sanitize_mode}" 1
 }
 
@@ -209,8 +177,7 @@ _vulkan_setup_gcc_runtime() {
   ${SUDO:-} mkdir -p "${ARCH_LIB_DIR}" /usr/lib
   if [[ -n "${LIBRARY_PATH:-}" ]]; then
     log "Setting up GCC runtime library symlinks for linking..."
-    # IFS=':' read (scoped to the builtin): splits regardless of the caller's
-    # IFS — the ${var//:/ } spaces would not split under a strict IFS=$'\n\t'.
+    # IFS=':' read splits regardless of the caller's IFS; ${var//:/ } would not under IFS=$'\n\t'.
     local -a _vk_libdirs=()
     IFS=':' read -r -a _vk_libdirs <<< "${LIBRARY_PATH}"
     for libdir in "${_vk_libdirs[@]}"; do
@@ -260,12 +227,7 @@ _vulkan_setup_sdk_includes() {
         fi
       done
       export CMAKE_INCLUDE_PATH="${SDK_ARCHDIR}/include:/usr/include${CMAKE_INCLUDE_PATH:+:${CMAKE_INCLUDE_PATH}}"
-      # Do NOT add /usr/include to the compiler include-path vars below. It is
-      # already a default system dir; forcing it in via CPATH/C_INCLUDE_PATH/
-      # CPLUS_INCLUDE_PATH makes GCC search it *before* the C++ header dir, so
-      # libstdc++'s `#include_next <stdlib.h>` (from <cstdlib>) skips it and
-      # fails with "stdlib.h: No such file or directory" when building the host
-      # SDK tools (e.g. SPIRV-Tools). Only prepend the Vulkan SDK headers.
+      # Never put /usr/include in CPATH: it breaks libstdc++'s `#include_next <stdlib.h>`.
       export CPATH="${SDK_ARCHDIR}/include${CPATH:+:${CPATH}}"
       export C_INCLUDE_PATH="${SDK_ARCHDIR}/include${C_INCLUDE_PATH:+:${C_INCLUDE_PATH}}"
       export CPLUS_INCLUDE_PATH="${SDK_ARCHDIR}/include${CPLUS_INCLUDE_PATH:+:${CPLUS_INCLUDE_PATH}}"
@@ -297,9 +259,6 @@ _vulkan_setup_cross_pkgconfig() {
     local host_pkgconfig="/usr/share/pkgconfig:/usr/local/lib/pkgconfig"
     local host_multiarch="${DEB_BUILD_MULTIARCH:-}"
     if [ -z "${host_multiarch}" ]; then
-      # DUP1: prefer dpkg's authoritative DEB_BUILD_MULTIARCH; fall back to the
-      # canonical build_deb_multiarch_triplet (platform.sh) instead of an inline
-      # uname→sed copy of the arch map (proven identical output on this host).
       host_multiarch="$(dpkg-architecture -qDEB_BUILD_MULTIARCH 2>/dev/null || build_deb_multiarch_triplet)"
     fi
     if [ -n "${host_multiarch}" ]; then
@@ -329,17 +288,11 @@ _vulkan_build_components() {
     spirv-cross spirv-reflect vulkan-profiles
   )
 
-  # NOTHING is arch-skipped: amd64 is the reference and all three build this set.
-  # This list drives the HOST x86_64 build, so the target arch cannot be a reason,
-  # and a skip takes the CHECKOUT with it -- which is what cost riscv64 slang.
-  # docs/vulkan-foreign-arch-sdk.md#amd64-is-the-reference-all-three-arches-build-the-same-set
+  # Never arch-skip. See docs/vulkan-foreign-arch-sdk.md § amd64 is the reference: all three arches build the same set
   _vulkan_sdk_components_ref+=(vulkan-tools gfxreconstruct vcv slang vulkantools dxc cdl)
 }
 
-# What ./vulkansdk skipped above but the TARGET build still wants. Source only:
-# the HOST link is what fails; cross-compiling against the target sysroot is
-# exactly the configuration those X11/XCB libs are right for.
-# docs/vulkan-foreign-arch-sdk.md
+# Checkouts the target build wants when ./vulkansdk skipped them. See docs/vulkan-foreign-arch-sdk.md
 _VK_SOURCE_ONLY="Vulkan-Tools:https://github.com/KhronosGroup/Vulkan-Tools.git"
 
 _vulkan_fetch_source_only() {
@@ -357,12 +310,7 @@ _vulkan_fetch_source_only() {
   done
 }
 
-# pkg-config needs the same save/restore the compilers already get here, and used
-# not to get it. PKG_CONFIG_LIBDIR lists the TARGET triplet first and the vulkansdk
-# run is sudo --preserve-env'd with it intact, so a HOST tool asking for xcb was
-# handed the target module; its LIBRARY_DIRS became a find_library HINT and the
-# x86_64 link got an absolute aarch64 path, which ld cannot skip the way it skips
-# an incompatible -l. docs/vulkan-foreign-arch-sdk.md
+# See docs/vulkan-foreign-arch-sdk.md § The host build must not inherit the cross pkg-config path
 _vulkan_pkgconfig_use_host() {
   [ -n "${VULKAN_HOST_PKG_CONFIG_LIBDIR:-}" ] || return 0
   export PKG_CONFIG_LIBDIR="${VULKAN_HOST_PKG_CONFIG_LIBDIR}"
@@ -377,18 +325,13 @@ _vulkan_pkgconfig_restore() {
 }
 
 _vulkan_run_vulkansdk() {
-  # LunarG's ./vulkansdk installs its own build dependencies via a bare
-  # `apt-get install` (no -y). In a non-interactive container build that aborts
-  # at the "Do you want to continue? [Y/n]" prompt. Make apt auto-confirm and
-  # run non-interactively for that nested install (global config so the sudo'd
-  # apt-get inside vulkansdk picks it up regardless of env).
+  # ./vulkansdk runs a bare sudo'd `apt-get install` that aborts at the prompt without global assume-yes.
   ${SUDO:-} tee /etc/apt/apt.conf.d/90assume-yes >/dev/null <<'EOF'
 APT::Get::Assume-Yes "true";
 EOF
   export DEBIAN_FRONTEND=noninteractive
 
-  # The vulkansdk builds HOST-arch tools. Save/restore cross CC/CXX
-  # so CMake uses the HOST compiler, not the cross-compiler.
+  # ./vulkansdk builds host tools, so it must not see the cross compilers.
   local _saved_cc="${CC:-}" _saved_cxx="${CXX:-}"
   local _saved_cmake_cc="${CMAKE_C_COMPILER:-}" _saved_cmake_cxx="${CMAKE_CXX_COMPILER:-}"
   unset CC CXX CMAKE_C_COMPILER CMAKE_CXX_COMPILER
@@ -397,14 +340,7 @@ EOF
   local _saved_pc_cross="${PKG_CONFIG_ALLOW_CROSS:-}"
   _vulkan_pkgconfig_use_host
 
-  # GCC 16 promotes several new -W diagnostics that fire (often as false
-  # positives) on the older SDK component sources — e.g. -Warray-bounds on
-  # SPIRV-Tools' timer.h. Those components build with -Werror, so the build
-  # dies. CXXFLAGS can't fix it: CMake places env flags BEFORE each project's
-  # own `-Wall -Werror`, so a later -Werror wins. Instead, shim the host
-  # compilers to append `-Wno-error` LAST on every invocation, which always
-  # wins and neutralises -Werror for all SDK components (host tools only; our
-  # own builds are unaffected). vulkansdk auto-detects cc/c++ from PATH.
+  # Shims append -Wno-error last: GCC 16 false positives hit -Werror, and env CXXFLAGS land before it.
   local _cc_shim_dir _real_cc _real_cxx _shim
   _cc_shim_dir="$(mktemp -d)"
   _real_cc="$(command -v cc || command -v gcc || echo /usr/bin/cc)"
@@ -418,12 +354,7 @@ EOF
   chmod +x "${_cc_shim_dir}"/*
   export PATH="${_cc_shim_dir}:${PATH}"
 
-  # --preserve-env is a sudo-only flag: it stops sudo from stripping the PATH
-  # (compiler shims), PKG_CONFIG_*, CMAKE_* and other exports set above. When
-  # SUDO is empty (already root, e.g. foreign-arch cross containers) there is no
-  # sudo to strip anything, so run vulkansdk directly — prefixing a bare
-  # `--preserve-env=...` there makes the shell treat the flag as the command
-  # (exit 127). Guard the flag on SUDO being set.
+  # --preserve-env only with sudo: with SUDO empty the shell runs the flag as the command (exit 127).
   if [ -n "${SUDO:-}" ]; then
     ${SUDO} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH,DEBIAN_FRONTEND \
       ./vulkansdk -j "$JOBS" "$@"
@@ -436,10 +367,7 @@ EOF
   [ -n "${_saved_cmake_cxx}" ] && export CMAKE_CXX_COMPILER="${_saved_cmake_cxx}" || unset CMAKE_CXX_COMPILER
 }
 
-# The ./vulkansdk checkout-and-build tree under <ver>/source: 3.9 GB and 1256
-# builder-arch objects per foreign lane, read by _build_vulkan_targets above and by
-# nothing after it. Dropped in the SAME RUN, so no downstream layer carries it.
-# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+# See docs/artifact-copy-completeness.md § The Vulkan tree ships only what the image runs
 _vulkan_prune_sdk_sources() {
   local target_dir="$1"
 
@@ -448,10 +376,7 @@ _vulkan_prune_sdk_sources() {
   ${SUDO:-} rm -rf "${target_dir}/source"
 }
 
-# The DXC row installs an LLVM 3.7 fork's headers and validator into the target
-# prefix; LunarG's own clean_nonsdk_files drops them, so the tarball amd64 gets
-# has never carried them. Mirror that arm, after the row that writes them.
-# docs/vulkan-foreign-arch-sdk.md#the-dxc-prune-mirrors-the-vendors-own
+# See docs/vulkan-foreign-arch-sdk.md § The DXC prune mirrors the vendor's own
 _vulkan_target_prune_nonsdk_dxc() {
   local archdir="$1" rel
 
@@ -483,35 +408,21 @@ _build_vulkan_sdk_cross() {
     _vulkan_build_components "${arch_suffix}" sdk_components
     _vulkan_run_vulkansdk "${sdk_components[@]}"
 
-    # ./vulkansdk only built HOST (x86_64) tools; produce the TARGET-arch SDK the
-    # image actually runs. docs/vulkan-foreign-arch-sdk.md
+    # ./vulkansdk built host tools only. See docs/vulkan-foreign-arch-sdk.md
     _vulkan_fetch_source_only "${target_dir}" "${version:-${VULKAN_VERSION:-}}"
     _build_vulkan_targets "${arch_suffix}" "${target_dir}" "${target_triplet}"
     _vulkan_prune_sdk_sources "${target_dir}"
   )
 }
 
-# Cross-configure/build/install one bundled SDK component into the target arch dir.
-# $1=source dir, $2=label (for logs + build subdir); remaining args are extra cmake
-# -D flags (e.g. -DCMAKE_INSTALL_PREFIX=...). Reads the cross toolchain from the
-# caller's _xbuild_cc/_xbuild_cxx/_xbuild_proc/_xbuild_triplet (dynamic scope).
-# CMAKE_LIBRARY_ARCHITECTURE is what makes find_library look in
-# /usr/lib/<triplet>: without it X11, XCB, ZSTD and OpenGL are all "NOT found"
-# with the target dev packages installed, which is what stopped gfxreconstruct.
-# Non-fatal: returns non-zero on any failure so the caller can log and continue.
+# Usage: <src> <label> [cmake -D...]; reads the caller's _xbuild_* by dynamic scope, returns non-zero on failure.
 _cross_build_sdk_component() {
   local src="$1" label="$2"
   shift 2
   local build_dir
   build_dir="$(mktemp -d)/${label}"
 
-  # When the "cross" target IS the build host (a native arm64 build), the other
-  # arches' dev packages are installed system-wide and CMAKE_LIBRARY_ARCHITECTURE
-  # is only a PREFERENCE — find_library still reached /usr/lib/x86_64-linux-gnu
-  # and handed vulkaninfo an x86_64 libxcb.so ("file in wrong format",
-  # 2026-09-08). Ignore the foreign multiarch dirs outright. Only ever active on
-  # a host whose own arch is a cross target, i.e. never on the amd64 dev box,
-  # where for_each_cross_target skips the host arch entirely.
+  # See docs/vulkan-foreign-arch-sdk.md § Building on a native arm64 host
   local _vk_ignore="" _vk_ldflags=""
   if [ "${_xbuild_triplet}" = "$(arch_deb_multiarch_triplet_for "$(build_arch_oci)")" ]; then
     local _o
@@ -520,12 +431,7 @@ _cross_build_sdk_component() {
       [ -d "/usr/lib/${_o}" ] && _vk_ignore="${_vk_ignore:+${_vk_ignore};}/usr/lib/${_o}"
     done
     [ -n "${_vk_ignore}" ] && log "ignoring foreign multiarch lib dirs: ${_vk_ignore}"
-    # pkg-config hands CMake a BARE name (XCB_LIBRARIES=xcb) plus a separate
-    # XCB_LIBRARY_DIRS; components that link the former without the latter emit
-    # a plain -lxcb, and the cross-prefixed driver then searched no system
-    # multiarch dir: "cannot find -lxcb" (2026-09-09). LIBRARY_PATH is additive
-    # and invisible to CMake variables, so it fixes the -l resolution without
-    # clobbering any per-component flag the dynamic args set.
+    # LIBRARY_PATH resolves a bare -lxcb without clobbering per-component CMake flags.
     local _d
     for _d in "/usr/lib/${_xbuild_triplet}" "/lib/${_xbuild_triplet}"; do
       [ -d "${_d}" ] || continue
@@ -569,18 +475,12 @@ _cross_build_sdk_component() {
   return 0
 }
 
-# --- decomposed body of _build_vulkan_targets -------------------------------
-# Plain-statement calls only (keeps errexit live); _xbuild_*/_vk_* come from the
-# caller by dynamic scope. docs/refactoring-backlog-archive-2026-08-31.md
+# _build_vulkan_targets steps: plain-statement calls keep errexit live; _xbuild_*/_vk_* come by dynamic scope
 _vulkan_target_copy_headers() {
   local arch_suffix="$1" host_archdir="$2" archdir="$3"
 
   ${SUDO:-} mkdir -p "${archdir}/lib" "${archdir}/include"
-  # Vulkan headers are arch-independent: reuse the host archdir's installed copy.
-  # TS6: guard ONLY on the source dir being absent; a cp that FAILS with the dir
-  # present is a real error (disk/perms) — the old `2>/dev/null || true` masked it
-  # as "source absent". Surface it (non-fatal: the loader build below will fail
-  # loudly if the headers really didn't land).
+  # Headers are arch-independent; a failed cp with the source present is a real error, so warn.
   if [ -d "${host_archdir}/include/vulkan" ]; then
     ${SUDO:-} cp -a "${host_archdir}/include/vulkan" "${archdir}/include/" \
       || warn "vulkan headers present at ${host_archdir} but cp to ${archdir} failed (${arch_suffix})"
@@ -591,13 +491,10 @@ _vulkan_target_copy_headers() {
   fi
 }
 
-# The loader's surface entry points, one per window system it must drive; each
-# exists only when its BUILD_WSI_* option compiled in (CON41).
-# docs/vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems
+# The loader's WSI entry points; each exists only when its BUILD_WSI_* option compiled in (docs/vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems).
 _VK_LOADER_WSI_SYMBOLS="vkCreateXcbSurfaceKHR vkCreateXlibSurfaceKHR vkCreateWaylandSurfaceKHR"
 
-# Prints the WSI entry points the loader at $1 does NOT export; empty = all there.
-# readelf, not nm: it reads a foreign-arch ELF without a multi-target binutils.
+# Prints the WSI entry points the loader at $1 does not export; readelf, since it reads a foreign-arch ELF.
 _vulkan_loader_wsi_missing() {
   local lib="$1" syms="" s missing=""
   if [ -f "${lib}" ]; then
@@ -609,9 +506,7 @@ _vulkan_loader_wsi_missing() {
   printf '%s' "${missing# }"
 }
 
-# Vulkan loader (libvulkan.so) with X11/XCB/Wayland WSI, like LunarG's amd64 one.
-# The options are REQUIRED pkg-config lookups upstream, so a missing target dev
-# package fails the configure, and the export check catches any silent drop.
+# Loader with X11/XCB/Wayland WSI: the options are required pkg-config lookups, and the export check catches a silent drop.
 _vulkan_target_build_loader() {
   local arch_suffix="$1" host_archdir="$2" archdir="$3" loader_src="$4"
 
@@ -643,10 +538,7 @@ _vulkan_target_build_loader() {
   fi
 }
 
-# SPIRV-Tools — TVM links the libs; the spirv-* executables are what make the
-# foreign-arch prefix a usable SDK instead of link fodder. SPIRV_WERROR=OFF: GCC
-# 16's -Warray-bounds false-positives on timer.h would otherwise fail -Werror.
-# docs/vulkan-foreign-arch-sdk.md
+# SPIRV_WERROR=OFF: GCC 16's -Warray-bounds false positive on timer.h would fail -Werror.
 _vulkan_target_build_spirv_tools() {
   local arch_suffix="$1" archdir="$2" spirv_tools_src="$3" spirv_headers_src="$4"
 
@@ -669,9 +561,7 @@ _vulkan_target_build_spirv_tools() {
   fi
 }
 
-# Record a component as failed and say so in one place: the label goes into
-# _vk_failed (the caller's, by dynamic scope) where _vulkan_target_verdict reads
-# it, and the rest is the message a reader sees.
+# Appends the label to the caller's _vk_failed (read by _vulkan_target_verdict) and logs the rest.
 _vk_note_failure() {
   local label="$1"
   shift
@@ -679,9 +569,7 @@ _vk_note_failure() {
   log "$*"
 }
 
-# One cross-install per SDK component. Non-fatal by contract: a component that
-# will not cross-build degrades the target prefix, it does not fail the lane.
-# docs/vulkan-foreign-arch-sdk.md
+# See docs/vulkan-foreign-arch-sdk.md § Failures here are non-fatal on purpose
 _vulkan_target_install_component() {
   local arch_suffix="$1" archdir="$2" src="$3" label="$4"
   shift 4
@@ -701,8 +589,7 @@ _vulkan_target_install_component() {
   fi
 }
 
-# LunarG's checkout directory does not always match the component name, and
-# shaderc keeps its CMake project one level down in src/.
+# LunarG's checkout dir need not match the component name (shaderc's CMake project is in src/).
 _vulkan_target_src() {
   local root="$1" d
   shift
@@ -712,10 +599,7 @@ _vulkan_target_src() {
   printf '%s' "${root}/$1"
 }
 
-# label | checkout candidates (comma-separated) | extra cmake args.
-# Ordered by dependency, then by cost: the config packages the later components
-# resolve through find_package(CONFIG) come first, the heavy ones last.
-# docs/vulkan-foreign-arch-sdk.md
+# label | checkout candidates | cmake args; find_package(CONFIG) providers first, heavy rows last.
 _VK_TARGET_COMPONENTS="
 vulkan-headers|Vulkan-Headers|
 spirv-headers|SPIRV-Headers|
@@ -740,10 +624,7 @@ crash-diagnostic-layer|CrashDiagnosticLayer|
 dxc|DirectXShaderCompiler|-DLLVM_BUILD_TOOLS=OFF -DHLSL_COPY_GENERATED_SOURCES=ON -DCLANG_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_TESTS=OFF -DHLSL_INCLUDE_TESTS=OFF -DSPIRV_WERROR=OFF -DLLVM_ENABLE_WERROR=OFF
 "
 
-# Row flags that only exist as a PATH, so the static table cannot carry them.
-# Both are the Canadian cross llvm-cross.sh already does for tblgen: a generator
-# or a moc that must EXECUTE on the build host while the rest cross-compiles.
-# $5 is an out-array name. docs/vulkan-foreign-arch-sdk.md#components-that-need-a-host-tool
+# $5 is an out-array name. See docs/vulkan-foreign-arch-sdk.md § Components that need a host tool
 _vulkan_target_dynamic_args() {
   local label="$1" target_dir="$2" archdir="$3" triplet="$4"
   local -n _vk_dyn_ref="$5"
@@ -753,21 +634,16 @@ _vulkan_target_dynamic_args() {
   _xbuild_extra_targets=()
   case "${label}" in
     slang)
-      # ./vulkansdk's HOST slang build leaves its generators here; without them
-      # the cross build links slang-embed for the TARGET and runs it: exit 127.
+      # Without the host generators the cross build runs a target slang-embed: exit 127.
       gen="${target_dir}/source/slang/build/generators/Release/bin"
       if [ -x "${gen}/slang-embed" ]; then
         _vk_dyn_ref+=(-DSLANG_GENERATORS_PATH="${gen}")
       else
         log "slang: no host generators at ${gen}; the cross build will try to run its own"
       fi
-      # ./vulkansdk's build_slang() copies gfx.slang and slang.slang into the
-      # build tree between --build and --install; the generic helper does not.
+      # ./vulkansdk's build_slang() copies the .slang modules before install; the generic helper does not.
       _xbuild_extra_targets+=(copy-gfx-slang-modules)
-      # slang-rhi picks a PREBUILT Dawn WebGPU zip and upstream ships one for
-      # x86_64 and aarch64 only; its arch cascade FATAL_ERRORs on anything else,
-      # unconditionally, even with the backend off. Both flags are needed: the
-      # option stops the fetch, the defined URL stops the cascade being entered.
+      # slang-rhi's prebuilt Dawn is x86_64/aarch64 only; OFF stops the fetch, the empty URL the FATAL_ERROR.
       case "${triplet}" in
         x86_64-*|aarch64-*) ;;
         *) _vk_dyn_ref+=(-DSLANG_RHI_ENABLE_WGPU=OFF -DSLANG_RHI_DAWN_URL=) ;;
@@ -777,16 +653,11 @@ _vulkan_target_dynamic_args() {
       # Target Qt6 from the sysroot, host moc/rcc/uic from the build host's own.
       _vk_dyn_ref+=(-DQT_HOST_PATH=/usr)
       _vk_dyn_ref+=(-DCMAKE_PREFIX_PATH="${archdir};/usr/lib/${triplet}")
-      # Upstream never find_package()s Vulkan: CMakeLists.txt interpolates
-      # "${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so" raw, so unset it
-      # degrades to the HOST /lib/libvulkan.so and ninja refuses the graph.
+      # Upstream interpolates ${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so raw; unset, it is the host lib.
       _vk_dyn_ref+=(-DVULKAN_LOADER_INSTALL_DIR="${archdir}")
       ;;
     vulkantools)
-      # vkconfig-gui is Qt6 (same split as vcv). REQUIRE_FIND_PACKAGE is the
-      # load-bearing one: upstream's find_package(Qt6 QUIET) drops the whole
-      # configurator with a message() and still exits 0, so the row would count
-      # as built while shipping no vkconfig at all.
+      # REQUIRE_FIND_PACKAGE: upstream's find_package(Qt6 QUIET) silently drops vkconfig and still exits 0.
       _vk_dyn_ref+=(-DQT_HOST_PATH=/usr -DCMAKE_REQUIRE_FIND_PACKAGE_Qt6=TRUE)
       _vk_dyn_ref+=(-DCMAKE_PREFIX_PATH="${archdir};/usr/lib/${triplet}")
       _vk_dyn_ref+=(-DVULKAN_LOADER_INSTALL_DIR="${archdir}")
@@ -799,8 +670,7 @@ _vulkan_target_dynamic_args() {
       _vk_dyn_ref+=(-DGLSLANG_INSTALL_DIR="${archdir}" -DYAML_CPP_INSTALL_DIR="${archdir}")
       ;;
     dxc)
-      # An LLVM 3.7 fork: most of its option set only EXISTS once the vendor
-      # cache file is read, and its two tblgens must run on the build host.
+      # DXC's options exist only once the vendor cache is read, and its tblgens must run on the host.
       src="$(_vulkan_target_src "${target_dir}/source" DirectXShaderCompiler)"
       [ -f "${src}/cmake/caches/PredefinedParams.cmake" ] \
         && _vk_dyn_ref+=(-C"${src}/cmake/caches/PredefinedParams.cmake")
@@ -815,10 +685,7 @@ _vulkan_target_dynamic_args() {
   esac
 }
 
-# Upstream defects the pinned SDK source still carries. Idempotent, and a no-op
-# when the source is absent. RE-CHECK EVERY VULKAN SDK BUMP -- see the patch
-# header for the upstream ref that makes each one droppable.
-# docs/vulkan-foreign-arch-sdk.md#upstream-patches-recheck-on-every-sdk-bump
+# See docs/vulkan-foreign-arch-sdk.md § Upstream patches: recheck on every SDK bump
 _vulkan_patch_component() {
   local label="$1" src="$2" patch
   [ -n "${src}" ] && [ -d "${src}" ] || return 0
@@ -832,8 +699,7 @@ _vulkan_patch_component() {
     "${label}: derive pointer size and endianness from the compiler (upstream PR #12305)"
 }
 
-# Everything the LunarG SDK ships beyond the four TVM needed, cross-built for the
-# arch the image runs. docs/vulkan-foreign-arch-sdk.md
+# See docs/vulkan-foreign-arch-sdk.md
 _vulkan_target_build_sdk_rest() {
   local arch_suffix="$1" archdir="$2" target_dir="$3" triplet="${4:-${_xbuild_triplet:-}}"
   local label cands extra src
@@ -859,33 +725,21 @@ EOF
 _vulkan_target_link_glslang_aliases() {
   local archdir="$1"
 
-  # Recent glslang installs the tool as `glslang`; KOMPUTE and older tooling
-  # look for `glslangValidator`. Guarantee both names exist.
+  # New glslang installs `glslang`; KOMPUTE and older tooling look for `glslangValidator`.
   if [ -x "${archdir}/bin/glslang" ] && [ ! -e "${archdir}/bin/glslangValidator" ]; then
     ${SUDO:-} ln -s glslang "${archdir}/bin/glslangValidator"
   elif [ -x "${archdir}/bin/glslangValidator" ] && [ ! -e "${archdir}/bin/glslang" ]; then
     ${SUDO:-} ln -s glslangValidator "${archdir}/bin/glslang"
   fi
-  # The SDK setup-env.sh only puts <ver>/x86_64/bin on PATH (the host tools),
-  # so the target arch dir is NOT searched. Symlink the tool into /usr/local/bin
-  # (on the default PATH) so `find_program(glslangValidator)` resolves it on a
-  # native aarch64/riscv64 build.
+  # setup-env.sh puts only the x86_64 bin on PATH, so find_program() needs these in /usr/local/bin.
   for _b in glslang glslangValidator; do
     [ -e "${archdir}/bin/${_b}" ] && ${SUDO:-} ln -sf "${archdir}/bin/${_b}" "/usr/local/bin/${_b}"
   done
-  # LOAD-BEARING: the loop's last `[ -e ]` may be false and would trip errexit.
-  # docs/refactoring-backlog-archive-2026-08-31.md
+  # Load-bearing: the loop's last `[ -e ]` may be false and would trip errexit.
   return 0
 }
 
-# glslang / glslangValidator — a BUILD-TIME shader compiler. LunarG's ./vulkansdk
-# only produced the HOST (x86_64) glslangValidator, which cannot run on a native
-# aarch64/riscv64 runner, so a project that compiles GLSL during its build (e.g.
-# KOMPUTE: `find_program(glslangValidator)` -> FATAL_ERROR) fails on those arches.
-# Cross-build glslang into the target archdir/bin so ARM and RISC-V images ship a
-# runnable one. ENABLE_OPT=OFF drops the SPIRV-Tools-Opt dependency (the validator
-# does not need the optimiser); the Python source generation glslang runs at
-# configure time is host-side and arch-independent, so it cross-builds cleanly.
+# Builds that compile GLSL (KOMPUTE) need a glslangValidator that runs on the image's arch.
 _vulkan_target_build_glslang() {
   local arch_suffix="$1" archdir="$2" target_dir="$3"
 
@@ -894,10 +748,7 @@ _vulkan_target_build_glslang() {
   if [ -d "${glslang_src}" ]; then
     _vk_attempted=$((_vk_attempted + 1))
     log "Cross-building glslang (glslangValidator) for ${arch_suffix}"
-    # BUILD_SHARED_LIBS is EXCLUSIVE, not additive: ON alone would trade the six
-    # static installs for nine shared ones. The vendor configures glslang twice
-    # into one prefix, and the STATIC pass must land last because it owns the
-    # exported CMake package that find_package(glslang) reads.
+    # BUILD_SHARED_LIBS is exclusive, so two passes; static last, as it owns the exported CMake package.
     _cross_build_sdk_component "${glslang_src}" "glslang-shared-${arch_suffix}" \
         -DCMAKE_INSTALL_PREFIX="${archdir}" \
         -DENABLE_OPT=OFF \
@@ -926,21 +777,10 @@ _vulkan_target_build_glslang() {
   fi
 }
 
-# The components without which the target prefix is not a Vulkan SDK: the loader
-# the image loads, the SPIRV libraries TVM links, and the shader toolchain an
-# application is compiled with. Each one built on BOTH foreign lanes of the
-# 2026-09-05 chain, so a failure here is a regression, not optionality — and the
-# runtime smoke's tool count would fail the lane hours later anyway.
-# docs/vulkan-foreign-arch-sdk.md#failures-here-are-non-fatal-on-purpose
+# Without these the prefix is no Vulkan SDK, and each builds on both foreign lanes: a failure is a regression.
 _VK_REQUIRED_COMPONENTS="${VULKAN_CROSS_REQUIRED-vulkan-loader spirv-tools glslang shaderc vulkan-tools vulkan-validationlayers}"
 
-# TS6 aggregate verdict, in two halves. A per-component failure is tolerated for
-# the OPTIONAL rows (each logs its own "unavailable; downstream may fail"), but a
-# REQUIRED component that was attempted and failed is fatal here rather than a
-# baffling Vulkan/TVM/KOMPUTE failure much later. And if EVERY attempted
-# component failed the cause is systemic (a broken ${target_triplet} toolchain,
-# missing cross sysroot, …); the old code returned 0 regardless, so surface it —
-# VULKAN_CROSS_STRICT=1 promotes that one to fatal too.
+# A failed REQUIRED component is fatal here, not a baffling failure later; all-failed means a broken toolchain.
 _vulkan_target_verdict() {
   local arch_suffix="$1" target_triplet="$2"
   local comp lost=""
@@ -960,17 +800,7 @@ _vulkan_target_verdict() {
   fi
 }
 
-# Cross-build the Vulkan target libraries TVM needs and install them under the
-# target arch dir. LunarG's ./vulkansdk only produces HOST (x86_64) tools, so a
-# cross build otherwise has no target libvulkan/libSPIRV-Tools: find_package(Vulkan)
-# resolves the x86_64 loader (target link fails "file in wrong format") and TVM's
-# cmake errors on Vulkan_SPIRV_TOOLS_LIBRARY=NOTFOUND. Build both from the SDK's
-# bundled sources with the target toolchain into /opt/vulkan/<ver>/<arch>/ (where
-# detect_vulkan_library / detect_spirv_tools_library already look). Each component
-# is non-fatal: if one can't build, the downstream guard disables that capability
-# rather than failing the whole stage. Vulkan headers are arch-independent, so the
-# host archdir's copy is reused. The loader carries X11/XCB/Wayland WSI (CON41).
-# Step ORDER is a contract: headers before loader (the loader build needs them).
+# Step order is a contract: headers before the loader. See docs/vulkan-foreign-arch-sdk.md
 _build_vulkan_targets() {
   local arch_suffix="$1"
   local target_dir="$2"
@@ -981,9 +811,7 @@ _build_vulkan_targets() {
   local spirv_tools_src="${target_dir}/source/SPIRV-Tools"
   local spirv_headers_src="${target_dir}/source/SPIRV-Headers"
   local _xbuild_cc _xbuild_cxx _xbuild_proc _xbuild_triplet="${target_triplet}"
-  # TS6: aggregate verdict — individual component failures are tolerated (each is
-  # optional downstream), but ALL of them failing at once is an env-shaped cause
-  # (a broken cross toolchain), which used to exit 0 silently. Count attempts/ok.
+  # Read by _vulkan_target_verdict through dynamic scope.
   local _vk_attempted=0 _vk_ok=0 _vk_failed=""
 
   _xbuild_cc="${CC:-${target_triplet}-gcc}"
@@ -1004,10 +832,7 @@ _build_vulkan_targets() {
 }
 
 install_vulkan_sdk() {
-  # Fallback chain ends in the CANONICAL pin name. VULKAN_VERSION_DEFAULT is a
-  # setup-dependencies.sh-local override that exists only when --vulkan-version
-  # was passed — a zero-arg call used to abort "unbound variable" instead of
-  # falling back to the versions.env pin it was named after.
+  # End on the versions.env pin: VULKAN_VERSION_DEFAULT exists only when --vulkan-version was passed.
   local version="${1:-${VULKAN_VERSION_DEFAULT:-${VULKAN_VERSION:?VULKAN_VERSION (or an explicit argument) required}}}"
   log "Installing Vulkan SDK ${version} via tarball"
   install_vulkan_prereqs
@@ -1021,9 +846,7 @@ install_vulkan_sdk() {
   local tarball="vulkansdk-linux-x86_64-${version}.tar.xz"
   local url="https://sdk.lunarg.com/sdk/download/${version}/linux/${tarball}"
   log "Downloading ${tarball} from ${url}"
-  # VERIFIED when the pin exists (supply-chain audit #7): the SDK ships
-  # glslang/spirv-tools — shader COMPILERS invoked during the media and SDK
-  # builds. VULKAN_SDK_SHA256 bumps together with VULKAN_VERSION.
+  # Verified: the SDK ships shader compilers the builds run. VULKAN_SDK_SHA256 bumps with VULKAN_VERSION.
   if [ -n "${VULKAN_SDK_SHA256:-}" ]; then
     download_verified_file "$url" "${VULKAN_SDK_SHA256}" "$tarball" || die "Failed to download/verify Vulkan SDK"
   else

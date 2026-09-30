@@ -1,15 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Moved up from a consumer repo (BeschleunigerBallett,
-# scripts/windows/tests) on 2026-08-07. The module was upstreamed on
-# 2026-08-02 but its suite stayed behind, so this repo could change
-# WindowsCMake.Common with no test signal of its own - the only thing
-# exercising it was a consumer's opt-in Windows lane.
-#
-# Converted from Pester 3.4 dash-less syntax to Pester 5+ in the move: the
-# consumer pinned Pester 3.4.0, Invoke-Tests.ps1 here requires >= 5.0.
 
 Describe 'WindowsCMake.Common' {
   BeforeAll {
@@ -26,9 +17,7 @@ Describe 'WindowsCMake.Common' {
 
   Context 'Get-CompileCommandsDatabase' {
     It 'throws when neither compile_commands.json nor build.ninja exists' {
-      # -ModuleName is required: Get-CompileCommandsDatabase calls Test-Path
-      # from inside the module, which an unscoped mock never reaches - the
-      # test would then hit the real filesystem and pass for the wrong reason.
+      # An unscoped mock never reaches Test-Path inside the module, so the test would hit the real filesystem.
       Mock -ModuleName WindowsCMake.Common -CommandName Test-Path { return $false }
 
       { Get-CompileCommandsDatabase -Context ([pscustomobject]@{ }) -BuildRoot $script:buildRoot } |
@@ -50,8 +39,7 @@ Describe 'WindowsCMake.Common' {
       ($a -join ' ') | Should -Be '-B C:\b --preset clangcl-release -DX=1'
     }
 
-    # A COMPILER_CACHE=sccache preset made Cache.cmake set the launcher again, so the
-    # switch only cleared environment variables that CMake then overrode.
+    # A COMPILER_CACHE=sccache preset makes Cache.cmake set the launcher again, overriding the cleared env vars.
     It '-DisableSccache also clears the preset''s compiler cache and a cached launcher, after the extra args' {
       $a = Get-CmakeConfigureArgs -BuildPath 'C:\b' -Preset 'p' -ConfigureExtraArgs @('-DCOMPILER_CACHE=sccache') -DisableSccache
       ($a -join ' ') | Should -Be '-B C:\b --preset p -DCOMPILER_CACHE=sccache -DCOMPILER_CACHE= -DCMAKE_C_COMPILER_LAUNCHER= -DCMAKE_CXX_COMPILER_LAUNCHER='
@@ -65,12 +53,7 @@ Describe 'WindowsCMake.Common' {
 
   Context 'Get-SanitizerRuntimeDlls' {
     It 'stages the runtime Get-AsanRuntimeDirs selects, not clang-cl-on-PATH' {
-      # Regression (2026-09-11): this used to walk clang-cl-on-PATH roots
-      # first, so inside the Windows image it staged LLVM's DLL while the
-      # shared cmake/Sanitizers.cmake links Microsoft's -- every
-      # ASAN-instrumented build tool then died at load with
-      # STATUS_ENTRYPOINT_NOT_FOUND. Delegation to the one owner of the
-      # selection policy (WindowsTesting.Common) is the contract under test.
+      # Sanitizers.cmake links Microsoft's ASan runtime; staging LLVM's DLL fails every tool with STATUS_ENTRYPOINT_NOT_FOUND.
       $fakeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("kataglyphis-asan-fake-" + $PID)
       $null = New-Item -ItemType Directory -Path $fakeDir -Force
       $fakeDll = Join-Path $fakeDir 'clang_rt.asan_dynamic-x86_64.dll'

@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# app_packaging_ensure_flatpak_runtime, app_packaging_flatpak_ensure_refs,
-# app_packaging_setup_dependencies_for_container (CON2: probe both scopes),
-# app_packaging_flatpak_finish_args_block (CON6: append-only knob) and
-# app_packaging_package_cmake_install_flatpak (lib/app-packaging.sh).
-# What is pinned is what a green run cannot show: the header's three
-# conventions -- container-native staging, ostree and not the exit code as the
-# verdict, no success line without assert_artifact -- the scope probe, the
-# user-first/system-fallback install, and the tool check that names ostree.
+# Tests for lib/app-packaging.sh's flatpak half: scope probes, append-only finish args, ostree as the verdict.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -53,8 +46,7 @@ printf 'ostree %s\n' "$*" >> "${STUB_LOG}"
 printf 'app/%s/x86_64/master\n' "${STUB_APP_ID:-org.example.app}"
 STUB
 
-# The dependency-setup path probes these with `command -v`; the host running the
-# suite may or may not ship them, so the fixture owns the answer.
+# Probed with `command -v`; the fixture, not the host, owns the answer.
 cat > "${BIN}/dpkg" <<'STUB'
 #!/usr/bin/env bash
 exit 0
@@ -71,10 +63,7 @@ cat > "${BIN}/dbus-run-session" <<'STUB'
 exec "$@"
 STUB
 
-# `cmake --install <dir> --prefix <p>` lays down the tree a real CMake install
-# would: the binary plus the three PROJECT-named files the packager has to
-# rename. STUB_CMAKE_NO_BIN=1 reproduces an install that succeeded with nothing
-# in bin/ (a component filter, or a target that was never built).
+# Installs the binary plus three project-named files to rename; STUB_CMAKE_NO_BIN=1 leaves bin/ empty.
 cat > "${BIN}/cmake" <<'STUB'
 #!/usr/bin/env bash
 printf 'cmake %s\n' "$*" >> "${STUB_LOG}"
@@ -103,19 +92,14 @@ APP_ID="org.kataglyphis.accelerantgine"
 PROJECT="KataglyphisCppProject"
 
 OUT=""; rc=0; LOG=""; FLATPAK_WORK=""
-# _call <env-assignments...> -- <function> <args...>
-# Runs one library function in its own shell with the stubs first on PATH.
+# _call <env-assignments...> -- <function> <args...>: one library function in its own shell, stubs first on PATH.
 _call() {
   local -a env_pairs=()
   while [ $# -gt 0 ] && [ "$1" != "--" ]; do env_pairs+=("$1"); shift; done
   shift
   LOG="$(mktemp "${_work}/log.XXXXXX")"
   FLATPAK_WORK="$(mktemp -d "${_work}/fpwork.XXXXXX")"
-  # Every fixture switch is spelled here with its default, and `env` below
-  # overrides the one or two a case is about. Spelled rather than left to the
-  # stubs' own ${X:-default}: a switch only a stub mentions has no owner, and a
-  # test fixture's switch is not an operator switch -- it must not be parked in
-  # lint-env-knobs.allow to quieten the registry gate.
+  # Every switch has its default here, so none is owned only by a stub or parked in lint-env-knobs.allow.
   OUT="$(PATH="${BIN}:${PATH}" STUB_LOG="${LOG}" STUB_APP_ID="${APP_ID}" \
     STUB_PROJECT="${PROJECT}" KATAGLYPHIS_FLATPAK_WORKDIR="${FLATPAK_WORK}" \
     STUB_DEFAULT_ARCH=x86_64 STUB_USER_REMOTE=1 STUB_SYSTEM_REMOTE=1 \
@@ -130,10 +114,7 @@ _call() {
 
 # ── app_packaging_require_flatpak_tools ──────────────────────────────────────
 
-# _require <tool>... -- run the check with EXACTLY these tools resolvable. The
-# library is sourced with the real PATH and the narrowing happens AFTER it, so
-# the cases cannot depend on what the host image ships: an image that already
-# carries ostree would otherwise pass the case that is about a box without it.
+# _require <tool>...: exactly these tools resolvable; PATH narrows after sourcing, so host tools cannot leak in.
 _require() {
   local dir _t
   dir="$(mktemp -d "${_work}/req.XXXXXX")"
@@ -156,10 +137,7 @@ _require flatpak flatpak-builder ostree
 t_assert_eq "0" "${rc}" "output was: ${OUT}"
 
 t_case "require_flatpak_tools: OSTREE is required, and the message says what for"
-# The measured box: Debian's and Ubuntu's `flatpak` depends on libostree and NOT
-# on the ostree CLI, so both declared tools are present, this check passed, and
-# app_packaging_assert_flatpak_committed then reported "is not in <repo>" over an
-# export that had succeeded. AccelerANTgine kept a local tool check over it.
+# Debian's and Ubuntu's flatpak depends on libostree, not the ostree CLI the verdict needs.
 _require flatpak flatpak-builder
 t_assert_eq "1" "${rc}" "a packaging run whose verdict cannot be asked is not a packaging run"
 t_assert_contains "${OUT}" "ostree not found"
@@ -174,17 +152,12 @@ t_assert_contains "${OUT}" "flatpak-builder not found"
 t_assert_contains "${OUT}" "exports it to the repo"
 
 t_case "require_flatpak_tools: ALL of them are reported, not just the first"
-# One apt-get installs all three, so stopping at the first costs a second round
-# trip to discover the next one.
+# One apt-get installs all three, so report every missing one at once.
 _require
 t_assert_eq "3" "$(printf '%s
 ' "${OUT}" | grep -c 'not found')"
 
-# ── app_packaging_setup_dependencies_for_container (CON2) ────────────────────
-# The image installs flathub + the runtime pair SYSTEM-wide as root, and the
-# container runs as uid 1001. An unconditional --user install therefore pulled a
-# SECOND per-user copy of the two largest refs (~1.9 GB per run per arch). The
-# probe must ask both scopes, exactly like app_packaging_ensure_flatpak_runtime.
+# ── setup_dependencies_for_container (CON2): the image installs refs system-wide, so probe both scopes ──
 _setup_deps() {
   _call "$@" -- eval 'app_packaging_ensure_appimagetool_via_antfrastructure() { :; }; app_packaging_setup_dependencies_for_container x64'
 }
@@ -246,8 +219,7 @@ t_assert_contains "$(cat "${LOG}")" "--user install -y --noninteractive flathub 
 t_assert_contains "$(cat "${LOG}")" "--user install -y --noninteractive flathub org.freedesktop.Sdk/x86_64/24.08"
 
 t_case "ensure_flatpak_runtime: a ref that is already there is NOT reinstalled"
-# 1-2 GB per ref, and a user install of a ref the machine already has
-# system-wide is a second copy, not a no-op.
+# A user install of a ref present system-wide is a second 1-2 GB copy, not a no-op.
 _call STUB_USER_HAS_REF=0 -- app_packaging_ensure_flatpak_runtime
 t_assert_eq "0" "${rc}" "output was: ${OUT}"
 t_assert_eq "" "$(grep -F -- '--user install' "${LOG}" || true)"
@@ -286,8 +258,7 @@ _call STUB_DEFAULT_ARCH=aarch64 -- app_packaging_ensure_flatpak_runtime
 t_assert_contains "$(cat "${LOG}")" "org.freedesktop.Platform/aarch64/"
 
 t_case "ensure_flatpak_runtime: the runtime version defaults to the hub pin"
-# FLATPAK_RUNTIME_VERSION is a versions.env pin; a literal here would drift from
-# it silently, which is the defect the consumer's own header records.
+# FLATPAK_RUNTIME_VERSION is a versions.env pin; a literal would drift from it silently.
 _call -- app_packaging_ensure_flatpak_runtime
 t_assert_contains "$(cat "${LOG}")" "org.freedesktop.Platform/x86_64/${FLATPAK_RUNTIME_VERSION:-24.08}"
 
@@ -307,9 +278,7 @@ t_case "package_cmake_install_flatpak: the payload comes from cmake --install"
 t_assert_contains "$(cat "${LOG}")" "cmake --install ${_bdir} --prefix ${FLATPAK_WORK}/cmake-install/source/app"
 
 t_case "package_cmake_install_flatpak: staging is CONTAINER-NATIVE, not under the build or out dir"
-# Everything flatpak touches needs fchmod, which a bind-mounted host drive
-# refuses. out_dir is routinely the build directory on a mounted workspace, so
-# staging there is the failure this convention exists to prevent.
+# flatpak needs fchmod, which a bind-mounted host drive refuses, and out_dir is often on one.
 t_assert_eq "" "$(grep -F -- "--repo=${_bdir}" "${LOG}" || true)"
 t_assert_eq "" "$(grep -F -- "--repo=${_odir}" "${LOG}" || true)"
 t_assert_contains "$(cat "${LOG}")" "--repo=${FLATPAK_WORK}/cmake-install/repo"
@@ -336,8 +305,7 @@ t_assert_contains "$(cat "${_manifest}")" "\"command\": \"${PROJECT}\""
 t_assert_contains "$(cat "${_manifest}")" "\"path\": \"${FLATPAK_WORK}/cmake-install/source/app\""
 
 t_case "package_cmake_install_flatpak: the PROJECT-named install files are renamed to the APP ID"
-# CMake install rules name after the project; flatpak resolves by app id, and a
-# .desktop under the wrong name is a silently iconless, unlaunchable app.
+# flatpak resolves by app id; a project-named .desktop is a silently iconless, unlaunchable app.
 _stage="${FLATPAK_WORK}/cmake-install/source/app"
 t_assert_ok test -f "${_stage}/share/applications/${APP_ID}.desktop"
 t_assert_ok test -f "${_stage}/share/icons/hicolor/256x256/apps/${APP_ID}.png"
@@ -346,8 +314,7 @@ t_assert_eq "" "$(find "${_stage}/share" -name "${PROJECT}.*" 2>/dev/null)" \
   "the project-named copies must be MOVED, not duplicated: two .desktop files is an ambiguous install"
 
 t_case "package_cmake_install_flatpak: a non-zero flatpak-builder with a COMMITTED app still ships"
-# The export can be complete while `Pruning cache` fails with fchmod: Operation
-# not permitted. The exit code is reported, never used as the verdict.
+# The export can be complete while `Pruning cache` fails on fchmod; the exit code is never the verdict.
 _call STUB_FB_RC=1 -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v9"
 t_assert_eq "0" "${rc}" "output was: ${OUT}"
 t_assert_contains "${OUT}" "flatpak-builder exited 1"
@@ -371,8 +338,7 @@ t_assert_eq "1" "${rc}"
 t_assert_contains "${OUT}" "cmake --install failed"
 
 t_case "package_cmake_install_flatpak: a bundle file that is EMPTY is not a success"
-# Convention 3: nothing announces success without app_packaging_assert_artifact.
-# build-bundle can exit 0 having written nothing.
+# build-bundle can exit 0 having written nothing, so success needs app_packaging_assert_artifact.
 _call STUB_EMPTY_BUNDLE=1 -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v9"
 t_assert_eq "1" "${rc}"
 t_assert_contains "${OUT}" "missing or empty"

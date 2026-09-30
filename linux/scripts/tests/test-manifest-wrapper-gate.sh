@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for _manifest_wrapper_gate (build-runtime-manifest.sh) — the refusal
-# matrix that keeps a multi-arch index from mixing two generations of wrapper
-# images. Extracted with its ancestry collaborators stubbed, so the DECISION is
-# under test, not the registry.
-# docs/cross-build-verification.md#the-wrapper-generation-gate-_manifest_wrapper_gate
+# The decision, not the registry: collaborators stubbed; see docs/cross-build-verification.md#the-wrapper-generation-gate-_manifest_wrapper_gate
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -11,9 +7,7 @@ SUBJECT="${TESTS_DIR}/../build-runtime-manifest.sh"
 
 _fn="$(t_fn_src "${SUBJECT}" _manifest_wrapper_gate)" || exit 1
 
-# _gate — run the gate with every collaborator stubbed. Inputs come from the
-# environment: RIDS (comma-separated recorded run-ids, one per arch, empty = no
-# stamp), COHERENT/ANDROID_STALE/TAG_FAILS as 0|1, plus the real knobs.
+# _gate: env RIDS (one run-id per arch, empty = unstamped) and COHERENT/ANDROID_STALE/TAG_FAILS as 0|1.
 _gate() {
   (
     set +e
@@ -25,8 +19,7 @@ _gate() {
     eval "${_fn}"
     arch_list_to_words() { printf '%s' "${1//,/ }"; }
     runtime_wrapper_tag() { [ "${TAG_FAILS:-0}" = "1" ] && return 1; printf 'img:runtime-%s' "$1"; }
-    # Stateless on purpose: the caller reads it in a command substitution, so a
-    # counter kept here would be discarded with that subshell every time.
+    # Stateless: the caller reads it in a command substitution, which would discard a counter.
     ancestry_recorded_run_id() {
       local a="${1##*-}" i=1 x
       for x in ${TARGET_ARCHES//,/ }; do
@@ -42,8 +35,7 @@ _gate() {
     printf 'RC=%s\n' "$?"
   )
 }
-# Every call sits in a command substitution, so an assignment prefix cannot leak
-# into the next case.
+# Every call sits in a command substitution, so an assignment prefix cannot leak into the next case.
 
 t_case "one generation across all three arches passes"
 out="$(_gate)"
@@ -78,10 +70,7 @@ t_assert_contains "${out}" "--force set"
 t_case "a repo with no wrapper tag scheme opts out instead of refusing"
 t_assert_contains "$(TAG_FAILS=1 _gate)" "RC=0"
 
-# ── F1: the build-only region sits behind ONE --manifest-only test ───────────
-# main() used to ask `[ "${BUILD_IMAGES}" -eq 1 ]` in front of three phases.
-# --manifest-only and --repair exist to publish an index over wrappers that are
-# ALREADY built; a phase that leaks out of that region rebuilds them.
+# Build-only phases sit behind one test; one leaking out would rebuild what --manifest-only only publishes.
 _MANIFEST_SH="${TESTS_DIR}/../build-runtime-manifest.sh"
 _main_src="$(t_fn_src "${_MANIFEST_SH}" main)" || exit 1
 _build_src="$(t_fn_src "${_MANIFEST_SH}" _manifest_build_and_smoke)" || exit 1

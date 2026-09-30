@@ -40,9 +40,9 @@ command line, so that file is its only channel.
 
 `.opencode/agents/*.md` is therefore a **build artefact**. Add it to
 `.gitignore`; the loop warns when you have not. It used to be hand-maintained
-per consumer, which is precisely the failure `New-AgenticComposedPrompt`'s
-docstring names — "which is how one consumer ended up with two full copies that
-had drifted 271 lines apart". One such copy had silently lost the executor's
+per consumer, which is precisely the failure `New-AgenticComposedPrompt`
+exists to prevent: one consumer ended up with two full copies that had drifted
+271 lines apart. One such copy had silently lost the executor's
 incident narrative, its `timeout: 600000` guidance and the `- [b]` commit step.
 
 Point at your overlay with a top-level block — engine-agnostic, because the

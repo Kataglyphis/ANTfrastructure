@@ -66,9 +66,7 @@ runs:
         echo "saved=${saved}" >> "${GITHUB_OUTPUT}"
         echo "path=${SAVE_PATH}" >> "${GITHUB_OUTPUT}"
 
-    # Deletes the entries this key's older runs left, before this one adds its own, so
-    # the key keeps one entry and GitHub's quota eviction never reaches another key's
-    # only one (compiler-cache-prune/prune.sh says why).
+    # Prune before saving so the key keeps one entry (compiler-cache-prune/prune.sh says why).
     - name: Delete this key's older entries
       id: prune
       if: steps.decide.outputs.saved == 'true'

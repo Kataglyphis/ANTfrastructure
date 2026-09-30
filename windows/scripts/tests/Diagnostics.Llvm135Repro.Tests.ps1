@@ -1,23 +1,10 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Invoke-LlvmAarch64Layout.ps1 decides whether a candidate clang-cl lets this
-# repo DELETE the two #135 workarounds from Build-OpencvFromSource.ps1. That
-# makes its command-line surgery load-bearing in an unusual direction: if
-# Get-CodegenFlags leaves either workaround spelling in the flag list, the
-# "workaround OFF" arm is not off, the control compiles clean, and the harness
-# reports a compiler fix that does not exist. A false green here retires a
-# workaround that is still needed and breaks the arm64 lane.
-#
-# So the stripping is pinned against the REAL failing command line, captured
-# verbatim from the 2026-08-26 cross build (out/windows-build-logs/
-# bk-20260826-192841-Dockerfile.media-builder-media-core-built-opencv.log,
-# the median_blur.dispatch.cpp.obj FAILED line). out/ is gitignored, so the
-# fixture is embedded rather than read -- CI has no build logs.
 
-# Never -Force: that resets the harness result count mid-run. Probe on a
-# harness-only command, since Pester also exports Describe.
+# A workaround spelling left in the flags reports a compiler fix that does not exist, so stripping is pinned on a real command line.
+
+# Never -Force: it resets the harness result count; probe a harness-only command, since Pester also exports Describe.
 if (-not (Get-Command Get-ScriptFunctionDefinition -ErrorAction SilentlyContinue)) {
     Import-Module (Join-Path $PSScriptRoot 'TestHarness.psm1')
 }
@@ -29,9 +16,7 @@ $script:Target = 'aarch64-pc-windows-msvc'
 # Get-CodegenFlags reads $Target from its enclosing scope, as it does in the script.
 $Target = $script:Target
 
-# One line, verbatim. Note it carries the jump-table workaround in its -mllvm
-# form -- that run predates the switch to +force-32bit-jump-tables -- which is
-# precisely why both spellings have to be stripped.
+# Verbatim; it carries the older -mllvm jump-table spelling, which is why both spellings must be stripped.
 $script:RealCommand = 'C:\Users\ContainerAdministrator\.cargo\bin\sccache.exe C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin\clang-cl.exe --target=aarch64-pc-windows-msvc  /nologo -TP -DCVAPI_EXPORTS -DHAVE_STDARG_H=1 -DVK_NO_PROTOTYPES -D_USE_MATH_DEFINES -D_VARIADIC_MAX=10 -D_WIN32_WINNT=0x0601 -D__OPENCV_BUILD=1 -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -IC:\temp\opencv-src\opencv\3rdparty\dlpack\include -IC:\temp\opencv-src\opencv\3rdparty\include -IC:\temp\opencv-src\opencv\modules\imgproc\include -IC:\temp\opencv-src\build\modules\imgproc -IC:\temp\opencv-src\opencv\modules\core\include -IC:\temp\opencv-src\opencv\modules\flann\include -IC:\temp\opencv-src\opencv\modules\geometry\include -IC:\temp\opencv-src\opencv\3rdparty\zlib -IC:\temp\opencv-src\build\3rdparty\zlib -imsvcC:\temp\opencv-src\build /FIcstring -Wno-unused-parameter -Wno-documentation-unknown-command -Wno-deprecated-copy -Wno-undef -Wno-missing-field-initializers --target=aarch64-pc-windows-msvc /D_USE_MATH_DEFINES -mllvm -aarch64-enable-compress-jump-tables=false  /D _CRT_SECURE_NO_DEPRECATE /D _CRT_NONSTDC_NO_DEPRECATE /D _SCL_SECURE_NO_WARNINGS /Gy /bigobj /D _ARM64_DISTINCT_NEON_TYPES /Oi  /fp:precise -W -Wreturn-type -Wnon-virtual-dtor -Waddress -Wsequence-point -Wformat -Wformat-security -Wmissing-declarations -Wmissing-prototypes -Wstrict-prototypes -Wundef -Winit-self -Wpointer-arith -Wshadow -Wsign-promo -Wuninitialized -Winconsistent-missing-override -Wno-delete-non-virtual-dtor -Wno-unnamed-type-template-args -Wno-comment -Wno-deprecated-enum-enum-conversion -Wno-deprecated-anon-enum-enum-conversion -Qunused-arguments /FS  /EHa /wd4127 /wd4251 /wd4324 /wd4275 /wd4512 /wd4589 /wd4819  /O2 /Ob2 /DNDEBUG  -DNDEBUG -std:c++17 -MD -clang:-MD -clang:-MTmodules\imgproc\CMakeFiles\opencv_imgproc.dir\src\median_blur.dispatch.cpp.obj -clang:-MFmodules\imgproc\CMakeFiles\opencv_imgproc.dir\src\median_blur.dispatch.cpp.obj.d /Fomodules\imgproc\CMakeFiles\opencv_imgproc.dir\src\median_blur.dispatch.cpp.obj /Fdlib\opencv_imgproc500.pdb -c -- C:\temp\opencv-src\opencv\modules\imgproc\src\median_blur.dispatch.cpp'
 
 $script:Flags = @(Get-CodegenFlags -Tokens (Split-CommandLine -Line $script:RealCommand))
@@ -65,10 +50,7 @@ Describe 'llvm135 repro harness: what Get-CodegenFlags must STRIP' {
     }
 
     It 'drops the VALUE of a separated /D, not just the /D' {
-        # OpenCV passes `/D _CRT_SECURE_NO_DEPRECATE` as two tokens. Dropping only
-        # the switch leaves the name behind as a positional argument, and clang-cl
-        # reads positional arguments as INPUT FILES. Measured: this is how the
-        # function first went wrong.
+        # `/D NAME` is two tokens; dropping only /D leaves NAME, which clang-cl reads as an input file.
         Assert-True (-not ($script:Flags -contains '_CRT_SECURE_NO_DEPRECATE')) 'bare define leaked'
         Assert-True (-not ($script:Flags -contains '_ARM64_DISTINCT_NEON_TYPES')) 'bare define leaked'
     }
@@ -122,8 +104,7 @@ Describe 'llvm135 repro harness: what must be KEPT, because it shapes the layout
     }
 
     It 'keeps /fp:precise, which the case-insensitive /F[odip] rule used to eat' {
-        # -match is case-INSENSITIVE, so '^[-/]F[odip]' also matches /fp:precise.
-        # Only -cmatch separates /Fo from /fp. This assertion is the regression pin.
+        # -match is case-insensitive, so only -cmatch separates /Fo from /fp:precise.
         Assert-True ($script:Flags -ccontains '/fp:precise') '/fp:precise was stripped as an output flag'
     }
 

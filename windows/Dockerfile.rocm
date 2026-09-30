@@ -1,11 +1,7 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# AMD ROCm layer — TheRock for Windows (HIP SDK, math and DNN libraries). amd64 only.
-# Lineage: base -> THIS (the sdk slot, like Dockerfile.nvidia) -> toolchain -> media
-# -> migraphx -> llama -> torch -> final, all under -rocm tags (Build-Buildkit.ps1 -Variant rocm).
-# Why the sdk slot, and why lib\llvm\bin stays off PATH: docs/windows-builds.md § ROCm layer.
-# Build context: the repo root.
+# AMD ROCm (TheRock) in the sdk slot, amd64 only; see docs/windows-rocm.md § The ROCm layer (`Dockerfile.rocm`).
 
 ARG BASE_IMAGE=local/kataglyphis:windows-base
 FROM ${BASE_IMAGE}
@@ -22,15 +18,13 @@ COPY windows\scripts\host\Install-Rocm.ps1 C:\temp\scripts\
 
 RUN & 'C:\temp\scripts\Install-Rocm.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\TheRock\build'
 
-# The Khronos Vulkan loader into System32 (Server Core has none; FFmpeg's dlopen and Python never read PATH),
-# its verified copy and licence into C:\vulkan-loader. After the ROCm RUN: a Vulkan bump keeps the tarball layer.
+# Loader into System32 because FFmpeg's dlopen and Python never read PATH; after the ROCm RUN so a Vulkan bump keeps that layer.
 ARG VULKAN_VERSION=1.4.357.0
 ARG VULKAN_RT_WINDOWS_ZIP_SHA256=a14672efed15aafc7f5a16572d35cd3a3416eadf670aeee3cdf50ee32d5fbf83
 COPY windows\scripts\host\Install-VulkanLoader.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\Install-VulkanLoader.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\vulkan-loader'
 
-# AMD's documented variables in one layer, inherited by every toolchain and media compile.
-# ROCm's bin goes LAST on PATH (its own flatc.exe, OpenCL.dll); lib\llvm\bin never goes on it.
+# ROCm's bin goes last on PATH (it ships its own flatc.exe and OpenCL.dll); lib\llvm\bin never goes on it.
 ENV GPU_TYPE="rocm" `
     ROCM_PATH="C:\TheRock\build" `
     HIP_PATH="C:\TheRock\build" `

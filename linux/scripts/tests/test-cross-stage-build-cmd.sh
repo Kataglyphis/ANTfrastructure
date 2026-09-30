@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# CHARACTERISATION tests for _cross_stage_build_impl. They pin what it DOES today
-# -- the argv it assembles, how often it retries, and what it salvages -- so the
-# function can be decomposed (backlog F1) and proven unchanged. A difference here
-# after a refactor is a regression, not a judgement call.
+# Characterisation of _cross_stage_build_impl (argv, retries, salvage): a diff after a refactor is a regression.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -10,9 +7,7 @@ CORE="${TESTS_DIR}/../01-core"
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
 
-# Collaborators, written once. Three of them are defined by cross-stage-build.sh
-# itself, so those live in a SECOND file sourced AFTER it: stubbing them before
-# the source is silently undone and their knobs then do nothing.
+# Stubs of functions the subject defines go in restubs.sh, sourced after it, or the source undoes them.
 cat > "${_work}/stubs.sh" <<'STUBS'
 append_common_build_args() { local -n _o="$1"; _o+=(--common); }
 append_buildkit_host_arg() { local -n _o="$1"; _o+=(--host); }
@@ -31,8 +26,7 @@ _cross_salvage_disk_ok() { [ "${DISK_OK:-1}" = "1" ]; }
 cross_stage_log_redirect() { printf '%s' "${FAKE_LOG_FILE:-}"; }
 RESTUBS
 
-# One run of the function under stubs. $1 is shell to run instead of the default
-# body; the rest are env assignments.
+# _impl <shell run before the source> [env..]: one run of RUNLINE under stubs.
 _impl() {
   local body="$1"; shift
   env "$@" bash -c '
@@ -121,18 +115,9 @@ t_case "a successful build runs once"
 t_assert_contains "$(_attempts PUSH=1 TRANSIENT=1 BUILD_RC=0)" "attempts=1" \
   "success returns immediately"
 
-# ── the registry-cache drop (F1) ─────────────────────────────────────────────
-# 2026-08-18: the ghcr cache IMPORT is itself the failing read, so a retry that
-# keeps `--cache-from type=registry` re-reads the same broken blob. After TWO
-# DeadlineExceeded/httpReadSeeker hits the loop drops the registry pair and keeps
-# the LOCAL cache. Nothing covered this path before: it needs a non-empty
-# log_file whose tail matches, and it mutates build_cmd and _regcache_fails
-# ACROSS retry iterations, which no single-shot argv assertion can see.
+# Registry-cache drop: after two cache-import flakes the retries keep only the local cache.
 RUNLINE='_cross_stage_build_impl 1 label repo/img:tag Dockerfile.x --extra >/dev/null 2>&1'
-# Every attempt appends its own argv to ARGV_LOG; the log_file the impl tails is
-# seeded with the flake text so `tail | grep` matches from the first failure.
-# $1 is the last line the build log ends on -- the retry loop tails it and only
-# the cache-import flake text arms the drop.
+# _regcache <last build-log line> [env..]: each attempt logs its argv; only flake text arms the drop.
 _regcache() {
   local tail_line="$1"; shift
   : > "${_work}/argv.log"
@@ -147,10 +132,7 @@ _NOT_FLAKE='ERROR: unexpected status: 502 Bad Gateway'
 # $1 = 1-based attempt number -> that attempt's argv
 _argv_of() { sed -n "$1p" "${_work}/argv.log"; }
 
-# The count comes from the argv log, not from _N: with a log_file set, the impl
-# pipes `run` into tee, and the left side of a pipe is a SUBSHELL -- an in-process
-# counter never leaves it. That is also why the log file is the only honest record
-# of what each attempt was handed.
+# Counted from the argv log: with a log_file, `run` is piped into tee, so a counter stays in the subshell.
 _attempt_count() { grep -c . "${_work}/argv.log" 2>/dev/null || true; }
 
 t_case "the registry cache survives the FIRST flake -- one hiccup is not a verdict"
@@ -204,12 +186,7 @@ t_assert_eq "" "$(_salvaged SALVAGE_CACHE_EXPORT=0)"        "its own knob"
 t_assert_eq "" "$(_salvaged CROSS_NO_LOCAL_CACHE_EXPORT=1)" "no local export, nothing to salvage"
 t_assert_eq "" "$(_salvaged DISK_OK=0)"                     "a short disk must not be filled further"
 
-# ── the REAL classifier ────────────────────────────────────────────────────
-# Everything above stubs _cross_stage_push_error_is_transient to a boolean, so
-# its regex had no coverage at all -- which is how a bare 429 arm shipped that
-# matched BuildKit's `#15 429.0` elapsed-time prefix and bought three full
-# rebuilds of a stage whose smoke had failed deterministically. Drive the
-# shipped function against log tails instead.
+# The real classifier against log tails; everything above stubs it to a boolean.
 _classify() {
   local out
   out="$(mktemp)"; printf '%s\n' "$1" > "${out}"

@@ -1,23 +1,8 @@
 #!/usr/bin/env bash
-# Vendor the prebuilt LiteRT web (WASM/JS) runtimes into the image, mirroring how
-# onnxruntime-web assets are shipped for browser use. Unlike onnxruntime-web (which
-# we compile from source via emscripten), these are PREBUILT npm packages, so this
-# is a pinned download + extract of the servable .wasm/.js assets — arch-independent,
-# so the identical output is shipped to amd64/arm64/riscv64.
-#
-#   LiteRT.js        : @litertjs/core (+ @litertjs/tfjs-interop, @litertjs/wasm-utils)
-#                      https://developers.google.com/edge/litert/web
-#   LiteRT-LM (web)  : @mediapipe/tasks-genai — Google's on-device LLM Inference API
-#                      for the web (the LiteRT-LM lineage; there is no `litert-lm` npm).
-#
-# Outputs (served like /usr/local/lib/onnxruntime-web):
-#   ${LITERT_WEB_OUTPUT_DIR:-/usr/local/lib/litert-web}      <- @litertjs assets
-#   ${LITERT_LM_WEB_OUTPUT_DIR:-/usr/local/lib/litert-lm-web} <- @mediapipe/tasks-genai
+# Prebuilt, arch-independent npm assets; LiteRT-LM's web runtime is @mediapipe/tasks-genai, as no litert-lm npm exists.
 set -euo pipefail
 
-# Define logging UNCONDITIONALLY as functions: `command -v info` would otherwise
-# resolve to the GNU texinfo `info` binary (present in the build image), so any
-# `info "msg"` would run the manual reader and fail under `set -e`.
+# Defined unconditionally: `command -v info` would find texinfo's info binary in the build image.
 info() { echo "[INFO] $*"; }
 warn() { echo "[WARN] $*" >&2; }
 
@@ -27,8 +12,7 @@ LITERT_WEB_OUTPUT_DIR="${LITERT_WEB_OUTPUT_DIR:-/usr/local/lib/litert-web}"
 LITERT_LM_WEB_OUTPUT_DIR="${LITERT_LM_WEB_OUTPUT_DIR:-/usr/local/lib/litert-lm-web}"
 REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org}"
 
-# Fetch <scope>/<name>@<version> from the npm registry and extract package/ into
-# ${dest}. Pinned tarball URL (no npm resolver) for reproducibility; retried.
+# A pinned tarball URL rather than the npm resolver, for reproducibility.
 _fetch_npm_package() {
   local spec="$1" version="$2" dest="$3"
   local name="${spec##*/}" scope_path="${spec}"
@@ -40,13 +24,7 @@ _fetch_npm_package() {
     tries=$((tries + 1)); warn "download ${spec}@${version} failed (try ${tries}/3)"; sleep 2
   done
   if [ "${ok}" -ne 1 ]; then rm -rf "${tmp}"; warn "giving up on ${spec}@${version}"; return 1; fi
-  # Integrity: verify the downloaded tarball against the registry's published
-  # `dist.integrity` (sha512). The tarball comes over the CDN; the packument is
-  # the registry's authoritative hash, so this catches a corrupted/tampered
-  # download. A MISMATCH refuses the package (return 1) — vendor_litertjs treats
-  # that as non-fatal, so the image ships WITHOUT a tampered dependency rather
-  # than vendoring it. Metadata unavailable (offline mirror) → warn + proceed,
-  # which is no worse than the prior no-check behaviour.
+  # The tarball comes from the CDN, so check it against the registry's dist.integrity; no metadata only warns.
   local _want_int _got_int
   _want_int="$(curl -fsSL --max-time 30 "${REGISTRY}/${scope_path}/${version}" 2>/dev/null \
     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("dist",{}).get("integrity",""))' 2>/dev/null || true)"
@@ -78,8 +56,7 @@ vendor_litertjs() {
     warn "tfjs-interop ${LITERTJS_VERSION} unavailable; continuing (core is sufficient to serve)"
   _fetch_npm_package "@litertjs/wasm-utils" "${LITERTJS_VERSION}" "${LITERT_WEB_OUTPUT_DIR}/wasm-utils" || \
     warn "wasm-utils ${LITERTJS_VERSION} unavailable; continuing"
-  # Convenience: flatten the servable wasm/loaders to the top so a static server
-  # can point straight at ${LITERT_WEB_OUTPUT_DIR}/wasm/ like loadLiteRt() expects.
+  # loadLiteRt() expects the wasm directly under ${LITERT_WEB_OUTPUT_DIR}/wasm/.
   if [ -d "${LITERT_WEB_OUTPUT_DIR}/core/wasm" ]; then
     ln -sfn core/wasm "${LITERT_WEB_OUTPUT_DIR}/wasm"
   fi
@@ -96,9 +73,7 @@ vendor_litert_lm_web() {
 }
 
 main() {
-  # Always create the output dirs so the final-stage COPYs stay valid even if
-  # vendoring is skipped/fails (best-effort — a registry hiccup must not break the
-  # media build, and Docker COPY of a missing dir would).
+  # Always create them: the final-stage COPYs fail on a missing dir even when vendoring is skipped.
   mkdir -p "${LITERT_WEB_OUTPUT_DIR}" "${LITERT_LM_WEB_OUTPUT_DIR}"
   command -v curl >/dev/null 2>&1 || { warn "curl unavailable; cannot vendor LiteRT web assets"; exit 0; }
   local rc=0

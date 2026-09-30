@@ -93,9 +93,7 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    # `shell` is declared explicitly on every run step: composite steps inherit
-    # no `defaults.run.shell` from the calling workflow. Inputs reach the script
-    # through `env:`, never `${{ }}` inside `run:` — a path is data, not code.
+    # Composite steps inherit no default shell; inputs arrive through env:, never ${{ }} inside run:.
     - name: Preflight the upload tree
       id: prep
       shell: bash
@@ -112,8 +110,7 @@ runs:
 
         fail() { printf '::error title=deploy-over-ftp: %s::%s\n' "$1" "$2"; exit 1; }
 
-        # Every enum is validated HERE rather than left to the upload step, so a
-        # typo names itself instead of surfacing as a connection error.
+        # Validated here so a typo names itself instead of surfacing as a connection error.
         case "${PROTOCOL}" in
           ''|ftp|ftps|ftps-legacy) ;;
           *) fail "bad protocol" "protocol must be ftp, ftps or ftps-legacy (or empty for the default), got '${PROTOCOL}'." ;;
@@ -135,23 +132,18 @@ runs:
           *[!0-9]*) fail "bad timeout" "timeout must be a whole number of milliseconds (or empty), got '${TIMEOUT}'." ;;
         esac
 
-        # A newline in local-dir would let the value forge a second line in
-        # GITHUB_OUTPUT; an empty one can only be a mistake.
+        # A newline in a dir could forge a second GITHUB_OUTPUT line.
         [ -n "${LOCAL_DIR}" ] || fail "local-dir is empty" "local-dir is required: the library's own default is './', which would publish the entire workspace."
         [ "$(printf '%s' "${LOCAL_DIR}" | wc -l)" -eq 0 ] || fail "local-dir spans lines" "local-dir must be a single path."
         [ "$(printf '%s' "${SERVER_DIR}" | wc -l)" -eq 0 ] || fail "server-dir spans lines" "server-dir must be a single path."
 
-        # Exactly one trailing slash, which "${LOCAL_DIR%/}/" does NOT give: that
-        # strips a single slash, so 'site//' stays 'site//' and the library then
-        # builds 'site//.ftp-deploy-sync-state.json'. Strip every trailing slash,
-        # then add one.
+        # Strip every trailing slash, then add one: "${LOCAL_DIR%/}/" would leave 'site//' as it is.
         dir="${LOCAL_DIR}"
         while [ "${dir%/}" != "${dir}" ]; do dir="${dir%/}"; done
         [ -n "${dir}" ] || fail "local-dir is the filesystem root" "local-dir '${LOCAL_DIR}' is nothing but slashes. Publishing '/' is never intended."
         dir="${dir}/"
 
-        # server-dir gets the same treatment, and it matters MORE: the library
-        # throws on a missing trailing slash only after it has connected.
+        # The library rejects a server-dir without a trailing slash only after it has connected.
         sdir="${SERVER_DIR}"
         if [ -n "${sdir}" ]; then
           while [ "${sdir%/}" != "${sdir}" ]; do sdir="${sdir%/}"; done
@@ -160,19 +152,7 @@ runs:
         fi
         [ -d "${dir}" ] || fail "nothing to publish" "local-dir '${dir}' does not exist or is not a directory. The docs/site build either did not run or wrote somewhere else; publishing must not be attempted on a guess."
 
-        # Access is repaired BEFORE anything walks the tree: a directory the
-        # runner cannot enter makes the file count below fail on `find` instead
-        # of on something that can explain itself.
-        #
-        # The tree is usually written by a container as another uid, and the
-        # runner needs more than read: the library writes its sync-state file
-        # INTO local-dir before it connects. `chmod -R 755` alone does not give
-        # a non-owner that write, which is why the fixups downstream differ and
-        # some of them cannot work. The first chmod is a PROBE - it fails on the
-        # tree we do not own, including the common mixed case (runner-owned
-        # directory, root-owned files) that an ownership test on the top
-        # directory alone reports as fine. The verdict comes from the two probes
-        # after it, never from these repairs.
+        # Repair access before anything walks the tree; the probes below give the verdict. See docs/ftp-deploys.md § What the action does
         if ! chmod -R u+rwX,go+rX "${dir}" 2>/dev/null; then
           if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
             printf 'deploy-over-ftp: cannot set permissions on every file under %s as uid %s (top directory owned by uid %s); taking ownership with sudo.\n' "${dir}" "$(id -u)" "$(stat -c '%u' "${dir}")"
@@ -183,9 +163,7 @@ runs:
           fi
         fi
 
-        # Probes, not assumptions: the repair may have been skipped or partial.
-        # `find` failing IS the finding here, so its stderr is captured into the
-        # same variable rather than discarded.
+        # The repair may have been partial; a failing find is itself the finding, so keep its stderr.
         if ! unreadable="$(find "${dir}" ! -readable -print 2>&1)"; then
           unreadable="${unreadable:-find could not walk ${dir}}"
         fi
@@ -198,17 +176,7 @@ runs:
           fail "upload tree is not writable" "Cannot create a file in '${dir}' as uid $(id -u). The FTP library writes its sync-state file there before it connects, so the upload would fail after opening the connection."
         fi
 
-        # An EXISTING but empty tree is the dangerous one: the library diffs
-        # local against the server's sync state and deletes what is missing, so
-        # syncing an empty tree is a request to erase the live site.
-        #
-        # This count must mirror what the UPLOAD will see, not what is on disk.
-        # At the pinned digest that exclude set is ["**/.git*", "**/.git*/**",
-        # "**/node_modules/**"] (dist/index.js), so a tree holding only
-        # node_modules/ or only a .gitignore looks non-empty to `find` and EMPTY
-        # to the library - which is the unpublish this guard exists to stop. The
-        # sync-state file is discounted on top of that: the library does upload
-        # it, but a leftover state file is not content.
+        # An empty tree erases the live site; count what the library will upload, minus its default excludes (docs/ftp-deploys.md).
         count="$(find "${dir}" -type f \
           ! -name '.ftp-deploy-sync-state.json' \
           ! -name '.git*' \
@@ -224,21 +192,7 @@ runs:
         printf '%s file(s) to publish from %s\n' "${count}" "${dir}"
         ls -la "${dir}"
 
-    # The pin this action contributes. A SHA, not a tag: the consumers' renovate
-    # configs promise digest pins for third-party actions, and a tag is mutable.
-    # Since 2026-09-14 it IS the family's only one: all eleven FTP publish sites
-    # go through this action -- the hub's own two workflows included -- so the
-    # library version and its digest move here and nowhere else.
-    # docs/ftp-deploys.md holds the table and the adoption record.
-    #
-    # `continue-on-error` here does NOT tolerate anything: it exists so the step
-    # below can turn the library's raw exit into a diagnostic that names the
-    # cause, and that step always re-raises a failure.
-    #
-    # Every optional passed empty here is not "set to nothing": the upstream
-    # action declares no defaults at all, and its parser maps an empty string to
-    # undefined, which is what makes the library apply its own default
-    # (v1.2.5 src/utilities.ts, getDefaultSettings).
+    # The family's only pin of this library; continue-on-error tolerates nothing, the next step re-raises. See docs/ftp-deploys.md § Inputs
     - name: 📂 Sync files to domain
       id: ftp
       continue-on-error: true
@@ -261,19 +215,13 @@ runs:
         FTP_OUTCOME: ${{ steps.ftp.outcome }}
       run: |
         set -euo pipefail
-        # An outcome this step does not understand is its OWN failure, not the
-        # upload's: `outcome` is the step result before continue-on-error is
-        # applied, and if the runner ever stopped supplying it the empty string
-        # would otherwise be reported as a failed publish on every green run.
+        # An outcome this step does not understand is its own failure, not a failed publish.
         case "${FTP_OUTCOME}" in
           success) exit 0 ;;
           failure|cancelled) ;;
           *) printf '::error title=deploy-over-ftp: no usable outcome from the upload step::The runner reported the upload step outcome as "%s"; expected "success" or "failure". The failure policy is not being applied to a value this action does not understand - the publish itself may well have succeeded.\n' "${FTP_OUTCOME}"
              exit 1 ;;
         esac
-        # No tolerate switch, on purpose. A publish that is allowed to fail is a
-        # lane that can stop publishing without anyone noticing, and it tolerates
-        # a wrong password exactly as it tolerates a dropped socket. If uploads
-        # here are genuinely flaky, that is the defect to fix.
+        # No tolerate switch: see docs/ftp-deploys.md § Why a failed upload cannot be tolerated
         printf '::error title=deploy-over-ftp: publish failed::The FTP sync failed (outcome: %s). NOTHING WAS PUBLISHED - the site still serves the previous deploy. The cause is in the upstream step above.\n' "${FTP_OUTCOME}"
         exit 1

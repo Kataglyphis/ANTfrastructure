@@ -3,70 +3,21 @@
 # SPDX-License-Identifier: MIT
 <#
 .SYNOPSIS
-    A/B harness for backlog #135: does a candidate clang-cl make the two AArch64
-    workarounds in Build-OpencvFromSource.ps1 unnecessary?
-
+    A/B harness: does a candidate clang-cl compile the frozen #135 AArch64 offenders with the workarounds off?
 .DESCRIPTION
-    #135 is ONE LLVM defect at two sites -- LLVM lays a function out a few bytes
-    SHORT of what it then emits, so a pass picks an encoding the assembler
-    rejects. This repo pays for it with two workarounds:
-
-        (1) -Xclang -target-feature -Xclang +force-32bit-jump-tables (whole build)
-        (2) /Ob1 on median_blur.dispatch.cpp and multiview_calibration.cpp
-
-    Retiring either one is a CLAIM ABOUT A COMPILER, and this harness is how that
-    claim is settled: it compiles the REAL offending translation units -- frozen
-    as preprocessed .i files, so the corpus is byte-stable forever -- with the
-    workaround OFF, and asks whether the abort still happens.
-
-    THE HARNESS PROVES ITSELF FIRST. A candidate that "passes" means nothing
-    unless the same run also demonstrates that the failure is still reproducible
-    and that the shipped workaround still suppresses it. So every case runs a
-    three-arm matrix and the verdict is gated on the first two:
-
-        baseline/off   MUST fail with the expected diagnostic  -> else INVALID
-        baseline/on    MUST succeed                            -> else INVALID
-        candidate/off  the actual question                     -> FIXED / NOT FIXED
-
-    A green candidate arm under a red control arm is not evidence, it is a broken
-    corpus (stale .i, drifted flags, wrong target). Reporting it as PASS is the
-    exact failure this repo has been bitten by; see the "gate-green is not usable"
-    audit in docs/windows-refactor-backlog.md.
-
-    WHAT A CLEAN RESULT DOES AND DOES NOT BUY. Two TUs is a census taken at one
-    commit, not a proof about the tree: the ceiling is a property of what the
-    inliner produces, so a new offender is one source change away. A FIXED
-    verdict here licenses the container census -- NINJA_KEEP_GOING=1 over all
-    ~1,870 objects with the workarounds disabled -- it does not replace it. The
-    script says so again in its own epilogue.
-
-    NO MSVC ENVIRONMENT IS NEEDED. A frozen .i has no #includes left, so the run
-    phase needs neither VsDevCmd nor the Windows SDK -- only a clang-cl that can
-    target aarch64-pc-windows-msvc. That is what turns a 4-minute lane run into a
-    2-second experiment (docs/failure-modes.md, "Diagnose it in minutes").
-
+    Each case runs baseline/off (must fail), baseline/on (must pass) and candidate/off; a broken control makes it INVALID.
+    FIXED licenses the full NINJA_KEEP_GOING=1 census, it does not replace it; the frozen .i files need no MSVC environment.
 .PARAMETER Capture
-    Build the frozen corpus from a configured OpenCV build tree. Run once per
-    OpenCV bump; the .i files and manifest.json are the durable artefact.
-
+    Build the frozen .i corpus from a configured OpenCV build tree, once per OpenCV bump.
 .PARAMETER OpenCvBuildDir
-    Capture mode only: the OpenCV CMake build directory holding build.ninja
-    (in-container this is C:\temp\opencv-src\build).
-
+    Capture mode only: the OpenCV build directory holding build.ninja.
 .PARAMETER CandidateClangCl
-    The compiler under test -- e.g. the clang-cl.exe from a Kataglyphis/llvm-project
-    build. Omit to run control arms only, which validates the corpus.
-
+    The compiler under test; omit to run the control arms only, which validates the corpus.
 .PARAMETER BaselineClangCl
-    Stock clang-cl for the control arms. Omit and the pinned upstream release is
-    downloaded into -WorkDir.
-
+    Stock clang-cl for the control arms; omitted, the pinned release is downloaded into -WorkDir.
 .EXAMPLE
-    # once, inside the media-builder container after OpenCV configures:
     .\Invoke-LlvmAarch64Layout.ps1 -Capture -OpenCvBuildDir C:\temp\opencv-src\build -CorpusDir C:\bkmnt\out\llvm135-corpus
-
 .EXAMPLE
-    # then, on any host, against a fork build:
     .\Invoke-LlvmAarch64Layout.ps1 -CorpusDir .\out\llvm135-corpus -CandidateClangCl D:\llvm-fork\build\bin\clang-cl.exe
 #>
 [CmdletBinding(DefaultParameterSetName = 'Run')]
@@ -86,9 +37,7 @@ param(
     [string]$CorpusDir = (Join-Path $PSScriptRoot '..\..\..\out\llvm135-corpus'),
     [string]$WorkDir = (Join-Path $env:TEMP 'llvm135-repro'),
 
-    # Pin for the auto-downloaded baseline. Keep in step with LLVM_WINDOWS_VERSION
-    # (windows/scripts/host/Install-ScoopTools.ps1) -- a control arm built by a
-    # different compiler than the lane uses proves nothing about the lane.
+    # Keep in step with LLVM_WINDOWS_VERSION: a control arm on another compiler proves nothing about the lane.
     [string]$BaselineLlvmVersion = '23.1.0',
 
     [string]$Target = 'aarch64-pc-windows-msvc'
@@ -96,20 +45,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# ---------------------------------------------------------------------------
-# The census. Each entry is ONE measured failure from the 2026-08-26/27 runs.
-# ObjectPattern is a regex over ninja's own target list rather than a literal
-# path: OpenCV moves files between releases, and a case that silently matches
-# nothing must fail loudly at capture, not report green at run time.
-# ---------------------------------------------------------------------------
+# One entry per measured failure; ObjectPattern is a regex over ninja targets, and matching nothing fails the capture.
 $Cases = @(
     @{
         Id            = 'branch-relax'
         ObjectPattern = 'median_blur\.dispatch\.cpp\.obj$'
         OffFlags      = @('/O2', '/Ob2')
         OnFlags       = @('/O2', '/Ob1')
-        # Anchored on the MC-layer wording. No source location, no fixup kind --
-        # that absence is the signature.
+        # The MC-layer wording; the missing source location is the signature.
         Expect        = 'fixup value out of range'
         Ref           = '#135 (2) BranchRelaxation estimate short: tbnz ~150 B out of reach in cv::cpu_baseline::medianBlur'
     }
@@ -147,23 +90,7 @@ $Cases = @(
     }
 )
 
-# ---------------------------------------------------------------------------
-# Command-line surgery.
-#
-# The frozen .i must be compiled with the SAME codegen flags the lane uses, so
-# the run command is DERIVED from the captured ninja command rather than
-# hand-copied -- a hand-copied list goes stale the first time OpenCV changes a
-# flag, and it goes stale silently.
-#
-# Dropped: everything the preprocessor already consumed (-I, -D, -imsvc, /FI),
-# dependency generation (-clang:-M*), output naming (/Fo, /Fd), the compile verb
-# and the source path -- and, load-bearing, BOTH spellings of the jump-table
-# workaround. If those survived into the "off" arm the control would pass and
-# the harness would report a fix that is not there.
-#
-# Kept: --target, /EHa, /Gy, /bigobj, /Oi, /fp:precise, -std:c++17, /MD, -TP.
-# /EHa in particular changes function layout, which is the whole subject here.
-# ---------------------------------------------------------------------------
+# Flags are derived from the captured ninja command; both workaround spellings must go, or the off arm is not off.
 function Split-CommandLine {
     param([Parameter(Mandatory)][string]$Line)
     $tokens = [System.Collections.Generic.List[string]]::new()
@@ -187,16 +114,14 @@ function Get-CodegenFlags {
 
     $out = [System.Collections.Generic.List[string]]::new()
     $i = 0
-    # Token 0 is sccache.exe or clang-cl.exe; the compiler is supplied by the
-    # caller, so skip every leading executable path.
+    # The caller supplies the compiler, so skip every leading executable.
     while ($i -lt $Tokens.Count -and $Tokens[$i] -match '\.exe$') { $i++ }
 
     while ($i -lt $Tokens.Count) {
         $t = $Tokens[$i]
         $i++
 
-        # The two workaround spellings. -mllvm takes its value as one token here
-        # (=false form), but guard the separated form too.
+        # The workaround spellings, the separated -mllvm form included.
         if ($t -eq '-mllvm') {
             if ($i -lt $Tokens.Count -and $Tokens[$i] -match 'compress-jump-tables') { $i++; continue }
             if ($i -lt $Tokens.Count -and $Tokens[$i] -match 'inline-threshold') { $i++; continue }
@@ -213,19 +138,13 @@ function Get-CodegenFlags {
         if ($t -match '^[-/]O[0-9dxs]') { continue }
         if ($t -match '^[-/]Ob[0-3]$') { continue }
 
-        # Already baked into the .i. NOTE the separated forms: OpenCV's own flags
-        # arrive as `/D _CRT_SECURE_NO_DEPRECATE` (two tokens). Dropping only the
-        # `/D` leaves the NAME behind as a bare token, which clang-cl then reads
-        # as an input file -- measured, it is how this function first went wrong.
+        # Baked into the .i; the separated /D NAME form must drop both tokens, or clang-cl reads NAME as an input.
         if ($t -cmatch '^[-/](I|D)$') { $i++; continue }
         if ($t -cmatch '^[-/](I|D)') { continue }
         if ($t -match '^-imsvc') { if ($t -ceq '-imsvc') { $i++ }; continue }
         if ($t -cmatch '^[-/]FI') { if ($t -ceq '/FI' -or $t -ceq '-FI') { $i++ }; continue }
 
-        # Dependency generation, output naming, the compile verb, the source.
-        # -cmatch, not -match: `-match` is case-INSENSITIVE, so '^[-/]F[odip]'
-        # also swallows /fp:precise -- an actual codegen flag. Case is the only
-        # thing separating /Fo from /fp here.
+        # -cmatch: case-insensitive -match would also swallow /fp:precise, a real codegen flag.
         if ($t -match '^-clang:-M') { continue }
         if ($t -cmatch '^[-/]F[odip]') { continue }
         if ($t -ceq '-c' -or $t -ceq '/c' -or $t -ceq '--') { continue }
@@ -234,13 +153,7 @@ function Get-CodegenFlags {
         [void]$out.Add($t)
     }
 
-    # Pin the target explicitly. The captured line carries it (twice, in the real
-    # command), but a corpus captured for one triple must never be silently
-    # compiled for another.
-    # Plain return, NOT `return ,$resolved`: the comma wraps the list in a second
-    # array that the caller's @() then only half-unrolls, yielding one Object[]
-    # where a flag list is expected. Every caller already wraps in @(), which is
-    # what protects the 0/1-element case.
+    # Pin the target; a plain return, since `return ,$x` leaves the caller's @() one Object[] instead of flags.
     $flags = @($out | Where-Object { $_ -notmatch '^--target=' })
     return @('--target=' + $Target) + $flags
 }
@@ -268,9 +181,7 @@ function Resolve-NinjaCommand {
     } finally { Pop-Location }
 }
 
-# ---------------------------------------------------------------------------
 # Capture
-# ---------------------------------------------------------------------------
 function Invoke-Capture {
     if (-not (Test-Path (Join-Path $OpenCvBuildDir 'build.ninja'))) {
         throw "no build.ninja in $OpenCvBuildDir -- point -OpenCvBuildDir at a CONFIGURED OpenCV build tree."
@@ -290,17 +201,14 @@ function Invoke-Capture {
         $resolved = Resolve-NinjaCommand -BuildDir $OpenCvBuildDir -ObjectPattern $case.ObjectPattern
         $tokens = Split-CommandLine -Line $resolved.Command
 
-        # Preprocess with the ORIGINAL command minus the compile verb and output,
-        # so every -I/-D/-FI the lane passes is honoured exactly once, here.
+        # Preprocess with the original command, so every -I/-D/-FI the lane passes applies exactly once, here.
         $ppArgs = [System.Collections.Generic.List[string]]::new()
         $source = ''
         $i = 0
         while ($i -lt $tokens.Count -and $tokens[$i] -match '\.exe$') { $i++ }
         while ($i -lt $tokens.Count) {
             $t = $tokens[$i]; $i++
-            # -cmatch: see Get-CodegenFlags -- /fp:precise must survive.
-            # Everything else (-I, -D, /FI) is KEPT here on purpose: preprocessing
-            # is exactly where those belong, and this is the one place they run.
+            # -cmatch so /fp:precise survives; -I, -D and /FI stay, since preprocessing is where they belong.
             if ($t -cmatch '^[-/]F[od]') { continue }
             if ($t -match '^-clang:-M') { continue }
             if ($t -ceq '-c' -or $t -ceq '/c' -or $t -ceq '--') { continue }
@@ -352,9 +260,7 @@ function Invoke-Capture {
     Write-Host 'an OpenCV tree, an MSVC environment and a container. Re-capture after an OpenCV bump.'
 }
 
-# ---------------------------------------------------------------------------
 # Baseline provisioning
-# ---------------------------------------------------------------------------
 function Get-BaselineClangCl {
     if ($BaselineClangCl) {
         if (-not (Test-Path $BaselineClangCl)) { throw "-BaselineClangCl not found: $BaselineClangCl" }
@@ -365,9 +271,7 @@ function Get-BaselineClangCl {
     if (Test-Path $exe) { return $exe }
 
     $null = New-Item -ItemType Directory -Force -Path $WorkDir
-    # %2B, not a literal '+': that is the canonical browser_download_url GitHub
-    # returns for this asset and the unencoded form 404s (the same trap
-    # Install-ScoopTools.ps1 documents for the aarch64 runtime archive).
+    # %2B, not '+': the unencoded asset URL 404s.
     $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$BaselineLlvmVersion/clang%2Bllvm-$BaselineLlvmVersion-x86_64-pc-windows-msvc.tar.xz"
     $archive = Join-Path $WorkDir "clang+llvm-$BaselineLlvmVersion-x86_64-pc-windows-msvc.tar.xz"
     if (-not (Test-Path $archive)) {
@@ -381,9 +285,7 @@ function Get-BaselineClangCl {
     return $exe
 }
 
-# ---------------------------------------------------------------------------
 # Run
-# ---------------------------------------------------------------------------
 function Invoke-Arm {
     param(
         [Parameter(Mandatory)][string]$ClangCl,
@@ -391,8 +293,7 @@ function Invoke-Arm {
         [Parameter(Mandatory)][string]$InputPath,
         [Parameter(Mandatory)][string]$ObjPath
     )
-    # NOT $args: that is an automatic variable, and shadowing it inside a function
-    # that also declares param() is a documented way to lose arguments silently.
+    # Not $args: shadowing that automatic variable in a param() function silently loses arguments.
     $argv = @($Flags) + @('/TP', '/c', "/Fo$ObjPath", $InputPath)
     $output = & $ClangCl @argv 2>&1 | ForEach-Object { "$_" }
     return [pscustomobject]@{
@@ -462,9 +363,7 @@ function Invoke-Run {
             else { $verdict = 'INCONCLUSIVE' }
         }
 
-        # Precomputed rather than inlined as `if` expressions inside the literal:
-        # statement-valued hashtable entries parse differently across hosts, and a
-        # verdict table is the last place to discover that.
+        # Precomputed: statement-valued hashtable entries parse differently across hosts.
         $candExit = $null
         $candTail = ''
         if ($null -ne $candArm) {

@@ -1,16 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The BK media-core solve ORDER is encoded twice — as the FROM graph in
-# Dockerfile.media-builder (media-core-built-ffmpeg FROM ${MEDIA_CORE_ONNX_IMAGE}
-# etc.) and as the Invoke-BkStage sequence + MEDIA_CORE_*_IMAGE build-args in
-# Build-Buildkit.ps1. The driver's own comment admits "the two encode the same
-# order twice". A mismatch does not error: buildctl resolves whatever image the
-# build-arg names, so a drifted driver silently builds the chain on a stale
-# ancestor (old common-stage ENV included). Order is load-bearing (#94: OpenCV
-# must configure AFTER FFmpeg exists or it links its own downloaded prebuilt).
-# This suite derives the parent map from BOTH files and asserts they agree.
+
+# The media-core solve order lives in the Dockerfile and the driver; drift silently builds on a stale ancestor.
 
 Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
 
@@ -58,10 +50,7 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
     }
 
     It 'the two production sccache ENV blocks declare identical key sets and ARG defaults' {
-        # media-builder `common` vs media-merge-builder `built`: not FROM-related
-        # (ENV crosses no FROM boundary), so they are hand-mirrored twins — the
-        # 2026-08-21 audit caught SCCACHE_DIR hardcoded and SCCACHE_FORCE_LOCAL
-        # missing on the merge side. This pins the sets AND the ARG defaults.
+        # media-builder `common` and media-merge-builder `built` share no FROM, so they are hand-mirrored twins.
         $mergeText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-merge-builder')
         $getKeys = { param($text)
             [regex]::Matches($text, '(?m)^\s*(SCCACHE_[A-Z_]+)=') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
@@ -69,9 +58,7 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
         $a = & $getKeys $dfText
         $b = & $getKeys $mergeText
         Assert-Equal ($a -join ',') ($b -join ',') 'sccache ENV key sets drifted between the two files'
-        # ARG defaults: compare on the INTERSECTION of names — media-builder
-        # legitimately declares onnx-stage-only knobs (SCCACHE_CUDA_LAUNCHER,
-        # SCCACHE_REPRO_CUDA_LLM) with no merge-side counterpart.
+        # The intersection only: media-builder declares onnx-stage-only knobs with no merge-side counterpart.
         $getArgs = { param($text)
             $t = @{}
             [regex]::Matches($text, '(?m)^ARG (SCCACHE_[A-Z_]+)=("[^"]*")') | ForEach-Object { $t[$_.Groups[1].Value] = $_.Groups[2].Value }
@@ -86,19 +73,8 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
         Assert-True ($drift.Count -eq 0) ('sccache ARG defaults drifted on shared names: ' + ($drift -join '; '))
     }
 
-    # B6 ('classic COPY and BK mount reference the same build scripts per branch')
-    # was REMOVED on 2026-08-26 with the retirement of the docker-classic lane
-    # (windows/build.ps1, deleted 2026-08-31). It policed the classic `--target
-    # media-*` COPY lists against the BK `*-built` bind-mount lists; with no driver
-    # able to build those targets, its only possible failure was "the retired lane
-    # would break at a runtime nobody reaches" — a green gate over dead code, which
-    # is the shape this suite exists to prevent, not to embody.
-    # The classic stages themselves were deleted from Dockerfile.media-builder in the
-    # same 2026-08-26 change, so there is nothing left for B6 to police.
-
     It 'merge-builder buildmods is a superset of media-builder buildmods (B4)' {
-        # The 5-module core must stay in step by hand across the two files
-        # (no cross-Dockerfile stage sharing exists).
+        # No cross-Dockerfile stage sharing exists, so the 5-module core stays in step by hand.
         $mergeText2 = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-merge-builder')
         $getMods = { param($text)
             $j = $text -replace ('`' + "`r?`n"), ' '

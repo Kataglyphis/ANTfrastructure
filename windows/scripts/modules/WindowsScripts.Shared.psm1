@@ -5,8 +5,6 @@
 
 Set-StrictMode -Version Latest
 
-# Common helper functions for Windows build scripts
-# These functions are shared across all WindowsXxx.Common.psm1 modules
 
 <#
 .SYNOPSIS
@@ -70,24 +68,19 @@ function ConvertTo-ParameterList {
 
     if ($null -eq $Value) { return @() }
 
-    # If it's already an array, check for mixed types. Wrap the Where-Object result in
-    # @() so .Count is safe on an empty pipeline under Set-StrictMode -Version Latest
-    # (a bare `(...).Count` on the AutomationNull from an all-string array throws).
+    # @() around Where-Object: .Count on an empty pipeline's AutomationNull throws under StrictMode.
     if ($Value -is [array] -and $Value.Count -gt 0) {
         $allStrings = @($Value | Where-Object { $_ -isnot [string] }).Count -eq 0
         if ($allStrings) {
             return @($Value)
         }
-        # Mixed types - convert all elements to strings
         return @($Value | ForEach-Object { "$_" })
     }
 
-    # If it's a single string, return as single-element array
     if ($Value -is [string]) {
         return @($Value)
     }
 
-    # If it's a hashtable, convert key-value pairs
     if ($Value -is [hashtable]) {
         $result = @()
         foreach ($key in $Value.Keys) {
@@ -112,7 +105,6 @@ function ConvertTo-ParameterList {
         return $result
     }
 
-    # Fallback: convert to string
     return @("$Value")
 }
 
@@ -121,16 +113,7 @@ function Invoke-DownloadWithRetry {
     .SYNOPSIS
         Download a URL to a file with retries + exponential backoff.
     .DESCRIPTION
-        Hardened replacement for the raw Invoke-WebRequest / WebClient.DownloadFile calls
-        scattered across the build + setup scripts, any one of which could fail the whole
-        multi-hour build on a single transient network blip. Uses System.Net.WebClient (no
-        curl-on-PATH assumption; follows redirects), TLS 1.2, a browser User-Agent, optional
-        extra headers, and validates the result is non-empty. Retries MaxAttempts times with
-        exponential backoff (InitialDelaySeconds, doubling, capped at 30s), removing a
-        partial file between attempts, and throws after the last attempt.
-
-        Testable offline via file:// URLs (WebClient supports them), so the retry/verify
-        logic is covered without network access.
+        WebClient (no curl on PATH needed, file:// for offline tests), TLS 1.2, a browser UA; partial files removed between tries.
     .PARAMETER Url
         Source URL (http/https, or file:// in tests).
     .PARAMETER DestinationPath
@@ -138,23 +121,15 @@ function Invoke-DownloadWithRetry {
     .PARAMETER MaxAttempts
         Total attempts before giving up (default 4).
     .PARAMETER InitialDelaySeconds
-        Backoff before the 2nd attempt; doubles each retry, capped at 30 (default 3).
-        Tests pass 0 to avoid sleeping.
+        Backoff before the 2nd attempt, doubling up to 30 (default 3); tests pass 0.
     .PARAMETER Headers
         Optional extra request headers (name -> value).
     .PARAMETER Description
         Human label for the log lines (defaults to the URL).
     .PARAMETER ExpectSignature
-        Optional magic-byte guard: 'MZ' (PE .exe/.dll) or 'PK' (ZIP container). A response
-        whose first bytes don't match (e.g. an HTML error page served by a flaky aka.ms/CDN
-        redirect in place of the binary) is rejected and RETRIED like any transient failure --
-        the exact HTML-instead-of-binary class that broke CPython's nuget bootstrap.
+        'MZ' or 'PK' magic bytes; an HTML error page served in place of the binary is retried like a blip.
     .PARAMETER ExpectedSha256
-        Optional full-content SHA256 pin (hex, case-insensitive; canonical values live in
-        linux/scripts/01-core/versions.env *_SHA256 keys). A mismatch is treated like any
-        transient failure and retried (CDN truncation IS transient); a mismatch on the final
-        attempt throws with both hashes in the message. Empty = no content verification
-        beyond ExpectSignature, preserving existing call sites unchanged.
+        Optional SHA256 pin from versions.env; a mismatch is retried (CDN truncation is transient), fatal on the last try.
     #>
     param(
         [Parameter(Mandatory)][string]$Url,
@@ -200,11 +175,7 @@ function Invoke-DownloadWithRetry {
             $msg = $_.Exception.Message
             if (Test-Path $DestinationPath) { Remove-Item $DestinationPath -Force -ErrorAction SilentlyContinue }
             if ($attempt -ge $MaxAttempts) { throw "Download failed after $MaxAttempts attempt(s) [$label]: $msg" }
-            # HTTP 429 is a RATE LIMIT, not a blip: 3s/6s/12s backoff retries
-            # into the same closed window and burns all attempts in ~20s —
-            # measured 2026-08-17, four 429s from GitHub codeload killed a merge
-            # chain 55 minutes in. A 429 needs a WAIT, not persistence: one
-            # minute per prior attempt, so the limiter can actually reset.
+            # A 429 is a rate limit, not a blip: short backoff burns every attempt, so wait a minute per prior attempt.
             $wait = $delay
             if ($msg -match '\b429\b|Too Many Requests') {
                 $wait = 60 * $attempt
@@ -220,14 +191,7 @@ function Invoke-DownloadWithRetry {
 
 <#
 .SYNOPSIS
-    Verify a file against an optional SHA256 pin: a mismatch is FATAL, an
-    absent pin is a warning.
-.DESCRIPTION
-    The download-policy ladder that existed as four hand-written copies
-    (Build-LlvmFromSource's compiler-rt staging, Install-Tensorrt,
-    Resolve-QnnSdk, and the body of Invoke-DownloadWithRetry itself). Call it
-    only when a pin is optional; a caller that has already refused the empty
-    case can rely on the throw alone.
+    Verify a file against an optional SHA256 pin: a mismatch is FATAL, an absent pin is a warning.
 .PARAMETER Path
     File to hash.
 .PARAMETER Expected
@@ -263,17 +227,11 @@ function Assert-FileSha256 {
 .SYNOPSIS
     Parses a versions.env file into an ordered key/value dictionary.
 .DESCRIPTION
-    Canonical parser for the repo's single source of truth
-    (linux/scripts/01-core/versions.env): blank lines and #-comments are skipped,
-    each remaining line is split on the FIRST '=', keys/values are trimmed and
-    surrounding quotes stripped from values. Replaces the hand-rolled copies that
-    used to live in Import-Versions.ps1, build.ps1, Test-Container.ps1 and
-    Test-PatchesApplyClean.ps1.
+    Skips blanks and #-comments, splits on the first '=', trims and unquotes; parsed, never sourced.
 .PARAMETER Path
     Path to the versions.env file (must exist).
 .OUTPUTS
-    [System.Collections.Specialized.OrderedDictionary] key -> value in file order.
-    NOTE: membership test is .Contains($key) -- OrderedDictionary has no .ContainsKey.
+    [OrderedDictionary] in file order; test membership with .Contains, as it has no .ContainsKey.
 #>
 function ConvertFrom-VersionsEnv {
     param(
@@ -297,12 +255,7 @@ function ConvertFrom-VersionsEnv {
 .SYNOPSIS
     Expands a .zip archive and returns the top-level directory it unpacked to.
 .DESCRIPTION
-    Shared "extract, then locate the versioned subdirectory" pattern used by the
-    vcpkg / cuDNN / TensorRT setup scripts (each archive wraps its payload in a
-    single versioned root folder). Creates DestinationPath when missing, expands
-    the archive into it, and returns the full path of the first directory matching
-    Filter -- or $null when none matches (the caller decides whether that is
-    fatal; TensorRT legitimately ships flat-layout zips).
+    $null when no directory matches Filter; the caller decides if that is fatal, as TensorRT ships flat zips.
 .PARAMETER ArchivePath
     Path to the .zip archive.
 .PARAMETER DestinationPath
@@ -331,30 +284,10 @@ function Expand-ArchiveSubdirectory {
     return $null
 }
 
-# --------------------------------------------------------------------------
-# sccache -- single implementation of "read the counters without ever failing".
-#
-# This lives here, in the module both WindowsBuild.Common and
-# WindowsSourceBuild.Common already import, because the three former copies
-# (WindowsCMake.Common's inline pre/post-build dumps, WindowsBuild.Common's
-# Show-SccacheStats and WindowsSourceBuild.Common's Write-SccacheStats) sat in
-# modules with no import edge between them. Only the *sink* differs per caller
-# (build-log + Context / pipeline step / Write-Host), so the sink stays with the
-# caller and only the invocation is shared.
-# --------------------------------------------------------------------------
+# --- sccache stats (the invocation is shared, each caller keeps its own sink) ---
 
 function Test-SccacheRemoteConfigured {
-    # True when any sccache remote backend is configured. Shared by the cmake
-    # launcher wiring (Invoke-CmakeConfigure) and the end-of-build stats dump --
-    # without a remote there is no cache, so neither should activate.
-    #
-    # SCCACHE_FORCE_LOCAL=1 overrides that for ONE purpose: measuring sccache's
-    # LOCAL DISK backend on its own. It is a diagnostic escape hatch, not a
-    # supported build mode -- a local-only cache dies with the RUN's container
-    # unless SCCACHE_DIR points at a cache mount, which is exactly why this gate
-    # exists. Added 2026-08-16 for backlog #99: clearing the endpoint to isolate
-    # the disk level silently disabled sccache entirely (`Compile requests 0`),
-    # so the experiment measured nothing and looked like a clean run.
+    # No remote means no cache that outlives the RUN; SCCACHE_FORCE_LOCAL=1 is a diagnostic for the disk level only.
     if ($env:SCCACHE_FORCE_LOCAL -eq '1') { return $true }
 
     return (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_WEBDAV_ENDPOINT)) -or
@@ -365,15 +298,11 @@ function Test-SccacheRemoteConfigured {
 function Get-SccacheStatsText {
     <#
     .SYNOPSIS
-        Returns sccache's counter dump as string lines, or $null when there is
-        nothing to read. Never throws and never fails a build: stats are
-        diagnostics, not a gate.
+        sccache's counter dump as lines, $null when there is nothing to read; never throws, stats are not a gate.
     .PARAMETER Advanced
         Query --show-adv-stats instead of --show-stats.
     .PARAMETER RequireRemote
-        Return $null unless a remote backend is configured. Without a remote
-        there is no cache worth reporting, and querying would spawn a local
-        sccache server as a side effect.
+        $null without a remote backend, since querying would spawn a local server as a side effect.
     .OUTPUTS
         [string[]] when sccache ran (possibly empty), $null when it was skipped.
     #>
@@ -391,8 +320,7 @@ function Get-SccacheStatsText {
     $flag = if ($Advanced) { '--show-adv-stats' } else { '--show-stats' }
     $lines = [System.Collections.Generic.List[string]]::new()
     try {
-        # cmd.exe routing: sccache may write diagnostics to stderr, which PS 5.1 under
-        # EAP=Stop escalates into a terminating NativeCommandError even through 2>&1.
+        # Via cmd.exe: PS 5.1 under Stop makes sccache's stderr terminating even through 2>&1.
         $global:LASTEXITCODE = 0
         cmd.exe /c """$($sccacheCmd.Source)"" $flag 2>&1" | ForEach-Object { $lines.Add([string]$_) }
         if ($LASTEXITCODE -ne 0) { $lines.Add("(sccache $flag exited $LASTEXITCODE -- stats unavailable)") }
@@ -404,10 +332,7 @@ function Get-SccacheStatsText {
 }
 
 function Limit-DiagnosticLogs {
-    # Retention for the log directories the diagnostics/drivers Tee into
-    # (backlog #30): growth was unbounded (28 MB day-one), which made
-    # per-run forensics harder. Never-swallow-logs means KEEP plenty -
-    # retention trims the tail, not the incident.
+    # Keeps plenty: retention trims the tail, never the incident.
     param(
         [Parameter(Mandatory)][string]$Directory,
         [int]$Keep = 60
@@ -422,10 +347,7 @@ function Limit-DiagnosticLogs {
 }
 
 function Get-DiagnosticLogPath {
-    # One owner for the diagnostics' log-persistence convention (backlog #8):
-    # <repo>\out\build-logs\<name>-<timestamp>.log, directory created,
-    # retention applied. Test-BuildCopy.ps1 alone keeps its inline copy BY
-    # DESIGN - it must run module-free on a fresh host (first-script rule).
+    # Test-BuildCopy.ps1 keeps an inline copy on purpose: it must run module-free on a fresh host.
     param(
         [Parameter(Mandatory)][string]$RepoRoot,
         [Parameter(Mandatory)][string]$Name,
@@ -438,12 +360,7 @@ function Get-DiagnosticLogPath {
 }
 
 function Write-SccacheStatsToStderr {
-    # The end-of-build sink every in-container source build wants (backlog #3):
-    # STDERR survives BuildKit's 2MiB step-log clip, so hit-rates stay
-    # measurable even when the stdout tail is gone (AGENTS.md: caching must be
-    # MEASURED; never-swallow-logs). The name states the sink deliberately -
-    # the sink-stays-with-the-caller doctrine above still holds for every
-    # other consumer; this is the one sink shared by many callers.
+    # Stderr survives BuildKit's 2MiB step-log clip, so hit rates stay measurable when the stdout tail is gone.
     param(
         [switch]$Advanced,
         [switch]$RequireRemote,
@@ -454,26 +371,14 @@ function Write-SccacheStatsToStderr {
     }
 }
 
-# --------------------------------------------------------------------------
-# Visual Studio / MSVC discovery -- single vswhere-based implementation.
-#
-# Replaces the copy that WindowsCMake.Common's Get-SanitizerRuntimeDlls kept
-# inline (flagged "Near-duplicate of Get-VsInstallPath ... Merge candidate")
-# alongside WindowsSourceBuild.Common's Get-VsInstallPath/Get-MsvcToolsRoot.
-# The throwing-vs-silent split between those two callers is load-bearing and is
-# preserved as the -AllowMissing switch, NOT resolved in favour of either:
-#   * source builds need the hard failure (no VS means no build),
-#   * the sanitizer-DLL probe must degrade quietly (a missing VS install just
-#     means one fewer clang_rt root to search).
-# --------------------------------------------------------------------------
+# --- Visual Studio / MSVC discovery (-AllowMissing: source builds throw, the sanitizer-DLL probe degrades quietly) ---
 
 function Get-VisualStudioInstallPath {
     <#
     .SYNOPSIS
         Returns the Visual Studio installation path(s) with VC Tools x86/x64.
     .PARAMETER AllowMissing
-        Return $null (or an empty array with -All) instead of throwing when
-        vswhere.exe or a qualifying VS installation is absent.
+        Return $null (an empty array with -All) instead of throwing when vswhere or a VS install is absent.
     .PARAMETER All
         Return every qualifying installation instead of only the latest.
     #>
@@ -488,19 +393,7 @@ function Get-VisualStudioInstallPath {
         throw "vswhere.exe not found at $vswhere - Visual Studio Installer missing"
     }
 
-    # -nologo suppresses the "Visual Studio Locator version ..." banner vswhere
-    # prints on stdout ahead of the value. Without it the banner comes back as
-    # the first "installation path" -- which is how the pre-consolidation
-    # Get-VsInstallPath could return a banner string that then produced
-    # "No MSVC toolchain found under Visual Studio Locator version ...\VC\Tools\MSVC".
-    # The Test-Path filter is the belt-and-braces half: only real directories survive.
-    #
-    # RETRY + FALLBACK (2026-08-03): in a freshly booted container, vswhere can
-    # transiently return NOTHING (installer state under ProgramData not readable
-    # yet ~seconds after boot) — reproduced once ~24s into a media-core run and
-    # never again in warm containers (6/6 probes clean). Retry briefly, then fall
-    # back to filesystem discovery of <PF>\Microsoft Visual Studio\<major>\<sku>
-    # with VC\Tools\MSVC present, so a boot race costs seconds, not the stage.
+    # -nologo, or the banner returns as the first path; retries then a filesystem fallback, as a fresh container's vswhere can return nothing.
     $selector = if ($All) { @() } else { @('-latest') }
     $vsPaths = @()
     foreach ($attempt in 1..3) {
@@ -512,10 +405,7 @@ function Get-VisualStudioInstallPath {
         if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
     }
     if ($vsPaths.Count -eq 0) {
-        # Memoized (#78): under a dead vswhere every caller used to re-glob and
-        # re-warn - one base build logged the warning x100. Resolve once per
-        # process, warn once. (Process-scope cache: a VS install appearing
-        # mid-process is not a supported scenario.)
+        # Memoized per process, so a dead vswhere globs and warns once instead of per caller.
         if (-not (Test-Path 'Variable:script:VsFilesystemFallbackCache')) {
             $globbed = @(Get-ChildItem -Path @(
                     "$env:ProgramFiles\Microsoft Visual Studio",
@@ -526,11 +416,7 @@ function Get-VisualStudioInstallPath {
                 Where-Object { Test-Path (Join-Path $_.FullName 'VC\Tools\MSVC') -PathType Container } |
                 Sort-Object FullName -Descending |
                 Select-Object -ExpandProperty FullName)
-            # Honour the pin (#78): newest-first is right for a dev host, but in
-            # the pinned images a VS major promotion must never float in via the
-            # fallback. Prefer the VISUAL_STUDIO_VERSION major when present;
-            # warn loudly when the pin resolves to nothing (pre-promotion class
-            # of the documented vcpkg/VS-toolset rejection).
+            # The VISUAL_STUDIO_VERSION pin first, so a VS major promotion never floats in through the fallback.
             if ($globbed.Count -gt 0 -and $env:VISUAL_STUDIO_VERSION) {
                 $pinned = @($globbed | Where-Object { $_ -match [regex]::Escape("\$($env:VISUAL_STUDIO_VERSION)\") })
                 if ($pinned.Count -gt 0) {
@@ -559,8 +445,7 @@ function Get-VisualStudioInstallPath {
 function Get-MsvcToolsRoots {
     <#
     .SYNOPSIS
-        Returns the VC\Tools\MSVC\<version> directories of the discovered Visual
-        Studio installation(s), newest version first.
+        The VC\Tools\MSVC\<version> directories of the discovered VS installation(s), newest first.
     .PARAMETER AllowMissing
         Return an empty array instead of throwing when nothing is found.
     .PARAMETER All
@@ -577,9 +462,7 @@ function Get-MsvcToolsRoots {
     foreach ($vsPath in $vsPaths) {
         if ([string]::IsNullOrWhiteSpace($vsPath)) { continue }
         $msvcRoot = Join-Path $vsPath 'VC\Tools\MSVC'
-        # Sorted descending so callers taking the first entry get the NEWEST
-        # toolset. Get-SanitizerRuntimeDlls previously took an unsorted
-        # "-First 1" here, i.e. the alphabetically oldest toolset.
+        # Descending, so a caller taking the first entry gets the newest toolset.
         foreach ($dir in @(Get-ChildItem -Path $msvcRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
             $roots.Add($dir.FullName)
         }
@@ -598,26 +481,18 @@ function Resolve-LatestVersionTag {
     .SYNOPSIS
         Picks the highest semantic version tag out of `git ls-remote --tags` output.
     .DESCRIPTION
-        Extracted from build.ps1's final-stage app-ref resolution so the tag
-        filtering/sorting is unit-testable with canned ls-remote text: dereference
-        markers (^{}) are dropped, refs/tags/ is stripped, only plain v?N(.N)* tags
-        are considered, and the highest [version] wins. Returns '' (never throws)
-        when nothing matches — callers fall back to their pinned ref.
+        Only plain v?N(.N)+ tags count; returns '' and never throws when none match, so callers fall back to their pin.
     .PARAMETER LsRemoteOutput
         Raw `git ls-remote --tags <repo>` output lines ("<sha>\t<ref>" per line).
     #>
     param([string[]]$LsRemoteOutput)
     if (-not $LsRemoteOutput) { return '' }
-    # Tab filter FIRST: a tab-less line (warning banner, blank) would make the
-    # [1] index out-of-bounds — a StrictMode throw that violates the documented
-    # "never throws" contract.
+    # Tab filter first: indexing [1] of a tab-less line throws under StrictMode.
     $tags = @($LsRemoteOutput | Where-Object { $_ -match "`t" } |
             ForEach-Object { ($_ -split "`t")[1] } |
             Where-Object { $_ -and $_ -notmatch '\^\{\}$' } |
             ForEach-Object { $_ -replace '^refs/tags/', '' } |
-            # At least one dot required: single-component release tags (e.g. 'v5')
-            # are not semver and are deliberately ignored - [version]'5' throws
-            # inside Sort-Object, which would violate the never-throws contract.
+            # At least one dot: [version]'5' throws inside Sort-Object.
             Where-Object { $_ -match '^v?\d+(\.\d+)+$' } |
             Sort-Object { [version]($_ -replace '^v', '') })
     if ($tags.Count -eq 0) { return '' }
@@ -625,12 +500,7 @@ function Resolve-LatestVersionTag {
 }
 
 
-# --- PATH and tool resolution ------------------------------------------------
-# Generic helpers every Windows build script re-invents: put a directory FIRST
-# on PATH (de-duplicating it), and pick a tool from explicit candidate paths
-# before falling back to whatever `Get-Command` finds. The ordering matters on
-# a CI runner where several CMake/LLVM installs coexist and the one on PATH is
-# not the one the build expects.
+# --- PATH and tool resolution (candidates before PATH: runners carry several CMake/LLVM installs) ---
 
 function Add-DirectoryToPath {
     param([string]$Directory)
@@ -656,22 +526,9 @@ function Add-DirectoriesToPath {
 function Get-PreferredToolPath {
     <#
     .SYNOPSIS
-        Candidate paths first, then PATH. Returns $null when nothing matches,
-        unless -Required is given.
-
+        Candidate paths first, then PATH; $null when nothing matches, unless -Required.
     .DESCRIPTION
-        -Required restores the throwing behaviour that Resolve-PreferredTool
-        used to provide. That function was deleted on 2026-08-21 as "fully dead
-        (zero callers anywhere)" — the audit only looked inside THIS repo, and
-        BeschleunigerBallett's scripts/windows/Invoke-ClangClDebug.ps1 was
-        calling it three times. It has been broken since. The lesson is in the
-        switch rather than in a restored duplicate: one resolver, two
-        behaviours, so a consumer never has to hand-roll the throwing half.
-
-        Without -Required a caller that ignores the $null gets a confusing
-        downstream failure instead of the name of the tool it is missing —
-        which is what happened here — so prefer -Required whenever the tool is
-        not genuinely optional.
+        Prefer -Required unless the tool is optional: an ignored $null fails later without naming the tool.
     #>
     param(
         [Parameter(Mandatory)]
@@ -707,9 +564,7 @@ function Get-PreferredToolPath {
 function Resolve-BuildCtlPath {
     <#
     .SYNOPSIS
-        The one owner of the Stevedore buildctl CANDIDATE LIST. The walk was
-        extracted (backlog #101) but the list was left pasted in nine files, so
-        a host layout change still meant nine edits.
+        The one owner of the Stevedore buildctl candidate list.
     .PARAMETER BuildCtl
         An already-resolved path to honour unchanged (empty = resolve).
     #>
@@ -727,17 +582,7 @@ function Test-Elevated {
     .SYNOPSIS
         The BOOLEAN half of the admin gate: is this process elevated?
     .DESCRIPTION
-        Assert-Elevated is the half that STOPS you. This is the half for callers
-        whose behaviour BRANCHES on the answer instead of ending on it —
-        -ReportOnly paths that downgrade the requirement, and Test-HostSetup,
-        which must REPORT the answer as a graded check and never act on it.
-        The 2026-08-21 audit gave the throwing half one home and left these
-        behind as six hand-rolled copies of the same two lines; this is their
-        home. WindowsMsix.Signing's exported Test-Administrator now forwards
-        here (its name is load-bearing for a Pester mock, its body is not).
-        NB the module-free repair tools (Reset-ContainerLocks,
-        Repair-WindowsComponentstore) keep their inline check BY DESIGN —
-        a wedged-stack repair must not depend on a module import.
+        For callers that branch on the answer; the module-free repair tools keep an inline check on purpose.
     .OUTPUTS
         [bool] $true when the current identity is in the Administrators role.
     #>
@@ -752,12 +597,7 @@ function Test-Elevated {
 function Assert-Elevated {
     <#
     .SYNOPSIS
-        Throws (or, with -Interactive, prompts and exits) unless the current
-        process runs elevated. One home for the admin gate that existed as 13
-        hand-rolled copies with 9 different messages (2026-08-21 audit).
-        NB the module-free repair tools (reset-container-locks,
-        repair-windows-componentstore) keep their inline check BY DESIGN —
-        a wedged-stack repair must not depend on a module import.
+        Throws (with -Interactive: prompts and exits) unless the process runs elevated.
     #>
     param(
         [string]$Reason = '',
@@ -773,19 +613,7 @@ function Assert-Elevated {
     throw $msg
 }
 
-# ── Tool guards ───────────────────────────────────────────────────────────────
-# Assert-Command lived as a private copy in windows/scripts/rust/
-# New-MsixPackage.ps1, windows/scripts/build/Test-Container.ps1 and a
-# consumer's Build-Windows.ps1, all three identical. One home now.
-#
-# There is deliberately NO general Resolve-Executable here. Both the
-# ANTfrastructure scripts above and the consumer carried one, and all of them
-# `Get-ChildItem -Recurse` the whole Windows Kits tree to find an SDK tool.
-# WindowsMsix.Common's Resolve-WindowsSdkToolPath already does that job
-# properly - honouring an explicit override, then VsDevCmd's
-# WindowsSdkVerBinPath / WindowsSdkBinPath / WindowsSDKVersion, and only then
-# scanning, newest version first, without recursing. Adding a fourth variant
-# here would have been the opposite of consolidating; use that one.
+# ── Tool guards (for SDK tools use WindowsMsix.Common's Resolve-WindowsSdkToolPath, not a recursive scan) ──
 
 function Assert-Command {
     param(
@@ -797,15 +625,7 @@ function Assert-Command {
     }
 }
 
-# PowerShell twin of linux/scripts/02-toolchain/rust/version_util.sh
-# --normalize, with ONE deliberate difference: the bash side falls back to
-# 0.1.0.0 for anything it cannot parse (it runs unattended in an image build),
-# while this THROWS - a packaging step handed a malformed version should stop,
-# not silently ship 0.1.0.0.
-#
-# Named ConvertTo-* rather than the consumer's original Normalize-Version:
-# "Normalize" is not an approved PowerShell verb, and an unapproved one in a
-# SHARED module makes Import-Module warn in every consumer that loads it.
+# Twin of version_util.sh --normalize, but throws where bash falls back to 0.1.0.0: packaging must not ship a bad version.
 function ConvertTo-NormalizedVersion {
     param([Parameter(Mandatory)][string]$RawVersion)
 
@@ -822,13 +642,7 @@ Export-ModuleMember -Function @(
     'Assert-Elevated',
     'Test-Elevated',
     'ConvertTo-NormalizedVersion',
-    # Add-DirectoryToPath: internal helper of Add-DirectoriesToPath (unexported
-    # 2026-08-21, zero external callers). Resolve-PreferredTool was deleted the
-    # same day as "fully dead (zero callers anywhere)" — WRONG, and left
-    # BeschleunigerBallett's Invoke-ClangClDebug.ps1 broken at three call sites
-    # until 2026-09-06. That audit grepped this repo only. Grep every consumer
-    # under D:\GitHub before deleting anything from an exported surface; the
-    # throwing behaviour now lives on as Get-PreferredToolPath -Required.
+    # Before removing an export, see docs/consumer-inventory.md § Why a grep was not enough
     'Add-DirectoriesToPath',
     'Get-PreferredToolPath',
     'Resolve-BuildCtlPath',
@@ -850,10 +664,7 @@ Export-ModuleMember -Function @(
 )
 
 
-# --------------------------------------------------------------------------
-# Restored from 04e1e07 (pre-refactor): functions still consumed by
-# downstream Build-Windows.ps1 scripts (OmniAccelerANT).
-# --------------------------------------------------------------------------
+# Consumed by OmniAccelerANT's Build-Windows.ps1 with no in-repo caller: see docs/consumer-inventory.md § Why a grep was not enough
 function Resolve-WorkspacePath {
     param(
         [Parameter(Mandatory)]

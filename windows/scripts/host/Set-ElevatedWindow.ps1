@@ -1,21 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# The BUNDLED elevated between-runs window (backlog close-out 2026-08-11):
-# one UAC click executes, in order —
-#   1. restore the buildkitd service env (BUILDKIT_STEP_LOG_MAX_SIZE/-SPEED=-1)
-#      — the 0a gate refuses chain launches until this is done;
-#   2. deploy the new GC budgets (windows/buildkitd.toml, item 34: 400/450GB)
-#      via Set-BuildkitdGcpolicy.ps1 (which restarts buildkitd — its own
-#      guard refuses while a build is running);
-#   3. release the 2026-08-10/11 diagnostic image tags (incl. the POISONED
-#      probe-build-copy chain left by the rewrite-timestamp exporter crash);
-#   4. print the verify steps (probe smoke; reboot only if the probe is
-#      still red afterwards).
-# NEVER run while a chain build is solving.
-#
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Set-ElevatedWindow.ps1'
+# One UAC click for the between-runs admin steps (step-log env, GC budgets, diag tag release); never while a chain solves.
 
 [CmdletBinding()]
 param([switch]$NoPrompt)
@@ -23,9 +9,7 @@ param([switch]$NoPrompt)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1')
 

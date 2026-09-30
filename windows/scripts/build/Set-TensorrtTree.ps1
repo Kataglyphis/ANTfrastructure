@@ -1,9 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Renames the extracted TensorRT-<version>\ tree to a stable 'current\' (backlog #38).
-# Why it exists, and the two silent defects it closes: docs/windows-builds.md.
+# Renames the extracted TensorRT-<version>\ tree to a stable 'current\'; see docs/windows-builds.md § Set-TensorrtTree.ps1.
 [CmdletBinding()]
 param(
     [string]$TensorRtRoot = 'C:\tensorrt',
@@ -14,8 +12,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $stable = Join-Path $TensorRtRoot 'current'
-# Set by the flat-layout branch below, which folds the tree into 'current'
-# itself and must therefore skip the rename — but still reach the DLL gate.
+# Skips the rename, never the DLL gate.
 $alreadyStable = $false
 
 if (-not (Test-Path $TensorRtRoot)) {
@@ -23,19 +20,13 @@ if (-not (Test-Path $TensorRtRoot)) {
     return
 }
 if (Test-Path $stable) {
-    # Nothing to RENAME, but do NOT return: a pre-existing or half-populated
-    # 'current' must still pass the DLL gate below, or an unverified tree ships.
+    # No return: a pre-existing or half-populated 'current' must still pass the DLL gate.
     Write-Host "TensorRT: '$stable' already present -> verifying it rather than re-normalizing."
     $alreadyStable = $true
     $versionDir = $null
 }
 
-# NEWEST tree wins, by [version] comparison — NOT a lexical sort. `Sort-Object
-# Name | Select -First 1` (the original here) takes the LOWEST, i.e. the
-# superseded tree, and a plain string sort also ranks 11.2.1.2 above 11.10.0.1.
-# Both contradict the owner directive recorded at versions.env's
-# TENSORRT_VERSION ("always track the newest release") and the matching
-# comparator in Dockerfile.nvidia's zip selection.
+# Newest by [version]: a string sort ranks 11.2.1.2 above 11.10.0.1; matches Dockerfile.nvidia's zip selection.
 if (-not $alreadyStable) {
     $versionDir = Get-ChildItem -LiteralPath $TensorRtRoot -Directory -Filter 'TensorRT-*' -ErrorAction SilentlyContinue |
         Sort-Object -Property @{ Expression = {
@@ -46,13 +37,7 @@ if (-not $alreadyStable) {
 }
 
 if (-not $alreadyStable -and -not $versionDir) {
-    # A FLAT tree is no longer survivable, and saying "consumers use the root
-    # directly" would be false: Dockerfile.nvidia's PATH is
-    # $TENSORRT_ROOT\current\bin;$TENSORRT_ROOT\current\lib, so on a flat layout
-    # neither directory exists and the runtime lookup is broken in exactly the
-    # way backlog #38 was written to eliminate. Install-Tensorrt.ps1 still
-    # TOLERATES the layout, so normalize it into 'current' here rather than
-    # leaving a shape the ENV cannot address.
+    # Dockerfile.nvidia's PATH names only current\bin and current\lib, so a flat tree is folded into 'current'.
     $flatLib = Join-Path $TensorRtRoot 'lib'
     $flatBin = Join-Path $TensorRtRoot 'bin'
     if ((Test-Path $flatLib) -or (Test-Path $flatBin)) {
@@ -70,14 +55,9 @@ if (-not $alreadyStable -and -not $versionDir) {
 }
 
 $actual = if ($versionDir) { $versionDir.Name -replace '^TensorRT-', '' } else { 'flat' }
-# Pre-existing 'current' (re-run/idempotent path): no zip was extracted THIS
-# run, so a zip-drift warning would be a false positive — the DLL gate below
-# still applies (F12, 2026-08-21: this fired 'extracted TensorRT-flat' on
-# every re-run and eroded trust in the drift signal).
+# No zip was extracted on a re-run, so a drift warning there would be a false positive.
 if (-not $alreadyStable -and $ExpectedVersion -and $actual -ne $ExpectedVersion) {
-    # Loud, but NOT fatal: the staged zip is the truth for this image, and the
-    # pin is also consumed by the Linux lane (apt), where it may legitimately
-    # differ. The point is that drift can no longer be SILENT.
+    # Not fatal: the staged zip is this image's truth, and the Linux lane's apt may legitimately differ.
     Write-Warning ("TensorRT PIN DRIFT: versions.env says TENSORRT_VERSION=$ExpectedVersion but the staged zip " +
                    "extracted TensorRT-$actual. This image ships $actual and is internally consistent — but the " +
                    'pin no longer describes what ships. Re-stage the zip or correct the pin.')
@@ -85,21 +65,10 @@ if (-not $alreadyStable -and $ExpectedVersion -and $actual -ne $ExpectedVersion)
 
 if (-not $alreadyStable) { Rename-Item -LiteralPath $versionDir.FullName -NewName 'current' }
 
-# Fail CLOSED: a tree that exists without loadable DLLs is the failure this
-# whole script exists to prevent, and it must not reach a downstream stage.
-#
-# WHERE THE DLLs LIVE (measured against the staged 11.1.0.106 Enterprise zip,
-# 2026-08-14): bin\ holds the 14 runtime DLLs, lib\ holds only 6 link-time
-# .lib import libraries. TensorRT 8.x/9.x shipped the DLLs in lib\ and 10+
-# moved them to bin\ — Dockerfile.nvidia never caught up, so its PATH entry
-# pointed at lib\. That means the runtime lookup was broken in TWO independent
-# ways: the wrong VERSION (the pin/zip mismatch) and the wrong DIRECTORY. Even
-# a correctly-pinned image could never have loaded the EP. Accept either layout
-# and require DLLs in at least one of them.
+# Fail closed; TensorRT 10+ keeps its runtime DLLs in bin\, older releases in lib\, so accept either.
 $binDir = Join-Path $stable 'bin'
 $libDir = Join-Path $stable 'lib'
-# @() wraps the pipeline RESULT, not just the input: one surviving dir is a bare
-# scalar and .Count below throws under StrictMode (the TensorRT 10+/11 bin-only layout).
+# The outer @() matters: one surviving dir is a bare scalar, whose .Count throws under StrictMode.
 $dllDirs = @(@($binDir, $libDir) | Where-Object {
     Test-Path $_
 } | Where-Object {

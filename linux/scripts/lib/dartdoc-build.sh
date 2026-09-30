@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# dartdoc-build.sh - generic "theme and enrich a `dart doc` site" core.
-#
-# `dart doc` has no theme or navigation hook; the only seams are the generated
-# static-assets/styles.css and the emitted HTML. A wrapper sets the
-# DARTDOC_BUILD_* variables, sources this file and calls dartdoc_build_main.
-# Variables are in docs/shared-script-libraries.md § dartdoc-build.sh; the theme
-# sheet is GENERATED from brand.json by DocumANTation style/generate_style.py.
-#
-# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
+# Sourced core (no shell options); dart doc's only seams are styles.css and its HTML. docs/shared-script-libraries.md#dartdoc-buildsh--theme-and-enrich-a-dart-doc-site
 [ -n "${_DARTDOC_BUILD_SH_LOADED:-}" ] && return 0
 _DARTDOC_BUILD_SH_LOADED=1
 
@@ -27,8 +19,7 @@ _dartdoc_build_api_dir() {
   printf '%s\n' "$(_dartdoc_build_doc_root)/api"
 }
 
-# Every step after generation edits files `dart doc` wrote, so a missing tree
-# means the generator never ran and the step would report green over nothing.
+# A missing tree means the generator never ran; a later step would report green over nothing.
 _dartdoc_build_require_api_dir() {
   local api_dir
   api_dir="$(_dartdoc_build_api_dir)"
@@ -38,11 +29,7 @@ _dartdoc_build_require_api_dir() {
   printf '%s\n' "${api_dir}"
 }
 
-# ---------------------------------------------------------------------------
-# Python environment
-# ---------------------------------------------------------------------------
-# Container-native venv, never in the workspace. Its interpreter is used by path
-# rather than activated, so no `set -u` dance around a vendor activate script.
+# Python environment: container-native, used by path so no set -u dance around activate.
 dartdoc_build_prepare_python_env() {
   local venv_dir requirements python
   if [[ -n "${DARTDOC_BUILD_PYTHON:-}" ]]; then
@@ -70,11 +57,7 @@ dartdoc_build_prepare_python_env() {
   export DARTDOC_BUILD_PYTHON
 }
 
-# ---------------------------------------------------------------------------
-# Generation
-# ---------------------------------------------------------------------------
-# DARTDOC_BUILD_CLEAN_CMD and DARTDOC_BUILD_DOC_CMD are arrays, so a consumer
-# supplies `flutter clean` / `dart doc` without this file knowing either tool.
+# Generation: the commands are caller arrays, so this file knows neither flutter nor dart.
 dartdoc_build_generate() {
   local root
   local -a clean_cmd=() doc_cmd=()
@@ -103,11 +86,7 @@ dartdoc_build_generate() {
   )
 }
 
-# ---------------------------------------------------------------------------
-# Theming
-# ---------------------------------------------------------------------------
-# Appends the generated brand sheet to dartdoc's own stylesheet, truncating a
-# previous append at the sheet's first line so a rebuild cannot stack copies.
+# Theming: truncate a previous append at the sheet's first line so rebuilds cannot stack copies.
 dartdoc_build_apply_theme() {
   local theme api_dir target marker
   theme="${DARTDOC_BUILD_THEME_CSS:-}"
@@ -133,8 +112,7 @@ dartdoc_build_apply_theme() {
   cat "${theme}" >>"${target}"
 }
 
-# Dartdoc emits `class="light-theme"`; the brand sheet carries both palettes and
-# the sites in this family open dark.
+# The brand sheet carries both palettes, and this family's sites open dark.
 dartdoc_build_default_dark() {
   local api_dir
   api_dir="$(_dartdoc_build_require_api_dir)"
@@ -143,9 +121,7 @@ dartdoc_build_default_dark() {
     xargs -0 -r sed -i 's/class="light-theme"/class="dark-theme"/g'
 }
 
-# ---------------------------------------------------------------------------
 # Assets and guide pages
-# ---------------------------------------------------------------------------
 dartdoc_build_copy_images() {
   local images api_dir
   images="${DARTDOC_BUILD_IMAGES_DIR:-}"
@@ -162,11 +138,7 @@ dartdoc_build_copy_images() {
   cp -a "${images}/." "${api_dir}/images/"
 }
 
-# The ONE owner of the `|` split both settings use. Prints a TAB-separated
-# `<a><TAB><b><TAB><c>` row per entry and refuses one that is missing a field;
-# the last field absorbs any further `|`, so a nav title may contain one.
-# $1 = required fields (2 or 3), $2 = the shape quoted in the error, $3 = the
-# setting's name, then the entries themselves.
+# <fields> <shape> <setting> <entries>...; the one | splitter, whose last field absorbs further |.
 _dartdoc_build_split() {
   local want="$1" shape="$2" name="$3" entry a b c
   shift 3
@@ -184,8 +156,7 @@ _dartdoc_build_split() {
   done
 }
 
-# Each DARTDOC_BUILD_GUIDES entry is `<source markdown>|<slug>|<nav title>`; the
-# slug names both the staged doc/api/md/<slug>.md and the guide-<slug>.html page.
+# Entries are <source>|<slug>|<nav title>; the slug names the staged md and guide-<slug>.html.
 _dartdoc_build_guide_rows() {
   _dartdoc_build_split 3 '<path>|<slug>|<title>' DARTDOC_BUILD_GUIDES \
     ${DARTDOC_BUILD_GUIDES[@]+"${DARTDOC_BUILD_GUIDES[@]}"}
@@ -197,8 +168,7 @@ dartdoc_build_stage_guides() {
   md_dir="${api_dir}/md"
   mkdir -p "${md_dir}"
   rm -f "${api_dir}"/guide-*.html
-  # Collected BEFORE the loop so a malformed entry's err() exits the script
-  # rather than just the subshell a process substitution would have run in.
+  # Collected first so err() exits the script, not a process-substitution subshell.
   rows="$(_dartdoc_build_guide_rows)" || exit 1
   while IFS=$'\t' read -r src slug _; do
     [[ -n "${src}" ]] || continue
@@ -210,9 +180,7 @@ dartdoc_build_stage_guides() {
   info "Staged the configured Markdown guides under ${md_dir}"
 }
 
-# The renderer's config is tab separated, so a nav title or a footer label may
-# hold any character a shell would otherwise have to quote. Both row kinds come
-# out of _dartdoc_build_split relabelled; nothing here re-parses a `|`.
+# Tab-separated, so titles and labels may hold any character without shell quoting.
 _dartdoc_build_write_render_config() {
   local out rows
   out="$1"
@@ -242,11 +210,7 @@ dartdoc_build_render_guides() {
   rm -f "${config}"
 }
 
-# ---------------------------------------------------------------------------
-# Ownership
-# ---------------------------------------------------------------------------
-# The container writes doc/ as root over a bind mount, leaving the host user
-# unable to rebuild the tree. A failing chown is a real failure, not a warning.
+# Ownership: root wrote doc/ over a bind mount, so a failing chown is a real failure.
 dartdoc_build_fix_ownership() {
   local root doc_root owner_uid owner_gid
   if [[ "${CI:-}" != "true" ]]; then

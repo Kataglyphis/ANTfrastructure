@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# smoke-vulkan.sh
-# Validates the Vulkan SDK installation inside the SDK image:
-#   - Vulkan headers are findable
-#   - Vulkan loader library exists
-#   - vkEnumerateInstanceVersion returns a real version (via vkvia or dlopen)
-#
-# Usage:
-#   smoke-vulkan.sh
+# SDK image Vulkan smoke: headers, loader, and a real vkEnumerateInstanceVersion.
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/smoke-common.sh"

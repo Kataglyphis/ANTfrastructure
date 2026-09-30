@@ -1,22 +1,15 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# GPU/CUDA detection utilities for Windows container builds.
-# Extracted from WindowsSourceBuild.Common.psm1 to reduce module size.
-# Single source of truth for all GPU environment detection across
-# ONNX Runtime, GenAI, OpenCV, LiteRT, TVM, and GStreamer builds.
+
+# The one owner of GPU environment detection for every Windows source build.
 
 Set-StrictMode -Version Latest
 
-# Guarded, WITHOUT -Force (repo-wide nested-import rule): a forced nested
-# re-import rebinds Shared into this module's private scope and unloads the
-# caller's top-level import (the PS module-scoping trap).
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
-# Arch facts (#176): the CUDA helpers below must resolve the TARGET arch (which
-# lib\ dir cuDNN lives in, which cl.exe nvcc drives), and this module must stay
-# usable when only it is imported (tests). Guarded, same rule as above.
+# Imported here too because tests load this module alone.
 $targetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
 if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchPath }
 
@@ -31,12 +24,7 @@ function Resolve-TensorRtRoot {
     if (-not $trtRoot) { return $null }
     if (-not (Test-Path $trtRoot)) { return $null }
     if (-not (Get-ChildItem $trtRoot -ErrorAction SilentlyContinue | Select-Object -First 1)) { return $null }
-    # 'current' first (backlog #38): Set-TensorrtTree.ps1 renames the
-    # extracted TensorRT-<version> tree to a stable name so the Dockerfile's
-    # runtime PATH can reference it WITHOUT spelling the pin — deriving that
-    # path from TENSORRT_VERSION is what silently killed the EP when the pin
-    # and the staged zip disagreed. The versioned glob stays as the fallback so
-    # pre-normalization images and host-lane trees keep resolving.
+    # 'current' first: Set-TensorrtTree.ps1 names the tree stably so the runtime PATH never spells the pin.
     $stable = Join-Path $trtRoot 'current'
     if (Test-Path $stable) { return $stable }
     $trtVerDir = Get-ChildItem "$trtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -57,13 +45,7 @@ function Get-GpuEnvironment {
     $trtRoot = Resolve-TensorRtRoot
     $cudaBin = if ($cudaRoot) { Join-Path $cudaRoot 'bin' } else { $null }
 
-    # FAIL CLOSED on the nvidia lane (#45): GPU_TYPE=nvidia is BAKED into the
-    # image (Dockerfile.nvidia), so "lane says nvidia but no CUDA root" is
-    # never legitimate - it is a mis-plumbed path, and every consumer would
-    # take its quiet CPU-only else-branch (onnx "CPU-only build", opencv
-    # WITH_CUDA=OFF, tvm silently), yielding ~2.5 h of green-and-useless
-    # stages. Deliberate CPU builds go through the ForceCpuEnvVar opt-outs
-    # (ONNX_FORCE_CPU & friends), which return above and never reach this.
+    # Fail closed: GPU_TYPE=nvidia is baked into the image, so a missing CUDA root is mis-plumbing, not a CPU build.
     if ($gpuType -eq 'nvidia' -and (-not $cudaRoot -or -not (Test-Path $cudaRoot))) {
         throw ("GPU_TYPE=nvidia but no CUDA toolkit found (CudaRoot='$cudaRoot') - " +
             'a mis-plumbed CUDA path would silently produce a CPU-only image (backlog #45). ' +
@@ -95,10 +77,7 @@ function Get-GpuEnvironment {
         CudnnRoot     = $cudnnRoot
         TensorRtRoot  = $trtRoot
         CudaBin       = $cudaBin
-        # THE lane predicate (#121): the fail-closed gate above already
-        # guarantees a valid CudaRoot whenever GpuType is nvidia, so consumers
-        # need no defensive '-and CudaRoot -and Test-Path' tails — six
-        # divergent spellings of this condition existed before 2026-08-21.
+        # The gate above guarantees a valid CudaRoot whenever this is true.
         HasCuda       = ($gpuType -eq 'nvidia')
         # The rocm twin: the gate above guarantees RocmRoot holds lib\cmake\hip whenever it is true.
         RocmRoot      = $rocmRoot
@@ -129,17 +108,14 @@ function Get-CudaToolkitRootArg {
 }
 
 function Get-CudnnLibraryDir {
-    # cuDNN's redist lays the import libs under lib\<archdir>: x64 natively,
-    # arm64 on the cross lane (#176). Returned so -DCMAKE_LIBRARY_PATH can point
-    # at the SAME directory the import lib was found in.
+    # Returned so -DCMAKE_LIBRARY_PATH points at the directory the import lib was found in.
     param(
         [string]$CudnnRoot,
         [string]$Arch = ''
     )
     if ([string]::IsNullOrWhiteSpace($CudnnRoot)) { return $null }
     $archDir = if ((Get-WindowsTargetArch -Arch $Arch) -eq 'amd64') { 'x64' } else { 'arm64' }
-    # Not Join-Path: it resolves the root's drive and THROWS on an unmounted one,
-    # where this contract is $null (SourceBuild.Resolve's X:\ case).
+    # Not Join-Path: it throws on an unmounted drive, where this contract is $null.
     $libDir = "$($CudnnRoot.TrimEnd('\', '/'))\lib\$archDir"
     if (-not (Test-Path -LiteralPath $libDir -ErrorAction SilentlyContinue)) { return $null }
     return $libDir
@@ -161,12 +137,9 @@ function Get-CudnnLibrary {
 function Test-CudaWindowsArm64Payload {
     <#
     .SYNOPSIS
-        True when the CUDA root carries the Windows-arm64 device payload.
+        True when the CUDA root carries the Windows-arm64 payload (lib\arm64 cudart.lib + cudadevrt.lib).
     .DESCRIPTION
-        The cross lane's POSITIVE signal (#176): Install-Cuda.ps1 -TargetArch arm64
-        stages lib\arm64 (cudart.lib + cudadevrt.lib). Its presence -- never a host
-        GPU probe -- is what may enable CUDA on an arm64 build; absent means the
-        arm64 lane stays CPU + DirectML.
+        The only signal that may enable CUDA on an arm64 build, never a host GPU probe.
     #>
     param([string]$CudaRoot = '')
     if ([string]::IsNullOrWhiteSpace($CudaRoot)) { $CudaRoot = Get-CudaRoot }
@@ -178,14 +151,9 @@ function Test-CudaWindowsArm64Payload {
 function Get-NvccHostCompilerPath {
     <#
     .SYNOPSIS
-        The MSVC cl.exe nvcc must use as its host compiler for the TARGET arch.
+        The MSVC cl.exe nvcc must use as its host compiler for the target arch.
     .DESCRIPTION
-        nvcc rejects clang-cl, and the host compiler must TARGET the build's arch:
-        natively the VsDevCmd x64 cl; on the cross lane the x64-HOSTED
-        arm64-targeting cl (Hostx64\arm64) -- the one `vcvarsall x64_arm64` puts on
-        PATH. Get-Command would hand back the x64 one, and nvcc would then emit x64
-        host objects into an arm64 link. One owner for every nvcc-driven build
-        (ORT, GenAI, OpenCV, TVM).
+        nvcc rejects clang-cl, and on the cross lane Get-Command would return the x64 cl, so nvcc would emit x64 objects.
     #>
     param([string]$Arch = '')
     $targetArch = Get-WindowsTargetArch -Arch $Arch
@@ -207,9 +175,7 @@ function Get-NvccCudaCmakeArgs {
     $targetArch = Get-WindowsTargetArch -Arch $Arch
     $clExe = Get-NvccHostCompilerPath -Arch $targetArch
     $preamble = '-Xcompiler=/Zc:preprocessor --compiler-options /Zc:preprocessor -DCCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING'
-    # Cross: NVIDIA's Windows-on-Arm porting guide documents `vcvarsall x64_arm64`
-    # + `nvcc --use-local-env`; without it nvcc bootstraps its own MSVC env and
-    # can pick the wrong arch (verified in out/probe-cuda-cross2, 2026-09-19).
+    # Cross: without --use-local-env nvcc bootstraps its own MSVC env and can pick the wrong arch.
     if ($targetArch -ne 'amd64') { $preamble = "--use-local-env $preamble" }
     $cudaFlags = if ($ExtraCudaFlags) { "$ExtraCudaFlags $preamble" } else { $preamble }
     $nvccArgs = @(

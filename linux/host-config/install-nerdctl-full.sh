@@ -1,72 +1,10 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# install-nerdctl-full.sh — install/upgrade the nerdctl-full bundle on this host.
-#
-# nerdctl-full ships nerdctl TOGETHER WITH the whole stack it drives: containerd,
-# BuildKit (buildkitd + buildctl), runc, CNI plugins, the snapshotters and the
-# rootless helpers. That coupling is the point — upgrading buildkitd on this host
-# means upgrading the bundle, because the pieces are version-matched.
-#
-# WHY A SCRIPT (2026-08-26): the chain hit BKD1 (buildkitd session rot: export
-# hangs, "no active session", a lost layer blob) THREE times in one rebuild,
-# costing hours each. Upstream has no fix for the rot itself, but newer releases
-# carry adjacent concurrency fixes — and this host builds three arches in
-# parallel, which is exactly that load class. Upgrading by hand is a sequence of
-# stop-services / extract-over-/usr/local / restart steps that is easy to get
-# half-right, and a half-extracted bundle fails much later with a confusing
-# symptom (see docs/linux-host-setup.md#b4-verify-a-nerdctl-full-install).
-#
-# TWO PREFIXES (rootless mode added 2026-09-08)
-#   /usr/local (default)  root-owned; extraction needs sudo.
-#   $HOME/.local          user-owned; NO sudo anywhere, so it can run
-#                         unattended. This is the owner's policy on hosts whose
-#                         stack is rootless-only: always the full bundle, always
-#                         rootless. See docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo
-#   The mode is AUTO-DETECTED from the live systemd --user units (whichever
-#   prefix their ExecStart already names wins), so neither host needs a knob;
-#   NERDCTL_ROOTLESS=1|0 forces it. Detection matters because a /usr/local
-#   install on a $HOME-rootless host cannot move the daemon versions at all —
-#   the units would keep launching the binaries the install never touched.
-#
-# SAFETY MODEL
-#   - REFUSES while a build is running. Extracting over live binaries mid-chain
-#     would kill hours of work; this host regularly builds for 10+ hours.
-#   - DRY RUN by default: prints the version delta and the exact plan.
-#     NERDCTL_INSTALL_CONFIRM=1 performs it.
-#   - Verifies the release SHA256 before touching anything.
-#   - Backs up the current bin/ binaries AND the lib/systemd/system units the
-#     bundle rewrites, so --rollback puts both back (it stops the rootful
-#     services first and runs a system daemon-reload). SCOPE: the bundle also
-#     ships libexec/ (CNI) and share/, and those stay at the NEW version after a
-#     rollback, which is fine for the build path (nerdctl/buildkitd/containerd/
-#     runc all live in bin/) but is not a full restore. To go all the way back,
-#     re-run with NERDCTL_VERSION=<previous> instead.
-#   - Stops the user services first and restarts them after, then PROVES the
-#     stack answers (nerdctl version / buildctl du) instead of assuming.
-#   - Cache mounts live in buildkit's state dir (~/.local/share/buildkit), NOT
-#     in /usr/local, so an upgrade does not touch ccache/sccache/cerbero caches.
-#     The script still counts them before and after and says so.
-#
-# USAGE
-#   bash linux/host-config/install-nerdctl-full.sh              # dry run
-#   NERDCTL_INSTALL_CONFIRM=1 bash .../install-nerdctl-full.sh  # do it
-#   NERDCTL_VERSION=2.3.5 ... (default: latest release)
-#   NERDCTL_ROOTLESS=1 ... (force $HOME/.local, no sudo; 0 forces /usr/local)
-#   bash .../install-nerdctl-full.sh --rollback                 # restore backup
-#
-# Sudo is required ONLY for the /usr/local prefix (that tree is root-owned).
-# The rootless prefix needs none, which is what makes an unattended update
-# possible on a host where sudo prompts for a password.
-# ==============================================================================
+# Installs or upgrades nerdctl-full, dry run unless NERDCTL_INSTALL_CONFIRM=1: docs/linux-host-setup.md#b3b-install-or-upgrade-nerdctl-full
 set -euo pipefail
 
 UNIT_DIR="${NERDCTL_UNIT_DIR:-${HOME}/.config/systemd/user}"
 
-# The live rootless units' ExecStart is the only authority on which prefix this
-# host actually uses. Detect it so neither host needs a knob: /usr/local on the
-# amd64 dev box, $HOME/.local on a rootless-only host. Getting this wrong is not
-# cosmetic — a /usr/local install on a $HOME-rootless host replaces binaries no
-# unit ever launches, so the daemon-version proof below fails by construction.
+# The live units' ExecStart is the authority on the prefix: installing elsewhere replaces binaries no unit launches.
 _unit_execstart_prefix() {
   local u p
   for u in containerd.service buildkit.service; do
@@ -92,9 +30,7 @@ else
   PREFIX="${NERDCTL_PREFIX:-/usr/local}"
 fi
 
-# One wrapper instead of ten conditional call sites. In rootless mode every
-# target is user-owned, so sudo is not merely unnecessary — requiring it is what
-# made this script unrunnable unattended on a host whose sudo prompts.
+# Rootless targets are user-owned; requiring sudo there made unattended runs impossible.
 _as_root() { if [ "${ROOTLESS}" = "1" ]; then "$@"; else sudo "$@"; fi; }
 _daemon_reload() {
   if [ "${ROOTLESS}" = "1" ]; then systemctl --user daemon-reload
@@ -104,21 +40,14 @@ _daemon_reload() {
 BACKUP_DIR="${NERDCTL_BACKUP_DIR:-${HOME}/.cache/nerdctl-full-backup}"
 CONFIRM="${NERDCTL_INSTALL_CONFIRM:-0}"
 REPO="containerd/nerdctl"
-# buildctl needs the rootless socket like prune-safe.sh:30 does — without it the
-# census silently reads 0 and the "did the upgrade eat my caches?" check becomes
-# a gate that cannot fail.
+# Without the rootless socket the cache census reads 0 and can never fail.
 export BUILDKIT_HOST="${BUILDKIT_HOST:-unix:///run/user/$(id -u)/buildkit/buildkitd.sock}"
 
 log()  { printf '[nerdctl-full] %s\n' "$*"; }
 warn() { printf '[nerdctl-full] WARNING: %s\n' "$*" >&2; }
 err()  { printf '[nerdctl-full] ERROR: %s\n' "$*" >&2; exit 1; }
 
-# ── systemd --user units follow the prefix ───────────────────────────────────
-# Extracting the bundle is only half a prefix change: the units keep whatever
-# absolute ExecStart they were generated with, so without this the daemons go
-# on launching the OLD prefix and the version-moved proof below fails. Also
-# prepends ${PREFIX}/bin to Environment=PATH, because containerd-rootless.sh
-# resolves its helpers (rootlesskit, slirp4netns, containerd) through PATH.
+# Units keep their absolute ExecStart, and containerd-rootless.sh finds its helpers via PATH, so both follow the prefix.
 _repoint_unit() { # _repoint_unit <unit-file>
   local f="$1" before
   [ -f "${f}" ] || { warn "no ${f} — nothing to repoint (run containerd-rootless-setuptool.sh install first)"; return 0; }
@@ -149,9 +78,7 @@ _repoint_user_units() {
   _daemon_reload || warn "user daemon-reload failed"
 }
 
-# A drop-in ExecStart WINS over the unit file's. buildkit.service-override.conf
-# pins /usr/local, so applying host config after a rootless install silently
-# reverts buildkitd to the other prefix — invisible until a build fails.
+# A drop-in ExecStart wins over the unit's, so a stale override.conf silently reverts buildkitd's prefix.
 _check_dropin_prefix() {
   local d="${UNIT_DIR}/buildkit.service.d/override.conf"
   [ -f "${d}" ] || return 0
@@ -160,7 +87,7 @@ _check_dropin_prefix() {
   return 1
 }
 
-# ── rollback ─────────────────────────────────────────────────────────────────
+# Rollback: bin/ and units only; libexec/ and share/ stay new, so a full downgrade reinstalls NERDCTL_VERSION=<previous>
 if [ "${1:-}" = "--rollback" ]; then
   [ -d "${BACKUP_DIR}" ] || err "no backup at ${BACKUP_DIR}"
   [ -f "${BACKUP_DIR}/VERSION" ] && log "backup was taken at: $(tr '\n' ' ' < "${BACKUP_DIR}/VERSION")"
@@ -197,19 +124,11 @@ if [ "${1:-}" = "--rollback" ]; then
   exit 0
 fi
 
-# ── refuse while a build runs ────────────────────────────────────────────────
-# Own-process filter: this script's own command line contains the pattern.
-# Widened after audit (2026-08-26): the original pattern matched only `nerdctl
-# build` and the chain script, so a solve driven by `buildctl build` — or one
-# where the client already exited while buildkitd keeps solving — looked idle.
-# The cost of a miss is a killed multi-hour run, so this errs toward refusing.
+# Refuse while a build runs: a miss kills a multi-hour run, so the pattern errs toward refusing.
 _BUSY_PAT='nerdctl[^ ]* build|buildctl[^ ]* build|build-cross-chain\.sh'
 _busy_procs() { pgrep -af "${_BUSY_PAT}" 2>/dev/null | grep -v 'install-nerdctl-full' || true; }
 
-# The repo's own lifecycle pidfile is authoritative when it exists
-# (linux/scripts/01-core/chain-lifecycle.sh:58). Read it defensively: an empty
-# or garbage file must not become `kill -0 0`, which targets our own process
-# group and would refuse every run.
+# chain-lifecycle.sh's pidfile is authoritative; a garbage file must not become `kill -0 0`, our own process group.
 _pidfile="${CROSS_CHAIN_PIDFILE:-${TMPDIR:-/tmp}/kata-cross-chain.pid}"
 if [ -f "${_pidfile}" ]; then
   _chain_pid="$(tr -dc '0-9' < "${_pidfile}" 2>/dev/null || true)"
@@ -224,20 +143,8 @@ if [ "$(_busy_procs | grep -c . || true)" -gt 0 ]; then
   err "a build is running — refusing (stop it with linux/scripts/stop-cross-chain.sh first)"
 fi
 
-# ── rootful coexistence ──────────────────────────────────────────────────────
-# This host runs the ROOTLESS stack (systemd --user) and, from the SAME
-# ${PREFIX}, a ROOTFUL containerd + buildkitd. Extracting the bundle replaces
-# those root daemons' binaries AND their unit files under
-# ${PREFIX}/lib/systemd/system out from under them. Measured here: GNU tar 1.35
-# and `cp -a` BOTH unlink-and-recreate, so there is no ETXTBSY and no error —
-# the running root daemons just keep executing the now-deleted old inode. Since
-# both units are Restart=always, the real version jump then lands at some
-# arbitrary unattended moment instead of in the window you picked. Refusing by
-# default forces that to be a conscious choice.
+# Rootful daemons on the same prefix keep running deleted inodes after extraction; not reachable from a rootless prefix.
 _rootful_active=""
-# Skipped entirely in rootless mode: a $HOME/.local extraction cannot reach the
-# root daemons' binaries or their ${PREFIX}/lib/systemd/system units, so there
-# is no version skew to force a choice about.
 if [ "${ROOTLESS}" != "1" ]; then
   for _u in containerd.service buildkit.service; do
     if systemctl is-active --quiet "${_u}" 2>/dev/null; then
@@ -246,12 +153,10 @@ if [ "${ROOTLESS}" != "1" ]; then
   done
 fi
 
-# ── resolve versions ─────────────────────────────────────────────────────────
+# Resolve versions
 CURRENT="$(nerdctl --version 2>/dev/null | awk '{print $NF}' || echo none)"
 CUR_BUILDCTL="$(buildctl --version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo '?')"
-# DAEMON-reported versions, captured BEFORE the swap. The on-disk client
-# version proves only that tar ran; these prove the daemons actually restarted
-# onto the new code, which is the thing that can silently not happen.
+# Daemon-reported versions: the client version only proves tar ran, not that the daemons restarted.
 _bk_daemon_before="$(buildctl debug info 2>/dev/null | awk '/^BuildKit:/{print $3}' | head -1 || true)"
 _cd_daemon_before="$(nerdctl info 2>/dev/null | awk -F': *' '/Server Version/{print $2}' | head -1 || true)"
 
@@ -285,18 +190,9 @@ fi
 [ -n "${DETECTED_PREFIX}" ] && [ "${DETECTED_PREFIX}" != "${PREFIX}" ] \
   && warn "the systemd --user units currently name ${DETECTED_PREFIX}, not ${PREFIX} — installing here cannot move the running daemons unless the units are repointed"
 
-# `nerdctl --version` prints "nerdctl version 2.3.4" — NO leading v — so the
-# original `[ "${CURRENT}" = "v${TARGET}" ]` was never true: dead code. That
-# mattered beyond a wasted re-install: a second run would re-do the upgrade and
-# overwrite the backup with the ALREADY-NEW binaries, silently destroying the
-# only path back to the previous release.
+# Compare without the v: a re-run of the same version would overwrite the backup with the new binaries.
 if [ "${CURRENT#v}" = "${TARGET#v}" ] && [ -x "${PREFIX}/bin/nerdctl" ] && [ "${NERDCTL_FORCE:-0}" != "1" ]; then
-  # Same version AND the prefix already holds it — but the units may still name
-  # the other prefix (exactly what a hand-relocation leaves behind). Repointing
-  # is cheap and needs no 260 MB re-extract, so offer that instead of exiting
-  # blind. Deliberately NOT folded into the guard condition: making a units
-  # mismatch re-trigger the full install would re-open the :170 backup-overwrite
-  # hole on any host whose units do not exist yet.
+  # Units left on another prefix only need a repoint; kept out of the guard so it cannot re-trigger a full install.
   if [ "${ROOTLESS}" = "1" ] && [ "${DETECTED_PREFIX}" != "${PREFIX}" ]; then
     if [ "${CONFIRM}" != "1" ]; then
       log "already on v${TARGET#v}, but the units name ${DETECTED_PREFIX:-<none>} — NERDCTL_INSTALL_CONFIRM=1 repoints them (no re-extract)"
@@ -314,13 +210,7 @@ if [ "${CURRENT#v}" = "${TARGET#v}" ] && [ -x "${PREFIX}/bin/nerdctl" ] && [ "${
   exit 0
 fi
 
-# ── cache-mount census BEFORE (they must be untouched) ───────────────────────
-# Same primitive prune-safe.sh uses: the type FILTER, not a text match on
-# `buildctl du` (whose default output has no description column at all — an
-# earlier version of this script grepped for "cached mount" and always got 0).
-# Note `grep -c` prints 0 AND exits 1 on no match, so it takes `|| true`, never
-# `|| echo 0` — the latter prints a SECOND zero.
-# ── rootful decision ─────────────────────────────────────────────────────────
+# Rootful decision
 _rootful_plan=""; _rootful_reload=""
 if [ -n "${_rootful_active}" ]; then
   _rootful_reload=" + system"
@@ -330,8 +220,7 @@ if [ -n "${_rootful_active}" ]; then
   elif [ "${NERDCTL_IGNORE_ROOTFUL:-0}" = "1" ]; then
     warn "rootful units active and IGNORED: ${_rootful_active} — they keep executing the replaced (deleted) binaries until something restarts them"
   else
-    # Block the ACT, not the look: a dry run must still be able to show the
-    # plan and the choice, otherwise you cannot find out what you need to pick.
+    # Block the act, not the look: a dry run still shows the plan and the choice.
     _rootful_msg="rootful ${_rootful_active} run from ${PREFIX} and would be replaced underneath them. Pick one deliberately: NERDCTL_INCLUDE_ROOTFUL=1 (stop, upgrade and restart them together — no version skew) or NERDCTL_IGNORE_ROOTFUL=1 (accept that they keep running the old deleted inode until they restart, which under Restart=always happens unattended)."
     [ "${CONFIRM}" = "1" ] && err "${_rootful_msg}"
     warn "${_rootful_msg}"
@@ -339,9 +228,7 @@ if [ -n "${_rootful_active}" ]; then
   fi
 fi
 
-# Readiness POLL, not a fixed sleep: buildkitd takes a variable few seconds and
-# the old `sleep 3` could hand a not-yet-listening daemon to the verify block,
-# where it reads as "0 cache mounts" and "not active".
+# Poll, not sleep: a not-yet-listening buildkitd reads as "0 cache mounts" and "not active".
 _wait_ready() {
   local _label="$1" _timeout="$2"; shift 2
   local _end=$(( SECONDS + _timeout ))
@@ -353,14 +240,7 @@ _wait_ready() {
   return 1
 }
 
-# Two corrections found by audit (2026-08-26), both verified on this host:
-#  1. `buildctl du` prints a HEADER row ("ID  RECLAIMABLE  SIZE  LAST ACCESSED"),
-#     so `grep -c .` was counting it: the census over-reported by exactly one,
-#     and a fully WIPED store would have read 1 rather than 0.
-#  2. A daemon that is not answering also yields 0. Reported as a count, that is
-#     indistinguishable from "the caches are gone" — and if the BEFORE count is
-#     0, the after>=before comparison can never fail. So: unreachable is a
-#     non-zero RETURN, never a count.
+# Skips `buildctl du`'s header row; an unreachable daemon returns non-zero, never a count of 0.
 _count_cachemounts() {
   local _out
   _out="$(buildctl du --filter type==exec.cachemount 2>/dev/null)" || return 1
@@ -403,7 +283,7 @@ EOF
   exit 0
 fi
 
-# ── download + verify ────────────────────────────────────────────────────────
+# Download and verify
 WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"' EXIT
 log "downloading ${TARBALL} …"
 curl -fSL --retry 3 --retry-all-errors --connect-timeout 20 \
@@ -418,35 +298,30 @@ _have="$(sha256sum "${WORK}/${TARBALL}" | awk '{print $1}')"
 [ "${_want}" = "${_have}" ] || err "CHECKSUM MISMATCH (want ${_want}, have ${_have}) — refusing"
 log "checksum OK (${_have})"
 
-# ── backup ───────────────────────────────────────────────────────────────────
+# Backup: only the files the bundle ships, so it restores like-for-like
 log "backing up current binaries → ${BACKUP_DIR}"
 rm -rf "${BACKUP_DIR}"; mkdir -p "${BACKUP_DIR}/bin"
-# Only the files the bundle actually ships, so the backup restores like-for-like.
 tar -tzf "${WORK}/${TARBALL}" | grep '^bin/' | sed 's|^bin/||' | while read -r f; do
   [ -f "${PREFIX}/bin/${f}" ] && cp -a "${PREFIX}/bin/${f}" "${BACKUP_DIR}/bin/" || true
 done
-# The bundle also ships the ROOTFUL unit files, and tar rewrites them in place.
-# Backing them up is what makes --rollback able to restore the root services'
-# definitions instead of stranding the host on the new ones.
+# tar rewrites the rootful unit files in place; --rollback needs their old versions.
 if [ -d "${PREFIX}/lib/systemd/system" ]; then
   mkdir -p "${BACKUP_DIR}/lib/systemd/system"
   cp -a "${PREFIX}/lib/systemd/system/." "${BACKUP_DIR}/lib/systemd/system/" 2>/dev/null || true
 fi
-# In rootless mode the units that matter are the systemd --user ones, not
-# ${PREFIX}/lib/systemd/system (which systemd never reads for user units).
-# _repoint_user_units rewrites them, so their pre-image belongs in the backup.
+# Rootless mode rewrites the systemd --user units, so their pre-image is backed up too.
 if [ "${ROOTLESS}" = "1" ]; then
   mkdir -p "${BACKUP_DIR}/systemd-user"
   for _u in containerd.service buildkit.service; do
     [ -f "${UNIT_DIR}/${_u}" ] && cp -a "${UNIT_DIR}/${_u}" "${BACKUP_DIR}/systemd-user/" || true
   done
 fi
-# Record WHAT was backed up, so --rollback can say where it takes you.
+# Lets --rollback say where it takes you.
 printf 'nerdctl=%s\nbuildctl=%s\nbacked_up_from=%s\n' \
   "${CURRENT}" "${CUR_BUILDCTL}" "${PREFIX}" > "${BACKUP_DIR}/VERSION"
 log "backed up $(find "${BACKUP_DIR}/bin" -type f | wc -l) binary/ies + $(find "${BACKUP_DIR}/lib" -name '*.service' 2>/dev/null | wc -l) unit(s) (nerdctl ${CURRENT})"
 
-# ── stop, extract, start ─────────────────────────────────────────────────────
+# Stop, extract, start
 _ok=1
 
 log "stopping user services"
@@ -461,8 +336,7 @@ sleep 2
 log "extracting into ${PREFIX} ($([ "${ROOTLESS}" = "1" ] && echo "no sudo" || echo "sudo"))"
 if ! _as_root tar -C "${PREFIX}" -xzf "${WORK}/${TARBALL}"; then
   warn "extraction failed — attempting restore from ${BACKUP_DIR}"
-  # Do NOT swallow this: the old code sent the restore to /dev/null and then
-  # announced "binaries restored from backup" whether or not it had worked.
+  # Report the restore's real outcome.
   _restored=1
   _as_root cp -a "${BACKUP_DIR}/bin/." "${PREFIX}/bin/" || _restored=0
   systemctl --user start containerd.service buildkit.service 2>/dev/null || true
@@ -476,10 +350,7 @@ fi
 
 log "starting services"
 systemctl --user daemon-reload 2>/dev/null || true
-# The bundle rewrote ${PREFIX}/lib/systemd/system/*.service. Without a SYSTEM
-# daemon-reload those live root units keep an in-memory definition that no
-# longer matches disk, and the change lands at whatever unrelated reload comes
-# next (an apt install will do it). Do it here, in the window that was chosen.
+# Reload now, or the rewritten root units change at whatever unrelated reload comes next.
 if [ -d "${PREFIX}/lib/systemd/system" ]; then
   _daemon_reload || warn "system daemon-reload failed — root units may report NeedDaemonReload=yes"
 fi
@@ -493,7 +364,7 @@ if [ -n "${_rootful_active}" ] && [ "${NERDCTL_INCLUDE_ROOTFUL:-0}" = "1" ]; the
   sudo systemctl start ${_rootful_active} || warn "could not restart ${_rootful_active}"
 fi
 
-# ── prove it works ───────────────────────────────────────────────────────────
+# Prove it works
 NEW="$(nerdctl --version 2>/dev/null | awk '{print $NF}' || echo '?')"
 NEW_BUILDCTL="$(buildctl --version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo '?')"
 log "now installed: nerdctl ${NEW} (buildctl ${NEW_BUILDCTL})"
@@ -501,16 +372,11 @@ log "now installed: nerdctl ${NEW} (buildctl ${NEW_BUILDCTL})"
 systemctl --user is-active buildkit.service >/dev/null 2>&1 || { warn "buildkit.service not active"; _ok=0; }
 nerdctl images >/dev/null 2>&1 || { warn "nerdctl cannot reach containerd"; _ok=0; }
 
-# DAEMON-side proof. The on-disk client versions above only prove tar ran; a
-# daemon that failed to restart keeps serving the old code from a deleted inode
-# and would otherwise sail through this block.
+# A daemon that failed to restart keeps serving old code from a deleted inode.
 _bk_daemon_after="$(buildctl debug info 2>/dev/null | awk '/^BuildKit:/{print $3}' | head -1 || true)"
 _cd_daemon_after="$(nerdctl info 2>/dev/null | awk -F': *' '/Server Version/{print $2}' | head -1 || true)"
 log "daemon versions: buildkit ${_bk_daemon_before:-?} → ${_bk_daemon_after:-?}, containerd ${_cd_daemon_before:-?} → ${_cd_daemon_after:-?}"
-# The version-moved proof only applies to an actual version change. A prefix
-# RELOCATION (the rootless mode's whole point) is same-version by definition, so
-# asserting movement there would fail every correct run. Prove the right thing
-# instead: that the daemons now execute out of ${PREFIX}/bin.
+# A same-version prefix relocation cannot move versions, so it proves the daemons' executable path instead.
 if [ "${CURRENT#v}" != "${TARGET#v}" ]; then
   if [ -n "${_bk_daemon_before}" ] && [ "${_bk_daemon_before}" = "${_bk_daemon_after}" ]; then
     warn "buildkitd STILL reports ${_bk_daemon_after} — it did not restart onto the new binary"
@@ -534,8 +400,7 @@ else
   fi
 fi
 
-# A buildkitd can answer and still have no usable worker; that passes
-# `is-active` and fails every build. Assert the worker exists.
+# A buildkitd with no worker passes `is-active` and fails every build.
 _workers="$(buildctl debug workers 2>/dev/null | tail -n +2 | grep -c . || true)"
 log "buildkitd workers: ${_workers}"
 if [ "${_workers:-0}" -lt 1 ]; then
@@ -543,11 +408,7 @@ if [ "${_workers:-0}" -lt 1 ]; then
   _ok=0
 fi
 
-# CNI plugins are the half of the bundle nobody verifies. Rootless nerdctl
-# resolves them under ITS OWN default (${HOME}/.local/libexec/cni), not under
-# ${PREFIX} — so a /usr/local install leaves a rootless host with no plugins at
-# all and container networking fails with a message about a missing plugin,
-# never about the install. Measured on summy-server 2026-09-08: 18 plugins.
+# Rootless nerdctl looks for CNI plugins under its own default, not ${PREFIX}: docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo
 _cni_dir="$(nerdctl info --format '{{.CNIPath}}' 2>/dev/null || true)"
 [ -n "${_cni_dir}" ] || _cni_dir="${HOME}/.local/libexec/cni"
 _cni_n="$(find "${_cni_dir}" -maxdepth 1 -type f ! -name 'LICENSE' ! -name 'README.md' 2>/dev/null | wc -l)"
@@ -559,8 +420,7 @@ fi
 
 _check_dropin_prefix || _ok=0
 
-# A complete tree left behind in the other prefix is not an error, but it WILL
-# drift at the next upgrade and it shadows this one whenever PATH prefers it.
+# A tree in the other prefix drifts at the next upgrade and shadows this one when PATH prefers it.
 _other="/usr/local"; [ "${PREFIX}" = "/usr/local" ] && _other="${HOME}/.local"
 if [ -x "${_other}/bin/nerdctl" ]; then
   log "note: ${_other}/bin also holds a nerdctl ($("${_other}/bin/nerdctl" --version 2>/dev/null | awk '{print $NF}')) — this run did not touch it"
@@ -571,8 +431,7 @@ if [ -n "${_resolved}" ] && [ "${_resolved}" != "${PREFIX}/bin/nerdctl" ]; then
   _ok=0
 fi
 
-# Cache-mount census. This used to only WARN, so an upgrade that ate hours of
-# ccache/sccache still exited 0 and printed "done." It now fails the run.
+# Lost cache mounts fail the run.
 if [ "${_mounts_before}" -ge 0 ]; then
   if ! _mounts_after="$(_count_cachemounts)"; then
     warn "buildkitd not answering for the after-census — cache state UNKNOWN"
@@ -595,17 +454,7 @@ if [ "${_ok}" != "1" ]; then
   exit 1
 fi
 
-# ── QEMU binfmt: restarting the rootless stack DESTROYS it ────────────────────
-# Learned the expensive way on 2026-08-27. Restarting containerd/buildkit
-# rebuilds the rootlesskit namespace, and the QEMU binfmt registration lives
-# INSIDE that namespace -- so it goes with it. Nothing complains: cross-compiled
-# stages (media, android) never touch an emulator and ran green for 5.5 hours.
-# The runtime stage then builds each wrapper ON its target platform, and both
-# the arm64 and riscv64 builds died with a BuildKit step that emitted no output
-# at all:
-#   #8 ERROR: process "/dev/.buildkit_qemu_emulator bash -lc ..." exit code: 1
-# Checking the HOST's /proc/sys/fs/binfmt_misc does not reveal this -- the
-# registration is not there even on a perfectly healthy machine.
+# The restart dropped the QEMU binfmt registration with the rootlesskit namespace: docs/failure-modes.md#exec-format-error-on-a-foreign-arch-build
 _binfmt_missing=""
 for _h in qemu-aarch64 qemu-riscv64; do
   grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${_h}" 2>/dev/null && continue

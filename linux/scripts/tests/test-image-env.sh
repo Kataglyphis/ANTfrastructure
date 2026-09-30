@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# No build-host setting in a published image's environment, on both lanes: the static
-# pass of lint-dockerfiles.sh, the image-env gate in build-runtime-manifest.sh, and the
-# case file that also grades the Windows twin (WindowsImageEnv.Common.psm1).
-# docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting
+# No build-host setting may reach a published image's env; see docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -146,9 +143,7 @@ t_case "lint-dockerfiles.sh runs the gate (an orphaned gate proves nothing)"
 t_assert_ok grep -q -e 'python3 linux/scripts/verify_image_env.py --dockerfile "${DOCKERFILES\[@\]}" || FAILED=1' \
   "${REPO_ROOT}/linux/scripts/lint-dockerfiles.sh"
 
-# --- build-runtime-manifest.sh: the Linux publish gate -------------------------
-# The gate lifted out with its collaborators stubbed; a fake nerdctl serves each
-# arch's config ENV from ${FAKE_ENV_DIR}/<arch>.env and fails when there is none.
+# The manifest's publish gate: a fake nerdctl serves ${FAKE_ENV_DIR}/<arch>.env and fails without one.
 _fk="${_work}/bin"
 mkdir -p "${_fk}" "${_work}/envs"
 cat > "${_fk}/nerdctl" <<'SH'
@@ -166,8 +161,7 @@ SH
 chmod +x "${_fk}/nerdctl"
 _env_fn="$(t_fn_src "${MANIFEST}" _manifest_image_env_gate)" || exit 1
 
-# _env_gate -> the gate's output and RC=<rc>, over TARGET_ARCHES (default amd64,arm64).
-# FAKE_PRESENT=0 makes every wrapper tag missing locally.
+# _env_gate: output and RC=<rc> over TARGET_ARCHES; FAKE_PRESENT=0 makes every wrapper tag missing locally.
 _env_gate() {
   (
     set +e

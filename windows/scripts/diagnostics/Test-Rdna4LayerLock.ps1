@@ -1,35 +1,11 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# RDNA4 layer-lock A/B: is the "enabled AMD RDNA4 dGPU kills process-isolated
-# RUN-layer finalize" interaction (hcsshim::ActivateLayer 0x20, upstream
-# docker/for-win#14977; A/B-proven on the RX 9070 XT host 2026-08-10) still
-# present on this host? Re-run after every Adrenalin/Windows update - the
-# severity moved with the Windows patch level before (post-KB5101684 even
-# 10-byte RUN layers tripped), and the day upstream fixes it this script's
-# GONE verdict is the signal to retire the toggle workflow and the
-# Assert-NoActiveRdna4Gpu preflight gate.
-#
-# The finalize verdict per GPU state is DELEGATED to Test-BuildCopy.ps1
-# -Heavy (backlog #5): the probe owns digest-pinned bases, lane logging and
-# the output-shape/quoting lessons - this script only orchestrates the GPU
-# state around two probe runs. Per-lane logs land in out\build-logs\ (the
-# probe prints each path).
-#
-# Sequence (~2-4 min, ELEVATED for the GPU toggle, needs a running buildkitd):
-#   1. probe with the dGPU as-is (usually ENABLED) - green => INTERACTION GONE
-#   2. disable the dGPU -> probe again
-#   3. RE-ENABLE the dGPU (finally-guarded - also on Ctrl+C/throw)
-#
-# Verdicts: GONE (on-green) / PRESENT (on-red, off-green) / INCONCLUSIVE
-# (red in both states - host broken beyond the GPU interaction; check
-# Test-BuildCopy.ps1 -Heavy history and AGENTS.md Common Failure Modes).
+# A/B of an enabled RDNA4 dGPU breaking RUN-layer finalize (docker/for-win#14977); GONE retires the toggle workflow.
 
 [CmdletBinding()]
 param(
-    # Exact device name override; empty = resolve every RDNA4 hazard SKU via
-    # the single-source pattern in WindowsBuildDriver.Common (backlog #1).
+    # Exact device name; empty = every RDNA4 hazard SKU WindowsBuildDriver.Common knows.
     [string]$GpuName = ''
 )
 
@@ -84,16 +60,10 @@ if (Test-FinalizeState -Label 'on') {
 
 Write-Host 'RED with the dGPU enabled - running the off-side of the A/B...' -ForegroundColor Yellow
 $disabled = $false
-# Initialized up front: under StrictMode a value assigned only inside try is
-# one refactor away from a StrictMode error in the verdict line (backlog #25).
+# Initialized up front, so the verdict line never reads a try-only value under StrictMode.
 $offGreen = $false
 try {
-    # $disabled is set the moment the disable is ISSUED, not after the
-    # verification (review find #4): Disable-PnpDevice completes
-    # asynchronously, so a slow driver teardown can fail the 2 s post-state
-    # check while the device still goes down moments later - the finally
-    # must then attempt the re-enable anyway (re-enabling an already-OK
-    # device is a no-op).
+    # Set when the disable is issued: it completes asynchronously, and re-enabling an OK device is a no-op.
     $disabled = $true
     $off = Set-Rdna4DeviceState -Device $gpu -State Disabled
     if (-not $off.Ok) { throw "failed to disable '$($gpu.FriendlyName)' (status '$($off.Status)') - cannot run the off-side (re-enable attempted in finally)" }
@@ -101,9 +71,7 @@ try {
     $offGreen = Test-FinalizeState -Label 'off'
 } finally {
     if ($disabled) {
-        # Post-state-verified shared primitive (backlog #6): a swallowed
-        # re-enable failure strands the host on the iGPU while the console
-        # claims otherwise.
+        # Verified, since a swallowed re-enable failure would strand the host on the iGPU.
         $on = Set-Rdna4DeviceState -Device $gpu -State Enabled
         if ($on.Ok) {
             Write-Host 'dGPU RE-ENABLED (verified)' -ForegroundColor Cyan

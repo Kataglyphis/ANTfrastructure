@@ -1,18 +1,11 @@
 #!/usr/bin/env bash
-# Both ends of the historical stray-`}` bug: generate_pkgconfig_file
-# (01-core/common.sh, backlog T5) which emitted it, and the three helpers the
-# GStreamer monorepo splits its TFLite workarounds into (CL6), one of which
-# repairs the .pc files older images already shipped.
-# docs/cross-build-verification.md#tflite-for-the-gstreamer-monorepo-three-workarounds
+# The stray-`}` .pc bug: its source and the TFLite repair helper; see docs/cross-build-verification.md#tflite-for-the-gstreamer-monorepo-three-workarounds
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 COMMON_SH="${TESTS_DIR}/../01-core/common.sh"
 
-# Source ONLY the function under test: full common.sh pulls versions.env plus
-# five sibling modules at source time (same reason test-cross-fallback-parity
-# extracts instead of sourcing). generate_pkgconfig_file is self-contained
-# (locals + mkdir + cat), so an awk block extraction is safe.
+# Extracted, not sourced: common.sh pulls versions.env and sibling modules; the function is self-contained.
 _fn_src="$(awk '/^generate_pkgconfig_file\(\) \{/,/^\}/' "${COMMON_SH}")"
 
 t_case "generate_pkgconfig_file is extractable from common.sh"
@@ -23,8 +16,7 @@ eval "${_fn_src}"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "${tmpdir}"' EXIT
 
-# Count '}' characters that are NOT part of a ${var} pkg-config reference —
-# the exact artifact the historical bug emitted. Must be 0.
+# _stray_braces <file>: lines with a '}' outside a ${var} reference, the artifact the bug emitted.
 _stray_braces() {
   sed 's/\${[A-Za-z_][A-Za-z_0-9]*}//g' "$1" | grep -n '}' || true
 }
@@ -60,15 +52,11 @@ t_assert_ok grep -qxF 'Libs.private: -lm -lpthread' "${tmpdir}/full.pc"
 t_case "full args: still no stray '}' anywhere"
 t_assert_eq "" "$(_stray_braces "${tmpdir}/full.pc")"
 
-# ---------------------------------------------------------------------------
-# CL6: the three TFLite helpers, extracted the same way and driven under a
-# fixture root. The hardcoded /usr/local and /opt/gcc- prefixes are repointed at
-# the fixture, which is the only edit made to the bodies.
+# The TFLite helpers, extracted with /usr/local and /opt/gcc- repointed at a fixture root, the only edit.
 MONO_SH="${TESTS_DIR}/../03-media/build/gstreamer/common/build-gstreamer-monorepo.sh"
 _extract() { awk "/^$1\(\) \{/,/^\}/" "$2"; }
 
-# _tflite <root> <fn> <preamble> — run one helper in a subshell rooted at <root>,
-# echo its rc last. <preamble> stubs whatever the helper's own file would supply.
+# _tflite <root> <fn> <preamble>: one helper in a subshell rooted at <root>, rc last; <preamble> stubs its file.
 _tflite() {
   local root="$1" fn="$2" pre="$3" src
   src="$(_extract "${fn}" "${MONO_SH}" \

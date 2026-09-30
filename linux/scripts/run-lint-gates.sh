@@ -1,38 +1,13 @@
 #!/usr/bin/env bash
-# run-lint-gates.sh - the fleet's lint gates over ONE consumer tree.
+# run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins (+ratchets) over ONE consumer tree.
 
-# The gates - shell lint, workflow lint (+CI image refs), secret scan, python
-# lint, the shared-config drift check and the consumer pin-forwarding check -
-# bootstrapped pinned and SHA-verified
-# from this repo, run over the tree named by $1. Three
-# consumers had grown their own copy of this - two as `run:` blocks in a
-# workflow, so the gate that blocks their deploy could not be reproduced
-# locally at all. What each copy carried, and what is preserved here: the
-# git-ls-files scope construction, the empty-list vacuity guards, the
-# run-all-then-fail-once accumulator, and the gitleaks self-test.
-
-# The consumer root is MANDATORY and never inferred. A submodule checkout puts
-# this script inside the consumer, where a BASH_SOURCE-derived root resolves to
-# ANTfrastructure and every gate reports green over the wrong tree - the same bug
-# that made lint-secrets.sh and lint-workflows.sh take a root.
-#
 #   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets]
 
-# --exclude drops a vendored top-level directory (default: third_party) from
-# every scope, while KEEPING the tracked plain files directly inside it: those
-# are the consumer's own (a third_party/CMakeLists.txt), and dropping the whole
-# prefix silently excluded them.
+# The root is mandatory: derived from BASH_SOURCE inside a submodule, it would grade ANTfrastructure instead.
 
-# --ratchets adds the eight --root measurement gates (code size, complexity,
-# dead functions, comment size, stdout returns, masked declarations, trailing
-# conditionals, the shellcheck warning ratchet) over the consumer tree, with
-# freeze files at <consumer-root>/<gate>.allow. Opt-in: seed the freeze files
-# from the first run, commit them, then keep the flag on.
+# --exclude (default third_party) still keeps the tracked plain files directly inside the excluded directory.
 
-# The pin PRECONDITIONS the consumer copies carried ("does the pinned
-# lint-secrets.sh understand a scan root yet?") are gone by construction: this
-# script ships in the same commit as the gates it calls, so it cannot outrun
-# them. That is most of what hoisting buys here.
+# --ratchets reads freeze files at <consumer-root>/<gate>.allow; seed them from the first run.
 set -uo pipefail
 
 _LINT_GATES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,15 +24,7 @@ _LINT_GATES_PY=""
 
 _lint_gates_die() { printf 'run-lint-gates.sh: %s\n' "$*" >&2; exit 2; }
 
-# _lint_gates_hub <hub-relative path> -> 0, with the absolute path in
-# _LINT_GATES_HUB_FILE. Two gates below run a program from the HUB half over the
-# consumer root, and both need the same answer to "is it there?": a hub file that
-# is missing is a BROKEN CHECKOUT, never a gate to skip - skipping is what makes
-# a gate green over a tree nothing graded, which is the failure this whole file
-# was written against. Published in a variable rather than on stdout, like
-# _LINT_GATES_SCOPE and _LINT_GATES_SCAN_RC: the messages go to fd 2, and a
-# function whose value comes back through stdout collects anything a caller ever
-# adds to it.
+# Publishes _LINT_GATES_HUB_FILE rather than printing it; a missing hub file is a broken checkout, never a skip.
 _lint_gates_hub() {
   _LINT_GATES_HUB_FILE="${_LINT_GATES_DIR}/../../$1"
   [ -f "${_LINT_GATES_HUB_FILE}" ] && return 0
@@ -99,17 +66,11 @@ _lint_gates_excluded() {
   return 1
 }
 
-# --- the file walk both list-driven gates share ------------------------------
-# `git ls-files`, NOT a glob: `scripts/**/*.sh` does not recurse without
-# globstar, so a glob covered the directories somebody remembered and silently
-# skipped the rest. $3 decides what an EMPTY result MEANS, and the two gates
-# genuinely differ - see docs/shared-script-libraries.md#the-empty-scope-rule.
-# Results land in _LINT_GATES_SCOPE because bash cannot return an array.
+# File walk: git ls-files, as a glob without globstar skips subdirectories. See docs/shared-script-libraries.md#the-empty-scope-rule
 _lint_gates_scope() {
   local label="$1" spec="$2" on_empty="${3:-refuse-empty}" f
   _LINT_GATES_SCOPE=()
-  # -z, not plain ls-files: git QUOTES a path containing non-ASCII bytes
-  # ("dummy_assetsÃ¤/x.sh), and the quoted string then names nothing.
+  # -z: otherwise git quotes a non-ASCII path, and the quoted string names nothing.
   while IFS= read -r -d '' f; do
     _lint_gates_excluded "${f}" || _LINT_GATES_SCOPE+=("${f}")
   done < <(git -C "${_LINT_GATES_ROOT}" ls-files -z -- "${spec}")
@@ -136,14 +97,11 @@ _lint_gates_shell() {
   bash "${_LINT_GATES_DIR}/lint-shell.sh" "${_LINT_GATES_SCOPE[@]}"
 }
 
-# ABSOLUTE paths, unlike the shell gate: lint-python.sh cds to the HUB root
-# before resolving its arguments, so a path relative to the consumer would
-# name nothing there -- or, worse, name something.
+# Absolute paths: lint-python.sh cds to the hub root before resolving its arguments.
 _lint_gates_python() {
   local rc=0
   _lint_gates_scope ruff '*.py' allow-empty || rc=$?
-  # 2 = no python in this repo, which is an answer, not a failure. 1 = a real
-  # scope failure and still fatal.
+  # 2 = no python here, which is an answer; 1 = a real scope failure.
   [ "${rc}" -eq 2 ] && return 0
   [ "${rc}" -eq 0 ] || return "${rc}"
   local abs=() f
@@ -155,12 +113,7 @@ _lint_gates_workflows() {
   bash "${_LINT_GATES_DIR}/lint-workflows.sh" "${_LINT_GATES_ROOT}"
 }
 
-# --- shared-config drift -----------------------------------------------------
-# The BASH half, never Sync-SharedConfig.ps1: no hub Linux image ships pwsh, and
-# that is why this gate had never joined a bash aggregator. A manifest is
-# REQUIRED and its absence fails rather than skips -- skipping would restore the
-# older failure, a gate that is present, green, and comparing nothing.
-# shared/config/README.md#why-a-manifest-and-not-an-ignore-list
+# Shared-config drift via the bash half (no hub Linux image ships pwsh); a missing manifest fails, never skips.
 _lint_gates_shared_config() {
   _lint_gates_hub shared/config/sync-shared-config.sh || return 1
   local sync="${_LINT_GATES_HUB_FILE}"
@@ -180,50 +133,25 @@ _lint_gates_shared_config() {
   bash "${sync}" --repo-root "${_LINT_GATES_ROOT}" --check
 }
 
-# --- consumer pin forwarding -------------------------------------------------
-# versions.env owns RUFF_VERSION, but pip/uv read pyproject.toml and pre-commit
-# reads .pre-commit-config.yaml, so a consumer repeats the number by hand -- and
-# that hand-sync HAS drifted. THIS is the lane that can see it: the hub's own
-# preflight has no consumer around it and prints "NOT CHECKED". A consumer that
-# declares neither file reports "0 pins compared" and passes.
-# docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
+# Consumer pins: only a consumer lane sees hand-copied pins drift. See docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
 _lint_gates_consumer_pins() {
   _lint_gates_hub docs/scripts/sync_versions.py || return 1
   _lint_gates_interpreter || return 1
   ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --consumer-pins --consumer-root "${_LINT_GATES_ROOT}"
 }
 
-# --- the interpreter for the hub-side Python gates ----------------------------
-# One owner with lint-workflows.sh: 01-core/python-probe.sh. Published in
-# _LINT_GATES_PY, expanded UNQUOTED below because the value may be a command
-# line ("uv run --no-project python"), which is the hint the probe itself gives.
+# _LINT_GATES_PY is expanded unquoted: it may be a command line such as `uv run --no-project python`.
 _lint_gates_interpreter() {
   preflight_python_require run-lint-gates.sh || return 1
   _LINT_GATES_PY="${PREFLIGHT_PYTHON}"
 }
 
-# --- the ratchet gates, opt-in ------------------------------------------------
-# The eight measurement gates that take --root grade the CONSUMER tree, with the
-# freeze files read from <root>/<gate>.allow (docs/code-quality-tooling.md
-# § The scan-root contract). Opt-in via --ratchets rather than always on: a tree
-# with no freeze files is red on its first run, and that first report is what
-# seeds them. verify_stdout_returns has no freeze file at all.
+# Ratchets are opt-in: a tree without freeze files is red on its first run. See docs/code-quality-tooling.md#the-scan-root-contract
 _LINT_GATES_RATCHET_GATES=(verify_stdout_returns verify_masked_assignments verify_trailing_conditional
   verify_comment_size verify_code_size verify_code_complexity verify_dead_functions verify_shellcheck_warnings)
-# The docs gate is hub-relative rather than a bare stem: it lives under
-# docs/scripts/, not beside the eight. It has NO freeze file and nothing to
-# seed, so it is safe the first time a consumer turns the flag on -- and it runs
-# even when the tree carries no shell at all, which is exactly the Dart and
-# Python consumers whose READMEs nothing has ever graded.
+# Freeze-free and shell-independent, so it also grades pure Dart and Python consumers.
 _LINT_GATES_RATCHET_DOC_GATES=(docs/scripts/verify_doc_links.py)
-# Rule 2 of the scan-root contract -- "an empty scan is a decision, never a
-# default" -- is the CALLER's to make, and the aggregator is the caller. A
-# consumer with no tracked shell at all (a pure Dart or Python repo) is a
-# legitimate empty scan, not a broken scope, so this answers `allow` ONCE here
-# rather than letting eight gates report green over nothing each. The gates keep
-# their own default; `allow` is not a property of the gate, it is a property of
-# who pointed it at this tree. Exit 0 = grade, 1 = nothing to grade, 2 = the
-# root itself is unusable (gate_scope.die already said why).
+# The caller decides an empty shell scope is allowed; exit 0 grade, 1 nothing to grade, 2 unusable root.
 _lint_gates_ratchet_scope() {
   # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
   ${_LINT_GATES_PY} - "${_LINT_GATES_DIR}" "${_LINT_GATES_ROOT}" <<'RATCHETSCOPE'
@@ -267,12 +195,7 @@ _lint_gates_ratchet() {
   return "${rc}"
 }
 
-# --- gitleaks ----------------------------------------------------------------
-# Scope: every tracked top-level entry except the excluded directories, plus the
-# tracked plain FILES directly inside them. The vendored subtrees are graded in
-# their own repositories, at their own ratchet; handing the whole workspace to
-# gitleaks instead measured 82 findings, every one a false positive in code the
-# consumer neither wrote nor can fix.
+# Gitleaks skips vendored subtrees, which their own repositories grade, but keeps the files directly inside them.
 _lint_gates_secret_scope() {
   local entry skip
   {
@@ -288,8 +211,7 @@ _lint_gates_secret_scope() {
       done < <(git -C "${_LINT_GATES_ROOT}" ls-files -z -- "${skip}/*")
     done
   } | sort -u | while IFS= read -r entry; do
-    # A depth-2 survivor is one of the consumer's own files inside a vendored
-    # directory; anything else under an excluded name is the vendored tree.
+    # A depth-2 survivor is the consumer's own file inside a vendored directory.
     if _lint_gates_excluded "${entry}"; then
       [ -f "${_LINT_GATES_ROOT}/${entry}" ] || continue
     else
@@ -301,17 +223,14 @@ _lint_gates_secret_scope() {
   done
 }
 
-# The rule config is the CONSUMER's when it ships one: its allowlist entries
-# carry ITS justifications, and the hub's say nothing about its false positives.
+# The consumer's own .gitleaks.toml wins: its allowlist carries its justifications.
 _lint_gates_secret_config() {
   if [ -f "${_LINT_GATES_ROOT}/.gitleaks.toml" ]; then
     printf '%s\n' "${_LINT_GATES_ROOT}/.gitleaks.toml"
   fi
 }
 
-# Both self-test arms assert on the STATUS as well as on the log text, so the
-# scan status is published rather than returned: reading a non-zero exit as
-# proof of detection would accept a gate that never started.
+# Published, not returned: a non-zero exit alone would accept a gate that never started.
 _LINT_GATES_SCAN_RC=0
 _lint_gates_scan() {
   _LINT_GATES_SCAN_RC=0
@@ -326,10 +245,7 @@ _lint_gates_selftest_fail() {
   return 1
 }
 
-# (1) Positive control: an empty tree must come back CLEAN and exit 0. This is
-# what separates "the gate ran and found nothing" from "the gate never started",
-# and it runs BEFORE the canary so a bootstrap failure reports as itself instead
-# of masquerading as detection.
+# (1) An empty tree must scan clean, before the canary, so a bootstrap failure cannot pass as detection.
 _lint_gates_selftest_clean() {
   local dir="$1" log="$2"
   _lint_gates_scan "${dir}" "${log}"
@@ -341,19 +257,13 @@ _lint_gates_selftest_clean() {
   return 0
 }
 
-# (2) Canary: a planted PAT must be REPORTED, at the path that was passed in.
-# The fingerprint line carries file, rule and line in one string, so matching it
-# asserts the detection itself - and the path in it proves the scan-root
-# argument was honoured rather than replaced by the hub's own tree. A
-# non-existent path is exit 0 with gitleaks skipping it: green over nothing.
+# (2) A planted PAT must be reported at the given path, proving the scan root was honoured.
 _lint_gates_selftest_canary() {
   local dir="$1" log="$2" alnum tok file
   alnum='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
   tok=""
   for _ in $(seq 1 36); do tok="${tok}${alnum:RANDOM%62:1}"; done
-  # gitleaks is invoked as `cd <root> && detect --source .`, so its fingerprint
-  # line carries the path RELATIVE to the scan root. Matching the absolute path
-  # here could never hit, which failed this self-test on every run.
+  # gitleaks runs from the scan root, so its fingerprint path is relative.
   local rel="planted-credential.txt"
   file="${dir}/${rel}"
   printf 'token = "ghp_%s"\n' "${tok}" > "${file}"
@@ -418,9 +328,7 @@ _lint_gates_main() {
   assert_gates
 }
 
-# Executable as the aggregator; sourceable so linux/scripts/tests/test-lint-gates.sh
-# can drive the scope construction directly, without the network the three gate
-# binaries need.
+# Sourceable, so test-lint-gates.sh can drive the scope construction without network.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   _lint_gates_main "$@"
 fi

@@ -1,25 +1,17 @@
 #!/usr/bin/env bash
-# Tests for 01-core/tag-naming.sh — the functions that decide every image tag
-# the chain builds and pushes.
+# tag-naming.sh, which decides every image tag the chain builds and pushes.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-# These suites assert the DEFAULT chain: a variant inherited from the caller's
-# environment (the docs tell operators to export ENABLE_NVIDIA) would move
-# every tag. test-gpu-variant.sh owns the variant cases.
+# The default chain only: an inherited ENABLE_NVIDIA would move every tag (test-gpu-variant.sh owns variants).
 unset CROSS_VARIANT ENABLE_NVIDIA ENABLE_AMD
-# platform.sh first: the shared-stage tags call build_arch_oci, and without it
-# _cross_build_host_arch would silently take its amd64 fallback and the arm64 /
-# riscv64 cases below would pass for the wrong reason.
+# platform.sh first, or _cross_build_host_arch silently falls back to amd64.
 source "${TESTS_DIR}/../01-core/platform.sh"
 source "${TESTS_DIR}/../01-core/tag-naming.sh"
 
 t_case "cross tags use IMAGE_REPO when set"
 IMAGE_REPO="example.io/repo" IMAGE_REGISTRY_PREFIX="WRONG"
-# The two shared stages carry the BUILD HOST arch. Pinned explicitly per case:
-# the suite must assert the contract for every host, not just whichever machine
-# happens to run it — that implicitness is what let the amd64 literal survive
-# until a native arm64 sdk build pulled the WRONG parent image (2026-09-10).
+# Shared stages carry the build host's arch, so every case pins BUILDARCH rather than trusting the runner.
 BUILDARCH=amd64 t_assert_eq "example.io/repo:base"                  "$(BUILDARCH=amd64 cross_base_tag)"
 BUILDARCH=amd64 t_assert_eq "example.io/repo:cross-compiler-amd64"  "$(BUILDARCH=amd64 cross_compiler_tag)" \
   "an amd64 build host keeps BOTH historical names byte-for-byte"
@@ -30,8 +22,7 @@ t_assert_eq "example.io/repo:base-riscv64"          "$(BUILDARCH=riscv64 cross_b
 t_assert_eq "example.io/repo:cross-compiler-riscv64" "$(BUILDARCH=riscv64 cross_compiler_tag)"
 t_assert_eq "example.io/repo:cross-sdk-arm64"     "$(cross_sdk_tag arm64)"
 t_assert_eq "example.io/repo:cross-media-riscv64" "$(cross_media_tag riscv64)"
-# BUILDARCH pinned like the shared stages above: android's payload depends on
-# the build host, so its tag does too.
+# android's payload depends on the build host, so its tag does too.
 t_assert_eq "example.io/repo:cross-android-amd64" "$(BUILDARCH=amd64 cross_android_tag amd64)"
 
 t_case "cross tags fall back to IMAGE_REGISTRY_PREFIX"
@@ -51,9 +42,7 @@ t_assert_eq "example.io/repo:runtime-package-amd64" "$(runtime_package_tag amd64
 t_assert_eq "example.io/repo:runtime-riscv64"       "$(runtime_wrapper_tag riscv64)"
 
 t_case "runtime_artifact_platform: the cross arm follows the KNOB, not a literal"
-# The cross arm is not "amd64" — it is "the platform the cross lane built the
-# artifact on". Every row pins CROSS_BUILD_PLATFORM explicitly: with only the
-# default asserted, the change would be vacuously green in both directions.
+# Every row pins CROSS_BUILD_PLATFORM: asserting only the default would pass either way.
 ARTIFACT_BUILD_MODE=cross
 t_assert_eq "linux/amd64" "$(CROSS_BUILD_PLATFORM=linux/amd64 runtime_artifact_platform arm64)" \
   "the amd64 production lane keeps the old literal byte-for-byte"
@@ -61,9 +50,7 @@ t_assert_eq "linux/arm64" "$(CROSS_BUILD_PLATFORM=linux/arm64 runtime_artifact_p
   "a native arm64 lane's artifact IS arm64, and the package FROM must say so"
 t_assert_eq "linux/amd64" "$(runtime_artifact_platform arm64)" \
   "the shipped default survives with the knob unset"
-# The row that forbids a future 'simplification' to linux/$(build_arch_oci):
-# with the shipped default an arm64 MACHINE still builds amd64-under-QEMU
-# images, and a host-derived answer would be wrong about exactly those.
+# An arm64 machine still builds amd64-under-QEMU by default, so never derive this from the host.
 t_assert_eq "linux/amd64" "$(BUILDARCH=arm64 runtime_artifact_platform arm64)" \
   "the platform follows the knob, never the host"
 ARTIFACT_BUILD_MODE=native
@@ -81,11 +68,7 @@ ARTIFACT_BUILD_MODE=native
 t_assert_eq "example.io/repo:cross-android" "$(runtime_artifact_image_ref arm64)"
 unset ARTIFACT_BUILD_MODE ARTIFACT_IMAGE_PREFIX
 
-# ---------------------------------------------------------------------------
-# The android tag has TWO spellings — cross_android_tag() and the
-# --artifact-image-prefix cross-stage-build.sh hands the runtime helper. Until
-# 2026-09-10 the second was a hardcoded literal, which is exactly the drift that
-# produced the compiler-tag incident. These rows keep them one function.
+# cross_android_tag and cross-stage-build.sh's --artifact-image-prefix must stay one function.
 t_case "the android tag's two spellings cannot drift apart"
 IMAGE_REPO="example.io/repo" IMAGE_REGISTRY_PREFIX="WRONG"
 for _h in amd64 arm64 riscv64; do
@@ -112,16 +95,14 @@ t_assert_eq "example.io/repo:latest-hostarm64" "$(BUILDARCH=arm64 cross_final_im
   "a native arm64 run must never write the amd64 lane's :latest-<arch> children"
 
 t_case "the retired :latest-cross alias is gone, and nothing resurrects it"
-# Retired 2026-09-22 (owner decision): nothing publishes it again. The tag
-# functions are the only place that could compose the old name.
+# The tag functions are the only place that could compose the retired name.
 t_assert_eq "" "$(declare -F cross_final_image_legacy_alias || true)" \
   "no tag function may compose the old name"
 t_assert_eq "" "$(grep -n 'latest-cross' "${TESTS_DIR}/../01-core/tag-naming.sh" || true)" \
   "nor may the module mention it as a live tag"
 
 t_case "the final image and the android prefix carry the SAME infix"
-# build-cross-chain.sh and cross-stage-build.sh must not drift apart about which
-# host they are on — one helper, asserted for every host.
+# build-cross-chain.sh and cross-stage-build.sh must agree on the host, for every host.
 for _h in amd64 arm64 riscv64; do
   _inf="$(BUILDARCH="${_h}" cross_build_host_infix)"
   t_assert_eq "example.io/repo:latest${_inf}" "$(BUILDARCH="${_h}" cross_final_image_tag)"

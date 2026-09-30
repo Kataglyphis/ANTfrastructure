@@ -1,16 +1,7 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Final Windows developer image built on top of the torch app image
-# (media -> torch -> final; the OrchestrANT app env is assembled by
-# windows/Dockerfile.torch, this stage adds only the cheap dev trimmings).
-# Contains: VS Build Tools, LLVM/clang-cl, CUDA/cuDNN, CPython 3.14,
-# ONNX Runtime + GenAI, OpenCV 5, FFmpeg, GStreamer and LiteRT on both lanes;
-# the TVM and IREE RUNTIMES on both lanes with their compilers amd64-only, and
-# LiteRT-LM amd64-only (each absence named inside the arm64 bundle by an
-# ABSENT-ON-ARM64 marker -- see docs/windows-cross-builds.md), plus the app env
-# at C:\opt\OrchestrANT (amd64 only: uv sync must run the
-# target interpreter).
+# Final dev image: only cheap trimmings on top of the torch stage (media -> torch -> final).
 
 ARG BASE_IMAGE=local/kataglyphis:windows-torch
 FROM ${BASE_IMAGE}
@@ -18,78 +9,39 @@ FROM ${BASE_IMAGE}
 ARG BUILD_DATE=""
 ARG VCS_REF=""
 
-# Compile TARGET architecture of this image's payload. VSDEVCMD_ARCH is what
-# entrypoint.cmd feeds to `VsDevCmd.bat -arch=`, so a container started from an
-# arm64 bundle image enters an arm64-TARGETING developer environment while the
-# host tools stay x64 (-host_arch=amd64 is fixed in entrypoint.cmd).
-#
-# NB for arm64 this image is still a windows/amd64 image carrying an aarch64
-# payload -- there is no arm64 Windows base image. Never publish it with
-# --platform windows/arm64: that produces a manifest nothing can run.
+# Payload arch for VsDevCmd -arch; the image itself stays windows/amd64 (see docs/windows-cross-builds.md).
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH} `
     VSDEVCMD_ARCH=${WINDOWS_TARGET_ARCH}
 
-# Runtime DLL resolution: onnxruntime.dll lives in the install's bin\ (the media
-# PATH only carried lib\, which holds the provider DLLs) — without this, anything
-# linking ORT (e.g. ffmpeg) dies with STATUS_DLL_NOT_FOUND.
+# onnxruntime.dll lives in bin\, not lib\; without it ORT consumers die with STATUS_DLL_NOT_FOUND.
 ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 
-# ort-sys links (and ort load-dynamic loads) THIS chain ORT, never pyke's download.
-# docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
+# The ort crate links the chain ORT, never pyke's download; see docs/consumer-image-contract.md § The ort crate links the chain ONNX Runtime.
 ENV ORT_LIB_LOCATION=$ONNX_ROOT\lib `
     ORT_PREFER_DYNAMIC_LINK=1 `
     ORT_SKIP_DOWNLOAD=1 `
     ORT_DYLIB_PATH=$ONNX_ROOT\bin\onnxruntime.dll
 
-# The Khronos Vulkan loader (Server Core has none) in C:\vulkan-loader, on PATH and never
-# in System32, so a Vulkan-linked binary loads: gstvulkan, IREE's Vulkan HAL, OpenCV
-# vkcom, ggml-vulkan (BACKLOG CON25). No ICD: the loader reports zero devices. The rocm
-# variant installed it already, System32 copy included (Dockerfile.rocm), and the pinned
-# zip is x64 only, so both skip.
+# Server Core has no Vulkan loader; rocm already installed one and the zip is x64 only, so both skip.
 ARG VULKAN_VERSION=1.4.357.0
 ARG VULKAN_RT_WINDOWS_ZIP_SHA256=a14672efed15aafc7f5a16572d35cd3a3416eadf670aeee3cdf50ee32d5fbf83
 COPY windows\scripts\host\Install-VulkanLoader.ps1 C:\temp\scripts\
 RUN if ($env:WINDOWS_TARGET_ARCH -eq 'amd64' -and -not $env:VULKAN_LOADER_DIR) { & 'C:\temp\scripts\Install-VulkanLoader.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\vulkan-loader' -SystemDir '' }
 ENV PATH=$PATH;C:\vulkan-loader
 
-# Rust note: provisioned by Install-RustToolchain.ps1 via rustup WITH a stable default
-# toolchain (DELIBERATELY unpinned -- versions.env's RUST_VERSION pins only the Linux
-# lane). rustup is REQUIRED by Flutter's Cargokit (flutter_rust_bridge consumers);
-# only a toolchain-LESS rustup is forbidden (its proxy shims shadow cargo/rustc and
-# resolve no toolchain). flutter_rust_bridge_codegen is baked alongside. Ships with
-# the next base rebuild; images from older (scoop-rust) bases lack rustup entirely.
-
-# One COPY for the flat scripts (healthcheck; the in-container smoke test, see
-# docs/windows-builds.md; the entrypoint launcher used by ENTRYPOINT below) — the
-# classic builder pays a LAYER per instruction and the chain runs close to
-# Docker's 125-layer cap (hit 2026-08-03). Modules dir COPY stays separate
-# (different dest). Copied here — the cheapest, last stage — so script edits
-# never invalidate the base or media layers. ort-venv-census.py: the image copy of WindowsUv.Common
-# finds it beside its modules dir (docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi).
+# One COPY (the chain runs near the 125-layer cap), in the last stage so script edits never invalidate earlier layers.
 COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\entrypoint.cmd linux\scripts\03-media\runtime\ort-venv-census.py C:\temp\scripts\
-# Full module set for in-container CI tooling (WindowsBuild/WindowsUv/... are
-# imported from this path by downstream Invoke-Ci* / rust build scripts).
+# Downstream Invoke-Ci* and rust build scripts import the modules from this path.
 COPY windows\scripts\modules C:\temp\scripts\modules
 
-# The OrchestrANT app environment (the Windows "torch step") is INHERITED
-# from the base: windows/Dockerfile.torch assembles it at APP_REF and sets
-# TORCH_APP_DIR. Keeping the assembly out of this stage means an app bump
-# rebuilds torch + this cheap tail only, and the logic exists in one place.
-
-# No WORKDIR/VOLUME C:\workspace (dropped 2026-09-26, BACKLOG CON29): binding over a
-# directory the image holds fails at hcs::CreateComputeSystem when the host's OS build
-# differs from the image's, and the VOLUME left an anonymous volume behind every
-# container. Every caller passes -w with its own mount target.
+# No WORKDIR/VOLUME: binding over an image-held dir fails at hcs::CreateComputeSystem across OS builds.
 
 # Dev image: a relaxed interval keeps the healthcheck from burning cycles every 30s.
 HEALTHCHECK --interval=5m --timeout=15s --start-period=60s --retries=3 `
   CMD pwsh -NoProfile -ExecutionPolicy Bypass -File C:\temp\scripts\Test-Health.ps1
 
-# Description corrected 2026-08-24: it named LiteRT/LiteRT-LM/TVM
-# unconditionally -- empty marker stubs in :winarm64 for as long as the cross
-# lane has existed -- and omitted IREE, which the amd64 lane ships. One LABEL
-# serves both lanes (no ARG branching), so it must be worded to be true on both.
+# One LABEL serves both lanes, so the description must be true on arm64 too.
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
       org.opencontainers.image.description="Windows developer image with ONNX Runtime, OpenCV, GStreamer, FFmpeg, LiteRT and the TVM/IREE runtimes on both lanes; TVM/IREE compilers and LiteRT-LM on amd64 only (named ABSENT inside the arm64 bundle -- see docs/windows-cross-builds.md)" `
       org.opencontainers.image.version="latest" `
@@ -100,8 +52,5 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
       org.opencontainers.image.source="https://github.com/Kataglyphis/ANTfrastructure" `
       org.opencontainers.image.licenses="MIT"
 
-# Launcher script instead of inline cmd: exec-form re-quoting mangles embedded
-# quotes around the spaces-in-path VsDevCmd.bat (literal \" reaches cmd.exe).
-# entrypoint.cmd (copied with the flat scripts above) loads VsDevCmd then runs
-# the container command (or interactive pwsh (PowerShell 7) when none is given).
+# A launcher script, because exec-form re-quoting mangles the quotes around the spaced VsDevCmd.bat path.
 ENTRYPOINT ["cmd","/S","/C","C:\\temp\\scripts\\entrypoint.cmd"]

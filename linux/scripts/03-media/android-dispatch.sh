@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# android-dispatch.sh — single entrypoint for the per-library Android build
-# stages in linux/Dockerfile.android.
-#
-# Maps a library name (the per-stage ANDROID_LIB build arg) to that library's
-# build script under the flattened container layout
-# /opt/scripts/03-media/<lib>/android/, so the Dockerfile COPY/RUN
-# instructions stay byte-identical across the android-gstreamer, android-onnx,
-# android-litert and android-opencv stages.
+# Maps ANDROID_LIB to its build script so every Dockerfile.android stage's RUN stays identical.
 set -euo pipefail
 
 LIB="${1:?usage: android-dispatch.sh <gstreamer|onnxruntime|litert|opencv|iree>}"

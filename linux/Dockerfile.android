@@ -2,16 +2,13 @@
 
 ARG BASE_IMAGE=local/kataglyphis:media
 
-# ==============================================================================
-# android-sdk — shared base with Android SDK/NDK installed
-# ==============================================================================
+# android-sdk: shared base with the Android SDK/NDK
 FROM ${BASE_IMAGE} AS android-sdk
 
 SHELL ["bash", "-lc"]
 
 ARG BUILD_MODE=native
-# Divide usable RAM by this in parallelism.sh so N concurrent per-arch builds
-# (--parallel-archs) don't collectively overcommit the host. 1 = serial default.
+# parallelism.sh divides usable RAM by this so concurrent per-arch builds do not overcommit the host.
 ARG BUILD_MEM_DIVISOR=1
 ARG TARGET_ARCH
 ARG TARGETARCH
@@ -30,20 +27,7 @@ ARG ANDROID_EXTRA_BUILD_TOOLS=37.0.0
 ARG ANDROID_CMAKE_VERSION=4.1.2
 ARG ANDROID_API_LEVEL=34
 ARG ANDROID_TARGET_ABI=arm64-v8a
-# C3 (2026-08-24): DECLARE the library version build-args the orchestrator
-# already passes. It passes --build-arg ONNXRUNTIME_VERSION / LITERT_VERSION /
-# IREE_VERSION on every android build (verified in the wave6b command line),
-# but this Dockerfile never declared them, so BuildKit DROPPED them and the
-# per-library build scripts fell back to their inline literals. That was not a
-# latent risk, it was live: android shipped onnxruntime v1.28.0 against a
-# v1.29.0 pin and litert v2.1.6 against a v2.2.0 pin (IREE matched only by
-# coincidence). OPENCV_VERSION was unaffected because the media final stage
-# happens to export it as ENV. NO DEFAULTS here on purpose: an unpassed value
-# must expand empty so the scripts' `:?` guards fail loudly instead of
-# silently building last release. Declared in the PARENT stage and promoted to
-# ENV below so all five android-<lib> stages inherit it without touching their
-# RUN blocks — verify-android-stage-parity.sh requires those to stay identical
-# modulo ANDROID_LIB.
+# Undeclared build args are dropped; no defaults, so an unpassed version expands empty and the scripts' `:?` guards fail.
 ARG ONNXRUNTIME_VERSION
 ARG LITERT_VERSION
 ARG IREE_VERSION
@@ -80,48 +64,20 @@ ENV ANDROID_HOME=/opt/android-sdk \
     BUILDARCH=${BUILDARCH} \
     BUILDPLATFORM=${BUILDPLATFORM}
 
-# Its OWN instruction: a ${VAR} inside an ENV reads the value from before that
-# instruction, so the ANDROID_* keys set above expanded EMPTY here and the stage
-# ran with PATH=/cmdline-tools/latest/bin:/platform-tools:/build-tools/36.0.0::,
-# whose empty entry POSIX reads as the working directory.
-# docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
+# Its own instruction, since an ENV reads ${VAR} from before itself: docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
 ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
 COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
-# cross-apt.sh: the compiler base bakes an OLDER 01-core; android-sdk.sh sources
-# this copy for cross_ensure_installed_foreign_arch_sources (the foreign-arch
-# ports sources that make the i386 libc6 install satisfiable). The base's
-# ubuntu-mirror.sh predates ubuntu_arch_uses_ports, which the helper needs — so
-# refresh that file too, or the helper silently no-ops on arches whose parent
-# carried no ports source (measured: android-amd64).
-# docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
+# The base's 01-core is older; cross-apt.sh needs this ubuntu-mirror.sh too: docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
 COPY --chmod=755 linux/scripts/01-core/cross-apt.sh /opt/scripts/core/cross-apt.sh
 COPY --chmod=755 linux/scripts/01-core/ubuntu-mirror.sh /opt/scripts/core/ubuntu-mirror.sh
-# downloads.sh (retry-capable download_file/download_and_extract) is consumed by
-# android-sdk.sh here and by the gstreamer android build in downstream stages;
-# all android-* stages FROM android-sdk, so this one COPY covers them.
+# Every android-* stage derives from this one, so one COPY covers them all.
 COPY --chmod=755 linux/scripts/01-core/downloads.sh /opt/scripts/core/downloads.sh
-# compiler-resolution.sh: WITHOUT it the android lib stages fell back to their
-# inline resolvers — and IREE's bare `command -v gcc` resolved the CUSTOM CROSS
-# GCC from the inherited PATH (/opt/gcc-<ver>/bin) as its HOST compiler. The
-# canonical resolver prefers real host toolchains; self-contained, no deps.
+# Without the canonical resolver, IREE took the custom cross GCC on PATH as its host compiler.
 COPY --chmod=755 linux/scripts/01-core/compiler-resolution.sh /opt/scripts/core/compiler-resolution.sh
 
-# android-sdk-shared: cross-arch SDK/NDK download cache. The id is deliberately
-# NOT keyed by TARGETARCH (same pattern as onnxruntime-web-shared in
-# Dockerfile.media): android-sdk.sh only runs on amd64 build hosts and the
-# downloaded payload (cmdline-tools zip, Java tooling, sdkmanager packages,
-# NDK) is identical for every target arch — packages are keyed by name+version,
-# not build arch. The id names EVERY pin in android-sdk.sh's sdk_components
-# (tests/test-android-sdk-cache-key.sh), so any pin bump invalidates the cache;
-# the two API 37 pins were missing from it, and a 2026-08-22 tree without them
-# was restored into every image built after (BACKLOG CON14). sharing=locked
-# serializes concurrent --parallel-archs builds so
-# the first arch populates <cache>/sdk-tree and the others restore from it
-# (grep the build log for "android-sdk shared cache HIT/MISS"). The cache mount
-# is invisible at image runtime — the script still installs everything the
-# image needs into ${ANDROID_HOME} in this layer.
+# Arch-independent payload, so no arch key; the id names every android-sdk.sh pin (test-android-sdk-cache-key.sh).
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/android-sdk-shared,id=android-sdk-shared-${ANDROID_SDK_VERSION}-${ANDROID_NDK_VERSION}-${ANDROID_COMPILE_SDK}-${ANDROID_BUILD_TOOLS}-${ANDROID_EXTRA_COMPILE_SDK}-${ANDROID_EXTRA_BUILD_TOOLS}-${ANDROID_CMAKE_VERSION},sharing=locked \
@@ -130,14 +86,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     mkdir -p /opt/android-sdk /opt/android && \
     mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv /opt/android/iree
 
-# Arch/lib-independent helpers shared by every android-<lib> stage below —
-# hoisted into the common parent so the four children only COPY their per-lib dir.
+# Hoisted into the parent so each library stage COPYs only its own dir.
 COPY --chmod=755 linux/scripts/03-media/android-build-preamble.sh /opt/scripts/03-media/android-build-preamble.sh
 COPY --chmod=755 linux/scripts/03-media/android-dispatch.sh /opt/scripts/03-media/android-dispatch.sh
 
-# ==============================================================================
-# android-gstreamer — GStreamer Android build (parallel with android-libs)
-# ==============================================================================
+# android-gstreamer (parallel with the other library stages)
 FROM android-sdk AS android-gstreamer
 
 ARG TARGET_ARCH
@@ -146,83 +99,7 @@ ARG ANDROID_LIB=gstreamer
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
-# CERB-CACHE: cerbero's whole state dir (/var/cache/cerbero = the home_dir the
-# .cbc sets; see build-android-from-source.sh section 8) on a cachemount.
-# bootstrap+package is ONE RUN, so before this ANY failure inside it — a dead
-# mirror (PKGCFG-MIRROR), an upstream 503 (FD-OUTAGE), the CERB-ICONV link-order
-# race — threw the entire tree away and the next attempt restarted COLD: this
-# session re-paid the ~40-60 min bootstrap three times for zero progress. With
-# the mount a retry resumes from cerbero's own cache-file.cache pickle.
-#
-# What resuming does NOT do is re-check anything (read against the pinned
-# cerbero 1.29.2): Oven._cook_recipe_step returns before calling the step
-# function for any step already recorded in the pickle (build/oven.py:511) and
-# _cook_recipe skips the recipe outright once needs_build is false (:554), and
-# Source.verify() — the sha256 against the recipe's tarball_checksum — is only
-# ever reached from inside the fetch step (build/source.py:366/378/458). So a
-# recipe whose fetch is recorded keeps whatever bytes are already in
-# sources/local, unexamined. The pickle self-invalidates on exactly two things:
-# a changed built_version, and a changed content hash of the recipe file plus
-# its patches (build/cookbook.py:426-440; Recipe.get_checksum hashes the recipe
-# FILES, not the tarball). It has no notion of the toolchain — which is what
-# forces the NDK/API pins into the id below rather than trusting cerbero to
-# notice.
-#
-# Every key in the id, and why:
-#   TARGET_ARCH — the state is arch-SPECIFIC (the dist/android_<arch> prefix,
-#     the build trees) and this is the per-lane --build-arg
-#     (stage-defs.sh append_per_arch_build_args). ${TARGETARCH} canNOT stand in
-#     for it: it is a BuildKit predefined arg, the `ARG TARGETARCH` above rebinds
-#     it to defaultArgs()'s value — the --platform linux/amd64 that
-#     cross-stage-build.sh passes on EVERY lane — and an ARG with a resolved
-#     value wins over the parent stage's ENV for later expansion in the stage
-#     (dockerfile2llb/convert.go dispatchArg does state.AddEnv). All three lanes
-#     would land in one store (PAR2).
-#   ANDROID_NDK_VERSION / ANDROID_API_LEVEL — bumping either re-executes this
-#     RUN, but cerbero would resume a tree built against the OLD NDK and, per
-#     the paragraph above, has no way to notice: a silently mis-built GStreamer,
-#     discovered hours later. Both are ENV in the android-sdk parent (lines
-#     34-56) and a stage starts from its base stage's state
-#     (convert.go: ds.state = ds.base.state), so they expand here with no ARG of
-#     their own — unlike an ARG-only name, which would expand to EMPTY and merge
-#     every generation into a single store, i.e. worse than not keying at all.
-#     ANDROID_API_LEVEL is the REQUESTED level; the per-arch raise
-#     (android_raise_api_level_if_needed) is a pure function of it and the arch,
-#     both of which the id already carries.
-#
-# The arch-INDEPENDENT half (downloaded tarballs) is deliberately NOT split into
-# a second shared id: cerbero keeps it in local_sources next to the LIVE git
-# working repos it checks out per lane (build/source.py: download_dir =
-# repo_dir = local_sources/<name>; config.py:1146-1151 puts local_sources inside
-# home_dir/sources because home_dir is not the default) and downloads
-# non-atomically (`curl -o <dest>` plus an exists() skip, utils/shell.py), so a
-# shared id would need sharing=locked — which holds its lock for the whole
-# multi-hour RUN and re-serializes the lanes, i.e. PAR2 again. Re-fetching the
-# tarballs per arch is the cheaper half of that trade.
-#
-# sharing=locked: the only writers of one id are two cerbero runs of the SAME
-# arch, which would share one home_dir — one dist prefix, one cache-file
-# pickle — and corrupt each other. Different lanes hold different ids and never
-# wait on one another.
-#
-# ${ANDROID_LIB} is in the id so this line can stay byte-identical across the
-# five stages (verify-android-stage-parity.sh) while the four non-cerbero lanes
-# get their own empty store instead of contending for gstreamer's lock.
-#
-# DISK, stated plainly because the host runs near-full: the script's prune runs
-# on the SUCCESS path only (build trees dropped, local sources + dist prefix
-# kept). A FAILED attempt keeps its ENTIRE tree — that IS the feature — costing
-# up to the ~10-15 GB the pre-cache cleanup used to free, per lane, so ~30-45 GB
-# if all three fail. That does not accumulate across retries (same id, same
-# paths, overwritten in place); GENERATIONS do — a pin bump starts a fresh store
-# and orphans the old one, which prune-safe.sh will NOT reclaim (it prunes
-# type==regular only and protects every cachemount, CACHE1); that needs a
-# deliberate duration-bounded cachemount prune on the host. CERBERO_CACHE_RESET=1
-# empties the current store on entry to force a lane cold.
-#
-# Nothing shipped lives here: the image gets /opt/android/gstreamer, untarred
-# from the package cerbero writes into its checkout, and the script deletes the
-# checkout (and the state too, whenever this mount is absent).
+# cerbero state on a cachemount so a failed attempt resumes; every id key matters. See docs/build-cache-tiers.md § 1.1 The cerbero state cachemount (CERB-CACHE)
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
@@ -234,9 +111,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/sc
     set -euo pipefail; \
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
-# ==============================================================================
-# android-onnx — ONNX Runtime Android build (parallel with gstreamer, litert, opencv)
-# ==============================================================================
+# android-onnx (parallel with gstreamer, litert, opencv)
 FROM android-sdk AS android-onnx
 
 ARG TARGET_ARCH
@@ -245,11 +120,7 @@ ARG ANDROID_LIB=onnxruntime
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
-# The cerbero cachemount below is inert in this stage — only the gstreamer lane
-# runs cerbero. It is present so the five library stages stay byte-identical for
-# verify-android-stage-parity.sh, and the ${ANDROID_LIB} key keeps it off
-# gstreamer's lock. Rationale for the id keys (arch + the NDK/API pins cerbero
-# cannot self-invalidate on): see the android-gstreamer stage.
+# The cerbero mount is inert here; it keeps the five library stages identical for verify-android-stage-parity.sh.
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
@@ -261,9 +132,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/sc
     set -euo pipefail; \
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
-# ==============================================================================
-# android-litert — LiteRT Android build (parallel with gstreamer, onnx, opencv)
-# ==============================================================================
+# android-litert (parallel with gstreamer, onnx, opencv)
 FROM android-sdk AS android-litert
 
 ARG TARGET_ARCH
@@ -272,11 +141,7 @@ ARG ANDROID_LIB=litert
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
-# The cerbero cachemount below is inert in this stage — only the gstreamer lane
-# runs cerbero. It is present so the five library stages stay byte-identical for
-# verify-android-stage-parity.sh, and the ${ANDROID_LIB} key keeps it off
-# gstreamer's lock. Rationale for the id keys (arch + the NDK/API pins cerbero
-# cannot self-invalidate on): see the android-gstreamer stage.
+# The cerbero mount is inert here; it keeps the five library stages identical for verify-android-stage-parity.sh.
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
@@ -288,9 +153,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/sc
     set -euo pipefail; \
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
-# ==============================================================================
-# android-opencv — OpenCV Android build (parallel with gstreamer, onnx, litert)
-# ==============================================================================
+# android-opencv (parallel with gstreamer, onnx, litert)
 FROM android-sdk AS android-opencv
 
 ARG TARGET_ARCH
@@ -299,11 +162,7 @@ ARG ANDROID_LIB=opencv
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
-# The cerbero cachemount below is inert in this stage — only the gstreamer lane
-# runs cerbero. It is present so the five library stages stay byte-identical for
-# verify-android-stage-parity.sh, and the ${ANDROID_LIB} key keeps it off
-# gstreamer's lock. Rationale for the id keys (arch + the NDK/API pins cerbero
-# cannot self-invalidate on): see the android-gstreamer stage.
+# The cerbero mount is inert here; it keeps the five library stages identical for verify-android-stage-parity.sh.
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
@@ -315,11 +174,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/sc
     set -euo pipefail; \
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
-# ==============================================================================
-# android-iree — IREE (iree.dev) runtime Android build (parallel with the others)
-# Best-effort/non-gating (see build-android.sh): a failure leaves /opt/android/iree
-# empty rather than breaking the android image.
-# ==============================================================================
+# android-iree: best-effort, a failure leaves /opt/android/iree empty instead of breaking the image
 FROM android-sdk AS android-iree
 
 ARG TARGET_ARCH
@@ -328,11 +183,7 @@ ARG ANDROID_LIB=iree
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
-# The cerbero cachemount below is inert in this stage — only the gstreamer lane
-# runs cerbero. It is present so the five library stages stay byte-identical for
-# verify-android-stage-parity.sh, and the ${ANDROID_LIB} key keeps it off
-# gstreamer's lock. Rationale for the id keys (arch + the NDK/API pins cerbero
-# cannot self-invalidate on): see the android-gstreamer stage.
+# The cerbero mount is inert here; it keeps the five library stages identical for verify-android-stage-parity.sh.
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
@@ -344,11 +195,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/sc
     set -euo pipefail; \
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
 
-# ==============================================================================
-# web-lane-tools — wasm-pack + flutter_rust_bridge_codegen cross-built with the
-# amd64-hosted cross GCC, which only exists before final's native GCC swap.
-# docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
-# ==============================================================================
+# web-lane-tools: needs the amd64-hosted cross GCC, gone after final's swap. See docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 FROM android-sdk AS web-lane-tools
 
 ARG TARGET_ARCH
@@ -372,9 +219,7 @@ RUN --mount=type=bind,source=linux/scripts/06-packaging/web-lane-tools.sh,target
     set -euo pipefail; \
     TMPDIR=/tmp/wlt-build bash /tmp/wlt/06-packaging/web-lane-tools.sh produce /opt/web-lane-tools
 
-# ==============================================================================
-# Final stage — aggregate parallel stage outputs + native GCC swap
-# ==============================================================================
+# final: aggregate the parallel stage outputs and swap in the native GCC
 FROM android-sdk AS final
 
 ARG TARGET_ARCH
@@ -388,8 +233,7 @@ COPY --link --from=android-litert /opt/android/litert /opt/android/litert
 COPY --link --from=android-opencv /opt/android/opencv /opt/android/opencv
 COPY --link --from=android-iree /opt/android/iree /opt/android/iree
 
-# Preserve the cross-compiled Python staging tree from the base image and swap
-# the amd64-hosted GCC with the target-native GCC for non-amd64 architectures.
+# Keep the cross Python staging tree; non-amd64 lanes swap in the target-native GCC.
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-android.sh /opt/scripts/packaging/smoke-android.sh
 COPY --chmod=755 linux/scripts/06-packaging/swap-native-gcc.sh /opt/scripts/packaging/swap-native-gcc.sh
@@ -401,22 +245,14 @@ RUN set -euo pipefail; \
     BUILD_MODE="${BUILD_MODE}" \
     bash /opt/scripts/packaging/swap-native-gcc.sh
 
-# Execute the Android-SDK/NDK smoke now that this stage's artifacts are
-# assembled (it was COPY'd in but never run). Hard-fail via smoke_summary so a
-# broken SDK/NDK surfaces at build time. NOTE: smoke-vulkan is deliberately NOT
-# run here -- this android image carries only base's runtime libvulkan.so.1. It
-# is not run in any other build stage either (see the tail note in
-# Dockerfile.package): the cross build never installs the full Vulkan *SDK* the
-# smoke probes, so it is retained as a standalone host tool for image variants
-# that DO ship the full SDK.
+# A broken SDK/NDK fails the build here; the Vulkan smoke is not run, as no build stage has the full Vulkan SDK.
 RUN set -euo pipefail; \
     bash /opt/scripts/packaging/smoke-android.sh
 
 # Ensure /opt/llvm-target exists for downstream stages (package build expects it)
 RUN mkdir -p /opt/llvm-target
 
-# LAST on purpose: above the GCC swap, a changed producer output would re-run that
-# prefix-sized copy. Dockerfile.package bind-mounts it; nothing ships it twice.
+# Last: above the GCC swap, a changed producer output would re-run that prefix-sized copy.
 COPY --link --from=web-lane-tools /opt/web-lane-tools /opt/web-lane-tools
 
 LABEL org.opencontainers.image.title="Kataglyphis Android" \

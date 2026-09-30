@@ -1,14 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Select-MesonLogExcerpt (Build-GstreamerFromSource.ps1): the bounded
-# meson-log.txt excerpt that replaced streaming 400k-800k lines through `log`
-# after a failed `meson setup` (30-60 min per attempt on arm64 runs 23-25).
-# The function is lifted out of the script's AST -- it is a pure function, and
-# the script itself is a build. Pins: diagnostic lines are kept with 1-based
-# numbers, a "Sanity check" header pulls its block along, probe `error:` noise
-# is NOT kept, the cap holds, the tail is exact, and empty input is safe.
+
+# The bounded meson-log excerpt replaces streaming the whole log after a failed setup, which cost up to an hour.
 
 Describe 'Select-MesonLogExcerpt' {
 

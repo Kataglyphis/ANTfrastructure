@@ -1,14 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Invoke-WithHostArchLibraryEnvironment (#116, 2026-08-24): a host-tool pass on
-# a cross lane needs the HOST's library directories on LIB/LIBPATH, not the
-# target's. VsDevCmd -arch=arm64 leaves both pointing at ...\arm64, and lld-link
-# reads ONLY LIB, so IREE's native host-tools configure died in its first
-# try-compile ("msvcrtd.lib(exe_main.obj): machine type arm64 conflicts with
-# x64"). The helper rewrites the arch SEGMENT of every entry for the duration
-# of the block and restores both variables afterwards -- including on throw.
+
+# lld-link reads only LIB, so a cross host-tool pass swaps LIB/LIBPATH to the host arch and restores them, even on throw.
 
 Describe 'Invoke-WithHostArchLibraryEnvironment' {
 
@@ -52,12 +46,7 @@ Describe 'Invoke-WithHostArchLibraryEnvironment' {
         Assert-Equal 'C:\VS\lib\x64;C:\weird\arm64' $inside 'nothing rewritten when the host is the target'
     }
 
-    # arm64 runs 16/17 (2026-08-25): the LiteRT stage never enters VsDevCmd, so
-    # LIB is UNSET there and lld-link auto-detects the MSVC/SDK dirs. The old
-    # restore wrote the captured $null back with SetEnvironmentVariable, which
-    # binds $null as '' and leaves `LIB=` DEFINED-EMPTY in the process block;
-    # lld-link then treats LIB as set, skips auto-detection, and the target
-    # configure right after the host pass died with "could not open kernel32.lib".
+    # A defined-empty LIB makes lld-link skip MSVC/SDK auto-detection, so an unset LIB must end up unset.
     It 'leaves LIB and LIBPATH UNSET after the block when they were unset before (not defined-empty)' {
         $env:WINDOWS_TARGET_ARCH = 'arm64'
         Remove-Item -Path Env:LIB -ErrorAction SilentlyContinue

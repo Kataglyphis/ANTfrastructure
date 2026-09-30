@@ -1,22 +1,8 @@
-# No pwsh-7 version directive here, deliberately: Dockerfile.base runs this
-# script under the initial Windows PowerShell 5.1 SHELL, before pwsh exists in
-# the image - this is the script that installs it. The directive would make it
-# refuse to start on its own first line. Guarded by
-# windows/scripts/tests/Bootstrap.Ps51Compat.Tests.ps1 (backlog #106).
+# No pwsh-7 version directive and no pwsh-7 syntax: Dockerfile.base runs this under PowerShell 5.1 to install pwsh.
 
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# PowerShell 7 (pwsh) bootstrap for Dockerfile.base — runs as the FIRST RUN,
-# under Windows PowerShell 5.1 (the Server Core built-in), BEFORE the SHELL is
-# switched to pwsh and BEFORE any module is COPY'd. Bind-mounted into the base
-# build (backlog #27: was a 1200-char single-line RUN). Keep this WPS-5.1-safe:
-# no pwsh-7-only syntax.
-#
-# A transient download blip used to cost the whole base build, so: three
-# attempts with linear backoff, the SHA256 check INSIDE the loop (a truncated /
-# HTML body is retried, not thrown on), and the ORIGINAL exception rethrown when
-# the retry budget is exhausted.
+# The hash check sits inside the retry loop, so a truncated or HTML body is retried, not fatal.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'

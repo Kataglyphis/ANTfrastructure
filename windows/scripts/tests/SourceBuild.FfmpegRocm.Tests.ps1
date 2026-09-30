@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# FFmpeg's rocm-lane AMF path: the one plan (cpu/nvidia get none) and every site keyed on it, the
-# config.mak gates, the SHA-pinned header fetch, rocm-checks/FFmpeg.ps1. NOT covered: a real configure.
+# FFmpeg's AMF path: one plan keys every site, the config.mak gates and the pinned header fetch; no real configure.
 
 $script:ffScript = 'windows\scripts\build\Build-FfmpegFromSource.ps1'
 $script:ffCheck = 'windows\scripts\build\rocm-checks\FFmpeg.ps1'
@@ -42,8 +41,7 @@ Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg 
     }
 
     It 'cpu and nvidia lanes (real Get-GpuEnvironment): an AMF-only plan natively, none on the cross lane, never Vulkan' {
-        # Owner decision 2026-09-28: AMF (header-only, the driver's amfrt64.dll loads at run time) on
-        # every native amd64 lane; Vulkan stays rocm's.
+        # AMF is header-only (the driver's amfrt64.dll loads at run time), so every native amd64 lane gets it.
         foreach ($lane in @($null, 'cpu', 'nvidia')) {
             Invoke-OnGpuLane $lane { param($gpu, $src, $vk)
                 Assert-Equal ($lane -eq 'nvidia') $gpu.HasCuda "GPU_TYPE='$lane': fixture is the lane it claims"
@@ -121,8 +119,7 @@ Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg 
 }
 
 Describe 'Build-FfmpegFromSource.ps1: every AMF step at script level keys on the one plan' {
-    # Structural, because the script is monolithic: a site guarded by anything but $ffAmfPlan
-    # ($true, -not $ffCross, $false) would fetch/install AMF on cpu/nvidia or drop a rocm gate.
+    # Structural, because the script is monolithic: a site guarded by anything but $ffAmfPlan breaks some lane.
     $script:ffAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-RepoRoot) $script:ffScript), [ref]$null, [ref]$null)
 
     # Script-level AST nodes only: calls inside the extracted functions are their own tests' business.
@@ -252,7 +249,7 @@ Describe 'Get-FfmpegVulkanConfigGap (post-configure gate)' {
     }
 
     It 'the config.mak lines a real n9.0.2 configure wrote (VULKAN_SDK 1.4.357.0, --glslc, -I<SDK>/Include) pass as they are' {
-        # Measured 2026-09-23 on the host (mingw gcc, same configure logic); every Vulkan/SPIR-V line it wrote.
+        # Every Vulkan/SPIR-V line a real configure wrote on the host (mingw gcc, same configure logic).
         $real = @'
 GLSLC=C:/VulkanSDK/1.4.357.0/Bin/glslc.exe
 GLSLCFLAGS= --target-env=vulkan1.4 --target-spv=spv1.6 -std=460 -O
@@ -336,8 +333,7 @@ Describe 'Get-FfmpegLlvmNm (makedef lists exports with the compiler''s own llvm-
     }
 
     It 'throws when the compiler has no llvm-nm beside it (mutation)' {
-        # On the rocm lane (2026-09-24) makedef dumped no symbol and wrote an empty EXPORTS
-        # list; avutil-61.dll exported nothing and every library linking it failed.
+        # Without llvm-nm makedef writes an empty EXPORTS list, and every library linking avutil fails.
         Invoke-InTestDir {
             param($dir)
             Write-FfRocmTestFile (Join-Path $dir 'bin\clang-cl.exe')
@@ -373,8 +369,7 @@ Describe 'Get-FfmpegRocmLeak (TheRock never reaches the non-CMake configure)' {
 Describe 'Install-FfmpegAmfHeader / Copy-FfmpegAmfHeaderTree (SHA-pinned header asset)' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:ffScript -FunctionName 'Copy-FfmpegAmfHeaderTree', 'Install-FfmpegAmfHeader')
 
-    # Serves the release asset's shape (amf-headers-<tag>/AMF/core/Version.h) from $Root and
-    # installs it into $Root\src\compat\amf; -Sha replaces the real digest.
+    # Serves the release asset's shape from $Root into $Root\src\compat\amf; -Sha replaces the real digest.
     function Invoke-AmfInstall([string]$Root, [string]$Sha = '', [switch]$NoVersionH) {
         $tag = 'v9.9.9'
         $core = Join-Path $Root "stage\amf-headers-$tag\AMF\core"

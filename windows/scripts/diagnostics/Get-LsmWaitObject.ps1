@@ -6,25 +6,10 @@
 
 <#
 .SYNOPSIS
-    Names the object LSM waits on during the container boot hang: attaches to a
-    fresh silo's DcomLaunch svchost and enumerates its handles while the wait is
-    live. The companion Get-LsmWaitstack.ps1 proves the wait is static;
-    this one identifies what is being waited FOR.
-
+    Names the object LSM waits on during the container boot hang by enumerating the silo LSM svchost's handles.
 .DESCRIPTION
-    Run ELEVATED while container starts are happening. Waits for a new silo
-    (process tree: fresh wininit.exe -> its services.exe -> their svchosts),
-    picks the svchost whose stack carries lsm!, and runs cdb against it.
-
-    Attaches NON-INVASIVELY (-pv) by default: the debugger never controls the
-    target, so it cannot kill the container. -Invasive adds a controlling
-    attach (quit-and-detach) for the commands noninvasive mode refuses.
-
-    Output goes to out/lsm-attach/ and is made readable for the invoking user,
-    because an elevated writer otherwise leaves it SYSTEM-owned.
-
-.EXAMPLE
-    pwsh -File windows\scripts\diagnostics\Get-LsmWaitObject.ps1
+    Run elevated while containers start; attaches non-invasively (-pv) by default so it cannot kill the container.
+    Output goes to out/lsm-attach/.
 #>
 [CmdletBinding()]
 param(
@@ -36,16 +21,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Setup only (cdb discovery, out dir, silo descent) is shared with the other
-# LSM probes; the !handle enumeration below stays here.
+# Only the setup is shared with the other LSM probes; the !handle enumeration stays here.
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
 $cdb = Get-CdbPath
 Write-Host "cdb: $cdb"
 
-# Silo detection is by process tree: ExecutablePath/.CommandLine are EMPTY for
-# silo processes even elevated, so only a new wininit.exe identifies one.
+# Silo processes have empty ExecutablePath/CommandLine even elevated, so only a new wininit.exe identifies one.
 $baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
 Write-Host "Baseline: $($baseWininit.Count) wininit. Waiting for a NEW silo (max $WaitForSiloSec s)..."
 
@@ -60,8 +43,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
 $attach = if ($Invasive) { '-p' } else { '-pv', '-p' }
 
-# The LSM host is whichever svchost carries lsm! on a stack. Probe each, then
-# enumerate handles on the hit: the named event is the answer we are after.
+# The LSM host is whichever svchost carries lsm! on a stack.
 $found = $false
 foreach ($p in $svchosts) {
     $log = Join-Path $OutDir "attach-$($p.ProcessId)-$stamp.txt"

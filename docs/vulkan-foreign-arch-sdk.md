@@ -165,6 +165,18 @@ Two gates keep it from being dropped silently again:
 same gap (`libgtk-4` wants `vkCreateWaylandSurfaceKHR`). The stale-exception walker
 reports it as fixed once a rebuilt image loads the plugin. Drop the entry then.
 
+## Building on a native arm64 host
+
+When the target arch is the build host's own, `cross_build_is_active` is false
+and `install_vulkan_prereqs` must not call `install_target_packages`: there plain
+names resolved to `:amd64` and displaced the arm64 dev packages, deleting
+`/usr/lib/aarch64-linux-gnu/lib{xcb,X11,wayland-client}.so`, which
+`_vulkan_report_wsi_link_libs` therefore logs on every run. The other arches' dev
+packages are still installed system-wide and `CMAKE_LIBRARY_ARCHITECTURE` is only
+a preference, so `_cross_build_sdk_component` passes the foreign multiarch dirs as
+`CMAKE_IGNORE_PATH`. It also adds the target's own dir to `LIBRARY_PATH`, so the
+bare `-lxcb` that pkg-config's `XCB_LIBRARIES=xcb` produces still resolves.
+
 ## amd64 is the reference: all three arches build the same set
 
 `./vulkansdk` is NOT invoked with `all` here — it is handed an explicit component

@@ -1,46 +1,16 @@
 #!/usr/bin/env bash
-# context-management.sh — runtime build context, OCI export, and local stage handoff.
-#
-# Provides:
-#   _with_throwaway_container()
-#   _export_container_rootfs()
-#   export_rootfs_from_image()
-#   export_image_to_oci_layout()
-#   remove_local_image_if_exists()
-#   runtime_pushes_wrapper_images()
-#   runtime_pushes_intermediate_images()
-#   runtime_use_local_context_chain()
-#   runtime_prepare_local_context_chain()
-#   runtime_cleanup_local_context_chain()
-#   runtime_use_local_stage_context_outputs()
-#   runtime_install_local_context_cleanup_trap()
-#   runtime_stage_context_dir()
-#   runtime_remove_stage_context()
-#   runtime_refresh_stage_context()
-#   runtime_wheels_context_dir()
-#   runtime_use_local_artifact_context()
-#   runtime_artifact_context_dir()
-#   runtime_artifact_context_ref()
-#   runtime_stage_export_is_oci()
-#   _runtime_resolve_parent_context()
+# Runtime build contexts, OCI export and the local stage handoff.
 [ -n "${_CONTEXT_MANAGEMENT_SH_LOADED:-}" ] && return 0
 _CONTEXT_MANAGEMENT_SH_LOADED=1
 
 _CM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Build helpers (run, nerdctl wrappers) are required.
-# Normally sourced by artifact-common.sh first; this is a standalone safety guard.
+# For a standalone source; artifact-common.sh normally loads it first.
 # shellcheck disable=SC1090,SC1091
 if [ -z "${_BUILD_HELPERS_LOADED:-}" ] && [ -f "${_CM_DIR}/build-helpers.sh" ]; then
   source "${_CM_DIR}/build-helpers.sh"
 fi
 
-# <nerdctl> <tag> <cmd...>: run "<cmd...> <cid>" against a throwaway container
-# of <tag>, then remove it on BOTH paths and return the command's rc.
-# NO `trap ... RETURN` here (same leak as the one fixed in parallel-loop.sh):
-# a RETURN trap set inside a function stays armed after an error-path return
-# and fires again when the CALLER returns — where ${cid} is not in scope, so
-# under `set -u` the second firing aborts the caller instead of cleaning up.
-# `|| rc=$?` keeps set -e from returning before the cleanup.
+# <nerdctl> <tag> <cmd...>: runs "<cmd...> <cid>", always removes the container; no RETURN trap, it re-fires in the caller.
 _with_throwaway_container() {
   local nerdctl_bin="$1" tag="$2" cid rc=0
   shift 2
@@ -131,21 +101,7 @@ runtime_prepare_local_context_chain() {
   RUNTIME_CONTEXT_WORKDIR="$(mktemp -d "${RUNTIME_CONTEXT_ROOT}/runtime-flow.XXXXXX")"
 }
 
-# Reclaim stage-context trees left behind by runs that never got to clean up.
-#
-# runtime_cleanup_local_context_chain only removes the workdir THIS process
-# mktemp'd, so anything killed hard -- SIGKILL, an OOM, or the chain's own
-# `chain_terminate_descendants ... KILL` -- leaks its entire tree. Found
-# 2026-08-27 on the dev host: runtime-flow.c3d3B6, dated 2026-07-25, holding a
-# full base-amd64 rootfs at 3.3 GB, survived 33 days and every disk guard on a
-# filesystem sitting at 93% used. A leak can be far larger than that: the
-# runtime stage holds a base rootfs plus a package OCI layout PER ARCH, which
-# build-cross-chain.sh itself budgets at ~30 GB.
-#
-# Deliberately age-based rather than "delete every sibling": a concurrent
-# second chain has a young workdir of its own and must not be robbed. Anything
-# older than RUNTIME_CONTEXT_KEEP_HOURS cannot belong to a live run, because a
-# run that lived that long would have refreshed its contexts.
+# A hard-killed run leaks its whole workdir; age-based so a concurrent chain's young workdir survives.
 _runtime_sweep_orphaned_contexts() {
   local keep_hours="${RUNTIME_CONTEXT_KEEP_HOURS:-24}"
   local d freed=0
@@ -206,12 +162,7 @@ runtime_refresh_stage_context() {
   _export_container_rootfs "${NERDCTL_BIN:-nerdctl}" "${image_ref}" "${context_dir}"
 }
 
-# The wrapper's wheels-source as a DIRECTORY holding only /opt/wheels. nerdctl
-# maps every oci-layout:// context onto ONE fixed store id (parent-image-key),
-# so a second OCI context beside runtime_package leaves one of them unresolvable
-# ("content sha256:...: not found"). Same reason runtime_base ships as a rootfs.
-# <nerdctl> <dir> <cid>. Not `nerdctl cp`: rootless nerdctl refuses cp from a
-# stopped container, and `run ... cp` would need QEMU for a foreign-arch image.
+# A directory, not a second OCI context: docs/failure-modes.md#a-no-push-wrapper-build-cannot-find-its-own-android-image
 _export_cid_wheels() {
   "$1" export "$3" | tar -xpf - -C "$2" opt/wheels
 }
@@ -231,9 +182,7 @@ runtime_use_local_artifact_context() {
   [ -n "${ARTIFACT_CONTEXT_ROOT:-}" ]
 }
 
-# `<root>-<arch>`, matching what cross_stage_context_dir WRITES. It joined with a
-# slash and so pointed at a directory the android stage never creates, which made
-# --no-push fall back to the stale registry tag. docs/refactoring-backlog.md XN
+# `<root>-<arch>`, exactly what cross_stage_context_dir writes; a slash made --no-push fall back to a stale tag.
 runtime_artifact_context_dir() {
   local arch="$1"
   if [ -z "${ARTIFACT_CONTEXT_ROOT:-}" ]; then
@@ -279,11 +228,7 @@ runtime_stage_export_is_oci() {
   esac
 }
 
-# Resolve a parent stage as either a remote image tag or a local
-# build context. Sets the out variables:
-#   parent_image_var   -> base image name to pass as --build-arg BASE_IMAGE
-#   parent_context_var -> local context dir (only when local)
-# Appends any --build-context args needed for local mode to the build_args array.
+# <kind> <arch> <image_ref> <context_dir> <build_args>: a remote tag, or a local context plus its --build-context arg.
 _runtime_resolve_parent_context() {
   local parent_kind="$1"
   local arch="$2"

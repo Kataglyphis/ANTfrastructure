@@ -1,11 +1,5 @@
 #requires -Version 7.0
-# Tests for Invoke-ShieldedNative (WindowsNative.Common.psm1, re-exported by
-# WindowsSourceBuild.Common) — the canonical `cmd.exe /s /c` stderr shield that
-# replaces the ~40 hand-rolled `& cmd /c "... 2>&1"` + exit-check pairs. Its two
-# hard contracts: a non-zero native exit ALWAYS throws (unless -Optional), and
-# $LASTEXITCODE NEVER leaks stale out of a green call (the exit-145 class).
-# The /s + leading-space quoting rule is pinned with a real .cmd fixture in a
-# directory with spaces in its path.
+# Invoke-ShieldedNative: a non-zero exit always throws (unless -Optional), and $LASTEXITCODE never leaks from a green call.
 
 Describe 'Invoke-ShieldedNative' {
 
@@ -19,10 +13,7 @@ Describe 'Invoke-ShieldedNative' {
 
     It 'merges a tool''s stderr into the returned output (the whole point of the shield)' {
         Invoke-InTestDir { param($dir)
-            # The fixture writes to ITS OWN stderr; the shield's appended 2>&1
-            # (inside cmd.exe, before PowerShell ever sees a stream) must fold
-            # that into the captured output instead of leaking it to the error
-            # stream as a NativeCommandError.
+            # The 2>&1 inside cmd.exe must fold the tool's stderr into the output, never a NativeCommandError.
             $tool = Join-Path $dir 'noisy.cmd'
             Set-Content -LiteralPath $tool -Value "@echo off`r`necho to-stderr 1>&2`r`nexit /b 0" -Encoding ASCII
             $out = Invoke-ShieldedNative -CommandLine "`"$tool`"" -Quiet

@@ -1,12 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Resolve-QnnSdk (backlog #121): the host never held the real, login-gated
-# SDK, so this fixture is the ONLY exercise of the SDK-present branch until a
-# zip is staged. A fake zip with the documented layout (qairt\<ver>\include\QNN\
-# QnnInterface.h + lib\<arch>\QnnCpu.dll) drives every branch: found, no zip,
-# two zips, SHA mismatch, non-SDK zip, missing backend set for the target.
+# The QNN SDK is login-gated, so a fake zip with its layout is the only exercise of the SDK-present branch.
 
 Describe 'Resolve-QnnSdk' {
 

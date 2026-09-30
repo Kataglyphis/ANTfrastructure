@@ -1,25 +1,4 @@
-# Backlog #56: replace-with-verification for the LiteRT-LM source patchers.
-#
-# WHY THIS EXISTS
-# ---------------
-# The patchers in this directory rewrite upstream sources with bare
-# string(REPLACE ...) and then unconditionally print "Patched ...". If upstream
-# reformats the text a pattern targets, the replace silently does NOTHING, the
-# success message still prints, and the defect the patch existed to fix comes
-# back — after a full media-litert build.
-#
-# That is not hypothetical. sentencepiece's duplicate ABSL_FLAG(minloglevel)
-# collides with abseil's own definition and makes litert_lm_main.exe abort on
-# EVERY invocation; /FORCE:MULTIPLE hides it at link time so it only surfaces at
-# runtime. The exe was link-clean and unusable. A silently no-op'd regex would
-# restore exactly that, while the log kept claiming "fixes abseil flag ODR abort".
-#
-# These are MACROS, not functions: they assign to the caller's variable, and a
-# CMake function would need PARENT_SCOPE gymnastics for every call site.
-#
-# Use *_required when the patch MUST apply (the normal case — a no-op means the
-# build is shipping a known-broken artifact). Use *_optional only when upstream
-# legitimately may or may not carry the text, and say why at the call site.
+# Macros, not functions, so they assign the caller's variable; see docs/windows-build-invariants.md § Never rewrite upstream sources with a bare string(REPLACE)
 
 macro(patch_replace_required _pa_var _pa_match _pa_replacement _pa_label)
     set(_pa_before "${${_pa_var}}")

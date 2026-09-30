@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# install-tensorrt.sh - 3-tier TensorRT install: local repo deb, then NVIDIA
-# apt repo (pinned then unpinned), then skip. Also normalizes the install
-# layout under /usr/local/tensorrt.
-#
-# Extracted verbatim from the TensorRT RUN in linux/Dockerfile.nvidia. Invoked
-# via a BuildKit bind-mount of linux/scripts/01-core, exactly like the other
-# core scripts. Reads TENSORRT_VERSION from the build environment (declared as
-# an ARG in Dockerfile.nvidia, which Docker exposes as an env var to the RUN).
-# Consumes /tmp/tensorrt-local-repo.deb if the preceding stage staged one.
+# TensorRT: staged local repo deb, then NVIDIA apt pinned to TENSORRT_VERSION, then unpinned, then skip.
 set -euo pipefail
 
 _trt_ok=0
@@ -27,23 +19,13 @@ if [ -f /tmp/tensorrt-local-repo.deb ]; then
     fi
 fi
 if [ "${_trt_ok}" -eq 0 ]; then
-    # GPU1 fix (2026-08-17): refresh the indices FIRST. install-cuda-stack.sh's
-    # RUN used to wipe /var/lib/apt/lists inside the SHARED apt-lib cache mount,
-    # so this RUN saw empty indices, found no tensorrt candidates, and the
-    # 2>/dev/null fallback chain swallowed it — TensorRT silently missing from
-    # the shipped :*-nvidia image. An explicit update makes this path
-    # self-sufficient regardless of what earlier RUNs did to the shared mount.
+    # Refresh first: empty indices in the shared apt cache mount would make the chain below skip silently.
     apt-get update -qq || echo "TensorRT: apt-get update failed; install may find no candidates" >&2
     if apt-get install -y --no-install-recommends "tensorrt-dev=${TENSORRT_VERSION}*" "tensorrt-libs=${TENSORRT_VERSION}*" 2>/dev/null; then
         echo "TensorRT: installed ${TENSORRT_VERSION} from NVIDIA apt repo"
         _trt_ok=1
     elif apt-get install -y --no-install-recommends tensorrt-dev tensorrt-libs 2>/dev/null; then
-        # LOUD on purpose (2026-08-08). TENSORRT_VERSION is ONE pin for both
-        # lanes, and it tracks the zip staged for Windows — which may be an
-        # NVIDIA *Enterprise* build that the public apt repo does not carry. The
-        # fallback is deliberate and fine, but it silently UNPINS TensorRT on
-        # this lane, and the previous single `echo` was one line among thousands
-        # in a multi-hour log: nobody would ever see it.
+        # Loud on purpose: the pin tracks the Windows zip, possibly an Enterprise build apt does not serve.
         _trt_actual="$(dpkg-query -W -f='${Version}' tensorrt-dev 2>/dev/null || echo 'unknown')"
         echo "=============================================================" >&2
         echo "WARNING: TensorRT is UNPINNED on this build." >&2

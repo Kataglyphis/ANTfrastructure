@@ -7,9 +7,8 @@
 .SYNOPSIS
     rocm image: FFmpeg carries AMD AMF and Vulkan (encoders, hwaccels, filters, hwdevices).
 .DESCRIPTION
-    Writes one finding per gap; nothing means pass. Listings read FFmpeg's static tables, so no
-    GPU is needed. NOT covered: that an AMF or Vulkan session opens (amfrt64.dll and vulkan-1.dll
-    come from the host's driver). docs/windows-rocm.md.
+    One finding per gap, none means pass; reads FFmpeg's static tables, so opening a session (host driver) is not covered.
+    See docs/windows-rocm.md § FFmpeg on the rocm lane: AMD AMF and Vulkan.
 #>
 
 Set-StrictMode -Version Latest
@@ -25,8 +24,7 @@ function Test-FfmpegListingRow {
     return $Text -match $row
 }
 
-# Listed names at FFmpeg n9.0.2. The capture source is configured as amf_capture but listed
-# as vsrc_amf; Build-FfmpegFromSource.ps1 Get-FfmpegAmfConfigSymbol is the configure-side twin.
+# Names at n9.0.2 (amf_capture lists as vsrc_amf); twin of Build-FfmpegFromSource.ps1 Get-FfmpegAmfConfigSymbol.
 function Get-FfmpegAmfExpectation {
     return [ordered]@{
         encoders = @('h264_amf', 'hevc_amf', 'av1_amf')
@@ -50,8 +48,7 @@ function Get-FfmpegAmfListingFinding {
     }
 }
 
-# Listed names at n9.0.2 (--enable-vulkan); Build-FfmpegFromSource.ps1 Get-FfmpegVulkanConfigSymbol is the
-# configure-side twin. hwdecoders: native decoders whose `-h decoder=` must list the vulkan device.
+# Names at n9.0.2, twin of Get-FfmpegVulkanConfigSymbol; hwdecoders' `-h decoder=` must list the vulkan device.
 function Get-FfmpegVulkanExpectation {
     return [ordered]@{
         encoders   = @('h264_vulkan', 'hevc_vulkan', 'av1_vulkan', 'ffv1_vulkan', 'prores_ks_vulkan')
@@ -83,8 +80,7 @@ function Get-FfmpegVulkanListingFinding {
     }
 }
 
-# FFmpeg dlopens vulkan-1.dll (hwcontext_vulkan.c); a static import would stop every FFmpeg consumer on a
-# host without a loader (Server Core ships none). $ImportsByFile maps a file name to its imported DLL names.
+# A static vulkan-1.dll import would stop every FFmpeg consumer on a host without a loader (Server Core ships none).
 function Get-FfmpegVulkanImportFinding {
     param([Parameter(Mandatory)][System.Collections.IDictionary]$ImportsByFile)
     # hwcontext_vulkan.c is in avutil; without it read, a clean map proves nothing.

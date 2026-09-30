@@ -1,25 +1,5 @@
 #requires -Version 7.0
-# Backlog #58 + #60: pin the values that a mechanical edit could quietly change.
-#
-# #58 — CUDA_ARCHITECTURES. The owner's standing directive is that the arch set
-# is NEVER trimmed as a speed lever, in any build, including dev iterations. The
-# SET ITSELF is an owner decision and does change: on 2026-09-23 it became
-# `86;87;89;120` — 80 (A100/A30) retired, 120 (RTX 50 / RTX PRO Blackwell)
-# added. Changing it means changing versions.env AND this assertion in the same
-# commit, which is the point: a trim cannot happen by accident. Three
-# copies of that string exist: versions.env (source of truth),
-# Dockerfile.media-builder's ARG default, and a code fallback in
-# WindowsSourceBuild.Cuda.psm1. Only the CODE FALLBACK was asserted — and
-# SourceBuild.Resolve.Tests.ps1 proves in the very next test that the env value
-# overrides it. So trimming versions.env to a single arch kept the whole suite
-# green, and `sync_versions.py --write` would then have propagated the trim into
-# the Dockerfile. The failure is silent: a working build that simply lacks arch
-# coverage. This asserts the PIN.
-#
-# #60 — Dockerfile.media-merge-builder's version ARGs. BuildKit.TwinParity
-# hardcodes the media-BUILDER path, so the MERGE builder is opened by no test at
-# all, and PinParity never reads any Dockerfile. That is exactly the stage where
-# the documented "~8 versions.env-bump breaks" landed.
+# Pins values a mechanical edit could quietly change: the CUDA arch set and the merge builder's version ARGs.
 
 
 Describe 'canonical pin values (backlog #58, #60)' {
@@ -27,10 +7,7 @@ Describe 'canonical pin values (backlog #58, #60)' {
     $repoRoot = Get-RepoRoot
     $versionsEnv = Join-Path $repoRoot 'linux\scripts\01-core\versions.env'
 
-    # Thin wrapper over the CANONICAL parser (#126, 2026-08-21): the previous
-    # hand-rolled regex loop handled no quoting/comments/continuations — a
-    # suite whose purpose is "pin the values a mechanical edit could quietly
-    # change" must not read the source of truth with a divergent parser.
+    # The canonical parser, never a divergent regex, reads the source of truth.
     $script:canonicalPins = ConvertFrom-VersionsEnv -Path $versionsEnv
     function Get-Pin {
         param([string]$Name)
@@ -44,8 +21,7 @@ Describe 'canonical pin values (backlog #58, #60)' {
     }
 
     It 'keeps CUDA_ARCHITECTURES at the full owner-mandated set (NEVER trim)' {
-        # Owner directive: arch reduction is banned as a speed lever. The set
-        # below is the owner's current decision (2026-09-23), not a default.
+        # Never trimmed as a speed lever: the set changes only with versions.env and this line together.
         Assert-Equal '86;87;89;120' (Get-Pin 'CUDA_ARCHITECTURES') `
             'versions.env CUDA_ARCHITECTURES was trimmed — this is the SOURCE OF TRUTH the container actually builds with, and trimming it is silent (a green build with missing arch coverage).'
     }
@@ -62,9 +38,7 @@ Describe 'canonical pin values (backlog #58, #60)' {
     }
 
     It 'keeps every version ARG default in the merge + toolchain Dockerfiles equal to versions.env (backlog #60, extended 2026-08-21)' {
-        # toolchain-builder joined 2026-08-21: its ARG defaults feed the
-        # versions.env precedence rule in Build-ToolchainAll.ps1 (a stale
-        # Dockerfile literal would now beat the fresh file for that key).
+        # toolchain-builder's ARG defaults feed Build-ToolchainAll.ps1's precedence, so a stale literal would win.
         $dfFiles = @('Dockerfile.media-merge-builder', 'Dockerfile.toolchain-builder') | ForEach-Object { Join-Path $repoRoot ('windows\' + $_) }
         $checked = 0
         $drift = @()
@@ -81,8 +55,7 @@ Describe 'canonical pin values (backlog #58, #60)' {
             if ($pin -ne $val) { $drift += "$name (Dockerfile=$val, versions.env=$pin)" }
         }
         }
-        # Rot guard: if the ARG block is ever restructured so nothing matches,
-        # this test would pass vacuously — which is how #60 existed at all.
+        # Rot guard: a restructured ARG block matching nothing would pass vacuously.
         Assert-True ($checked -ge 8) "expected >=8 comparable version ARGs in Dockerfile.media-merge-builder, matched $checked — has the ARG block moved?"
         Assert-Equal 0 $drift.Count ("merge-builder ARG defaults drifted from versions.env: " + ($drift -join '; '))
     }

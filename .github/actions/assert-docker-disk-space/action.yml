@@ -52,20 +52,7 @@ runs:
           @{n='SizeGB';e={[math]::Round($_.Size/1GB,1)}},
           FileSystemLabel -AutoSize | Out-String | Write-Host
 
-        # Asking the daemon where it puts layers is less reliable than it
-        # looks. On runner image win25-vs2026/20260728.188 `docker info
-        # --format '{{.DockerRootDir}}'` returns an EMPTY string and a NON-ZERO
-        # exit; on 20260714.173 the same call printed C:\ProgramData\docker.
-        # Two failures follow from a naive one-shot call, and a real pipeline
-        # died of the second on 2026-08-05:
-        #   - `2>$null` throws the reason away, leaving "data-root: " and no clue;
-        #   - the GitHub pwsh wrapper appends `exit $LASTEXITCODE`, so the failed
-        #     QUERY becomes the STEP's exit code even when the gate itself is
-        #     happy.
-        # So: keep stderr, retry while the daemon settles (a `docker system
-        # prune` beforehand can leave it briefly unavailable), fall back to the
-        # plain-text "Docker Root Dir:" line whose format has outlived several
-        # --format rewrites, and start the service if the runner left it stopped.
+        # `docker info --format` can print nothing and exit non-zero on some runner images: keep stderr, retry, fall back to the plain "Docker Root Dir:" line.
         $root = $null
         foreach ($attempt in 1..[int]'${{ inputs.probe-attempts }}') {
           $out  = & docker info --format '{{.DockerRootDir}}' 2>&1
@@ -91,8 +78,7 @@ runs:
           }
           Start-Sleep -Seconds ([int]'${{ inputs.probe-interval-seconds }}')
         }
-        # Nothing above may leak an exit code into this step: only the explicit
-        # `exit 1` below is allowed to fail it.
+        # The pwsh step wrapper exits with $LASTEXITCODE; only the explicit `exit 1` below may fail this step.
         $global:LASTEXITCODE = 0
 
         if (-not $root) {

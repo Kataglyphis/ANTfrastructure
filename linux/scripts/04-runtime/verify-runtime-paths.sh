@@ -1,23 +1,8 @@
 #!/usr/bin/env bash
-# NO -e: the path-mismatch checks below are heuristic (awk over ENV blocks +
-# token grep) and must stay advisory — they produce WARN lines even on a healthy
-# tree (ARG-composed paths, unexpanded ${GCC_VERSION}-style refs, legitimate
-# Dockerfile.package vs .media /opt divergence). INFRASTRUCTURE errors (missing
-# reference file / Dockerfiles) are NOT heuristic — those fail loudly (LOG31).
+# No -e: path-mismatch checks are heuristic and warn; missing tracked files fail hard.
 set -uo pipefail
-# Pin C collation so `sort` and `comm` below agree on byte order. Without this,
-# UTF-8 locales sort '-' (0x2d) and '/' (0x2f) differently from `comm`'s byte
-# order, so sibling paths like /opt/tvm-wheels vs /opt/tvm/lib make comm abort
-# with "file N is not in sorted order" and fail the whole check spuriously.
+# C collation, or `comm` aborts on paths that sort differently under UTF-8 ('-' vs '/').
 export LC_ALL=C
-# verify-runtime-paths.sh - Compare PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH
-# components in Dockerfiles against the canonical runtime-paths.env reference.
-#
-# Contract: FAILS on infrastructure errors (missing runtime-paths.env,
-# versions.env, or a tracked Dockerfile — a broken tree/rename, not a heuristic
-# mismatch). The path-mismatch WARN lines stay advisory: extraction is
-# heuristic and produces false positives on a healthy tree. (LOG31: this script
-# previously NEVER failed — an inner warning swallowed by an outer green.)
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 PATHS_ENV="${REPO_ROOT}/linux/scripts/04-runtime/runtime-paths.env"
@@ -25,8 +10,7 @@ VERSIONS_ENV="${REPO_ROOT}/linux/scripts/01-core/versions.env"
 
 echo "=== Runtime paths consistency check (advisory path-mismatch; hard infra) ==="
 
-# Infrastructure: these are tracked repo files. A missing one is a broken
-# tree/rename, not a heuristic mismatch — fail loudly (LOG31).
+# Tracked files: a missing one is a broken tree, not a heuristic mismatch.
 _infra_fail=0
 for _req in "${PATHS_ENV}" "${VERSIONS_ENV}" "${REPO_ROOT}/linux/Dockerfile.package" "${REPO_ROOT}/linux/Dockerfile.media"; do
   if [ ! -f "${_req}" ]; then
@@ -39,8 +23,7 @@ if [ "${_infra_fail}" -ne 0 ]; then
   exit 1
 fi
 
-# Load version defaults from the single source of truth so variable references
-# (${GCC_VERSION}, ${OPENCV_OUTPUT_DIR}, etc.) can be expanded dynamically.
+# versions.env values let envsubst expand the ${VAR} references below.
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/load-versions-env.sh"
 load_versions_env "${VERSIONS_ENV}"
@@ -48,8 +31,6 @@ load_versions_env "${VERSIONS_ENV}"
 # Load canonical paths (may reference $GCC_VERSION etc.)
 source "${PATHS_ENV}"
 
-# Extract the explicit paths (values that look like absolute paths)
-# Use envsubst to expand any remaining ${VAR} references with actual values.
 canonical_paths="$(
   grep -E '^[A-Z_]+=' "${PATHS_ENV}" \
     | grep -vE '^(GCC_PREFIX|OPENCV_PREFIX|GSTREAMER_PREFIX|FFMPEG_PREFIX|LIBCAMERA_PREFIX|VULKAN_SDK)=' \
@@ -75,8 +56,7 @@ for df in "${DOCKERFILES[@]}"; do
   df_env_text="$(
     awk '/^ENV /{flag=1} flag{print; if(!/\\$/){flag=0}}' "$df_path" | tr -d '\\'
   )"
-  # Expand variable refs to their literal values via envsubst (reads the
-  # versions.env vars sourced above, no hardcoded sed substitutions needed).
+  # envsubst reads the versions.env values sourced above.
   df_env_expanded="$(envsubst <<<"$df_env_text")"
   df_env_values="$(echo "$df_env_expanded" | grep -oP '/[A-Za-z0-9/._-]+' | LC_ALL=C sort -u)"
 
@@ -107,8 +87,7 @@ MEDIA_ENV_PATHS="$(
     | LC_ALL=C sort -u
 )"
 
-# Compare shared /opt paths. LC_ALL=C: sort collates by locale, comm compares
-# bytes — mixing them silently corrupts the set difference.
+# LC_ALL=C: a locale-collated sort would corrupt comm's byte-wise set difference.
 pkg_only_opt="$(
   comm -23 <(echo "$PKG_ENV_PATHS" | LC_ALL=C sort -u) <(echo "$MEDIA_ENV_PATHS" | LC_ALL=C sort -u)
 )"

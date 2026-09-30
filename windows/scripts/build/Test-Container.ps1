@@ -20,9 +20,7 @@ param(
     # Makes a missing CUDA_ROOT a loud FAILURE instead of the CPU-lane skip.
     [switch]$ExpectGpu,
     [switch]$ExitOnFirstFailure,
-    # COVERAGE FLOORS (#44): a gate that cannot tell "everything passed" from "nothing ran" is
-    # worse than no gate. -MinPassed floors passes, -MaxSkipped caps skips (-1 = no ceiling);
-    # the 0 / -1 defaults keep hand invocations behaving exactly as before.
+    # Coverage floors, so "nothing ran" cannot pass as "all passed"; -MaxSkipped -1 means no cap.
     [int]$MinPassed = 0,
     [int]$MaxSkipped = -1
 )
@@ -31,35 +29,22 @@ $ErrorActionPreference = 'Continue'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-# The assertion harness lives in a module so it can be unit-tested without a built image.
-# #108: container mounts are FLAT (C:\bkmnt, C:\temp\scripts) while the repo is
-# scripts/<group>/ -- shared assets sit beside this script, or one level up.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsSmokeTest.Common.psm1') -Force
 
-# TARGET-arch facts (vcpkg triplet, PE machine, wheel tag). Imported directly because this
-# script pulls in no WindowsSourceBuild.Common; the module is deliberately dependency-free.
-# Unset WINDOWS_TARGET_ARCH => every accessor returns the amd64 value.
+# Imported directly, as this script loads no WindowsSourceBuild.Common; unset WINDOWS_TARGET_ARCH means amd64.
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1') -Force
-# CROSS LANE: sections 1-6 and 14-16 exercise the amd64 HOST toolchain and pass identically on a
-# cross image; only the PAYLOAD (8-13, 17, 18, 20-22) is aarch64 and unrunnable here, so those
-# skip as SECTIONS while §19's pointer list is arch-filtered. Floors: $sectionFloors' Arm64 column.
+# Cross: payload sections (8-13, 17, 18, 20-22) skip whole, host-toolchain ones run; see $sectionFloors' Arm64 column.
 $smokeCross = Test-WindowsCrossTarget
 
-# Must precede the first assertion: zeroes the counters and hands the module
-# -ExitOnFirstFailure, which it cannot read out of this script's scope.
+# Before the first assertion; the module cannot read -ExitOnFirstFailure from this scope.
 Initialize-SmokeTestRun -ExitOnFirstFailure:$ExitOnFirstFailure
 
-# GPU-lane discriminator: the NVIDIA EP/codec probes below would FAIL on a legitimate CPU-only
-# image. Keyed on CUDA_ROOT, baked Machine-wide only on the nvidia lane. DirectML is NOT gated --
-# it is DX12-based and built unconditionally, so it is checked always.
+# NVIDIA probes would fail a legitimate CPU image, so they key on CUDA_ROOT; DirectML is DX12-based and always checked.
 $script:gpuNvidia = (-not $SkipCudaTests) -and (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('CUDA_ROOT')))
 
-# TensorRT follows the STAGED state, not the lane: it is EULA-gated and optional, and a zip-less
-# GPU lane is the documented NORMAL case (docs/windows-builds.md § TensorRT setup). The EP asserts
-# in §8/§20 require the EP when a tree is staged and assert its absence when not -- so the lane
-# never reds on a payload nobody could stage, while a STAGED tree with a silently-disabled EP
-# still fails loudly.
+# TensorRT follows the staged tree, not the lane: a zip-less GPU lane is normal, a staged tree without the EP fails.
 $script:tensorRtStaged = Test-TensorRtTreeStaged
 
 function Get-CommandVersion {
@@ -70,20 +55,17 @@ function Get-CommandVersion {
     } catch { return $null }
 }
 
-# Hand-encoded 63-byte ONNX ModelProto (opset 13, one Identity node x:float[1] -> y), shared by
-# the native (§8) and python (§20) probes -- real inference with zero external model files.
+# A hand-encoded 63-byte Identity model shared by §8 and §20: real inference without model files.
 $script:identityOnnxBytes = [byte[]]@(
     0x08,0x08,0x3A,0x37,0x0A,0x10,0x0A,0x01,0x78,0x12,0x01,0x79,0x22,0x08,0x49,0x64,
     0x65,0x6E,0x74,0x69,0x74,0x79,0x12,0x01,0x67,0x5A,0x0F,0x0A,0x01,0x78,0x12,0x0A,
     0x0A,0x08,0x08,0x01,0x12,0x04,0x0A,0x02,0x08,0x01,0x62,0x0F,0x0A,0x01,0x79,0x12,
     0x0A,0x0A,0x08,0x08,0x01,0x12,0x04,0x0A,0x02,0x08,0x01,0x42,0x02,0x10,0x0D)
 
-# One-op MLIR module (abs(-5)=5) shared by §20 and §22; MLIR is whitespace-insensitive so the
-# one-liner works both inline and as a file. No double quotes: PS 5.1 strips them from -c strings.
+# Shared by §20 and §22; no double quotes, which PS 5.1 strips from -c strings.
 $script:ireeGateMlir = 'func.func @abs(%input : tensor<f32>) -> (tensor<f32>) { %result = math.absf %input : tensor<f32> return %result : tensor<f32> }'
 
-# Expected versions come from versions.env, not literals that silently drift on a bump: the
-# baked Machine env is authoritative in-container, the repo file is the host-side fallback.
+# Expected versions: the baked Machine env in-container, the repo's versions.env on a host.
 $script:versionsFromFile = @{}
 $repoVersions = Join-Path $scriptAssetRoot '..\..\linux\scripts\01-core\versions.env'
 $sharedModule = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
@@ -93,8 +75,7 @@ if ((Test-Path $repoVersions) -and (Test-Path $sharedModule)) {
     $script:versionsFromFile = ConvertFrom-VersionsEnv -Path $repoVersions
 }
 
-# Imported conditionally with local fallbacks so the suite stays runnable in an image whose
-# modules dir is broken. The fallbacks mirror the module functions exactly -- keep them in sync.
+# Local fallbacks keep the suite runnable with a broken modules dir; keep them in sync with the module.
 $containerImageModule = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
 if (Test-Path $containerImageModule) {
     Import-Module $containerImageModule -Force
@@ -133,8 +114,7 @@ if (-not (Get-Command Resolve-VsBuildToolsRoot -ErrorAction SilentlyContinue)) {
 }
 
 function Get-ExpectedVersion {
-    # Wraps Resolve-ContainerImageValue so this gate and the setup-/verify-time gates normalize a
-    # tag-style leading 'v' through the SAME code path. Precedence: env > versions.env > literal.
+    # The setup and verify gates' own normalization; precedence env > versions.env > literal.
     param([string]$Key, [string]$Fallback)
     $fileValue = ''
     if ($script:versionsFromFile.ContainsKey($Key)) { $fileValue = [string]$script:versionsFromFile[$Key] }
@@ -142,8 +122,7 @@ function Get-ExpectedVersion {
     return Resolve-ContainerImageValue -EnvironmentVariable $Key -DefaultValue $default -TrimVPrefix
 }
 
-# §21 probe, run by the app venv's python: its onnxruntime/GenAI facts, plus every .pyd/.dll of the
-# chain wheel (argv[1]) hashed in the wheel and where the venv imports it. One JSON line, never raises.
+# §21 probe for the venv's python: ORT/GenAI facts and each chain-wheel binary hashed in wheel and venv; never raises.
 function Get-TorchAppOrtProbeSource {
     return @'
 import hashlib, importlib.metadata as md, json, os, re, sys, zipfile
@@ -192,8 +171,7 @@ print(json.dumps(report))
 '@
 }
 
-# The one chain ORT wheel Build-TorchApp.ps1 force-installs into the venv: its PEP 503 name and version
-# from the file name, or a Problem. onnxruntime_genai-*.whl does not match the filter.
+# The chain ORT wheel Build-TorchApp.ps1 force-installs: its PEP 503 name and version, or a Problem.
 function Resolve-ChainOrtWheel {
     param([AllowEmptyString()][string]$WheelDir)
     $found = @()
@@ -213,8 +191,7 @@ function Resolve-ChainOrtWheel {
     return $wheel
 }
 
-# Findings for the probe report (ConvertFrom-Json -AsHashtable); empty = pass. No lane input on purpose:
-# USE_DML=ON is unconditional in ORT and GenAI, so every amd64 lane must pass both aspects.
+# No lane input: USE_DML=ON is unconditional in ORT and GenAI, so every amd64 lane must pass both aspects.
 function Get-TorchAppOrtFinding {
     param(
         [AllowNull()][hashtable]$Report,
@@ -253,8 +230,7 @@ function Get-TorchAppOrtFinding {
     }
 }
 
-# Runs the probe with the venv interpreter (-I: no PYTHONPATH, no script dir on sys.path); throws
-# without a report.
+# -I keeps PYTHONPATH and the script dir off sys.path; throws without a report.
 function Invoke-TorchAppOrtProbe {
     param([Parameter(Mandatory)][string]$Python, [AllowEmptyString()][string]$WheelPath = '')
     if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw "venv python missing at $Python" }
@@ -272,8 +248,7 @@ function Invoke-TorchAppOrtProbe {
     return ($json | ConvertFrom-Json -AsHashtable)
 }
 
-# §19: the ort-sys/ort crate env windows/Dockerfile bakes must name the chain ORT under ONNX_ROOT.
-# Findings; empty = pass. -Environment defaults to this process's env (tests pass a hashtable).
+# §19: the ort-sys crate env windows/Dockerfile bakes must name the chain ORT under ONNX_ROOT.
 function Get-OrtCrateEnvFinding {
     param([AllowEmptyString()][string]$OnnxRoot, [AllowNull()][hashtable]$Environment = $null)
     if ([string]::IsNullOrWhiteSpace($OnnxRoot)) { return 'ONNX_ROOT is unset, so nothing names the chain ORT' }
@@ -305,17 +280,13 @@ function Get-OrtCrateEnvFinding {
     }
 }
 
-# ============================================================================
 Write-TestHeader '1. Build Tools'
-# ============================================================================
 # msbuild comes from VS Build Tools; the rest from scoop/LLVM.
 foreach ($tool in 'git', 'cmake', 'ninja', 'clang-cl', 'lld-link', 'llvm-lib', 'msbuild', 'nuget') {
     Assert-CommandExists $tool
 }
 
-# Well-formedness only, deliberately: Test-Toolchain.ps1 asserts LLVM_WINDOWS_VERSION at base
-# build time, and this suite also runs against PUBLISHED images whose clang legitimately predates
-# the current pin. A disagreeing baked pin warns; failing it would kill the regression gate.
+# Well-formedness only: published images' clang may predate the pin, which Test-Toolchain.ps1 asserts at build time.
 $clangVer = Get-CommandVersion 'clang-cl'
 Assert-Test -Name "clang-cl version" -Condition { $clangVer -ne $null } -FailMessage "Could not get clang-cl version"
 Assert-Test -Name "clang-cl version string" -Condition { $clangVer -match '\d+\.\d+' } -FailMessage "clang-cl did not report a well-formed version"
@@ -325,8 +296,7 @@ if ($env:LLVM_WINDOWS_VERSION -and $clangVer -and ("$clangVer" -notmatch [regex]
         'unexpected for a fresh base build (Test-Toolchain.ps1 would have failed it).')
 }
 
-# The artifact's own record of which compiler built it (Complete-Container.ps1). SKIP, not fail:
-# the file is additive and this suite must stay usable against published images.
+# Skipped, not failed, when absent: the manifest is additive and published images may predate it.
 $manifestPath = 'C:\toolchain-manifest.json'
 if (-not (Test-Path $manifestPath)) {
     Skip-Test "toolchain provenance manifest ($manifestPath absent — image predates it)"
@@ -350,9 +320,7 @@ if ($cmakeExpected) {
     Skip-Test 'cmake pin assert (CMAKE_VERSION not resolvable from env or versions.env)'
 }
 
-# ============================================================================
 Write-TestHeader '2. Python (source-built)'
-# ============================================================================
 Assert-CommandExists 'python'
 # Select-Object -First 2, not [0..1]: a single-part version would pad with $null and yield '3.'.
 $pyMajorMinor = ((Get-ExpectedVersion 'PYTHON_VERSION' '3.14') -split '\.' | Select-Object -First 2) -join '.'
@@ -361,25 +329,21 @@ Assert-Test -Name "Python is $pyMajorMinor.x" -Condition {
     return $ver -match ([regex]::Escape($pyMajorMinor) + '\.')
 } -FailMessage "Python version is not $pyMajorMinor.x"
 
-# TEMP_DIR is baked in-container but typically unset on a build host -- a bare
-# Join-Path $env:TEMP_DIR would throw there before any test ran.
+# TEMP_DIR is unset on a build host, where a bare Join-Path would throw.
 $cpythonDir = Join-Path ($env:TEMP_DIR ?? 'C:\temp') 'cpython'
-# PCbuild\amd64 on BOTH lanes and NOT arch-parameterized: this is the HOST interpreter every
-# image's `python` resolves to. Only the wheel TAG follows WINDOWS_TARGET_ARCH.
+# PCbuild\amd64 on both lanes: `python` is the host interpreter; only the wheel tag follows the target.
 Assert-Test -Name "Python source-built from $cpythonDir" -Condition {
     (Test-Path "$cpythonDir\PCbuild\amd64\python.exe") -or
     (Test-Path "$cpythonDir\PCbuild\amd64\python3.dll")
 } -FailMessage "Python source build artifacts not found at $cpythonDir"
 
 Assert-Test -Name "Python pip available" -Condition {
-    # Exit-code based: stderr is merged, so a FAILING pip still emitted a non-null first
-    # object and false-passed the old object-based check.
+    # Exit-code based: with stderr merged, a failing pip still emits a first object.
     & python -m pip --version 2>&1 | Out-Null
     $LASTEXITCODE -eq 0
 } -FailMessage "pip not available"
 
-# Exact pin, not just major.minor: a stale toolchain layer surviving a
-# PYTHON_VERSION bump would still pass the x.y check above.
+# Exact pin: a stale toolchain layer would still pass the x.y check above.
 $pyExpected = Get-ExpectedVersion 'PYTHON_VERSION' ''
 if ($pyExpected) {
     Assert-Test -Name "python matches versions.env pin ($pyExpected)" -Condition {
@@ -387,22 +351,18 @@ if ($pyExpected) {
     } -FailMessage "python --version is not the pinned $pyExpected -- stale toolchain layer shipped?"
 }
 
-# Source-built CPython silently OMITS optional extension modules whose deps were missing at build
-# time; each import here loads a real .pyd plus its dependent DLLs.
+# Source-built CPython silently omits extension modules whose deps were missing at build time.
 Assert-PythonSnippet -Name "Python stdlib extension modules import (ssl/sqlite3/zlib/ctypes/bz2/lzma)" `
     -Code "import ssl, sqlite3, zlib, ctypes, bz2, lzma, hashlib, socket; print('stdlib-ok')" `
     -ExpectMatch @('stdlib-ok') `
     -FailMessage "one or more stdlib extension modules failed to import (dep missing at CPython build time?)"
 
-# ============================================================================
 Write-TestHeader '3. Rust Toolchain'
-# ============================================================================
 Assert-CommandExists 'cargo'
 Assert-CommandExists 'rustc'
 Assert-CommandExists 'rustup'
 
-# Mirrors Cargokit's own rustup probe shape, and catches the toolchain-LESS rustup failure mode
-# -- see docs/windows-builds.md, "Rust toolchain".
+# Cargokit's own probe; see docs/windows-builds.md § Rust toolchain (rustup WITH a default toolchain — never toolchain-less rustup).
 Assert-Test -Name 'rustup resolves an active toolchain' -Condition {
     & rustup show active-toolchain 2>&1 | Out-Null
     $LASTEXITCODE -eq 0
@@ -412,22 +372,19 @@ Assert-Test -Name 'rustup which cargo resolves' -Condition {
     $LASTEXITCODE -eq 0
 } -FailMessage 'rustup which cargo failed (proxy shims resolve no real toolchain?)'
 
-# Baked so Flutter+Rust consumers skip a minutes-long cold `cargo install` per
-# fresh container (Install-RustToolchain.ps1).
+# Baked so Flutter+Rust consumers skip a cold `cargo install` per container.
 Assert-Test -Name 'flutter_rust_bridge_codegen available' -Condition {
     & flutter_rust_bridge_codegen --version 2>&1 | Out-Null
     $LASTEXITCODE -eq 0
 } -FailMessage 'flutter_rust_bridge_codegen missing or broken (bake step in Install-RustToolchain.ps1 failed?)'
 
-# Well-formed semver only: Rust is DELIBERATELY unpinned on the Windows lane (RUST_VERSION pins
-# Linux), so a pin comparison would fail this image's own smoke test on every Rust release.
+# Well-formed only: Rust is deliberately unpinned on Windows (RUST_VERSION pins Linux).
 Assert-Test -Name 'Rust version (well-formed)' -Condition {
     $ver = & rustc --version 2>&1
     return $ver -match '\d+\.\d+\.\d+'
 } -FailMessage "rustc --version did not report a well-formed version"
 
-# rustc --version only proves the binary exists; this proves the toolchain can actually
-# COMPILE + LINK (via the MSVC linker) + RUN -- catches a broken linker / missing target / std.
+# Proves the toolchain compiles, links through the MSVC linker and runs, not just that rustc exists.
 Assert-Test -Name 'rustc compiles + links + runs a program' -Condition {
     $d = Join-Path $env:TEMP 'kataglyphis-smoke-rust'
     Initialize-SmokeScratch -Path $d
@@ -444,9 +401,7 @@ Assert-Test -Name 'rustc compiles + links + runs a program' -Condition {
     return $ok
 } -FailMessage 'rustc could not compile/link/run a hello-world (broken MSVC linker or std?)'
 
-# ============================================================================
 Write-TestHeader '4. LLVM / Clang + Flutter + WiX'
-# ============================================================================
 Assert-CommandExists 'flutter'
 Assert-Test -Name "Flutter works" -Condition {
     $output = & flutter --version 2>&1 | Out-String
@@ -458,13 +413,10 @@ foreach ($tool in 'sccache', 'cppcheck', '7z', 'uv', 'nano') {
     Assert-CommandExists $tool
 }
 
-# ============================================================================
 Write-TestHeader '5. Visual Studio Build Tools'
-# ============================================================================
 $vsVer = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
 $msvcPlatformToolset = "v$($vsVer)0"
-# Shared probe: Install-Vs.ps1 accepts BOTH Program Files roots, and hardcoding (x86) failed a
-# perfectly good 64-bit-rooted install.
+# Install-Vs.ps1 accepts both Program Files roots, so this probe must too.
 $vsBuildToolsRoot = Resolve-VsBuildToolsRoot -VsMajor $vsVer
 if ($vsBuildToolsRoot) {
     Assert-FileExists -Path (Join-Path $vsBuildToolsRoot 'Common7\Tools\VsDevCmd.bat') -Description 'VsDevCmd.bat'
@@ -486,15 +438,12 @@ if ($vsBuildToolsRoot) {
     Assert-Test -Name 'ClangCL MSBuild toolset' -Condition { $false } -FailMessage "VS Build Tools $vsVer not found, so the ClangCL toolset cannot exist"
 }
 
-# ============================================================================
 Write-TestHeader '6. Vulkan SDK'
-# ============================================================================
 Assert-CommandExists 'glslc'
 Assert-CommandExists 'vulkaninfoSDK'
 Assert-EnvVarSet -Name 'VULKAN_SDK'
 
-# glslc on PATH != working; compile a trivial shader to SPIR-V. Needs no GPU/ICD (unlike
-# vulkaninfo, which we deliberately do NOT run headless), so it exercises the real toolchain.
+# Needs no GPU or ICD, unlike vulkaninfo, which is deliberately not run headless.
 Assert-Test -Name 'glslc compiles a shader to SPIR-V' -Condition {
     $d = Join-Path $env:TEMP 'kataglyphis-smoke-glslc'
     Initialize-SmokeScratch -Path $d
@@ -507,9 +456,7 @@ Assert-Test -Name 'glslc compiles a shader to SPIR-V' -Condition {
     return $ok
 } -FailMessage 'glslc failed to compile a trivial shader to SPIR-V'
 
-# ============================================================================
 Write-TestHeader '7. CUDA Toolkit + cuDNN'
-# ============================================================================
 # Gate on CUDA_ROOT, not just -SkipCudaTests: a CPU-only image legitimately has no nvcc/cuDNN.
 if ($script:gpuNvidia) {
     Assert-CommandExists 'nvcc'
@@ -530,8 +477,7 @@ if ($script:gpuNvidia) {
     $cudnnRoot = [Environment]::GetEnvironmentVariable('CUDNN_ROOT')
     Assert-DirectoryExists -Path $cudnnRoot -Description "CUDNN_ROOT directory"
 
-    # Check cuDNN headers/libs/DLLs recursively as they may be in subdirs.
-    # @(...) so a single-FileInfo result still exposes .Count (scalar trap).
+    # Recursive, as cuDNN may use subdirs; @() keeps .Count on a single result.
     $cudnnHeaders = @(Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.h' -Recurse -ErrorAction SilentlyContinue)
     $cudnnLibs = @(Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue)
     $cudnnDlls = @(Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue)
@@ -540,9 +486,7 @@ if ($script:gpuNvidia) {
     Assert-Test -Name "cuDNN libs (cudnn*.lib)" -Condition { $cudnnLibs.Count -gt 0 } -FailMessage "No cuDNN libs found"
     Assert-Test -Name "cuDNN DLLs (cudnn*.dll)" -Condition { $cudnnDlls.Count -gt 0 } -FailMessage "No cuDNN DLLs found"
 
-    # Proves nvcc can COMPILE device code (host_config/nv-target stubs + cl.exe integration).
-    # PTX only -- no GPU device here; -ccbin points nvcc at the MSVC host compiler, which is not
-    # on the bare PATH.
+    # PTX only, as there is no GPU here; -ccbin names the MSVC host compiler, which is not on PATH.
     $nvccCcbin = if ($env:VCToolsInstallDir) { Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64' } else { $null }
     Assert-Test -Name 'nvcc compiles a CUDA kernel to PTX' -Condition {
         $d = Join-Path $env:TEMP 'kataglyphis-smoke-cuda'
@@ -558,10 +502,7 @@ if ($script:gpuNvidia) {
         return $ok
     }.GetNewClosure() -FailMessage 'nvcc could not compile a trivial kernel to PTX (host_config/nv-target/cl.exe integration?)'
 
-    # Existence != loadable: link + call a HOST-only cuDNN API (cudnnGetVersion needs no GPU)
-    # to prove the cuDNN header/lib/DLL actually link + load together. Cross lane (#176):
-    # the staged cuDNN is ARM64 and cannot RUN here, so the run half becomes a PE-machine
-    # assert on the linked exe -- same 1:1 substitution as §14.
+    # A host-only cuDNN call needs no GPU; on cross the run half becomes a PE-machine assert, as in §14.
     $cudnnHdr = $cudnnHeaders | Where-Object { $_.Name -eq 'cudnn.h' } | Select-Object -First 1
     $cudnnMainLib = $cudnnLibs | Where-Object { $_.Name -eq 'cudnn.lib' } | Select-Object -First 1
     $cudnnMainDll = $cudnnDlls | Where-Object { $_.Name -like 'cudnn64_*.dll' } | Select-Object -First 1
@@ -587,19 +528,16 @@ int main() { std::printf("cudnn %zu\n", (size_t)cudnnGetVersion()); return 0; }
         Skip-Test 'cuDNN link+run (cudnn.h/.lib/cudnn64_*.dll not all found)'
     }
 } elseif ($ExpectGpu) {
-    # -ExpectGpu: the caller asserts this is an nvidia-lane image, so a missing
-    # CUDA_ROOT (or -SkipCudaTests) is a real defect here, not a CPU-only lane.
+    # -ExpectGpu says this is an nvidia image, so a missing CUDA_ROOT is a defect, not a CPU lane.
     Assert-Test -Name 'CUDA section runs (-ExpectGpu)' -Condition { $false } -FailMessage 'caller passed -ExpectGpu but CUDA_ROOT is not set (or -SkipCudaTests was passed) -- nvidia image lost its baked CUDA env?'
 } else {
     Skip-Test 'CUDA/cuDNN tests skipped (-SkipCudaTests, or CPU-only image without CUDA_ROOT; pass -ExpectGpu to fail loudly instead when the image should be on the nvidia lane)'
 }
 
-# ============================================================================
 Write-TestHeader '8. ONNX Runtime (source-built)'
 if ($smokeCross) {
     Skip-Test "section 8 (ONNX Runtime (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
 $onnxRoot = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
 if ($onnxRoot) {
     Assert-DirectoryExists -Path $onnxRoot -Description "ONNX_ROOT"
@@ -609,8 +547,7 @@ if ($onnxRoot) {
     Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime*.lib' -Description 'ONNX lib files'
     Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime*.dll' -Description 'ONNX DLL files'
 
-    # Existence != loadable: compile+link+run against the ORT C API to prove the header,
-    # import lib, and onnxruntime.dll actually work together at runtime.
+    # Existence is not loadability: compile, link and run against the ORT C API.
     $onnxCApiHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_c_api.h' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     $onnxMainLib = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime.lib' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     $onnxDll     = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -634,8 +571,7 @@ int main() {
 }
 '@ -ExpectMatch 'onnxruntime' -FailMessage 'ONNX Runtime C API did not compile/link/run (header+lib+DLL mismatch or missing dependent DLL)'
 
-        # Proves the RUNTIME works end-to-end -- graph load, session init, Run() -- on the CPU EP
-        # with the shared in-memory Identity model. No external files, no GPU device.
+        # Graph load, session init and Run() on the CPU EP with the in-memory Identity model.
         $ortModelDir = Join-Path $env:TEMP 'kataglyphis-smoke-ort-model'
         Initialize-SmokeScratch -Path $ortModelDir
         [IO.File]::WriteAllBytes((Join-Path $ortModelDir 'identity.onnx'), $script:identityOnnxBytes)
@@ -697,8 +633,7 @@ int main() {
 }
 '@
 
-        # GetAvailableProviders() enumerates the providers COMPILED IN (no GPU device needed), the
-        # real signal that USE_CUDA/USE_TENSORRT took effect -- a CPU fallback still passes above.
+        # GetAvailableProviders lists the EPs compiled in (no device needed); a CPU fallback passes everything above.
         if ($script:gpuNvidia) {
             # Cheap backstop first: the provider shared libs must exist by exact name.
             Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_cuda.dll' -Description 'ONNX CUDA provider DLL (onnxruntime_providers_cuda.dll)'
@@ -707,31 +642,25 @@ int main() {
                 # The real gate: enumerate compiled-in EPs and require CUDA + TensorRT to be present.
                 Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime CUDA + TensorRT EPs available (GetAvailableProviders)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'cuda=1 trt=1' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider + TensorrtExecutionProvider (GPU EPs missing -- build fell back to CPU?)'
             } else {
-                # Zip-less (the documented normal state): the EP must be ABSENT and the probe must
-                # say so -- USE_TENSORRT=OFF surviving a STAGED tree is the mismatch this pair
-                # catches, and CUDA stays hard in both branches.
+                # Zip-less, the normal state: the EP must be absent, while CUDA stays required.
                 $trtDllCount = @(Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Recurse -ErrorAction SilentlyContinue).Count
                 Assert-Test -Name 'ONNX TensorRT provider DLL absent (zip-less GPU lane -- no EULA zip staged)' -Condition { $trtDllCount -eq 0 }.GetNewClosure() -FailMessage "onnxruntime_providers_tensorrt.dll found under $onnxRoot although no TensorRT tree is staged -- the ORT build and the staged state disagree"
                 Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime CUDA EP available, TensorRT EP absent (GetAvailableProviders, zip-less lane)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'cuda=1 trt=0' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider on a zip-less GPU lane (an absent TensorRT EP is expected here) -- build fell back to CPU?'
             }
         }
 
-        # USE_DML=ON on the clang-cl lane via the "[clang-cl DML fix]" header patch (llvm #57700).
-        # If the redist shipped, require the EP to register; a future no-DML build SKIPs.
+        # USE_DML=ON builds via the "[clang-cl DML fix]" header patch (llvm #57700); a shipped redist must register the EP.
         $dmlRedist = Get-ChildItem -Path $onnxRoot -Filter 'DirectML.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($dmlRedist) {
             Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime DirectML EP available (GetAvailableProviders)' -WorkName 'onnx-dml' -Source $onnxEpProbeSource -ExpectMatch 'dml=1' -FailMessage 'ONNX Runtime shipped DirectML.dll but does not expose DmlExecutionProvider'
         } else {
-            # FAIL, don't skip (#46): this branch used to be keyed on the very artifact it
-            # verifies, so the EP could vanish with zero red at either end. USE_DML=ON is
-            # unconditional, and on the AMD reference host DirectML is the ONLY GPU path.
+            # Fail, not skip: USE_DML=ON is unconditional, and on the AMD reference host DirectML is the only GPU path.
             Assert-Test -Name 'ONNX Runtime DirectML redist present (USE_DML=ON is unconditional)' `
                 -Condition { $false } `
                 -FailMessage "DirectML.dll not found under $onnxRoot. ONNX Runtime is built with USE_DML=ON unconditionally, so the redist must ship; Copy-SidecarDll only WARNS when it cannot stage it. On the AMD reference host this is the only working GPU path."
         }
     } else {
-        # Root resolved but the probe artifact is gone: that is the defect this section exists for
-        # (#46 -- deleting onnxruntime.lib silently dropped 7 assertions and stayed green).
+        # A resolved root without the probe artifacts is the shrunk install this section exists to catch.
         Assert-Test -Name 'ONNX Runtime link+run prerequisites present' -Condition { $false } `
             -FailMessage 'ONNX_ROOT exists but onnxruntime.lib/.dll/c_api.h are not all found — the install shrank'
     }
@@ -740,12 +669,10 @@ int main() {
 }
 
 }
-# ============================================================================
 Write-TestHeader '9. ONNX Runtime GenAI (source-built)'
 if ($smokeCross) {
     Skip-Test "section 9 (ONNX Runtime GenAI (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
 $genaiRoot = [Environment]::GetEnvironmentVariable('ONNX_GENAI_ROOT')
 if ($genaiRoot) {
     Assert-DirectoryExists -Path $genaiRoot -Description "ONNX_GENAI_ROOT"
@@ -756,12 +683,10 @@ if ($genaiRoot) {
     Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai*.lib' -Description 'ONNX GenAI lib files'
     Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai*.dll' -Description 'ONNX GenAI DLL files'
 
-    # Existence != loadable: LoadLibrary the GenAI DLL with onnxruntime.dll's dir on PATH and
-    # resolve a C export -- catches a mismatched dependency no file check can see.
+    # Loading it and resolving an export catches a mismatched dependency no file check can see.
     $genaiDll = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     $onnxRootForGenai = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
-    # Capture-then-guard: .DirectoryName on an empty Get-ChildItem result is a null
-    # deref (throws under StrictMode, silently $null otherwise).
+    # Captured first: .DirectoryName on an empty result throws under StrictMode.
     $onnxDepDir = $null
     if ($onnxRootForGenai) {
         $onnxDllForGenai = Get-ChildItem -Path $onnxRootForGenai -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -771,8 +696,7 @@ if ($genaiRoot) {
         $genaiDepDirs = if ($onnxDepDir) { @($onnxDepDir) } else { @() }
         Assert-DllLoads -Name 'ONNX GenAI DLL loads + C API resolves (OgaConfigClearProviders)' -DllPath $genaiDll.FullName -DependencyDirs $genaiDepDirs -Export 'OgaConfigClearProviders' -FailMessage 'onnxruntime-genai.dll failed to load or its C API symbol is missing (dependent onnxruntime.dll not resolved?)'
 
-        # The nvidia lane also emits onnxruntime-genai-cuda.dll; confirm its dependent chain
-        # (CUDA runtime + onnxruntime.dll) resolves.
+        # The nvidia lane also emits onnxruntime-genai-cuda.dll, whose CUDA and ORT dependencies must resolve.
         if ($script:gpuNvidia) {
             Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai-cuda.dll' -Description 'ONNX GenAI CUDA DLL (onnxruntime-genai-cuda.dll)'
             $genaiCudaDll = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai-cuda.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -789,17 +713,14 @@ if ($genaiRoot) {
             }
         }
 
-        # USE_DML=ON compiles the DML provider into the main genai DLL (no separate -dml.dll). The
-        # evidence is D3D12Core.dll staged BESIDE it: the DML device loads it from its own module
-        # dir at runtime and BUILD_WHEEL=OFF does not auto-copy it. Absent => a no-DML variant.
+        # DML lives in the main genai DLL; the evidence is D3D12Core.dll beside it, where the DML device loads it from.
         $genaiDir = $genaiDll.DirectoryName
         $d3d12Core = Get-ChildItem -Path $genaiRoot -Filter 'D3D12Core.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($d3d12Core) {
             Assert-Test -Name 'ONNX GenAI DirectML: D3D12Core.dll staged beside onnxruntime-genai.dll' `
                 -Condition { $d3d12Core.DirectoryName -eq $genaiDir } `
                 -FailMessage "D3D12Core.dll is at $($d3d12Core.FullName) but not beside the genai DLL ($genaiDir); the DML device loads it from the genai module dir at runtime"
-            # Arch guard: the Agility SDK nuget ships x64/arm64/win32 and a naive recursive copy can
-            # grab arm64 first -- read the PE machine so it fails HERE, not at DML device init.
+            # The Agility nuget ships x64, arm64 and win32, and a naive recursive copy can grab arm64 first.
             Assert-Test -Name 'ONNX GenAI DirectML: D3D12Core.dll is x64 (PE machine 0x8664)' `
                 -Condition {
                     try { (Get-PeFileMachine -Path $d3d12Core.FullName) -eq 0x8664 } catch { $false }
@@ -817,17 +738,13 @@ if ($genaiRoot) {
 }
 
 }
-# ============================================================================
 Write-TestHeader '10. OpenCV 5 (source-built)'
 if ($smokeCross) {
     Skip-Test "section 10 (OpenCV 5 (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
 $opencvInclude = [Environment]::GetEnvironmentVariable('OPENCV_INCLUDE')
 $opencvRoot = [Environment]::GetEnvironmentVariable('OPENCV_ROOT')
-# OpenCV installs per-module libs under <root>\<arch>\vc18\{bin,lib} -- not a single
-# opencv_world, and not where OPENCV_BIN/OPENCV_LIB point. Search the whole root so the arch
-# dir, the module-vs-world layout and the misdirected env vars all stop mattering.
+# Per-module libs sit under <root>\<arch>\vc18, not where OPENCV_BIN/OPENCV_LIB point, so search the whole root.
 $opencvSearchRoot = if ($opencvRoot -and (Test-Path $opencvRoot)) { $opencvRoot } elseif ($opencvInclude -and (Test-Path $opencvInclude)) { Split-Path $opencvInclude -Parent } else { $null }
 
 if ($opencvInclude -and (Test-Path $opencvInclude)) {
@@ -839,9 +756,7 @@ if ($opencvInclude -and (Test-Path $opencvInclude)) {
 if ($opencvSearchRoot) {
     # opencv_core is always built (world only if BUILD_opencv_world=ON).
     Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_core*.dll' -Description 'OpenCV core DLL'
-    # BULK LOAD TEST (#57): one DLL used to be load-tested and the other ~25 were existence
-    # checks. That is the OPENGL32 defect verbatim -- linked fine, failed 0xC0000135 at LOAD on
-    # Server Core. CUDA/cuDNN live outside this root, so pass their bins as dependency dirs.
+    # Every DLL, not one: a DLL can link fine and still fail 0xC0000135 at load; CUDA/cuDNN bins are dependency dirs.
     $cvDepDirs = @(
         $env:CUDA_ROOT, "$env:CUDA_ROOT\bin", "$env:CUDNN_ROOT\bin",
         'C:\runtime\cuda-runtime\bin'
@@ -852,14 +767,12 @@ if ($opencvSearchRoot) {
     Skip-Test 'OpenCV DLLs (OPENCV_ROOT/INCLUDE not found)'
 }
 
-# Existence != loadable: compile+link+run against opencv_core to prove the header,
-# core import lib, and core DLL actually work together at runtime.
+# Existence is not loadability: compile, link and run against opencv_core.
 $cvHpp = if ($opencvInclude -and (Test-Path $opencvInclude)) { Get-ChildItem -Path $opencvInclude -Filter 'core.hpp' -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\opencv2\\' } | Select-Object -First 1 } else { $null }
 $cvCoreLib = if ($opencvSearchRoot) { Get-ChildItem -Path $opencvSearchRoot -Filter 'opencv_core*.lib' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
 $cvCoreDll = if ($opencvSearchRoot) { Get-ChildItem -Path $opencvSearchRoot -Filter 'opencv_core*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
 if ($cvHpp -and $cvCoreLib -and $cvCoreDll) {
-    # <opencv2/core.hpp> resolves relative to the dir CONTAINING opencv2\ -- core.hpp
-    # lives at <inc>\opencv2\core.hpp, so its grandparent is the include root.
+    # <opencv2/core.hpp> resolves from the dir containing opencv2\, core.hpp's grandparent.
     $cvIncDir = Split-Path $cvHpp.DirectoryName -Parent
     Assert-NativeLinkRun -Name 'OpenCV loads + core API works (cv::Mat / CV_VERSION)' -WorkName 'opencv' -Source @'
 #include <opencv2/core.hpp>
@@ -873,8 +786,7 @@ int main() {
 }
 '@ -IncludeDirs @($cvIncDir) -LibDir $cvCoreLib.DirectoryName -LibName $cvCoreLib.Name -DllDir $cvCoreDll.DirectoryName -ExpectMatch 'opencv' -FailMessage 'OpenCV core API did not compile/link/run (header+core lib+DLL mismatch or missing dependent DLL)'
 
-    # getBuildInformation() embeds the resolved build config, so asserting "NVIDIA CUDA: YES"
-    # proves the CUDA backend was compiled in -- no GPU device required. nvidia lane only.
+    # getBuildInformation() embeds the build config, so "NVIDIA CUDA: YES" proves the backend without a GPU.
     if ($script:gpuNvidia) {
         Assert-NativeLinkRun -Name 'OpenCV built WITH_CUDA + cuDNN (getBuildInformation)' -WorkName 'opencv-cuda' -Source @'
 #include <opencv2/core.hpp>
@@ -891,12 +803,10 @@ int main() { std::printf("%s\n", cv::getBuildInformation().c_str()); return 0; }
 }
 
 }
-# ============================================================================
 Write-TestHeader '11. GStreamer (source-built)'
 if ($smokeCross) {
     Skip-Test "section 11 (GStreamer (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
 Assert-CommandExists 'gst-launch-1.0'
 Assert-CommandExists 'gst-inspect-1.0'
 Assert-Test -Name "GStreamer core plugin available" -Condition {
@@ -907,15 +817,13 @@ Assert-Test -Name "GStreamer core plugin available" -Condition {
 $gstBin = [Environment]::GetEnvironmentVariable('GSTREAMER_BIN')
 Assert-DirectoryExists -Path $gstBin -Description "GSTREAMER_BIN"
 
-# Verify GStreamer can create and run a trivial pipeline. num-buffers=1 is
-# essential: a bare fakesrc produces buffers FOREVER and hangs the smoke test.
+# num-buffers=1 matters: a bare fakesrc produces buffers forever and hangs the smoke test.
 Assert-Test -Name "GStreamer pipeline creation (fake)" -Condition {
     & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" fakesrc num-buffers=1 ! fakesink 2>&1 | Out-Null
     $LASTEXITCODE -eq 0
 } -FailMessage "GStreamer fakesrc pipeline failed (coreelements broken or gst-launch cannot run)"
 
-# Pin assert: the version actually shipped must match versions.env, catching a
-# stale media layer riding into the final image.
+# Pin assert: catches a stale media layer riding into the final image.
 $gstExpected = Get-ExpectedVersion 'GSTREAMER_VERSION' ''
 if ($gstExpected) {
     Assert-Test -Name "gst-launch matches versions.env pin ($gstExpected)" -Condition {
@@ -923,8 +831,7 @@ if ($gstExpected) {
     } -FailMessage "gst-launch-1.0 --version is not the pinned $gstExpected -- stale media layer shipped?"
 }
 
-# Consumers resolve GStreamer via pkg_check_modules, which needs the pkg-config BINARY on top of
-# the baked PKG_CONFIG_PATH; the modversion assert validates both in one shot.
+# pkg_check_modules needs the pkg-config binary on top of PKG_CONFIG_PATH; modversion checks both.
 Assert-CommandExists 'pkg-config'
 Assert-Test -Name "pkg-config resolves gstreamer-1.0$(if ($gstExpected) { " ($gstExpected)" })" -Condition {
     $pcVer = (& pkg-config --modversion gstreamer-1.0 2>&1 | Out-String).Trim()
@@ -933,22 +840,17 @@ Assert-Test -Name "pkg-config resolves gstreamer-1.0$(if ($gstExpected) { " ($gs
     return ($pcVer -match '^\d+\.\d+')
 } -FailMessage "pkg-config --modversion gstreamer-1.0 failed or mismatched versions.env (missing pkg-config binary or broken PKG_CONFIG_PATH)"
 
-# fakesrc/fakesink only exercise coreelements; real buffers prove the video plugin DLLs load
-# and negotiate caps at runtime.
+# Real buffers prove the video plugin DLLs load and negotiate caps, which fakesrc cannot.
 Assert-Test -Name "GStreamer real pipeline runs (videotestsrc ! videoconvert ! fakesink)" -Condition {
     & gst-launch-1.0 --gst-plugin-path="$gstBin\..\lib\gstreamer-1.0" videotestsrc num-buffers=5 ! videoconvert ! fakesink 2>&1 | Out-Null
     $LASTEXITCODE -eq 0
 } -FailMessage "videotestsrc pipeline failed (video plugin DLLs broken or missing)"
 
-# ── Mandatory plugin integrations: FATAL, not informational ──────────────────
-# The build-time contract lives in Get-RequiredGstPlugin; this is the independent confirmation
-# that what was built actually LOADS -- a plugin can compile and still fail to register when a
-# sidecar DLL is missing, which only gst-inspect catches.
+# Mandatory plugins, fatal: a plugin can compile and still fail to register without a sidecar DLL.
 $requiredGstModule = Join-Path $scriptAssetRoot 'modules\WindowsGstPlugins.Common.psm1'
 if (Test-Path $requiredGstModule) {
     Import-Module $requiredGstModule -Force -DisableNameChecking
-    # Explicit -Arch: the bare call was arch-correct in-container only by coincidence, and
-    # silently probes the amd64 contract on a build host without WINDOWS_TARGET_ARCH.
+    # Explicit -Arch: a bare call probes the amd64 contract on a host without WINDOWS_TARGET_ARCH.
     foreach ($plugin in @(Get-RequiredGstPlugin -Arch (Get-WindowsTargetArch))) {
         Assert-Test -Name "gst-plugin '$($plugin.Name)' is present and loadable" -Condition {
             $global:LASTEXITCODE = 0
@@ -963,12 +865,10 @@ if (Test-Path $requiredGstModule) {
 }
 
 }
-# ============================================================================
 Write-TestHeader '12. LiteRT (AI Edge runtime, source-built)'
 if ($smokeCross) {
     Skip-Test "section 12 (LiteRT (AI Edge runtime, source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
 $litertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { 'C:\runtime\lib\litert' }
 $litertInclude = Join-Path $litertRoot 'include'
 $litertLibDir = Join-Path $litertRoot 'lib'
@@ -989,9 +889,7 @@ if (Test-Path $litertInclude) {
 Assert-DirectoryExists -Path $litertLibDir -Description 'LiteRT lib dir'
 if (Test-Path $litertLibDir) {
     Assert-ArtifactPresent -Root $litertLibDir -Filter '*.lib' -Description 'LiteRT lib files'
-    # EXPORTS, not just the import lib (#67): the documented failure was an import lib that
-    # existed while the DLL exported ZERO C-API symbols -- invisible to a presence check, and it
-    # only surfaced one branch later in gst's meson link.
+    # Exports, not just the import lib: an import lib can exist while the DLL exports no C-API symbol.
     $tfliteDll = Get-ChildItem -Path (Split-Path $litertLibDir -Parent) -Filter 'tensorflowlite_c.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($tfliteDll) {
         foreach ($sym in @('TfLiteInterpreterCreate', 'TfLiteXNNPackDelegateCreate', 'TfLiteXNNPackDelegateOptionsDefault')) {
@@ -1006,18 +904,15 @@ if (Test-Path $litertLibDir) {
 
 Assert-DirectoryExists -Path $litertBinDir -Description 'LiteRT bin dir'
 if (Test-Path $litertBinDir) {
-    # LiteRT builds statically by default -- the .lib files are the real artifact, so DLL
-    # presence is informational.
+    # LiteRT builds statically by default, so DLL presence is informational.
     Assert-ArtifactPresent -Root $litertBinDir -Filter '*.dll' -Description 'LiteRT DLL files' -Informational
 }
 
 }
-# ============================================================================
 Write-TestHeader '13. LiteRT-LM (on-device LLM inference, source-built)'
 if ($smokeCross) {
     Skip-Test "section 13 (LiteRT-LM (on-device LLM inference, source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
 $litertLmRoot = if ($env:LITERT_LM_ROOT) { $env:LITERT_LM_ROOT } else { 'C:\runtime\lib\litert-lm' }
 $litertLmInclude = Join-Path $litertLmRoot 'include'
 
@@ -1028,8 +923,7 @@ if (Test-Path $litertLmInclude) {
     Assert-ArtifactPresent -Root $litertLmInclude -Filter '*.h' -Description 'LiteRT-LM headers'
 }
 
-# NO lib\ assertion: LiteRT-LM is an EXECUTABLE deliverable (bazel builds bin\litert_lm_main.exe
-# + co-located DLLs and installs no library set) -- see Dockerfile.media-merge-builder's ENV note.
+# No lib\ assertion: LiteRT-LM ships an executable and its DLLs, no library set.
 $litertLmBinDir = Join-Path $litertLmRoot 'bin'
 Assert-DirectoryExists -Path $litertLmBinDir -Description 'LiteRT-LM bin dir'
 if (Test-Path $litertLmBinDir) {
@@ -1037,9 +931,7 @@ if (Test-Path $litertLmBinDir) {
     Assert-ArtifactPresent -Root $litertLmBinDir -Filter '*.dll' -Description 'LiteRT-LM runtime DLLs'
 }
 
-# Smoke-RUN, not just exist: the shipped binary once linked cleanly yet aborted at startup on
-# EVERY run (an abseil flag ODR from a duplicate ABSL_FLAG(minloglevel)). This validates the
-# FINAL merged image's exe -- defense-in-depth over the build-time smoke gate.
+# Run it: a cleanly linked binary can still abort at startup on an abseil flag ODR.
 $litertLmBinDir = Join-Path $litertLmRoot 'bin'
 $litertLmExe    = Join-Path $litertLmBinDir 'litert_lm_main.exe'
 Assert-FileExists -Path $litertLmExe -Description 'litert_lm_main.exe (on-device LLM runner)'
@@ -1062,9 +954,7 @@ if (Test-Path $litertLmExe) {
 }
 
 }
-# ============================================================================
 Write-TestHeader '14. Compiler smoke test (clang-cl builds C++)'
-# ============================================================================
 $tmpDir = Join-Path $env:TEMP 'kataglyphis-smoke-test'
 Initialize-SmokeScratch -Path $tmpDir
 
@@ -1083,9 +973,7 @@ $srcFile = Join-Path $tmpDir 'smoke.cpp'
 $exeFile = Join-Path $tmpDir 'smoke.exe'
 Set-Content -Path $srcFile -Value $cppSource -Encoding ASCII
 
-# CROSS LANE: the image bakes VSDEVCMD_ARCH=arm64, so LIB/INCLUDE here are the ARM64 CRT and a
-# bare clang-cl (default x64) fails with machine-type conflicts. Compile FOR the target and
-# assert the produced PE's machine instead; only the RUN half is impossible here.
+# Cross: VSDEVCMD_ARCH=arm64 puts the ARM64 CRT on LIB, so compile for the target and assert the PE machine.
 $smokeCompileTargetFlag = if ($smokeCross) { "/clang:--target=$(Get-ClangTargetTriple)" } else { $null }
 Assert-Test -Name "clang-cl compiles C++ program" -Condition {
     if ($smokeCompileTargetFlag) { & clang-cl $srcFile $smokeCompileTargetFlag /Fe$exeFile /std:c++17 2>&1 | Out-Null }
@@ -1096,8 +984,7 @@ Assert-Test -Name "clang-cl compiles C++ program" -Condition {
 if ($smokeCross) {
     Assert-Test -Name "Compiled program is target-arch (PE machine)" -Condition {
         if (-not (Test-Path $exeFile)) { return $false }
-        # Same owner as §15's identical check: Get-PeFileMachine throws by name on a
-        # non-PE artifact, and Assert-Test turns that throw into a FAIL carrying it.
+        # Get-PeFileMachine throws by name on a non-PE file, which Assert-Test turns into a FAIL.
         return ((Get-PeFileMachine -Path $exeFile) -eq (Get-PeMachineType))
     } -FailMessage "cross-compiled smoke.exe has the wrong PE machine type"
     Skip-Test 'Compiled program runs: skipped on the cross lane (aarch64 exe cannot execute on this x64 host; PE machine asserted instead)'
@@ -1110,9 +997,7 @@ if ($smokeCross) {
 
 Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 
-# "Installed" is not "functional" (the OpenGL32 lesson): compile + RUN under /fsanitize=address
-# and require ASAN to actually REPORT the intentional overflow. Cross lane skips outright --
-# LLVM's Windows x64 package ships no aarch64-windows ASAN runtime.
+# ASAN must report the intentional overflow; the cross lane skips, as LLVM ships no aarch64-windows ASAN runtime.
 if ($smokeCross) {
     Skip-Test 'ASAN probe skipped on the cross lane (no aarch64-windows ASAN runtime in the LLVM package; the probe must execute the instrumented exe)'
 } else {
@@ -1141,9 +1026,7 @@ int main() {
 } -FailMessage "ASAN probe failed: /fsanitize=address did not compile, or the runtime did not detect the intentional overflow (ASAN runtime DLLs missing?)"
 }
 
-# ============================================================================
 Write-TestHeader '15. CMake + Ninja + clang-cl integration'
-# ============================================================================
 $tmpDir2 = Join-Path $env:TEMP 'kataglyphis-smoke-cmake'
 Initialize-SmokeScratch -Path $tmpDir2
 
@@ -1163,8 +1046,7 @@ Set-Content -Path (Join-Path $tmpDir2 'CMakeLists.txt') -Value $cmakeLists -Enco
 Set-Content -Path (Join-Path $tmpDir2 'smoke_cmake.cpp') -Value $cppSource2 -Encoding ASCII
 
 $buildDir2 = Join-Path $tmpDir2 'build'
-# Cross lane: same VSDEVCMD_ARCH=arm64 reality as section 14 -- the configure must carry the
-# target triple. amd64 gets the empty array and stays byte-identical.
+# Cross: the configure carries the target triple, as in §14; amd64 stays byte-identical.
 $smokeCmakeCrossArgs = if ($smokeCross) {
     @("-DCMAKE_C_COMPILER_TARGET=$(Get-ClangTargetTriple)", "-DCMAKE_CXX_COMPILER_TARGET=$(Get-ClangTargetTriple)",
       "-DCMAKE_C_FLAGS_INIT=--target=$(Get-ClangTargetTriple)", "-DCMAKE_CXX_FLAGS_INIT=--target=$(Get-ClangTargetTriple)")
@@ -1189,14 +1071,11 @@ if ($smokeCross) {
 
 Remove-Item $tmpDir2 -Recurse -Force -ErrorAction SilentlyContinue
 
-# ============================================================================
 Write-TestHeader '16. VS MSBuild + ClangCL toolset integration'
-# ============================================================================
 $tmpDir3 = Join-Path $env:TEMP 'kataglyphis-smoke-msbuild'
 Initialize-SmokeScratch -Path $tmpDir3
 
-# NB: single-quoted here-string -- a double-quoted one makes PowerShell evaluate MSBuild's
-# $(VCTargetsPath). The ProjectConfigurations group + ConfigurationType are required (MSB8013).
+# Single-quoted, or PowerShell evaluates $(VCTargetsPath); MSB8013 needs ProjectConfigurations and ConfigurationType.
 $vcxproj = @'
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
@@ -1236,19 +1115,16 @@ Assert-Test -Name "MSBuild+ClangCL builds" -Condition {
 
 Remove-Item $tmpDir3 -Recurse -Force -ErrorAction SilentlyContinue
 
-# ============================================================================
 Write-TestHeader '17. TVM (source-built)'
 if ($smokeCross) {
     Skip-Test "section 17 (TVM (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
 $tvmRoot = if ($env:TVM_ROOT) { $env:TVM_ROOT } else { Join-Path 'C:\runtime\lib' 'tvm' }
 if (Test-Path $tvmRoot) {
     Assert-DirectoryExists -Path $tvmRoot -Description "TVM install root ($tvmRoot)"
     $tvmInclude = Join-Path $tvmRoot 'include'
     if (Test-Path $tvmInclude) {
-        # Layout-agnostic: TVM's runtime header names churn across releases (c_runtime_api.h was
-        # dropped by the new FFI in 0.25) -- assert the directory instead.
+        # TVM's runtime header names churn across releases, so assert the directory.
         Assert-ArtifactPresent -Root $tvmInclude -Subdir 'tvm\runtime' -Filter '*.h' -Description 'TVM runtime headers (tvm/runtime/*.h)'
     } else {
         Skip-Test 'TVM include dir not found'
@@ -1256,8 +1132,7 @@ if (Test-Path $tvmRoot) {
     Assert-ArtifactPresent -Root $tvmRoot -Filter 'tvm*.lib' -Description 'TVM lib files'
     Assert-ArtifactPresent -Root $tvmRoot -Filter 'tvm*.dll' -Description 'TVM DLL files'
 
-    # Existence != loadable: LoadLibrary the TVM runtime DLL to prove its full dependent-DLL
-    # chain resolves (header-agnostic -- TVM's C API names churn across releases). No GPU needed.
+    # Loading the runtime DLL proves its dependent chain resolves; TVM's C API names churn, so no link probe.
     $tvmRuntimeDll = Get-ChildItem -Path $tvmRoot -Filter 'tvm_runtime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $tvmRuntimeDll) { $tvmRuntimeDll = Get-ChildItem -Path $tvmRoot -Filter 'tvm*runtime*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
     if ($tvmRuntimeDll) {
@@ -1271,12 +1146,10 @@ if (Test-Path $tvmRoot) {
 }
 
 }
-# ============================================================================
 Write-TestHeader '18. FFmpeg (source-built with DNN/ONNX)'
 if ($smokeCross) {
     Skip-Test "section 18 (FFmpeg (source-built with DNN/ONNX)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
 $ffmpegBin = if ($env:FFMPEG_BIN) { $env:FFMPEG_BIN } else { 'C:\runtime\ffmpeg\bin' }
 if (Test-Path $ffmpegBin) {
     $ffmpegExe = Join-Path $ffmpegBin 'ffmpeg.exe'
@@ -1289,8 +1162,7 @@ if (Test-Path $ffmpegBin) {
         return ($v -ne $null) -and ($v -match 'ffmpeg')
     } -FailMessage "ffmpeg -version failed"
 
-    # `-configure` is not an ffmpeg option (the configuration line is part of the -version
-    # banner), and `--enable-dnn` is not a real flag -- DNN filters come from enabling a backend.
+    # The configuration line is part of the -version banner; DNN filters come from enabling a backend.
     $ffCfg = & $ffmpegExe -version 2>&1 | Out-String
     Assert-Test -Name "ffmpeg built with --enable-libonnxruntime" -Condition {
         $ffCfg -match 'enable-libonnxruntime'
@@ -1301,18 +1173,13 @@ if (Test-Path $ffmpegBin) {
         return ($filters -match 'dnn_')
     } -FailMessage "no dnn_* filters reported by ffmpeg -filters"
 
-    # -version/-filters only parse the binary's tables; a REAL graph (lavfi in, null out) proves
-    # the runtime filter/codec DLL chain executes.
+    # -version and -filters only parse tables; a real lavfi graph proves the runtime DLL chain executes.
     Assert-Test -Name "ffmpeg runs a real filter graph (lavfi testsrc2 -> null)" -Condition {
         & $ffmpegExe -hide_banner -loglevel error -f lavfi -i testsrc2=duration=0.2:size=64x64:rate=10 -f null - 2>&1 | Out-Null
         $LASTEXITCODE -eq 0
     } -FailMessage "ffmpeg failed a trivial lavfi->null graph (runtime codec/filter chain broken)"
 
-    # The banner says nothing about hardware codecs and the nv-codec-headers step is skippable,
-    # so a build that silently dropped NVENC would still pass. Listing codecs needs no GPU device.
-    # Since 2026-09-28 every native amd64 lane but rocm carries NVENC (header-only), and every
-    # native amd64 lane carries AMF; rocm's AMF/Vulkan set is Test-RocmImage.ps1's. EXPECT_ROCM
-    # is the smoke-gate stage's ARG, which a Windows RUN sees as an env var.
+    # Listing codecs needs no GPU; every native amd64 lane but rocm (EXPECT_ROCM) carries NVENC, and all carry AMF.
     $ffNativeAmd64 = -not $smokeCross
     if ($script:gpuNvidia -or ($ffNativeAmd64 -and $env:EXPECT_ROCM -ne '1')) {
         Assert-Test -Name "ffmpeg NVENC encoders present (h264_nvenc + hevc_nvenc)" -Condition {
@@ -1336,39 +1203,28 @@ if (Test-Path $ffmpegBin) {
 }
 
 }
-# ============================================================================
 Write-TestHeader '19. Environment pointer integrity'
-# ============================================================================
-# Every *_BIN/*_ROOT the Dockerfiles bake must point at a real directory -- a stale pointer is
-# how the CMake MSI->scoop switch left CMAKE_BIN aimed at a deleted dir.
-# Deliberately NOT asserted: CARGO_HOME/CARGO_BIN (nonexistent until first use) and the removed
-# LLVM_GLOBAL_BIN. SCOOP_GLOBAL_SHIMS is soft-asserted -- see the block after this loop.
+# Baked pointers must name real dirs; CARGO_HOME/CARGO_BIN exist only after first use, SCOOP_GLOBAL_SHIMS is soft-asserted below.
 $envPointerNames = @(
     'CMAKE_BIN', 'FLUTTER_BIN', 'VULKAN_SDK', 'WIX', 'LLVM_USER_BIN',
     'SCOOP_HOME', 'SCOOP_GLOBAL', 'SCOOP_USER_SHIMS',
     'GIT_CMD', 'GIT_BIN', 'GIT_USRBIN',
     'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB', 'OPENCV_INCLUDE',
-    # #127: these were declared in the merge image with zero readers repo-wide -- asserting them
-    # here turns layout documentation into a checked contract.
+    # The merge image declares these for consumers; this check is their only reader.
     'FFMPEG_ROOT', 'FFMPEG_BIN', 'FFMPEG_LIB', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN', 'TEMP_DIR',
     'TVM_ROOT', 'TVM_LIBRARY_PATH', 'LITERT_ROOT', 'LITERT_INCLUDE', 'LITERT_LIB', 'LITERT_BIN',
     'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_BIN', 'PYTHON_WHEELS',
     'IREE_ROOT', 'IREE_BIN',
-    # Hailo Phase 3 (2026-09-21): the merge image declares these; section 24 asserts them too,
-    # but a pointer check here is what makes the layout a checked contract image-wide.
+    # Section 24 asserts these too; this check makes them an image-wide contract.
     'HAILO_ROOT', 'HAILO_BIN',
-    # Hard-assert TORCH_APP_DIR: section 21 SKIPs when it is unset, so without this pointer
-    # check a lost env var would silently drop the whole app-env verification.
+    # Section 21 skips when TORCH_APP_DIR is unset, so only this check catches a lost env var.
     'TORCH_APP_DIR'
 )
 if ($script:gpuNvidia) {
     $envPointerNames += @('CUDA_ROOT', 'CUDA_PATH', 'CUDNN_ROOT', 'TENSORRT_ROOT')
 }
 if ($smokeCross) {
-    # The torch stage is default-dropped on the cross lane (uv sync must RUN the target
-    # interpreter), so TORCH_APP_DIR names a stage that never built. Every other pointer stays
-    # asserted (#115 litert, #116 tvm/iree runtime-only): what a branch cannot build ships an
-    # EMPTY marker-carrying dir, so every pointer must still resolve on either lane.
+    # No torch stage on cross (uv sync must run the target interpreter); unbuilt branches ship marker dirs, so the rest resolve.
     $envPointerNames = @($envPointerNames | Where-Object { $_ -ne 'TORCH_APP_DIR' })
     Skip-Test 'TORCH_APP_DIR pointer check skipped on the cross lane (torch stage is default-dropped; see docs/windows-cross-builds.md)'
 }
@@ -1380,8 +1236,7 @@ foreach ($envPointer in $envPointerNames) {
     }.GetNewClosure() -FailMessage "$envPointer is unset or points at a nonexistent path (stale Dockerfile ENV?)"
 }
 
-# PATH COMPOSITION: pointer-exists proves the TARGET is there, not that it is ON PATH --
-# deleting the Dockerfile PATH line that adds ONNX_ROOT\bin kept every assertion green.
+# A pointer that exists proves the target is there, not that it is on PATH.
 $pathMembers = @('ONNX_ROOT', 'OPENCV_BIN', 'FFMPEG_BIN', 'GSTREAMER_BIN', 'LITERT_BIN', 'LITERT_LIB', 'TVM_LIBRARY_PATH', 'IREE_BIN', 'PYTHON_BUILD_BIN')
 $pathEntries = @($env:PATH -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
 foreach ($pm in $pathMembers) {
@@ -1393,8 +1248,7 @@ foreach ($pm in $pathMembers) {
         $pathEntries -contains $expected
     }.GetNewClosure() -FailMessage "$expected is not on PATH — the ENV PATH line that adds it was lost; dependents die with STATUS_DLL_NOT_FOUND"
 }
-# cuda-runtime staging dir: PATH entry #1 on BOTH lanes -- cudnn64_9.dll is what the ORT CUDA
-# EP dlopens at session time.
+# On PATH on both lanes: the ORT CUDA EP dlopens cudnn64_9.dll from here at session time.
 Assert-Test -Name 'C:\runtime\cuda-runtime\bin is on PATH' -Condition {
     $pathEntries -contains 'C:\runtime\cuda-runtime\bin'
 } -FailMessage 'the flattened CUDA-runtime staging dir fell off PATH (Copy-CudaRuntime.ps1 contract)'
@@ -1406,15 +1260,12 @@ $ortCrateFindings = @(Get-OrtCrateEnvFinding -OnnxRoot $env:ONNX_ROOT)
 Assert-Test -Name 'ort crate env names the chain ORT (ORT_LIB_LOCATION, ORT_DYLIB_PATH, dynamic link, no download)' `
     -Condition { $ortCrateFindings.Count -eq 0 }.GetNewClosure() -FailMessage ($ortCrateFindings -join '; ')
 
-# flutter is installed --global, so scoop creates C:\ProgramData\scoop\shims -- which was on NO
-# PATH entry between 2026-07-14 and 2026-08-08. Skip, don't fail, on images from that window.
+# Images built before 2026-08-08 lack SCOOP_GLOBAL_SHIMS, so skip rather than fail.
 $globalShims = $env:SCOOP_GLOBAL_SHIMS
 if ([string]::IsNullOrWhiteSpace($globalShims)) {
     Skip-Test 'SCOOP_GLOBAL_SHIMS checks skipped (env var absent -- base image predates 2026-08-08)'
 } else {
-    # ASSERT THE GOAL, NOT THE MECHANISM (#86): requiring a global shims dir failed on every
-    # image, including a fresh base -- scoop simply never creates one in this configuration.
-    # What matters is that a --global package resolves BY NAME, so assert exactly that.
+    # The goal, not the mechanism: scoop never creates a global shims dir here, so a --global package must resolve by name.
     Assert-Test -Name 'globally scoop-installed package resolves by name (flutter)' -Condition {
         [bool](Get-Command flutter -ErrorAction SilentlyContinue)
     } -FailMessage 'flutter (scoop --global) does not resolve by name — neither a global shims dir nor a baked *_BIN entry is on PATH'
@@ -1425,26 +1276,20 @@ if ([string]::IsNullOrWhiteSpace($globalShims)) {
     }.GetNewClosure() -FailMessage 'no apps\ directory under the global scoop root — the --global install did not happen at all'
 }
 
-# vcpkg zlib is the one vcpkg artifact media builds still consume (LiteRT-LM's
-# protobuf_external HAVE_ZLIB). Root from VCPKG_ROOT, the env var vcpkg tooling and CMake
-# toolchains honor; 'C:\vcpkg' is only Install-Vcpkg.ps1's default install dir.
+# LiteRT-LM's protobuf_external still consumes vcpkg zlib; VCPKG_ROOT is what vcpkg tooling honors.
 $vcpkgRoot = $env:VCPKG_ROOT ?? 'C:\vcpkg'
-# NAME DRIFT, not a missing library (#87): upstream vcpkg's zlib port switched to the Unix-style
-# output name (z.lib). Accept either name so the next rename does not re-open this.
+# vcpkg's zlib port renamed its output to z.lib, so accept either name.
 Assert-Test -Name "vcpkg zlib present (media-build dependency)" -Condition {
     $libDir = Join-Path $vcpkgRoot "installed\$(Get-VcpkgTriplet)\lib"
     @(Get-ChildItem -Path $libDir -Filter 'z*.lib' -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -in @('z.lib', 'zlib.lib', 'zlibstatic.lib') }).Count -gt 0
 } -FailMessage "no vcpkg zlib import lib (z.lib/zlib.lib) under $vcpkgRoot\installed\$(Get-VcpkgTriplet)\lib — vcpkg install genuinely broken"
 
-# ============================================================================
 Write-TestHeader '20. Python bindings (wheels + imports + inference)'
 if ($smokeCross) {
     Skip-Test "section 20 (Python bindings (wheels + imports + inference)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
-# The media branches build python bindings, stage the wheels at PYTHON_WHEELS and install them
-# into site-packages. cv2 ships installed-in-place only; LiteRT has no python bindings here.
+# cv2 ships installed in place only; LiteRT has no python bindings here.
 $wheelStore = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS')
 if ($wheelStore -and (Test-Path $wheelStore)) {
 
@@ -1455,11 +1300,7 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         }.GetNewClosure() -FailMessage "no $wheelPattern found in $wheelStore"
     }
 
-    # All wheels must carry THIS LANE'S platform tag: a win32 tag means the sitecustomize shim
-    # was missing at build time, a win_amd64 tag on arm64 means a host-built wheel leaked in.
-    # This assert resolves the TARGET arch while the shim deliberately stamps the HOST build
-    # interpreter, so the two may diverge on the cross lane -- they answer different questions.
-    # That divergence is unexercised today: the arm64 wheel store stays empty until #120 lands.
+    # A win32 tag means the shim was missing at build time; win_amd64 on arm64 means a host-built wheel leaked in.
     $pyWheelTag = Get-PythonWheelTag
     $pyPlatformName = Get-PythonPlatformName
     Assert-Test -Name "all staged wheels are $pyWheelTag-tagged" -Condition {
@@ -1481,16 +1322,14 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         } finally { Remove-Item $mdir -Recurse -Force -ErrorAction SilentlyContinue }
     } -FailMessage "onnxruntime python inference failed (pyd, dependent DLLs, or numpy broken)"
 
-    # PyPI onnxruntime-gpu ships NO DmlExecutionProvider, so asserting DML here detects any
-    # same-version PyPI variant shadowing our combined wheel.
+    # PyPI's onnxruntime-gpu has no DML EP, so DML exposes a same-version PyPI variant shadowing ours.
     Assert-PythonSnippet -Name "python onnxruntime exposes DML EP (not shadowed by a PyPI variant)" `
         -Code "import onnxruntime; print(onnxruntime.get_available_providers())" `
         -ExpectMatch @('DmlExecutionProvider') `
         -FailMessage "base-interpreter onnxruntime lacks DmlExecutionProvider -- a PyPI onnxruntime variant shadowed the source-built wheel"
 
     if ($script:gpuNvidia) {
-        # The expectation follows the staged state (docs/windows-builds.md § TensorRT setup): a
-        # zip-less lane is a full pass with the CUDA EP alone, not three reds on an EULA payload.
+        # Follows the staged state: a zip-less lane passes with the CUDA EP alone.
         $pyEpExpect = if ($script:tensorRtStaged) { @('CUDAExecutionProvider', 'TensorrtExecutionProvider') } else { @('CUDAExecutionProvider') }
         $pyEpName = if ($script:tensorRtStaged) { 'python onnxruntime exposes CUDA + TensorRT EPs (GPU lane)' } else { 'python onnxruntime exposes CUDA EP (GPU lane, zip-less: TensorRT EP absent by design)' }
         Assert-PythonSnippet -Name $pyEpName `
@@ -1510,16 +1349,10 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         -ExpectMatch @('py-cv2 .* True') `
         -FailMessage "cv2 import or PNG round-trip failed (cv2 pyd, loader config, or OpenCV DLL chain broken)"
 
-    # ---- COMPILED-IN VIDEO BACKENDS (#95) ----------------------------------
-    # Guards #93 (GStreamer silently OFF) and #94 (OpenCV using its OWN prebuilt FFmpeg). The
-    # obvious check LIES: cv2.videoio_registry.getBackends() lists GSTREAMER whether or not it
-    # was compiled in, so only getBuildInformation() is authoritative.
+    # Video backends: getBackends() lists GSTREAMER whether or not it was compiled in, so it proves nothing.
     $cvBuildInfo = & python -c "import cv2; print(cv2.getBuildInformation())" 2>&1 | Out-String
 
-    # #93 is solved by the STANDALONE plugin route (opencv_videoio_gstreamer*.dll built in the
-    # MERGE stage). getBuildInformation() legitimately keeps saying `GStreamer: NO` -- that is
-    # videoio's COMPILE-TIME config, so asserting it would stay red on a CORRECT image.
-    # hasBackend(CAP_GSTREAMER) is authoritative: it attempts the plugin load.
+    # The standalone plugin leaves getBuildInformation() at `GStreamer: NO`; hasBackend attempts the plugin load.
     Assert-Test -Name "cv::VideoCapture has a working GStreamer backend (plugin, #93)" -Condition {
         $out = & python -c "import cv2; print('gst-backend', cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER))" 2>&1 | Out-String
         ($LASTEXITCODE -eq 0) -and ($out -match 'gst-backend True')
@@ -1535,9 +1368,7 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         "loads but the GStreamer runtime underneath it is broken (core plugins missing from the plugin dir, or " +
         "GST_PLUGIN_PATH/PATH not set by the entrypoint). Backlog #93.")
 
-    # NOT a provenance check: `(prebuilt binaries)` is printed whenever videoio uses the wrapper
-    # mechanism, regardless of where the libs came from, so it stays there on a CORRECT build.
-    # The avcodec version comparison below is the real provenance test.
+    # Not provenance: `(prebuilt binaries)` prints for any wrapper build; the avcodec comparison below is.
     Assert-Test -Name 'OpenCV has an FFmpeg backend at all' -Condition {
         $cvBuildInfo -match '(?m)^\s*FFMPEG:\s+YES'
     } -FailMessage 'cv2.getBuildInformation() does not report FFMPEG: YES -- cv::VideoCapture has no FFmpeg path.'
@@ -1548,16 +1379,12 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     } -FailMessage ('cv2.getBuildInformation() reports avdevice as NO -- the FFmpeg backend lost libavdevice, ' +
         'which is one of the symptoms #94 fixed.')
 
-    # Cross-check versions instead of pinning: ask ffmpeg.exe and OpenCV what avcodec each
-    # carries and require the majors to agree -- survives an FFMPEG_VERSION bump and catches a
-    # silent fallback to a bundled build. Read both UP FRONT so "they disagree" and "one was
-    # unreadable" stay separable defects with separate messages.
+    # Majors must agree, which survives a version bump; both are read first so "unreadable" stays apart from "mismatch".
     $ffDir = if ($env:FFMPEG_BIN) { $env:FFMPEG_BIN } else { 'C:\runtime\ffmpeg\bin' }
     $ffExe = Join-Path $ffDir 'ffmpeg.exe'
     $chainAvcodec = ''
     if (Test-Path $ffExe) {
-        # ffmpeg.exe needs its own bin dir on PATH to resolve avcodec-*.dll; without it the
-        # version comes back empty and reads as a mismatch that is really "could not read".
+        # Without its bin dir on PATH ffmpeg.exe cannot resolve avcodec-*.dll and prints no version.
         $savedPath = $env:PATH
         try {
             if ($env:PATH -notlike "*$ffDir*") { $env:PATH = "$ffDir;$env:PATH" }
@@ -1591,17 +1418,13 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         -ExpectMatch @('py-tvm') `
         -FailMessage "import tvm failed (wheel, tvm_runtime/tvm_ffi DLLs, or deps broken)"
 
-    # PyAV built against OUR ffmpeg (PyPI's wheel is unloadable on Server Core: its bundled
-    # avdevice imports AVICAP32). Software codec BY NAME -- generic 'h264' resolves to
-    # h264_d3d12va, which cannot open without a D3D12 device.
+    # PyPI's PyAV imports AVICAP32, absent on Server Core; mpeg4 by name, as `h264` resolves to h264_d3d12va.
     Assert-PythonSnippet -Name "python av (PyAV vs our ffmpeg): in-memory mpeg4 encode" `
         -Code "import io, av; buf = io.BytesIO(); c = av.open(buf, mode='w', format='mp4'); s = c.add_stream('mpeg4', rate=24); s.width = 64; s.height = 64; s.pix_fmt = 'yuv420p'; f = av.VideoFrame(64, 64, 'yuv420p'); [c.mux(p) for p in s.encode(f)]; [c.mux(p) for p in s.encode()]; c.close(); print('py-av', av.__version__, len(buf.getvalue()) > 0)" `
         -ExpectMatch @('py-av .* True') `
         -FailMessage "PyAV import or mpeg4 encode failed (av pyd, our ffmpeg DLL chain, or codec table broken)"
 
-    # Compile through iree.compiler and execute on iree.runtime's local-task driver: proves the
-    # two wheels interoperate. tensor<f32> args must be numpy arrays (a bare float dies in VM
-    # marshaling).
+    # Proves the two IREE wheels interoperate; tensor<f32> args must be numpy arrays, not bare floats.
     Assert-PythonSnippet -Name "python iree compile+run end-to-end (abs(-5)=5, local-task)" `
         -Code "import numpy as np, iree.compiler.tools as t, iree.runtime as rt; vm = t.compile_str('$script:ireeGateMlir', target_backends=['llvm-cpu']); m = rt.load_vm_flatbuffer(vm, driver='local-task'); print('py-iree', float(m.abs(np.asarray(-5.0, dtype=np.float32)).to_host()))" `
         -ExpectMatch @('py-iree 5\.0') `
@@ -1612,18 +1435,13 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
 }
 
 }
-# ============================================================================
 Write-TestHeader '21. OrchestrANT app environment (torch step)'
 if ($smokeCross) {
     Skip-Test "section 21 (OrchestrANT app environment (torch step)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
-# The final image bakes the runtime orchestrator (Build-TorchApp.ps1); verification re-runs
-# that script's own verify mode OFFLINE against the baked venv.
+# Re-runs Build-TorchApp.ps1's verify mode offline against the baked venv.
 $torchAppDir = [Environment]::GetEnvironmentVariable('TORCH_APP_DIR')
-# Resolve the verifier beside this script OR from the image's baked copy -- the BK gate used to
-# file-mount only the smoke script, silently skipping section 21 forever. A set TORCH_APP_DIR
-# with no resolvable verifier is a GATE bug, not an optional feature: fail loudly.
+# A set TORCH_APP_DIR without a resolvable verifier is a gate wiring bug, not an optional feature.
 $torchAppScript = @(
     (Join-Path $PSScriptRoot 'Build-TorchApp.ps1'),
     'C:\temp\scripts\Build-TorchApp.ps1'
@@ -1641,8 +1459,7 @@ if ($torchAppDir -and (Test-Path $torchAppDir) -and $torchAppScript) {
     Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm/av/iree, chain-only ORT)" `
         -Condition { $torchAppVerifyOk }.GetNewClosure() `
         -FailMessage "Build-TorchApp.ps1 -Mode verify failed (baked venv broken, local wheels lost, or an ORT that is not the chain's)$(if ($torchAppCensusFails) { ': ' + ($torchAppCensusFails -join '; ') })"
-    # Every amd64 lane, no device. PyPI's onnxruntime has no DML EP but ships 1.30.0 too, so only
-    # the bytes prove the venv got the chain wheel. The verify above asserts CUDA alone.
+    # PyPI's onnxruntime lacks the DML EP but shares the version, so only the bytes prove the chain wheel.
     $ortWheel = Resolve-ChainOrtWheel -WheelDir $(if ($env:PYTHON_WHEELS) { $env:PYTHON_WHEELS } else { 'C:\runtime\wheels' })
     $ortReport = $null
     $ortProbeError = ''
@@ -1661,21 +1478,17 @@ if ($torchAppDir -and (Test-Path $torchAppDir) -and $torchAppScript) {
 }
 
 }
-# ============================================================================
 Write-TestHeader '22. IREE (source-built ML compiler + runtime)'
 if ($smokeCross) {
     Skip-Test "section 22 (IREE (source-built ML compiler + runtime)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# ============================================================================
-# Native tools live at IREE_BIN; the python bindings ship as wheels (section 20). Real work,
-# not existence checks: compile MLIR to a vmfb and execute it.
+# Real work, not existence checks: compile MLIR to a vmfb and execute it.
 $ireeBin = [Environment]::GetEnvironmentVariable('IREE_BIN')
 if ($ireeBin -and (Test-Path $ireeBin)) {
     Assert-CommandExists 'iree-compile'
     Assert-CommandExists 'iree-run-module'
 
-    # Pin assert: the source-built iree-compile reports "version (unknown)", so pin on the
-    # staged compiler WHEEL filename, which git-describe stamps with the tag.
+    # The source-built iree-compile reports "version (unknown)", so pin on the wheel name git-describe stamps.
     $ireeExpected = (Get-ExpectedVersion 'IREE_VERSION' '') -replace '^v', ''
     if ($ireeExpected) {
         Assert-Test -Name "iree compiler wheel matches versions.env pin ($ireeExpected)" -Condition {
@@ -1721,11 +1534,8 @@ if ($ireeBin -and (Test-Path $ireeBin)) {
 }
 
 }
-# ============================================================================
 Write-TestHeader '23. Baked C:\temp\scripts surface (host-arch)'
-# ============================================================================
-# The gate bind-mounts windows/scripts, so nothing exercised the copies baked
-# into the image; a lying healthcheck shipped green once (#167).
+# The gate bind-mounts windows/scripts, so only this section exercises the copies baked into the image.
 $bakedScriptsRoot = 'C:\temp\scripts'
 if (-not (Test-Path (Join-Path $bakedScriptsRoot 'Test-Container.ps1'))) {
     Skip-Test "baked C:\temp\scripts surface ($bakedScriptsRoot predates the final-stage COPY)"
@@ -1749,22 +1559,15 @@ if (-not (Test-Path (Join-Path $bakedScriptsRoot 'Test-Container.ps1'))) {
         [bool](Get-Command Get-WindowsTargetArch -ErrorAction SilentlyContinue)
     } -FailMessage "Import-Module $bakedModule failed or resolved to a different file"
 
-    # Exit code only: the healthcheck's own [PASS]/[SKIP] lines would read as
-    # suite assertions if they were echoed into this run's log.
+    # Exit code only: echoed [PASS]/[SKIP] lines would read as this suite's assertions.
     Assert-Test -Name 'baked healthcheck exits 0 (Test-Health.ps1)' -Condition {
         $null = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $bakedScriptsRoot 'Test-Health.ps1') 2>&1
         $LASTEXITCODE -eq 0
     } -FailMessage 'the baked Test-Health.ps1 exited non-zero (the shipped image healthcheck is genuinely broken)'
 }
 
-# ============================================================================
 Write-TestHeader '24. Hailo (source-built, Phase 3)'
-# ============================================================================
-# HailoRT for Windows (docs/hailo-support.md): library + hailortcli, both
-# arches. TAPPAS is Linux-only; pyhailort's Windows wheel is a later phase.
-# Cross lane: the arm64 payload cannot RUN here, so the CLI run-probe becomes a
-# PE-machine assert (same 1:1 substitution as sections 7 and 14); the arm64
-# floor stays 0 because this section is payload work.
+# HailoRT (docs/hailo-support.md); on cross the CLI run-probe becomes a PE-machine assert, as in sections 7 and 14.
 if ([string]::IsNullOrWhiteSpace($env:HAILO_ROOT)) {
     Skip-Test 'Hailo section (HAILO_ROOT not set -- pre-Phase-3 image)'
 } else {
@@ -1790,11 +1593,8 @@ if ([string]::IsNullOrWhiteSpace($env:HAILO_ROOT)) {
     }
 }
 
-# ============================================================================
 Write-TestHeader '25. ONNX Runtime single source'
-# ============================================================================
-# Owner rule 2026-09-23 (G1): every ORT byte in the image is the chain build. Static (hashes, strings,
-# PE imports), so the arm64 bundle runs it too. Arms and limits: docs/windows-build-invariants.md.
+# G1: every ORT byte in the image is the chain build, checked statically, so arm64 runs it too; see docs/onnxruntime-single-source.md.
 $ortCensusExemption = @()   # '<arch>:<path>:<reason>'; an entry that stops matching fails, one naming an in-box ORT too
 $ortStampArmed = $false
 $ortCensus = $null
@@ -1827,8 +1627,7 @@ foreach ($a in @(
     $ortLines = @($ortFail[$a.G])
     Assert-Test -Name $a.Name -Condition { $ortLines.Count -eq 0 }.GetNewClosure() -FailMessage (@($ortLines | Select-Object -First 25) -join ' | ')
 }
-# servercore:ltsc2025 ships no in-box ORT (probed 2026-09-23, OS 26100.33438); one would beat PATH for every importer.
-# Cross: the image's Windows dir is not the device's. docs/onnxruntime-single-source.md#the-in-box-onnx-runtime-windows-ml
+# An in-box ORT would beat PATH for every importer; see docs/onnxruntime-single-source.md#the-in-box-onnx-runtime-windows-ml
 $ortLines = @($ortFail['inbox'])
 if (-not $smokeCross) {
     Assert-Test -Name 'ORT in-box: the Windows dir holds no ONNX Runtime or Windows ML (servercore ships none)' -Condition { $ortLines.Count -eq 0 }.GetNewClosure() `
@@ -1844,11 +1643,8 @@ if ($ortStampArmed) {
     Skip-Test 'ORT stamps (unarmed: no Assert-ChainOrtOnly in this hub, so no consumer writes one yet)'
 }
 
-# ============================================================================
 Write-TestHeader '== SUMMARY =='
-# ============================================================================
-# Read through the module, NOT $script:passed: the counters live in the harness module's scope,
-# and a bare $script:passed here resolves to unset -- reporting 0/0 and exiting 0 regardless.
+# Through the module: the counters live in its scope, and a bare $script:passed here would report 0/0.
 $summary = Get-SmokeTestSummary
 Write-Host "  Passed:  $($summary.Passed)" -ForegroundColor Green
 Write-Host "  Failed:  $($summary.Failed)" -ForegroundColor Red
@@ -1866,8 +1662,7 @@ if ($summary.Failed -gt 0) {
     exit 1
 }
 
-# Coverage floors (#44): zero failures is NOT "verified". Checked after the failure branch so a
-# real failure still reports as a failure, not as a coverage problem.
+# Zero failures is not "verified"; checked after the failure branch so a failure still reports as one.
 $coverageProblems = @()
 if ($MinPassed -gt 0 -and $summary.Passed -lt $MinPassed) {
     $coverageProblems += "only $($summary.Passed) assertion(s) passed, expected at least $MinPassed — the run proved far less than it appears to"
@@ -1878,18 +1673,11 @@ if ($MaxSkipped -ge 0 -and $summary.Skipped -gt $MaxSkipped) {
 if ($summary.Aborted) {
     $coverageProblems += '-ExitOnFirstFailure aborted the run, so the remaining tests never executed and this result is not a full verdict'
 }
-# PER-SECTION floors: the global floor left 34 points of anonymous slack -- deleting
-# onnxruntime.lib alone silently dropped 7 of the strongest assertions and stayed green.
-# Every floor is MEASURED per lane and updated DELIBERATELY; a payload section skipped on cross
-# MUST stay 0 rather than be "fixed" by a skip. Columns are NAMED (#131): the old positional
-# triple's index order differed from the selector's.
+# Per-section floors, measured per lane and changed deliberately; a payload section skipped on cross stays 0.
 $sectionFloors = @{
     '1' = @{ Gpu = 13; Cpu = 13; Arm64 = 13 }; '2' = @{ Gpu = 6; Cpu = 6; Arm64 = 6 }; '3' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 }
     '4' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 };    '5' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }; '6' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }
-    # '7' is 13, counted against a real -ExpectGpu run: the section's only branch picks the
-    # cuDNN link+run OR a Skip, so there is no conditional fourteenth. The cross GPU lane
-    # (#176) also runs it (host tools; the Arm64 floor stays 0 because the cross CPU lane
-    # legitimately skips the section).
+    # '7' counts a real -ExpectGpu run; Arm64 stays 0, as the cross CPU lane skips the section.
     '7' = @{ Gpu = 13; Cpu = 0; Arm64 = 0 };  '8' = @{ Gpu = 11; Cpu = 8; Arm64 = 0 };  '9' = @{ Gpu = 9; Cpu = 6; Arm64 = 0 }
     '10' = @{ Gpu = 7; Cpu = 4; Arm64 = 0 };  '11' = @{ Gpu = 12; Cpu = 12; Arm64 = 0 }; '12' = @{ Gpu = 9; Cpu = 9; Arm64 = 0 }
     '13' = @{ Gpu = 6; Cpu = 6; Arm64 = 0 }
@@ -1898,19 +1686,14 @@ $sectionFloors = @{
     '17' = @{ Gpu = 5; Cpu = 5; Arm64 = 0 };  '18' = @{ Gpu = 8; Cpu = 6; Arm64 = 0 };  '19' = @{ Gpu = 31; Cpu = 27; Arm64 = 25 }
     # '21' is 4 on every amd64 lane: venv dir, app verify, venv DML, chain-wheel provenance.
     '20' = @{ Gpu = 22; Cpu = 21; Arm64 = 0 }; '21' = @{ Gpu = 4; Cpu = 4; Arm64 = 0 }; '22' = @{ Gpu = 7; Cpu = 6; Arm64 = 0 }
-    # '23' arm64 is 5: three final-stage files + module import + healthcheck (the
-    # torch-baked Build-TorchApp.ps1 is cross-skipped; it is the amd64 sixth).
+    # '23' arm64 is 5: the torch-baked Build-TorchApp.ps1, the amd64 sixth, is skipped on cross.
     '23' = @{ Gpu = 6; Cpu = 6; Arm64 = 5 }
-    # '24' Hailo (Phase 3, 2026-09-21): six host-runnable assertions on amd64
-    # (root, dir, cli, dll, dll-load, cli --version); arm64 runs the static
-    # subset only, so its floor stays 0 like the other payload sections.
+    # '24' Hailo: six host-runnable assertions on amd64; arm64 runs a static subset, so its floor stays 0.
     '24' = @{ Gpu = 6; Cpu = 6; Arm64 = 0 }
     # '25' ORT census: four static assertions on every lane, the in-box one on amd64 (+1 STAMP once G2 arms it).
     '25' = @{ Gpu = 5; Cpu = 5; Arm64 = 4 }
 }
-# Cross FIRST: the arm64 lane skips the payload sections even with -ExpectGpu set (the
-# arm64 CUDA image runs the HOST-toolchain §7 but still cannot execute aarch64 payload),
-# so selecting the Gpu column there would demand ~190 passes a cross run cannot reach.
+# Cross first: even with -ExpectGpu the arm64 lane skips the payload, so the Gpu column would be unreachable.
 $floorLane = if ($smokeCross) { 'Arm64' } elseif ($ExpectGpu) { 'Gpu' } else { 'Cpu' }
 foreach ($sec in $sectionFloors.Keys) {
     $floor = $sectionFloors[$sec][$floorLane]

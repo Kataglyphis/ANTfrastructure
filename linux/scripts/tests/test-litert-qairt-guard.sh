@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# YA: upstream file(DOWNLOAD)s ~1.5 GB of QAIRT, unhashed and unchecked, whenever
-# QAIRT_HEADERS_DIR is empty. The guard patches that branch out. It has to be
-# reachable from BOTH lanes -- the android lane clones its own tree, so the cross
-# lane's patched copy cannot help it. docs/qnn-linux.md
+# Upstream downloads QAIRT unchecked when QAIRT_HEADERS_DIR is empty; both lanes need the guard; see docs/qnn-linux.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

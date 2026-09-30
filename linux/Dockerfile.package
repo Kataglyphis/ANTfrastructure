@@ -1,21 +1,10 @@
 # syntax=docker/dockerfile:1.27.0
-#
-# NOTE: ARGs before the first FROM are "global" only for the first FROM scope.
-# Each subsequent FROM creates a new build stage that requires its own ARG
-# re-declarations.  The orchestrator (build-runtime-manifest.sh) passes
-# canonical versions via --build-arg; the ARG defaults here are safety nets
-# for manual builds only.  Keep these in sync with versions.env.
-# TARGET_ARCH is always set by the orchestrator; TARGETARCH is Docker's native
-# build arg and used as a fallback.
+# ARG defaults are safety nets for manual builds; build-runtime-manifest.sh passes versions.env values.
 
-# BuildKit populates TARGETARCH in the global scope, so a plain `docker build`
-# defaults to the CURRENT platform's runtime base image instead of silently
-# building on the amd64-only cross :base tag (the orchestrator always overrides
-# BASE_IMAGE anyway). Same shape as Dockerfile.torch's BASE_IMAGE default.
+# Keyed on TARGETARCH so a plain `docker build` uses its own platform's base, not the amd64-only cross tag.
 ARG TARGETARCH
 ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-base-${TARGETARCH}
-# TARGET_ARCH must be declared BEFORE ARTIFACT_IMAGE so a --build-arg TARGET_ARCH
-# influences the ARTIFACT_IMAGE default (ARG expansion only sees prior ARGs).
+# Must precede ARTIFACT_IMAGE: ARG expansion only sees earlier ARGs.
 ARG TARGET_ARCH
 ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${TARGET_ARCH:-amd64}
 ARG BUILD_MODE=native
@@ -38,13 +27,12 @@ ARG ANDROID_API_LEVEL=34
 ARG GCC_VERSION=16.2.0
 ARG LLVM_RELEASE=23.1.1
 ARG PYTHON_VERSION=3.14.7
-# Derived — versions.env only defines PYTHON_VERSION
+# Derived: versions.env only defines PYTHON_VERSION.
 ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
-# The uid Dockerfile.torch's `useradd kataglyphis` lands on; trees the runtime
-# user must WRITE (Flutter's bin/cache) are chown'd to it at COPY time.
+# Dockerfile.torch's `useradd kataglyphis` uid; trees the runtime user writes are chown'd to it at COPY time.
 ARG RUNTIME_UID=1001
 
 FROM --platform=${ARTIFACT_PLATFORM} ${ARTIFACT_IMAGE} AS artifact-source
@@ -55,25 +43,18 @@ ARG TARGETARCH
 ARG GCC_VERSION
 ARG LLVM_RELEASE
 
-# Compiler chain verification: confirm that the custom GCC and Clang
-# toolchains built in Dockerfile.toolchain and Dockerfile.sdk are
-# present in the artifact image for every target architecture.
 RUN --mount=type=bind,source=linux/scripts/06-packaging/validate-compilers.sh,target=/tmp/validate-compilers.sh,ro \
     set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
     bash /tmp/validate-compilers.sh artifact-source
 
-# The Vulkan SDK's builder-arch prefix and its ./vulkansdk build tree: 5.95 GB that
-# nothing on a foreign image's PATH, VULKAN_SDK or LD_LIBRARY_PATH reaches. Pruned
-# HERE, before the /opt/vulkan COPY below, so the runtime layer never carries it.
-# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+# Pruned before the /opt/vulkan COPY: docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
 RUN --mount=type=bind,source=linux/scripts/06-packaging/prune-vulkan-host-sdk.sh,target=/tmp/prune-vulkan-host-sdk.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/platform.sh,ro \
     set -euo pipefail; \
     bash /tmp/prune-vulkan-host-sdk.sh "${TARGET_ARCH:-${TARGETARCH}}"
 
-# android's cross-built web-lane tools, bind-mounted by the setup RUN. The mkdir keeps an
-# android image older than the producer mountable. docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
+# The mkdir keeps an older android image mountable: docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 FROM artifact-source AS web-lane-tools-src
 RUN mkdir -p /opt/web-lane-tools
 
@@ -86,8 +67,7 @@ ARG OPENCV_OUTPUT_DIR
 ARG GSTREAMER_PREFIX
 ARG GCC_VERSION
 ARG RUNTIME_UID
-# Gate the CUDA/cuDNN/NCCL and the /opt/rocm copies in copy-media-payloads.sh
-# (GPU variants only). Both, or the rocm image shipped without ROCm.
+# Both gate copy-media-payloads.sh's GPU copies; without ENABLE_AMD the rocm image ships without ROCm.
 ARG ENABLE_NVIDIA
 ARG ENABLE_AMD
 # Drops /opt/rocm/core-asan-* from the payload unless the image is an ASAN one.
@@ -100,67 +80,27 @@ COPY --link --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=artifact-source /opt/ffmpeg /opt/ffmpeg
 COPY --link --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=artifact-source /opt/libcamera /opt/libcamera
-# ArmNN + ACL (arm64 only; the media stage creates EMPTY dirs on the other
-# arches, so this COPY is safe everywhere). Owner decision 2026-09-01: ship them
-# — before that they were cross-compiled and verified every arm64 chain and then
-# dropped at this boundary, reaching no image. docs/refactoring-backlog.md F7
+# arm64 only; the media stage leaves empty dirs elsewhere, so the COPY is safe on every arch.
 COPY --link --from=artifact-source /opt/armnn /opt/armnn
 COPY --link --from=artifact-source /opt/acl /opt/acl
-# Flutter: the bare SDK checkout (empty on riscv64), owned by the runtime user
-# because `flutter` writes into its own bin/cache; setup-package-image.sh
-# bootstraps the target-arch Dart SDK into it below.
-# docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
+# Runtime-user owned: `flutter` writes its own bin/cache. docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
 COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /opt/flutter /opt/flutter
-# AP3 LANDED 2026-08-18 (correct home this time): /opt/wheels is NOT baked
-# here anymore — Dockerfile.torch now carries its own wheels-source stage
-# (the android image, digest-pinned via WHEELS_IMAGE) and bind-mounts
-# /opt/wheels into the ONE RUN that reads it. The 2026-08-17 revert happened
-# because the mount lived in THIS file's RUN while the reader lives in
-# Dockerfile.torch; that gap is closed at the reader now.
+# /opt/wheels is deliberately not baked here: Dockerfile.torch bind-mounts it into the one RUN that reads it.
 COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
 COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
 COPY --link --from=artifact-source /opt/android /opt/android
 COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
 
-# The pinned Rust toolchain. install-rust.sh puts it in /usr/local/{cargo,rustup}
-# back in Dockerfile.toolchain, and the ENV block below already declares
-# CARGO_HOME, RUSTUP_HOME and /usr/local/cargo/bin on PATH - but nothing ever
-# copied the directories here, because every other artifact lives under /opt and
-# this pair does not. The ENV therefore pointed at empty paths.
-#
-# What that produced, measured in :latest-cross on 2026-08-07: no
-# /usr/local/rustup at all, /usr/local/cargo/bin/cargo a symlink to /bin/cargo,
-# and the image running Ubuntu's rustc 1.93.1 while versions.env pins
-# RUST_VERSION=1.97.1. wire_cargo_symlinks() did not cause it - it found no
-# toolchain at the configured location and linked the apt debs instead, which
-# is its documented fallback. A consumer then hit
-# "rustc 1.93.1 is not supported by ... requires rustc 1.95" on a dependency
-# whose floor the pinned toolchain clears easily.
-# --chown at COPY time is free (like /opt/flutter's); rustup writes into tmp/,
-# downloads/ and toolchains/ on `rustup toolchain install`, so a root-owned
-# tree is unusable at uid 1001 and a later `chown -R` costs 2.2 GB of layer.
-# docs/artifact-copy-completeness.md#the-rust-toolchain-must-be-writable-by-the-runtime-user
+# The pinned Rust toolchain lives outside /opt; --chown here is free. docs/artifact-copy-completeness.md#the-rust-toolchain-must-be-writable-by-the-runtime-user
 COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/local/rustup /usr/local/rustup
 COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/local/cargo /usr/local/cargo
-# The SDK stage materialises a native Clang ${LLVM_RELEASE} toolchain for the
-# target architecture at /opt/llvm-target, self-contained by a hard NEEDED walk;
-# every arch ships its own native clang.
 # docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
 COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
-# Lightweight payload files (LiteRT libs + pkg-config, VVdec, ONNX Runtime
-# GenAI/GPU, tflite/tensorflow headers). The dangling comment that used to sit
-# here documented COPYs that were REMOVED when copy-media-payloads.sh was
-# written — but that script was never invoked anywhere, so these payloads have
-# been silently absent from every package image (and validate_smoke failed on
-# them). Tolerant per-path copies (variant-dependent payloads like
-# onnxruntime-gpu may legitimately be absent on non-GPU builds).
+# Tolerant per-path copies: variant payloads such as onnxruntime-gpu may be absent.
 COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh /tmp/copy-media-payloads.sh
 RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     set -euo pipefail; \
-    # Payload copies + the llvm-target loader path. The prefix's own soname
-    # repair belongs to the sdk stage alone (02-toolchain/materialize-llvm-target.sh);
-    # a second copy here shipped five x86-64 libs into both foreign images.
-    # docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+    # No soname repair here: that belongs to the sdk stage alone (materialize-llvm-target.sh).
     ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \
       ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" \
       SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
@@ -168,22 +108,11 @@ RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 
-# Override inherited SHELL (bash -lc) to avoid QEMU login-shell issues
+# A login shell (bash -lc) misbehaves under QEMU.
 SHELL ["bash", "-c"]
 
-# Re-declared ARGs required by this stage (Docker requirement across FROM boundaries).
-# ARGs before the first FROM are scope-limited. All version ARGs below are passed
-# by the orchestrator from versions.env; defaults here are safety nets.
 ARG BUILD_MODE TARGET_ARCH TARGETARCH TARGETPLATFORM RUNTIME_UID
-# FFMPEG_PREFIX / LIBCAMERA_PREFIX must be ARGs, not only ENV assignments.
-# They were set at :177-178 INSIDE the same ENV instruction that consumes them
-# below, and Docker substitutes a variable within one instruction using the
-# value it had BEFORE that instruction -- i.e. empty. Measured on the shipped
-# amd64 image: PATH carried two phantom `/bin` entries, PKG_CONFIG_PATH two
-# `/lib/pkgconfig`, LD_LIBRARY_PATH two `/lib`, and GST_PLUGIN_PATH pointed at
-# `/lib/gstreamer-1.0` -- so libcamera's GStreamer plugin was unreachable via
-# the standard variables. GSTREAMER_PREFIX/OPENCV_OUTPUT_DIR escaped it only
-# because they are declared on the line below. Found 2026-08-27.
+# ARGs, not only ENV: the ENV below that uses them would read them as empty. docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
 ARG FFMPEG_PREFIX=/opt/ffmpeg
 ARG LIBCAMERA_PREFIX=/opt/libcamera
 ARG GSTREAMER_VERSION OPENCV_OUTPUT_DIR ONNXRUNTIME_OUTPUT_DIR ONNXRUNTIME_GENAI_OUTPUT_DIR GSTREAMER_PREFIX
@@ -195,23 +124,15 @@ ARG WASM_PACK_VERSION=0.15.0
 ARG FLUTTER_RUST_BRIDGE_VERSION=2.13.0
 ARG USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL
 
-# NVIDIA_*/VULKAN_VERSION: normally inherited from Dockerfile.base, but the
-# local-context handoff exports base as a PLAIN ROOTFS (nerdctl export), which
-# drops the image config — every base ENV would silently vanish from the
-# shipped runtime image. Re-declare the runtime-relevant ones here.
+# Re-declared: the rootfs-export handoff drops base's image config, and with it every base ENV.
 ENV NVIDIA_DRIVER_CAPABILITIES=all \
     NVIDIA_VISIBLE_DEVICES=all
 ARG VULKAN_VERSION=1.4.357.0
 ENV VULKAN_VERSION=${VULKAN_VERSION}
-# Advertised so the runtime smoke can compare them against what the binaries
-# report -- which is also how it proves the two web-lane tools are installed.
-# docs/consumer-image-contract.md#the-web-lane-toolchain
+# The smoke compares these with the binaries: docs/consumer-image-contract.md#the-web-lane-toolchain
 ENV WASM_PACK_VERSION=${WASM_PACK_VERSION}
 ENV FLUTTER_RUST_BRIDGE_VERSION=${FLUTTER_RUST_BRIDGE_VERSION}
-# Advertise what the image CONTAINS, so a consumer can read its versions without
-# this repo's versions.env — and so the smoke's advertised-vs-actual gate has
-# something to compare against. ARG does not reach the image config; ENV does.
-# Measured 2026-09-01: 11 of 16 keys were SKIPping for exactly this reason.
+# Advertised as ENV (ARG never reaches the image config) for consumers and the advertised-vs-actual smoke.
 ARG UBUNTU_VERSION=26.04
 ARG CMAKE_VERSION=4.4.3
 ARG NODE_VERSION=26.9.0
@@ -243,8 +164,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GCC_VERSION=${GCC_VERSION} \
     LLVM_RELEASE=${LLVM_RELEASE} \
     GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
-    # PYTHON_VERSION deliberately NOT advertised here: nothing stages
-    # /opt/python-cross into this image, so it ships the DISTRO python3.14.
+    # No PYTHON_VERSION: the image ships the distro python3.14, not /opt/python-cross.
     PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR} \
     PYTHON_CROSS_STAGE_ROOT=/opt/python-cross \
     PYTHON_CROSS_ACTIVE_ROOT=/opt/python-target \
@@ -252,9 +172,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     OPENCV_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
     VIRTUAL_ENV=/opt/python/.venv \
     UV_PYTHON=/opt/python/.venv/bin/python \
-    # LOG4: uv's cache mount and install targets sit on different overlayfs
-    # views, so hardlinking always failed ("falling back to full copy", ×32 per
-    # build). Same cost either way — set copy explicitly to silence the warn.
+    # Cache mount and targets are different overlayfs views, so hardlinks always fell back to copy.
     UV_LINK_MODE=copy \
     MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python \
     CARGO_HOME=/usr/local/cargo \
@@ -267,26 +185,16 @@ ENV BUILD_MODE=${BUILD_MODE} \
     LIBCAMERA_PREFIX=/opt/libcamera \
     VULKAN_SDK=/opt/vulkan/active \
     VK_LAYER_PATH=/opt/vulkan/active/share/vulkan/explicit_layer.d \
-    # Cache dirs are 01-core/compiler-cache.sh's defaults, re-declared because
-    # the parent's image config does not survive the rootfs-export context this
-    # stage is built on. /workspace is the CONSUMER's bind mount, never ours.
-    # The caps and server knobs are Dockerfile.base's, lost the same way. No
-    # SCCACHE_CONF: with SCCACHE_DIR set, sccache ignores the file's [cache.disk].
-    # docs/build-cache-tiers.md#the-shipped-images-cache-dirs
+    # Re-declared after the rootfs export; never under /workspace. docs/build-cache-tiers.md#the-shipped-images-cache-dirs
     CCACHE_DIR=/var/cache/ccache \
     SCCACHE_DIR=/var/cache/sccache \
     CCACHE_MAXSIZE=30G \
     SCCACHE_CACHE_SIZE=30G \
     SCCACHE_IDLE_TIMEOUT=0 \
     SCCACHE_ERROR_LOG=/tmp/sccache.log \
-    # Media paths: extends linux/scripts/03-media/runtime/media-env.sh with
-    # additional runtime paths (vulkan, gcc, python, cargo) for the full image.
-    # RP6: /root/.local/bin dropped — final image is uid-1001 (kataglyphis),
-    # /root is 0700 so the entry was dead + a PATH-hijack precondition. Kept in
-    # Dockerfile.base (root-run base builds legitimately install there).
+    # No /root/.local/bin: the image runs as uid 1001, so it was dead and a PATH-hijack precondition.
     PATH="/opt/vulkan/active/bin:${GSTREAMER_PREFIX}/bin:${OPENCV_OUTPUT_DIR}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/opt/flutter/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-    # nvcc (GPU variant; the PATH entry above is inert on CPU images) rejects the
-    # image's GCC ${GCC_VERSION} by version. Same flag as Dockerfile.media.
+    # nvcc rejects the image's GCC by version; same flag as Dockerfile.media.
     NVCC_PREPEND_FLAGS=-allow-unsupported-compiler \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
     LD_LIBRARY_PATH="/opt/vulkan/active/lib:/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${GSTREAMER_PREFIX}/lib:${OPENCV_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib64:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib:${FFMPEG_PREFIX}/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
@@ -295,28 +203,17 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GST_PLUGIN_PATH="${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0:${LIBCAMERA_PREFIX}/lib/gstreamer-1.0" \
     GI_TYPELIB_PATH="${GSTREAMER_PREFIX}/lib/multiarch/girepository-1.0"
 
-# ort-sys links (and ort load-dynamic loads) the chain ORT, never pyke's download. One ENV
-# per name. docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
+# The ort crate uses the chain ORT, never pyke's download: docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
 ENV ORT_LIB_LOCATION=${ONNXRUNTIME_OUTPUT_DIR}/lib
 ENV ORT_PREFER_DYNAMIC_LINK=1
 ENV ORT_SKIP_DOWNLOAD=1
 ENV ORT_DYLIB_PATH=${ONNXRUNTIME_OUTPUT_DIR}/lib/libonnxruntime.so
 
-# The SDK ships on all three arches (the COPY above is unconditional) but nothing
-# advertised it, so `flutter build apk` reported "[!] No Android SDK found".
-# Its host tools are linux-x86_64 only, which is why /opt/android-sdk is already
-# an _RT_TREE_ARCH_EXEMPT tree rather than a per-arch claim.
-# docs/linux-cross-builds.md#android-sdk-environment-in-the-runtime-image
+# Unadvertised, flutter reports no Android SDK: docs/linux-cross-builds.md#android-sdk-environment-in-the-runtime-image
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk
 
-# The android stage advertises these; Dockerfile.package COPYs the payload they
-# point at but never re-declared the names, so a consumer that found /opt/android
-# still could not be told where anything in it was. One ENV per name: the env-knob
-# owner scan reads the first name of an instruction only.
-# NOT a bare OpenCV_DIR -- that is the name find_package(OpenCV) reads, and pointing
-# it at the Android SDK would hijack every LINUX OpenCV consumer in this image.
-# docs/consumer-image-contract.md#the-android-sdk-roots-are-advertised
+# Never a bare OpenCV_DIR, which would hijack Linux find_package(OpenCV): docs/consumer-image-contract.md#the-android-sdk-roots-are-advertised
 ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
 ENV ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime
 ENV LITERT_ROOT_ANDROID=/opt/android/litert
@@ -326,44 +223,13 @@ ENV OPENCV_ANDROID_JNI_DIR=/opt/android/opencv/sdk/native/jni
 ARG ANDROID_TARGET_ABI=arm64-v8a
 ENV ANDROID_TARGET_ABI=${ANDROID_TARGET_ABI}
 
-# Gradle reads JAVA_HOME, not PATH. The anchor is a symlink setup-package-image.sh
-# resolves from the installed javac, so a JDK bump never has to be repeated here.
-# Its own instruction: the env-knob owner scan reads the first name of an ENV only.
-# docs/consumer-image-contract.md#the-android-lane-needs-a-jdk
+# A symlink setup-package-image.sh resolves from javac, so a JDK bump needs no edit here. docs/consumer-image-contract.md#the-android-lane-needs-a-jdk
 ENV JAVA_HOME=/usr/lib/jvm/default-java
 
-# APPENDED, not prepended as in Dockerfile.android: platform-tools carries its own
-# mke2fs/make_f2fs/sqlite3, and fronting PATH with them would shadow /usr/sbin/mke2fs
-# on every arch. Appended, these dirs win only names nothing else provides -- adb,
-# sdkmanager, avdmanager, apkanalyzer. Separate instruction so ${ANDROID_HOME} reads
-# the line above: docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
+# Appended: platform-tools' own mke2fs would otherwise shadow /usr/sbin/mke2fs.
 ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools"
 
-# Docker's ENV above is not enough for a LOGIN shell. CI steps run
-# `docker run ... bash -lc '<script>'`, and a login bash sources /etc/profile
-# (+ /etc/profile.d), which can rebuild PATH from the system default and drop
-# /usr/local/cargo/bin. The visible symptom is confusing rather than obvious:
-# `cargo` still resolves — to Ubuntu's /usr/bin/cargo, installed as a plain deb
-# by setup-package-image.sh — while `rustup` is not found at all, because that
-# deb ships none. A consumer's `rustup component add rustfmt` therefore died
-# with exit 127 on every build for months (OxidANT,
-# found 2026-08-07), and `continue-on-error: true` made it look green.
-#
-# Same mechanism the GCC (configure-gcc-env.sh) and Flutter (Dockerfile.sdk)
-# paths already rely on: export it from /etc/profile.d so login shells agree
-# with the image's ENV. Prepending puts the PINNED toolchain ahead of the deb.
-# POSIX sh, not bash: /etc/profile.d entries are sourced by whatever /bin/sh is.
-# The case guard keeps it idempotent - nested login shells would otherwise stack
-# duplicate PATH entries onto every image layered on top of this one.
-# `:=` not `=`: a plain assignment CLOBBERS what the caller passed. CI steps run
-# `docker run -e CARGO_HOME=/tmp/cargo-home ... bash -lc '<script>'` precisely
-# because /usr/local/cargo is root-owned and the container is uid 1001 - and
-# this file, sourced by the login shell, then overwrote that with the
-# unwritable path again. Every inline `cargo` in a login shell died with
-#   error: failed to create directory `/usr/local/cargo/registry/cache/...`
-#   Caused by: Permission denied (os error 13)
-# while the same lane's script-driven cargo steps survived, because those call
-# ANTfrastructure's own cargo-home guard. Default the values, do not impose them.
+# A login shell rebuilds PATH from /etc/profile; `:=` keeps a caller's CARGO_HOME, the case guard stays idempotent.
 RUN printf '%s\n' \
       ': "${RUSTUP_HOME:=/usr/local/rustup}"; export RUSTUP_HOME' \
       ': "${CARGO_HOME:=/usr/local/cargo}"; export CARGO_HOME' \
@@ -379,10 +245,7 @@ COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
 COPY --chmod=755 linux/scripts/03-media/runtime/ /opt/scripts/03-media/final/
-# 03-media/core/ provides common.sh (media_load_arch_flags) + arch-flags-<arch>.env,
-# which the final install-deps.sh sources from /opt/scripts/03-media/core. Without
-# this COPY that path is absent and install-deps.sh fails with exit 127
-# (media_load_arch_flags: command not found).
+# The final install-deps.sh sources media_load_arch_flags from here.
 COPY --chmod=755 linux/scripts/03-media/core/ /opt/scripts/03-media/core/
 COPY --chmod=755 linux/scripts/03-media/build/gstreamer/android/ /opt/scripts/03-media/gstreamer/android/
 COPY --chmod=755 linux/scripts/03-media/build/litert/android/ /opt/scripts/03-media/litert/android/
@@ -400,9 +263,7 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packagin
 COPY --chmod=755 linux/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-torch-venv.sh /opt/scripts/packaging/smoke-torch-venv.sh
 
-# Wire LLVM-target and Vulkan symlinks. LLVM-target was cross-compiled for the
-# target arch in the SDK stage; Vulkan SDK installs under x86_64/ so we create
-# aarch64/riscv64 symlinks and link /opt/vulkan/active.
+# The Vulkan SDK installs under x86_64/, so the other arches get symlinks.
 RUN set -euo pipefail; \
     if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
         ln -s /opt/llvm-target /usr/local/llvm-target; \
@@ -412,14 +273,7 @@ RUN set -euo pipefail; \
     fi; \
     bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}" || true
 
-# Stage the libFuzzer runtime beside the target clang when its compiler-rt was
-# built without it (the variant chain reuses a pre-CON17 cached LLVM tree).
-# TheRock's patched LLVM under /opt/rocm ships the same ABI's libclang_rt.fuzzer*.
-# Without it `clang -fsanitize=fuzzer` links nothing and the wrapper-smoke
-# clang-libfuzzer gate fails the whole runtime lane (run 20260927-194301).
-# TWO names per file: the driver asks for the UNSUFFIXED libclang_rt.fuzzer.a
-# (the shipped tree's other runtimes carry unsuffixed aliases) — staged under
-# both spellings, the smoke gate only fails on the unsuffixed name.
+# A cached LLVM may lack libFuzzer; borrow TheRock's same-ABI copy under both names, the driver wants the unsuffixed one.
 RUN set -euo pipefail; \
     _resdir="$(/usr/local/llvm-target/bin/clang -print-resource-dir 2>/dev/null)"; \
     _libdir="${_resdir}/lib/x86_64-unknown-linux-gnu"; \
@@ -437,43 +291,13 @@ RUN set -euo pipefail; \
             echo "[WARN] no libclang_rt.fuzzer-x86_64.a staged (no TheRock LLVM under /opt/rocm)"; \
     fi
 
-# Redirect this stage's apt sources off ports.ubuntu.com onto the configured
-# fast ports mirror (leaseweb) BEFORE setup-package-image.sh runs apt. The
-# inherited cross-android base carries ports.ubuntu.com sources; Dockerfile.media
-# rewrote them only in the media lane, so the package stage (arm64/riscv64, run
-# natively under QEMU) otherwise hits ports.ubuntu.com directly — which is often
-# unreachable and fails the whole runtime build. This is a host-only swap that
-# preserves the existing (already arch-correct) source layout. (amd64's
-# archive.ubuntu.com entries now go through the same canonical rewrite; before
-# 5d7a318's inline sed was replaced they were untouched.)
-# Canonical mirror rewrite (use-fast-ubuntu-mirror.sh) instead of the old
-# inline sed, which had TWO drifts from the canonical behavior: it ignored the
-# USE_FAST_UBUNTU_MIRROR gate entirely, and it never derived the ports URL
-# from the archive URL — so `--fast-ubuntu-mirror-url <mirror>` WITHOUT an
-# explicit ports URL left this stage on ports.ubuntu.com while base and media
-# had both moved to the mirror.
-# platform.sh is co-mounted BECAUSE ubuntu_mirror_is_truthy() is a thin alias
-# for is_truthy(), which lives in platform.sh — and ubuntu-mirror.sh resolves it
-# NEXT TO ITSELF (${_UBUNTU_MIRROR_SH_DIR}/platform.sh, no /opt fallback), i.e.
-# inside this /tmp/core mount dir. The baked /opt/scripts/core/platform.sh (COPY
-# above) is therefore NEVER reached from here: use-fast-ubuntu-mirror.sh's own
-# /opt fallback covers ubuntu-mirror.sh only. Without this mount the gate call
-# dies with `is_truthy: command not found`, ubuntu_mirror_is_truthy() returns
-# 127, and `if ! ...` sends main() straight to `exit 0` — i.e. THIS RUN was a
-# guaranteed no-op in every configuration, silently re-opening the very
-# ports.ubuntu.com failure it was added (7593ccb) to prevent. Scope note: the
-# SAME gap exists in Dockerfile.base's standalone mirror RUN, which also omits
-# platform.sh — it is only harmless there because the preceding bootstrap-ca
-# RUN already applied the mirror, so that RUN has nothing left to do. Fixing it
-# there would be inert, which is why it is deliberately NOT fixed (an earlier
-# attempt was reverted 2026-08-23 for exactly that reason).
+# The inherited sources still name ports.ubuntu.com; platform.sh must sit beside ubuntu-mirror.sh or this RUN is a silent no-op.
 RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/core/use-fast-ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core/ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/core/platform.sh,ro \
     set -euo pipefail; \
     bash /tmp/core/use-fast-ubuntu-mirror.sh
-# Where the from-source web-lane tools come from (auto|cross|native|legacy) and their binary
-# cache (on|refresh|off). docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
+# auto|cross|native|legacy and on|refresh|off: docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 ARG WEB_LANE_TOOLS_SOURCE=auto
 ARG WEB_LANE_TOOLS_CACHE=on
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -485,16 +309,9 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/web-lane-tools,id=web-lane-tools-bin-${TARGETARCH},sharing=locked \
     set -euo pipefail; \
     bash /opt/scripts/packaging/setup-package-image.sh
-# NOTE: no `rm -rf /var/lib/apt/lists/*` in the RUN above — /var/lib/apt is a
-# cache mount (never committed to the image); removing lists would only wipe
-# the SHARED apt cache for other builds (see Dockerfile.nvidia for the pattern).
+# No apt lists cleanup above: /var/lib/apt is a shared cache mount, never committed.
 
-# Wire GCC/LLVM alternatives and HARD-FAIL if the wired cc does not match the
-# target architecture. For cross builds the target-native cc cannot EXECUTE on
-# the build host, so only the execution probes are skipped
-# (VALIDATE_CC_STATIC_ONLY=1) — the readelf/alternatives checks still fail the
-# build. The old `|| echo WARNING` downgraded ALL validation exactly for the
-# cross case it exists to protect.
+# Cross builds cannot execute the target cc, so only the execution probes are skipped.
 RUN set -euo pipefail; \
     _ta="${TARGET_ARCH:-${TARGETARCH}}"; \
     if [ "${BUILD_MODE}" = "cross" ] && [ -n "${_ta}" ] && [ "${_ta}" != "amd64" ]; then \
@@ -508,10 +325,7 @@ RUN set -euo pipefail; \
 LABEL org.opencontainers.image.title="Kataglyphis Package" \
       org.opencontainers.image.description="Runtime package image with assembled cross-compiled artifacts"
 
-# Self-contained smoke-only wrapper target. Runs compiler, media, and cross-arch
-# validation against the package image without needing the full Dockerfile.torch
-# build.  Runtime scripts, entrypoint, labels etc. live canonically in
-# Dockerfile.torch final.
+# Smoke-only target; the real runtime wrapper is Dockerfile.torch's final stage.
 FROM package AS wrapper-smoke
 
 ARG TARGET_ARCH
@@ -527,16 +341,8 @@ RUN set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
     bash /opt/scripts/packaging/validate-compilers.sh smoke && \
     bash /opt/scripts/packaging/smoke-media.sh && \
-    # The package image has no torch venv (that's in Dockerfile.torch's
-    # wrapper stage); smoke-torch-venv.sh SKIPs cleanly when /opt/venv
-    # is absent. STV_REQUIRE_VENV=1 belongs in the wrapper-image smoke.
+    # No torch venv here, so this skips; STV_REQUIRE_VENV=1 belongs in the wrapper-image smoke.
     bash /opt/scripts/packaging/smoke-torch-venv.sh && \
     GCC_VERSION="${GCC_VERSION}" \
     bash /opt/scripts/packaging/smoke-cross-all-arches.sh "${TARGET_ARCH}"
-# NOTE: smoke-vulkan is intentionally NOT wired into any build stage. It probes
-# the full Vulkan *SDK* (/opt/vulkan/active symlink, vulkan/vulkan.h, libvulkan.so),
-# but this cross-build installs only the Vulkan *runtime* (libvulkan.so.1 + ICD/
-# layer JSONs via base-image.sh install-vulkan-runtime-files) -- the dev SDK is
-# never installed, and setup-vulkan-symlinks.sh's /opt/vulkan/active link is
-# best-effort (|| true). smoke-vulkan therefore cannot pass here; it is retained
-# as a standalone host tool for image variants that DO ship the full SDK.
+# smoke-vulkan is not wired in: it probes the full SDK, and this image ships only the Vulkan runtime.

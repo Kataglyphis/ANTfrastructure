@@ -1,7 +1,5 @@
 #requires -Version 7.0
-# rocm-lane MIGraphX spike: WindowsMigraphx.Common, Build-MigraphxFromSource.ps1,
-# Build-OrtAmdgpuEpFromSource.ps1, Dockerfile.rocm-migraphx and rocm-checks\MIGraphX.ps1.
-# NOT covered: any download, compile or link (the container build), and the load probe itself.
+# The rocm-lane MIGraphX spike's module, scripts, Dockerfile and check; no download, compile or load probe.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsMigraphx.Common.psm1') -Force -DisableNameChecking
 
@@ -134,7 +132,7 @@ Describe 'WindowsMigraphx.Common: 7-Zip''s refused links' {
     }
 
     It 'Expand-PinnedArchive deletes the intermediate .tar, which G2 reads as an ORT archive for the EP source' {
-        # onnxruntime-ep-amdgpu.tar matches G2's archive name rule; the EP stage's verify failed on it (2026-09-25).
+        # onnxruntime-ep-amdgpu.tar matches G2's archive name rule, so a leftover fails the EP stage's verify.
         $body = (Get-Command Expand-PinnedArchive).Definition
         Assert-Match 'if \(\$pass -eq 2\) \{ Remove-Item -LiteralPath \$from -Force \}' $body 'the .tar goes once unpacked'
     }
@@ -309,7 +307,7 @@ FetchContent_Declare(
 }
 
 Describe 'WindowsMigraphx.Common: licence texts' {
-    # name:path of every licence file in the pinned archives, listed from them on 2026-09-23.
+    # name:path of every licence file in the pinned archives, listed from the archives themselves.
     $measured = @{
         MigraphxDeps = 'abseil:LICENSE,msgpack:COPYING,msgpack:LICENSE_1_0.txt,msgpack:NOTICE,protobuf:LICENSE,protobuf:third_party\utf8_range\LICENSE'
         OrtAmdgpuEp  = 'absl:LICENSE,flatbuffers:LICENSE,fmt:LICENSE,gsl:LICENSE,onnx:LICENSE,protobuf:LICENSE,protobuf:third_party\utf8_range\LICENSE,range-v3:LICENSE.txt'
@@ -612,8 +610,7 @@ Describe 'Dockerfile.rocm-migraphx' {
 
 Describe 'cpu and nvidia inputs are untouched by the spike' {
     It 'no other Windows Dockerfile names the spike''s scripts, module or pins' {
-        # Dockerfile.torch's torch-rocm-wheels stage borrows the module (TheRock build helpers), but only rocm-1
-        # mounts that stage, so cpu/nvidia never build it; Torch.Rocm.Tests.ps1 holds that. The rest must not.
+        # Only Dockerfile.torch's rocm-1-only torch-rocm-wheels stage may borrow the module (Torch.Rocm.Tests.ps1).
         $hits = @(Get-ChildItem -Path (Join-Path $script:MgxRepo 'windows') -Filter 'Dockerfile*' -File |
             Where-Object { $_.Name -ne 'Dockerfile.rocm-migraphx' } |
             Where-Object {

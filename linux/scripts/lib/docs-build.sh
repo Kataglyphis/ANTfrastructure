@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# docs-build.sh - generic "build a Sphinx documentation tree" core.
-#
-# Project-agnostic: a wrapper sets the DOCS_BUILD_* variables, sources this file
-# and calls docs_build_main. Variables are in
-# docs/shared-script-libraries.md § docs-build.sh.
-# NOT 02-toolchain/python/ci_build_docs.sh -- that one is for pure-Python repos.
-#
-# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
+# Sourced Sphinx core (no shell options); ci_build_docs.sh is for pure-Python repos. docs/shared-script-libraries.md#docs-buildsh--build-a-sphinx-documentation-tree
 [ -n "${_DOCS_BUILD_SH_LOADED:-}" ] && return 0
 _DOCS_BUILD_SH_LOADED=1
 
@@ -29,13 +22,7 @@ _docs_build_static_dir() {
   printf '%s\n' "${DOCS_BUILD_STATIC_DIR:-$(_docs_build_source_dir)/_static}"
 }
 
-# ---------------------------------------------------------------------------
-# Python environment
-# ---------------------------------------------------------------------------
-# Venv creation and requirements install are delegated to the caller-supplied
-# scripts (which in turn defer to 01-core/python_uv.sh) instead of a hand-rolled
-# uv variant; they operate on the caller's cwd, hence the subshell cd. The
-# activation itself must NOT be subshelled - Sphinx is run from this shell.
+# Python environment: never subshell the activation, since Sphinx runs from this shell.
 docs_build_prepare_python_env() {
   local root venv_dir create_script install_script
   root="$(_docs_build_root)"
@@ -59,11 +46,7 @@ docs_build_prepare_python_env() {
   source "${venv_dir}/bin/activate"
 }
 
-# ---------------------------------------------------------------------------
-# Pre-Sphinx asset staging
-# ---------------------------------------------------------------------------
-# Diagrams a CMake/Doxygen build emitted elsewhere have to reach _static before
-# Sphinx runs, or the pages reference images that are not in the output tree.
+# Pre-Sphinx staging: diagrams built elsewhere must reach _static before Sphinx runs.
 docs_build_copy_static_svg() {
   local svg_dir static_dir
   svg_dir="${DOCS_BUILD_SVG_SOURCE_DIR:-}"
@@ -75,8 +58,7 @@ docs_build_copy_static_svg() {
   cp "${svg_dir}"/*.svg "${static_dir}"
 }
 
-# Optional diagram generator (graphviz, plantuml, ...). Run with the Sphinx
-# source dir as cwd, because such scripts resolve their outputs relative to it.
+# Runs from the Sphinx source dir: generators resolve their outputs relative to it.
 docs_build_run_generator() {
   local generator
   generator="${DOCS_BUILD_GENERATOR_SCRIPT:-}"
@@ -86,11 +68,7 @@ docs_build_run_generator() {
   (cd "$(_docs_build_source_dir)" && "${DOCS_BUILD_PYTHON:-python}" "${generator}")
 }
 
-# ---------------------------------------------------------------------------
-# Sphinx
-# ---------------------------------------------------------------------------
-# `make <target>` per configured target, all under the same SPHINXOPTS. Each
-# runs in a subshell so the caller's cwd survives the build.
+# Sphinx: each target runs in a subshell so the caller's cwd survives.
 docs_build_sphinx() {
   local docs_dir sphinxopts target
   docs_dir="$(_docs_build_docs_dir)"

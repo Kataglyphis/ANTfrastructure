@@ -1,16 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# One-shot elevated helper: release the stale container handles that are
-# producing hcsshim::ActivateLayer 0x20 ("file used by another process") on a
-# FRESH base-layer commit, deterministic across fresh chain-IDs. Strategy:
-#   1. kill any leftover vmwp (Hyper-V worker) from failed solves,
-#   2. restart containerd (stops buildkitd) then start buildkitd,
-#   3. verify buildctl still reaches the workers.
-# Safe now: no build is running.
-#
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Reset-ContainerLocks.ps1'
+# Elevated, with nothing building: releases the stale handles behind ActivateLayer 0x20 on a fresh base-layer commit.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -41,9 +32,7 @@ Get-Service containerd, buildkitd | Select-Object Name, Status | Format-Table -A
 
 Write-Host ''
 Write-Host '== Step 3: buildctl reaches the worker? ==' -ForegroundColor Cyan
-# Inline ON PURPOSE (#101 reviewed 2026-08-17): this is an elevated REPAIR tool
-# for a wedged container stack — a module import is one more thing that can be
-# broken exactly when this script is needed. Same rationale as probe-build-copy.
+# Inline, no module: a repair tool must not depend on an import that may be broken when it is needed.
 $bt = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'C:\Program Files\Stevedore\bin\buildctl.exe', 'D:\Stevedore\bin\buildctl.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($bt) {
     & $bt --addr npipe:////./pipe/buildkitd debug workers 2>&1 | Select-String -Pattern 'windows/amd64|worker' | ForEach-Object { $_.Line } | Write-Host

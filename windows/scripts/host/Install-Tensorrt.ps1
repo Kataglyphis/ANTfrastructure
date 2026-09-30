@@ -13,15 +13,12 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
 if (-not (Test-Path $sharedModulePath)) { throw "Required module not found: $sharedModulePath" }
 Import-Module $sharedModulePath -Force
-# Shared is one of the three modules COPY'd before this script in Dockerfile.base;
-# imported for Assert-FileSha256 (not in ContainerImage's re-export list).
+# For Assert-FileSha256, which WindowsContainerImage.Common does not re-export.
 $sharedHelpersPath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedHelpersPath }
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through WindowsContainerImage.Common's re-export.
@@ -29,12 +26,7 @@ if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedHelp
 $TensorRtVersion = Resolve-ContainerImageValue -Value $TensorRtVersion -EnvironmentVariable 'TENSORRT_VERSION' -DefaultValue ''
 $TensorRtRoot = Resolve-ContainerImageValue -Value $TensorRtRoot -EnvironmentVariable 'TENSORRT_ROOT' -DefaultValue 'C:\Program Files\NVIDIA GPU Computing Toolkit\TensorRT'
 
-# Returns the NEWEST *TensorRT*.zip in $Dir by the version embedded in the
-# filename (or $null if the dir is absent / has none). Newest, not first:
-# owner directive 2026-08-14 — TensorRT drift is always resolved FORWARD, and
-# a downloads dir briefly holding two zips must never pick the old one. This
-# encodes the TensorRT-<edition?>-<version> filename contract that used to
-# live as an untestable inline regex in Dockerfile.nvidia (#127).
+# The newest *TensorRT*.zip by filename version, or $null: drift is resolved forward, never to an older zip.
 function Find-TensorRtZipIn {
     param([string]$Dir)
     if (-not (Test-Path $Dir)) { return $null }
@@ -73,9 +65,7 @@ if (-not $trtZip -and $TensorRtVersion) {
     $parts = $TensorRtVersion.Split('.')
     $dirVersion = if ($parts.Length -ge 3) { "$($parts[0]).$($parts[1]).$($parts[2])" } else { $TensorRtVersion }
     $trtZip = Join-Path $env:TEMP 'tensorrt.zip'
-    # First candidate derives its cuda suffix from CUDA_VERSION_MAJOR_MINOR (baked by the
-    # nvidia stage) so a CUDA bump moves this fallback automatically; the fixed alternates
-    # cover NVIDIA's usual per-major zip names. Auth-gated: any of these may 404/redirect.
+    # The first URL follows the CUDA pin; all are auth-gated guesses that may 404.
     $cudaSuffix = Resolve-ContainerImageValue -EnvironmentVariable 'CUDA_VERSION_MAJOR_MINOR' -DefaultValue '13.4'
     $urls = @(
         "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-$cudaSuffix.zip",
@@ -85,22 +75,12 @@ if (-not $trtZip -and $TensorRtVersion) {
     $downloaded = $false
     foreach ($url in $urls) {
         Write-Host "Trying download: $url"
-        # -ExpectSignature PK rejects NVIDIA's login/auth HTML page (served when unauthenticated)
-        # so we fall through to the next URL / disable the EP instead of extracting a garbage zip.
-        # One attempt per URL (the alternates are version-suffix guesses; most 404).
+        # PK rejects NVIDIA's login HTML page, so a guess falls through instead of extracting garbage.
         try { Invoke-DownloadWithRetry -Url $url -DestinationPath $trtZip -MaxAttempts 1 -InitialDelaySeconds 0 -ExpectSignature PK -Description "TensorRT $TensorRtVersion"; $downloaded = $true; break }
         catch { Write-Host "  Failed: $($_.Exception.Message)" }
     }
     if (-not $downloaded) {
-        # GRACEFUL SKIP — restored 2026-08-05 after the fail-fast variant broke
-        # the first hardened -Gpu rebuild. The fail-fast rationale ("the smoke
-        # test asserts TENSORRT_ROOT unconditionally") was WRONG: the pointer
-        # assert passes because Dockerfile.nvidia bakes TENSORRT_ROOT and the
-        # trt-extract stage guarantees the (possibly empty) directory — this
-        # host has ALWAYS built its GPU lane without the EULA-gated zip
-        # (windows\downloads holds only the README), and the ORT build script
-        # auto-skips the TensorRT EP when the root is empty. No zip = a
-        # deliberate, supported configuration, not an error.
+        # Graceful skip: no zip is a supported configuration, and ORT skips the TensorRT EP on an empty root.
         Write-Warning ('TensorRT {0} not available (EULA-gated download; no zip staged in windows\downloads). Continuing WITHOUT TensorRT — CUDA + cuDNN still work, the ORT TensorRT EP stays disabled. To include it: place tensorrt-*.zip in windows\downloads\ or pass -LocalZipPath / set TENSORRT_ZIP_PATH.' -f $TensorRtVersion)
         return
     }
@@ -112,8 +92,7 @@ if (-not $trtZip -or -not (Test-Path $trtZip)) {
     return
 }
 
-# Integrity pin: TENSORRT_ZIP_SHA256 (versions.env); the zip must match it
-# whichever lookup tier found it. Empty (never staged) warns, mismatch throws.
+# Whichever tier found the zip, it must match the pin; an empty pin warns, a mismatch throws.
 $trtSha = Resolve-ContainerImageValue -EnvironmentVariable 'TENSORRT_ZIP_SHA256' -DefaultValue ''
 Assert-FileSha256 -Path $trtZip -Expected $trtSha -Label 'TensorRT zip' -PinName 'TENSORRT_ZIP_SHA256'
 
@@ -122,9 +101,7 @@ Write-Host "Extracting TensorRT to $TensorRtRoot..."
 $trtDir = Expand-ArchiveSubdirectory -ArchivePath $trtZip -DestinationPath $TensorRtRoot -Filter 'TensorRT-*'
 if ($trtZip -ne $LocalZipPath -and $trtZip -notlike (Join-Path $env:TEMP_DIR 'downloads\*')) { Remove-Item $trtZip -Force -ErrorAction SilentlyContinue }
 
-# NOTE: process-scope only — these help later commands within THIS RUN step.
-# They do NOT persist into the image; the durable TENSORRT_ROOT comes from the
-# Dockerfile ENV line, which must stay in sync with the layout produced here.
+# Process scope only; the image's TENSORRT_ROOT is the Dockerfile ENV, which must match this layout.
 if ($trtDir) {
     Write-Host "TensorRT installed at: $trtDir"
     [Environment]::SetEnvironmentVariable('TENSORRT_ROOT', $trtDir, 'Process')

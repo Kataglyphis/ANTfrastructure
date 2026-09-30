@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the allowlist contract of verify_code_dupes.py. The gate derives its
-# root from its own path, so each case copies it into a throwaway tree holding two
-# scripts that share one function; the measured overlap is parsed, never hardcoded.
-# SKIP_REAL_TREE=1 drops the live-tree case (what the mutation manifest runs with).
-# docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
+# verify_code_dupes.py's allowlist; SKIP_REAL_TREE=1 skips the live tree. See docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
 set -u
 : "${SKIP_REAL_TREE:=}"
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,11 +35,7 @@ probe_widget() {
 EOF
 }
 
-# One PowerShell function, with the strict-mode arm reading whatever variable $1
-# names: a pair built from two calls differs in exactly the spelling under test.
-# The <# #> block holds an unbalanced brace on purpose, and the body carries a
-# blank line — together they are what a reader that mis-reads either construct
-# splits this one function into, and every ps case below measures that.
+# The <# #> block's unbalanced brace and the blank line are where a mis-reading scanner would split.
 _ps_twin() {
   cat <<EOF
 Set-StrictMode -Version Latest
@@ -69,15 +61,13 @@ function Resolve-Widget {
 EOF
 }
 
-# The copy, renamed. $2 = "nextline" moves its opening brace onto its own line;
-# PowerShell allows both spellings and the two must measure the same.
+# The copy, renamed; $2=nextline moves the brace to its own line, which must measure the same.
 _ps_copy() {
   _ps_twin "$1" | sed -e 's/Resolve-Widget/Resolve-Gadget/' \
                       -e "$([ "$2" = nextline ] && printf '%s' 's/^function Resolve-Gadget {$/function Resolve-Gadget\n{/' || printf 'b')"
 }
 
-# Adds the PowerShell pair to the current fixture. $1/$2 are the variables the
-# two copies disagree on, $3 the copy's brace style, $4 a sed applied to BOTH.
+# _ps_pair <var-a> <var-b> <brace style> [sed for both]: the PowerShell pair, into the fixture.
 _ps_pair() {
   mkdir -p "${fix}/windows/scripts"
   _ps_twin "$1" | sed "${4:-b}" > "${fix}/${P}"
@@ -88,14 +78,12 @@ _shared() { printf '%s\n' "${out}" | sed -nE 's/^  ([0-9]+) shared shingles.*/\1
 # Build a fixture holding only the PowerShell pair as an offender, run, tear down.
 _ps_verdict() { _fixture "${A} | ${B} | ${N} | ${WHY}"; _ps_pair "$@"; _verdict; }
 
-# A tree with the gate at its real depth, a.sh/b.sh holding a renamed copy of one
-# function, and the allow rows given as arguments (none = no allow file).
+# _fixture [allow-row...]: the gate at its real depth and one renamed function copy in a.sh/b.sh.
 _fixture() {
   fix="$(mktemp -d)"
   mkdir -p "${fix}/docs/scripts" "${fix}/linux/scripts"
   cp "${GATE}" "${fix}/docs/scripts/"
-  # gate_scope.py too: the gate takes --root since 2026-09-15 and imports it at
-  # module level, so a fixture without it fails with a traceback, not a verdict.
+  # The gate imports gate_scope.py at module level; without it the fixture tracebacks.
   cp "${SCRIPTS_DIR}/quality_allow.py" "${SCRIPTS_DIR}/gate_scope.py" "${fix}/linux/scripts/"
   _twin > "${fix}/${A}"
   _twin | sed 's/probe_widget/probe_gadget/' > "${fix}/${B}"
@@ -227,10 +215,7 @@ t_assert_contains "$(_allow)" "linux/Dockerfile.probe" "the other kind's row mus
 t_assert_contains "$(_allow)" "${A} | ${B} | ${N}" "and so must the kind it WAS given"
 rm -rf "${fix}"
 
-# The reference measurement every ps case compares against: one function, copied
-# and renamed, both copies written the same way. 50,862 lines of PowerShell were
-# scanned by no structural gate at all, which is what made the Build-Windows.ps1
-# and Resolve-BuildModule.ps1 families free to drift.
+# The reference measurement every ps case compares against: a renamed copy written the same way.
 t_case "PowerShell under windows/ is in scope: a renamed .psm1 copy is a copy"
 _ps_verdict '$WidgetStrict' '$GadgetStrict' same
 PS_N="$(_shared)"
@@ -249,11 +234,7 @@ _verdict --kind ps
 t_assert_eq "0" "${rc}" "and ps is a kind of its own"
 rm -rf "${fix}"
 
-# The next three all say the same thing in the only way that cannot go vacuous:
-# change one spelling, and the MEASUREMENT must not move. Asserting "still a
-# finding" proved nothing — a mis-read block is usually still a finding, just a
-# smaller one, and two of these tests passed with their guarantee removed until
-# they were written this way.
+# The measurement must not move: a mis-read block is usually still a finding, just a smaller one.
 t_case "the opening brace may sit on the next line: both spellings measure the same"
 _ps_verdict '$WidgetStrict' '$GadgetStrict' nextline
 t_assert_eq "${PS_N}" "$(_shared)" "a function header PowerShell accepts, the gate must too"

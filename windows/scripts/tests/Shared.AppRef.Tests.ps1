@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# Tests for Resolve-LatestVersionTag — the ls-remote tag filter/sort behind
-# Build-Buildkit.ps1's -LatestApp final-stage app-ref resolution.
+# Resolve-LatestVersionTag: the ls-remote tag filter and sort behind Build-Buildkit.ps1's -LatestApp.
 
 Describe 'Resolve-LatestVersionTag' {
 

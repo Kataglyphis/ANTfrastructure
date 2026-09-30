@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Parity/robustness suite for the consumer-facing linux/scripts/lib/ modules.
-# These are sourced STANDALONE by external repos, so every module must:
-#   (1) be double-source safe (re-source guard),
-#   (2) end up with info/warn/err defined (real logging.sh or fallbacks),
-#   (3) reach the REAL logging.sh, and own no private copy of the fallbacks.
-# docs/shared-script-libraries.md#the-logging-bootstrap
+# lib/ modules are sourced standalone by other repos; see docs/shared-script-libraries.md#the-logging-bootstrap
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -12,9 +7,7 @@ LIB_DIR="${TESTS_DIR}/../lib"
 
 for mod in "${LIB_DIR}"/*.sh; do
   name="$(basename "${mod}")"
-  # The agentic-* pair is one executable loop split over two files, not a
-  # source-library: agentic-engines.sh is a half that its own sourcer feeds.
-  # docs/agentic-loop-build-matrix.md#the-two-bash-files
+  # The agentic-* pair is one loop split over two files, not a library; see docs/agentic-loop-build-matrix.md#the-two-bash-files
   case "${name}" in agentic-*.sh) continue ;; esac
 
   t_case "${name}: sources cleanly and defines info/warn/err"
@@ -37,8 +30,7 @@ for mod in "${LIB_DIR}"/*.sh; do
 done
 
 t_case "every cd in lib/ is guarded — an unguarded cd runs the suite/app in the WRONG tree"
-# These libraries set no -e, so a bare `cd` that fails only prints to stderr and
-# the next command runs where the caller happened to be. docs/code-quality-gates.md
+# These libraries set no -e, so a failed bare `cd` runs the next command in the caller's dir; see docs/code-quality-gates.md
 _unguarded="$(grep -rnE '^[[:space:]]*cd [^|&]*$' "${LIB_DIR}" || true)"
 t_assert_eq "" "${_unguarded}" "guard each with || err/|| return"
 

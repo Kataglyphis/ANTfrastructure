@@ -1,13 +1,9 @@
-# The gateway: APISIX in front of the GenieX lanes (P1: the lab only, no UI yet).
-# Start it with scripts/serve-stack.sh, which renders and validates everything
-# this file mounts: linux/llm-stack/README.md § Gateway. Valid on its own and on
-# top of docker-compose.yml; P2 adds the Open WebUI rewiring here.
+# APISIX in front of the GenieX lanes; start it with scripts/serve-stack.sh, see linux/llm-stack/README.md § Gateway.
 services:
   apisix:
     # The only place the image is pinned; render_apisix.py --print-image reads it.
     image: docker.io/apache/apisix:3.18.0-debian@sha256:84e6b5e787e9f889ebff88161cb9a16599bafcffa236c6b54c7f779a0655940d
-    # Host networking: the lanes are on the host's 127.0.0.1, and config.yaml
-    # binds every listener to 127.0.0.1 itself (no ports: under host mode).
+    # The lanes listen on the host's 127.0.0.1; config.yaml binds every listener there itself.
     network_mode: host
     environment:
       APISIX_STAND_ALONE: "true"

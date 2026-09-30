@@ -1,6 +1,4 @@
-# Source-only helper -- do not execute directly.
-# cross-python.sh - Python cross-compilation helpers.
-# Sourced by cross-env.sh.
+# Python cross-compilation helpers, sourced by cross-env.sh.
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   echo "This script is meant to be sourced, not executed" >&2
@@ -108,15 +106,14 @@ cross_target_python_major_minor() {
   host_python_major_minor
 }
 
-# Helper: return the first existing path (checked with -d or -f) from a list.
+# _resolve_first_path <-d|-f> <path>...: prints the first that passes the test.
 _resolve_first_path() {
   local test_flag="${1:--d}"
   shift
   local candidate
   for candidate in "$@"; do
     [ -n "${candidate}" ] || continue
-    # test_flag is a dynamic operator (-d/-f); shellcheck can't parse it but it
-    # is a valid `[ -d PATH ]` / `[ -f PATH ]` at runtime.
+    # The linter cannot parse a dynamic test operator; it is valid at runtime.
     # shellcheck disable=SC1072,SC1073
     [ "${test_flag}" "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
   done

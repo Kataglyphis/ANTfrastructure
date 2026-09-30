@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# The hub cmake/ follows the TARGET a Windows cross build names through
-# CMAKE_SYSTEM_PROCESSOR (Get-CMakeCrossArgs): Hardening.cmake drops /CETCOMPAT,
-# which an ARM64 link refuses, and CPackCommon.cmake's arm64 runtime list drops the
-# ARM64EC vcruntime<ver>_1.dll. CPackCommon.cmake also installs a staged package
-# DLL directory. No compiler needed (MSVC faked, script mode, or a NONE project).
-# docs/windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml
+# The hub cmake/ follows a Windows cross build's CMAKE_SYSTEM_PROCESSOR. See docs/windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 # Windows form on Git Bash (pwd -W): a native cmake cannot read /c/... from a file.
 HUB_CMAKE="$(cd "${TESTS_DIR}/../../../cmake" && { pwd -W 2>/dev/null || pwd; })"
 
-# _cmake_project <body> -> a fresh directory whose CMakeLists.txt is a compiler-less project
-# preamble plus <body>. The caller configures it and removes it.
+# _cmake_project <body> -> a fresh compiler-less project plus <body>; the caller removes it.
 _cmake_project() {
   local dir
   dir="$(mktemp -d)"
@@ -48,8 +42,7 @@ for _arch in ARM64 arm64 aarch64; do
 done
 
 t_case "an arm64 package's VC++ runtime leaves out only the ARM64EC vcruntime<ver>_1.dll"
-# The arm64 redist folder holds that one as an x64-machine PE (measured in the arm64
-# bundle, 2026-09-25); everything else in it is arm64 and ships.
+# The arm64 redist ships that one as an x64-machine PE; everything else in it is arm64.
 _crt="C:/Redist/arm64/Microsoft.VC145.CRT"
 _script="$(mktemp)"
 cat > "${_script}" <<EOF

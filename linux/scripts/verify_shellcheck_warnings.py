@@ -1,28 +1,7 @@
 #!/usr/bin/env python3
-"""Ratchet `shellcheck -S warning` per (file, code) over exactly lint-shell.sh's file set.
-lint-shell.sh gates at -S error; the 177 warnings in 74 files were watched by nothing.
-Rows `file | SCxxxx | count | reason` in shellcheck-warnings.allow, four-way rule.
-lint-shell.sh owns both the scope (--list-files) and the pinned binary (--print-bin).
+"""Ratchet `shellcheck -S warning` per (file, code) over lint-shell.sh's file set (shellcheck-warnings.allow).
+
 docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings
-
-GRADING A CONSUMER. `--root` and `--allow` are the pair docs/scripts/verify_mutations.py
-already documents, and lint-shell.sh itself takes the first of them for the reason this
-gate inherits unchanged: a submodule checkout puts this script INSIDE the consumer, where
-a root derived from __file__ resolves to ANTfrastructure, so the ratchet grades the hub's own
-warnings and reports green over a tree nobody looked at.
-
-The scope stays lint-shell.sh's under a consumer root exactly as it is under this one --
-`--root` is handed straight to `--list-files` rather than re-derived here, so the ratchet
-cannot drift from the file set the lint gate checks. There that set is the consumer's
-TRACKED *.sh (git ls-files, never a walk: a vendored submodule is a gitlink, so the scope
-cannot swallow the hub's own scripts, and build output stays out), minus the excluded
-top-level directories -- a vendored subtree's warnings are its upstream's, and freezing
-them would put another project's debt in this repo's ratchet.
-
-The freeze file follows the root, because the interesting half of this gate is the allow
-file: every row is a reviewed verdict about one (file, code) pair, so a consumer's rows
-are the consumer's own review and belong in the consumer's diff, not inside the hub.
-`--files` still narrows whichever root is in play.
 """
 import argparse
 import datetime
@@ -54,8 +33,7 @@ HEADER = (
 
 
 def _bash():
-    # Windows' process search tries System32 before PATH, and System32\bash.exe is WSL's
-    # launcher, which cannot read a C:\ script path. PATH's bash is lint-shell.sh's.
+    # Windows searches System32 first, whose bash.exe is WSL's launcher and cannot read a C:\ path.
     return shutil.which("bash") or "bash"
 
 
@@ -67,22 +45,14 @@ def _native(path):
 
 
 def _lint(*args):
-    # cwd and the script path stay anchored to THIS repo whatever the graded root
-    # is: the shellcheck bootstrap, its cache and versions.env are the hub's.
+    # Anchored to this repo whatever the graded root: the shellcheck bootstrap and pins are the hub's.
     return subprocess.run([_bash(), LINT, *args], cwd=ROOT, capture_output=True, text=True)
 
 
 def resolve(args):
-    """The tree to grade, and the freeze file that belongs to it.
-
-    A named root must exist and be a git checkout: its file set is read from
-    `git ls-files`, and falling back to this repo would grade a tree nobody
-    named while printing a verdict about the one they did.
-    """
+    """(root, freeze file); a named root must be an existing git checkout, never silently this repo."""
     try:
-        # resolve_root, not abspath: `git rev-parse` succeeds in any
-        # SUBDIRECTORY of a checkout, so grading one anchors every allowlist
-        # key a level down without saying so.
+        # resolve_root, not abspath: a subdirectory root would silently shift every allowlist key.
         root = gate_scope.resolve_root(args.root, ROOT)
     except gate_scope.ScopeError as exc:
         return gate_scope.die(exc)
@@ -107,12 +77,7 @@ def _excluded(rel):
 
 
 def scope(root):
-    """lint-shell.sh's file set for `root`: it owns the scope, this gate asks it.
-
-    The EXCLUDE filter cannot touch this repo's own scope (every path in it is
-    under linux/), so it is applied unconditionally rather than as a second
-    code path that only a consumer ever runs.
-    """
+    """lint-shell.sh's file set for `root`, minus EXCLUDE (a no-op for this repo, so applied always)."""
     proc = _lint("--list-files") if root == ROOT else _lint("--root", root, "--list-files")
     if proc.returncode != 0:
         sys.stderr.write("ERROR: `lint-shell.sh --list-files` failed for %s:\n%s\n"
@@ -155,12 +120,7 @@ def warnings(shellcheck, files, root, only=None):
 
 
 def _rel(path, root=ROOT):
-    """A --files argument as a path relative to the graded root.
-
-    Under an explicit consumer root a relative name is the CONSUMER's, anchored
-    there rather than at the caller's cwd -- the rule lint-shell.sh states for
-    the same argument. This repo's own resolution keeps its cwd fallback.
-    """
+    """A --files argument relative to the graded root; under a consumer root a relative name is the consumer's."""
     if root != ROOT:
         return os.path.relpath(path if os.path.isabs(path)
                                else os.path.join(root, path), root)

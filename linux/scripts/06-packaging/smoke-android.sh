@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# smoke-android.sh
-# Validates the Android SDK/NDK installation inside the android image:
-#   - sdkmanager is functional
-#   - adb is present
-#   - NDK is installed and has a valid toolchain
-#   - ndk-build (or cmake) can produce a trivial object
-#
-# Usage:
-#   smoke-android.sh
+# Android SDK/NDK smoke: sdkmanager, adb, NDK clang compiling a trivial object, build tools. No arguments.
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/smoke-common.sh"
 
 : "${ANDROID_SDK_ROOT:=/opt/android-sdk}"
-# Fallback literals only — the image ENV (from versions.env via Dockerfile.android
-# ARGs) always wins. Keep them matching versions.env; they had drifted once.
+# Fallbacks only; the image ENV from versions.env wins. Keep them equal to versions.env.
 : "${ANDROID_NDK_VERSION:=29.0.14206865}"
 : "${ANDROID_API_LEVEL:=34}"
 : "${ANDROID_BUILD_TOOLS:=36.0.0}"
@@ -84,23 +75,15 @@ check_ndk() {
         local cc="${toolchain_dir}/bin/${target_arch}-linux-android${ANDROID_API_LEVEL}-clang"
         if [ -x "${cc}" ]; then
           pass "NDK clang for ${target_arch}: ${cc}"
-          # This file's own header (line 9) has promised a compile smoke since
-          # its creation; until 2026-08-08 it did not exist — everything above
-          # is presence-only. The NDK clang is an x86_64 HOST binary, so it
-          # executes on every branch; the emitted object is target-arch.
+          # The NDK clang is an x86_64 host binary, so it runs everywhere; the object is target-arch.
           local ndk_tmp ndk_machine ndk_want
           ndk_tmp="$(mktemp -d)"
           if printf 'int f(void){return 1;}\n' | "${cc}" -x c - -c -o "${ndk_tmp}/a.o" 2>/dev/null; then
             ndk_machine="$(smoke_elf_machine_of "${ndk_tmp}/a.o" || true)"
-            # The arch -> ELF-machine map is smoke-common's (which prefers
-            # 01-core/platform.sh when it is loaded); this file used to carry an
-            # 11th private copy of it as case globs. The loop keys are uname
-            # names, so normalize to OCI names first (aarch64 -> arm64, …).
+            # smoke-common's arch map takes OCI names; the loop keys are uname names.
             ndk_want="$(smoke_elf_machine_grep "$(smoke_host_arch "${target_arch}")" 2>/dev/null || true)"
             if [ -z "${ndk_want}" ]; then
-              # Never fall through to `case ... in *""*)`, which matches ANY
-              # string and would turn an unmapped arch into a silent pass —
-              # the exact fake-green class smoke-toolchain.sh already documents.
+              # Never reach `case ... in *""*)`: it matches anything and would pass silently.
               fail "NDK clang ${target_arch}: no ELF-machine mapping for this arch, object not verified"
             else
               case "${ndk_machine}" in
@@ -144,8 +127,7 @@ check_build_tools() {
   echo ""
 }
 
-# Every SDK platform the image ships. The build-tools check above reads only the
-# main pin, so an image without API 37 passed it (BACKLOG CON14).
+# Every SDK platform the image ships; the build-tools check reads only the main pin.
 check_platforms() {
   echo "--- SDK platforms ---"
   local level dir
@@ -191,8 +173,7 @@ check_opencv() {
   local opencv_prefix="${OPENCV_OUTPUT_DIR:-/opt/opencv5}"
   if [ -d "${opencv_prefix}" ]; then
     pass "OpenCV found at ${opencv_prefix}"
-    # LOG15: BUILD_JAVA=OFF (build-android.sh:57). If Java wrappers ARE present,
-    # the build wasted time+space on JNI bindings no consumer uses.
+    # Built with BUILD_JAVA=OFF: Java wrappers here are JNI bindings nobody uses.
     if find "${opencv_prefix}" -name "libopencv_java*.so" -type f 2>/dev/null | grep -q .; then
       fail "OpenCV Java wrappers FOUND (should be NO — build with -DBUILD_JAVA=OFF)"
     else
@@ -204,11 +185,7 @@ check_opencv() {
   echo ""
 }
 
-# The payload-off marker is READ, never re-derived. Deliberately a file test and
-# not an arch question: this script does not source platform.sh (smoke-common.sh
-# documents that), and sourcing it here would flip smoke_elf_machine_of /
-# smoke_host_arch away from their inline fallbacks inside check_ndk on the one
-# host where that code actually runs. android-sdk.sh owns the decision.
+# Read, never re-derived: android-sdk.sh owns it, and sourcing platform.sh here would change check_ndk's helpers.
 _android_payload_off_marker=/opt/android/.android-payload-off
 
 main() {

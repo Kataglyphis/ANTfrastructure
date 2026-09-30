@@ -21,8 +21,7 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-# Cross-lane python wheels (#133): scikit-build-core cannot cross-package, so this lane assembles
-# both wheels itself -- see docs/windows-refactor-backlog.md #133(c).
+# scikit-build-core cannot cross-package, so the cross lane assembles both python wheels itself.
 $tvmLeafModule = Join-Path $scriptAssetRoot 'modules\WindowsTvm.Common.psm1'
 if (-not (Test-Path $tvmLeafModule)) { throw "Required module not found: $tvmLeafModule -- the media-tvm RUN must mount the tvmmods stage (Dockerfile.media-builder)" }
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($tvmLeafModule)))) { Import-Module $tvmLeafModule }
@@ -132,8 +131,7 @@ function ConvertTo-TvmLlvmTargetString {
     return (@("$TargetsBuilt".Trim() -split '[\s;]+' | Where-Object { $_ }) -join ';')
 }
 
-# PATH's llvm-config, else a minimal LLVM build. On the spike a PATH one without AMDGPU counts as
-# absent: the toolchain's patched LLVM is AArch64;X86 only (Build-LlvmFromSource.ps1).
+# PATH's llvm-config, else a minimal LLVM; on the spike the toolchain's (no AMDGPU) counts as absent.
 function Get-TvmLlvmChoice {
     param([string]$PathLlvmConfig, [bool]$Rocm, [bool]$Cross, [Parameter(Mandatory)][scriptblock]$GetTargetsBuilt)
     if ($Cross) { return [pscustomobject]@{ BuildMinimal = $false; LlvmConfig = $null; Targets = ''; Why = 'cross lane: runtime-only, no LLVM' } }
@@ -161,29 +159,21 @@ function Get-TvmRocmFeatureMarker {
     )
 }
 
-# TVM_COMMIT wins over TVM_REF: v0.26.0 does not compile against LLVM 23.1.0
-# (Intrinsic::matchIntrinsicSignature + MatchIntrinsicTypes_* removed, ORC JIT
-# lambda signature changed, SubtargetSubTypeKV::Key -> key()). Upstream main
-# carries TVM_LLVM_VERSION >= 230 guards for all of it; no release does.
-# See versions.env § TVM_COMMIT for the full rationale.
+# TVM_COMMIT wins over TVM_REF: no TVM release compiles against LLVM 23.1; see versions.env § TVM_COMMIT.
 $TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_COMMIT', 'TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.26.0'
 
 Write-Host "=== TVM source build ($TvmVersion, Ninja+clang-cl) ==="
 
 Invoke-GitClone -RepoUrl 'https://github.com/apache/tvm.git' -Tag $TvmVersion -SourceDir $SourceDir -Recursive | Out-Null
 
-# TVM needs VsDevCmd for MSVC STL headers; the C++ build consumes no CPython, so the python blocks
-# below set up their own env instead of a full Initialize-ToolchainPythonEnvironment preamble here.
+# VsDevCmd for the MSVC STL headers; the python blocks below set up their own env.
 Enter-VsDevCmdEnvironment
 
 $buildDir = Join-Path $SourceDir 'build'
 $tvmInstallDir = Join-Path $InstallDir 'lib\tvm'
 
 $gpuEnv = Get-GpuEnvironment
-# #176 phase 2 (2026-09-20): CUDA is enabled on the cross lane too when the IMAGE carries
-# the arm64 payload -- the same positive signal ORT/GenAI/OpenCV use. TVM's legacy
-# FindCUDA hardcodes lib\x64 on WIN32, so the cross branch below passes the arm64 libs
-# explicitly plus the x64-hosted arm64 cl and --use-local-env.
+# CUDA on the cross lane only when the image carries the arm64 payload, the signal ORT, GenAI and OpenCV use.
 $tvmCross = Test-WindowsCrossTarget
 $tvmCudaUsable = $gpuEnv.HasCuda -and ((-not $tvmCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
 $useCuda = if ($tvmCudaUsable) { 'ON' } else { 'OFF' }
@@ -205,8 +195,7 @@ if ($tvmRocmPlan.HideRocmPath -and $env:ROCM_PATH) {
     Remove-Item Env:\ROCM_PATH
 }
 
-# cuBLAS ships inside the toolkit (no hint needed). cuDNN is a SEPARATE install, and TVM's legacy
-# cmake/utils/FindCUDA.cmake reads CUDA_CUDNN_LIBRARY -- the standard CUDNN_* vars are ignored.
+# cuDNN is a separate install, and TVM's legacy FindCUDA reads only CUDA_CUDNN_LIBRARY, not CUDNN_*.
 $useCublas = $useCuda
 $useCudnn  = 'OFF'
 $cudnnArgs = @()
@@ -236,8 +225,7 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     Write-Warning "TVM: Vulkan SDK NOT found (VULKAN_SDK='$vulkanSdk') - building WITHOUT the Vulkan runtime; base images bake it via scoop, so an OFF here usually means a broken image, not a policy choice (#47)."
 }
 
-# amd64: PATH's llvm-config (the patched toolchain), else a minimal LLVM from pinned source (#47,
-# docs/windows-build-invariants.md) -- also on the ROCm spike, for AMDGPU. Cross: no compiler (#116).
+# amd64: PATH's llvm-config, else a minimal LLVM from pinned source (also for AMDGPU on the spike); cross: no compiler.
 $tvmCross = Test-WindowsCrossTarget
 $llvmCmd = if ($tvmCross) { $null } else { Get-Command llvm-config.exe -ErrorAction SilentlyContinue }
 $pathLlvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
@@ -249,21 +237,14 @@ if ($tvmCross) {
 } elseif ($tvmLlvm.BuildMinimal) {
     $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.1'
     $llvmDevRoot = 'C:\temp\llvm-dev'
-    # Banner BEFORE the fetch: an unknown version throws inside Get-LlvmSourceTarball
-    # (the repo download policy -- never unpinned), and this line is the context that
-    # throw would otherwise lack. The pin table itself lives ONCE, in
-    # Get-LlvmSourceSha256 (WindowsSourceBuild.Common.psm1), shared with
-    # Build-LlvmFromSource.ps1; versions.env can still pre-seed the current version
-    # via LLVM_WINDOWS_SRC_SHA256 (#129).
+    # Before the fetch: this banner is the context an unpinned-version throw from Get-LlvmSourceTarball would lack.
     Write-Host "TVM: $($tvmLlvm.Why) - building a minimal LLVM $llvmDevVersion from source (backlog #47)"
     $llvmSrc = Get-LlvmSourceTarball -Version $llvmDevVersion -DestinationRoot $llvmDevRoot
-    # Keep the scratch tier lean; the tree is scrubbed post-build anyway. Guarded, not
-    # -ErrorAction'd: the helper leaves an already-extracted tree (and no tarball) alone.
+    # Guarded, not -ErrorAction'd: an already-extracted tree comes back without a tarball.
     if (Test-Path $llvmSrc.Tarball) { Remove-Item $llvmSrc.Tarball -Force }
     $llvmInstall = Join-Path $llvmDevRoot 'install'
     Write-Host "Building minimal LLVM ($($tvmLlvm.Targets), Release, /MD) - ~20-40 min cold, sccache-cached after"
-    # Build the arg list in a VARIABLE: `-ExtraArgs @(...) + (...)` in argument position does not
-    # concatenate -- the parser fed `+` to -Generator ("Could not create named generator +").
+    # A variable: `-ExtraArgs @(...) + (...)` in argument position hands `+` to the next parameter.
     $llvmCmakeArgs = @(
             # X86 for host codegen, NVPTX for the CUDA lane, AArch64 for #116; AMDGPU on the ROCm spike only.
             "-DLLVM_TARGETS_TO_BUILD=$($tvmLlvm.Targets)"
@@ -276,8 +257,7 @@ if ($tvmCross) {
             '-DLLVM_ENABLE_DIA_SDK=OFF'
             # RTTI on: TVM compiles its codegen TUs with RTTI; matching avoids typeinfo mismatches.
             '-DLLVM_ENABLE_RTTI=ON'
-            # Archiver appended below as a full :FILEPATH -- a bare -DCMAKE_AR=llvm-lib gets
-            # absolutized by LLVM's build to C:\llvm-lib and every static-lib step dies.
+            # Archiver appended below as a full :FILEPATH: LLVM absolutizes a bare llvm-lib to C:\llvm-lib.
         )
     $llvmCmakeArgs += Get-LlvmArchiverCmakeArg
     Invoke-CmakeConfigure `
@@ -310,8 +290,7 @@ if ($tvmRocmPlan.OnLane) {
 
 # Python OFF on the cross lane too: the tvm package drives tvm_compiler.dll, absent there.
 $pythonModule = if ($SkipPython -or $tvmCross) { 'OFF' } else { 'ON' }
-# Cross (#133): TVM_BUILD_PYTHON_MODULE stays OFF; tvm-ffi's own TVM_FFI_BUILD_PYTHON_MODULE builds
-# the Cython `core` extension against the TARGET import lib (#120 pattern, EXT_SUFFIX via the shim).
+# Cross: tvm-ffi's own Cython `core` builds against the target import lib instead.
 $tvmTargetPy = if ($tvmCross) { Get-TargetBuildPython } else { $null }
 $tvmCrossPython = [bool]($tvmCross -and -not $SkipPython -and $tvmTargetPy -and $tvmTargetPy.Available)
 if ($tvmCross -and -not $tvmCrossPython -and -not $SkipPython) {
@@ -330,8 +309,7 @@ if ($tvmCrossPython) {
 
 $cmakeExtra = @(
     "-DCMAKE_BUILD_TYPE=$BuildType"
-    # :STRING= and no embedded quotes -- bare quotes leak into the flag value. The suppressions cover
-    # upstream's own doxygen tags; count them with windows\scripts\diagnostics\Measure-BuildWarnings.ps1.
+    # :STRING= without embedded quotes, which would leak into the flag; Measure-BuildWarnings.ps1 counts the suppressions.
     "-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags)"
     '-DUSE_OPENCL=OFF'
     '-DUSE_MICRO=OFF'
@@ -347,10 +325,7 @@ $cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv -ForwardSlash
 $cmakeExtra += $cudnnArgs
 
 if ($useCuda -eq 'ON' -and $tvmCross) {
-    # TVM's FindCUDA searches ${CUDA_TOOLKIT_ROOT_DIR}/lib/x64 on WIN32 (upstream, 0.26),
-    # so every lib it would pick must be named explicitly for the arm64 target. The
-    # cache vars win over its find_library calls; a wrong path fails the LINK loudly
-    # rather than shipping an x64 lib in an arm64 DLL.
+    # TVM's FindCUDA searches lib/x64 on WIN32, so each arm64 lib is named; a wrong path fails the link loudly.
     $arm64Lib = Join-Path $gpuEnv.CudaRoot 'lib\arm64'
     $cmakeExtra += @(
         "-DCUDA_HOST_COMPILER=$((Get-NvccHostCompilerPath -Arch 'arm64') -replace '\\', '/')"
@@ -364,8 +339,7 @@ if ($useCuda -eq 'ON' -and $tvmCross) {
 
 if ($useVulkan -eq 'ON') {
     $cmakeExtra += "-DVulkan_INCLUDE_DIR=$(Join-Path $vulkanSdk 'Include')"
-    # Arch-aware: Lib on amd64, Lib-ARM64 on the cross lane (the x64 SDK's
-    # optional arm64 component; Test-Toolchain.ps1 asserts it is installed).
+    # Lib-ARM64 on the cross lane is an optional SDK component that Test-Toolchain.ps1 asserts.
     $vulkanLib = Join-Path $vulkanSdk (Get-VulkanLibDirName)
     if (Test-Path $vulkanLib) {
         $cmakeExtra += "-DVulkan_LIBRARY=$(Join-Path $vulkanLib 'vulkan-1.lib')"
@@ -374,18 +348,9 @@ if ($useVulkan -eq 'ON') {
 
 # CMAKE_AR: find llvm-lib on PATH -- use :FILEPATH (matches OpenCV/LiteRT form) for consistency.
 $cmakeExtra += Get-LlvmArchiverCmakeArg
-# NO QNN FLAGS HERE (corrected 2026-08-31, backlog #154). This block used to pass
-# -DUSE_QNN / -DQNN_HOME and print "QNN target runtime ON". TVM has no such options:
-# CMake reported both "not used by the project" and the build was green because an
-# undeclared -D is silently dropped. TVM's own `qnn` is Quantized Neural Network, an
-# op dialect with nothing to do with Qualcomm. Its real Snapdragon path is
-# USE_HEXAGON + the HEXAGON SDK (a different vendor package from QAIRT), is
-# Linux-host/Android-target by construction, and needs USE_LLVM, which this lane
-# sets OFF. The QAIRT runtime is still staged beside the install below — it is
-# loaded by the ONNX Runtime QNN EP, not by TVM.
+# No QNN flags: TVM's `qnn` is a quantization dialect, and the QAIRT runtime staged below serves ORT's QNN EP.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
-# (#133) NO python knobs here: tvm-ffi's CMakeLists `return()`s as a subproject, so
-# TVM_FFI_BUILD_PYTHON_MODULE is never read. The Cython module gets its own configure below.
+# No python knobs: tvm-ffi's CMakeLists returns early as a subproject, so its Cython module is configured separately.
 
 $cmakeExtra += @(Get-TvmRocmCmakeArgs -Plan $tvmRocmPlan)
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra | Out-Null
@@ -395,8 +360,7 @@ Write-Host 'Building TVM (this may take 30-60 minutes)...'
 $buildLog = Get-PersistentBuildLogPath -Name 'tvm-build.log' -FallbackDir $buildDir
 # MemGBPerJob 2, not 4 (backlog #74) -- LLVM-class TUs, same as the sibling build-iree.
 if ($tvmCross) {
-    # Runtime-only (#116): build the tvm_runtime target graph and stage by hand -- `cmake --install`
-    # would install tvm_compiler, never built here. Layout mirrors amd64 so TVM_LIBRARY_PATH holds.
+    # Staged by hand in the amd64 layout: `cmake --install` would install the unbuilt tvm_compiler.
     Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Targets @('tvm_runtime')
     $tvmLibOut = Join-Path $tvmInstallDir 'lib'
     $tvmIncOut = Join-Path $tvmInstallDir 'include'
@@ -404,8 +368,7 @@ if ($tvmCross) {
     $runtimeBins = @(Get-ChildItem -Path $buildDir -Recurse -Include 'tvm_runtime*.dll', 'tvm_runtime*.lib', 'tvm_ffi*.dll', 'tvm_ffi*.lib' -File)
     if (-not ($runtimeBins | Where-Object { $_.Name -eq 'tvm_runtime.dll' })) { throw "TVM cross: tvm_runtime.dll was not produced under $buildDir" }
     foreach ($b in $runtimeBins) { Copy-Item $b.FullName -Destination $tvmLibOut -Force }
-    # 0.26 layout (docs/windows-cross-builds.md): TVM's include\tvm and the FFI split's are MERGED --
-    # copy CONTENTS, or PowerShell nests a second tvm\; dlpack lives in the tvm-ffi submodule.
+    # TVM's and tvm-ffi's include\tvm merge: copy contents, or PowerShell nests a second tvm\.
     $dlpackHeader = Get-ChildItem -Path (Join-Path $SourceDir '3rdparty\tvm-ffi') -Recurse -Filter 'dlpack.h' -File -ErrorAction SilentlyContinue | Select-Object -First 1
     $headerTrees = @(
         @{ Src = (Join-Path $SourceDir 'include\tvm');                 Dest = 'tvm' }
@@ -423,25 +386,21 @@ if ($tvmCross) {
     foreach ($mustExist in @('tvm\runtime\c_backend_api.h', 'tvm\runtime\device_api.h', 'tvm\ffi\c_api.h', 'dlpack\dlpack.h')) {
         if (-not (Test-Path (Join-Path $tvmIncOut $mustExist))) { throw "TVM cross: staged include tree is missing $mustExist -- the header copy above did not produce a usable runtime SDK" }
     }
-    # Static gate (the import gate is OFF on this lane): a host-arch DLL from the wrong build dir
-    # would otherwise ship and fail only at load time on the target.
+    # The import gate is off here, so a host-arch DLL would otherwise fail only at load time on the target.
     $tvmDlls = Assert-DirectoryTargetArch -Path $tvmLibOut -Include @('*.dll') -MinCount 2 -Context 'TVM cross'
     Write-Host ('TVM cross: staged {0} runtime binaries ({1} DLLs, all PE machine 0x{2:X4}) into {3}; compiler ABSENT by design (#116)' -f $runtimeBins.Count, $tvmDlls, (Get-PeMachineType), $tvmLibOut)
     # The merge fans in C:\runtime\wheels from this branch unconditionally.
     $wheelStore = Join-Path (Split-Path $InstallDir -Parent) 'runtime\wheels'
     New-Item -Path $wheelStore -ItemType Directory -Force | Out-Null
     if ($tvmCrossPython) {
-        # (#133) Two wheels assembled from the package sources + this pass's binaries; each layout is
-        # what the package looks for: core.pyd beside tvm_ffi\, DLLs under <pkg>\lib (libinfo), _version.py.
+        # Assembled in the layout each package's libinfo expects: core.pyd beside tvm_ffi\, DLLs under <pkg>\lib.
         Switch-BuildPhase '5b. runtime python wheels (cross, assembled)'
         $tvmFfiSrc = Join-Path $SourceDir '3rdparty\tvm-ffi'
-        # tvm-ffi's Cython module exists only when tvm-ffi is the ROOT project, hence its own
-        # configure. The wheel ships THIS build's tvm_ffi.dll -- the one core.pyd linked against.
+        # The Cython module exists only with tvm-ffi as root; the wheel ships the tvm_ffi.dll core.pyd linked against.
         $ffiPyBuild = Join-Path $buildDir 'tvm-ffi-py'
         $ffiPyArgs = @(
             "-DCMAKE_BUILD_TYPE=$BuildType"
-            # /EHsc explicitly: an explicit CMAKE_CXX_FLAGS replaces CMake's MSVC init flags, and
-            # tvm-ffi as a root project does not add it back ("throw with exceptions disabled").
+            # An explicit CMAKE_CXX_FLAGS replaces CMake's MSVC init flags, /EHsc included.
             "-DCMAKE_CXX_FLAGS:STRING=/EHsc -Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags)"
             '-DTVM_FFI_BUILD_PYTHON_MODULE=ON'
             '-DTVM_FFI_BUILD_TESTS=OFF'
@@ -451,11 +410,9 @@ if ($tvmCross) {
         $corePyd = @(Get-ChildItem -Path $ffiPyBuild -Recurse -Filter 'core*.pyd' -File)
         if ($corePyd.Count -ne 1) { throw "TVM cross: expected exactly one tvm_ffi core*.pyd under $ffiPyBuild, found $($corePyd.Count): $(($corePyd | ForEach-Object Name) -join ', ')" }
         $wantExt = Get-PythonWheelTag
-        # FindPython reports no SOABI for CPython on Windows, so WITH_SOABI yields a bare `core.pyd`
-        # -- a valid import name. Only a HOST-tagged name is wrong; the PE check below is the gate.
+        # FindPython has no SOABI on Windows, so a bare core.pyd is valid; only a host-tagged name is wrong.
         if ($corePyd[0].Name -match '\.cp\d+-win_(amd64|arm64)\.pyd$' -and $corePyd[0].Name -notmatch [regex]::Escape($wantExt)) { throw "TVM cross: tvm_ffi core module is named $($corePyd[0].Name) -- a HOST EXT_SUFFIX tag, the target interpreter would never import it (expected '$wantExt' or a bare core.pyd)" }
-        # tvm_ffi_testing.dll too: core.pyd imports it (the merge's arch gate walks those imports),
-        # and upstream's wheel ships it beside tvm_ffi.dll for the same reason.
+        # tvm_ffi_testing.dll too: core.pyd imports it, and upstream's wheel ships it.
         $tvmFfiLibs = @(Get-ChildItem -Path $ffiPyBuild -Recurse -File | Where-Object { $_.Name -in 'tvm_ffi.dll', 'tvm_ffi.lib', 'tvm_ffi_testing.dll' } | Group-Object Name | ForEach-Object { $_.Group | Select-Object -First 1 })
         foreach ($must in 'tvm_ffi.dll', 'tvm_ffi_testing.dll') {
             if (-not ($tvmFfiLibs | Where-Object { $_.Name -eq $must })) { throw "TVM cross: $must not produced by the standalone tvm-ffi build under $ffiPyBuild" }
@@ -519,14 +476,12 @@ if ($tvmCross) {
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
-# The FFI split builds tvm_ffi as a SEPARATE shared lib that `cmake --install` does not stage, so
-# tvm_runtime.dll fails to load (0xC0000135) in the final image.
+# `cmake --install` misses the FFI split's tvm_ffi.dll, and tvm_runtime.dll then fails with 0xC0000135.
 Copy-SidecarDll -SidecarName 'tvm_ffi.dll' -SearchDir $buildDir `
     -BesidePrimary 'tvm_runtime.dll' -InstallDir $tvmInstallDir `
     -Reason 'tvm_runtime.dll may fail to load at runtime (cmake --install missed the FFI shared lib)'
 
-# TVM packages via scikit-build-core at the REPO ROOT (no cmake-generated build\python dir any
-# more). Reuse the ninja dir so the wheel packs existing objects; a fresh tree is the ~25 min fallback.
+# scikit-build-core at the repo root reuses the ninja dir; a fresh tree is the slow fallback.
 if ($pythonModule -eq 'ON') {
     $py = Get-SourceBuildPython
     # The wheel is EXPECTED here: only an explicit -SkipPython may drop it, never a missing interpreter.
@@ -539,13 +494,9 @@ if ($pythonModule -eq 'ON') {
     Initialize-PythonPlatformTag | Out-Null
     # cython: tvm_ffi's core.pyx is transpiled by a CMake step shelling out to `python -m cython`.
     Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'scikit-build-core', 'setuptools-scm', 'wheel', 'cython')
-    # The DNS-workaround clone may lack git tags -- pin the scm version. Save/restore: stages run
-    # in-process and a leaked pretend-version would mis-stamp the next stage's build.
+    # The clone may lack tags, so pin the scm version; restored after, since stages run in-process.
     $prevScmPretendVersion = $env:SETUPTOOLS_SCM_PRETEND_VERSION
-    # When TVM_COMMIT (a commit hash) wins over TVM_REF (a tag), the pretend
-    # version must still be the TAG's version (e.g. 0.26.0), not the hash —
-    # setuptools_scm would otherwise generate an InvalidVersion crash in
-    # packaging.version (a 40-char hex string is not PEP 440).
+    # A commit hash is not PEP 440, so the pretend version falls back to TVM_REF's tag.
     $scmVersion = $TvmVersion
     if ($scmVersion -match '^[0-9a-f]{7,40}$') {
         $tagFallback = Get-SourceBuildVersion -EnvironmentVariables @('TVM_REF') -DefaultValue 'v0.26.0'
@@ -566,13 +517,10 @@ if ($pythonModule -eq 'ON') {
         if ($null -ne $prevScmPretendVersion) { $env:SETUPTOOLS_SCM_PRETEND_VERSION = $prevScmPretendVersion }
         else { Remove-Item Env:\SETUPTOOLS_SCM_PRETEND_VERSION -ErrorAction SilentlyContinue }
     }
-    # Build tvm_ffi from the VENDORED submodule, never PyPI: TVM vendors an unreleased tvm-ffi, so
-    # the PyPI wheel is ABI-skewed against our tvm_runtime.dll (WinError 127; item 37 in
-    # docs/windows-backlog-archive-2026-08-11.md). The tvm wheel then installs --no-deps.
+    # tvm_ffi from the vendored submodule: PyPI's is ABI-skewed against our tvm_runtime.dll (WinError 127).
     $tvmFfiSrc = Join-Path $SourceDir '3rdparty\tvm-ffi'
     if (Test-Path (Join-Path $tvmFfiSrc 'pyproject.toml')) {
-        # scikit-build-core re-runs CMake FindPython in a subprocess; it reads Include\pyconfig.h,
-        # which in-tree Windows CPython keeps only at PC\ -- stage it (same fix opencv/iree/genai use).
+        # FindPython reads Include\pyconfig.h, which in-tree Windows CPython keeps only at PC\.
         Copy-CpythonPyConfigHeader
         Write-Host "Building + installing tvm_ffi from vendored source ($tvmFfiSrc)..."
         Invoke-CpythonPip -Python $py -Arguments @('install', '--no-build-isolation', '--force-reinstall', '--no-deps', $tvmFfiSrc)
@@ -581,8 +529,7 @@ if ($pythonModule -eq 'ON') {
     }
     $staged = @(Save-PythonWheel -SourceDir $wheelOut -WheelDir 'C:\runtime\wheels' -Required)
     Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--no-deps', '--only-binary', ':all:', $staged[0])
-    # --no-deps above starves the pure-python runtime deps, so install them here: typing_extensions
-    # is a hard import in tvm_ffi, the rest are best-effort (--only-binary blocks sdist builds).
+    # --no-deps starves the runtime deps: typing_extensions is a hard import, the rest best-effort.
     Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'typing_extensions')
     Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', 'ml_dtypes', 'cloudpickle', 'psutil') -Optional
     Test-PythonImport -Python $py -ModuleName 'tvm'

@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# lint-env-knobs.sh — A1: every `${VAR:-default}` knob consumed in linux/scripts
-# needs an owner: a .env file a build stage sources, a Dockerfile ARG/ENV, a script
-# assignment in command position, or a row in lint-env-knobs.allow. Unowned knobs are
-# advisory unless KNOB_GATE=1; a STALE allow row (knob consumed nowhere) always fails.
-# docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
+# Every ${VAR:-} knob needs an owner; a stale allow row always fails. docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
 set -uo pipefail
 export LC_ALL=C
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPTS="${REPO_ROOT}/linux/scripts"
 ALLOW="${SCRIPTS}/lint-env-knobs.allow"
-# The .env files a build stage SOURCES, so their keys are real declarations.
-# 04-runtime/runtime-paths.env is reference data for verify-runtime-paths.sh and
-# is sourced by no stage, so it owns nothing.
+# Only .env files a stage sources declare keys; runtime-paths.env is reference data.
 ENV_OWNER_FILES=("${SCRIPTS}/01-core/versions.env" "${SCRIPTS}"/03-media/core/arch-flags-*.env)
 
 echo "=== env-knob registry gate (A1; unowned advisory unless KNOB_GATE=1, stale always fails) ==="
@@ -20,12 +14,7 @@ echo "=== env-knob registry gate (A1; unowned advisory unless KNOB_GATE=1, stale
 _tmp="$(mktemp -d)"
 trap 'rm -rf "${_tmp}"' EXIT
 
-# ONE walker for both passes over linux/scripts/*.sh. It tracks single quotes,
-# double quotes, $( ) and heredoc bodies so a `#` only ends the line when it
-# really opens a comment. Default mode prints the ASSIGNMENTS in command
-# position (quoted text and heredoc bodies own nothing); MODE=prefix prints the
-# raw line up to that comment, which is what a knob READER needs -- a flat sed
-# cut at ` #` loses every reader to the right of a hash inside a string.
+# Quote- and heredoc-aware: a flat cut at " #" loses every reader right of a # inside a string.
 _KNOB_AWK='
 BEGIN { SQ = "\047" }
 FNR == 1 { nhd = 0 }
@@ -80,9 +69,7 @@ function cmdpos(pre,   w) {
   return cmdpos(substr(pre, 1, length(pre) - length(w)))
 }'
 
-# Line-oriented scan of linux/scripts/*.sh: $1 selects lines, $2 extracts. The one
-# walker drops both comment forms and backslash-escaped \$, so neither prose nor
-# literal output text is ever evidence of anything.
+# <select> <extract>; comments and escaped \$ are dropped, so prose is never evidence.
 _scan() {
   grep -rhE "$1" "${SCRIPTS}" --include='*.sh' 2>/dev/null \
   | awk -v MODE=prefix "${_KNOB_AWK}" \
@@ -90,22 +77,18 @@ _scan() {
   | grep -oE "$2"
 }
 
-# 1) CONSUMED knobs: ${VAR:-...} readers. The selector is deliberately loose;
-#    the EXTRACT regex is the promise — [A-Z] first bars _-prefixed privates.
+# 1) Consumed knobs: a loose selector; the extract regex's leading [A-Z] bars _-prefixed privates.
 _scan '\$\{[A-Za-z_][A-Za-z0-9_]*:-' '\$\{[A-Z][A-Z0-9_]{2,}:-' \
   | sed -E 's/^\$\{//; s/:-$//' | LC_ALL=C sort -u \
   | grep -vE '^(BASH_SOURCE|BASH_REMATCH|HOME|PATH|PWD|OLDPWD|HOSTNAME|OSTYPE|EUID|UID|USER|SHELL|LANG|LC_ALL|TERM|TMPDIR|IFS|PPID|RANDOM|SECONDS|LINENO|FUNCNAME|COLUMNS|LINES|XDG_[A-Z_]+)$' \
   > "${_tmp}/consumed"
 
-# 2) OWNERS
-#    (a) keys declared in the sourced .env files
+# 2) Owners: (a) keys declared in the sourced .env files
 sed -nE 's/^([A-Z][A-Z0-9_]+)=.*/\1/p' "${ENV_OWNER_FILES[@]}" 2>/dev/null | LC_ALL=C sort -u > "${_tmp}/own_env"
 #    (b) Dockerfile ARG/ENV declarations
 grep -rhoE '^\s*(ARG|ENV)\s+[A-Z][A-Z0-9_]+' "${REPO_ROOT}"/linux/Dockerfile* 2>/dev/null \
   | awk '{print $2}' | LC_ALL=C sort -u > "${_tmp}/own_dockerfile"
-#    (c) script-side assignments in COMMAND position, plus the self-defaulting
-#        : "${VAR:=...}" form. Quoted text, comments and heredoc bodies are not
-#        code, so a NAME=value printed in a message owns nothing.
+#    (c) command-position assignments and : "${VAR:=...}"; a NAME=value in a message owns nothing
 { find "${SCRIPTS}" -name '*.sh' -print0 | LC_ALL=C sort -z | xargs -0 -r awk "${_KNOB_AWK}"
   _scan ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' | grep -oE '[A-Z][A-Z0-9_]{2,}'
 } | LC_ALL=C sort -u > "${_tmp}/own_scripts"

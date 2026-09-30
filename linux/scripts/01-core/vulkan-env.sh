@@ -1,27 +1,9 @@
 #!/usr/bin/env bash
-# vulkan-env.sh - locate and source a Vulkan SDK's setup-env.sh.
-#
-# One home for a resolver that had two copies with OPPOSITE miss contracts, so
-# the contract is now per call, not per copy:
-#   strict=1  search only the caller's prefix, return 1 on a miss, stay SILENT
-#             (some callers capture stdout).
-#   strict=0  also sweep /opt/vulkan and ~/vulkan, fall back to glslc on PATH,
-#             then warn and return 0. The default.
-#
-# Strictness is POSITIONAL (default ${VULKAN_ENV_STRICT:-0}), not env-only: the
-# image-side callers must keep `return 1` regardless of a stray export.
-#
-# Dependency-free on purpose -- no set -e/-u at file scope, no downloads.sh -- so
-# a dev launcher can source it for one function without the SDK installer's
-# shell options.
-#
-# vulkan_env_find_setup_script [prefix] [include_default_roots]  -> path, or 1
-# vulkan_env_source [prefix] [sanitize_mode] [strict]            -> resolve+source
+# Vulkan setup-env.sh resolver: strict=1 stays silent and returns 1 on a miss; strict=0 sweeps more roots and warns.
 [ -n "${_VULKAN_ENV_SH_LOADED:-}" ] && return 0
 _VULKAN_ENV_SH_LOADED=1
 
-# Default install location - same default 02-toolchain/vulkan.sh uses, repeated
-# here so this module never depends on that file being loaded first.
+# Same default as 02-toolchain/vulkan.sh, repeated so this module never needs it loaded.
 _vulkan_env_default_prefix() {
   printf '%s' "${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 }
@@ -42,14 +24,7 @@ _vulkan_env_warn() {
   fi
 }
 
-# Fills the _VULKAN_ENV_ROOTS array with the SDK search roots in priority order:
-# the caller's prefix first, then - only when $2 is 1 - the two extra roots the
-# launcher copy hardcoded. The extra roots are OFF for strict callers on
-# purpose: for them an explicit prefix is an instruction ("is there an SDK
-# *here*?"), and silently answering with an SDK from somewhere else would break
-# the `return 1` gate they rely on. A global array (rather than a $(...)
-# capture) keeps paths with spaces intact and avoids a subshell in a helper that
-# runs on every build script's startup.
+# Strict callers get only their prefix: an SDK found elsewhere would defeat their return-1 gate.
 _vulkan_env_collect_roots() {
   local prefix="$1"
   local include_default_roots="${2:-1}"
@@ -75,8 +50,7 @@ vulkan_env_find_setup_script() {
   local include_default_roots="${2:-1}"
   local root candidate
 
-  # An explicit override wins over every probe (set by lib/cmake-build.sh,
-  # directly or via CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT).
+  # An explicit override (set by lib/cmake-build.sh) wins over every probe.
   if [ -n "${VULKAN_SETUP_SCRIPT:-}" ] && [ -f "${VULKAN_SETUP_SCRIPT}" ]; then
     printf '%s' "${VULKAN_SETUP_SCRIPT}"
     return 0
@@ -92,8 +66,7 @@ vulkan_env_find_setup_script() {
       fi
     done
 
-    # Also accept SDKs installed into a subdirectory (arch folder), e.g.
-    # /opt/vulkan/<version>/x86_64/setup-env.sh
+    # Also accept an arch subdirectory: <version>/x86_64/setup-env.sh.
     for root in "${_VULKAN_ENV_ROOTS[@]}"; do
       for candidate in "${root}/${VULKAN_VERSION}"/*/setup-env.sh; do
         [ -r "${candidate}" ] || continue
@@ -108,8 +81,7 @@ vulkan_env_find_setup_script() {
     return 0
   fi
 
-  # Fallback: the first setup-env.sh found under any search root
-  # (e.g. /opt/vulkan/*/setup-env.sh or ~/vulkan/*/setup-env.sh).
+  # Fallback: the first setup-env.sh under any search root.
   for root in "${_VULKAN_ENV_ROOTS[@]}"; do
     for candidate in "${root}"/*/setup-env.sh; do
       [ -r "${candidate}" ] || continue
@@ -128,24 +100,17 @@ vulkan_env_source() {
   local setup_path=""
   local include_default_roots=1
 
-  # Strict callers stay scoped to the prefix they passed (see
-  # _vulkan_env_collect_roots); launchers sweep /opt/vulkan and ~/vulkan too.
+  # Strict callers stay scoped to their prefix; launchers sweep /opt/vulkan and ~/vulkan too.
   [ "${strict}" = "1" ] && include_default_roots=0
 
   setup_path="$(vulkan_env_find_setup_script "${prefix}" "${include_default_roots}")" || setup_path=""
 
   if [ -n "${setup_path}" ]; then
-    # Strict callers redirect stdout/stderr away (or capture stdout); keep the
-    # informational line for the launcher contract only.
+    # Strict callers capture stdout, so only launchers get the info line.
     [ "${strict}" = "1" ] || _vulkan_env_log "Sourcing Vulkan env from ${setup_path}"
     # setup-env.sh may inspect $1/$2, so clear this helper's function args first.
     set --
-    # VENDOR SCRIPT under nounset: LunarG's setup-env.sh reads $1 UNGUARDED
-    # (line 14 in 1.4.357.0). With the args just cleared and a strict-mode
-    # caller (tvm.sh runs set -euo pipefail), that is a guaranteed
-    # "$1: unbound variable" abort — it killed the sdk stage's TVM step.
-    # Source vendor code with nounset suspended, restore afterwards (same
-    # pattern as sourcing profile.d or a venv activate).
+    # LunarG's setup-env.sh reads $1 unguarded, so source it with nounset off and restore it after.
     local _vke_had_u=0
     case $- in *u*) _vke_had_u=1; set +u ;; esac
     # shellcheck disable=SC1090,SC1091
@@ -153,9 +118,7 @@ vulkan_env_source() {
     [ "${_vke_had_u}" = "1" ] && set -u
     case "${sanitize_mode}" in
       sanitize-libs)
-        # sanitize_vulkan_sdk_env lives in 02-toolchain/vulkan.sh. This module
-        # stays free of that dependency and only sanitizes when the installer
-        # module is loaded too (which is the case for every strict caller).
+        # sanitize_vulkan_sdk_env lives in 02-toolchain/vulkan.sh; sanitize only when it is loaded.
         if declare -F sanitize_vulkan_sdk_env >/dev/null 2>&1; then
           sanitize_vulkan_sdk_env "${prefix}/"
         fi

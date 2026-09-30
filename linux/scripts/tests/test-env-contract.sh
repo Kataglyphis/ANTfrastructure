@@ -1,29 +1,12 @@
 #!/usr/bin/env bash
-# Env-override contract for the runtime lane (backlog 2026-08-11 XC4 class).
-#
-# runtime_shared_usage_env_overrides DOCUMENTS operator env overrides; nothing
-# machine-checked that a documented name is actually CONSUMED. XC4 found the
-# live instance (since wired): ONNX_PACKAGE / PYTORCH_EXTRA were advertised,
-# forwarded by nothing, and Dockerfile.torch baked fixed values — the documented
-# GPU path silently built a CPU venv, and smoke-torch-venv validates the BAKED
-# env so it could not catch it. Contract enforced here: every ALL-CAPS name in the
-# usage-overrides block must be referenced OUTSIDE that block somewhere in the
-# runtime lane (forwarded as a build-arg or consumed host-side).
-#
-# KNOWN_DEAD carries any open documented-but-dead names so the suite ships
-# green while a fix is pending; a guard fails the suite the moment an entry
-# becomes live without being removed here (the Windows PinParity [pend]
-# pattern).
+# Every override runtime_shared_usage_env_overrides documents must be consumed somewhere in the runtime lane.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 CORE="${TESTS_DIR}/../01-core"
 RBF="${CORE}/runtime-build-fns.sh"
 
-# backlog XC4 CLOSED 2026-08-12: ONNX_PACKAGE / PYTORCH_EXTRA are now forwarded
-# by append_wrapper_build_args and consumed as ARGs in Dockerfile.torch; the
-# dead TORCH_DOCKERFILE_PATH doc line was removed (the torch build consumes
-# WRAPPER_DOCKERFILE_PATH). Add new entries here only WITH a pending fix.
+# Documented-but-dead names with a pending fix; the self-retiring guard fails once one is consumed.
 KNOWN_DEAD=()
 
 t_case "runtime-build-fns.sh exists and parses"
@@ -37,11 +20,7 @@ _doc_vars="$(awk '/runtime_shared_usage_env_overrides\(\)/,/^}/' "${RBF}" \
 t_case "usage-overrides block found and non-trivial"
 t_assert_ok test "$(printf '%s\n' "${_doc_vars}" | wc -l)" -ge 5
 
-# Consumption surface: ALL of 01-core + the runtime entry scripts, minus the
-# usage heredoc itself. Wide on purpose — overrides are legitimately consumed
-# by siblings (cross-stage-build forwards the mirror/accelerator vars into the
-# helper invocation, context-management consumes RUNTIME_CONTEXT_ROOT, …);
-# only a name referenced NOWHERE is the XC4 defect.
+# Wide on purpose: siblings legitimately consume overrides, so only a name referenced nowhere is a defect.
 _surface="$(mktemp)"
 {
   awk '/runtime_shared_usage_env_overrides\(\)/,/^}/ {next} {print}' "${RBF}"

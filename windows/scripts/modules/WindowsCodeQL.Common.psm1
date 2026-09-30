@@ -1,30 +1,14 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# NOTE (downstream consumers -- do NOT remove as "dead code"): this module has no
-# callers inside THIS repo, but OmniAccelerANT's
-# scripts/windows/Build-Windows.ps1 imports it from its ANTfrastructure submodule at
-# third_party/ANTfrastructure/windows/scripts/modules/. It was deleted
-# once in 5be9b1e and restored (2026-07-15) -- grep known consumers before any
-# future sweep of windows/scripts/modules/.
+# Consumed by OmniAccelerANT's Build-Windows.ps1 with no in-repo caller: see docs/consumer-inventory.md § Why a grep was not enough
 
 Set-StrictMode -Version Latest
 
-# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, Invoke-DownloadWithRetry, etc.)
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-# Guarded, WITHOUT -Force (repo-wide nested-import rule, 2026-08-04): a forced
-# nested re-import rebinds the dependency into THIS module's private scope and
-# unloads the caller's top-level import — the PS module-scoping trap that broke
-# the BuildDriver test suite and forced build-gstreamer's import-Shared-twice
-# workaround. Trade-off (accepted): a long-lived dev session that edits Shared
-# must Remove-Module/reimport manually; containers always start fresh.
+# Guarded, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
-# Logging/build primitives (Write-BuildLog*, Write-BuildLogWarning/Error/Success)
-# come from the sibling WindowsBuild.Common module; without this import a
-# standalone consumer of this module hits CommandNotFound at runtime. Guarded,
-# WITHOUT -Force, for the same nested-import rule as above.
 if (-not (Get-Module -Name 'WindowsBuild.Common')) {
     Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
 }
@@ -49,12 +33,7 @@ function Get-ForwardSwitchValue {
     return [bool]$value
 }
 
-# The `codeql database create` argv, apart from the executable. Pure, so a suite can
-# hold it without the CLI (Invoke-BuildCodeQL downloads and runs a real codeql.exe).
-# -CodeScanningConfig is the scoping seam: a code-scanning config file (paths-ignore,
-# query filters) that travels inside the database to `database analyze`. It scopes
-# the ANALYSIS, not extraction -- a built language's extractor still reads whatever
-# the build compiles.
+# Pure, so tests need no CLI; -CodeScanningConfig scopes the analysis, not what the extractor reads.
 function Get-CodeQLDatabaseCreateArgs {
     param(
         [Parameter(Mandatory)]
@@ -79,8 +58,7 @@ function Get-CodeQLDatabaseCreateArgs {
         "--source-root=$SourceRoot"
     )
     if (-not [string]::IsNullOrWhiteSpace($CodeScanningConfig)) {
-        # A named config that is not there must fail, not scan unscoped: the whole
-        # point of passing one is to keep vendored trees out of the results.
+        # A missing named config must fail rather than scan unscoped, vendored trees included.
         if (-not (Test-Path -LiteralPath $CodeScanningConfig -PathType Leaf)) {
             throw "CodeQL code-scanning config not found: $CodeScanningConfig"
         }
@@ -103,8 +81,7 @@ function Invoke-BuildCodeQL {
         [Parameter(Mandatory)]
         [string]$BuildScriptPath,
         [string[]]$Languages = @('cpp', 'rust'),
-        # Optional code-scanning config (see Get-CodeQLDatabaseCreateArgs). Empty keeps
-        # the previous, unscoped behaviour.
+        # Optional code-scanning config (see Get-CodeQLDatabaseCreateArgs); empty scans unscoped.
         [string]$CodeScanningConfig = ''
     )
 
@@ -116,10 +93,7 @@ function Invoke-BuildCodeQL {
     Write-BuildLog -Context $Context -Message "CodeQL cleanup enabled: $cleanCodeQLDb"
     Write-BuildLog -Context $Context -Message "CodeQL download enabled: $codeQLDownload"
 
-    # Optional version pin via $env:CODEQL_VERSION (a codeql-cli-binaries
-    # release tag, e.g. 'v2.18.4'); default keeps the previous latest-release
-    # behavior. Deliberately NOT a versions.env key - that file has its own
-    # process - just an overridable seam.
+    # $env:CODEQL_VERSION pins a release tag (e.g. 'v2.18.4'), deliberately not a versions.env key; else latest.
     $codeQLUrl = if (-not [string]::IsNullOrWhiteSpace($env:CODEQL_VERSION)) {
         "https://github.com/github/codeql-cli-binaries/releases/download/$($env:CODEQL_VERSION)/codeql-win64.zip"
     } else {
@@ -132,8 +106,7 @@ function Invoke-BuildCodeQL {
         Write-BuildLog -Context $Context -Message "Downloading CodeQL CLI from $codeQLUrl ..."
         New-Item -ItemType Directory -Force -Path $codeQLDir | Out-Null
         $zipPath = Join-Path $codeQLDir 'codeql.zip'
-        # Retry-safe download (Shared helper) instead of raw Invoke-WebRequest;
-        # the PK signature guard rejects HTML error pages served as the asset.
+        # The PK guard rejects an HTML error page served as the asset.
         Invoke-DownloadWithRetry -Url $codeQLUrl -DestinationPath $zipPath -ExpectSignature 'PK' -Description 'CodeQL CLI (codeql-win64.zip)'
         Expand-Archive -Path $zipPath -DestinationPath $codeQLDir -Force
     }
@@ -167,10 +140,7 @@ function Invoke-BuildCodeQL {
         elseif ($pair.Value -is [bool] -and $pair.Value) { $innerParamList += "-$($pair.Key)" }
         elseif ($pair.Value -isnot [switch] -and $pair.Value -isnot [bool]) { $innerParamList += "-$($pair.Key)", "$($pair.Value)" }
     }
-    # --command takes ONE string that CodeQL tokenizes itself. Interpolating a
-    # PowerShell array would space-join the elements and lose all quoting, so
-    # build the command line explicitly, quoting every element that contains
-    # whitespace or quotes (embedded quotes are backslash-escaped).
+    # --command is one string CodeQL tokenizes itself, so quote each element; an interpolated array loses quoting.
     $innerCommandParts = @('cmd', '/c', 'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $BuildScriptPath) + $innerParamList
     $innerCommand = ($innerCommandParts | ForEach-Object {
         if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { "$_" }
@@ -209,9 +179,7 @@ function Invoke-BuildCodeQL {
     $resultsDir = Join-Path $Workspace 'codeql-results'
     New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
 
-    # Languages whose analysis failed even on the fallback query pack. Collected
-    # so the loop still analyzes the remaining languages, but the function no
-    # longer reports success when any of them failed.
+    # Collected so the other languages still run, but any failure fails the function.
     $failedLanguages = @()
 
     foreach ($lang in $Languages) {

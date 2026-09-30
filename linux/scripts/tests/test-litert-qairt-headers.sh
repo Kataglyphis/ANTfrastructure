@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# _litert_qairt_include_dir must name the dir HOLDING Qnn*.h, not the include
-# root. Upstream only probes <dir> vs <dir>/QNN when it downloads the SDK
-# itself; a pre-set QAIRT_HEADERS_DIR is consumed verbatim, so the include root
-# fails ~7 min into the build. docs/qnn-linux.md#qairt_headers_dir
+# Upstream uses a preset QAIRT_HEADERS_DIR verbatim, so it must hold Qnn*.h; see docs/qnn-linux.md#qairt_headers_dir
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -27,8 +24,7 @@ _mk_sdk() {
   printf '%s' "${home}"
 }
 
-# Runs the helper with LITERT_QNN_HOME=$1; stdout is the result, stderr goes to
-# ${_work}/err. err() is stubbed to the real contract: message to fd 2, exit 1.
+# _run_helper <LITERT_QNN_HOME>: result on stdout, stderr in ${_work}/err; err() keeps its real contract.
 _run_helper() {
   ( set +e
     err() { printf 'ERR: %s\n' "$*" >&2; exit 1; }

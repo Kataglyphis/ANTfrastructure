@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# The runtime smoke's ARCH-PARITY and VENV-SET gates count a flavoured chain GenAI (nvidia) as the GenAI.
-# NOT covered: a real image (recorded probe text only) and the GEN1 binding gate (test-genai-smoke-payload.sh).
+# ARCH-PARITY and VENV-SET count a flavoured (nvidia) GenAI as the GenAI; recorded probe text only, no real image.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

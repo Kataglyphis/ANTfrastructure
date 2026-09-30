@@ -1,25 +1,9 @@
 #requires -Version 7.0
-# Tests for Invoke-NinjaBuildWithRetry (WindowsSourceBuild.Common.psm1) — the
-# OOM-shaped compile retry: a failed `ninja -j<N>` is re-run incrementally with
-# -j<RetryJobs> before giving up. A regression here either retries a doomed
-# build at full parallelism (re-OOMing for hours) or throws away a build that a
-# -j1 pass would have finished. A fake ninja.bat on PATH (same pattern as the
-# Pip tests) drives every path; BUILD_JOBS pins the first-attempt job count so
-# the case matrix is host-independent. Each invocation is appended to a log
-# file, so attempt COUNT and the exact -j values are both asserted.
+# A failed ninja -j<N> must retry once at -j<RetryJobs>; a fake ninja.bat logs each attempt, BUILD_JOBS pins the first.
 
 Describe 'Invoke-NinjaBuildWithRetry' {
 
-    # Writes the fake ninja.bat into $dir. Behavior is steered per-case via env:
-    #   WBT_NINJA_LOG      — file every invocation appends its arguments to
-    #   WBT_NINJA_MODE     — 'fail' = always exit 1
-    #   WBT_NINJA_FAILONCE — marker file: if present, delete it and exit 1 (so
-    #                        the FIRST call fails and the retry succeeds)
-    #   WBT_NINJA_FAILONCE2 — second single-shot fail marker (chain both for a
-    #                         fail-fail-succeed sequence)
-    #   WBT_NINJA_STALLMARK — when set, every FAILING invocation also appends a
-    #                         line to this file (simulates a stall-guard kill
-    #                         recorded during the attempt)
+    # Env knobs: WBT_NINJA_LOG, WBT_NINJA_MODE=fail, WBT_NINJA_FAILONCE[2] (single-shot fails), WBT_NINJA_STALLMARK (fake kill).
     $newFakeNinja = {
         param($dir)
         $lines = @(
@@ -107,9 +91,7 @@ Describe 'Invoke-NinjaBuildWithRetry' {
     }
 
     It 'attributes kills per attempt: two consecutive guard-kill failures get two full-speed retries' {
-        # Backlog #17 regression guard: the marker is truncated before every
-        # invocation, so each retry decision sees only THIS attempt's kills —
-        # a cumulative count must never stall the ladder after the first retry.
+        # The marker is truncated per attempt, so a cumulative kill count must never stall the ladder.
         Invoke-InTestDir { param($dir)
             & $newFakeNinja $dir
             $log = Join-Path $dir 'ninja.log'

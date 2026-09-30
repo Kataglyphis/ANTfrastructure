@@ -1,8 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Smoke section 21: the app venv's onnxruntime carries DirectML and IS the chain wheel, on every amd64 lane.
-# NOT covered: the probe's python on a real CPython (measured by hand, see the fixtures), any GPU.
+
+# Smoke section 21: the app venv's onnxruntime carries DirectML and is the chain wheel on every amd64 lane.
 
 # Rooted = as given, so a mutation run can point this at a broken copy of the smoke script.
 $script:SmokeScript = 'windows\scripts\build\Test-Container.ps1'

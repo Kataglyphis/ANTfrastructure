@@ -1,13 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# In-container payload for Test-CudaCache.ps1 (backlog #14): COPY'd into
-# the toolchain image and executed as the single RUN layer - lintable and
-# diffable instead of the former 21-statement concatenated shell-form line.
-# Compiles the same .cu twice through sccache's nvcc launcher and asserts a
-# cache hit AND a backend write; the verdict is the exit code. Relies on the
-# Machine-scope VS/CUDA env the base image bakes (INCLUDE/LIB assembled here).
+# Test-CudaCache.ps1's in-container payload: the same .cu twice through sccache must write, then hit.
 $ErrorActionPreference = 'Stop'
 
 $scc = 'C:\Users\ContainerAdministrator\.cargo\bin\sccache.exe'
@@ -23,11 +17,7 @@ $env:INCLUDE = $msvcRoot + '\include;' + $sdkInc + '\ucrt;' + $sdkInc + '\shared
 & $scc --start-server
 & $scc -z | Out-Null
 
-# Per-run nonce (review find #2): a byte-identical source false-fails the
-# `Cache writes >= 1` assertion on the SECOND-ever run against a warm
-# WebDAV L2 - the first compile is already an L2 hit and nothing is ever
-# stored. The nonce makes compile #1 a guaranteed miss (=> write) while
-# compile #2 still proves the hit path within the same run.
+# A per-run nonce makes compile 1 a guaranteed miss; against a warm L2 it would hit and never write.
 $nonce = [guid]::NewGuid().ToString('N')
 Set-Content -Path C:\cachetest.cu -Value ("// nonce: $nonce`n" + '__global__ void k(float* p){ p[threadIdx.x] *= 2.0f; }')
 & $scc $nvcc ('-ccbin=' + $cl) -arch=sm_80 -c C:\cachetest.cu -o C:\t1.obj

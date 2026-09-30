@@ -1,10 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Build-OnnxFromSource.ps1's Disable-OrtCudaLauncherForPtx: with Blackwell (120/121) in the arch
-# list, ORT compiles its LLM kernels as PTX only on MSVC, and sccache 0.18 aborts every such nvcc
-# compile (mozilla/sccache#2862), so the CUDA launcher must go for that build and only for it.
-# NOT covered: nvcc, sccache or ORT's own cmake.
+
+# With Blackwell archs ORT's PTX-only nvcc compiles abort under sccache (mozilla/sccache#2862), so only that build drops the launcher.
 
 # Splatted into Invoke-WithFunctionModule: a mutant is this one function, as Disable-MutOrtCudaLauncherForPtx.
 $launcherMutantSource = @{

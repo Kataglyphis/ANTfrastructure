@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Tests for ci-image-ref.sh. The hazard is an EMPTY or WRONG reference reaching
-# `docker run`, where an empty string is read as "run the next argument as an
-# image" and a wrong tag pulls someone else's toolchain - both failing far from
-# the cause. So: stdout carries the ref and nothing else, a missing key is fatal
-# rather than empty, and the value AGREES with verify_ci_image_refs.py, which is
-# what grades the four composite actions' image-input defaults.
+# ci-image-ref.sh: an empty or wrong ref fails far from the cause at `docker run`, so pin stdout, fatality and agreement.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -31,13 +26,10 @@ t_case "stderr is not stdout: nothing but the ref can reach a command substituti
 t_assert_eq "1" "$(bash "${REF}" 2>/dev/null | wc -l)" \
   "a second stdout line would be concatenated into the image argument"
 
-# The gate and the script must not be able to disagree: they read the same file
-# with two different parsers, and the four action defaults are graded against
-# the gate's answer, not this one.
+# Two parsers of one file must agree; the action defaults are graded against the gate's answer.
 t_case "the composed ref equals verify_ci_image_refs.py's"
 _py="${PREFLIGHT_PYTHON:-python3}"
-# Probed ONCE: the gate half at the bottom of this file needs the same answer,
-# and the system python3 here is a Microsoft Store stub that exits 49.
+# Probed once for the gate half below too; python3 may be the Microsoft Store stub.
 _have_py=0
 command -v "${_py}" >/dev/null 2>&1 && "${_py}" -c pass >/dev/null 2>&1 && _have_py=1
 if [ "${_have_py}" -eq 1 ]; then
@@ -54,10 +46,7 @@ printf 'IMAGE_REGISTRY_PREFIX=ghcr.io/x/y\n' > "${_work}/partial.env"
 t_assert_eq "1" "$(CI_IMAGE_REF_VERSIONS_ENV="${_work}/partial.env" t_rc bash "${REF}")" \
   "an empty ref is the failure this refuses to produce"
 t_assert_eq "" "$(CI_IMAGE_REF_VERSIONS_ENV="${_work}/partial.env" bash "${REF}" 2>/dev/null)"
-# ...and it must actually SAY so. The key reader's stdout is its return VALUE:
-# it is read inside a command substitution, so a diagnostic printed there
-# without >&2 is captured into that value instead of reaching anybody, and the
-# gate fails in silence. Asserting the exit code alone cannot see that.
+# The key reader's stdout is its value, so a diagnostic without >&2 would be swallowed silently.
 _err="$(CI_IMAGE_REF_VERSIONS_ENV="${_work}/partial.env" bash "${REF}" 2>&1 >/dev/null)"
 t_assert_contains "${_err}" "CI_IMAGE_LINUX_TAG is not set" \
   "the missing key must be named on stderr, not swallowed by the substitution"
@@ -78,20 +67,9 @@ t_assert_eq "ghcr.io/x/y:tag1" \
   "$(CI_IMAGE_REF_VERSIONS_ENV="${_work}/quoted.env" bash "${REF}")" \
   "a quote reaching docker as data is the class that broke CUDA_ARCHITECTURES"
 
-# --- verify_ci_image_refs.py's own three findings ----------------------------
-# Everything above (and test-workflow-lint.sh's fixture) proves only that the
-# gate RUNS and agrees on the value. Nothing planted a WRONG one, so its three
-# checks could all have been neutered without a suite noticing -- the shape this
-# repo keeps finding. Each case below plants exactly one wrong value and asserts
-# the gate goes red on it.
+# --- verify_ci_image_refs.py's own findings: each case plants exactly one wrong value ---
 
-# _gh_tree <action image default | ""> <workflow text> [<relpath>=<body> ...]
-#   -> a consumer-shaped .github/ with ONE of the four container actions, one
-#      workflow, and any extra files the case needs.
-#
-# git init + add, because check D reads the git INDEX (gate_scope rule 3), not a
-# walk: a walk of a working tree picks up .venv/ and build dirs. The "an
-# UNTRACKED file" case below is what proves that is what actually happens.
+# _gh_tree <action image default | ""> <workflow text> [<relpath>=<body> ...] -> a git-indexed .github/, as check D reads the index.
 _gh_tree() {
   local d
   d="$(mktemp -d "${_work}/gh.XXXXXX")"
@@ -99,8 +77,7 @@ _gh_tree() {
   _gh_finish "${d}" "${@:2}"
 }
 
-# _gh_action <tree> <action> <input>=<default | ""> ... -> one fixture action.yml
-#   carrying the given image inputs; an empty default writes the input without one.
+# _gh_action <tree> <action> <input>=<default | ""> ... -> one fixture action.yml; an empty default writes none.
 _gh_action() {
   local tree="$1" action="$2" spec
   shift 2
@@ -141,9 +118,7 @@ jobs:
 
 _gate() { "${_py}" "${SCRIPTS}/verify_ci_image_refs.py" "$1"; }
 
-# _gh_win_tree <image default> <image-arm64 default | ""> <workflow text>
-#   -> the Windows twin of _gh_tree: run-in-windows-container with BOTH image
-#      inputs, the second one what `target-arch: arm64` selects.
+# _gh_win_tree <image default> <image-arm64 default | ""> <workflow text> -> the Windows twin, both image inputs.
 _gh_win_tree() {
   local d
   d="$(mktemp -d "${_work}/ghw.XXXXXX")"
@@ -157,18 +132,13 @@ if [ "${_have_py}" -eq 1 ]; then
   _arm_ref="${_prefix}:${_arm_tag}"
 
   t_case "the fixture itself is sound: a correct .github/ passes"
-  # Without this the four refusals below could each be passing for the wrong
-  # reason -- a fixture the gate rejects on some other line.
+  # Otherwise the refusals below could each pass on some other line.
   _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}")"
   t_assert_eq "0" "$(t_rc _gate "${_d}")" \
     "the canonical default plus a literal-free workflow must be green"
 
   t_case "an action default that is not ITS platform's ref FAILS"
-  # The default is the WINDOWS ref, on the Linux action: a perfectly canonical
-  # tag, so the literal check waves it through. Only the comparison against the
-  # ref versions.env composes for THIS action can see it -- which is why the
-  # case cannot use a stale tag: that one is caught by the literal check, and
-  # would pass with the comparison removed.
+  # A canonical Windows tag on the Linux action: only the per-action comparison can see it.
   _d="$(_gh_tree "${_win_ref}" "${_WF_CLEAN}")"
   t_assert_eq "1" "$(t_rc _gate "${_d}")" \
     "a tag bump lands in versions.env only; a copy that stopped matching it is the drift this gate exists for"
@@ -246,10 +216,7 @@ if [ "${_have_py}" -eq 1 ]; then
   t_assert_contains "$(t_out _gate "${_d}")" "wrong root?" \
     "and it must say it BEFORE the git-index scan, whose message names the wrong problem"
 
-  # --- check D: a COPY of a currently-canonical ref -------------------------
-  # A/B/C were blind to this class and said so in green: the three copies that
-  # survived (two workflow `env:` entries and a PowerShell param default) were
-  # CANONICAL, so B waved them through and C only ever compares platforms.
+  # --- check D: a copy of a currently-canonical ref, which A/B/C cannot see ---
 
   t_case "a canonical ref spelled out in a tracked *.sh FAILS"
   _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}" \
@@ -278,8 +245,7 @@ true")"
     "a ref in a comment rots on a tag bump exactly like one in code"
 
   t_case "a per-arch CHILD of the family tag in a script is NOT a copy"
-  # The build chain really does produce and run these, and D must not turn into
-  # "no ghcr reference anywhere" -- that would only teach people to excuse it.
+  # The chain really runs these; D must not become "no ghcr reference anywhere".
   _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}" \
     "scripts/smoke.sh=#!/usr/bin/env bash
 docker run ${_linux_ref}-arm64 true")"
@@ -287,9 +253,7 @@ docker run ${_linux_ref}-arm64 true")"
     "a tag that merely STARTS with the canonical one is a different image"
 
   t_case "an UNTRACKED file is not graded: the index is the scope, not the disk"
-  # Measured before choosing: a walk of one consumer's tree yields 38 *.sh under
-  # .venv/, build-*/ and .pub-cache/ against 21 tracked ones, and would report a
-  # vendored dependency's shell as this repo's drift.
+  # A disk walk would grade .venv/, build and pub-cache shell as this repo's drift.
   _d="$(_gh_tree "${_linux_ref}" "${_WF_CLEAN}")"
   mkdir -p "${_d}/.venv/bin"
   printf 'docker run %s true\n' "${_linux_ref}" > "${_d}/.venv/bin/activate.sh"
@@ -320,10 +284,7 @@ jobs:
   t_assert_contains "${_out_d}" "omit the input" "the finding must name the way out"
 
   t_case "the two YAML forms with nowhere else to get the value stay green"
-  # D's ONE carve-out is `default:` -- an input's owner. A reusable workflow's
-  # input default and an expression fallback are how a caller keeps an override,
-  # and neither can inherit an action default. If this case ever goes red, D has
-  # stopped being a rule about copies and become a ban on the string.
+  # D's one carve-out is an input's owner; if this goes red, D has become a ban on the string.
   _WF_OWNER='name: ci
 on:
   workflow_call:

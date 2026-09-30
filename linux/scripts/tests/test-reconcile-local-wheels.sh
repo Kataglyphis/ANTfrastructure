@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# CHARACTERISATION tests for reconcile_local_wheels: they pin the sequence of uv
-# invocations it makes for a given set of local wheels, so the 128-line function
-# can be decomposed (backlog F1) and proven unchanged. They describe what it DOES.
-#
-# The function reads its wheels from /opt/wheels, which is root-owned, so it was
-# untestable off-target until the directory became overridable via
-# LOCAL_WHEELS_DIR (unset, it is exactly /opt/wheels).
+# Characterisation of reconcile_local_wheels' uv calls; LOCAL_WHEELS_DIR stands in for the root-owned /opt/wheels.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -13,8 +7,7 @@ SUBJECT="${TESTS_DIR}/../03-media/runtime/assemble-torch-app.sh"
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
 
-# Extract the function and its wheel_family helper: assemble-torch-app.sh is a
-# top-level script and sourcing it would run the whole assembly.
+# Extracted: sourcing the top-level assemble-torch-app.sh would run the whole assembly.
 _lib="${_work}/lib.sh"
 for _fn in wheel_family _ort_purge_names _purge_shadowing_pypi_builds _wheel_families_present \
           _partition_wheels_by_install_group _install_wheel_groups \
@@ -22,10 +15,7 @@ for _fn in wheel_family _ort_purge_names _purge_shadowing_pypi_builds _wheel_fam
   awk -v f="${_fn}" '$0 ~ "^"f"\\(\\) \\{" {p=1} p {print} p && /^\}/ {exit}' "${SUBJECT}" >> "${_lib}"
 done
 
-# Run it over a wheel set and print every uv call, one per line.
-# One harness. The torch backfill needs
-# a venv python whose imports we control, and the IREE split needs uname.
-# $1 = arch reported by uname -m, $2 = space-separated modules that DO import.
+# _uv_calls_env <uname -m> <importable modules> <wheel>...: every uv call, one per line.
 _uv_calls_env() {
   local arch="$1" importable="$2"; shift 2
   local d="${_work}/wheels2"; rm -rf "${d}"; mkdir -p "${d}"
@@ -53,9 +43,7 @@ _uv_calls_env() {
 _uv_calls() { _uv_calls_env x86_64 "" "$@"; }
 
 t_case "no local wheels means uv sync's result is kept untouched"
-# Weak by construction, and recorded as such: with no wheels the loop body never
-# runs either, so this cannot tell an early return from nothing-to-do. It still
-# guards a future change that WOULD install something on an empty set.
+# Weak by construction: it cannot tell an early return from nothing to do.
 t_assert_eq "" "$(_uv_calls)" "an empty wheel dir must produce no uv call at all"
 
 t_case "ordinary wheels are force-reinstalled with --no-deps"
@@ -77,9 +65,7 @@ t_assert_contains "${_out}" "iree" "IREE likewise"
 t_case "a torch wheel backfills exactly the deps that do NOT import"
 _out="$(_uv_calls_env x86_64 "sympy mpmath networkx jinja2 markupsafe filelock" \
         "torch-2.13.0-cp314-cp314-linux_x86_64.whl")"
-# Match the uv CALL, not the "Backfilling ..." notice: that notice is a printf,
-# which this harness does not stub, so a substring test alone passes with the
-# install deleted. Mutation-proven 2026-09-03.
+# Match the uv call, not the unstubbed printf notice, which survives the install being deleted.
 _bf="$(printf '%s\n' "${_out}" | grep -e '^uv pip install --no-deps ' | grep -v -e '\.whl')"
 t_assert_contains "${_bf}" "fsspec" "fsspec does not import, so it must be backfilled"
 t_assert_contains "${_bf}" "typing-extensions" "the PACKAGE name is installed, not the module name"
@@ -94,9 +80,7 @@ _out="$(_uv_calls_env x86_64 "" "numpy-2.5.2-cp314-cp314-linux_x86_64.whl")"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '^uv pip install --no-deps ' | grep -v -e '\.whl' | grep -v -e 'ml_dtypes')"
 
 t_case "a non-torch wheel set returns 0 under set -e (the amd64/arm64 path)"
-# 2026-09-03: a trailing `[ torch ] && backfill` made the function return 1 for
-# every arch WITHOUT a local torch wheel; set -e then killed setup-torch-venv.sh
-# silently after the last uv call. docs/failure-modes.md#a-trailing-conditional-fails-the-whole-script
+# See docs/failure-modes.md#a-trailing-conditional-fails-the-whole-script
 _uv_calls_env x86_64 "" "numpy-2.5.2-cp314-cp314-linux_x86_64.whl" >/dev/null
 t_assert_eq 0 "$?" "reconcile_local_wheels must exit 0 when there is nothing to backfill"
 

@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Lightweight wrapper: prefer the centralized litert script location used by
-# media scripts (/opt/scripts/03-media/build/litert) when present in a container
-# build stage. If not available, fall back to the repository's sibling litert
-# directory (useful for running locally from the repo).
+# Prefers the container's mounted LiteRT script, falling back to the repo's sibling for local runs.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

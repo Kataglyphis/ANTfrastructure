@@ -1,12 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Zero-dependency test harness for the Windows build scripts. Deliberately NOT Pester:
-# the container runs Windows PowerShell 5.1 (ships Pester 3.4, quirky) and the host runs
-# PowerShell 7.x, while Pester 5 needs a PSGallery install that isn't available offline.
-# These ~5 primitives (Describe/It/Assert-*) run identically on 5.1 and 7.x with nothing
-# installed, so `Invoke-Tests.ps1` is a hard pre-flight gate before any multi-hour build.
+# Not Pester: Pester 5 needs a PSGallery install the offline container cannot do, and these need nothing installed.
 
 Set-StrictMode -Version Latest
 
@@ -33,8 +28,7 @@ function It {
         [void]$script:Results.Add([pscustomobject]@{ Group = $script:CurrentGroup; Name = $Name; Ok = $true; Err = $null; Stack = $null })
         Write-Host "  [ ok ] $Name" -ForegroundColor DarkGreen
     } catch {
-        # ScriptStackTrace pinpoints the failing Assert-* call site (file:line);
-        # the exception message alone only says WHAT failed, not WHERE.
+        # The message says what failed; ScriptStackTrace says where.
         $stack = $_.ScriptStackTrace
         [void]$script:Results.Add([pscustomobject]@{ Group = $script:CurrentGroup; Name = $Name; Ok = $false; Err = $_.Exception.Message; Stack = $stack })
         Write-Host "  [FAIL] $Name" -ForegroundColor Red
@@ -46,17 +40,7 @@ function It {
 }
 
 function Assert-Equal {
-    # Two can't-fail shapes, both MEASURED by running them (2026-08-26 audit),
-    # in the primitive under every assertion in this suite:
-    #   Assert-Equal @() 'completely-different'  -> PASSED. `-ne` against a
-    #     collection returns the FILTERED collection, and an empty result is
-    #     falsy, so any comparison whose expected side is an array silently
-    #     succeeded. Callers must join first: Assert-Equal 'a,b' ($x -join ',').
-    #   Assert-Equal 'tvm_ffi' 'TVM_FFI'         -> PASSED. `-ne` is
-    #     case-INSENSITIVE, and this repo compares case-sensitive facts for a
-    #     living (EXT_SUFFIX tags, CMake's Python_ vs PYTHON_, PE names).
-    # Type coercion (0 vs '0') is deliberately still tolerated: counts arrive
-    # as int and are written as int, and tightening it produced only noise.
+    # `-ne` filters a collection (empty passes) and ignores case, so collections are refused and strings compare ordinally.
     param($Expected, $Actual, [string]$Message = '')
     foreach ($side in @(@{ n = 'Expected'; v = $Expected }, @{ n = 'Actual'; v = $Actual })) {
         if ($null -ne $side.v -and $side.v -isnot [string] -and $side.v -is [System.Collections.IEnumerable]) {
@@ -89,9 +73,7 @@ function Assert-Match {
     if ("$Actual" -notmatch $Pattern) { throw "Assert-Match: [$Actual] does not match /$Pattern/. $Message" }
 }
 function Assert-Throws {
-    # -MessagePattern (optional): the thrown exception's message must ALSO match
-    # this regex — pins WHICH failure fired, not just that something threw.
-    # Absent, the behavior is unchanged (any exception passes).
+    # -MessagePattern pins which failure fired, not just that something threw.
     param(
         [Parameter(Mandatory)][scriptblock]$Body,
         [string]$Message = '',
@@ -106,8 +88,7 @@ function Assert-Throws {
     }
 }
 
-# Run $Body with the given env vars set ($null = removed), restoring (or removing) each afterwards.
-# [NullString] because a PowerShell $null reaches .NET as '', which leaves the var set EMPTY.
+# [NullString]: a PowerShell $null reaches .NET as '', which would leave the var set but empty.
 function Invoke-WithEnv {
     param([Parameter(Mandatory)][hashtable]$Vars, [Parameter(Mandatory)][scriptblock]$Body)
     $asEnv = { param($v) if ($null -eq $v) { [NullString]::Value } else { [string]$v } }
@@ -122,20 +103,14 @@ function Invoke-WithEnv {
     }
 }
 
-# Fresh throwaway directory for filesystem cases; caller removes it (usually in finally).
-# No in-repo callers remain (Invoke-InTestDir superseded it) — retained as an exported
-# API for external consumers of this harness.
+# Exported for external consumers; in-repo suites use Invoke-InTestDir, which also cleans up.
 function New-TestDir {
     $d = Join-Path ([System.IO.Path]::GetTempPath()) ("wbt-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $d | Out-Null
     return $d
 }
 
-# Run $Body with a fresh throwaway directory (passed as its first argument),
-# guaranteeing cleanup afterwards. Also zeroes $LASTEXITCODE first so cases that
-# inspect native exit codes are isolated from whatever ran before. Replaces the
-# hand-rolled `$d = New-TestDir; try { ... } finally { Remove-Item ... }` blocks
-# (several of which forgot the finally and leaked wbt-* dirs under %TEMP%).
+# Zeroes $LASTEXITCODE so cases that inspect native exit codes are isolated from earlier runs.
 function Invoke-InTestDir {
     param([Parameter(Mandatory)][scriptblock]$Body)
     $d = New-TestDir
@@ -173,9 +148,7 @@ function New-OrtTestExportTable {
     return , [byte[]]($out + $strs.ToArray())
 }
 
-# A PE32+ for -Machine with one section holding an import table for -Import, a delay-load table for
-# -DelayImport, each -Text as a NUL-bounded string and an export table for -Export. The ORT census built
-# these first; any PE-walking suite may.
+# A one-section PE32+ carrying import, delay-load, string and export tables for PE-walking suites.
 function New-OrtTestPe {
     param([Parameter(Mandatory)][string]$Path, [string[]]$Import = @(), [string[]]$Text = @(), [string[]]$Export = @(), [switch]$Forward,
         [uint16]$Machine = 0x8664, [string[]]$DelayImport = @())
@@ -229,17 +202,12 @@ function New-OrtTestPe {
 
 function Get-TestResult { return $script:Results }
 
-# One owner for "where is the repo root" (#126): the suites spelled the
-# three-parent walk 4 different ways ($PSScriptRoot chains, piped Split-Path,
-# unresolved ..\..\.., $PSCommandPath). Anchored on THIS module's location
-# (tests -> scripts -> windows -> root), so it is independent of how the
-# calling suite was loaded (dot-sourced or invoked).
+# Anchored on this module's location, so it does not depend on how the calling suite was loaded.
 function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 }
 
-# The seed modules plus every sibling each one imports (PSScriptRoot 'X.psm1'), transitively: the set a
-# RUN must mount. A seed with no file stays in the set, so the caller's mount check names it.
+# The seeds plus their transitive sibling imports, i.e. what a RUN must mount; a seed with no file stays so the mount check names it.
 function Get-ModuleImportClosure {
     param([string[]]$Seed = @(), [string]$ModuleDir = (Join-Path (Get-RepoRoot) 'windows' 'scripts' 'modules'))
     $seen = [System.Collections.Generic.HashSet[string]]::new()
@@ -257,32 +225,16 @@ function Get-ModuleImportClosure {
 
 <#
 .SYNOPSIS
-    Returns the named functions of a build script as ONE scriptblock, for a
-    suite to dot-source (#134).
+    Returns the named functions of a build script as one scriptblock for a suite to dot-source.
 .DESCRIPTION
-    Several helpers live inside build scripts rather than modules, because the
-    mounted module set is a single shared closure (see the #134 entry in
-    docs/windows-refactor-backlog.md). Their fixture suites therefore lift them
-    out of the script's AST instead of running the script -- 9 sites had grown
-    the same ~12 lines of Parser::ParseFile boilerplate, each with its own
-    spelling of the repo-root walk.
-
-    RETURNS a scriptblock; it does NOT dot-source. `.` inside a module function
-    defines into the MODULE's scope, invisible to the caller, so the dot stays
-    at the call site:
-
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' `
-                                        -FunctionName 'log')
-    (Write-AssembledWheelDistInfo / Get-PyprojectDependencies were this example
-    until they moved into WindowsTvm.Common, 2026-08-31 -- module functions are
-    imported normally, not lifted.)
-
-    Throws with the script and function named when a parse fails or a function
-    is gone (the "did it move?" signal every suite carried by hand).
+    It does not dot-source itself: `.` inside a module function defines into the module's scope.
+    Throws naming the script and function when the parse fails or a function is gone.
 .PARAMETER ScriptPath
-    Repo-relative path; resolved against Get-RepoRoot.
+    Repo-relative path, resolved against Get-RepoRoot.
 .PARAMETER FunctionName
-    One or more function names. Order is preserved in the emitted scriptblock.
+    Function names; their order is kept in the scriptblock.
+.EXAMPLE
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -FunctionName 'log')
 #>
 function Get-ScriptFunctionDefinition {
     [OutputType([scriptblock])]
@@ -306,13 +258,10 @@ function Get-ScriptFunctionDefinition {
 
 <#
 .SYNOPSIS
-    Imports a source TEXT (or only its -FunctionName functions) as a module in -Dir, after one
-    optional literal edit and behind an optional prelude; returns the module.
+    Imports source text, or only its -FunctionName functions, as a module after one optional literal edit.
 .DESCRIPTION
-    Get-ScriptFunctionDefinition's sibling for code that needs a module scope of its own: an
-    in-suite mutant (-Find/-Replace), or a driver function lifted over fakes (-Prelude defines
-    what it reads). Imported -Global under -Prefix, so a suite calls the copies without
-    shadowing the originals; calls inside the module keep the plain names.
+    For an in-suite mutant (-Find/-Replace) or a driver lifted over fakes (-Prelude defines what it reads).
+    Imported -Global under -Prefix, so the copies never shadow the originals.
 #>
 function Import-FunctionModule {
     param(

@@ -1,32 +1,15 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Comprehensive Docker HEALTHCHECK for Windows developer image.
-# Exits 0 if all critical components respond, 1 otherwise.
+# Docker HEALTHCHECK for the Windows image: exits 1 when a critical component fails.
 
 
 $ErrorActionPreference = 'Continue'
-# StrictMode is safe here: the script stays standalone (no module imports) and every
-# variable/property read below is guarded. Parses fine under PS 5.1 as well.
+# StrictMode is safe: every variable and property read below is guarded.
 Set-StrictMode -Version Latest
 $failed = $false
 
-# CROSS BUNDLE: the checks below split into two kinds (split 2026-08-24 -- the
-# original blanket exit-0 skipped everything on the false premise that "every
-# check executes a staged binary"; 4 of 7 do not).
-#   HOST-TOOL checks (python/cmake/clang-cl are the image's amd64 toolchain, and
-#   the onnxruntime check is a Get-ChildItem, no execution at all): these verify
-#   the container's own machinery and run identically on the cross lane -- an
-#   emptied C:\runtime or a broken toolchain now makes the arm64 bundle image
-#   report unhealthy instead of unconditionally healthy.
-#   PAYLOAD-EXECUTION checks (ffmpeg -version, gst-launch, gst-inspect): those
-#   binaries are aarch64 on the cross lane and Windows x64 has no ARM64
-#   emulation, so each would fail for a reason that says nothing about bundle
-#   health. Skipped with a printed reason; the bundle's static verification is
-#   Test-TargetArch.ps1 in the merge stage.
-#
-# WINDOWS_TARGET_ARCH is baked as ENV from the media stage onward, so it is
-# present in the final image; anything other than the host arch means cross.
+# A cross bundle runs only the host-tool checks: its aarch64 payload cannot execute here and Test-TargetArch.ps1 verifies it.
 $hcTargetArch = if ($env:WINDOWS_TARGET_ARCH) { $env:WINDOWS_TARGET_ARCH } else { 'amd64' }
 $hcCross = $hcTargetArch -ne 'amd64'
 if ($hcCross) {
@@ -46,10 +29,7 @@ function Check {
     }
 }
 
-# Resolve a tool's full path, preferring an explicit <TOOL>_BIN env var (env-driven,
-# no hardcoded install roots) and falling back to PATH lookup. Returns $null if neither
-# yields a path. Kept local: healthcheck is a self-contained Docker HEALTHCHECK payload
-# with no module imports.
+# <TOOL>_BIN first, then PATH; kept local so the healthcheck needs no shared module.
 function Resolve-ToolPath {
     param(
         [string]$BinEnvVar,
@@ -57,8 +37,7 @@ function Resolve-ToolPath {
     )
     $binDir = if ($BinEnvVar) { [Environment]::GetEnvironmentVariable($BinEnvVar) } else { $null }
     if ($binDir) { return (Join-Path $binDir $ExeName) }
-    # The PATH miss is a designed outcome: capture first so the .Source read never
-    # dereferences $null (which throws under StrictMode).
+    # Captured first: .Source on a PATH miss would throw under StrictMode.
     $cmd = Get-Command $ExeName -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
     return $null
@@ -107,29 +86,12 @@ if ($hcCross) {
     }
 }
 
-# Mandatory GStreamer plugin integrations. The set is Get-RequiredGstPlugin's —
-# ONE definition shared with the build gate and the smoke test, because these
-# three disagreeing is exactly what let opencv/libav go missing from a shipped
-# image while this file printed [PASS] for them (2026-07-11). The old list also
-# probed `tensorfilter`, an NNStreamer element this repo never builds.
-#
-# A container healthcheck must stay CHEAP and must not flap a running container,
-# so a missing plugin is reported loudly here but does not fail the check — the
-# build gate and the smoke test are the enforcing layers. What changed is that
-# it can no longer report a plugin as present when it is not.
+# One plugin contract shared with the build gate and smoke test; a miss is reported but must not flap a running container.
 $gstInspect = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-inspect-1.0.exe'
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $gstPluginModule = Join-Path $scriptAssetRoot 'modules\WindowsGstPlugins.Common.psm1'
-# -Arch is REQUIRED here (fixed 2026-08-24; a bare call resolved the contract for
-# the module's default and would probe amd64's plugin set on an arm64 image).
-# The hardcoded fallback list is gone for the same reason: it was arch-blind
-# (a lane can declare a plugin structurally unavailable -- the arm64 contract
-# did that for tflite until LiteRT cross-built in #115) and it had already
-# re-diverged from the module once before (2026-08-21). An image too old to
-# carry the module gets a printed SKIP, not a wrong contract.
+# -Arch is required: a bare call probes amd64's plugin set; an image without the module gets a SKIP, not a wrong contract.
 $requiredGstPlugins = if (Test-Path $gstPluginModule) {
     Import-Module $gstPluginModule -Force -DisableNameChecking
     @(Get-RequiredGstPlugin -Arch $hcTargetArch | ForEach-Object { $_.Name })
@@ -142,9 +104,7 @@ if ($hcCross -and $requiredGstPlugins.Count -gt 0) {
     $requiredGstPlugins = @()
 }
 foreach ($gstPlugin in $requiredGstPlugins) {
-    # Guard the invoke: with $gstInspect null/missing, `& $null` throws a statement-terminating
-    # error while $LASTEXITCODE keeps the PREVIOUS native call's 0 -- printing a false [PASS]
-    # for a plugin that was never probed. Reset the exit code before each probe for the same reason.
+    # Stale LASTEXITCODE: `& $null` throws but keeps the previous call's 0, a false [PASS]; hence the guard and the reset.
     if (-not $gstInspect -or -not (Test-Path $gstInspect)) {
         Write-Host "[SKIP] gst-plugin $gstPlugin not probed (gst-inspect-1.0.exe not found)"
         continue

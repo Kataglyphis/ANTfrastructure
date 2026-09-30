@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build-cross-stage.sh — build/push a single cross-lane stage via the stage graph.
-# --push pins the parent digest; without it the image stays local.
+# Builds one cross-lane stage; --push pins the parent digest, otherwise the image stays local.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -70,8 +69,7 @@ _stage_start_resource_monitor() {
 }
 
 main() {
-  # parallel-arch knobs parse for CLI-compat but do nothing here (single-arch)
-  # — warn instead of silently ignoring them.
+  # Single-arch: the parallel-arch knobs only parse for compatibility, so warn about them.
   ORCHESTRATOR_UNSUPPORTED_FLAGS="--parallel-archs --max-parallel-archs"
   run_orchestrator_arg_loop usage _cross_stage_extra_arg \
     TARGET_ARCH USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \

@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# GenAI on the chain's ONNX Runtime, every lane: the ORT_HOME shim, the -D set, the configure-record gate, the tree gate.
-# NOT covered: a real GenAI configure/build, the DirectML/D3D12 packages GenAI still fetches, which ORT loads at run time.
+# GenAI on the chain's ONNX Runtime, every lane: the ORT_HOME shim, the -D set and both gates; no real GenAI build.
 
 $script:GenaiOrtScript = 'windows\scripts\build\Build-OnnxGenaiFromSource.ps1'
 $script:GenaiOrtFns = @('ConvertTo-GenaiCmakePath', 'New-GenaiOrtHome', 'Get-GenaiOrtCmakeArgs', 'Get-GenaiOrtConfigureFinding',
@@ -103,8 +102,7 @@ Describe 'GenAI ORT: CMake args (every lane)' {
 
 Describe 'GenAI: its own tests are not built' {
     It 'passes ENABLE_TESTS=OFF, the option GenAI gates test\ on (BUILD_TESTING is not it) (mutation)' {
-        # The rocm lane's CPU build could not link unit_tests (unexported Generators::Log,
-        # g_log, 2026-09-24); nothing in the chain runs them.
+        # unit_tests cannot link on the rocm lane's CPU build, and nothing in the chain runs them.
         $text = Get-Content -Raw -LiteralPath (Join-Path (Get-RepoRoot) $script:GenaiOrtScript)
         Assert-Match "(?m)^\s*'-DENABLE_TESTS=OFF'\s*$" $text 'GenAI must be configured without its test\ tree'
     }

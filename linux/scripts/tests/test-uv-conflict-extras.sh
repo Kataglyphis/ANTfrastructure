@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the two `uv sync --all-extras` conflict helpers in 01-core/python_uv.sh.
-# `uv` refuses --all-extras outright on a project declaring [tool.uv] conflicts, so
-# this greedy first-declared-wins picker is what keeps every CI lane installable.
-# Both functions are extracted, not sourced: python_uv.sh sets -euo pipefail.
-# docs/python-ci.md#trap-1----all-extras-is-fatal-with-declared-conflicts
+# python_uv.sh's --all-extras conflict helpers, extracted since the file sets -euo pipefail; see docs/python-ci.md#trap-1----all-extras-is-fatal-with-declared-conflicts
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -14,10 +10,7 @@ eval "${_src}"
 _src="$(t_fn_src "${UV_SH}" _uv_extras_to_exclude)" || exit 1
 eval "${_src}"
 
-# _write_pyproject <conflicts-open> <group-fmt> <group>... — a pyproject whose
-# [tool.uv] conflicts declare one pair per argument, e.g. "ml-ai ml-ai-cuda", in
-# whichever TOML layout the caller asks for. The layout is the ONLY difference
-# between the fixtures, so it is the only thing they pass.
+# _write_pyproject <conflicts-open> <group-fmt> "<a> <b>"...: one conflict pair per argument, in the given layout.
 _write_pyproject() {
   local open="$1" fmt="$2"; shift 2
   local d g a b; d="$(mktemp -d)"
@@ -69,12 +62,7 @@ t_case "families are independent: two disjoint pairs drop one member each"
 _p="$(_pyproject "a b" "c d")"
 t_assert_eq "b d" "$(_uv_extras_to_exclude "${_p}")"
 
-# ── layout independence: the scanner reads TOML, not one indentation style ──
-# It used to gather extras from a line only AFTER the character walk had already
-# closed the group on that line's `]`, so an inline group -- legal TOML that uv
-# accepts -- yielded nothing and excluded nothing, and `uv sync --all-extras`
-# failed with the original conflict error. The group text is now accumulated
-# during the same walk and read at the `]` that closes it.
+# Layout independence: an inline group is legal TOML and must read like the multi-line layout
 _inline_pyproject() {
   _write_pyproject 'conflicts = [ ' '[ { extra = "%s" }, { extra = "%s" } ], ' "$@"
 }
@@ -109,15 +97,7 @@ t_case "the decision is order-dependent, and the order is DECLARATION order"
 _p="$(_pyproject "b a")"
 t_assert_eq "a" "$(_uv_extras_to_exclude "${_p}")" "declaring b first keeps b"
 
-# --- uv_run does not inherit the image's redirections ------------------------
-# The images export UV_PYTHON=/opt/venv/bin/python and VIRTUAL_ENV=/opt/venv, a
-# root-owned system venv, and uv honours UV_PYTHON OVER an activated one.
-# uv_sync_project clears exactly these two for its own call; uv_run did not, so
-# a gate that never activated ran its analysers against /opt/venv as uid 1001
-# ("Permission denied"), and one that DID activate lost its per-version venv to
-# a rebuild from the image interpreter -- without the extra pytest lives in.
-# What is asserted is the ENVIRONMENT the call is handed, which is what both
-# measured failures turned on.
+# uv_run must clear the image's UV_PYTHON/VIRTUAL_ENV; see docs/python-ci.md#trap-2--uv_python-beats-the-activated-venv
 _src="$(t_fn_src "${UV_SH}" uv_run)" || exit 1
 eval "${_src}"
 _stub_dir="$(mktemp -d)"

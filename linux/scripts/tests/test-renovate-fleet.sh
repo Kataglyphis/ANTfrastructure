@@ -1,21 +1,11 @@
 #!/usr/bin/env bash
-# renovate-fleet.sh: one entry point over every repo the family has.
-# A THROWAWAY family, not the real one, because the properties that have to hold
-# are properties of SHAPES: a hub everyone vendors, two url spellings for one
-# repo, a repo that only ever appears vendored, a repo that cannot be worked on,
-# a sibling with no origin at all, and one repository checked out twice. The
-# real family has them -- eight ANTfrastructure checkouts, under both spellings --
-# and a suite keyed on its names would prove nothing about the next machine.
-# docs/dependency-updates.md#the-fleet
+# renovate-fleet.sh over a throwaway family: the properties are about repo shapes, not the real family's names; see docs/dependency-updates.md#the-fleet
 set -u
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/renovate-fixtures.sh"
 
 FLEET="${TESTS_DIR}/../renovate-fleet.sh"
 
-# The fleet's PATH: BARE_PATH owns no lock tool, and it owns no `timeout`
-# either -- which the fleet needs, because a per-repo budget nothing can enforce
-# is not a budget and the tool refuses rather than pretend. Kept here rather than
-# in renovate-fixtures.sh: only this suite runs the fleet.
+# BARE_PATH has no `timeout`, and the fleet refuses to run without one to enforce its per-repo budget.
 FLEET_BIN="${WORK}/fleet-bin"
 mkdir -p "${FLEET_BIN}"
 for _fb in timeout date; do
@@ -24,12 +14,7 @@ for _fb in timeout date; do
 done
 FLEET_PATH="${FLEET_BIN}:${BARE_PATH}"
 
-# A `git` that takes its time in ONE repo, and is the real git everywhere else.
-# `status` is the subcommand because that is where the real hang was measured
-# (llvm-project, `git status --porcelain --ignore-submodules=dirty`, >600s) and
-# because the fleet itself never runs it -- so the delay lands inside
-# renovate-local.sh, which is the process a budget and a Ctrl-C have to reach.
-#   _slow_git <dir> <match> <seconds>
+# _slow_git <dir> <match> <seconds>: slow `git status` in one repo, so the delay lands inside renovate-local.sh.
 _slow_git() {
   mkdir -p "$1"
   {
@@ -42,15 +27,12 @@ _slow_git() {
   chmod +x "$1/git"
 }
 
-# The throwaway family. FAM is what the fleet will scan; UP holds the upstream
-# sources the submodules are cloned from, and is deliberately OUTSIDE FAM so it
-# cannot be mistaken for a member.
+# UP (submodule sources) sits outside FAM so the fleet cannot mistake it for a member.
 FAM="${WORK}/fam"
 UP="${WORK}/up"
 mkdir -p "${FAM}" "${UP}"
 
-# <parent> <name> <origin url> -> a committed checkout carrying a manifest the
-# injected report has an update for.
+# _fam_repo <parent> <name> <origin url>: a checkout with a manifest the injected report updates.
 _fam_repo() {
   local d
   d="$(_init_repo "$1/$2")"
@@ -59,9 +41,7 @@ _fam_repo() {
   printf '%s' "${d}"
 }
 
-# ...and the same checkout with NO origin: `git config --get remote.origin.url`
-# says nothing, so this repo has no identity and no owner to compare. <remote>
-# empty for a repo with no remotes at all.
+# Same without `origin`, so the repo has no identity; an empty <remote> means no remotes at all.
 _fam_repo_norigin() {
   local d
   d="$(_init_repo "$1/$2")"
@@ -70,11 +50,7 @@ _fam_repo_norigin() {
   printf '%s' "${d}"
 }
 
-# <superproject> <path> <source> <origin url to claim> -- vendor a repo, then
-# point the CHECKOUT's origin at the url the real remote would have. That is the
-# real shape: .gitmodules names the remote, and the clone on disk carries it. It
-# is also what makes the identity of a vendored copy equal the identity of its
-# own checkout, which is the whole question this file is about.
+# _vendor <superproject> <path> <source> <origin url>: the real remote url makes a vendored copy share its checkout's identity.
 _vendor() {
   _add_sub "$1" "$3" "$2"
   git -C "$1/$2" remote set-url origin "$4"
@@ -88,13 +64,10 @@ _fam_repo "${UP}" hub "${HUB_URL}" >/dev/null
 _fam_repo "${UP}" vendored-only "${ONLY_URL}" >/dev/null
 
 HUB="$(_fam_repo "${FAM}" hub "${HUB_URL}")"
-# consumer-a claims the hub over https, consumer-b over ssh. One repository,
-# two spellings -- the shape that makes a fleet keyed on raw urls count it twice.
+# https and ssh spellings of one hub: a fleet keyed on raw urls would count it twice.
 CA="$(_fam_repo "${FAM}" consumer-a "https://example.invalid/fam/consumer-a.git")"
 CB="$(_fam_repo "${FAM}" consumer-b "git@example.invalid:fam/consumer-b.git")"
-# ...and a repo belonging to somebody else, sitting in the same directory. Its
-# path is discarded on purpose: what (F1) asserts is that the fleet does NOT
-# run it, so nothing here should ever need to name it again.
+# Somebody else's repo in the same directory; (F1) asserts the fleet never runs it.
 _fam_repo "${FAM}" stranger "https://example.invalid/other/stranger.git" >/dev/null
 # ...and the two the fleet cannot PLACE at all.
 _fam_repo_norigin "${FAM}" norem "" >/dev/null
@@ -104,13 +77,7 @@ _vendor "${CA}" third_party/hub "${UP}/hub" "${HUB_URL}"
 _vendor "${CA}" third_party/only "${UP}/vendored-only" "${ONLY_URL}"
 _vendor "${CB}" third_party/hub "${UP}/hub" "git@example.invalid:fam/hub.git"
 
-# The fleet, run the way the suites run everything else: injected report, no
-# network, and rc read from a plain assignment with no pipeline in the way.
-#
-# Four knobs, each read as `NAME=value _fleet ...` so it resets itself -- the
-# same shape renovate-fixtures.sh's _run already uses, and for the same reason:
-# three cases need one input swapped, and a hand-rolled copy of the whole
-# invocation inside a case is exactly the copy the duplication gate catches.
+# RUN_FLEET_* knobs are passed as `NAME=value _fleet ...` so each resets itself, as in renovate-fixtures.sh's _run.
 _fleet() {
   local root="$1"
   shift
@@ -122,9 +89,7 @@ _fleet() {
   return 0
 }
 
-# Just the summary TABLE's rows. Needed because every repo also gets a banner
-# line starting with its own name, so a bare `grep -c '^hub '` counts the banner
-# too -- which is how the first cut of (F4) read 7 members out of 3.
+# Summary table rows only: each repo's banner line also starts with its name.
 _rows() {
   printf '%s\n' "${OUT}" | sed -n '/^REPO  */,/^$/p' | tail -n +2 | grep -c . || true
 }
@@ -139,7 +104,6 @@ _order() {
     | sed -n '/^run order/,/^$/p' | sed -n 's/^ *[0-9]*\. *\([^ ]*\).*/\1/p' | tr '\n' ' ')"
 }
 
-# --------------------------------------------------------------------------
 t_case "(F1) the fleet is FOUND, not written down -- and stops at the owner"
 _fleet "${CA}"
 t_assert_eq "0" "${RC}" "a report run over the fleet must succeed"
@@ -167,9 +131,7 @@ t_assert_eq "3" "$(_rows)" \
   "and the summary has one row per member, not one per checkout"
 
 t_case "(F4b) the heading does not promise more than the tool keeps"
-# Measured 2026-09-11: --apply moves the gitlink with `git submodule update
-# --remote`, which fetches and checks out INSIDE the vendored working tree.
-# The heading used to say "NONE of them is written", which is not true of that.
+# --apply's `git submodule update --remote` does check out inside the vendored tree.
 t_assert_fails grep -q 'NONE of them is written' <<<"${OUT}"
 t_assert_contains "${OUT}" "No update is APPLIED in" "what is true is what it says"
 t_assert_contains "${OUT}" "does check the new commit out inside the copy" \
@@ -181,9 +143,7 @@ t_assert_contains "${OUT}" "example.invalid/fam/vendored-only" "naming the repo"
 t_assert_contains "${OUT}" "git clone" "and saying what to do about it"
 
 t_case "(F5b) a sibling the fleet cannot PLACE is named too"
-# It used to be `|| continue`: a checkout whose remote is not called `origin`
-# appeared in no plan, no summary and no heading, while six headings named
-# things the fleet had deliberately not touched.
+# A checkout without an `origin` remote must be named, not silently skipped.
 t_assert_contains "${OUT}" "identity here IS \`remote.origin.url\`" \
   "the case has its own heading, saying what it looked for"
 t_assert_contains "${OUT}" "norem  (remotes here: none at all)" \
@@ -220,9 +180,7 @@ t_assert_eq "hub consumer-b " "$(_order)" "--only keeps the order"
 _fleet "${CA}" --skip consumer-a
 t_assert_eq "hub consumer-b " "$(_order)" "--skip removes exactly one"
 
-# --------------------------------------------------------------------------
-# The requirement the whole summary exists for.
-# --------------------------------------------------------------------------
+# Failure isolation, the requirement the summary exists for
 t_case "(F9) a repo that FAILS does not stop the others, and the summary says which"
 printf 'killed mid-apply\n' > "$(git -C "${CB}" rev-parse --absolute-git-dir)/renovate-local-inflight"
 _fleet "${CA}"
@@ -243,13 +201,7 @@ t_assert_contains "${OUT}" "detached HEAD" "naming the reason"
 t_assert_contains "${OUT}" "switch <branch>" "and how to fix it"
 git -C "${CB}" checkout --quiet main
 
-# An in-progress git STATE, in one call: `main` and <branch> each rewrite one
-# file, so the <operation> started over them stops on a conflict and leaves its
-# state file behind. The two cases below differ only in which operation that is
-# and in what they then read back; writing the setup and the abort out twice is
-# the copy the duplication gate catches.
-#   _mid_git <repo> <branch> <operation>   start it and stay in it
-#   _end_mid_git <repo> <branch> <operation>   abort it, back on main, branch gone
+# _mid_git <repo> <branch> <operation>: conflicting edits leave <operation> in progress; _end_mid_git aborts it.
 _mid_git() {
   _plant_file "$1" README.md 'base\n'
   git -C "$1" checkout --quiet -b "$2"
@@ -265,9 +217,7 @@ _end_mid_git() {
   git -C "$1" branch -qD "$2" >/dev/null 2>&1
 }
 
-# ...and the verdict both share: refused, named, with the command that ends the
-# state, and NOTHING applied into the repo that is mid-operation.
-#   _refused_mid <what git calls it> <the command that ends it>
+# _refused_mid <what git calls it> <the command that ends it>
 _refused_mid() {
   t_assert_eq "1" "${RC}" "the fleet reports it could not complete"
   t_assert_eq "1" "$(_row_rc consumer-b)" "as the repo's own row"
@@ -277,23 +227,18 @@ _refused_mid() {
 }
 
 t_case "(F9c) a MERGE in progress is a refusal, and nothing is applied into it"
-# Measured against the old preflight 2026-09-11: MERGE_HEAD present, `UU
-# README.md` conflicted, HEAD still on `main` -- the fleet applied into it, rc 0,
-# and the merge was still in progress afterwards. The next `git commit -a`
-# finishes THAT merge and carries the renovate edit into it.
+# Applying mid-merge would let the next `git commit -a` carry the renovate edit into that merge.
 _mid_git "${CB}" side merge
 t_assert_ok test -f "$(git -C "${CB}" rev-parse --absolute-git-dir)/MERGE_HEAD"
 t_assert_eq "main" "$(git -C "${CB}" rev-parse --abbrev-ref HEAD)" \
   "HEAD is on a branch, so the detached-HEAD check cannot catch this"
-# --only the repo under test: this is an --apply, and the two clean members of
-# this family are the ones (F11) below reads back as untouched.
+# --only: (F11) reads the other members back as untouched.
 _fleet "${CA}" --apply --only consumer-b
 _refused_mid "a merge" "merge --continue"
 _end_mid_git "${CB}" side merge
 
 t_case "(F9d) mid-REBASE, the advice is the rebase's, not 'switch <branch>'"
-# A rebase detaches HEAD, so the old code caught it -- with advice that is
-# actively wrong: `git switch <branch>` in the middle of a rebase abandons it.
+# `git switch <branch>` in the middle of a rebase abandons it.
 _mid_git "${CB}" side2 rebase
 _fleet "${CA}" --apply --only consumer-b
 _refused_mid "a rebase" "rebase --continue"
@@ -301,10 +246,7 @@ t_assert_fails grep -q 'switch <branch>' <<<"${OUT}"
 _end_mid_git "${CB}" side2 rebase
 
 t_case "(F9e) a cherry-pick and a revert are the same refusal, with their own fix"
-# `git cherry-pick <branch>` and `git revert <branch>` both act on that branch's
-# TIP, so _mid_git drives them unchanged. Driven for real rather than by
-# planting the state file, because what is being checked is that the path git
-# actually writes is the path preflight reads.
+# Driven for real, not by planting a state file, so the path git writes is the path preflight reads.
 for _op in cherry-pick revert; do
   _mid_git "${CB}" "side-${_op}" "${_op}"
   _fleet "${CA}" --apply --only consumer-b
@@ -313,9 +255,7 @@ for _op in cherry-pick revert; do
 done
 
 t_case "(F9f) a BISECT detaches HEAD, and the fix is the bisect's"
-# The one in-progress state with no *_HEAD file and no `--continue`: git writes
-# BISECT_LOG and checks a commit out, so the detached-HEAD refusal would fire
-# first and hand out `git switch <branch>` -- which throws the bisect away.
+# A bisect has no *_HEAD file and detaches HEAD, and `git switch <branch>` would throw it away.
 git -C "${CB}" bisect start >/dev/null 2>&1
 git -C "${CB}" bisect bad >/dev/null 2>&1
 git -C "${CB}" bisect good "$(git -C "${CB}" rev-list --max-parents=0 HEAD | tail -1)" >/dev/null 2>&1
@@ -330,7 +270,6 @@ RUN_FLEET_CONFIG="${REFUSE_CONFIG}" _fleet "${CA}" --apply --dry-run
 t_assert_eq "2" "${RC}" "every repo completed and something was not applied"
 t_assert_contains "${OUT}" "needs a human" "and the summary says which answer this is"
 
-# --------------------------------------------------------------------------
 t_case "(F11) --dry-run prints the whole plan and changes nothing, anywhere"
 git -C "${HUB}" diff --quiet HEAD
 _fleet "${CA}" --apply --dry-run
@@ -347,12 +286,7 @@ t_assert_eq "  http: 1.1.0" "$(_pub "${CA}" 3)" "no manifest moved"
 t_assert_eq "  http: 1.1.0" "$(_pub "${HUB}" 3)" "in any repo"
 
 t_case "(F12) --apply moves the gitlink, and Renovate applies in no vendored copy"
-# The report names BOTH halves, so select_apply_targets finds the gitlink and
-# apply_submodules really runs. With a pub-only report it did not, and this case
-# proved only that renovate-local.sh was never asked -- not that the writing
-# path is safe. The vendored copy's own origin is made resolvable with
-# `insteadOf`, so its IDENTITY stays the url the duplicate check keys on while
-# the fetch `submodule update --remote` runs can actually reach the source.
+# Both halves in the report so apply_submodules really runs; `insteadOf` keeps the copy's identity url yet fetchable.
 GITLINK_REPORT="${WORK}/fleet-gitlink.json"
 _report_mixed "${GITLINK_REPORT}" \
   git-submodules .gitmodules third_party/hub main main \
@@ -374,15 +308,9 @@ git -C "${CA}" checkout --quiet -- pubspec.yaml
 git -C "${HUB}" checkout --quiet -- pubspec.yaml
 git -C "${CA}" submodule update --quiet --checkout -- third_party/hub 2>/dev/null || true
 
-# --------------------------------------------------------------------------
-# The three defects an adversarial run found on 2026-09-11. Each fixture is its
-# own family, because each one is a shape the family above deliberately is not.
-# --------------------------------------------------------------------------
+# Adversarial shapes, each in its own family because the one above deliberately lacks them
 t_case "(F13) Ctrl-C STOPS the fleet -- it does not consume one repo and go on"
-# Measured against the old code: SIGINT to the process GROUP mid-apply, and the
-# fleet APPLIED five more repositories. Nothing anywhere said "you interrupted
-# this and I carried on". The signal goes to the GROUP because that is what a
-# terminal's Ctrl-C does.
+# SIGINT goes to the process group, as a terminal's Ctrl-C does.
 INTFAM="${WORK}/intfam"
 mkdir -p "${INTFAM}"
 for _n in r1 r2 r3 r4 r5 r6; do
@@ -391,13 +319,7 @@ done
 _slow_git "${WORK}/slow-int" /intfam/ 3
 INT_LOG="${WORK}/int.log"
 : > "${INT_LOG}"
-# `set -m` is load-bearing, not a way to get a process group: without it bash
-# puts a background command in a non-interactive shell under SIG_IGN for SIGINT,
-# an ignored disposition SURVIVES exec, and a shell cannot trap a signal ignored
-# on entry -- so the fleet's INT trap would never install and this case would
-# pass against a fixed tool and a broken one alike (measured 2026-09-11: setsid
-# rc 0 "FINISHED WITHOUT INTERRUPT", `set -m` rc 130 "TRAP FIRED"). Monitor mode
-# also gives the job its own group, the only other thing setsid was here for.
+# Without `set -m` the background job inherits SIGINT as ignored, and the fleet's INT trap never installs.
 set -m
 PATH="${WORK}/slow-int:${FLEET_PATH}" PREFLIGHT_PYTHON="${PY_ABS}" \
   RENOVATE_LOCAL_REPORT="${A_REPORT}" RENOVATE_LOCAL_CONFIG="${CONFIG}" \
@@ -429,10 +351,7 @@ for _n in r3 r4 r5 r6; do
 done
 
 t_case "(F14) TWO OWN CHECKOUTS of one repository: refused, not written twice"
-# Measured against the old code: `hub` and `hub2` with one origin both appeared
-# in the run order, --apply rewrote pubspec.yaml in BOTH, both rows said rc 0,
-# and hub2 was named nowhere. A second clone, a `git worktree` and a
-# `ANTfrastructure-2` all have this shape.
+# A second clone or a `git worktree` of one repository has this shape.
 DUPFAM="${WORK}/dupfam"
 mkdir -p "${DUPFAM}"
 DUP_URL="https://example.invalid/dup/hub.git"
@@ -456,11 +375,7 @@ t_assert_eq "  http: 1.6.0" "$(_pub "${DUPFAM}/hub" 3)" "the checkout that was k
 t_assert_eq "  http: 1.1.0" "$(_pub "${DUPFAM}/hub2" 3)" "and only that one"
 
 t_case "(F15) an UNINITIALISED nested submodule cannot silently break the order"
-# Measured against the old code: acon vendors zdep, zdep vendors hub, and acon's
-# copy of zdep has hub de-initialised -> everything under it was invisible,
-# ranks came out acon=1 zdep=1, and acon -- which vendors zdep -- was ordered
-# BEFORE it. A fresh clone that has not run `git submodule update --init
-# --recursive` is exactly this state.
+# acon vendors zdep, whose hub is de-initialised, as in a clone without `submodule update --init --recursive`.
 NFAM="${WORK}/nfam"
 NUP="${WORK}/nup"
 mkdir -p "${NFAM}" "${NUP}"
@@ -484,13 +399,7 @@ t_assert_contains "${OUT}" "acon/tp/zdep/tp/hub" "with the path that is missing"
 t_assert_contains "${OUT}" "submodule update --init --recursive" "and what fills it"
 
 t_case "(F16) a per-repo BUDGET, so one repo cannot hold the fleet"
-# `--timeout 5`, not 1: the budget is per repo and must survive a loaded
-# runner; `slow` sleeps 20s either way, so the verdict is unchanged.
-# Measured 2026-09-11: a single `git status --porcelain --ignore-submodules=dirty`
-# over llvm-project -- which IS the owner's repo, a fork, and therefore a
-# legitimate member -- did not finish in 600s, and the fleet had no budget at
-# all. Combined with the missing INT trap, an --apply that reached it could not
-# be stopped from the keyboard either.
+# `--timeout 5`, not 1, survives a loaded runner; `slow` sleeps 20s either way.
 SFAM="${WORK}/sfam"
 mkdir -p "${SFAM}"
 for _n in aaa slow zzz; do

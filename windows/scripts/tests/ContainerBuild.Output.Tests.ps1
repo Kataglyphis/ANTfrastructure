@@ -1,11 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Invoke-ContainerBuild's docker output reaches the HOST, never the function's result:
-# consumers write `$null = Invoke-ContainerBuild`, which swallowed every line of a failing
-# CI build (2026-09-23). The in-process half lives with the bind-mount fake in
-# Modules.Orchestrators.Tests.ps1. docs/windows-builds.md#reusable-module-windowscontainerbuildreuse
+
+# Docker output must reach the host, since consumers discard the result: docs/windows-builds.md#reusable-module-windowscontainerbuildreuse
 
 $script:reuseModule = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules') 'WindowsContainerBuild.Reuse.psm1'
 Import-Module $script:reuseModule -Force -DisableNameChecking
@@ -39,8 +36,7 @@ elseif ($args[0] -eq 'inspect') { $global:LASTEXITCODE = 1 }
     }
 }
 
-# Every `& $DockerExe ...` pipeline whose LAST element is docker and whose output nothing
-# consumes (assignment, @(), $(), parentheses) leaks into its function's result.
+# A docker pipeline whose output nothing consumes leaks into its function's result.
 function Get-LeakingDockerCall {
     param([Parameter(Mandatory)][string]$Text)
     $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$null, [ref]$null)

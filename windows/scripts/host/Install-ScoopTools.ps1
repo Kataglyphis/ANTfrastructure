@@ -1,26 +1,20 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# CACHE-BUST 2026-08-06: any content change here gives this layer and everything
-# after it new chain-IDs, past poisoned snapshotter debris — see docs/failure-modes.md.
+# Cache-bust lever: any content change re-keys this layer past poisoned snapshotter debris; see docs/failure-modes.md.
 
 
 param(
     [string]$TempDir = 'C:\temp',
-    # Default derived below from versions.env's GIT_VERSION (baked by Import-Versions.ps1);
-    # pass an explicit URL only for a git-for-windows respin (…windows.2 tag).
+    # Derived from GIT_VERSION by default; pass a URL only for a git-for-windows respin (.windows.2).
     [string]$GitInstallerUrl = '',
     [string]$CMakeVersion = '',
     [string]$VulkanVersion = '',
-    # Compiled-output pins (versions.env; forwarded as Dockerfile ARGs). Empty
-    # falls through to scoop's current manifest so a standalone run of this
-    # script still works — the Dockerfile always passes them.
+    # Compiled-output pins; empty falls through to scoop's manifest for a standalone run.
     [string]$LlvmVersion = '',
     [string]$NinjaVersion = '',
     [string]$NasmVersion = '',
-    # '1' hard-gates the arm64 prerequisite checks below (default: warn-only). Must
-    # arrive as a PARAMETER: a bare $env: read is unreachable from `docker build`.
+    # '1' hard-gates the arm64 checks; a parameter, since a bare $env: read is unreachable from docker build.
     [string]$WindowsArm64Strict = ''
 )
 
@@ -28,12 +22,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-# Local wrappers, ON PURPOSE not module exports: setup-* scripts may only rely on
-# the three modules COPY'd before them in Dockerfile.base (Shared, ContainerImage,
-# Installer), and these helpers are specific to this provisioning script anyway.
+# Local wrappers, not module exports: only the three modules COPY'd before this script exist in Dockerfile.base.
 
-# Throws on a non-zero NATIVE exit code: $ErrorActionPreference does not see those,
-# so a failed scoop/dotnet step would commit the layer with tools silently missing.
+# Throws on a non-zero native exit, which $ErrorActionPreference never sees.
 function Invoke-ScoopStep {
     param(
         [Parameter(Mandatory)][string]$Description,
@@ -45,8 +36,7 @@ function Invoke-ScoopStep {
     if ($LASTEXITCODE -ne 0) { throw "$Description failed (exit code $LASTEXITCODE)" }
 }
 
-# Retries because scoop has NO download retry of its own (#116); a dropped transfer
-# can leave a partial file behind, hence the cache purge between attempts.
+# Retries, since scoop has none; a dropped transfer leaves a partial file, hence the cache purge.
 function Install-ScoopPackage {
     param(
         [Parameter(Mandatory)][string]$Package,
@@ -74,9 +64,7 @@ function Install-ScoopPackage {
     }
 }
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
 if (-not (Test-Path $sharedModulePath)) {
@@ -89,16 +77,13 @@ $installerModulePath = Join-Path $scriptAssetRoot 'modules\WindowsInstaller.Comm
 if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
 Import-Module $installerModulePath -Force
 
-# Shared is one of the three modules COPY'd before this script in Dockerfile.base;
-# imported for Assert-FileSha256/Get-PreferredToolPath (not in the others' re-exports).
+# For Assert-FileSha256 and Get-PreferredToolPath, which the other modules do not re-export.
 $sharedHelpersPath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedHelpersPath }
 
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through the Common modules' re-export.
 
-# CMake stable pin comes from versions.env's CMAKE_VERSION (baked in by
-# Import-Versions.ps1 / passed as -CMakeVersion from the Dockerfile ARG); empty
-# falls through to scoop's current stable manifest.
+# Param wins, then the baked env; empty falls through to scoop's current manifest.
 $CMakeVersion = Resolve-ContainerImageValue -Value $CMakeVersion -EnvironmentVariable 'CMAKE_VERSION'
 $VulkanVersion = Resolve-ContainerImageValue -Value $VulkanVersion -EnvironmentVariable 'VULKAN_VERSION'
 # Same resolution route for the compiled-output pins (param wins, then baked env).
@@ -109,20 +94,16 @@ $NasmVersion  = Resolve-ContainerImageValue -Value $NasmVersion  -EnvironmentVar
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
 #region 1. Git (pinned installer)
-# Derive the Git installer URL from GIT_VERSION (versions.env) so the pin cannot drift
-# invisibly in a param default -- same pattern as the CMake/Vulkan pins above. The
-# ".windows.1" tag suffix covers normal releases; a respun release needs -GitInstallerUrl.
+# Derived from GIT_VERSION so the pin cannot drift in a default; .windows.1 covers normal releases.
 $gitVer = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_VERSION' -DefaultValue '2.55.0'
 $GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -EnvironmentVariable 'GIT_INSTALLER_URL' `
     -DefaultValue "https://github.com/git-for-windows/git/releases/download/v$gitVer.windows.1/Git-$gitVer-64-bit.exe"
 
 $gitInstaller = Join-Path $TempDir 'Git-64-bit.exe'
-# SHA256 pin from versions.env (GIT_WINDOWS_INSTALLER_SHA256, baked env). Empty
-# (e.g. a -GitInstallerUrl override for a respun release) skips the hash check.
+# An empty pin (a respun-release URL override) skips the hash check.
 $gitSha = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_WINDOWS_INSTALLER_SHA256' -DefaultValue ''
 Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer' -ExpectSignature MZ -ExpectedSha256 $gitSha
-# Exit-code gate (was missing — a failed Git install surfaced only much later
-# as "git not recognized" deep inside a media build).
+# Without the exit-code gate a failed install surfaces only as "git not recognized" in a media build.
 $gitProc = Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait -NoNewWindow -PassThru
 if ($gitProc.ExitCode -ne 0) { throw "Git for Windows installer failed (exit $($gitProc.ExitCode))" }
 Remove-Item $gitInstaller -Force
@@ -134,8 +115,7 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 
 #endregion
 #region 2. WiX toolset (dotnet tool, pinned)
-# WiX versions come from versions.env (single source of truth shared with the
-# Test-Toolchain.ps1 assert); defaults keep the script runnable standalone.
+# Shared with Test-Toolchain.ps1's assert; the defaults keep a standalone run working.
 $WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '4.0.6'
 $WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.6'
 Invoke-ScoopStep -Description "dotnet tool install wix $WixVersion" -Command {
@@ -149,8 +129,7 @@ Enable-Tls12ForDownloads
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
 #endregion
 #region 3. scoop bootstrap + shims
-# Hash-pinned (SCOOP_INSTALLER_SHA256) because this script is EXECUTED: only the bytes
-# reviewed when the pin was set may run. A mismatch means scoop revved it -- re-review, bump.
+# Hash-pinned because it is executed: a mismatch means scoop revved it, so re-review before bumping.
 $scoopSha = Resolve-ContainerImageValue -EnvironmentVariable 'SCOOP_INSTALLER_SHA256' -DefaultValue ''
 Invoke-DownloadWithRetry -Url 'https://get.scoop.sh' -DestinationPath $scoopInstallScript -Description 'scoop installer script' -ExpectedSha256 $scoopSha
 & $scoopInstallScript -RunAsAdmin
@@ -160,9 +139,7 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 ) | Out-Null
 Assert-ContainerCommandAvailable -Name 'git' | Out-Null
 Assert-ContainerCommandAvailable -Name 'scoop' | Out-Null
-# `scoop bucket add` exits 2 when the bucket already exists, and scoop's installer
-# pre-adds `main` — so test for the bucket DIRECTORY rather than trusting the exit
-# code or sniffing the WARN text (the child shim's warning bypasses 2>&1 capture).
+# Test the bucket directory: `scoop bucket add` exits 2 for an existing one, and the installer pre-adds main.
 $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
 foreach ($bucket in @('main', 'extras', 'versions')) {
     if (Test-Path (Join-Path $scoopRoot "buckets\$bucket")) {
@@ -174,14 +151,11 @@ foreach ($bucket in @('main', 'extras', 'versions')) {
 Install-ScoopPackage -Package 'main/7zip'
 Invoke-ScoopStep -Description 'scoop config use_external_7zip true' -Command { scoop config use_external_7zip true }
 
-# NO rust here on purpose: Install-RustToolchain.ps1 is the single provider (Cargokit
-# requires rustup), and a scoop rust would compete with the rustup proxies in CARGO_BIN.
+# No rust here: Install-RustToolchain.ps1's rustup is the single provider.
 
 #endregion
 #region 4. Vulkan LAN preseed + pinned installs (cmake/vulkan/flutter)
-# sdk.lunarg.com stalls reproducibly from inside containers, so the 275 MB SDK is
-# preseeded from the LAN under scoop's own cache name (app#version#first-7-of-sha256(url));
-# scoop still checks the manifest hash, so a bad preseed fails open to the vendor download.
+# Preseeded from the LAN under scoop's cache name, since sdk.lunarg.com stalls in containers; scoop still checks the hash.
 if ($env:VULKAN_PRESEED_ENDPOINT -and $VulkanVersion) {
     try {
         $vkVendorUrl = "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/vulkansdk-windows-X64-$VulkanVersion.exe"
@@ -205,9 +179,7 @@ if ($env:VULKAN_PRESEED_ENDPOINT -and $VulkanVersion) {
 }
 Install-ScoopPackage -Package 'main/vulkan' -Version $VulkanVersion
 
-# The aarch64 import libs are an OPTIONAL component of the x64 Vulkan SDK, added via its
-# Qt IFW maintenancetool ($env:VULKAN_SDK is not set yet, hence the scoop root). Warn-only
-# because this layer is SHARED with amd64 -- docs/windows-cross-builds.md.
+# The aarch64 libs are an optional SDK component; warn-only since this layer is shared with amd64 (docs/windows-cross-builds.md).
 $armStrict = if (-not [string]::IsNullOrWhiteSpace($WindowsArm64Strict)) { $WindowsArm64Strict } else { $env:WINDOWS_ARM64_STRICT }
 $vkRoot = Join-Path $env:USERPROFILE 'scoop\apps\vulkan\current'
 $vkArm64Lib = Join-Path $vkRoot 'Lib-ARM64'
@@ -216,8 +188,7 @@ if (Test-Path $vkArm64Lib) {
 } else {
     $maintenanceTool = Join-Path $vkRoot 'maintenancetool.exe'
     if (Test-Path $maintenanceTool) {
-        # Two documented argument shapes: current Qt IFW long options first, the
-        # older short forms as a fallback (LunarG has shipped both).
+        # Current Qt IFW long options first, the older short forms as a fallback.
         $argSets = @(
             @('--accept-licenses', '--default-answer', '--confirm-command', 'install', 'com.lunarg.vulkan.arm64'),
             @('--al', '--am', '-c', 'install', 'com.lunarg.vulkan.arm64')
@@ -245,44 +216,16 @@ if (Test-Path $vkArm64Lib) {
     }
 }
 
-# Pinned to versions.env FLUTTER_VERSION so the Windows image cannot silently diverge
-# from the Linux lane; empty env falls back to scoop's manifest, as with vulkan/cmake.
+# Pinned so the Windows image cannot silently diverge from the Linux lane.
 Install-ScoopPackage -Package 'extras/flutter' -Version ([string]$env:FLUTTER_VERSION) -Global
 #endregion
 #region 5. PINNED compiled-output packages + floating toolset + cache scrub
-# ── PINNED: the three scoop packages that produce or shape compiled output ────
-# llvm was DELIBERATELY UNPINNED until 2026-08-07, which left the base image --
-# the most expensive layer in the chain -- unreproducible in its single most
-# load-bearing component: clang-cl compiles the entire media chain, and five of
-# the patches in windows/scripts/patches/ are written against a specific
-# clang-cl's diagnostics. A rebuild months later would swap the compiler
-# silently and fail ~2 h into media-core. Pins live in versions.env
-# (LLVM_WINDOWS_VERSION / NINJA_WINDOWS_VERSION / NASM_WINDOWS_VERSION) and
-# reach here as Dockerfile ARGs; Test-Toolchain.ps1 asserts the resolved
-# clang-cl against the pin so a silent scoop fallback fails the base build
-# instead of the media build. versions.env's LLVM_RELEASE is a SEPARATE pin for
-# the Linux lane -- the two lanes move independently on purpose.
+# Pinned: they shape compiled output, and patches are written against one clang-cl (independent of Linux's LLVM_RELEASE).
 Install-ScoopPackage -Package 'main/llvm'  -Version $LlvmVersion
 Install-ScoopPackage -Package 'main/ninja' -Version $NinjaVersion
 Install-ScoopPackage -Package 'main/nasm'  -Version $NasmVersion
 
-# ── compiler-rt builtins for aarch64 (2026-08-23) ────────────────────────────
-# scoop's main/llvm is the x64 Windows RELEASE, and LLVM ships compiler-rt for
-# the HOST architecture only: the install contains clang_rt.builtins-x86_64.lib
-# and nothing else (measured via Test-Arm64Prereqs.ps1 Q5, which has checked
-# for exactly this since the arm64 lane was designed and reported [FAIL]).
-#
-# That is not cosmetic. clang lowers 128-bit integer arithmetic to compiler-rt
-# libcalls on aarch64, so the first component that does 64x64->128 math fails at
-# LINK, not compile:
-#     lld-link: error: undefined symbol: __udivti3
-#     >>> referenced by gstutils.c:670 (gst_util_uint64_scale)
-# ONNX Runtime, FFmpeg and OpenCV happen not to need it; GStreamer does.
-#
-# Installed UNCONDITIONALLY, like the MSVC ARM64 toolset and the Vulkan ARM64
-# component: this is a shared layer, and gating it on an arch ARG would re-pay
-# the chain's most expensive layers on every lane switch. Only the one static
-# library is kept -- the archive is fetched, mined and deleted.
+# aarch64 compiler-rt builtins, unconditionally; see docs/windows-cross-builds.md § aarch64 compiler-rt is a base prerequisite.
 $llvmAppRoot = Join-Path $env:USERPROFILE 'scoop\apps\llvm\current'
 $rtHost = @(Get-ChildItem -Path (Join-Path $llvmAppRoot 'lib\clang') -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
 $rtTarget = @(Get-ChildItem -Path (Join-Path $llvmAppRoot 'lib\clang') -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
@@ -292,28 +235,20 @@ if ($rtTarget.Count -gt 0) {
     Write-Warning ("clang_rt.builtins-x86_64.lib not found under $llvmAppRoot\lib\clang - cannot determine where to " +
                    'place the aarch64 counterpart. The LLVM layout changed; arm64 links needing __udivti3 will fail.')
 } else {
-    # Destination is derived from the HOST library's own directory, never
-    # hardcoded: that is by construction the directory clang and every consumer
-    # already search, so no discovery logic anywhere needs to learn a new path.
+    # Beside the host library, the directory clang and every consumer already search.
     $rtDestDir = $rtHost[0].Directory.FullName
     $rtArchive = Join-Path $env:TEMP "clang+llvm-$LlvmVersion-aarch64-pc-windows-msvc.tar.xz"
-    # %2B, not a literal '+': that is the canonical browser_download_url GitHub's
-    # own release API returns for this asset, and the unencoded form 404s.
-    # Verified 2026-08-23 with a ranged GET (a HEAD is refused outright here, so
-    # "HEAD failed" is NOT evidence the asset is missing -- it cost one wrong
-    # conclusion already).
+    # %2B, not '+', which 404s; probe with a ranged GET, since GitHub refuses HEAD here.
     $rtUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LlvmVersion/clang%2Bllvm-$LlvmVersion-aarch64-pc-windows-msvc.tar.xz"
     $rtExtractDir = Join-Path $env:TEMP 'llvm-aarch64-rt'
     try {
         Write-Host "Fetching aarch64 compiler-rt from $rtUrl (large, one-time; only clang_rt.builtins-aarch64.lib is kept)"
         Invoke-DownloadWithRetry -Url $rtUrl -DestinationPath $rtArchive
-        # Verified-or-warn contract shared with the other two copies (#160). The
-        # key is empty here (base runs before versions.env is baked) -> it warns.
+        # Verified-or-warn: the key is empty here, since base runs before versions.env is baked.
         $rtSha = Resolve-ContainerImageValue -EnvironmentVariable 'LLVM_WINDOWS_AARCH64_RT_SHA256' -DefaultValue ''
         Assert-FileSha256 -Path $rtArchive -Expected $rtSha -Label 'aarch64 compiler-rt archive' -PinName 'LLVM_WINDOWS_AARCH64_RT_SHA256'
         New-Item -Path $rtExtractDir -ItemType Directory -Force | Out-Null
-        # System32 bsdtar, never a GNU tar on PATH: GNU parses `C:\...` as a
-        # remote-host spec, and bsdtar is what matches member PATTERNS anyway.
+        # System32 bsdtar: GNU tar reads C:\... as a remote host and does not match member patterns.
         $rtTar = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
         if (-not $rtTar) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
         & $rtTar -xf $rtArchive -C $rtExtractDir '*clang_rt.builtins-aarch64.lib'
@@ -334,9 +269,7 @@ if ($rtTarget.Count -gt 0) {
 
     $rtTarget = @(Get-ChildItem -Path (Join-Path $llvmAppRoot 'lib\clang') -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
     if ($rtTarget.Count -eq 0) {
-        # Same warn-by-default / opt-in-hard-gate shape as the Vulkan ARM64
-        # component above, and for the same reason: this is a shared layer, so an
-        # arm64-only prerequisite must not be able to break the amd64 build.
+        # Warn by default: an arm64-only prerequisite in a shared layer must not break amd64.
         $msg = ('compiler-rt builtins for aarch64 are NOT installed under ' + $llvmAppRoot + '\lib\clang. ' +
                 'An arm64 target cannot link 128-bit integer arithmetic (__udivti3 / __umodti3 & co); ' +
                 'GStreamer is known to need it. The amd64 lane is unaffected.')
@@ -344,29 +277,7 @@ if ($rtTarget.Count -gt 0) {
         Write-Warning ($msg + ' Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
     }
 }
-# sccache is NOT installed here since 2026-09-18: Install-RustToolchain.ps1
-# installs the released 0.18.0 zip into CARGO_BIN (version gates a FEATURE;
-# multi-tier caching needs >= v0.16.0 and degrades silently below). History:
-# docs/windows-build-resources.md § Persistent compile cache (sccache).
-
-# ── OpenSSL for aarch64 (2026-08-23) ─────────────────────────────────────────
-# scoop installs ONE architecture per app, and that is the host's: the image gets
-# lib\VC\x64\MD\libcrypto.lib and nothing else. Four GStreamer targets link
-# OpenSSL and therefore fail at link on the cross lane (measured 2026-08-23, all
-# four with the same error):
-#   gst-plugins-bad ext/hls, ext/dtls, ext/aes, and glib-networking's openssl TLS backend
-#   lld-link: error: libcrypto.lib(libcrypto-4-x64.dll): machine type x64 conflicts with arm64
-# Losing them would cost HTTP Live Streaming, DTLS/WebRTC and AES on arm64.
-#
-# The scoop manifest already knows an arm64 source, so this uses the SAME upstream
-# artifact scoop would, with the manifest's own SHA256:
-#   "arm64": { "url": "https://slproweb.com/download/Win64ARMOpenSSL-4_0_2.exe" }
-# It is installed ALONGSIDE the x64 one (never replacing it -- this layer is shared
-# with the amd64 lane) into a fixed directory that the GStreamer build points
-# pkg-config at on the cross lane.
-#
-# Warn-only, like the Vulkan ARM64 component above and for the same reason: an
-# arm64-only prerequisite must not be able to break the amd64 build.
+# aarch64 OpenSSL beside the host one, warn-only; see docs/windows-cross-builds.md § aarch64 OpenSSL is a base prerequisite too.
 $sslArm64Root = 'C:\opt\openssl-arm64'
 $sslArm64Lib = @(Get-ChildItem -Path $sslArm64Root -Recurse -Filter 'libcrypto.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
 if ($sslArm64Lib.Count -gt 0) {
@@ -380,30 +291,10 @@ if ($sslArm64Lib.Count -gt 0) {
         Invoke-DownloadWithRetry -Url $sslUrl -DestinationPath $sslExe
         $got = (Get-FileHash -LiteralPath $sslExe -Algorithm SHA256).Hash
         if ($got -ine $sslSha) { throw "sha256 mismatch: got $got, expected $sslSha (this is the hash scoop's own openssl manifest pins for the arm64 asset)" }
-        # EXTRACT, do not run. The scoop manifest marks this asset
-        # `"innosetup": true`, which is exactly how scoop installs it: with
-        # innounp, never by executing the installer. Running it silently was
-        # tried first (2026-08-23) and is what NOT to do -- the whole step took
-        # 11.8 s including the 218 MB download, exited 0, and produced no files
-        # at all, so a silent no-op looked like success.
-        #
-        # Extraction is also the right shape here for a second reason: this must
-        # land BESIDE the x64 install without touching the registry or the
-        # Windows system directory, and an extractor cannot do either.
-        # Declare the dependency instead of inheriting it from script ORDER.
-        # innounp arrives in this image only as a side effect of scoop installing
-        # an innosetup package, and `scoop install main/openssl` runs LATER in
-        # this file (measured 2026-08-23: this block at 349 s, openssl at 406 s),
-        # so the first attempt found no innounp and failed for a reason that had
-        # nothing to do with OpenSSL. Installing it explicitly makes the block
-        # position-independent; scoop no-ops if it is already there.
+        # Extract with innounp, never run the installer (a silent run exits 0 and installs nothing); declared, not order-dependent.
         Install-ScoopPackage -Package 'main/innounp'
 
-        # @(...) + .Count, never `(Get-Command ...).Source`: this script runs under
-        # Set-StrictMode -Version Latest, where dereferencing a property on a NULL
-        # result throws "The property 'Source' cannot be found on this object" --
-        # which is what the first attempt did, turning "innounp is missing" into a
-        # misleading exception (measured 2026-08-23).
+        # @() and .Count: (Get-Command ...).Source on a null result throws under StrictMode.
         $innounp = $null
         $innounpCmd = @(Get-Command 'innounp' -CommandType Application -ErrorAction SilentlyContinue)
         if ($innounpCmd.Count -gt 0) { $innounp = $innounpCmd[0].Source }
@@ -413,9 +304,7 @@ if ($sslArm64Lib.Count -gt 0) {
         }
         if (-not $innounp) { throw 'innounp not found (scoop installs it for innosetup manifests such as openssl) - cannot extract the aarch64 OpenSSL package.' }
         New-Item -Path $sslArm64Root -ItemType Directory -Force | Out-Null
-        # -x extract, -y overwrite, -d<dir> destination. Output is logged rather
-        # than swallowed: the previous attempt failed silently precisely because
-        # nothing looked at it.
+        # Output logged, never swallowed: a silent failure here looks like success.
         $unpOut = & $innounp -x -y "-d$sslArm64Root" $sslExe 2>&1
         $unpCode = $LASTEXITCODE
         $global:LASTEXITCODE = 0
@@ -427,9 +316,7 @@ if ($sslArm64Lib.Count -gt 0) {
         Remove-Item -Path $sslExe -Force -ErrorAction SilentlyContinue
     }
 
-    # Resolve by SEARCH, never by assuming slproweb's layout -- the same discipline
-    # the compiler-rt step uses. Whatever directory holds libcrypto.lib IS the lib
-    # dir, and the consumer is told about it rather than guessing.
+    # Found by search, never by assuming slproweb's layout.
     $sslArm64Lib = @(Get-ChildItem -Path $sslArm64Root -Recurse -Filter 'libcrypto.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
     if ($sslArm64Lib.Count -gt 0) {
         Write-Host "OpenSSL (aarch64) installed -> $($sslArm64Lib[0].FullName)"
@@ -449,48 +336,22 @@ if ($sslArm64Lib.Count -gt 0) {
     }
 }
 
-# ── FLOATING (deliberate): tools the build only INVOKES ───────────────────────
-# None of these enter the compiled artifacts, so tracking scoop's current
-# manifest costs nothing and saves a pin-bump treadmill. Move a package UP to
-# the pinned block the moment it starts linking into shipped binaries.
-# pkg-config: consumers' CMake `find_package(PkgConfig)` + `pkg_check_modules(...)` need
-# the BINARY -- the image bakes PKG_CONFIG_PATH and the .pc files, but the source-built
-# GStreamer (unlike the old MSI) ships no pkg-config tool. NOTE: scoop main has no
-# `pkgconf` manifest; the package name is `pkg-config`.
-# sccache is NOT here and no longer scoop-installed: Install-RustToolchain.ps1
-# puts the released zip in CARGO_BIN (docs/windows-build-resources.md § sccache).
-# Per-package via Install-ScoopPackage (2026-08-21): the former single
-# 8-package Invoke-ScoopStep bypassed the 3-attempt retry + cache purge, so
-# one transient SourceForge/GitHub blip on ANY of the 8 killed the whole base
-# build — the precise failure the retry helper was added for on 2026-08-19.
+# Floating: tools the build only invokes; pin one the moment it links into shipped binaries. One call each keeps the retry.
 foreach ($floatingPkg in @('nano', 'cppcheck', 'extras/nsis', 'main/uv', 'main/nuget', 'extras/zlib', 'main/openssl', 'main/pkg-config')) {
     Install-ScoopPackage -Package $floatingPkg
 }
 
-# CMake stable release via scoop (replaces the old cmake.org MSI download); the
-# shim lands on the scoop user-shims PATH like every other tool installed here.
 Install-ScoopPackage -Package 'main/cmake' -Version $CMakeVersion
 
-# make + gawk BAKED INTO BASE (2026-08-05): Build-FfmpegFromSource.ps1 used
-# to install both at RUN time ("if absent -> scoop install") — but their
-# ezwinports manifests download from SourceForge, whose mirror-picker flakes
-# killed a proof-run ffmpeg-warm solve ("URL is not valid" -> make missing ->
-# nv-codec `make install` exit 127) after the SAME stage had passed twice
-# that day. Baking them here makes the ffmpeg stage's runtime install a
-# never-taken fallback: one SourceForge roulette per BASE build (cached),
-# zero per chain run.
+# Baked here: their SourceForge downloads flake, and a cached base pays that once instead of every ffmpeg stage.
 Install-ScoopPackage -Package 'main/make'
 Install-ScoopPackage -Package 'main/gawk'
 
-# Drop scoop's download cache — the installers (LLVM, Flutter, Vulkan SDK, ...) are
-# already unpacked into the apps dir and only bloat this (large) layer otherwise.
+# The installers are already unpacked into the apps dir; the cache would only bloat this layer.
 Write-Host 'Clearing scoop download cache...'
 scoop cache rm * 2>&1 | Out-Null
 
-# Same-layer cleanup for the other caches this script fills: the WiX dotnet-tool
-# install leaves its nupkgs in the NuGet cache (the tool is fully materialized at
-# C:\WiX) and installers drop temp files. Must happen HERE, not in a later stage:
-# the classic builder cannot shrink an already-committed layer from a later one.
+# In this layer, since a committed layer can never be shrunk by a later one.
 foreach ($d in @("$env:USERPROFILE\.nuget\packages", "$env:LOCALAPPDATA\Temp")) {
     if (Test-Path $d) {
         Write-Host "Clearing $d ..."

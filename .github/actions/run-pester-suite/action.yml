@@ -30,20 +30,13 @@ runs:
         Import-Module Pester -RequiredVersion '${{ inputs.version }}'
         $r = Invoke-Pester -Path '${{ inputs.path }}' -PassThru -Quiet
         Write-Host "TOTAL=$($r.TotalCount) PASSED=$($r.PassedCount) FAILED=$($r.FailedCount)"
-        # A path that matches no suite is NOT a pass. Invoke-Pester over a
-        # missing, renamed or mis-globbed path returns TotalCount=0 with
-        # FailedCount=0, and the FailedCount check below waves that straight
-        # through - the step goes green having run nothing, which is the one
-        # outcome a gate must never produce. Consumer workflows gate their
-        # submodule pins on this action, so the vacuous pass would be silent.
+        # A path matching no suite gives TotalCount=0 and FailedCount=0, which must not pass.
         if ($null -eq $r -or $r.TotalCount -eq 0) {
           Write-Host "::error::run-pester-suite: '${{ inputs.path }}' matched no Pester test (TotalCount=0). A suite that runs nothing must not report success: check that the path exists in the checkout, that the file is named *.Tests.ps1, and that the checkout step actually fetched it."
           exit 1
         }
         if ($r.FailedCount -gt 0) {
-          # The test name alone is not enough to act on - which assertion, with
-          # which values? Without FailureMessage/StackTrace every failure costs
-          # another round trip just to find out what was actually compared.
+          # The test name alone does not say what was compared; print message and stack too.
           $r.TestResult | Where-Object { -not $_.Passed } | ForEach-Object {
             Write-Host "FAIL: $($_.Describe) / $($_.Name)"
             if ($_.FailureMessage) { Write-Host "      $($_.FailureMessage)" }

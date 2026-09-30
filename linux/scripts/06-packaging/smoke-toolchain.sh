@@ -1,23 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# smoke-toolchain.sh
-# Validates the compiler toolchain inside the cross-compiler image:
-#   - GCC ${GCC_VERSION} (versions.env pin) for all cross targets
-#   - LLVM/Clang 22.1.8
-#   - Rust/Cargo
-#   - Python 3.14
-#   - All cross-linkers produce correct ELF for each target
-#
-# Usage:
-#   smoke-toolchain.sh                          # test all arches
-#   smoke-toolchain.sh amd64,arm64              # test specific arches
-#
-# Designed to run inside Dockerfile.toolchain during the final bundle step.
+# Toolchain image smoke, run by Dockerfile.toolchain's bundle step; optional arg: comma-separated arches.
 
-# Prefer canonical versions.env over the fallback literals below (a stale
-# PYTHON_VERSION default here once made smoke fail against a correctly built
-# newer interpreter). Env values passed by the orchestrator still win.
+# versions.env beats the fallback literals below; orchestrator env values still win.
 for _sve in /opt/scripts/core/load-versions-env.sh \
             "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/load-versions-env.sh"; do
   if [ -f "${_sve}" ]; then
@@ -83,10 +69,7 @@ print_smoke_header() {
   echo ""
 }
 
-# The machine string the host compiler's -dumpmachine must contain. Derived
-# from the build host, NOT hardcoded to x86_64 (2026-09-08): on an arm64 host
-# the host gcc reports aarch64-unknown-linux-gnu and the smoke failed while the
-# cross compilers it was meant to police both passed.
+# Derived from the build host, not hardcoded x86_64: an arm64 host gcc reports aarch64.
 smoke_host_machine() {
   case "$(smoke_host_arch)" in
     amd64)   printf '%s' 'x86_64' ;;
@@ -119,16 +102,14 @@ check_rust() {
 
   # Rust
   echo "--- Rust/Cargo ---"
-  # Both pin the versions.env value: grepping the tool's own name could never
-  # fail, and an unset pin must fail loudly rather than pass vacuously.
+  # Pin against versions.env; an unset pin fails rather than passing vacuously.
   if [ -z "${RUST_VERSION:-}" ]; then
     fail "rustc/cargo: RUST_VERSION is unset, so there is nothing to pin against"
   else
     check_version "rustc --version" "${RUST_VERSION}" "rustc"
     check_version "cargo --version" "${CARGO_VERSION:-${RUST_VERSION}}" "cargo"
   fi
-  # Host compile+RUN: the version banner proves the driver starts, nothing
-  # more. A miscompiled/rlib-broken toolchain still prints a version.
+  # Compile and run: a toolchain with broken rlibs still prints a version.
   local _rs_tmp
   _rs_tmp="$(mktemp -d)"
   printf 'fn main(){assert_eq!(2+2,4);}\n' > "${_rs_tmp}/m.rs"
@@ -140,14 +121,11 @@ check_rust() {
   for target in $(smoke_arch_words "${target_arches}"); do
     local rust_target
     rust_target="$(smoke_rust_target "${target}" 2>/dev/null || true)"
-    # Guard: an unknown arch yields an empty rust_target, and `grep -q ""`
-    # matches every line — which used to fake-pass the check.
+    # An empty rust_target would make `grep -q ""` match every line.
     if [ -z "${rust_target}" ]; then
       fail "Rust target unknown for arch ${target} (no triple mapping)"
     elif rustup target list --installed 2>/dev/null | grep -q "${rust_target}"; then
-      # `--installed` lists a target even when its std rlibs are missing —
-      # emit-obj is the cheapest proof the target std is genuinely usable
-      # (no execution, so it works for every arch).
+      # --installed lists a target without its std rlibs; emit-obj proves std works without running.
       printf 'pub fn f(x:i32)->i32{x*2}\n' > "${_rs_tmp}/l.rs"
       if rustc --target "${rust_target}" --crate-type=lib --emit=obj \
            "${_rs_tmp}/l.rs" -o "${_rs_tmp}/l.o" 2>/dev/null; then
@@ -165,18 +143,14 @@ check_rust() {
 
 check_node() {
   echo "--- Node.js ---"
-  # node had ZERO smoke coverage (smoke-depth R15) although the WASM gate in
-  # smoke-media silently self-disables when node is absent.
+  # smoke-media's WASM gate silently self-disables without node.
   if ! command -v node >/dev/null 2>&1; then
     fail "node not on PATH (the LiteRT-web WASM gate silently self-disables without it)"
     echo ""
     return 0
   fi
   if [ -n "${NODE_VERSION:-}" ]; then
-    # EXACT match, not a prefix (tightened 2026-08-27). `grep "^v26.8.0"` also
-    # matched `v26.8.0-alpha.0.0.0`, so the gate passed while the image shipped
-    # a prerelease whose own npm refused to support it -- and it would equally
-    # have matched v26.8.01 or v26.8.0x. The suffix is the whole point here.
+    # Exact match: a prefix match also accepts prereleases like v26.8.0-alpha.
     if [ "$(node --version 2>/dev/null)" = "v${NODE_VERSION}" ]; then
       pass "node version matches pin (v${NODE_VERSION})"
     else
@@ -197,10 +171,7 @@ check_python() {
 
   # Python
   echo "--- Python ---"
-  # Say WHICH interpreter answered. A version mismatch here means the
-  # from-source CPython did not land at /usr/local/bin, and the distro one
-  # answered instead — the bare version string alone cannot tell those apart
-  # (2026-09-08, an arm64 native build reported 3.14.4 for a 3.14.7 chain).
+  # Name the interpreter: a version string alone cannot tell the distro CPython from ours.
   local _py="/usr/local/bin/python${PYTHON_MAJOR_MINOR}"
   echo "  interpreter: ${_py} -> $(readlink -f "${_py}" 2>/dev/null || echo MISSING)" \
        "($(stat -c '%y' "${_py}" 2>/dev/null | cut -d. -f1 || echo '?'))"
@@ -212,10 +183,7 @@ check_python() {
   else
     fail "python${PYTHON_MAJOR_MINOR} sys.version: ${py_sysver:-MISSING} (expected ${PYTHON_VERSION})"
   fi
-  # Stdlib extension-module battery (smoke-depth R3): this is a FROM-SOURCE
-  # CPython — silently dropping _ssl/_sqlite3/_lzma when a dev header is
-  # missing at configure time is the textbook failure, and no ssl means every
-  # HTTPS/pip call dies at runtime. Exercise, don't just import.
+  # A from-source CPython silently drops _ssl/_sqlite3/_lzma when a dev header is missing.
   if /usr/local/bin/python${PYTHON_MAJOR_MINOR} -c "
 import ssl, sqlite3, lzma, bz2, zlib, hashlib, ctypes, decimal, uuid
 ssl.create_default_context()
@@ -234,11 +202,7 @@ assert hashlib.sha256(b'x').hexdigest().startswith('2d711642')
   host_arch_py="$(smoke_host_arch)"
   for cross_arch in $(smoke_arch_words "${target_arches}"); do
     local py_root="/opt/python-cross/${cross_arch}"
-    # A staged dir that is missing its .pc or binary is a broken staging —
-    # fail explicitly instead of only pass-ing on the happy path.
-    # And a WHOLLY ABSENT staging dir for a requested foreign arch is the
-    # worst case, not a skip (smoke-depth R16a: the old `if [ -d ]` wrapper
-    # ran ZERO checks then).
+    # A missing staging dir for a requested foreign arch fails; it is the worst case, not a skip.
     if [ ! -d "${py_root}" ]; then
       if [ "${cross_arch}" != "${host_arch_py}" ]; then
         fail "cross-Python staging entirely ABSENT for ${cross_arch} (expected ${py_root})"
@@ -273,10 +237,7 @@ run_cross_targets() {
 }
 
 main() {
-  # Fall back to CROSS_TARGETS, not a frozen literal. Dockerfile.toolchain calls
-  # this with NO argument while setting CROSS_TARGETS as ENV, so a build narrowed
-  # with --cross-targets arm64 used to smoke-test amd64 and riscv64 toolchains it
-  # had deliberately never built -- the compiler stage failed its own smoke.
+  # Dockerfile.toolchain passes no argument, so honour CROSS_TARGETS for narrowed builds.
   local target_arches="${1:-${CROSS_TARGETS:-amd64,arm64,riscv64}}"
   local host_arch
 

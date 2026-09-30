@@ -1,7 +1,5 @@
 #requires -Version 7.0
-# Tests for ConvertTo-ParameterList (WindowsScripts.Shared) — turns hashtables/arrays
-# into a flat native-argument list. Used to assemble CMake/docker arg lists, so a
-# regression silently drops or mangles build flags.
+# ConvertTo-ParameterList assembles CMake/docker arg lists, so a regression silently drops or mangles build flags.
 
 Describe 'ConvertTo-ParameterList' {
 

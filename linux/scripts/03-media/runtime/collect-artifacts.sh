@@ -14,8 +14,7 @@ collect_component_wheels() {
   mv "${source_dir}"/*.whl "${WHEELS_DIR}/" 2>/dev/null || true
 }
 
-# The chain ORT wheel's native members, hashed before the wheel leaves its prefix: the runtime image
-# never holds the wheel, so the ORT census (06-packaging/check-ort-provenance.sh) reads this list.
+# The runtime image never holds the chain ORT wheel, so the census reads this hashed member list.
 write_ort_wheel_manifest() {
   local prefix="$1" versions_env="${2:-/opt/scripts/core/versions.env}" ver="${ONNXRUNTIME_VERSION:-}"
   [ -d "${prefix}/wheels" ] || return 0

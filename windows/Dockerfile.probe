@@ -1,42 +1,15 @@
 # escape=`
-# =============================================================================
-# THE parameterized diagnostic probe (2026-08-21): one Dockerfile for every
-# script-based probe in windows/scripts/diagnostics/. Replaces 14 per-probe
-# skeleton files that differed only in one script name + 0-2 mounts. Run via:
-#   Invoke-DiagnosticProbe.ps1 -ProbeScript probe-<name>.ps1 [-BaseImage <tag>]
-#
-# Mount contract (matches what the probe scripts hard-code):
-#   C:\bkmnt\diagnostics  - all probe scripts ($scriptAssetRoot resolves parent;
-#                           the bind source is the CONTEXT copy, so a probe in a
-#                           .dockerignore'd subdir is NOT here — that is what sank
-#                           the retired archive/: `**/archive/` stripped it)
-#   C:\bkmnt\modules      - shared psm1 modules
-#   C:\bkmnt\patches      - windows/scripts/patches (ffmpeg/opencv/... trees)
-#   C:\bkmnt\versions.env - canonical pins
-# There is NO C:\bkmnt\patch. It mounted windows/upstream/sccache-nvcc-quote-fix,
-# which #137 DELETED when both PRs merged upstream; the series survives nowhere in
-# this tree, so the mount could only be removed, not repaired. While it stood EVERY
-# -ProbeScript solve died at checksum, live probes included. Its three readers
-# were deleted with backlog #159 as dead by construction.
-# Whole-dir mounts are cache-irrelevant HERE ONLY: PROBE_NONCE busts the layer
-# by design. Never copy this idiom into a chain stage (see the per-file
-# buildmods rationale in Dockerfile.media-builder).
-# =============================================================================
+# The one probe Dockerfile (Invoke-DiagnosticProbe.ps1 -ProbeScript); whole-dir mounts are fine only because PROBE_NONCE busts the layer.
 ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
 FROM ${BASE_IMAGE} AS probe
 
 # Layer-cache buster (a CACHED run replays an old verdict).
 ARG PROBE_NONCE="0"
 ARG PROBE_SCRIPT="Test-OnnxTuReplay.ps1"
-# Pass-through for probes that read it (probe-onnx-tu-replay); an undeclared
-# ARG would silently discard a -BuildArg ORT_REF=... override.
+# Declared so a -BuildArg ORT_REF override is not silently discarded.
 ARG ORT_REF=""
 
-# $env: forms, NOT ${VAR}: RUN is not in the frontend's substitution set — the
-# ARG arrives as an environment variable and pwsh does the expansion. The
-# trailing exit-check + marker line serve run-diagnostic-probe's fail-closed
-# contract for EVERY probe (two former skeletons carried the marker themselves,
-# their scripts do not).
+# $env: not ${VAR}: RUN gets no frontend substitution; the exit check and marker keep the probe fail-closed.
 RUN --mount=type=bind,source=windows/scripts/diagnostics,target=C:\bkmnt\diagnostics `
     --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches,target=C:\bkmnt\patches `

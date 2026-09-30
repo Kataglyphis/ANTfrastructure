@@ -1,18 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Deploys windows\buildkitd.toml to C:\ProgramData\buildkitd\buildkitd.toml,
-# re-registers the buildkitd service with an explicit --config flag (keeping
-# --debug — permanent owner decision, see AGENTS.md) and restarts it.
-#
-# RUN FROM AN ADMIN SHELL, and NEVER while a build is running — the service
-# restart kills every in-flight solve. The script refuses if it sees a live
-# buildctl process unless -Force is passed.
-#
-# Verify afterwards: buildctl debug workers -v  (GC Policy rules must show
-# reservedSpace=200GB — not the computed defaults maxUsedSpace=100GB /
-# minFreeSpace=187GB that caused the 2026-08-04 VS-layer eviction).
+# Admin, never while a build solves (the restart kills them): deploys buildkitd.toml and points the service at it.
 
 [CmdletBinding()]
 param(
@@ -24,11 +13,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# elevation gate moved below the module import (Assert-Elevated, #120)
-
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 Assert-Elevated -Reason 'service re-registration needs it'
@@ -52,8 +37,7 @@ Copy-Item $src $ConfigDest -Force
 Write-Host "deployed $src -> $ConfigDest"
 
 if ($binPath -notmatch '--config') {
-    # Insert --config right after the exe path, preserving every existing flag
-    # (--debug stays — owner decision). ImagePath format: "C:\...\buildkitd.exe" --debug --run-service ...
+    # --config goes right after the exe path; every existing flag, --debug included, stays.
     if ($binPath -match '^(?<exe>"[^"]+"|\S+)\s*(?<rest>.*)$') {
         $newBin = '{0} --config {1} {2}' -f $Matches['exe'], $ConfigDest, $Matches['rest']
     } else {
@@ -66,15 +50,11 @@ if ($binPath -notmatch '--config') {
     Write-Host '--config already present in ImagePath; config file replaced in place.'
 }
 
-# -Force: without it Restart-Service refuses when dependent services hang off
-# buildkitd (reported live 2026-08-05); -Force stops/restarts them along.
+# Without -Force, Restart-Service refuses while dependent services hang off buildkitd.
 Restart-Service buildkitd -Force
 Write-Host 'buildkitd restarted.' -ForegroundColor Green
 
-# Show the effective GC rules so the change is verifiable at a glance.
-# Inline ON PURPOSE (#101 reviewed 2026-08-17): elevated repair/maintenance
-# tool — keep it module-free so it works with a half-broken checkout. Same
-# rationale as probe-build-copy and reset-container-locks.
+# The effective GC rules must show reservedSpace, not the computed defaults that once evicted the VS layer.
 $buildctl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
     Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($buildctl) {

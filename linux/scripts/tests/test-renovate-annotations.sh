@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# Every `# renovate:` line in versions.env is actually MATCHED by the
-# customManager regex in .github/renovate.json -- which is NOT the same check as
-# "the annotation exists". One the regex misses is the same invisibility the
-# annotation was written to end, and it is silent in exactly the same way.
-# It runs over the SHIPPED files, not a fixture: the property has to hold for
-# this repo's own config, and a fixture would prove it about a copy.
-# docs/dependency-updates.md#the-source-of-truth-has-to-be-visible-too
+# An annotation the regex misses is silently invisible, so the shipped files are checked; see docs/dependency-updates.md#the-source-of-truth-has-to-be-visible-too
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -15,9 +9,7 @@ PY="${PREFLIGHT_PYTHON:-python3}"
 ENV_FILE="${HUB}/linux/scripts/01-core/versions.env"
 CFG_FILE="${HUB}/.github/renovate.json"
 
-# <mode> -> the count, or the matched depName=key rows. Python because the
-# pattern is a JavaScript regex living inside JSON, and re-typing it here would
-# make this a test of the copy.
+# _probe <count|rows>: Python reads the JavaScript regex out of the JSON, since a re-typed copy tests the copy.
 _probe() {
   "${PY}" - "${CFG_FILE}" "${ENV_FILE}" "$1" <<'PY'
 import json
@@ -51,9 +43,7 @@ t_assert_eq "${COUNTS% *}" "${COUNTS#* }" \
 t_assert_fails test "${COUNTS% *}" = "0"
 
 t_case "the SOURCE OF TRUTH keys whose consumers Renovate already sees are visible"
-# Each of these is a key a consumer repeats in a file one of Renovate's OWN
-# managers reads -- OrchestrANT's pyproject.toml for all five. Renovate reported
-# the copy and not the key until 2026-09-10.
+# Consumers repeat these keys in files Renovate's own managers read, so the key itself must be visible too.
 for _want in ruff microsoft/onnxruntime microsoft/onnxruntime-genai \
              pytorch/pytorch pytorch/vision; do
   t_assert_contains "${ROWS}" "${_want}=" "${_want} must be visible to Renovate"
@@ -68,8 +58,7 @@ for _want in node python flutter Kitware/CMake ARM-software/armnn \
 done
 
 t_case "a versioning= annotation has the versioningTemplate that reads it"
-# The regex captures the group and the engine still ignores it without the
-# template, so the two can only be added together.
+# The engine ignores the captured group without the template, so the two come together.
 if grep -q "versioning=" "${ENV_FILE}"; then
   t_assert_contains "$(cat "${CFG_FILE}")" versioningTemplate \
     "the captured versioning group is IGNORED without versioningTemplate"

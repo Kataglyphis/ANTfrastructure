@@ -1,19 +1,12 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Verify + apply the full Windows Defender exclusion set for Windows-container
-# builds. MUST run elevated (Get-MpPreference/Add-MpPreference need admin).
-# Prints BEFORE, applies missing, prints AFTER.
-#
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Sync-DefenderExclusions.ps1'
+# Elevated: applies the Defender exclusions Windows-container builds need, printing the set before and after.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 Assert-Elevated
@@ -29,8 +22,7 @@ $desiredPaths = @(
 )
 $desiredProcs = @('buildkitd.exe', 'containerd.exe', 'dockerd.exe', 'nerdctl.exe', 'CExecSvc.exe', 'vmcompute.exe')
 
-# BEFORE and AFTER print the SAME two lists on purpose -- the operator diffs
-# them. One owner is what keeps them printable as a diff.
+# One printer for BEFORE and AFTER so the operator can diff them.
 function Show-Exclusions {
     param([Parameter(Mandatory)][string]$Label)
 

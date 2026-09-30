@@ -1,10 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Moved up from a consumer repo (BeschleunigerBallett,
-# scripts/windows/tests) on 2026-08-07 - see WindowsCMake.Common.Tests.ps1 for
-# the rationale. Converted from Pester 3.4 to Pester 5+ syntax in the move.
 
 Describe 'WindowsWebDav.Common' {
   BeforeAll {
@@ -23,11 +19,7 @@ Describe 'WindowsWebDav.Common' {
 
   Context 'Invoke-EarlyWebDavDownload' {
     It 'returns without invoking python when the download script is missing' {
-      # -ModuleName is required: the download script ships next to the module
-      # (windows/scripts/certificates), so it always exists on disk and only a
-      # module-scoped Test-Path mock can simulate the missing-script path. An
-      # unscoped mock never reaches the module's internal call and the test
-      # would run the full download flow against a real WebDAV host.
+      # The script always ships beside the module, so only a module-scoped Test-Path mock can hide it.
       Mock -ModuleName WindowsWebDav.Common -CommandName Test-Path { return $false }
       Mock -ModuleName WindowsWebDav.Common -CommandName Invoke-BuildExternal { return 0 }
 
@@ -39,16 +31,14 @@ Describe 'WindowsWebDav.Common' {
         -WebDavHost 'h' -WebDavUser 'u' -WebDavPass 'p' `
         -WebDavRemote 'r' -WebDavLocal $script:workspace
 
-      # The point of the skip path: no external process is spawned. The old
-      # suite asserted `$true | Should Be $true` here, which proved nothing.
+      # The skip path must spawn no external process.
       Should -Invoke -ModuleName WindowsWebDav.Common -CommandName Invoke-BuildExternal -Times 0 -Exactly
     }
   }
 
   Context 'Get-WebDavClientRequirement' {
     It 'installs the pinned commit from its source archive, never through git' {
-      # A git requirement recursed into the client's old submodule chain and died
-      # on Git for Windows' gitdir limit (BeschleunigerBallett run 36020442781).
+      # A git requirement recurses into the client's old submodule chain and hits Git for Windows' gitdir limit.
       $sha = '4f3f116d9ce7d1e223894513b4dc7a90b5085a9f'
       $requirement = Get-WebDavClientRequirement -Ref $sha
       $requirement | Should -Be "kataglyphis_webdavclient @ https://github.com/Kataglyphis/WebDavClient/archive/$sha.tar.gz"
@@ -56,8 +46,7 @@ Describe 'WindowsWebDav.Common' {
     }
 
     It 'refuses a ref that is not a full commit sha' {
-      # A branch name would install whatever that branch was that day, which
-      # is what pinning WEBDAVCLIENT_REF in versions.env exists to prevent.
+      # A branch name would install whatever that branch was that day.
       { Get-WebDavClientRequirement -Ref 'main' } | Should -Throw
       { Get-WebDavClientRequirement -Ref '4f3f116' } | Should -Throw
     }

@@ -1,9 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Idempotent source-patching utilities for Windows container builds. Every function is idempotent,
-# guarded, and WARNS on patch drift rather than hard-failing (unless a caller asks for -Fatal).
+
+# Idempotent source patching that warns on upstream drift unless the caller asks for -Fatal.
 
 Set-StrictMode -Version Latest
 
@@ -33,8 +32,7 @@ function Update-NinjaFile {
     )
     if (-not (Test-Path $NinjaFile)) { return }
     $original = [System.IO.File]::ReadAllText($NinjaFile)
-    # Line-scoped: collapse the double-space residue ONLY on lines a pattern changed. A global
-    # '  +' -> ' ' rewrites every multi-space run in build.ninja (paths, aligned columns).
+    # Line-scoped: a global '  +' -> ' ' would rewrite every multi-space run in build.ninja.
     $lines = $original -split '(?<=\n)'
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
@@ -94,8 +92,7 @@ function Invoke-SourcePatch {
         } else {
             $patchExe = (Get-Command patch.exe -ErrorAction SilentlyContinue).Source
             if (-not $patchExe) { throw "patch.exe not found and source is not a git repo -- cannot apply $PatchFile" }
-            # -i is LOAD-BEARING: a bare path is the file to PATCH. Without it patch.exe reads an
-            # empty patch from stdin and exits 0, so every patch is silently skipped as applied.
+            # -i is load-bearing: without it patch.exe reads an empty patch from stdin and exits 0.
             $tool         = 'patch.exe'
             $reverseCheck = { & $patchExe $pFlag --dry-run --reverse -i $PatchFile 2>&1 }
             $forwardCheck = { & $patchExe $pFlag --dry-run -i $PatchFile 2>&1 }
@@ -133,8 +130,7 @@ function Invoke-SourcePatch {
 }
 
 function Invoke-SourcePatchWithFallback {
-    # Two-rung apply ladder (#7): the reviewable .patch, then a drift-tolerant inline fallback that
-    # runs in the CALLER's scope. -Fatal (#19) makes a double miss throw instead of warn.
+    # The .patch, then a drift-tolerant fallback in the caller's scope; -Fatal throws on a double miss.
     param(
         [Parameter(Mandatory)]
         [string]$PatchFile,
@@ -170,10 +166,9 @@ function Invoke-InlineRegexPatch {
         [string]$WarnMessage = '',
         [switch]$Require,
         [string]$Description = '',
-        # (#131) File already matches -> treat as applied: return $true, touch nothing.
+        # A match means already applied: return $true, touch nothing.
         [string]$SkipIfMatch = '',
-        # (#131) After writing, the file must NOT match this any more, or throw. Also throws when
-        # the pattern was never found and the file still matches it (upstream layout changed).
+        # Throws when the file still matches this after writing, or when the pattern was never found.
         [string]$AssertGone = ''
     )
     if (-not (Test-Path $Path)) {
@@ -207,15 +202,10 @@ function Invoke-InlineRegexPatch {
 
 <#
 .SYNOPSIS
-    ONNX Runtime DirectML EP clang-cl fix: moves AbstractOperatorDesc's special
-    members, GetTensors<>() and the four tensor accessors out of line into
-    GeneratedSchemaTypes.h, after OperatorField is complete.
+    DirectML EP clang-cl fix: moves AbstractOperatorDesc members out of line, after OperatorField is complete.
 .DESCRIPTION
-    clang-cl (correctly, llvm #57700) rejects instantiating them while
-    OperatorField is incomplete; MSVC defers to end-of-TU and does not. This is
-    the regex fallback behind the checked-in .patch file: idempotent
-    ("[clang-cl DML fix]" marker), a no-op when the upstream anchors no longer
-    match.
+    clang-cl (llvm #57700) rejects instantiating them against the incomplete type. The regex fallback behind
+    the .patch: idempotent via the "[clang-cl DML fix]" marker, a no-op when the anchors no longer match.
 #>
 function Invoke-OnnxDmlClangClPatch {
     param([Parameter(Mandatory)][string]$SourceDir)

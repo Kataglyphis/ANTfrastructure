@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_dockerfile_env_order.py and its wiring into lint-dockerfiles.sh,
-# plus the Android env contract the shipped runtime image owes its consumers.
-# Fixtures are written to a temp dir; the real tree is only READ.
-# docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
+# ENV ordering gate, its lint wiring and the runtime image's Android env; see docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -20,9 +17,7 @@ _fixture() {
 _run() { t_out "${PY}" "${GATE}" "$1/Dockerfile.fix"; }
 _rc()  { t_rc  "${PY}" "${GATE}" "$1/Dockerfile.fix"; }
 
-# The offending shape, once: two keys in ONE instruction, the second reading the
-# first. $1 is spliced mid-continuation, where BuildKit drops comment lines; $2
-# replaces the line break before PATH, which is what splitting the ENV means.
+# _two_keys <mid-continuation text> [break before PATH]: one ENV whose second key reads the first.
 _two_keys() {
   printf 'FROM scratch\nENV ANDROID_HOME=/opt/android-sdk%s\n%sPATH="${ANDROID_HOME}/platform-tools:${PATH}"' \
     "${2- \\}" "$1"
@@ -98,8 +93,7 @@ done
 t_assert_ok test "${#_all[@]}" -ge 20
 t_assert_ok "${PY}" "${GATE}" "${_all[@]}"
 
-# The consumer contract: smoke-runtime-image.sh asserts ANDROID_HOME in the BUILT
-# image; only this file can assert the Dockerfile ever sets it.
+# The smoke checks ANDROID_HOME in the built image; only this can check the Dockerfile sets it.
 t_case "Dockerfile.package advertises ANDROID_HOME and ANDROID_SDK_ROOT"
 t_assert_ok grep -qE '^ENV ANDROID_HOME=/opt/android-sdk ' "${PKG}"
 t_assert_ok grep -qE '^ +ANDROID_SDK_ROOT=/opt/android-sdk$' "${PKG}"
@@ -116,16 +110,10 @@ t_assert_eq 'ENV PATH="${PATH}' "$(printf '%s' "${_p}" | cut -c1-17)"
 t_case "build-tools stays off PATH: it ships an lld that would front /usr/bin/lld"
 t_assert_fails grep -q 'ANDROID_HOME}/build-tools' "${PKG}"
 
-# --- lint-dockerfiles.sh over a CONSUMER tree (--root) ------------------------
-# Same contract as lint-workflows.sh / lint-shell.sh / lint-python.sh, and the
-# same reason: a submodule checkout puts the gate inside the consumer, where the
-# default root resolves to ANTfrastructure, all 24 of ITS Dockerfiles get graded
-# and the verdict is reported as the consumer's.
+# --root, as for lint-shell.sh, lint-python.sh and lint-workflows.sh: in a consumer the default root is the hub.
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
-# `broken` and `vendored` both carry the live ENV-ordering defect this file is
-# otherwise about, so a green verdict over a tree holding the vendored one
-# proves the scope excluded it rather than that it was clean.
+# `vendored` carries the ENV defect, so a green verdict with it proves the scope excluded it.
 _plant() {  # <dir> <shape>
   case "$2" in
     clean)           printf 'FROM scratch\nENV A=1\n' > "$1/Dockerfile"
@@ -171,8 +159,7 @@ t_assert_eq "1" "$(_rc_at_root "${_c_empty}")"
 t_assert_contains "$(_at_root "${_c_empty}")" "No Dockerfiles found to lint under ${_c_empty}"
 
 t_case "a consumer that ships .hadolint.yaml is graded by ITS waivers, not this repo's"
-# DL3006 (untagged FROM) is ignored HERE and by nothing in the consumer's own
-# config, so the verdict flipping to red is proof of which file was read.
+# Only this repo's config ignores DL3006, so the flip to red proves which config was read.
 _c_cfg="$(mktemp -d "${_work}/cfg.XXXXXX")"
 git -C "${_c_cfg}" init -q
 printf 'FROM debian\nENV A=1\n' > "${_c_cfg}/Dockerfile"

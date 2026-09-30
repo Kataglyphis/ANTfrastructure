@@ -1,26 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# `Import-Module <repo module> -Force` inside a script that the build chain
-# invokes IN-PROCESS is a delayed-action bug, and an expensive one.
-#
-# 2026-08-21, media-core/ONNX: the chain entrypoint imported
-# WindowsSourceBuild.Common with -Force (module instance M1) and called
-# Invoke-SourceBuildChain, which runs the leaf builders in-process
-# (`& (Join-Path $ScriptDir $stage.Script)`). Build-OnnxFromSource.ps1 then
-# did its own `Import-Module ... -Force`, which REMOVES M1 while
-# Invoke-SourceBuildChain is still on the stack. ONNX compiled fine for 53
-# minutes; the chain tail then died on
-#   The term 'Stop-LingeringBuildProcess' is not recognized
-# because that helper is deliberately UNEXPORTED and only ever lived in M1's
-# scope. The exported call one line above it (Write-SccacheStats) still worked
-# — it resolves through the global command table — which is exactly what makes
-# this so confusing to read in a log.
-#
-# The repo already banned -Force for the nested imports INSIDE modules
-# (2026-08-04). This extends the same rule to the scripts the chain invokes,
-# which is where it actually bit.
+
+# No -Force in scripts the chain runs in-process: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 
 Describe 'chain-invoked build scripts: no -Force module imports' {
 
@@ -28,14 +10,7 @@ Describe 'chain-invoked build scripts: no -Force module imports' {
         $buildDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'build'
         Assert-True (Test-Path $buildDir) "build script dir not found: $buildDir"
 
-        # The leaf builders + their chain entrypoints: everything reachable
-        # from a $stages table, i.e. everything that can be running while a
-        # module function is on the stack.
-        # 'Build-*All.ps1', not 'build-*-all.ps1': the build scripts were
-        # renamed to Verb-Noun in the approved-verb sweep and this glob was left
-        # on the old kebab-case shape, so it matched nothing. The Assert-True
-        # below is exactly the rot guard for that and did its job -- it went red
-        # instead of passing vacuously. Same story for the sibling glob below.
+        # Everything reachable from a $stages table, i.e. anything running while a module function is on the stack.
         $entrypoints = @(Get-ChildItem -Path $buildDir -Filter 'Build-*All.ps1' -File)
         $stageScripts = @()
         foreach ($e in $entrypoints) {
@@ -63,8 +38,7 @@ Describe 'chain-invoked build scripts: no -Force module imports' {
     }
 
     It 'the guarded pattern is actually in place in the leaf builders' {
-        # Rot guard: if the leaves stopped importing modules altogether the
-        # test above would pass while proving nothing.
+        # Rot guard: if the leaves stopped importing modules the test above would prove nothing.
         $buildDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'build'
         $guarded = @(Select-String -Path (Join-Path $buildDir 'Build-*FromSource.ps1') `
                 -Pattern 'if \(-not \(Get-Module -Name .*\)\) \{ Import-Module')

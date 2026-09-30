@@ -1,11 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The patched-llvm toolchain (BUILD_PATCHED_LLVM=1) is now the DEFAULT (#135:
-# the EH_LABEL fix llvm#219275 + #219276 is proven, and the OpenCV workarounds
-# have been removed). This suite pins that the driver reaches the patched stage
-# by default, and that -StockLlvm is the opt-out.
+
+# The patched-llvm toolchain is the default, and -StockLlvm is the opt-out.
 
 Describe 'BK driver defaults to the patched-llvm toolchain (#135)' {
 

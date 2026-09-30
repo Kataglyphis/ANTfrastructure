@@ -5,73 +5,37 @@
 
 <#
 .SYNOPSIS
-    Generic Python static analysis runner for Windows
-
-.DESCRIPTION
-    Runs static analysis tools (codespell, bandit, vulture, ruff, ty) on Python code.
-    Uses shared modules from ANTfrastructure.
-
+    Runs the Python static-analysis gates (codespell, bandit, vulture, ruff, ty) on Windows.
 .PARAMETER PythonVersion
-    Python version to use (default: "3.14")
-
+    Python version to use.
 .PARAMETER PackageName
-    Name of the package to analyze (derived from pyproject.toml if not specified)
-
+    Package to analyse; derived from pyproject.toml when empty.
 .PARAMETER RepoRoot
-    Root of the repo being built. Default (empty) keeps today's behaviour:
-    Initialize-CiEnvironment resolves three levels above this script, i.e. the
-    ANTfrastructure checkout itself. A consumer that vendors or submodules
-    ANTfrastructure passes ITS OWN root here.
-
+    Root of the repo being built; empty means the ANTfrastructure checkout, so a consumer must pass its own.
 .PARAMETER ExtraPaths
-    Extra paths to analyse, relative to the repo root. A consumer whose package
-    is not the whole first-party tree names the rest here; bandit takes them as
-    plain targets after its single -r. The Linux twin's knob is
-    STATIC_ANALYSIS_EXTRA_PATHS.
-
+    Extra first-party paths relative to the repo root (the Linux twin's STATIC_ANALYSIS_EXTRA_PATHS).
 .PARAMETER BanditExcludes
-    bandit's -x list, ONE comma-separated string of path fragments. The default
-    is the literal this file used to spell on the bandit line, so nothing moves
-    for a caller that is happy with it; passing it REPLACES the list. The Linux
-    twin's knob is BANDIT_EXCLUDES.
-
-.EXAMPLE
-    Invoke-CiStaticAnalysis.ps1 -PackageName "my_package"
+    bandit's -x list as one comma-separated string; replaces the default (the Linux twin's BANDIT_EXCLUDES).
 #>
 
 [CmdletBinding()]
 Param(
     [string]$PythonVersion = "3.14",
     [string]$PackageName = "",
-    # Root of the repo being built. Empty = today's behaviour, where
-    # Initialize-CiEnvironment resolves three levels above this script and lands
-    # in the ANTfrastructure checkout. A consumer that vendors or submodules
-    # ANTfrastructure (<consumer>/third_party/ANTfrastructure/windows/scripts/python)
-    # MUST pass its own root, or every path derived below -- pyproject.toml, the
-    # venvs, the log dir -- is read from and written into the hub checkout
-    # instead of the repo under test.
     [string]$RepoRoot = '',
-    # Extra first-party paths to analyse, relative to the repo root. Empty keeps
-    # today's behaviour. Same knob as the Linux twin's STATIC_ANALYSIS_EXTRA_PATHS.
     [string[]]$ExtraPaths = @(),
-    # bandit's -x list. Default = the literal that used to sit on the bandit
-    # line below; the Linux twin's knob is BANDIT_EXCLUDES and carries the same
-    # default, character for character, so the two lanes exclude the same set.
+    # Must equal the Linux twin's BANDIT_EXCLUDES default character for character.
     [string]$BanditExcludes = 'tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results'
 )
 
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
-# $RepoRoot and $repoRoot are ONE variable (PowerShell identifiers are
-# case-insensitive): the assignment deliberately replaces the caller's raw value
-# with the RESOLVED absolute path Initialize-CiEnvironment returns.
+# $RepoRoot and $repoRoot are one variable: this deliberately replaces the raw value with the resolved path.
 $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot -RepoRoot $RepoRoot
 
 $PackageName = Get-PyprojectPackageName -RepoRoot $repoRoot -Default $PackageName
 
-# #141: shared preamble — context/log/wrappers/uv delegates come from
-# New-CiSession (Initialize-CiEnvironment.ps1).
 $script:BuildContext = New-CiSession -RepoRoot $repoRoot -WithUvDelegates
 
 Write-CiLog "Using Python version: $PythonVersion"
@@ -85,27 +49,12 @@ try {
     Sync-UvProjectDependencies -NoBuildIsolationPackageWxPython
 
     $analysisPaths = @($PackageName, "tests", "docs/source/conf.py", "setup.py", "README.md") + $ExtraPaths
-    # $analysisPaths[0..3] indexing is gone: the non-README slice is NAMED, or
-    # appending would silently drop every extra path past the fourth element.
+    # Named, not an index slice, so appended extra paths are never dropped.
     $codeOnlyPaths = @($PackageName, "tests", "docs/source/conf.py", "setup.py") + $ExtraPaths
-    # bandit's targets. ONE -r, then the whole list -- bandit's -r is store_true
-    # against a SINGLE nargs='*' positional, so `-r a -r b` is "unrecognized
-    # arguments" and exit 2 (bandit 1.9.4). This file built exactly that shape
-    # ($ExtraPaths | ForEach-Object { "-r"; $_ }) until 2026-09-15, which is why
-    # -ExtraPaths could not be used on this lane either.
+    # One -r, then every target: bandit's -r is a flag, and a second one is "unrecognized arguments".
     $banditTargets = @($PackageName) + $ExtraPaths
 
-    # One owner for the uv-run-an-analyser shape. Every analyser below
-    # differs only in tool name, flags and whether it takes the path list;
-    # the shape lives here once instead of at every call site.
-    #
-    # Invoke-BuildGate, NOT Invoke-BuildOptional. WindowsBuild.Common's own
-    # docstring calls Optional "the exact inverse": it records a failure and
-    # carries on, and nothing re-raises it -- so this file was a gate in name
-    # only. Gate records the failure too, and Assert-BuildGates at the bottom
-    # turns the batch into one error. Its Linux twin
-    # (02-toolchain/python/ci_static_analysis.sh) has run this way since it was
-    # corrected for the same defect.
+    # Invoke-BuildGate, not Invoke-BuildOptional: Optional records a failure and carries on, so nothing would gate.
     $runAnalyser = {
         param([string]$Name, [string[]]$Argv, [string[]]$Targets)
         Invoke-BuildGate -Context $script:BuildContext -Name $Name -Script {
@@ -122,17 +71,13 @@ try {
     )) @()
 
     & $runAnalyser "vulture"     @("vulture")                 $codeOnlyPaths
-    # --no-fix and --check --diff, not --fix and a bare format: a gate judges the
-    # tree as COMMITTED. Rewriting it makes the step pass and leaves the change in
-    # a CI checkout nobody sees. Same wording, same reason, as the Linux twin.
+    # --no-fix and --check: a gate judges the tree as committed, not a rewritten CI checkout.
     & $runAnalyser "ruff check"  @("ruff", "check", "--no-fix")          $codeOnlyPaths
     & $runAnalyser "ruff format" @("ruff", "format", "--check", "--diff") $codeOnlyPaths
 
     & $runAnalyser "ty"          @("ty", "check")             @()
 
-    # The whole point of the change above: without this, every failure recorded
-    # by Invoke-BuildGate stays recorded and the script still exits 0. It also
-    # refuses to report green when no gate ran at all.
+    # Without this a recorded gate failure still exits 0; it also refuses green when no gate ran.
     Assert-BuildGates -Context $script:BuildContext -Label 'python static analysis'
 
     Write-CiLog "Static analysis completed"

@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# lint-shell.sh admits EXTENSION-LESS files that carry a shell shebang. That rule
-# is load-bearing: the commit hook (linux/host-config/git-hooks/pre-commit) is a
-# git hook, so it cannot have a .sh suffix, and without the rule it is linted by
-# nothing. YC proposed removing it as "only there for the deleted .githooks copy"
-# — this suite exists so nobody acts on that.
+# lint-shell.sh must admit extension-less shell-shebang files: the commit hook cannot carry a .sh suffix.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -45,9 +41,7 @@ t_assert_fails grep -q -E -e '^[[:space:]]*shellcheck ' "${LIVE_HOOK}"
 t_case "--print-bin prints an executable, so the hook's resolution cannot be vacuous"
 t_assert_ok test -x "$(bash "${SUBJECT}" --print-bin)"
 
-# docs/cross-build-verification.md quotes two hook line spans as `:NN-MM`. They
-# are re-derived here from the hook itself, so an edit that moves either block
-# fails the suite instead of rotting the prose.
+# The doc's two `:NN-MM` hook spans are re-derived here, so moving either block fails instead of rotting.
 DOC="${TESTS_DIR}/../../../docs/cross-build-verification.md"
 # _span <first-line-regex> <awk-body-picking-the-last-line>
 _span() {
@@ -78,15 +72,7 @@ t_assert_fails grep -q -F -e "outside the lint-shell.sh scope" <<<"$(
 t_case "the deleted .githooks copy is really gone"
 t_assert_fails test -e "${TESTS_DIR}/../../../.githooks/pre-commit"
 
-# --- the consumer root (--root) ----------------------------------------------
-# A submodule checkout puts this script INSIDE the consumer, where the default
-# root resolves to ANTfrastructure: without --root the gate grades the hub's own
-# files, reports green, and nobody has read a line of the consumer's shell.
-# These cases pin the three ways that goes wrong -- the wrong tree graded, the
-# vendored hub graded AS the consumer, and an empty scope reported as a pass.
-# An `if` with no `fi`: SC1046/SC1072 at ERROR level, the tier this gate fails
-# on. The vendored copy is broken too, so a green verdict over a tree carrying
-# one proves the scope excluded it rather than that it was clean.
+# --root: inside a consumer the default root is the hub; the broken fixture is an error-level `if` without `fi`.
 _broken_sh() { printf '#!/usr/bin/env bash\nif [ 1 = 1 ] ; then\n  echo hi\n' > "$1"; }
 _plant() {  # <dir> <shape>
   case "$2" in
@@ -146,8 +132,7 @@ t_assert_contains "$(bash "${SUBJECT}" --root "${_c_nogit}" 2>&1)" "is not a git
 t_case "a root that does not exist refuses, it does not fall back to this repo"
 t_assert_eq "1" "$(t_rc bash "${SUBJECT}" --root "${_work}/no-such-checkout")" \
   "falling back would grade a clean tree and report OK for a checkout nobody looked at"
-# The MESSAGE, not just the status: a silent fallback that happens to fail later
-# for some other reason still hides which tree the caller actually asked about.
+# The message too: a fallback failing later for another reason still hides which tree was asked for.
 t_assert_contains "$(bash "${SUBJECT}" --root "${_work}/no-such-checkout" 2>&1)" \
   "lint root not found"
 

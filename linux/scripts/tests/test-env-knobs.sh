@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Tests for lint-env-knobs.sh. The gate derives its root from its own path, so it
-# is copied into one throwaway tree (versions.env, a Dockerfile, one consumer
-# script) whose allow file each case rewrites. KNOB_GATE is passed per run.
-# docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
+# lint-env-knobs.sh in one fixture tree whose allow file each case rewrites; see docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -19,8 +16,7 @@ mkdir -p "${_work}/linux/scripts/03-media/core" "${_work}/linux/scripts/04-runti
 printf 'ARCH_FLAG_KNOB=1\n' > "${_work}/linux/scripts/03-media/core/arch-flags-riscv64.env"
 printf 'PATHS_ENV_KNOB=/opt/x\n' > "${_work}/linux/scripts/04-runtime/runtime-paths.env"
 printf 'FROM scratch\nARG DOCKER_KNOB\n' > "${_work}/linux/Dockerfile.subject"
-# The copied gate reads its own ${KNOB_GATE:-0}; preflight.sh owns it in the real
-# tree with `env KNOB_GATE=1 bash …`, so the fixture tree carries that caller too.
+# preflight.sh owns KNOB_GATE via `env KNOB_GATE=1 bash …`, so the fixture carries that caller too.
 printf '#!/usr/bin/env bash\nenv KNOB_GATE=1 bash lint-env-knobs.sh\n' > "${_work}/linux/scripts/caller.sh"
 
 # Consumers: every knob named is read via ${VAR:-} in the subject script.
@@ -151,9 +147,7 @@ t_assert_eq "1" "$(_rc 1)" "an allow row for a name only printed literally is st
 t_assert_contains "${out}" "STALE allow rows (1)"
 t_assert_contains "${out}" "    ESCAPED_KNOB"
 
-# ── OWNERS: an assignment is code in command position, never text ────────────
-# Every fixture below is passed as a single-quoted argument, so the live-tree
-# census cannot see SHAPE_KNOB as an owner of its own suite.
+# Owners: fixtures are single-quoted so the live census cannot credit SHAPE_KNOB to this suite.
 : > "${ALLOW}"
 _shape_rc() {
   { _consume PINNED_KNOB DOCKER_KNOB SHAPE_KNOB; printf '%s\n' "$@"; } > "${SUBJECT}"
@@ -221,10 +215,7 @@ t_assert_eq "0" "$(_shape_rc 'if true; then SHAPE_KNOB=1; fi')"      "after then
 t_assert_eq "0" "$(_shape_rc 'case "$1" in a) SHAPE_KNOB=1 ;; esac')" "in a case arm"
 t_assert_eq "0" "$(_shape_rc '_v="$(SHAPE_KNOB=1 _helper)"')"        "inside \$( ) within a quoted word"
 
-# ── HEREDOCS: the body is data in all four delimiter forms ───────────────────
-# Each fixture pairs a body knob (must stay UNOWNED) with a real assignment
-# AFTER the terminator (must still own), so a tokenizer that never terminates
-# and swallows the rest of the file fails the case instead of passing it.
+# Heredocs: each body knob stays UNOWNED while an assignment after the terminator still owns, so a runaway tokenizer fails.
 _t_hd() {
   local _what="$1"; shift
   { _consume PINNED_KNOB DOCKER_KNOB HD_BODY_KNOB SHAPE_KNOB
@@ -266,8 +257,7 @@ t_case "arithmetic is not a heredoc: << inside (( )) opens nothing"
 _t_hd 'arith' '_shift=$(( 1 << 2 ))'
 
 t_case "an unterminated heredoc does not eat the NEXT file"
-# The scan is one awk over every script, so nhd must reset per file. Sorted file
-# order puts this one first; without the reset it swallows subject.sh whole.
+# One awk scans every script, so nhd must reset per file; sorted order puts this fixture first.
 _eat="${_work}/linux/scripts/a-unterminated.sh"
 printf '#!/usr/bin/env bash\ncat <<%s\nEATEN_KNOB=1\n' "'NEVERENDS'" > "${_eat}"
 { _consume PINNED_KNOB DOCKER_KNOB HD_BODY_KNOB SHAPE_KNOB; printf 'SHAPE_KNOB=1\n'; } > "${SUBJECT}"

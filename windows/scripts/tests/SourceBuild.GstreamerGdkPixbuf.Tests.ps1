@@ -1,9 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Build-GstreamerFromSource.ps1's Get-GstGdkPixbufMesonArgs (BACKLOG CON28): the amd64 merge builds
-# the gdkpixbuf plugin, `enabled` so a lost dependency fails meson setup, and the cross lane passes
-# nothing. NOT covered: meson, or gdk-pixbuf's own build.
+
+# The amd64 merge builds gdkpixbuf `enabled`, so a lost dependency fails meson setup; the cross lane passes nothing.
 
 Describe 'Get-GstGdkPixbufMesonArgs (amd64 only)' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -FunctionName 'Get-GstGdkPixbufMesonArgs')

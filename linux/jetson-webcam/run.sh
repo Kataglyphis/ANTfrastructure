@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Webcam object detection on a Jetson GPU, in the arm64 GPU wrapper image.
-# The three GPU flags and why each is needed: docs/linux-host-setup.md § B2b.
+# Jetson GPU webcam detection in the arm64 GPU wrapper; why each GPU flag: docs/linux-host-setup.md § B2b.
 set -euo pipefail
 
 IMAGE="${JETSON_WEBCAM_IMAGE:-ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-nvidia-hostarm64-arm64}"

@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# ci_build_docs.sh - Generic Python documentation builder
-#
-# Usage:
-#   ci_build_docs.sh [coverage_version]
-#
-# Environment variables:
-#   COVERAGE_VERSION - Python version for coverage (default: 3.14, the image
-#                      interpreter and ci_tests.sh's default leg)
-#   WORKSPACE_ROOT - Workspace root directory
+# Sphinx docs; COVERAGE_VERSION (arg 1, default 3.14) must name the ci_tests.sh leg whose coverage is published.
 
 set -euo pipefail
 
@@ -22,8 +14,7 @@ prepare_ci_workspace
 
 VENV_DIR="$WORKSPACE_ROOT/.venv-docs"
 
-# uv_venv_ensure activates the venv itself when it already exists; only the
-# freshly-created case still needs an explicit activation.
+# uv_venv_ensure activates only an existing venv, so a fresh one is activated here.
 uv_venv_ensure "$VENV_DIR" "${COVERAGE_VERSION}" "docs venv" venv_existed
 if [ "$venv_existed" -eq 0 ]; then
   uv_venv_activate "$VENV_DIR"

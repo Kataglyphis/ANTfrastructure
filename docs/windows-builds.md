@@ -272,6 +272,8 @@ Source-built directly via CMake (bypasses `build.py` which always builds example
 
 Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2 (amd64 only; global SIMD flags are empty on arm64 by design). CUDA auto-detected. Custom `CMAKE_AR` path fix. ONNX Runtime: the chain's on every lane, through a nested-header shim with `HAVE_ONNXRUNTIME` pre-set, so there is no configure-time download, and G-API's ONNX DirectML EP is compiled in. `Get-OpencvOrtConfigureFinding` gates both after configure; see [`onnxruntime-single-source.md` § OpenCV on Windows](onnxruntime-single-source.md#opencv-on-windows-the-shim-the-hook-and-the-gate).
 
+The chain's FFmpeg (`OPENCV_LINK_CHAIN_FFMPEG=1`): OpenCV runs `find_package(PkgConfig)` only on UNIX, so on Windows its videoio pkg-config route never fires and it downloads its own prebuilt FFmpeg. `patches/opencv/pkgconfig-shim.cmake`, injected through `CMAKE_PROJECT_INCLUDE`, runs that probe, and it works only together with `-DOPENCV_FFMPEG_SKIP_DOWNLOAD=ON`, `-DOPENCV_FFMPEG_ENABLE_LIBAVDEVICE=ON` and the `Get-Ffmpeg9AvcodecConfig.ps1` source patch; `SKIP_DOWNLOAD` alone leaves `FFMPEG: NO`. Verify with CMake's own `pkg_check_modules`, not a shell `pkg-config`, which can say yes while OpenCV still configures without FFmpeg.
+
 #### LiteRT (pin: `LITERT_VERSION`)
 
 GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. Also builds the TFLite **C-API** shared lib `tensorflowlite_c` (target injected into the main build, `WINDOWS_EXPORT_ALL_SYMBOLS` + `/EXPORT:TfLiteXNNPackDelegate*`) that gst-plugins-bad's tflite plugin links.
@@ -954,6 +956,8 @@ Meson+clang-cl with wrap pre-extraction; loads `versions.env` via `Import-Versio
 #### `Import-Versions.ps1`
 
 Reads `C:\temp\versions.env` (COPY'd from `linux/scripts/01-core/versions.env`) and sets matching process env vars so Windows build scripts consume the same canonical versions as Linux
+
+A key counts as an explicit override only when its process value differs from its Machine value: the base bakes every key into the Machine environment and every container process inherits it, so presence alone proves nothing. An override wins the RUN and is also written back to Machine, so the image records what it was built with, including the base's own ARG-mirrored keys; every other key is refreshed from the file. That is why media stages take pins as build-args instead of re-COPYing `versions.env`.
 
 #### `Complete-Container.ps1`
 

@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Characterisation of lib/slang-compile.sh's combined-WGSL emit, driven by a
-# fixture manifest and a fake slangc — the four outcomes of one wgslMap row
-# (copied / emit failed / rejected / source absent), the toolchain floor and
-# the depth-texture patch table.
-# docs/slang-shader-compilation.md#the-combined-emit-outcomes
+# lib/slang-compile.sh's combined-WGSL emit with a fake slangc; see docs/slang-shader-compilation.md#the-combined-emit-outcomes
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -73,16 +69,14 @@ _run() {
   _out="$(cat "${_work}/out.txt")"
 }
 
-# Every case starts from the same fixture state AND the same fake-slangc knobs:
-# a leaked knob is how a suite like this goes quietly green on the wrong path.
+# Resets the fake-slangc knobs too: a leaked knob turns a case green on the wrong path.
 _reset() {
   rm -rf "${_work}/crate" "${_work}/shaders/build"
   mkdir -p "${_work}/crate"
   VER=2026.8 RC=0 PAYLOAD=valid.wgsl
 }
 _dst="${_work}/crate/shader.wgsl"
-# t_assert_ok takes a COMMAND and no message; a message argument would silently
-# become a third argument to test(1) and pass for the wrong reason.
+# Compared with t_assert_eq: t_assert_ok takes no message, and one would become an argument to test(1).
 _dst_state() { if [ -f "${_dst}" ]; then echo present; else echo absent; fi; }
 
 t_case "a valid emit is patched, validated and COPIED to the manifest's dst"

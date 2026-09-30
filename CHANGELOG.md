@@ -7,6 +7,34 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - One-line comments, only the why, in every language
+
+- **The rule.** `AGENTS.md` § *Comments: one line, only the why* replaces the two-line ceiling
+  and is the owner rule for every repo of the family; the consumer `AGENTS.md` template links it.
+  One line, only the why; API docs stay, short; a trap that needs more gets a paragraph in its
+  `docs/` page and a one-line pointer; no history, dates or commented-out code.
+- **The sweep.** Every tracked source file is held to it (about 880 files, 38.9k lines out, 8.6k
+  in). Traps moved to their pages first, among them `build-cache-tiers.md`, `linux-cross-builds.md`,
+  `vulkan-foreign-arch-sdk.md`, `windows-build-resources.md` and `slang-shader-compilation.md`.
+  Apart from the gate, its tests and the fixes below, code is unchanged: every file was compared
+  token for token with its comments stripped. The empty CMake branches in
+  `ProjectOptionsCommon.cmake` keep a one-line why.
+- **The comment-size gate reads every language.** `verify_comment_size.py` grades shell, Python,
+  PowerShell, Dockerfiles, YAML, TOML, CMake and the `//` / `/* */` languages at one line
+  (`COMMENT_SIZE_LIMIT`). Heredocs, here-strings and multi-line strings are data; licence headers,
+  tool directives and `///` / `//!` / `/** */` API docs are exempt. The 32 blocks it still finds
+  (the guard hooks, CMake function docs, help texts, scripts inside strings) are frozen in
+  `comment-size.allow` ([`code-quality-tooling.md`](docs/code-quality-tooling.md#comment-size-comment-size)).
+- **What leaned on comments.** `test-cuda-cross-sbsa.sh` sliced the script at a comment and now
+  slices at `cuda_cross_packages()`. The gate registry credits a mutation by the target naming
+  its gate, so `lint-root.sh`, `lint-workflows.sh` and `linux-x64.yml` keep one line naming
+  `lint-shell.sh`, `workflow-conventions.allow` and `verify_mutations.py`.
+- **Budgets.** `code-dupes.allow`: `Install-ScoopTools.ps1` with itself 16 -> 26 (the notes that
+  split its two fetch arms moved to `windows-cross-builds.md`), and `test-prevention-gates.sh` with
+  itself at 12 (one case per language). `file-size.allow`: seven shrinks, four stale rows dropped.
+- **Cost.** Every edited Dockerfile and baked script re-keys its layer, so the next Linux and
+  Windows image builds run cold from the first edited step.
+
 ## 2026-09-30 - CON38-CON40, and the code-dupes gate green again
 
 - **CON39: clang-tidy selects the image's GCC.** Clang reads `<triple>-<driver>.cfg` from the

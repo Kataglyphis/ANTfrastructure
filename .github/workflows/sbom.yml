@@ -1,20 +1,4 @@
-# Scanner half of the SBOM. See docs/scripts/generate_sbom.py for the other
-# half and why there are two.
-#
-# syft catalogues components that carry package METADATA -- dpkg/apt, Python
-# site-packages, npm, Go and Rust binaries. It cannot see the C/C++ stack this
-# project builds from source into /opt (ONNX Runtime, OpenCV, FFmpeg,
-# GStreamer, libcamera), because those leave no manifest behind. Those are also
-# the components under copyleft licences, so a scan alone would produce an SBOM
-# missing every entry that carries a corresponding-source obligation.
-#
-# Hence: this job covers the thousands of packaged components no human can
-# maintain by hand, and docs/deps/sbom-curated.spdx.json covers the source-built
-# ones. Publish both.
-#
-# It scans the PUBLISHED image straight from ghcr, so it needs no build host and
-# no daemon -- which is what makes it runnable in CI at all, since the images
-# are built on a workstation rather than in this repository's pipelines.
+# Scanner half of the SBOM, reading the published image with no daemon. See docs/sbom.md § Why there are two halves
 name: SBOM
 
 on:
@@ -44,8 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # :latest is a manifest list; a scan without --platform silently
-        # picks one arch, so each is scanned explicitly and published separately.
+        # A scan without --platform silently picks one arch of the manifest list.
         platform: [linux/amd64, linux/arm64, linux/riscv64]
     steps:
       - name: Checkout
@@ -58,13 +41,7 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}"
           | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      # syft caches every layer it streams under TMPDIR, and a cross image is
-      # tens of gigabytes per arch. /tmp on these runners is size-capped, so the
-      # scan died mid-layer with "disk quota exceeded" on all three arches,
-      # every Monday since 2026-08-31. A disk-backed path has the room: df
-      # reports 92G free on the volume under /mnt. Nothing about WHAT is
-      # scanned changes -- `registry:` still streams, still pulls into no
-      # daemon; the cache just lands somewhere that can hold it.
+      # syft caches streamed layers under TMPDIR, and the runner's /tmp is too small for them.
       - name: Give the scanner cache the large volume
         run: |
           set -euo pipefail
@@ -73,17 +50,7 @@ jobs:
           sudo chown "$(id -u):$(id -g)" /mnt/syft-tmp
           echo "TMPDIR=/mnt/syft-tmp" >> "${GITHUB_ENV}"
 
-      # One script, and the SAME one docs/sbom.md tells a reader to run on a
-      # workstation: the syft bootstrap, the `registry:` scan (no pull into a
-      # daemon, no disk for the rootfs, and it works for arches this runner
-      # cannot execute), the >=50-package refusal, and docs/scripts/compare_sbom.py
-      # over the result. All four were inline here - and the last one was not
-      # here at all: this job wrote precisely the file compare_sbom.py exists to
-      # read, uploaded it, and never ran the comparison.
-      #
-      # The image argument is passed through verbatim; EMPTY means "the family
-      # image", which the driver composes from versions.env instead of from a
-      # literal repeated in this file.
+      # The same driver docs/sbom.md runs on a workstation; an empty image means the versions.env family image.
       - name: Scan the published image
         id: scan
         run: bash linux/scripts/scan-image-sbom.sh "${{ matrix.platform }}" "${{ inputs.image }}"
@@ -111,9 +78,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      # The curated document is generated from deps.json + versions.env and is
-      # committed, so it can drift. This is the same contract the other
-      # generators in docs/scripts/ carry.
+      # The curated document is generated but committed, so it can drift.
       - name: Verify the curated SBOM matches deps.json
         run: python3 docs/scripts/generate_sbom.py --check
 

@@ -3,32 +3,11 @@
 
 #requires -Version 7.0
 
-# WindowsAppRunner.Common - generic launcher core for per-profile "run the built
-# app" scripts. The Windows twin of linux/scripts/lib/app-runner.sh.
-#
-# This module is project-agnostic: nothing project-specific is hard-coded here.
-# A thin wrapper script imports it, passes its per-profile defaults (build root,
-# executable name, configurations, working directory) and optionally an -EnvHook
-# script block for per-profile environment tweaks (forcing a Vulkan ICD,
-# clearing validation layers, ...), then exits with $LASTEXITCODE.
-#
-# Contract mirrored from app-runner.sh:
-#   app_runner_find_executable -> Resolve-AppExecutablePath
-#   app_runner_env_hook        -> -EnvHook script block
-#   app_runner_main            -> Invoke-AppRun
-#
-# Invoke-AppRun deliberately does NOT return the exit code on the pipeline: the
-# launched application writes to stdout, so a captured return value would
-# collect its output. The exit code is left in $LASTEXITCODE (also on failure to
-# start), which is what the wrapper scripts pass to `exit`.
+# Windows twin of linux/scripts/lib/app-runner.sh; the exit code stays in $LASTEXITCODE because the app owns stdout.
 
 Set-StrictMode -Version Latest
 
-# Locates the built application executable inside a build tree. Shared by the
-# run_{debug,profile,release} launcher scripts. Tries the flat
-# build root, bin\, and per-configuration subdirectories (bin\<Config>\ and
-# <Config>\ for single- vs multi-config generators) before falling back to a
-# recursive search.
+# Tries the flat build root, bin\ and per-configuration dirs before a recursive search.
 function Resolve-AppExecutablePath {
   param(
     [Parameter(Mandatory)]
@@ -65,13 +44,7 @@ function Resolve-AppExecutablePath {
   return $null
 }
 
-# Full pipeline: discover the executable, run the caller's environment hook,
-# switch to the working directory and launch the application.
-#
-# Throws when the executable cannot be found (append build instructions via
-# -NotFoundHint). Otherwise the process exit code is left in $LASTEXITCODE - 1
-# when the process could not be started at all - and a warning is written for
-# any non-zero code, matching app-runner.sh's behaviour.
+# Throws when no executable is found; otherwise $LASTEXITCODE holds the exit code, 1 if the process never started.
 function Invoke-AppRun {
   param(
     [Parameter(Mandatory)]
@@ -79,13 +52,10 @@ function Invoke-AppRun {
     [Parameter(Mandatory)]
     [string]$ExecutableName,
     [string[]]$Configurations = @('Debug'),
-    # Defaults to the current location, the way app-runner.sh defaults to the
-    # project root: the app usually resolves its assets relative to it.
+    # The app usually resolves its assets relative to the current location.
     [string]$WorkingDirectory = (Get-Location).Path,
     [string[]]$ExeArgs = @(),
-    # Per-profile environment setup, run after the executable was located and
-    # before the working directory switch (e.g. VK_ICD_FILENAMES overrides,
-    # clearing validation layers). $env: writes from here are process-wide.
+    # Per-profile env setup before the directory switch; its $env: writes are process-wide.
     [scriptblock]$EnvHook,
     # Free-form label for the "Starting" line, e.g. "release" / "profile".
     [string]$Label,
@@ -110,10 +80,7 @@ function Invoke-AppRun {
       & $EnvHook
     }
 
-    # Push-/Pop-Location instead of a bare Set-Location: app-runner.sh runs in
-    # its own process, so its cd dies with the script - but this module runs in
-    # the CALLER'S session, where a bare Set-Location would permanently change
-    # the caller's working directory.
+    # Push/Pop: this runs in the caller's session, where a bare Set-Location would stick.
     Push-Location -Path $WorkingDirectory
     try {
       if ($null -ne $ExeArgs -and $ExeArgs.Count -gt 0) {

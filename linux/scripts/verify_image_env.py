@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""A published image's environment carries no build-host setting: no sccache
-remote-cache variable, no RFC1918 or link-local address. The Windows image shipped
-SCCACHE_WEBDAV_ENDPOINT=http://192.168.x.x:5000 and every consumer's sccache died
-on it (2026-09-23).
+"""A published image's env carries no build-host setting: no sccache remote cache, no RFC1918 or link-local address.
 
---env-file FILE|-   the NAME=VALUE lines of a BUILT image's config (the publish gate).
---dockerfile FILE.. static: ENV instructions and ARG defaults, plus every Windows
-                    RUN that runs an sccache server must see ARG SCCACHE_WEBDAV_ENDPOINT.
-
-Not covered: hostnames and loopback, image history (a RUN records its build args),
-files inside the image. docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting"""
+docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting"""
 import argparse
 import ipaddress
 import os
@@ -20,8 +12,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# The build host's cache layout and every sccache REMOTE backend. Local defaults
-# (SCCACHE_DIR, _CACHE_SIZE, _ERROR_LOG, _LOG, _IDLE_TIMEOUT) are allowed.
+# Every sccache remote backend and host-layout knob; local defaults like SCCACHE_DIR are allowed.
 BUILD_HOST_NAME = re.compile(
     r"^SCCACHE_(?:WEBDAV_\w+|REDIS\w*|MEMCACHED\w*|GCS_\w+|AZURE_\w+|S3_\w+|OSS_\w+|"
     r"COS_\w+|GHA_\w+|BUCKET|ENDPOINT|REGION|MULTILEVEL_CHAIN|FORCE_LOCAL)$",
@@ -34,8 +25,7 @@ LEAD = set(" \t,;=\"'([")
 TRAIL = set(" \t,;\"')]")
 AUTHORITY = re.compile(r"//(?:[^/@\s]*@)?$")
 REF = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
-# A compiling RUN mounts BOTH the cache and its error-log dir (#90); either alone is a
-# probe (the cache cleaner, the persistent-log reader) that starts no sccache server.
+# Only a compiling RUN mounts both dirs; either alone is a probe that starts no sccache server.
 SCCACHE_MOUNTS = tuple(re.compile(r"--mount=[^\s]*target=C:\\%s(?=[,\s]|$)" % d, re.IGNORECASE)
                        for d in ("sccache", "sccache-logs"))
 ENDPOINT_ARG = "SCCACHE_WEBDAV_ENDPOINT"
@@ -104,8 +94,7 @@ def _escape_char(lines):
 
 
 def instructions(path):
-    """(line, text) per instruction: continuations joined with the file's own escape
-    character, comment lines inside a continuation dropped as BuildKit drops them."""
+    """(line, text) per instruction, joined by the file's escape char, interior comments dropped as BuildKit does."""
     with open(path, encoding="utf-8", errors="replace") as fh:
         lines = fh.read().splitlines()
     esc = _escape_char(lines)
@@ -155,8 +144,7 @@ def _unquote(value):
 
 
 def _pairs(body, legacy):
-    """KEY=VALUE pairs of an ENV/ARG body; `legacy` accepts ENV's old `ENV KEY value` form.
-    An ARG with no default yields (name, None)."""
+    """(KEY, VALUE or None) pairs of an ENV/ARG body; `legacy` accepts `ENV KEY value`."""
     toks = _tokens(body)
     if legacy and toks and "=" not in toks[0]:
         return [(toks[0], _unquote(" ".join(toks[1:])))]

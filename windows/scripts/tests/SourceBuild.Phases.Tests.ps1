@@ -1,9 +1,5 @@
 #requires -Version 7.0
-# Tests for the #109 build-phase machinery (Start-/Complete-BuildPhase,
-# Write-BuildPhaseSummary). The load-bearing property is SCOPE TRANSPARENCY:
-# phases are try/catch brackets at script level, and try/catch must not eat
-# cross-phase variable state - a regression here silently breaks every
-# phase-split monolith at once.
+# Phases are script-level try/catch brackets that must not eat cross-phase variables, or every phase-split script breaks.
 
 Describe 'Build phase machinery (#109)' {
 

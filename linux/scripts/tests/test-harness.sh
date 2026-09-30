@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# test-harness.sh — minimal assert/reporting helpers for linux/scripts tests.
-# The bash counterpart of windows/scripts/tests/TestHarness.psm1: plain bash,
-# zero dependencies, source it from a test-*.sh file and call t_summary last.
-#
-#   source "$(dirname "${BASH_SOURCE[0]}")/test-harness.sh"
-#   t_case "cross_sdk_tag formats the arch suffix"
-#   t_assert_eq "repo:cross-sdk-arm64" "$(cross_sdk_tag arm64)"
-#   ...
-#   t_summary   # exits non-zero if any assertion failed
+# Assert helpers for linux/scripts tests: source it, use t_case and t_assert_*, end with t_summary.
 [ -n "${_TEST_HARNESS_SH_LOADED:-}" ] && return 0
 _TEST_HARNESS_SH_LOADED=1
 
@@ -17,22 +9,12 @@ _T_CASE=""
 
 t_case() { _T_CASE="$1"; }
 
-# A mistyped assertion used to be INVISIBLE: bash printed "command not found",
-# the test file kept going, and t_summary still reported every assertion passed.
-# Found 2026-09-02 by typing t_assert_fail (the real name is t_assert_fails) --
-# three assertions vanished and the suite stayed green. Turn that into a
-# counted failure so a typo can never masquerade as coverage.
-# bash runs this handler in a SEPARATE EXECUTION ENVIRONMENT, so incrementing a
-# counter here is lost -- the first cut of this did exactly that and still
-# printed "passed". Record on disk; t_summary reads the marker.
+# A mistyped t_* counts as a failure; the handler runs in a separate environment, so it records on disk.
 _T_UNKNOWN_MARK="${TMPDIR:-/tmp}/.t-harness-unknown.$$"
 rm -f "${_T_UNKNOWN_MARK}" 2>/dev/null || true
 
 command_not_found_handle() {
-  # ONLY t_* names. Suites legitimately probe for absent binaries (and discard
-  # that stderr), so counting every missing command turned 2 healthy suites red
-  # when this was first written. The hole being closed is narrower: a mistyped
-  # ASSERTION silently doing nothing.
+  # Only t_* names: suites legitimately probe for absent binaries.
   case "$1" in
     t_*)
       printf '%s\n' "$1" >> "${_T_UNKNOWN_MARK}"
@@ -49,9 +31,7 @@ _t_fail() {
 
 _t_pass() { :; }
 
-# t_fake_elf <path> <e_machine> — a 64-byte ELF header, which is all any gate in
-# this tree reads of a binary: magic, EI_CLASS/EI_DATA, e_type, e_machine. One
-# owner, so a suite needing a binary of a given arch never ships one.
+# t_fake_elf <path> <e_machine>: a 64-byte ELF header, all any gate here reads of a binary.
 t_fake_elf() {
   python3 -c 'import sys
 m = int(sys.argv[2])
@@ -62,10 +42,7 @@ h[18:20] = m.to_bytes(2, "little")
 open(sys.argv[1], "wb").write(bytes(h))' "$1" "$2"
 }
 
-# t_fn_src <file> <function> — the source of one top-level `name() {` … `}`
-# function, for suites that run a build-stage helper off-target with its
-# collaborators stubbed. Returns 1 when the function is gone -- callers do
-# `_fn_src="$(t_fn_src f fn)" || exit 1`, since a subshell cannot end the suite.
+# t_fn_src <file> <function>: one top-level function's source; 1 when gone, so callers add `|| exit 1`.
 t_fn_src() {
   local _src
   _src="$(awk -v fn="$2" '$0 == fn "() {" {p=1} p {print} p && /^}$/ {exit}' "$1")"
@@ -73,13 +50,7 @@ t_fn_src() {
   printf '%s\n' "${_src}"
 }
 
-# t_stubbed_script <library> <fn> [args...] — the `bash -c` BODY that sources a
-# library and calls ONE of its functions with the arguments quoted for
-# re-parsing. A suite runs a library function in its own process so a stub on
-# PATH and a `set -u` abort cannot leak into the suite; the printf '%q' loop is
-# the part two suites had copied. The caller keeps the environment PREFIX on its
-# own `bash -c` line, because a fixture switch spelled there is what gives the
-# env-knob registry an owner for it.
+# t_stubbed_script <library> <fn> [args...]: a `bash -c` body calling one library function; env prefixes stay on the caller's line.
 t_stubbed_script() {
   local _lib="${1:?t_stubbed_script: library path required}"
   shift
@@ -88,18 +59,14 @@ t_stubbed_script() {
   printf 'set -uo pipefail\nsource %q\n%s\n' "${_lib}" "${_args}"
 }
 
-# t_stage_build_args <repo root> <arch> — "ARGS=<n>", then every build arg an orchestrator hands a
-# stage for <arch>, one per line: how a suite proves an exported switch is forwarded, and only when set.
+# t_stage_build_args <repo root> <arch>: "ARGS=<n>", then each build arg an orchestrator hands a stage, one per line.
 t_stage_build_args() {
   bash -c 'REPO_ROOT="$1"; source "$1/linux/scripts/lib-orchestrator.sh" >/dev/null 2>&1
     declare -a a=(); append_common_build_args a "$2"; echo "ARGS=${#a[@]}"
     printf "%s\n" "${a[@]}"' _ "$1" "$2"
 }
 
-# t_gate_tree <module>... — a throwaway root holding linux/scripts/<module> for each
-# named module, for a gate that derives its own root from __file__. Prints the root;
-# the caller adds its fixture and removes it. Second owner of a shape two suites had
-# copied. docs/code-quality-tooling.md#the-mutation-gate-mutations
+# t_gate_tree <module>...: a throwaway root for gates rooted at __file__; see docs/code-quality-tooling.md#the-mutation-gate-mutations
 _T_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 t_gate_tree() {
   local root m; root="$(mktemp -d)"
@@ -109,30 +76,15 @@ t_gate_tree() {
   printf '%s' "${root}"
 }
 
-# t_git_commit <dir> — stage and commit a fixture checkout, quietly. An
-# identity is passed per-command so the suite does not depend on whatever the
-# runner's global git config happens to be.
+# t_git_commit <dir>: commit everything quietly, with a per-command identity independent of the runner's config.
 t_git_commit() {
   git -C "$1" add -A >/dev/null 2>&1
   git -C "$1" -c user.email=t@t -c user.name=t commit -qm fixture >/dev/null 2>&1
 }
 
-# t_consumer_fixture <parent-dir> <plant-fn> <shape> [vendored]
-#   -> a throwaway CONSUMER checkout, printed on stdout.
-#
-# Every lint gate that takes a consumer root needs the same fixture, and needs
-# it to be a real git checkout, because a consumer's scope is read from git
-# ls-files. With `vendored` as the fourth argument it also carries a NESTED
-# checkout at T_VENDORED, which git records as a GITLINK — the shape this repo
-# itself has inside every consumer, and the one a root-taking gate must refuse
-# to grade as the consumer's own work.
+# t_consumer_fixture <parent-dir> <plant-fn> <shape> [vendored]: prints a consumer git checkout; vendored adds a gitlink.
 
-# The suite supplies <plant-fn>, called as `<plant-fn> <dir> <shape>`: once for
-# the consumer with the caller's shape, and once for the vendored checkout with
-# the shape `vendored`. What every such fixture shares is here; what differs —
-# the files, and what is wrong with them — stays in the suite. Third owner of a
-# shape the shell, python and Dockerfile lint suites had each grown separately.
-# docs/code-quality-tooling.md#the-mutation-gate-mutations
+# <plant-fn> gets `<dir> <shape>`, then shape `vendored` for the nested one; see docs/code-quality-tooling.md#the-mutation-gate-mutations
 T_VENDORED=third_party/ANTfrastructure
 t_consumer_fixture() {
   local parent="$1" plant="$2" shape="$3" vendored="${4:-}" d
@@ -168,12 +120,7 @@ t_assert_contains() {
   case "$1" in *"$2"*) _t_pass ;; *) _t_fail "${3:-missing substring}: '$2' not in '$1'" ;; esac
 }
 
-# t_assert_contains_any <haystack> <message> <needle>...
-#   One of several acceptable strings must be present. Some evidence is
-#   environment-shaped -- a closed pipe is "SIGPIPE received" when the trap wins
-#   the race and bash's own "write error: Broken pipe" when the builtin's write
-#   fails first -- and picking a winner red-lights a runner over a race it did
-#   not choose.
+# t_assert_contains_any <haystack> <message> <needle>...: any one needle, for evidence whose wording depends on a race.
 t_assert_contains_any() {
   local haystack="$1" message="$2"; shift 2
   _T_RUN=$((_T_RUN + 1))
@@ -184,18 +131,13 @@ t_assert_contains_any() {
   _t_fail "${message}: none of '$*' in '${haystack}'"
 }
 
-# Both take a COMMAND and no message, so `t_assert_fails test -f X "why"` runs
-# `test -f X why` -- which fails for the WRONG reason (bash: "too many arguments",
-# rc 2) and passes vacuously. Four of those were written and caught by review in
-# one wave; this is the harness catching the next one. Only `test`/`[` report a
-# usage error as rc 2, which is exactly the shape being caught.
+# A message passed to t_assert_ok/t_assert_fails makes `test` exit 2, which would otherwise pass vacuously.
 _t_usage_error() {
   [ "$2" = "2" ] || return 1
   case "$1" in test|'[') return 0 ;; *) return 1 ;; esac
 }
 
-# Both assertions run the command the same way; only the verdict differs.
-# $1 = the rc that means PASS ("0" for t_assert_ok, anything else for t_assert_fails).
+# _t_assert_run <name> <want: 0 or 1> <verdict> <command...>: the runner behind t_assert_ok and t_assert_fails.
 _t_assert_run() {
   local name="$1" want="$2" verdict="$3"; shift 3
   local _rc=0
@@ -229,9 +171,7 @@ t_summary() {
     printf '  %d/%d assertion(s) FAILED\n' "${_T_FAILED}" "${_T_RUN}" >&2
     exit 1
   fi
-  # Zero assertions is a FAILURE, not a pass: a gutted suite (commented-out
-  # asserts, an early-return source guard) used to print "0 assertion(s)
-  # passed" and stay green — coverage silently dropping to nothing.
+  # Zero assertions is a failure: a gutted suite must not read as green.
   if [ "${_T_RUN}" -eq 0 ]; then
     printf '  SUITE RAN ZERO ASSERTIONS — treating as failure\n' >&2
     exit 1
@@ -240,11 +180,7 @@ t_summary() {
   exit 0
 }
 
-# t_gate_probe <module.py> <<'PY' … PY -> the snippet's stdout, with the REAL shipped
-# gate bound to `g`. Every other case builds a throwaway tree, so this is the only way
-# to assert against the scan set that actually ships. Two suites grew the same importlib
-# preamble independently and the dupes gate caught the second copy.
-# docs/code-quality-tooling.md#code-to-docs-pointers-doc-links
+# t_gate_probe <module.py> <<'PY' … PY: stdout with the shipped gate bound to `g`; see docs/code-quality-tooling.md#code-to-docs-pointers-doc-links
 t_gate_probe() {
   local _mod="$1"
   {

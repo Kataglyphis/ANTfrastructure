@@ -1,55 +1,7 @@
 #!/usr/bin/env python3
-"""Catch functions whose STDOUT is their return value from logging on stdout.
+"""Catch functions consumed as `x="$(f)"` that log on stdout, since log()/info() write to fd 1.
 
-WHY THIS EXISTS (2026-08-26 / 2026-08-27)
------------------------------------------
-`logging.sh` routes info() -- and therefore log() -- to fd 1, while warn()/err()
-go to fd 2. A shell function whose result is consumed as `x="$(f)"` therefore
-returns its log lines CONCATENATED WITH its value the moment anyone adds a log()
-to it.
-
-That is not hypothetical. It shipped twice:
-
-  * compiler_cache_launcher() leaked an info() line into CC, so GCC was
-    configured with CC="[INFO] Using sccache with SCCACHE_DIR=... (cap 30G)sccache
-    gcc" and died as "configure: error: C compiler cannot create executables" --
-    a message pointing nowhere near the cause.
-  * normalize_llvm_cmake_dir() (tvm-detect.sh) logged on stdout while three call
-    sites consumed its stdout as a path. Latent: it only fires when the LLVM
-    CMake path actually needs normalising.
-
-A unit test can pin one function. This pins the CLASS: any function that is both
-called in a command substitution somewhere in the tree AND logs on fd 1 without
-`>&2` is reported.
-
-GRADING A CONSUMER
-------------------
-`--root` is the contract docs/scripts/verify_mutations.py already documents, and
-it exists here for the reason run-lint-gates.sh refuses to infer a root: a
-submodule checkout puts this script INSIDE the consumer, where a root derived
-from __file__ resolves to ANTfrastructure. The gate then grades the hub, passes,
-and reports green over a consumer's shell that nobody graded at all -- and this
-particular defect travels with the library, since a consumer sourcing
-`logging.sh` inherits the exact fd-1 log() the two shipped bugs came from.
-
-Under the hub's own root the scan set is the historical walk of linux/scripts
-(bar the Windows lane, which has its own backlog), so the hub's own verdict does
-not move by a line. Under any other root it is every TRACKED *.sh outside the
-excluded top-level directories -- the same `git ls-files` scope
-run-lint-gates.sh builds, so a consumer needs no per-repo configuration, a
-vendored submodule (a gitlink) cannot be walked into, and build output stays
-out.
-
-A --root that is not a git checkout is refused, and so is a scope that comes
-back empty: both would otherwise print the OK line over nothing, which is the
-failure this whole flag exists to end.
-
-There is no --allow. This gate carries no freeze file
-(docs/code-quality-gates.md records none) and gains none here: every finding is
-one call site away from a poisoned return value, `>&2` is the one-token fix, and
-a per-consumer ratchet would only be a place to park them.
-
-Exit 0 when clean, 1 when something is found, 2 when the root cannot be graded.
+docs/code-quality-tooling.md#stdout-return-gate-stdout-returns
 """
 import argparse
 import re
@@ -69,22 +21,13 @@ SUBST = re.compile(r"\$\(\s*([a-z_][a-z0-9_]*)\b")
 
 
 def _hub_files(root: Path) -> list[Path]:
-    """The historical scan: every *.sh under linux/scripts, Windows lane aside.
-
-    A walk, not `git ls-files`: this is the hub's own verdict and it must not
-    move, and this gate's tests run it over a planted throwaway tree that is no
-    git checkout at all.
-    """
+    """Every *.sh under linux/scripts bar the Windows lane, walked since the suites plant non-git trees."""
     return [p for p in (root / "linux" / "scripts").rglob("*.sh")
             if "windows" not in str(p)]
 
 
 def _tracked_files(root: Path) -> list[Path]:
-    """Tracked *.sh under a consumer root, as absolute paths.
-
-    gate_scope owns the scope rules; this only re-wraps them in pathlib,
-    which is the shape the rest of this gate works in.
-    """
+    """Tracked *.sh under a consumer root per gate_scope, as absolute paths."""
     return [root / rel for rel in gate_scope.tracked(str(root), ["*.sh"])]
 
 def scan_files(root: Path) -> list[Path]:
@@ -99,13 +42,7 @@ def main() -> int:
                     help="the tree to grade (default: this repo)")
     args = ap.parse_args()
 
-    # `--root ""` would resolve to the CURRENT directory, which is how a gate
-    # ends up grading whatever it happens to be standing in; and a root that is
-    # not a directory must say so rather than reach git and be reported as "not
-    # a git checkout".
-    # `--root ""` would resolve to the CURRENT directory; NOT passing --root at
-    # all is the documented "this repo" case that resolve_root handles without
-    # demanding a git checkout. argparse tells them apart: None vs "".
+    # `--root ""` would grade the current directory; no --root at all (None) means this repo.
     if args.root is not None and not args.root:
         ap.error("--root needs a directory")
     try:

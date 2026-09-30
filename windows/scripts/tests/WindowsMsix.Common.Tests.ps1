@@ -1,10 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Moved up from a consumer repo (BeschleunigerBallett,
-# scripts/windows/tests) on 2026-08-07 - see WindowsCMake.Common.Tests.ps1 for
-# the rationale. Converted from Pester 3.4 to Pester 5+ syntax in the move.
 
 Describe 'WindowsMsix.Common' {
   BeforeAll {
@@ -28,10 +24,7 @@ Describe 'WindowsMsix.Common' {
 
   Context 'Resolve-WindowsSdkToolPath' {
     It 'returns $null when the tool is on neither PATH nor any SDK candidate directory' {
-      # Both mocks must be -ModuleName scoped: the function calls Get-Command
-      # and Test-Path from inside the module. Test-Path must be mocked too,
-      # otherwise the Windows Kits scan below runs against the real host and a
-      # machine with the SDK installed would resolve a real path.
+      # Test-Path is mocked too, or the Windows Kits scan resolves a real SDK on the host.
       Mock -ModuleName WindowsMsix.Common -CommandName Get-Command { return $null }
       Mock -ModuleName WindowsMsix.Common -CommandName Test-Path { return $false }
 
@@ -77,13 +70,10 @@ Describe 'WindowsMsix.Common' {
 
   Context 'Invoke-MsixPackage' {
     BeforeAll {
-      # Invoke-MsixSign, which -Sign checks for; the -Sign cases mock it, so
-      # nothing here signs for real.
+      # Provides Invoke-MsixSign, which -Sign checks for; the -Sign cases mock it.
       Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsMsix.Signing.psm1') `
         -Force -DisableNameChecking
-      # makeappx is not on a CI runner, and these cases are about the
-      # ORCHESTRATION, not about makeappx: the external call is this stub, which
-      # creates the file makeappx would.
+      # makeappx is absent on CI runners, so this stub creates the file it would.
       $script:fakeMakeappx = {
         param([string]$File, [string[]]$Parameters)
         Set-Content -LiteralPath $Parameters[$Parameters.IndexOf('/p') + 1] -Value 'msix' -Encoding utf8
@@ -120,8 +110,7 @@ Describe 'WindowsMsix.Common' {
     }
 
     It 'throws when makeappx reports success and produces nothing' {
-      # Seen for real. Without this check the lane goes green and the artifact
-      # upload finds no file.
+      # Without this check the lane goes green and the artifact upload finds no file.
       $ws = Join-Path $script:tmp 'pkg2'
 
       { Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir (Join-Path $ws 'staging') `
@@ -130,12 +119,9 @@ Describe 'WindowsMsix.Common' {
         Should -Throw -ExpectedMessage '*produced no package*'
     }
 
-    # -Sign used to search the staging directory's parent for the .pfx: a build
-    # directory in every consumer, so none could use it. The certificate lives
-    # at the repository root, which only the caller knows.
+    # The certificate lives at the repository root, which only the caller knows.
     It 'refuses -Sign without -SigningRoot before it stages anything' {
-      # Before even the template is read, which here does not exist and would
-      # otherwise be the error.
+      # Before the template is read, whose absence would otherwise be the error.
       $staging = Join-Path $script:tmp 'unrooted\staging'
 
       { Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir $staging `

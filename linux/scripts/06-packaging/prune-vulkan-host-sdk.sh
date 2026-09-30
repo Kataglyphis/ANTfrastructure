@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# prune-vulkan-host-sdk.sh — drop the LunarG SDK's builder-arch prefix (and any
-# leftover build tree) from a Vulkan install root, keeping the prefix this image
-# actually runs. Runs in Dockerfile.package's artifact-source stage, AHEAD of the
-# /opt/vulkan COPY, so the runtime layer never carries what it cannot execute.
-# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+# Runs before the /opt/vulkan COPY. See docs/artifact-copy-completeness.md § The Vulkan tree ships only what the image runs
 
-# Assigned in main(), AFTER platform.sh loads: this runs inside the artifact-
-# source container, whose own arch IS the builder prefix to keep.
+# Set in main() once platform.sh loads: this container's own arch is the builder prefix.
 HOST_PREFIX=""
 
 _prune_load_platform() {
@@ -28,8 +23,7 @@ _prune_load_platform() {
   return 1
 }
 
-# The builder-arch prefix goes only when a REAL own-arch prefix carries the loader
-# the image will load; on amd64 the two are the same directory and nothing goes.
+# Only when a real own-arch prefix carries the loader; on amd64 both are one directory.
 vulkan_host_prefix_prunable() {
   local version_dir="$1" arch_dir="$2" prefix="${3:-${HOST_PREFIX}}"
 
@@ -55,8 +49,7 @@ _prune_version_dir() {
   else
     echo "vulkan-prune: WARNING keeping ${version_dir}/${HOST_PREFIX} — ${version_dir}/${arch_dir}/lib/libvulkan.so.1 is missing, so the cross Vulkan build did not land for ${target_arch}" >&2
   fi
-  # The LunarG tarball is ALWAYS x86_64, so on a non-amd64 builder its prefix is
-  # not the builder's and survived: 1.8 GB of x86-64 in the native arm64 image.
+  # The LunarG tarball is always x86_64, so a non-amd64 builder must drop it too.
   if [ "${HOST_PREFIX}" != x86_64 ] \
      && vulkan_host_prefix_prunable "${version_dir}" "${arch_dir}" x86_64; then
     echo "vulkan-prune: removing ${version_dir}/x86_64 (LunarG tarball SDK; ${target_arch} runs ${arch_dir}/lib/libvulkan.so.1)"
@@ -73,9 +66,7 @@ main() {
     echo "ERROR: prune-vulkan-host-sdk.sh found no platform.sh defining arch_uname_name_for" >&2
     exit 1
   }
-  # The builder prefix is whatever THIS container is — hardcoding x86_64 kept
-  # the wrong tree (and pruned the right one) whenever the cross lane built on
-  # a non-amd64 host. amd64 hosts resolve to x86_64, exactly as before.
+  # This container's arch, not x86_64: a cross lane may build on a non-amd64 host.
   HOST_PREFIX="$(arch_uname_name_for "$(build_arch_oci)")" || {
     echo "ERROR: cannot resolve the builder Vulkan prefix for $(build_arch_oci)" >&2
     exit 1

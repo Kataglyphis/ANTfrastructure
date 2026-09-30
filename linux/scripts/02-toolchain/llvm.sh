@@ -37,9 +37,7 @@ build_llvm_clang_from_source() {
   bash "${builder}" "${args[@]}"
 }
 
-# Resolve a host LLVM tool by base name, preferring the version-suffixed
-# variant (e.g. clang-${CLANG_WANTED}) then the bare name. Prints the resolved
-# path, returns 1 if none found.
+# Host LLVM tool path, preferring the -${CLANG_WANTED} suffixed name.
 llvm_selected_host_tool() {
   local base="$1" candidate=""
   for candidate in "${base}-${CLANG_WANTED}" "${base}"; do
@@ -56,8 +54,7 @@ llvm_selected_host_clangxx() { llvm_selected_host_tool clang++; }
 register_versioned_llvm_binaries() {
   local full base tool
 
-  # Register every versioned binary we find under /usr/bin that ends with -${CLANG_WANTED}
-  # and set it as the chosen alternative.
+  # Every /usr/bin/*-${CLANG_WANTED} becomes the chosen alternative.
   for full in /usr/bin/*-"${CLANG_WANTED}"; do
     [ -e "$full" ] || continue
 
@@ -68,18 +65,13 @@ register_versioned_llvm_binaries() {
   done
 }
 
-# Per-target callback for for_each_cross_target: installs the clang/clang++
-# cross wrappers for one already-normalized target. host_clang, host_clangxx and
-# gcc_prefix are read from the enclosing install_cross_clang_wrappers scope.
+# Per-target callback; host_clang, host_clangxx and gcc_prefix come from the caller by dynamic scope.
 _llvm_install_cross_clang_wrapper() {
   local target_label="$1"
   local triplet sysroot wrapper _pair _name _bin
 
   triplet="$(arch_deb_multiarch_triplet_for "$target_label")" || return 0
-  # The BUILD HOST's own arch is served by "/" — its native libc IS the sysroot.
-  # Keyed on build_arch_oci(), not the literal "amd64" (2026-09-08): on an arm64
-  # host the literal made the NATIVE arch demand /usr/aarch64-linux-gnu, which
-  # only ever exists for a foreign target, and the stage died there.
+  # The build host's own arch uses "/" as sysroot; compare with build_arch_oci, never a literal amd64.
   if [ "${target_label}" = "$(build_arch_oci)" ]; then
     sysroot="/"
   else
@@ -139,9 +131,7 @@ llvm_cross_bin_dir() {
   printf '%s' "${prefix}/bin"
 }
 
-# _llvm_first_existing <test-flag> <candidate...>
-# Print the first candidate that satisfies `test <test-flag>` (one of
-# -e/-x/-d/-f) and return 0; return 1 when none matches.
+# _llvm_first_existing <test-flag> <candidate...>: the first candidate passing `test <flag>`, else 1.
 _llvm_first_existing() {
   local test_flag="$1" candidate
   shift
@@ -236,11 +226,7 @@ llvm_cross_first_executable() {
 }
 
 llvm_cross_qemu_binary() {
-  # Binaries for the build host's arch need no emulator; every FOREIGN arch
-  # does — amd64 included. The old code returned empty for amd64 unconditionally
-  # ("the host serves it"), which is only true on an amd64 host. On an arm64 one
-  # it left the amd64 target LLVM unrunnable and `verify` reported an empty
-  # libdir (2026-09-08). qemu-user ships qemu-x86_64 on arm64 (verified 10.2.1).
+  # Every foreign arch needs an emulator, amd64 included on a non-amd64 host.
   [ "$1" = "$(build_arch_oci)" ] && return 0
   case "$1" in
     amd64)
@@ -347,10 +333,7 @@ llvm_cross_run_binary() {
   shift
 
   [ "$#" -gt 0 ] || return 1
-  # Binaries for the BUILD HOST's arch run directly; only foreign ones need an
-  # emulator. Keyed on build_arch_oci() (2026-09-08) — with the literal, an
-  # arm64 host would have run amd64 binaries bare and put arm64 ones under
-  # qemu-aarch64, i.e. exactly backwards.
+  # Only foreign-arch binaries need the emulator; compare with build_arch_oci, never a literal amd64.
   if [ "${target_label}" = "$(build_arch_oci)" ]; then
     "$@"
     return 0
@@ -382,11 +365,7 @@ llvm_cross_populate_tool_wrapper_dir() {
     # AS, LD, AR, NM, RANLIB, STRIP, OBJCOPY — env var name is the tool upper-cased.
     _tv="${tool^^}"
     _bin="${!_tv:-}"
-    # setup_linux_cross_env returns EARLY when the target IS the build host, so
-    # it exports none of these — the native tools already are the target's. That
-    # path only became reachable when the host arch started building its own
-    # pinned LLVM (2026-09-10); until then ${!_tv} was always set, and the bare
-    # indirect expansion tripped `set -u` the first time it was not.
+    # Target == build host exports none of these, so fall back to the native tool on PATH.
     [ -n "${_bin}" ] || _bin="$(command -v "${tool}" 2>/dev/null || true)"
     [ -n "${_bin}" ] || {
       printf '[WARN] no %s and no %s on PATH; wrapper dir left without it\n' "${_tv}" "${tool}" >&2
@@ -405,13 +384,7 @@ llvm_host_native_tool_dir() {
 
   major="$(version_major "${major}")"
 
-  # The PINNED host tree first: since 2026-09-10 llvm-cross.sh builds the build
-  # host's own arch from llvmorg-${LLVM_RELEASE} into /opt/llvm-target-<arch>.
-  # Without this the nested tools came from the apt bootstrap, i.e. a 23.1.1
-  # tablegen generating .inc files for a 23.1.0 source tree — on EVERY cross
-  # build, including the arches that already passed. Falls through unchanged
-  # when that tree does not exist yet (it is built by the same target loop, so
-  # the arches built before the host's turn still take the apt path).
+  # The pinned host tree first, or the apt bootstrap's tablegen generates for a different source release.
   for candidate in \
     "/opt/llvm-target-$(build_arch_oci 2>/dev/null || echo amd64)/bin" \
     "/usr/local/llvm-${major}/bin" \
@@ -451,13 +424,7 @@ install_llvm_clang_minimal() {
     "libc++-${CLANG_WANTED}-dev" \
     "libc++abi-${CLANG_WANTED}-dev" \
     "libclang1-${CLANG_WANTED}"
-  # clang-tools-${CLANG_WANTED} is REQUIRED, not an "IDE extra": it ships
-  # /usr/lib/llvm-${LLVM_WANTED}/bin/clang-tblgen, which the cross target-clang
-  # build consumes as a prebuilt host tool via CMake's CLANG_TABLEGEN= (see
-  # llvm-cross.sh). Dropping it makes ninja fail with "clang-tblgen ... missing
-  # and no known rule to make it". (llvm-tblgen comes from llvm-${LLVM_WANTED}-dev
-  # above.) Everything else genuinely unused downstream — flang/bolt/mlir/libclc/
-  # clangd/clang-tidy/clang-format — stays out of the minimal set.
+  # clang-tools is required: it ships the clang-tblgen the cross target-clang build uses as CLANG_TABLEGEN.
 }
 
 install_llvm_clang_full() {
@@ -502,10 +469,7 @@ install_llvm_clang_full() {
 }
 
 install_llvm_clang() {
-  # TG7 — default to the minimal host LLVM/Clang set (flang/bolt/mlir/libclc/
-  # clangd/clang-tidy/clang-format have zero downstream consumers per audit).
-  # The minimal set still includes clang-tools (clang-tblgen) — required by the
-  # cross target-clang build. Override with LLVM_INSTALL_PROFILE=full if desired.
+  # Minimal by default, as the full extras have no downstream consumer; LLVM_INSTALL_PROFILE=full overrides.
   local profile="${LLVM_INSTALL_PROFILE}"
   local installed_from_source=0
   local target_arch=""

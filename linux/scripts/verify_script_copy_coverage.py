@@ -1,32 +1,7 @@
 #!/usr/bin/env python3
-"""verify_script_copy_coverage.py — static "sourced/COPY'd scripts are present" check.
+"""Every /opt/scripts/*.sh an image runs, transitively, was COPY'd or mounted into it; relative sourcing is out of scope.
 
-Catches the failure class where a script that runs inside an image references
-another script at /opt/scripts/... that was never COPY'd into that image, so it
-fails at *build* time with "command not found" / exit 127 — e.g. the
-media_load_arch_flags bug (Dockerfile.package ran install-deps.sh, which sources
-/opt/scripts/03-media/core/common.sh, but 03-media/core was not COPY'd). Fix
-commit da41e19; failure class 1 in
 docs/cross-build-verification.md#failure-classes-from-build-history
-
-How it works, per linux/Dockerfile.*:
-  1. Parse COPY lines into a map of provided /opt/scripts/* paths -> repo source
-     file (directory COPYs are expanded to every *.sh beneath them).
-  2. Find the scripts the image RUNs (`RUN ... bash /opt/scripts/X.sh` etc).
-  3. Transitively follow those scripts: for each, read its repo source and collect
-     every /opt/scripts/*.sh reference (bash invocations AND bare string literals,
-     which covers `for f in "/opt/scripts/.../common.sh"; do source "$f"`), then
-     recurse into referenced scripts.
-  4. Assert every referenced /opt/scripts/*.sh path is in the provided map.
-
-Scope / limits (documented on purpose, to keep false positives near zero):
-  - Only ABSOLUTE /opt/scripts/*.sh references are checked. Relative
-    `${SCRIPT_DIR}/../core/common.sh` sourcing (which resolves next to the script
-    itself and always ships together) is out of scope.
-  - Cross-image inheritance is handled via KNOWN_BASE_PROVIDED below: paths a
-    Dockerfile relies on from its FROM base rather than its own COPYs.
-
-Exit status: non-zero iff any referenced script path is not provided.
 """
 from __future__ import annotations
 import re
@@ -36,18 +11,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_SRC = REPO_ROOT / "linux" / "scripts"
 
-# Paths a Dockerfile references that are provided by a mechanism this static
-# check does not model — verified by hand to be genuinely available at build
-# time. Keyed by Dockerfile name; values are exact /opt/scripts paths (matched
-# by prefix). A NEW missing reference that is NOT listed here still fails the
-# gate, so this allowlist narrows scope without hiding regressions.
+# Per Dockerfile, path prefixes provided by a mechanism this check does not model, verified by hand.
 KNOWN_BASE_PROVIDED: dict[str, list[str]] = {
-    # android build-*.sh come from a build-arg templated mount
-    #   --mount=source=linux/scripts/03-media/build/${ANDROID_LIB}/android,
-    #           target=/opt/scripts/03-media/${ANDROID_LIB}/android
-    # (the ${ANDROID_LIB} segment is mid-path, so it can't be statically
-    # resolved). cross-apt.sh/modules.sh reach the image via the same per-lib
-    # 01-core mount + cp used by the android dispatch flow.
+    # A mount templated on a mid-path ${ANDROID_LIB}, plus the per-lib 01-core mount and cp.
     "Dockerfile.android": [
         "/opt/scripts/03-media/gstreamer/android/build-gstreamer.sh",
         "/opt/scripts/03-media/litert/android/build-android.sh",
@@ -57,8 +23,7 @@ KNOWN_BASE_PROVIDED: dict[str, list[str]] = {
         "/opt/scripts/core/cross-apt.sh",
         "/opt/scripts/core/modules.sh",
     ],
-    # vulkan.sh is inherited from the sdk FROM base (Dockerfile.sdk COPYs it
-    # per-file as part of the setup-dependencies.sh closure).
+    # Inherited from the sdk FROM base, which COPYs it with the setup-dependencies.sh closure.
     "Dockerfile.media": [
         "/opt/scripts/toolchain/vulkan.sh",
     ],
@@ -84,8 +49,7 @@ def join_continuations(text: str) -> list[str]:
 
 
 def join_continuations_numbered(text: str) -> list[tuple[int, str]]:
-    """Like join_continuations, but each logical line carries its 1-based
-    starting line number (for --report-core-usage output)."""
+    """join_continuations with each logical line's 1-based starting line number."""
     out: list[tuple[int, str]] = []
     buf, start = "", 0
     for i, line in enumerate(text.splitlines(), start=1):
@@ -102,9 +66,7 @@ def join_continuations_numbered(text: str) -> list[tuple[int, str]]:
 
 
 def _expand_var_dirs(src: str) -> list[Path]:
-    """Resolve a repo src path that may contain a ${VAR} segment (e.g. a
-    build-arg templated mount `03-media/build/${ANDROID_LIB}/android/`) by
-    treating ${...} as a glob wildcard and returning the matching dirs."""
+    """Existing paths for a repo src, with any ${VAR} segment treated as a glob wildcard."""
     rel = src.rstrip("/")
     if "${" not in rel:
         p = REPO_ROOT / rel
@@ -114,14 +76,11 @@ def _expand_var_dirs(src: str) -> list[Path]:
 
 
 def _add_provision(provided: dict[str, Path], src: str, dest: str) -> None:
-    """Record that repo path `src` is provided at image path `dest`
-    (via COPY or a bind mount). Directory sources expand to every *.sh.
-    A ${VAR} in either side is treated as a wildcard (build-arg templated mounts)."""
+    """Record `src` as provided at `dest`; directories expand to every *.sh, ${VAR} is a wildcard."""
     if OPT not in dest or not src.startswith("linux/scripts/"):
         return
     for src_path in _expand_var_dirs(src):
-        # Re-derive the dest for this concrete src (substitute the same ${VAR}
-        # match back into dest when both share it, else keep dest literal).
+        # Substitute this src's ${VAR} match back into dest.
         this_dest = dest
         if "${" in dest:
             this_dest = re.sub(r"\$\{[^}]+\}", src_path.name, dest)
@@ -136,11 +95,7 @@ def _add_provision(provided: dict[str, Path], src: str, dest: str) -> None:
 
 
 def build_provided(dockerfile: Path) -> dict[str, Path]:
-    """Map every provided /opt/scripts/* path -> its repo source file.
-
-    Scripts reach an image two ways here: `COPY` (persisted) and per-RUN
-    `--mount=type=bind,source=linux/scripts/...,target=/opt/scripts/...` (ephemeral
-    but still present while that RUN executes). Both count as "provided"."""
+    """Provided /opt/scripts/* path -> repo source, from COPYs and per-RUN bind mounts alike."""
     provided: dict[str, Path] = {}
     for line in join_continuations(read(dockerfile)):
         s = line.strip()
@@ -205,20 +160,7 @@ def check_dockerfile(dockerfile: Path) -> list[str]:
 
 
 def report_core_usage() -> int:
-    """--report-core-usage: for every RUN that bind-mounts the WHOLE 01-core
-    directory, print which core files its entry script(s) transitively use.
-
-    Rationale: a whole-directory mount makes the RUN's cache key cover all of
-    01-core (~55 scripts) — an edit to ANY of them invalidates the layer. This
-    report quantifies, per RUN, how few files are actually needed, i.e. the
-    payoff of narrowing that mount to single-file mounts (the pattern already
-    used at Dockerfile.android's apply-patch.sh mount). Read-only: never fails.
-
-    CAVEAT — the counts are a LOWER BOUND: only absolute /opt/scripts/*.sh
-    references are traced, so entries invoked via the mount target itself
-    (/tmp/core-scripts/...), ${VAR}-composed paths, and relative sourcing are
-    invisible. Before narrowing a mount, grep the entry scripts for their real
-    core usage and rebuild the stage locally; do NOT narrow on this report alone."""
+    """--report-core-usage: core files each whole-01-core RUN mount uses; a lower bound, never a verdict."""
     core_dir = SCRIPTS_SRC / "01-core"
     core_total = len(list(core_dir.rglob("*.sh")))
     for df in sorted((REPO_ROOT / "linux").glob("Dockerfile.*")):

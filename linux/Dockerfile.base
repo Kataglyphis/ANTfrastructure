@@ -1,15 +1,6 @@
 # syntax=docker/dockerfile:1.27.0
 
-# ------------------------------------------------------------------------------
-# OS + stable dependencies (rarely changes)
-# This image avoids persisting helper scripts into the image so apt layers remain
-# stable while shared setup logic can still run through BuildKit bind mounts.
-# ------------------------------------------------------------------------------
-# Digest-pin the ONLY floating external base in the whole chain (every
-# downstream stage is already content-addressed via registry_pin_ref). This is
-# the multi-arch manifest-LIST digest, so amd64/arm64/riscv64 each still resolve
-# their own platform manifest. Refresh UBUNTU_DIGEST in versions.env whenever
-# UBUNTU_VERSION is bumped (verify-arg-consistency.sh polices the pair).
+# The chain's only floating external base, pinned by manifest-list digest; refresh UBUNTU_DIGEST with UBUNTU_VERSION.
 ARG UBUNTU_VERSION=26.04
 ARG UBUNTU_DIGEST=sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 FROM ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST}
@@ -23,23 +14,9 @@ ARG CMAKE_VERSION=4.4.3
 ARG NODE_VERSION=26.9.0
 ARG UV_VERSION=0.12.17
 
-# ------------------------------------------------------------------------------
-# Shell
-# ------------------------------------------------------------------------------
 SHELL ["bash", "-lc"]
 
-# Bootstrap CA roots before optionally rewriting apt sources to HTTPS mirrors.
-# NOTE: QEMU-emulated runs can fail with SHELL ["bash", "-lc"] because the
-# login shell profile may attempt unsupported syscalls.  Use explicit /bin/bash.
-# NOTE: base RUNs bind-mount ONLY the per-file transitive source-closure of
-# base-image.sh (traced 2026-08-08; same discipline as Dockerfile.toolchain's
-# three lists — keep the six identical lists below in sync). The previous
-# whole-directory mounts folded ALL ~120 files of 01-core + 02-toolchain into
-# every base layer's cache key, so editing ANY of them — including host-only
-# orchestrator modules — rebuilt base and cascaded through the entire chain.
-# Closure: base-image.sh -> modules.sh -> common.sh (-> load-versions-env,
-# versions.env, logging, platform, arch-mapping, ubuntu-mirror, downloads,
-# parallelism) + package-lists.sh + 02-toolchain/{cmake,packaging-deps}.sh.
+# Plain /bin/bash (the login shell hits unsupported syscalls under QEMU); mounts are base-image.sh's per-file closure, same in all six RUNs.
 RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
@@ -59,25 +36,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca
 
-# NOT the https restore (APT-HTTP, 2026-08-24): this RUN only rewrites entries
-# still matching the UPSTREAM archive/security/ports host regexes
-# (ubuntu-mirror.sh). For a custom fast mirror the sources already name the
-# MIRROR after bootstrap-ca, so this finds nothing and returns without writing
-# — the bootstrap's deliberate https->http downgrade is instead undone by
-# restore_mirror_https_scheme INSIDE bootstrap-ca (base-image.sh), right after
-# ca-certificates lands. Kept because it is still the mirror-configuration hook
-# for sources bootstrap-ca did not touch, and it is a harmless no-op otherwise.
-# platform.sh travels WITH ubuntu-mirror.sh. ubuntu-mirror.sh carries a
-# defensive `source "${_UBUNTU_MIRROR_SH_DIR}/platform.sh"` for exactly this
-# standalone case, but it is a FILE TEST against its own directory -- and a
-# per-file bind mount puts ubuntu-mirror.sh in /tmp/core-scripts with no
-# platform.sh beside it, so the fallback silently found nothing. Observed on the
-# first native arm64 base build (2026-09-15):
-#   ubuntu-mirror.sh: line 21: is_truthy: command not found
-# ubuntu_mirror_is_truthy then exits 127, which reads as FALSE, so
-# USE_FAST_UBUNTU_MIRROR could never take effect through this RUN -- a knob
-# silently stuck off, and the step still exits 0. Dockerfile.media's equivalent
-# RUN already mounts the pair; this was the one place in the tree that did not.
+# Mirror hook for sources bootstrap-ca left alone; without platform.sh beside ubuntu-mirror.sh the fast-mirror knob silently stays off.
 RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/core-scripts/use-fast-ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core-scripts/ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/core-scripts/platform.sh,ro \
@@ -86,9 +45,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,tar
 
 
 
-# ------------------------------------------------------------------------------
-# GPU-ENV
-# ------------------------------------------------------------------------------
+# GPU and cache environment
 ENV NVIDIA_DRIVER_CAPABILITIES=all \
     NVIDIA_VISIBLE_DEVICES=all \
     VULKAN_VERSION=${VULKAN_VERSION} \
@@ -103,35 +60,11 @@ ENV NVIDIA_DRIVER_CAPABILITIES=all \
     SCCACHE_IDLE_TIMEOUT=0 \
     SCCACHE_ERROR_LOG=/tmp/sccache.log
 
-# The cache dirs must be writable at RUNTIME for non-root users too — the
-# BuildKit cache mounts only make them writable during image builds. Without
-# this, any consumer running the image as a non-root user gets a fatal
-# "sccache: failed to create directory /var/cache/sccache" on every compile
-# (held the BeschleunigerBallett Linux CI lane red 2026-07-28..08-02).
-# 1777 = world-writable with sticky bit, same trust model as /tmp.
+# Writable at runtime for non-root users (sticky, like /tmp); the cache mounts only cover build time.
 RUN mkdir -p /var/cache/ccache /var/cache/sccache \
     && chmod 1777 /var/cache/ccache /var/cache/sccache
 
-# sccache tuning that has NO environment-variable path (2026-08-26, the
-# ccache->sccache switch). ccache took CCACHE_SLOPPINESS and the direct-mode
-# knobs from the environment; sccache reads them ONLY from a config file
-# (SCCACHE_CONF), so the switch needs this artifact or those settings quietly
-# do not exist. Baked into base so every descendant stage inherits it.
-#
-# NOT IN EFFECT (measured 2026-09-28): sccache replaces the file's whole
-# [cache.disk] section with its env defaults as soon as SCCACHE_DIR,
-# SCCACHE_CACHE_SIZE or SCCACHE_DIRECT is set, and the ENV above plus
-# 01-core/compiler-cache.sh always set them. docs/build-cache-tiers.md#the-shipped-images-cache-dirs
-#
-#   preprocessor_cache_mode  = sccache's analogue of ccache's DIRECT mode. Off
-#     by default; without it every C/C++ TU pays a full preprocess even on a
-#     hit, which is most of what ccache's speed advantage was here.
-#   file_stat_matches/use_ctime_for_stat = the honest half of what
-#     CCACHE_SLOPPINESS bought: trust size+mtime for INCLUDE files rather than
-#     re-hashing each one, without ignoring ctime entirely.
-#   ignore_time_macros = false deliberately: __DATE__/__TIME__ in a TU must
-#     still bust the entry. ccache's sloppiness list here included time_macros,
-#     but that trades correctness for hit rate and this chain ships compilers.
+# Not in effect while the env sets SCCACHE_DIR/SIZE/DIRECT. See docs/build-cache-tiers.md#the-shipped-images-cache-dirs
 RUN mkdir -p /etc/sccache \
     && printf '%s\n' \
         '[cache.disk]' \
@@ -148,14 +81,7 @@ RUN mkdir -p /etc/sccache \
 
 WORKDIR /workspace
 
-# ==============================================================================
-# OS dependencies
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# Base packages + graphics + flutter deps + perf tools (combined for fewer layers)
-# BuildKit cache mounts handle apt caching efficiently.
-# ------------------------------------------------------------------------------
+# OS packages: base, graphics, flutter deps and perf tools in one layer
 RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
@@ -177,10 +103,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
     bash /tmp/scripts/01-core/base-image.sh install-os-packages
 
 
-# ------------------------------------------------------------------------------
-# Shared build tooling (CMake, packaging prerequisites)
-# Keep this in the base image so compiler/toolchain builds inherit it directly.
-# ------------------------------------------------------------------------------
+# Shared build tooling, in base so the compiler/toolchain builds inherit it
 RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
@@ -203,9 +126,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
       --cmake-version "${CMAKE_VERSION}"
 
 
-# ------------------------------------------------------------------------------
-# Install Node.js (official tarballs, apt fallback for RISC-V)
-# ------------------------------------------------------------------------------
+# Node.js (official tarballs, apt fallback for RISC-V)
 RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
@@ -227,9 +148,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
       --version "${NODE_VERSION}"
 
 
-# ------------------------------------------------------------------------------
-# Vulkan ICD/Layer-JSONs
-# ------------------------------------------------------------------------------
+# Vulkan ICD and layer JSONs
 RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
@@ -250,9 +169,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
       --version "${VULKAN_VERSION}" \
       /tmp/vulkan
 
-# ------------------------------------------------------------------------------
-# uv install + compiler caches init
-# ------------------------------------------------------------------------------
+# uv and compiler cache init
 RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \

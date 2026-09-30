@@ -1,47 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# THE ONLY SANCTIONED WAY TO RECLAIM HOST DISK IN THIS REPO.
-#
-# 2026-08-21: an ad-hoc elevated "free some space" one-liner took the host's
-# installed programs and user profile with it. Anything outside this allowlist
-# is a human's decision, not a better one-liner.
-#
-# WHAT IT CLEANS (unnecessary, regenerable data only):
-#   * unused container layers      - via the daemon's own GC, which knows what
-#                                    is still referenced (the big lever, 100s of GB)
-#   * dead container-store husks   - the *.bak-<stamp> trees Reset-ContainerStores.ps1
-#                                    renames aside and nothing ever reads again
-#   * temp files                   - user + Windows TEMP, AGE-GATED so nothing
-#                                    in flight is touched
-#   * build scratch                - repo out/ probe + log directories
-#
-# WHAT IT WILL NEVER TOUCH, AT ANY FLAG:
-#   * installed programs, C:\Program Files, driver stores, package caches
-#   * the user profile, AppData outside TEMP, .ssh/.vscode/scoop/.claude
-#   * C:\Windows, C:\ProgramData outside the container stores, drive roots
-#   * THE COMPILE CACHES - sccache/ccache/cargo/uv. They look like "cache" and
-#     are the most expensive thing on the disk: AGENTS.md CACHE1 records a
-#     prune that traded ~1.5-2h of cold LLVM rebuilds for a few GB. Never.
-#
-# Design rules, in priority order:
-#   1. ALLOWLIST, NOT DENYLIST. A path is deletable only because a rule in
-#      $script:ReclaimRules produced it. Unknown path = not touched.
-#   2. DEFAULT DRY. Nothing is deleted without -Apply.
-#   3. FAIL CLOSED. If any resolved target fails the protected-root check the
-#      WHOLE run aborts - a target that lands there means the resolution logic
-#      is wrong, so the rest of the plan cannot be trusted either.
-#   4. NAMES ARE NOT TARGETS. A candidate containing a junction/symlink is
-#      skipped: that is where a name stops predicting what a recursive delete
-#      reaches.
-#   5. DAEMON LEVERS FIRST. buildctl/docker GC hand back far more than file
-#      deletion and understand what is still referenced.
-#
-# Usage:
-#   pwsh -File windows\scripts\host\Clear-DiskSpace.ps1                 # report
-#   pwsh -File windows\scripts\host\Clear-DiskSpace.ps1 -Apply          # do it
-#   pwsh -File windows\scripts\host\Clear-DiskSpace.ps1 -Apply -TempOlderThanDays 14
+# The only sanctioned host disk reclaim: allowlist only, report-only without -Apply; see docs/windows-builds.md § `Clear-DiskSpace.ps1`.
 
 [CmdletBinding()]
 param(
@@ -51,8 +11,7 @@ param(
     # Minimum-free target for the buildkit store lever, in GB.
     [int]$KeepGB = 100,
 
-    # Temp entries younger than this are left alone - a build in flight owns
-    # its temp. 0 would mean "delete temp files this session is using".
+    # Younger temp entries are left alone: a build in flight owns its temp.
     [ValidateRange(1, 3650)]
     [int]$TempOlderThanDays = 7,
 
@@ -70,10 +29,7 @@ function Say([string]$m, [string]$c = 'Gray') {
     Write-Host ('[{0}] {1}' -f (Get-Date -Format HH:mm:ss), $m) -ForegroundColor $c
 }
 
-# =========================================================== the allowlist ===
-# Each rule is a ROOT plus a LEAF pattern; nothing else under the root is ever
-# a candidate. MinAgeDays gates live directories so work in flight survives.
-# Adding a rule here is a reviewed change - it is the whole security boundary.
+# The allowlist, root plus leaf pattern per rule, is the whole security boundary: adding a rule is a reviewed change.
 function Get-ReclaimRules {
     param([int]$TempAgeDays = 7)
 
@@ -95,12 +51,11 @@ function Get-ReclaimRules {
         @{ Root = (Join-Path $repoRoot 'out'); Leaf = 'probe-*'; Kind = 'Directory'; MinAgeDays = 3; What = 'diagnostic probe scratch' }
     )
 
-    # A rule with no root (e.g. $env:TEMP unset under some service accounts)
-    # is dropped rather than resolved against the current directory.
+    # A rule without a root is dropped, never resolved against the current directory.
     return @($rules | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Root) })
 }
 
-# ============================================================= the hard NO ===
+# The hard no
 function Get-ProtectedRoots {
     $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
     return @(
@@ -118,10 +73,7 @@ function Get-ProtectedRoots {
 }
 
 function Test-Protected {
-    # $true when deleting $Path would take a protected root with it - either
-    # because it IS one, or because it CONTAINS one. A path BELOW a protected
-    # root is fine when an allowlist rule produced it: that is how
-    # C:\ProgramData\containerd.bak-* and the TEMP rules stay legal.
+    # True when $Path is or contains a protected root; below one is fine, which keeps the TEMP rules legal.
     param([Parameter(Mandatory)][string]$Path)
 
     $full = [IO.Path]::GetFullPath($Path).TrimEnd('\')
@@ -136,10 +88,7 @@ function Test-Protected {
 }
 
 function Test-HasReparsePoint {
-    # A junction or symlink inside a delete candidate is a tunnel OUT of the
-    # allowlist: the name-based checks clear the candidate, and the recursive
-    # delete then walks through the link into whatever it points at - which can
-    # be a protected root. Cannot tell = treat as unsafe.
+    # A junction or symlink lets a recursive delete tunnel out of the allowlist; cannot tell = unsafe.
     param([Parameter(Mandatory)][string]$Path)
     try {
         $self = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
@@ -164,8 +113,7 @@ function Get-EntrySizeGB {
 }
 
 function Get-ReclaimPlan {
-    # Resolves the rules into concrete candidates. Pure enough to unit-test:
-    # pass your own rule table and it resolves that instead.
+    # Resolves the given rule table into candidates, so tests can pass their own.
     param([Parameter(Mandatory)][object[]]$Rules)
 
     $now = Get-Date
@@ -192,12 +140,12 @@ function Get-ReclaimPlan {
     return @($plan)
 }
 
-# ==================================================================== main ===
+# Main
 function Invoke-FreeDiskSpace {
     Say '== resolving the allowlist ==' 'Cyan'
     $plan = Get-ReclaimPlan -Rules (Get-ReclaimRules -TempAgeDays $TempOlderThanDays)
 
-    # Rule 3: fail closed. One bad target and nothing runs.
+    # Fail closed: one target on a protected root means the resolution is wrong, so nothing runs.
     foreach ($t in $plan) {
         if (Test-Protected $t.Path) {
             Say ('REFUSING THE WHOLE RUN: a resolved target lands on a protected root -> ' + $t.Path) 'Red'

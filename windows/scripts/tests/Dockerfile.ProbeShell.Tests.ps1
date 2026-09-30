@@ -1,22 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# `SHELL ["pwsh", ...]` on a PUBLIC Windows base image is a silent trap: the
-# servercore/nanoserver images ship Windows PowerShell 5.1 ONLY - pwsh arrives
-# later in the real chain via Initialize-Pwsh.ps1. Every RUN under such a SHELL
-# dies with `hcs::System::CreateProcess ... The system cannot find the file
-# specified`, which does not look like "wrong shell" at all.
-#
-# Why this is a GUARD and not just a fixed bug (2026-08-21): the isolation
-# probe had exactly this defect, so `docker build --isolation process` always
-# failed, the driver read that as "this host cannot commit process-isolated
-# layers", and EVERY classic-lane build silently fell back to Hyper-V
-# isolation - 2 CPUs on a 32-core host, for months of builds, with only a
-# WARNING line to show for it. A probe that cannot run is worse than no probe:
-# it manufactures a verdict. AGENTS.md records two earlier bugs of this same
-# pwsh-in-probe class in probe-build-copy (2026-08-10); this is the third, so
-# it gets a test rather than another fix.
+
+# Public Windows bases ship only PowerShell 5.1, so a pwsh SHELL fails every RUN with a misleading CreateProcess error.
 
 Describe 'Dockerfiles: no pwsh SHELL before pwsh exists in the image' {
 
@@ -28,16 +14,12 @@ Describe 'Dockerfiles: no pwsh SHELL before pwsh exists in the image' {
 
         $offenders = @()
         foreach ($f in $dockerfiles) {
-            # COMMENTS ARE NOT INSTRUCTIONS. Blanked before scanning: the first
-            # cut of this test passed on a file that still had the bug, because
-            # a comment ABOVE the SHELL line mentioned bootstrap-pwsh and that
-            # was enough to satisfy the "pwsh gets installed first" condition.
+            # Comments are blanked: one mentioning bootstrap-pwsh must not satisfy the check.
             $lines = Get-Content -LiteralPath $f.FullName | ForEach-Object {
                 if ($_ -match '^\s*#') { '' } else { $_ }
             }
 
-            # Only PUBLIC bases are affected: a FROM local/... or a FROM of an
-            # earlier stage inherits whatever that stage installed.
+            # A local or earlier-stage FROM inherits whatever that stage installed.
             $fromPublic = $false
             foreach ($l in $lines) {
                 if ($l -match '^\s*(ARG\s+BASE=|FROM\s+)') {
@@ -64,8 +46,7 @@ Describe 'Dockerfiles: no pwsh SHELL before pwsh exists in the image' {
     }
 
     It 'the isolation probe in particular uses the 5.1 shell' {
-        # The specific regression: this probe decides the isolation mode for
-        # every classic-lane build, so a broken shell here is expensive.
+        # This probe decides the isolation mode, so a broken shell here manufactures a verdict.
         $probe = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\diagnostics\Dockerfile.isolation-probe'
         Assert-True (Test-Path $probe) "isolation probe Dockerfile not found at $probe"
         $raw = Get-Content -Raw $probe

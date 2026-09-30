@@ -1,9 +1,7 @@
 # shellcheck shell=bash
-# Fixtures the two wheelhouse suites share (test-runtime-wheels-context.sh and
-# test-runtime-wheels-source.sh). Sourced after test-harness.sh; defines functions only.
+# Fixtures shared by the two runtime-wheels suites; sourced after test-harness.sh.
 
-# Hermetic: what the wrapper path and these fixtures read but no case means to pass. The CI
-# image exports ONNX_PACKAGE and PYTORCH_EXTRA, which the wrapper forwards as operator pins.
+# The CI image exports ONNX_PACKAGE and PYTORCH_EXTRA, which the wrapper would forward as operator pins.
 rw_hermetic_env() {
   unset ONNX_PACKAGE PYTORCH_EXTRA ENABLE_NVIDIA ENABLE_AMD TORCH_APP_MODE BUILD_TYPE \
     RUNTIME_WHEELS_SOURCE RUNTIME_WHEELS_EXPORT_ROOT RUNTIME_NO_CACHE WRAPPER_DOCKERFILE_PATH \
@@ -20,10 +18,7 @@ rw_fns() {
   done
 }
 
-# A directory holding a nerdctl that appends its argv to $NLOG. `create` and `export`
-# fake a container of $ROOTFS (EXPORT_FAIL=1 fails the export, which streams without a
-# ./ prefix like the real one); `image inspect` prints $LOCAL_DIGEST for a tag, and for
-# a <repo>@<digest> ref that digest only when PINNED_PULLED=1 (the registry copy is local).
+# A nerdctl stub logging argv to $NLOG; knobs EXPORT_FAIL, LOCAL_DIGEST and PINNED_PULLED (pinned ref is local).
 rw_nerdctl_dir() {
   local dir
   dir="$(mktemp -d)"

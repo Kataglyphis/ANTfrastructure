@@ -1,13 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Get-PeFileMachine / Get-PeImportNames / Get-PeExportNames (WindowsTargetArch.Common.psm1): the
-# dependency-free PE readers behind the merge arch gate and its #127 import
-# walk. Real PE files from this host stand in for fixtures (kernel32.dll and
-# the running pwsh.exe exist on every Windows test runner); the machine
-# assertion follows the runner's own architecture so an arm64 runner passes
-# too. A synthetic non-PE file proves the throw path.
+# kernel32.dll and the running pwsh.exe are the fixtures; the machine check follows the runner's own arch.
 
 Describe 'PE inspection primitives' {
 

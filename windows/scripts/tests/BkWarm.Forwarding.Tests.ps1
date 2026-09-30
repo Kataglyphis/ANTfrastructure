@@ -1,15 +1,5 @@
 #requires -Version 7.0
-# Tests for Invoke-BkWarm.ps1 — the WARM-solve payload wrapper (build + WebDAV
-# handoff export, see docs/windows-builds.md § BuildKit/containerd lane). The
-# load-bearing detail: it relaunches the build script via `pwsh -File` so that
-# -BuildArgs elements like '-ResumeFrom' bind as NAMED parameters (array
-# splatting binds strictly by position and dies on leading-dash values). Each
-# case runs bk-warm in a CHILD pwsh because it legitimately calls `exit` /
-# throws — in-process it would tear down the test runner. The child gets its
-# SCCACHE_WEBDAV_ENDPOINT inside the -Command string, so no test-process env
-# mutation is needed. The fixture build script writes its bound parameters to
-# a file, which is the proof the forwarding survived both hops (including an
-# -Until value containing a space).
+# Invoke-BkWarm.ps1 relaunches via `pwsh -File` so -BuildArgs like '-ResumeFrom' bind by name; each case runs in a child pwsh.
 
 Describe 'Invoke-BkWarm.ps1 argument forwarding' {
 
@@ -24,11 +14,7 @@ Describe 'Invoke-BkWarm.ps1 argument forwarding' {
                 "Set-Content -LiteralPath '$outFile' -Value (`$ResumeFrom + '|' + `$Until + '|' + `$ScriptDir) -Encoding ASCII",
                 'exit 0'
             )
-            # A syntactically valid but dead endpoint: the build must RUN, then
-            # the Export-BuildHandoff step must fail (nothing under the default
-            # roots is newer than bk-warm's start, and even if something were,
-            # the PUT to this endpoint cannot succeed). That failing export is
-            # the proof bk-warm actually reached its handoff step.
+            # A dead endpoint: the failing handoff export proves bk-warm ran the build and reached it.
             $endpoint = 'file:///C:/wbt-no-such-dir-' + [guid]::NewGuid().ToString('N')
             $cmd = "`$env:SCCACHE_WEBDAV_ENDPOINT = '$endpoint'; " +
                 "& '$bkWarm' -Name 'wbt-fwd' -BuildScript '$fixture' " +
@@ -60,9 +46,7 @@ Describe 'Invoke-BkWarm.ps1 argument forwarding' {
 
             Assert-True (Test-Path $marker) 'the fixture ran before failing'
             Assert-True ($exit -ne 0) 'bk-warm propagates the build failure as a non-zero exit'
-            # (?s) + .*?: the child pwsh's ConciseView wraps the message across
-            # decorated lines ("failed\n | (exit 1)"), so the two halves of the
-            # error may be separated by newline + gutter characters.
+            # (?s): the child's ConciseView can wrap the message across decorated lines.
             Assert-Match '(?s)failed.*?\(exit 1\)' $out 'the error names the build exit code'
             Assert-False ($out -match 'Export-BuildHandoff:') 'no export attempt after a failed build'
         }

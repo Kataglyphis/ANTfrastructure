@@ -7,9 +7,7 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   source /opt/scripts/core/cross-env.sh   # defines cross_build_is_active
 fi
 
-# retag_directory_wheels (and arch_linux_platform_tag_for) live in 01-core
-# common.sh — bind-mounted at /opt/scripts/core in the media runtime stage,
-# with the repo-relative fallback for host-side runs.
+# retag_directory_wheels lives in 01-core/common.sh: the image's bind mount, else the repo.
 _SCRIPT_DIR_EARLY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for _common in \
   "/opt/scripts/core/common.sh" \
@@ -27,8 +25,7 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${_SCRIPT_DIR}/media-env.sh"
 
-# ort_manifest_rows <check|follow> <wheels-dir> <manifest>...: the ORT census manifests hash the chain wheels as built
-# (collect-artifacts.sh); check proves each row's bytes before the strip/repair below, follow re-points it at the result.
+# <check|follow> <wheels-dir> <manifest>...: check proves the census rows before the rewrite, follow re-points them after.
 ort_manifest_rows() {
   python3 - "$@" <<'PY'
 import hashlib
@@ -102,14 +99,7 @@ PY
 _ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance.sha256)
 ort_manifest_rows check "${WHEELS_DIR}" "${_ORT_MANIFESTS[@]}"
 
-# AP1: cross wheels ship UNSTRIPPED — `cmake --install --strip` runs the HOST
-# strip, a no-op on foreign-arch ELFs (~50-300 MB/arch of dead symbols). Strip
-# the .so inside each cross wheel with the target <triplet>-strip. Python wheels
-# are zips with a RECORD manifest (path,sha256,size), so we unpack → strip →
-# `wheel pack` (which RECOMPUTES RECORD) — never an in-place edit that would
-# desync RECORD. Corruption-safe: the original is removed only AFTER a successful
-# repack to a temp dir. Best-effort per wheel; MEDIA_STRIP=0 disables. Pure-python
-# (*-none-any) wheels have no .so and are skipped.
+# The host strip is a no-op on foreign ELFs; unpack and `wheel pack` so RECORD is recomputed, never edit in place.
 strip_cross_wheels() {
   [ "${MEDIA_STRIP:-1}" = "1" ] || return 0
   command -v uv >/dev/null 2>&1 || return 0
@@ -140,8 +130,7 @@ strip_cross_wheels() {
 }
 
 if cross_build_is_active; then
-  # AP1: strip cross wheels BEFORE retagging (retag then normalizes the tag on
-  # the repacked wheels).
+  # Strip before retagging, so the retag normalizes the repacked wheels' tags.
   strip_cross_wheels
   target_arch="$(cross_target_arch 2>/dev/null || true)"
   [ -n "${target_arch}" ] || target_arch="${TARGET_ARCH:-}"
@@ -150,8 +139,7 @@ if cross_build_is_active; then
     platform_tag="$(arch_linux_platform_tag_for "${target_arch}")"
     if [ -n "${platform_tag}" ]; then
       echo "Retagging cross-built wheels for platform: ${platform_tag}"
-      # Canonical helper (01-core/common.sh); skips *-none-any.whl and
-      # already-tagged wheels, exactly like the hand-rolled loop it replaced.
+      # Skips *-none-any.whl and already-tagged wheels.
       retag_directory_wheels "${WHEELS_DIR}" "*" "${platform_tag}" uv run python
     fi
   fi
@@ -164,8 +152,7 @@ fi
 echo "Running auditwheel repair on native wheels..."
 REPAIRED_WHEELS_DIR="${WHEELS_DIR}/repaired"
 
-# Executor pins per supply-chain audit #18 — auditwheel REWRITES the shipped
-# wheels' ELF headers; pinned so the same commit grafts the same RPATHs.
+# Pinned: auditwheel rewrites the shipped ELF headers, so one commit must graft the same RPATHs.
 uv pip install "auditwheel==${PY_AUDITWHEEL_VERSION:-6.7.0}" "patchelf==${PY_PATCHELF_VERSION:-0.19.1.0}"
 runtime_ld_path="$(find /opt /usr/local -type d \( -name 'lib*' -o -name '*linux-gnu*' \) 2>/dev/null | sort -u | paste -sd ':' - || true)"
 export LD_LIBRARY_PATH="${runtime_ld_path}:${LD_LIBRARY_PATH:-}"
@@ -173,11 +160,7 @@ export LD_LIBRARY_PATH="${runtime_ld_path}:${LD_LIBRARY_PATH:-}"
 mkdir -p "${REPAIRED_WHEELS_DIR}"
 _aw_err="$(mktemp)"
 trap 'rm -f "${_aw_err}"' EXIT
-# The manylinux-retag failure is EXPECTED for every local wheel on resolute (glibc
-# newer than any manylinux profile), so accumulate the skipped names and emit ONE
-# summary NOTE at the end instead of an identical line per wheel (was N-wheels ×
-# 3-arches of noise). An UNEXPECTED failure still surfaces auditwheel's output
-# inline per-wheel.
+# The expected manylinux-retag failure is summarised once; an unexpected one prints per wheel.
 _aw_retag_skipped=()
 shopt -s nullglob
 for wheel in "${WHEELS_DIR}"/*.whl; do
@@ -186,12 +169,7 @@ for wheel in "${WHEELS_DIR}"/*.whl; do
       cp "${wheel}" "${REPAIRED_WHEELS_DIR}/"
       ;;
     *)
-      # auditwheel repair fails on Ubuntu 26.04 (resolute), whose glibc is newer
-      # than any manylinux profile ("too-recent versioned symbols"). These are
-      # LOCAL wheels consumed in the same image, so the manylinux tag is purely
-      # cosmetic -- fall back to the raw wheel. Classify the failure: the EXPECTED
-      # case is collected for a single summary NOTE below; an UNEXPECTED failure
-      # still surfaces auditwheel's output.
+      # resolute's glibc is newer than any manylinux profile; the tag is cosmetic for in-image wheels.
       if ! auditwheel repair "${wheel}" -w "${REPAIRED_WHEELS_DIR}/" 2>"${_aw_err}"; then
         if grep -q 'too-recent versioned symbols' "${_aw_err}"; then
           _aw_retag_skipped+=("$(basename "${wheel}")")
@@ -210,9 +188,7 @@ if [ "${#_aw_retag_skipped[@]}" -gt 0 ]; then
 fi
 
 rm -f "${WHEELS_DIR}"/*.whl
-# Guard the glob explicitly: under nullglob a zero-match glob degenerates the
-# mv to one argument, which aborts the script right after it deleted the
-# original wheels.
+# Under nullglob a zero-match mv aborts the script right after the originals were deleted.
 if compgen -G "${REPAIRED_WHEELS_DIR}/*.whl" > /dev/null; then
   shopt -s nullglob
   mv "${REPAIRED_WHEELS_DIR}"/*.whl "${WHEELS_DIR}/"

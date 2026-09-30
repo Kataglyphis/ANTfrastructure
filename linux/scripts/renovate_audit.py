@@ -1,63 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""What the manifest MEANS, read by a real parser, before and after the edit.
+"""Audits a manifest edit by parsing the file for real, before and after.
 
-renovate_locator.py answers "which line declares this dependency" by parsing
-each manager's syntax by hand. Five rounds of adversarial fixtures each closed
-the cases found and had the next round find new ones -- a YAML anchor on the
-`dependencies:` key, a UTF-8 BOM before the first TOML table header, the block
-scalar header spelled `|2-` rather than `|-2`. Every one of them is legal
-syntax, every one made --apply write the WRONG declaration, and none of them was
-the last. A hand-rolled parser for YAML, TOML and JSON cannot be emptied of edge
-cases by iteration, so this module does not try. It changes the KIND of
-guarantee instead.
-
-The locator proposes; this module DISPOSES, and it does not trust the locator to
-have been right. Before a file is written its meaning is read with PyYAML,
-tomllib or json -- the real thing, the same parsers the ecosystem itself uses --
-and the paths that DECLARE the reported dependency at the reported old value are
-worked out from that parse alone, never from the line the locator picked. After
-the file is written it is read from disk and parsed AGAIN, and the two meanings
-are diffed. One leaf per reported update may differ, each at one of those paths,
-each carrying exactly the value the report asked for. Two values changed, a
-different path, a key added or removed, a file that no longer parses: every one
-of those is a refusal, and after a write a refusal puts the file back.
-
-Five consequences, each a decision rather than an accident:
-
-  * A manifest that does not parse BEFORE the edit cannot be verified this way,
-    and this module refuses to touch it. Writing into a file whose meaning
-    cannot be read is precisely the thing the five rounds kept doing.
-  * PyYAML loses comments and formatting, so the comparison cannot be textual.
-    It is not meant to be. What is compared is the PARSED structure, which is
-    exactly the invariant that matters: the meaning changed in one place.
-  * An anchor or alias makes one YAML node reachable at several paths, and a
-    text edit cannot change one of them without changing the others. Paths are
-    therefore counted, not nodes: an aliased declaration reads as more than one
-    changed leaf, and the run refuses rather than pretend the blast radius was
-    one. See docs/dependency-updates.md#the-edit-is-audited-by-a-real-parser.
-  * A DUPLICATE key is refused, in every format that permits one to be written.
-    YAML and JSON both resolve `http: 1.1.0` twice in one mapping to last-wins,
-    and so does the locator -- so the two AGREE, the edit lands on the winner,
-    and the file is left saying two different things about one dependency at
-    rc 0. Measured 2026-09-10. PyYAML is therefore driven through a loader that
-    RAISES on a repeated key and json through an object hook that does the same;
-    tomllib already refuses one. A manifest that contradicts itself is not one
-    this tool edits.
-  * NOTHING here may raise past its caller. The audit is what triggers the
-    rollback, so an audit that dies takes the rollback with it: a hostile
-    newValue carrying 1200 nested arrays made the walk below hit the recursion
-    limit, the exception went past _put_back(), and the bad write stayed on
-    disk at rc 1 (measured 2026-09-10 against renovate_planner.py edit). So the
-    walk is ITERATIVE and depth-limited, and expected() and audit() turn any
-    exception at all into a refusal that names it. renovate_planner.py rolls
-    back on an exception as well, because a guarantee that rests on this
-    module's own correctness is the guarantee this module exists to replace.
-
-The entry points are expected() -- what the edit is allowed to do, computed
-before it happens -- and audit(), which says whether it did that and nothing
-else. renovate_planner.py is the only caller.
+See docs/dependency-updates.md#the-edit-is-audited-by-a-real-parser
 """
 import collections
 import json
@@ -66,22 +12,11 @@ import tomllib
 
 import renovate_locator
 
-# path: the tuple of keys and indices leading to a leaf, as flatten() spells it.
-# leaf: the parsed string that leaf holds. start/end: the half-open span of the
-# VERSION inside it, so `actions/checkout@v4` yields (17, 19) and the expected
-# new leaf is leaf[:start] + new + leaf[end:] -- the same arithmetic the locator
-# does on a raw line, done here on the parsed value instead.
-# why: empty when this declaration may be rewritten, and otherwise the reason it
-# may not. A declaration can be perfectly readable and still not be one this
-# tool may move -- a requirement pinned by digest is the measured case -- and
-# that is a different verdict from "this file cannot be read".
+# start/end: the version's half-open span in leaf; why: "" or the reason a readable declaration may not move.
 Decl = collections.namedtuple("Decl", "path leaf start end why",
                               defaults=("",))
 
-# Which real parser reads a manager's files. Every manager renovate_locator.py
-# can locate in must appear here: a manager that can be edited but not verified
-# would be a hole exactly where this module exists to close one, and
-# test-renovate-local.sh asserts the two key sets are equal.
+# Every manager renovate_locator.py can edit must be verifiable here; test-renovate-audit.sh asserts it.
 FORMATS = {
     "github-actions": "yaml",
     "pub": "yaml",
@@ -95,24 +30,13 @@ FORMATS = {
     "custom.regex": "env",
 }
 
-# A ceiling on how many paths one manifest may have. A YAML document can expand
-# to far more nodes than it has bytes -- `&a [x,x] &b [*a,*a] &c [*b,*b] ...`
-# doubles per line -- and the report that names the file is JSON someone else
-# wrote. Hitting this is a refusal, never a truncated comparison.
+# YAML aliases can expand a document exponentially; hitting this refuses, never truncates.
 MAX_PATHS = 200000
 
-# And a ceiling on how DEEP it may nest. Two jobs, one number: it keeps the walk
-# below cheap (the cycle check is against the ancestors of the node in hand, so
-# its cost is the depth) and it is the second half of the recursion fix -- the
-# hostile newValue that beat the recursive walk nested 1200 deep, which json
-# itself parses without complaint. No manifest in this family nests past about
-# eight; 200 is far above every real one and far below anything that costs.
+# Bounds the cycle check's cost and hostile nesting; real manifests nest about eight deep.
 MAX_DEPTH = 200
 
-# U+FEFF, written as an escape because as a literal it is an invisible byte in
-# the middle of a comparison. It is what a Windows editor puts in front of a
-# manifest, and what made tomllib reject a pyproject.toml the locator then
-# mis-parsed into writing the [dependency-groups] entry instead of [project]'s.
+# An escape, since the literal is invisible; tomllib rejects a manifest that starts with one.
 BOM = "\ufeff"
 
 
@@ -121,12 +45,7 @@ class Unreadable(Exception):
 
 
 def _yaml():
-    """PyYAML, or a refusal naming it.
-
-    A YAML manifest cannot be verified without a real YAML parser, and the whole
-    point of this module is that a hand-rolled substitute is not one. So a
-    missing PyYAML ends the run saying so, rather than quietly falling back to
-    the guarantee this module was written to replace."""
+    """PyYAML, or a refusal: a hand-rolled fallback is exactly what this module replaces."""
     try:
         import yaml
     except ImportError as exc:
@@ -143,31 +62,19 @@ def _oneline(text):
 
 
 def _duplicate(kind, key):
-    """The one wording every format uses for a repeated key.
-
-    YAML and JSON both take the LAST of two equal keys, and so does the locator
-    reading the same file line by line -- so the two agree, the edit lands on
-    the winner, and the file is left declaring the dependency twice at two
-    different values with the run reporting success. The asymmetry is what
-    proved it an oversight rather than a policy: a plan aimed at the SHADOWED
-    copy IS caught, because the winner never moves. So neither is written."""
+    """The one wording for a repeated key; last-wins parsing would hide the second declaration."""
     return ("this %s declares %r twice, so the file says two things about it. "
             "Which one a report means is not knowable, and a manifest that "
             "contradicts itself is not one this tool edits -- nothing is "
             "written" % (kind, key))
 
 
-# PyYAML's own loader, subclassed once and cached, because building it needs the
-# import that _yaml() is the single owner of.
+# Cached, since building it needs the import _yaml() owns.
 _LOADER = None
 
 
 def _loader():
-    """A SafeLoader that REFUSES a duplicate mapping key.
-
-    PyYAML resolves one silently to last-wins. Counting keys after the fact
-    would mean walking the node tree a second time in this module; making the
-    parser itself say no keeps the answer where the parse is."""
+    """A SafeLoader that refuses a duplicate mapping key instead of resolving it last-wins."""
     global _LOADER
     if _LOADER is not None:
         return _LOADER
@@ -198,8 +105,7 @@ def _parse_yaml(body):
 
 
 def _json_pairs(pairs):
-    """One JSON object, or a refusal naming the key written twice. json takes
-    last-wins as silently as PyYAML does."""
+    """One JSON object, refusing a key written twice (json alone takes last-wins)."""
     out = {}
     for key, value in pairs:
         if key in out:
@@ -213,16 +119,7 @@ def _parse_json(body):
 
 
 def _parse_env(body):
-    """An annotated env file as {depName: {KEY: value}}, one entry per
-    `# renovate:` hint and the KEY= line under it.
-
-    A dep NAME is not unique in this file -- `NODE_VERSION` and
-    `RENOVATE_NODE_VERSION` both say `depName=node` -- so the KEY is what
-    identifies a leaf, and one dep may carry several. An independent reading,
-    which is why it repeats the hint grammar instead of sharing
-    renovate_locator's regexes. A hint with no readable KEY= line under it, or
-    one KEY assigned twice, is Unreadable: neither can be compared leaf by
-    leaf."""
+    """An annotated env file as {depName: {KEY: value}}, read independently of the locator's regexes."""
     ann = re.compile(r"^# renovate:.*?\bdepName=(\S+)(?:\s|$)")
     kv = re.compile(r"^([A-Z0-9_]+)=([^\s#]*)$")
     out = {}
@@ -267,20 +164,7 @@ def _joined(lines):
 
 
 def parse_requirements(text):
-    """What a requirements file ASKS PIP FOR, as an ordered list of records.
-
-    requirements.txt has no standard parser, so this is one -- small, and
-    deliberately not line-shaped. Comments and blank lines carry no meaning and
-    are dropped; continuations are joined, because pip joins them; each
-    requirement is split into the name as written, its extras, its version
-    specifier, the options glued after it and the marker. Splitting is what
-    makes the diff useful: rewriting the version moves the `spec` field and
-    nothing else, so a write that also disturbed the name, the marker or a
-    `--hash` shows up as a second changed leaf and the run refuses.
-
-    Option lines (-r, -e, --hash on its own) are kept in order and whole. They
-    are meaning too -- an `-r` that moved would change what the file requests --
-    and none of them is ever a rewrite target."""
+    """What a requirements file asks pip for, split into fields so a stray change shows as a second leaf."""
     out = []
     for body in _joined(text.split("\n")):
         text_ = body.strip()
@@ -302,16 +186,7 @@ def parse_requirements(text):
 
 
 def _spec_and_options(text):
-    """A version specifier and the per-requirement options glued after it.
-
-    `pip-compile --generate-hashes` writes `ruff==0.9.0 \\` and then a line of
-    `--hash=sha256:...`, which pip joins back onto the requirement. Left in the
-    specifier, those digests would be part of the value being compared, so a
-    file whose hashes are pinned could never be verified -- and they are not the
-    version, they are a second thing about the same requirement. Splitting them
-    out is what lets hash_pinned() below see them and refuse for the RIGHT
-    reason; before renovate_locator.py learned to join pip's continuations, such
-    a file was refused one step earlier and for the wrong one."""
+    """(specifier, glued-on options such as --hash), so the digests are not compared as the version."""
     cut = text.find(" --")
     if cut < 0:
         return text.strip(), ""
@@ -319,14 +194,7 @@ def _spec_and_options(text):
 
 
 def hash_pinned(opts):
-    """Why a requirement pinned by digest is not one this tool moves, or "".
-
-    The digests describe the artefacts of the release being replaced. Nothing
-    here can recompute them -- that is `pip-compile`'s job, and this tool knows
-    no lock command for a requirements file -- and pip does not fall back to an
-    unverified download: a `--hash` that does not match is a hard error, so the
-    bump would leave a file nobody can install from. That is the same verdict
-    the lockfile half reaches about an edited manifest beside a stale lock."""
+    """Why a digest-pinned requirement is not moved (nothing here recomputes hashes), or ""."""
     if "--hash" not in opts:
         return ""
     return ("this requirement is pinned by digest (%s), and those digests "
@@ -341,20 +209,7 @@ PARSERS = {"yaml": _parse_yaml, "toml": tomllib.loads, "json": _parse_json,
 
 
 def parse(manager, text):
-    """This file's meaning, by the real parser for its format.
-
-    A leading BOM is dropped first, and on BOTH sides of the comparison, so it
-    can neither hide the document from the parser nor show up as a change. It is
-    an encoding artefact of the byte stream rather than a member of any of these
-    grammars -- tomllib and json reject it outright -- and no TOML, JSON or YAML
-    construct can span it, so removing it cannot move a value.
-
-    EVERY failure of a parser comes back as Unreadable, named. These parsers are
-    handed a file this tool did not write, and a parser that raises something
-    else -- a RecursionError on a deeply nested value, whatever a future PyYAML
-    decides to raise -- would otherwise travel past the caller that owns the
-    rollback. Naming the exception in the refusal is not swallowing it: the run
-    ends, and it ends saying exactly what the parser said."""
+    """This file's meaning by its real parser; every parser failure, named, becomes Unreadable."""
     kind = FORMATS.get(manager)
     if kind is None:
         raise Unreadable(
@@ -375,21 +230,7 @@ def parse(manager, text):
 
 
 def flatten(struct):
-    """Every path in the document, and what sits at it.
-
-    A scalar contributes its type and its value, so YAML's `1` and `true` are
-    not one leaf. A container contributes its SHAPE -- a mapping's key set, a
-    sequence's length -- which is what makes a key added, a key removed or an
-    emptied collection visible as a change at the container itself, on top of
-    the paths that appear or disappear underneath it.
-
-    ITERATIVE, and not as a matter of taste. The recursive version died on a
-    document 1200 levels deep -- which json parses without complaint -- and the
-    RecursionError travelled out of audit(), past the rollback, and left the
-    hostile write on disk. The stack here is the document's, not python's, so
-    the only ceilings are the declared ones: MAX_DEPTH, which also bounds the
-    cost of the self-reference check (a YAML alias can make a node its own
-    descendant), and MAX_PATHS. Both are refusals, never a partial answer."""
+    """Every path with its typed scalar or container shape; iterative, so deep nesting cannot overflow."""
     out = {}
     stack = [(struct, (), ())]
     while stack:
@@ -402,9 +243,7 @@ def flatten(struct):
                 "%s refers back to itself, so this document has no finite set "
                 "of paths to compare" % show(path))
         if len(seen) >= MAX_DEPTH:
-            # The path is elided: at this depth writing it out in full is a
-            # 700-character plan row that says nothing the first few segments
-            # do not.
+            # Elided: in full it is a huge plan row that says nothing more.
             raise Unreadable(
                 "this document nests past %d levels, under %s; it is not "
                 "compared rather than compared partially"
@@ -440,14 +279,7 @@ def _paths(paths):
     return ", ".join(sorted(show(path) for path in paths)) or "(none)"
 
 
-# --------------------------------------------------------------------------
-# Where each manager DECLARES a dependency, read off the parsed document
-# --------------------------------------------------------------------------
-# These walk dicts and lists, not text. Every question the locator has to answer
-# with a regex -- is this `uses:` a step's or a `with:` input's, is this line
-# inside a block scalar, is this `[dependencies]` cargo's or
-# `[package.metadata]`'s, did an anchor swallow the mapping under it -- has
-# already been answered by the real parser by the time these run.
+# Declarations, read off the parsed document where the locator has to guess with regexes
 def _mapping(node):
     return node if isinstance(node, dict) else {}
 
@@ -457,16 +289,12 @@ def _sequence(node):
 
 
 def _whole(path, text):
-    """A Decl over the whole of a string leaf: pub, npm and cargo state the
-    version in theirs and nothing else."""
+    """A Decl over a whole string leaf, where pub, npm and cargo state only the version."""
     return Decl(path, text, 0, len(text))
 
 
 def _step_nodes(struct):
-    """(path, mapping) for every place a github-actions `uses:` may sit: a job
-    itself (a reusable workflow call), a job's steps, and a composite action's
-    steps. Nowhere else -- a `with:` input named `uses` is an input, and a
-    workflow printed inside a `run:` block is a string."""
+    """(path, mapping) for each job, job step and composite step: the only places `uses:` declares."""
     root = _mapping(struct)
     for job, node in _mapping(root.get("jobs")).items():
         if not isinstance(node, dict):
@@ -481,9 +309,7 @@ def _step_nodes(struct):
 
 
 def _uses(path, node, want):
-    """The Decl for one `uses:`, when it names this action. The name is
-    everything before the LAST `@`, which is what keeps `actions/checkout` and
-    `actions/checkout-extra` apart."""
+    """The Decl for one `uses:` naming this action, split at the last `@`."""
     text = node.get("uses")
     if not isinstance(text, str):
         return None
@@ -503,10 +329,7 @@ def decl_actions(struct, dep):
 
 
 def decl_pub(struct, dep):
-    """The dep's key in a top-level pubspec dependency section. A dep spelled as
-    a MAP -- `hosted:` with the version nested under it, `sdk: flutter`, a path
-    dependency -- states no version in one scalar and is not a declaration
-    here, which is the same verdict the locator reaches on that shape."""
+    """The dep's scalar in a top-level pubspec section; a map-shaped dep states no version here."""
     root = _mapping(struct)
     return [_whole((section, dep), root[section][dep])
             for section in renovate_locator.PUB_SECTIONS
@@ -543,10 +366,7 @@ def _array(out, array, path, want):
 
 
 def decl_pep621(struct, dep):
-    """The specifier inside every quoted PEP 508 string naming this dep, in a
-    table that actually declares dependencies. The table set is the locator's
-    own, so `[project] keywords` is not one here either -- but which table a
-    line is IN is decided by tomllib rather than by tracking headers."""
+    """Specifiers of PEP 508 strings naming the dep, in the locator's tables as tomllib places them."""
     out = []
     want = renovate_locator.normalise(dep)
     for table, keys in renovate_locator.PEP621_KEYS.items():
@@ -560,9 +380,7 @@ def decl_pep621(struct, dep):
 
 
 def _cargo_roots(struct):
-    """Every mapping whose `[dependencies]` is cargo's own: the manifest root,
-    `[workspace]`, and each `[target.<cfg>]`. `[package.metadata]` is not among
-    them, so a `dependencies` table under it is not a dependency table."""
+    """Mappings whose `[dependencies]` are cargo's: root, `[workspace]`, each `[target.<cfg>]`."""
     root = _mapping(struct)
     yield (), root
     if isinstance(root.get("workspace"), dict):
@@ -573,10 +391,7 @@ def _cargo_roots(struct):
 
 
 def decl_cargo(struct, dep):
-    """The crate's entry in a dependency table, as a bare string or as the
-    `version` key of its table. A `{ workspace = true }` entry states no version
-    HERE and is not a declaration: the version it inherits lives in
-    `[workspace.dependencies]`, which is a different path in this same walk."""
+    """The crate's version, bare or under `version`; `{ workspace = true }` states none here."""
     out = []
     for base, node in _cargo_roots(struct):
         for table in renovate_locator.CARGO_TABLES:
@@ -597,16 +412,13 @@ def decl_npm(struct, dep):
 
 
 def decl_annotated(struct, dep):
-    """Every KEY= line the hints name for this dep, the whole value being the
-    leaf. There can be more than one -- NODE_VERSION and RENOVATE_NODE_VERSION
-    share depName=node -- so the KEY, not the dep name, is the path."""
+    """Every KEY= value the hints name for this dep; KEY is the path, as deps can share a name."""
     return [_whole((dep, key), value)
             for key, value in sorted(_mapping(_mapping(struct).get(dep)).items())]
 
 
 def decl_requirements(struct, dep):
-    """Every requirement naming this dep, its specifier the value that moves --
-    unless the digests glued after it say it may not move at all."""
+    """Every requirement naming this dep; glued-on digests forbid moving it."""
     want = renovate_locator.normalise(dep)
     out = []
     for i, entry in enumerate(_sequence(struct)):
@@ -634,16 +446,9 @@ DECLARERS = {
 }
 
 
-# --------------------------------------------------------------------------
 # The invariant, computed before the edit and checked after it
-# --------------------------------------------------------------------------
 def _miscount(dep, old, count, found, at_old):
-    """Why a real parse and the report do not agree about this dependency.
-
-    Three different disagreements, said three different ways, because the reader
-    has to know which one it is: a file that declares the dep nowhere, a file
-    that declares it somewhere else, and a file that declares it in more places
-    than the report accounts for."""
+    """Why the parse and the report disagree: declared nowhere, elsewhere, or more often."""
     where = ", ".join("%s=%s" % (show(d.path), d.leaf[d.start:d.end])
                       for d in found)
     if not found:
@@ -662,13 +467,7 @@ def _miscount(dep, old, count, found, at_old):
 
 
 def _crashed(doing, exc):
-    """A refusal naming an exception nothing here expected.
-
-    Not a swallow: the string is a refusal, so the run ends and the file goes
-    back. What it replaces is a traceback thrown PAST the caller that owns the
-    rollback -- measured, and the reason this module's two entry points are
-    total. The type and the message are printed because the next reader of this
-    line has to be able to fix what raised."""
+    """A refusal naming an unexpected exception, which must not escape past the rollback."""
     return ("%s raised %s: %s. That is a defect in the auditor rather than a "
             "verdict on the file, and an audit that cannot finish does not "
             "sanction an edit -- so nothing is kept"
@@ -685,9 +484,7 @@ def _expected(manager, text, groups):
         if len(at_old) != count:
             return {}, {}, _miscount(dep, old, count, found, at_old)
         for decl in at_old:
-            # A declaration the parser reads perfectly well and still will not
-            # let this tool move. It is not a miscount and not an unreadable
-            # file, so it says its own reason.
+            # Readable but not movable: its own reason, not a miscount.
             if decl.why:
                 return {}, {}, "%s declares '%s', and %s" % (
                     show(decl.path), dep, decl.why)
@@ -696,27 +493,17 @@ def _expected(manager, text, groups):
                     "two of this report's updates both claim %s; one value "
                     "cannot become two things" % show(decl.path))
             rewritten = decl.leaf[:decl.start] + new + decl.leaf[decl.end:]
-            # A report whose old and new are the SAME string is a lockfile-only
-            # update: the range already covers the release, so writing it is a
-            # no-op whose only job is to register the lockfile refresh. `want`
-            # is the set of paths the write MUST MOVE, so a no-op path is not
-            # one -- including it here made --apply refuse every cargo manifest
-            # with an in-range patch available (measured 2026-09-11).
+            # old == new is a lockfile-only update; `want` holds only paths that must move.
             if rewritten != decl.leaf:
                 want[decl.path] = rewritten
     return want, leaves, ""
 
 
 def expected(manager, text, groups):
-    """(path -> the leaf that path must carry after the edit, this document's
-    leaves, a refusal).
+    """(path -> leaf it must carry, this document's leaves, refusal), from the parse alone; never raises.
 
-    `groups` is one entry per reported pin: (dep, old, new, count). The paths
-    come from the PARSE, never from the locator -- that is the whole point. A
-    group whose declaration count does not match the report's is a refusal
-    rather than a guess, and so is a document that cannot be parsed at all.
-
-    Total, by construction: every failure leaves here as the third element."""
+    groups: one (dep, old, new, count) per reported pin.
+    """
     try:
         return _expected(manager, text, groups)
     except Unreadable as exc:
@@ -726,10 +513,7 @@ def expected(manager, text, groups):
 
 
 def _shape(gone, born):
-    """A version bump adds and removes nothing. Anything that does is either a
-    value that escaped its own quoting -- a reported newValue carrying a `"` in
-    a package.json wrote a second key -- or a line rewritten into something the
-    format reads differently."""
+    """A bump adds and removes no path; one that does escaped its quoting or changed the format's reading."""
     parts = []
     if gone:
         parts.append("%d path(s) disappeared (%s)" % (len(gone), _paths(gone)))
@@ -754,22 +538,7 @@ def _elsewhere(moved, want):
 
 
 def audit(manager, before_text, after_text, groups):
-    """"" when the edit changed exactly the declarations the report named, from
-    the old value to the new one, and nothing else in the document; otherwise
-    the reason to put the file back.
-
-    This is the check the safety rests on, and it does not consult the locator:
-    both sides are parsed for real, and the paths allowed to move were worked
-    out from the BEFORE parse. A locator that picked the wrong line writes a
-    change at a path this function did not sanction, and gets caught for that
-    alone.
-
-    Total, like expected(), and for a harder reason: this is the function whose
-    verdict triggers the rollback, so one that raises takes the rollback with
-    it. Measured 2026-09-10 -- a newValue nesting 1200 arrays deep left the
-    hostile write on disk. renovate_planner.py ALSO rolls back on an exception
-    from here, because the rollback must not rest on this function's own
-    correctness."""
+    """"" when exactly the reported declarations moved old -> new, else why to put the file back; never raises."""
     try:
         return _audit(manager, before_text, after_text, groups)
     except Exception as exc:                       # noqa: BLE001 -- see _crashed

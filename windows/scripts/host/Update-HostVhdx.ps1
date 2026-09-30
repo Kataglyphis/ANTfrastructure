@@ -1,11 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# HOST maintenance (admin, never while a build runs): reclaims a dynamically
-# expanding VHDX by REBUILDING it around its live data — the only reclaim that
-# works on ReFS guests, where Optimize-VHD cannot see the guest's free blocks.
-# Two phases, usage and the detach hazard: docs/windows-build-lanes.md § Store GC.
+# Rebuilds a VHDX around its live data, the only reclaim on ReFS guests: see docs/windows-builds.md § Update-HostVhdx.ps1
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
@@ -13,12 +9,10 @@ param(
     [Parameter(Mandatory)]
     [string]$VhdxPath,
 
-    # Maximum size of the replacement. 0 = same as the source. The disk is
-    # dynamic, so this is a ceiling that bounds runaway growth, not an allocation.
+    # Size ceiling of the dynamic replacement, not an allocation; 0 = same as the source.
     [int]$NewSizeGB = 0,
 
-    # Where the replacement is built. Default <source>.new.vhdx, i.e. the same
-    # volume: the host needs room for the live data, not for the dead blocks.
+    # Default <source>.new.vhdx on the same volume, which needs room only for the live data.
     [string]$NewVhdxPath = '',
 
     # Stopped for the swap (order matters: dependents first), restarted in reverse.
@@ -45,8 +39,7 @@ param(
     # Phase 2 only: swap in a replacement built by an earlier -CopyOnly run.
     [switch]$SwapOnly,
 
-    # Delete the old VHDX after the swap verifies. Without it the old file is kept
-    # as <source>.old and the space is NOT reclaimed until you remove it yourself.
+    # Delete the old VHDX once the swap verifies; otherwise <source>.old keeps the space.
     [switch]$RetireOld,
 
     # Skip the live-build guard (you are SURE nothing is solving right now).
@@ -56,8 +49,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: repo layout is scripts/<group>/ while container mounts stay FLAT. Shared
-# assets sit beside this script when flat, one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $repoRoot = Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent
 if (-not $LogPath) { $LogPath = Join-Path $repoRoot 'out\rebuild-host-vhdx.log' }
@@ -68,19 +60,17 @@ Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') 
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
 $hostLog = New-HostMaintenanceLog -Name 'rebuild-host-vhdx' -RepoRoot $repoRoot -LogPath $LogPath
 $LogPath = $hostLog.LogPath
-# Thin local wrappers so the existing call sites keep their signature.
+# Script-scope wrappers: they close over $hostLog, which a module function could not see.
 function Write-Step { param([string]$Message, [string]$Color = 'Gray') Write-HostStep $hostLog $Message $Color }
 function Save-Transcript { Save-HostMaintenanceLog $hostLog }
 
-# Access errors are counted, not swallowed: a mismatch caused by an unreadable
-# file is a different problem than a short copy.
+# Access errors are counted, not swallowed: an unreadable file is a different problem than a short copy.
 function Measure-Tree {
     param([string]$Root, [string[]]$ExcludeDir = @())
     $bytes = [long]0; $files = 0; $errors = 0
     $ev = $null
     $items = Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable ev
-    # robocopy /XD skips these, so the verify must too: a fresh volume root
-    # carries its own $RECYCLE.BIN, which made the copy look short.
+    # Skip what robocopy /XD skips: a fresh volume root has its own $RECYCLE.BIN.
     if ($ExcludeDir.Count -gt 0) {
         $items = @($items | Where-Object {
                 $parts = $_.FullName.Split([char]'\')
@@ -177,8 +167,7 @@ if (-not $SwapOnly) {
         Write-Step ('staged as {0}: — formatting {1} ({2})' -f
             $stageLetter, $sourceVolume.FileSystem, $sourceVolume.FileSystemLabel)
 
-        # A Dev Drive is an ReFS volume with a trust flag; -DevDrive exists only
-        # on builds that support it, hence the capability probe below.
+        # A Dev Drive is ReFS plus a trust flag; Format-Volume -DevDrive exists only on some builds.
         $fmt = @{
             FileSystem         = $sourceVolume.FileSystem
             NewFileSystemLabel = $sourceVolume.FileSystemLabel
@@ -209,7 +198,7 @@ if (-not $SwapOnly) {
         if ($xd.Count -gt 0) { $rc += '/XD'; $rc += $xd }
         & robocopy @rc | ForEach-Object { if ($_.Trim()) { Write-Step "  $_" } }
 
-        # robocopy: 0-7 are success (8+ means files were skipped or failed).
+        # robocopy exits 0-7 on success; 8+ means files were skipped or failed.
         $rcExit = $LASTEXITCODE
         Write-Step ('robocopy exit {0} ({1})' -f $rcExit, $(if ($rcExit -lt 8) { 'ok' } else { 'FAILURES' }))
         if ($rcExit -ge 8) { throw "robocopy reported failures (exit $rcExit) — the copy is not trustworthy." }
@@ -258,8 +247,6 @@ try {
     Write-Step 'Something still holds the volume — a shell whose current directory is on it,' 'Yellow'
     Write-Step 'an editor with the checkout open, or a background agent. Close them and re-run' 'Yellow'
     Write-Step 'with -SwapOnly; the verified replacement is kept and costs nothing to reuse.' 'Yellow'
-    # Restore in reverse stop order; failures are red, never swallowed
-    # (measured 2026-09-01). Owner: Start-HostServices.
     Start-HostServices -Log $hostLog -Service $stopped
     Save-Transcript
     throw
@@ -289,8 +276,6 @@ try {
         Rename-Item -LiteralPath $oldVhdxPath -NewName (Split-Path $VhdxPath -Leaf) -ErrorAction SilentlyContinue
     }
     Mount-DiskImage -ImagePath $VhdxPath -ErrorAction SilentlyContinue | Out-Null
-    # Same restore as the other rollback path and the final restart: owner is
-    # Start-HostServices.
     Start-HostServices -Log $hostLog -Service $stopped
     Save-Transcript
     throw

@@ -1,9 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# WindowsOnnx.Common after the owner rule of 2026-09-23: NuGet ORT is refused by id, by dependency and by content,
-# the NuGet layout helper refuses, and Get-OnnxChainLayout accepts only the chain install for the target machine.
 # NOT covered: real nuget.exe or network (a global `nuget` stand-in answers), byte provenance of a chain install.
 
 # Lays out files relative to a root, creating directories; content is irrelevant to every check here.

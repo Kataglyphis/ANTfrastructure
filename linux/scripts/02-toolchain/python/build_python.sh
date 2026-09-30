@@ -18,15 +18,13 @@ for _bs_path in \
 done
 
 source_module platform.sh
-# Loaded intolerantly on purpose: ubuntu_write_deb822_source() is called mid-apt-rewrite
-# below, so a missing helper must fail here rather than as a `command not found` there.
+# Loaded intolerantly: a missing deb822 writer must fail here, not in the middle of the apt rewrite.
 source_module ubuntu-mirror.sh
 source_module cross-env.sh || true
 source_module logging.sh || true
 source_module parallelism.sh || true
 source_module downloads.sh
-# Shared CPython dev-package/extension table (backlog TS3), also feeding
-# package-lists.sh and smoke-toolchain.sh — keep the cross and host lists in sync.
+# The CPython dev-package table package-lists.sh and smoke-toolchain.sh also read.
 source_module cpython-dev-packages.sh
 
 install_err_trap
@@ -140,10 +138,7 @@ stage_host_python_payload() {
   python_stage_finalize "${target_arch}" "${stage_root}" "${python_mm}" "${target_triplet}"
 }
 
-# Enable the target architecture + its own apt source. The base image only
-# carries the build host's archive; arm64/riscv64 packages come from ports and
-# amd64/i386 from the archive -- ubuntu_arch_uses_ports answers which, for the
-# host stanza and the target stanza alike (AS1).
+# The target arch gets its own apt source; ubuntu_arch_uses_ports picks archive or ports for both stanzas.
 _python_cross_enable_multiarch_apt() {
   local target_arch="$1"
   local _codename _build_arch _host_url _target_url _target_file
@@ -153,17 +148,12 @@ _python_cross_enable_multiarch_apt() {
   fi
   _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-resolute}")"
   _build_arch="$(build_arch_oci 2>/dev/null || arch_oci)"
-  # The reset runs once, on the first target through; later targets of the same
-  # cross build only add their own per-arch file (each target is staged in its
-  # own subshell, so a shell variable cannot carry the marker).
+  # Reset once, by the first target; targets run in subshells, so the file itself is the marker.
   if [ ! -f /etc/apt/sources.list.d/ubuntu.sources ]; then
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
     _host_url="$(ubuntu_default_archive_mirror_url)"
     ubuntu_arch_uses_ports "${_build_arch}" && _host_url="$(ubuntu_default_ports_mirror_url)"
-    # 5th arg = add "-security", and host and ports MUST agree: a pocket the
-    # other side lacks makes every Multi-Arch:same library uninstallable.
-    # USE_FAST_UBUNTU_MIRROR is deliberately not honoured here (TS8).
-    # docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
+    # Host and ports must agree on -security. docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
     ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu.sources \
       "${_host_url}" "${_codename}" "${_build_arch}" 1
   fi
@@ -177,27 +167,19 @@ _python_cross_enable_multiarch_apt() {
   fi
 }
 
-# Install the target-arch dev packages CPython's extension modules link against.
-# Explicit architecture qualifier avoids install_target_packages' silent amd64
-# fallback (cross_build_enabled() returns false when TARGET_ARCH == BUILD_ARCH).
+# Arch-qualified names: install_target_packages silently installs amd64 when TARGET_ARCH == BUILD_ARCH.
 _python_cross_stage_target_dev_pkgs() {
   local target_arch="$1"
-  # Backlog TS2 (deferred): promoting the table's required rows to a FATAL install
-  # needs a cross rebuild to prove Ports outages don't flakily drop one.
   local -a target_pkgs=() _pkg
   while IFS= read -r _pkg; do
     [ -n "${_pkg}" ] && target_pkgs+=("${_pkg}:${target_arch}")
   done < <(cpython_ext_dev_packages)
-  # Host-arch libbz2-dev too: the build interpreter links bz2 during the
-  # cross configure probes (ac_cv_lib_bz2_* below), so it must exist unqualified.
+  # Host-arch libbz2-dev too: the build interpreter links bz2 during the cross configure probes.
   target_pkgs+=("libbz2-dev")
   apt-get install -y --no-install-recommends "${target_pkgs[@]}" 2>&1 || \
     warn "Some target dev packages failed to install; extension modules may be missing"
 
-  # The install is ONE atomic apt-get, so a single unavailable optional package
-  # takes the required ones down with it. The table calls a missing required
-  # package FATAL (01-core/cpython-dev-packages.sh) — assert that contract on the
-  # OUTCOME rather than on apt's exit status. docs/failure-modes.md
+  # One atomic apt-get: an optional miss takes required packages down, so assert the outcome. docs/failure-modes.md
   local _req _missing=""
   while IFS= read -r _req; do
     [ -n "${_req}" ] || continue
@@ -235,11 +217,7 @@ _python_cross_configure() {
   _python_cross_stage_target_dev_pkgs "${target_arch}"
 
   pkg_config_libdir="$(cross_pkg_config_libdir "${target_triplet}")"
-  # No -O default here: CPython's configure sets OPT="-DNDEBUG -g -O3 -Wall" and
-  # appends CFLAGS *after* it (Makefile.pre.in PY_CFLAGS), so the old
-  # "${CFLAGS:--O2}" silently downgraded both cross interpreters to -O2 —
-  # "-O3 -Wall -O2" on every riscv64 compile line (compiler.log:132193,
-  # 2026-08-27). Native is unaffected (PGO+LTO, no CFLAGS override).
+  # No -O default: CPython appends CFLAGS after its own -O3, so a default would silently downgrade it.
   export CFLAGS="${CFLAGS:-} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
   export CPPFLAGS="${CPPFLAGS:-} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
   export LDFLAGS="-L/usr/lib/${target_triplet} ${LDFLAGS:-}"
@@ -260,8 +238,7 @@ EOF
   rm -rf "${cross_build_dir}" "${stage_root}"
   mkdir -p "${cross_build_dir}/Python/frozen_modules" "${stage_root}"
 
-  # AP5: cross-LTO leans on the target GCC's linker plugin (fragile), so PYTHON_LTO=0
-  # is the escape hatch. PGO stays out of reach cross (needs the foreign interpreter).
+  # PYTHON_LTO=0 escapes the fragile cross linker plugin; PGO would need the foreign interpreter.
   local -a _lto_args=()
   [ "${PYTHON_LTO}" = "1" ] && _lto_args=( --with-lto )
 
@@ -307,8 +284,7 @@ _python_cross_install_staging() {
   local python_mm="$3"
   local source_dir="$4"
 
-  # Copy from the build tree rather than `make altinstall`: the target binary cannot
-  # execute on the build host without QEMU, and this needs no HOSTRUNNER.
+  # Copy from the build tree, not make altinstall: the target binary cannot run here without QEMU.
 
   mkdir -p "${stage_root}/usr/local/bin" "${stage_root}/usr/local/lib" "${stage_root}/usr/local/include"
 
@@ -339,9 +315,7 @@ _python_cross_fixup_libdynload() {
   local python_mm="$3"
   local dynload_dir ext_build_dir
 
-  # CPython 3.14 leaves RELATIVE symlinks into ../../Modules under build/lib.linux-*/;
-  # a plain `cp -a` preserves them and the staged lib-dynload dangles, so the target
-  # Python can load no C extension at all. -L dereferences them.
+  # cp -L: CPython leaves relative symlinks into ../../Modules that would dangle once staged.
   dynload_dir="${stage_root}/usr/local/lib/python${python_mm}/lib-dynload"
   mkdir -p "${dynload_dir}"
   for ext_build_dir in "${cross_build_dir}/build/lib.linux"*; do
@@ -362,8 +336,7 @@ _python_cross_fixup_libdynload() {
     err "dangling extension symlinks remain in ${dynload_dir} after staging"
   fi
 
-  # `make -k || true` above can skip a failed extension silently, and the symlink check
-  # only catches broken links. These have no external deps and must always build.
+  # make -k can skip a failed extension silently; these have no external deps and must always build.
   local -a _critical_exts=(_struct math cmath _csv _json _pickle _socket)
   local _ext _missing=()
   for _ext in "${_critical_exts[@]}"; do
@@ -377,10 +350,7 @@ _python_cross_fixup_libdynload() {
     err "target Python is missing critical C extensions (make -k may have silently failed)"
   fi
 
-  # One owner for the package/extension mapping: 01-core/cpython-dev-packages.sh.
-  # Warn-only for every row, required included — the fatal assert is on the apt
-  # install in _python_cross_stage_target_dev_pkgs. _ctypes is deliberately off
-  # via ac_cv_header_ffi_h=no above, so its warning is expected on cross builds.
+  # Warn-only, as the fatal assert is on the apt install; _ctypes is off on purpose (ac_cv_header_ffi_h=no).
   while IFS= read -r _ext; do
     [ -n "${_ext}" ] || continue
     if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
@@ -466,19 +436,10 @@ stage_requested_cross_python_payloads() {
   rm -rf "${PYTHON_CROSS_STAGE_ROOT}"
   mkdir -p "${PYTHON_CROSS_STAGE_ROOT}"
 
-  # Split via `IFS=',' read`, scoped to the builtin: this script's IFS=$'\n\t' means a
-  # `${x//,/ }` expansion would NOT split, leaving one bogus multi-target arch.
+  # IFS=',' read: under this script's IFS=$'\n\t' a ${x//,/ } expansion would not split.
   local -a _staging_targets=()
   IFS=',' read -r -a _staging_targets <<< "${normalized_targets}"
-  # One subshell PER TARGET: _python_cross_configure and setup_linux_cross_env
-  # both *append* to exported CFLAGS/CPPFLAGS/LDFLAGS/LIBRARY_PATH/PATH, so
-  # without isolation each arch inherits the previous one's. The riscv64 build
-  # was compiling with "-idirafter /usr/include/aarch64-linux-gnu" left over
-  # from arm64 (compiler.log:132193, 2026-08-27) — the cross-arch header
-  # contamination class of docs/upstream-libstdcxx-c++23-nostdinc++.md. Safe:
-  # every payload effect is on the filesystem, nothing after the loop reads
-  # these exports, and `err` inside still aborts the script (errexit propagates
-  # the subshell's non-zero status; the EXIT trap only fires in the parent).
+  # One subshell per target: the cross setup appends to exported flags, which would leak into the next arch.
   for target_arch in "${_staging_targets[@]}"; do
     (
       if [ "${target_arch}" = "${build_arch}" ]; then
@@ -499,8 +460,7 @@ fi
 if [ -n "${PYTHON_TGZ_SHA256:-}" ]; then
   download_verified_file "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" "${PYTHON_TGZ_SHA256}" "${PYTHON_TARBALL}"
 else
-  # FAIL CLOSED: a PYTHON_VERSION bump that forgets the hash must break loudly here,
-  # never silently fetch the interpreter unverified.
+  # Fail closed: a version bump without its hash must never fetch CPython unverified.
   echo "ERROR: PYTHON_TGZ_SHA256 unset — refusing to download the CPython source unverified." >&2
   echo "       Bump PYTHON_TGZ_SHA256 in versions.env together with PYTHON_VERSION." >&2
   exit 1
@@ -508,9 +468,7 @@ fi
 tar -xf "${PYTHON_TARBALL}" -C "${TMPDIR:-/tmp}"
 
 cd "${PYTHON_SOURCE_DIR}"
-# AP5: native interpreter already builds with PGO (--enable-optimizations); add
-# LTO too (safe/well-trodden natively). Same PYTHON_LTO=0 escape hatch as the
-# cross path. Empty-array expansion is set -u safe (bash 4.4+).
+# Native gets PGO plus LTO, with the same PYTHON_LTO=0 escape hatch.
 _lto_args=()
 [ "${PYTHON_LTO}" = "1" ] && _lto_args=( --with-lto )
 ./configure --enable-shared --enable-optimizations "${_lto_args[@]}" --prefix=/usr/local
@@ -520,14 +478,7 @@ make altinstall
 ln -sf "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" /usr/local/bin/python3
 ln -sf "/usr/local/bin/pip${PYTHON_MAJOR_MINOR}" /usr/local/bin/pip3
 
-# Add the lib path to the system linker. The "00-" prefix is LOAD-BEARING:
-# ldconfig reads /etc/ld.so.conf.d/*.conf alphabetically and, for a duplicate
-# SONAME, the FIRST directory scanned wins (measured 2026-09-08). The distro
-# python3.14 ships its own libpython3.14.so.1.0 under the multiarch dir, so on
-# arm64 "aarch64-linux-gnu.conf" sorted before "libc.conf" and the from-source
-# --enable-shared interpreter loaded the DISTRO libpython, reporting 3.14.4 for
-# a 3.14.7 build. A digit sorts before every letter, so this wins on every arch;
-# on amd64 it names the directory libc.conf already won with, so nothing moves.
+# "00-" is load-bearing: the first conf dir wins a duplicate soname, and the distro ships its own libpython.
 echo "/usr/local/lib" > "/etc/ld.so.conf.d/00-python-${PYTHON_VERSION}.conf"
 ldconfig
 

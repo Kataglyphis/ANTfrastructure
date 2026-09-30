@@ -1,24 +1,5 @@
 # shellcheck shell=bash
-# runtime-build-fns.sh
-# Per-architecture image build functions for the runtime packaging chain.
-# Sourced by artifact-common.sh — do not source this directly.
-#
-# Provides:
-#   runtime_build_base_image
-#   runtime_build_package_image
-#   runtime_build_wrapper_image
-#   runtime_build_wrapper_rootfs
-#   runtime_build_chain
-#   runtime_wheels_image_ref
-#   runtime_write_artifact_metadata
-#
-# Depends on functions defined in artifact-common.sh:
-#   append_common_build_args, run_nerdctl_build, run, image_exists,
-#   export_image_to_oci_layout, export_image_rootfs_dir,
-#   remove_local_image_if_exists, runtime_*_tag(), runtime_artifact_*,
-#   runtime_stage_context_*, runtime_use_local_*, etc.
-# and, only while RUNTIME_WHEELS_EXPORT_ROOT is set, on runtime_wheels_wrapper_args
-# from linux/scripts/lib-runtime-wheels.sh (loaded by lib-orchestrator.sh).
+# Per-arch runtime image builds; sourced by artifact-common.sh, whose helpers it relies on.
 
 # One push attempt, output tee'd so the caller can classify the failure.
 _runtime_push_attempt() {
@@ -28,9 +9,7 @@ _runtime_push_attempt() {
   return "${PIPESTATUS[0]}"
 }
 
-# Post-build: export to OCI layout locally, or push remotely, then clean up.
-# Transient push failures retry (PUSH_MAX_ATTEMPTS/PUSH_RETRY_BASE_SECS); a
-# permanent one does not. See docs/cross-build-verification.md.
+# Transient push failures retry (PUSH_MAX_ATTEMPTS, PUSH_RETRY_BASE_SECS), permanent ones do not. docs/cross-build-verification.md
 runtime_push_tag() {
   local tag="$1"
   local max_attempts="${PUSH_MAX_ATTEMPTS:-4}" base_secs="${PUSH_RETRY_BASE_SECS:-15}"
@@ -62,11 +41,7 @@ runtime_push_tag() {
   return "${rc}"
 }
 
-# XC2: the immutable android artifact digest for <arch>, threaded from the cross
-# orchestrator as RUNTIME_ANDROID_PIN_<arch> (see runtime_android_pin_varname).
-# Empty for a standalone/--repair helper run, which then falls back to the
-# mutable cross-android tag. Used both as the ARTIFACT_IMAGE the package copies
-# from AND as the parent-digest annotation recorded on the package/wrapper push.
+# Immutable android digest (RUNTIME_ANDROID_PIN_<arch>): the package's ARTIFACT_IMAGE and its recorded parent.
 runtime_android_pin() {
   local arch="$1" var pin
   var="$(runtime_android_pin_varname "${arch}")"
@@ -75,18 +50,7 @@ runtime_android_pin() {
     printf '%s' "${pin}"
     return 0
   fi
-  # XC2-PARTIAL-RUN (2026-08-27): the pin is only ever SET by the android stage
-  # actually building, so a resumed run (`--only runtime`, or the --repair
-  # helper path) had none -- and the wrapper then shipped with run-id and
-  # build-type but NO parent-digest. That is exactly what happened to the index
-  # published earlier today. The information was never missing: the same run's
-  # ancestry preflight had already printed the android digests. Resolve the
-  # mutable tag ourselves rather than let provenance quietly drop out.
-  # Best-effort by design: on a --no-push validation run, or before the android
-  # tag exists, this returns empty and behaviour is exactly as before.
-  # Guarded on BOTH halves: cross_android_tag needs IMAGE_REPO or
-  # IMAGE_REGISTRY_PREFIX and dies under `set -u` without them, which a unit
-  # test caught immediately. No repo configured -> behave exactly as before.
+  # A resumed run has no pin: resolve the tag so provenance survives (best effort; needs a configured repo).
   local _rap_tag=""
   if declare -F registry_pin_ref >/dev/null 2>&1 \
      && declare -F cross_android_tag >/dev/null 2>&1 \
@@ -97,13 +61,7 @@ runtime_android_pin() {
   printf '%s' "${pin}"
 }
 
-# XC2/XC3: compose the buildkit image-exporter spec for a runtime build, folding
-# in the ancestry annotations (parent-digest/parent-stage + run-id) so the pushed
-# wrapper/package manifest carries its provenance. Reduces to a plain
-# `type=image,name=<tag>` (equivalent to `-t <tag>`) when ancestry.sh is absent
-# or nothing is recordable, so it is always safe to use in place of -t. The
-# annotations ride the manifest that runtime_push_tag later pushes; on a locally
-# exported (unpushed) image they simply travel with — and are discarded with — it.
+# Exporter spec carrying the ancestry annotations; degrades to type=image,name=<tag>, so it can always replace -t.
 runtime_image_output_arg() {
   local tag="$1" parent_pin="${2:-}" parent_stage="${3:-}" run_id="${4:-}"
   local ann=""
@@ -116,27 +74,16 @@ runtime_image_output_arg() {
   printf 'type=image,name=%s%s' "${tag}" "${ann}"
 }
 
-# How the runtime stage passes context and provenance:
-# docs/cross-build-verification.md
+# How the runtime stage passes context and provenance: docs/cross-build-verification.md
 append_runtime_image_output() {
   local -n _ario_out=$1
   local tag="$2"
-  # Arg 3 (will_push) is accepted for call-site compatibility and deliberately
-  # unused: labels are free on the -t path, so provenance is stamped whether or
-  # not this image gets pushed.
+  # Arg 3 (will_push) is unused: labels are free on the -t path, so provenance is stamped either way.
   local parent_pin="${4:-}" parent_stage="${5:-}"
 
   _ario_out+=(-t "${tag}")
 
-  # XC3-INERT fix (2026-08-23): args 4-5 used to be dropped on the floor, so
-  # every runtime image shipped WITHOUT provenance and the XC2/XC3 gates could
-  # never fail — wave-5 logged "3/3 wrapper tag(s) carry no run-id annotation"
-  # and still shipped a manifest mixing two source revisions. Annotations can't
-  # come back (RTCACHE3: the exporter that carries them doesn't tag locally),
-  # but LABELS ride the image config through `-t` and the later push, so stamp
-  # them here — this helper is the choke point for both live call sites
-  # (package + wrapper). CROSS_RUN_ID is exported by the orchestrator
-  # (chain-lifecycle.sh) and self-defaults in build-runtime-manifest.sh.
+  # Provenance as labels: they ride the image config through -t and the push, which annotations cannot.
   if declare -F ancestry_label_args >/dev/null 2>&1; then
     ancestry_label_args _ario_out "${parent_pin}" "${parent_stage}" "${CROSS_RUN_ID:-}"
   fi
@@ -151,13 +98,7 @@ _runtime_finish_stage() {
   if runtime_use_local_stage_context_outputs; then
     local context_dir
     context_dir="$(runtime_stage_context_dir "${kind}" "${arch}")"
-    # rc propagation, same rule as _export_container_rootfs further below: this
-    # runs under run_parallel_arch_loop, which DISABLES errexit for the whole
-    # call tree, so a failure must be RETURNED. Unguarded, a ~27GB
-    # `nerdctl save | tar -x` dying on ENOSPC was reported as a SUCCESSFUL
-    # package build -- and the very next line deleted the only remaining copy
-    # of the image. The wrapper then failed hours later on a truncated
-    # oci-layout build-context, real cause long scrolled away. Found 2026-08-27.
+    # Return the failure: errexit is off under run_parallel_arch_loop, and the next line deletes the only copy.
     export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}" || return 1
     remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
   else
@@ -188,8 +129,7 @@ runtime_build_base_image() {
     return 0
   fi
 
-  # rc propagation: this runs under a disabled-errexit extent (see
-  # runtime_build_chain) — failures must be RETURNED, not assumed fatal.
+  # errexit is off here (see runtime_build_chain), so failures must be returned.
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     --pull=true \
     --platform "linux/${arch}" \
@@ -212,20 +152,11 @@ runtime_build_base_image() {
   runtime_refresh_stage_context base "${arch}" "${tag}"
 }
 
-# ── Per-stage build-arg assembly helpers ──────────────────────────────────────
-# DRY the inline --build-arg strings that are repeated across runtime_build_package_image
-# and _runtime_build_wrapper.  Use append_common_build_args first, then call these.
-#
-# Usage:
-#   append_package_build_args <nameref> <arch> <parent_image> <artifact_image> <package_base_stage>
-#   append_wrapper_build_args <nameref> <arch> <parent_image>
+# Per-stage build args, appended after append_common_build_args
 append_package_build_args() {
   local -n _apba_out=$1
   local arch="$2" parent_image="$3" artifact_image="$4" package_base_stage="$5"
-  # Resolved into a local so a failure is caught HERE. Inline, a non-zero
-  # runtime_artifact_platform would have appended `ARTIFACT_PLATFORM=` and let
-  # BuildKit pick the default platform for the artifact-source FROM — the exact
-  # wrong-image-silently class this change exists to close.
+  # A local, so a failure stops here instead of an empty ARTIFACT_PLATFORM letting BuildKit pick the wrong image.
   local _apba_plat
   _apba_plat="$(runtime_artifact_platform "${arch}")" || return 1
   [ -n "${_apba_plat}" ] || { err "ARTIFACT_PLATFORM resolved empty for ${arch}"; return 1; }
@@ -242,15 +173,9 @@ append_package_build_args() {
 append_wrapper_build_args() {
   local -n _awba_out=$1
   local arch="$2" parent_image="$3"
-  # PROV1 (2026-08-17): fill the OCI provenance labels. Dockerfile.torch
-  # declares ARG BUILD_DATE=""/VCS_REF="" for its org.opencontainers.image.
-  # created/.revision labels, but nothing ever passed them → every shipped
-  # wrapper carried EMPTY provenance (the concrete half of the RTCACHE3
-  # provenance follow-up). Best-effort: outside a git checkout VCS_REF stays "".
+  # OCI created/revision labels; VCS_REF stays "" outside a git checkout.
   local _prov_date _prov_ref
-  # Prefer the run-level values (build-runtime-manifest.sh resolves them once so
-  # every child of one index agrees); fall back to resolving here for standalone
-  # helper invocations that never went through main().
+  # Prefer the run-level values so every child of one index agrees.
   _prov_date="${CROSS_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
   _prov_ref="${CROSS_VCS_REF:-$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)}"
   _awba_out+=(
@@ -262,18 +187,13 @@ append_wrapper_build_args() {
     --build-arg "BUILD_DATE=${_prov_date}"
     --build-arg "VCS_REF=${_prov_ref}"
   )
-  # RUNTIME_WHEELS_SOURCE: the export root exists only in export mode, and never falls back.
-  # docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries
+  # The export root exists only in export mode and never falls back. docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries
   if [ -n "${RUNTIME_WHEELS_EXPORT_ROOT:-}" ]; then
     runtime_wheels_wrapper_args _awba_out "${arch}" || return 1
   else
     _append_wheels_image_args _awba_out "${arch}" || return 1
   fi
-  # Documented operator overrides (see runtime_shared_usage_env_overrides);
-  # forwarded only when set so the Dockerfile.torch defaults stay authoritative.
-  # A GPU wrapper takes the GPU backend pair unless the operator pinned one: the
-  # Dockerfile's CPU defaults failed the image's own torch.version.cuda and
-  # CUDAExecutionProvider gates. Resolved HERE so the shipped ENV names it too.
+  # Overrides pass only when set; a GPU wrapper defaults to its GPU pair, since the CPU defaults fail its gates.
   local _onnx_pkg="${ONNX_PACKAGE:-}" _torch_extra="${PYTORCH_EXTRA:-}" _pair
   _pair="$(runtime_gpu_backend_pair)"
   if [ -n "${_pair}" ]; then
@@ -283,38 +203,26 @@ append_wrapper_build_args() {
   append_optional_build_arg _awba_out PYTORCH_EXTRA "${_torch_extra}"
 }
 
-# The image Dockerfile.torch's wheels-source reads for <arch>; empty = its own
-# WHEELS_IMAGE default. Both RUNTIME_WHEELS_SOURCE deliveries resolve it here.
+# Image the wheels-source stage reads for <arch>, for both deliveries; empty means the WHEELS_IMAGE default.
 runtime_wheels_image_ref() {
   local arch="$1" _wheels_image
-  # AP3 (2026-08-18): the wheelhouse is bind-mounted into Dockerfile.torch's
-  # venv RUN from a wheels-source stage instead of being baked into package —
-  # pass the digest-pinned android ref (the wrapper's registry-resident
-  # cross-lane ancestor, same pin XC2/XC3 stamp into the manifest).
+  # The digest-pinned android ref, the same pin the manifest provenance records.
   _wheels_image="$(runtime_android_pin "${arch}")"
-  # Empty when nothing threaded a pin and the tag is unpublished; a published tag
-  # yields its registry digest, under --no-push too. With a -host<arch> infix,
-  # Dockerfile.torch's un-infixed default would then name the AMD box's artifact
-  # and mount ITS /opt/wheels. Name this host's tag, so a miss fails loudly.
-  # Structurally unreachable on amd64: the infix is empty there. A VARIANT is the
-  # same hazard on every host: the default names the default chain's android.
+  # With a host infix or a variant, the default names another chain's android; name ours so a miss fails loudly.
   if [ -z "${_wheels_image}" ] && { [ -n "$(cross_build_host_infix)" ] || [ -n "$(cross_variant 2>/dev/null)" ]; }; then
     _wheels_image="$(cross_android_tag "${arch}" 2>/dev/null || true)"
   fi
   printf '%s' "${_wheels_image}"
 }
 
-# RUNTIME_WHEELS_SOURCE=image, the delivery every chain used before 2026-09-24:
-# the torch RUN bind-mounts /opt/wheels straight out of that android image.
+# RUNTIME_WHEELS_SOURCE=image: the torch RUN bind-mounts /opt/wheels out of the android image.
 _append_wheels_image_args() {
   local -n _awia_out=$1
   local arch="$2" _wheels_image
   _wheels_image="$(runtime_wheels_image_ref "${arch}")"
   [ -n "${_wheels_image}" ] || return 0
   _awia_out+=(--build-arg "WHEELS_IMAGE=${_wheels_image}")
-  # That tag exists only in the containerd store, which BuildKit's OCI worker
-  # cannot see: wheels-source died "not found". Hand it the wheelhouse as a
-  # directory context (see runtime_wheels_context_dir for why not OCI).
+  # BuildKit's OCI worker cannot see the containerd store, so pass the wheelhouse as a directory context.
   if runtime_use_local_artifact_context; then
     local _wheels_ctx
     _wheels_ctx="$(runtime_wheels_context_dir "${arch}" "${_wheels_image}")" || return 1
@@ -323,9 +231,7 @@ _append_wheels_image_args() {
   return 0
 }
 
-# The GPU wrapper's "<ONNX_PACKAGE> <PYTORCH_EXTRA>" pair, or empty for a CPU
-# image. rocm takes the app's ROCm extra; assemble-torch-app.sh then
-# enforces the torch pin from PYTORCH_ROCM_INDEX (versions.env).
+# "<ONNX_PACKAGE> <PYTORCH_EXTRA>" for a GPU wrapper, empty for CPU; assemble-torch-app.sh enforces the ROCm torch pin.
 runtime_gpu_backend_pair() {
   if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     printf '%s' 'onnxruntime-gpu pytorch-cu130'
@@ -334,8 +240,7 @@ runtime_gpu_backend_pair() {
   fi
 }
 
-# APP_REF names the OrchestrANT ref the wrapper tracks; resolve it to a commit ONCE
-# per run. docs/linux-cross-builds.md#the-app-the-wrapper-builds
+# Resolve APP_REF to a commit once per run. docs/linux-cross-builds.md#the-app-the-wrapper-builds
 runtime_resolve_app_ref() {
   local _rar_ref="${APP_REF:-}" _rar_out _rar_sha
   local _rar_url='https://github.com/Kataglyphis/OrchestrANT.git'
@@ -378,9 +283,7 @@ runtime_build_package_image() {
   append_common_build_args build_args "${arch}"
   append_runtime_accelerator_build_args build_args
 
-  # XC2: prefer the immutable android digest (threaded from the orchestrator) as
-  # the artifact the package copies from; falls back to the mutable tag when no
-  # pin was threaded (standalone/--repair run).
+  # Prefer the immutable android digest; without a threaded pin the mutable tag is used.
   local _android_pin
   _android_pin="$(runtime_android_pin "${arch}")"
 
@@ -407,19 +310,12 @@ runtime_build_package_image() {
 
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"
-  # Record the android parent-digest annotation only when the package is pushed
-  # (intermediate push); the local stage-context path keeps a plain `-t`.
+  # Record the android parent-digest only when the package is pushed; the local path keeps a plain -t.
   local _pkg_push=0
   runtime_pushes_intermediate_images && _pkg_push=1
   local -a _pkg_out=()
   append_runtime_image_output _pkg_out "${tag}" "${_pkg_push}" "${_android_pin}" android
-  # RTCACHE2: the package re-materializes /opt/ffmpeg via `COPY --from=android`.
-  # BuildKit's worker cache can serve a STALE copy layer from a prior run even
-  # when the android artifact-source digest changed (observed 2026-08-14: a
-  # media→android→runtime rebuild that dropped ffmpeg's libtensorflow shipped a
-  # byte-identical wrapper because the package/wrapper fully cache-hit the 3-day
-  # -old layers). RUNTIME_NO_CACHE=1 forces a clean re-evaluation so the fresh
-  # artifact-source content actually lands. Unquoted: empty → no word.
+  # RUNTIME_NO_CACHE=1: BuildKit can serve a stale COPY --from=android layer after the android digest changed.
   # shellcheck disable=SC2086  # intentional: empty RUNTIME_NO_CACHE must vanish
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     "${_rb_pull}" \
@@ -431,9 +327,7 @@ runtime_build_package_image() {
     "${build_args[@]}" \
     . || return 1
 
-  # Defer base context cleanup to the smoke gate: wrapper-smoke is FROM
-  # package-image which is FROM runtime_base, so it also needs the base
-  # context. When the smoke gate is skipped, clean up base here.
+  # wrapper-smoke builds FROM package FROM base, so the smoke gate cleans up base unless it is skipped.
   if [ "${WRAPPER_SMOKE_GATE:-1}" = "0" ]; then
     _runtime_finish_stage package "${arch}" "${tag}" base
   else
@@ -441,14 +335,7 @@ runtime_build_package_image() {
   fi
 }
 
-# LOG29: the wrapper-smoke stage (Dockerfile.package:346 FROM package AS
-# wrapper-smoke) runs ~1150 lines of smoke tests — compiler validation, media
-# smokes, torch-venv, cross-arch — but was NEVER built because the package
-# build targets "package" and BuildKit prunes everything after it. This function
-# targets wrapper-smoke separately. Since wrapper-smoke is FROM package,
-# BuildKit reuses the cached package layers and only runs the smoke RUN —
-# cheap on a cache hit, and it fails the chain if the smokes fail.
-# Skip with WRAPPER_SMOKE_GATE=0.
+# Builds the wrapper-smoke target, which the package build prunes; cheap on a cache hit. WRAPPER_SMOKE_GATE=0 skips.
 _runtime_run_package_smoke() {
   local arch="$1"
 
@@ -522,19 +409,13 @@ _runtime_build_wrapper() {
 
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"
-  # XC2/XC3: the wrapper is the tag that goes LIVE and is indexed into
-  # :latest, so stamp it with the android parent-digest (its immutable
-  # cross-lane ancestor) + the run-id when it will be pushed. base/package are
-  # local intermediates in the normal flow, so android is the wrapper's nearest
-  # registry-resident ancestor to record.
+  # The wrapper goes live, so record the run-id and its nearest registry-resident ancestor, android.
   local _wrap_push=0
   runtime_pushes_wrapper_images && _wrap_push=1
   local -a _wrap_out=()
   append_runtime_image_output _wrap_out "${_wrapper_tag_out}" "${_wrap_push}" \
     "$(runtime_android_pin "${arch}")" android
-  # RTCACHE2: same stale-worker-cache hazard as the package build — the wrapper
-  # is FROM package, so a clean package rebuild normally invalidates it, but
-  # gate it too so RUNTIME_NO_CACHE=1 guarantees an end-to-end fresh wrapper.
+  # RUNTIME_NO_CACHE=1 applies here too, so a fresh run is fresh end to end.
   # shellcheck disable=SC2086  # intentional: empty RUNTIME_NO_CACHE must vanish
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     "${_rb_pull}" \
@@ -550,18 +431,7 @@ _runtime_build_wrapper() {
   runtime_remove_stage_context package "${arch}"
 }
 
-# Verify the provenance we just ASKED for actually landed on the image we just
-# built. Composing a correct-looking flag that silently does nothing is the
-# exact failure class that cost this repo five stale ships (RTCACHE3: an
-# `--output type=image,name=X` spec that built no local tag) and then months of
-# inert XC2/XC3 gates (labels never emitted at all) — in both cases every log
-# line stayed green. One `image inspect` right after the build closes that loop
-# while the evidence is still fresh, instead of discovering it in an audit.
-#
-# Fails ONLY on a positive reading: the stamp is missing, or it names a
-# DIFFERENT run (a stale tag this build never replaced). A reader that could not
-# look at all warns and proceeds — a transient inspect problem must not kill a
-# multi-hour build. Escape hatch: ANCESTRY_STAMP_ENFORCE=0.
+# Reads the stamp back: fails only on a missing or foreign run-id, warns if unreadable; ANCESTRY_STAMP_ENFORCE=0 overrides.
 runtime_assert_provenance_stamped() {
   local tag="$1" rc=0 value="" why=""
 
@@ -569,15 +439,12 @@ runtime_assert_provenance_stamped() {
   [ -n "${CROSS_RUN_ID:-}" ] || return 0          # nothing was asked for
   declare -F ancestry_recorded_label >/dev/null 2>&1 || return 0
 
-  # scope=local, and stderr is NOT swallowed: this runs BEFORE the push, so the
-  # default reader's "is this local tag the registry copy?" guard rejected every
-  # freshly built wrapper (rc 1) and the gate silently degraded to "proceeding".
+  # scope=local: before the push, the default reader's registry-copy guard rejects every fresh wrapper.
   value="$(ancestry_recorded_label "${tag}" "${ANCESTRY_RUN_ID_KEY}" local)" || rc=$?
   case "${rc}" in
     0)
       [ "${value}" = "${CROSS_RUN_ID}" ] && return 0
-      # A tag left by an EARLIER run: exactly the RTCACHE3 "build produced no
-      # local tag" shape, which a mere presence check cannot see.
+      # A tag from an earlier run: the build never re-tagged, which a presence check cannot see.
       why="carries run-id '${value}', not the '${CROSS_RUN_ID}' this build stamped (stale local tag — the build never re-tagged)"
       ;;
     2) why="was built WITHOUT the run-id label this build stamped (CROSS_RUN_ID=${CROSS_RUN_ID})" ;;
@@ -602,9 +469,7 @@ runtime_build_wrapper_image() {
   local tag parent_image
   local -a build_args=()
 
-  # B1: `|| return 1` is load-bearing — same disabled-errexit extent as
-  # runtime_build_chain. Without it a failed wrapper build fell through to the
-  # push, which then failed with `not found` and named the wrong culprit.
+  # errexit is off here: without || return 1 a failed build reaches the push, which blames the wrong step.
   _runtime_build_wrapper "${arch}" tag parent_image build_args || return 1
 
   if is_dry_run; then
@@ -623,8 +488,7 @@ runtime_build_wrapper_rootfs() {
   local tag parent_image artifact_dir
   local -a build_args=()
 
-  # B1: see runtime_build_wrapper_image — a failed build must not reach the
-  # export/push below, which would ship a STALE tag from an earlier run.
+  # A failed build must not reach the export/push below, which would ship a stale tag.
   _runtime_build_wrapper "${arch}" tag parent_image build_args || return 1
 
   if is_dry_run; then
@@ -644,11 +508,7 @@ runtime_build_chain() {
   local arch="$1"
   local rootfs_dir="${2:-}"
 
-  # EXPLICIT `|| return 1` on every step (same hazard as cross_stage_run):
-  # this function is invoked via run_parallel_arch_loop's `if !`, which
-  # disables set -e for the whole call tree — without these, a failed base or
-  # package build fell through to the next step and the lane reported success
-  # with nothing built.
+  # Explicit || return 1 on every step: run_parallel_arch_loop's `if !` disables errexit for the whole tree.
   _runtime_timed base "${arch}" runtime_build_base_image "${arch}" || return 1
   _runtime_timed package "${arch}" runtime_build_package_image "${arch}" || return 1
   _runtime_timed smoke "${arch}" _runtime_run_package_smoke "${arch}" || return 1
@@ -661,8 +521,7 @@ runtime_build_chain() {
   _runtime_timed wrapper "${arch}" runtime_build_wrapper_image "${arch}" || return 1
 }
 
-# <step> <arch> <cmd...>: run one runtime-lane step, log its wall time, return its rc.
-# docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
+# <step> <arch> <cmd...>: logs the step's wall time. docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
 _runtime_timed() {
   local step="$1" arch="$2" t0 rc=0
   shift 2
@@ -686,11 +545,7 @@ ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
 EOF
 }
 
-# The option block both runtime orchestrators document identically. It exists
-# for the same reason as runtime_shared_usage_env_overrides directly below:
-# these flags are handled by THIS library, so this is where they belong. Keeping
-# a copy in each script made the two the largest duplicate pair in the tree
-# (199 shared shingles). docs/refactoring-backlog.md F5
+# Options both runtime orchestrators document; they live here because this library handles them.
 runtime_shared_usage_options() {
   cat <<'EOF'
   --image-prefix TAG            Prefix for built wrapper image tags

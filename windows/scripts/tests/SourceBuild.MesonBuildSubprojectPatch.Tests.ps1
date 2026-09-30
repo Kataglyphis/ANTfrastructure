@@ -1,20 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Invoke-MesonBuildSubprojectPatch over a fixture copy of the meson 1.12.0
-# Interpreter lines it rewrites (mesonbuild/interpreter/interpreter.py, verbatim:
-# the two disabled_subproject(subp_name, exception=e) sites in do_subproject and
-# the two configure_file lines that use self.subdir). The patch is load-bearing
-# on the arm64 cross lane -- without it a failed glib(build) overwrites the HOST
-# glib holder and libnice/webrtc/nice vanish (runs 25-27, 2026-08-26) -- so the
-# regexes must (a) hit the real 1.12.0 layout, (b) rewrite exactly those lines,
-# (c) be idempotent per fix, and (d) THROW on layout drift rather than warn.
-# The function lives in Build-GstreamerFromSource.ps1 (NOT a module: the
-# mounted module set is one shared closure -- `buildmods`' six .psm1, which the
-# classic lane also COPYs into `common`, every BK compile stage's ancestor --
-# so a module edit re-keys all branches on both lanes; #134 splits that).
-# Lifted out of the script's AST.
+
+# On arm64 a failed glib(build) would overwrite the host glib, so the patch must hit meson 1.12.0 exactly and throw on drift.
 
 Describe 'Invoke-MesonBuildSubprojectPatch' {
 

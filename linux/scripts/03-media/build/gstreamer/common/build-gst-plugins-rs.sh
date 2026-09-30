@@ -15,14 +15,7 @@ configure_gstreamer_prefix_for_cargo() {
   fi
 }
 
-# Remove a member path (e.g. "analytics/burn") from the [workspace] members
-# array of the gst-plugins-rs Cargo.toml. cargo parses EVERY workspace member's
-# manifest for dependency resolution even when the member is --exclude'd from the
-# build, so members whose deps are unresolvable in this environment (burn, csound,
-# skia, whisper, dav1d, ...) must be dropped from the manifest itself, not merely
-# excluded. gst-plugins-rs uses an explicit members list with one quoted path per
-# line, so delete the line that is exactly that quoted path. No-op (success) if
-# the member or file is absent, so callers can prune unconditionally.
+# cargo resolves every workspace member's manifest even when --exclude'd, so unresolvable members must leave it.
 prune_gst_plugins_rs_workspace_member() {
   local cargo_toml="$1" member="$2" tmp
   if [ -z "${cargo_toml}" ] || [ ! -f "${cargo_toml}" ]; then
@@ -48,7 +41,6 @@ compute_gst_plugins_rs_rust_jobs() {
   nproc --all 2>/dev/null || echo 1
 }
 
-# Cached variant: calls cargo metadata once, caches JSON, reuses for subsequent calls.
 _CARGO_METADATA_JSON=""
 _cargo_metadata_cached_package_names() {
   local pattern="$1"
@@ -79,11 +71,7 @@ if matches:
 ' "$pattern"
 }
 
-# Append `--exclude <pkg>` flags for one plugin family to the caller's build_cmd
-# array (visible via dynamic scope). Prefers the exact package names reported by
-# cargo metadata for <key>; falls back to the explicit <fallback...> list when
-# metadata returns nothing or is unavailable. Produces the SAME --exclude set as
-# the previous inline per-family blocks (only log wording is generalized).
+# Appends to the caller's build_cmd (dynamic scope); cargo metadata's names win over the fallback list.
 _gst_rs_exclude_family() {
   local key="$1"; shift
   local -a fallback=("$@")
@@ -105,9 +93,7 @@ _gst_rs_exclude_family() {
 prepare_cargo_target_compiler_wrapper() {
   local compiler="$1"
   local wrapper_name="$2"
-  # -B<dir> makes the gcc driver look for BARE tool names (as, ld, ...) in
-  # <dir>, so this must be the bare/ subdirectory, not /opt/cross-bin itself
-  # (which now holds only triplet-prefixed names).
+  # gcc -B looks up bare tool names (as, ld), which live only in bare/, not in /opt/cross-bin itself.
   local cross_bindir="${3:-/opt/cross-bin/bare}"
   local wrapper_dir="${GSTREAMER_CARGO_TARGET_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-target-toolchain}"
 
@@ -185,10 +171,7 @@ _gst_rs_cargo_config() {
   if cross_build_is_active &&
      command -v cross_target_arch >/dev/null 2>&1 &&
      [ "$(cross_target_arch)" = "riscv64" ]; then
-    # Bare cross tool names (as, ld, ...) live only in /opt/cross-bin/bare,
-    # which is never on PATH, so host build scripts keep the native cc/c++.
-    # Wrap the target compiler driver with -B<bare dir> so target-side cc-rs
-    # builds still resolve riscv64 as/ld (gcc -B looks up BARE names).
+    # bare/ stays off PATH so host build scripts keep native cc; target cc-rs builds reach it through -B.
     cargo_target_cross_bindir="$(cross_bare_bin_path 2>/dev/null || printf '%s' '/opt/cross-bin/bare')"
     if command -v cross_target_upper_rust >/dev/null 2>&1; then
       cargo_target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
@@ -210,15 +193,10 @@ _gst_rs_cargo_config() {
       export "CXX_${cargo_target_rust_lower}=${cargo_target_cxx_wrapper}"
     fi
 
-    # Standalone Cargo crates here use pkg-config / system-deps, which can drop
-    # target system libdirs (for example /usr/lib/riscv64-linux-gnu and
-    # /usr/local/lib) from emitted link-search flags. Keep those -L entries so
-    # Rust links can resolve target shared libs like Vulkan and vvdec.
+    # pkg-config would drop target system libdirs from link-search flags, which Rust needs for Vulkan and vvdec.
     export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
 
-    # vvdec-sys resolves libvvdec via system-deps/pkg-config, which still needs
-    # an explicit native search override because libvvdec is installed into
-    # /usr/local/lib by install-vvdec.sh rather than coming from the distro.
+    # install-vvdec.sh puts libvvdec in /usr/local/lib, outside the distro dirs system-deps searches.
     if [ -d /usr/local/lib ]; then
       export SYSTEM_DEPS_LIBVVDEC_SEARCH_NATIVE="${SYSTEM_DEPS_LIBVVDEC_SEARCH_NATIVE:-/usr/local/lib}"
     fi
@@ -229,9 +207,6 @@ _gst_rs_cargo_config() {
   fi
 }
 
-# One exclusion, said once: log the reason, drop the workspace member when the
-# plugin has one, and exclude its crates from the cargo build. Five sites below
-# were this same triple with a different predicate in front of it.
 # $1=reason  $2=workspace member ("" when there is none)  $3=family  $4..=fallback crates
 _gst_rs_exclude() {
   local why="$1" member="$2" family="$3"
@@ -260,9 +235,7 @@ _gst_rs_build_plugins() {
   fi
 
   build_cmd=(cargo build --workspace "${cargo_flags[@]}" --jobs "${CARGO_BUILD_JOBS}")
-  # --keep-going: with GST_RS_BUILD_ALL we attempt every member, so build as many
-  # as possible and surface ALL failures in one pass rather than stopping at the
-  # first (stable since Rust 1.74; toolchain here is newer).
+  # Build-all surfaces every failing member in one pass instead of stopping at the first.
   [ "${build_all_rs}" = "true" ] && build_cmd+=(--keep-going)
   build_cmd+=("${default_excludes[@]}")
   if cross_build_is_active; then
@@ -298,10 +271,7 @@ _gst_rs_build_plugins() {
 
   if ! "${build_cmd[@]}"; then
     if [ "${build_all_rs}" = "true" ]; then
-      # GST_RS_BUILD_ALL: --keep-going already built every member it could; a
-      # non-zero exit here just means some crate (e.g. webrtcbin2 needing the
-      # unpackaged rice-proto) failed. The monorepo meson build is the primary
-      # installer, so warn and continue instead of failing the whole stage.
+      # The monorepo meson build is the primary installer, so a member that failed here only warns.
       echo "WARN: some gst-plugins-rs workspace members failed to build (GST_RS_BUILD_ALL, --keep-going); continuing with the members that built" >&2
     else
       echo "ERROR: cargo build for gst-plugins-rs failed"
@@ -315,9 +285,7 @@ build_standalone_gst_plugins_rs() {
   declare -g standalone_cargo_toml=""
   declare -g build_all_rs="${GST_RS_BUILD_ALL:-true}"
   declare -g cargo_flags=()
-  # GST_RS_BUILD_ALL=true (default): attempt to build EVERY gst-plugins-rs
-  # workspace member on every arch — no default excludes. Set to "false" to
-  # restore the conservative exclude/prune behavior below.
+  # The default attempts every member on every arch; GST_RS_BUILD_ALL=false restores the conservative excludes.
   declare -g default_excludes=()
   if [ "${build_all_rs}" != "true" ]; then
     default_excludes=(--exclude gst-plugin-burn --exclude gst-plugin-webrtcbin2)

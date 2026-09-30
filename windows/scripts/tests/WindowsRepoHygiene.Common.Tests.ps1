@@ -1,15 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Exercises the repo-state guards against REAL throwaway git repositories built
-# in $env:TEMP rather than against mocks. These functions are thin wrappers over
-# git porcelain, so a mocked `git` would only assert that the wrapper passes the
-# arguments it was written to pass - it would not catch git changing what those
-# arguments mean, which is the failure this suite exists to see.
-#
-# Local-path submodules need `protocol.file.allow=always` on git >= 2.38
-# (CVE-2022-39253); it is set per-invocation, never in global config.
+# Real throwaway repos, not a mocked git: the risk is git changing what the wrapped arguments mean.
 
 Describe 'WindowsRepoHygiene.Common' {
   BeforeAll {
@@ -19,8 +11,7 @@ Describe 'WindowsRepoHygiene.Common' {
     $script:sandbox = (New-Item -ItemType Directory `
         -Path (Join-Path $env:TEMP ('repohygiene-' + (Get-Random))) -Force).FullName
 
-    # Identity is set per-repo so the suite never depends on (or touches) the
-    # host's global git config.
+    # Identity is per-repo so the suite never depends on or touches the host's global git config.
     function script:New-TestRepo {
       param([string]$Name)
       $path = (New-Item -ItemType Directory -Path (Join-Path $script:sandbox $Name) -Force).FullName
@@ -37,14 +28,14 @@ Describe 'WindowsRepoHygiene.Common' {
       & git -C $Path commit --quiet -m $Message 2>$null
     }
 
-    # --- child: the repository used as a submodule -------------------------
+    # Child: the repository used as a submodule
     $script:child = script:New-TestRepo -Name 'child'
     script:Add-TestCommit -Path $script:child -File 'a.txt' -Content 'one' -Message 'first'
     $script:childFirst = (& git -C $script:child rev-parse HEAD).Trim()
     script:Add-TestCommit -Path $script:child -File 'a.txt' -Content 'two' -Message 'second'
     $script:childSecond = (& git -C $script:child rev-parse HEAD).Trim()
 
-    # --- parent: superproject pinning child at its tip ---------------------
+    # Parent: superproject pinning child at its tip; local-path submodules need protocol.file.allow (CVE-2022-39253)
     $script:parent = script:New-TestRepo -Name 'parent'
     script:Add-TestCommit -Path $script:parent -File 'root.txt' -Content 'root' -Message 'root'
     & git -C $script:parent -c protocol.file.allow=always submodule add --quiet `
@@ -97,8 +88,7 @@ Describe 'WindowsRepoHygiene.Common' {
     It 'reports a file that was committed before the ignore rule existed' {
       $repo = script:New-TestRepo -Name 'stale-artifact'
       script:Add-TestCommit -Path $repo -File 'generated.log' -Content 'output' -Message 'commit artifact'
-      # The ignore rule arrives afterwards - which is exactly the case
-      # .gitignore does NOT retroactively fix.
+      # The ignore rule arrives afterwards, which .gitignore does not fix retroactively.
       script:Add-TestCommit -Path $repo -File '.gitignore' -Content 'generated.log' -Message 'ignore it'
 
       $tracked = @(Get-TrackedIgnoredFile -RepoRoot $repo)
@@ -109,8 +99,7 @@ Describe 'WindowsRepoHygiene.Common' {
 
   Context 'Get-TrackedGeneratedArtifact' {
     It 'reports a tracked generated file that no ignore rule covers' {
-      # The blind spot: tracked but NOT ignored, so Get-TrackedIgnoredFile
-      # returns clean while the artifact sits in the index anyway.
+      # Tracked but not ignored: Get-TrackedIgnoredFile returns clean while the artifact sits in the index.
       $repo = script:New-TestRepo -Name 'unignored-artifact'
       script:Add-TestCommit -Path $repo -File 'root.txt' -Content 'root' -Message 'root'
       New-Item -ItemType Directory -Path (Join-Path $repo 'Testing') -Force | Out-Null
@@ -144,8 +133,7 @@ Describe 'WindowsRepoHygiene.Common' {
       & git -c protocol.file.allow=always clone --quiet ($script:child -replace '\\', '/') $clone 2>$null
       & git -C $clone config user.email 'test@example.invalid'
       & git -C $clone config user.name 'Repo Hygiene Test'
-      # A commit the remote has never seen: no branch, tip or otherwise, can
-      # contain it, so all three escalation steps must come up empty.
+      # A commit the remote never saw: no branch can contain it, so all three escalation steps come up empty.
       Set-Content -LiteralPath (Join-Path $clone 'local.txt') -Value 'local' -Encoding utf8
       & git -C $clone add -A 2>$null
       & git -C $clone commit --quiet -m 'local only' 2>$null

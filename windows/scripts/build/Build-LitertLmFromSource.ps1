@@ -13,8 +13,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'  # fail-fast before module import
 
-# #108: container mounts are FLAT (C:\bkmnt, C:\temp\scripts) while the repo is
-# scripts/<group>/ -- shared assets sit beside this script, or one level up.
+# Shared assets sit beside this script in the flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
@@ -32,13 +31,11 @@ Write-Host "=== LiteRT-LM source build (v$LiteRtLmVersion, Ninja+clang-cl) ==="
 Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT-LM.git' -Tag "v$LiteRtLmVersion" -SourceDir $SourceDir -Recursive | Out-Null
 
 Write-Host 'Setting up git-lfs...'
-# Canonical stderr-shield (git lfs writes progress to stderr; PS 5.1 EAP=Stop
-# would turn that into a terminating NativeCommandError even with 2>&1).
+# Shielded: git lfs progress on stderr is terminating under PS 5.1 EAP=Stop, even with 2>&1.
 [void](Invoke-ShieldedNative -Quiet -Label 'git lfs install' -CommandLine 'git lfs install --skip-repo')
 [void](Invoke-ShieldedNative -Quiet -Label 'git lfs pull' -CommandLine "cd /d `"$SourceDir`" && git lfs pull")
 
-# v0.14.0 OSS-export bridge (docs/windows-builds.md § Source Patch Policy #7),
-# kept in one deletable file. Dot-sourced: it uses this scope's modules.
+# The OSS-export bridge, one deletable file dot-sourced for this scope's modules. See docs/windows-builds.md § Source Patch Policy
 . (Join-Path $PSScriptRoot 'Export-LitertLmBridge.ps1')
 Invoke-LiteRtLmExportStubs -SourceDir $SourceDir
 Invoke-LiteRtLmSupportGraft -SourceDir $SourceDir
@@ -51,8 +48,7 @@ $VcpkgRoot = Get-SourceBuildVersion -Value $VcpkgRoot -EnvironmentVariables @('V
 # Triplet, not a literal: the base image carries both x64- and arm64-windows trees.
 $vcpkgInstalledX64 = Join-Path $VcpkgRoot "installed\$(Get-VcpkgTriplet)"
 
-# ENV HYGIENE: media-chain stages run IN-PROCESS, so every env mutation in
-# Phases 2-4 would leak into the next stage; the finally at the end restores this.
+# Chain stages run in-process, so the finally at the end restores what Phases 2-4 change.
 $litertLmEnvSnapshot = @{}
 foreach ($envName in @('CMAKE_PREFIX_PATH', 'LIB', 'CXXFLAGS', 'CCC_OVERRIDE_OPTIONS', 'CXXFLAGS_x86_64_pc_windows_msvc')) {
     $litertLmEnvSnapshot[$envName] = [Environment]::GetEnvironmentVariable($envName)
@@ -63,8 +59,7 @@ $env:CMAKE_PREFIX_PATH = "$vcpkgInstalledX64;$env:CMAKE_PREFIX_PATH"
 $protobufTools = Join-Path $vcpkgInstalledX64 'tools\protobuf'
 if (Test-Path $protobufTools) { $env:PATH = "$protobufTools;$env:PATH" }
 
-# PK magic-byte guard: an HTML error page served in place of the zip otherwise
-# surfaces hours later as a cryptic Expand-Archive failure.
+# The PK magic-byte check turns an HTML error page into an early failure, not a later Expand-Archive one.
 function Install-PortableZipTool {
     param(
         [Parameter(Mandatory)][string]$Url,
@@ -84,8 +79,7 @@ function Install-PortableZipTool {
     return $found
 }
 
-# Host protoc must MATCH the from-source runtime (6.31.1): vcpkg's is a different major
-# whose gencode the 6.31.1 headers reject, and a from-source 6.31.1 protoc fails to link.
+# Must match the from-source protobuf runtime: vcpkg's protoc is another major, and a source-built one fails to link.
 $protocVer = Get-SourceBuildVersion -EnvironmentVariables @('PROTOC_VERSION') -DefaultValue '35.1'
 $hostProtocDir = "C:\temp\protoc-$protocVer"
 $hostProtoc = Join-Path $hostProtocDir 'bin\protoc.exe'
@@ -95,8 +89,7 @@ $hostProtoc = Join-Path $hostProtocDir 'bin\protoc.exe'
         -Probe { if (Test-Path $hostProtoc) { $hostProtoc } })
 Write-Host "Using version-matched host protoc: $hostProtoc ($(& $hostProtoc --version))"
 
-# litert-lm runs the ANTLR jar at build time and the media base image ships no Java.
-# A JRE is enough -- only the prebuilt jar runs.
+# The build runs the prebuilt ANTLR jar and the media base ships no Java; a JRE is enough.
 $jreVer = Get-SourceBuildVersion -EnvironmentVariables @('JRE_VERSION') -DefaultValue '21'
 $jreDir = 'C:\temp\jre'
 $javaExe = Install-PortableZipTool -Url "https://api.adoptium.net/v3/binary/latest/$jreVer/ga/windows/x64/jre/hotspot/normal/eclipse" `
@@ -110,8 +103,7 @@ Write-Host "Using Java for ANTLR codegen: $($javaExe.FullName)"
 
 #region Phase 3 | Windows link-lib + POSIX header shims (rt/pthread/dl/z, dlfcn/unistd/alloca, LIB)
 Switch-BuildPhase '3. Windows link-lib + POSIX header shims (rt/pthread/dl/z, dlfcn/unistd/alloca, LIB)'
-# CMake's POSIX link libs (-lz -lrt -lpthread -ldl) reach lld-link as rt/pthread/dl/z.lib,
-# absent here: rt/pthread/dl are #ifdef'd out so empty archives suffice; z is real vcpkg zlib.
+# lld-link gets CMake's POSIX -lrt/-lpthread/-ldl/-lz as .libs: empty archives for the #ifdef'd-out three, vcpkg's zlib.
 $stubLibDir = 'C:\temp\winstublibs'
 New-Item -ItemType Directory -Force $stubLibDir | Out-Null
 $llvmLib = (Get-Command llvm-lib.exe -ErrorAction Stop).Source
@@ -126,21 +118,18 @@ foreach ($stub in @('rt', 'pthread', 'dl')) {
 $vcpkgZlib = Join-Path $vcpkgInstalledX64 'lib\z.lib'
 if (Test-Path $vcpkgZlib) { Copy-Item $vcpkgZlib (Join-Path $stubLibDir 'z.lib') -Force }
 
-# LiteRT's dynamic_loading.cc includes <dlfcn.h> unguarded; this header-only shim maps the
-# dl* API onto LoadLibrary/GetProcAddress and rides on CXXFLAGS below.
+# dynamic_loading.cc includes <dlfcn.h> unguarded; the shim maps dl* onto LoadLibrary/GetProcAddress.
 $winShimDir = 'C:\temp\winshims'
 New-Item -ItemType Directory -Force $winShimDir | Out-Null
 Copy-Item (Join-Path $scriptAssetRoot 'shims\dlfcn.h') $winShimDir -Force
 
-# Same file's unguarded <unistd.h>: MSVC declares access() in <io.h>, so only the POSIX
-# permission-mode constants are missing.
+# Its unguarded <unistd.h> needs only the POSIX permission-mode constants; access() is in <io.h>.
 Copy-Item (Join-Path $scriptAssetRoot 'shims\unistd.h') $winShimDir -Force
 
 # LiteRT's Qualcomm vendor code includes <alloca.h>; the CRT puts alloca in <malloc.h>.
 Copy-Item (Join-Path $scriptAssetRoot 'shims\alloca.h') $winShimDir -Force
 Write-Host "Wrote Windows <dlfcn.h> + <unistd.h> + <alloca.h> shims to $winShimDir"
-# TRAP: clang auto-detects the MSVC/SDK/clang-runtime lib dirs only while LIB is UNSET; once
-# LIB is set it defers entirely to it, so LIB must carry them too or every link loses kernel32.
+# clang auto-detects the system lib dirs only while LIB is unset, so a set LIB must carry them or links lose kernel32.
 $clangHome = Split-Path (Split-Path (Get-Command clang++.exe -ErrorAction Stop).Source)
 # One token for both trees: the MSVC and SDK lib dirs spell the arch identically.
 $msvcLibArch = Get-MsvcTargetLibDir
@@ -171,22 +160,15 @@ if (($env:PATH -notlike "*$cargoBin*") -and (Test-Path $cargoBin)) { $env:PATH =
 
 #region Phase 4 | clang++ compiler environment (CXXFLAGS / CCC_OVERRIDE_OPTIONS)
 Switch-BuildPhase '4. clang++ compiler environment (CXXFLAGS / CCC_OVERRIDE_OPTIONS)'
-# Target-scoped so it reaches ONLY the cc/cxx-crate bridge (the inner clang++ configure check
-# rejects stray flags): C++17 for MSVC 14.51's <xutility> + the GNU-driver dynamic CRT.
+# Target-scoped to the cc/cxx crate bridge only, as the inner clang++ configure check rejects stray flags.
 $env:CXXFLAGS_x86_64_pc_windows_msvc = (@($env:CXXFLAGS_x86_64_pc_windows_msvc, '-std=c++17', '-D_DLL', '-D_MT', '-Xclang', '--dependent-lib=msvcrt') | Where-Object { $_ }) -join ' '
 Write-Host "Set CXXFLAGS_x86_64_pc_windows_msvc for the cxx/cc bridge: $($env:CXXFLAGS_x86_64_pc_windows_msvc)"
 
-# -fdelayed-template-parsing restores MSVC-like late template parsing for the MSVC-targeted
-# deps; the rest is the shim include dir, NOMINMAX/NOGDI and a forced -include unistd.h that
-# LiteRT's vendor backends need. CMake seeds every sub-build's CXX flags from $ENV{CXXFLAGS}.
-# LLVM-BUMP TRIPWIRE: -fdelayed-template-parsing is deprecated after C++20 (hence the -Wno-);
-# check here first when LLVM_WINDOWS_VERSION moves.
+# Every sub-build seeds from $ENV{CXXFLAGS}; -fdelayed-template-parsing is deprecated past C++20, so check it on an LLVM bump.
 $env:CXXFLAGS = (@($env:CXXFLAGS, (Get-WarningNoiseSuppressionFlags), '-fdelayed-template-parsing', '-Wno-delayed-template-parsing-in-cxx20', '-isystem C:/temp/winshims', '-DNOMINMAX', '-DNOGDI', '-include unistd.h', '-D_USE_MATH_DEFINES') | Where-Object { $_ }) -join ' '
 Write-Host "Set CXXFLAGS (delayed template parsing + dlfcn/unistd/alloca shim + NOMINMAX/NOGDI + force-include unistd.h) for CMake sub-builds: $env:CXXFLAGS"
 
-# CCC_OVERRIDE_OPTIONS edits clang's command line: delete -fPIC (hard error on windows-msvc,
-# hardcoded under `if(NOT MSVC)` branches) and gemmlowp's WIN32-gated cl.exe flags. Only `x`
-# (delete) edits are safe -- a `+` append also hits the .rc resource compiler.
+# Deletes -fPIC and gemmlowp's cl.exe flags from clang's command line; only `x` edits, as `+` also hits the .rc compiler.
 $env:CCC_OVERRIDE_OPTIONS = '#x-fPIC x/bigobj x/nologo x/EHsc x/GF x/MP x/Gm- x/wd4800 x/wd4805 x/wd4244'
 Write-Host "Set CCC_OVERRIDE_OPTIONS to strip -fPIC + gemmlowp MSVC flags from clang++ (windows-msvc target rejects them)"
 
@@ -194,16 +176,14 @@ Write-Host "Set CCC_OVERRIDE_OPTIONS to strip -fPIC + gemmlowp MSVC flags from c
 
 #region Phase 5 | Source tree & CMake winfix patches (clang-cl/lld-link port)
 Switch-BuildPhase '5a. Source tree + dependency-pin bumps (absl/litert)'
-# Upstream typo: minja's real option is MINJA_EXAMPLE_ENABLED, so its examples stay ON and
-# fail its global -Werror. \b leaves the correct spelling alone (idempotent).
+# Upstream typo leaves minja's examples on to fail its -Werror; \b keeps the fix idempotent.
 $fetchContentCmake = Join-Path $SourceDir 'cmake\modules\fetch_content.cmake'
 [void](Edit-SourceFile -Path $fetchContentCmake -Description 'fetch_content.cmake: MINJA_EXAMPLE_ENABLE -> MINJA_EXAMPLE_ENABLED (disable minja example programs)' -Transform {
     param($c)
     $c -replace 'MINJA_EXAMPLE_ENABLE\b', 'MINJA_EXAMPLE_ENABLED'
 })
 
-# Upstream's cmake proto list still enumerates only the v0.13-era protos while 0.15.0 sources
-# include four newer ones (their cmake lane is not CI-covered at this tag).
+# Upstream's cmake proto list is stale (that lane has no CI) and misses four protos the sources include.
 $llmPkgCmake = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
 [void](Edit-SourceFile -Path $llmPkgCmake -Marker 'embedding_metadata\.proto' -Description 'litert_lm CMakeLists: add the four 0.15.0 protos missing from the stale cmake list' -WarnMessage 'litert_lm proto-list anchor (token.proto) not found; embedding_metadata.pb.h will be missing at compile' -Transform {
     param($c)
@@ -216,8 +196,7 @@ $llmPkgCmake = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
     $c.Replace($llmAnchor, $llmAdd)
 })
 
-# Upstream's absl pin (20260107.1) predates absl/status/status_macros.h, which 0.15.0's own
-# sources include -- bump it to the repo-wide ABSEIL_VERSION. Scope: absl_external only.
+# Upstream's absl pin predates the status_macros.h its sources include; bump absl_external to ABSEIL_VERSION.
 $abslPkgCmake = Join-Path $SourceDir 'cmake\packages\absl\absl.cmake'
 $abseilPin = Get-SourceBuildVersion -EnvironmentVariables @('ABSEIL_VERSION') -DefaultValue '20260817.0'
 $abseilPinMarker = [regex]::Escape($abseilPin)
@@ -226,17 +205,14 @@ $abseilPinMarker = [regex]::Escape($abseilPin)
     $c -replace '(GIT_TAG\s*\r?\n\s*)20260107\.1', ('${1}' + $abseilPin)
 })
 
-# #129 exemption: the SHAs below are PATCH ANCHORS correcting upstream's stale cmake pin to
-# upstream's own bazel-WORKSPACE truth, not our version policy -- deliberately not
-# versions.env keys. Their pin predates the litert APIs 0.15.0's own executors call.
+# Patch anchors, not versions.env pins: upstream's stale cmake SHA corrected to its own bazel WORKSPACE.
 $litertPkgCmake = Join-Path $SourceDir 'cmake\packages\litert\litert.cmake'
 [void](Edit-SourceFile -Path $litertPkgCmake -Marker '3cb830ad9c94f9922f0a88dd431b005413628919' -Description 'litert.cmake: bump stale upstream litert pin fb16353a -> 3cb830ad (bazel WORKSPACE truth; SetEnableYNNPack/RunAsync APIs)' -WarnMessage 'litert.cmake GIT_TAG anchor fb16353a not found; executor API-skew compile errors will follow' -Transform {
     param($c)
     $c -replace 'fb16353a648922cb6c67a8e9a7a9ebc946360ad2', '3cb830ad9c94f9922f0a88dd431b005413628919'
 })
 
-# LITERTLM_HOST_FLATC points at a cross-compile prebuild flatc that a native build never makes
-# (and without .exe), so force FLATC_EXECUTABLE to the one flatbuffers_external installs.
+# LITERTLM_HOST_FLATC names a cross prebuild flatc a native build never makes; use flatbuffers_external's.
 $flatbuffersCmake = Join-Path $SourceDir 'cmake\packages\flatbuffers\flatbuffers.cmake'
 [void](Edit-SourceFile -Path $flatbuffersCmake -Marker 'native win flatc' -Description 'flatbuffers.cmake: force native flatc.exe for compile_schemas (WIN32)' -Transform {
     param($c)
@@ -250,9 +226,7 @@ $flatbuffersCmake = Join-Path $SourceDir 'cmake\packages\flatbuffers\flatbuffers
     $c.Replace($anchor, $inject + $anchor)
 })
 
-# The superbuild does not forward CMAKE_BUILD_TYPE to the inner litert_lm EP, so it lands in
-# Debug, where the debug STL makes protobuf's constinit empty-string non-constant-initializable.
-# Anchored on HOST_FLATC_BIN_DIR, which is unique to that block.
+# The inner EP defaults to Debug, whose STL breaks protobuf's constinit empty string; anchored on the unique flatc arg.
 $superCmake = Join-Path $SourceDir 'CMakeLists.txt'
 [void](Edit-SourceFile -Path $superCmake -Marker 'force-release-buildtype' -Description 'CMakeLists.txt: force inner litert_lm CMAKE_BUILD_TYPE=Release' -Transform {
     param($c)
@@ -262,15 +236,13 @@ $superCmake = Join-Path $SourceDir 'CMakeLists.txt'
 })
 
 Switch-BuildPhase '5b. externals: protobuf / sentencepiece / tokenizers'
-# protoc-gen-upb/-upbdefs fail to link under clang++/lld-link (unresolved abseil) and nothing
-# invokes them -- neutralise protobuf's include(upb_generators.cmake). libupb.a is built apart.
+# protoc-gen-upb/-upbdefs fail to link (abseil) and nothing runs them; libupb.a is built separately.
 $protobufPatcher = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf_patcher.cmake'
 $upbPatch = Get-Content -Raw (Join-Path $scriptAssetRoot 'patches\litert-lm\protobuf-upb-generators-skip.cmake')
 [void](Add-FileBlockOnce -Path $protobufPatcher -Marker 'LiteRTLM-winfix upb_generators' -Content $upbPatch `
         -Description 'protobuf_patcher.cmake: skip protoc-gen-upb/-upbdefs tools (unused, abseil link failure)')
 
-# protobuf's own protoc.exe fails the same abseil link and is redundant (codegen uses the host
-# protoc), so use protobuf's WITH_PROTOC lever to import it and skip BUILD_PROTOC_BINARIES.
+# protobuf's protoc.exe fails the same link and codegen uses the host one: import that via WITH_PROTOC.
 $protobufPkg = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf.cmake'
 [void](Edit-SourceFile -Path $protobufPkg -Marker 'WITH_PROTOC' -Description 'protobuf.cmake: -DWITH_PROTOC=host protoc (skip building protoc.exe; abseil link failure)' -WarnMessage 'protobuf.cmake anchor for WITH_PROTOC not found; protoc.exe may still build' -Transform {
     param($c)
@@ -279,16 +251,13 @@ $protobufPkg = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf.cmake'
     $c.Replace($anchor, $repl)
 })
 
-# sentencepiece's `if(NOT MSVC)` branch is taken (clang's compiler id is Clang) and adds -fPIC,
-# a hard error on windows-msvc. Grafted onto its patcher, which rewrites src/CMakeLists.txt.
+# clang takes sentencepiece's `if(NOT MSVC)` branch and its -fPIC, an error on windows-msvc.
 $spPatcher = Join-Path $SourceDir 'cmake\packages\sentencepiece\sentencepiece_patcher.cmake'
 $spPatch = Get-Content -Raw (Join-Path $scriptAssetRoot 'patches\litert-lm\sentencepiece-winfix.cmake')
 [void](Add-FileBlockOnce -Path $spPatcher -Marker 'LiteRTLM-winfix sentencepiece-fpic' -Content $spPatch `
         -Description 'sentencepiece_patcher.cmake: strip -fPIC + skip spm CLI tools (windows-msvc/abseil link)')
 
-# tokenizers-cpp on Windows: its custom CONFIGURE_COMMAND has no -G (default VS generator uses
-# CL.exe and rejects the clang flags) and defaults BUILD_COMMAND to `make`; and rustc emits
-# MSVC-named tokenizers_c.lib where its CMakeLists expects libtokenizers_c.a.
+# tokenizers-cpp's configure has no -G (the VS default uses CL.exe), builds with `make`, and expects a GNU-named rust lib.
 $tokenizersCmake = Join-Path $SourceDir 'cmake\packages\tokenizers\tokenizers.cmake'
 if ((Test-Path $tokenizersCmake) -and ((Get-Content -Raw $tokenizersCmake) -notmatch '<BINARY_DIR> -GNinja')) {
     $tk = [System.IO.File]::ReadAllText($tokenizersCmake)
@@ -319,8 +288,7 @@ if ((Test-Path $tokenizersCmake) -and ((Get-Content -Raw $tokenizersCmake) -notm
     }
 }
 
-# TFLite's own profiling/proto/CMakeLists already generates these protos, so litert-lm's second
-# generate_protobuf collides ("multiple rules generate ...") and duplicates symbols at link.
+# TFLite already generates these protos, so a second generate_protobuf collides in ninja and at link.
 $tfliteShims = Join-Path $SourceDir 'cmake\packages\tflite\tflite_shims.cmake'
 [void](Edit-SourceFile -Path $tfliteShims -Marker 'LiteRTLM-winfix tflite-profiling-proto' -Description 'tflite_shims.cmake: drop redundant tflite_profiling proto gen + exclude Android-only atrace_profiler.cc' -WarnMessage 'tflite_shims.cmake generate_protobuf(tflite_profiling) anchor not found' -Transform {
     param($c)
@@ -338,17 +306,14 @@ set_source_files_properties(${PROFILING_SRCS} PROPERTIES OBJECT_DEPENDS "${CMAKE
     $c.Replace('EXCLUDE REGEX "_test\\.cc$"', 'EXCLUDE REGEX "(_test|atrace_profiler)\\.cc$"')
 })
 
-# clang++ applies the MSVC unqualified-friend extension, binding model_building.h's `friend
-# class Helper/Tensor;` to an OUTER namespace; local forward declarations restore lookup. Runs
-# from the patcher because the EP's PATCH_COMMAND git-resets the tree first.
+# clang++'s MSVC friend extension binds model_building.h's friends to an outer namespace; via the patcher, as the EP git-resets.
 $tflitePatcher = Join-Path $SourceDir 'cmake\packages\tflite\tflite_patcher.cmake'
 $mbPatch = Get-Content -Raw (Join-Path $scriptAssetRoot 'patches\litert-lm\tflite-model-building-friend.cmake')
 [void](Add-FileBlockOnce -Path $tflitePatcher -Marker 'LiteRTLM-winfix model_building-friend' -Content $mbPatch -Encoding ASCII `
         -Description 'tflite_patcher.cmake: model_building.h friend forward-declarations')
 
 Switch-BuildPhase '5c. litert core winfixes (POSIX->Win32 narrowing)'
-# litert's global CXX flags -isystem tflite/absl/protobuf but not flatbuffers, so the Qualcomm
-# plugin's "flatbuffers/flexbuffers.h" is not found.
+# litert's CXX flags miss the flatbuffers include the Qualcomm plugin's flexbuffers.h needs.
 $litertCmake = Join-Path $SourceDir 'cmake\packages\litert\litert.cmake'
 [void](Edit-SourceFile -Path $litertCmake -Marker '-isystem \$\{FLATBUFFERS_INCLUDE_DIR\}' -Description 'litert.cmake: add flatbuffers install include to litert CXX flags' -WarnMessage 'litert.cmake CXX flags anchor not found; flexbuffers.h may be missing' -Transform {
     param($c)
@@ -356,9 +321,7 @@ $litertCmake = Join-Path $SourceDir 'cmake\packages\litert\litert.cmake'
     $c.Replace($lcAnchor, '-isystem ${PROTOBUF_INSTALL_PREFIX}/include -isystem ${FLATBUFFERS_INCLUDE_DIR} -w"')
 })
 
-# dynamic_loading.cc is POSIX-written: std::filesystem::path is WIDE on Windows, so its
-# access()/push_back/helper uses need .string(). Runs from the patcher, whose PATCH_COMMAND
-# git-resets the tree before any earlier edit would survive.
+# std::filesystem::path is wide on Windows, so dynamic_loading.cc needs .string(); via the patcher, as the EP git-resets.
 $litertPatcher = Join-Path $SourceDir 'cmake\packages\litert\litert_patcher.cmake'
 $dlPatch = Get-Content -Raw (Join-Path $scriptAssetRoot 'patches\litert-lm\litert-patcher-winfix.cmake')
 # Print what THIS container read: makes stale-bind vs. non-execution decidable from the log.
@@ -366,8 +329,7 @@ Write-Host ("litert-patcher-winfix.cmake read: {0} chars; examples REMOVE_RECURS
 [void](Add-FileBlockOnce -Path $litertPatcher -Marker 'LiteRTLM-winfix dynamic-loading' -Content $dlPatch -Encoding ASCII `
         -Description 'litert_patcher.cmake: dynamic_loading.cc std::filesystem::path narrowing')
 
-# litert::GpuOptions::SetWeightCacheFd is POSIX-only (raw fd) and GPU is off on this lane, so
-# guard just that call. Top-level litert-lm repo -> patch the source directly.
+# SetWeightCacheFd takes a POSIX fd and GPU is off here; this repo's own source, so patched directly.
 $execUtils = Join-Path $SourceDir 'runtime\executor\litert_compiled_model_executor_utils.cc'
 [void](Edit-SourceFile -Path $execUtils -Marker 'LiteRTLM-winfix.*SetWeightCacheFd' -Description 'litert_compiled_model_executor_utils.cc: guard SetWeightCacheFd on Windows' -WarnMessage 'SetWeightCacheFd anchor not found in executor utils' -Transform {
     param($c)
@@ -376,8 +338,7 @@ $execUtils = Join-Path $SourceDir 'runtime\executor\litert_compiled_model_execut
     $c.Replace($euAnchor, $euRepl)
 })
 
-# Same for GpuOptions/RuntimeOptions setters the Windows litert build does not expose. The
-# `\([^;]*\);` regex spans the multi-line call ([^;] matches newlines in .NET).
+# Setters the Windows litert build lacks; [^;] spans the multi-line call, as it matches newlines in .NET.
 $settingsUtils = Join-Path $SourceDir 'runtime\executor\llm_executor_settings_utils.cc'
 [void](Edit-SourceFile -Path $settingsUtils -Marker 'LiteRTLM-winfix' -Description 'llm_executor_settings_utils.cc: guard Windows-absent GpuOptions/RuntimeOptions setters' -Transform {
     param($su)
@@ -391,8 +352,7 @@ $settingsUtils = Join-Path $SourceDir 'runtime\executor\llm_executor_settings_ut
     $su
 })
 
-# The NPU executor is dead on Windows and litert::SimpleTensor's quantization API is absent
-# there; guarding the blocks (not the calls) leaves the params at their non-quantized defaults.
+# Guarding whole blocks, not calls, leaves the params non-quantized; the NPU executor is dead on Windows anyway.
 $npuExec = Join-Path $SourceDir 'runtime\executor\llm_litert_npu_compiled_model_executor.cc'
 [void](Edit-SourceFile -Path $npuExec -Marker 'LiteRTLM-winfix' -Description 'llm_litert_npu_compiled_model_executor.cc: guard Windows-absent SimpleTensor quantization API' -Transform {
     param($ne)
@@ -409,8 +369,7 @@ $npuExec = Join-Path $SourceDir 'runtime\executor\llm_litert_npu_compiled_model_
     $ne
 })
 
-# GoogleTensorOptions' perf-mode setter and enum are absent from the Windows litert build
-# (Qualcomm's equivalent is present). Guard the whole block so the bound reference stays used.
+# The Windows litert build lacks GoogleTensorOptions' perf mode; guard the whole block so no bound reference dangles.
 Get-ChildItem (Join-Path $SourceDir 'runtime\executor') -Filter '*_litert_compiled_model_executor.cc' -ErrorAction SilentlyContinue | ForEach-Object {
     $gtFile = $_.FullName
     $gtRaw = Get-Content -Raw $gtFile
@@ -424,14 +383,11 @@ Get-ChildItem (Join-Path $SourceDir 'runtime\executor') -Filter '*_litert_compil
     }
 }
 
-# The OSS export stripped session_basic/session_factory/engine_impl (headers too, so nothing
-# references them) and left the real engine, engine_advanced_impl.cc, wired into no target.
-# The generator globs runtime/*.cc, so every referenced file must exist before configure.
+# The OSS export stripped three sources the CMake still names and wired the real engine into no target.
 $coreCmake = Join-Path $SourceDir 'runtime\core\CMakeLists.txt'
 [void](Edit-SourceFile -Path $coreCmake -Marker 'LiteRTLM-winfix' -Description 'runtime/core/CMakeLists.txt: point runtime_core_engine_impl at engine_advanced_impl.cc' -Transform {
     param($c)
-    # The space before STATIC disambiguates from the ..._cpu_only target, whose name shares this
-    # prefix; compiling the engine into both would double-define the class and its registrar.
+    # ' STATIC' excludes the _cpu_only target sharing this prefix; the engine in both would double-define.
     [regex]::Replace($c,
         '(runtime_core_engine_impl STATIC\s+)engine_impl\.cc',
         '${1}engine_advanced_impl.cc  # [LiteRTLM-winfix] engine_impl.cc stripped from OSS; real engine is engine_advanced_impl.cc')
@@ -457,13 +413,10 @@ namespace litert::lm::winfix_${tag}_placeholder {}
     }
 }
 
-# Bazel-vs-CMake export gap: cpu_affinity_utils.cc is a Bazel target but no CMakeLists lists it,
-# so the symbols the header-only engine_factory.h calls are never compiled.
+# Sources only Bazel lists (cpu_affinity_utils.cc and others) go into the engine lib, which litert_lm_main links.
 $engineCmake = Join-Path $SourceDir 'runtime\engine\CMakeLists.txt'
 [void](Edit-SourceFile -Path $engineCmake -Marker 'LiteRTLM-winfix cpu_affinity' -Description 'runtime/engine/CMakeLists.txt: compile cpu_affinity_utils.cc + 6 orphan sources into runtime_engine_litert_lm_lib' -Transform {
     param($c)
-    # Same gap for a batch of other in-tree sources listed in NO CMakeLists. The engine lib carries
-    # the broad LITERTLM_DEPS + include paths and is in the aggregate litert_lm_main links.
     [regex]::Replace($c,
         '(add_litertlm_library\(runtime_engine_litert_lm_lib STATIC\s+litert_lm_lib\.cc)',
         "`$1`n  cpu_affinity_utils.cc  # [LiteRTLM-winfix cpu_affinity] compiled by Bazel but omitted from the CMake target`n  ../conversation/channel_util.cc  # [LiteRTLM-winfix orphans]`n  ../components/preprocessor/image_preprocessor_utils.cc`n  ../conversation/model_data_processor/fastvlm_data_processor.cc`n  ../conversation/model_data_processor/gemma4_data_processor.cc`n  ../util/litert_util.cc`n  ../components/constrained_decoding/llg_tool_call_utils.cc`n  ../components/model_resources_streaming.cc`n  ../core/session_advanced.cc`n  ../executor/litert/kv_cache.cc`n  ../executor/llm_litert_npu_compiled_model_executor_utils.cc`n  ../framework/execution_queue.cc`n  ../framework/resource_management/context_handler/context_handler.cc`n  ../framework/resource_management/resource_manager.cc`n  ../framework/resource_management/serial_execution_manager.cc`n  ../framework/resource_management/threaded_execution_manager.cc`n  ../framework/resource_management/utils/resource_manager_utils.cc`n  ../util/data_stream.cc`n  ../util/file_data_stream.cc`n  ../util/litert_lm_streaming_loader.cc`n  ../util/log_tensor_buffer.cc")
@@ -477,8 +430,7 @@ if ($engineBridged -ne $engineTxt) {
 }
 
 Switch-BuildPhase '5d. runtime CMake retargets (engine/util/logger winfixes)'
-# The litert core pinned by litert-lm has no EnvironmentOptions::Tag::kMinLoggerSeverity (the
-# litert-lm tree is ahead of its own dependency); the block only pushes an optional env option.
+# The pinned litert core lacks Tag::kMinLoggerSeverity, and the block only pushes an optional env option.
 foreach ($rel in @('runtime\util\litert_util.cc', 'runtime\framework\resource_management\resource_manager.cc')) {
     # Edit-SourceFile, not a raw write: a raw write logs "Patched" on a no-op match.
     [void](Edit-SourceFile -Path (Join-Path $SourceDir $rel) `
@@ -492,16 +444,13 @@ foreach ($rel in @('runtime\util\litert_util.cc', 'runtime\framework\resource_ma
         })
 }
 
-# rust std's windows-msvc #[link] directives are lost when the staticlib is linked through the
-# C++ driver, and neither target_link_libraries nor LINKER:/DEFAULTLIB reaches litert_lm_main's
-# assembled link spec. #pragma comment(lib) in a source that IS linked does reach lld-link.
+# rust std's #[link] libs are lost through the C++ driver and CMake cannot reach the link spec; #pragma comment(lib) can.
 $cpuAffCc = Join-Path $SourceDir 'runtime\engine\cpu_affinity_utils.cc'
 $pragmaBlock = Get-Content -Raw (Join-Path $scriptAssetRoot 'patches\litert-lm\cpu-affinity-rust-syslibs.cc')
 [void](Add-FileBlockOnce -Path $cpuAffCc -Marker 'LiteRTLM-winfix rust-syslibs' -Content $pragmaBlock -Prepend `
         -Description 'cpu_affinity_utils.cc: #pragma comment(lib) rust-std windows system libs into litert_lm_main')
 
-# re2's EP passes no CMAKE_BUILD_TYPE -> no NDEBUG -> _ITERATOR_DEBUG_LEVEL=2 against the
-# Release rest, which lld-link's /failifmismatch rejects.
+# re2's EP passes no build type, so its _ITERATOR_DEBUG_LEVEL=2 fails lld-link's /failifmismatch.
 $re2Cmake = Join-Path $SourceDir 'cmake\packages\re2\re2.cmake'
 [void](Edit-SourceFile -Path $re2Cmake -Marker 'LiteRTLM-winfix re2-idl' -Description 're2.cmake: force Release/NDEBUG + dynamic CRT (fix _ITERATOR_DEBUG_LEVEL mismatch)' -Transform {
     param($c)
@@ -509,8 +458,7 @@ $re2Cmake = Join-Path $SourceDir 'cmake\packages\re2\re2.cmake'
     $c.Replace('CMAKE_ARGS', $inject)
 })
 
-# ANTLR's WITH_STATIC_CRT defaults ON (/MT) while everything else uses the dynamic CRT --
-# lld-link's /failifmismatch rejects the mix at the final link.
+# ANTLR defaults to the static CRT, which lld-link's /failifmismatch rejects next to the dynamic rest.
 $fetchContent = Join-Path $SourceDir 'cmake\modules\fetch_content.cmake'
 [void](Edit-SourceFile -Path $fetchContent -Marker 'LiteRTLM-winfix WITH_STATIC_CRT' -Description 'fetch_content.cmake: force antlr WITH_STATIC_CRT OFF (dynamic CRT to match)' -Transform {
     param($c)
@@ -520,9 +468,7 @@ $fetchContent = Join-Path $SourceDir 'cmake\modules\fetch_content.cmake'
   set(WITH_STATIC_CRT OFF CACHE BOOL "" FORCE)  # [LiteRTLM-winfix WITH_STATIC_CRT] match the dynamic CRT (/MD) of the rest; avoids lld-link /failifmismatch')
 })
 
-# Upstream branches the link spec on compiler-id, so clang++ takes the GNU branch -- but lld-link
-# SILENTLY IGNORES --whole-archive/--start-group, leaving abseil's circular deps and the
-# force-included aggregates unresolved. Route Windows to the MSVC /WHOLEARCHIVE branch.
+# clang++ takes the GNU link branch, whose --whole-archive/--start-group lld-link silently ignores.
 $litertLmPkg = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
 [void](Edit-SourceFile -Path $litertLmPkg -Marker 'LiteRTLM-winfix link-spec' -Description 'litert_lm/CMakeLists.txt: route Windows clang++/lld-link to the MSVC /WHOLEARCHIVE link spec (-Wl, prefixed)' -Transform {
     param($c)
@@ -532,17 +478,13 @@ $litertLmPkg = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
     $c = [regex]::Replace($c,
         'elseif\(MSVC\)(\s*#\s*Windows Linker)',
         'elseif(MSVC OR WIN32)$1')
-    # CMake/Ninja treat a leading-'/' link item as an INPUT FILE, so prefix the MSVC branch's raw
-    # link.exe flags with -Wl, for clang++ to forward them to lld-link.
+    # CMake reads a leading-'/' link item as an input file, so -Wl, forwards these through clang++.
     $c = $c.Replace('set(_LITERTLM_LINK_MULTIDEF "/FORCE:MULTIPLE")', 'set(_LITERTLM_LINK_MULTIDEF "-Wl,/FORCE:MULTIPLE")')
     $c.Replace('set(_LITERTLM_LINK_WHOLE_START "/WHOLEARCHIVE")', 'set(_LITERTLM_LINK_WHOLE_START "-Wl,/WHOLEARCHIVE")')
 })
 
 Switch-BuildPhase '5e. link spec: clean-link + CRT compat + lib aliasing'
-# [LiteRTLM-winfix clean-link] Three defects converge at litert_lm_main's link, all fixed in the
-# CMake target so ninja links in ONE pass: deprecated CRT globals the split UCRT does not export
-# as data, flatbuffers::ClassicLocale::instance_ compiled into no library, and protoc.lib /
-# protobuf-lite.lib carrying __imp_ abseil symbols (emptied PRE_LINK; they are pulled in by path).
+# [LiteRTLM-winfix clean-link] CRT data globals, an uncompiled flatbuffers symbol and __imp_ abseil carriers, fixed for a one-pass link.
 $cleanCml = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
 if ((Test-Path $cleanCml) -and ((Get-Content -Raw $cleanCml) -notmatch 'LiteRTLM-winfix clean-link')) {
     # (a) CRT-compat shim as a real compiled source alongside litert_lm_main.cc
@@ -563,8 +505,7 @@ if ((Test-Path $cleanCml) -and ((Get-Content -Raw $cleanCml) -notmatch 'LiteRTLM
     $winAlts = @('timezone=_timezone', 'daylight=_daylight', 'tzname=_tzname', 'sys_nerr=_sys_nerr', 'sys_errlist=_sys_errlist', 'environ=_environ',
         '__imp_timezone=__imp__timezone', '__imp_daylight=__imp__daylight', '__imp_tzname=__imp__tzname', '__imp_sys_nerr=__imp__sys_nerr', '__imp_sys_errlist=__imp__sys_errlist', '__imp_environ=__imp__environ')
     $altLines = ($winAlts | ForEach-Object { "    `"LINKER:/alternatename:$_`"" }) -join "`n"
-    # Single-quoted and backtick-free: ${CMAKE_BINARY_DIR} must reach the CMakeLists verbatim, and PS
-    # does not re-expand an interpolated variable's contents (a backtick would leak into the path).
+    # Single-quoted, no backtick: ${CMAKE_BINARY_DIR} must reach CMake verbatim, and PS will not re-expand it.
     $protoLibDir = '${CMAKE_BINARY_DIR}/external/protobuf/install/lib'
     $fbUtil = '${CMAKE_BINARY_DIR}/external/flatbuffers/src/flatbuffers_external/src/util.cpp'
     $fbInc = '${CMAKE_BINARY_DIR}/external/flatbuffers/install/include'
@@ -626,23 +567,19 @@ endif()
     Write-Host 'Patched litert_lm/CMakeLists.txt [clean-link]: crtcompat + flatbuffers util sources, CRT alternatenames, PRE_LINK protoc/protobuf-lite neutralize'
 }
 
-# abseil's EP builds MSVC-named absl_<name>.lib but the target maps hardcode GNU libabsl_<name>.a
-# -- the .a stub sweep then fills those with EMPTY archives, so abseil contributes zero objects.
+# The target maps name GNU libabsl_*.a, which the stub sweep fills with empty archives; the real libs are absl_*.lib.
 foreach ($abslCmakeRel in @('cmake\packages\absl\absl_import_static_lib.cmake', 'cmake\packages\absl\absl_target_map.cmake')) {
     [void](Invoke-InlineRegexPatch -Path (Join-Path $SourceDir $abslCmakeRel) `
             -Pattern 'libabsl_([A-Za-z0-9_]+)\.a' -Replacement 'absl_$1.lib' -Guard 'libabsl_[A-Za-z0-9_]+\.a' `
             -Description "$abslCmakeRel : libabsl_*.a -> absl_*.lib (point at the real MSVC abseil libs)")
 }
 
-# Same MSVC-naming mismatch for protobuf: the target map references lib<name>.a, which the sweep
-# leaves as empty stubs, so google::protobuf:: symbols vanish at link.
+# The same naming mismatch for protobuf, whose symbols would otherwise vanish at link.
 [void](Invoke-InlineRegexPatch -Path (Join-Path $SourceDir 'cmake\packages\protobuf\protobuf_target_map.cmake') `
         -Pattern '/lib([a-z0-9_-]+)\.a' -Replacement '/$1.lib' -Guard '/lib[a-z0-9_-]+\.a' `
         -Description 'protobuf_target_map.cmake : /lib*.a -> /*.lib (point at the real MSVC protobuf libs)')
 
-# Same story for the rust cxx-bridge libs: the aggregate expects lib*.a but rustc/clang-cl emit
-# *.lib, and find_and_copy_cxxbridge.cmake stages only libcxxbridge1.a. Byte-for-byte copies under
-# the GNU names are enough -- lld-link reads them despite the .a extension.
+# The rust cxx-bridge libs come out as *.lib where lib*.a is expected; copies under the GNU names suffice for lld-link.
 $findCopy = Get-ChildItem $SourceDir -Recurse -Filter 'find_and_copy_cxxbridge.cmake' -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $findCopy) {
     Write-Warning 'find_and_copy_cxxbridge.cmake not found under the source tree -- rust cxx-bridge libs will NOT be staged as lib*.a (expect undefined rust::cxxbridge1 symbols at the litert_lm_main link)'
@@ -651,8 +588,7 @@ if (-not $findCopy) {
     Write-Host 'Patched find_and_copy_cxxbridge.cmake: stage rust litert_lm_deps.lib + litertlm_cxx_bridge.lib as lib*.a'
 }
 
-# protobuf's EP defaults to protobuf_MSVC_STATIC_RUNTIME=ON (/MT); now that those libs are actually
-# linked (post-rename), /failifmismatch rejects them against the /MD rest.
+# protobuf's EP defaults to the static CRT, which /failifmismatch rejects once those libs really link.
 $protoCmake = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf.cmake'
 [void](Edit-SourceFile -Path $protoCmake -Marker 'protobuf_MSVC_STATIC_RUNTIME' -Description 'protobuf.cmake: force protobuf dynamic CRT (protobuf_MSVC_STATIC_RUNTIME=OFF)' -Transform {
     param($pc)
@@ -661,8 +597,7 @@ $protoCmake = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf.cmake'
         "-Dprotobuf_BUILD_TESTS=OFF`n        -Dprotobuf_MSVC_STATIC_RUNTIME=OFF`n        -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL  # [LiteRTLM-winfix] dynamic CRT to match the rest (lld-link /failifmismatch)")
 })
 
-# runtime_util_logging is INTERFACE, but logging.cc defines a non-inline SetMinLogSeverity ->
-# undefined at link. STATIC needs its usage-requirements on that compile: INTERFACE -> PUBLIC.
+# An INTERFACE runtime_util_logging never compiles logging.cc's SetMinLogSeverity; STATIC with PUBLIC requirements does.
 $utilCmake = Join-Path $SourceDir 'runtime\util\CMakeLists.txt'
 if ((Test-Path $utilCmake) -and ((Get-Content -Raw $utilCmake) -match 'add_litertlm_library\(runtime_util_logging INTERFACE\)')) {
     $uc = [System.IO.File]::ReadAllText($utilCmake)
@@ -682,8 +617,7 @@ $cdCmake = Join-Path $SourceDir 'runtime\components\constrained_decoding\CMakeLi
         "`$1`n  llg_fc_tool_calls.cc`n  llg_python_tool_calls.cc")
 })
 
-# Same GNU-vs-MSVC lib-name mismatch across the litert (32 libs), sentencepiece, tflite, re2,
-# tokenizers and flatbuffers target maps. The regex only ever matches lib*.a paths.
+# The same lib-name mismatch across the remaining target maps.
 foreach ($rel in @(
         'cmake\packages\litert\litert_target_map.cmake',
         'cmake\packages\sentencepiece\sentencepiece_target_map.cmake',
@@ -750,8 +684,7 @@ $ninja = (Get-Command ninja.exe -ErrorAction Stop).Source
 
 Write-Host 'Running ExternalProject steps 1-4 (mkdir/download/update/patch)...'
 & $ninja -C $buildDir litert_lm/stamps/litert_lm-mkdir litert_lm/stamps/litert_lm-download litert_lm/stamps/litert_lm-update litert_lm/stamps/litert_lm-patch 2>&1
-# Warning, not throw, ONLY because the configure gate below is a hard throw and ninja re-drives
-# any failed earlier stamp.
+# Only a warning: ninja re-drives a failed stamp, and the configure gate below throws.
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: mkdir/download/update/patch step exited $LASTEXITCODE (the configure gate below will fail if this was real)" }
 
 Write-Host 'Running ExternalProject step 5 (configure)...'
@@ -764,16 +697,13 @@ if ($LASTEXITCODE -ne 0) {
 $buildNinjaFile = Join-Path $litertBuildDir 'build.ninja'
 $stubCount = 0
 $stubFailCount = 0
-# The PATHS, not just the tally: a count alone cannot be matched to lld-link's later
-# "could not open <path>".
+# Paths, not a tally, so they match lld-link's later "could not open <path>".
 $stubFailedPaths = [System.Collections.Generic.List[string]]::new()
 if (Test-Path $buildNinjaFile) {
     Get-Content $buildNinjaFile | ForEach-Object {
         [regex]::Matches($_, "[\x27""]?([^\x27""\s]+\.(?:a|lib))[\x27""]?") | ForEach-Object {
             $aRel = $_.Groups[1].Value
-            # Stub only libs referenced WITH a directory component: a bare filename is a system lib
-            # resolved via LIB (kernel32.lib), except the known bare special-cases. Stubbing our own
-            # ninja-built libs is harmless -- step 6 relinks over them.
+            # A bare name is a system lib found via LIB, bar the known cases; stubbing our own libs is harmless.
             $hasDir = $aRel -match '[\\/]'
             $isAllowedBare = ($aRel -match '\.a$') -or ($aRel -match '(?:tokenizers_c|absl_[A-Za-z0-9_]+|protobuf(?:-lite)?|protoc|upb|utf8_validity|litert_[A-Za-z0-9_]+|sentencepiece(?:_train)?|tensorflow-lite|tflite_profiling)\.lib$')
             if (-not $hasDir -and -not $isAllowedBare) { return }
@@ -807,9 +737,7 @@ if (Test-Path $buildNinjaFile) {
 
 Write-Host 'Running ExternalProject step 6 (build)...'
 & $ninja -C $buildDir litert_lm/stamps/litert_lm-build 2>&1
-# 32 parallel clang processes opening the same bundled header can storm into Windows
-# ACCESS_DENIED; ninja redoes only failed TUs, so a calm -j8 retry self-heals lock storms while
-# a real compile error still fails all three passes.
+# Parallel clangs on one header can storm into ACCESS_DENIED; a -j8 retry heals that, a real error fails all passes.
 $ninjaRetries = 0
 while ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 101 -and $ninjaRetries -lt 2) {
     $ninjaRetries++
@@ -823,9 +751,7 @@ Write-Host "Build step completed with exit code: $LASTEXITCODE"
 
 #region Phase 8 | Stage litert_lm_main.exe + smoke test + restore vcpkg headers
 Switch-BuildPhase '8. Stage litert_lm_main.exe + smoke test + restore vcpkg headers'
-# --- litert_lm_main.exe: ninja links it cleanly in one pass -------------------------------------
-# Stage the exe + its runtime DLLs so it runs standalone: the source tree is wiped below unless
-# LITERTLM_KEEP_BUILD_TREE is set.
+# Stage the exe and its runtime DLLs to run standalone: the tree is wiped below unless LITERTLM_KEEP_BUILD_TREE.
 $mainExe = Join-Path $litertBuildDir 'litert_lm_main.exe'
 if (Test-Path $mainExe) {
     # clang/lld warnings on stderr must not trip EAP=Stop; success is decided by Test-Path.
@@ -844,8 +770,7 @@ if (Test-Path $mainExe) {
             Write-Host "staged prebuilt runtime DLL: $($dll.Name)"
         }
     }
-    # Without these the exe dies 0xC0000135: vcpkg zlib is the dynamic triplet and upstream fetches
-    # kissfft with KISS_FFT_SHARED. The kissfft copy MUST precede Remove-SourceBuildTree.
+    # vcpkg's zlib and upstream's kissfft are DLLs, or the exe dies 0xC0000135; copy before the tree is removed.
     foreach ($rt in @(
             (Join-Path $vcpkgInstalledX64 'bin\z.dll'),
             (Join-Path $buildDir 'litert_lm\build\_deps\kissfft_lib-build\kissfft-float.dll'))) {
@@ -870,8 +795,7 @@ if (Test-Path $mainExe) {
     }
     $vcpkgBin = Join-Path $vcpkgInstalledX64 'bin'
     if (Test-Path $vcpkgBin) { Copy-Item (Join-Path $vcpkgBin '*.dll') $binOut -Force -ErrorAction SilentlyContinue }
-    # Co-locate any REAL imported DLL built inside the tree (kissfft-float.dll, z.dll, ...). api-ms-win-*
-    # are UCRT API-set forwarders (virtual, loader-resolved to ucrtbase.dll -- never physical files) -> skip.
+    # Co-locate every real imported DLL built in the tree; api-ms-win-* are virtual API-set forwarders.
     $readobj = (Get-Command llvm-readobj.exe -ErrorAction SilentlyContinue).Source
     if ($readobj) {
         $imps = & $readobj --coff-imports $mainExe 2>$null | Select-String 'Name:' | ForEach-Object { ($_ -replace '.*Name:\s*', '').Trim() } | Where-Object { $_ -match '\.dll$' } | Sort-Object -Unique
@@ -887,9 +811,7 @@ if (Test-Path $mainExe) {
         if ($missing) { Write-Host ("  STILL-MISSING DLLs (not found anywhere): " + ($missing -join ', ')) }
     }
     $env:PATH = "$binOut;$env:PATH"
-    # Smoke-RUN, not just exist: catches a missing DLL (0xC0000135) and the abseil flag ODR abort at
-    # static init, neither of which a file-existence check sees. Initialize the flag BEFORE the
-    # classification -- only the BROKEN branches assign it, and the gate reads it under StrictMode.
+    # Run it: a missing DLL or abseil's flag ODR abort shows only at start; the flag is set first for StrictMode.
     $script:litertLmRuntimeBroken = $false
     $smokeExe  = Join-Path $binOut 'litert_lm_main.exe'
     $smokeOut  = & cmd /c "`"$smokeExe`" --help 2>&1"
@@ -917,17 +839,13 @@ elseif ($env:LITERTLM_KEEP_BUILD_TREE) {
     Write-Host "WARNING: ninja did not produce litert_lm_main.exe -- continuing under LITERTLM_KEEP_BUILD_TREE for diagnostics"
 }
 else {
-    # Hard gate: a media-litert image without litert_lm_main.exe is silently degraded, and the
-    # merge/final stages would ship it.
+    # Without the exe the image is silently degraded, and the merge would ship it.
     throw "ninja did not produce litert_lm_main.exe (configure or link failed above). Set LITERTLM_KEEP_BUILD_TREE=1 to keep the tree + dump link diagnostics."
 }
-# ----------------------------------------------------------------------------------------------
 
 Write-Host 'Installing...'
 & cmake --install $buildDir --config Release 2>&1
-# The exit code alone proves nothing: this install has exited 0 while writing ZERO files here.
-# DORMANT PATH -- the chain builds LiteRT-LM via Build-LitertLmBazel.ps1, whose INSTALLED
-# marker carries the live contract guard; keep the two in sync.
+# The exit code proves nothing, as this install has exited 0 writing no file; Build-LitertLmBazel.ps1 holds the live guard.
 $installedNow = @(Get-ChildItem -LiteralPath $litertLmInstallDir -Recurse -File -ErrorAction SilentlyContinue)
 Write-Host ("cmake --install left {0} file(s) in {1}: {2}" -f $installedNow.Count, $litertLmInstallDir,
     (@($installedNow | ForEach-Object { $_.Directory.Name } | Sort-Object -Unique) -join ', '))
@@ -949,13 +867,12 @@ else { Remove-SourceBuildTree -Path $SourceDir }
 #endregion
 
 } catch {
-    # #109: name the failing phase before the throw reaches the chain wrapper.
+    # Name the failing phase before the throw reaches the chain wrapper.
     Complete-CurrentBuildPhase -ErrorRecord $_
     Write-BuildPhaseSummary -Label 'litert-lm'
     throw
 } finally {
-    # Restore the Phase 2 snapshot. A $null value must REMOVE the variable:
-    # SetEnvironmentVariable($null) from PS leaves it defined-EMPTY, which a child sees as SET.
+    # $null removes the variable: SetEnvironmentVariable($null) leaves it defined-empty for children.
     foreach ($envName in @($litertLmEnvSnapshot.Keys)) {
         if ($null -eq $litertLmEnvSnapshot[$envName]) { Remove-Item -Path "Env:$envName" -ErrorAction SilentlyContinue }
         else { [Environment]::SetEnvironmentVariable($envName, $litertLmEnvSnapshot[$envName]) }
@@ -965,7 +882,6 @@ else { Remove-SourceBuildTree -Path $SourceDir }
 Complete-CurrentBuildPhase
 Write-BuildPhaseSummary -Label 'litert-lm'
 Write-Host '=== LiteRT-LM source build completed ==='
-# Explicit success: pwsh -File otherwise propagates the LAST native exit code (a cleanup rmdir
-# exiting 145 has failed a green build). Every real failure above throws, so this line IS success.
+# pwsh -File would otherwise return the last native exit code, and every real failure above throws.
 exit 0
 

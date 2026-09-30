@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Bash twin of Sync-SharedConfig.ps1. Same two manifests, same verdicts, same
-# output lines, same exit codes - 0 in sync, 1 MISSING or DRIFTED, 2 broken
-# input. It exists because none of the hub's Linux images ship pwsh, so the
-# PowerShell script can only ever run on Windows or a hosted runner.
-#
-# See README.md next to this file for the manifest format and the WHY.
+# Bash twin of Sync-SharedConfig.ps1 for the pwsh-less Linux images: exit 0 in sync, 1 MISSING/DRIFTED, 2 broken input.
 
 set -euo pipefail
 
@@ -15,8 +9,7 @@ _SSC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _SSC_REGISTRY="${_SSC_DIR}/shared-assets.manifest"
 _SSC_HUB_ROOT="$(cd "${_SSC_DIR}/../.." && pwd)"
 _SSC_LEGACY_NAMES=(.clang-format .clang-tidy .cmake-format.yaml gcovr.cfg .pre-commit-config.yaml)
-# bash 5.3 does not apply ANSI-C quoting to a $'..' that sits inside a ${x%..}
-# inside an array-element assignment, so the CR has to live in a variable.
+# bash 5.3 skips ANSI-C quoting for $'..' inside ${x%..} in an array assignment, so the CR lives here.
 _SSC_CR=$'\r'
 
 declare -a SSC_IDS=()
@@ -55,8 +48,7 @@ _ssc_contains() {
     return 1
 }
 
-# Split a ';'-separated knob field into SSC_KNOB_LIST. No word splitting and no
-# globbing: a knob prefix is a literal such as `: "${KATAGLYPHIS_...:=`.
+# Split a ';'-separated knob field into SSC_KNOB_LIST without word splitting or globbing.
 _ssc_split_knobs() {
     local rest="$1" part
     SSC_KNOB_LIST=()
@@ -98,10 +90,7 @@ ssc_load_registry() {
     done
 }
 
-# A missing CANONICAL file is a defect in THIS repo and has to say so loudly,
-# or --check blames the CONSUMER for a file that is actually missing here.
-# Scoped to what the consumer DECLARED: an asset nobody takes is nobody's
-# failure, which is the same rule this script applies on the consumer side.
+# A missing canonical file for a declared asset is this repo's defect, not the consumer's.
 ssc_assert_canonical_present() {
     local id
     for id in "${SSC_DECL_ID[@]}"; do
@@ -137,8 +126,7 @@ _ssc_read_lines() {
     while IFS= read -r line || [ -n "$line" ]; do
         SSC_LINES+=("${line%"${_SSC_CR}"}")
     done <"$path"
-    # Trailing blank lines are dropped so a file with and without a final
-    # newline compare equal - the PowerShell twin's TrimEnd does the same.
+    # Drop trailing blank lines, as the PowerShell twin's TrimEnd does.
     while [ ${#SSC_LINES[@]} -gt 0 ] && [ -z "${SSC_LINES[-1]}" ]; do
         unset 'SSC_LINES[-1]'
     done
@@ -165,8 +153,7 @@ _ssc_first_code_line() {
     printf '%s' "$first"
 }
 
-# The text the gate actually compares, into SSC_CMP. Line endings normalised; in
-# 'body' mode the leading prose is dropped and knob lines are masked.
+# The compared text into SSC_CMP: line endings normalised; in 'body' mode leading prose dropped, knobs masked.
 ssc_comparable() {
     local path="$1" mode="$2" first=0 i joined="" started=0
     _ssc_split_knobs "$3"
@@ -234,9 +221,7 @@ ssc_expand_ignore() {
     done
 }
 
-# --write is a verbatim copy, so it only serves 'exact' assets. Splicing a
-# canonical body under a consumer's own header while keeping its knob values is
-# a merge, not a copy; getting that silently wrong would defeat this gate.
+# A verbatim copy, so body-mode assets (a merge under the consumer's header) refuse.
 ssc_write_copy() {
     local id="$1" local_rel="$2" canonical="$3" target="$4"
     if [ "${SSC_MODE[$id]}" = body ]; then

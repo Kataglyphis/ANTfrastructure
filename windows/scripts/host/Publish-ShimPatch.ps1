@@ -1,29 +1,16 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Installs a locally built containerd-shim over the one Stevedore ships, keeps a
-# timestamped backup, and can set env vars on the containerd service (the shim
-# inherits them). EVERY Stevedore/containerd update overwrites the patched
-# binary and brings back hcsshim::ExportLayer 0x3, so this runs repeatedly.
-#
-# On a successful swap it records the binary's SHA256 to
-# C:\ProgramData\kataglyphis\shim-patch.json, which is what Assert-ShimPatch and
-# Test-HostSetup.ps1 compare against. -Restore .orig CLEARS that record.
-#
-# Admin shell, never during a build; refuses both unless -Force. Modes, examples
-# and how to verify the result: docs/windows-host-setup.md § Phase R.
+# Re-run after every Stevedore/containerd update, which overwrites the patched shim: see docs/windows-host-setup.md § Phase R
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
-    # The newly built shim binary to install. Required unless -ReportOnly or
-    # -Restore is used.
+    # The newly built shim binary; required unless -ReportOnly or -Restore.
     [string]$ShimPath = '',
 
     # Where the live binary sits. Stevedore's default install location.
     [string]$InstallPath = "$env:ProgramFiles\Stevedore\bin\containerd-shim-runhcs-v1.exe",
 
-    # Environment entries ('NAME=value') to set on -EnvironmentService. Existing
-    # entries are preserved; entries with the same name are replaced.
+    # 'NAME=value' entries for -EnvironmentService; same-name entries are replaced, others kept.
     [string[]]$ServiceEnvironment = @(),
 
     # The service whose environment the shim inherits.
@@ -35,20 +22,13 @@ param(
     # Processes whose presence means a build is live.
     [string[]]$BlockingProcess = @('buildctl'),
 
-    # Restore a previously kept binary instead of installing a new one. Give the
-    # backup's suffix, e.g. '.orig' (stock) or '.45min'. Use -ReportOnly to list.
+    # Suffix of a kept backup to restore instead, e.g. '.orig' (stock); -ReportOnly lists them.
     [string]$Restore = '',
 
     # Report installed binary, backups and service environment, then exit.
     [switch]$ReportOnly,
 
-    # Record the CURRENTLY installed binary's SHA256 as the expected patched
-    # hash, without stopping services or replacing anything. For the common case
-    # where the patched shim is already deployed (from before the gate existed)
-    # and only the bookkeeping is missing - a full re-deploy just to write a hash
-    # would cost a services restart and a build window for nothing. Refuses when
-    # the live binary matches the .orig stock backup, because recording THAT
-    # would teach the gate to accept an unpatched shim. Needs no elevation.
+    # Record the installed binary's SHA256 as the patched hash without a swap; refuses the stock binary.
     [switch]$RecordCurrent,
 
     # Skip the live-build and live-shim guards.
@@ -61,20 +41,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $repoRoot = Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
-# Test-Elevated, the boolean half of the admin gate, for -ReportOnly below.
-# Two lines on purpose: this prologue is a reviewed twin of Optimize-HostVhdx's
-# (code-dupes.allow), so a verbatim third copy would grow that block.
+# Two lines, not Optimize-HostVhdx's one: a verbatim copy would grow the reviewed code-dupes block.
 $sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
 Import-Module $sharedModulePath -Force
 $hostLog = New-HostMaintenanceLog -Name 'deploy-shim-patch' -RepoRoot $repoRoot -LogPath $LogPath
 $LogPath = $hostLog.LogPath
-# Thin local wrappers so the existing call sites keep their signature.
+# Script-scope wrappers: they close over $hostLog, which a module function could not see.
 function Write-Step { param([string]$Message, [string]$Color = 'Gray') Write-HostStep $hostLog $Message $Color }
 function Save-Transcript { Save-HostMaintenanceLog $hostLog }
 
@@ -99,8 +75,7 @@ function Show-State {
         Write-Step 'backup    : none'
     }
 
-    # The hash the BK-lane gate (Assert-ShimPatch) checks against, and whether
-    # the live binary still matches it — the question -ReportOnly is run to answer.
+    # Whether the live binary still matches the hash Assert-ShimPatch checks.
     try {
         Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
         $statePath = Get-ShimPatchStatePath
@@ -119,9 +94,7 @@ function Show-State {
     }
 
     try {
-        # -Name + SilentlyContinue: an absent Environment value is a normal
-        # state (stock containerd), not an error - a bare .Environment read
-        # throws under StrictMode and used to spam this report.
+        # Stock containerd has no Environment value, and a bare .Environment read throws under StrictMode.
         $current = (Get-ItemProperty -Path $svcKey -Name Environment -ErrorAction SilentlyContinue)
         if ($current -and $current.Environment) {
             foreach ($e in $current.Environment) { Write-Step "env       : $e" }
@@ -207,11 +180,7 @@ if (-not $PSCmdlet.ShouldProcess($InstallPath, "stop [$($Service -join ', ')], r
 
 $stopped = Stop-HostServices -Log $hostLog -Service $Service
 
-# --- swap --------------------------------------------------------------------
-#
-# The backup is timestamped so repeated deployments never silently discard the
-# binary that was working. .orig is left alone once it exists - it is the only
-# copy of the untouched stock shim.
+# --- swap (timestamped backups; .orig, the only stock copy, is never overwritten) ---
 
 $swapped = $false
 try {
@@ -232,27 +201,12 @@ try {
     Write-Step ('SWAP ERROR: {0}' -f $_.Exception.Message) 'Red'
 }
 
-# --- record what was installed ------------------------------------------------
-#
-# Assert-ShimPatch (WindowsBuildDriver.Common, the BK lane's preflight gate) used
-# to identify the patched shim by FILE SIZE, which rots every time hcsshim moves
-# and degrades to a warning exactly when something has changed. Recording the
-# SHA256 here makes the gate exact and self-maintaining: the expected hash is
-# whatever THIS script last installed, so a Stevedore update overwriting the
-# binary is a hard, unambiguous failure instead of a shrug. Matches how every
-# other downloaded input in this repo is pinned.
-#
-# Best-effort: a build gate losing its bookkeeping must never fail a swap that
-# already succeeded — the gate falls back to the size heuristic.
+# --- record the hash Assert-ShimPatch checks (best-effort: it must never fail a swap that succeeded) ---
 if ($swapped) {
     try {
         Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
         $stockBackup = "$InstallPath.orig"
-        # `-Restore .orig` puts the STOCK binary back. Recording that as "the
-        # deployed patch" would teach the gate to wave the un-patched shim
-        # through — the exact failure it exists to catch. Clear the state
-        # instead, so the gate falls back to the size heuristic, which knows
-        # stock is a hard failure.
+        # Recording a restored stock binary would teach the gate to pass it; clearing falls back to the size check.
         $isStock = (Test-Path $stockBackup) -and
             ((Get-FileHash -Algorithm SHA256 -Path $InstallPath).Hash -eq (Get-FileHash -Algorithm SHA256 -Path $stockBackup).Hash)
         if ($isStock) {
@@ -276,13 +230,7 @@ if ($swapped) {
 if ($swapped -and $ServiceEnvironment.Count -gt 0) {
     Write-Step "--- setting environment on $EnvironmentService ---"
     try {
-        # A service that never had an Environment value (containerd on a stock
-        # install) returns an object WITHOUT the property, and under StrictMode
-        # a bare .Environment read then throws - which made the FIRST-ever env
-        # deploy fail after the binary swap (measured 2026-09-01). Probe the
-        # value explicitly and treat "absent" as an empty list.
-        # NOT `$existing = if (...) { } else { @() }` - an if-expression yielding
-        # @() assigns $null, not an empty array (measured trap).
+        # Absent Environment reads as an empty list; not an if-expression, whose @() branch assigns $null.
         $prop = Get-ItemProperty -Path $svcKey -Name Environment -ErrorAction SilentlyContinue
         $existing = @()
         if ($prop) { $existing = @($prop.Environment) }

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# The python-ci drivers' default interpreters: ci_tests.sh's legs and ci_build_docs.sh's coverage version are the
-# image's CPython (versions.env PYTHON_VERSION). docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+# The python-ci drivers default to the image's CPython; see docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

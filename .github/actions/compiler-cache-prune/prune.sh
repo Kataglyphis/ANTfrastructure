@@ -1,14 +1,5 @@
 #!/usr/bin/env bash
-# Deletes a compiler-cache key's entries that older runs saved on this ref, so the key keeps
-# one entry. GitHub's own clean-up evicts the least recently used entry of the whole
-# repository once it passes its quota, whatever key that entry serves, so the entries one
-# key leaves behind would push out another key's only one. A newer run's entry stays, and so
-# does every other ref's. Never fails the job: without `actions: write` it warns.
-#
-# Called by compiler-cache-prune and, before it saves, by compiler-cache-save.
-# In: CACHE_KEY, GH_TOKEN, RUN_ID, RUN_ATTEMPT, GITHUB_REPOSITORY, GITHUB_REF, GITHUB_OUTPUT,
-# and REQUIRE_SAVED=1 to delete only once this run's own entry exists (a job after the save:
-# a build that never saved must not leave the key empty).
+# Keeps one entry per cache key on this ref: GitHub's repo-wide LRU eviction would otherwise push out another key's only entry.
 set -euo pipefail
 
 prefix="compiler-cache-${CACHE_KEY}-"

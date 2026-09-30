@@ -1,8 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Smoke §19 (G3): the ort-sys/ort crate env windows/Dockerfile bakes names the chain ORT, on every lane.
-# NOT covered: a real cargo build (ort-sys's own build.rs semantics are cited, not executed here).
+
+# Smoke §19: the ort-sys crate env windows/Dockerfile bakes must name the chain ORT on every lane; no cargo build.
 using namespace System.Management.Automation.Language
 
 $script:CrateSmoke = Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-Container.ps1'

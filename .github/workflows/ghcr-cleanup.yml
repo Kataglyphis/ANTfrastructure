@@ -1,41 +1,4 @@
-# .github/workflows/ghcr-cleanup.yml
-# Weekly prune of stale ghcr package versions.
-#
-# Until 2026-09-08 this was 217 lines of inline actions/github-script
-# JavaScript, and linux/host-config/ghcr-prune-package.sh was the SAME safety
-# model written a second time in bash: keep every tagged version, keep every
-# digest referenced as a child of a kept manifest index (resolved live against
-# ghcr.io/v2, because the Packages REST API exposes version metadata but not
-# manifest CONTENTS, and the contents are what say which untagged children a tag
-# still needs), keep anything younger than an age guard, and abort the whole
-# delete loop if any manifest cannot be resolved. Both headers even cite the
-# same incident. One of the two was dead in CI and the other was untested
-# against a real prune; this collapses them onto the script.
-#
-# WHAT CHANGED BEHAVIOURALLY, deliberately, and in the safer direction each time:
-#
-#   * tag retention: the JS kept the newest THREE versions per tag; the script
-#     keeps EVERY tagged version.
-#   * failed deletes: the JS called core.warning() and the job stayed GREEN.
-#     The script exits 1 if any delete failed. That was a suppressed failure and
-#     it is gone.
-#   * before each delete the script re-reads the version and skips it if a tag
-#     has landed on that digest since the snapshot, or if it cannot re-read it
-#     at all (fail-closed). The JS had no such check.
-#   * the JS kept the 500 newest UNTAGGED versions as a blunt buffer for
-#     multi-arch children. The script does not, because it resolves those
-#     children exactly, per tag, and refuses to proceed if any tag's manifest is
-#     unreadable. It additionally refuses a run whose candidate set is the whole
-#     package or more than 95% of it - the keep-set-collapse guard.
-#   * KEEP_DAYS is set to 14 below rather than left at the script's default of
-#     7, so the push-in-flight guard stays exactly as wide as the JS's
-#     minAgeDays.
-#
-# CREDENTIAL: this needs a PAT with read:packages + delete:packages. The package
-# lives in a USER namespace, and the /user/packages endpoints the script uses
-# answer for the authenticated USER - the Actions GITHUB_TOKEN is not one, so
-# the old `secrets.GHCR_TOKEN || github.token` fallback could only ever have
-# produced a confusing 404. It is now GHCR_TOKEN or a loud failure.
+# GHCR_TOKEN must be a PAT with read:packages and delete:packages: /user/packages answers only for a user, which GITHUB_TOKEN is not.
 name: GHCR · cleanup
 
 on:
@@ -58,16 +21,10 @@ jobs:
         with:
           fetch-depth: 1
 
-      # curl + python3 only; no jq, no daemon, no image. That is why this job
-      # stays on the hosted runner rather than in :latest - see the
-      # workflow header in sbom.yml for the same reasoning about registry-only
-      # jobs.
+      # Needs only curl and python3, so it runs on the hosted runner, not in the image.
       - name: Prune stale package versions
         env:
-          # GHCR_PRUNE_CONFIRM=1 is what turns the script's default DRY RUN into
-          # a real delete. Spelled here, in the only place that should ever do
-          # it, so a local run of the same script still prints a plan instead of
-          # deleting.
+          # The only place that confirms the delete; a local run of the script stays a dry run.
           GHCR_PRUNE_CONFIRM: "1"
           KEEP_DAYS: "14"
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}

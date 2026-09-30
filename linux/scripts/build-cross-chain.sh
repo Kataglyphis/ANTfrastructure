@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build-cross-chain.sh — full cross lane with digest-pinned stage handoff.
-# Why: docs/linux-cross-builds.md#recommended-digest-pinned-orchestrator-build-cross-chainsh
+# Full cross lane with digest-pinned stage handoff. docs/linux-cross-builds.md#recommended-digest-pinned-orchestrator-build-cross-chainsh
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -11,25 +10,16 @@ source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
 orchestrator_preamble
 
 FINAL_IMAGE="${FINAL_IMAGE:-$(cross_final_image_tag)}"
-# Set by --final-image so _chain_resolve_final_image can tell "user chose this"
-# from "still the default" — comparing against the default string cannot.
+# Set by --final-image: comparing against the default string cannot tell a chosen default apart.
 FINAL_IMAGE_SET=0
 TARGET_ARCHES="$(resolve_arch_list)"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
-# The image variant: stage-defs.sh (sourced above) resolved it into
-# CROSS_GPU_VARIANT, built its stage graph and exported the matching
-# ENABLE_NVIDIA / ENABLE_AMD / ENABLE_TENSORRT (tag-naming.sh cross_variant).
-# A GPU wrapper carries the CUDA/ROCm runtime plus the GPU torch wheels: budget
-# the runtime lane for that instead of the CPU image's 120G.
+# A GPU wrapper carries the CUDA/ROCm runtime and GPU torch wheels, so budget more than the CPU 120G.
 [ -z "${CROSS_GPU_VARIANT:-}" ] || : "${CROSS_RUNTIME_LANE_GB:=180}"
-# --log-dir "" opts out of per-stage logs; chain-status.json is unaffected.
-# A variant logs under its own directory: the stage log names (media-arm64.log)
-# are the same in every chain, and the per-run archiving would move the default
-# chain's history.
+# A variant logs apart: stage log names repeat across chains, and archiving would move the default's history.
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/out/build-logs${CROSS_GPU_VARIANT:+/${CROSS_GPU_VARIANT}}}"
 
-# A variant chain starts at its gpu stage: base, compiler and sdk are SHARED
-# with the default chain and only that chain may re-push them.
+# A variant starts at gpu: base, compiler and sdk are shared, and only the default chain re-pushes them.
 FROM_STAGE="base"
 [ -z "${CROSS_GPU_VARIANT:-}" ] || FROM_STAGE="gpu"
 TO_STAGE="runtime"
@@ -46,8 +36,7 @@ _stage_parallel_allowed() {
   return 1
 }
 
-# Digest reference pins captured during this run; declared by
-# cross_stage_init_pins() from the stage graph, accessed via nameref.
+# This run's digest pins, declared from the stage graph and read via nameref.
 cross_stage_init_pins
 
 declare -A STAGE_INDEX=()
@@ -72,7 +61,7 @@ stage_enabled() {
   [ "${idx}" -ge "${FROM_STAGE_IDX}" ] && [ "${idx}" -le "${TO_STAGE_IDX}" ]
 }
 
-# ── usage ──
+# Usage
 
 usage() {
   cat <<'EOF'
@@ -152,7 +141,7 @@ Notes:
 EOF
 }
 
-# ── runtime stage helpers ──
+# Runtime stage helpers
 
 # Delegates to build-runtime-manifest.sh for per-arch wrapper images + manifest.
 run_runtime_stage() {
@@ -166,15 +155,11 @@ run_runtime_stage() {
     return 0
   fi
 
-  # B2: refuse a lane that cannot fit, before hours are spent on it. § 3.2
-  # A refusal here is a stage FAILURE, not a silent stop: without this the
-  # status file keeps claiming the runtime stage is still running.
+  # A refusal is a stage failure, or the status file keeps claiming the runtime stage is running.
   _chain_runtime_lane_disk_gate || { _chain_status_emit runtime failed; return 1; }
 
   log "[stage runtime] building package/torch/wrapper + manifest ${FINAL_IMAGE}"
-  # C (2026-08-30): under --no-push the android image was exported to
-  # <cross workdir>/android-artifacts/<arch>; hand that to the helper so its
-  # package build copies from THIS image instead of the (stale) registry tag.
+  # Under --no-push, copy from this run's exported android image, not the stale registry tag.
   local _art_root=""
   if [ "${CROSS_NO_PUSH:-0}" = "1" ] && [ -n "${CROSS_CONTEXT_WORKDIR:-}" ]; then
     _art_root="${CROSS_CONTEXT_WORKDIR}/android-artifacts"
@@ -193,14 +178,13 @@ run_runtime_stage() {
   return "${_rt_rc}"
 }
 
-# Avoids function-redefinition race in loops: bash definitions are global, so a
-# redefinition inside the stage loop would race live workers.
+# Defined once: bash functions are global, so redefining one in the stage loop races live workers.
 _cross_per_arch_build() {
   local _arch="$1"
   cross_stage_run "${_CROSS_CURRENT_STAGE}" "${_arch}"
 }
 
-# ── main driver ──
+# Main driver
 
 _chain_extra_arg() {
   case "$1" in
@@ -213,8 +197,7 @@ _chain_extra_arg() {
     --verify-chain) VERIFY_CHAIN_ONLY=1; _OARG_SHIFT=1 ;;
     --describe-chain) DESCRIBE_CHAIN=1; _OARG_SHIFT=1 ;;
     --no-push) CROSS_NO_PUSH=1; export CROSS_NO_PUSH; _OARG_SHIFT=1
-      # Parse-time inform + runtime guard decides: full chains are safe since
-      # 2026-08-30 (local OCI-layout handoff); mid-chain runs are still refused.
+      # Inform only; _chain_no_push_guard decides at run time.
       log "--no-push: full chains use the local OCI-layout stage handoff; mid-chain runs (--from-stage after base) are refused unless CROSS_NO_PUSH_FORCE=1." ;;
     --no-verify-ancestry) CROSS_VERIFY_ANCESTRY=0; _OARG_SHIFT=1 ;;
     *) return 1 ;;
@@ -223,8 +206,7 @@ _chain_extra_arg() {
 
 _chain_parse_args() {
   ONLY_STAGE=""
-  # --push is inert here (every cross stage is ALWAYS pushed; --no-push is the
-  # real toggle) — warn instead of letting it sink silently.
+  # --push is inert (every stage is pushed; --no-push is the toggle), so warn about it.
   ORCHESTRATOR_UNSUPPORTED_FLAGS="--push"
   run_orchestrator_arg_loop usage _chain_extra_arg \
     TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
@@ -239,8 +221,7 @@ _chain_parse_args() {
 
 _chain_resolve_final_image() {
   cd "${REPO_ROOT}"
-  # The default was computed from the default IMAGE_REPO, so --image-repo must
-  # recompute it; an explicit --final-image always wins.
+  # The default came from the default IMAGE_REPO; an explicit --final-image always wins.
   if [ "${FINAL_IMAGE_SET}" -eq 0 ]; then
     FINAL_IMAGE="$(cross_final_image_tag)"
   fi
@@ -282,15 +263,13 @@ _chain_validate_stages() {
   fi
 }
 
-# Refuse to resume on a stale ancestor: digest pinning only makes a SINGLE run
-# consistent (docs/linux-cross-builds.md, "stale-base propagation").
+# Digest pinning only makes a single run consistent, so refuse to resume on a stale ancestor.
 _chain_assert_ancestry() {
   if [ "${CROSS_VERIFY_ANCESTRY:-1}" != "1" ]; then
     log "ancestry verification disabled (CROSS_VERIFY_ANCESTRY=0)"
     return 0
   fi
-  # Nothing to check against: local-only runs never consult the registry, and a
-  # dry run builds nothing.
+  # Local-only runs never consult the registry, and a dry run builds nothing.
   if [ "${CROSS_NO_PUSH:-0}" = "1" ]; then
     return 0
   fi
@@ -301,14 +280,7 @@ _chain_assert_ancestry() {
     || err "Stale ancestor — refusing to build on it (see the [ancestry] lines above). Restart from the oldest stage reported, or set CROSS_VERIFY_ANCESTRY=0 to accept it."
 }
 
-# --no-push multi-stage guard: BuildKit's OCI worker resolves FROM against the
-# registry, not the local store. Since 2026-08-30 the chain carries its own
-# OCI-layout handoff (cross-stage-build.sh: every stage built locally is
-# exported and handed to the child as --build-context <tag>=oci-layout://<dir>,
-# and android is additionally exported for the runtime lane), so a FULL chain
-# (from base) is safe and allowed. A run resuming mid-chain (--from-stage after
-# base) still refuses: the parent prefix was not built this run, so the FROM
-# would resolve against the registry again. Escape hatch: CROSS_NO_PUSH_FORCE=1.
+# BuildKit resolves FROM against the registry; a mid-chain --no-push resume has no local parent.
 _chain_no_push_guard() {
   [ "${CROSS_NO_PUSH:-0}" = "1" ] || return 0
   is_dry_run && return 0
@@ -325,18 +297,13 @@ _chain_no_push_guard() {
   fi
 }
 
-# chain-status.json: atomic tmp+mv at each stage start/ok/fail. Pinned to REPO
-# ROOT, NOT LOG_DIR — readers (docs/build-watch-list.md, the backlog) look for it
-# there, and a LOG_DIR-relative path would leave the repo-root copy frozen at the
-# last run's "ok". Gitignored since 2026-09-15; the writer is unchanged.
+# chain-status.json lives at the repo root, not LOG_DIR: readers look there.
 declare -A _CHAIN_STATUS=()
 _chain_status_emit() {
   local stage="$1" status="$2"
   _CHAIN_STATUS["${stage}"]="${status}"
   local out="${CROSS_CHAIN_STATUS_FILE:-${REPO_ROOT:-.}/chain-status${CROSS_GPU_VARIANT:+-${CROSS_GPU_VARIANT}}.json}" tmp
-  # A bare filename has no "/" to strip, so ${out%/*} would expand to the
-  # filename itself and the -d test would silently reject every write. Treat a
-  # path with no directory component as "the current directory".
+  # A bare filename survives ${out%/*} unchanged, so treat it as the current directory.
   local out_dir="${out%/*}"
   [ "${out_dir}" = "${out}" ] && out_dir="."
   [ -d "${out_dir}" ] || return 0
@@ -358,8 +325,7 @@ _chain_status_emit() {
       sep=','
     done
     printf '\n  },\n'
-    # B3: only present when a runtime failure recorded them, so a green run's
-    # file stays byte-identical for existing consumers.
+    # Only after a runtime failure, so a green run's file stays byte-identical for consumers.
     if [ -n "${_CHAIN_ARCH_OUTCOMES:-}" ]; then
       printf '  "arch_outcomes": {%s},\n' "$(chain_status_kv_json "${_CHAIN_ARCH_OUTCOMES}")"
     fi
@@ -378,8 +344,7 @@ _chain_run_build_loop() {
   local stage
   for stage in "${CROSS_STAGE_ORDER[@]}"; do
     stage_enabled "${stage}" || continue
-    # Explicit `|| err` on every stage: set -e is unreliable here (the per-arch
-    # path runs under run_parallel_arch_loop's `if !`) and a failure MUST abort.
+    # Explicit || err per stage: set -e is off under run_parallel_arch_loop's `if !`.
     _chain_status_emit "${stage}" "running"
     case "${stage}" in
       runtime)
@@ -404,8 +369,7 @@ _chain_run_build_loop() {
         ;;
     esac
     _chain_status_emit "${stage}" "ok"
-    # Reclaim regenerable cache between stages if the host is running low, so the
-    # next (heavier) stage doesn't ENOSPC. No-op above CROSS_DISK_GUARD_GB free.
+    # Reclaim cache before the next stage hits ENOSPC; no-op above CROSS_DISK_GUARD_GB free.
     _chain_stage_disk_guard "${stage}"
   done
 }
@@ -413,27 +377,23 @@ _chain_run_build_loop() {
 # Fail-fast disk preflight. FORCE_LOW_DISK=1 downgrades; DISK_PREFLIGHT=0 skips.
 _chain_disk_preflight() {
   [ "${DISK_PREFLIGHT:-1}" = "1" ] || return 0
-  # The runtime stage also fills RUNTIME_CONTEXT_ROOT (tens of GB) — measure that
-  # filesystem too when it differs, so both growth points are guarded.
+  # The runtime stage also fills RUNTIME_CONTEXT_ROOT, so measure that filesystem too.
   local rt_root="${RUNTIME_CONTEXT_ROOT:-${XDG_CACHE_HOME:-${HOME:-/root}/.cache}/opencode/runtime-build-contexts}"
   local rt_free_gb
   rt_free_gb="$(_disk_guard_free_gb "${rt_root}")"
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local free_gb n_arch per_arch need_gb bc_gb free_now trimmed
-  # Measure the cache dir's OWN filesystem (see _disk_guard_free_gb) — using the
-  # parent dir silently reads the wrong device when the cache is its own mount.
+  # The cache dir's own filesystem: its parent is the wrong device when the cache is a mount.
   free_gb="$(_disk_guard_free_gb "${bc_dir}")"
   [ -n "${free_gb}" ] || free_gb="$(_disk_guard_free_gb /)"
   [ -n "${free_gb}" ] || return 0
   n_arch="$(arch_list_to_words "${TARGET_ARCHES}" | wc -w)"; [ "${n_arch}" -ge 1 ] || n_arch=1
   case "${FROM_STAGE}" in base|compiler|sdk|gpu) per_arch=60 ;; *) per_arch=40 ;; esac
   need_gb=$(( n_arch * per_arch )); [ "${need_gb}" -ge 60 ] || need_gb=60
-  # `|| true`: `du` on a never-built host exits non-zero and pipefail + set -e
-  # aborted the orchestrator here with no diagnostic. The size is advisory.
+  # || true: du fails on a never-built host, and the size is only advisory.
   bc_gb="$(du -sBG "${bc_dir}" 2>/dev/null | cut -f1 | tr -dc '0-9' || true)"
 
-  # The sizing above does NOT cover the runtime lane's own transient cost.
-  # Advisory here; _chain_runtime_lane_disk_gate enforces it. § 3.2
+  # The runtime lane's transient cost: advisory here, _chain_runtime_lane_disk_gate enforces it.
   local rt_lane_gb combined
   if stage_enabled runtime; then
     rt_lane_gb="$(_chain_runtime_lane_need_gb)"
@@ -445,8 +405,7 @@ _chain_disk_preflight() {
 
   if [ "${free_gb}" -lt "${need_gb}" ]; then
     log "DISK PREFLIGHT: ${free_gb}G free < ~${need_gb}G recommended (${n_arch} arch(es), from-stage ${FROM_STAGE})."
-    # D4 trim: LAST RESORT only. It runs after FORCE_LOW_DISK and after the
-    # dry-run guard, and keeps the newest slugs. docs/build-cache-tiers.md
+    # Trim is the last resort, after FORCE_LOW_DISK and the dry-run guard (docs/build-cache-tiers.md).
     free_now="${free_gb}"
     if [ "${FORCE_LOW_DISK:-0}" = "1" ]; then
       log "  FORCE_LOW_DISK=1 — continuing on the warm cache, not trimming it (ENOSPC risk accepted)."
@@ -474,8 +433,7 @@ _chain_disk_preflight() {
     log "disk preflight OK: ${free_gb}G free (>= ~${need_gb}G for ${n_arch} arch from-stage ${FROM_STAGE})."
   fi
 
-  # Runtime-context filesystem, only when it differs from the cache dir's: ~30G
-  # per arch of rootfs + OCI layout during the runtime stage.
+  # ~30G per arch of rootfs + OCI layout on the runtime-context filesystem.
   if [ -n "${rt_free_gb}" ] && [ "${rt_free_gb}" != "${free_gb}" ]; then
     local rt_need=$(( n_arch * 30 ))
     if [ "${rt_free_gb}" -lt "${rt_need}" ]; then
@@ -484,11 +442,9 @@ _chain_disk_preflight() {
   fi
 }
 
-# Between-stage disk safety valve: the local --cache-to export is the ONLY
-# regenerable mid-run space. Policy and knobs: docs/build-cache-tiers.md.
+# Disk guard: the --cache-to export is the only regenerable mid-run space (docs/build-cache-tiers.md).
 
-# Pure helpers (_disk_guard_pick_victim, _disk_guard_protected_slugs) live in
-# 01-core/disk-guard.sh so linux/scripts/tests can unit-test them.
+# Pure helpers live in disk-guard.sh so the tests can unit-test them.
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/disk-guard.sh"
 
@@ -496,8 +452,7 @@ source "${REPO_ROOT}/linux/scripts/01-core/disk-guard.sh"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/chain-lifecycle.sh"
 
-# Is the runtime lane the very next ENABLED stage? Its entry gate refuses below
-# ~120G, which the between-stage guard's 40G default cannot deliver in time.
+# The runtime lane refuses below ~120G, which the 40G between-stage default reaches too late.
 _chain_runtime_lane_is_next() {
   local completed="${1:-}" s seen=0
 
@@ -515,12 +470,7 @@ _chain_runtime_lane_is_next() {
   return 1
 }
 
-# ONE eviction pass over the cache-export slugs, for both halves of the guard:
-# free-space-driven and total-cap-driven. $2 and $6 are variable NAMES the pass
-# updates in place -- an undeletable slug has to JOIN the protected list or it
-# stays the LRU pick and the loop spins for the rest of the run, and the number
-# is an out-variable because this function logs on stdout.
-# _chain_evict_slugs <bc_dir> <protected_var> <measure_fn> <keep_going_fn> <limit> <number_var>
+# <bc_dir> <protected_var> <measure_fn> <keep_going_fn> <limit> <number_var>; undeletable slugs join protected or the loop spins.
 _chain_evict_slugs() {
   local bc_dir="$1" measure="$3" keep_going="$4" limit="$5"
   local -n _prot_ref="$2"
@@ -541,8 +491,7 @@ _chain_evict_slugs() {
   done
 }
 
-# The numbers and the two "keep going" tests. `|| true`: du on a missing cache
-# dir exits non-zero under pipefail + set -e, and the dir can be absent.
+# || true: du fails on a missing cache dir, which can legitimately be absent.
 _chain_bc_free_gb()  { _disk_guard_free_gb "$1"; }
 _chain_bc_total_gb() { du -s --block-size=1G "$1" 2>/dev/null | cut -f1 || true; }
 _chain_num_below() { [ "$1" -lt "$2" ] && return 0; return 1; }
@@ -555,9 +504,7 @@ _chain_stage_disk_guard() {
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local protected="" victim free_gb
 
-  # Aim at what comes NEXT, not at a fixed floor: reclaiming at 40G before a lane
-  # that refuses below ~120G arrives far too late. It cost six manual prunes on
-  # 2026-09-02. docs/failure-modes.md#the-disk-guard-aims-at-the-wrong-number
+  # Aim at what the next stage needs, not a fixed floor. docs/failure-modes.md#the-disk-guard-aims-at-the-wrong-number
   if _chain_runtime_lane_is_next "${completed_stage}"; then
     _rt_need="$(_chain_runtime_lane_need_gb 2>/dev/null || true)"
     case "${_rt_need}" in
@@ -578,11 +525,7 @@ _chain_stage_disk_guard() {
         _disk_guard_buildkit_fallback "${bc_dir}" "${threshold}"
         free_gb="$(_disk_guard_free_gb "${bc_dir}")"
       fi
-      # DISK3: the image store, which is only safe BETWEEN stages -- here, where
-      # the arch loop for ${completed_stage} has already joined. The stages still
-      # to build keep their tags, and so does the one just completed: it is the
-      # next stage's parent under the local OCI handoff.
-      # docs/build-cache-tiers.md#322-the-image-store-lever-disk3
+      # The image store is safe only between stages. docs/build-cache-tiers.md#322-the-image-store-lever-disk3
       if [ -z "${free_gb}" ] || [ "${free_gb}" -lt "${threshold}" ]; then
         _disk_guard_image_store_fallback "${bc_dir}" "${threshold}" \
           "$(_disk_guard_stage_tags "${completed_stage}" 1)" 0
@@ -601,9 +544,7 @@ _chain_stage_disk_guard() {
   local cap_gb="${CROSS_CACHE_MAX_GB:-250}"
   [ "${cap_gb}" -gt 0 ] 2>/dev/null || return 0
   local total_gb
-  # || true: du on a missing cache dir exits non-zero under pipefail + set -e.
-  # The dir can be absent: NO_CACHE=1, a relocated BUILDKIT_CACHE_DIR, or a --only
-  # runtime resume.
+  # || true: the dir is absent under NO_CACHE=1, a relocated cache dir, or a --only runtime resume.
   total_gb="$(du -s --block-size=1G "${bc_dir}" 2>/dev/null | cut -f1 || true)"
   [ -n "${total_gb}" ] && [ "${total_gb}" -gt "${cap_gb}" ] || return 0
   [ -n "${protected}" ] || protected="$(_disk_guard_protected_slugs "${completed_stage}")"
@@ -613,23 +554,19 @@ _chain_stage_disk_guard() {
   log "[disk-guard] cache exports now ${total_gb}G (cap ${cap_gb}G)"
 }
 
-# ── B2: guards that work INSIDE a stage ──────────────────────────────────────
-# The runtime lane is ONE stage, so _chain_stage_disk_guard cannot fire in it.
-# Evidence, numbers and knobs: docs/build-cache-tiers.md § 3.2.
+# In-stage guards: the runtime lane is one stage, so the between-stage guard never fires in it.
 
 _CHAIN_DISK_WATCH_PID=""
 
 # Free-GB the runtime lane needs right now (arch count x concurrency).
 _chain_runtime_lane_need_gb() {
-  # The runtime lane builds arches SERIALLY (runtime_build_chain loops), so
-  # --parallel-archs must not scale this. Peak is ONE wrapper at a time.
+  # The runtime lane builds arches serially, so --parallel-archs must not scale this.
   local n_arch
   n_arch="$(arch_list_to_words "${TARGET_ARCHES}" | wc -w)"
   _disk_guard_runtime_lane_need_gb "${CROSS_RUNTIME_LANE_GB:-120}" "${n_arch}" 0
 }
 
-# Lane-entry gate: refuse the runtime lane when it cannot possibly fit, instead
-# of finding out hours in. FORCE_LOW_DISK / --dry-run precede the trim.
+# Refuse a runtime lane that cannot fit before hours are spent; FORCE_LOW_DISK and --dry-run precede the trim.
 _chain_runtime_lane_disk_gate() {
   [ "${DISK_PREFLIGHT:-1}" = "1" ] || return 0
   case "${CROSS_RUNTIME_LANE_GB:-120}" in ''|*[!0-9]*) return 0 ;; esac
@@ -656,8 +593,7 @@ _chain_runtime_lane_disk_gate() {
   _disk_guard_reclaim_begin
   _disk_guard_trim_cache_export "${bc_dir}" "${need}" "${protected}" "" "${CROSS_TRIM_KEEP_SLUGS:-3}"
   _disk_guard_buildkit_fallback "${bc_dir}" "${need}"
-  # Lane ENTRY: no wrapper build has started, so the image store is reachable
-  # here and nowhere inside the lane. Every stage this run can name is protected.
+  # Before any wrapper build is the only point in the lane where the image store is reachable.
   _disk_guard_image_store_fallback "${bc_dir}" "${need}" "$(_disk_guard_stage_tags '' 1)" 0
   _disk_guard_reclaim_record "runtime-lane-entry" "${free_gb}" "${bc_dir}"
   free_gb="$(_disk_guard_free_gb "${bc_dir}")"
@@ -666,9 +602,7 @@ _chain_runtime_lane_disk_gate() {
   err "runtime lane refused: ${free_gb}G free, ~${need}G needed (${CROSS_RUNTIME_LANE_GB:-120}G per concurrent wrapper build). The 2026-09-01 run entered this lane with 88G and died 28 minutes later with 'no image was built'. Free space, then re-run with --from-stage runtime; or set FORCE_LOW_DISK=1 / CROSS_RUNTIME_LANE_GB=0 to accept the risk."
 }
 
-# Background disk sampler for the duration of ONE stage. Reuses the between-stage
-# threshold and the keep-floor trim, then the filtered buildkit reclaim when that
-# is not enough (DISK1) -- filtered to type==regular, so the cachemounts survive.
+# The buildkit reclaim is filtered to type==regular so the cachemounts survive.
 _chain_disk_watch_start() {
   _CHAIN_DISK_WATCH_PID=""
   [ "${CROSS_DISK_WATCH:-1}" = "1" ] || return 0
@@ -679,8 +613,7 @@ _chain_disk_watch_start() {
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local protected
   protected="$(_disk_guard_protected_slugs '')"
-  # Pass $$ explicitly: inside the backgrounded subshell $PPID is OUR parent, not
-  # us, so the loop's die-with-owner check would watch the wrong process.
+  # Pass $$: in the backgrounded subshell $PPID is our parent, not us.
   _disk_guard_watch_loop "${bc_dir}" "${threshold}" "${secs}" "${protected}" \
     "${CROSS_TRIM_KEEP_SLUGS:-3}" "$$" &
   _CHAIN_DISK_WATCH_PID=$!
@@ -694,15 +627,12 @@ _chain_disk_watch_stop() {
   _CHAIN_DISK_WATCH_PID=""
 }
 
-# ── B3: name what a runtime failure left unverified ──────────────────────────
-# Every gate below sits AFTER build-runtime-manifest.sh's per-arch wrapper loop,
-# so one failed arch skips them all. docs/build-cache-tiers.md § 3.3.
+# Gates after the per-arch wrapper loop, all skipped when one arch fails; see docs/build-cache-tiers.md § 3.3
 _CHAIN_RUNTIME_GATES="wrapper-content-gate,verify-shipped-wrapper,runtime-image-smoke,assert_pinned_versions,manifest-coherence,manifest-completeness,manifest-freshness"
 _CHAIN_ARCH_OUTCOMES=""
 _CHAIN_GATES_NOT_RUN=""
 
-# built-this-run | stale | missing — from the wrapper tag's own run-id stamp,
-# the same provenance the manifest coherence gate reads.
+# built-this-run | stale | missing, from the wrapper tag's run-id stamp like the coherence gate.
 _chain_runtime_arch_state() {
   local arch="$1" rid
   rid="$(ancestry_recorded_run_id "${FINAL_IMAGE}-${arch}" 2>/dev/null || true)"
@@ -711,8 +641,7 @@ _chain_runtime_arch_state() {
   else printf 'stale'; fi
 }
 
-# Sets _CHAIN_ARCH_OUTCOMES / _CHAIN_GATES_NOT_RUN — call it directly, a $(...)
-# subshell would discard both.
+# Sets globals, so call directly; a $(...) subshell would discard them.
 _chain_runtime_failure_report() {
   local arch state outcomes="" absent=""
   for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
@@ -735,17 +664,11 @@ _chain_runtime_failure_report() {
 
 _chain_start_resource_monitor() { start_resource_monitor cross; }
 
-# ── lifecycle: pidfile + signal-driven child reaping ──
-#
-# EXIT/TERM/INT/HUP only — never a RETURN trap (re-arms on caller's return under
-# set -u). Bash defers a trap until a foreground pipeline finishes, so a bare
-# TERM during a non-per-arch stage is queued — stop-cross-chain.sh reaps the
-# child subtree directly (docs/cross-build-verification.md).
+# Lifecycle: never a RETURN trap (re-arms under set -u); bash defers TERM, so stop-cross-chain.sh reaps.
 _CHAIN_PIDFILE=""
 _CHAIN_SIGNAL_HANDLED=0
 
-# PID of a live sibling chain, or empty. Reads the pidfile directly: this is
-# needed BEFORE _chain_write_pidfile runs.
+# Reads the pidfile directly: runs before _chain_write_pidfile.
 _chain_live_sibling_pid() {
   local pf other
   pf="$(cross_chain_pidfile_path)"
@@ -755,16 +678,11 @@ _chain_live_sibling_pid() {
   printf '%s' "${other}"
 }
 
-# ONE chain at a time (owner directive 2026-09-22, "strictly serial"). Chains
-# share the buildkit store, the cache-export dir and the disk guard, and the
-# guard evicts what the RUNNING chain does not protect — a second chain's caches
-# and images included. Read-only modes (--describe-chain / --verify-chain exit
-# in _chain_validate_stages, before this) and dry runs are exempt.
+# One chain at a time: the disk guard evicts whatever the running chain does not protect.
 _chain_refuse_live_sibling() {
   is_dry_run && return 0
   local pf sib; pf="$(cross_chain_pidfile_path)"
-  # The check IS the claim: noclobber makes creating the pidfile atomic, so two
-  # chains started together cannot both pass (a read-then-write-later could).
+  # noclobber makes check-and-claim atomic, so two chains started together cannot both pass.
   if ( set -o noclobber; printf '%s\n' "$$" > "${pf}" ) 2>/dev/null; then
     _CHAIN_PIDFILE="${pf}"; return 0
   fi
@@ -779,8 +697,7 @@ _chain_write_pidfile() {
   _CHAIN_PIDFILE="$(cross_chain_pidfile_path)"
   # Already claimed by _chain_refuse_live_sibling (the non-dry-run path).
   [ "$(cat "${_CHAIN_PIDFILE}" 2>/dev/null || true)" = "$$" ] && return 0
-  # A live SIBLING chain already owns this pidfile: warn (do not clobber its
-  # ownership — the deliberate path to stop it is stop-cross-chain.sh).
+  # Never clobber a live sibling's pidfile; stop-cross-chain.sh is the way to stop it.
   if [ -f "${_CHAIN_PIDFILE}" ]; then
     local other; other="$(cat "${_CHAIN_PIDFILE}" 2>/dev/null || true)"
     if [ -n "${other}" ] && [ "${other}" != "$$" ] && kill -0 "${other}" 2>/dev/null; then
@@ -801,10 +718,7 @@ _chain_remove_pidfile() {
   fi
 }
 
-# EXIT fires on normal completion AND after the signal handler. Pidfile cleanup
-# ONLY: reaping here would kill the resource-monitor before it wrote its summary.
-# The cross stage-context tree (--no-push OCI handoff) can be reclaimed here —
-# nothing consumes it after the chain ends, and the age-sweep is belt-and-braces.
+# No reaping on EXIT: it would kill the resource-monitor before it writes its summary.
 _chain_on_exit() {
   _chain_remove_pidfile
   if declare -F cross_cleanup_local_context_workdir >/dev/null 2>&1; then
@@ -842,12 +756,10 @@ _chain_install_lifecycle_traps() {
   trap '_chain_on_exit' EXIT
 }
 
-# Create LOG_DIR and prove it writable once, up front: the lazy mkdir inside a
-# command substitution under set -e would take the whole orchestrator down.
+# Up front: a lazy mkdir inside a command substitution under set -e kills the orchestrator.
 _chain_prepare_log_dir() {
   [ -n "${LOG_DIR:-}" ] || return 0          # `--log-dir ""` = opt out
-  # A variant pointed at the DEFAULT chain's log dir (make passes it explicitly)
-  # would archive that chain's history as its own: same stage log names.
+  # A variant in the default log dir would archive the default chain's history as its own.
   if [ -n "${CROSS_GPU_VARIANT:-}" ] \
      && [ "$(realpath -m "${LOG_DIR}")" = "$(realpath -m "${REPO_ROOT}/out/build-logs")" ]; then
     LOG_DIR="${LOG_DIR%/}/${CROSS_GPU_VARIANT:-}"
@@ -861,8 +773,7 @@ _chain_prepare_log_dir() {
   log "per-stage build logs -> ${LOG_DIR}/<stage>[-<arch>].log (--log-dir '' disables)"
 }
 
-# Eager per-run log archiving: per-stage logs are truncated lazily, so a watcher
-# could read the previous run's log as current.
+# Eager: stage logs truncate lazily, so a watcher could read last run's log as current.
 _chain_archive_prev_logs() {
   [ -n "${LOG_DIR:-}" ] && [ -d "${LOG_DIR}" ] || return 0
   local _sib
@@ -874,8 +785,7 @@ _chain_archive_prev_logs() {
   shopt -s nullglob
   local markers=( "${LOG_DIR}"/*.log.run )
   shopt -u nullglob
-  # Marker-scoped, NOT every *.log: LOG_DIR also holds the operator's own live
-  # nohup/tee transcript, and mv-ing a file an open tee holds redirects it.
+  # Marker-scoped: moving the operator's live tee transcript would redirect it.
   [ "${#markers[@]}" -gt 0 ] || return 0
   local prev="" m
   for m in "${markers[@]}"; do
@@ -896,8 +806,7 @@ _chain_archive_prev_logs() {
   log "archived previous run logs -> ${dest}"
 }
 
-# Bounded archive retention: the leaf must match a run-id shape — that keeps the
-# composed path inside archive/, so do not loosen it.
+# The run-id shape match keeps the composed path inside archive/; do not loosen it.
 _chain_prune_archived_logs() {
   local keep="${CROSS_LOG_ARCHIVE_KEEP:-5}"
   case "${keep}" in
@@ -911,8 +820,7 @@ _chain_prune_archived_logs() {
   local arch_dir="${root}/archive"
   [ -d "${arch_dir}" ] && [ ! -L "${arch_dir}" ] || return 0
 
-  # Newest first by MTIME, not name: the two run-id shapes (timestamp and bare
-  # PID) do not interleave lexically, which sorts the oldest dir to "newest".
+  # By mtime: timestamp and bare-PID run ids do not sort together lexically.
   local -a runs=()
   local line leaf
   while IFS= read -r line; do
@@ -947,9 +855,7 @@ _chain_prune_archived_logs() {
   log "archive retention: ${removed} old run dir(s) removed, newest ${keep} kept (CROSS_LOG_ARCHIVE_KEEP=${keep})"
 }
 
-# After the artifact-source pin started following CROSS_BUILD_PLATFORM, a
-# forgotten knob no longer fails the FROM — it succeeds, emulated, for hours.
-# Warn, do not err: emulated builds stay a legitimate (if slow) choice.
+# Warn only: a forgotten CROSS_BUILD_PLATFORM silently builds emulated for hours, but that is legal.
 _chain_warn_emulated_platform() {
   local want have
   want="$(cross_build_platform)"
@@ -971,9 +877,7 @@ main() {
   _chain_prune_archived_logs
   _chain_write_pidfile         # read by stop-cross-chain.sh
   _chain_install_lifecycle_traps
-  # Mint the OCI handoff workdir HERE. Every other caller reaches it through a
-  # $(...) subshell, so the assignment would never reach this process and the
-  # handoff would silently never activate. docs/cross-build-verification.md
+  # Mint the handoff workdir here: other callers run in $(...), which would lose the assignment.
   cross_local_handoff_enabled && cross_ensure_local_context_workdir
   _chain_assert_ancestry
   _chain_disk_preflight

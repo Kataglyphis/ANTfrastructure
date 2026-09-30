@@ -1,13 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The silently-ignored -D gate (2026-08-31). CMake exits 0 on a -D the project never
-# declares, so `-DUSE_QNN=ON` (TVM), `-DIREE_TARGET_BACKEND_QNN=ON` and
-# `-DTFLITE_ENABLE_QNN=ON` shipped as no-ops for weeks while three build scripts
-# printed "QNN ... ON". The only trace was CMake's own configure output, which nobody
-# read. Assert-CmakeArgsConsumed reads CMakeCache.txt instead: an undeclared -D is
-# recorded UNINITIALIZED, a declared one gets a real type.
+
+# CMake exits 0 on an undeclared -D, so the gate reads CMakeCache.txt: undeclared is UNINITIALIZED, declared is typed.
 
 Describe 'Assert-CmakeArgsConsumed' {
 
@@ -32,8 +27,7 @@ Describe 'Assert-CmakeArgsConsumed' {
     }
 
     It 'stays SILENT when the project actually declared the option' {
-        # The regression that matters in the other direction: a real flag must not
-        # produce noise, or the warning gets tuned out.
+        # A real flag must not warn, or the warning gets tuned out.
         $d = New-FakeCache @('USE_QNN:BOOL=ON')
         try {
             $w = @()

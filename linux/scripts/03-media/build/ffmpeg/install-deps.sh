@@ -14,9 +14,7 @@ install_deps_preamble autoconf automake build-essential cmake git libtool pkg-co
 target_packages=(
     libfreetype-dev
     libmp3lame-dev
-    # LOG3 (2026-08-17): headers-only, arch-independent — without it ffmpeg's
-    # configure printed "spirv-headers not found, swscale SPIR-V backend
-    # unavailable" and silently dropped the backend.
+    # Without it configure silently drops swscale's SPIR-V backend.
     spirv-headers
     libva-dev
     libvdpau-dev
@@ -32,7 +30,7 @@ target_packages=(
     libopus-dev
     libaom-dev
     libdav1d-dev
-    # LOG26: PulseAudio input/output device support.
+    # PulseAudio input/output devices.
     libpulse-dev
 )
 
@@ -42,10 +40,7 @@ if is_cross && \
    command -v cross_target_arch >/dev/null 2>&1; then
     case "$(cross_target_arch)" in
         riscv64)
-            # RV1 (2026-08-18): all three exceptions LIFTED — resolute ports now
-            # carries libass/libsdl2/libgnutls28 dev for riscv64 (live-verified
-            # 2026-08-17). Best-effort like arm64; FFmpeg's configure probes gate
-            # each feature, so a ports regression degrades instead of failing.
+            # Best-effort: FFmpeg's probes gate each feature, so a ports regression degrades instead of failing.
             optional_cross_target_packages+=(libgnutls28-dev libass-dev libsdl2-dev)
             echo "Installing gnutls/ass/sdl2 dev on a best-effort basis for riscv64 (ports caught up, RV1); FFmpeg probes decide."
             ;;
@@ -80,13 +75,7 @@ if [ "${#optional_cross_target_packages[@]}" -gt 0 ]; then
     install_optional_target_packages "${optional_cross_target_packages[@]}"
 fi
 
-# ---------------------------------------------------------------------------
-# Extra optional codec / protocol libraries — maximize FFmpeg feature coverage.
-# Installed one-at-a-time and best-effort: any package unavailable for the
-# target arch (e.g. riscv64/arm64 Ubuntu Ports gaps) is skipped without failing
-# the build, and build-ffmpeg.sh probe-gates the matching --enable-* flag, so a
-# missing library just means that feature is left out for that arch.
-# ---------------------------------------------------------------------------
+# One at a time and best-effort: a package missing for this arch only drops its probe-gated feature.
 ffmpeg_extra_feature_packages=(
     libtheora-dev            # Theora video
     libopenjp2-7-dev         # JPEG 2000
@@ -107,15 +96,8 @@ ffmpeg_extra_feature_packages=(
     librsvg2-dev             # SVG rasterization
     libgsm1-dev              # GSM 06.10 speech
     libxvidcore-dev          # Xvid MPEG-4 ASP encoder
-    # The ffmpeg stage is isolated (Dockerfile.media: FROM base AS ffmpeg), so
-    # the libwebp-dev opencv/gstreamer install never reached it — "Skipping
-    # libwebp: pkg-config cannot resolve libwebp." on all three arches
-    # (media-*.log 2026-08-27). No libvmaf counterpart on purpose: Ubuntu ships
-    # NO vmaf package in any suite or arch (packages.ubuntu.com name+contents
-    # search 2026-08-28), so that probe skip is expected, not a missing install.
+    # The ffmpeg stage is isolated, so it needs its own libwebp-dev; Ubuntu ships no vmaf package, so that probe skip is expected.
     libwebp-dev              # WebP image codec (-dev also ships libwebpmux.pc)
-    # drawtext filter: harfbuzz for text shaping. LOG20 — was missing on all
-    # arches, so the single most-used overlay filter was absent.
     libharfbuzz-dev          # HarfBuzz text shaping (drawtext filter)
     libfontconfig1-dev       # font discovery for drawtext
 )
@@ -123,23 +105,7 @@ for _ff_extra_pkg in "${ffmpeg_extra_feature_packages[@]}"; do
     install_optional_target_packages "${_ff_extra_pkg}"
 done
 
-# vid.stab needs BOTH halves, and the shipped 2026-08-27 build had neither on
-# the cross arches -- amd64 linked libvidstab, arm64/riscv64 silently did not,
-# and FFmpeg dropped --enable-libvidstab without failing anything.
-#
-#   1. libvidstab-dev for the TARGET. It is available for arm64 and riscv64
-#      alike (Candidate 1.1.0-2.1 on both, checked against ubuntu-ports), so
-#      the install below is a straightforward retry that also SAYS something
-#      when it does not land.
-#   2. a libgomp.so DEV SYMLINK for the target. vidstab.pc lists -lgomp, but
-#      libgomp1:<arch> ships only libgomp.so.1, and the cross toolchain carries
-#      a libgomp for the HOST (/opt/gcc-*/lib64) and none for the target --
-#      `aarch64-linux-gnu-gcc -print-search-dirs` shows no target libgomp path
-#      at all. Without the symlink the probe's link step dies on
-#      "cannot find -lgomp" even once libvidstab-dev IS installed.
-#
-# Both verified in the real cross-media-arm64 image: installing the dev package
-# alone still failed on -lgomp; adding the symlink turned the link green.
+# vidstab.pc lists -lgomp, but libgomp1:<arch> ships only libgomp.so.1 and the cross toolchain has no target libgomp.
 _ffmpeg_ensure_vidstab_linkable() {
     is_cross || return 0
     local _tri _libdir
@@ -160,7 +126,7 @@ _ffmpeg_ensure_vidstab_linkable
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     echo "Installing nv-codec-headers for FFmpeg NVIDIA acceleration..."
     nv_codec_ref="${NV_CODEC_HEADERS_REF:-n13.1.15.0}"
-    # NET1 (2026-08-18): second-URL fallback — videolan canonical, github mirror.
+    # Fall back to the GitHub mirror when videolan is unreachable.
     git clone --branch "${nv_codec_ref}" --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git /tmp/nv-codec-headers \
       || { rm -rf /tmp/nv-codec-headers
            git clone --branch "${nv_codec_ref}" --depth 1 https://github.com/FFmpeg/nv-codec-headers.git /tmp/nv-codec-headers; }

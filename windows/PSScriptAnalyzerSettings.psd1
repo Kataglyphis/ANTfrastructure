@@ -1,7 +1,4 @@
-# PSScriptAnalyzer settings for the Windows build scripts. Deliberately lenient to start:
-# the goal is to catch genuinely dangerous patterns (uninitialized vars, incorrect
-# comparisons, unreachable code) without drowning a large, working codebase in style
-# noise. Tighten over time. Consumed by windows/scripts/Invoke-Lint.ps1.
+# Deliberately lenient: catch dangerous patterns, not style noise, across a large working codebase.
 @{
     Severity     = @('Error', 'Warning')
     ExcludeRules = @(
@@ -10,9 +7,7 @@
         'PSAvoidUsingPositionalParameters',
         'PSReviewUnusedParameter',
         'PSUseBOMForUnicodeEncodedFile',
-        # Established API surface (Write-SccacheStats, Get-MsvcToolsRoots, ...):
-        # renaming exported functions for grammatical pedantry is churn across
-        # scripts, tests and external consumers with zero behavior value.
+        # Renaming established exported functions (Write-SccacheStats, ...) is churn across consumers.
         'PSUseSingularNouns'
     )
     Rules        = @{

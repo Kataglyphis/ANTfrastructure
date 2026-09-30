@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# Tests for the pure resolver/version helpers: version precedence, CUDA arch decoration,
-# and TensorRT root resolution (unset / empty / versioned-subdir / flat layouts).
+# Tests for the pure resolver and version helpers.
 
 Describe 'Get-SourceBuildVersion' {
 
@@ -87,11 +86,7 @@ Describe 'Resolve-TensorRtRoot' {
         }
     }
 
-    # Backlog #38: Set-TensorrtTree.ps1 renames the extracted tree to a
-    # stable 'current' so Dockerfile.nvidia's runtime PATH never spells the pin
-    # (deriving it from TENSORRT_VERSION put a nonexistent dir on PATH and
-    # silently killed the ORT TensorRT EP). The resolver must agree with that
-    # PATH, and must still handle pre-normalization trees.
+    # The resolver must agree with the runtime PATH, which names the stable 'current' dir rather than the pin.
     It "prefers the stable 'current' directory (backlog #38)" {
         Invoke-InTestDir { param($dir)
             $stable = Join-Path $dir 'current'
@@ -240,8 +235,7 @@ Describe 'Get-GpuEnvironment -ForceCpuEnvVar' {
     }
 
     It 'does NOT short-circuit when the named var is not 1 (normal detection runs)' {
-        # var present but '0' -> the guard must not fire; GPU_TYPE=amd flows through untouched
-        # (the nvidia-only PATH/CUDA_PATH side effects never run for a non-nvidia type).
+        # A '0' must not fire the guard; the nvidia-only PATH side effects never run for amd.
         Invoke-WithEnv @{ ONNX_FORCE_CPU = '0'; GPU_TYPE = 'amd'; TENSORRT_ROOT = '' } {
             Assert-Equal 'amd' (Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU').GpuType
         }
@@ -254,9 +248,7 @@ Describe 'Get-GpuEnvironment -ForceCpuEnvVar' {
     }
 
     It 'THROWS on GPU_TYPE=nvidia with no resolvable CUDA root (#45 fail-closed gate)' {
-        # The nvidia lane bakes GPU_TYPE=nvidia into the image, so "nvidia but
-        # no CUDA" is always a mis-plumbed path - every consumer would take
-        # its quiet CPU-only else-branch for ~2.5 h of green-and-useless work.
+        # The nvidia image bakes GPU_TYPE=nvidia, so no CUDA is a mis-plumbed path, not a CPU build.
         Invoke-WithEnv @{ GPU_TYPE = 'nvidia'; CUDA_ROOT = ''; CUDA_PATH = 'C:\does\not\exist-45'; TENSORRT_ROOT = '' } {
             Assert-Throws { Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU' } `
                 -MessagePattern 'mis-plumbed CUDA path' `

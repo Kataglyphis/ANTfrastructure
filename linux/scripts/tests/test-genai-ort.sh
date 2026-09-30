@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# test-genai-ort.sh - verify-genai-ort.sh on fixture trees: ORT_HOME, FetchContent dirs, the byte rule, archives, the skip.
-# NOT covered: a real GenAI build (build.py --ort_home), which libonnxruntime GenAI dlopens at run time, a ${VAR} COPY source.
+# verify-genai-ort.sh on fixture trees; not covered: a real build.py run, the runtime dlopen, a ${VAR} COPY source.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -163,8 +162,7 @@ t_assert_contains "${_build_run}" "--mount=type=bind,source=linux/scripts/03-med
 t_assert_eq 0 "$(printf '%s' "${_build_run}" | grep -c -e 'verify-genai-ort' || true)" "the build RUN does not mount it"
 
 t_case "the gate ships in no image: one per-file mount, no COPY of it, no COPY or mount of a dir holding it (mutation)"
-# In runtime/ or build/onnxruntime/ (whole-copied/-mounted) every edit re-keyed final, package or the GPU ORT RUN.
-# _context_sources <file>...: "copy|mount <source>" per build-context COPY/ADD operand and bind mount, trailing / and ./ cut.
+# _context_sources <file>...: "copy|mount <source>" per context operand; a dir copy would re-key layers on every edit.
 _context_sources() {
   {
     awk '/^[[:space:]]*(COPY|ADD)[[:space:]]/ && !/--from=/ { n = 0; for (i = 2; i <= NF; i++) if ($i !~ /^--/ && $i != "\\" && $i != "`") a[++n] = $i; for (i = 1; i < n; i++) print "copy " a[i] }' "$@"

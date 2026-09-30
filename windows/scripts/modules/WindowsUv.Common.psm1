@@ -5,14 +5,8 @@
 
 Set-StrictMode -Version Latest
 
-# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-# Guarded, WITHOUT -Force (repo-wide nested-import rule, 2026-08-04): a forced
-# nested re-import rebinds the dependency into THIS module's private scope and
-# unloads the caller's top-level import — the PS module-scoping trap that broke
-# the BuildDriver test suite and forced build-gstreamer's import-Shared-twice
-# workaround. Trade-off (accepted): a long-lived dev session that edits Shared
-# must Remove-Module/reimport manually; containers always start fresh.
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
 function Invoke-UvCommand {
@@ -156,11 +150,7 @@ function Test-UvVenvHealthy {
     return $true
 }
 
-# Ensure a usable uv venv exists at Workspace\EnvName: reuse it when healthy
-# (interpreter present and runnable), recreate it via New-UvProjectEnvironment
-# otherwise. Returns the path to the venv's python.exe. Consolidates the
-# health-check/recreate logic previously duplicated across downstream
-# formatting and WebDAV modules.
+# Returns the venv's python.exe, reusing a healthy venv and recreating a broken one.
 function Initialize-UvVenv {
     param(
         [Parameter(Mandatory)]
@@ -186,18 +176,12 @@ function Initialize-UvVenv {
             -CommandRunner $CommandRunner -LogInfo $LogInfo -LogWarning $LogWarning | Out-Null
     }
 
-    # Point uv's project-environment resolution at this venv either way so
-    # subsequent plain `uv pip install` / `uv run` calls target it.
+    # Set either way so later plain `uv pip install` / `uv run` calls target this venv.
     $env:UV_PROJECT_ENVIRONMENT = $venvPath
     return $venvPython
 }
 
-# Install a requirements file into a specific venv. The --python pin is
-# deliberate and load-bearing: uv honours UV_PYTHON OVER the activated or
-# project venv, and the CI container images export UV_PYTHON to their
-# root-owned system venv - so an unpinned `uv pip install` would target that
-# environment and die with "Permission denied (os error 13)" for non-root CI
-# users. --python forces the writable target venv.
+# --python is load-bearing: see docs/python-ci.md § Trap 2 — `UV_PYTHON` beats the activated venv
 function Install-UvRequirements {
     param(
         [Parameter(Mandatory)]
@@ -214,18 +198,10 @@ function Install-UvRequirements {
 
 <#
 .SYNOPSIS
-    The `[tool.uv] conflicts` groups of a pyproject.toml, as arrays of extra names.
+    The `[tool.uv] conflicts` groups of a pyproject.toml, one string[] per group (collect with @(...)).
 .DESCRIPTION
-    Reads the table the way the bash twin (01-core/python_uv.sh
-    _uv_conflict_groups) does: a character walk from the `conflicts =` line,
-    depth-2 brackets delimit one group, `extra = "name"` occurrences inside it
-    are the members - so the inline, multi-line and mixed layouts uv accepts
-    all give the same answer. No TOML parser ships with PowerShell, and one
-    key is not worth a dependency.
-.OUTPUTS
-    One string[] per group, in declaration order, written to the pipeline one
-    group at a time (collect with @(...)); nothing when the file has no
-    conflicts table.
+    A character walk like the bash twin's (python_uv.sh _uv_conflict_groups), so every layout uv accepts gives
+    the same answer; PowerShell ships no TOML parser.
 #>
 function Get-UvConflictGroups {
     [CmdletBinding()]
@@ -258,28 +234,16 @@ function Get-UvConflictGroups {
         }
         if ($inBlock -and $depth -ge 2) { $group += ' ' }
     }
-    # Plain return: the pipeline unrolls ONE level, so each string[] group
-    # arrives as one object and @(...) at the call site rebuilds the list. A
-    # comma-wrapped return here plus @() at the caller nested it twice (the
-    # first cut of this function, caught by Uv.ConflictExtras.Tests.ps1).
+    # Plain return: the pipeline unrolls one level, and @(...) at the call site rebuilds the list of groups.
     return $groups
 }
 
 <#
 .SYNOPSIS
-    The extras `uv sync --all-extras` must leave out for a project that
-    declares `[tool.uv] conflicts`.
+    The extras `uv sync --all-extras` must leave out for a project that declares `[tool.uv] conflicts`.
 .DESCRIPTION
-    uv refuses --all-extras outright on such a project ("Extras `a` and `b` are
-    incompatible with the declared conflicts") and has no "install as much as
-    possible" flag. Greedy over the groups in DECLARATION ORDER, exactly as
-    01-core/python_uv.sh _uv_extras_to_exclude does: keep an extra unless it
-    conflicts with one already kept, otherwise exclude it. That keeps the
-    first-declared member of each family - for OrchestrANT `ml-ai` and
-    `pytorch-cpu`, the pair its CI wants.
-.OUTPUTS
-    The extras to pass as --no-extra, one string per pipeline object (collect
-    with @(...)); nothing when nothing conflicts or the file does not exist.
+    uv refuses --all-extras on such a project. Greedy in declaration order like python_uv.sh
+    _uv_extras_to_exclude, so the first-declared member of each family is kept.
 #>
 function Get-UvExtrasToExclude {
     [CmdletBinding()]
@@ -309,39 +273,22 @@ function Get-UvExtrasToExclude {
 function Sync-UvProjectDependencies {
     <#
     .SYNOPSIS
-        `uv sync --dev --all-extras`, optionally pinned to the lockfile, with the
-        extras that declared conflicts forbid excluded (see Get-UvExtrasToExclude);
-        then Sync-UvChainOnnxRuntime on the synced environment.
+        `uv sync --dev --all-extras` minus conflicting extras, optionally --locked, then Sync-UvChainOnnxRuntime.
     .PARAMETER RetryWithoutLocked
-        With -UseLocked, retry once WITHOUT --locked when uv reports the
-        lockfile is out of date. Upstreamed from OrchestrANT
-        (2026-08-11), which had re-implemented this whole function locally just
-        to get the fallback.
-
-        Why it is opt-in and not the default: --locked exists precisely so CI
-        FAILS on an un-regenerated lockfile. Silently syncing unlocked would
-        turn a reproducibility gate into a no-op. Pass it only where an
-        out-of-date lockfile should degrade to a warning (local dev loops,
-        best-effort matrix legs), never on the lane that guards the lockfile.
+        With -UseLocked, retry once unlocked on a stale lockfile; never on the lane that guards the lockfile.
     #>
     param(
         [switch]$NoBuildIsolationPackageWxPython,
         [switch]$UseLocked,
         [switch]$RetryWithoutLocked,
-        # The pyproject whose `[tool.uv] conflicts` decide which extras
-        # --all-extras must leave out. Defaults to the one in the current
-        # directory, which is where `uv sync` reads it too.
+        # Defaults to the current directory's, the one `uv sync` reads too.
         [string]$PyprojectPath = (Join-Path (Get-Location).Path 'pyproject.toml'),
         [scriptblock]$CommandRunner,
         [scriptblock]$LogInfo,
         [scriptblock]$LogWarning
     )
 
-    # Which extras. UV_SYNC_EXTRAS wins (the project knows best); otherwise
-    # --all-extras minus whatever the declared conflicts make unsatisfiable -
-    # the same choice the Linux twin (01-core/python_uv.sh uv_sync_project)
-    # makes, so the two lanes sync the same set. OrchestrANT's Windows lane was
-    # red from 2026-09-12 to 2026-09-14 because only the Linux half did this.
+    # UV_SYNC_EXTRAS wins; otherwise the same set the Linux twin (python_uv.sh uv_sync_project) syncs.
     $extraArgs = @()
     $wanted = [Environment]::GetEnvironmentVariable('UV_SYNC_EXTRAS')
     if (-not [string]::IsNullOrWhiteSpace($wanted)) {
@@ -387,8 +334,7 @@ function Sync-UvProjectDependencies {
 
 <#
 .SYNOPSIS
-    The chain ONNX Runtime wheel store of our images: ORT_CHAIN_WHEEL_DIR, PYTHON_WHEELS, then
-    -DefaultStore if it exists; $null outside our images.
+    The chain ORT wheel store: ORT_CHAIN_WHEEL_DIR, PYTHON_WHEELS, then -DefaultStore; $null outside our images.
 #>
 function Get-ChainOrtWheelStore {
     [CmdletBinding()]
@@ -405,8 +351,7 @@ function Get-ChainOrtWheelStore {
 
 <#
 .SYNOPSIS
-    The ORT census: the hub checkout's linux\scripts copy, else the image's, which windows/Dockerfile
-    COPYs into C:\temp\scripts beside the modules dir. Neither: the checkout path, so the error names it.
+    The ORT census: the hub checkout's copy, else the image's; with neither, the checkout path so the error names it.
 #>
 function Get-UvOrtCensusPath {
     [CmdletBinding()]
@@ -420,8 +365,7 @@ function Get-UvOrtCensusPath {
     return $candidates[0]
 }
 
-# `uv run` re-syncs to the lock, which would put PyPI ORT back: hold it off while a reconciled
-# venv is live, and release only a hold this module took.
+# `uv run` re-syncs to the lock and would restore PyPI ORT; release only a hold this module took.
 $script:ChainOrtHoldsNoSync = $false
 function Set-UvChainOrtSyncHold {
     param([Parameter(Mandatory)][bool]$Hold)
@@ -450,8 +394,7 @@ function Assert-UvChainOrtAbiFit {
     }
 }
 
-# No ORT distribution to purge: inside our images nothing may import as ORT either (an unowned copy,
-# a dist without a Name); the census --check output is the evidence.
+# With no ORT distribution to purge, nothing may import as ORT either (an unowned copy, a dist without a Name).
 function Assert-UvChainOrtNoUnownedImport {
     param([string]$VenvPath, [string]$Python, [string]$WheelStore, [string]$CensusPath, [scriptblock]$Runner)
     $found = & $Runner $Python @('-I', '-c', $script:ChainOrtFindCode)
@@ -462,8 +405,9 @@ function Assert-UvChainOrtNoUnownedImport {
 
 <#
 .SYNOPSIS
-    Moves a synced venv's ONNX Runtime onto the image's chain wheels and proves it with the ORT
-    census, or throws; outside our images only warns. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+    Moves a synced venv's ONNX Runtime onto the image's chain wheels, proven by the census; outside our images warns.
+.DESCRIPTION
+    See docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
 .PARAMETER PythonRunner
     Test seam: { param($python, $arguments) } returning @{ ExitCode; Output }. Default runs the interpreter.
 #>
@@ -546,23 +490,11 @@ function Sync-UvChainOnnxRuntime {
 
 <#
 .SYNOPSIS
-    Creates a uv environment AND remembers it, so a finally block can tear down
-    every environment the run made.
+    Creates a uv environment and records it in -Tracker, so a finally block can tear down every one the run made.
 .DESCRIPTION
-    New-UvProjectEnvironment creates one; nothing recorded WHICH ones a run created,
-    so three drivers (this repo's Invoke-CiTests.ps1, Invoke-CiStaticAnalysis.ps1 and
-    OrchestrANT's Build-Windows.ps1) each carried the same script-local
-    New-UvEnvironment/Remove-UvEnvironment pair bound to their own $CreatedUvEnvs
-    list. Script-local means no other driver could call them.
-
-    Tracker is an ordinary List[string] the caller owns and can inspect; passing it
-    explicitly, rather than hiding it in module state, is what lets two independent
-    batches run in one session without tearing down each other's environments.
+    The caller owns the tracker, so two batches in one session never tear down each other's environments.
 .PARAMETER Tracker
-    List the created path is appended to. Create it with
-    [System.Collections.Generic.List[string]]::new().
-.OUTPUTS
-    [string] The environment path, exactly as New-UvProjectEnvironment returned it.
+    A [System.Collections.Generic.List[string]] the created path is appended to.
 #>
 function New-TrackedUvEnvironment {
     param(
@@ -572,9 +504,7 @@ function New-TrackedUvEnvironment {
         [string]$PythonVersion,
         [Parameter(Mandatory)]
         [string]$EnvName,
-        # AllowEmptyCollection: a tracker is EMPTY on the first create and on every
-        # teardown that runs after an early failure - the exact case the finally
-        # block exists for. Mandatory alone rejects an empty collection.
+        # Mandatory alone rejects the empty tracker of a first create or an early failure.
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
         [System.Collections.Generic.List[string]]$Tracker,
@@ -591,17 +521,13 @@ function New-TrackedUvEnvironment {
 
 <#
 .SYNOPSIS
-    Removes every environment in Tracker and empties it. Safe to call twice.
+    Removes every environment in -Tracker and empties it; safe to call twice.
 .DESCRIPTION
-    The finally-block half of New-TrackedUvEnvironment. Removal is attempted for
-    every entry even when one fails, because leaving the rest behind on a Windows
-    runner is how a later run inherits a half-deleted venv.
+    Every entry is attempted even when one fails, so a later run does not inherit leftover venvs.
 #>
 function Remove-TrackedUvEnvironment {
     param(
-        # AllowEmptyCollection: a tracker is EMPTY on the first create and on every
-        # teardown that runs after an early failure - the exact case the finally
-        # block exists for. Mandatory alone rejects an empty collection.
+        # Mandatory alone rejects the empty tracker of a first create or an early failure.
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
         [System.Collections.Generic.List[string]]$Tracker,
@@ -621,19 +547,11 @@ function Remove-TrackedUvEnvironment {
 
 <#
 .SYNOPSIS
-    Is this interpreter version one the fleet permits to fail without gating CI?
+    True when the fleet permits this interpreter version to fail without gating CI.
 .DESCRIPTION
-    One fleet answer to "which Python may fail". The bash half has been shared since
-    linux/scripts/01-core/python_uv.sh:31 (EXPERIMENTAL_PYTHON_VERSIONS, default
-    "3.14t"); the PowerShell half was a script-local list inside Invoke-CiTests.ps1,
-    so the two could drift silently and a consumer could not consult either.
-
-    Reads the SAME environment knob as the bash half and falls back to the same
-    default, so one export sets the policy for both halves of a matrix.
+    Reads EXPERIMENTAL_PYTHON_VERSIONS with the same default as python_uv.sh, so one export sets both halves.
 .PARAMETER Version
     Interpreter version as the matrix spells it, e.g. "3.14" or "3.14t".
-.OUTPUTS
-    [bool]
 #>
 function Test-ExperimentalPython {
     param(
@@ -661,8 +579,7 @@ Export-ModuleMember -Function @(    'New-UvProjectEnvironment',
     'Test-UvVenvHealthy',
     'Initialize-UvVenv',
     'Install-UvRequirements',
-    # Documented runner seam (CommandRunner/LogInfo injection) - exported so
-    # consumers can drive uv through the same code path the module uses.
+    # Exported runner seam, so consumers drive uv through the module's own code path.
     'Invoke-UvCommand'
 )
 

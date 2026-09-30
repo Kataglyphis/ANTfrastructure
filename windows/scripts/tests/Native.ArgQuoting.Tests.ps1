@@ -1,16 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Positive controls for the three AST trap detectors in
-# modules\WindowsLint.Common.psm1 (bareword comma-attribute native args +
-# [switch] parameter shadowing - each silently broke a lane of
-# Test-BuildCopy.ps1 until 2026-08-10 - and glued parameter tokens, which
-# broke the arm64 target-cpython stage on 2026-08-25).
-#
-# The REPO SWEEP lives in Invoke-Lint.ps1 since 2026-08-10 (backlog #21): the
-# lint gate already parses every file once and owns the \archive\ exclusion,
-# so this suite only proves the detectors themselves still detect.
+
+# Positive controls for the WindowsLint.Common AST trap detectors; Invoke-Lint.ps1 owns the repo sweep.
 
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsLint.Common.psm1')
 
@@ -54,9 +46,7 @@ Describe 'Native.ArgQuoting detector positive controls' {
         Assert-Equal 0 @(Get-SwitchShadowViolation -Ast $ast).Count
     }
 
-    # Glued parameter tokens (2026-08-25): four `-Path$x` calls survived a
-    # refactor, the parse gate and the whole suite, then died 90 s into the
-    # arm64 regression with "parameter name 'Path$staged'".
+    # A glued `-Path$x` passes the parser and only fails at run time.
     It 'catches a variable glued to a parameter name (-Path$x)' {
         $ast = Get-ArgQuotingAstFromText 'Get-PeFileMachine -Path$staged.FullName'
         Assert-Equal 1 @(Get-GluedParameterViolation -Ast $ast).Count

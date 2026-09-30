@@ -1,31 +1,15 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# NVIDIA GPU layer — CUDA + cuDNN + TensorRT.
-# Optional stage between base and toolchain: build this (tagged windows-sdk) for a
-# GPU image, or skip it and tag windows-base as windows-sdk for a CPU-only image
-# (windows/Build-Buildkit.ps1 does this automatically; the former Dockerfile.sdk no-op shim
-# was removed). Lineage: base → [nvidia] → toolchain → media → final.
-# ROCm on Windows is windows/Dockerfile.rocm, in this same sdk slot (-Variant rocm).
+# Optional NVIDIA sdk slot (CUDA, cuDNN, TensorRT) between base and toolchain.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-base
 
-# ── Stage 1: TensorRT extract (layers discarded — only the extracted tree ships) ──
-# The EULA-gated TensorRT zip is COPY'd and extracted here; the final stage pulls
-# just the extracted directory via COPY --from, so the ~2 GB zip layer never lands
-# in the shipped image. CUDA + cuDNN are downloaded from NVIDIA's CDN by
-# Install-Cuda.ps1.
-# NB: Build-Buildkit.ps1 builds THIS file with context `windows` (not the repo root) so the
-# ~2 GB zip stays out of every other stage's build context — the root .dockerignore
-# excludes *.zip with no re-include. COPY paths below are therefore RELATIVE TO
-# windows/ (no windows\ prefix).
+# TensorRT extract: only the tree ships; the build context is windows/ so the zip stays out of every other stage's context.
 FROM ${BASE_IMAGE} AS trt-extract
 
 ARG TENSORRT_VERSION=11.3.0.99
-# Zip hash as ARG, same rationale as the CUDA/CUDNN hashes in stage 2: the
-# base-baked env value is stale after a pin bump; the ARG (forwarded from the
-# current versions.env by both drivers) always matches. Empty = no pin check
-# (the zip is an EULA-gated manual download whose exact file varies per user).
+# ARG, since the base-baked value is stale after a bump; empty = no check (the EULA zip varies per user).
 ARG TENSORRT_ZIP_SHA256="9cdb433f0f3803bc854d4b13eb7bd42a4aef1962749349be62d97c0f64c8f9b6"
 ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 
@@ -34,43 +18,22 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 COPY scripts\host\Install-Tensorrt.ps1 C:\temp\scripts\
 COPY downloads C:\temp\downloads
 
-# Extract to the space-free canonical root. GRACEFUL-SKIP CONTRACT (restored
-# 2026-08-05, the original design): without the EULA-gated zip the script
-# warns and returns — CUDA + cuDNN still work, ORT auto-skips the TensorRT EP,
-# and the smoke test's TENSORRT_ROOT pointer passes because the (empty)
-# directory below always exists. This host's GPU lane has always built
-# zip-less; a 2026-08-04 fail-fast hardening briefly broke that and was
-# reverted after the first hardened rebuild died here.
+# No zip is a supported graceful skip: the empty root still exists and ORT drops the TensorRT EP.
 RUN --mount=type=bind,source=scripts/build/Set-TensorrtTree.ps1,target=C:\Set-TensorrtTree.ps1 `
-    # zip discovery lives in Install-Tensorrt.ps1 (Find-TensorRtZipIn, newest-
-    # by-version — #127): its downloads-dir search covers C:\temp\downloads.
     & 'C:\temp\scripts\Install-Tensorrt.ps1' -TensorRtRoot 'C:\tensorrt'; `
     if (-not (Test-Path 'C:\tensorrt')) { New-Item -Path 'C:\tensorrt' -ItemType Directory -Force | Out-Null }; `
     & 'C:\Set-TensorrtTree.ps1' -TensorRtRoot 'C:\tensorrt' -ExpectedVersion $env:TENSORRT_VERSION
 
-# ── Stage 2: CUDA + cuDNN + TensorRT ──────────────────────────────────────────
+# CUDA, cuDNN, TensorRT
 FROM ${BASE_IMAGE}
 
 ARG CUDA_VERSION=13.4.2
 ARG CUDA_VERSION_MAJOR_MINOR=13.4
 ARG CUDNN_VERSION=9.26.0.51
-# NB: ARG TENSORRT_VERSION is declared BELOW the CUDA RUN on purpose (backlog
-# #53). An ARG in scope keys every following RUN, and nothing up to and
-# including Install-Cuda.ps1 consumes it — TensorRT arrives via COPY --from. With
-# it declared here, bumping the TensorRT pin forced a ~3.8 GB CUDA + cuDNN
-# re-download for no reason, which is what made fixing the pin expensive.
-# Download hashes travel as ARGs (not just baked env): the base image bakes
-# versions.env at ITS build time, so after a CUDA/cuDNN bump the baked
-# *_SHA256 values are STALE until base rebuilds — the ARG (forwarded by
-# Build-Buildkit.ps1 from the current versions.env) always matches the version ARGs
-# above. ARG-injected env wins over machine env inside the RUN.
+# Hashes are ARGs (the base-baked ones go stale on a bump); TENSORRT_VERSION sits below the CUDA RUN so it cannot re-key it.
 ARG CUDA_INSTALLER_SHA256=27a5fbbef89d64f9a948a94e1faa5eca26fed6d706e36e4559a7cfa3552128e6
 ARG CUDNN_ZIP_SHA256=f8610d403685c918e690de5b1ec68da0b4b1358a6be62627591362b7eb811644
-# Windows-arm64 cross payload (#176): the arm64 toolkit has no installer, so
-# Install-Cuda.ps1 -TargetArch arm64 downloads these per-component redist
-# archives into the same CUDA root (lib\arm64, bin\arm64). On the amd64 lane the
-# ARG defaults are inert -- the x64 installer path never reads them. Values and
-# provenance: versions.env (redistrib_13.4.2.json / redistrib_9.26.0.json).
+# arm64 has no CUDA installer, so the cross lane fetches per-component redists; inert on amd64.
 ARG WINDOWS_TARGET_ARCH=amd64
 ARG CUDA_WINDOWS_ARM64_CUDART_VERSION=13.4.92
 ARG CUDA_WINDOWS_ARM64_CUDART_SHA256=d3cec2717ba3c2c714c5869a5374365d087c698d87c0ddd3bd41715447112891
@@ -92,54 +55,22 @@ ARG CUDNN_WINDOWS_ARM64_ZIP_SHA256=657743083b72885336321403522a5af80566d8347a1b7
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
-# Narrow COPY — only the script this stage runs (a wildcard `scripts` would bust
-# the CUDA layer on every unrelated script edit). Modules were already populated
-# by the base stage. (Path relative to the `windows` build context.)
+# Narrow COPY: a wildcard would bust the CUDA layer on every unrelated script edit.
 COPY scripts\host\Install-Cuda.ps1 C:\temp\scripts\
 
-# One ENV instruction = one layer (125-cap budget; see docs/windows-builds.md).
-# TENSORRT_VERSION moved out of this block (backlog #53) — it now rides the
-# GPU_TYPE/CUDA_ROOT ENV below the CUDA RUN, so no extra layer is spent.
 ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 
-# CUDA installer extracts to C:\temp. Without BuildKit cache mounts (not available
-# on Windows Containers), the scratch directory is discarded after the RUN completes.
-# Install-Cuda.ps1 cleans up its own temp files; the final image layer contains only
-# the installed CUDA binaries.
 RUN & 'C:\temp\scripts\Install-Cuda.ps1' -TempDir $env:TEMP_DIR
 
-# TensorRT: only the extracted tree from stage 1 (no zip layer). Empty when no
-# zip was provided — build scripts then skip the TensorRT EP gracefully
-# (Resolve-TensorRtRoot treats an empty root as "not installed").
+# Empty when no zip was staged; Resolve-TensorRtRoot treats an empty root as not installed.
 COPY --from=trt-extract C:\tensorrt C:\tensorrt
 
-# Signal to downstream layers that NVIDIA GPU is available. One ENV for the
-# roots (no interdependency — values written out literally where a same-
-# instruction ${} ref would not resolve); PATH stays separate because it
-# references the keys set here.
+# PATH is a separate ENV because a same-instruction ${} reference would not resolve.
 ARG TENSORRT_VERSION=11.3.0.99
 ENV GPU_TYPE="nvidia" `
     CUDA_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}" `
     CUDA_PATH="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}" `
     TENSORRT_ROOT="C:\tensorrt" `
     TENSORRT_VERSION="${TENSORRT_VERSION}"
-# TensorRT rides a STABLE 'current\' directory, never the pin (backlog #38).
-# The old form was $TENSORRT_ROOT\TensorRT-$TENSORRT_VERSION\lib, which was
-# broken in TWO independent ways and green in both:
-#   1. the VERSION came from the pin, so it named a nonexistent directory the
-#      moment the pin and the staged zip disagreed;
-#   2. the DIRECTORY was lib\, which on TensorRT 10+ holds only link-time .lib
-#      import libraries — the 14 runtime DLLs live in bin\ (measured on the
-#      staged 11.1.0.106 zip). So even a correctly-pinned image could never
-#      have loaded the EP at runtime.
-# Neither failed the build, because ONNX resolves its BUILD-time root with a
-# glob and only the RUNTIME lookup was wrong — ORT then dropped the TensorRT EP
-# with no error. bin\ first (runtime), lib\ kept for the 8.x/9.x layout where
-# the DLLs lived there. Set-TensorrtTree.ps1 fails closed if neither
-# carries DLLs. When no zip is staged the directories do not exist and the
-# entries are inert — the documented graceful-skip contract is unchanged.
-# bin\arm64 last (after the x64 dirs, before the inherited PATH): on the cross
-# lane the HOST still runs x64 tools, and cudart64_13.dll exists under BOTH
-# arches -- an arm64-first PATH would hand the x64 host an ARM64 DLL. The dirs
-# simply do not exist on the amd64 lane.
+# TensorRT via the stable current\ dir, bin\ first (10+ keeps its DLLs there); arm64 dirs after x64 so the host gets x64 cudart.
 ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\current\bin;$TENSORRT_ROOT\current\lib;$CUDA_ROOT\bin\arm64;$CUDNN_ROOT\bin\arm64;$PATH

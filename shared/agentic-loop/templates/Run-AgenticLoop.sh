@@ -9,9 +9,6 @@ set -euo pipefail
 # and calls run_agentic_loop. Task prompts default to ANTfrastructure's
 # shared/agentic-loop/prompts/*.md - do not hard-code prompt text here.
 #
-# Thin wrapper around the reusable library in
-# third_party/ANTfrastructure/linux/scripts/lib/agentic-loop.sh.
-#
 # Engines (config .engine, or --engine / AGENTIC_ENGINE):
 #   claude   — Claude Code CLI; models come from the config
 #   opencode — OpenCode v2 CLI (v1 is refused); models come from the config
@@ -35,7 +32,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-# ── Source reusable library from ANTfrastructure ───────────────────────────
+# Source the reusable library from ANTfrastructure
 AGENTIC_LIB="${REPO_ROOT}/third_party/ANTfrastructure/linux/scripts/lib/agentic-loop.sh"
 if [[ -f "$AGENTIC_LIB" ]]; then
     source "$AGENTIC_LIB"
@@ -44,7 +41,7 @@ else
     exit 1
 fi
 
-# ── Arg parsing (exported env flags are consumed by the library) ────────
+# Arg parsing; the library reads the exported flags
 CONFIG_PATH="${SCRIPT_DIR}/AgenticLoop.config.json"
 while [[ $# -gt 0 ]]; do
   case "$1" in

@@ -234,8 +234,8 @@
   {
     "id": "shellcheck.extensionless-arm",
     "target": "linux/scripts/lint-shell.sh",
-    "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang.",
-    "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang.",
+    "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+    "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
     "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
     "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
   },
@@ -1426,18 +1426,26 @@
   {
     "id": "comment-size.limit-not-enforced",
     "target": "linux/scripts/verify_comment_size.py",
-    "find": "            if n > LIMIT:",
-    "replace": "                    if False:",
+    "find": "        if n > LIMIT:",
+    "replace": "        if False:",
     "test": "bash linux/scripts/tests/test-prevention-gates.sh",
     "why": "a block that ends at a code line is the common shape; stop collecting it and the gate sees nothing"
   },
   {
-    "id": "comment-size.llm-stack-is-a-subject",
+    "id": "comment-size.every-language-is-a-subject",
     "target": "linux/scripts/verify_comment_size.py",
-    "find": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\", \"linux/llm-stack\")",
-    "replace": "SCAN = (\"linux/scripts\", \"linux/host-config\", \"docs/scripts\")",
+    "find": "PATTERNS = [\"*\" + e for e in sorted(HASH | SLASH)] + [\"*\" + n + \"*\" for n in HASH_NAMES]",
+    "replace": "PATTERNS = [\"*.sh\"]",
     "test": "bash linux/scripts/tests/test-prevention-gates.sh",
-    "why": "EX1: this gate kept its own narrow scan after code-size widened, so linux/llm-stack's shell files sat outside owner directive 6 entirely; dropping it again un-freezes the ci-contract-tests.sh row in silence"
+    "why": "the rule covers every language; a scan narrowed back to shell leaves PowerShell, Python and C-family comments ungated in silence"
+  },
+  {
+    "id": "comment-size.heredoc-is-data",
+    "target": "linux/scripts/verify_comment_size.py",
+    "find": "            end = _heredoc_word(line)",
+    "replace": "            end = None",
+    "test": "bash linux/scripts/tests/test-prevention-gates.sh",
+    "why": "a heredoc body is data another program reads; counting its # lines would demand edits to generated files"
   },
   {
     "id": "masked-decls.verdict-discarded",

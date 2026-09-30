@@ -1,20 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# WindowsMediaRuntime.Common: the resolver and the staging copy that replace
-# AccelerANTgine's local Get-RuntimeDependencyDirectories /
-# Copy-RuntimeDependencies and its three call sites (ClangCL debug, profile and
-# release each staged the same closure).
-#
-# What is pinned here is what a green build cannot show:
-#   * an EMPTY result is an empty array, not $null. The local copy carried a
-#     comment about exactly this: under Set-StrictMode -Version Latest a
-#     pipeline-unrolled empty array lands $null, and $null.Count then throws
-#     "The property 'Count' cannot be found on this object" and kills a Critical
-#     step AFTER a fully successful compile.
-#   * nothing throws when there is no payload - media features are opt-in.
-#   * ORT comes from the chain install only (owner rule 2026-09-23): no NuGet walk, no foreign DLL, chain staged last.
 # NOT covered: a real chain install, ORT linked statically into another DLL, bytes the census would call foreign.
 
 Describe 'WindowsMediaRuntime.Common' {
@@ -64,8 +50,7 @@ Describe 'WindowsMediaRuntime.Common' {
     Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = $null; ONNX_ROOT = $null; ONNX_GENAI_ROOT = $null; GSTREAMER_BIN = $null } {
 
         It 'returns an EMPTY ARRAY, not $null, when nothing is installed' {
-            # The $null.Count trap: the empty case is the one that kills a build step
-            # after a successful compile, and it is the case nobody runs by hand.
+            # Under StrictMode an unrolled empty array is $null, and $null.Count kills the step after a good compile.
             $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @((Join-Path $root 'nope')) -OnnxRoot '' `
                     -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion '')
             Assert-Equal 0 $r.Count
@@ -181,8 +166,7 @@ Describe 'WindowsMediaRuntime.Common' {
         }
 
         It 'counts a name found in two directories once, and the LAST one wins' {
-            # Resolver order is load order; a later directory overwriting an earlier
-            # name is the documented precedence, not an accident of enumeration.
+            # Resolver order is load order, so a later directory winning is the documented precedence.
             $target = Join-Path $root 'stage4\bin'
             $n = Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target -GStreamerRoot @($gstA, $gstB) `
                 -OnnxRoot '' -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion ''
@@ -191,8 +175,7 @@ Describe 'WindowsMediaRuntime.Common' {
         }
 
         It 'returns 0 and does not throw when there is no payload at all' {
-            # Media features are opt-in; a configuration without them is a legitimate
-            # build, and this step runs after a successful compile.
+            # Media features are opt-in, so a build without them is legitimate.
             $target = Join-Path $root 'stage5\bin'
             $n = Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target `
                 -GStreamerRoot @((Join-Path $root 'nowhere')) -OnnxRoot '' `

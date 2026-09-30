@@ -1,16 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Install-RustTargetStdFromPinnedManifest (Build-GstreamerFromSource.ps1):
-# pre-seeds the tarball `rustup target add` wants at the file:// path the
-# image's PINNED channel manifest names, fetching the bytes from upstream
-# (runs 23-28: "could not download file from 'file:///...rustup-dist/...'").
-# Lifted out of the script's AST; fixture rustup home + stub downloader, no
-# rustup needed. Pins: the manifest block for the triple is found, the
-# dist-relative path is derived from the file:// URL, the download lands where
-# the manifest points, a present file is not re-fetched, and every failure
-# mode returns a verdict instead of throwing (the staticlib probe is the gate).
+# Failures return a verdict instead of throwing because the staticlib probe is the gate.
 
 Describe 'Install-RustTargetStdFromPinnedManifest' {
 

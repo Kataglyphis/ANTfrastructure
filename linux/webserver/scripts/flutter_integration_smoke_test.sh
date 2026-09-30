@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Integration smoke test for a built Flutter web app.
-# Requires: curl, a web server serving the target directory.
-# Usage: flutter_integration_smoke_test.sh [base_url]
+# Integration smoke test for a built Flutter web app, via curl; usage: flutter_integration_smoke_test.sh [base_url]
 
 set -euo pipefail
 
@@ -13,9 +11,7 @@ echo "=== Integration Smoke Test ==="
 echo "Target: $BASE_URL"
 echo ""
 
-# `|| true` on the probe substitutions below: under set -euo pipefail an
-# unreachable server or a missing header killed the script BEFORE its own
-# FAIL diagnostics could print (the else-branches were unreachable).
+# `|| true` on the probes, or set -e kills the script before its FAIL diagnostics print.
 echo "--- Testing: index.html loads ---"
 STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/" || true)
 if [ "$STATUS" != "200" ]; then

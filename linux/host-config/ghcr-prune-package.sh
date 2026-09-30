@@ -1,43 +1,5 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# ghcr-prune-package.sh — delete STALE ghcr package versions, safely.
-#
-# WHY THIS EXISTS (2026-08-24): the kataglyphis_beschleuniger container package
-# holds 771 versions. Almost all are UNTAGGED digests left behind every time a
-# moving tag (latest, cross-media-<arch>, …) is re-pushed. They are dead
-# weight — but a naive "delete everything untagged" is a REGISTRY-CORRUPTING
-# move, twice over:
-#
-#   1. The per-arch entries of a multi-arch manifest LIST are themselves
-#      untagged manifests. Delete them and every `nerdctl pull latest`
-#      dies with MANIFEST_UNKNOWN while the index still looks fine.
-#   2. A build that is pushing RIGHT NOW creates untagged manifests seconds
-#      before it tags them. Deleting young digests races the chain's own push
-#      (this repo builds for hours at a time — the race is not hypothetical).
-#
-# SAFETY MODEL (fail-closed at every step):
-#   KEEP  = every tagged version
-#         + every digest referenced as a CHILD by any kept manifest index
-#           (resolved live against the registry, per tag)
-#         + every version younger than KEEP_DAYS (push-in-flight guard)
-#   DELETE candidates = everything else — and even then only with
-#   GHCR_PRUNE_CONFIRM=1; the default run is a DRY RUN that prints the plan.
-#   If ANY tag's manifest cannot be resolved, the script ABORTS: an unreadable
-#   tag means the keep-set may be incomplete, and an incomplete keep-set must
-#   never reach the delete loop.
-#
-# KNOBS
-#   GHCR_PKG              package name        (default kataglyphis_beschleuniger)
-#   GHCR_OWNER            registry namespace  (default kataglyphis)
-#   KEEP_DAYS             age guard in days   (default 7 — build sagas span days)
-#   GHCR_PRUNE_CONFIRM=1  actually delete     (default: dry run)
-#   GHCR_TOKEN            PAT override        (default: ghcr auth from
-#                                              ~/.docker/config.json; needs
-#                                              read:packages + delete:packages)
-#
-# The PAT is read from the local docker login and sent ONLY to api.github.com /
-# ghcr.io — the two hosts it was issued for.
-# ==============================================================================
+# Deletes untagged versions outside the keep-set, dry run unless GHCR_PRUNE_CONFIRM=1: docs/linux-host-setup.md#b8-ghcr-registry-hygiene
 set -euo pipefail
 
 _GHCR_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,7 +13,7 @@ API="${GHCR_API}"
 log()  { printf '[ghcr-prune] %s\n' "$*"; }
 err()  { printf '[ghcr-prune] ERROR: %s\n' "$*" >&2; exit 1; }
 
-# ── auth (shared: ghcr-common.sh) ─────────────
+# Auth
 TOKEN="$(ghcr_pat)" || err "no ghcr credential (docker login ghcr.io, or set GHCR_TOKEN)"
 [ -n "${TOKEN}" ] || err "empty ghcr token"
 
@@ -60,7 +22,7 @@ _api() { curl -fsS -H "Authorization: Bearer ${TOKEN}" \
 
 REG_TOKEN="$(ghcr_registry_token "${TOKEN}")" || err "registry token exchange failed"
 
-# ── 1) inventory: every package version ──────────────────────────────────────
+# 1) Inventory
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
@@ -83,17 +45,11 @@ TOTAL="$(wc -l < "${WORK}/versions.tsv")"
 [ "${TOTAL}" -gt 0 ] || err "no versions found — wrong package name?"
 log "  ${TOTAL} versions total"
 
-# ── 2) keep-set: tags + their index children ─────────────────────────────────
-# Every tagged digest is kept, and every tag's manifest is fetched; when it is
-# an index, its child digests are kept too. A fetch failure ABORTS (fail-closed).
+# 2) Keep-set: tagged digests plus index children; a fetch failure aborts
 : > "${WORK}/keep.digests"
 awk -F'\t' '$4 != "" {print $2}' "${WORK}/versions.tsv" >> "${WORK}/keep.digests"
 mapfile -t ALL_TAGS < <(awk -F'\t' '$4 != "" {print $4}' "${WORK}/versions.tsv" | tr ',' '\n' | sort -u)
-# Fail-CLOSED on a collapsed tag view (adversarial review 2026-08-24): the
-# packages API's tag field is read best-effort, so an API shape change would
-# silently yield ZERO tags — and an empty keep-set turns the delete loop into
-# a registry wipe. This package always carries dozens of tags; below MIN_TAGS
-# something is wrong with the INVENTORY, not the registry.
+# An API shape change would silently yield zero tags and turn the delete loop into a registry wipe.
 MIN_TAGS="${MIN_TAGS:-10}"
 [ "${#ALL_TAGS[@]}" -ge "${MIN_TAGS}" ] \
   || err "only ${#ALL_TAGS[@]} tag(s) visible (MIN_TAGS=${MIN_TAGS}) — inventory looks broken, refusing"
@@ -108,25 +64,21 @@ import sys, json
 d = json.load(sys.stdin)
 for entry in d.get("manifests", []):     # index children; plain manifests have none
     print(entry["digest"])' >> "${WORK}/keep.digests"
-  # TOCTOU half (b): keep the digest the tag resolves to RIGHT NOW too — the
-  # packages-API snapshot may lag a concurrent re-tag, and the moving tag can
-  # land on an OLD digest (byte-identical re-push, manual rollback tag).
+  # Also keep what the tag resolves to now: the API snapshot may lag a re-tag onto an old digest.
   curl -fsSI -H "Authorization: Bearer ${REG_TOKEN}" -H "Accept: ${ACCEPT}" \
       "https://ghcr.io/v2/${GHCR_OWNER}/${GHCR_PKG}/manifests/${tag}" 2>/dev/null \
     | tr -d '\r' | awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}' \
     >> "${WORK}/keep.digests"
 done
 sort -u "${WORK}/keep.digests" -o "${WORK}/keep.digests"
-# Phantom check (review finding): 6 legacy tags in this registry are ALREADY
-# dangling (their index children 404). Phantoms in the keep-set are harmless
-# for deletion safety (superset filter) but pad the sanity gate — say so.
+# Kept digests missing from the inventory are harmless for safety but pad the sanity gate, so report them.
 _phantoms="$(comm -23 "${WORK}/keep.digests" <(cut -f2 "${WORK}/versions.tsv" | sort -u) | wc -l)"
 [ "${_phantoms}" -eq 0 ] || log "  note: ${_phantoms} kept digest(s) not in the inventory (children of already-dangling legacy tags — those tags are unpullable TODAY, independent of pruning)"
 KEEPN="$(wc -l < "${WORK}/keep.digests")"
 log "  keep-set: ${KEEPN} digest(s) (tagged + index children)"
 [ "${KEEPN}" -ge "${#ALL_TAGS[@]}" ] || err "keep-set smaller than tag count — refusing"
 
-# ── 3) candidates: untagged, unreferenced, and OLDER than KEEP_DAYS ──────────
+# 3) Candidates: untagged, unreferenced, older than KEEP_DAYS
 CUTOFF="$(date -u -d "-${KEEP_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
 python3 - "${WORK}" "${CUTOFF}" <<'PY'
 import sys
@@ -151,14 +103,12 @@ PY
 sort -u "${WORK}/candidates.tsv" -o "${WORK}/candidates.tsv"   # pagination shift can duplicate rows
 CANDN="$(wc -l < "${WORK}/candidates.tsv")"
 
-# Sanity: never delete everything, and never more than 95% of the package in
-# one run — a keep-set collapse (the gate-that-cannot-fail class) would
-# otherwise sail straight into the delete loop.
+# A collapsed keep-set must never reach the delete loop.
 [ "${CANDN}" -lt "${TOTAL}" ] || err "candidates == total — refusing"
 [ "$(( CANDN * 100 ))" -le "$(( TOTAL * 95 ))" ] \
   || err "candidates ${CANDN}/${TOTAL} exceed 95% — keep-set looks broken, refusing"
 
-# ── 4) dry run or delete ─────────────────────────────────────────────────────
+# 4) Dry run or delete
 if [ "${CONFIRM}" != "1" ]; then
   log "DRY RUN (set GHCR_PRUNE_CONFIRM=1 to delete). Oldest 10 candidates:"
   sort -t$'\t' -k3 "${WORK}/candidates.tsv" \
@@ -171,10 +121,7 @@ log "deleting ${CANDN} version(s)…"
 DELETED=0; FAILED=0
 SKIPPED=0
 while IFS=$'\t' read -r vid digest created; do
-  # TOCTOU half (a): a tag may have LANDED on this old digest since the
-  # snapshot (rollback tag, byte-identical re-push). Re-read the version
-  # immediately before deleting; any tag now => skip. Read failure => skip
-  # too (fail-closed: never delete what we cannot re-verify).
+  # A tag may have landed here since the snapshot: skip on any tag now, or when the re-read fails.
   _now_tags="$(_api "${API}/user/packages/container/${GHCR_PKG}/versions/${vid}" 2>/dev/null \
     | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("metadata",{}).get("container",{}).get("tags",[])))' 2>/dev/null || echo x)"
   if [ "${_now_tags}" != "0" ]; then

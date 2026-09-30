@@ -1,32 +1,7 @@
-# .github/workflows/python-ci-windows.yml
-#
-# Reusable Windows CI lane for the Python consumers (OrchestrANT,
-# WebDavClient). Runs the repo's scripts/windows/Build-Windows.ps1
-# inside the winamd64 image and uploads whatever it produced.
-#
-# TWO INDEPENDENT JOBS, each with its own switch: the container build
-# (`build-python-package`, default true) and the PowerShell lint
-# (`lint-powershell`, default false). Either runs without the other, which is
-# what lets a repo with no Python package take the lint gate alone.
-#
-# Twin of python-ci-linux.yml. Before this existed the two callers each carried a
-# ~70-line copy differing on 20 lines, and none of those differences were a
-# deliberate policy choice - they were drift. Where the copies disagreed this
-# takes the SAFER of the two, which in every case was WebDavClient's:
-#
-#   * upload on always()      - OrchestrANT uploaded only on success, so a
-#                               failing build discarded the logs that explain it
-#   * if-no-files-found: warn - instead of failing the job a second time on an
-#                               empty dist/ when the real failure is upstream
-#   * logs/ + docs/test_results/ in the artifact, not just dist/
-#   * upload-artifact v7      - OrchestrANT was a major version behind
-#
-# fetch-depth is the one difference that is a real choice, so it is an input:
-# WebDavClient fetches full history (0), OrchestrANT shallow (1).
+# Two independent jobs with their own switches, so a repo without a Python package can take the lint alone.
 name: Python CI · Windows (reusable)
 
-# Least privilege: this lane reads the repo, pulls an image and pushes artifacts.
-# It never writes to the repository.
+# Least privilege: this lane never writes to the repository.
 permissions:
   contents: read
 
@@ -157,18 +132,13 @@ defaults:
     shell: pwsh
 
 jobs:
-  # ON unless the caller passes `build-python-package: false`, which is how the
-  # lint job below is taken alone. The gate is here and not on the lint job
-  # because the two are independent: either may run without the other.
+  # Gated per job, since either job may run without the other.
   build-test-python-package-on-windows:
     if: ${{ inputs.build-python-package }}
     runs-on: ${{ inputs.runs-on }}
 
     steps:
-      # GHCR_PAT is `required: false` so a lint-only caller need not own a
-      # registry token. THIS job does need one, and an empty secret otherwise
-      # surfaces inside the prologue action as a `docker login` failure that
-      # names the registry rather than the missing input.
+      # An empty secret would otherwise fail as a docker login error that never names the input.
       - name: Require GHCR_PAT for the container build
         env:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
@@ -177,18 +147,7 @@ jobs:
             throw "GHCR_PAT is empty: this job pulls ${{ inputs.image }} from ghcr.io. Pass the secret, or call this lane with build-python-package: false to take the PowerShell lint alone."
           }
 
-      # ANTfrastructure's shared Windows prologue: long paths, checkout, the
-      # data-root move onto D:, disk cleanup, ghcr login, pull, disk report.
-      # What stood here was a step-for-step copy of that action - same seven
-      # steps in the same order, down to the same pinned checkout SHA - while
-      # the Linux twin has called prepare-linux-ci-host since it was written.
-      #
-      # short-path-target is EMPTY on purpose, not by preference: this lane
-      # mounts github.workspace into the container and uploads ./dist/, ./logs/
-      # and ./docs/test_results/ relative to it, so the action's default /d/ws
-      # clone would leave the mount below and every artifact glob pointing at a
-      # tree the build never touched. The checkout therefore takes the
-      # submodules itself, recursively - the input the action was missing.
+      # No short-path clone: the mount and the artifact globs below use github.workspace.
       - name: Prepare Windows container host
         uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-windows-container-host@develop
         with:
@@ -198,18 +157,10 @@ jobs:
           fetch-depth: ${{ inputs.fetch-depth }}
           submodules: recursive
           short-path-target: ''
-          # Keeps this lane's third disk signal: free space alone cannot say
-          # WHERE the image landed, because cleanup-disk-space frees C: in the
-          # same job. Measured 2026-08-11: C: 29.9 GB free of 149.4, D: 219.5/220.
+          # Free space cannot say where the image landed, since cleanup frees C: in the same job.
           measure-data-root: 'true'
 
-      # ANTfrastructure's action instead of a hand-rolled `docker run`: it gives the
-      # container every logical processor the runner has, delivers the payload
-      # through env vars so nothing is re-parsed by the host shell, and runs it
-      # under `pwsh`. That last part is a requirement, not a preference - every
-      # ANTfrastructure module declares `#requires -Version 7.0`, and Windows
-      # PowerShell 5.1 cannot load them, which is how one caller's lane used to
-      # fail with an opaque Import-Module error.
+      # The action runs the payload under pwsh; the hub's modules need 7.0 and fail opaquely under 5.1.
       - name: Run container
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
         with:
@@ -227,9 +178,7 @@ jobs:
           if-no-files-found: warn
           path: ${{ inputs.artifact-paths }}
 
-  # OFF by default; `lint-powershell: true` turns it on. Independent of the build
-  # job above on purpose: a syntax error in the build scripts is exactly when
-  # this gate is worth having, and it needs no image pull.
+  # Independent of the build: a syntax error in the build scripts is exactly when this gate matters.
   lint-powershell:
     if: ${{ inputs.lint-powershell }}
     name: PowerShell lint (ANTfrastructure gate)
@@ -237,31 +186,18 @@ jobs:
     # Install-Module is the step that can hang.
     timeout-minutes: 20
     steps:
-      # submodules: true, TOP LEVEL ONLY. The gate script and its ruleset both
-      # live in third_party/ANTfrastructure; its own chain is minutes of clone
-      # that nothing here reads. fetch-depth 1: nothing here reads history.
+      # Top level only: the gate lives in third_party/ANTfrastructure, and nothing reads that submodule's own chain.
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           submodules: true
 
-      # PINNED, the way the hub pins it for its own windows-x64.yml lane: an
-      # unpinned install lets a new analyzer release add a rule that fails this
-      # lane with no commit to blame - the argument the ruff pin makes.
+      # Pinned: a new analyzer release must not fail this lane with no commit to blame.
       - name: Install PSScriptAnalyzer
         run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
 
-      # -Path points the gate at the CALLER's tree; the PSScriptAnalyzerSettings
-      # file stays resolved against the gate script's own $PSScriptRoot, so the
-      # hub's ruleset is consumed BY REFERENCE and no consumer copies a ruleset.
-      #
-      # -FailOnAnalyzer is not optional and is not an input. Without it the
-      # analyzer pass prints its findings and exits 0, which is a check that
-      # cannot fail; both consumers that hand-wrote this job reached the same
-      # conclusion, one of them after triaging its findings to zero first. A
-      # repo with an untriaged backlog fixes it or narrows the hub's ruleset -
-      # it does not get a green lane over ungraded scripts.
+      # The ruleset resolves against the gate's own root (by reference); -FailOnAnalyzer is fixed, as without it the analyzer cannot fail.
       - name: Lint PowerShell (parse gate + AST traps + PSScriptAnalyzer)
         run: |
           $gate = 'third_party/ANTfrastructure/windows/scripts/Invoke-Lint.ps1'

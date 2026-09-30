@@ -1,34 +1,30 @@
 #!/usr/bin/env bash
-# renovate-local.sh - the family's dependency-upgrade tool: Renovate as a LOCAL
-# CLI (owner directive 2026-09-09). Renovate DETECTS; this script APPLIES, for
-# every ecosystem the repo has. Read
-# docs/dependency-updates.md#before-you-change-the-script before changing it.
+# renovate-local.sh - Renovate as a local CLI: Renovate detects what is behind,
+# this script applies it, for every ecosystem the repo has.
+# Before changing it, read docs/dependency-updates.md#before-you-change-the-script
+# Usage:
 #   renovate-local.sh [--refresh] [<root>]        report what is behind (default)
 #   renovate-local.sh --apply [--dry-run] <root>  move gitlinks AND edit manifests
 #   renovate-local.sh --managers <csv> <root>     default: whatever the tree HAS
 #   renovate-local.sh --print-bin                 the resolved renovate.js
 #   renovate-fleet.sh beside this one runs it over EVERY repo the family has
 
-# Exit codes -- branch on THESE, never on the text. What each one promises about
-# the tree: docs/dependency-updates.md#what-a-caller-branches-on
+# Exit codes -- branch on these, never on the text:
 #   0  every reported update is now at its new value, or already was
-#   1  the run could not complete. Nothing was written, or everything written --
-#      manifests, lockfiles AND gitlinks -- was put back: the tree is as it was
+#   1  the run could not complete; anything written (manifests, lockfiles,
+#      gitlinks) was put back, so the tree is as it was
 #   2  the run completed and the tree is consistent, but at least one reported
-#      update was NOT applied. A human applies those. Until 2026-09-10 this was
-#      0, i.e. indistinguishable from a repo with nothing behind
+#      update was NOT applied; a human applies those
 #   130/143/129/141  SIGINT / SIGTERM / SIGHUP / SIGPIPE, undone first (on_signal)
+# What each code promises about the tree:
+# docs/dependency-updates.md#what-a-caller-branches-on
 set -uo pipefail
 
-# 2 is the family's "the tool could not do its job" (docs/code-quality-tooling.md,
-# "Exit 2 is never a pass"). EXIT_CODE is what the last line of this file exits
-# with; only report_refusals() raises it, and err() bypasses it with 1.
+# Only report_refusals() raises EXIT_CODE to 2; err() exits 1 directly.
 EXIT_REFUSED=2
 EXIT_CODE=0
 
-# err/note/note_listing/refuse_listing. Sourced FIRST, before anything that can
-# fail, because everything below reports through them. The argument is the name
-# a fatal message is signed with.
+# Sourced first, since everything below reports through it; the argument signs fatal messages.
 # shellcheck source=renovate-say.sh
 . "$(dirname "${BASH_SOURCE[0]}")/renovate-say.sh" renovate-local.sh \
   || { printf 'renovate-local.sh: cannot load renovate-say.sh beside me\n' >&2; exit 1; }
@@ -74,24 +70,11 @@ TARGET="${TARGET:-$PWD}"
 TARGET="$(cd "${TARGET}" && pwd)"
 git -C "${TARGET}" rev-parse --git-dir >/dev/null 2>&1 || err "not a git repo: ${TARGET}"
 
-# Two inputs let the apply half run without a network round trip:
-#   RENOVATE_LOCAL_REPORT - a report JSON to read INSTEAD of running Renovate
-#   RENOVATE_LOCAL_CONFIG - a RESOLVED Renovate config (managerFilePatterns for
-#                           detection, packageRules for the refusals)
-# The test suite drives exactly these, and so can a human re-running --apply over
-# a report they already have. With a report injected nothing is bootstrapped,
-# because nothing would run.
+# A saved report JSON and resolved config let --apply run offline, with nothing bootstrapped.
 INJECTED_REPORT="${RENOVATE_LOCAL_REPORT:-}"
 INJECTED_CONFIG="${RENOVATE_LOCAL_CONFIG:-}"
 
-# --------------------------------------------------------------------------
-# Bootstrap: a pinned, checksum-verified Node plus a pinned Renovate, cached
-# per version. Same shape as the shellcheck and gitleaks bootstraps, and for the
-# same reason: a tool resolved from PATH at an unknown version turns a red gate
-# into an argument about whose machine is right.
-# --------------------------------------------------------------------------
-# A python that actually RUNS. On a Windows host `python3` on PATH is the
-# Microsoft Store stub, which exits 49 on `-c pass` -- so probe, do not assume.
+# Bootstrap pinned tools; probe python, since on Windows `python3` can be the Microsoft Store stub.
 PY_BIN="${PREFLIGHT_PYTHON:-python3}"
 if ! "${PY_BIN}" -c 'pass' >/dev/null 2>&1; then
   if python -c 'pass' >/dev/null 2>&1; then
@@ -109,10 +92,7 @@ NODE_BIN=""
 
 node_major() { "$1" --version 2>/dev/null | sed -e 's/^v//' -e 's/\..*//'; }
 
-# arch_normalize is the repo's one owner of the x86_64/amd64/aarch64/arm64
-# spelling problem (01-core/platform.sh). Rolling another `case "$(uname -m)"`
-# here is exactly the copy the duplication gate exists to catch -- it flagged the
-# first version of this function against platform.sh and lib/wasm-opt.sh.
+# arch_normalize owns the arch spelling; a local `uname -m` case is what the dupes gate flags.
 node_arch_asset() {
   local arch
   arch="$(arch_normalize "$(uname -m)")"
@@ -124,12 +104,9 @@ node_arch_asset() {
 }
 
 bootstrap_node() {
-  # A PATH copy is used ONLY when it is new enough. Renovate's own engine check
-  # would otherwise fail late and obscurely.
   local path_node
   path_node="$(command -v node || true)"
-  # Major must MATCH the pin, not merely exceed it: Renovate declares
-  # engines.node "^24.11.0", so this repo's own NODE_VERSION=26.8.1 is too NEW.
+  # Match the pinned major, not exceed it: Renovate's engines.node is a caret range.
   local want_major="${RENOVATE_NODE_VERSION%%.*}"
   if [ -n "${path_node}" ] && [ "$(node_major "${path_node}")" = "${want_major}" ] 2>/dev/null; then
     NODE_BIN="${path_node}"
@@ -162,8 +139,7 @@ bootstrap_node() {
 bootstrap_renovate() {
   [ -f "${RENOVATE_JS}" ] && return 0
   note "installing renovate ${RENOVATE_VERSION} into ${NPM_PREFIX}"
-  # npm_config_prefix keeps this in a user-owned dir: no sudo, and nothing
-  # global is touched on a shared machine.
+  # A user-owned prefix: no sudo, nothing global touched.
   PATH="$(dirname "${NODE_BIN}"):${PATH}" npm_config_prefix="${NPM_PREFIX}" \
     "$(dirname "${NODE_BIN}")/npm" install -g "renovate@${RENOVATE_VERSION}" \
     --no-fund --no-audit --loglevel=error \
@@ -181,13 +157,7 @@ if [ "${MODE}" = print-bin ]; then
   exit 0
 fi
 
-# --------------------------------------------------------------------------
-# The planner (renovate_planner.py) and the locator beside it
-# (renovate_locator.py). Everything that READS the report JSON, MATCHES a
-# packageRule or DECIDES which line carries a value lives there, so the plan a
-# --dry-run prints and the edit an --apply writes come from one piece of code
-# and cannot disagree.
-# --------------------------------------------------------------------------
+# Reading the report and placing values live in the planner, so --dry-run and --apply cannot disagree.
 PLANNER="${HUB_ROOT}/linux/scripts/renovate_planner.py"
 LOCATOR="${HUB_ROOT}/linux/scripts/renovate_locator.py"
 [ -f "${PLANNER}" ] || err "the planner is missing at ${PLANNER}"
@@ -195,38 +165,22 @@ LOCATOR="${HUB_ROOT}/linux/scripts/renovate_locator.py"
 
 rl_py() { "${PY_BIN}" "${PLANNER}" "$@"; }
 
-# The lockfile half: which lock a manifest has, the tool that owns it, and the
-# copy-aside that makes the manifest half one unit. Sourced AFTER note()/err()/
-# refuse_listing(), which it calls.
+# The lockfile half; sourced after note()/err()/refuse_listing(), which it calls.
 LOCKS="${HUB_ROOT}/linux/scripts/renovate-locks.sh"
 [ -f "${LOCKS}" ] || err "the lockfile half is missing at ${LOCKS}"
 # shellcheck source=renovate-locks.sh
 . "${LOCKS}"
 
-# The tree half: which git owns this checkout, whether the paths this run writes
-# are clean, and what ELSE moved while an ecosystem tool ran. Sourced AFTER the
-# lockfile half, whose undo_run() the collateral refusal calls.
+# The tree half; sourced after the lockfile half, whose undo_run() it calls.
 TREE="${HUB_ROOT}/linux/scripts/renovate-tree.sh"
 [ -f "${TREE}" ] || err "the tree half is missing at ${TREE}"
 # shellcheck source=renovate-tree.sh
 . "${TREE}"
 
-# --------------------------------------------------------------------------
-# Manager selection. The default is every manager whose OWN file patterns match
-# something this tree tracks -- because "git-submodules only" answered a question
-# nobody asked once cargo, pub and npm needed applying too.
-# --------------------------------------------------------------------------
+# Manager selection: by default every manager whose own file patterns match a tracked file.
 MGR_CFG=""
 RUN_DIR=""
-# One scratch directory per run, and deliberately NOT mktemp's, because both
-# files this script hands Renovate are fussy about their names:
-#   * LOG_FILE is read through logger/utils.js `getEnv`, which does
-#     `v?.toLowerCase().trim()` on the VALUE -- a mktemp name (tmp.AbCdEfGhIj)
-#     is opened LOWERCASED, so the log lands in a file nobody reads and the
-#     --print-config record silently goes missing.
-#   * RENOVATE_CONFIG_FILE must carry a known EXTENSION; a mktemp name with none
-#     kills the run outright with "FATAL: Unsupported file type".
-# Both measured on 44.71.0, 2026-09-09. Hence: lowercase, checked, with suffixes.
+# Not mktemp: Renovate lowercases the LOG_FILE value and rejects a config file with no extension.
 run_scratch() {
   local lower
   [ -n "${RUN_DIR}" ] && return 0
@@ -238,11 +192,7 @@ run_scratch() {
   mkdir -p "${RUN_DIR}" || err "cannot create ${RUN_DIR}"
 }
 
-# Renovate's per-manager defaults (file patterns, and which managers ship
-# disabled) depend on the Renovate VERSION, not on the repo, so probe them once
-# from an empty throwaway checkout and cache them per version. Measured cost of
-# the probe: 1.8s, no network beyond preset resolution an empty tree never asks
-# for.
+# Manager defaults depend on the Renovate version, not the repo: probe an empty checkout once per version.
 probe_manager_config() {
   MGR_CFG="${INJECTED_CONFIG}"
   [ -n "${MGR_CFG}" ] && return 0
@@ -275,10 +225,7 @@ detect_managers() {
   list="$(mktemp)" || err "mktemp failed"
   MGR_TSV="$(mktemp)" || err "mktemp failed"
   git -C "${TARGET}" ls-files > "${list}" || err "git ls-files failed in ${TARGET}"
-  # A FILE, not `< <(...)`: a process substitution's exit status is invisible to
-  # the loop reading it, so a planner that DIED on a malformed config produced
-  # zero rows -- and the emptiness guard below then blamed the tree
-  # ("no manager's file patterns match anything tracked") instead of the config.
+  # A file, not `< <(...)`, whose exit status the loop cannot see: a dead planner would read as zero rows.
   if ! rl_py managers "${MGR_CFG}" "${list}" > "${MGR_TSV}"; then
     rm -f "${list}"
     err "could not read the manager file patterns out of ${MGR_CFG} (above)"
@@ -301,19 +248,14 @@ detect_managers() {
   note "custom managers (custom.regex) are NOT auto-detected -- name them explicitly."
 }
 
-# A manager Renovate ships disabled is enabled from the GLOBAL config layer, which
-# is the WEAKEST one: a repo whose own renovate.json says {"pre-commit":
-# {"enabled": false}} still wins. Measured on 44.71.0 -- --enabled-managers alone
-# does NOT override a manager's own `enabled: false`, which is why every
-# .pre-commit-config.yaml in this family was invisible until now.
+# --enabled-managers alone does not undo a shipped `enabled: false`; this global layer does, and a repo's own config still wins.
 GLOBAL_CFG=""
 write_global_config() {
   run_scratch
   GLOBAL_CFG="${RUN_DIR}/global.json"
   local mgr sep=""
   local -a off=()
-  # IFS=',' read -r -a, not ${x//,/ }: the pattern split is what the IFS-safety
-  # gate exists to catch, because it also splits on the spaces inside a value.
+  # Not ${x//,/ }: that also splits on spaces inside a value.
   IFS=',' read -r -a off <<<"${MGR_DEFAULT_OFF}"
   printf '{' > "${GLOBAL_CFG}"
   for mgr in ${off[@]+"${off[@]}"}; do
@@ -324,15 +266,7 @@ write_global_config() {
   printf '}\n' >> "${GLOBAL_CFG}"
 }
 
-# --------------------------------------------------------------------------
-# Report: what is behind, according to the repo's OWN renovate config.
-#
-# Renovate's console output does NOT name the pending updates at info level --
-# they appear only inside a "packageFiles with updates" blob at debug. So this
-# asks for the machine-readable report instead (RENOVATE_REPORT_TYPE=file) and
-# renders it. --print-config rides along in the same run, because the refusals
-# below need the config Renovate actually resolved, presets included.
-# --------------------------------------------------------------------------
+# Report: the console names pending updates only at debug level, so read the file report instead.
 REPORT_JSON=""
 RUN_LOG=""
 REPO_CFG=""
@@ -347,18 +281,13 @@ run_renovate() {
   run_scratch
   REPORT_JSON="${RUN_DIR}/report.json"
   RUN_LOG="${RUN_DIR}/run.ndjson"
-  # --refresh drops the lookup cache first. A cache written before a push reports
-  # the OLD tip as "available", i.e. a downgrade presented as an update -- seen
-  # on 2026-09-09 with 46b73e33 -> 1fef6f28, which is its own parent.
+  # A cache written before a push reports the old tip as an update, i.e. a downgrade.
   if [ "${REFRESH}" -eq 1 ]; then
     note "dropping the lookup cache at ${CACHE_ROOT}/base"
     rm -rf "${CACHE_ROOT:?}/base"
   fi
   write_global_config
-  # RENOVATE_BASE_DIR keeps Renovate's scratch out of the repo being graded.
-  # A token is deliberately NOT required: the git-submodules manager uses the
-  # git-refs datasource, i.e. anonymous `git ls-remote`, and ssh remotes are
-  # rewritten to https automatically. Other datasources will say so themselves.
+  # No token needed: git-refs is anonymous `git ls-remote`; other datasources say so themselves.
   ( cd "${TARGET}" \
     && RENOVATE_BASE_DIR="${CACHE_ROOT}/base" \
        LOG_LEVEL="${RENOVATE_LOG_LEVEL:-warn}" \
@@ -377,9 +306,7 @@ run_renovate() {
   [ -s "${REPORT_JSON}" ] || err "renovate wrote no report to ${REPORT_JSON}"
 }
 
-# The config Renovate RESOLVED for this repo -- `extends` already expanded, which
-# platform=local does do (measured 2026-09-09 on 44.71.0: the shared preset's own
-# git-submodules block is what makes the hub report gitlinks at all).
+# The resolved config, `extends` expanded: the shared preset is what enables git-submodules.
 resolve_repo_config() {
   REPO_CFG="${INJECTED_CONFIG}"
   [ -n "${REPO_CFG}" ] && return 0
@@ -392,10 +319,7 @@ resolve_repo_config() {
 run_report() {
   local n=0 mgr file dep cur new
   ROWS_TSV="$(mktemp)" || err "mktemp failed"
-  # The same `< <(...)` trap as detect_managers, and this is the DEFAULT mode
-  # every consumer wrapper invokes: a truncated or wrong-shaped report made the
-  # planner die, the loop saw zero rows, and the run printed "up to date" with
-  # rc 0 -- a crash rendered as a green result.
+  # Same `< <(...)` trap as detect_managers: a dead planner must not print "up to date".
   rl_py rows "${REPORT_JSON}" > "${ROWS_TSV}" \
     || err "could not read the report at ${REPORT_JSON} (above)"
   while IFS=$'\t' read -r mgr file dep cur new; do
@@ -414,16 +338,7 @@ run_report() {
   fi
 }
 
-# --------------------------------------------------------------------------
-# Apply. Two halves that must not half-run: gitlinks move with git, every other
-# ecosystem is one targeted line rewrite in the file the report named.
-# --------------------------------------------------------------------------
-# The submodule paths in .gitmodules, split by whether they declare a branch --
-# the single question --apply turns on. ONE walk with the predicate as the
-# argument, because two walks were a copy of each other down to the sed.
-#   submodule_paths with-branch     -> paths that name a branch to track
-#   submodule_paths without-branch  -> paths where --remote would fall back to
-#                                      the remote's default branch
+# Apply: gitlinks move with git, other ecosystems by one line rewrite; neither half may half-run.
 submodule_paths() {
   local want="$1" name path
   git -C "${TARGET}" config -f .gitmodules --name-only --get-regexp '\.path$' 2>/dev/null \
@@ -439,8 +354,7 @@ submodule_paths() {
     done
 }
 
-# The apply half hands lists between functions. Globals, because bash cannot
-# return a list and a $() round-trip would re-run the classification.
+# Globals: bash cannot return a list, and a $() round-trip would re-run the classification.
 APPLY_PATHS=(); APPLY_REFUSED=(); APPLY_UNMATCHED=()
 APPLY_DIRTY=(); APPLY_EOL=()
 GIT_BIN=git; GIT_TARGET=""
@@ -448,9 +362,7 @@ PLAN_TSV=""; PLAN_JSON=""; MGR_TSV=""; ROWS_TSV=""
 PLAN_SUBMODULES=(); PLAN_EDITS=(); PLAN_REFUSE=(); PLAN_SKIP=(); PLAN_DONE=()
 EDIT_FILES=(); EDIT_LINES=0
 
-# One parse of the report into every list the apply half needs. The JSON plan it
-# writes alongside is what actually gets applied, so --dry-run and --apply cannot
-# disagree about a single character.
+# The JSON plan written here is what gets applied, so --dry-run and --apply cannot disagree.
 build_plan() {
   local kind mgr file dep cur new line detail before after key
   resolve_repo_config
@@ -470,24 +382,19 @@ build_plan() {
   done < "${PLAN_TSV}"
 }
 
-# One EDIT row, recorded three ways: as the reviewable before/after block, as the
-# file that must be clean before anything is written, and as the lockfile job the
-# edit creates.
+# One EDIT row: a reviewable diff, a file that must be clean, and a lockfile job.
 plan_edit_row() {
   local mgr="$1" file="$2" dep="$3" cur="$4" new="$5" line="$6" before="$7" after="$8"
   local key
   PLAN_EDITS+=("${file}:${line}  ${dep}  ${cur} -> ${new}" "  - ${before}" "  + ${after}")
   EDIT_LINES=$((EDIT_LINES + 1))
   case " ${EDIT_FILES[*]-} " in *" ${file} "*) ;; *) EDIT_FILES+=("${file}") ;; esac
-  # The declared value is part of the key because cargo's lock command needs it
-  # to disambiguate a crate the lockfile holds twice (renovate-locks.sh,
-  # cargo_spec).
+  # The declared value disambiguates a crate the lockfile holds twice (renovate-locks.sh cargo_spec).
   key="${mgr}|${file}|${dep}|${cur}"
   case " ${LOCK_JOBS[*]-} " in *" ${key} "*) ;; *) LOCK_JOBS+=("${key}") ;; esac
 }
 
-# Which submodules to move: BOTH behind (Renovate says so) AND declaring a branch
-# (.gitmodules says so). Neither half is sufficient alone.
+# Move a submodule only when it is behind AND declares a branch; neither alone suffices.
 select_apply_targets() {
   local -a declared=() branchless=()
   local pth b d
@@ -506,11 +413,7 @@ select_apply_targets() {
   done
 }
 
-# PRE-FLIGHT, learned the hard way on 2026-09-09: `git submodule update --remote`
-# over several paths is NOT ATOMIC. It walks them in order, and one dirty submodule
-# makes git abort THAT checkout while the ones already done stay moved -- a
-# half-applied superproject with a non-zero exit. The manifest edits join the same
-# pre-flight for the same reason: a half-edited repo is worse than an unedited one.
+# `submodule update --remote` is not atomic, so every target is checked before anything is written.
 assert_targets_applyable() {
   refuse_listing "wrong git for this working tree" \
     "The REPORT half is safe from anywhere -- it only reads. Run --apply with the
@@ -524,11 +427,7 @@ git that owns the working tree (on Windows: Git Bash or PowerShell)." \
     "REFUSING to apply: these paths have local changes, and writing over them" \
     "would mix this run's edits into work that is already there:" \
     -- ${APPLY_DIRTY[@]+"${APPLY_DIRTY[@]}"}
-  # The planner's own pre-flight over the SAME plan the apply half would write:
-  # every target contained in this checkout, unmoved since the plan, and
-  # writable -- file and directory both. It runs HERE, which is before the
-  # --dry-run branch, so a plan that cannot fully apply is refused rather than
-  # printed as clean and then half-written.
+  # Before the --dry-run branch, so a plan that cannot fully apply is refused, not printed as clean.
   rl_py verify "${TARGET}" "${PLAN_JSON}" \
     || err "the planned edits cannot all be written (above); nothing was written"
   assert_locks_runnable
@@ -579,28 +478,19 @@ print_dry_run() {
   fi
 }
 
-# The gitlink half. `--remote` over several paths is NOT atomic -- it walks them
-# in order and one failure leaves the earlier ones moved -- so its failure takes
-# the SAME undo the manifest half takes, which is why snapshot_gitlinks recorded
-# where each one was. The old message here told the human to sort it out with
-# `git submodule update --init`; a tool that knows what it moved should move it
-# back itself.
+# `--remote` is not atomic, so its failure takes the same undo as the manifest half.
 apply_submodules() {
   [ "${#APPLY_PATHS[@]}" -gt 0 ] || return 0
   note ""
   note "updating ${#APPLY_PATHS[@]} submodule(s) to the tip of the branch they name:"
   printf '  %s\n' "${APPLY_PATHS[@]}"
-  # Explicit paths, and NO --recursive. Both deliberate; see the header.
+  # Explicit paths and no --recursive: only the eligible gitlinks of this repo move.
   "${GIT_BIN}" -C "${GIT_TARGET}" submodule update --remote -- "${APPLY_PATHS[@]}" \
     || undo_run "git submodule update --remote failed"
   "${GIT_BIN}" -C "${GIT_TARGET}" submodule summary -- "${APPLY_PATHS[@]}" 2>/dev/null || true
 }
 
-# The manifest half. Every line it writes was located by the manager's OWN
-# syntax and re-checked against the file before the first byte, and every file
-# it is about to write was copied aside by run_apply's snapshot -- so a lock
-# tool that fails puts all of them back, gitlinks included.
-# docs/dependency-updates.md#all-of-it-or-none-of-it
+# Every target was copied aside first, so a failing lock tool puts all back. See docs/dependency-updates.md#all-of-it-or-none-of-it
 apply_files() {
   [ "${EDIT_LINES}" -gt 0 ] || return 0
   note ""
@@ -608,10 +498,7 @@ apply_files() {
   if ! rl_py edit "${TARGET}" "${PLAN_JSON}"; then
     undo_run "the planned edits were not written"
   fi
-  # The audit inside `rl_py edit` has just proven one value moved per file. The
-  # lock tools run next, in the manifest's own directory, and several of them
-  # rewrite the manifest they are handed -- so the proven bytes are hashed HERE,
-  # between the proof and the tools, and checked again once they are done.
+  # Lock tools may rewrite the manifest, so hash the audited bytes now and re-check after them.
   manifest_record_shas ${EDIT_FILES[@]+"${EDIT_FILES[@]}"}
   refresh_locks
   if [ -n "${LOCK_FAILED}" ]; then
@@ -621,14 +508,7 @@ apply_files() {
   assert_locks_sane
 }
 
-# The last thing an --apply prints, and the only place EXIT_CODE becomes 2.
-#
-# Four lists, one number: the repo's own config sent one to a human, the locator
-# or the parser would not place one, a submodule declares no branch, a submodule
-# is not declared here at all. They are four different reasons and one FACT --
-# the report named an update and this run did not write it -- and a caller can
-# only branch on the fact. It runs on the --dry-run path too, so a reviewer's
-# exit code is the one the real run will give them.
+# The only place EXIT_CODE becomes 2; --dry-run runs it too, so a reviewer sees the real rc.
 report_refusals() {
   local n
   n=$(( ${#PLAN_REFUSE[@]} + ${#PLAN_SKIP[@]} \
@@ -657,65 +537,38 @@ run_apply() {
   select_git_for_tree
   assert_targets_applyable
 
-  # --dry-run stops HERE, after the pre-flight and never before it: the value of a
-  # plan is that it ran the checks that would block the real thing.
+  # --dry-run stops after the pre-flight: a plan's value is that it ran the blocking checks.
   if [ "${DRY_RUN}" -eq 1 ]; then
     print_dry_run
     report_refusals
     return 0
   fi
 
-  # ONE snapshot over BOTH halves, before either writes. apply_files used to
-  # take its own and SETTLE -- discarding them -- the line before the gitlink
-  # half began, so a failing `submodule update` exited 1 with the manifests
-  # written and the only copies gone, under an rc 1 documented as "the tree is
-  # where it started". Measured 2026-09-10.
-  # How the whole checkout stands, before anything at all -- the other half of
-  # "all of it or none of it": the copies below say what this run may put back,
-  # and this says what it may have MOVED. Taken first so nothing, not even the
-  # in-flight marker, can be mistaken for a write an ecosystem tool made.
+  # One snapshot over both halves, tree first, so not even the in-flight marker reads as a tool's write.
   tree_snapshot
   snapshot_targets ${EDIT_FILES[@]+"${EDIT_FILES[@]}"}
-  # Manifests + their locks FIRST, then the gitlinks. Either failing puts BOTH
-  # halves back, so the order is now about reviewability rather than safety.
+  # Either half failing restores both, so this order is for reviewability only.
   apply_files
   apply_submodules
-  # Both halves are done. Before the tree becomes the copy worth keeping, the
-  # one question the per-file audit cannot answer: did anything ELSE move?
-  # docs/dependency-updates.md#nothing-else-in-the-repo-moved
+  # See docs/dependency-updates.md#nothing-else-in-the-repo-moved
   assert_no_collateral
-  # Only NOW is the tree the copy worth keeping: this is what lets cleanup()
-  # drop the copies and takes the in-flight marker off.
+  # Only now is the tree worth keeping: cleanup() may drop the copies and the in-flight marker.
   settle_targets
   note ""
   note "Nothing is staged or committed. Stage the paths you reviewed."
   report_refusals
 }
 
-# --------------------------------------------------------------------------
-# Leaving: on purpose, or because somebody stopped us
-# --------------------------------------------------------------------------
-# The undo a signal runs, and the rule that decides whether the copies beside
-# the run may be deleted, both live in the lockfile half beside the copies
-# themselves: on_signal() and discard_backups().
+# Leaving: on_signal() and discard_backups() live in renovate-locks.sh, beside the copies.
 trap 'on_signal INT 130' INT
 trap 'on_signal TERM 143' TERM
 trap 'on_signal HUP 129' HUP
-# SIGPIPE is the signal a human actually sends, and it was the one not caught:
-# `--apply ... | head -n 9`, or `| less` and then q. Measured at three cut
-# points -- the deepest left the manifest at its new value with the lockfile
-# never refreshed, and the caller read head's rc rather than this script's.
+# SIGPIPE is the one a human sends (`| head`, `| less` then q); it can cut between manifest and lock.
 trap 'on_signal PIPE 141' PIPE
 
 cleanup() {
   local f
-  # PLANNER and LOCATOR are SHIPPED files, not temp ones -- they must never
-  # appear here, and neither may an INJECTED report or config: those belong to
-  # the caller.
-  # Every mktemp this run takes, including TREE_BEFORE_IGNORED, which arrived
-  # with the ignored-path comparison and was missed here: the suites that assert
-  # a settled run leaves TMPDIR EMPTY caught it in seven places at once, which is
-  # what that assertion is for.
+  # Every mktemp of this run; never PLANNER/LOCATOR or an injected report/config, which are not ours.
   for f in "${PLAN_TSV}" "${PLAN_JSON}" "${MGR_TSV}" "${ROWS_TSV}" \
            "${TREE_BEFORE}" "${TREE_BEFORE_PATHS}" "${TREE_BEFORE_HASH}" \
            "${TREE_BEFORE_IGNORED}"; do
@@ -723,16 +576,13 @@ cleanup() {
   done
   if [ -n "${REPO_CFG}" ] && [ -z "${INJECTED_CONFIG}" ]; then rm -f "${REPO_CFG}"; fi
   discard_backups
-  # The scratch dir holds this run's report, its log and the global config; it is
-  # ours, named after this PID, and created by run_scratch alone.
+  # The scratch dir is ours alone: named after this PID, created only by run_scratch.
   if [ -n "${RUN_DIR}" ]; then rm -rf "${RUN_DIR:?}"; fi
   return 0
 }
 trap cleanup EXIT
 
-# Before this run reads a single thing about the tree: did an earlier --apply
-# die without finishing or undoing itself? A SIGKILL cannot be trapped, so that
-# tree may be half-applied, and the next run used to exit 0 over it.
+# A SIGKILLed earlier --apply may have left the tree half-applied; check before reading anything.
 assert_no_wreckage
 detect_managers
 run_renovate
@@ -741,6 +591,5 @@ case "${MODE}" in
   apply)  run_report; run_apply ;;
   *)      err "unreachable mode ${MODE}" ;;
 esac
-# Explicit, because the status of the last command in that case is not a
-# contract anybody should have to derive.
+# Explicit: the status of that case's last command is no contract.
 exit "${EXIT_CODE}"

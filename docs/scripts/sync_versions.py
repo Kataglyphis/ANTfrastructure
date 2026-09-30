@@ -1,41 +1,5 @@
 #!/usr/bin/env python3
-"""sync_versions.py — propagate linux/scripts/01-core/versions.env everywhere.
-
-`versions.env` is the single authority for every pinned version in the tree.
-This walks the eight places that repeat one of those numbers and either checks
-them or rewrites them:
-
-  --check           (default) fail if any generated section, marker, table, ARG
-                    default or documented literal disagrees with versions.env
-  --write           rewrite them all in place
-  --consumer-pins   run ONLY the eighth check below, over a named consumer
-                    checkout; this is what run-lint-gates.sh calls
-
-Seven of the eight consumers are files in THIS repo: the README version
-snapshot, the paired inline `generated:<key>` markers in the docs, the
-dependency table, Dockerfile `ARG` defaults, Windows PowerShell build-script
-`-DefaultValue` pins, documented version literals in the docs (check-only —
-there is no write pass for these), and the website license pages (delegated to
-generate-website-licenses.py). `--write` does the Dockerfiles FIRST: the
-snapshot reads its numbers back out of them, so the other order needs two
-passes to converge.
-
-The eighth is a CONSUMER repository's own package metadata — a pin that pip/uv
-or pre-commit must read from a file this repo does not own, so it is repeated
-there by hand. That copy is check-only and its root must be NAMED
-(`--consumer-root <dir>`, or the vendored `third_party/` position); it lives in
-consumer_pins.py, which says why it is neither written nor guessed at. The
-lane that has a root to name is the CONSUMER's, so `run-lint-gates.sh` runs it
-as its own gate via `--consumer-pins`; in the hub's own preflight there is no
-consumer and the check says so rather than passing.
-
-A malformed marker fails BOTH modes. The updater silently skips a marker it
-cannot parse, so without that check a typo would read as "in sync" forever.
-
-`--check` is the `version-snapshot` preflight slug; after a `--write`, finish
-the ritual in AGENTS.md § Version Bumping.
-docs/cross-build-verification.md#pre-flight
-"""
+"""Propagate versions.env into every file that repeats its numbers; --check is the version-snapshot slug (docs/cross-build-verification.md#pre-flight)."""
 
 from __future__ import annotations
 
@@ -52,18 +16,9 @@ END_MARKER = "<!-- generated:version-snapshot:end -->"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# ---------------------------------------------------------------------------
-# Inline version marker system
-#
-# In doc files, wrap a version number with paired markers:
-#   <!-- generated:cuda -->13.3<!-- /generated:cuda -->
-#
-# The script replaces the content between markers with the canonical value
-# from versions.env, so version references never go stale.
-# ---------------------------------------------------------------------------
+# Inline markers: the value between <!-- generated:cuda --> and <!-- /generated:cuda --> is rewritten from versions.env.
 
-# marker_name -> (versions.env key, transform)
-# transform: 'raw', 'no_v' (strip leading v), 'major', 'major_minor'
+# marker_name -> (versions.env key, transform: raw | no_v | major | major_minor)
 INLINE_MARKER_MAP: dict[str, tuple[str, str]] = {
     "cuda": ("CUDA_VERSION", "major_minor"),
     "cuda_full": ("CUDA_VERSION", "raw"),
@@ -201,16 +156,11 @@ def collect_versions() -> dict[str, str]:
         "windows_vulkan": extract(r"^ARG VULKAN_VERSION=([^\s]+)$", windows_base, "Windows Vulkan version"),
         "windows_gstreamer": extract(r"^ARG GSTREAMER_VERSION=([^\s]+)$", windows_media, "Windows GStreamer version"),
         "windows_cuda": extract(r"^ARG CUDA_VERSION=([^\s]+)$", windows_nvidia, "Windows CUDA version"),
-        # ONNX builds in the media-core branch; Dockerfile.media-merge-builder re-declares the
-        # ARG for the merged image's version env vars — both are checked against versions.env.
+        # Dockerfile.media-merge-builder re-declares the ONNX ARG for the merged image's env; both are checked.
         "windows_onnx": extract(r"^ARG ONNXRUNTIME_VERSION=([^\s]+)$", windows_media, "Windows ONNX Runtime version"),
-        # Install-Vs.ps1 no longer hardcodes a `Visual Studio\<major>\BuildTools`
-        # path (refactored 2026-07-12, 63d405c). The VS major now lives only in
-        # the `$vsMajor = ... else { '<major>' }` fallback, which must stay in
-        # sync with versions.env's VISUAL_STUDIO_VERSION.
+        # The VS major lives only in Install-Vs.ps1's $VsMajor fallback, which must match VISUAL_STUDIO_VERSION.
         "windows_vs": extract(
-            # Install-Vs.ps1 hoisted the assignment to $script:VsMajor (2026-08-03);
-            # accept both the old local and the new script-scoped spelling.
+            # Accept both the local and the script-scoped spelling.
             r"\$(?:script:)?[Vv]sMajor\s*=.*'([0-9]+)'",
             windows_vs,
             "Visual Studio Build Tools major version",
@@ -263,8 +213,7 @@ def update_marked_block(file_path: Path, replacement: str) -> bool:
     pattern = re.compile(re.escape(START_MARKER) + r".*?" + re.escape(END_MARKER), re.DOTALL)
     if not pattern.search(original):
         raise ValueError(f"Markers not found in {file_path}")
-    # Lambda replacement: a plain string would be a re.sub TEMPLATE, so any
-    # backslash in the rendered content would be (mis)interpreted.
+    # A lambda: a plain string is a re.sub template that would interpret backslashes.
     updated = pattern.sub(lambda _m: replacement, original, count=1)
     if updated == original:
         return False
@@ -328,24 +277,12 @@ def check_inline_markers(versions: dict[str, str]) -> int:
     return 0
 
 
-# Any HTML-comment token that names an inline marker: the opener OR the closer,
-# with tolerant whitespace. Deliberately restricted to \w+ names so that
-#   * the block markers (generated:version-snapshot:start / :end and
-#     generated:deps-table:start / :end) never match ('-'/':' break \w+ ... -->)
-#   * prose mentions like "<!-- generated:... -->" never match.
+# Any opener or closer token naming an inline marker; \w+ names keep the block markers and prose mentions out.
 _MARKER_TOKEN_RE = re.compile(r"<!--\s*/?\s*generated:(\w+)\s*-->")
 
 
 def validate_inline_marker_tokens() -> int:
-    """Error on typo'd or malformed inline markers.
-
-    Without this pass, a marker with an unknown name (e.g. generated:cudda) or
-    a missing/malformed closing tag is silently skipped by the updater and
-    stays stale forever. Two failure classes:
-      1. a well-formed pair whose name is not in INLINE_MARKER_MAP
-      2. a generated:NAME token that is not part of a well-formed
-         `<!-- generated:X -->value<!-- /generated:X -->` pair
-    """
+    """Fail on unknown marker names and on tokens outside a well-formed pair, which the updater would silently skip."""
     problems: list[str] = []
     for path in inline_marker_target_files():
         text = path.read_text(encoding="utf-8")
@@ -356,8 +293,7 @@ def validate_inline_marker_tokens() -> int:
                     f"{rel}: unknown inline marker name 'generated:{m.group(1)}'"
                     " (not in INLINE_MARKER_MAP — typo, or add a mapping)"
                 )
-        # Remove every well-formed pair, then any surviving marker token is
-        # unpaired or malformed (bad spacing, missing closer, mismatched name).
+        # Once every well-formed pair is removed, any surviving token is unpaired or malformed.
         residual = INLINE_MARKER_RE.sub("", text)
         for m in _MARKER_TOKEN_RE.finditer(residual):
             problems.append(
@@ -387,12 +323,7 @@ def write_inline_markers(versions: dict[str, str]) -> int:
     return 0
 
 
-# -- Deps table (third-party-licenses.md) -----------------------------------
-# The renderer itself is shared with generate-website-licenses.py (F2, see
-# deps_table.py). It carries the LOUD missing-var contract: a deps.json entry
-# whose "var" is absent from versions.env raises KeyError BEFORE anything is
-# written (this file's old copy silently em-dashed — and in --write mode had
-# already written the degraded table when the rc finally went 1).
+# Deps table (third-party-licenses.md), rendered by deps_table.py, shared with generate-website-licenses.py.
 
 from deps_table import (  # noqa: E402
     render_deps_table_lines,
@@ -407,11 +338,7 @@ DEPS_TABLE_FILE = REPO_ROOT / "docs/third-party-licenses.md"
 
 
 def render_deps_table(versions: dict[str, str]) -> str:
-    # The repo-facing page carries the SAME obligations and corresponding-source
-    # sections as the published website page. A developer reading this file is
-    # exactly the person who needs to see that shipping the image carries a
-    # source-offer duty; splitting that knowledge across two pages is how it
-    # gets missed.
+    # Same obligation and source sections as the website page: developers need to see the source-offer duty.
     lines = [
         DEPS_START_MARKER,
         *render_deps_table_lines(versions),
@@ -499,64 +426,39 @@ def dockerfile_target_files() -> list[Path]:
         p = REPO_ROOT / f"linux/Dockerfile.{name}"
         if p.exists():
             result.append(p)
-    # Standalone service images build without orchestrator --build-arg forwarding,
-    # so their ARG defaults (incl. the UBUNTU_DIGEST pin) are load-bearing.
+    # Standalone service images get no --build-arg forwarding, so their ARG defaults are load-bearing.
     for rel in ['linux/webserver/Dockerfile', 'linux/llm-stack/Dockerfile']:
         p = REPO_ROOT / rel
         if p.exists():
             result.append(p)
-    # Windows Dockerfiles carry the same versions.env-named ARG defaults (Build-Buildkit.ps1
-    # overrides them with --build-arg, but the defaults must not drift). ARGs whose
-    # names are not versions.env keys (BASE_IMAGE, ...) are untouched by
-    # name-matching; derived/renamed ones (OPENCV_SOURCE_VERSION,
-    # CUDA_VERSION_MAJOR_MINOR) are covered via _ARG_NAME_ALIASES below.
+    # Windows defaults are overridden at build time but must not drift; renamed ARGs go through the aliases below.
     result.extend(sorted(REPO_ROOT.glob("windows/Dockerfile*")))
-    # The documentation image lives in a submodule and is built on its own rather
-    # than by the cross chain, so its PANDOC_*/UV_VERSION pins are `# noforward`.
-    # Its ARG defaults are still the real values that image is built from, so they
-    # are synced here like any other. Guarded: the submodule may not be checked out.
+    # The documentation image's pins are noforward but still its real build values; the submodule may be absent.
     doc_image = REPO_ROOT / "third_party/DocumANTation/Dockerfile"
     if doc_image.exists():
         result.append(doc_image)
     return result
 
 
-# ARG names that carry a versions.env value under a different name (optionally
-# transformed — same transform vocabulary as the inline markers). Without an
-# alias entry, name-matching skips them and their defaults can drift silently
-# (windows CUDA_VERSION_MAJOR_MINOR's default sat stale at the pre-bump value
-# because a CUDA_VERSION bump never touched it).
+# ARGs carrying a versions.env value under another name (inline-marker transforms); unaliased, they drift silently.
 _ARG_NAME_ALIASES: dict[str, tuple[str, str]] = {
     "OPENCV_SOURCE_VERSION": ("OPENCV_VERSION", "raw"),
 }
-# Windows-only aliases: linux/Dockerfile.nvidia DERIVES the same ARG names via
-# shell parameter expansion (13.3.0 → 13.3 → apt form 13-3) — a literal there
-# would clobber the deliberate `${CUDA_VERSION_DOT/./-}` default. Windows
-# Dockerfiles have no substitution defaults, so theirs must be literal+synced.
+# Windows only: linux/Dockerfile.nvidia derives these names by shell expansion, which a literal would clobber.
 _ARG_NAME_ALIASES_WINDOWS: dict[str, tuple[str, str]] = {
     "CUDA_VERSION_MAJOR_MINOR": ("CUDA_VERSION", "major_minor"),
 }
 
 
 def _unquote(value: str) -> str:
-    """Strip ONE surrounding quote pair. versions.env values may carry them (e.g.
-    CUDA_ARCHITECTURES, which has to be quoted because an unquoted `;` runs its own
-    tail on a plain `source`); leaving them in re-quotes the target on every run,
-    so nothing is ever idempotent."""
+    """Strip one surrounding quote pair, or a quoted versions.env value is re-quoted on every run."""
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
         return value[1:-1]
     return value
 
 
 def _rewrite_lines(file_path: Path, dry_run: bool, rewrite) -> bool:
-    """Round-trip a file line by line, replacing the ones `rewrite(line)` answers
-    with a new line (None = leave it alone). Returns True when anything changed;
-    writes only when it did and dry_run is False.
-
-    newline='' preserves each line's own terminator through the round trip: the
-    repo freezes per-file line endings (-text; windows files are CRLF, linux LF),
-    and universal-newline translation here would rewrite whole files to the host's
-    EOL. Both syncers below are this walk plus one per-line decision."""
+    """Rewrite lines for which rewrite(line) returns one, keeping each file's frozen EOL (newline=''); True if anything changed."""
     with open(file_path, encoding="utf-8", newline="") as fh:
         lines = fh.read().splitlines(keepends=True)
     changed = False
@@ -576,10 +478,7 @@ def _rewrite_lines(file_path: Path, dry_run: bool, rewrite) -> bool:
 def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry_run: bool) -> bool:
     """Return True if file needs updating (or was updated when not dry_run)."""
     aliases = dict(_ARG_NAME_ALIASES)
-    # REPO-RELATIVE check: file_path is absolute, so `"windows" in .parts` would
-    # also match a CHECKOUT PATH containing a 'windows' directory and leak the
-    # windows-only aliases onto linux Dockerfiles (clobbering their deliberate
-    # shell-substitution defaults). All targets live under REPO_ROOT.
+    # Repo-relative, so a 'windows' directory in the checkout path cannot leak these aliases onto linux files.
     if file_path.relative_to(REPO_ROOT).parts[0] == "windows":
         aliases.update(_ARG_NAME_ALIASES_WINDOWS)
     versions = {**versions, **{
@@ -596,11 +495,7 @@ def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry
         var_name = m.group(2)
         if var_name not in version_vars:
             return None
-        # Never rewrite substitution defaults (ARG X=${Y%...}): those are
-        # computed in-Dockerfile from another ARG, and a literal would clobber
-        # the derivation. Belt+braces against a future versions.env key
-        # colliding with such an ARG name (mirrors verify-arg-consistency.sh's
-        # '${'* skip).
+        # Never rewrite substitution defaults (ARG X=${Y...}): a literal would clobber the derivation.
         if m.group(3).startswith("${"):
             return None
         env_val = _unquote(versions[var_name])
@@ -613,9 +508,7 @@ def _update_dockerfile_args_inner(file_path: Path, versions: dict[str, str], dry
             formatted = env_val
         if old_raw == formatted:
             return None
-        # Splice only the value; line[m.end(3):] preserves everything after it —
-        # a trailing `# comment`, trailing whitespace, and the line's own EOL
-        # (CRLF or LF) — instead of dropping the tail.
+        # Splice only the value, keeping a trailing comment, whitespace and the line's own EOL.
         return f"{m.group(1)}{var_name}={formatted}{line[m.end(3):]}"
 
     return _rewrite_lines(file_path, dry_run, rewrite)
@@ -650,24 +543,16 @@ def write_dockerfile_args(versions: dict[str, str]) -> int:
     return 0
 
 
-# -- Windows build-script -DefaultValue syncing ------------------------------
-# The build-*-from-source.ps1 scripts carry a hardcoded fallback version in
-# Get-SourceBuildVersion's -DefaultValue (a third copy of the pin, after
-# versions.env and the Dockerfile ARG default). Normally the container env
-# provides the value and the fallback is dead — which is exactly why it drifts
-# silently. Keep it honest the same way as the ARG defaults.
+# Windows build-script -DefaultValue syncing: a fallback the container env normally shadows, so it drifts silently.
 
 _SCRIPT_DEFAULT_RE = re.compile(r"-DefaultValue '([^']*)'")
 _SCRIPT_ENVVARS_RE = re.compile(r"-EnvironmentVariables @\(([^)]*)\)")
-# A script may list a commit-hash override FIRST while its -DefaultValue is the
-# TAG fallback a host with no env uses. PinParity carries the same one-entry
-# exception (#134) and its note is the rationale; keep the two in step.
+# A commit override listed first while -DefaultValue is the tag; PinParity carries the same exception, keep them in step.
 _SCRIPT_DEFAULT_KEY_OVERRIDES = {"Build-TvmFromSource.ps1|TVM_COMMIT": "TVM_REF"}
 
 
 def script_default_target_files() -> list[Path]:
-    # The 2026-09-06 Verb-Noun rename moved these to windows/scripts/**/Build-*FromSource.ps1;
-    # the old flat lowercase glob matched nothing, so ten scripts were not gate subjects.
+    # A glob that matches nothing silently drops every script from the gate.
     return sorted(REPO_ROOT.glob("windows/scripts/**/Build-*FromSource.ps1"))
 
 
@@ -681,9 +566,7 @@ def _update_script_defaults_inner(file_path: Path, versions: dict[str, str], dry
         if not m_def or not m_env:
             return None
         env_names = re.findall(r"'([^']+)'", m_env.group(1))
-        # The first listed env var that versions.env defines is the canonical pin
-        # (e.g. OpenCV lists OPENCV_SOURCE_VERSION first but versions.env's key is
-        # OPENCV_VERSION).
+        # The first listed env var that versions.env defines is the canonical pin.
         key = next((n for n in env_names if n in versions), None)
         if key is None:
             return None
@@ -759,10 +642,7 @@ def target_files() -> list[Path]:
     return [REPO_ROOT / "README.md"]
 
 
-# Backlog F1 (2026-08-10): the three "manual" docs carry version literals as
-# backtick path/prose text where inline markers cannot live (code spans). This
-# scan covers the two highest-fanout patterns; historical narrative lines are
-# allowlisted BY CONTENT (not line number) so war stories survive refactors.
+# Literals in code spans, where inline markers cannot live; narrative lines are allowlisted by content, not line number.
 DOC_LITERAL_FILES = (
     "docs/linux-cross-builds.md",
     "docs/linux-build-basics.md",
@@ -773,18 +653,7 @@ DOC_LITERAL_ALLOWLIST = (
     re.compile(r"inherited from"),
     # the PR100017 / upstream-fix narrative referencing the era it happened
     re.compile(r"war story|historisch|previously|the old ", re.IGNORECASE),
-    # deliberate source-built-vs-DISTRO contrast ("... not Ubuntu `clang X`"):
-    # the Ubuntu version is descriptive, not a pin.
-    #
-    # CAUTION, measured 2026-08-26: this allowlist is LINE-level, and the line it
-    # was written for carried BOTH the descriptive Ubuntu version AND the real
-    # pin ("must keep source-built `clang 22.1.8` (not Ubuntu `clang 22.1.2`)").
-    # So the exemption swallowed the pin too, and AGENTS.md still claimed 22.1.8
-    # after LLVM_RELEASE went to 23.1.0 -- while this gate reported green. The
-    # note that used to sit here ("the pinned mentions on other lines stay
-    # covered") was true and beside the point. That line has since been rewritten
-    # to name the KEY instead of a literal, which is the durable fix: a doc that
-    # says `LLVM_RELEASE` cannot go stale. Prefer that over adding exemptions.
+    # A distro-version contrast; line-level, so a pin on the same line is exempted too: name the KEY in docs instead.
     re.compile(r"not Ubuntu"),
 )
 
@@ -793,15 +662,7 @@ def check_doc_literals(versions: dict[str, str]) -> int:
     gcc = versions.get("GCC_VERSION", "")
     llvm = versions.get("LLVM_RELEASE", "")
     gcc_rx = re.compile(r"/opt/gcc-(\d+\.\d+\.\d+)")
-    # Two shapes, because ADJACENCY was the other blind spot (2026-08-26):
-    #   1. "clang 22.1.8" / "clang-22.1.8"  -- the original.
-    #   2. "`clang --version` reports `22.1.8`" -- AGENTS.md's verification
-    #      checklist, where prose sits between the tool name and the version.
-    #      Shape 1 never matched it, so it survived the LLVM_RELEASE bump with
-    #      this gate green.
-    # Shape 2 is deliberately narrow (it requires the words in that order within
-    # one line) rather than "any 2x.y.z near the word clang", which would fire on
-    # every changelog line that mentions a past version.
+    # "clang 22.1.8" and "clang --version reports 22.1.8"; the second stays narrow so changelog lines do not fire.
     llvm_rx = re.compile(r"[Cc]lang[- ]?(2\d\.\d+\.\d+)")
     llvm_reports_rx = re.compile(r"[Cc]lang[^`\n]{0,40}--version[^`\n]{0,40}reports?[^0-9\n]{0,20}(2\d\.\d+\.\d+)")
     bad = 0
@@ -881,9 +742,7 @@ def main() -> int:
     versions = parse_versions_env()
 
     if mode == "consumer-pins":
-        # The consumer lane's entry point (run-lint-gates.sh). Only this
-        # section: everything else --check does grades files under REPO_ROOT,
-        # i.e. the vendored hub, which is not the tree that lane was handed.
+        # Only this section: the rest grades the vendored hub, not the consumer tree the lane was given.
         return check_consumer_pins(
             versions, args.consumer_root, REPO_ROOT, required=True
         )
@@ -906,21 +765,15 @@ def main() -> int:
             print(lic_result.stderr, file=sys.stderr)
         return result
 
-    # Sync Dockerfile ARG defaults BEFORE rendering the snapshot: the snapshot
-    # extracts versions from the Dockerfiles, so writing it first would leave a
-    # freshly-bumped versions.env needing a second --write pass.
+    # Dockerfile ARGs first: the snapshot reads its versions back out of the Dockerfiles.
     result = write_dockerfile_args(versions)
     result |= write_script_defaults(versions)
     result |= write_snapshot(render_snapshot())
-    # A typo'd/malformed marker must fail --write too (the updater silently
-    # skips such markers, so without this the error would stay invisible).
+    # A malformed marker must fail --write too, since the updater silently skips it.
     result |= validate_inline_marker_tokens()
     result |= write_inline_markers(versions)
     result |= write_deps_table(versions)
-    # The consumer copies are the one thing --write cannot repair (they live in
-    # another repository), so they are CHECKED here rather than skipped: a bump
-    # that leaves a consumer contradicting the new value must not exit 0 and
-    # read as "propagated everywhere".
+    # --write cannot repair consumer copies, so check them: a contradicting consumer must not exit 0.
     result |= check_consumer_pins(versions, args.consumer_root, REPO_ROOT)
     # Auto-regenerate website license files so they never go stale.
     import subprocess
@@ -929,7 +782,6 @@ def main() -> int:
     if lic_result.returncode:
         print("ERROR: generate-website-licenses.py --write failed:", file=sys.stderr)
         print(lic_result.stderr, file=sys.stderr)
-        # Propagate the failure: --check ORs the generator's returncode in, and
         # --write must not exit 0 when the license files could not be written.
         result |= 1
     else:

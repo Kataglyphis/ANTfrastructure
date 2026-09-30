@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# Parity suite: smoke-common.sh's inline arch-map FALLBACKS must agree with
-# the canonical 01-core maps. Every in-image smoke sources smoke-common; when
-# the canonical modules are absent it falls back to its bundled maps — this
-# file has already produced two silent-skip bugs (see its own comments), and
-# nothing asserted fallback/canonical parity until now. Add an arch to
-# platform.sh without updating smoke-common and this suite goes red instead
-# of the smokes silently returning 1.
+# smoke-common.sh's fallback arch maps must agree with 01-core's, or in-image smokes silently return 1.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -13,8 +7,7 @@ source "${TESTS_DIR}/test-harness.sh"
 SMOKE_COMMON="${TESTS_DIR}/../06-packaging/smoke-common.sh"
 CORE="${TESTS_DIR}/../01-core"
 
-# Run a smoke-common function in a CLEAN bash where the canonical 01-core
-# functions do not exist — forcing the fallback branch.
+# A clean bash has no 01-core functions, which forces smoke-common's fallback branch.
 _fallback() {
   bash -c "source '${SMOKE_COMMON}' 2>/dev/null; $1" 2>/dev/null
 }
@@ -30,8 +23,7 @@ for _arch in amd64 arm64 riscv64; do
               "smoke-common fallback diverged from platform.sh"
 
   t_case "ELF-machine parity for ${_arch}"
-  # smoke_elf_machine_grep is a GREP PATTERN; canonical arch_to_elf_machine is
-  # the full readelf string — parity means the pattern MATCHES the canonical.
+  # smoke_elf_machine_grep is a grep pattern, so parity means it matches the full readelf string.
   t_assert_contains "$(arch_to_elf_machine "${_arch}")" \
               "$(_fallback "smoke_elf_machine_grep ${_arch}")" \
               "smoke-common grep pattern no longer matches the canonical ELF machine string"
@@ -51,24 +43,11 @@ _count="$(bash -c "source '${CORE}/platform.sh'; source '${CORE}/build-helpers.s
 t_assert_eq "3" "${_count}" "the 16 latent for-loop sites are safe only if this splits"
 
 
-# ── ARCH-PARITY component table (2026-08-23) ────────────────────────────────
-# smoke-runtime-image.sh asserts that every component NAMED in its parity table
-# is present on the arch it is smoking, modulo a per-arch exception list that IS
-# the reviewed record of the deltas (riscv64 has no CMake archive upstream, and
-# the IREE compiler cannot be cross-built). GEN1 dropped the genai exemption:
-# docs/gen1-riscv64-genai.md. Scope, stated precisely because the earlier
-# wording here oversold it: the smoke sees ONE image per run, so it conforms an
-# arch to the table — it does not diff arch against arch, and a component in
-# NEITHER the table nor the exception list is outside the gate on every arch.
-# The table only works if it stays honest, so lint it here: an exemption for a
-# component nobody tracks is dead text, and a tracked component nobody can ever
-# satisfy would fail every arch forever.
+# ARCH-PARITY table lint; its scope: docs/cross-build-verification.md § In-image smoke tests (need a built image, not part of preflight)
 
 RT_SMOKE="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
 
-# Load the table + its helpers WITHOUT running main(): copy the script minus
-# its last line (`main "$@"`) next to every sibling it sources, then run
-# expressions against it in a clean shell.
+# The script minus its last line (`main "$@"`), beside every sibling it sources, loads without running.
 _RT_SANDBOX="$(mktemp -d)"
 trap 'rm -rf "${_RT_SANDBOX}"' EXIT
 sed '$d' "${RT_SMOKE}" > "${_RT_SANDBOX}/rt.sh"
@@ -81,14 +60,12 @@ _rt_table() {
 }
 
 t_case "the sandbox loads: rt.sh and every sibling it sources"
-# rt.sh runs under set -e, so one missing sibling ends the shell before the
-# expression runs and every case below reads empty (39 of them did on 2026-09-23).
+# rt.sh runs under set -e, so one missing sibling empties every case below.
 t_assert_contains "${_RT_DEPS}" "smoke-common.sh" "the source-line scan found the siblings"
 t_assert_eq "loaded" "$(_rt_table 'echo loaded')" "the sandboxed script must source cleanly"
 
 t_case "the sandbox trick still holds: main() is invoked on the LAST line"
-# `sed '$d'` above only strips the entry point if it is the final line; if the
-# file grows a trailer, every assertion below would silently execute main().
+# With a trailer after it, `sed '$d'` would leave main() to run in every case.
 t_assert_eq 'main "$@"' "$(tail -1 "${RT_SMOKE}")"
 
 t_case "parity table lists both prefixes and wheels"
@@ -96,9 +73,7 @@ t_assert_contains "$(_rt_table 'printf "%s" "${_PARITY_PREFIXES}"')" "cmake"
 t_assert_contains "$(_rt_table 'printf "%s" "${_PARITY_WHEELS}"')" "onnxruntime_genai"
 
 t_case "every documented exemption names a component the table actually tracks"
-# Parse the case arms of _parity_exempt: "<arch>:<component>)". Scoped to that
-# function: the file holds other <arch>:<name>) tables (the consumer contract) whose
-# components this one does not track.
+# Scoped to _parity_exempt: other <arch>:<name>) tables in the file track other things.
 _tracked="$(_rt_table 'printf "%s %s" "${_PARITY_PREFIXES}" "${_PARITY_WHEELS}"')"
 _orphans=""
 while IFS= read -r _arm; do
@@ -126,8 +101,7 @@ for _arch in amd64 arm64 riscv64; do
 done
 
 t_case "a GPU image expects the CUDA onnxruntime on every arch"
-# The ENABLE_NVIDIA=true arm64 wrapper failed "flavour is 'onnxruntime_gpu' but
-# the table says 'onnxruntime_webgpu'" (2026-09-22): the table knew arches only.
+# The flavour depends on the GPU switch, not only the arch.
 for _arch in amd64 arm64; do
   t_assert_eq onnxruntime_gpu "$(_rt_table "_parity_ort_flavor ${_arch} true")" "GPU ${_arch}"
 done
@@ -145,15 +119,9 @@ t_assert_ok    _rt_table '_parity_gst_plugin_known arm64 libgstgtk4.so'
 t_assert_fails _rt_table '_parity_gst_plugin_known amd64 libgstgtk4.so'
 t_assert_fails _rt_table '_parity_gst_plugin_known arm64 libgstcoreelements.so'
 
-# ── generated ONNX fixture (SMOKE-DEPTH c) ──────────────────────────────────
-# The fixture replaced a check that had been printing SKIP on every arch since
-# it was written, so prove THIS one cannot go quiet: drive it against stub
-# numpy/onnxruntime modules and assert all three exit paths, plus that a real
-# ONNX graph (op "Add", the three tensor names) reaches the session.
+# Generated ONNX fixture: all three exit paths, against stub numpy/onnxruntime
 
-# NB: smoke-common.sh sets -euo pipefail, so it is loaded in a SUBSHELL — a
-# top-level `source` would arm errexit here and abort the suite on the first
-# deliberately-failing assertion below.
+# Sourced in a subshell: smoke-common.sh's `set -e` would abort the suite on the first failing assertion.
 _ONNX_PY="${_RT_SANDBOX}/onnx_fixture.py"
 bash -c "source '${TESTS_DIR}/../06-packaging/smoke-common.sh'; smoke_minimal_onnx_py" \
   > "${_ONNX_PY}"
@@ -209,14 +177,7 @@ _out="$(PYTHONPATH="/nonexistent" python3 "${_ONNX_PY}" 2>&1)"; _rc=$?
 t_assert_eq "3" "${_rc}" "the skip path must be a clean 3: ${_out}"
 t_assert_contains "${_out}" "ONNX-EP SKIP"
 
-# ── ONNX-EP sentinel: exit status is not evidence (2026-08-23 remediation) ──
-# check_onnx_execution_provider ships the program to the container in an ENV
-# VAR and feeds it to `python -`. When that var does not arrive, python reads an
-# EMPTY program and exits 0 — the check used to print PASS. Both defences are
-# pinned here: the in-image `-z` guard, and (with that guard deleted) the
-# host-side requirement that the program's own ONNX-EP sentinel appear in the
-# OUTPUT. The harness replaces _rt_run with a local runner, so no container and
-# no image are needed; the -e forwarding it emulates IS the boundary under test.
+# ONNX-EP sentinel: an env var that never arrives makes `python -` run an empty program and exit 0
 _EP="${_RT_SANDBOX}/ep"
 mkdir -p "${_EP}/venv/bin"
 cat > "${_EP}/venv/bin/python" <<EOF
@@ -224,8 +185,7 @@ cat > "${_EP}/venv/bin/python" <<EOF
 exec env PYTHONPATH="${_STUB}" python3 "\$@"
 EOF
 chmod +x "${_EP}/venv/bin/python"
-# The stub session refuses a truncated model, so "the program ran" cannot be
-# faked by a few stray bytes.
+# The stub refuses a truncated model, so a few stray bytes cannot fake a run.
 cat > "${_STUB}/onnxruntime.py" <<'PY'
 import os
 __version__ = "stub"
@@ -285,9 +245,7 @@ _ep_out="$(_ep_drive drop-env)"
 t_assert_contains "${_ep_out}" "FAILURES=1"
 
 t_case "with the in-image guard ALSO removed, the OUTPUT sentinel is what fails it"
-# This is the reviewed defect reproduced exactly: `printf "" | python -` exits
-# 0, so nothing but the missing ONNX-EP token can catch it. If this case ever
-# reports FAILURES=0, the check has gone back to trusting exit status.
+# `printf "" | python -` exits 0, so only the missing ONNX-EP token can catch it.
 _ep_out="$(_ep_drive no-guard-drop-env)"
 t_assert_contains "${_ep_out}" "FAILURES=1"
 t_assert_contains "${_ep_out}" "NO ONNX-EP sentinel"
@@ -296,10 +254,7 @@ t_case "and the emitter is intact — the mutations live only in the harness"
 t_assert_contains "$(bash -c "source '${TESTS_DIR}/../06-packaging/smoke-common.sh'; smoke_minimal_onnx_py")" \
   "ONNX-EP OK:"
 
-# ── check_default_entrypoint_boot must never self-disable ───────────────────
-# inspect_image_config swallows every error into "" (`|| true`), and the check
-# used to treat "" and a non-shell CMD identically: INFO + return 0, no failure
-# recorded. A gate that stands itself down on an inspect error is not a gate.
+# check_default_entrypoint_boot must not self-disable: inspect_image_config turns every error into ""
 _boot_drive() {
   bash -c '
 S="$1"; CMDJSON="$2"
@@ -341,10 +296,7 @@ t_case "a non-shell CMD FAILS loudly rather than disabling the probe"
 _boot_out="$(_boot_drive "CMDOK /opt/venv/bin/python app.py")"
 t_assert_contains "${_boot_out}" "FAILURES=1"
 
-# ── GStreamer failure count must not shrink under classification ────────────
-# The classifier counts UNIQUE libgst*.so basenames; the metric watched since
-# wave-4 is the raw "Failed to load plugin" LINE count. Reporting the former as
-# the latter silently lowers a regression number. Both must appear.
+# GStreamer: the headline is the raw failure-line count, never the smaller unique-basename count
 _gst_drive() {
   bash -c '
 S="$1"; SCAN="$2"
@@ -355,8 +307,7 @@ check_gstreamer_plugin_health "sandbox-image" "arm64" 2>&1
 echo "FAILURES=${FAILURES}"
 ' _ "${_RT_SANDBOX}" "$1"
 }
-# 3 failure lines: the SAME basename from two plugin dirs (the collapse case),
-# plus one message that names no libgst*.so at all (the dropped case).
+# One basename from two plugin dirs, plus a line naming no libgst*.so at all.
 _GST_SCAN='(gst-plugin-scanner:9): GStreamer-WARNING **: Failed to load plugin '"'"'/opt/gstreamer/lib/gstreamer-1.0/libgstgtk4.so'"'"': libgtk-4.so.1: undefined symbol: vkCreateWaylandSurfaceKHR
 (gst-plugin-scanner:9): GStreamer-WARNING **: Failed to load plugin '"'"'/usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstgtk4.so'"'"': libgtk-4.so.1: undefined symbol: vkCreateWaylandSurfaceKHR
 (gst-plugin-scanner:9): GStreamer-WARNING **: Failed to load plugin '"'"'/opt/gstreamer/lib/gstreamer-1.0/oddly-named-plugin'"'"': cannot open shared object file
@@ -374,17 +325,12 @@ t_case "plugin health is WARN-only: a documented failure never fails the smoke"
 t_assert_contains "${_gst_out}" "FAILURES=0"
 
 t_case "a scan that never completed reports UNKNOWN, not a healthy 0"
-# An empty scan is what a HEALTHY image prints too, so without the probe's own
-# completion stamp "0 plugins cannot load" would be a false green.
+# A healthy image's scan is empty too, so only the completion stamp distinguishes them.
 _gst_out="$(_gst_drive "")"
 t_assert_contains "${_gst_out}" "UNKNOWN, not 0"
 t_assert_ok test -z "$(printf '%s\n' "${_gst_out}" | grep -F 'cannot load: 0' || true)"
 
-# ── gtk4: the arm64 exception follows the loader, not the arch ─────────────
-# The native arm64 image (2026-09-22) loads libgstgtk4.so: its entrypoint puts
-# a VulkanLoader first that exports vkCreateWaylandSurfaceKHR. The gate called
-# the entry stale; it is stale only where the loader has the symbol.
-# The stub answers every _rt_run with the same text, so WAYLAND rides in it.
+# gtk4: the arm64 exception follows whether the loader exports vkCreateWaylandSurfaceKHR (WAYLAND rides in the stub text)
 _GST_CLEAN='GST_SCAN_DONE'
 _GST_GTK4_FAILS="$(printf '%s\n' "${_GST_SCAN}" | head -1)"$'\nGST_SCAN_DONE'
 
@@ -405,14 +351,7 @@ _gst_out="$(_gst_drive "${_GST_GTK4_FAILS}"$'\nWAYLAND yes')"
 t_assert_contains "${_gst_out}" "the documented cause is gone, so this is new drift"
 t_assert_contains "${_gst_out}" "0 documented, 1 undocumented"
 
-# ── GENAI-DRIFT: the tolerance must be EXACTLY one reviewed case ────────────
-# assert_pinned_versions now lets a versions.env build pin overrule the app
-# lock. That is correct, and on arm64 it is also RED today (genai 0.14.0 vs a
-# v0.15.2 pin) with the producer-side fix still open — while the assert is a
-# hard gate ahead of the manifest push. So the known case is a dated one-line
-# KNOWN_DRIFT entry. This suite is what stops that line from widening into a
-# blanket exemption: same drift on another arch, or a different version on
-# either side, must still FAIL.
+# GENAI-DRIFT: a versions.env build pin overrules the app lock, and no drift becomes a blanket exemption
 _STV="${_RT_SANDBOX}/stv"
 mkdir -p "${_STV}/stubs/PIL" "${_STV}/stubs/ai_edge_litert" "${_STV}/venv/bin"
 sed '$d' "${TESTS_DIR}/../06-packaging/smoke-torch-venv.sh" > "${_STV}/stv.sh"
@@ -437,10 +376,7 @@ ONNXRUNTIME_GENAI_VERSION=v0.15.2
 OPENCV_VERSION=5.0.0
 ENVEOF
 
-# $1 = arch, $2 = installed genai version, $3 = optional uv.lock path,
-# $4 = one optional extra VAR=VALUE (`env -i` below eats anything else).
-# Default: no uv.lock, which isolates the build-pin path. Pass a lock to
-# exercise the AUTHORITY rule itself (see the lock-vs-pin case below).
+# _stv_drive <arch> <genai version> [uv.lock] [one VAR=VALUE, since `env -i` drops the rest]
 _stv_drive() {
   local _extra="${4:-STV_DRIVE_UNUSED=1}"
   env -i PATH="${PATH}" HOME="${HOME}" "${_extra}" \
@@ -453,23 +389,12 @@ _stv_drive() {
 }
 
 t_case "the arm64 genai drift is a FAILURE again -- the tolerance was earned away"
-# Until 2026-08-27 this asserted the opposite: arm64 at 0.14.0 was TOLERATED
-# because the producer could not build the wheel. It can now, and today's run
-# shipped 0.15.2 on amd64 AND arm64 with no drift message at all, so the
-# KNOWN_DRIFT arm was deleted and the assert is armed again. Pinning the
-# re-arming matters more than pinning the tolerance did: a silent regression to
-# 0.14.0 is exactly what the tolerance used to hide.
+# A silent regression to the old genai is exactly what a tolerance would hide.
 _stv_out="$(_stv_drive arm64 0.14.0)"
 t_assert_contains "${_stv_out}" "FAILURES=1"
 t_assert_ok test -z "$(printf '%s\n' "${_stv_out}" | grep -F 'TOLERATED' || true)"
 
-# REGRESSION GUARD (adversarial review 2026-08-23): every case above runs with
-# a NON-EXISTENT uv.lock, so `from_lock` is always empty — which makes the new
-# "a versions.env BUILD pin is authoritative" rule indistinguishable from the
-# old "lock UNION pin" rule. Reverting the fix left the suite green. This case
-# supplies a real lock whose genai version DIFFERS from the pin: under the
-# union rule the lock value would be accepted (FAILURES=0), under the authority
-# rule only the pin counts, so the installed lock-version must FAIL.
+# Without a real lock, "pin is authoritative" and "lock union pin" behave the same.
 t_case "a uv.lock version does NOT satisfy a versions.env BUILD pin (authority, not union)"
 cat >"${_STV}/uv.lock" <<'LOCKEOF'
 version = 1
@@ -480,12 +405,10 @@ name = "onnxruntime-genai"
 version = "0.13.0"
 source = { registry = "https://pypi.org/simple" }
 LOCKEOF
-# amd64 so the dated arm64 tolerance cannot mask the result; installed == the
-# LOCK's version, which the pin (0.15.2) does not allow.
+# Installed == the lock's version, which the pin does not allow.
 _stv_out="$(_stv_drive amd64 0.13.0 "${_STV}/uv.lock")"
 t_assert_contains "${_stv_out}" "NOT in expected"
-# FAILURES must be NON-zero — under the old union rule the lock value would
-# have satisfied the pin and this would read FAILURES=0.
+# The union rule would read FAILURES=0 here.
 t_assert_eq "1" "$(printf '%s' "${_stv_out}" | grep -c 'FAILURES=[1-9]')"
 
 t_case "the SAME drift on another arch still FAILS (not a blanket genai exemption)"
@@ -502,8 +425,7 @@ _stv_out="$(_stv_drive arm64 0.15.2)"
 t_assert_contains "${_stv_out}" "FAILURES=0"
 t_assert_ok test -z "$(printf '%s\n' "${_stv_out}" | grep -F 'TOLERATED' || true)"
 
-# ── GEN1: the riscv64 genai policy, whose arm had NO case at all ─────────────
-# Pinned in both directions; docs/gen1-riscv64-genai.md
+# GEN1: the riscv64 genai policy, both directions; see docs/gen1-riscv64-genai.md
 t_case "GEN1: a riscv64 image WITHOUT genai is now a FAILURE, not a documented skip"
 _stv_out="$(_stv_drive riscv64 "")"
 t_assert_contains "${_stv_out}" "onnxruntime-genai NOT INSTALLED"
@@ -523,12 +445,7 @@ _stv_out="$(_stv_drive amd64 "" "" GENAI_ALLOW_RISCV64=false)"
 t_assert_eq "1" "$(printf '%s' "${_stv_out}" | grep -c 'FAILURES=[1-9]')"
 
 t_case "KNOWN_DRIFT: every entry is reviewed, dated and backlog-linked"
-# The previous version asserted the COUNT was exactly 1, while its own comment
-# said "deleting that single line must be all it takes to re-arm the assert".
-# Those contradict: on 2026-08-27 arm64 shipped onnxruntime-genai 0.15.2 by
-# itself, the arm was correctly deleted -- and this test went red for doing the
-# thing it asked for. Assert the SHAPE of whatever is present instead. Empty is
-# the desired steady state and passes vacuously; a sloppy new arm still fails.
+# Asserts the shape, not a count: an empty KNOWN_DRIFT is the desired steady state.
 _kd_block="$(sed -n '/^KNOWN_DRIFT = \[/,/^\]/p' "${TESTS_DIR}/../06-packaging/smoke-torch-venv.sh")"
 _kd="$(printf '%s\n' "${_kd_block}" | grep -c '^    ("' || true)"
 t_assert_ok test "${_kd}" -le 2
@@ -536,25 +453,15 @@ _kd_bad="$(printf '%s\n' "${_kd_block}" | grep '^    ("' \
             | grep -cv '20[0-9][0-9]-[01][0-9]-[0-3][0-9]' || true)"
 t_assert_eq "0" "${_kd_bad}" "a KNOWN_DRIFT arm without a review date"
 
-# ── D3: the shared binary/component gate helpers ────────────────────────────
-# smoke-media.sh hand-wrote four idioms at 5 + 4 + 2 sites (plus an 11th private
-# copy of the arch -> ELF-machine map in smoke-android.sh). They live in
-# smoke-common.sh now. Two separate things are pinned below, because either one
-# alone rots: (A) the helpers BEHAVE, including their FAILURE directions — an
-# idiom that can only ever pass is precisely what this repo keeps shipping by
-# accident; and (B) the call sites STAY deduplicated — a dedup that no test
-# protects drifts back apart at the next edit.
+# D3: smoke-common's gate helpers must (A) fail when they should and (B) stay the only copy
 
 _SMOKE_DIR="${TESTS_DIR}/../06-packaging"
 
-# Run an expression against smoke-common.sh in a CLEAN bash (so the fallback
-# cross_build_is_active is the one under test), merging stderr — fail() writes
-# there. _scf also reports the FAILURES counter, which is how "did this idiom
-# actually record a failure" is observed from outside.
+# A clean bash tests the fallback cross_build_is_active; _scf also prints FAILURES to show a recorded failure.
 _sc()  { bash -c "source '${SMOKE_COMMON}' >/dev/null 2>&1; $1" 2>&1; }
 _scf() { bash -c "source '${SMOKE_COMMON}' >/dev/null 2>&1; $1; echo \"FAILURES=\${FAILURES}\"" 2>&1; }
 
-# ── A. behaviour ────────────────────────────────────────────────────────────
+# A. Behaviour
 
 t_case "smoke_resolve_bin prefers PATH and otherwise returns the fallback verbatim"
 t_assert_eq "$(command -v sh)" "$(_sc 'smoke_resolve_bin sh /nowhere/sh')"
@@ -562,8 +469,7 @@ t_assert_eq "/opt/ffmpeg/bin/ffmpeg" \
             "$(_sc 'smoke_resolve_bin antfrastructure-no-such-tool /opt/ffmpeg/bin/ffmpeg')"
 
 t_case "smoke_resolve_bin never trips errexit on the miss path"
-# The four call sites are `x="$(smoke_resolve_bin …)"` under `set -euo
-# pipefail`; a non-zero rc there would kill the smoke instead of falling back.
+# Call sites run under `set -euo pipefail`, where a non-zero rc would kill the smoke.
 t_assert_eq "reached" \
   "$(_sc 'x="$(smoke_resolve_bin antfrastructure-no-such-tool /opt/x)"; [ "$x" = /opt/x ] && echo reached')"
 
@@ -579,8 +485,7 @@ t_assert_fails bash -c "source '${SMOKE_COMMON}'; smoke_is_elf '${_RT_SANDBOX}/e
 t_assert_fails bash -c "source '${SMOKE_COMMON}'; smoke_is_elf '${_RT_SANDBOX}/no-such-file'"
 
 t_case "a missing file is a clean 'not ELF', not an errexit abort"
-# `head` failing inside the pipeline under `set -o pipefail` must be absorbed;
-# otherwise the ffmpeg/gst deferral paths would kill the whole smoke.
+# A failing `head` under pipefail must be absorbed, or the deferral paths kill the smoke.
 t_assert_eq "reached" \
   "$(_sc "smoke_is_elf '${_RT_SANDBOX}/no-such-file' || true; echo reached")"
 
@@ -610,9 +515,7 @@ t_assert_contains \
   "onnxruntime library present at /usr/local/lib/onnxruntime-cpu (cross build — import skipped)"
 
 t_case "on a NATIVE build the gate declines (rc 1) and prints NOTHING"
-# The smoke-media sites use it as an `if` head: a gate that returned 0, or that
-# printed a PASS here, would skip the functional checks on a native build —
-# which is exactly the silent-skip class smoke-common's own header records.
+# Used as an `if` head: rc 0 here would skip the functional checks on a native build.
 t_assert_eq "DECLINED" \
   "$(_sc 'BUILD_MODE=native smoke_cross_presence_gate ffmpeg /opt/ffmpeg/bin/ffmpeg || echo DECLINED')"
 
@@ -629,18 +532,11 @@ if command -v readelf >/dev/null 2>&1; then
   t_assert_eq "" "$(_sc "smoke_elf_machine_of '${_RT_SANDBOX}/fake.txt' || true")" \
     "a non-ELF file must yield an empty machine string, not garbage"
 else
-  # No readelf on this host: still assert something, so the coverage count
-  # cannot silently collapse (run-tests.sh aggregates it for exactly this).
+  # Still assert something, so run-tests.sh's aggregated coverage count cannot collapse.
   t_assert_eq "" "$(_sc "smoke_elf_machine_of '${_RT_SANDBOX}/fake.elf' || true")"
 fi
 
-# ── B. drift guard: the idioms must live ONLY in smoke-common.sh ────────────
-# Scope = the in-image smoke scripts under 06-packaging. smoke-runtime-image.sh
-# is excluded by review, not convenience: it is a HOST-side driver whose
-# `command -v … || echo …` sites sit inside `bash -lc '…'` payloads that execute
-# in ANOTHER container, where smoke-common.sh is not sourced and the helper
-# cannot exist. Every other smoke-*.sh is in scope automatically, so a NEW one
-# is covered the day it lands.
+# B. Drift guard; smoke-runtime-image.sh is excluded because its payloads run where smoke-common.sh is not sourced
 _EXCLUDED_FROM_DEDUP="smoke-common.sh smoke-runtime-image.sh"
 
 _dedup_targets() {
@@ -653,10 +549,7 @@ _dedup_targets() {
   done
 }
 
-# Full-line comments are blanked before matching (same rationale as
-# test-invocation-lints.sh): these lints ban an idiom from EXECUTING, and prose
-# that merely describes it — including the comments explaining why the helper
-# exists — cannot run.
+# Full-line comments are blanked: the lints ban executing an idiom, not describing it.
 _dedup_scan() {   # <extended-regex> -> "file:line: text" per hit
   local re="$1" f
   for f in $(_dedup_targets); do
@@ -666,11 +559,7 @@ _dedup_scan() {   # <extended-regex> -> "file:line: text" per hit
 }
 
 t_case "the drift scan actually reaches the smoke scripts (positive control)"
-# This repo has already shipped a lint that scanned ZERO files and reported
-# three green assertions for two weeks (see test-invocation-lints.sh's header).
-# "Found nothing" is what success looks like here, so prove the scan runs:
-# the file list is non-empty, includes smoke-media.sh, and a pattern that IS
-# still present in it is found.
+# "Found nothing" is what success looks like, so prove the scan reaches real files.
 t_assert_ok test "$(_dedup_targets | wc -l)" -ge 4
 t_assert_contains "$(_dedup_targets)" "smoke-media.sh"
 t_assert_contains "$(_dedup_scan 'smoke_cross_presence_gate')" "smoke-media.sh:"
@@ -684,20 +573,14 @@ t_assert_eq "" "$(_dedup_scan 'head -c ?4.*tail -c ?3')" \
   "use smoke_is_elf / smoke_deferred_if_elf from smoke-common.sh"
 
 t_case "no re-inlined cross-presence PASS message"
-# Bans the template the helper owns: "<label> <noun> present at <path> (cross
-# build — <action> skipped)". The two deliberately different messages in
-# smoke-media.sh — the pathless genai one, and the opencv foreign-arch-extension
-# one — do not match this shape and stay out of the helper on purpose.
+# smoke-media.sh's pathless genai and opencv foreign-arch messages differ on purpose and do not match.
 t_assert_eq "" "$(_dedup_scan 'present at .*\(cross build — .* skipped\)')" \
   "use smoke_cross_presence_gate from smoke-common.sh"
 
 t_case "no re-inlined readelf Machine: pipeline"
 t_assert_eq "" "$(_dedup_scan 'readelf -h')" \
   "use smoke_elf_machine_of from smoke-common.sh"
-# …and smoke-common.sh itself must hold exactly ONE copy — the helper. It is
-# excluded from the scan above (it is where the idiom belongs), so without this
-# the two sites it feeds, _cc_check_binary_elf and _cc_check_object, could
-# quietly grow their own pipelines back.
+# smoke-common.sh is excluded from the scan above, so check it holds exactly one copy.
 t_assert_eq "1" "$(sed 's/^[[:space:]]*#.*$//' "${SMOKE_COMMON}" | grep -c 'readelf -h')" \
   "smoke-common.sh must define the readelf pipeline once, in smoke_elf_machine_of"
 
@@ -706,8 +589,7 @@ t_assert_eq "" "$(_dedup_scan '\*(AArch64|X86-64|RISC-V)\*')" \
   "use smoke_elf_machine_grep from smoke-common.sh"
 
 t_case "each banned pattern would still catch a re-inlined site (negative control)"
-# A regex that has quietly stopped matching is indistinguishable from a clean
-# tree. Feed each one the exact line it was written to ban.
+# A regex that stopped matching looks like a clean tree.
 _dedup_probe() { printf '%s\n' "$2" | grep -qE "$1" && echo HIT || echo MISS; }
 t_assert_eq "HIT" "$(_dedup_probe 'command -v [^|]*\|\|[[:space:]]*echo' \
   '_cam_bin="$(command -v cam 2>/dev/null || echo "${_lc_prefix}/bin/cam")"')"
@@ -728,8 +610,7 @@ t_assert_eq "MISS" "$(_dedup_probe 'present at .*\(cross build — .* skipped\)'
   'pass "opencv Python bindings present at ${p} (import skipped: foreign-arch extension under cross build — validated on-target by the runtime smoke)"')"
 
 t_case "every smoke script that uses a helper also sources smoke-common.sh"
-# The helpers are only defined by that source line; a script that grew a call
-# without it would die with "command not found" inside a container RUN.
+# Without the source line a call dies with "command not found" inside a container RUN.
 for _f in $(_dedup_scan 'smoke_(resolve_bin|is_elf|deferred_if_elf|cross_presence_gate|elf_machine_of)' \
             | cut -d: -f1 | sort -u); do
   t_assert_ok grep -q 'source "${_SCRIPT_DIR}/smoke-common.sh"' "${_SMOKE_DIR}/${_f}"

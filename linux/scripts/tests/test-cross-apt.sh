@@ -1,32 +1,10 @@
 #!/usr/bin/env bash
-# Tests for 01-core/cross-apt.sh — the install_target_packages 3-path state
-# machine (clean batch / batch-fail + per-package retry / genuinely missing)
-# and the cross_package_status_present contract it uses as a disambiguator.
-#
-# Headline regression guard: on a CLEAN batch install (apt-get rc 0) the
-# files-present sweep must NOT run at all. cross_package_status_present is only
-# a heuristic and false-negatives for some packages (e.g. libfreetype6-dev);
-# running it after a successful atomic install turned perfectly good installs
-# into spurious failures. A clean rc=0 must be trusted as-is.
-#
-# No sudo, no network, no real apt: fake `apt-get` and `dpkg-query` binaries
-# in a mktemp bin dir are prepended to PATH. Each fake appends its argv to a
-# per-tool log so the tests can assert exactly which code path ran. The
-# cross_* collaborators are stubbed AFTER sourcing cross-apt.sh so only the
-# unit under test is real.
-#
-# Contract note (deliberate): despite its name — and the caller comment about
-# "hunting for a representative file" — cross_package_status_present checks the
-# dpkg-query '${Status}' field, NOT files on disk. The suite tests that actual
-# status contract: installed/unpacked/half-configured/triggers-* are "present",
-# "deinstall ok config-files" and unknown packages are not.
+# 01-core/cross-apt.sh against fake apt-get/dpkg-query on PATH whose argv logs show which path ran.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/../01-core/cross-apt.sh"
-# platform.sh is sourced here for the same reason production does it before
-# cross-apt.sh (cross-env.sh:10, common.sh:22): cross_pkg_config_libdir's
-# host-multiarch fallback calls arch_deb_multiarch_triplet_for from it.
+# As in production: cross_pkg_config_libdir's host fallback calls arch_deb_multiarch_triplet_for.
 source "${TESTS_DIR}/../01-core/platform.sh"
 
 # --- stubs: everything install_target_packages needs besides apt/dpkg -------
@@ -43,12 +21,7 @@ export FAKE_LOG_DIR="${FAKE_DIR}/log"
 export FAKE_STATE_DIR="${FAKE_DIR}/state"
 mkdir -p "${FAKE_BIN}" "${FAKE_LOG_DIR}" "${FAKE_STATE_DIR}"
 
-# Fake apt-get. Modes (env FAKE_APT_MODE): "ok" = every install succeeds;
-# "batch-fail" = any multi-package install exits 100 (atomic transaction
-# abort), single-package installs then succeed unless the package is listed in
-# FAKE_ABSENT (space-separated), which simulates a genuinely unresolvable
-# name. A successful install writes the package's dpkg Status into
-# FAKE_STATE_DIR so the fake dpkg-query can see it.
+# Fake apt-get: FAKE_APT_MODE=batch-fail aborts multi-package installs; FAKE_ABSENT lists unresolvable names.
 cat > "${FAKE_BIN}/apt-get" <<'FAKE'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${FAKE_LOG_DIR}/apt-get.log"
@@ -71,10 +44,7 @@ exit 0
 FAKE
 chmod +x "${FAKE_BIN}/apt-get"
 
-# Fake dpkg-query: last argv element is the package; print its recorded Status
-# (no trailing newline, like the real -f='${Status}') or fail like the real
-# tool does for unknown packages. Logging every call is what lets the suite
-# prove the sweep did NOT run on the clean-batch path.
+# Fake dpkg-query: its call log is what proves the sweep did NOT run on the clean-batch path.
 cat > "${FAKE_BIN}/dpkg-query" <<'FAKE'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${FAKE_LOG_DIR}/dpkg-query.log"
@@ -88,8 +58,7 @@ exit 1
 FAKE
 chmod +x "${FAKE_BIN}/dpkg-query"
 
-# Fake dpkg: only --print-foreign-architectures is read (by the installed-
-# foreign-arch source helper). FAKE_FOREIGN_ARCHS scripts the answer.
+# Fake dpkg: FAKE_FOREIGN_ARCHS answers --print-foreign-architectures.
 cat > "${FAKE_BIN}/dpkg" <<'FAKE'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -117,9 +86,7 @@ _reset_fakes ok
 t_assert_ok install_target_packages
 t_assert_eq "" "$(cat "${FAKE_LOG_DIR}/apt-get.log")" "apt-get must not run for an empty package list"
 
-# ---------------------------------------------------------------------------
-# Path 1: clean atomic install. rc=0 must be trusted; the files-present sweep
-# must not run (libfreetype6-dev false-negative regression).
+# Path 1: a clean batch's rc=0 is trusted, because the status sweep false-negatives some packages.
 t_case "clean batch success returns 0 and skips the files-present sweep"
 _reset_fakes ok
 out="$(install_target_packages libfoo-dev libbar-dev 2>&1)"; rc=$?
@@ -130,9 +97,7 @@ t_assert_eq "1" "$(wc -l < "${FAKE_LOG_DIR}/apt-get.log")" "exactly one apt-get 
 t_assert_contains "$(cat "${FAKE_LOG_DIR}/apt-get.log")" \
   "install -y --no-install-recommends libfoo-dev libbar-dev" "batch argv carries all packages at once"
 
-# ---------------------------------------------------------------------------
-# Path 2: batch aborts (rc 100), per-package retries land everything, sweep
-# finds all present -> overall success, and the retries really happened.
+# Path 2: the batch aborts and per-package retries land everything.
 t_case "batch rc=100 with successful per-package retries returns 0"
 _reset_fakes batch-fail
 out="$(install_target_packages libfoo-dev libbar-dev 2>&1)"; rc=$?
@@ -146,9 +111,7 @@ t_assert_eq "1" "$(grep -cx -- 'install -y --no-install-recommends libbar-dev' "
 t_assert_eq "2" "$(wc -l < "${FAKE_LOG_DIR}/dpkg-query.log")" \
   "the files-present sweep must check each package exactly once on the failure path"
 
-# ---------------------------------------------------------------------------
-# Path 3: batch aborts AND one package is genuinely unresolvable -> return 1
-# and name exactly the missing package (not its innocent batch-mates).
+# Path 3: one genuinely unresolvable package fails the install and is named alone.
 t_case "batch fail with one genuinely absent package returns 1 naming it"
 _reset_fakes batch-fail "libbogus-dev"
 out="$(install_target_packages libfoo-dev libbogus-dev 2>&1)"; rc=$?
@@ -157,11 +120,7 @@ t_assert_eq "install_target_packages: FAILED (caller decides if fatal) — missi
   "$(printf '%s\n' "${out}" | grep 'FAILED' || true)" \
   "failure line must name exactly the absent package (and not libfoo-dev)"
 
-# ---------------------------------------------------------------------------
-# cross_package_status_present contract: it reads the dpkg '${Status}' field
-# (NOT files on disk, despite the name). Unpacked/half-configured — the state
-# a foreign-arch package lands in when its postinst hits Exec format error —
-# must count as present; a removed package must not.
+# It reads dpkg's Status, not files; unpacked counts because a foreign-arch postinst cannot run.
 t_case "cross_package_status_present accepts usable dpkg Status values"
 _reset_fakes ok
 printf 'install ok installed'        > "${FAKE_STATE_DIR}/pkg-inst"
@@ -183,22 +142,12 @@ t_assert_ok cross_package_status_present "pkg-inst=1.2.3-1"
 t_assert_eq "pkg-inst" "$(tail -1 "${FAKE_LOG_DIR}/dpkg-query.log" | awk '{print $NF}')" \
   "dpkg-query must receive the bare package name, not name=version"
 
-# ---------------------------------------------------------------------------
-# apt_sources_set_architectures — the deb822 rewrite must be all-or-nothing.
-#
-# SH3 class. The old body ran a bare `mktemp` in $TMPDIR and then `mv`'d the awk
-# output onto the sources file UNCONDITIONALLY, so a failing awk (ENOSPC on the
-# temp, a broken/shadowed awk) replaced /etc/apt/sources.list.d/ubuntu.sources
-# with awk's truncated output — 0 bytes — and STILL returned 0. Every later
-# apt-get in that RUN then died with "Unable to locate package" and the real
-# cause was invisible. It also carried mktemp's 0600 onto a file that is 0644
-# everywhere else in /etc/apt/sources.list.d.
+# apt_sources_set_architectures: the deb822 rewrite is all-or-nothing and keeps 0644.
 _SRC_DIR="${FAKE_DIR}/sources.list.d"
 mkdir -p "${_SRC_DIR}"
 _SRC_FILE="${_SRC_DIR}/ubuntu.sources"
 
-# Two stanzas: one WITHOUT an Architectures line (must gain one) and one WITH a
-# stale value (must be overwritten) — the two branches of the awk program.
+# One stanza lacks Architectures, one has a stale value: the awk program's two branches.
 _write_sources() {
   cat > "${_SRC_FILE}" <<'SRC'
 Types: deb
@@ -247,10 +196,7 @@ t_assert_eq "${_before}" "$(cat "${_SRC_FILE}")" \
 t_assert_eq "1" "$(find "${_SRC_DIR}" -type f | wc -l)" \
   "the temp must be removed on the failure path too (no EXIT trap: this file is SOURCED)"
 
-# ---------------------------------------------------------------------------
-# cross_align_host_apt_pockets: the HOST sources must not be one pocket behind
-# the ports sources, or a Multi-Arch:same library becomes uninstallable for the
-# target and apt blames its DEPENDENT instead (VK2 lost riscv64 its Qt6).
+# cross_align_host_apt_pockets: a host one pocket behind ports breaks Multi-Arch:same libraries.
 
 _write_host_only_sources() {
   cat > "${_SRC_FILE}" <<'SRC'
@@ -264,10 +210,7 @@ SRC
 }
 
 t_case "one table decides which archive an arch lives on -- AS1"
-# The HOST stanza and the TARGET stanza used to answer this question in two
-# different places, and Dockerfile.media answered it with a literal. Same table
-# now, so they cannot disagree about where an arch comes from. `386` is
-# arch_normalize's canonical spelling for i386, so it is the archive arm too.
+# `386` is arch_normalize's spelling of i386, so it is an archive arch too.
 # shellcheck disable=SC1090
 . "${TESTS_DIR}/../01-core/ubuntu-mirror.sh"
 for _a in arm64 riscv64 ppc64el s390x armhf; do
@@ -300,17 +243,14 @@ t_assert_eq "${_before}" "$(cat "${_SRC_FILE}")"
 t_assert_eq "1" "${_CROSS_ENV_APT_UPDATED}" "an unchanged file must not cost a re-update"
 
 t_case "a separate security.ubuntu.com stanza counts as carrying the pocket"
-# The stock Ubuntu layout: the pocket lives in its own stanza, so appending a
-# second copy would double-define it and spam apt with "configured multiple
-# times" on every call.
+# A second copy would make apt warn "configured multiple times" on every call.
 _write_sources
 _before="$(cat "${_SRC_FILE}")"
 t_assert_ok cross_align_host_apt_pockets "${_SRC_FILE}" resolute
 t_assert_eq "${_before}" "$(cat "${_SRC_FILE}")"
 
 t_case "a COMMENT naming the pocket does not count as carrying it"
-# The presence check reads Suites: lines only. Matching anywhere in the file let
-# a stock Ubuntu sources comment silently disable the whole repair.
+# Only Suites: lines count; a stock sources comment must not disable the repair.
 printf '# resolute-security is handled elsewhere\nTypes: deb\nSuites: resolute\n' > "${_SRC_FILE}"
 t_assert_ok cross_align_host_apt_pockets "${_SRC_FILE}" resolute
 t_assert_eq "Suites: resolute resolute-security" "$(grep -e '^Suites:' "${_SRC_FILE}")"
@@ -338,17 +278,11 @@ t_assert_eq "${_before}" "$(cat "${_SRC_FILE}")"
 t_assert_eq "1" "$(find "${_SRC_DIR}" -type f | wc -l)"
 
 t_case "cross_configure_foreign_arch_apt_sources aligns the pockets, not just the arch"
-# The wiring is the half that rots: the function existed and was simply never
-# called from the path that rewrites the host sources.
+# The call site is what rots, not the function.
 t_assert_contains "$(awk '/^cross_configure_foreign_arch_apt_sources\(\)/,/^}/' \
   "${TESTS_DIR}/../01-core/cross-apt.sh")" "cross_align_host_apt_pockets"
 
-# ---------------------------------------------------------------------------
-# DUP1: cross_pkg_config_libdir's host-multiarch fallback routes through
-# platform.sh instead of a hand-rolled uname->triplet case. The fallback only
-# fires when DEB_BUILD_MULTIARCH is unset AND dpkg-architecture is unusable, so
-# shadow both — and shadow uname too, so the expected answer does not depend on
-# the machine running the suite.
+# The host fallback only fires without DEB_BUILD_MULTIARCH and dpkg-architecture; uname is shadowed too.
 _SHIM_DIR="${FAKE_DIR}/shim"
 mkdir -p "${_SHIM_DIR}"
 printf '#!/usr/bin/env bash\nexit 1\n' > "${_SHIM_DIR}/dpkg-architecture"
@@ -366,11 +300,7 @@ t_assert_contains "${_libdir}" "/usr/lib/aarch64-linux-gnu/pkgconfig" \
 t_assert_contains "${_libdir}" "/usr/lib/riscv64-linux-gnu/pkgconfig" \
   "the target triplet's own dirs must still be there"
 
-# Behaviour DELTA of the dedup, pinned deliberately: the old inline case fell
-# through to the raw `uname -m` for anything it did not recognise, so an exotic
-# machine got a nonsense "/usr/lib/sparc64/pkgconfig" candidate. platform.sh
-# returns non-zero instead, so the candidate is simply skipped. Both are inert
-# (the dir does not exist either way) — this pins which one we ship.
+# Pinned on purpose: an unknown machine skips the host candidate rather than using raw `uname -m`.
 t_case "an unrecognised build machine yields NO host pkgconfig dir (not a bogus one)"
 cat > "${_SHIM_DIR}/uname" <<'FAKE'
 #!/usr/bin/env bash
@@ -391,15 +321,7 @@ t_assert_eq "absent" "${_bogus}" "no un-normalised uname value may reach the pkg
 t_assert_contains "${_libdir}" "/usr/lib/riscv64-linux-gnu/pkgconfig" \
   "the target dirs must survive the degraded host lookup"
 
-# ---------------------------------------------------------------------------
-# The two ways the host-multiarch lookup comes back empty must NOT degrade
-# identically. A single `arch_deb_multiarch_triplet_for "$(uname -m)"
-# 2>/dev/null || true` swallowed both "unknown build arch" (rc 1 — expected)
-# and "platform.sh was never sourced" (rc 127, command not found — a WIRING
-# bug) into the same silent empty string. In the second case every host-arch
-# pkgconfig dir vanishes from PKG_CONFIG_LIBDIR and host-arch tools start
-# failing to configure with nothing in the log pointing at the cause.
-# uname still reports sparc64 from the shim written above.
+# An unknown arch (rc 1) degrades quietly; an unsourced platform.sh (rc 127) must warn. uname is still sparc64.
 _PKGCONF_ERR="${FAKE_DIR}/pkgconf.err"
 
 t_case "an unrecognised build machine degrades QUIETLY (nothing on stderr)"
@@ -430,15 +352,7 @@ t_assert_eq "0" "${_rc}" \
 t_assert_contains "${_libdir}" "/usr/lib/riscv64-linux-gnu/pkgconfig" \
   "the target triplet dirs must survive the un-wired host lookup"
 
-# ---------------------------------------------------------------------------
-# cross_prune_foreign_arch_apt_sources: the prune must skip the BUILD HOST's
-# own ports source. It globs ubuntu-ports*.sources, and on a native arm64 (or
-# riscv64) build host cross_build_enabled() is false — target == build arch —
-# so cross_prepare_apt_sources_for_target takes the unconditional-prune branch
-# and used to delete the ONLY source serving the host's own packages. What was
-# left was ubuntu.sources with "Architectures: amd64", after which apt resolved
-# every unqualified name to :amd64: binutils:amd64 replaced the native aarch64
-# assembler and gcc's `as -EL` failed for the whole media stage.
+# The prune keeps a native arm64/riscv64 host's own ports source, or apt resolves bare names to :amd64.
 _PRUNE_DIR="${FAKE_DIR}/sources.list.d"
 mkdir -p "${_PRUNE_DIR}"
 _CROSS_APT_SOURCES_DIR="${_PRUNE_DIR}"
@@ -459,9 +373,7 @@ t_assert_eq "no" "${_hit}" "a prefix of a listed arch must NOT match"
 apt_source_declares_arch "${_PRUNE_DIR}/absent.sources" arm64 && _hit=yes || _hit=no
 t_assert_eq "no" "${_hit}" "an absent file declares nothing"
 
-# Both prune cases plant the same two sources and read the same two files back;
-# only the build arch and the keep-argument differ. One owner, so the pair reads
-# as the contrast it is: $1 build arch, $2 kept, $3 pruned, $4.. keep-args.
+# _prune_case <build arch> <kept> <pruned> [keep-args..]: prints whether each source still exists.
 _prune_case() {
   local host="$1" kept="$2" gone="$3"; shift 3
   cross_build_arch() { printf '%s' "${host}"; }
@@ -481,20 +393,12 @@ t_case "an amd64 build host prunes exactly as before"
 t_assert_eq "1 0" "$(_prune_case amd64 arm64 riscv64 "${_PRUNE_DIR}/ubuntu-ports-arm64.sources")" \
   "the explicit keep-source still wins, and no ports source declares amd64 -- amd64 hosts see no behaviour change"
 
-# ---------------------------------------------------------------------------
-# cross_ensure_installed_foreign_arch_sources: every foreign arch installed in
-# the compiler base needs its own source, or a fresh install from the OTHER
-# archive is unsatisfiable. Measured live 2026-09-11: android died on all three
-# arches with "libc6:arm64 Breaks libc6:i386 (!= ...)" because Dockerfile.media
-# leaves apt sources for the build host and the current target only, while the
-# compiler base carries libc6 for both foreign arches.
-# docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
+# See docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
 _ENSURE_DIR="${FAKE_DIR}/ensure-sources.list.d"
 mkdir -p "${_ENSURE_DIR}"
 _CROSS_APT_SOURCES_DIR="${_ENSURE_DIR}"
 
-# ubuntu_write_deb822_source came from ubuntu-mirror.sh in the AS1 case above;
-# these stubs keep the expectation independent of the machine running the suite.
+# Keeps the expectation independent of the machine running the suite.
 cross_build_arch() { printf 'amd64'; }
 cross_detect_distro_codename() { printf 'resolute'; }
 
@@ -504,8 +408,7 @@ rm -f "${_ENSURE_DIR}"/*
 t_assert_ok cross_ensure_installed_foreign_arch_sources
 t_assert_ok test -f "${_ENSURE_DIR}/ubuntu-ports-arm64.sources"
 t_assert_ok test -f "${_ENSURE_DIR}/ubuntu-ports-riscv64.sources"
-# AS1: i386 is an ARCHIVE arch. Skipping it left libc6:i386 with an
-# architecture and no source the moment archive/ports drifted apart.
+# i386 is an archive arch and needs its own source as well.
 t_assert_ok test -f "${_ENSURE_DIR}/ubuntu-archive-i386.sources"
 t_assert_fails test -f "${_ENSURE_DIR}/ubuntu-ports-i386.sources"
 t_assert_fails test -f "${_ENSURE_DIR}/ubuntu-ports-amd64.sources"
@@ -526,15 +429,11 @@ t_assert_eq "0" "$?" "the helper must not fail when its collaborator is absent"
 t_assert_eq "0" "$(find "${_ENSURE_DIR}" -type f | wc -l)" "no file may be written without a source template"
 
 t_case "android-sdk.sh actually calls the helper"
-# Whole-line match on purpose: the name also appears in the sourcing comment,
-# and a substring check over the whole file goes green with the CALL deleted.
+# Whole-line match: a substring hit in a comment would survive deleting the call.
 t_assert_ok grep -qx -e cross_ensure_installed_foreign_arch_sources \
   "${TESTS_DIR}/../02-toolchain/android-sdk.sh"
 
-# ---------------------------------------------------------------------------
-# AS1: the per-arch file and mirror are one table's answer for BOTH families.
-# An amd64/i386 target used to return early from the configure function: dpkg
-# gained an architecture and apt gained no source at all.
+# The per-arch file and mirror come from one table for both archive families.
 t_case "cross_apt_sources_file_for_arch names the file after the archive family"
 t_assert_eq "${_ENSURE_DIR}/ubuntu-ports-arm64.sources" "$(cross_apt_sources_file_for_arch arm64)"
 t_assert_eq "${_ENSURE_DIR}/ubuntu-archive-amd64.sources" "$(cross_apt_sources_file_for_arch amd64)"

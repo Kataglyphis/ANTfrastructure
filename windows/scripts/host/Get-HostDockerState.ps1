@@ -1,22 +1,12 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Collect the host-side state that makes or breaks Windows-container layer
-# filesystems, for comparing two machines ("works there, fails here").
-# Write once at the end (best-effort, guarded); every section individually
-# guarded so one failure cannot abort the rest. ELEVATED for the feature
-# (dism) and filter (fltmc) reads; degrades gracefully when not.
-#
-#   pwsh -File windows\scripts\host\Get-HostDockerState.ps1
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Get-HostDockerState.ps1'
+# Host state that decides Windows-container layer filesystems, to diff a working and a failing machine; run elevated.
 
 $ErrorActionPreference = 'Continue'
 Set-StrictMode -Off
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $out = Join-Path (Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent) 'out\host-docker-forensics.txt'
 New-Item -ItemType Directory -Force -Path (Split-Path $out -Parent) | Out-Null

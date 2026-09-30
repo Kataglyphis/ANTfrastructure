@@ -27,19 +27,7 @@ if is_cross; then
   fi
 fi
 
-# Ubuntu 26.04 "resolute" (rolling dev release) mirror skew: libvulkan-dev is
-# Multi-Arch: same, so its arch-independent headers under /usr/include/vk_video/
-# must be byte-identical across the host :amd64 instance (already installed) and
-# the target :<arch> instance being installed. When the amd64 archive and the
-# arm64/riscv64 ports archive drift to different libvulkan-dev versions, those
-# shared headers differ and dpkg REFUSES to unpack the target instance ("trying
-# to overwrite shared '/usr/include/vk_video/vulkan_video_codec_av1std.h', which
-# is different from other instances of package libvulkan-dev"). libgtk-4-dev
-# pulls libvulkan-dev in transitively, so this aborts the whole GTK/graphics
-# install and broke the base->latest-cross chain (observed 2026-08-10, arm64
-# media). The conflicting files are arch-independent vulkan-video codec headers —
-# letting the target instance's copy win is benign. Allow dpkg to overwrite so
-# the cross install completes. Cross-only (native builds have no second instance).
+# Mirror skew makes the host and target libvulkan-dev (Multi-Arch: same) differ in shared vk_video headers, which are arch-independent, so overwriting is safe.
 if is_cross; then
   install -d /etc/apt/apt.conf.d
   printf 'Dpkg::Options { "--force-overwrite"; };\n' \
@@ -73,9 +61,7 @@ fi
 
 install_target_packages "${pre_setup_target_packages[@]}"
 
-# X11 proto headers are shipped as Architecture: all packages here, so do not
-# route them through install_target_packages or apt may insist on a nonexistent
-# :riscv64 variant.
+# X11 proto headers are Architecture: all; install_target_packages would ask for a nonexistent :<arch> variant.
 apt-get install -y --no-install-recommends x11proto-dev
 
 install_target_packages xorg-dev || true
@@ -126,8 +112,7 @@ install_target_packages "${gst_target_packages[@]}" || true
 apt-get purge -y 'libunwind-[0-9]*-dev' || true
 install_target_packages libunwind-dev || true
 
-# Install libdw-dev as host package too — its headers (elfutils/libdwfl.h) are
-# arch-independent and required by GStreamer gstinfo.c for backtrace support.
+# libdw-dev on the host too: gstinfo.c's backtrace support needs its arch-independent elfutils headers.
 install_host_packages libdw-dev libxml2-utils glslc glslang-tools gobject-introspection || true
 if [ "${MEDIA_SKIP_GTK_DEV:-0}" = "1" ]; then
   echo "Skipping target GTK dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
@@ -145,11 +130,7 @@ install_target_packages \
   libv4l-dev libusb-1.0-0-dev libdc1394-dev libraw1394-dev \
   libcdio-dev libcdparanoia-dev || true
 
-# Graphics stacks
-# GTK and several video sinks probe these through the target-only pkg-config
-# view during cross builds, so install the graphics development packages on the
-# target side as well. Prefer the toolchain Vulkan SDK headers for cross builds
-# and only install the target runtime loader to avoid distro header conflicts.
+# Graphics, target-side: GTK and several video sinks probe them through the target-only pkg-config view.
 graphics_target_packages=(
   libx11-dev libxext-dev libxfixes-dev libxdamage-dev libxrandr-dev libxv-dev \
   libxi-dev libxcursor-dev libxinerama-dev \
@@ -159,6 +140,7 @@ graphics_target_packages=(
   libudev-dev
 )
 
+# With the toolchain Vulkan SDK only the target loader goes in: distro Vulkan headers would conflict with the SDK's.
 if [ "${prefer_toolchain_vulkan}" = "true" ]; then
   echo "Using toolchain Vulkan SDK from ${vulkan_prefix}; installing target libvulkan1 instead of libvulkan-dev."
   graphics_target_packages+=(libvulkan1)
@@ -174,27 +156,19 @@ else
   install_target_packages libgudev-1.0-dev || true
 fi
 
-# Images / formats
-# GTK/gdk-pixbuf probe these through the target-only pkg-config view during
-# cross builds, so install the image development packages on the target side.
+# Image formats, target-side: GTK and gdk-pixbuf probe them through the target-only pkg-config view.
 install_target_packages \
   libjpeg-turbo8-dev libpng-dev libtiff-dev libwebp-dev || true
 
-# colormanagement needs lcms2. arm64 only got it transitively via
-# libgdk-pixbuf-2.0-dev; riscv64 loses that path. No GLib dep, so no skip
-# flag applies. docs/refactoring-backlog.md
+# colormanagement needs lcms2, which riscv64 does not get transitively through gdk-pixbuf.
 install_target_packages liblcms2-dev || true
 
-# libopenexr-3-dev is GONE on Ubuntu 26.04 (renamed libopenexr-dev); the dead
-# first attempt only cost a failed apt round-trip every run. libvvdec-dev does
-# not exist on ports at all, so the guard stays and vvdec builds from source.
 install_target_packages libopenexr-dev || true
 
+# libvvdec-dev is absent on ports, where vvdec builds from source.
 install_target_packages libvvdec-dev || true
 
-# Codecs (audio)
-# These are linked into target-side plugins such as gst-plugins-good/ext/lame,
-# so cross builds need the target multiarch dev packages rather than host ones.
+# Audio codecs, target-side: they link into target plugins such as gst-plugins-good's lame.
 install_target_packages \
   libogg-dev libvorbis-dev libtheora-dev libopus-dev libflac-dev \
   libmpg123-dev libmp3lame-dev libtwolame-dev libspeex-dev libspeexdsp-dev \
@@ -215,14 +189,7 @@ else
     libswscale-dev libswresample-dev || true
 fi
 
-# Networking / crypto
-# (libsoup-3.0-dev / libnice-dev are installed via install_target_packages below.)
-# HLS crypto backends FIRST and on their OWN apt-get calls: install_target_packages
-# runs one all-or-nothing `apt-get install` and silently swallows failure on cross,
-# so bundling libssl-dev with a sibling that can't be co-installed on a flaky ports
-# arch (e.g. libusrsctp-dev on riscv64) would leave gst-plugins-good's HLS with no
-# crypto and hard-abort meson ("Could not get define 'OPENSSL_VERSION_*'"). nettle
-# is HLS's preferred backend; libssl is the fallback — install both independently.
+# HLS crypto (nettle, else libssl) on its own calls: one bad sibling sinks an all-or-nothing install_target_packages, and HLS without crypto aborts meson.
 install_target_packages nettle-dev || true
 install_target_packages libssl-dev || true
 install_target_packages \
@@ -235,10 +202,7 @@ install_target_packages libsoup-3.0-dev libnice-dev || true
 if [ "${MEDIA_SKIP_CSOUND:-0}" = "1" ]; then
   echo "Skipping target Csound packages for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
-  # gst-plugin-csound only needs libcsound64 (lib + headers). Install it on its OWN
-  # call so a heavy/absent sibling (csoundqt pulls Qt, pd-csound pulls puredata)
-  # can't take the essential package down — install_target_packages is
-  # all-or-nothing per call. The rest are best-effort extras.
+  # libcsound64 alone is essential, so it gets its own all-or-nothing call that csoundqt or pd-csound cannot sink.
   install_target_packages libcsound64-dev || true
   install_optional_target_packages csound csound-utils csoundqt csoundqt-examples csound-doc pd-csound || true
 fi
@@ -252,15 +216,8 @@ if [ "${NVIDIA_GPU}" = "auto" ]; then
   else NVIDIA_GPU="no"; fi
 fi
 if [ "${NVIDIA_GPU}" = "yes" ]; then
-  # nv-codec-headers is NOT an apt package (it is the ffnvcodec git repo). The
-  # ffmpeg stage git-clones + installs it to /usr/local (install-deps.sh, the nv-codec-headers clone),
-  # so it is already available to gstreamer's nvcodec plugin. The old
-  # `install_host_packages nv-codec-headers` here was a no-op that only logged a
-  # spurious "skipped unavailable host package" from the resilient-apt fallback.
+  # nv-codec-headers is no apt package; the ffmpeg stage already installs it to /usr/local.
   :
 fi
 
-# NOTE: do NOT `rm -rf /var/lib/apt/lists/*` here — /var/lib/apt is a shared
-# BuildKit cache mount in Dockerfile.media, so wiping it only forces the next
-# stage's `apt-get update` to re-download every index (and it saves no image
-# size, since a cache mount is not a layer).
+# Keep /var/lib/apt/lists: it is a shared BuildKit cache mount, so wiping it only forces re-downloads and saves no image size.

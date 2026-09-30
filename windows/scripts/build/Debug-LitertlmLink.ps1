@@ -1,11 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Link diagnostics for a litert_lm_main build tree kept via LITERTLM_KEEP_BUILD_TREE=1
-# (Build-LitertLmFromSource.ps1 invokes this; also runnable standalone against a kept
-# tree). Dumps the link rsp, WHOLEARCHIVE/FORCE:MULTIPLE presence, built abseil libs,
-# missing/empty archives, and nm scans for the recurring undefined/duplicate symbols.
+# Link diagnostics for a litert_lm_main tree kept via LITERTLM_KEEP_BUILD_TREE=1; also runnable standalone.
 
 
 param(
@@ -37,8 +33,7 @@ if ($rsp) {
     }
 }
 Write-Host '===DIAG=== which built lib DEFINES the leftover undefined symbols (nm scan; T/D/W = defined):'
-# Bound first: llvm-nm being absent is an expected outcome (see the else below), and
-# .Source on the null throws under the StrictMode this script inherits from its caller.
+# llvm-nm may be absent, and .Source on null throws under the caller's StrictMode.
 $nmCmd = Get-Command 'llvm-nm.exe' -ErrorAction SilentlyContinue
 $nmExe = if ($nmCmd) { $nmCmd.Source } else { $null }
 if ($nmExe) {
@@ -81,8 +76,6 @@ if ($nmExe -and $rsp) {
 } else { Write-Host '  (need llvm-nm + rsp)' }
 Write-Host '===DIAG END==='
 
-# Diagnostics-only script: llvm-nm legitimately exits non-zero on the malformed/
-# empty archives this hunts for, and that exit code must never outlive us (the
-# caller reads the ambient $LASTEXITCODE; standalone pwsh -File propagates it).
+# llvm-nm exits non-zero on the broken archives this hunts for; the caller must not read that exit code.
 exit 0
 

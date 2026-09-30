@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The loop-driver half of the agentic loop: logging, the BACKLOG queue, the
-# build/test/quality phases, the build matrix and run_agentic_loop. The only
-# file a consumer sources; it loads the engine adapters from its own directory.
-# docs/agentic-loop-build-matrix.md#the-two-bash-files
+# Loop driver, the only file a consumer sources; it loads the engine adapters. docs/agentic-loop-build-matrix.md#the-two-bash-files
 
-# ── Logging ─────────────────────────────────────────────────────────────
+# Logging
 LOG_FILE=""
 LOOP_NAME=""
 AGENTIC_START_TIME=0
@@ -23,9 +19,7 @@ init_agentic_loop() {
     log "Log file: $LOG_FILE"
 }
 
-# Bash counterpart of the PS module's Complete-AgenticLoop: final summary +
-# troubleshooting hints.  Call from the wrapper's EXIT trap with the exit
-# code; does not exit itself (the trap owns that).
+# Twin of Complete-AgenticLoop; call from the EXIT trap, which owns the exit.
 complete_agentic_loop() {
     local exit_code="${1:-0}"
     local elapsed=$(( $(date +%s) - AGENTIC_START_TIME ))
@@ -59,19 +53,16 @@ section() {
 # shellcheck source=./agentic-engines.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agentic-engines.sh"
 
-# ── BACKLOG helpers ─────────────────────────────────────────────────────
+# BACKLOG helpers
 unchecked_task_count() {
     local backlog="${1:-BACKLOG.md}"
-    # grep -c prints "0" AND exits non-zero on zero matches, so `|| echo 0`
-    # would emit "0\n0" — capture first, then default only if empty.
+    # grep -c prints 0 and exits 1 on no match, so `|| echo 0` would emit "0\n0".
     local n
     n=$(grep -c '^- \[ \]' "$backlog" 2>/dev/null) || true
     echo "${n:-0}"
 }
 
-# Count blocked (- [b]) tasks.  Blocked tasks are deliberately excluded from
-# unchecked_task_count so a backlog containing only blocked entries reads as
-# an empty queue and lets the planner run again.
+# Kept out of unchecked_task_count so an all-blocked backlog lets the planner run again.
 blocked_task_count() {
     local backlog="${1:-BACKLOG.md}"
     local n
@@ -79,10 +70,7 @@ blocked_task_count() {
     echo "${n:-0}"
 }
 
-# Remove completed (- [x]) task blocks from the backlog: the checked title
-# line plus its indented / blank body lines, up to the next non-indented
-# line (next task, heading, or plain text).  Completed work stays visible
-# in git history instead of accumulating in the file.
+# Completed work stays in git history instead of accumulating in the backlog.
 remove_checked_tasks() {
     local backlog="${1:-BACKLOG.md}"
     [[ -f "$backlog" ]] || return 0
@@ -108,7 +96,7 @@ remove_checked_tasks() {
     log "Removed $checked completed task(s) from $(basename "$backlog")"
 }
 
-# ── Build / Test / Quality ──────────────────────────────────────────────
+# Build, test, quality
 invoke_build() {
     local cmd="$1" config_name="$2"
     section "BUILD: $config_name"
@@ -136,9 +124,7 @@ invoke_quality() {
     log "Quality check complete"
 }
 
-# ── Build-failure fixer ─────────────────────────────────────────────────
-# Hands the tail of the build log to the executor-tier model with a focused
-# "fix the build" prompt.  Returns the agent's exit code.
+# Build-failure fixer; returns the agent's exit code.
 invoke_build_fixer() {
     local config_name="$1" log_tail_lines="${2:-150}"
     section "BUILD FIXER: $config_name"
@@ -151,9 +137,7 @@ ${log_tail}
 --- end build log ---"
 }
 
-# ── Sanitizer-aware test execution ──────────────────────────────────────
-# Sets ASAN_OPTIONS or TSAN_OPTIONS before running tests, then restores the
-# original environment.  If the sanitizer is 'none', behaves like invoke_tests.
+# Sanitizer-aware test execution; 'none' behaves like invoke_tests.
 get_sanitizer_env_vars() {
     local sanitizer="${1:-none}"
     case "$sanitizer" in
@@ -186,14 +170,10 @@ invoke_sanitizer_tests() {
     return $rc
 }
 
-# ── Build matrix helpers ────────────────────────────────────────────────
-# Parse a build matrix entry from JSON.  Sets globals:
-#   MATRIX_NAME, MATRIX_SANITIZER, MATRIX_TEST_CMD, MATRIX_BUILD_DIR, MATRIX_BUILD_TYPE
-# Usage: resolve_build_matrix_entry "$config_json" "$index" "$platform"
+# Build matrix helpers. <config_json> <index> [platform]; sets the MATRIX_* globals.
 resolve_build_matrix_entry() {
     local config_json="$1" index="$2" platform="${3:-linux}"
-    # One jq pass for all five fields (was five calls).  Pre-initialise so a
-    # jq failure yields the same empty strings the per-field calls produced.
+    # Pre-initialised so a jq failure yields empty strings.
     MATRIX_NAME="" MATRIX_SANITIZER="" MATRIX_TEST_CMD=""
     MATRIX_BUILD_DIR="" MATRIX_BUILD_TYPE=""
     local _al_cfg _al_rc=0
@@ -206,8 +186,7 @@ resolve_build_matrix_entry() {
         @sh "MATRIX_BUILD_TYPE=\($m.buildType // "" | v)"
     ' "$config_json") || _al_rc=$?
     eval "$_al_cfg"
-    # The old per-field version ended on a jq assignment, so callers saw
-    # jq's exit status on unreadable/broken configs — keep that contract.
+    # Callers rely on jq's exit status for an unreadable or broken config.
     return "$_al_rc"
 }
 
@@ -229,9 +208,7 @@ get_matrix_entry_name() {
     jq -r ".buildMatrix.${platform}[$index].name // .buildConfigurations.${platform}[$index] // empty" "$config_json"
 }
 
-# ── Default phase prompts ───────────────────────────────────────────────
-# Single source of truth shared with WindowsAgenticLoop.Common.psm1:
-# shared/agentic-loop/prompts/*.md at the repo root.
+# Default phase prompts, shared with WindowsAgenticLoop.Common.psm1 via shared/agentic-loop/prompts/.
 _default_prompt() {
     local lib_dir; lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local f="${lib_dir}/../../../shared/agentic-loop/prompts/$1.md"
@@ -246,9 +223,7 @@ default_planner_prompt() { _default_prompt planner; }
 default_refactor_planner_prompt() { _default_prompt refactor-planner; }
 default_executor_prompt() { _default_prompt executor; }
 
-# ── Git auto-commit ─────────────────────────────────────────────────────
-# Bash counterpart of the PS module's Invoke-GitAutoCommit.  No-op when
-# disabled or in dry-run; never fails the loop over a commit error.
+# Git auto-commit, twin of Invoke-GitAutoCommit; a commit error never fails the loop.
 invoke_git_auto_commit() {
     local message="$1" repo_root="${2:-$(pwd)}" enabled="${3:-true}"
     [[ "$enabled" != "true" || "${DRY_RUN:-false}" == "true" ]] && return 0
@@ -256,21 +231,7 @@ invoke_git_auto_commit() {
     git -C "$repo_root" commit -m "$message" 2>/dev/null || true
 }
 
-# ── Main loop ───────────────────────────────────────────────────────────
-# Full planner/executor loop with engine dispatch, build matrix cycling,
-# sanitizer-aware tests, build-failure fixing, and quality gates.  Reads all
-# configuration from the JSON config file.  The project's Run-AgenticLoop.sh
-# can either call this function or use the individual helpers directly.
-#
-# Honors env flags: DRY_RUN, SKIP_BUILD, SKIP_TESTS, SKIP_QUALITY,
-# PLANNER_ONLY, EXECUTOR_ONLY, MAX_ITERATIONS_OVERRIDE.
-# ── Loop state ────────────────────────────────────────────────────────────────
-# (Complexity audit F-H: run_agentic_loop carried a 17-jq config block plus
-# FOUR nested function definitions closing over its locals via dynamic scope —
-# the closures were globally visible anyway once defined, so the nesting
-# bought implicit coupling and nothing else. Config + mutable loop state now
-# live in one associative array; the phase helpers are top-level and read it
-# explicitly.)
+# Main loop. Env flags: DRY_RUN, SKIP_BUILD, SKIP_TESTS, SKIP_QUALITY, PLANNER_ONLY, EXECUTOR_ONLY, MAX_ITERATIONS_OVERRIDE.
 declare -gA _AL=()
 
 # Populate _AL from the engine config. Usage: _agentic_load_loop_config <json> <repo_root> <platform>
@@ -280,9 +241,7 @@ _agentic_load_loop_config() {
     _AL[config_json]="$config_json"
     _AL[repo_root]="$repo_root"
     _AL[platform]="$platform"
-    # One jq pass for all 16 config fields (was 16 calls).  No-default fields
-    # keep the old `jq -r` behaviour of reading "null" when absent; a jq
-    # failure leaves every field "" (pre-initialised) exactly as before.
+    # No-default fields read "null" when absent, like jq -r; a jq failure leaves every field "".
     local _al_key
     for _al_key in build_every_n quality_every_n refactor_every_n \
         max_iterations max_retries loop_delay auto_commit commit_prefix \
@@ -321,8 +280,7 @@ _agentic_load_loop_config() {
     _AL[consecutive_build_failures]=0
 }
 
-# Build + test one matrix entry by index. On build failure, optionally
-# dispatches the fixer agent and retries the build once.
+# On build failure, optionally runs the fixer agent and retries the build once.
 _agentic_build_and_test_entry() {
     local idx="$1"
     resolve_build_matrix_entry "${_AL[config_json]}" "$idx" "${_AL[platform]}"
@@ -380,8 +338,7 @@ _agentic_after_task_phases() {
     fi
 }
 
-# Drain the executor queue. Returns non-zero when stopped by persistent
-# build failures; returns 0 when the queue is empty or stuck-at-max-retries.
+# Non-zero only when persistent build failures stop it; empty or stuck-at-max-retries is 0.
 _agentic_drain_executor_queue() {
     local matrix_count="$1"
     local backlog="${_AL[repo_root]}/BACKLOG.md"
@@ -415,12 +372,7 @@ _agentic_drain_executor_queue() {
     return 0
 }
 
-# Phase 1 of an iteration: run the planner unless the queue still has
-# actionable (- [ ]) tasks. Blocked (- [b]) tasks do not count, and the
-# starvation guard forces a planner run after a zero-progress iteration, so a
-# backlog of blocked entries cannot stall the loop. Sets the caller's
-# planner_ran (nameref) so run_agentic_loop can tell "no tasks left" from
-# "planner was skipped". The seam F1 named.
+# Blocked tasks do not count and a zero-progress iteration forces the planner, so they cannot stall the loop.
 _agentic_planner_phase() {
     local repo_root="$1" force_planner="$2"
     local -n _app_ran="$3"
@@ -468,7 +420,7 @@ run_agentic_loop() {
     log "Max iterations: ${_AL[max_iterations]} (0 = unlimited)"
     log "Build-failure fixing: ${_AL[fix_build_failures]} (stop after ${_AL[max_consecutive_build_failures]} consecutive failures)"
 
-    # ── Single-phase modes ──────────────────────────────────────────────
+    # Single-phase modes
     if [[ "${PLANNER_ONLY:-false}" == "true" ]]; then
         section "PLANNER PHASE (planner-only mode)"
         invoke_agent "planner" "$(default_planner_prompt)"
@@ -482,7 +434,7 @@ run_agentic_loop() {
         return 0
     fi
 
-    # ── Full loop ───────────────────────────────────────────────────────
+    # Full loop
     local force_planner=false iterations_done=0
     while true; do
         _AL[iteration]=$(( _AL[iteration] + 1 ))
@@ -490,8 +442,7 @@ run_agentic_loop() {
         iterations_done=${_AL[iteration]}
         section "ITERATION ${_AL[iteration]}"
 
-        # Phase 1: Planner — the skip/starvation/refactor-cycle decision lives
-        # in _agentic_planner_phase; it reports back whether it ran.
+        # Phase 1: planner; _agentic_planner_phase owns the skip decision and reports whether it ran.
         local planner_ran=false
         _agentic_planner_phase "$repo_root" "$force_planner" planner_ran
 

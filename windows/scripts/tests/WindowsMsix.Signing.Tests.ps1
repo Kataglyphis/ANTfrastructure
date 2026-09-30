@@ -1,17 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Moved up from a consumer repo (BeschleunigerBallett,
-# scripts/windows/tests) on 2026-08-07 - see WindowsCMake.Common.Tests.ps1 for
-# the rationale.
-#
-# Rewritten rather than transliterated. The Pester 3.4 original tried to
-# neutralize signtool by REDEFINING functions (`function Resolve-WindowsSdkToolPath
-# { $null }`) in the suite's own scope, which never reaches a call made from
-# inside the module - so two of its three cases ended at `$true | Should Be $true`
-# and asserted nothing. Module-scoped mocks plus the module's own
-# -InvokerScriptBlock seam let each case assert what actually happened.
+# A function redefined in the suite's scope never reaches a call inside the module; use Mock -ModuleName.
 
 Describe 'WindowsMsix.Signing' {
   BeforeAll {
@@ -33,9 +23,7 @@ Describe 'WindowsMsix.Signing' {
   }
 
   BeforeEach {
-    # Never import a certificate into the machine store from a test run, and
-    # never depend on the runner being elevated: the not-Administrator branch
-    # only logs a warning.
+    # Never touch the machine store or depend on elevation: the non-Administrator branch only warns.
     Mock -ModuleName WindowsMsix.Signing -CommandName Test-Administrator { return $false }
     Get-ChildItem -Path $script:workspace -Filter '*.pfx' -File -ErrorAction SilentlyContinue |
       Remove-Item -Force -ErrorAction SilentlyContinue

@@ -34,10 +34,7 @@ source_toolchain_common_or_fallback() {
   detect_system() { :; }
 }
 
-# Load 01-core/build-helpers.sh (parallel ELF strip helper etc.). It is not
-# pulled in by common.sh, so the from-source builders source it explicitly.
-# Falls back to a minimal strip_elf_tree when 01-core is unavailable, matching
-# the source-or-fallback idiom used by source_toolchain_common_or_fallback.
+# common.sh does not pull in build-helpers.sh, so the from-source builders load it here, with a minimal fallback.
 source_toolchain_build_helpers_or_fallback() {
   local script_dir="$1"
   local candidate

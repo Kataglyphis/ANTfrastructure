@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Tests for 01-core/cpython-dev-packages.sh — the one table tying CPython's
-# extension modules to the apt -dev packages they link against, and the two
-# consumers that must both read it (the target install, the lib-dynload audit).
-# docs/failure-modes.md#a-from-source-cpython-silently-drops-an-extension-module
+# cpython-dev-packages.sh: one module-to-package table, read by both consumers. See docs/failure-modes.md#a-from-source-cpython-silently-drops-an-extension-module
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -25,14 +22,12 @@ t_assert_contains "$(cpython_ext_modules | tr '\n' ' ')" "_ssl _hashlib" \
   "libssl-dev covers _ssl AND _hashlib"
 
 t_case "the split survives the consumer's IFS (build_python.sh runs under \$'\\n\\t')"
-# The historical trap the table header names: an unpinned `read` under that IFS
-# does not split on spaces, so a two-module row would arrive as one word.
+# An unpinned `read` under that IFS does not split on spaces, so a two-module row arrives as one word.
 t_assert_eq "$(cpython_ext_modules)" "$(IFS=$'\n\t'; cpython_ext_modules)"
 t_assert_eq "$(cpython_ext_dev_packages)" "$(IFS=$'\n\t'; cpython_ext_dev_packages)"
 
 t_case "the hand-maintained list the audit used to carry is fully covered"
-# build_python.sh:365 held (zlib _bz2 _lzma _ssl _hashlib _ctypes _sqlite3) and had
-# never gained readline, which LOG23 added to the table — the desync this closes.
+# The list the audit used to hand-carry, which had never gained readline.
 _mods=" $(cpython_ext_modules | tr '\n' ' ')"
 for _m in zlib _bz2 _lzma _ssl _hashlib _ctypes _sqlite3; do
   t_assert_contains "${_mods}" " ${_m} " "the audit still covers ${_m}"

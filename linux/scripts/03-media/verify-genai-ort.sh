@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# verify-genai-ort.sh - GenAI was built against the chain ONNX Runtime (owner rule 2026-09-23): ORT_HOME is a chain root,
-# no ortlib/onnxruntime FetchContent ran, and every ORT-named file in its tree is chain bytes. NOT covered: run-time loading.
+# Proves GenAI built against the chain ORT: ORT_HOME is a chain root, nothing was fetched, ORT files are chain bytes.
 set -euo pipefail
 # G2's shared gate, mounted per file beside this one.
 # shellcheck source=ort-provenance.sh
@@ -139,8 +138,7 @@ main() {
   _genai_ort_g2 "${src}" "${out}" "${roots[@]}"
 }
 
-# _genai_ort_g2 <src_dir> <output_dir> <ort_root>...: G2 over the same tree, its build records and the build log 60-build-genai.sh
-# tees there; a pass stamps GenAI for G1.
+# _genai_ort_g2 <src_dir> <output_dir> <ort_root>...: G2 over the tree, its records and build log; a pass stamps G1's input.
 _genai_ort_g2() {
   local src="$1" out="$2" r rec
   local -a g2=()

@@ -1,17 +1,5 @@
 #requires -Version 7.0
-# Backlog #56: the CMake source-patchers rewrite upstream files with bare
-# string(REPLACE ...) and then print "Patched ..." UNCONDITIONALLY. If upstream
-# reformats the text a pattern targets, the replace silently does nothing, the
-# success message still prints, and the defect the patch existed to fix returns
-# — after a full media-litert build.
-#
-# The concrete case: sentencepiece defines a duplicate ABSL_FLAG(minloglevel)
-# that collides with abseil's own, aborting litert_lm_main.exe on EVERY run.
-# /FORCE:MULTIPLE hides it at link time, so a silently no-op'd regex would ship
-# a link-clean, unusable exe while the log claimed "fixes abseil flag ODR abort".
-#
-# Test-PatchesApplyClean.ps1 globs '*.patch' only, so these .cmake patchers are
-# outside the CI patch-drift job entirely. This suite is their gate.
+# The .cmake patchers' only gate (the patch-drift job globs *.patch): see docs/windows-build-invariants.md § Never rewrite upstream sources with a bare string(REPLACE)
 
 
 Describe 'CMake source patchers guard against silent no-ops (backlog #56)' {
@@ -19,9 +7,7 @@ Describe 'CMake source patchers guard against silent no-ops (backlog #56)' {
     $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
     $patchRoot = Join-Path $repoRoot 'windows\scripts\patches'
 
-    # A replace that rewrites upstream source MUST go through the guarded macro.
-    # Anything else (e.g. splitting a local "a|b" pair into a list) is exempt via
-    # an explicit marker so the exemption is a decision on the record, not a gap.
+    # A replace rewriting no upstream source is exempted by an explicit marker, so the exemption is on the record.
     $exemptMarker = 'patch-assert-exempt'
 
     function Get-CmakePatcher {
@@ -53,9 +39,7 @@ Describe 'CMake source patchers guard against silent no-ops (backlog #56)' {
     }
 
     It 'ships the guard macros next to the patchers that include them' {
-        # The macros must live INSIDE patches/litert-lm/ because the Dockerfile
-        # COPYs that directory specifically — a helper one level up would not be
-        # in the image, and the include() would fail at build time.
+        # The Dockerfile COPYs patches/litert-lm/ specifically, so a helper one level up would not be in the image.
         $helper = Join-Path $patchRoot 'litert-lm\patch-assert.cmake'
         Assert-True (Test-Path $helper) 'patches/litert-lm/patch-assert.cmake must exist (it is COPY-reachable; a parent-dir helper would not be)'
         $body = Get-Content $helper -Raw

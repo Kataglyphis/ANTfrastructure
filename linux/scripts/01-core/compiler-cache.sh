@@ -1,14 +1,5 @@
 #!/usr/bin/env bash
-# compiler-cache.sh - ccache/sccache/lld wiring for the 03-media chain ONLY: the
-# 02-toolchain builds cache themselves (build-gcc.sh --ccache, build-clang.sh).
-# See docs/build-cache-tiers.md#5-scc1--the-ccachesccache-hybrid.
-#
-# Two-caches-installed decision (2026-08-28): both ccache and sccache stay
-# mounted. sccache is the primary; ccache is the fallback for invocations
-# sccache refuses (some compilers, some TryCompile shapes). The ~27 GB warm
-# ccache is the cost of that fallback — documented as intentional, not
-# ambiguous. compiler_cache_launcher() in common.sh resolves sccache first,
-# ccache second, uncached last.
+# Compiler-cache and lld wiring for the 03-media chain only: docs/build-cache-tiers.md#5-scc1--the-ccachesccache-hybrid
 
 [ -n "${_COMPILER_CACHE_LOADED:-}" ] && return 0
 _COMPILER_CACHE_LOADED=1
@@ -18,8 +9,7 @@ _CC_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${USE_CCACHE:=true}"
 : "${USE_SCCACHE:=true}"
 : "${USE_LLD:=true}"
-# Owner of the runtime cache paths: Dockerfile.package's ENV is pinned to these
-# by test-compiler-cache.sh. docs/build-cache-tiers.md#the-shipped-images-cache-dirs
+# Owns the cache paths Dockerfile.package's ENV is pinned to: docs/build-cache-tiers.md#the-shipped-images-cache-dirs
 : "${CCACHE_DIR:=/var/cache/ccache}"
 : "${CCACHE_MAXSIZE:=10G}"
 : "${SCCACHE_DIR:=/var/cache/sccache}"
@@ -45,8 +35,7 @@ _sccache_available() {
   command -v sccache >/dev/null 2>&1
 }
 
-# Accept every truthiness spelling: "USE_CCACHE=0" used to be silently ignored
-# because only the literal string "false" disabled anything.
+# Accepts every off spelling; only "false" used to work, so USE_CCACHE=0 was ignored.
 _flag_disabled() {
   case "${1:-}" in
     0|false|FALSE|False|no|NO|off|OFF) return 0 ;;
@@ -54,11 +43,7 @@ _flag_disabled() {
   esac
 }
 
-# One owner for the sccache server ADDRESS, and it must run in the shell that
-# runs the compiles: exporting it inside a $( ) substitution loses it, every
-# client then falls back to the shared TCP port, and concurrent BuildKit steps
-# reach each other's server. That was measured, twice.
-# docs/build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run
+# Run in the compiling shell, never in $( ): docs/build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run
 sccache_export_server_address() {
   if [ -n "${SCCACHE_SERVER_UDS:-}" ] || [ -n "${SCCACHE_SERVER_PORT:-}" ]; then
     return 0
@@ -75,25 +60,17 @@ sccache_export_server_address() {
   fi
 }
 
-# Single resolver for the launcher name (backlog F2): every caller resolves
-# through common.sh's compiler_cache_launcher() -- the one place that knows
-# the guarded-launcher preference, the sccache server start, and the ccache
-# fallback. This module cannot assume 01-core is loaded (the android preamble
-# sources it standalone), so the inline bootstrap below mirrors the same
-# decision for that caller only. The two paths are pinned to agree by
-# test-compiler-cache.sh.
+# Defers to common.sh's compiler_cache_launcher; the inline copy serves the standalone android preamble, and a test keeps them equal.
 _resolve_compiler_cache_launcher() {
   if command -v compiler_cache_launcher >/dev/null 2>&1; then
     printf '%s' "$(compiler_cache_launcher 2>/dev/null || true)"
     return 0
   fi
-  # Bootstrap path (no 01-core loaded): identical resolution, inline.
   if command -v sccache >/dev/null 2>&1; then
     sccache_export_server_address
     sccache --start-server >/dev/null 2>&1 || true
     if sccache --show-stats >/dev/null 2>&1; then
-      # Guarded launcher, never bare sccache: sccache ABORTS the build on its own
-      # fatal errors (ENOENT on CMake's deleted TryCompile cwd) where ccache execs on.
+      # The guarded launcher survives sccache's own fatal errors, which abort a bare sccache build.
       for _scl in "${_CC_SH_DIR:-}/sccache-launcher.sh" /opt/scripts/core/sccache-launcher.sh; do
         if [ -x "${_scl}" ]; then printf '%s' "${_scl}"; return 0; fi
       done
@@ -124,11 +101,9 @@ setup_ccache() {
 
   mkdir -p "${CCACHE_DIR}" 2>/dev/null || true
 
-  # Prefer sccache only when its server actually answers: a dead server is a HARD
-  # compile failure, not a miss. See docs/build-cache-tiers.md.
+  # sccache only when its server answers: a dead server fails compiles instead of missing.
   export SCCACHE_IDLE_TIMEOUT="${SCCACHE_IDLE_TIMEOUT:-0}"
-  # See common.sh:ensure_sccache_env -- preprocessor cache mode re-reads the
-  # input file AFTER the compile and dies on CMake's deleted TryCompile dirs.
+  # Off for the same reason as in common.sh's ensure_sccache_env.
   export SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"
   # Quiet by default; SCCACHE_LOG=sccache=debug brings back the client/server trace.
   export SCCACHE_LOG="${SCCACHE_LOG:-}"
@@ -149,20 +124,15 @@ setup_ccache() {
   export CMAKE_C_COMPILER_LAUNCHER="${_cc_launcher}"
   export CMAKE_CXX_COMPILER_LAUNCHER="${_cc_launcher}"
 
-  # Deliberately NOT CC="ccache gcc": CMake would detect ccache itself as the
-  # compiler and double-wrap (ccache /bin/ccache g++ ...).
+  # Not CC="ccache gcc": CMake would take ccache for the compiler and double-wrap.
 
   _cc_info "compiler cache enabled: launcher=${_cc_launcher}, CCACHE_DIR=${CCACHE_DIR}, MAXSIZE=${CCACHE_MAXSIZE}"
   _cc_info "CMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}"
 
-  # Without -M, ccache uses its compiled-in ~5G default, not CCACHE_MAXSIZE. sccache
-  # has no equivalent: its cap comes from SCCACHE_CACHE_SIZE in Dockerfile.base.
+  # Without -M ccache keeps its compiled-in default, not CCACHE_MAXSIZE.
   ccache -M "${CCACHE_MAXSIZE}" 2>/dev/null || true
 
-  # SUBSTRING, not identity: _cc_launcher is a PATH to the guarded launcher, not the
-  # literal "sccache". A zero-hit report is the cheapest early warning of a dead cache.
-  # LOG19: grep -E selects the lines that matter (Compile requests, Cache hits, etc.)
-  # instead of head -12, which cuts off Non-cacheable/Unsupported on variable-length output.
+  # Substring match: the launcher may be the guarded launcher's path, not the literal "sccache".
   case "${_cc_launcher}" in
     *sccache*) sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' || true ;;
     *)         ccache --show-stats 2>/dev/null | head -5 || true ;;
@@ -186,10 +156,7 @@ setup_sccache() {
   mkdir -p "${SCCACHE_DIR}" 2>/dev/null || true
   sccache_export_server_address
 
-  # Guarded launcher, never the bare string (AGENTS.md): setup-gstreamer.sh calls this
-  # BEFORE build-gstreamer-monorepo.sh tests `[ -z "${RUSTC_WRAPPER+x}" ]`, so whatever
-  # is set here wins. Single resolver (backlog F2); Rust has no ccache fallback, so a
-  # resolver verdict that is not sccache-class keeps the guarded sccache default.
+  # This RUSTC_WRAPPER wins over build-gstreamer-monorepo.sh's; Rust has no ccache fallback, so non-sccache verdicts keep sccache.
   _sc_launcher="sccache"
   _sc_resolved="$(_resolve_compiler_cache_launcher)"
   case "${_sc_resolved}" in
@@ -211,14 +178,12 @@ setup_sccache() {
 
 setup_lld_linker() {
   if _flag_disabled "${USE_LLD}"; then
-    # Earlier callers (e.g. media_common_init) may have added -fuse-ld=lld before
-    # USE_LLD was set to false; Meson/CMake would inherit the stale flags.
+    # Earlier callers may already have added -fuse-ld=lld, which Meson/CMake would inherit.
     local _sl_var _sl_cleaned
     for _sl_var in LDFLAGS CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS RUSTFLAGS; do
       if [ -n "${!_sl_var:-}" ]; then
         _sl_cleaned="${!_sl_var}"
-        # Strip RUSTFLAGS' compound token WHOLE first: removing only "-fuse-ld=lld"
-        # leaves a dangling "-C link-arg=" that rustc forwards as an empty "" argument.
+        # The compound token goes whole first, or a dangling "-C link-arg=" reaches rustc as "".
         _sl_cleaned="${_sl_cleaned//-C link-arg=-fuse-ld=lld/}"
         _sl_cleaned="${_sl_cleaned//-fuse-ld=lld/}"
         # Defensive: drop any leftover empty "-C link-arg=" tokens.
@@ -258,20 +223,11 @@ setup_lld_linker() {
   _cc_info "lld linker enabled: LDFLAGS contains ${lld_flag}"
 }
 
-# LOG19: Post-build stats dump. Call at the END of each media build step (after
-# the compile finishes) so the report reflects actual activity, not the t≈0
-# snapshot setup_ccache prints before the first object. WARNs on
-# requests > 0 && hits == 0 (a dead cache). Goes to STDERR (survives the 2MiB
-# step-log clip).
+# Call after each media build step; stderr survives the 2 MiB step-log clip, and zero hits warns of a dead cache.
 dump_compiler_cache_stats() {
   if command -v sccache >/dev/null 2>&1; then
     local _req _hits
-    # ANCHORED, and one line only: sccache prints BOTH "Compile requests" and
-    # "Compile requests executed", and the old unanchored sed matched the second
-    # too -- with [0-9]* landing on the empty string before "executed", so the
-    # variable became "executed<TAB>559" and the test below died with
-    # "[: 559\nexecuted: integer expected" on every media build. "Cache hits"
-    # has the same shape ("Cache hits (C/C++)").
+    # Anchored: "Compile requests executed" and "Cache hits (C/C++)" share the prefixes.
     _req="$(sccache --show-stats 2>/dev/null | awk '/^Compile requests[[:space:]]+[0-9]+[[:space:]]*$/ { print $NF; exit }')"
     _hits="$(sccache --show-stats 2>/dev/null | awk '/^Cache hits[[:space:]]+[0-9]+[[:space:]]*$/ { print $NF; exit }')"
     case "${_req}" in ''|*[!0-9]*) _req=0 ;; esac

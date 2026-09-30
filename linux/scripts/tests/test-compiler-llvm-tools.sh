@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# compiler-llvm-tools.sh picks the LLVM tools of the compiler that configured a
-# build tree. Two fake LLVM installs stand in for the image's pair: the tree's
-# compiler (CMakeCache.txt) and a different clang++ first on PATH, so every case
-# can tell which one answered.
+# compiler-llvm-tools.sh picks the tree compiler's LLVM tools; two fake LLVMs show which one answered.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -11,8 +8,7 @@ LIB="${TESTS_DIR}/../lib/compiler-llvm-tools.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# _fake_llvm <dir> <tool>... - a clang++ whose -print-prog-name answers with its
-# sibling when that sibling exists and with the bare name otherwise, as clang does.
+# _fake_llvm <dir> <tool>... - a clang++ whose -print-prog-name answers like clang: sibling path, else bare name.
 _fake_llvm() {
   local dir="$1" tool
   shift

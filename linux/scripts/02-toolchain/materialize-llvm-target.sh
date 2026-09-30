@@ -1,19 +1,5 @@
 #!/usr/bin/env bash
-# materialize-llvm-target.sh — select/repair the per-arch native Clang at the
-# canonical /opt/llvm-target (DF2 2026-08-18: extracted VERBATIM from the
-# 86-line inline RUN in Dockerfile.sdk; logic unchanged, one comment-preserving
-# home instead of a backslash-escaped string).
-#
-# The SHARED compiler stage installs each cross target-clang into
-# /opt/llvm-target-<arch> (a single fixed prefix would clobber across arches
-# and leak one arch's clang into every image). Select THIS build's arch; amd64
-# is native so it ships the host LLVM as its target-native clang. Downstream
-# (media/android/package) then inherits a correct, self-contained
-# /opt/llvm-target for every arch — the package image COPYs it to
-# /usr/local/llvm-target so each runtime ships its own native clang.
-#
-# Inputs (env): TARGET_ARCH / TARGETARCH, LLVM_RELEASE.
-# Requires: /opt/scripts/core/platform.sh (assert_elf_arch).
+# Moves this arch's native clang from its per-arch prefix to /opt/llvm-target, self-contained for later stages.
 set -euo pipefail
 
 # One reader of DT_NEEDED for the fill, the repair and the self-containment walk.
@@ -21,16 +7,12 @@ _elf_needed() {
     LC_ALL=C readelf -d "$1" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p'
 }
 
-# One owner of "this toolchain's own library": what the prefix must carry itself
-# rather than borrow from whatever the consuming image happens to have.
+# The one owner of "this toolchain's own library", which the prefix must carry rather than borrow.
 _is_llvm_family() {
     case "${1}" in libLLVM*|libclang*|liblldb*) return 0 ;; *) return 1 ;; esac
 }
 
-# Materialise into <prefix>/lib exactly the LLVM-family sonames the prefix's own
-# objects DT_NEED and cannot resolve there, from <src>; repeat until a round adds
-# nothing, because a filled lib brings its own NEEDED.
-# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+# Repeats until a round adds nothing. docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
 _llvm_target_fill_needed() {
     local prefix="$1" src="$2" round=0 added=1 e n
     while [ "${added}" = 1 ] && [ "${round}" -lt 4 ]; do
@@ -50,10 +32,7 @@ _llvm_target_fill_needed() {
     done
 }
 
-# Repair every entry under <prefix> that resolves to nothing, against <root> --
-# the directory the prefix was copied FROM, because a Debian-layout LLVM tree
-# links lib/ and include/ entries relative to its own original location.
-# docs/artifact-copy-completeness.md#a-copied-prefix-carries-links-that-only-resolved-where-it-came-from
+# Repairs against <root>, the copy's origin. docs/artifact-copy-completeness.md#a-copied-prefix-carries-links-that-only-resolved-where-it-came-from
 _llvm_target_repair_links() {
     local prefix="$1" root="$2" links e real base
     links="$(find "${prefix}" -xtype l 2>/dev/null || true)"
@@ -70,9 +49,7 @@ _llvm_target_repair_links() {
             cp -a "${real}" "${prefix}/lib/${base}"
         fi
         if [ -n "${base}" ] && [ -f "${prefix}/lib/${base}" ]; then
-            # Not when the copy landed ON the link's own path: relinking there
-            # replaces the file just written with a symlink to itself, which is
-            # dangling by definition. It IS the answer already.
+            # Not when the copy landed on the link's own path: relinking would point it at itself.
             [ "${prefix}/lib/${base}" = "${e}" ] \
                 || ln -sfn "$(realpath -m --relative-to="${e%/*}" "${prefix}/lib/${base}")" "${e}"
         else
@@ -89,22 +66,12 @@ _arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
 _major="${LLVM_RELEASE%%.*}"
 rm -rf /opt/llvm-target
 
-# The BUILD HOST's arch ships the host LLVM as its target-native clang. Keyed
-# on dpkg --print-architecture, not the literal "amd64" (2026-09-08): this file
-# is standalone (no platform.sh), and on an arm64 host the literal sent the
-# native arch down the foreign-target path.
+# The build host's arch, from dpkg rather than a literal amd64: this standalone script has no platform.sh yet.
 _host_arch="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
 _host_multiarch="$(gcc -dumpmachine 2>/dev/null || echo x86_64-linux-gnu)"
 
 if [ "${_arch}" = "${_host_arch}" ]; then
-    # Ship a SOURCE-built host clang at exactly LLVM_RELEASE. The apt bootstrap
-    # at /usr/lib/llvm-<major> is deliberately NOT a candidate any more: this
-    # branch's own comment always said it "must NOT become the shipped clang",
-    # but it WAS the fallback, and since apt.llvm.org's per-major suite tracks
-    # the release branch head it silently shipped 23.1.1 against a 23.1.0 pin
-    # (2026-09-07). llvm-cross.sh now builds the host arch from
-    # llvmorg-${LLVM_RELEASE} like every other target, so the pinned tree is
-    # there; absent, this is FATAL rather than a quiet downgrade.
+    # Only a source-built clang at LLVM_RELEASE ships; the apt bootstrap tracks the branch head, so it is never a fallback.
     _hostllvm=""
     for _cand in "/opt/llvm-target-${_arch}" "/usr/local/llvm-${_major}"; do
         if [ -x "${_cand}/bin/clang" ]; then _hostllvm="${_cand}"; break; fi
@@ -118,8 +85,7 @@ if [ "${_arch}" = "${_host_arch}" ]; then
     _llvm_target_repair_links /opt/llvm-target "${_hostllvm}"
     _llvm_target_fill_needed /opt/llvm-target "/usr/lib/${_host_multiarch}"
 
-    # The cache is captured ONCE and matched with `case` -- `ldconfig -p | grep -q`
-    # would die of SIGPIPE under pipefail.
+    # Capture the cache once and match with case: ldconfig -p | grep -q would SIGPIPE under pipefail.
     _ldcache="$(ldconfig -p 2>/dev/null || true)"
     _missing=""
     for _e in /opt/llvm-target/bin/* /opt/llvm-target/lib/*.so*; do
@@ -149,12 +115,7 @@ fi
 
 for _d in /opt/llvm-target-*; do [ -e "${_d}" ] && rm -rf "${_d}"; done
 
-# Real gate: the old `clang --version || true` was decorative on
-# arm64/riscv64 — a target-arch ELF cannot exec on the amd64 builder, so the
-# || true always fired and only file existence was implicitly checked. Assert
-# executability + the ELF machine type actually matching this build's
-# TARGET_ARCH instead (assert_elf_arch/readelf never executes the binary, so
-# it works for foreign arches; it hard-fails on mismatch).
+# Check the ELF machine instead of running clang: a foreign-arch binary cannot execute on the builder.
 test -x /opt/llvm-target/bin/clang || {
     echo "ERROR: /opt/llvm-target/bin/clang missing or not executable for ${_arch}" >&2; exit 1; }
 # shellcheck disable=SC1091

@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# OpenCV on the chain's ONNX Runtime, every lane: the -D set, the nested-header shim, the configure gate, the G-API hook.
-# NOT covered: a real configure/build, the upstream FindONNX/dnn/gapi CMake itself, any DirectML or GPU run.
+# OpenCV on the chain's ONNX Runtime, every lane: the -D set, header shim, configure gate and G-API hook; no real build.
 
 $script:OrtOcvScript = 'windows\scripts\build\Build-OpencvFromSource.ps1'
 $script:OrtOcvHooks = 'windows\scripts\patches\opencv\cmake-hooks'
@@ -27,7 +26,7 @@ $script:OrtCfgLog = @'
 -- Configuring done (76.4s)
 True
 '@
-# The real cpu-lane configure of 2026-09-22 (bk-20260922-231204 ...-opencv.log:770-772, 874, 877, 1115-1118), unprefixed.
+# Lines from a real cpu-lane OpenCV configure log, unprefixed.
 $script:OrtCfgLogDownload = @'
 -- DNN: ONNX Runtime download mode: CPU
 -- DNN: ONNX Runtime was not found in system paths, attempting to download prebuilt package-- DNN: ONNX Runtime package: onnxruntime-win-x64-1.25.1.zip

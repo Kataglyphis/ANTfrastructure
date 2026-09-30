@@ -1,10 +1,5 @@
 #requires -Version 7.0
-# Get-CodeQLDatabaseCreateArgs (WindowsCodeQL.Common): the `codeql database create`
-# argv, and its -CodeScanningConfig seam (2026-09-28). Invoke-BuildCodeQL itself stays
-# untested (Modules.Orchestrators.Tests.ps1 says why); this holds the part that decides
-# whether a Windows scan is scoped. OmniAccelerANT passes its
-# .github/codeql/codeql-config.yml through it; before the seam its Windows scan indexed
-# every vendored tree.
+# The `codeql database create` argv, whose -CodeScanningConfig seam decides whether a Windows scan is scoped.
 
 $modDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
 Import-Module (Join-Path $modDir 'WindowsCodeQL.Common.psm1') -Force -DisableNameChecking

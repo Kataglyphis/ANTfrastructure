@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# windows/scripts/patches/ffmpeg/makedef writes the EXPORTS list of every FFmpeg
-# DLL from a version script's globs and the objects' llvm-nm dump. It emitted an
-# EMPTY list twice without a word -- the second time on the rocm lane
-# (2026-09-24), where avutil-61.dll exported nothing and swresample, swscale and
-# the rest then failed to link on undefined av_* symbols. The stub llvm-nm below
-# prints each fake object's own content, so this runs on any host.
+# makedef must never write an empty EXPORTS list; a stub llvm-nm lets this run on any host.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -23,8 +18,7 @@ printf 'LIBAVUTIL_61 {\n    global:\n        av*;\n    local:\n        *;\n};\n'
 printf 'LIBZZ_1 {\n    global: zz*;\n    local: *;\n};\n' > nomatch.ver
 
 mkdir -p stub bin
-# The stub: record its argv, then print every object's content -- a plain argument
-# or each line of an @response-file, which is how LLVM tools take long lists.
+# The stub records its argv and prints each object, expanding @response-files as LLVM tools do.
 cat > stub/fake-nm <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${FAKE_NM_ARGV:-/dev/null}"
@@ -52,8 +46,7 @@ t_assert_contains "${_out}" "    av_gamma_table" "a data symbol matches the glob
 t_assert_fails grep -q -e 'ff_hidden' <<<"${_out}"
 
 t_case "the object list reaches llvm-nm as one @response-file, never on a command line"
-# xargs carried it, and on the rocm lane (2026-09-24) aborted before llvm-nm ran:
-# 'assertion "bc_ctl.arg_max >= LINE_MAX" failed', its environment too large.
+# Not xargs: with a large environment it aborts before llvm-nm runs.
 rm -f argv.txt
 FAKE_NM_ARGV="${_work}/argv.txt" _makedef libavutil.ver @objs.rsp p.o >/dev/null 2>&1
 t_assert_eq "1" "$(grep -c . argv.txt)" "one llvm-nm run for the whole list"

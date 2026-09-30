@@ -1,30 +1,16 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# NOTE (downstream consumers -- do NOT remove as "dead code"): this module has no
-# callers inside THIS repo, but OmniAccelerANT's
-# scripts/windows/Build-Windows.ps1 imports it from its ANTfrastructure submodule at
-# third_party/ANTfrastructure/windows/scripts/modules/. It was deleted
-# once in 5be9b1e and restored (2026-07-15) -- grep known consumers before any
-# future sweep of windows/scripts/modules/.
+
+# Not dead code: see docs/windows-build-invariants.md § The "unreferenced" windows/scripts modules are external-consumer API
 
 Set-StrictMode -Version Latest
 
-# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-# Guarded, WITHOUT -Force (repo-wide nested-import rule, 2026-08-04): a forced
-# nested re-import rebinds the dependency into THIS module's private scope and
-# unloads the caller's top-level import — the PS module-scoping trap that broke
-# the BuildDriver test suite and forced build-gstreamer's import-Shared-twice
-# workaround. Trade-off (accepted): a long-lived dev session that edits Shared
-# must Remove-Module/reimport manually; containers always start fresh.
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
-# Invoke-BuildExternal and Write-BuildLogWarning (used inside this module's own
-# catch handler!) come from the sibling WindowsBuild.Common module; without this
-# import a standalone consumer hits CommandNotFound at runtime. Guarded,
-# WITHOUT -Force, for the same nested-import rule as above.
+# Invoke-BuildExternal and Write-BuildLogWarning come from here; a standalone consumer needs this import.
 if (-not (Get-Module -Name 'WindowsBuild.Common')) {
     Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
 }
@@ -39,7 +25,6 @@ function Invoke-ToolchainChecks {
         [string[]]$ToolOrder = @('cmake', 'clang-cl', 'flutter', 'cargo', 'ninja')
     )
 
-    # Default tool commands
     $tools = @{
         'cmake'    = @('--version')
         'clang-cl' = @('--version')
@@ -48,8 +33,7 @@ function Invoke-ToolchainChecks {
         'ninja'    = @('--version')
     }
 
-    # If ToolArguments was provided and looks like a collection with a Count, use it.
-    # Avoid accessing .Count on objects that may be $null or don't expose that property
+    # Guarded: $ToolArguments may be $null or not expose .Count.
     if ($ToolArguments) {
         try {
             $ta = @($ToolArguments)
@@ -57,7 +41,6 @@ function Invoke-ToolchainChecks {
                 $tools = $ToolArguments
             }
         } catch {
-            # If accessing Count fails, keep defaults.
             Write-Verbose "ToolArguments count probe failed, keeping defaults: $($_.Exception.Message)"
         }
     }

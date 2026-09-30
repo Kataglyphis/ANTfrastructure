@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # verify.sh - print versions
 
-# Read a `--version`-style stream on stdin and print the first whitespace-
-# separated token on line 1 that looks like a dotted version number
-# (e.g. "1.2" or "20.1.8"). Used to extract clang/generic tool versions.
+# First dotted version token on line 1 of a --version stream.
 _first_version_token() {
   awk 'NR==1 {for (i = 1; i <= NF; ++i) if ($i ~ /^[0-9]+(\.[0-9]+)+$/) {print $i; exit}}'
 }
@@ -42,8 +40,7 @@ verify_tool_major_version() {
       raw_version="$(${tool} --version 2>/dev/null || true)"
       ;;
     *)
-      # clang/clang++ (and any other tool) fall through here: extract the first
-      # dotted version token from line 1 of `--version`.
+      # clang and everything else: the first dotted token of --version.
       raw_version="$(${tool} --version 2>/dev/null | _first_version_token || true)"
       ;;
   esac
@@ -126,9 +123,7 @@ verify_all_cross_target_versions() {
   [ -n "${targets_raw}" ] || return 0
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || return 0
 
-  # Split on commas via `IFS=',' read` (scoped to the builtin): this module is
-  # sourced into IFS=$'\n\t' scripts, where ${targets_raw//,/ } does not split
-  # and every cross target would be verified as one concatenated bogus arch.
+  # IFS=',' read: callers run with IFS=$'\n\t', where ${targets_raw//,/ } would not split.
   local -a _verify_targets=()
   IFS=',' read -r -a _verify_targets <<< "${targets_raw}"
   for target in "${_verify_targets[@]}"; do

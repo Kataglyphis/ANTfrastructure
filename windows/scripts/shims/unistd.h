@@ -1,8 +1,6 @@
 #ifndef LITERTLM_WIN_UNISTD_SHIM_H
 #define LITERTLM_WIN_UNISTD_SHIM_H
-/* Minimal <unistd.h> for the clang++ windows-msvc build of LiteRT: access() via the CRT's
-   <io.h>, the POSIX permission-mode constants the CRT does not define, and setenv/unsetenv
-   mapped onto _putenv_s (LiteRT's dynamic_loading.cc uses setenv to edit LD_LIBRARY_PATH). */
+/* POSIX <unistd.h> bits for LiteRT's clang++ build; setenv exists because dynamic_loading.cc edits LD_LIBRARY_PATH. */
 #include <io.h>
 #include <process.h>
 #include <direct.h>

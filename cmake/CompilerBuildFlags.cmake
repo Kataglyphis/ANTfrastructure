@@ -1,29 +1,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Per-configuration compiler flags, plus the flag-stripping helpers needed to
-# undo CMake's own defaults where they conflict.
-#
-# Extracted from a consumer's ProjectOptions.cmake on 2026-08-07. The clang-cl
-# section in particular belongs HERE rather than in any one consumer: the
-# MSVC-compatibility version it pins is a property of the VC Tools shipped in
-# THIS repo's Windows image, so the pin and the toolchain that motivates it now
-# live in the same repo and move together.
 
-# The MSVC-compatibility version clang-cl embeds into every object file and
-# C++20 module interface (.pcm).
-#
-# Left to auto-detection this value has been observed to differ between
-# clang-cl invocations within the SAME build (e.g. 19.51.36248 vs 19.51.36252)
-# even though only one VC Tools version (14.51.36231) is installed, which makes
-# clang-cl reject a module's .pcm as version-mismatched against whatever a
-# sibling translation unit picked up moments later - "Microsoft Visual C/C++
-# Version differs in precompiled file ... configuration mismatch" (observed
-# 2026-08-01, reproduced across independent container builds).
-#
-# Pinning removes the ambiguity: every translation unit requests the identical,
-# explicit version instead of relying on per-invocation detection. Override this
-# when building against a different VC Tools than the image ships.
+# Pinned because auto-detection varies between clang-cl calls in one build and a .pcm then mismatches; tracks this repo's image VC Tools.
 set(MYPROJECT_CLANG_CL_MS_COMPATIBILITY_VERSION
     "19.51.36231"
     CACHE STRING "MSVC compatibility version clang-cl is pinned to (-fms-compatibility-version)")
@@ -37,9 +15,7 @@ macro(myproject_strip_flag_from_var variable_name flag)
   set(${variable_name} "${_myproject_updated_value}")
 endmacro()
 
-# /RTC1 (MSVC runtime checks) is incompatible with optimisation and with ASan;
-# CMake puts it in the default Debug flags, so it has to be removed rather than
-# simply not added.
+# CMake's Debug defaults carry /RTC1, which is incompatible with optimisation and ASan.
 macro(myproject_strip_msvc_debug_runtime_flags)
   foreach(_myproject_flag_var IN ITEMS CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_DEBUG)
     myproject_strip_flag_from_var(${_myproject_flag_var} "/RTC1")
@@ -47,8 +23,7 @@ macro(myproject_strip_msvc_debug_runtime_flags)
   endforeach()
 endmacro()
 
-# clang-cl + ASan needs the release CRT (/MD, set via CMAKE_MSVC_RUNTIME_LIBRARY);
-# a leftover /MDd from the Debug defaults links both and the binary dies at startup.
+# clang-cl ASan needs the release CRT; a leftover /MDd links both and the binary dies at startup.
 macro(myproject_strip_clang_cl_asan_debug_runtime_flags)
   foreach(_myproject_flag_var IN ITEMS CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_DEBUG)
     myproject_strip_flag_from_var(${_myproject_flag_var} "/MDd")
@@ -56,24 +31,8 @@ macro(myproject_strip_clang_cl_asan_debug_runtime_flags)
   endforeach()
 endmacro()
 
-# Applies Debug/Release/RelWithDebInfo flags for the detected compiler.
-#
-# RELWITHDEBINFO is covered because that is what the *-Profile presets actually
-# resolve to. This module used to set CMAKE_CXX_FLAGS_PROFILE instead, which
-# CMake only ever reads when CMAKE_BUILD_TYPE is literally `Profile` - and no
-# consumer configures that build type, so those four lines were dead. The
-# consequence was not cosmetic: a clang-cl RelWithDebInfo build got NO
-# -fms-compatibility-version pin, which is exactly the .pcm version mismatch the
-# pin above exists to prevent. The PROFILE variant is REMOVED rather than kept
-# alongside: a dead flag variable sitting next to the live one is what hid the
-# gap for months, and a build type nobody configures cannot be regression-tested.
-# A consumer that genuinely wants a `Profile` build type declares it
-# (CMAKE_BUILD_TYPE / CMAKE_CONFIGURATION_TYPES) and maps it here in the same
-# change, so the flags and the build type that uses them arrive together.
-#
-# Call with the consuming project's ASan option so the clang-cl branch knows
-# whether it must strip /MDd, e.g.
-#   myproject_apply_compiler_build_flags(${myproject_ENABLE_SANITIZER_ADDRESS})
+# Applies Debug/Release/RelWithDebInfo flags (the *-Profile presets resolve to RelWithDebInfo).
+#   myproject_apply_compiler_build_flags(${myproject_ENABLE_SANITIZER_ADDRESS})  # ASan tells clang-cl to strip /MDd
 macro(myproject_apply_compiler_build_flags enable_sanitizer_address)
   if(MSVC AND NOT (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
     myproject_strip_msvc_debug_runtime_flags()

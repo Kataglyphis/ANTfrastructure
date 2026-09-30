@@ -1,7 +1,5 @@
 #requires -Version 7.0
-# WindowsCrossBundle.Common: the configure arguments of a consumer's cross build, and the DLL closure its
-# product carries, walked over synthetic PE import tables. NOT covered: a real binary's imports (the cross
-# lanes' arch gate is that).
+# Cross-build configure args and the DLL closure over synthetic PE import tables; real binaries are the arch gate's job.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsCrossBundle.Common.psm1') -Force -DisableNameChecking
 

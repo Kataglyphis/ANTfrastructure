@@ -1,14 +1,7 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Thin builder image for the toolchain: it clones CPython and writes
-# Directory.Build.props — cheap, IO-bound — but runs NO heavy compile. The CPU-bound
-# `PCbuild\build.bat` runs in the `built` stage below.
-# HISTORY: this split existed because the classic lane's `docker build` was capped at
-# 2 CPUs, so the compile had to go through docker run + docker commit. The BuildKit
-# lane is process-isolated with all host CPUs and that driver is gone (2026-08-31);
-# the split is kept because it is also a useful resume boundary.
+# Cheap CPython checkout here, the compile in the `built` stage; the split is a useful resume boundary.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-sdk
 FROM ${BASE_IMAGE} AS builder
@@ -17,32 +10,18 @@ ARG PYTHON_VERSION=3.14.7
 # Baked as ENV so the `built` stage's compile script sees the canonical version.
 ENV PYTHON_VERSION="${PYTHON_VERSION}"
 
-# pwsh 7 everywhere (host policy 2026-08-04): the old cmd SHELL here existed
-# for caret-escaped XML echo — that was a PS 5.1 encoding problem; pwsh 7's
-# Set-Content default (UTF-8, no BOM) produces XML MSBuild accepts.
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
 # Clone CPython source at the canonical version (cheap, network-bound — fine at 2 CPUs).
 RUN if (-not (Test-Path 'C:\temp\cpython')) { git clone --branch v$env:PYTHON_VERSION --depth 1 https://github.com/python/cpython.git C:\temp\cpython 2>&1 | Write-Host }
 
-# Directory.Build.props (ClangCL PlatformToolset): a real checked-in file
-# since 2026-08-21 (#127) — the previous inline Set-Content one-liner had to
-# single-quote all XML attributes to dodge the dockerfile frontend's
-# double-quote stripping (2026-08-04 handoff-scrub trap) and was neither
-# greppable nor diffable.
+# A checked-in file, since the frontend strips double quotes from an inline RUN's XML.
 COPY windows/scripts/build/cpython-Directory.Build.props C:\temp\cpython\PCbuild\Directory.Build.props
-# Expose the (to-be-built) source Python via PATH for downstream media builds.
-# ENV is metadata, so it survives into the image even though the `built` stage below
-# is what actually produces the interpreter.
+# Downstream media builds find the built CPython via PATH.
 ENV PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64"
 ENV PATH=$PYTHON_BUILD_BIN;$PATH
 
-# ── BuildKit lane (buildctl --opt target=built) ──────────────────────────────
-# Under buildkitd/containerd this host commits PROCESS-isolated layers and RUN
-# steps see all host CPUs, so the heavy compile can be a plain LAYER — no
-# run+commit. Script + module + versions.env arrive as bind mounts (#52): an
-# edit to any of them no longer invalidates this stage's ancestry, and the
-# script prefers the SIBLING versions.env under C:\bkmnt over $env:TEMP_DIR.
+# Inputs are bind mounts, so an edit to them never invalidates this stage's ancestry.
 FROM builder AS built
 RUN --mount=type=bind,source=windows/scripts/build/Build-ToolchainAll.ps1,target=C:\bkmnt\Build-ToolchainAll.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
@@ -51,21 +30,10 @@ RUN --mount=type=bind,source=windows/scripts/build/Build-ToolchainAll.ps1,target
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=C:\bkmnt\versions.env `
     & 'C:\bkmnt\Build-ToolchainAll.ps1'
 
-# ── clang/LLVM at the pin, plus the two AArch64 instruction-size fixes ───────
-# DEFAULT since #135 (BUILD_PATCHED_LLVM=1; `-StockLlvm` is the opt-out). Rebuilds
-# clang from the SAME pinned 23.1.0 tarball the TVM stage already uses and applies
-# two upstream commits (llvm/llvm-project#219275 and #219276) that remove the
-# OpenCV/protobuf aarch64 aborts -- see docs/windows-refactor-backlog.md § #135.
-# The workarounds this replaced are gone from Build-OpencvFromSource.ps1.
-#
-# The banner still reads 23.1.0, so Test-Toolchain.ps1's provenance gate
-# passes unchanged and every clang-cl-shaped source patch stays valid -- which
-# is exactly why this builds the release plus patches and not an LLVM main
-# snapshot.
+# Pinned LLVM plus llvm#219275/#219276 (the AArch64 aborts), not main, so the provenance gate still passes; -StockLlvm opts out.
 FROM built AS patched-llvm
 ARG BUILD_PATCHED_LLVM=1
-# sccache for the patched-LLVM compile (#164). Build-host settings are ARGs (RUN env only,
-# never the image); ENV carries only local defaults. docs/windows-build-resources.md#what-the-published-image-carries
+# Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
 ARG SCCACHE_WEBDAV_ENDPOINT
 ARG SCCACHE_MULTILEVEL_CHAIN
 ARG SCCACHE_FORCE_LOCAL
@@ -76,9 +44,7 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `
     SCCACHE_IDLE_TIMEOUT="0"
-# Per-FILE module mounts, exactly the closure Build-LlvmFromSource.ps1 imports
-# (SourceBuild.Common + the five it nest-imports). A whole-dir mount here made every
-# one of the 41 modules re-key this LLVM compile, and the media lanes derive from it.
+# Per-file module mounts: a whole-dir mount would re-key this LLVM compile on every module edit.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-LlvmFromSource.ps1,target=C:\bkmnt\Build-LlvmFromSource.ps1 `
@@ -93,8 +59,5 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     if ($env:BUILD_PATCHED_LLVM -eq '1') { & 'C:\bkmnt\Build-LlvmFromSource.ps1' -SkipIfPresent } `
     else { Write-Host 'BUILD_PATCHED_LLVM != 1 - keeping the scoop clang-cl' }
 
-# Ahead of the scoop shims: every build script resolves the compiler by bare
-# name ($env:CC = 'clang-cl', --cc=clang-cl), so shadowing is the whole
-# integration and no build script changes. Harmless when the stage was skipped,
-# because the directory simply does not exist.
+# Build scripts call bare clang-cl, so shadowing the scoop shims is the whole integration.
 ENV PATH="C:\llvm-patched\bin;$PATH"

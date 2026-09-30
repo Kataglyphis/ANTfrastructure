@@ -91,8 +91,7 @@ runs:
         dotnet: true
         haskell: true
         large-packages: true
-        # Keep docker images: the build image is the point of the job, and on
-        # a re-run the layers may already be local.
+        # On a re-run the build image's layers may already be local.
         docker-images: false
         swap-storage: true
 
@@ -106,19 +105,14 @@ runs:
     - name: Log in to the container registry
       if: inputs.registry-password != ''
       shell: bash
-      # CI3: secret via env, not spliced into the script body (masked either
-      # way, but the env-var pattern keeps it out of the composed script file).
+      # Secret via env keeps it out of the composed script file.
       env:
         REGISTRY_PASSWORD: ${{ inputs.registry-password }}
       run: |
         printf '%s' "${REGISTRY_PASSWORD}" \
           | docker login "${{ inputs.registry }}" -u "${{ inputs.registry-username }}" --password-stdin
 
-    # Retried on purpose: pulling a multi-GB image over a shared runner network
-    # fails often enough that a single attempt makes the whole lane flaky, and
-    # the failure looks like an infrastructure problem rather than a bad
-    # commit. `timeout` bounds a hung pull so the retry actually happens
-    # instead of the job sitting until its job-level limit.
+    # Multi-GB pulls on shared runners fail often; timeout bounds a hung pull so the retry actually happens.
     - name: Pull the container image
       shell: bash
       run: |

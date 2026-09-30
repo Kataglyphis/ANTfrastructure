@@ -1,27 +1,4 @@
-# .github/workflows/lint-gates.yml
-# The consumer lint lane, ONCE. Seven consumers carried this job as a copy
-# (four standalone files, three embedded in a build workflow), every copy's
-# header saying "replace this with a `uses:` when ANTfrastructure grows a
-# reusable lint lane". This is that lane. A consumer calls it as
-#
-#   jobs:
-#     lint:
-#       uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@develop
-#
-# and keeps its ~5-line scripts/linux/run-lint-gates.sh wrapper for the dev-box
-# command; the CI step and the wrapper drive the same aggregator with the same
-# explicit root (docs/shared-script-libraries.md § run-lint-gates.sh).
-#
-# The aggregator is run DIRECTLY from the hub checkout with an explicit root,
-# not through the consumer's wrapper: the wrappers sit at different paths
-# (scripts/linux/ vs a flat scripts/) and one consumer has no submodule at all.
-# `hub-checkout: true` is for that last shape (ANThology): the hub is checked
-# out beside the consumer into antfrastructure-tools, untracked, so no gate
-# grades it.
-#
-# No container image is named here, on purpose: the gate binaries are
-# bootstrapped from this repo's versions.env at pinned, SHA-verified versions,
-# so the verdict does not depend on what a base image happens to ship.
+# No image on purpose: the gates bootstrap SHA-pinned binaries from versions.env. See docs/shared-script-libraries.md § run-lint-gates.sh
 name: Lint gates (reusable)
 
 on:
@@ -73,8 +50,7 @@ jobs:
       LINT_HUB_CHECKOUT: ${{ inputs.hub-checkout }}
       LINT_RATCHETS: ${{ inputs.ratchets }}
     steps:
-      # fetch-depth 1 is enough: every scope comes from `git ls-files`, not
-      # from history.
+      # Every scope comes from `git ls-files`, not history.
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -93,9 +69,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
-      # The consumer root is passed EXPLICITLY and is never inferred upstream:
-      # the aggregator sits inside the consumer's tree, and a self-derived root
-      # would grade ANTfrastructure and report green over the wrong repository.
+      # Explicit root: a self-derived one would grade ANTfrastructure instead of the consumer.
       - name: Lint gates
         shell: bash
         run: |

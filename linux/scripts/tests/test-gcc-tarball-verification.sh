@@ -1,23 +1,18 @@
 #!/usr/bin/env bash
-# The GCC tarball is fetched MIRROR-first; both proofs (sha512.sum, .sig) live only
-# on gcc.gnu.org. A probe of that host that does not answer must therefore not read
-# as "nothing to verify". build-gcc.sh is a top-level script, so the functions are
-# extracted rather than sourced.
-# docs/failure-modes.md#a-checksum-probe-that-cannot-reach-the-server-reads-as-nothing-to-verify
+# The tarball comes from a mirror but its proofs only from gcc.gnu.org; see docs/failure-modes.md#a-checksum-probe-that-cannot-reach-the-server-reads-as-nothing-to-verify
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 BUILD_GCC="${TESTS_DIR}/../02-toolchain/build-gcc.sh"
 
-# Extract the verification helpers into a sourceable file.
+# build-gcc.sh is a top-level script, so its helpers are extracted rather than sourced.
 _lib="$(mktemp)"; trap 'rm -f "${_lib}"' EXIT
 for _fn in _gcc_probe_url _gcc_sha_unverified_or_die verify_gcc_sha512 _gcc_gpg_require_or_warn; do
   awk -v f="${_fn}" '$0 ~ "^"f"\\(\\) \\{" {p=1} p {print} p && /^\}/ {exit}' \
     "${BUILD_GCC}" >> "${_lib}"
 done
 
-# One run of an extracted helper with wget stubbed as unreachable. The cases below
-# differ only in the env and the function, so the plumbing lives here.
+# _verify_run <fn> [env..]: one extracted helper with wget stubbed as unreachable.
 _verify_run() {
   local _fn="$1"; shift
   env "$@" bash -c '
@@ -39,8 +34,7 @@ _verify_run verify_gcc_sha512 GCC_ALLOW_UNVERIFIED_TARBALL=1 >/dev/null
 t_assert_eq "0" "$?" "GCC_ALLOW_UNVERIFIED_TARBALL=1 must continue, loudly"
 
 t_case "GCC_REQUIRE_GPG covers the unreachable-signature case too"
-# This path used to return 0 without consulting the knob, so REQUIRE_GPG=1 could
-# not catch the one case it most needed to.
+# REQUIRE_GPG must also cover a signature that could not be fetched.
 _verify_run _gcc_gpg_require_or_warn GCC_REQUIRE_GPG=1 >/dev/null
 t_assert_eq "1" "$?" "REQUIRE_GPG=1 must abort when verification was skipped"
 _verify_run _gcc_gpg_require_or_warn GCC_REQUIRE_GPG=0 >/dev/null

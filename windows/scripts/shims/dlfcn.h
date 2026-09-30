@@ -1,9 +1,6 @@
 #ifndef LITERTLM_WIN_DLFCN_SHIM_H
 #define LITERTLM_WIN_DLFCN_SHIM_H
-/* Minimal <dlfcn.h> for the clang++ windows-msvc build of LiteRT / LiteRT-LM: maps the POSIX
-   dynamic-loader API onto Win32. Header-only so no extra object/library is required.
-   NOMINMAX/NOGDI come from the global CXXFLAGS; we deliberately do NOT force
-   WIN32_LEAN_AND_MEAN here so a TU that also needs the full <windows.h> is not starved. */
+/* POSIX <dlfcn.h> over Win32 for LiteRT's clang++ build; no WIN32_LEAN_AND_MEAN, so TUs needing full <windows.h> still get it. */
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif

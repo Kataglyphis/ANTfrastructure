@@ -25,20 +25,12 @@ install_deps_preamble build-essential cmake git pkg-config curl unzip cpio gfort
 
 install_target_packages "${target_packages[@]}"
 
-# LOG5 (2026-08-17): the libatlas-base-dev probe was removed — that -dev package
-# is gone from resolute (the runtime libatlas3-base still ships), the probe WARNed
-# ×3 per run, and the build has always proceeded on OpenBLAS/LAPACK anyway.
-
-# NOTE: do NOT `rm -rf /var/lib/apt/lists/*` here — /var/lib/apt is a shared
-# BuildKit cache mount in Dockerfile.media, so wiping it only forces the next
-# stage's `apt-get update` to re-download every index (and it saves no image
-# size, since a cache mount is not a layer).
+# Do not wipe /var/lib/apt/lists: it is a BuildKit cache mount, so that saves no size and forces re-downloads.
 
 echo "[INFO] Using existing Python venv (expected at /opt/python/.venv)..."
 export PATH="${HOME}/.local/bin:${PATH}"
 
-# Ensure pip/build tooling is up-to-date
-# Executor pins per supply-chain audit #18 (inline defaults = versions.env).
+# Build tools are pinned for the supply chain; inline defaults mirror versions.env.
 uv pip install --upgrade pip "setuptools==${PY_SETUPTOOLS_VERSION:-83.0.0}" "wheel==${PY_WHEEL_VERSION:-0.47.0}"
 uv pip install "cython==${PY_CYTHON_VERSION:-3.2.9}" "pybind11==${PY_PYBIND11_VERSION:-3.1.0}"
 uv pip install numpy

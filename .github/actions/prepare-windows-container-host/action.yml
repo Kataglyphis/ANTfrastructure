@@ -187,19 +187,12 @@ runs:
         Write-Host "target-arch $env:TARGET_ARCH -> $ref"
         "ref=$ref" >> $env:GITHUB_OUTPUT
 
-    # Without this a deep path in a submodule fails the checkout itself. It is
-    # not sufficient on its own - see short-path-target - but it is free.
+    # A deep submodule path fails the checkout itself without this; not sufficient alone (see short-path-target).
     - name: Enable Git long paths
       shell: pwsh
       run: git config --global core.longpaths true
 
-    # submodules: false when a short-path clone follows, because that clone is
-    # what brings the tree in at a length MAX_PATH tolerates. Taking them twice
-    # would just reproduce the failure this avoids. With no short-path clone the
-    # checkout is the ONLY thing that fetches them, and then `submodules` says
-    # how deep - which is why it is an input rather than the bare
-    # `short-path-target == ''` this used to be: that expression can only ever
-    # produce 'true', i.e. first level only.
+    # A following short-path clone takes the submodules at a MAX_PATH-safe length, so the checkout must not.
     - name: Checkout
       if: ${{ inputs.checkout == 'true' }}
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -214,13 +207,10 @@ runs:
         target: ${{ inputs.short-path-target }}
         token: ${{ inputs.token || github.token }}
         exclude-submodules: ${{ inputs.exclude-submodules }}
-        # 'false' is the only value that means "no submodules" here; 'true' and
-        # 'recursive' both land on `submodule update --init --recursive`, the
-        # single mode that clone has.
+        # That clone has one mode (--init --recursive), so only 'false' means no submodules.
         submodules: ${{ inputs.submodules != 'false' }}
 
-    # Before the pull, always: moving the data-root afterwards would hide the
-    # image that was just fetched.
+    # Before the pull: moving the data-root afterwards would hide the fetched image.
     - name: Put the Docker data-root on the big drive
       id: datar
       if: ${{ inputs.data-root != '' }}
@@ -251,9 +241,7 @@ runs:
         docker pull "$env:IMAGE"
         if ($LASTEXITCODE -ne 0) { throw "docker pull failed for $env:IMAGE" }
 
-    # Reported AFTER the pull on purpose: this is where the multi-GB drop has to
-    # show up, and it must be on the data-root drive. Before the pull the numbers
-    # only say what was available, not where the image went.
+    # After the pull, so the numbers show where the image went, not just what was free.
     - name: Disk report after pull
       if: ${{ always() }}
       shell: pwsh
@@ -268,8 +256,7 @@ runs:
         Write-Host '=== docker system df ==='
         docker system df 2>&1 | ForEach-Object { Write-Host ("  " + $_) }
 
-        # Third, independent signal: the bytes have to be physically under the
-        # data-root. Walking them is what costs the minute, hence the input.
+        # Walking the bytes under the data-root costs a minute, hence the opt-in input.
         if ('${{ inputs.measure-data-root }}' -eq 'true') {
           $root = '${{ inputs.data-root }}'
           if (-not $root) {
@@ -277,10 +264,7 @@ runs:
           } elseif (-not (Test-Path -LiteralPath $root)) {
             Write-Host "::warning::$root does not exist after the pull."
           } else {
-            # -ErrorVariable, not a silent swallow: a layer directory the runner
-            # cannot read is printed and warned about below. It must not TERMINATE
-            # a report step that runs under always(), because the failure it is
-            # being run to explain is somewhere else.
+            # Unreadable paths are reported, not fatal: this always() step must not bury the real failure.
             $walkErrors = @()
             $bytes = (Get-ChildItem -LiteralPath $root -Recurse -Force -File -ErrorAction SilentlyContinue -ErrorVariable +walkErrors |
                       Measure-Object -Property Length -Sum).Sum
@@ -303,9 +287,7 @@ runs:
       run: |
         $short = '${{ inputs.short-path-target }}'
         if ($short) {
-          # MSYS (/d/ws) -> Windows (D:\ws). Artifact globs need the Windows form.
-          # Upper-case the drive letter so the value matches what the rest of the
-          # lane writes by hand; Windows does not care, humans diffing logs do.
+          # Artifact globs need the Windows form; upper-case the drive to match the rest of the lane's logs.
           $win = $short -replace '^/([a-zA-Z])/', '$1:/' -replace '/', '\'
           if ($win -match '^([a-z]):') { $win = $win.Substring(0,1).ToUpper() + $win.Substring(1) }
         } else {

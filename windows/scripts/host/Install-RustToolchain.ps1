@@ -7,9 +7,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
 if (-not (Test-Path $modulePath)) {
@@ -17,26 +15,9 @@ if (-not (Test-Path $modulePath)) {
 }
 Import-Module $modulePath -Force
 
-# rustup WITH a default toolchain -- NOT scoop rust, NOT toolchain-less rustup.
-# Flutter's Cargokit (flutter_rust_bridge-style plugins, e.g. rust_builder/cargokit
-# in OmniAccelerANT) hard-requires rustup: its build_tool enumerates
-# toolchains/targets via rustup and aborts with "rustup not found in PATH."
-# otherwise, so scoop-only Rust broke every Flutter+Rust consumer build.
-# The old "never rustup" rule targeted a NARROWER failure than the rule: a
-# toolchain-less rustup (--default-toolchain none) leaves proxy shims in CARGO_BIN
-# that resolve no toolchain. Installed WITH a default toolchain the proxies resolve
-# a real one, and because CARGO_BIN sits ahead of scoop's shims on PATH they now
-# correctly win. See docs/windows-builds.md, "Rust toolchain".
-#
-# DELIBERATELY UNPINNED: `stable` resolves to the latest stable at build time
-# (versions.env's RUST_VERSION pins only the Linux lane). The smoke test asserts a
-# well-formed rustc version + a compile/link/run probe, NOT the versions.env value
-# -- keep it that way, or the install fails its own smoke test on the next release.
+# rustup with an unpinned stable default, never toolchain-less; see docs/windows-builds.md § Rust toolchain (rustup WITH a default toolchain — never toolchain-less rustup).
 
-# PS 5.1 trap: rustup-init and cargo write progress to STDERR; with 2>&1 under
-# EAP=Stop the first stderr line would throw. Run native rust steps under
-# EAP=Continue and gate on $LASTEXITCODE explicitly instead. Use this ONLY for
-# short commands -- long-running ones go through Invoke-RustProcessWithHeartbeat.
+# Short native steps under EAP=Continue, since rustup and cargo write progress to stderr; long ones use the heartbeat wrapper.
 function Invoke-NativeRustStep {
     param(
         [Parameter(Mandatory)][string]$Description,
@@ -45,10 +26,7 @@ function Invoke-NativeRustStep {
     $previousEap = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        # A CommandNotFoundException under this local EAP=Continue does NOT abort
-        # the step but leaves $LASTEXITCODE stale from an earlier native call --
-        # null it first and treat "still null" as failure, so a missing binary can
-        # never ride a stale 0 into a green step.
+        # Nulled first, so a missing binary cannot ride a stale 0 into a green step.
         $global:LASTEXITCODE = $null
         & $Command 2>&1 | ForEach-Object { "$_" } | Out-Host
         if ($null -eq $LASTEXITCODE) { throw "$Description failed: command missing or produced no exit code" }
@@ -59,18 +37,7 @@ function Invoke-NativeRustStep {
 }
 
 #region 1. rustup via local dist mirror (HOST QUIRK workaround)
-# HOST QUIRK (diagnosed across 5 base builds, 2026-07-15): rustup-init's own
-# (parallel) component download/install deadlocks in this host's 2-CPU Hyper-V
-# docker-build containers -- 4/5 runs froze at "downloading 3 components" with
-# ~5 s of CPU used, an unkillable kernel-stuck process, and a half-installed
-# toolchain ("Missing manifest in toolchain"). It froze identically with output
-# on the console AND redirected to files, so it is NOT output plumbing; the
-# real fix is bypassing rustup's downloader entirely (see the local dist mirror
-# below). This wrapper stays as defense in depth for anything long-running:
-# (1) the child's output goes to FILES (keeps the docker log readable and the
-# child independent of the console relay); (2) a 30 s heartbeat shows liveness
-# in the docker log; (3) a hard timeout turns a residual wedge into a clean
-# step failure instead of an infinite hang.
+# rustup's own downloader deadlocks in small containers (bypassed by the mirror below); this adds file logs, a heartbeat and a hard timeout.
 function Invoke-RustProcessWithHeartbeat {
     param(
         [Parameter(Mandatory)][string]$Description,
@@ -82,21 +49,14 @@ function Invoke-RustProcessWithHeartbeat {
     $outLog = "$logBase.out.log"; $errLog = "$logBase.err.log"
     $p = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -NoNewWindow -PassThru `
         -RedirectStandardOutput "$outLog" -RedirectStandardError "$errLog"
-    # PS 5.1 trap: without touching .Handle, the Process object never acquires a
-    # handle and $p.ExitCode stays $null after exit (a completed rustup-init then
-    # "fails (exit )"). Cache it now; argless WaitForExit() after the loop flushes
-    # the exit state for the same reason.
+    # Touch .Handle now, or ExitCode stays $null after exit; the argless WaitForExit() below flushes it too.
     $null = $p.Handle
     $elapsed = 0
     while (-not $p.WaitForExit(30000)) {
         $elapsed += 30
         Write-Host ("[{0}] running... {1}s elapsed" -f $Description, $elapsed)
         if ($elapsed -ge $TimeoutSec) {
-            # Kill the wedged child BEFORE throwing: the HOST QUIRK above is exactly
-            # a kernel-stuck child, and leaving it alive keeps its handles (and the
-            # RUN step) wedged long after this step has nominally failed. Guarded:
-            # a kernel-stuck process may refuse Kill, and that must not mask the
-            # timeout diagnostic below.
+            # Kill before throwing, or its handles keep the RUN wedged; guarded, since a stuck process may refuse.
             try {
                 $p.Kill($true)
                 $p.Dispose()
@@ -114,9 +74,7 @@ function Invoke-RustProcessWithHeartbeat {
         }
     }
     if ($p.ExitCode -ne 0) { throw ("{0} failed (exit {1})" -f $Description, $p.ExitCode) }
-    # Success: the logs were only diagnostics (their tails are already echoed above)
-    # -- drop them so they do not ride into the layer. On failure they are kept and
-    # referenced by the throw messages.
+    # On success the logs would only ride into the layer; on failure they stay for the throw message.
     Remove-Item $outLog, $errLog -Force -ErrorAction SilentlyContinue
 }
 
@@ -125,12 +83,7 @@ $rustupInit = Join-Path $env:TEMP 'rustup-init.exe'
 Invoke-DownloadWithRetry -Url 'https://win.rustup.rs/x86_64' -DestinationPath $rustupInit `
     -Description 'rustup-init' -ExpectSignature MZ
 
-# Local dist mirror: pre-fetch the stable channel manifest + the three msvc
-# component tarballs with Invoke-DownloadWithRetry (single-stream, retrying,
-# proven reliable in these containers -- unlike rustup's own downloader, see the
-# HOST QUIRK note above), rewrite the manifest's URLs to file:// paths, regenerate
-# the manifest .sha256 to match, and point RUSTUP_DIST_SERVER at the mirror.
-# rustup-init then installs via plain file copies -- no network, no deadlock.
+# A local file:// dist mirror fetched with Invoke-DownloadWithRetry, so rustup-init installs by file copy, never its own downloader.
 $targetTriple = 'x86_64-pc-windows-msvc'
 $mirrorRoot = Join-Path $env:TEMP 'rustup-dist'
 $distDir = Join-Path $mirrorRoot 'dist'
@@ -152,8 +105,7 @@ foreach ($url in $componentUrls) {
     Invoke-DownloadWithRetry -Url $url -DestinationPath $destination -Description (Split-Path $relative -Leaf)
 }
 
-# file:///C:/... form; forward slashes. The manifest hash file must be regenerated
-# because the URL rewrite changed the manifest bytes (rustup verifies it).
+# The rewrite changes the manifest bytes, so its .sha256 is regenerated; the component hashes inside stay intact.
 $mirrorUrl = 'file:///' + ($mirrorRoot -replace '\\', '/')
 $manifest = $manifest -replace 'https://static\.rust-lang\.org', $mirrorUrl
 Set-Content -Path $manifestPath -Value $manifest -Encoding ASCII -NoNewline
@@ -161,31 +113,12 @@ $manifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256).Hash.ToLowe
 Set-Content -Path "$manifestPath.sha256" -Value "$manifestHash  channel-rust-stable.toml" -Encoding ASCII
 
 $env:RUSTUP_DIST_SERVER = $mirrorUrl
-# Single-threaded unpack: the deadlock class this guards against is thread-pool
-# contention in a 2-CPU container; determinism beats a minute of unpack speed.
+# Single-threaded unpack: thread-pool contention in a small container is the deadlock class guarded against.
 $env:RUSTUP_IO_THREADS = '1'
 
-# --no-modify-path: we don't need rustup's PATH edit (Dockerfile.base already puts
-# CARGO_BIN on the baked PATH).
-# try/finally: the multi-GB mirror, the installer and the env override must go away
-# on the FAILURE path too (previously success-path-only, so a failed install left
-# them behind for the layer / the next diagnostic run).
+# The mirror, installer and env override go away on the failure path too.
 try {
-    # -c rustfmt -c clippy: install them HERE, while the local mirror still
-    # exists. The component tarballs are already fetched above (the URL regex
-    # includes both), but `--profile minimal` does not install them and the
-    # finally block then deletes the mirror. What survives is a cached channel
-    # manifest whose URLs were rewritten to file:///...\rustup-dist - a path
-    # that no longer exists - so a later `rustup component add rustfmt` fails
-    # with "could not download file from file:///... : file not found", offline
-    # and unfixable at runtime.
-    #
-    # That is not hypothetical: a consumer's Build-Windows.ps1 catches exactly
-    # that failure and logs "rustfmt unavailable in this image (offline
-    # rustup); skipping the format check", then reports the step as COMPLETED.
-    # Its format and clippy gates have therefore never run against this image -
-    # each finished in ~0.1s (measured 2026-08-07). Installing the components
-    # at image-build time is what makes those gates real.
+    # rustfmt and clippy now: once the mirror is gone the cached manifest's file:// URLs make a later component add fail.
     Invoke-RustProcessWithHeartbeat -Description 'rustup-init' -FilePath $rustupInit `
         -ArgumentList @('-y', '--no-modify-path', '--default-toolchain', 'stable', '--profile', 'minimal',
                         '-c', 'rustfmt', '-c', 'clippy') `
@@ -198,10 +131,7 @@ try {
 
 #endregion
 #region 2. assertion battery + codegen tools
-# CARGO_HOME (Dockerfile.base) already points at C:\Users\ContainerAdministrator\.cargo,
-# so the rustup proxies land in CARGO_BIN, which the persistent PATH already carries
-# for later build stages. Prepend it to THIS process's PATH so the asserts below
-# resolve immediately.
+# The baked PATH carries CARGO_BIN for later stages; this process needs it now for the asserts.
 $cargoBin = if ($env:CARGO_BIN) { $env:CARGO_BIN } else { Join-Path $env:USERPROFILE '.cargo\bin' }
 if (Test-Path (Join-Path $cargoBin 'cargo.exe')) {
     $env:PATH = "$cargoBin;$env:PATH"
@@ -212,28 +142,20 @@ Assert-ContainerCommandAvailable -Name 'rustup' | Out-Null
 Assert-ContainerCommandAvailable -Name 'cargo' | Out-Null
 Assert-ContainerCommandAvailable -Name 'rustc' | Out-Null
 
-# Idempotent re-assert of the default: rustup-init sets it, but if its tail ever
-# stalls again this keeps the proxies resolving a toolchain deterministically.
+# Idempotent re-assert, in case rustup-init's tail stalls before setting the default.
 Invoke-NativeRustStep -Description 'rustup default stable' -Command { rustup default stable }
 Invoke-NativeRustStep -Description 'cargo --version' -Command { cargo --version }
 Invoke-NativeRustStep -Description 'rustc --version' -Command { rustc --version }
 
-# Assert the lint components at BUILD time. They cannot be added later: the dist
-# mirror is deleted a few lines up and the cached manifest points at file:///
-# paths that no longer resolve. A consumer that finds them missing degrades to
-# "skipping the format check" and still reports success, so the only place this
-# can be caught is here, while it is still fixable.
+# Asserted now: they cannot be added later, and a consumer missing them silently skips its lint gates.
 Invoke-NativeRustStep -Description 'cargo fmt --version' -Command { cargo fmt --version }
 Invoke-NativeRustStep -Description 'cargo clippy --version' -Command { cargo clippy --version }
 
-# Cargokit-shaped asserts: these two calls are exactly what flutter_rust_bridge's
-# build_tool runs; failing here is cheaper than failing in every consumer build.
+# Exactly what flutter_rust_bridge's build_tool runs; failing here is cheaper than in every consumer.
 Invoke-NativeRustStep -Description 'rustup show active-toolchain' -Command { rustup show active-toolchain }
 Invoke-NativeRustStep -Description 'rustup which cargo' -Command { rustup which cargo }
 
-# Bake flutter_rust_bridge_codegen: consumer builds otherwise cargo-install it on
-# first run, costing minutes of cold cargo time per fresh container. Long-running
-# compile -> heartbeat wrapper (same relay-wedge defense as rustup-init).
+# Baked, or every fresh consumer container pays minutes to cargo-install it.
 Write-Host 'Baking flutter_rust_bridge_codegen (cargo install)...'
 Invoke-RustProcessWithHeartbeat -Description 'cargo-install-frb-codegen' `
     -FilePath (Join-Path $cargoBin 'cargo.exe') `
@@ -243,16 +165,9 @@ Invoke-NativeRustStep -Description 'flutter_rust_bridge_codegen --version' -Comm
     flutter_rust_bridge_codegen --version
 }
 
-# #146 accepted risk (2026-08-21): after the local-mirror URL rewrite the
-# channel manifest SHA is REGENERATED from the rewritten bytes — manifest
-# authenticity is self-asserted; per-component tarball hashes inside it
-# survive untouched, which is the integrity that matters for the payload.
 #endregion
 #region 3. sccache from the released zip (source build retired 2026-09-18)
-# ── sccache 0.18.0 from the OFFICIAL RELEASED ZIP ─────────────────────────────
-# 0.18.0 carries #2722/#2811/#2816; history + CUDA canary bar:
-# docs/windows-build-resources.md § Persistent compile cache (sccache).
-# Lands in CARGO_BIN, which precedes the scoop shims in Dockerfile.base's PATH.
+# Into CARGO_BIN, ahead of the scoop shims; see docs/windows-build-resources.md § Persistent compile cache (sccache).
 $sccacheVersion = [string]$env:SCCACHE_WINDOWS_VERSION
 if ([string]::IsNullOrWhiteSpace($sccacheVersion)) {
     throw 'SCCACHE_WINDOWS_VERSION is not set (versions.env not loaded?) — refusing an unpinned sccache.'

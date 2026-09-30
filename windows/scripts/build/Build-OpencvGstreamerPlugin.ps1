@@ -1,17 +1,13 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Build OpenCV's STANDALONE GStreamer videoio plugin against the already
-    installed OpenCV + the merge stage's GStreamer (backlog #93).
+    Build OpenCV's standalone GStreamer videoio plugin against the installed OpenCV and GStreamer.
 
 .DESCRIPTION
-    Why the standalone plugin route exists, its runtime-load consequence for
-    verification and the WIN32 detection contract are owned by
-    docs/windows-builds.md § Build-OpencvGstreamerPlugin.ps1.
+    See docs/windows-builds.md § Build-OpencvGstreamerPlugin.ps1.
 
 .PARAMETER InstallDir
-    Runtime prefix (default C:\runtime) — must already contain lib\opencv5 and
-    the GStreamer install.
+    Runtime prefix (default C:\runtime); must already hold lib\opencv5 and the GStreamer install.
 #>
 [CmdletBinding()]
 param(
@@ -23,9 +19,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
@@ -38,7 +32,7 @@ if (-not $OpenCvVersion) {
     throw 'build-opencv-gstreamer-plugin: no OpenCV version (OPENCV_SOURCE_VERSION/OPENCV_VERSION unset) - refusing to build an unpinned plugin.'
 }
 
-# --- preconditions, checked BEFORE the clone so a broken image fails in seconds
+# Preconditions, checked before the clone so a broken image fails in seconds
 $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 $videoioDll = Get-ChildItem -Path $ocvInstallDir -Recurse -Filter 'opencv_videoio*.dll' -File -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -notmatch 'gstreamer|ffmpeg|msmf|intel_mfx' } | Select-Object -First 1
@@ -50,7 +44,7 @@ if (-not (Test-Path $gstHeader)) {
     throw "build-opencv-gstreamer-plugin: $gstHeader missing - GStreamer must be built and installed into $InstallDir BEFORE this plugin (merge-stage order)."
 }
 
-# --- OpenCV source at the SAME pin the installed OpenCV was built from --------
+# OpenCV source at the same pin the installed OpenCV was built from
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 $mainSrc = Join-Path $SourceDir 'opencv'
 Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv.git' -Branch $OpenCvVersion -SourceDir $mainSrc | Out-Null
@@ -60,8 +54,7 @@ if (-not (Test-Path (Join-Path $pluginSrc 'CMakeLists.txt'))) {
     throw "build-opencv-gstreamer-plugin: $pluginSrc missing in the $OpenCvVersion tag - upstream moved the standalone plugin project; re-check backlog #93."
 }
 
-# find_package(OpenCV) needs the installed cmake config; its location varies
-# with generator/platform, so search rather than hard-code.
+# OpenCVConfig.cmake's location varies with generator and platform, so search for it.
 $ocvConfig = Get-ChildItem -Path $ocvInstallDir -Recurse -Filter 'OpenCVConfig.cmake' -File -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $ocvConfig) {
     throw "build-opencv-gstreamer-plugin: no OpenCVConfig.cmake under $ocvInstallDir - cannot point find_package(OpenCV) at the installed build."
@@ -74,20 +67,7 @@ $cmakeExtra = @(
     "-DGSTREAMER_DIR=$($InstallDir -replace '\\', '/')"
 )
 
-# CROSS LANE: OpenCVConfig.cmake DETECTS the arch when it is not told, and this is
-# a fresh cmake process that knows nothing about how OpenCV was built. Its root
-# config composes the library search paths as
-#   list(APPEND candidates "${OpenCV_ARCH}/${OpenCV_RUNTIME}/lib")
-# and falls back to detecting the BUILD machine, which is x86_64 here — so it
-# looks under x64\vc18\lib, finds nothing (the install is arm64\vc18) and reports
-#   OpenCVConfig.cmake ... but it set OpenCV_FOUND to FALSE
-# rather than anything about architecture (measured 2026-08-23).
-#
-# The same override hook the OpenCV build itself uses is honoured here:
-#   OpenCVConfig.root-WIN32.cmake.in:96  if(DEFINED OpenCV_ARCH AND DEFINED OpenCV_RUNTIME)
-# BOTH must be defined or the branch does not fire, which is why the runtime is
-# passed too. Keep this in step with Build-OpencvFromSource.ps1 — the values
-# must be the ones OpenCV actually installed under.
+# Cross: unless BOTH OpenCV_ARCH and OpenCV_RUNTIME are set, OpenCVConfig probes the build machine's x64 dir and reports OpenCV_FOUND FALSE.
 $plugTargetArch = Get-WindowsTargetArch
 if (Test-WindowsCrossTarget -Arch $plugTargetArch) {
     $cmakeExtra += "-DOpenCV_ARCH=$(Get-OpenCvArchDir -Arch $plugTargetArch)", '-DOpenCV_RUNTIME=vc18'
@@ -95,9 +75,7 @@ if (Test-WindowsCrossTarget -Arch $plugTargetArch) {
 }
 Invoke-CmakeConfigure -SourceDir $pluginSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
-# GATE (the #94 lesson, applied on day one here): a configure that quietly
-# misses GStreamer still builds SOMETHING - fail before the compile, loudly.
-# The plugin's own CMakeLists prints `Using GStreamer: <version>` on success.
+# A configure that quietly misses GStreamer still builds something, so fail before the compile.
 $cmakeCache = Join-Path $buildDir 'CMakeCache.txt'
 $cacheText = if (Test-Path $cmakeCache) { Get-Content $cmakeCache -Raw } else { '' }
 if ($cacheText -notmatch '(?m)^GSTREAMER_gstreamer_LIBRARY:FILEPATH=(?!.*NOTFOUND)') {
@@ -114,9 +92,7 @@ if (-not $pluginDll) {
     throw "build-opencv-gstreamer-plugin: build produced no opencv_videoio_gstreamer*.dll under $buildDir."
 }
 
-# Install NEXT TO opencv_videoio*.dll: that directory is the first place
-# videoio's plugin loader probes, for both the native DLL consumers and the
-# cv2 python module (which links the per-module DLLs from the same bin dir).
+# Next to opencv_videoio*.dll is where videoio's plugin loader probes first, for native and cv2 consumers alike.
 $dest = Join-Path $videoioDll.DirectoryName $pluginDll.Name
 Copy-Item -Path $pluginDll.FullName -Destination $dest -Force
 if (-not (Test-Path $dest)) { throw "build-opencv-gstreamer-plugin: install copy to $dest failed." }

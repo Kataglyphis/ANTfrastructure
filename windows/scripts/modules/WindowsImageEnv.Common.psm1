@@ -1,17 +1,11 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The Windows publish gate: a published image's environment carries no build-host
-# setting. Twin of linux/scripts/verify_image_env.py, graded by the same fixture
-# (linux/scripts/tests/image-env-cases.json). Dependency-free, because
-# windows/Dockerfile.publish-gate mounts this one file.
-# docs/windows-build-resources.md#what-the-published-image-carries
+# Dependency-free: Dockerfile.publish-gate mounts only this file. docs/windows-build-resources.md#what-the-published-image-carries
 
 Set-StrictMode -Version Latest
 
-# The build host's cache layout and every sccache REMOTE backend. Local defaults
-# (SCCACHE_DIR, _CACHE_SIZE, _ERROR_LOG, _LOG, _IDLE_TIMEOUT) are allowed.
+# Every sccache remote backend and host cache layout; local defaults such as SCCACHE_DIR are allowed.
 $script:BuildHostName = '^SCCACHE_(?:WEBDAV_\w+|REDIS\w*|MEMCACHED\w*|GCS_\w+|AZURE_\w+|S3_\w+|OSS_\w+|' +
     'COS_\w+|GHA_\w+|BUCKET|ENDPOINT|REGION|MULTILEVEL_CHAIN|FORCE_LOCAL)$'
 $script:Ipv4 = [regex]'(?<![\w.])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])'
@@ -83,9 +77,7 @@ function Find-ImageEnvLeak {
 .SYNOPSIS
     Throws when the running image's environment carries a build-host setting.
 .DESCRIPTION
-    Grades the Process scope (the image config's ENV) and the Machine and User registry
-    scopes (a RUN that set a variable there publishes it too). -Scopes replaces all three,
-    for tests. Fewer than -MinInspected variables is a read failure, never a pass.
+    Grades Process, Machine and User scopes, since a RUN's registry writes publish too; too few variables is a read failure.
 #>
 function Assert-ImageEnvPublishable {
     [CmdletBinding()]

@@ -2,9 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# ORT census (owner rule 2026-09-23): every ONNX Runtime binary in a tree is the chain build and every
-# importer resolves to it. docs/windows-build-invariants.md § ONNX Runtime has exactly one source.
-# Does NOT cover header-only provenance: a consumer compiled against foreign headers ships no foreign bytes.
+# ORT census, every ORT binary is the chain's and every importer resolves to it: docs/windows-build-invariants.md § ONNX Runtime has exactly one source
 
 Set-StrictMode -Version Latest
 
@@ -15,8 +13,7 @@ if (-not (Get-Command -Name 'Get-PeExportNames' -ErrorAction SilentlyContinue) -
 }
 
 $script:OrtAbiMarker = @('OrtGetApiBase', 'CreateEpFactories', 'RegisterCustomOps')
-# A whole ORT source-file path ending in NUL, as __FILE__ puts it into every ORT build. A consumer that
-# names the chain DIRECTORY as data is not ORT: docs/onnxruntime-single-source.md#what-the-chain-ort-is
+# A whole __FILE__ path ending in NUL, so naming the chain directory as data is not ORT: docs/onnxruntime-single-source.md#what-the-chain-ort-is
 $script:OrtPathMarker = [regex]::new('onnxruntime[\\/](?:core|contrib_ops)[\\/][A-Za-z0-9_.+\\/-]*?\.(?:cc|cpp|cxx|c|h|hpp|inc|cu|cuh)(?:\x00|\z)')
 $script:OrtInstancePattern = [regex]::new(
     '^(?:lib)?onnxruntime(?:_providers_[a-z0-9_]+)?\.(?:dll|so(?:\.[0-9]+)*)$|^onnxruntime_pybind11_state[^\\/]*\.(?:pyd|so)$',
@@ -47,8 +44,7 @@ function Get-OrtChainPrefix {
 }
 
 function Get-OrtConsumerContract {
-    # THE list of image components allowed to use ORT: anything else carrying the ORT ABI is UNREGISTERED.
-    # G2 (Assert-ChainOrtOnly, WindowsOrtProvenance.Build) writes one stamp per entry, at Get-OrtStampPath -Consumer <Name>.
+    # The image components allowed to use ORT, each stamped by G2; anything else carrying the ORT ABI is UNREGISTERED.
     return @(
         [pscustomobject]@{ Name = 'opencv'; Pattern = @('opencv_dnn*.dll', 'opencv_gapi*.dll', 'cv2*.pyd') }
         [pscustomobject]@{ Name = 'gstreamer'; Pattern = @('gstonnx*.dll') }
@@ -150,8 +146,7 @@ function New-OrtFact {
 }
 
 function Get-OrtBinaryFact {
-    # Facts about one file (or one archive member via -Stream): hash, ORT source roots, ABI markers, PE imports.
-    # Archive members get no imports: nothing loads them from inside the archive, so only their bytes count.
+    # Archive members (-Stream) get no PE imports: nothing loads them from inside the archive, only their bytes count.
     [CmdletBinding(DefaultParameterSetName = 'Path')]
     param(
         [Parameter(Mandatory, ParameterSetName = 'Path')][string]$Path,
@@ -362,8 +357,7 @@ function Test-OrtConsumer {
 }
 
 function Get-OrtLoaderDir {
-    # -ClientHost: the app-local dirs a loader searches before System32, one list per exe that could host $Importer.
-    # An .exe gets its own dir, a .pyd its own then the host's (DLL_LOAD_DIR), any other DLL only the host's.
+    # Per possible host, the app-local dirs searched before System32: an .exe its own, a .pyd its own then the host's.
     param([string]$Importer, [AllowEmptyCollection()][string[]]$AppDir, [switch]$ClientHost)
     $own = Split-Path -Parent $Importer
     $exeDirs = @($AppDir | Where-Object { $_ })
@@ -423,8 +417,7 @@ function Get-OrtResolutionFinding {
 }
 
 function Get-OrtInboxFinding {
-    # INBOX: an ORT instance or ABI user in the OS's own Windows dir. servercore:ltsc2025 ships none (probed 2026-09-23),
-    # so one means the base moved: keep the previous WINDOWS_BASE_DIGEST. App-local chain copies cannot clear it today.
+    # The base ships no in-box ORT, so a finding means the base moved: keep the previous WINDOWS_BASE_DIGEST.
     param([object[]]$Candidate, [AllowEmptyCollection()][string[]]$InboxRoot)
     $roots = @($InboxRoot | Where-Object { $_ })
     if ($roots.Count -eq 0) { return }
@@ -475,7 +468,7 @@ function Get-OrtExemptedFinding {
         if ($want -ne '*' -and $want -ne $Arch) { continue }
         $hits = @($out | Where-Object { $_.Fatal -and $_.Path -eq $path })
         if ($hits.Count -eq 0) { $out.Add((New-OrtFinding 'EXEMPT-STALE' $path "the exemption '$reason' matches no finding any more: delete it")); continue }
-        # An in-box path waives nothing: the OS's copy is not ours to vouch for (owner rule: no System32 ORT).
+        # An in-box path waives nothing: the OS's copy is not ours to vouch for.
         if (@($hits | Where-Object Verdict -eq 'INBOX').Count -gt 0) { $out.Add((New-OrtFinding 'EXEMPT-STALE' $path "the exemption '$reason' names an in-box ORT, which is never exempted")); continue }
         foreach ($h in $hits) { $h.Verdict = 'EXEMPT'; $h.Fatal = $false; $h.Detail = "$($h.Detail) [exempt: $reason]" }
     }
@@ -524,8 +517,7 @@ function Get-OrtCensusFinding {
 }
 
 function Invoke-OrtCensus {
-    # Scan (impure), then Get-OrtCensusFinding (pure) with -Verdict splatted into it (ChainRoot, AllowedHome,
-    # Contract, RequireStamp, SearchPath, System32, AssumeSystemOrt, InboxRoot, Exemption, Arch). Write-OrtCensusReport prints it.
+    # The impure scan, then the pure Get-OrtCensusFinding with -Verdict splatted into it.
     [CmdletBinding()]
     param(
         [AllowEmptyCollection()][string[]]$ContentRoot = @(),

@@ -6,24 +6,8 @@
     Diagnose why GenieX's Hexagon NPU path fails on a Snapdragon X Windows host.
 
 .DESCRIPTION
-    GenieX v0.5.0's bundled llama.cpp `ggml-hexagon` backend loads
-    libcdsprpc.dll from the Qualcomm CDSP driver store and dlsyms the **dspqueue**
-    API (dspqueue_create/read/write/export/close, dspqueue_read_noblock,
-    fastrpc_mmap/munmap). Drivers predating ~2026 export only the legacy FastRPC
-    API (remote_handle_open, remote_session_control) and fail with
-    `ggml-hex: failed to dlsym dspqueue_create` -> `Device 'HTP0' not found`.
-    See docs/geniex-local-ai-setup.md and qualcomm/GenieX issue #1390.
-
-    This probe reports the installed driver version and which symbols the
-    ggml-hexagon backend needs, so "did the driver update help?" is a one-command
-    answer instead of a 16 GB model load. Run it AFTER a Hexagon NPU driver
-    update; every symbol must be True.
-
-    REPORTING ONLY. Installs nothing, changes nothing, never throws on a negative
-    result -- a "no" here is data, not a failure.
-
-.EXAMPLE
-    pwsh -File windows/scripts/diagnostics/Test-GeniexNpuDriver.ps1
+    ggml-hexagon needs the dspqueue API from libcdsprpc.dll, which older drivers lack; see docs/geniex-local-ai-setup.md.
+    Report-only: run it after a Hexagon NPU driver update, and every symbol must be present.
 #>
 [CmdletBinding()]
 param()
@@ -75,19 +59,13 @@ Get-PnpDevice -ErrorAction SilentlyContinue |
     Select-Object FriendlyName, Status, Class |
     Format-Table -AutoSize
 
-# 3. Driver store copies of libcdsprpc.dll and their symbol coverage.
-#    Windows keeps OLD driver copies in the DriverStore alongside the active
-#    one, so a stale copy must not produce a false "MISSING" verdict. The
-#    ACTIVE copy is the one the OS loads for the CDSP device -- find it via
-#    the Hexagon NPU device's installed driver (the FastRPC device is a
-#    different, older adsprpc driver; it is NOT the one ggml-hexagon loads).
+# 3. The verdict follows the Hexagon device's active copy, not stale DriverStore copies or the FastRPC driver.
 $active = $null
 try {
     $pnp = Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
         Where-Object { $_.DeviceName -match 'Hexagon' } | Select-Object -First 1
     if ($pnp -and $pnp.DriverVersion) {
-        # PnP reports e.g. 30.0.220.3000 while the DLL's FileVersion is
-        # 30.0.0220.3000 -- compare on normalized integer tuples.
+        # PnP says 30.0.220.3000 where FileVersion says 30.0.0220.3000, so compare as versions.
         $want = [version]$pnp.DriverVersion
         $active = Get-ChildItem 'C:\Windows\System32\DriverStore\FileRepository' -Recurse -Filter 'libcdsprpc.dll' -ErrorAction SilentlyContinue |
             Where-Object {
@@ -99,10 +77,7 @@ try {
             } | Select-Object -First 1
     }
 } catch {
-    # Swallowed on purpose: this block only NARROWS the report to the active
-    # driver copy. $active stays $null, every store copy is reported, and the
-    # verdict below still stands -- so a CIM/version-parse failure must not
-    # abort a probe whose contract is "never throws on a negative result".
+    # Swallowed: this only narrows the report, and the probe must never throw on a negative result.
     Write-Debug ("active-driver lookup failed ({0}) -- reporting every driver-store copy instead" -f $_.Exception.Message)
 }
 

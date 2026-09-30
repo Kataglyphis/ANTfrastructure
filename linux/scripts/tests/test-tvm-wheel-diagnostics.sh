@@ -1,20 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the TVM wheel DIAGNOSTICS in 05-frameworks/tvm-python.sh — the
-# machinery added to end backlog ORPHAN-PINS, where a wheel-less TVM stage
-# rendered as "TVM build OK" + "DONE" while `import tvm` was missing from all
-# three shipped arches.
-#
-# Every one of those diagnostics is downstream of ONE shell option. The wheel
-# build is `python -m build ... 2>&1 | tee LOG`, and without `set -o pipefail`
-# (tvm.sh:2) a pipeline reports TEE's status — always 0. `if !
-# _tvm_run_wheel_build` would then never fire, TVM_WHEEL_SKIP_REASON would never
-# be set, and the whole diagnostic layer would be dead code that still reads as
-# covered. That mutation — or an `|| true` on the tee'd build — used to leave
-# the suite fully green, which is exactly the class this repo keeps getting
-# burned by. Hence the behavioural assertions below rather than a grep.
-#
-# Pure unit tests: no container, no network, no real python; the builder is a
-# fake script whose exit status the tests choose.
+# tvm-python.sh's wheel diagnostics, all of which hang on pipefail carrying the builder's rc past `| tee`.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -24,18 +9,12 @@ source "${TESTS_DIR}/../05-frameworks/tvm-python.sh"
 _tmp="$(mktemp -d)"
 trap 'rm -rf "${_tmp}"' EXIT
 
-# Collaborators tvm.sh normally supplies. `die` must ABORT like the real one
-# (logging.sh's die -> err -> exit), with a status the tests can recognise.
+# `die` must exit like logging.sh's, with a status the tests recognise.
 log()  { printf 'LOG:%s\n'  "$*"; }
 warn() { printf 'WARN:%s\n' "$*" >&2; }
 die()  { printf 'DIE:%s\n'  "$*" >&2; exit 97; }
 
-# ── _tvm_wheel_missing_build_requires ────────────────────────────────────────
-# pypa/build prints `Missing dependencies:` followed by one '\n\t'-indented
-# requirement per entry, as its LAST output. The predecessor used a sed range
-# `/Missing dependencies/,/^[[:space:]]*$/p`, and a sed range whose closing
-# address never matches runs to EOF — so anything printed after the list (a
-# traceback, ninja noise) was flattened into the "missing deps" string.
+# _tvm_wheel_missing_build_requires; a trailer after the list must not leak into the result
 _log_with_trailer="${_tmp}/build-trailer.log"
 cat > "${_log_with_trailer}" <<'LOG'
 * Getting build dependencies for wheel...
@@ -81,9 +60,7 @@ t_case "the line cap bounds a pathological list"
 _capped="$(_TVM_MISSING_DEPS_MAX_LINES=3 _tvm_wheel_missing_build_requires "${_tmp}/many.log")"
 t_assert_eq "dep1 dep2 dep3" "${_capped}"
 
-# ── _tvm_run_wheel_build: the pipefail contract ──────────────────────────────
-# Shared state the function reads via bash dynamic scoping (tvm_build_wheel's
-# locals in production).
+# _tvm_run_wheel_build, the pipefail contract; it reads tvm_build_wheel's locals by dynamic scoping
 tvm_dir="${_tmp}/src"
 TVM_WHEEL_DIR="${_tmp}/wheels"
 wheel_cmake_args_string=""
@@ -126,12 +103,7 @@ t_assert_eq "97" "${_rc}" "the die stub's status — the guard must abort, not f
 t_assert_contains "$(cat "${_err}")" "pipefail" \
   "the refusal must name the option, since the failure it prevents leaves no other trace"
 
-# ── _tvm_wheel_verdict: the consolation line must be TRUE ────────────────────
-# "the native runtime still ships (${prefix}/lib/libtvm*.so)" used to be printed
-# unconditionally, with no check behind it, on the one path where nothing about
-# the step can be trusted. CMake installs libtvm to lib64 on some distro/arch
-# combinations — which is why Dockerfile.media:431 folds /opt/tvm/lib64 back
-# into /opt/tvm/lib after this script returns — so both layouts count.
+# _tvm_wheel_verdict: "runtime still ships" must be checked; CMake may install libtvm to lib64
 TVM_WHEEL_SKIP_REASON="probe reason"
 
 _verdict() {  # <prefix-dir> -> stderr of the verdict

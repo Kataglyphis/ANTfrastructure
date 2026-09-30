@@ -2,33 +2,18 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Optional diagnostic: capture the compiler stderr of failed codec probes so
-# skips print WHY (header not found, etc.). Off by default; set
-# FFMPEG_PROBE_DEBUG=1 in the environment to re-enable when investigating a skip.
+# FFMPEG_PROBE_DEBUG=1 makes a skipped codec probe print the compiler error behind it.
 : "${FFMPEG_PROBE_DEBUG:=0}"
 export FFMPEG_PROBE_DEBUG
 
-# ==============================================================================
-# build-ffmpeg.sh - Build and install latest FFmpeg from source
-# ==============================================================================
-# This script fetches the latest stable FFmpeg release and builds it with
-# commonly used codecs and features enabled.
-#
-# Defaults can be overridden via environment variables.
-#
-# Build Acceleration:
-#   USE_CCACHE=true     Enable ccache for faster rebuilds (default: true)
-#   USE_LLD=true        Use lld linker for faster linking (default: true)
-# ==============================================================================
+# Builds FFmpeg from source with every codec this target's probes can link.
 
-# Source shared modules
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/../../core/common.sh"
 media_common_init "${SCRIPT_DIR}"
 
-# Sourced sibling modules (same directory; the Dockerfile bind-mounts the whole
-# ffmpeg dir, so these files are always present next to this script).
+# The Dockerfile bind-mounts the whole ffmpeg dir, so these siblings are always present.
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/ffmpeg-probe-framework.sh"
 # shellcheck disable=SC1091
@@ -57,7 +42,6 @@ esac
 
 NPROC="$(media_jobs)"
 
-# Defaults (can be overridden via env vars)
 : "${FFMPEG_SRC:=${TMPDIR:-/tmp}/ffmpeg-$$}"
 : "${FFMPEG_PREFIX:=/opt/ffmpeg}"
 : "${FFMPEG_GIT:=https://git.ffmpeg.org/ffmpeg.git}"
@@ -66,17 +50,13 @@ NPROC="$(media_jobs)"
 
 echo "build-ffmpeg: src=${FFMPEG_SRC} prefix=${FFMPEG_PREFIX} buildtype=${BUILD_TYPE}"
 
-# ------------------------------------------------------------------------------
-# Fetch FFmpeg source — download latest release tarball (reliable in BuildKit)
-# ------------------------------------------------------------------------------
+# Fetch (a tarball, which is reliable in BuildKit)
 fetch_ffmpeg() {
     echo "Fetching FFmpeg source from GitHub releases..."
     rm -rf "${FFMPEG_SRC}"
     mkdir -p "${FFMPEG_SRC}"
 
-    # Track a branch ("master", default = bleeding edge) or pin reproducibly:
-    # set FFMPEG_COMMIT to a 40-hex SHA (immutable GitHub archive) or
-    # FFMPEG_VERSION to a release tag. FFMPEG_COMMIT wins when set.
+    # FFMPEG_COMMIT (40-hex SHA) wins over FFMPEG_VERSION (a tag); unset, this tracks master.
     local release_ref="${FFMPEG_COMMIT:-${FFMPEG_VERSION:-master}}"
 
     local tarball_url
@@ -92,9 +72,7 @@ fetch_ffmpeg() {
         ;;
     esac
     echo "Downloading FFmpeg ${release_ref} from ${tarball_url}..."
-    # NET1 (2026-08-18): the github tarball was a falsely-mirrored SPOF —
-    # FFMPEG_GIT/FFMPEG_GIT_MIRROR existed but were DEAD code. Wire them as the
-    # fallback chain: tarball -> canonical git.ffmpeg.org -> github clone.
+    # The tarball alone is a single point of failure, so fall back to both git remotes.
     download_and_extract "${tarball_url}" "${FFMPEG_SRC}" 1 || {
         echo "Tarball download failed; falling back to git clone (${FFMPEG_GIT})..." >&2
         rm -rf "${FFMPEG_SRC}"; mkdir -p "${FFMPEG_SRC}"
@@ -108,23 +86,16 @@ fetch_ffmpeg() {
     echo "FFmpeg version: ${release_ref} (from tarball)"
 }
 
-# ------------------------------------------------------------------------------
-# Configure FFmpeg build
-# ------------------------------------------------------------------------------
+# Configure
 
-# Append cross-compilation configure opts (arch, cross-prefix, sysroot,
-# multiarch lib/include dirs, riscv64 SDL/text-rels workarounds).
+# Appends the cross-compilation configure options to the named array.
 _ffmpeg_cross_args() {
     local -n _ffca_out="$1"
     if cross_build_is_active; then
         local host_cc
 
         setup_linux_cross_env
-        # The -L/usr/lib/<triplet> flags below (and the probes' own -L) expose the
-        # apt/Ports libstdc++ there, which is often the wrong arch or missing newer
-        # GLIBCXX symbols — any C++ probe/link (libopenmpt, onnx, …) then fails and,
-        # for an explicitly-enabled feature, hard-aborts configure. Pin it to GCC's
-        # target-arch superset first. Best-effort; no-op on native.
+        # The multiarch -L below exposes apt's libstdc++, often the wrong arch or too old for C++ probes, so pin GCC's first.
         if command -v pin_target_libstdcxx >/dev/null 2>&1; then
             pin_target_libstdcxx "$(cross_target_arch)" || true
         fi
@@ -145,44 +116,25 @@ _ffmpeg_cross_args() {
         fi
         _ffca_out+=("--extra-cflags=--sysroot=/")
         _ffca_out+=("--extra-ldflags=--sysroot=/")
-        # The custom cross-GCC with --sysroot=/ does NOT search the Debian
-        # multiarch dirs (/usr/lib/<triplet>, /usr/include/<triplet>) where apt
-        # installs the :<arch> target dev packages, and it does NOT honor
-        # LIBRARY_PATH/CPATH (verified empirically — only explicit -L/-I work).
-        # pkg-config also omits -L for that libdir (treats it as a system path).
-        # Without this, every apt-installed target codec (openjpeg, x264, opus,
-        # …) fails to link and gets dropped. Pass the multiarch dirs explicitly
-        # to FFmpeg's own configure/link (the probe adds the same -L/-I itself)
-        # so we build with the MAXIMUM set of target libraries.
+        # The cross GCC ignores the multiarch dirs and LIBRARY_PATH/CPATH, and pkg-config omits that -L, so apt's target codecs need explicit -L/-I.
         local _ma_triplet="${CROSS_TARGET_TRIPLET:-}"
         if [ -z "${_ma_triplet}" ] && command -v cross_target_triplet >/dev/null 2>&1; then
             _ma_triplet="$(cross_target_triplet 2>/dev/null || true)"
         fi
         if [ -n "${_ma_triplet}" ] && [ -d "/usr/lib/${_ma_triplet}" ]; then
             _ffca_out+=("--extra-ldflags=-L/usr/lib/${_ma_triplet} -L/lib/${_ma_triplet}")
-            # -I/usr/include is required too: the custom cross-GCC does not search
-            # it by default, so headers like x264.h (in /usr/include, not the
-            # triplet dir) are otherwise invisible to FFmpeg's own compiles.
+            # The cross GCC does not search /usr/include either, where headers like x264.h live.
             _ffca_out+=("--extra-cflags=-I/usr/include -I/usr/include/${_ma_triplet}")
             echo "Cross: added multiarch lib/include dirs for ${_ma_triplet} (-L/-I incl /usr/include) so apt-installed target codecs link"
         fi
         if [ "$(cross_target_arch)" = "riscv64" ]; then
-            # RV1 (2026-08-18): --disable-sdl2/--disable-ffplay LIFTED — ports now
-            # ships libsdl2-dev:riscv64 (installed best-effort by install-deps);
-            # configure's own pkg-config probe gates SDL/ffplay from here.
-            # RVV assembly uses absolute relocations; allow text rels in shared libs
+            # RVV assembly uses absolute relocations, so shared libs need text relocations.
             _ffca_out+=("--extra-ldflags=-Wl,-z,notext")
         fi
     fi
 }
 
-# Append probe-gated core codec/feature flags (freetype, mp3lame, opus, vorbis,
-# vpx, x264, gnutls, libass, aom, dav1d, svtav1, webp, vmaf). Each is enabled
-# only when its probe (declared in ffmpeg-probes-codecs.sh / -framework.sh) finds
-# the matching pkg-config/lib/header/symbol.
-#
-# NOTE: libx265 (HEVC encode) is handled separately below, gated behind
-# FFMPEG_ENABLE_X265 (default off), not in this always-on core-codec probe list.
+# Probe-gated core codecs; libx265 is gated separately behind FFMPEG_ENABLE_X265.
 _ffmpeg_probe_core_codecs() {
     local -n _ffpcc_out="$1"
 
@@ -190,8 +142,7 @@ _ffmpeg_probe_core_codecs() {
         _ffpcc_out+=("--enable-libfreetype")
     fi
 
-    # drawtext needs harfbuzz for text shaping + fontconfig for font discovery.
-    # LOG20: was missing on all arches, so the drawtext filter was absent.
+    # drawtext needs harfbuzz for text shaping and fontconfig for font discovery.
     if ffmpeg_probe_pkg_config_feature "libharfbuzz" "harfbuzz" "hb.h" "hb_buffer_create"; then
         _ffpcc_out+=("--enable-libharfbuzz")
     fi
@@ -219,9 +170,6 @@ _ffmpeg_probe_core_codecs() {
         _ffpcc_out+=("--enable-libx264")
     fi
 
-    # Optional codecs - add if libraries are available
-    # RV1 (2026-08-18): riscv64 gnutls skip LIFTED — libgnutls28-dev:riscv64
-    # exists on ports now; the probe decides like everywhere else (TLS support).
     if ffmpeg_probe_pkg_config_feature "gnutls" "gnutls" "gnutls/gnutls.h" "gnutls_global_init"; then
         _ffpcc_out+=("--enable-gnutls")
     fi
@@ -253,33 +201,22 @@ _ffmpeg_probe_core_codecs() {
     fi
 }
 
-# Append DNN backend flags (onnxruntime, tensorflow, openvino). Each probe
-# also exports _FFMPEG_ONNX_EXTRA_* env used by the onnxruntime configure line.
+# DNN backends; each probe exports the _FFMPEG_*_EXTRA_* flags its configure line needs.
 _ffmpeg_probe_dnn_backends() {
     local -n _ffpdb_out="$1"
 
     if ffmpeg_probe_libonnxruntime; then
         _ffpdb_out+=("--enable-libonnxruntime")
-        # FFmpeg's onnxruntime check is a bare check_lib, so feed the header/lib
-        # paths through the global extra flags (see ffmpeg_probe_libonnxruntime).
+        # FFmpeg's onnxruntime check is a bare check_lib, so the paths go through the global extra flags.
         [ -n "${_FFMPEG_ONNX_EXTRA_CFLAGS:-}" ] && _ffpdb_out+=("--extra-cflags=${_FFMPEG_ONNX_EXTRA_CFLAGS}")
         ffmpeg_ort_ldflags_first _ffpdb_out || die "chain ORT -L missing (ffmpeg_probe_libonnxruntime set none)"
         [ -n "${_FFMPEG_ONNX_EXTRA_LIBS:-}" ] && _ffpdb_out+=("--extra-libs=${_FFMPEG_ONNX_EXTRA_LIBS}")
     fi
 
-    # TensorFlow DNN backend. Gated behind FFMPEG_ENABLE_TF (default off) exactly
-    # like libx265 below: the TF C SDK drags ~500 MB into the amd64 image for one
-    # optional backend. Default off SKIPS the SDK download (ensure_tensorflow_c_sdk
-    # is never reached), the --enable-libtensorflow flag, and — because no SDK lib
-    # ever lands in the cache and _FFMPEG_TF_EXTRA_LDFLAGS stays unset — the
-    # runtime-lib bundling in bundle_sdk_runtime_libs. When on it stays probe-gated,
-    # so a genuinely-absent/unusable SDK (arm64/riscv64) still falls back cleanly.
-    # ONNX Runtime above is unaffected: it is ALWAYS-ON.
+    # Off by default because the TF C SDK is a large download for one optional backend; ONNX Runtime stays always-on.
     if is_truthy "${FFMPEG_ENABLE_TF:-0}" && ffmpeg_probe_libtensorflow; then
         _ffpdb_out+=("--enable-libtensorflow")
-        # FFmpeg's libtensorflow check is a bare require that ignores pkg-config
-        # (see ffmpeg_probe_libtensorflow) — feed the header/lib paths through
-        # the global extra flags, exactly like the onnxruntime backend above.
+        # FFmpeg's libtensorflow check ignores pkg-config too, so the same global extra flags carry the paths.
         [ -n "${_FFMPEG_TF_EXTRA_CFLAGS:-}" ] && _ffpdb_out+=("--extra-cflags=${_FFMPEG_TF_EXTRA_CFLAGS}")
         [ -n "${_FFMPEG_TF_EXTRA_LDFLAGS:-}" ] && _ffpdb_out+=("--extra-ldflags=${_FFMPEG_TF_EXTRA_LDFLAGS}")
         [ -n "${_FFMPEG_TF_EXTRA_LIBS:-}" ] && _ffpdb_out+=("--extra-libs=${_FFMPEG_TF_EXTRA_LIBS}")
@@ -290,17 +227,10 @@ _ffmpeg_probe_dnn_backends() {
     fi
 }
 
-# Run the table-driven extra-pkgconfig probe loop (theora/openjpeg/speex/soxr/
-# zimg/opencore-amr/srt/ssh/rav1e/vidstab/openmpt/gme/mysofa/bluray/rsvg).
+# Probe-gated extra codecs and protocols found through pkg-config.
 _ffmpeg_probe_extra_pkgconfig_loop() {
     local -n _ffepdl_out="$1"
-    # ------------------------------------------------------------------
-    # Extra optional codecs / protocols (max-feature expansion).
-    # Each entry is probe-gated: "flag|pkg-config spec|headers|symbols".
-    # If the library isn't present/linkable for this arch, the feature is
-    # simply not enabled and the build still succeeds. Symbols/headers mirror
-    # FFmpeg's own configure checks to minimise false positives.
-    # ------------------------------------------------------------------
+    # flag|pkg-config spec|headers|symbols; headers and symbols mirror FFmpeg's own configure checks.
     local _ff_extra_pkgconfig=(
         "--enable-libtheora|theoraenc theoradec|theora/theoraenc.h|th_encode_alloc"
         "--enable-libopenjpeg|libopenjp2 >= 2.1.0|openjpeg.h|opj_version"
@@ -328,8 +258,7 @@ _ffmpeg_probe_extra_pkgconfig_loop() {
     done
 }
 
-# Run the table-driven extra-link probe loop (twolame/gsm/xvid — libraries that
-# ship no pkg-config file, so we use a direct link probe instead).
+# These libraries ship no pkg-config file, so they get a direct link probe.
 _ffmpeg_probe_extra_link_loop() {
     local -n _ffpell_out="$1"
     local _ff_extra_link=(
@@ -358,8 +287,7 @@ _ffmpeg_hwaccel_args() {
         _ffha_out+=("--enable-vdpau")
     fi
 
-    # Vulkan HW acceleration — auto-detected by FFmpeg's configure but also
-    # explicitly enabled via pkg-config probe for cross-build reliability.
+    # FFmpeg auto-detects Vulkan, but only an explicit probe is reliable when cross-building.
     if ffmpeg_probe_pkg_config_feature "vulkan" "vulkan" "vulkan/vulkan.h" "vkCreateInstance"; then
         _ffha_out+=("--enable-vulkan")
     fi
@@ -372,11 +300,7 @@ _ffmpeg_hwaccel_args() {
         _ffha_out+=("--enable-nvdec")
         _ffha_out+=("--enable-cuvid")
         _ffha_out+=("--enable-ffnvcodec")
-        # NO --enable-cuda-nvcc: FFmpeg classes cuda_nvcc as NONFREE and
-        # configure hard-fails without --enable-nonfree, which combined with the
-        # --enable-gpl below yields a non-redistributable binary. Only the CUDA
-        # FILTERS are lost; NVENC/NVDEC/CUVID stay. Pinned by
-        # tests/test-ffmpeg-dnn-contract.sh.
+        # No --enable-cuda-nvcc: it needs --enable-nonfree, which with --enable-gpl makes the binary non-redistributable.
         _ffha_out+=("--extra-cflags=-I${CUDA_HOME}/include")
         _ffha_out+=("--extra-ldflags=-L${CUDA_HOME}/lib64")
     elif [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
@@ -415,7 +339,6 @@ configure_ffmpeg() {
     echo "Configuring FFmpeg build..."
     cd "${FFMPEG_SRC}"
 
-    # Build configure options array
     local configure_opts=(
         "--prefix=${FFMPEG_PREFIX}"
         "--enable-gpl"
@@ -439,13 +362,7 @@ configure_ffmpeg() {
     _ffmpeg_hwaccel_args configure_opts
     _ffmpeg_linker_ccache_args configure_opts
 
-    # libx265 (HEVC encoding). Historically force-disabled because FFmpeg master
-    # could fail to COMPILE against a bleeding-edge source-built x265. libx265-dev
-    # (a stable distro release) is installed on all arches, so it's now gated
-    # behind FFMPEG_ENABLE_X265: default off keeps the exact prior behavior
-    # (--disable-libx265); when set it's probe-gated like every other codec, so a
-    # genuinely-absent/unusable x265 still falls back to disabled rather than
-    # hard-failing configure.
+    # Opt-in because FFmpeg master can fail to compile against x265; when on, the probe still falls back to disabled.
     if is_truthy "${FFMPEG_ENABLE_X265:-0}" && ffmpeg_probe_libx265; then
         configure_opts+=("--enable-libx265")
     else
@@ -460,15 +377,13 @@ configure_ffmpeg() {
         fi
         exit 1
     fi
-    # What FFmpeg's link resolves for -lonnxruntime, read off config.mak as ld does (owner rule 2026-09-23).
+    # Resolve -lonnxruntime from config.mak the way ld does, so only the chain ORT can pass.
     local ort_findings
     ort_findings="$(ffmpeg_ort_link_findings ffbuild/config.mak "${_FFMPEG_ONNX_ROOT:-}")"
     [ -z "${ort_findings}" ] || die "FFmpeg links an ONNX Runtime other than the chain: ${ort_findings}"
 }
 
-# ------------------------------------------------------------------------------
-# Build and install FFmpeg
-# ------------------------------------------------------------------------------
+# Build and install
 build_ffmpeg() {
     echo "Building FFmpeg with ${NPROC} parallel jobs..."
     cd "${FFMPEG_SRC}"
@@ -483,28 +398,11 @@ install_ffmpeg() {
     ensure_sudo_or_die
     ${SUDO_WRAP} make install
 
-    # Update ld cache
     ${SUDO_WRAP} ldconfig || true
 }
 
 bundle_sdk_runtime_libs() {
-    # NEEDED-driven SDK bundling (backlog P4; generalizes the TF-only
-    # bundle_tensorflow_runtime_lib). SDKs under the /var/cache/ffmpeg-sdks
-    # cache MOUNT exist ONLY during the build RUN (never in an image layer),
-    # and emit_runtime_apt_manifest cannot help (no apt package owns them, and
-    # it skips /opt/*). So any NEEDED entry of the shipped ffmpeg payload that
-    # resolves ONLY from the SDK cache dies at load in the final image
-    # (`libtensorflow.so.2: cannot open shared object file`). onnxruntime
-    # avoids this via `COPY --from=onnxruntime`; cache-mount SDKs have no such
-    # stage. Derive the exact set via the canonical D4 primitives: sonames the
-    # ffmpeg binaries/libs NEED that resolve neither from the ffmpeg payload
-    # nor from apt/system paths, but DO exist in the SDK cache — bundle those
-    # (plus their own unresolved NEEDED closure: libtensorflow_framework.so.2
-    # is a NEEDED of libtensorflow.so.2, not of ffmpeg) into
-    # ${FFMPEG_PREFIX}/lib, which every downstream image already has on
-    # LD_LIBRARY_PATH. TensorFlow is the only expected case today; the loud
-    # BUNDLED log below is the audit trail if that ever changes. A no-op on
-    # arm64/riscv64 (no SDK libs in the cache).
+    # The SDK cache mount is gone at runtime and no apt package owns its libs, so every NEEDED only it resolves (and that lib's closure) ships in the prefix.
     local sdk_cache="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
 
     if [ -d "${sdk_cache}" ]; then
@@ -512,8 +410,6 @@ bundle_sdk_runtime_libs() {
         ensure_sudo_or_die
         ${SUDO_WRAP} mkdir -p "${FFMPEG_PREFIX}/lib"
 
-        # Worklist seeded with the sonames the shipped payload needs but which
-        # resolve neither from the payload itself nor from apt/system paths.
         local -a queue=()
         local -A seen=()
         local _f _so _src _dep
@@ -532,21 +428,17 @@ bundle_sdk_runtime_libs() {
         while [ "${i}" -lt "${#queue[@]}" ]; do
             _so="${queue[${i}]}"
             i=$((i + 1))
-            # `|| true`: `find | head -1` dies with SIGPIPE on multiple matches
-            # (same class emit_runtime_apt_manifest guards against). -type l:
-            # SDK sonames are usually symlinks (.so.2 -> .so.2.18.0).
+            # `|| true`: find | head -1 dies of SIGPIPE on several matches; -type l because SDK sonames are usually symlinks.
             _src="$(find "${sdk_cache}" -maxdepth 6 \( -type f -o -type l \) -name "${_so}" 2>/dev/null | head -1 || true)"
             if [ -z "${_src}" ]; then
                 echo "  NOTE: ${_so} unresolved and not in the SDK cache; leaving it to the runtime apt manifest / validator" >&2
                 continue
             fi
-            # -L materializes the soname as a regular file: copying the bare
-            # symlink would dangle once the cache mount is gone at runtime.
+            # -L: a bare symlink would dangle once the cache mount is gone.
             ${SUDO_WRAP} cp -aL "${_src}" "${FFMPEG_PREFIX}/lib/${_so}"
             echo "  BUNDLED: ${_so} (from ${_src%/*})"
             bundled=$((bundled + 1))
-            # Enqueue the bundled lib's own unresolved NEEDED entries so
-            # SDK-internal deps ship too.
+            # Walk the bundled lib's own NEEDED so SDK-internal deps ship too.
             while IFS= read -r _dep; do
                 { [ -n "${_dep}" ] && [ -z "${seen[${_dep}]:-}" ]; } || continue
                 seen["${_dep}"]=1
@@ -558,12 +450,7 @@ bundle_sdk_runtime_libs() {
         [ "${bundled}" -eq 0 ] || ${SUDO_WRAP} ldconfig || true
     fi
 
-    # Postcondition (kept from the TF-only original): with TF enabled,
-    # libtensorflow.so.2 is a NEEDED dep of libavfilter and the SDK cache mount
-    # is gone at runtime — the bundled copy is the ONLY thing keeping ffmpeg
-    # loadable, and neither the in-stage smoke (resolves the .so from the cache
-    # mount via LD_LIBRARY_PATH) nor validate-media-runtime (WARN only) can
-    # catch a failed copy. Missing here means a broken image: die.
+    # With TF on, the bundled libtensorflow.so.2 alone keeps ffmpeg loadable, and no later smoke catches a missing copy.
     if [ -n "${_FFMPEG_TF_EXTRA_LDFLAGS:-}" ]; then
         [ -f "${FFMPEG_PREFIX}/lib/libtensorflow.so.2" ] \
             || die "TensorFlow backend enabled but libtensorflow.so.2 was not bundled into ${FFMPEG_PREFIX}/lib"
@@ -571,23 +458,7 @@ bundle_sdk_runtime_libs() {
 }
 
 emit_runtime_apt_manifest() {
-    # Record the EXACT apt packages that provide the external codec .so libraries
-    # this FFmpeg build actually links, so the runtime image can install exactly
-    # them -- no soname guessing (the base is Ubuntu ${UBUNTU_VERSION:-26.04}, whose
-    # versioned package names, e.g. libx264-NNN, we cannot hardcode reliably).
-    #
-    # Why this exists: /opt/ffmpeg is source-built against a broad, PROBE-GATED set
-    # of apt -dev codec libs (see ffmpeg/install-deps.sh). Every enabled codec
-    # becomes a NEEDED .so on libavcodec/ffmpeg; if its runtime package is absent
-    # from the final image, `ffmpeg` dies at load (observed 2026-07-11:
-    # `libopencore-amrwb.so.0: cannot open shared object file`). Prior to this the
-    # runtime lib list was hand-maintained and silently drifted.
-    #
-    # Build and runtime share the same base, so names resolved here are valid there.
-    # objdump reads NEEDED from foreign-arch ELF too, and cross builds keep target
-    # libs under /usr/lib/<triplet>/ where `find` locates them; `dpkg -S` maps the
-    # file to its package and we strip any :arch qualifier. Entirely best-effort --
-    # never fail the ffmpeg build over manifest generation.
+    # Records the apt package behind each linked codec .so, since versioned names (libx264-NNN) cannot be hardcoded; best-effort by design.
     command -v objdump >/dev/null 2>&1 || { echo "objdump unavailable; skip ffmpeg runtime-apt manifest"; return 0; }
     command -v dpkg    >/dev/null 2>&1 || { echo "dpkg unavailable; skip ffmpeg runtime-apt manifest"; return 0; }
 
@@ -600,17 +471,12 @@ emit_runtime_apt_manifest() {
         elf_needed_sonames "${_f}"   # canonical NEEDED walk (01-core/platform.sh, backlog D4)
     done | sort -u | while IFS= read -r _soname; do
         local _path _pkg
-        # `|| true` on both: `find | head -1` dies with SIGPIPE (rc 141) when
-        # more than one match exists, and `dpkg -S` exits 1 for any file no
-        # package owns. Under set -e either kills this while-subshell, pipefail
-        # fails the whole pipeline, and the "best-effort" promise above breaks
-        # AFTER a successful ffmpeg build.
+        # `|| true` on both: find | head -1 dies of SIGPIPE on several matches and dpkg -S exits 1 for unowned files.
         _path="$(find /usr/lib /lib -maxdepth 3 -name "${_soname}" 2>/dev/null | head -1 || true)"
         [ -n "${_path}" ] || continue
         case "${_path}" in /opt/*) continue ;; esac   # our own payload, not apt
         _pkg="$(dpkg -S "${_path}" 2>/dev/null | head -1 | cut -d: -f1 || true)"
-        # `; :` tail: if _pkg is empty on the LAST soname, a bare AND-list here
-        # would make the while exit 1 and abort the pipeline the same way.
+        # `|| :` so an empty _pkg on the last soname does not end the loop with status 1.
         { [ -n "${_pkg}" ] && printf '%s\n' "${_pkg}"; } || :
     done | sort -u > "${tmp}"
 
@@ -626,9 +492,7 @@ emit_runtime_apt_manifest() {
     rm -f "${tmp}"
 }
 
-# ------------------------------------------------------------------------------
-# Smoke test — verify DNN module and linked backends
-# ------------------------------------------------------------------------------
+# Smoke test
 smoke_test_ffmpeg() {
     echo ""
     echo "=== FFmpeg smoke test ==="
@@ -638,15 +502,7 @@ smoke_test_ffmpeg() {
         return 1
     fi
 
-    # The freshly-built ffmpeg links against its own libav*.so and the source-built
-    # GCC's libstdc++ (via the C++ DNN backends), neither of which is on the loader
-    # path in the media BUILD sandbox -- ldconfig/ENV are only wired at the package
-    # stage. Point LD_LIBRARY_PATH at them so ffmpeg can execute here; if it STILL
-    # can't, DEFER (return 0) rather than fail the build -- the authoritative
-    # functional test is smoke-media.sh at the package stage (loader-configured
-    # runtime env). Before the native-arch fix this smoke was wrongly skipped on
-    # amd64, which hid that it was never sandbox-safe (ffmpeg failing to load libs
-    # returns 127, and `version=$(... )` propagated that under set -e/pipefail).
+    # The build sandbox's loader path lacks libav*.so and GCC's libstdc++; if ffmpeg still cannot run, smoke-media.sh at the package stage decides.
     local gcc_libdir
     gcc_libdir="$(dirname "$("${CC:-gcc}" -print-file-name=libstdc++.so.6 2>/dev/null || true)" 2>/dev/null || true)"
     case "${gcc_libdir}" in /*) : ;; *) gcc_libdir="" ;; esac
@@ -663,7 +519,6 @@ smoke_test_ffmpeg() {
 
     local failures=0
 
-    # Basic version check
     local version
     version="$("${ffmpeg_bin}" -version 2>&1 | head -1 || true)"
     echo "  Version: ${version}"
@@ -677,14 +532,7 @@ smoke_test_ffmpeg() {
         failures=$((failures + 1))
     fi
 
-    # Check enabled backends from configure, ONE FEATURE AT A TIME. This was a
-    # single grep -E alternation over -buildconf, which reported "linked" as soon
-    # as ANY one matched -- libonnxruntime alone kept it green while libwebp and
-    # libvmaf were absent from every shipped arch (media-*.log 2026-08-27). Per
-    # feature the miss is visible in the log. Deliberately NON-fatal per feature:
-    # these come from probe-gated, best-effort apt packages (install-deps.sh) that
-    # legitimately degrade per arch (libvmaf has no Ubuntu package at all), so only
-    # "not one of them linked" stays a failure, exactly as before.
+    # One check per feature so a miss shows in the log; only "none linked" fails, as these are best-effort per-arch packages.
     echo "  Enabled backends:"
     local buildconf feat linked=0
     buildconf="$("${ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null || true)"
@@ -701,7 +549,6 @@ smoke_test_ffmpeg() {
         failures=$((failures + 1))
     fi
 
-    # Verify DNN inference filter can accept input
     echo -n "  dnn_processing filter available: "
     if "${ffmpeg_bin}" -hide_banner -filters 2>/dev/null | grep -q "dnn_processing"; then
         echo "YES"
@@ -715,25 +562,18 @@ smoke_test_ffmpeg() {
     [ "${failures}" -eq 0 ]
 }
 
-# ------------------------------------------------------------------------------
 # Main
-# ------------------------------------------------------------------------------
 main() {
     local _ff_stamp="${FFMPEG_PREFIX}/.ffmpeg_version_stamp"
     local _arch
 
     _arch="${TARGET_ARCH:-${TARGETARCH:-$(uname -m)}}"
 
-    # "native" = target arch equals the build host. Compare NORMALIZED names:
-    # _arch is Debian-named (amd64) while `uname -m` returns x86_64, so a raw
-    # string compare wrongly treats a native amd64 build as cross — skipping its
-    # smoke test and the already-installed fast-path. arch_normalize() (loaded via
-    # media_common_init) maps both sides to a common token (amd64/arm64/riscv64).
+    # Compare normalized names: _arch is Debian-style (amd64) while uname -m says x86_64.
     local _is_native=0
     [ "$(arch_normalize "${_arch}")" = "$(arch_normalize "$(uname -m)")" ] && _is_native=1
 
-    # Only run version check / stamp read when the binary is native — cross-compiled
-    # binaries cannot execute on the build host.
+    # Cross-compiled binaries cannot run on the build host.
     if [ "${_is_native}" = "1" ]; then
         if [ -x "${FFMPEG_PREFIX}/bin/ffmpeg" ]; then
             INSTALLED_VERSION=$("${FFMPEG_PREFIX}/bin/ffmpeg" -version 2>/dev/null | head -n1 | awk '{print $3}')
@@ -756,25 +596,14 @@ main() {
     ort_assert_chain_only ffmpeg --stamp "${FFMPEG_PREFIX}/ort-provenance/ffmpeg.json" --chain "${_FFMPEG_ONNX_ROOT:-}" \
         --tree "${FFMPEG_SRC}" --record "${FFMPEG_SRC}/ffbuild/config.mak" --log "${FFMPEG_SRC}/ffbuild/config.log" \
         || die "FFmpeg's build inputs reach an ONNX Runtime other than the chain's"
-    # SDK-cache-only NEEDED libs (today: libtensorflow.so.2 + its framework
-    # lib) live only in the SDK cache mount; copy them into the ffmpeg payload
-    # so the shipped binary can load them (see the function header). `|| true`
-    # keeps the scan best-effort; the TF die-assert inside still exits hard.
+    # `|| true` keeps the scan best-effort; its TF assert still exits hard.
     bundle_sdk_runtime_libs || true
-    # Best-effort by declaration (see its header comment): a manifest problem
-    # must never fail an ffmpeg build that already succeeded.
+    # A manifest problem must never fail a build that already succeeded.
     emit_runtime_apt_manifest || true
 
-    # AP4: strip symbol tables from the installed ffmpeg prefix. STRIP is live
-    # here (setup_linux_cross_env exported the target <triplet>-strip on cross,
-    # host strip on native); --strip-all keeps .dynsym so dynamic linking is
-    # unaffected (only .symtab/.debug go). Best-effort — never fails a build that
-    # already succeeded. MEDIA_STRIP=0 disables. Runs after bundle so the SDK
-    # runtime .so copied in above are stripped too.
-    # DUPN1: MEDIA_STRIP gate lives inside the helper now.
+    # Strip after bundling so the SDK libs are stripped too; best-effort, MEDIA_STRIP=0 disables it.
     declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${FFMPEG_PREFIX}" || true
 
-    # Only write stamp and run smoke test for native builds
     if [ "${_is_native}" = "1" ]; then
         echo "$(${FFMPEG_PREFIX}/bin/ffmpeg -version 2>/dev/null | head -n1 | awk '{print $3}')" > "$_ff_stamp"
         smoke_test_ffmpeg

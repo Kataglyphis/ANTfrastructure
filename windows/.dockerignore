@@ -1,8 +1,3 @@
-# Context-ignore for builds whose context is `windows` (Dockerfile.nvidia, built by
-# Build-Buildkit.ps1 with -Context windows so the EULA-gated TensorRT zip stays out of every
-# OTHER stage's root context -- see the root .dockerignore).
-# The CUDA installer + cuDNN zip are downloaded at build time by Install-Cuda.ps1; if a
-# copy sits in downloads/ it must NOT ride into the build context (~3.8 GB) or the
-# trt-extract stage layer. Only TensorRT*.zip is consumed from downloads/.
+# For the `windows` context (Dockerfile.nvidia): only TensorRT*.zip is consumed, and the ~3.8 GB CUDA/cuDNN downloads must stay out.
 downloads/*.exe
 downloads/cudnn-*.zip

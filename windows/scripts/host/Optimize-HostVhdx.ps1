@@ -1,39 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Reclaims host disk space when the repo checkout (or the container store)
-# lives on a dynamically-expanding VHDX: stops the build services so nothing
-# holds a handle, detaches the disk, compacts it, re-attaches it read-write
-# and restarts the services. Also frees whatever scratch the running build
-# services were pinning — on the reference host that second effect was worth
-# 19 GB while the compaction itself returned 0.2 GB (see the ReFS warning
-# below and docs/windows-host-setup.md § Phase D item 3).
-#
-# RUN FROM AN ADMIN SHELL, and NEVER while a build is running — stopping
-# buildkitd kills every in-flight solve. The script refuses if it sees a live
-# buildctl process unless -Force is passed.
-#
-# ReFS CAVEAT (measured, not theoretical): Optimize-VHD can only release
-# blocks the guest filesystem reports as free via UNMAP/TRIM. NTFS guests do
-# that reliably; ReFS guests largely do not, so a ReFS VHDX can sit at 270 GB
-# physical for 16 GB of data and still report "Optimize-VHD OK" after
-# reclaiming nothing. The script detects the guest filesystem up front and
-# says so BEFORE you spend the downtime. On ReFS the only reliable reclaim is
-# rebuilding the VHDX around its live data.
-#
-# Everything machine-specific is a parameter — the defaults describe the
-# reference host, not a requirement. Examples:
-#
-#   # reference host
-#   pwsh -File windows\scripts\host\Optimize-HostVhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx
-#
-#   # look first, change nothing (no downtime, no service stop)
-#   pwsh -File windows\scripts\host\Optimize-HostVhdx.ps1 -VhdxPath D:\vm\build.vhdx -ReportOnly
-#
-#   # another machine: different disk, different services, verify the checkout came back
-#   pwsh -File windows\scripts\host\Optimize-HostVhdx.ps1 -VhdxPath E:\disks\ci.vhdx `
-#        -Service buildkitd, containerd, stevedore -VerifyPath E:\src\ANTfrastructure
+# Compacts a host VHDX (admin, never while a build solves); ReFS guests reclaim ~nothing: see docs/windows-builds.md § Optimize-HostVhdx.ps1
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
@@ -41,28 +9,23 @@ param(
     [Parameter(Mandatory)]
     [string]$VhdxPath,
 
-    # Services stopped for the duration (order matters: dependents first).
-    # They are restarted in reverse order afterwards.
+    # Services to stop, dependents first; restarted in reverse order.
     [string[]]$Service = @('buildkitd', 'containerd'),
 
-    # Processes whose presence means a build is live; the run is refused
-    # unless -Force. Stale ones are killed once the guard passes.
+    # Processes that mean a build is live: the run is refused unless -Force, which kills them.
     [string[]]$BlockingProcess = @('buildctl'),
 
-    # Optimize-VHD mode. Full = deepest (needs the read-only attach);
-    # Quick/Retrim are cheaper and rarely worth it here.
+    # Optimize-VHD mode; Full is the deepest and needs the read-only attach.
     [ValidateSet('Full', 'Quick', 'Retrim')]
     [string]$Mode = 'Full',
 
-    # Path that must exist again after the remount (typically the repo
-    # checkout on the VHDX). Empty = skip the check.
+    # Path that must exist again after the remount; empty skips the check.
     [string]$VerifyPath = '',
 
     # Where the transcript lands. Default: <repo>\out\compact-host-vhdx.log
     [string]$LogPath = '',
 
-    # Report sizes, guest filesystem and reclaim potential, then exit.
-    # Touches nothing: no service stop, no detach, no downtime.
+    # Report sizes, guest filesystem and reclaim potential, then exit without touching anything.
     [switch]$ReportOnly,
 
     # Skip the live-build guard (you are SURE nothing is solving right now).
@@ -72,16 +35,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $repoRoot = Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
 $hostLog = New-HostMaintenanceLog -Name 'compact-host-vhdx' -RepoRoot $repoRoot -LogPath $LogPath
 $LogPath = $hostLog.LogPath
-# Thin local wrappers so the ~50 existing call sites keep their signature.
+# Script-scope wrappers: they close over $hostLog, which a module function could not see.
 function Write-Step { param([string]$Message, [string]$Color = 'Gray') Write-HostStep $hostLog $Message $Color }
 function Save-Transcript { Save-HostMaintenanceLog $hostLog }
 
@@ -92,8 +53,7 @@ if (-not (Test-Path $VhdxPath)) { throw "VHDX not found: $VhdxPath" }
 
 # --- inspect: sizes + guest filesystem ---------------------------------------
 
-# Reclaim potential = physical file size minus what the guest actually uses.
-# Reported before anything is touched so -ReportOnly is a complete answer.
+# Reclaim potential is physical size minus guest usage, reported before anything is touched.
 function Get-GuestVolumeInfo {
     param([string]$Path)
     try {
@@ -168,11 +128,7 @@ if ($live.Count -gt 0) {
 
 $stopped = Stop-HostServices -Log $hostLog -Service $Service
 
-# --- 3) compact ---------------------------------------------------------------
-#
-# Optimize-VHD needs the disk detached or attached READ-ONLY. The finally
-# block always restores the read-write attach, so a failure mid-compact can
-# never strand the volume offline (that failure mode cost a session once).
+# --- 3) compact (read-only attach; the finally always restores read-write so the volume is never stranded) ---
 
 try {
     Write-Step '--- detach ---'

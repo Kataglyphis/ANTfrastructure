@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# ffmpeg-probes-codecs.sh - Codec-specific FFmpeg dependency probe wrappers
-# Split out of build-ffmpeg.sh (pure structural refactor; no behavior change).
-# Source-only helper; sourced by build-ffmpeg.sh — expects its set -euo pipefail and IFS.
+# Codec-specific FFmpeg probes, sourced by build-ffmpeg.sh and relying on its set -euo pipefail and IFS.
 
 ffmpeg_probe_libmp3lame() {
     ffmpeg_probe_library_feature "libmp3lame" "lame/lame.h" "lame_set_VBR_quality" "-lmp3lame -lm"
@@ -22,9 +20,7 @@ ffmpeg_probe_libvorbis() {
 }
 
 ffmpeg_probe_libvpx_variant() {
-    # shellcheck disable=SC2034  # pre-existing dead store ("feature" was never read
-    # here even in the monolithic build-ffmpeg.sh); the file split merely unmasked
-    # the warning. Kept verbatim — pure structural refactor, no behavior change.
+    # shellcheck disable=SC2034  # feature is unused; it only labels the call site.
     local feature="$1"
     local headers="$2"
     local symbols="$3"
@@ -59,11 +55,7 @@ ffmpeg_probe_libx264() {
     return 1
 }
 
-# HEVC encoder. x265 version-macros its public symbols (x265_api_get ->
-# x265_api_get_<build>), but the probe micro-program includes x265.h so the
-# macro expands before linking, and the framework's spurious-link-failure
-# fallback (headers-compile + empty-main-links) covers the versioned .so case.
-# Only consulted when FFMPEG_ENABLE_X265 is set (see build-ffmpeg.sh).
+# x265 renames its symbols per build by macro, which the included x265.h expands before the link.
 ffmpeg_probe_libx265() {
     if ffmpeg_probe_pkg_config_feature "libx265" "x265" "stdint.h x265.h" "x265_api_get"; then
         return 0

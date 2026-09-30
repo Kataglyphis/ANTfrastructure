@@ -1,13 +1,4 @@
 #requires -Version 7.0
-# Tests for WindowsAgenticLoop.Common.psm1 -- reusable agentic loop module.
-#
-# These are CPU-only, no network calls. They exercise:
-# - OpenCode invocation (with a mock override)
-# - BACKLOG task counting
-# - Logging primitives
-# - Platform detection
-# - Git auto-commit (dry-run)
-#
 # Run: pwsh -NoProfile -Command "Invoke-Pester .\WindowsAgenticLoop.Common.Tests.ps1"
 
 Describe 'WindowsAgenticLoop.Common' {
@@ -19,12 +10,7 @@ Describe 'WindowsAgenticLoop.Common' {
             Import-Module $modulePath -Force -DisableNameChecking
             Write-Host "Module loaded from: $modulePath"
         } else {
-            # A missing subject module must FAIL the suite, never soften it: an
-            # earlier revision installed 14 global: success-stubs here, which
-            # made all 601 assertion lines pass vacuously AND (because
-            # Invoke-Tests.ps1 dot-sources every suite into one session) would
-            # have shadowed the real cmdlets for every later suite. Same policy
-            # as the runner's own skipped-suite gate (Invoke-Tests.ps1).
+            # Never stub a missing module: stubs pass vacuously and shadow the real cmdlets for every later suite.
             throw "WindowsAgenticLoop.Common.psm1 not found at $modulePath — refusing to run against stubs"
         }
 
@@ -46,13 +32,12 @@ Describe 'WindowsAgenticLoop.Common' {
         if (Test-Path $script:testDir) { Remove-Item $script:testDir -Recurse -Force }
     }
 
-    # -- Platform detection -------------------------------------------------
+    # Platform detection
 
     Context 'Platform detection' {
         It 'Get-AgenticPlatform returns a known platform' {
             $platform = Get-AgenticPlatform
-            # -contains instead of Should Contain: Pester 3.x treats the
-            # piped value as a file path, not an array
+            # -contains, not Should Contain: Pester 3.x treats the piped value as a file path.
             (@('windows', 'linux') -contains $platform) | Should -Be $true
         }
 
@@ -67,7 +52,7 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
-    # -- Logging -----------------------------------------------------------
+    # Logging
 
     Context 'Logging primitives' {
         It 'Write-AgenticLog writes to the log file' {
@@ -82,7 +67,7 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
-    # -- OpenCode invocation -----------------------------------------------
+    # OpenCode invocation
 
     Context 'Invoke-OpenCode' {
         BeforeAll {
@@ -110,9 +95,7 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
-    # A real child process, not a mock: every other test here runs -DryRun, which
-    # is how the reader threads' .Add() on a ConcurrentQueue (no such method)
-    # returned an empty Output for every engine without a test going red.
+    # A real child process: every other test runs -DryRun, which never exercises the output reader threads.
     Context 'Invoke-AgentProcess captures a real process' {
         It 'returns stdout in order and the exit code' {
             $pwsh = (Get-Process -Id $PID).Path
@@ -124,8 +107,7 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
-    # The strings are what each CLI's --version really prints (1.18.33, 2.0.18).
-    # docs/windows-agentic-loop.md#opencode-v2
+    # The strings are what each CLI's --version really prints; see docs/windows-agentic-loop.md#opencode-v2
     Context 'opencode v2 command line' {
         It 'reads the major version from both CLIs; unreadable is 0' {
             Get-AgenticOpenCodeMajorVersion -VersionText '1.18.33' | Should -Be 1
@@ -161,7 +143,7 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
-    # -- BACKLOG helpers ---------------------------------------------------
+    # BACKLOG helpers
 
     Context 'Get-UncheckedTaskCount' {
         BeforeAll {
@@ -262,11 +244,10 @@ Describe 'WindowsAgenticLoop.Common' {
         }
     }
 
-    # -- Backlog pruning ---------------------------------------------------
+    # Backlog pruning
 
     Context 'Remove-CheckedBacklogTasks' {
-        # Note: the module is initialized with -DryRun in BeforeAll, so these
-        # tests verify content via a temporary non-dry-run window.
+        # The module runs -DryRun, so these open a temporary non-dry-run window to check content.
         BeforeAll {
             $script:pruneBacklog = Join-Path $script:testDir 'prune-backlog.md'
             Set-Content $script:pruneBacklog @'
@@ -330,7 +311,7 @@ Plain text after the block.
         }
     }
 
-    # -- Git helpers -------------------------------------------------------
+    # Git helpers
 
     Context 'Invoke-GitAutoCommit' {
         It 'does nothing when disabled' {
@@ -343,7 +324,7 @@ Plain text after the block.
         }
     }
 
-    # -- Build / Test / Quality wrappers -----------------------------------
+    # Build / Test / Quality wrappers
 
     Context 'Invoke-BuildCommand' {
         It 'returns true in dry-run mode' {
@@ -365,7 +346,7 @@ Plain text after the block.
         }
     }
 
-    # -- Config helpers ----------------------------------------------------
+    # Config helpers
 
     Context 'Get-AgenticConfigValue' {
         It 'reads a hashtable key' {
@@ -387,7 +368,7 @@ Plain text after the block.
         }
     }
 
-    # -- Engine resolution -------------------------------------------------
+    # Engine resolution
 
     Context 'Resolve-AgenticEngine' {
         BeforeAll {
@@ -468,8 +449,7 @@ Plain text after the block.
         }
 
         It 'throws for an unknown engine' {
-            # try/catch instead of Should Throw: Pester 3.x misses exceptions
-            # thrown from module-scoped advanced functions
+            # try/catch, not Should Throw: Pester 3.x misses throws from module-scoped advanced functions.
             $threw = $false
             try { $null = Resolve-AgenticEngine -Config @{ engine = 'bogus'; models = @{ planner = 'p'; executor = 'e' } } -RepoRoot $script:testDir } catch { $threw = $true }
             $threw | Should -Be $true
@@ -482,7 +462,7 @@ Plain text after the block.
         }
     }
 
-    # -- Claude invocation + dispatcher (dry-run) --------------------------
+    # Claude invocation + dispatcher (dry-run)
 
     Context 'Invoke-ClaudeCode / Invoke-AgenticAgent' {
         BeforeAll {
@@ -508,7 +488,7 @@ Plain text after the block.
         }
     }
 
-    # -- Main loop (smoke test) --------------------------------------------
+    # Main loop (smoke test)
 
     Context 'Invoke-AgenticLoop' {
         BeforeAll {
@@ -579,14 +559,7 @@ Plain text after the block.
         }
     }
 
-    # -- Failure-cap exit-code contract (#175) ------------------------------
-    #
-    # Neither failure-cap arm is reachable from Pester: the cap trips only on a
-    # real failing BUILD, and the suite runs the loop in dry-run, where
-    # Invoke-BuildCommand returns $true unconditionally. So the contract is
-    # pinned at the source level: each 'Too many consecutive build failures'
-    # arm must assign $script:AgenticExitCode = 1 before it stops, or a capped
-    # run reports exit 0 (the 2026-09-17 -ExecutorOnly regression).
+    # Failure cap: dry-run builds always pass, so the exit-code contract is pinned at the source level.
 
     Context 'failure-cap exit-code contract (#175)' {
         BeforeAll {
@@ -607,7 +580,7 @@ Plain text after the block.
         }
     }
 
-    # -- Get-AgenticDefaultPrompt -------------------------------------------
+    # Get-AgenticDefaultPrompt
 
     Context 'Get-AgenticDefaultPrompt' {
         It 'returns non-empty prompts for every role' {
@@ -634,16 +607,7 @@ Plain text after the block.
         }
     }
 
-    # -- Generated .opencode/agents/<role>.md -------------------------------
-    #
-    # The regression these cover: the composer fed --append-system-prompt-file
-    # only, so the opencode engine -- which reads .opencode/agents/<role>.md and
-    # takes no prompt file on its command line -- got nothing, and consumers
-    # hand-copied the role prompt instead. One such copy had gone stale enough
-    # to lose the executor incident narrative, the foreground-build timeout and
-    # the '- [b]' commit step. Assert the FILE EXISTS, that it carries the
-    # shared prompt AND the overlay, and that it is produced for every engine:
-    # a generation gate that only fires for claude covers nothing.
+    # Generated .opencode/agents/<role>.md: opencode takes no prompt file, so it must exist for every engine.
 
     Context 'Write-AgenticOpenCodeAgentFile / opencode agent generation' {
         BeforeAll {
@@ -758,7 +722,7 @@ Plain text after the block.
         }
     }
 
-    # -- Get-AgenticBuildConfigs --------------------------------------------
+    # Get-AgenticBuildConfigs
 
     Context 'Get-AgenticBuildConfigs' {
         It 'prefers buildMatrix for the requested platform' {
@@ -777,14 +741,11 @@ Plain text after the block.
         }
     }
 
-    # -- Complete-AgenticLoop -----------------------------------------------
+    # Complete-AgenticLoop
 
     Context 'Complete-AgenticLoop' {
         It 'completes and exits cleanly with exit code 0' {
-            # Complete-AgenticLoop calls `exit`, which PowerShell flow control cannot
-            # be caught in-process (a try/catch around it silently terminates the whole
-            # host with that exit code -- which used to end the test run early and green).
-            # Assert the exit-code contract from a child pwsh instead.
+            # `exit` cannot be caught in-process and would end the whole run, so a child pwsh asserts it.
             $childCmd = "Import-Module '$modulePath' -Force -DisableNameChecking; " +
                 "Initialize-AgenticLoop -RepoRoot '$($script:testDir)' -DryRun; " +
                 'Complete-AgenticLoop -Iteration 1 -TasksCompleted 5 -ExitCode 0'

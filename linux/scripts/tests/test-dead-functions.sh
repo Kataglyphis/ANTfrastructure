@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_dead_functions.py. The gate derives its root from its own path,
-# so each case builds a throwaway tree with gate-tree.sh and plants a subject.sh,
-# callers, and an allow file there. Fixture functions are
-# written via printf so this file defines none of them itself.
-# docs/code-quality-tooling.md#dead-shell-functions-dead-functions
+# Fixture functions are printf'd so this corpus file defines none; see docs/code-quality-tooling.md#dead-shell-functions-dead-functions
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -30,8 +26,7 @@ _gate() { local d="$1"; shift; "${PY}" "${d}/linux/scripts/verify_dead_functions
 _run() { t_out _gate "$@"; }
 _rc()  { t_rc _gate "$@"; }
 
-# _expect rc|says|census|census-rc <want> <why> <subject> [allow] [caller-relpath caller-content]...
-# One fixture per assertion: the exit code (rc) or a substring of the output (says).
+# _expect rc|says|says-not|census|census-rc <want> <why> <subject> [allow] [caller-relpath caller-content]...
 _expect() {
   local mode="$1" want="$2" why="$3" subject="$4" allow="${5-}" fix
   shift 4; [ $# -gt 0 ] && shift
@@ -55,9 +50,7 @@ _census()    { _expect census "$@"; }
 _census_rc() { _expect census-rc "$@"; }
 # _called <rc> <why> <caller.sh content>: used_fn defined, one line in caller.sh
 _called()  { _verdict "$1" "$2" "${USED}" "" linux/scripts/caller.sh "$3"; }
-# _mask <_verdict|_says|_census|_census_rc> <want> <why> [rel content]...: the masking
-# fixture -- subject.sh defines foo_fn and never names it, other.sh defines AND calls
-# its own foo_fn, and the two files name nothing of each other.
+# _mask <assert fn> <want> <why> [rel content]...: subject.sh and other.sh both define foo_fn, unlinked.
 _mask() { local fn="$1"; shift; "${fn}" "$1" "$2" "${MASKED}" "" \
   linux/scripts/other.sh "${MASKING}" "${@:3}"; }
 
@@ -197,9 +190,7 @@ _verdict 0 "a definition its own file names again was never a candidate" \
 _verdict 1 "a stale unlinked freeze fails once the two files are linked" \
   "${MASKED}" $'linux/scripts/subject.sh\tfoo_fn' linux/scripts/other.sh "${MASKING}" \
   "${LINKED[@]}"
-# R1.4: that stale row's HEADING says "the function is called again or gone", which
-# is false here -- an unrelated file naming both basenames disarmed the arm. The row
-# has to say which file did it, or the reader deletes a freeze that still holds.
+# A disarmed row must name the file that disarmed it, or the reader deletes a freeze that still holds.
 _says "unlinked arm DISARMED by" "a disarmed row must not read as a revived function" \
   "${MASKED}" $'linux/scripts/subject.sh\tfoo_fn' linux/scripts/other.sh "${MASKING}" \
   "${LINKED[@]}"
@@ -209,13 +200,7 @@ _says "which now names both subject.sh and other.sh" "name the two basenames, so
 _says "the function is not called again" "the correction the heading needs" \
   "${MASKED}" $'linux/scripts/subject.sh\tfoo_fn' linux/scripts/other.sh "${MASKING}" \
   "${LINKED[@]}"
-# The other half of the same claim: a row that went stale because the function IS
-# called again must stay PLAIN. An explanation that fires on every stale row --
-# e.g. one file naming ONE definer's basename -- explains nothing and misleads.
-# TWO definers, so `disarmer` has a peer to look for -- and the only file that
-# mentions a basename mentions ONE of them. Nothing can load both definitions into
-# one shell, so nothing is disarmed; the row is stale because subject.sh now calls
-# its own foo_fn.
+# A row stale because subject.sh now calls foo_fn stays plain: a file naming one definer disarms nothing.
 _says_not DISARMED "a file naming ONE definer cannot disarm anything, so the row stays plain" \
   "${MASKING}" $'linux/scripts/subject.sh\tfoo_fn' \
   linux/scripts/other.sh "${MASKING}" \
@@ -260,9 +245,7 @@ t_assert_eq "0" "$(_defs "${FFMPEG_SH}" cleanup)" \
   "same-name masking hides ffmpeg's cleanup() from the gate; only this pin sees it"
 
 t_case "the verify-parity row the masking used to make unwritable"
-# Name and BOTH basenames are assembled, never spelled: this file is corpus, so a
-# literal here is an outside mention of the name, or the third-file link between the
-# two definers, and either one switches the unlinked arm back off (GH5's trap).
+# Assembled, never spelled: a literal in this corpus file would switch the unlinked arm back off.
 _CP="$(printf 'check_%s' python)"
 _PKG="linux/scripts/06-packaging"
 PARITY_SH="${_PKG}/$(printf 'verify-%s.sh' parity)"
@@ -279,9 +262,7 @@ t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"
 t_assert_eq "0" "$( "${PY}" "${GATE}" --census >/dev/null 2>&1; echo $? )"
 
-# The --root arm, which no case above reaches: every fixture here is a tree
-# planted AROUND the gate, so it cannot tell --root from its own repo.
-# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a function nothing calls, in the fixture.
+# Every fixture above plants its tree around the gate, so only gate_root_arm reaches --root.
 t_case "--root grades the named tree, and reads its freeze file"
 _root_subject="${DEAD}"
 gate_root_arm "${PY}" "${GATE}" "${_root_subject}" dead-functions.allow $'zz-sentinel.sh\tzz_sentinel' zz_sentinel

@@ -1,18 +1,10 @@
 #!/usr/bin/env bash
-# python-probe.sh - one owner for "is there a working Python here?"
-# Plain python3 is NOT trusted: on Windows Git Bash it is the Microsoft Store
-# stub, which prints an install hint and exits non-zero. preflight.sh probes a
-# candidate list and exports PREFLIGHT_PYTHON; a gate run standalone inherits
-# nothing, so it verifies before use instead of dying inside its Python step.
-# docs/shared-script-libraries.md#python-interpreter-probe-01-corepython-probesh
+# python3 may be the Windows Store stub, so verify first. docs/shared-script-libraries.md#python-interpreter-probe-01-corepython-probesh
 
 [ -n "${_PYTHON_PROBE_SH_LOADED:-}" ] && return 0
 _PYTHON_PROBE_SH_LOADED=1
 
-# preflight_python_require <caller> -> 0 with PREFLIGHT_PYTHON exported when it
-# (or, unset, python3) runs `-c pass`; 1 naming the caller and the knob otherwise.
-# Callers expand PREFLIGHT_PYTHON UNQUOTED, as preflight.sh does: the value may
-# be a command line, which is the very hint the failure message gives.
+# Callers expand PREFLIGHT_PYTHON unquoted: it may be a command line like "uv run --no-project python".
 preflight_python_require() {
   local py="${PREFLIGHT_PYTHON:-python3}"
   # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line

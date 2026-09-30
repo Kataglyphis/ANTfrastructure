@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Pins the emitted argv of the 02-toolchain/llvm-cross.sh helpers split out of
-# _llvm_cross_setup_and_build.
-# docs/cross-build-verification.md#the-linuxscriptstests-suites
+# The argv of llvm-cross.sh's helpers split out of _llvm_cross_setup_and_build; see docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -42,14 +40,7 @@ t_assert_ok _llvm_cross_linker_flag_args _lf riscv64
 t_assert_eq "0" "${#_lf[@]}"
 llvm_cross_target_runtime_library_path() { printf '%s\n' "${STUB_RUNTIME_PATH:-}"; }
 
-# --- the LLVM triple ---------------------------------------------------------
-# LLVM builds the per-target compiler-rt directory from the string it is
-# CONFIGURED with; the clang driver looks it up under the triple it normalizes
-# to. A per-arch case list normalized arm64 and riscv64 and left amd64 on the
-# Debian spelling, so x86_64 alone shipped its runtimes in a directory the
-# driver never searched -- six clang jobs in a consumer died on "cannot find
-# .../libclang_rt.profile.a" while every gcc job passed. Each arch is pinned
-# BY NAME here, because the arm that went missing is the failure mode.
+# compiler-rt's dir is named by the configured triple, clang searches the normalized one: each arch is pinned by name.
 source "${TESTS_DIR}/../01-core/platform.sh"
 
 t_case "every arch normalizes to the LLVM vendor spelling, amd64 included"
@@ -61,8 +52,7 @@ t_assert_eq "i386-unknown-linux-gnu" "$(llvm_cross_clang_triple i386-linux-gnu)"
   "the mapping is derived, so an arch no list mentions is normalized too"
 
 t_case "the triplet platform.sh hands the build maps, for every arch it knows"
-# Walks the SAME source the build walks (llvm-cross.sh line ~44), so a new arch
-# cannot arrive on the Debian spelling the way amd64 did.
+# Walks the same source the build does, so a new arch cannot arrive on the Debian spelling.
 for _a in amd64 arm64 riscv64; do
   _deb="$(arch_deb_multiarch_triplet_for "${_a}")"
   _llvm="$(llvm_cross_clang_triple "${_deb}")" || _llvm="REFUSED"
@@ -74,8 +64,7 @@ t_case "an already-normalized triple passes through unchanged"
 t_assert_eq "x86_64-unknown-linux-gnu" "$(llvm_cross_clang_triple x86_64-unknown-linux-gnu)"
 
 t_case "a string that is not a Debian multiarch triplet is REFUSED"
-# `|| _rc=$?` and not $( ...; echo $? ): llvm-cross.sh is sourced above and it
-# carries set -e, which kills the substitution subshell before the echo.
+# `|| _rc=$?`: the sourced llvm-cross.sh sets -e, which would kill a `$(...; echo $?)` before the echo.
 _rc=0; llvm_cross_clang_triple nonsense >/dev/null 2>&1 || _rc=$?
 t_assert_eq "1" "${_rc}" \
   "falling through to the input is exactly how amd64 shipped the wrong directory"
@@ -115,8 +104,7 @@ _llvm_cross_superset_cmake_args _ss /w/host-gcc /w/host-g++ "" /opt/native
 t_assert_contains "${_ss[*]}" \
   "-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DCMAKE_C_COMPILER=/w/host-gcc;-DCMAKE_CXX_COMPILER=/w/host-g++;-DCMAKE_ASM_COMPILER=/w/host-gcc -DCLANG_TABLEGEN"
 
-# --- the configure argv ------------------------------------------------------
-# Stub cmake and capture the full argv the configure helper emits.
+# The configure argv, captured by a stub cmake.
 _CMAKE_ARGV=""
 cmake() { _CMAKE_ARGV="$*"; }
 
@@ -146,8 +134,7 @@ t_assert_contains "${_CMAKE_ARGV}" "-DCMAKE_SYSTEM_PROCESSOR=aarch64"
 t_assert_contains "${_CMAKE_ARGV}" "-DCMAKE_LIBRARY_ARCHITECTURE=aarch64-linux-gnu"
 
 t_case "the three injected arg groups land at their original insertion points"
-# launcher args: immediately after -G Ninja, BEFORE -S (they must reach the
-# top-level configure, not be appended after the source/binary dirs).
+# launcher args: after -G Ninja and before -S, so they reach the top-level configure.
 t_assert_contains "${_CMAKE_ARGV}" "-G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -S /src/llvm-project/llvm -B /build/aarch64-linux-gnu"
 # linker args: between CMAKE_STRIP and the -B<wrapper_dir> flag inits.
 t_assert_contains "${_CMAKE_ARGV}" "-DCMAKE_STRIP=xstrip -DCMAKE_EXE_LINKER_FLAGS_INIT=-Wl,-rpath-link,/lib -DCMAKE_C_FLAGS_INIT=-B/build/aarch64-linux-gnu-tool-bin"
@@ -175,16 +162,9 @@ t_assert_eq "--build /build/aarch64-linux-gnu --parallel 7 --target llvm-config"
 t_assert_eq "--install /build/aarch64-linux-gnu --strip" "${_CMAKE_CALLS[2]}"
 t_assert_eq "--install /build/aarch64-linux-gnu --strip --prefix /opt/llvm-cross/aarch64-linux-gnu" "${_CMAKE_CALLS[3]}"
 
-# ---------------------------------------------------------------------------
-# HOST-AS-TARGET. setup_linux_cross_env returns EARLY when the target is the
-# build host and exports nothing; since 2026-09-10 this file's own loop asks for
-# exactly that case on every host (--include-amd64). Ten bare reads died there,
-# one build cycle each. Scrub the WHOLE export surface and prove the configure
-# still produces a complete argv. Run in a clean `bash -c` so no exported value
-# from this suite's own first case can leak in and make it pass for free.
+# Host-as-target: setup_linux_cross_env exports nothing, so configure must still build a complete argv.
 _stanza_scenario() {
-  # $1 = target triplet, $2 = build triplet (equal => host-as-target).
-  # Captured into _BT first: inside a function, $2 is the FUNCTION's arg.
+  # $1 = target triplet, $2 = build triplet (equal: host-as-target), copied before the stubs shadow $2.
   bash -c '
     set -u
     _TT="$1"; _BT="$2"
@@ -206,8 +186,7 @@ _stanza_scenario() {
   ' _ "$1" "$2" 2>&1
 }
 
-# One owner for the scrub list: both cases must start from the SAME empty env,
-# or one of them passes because this suite's first case exported CC=xcc.
+# One scrub list, so neither case passes on the CC=xcc this suite exported earlier.
 _stanza_scrubbed() {
   env -u CC -u CXX -u AR -u AS -u LD -u NM -u RANLIB -u STRIP -u OBJCOPY \
       -u CLANG -u CLANGXX -u CROSS_TARGET_TRIPLET -u CROSS_TARGET_PROCESSOR \
@@ -233,15 +212,10 @@ t_assert_contains "${_FT_OUT}" "no host fallback is allowed" \
 t_assert_eq "0" "$(printf '%s' "${_FT_OUT}" | grep -c -e '-DCMAKE_C_COMPILER=/usr/bin/gcc' || true)" \
   "the host compiler must never reach a foreign target's configure"
 
-# ---------------------------------------------------------------------------
-# STANDING PROOF, not a one-off grep. The two functions below run with target ==
-# build host, where setup_linux_cross_env exports NOTHING. Every unguarded read
-# of its export surface is a future "unbound variable" that costs a build cycle
-# to find. This fails on the eleventh one.
+# With target == build host nothing is exported, so any unguarded read of the surface is a future abort.
 t_case "no unguarded read of the cross-env export surface in the host-as-target path"
 _LC="${TESTS_DIR}/../02-toolchain/llvm-cross.sh"
-# The surface _cross_env_export_all exports (cross-env.sh). Keep this list HERE,
-# beside the assertion, so it is updated when the export surface grows.
+# What _cross_env_export_all (cross-env.sh) exports; kept beside the assertion so it grows with it.
 _SURFACE='CC CXX AR AS LD NM RANLIB STRIP OBJCOPY CLANG CLANGXX
 CROSS_TARGET_TRIPLET CROSS_TARGET_PROCESSOR CROSS_RUST_TARGET
 CMAKE_SYSROOT CMAKE_AR CMAKE_RANLIB CMAKE_NM CMAKE_STRIP CMAKE_OBJCOPY

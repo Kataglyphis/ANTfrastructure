@@ -2,47 +2,31 @@ Set-StrictMode -Version Latest
 #requires -Version 7.0
 
 
-# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
-# No -Force when already loaded: a nested force-reimport moves the module's
-# exports out of the global session state on Windows PowerShell 5.1.
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
-# Get-OrDefault (used by Invoke-MsixSign for the env-var fallbacks) lives in
-# WindowsConfig.Common. Without this import, Invoke-MsixSign hit
-# CommandNotFound inside its try block, the blanket catch degraded that to a
-# warning, and the package shipped silently UNSIGNED.
+# Without Get-OrDefault the catch below would degrade CommandNotFound to a warning and ship unsigned.
 if (-not (Get-Module -Name 'WindowsConfig.Common')) {
   Import-Module (Join-Path $PSScriptRoot 'WindowsConfig.Common.psm1')
 }
 
-# Invoke-BuildExternal / Write-BuildLog* come from the sibling
-# WindowsBuild.Common module; without this import a standalone consumer hits
-# CommandNotFound at runtime. Guarded, WITHOUT -Force (repo-wide nested-import
-# rule, 2026-08-04): a forced nested re-import would pull a caller's top-level
-# import out of the global session state.
 if (-not (Get-Module -Name 'WindowsBuild.Common')) {
   Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
 }
 
-# The elevation probe itself lives in WindowsScripts.Shared (Test-Elevated,
-# imported above). This wrapper stays: WindowsMsix.Signing.Tests.ps1 mocks
-# Test-Administrator with -ModuleName WindowsMsix.Signing, and that mock needs a
-# real command in THIS module to attach to.
+# Kept so the tests can mock Test-Administrator inside this module.
 function Test-Administrator {
   return (Test-Elevated)
 }
 
 function Invoke-MsixSign {
-  # PSSA suppression, justified: dev/test MSIX signing with a throwaway
-  # self-signed cert; the password arrives as a plain build parameter by
-  # design (same rationale as New-MsixPackage.ps1).
   [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'dev/test signing cert')]
   param(
     [Parameter(Mandatory)] [pscustomobject]$Context,
     [Parameter(Mandatory)] [string]$WorkspacePath,
     [Parameter(Mandatory)] [string]$MsixOutPath,
-    # Optional invoker scriptblock for testability. If provided, it will be called instead of Invoke-BuildExternal.
+    # Test seam called instead of Invoke-BuildExternal.
     [scriptblock]$InvokerScriptBlock
   )
 
@@ -53,14 +37,13 @@ function Invoke-MsixSign {
       return
     }
 
-    # Look for an explicit .pfx in the workspace root (non-recursive).
     $pfxFiles = Get-ChildItem -Path $WorkspacePath -Filter '*.pfx' -File -ErrorAction SilentlyContinue
     $pfxFiles = @($pfxFiles)
     if (($null -ne $pfxFiles) -and ($pfxFiles.Count -gt 0)) {
       $pfx = $pfxFiles[0].FullName
       Write-BuildLog -Context $Context -Message "Found PFX for signing: $($pfxFiles[0].Name)"
 
-      # Prefer MSIX_PFX_PASSWORD, fall back to MSIX_CERT_PASSWORD for CI compatibility
+      # MSIX_CERT_PASSWORD is the CI fallback.
       $pfxPassword = Get-OrDefault $env:MSIX_PFX_PASSWORD $env:MSIX_CERT_PASSWORD
       $timestampUrl = Get-OrDefault $env:MSIX_TIMESTAMP_URL 'http://timestamp.digicert.com'
 
@@ -70,7 +53,6 @@ function Invoke-MsixSign {
       } else {
         Write-BuildLogWarning -Context $Context -Message 'MSIX_PFX_PASSWORD not set. Attempting to sign without password (PFX may be unprotected).'
       }
-      # Use RFC3161 timestamping with SHA256
       $sigArgs += @('/tr', $timestampUrl, '/td', 'SHA256', $MsixOutPath)
 
       Write-BuildLog -Context $Context -Message "Signing MSIX: $MsixOutPath"
@@ -80,15 +62,7 @@ function Invoke-MsixSign {
         Invoke-BuildExternal -Context $Context -File $signtoolPath -Parameters $sigArgs | Out-Null
       }
 
-      # Import the signing certificate into the LocalMachine trust store so
-      # subsequent signtool verify calls succeed when using a self-signed PFX.
-      # DELIBERATE WARN-NOT-THROW (#145, documented 2026-08-21): the package
-      # IS signed above regardless — only the trust-store import for the
-      # local `signtool verify` needs elevation. Consumer dev loops
-      # (BeschleunigerBallett/NativeInferencePlugin Build-Windows) run
-      # unelevated and must still produce the signed MSIX; a throw here
-      # would break them for a verification nicety. The degraded state is
-      # named in the warning, so this is not the Slang-class silent skip.
+      # Warn, not throw: the package is already signed, and unelevated consumer dev loops must still get it.
       try {
         if (-not (Test-Administrator)) {
           Write-BuildLogWarning -Context $Context -Message 'Not running as Administrator; skipping PFX import into LocalMachine certificate store. signtool verify may fail.'
@@ -112,7 +86,6 @@ function Invoke-MsixSign {
         Write-BuildLogWarning -Context $Context -Message ("PFX import failed: $($_.Exception.Message)")
       }
 
-      # Verify signature
       Write-BuildLog -Context $Context -Message "Verifying MSIX signature: $MsixOutPath"
       if ($InvokerScriptBlock) {
         & $InvokerScriptBlock -Context $Context -File $signtoolPath -Parameters @('verify', '/pa', '/v', $MsixOutPath) | Out-Null
@@ -124,14 +97,10 @@ function Invoke-MsixSign {
       Write-BuildLogWarning -Context $Context -Message "No .pfx found in $WorkspacePath; MSIX will not be signed."
     }
   } catch [System.Management.Automation.CommandNotFoundException] {
-    # A missing function/command is a BUG (broken import graph), not a
-    # signing-environment condition - never swallow it into a warning, or the
-    # package ships silently unsigned.
+    # A missing command is a broken import graph, never a warning that ships unsigned.
     throw
   } catch {
-    # Genuine signing failures stay best-effort by contract (matching the
-    # signtool-not-found and no-.pfx-found warning paths above): dev/CI builds
-    # without signing material still produce a usable, unsigned package.
+    # Best-effort: builds without signing material still produce a usable unsigned package.
     Write-BuildLogWarning -Context $Context -Message ("MSIX signing step failed: $($_.Exception.Message)")
   }
 }

@@ -2,8 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# rocm image, OpenCV: the OpenCL T-API is compiled in and dynamically loaded, a usable OpenCL.dll
-# resolves, and no build path reaches into the ROCm tree. No GPU needed. docs/windows-builds.md § ROCm layer
+# rocm image, GPU-less: OpenCV's dynamic OpenCL T-API, a usable OpenCL.dll, no ROCm build paths. See docs/windows-rocm.md § OpenCV on the rocm lane
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

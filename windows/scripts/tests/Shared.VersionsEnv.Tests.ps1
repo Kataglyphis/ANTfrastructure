@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# Tests for the canonical versions.env parser and the shared zip-extract helper
-# (ConvertFrom-VersionsEnv / Expand-ArchiveSubdirectory in WindowsScripts.Shared.psm1).
+# The canonical versions.env parser and the shared zip-extract helper.
 
 Describe 'ConvertFrom-VersionsEnv' {
 
@@ -134,12 +133,7 @@ Describe 'Expand-ArchiveSubdirectory' {
 
 Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026-08-07)' {
 
-    # These maps are now the ONLY channel by which current version values reach
-    # a branch's build scripts: the media stages no longer COPY versions.env,
-    # because that COPY made every pin edit invalidate all six media compiles.
-    # A key a script reads but that is missing here silently falls back to the
-    # value baked into the base image. The audit that produced these lists found
-    # five such gaps; these cases stop them coming back.
+    # These maps are the only channel for versions: a missing key silently falls back to the base image's value.
 
     It 'passes every key the media-core scripts consume' {
         $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
@@ -161,8 +155,7 @@ Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026
     }
 
     It 'passes the litert keys INCLUDING the protoc/JRE pins' {
-        # PROTOC_VERSION must match LiteRT-LM's internal protobuf; a stale value
-        # emits gencode the pinned headers #error on.
+        # PROTOC_VERSION must match LiteRT-LM's protobuf, or the gencode trips the pinned headers' #error.
         $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
         $args_ = Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $v
         foreach ($k in 'LITERT_VERSION', 'LITERT_LM_VERSION', 'PROTOC_VERSION', 'JRE_VERSION') {

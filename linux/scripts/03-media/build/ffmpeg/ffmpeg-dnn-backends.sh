@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# ffmpeg-dnn-backends.sh - FFmpeg DNN backend probes (ONNX Runtime, TensorFlow, OpenVINO)
-# Source-only helper; sourced by build-ffmpeg.sh — expects its set -euo pipefail and IFS.
+# FFmpeg DNN backend probes, sourced by build-ffmpeg.sh and relying on its set -euo pipefail and IFS.
 
 ffmpeg_probe_libonnxruntime() {
-    # FFmpeg links the chain ORT or is not built (owner rule 2026-09-23): a missing chain or a probe
-    # that cannot use it exits; ffmpeg_ort_link_findings then proves what the link resolves.
+    # FFmpeg links the chain ORT or is not built; ffmpeg_ort_link_findings later proves what the link resolves.
     local onnx_base="${1:-/usr/local/lib/onnxruntime-cpu}"
     # ONNXRUNTIME_VERSION may be unset (set -u); the callee defaults an empty version.
     local onnx_ver="${ONNXRUNTIME_VERSION:-}"
@@ -20,8 +18,7 @@ ffmpeg_probe_libonnxruntime() {
         echo "ERROR: the chain ONNX Runtime at ${onnx_base} does not compile and link for this target (probe detail above)" >&2
         exit 1
     fi
-    # FFmpeg checks libonnxruntime with a BARE `require` (check_lib), which never reads the .pc:
-    # the chain goes in through --extra-cflags/-ldflags; -lstdc++ because ORT is C++.
+    # FFmpeg's bare require never reads the .pc, so the chain goes in via --extra-*; -lstdc++ because ORT is C++.
     _FFMPEG_ONNX_ROOT="${onnx_base}"
     _FFMPEG_ONNX_EXTRA_CFLAGS="-I${onnx_base}/include -I${onnx_base}/include/onnxruntime/core/session"
     _FFMPEG_ONNX_EXTRA_LDFLAGS="-L${onnx_base}/lib"
@@ -30,8 +27,7 @@ ffmpeg_probe_libonnxruntime() {
     return 0
 }
 
-# ffmpeg_ort_ldflags_first <opts-array-name>: the chain's --extra-ldflags goes ahead of every other one,
-# so -lonnxruntime meets the chain before the cross multiarch -L (ld walks -L dirs in order).
+# ffmpeg_ort_ldflags_first <opts-array-name>: puts the chain -L first, since ld walks -L dirs in order.
 ffmpeg_ort_ldflags_first() {
     # _fol_ locals only: a plain name would shadow the caller's array behind the nameref.
     local -n _fol_opts="$1"
@@ -50,15 +46,13 @@ ffmpeg_ort_ldflags_first() {
     _fol_opts=("${_fol_out[@]}")
 }
 
-# _ffmpeg_ort_link_tokens <config.mak>: one token per line of the variables FFmpeg's link lines
-# expand (ffbuild/library.mak), in link-line order.
+# _ffmpeg_ort_link_tokens <config.mak>: the tokens of the variables FFmpeg's link lines expand, in link order.
 _ffmpeg_ort_link_tokens() {
     sed -n -E 's/^(SHFLAGS|LDFLAGS|LDSOFLAGS|LDEXEFLAGS|EXTRALIBS(-[A-Za-z0-9_]+)?)=//p' "$1" \
         | tr ' \t' '\n\n' | grep -v -e '^$' || true
 }
 
-# _ffmpeg_ort_link_dirs <top> <tokens>: the -L dirs in order, then LIBRARY_PATH, one per line and
-# absolute (a relative one is read against FFmpeg's source top, where make links).
+# _ffmpeg_ort_link_dirs <top> <tokens>: the -L dirs then LIBRARY_PATH, relative ones read against <top> where make links.
 _ffmpeg_ort_link_dirs() {
     local t d prev=""
     local -a lpath=()
@@ -76,8 +70,7 @@ _ffmpeg_ort_link_dirs() {
     done
 }
 
-# _ffmpeg_ort_ld_pick <names> <dir>...: what ld takes -- the first dir holding one of <names> (space-
-# separated, tried in order per dir, as ld tries .so then .a), resolved; nothing when no dir does.
+# _ffmpeg_ort_ld_pick <names> <dir>...: the resolved file ld takes, trying <names> in order per dir as ld tries .so then .a.
 _ffmpeg_ort_ld_pick() {
     local d n
     local -a names=()
@@ -93,8 +86,7 @@ _ffmpeg_ort_ld_pick() {
     return 0
 }
 
-# _ffmpeg_ort_resolve <token> <top> <dir>...: when <token> names ORT (-lonnxruntime, -l:libonnxruntime*,
-# a path), the file ld takes for it (empty = unresolved); 1 for any other token.
+# _ffmpeg_ort_resolve <token> <top> <dir>...: the file ld takes for an ORT token (empty = unresolved); 1 for any other token.
 _ffmpeg_ort_resolve() {
     local t="$1" top="$2"
     shift 2
@@ -108,8 +100,7 @@ _ffmpeg_ort_resolve() {
     esac
 }
 
-# ffmpeg_ort_link_findings <config.mak> <chain-root>: one line per way FFmpeg's link takes an ORT other
-# than the chain's shared one; none = chain only. NOT covered: headers, the Makefiles' own -L, -Wl, spellings.
+# ffmpeg_ort_link_findings <config.mak> <chain-root>: one line per non-chain ORT the link takes; blind to headers, Makefile -L and -Wl.
 ffmpeg_ort_link_findings() {
     local mak="$1" lib top toks t real refs=0
     local -a dirs=()
@@ -134,8 +125,7 @@ ffmpeg_ort_link_findings() {
 
 # Cache the TensorFlow C API SDK (libtensorflow.so + headers) across rebuilds.
 ensure_tensorflow_c_sdk() {
-    # Belt-and-suspenders gate for the ~500 MB download; the primary one is the call
-    # site in _ffmpeg_probe_dnn_backends. See docs/linux-cross-builds.md FFMPEG_ENABLE_TF.
+    # Second gate for the large download. See docs/linux-cross-builds.md § versions.env feature toggles (Linux lane)
     if command -v is_truthy >/dev/null 2>&1 && ! is_truthy "${FFMPEG_ENABLE_TF:-0}"; then
         echo "Skipping TensorFlow C SDK: FFMPEG_ENABLE_TF is off (optional DNN backend, ~500 MB). Set FFMPEG_ENABLE_TF=1 to enable."
         return 1
@@ -145,8 +135,7 @@ ensure_tensorflow_c_sdk() {
     local tf_version="${TENSORFLOW_C_VERSION:-2.18.0}"
     local tf_archive
 
-    # A stamp, not just file presence: an interrupted extract leaves both files
-    # behind and the retry would accept the partial tree. docs/failure-modes.md
+    # A stamp, not file presence: an interrupted extract leaves the files behind for a retry to accept.
     if [ -f "${tf_dir}/.complete-${tf_version}" ] \
        && [ -f "${tf_dir}/lib/libtensorflow.so" ] \
        && [ -f "${tf_dir}/include/tensorflow/c/c_api.h" ]; then
@@ -154,8 +143,7 @@ ensure_tensorflow_c_sdk() {
         return 0
     fi
 
-    # Do NOT pre-create ${tf_dir}/lib and ${tf_dir}/include: the mv below would nest
-    # them one level deeper, so the cached-SDK check never passes again.
+    # Never pre-create lib/ and include/: the mv below would nest them a level deeper.
     mkdir -p "${cache_dir}" "${tf_dir}"
 
     case "$(uname -m)" in
@@ -173,8 +161,7 @@ ensure_tensorflow_c_sdk() {
     esac
 
     echo "Downloading TensorFlow C SDK ${tf_version}..."
-    # GCS, not GitHub releases: upstream stopped attaching C-library assets after
-    # 2.18.0, so every version since 2.19 404s there.
+    # GCS, not GitHub releases: upstream stopped attaching C-library assets after 2.18.0.
     local tf_release_url="https://storage.googleapis.com/tensorflow/versions/${tf_version}/${tf_archive}"
     local _tf_fetch_ok=0
     if [ -n "${TENSORFLOW_C_SHA256:-}" ]; then
@@ -185,15 +172,13 @@ ensure_tensorflow_c_sdk() {
     fi
     if [ "${_tf_fetch_ok}" = "1" ] \
         && [ -s "${cache_dir}/${tf_archive}" ]; then
-        # Extraction failure must disable the backend, not mask as success (a live .pc
-        # over an empty ${tf_dir}); drop the corrupt archive so the next build refetches.
+        # A failed extract disables the backend and drops the archive so the next build refetches.
         if ! tar -xzf "${cache_dir}/${tf_archive}" -C "${cache_dir}"; then
             rm -f "${cache_dir}/${tf_archive}"
             echo "WARNING: TensorFlow C SDK archive extraction failed (corrupt/truncated ${tf_archive}). libtensorflow will not be available."
             return 1
         fi
-        # The .pc below advertises ${tf_dir} to FFmpeg's configure, so it may only be
-        # generated once the extracted ./lib + ./include layout demonstrably exists.
+        # The .pc advertises ${tf_dir} to configure, so it is written only once lib/ and include/ exist.
         if [ ! -f "${cache_dir}/lib/libtensorflow.so" ] \
             || [ ! -f "${cache_dir}/include/tensorflow/c/c_api.h" ]; then
             echo "WARNING: TensorFlow C SDK archive lacks the expected lib/ + include/ layout. libtensorflow will not be available."
@@ -208,8 +193,7 @@ ensure_tensorflow_c_sdk() {
             "TensorFlow" "TensorFlow C API" "${tf_version}" "${tf_dir}" \
             '-L${libdir} -ltensorflow'
         export PKG_CONFIG_PATH="${cache_dir}:${PKG_CONFIG_PATH:-}"
-        # Written LAST: everything above must have succeeded for the retry to
-        # treat this tree as usable.
+        # Written last so a retry trusts only a tree whose every step succeeded.
         : > "${tf_dir}/.complete-${tf_version}"
         echo "TensorFlow C SDK ${tf_version} installed to ${tf_dir}"
         return 0
@@ -220,9 +204,7 @@ ensure_tensorflow_c_sdk() {
 }
 
 ffmpeg_probe_libtensorflow() {
-    # LiteRT/TFLite exposes a DIFFERENT API than the tensorflow/c/c_api.h this backend
-    # requires; only the full TF C SDK can back it (passing LiteRT off as it hard-fails
-    # FFmpeg's configure).
+    # Only the full TF C SDK has tensorflow/c/c_api.h; LiteRT's different API hard-fails FFmpeg's configure.
     local tf_cache="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/tensorflow-c"
     if [ ! -f "${tf_cache}/lib/libtensorflow.so" ]; then
         ensure_tensorflow_c_sdk || { echo "Skipping libtensorflow: full TensorFlow C SDK unavailable."; return 1; }
@@ -231,16 +213,12 @@ ffmpeg_probe_libtensorflow() {
     export PKG_CONFIG_PATH="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}:${PKG_CONFIG_PATH:-}"
     if ffmpeg_probe_pkg_config_feature "libtensorflow" "tensorflow" \
         "tensorflow/c/c_api.h" "TF_Version TF_NewGraph"; then
-        # FFmpeg's libtensorflow check is a BARE require, which never sees the .pc's -I;
-        # export the resolved paths as --extra-cflags/-ldflags/-libs, which it does honor.
+        # FFmpeg's bare require never sees the .pc's -I, but it honours --extra-cflags/-ldflags/-libs.
         _FFMPEG_TF_EXTRA_CFLAGS="-I${tf_cache}/include"
         _FFMPEG_TF_EXTRA_LDFLAGS="-L${tf_cache}/lib"
-        # -ltensorflow must stay OUT of the global --extra-libs: FFmpeg validates those by
-        # compiling AND EXECUTING a trivial main(), which then dies loading
-        # libtensorflow.so.2. Only FFmpeg's own require line (link-only) may add it.
+        # -ltensorflow stays out of the global --extra-libs: configure executes a test main() that cannot load it.
         _FFMPEG_TF_EXTRA_LIBS="-lstdc++"
-        # Make libtensorflow.so.2 loadable for executed checks and the smoke;
-        # bundle_sdk_runtime_libs then copies it into the image.
+        # Executed checks and the smoke must load libtensorflow.so.2; bundle_sdk_runtime_libs ships it later.
         export LD_LIBRARY_PATH="${tf_cache}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
         return 0
     fi

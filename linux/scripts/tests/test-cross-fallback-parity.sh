@@ -1,20 +1,11 @@
 #!/usr/bin/env bash
-# Parity suite for the intentionally-bundled cross_build_is_active fallback
-# clones (01-core/common.sh, gstreamer/common/build-gstreamer-monorepo.sh).
-# Bundling is policy; DRIFT is the bug — this file has drifted twice (arch
-# normalization missed 4 of 5 copies; the cross_build_enabled delegation missed
-# the monorepo copy). The 03-media/core/common.sh copy is GONE: it sat behind an
-# assertion in the same function that already refuses to continue without the
-# function, so it could never execute. That coupling is asserted below.
-# Assert BEHAVIOR parity of the fallback in three scenarios instead of
-# diffing text (comments/locals may differ).
+# The bundled cross_build_is_active fallback copies must behave alike; compared by behaviour, not text.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
 _probe() {
-  # $1 = file, $2 = fn-extraction context, $3... = env; runs the fallback
-  # definition in a clean bash with cross_build_is_active undefined.
+  # $1 = file, $2.. = env; runs the fallback alone in a bash where cross_build_is_active is undefined.
   local file="$1"; shift
   bash -c "
     arch_normalize() { case \"\$1\" in x86_64) echo amd64;; aarch64) echo arm64;; *) echo \"\$1\";; esac; }
@@ -25,19 +16,11 @@ _probe() {
   " 2>/dev/null
 }
 
-# 01-core/common.sh delegates at SOURCE time (structurally different,
-# semantically equivalent) — awk extraction doesn't fit it; assert its
-# structure directly instead of its behavior.
+# 01-core/common.sh delegates at source time, which awk extraction cannot run, so its structure is asserted.
 t_case "01-core/common.sh: source-time delegation to cross_build_enabled present"
 t_assert_ok grep -q 'cross_build_is_active() { cross_build_enabled; }' "${TESTS_DIR}/../01-core/common.sh"
 
-# ── why 03-media/core/common.sh carries no copy any more ────────────────────
-# media_common_init sources its critical modules, then asserts with `declare -F`
-# that log, cross_build_is_active and mem_capped_jobs exist and RETURNS 1 when one
-# does not. A `command -v cross_build_is_active` guard sixteen lines further down
-# could therefore never be true. Deleting a fallback because an assertion above it
-# makes it unreachable couples two independent things — so the coupling is pinned
-# here: put the fallback back if this assertion ever stops naming the function.
+# 03-media/core/common.sh needs no copy only while media_common_init refuses to run without the function.
 MEDIA_COMMON="${TESTS_DIR}/../03-media/core/common.sh"
 _MEDIA_INIT_SRC="$(t_fn_src "${MEDIA_COMMON}" media_common_init)" || exit 1
 
@@ -79,14 +62,7 @@ for f in "${FILES[@]}"; do
   t_assert_eq "DELEGATED" "${out}" "authoritative predicate must win over the approximation"
 done
 
-# ---------------------------------------------------------------------------
-# APT-HTTP restore parity (2026-08-24): bootstrap_ca deliberately downgrades a
-# https fast-mirror to http:// for the CA bootstrap; restore_mirror_https_scheme
-# (base-image.sh, exposed as the restore-mirror-scheme subcommand) must undo
-# EXACTLY that — and nothing else. Exercised here against fixture sources via
-# UBUNTU_SOURCES_ROOT with the REAL scripts, mirroring the in-image sequence:
-# downgrade -> ca-install marker -> restore.
-# ---------------------------------------------------------------------------
+# bootstrap_ca downgrades the mirror to http; restore-mirror-scheme must undo exactly that and nothing else.
 CORE_DIR="${TESTS_DIR}/../01-core"
 _MIRROR_TMP="$(mktemp -d)"
 trap 'rm -rf "${_MIRROR_TMP}"' EXIT
@@ -99,8 +75,7 @@ _mirror_fixture() {
 }
 
 _mirror_downgrade() {
-  # $1 = root; runs the REAL bootstrap-style rewrite with the http URL that
-  # bootstrap_ca passes (security rewrite on, as the worst case)
+  # $1 = root; the real rewrite with bootstrap_ca's http URL, security rewrite on as the worst case.
   USE_FAST_UBUNTU_MIRROR=true FAST_UBUNTU_MIRROR_URL=http://mirror.invalid/ubuntu/ \
   FAST_UBUNTU_REWRITE_SECURITY=true UBUNTU_SOURCES_ROOT="$1" \
     bash "${CORE_DIR}/use-fast-ubuntu-mirror.sh" >/dev/null 2>&1
@@ -122,11 +97,7 @@ t_case "apt-http: bootstrap downgrade lands http mirror (archive+security)"
 t_assert_ok _mirror_downgrade "${R}"
 t_assert_eq "URIs: http://mirror.invalid/ubuntu/|URIs: http://mirror.invalid/ubuntu/|" "$(_mirror_uris "${R}")"
 
-# The ordering contract lives in base-image.sh itself: bootstrap-ca installs
-# ca-certificates and THEN calls restore_mirror_https_scheme. Assert that
-# ordering statically on the production file — the first version of this case
-# touched a marker file and asserted its own touch, which could never fail
-# (caught by adversarial review 2026-08-24).
+# The ordering lives in base-image.sh, so it is asserted statically on that file.
 t_case "apt-http: base-image.sh restores the scheme AFTER installing ca-certificates"
 _bi="${CORE_DIR}/base-image.sh"
 _ca_line="$(grep -n 'install -y --no-install-recommends ca-certificates' "${_bi}" | head -1 | cut -d: -f1)"
@@ -156,14 +127,7 @@ _mirror_downgrade "${R}"
 t_assert_ok _mirror_restore "${R}" "https://mirror.invalid/ubuntu/"
 t_assert_eq "URIs: https://mirror.invalid/ubuntu-ports/|" "$(_mirror_uris "${R}")"
 
-# -- AS1: -security comes from the SAME archive as the target pocket --------
-# Two archives serving one pocket is how a lagging mirror reproduced the
-# Multi-Arch:same skew that cost riscv64 its Qt6. The rewrite defaults ON, and
-# FAST_UBUNTU_REWRITE_SECURITY=false is the explicit opt-out.
-# $1 = fixture root, $2 = optional FAST_UBUNTU_REWRITE_SECURITY value.
-# `env` is load-bearing: with the bare assignment-prefix form, an empty
-# ${knob:+...} leaves the NEXT word as the command name (`D=3: command not
-# found`) -- the prefix parser recognises NAME=value before expansion.
+# `env` is load-bearing: as a bare prefix, an empty ${knob:+...} makes the next word the command name.
 _mirror_fast() {
   local root="$1" knob="${2:-}"
   env USE_FAST_UBUNTU_MIRROR=true FAST_UBUNTU_MIRROR_URL=http://mirror.invalid/ubuntu/ \

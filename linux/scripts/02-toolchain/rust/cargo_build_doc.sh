@@ -18,11 +18,7 @@ fi
 CRATE_DIR_NAME="${CRATE_NAME//-/_}"
 info "Detected crate name: $CRATE_NAME (doc dir: $CRATE_DIR_NAME)"
 
-# Combine CSS files to create a custom rustdoc theme, from the brand sheet
-# DocumANTation generates. Resolved from SCRIPT_DIR, not the working directory,
-# so it answers the same inside a consumer's third_party/ANTfrastructure checkout.
-# Why both earlier probes found nothing:
-# docs/shared-script-libraries.md#the-rustdoc-theme-sheet
+# Brand sheet resolved from SCRIPT_DIR, so a consumer's checkout finds it too. docs/shared-script-libraries.md#the-rustdoc-theme-sheet
 HUB_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 BRAND_CSS="$HUB_ROOT/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css"
 EXT_CSS=""

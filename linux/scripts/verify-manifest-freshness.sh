@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
-# verify-manifest-freshness.sh — does :latest index the bytes THIS run built?
-# Registry-only: no pull, no emulation. Why neither assertion suffices alone:
-# docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push
-#
-# Usage: linux/scripts/verify-manifest-freshness.sh [--repo OWNER/PKG] [--tag latest]
-# Env:   EXPECT_RUN_ID  assert the shared run-id equals this exact value
-#        STALE_RISCV64 / STALE_ARM64 / STALE_AMD64
-#                       assert the child digest is NOT this known-previous digest
-# Exit:  0 all assertions hold, 1 otherwise.
+# Does :latest index this run's bytes? Registry-only; see docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push
+# Usage: verify-manifest-freshness.sh [--repo OWNER/PKG] [--tag TAG]; env EXPECT_RUN_ID, STALE_<ARCH> (a digest that must not appear)
 set -uo pipefail
 
 REPO="kataglyphis/kataglyphis_beschleuniger"

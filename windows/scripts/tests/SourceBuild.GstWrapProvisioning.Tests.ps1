@@ -1,13 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Invoke-GstWrapProvisioning's #88 contract, lifted out of Build-GstreamerFromSource.ps1
-# on 2026-08-31. The property that matters is the one the extraction could have broken
-# SILENTLY: failures must be RETURNED to the caller, because the caller owns the
-# fail-closed throw. A module function accumulating into `$script:` writes MODULE scope,
-# the caller's own `$script:wrapFailures` would stay empty, and a broken provisioning run
-# would ship a feature-reduced GStreamer -- exactly what #88 exists to prevent.
+
+# Failures must be returned, since the caller owns the fail-closed throw and a module's $script: is module scope.
 
 Describe 'Invoke-GstWrapProvisioning (#88 failure collection)' {
 
@@ -24,8 +19,7 @@ Describe 'Invoke-GstWrapProvisioning (#88 failure collection)' {
         New-Item -ItemType Directory -Path (Join-Path $dir 'libffi') -Force | Out-Null   # skip the libffi fetch
         try {
             $r = @(Invoke-GstWrapProvisioning -SubprojectDir $dir -TempDir $dir -LibffiVersion '0.0' -Logger { param($m) })
-            # .Count must not throw: an un-wrapped empty return is $null under StrictMode,
-            # which is how the caller's #88 gate would silently never fire.
+            # An unwrapped empty return is $null under StrictMode, so the caller's gate would never fire.
             $r.Count | Should -Be 0
         } finally { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
@@ -49,15 +43,12 @@ revision = deadbeef
     }
 
     It 'accumulates into a LOCAL list, not the module scope' {
-        # Guards the specific regression: if the function ever goes back to
-        # `$script:wrapFailures += ...`, that variable becomes visible in the
-        # module's own scope and the returned list stops being the truth.
+        # A `$script:` accumulator would live in module scope, and the returned list would stop being the truth.
         $src = Get-Content $script:modPath -Raw
         $fn = [regex]::Match($src, '(?ms)^function Invoke-GstWrapProvisioning \{.*?^\}')
         $fn.Success | Should -BeTrue -Because 'the function must be findable for this guard to mean anything'
         $fn.Value | Should -Not -Match '\$script:' -Because 'inside a module `$script:` is MODULE scope; the caller would read its own empty variable and the #88 gate would never fire'
-        # The call site @()-wraps. A comma-wrap here would NEST the array, making .Count
-        # read 1 for an empty and a filled list alike -- #88 firing on every green build.
+        # The call site @()-wraps; a comma-wrap would nest the array and make .Count read 1 either way.
         $fn.Value | Should -Not -Match 'return\s*,' -Because 'the caller @()-wraps; a comma-wrap nests the result and breaks the #88 count'
     }
 }

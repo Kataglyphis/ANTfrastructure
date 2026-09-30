@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# libcamera-env.sh – source this to make libcamera found by pkg-config, python and runtime loader
-# Usage:
-#   source ./libcamera-env.sh            # uses $LIBCAMERA_PREFIX or /opt/libcamera
-#   source ./libcamera-env.sh /opt/libcamera-custom
+# Usage: source libcamera-env.sh [prefix]  (default $LIBCAMERA_PREFIX, else /opt/libcamera)
 
-# allow override by env var or one positional arg
-# If this file is sourced, avoid accidentally using the caller's positional
-# parameters (which can contain unrelated values). Detect whether the script
-# is being sourced and ignore a first positional argument that clearly looks
-# like the script filename itself (e.g. "/usr/local/bin/libcamera-env.sh").
+# Sourced, $1 may be the caller's own argument; ignore it when it is this script's path.
 if [ -n "${BASH_SOURCE:-}" ] && [ "${BASH_SOURCE[0]}" != "$0" ]; then
   # Being sourced
   if [ $# -ge 1 ]; then
@@ -35,11 +28,7 @@ if [ -z "${LIBCAMERA_PREFIX}" ]; then
   return 1 2>/dev/null || exit 1
 fi
 
-# If the user accidentally passed the script path or the script filename
-# as the prefix (for example: `source /usr/local/bin/libcamera-env.sh`
-# with an argument), correct this to the default install prefix so that
-# environment variables point to the libcamera installation instead of
-# the script file.
+# A prefix that names this script falls back to the default install.
 if [ -n "${LIBCAMERA_PREFIX}" ] && [[ "${LIBCAMERA_PREFIX}" == *libcamera-env.sh ]]; then
   LIBCAMERA_PREFIX="/opt/libcamera"
 fi
@@ -49,8 +38,7 @@ if [ ! -d "${LIBCAMERA_PREFIX}" ]; then
   echo "libcamera-env: warning: prefix '${LIBCAMERA_PREFIX}' does not exist" >&2
 fi
 
-# helper: check if colon-separated $1 contains entry $2
-# Load shared path helpers if available, otherwise define fallbacks
+# Shared path helpers when shipped, else local fallbacks.
 if [ -f /opt/scripts/core/path-helpers.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/path-helpers.sh
@@ -80,8 +68,7 @@ else
   }
 fi
 
-# The image's libcamera goes AFTER whatever the caller set: a Raspberry Pi run bind-mounts the
-# host's libcamera and names it in these variables, and a prepend shadowed it (BACKLOG CON23).
+# Append, never prepend: a Raspberry Pi run bind-mounts the host's libcamera and names it here first.
 _libcamera_path_append() {
   local __varname="$1" __value="$2" __cur
   __cur="${!__varname:-}"
@@ -154,8 +141,7 @@ if [ -d "${PREFIX}/bin" ]; then
   _libcamera_path_append PATH "${PREFIX}/bin"
 fi
 
-# Python site-packages locations (attempt a few common patterns)
-# note: depends on which python3 version is used; we detect existing dirs
+# Python site-packages, whichever python3 version built them.
 for p in \
   "${PREFIX}/lib/python3*/site-packages" \
   "${PREFIX}/lib/python3*/dist-packages" \

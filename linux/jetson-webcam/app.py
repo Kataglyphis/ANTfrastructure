@@ -1,10 +1,4 @@
-"""Webcam object detection on the GPU, streamed to a browser as MJPEG.
-
-A capture thread keeps the newest camera frame; the inference loop runs
-torchvision's SSDLite-MobileNetV3 (COCO) with the network in one CUDA graph and
-a vectorized postprocess, and serves annotated frames on http://<host>:<port>/.
-Why the fast path exists and what it measured: README.md.
-"""
+"""Webcam object detection on the GPU, streamed to a browser as MJPEG; the fast path is explained in README.md."""
 
 import argparse
 import os
@@ -51,11 +45,7 @@ class Latest:
 
 
 class FastSSD:
-    """SSDLite's backbone+head replayed from a CUDA graph, then one batched NMS.
-
-    torchvision's own postprocess loops over 90 classes in Python and spent
-    80 % of each frame launching tiny kernels; this returns the same boxes.
-    """
+    """SSDLite replayed from a CUDA graph with one batched NMS instead of torchvision's per-class loop."""
 
     def __init__(self, model, dev, cuda_graph=True):
         self.m = model
@@ -104,8 +94,7 @@ def capture_loop(camera, frames):
     cap = cv2.VideoCapture(camera, cv2.CAP_V4L2)
     if not cap.isOpened():
         raise SystemExit(f"cannot open {camera}")
-    # No CAP_PROP_BUFFERSIZE=1: one V4L2 buffer halved the camera to 15 fps.
-    # Freshness comes from this thread handing on only the newest frame.
+    # No CAP_PROP_BUFFERSIZE=1: one V4L2 buffer halves the frame rate; freshness comes from keeping only the newest frame.
     cap.set(cv2.CAP_PROP_FPS, 30)
     while True:
         ok, frame = cap.read()

@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_script_copy_coverage.py. The bug it was written for
-# (media_load_arch_flags) was TRANSITIVE: the Dockerfile COPY'd what it ran, and
-# what that script sourced was missing -- so a suite that only checked direct RUN
-# references would leave the gate's reason for existing unproven. Each case is a
-# throwaway repo root, since the gate resolves its scan root from its own path.
-# docs/code-quality-tooling.md#script-copy-coverage-copy-coverage
+# verify_script_copy_coverage.py on throwaway roots, since it scans from its own path; see docs/code-quality-tooling.md#script-copy-coverage-copy-coverage
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -39,8 +34,7 @@ t_assert_eq "1" "$(t_rc _gate "${fix}")" "exit 127 deep inside a multi-hour buil
 t_assert_contains "$(t_out _gate "${fix}")" "/opt/scripts/core/never-copied.sh"
 
 t_case "a TRANSITIVE reference is followed: the sourced script must be provided too"
-# This is the media_load_arch_flags shape verbatim -- the Dockerfile COPY'd the
-# script it ran, and that script sourced a path the image never had.
+# The COPY'd script sources a path the image never had.
 fix="$(_tree)"; df="${fix}/linux/Dockerfile.base"
 printf 'source /opt/scripts/03-media/core/common.sh\n' > "${fix}/linux/scripts/01-core/install-deps.sh"
 _df "${df}" 'COPY linux/scripts/01-core/install-deps.sh /opt/scripts/core/install-deps.sh' \
@@ -55,8 +49,7 @@ _df "${df}" 'COPY linux/scripts/03-media/core/ /opt/scripts/03-media/core/'
 t_assert_eq "0" "$(t_rc _gate "${fix}")" "a directory COPY provides every *.sh beneath it"
 
 t_case "a bare string literal counts as a reference, not only a bash invocation"
-# `for f in "/opt/scripts/.../common.sh"; do source "$f"; done` never spells out
-# a command, and was how the original bug hid.
+# A `for f in "/opt/scripts/..."; do source "$f"; done` loop never spells out a command.
 fix="$(_tree)"; df="${fix}/linux/Dockerfile.base"
 printf 'for f in "/opt/scripts/core/helper.sh"; do source "$f"; done\n' \
   > "${fix}/linux/scripts/01-core/loop.sh"
@@ -66,8 +59,7 @@ t_assert_eq "1" "$(t_rc _gate "${fix}")"
 t_assert_contains "$(t_out _gate "${fix}")" "/opt/scripts/core/helper.sh"
 
 t_case "a per-RUN bind mount provides the script for that RUN"
-# Ephemeral, but present while the RUN executes; counting only COPY would make
-# the gate red on a healthy tree, which is how gates get switched off.
+# Counting only COPY would fail a healthy tree.
 fix="$(_tree)"; df="${fix}/linux/Dockerfile.base"
 printf 'true\n' > "${fix}/linux/scripts/01-core/mounted.sh"
 _df "${df}" 'RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro bash /opt/scripts/core/mounted.sh'
@@ -83,8 +75,7 @@ _df "${df}" 'COPY --chmod=755 \' \
 t_assert_eq "0" "$(t_rc _gate "${fix}")" "a logical line that is not joined provides nothing and fails a healthy tree"
 
 t_case "an inherited path listed in KNOWN_BASE_PROVIDED is allowed, and only for its Dockerfile"
-# The table is keyed by Dockerfile name on purpose: an entry that leaked to every
-# image would silence the exact class the gate exists for.
+# Keyed by Dockerfile, so an entry cannot silence the check for every image.
 fix="$(_tree media)"
 _df "${fix}/linux/Dockerfile.media" 'RUN bash /opt/scripts/toolchain/vulkan.sh'
 t_assert_eq "0" "$(t_rc _gate "${fix}")" "vulkan.sh comes from the sdk FROM base"
@@ -109,8 +100,7 @@ t_assert_eq "1" "$(t_rc _gate "${fix}")" "a green Dockerfile must not carry a re
 t_assert_contains "${_out}" "missing script reference(s)"
 
 t_case "--report-core-usage is read-only and never fails"
-# It quantifies whole-01-core mounts; wiring a verdict to it would gate on a
-# figure its own docstring calls a lower bound.
+# The report's figure is only a lower bound, so no verdict may hang on it.
 fix="$(_tree)"
 printf 'true\n' > "${fix}/linux/scripts/01-core/used.sh"
 _df "${fix}/linux/Dockerfile.base" 'RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core bash /opt/scripts/core/absent-from-mount.sh'

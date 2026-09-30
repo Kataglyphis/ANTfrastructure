@@ -1,8 +1,4 @@
-"""The gateway renderer, offline: what it emits from a registry, and what it refuses.
-
-The live half (the pinned APISIX image in front of fake lanes) is gateway_e2e/,
-opt-in with GATEWAY_E2E=1; this file needs neither a container nor a network.
-"""
+"""The gateway renderer offline; the live half is gateway_e2e/, opt-in with GATEWAY_E2E=1."""
 import base64
 import copy
 import hashlib
@@ -303,8 +299,7 @@ REFUSALS = [
     (_set(G + ("admin",), True), "unknown key"),
     (_set(L + ("npu", "ctx"), 4096), "unknown key"),
     (_del(G + ("drop_fields",)), "missing key"),
-    # APISIX keeps the LAST item of a repeated id without a word: these would
-    # silently replace chat's presend route, the model list or the info route.
+    # APISIX silently keeps the last item of a repeated id, so these would replace built-in routes.
     (_set(R + ("chat-presend",), {"lane": "gpu"}), "route id"),
     (_set(R + ("models",), {"lane": "gpu"}), "route id"),
     (_set(R + ("gateway-info",), {"lane": "gpu"}), "route id"),

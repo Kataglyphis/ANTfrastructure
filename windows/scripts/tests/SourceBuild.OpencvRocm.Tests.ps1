@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# OpenCV rocm lane: the CMake delta (empty on cpu/nvidia), the configure gate, their wiring, rocm-checks/OpenCV.ps1.
-# NOT covered: a real configure/build, the real cv2, any GPU, a ROCm path in neither the configure log nor CMakeCache.txt.
+# OpenCV's rocm-lane CMake delta (empty on cpu/nvidia), its configure gate and wiring; no real build, cv2 or GPU.
 
 $script:OcvScript = 'windows\scripts\build\Build-OpencvFromSource.ps1'
 $script:OcvCheck = 'windows\scripts\build\rocm-checks\OpenCV.ps1'

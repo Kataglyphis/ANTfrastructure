@@ -602,8 +602,7 @@ reference host's C:. Reproduce the INVARIANTS, not the numbers —
 20–25 % of the disk, floor 150 GB), `maxUsedSpace` ≈ 1.5× reservedSpace,
 `minFreeSpace` a trigger well above the ~25 GB danger band (the toml's main
 tier uses 60 GB; 30 GB left GC no runway on 2026-08-07), `[history]` unchanged
-everywhere. The sizing rationale lives as a comment block in
-`windows/buildkitd.toml` itself. **Re-run the apply script
+everywhere. **Re-run the apply script
 after every repo-side toml change** — deploy is a copy, nothing syncs
 automatically (this host ran a stale copy for hours after the `[history]`
 section landed).

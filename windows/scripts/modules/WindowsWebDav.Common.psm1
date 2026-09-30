@@ -2,14 +2,11 @@ Set-StrictMode -Version Latest
 #requires -Version 7.0
 
 
-# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, etc.)
-# No -Force when already loaded: a nested force-reimport moves the module's
-# exports out of the global session state on Windows PowerShell 5.1.
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
-# The uv venv lifecycle (health-check, recreate, requirements install) lives in
-# WindowsUv.Common - single source of truth instead of a per-module variant.
+# The uv venv lifecycle lives in WindowsUv.Common, not in a per-module copy.
 if (-not (Get-Module -Name 'WindowsUv.Common')) {
   Import-Module (Join-Path $PSScriptRoot 'WindowsUv.Common.psm1')
 }
@@ -36,9 +33,7 @@ function Invoke-EarlyWebDavDownload {
     [string]$WebDavLocal
   )
 
-  # The download helper ships next to this module in the ANTfrastructure layout
-  # (windows/scripts/certificates). It is extension-agnostic; the .pfx filter
-  # for the early certificate fetch is passed explicitly below.
+  # Extension-agnostic; the .pfx filter for the early certificate fetch is passed below.
   $earlyScript = Join-Path $PSScriptRoot '..\certificates\download_webdav_files.py'
   Write-BuildLog -Context $Context -Message "DEBUG: Early WebDAV script path (raw): $earlyScript"
 
@@ -48,7 +43,6 @@ function Invoke-EarlyWebDavDownload {
   }
   $earlyScript = (Resolve-Path $earlyScript).Path
 
-  # Prefer explicit 'uv' on PATH and invoke the script with 'uv run'.
   $uvCmd = Get-Command 'uv' -ErrorAction SilentlyContinue
   if (-not $uvCmd) {
     Write-BuildLogWarning -Context $Context -Message 'uv not found on PATH; cannot run early WebDAV script.'
@@ -58,13 +52,10 @@ function Invoke-EarlyWebDavDownload {
   $venvPath = Join-Path $WorkspacePath '.venv'
   Write-BuildLog -Context $Context -Message "DEBUG: Ensuring uv venv at: $venvPath (activation: .venv\Scripts\Activate)"
 
-  # Reuse a healthy venv, recreate a broken one (missing or non-runnable
-  # python.exe) - routed through the shared WindowsUv.Common implementation.
   $uvDelegates = New-UvBuildDelegates -Context $Context
   $logInfo = $uvDelegates.LogInfo
   $logWarning = $uvDelegates.LogWarning
-  # -IgnoreExitCode preserves this step's original best-effort behaviour:
-  # WebDAV bootstrap failures degrade to warnings, never abort the build.
+  # -IgnoreExitCode: WebDAV bootstrap failures degrade to warnings, never abort the build.
   $commandRunner = {
     param([string]$File, [string[]]$Parameters)
     Invoke-BuildExternal -Context $Context -File $File -Parameters $Parameters -IgnoreExitCode | Out-Null
@@ -81,10 +72,7 @@ function Invoke-EarlyWebDavDownload {
     Write-BuildLog -Context $Context -Message "DEBUG: Running: $($uvCmd.Source) pip install --upgrade pip"
     Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('pip', 'install', '--upgrade', 'pip') -IgnoreExitCode | Out-Null
 
-    # PINNED, from the one file the family keeps pins in. Unpinned, this
-    # installed whatever the default branch was that day, so "which client did
-    # this run use" had no answer -- and the bash half pins the same ref, so
-    # the two lanes cannot drift apart any more.
+    # Pinned from versions.env, the same ref the bash half installs.
     $hubRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
     $versions = ConvertFrom-VersionsEnv -Path (Join-Path $hubRoot 'linux/scripts/01-core/versions.env')
     if (-not $versions.Contains('WEBDAVCLIENT_REF')) {
@@ -98,24 +86,16 @@ function Invoke-EarlyWebDavDownload {
   }
 
   Write-BuildLog -Context $Context -Message "DEBUG: Invoking early WebDAV download with: $($uvCmd.Source) run $earlyScript $WebDavHost $WebDavUser <redacted> $WebDavRemote $WebDavLocal --extension .pfx"
-  # -RedactParameterValues keeps the password out of Invoke-BuildExternal's own
-  # "CMD: ..." log line (which would otherwise print every parameter verbatim,
-  # defeating the <redacted> DEBUG line above).
+  # -RedactParameterValues keeps the password out of Invoke-BuildExternal's own CMD log line.
   Invoke-BuildExternal -Context $Context -File $uvCmd.Source -Parameters @('run', $earlyScript, $WebDavHost, $WebDavUser, $WebDavPass, $WebDavRemote, $WebDavLocal, '--extension', '.pfx') -IgnoreExitCode -RedactParameterValues @($WebDavPass)
 }
 
 function Get-WebDavClientRequirement {
   <#
   .SYNOPSIS
-      The pip requirement for the pinned WebDAV client: the source archive of
-      that commit, never a git+https URL.
+      The pip requirement for the pinned WebDAV client: the commit's source archive, never a git+https URL.
   .DESCRIPTION
-      A git requirement makes uv run `git submodule update --recursive --init`.
-      The pinned commit still carries ExternalLib/Kataglyphis-ContainerHub, whose
-      nested DocumANTation and LaTeX submodules overflow Git for Windows' gitdir
-      limit inside uv's cache: "fatal: '$GIT_DIR' too big" (BeschleunigerBallett
-      run 36020442781). The package needs nothing from those submodules, and the
-      archive is the same commit's tree.
+      A git requirement makes uv init nested submodules that overflow Git for Windows' gitdir limit.
   #>
   param(
     [Parameter(Mandatory)]

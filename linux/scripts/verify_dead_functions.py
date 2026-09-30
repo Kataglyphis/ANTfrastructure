@@ -1,32 +1,7 @@
 #!/usr/bin/env python3
-"""Fail on NEW dead shell functions: defined under linux/scripts or linux/host-config
-and named nowhere else once comments, definition heads and a definition's mentions of
-itself are removed, plus the unlinked-definer arm that reaches inside same-name masking.
-Dispatch the scanner cannot see is frozen two-way in dead-functions.allow.
+"""Fail on NEW dead shell functions, named nowhere once comments and definition heads are removed (dead-functions.allow).
+
 docs/code-quality-tooling.md#dead-shell-functions-dead-functions
-
-GRADING A CONSUMER. `--root` and `--allow` are the same contract
-docs/scripts/verify_mutations.py already documents, and for the same reason the lint
-gates take one: a submodule checkout puts this script INSIDE the consumer, where a root
-derived from __file__ resolves to ANTfrastructure and the gate grades the wrong tree while
-reporting green over one nobody looked at.
-
-This gate needs TWO scan sets, and the second one decides whether the verdict means
-anything: a function is dead only when NOTHING in the corpus names it, so a corpus that
-is too small does not under-report -- it INVENTS dead code out of live functions. Under
-the hub's own root both sets are the historical ones (SCAN for the definitions, CORPUS
-for the text that may name them), so the hub's own verdict cannot move by a line. Under
-any other root both come from `git ls-files`: every tracked *.sh defines, and every
-tracked file that is not a doc, a patch or an allow file may call. `git ls-files`, not a
-walk, because a vendored submodule is a GITLINK -- so a consumer's corpus can neither
-swallow this repo's own scripts nor lose a call site to a build directory nobody
-remembered to exclude.
-
-The one narrowing a foreign root adds is CORPUS_BYTES, and it is printed rather than
-applied quietly: the largest file the hub's own corpus has ever read is 120 KB, while a
-consumer tracks 90 MB ASCII meshes whose vertex lists would be tokenised word by word.
-A call site does not live in one, but a skipped file is still a file this pass did not
-read, so the run says how many and names some.
 """
 import argparse
 import os
@@ -44,9 +19,7 @@ from verify_code_size import DEF_HEAD, ROOT, scan, shell_functions  # noqa: E402
 HUB = os.path.abspath(ROOT)
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dead-functions.allow")
 CORPUS = ("linux", ".github", "docs/scripts", "Makefile")
-# Top-level directories that belong to somebody else, and the size above which a tracked
-# file is an asset rather than a call site. Both are consulted only under a foreign
-# root: the hub's own CORPUS names neither, and its largest member is 120 KB.
+# Foreign-root only: vendored tops, and the size above which a tracked file is an asset, not a call site.
 EXCLUDE = ("third_party",)
 CORPUS_BYTES = 1 << 20
 SKIP_DIRS = {".git", "__pycache__", "patches", "_build", ".venv", "node_modules",
@@ -57,16 +30,12 @@ COMMENT = re.compile(r"(?:^|(?<=\s))#.*$", re.MULTILINE)
 HEAD = re.compile(r"^\s*" + DEF_HEAD, re.MULTILINE)
 WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 SOURCED = re.compile(r"(?:^|[^\w.])(?:\.|source|source_module\w*)\s+\S", re.MULTILINE)
-# The tree being graded, bound once by main() from --root before any scan runs. The
-# reachability pass is a web of small functions -- mentions -> self_mentions, census ->
-# unlinked -> _definers -> definitions -- that all read the same one tree and none of
-# which chooses it, so the tree is stated once here instead of in eleven signatures.
+# The graded tree, bound once by main() so the many small reachability helpers need not pass it.
 GRADED = HUB
 
 
 def _rel(path):
-    """Allowlist/corpus keys are posix-spelled; os.path.relpath uses backslashes on
-    Windows, where every frozen row then reported as miss + stale."""
+    """Posix-spelled relpath, since allowlist and corpus keys never carry Windows backslashes."""
     return os.path.relpath(path, GRADED).replace(os.sep, "/")
 
 
@@ -79,11 +48,7 @@ def _code(text):
 
 
 def _tracked(root):
-    """Every tracked path under `root`, outside the excluded top-level directories.
-
-    `git ls-files`, not a walk: a vendored submodule is a GITLINK, so the scope
-    cannot swallow another repo's files, and build output cannot get in.
-    """
+    """Every tracked path outside the excluded tops; ls-files keeps submodules and build output out."""
     out = subprocess.run(["git", "-C", root, "ls-files", "-z"],
                          capture_output=True, text=True)
     if out.returncode != 0:
@@ -104,29 +69,24 @@ def _size(path):
 
 
 def _outside(rel):
-    """Is this tracked path inside a directory -- or is it a file -- the corpus never
-    reads? The same SKIP_DIRS and SKIP_RELS the hub's own walk applies."""
+    """Is this path under SKIP_DIRS or SKIP_RELS, which the hub's own walk also skips?"""
     return (bool(set(rel.split("/")[:-1]) & SKIP_DIRS)
             or any(rel == skip or rel.startswith(skip + "/") for skip in SKIP_RELS))
 
 
 def _corpus_rel(rel):
-    """Is this tracked path corpus text at all: not a doc, a patch or an allow file,
-    and not inside a skipped directory?"""
+    """Is this path corpus text: not a doc, patch or allow file, and not skipped?"""
     return not rel.endswith(SKIP_SUFFIXES) and not _outside(rel)
 
 
 def oversized():
-    """The corpus text CORPUS_BYTES kept out. Reported, not dropped quietly: each one
-    is a file the reachability pass did not read, and reachability is the verdict."""
+    """Corpus files CORPUS_BYTES kept out, reported because the verdict did not read them."""
     return sorted(rel for rel in _tracked(GRADED)
                   if _corpus_rel(rel) and _size(os.path.join(GRADED, rel)) > CORPUS_BYTES)
 
 
 def def_files(root):
-    """(path, relpath) for every shell file whose definitions this gate grades: the
-    hub's own SCAN walk under the hub, every tracked *.sh under any other root. Never
-    narrowed by size -- a definition that goes unseen is dead code the gate lets in."""
+    """(path, relpath) per graded shell file, never narrowed by size: an unseen definition is dead code let in."""
     if root == HUB:
         return scan(".sh")
     return ((os.path.join(root, rel), rel)
@@ -175,8 +135,7 @@ def texts():
 
 
 def self_mentions():
-    """Name -> times its own definitions' bodies name it. A diagnostic that prints
-    the function's name is not a caller, and neither is recursion."""
+    """Name -> times its own bodies name it, since recursion or printing its name is not a call."""
     own = Counter()
     for path, rel in def_files(GRADED):
         for _rel, name, _start, body in shell_functions(path, rel):
@@ -220,10 +179,7 @@ def _names_of(corpus_texts):
 
 
 def unlinked(corpus_texts):
-    """Same-name masking, reached where the corpus makes it provable: a definition its
-    own file never names again, whose every other mention sits in a file that DEFINES
-    the name too, and where no corpus file names two of those files' basenames -- so no
-    mention can be about this copy. Findings, not a census; see the doc anchor."""
+    """Masked definitions provably uncalled; see docs/code-quality-tooling.md § The unlinked-definer arm."""
     definers = _definers()
     names = _names_of(corpus_texts)
     readers = {}
@@ -257,10 +213,7 @@ def _isolated(rel, corpus_texts):
 
 
 def census(corpus_texts):
-    """(rows, shared, considered, unlinked_count) -- definitions their own file never
-    names again; rows keeps the ones in a file that sources nothing and that nothing
-    else names, shared the ones whose name a second file also defines, and the count
-    the gate's unlinked-definer arm carves out of shared."""
+    """(isolated rows, same-name shared rows, considered count, unlinked count) over self-unnamed definitions."""
     considered = []
     for rel, name in definitions():
         text = corpus_texts.get(rel)
@@ -274,9 +227,7 @@ def census(corpus_texts):
 
 
 def _where(allow_path=None):
-    """Under a foreign root, say which tree the verdict is about, which freeze file it
-    read, and what the corpus did NOT read. Silent under the hub's own root, whose
-    output must not move by a line."""
+    """Under a foreign root, name the tree, the freeze file and what the corpus skipped; silent for the hub."""
     if GRADED == HUB:
         return
     print("  root: %s" % GRADED)
@@ -320,9 +271,7 @@ def _stale_note(key, corpus_texts):
 
 
 def disarmer(key, corpus_texts):
-    """Which corpus file disarmed this unlinked-definer row, or None. The arm only
-    holds while NO file names two definers' basenames; when one starts to, the row
-    goes stale for a reason that has nothing to do with the function being called."""
+    """The corpus file now naming two definers' basenames, which stales the row without a call, or None."""
     rel, _, name = key.partition("\t")
     peers = _definers().get(name, set()) - {rel}
     base = os.path.basename(rel)
@@ -348,15 +297,11 @@ def main(argv):
 
     global GRADED
     try:
-        # resolve_root, not abspath: `git rev-parse` succeeds in any
-        # SUBDIRECTORY of a checkout, so grading one anchors every allowlist
-        # key a level down without saying so.
+        # resolve_root, not abspath: a subdirectory root would silently shift every allowlist key.
         GRADED = gate_scope.resolve_root(args.root, ROOT)
     except gate_scope.ScopeError as exc:
         return gate_scope.die(exc)
-    # A consumer's freeze belongs to the consumer: keeping it beside this script would
-    # put every repo's ratchet inside the hub, where no consumer can see its own
-    # ratchet in its own diff.
+    # A consumer's freeze lives in the consumer, where its own diff shows it.
     allow_path = args.allow or (ALLOW if GRADED == HUB
                                 else os.path.join(GRADED, "dead-functions.allow"))
     corpus_texts = texts()

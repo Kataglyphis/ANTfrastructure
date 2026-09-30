@@ -1,6 +1,4 @@
-# from here:
-#
-# https://github.com/lefticus/cppbestpractices/blob/master/02-Use_the_Tools_Available.md
+# From https://github.com/lefticus/cppbestpractices/blob/master/02-Use_the_Tools_Available.md
 
 function(
   myproject_set_project_warnings

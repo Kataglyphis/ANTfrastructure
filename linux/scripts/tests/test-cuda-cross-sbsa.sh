@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the CUDA cross target (arm64 on an amd64 build host). The facts
-# they encode were probed against NVIDIA's live repo on 2026-09-23 and are
-# written up in docs/linux-accelerator-images.md § NVIDIA on arm64: a FLAT
-# cross repo (hence the trailing " /"), Architecture: all debs landing in
-# targets/sbsa-linux, a cross nvcc package with no executable in it, and no
-# NCCL cross package at any version.
+# The CUDA cross target (arm64 on an amd64 host); see docs/linux-accelerator-images.md § NVIDIA on arm64
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -52,7 +47,7 @@ t_assert_contains "${_stack}" "is not AArch64 — the cross repo served host pac
 t_assert_contains "${_stack}" 'NCCL has no cross package' "the gap is stated, not silently shipped"
 t_assert_contains "${_stack}" 'cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR}' \
   "the HOST toolkit still installs: nvcc, ptxas and cicc have to execute here"
-_cross_block="$(printf '%s\n' "${_stack}" | sed -n '/cross target (arm64 on an amd64 host)/,/^fi$/p')"
+_cross_block="$(printf '%s\n' "${_stack}" | sed -n '/^cuda_cross_packages() {/,/^fi$/p')"
 t_assert_contains "${_cross_block}" 'if [ -n "${CUDA_CROSS_TARGET_DIR:-}" ]; then' \
   "every cross action hangs off that one variable, so a native build is untouched"
 

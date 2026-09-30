@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Tests for 01-core/disk-guard.sh — the LRU victim picker and remaining-stage
-# slug protection used by build-cross-chain.sh's between-stage disk guard.
+# 01-core/disk-guard.sh: the LRU victim picker, slug protection and the reclaim levers.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -9,14 +8,10 @@ source "${TESTS_DIR}/../01-core/disk-guard.sh"
 workdir="$(mktemp -d)"
 trap 'rm -rf "${workdir}"' EXIT
 
-# Default OFF for the whole suite: with a real buildctl on PATH the DISK1
-# fallback would prune this host's live buildkit store. The DISK1 section below
-# turns it on only behind a stub. docs/build-cache-tiers.md#321-the-buildkit-store-fallback-disk1
+# Off unless stubbed: a real buildctl would prune this host's store; see docs/build-cache-tiers.md#321-the-buildkit-store-fallback-disk1
 export CROSS_BUILDKIT_PRUNE=0
 
-# ---- _disk_guard_free_gb ----
-# The preflight exists to stop a multi-hour ENOSPC death, so it must measure the
-# cache dir's OWN filesystem and must never itself abort the orchestrator.
+# _disk_guard_free_gb measures the cache dir's own filesystem and must never abort the orchestrator.
 t_case "free_gb reports a number for an existing path"
 free_root="$(_disk_guard_free_gb /)"
 case "${free_root}" in
@@ -25,13 +20,11 @@ case "${free_root}" in
 esac
 
 t_case "free_gb walks up to the deepest existing ancestor"
-# `df` fails outright on a not-yet-created dir — the first-run case. Walking up
-# measures the filesystem the path will land on once mkdir'd.
+# `df` fails on a not-yet-created dir, which is the first-run case.
 t_assert_eq "${free_root}" "$(_disk_guard_free_gb /definitely/not/here/at/all)"
 
 t_case "free_gb never aborts a caller running under set -euo pipefail"
-# Regression: an unguarded df/du pipeline here propagated through pipefail and
-# killed build-cross-chain.sh with a bare exit 1 and no diagnostic.
+# An unguarded df/du pipeline would kill the orchestrator through pipefail with no diagnostic.
 t_assert_ok bash -c 'set -euo pipefail
   source "'"${TESTS_DIR}"'/../01-core/disk-guard.sh"
   v="$(_disk_guard_free_gb /definitely/not/here)"
@@ -74,12 +67,7 @@ t_case "empty completed stage protects all enabled stages"
 t_assert_eq "repo_img_base,repo_img_compiler,repo_img_cross-sdk-amd64,repo_img_cross-sdk-arm64" \
             "$(_disk_guard_protected_slugs '')"
 
-# ---- _disk_guard_trim_cache_export (D4: the preflight cache-export trim) ----
-# kata-buildcache grew 62G -> 110G in ONE session and forced a controlled chain
-# stop at 19G free. The trim must reclaim OLDEST-first, respect its budget
-# instead of nuking the dir, say what it removed, and be a no-op when disk is
-# ample. Free space is stubbed via a file: the real function is called inside
-# $(...) subshells, so an in-memory sequence variable would never advance.
+# Trim: free space is stubbed via a file, because $(...) subshells never advance an in-memory sequence.
 seqfile="${workdir}/free.seq"
 _disk_guard_free_gb() {
   local n
@@ -92,8 +80,7 @@ _disk_guard_free_gb() {
 }
 _stub_free() { printf '%s\n' "$@" > "${seqfile}"; }
 
-# Three ~2 MiB slug dirs, oldest first. touch AFTER writing: adding a file
-# bumps the directory mtime and would flatten the ordering.
+# touch after writing: adding a file bumps the directory mtime and would flatten the ordering.
 BC="${workdir}/trim"
 _mk_bc() {
   local s
@@ -115,8 +102,7 @@ t_assert_eq "0" "${_DISK_GUARD_TRIM_REMOVED}"
 t_assert_eq "0" "${_DISK_GUARD_TRIM_FREED_BYTES}"
 t_assert_eq "yes yes yes" "$(_present slug-a) $(_present slug-b) $(_present slug-c)"
 t_assert_eq "" "$(cat "${workdir}/out.txt")" "an ample-disk run must log nothing"
-# Also with an explicit budget: without this the ample-disk guard is masked by
-# the negative-budget fallback and could be deleted without a test going red.
+# With an explicit budget too, or the negative-budget fallback masks the ample-disk guard.
 _disk_guard_trim_cache_export "${BC}" 40 "" 1073741824 0 > "${workdir}/out.txt"
 t_assert_eq "0" "${_DISK_GUARD_TRIM_REMOVED}"
 t_assert_eq "yes yes yes" "$(_present slug-a) $(_present slug-b) $(_present slug-c)"
@@ -171,9 +157,7 @@ t_assert_ok bash -c 'set -euo pipefail
   exit 0'
 
 
-# ---- keep-floor: the trim must never empty the cache-export dir --------------
-# Without it the byte budget does NOT bound the loop: when the deficit exceeds
-# the whole directory (the common case) it runs until pick_victim is dry.
+# Keep-floor: a deficit larger than the whole dir would otherwise run the trim until it is empty.
 t_case "trim keeps the newest N slugs even when the deficit is unbounded"
 _kf="$(mktemp -d)"
 for _i in 1 2 3 4 5 6; do
@@ -186,11 +170,7 @@ t_assert_eq "3" "$(find "${_kf}" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d
 t_assert_eq "s4 s5 s6" "$(find "${_kf}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" "the NEWEST must survive"
 rm -rf "${_kf}"
 
-# ---------------------------------------------------------------------------
-# B2: in-stage sampling. The runtime lane is ONE stage of three ~120G wrapper
-# builds, so the between-stage guard cannot fire in it — `grep -c disk-guard`
-# over the whole 483 MB log of the 2026-09-01 failure returns 0, including the
-# 28 minutes the disk drained from 88G to 4G.
+# In-stage sampling: the runtime lane is one long stage, where the between-stage guard never fires.
 _wd="$(mktemp -d)"
 _mkwd() {
   local s
@@ -238,12 +218,7 @@ _DISK_GUARD_WATCH_MAX_ITERS=3 _disk_guard_watch_loop "${_wd}/bc" 40 1 "" 3 > "${
 t_assert_eq "3" "$(grep -c -e '\[disk-watch\] 500G free' "${_wd}/o.txt")" "the loop must keep sampling for the whole stage"
 rm -rf "${_wd}"
 
-# ---------------------------------------------------------------------------
-# Runtime-lane sizing. The start-of-run preflight sized ~60G/arch and never
-# accounted for the lane; ~120G per wrapper build was measured in the resource
-# CSV. Arches build SEQUENTIALLY unless --parallel-archs, so the need scales
-# with concurrency — multiplying by arch count would refuse every run on a host
-# that can in fact complete one.
+# Arches build sequentially unless --parallel-archs, so the lane's need scales with concurrency, not arch count.
 t_case "runtime-lane need is per-concurrent-build, not per-arch"
 t_assert_eq "120" "$(_disk_guard_runtime_lane_need_gb 120 3 0)"
 t_assert_eq "360" "$(_disk_guard_runtime_lane_need_gb 120 3 1)"
@@ -255,31 +230,22 @@ t_assert_eq "120" "$(_disk_guard_runtime_lane_need_gb "lots" "many" "0")"
 t_assert_eq "0"   "$(_disk_guard_runtime_lane_need_gb 0 3 1)" "0 must disable, not default"
 
 t_case "the anti-spin append must use the separator pick_victim matches on"
-# The guard protects an undeletable victim so the LRU pick stops re-choosing it.
-# It appended with a SPACE while pick_victim matches on COMMAS, so the entry never
-# matched and the loop re-picked the same slug for the rest of the run. The
-# behavioural half: a space-joined list does not protect. Backlog WJ.
+# pick_victim matches on commas, so a space-joined protect list re-picks the same slug forever.
 t_assert_eq "slug-old" "$(_disk_guard_pick_victim "${workdir}/bc" "slug-old slug-mid")" \
   "a space-joined list protects NOTHING -- the oldest is picked again, forever"
 t_assert_eq "slug-new" "$(_disk_guard_pick_victim "${workdir}/bc" "slug-old,slug-mid")" \
   "the comma form is what actually protects"
-# The structural half: the caller has to build the comma form. A behavioural test
-# alone cannot catch the chain switching back, because it re-creates the string.
+# Structural half: the behavioural test re-creates the string, so it cannot catch the caller switching back.
 _chain="${TESTS_DIR}/../build-cross-chain.sh"
 t_assert_eq "0" "$(grep -c -e '_prot_ref="${_prot_ref} ${victim}"' "${_chain}" || true)" \
   "build-cross-chain.sh must not append a protected slug with a space"
-# ONE site since 2026-09-07: the two eviction loops share _chain_evict_slugs, and
-# the nameref is what lets the owner append into the caller's list at all.
+# Both eviction loops share _chain_evict_slugs; its nameref is what appends into the caller's list.
 t_assert_eq "1" "$(grep -c -e '_prot_ref="${_prot_ref},${victim}"' "${_chain}" || true)" \
   "the one anti-spin site must append with a comma"
 t_assert_eq "1" "$(grep -c -e 'local -n _prot_ref=' "${_chain}" || true)" \
   "a by-value copy would protect nothing outside the loop, which is the same spin"
 
-# ---------------------------------------------------------------------------
-# DISK1: the filtered buildkit-store fallback. On 2026-09-03 the riscv64 torch
-# stage hit ENOSPC at 4G free while 415G sat in the buildkit store and the guard
-# logged `NOTHING was reclaimable`. buildctl and df are stubbed here — a real
-# prune of this host's store must never be a side effect of a unit test.
+# DISK1: the filtered buildkit-store fallback, with buildctl and df stubbed so no test prunes the real store.
 _bk="$(mktemp -d)"
 mkdir -p "${_bk}/bin" "${_bk}/bc" "${_bk}/empty"
 BUILDCTL_LOG="${_bk}/buildctl.log"
@@ -300,8 +266,7 @@ STUB
 chmod +x "${_bk}/bin/buildctl"
 PATH="${_bk}/bin:${PATH}"
 export CROSS_BUILDKIT_PRUNE=1
-# 4G free is the ENOSPC number from the incident; 227G is what the manual
-# `PRUNE_KEEP_GB=120 prune-safe.sh` rescue left behind (223G reclaimed in 36s).
+# Free space before and after the stubbed prune.
 _disk_guard_free_gb() {
   if [ -f "${BUILDCTL_PRUNED}" ]; then echo "${BK_FREE_AFTER:-227}"; else echo 4; fi
 }
@@ -326,8 +291,7 @@ _disk_guard_free_gb() {
 }
 
 t_case "watch_once falls back to buildctl only after the trim comes up short"
-# The 2026-09-03 shape exactly: kata-buildcache has nothing prunable (three
-# slugs, keep_n 3), so the trim frees literally nothing and the store holds 415G.
+# The cache-export dir has nothing prunable (keep_n 3), so only the store can help.
 _bk_reset
 _disk_guard_watch_once "${_bk}/bc" 40 "" 3 > "${_bk}/o.txt" 2>&1
 t_assert_eq "0" "${_DISK_GUARD_TRIM_REMOVED}" "there is nothing for the trim to remove"
@@ -337,9 +301,7 @@ t_case "the prune is FILTERED and carries a keep-storage value"
 t_assert_contains "$(cat "${BUILDCTL_LOG}")" "prune --filter type==regular --keep-storage 120000" \
   "an unfiltered prune eats the exec.cachemount records — 1.5-2h of cold LLVM"
 
-# The prohibition is on the two forms that delete the exec.cachemount records,
-# not on the word: DISK3 added an image-store lever that uses `nerdctl image
-# prune` and `nerdctl rmi`, both of which leave the cache mounts alone.
+# Banned are the forms that delete exec.cachemount records; `nerdctl image prune` and `rmi` spare them.
 t_case "the destructive command is never reachable from the guard"
 t_assert_eq "0" "$(grep -c -e 'nerdctl' "${BUILDCTL_LOG}" || true)" \
   "the BUILDKIT fallback must reach buildctl and nothing else"
@@ -363,8 +325,7 @@ t_assert_eq "0" "$(grep -c -e 'NOTHING was reclaimable' "${_bk}/o.txt" || true)"
   "223G were reclaimed; the give-up warning would now be a lie"
 
 t_case "the fallback runs ONCE, not once per sample"
-# The store is at keep-storage after the first prune: a repeat walk costs I/O
-# during a build and frees nothing.
+# After the first prune the store is at keep-storage; a repeat walk only costs I/O.
 BK_FREE_AFTER=10 _disk_guard_watch_once "${_bk}/bc" 40 "" 3 > "${_bk}/o2.txt" 2>&1
 t_assert_eq "1" "$(_bk_prunes)" "a second sample must not re-prune"
 t_assert_contains "$(cat "${_bk}/o2.txt")" "already pruned once here"
@@ -381,8 +342,7 @@ t_assert_eq "0" "$(grep -c -e 'keep-storage' "${BUILDCTL_LOG}" || true)" \
 t_assert_contains "$(cat "${BUILDCTL_LOG}")" "prune --filter type==regular"
 
 t_case "a garbage keep value falls back to the default instead of reaching buildctl"
-# CROSS_BUILDKIT_KEEP_GB reaches an arithmetic context and a --keep-storage
-# argument; an operator typo must not become `--keep-storage 000` or a syntax error.
+# The value reaches arithmetic and --keep-storage, so a typo must not become `000` or a syntax error.
 for _bad in "" "abc" "12G" "-5" "10.5"; do
   _bk_reset
   CROSS_BUILDKIT_KEEP_GB="${_bad}" _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
@@ -399,10 +359,7 @@ _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
 t_assert_eq "1" "$(_bk_prunes)" "a fresh caller must be able to prune again"
 
 t_case "_disk_guard_reclaim_begin is what opens the next episode (DISK2)"
-# The latch is a plain global, so in the orchestrator PROCESS the between-stage
-# guard's prune after `base` would still be latched when the runtime lane refuses
-# hours later. The two chain gates open their own episode with this; the sampler
-# does not, because its episode is the whole stage it backgrounds.
+# The latch is a process global, so each chain gate opens its own episode; the sampler's is its whole stage.
 _bk_reset
 _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
 rm -f "${BUILDCTL_PRUNED}"
@@ -453,12 +410,7 @@ t_assert_ok bash -c 'set -euo pipefail
   exit 0'
 rm -rf "${_bk}"
 
-# ---------------------------------------------------------------------------
-# DISK3: the image store. On 2026-09-05 the guard said "NOTHING was reclaimable"
-# at 28G free while ~/.local/share/containerd held 295 GB, three cross-android-*
-# images from a PREVIOUS run among them. nerdctl is stubbed here -- a real image
-# removal must never be a side effect of a unit test.
-# docs/build-cache-tiers.md#322-the-image-store-lever-disk3
+# DISK3: the image-store lever, nerdctl stubbed; see docs/build-cache-tiers.md#322-the-image-store-lever-disk3
 _im="$(mktemp -d)"
 mkdir -p "${_im}/bin" "${_im}/bc"
 NERDCTL_LOG="${_im}/nerdctl.log"
@@ -521,8 +473,7 @@ t_assert_eq "0" "$(grep -c -e 'rmi ubuntu:24.04' "${NERDCTL_LOG}" || true)" \
 t_assert_eq "0" "$(grep -c -e 'rmi ghcr.io/x/y:<none>' "${NERDCTL_LOG}" || true)" \
   "an untagged image is the dangling prune's business, not rmi's"
 
-# BOUNDED ON PURPOSE: without the try-each-tag-once guard this loop never ends,
-# and an unbounded suite HANGS the mutation gate instead of reporting a bite.
+# Bounded: without try-each-tag-once the loop never ends, and a hang stalls the mutation gate.
 t_case "a tag that survives its own rmi is tried once, not forever"
 _im_reset
 timeout 15 bash -c '

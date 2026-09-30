@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# Golden trace of _build_vulkan_targets + the _vulkan_target_* helpers it was
-# decomposed into (02-toolchain/vulkan.sh).
-# docs/cross-build-verification.md#the-linuxscriptstests-suites
+# Golden trace of vulkan.sh's _build_vulkan_targets and its helpers; see docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 VULKAN_SH="${TESTS_DIR}/../02-toolchain/vulkan.sh"
 
-# Source ONLY the functions under test: vulkan.sh sets `set -euo pipefail` at
-# file scope and pulls 01-core modules on source.
+# Only the functions under test: sourcing vulkan.sh sets -euo pipefail and pulls in 01-core.
 _FNS=""
 for _fn in _cross_build_sdk_component \
            _vulkan_setup_cross_pkgconfig \
@@ -35,9 +32,7 @@ for _fn in _cross_build_sdk_component \
 ${_src}"
 done
 
-# _vulkan_target_build_sdk_rest reads a TABLE, not arguments: a row lost here is
-# a component that silently stops being cross-built, so the suite drives the
-# real one rather than a fixture of its own.
+# The real table, not a fixture: a lost row silently stops a component being cross-built.
 t_case "vulkan.sh still defines the _VK_TARGET_COMPONENTS table"
 _VK_TABLE_SRC="$(awk '/^_VK_TARGET_COMPONENTS="/,/^"$/' "${VULKAN_SH}")"
 t_assert_contains "${_VK_TABLE_SRC}" 'shaderc|shaderc/src,shaderc|' "table renamed or removed?"
@@ -60,12 +55,10 @@ ${_VK_WSI_SRC}"
 SDK="$(mktemp -d)"
 trap 'rm -rf "${SDK}"' EXIT
 
-# mktemp honours TMPDIR, so the argv normaliser must too; every non-word byte is
-# escaped for the ERE. docs/cross-build-verification.md
+# mktemp honours TMPDIR, so the argv normaliser must too.
 _TMP_RE="$(printf '%s' "${TMPDIR:-/tmp}" | sed -e 's#/*$##' -e 's#[^A-Za-z0-9_/-]#\\&#g')"
 
-# Fake extracted SDK tree; `full` = every source + host headers, the rest
-# exercise the skip branches.
+# _fixture <shape>: `full` has every source and host header; the others exercise skip branches.
 _fixture() {
   rm -rf "${SDK:?}"/*
   case "$1" in
@@ -75,9 +68,7 @@ _fixture() {
       : > "${SDK}/x86_64/include/vulkan/vulkan.h"
       ;;
     rest)
-      # None of the four TVM needs; one component per _vulkan_target_src shape:
-      # `volk` matches its only candidate, `shaderc` its FIRST (one level down),
-      # `vulkancapsviewer` its THIRD.
+      # One component per _vulkan_target_src candidate shape: only, first, third.
       mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/x86_64/include/vk_video"
       : > "${SDK}/x86_64/include/vulkan/vulkan.h"
       mkdir -p "${SDK}/source/volk" "${SDK}/source/shaderc/src" "${SDK}/source/vcv"
@@ -95,8 +86,7 @@ _fixture() {
   esac
 }
 
-# Runs it under the caller's `set -euo pipefail` with cmake/log/warn/die stubbed;
-# an errexit abort shows up as a MISSING "EXIT 0". $1=cmake rc $2=record SUDO
+# _trace <cmake rc> <record SUDO 0|1>: under errexit, an abort shows as a missing "EXIT 0".
 _trace() {
   local rc="$1" record_sudo="$2"
   (
@@ -120,12 +110,9 @@ _trace() {
   ) 2>&1 | sed -E "s#-B ${_TMP_RE}/[A-Za-z0-9._]+/#-B TMP/#; s#(--build|--install) ${_TMP_RE}/[A-Za-z0-9._]+/#\1 TMP/#; s#${SDK}#SDK#g"
 }
 
-# CMAKE_LIBRARY_ARCHITECTURE is part of the contract: it is what makes
-# find_library look in /usr/lib/<triplet> instead of reporting the target's X11,
-# XCB, ZSTD and OpenGL as "NOT found". docs/vulkan-foreign-arch-sdk.md
+# CMAKE_LIBRARY_ARCHITECTURE makes find_library search /usr/lib/<triplet> for the target's libraries.
 _XTOOL='-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_LIBRARY_ARCHITECTURE=aarch64-linux-gnu -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON'
 
-# ---------------------------------------------------------------------------
 _fixture full
 _out="$(_trace 0 0)"
 
@@ -154,10 +141,8 @@ t_assert_ok test -d "${SDK}/aarch64/lib"
 t_case "the loader's WSI exports are read, and a healthy loader counts as built"
 t_assert_contains "${_out}" "LOG Installed target Vulkan loader with X11/XCB/Wayland WSI"
 
-# ---------------------------------------------------------------------------
 t_case "a loader that configured and installed WITHOUT WSI is fatal (CON41)"
-# The shape that shipped: cmake exits 0, libvulkan.so.1 exists, the surface
-# entry points do not. A loader is REQUIRED, so this must die, not degrade.
+# The shape that shipped: cmake exits 0 and libvulkan.so.1 exists without the surface entry points; a REQUIRED loader must die.
 _fixture full
 _out="$( READELF_SYMS='  1: FUNC GLOBAL DEFAULT vkCreateInstance
   2: FUNC GLOBAL DEFAULT vkCreateXlibSurfaceKHR' _trace 0 0 )"
@@ -173,7 +158,6 @@ t_assert_contains "${_out}" "does not export vkCreateXcbSurfaceKHR vkCreateXlibS
   "a missing file must not read as an empty-but-healthy symbol table"
 t_assert_contains "${_out}" "DIE REQUIRED Vulkan cross-component(s) failed for aarch64: vulkan-loader"
 
-# ---------------------------------------------------------------------------
 t_case "a REQUIRED component that fails is fatal HERE, not a mystery hours later"
 _fixture full
 _out="$(_trace 1 0)"
@@ -194,7 +178,6 @@ _fixture full
 _out="$( VULKAN_CROSS_REQUIRED='' VULKAN_CROSS_STRICT=1 _trace 1 0 )"
 t_assert_contains "${_out}" "DIE VULKAN_CROSS_STRICT=1 and all 4 Vulkan cross-components failed for aarch64"
 
-# ---------------------------------------------------------------------------
 t_case "missing sources: each component logs its own skip, verdict is 0/0"
 _fixture empty
 _out="$(_trace 0 0)"
@@ -211,7 +194,6 @@ _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "CMAKE -S SDK/source/glslang-main -B TMP/glslang-aarch64"
 t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 1/1 component(s) built"
 
-# ---------------------------------------------------------------------------
 # ${SUDO} is recorded, not run: no host symlinks.
 t_case "glslang installed as 'glslang' also gets the glslangValidator alias"
 _fixture full
@@ -221,8 +203,7 @@ chmod +x "${SDK}/aarch64/bin/glslang"
 _out="$(_trace 0 1)"
 t_assert_contains "${_out}" "SUDO ln -s glslang SDK/aarch64/bin/glslangValidator"
 t_assert_contains "${_out}" "SUDO ln -sf SDK/aarch64/bin/glslang /usr/local/bin/glslang"
-# The recorder creates no alias, so the loop's last `[ -e ]` is false: EXIT 0
-# proves the helper's trailing `return 0` still absorbs it under errexit.
+# The recorder creates no alias, so the loop's last `[ -e ]` is false under errexit.
 t_assert_contains "${_out}" "EXIT 0" \
   "_vulkan_target_link_glslang_aliases must not leak a false [ -e ] test under set -e"
 
@@ -235,9 +216,7 @@ _out="$(_trace 0 1)"
 t_assert_contains "${_out}" "SUDO ln -s glslangValidator SDK/aarch64/bin/glslang"
 t_assert_contains "${_out}" "EXIT 0"
 
-# ---------------------------------------------------------------------------
-# Everything the SDK ships beyond the four TVM needs is table-driven, so the
-# table IS the behaviour. docs/vulkan-foreign-arch-sdk.md
+# Everything beyond the four TVM needs is table-driven, so the table is the behaviour
 _fixture rest
 _out="$(_trace 0 0)"
 
@@ -266,8 +245,7 @@ t_assert_contains "${_out}" "LOG vulkan-validationlayers: source missing at SDK/
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-B TMP/vulkan-validationlayers-aarch64' || true)" \
   "a skipped row must not configure"
 
-# volk alone: an OPTIONAL row. The `rest` fixture cannot serve here any more —
-# it also carries shaderc, whose loss is fatal by _VK_REQUIRED_COMPONENTS.
+# volk alone, an optional row: `rest` also carries shaderc, whose loss is fatal.
 t_case "a row that FAILS to build degrades the prefix, it does not fail the lane"
 _fixture empty
 mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/volk"
@@ -276,10 +254,7 @@ _out="$(_trace 1 0)"
 t_assert_contains "${_out}" "LOG volk unavailable on aarch64; the target SDK ships without it"
 t_assert_contains "${_out}" "EXIT 0" "an OPTIONAL component that will not cross-build is non-fatal by contract"
 
-# ---------------------------------------------------------------------------
-# The two config packages vulkan-profiles resolves through find_package: they are
-# in the SDK's own source/ tree and had no row, which is the whole reason
-# vulkan-profiles reported "Could not find ... valijson".
+# vulkan-profiles finds jsoncpp and valijson through find_package, so they need rows of their own.
 t_case "jsoncpp and valijson are cross-built BEFORE vulkan-profiles"
 _fixture empty
 mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/jsoncpp" \
@@ -292,8 +267,7 @@ t_assert_eq "jsoncpp-aarch64 valijson-aarch64 vulkan-profiles-aarch64" \
 t_assert_contains "${_out}" "-DBUILD_STATIC_LIBS=ON" "jsoncpp must ship a linkable library"
 t_assert_contains "${_out}" "-Dvalijson_INSTALL_HEADERS=ON" "valijson is header-only; the headers ARE the install"
 
-# ---------------------------------------------------------------------------
-# The Canadian-cross rows: a generator or a moc that must run on the BUILD HOST.
+# Canadian-cross rows: a generator or moc that must run on the build host
 t_case "slang takes the host generators when ./vulkansdk left them behind"
 _fixture empty
 mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/slang" \
@@ -315,10 +289,7 @@ t_assert_contains "${_out}" "LOG slang: no host generators at SDK/source/slang/b
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-DSLANG_GENERATORS_PATH' || true)"
 
 t_case "glslang is configured TWICE, shared first and static LAST -- VK6"
-# BUILD_SHARED_LIBS is exclusive, not additive: ON alone trades the six static
-# installs for nine shared ones. The vendor runs both passes into one prefix, and
-# the static one must land last because it owns the exported CMake package that
-# find_package(glslang) reads. Order is the whole point, so assert it.
+# BUILD_SHARED_LIBS=ON replaces the static installs, and the static pass must land last: it owns the CMake package.
 _fixture full
 _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "-B TMP/glslang-shared-aarch64" "the shared pass must exist at all"
@@ -342,10 +313,7 @@ t_assert_contains "${_out}" "-DCMAKE_PREFIX_PATH=SDK/aarch64;/usr/lib/aarch64-li
 t_assert_contains "${_out}" "-DVULKAN_LOADER_INSTALL_DIR=SDK/aarch64" \
   "upstream interpolates \${VULKAN_LOADER_INSTALL_DIR}/lib/libvulkan.so RAW -- unset it resolves to the HOST /lib/libvulkan.so and ninja refuses the graph before any rule runs"
 
-# ── VK4: the three components the vendor's own build_all builds ────────────
-# They were never in the HOST list, so nothing checked them out and nothing was
-# ever ATTEMPTED -- the same silent shape that cost riscv64 slang.
-# docs/vulkan-foreign-arch-sdk.md#vk4-the-components-the-vendor-builds-and-we-did-not
+# VK4: see docs/vulkan-foreign-arch-sdk.md#vk4-the-components-the-vendor-builds-and-we-did-not
 
 t_case "the HOST list checks out dxc, vulkantools and cdl, or nothing can build them"
 _HOST_SRC="$(awk '/^_vulkan_build_components\(\) \{/,/^\}/' "${VULKAN_SH}")"
@@ -403,11 +371,7 @@ _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "LOG dxc: no host tblgen at SDK/source/DirectXShaderCompiler/build/bin"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-DLLVM_TABLEGEN' || true)"
 
-# ── VK7: the DXC files the vendor prunes out of its own tarball ────────────
-# clean_nonsdk_files' BUILD_DXC arm. Measured on the 2026-09-09 sdk runs: the row
-# installs 1 283 headers into <arch>/include, 1 278 of them the LLVM 3.7 fork's
-# clang/llvm trees, and 4 of its 58 lib entries are the ones amd64 never sees.
-# docs/vulkan-foreign-arch-sdk.md#the-dxc-prune-mirrors-the-vendors-own
+# VK7: the vendor's own DXC prune; see docs/vulkan-foreign-arch-sdk.md#the-dxc-prune-mirrors-the-vendors-own
 _dxc_installed() {
   mkdir -p "${SDK}/aarch64/include/clang/Basic" "${SDK}/aarch64/include/clang-c" \
            "${SDK}/aarch64/include/llvm/IR" "${SDK}/aarch64/include/llvm-c" \
@@ -467,9 +431,7 @@ t_assert_eq "kept" "$(_present include/llvm/IR.h)" \
 t_assert_eq "kept" "$(_present lib/libdxil.so)"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'Pruning the DXC' || true)"
 
-# ── the four defects the 2026-09-08 chain measured behind the VK2 routes ────
-# Each route worked; each component then died at something new. These pin the
-# answers. docs/vulkan-foreign-arch-sdk.md
+# Component failures behind the VK2 routes; see docs/vulkan-foreign-arch-sdk.md
 t_case "every target-side SDK component is built PIC"
 t_assert_contains "$(awk '/^_cross_build_sdk_component\(\) \{/,/^\}/' "${VULKAN_SH}")" \
   "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" \
@@ -497,10 +459,7 @@ t_assert_contains "$(awk '/^_cross_build_sdk_component\(\) \{/,/^\}/' "${VULKAN_
   "and the helper has to actually drive them, between build and install"
 
 t_case "slang keeps WebGPU where Dawn has a prebuilt, and drops it where it does not"
-# slang-rhi picks a PREBUILT Dawn zip; upstream ships x86_64 and aarch64 only and
-# its arch cascade FATAL_ERRORs on anything else -- UNCONDITIONALLY, so the option
-# alone is not enough and the URL has to be defined too. This is the one place an
-# arch may differ, and only because no riscv64 Dawn binary exists upstream.
+# slang-rhi's Dawn prebuilts exist for x86_64/aarch64 only, and any other arch FATAL_ERRORs unless the URL is defined.
 _slangargs() {
   ( eval "$(awk '/^_vulkan_target_dynamic_args\(\) \{/,/^\}/' "${VULKAN_SH}")"
     log() { :; }
@@ -516,13 +475,7 @@ t_assert_contains "$(_slangargs riscv64-linux-gnu riscv64)" "-DSLANG_RHI_DAWN_UR
   "the URL-default block runs even with the backend off; defining it is what skips the FATAL_ERROR"
 
 t_case "no SDK component is skipped for the target arch -- amd64 is the reference"
-# slang was skipped on riscv64 as "not yet ported upstream". That gated the HOST
-# x86_64 ./vulkansdk build on the TARGET arch, which cannot be a reason, and the
-# skip took the CHECKOUT with it -- so the cross build could not attempt it either:
-# 19 host components vs arm64's 20, 15 cross attempts vs 16. All three arches must
-# build the same set; what cannot cross-build says so with a measured reason.
-# CODE only: the comment above the list explains the removal and names riscv64,
-# which is exactly what this case must not read.
+# Code only: a comment in the component list names riscv64, which this case must not read.
 _bcsrc="$(awk '/^_vulkan_build_components\(\) \{/,/^\}/' "${VULKAN_SH}" | grep -ve '^[[:space:]]*#')"
 t_assert_eq "" "$(printf '%s\n' "${_bcsrc}" | grep -e '_vulkan_skip' || true)" \
   "an arch-keyed skip table is exactly what cost riscv64 slang"
@@ -533,11 +486,7 @@ for _c in vulkan-tools gfxreconstruct vcv slang; do
 done
 
 t_case "gfxreconstruct is configured the way ./vulkansdk configures it"
-# The cross row built OpenXR that the VENDOR never builds -- build_gfxreconstruct()
-# passes GFXRECON_ENABLE_OPENXR=OFF. Its bundled OpenXR-SDK carries its OWN older
-# jsoncpp SOURCE, and our target prefix precedes it on the include path, so that
-# source compiled against our 1.9.6 header: 'skipCommentTokens' was not declared.
-# Parity with the vendor, not a skip: amd64 ships no openxr_loader either.
+# OpenXR's bundled older jsoncpp compiles against our newer header and fails; the vendor disables OpenXR too.
 _gfxrow="$(grep -e '^gfxreconstruct|' "${VULKAN_SH}")"
 for _f in GFXRECON_ENABLE_OPENXR=OFF D3D12_SUPPORT=OFF GFXRECON_TOCPP_SUPPORT=OFF \
           GFXRECON_INCLUDE_TEST_APPS=OFF; do
@@ -549,9 +498,7 @@ t_assert_contains "$(awk '/^_vulkan_target_dynamic_args\(\) \{/,/^\}/' "${VULKAN
   "_xbuild_extra_targets=()" \
   "the table is walked in one loop; without a reset slang's target would be driven for every component after it"
 
-# ---------------------------------------------------------------------------
-# The ./vulkansdk build tree is dropped in the RUN that produced it, so no layer
-# downstream of the SDK stage carries it.
+# Dropped in the RUN that produced it, so no downstream layer carries the build tree.
 _prune() {
   (
     set -euo pipefail
@@ -594,12 +541,7 @@ if [ -z "${VULKAN_TMPDIR_CASE:-}" ]; then
   rm -rf "${_alt}"
 fi
 
-# ── the host half of the pkg-config path ────────────────────────────────────
-# _vulkan_run_vulkansdk builds HOST tools while the cross search path is still
-# exported, and is sudo --preserve-env'd with it. A host tool asking for xcb was
-# handed the TARGET module, whose LIBRARY_DIRS became a find_library HINT and
-# resolved to an absolute foreign path -- which ld cannot skip the way it skips
-# an incompatible -l. That took the sdk stage down on 2026-09-05.
+# Host tools must not see the cross pkg-config path: a target LIBRARY_DIRS hint becomes an absolute path ld cannot skip.
 _pkgconf_env() {
   bash -c '
     set -u

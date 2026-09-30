@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# Tests for building the chain on a NON-amd64 build host, where the Android NDK
-# (prebuilt/linux-x86_64 only) cannot be installed and the android stage builds
-# payload-off instead. Three mechanisms must agree, none of which had ANY test
-# coverage before this suite: the host predicate (platform.sh), swap-native-gcc's
-# early return, and the payload-off marker android-sdk.sh writes / smoke-android
-# reads. Why the stage is not simply removed from the graph, and what each
-# consumer does with the marker: docs/linux-cross-builds.md#non-amd64-build-hosts
-#
-# Every case pins BUILDARCH — unpinned rows assert whatever machine runs them.
+# Every case pins BUILDARCH, or it asserts whatever machine runs it; see docs/linux-cross-builds.md#non-amd64-build-hosts
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -27,10 +19,7 @@ BUILDARCH=amd64   t_assert_ok android_build_host_supported
 BUILDARCH=arm64   t_assert_fails    android_build_host_supported
 BUILDARCH=riscv64 t_assert_fails    android_build_host_supported
 
-# The fallback ladder in _platform_raw_build_arch is BUILDARCH -> BUILDPLATFORM
-# -> dpkg -> uname. A caller that only sets BUILDPLATFORM must get the same
-# answer, or a Dockerfile that forgets `ARG BUILDARCH` silently takes the amd64
-# path on an arm64 machine.
+# BUILDPLATFORM alone must give the same answer, or a Dockerfile without `ARG BUILDARCH` takes the amd64 path.
 _supported_via_buildplatform() {
   ( unset BUILDARCH; BUILDPLATFORM="$1" android_build_host_supported )
 }
@@ -44,29 +33,19 @@ t_assert_eq "Skipping Android SDK/NDK installation on non-amd64 build host" "${_
 BUILDARCH=arm64 t_assert_fails    android_require_amd64_build_host "X"
 BUILDARCH=amd64 t_assert_ok android_require_amd64_build_host "X"
 
-# ---------------------------------------------------------------------------
-# swap-native-gcc.sh. Neither branch can COMPLETE on a machine with no /opt/gcc-* tree: both end in
-# assert_elf_arch / _assert_and_relocate_native_gcc against a path that does not
-# exist, and elf_machine_name's unreadable-file return kills the script under
-# errexit with no message at all. Asserting on stdout would therefore be an
-# absence test that also passes when the script dies for an unrelated reason.
-# The execution trace names the branch positively instead.
+# swap-native-gcc.sh cannot complete without /opt/gcc-*, so the execution trace names the branch it took.
 _swap_trace() {
   TARGET_ARCH="$1" BUILDARCH="$2" BUILD_MODE=cross GCC_VERSION=0.0.0 \
     bash -x "${SWAP}" 2>&1 | grep -E '^\+ (assert_elf_arch|_assert_and_relocate_native_gcc)'
 }
 
 t_case "swap-native-gcc keys its early return on the build host"
-# THE AMD64 TRIPWIRE: an amd64 host targeting arm64 must still demand the
-# Canadian cross prefix. If anyone ever generalises this early return into a
-# no-op, the cross build silently ships an amd64 GCC in an arm64 image.
+# Tripwire: an amd64 host targeting arm64 must still demand the Canadian cross prefix.
 t_assert_contains "$(_swap_trace arm64 amd64)" "_assert_and_relocate_native_gcc /opt/gcc-0.0.0-native-arm64" \
   "the amd64 cross path must be unchanged"
 t_assert_contains "$(_swap_trace riscv64 amd64)" "_assert_and_relocate_native_gcc /opt/gcc-0.0.0-native-riscv64"
 
-# target == build host: gcc.sh:376 took link_amd64_host_as_cross and never
-# produced a native prefix, so the swap must assert the HOST GCC instead of
-# demanding one that is never built.
+# target == build host builds no native prefix, so the swap asserts the host GCC.
 t_assert_contains "$(_swap_trace arm64 arm64)" "assert_elf_arch /opt/gcc-0.0.0/bin/gcc arm64" \
   "a native arm64 host must accept its own GCC, not demand a Canadian cross"
 t_assert_contains "$(_swap_trace riscv64 riscv64)" "assert_elf_arch /opt/gcc-0.0.0/bin/gcc riscv64"
@@ -78,11 +57,7 @@ _count() { printf '%s' "$1" | grep -c -- "$2" || true; }
 t_assert_eq "0" "$(_count "$(_swap_trace arm64 arm64)" "native-arm64")" \
   "the native host must never reach _assert_and_relocate_native_gcc"
 
-# ---------------------------------------------------------------------------
-# The payload-off marker: one literal path written by android-sdk.sh and read by
-# smoke-android.sh. Neither file may be run for real here (android-sdk.sh
-# installs an SDK; the path is under /opt), so the producer is asserted
-# structurally and the reader behaviourally against a redirected copy.
+# The payload-off marker: producer checked structurally, reader run against a redirected copy.
 t_case "the marker's producer and reader name the SAME path"
 t_assert_contains "$(cat "${ANDROID_SDK}")" "${MARKER_PATH}" \
   "android-sdk.sh must write the marker"
@@ -90,16 +65,12 @@ t_assert_contains "$(cat "${SMOKE_ANDROID}")" "${MARKER_PATH}" \
   "smoke-android.sh must read the same literal the producer writes"
 
 t_case "the marker is written inside the skip branch, not unconditionally"
-# Everything from the guard to its `exit 0` — the write must live in there, or
-# an amd64 build would stamp its own image payload-off.
+# The write must sit between the guard and its `exit 0`, or amd64 stamps its own image payload-off.
 _skip_branch="$(awk '/android_require_amd64_build_host "Android SDK\/NDK installation"/,/^fi$/' "${ANDROID_SDK}")"
 t_assert_contains "${_skip_branch}" "${MARKER_PATH}"
 t_assert_contains "${_skip_branch}" "build_host="
 
-# ---------------------------------------------------------------------------
-# smoke-android.sh against a redirected marker. Copy both files so the script's
-# own `source "${_SCRIPT_DIR}/smoke-common.sh"` still resolves, then rewrite only
-# the marker literal. This runs the REAL main(), not a re-implementation.
+# smoke-android.sh copied beside smoke-common.sh with only the marker rewritten, so the real main() runs.
 _SMOKE_DIR="$(mktemp -d)"
 trap 'rm -rf "${_SMOKE_DIR}"' EXIT
 cp "${SMOKE_COMMON}" "${_SMOKE_DIR}/smoke-common.sh"
@@ -126,15 +97,9 @@ done
 t_assert_eq "0" "$(_count "${_with_marker}" -- "--- sdkmanager ---")" \
   "the strict checks must not run at all"
 
-# ---------------------------------------------------------------------------
-# The frozen-build-host CLASS, as one checkable row. No test anywhere asserts a
-# --platform argument on any code path (`grep -rn -e '--platform' tests/` is
-# empty), so the literal count is the only thing standing between this and a
-# silent revert to a hardcoded platform.
+# No test asserts a --platform argument, so this literal count is what stops a revert to a frozen platform.
 t_case "linux/amd64 survives in exactly one place: the accessor's own default"
-# CODE only — a comment may name the default (and stage-defs.sh's does, to say
-# what CROSS_BUILD_PLATFORM defaults to). What must not exist is a second place
-# that DECIDES it.
+# Code only: a comment may name the default, but no second place may decide it.
 _count_lit() { grep -v '^[[:space:]]*#' "${REPO_SCRIPTS}/$1" | grep -c 'linux/amd64' || true; }
 t_assert_eq "1" "$(_count_lit 01-core/platform.sh)" \
   "cross_build_platform owns the default; a second copy is a second answer"
@@ -144,14 +109,7 @@ for _f in 01-core/tag-naming.sh 01-core/stage-defs.sh 01-core/chain-verify.sh; d
 done
 
 t_case "the platform knob is EXPORTED, or the fix is inert where it is needed"
-# build-cross-chain.sh launches build-runtime-manifest.sh through `run env`,
-# which forwards only exported vars. Unexported, the child re-sources
-# cross-stage-build.sh, re-defaults to linux/amd64, and pins the runtime
-# artifact-source to a platform the artifact is not. No in-process test can see
-# this, so it is asserted structurally.
-# Matches the SC2155-clean two-line form (assign, then bare `export NAME`) as
-# well as a single-line export, so splitting for the masked-declaration gate
-# cannot silently retire this assertion.
+# `run env` forwards only exported vars; the regex accepts both the one-line and the two-line export.
 t_assert_eq "1" "$(grep -cE '^export CROSS_BUILD_PLATFORM\b' "${REPO_SCRIPTS}/01-core/cross-stage-build.sh" || true)"
 
 t_case "cross_build_platform reads the knob and defaults to the amd64 lane"
@@ -160,11 +118,7 @@ t_assert_eq "linux/arm64"  "$(CROSS_BUILD_PLATFORM=linux/arm64 cross_build_platf
 t_assert_eq "linux/amd64"  "$(BUILDARCH=riscv64 cross_build_platform)" \
   "the knob, never the host — an emulated build must describe itself honestly"
 
-# ---------------------------------------------------------------------------
-# LLVM_COMMIT turns the pin from a bookmark into a pin. Before 2026-09-10 the
-# key existed, was documented as OPT-IN, and NO consumer read it — while
-# apt.llvm.org once silently shipped a 23.1.1 tree against LLVM_RELEASE=23.1.0,
-# the incident this pin exists for.
+# LLVM_COMMIT makes the release a real pin: apt.llvm.org can ship a tree other than the one LLVM_RELEASE names.
 t_case "llvm_assert_commit_pin has ONE owner and both clone sites call it"
 _CORE="${REPO_SCRIPTS}/01-core"
 t_assert_eq "1" "$(grep -c '^llvm_assert_commit_pin()' "${_CORE}/common.sh" || true)"
@@ -174,9 +128,7 @@ for _f in 02-toolchain/build-clang.sh 02-toolchain/llvm-cross.sh; do
 done
 
 t_case "the pin is set, peeled, and matches LLVM_RELEASE's tag"
-# Read the file rather than sourcing it: versions.env is a flat KEY=value list
-# and the suite runs under `set -u`, where sourcing it would trip on the first
-# ${OTHER:-} reference it happens to contain.
+# Read, not sourced: sourcing versions.env under this suite's `set -u` can trip on its references.
 _VERS="${_CORE}/versions.env"
 _vers_val() { sed -n "s/^$1=//p" "${_VERS}" | head -1; }
 t_assert_eq "23.1.1" "$(_vers_val LLVM_RELEASE)"
@@ -204,12 +156,7 @@ t_assert_eq "0" "$(grep -c '/usr/lib/llvm-\${_major}' "${_MAT}" || true)" \
 t_assert_contains "$(cat "${_MAT}")" '/opt/llvm-target-${_arch}' \
   "the pinned source tree must be the first host candidate"
 
-# ---------------------------------------------------------------------------
-# Emulating amd64 only becomes necessary once the BUILD HOST is not amd64 —
-# which is exactly what this suite is about. Both helpers had no amd64 arm, and
-# _binfmt_qemu_name's catch-all produced "qemu-amd64", a handler that does not
-# exist under any name (the real one is qemu-x86_64). verify_foreign_binfmt
-# therefore err()'d before the build loop on every arm64/riscv64 host.
+# A non-amd64 host must emulate amd64, whose QEMU handler is qemu-x86_64, never qemu-amd64.
 t_case "every arch maps to a QEMU handler that really exists"
 _BRM="${REPO_SCRIPTS}/build-runtime-manifest.sh"
 _qemu_name() {
@@ -232,18 +179,10 @@ t_assert_eq "qemu-aarch64" "$(_reg_bin arm64)"
 t_assert_contains "$(sed -n '/^elf_magic_for()/,/^}/p' "${_REG}")" 'x3e' \
   "without the ELF magic the registrar cannot install the amd64 handler"
 
-# The registrar's DEFAULT arch set, for the hand-run path. ensure_foreign_binfmt
-# (build-runtime-manifest.sh) derives the set and always passes --arches, so it
-# never reaches this default -- but verify_foreign_binfmt's own err() tells the
-# operator to run `bash linux/scripts/setup-rootless-binfmt.sh` bare, and the
-# default was the literal "arm64,riscv64". On an arm64 host that registered a
-# qemu-aarch64 handler for the NATIVE arch (binfmt_misc is consulted for native
-# ELF too, so native binaries would route through QEMU) while leaving amd64 --
-# the only arch that host actually has to emulate -- unregistered.
+# The bare-run default must skip the host's own arch: binfmt_misc would route native ELF through QEMU too.
 t_case "the registrar's default emulates every chain target EXCEPT the host's own"
 _reg_src() { sed -n '/^_binfmt_host_arch()/,/^}/p;/^_binfmt_default_arches()/,/^}/p' "${_REG}"; }
-# ONE runner for both helpers: <fn> under a pinned `uname -m`. Two copies that
-# differed only in the trailing function name tripped the code-dupes gate.
+# _reg_call <fn> <uname -m>: one runner for both helpers, so the code-dupes gate sees no copy.
 _reg_call() {
   bash -c "
     uname() { [ \"\$1\" = -m ] && echo '$2' || command uname \"\$@\"; }
@@ -261,13 +200,7 @@ t_assert_eq "amd64,arm64"     "$(_reg_default_for riscv64)"
 # Unknown host: emulate everything rather than silently registering nothing.
 t_assert_eq "amd64,arm64,riscv64" "$(_reg_default_for ppc64le)"
 
-# The qemu-user EMULATOR IMAGE platform. extract_emulators pulled
-# `--platform linux/amd64` unconditionally; a qemu-user binary is a HOST-arch
-# executable, so on an arm64 host that unpacked x86-64 ELF emulators that
-# cannot exec -- AND the amd64 image ships no qemu-x86_64 at all (an
-# x86_64-on-x86_64 emulator is pointless), which is the one an arm64 host
-# needs. Observed on a Jetson AGX Orin: every extracted binary reported
-# "Machine: Advanced Micro Devices X86-64".
+# qemu-user binaries run on the host, so the emulator image must match it; amd64's ships no qemu-x86_64.
 t_case "the emulator image platform follows the host, not a frozen amd64"
 t_assert_eq "amd64"   "$(_reg_host_arch_for x86_64)" \
   "the amd64 lane must still pull the amd64 emulator image"
@@ -279,17 +212,11 @@ t_assert_eq ""        "$(_reg_host_arch_for ppc64le)" \
 # The frozen literal must not come back.
 t_assert_eq "0" "$(grep -cE -- '--platform linux/amd64' "${_REG}" || true)" \
   "extract_emulators must ask for the host platform, not freeze amd64"
-# The EXIT trap fires after the function returns, so a `local` there dies under
-# set -u with "tmp: unbound variable" and masks the real failure.
+# An EXIT trap fires after the function returns, so a `local` in it dies under set -u and masks the failure.
 t_assert_eq "0" "$(grep -cE "trap 'rm -rf \"\\$\{tmp\}\"' EXIT" "${_REG}" || true)" \
   "an EXIT trap must not dereference a function-local"
 
-# ---------------------------------------------------------------------------
-# When the LLVM target IS the build host, setup_linux_cross_env returns early
-# and exports no AS/LD/AR/... — the native tools already are the target's. The
-# wrapper populator read them with a bare ${!VAR} and died under `set -u`. That
-# path was unreachable until the host arch started building its own pinned LLVM,
-# and it then cost a 142-minute chain run.
+# With target == build host no AS/LD/AR is exported, so the wrapper populator must not read them bare.
 _LLVM_SH="${REPO_SCRIPTS}/02-toolchain/llvm.sh"
 _FN_SRC="$(mktemp)"
 sed -n '/^llvm_cross_populate_tool_wrapper_dir()/,/^}/p' "${_LLVM_SH}" > "${_FN_SRC}"
@@ -321,16 +248,7 @@ t_assert_eq "${_FAKE}/fake-as" "$(readlink "${_WD2}/as")" \
 rm -rf "${_FAKE}" "${_WD2}" "${_FN_SRC}"
 
 
-# ── A single-entry target list that IS the host arch ─────────────────────────
-# build_cross_llvm_targets moves the BUILD HOST's arch to the front of
-# CROSS_TARGETS so its LLVM is built first. It did that with
-#   grep -vx "${_host_arch}"
-# which, for `--cross-targets arm64` on an arm64 host -- a NATIVE-ONLY build --
-# matches nothing, exits 1, and under `set -o pipefail` kills the whole
-# dockerfile-llvm RUN with NO message. Observed 2026-09-16: the compiler stage
-# died right after `apt-get install binutils-dev` and BuildKit reported only the
-# instruction. The empty remainder is the CORRECT answer, which is why the
-# ${_rest:+,${_rest}} join already handled it.
+# A host-only target list leaves `grep -vx` nothing to print; under pipefail that exit 1 killed the RUN silently.
 t_case "the host-first reorder survives a target list that is ONLY the host arch"
 _LLVM_CROSS="${REPO_SCRIPTS}/02-toolchain/llvm-cross.sh"
 _reorder() {

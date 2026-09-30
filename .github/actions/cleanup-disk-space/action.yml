@@ -19,10 +19,7 @@ runs:
       run: |
         $ErrorActionPreference = 'Continue'
 
-        # Fast recursive delete: `rmdir /s /q` is dramatically faster than
-        # PowerShell `Remove-Item -Recurse` on huge trees (tens of thousands of
-        # small files, e.g. C:\hostedtoolcache) - the difference is minutes vs
-        # tens of minutes on a CI runner. Supports wildcards by expanding first.
+        # cmd's rmdir is minutes faster than the PowerShell cmdlet on trees of many small files.
         function Fast-Remove($pathPattern) {
           foreach ($p in @(Get-Item -Path $pathPattern -Force -ErrorAction SilentlyContinue)) {
             $path = $p.FullName
@@ -156,13 +153,7 @@ runs:
         }
 
         Write-Host "Removing Android, Windows SDKs, and other big known folders (if present)..."
-        # The engine build runs entirely INSIDE the winamd64 container, so every
-        # host-side toolchain is removable - only docker, git (for the D:\ws clone)
-        # and PowerShell are needed. The winamd64 image is ~54 GB and its layers
-        # import into Docker's data-root on C:; the default cleanup left C: with
-        # only ~59 GB free (measured 2026-07-21), a few GB short of the import's
-        # peak need, so free the biggest remaining consumers - above all the whole
-        # hostedtoolcache (~10-20 GB of cached language runtimes we never use).
+        # The build runs inside the container, so host toolchains can go; the image import needs more free space than the default cleanup leaves.
         $maybeRemove = @(
           "C:\hostedtoolcache",
           "C:\Program Files\dotnet",
@@ -233,9 +224,7 @@ runs:
           Remove-Item -Path $s.FullName -Recurse -Force -ErrorAction SilentlyContinue
         }
 
-        # This whole step is best-effort disk reclamation; a non-zero $LASTEXITCODE
-        # leaking from a native command (e.g. `docker system prune`) must not fail
-        # the job. Exit clean.
+        # Best effort: a native command's leaked $LASTEXITCODE must not fail the job.
         exit 0
 
     - name: Disk space AFTER cleanup (all drives)
@@ -247,14 +236,8 @@ runs:
             @{n='FreeGB';e={[math]::Round($_.SizeRemaining/1GB,1)}},
             @{n='SizeGB';e={[math]::Round($_.Size/1GB,1)}},
             FileSystemLabel -AutoSize | Out-String | Write-Host
-        # winamd64 is ~54 GB to import; the largest FreeGB above must exceed that,
-        # on whatever drive Docker's data-root lives, or `docker pull` fails with
-        # hcsshim::ImportLayer "not enough space on the disk (0x70)".
+        # The drive holding Docker's data-root must fit the image import, or the pull fails with ImportLayer 0x70.
         $dataRoot = docker info --format '{{.DockerRootDir}}' 2>$null
         Write-Host ("Docker data-root: " + $dataRoot)
-        # This step is a diagnostic - it PRINTS disk space, it never gates on it.
-        # The Docker prune two steps up leaves the daemon briefly unavailable, so
-        # `docker info` can exit non-zero; the GitHub pwsh wrapper appends
-        # `exit $LASTEXITCODE`, which would then red-light the whole Windows lane
-        # over an informational line. Reset it so only real command failures fail.
+        # Diagnostic only: after the prune `docker info` may fail, and the pwsh wrapper would exit with its code.
         $global:LASTEXITCODE = 0

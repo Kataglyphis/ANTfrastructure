@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# setup-torch-venv.sh
-# Consolidated torch venv creation and application assembly for Dockerfile.torch.
-# Replaces the three separate RUN blocks that duplicate the cross-mode skip guard.
+# Torch venv creation and app assembly for Dockerfile.torch, behind one cross-mode skip guard.
 
-# A set -e death in these image-side scripts printed nothing at all until
-# 2026-09-03. docs/failure-modes.md#a-packaging-script-dies-with-no-message
+# See docs/failure-modes.md § A packaging script dies with no message
 # shellcheck source=linux/scripts/01-core/logging.sh
 source /opt/scripts/core/logging.sh
 install_err_trap
@@ -15,11 +12,7 @@ TORCH_APP_MODE="${TORCH_APP_MODE:-all}"
 VENV="${VENV:-/opt/venv}"
 BUILD_MODE="${BUILD_MODE:-native}"
 
-# The swapped-in native GCC has no /usr/include in its baked sysroot, so
-# source-built wheels miss libc headers. CPATH alone is not enough: C++
-# #include_next needs -idirafter. Deliberate inline copy of
-# append_cross_idirafter() in 01-core/common.sh, which the torch stage does not
-# COPY — keep in sync, verify-critical-fixes.sh fix6 guards it.
+# The native GCC's sysroot lacks /usr/include and #include_next needs -idirafter; inline copy of append_cross_idirafter.
 _mi="$(compgen -G '/usr/include/*-linux-gnu' 2>/dev/null | head -1 || true)"
 _ml="$(compgen -G '/usr/lib/*-linux-gnu' 2>/dev/null | head -1 || true)"
 _idaf="-idirafter /usr/include"
@@ -30,8 +23,7 @@ export CFLAGS="${CFLAGS:+${CFLAGS} }${_idaf}"
 export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_idaf}"
 export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}${_ml:+${_ml}:}/usr/lib"
 
-# platform.sh gives elf_unresolved_needed --transitive (backlog D4). Hard-require:
-# it feeds a fail-loud gate, so skipping it silently would un-gate that.
+# Hard-require platform.sh: it feeds a fail-loud gate that a silent skip would disarm.
 for _stv_platform in /opt/scripts/core/platform.sh \
                      "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/platform.sh"; do
   if [ -f "${_stv_platform}" ]; then
@@ -51,10 +43,7 @@ cross_skip() {
   return 1
 }
 
-# Resolve the venv's python3.X/site-packages dir once, glob-safe. `test -d` does
-# NOT glob, so `[ -d "${VENV}/lib/python3."*/site-packages ]` misfires when the
-# venv contains more than one python3.X dir (or zero). Callers use the returned
-# path both as a -d test subject and as a cp destination. Empty output = none.
+# `test -d` does not glob, so resolve the site-packages dir once; empty output means none.
 venv_site_packages() {
   compgen -G "${VENV}/lib/python3.*/site-packages" 2>/dev/null | head -1
 }
@@ -80,10 +69,7 @@ setup_torch_venv() {
   }
 
   local venv_args=(--seed --python="${python_bin}")
-  # On foreign architectures running under QEMU, the source-built GCC may
-  # fail to fork its cc1/as sub-processes, breaking pip sdist builds (e.g.
-  # pycairo via meson).  Use --system-site-packages so pip sees apt-installed
-  # python3-cairo and skips the source build.
+  # Under QEMU the source-built GCC may fail to fork cc1, so sdists like pycairo come from apt.
   if [ "$(uname -m)" != "x86_64" ]; then
     venv_args+=(--system-site-packages)
   fi
@@ -91,10 +77,7 @@ setup_torch_venv() {
 }
 
 seed_opencv5_bindings() {
-  # If OpenCV 5.x Python bindings were built during the media stage, they
-  # live at /opt/opencv5/lib/python3.*/site-packages/cv2.  Create a .pth
-  # file in the venv so `import cv2` resolves to the source-built version
-  # instead of downloading an older PyPI wheel.
+  # A .pth, so `import cv2` finds the source-built OpenCV 5 bindings rather than a PyPI wheel.
   local cv2_dir
   cv2_dir="$(find /opt/opencv5/lib/python3.*/site-packages -maxdepth 1 -name cv2 -type d 2>/dev/null | head -1 || true)"
   if [ -n "${cv2_dir}" ]; then
@@ -108,9 +91,7 @@ seed_opencv5_bindings() {
     fi
     echo "Added OpenCV5 bindings .pth: ${parent}"
 
-    # Cross-compiled cv2.so gets the host platform suffix (x86_64) from
-    # cmake's FindPython3.  Rename it to match the runtime target platform
-    # suffix so the extension is loadable on the real architecture.
+    # A cross-built cv2 carries the host's x86_64 suffix; rename it to the target's.
     local host_arch target_suffix so_dir
     host_arch="$(uname -m)"
     target_suffix="$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX"))' 2>/dev/null || true)"
@@ -128,9 +109,7 @@ seed_opencv5_bindings() {
   fi
 }
 
-# cv2.abi3.so's dynamic deps. Our OpenCV wheel is not manylinux — it bundles
-# nothing. This list is exactly the sonames ldd reports unresolved; dropping any
-# one breaks `import cv2`.
+# Exactly cv2.abi3.so's unresolved sonames: our non-manylinux wheel bundles nothing, so drop none.
 _install_cv2_runtime_apt() {
   apt-get install -y --no-install-recommends \
     libgirepository-2.0-dev libcairo2-dev libgirepository1.0-dev \
@@ -167,10 +146,7 @@ _install_cv2_runtime_apt() {
     libhdf5-310 libavif16
 }
 
-# Installs exactly what build-ffmpeg.sh's emit_runtime_apt_manifest recorded, so
-# it auto-tracks the per-arch probe result instead of guessing sonames.
-# Best-effort per package; the ffmpeg smoke is the backstop. The hardcoded
-# opencore-amr entries above cover older media images with no manifest.
+# Exactly what emit_runtime_apt_manifest recorded; best-effort, with the ffmpeg smoke as the backstop.
 _install_ffmpeg_runtime_codecs() {
   if [ -s /opt/ffmpeg/runtime-apt-packages.txt ]; then
     local _ff_pkgs
@@ -193,16 +169,11 @@ _install_ffmpeg_runtime_codecs() {
   fi
 }
 
-# Fail-loud gate: ffmpeg's full transitive closure must resolve here, because the
-# codec installs above are best-effort and the ffmpeg smoke is skipped without
-# binfmt — a silently-skipped package once shipped broken on arm64/riscv64 while
-# amd64 stayed green. Escape hatch: ALLOW_BROKEN_FFMPEG=1.
+# Fail loud: the codec installs are best-effort and the ffmpeg smoke skips without binfmt.
 _assert_ffmpeg_so_closure() {
   if [ -x /opt/ffmpeg/bin/ffmpeg ] && command -v ldd >/dev/null 2>&1; then
     local _ff_unresolved
-    # --transitive = the dynamic loader's view (full closure, honours the
-    # LD_LIBRARY_PATH exported by setup_torch_deps) — the property that
-    # actually matters, exactly as the previous inline ldd walk asserted.
+    # --transitive is the loader's view, with setup_torch_deps' LD_LIBRARY_PATH.
     _ff_unresolved="$(elf_unresolved_needed --transitive /opt/ffmpeg/bin/ffmpeg)"
     if [ -n "${_ff_unresolved}" ]; then
       echo "FATAL: /opt/ffmpeg/bin/ffmpeg has unresolved shared libraries on the runtime loader path:" >&2
@@ -223,8 +194,7 @@ _assert_ffmpeg_so_closure() {
 setup_torch_deps() {
   cross_skip "torch environment assembly" && return 0
 
-  # Register /opt library paths so Python imports (and the ldd closure gate below)
-  # find FFmpeg etc. Exported so it reaches the helper subshells and ldd/apt.
+  # Exported, so the helper subshells and the closure gate see the /opt libs.
   export LD_LIBRARY_PATH="/usr/local/lib:/opt/opencv5/lib:/opt/gstreamer/lib:/opt/libcamera/lib:/opt/ffmpeg/lib:${LD_LIBRARY_PATH:-}"
 
   apt-get update
@@ -232,31 +202,20 @@ setup_torch_deps() {
   _install_ffmpeg_runtime_codecs
   _assert_ffmpeg_so_closure
 
-  # RP2: /var/lib/apt is a BuildKit cache mount here (Dockerfile.torch:46) — the
-  # wipe has no size benefit and forces sibling arches to re-download metadata.
+  # A cache mount here: wiping it saves nothing and costs sibling arches a re-download.
   mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
 }
 
 seed_riscv64_apt_packages() {
-  # ---- riscv64/QEMU bootstrap (arch bootstrap, NOT wheel logic) ----
-  # PyPI has almost no riscv64 wheels, so seed the C-extension packages from apt,
-  # WITH their dist-info so uv treats them as installed.
-  # numpy is deliberately NOT seeded: uv builds the pinned (newer) version anyway
-  # and would then collide with the seeded files on install.
+  # PyPI has almost no riscv64 wheels; seed apt's with dist-info, but not numpy, which uv builds anyway.
   apt-get update
   apt-get install -y --no-install-recommends python3-numpy python3-cairo python3-gi python3-gi-cairo
   apt-get install -y --no-install-recommends python3-contourpy \
     || echo "WARNING: python3-contourpy not available via apt"
-  # The riscv64 torch wheel is cross-built with USE_SYSTEM_SLEEF=1
-  # (build-app-wheelhouse.sh _torch_detect_system_sleef): PyTorch links
-  # libsleef.so.3 dynamically instead of bundling SLEEF, and the cross-build
-  # path deliberately skips auditwheel-repair (repair-wheels.sh), so the .so is
-  # never vendored into the wheel. Install the SLEEF runtime lib (libsleef-dev's
-  # runtime half, same Ubuntu release as the build sysroot) so `import torch`
-  # can resolve libsleef.so.3 -- without it the venv torch fails to import.
+  # The riscv64 torch links libsleef.so.3 dynamically and is never auditwheel-repaired.
   apt-get install -y --no-install-recommends libsleef3 \
     || echo "WARNING: libsleef3 unavailable via apt; import torch will fail (libsleef.so.3 missing)"
-  # RP2: cache-mount guard (see above) — skip the no-op wipe on a mount.
+  # Skip the wipe on a cache mount.
   mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
   local _sp
   _sp="$(venv_site_packages)"
@@ -269,16 +228,7 @@ seed_riscv64_apt_packages() {
 }
 
 torch_wheel_missing_fallback() {
-  # ---- Documented fallback: wheelhouse shipped no torch wheel ----
-  # The media app-wheelhouse stage is best-effort: when the cross
-  # torch/torchvision wheel builds fail (or the media image was a stale
-  # cache-hit predating torch wheels), /opt/wheels carries no torch
-  # wheel.  Routing through assemble-torch-app.sh would then leave torch
-  # out of the locked-local set, so uv would resolve UPSTREAM torch from
-  # PyPI — which has no riscv64 wheels — and the sdist build dies under
-  # QEMU.  Keep the historic lightweight path instead: install the local
-  # OpenCV wheel (or copy the source-built cv2 from /opt/opencv5) and
-  # stop after an import check.
+  # No torch wheel: the assemble path would resolve upstream torch and die under QEMU, so ship OpenCV only.
   local arch="${1:-$(uname -m)}"
   local opencv_wheel
   opencv_wheel="$(ls /opt/wheels/opencv_contrib_python-*.whl 2>/dev/null | head -1 || true)"
@@ -298,11 +248,7 @@ torch_wheel_missing_fallback() {
   else
     echo "WARNING: cv2 not available (cross-compiled OpenCV may lack Python bindings for riscv64)"
   fi
-  # LOUD, assertable marker: this image ships WITHOUT torch. Without it the
-  # degradation is silent -- a torch-less riscv64 runtime image looks identical
-  # to a good one until something imports torch on real hardware. Drop a sentinel
-  # so smoke-runtime-image.sh can surface it and a torch-less image can't pass
-  # unnoticed. Set ALLOW_TORCHLESS_RUNTIME=1 to accept it knowingly.
+  # The sentinel smoke-runtime-image.sh surfaces, so a torch-less image cannot pass unnoticed.
   mkdir -p "${VENV}" 2>/dev/null || true
   printf '%s: no torch wheel in /opt/wheels at build time; assemble-torch-app.sh skipped\n' \
     "${arch}" > "${VENV}/.torch-missing" 2>/dev/null || true
@@ -316,14 +262,7 @@ torch_wheel_missing_fallback() {
   echo "${arch} fallback venv ready (no torch wheel in /opt/wheels; skipped app assembly)"
 }
 
-# Fail-fast preflight: the relocated native GCC/G++ used for source builds under
-# QEMU has repeatedly been unable to find the runtime image's system headers —
-# C `string.h`, and C++ `<cstdlib>` -> `#include_next <stdlib.h>` — and Pillow's
-# JPEG support needs `jpeglib.h` (libjpeg-dev). Each of those was discovered only
-# after a ~9-min numpy/pillow compile died. Probe all three here in <1s using the
-# SAME compiler + CPPFLAGS/CFLAGS/CXXFLAGS the pip build will use, so a
-# header/sysroot regression aborts immediately with a clear message.
-# See docs/cross-build-verification.md (failure classes 2 & 3).
+# Probes the headers the pip builds need with their compiler and flags: <1 s instead of a 9-min failed compile.
 verify_native_source_headers() {
   local cc="${CC:-gcc}" cxx="${CXX:-g++}" tmp rc=0
   command -v "${cc}" >/dev/null 2>&1 || cc=gcc
@@ -353,8 +292,7 @@ configure_foreign_arch_compiler_env() {
     export CXX=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/g++
     unset CC_LD CXX_LD RUSTC_WRAPPER SCCACHE_RECACHE
     echo "sccache bypass: CC=${CC} CXX=${CXX} (host ${host_arch})"
-    # Abort now (seconds) rather than after a multi-minute source build if the
-    # native compiler cannot resolve system headers for this target.
+    # Abort in seconds, not after a multi-minute source build.
     verify_native_source_headers || exit 1
     local _sp
     _sp="$(venv_site_packages)"
@@ -391,13 +329,7 @@ setup_torch_app() {
   local host_arch
   host_arch="$(uname -m)"
 
-  # riscv64 is special: upstream ships no riscv64 torch wheels, so torch is a
-  # LOCAL cross-built wheel in /opt/wheels (media app-wheelhouse, riscv64-only). If
-  # that wheel is absent the shared assemble path would resolve UPSTREAM torch and
-  # die under QEMU, so keep the tolerated lightweight fallback (writes the
-  # .torch-missing sentinel). amd64/arm64 do NOT get a local torch wheel -- torch
-  # is a normal resolved dependency installed by assemble-torch-app's `uv sync`
-  # (the ml-ai extra) -- so they must NOT be gated on a local wheel.
+  # Only riscv64 torch is a local wheel; amd64/arm64 resolve it in uv sync, so gate only riscv64.
   if [ "${host_arch}" = "riscv64" ]; then
     seed_riscv64_apt_packages
     if ! compgen -G "/opt/wheels/torch-*.whl" >/dev/null; then
@@ -417,28 +349,14 @@ setup_torch_app() {
 }
 
 verify_torch_import_or_fail() {
-  # Fail FAST at packaging if torch is expected but did not land in the venv.
-  # torch on amd64/arm64 comes from `uv sync`, not a local wheel, so a silent
-  # uv-sync failure (e.g. the `--extra none` bug, or lock/index trouble) drops it
-  # without any local-wheel signal -- and the ONLY thing that caught it before was
-  # the runtime smoke ~5h into the build (2026-07-11). This import check turns that
-  # into an immediate packaging failure. riscv64 already returned above when it has
-  # no wheel; here it just double-confirms.
+  # A silent uv sync failure drops torch with no other signal, so check it here, not in the runtime smoke.
   local host_arch="$1" ver _import_err
-  # Run the import from a NEUTRAL directory (/). On riscv64 the env-gate strip
-  # (assemble-torch-app) makes uv fetch the pytorch git source, which can leave a
-  # pytorch-repo `torch/` source tree in the working directory. `python -c` puts
-  # CWD on sys.path[0], so importing from there loads that source `torch/` (whose
-  # `torch/_C` is a plain folder, not the compiled extension) and torch dies with
-  # "Failed to load PyTorch C extensions". `cd /` guarantees the installed
-  # site-packages torch wins. Harmless on amd64/arm64 (import works from anywhere).
+  # From /: a pytorch source tree in the CWD would shadow the installed torch via sys.path[0].
   if ver="$(cd / && "${VENV}/bin/python" -c 'import torch; print(torch.__version__)' 2>/dev/null)"; then
     echo "torch import OK (${ver}, ${host_arch})"
     return 0
   fi
-  # Capture the ACTUAL import error (previously swallowed by 2>/dev/null) so a real
-  # runtime failure (missing .so, ABI skew, C-extension shadowing) is named here
-  # instead of forcing blind QEMU archaeology. Also from the neutral dir.
+  # Name the real import error, from the same neutral dir.
   _import_err="$(cd / && "${VENV}/bin/python" -c 'import torch' 2>&1 || true)"
   if [ "${ALLOW_TORCHLESS_RUNTIME:-0}" = "1" ]; then
     mkdir -p "${VENV}" 2>/dev/null || true
@@ -461,13 +379,7 @@ verify_torch_import_or_fail() {
 }
 
 cleanup_wheelhouse() {
-  # /opt/wheels (copied into the package image from the media stage) is only
-  # consumed during venv assembly — by this script and assemble-torch-app.sh
-  # (--find-links /opt/wheels + locked local wheel installs).  Nothing later
-  # in the image lifecycle reads it (the HEALTHCHECK imports onnxruntime from
-  # the venv; the runtime entrypoint scripts never touch /opt/wheels), so
-  # keeping it only bloats the final torch image.  Set KEEP_WHEELHOUSE=1 to
-  # preserve it for debugging.
+  # Nothing after venv assembly reads /opt/wheels; KEEP_WHEELHOUSE=1 keeps it for debugging.
   if [ "${BUILD_MODE}" = "cross" ]; then
     echo "Keeping /opt/wheels (pure cross artifact mode; venv assembly deferred)"
     return 0
@@ -476,9 +388,7 @@ cleanup_wheelhouse() {
     echo "Keeping /opt/wheels (KEEP_WHEELHOUSE=1)"
     return 0
   fi
-  # AP3: /opt/wheels is now a READONLY bind-mount (ephemeral — never becomes a
-  # shipped layer), so there is nothing to reclaim AND `rm -rf` would fail on the
-  # read-only mount. Only rm when it is a real directory (the COPY fallback path).
+  # A read-only bind mount never ships and cannot be removed; only the COPY fallback is a real dir.
   if mountpoint -q /opt/wheels 2>/dev/null; then
     echo "/opt/wheels is a bind-mount (AP3) — ephemeral, nothing to remove"
     return 0
@@ -487,14 +397,7 @@ cleanup_wheelhouse() {
   echo "Removed /opt/wheels after successful venv assembly (set KEEP_WHEELHOUSE=1 to keep)"
 }
 
-# AP2: byte-compile the fully-assembled venv. The runtime USER (uid-1001) cannot
-# write __pycache__ into the root-owned /opt/venv, so WITHOUT this every container
-# start re-parses site-packages (torch etc.) from source — seconds-to-tens on
-# riscv64. Compile at build time as root with the TARGET interpreter (correct
-# .pyc magic; it runs under qemu in the per-arch package stage — slow but
-# one-time). Best-effort; VENV_COMPILE=0 disables. (The stdlib under
-# /usr/local/lib is already compiled by CPython's make [alt]install; the gap is
-# the venv's site-packages, which uv installs without .pyc by default.)
+# uid 1001 cannot write __pycache__ into /opt/venv, so compile once as root with the target python.
 bytecompile_venv() {
   [ "${VENV_COMPILE:-1}" = "1" ] || { echo "VENV_COMPILE=0 — skipping venv byte-compile"; return 0; }
   local py="${VENV}/bin/python"
@@ -504,8 +407,7 @@ bytecompile_venv() {
     || echo "  (compileall best-effort — some modules skipped; non-fatal)"
 }
 
-# Keeps the chain ORT wheels /opt/venv was installed from (the /opt/wheels mount is ephemeral) for
-# consumer CI venvs, proved by the check they get. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+# Keeps /opt/venv's chain ORT wheels for consumer CI. See docs/python-ci.md § Trap 3 — ONNX Runtime comes from the chain, not PyPI
 stage_chain_ort_wheels() {
   cross_skip "chain ORT wheel store" && return 0
   local store="${ORT_CHAIN_WHEEL_DIR:?ORT_CHAIN_WHEEL_DIR is unset (Dockerfile.torch ENV)}"
@@ -525,8 +427,7 @@ stage_chain_ort_wheels() {
     || { echo "ERROR: ${store} does not hold exactly the chain wheels ${VENV} was installed from" >&2; exit 1; }
 }
 
-# The torch RUN's timeline, and what /opt/wheels held before any prune. Never fatal; the
-# digest equals the host's [wheels] line. docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
+# Never fatal. See docs/cross-build-verification.md § Measuring the torch RUN's wait before `uv venv`
 _STV_T0="$(date +%s)"
 _stv_mark() {
   local now

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# verify-artifact-copy-parity.sh — verify artifact COPY src/dst parity in Dockerfile.package.
-# NOTE: regex-based — does not handle multi-line COPY or heredoc syntax.
+# Artifact COPY src/dst parity in Dockerfile.package; regex-based, so multi-line COPY and heredocs are not seen.
 
 usage() {
   cat <<'EOF'
@@ -30,18 +29,9 @@ ALLOWED_RELOCATIONS=(
   "/opt/llvm-target /usr/local/llvm-target"
 )
 
-# Print "SRC DST" for every single-line `COPY [--flags...] --from=artifact-source`
-# inside the package-image stage. Flags (tokens starting with --) may appear in
-# any position between COPY and the paths.
+# "SRC DST" per single-line `COPY --from=artifact-source` in the package-image stage, flags anywhere.
 extract_artifact_copy_pairs() {
-  # sub(/\r$/, "") FIRST, before any field is read: on a Windows checkout
-  # (core.autocrlf=true) every line here ends CRLF, so the LAST token on a COPY
-  # line carries a trailing CR. `[ "${src}" = "${dst}" ]` below then compares
-  # "/opt/ffmpeg" with "/opt/ffmpeg\r", which are unequal and PRINT IDENTICALLY
-  # -- the gate reported 15 relocations of paths onto themselves. Measured
-  # 2026-09-10: linux/Dockerfile.package carries 480 CR bytes over 480 lines in
-  # the working tree and none in a `git archive` export, which is also why the
-  # same check looks green when graded from an export.
+  # Strip CR first: on an autocrlf checkout the last token would carry an invisible \r and never equal its twin.
   awk '
     { sub(/\r$/, "") }
     /^[[:space:]]*FROM[[:space:]]/ {
@@ -116,25 +106,14 @@ main() {
   check_completeness "${pairs}"
 }
 
-# Completeness: every path in runtime-artifacts.manifest must be COPY'd, and every
-# COPY'd path must be in the manifest. This is what catches a BUILT-BUT-DROPPED
-# artifact (Flutter 2026-09-03, ArmNN/ACL before it) — the consistency check above
-# only sees paths that ARE copied. docs/artifact-copy-completeness.md
-# $1 = counter nameref; for each line in $2 (needles) absent from $3 (a newline
-# set), print the two message templates $4/$5 with every '@P@' -> the path, and
-# add the miss count to the counter. One owner for both directions of the check.
+# _report_absent <counter nameref> <needles> <haystack> <head> <hint>: reports each needle missing from the set, '@P@' -> path.
 _report_absent() {
   local -n _cnt="$1"
   local needles="$2" haystack="$3" head="$4" hint="$5" p
   local _hay_padded="${_NL}${haystack}${_NL}"
   while IFS= read -r p; do
     [ -n "${p}" ] || continue
-    # Pure-bash exact-line membership, NOT `printf | grep -qxF`. That spelling
-    # made this gate fail ~10% of runs on an unchanged tree, naming a different
-    # artifact each time: with `-q` the matcher exits on the first hit while
-    # still being fed by a pipe, and the resulting status is not reliably 0
-    # here. A set test needs no subprocess.
-    # docs/artifact-copy-completeness.md#the-membership-test-must-not-shell-out
+    # See docs/artifact-copy-completeness.md#the-membership-test-must-not-shell-out
     case ${_hay_padded} in
       *"${_NL}${p}${_NL}"*) ;;
       *)
@@ -146,6 +125,7 @@ _report_absent() {
   done <<< "${needles}"
 }
 
+# Manifest and COPY lines must match both ways, or a built artifact can be dropped; see docs/artifact-copy-completeness.md#the-gate
 check_completeness() {
   local pairs="$1"
   local manifest

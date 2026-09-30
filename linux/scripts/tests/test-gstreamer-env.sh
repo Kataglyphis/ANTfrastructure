@@ -1,17 +1,11 @@
 #!/usr/bin/env bash
-# Tests for 04-runtime/gstreamer-env.sh — the runtime env script the entrypoint
-# sources and smoke-runtime-image.sh checks the effect of. Each case copies the
-# script and repoints its /opt/scripts/core lookups at a fixture, so the triplet
-# branch, the multiarch fallback and the inline path-helper copy all run here.
-# docs/cross-build-verification.md#gstreamer-envsh-the-runtime-env-the-entrypoint-sources
+# gstreamer-env.sh copied with /opt/scripts/core repointed at a fixture; see docs/cross-build-verification.md#gstreamer-envsh-the-runtime-env-the-entrypoint-sources
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SUBJECT="${TESTS_DIR}/../04-runtime/gstreamer-env.sh"
 
-# _env <fixture-flags> <var>... — source a repointed copy and print `VAR=value`
-# for each named variable, plus SYSTEM_LIB's set-ness as SYSTEM_LIB_SET=yes|no.
-# Flags: platform=<triplet>|none, helpers=yes|no, dpkg=<triplet>|fail, times=1|2
+# _env <triplet|none> <helpers yes|no> <dpkg triplet|fail> <var>...: VAR=value lines, then SYSTEM_LIB_SET.
 _env() {
   local platform="$1" helpers="$2" dpkg="$3" times="${_ENV_TIMES:-1}"; shift 3
   local d core out

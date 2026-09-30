@@ -1,12 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Covers the pure parts of WindowsPerfBaseline.Common: time_unit normalisation,
-# the comparison over two name->ns maps (including the "present in only one
-# run" cases, which must never be fatal), the invariant number formatting, and
-# the end-to-end exit-code contract of Invoke-BenchmarkBaselineComparison
-# against small fixture documents.
+# A benchmark present in only one run must never be fatal.
 
 Describe 'WindowsPerfBaseline.Common' {
   BeforeAll {

@@ -9,11 +9,7 @@ elif [ -f /opt/scripts/core/cross-env.sh ]; then
     source /opt/scripts/core/cross-env.sh
 fi
 
-# Load the data-driven per-arch MEDIA_SKIP_* flags (arch-flags-<arch>.env).
-# media_load_arch_flags lives in 03-media/core/common.sh: in the container it
-# is COPY'd to /opt/scripts/03-media/core (base stage), in the repo it sits at
-# linux/scripts/03-media/core. The preamble above already provided the
-# cross_build_is_active / cross_target_arch helpers it needs.
+# media_load_arch_flags (the per-arch MEDIA_SKIP_* flags) lives in 03-media/core/common.sh.
 for _media_common in \
     "/opt/scripts/03-media/core/common.sh" \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../core/common.sh"; do
@@ -47,25 +43,16 @@ normalize_vvdec_soname_link() {
 }
 
 DEBIAN_FRONTEND=noninteractive apt-get purge -y $(dpkg -l 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' 'libunwind-*-dev' 2>/dev/null | grep '^ii' | awk '{print $2}') 2>/dev/null || true
-# The final image only needs GTK runtime bits. Installing the foreign-arch
-# GTK dev package pulls the GLib/GIR dev chain, which in turn tries to install
-# target-side Python during cross builds and breaks on python3-minimal postinst.
+# GTK runtime only: the dev package pulls target-side Python, whose postinst breaks cross builds.
 target_packages=(
     libunwind-dev libdw-dev libv4l-0 dbus-x11
-    # libjpeg-dev (jpeglib.h + native libjpeg): required for the torch venv's
-    # Pillow build. On riscv64, PyPI ships no wheel so pip compiles Pillow from
-    # source under QEMU; Pillow enables JPEG by default and hard-fails without
-    # these headers. zlib/freetype are already present in the base image.
+    # riscv64 builds Pillow from source, which hard-fails without jpeglib.h.
     libjpeg-dev
     libopenexr-dev libx264-dev libcdio-dev libspeex-dev libopenh264-dev libsrtp2-dev
     libtwolame-dev libgsm1-dev libdav1d-dev libwavpack-dev libx265-dev libdc1394-dev
     libvpx-dev libavcodec-dev libcsound64-dev libtbb12 libavfilter-dev libavformat-dev
     libxml2-16 libbz2-1.0 liblzma5 libzstd1
-    # libgudev-1.0-0 provides libgudev-1.0.so.0 — a single missing lib that
-    # otherwise fails ~9 GStreamer plugins at once (video4linux2, uvch264, gtk,
-    # gtk4, va, nvcodec, opengl, hip, v4l2codecs) with "cannot open shared object
-    # file" in the runtime smoke. libcdparanoia0 provides libcdda_paranoia.so.0
-    # for the cdparanoia plugin (both were absent from this list).
+    # Without libgudev ~9 GStreamer plugins fail to load (v4l2, va, gtk4, ...).
     libgudev-1.0-0 libcdparanoia0
     libevent-core-2.1-7t64 libevent-pthreads-2.1-7t64 libevent-2.1-7t64
     liborc-0.4-0t64 libsoup-3.0-0
@@ -73,26 +60,14 @@ target_packages=(
     libgsl28 libgslcblas0 libnuma1
 )
 
-# MEDIA_SKIP_GLIB_STACK (arch-flags-riscv64.env): when the GStreamer build
-# skipped the GTK/json-glib dependent plugins, installing the runtime packages
-# here only adds target-side postinst noise without enabling extra shipped
-# functionality.
+# With MEDIA_SKIP_GLIB_STACK the plugins these packages serve were never built.
 if [ "${MEDIA_SKIP_GLIB_STACK:-0}" = "1" ]; then
     echo "Skipping GTK/json-glib runtime packages for riscv64 cross final image"
 else
     target_packages=(libgtk-4-1 libjson-glib-1.0-0 "${target_packages[@]}")
 fi
 
-# HOST packages, deliberately: this final image is a host-runnable cross-dev
-# container (PLATFORM linux/amd64 even for arm64/riscv64 targets), and these
-# are runtime/dev deps for the HOST-side tools baked into it. Historically this
-# ran through the install-deps-preamble FALLBACK (no 01-core mounted), whose
-# install_target_packages degraded to host installs — so host semantics is
-# what every shipped image has always had. Now that the final stage mounts
-# 01-core (real cross-env), keep that behavior EXPLICIT: with real
-# install_target_packages the whole group resolves as :<target-arch> and fails
-# wholesale on cross (co-installation conflicts), leaving the image with none
-# of these packages.
+# Host packages on purpose: the image is a host-runnable cross-dev container, and :<target> installs conflict.
 DEBIAN_FRONTEND=noninteractive install_host_packages "${target_packages[@]}" || true
 apt-get autoremove --purge -y
 apt-get clean

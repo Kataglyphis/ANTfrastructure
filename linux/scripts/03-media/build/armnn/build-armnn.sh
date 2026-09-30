@@ -15,8 +15,7 @@ ACL_INSTALL_DIR="${ACL_INSTALL_DIR:-/opt/acl}"
 ARCH="${TARGET_ARCH:-${TARGETARCH:-$(uname -m)}}"
 
 clone_armnn() {
-  # Shared shallow-clone helper (same one litert/opencv/libcamera use); submodule
-  # sync runs in a subshell so it never leaks cwd (build_armnn cds itself).
+  # Subshell so the submodule sync never leaks its cwd.
   retry 3 10 "Arm NN git clone" clone_or_update_repo "${ARMNN_REPO}" "${ARMNN_SRC_DIR}" "${ARMNN_VERSION}"
   ( cd "${ARMNN_SRC_DIR}" && git submodule update --init --recursive )
 }
@@ -24,10 +23,7 @@ clone_armnn() {
 build_armnn() {
   info "Building Arm NN for ${ARCH}"
 
-  # libgomp.so dev symlink: libgomp1:<arch> ships only libgomp.so.1, and the
-  # cross toolchain has no target libgomp. Create the dev symlink here too
-  # (not just in install-deps.sh) in case the install-deps layer is cached
-  # from before the fix.
+  # libgomp1 ships no libgomp.so dev symlink; repeated from install-deps.sh in case that layer is cached.
   if [ "${ARCH}" = "arm64" ] || [ "${ARCH}" = "aarch64" ]; then
     local _gdir="/usr/lib/aarch64-linux-gnu"
     if [ -d "${_gdir}" ] && [ ! -e "${_gdir}/libgomp.so" ] && [ -e "${_gdir}/libgomp.so.1" ]; then
@@ -39,10 +35,9 @@ build_armnn() {
   local cross_args=()
   if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${ARCH}" != "amd64" ]; then
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
-      # Canonical cross toolchain args (same helper opencv/litert/onnx use).
       append_cmake_cross_args cross_args
     else
-      # Fallback: hand-rolled cross toolchain args (pre-helper environments).
+      # Fallback for environments that predate the helper.
       local cross_prefix triplet
       case "${ARCH}" in
         arm64|aarch64)
@@ -61,12 +56,7 @@ build_armnn() {
       )
     fi
 
-    # ArmNN's CMakeLists.txt hardcodes target_link_libraries(armnn -lgomp)
-    # (OpenMP, BUILD_ACL_OPENMP=ON). The cross GCC's default ld.lld search
-    # paths don't include /usr/lib/<triplet>/ where libgomp.so lives. Adding
-    # -L/usr/lib/<triplet> causes ld.lld to find an incompatible libstdc++.so
-    # there. Instead, symlink libgomp.so into the GCC's own lib dir which the
-    # linker already searches by default — no -L needed.
+    # ArmNN hardcodes -lgomp, and -L/usr/lib/<triplet> would pull an incompatible libstdc++, so link libgomp into GCC's own lib dir.
     local _tri _libdir _gcc_libdir
     _tri="$(cross_target_triplet 2>/dev/null || true)"
     _libdir="/usr/lib/${_tri}"
@@ -82,16 +72,7 @@ build_armnn() {
   mkdir -p "${ARMNN_BUILD_DIR}"
   cd "${ARMNN_BUILD_DIR}"
 
-  # Arm NN v25.11+ probes ACL's CMake package config directly (installed by
-  # scons into ACL_BUILD_DIR). ARMCOMPUTE_ROOT points to the ACL build tree
-  # which contains the generated cmake files and arm_compute_version.h.
-  # GCC 16.1.0's -Werror=array-bounds triggers false positives on std::mutex
-  # placement in ACL/Arm NN buffers; suppress to avoid build failure.
-  #
-  # LOG12 (2026-08-28): NEON backend ENABLED. CL stays OFF — no GPU device in
-  # the cross-build container, and OpenCL headers/libs are not staged for
-  # cross. If a consumer needs ArmNN CL, stage the OpenCL headers and pass
-  # -DARMCOMPUTECL=1. TOSA Reference stays OFF (upstream default).
+  # -Wno-array-bounds: GCC 16 false positives in ACL/Arm NN; CL stays off because no OpenCL is staged for cross.
   cmake "${ARMNN_SRC_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${ARMNN_INSTALL_DIR}" \
@@ -112,10 +93,7 @@ build_armnn() {
   cmake --install .
 
   info "Arm NN installed to ${ARMNN_INSTALL_DIR}"
-  # AP4: strip Arm NN's libs (dedicated /opt/armnn prefix). strip_media_prefixes
-  # self-derives the cross <triplet>-strip; --strip-all keeps .dynsym.
-  # Best-effort, MEDIA_STRIP=0 disables. arm64-only lane.
-  # DUPN1: MEDIA_STRIP gate lives inside the helper now.
+  # Best-effort strip of the dedicated prefix; MEDIA_STRIP=0 disables it inside the helper.
   declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${ARMNN_INSTALL_DIR}" || true
   ls -la "${ARMNN_INSTALL_DIR}/lib/" 2>/dev/null | head -10 || true
 }

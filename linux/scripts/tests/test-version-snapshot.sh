@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Characterisation of docs/scripts/sync_versions.py --check, the version-snapshot
-# gate. Its verdict is an OR over eight sub-checks plus a licence subprocess, so
-# anything less than one fixture per sub-check would credit the slug for seven it
-# never touched. The fixture is a SYMLINK FARM, because collect_versions() reads
-# five fixed repo files and a full copy is 8 GB.
-# docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
+# sync_versions.py --check ORs eight sub-checks, so each gets its own fixture; see docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -14,10 +9,7 @@ export REPO
 _roots="$(mktemp -d)"
 trap 'rm -rf "${_roots}"' EXIT
 
-# _farm <repo-relative path>... -> root. A tree of symlinks to the real repo with
-# the named paths materialised as real, writable copies. sync_versions.py is
-# always one of them: it resolves REPO_ROOT from __file__, and .resolve() would
-# follow a symlink straight back to the real tree.
+# _farm <path>...: a symlink farm (a full copy is 8 GB) with the named paths, and sync_versions.py, as real copies.
 _farm() {
   ROOTS="${_roots}" python3 - "$@" <<'PY'
 import os, shutil, sys, tempfile
@@ -52,12 +44,7 @@ print(root)
 PY
 }
 
-# The eighth sub-check reads a CONSUMER checkout, which the farm cannot supply:
-# it mirrors this repo, and the pins in question live in another repository's
-# pyproject.toml / .pre-commit-config.yaml. So the suite builds its own consumer
-# out of two files. Deliberately NOT a real sibling checkout (../OrchestrANT):
-# a suite whose verdict depends on somebody else's working tree is not a
-# characterisation, and on a runner that tree does not exist at all.
+# The eighth sub-check reads a consumer checkout, built here from two files rather than a real sibling.
 _PIN="$(sed -n 's/^RUFF_VERSION=//p' "${REPO}/linux/scripts/01-core/versions.env")"
 
 # _consumer <ruff version> [pyproject body] [pre-commit body] -> root
@@ -78,10 +65,7 @@ _consumer() {
   printf '%s\n' "${d}"
 }
 
-# A consumer that AGREES with versions.env rides along in every _check below, so
-# the baseline prints a real green line for the eighth sub-check rather than its
-# "NOT CHECKED" one -- and so every red case below proves the eighth stayed green
-# while another reddened.
+# An agreeing consumer rides along, so the eighth sub-check is really green rather than NOT CHECKED.
 _OK_CONSUMER="$(_consumer "${_PIN}")"
 _check() { python3 "$1/docs/scripts/sync_versions.py" --check --consumer-root "${_OK_CONSUMER}"; }
 # _check_consumer <hub root> <consumer root>
@@ -90,8 +74,7 @@ _check_consumer() { python3 "$1/docs/scripts/sync_versions.py" --check --consume
 _pins_only() { local r="$1"; shift; python3 "${r}/docs/scripts/sync_versions.py" --consumer-pins "$@"; }
 
 t_case "the farm reproduces a GREEN verdict — every red below is measured against this"
-# collect_versions() read-fails hard on five fixed files, four of them
-# windows/, so a hand-built minimal tree cannot even reach a verdict.
+# collect_versions() fails hard without five fixed files, so a minimal tree cannot reach a verdict.
 _ok="$(_farm)"
 t_assert_eq "0" "$(t_rc _check "${_ok}")" "an un-perturbed farm must be green"
 _ok_out="$(t_out _check "${_ok}")"
@@ -108,16 +91,7 @@ done
 t_assert_contains "${_ok_out}" "(2 compared)" \
   "both consumer rows must be compared -- a green line over one file is half a verdict"
 
-# _red <expected stderr line> <path to perturb> <sed expr> [more path/sed pairs]
-#
-# The `$`-anchored expressions below carry `\r\?` on purpose: *.md has no
-# `-text` in .gitattributes, so on a Windows checkout they are CRLF, `^...-->$`
-# matches nothing, and a fixture would perturb NOTHING while asserting the gate
-# went red -- the same hollow shape this suite exists to catch. Measured
-# 2026-09-09: two cases failed for that reason alone.
-# (The gate's own script is deliberately NOT named here: the proof registry
-# credits a suite that merely MENTIONS a gate's basename, and this file does not
-# test that gate. docs/code-quality-tooling.md#gate-proof-registry-gate-registry)
+# _red <stderr line> <path> <sed expr> [path expr]...; `\r\?` because *.md is CRLF on a Windows checkout.
 _red() {
   local want="$1" root paths=() exprs=() i
   shift
@@ -151,12 +125,7 @@ _red "Dockerfile ARG defaults are stale:" \
   linux/Dockerfile.base 's|^ARG CMAKE_VERSION=.*|ARG CMAKE_VERSION=0.0.0|'
 
 t_case "6/8 check_script_defaults — a -DefaultValue drifting from versions.env"
-# The glob matched nothing between the 2026-09-06 Verb-Noun rename and 2026-09-17
-# (flat lowercase windows/scripts/build-*-from-source.ps1 vs the real
-# windows/scripts/**/Build-*FromSource.ps1), so ten scripts were not gate
-# subjects. It matches them now, which makes this sub-check reddenable -- and the
-# TVM_COMMIT/TVM_REF exception (PinParity carries the same one) must keep the
-# tag fallback from being rewritten to the commit hash.
+# A glob that matches nothing makes this sub-check unreddenable, so its subject count is pinned.
 t_assert_eq "15" "$(find "${REPO}/windows/scripts" -name 'Build-*FromSource.ps1' | wc -l)" \
   "the fifteen gate subjects the fixed glob must find (Build-TorchRocmFromSource.ps1 and Build-TorchvisionRocmFromSource.ps1 joined 2026-09-29)"
 _red "Windows build-script -DefaultValue pins are stale:" \
@@ -170,11 +139,7 @@ _red "stale gcc literal /opt/gcc-0.0.0" \
   AGENTS.md '1i See /opt/gcc-0.0.0 for the toolchain.'
 
 t_case "8/8 check_consumer_pins — a consumer whose ruff pin contradicts versions.env"
-# The one sub-check whose subject is NOT under REPO_ROOT, so _red cannot reach
-# it: the perturbation is a different repository's pyproject.toml. Everything
-# else about the shape is the same -- the verdict has to reach the exit status
-# through the same `result |=`, which is what version-snapshot.consumer-pins-ored
-# in docs/scripts/mutations.json neuters.
+# Its subject lives outside REPO_ROOT, so _red cannot reach it.
 _drift="$(_consumer 0.0.0)"
 t_assert_eq "1" "$(t_rc _check_consumer "${_ok}" "${_drift}")" \
   "a drifted consumer pin must fail the gate"
@@ -187,11 +152,7 @@ t_assert_contains "${_drift_out}" "Generated version snapshot is up to date." \
   "and nothing else may go red with it"
 
 t_case "8/8 the consumer files are read where a tool would read them, not by luck"
-# Both extractors used to take the FIRST regex match anywhere in the file, and
-# both were wrong on a shape a real consumer has. OrchestrANT's pyproject.toml
-# names "ruff" in a COMMENT four lines above the dependency; a commented-out
-# historical pin in that position was read AS the pin. The `rev:` extractor
-# captured the quotes of `rev: "v0.16.4"` and compared '"v0.16.4"' with 0.16.4.
+# Real consumers carry commented-out old pins and quoted `rev:` values.
 _hist="$(_consumer "${_PIN}" \
   "dependencies = [
     # was \"ruff==0.0.0\" before the bump
@@ -208,10 +169,7 @@ t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "${_hist}")" "(2 
   "both rows still have to be COMPARED -- passing by skipping them proves nothing"
 
 t_case "8/8 two disagreeing declarations in one file are refused, not silently ranked"
-# The CORRECT pin comes first on purpose: under the old first-match-wins
-# extractor this file read as green while carrying a contradiction, which is the
-# failure this case exists to keep out. A gate that ranks two declarations is
-# guessing at somebody else's parser.
+# The correct pin comes first, so a first-match-wins extractor would read green.
 _two="$(_consumer "${_PIN}" \
   "dependencies = [
     \"ruff==${_PIN}\",
@@ -223,9 +181,7 @@ t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "${_two}")" \
   "declared more than once, with disagreeing values" "and it must say why"
 
 t_case "8/8 --consumer-pins is the run-lint-gates.sh entry point, and refuses an empty run"
-# The gate this mode feeds takes the consumer root as a mandatory argument, so
-# "no root" means a broken caller. Reporting NOT CHECKED and exiting 0 there is
-# exactly how this whole check sat inert in the hub's own preflight.
+# The root is mandatory for this mode, so a missing one is a broken caller, not NOT CHECKED.
 t_assert_eq "1" "$(t_rc _pins_only "${_ok}")" \
   "--consumer-pins with no root must FAIL, not report NOT CHECKED"
 t_assert_contains "$(t_out _pins_only "${_ok}")" "Refusing to report a verdict over nothing." \
@@ -248,8 +204,7 @@ t_assert_eq "0" "$(t_rc _pins_only "${_ok}" --consumer-root "${_none}")" \
 t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "${_none}")" "0 pins compared" \
   "but it must never read as 'checked and passed'"
 
-# versions.env spells these three as GitHub tags (v2.14.0); a consumer pins the
-# bare number, and a riscv64 source pin carries the tag again.
+# versions.env spells these as tags (v2.14.0); a consumer pins the bare number.
 _env() { sed -n "s/^$1=v\{0,1\}//p" "${REPO}/linux/scripts/01-core/versions.env"; }
 _TORCH="$(_env PYTORCH_VERSION)"
 _VISION="$(_env TORCHVISION_VERSION)"
@@ -297,9 +252,7 @@ t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "$(_ml "${_TORCH}
   "and the genai pin is graded against its own key"
 
 t_case "--write repairs the drift, and repairs NOTHING on the second run"
-# The --check half above never reaches the write path; both syncers share one
-# _rewrite_lines owner, and "write only when something changed" is the property
-# that keeps --write from churning every file it scans. F3 2026-09-07.
+# --write must rewrite only what changed, or it churns every file it scans.
 _w="$(_farm linux/Dockerfile.base)"
 sed -i -e 's|^ARG CMAKE_VERSION=.*|ARG CMAKE_VERSION=0.0.0|' "${_w}/linux/Dockerfile.base"
 _w_out="$(python3 "${_w}/docs/scripts/sync_versions.py" --write 2>&1)"
@@ -321,8 +274,7 @@ printf '#!/usr/bin/env python3\nimport sys\nsys.exit(3)\n' > "${_lic}/docs/scrip
 t_assert_eq "3" "$(t_rc _check "${_lic}")" "a red licence generator must redden the gate"
 
 t_case "the perturbations are DISJOINT — each reddens its own sub-check only"
-# The OR is why this matters: a fixture that reddens two sub-checks proves one
-# of them and hides the other behind the same non-zero exit.
+# Under the OR, a fixture reddening two sub-checks hides one behind the other's exit code.
 _one="$(_farm linux/Dockerfile.base)"
 sed -i 's|^ARG GCC_VERSION=.*|ARG GCC_VERSION=0.0.0|' "${_one}/linux/Dockerfile.base"
 _one_out="$(t_out _check "${_one}")"

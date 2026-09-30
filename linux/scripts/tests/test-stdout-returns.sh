@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_stdout_returns.py. The gate derives its root from its own path
-# (parents[2]), so each case copies it into a throwaway tree and plants subject
-# scripts under linux/scripts there. Fixture functions are written via printf, so
-# this file defines none of them itself.
-# docs/code-quality-tooling.md#stdout-return-gate-stdout-returns
+# verify_stdout_returns.py on throwaway trees, since it roots itself at its own path; see docs/code-quality-tooling.md#stdout-return-gate-stdout-returns
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -12,25 +8,20 @@ GATE="$(cd "${TESTS_DIR}/.." && pwd)/verify_stdout_returns.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
 SUBJ="linux/scripts/subject.sh"
 
-# _subject <line-inside-f> [<tail>]: f(), whose stdout is its value, holding
-# <line>; <tail> defaults to a command substitution that consumes it.
+# _subject <line-inside-f> [<tail>]: <tail> defaults to a substitution consuming f's stdout.
 _subject() { printf 'f() {\n  %s\n  printf "%%s" /opt/x\n}\n%s\n' "$1" "${2-p=\$(f)}"; }
 CONSUMER='p=$(f)'
 
 _plant() { mkdir -p "$(dirname "${fix}/$1")"; printf '%s\n' "$2" > "${fix}/$1"; }
-# _check <relpath> <content> [<relpath> <content>]: build a tree at the gate's own
-# depth, run it, tear it down; leaves ${out} and ${rc} for the asserts.
+# _check <relpath> <content> [<relpath> <content>]: sets ${out} and ${rc}.
 _check() {
   fix="$(mktemp -d)"
   mkdir -p "${fix}/linux/scripts"
-  # gate_scope.py too: the gate imports it since 6ad5d880, and a fixture that
-  # does not carry what the gate NEEDS fails with a traceback, not a verdict.
+  # The gate imports gate_scope.py; without it the fixture yields a traceback, not a verdict.
   cp "${GATE}" "$(dirname "${GATE}")/gate_scope.py" "${fix}/linux/scripts/"
   _plant "$1" "$2"
   [ $# -le 2 ] || _plant "$3" "$4"
-  # A git checkout WITH an index: gate_scope.tracked() reads `git ls-files`, so
-  # a bare init lists nothing and the gate reports an empty scope instead of
-  # the verdict this case asserts.
+  # gate_scope.tracked() reads `git ls-files`, so the files must be in the index.
   git -C "${fix}" init -q 2>/dev/null || true
   git -C "${fix}" add -A 2>/dev/null || true
   out="$("${PY}" "${fix}/linux/scripts/verify_stdout_returns.py" 2>&1)"; rc=$?
@@ -80,9 +71,7 @@ t_assert_eq "0" "${rc}" "that lane has its own backlog"
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$(t_rc "${PY}" "${GATE}")"
 
-# The --root arm, which no case above reaches: every fixture here is a tree
-# planted AROUND the gate, so it cannot tell --root from its own repo.
-# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a consumed function logging on stdout, in the fixture.
+# Fixtures above plant the tree around the gate, so only this case tells --root from its own repo.
 t_case "--root grades the named tree"
 _root_subject="$(_subject 'log "starting"')"
 gate_root_arm "${PY}" "${GATE}" "${_root_subject}"

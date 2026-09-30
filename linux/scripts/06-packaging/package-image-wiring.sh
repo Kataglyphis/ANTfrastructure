@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
-# package-image-wiring.sh - what the package stage does to the toolchain and runtime a
-# consumer sees, sourced by setup-package-image.sh. Split out of it on 2026-09-26, when
-# these fixes took that file past the size gate. Sets no shell options.
+# Package-stage fixes to the toolchain and runtime a consumer sees; sourced by setup-package-image.sh.
 
-# Ubuntu's libgtk-4-1 (install-deps.sh) is the only thing that pulls a distro GStreamer
-# 1.28 runtime back in beside /opt/gstreamer's (BACKLOG CON21). Where our prefix carries
-# its own GTK 4 (amd64) nothing loads either, so both go; arm64/riscv64 build GStreamer
-# without GTK, and their libgstgtk4.so needs Ubuntu's (BACKLOG § Deliberate).
+# libgtk-4-1 pulls a distro GStreamer beside ours; drop both only where our prefix has its own GTK 4.
 drop_redundant_distro_gtk4() {
     local ours extra
     local -a pkgs=(libgtk-4-1 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0
@@ -25,10 +20,7 @@ drop_redundant_distro_gtk4() {
     echo "OK: dropped the distro GTK 4 and GStreamer runtime; ${ours} is the GTK 4"
 }
 
-# The tools that read what clang wrote (module PCMs, raw profiles, DWARF) come from clang's
-# own LLVM: PATH's were the distro's LLVM 21 (BACKLOG CON15). /usr/local/bin precedes
-# /usr/bin. clang-format stays the distro's on purpose, its version is a formatting verdict
-# the fleet pins; llvm-config too, since llvm-target's libLLVM is not all-targets.
+# Tools that read clang's output come from its own LLVM; clang-format and llvm-config stay the distro's on purpose.
 LLVM_TARGET_TOOLS="clang-tidy run-clang-tidy clang-apply-replacements clangd clang-scan-deps
     llvm-profdata llvm-cov llvm-symbolizer llvm-nm llvm-objdump llvm-objcopy llvm-strip
     llvm-readelf llvm-readobj llvm-dwarfdump llvm-addr2line llvm-cxxfilt llvm-size llvm-strings
@@ -45,8 +37,7 @@ wire_clang_llvm_tools() {
     echo "OK: ${n} LLVM tools on PATH from ${dir}, clang's own"
 }
 
-# A bare clang selects ${GCC_PREFIX} through <native-triple>-<driver>.cfg in the directory it was
-# REACHED through, so each one linking to it gets the pair (CON16, CON39; docs/linux-cross-builds.md#clang-cross-wrappers).
+# A bare clang selects ${GCC_PREFIX} via <native-triple>-<driver>.cfg beside the path it was reached through (docs/linux-cross-builds.md#clang-cross-wrappers).
 write_clang_gcc_toolchain_cfg() {
     local link="${1:-/usr/bin/clang}" real dir triple drv d
     local -a link_dirs=("${@:2}")
@@ -63,8 +54,7 @@ write_clang_gcc_toolchain_cfg() {
     done < <({ printf '%s\n' "${dir}"; find -L "${link_dirs[@]}" -maxdepth 1 -samefile "${real}" -printf '%h\n' 2>/dev/null || true; } | sort -u)
 }
 
-# atheris' find_libfuzzer.sh looks for lib/linux/libclang_rt.<rt>-<arch>.a, the layout before
-# per-target runtime directories, and derives the sanitizers it merges from it (BACKLOG CON38).
+# atheris' find_libfuzzer.sh wants the pre-per-target lib/linux/libclang_rt.<rt>-<arch>.a names (CON38).
 link_compiler_rt_legacy_names() {
     local clang="${1:-/usr/bin/clang}" resdir triple arch rt src n=0
     resdir="$("${clang}" -print-resource-dir)"

@@ -1,18 +1,15 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# WindowsOrtPayload.Common: the chain ORT staged beside an exe, and a shipped tree proved, over synthetic PE
-# trees and a throwaway chain install that G6 takes as its reference through ONNX_ROOT. The cases came from
-# OxidANT's suite (scripts/windows/tests/OrtPayload.Tests.ps1), where the functions lived until 2026-09-25.
-# NOT covered: a real chain install, and which copy a process loads beyond G6's modelled loader order.
+
+# Chain ORT staging and shipped-tree proofs over synthetic PE trees; a real install and real loader order are not covered.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtPayload.Common.psm1') -Force -DisableNameChecking
 
 $script:ChainSrc = 'C:\temp\onnx-src\onnxruntime\core\session\inference_session.cc'
 $script:ForeignSrc = 'C:\__w\1\s\onnxruntime\core\session\inference_session.cc'
 
-# A chain install as the image lays it out, with an EP sidecar, and a release dir whose exe loads ORT
-# (names OrtGetApiBase) or not.
+# A chain install with an EP sidecar, and a release exe that loads ORT (names OrtGetApiBase) unless -PlainExe.
 function New-PayloadCase {
     param([Parameter(Mandatory)][string]$Dir, [switch]$PlainExe)
     $chainFiles = [ordered]@{
@@ -26,8 +23,7 @@ function New-PayloadCase {
     return [pscustomobject]@{ Chain = "$Dir\onnx"; Release = "$Dir\release"; Exe = "$Dir\release\app.exe"; Payload = "$Dir\payload" }
 }
 
-# One case in a throwaway directory, the chain as G6's reference and, unless -Unstaged, its ORT staged
-# beside the exe; -Body gets the case.
+# The chain is G6's reference and, unless -Unstaged, its ORT is staged beside the exe.
 function Invoke-PayloadCase {
     param([Parameter(Mandatory)][scriptblock]$Body, [switch]$PlainExe, [switch]$Unstaged)
     Invoke-InTestDir { param($dir)

@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# Get-CiImageReference, the PowerShell twin of linux/scripts/ci-image-ref.sh: the same refs
-# composed from versions.env, the arm64 cross bundle's own key, and no empty ref on a gap.
+# Get-CiImageReference must compose the same refs as ci-image-ref.sh, and never an empty ref on a gap.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsContainerImage.Common.psm1') -Force -DisableNameChecking
 

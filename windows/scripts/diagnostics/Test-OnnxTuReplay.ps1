@@ -3,29 +3,15 @@
 # SPDX-License-Identifier: MIT
 <#
 .SYNOPSIS
-    Replays ONE real ONNX Runtime CUDA TU (bias_softmax_impl.cu - a TU whose
-    instantiations the sccache nvcc decomposition verifiably lost) bare vs
-    sccache-wrapped and diffs the symbol tables.
-
+    Replays one real ONNX Runtime CUDA TU bare and sccache-wrapped and diffs the symbol tables.
 .DESCRIPTION
-    The synthetic probes (settled and deleted; git history is the record) do NOT
-    reproduce the 2026-08-18 dropped-instantiation miscompile - plain args,
-    rsp (turns out: rsp = passthrough, no caching at all), -t4 and the expt
-    flags all came back symbol-identical. So the trigger lives in the real
-    TU's content or its full flag set. This probe:
-      1. shallow-clones ORT at the pinned ref
-      2. configures with this chain's CUDA settings (NO launcher, DML/TRT
-         off - they do not shape the bias_softmax command)
-      3. extracts the TU's exact nvcc command via `ninja -t commands`
-      4. runs it bare, then sccache-wrapped (private local cache, own
-         server), and diffs llvm-nm symbol tables
-    A MISSING list = the miscompile, pinned to one command anyone can replay.
+    Synthetic probes never reproduced the dropped-instantiation miscompile, so this uses the TU's exact ninja command.
+    A MISSING list is the miscompile, pinned to one command anyone can replay.
 #>
 [CmdletBinding()]
 param(
     [string]$WorkDir = 'C:\probe-ort',
-    # Env fallback: Dockerfile.probe declares ARG ORT_REF so a
-    # -BuildArg ORT_REF=... override reaches this run as $env:ORT_REF.
+    # Dockerfile.probe declares ARG ORT_REF, so a -BuildArg override arrives as $env:ORT_REF.
     [string]$OrtRef = $(if ($env:ORT_REF) { $env:ORT_REF } else { 'v1.28.0' }),
     [string]$Tu = 'bias_softmax_impl.cu',
     # Override to test a locally built sccache (patch-verify probe).
@@ -41,14 +27,14 @@ Enter-VsDevCmdEnvironment
 $null = New-Item -ItemType Directory -Force -Path $WorkDir
 Set-Location $WorkDir
 
-# ---- 1. source ----------------------------------------------------------
+# 1. Source
 if (-not (Test-Path 'ort\.git')) {
     & git clone --depth 1 --branch $OrtRef --recurse-submodules --shallow-submodules `
         https://github.com/microsoft/onnxruntime.git ort 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" }
     if ($LASTEXITCODE -ne 0) { throw "clone failed ($LASTEXITCODE)" }
 }
 
-# ---- 2. configure (no launcher anywhere - we want the RAW command) -------
+# 2. Configure without any launcher, to get the raw command
 $cuda = $env:CUDA_PATH
 $build = Join-Path $WorkDir 'build'
 & cmake -S ort\cmake -B $build -G Ninja `
@@ -67,7 +53,7 @@ $build = Join-Path $WorkDir 'build'
     2>&1 | Select-Object -Last 8 | ForEach-Object { "$_" }
 if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 
-# ---- 3. the TU's exact command -------------------------------------------
+# 3. The TU's exact command
 Set-Location $build
 $objLine = & ninja -t targets all 2>$null | Select-String -SimpleMatch $Tu | Select-String 'providers_cuda' | Select-Object -First 1
 if (-not $objLine) { throw "TU $Tu not found in ninja targets" }
@@ -81,7 +67,7 @@ Set-Content -Path replay-cmd.txt -Value $cmd
 # ninja emits `cmd /S /C "<real command>"`- strip that wrapper if present.
 if ($cmd -match '^\s*C?:?.*cmd(\.exe)? /S /C "(.*)"\s*$') { $cmd = $Matches[2] }
 
-# ---- 4. bare vs wrapped ----------------------------------------------------
+# 4. Bare vs wrapped
 & cmd.exe /S /C "$cmd" 2>&1 | Select-Object -Last 3 | ForEach-Object { "$_" }
 if ($LASTEXITCODE -ne 0) { throw "bare compile failed ($LASTEXITCODE)" }
 Copy-Item $obj "$WorkDir\bare.obj" -Force
@@ -104,14 +90,11 @@ $wrappedExit = $LASTEXITCODE
 if ($wrappedExit -ne 0) { throw "wrapped compile failed ($wrappedExit)" }
 Copy-Item $obj "$WorkDir\wrapped.obj" -Force
 
-# ---- 5. verdict -------------------------------------------------------------
+# 5. Verdict
 $bareSyms = (& llvm-nm --defined-only "$WorkDir\bare.obj" 2>$null) -replace '^\S+\s+\S+\s+', '' | Sort-Object -Unique
 $wrapSyms = (& llvm-nm --defined-only "$WorkDir\wrapped.obj" 2>$null) -replace '^\S+\s+\S+\s+', '' | Sort-Object -Unique
 $missing = @(Compare-Object $bareSyms $wrapSyms | Where-Object SideIndicator -eq '<=' | ForEach-Object InputObject |
-    # ??_C@ = anonymous string LITERALS. cudafe embeds the (randomized) module
-    # id / temp names in internal strings, so bare and wrapped legitimately
-    # carry 1:1-substituted literals (patch-verify: 68 differing literals at
-    # EQUAL total counts). Only real code/data symbols count as a miss.
+    # ??_C@ string literals embed cudafe's randomized module id, so only code/data symbols count as a miss.
     Where-Object { $_ -notmatch '^\?\?_C@' })
 Write-Host ("bare symbols: {0}  wrapped symbols: {1}" -f $bareSyms.Count, $wrapSyms.Count)
 if ($missing.Count -gt 0) {
@@ -120,11 +103,7 @@ if ($missing.Count -gt 0) {
 } else {
     Write-Host '[ OK ] wrapped object contains every bare-object symbol (this TU does not reproduce)'
 }
-# ---- 6b. machine diff: plan host-step defines vs sccache's host arg vector --
-# The dropped symbols are all double instantiations, and nvcc's plan gives the
-# FINAL host cl.exe step arch defines (__CUDA_ARCH__=900 etc.) that typically
-# guard double code paths. If sccache rebuilds that host step with a different
-# define set, that is the mechanism. Tokenize both and diff.
+# 6b. Host-step define diff, plan vs sccache: arch defines there guard the dropped double code paths.
 Set-Location $build
 $planLines = & cmd.exe /S /C "$cmd --dryrun" 2>&1
 $planHost = ($planLines | Select-String 'cl\.exe' | Select-Object -Last 1).Line
@@ -139,11 +118,7 @@ Compare-Object $planD $execD | ForEach-Object {
     Write-Host ("  {0}: {1}" -f $tag, $_.InputObject)
 }
 
-# ---- 6e. THE define delta: plan host-preprocess vs sccache's preprocess ----
-# sccache's cudafe++ consumes x_0.cpp4.ii, an .ii sccache preprocessed itself
-# (probe5) - so the define set of THAT preprocess decides which #ifdef
-# branches ever reach stub generation. Probe3 counted 48 exec -D tokens vs
-# 59-64 in the plan. Compute the exact missing set.
+# 6e. Preprocess define delta: sccache preprocesses cudafe++'s input itself, so its define set picks the #ifdef branches.
 $planPPLine = ($planLines | Select-String ' -E |\-EP |/EP ' | Select-Object -Last 1).Line
 $execPPLine = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'preprocess' | Select-Object -First 1).Line
 if ($planPPLine -and $execPPLine) {
@@ -162,10 +137,7 @@ if ($planPPLine -and $execPPLine) {
     Write-Host ("define delta: line capture failed (plan={0} exec={1})" -f [bool]$planPPLine, [bool]$execPPLine)
 }
 
-# ---- 6d. FULL lines, no summarizing: original cmd truth + both preprocess
-# and cudafe++ invocations, chunked for the log. The 6c accounting used two
-# different regexes on the two sides and produced contradictory-looking
-# numbers - raw lines don't lie.
+# 6d. Full raw lines, chunked: the per-side regex counts below can look contradictory.
 function Write-Chunked([string]$Prefix, [string]$Line) {
     if (-not $Line) { Write-Host "$Prefix <absent>"; return }
     for ($i = 0; $i -lt $Line.Length; $i += 230) {
@@ -182,12 +154,7 @@ Write-Chunked 'execPP|' $execPP
 $execFE = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'module_id\]: get_cached_or_compile' | Select-Object -First 1).Line
 Write-Chunked 'execFE|' $execFE
 
-# ---- 6c. per-step -DUSE_CUDA accounting ------------------------------------
-# The dropped double instantiation is guarded by a plain `#ifdef USE_CUDA`.
-# The final host step's define set matches the plan (6b), so the loss must be
-# in an EARLIER step's input: the preprocess feeding cudafe++ (which GENERATES
-# the host stubs). One column tells the story: does each step still carry
-# -DUSE_CUDA?
+# 6c. Per-step USE_CUDA: the dropped instantiation sits behind #ifdef USE_CUDA, so find the first step that loses it.
 Write-Host '--- per-step USE_CUDA accounting (plan) ---'
 $planLines | Select-String 'cudafe|cicc|cl\.exe.*-E|cl\.exe.*/E|cl\.exe' | ForEach-Object {
     $l = $_.Line
@@ -203,9 +170,7 @@ Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'get_cached_or_compile|msvc\]
     Write-Host ("exec  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $label, ([regex]::Matches($l, '"-D|\\"-D|[-/]D')).Count, ($l -match 'USE_CUDA'))
 }
 
-# ---- 6. mechanism evidence: nvcc's own plan vs sccache's executed steps ----
-# The container fs dies with the RUN, so everything upstream needs lands in
-# stdout here. Filter to the sub-command lines; cap so the log stays sane.
+# 6. nvcc's plan vs sccache's executed steps, on stdout since the container fs dies with the RUN.
 Set-Location $build
 & cmd.exe /S /C "$cmd --dryrun" 2>&1 | Select-String 'cicc|ptxas|cudafe|fatbinary' |
     Select-Object -First 40 | ForEach-Object { "plan| $($_.Line.Trim().Substring(0, [Math]::Min(300, $_.Line.Trim().Length)))" }
@@ -214,12 +179,7 @@ if (Test-Path $env:SCCACHE_ERROR_LOG) {
         Select-Object -First 120 | ForEach-Object { "exec| $($_.Line.Trim().Substring(0, [Math]::Min(300, $_.Line.Trim().Length)))" }
 }
 
-# ---- 7. intermediate forensics: where do the double stubs first vanish? ----
-# sccache's nvcc handler understands --keep/--keep-dir itself (nvcc.rs:325ff:
-# strips them from the invocation, copies its intermediates out). So both
-# flows dump their intermediates and we count the double (Iddd) vs float
-# (Ifff) mangled markers per file - the first wrapped file whose Iddd count
-# drops below bare's is the artifact the decomposition breaks.
+# 7. Both flows keep their intermediates; the first wrapped file with fewer Iddd markers than bare is the broken step.
 $keepBare = Join-Path $WorkDir 'keep-bare'
 $keepWrap = Join-Path $WorkDir 'keep-wrap'
 $null = New-Item -ItemType Directory -Force -Path $keepBare, $keepWrap
@@ -250,12 +210,7 @@ foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
     }
 }
 
-# ---- 8. .ii-level forensics: unmangled markers + define presence -----------
-# The mangled-marker table skips the .ii files (preprocessed SOURCE carries
-# unmangled names). Count the double instantiation textually per intermediate
-# and check whether the injected defines survive into sccache's preprocess
-# invocations across ALL legs (the earlier single-line compare could have
-# mixed up legs).
+# 8. .ii files carry unmangled names, so count the instantiations textually and check the defines across all legs.
 foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
     $side = $pair[0]; $dir = $pair[1]
     Get-ChildItem $dir -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object {
@@ -272,7 +227,7 @@ if (Test-Path $keepLog) {
     }
 }
 
-# ---- 9. the transformed commands sccache actually executed (trace level) ---
+# 9. The transformed commands sccache executed (trace level)
 if (Test-Path $keepLog) {
     Get-Content $keepLog | Select-String 'transformed nvcc command' | ForEach-Object {
         $l = $_.Line
@@ -285,8 +240,7 @@ if (Test-Path $keepLog) {
     if ($clLine) { for ($i = 0; $i -lt [Math]::Min($clLine.Length, 4600); $i += 230) { Write-Host ("xformPP| " + $clLine.Substring($i, [Math]::Min(230, $clLine.Length - $i))) } }
 }
 
-# ---- 10. cpp4.ii content scan (loose regex; probe9's SimpleMatch found 0
-# even in bare, so spacing differs in preprocessed output) -------------------
+# 10. cpp4.ii scan with loose regexes, since preprocessed spacing defeats a literal match.
 foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
     $side = $pair[0]
     $f = Join-Path $pair[1] 'bias_softmax_impl.cpp4.ii'
@@ -297,11 +251,7 @@ foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
     }
 }
 
-# ---- 11. tokenizer autopsy: replicate nvcc.rs's windows mangling + shlex ---
-# Hypothesis: .replace('\','/') runs BEFORE tokenization, so every escaped
-# quote \" in the dryrun line becomes /" and the quote structure collapses at
-# the first string-valued define (FILE_NAME=\"...\"); everything after gets
-# mis-grouped and cl never sees those -D pairs as options.
+# 11. Replays nvcc.rs's backslash-to-slash rewrite before shlex, which collapses the quotes at the first string define.
 $cpp4Plan = ($planLines | Select-String 'cpp4\.ii' | Select-Object -First 1).Line
 if ($cpp4Plan) {
     $mangled = $cpp4Plan.Replace('""', '"')

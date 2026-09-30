@@ -116,6 +116,17 @@ host-side act, e.g. a duration-bounded
 ccache/sccache mounts a live build keeps warm stay above the cutoff — check what
 it would remove before running it.
 
+The id keys the lane on `${TARGET_ARCH}`, never `${TARGETARCH}`: the stage's
+`ARG TARGETARCH` rebinds to BuildKit's default, the `--platform linux/amd64` that
+`cross-stage-build.sh` passes on every lane, so all lanes would share one store.
+The NDK/API pins expand from the `android-sdk` parent's ENV, where an ARG-only
+name would expand empty and merge every generation into one store. The tarballs
+stay per lane rather than in a shared id, because cerbero downloads them
+non-atomically next to its live per-lane git repos, and the `sharing=locked` that
+would need holds its lock for the whole multi-hour RUN. `${ANDROID_LIB}` is in the
+id so the RUN stays byte-identical across the five library stages while the four
+non-cerbero lanes get their own empty store.
+
 ### 1.2 The web-lane tool binaries (riscv-tools, 2026-09-23)
 
 Three T1 ids hold the from-source `wasm-pack` and `flutter_rust_bridge_codegen`
@@ -139,6 +150,29 @@ The trust boundary is the one every cachemount here has: a binary and manifest
 forged consistently by someone who can write the buildkitd store pass. Since
 `RUNTIME_NO_CACHE=1` does not touch a cachemount, `WEB_LANE_TOOLS_CACHE=refresh`
 is the way to rebuild past a good entry; `off` neither reads nor writes.
+
+### 1.3 Cache-mount ids and source checkouts
+
+`Dockerfile.media` keys its cache ids three ways on purpose. `${TARGET_ARCH}`
+(one store per lane) serves the `sharing=locked` apt mounts and the arch-specific
+ffmpeg SDK store; `${TARGETARCH}` serves ccache, sccache, uv and pip, which are
+unlocked and content-addressed, so a lane collision is free while a split would
+triple the cold compile; and `onnxruntime-web` carries no arch, because its wasm
+output is arch-independent and the lanes serializing on that one locked RUN is
+the price of one emscripten compile instead of three. `locked` serializes every
+consumer of an id, concurrent lanes included, and `private` hands each concurrent
+consumer a new empty directory, so it never buys sharing. The cargo registry is
+the odd one: its sources are arch-independent, but the gstreamer RUN patches
+crates in place and cargo's `.package-cache` lock sits at the `CARGO_HOME` root,
+outside the mounted subtrees, so concurrent containers on one id are unguarded.
+
+Source checkouts are not cache-mounted, and a mount could not be populated:
+`build-opencv.sh` and `build-ffmpeg.sh` delete their source dir on cleanup,
+`setup-gstreamer.sh` builds in a PID-suffixed dir, and ONNX Runtime clones into
+the image path `/opt/onnxruntime`. A future source cache must key its id on the
+pinned version through an `ARG` declared in the same stage above the RUN (an
+out-of-scope variable expands to nothing and collapses every version onto one
+store), and still serves a frozen tip whenever the ref is a branch.
 
 ---
 

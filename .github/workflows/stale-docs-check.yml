@@ -1,5 +1,4 @@
-# Weekly check: file an issue if version markers, deps table, Dockerfile ARGs,
-# or website license files are out of sync with versions.env.
+# Weekly: file an issue when docs, ARGs or license files drift from versions.env.
 name: Docs · stale check
 
 on:
@@ -7,8 +6,7 @@ on:
     - cron: "0 6 * * 1"  # every Monday 06:00 UTC
   workflow_dispatch:       # manual trigger
 
-# The github-script step files issues; the default token can be repo-configured
-# read-only, which would 403 the issue creation.
+# The default token may be configured read-only, which would 403 the issue creation.
 permissions:
   contents: read
   issues: write
@@ -29,15 +27,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      # Subset of the canonical gate list in linux/scripts/preflight.sh —
-      # version snapshot (also covers inline markers, deps table, Dockerfile
-      # ARGs, website license files), ARG consistency, mirror consistency.
-      # continue-on-error is load-bearing for the issue-filing design below -
-      # the next step reads steps.check.outcome, which only exists because this
-      # step is allowed to conclude non-success. It is NOT a licence for the job
-      # to go green over stale docs: the explicit re-raise at the end of this
-      # job restores that signal. Removing the re-raise would leave a weekly
-      # gate that cannot fail.
+      # continue-on-error only lets the issue step run first; the last step re-raises the failure.
       - name: Check version/docs consistency
         id: check
         continue-on-error: true
@@ -84,10 +74,7 @@ jobs:
               labels: ['documentation'],
             });
 
-      # The gate's verdict, restored. Without this the weekly run reports SUCCESS
-      # over provably stale docs and the only signal is an issue nobody is paged
-      # for - a gate that cannot fail. The issue is still filed first, so this
-      # costs the alerting design nothing.
+      # Without this re-raise the weekly gate could never fail.
       - name: Fail the run when the docs are stale
         if: steps.check.outcome != 'success'
         run: |

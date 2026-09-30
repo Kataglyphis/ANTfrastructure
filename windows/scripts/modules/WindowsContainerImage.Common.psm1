@@ -5,9 +5,7 @@
 
 Set-StrictMode -Version Latest
 
-# Guarded, WITHOUT -Force (repo-wide nested-import rule): a forced nested
-# re-import rebinds Shared into this module's private scope and unloads the
-# caller's top-level import (the PS module-scoping trap).
+# Guarded, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
@@ -18,10 +16,7 @@ function Resolve-ContainerImageValue {
         [string]$EnvironmentVariable = '',
         [AllowEmptyString()]
         [string]$DefaultValue = '',
-        # Strip a single leading 'v' (tag style, e.g. 'v1.2.3' -> '1.2.3') from the
-        # RESOLVED value. ADDITIVE: default behavior is unchanged; this exists so
-        # every version gate (e.g. smoke-test's Get-ExpectedVersion) normalizes tags
-        # through the same code path instead of re-implementing the trim.
+        # Strip a leading 'v' from the resolved value, so every version gate trims tags the same way.
         [switch]$TrimVPrefix
     )
 
@@ -43,11 +38,7 @@ function Resolve-ContainerImageValue {
     return $resolved
 }
 
-# Single source for the VS Build Tools root: Install-Vs.ps1 and the smoke test each
-# probed for VsDevCmd.bat with their own (divergent) Program Files lists. Probes
-# both PF roots, keyed on the file every caller actually needs (VsDevCmd.bat);
-# honors VISUAL_STUDIO_VERSION with the same '18' fallback as Install-Vs.ps1.
-# Returns the BuildTools root (string) or $null when not installed. ADDITIVE export.
+# One probe for Install-Vs.ps1 and the smoke test, so they cannot disagree on the Program Files roots.
 function Resolve-VsBuildToolsRoot {
     param(
         [string]$VsMajor = ''
@@ -76,13 +67,7 @@ function Initialize-ContainerImageTempDirectory {
 }
 
 function Clear-PendingFileHandle {
-    # GC + finalizer drain + a no-op child process to flush lingering async file
-    # handles before a docker layer commit (the CUDA installer leaves handles
-    # behind that otherwise make the immediately-following Remove-Item/commit flaky).
-    # BEST-EFFORT by contract: this flush must NEVER fail a build. A transient
-    # process-spawn flake once surfaced as "'cmd.exe' is not recognized" under
-    # EAP=Stop and killed a green sdk stage 4.5 min in (2026-08-03; cmd.exe and
-    # PATH were verified healthy) — hence the full path + try/catch.
+    # Flushes installer-held handles before a layer commit; best-effort, since a spawn flake must never fail a build.
     [System.GC]::Collect()
     [System.GC]::WaitForPendingFinalizers()
     try {
@@ -163,35 +148,16 @@ function Assert-ContainerCommandAvailable {
 .SYNOPSIS
     The family CI container image reference, composed from ANTfrastructure's versions.env.
 .DESCRIPTION
-    The PowerShell twin of linux/scripts/ci-image-ref.sh, and the same contract:
-    versions.env owns IMAGE_REGISTRY_PREFIX + CI_IMAGE_LINUX_TAG / CI_IMAGE_WINDOWS_TAG /
-    CI_IMAGE_WINDOWS_ARM64_TAG, the four container composite actions carry the composed
-    values as their image input DEFAULTS, and this exists for the callers that cannot omit an input because
-    they are not calling an action -- a local lane driver, a `docker run`, a sweep script.
-
-    It takes NO consumer repo root, deliberately, where every other entry point in this
-    repo does. versions.env is resolved from THIS module's own location, so the answer
-    always comes from the ANTfrastructure the caller actually imported -- i.e. that
-    consumer's pinned submodule. A -RepoRoot parameter would imply a per-consumer answer
-    and there is not one; worse, it would let two roots disagree about one fleet.
-
-    A missing key THROWS rather than returning an empty string: an empty image reference
-    reaches `docker run` as "run the argument after it as an image" and fails a long way
-    from the cause. Parsed, never sourced -- versions.env is inert KEY=value data.
+    Twin of linux/scripts/ci-image-ref.sh. No -RepoRoot: the answer comes from the ANTfrastructure the caller imported.
+    A missing key throws, as an empty ref fails far from the cause in `docker run`.
 .PARAMETER Windows
     Compose the Windows image reference instead of the Linux one.
 .PARAMETER TargetArch
-    With -Windows: arm64 composes the arm64 cross bundle (CI_IMAGE_WINDOWS_ARM64_TAG),
-    the image the windows-arm64-cross lanes run in. amd64 (the default) is the plain
-    Windows image. Refused without -Windows: there is no Linux cross bundle.
+    With -Windows, arm64 composes the arm64 cross bundle; refused without -Windows.
 .PARAMETER VersionsEnvPath
     Override the versions.env location. For tests; leave unset in production.
 .OUTPUTS
-    [string] '<IMAGE_REGISTRY_PREFIX>:<CI_IMAGE_LINUX_TAG>', or the
-    CI_IMAGE_WINDOWS_TAG one under -Windows (CI_IMAGE_WINDOWS_ARM64_TAG with
-    -TargetArch arm64). No sample value is spelled out here: a ref in a comment
-    freezes at the tag it was typed on exactly like one in code, and
-    verify_ci_image_refs.py check D reads comments too.
+    [string] '<IMAGE_REGISTRY_PREFIX>:<tag>'; no sample here, as verify_ci_image_refs.py reads comments too.
 #>
 function Get-CiImageReference {
     param(
@@ -234,8 +200,7 @@ Export-ModuleMember -Function @(
     'Sync-ContainerProcessPath',
     'Assert-ContainerCommandAvailable',
     'Get-CiImageReference',
-    # Re-exported from WindowsScripts.Shared (imported above) so a caller gets these via a
-    # single Import-Module -- no "import Shared last" ordering dance / nested -Force clobber.
+    # Re-exported from WindowsScripts.Shared, so one Import-Module suffices.
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',

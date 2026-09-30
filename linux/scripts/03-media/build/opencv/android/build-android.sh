@@ -5,11 +5,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
 android_build_preamble_init "Android OpenCV build" "${ANDROID_API_LEVEL:-34}"
 
-# Env-first like the litert/iree/onnxruntime siblings (android-dispatch.sh
-# passes no arguments, so `${1:-...}` alone always took the literal). Inline
-# default mirrors versions.env OPENCV_VERSION — the released 5.0.0 TAG, not
-# the moving 5.x branch (which made the android OpenCV non-reproducible and
-# of different provenance than the chain's /opt/opencv5).
+# Env first, since android-dispatch.sh passes no arguments; the default is versions.env's release tag, not the 5.x branch.
 OPENCV_VERSION="${OPENCV_VERSION:-${1:-5.0.0}}"
 INSTALL_DIR="${OPENCV_ROOT_ANDROID:-/opt/android/opencv}"
 
@@ -18,19 +14,14 @@ apt-get update && apt-get install -y --no-install-recommends \
 
 android_clone_shallow "https://github.com/opencv/opencv.git" "${OPENCV_VERSION}" opencv-android
 
-# OpenCV 5.0's root CMakeLists.txt unconditionally add_subdirectory(samples),
-# and samples/CMakeLists.txt calls add_android_project — a function undefined
-# when BUILD_ANDROID_PROJECTS=OFF. Replacing samples/CMakeLists.txt with a
-# stub makes the subdirectory a no-op.
+# OpenCV 5.0 always adds samples/, whose add_android_project is undefined with BUILD_ANDROID_PROJECTS=OFF.
 rm -rf samples/android samples/cpp samples/python samples/java samples/cpp
 mkdir -p samples
 cat > samples/CMakeLists.txt <<'EOF'
 # Stub: samples disabled for cross-compile Android build
 EOF
 
-# Same MLAS stub fix as build-opencv.sh via the canonical patch in
-# patches/opencv/001-mlas-hgemm-supported-stub.patch. apply-patch.sh is
-# idempotent (skips if already applied via reverse-check), so re-runs stay safe.
+# Same MLAS stub as build-opencv.sh; see docs/upstreamable-patches.md § 6.
 android_apply_patch \
   "opencv/001-mlas-hgemm-supported-stub.patch" \
   "$(pwd)" \
@@ -39,15 +30,7 @@ android_apply_patch \
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
 : "${ANDROID_HOME:?ANDROID_HOME must be set}"
 
-# OpenCV 5.x RVV handling for the riscv64 Android ABI. The baseline universal-
-# intrinsic sources (e.g. modules/imgproc/src/thresh.cpp) capture sizeless RVV
-# types (__rvv_uint16m2_t, ...) by-copy inside lambdas. The Android NDK's clang
-# rejects that ("by-copy capture of variable with sizeless type"), whereas the
-# Linux riscv64 build (GCC 16) tolerates it — so this is an Android/clang-only
-# breakage. Drop RVV from the CPU baseline + disable the RVV HAL for the riscv64
-# ABI so those paths fall back to scalar. Other ABIs (arm64-v8a, x86_64) have no
-# RVV and are unaffected. The LINUX riscv64 build does enable RVV since
-# 2026-09-01; this disable is Android-only. docs/riscv64-rva23-baseline.md
+# The NDK's clang rejects OpenCV's by-copy lambda capture of sizeless RVV types, which Linux GCC accepts.
 declare -a OPENCV_ANDROID_EXTRA_ARGS=()
 case "${ANDROID_ABI}" in
   riscv64)

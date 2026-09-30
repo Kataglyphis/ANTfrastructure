@@ -1,47 +1,16 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""Where a dependency is DECLARED, read in the manager's own syntax.
+"""Where a dependency is declared, found by parsing each manager's syntax, never by text search.
 
-This module answers exactly one question, and answers it structurally: given a
-manager, a file's lines and a dependency NAME, which lines DECLARE that
-dependency, and what value does each declaration carry?
-
-It never searches for the old value. The previous locator did -- it found the
-old value anywhere in the file and then "narrowed" by proximity to a line that
-merely mentioned the dep -- and it wrote `other_pkg: 1.6.0` into a pubspec whose
-report named only `http`, walked a workflow's steps one per run, matched `http`
-inside `http_parser`, and let a dep named in a COMMENT anchor an unrelated pin.
-Every one of those is a text search dressed up as a match, so there is no text
-search here at all: each finder parses the shape its manager defines, anchors on
-the dependency name as that shape spells it, and returns the exact character
-span of the value. A manager with no finder gets None, which the caller must
-turn into a refusal -- never a fallback.
-
-Two rules keep a finder honest, and both were bought with a wrong write:
-
-  * a line that LOOKS like a declaration in text but is not one in the syntax --
-    a `uses:` printed inside a `run: |` block, a `with:` input named `uses`, a
-    `[package.metadata.dependencies]` table, a `"left-pad"` in an array -- is
-    not a site. Every finder here parses structure, not lines.
-  * a declaration whose value this module cannot read is a REFUSAL, never a
-    fallback to some other site. A pubspec declaring `http` as a `hosted:` map
-    used to end with the `dependency_overrides` entry rewritten instead.
-
-The public entry points are sites() (the declarations) and resolve() (the
-verdict for one group of report rows). The prose lives in
-docs/dependency-updates.md#how-one-value-gets-rewritten.
+See docs/dependency-updates.md#how-one-value-gets-rewritten
 """
 import collections
 import re
 
-# line: 0-based index into the lines handed in. start/end: the half-open span of
-# the VALUE inside that line, so a rewrite is line[:start] + new + line[end:] and
-# touches nothing else on the line -- no comment, no marker, no quoting.
+# start/end: the value's half-open span, so a rewrite touches nothing else on the line.
 Site = collections.namedtuple("Site", "line start end value")
-# One `key: value` line. `col` is the column the KEY starts at, which is what
-# decides nesting: a line indented past it is inside this key, a line at or
-# before it has left it.
+# col: where the key starts, which decides nesting.
 Key = collections.namedtuple("Key", "name col start value")
 
 _DASH = re.compile(r"^(\s*)-\s+(?=\S)")
@@ -60,21 +29,12 @@ NPM_OBJECTS = ("dependencies", "devDependencies", "optionalDependencies",
 
 
 def normalise(name):
-    """A PEP 503 project name: `-`, `_` and `.` runs collapse, case folds.
-    "Foo_Bar", "foo-bar" and "foo.bar" are ONE name to pip, so a report saying
-    foo-bar must find the line spelling it Foo_Bar."""
+    """A PEP 503 project name, so a report's foo-bar finds the line spelling Foo_Bar."""
     return re.sub(r"[-_.]+", "-", name.strip()).lower()
 
 
 def pep508_span(text):
-    """(name, extras, start, end) for one PEP 508 requirement, or None.
-
-    `start`/`end` are the half-open span of the version SPECIFIER inside `text`,
-    the environment marker excluded: `ruff==0.9.0 ; sys_platform=="linux"`
-    yields ("ruff", "", 4, 11), so a rewrite of the specifier cannot disturb the
-    marker beside it. One owner, because three callers need exactly this answer
-    -- the requirements finder, the pyproject one, and renovate_audit.py reading
-    the same requirement back off a real parse."""
+    """(name, extras, start, end) of one PEP 508 requirement, the span excluding the marker; or None."""
     match = _PEP508_NAME.match(text)
     if not match:
         return None
@@ -85,10 +45,7 @@ def pep508_span(text):
 
 
 def uncomment(line, quotes=""):
-    """`line` truncated at the first comment marker that is neither inside a
-    quoted string nor glued to a non-blank character. The second half matters:
-    `uses: some/action@v1#frag` carries no comment, while `pkg==1.0  # note`
-    does, and a naive split on "#" cannot tell them apart."""
+    """`line` cut at the first unquoted `#` after whitespace, since `@v1#frag` is no comment."""
     quote = ""
     escaped = False
     for i, char in enumerate(line):
@@ -111,8 +68,7 @@ def _indent(line):
 
 
 def _key_value(line, quotes="\"'"):
-    """The Key on a `key: value` line, or None. The value is stripped and its
-    start is an index into `line`, so the span is exact."""
+    """The Key on a `key: value` line, or None; start indexes into `line`."""
     match = _YAML_KEY.match(line)
     if not match:
         return None
@@ -137,9 +93,7 @@ def _blank_or_comment(line):
     return not stripped or stripped.startswith("#")
 
 
-# --------------------------------------------------------------------------
 # One YAML walk, three managers
-# --------------------------------------------------------------------------
 def _open_node(nodes, stack, name, col):
     """Push a new mapping at `col`, closing everything it dedents out of."""
     while len(stack) > 1 and stack[-1]["col"] >= col:
@@ -150,24 +104,7 @@ def _open_node(nodes, stack, name, col):
 
 
 def yaml_nodes(lines):
-    """Every mapping the document opens, each carrying its OWN keys as Sites.
-
-    A mapping is the document root, a `key:` with nothing after the colon, or a
-    `- ` sequence item; a key belongs to the innermost mapping whose column is
-    smaller than the key's. That is the only thing that tells a step's `uses:`
-    apart from a `uses:` sitting in that step's `with:` inputs, tells a pubspec
-    dependency apart from a key nested under one, and tells two pre-commit
-    hooks pinned to the same `rev:` apart from each other.
-
-    The open mappings are a STACK, not one `current`: a `hooks:` list nested
-    inside a repo item is itself a sequence, and treating its first `- id:` as
-    the end of the enclosing item lost every key written after it. pre-commit
-    puts no order on a repo's keys, so a config spelling `hooks:` before `rev:`
-    would have looked like a repo with no rev at all.
-
-    A `|` or `>` block scalar is TEXT, and every line of it is skipped. A step
-    that PRINTS a workflow -- `run: |` with `- uses: actions/checkout@v4`
-    inside it -- was read as a step of its own and rewritten."""
+    """Every mapping the document opens, with its own keys as Sites; block scalars are skipped as text."""
     root = {"name": "", "col": -1, "parent": None, "at": {}}
     nodes = [root]
     stack = [root]
@@ -199,23 +136,9 @@ def _named(node, name):
     return node["parent"] is not None and node["parent"]["name"] == name
 
 
-# --------------------------------------------------------------------------
 # github-actions
-# --------------------------------------------------------------------------
 def find_actions(lines, dep, _dep_type):
-    """The `ref` of every step or job `uses:` whose value names this action.
-
-    A step is `uses: <owner>/<repo>[/<path>]@<ref>`, so the name is everything
-    before the LAST "@" and the value is everything after it. Splitting there is
-    what separates `actions/checkout` from `actions/checkout-extra`: the two
-    produce different names, and a substring test cannot.
-
-    WHICH `uses:` counts is the other half, and it is a question about the
-    document, not the line. A step's `uses:` is a key of a sequence item; a
-    reusable workflow's is a key of a job (`jobs.<id>.uses`). A `uses:` sitting
-    anywhere else -- an input named `uses` under a step's `with:`, a line inside
-    a `run: |` block that prints a workflow -- is not an action reference, and
-    both of those were being rewritten."""
+    """The ref of every step or job `uses:` naming this action, split at the last `@`."""
     out = []
     want = dep.casefold()
     for node in yaml_nodes(lines):
@@ -232,20 +155,9 @@ def find_actions(lines, dep, _dep_type):
     return out
 
 
-# --------------------------------------------------------------------------
 # pub (pubspec.yaml)
-# --------------------------------------------------------------------------
 def find_pub(lines, dep, _dep_type):
-    """The constraint of a key that IS this dep, in a top-level dependency
-    section of the pubspec.
-
-    Anchoring on the whole key is what keeps `http` off `http_parser`, and
-    reading the document's mappings is what keeps `sdk: flutter` (a key nested
-    under a dep) and the `assets:` list under `flutter:` out of the candidate
-    set entirely. A dep declared as a nested map -- `hosted:` with a `version:`
-    below it, or `sdk: flutter` -- has an EMPTY value here, and resolve()
-    refuses on it rather than reaching for another section that happens to name
-    the same dep."""
+    """The value of this dep's own key in a top-level pubspec section; a map-shaped dep comes back empty."""
     out = []
     for node in yaml_nodes(lines):
         if node["name"] not in PUB_SECTIONS or not _named(node, ""):
@@ -256,37 +168,16 @@ def find_pub(lines, dep, _dep_type):
     return out
 
 
-# --------------------------------------------------------------------------
 # pip_requirements
-# --------------------------------------------------------------------------
 def _requirement_body(line):
-    """One physical line, ready to be read as a requirement.
-
-    pip joins a line ending in `\\` onto the next one, and `pip-compile
-    --generate-hashes` writes exactly that: `ruff==0.9.0 \\` and then a line of
-    `--hash=sha256:...`. The specifier still sits WHOLE on this line -- the
-    continuation carries options, never the version -- but the backslash was
-    being read as part of it, so the value came back as `==0.9.0 \\`, matched no
-    reported current value, and the file was refused with the wrong reason
-    ("something moved") for a pin that had not moved at all. Trimming the marker
-    off the tail cannot disturb the span of anything before it.
-
-    A continuation carrying the version instead (`ruff \\` / `  ==0.9.0`) leaves
-    no specifier on this line, which comes back as a valueless site and is
-    refused by resolve() -- the same verdict every unreadable declaration gets.
-    """
+    """One line without its comment or a trailing continuation `\\`, which is not part of the specifier."""
     body = uncomment(line)
     stripped = body.rstrip()
     return stripped[:-1] if stripped.endswith("\\") else body
 
 
 def find_requirements(lines, dep, _dep_type):
-    """The specifier of every PEP 508 line whose NAME normalises to this dep.
-
-    Names normalise per PEP 503, so a report saying "foo-bar" finds "Foo_Bar".
-    An option line (-e, -r, --hash) is not a requirement and is skipped; so is a
-    comment, which is what kept `# ruff is managed by renovate` from anchoring
-    the `black==0.9.0` below it."""
+    """The specifier of every PEP 508 line whose name normalises to this dep; options and comments skipped."""
     out = []
     want = normalise(dep)
     for num, line in enumerate(lines):
@@ -300,15 +191,7 @@ def find_requirements(lines, dep, _dep_type):
     return out
 
 
-# --------------------------------------------------------------------------
-# pep621 (pyproject.toml)
-# --------------------------------------------------------------------------
-# The arrays a PEP 621 dependency may live in, by table path. Anything else is
-# not a dependency array, and a string in it is not a requirement -- measured
-# against OrchestrANT's pyproject.toml, where `keywords = [..., "onnxruntime",
-# ...]` under [project] was read as a pin of onnxruntime by the first cut of
-# this finder. A table not listed here yields no site, so the caller refuses by
-# name instead of editing a keyword.
+# pep621 (pyproject.toml): only these arrays hold dependencies, so a `keywords` entry is never a pin.
 PEP621_KEYS = {
     ("project",): ("dependencies",),
     ("build-system",): ("requires",),
@@ -326,8 +209,7 @@ def _is_dep_array(path, key):
 
 
 def _bracket_delta(body):
-    """`[` minus `]`, counting only brackets OUTSIDE a quoted string, so a URL
-    or a marker carrying a bracket cannot close the array early."""
+    """`[` minus `]` outside quoted strings, so a bracket in a URL or marker cannot close the array."""
     depth = 0
     quote = ""
     escaped = False
@@ -363,15 +245,7 @@ def _pep508_sites(body, num, want):
 
 
 def find_pep621(lines, dep, _dep_type):
-    """The specifier inside every quoted PEP 508 string naming this dep, in a
-    table that actually declares dependencies.
-
-    A pyproject dependency is a STRING inside a known array, so the parse starts
-    from the table header and then from the string -- which is what keeps `torch`
-    off `"torchvision==0.28.0"`, off the commented-out `#"dearpygui==2.2.0"` and
-    off a `keywords` entry that happens to be a package name. A dep declared in
-    several extras yields several sites, which the caller resolves by COUNT
-    rather than by picking one."""
+    """Specifiers of quoted PEP 508 strings naming this dep inside known dependency arrays."""
     out = []
     want = normalise(dep)
     path = []
@@ -396,12 +270,9 @@ def find_pep621(lines, dep, _dep_type):
     return out
 
 
-# --------------------------------------------------------------------------
 # pre-commit
-# --------------------------------------------------------------------------
 def repo_name(url):
-    """`owner/repo`, the depName Renovate gives a pre-commit `repo:`. Returns ""
-    for `local`, `meta` and anything else that is not a hosted repository."""
+    """`owner/repo`, Renovate's depName for a pre-commit `repo:`; "" for local, meta and the like."""
     text = re.sub(r"\.git$", "", url.strip().strip("\"'"))
     text = re.sub(r"^[A-Za-z][A-Za-z0-9+.\-]*://", "", text)
     text = re.sub(r"^[^/]*@", "", text)
@@ -412,8 +283,7 @@ def repo_name(url):
 
 
 def find_precommit(lines, dep, _dep_type):
-    """The `rev:` of the sequence item whose own `repo:` names this dep, and no
-    other item's."""
+    """The `rev:` of the sequence item whose own `repo:` names this dep."""
     want = dep.casefold()
     return [node["at"]["rev"] for node in yaml_nodes(lines)
             if node["name"] == "-" and "rev" in node["at"]
@@ -421,9 +291,7 @@ def find_precommit(lines, dep, _dep_type):
             and repo_name(node["at"]["repo"].value) == want]
 
 
-# --------------------------------------------------------------------------
 # cargo
-# --------------------------------------------------------------------------
 def toml_path(header):
     """The dotted table path of a `[a.b.c]` header, quoted segments unquoted."""
     out = []
@@ -461,10 +329,7 @@ def _toml_key(line, num, key):
 
 
 def _cargo_value(site):
-    """A cargo requirement is either the bare string `"1.0"` or the `version`
-    key of an inline table; both are narrowed to the version's own span so a
-    rewrite cannot disturb the features list beside it. An inline table with no
-    `version` key states no version HERE, and comes back empty."""
+    """A cargo requirement narrowed to its version span; an inline table without `version` comes back empty."""
     text = site.value
     if len(text) >= 2 and text[0] in "\"'" and text[-1] == text[0]:
         return Site(site.line, site.start + 1, site.end - 1, text[1:-1])
@@ -475,16 +340,7 @@ def _cargo_value(site):
 
 
 def _cargo_table(path):
-    """(table, crate) when this TOML table path IS a cargo dependency table,
-    else None. `crate` is set only for a table that belongs to one crate,
-    `[dependencies.serde]`.
-
-    A dependency table is `[dependencies]`, `[dev-dependencies]` or
-    `[build-dependencies]`, optionally under `[workspace.…]` or
-    `[target.<cfg>.…]`, and optionally one segment deeper for a single crate.
-    Testing the LAST segment alone -- what this did first -- read
-    `[package.metadata.dependencies]` as a real dependency table and rewrote a
-    key in it."""
+    """(table, crate or None) when the whole path is a cargo dependency table, else None."""
     parts = list(path)
     if parts[:1] == ["workspace"]:
         parts = parts[1:]
@@ -496,24 +352,11 @@ def _cargo_table(path):
 
 
 def find_cargo(lines, dep, _dep_type):
-    """A key in a dependency table, or the `version` of `[dependencies.<dep>]`.
-
-    Both spellings are the same declaration, and the table path is what says
-    which one this line is -- so `serde_json` in [dependencies] is never read as
-    `serde`, and neither `[package.metadata]` nor `[package.metadata.
-    dependencies]` is a dependency table at all.
-
-    A declaration that states no version HERE is not a site: `clap = { workspace
-    = true }` delegates to `[workspace.dependencies]`, and a path or git
-    dependency has no version to move. Returning those as empty sites is what
-    made a workspace member's second `--apply` REFUSE instead of reporting
-    `already applied` -- the version had moved in the workspace table, and the
-    valueless member line still counted against the file."""
+    """A key in a dependency table, or the `version` of `[dependencies.<dep>]`; a versionless entry is no site."""
     out = []
     path = []
     for num, line in enumerate(lines):
-        # uncomment FIRST: `[dependencies]  # the app's own` is still a table
-        # header, and matching the raw line demands "]" at end of line.
+        # Uncomment first: a header followed by a comment is still a header.
         table = _TOML_TABLE.match(uncomment(line, "\"'"))
         if table:
             path = toml_path(table.group(1))
@@ -535,9 +378,7 @@ def find_cargo(lines, dep, _dep_type):
     return out
 
 
-# --------------------------------------------------------------------------
 # npm
-# --------------------------------------------------------------------------
 def _json_string_end(text, start):
     """The index of the quote closing the JSON string that opens at `start`."""
     i = start + 1
@@ -552,18 +393,7 @@ def _json_string_end(text, start):
 
 
 def json_strings(text):
-    """Every string VALUE in a JSON document, as (path, line, column, text).
-
-    `path` is the tuple of keys enclosing the value, None standing for an array
-    element, so `("dependencies", "left-pad")` is a top-level dependency while
-    `("scripts", "left-pad")` and `("keywords", None)` are not.
-
-    A scanner rather than json.loads, because the whole answer here is WHERE the
-    value sits and json throws the position away. And a scanner rather than
-    line-shaped regexes, because those cannot track structure: the first cut
-    popped its object stack on every `]` without ever pushing on `[`, so an
-    array silently closed the object around it, and a manifest written on one
-    line was invisible to it."""
+    """Every string value as (key path, line, column, text); a scanner, since json.loads drops positions."""
     out = []
     stack = []
     expect_key = False
@@ -603,16 +433,7 @@ def json_strings(text):
 
 
 def find_npm(lines, dep, _dep_type):
-    """The value of the dep's key in a TOP-LEVEL dependencies object.
-
-    JSON has no comments, but it has plenty of ambiguity about what a key IS:
-    the same `"left-pad"` is a dependency in one object, a script name in
-    another, a string in a `keywords` array, and a key of a nested `overrides`
-    sub-object. Only the full path decides, so the document is scanned and the
-    path compared. A dependencies object that is not a top-level key of
-    package.json -- a nested override, an object inside some array -- is a form
-    this locator does not read: it yields nothing, and the caller refuses by
-    name rather than writing the wrong `"left-pad"`."""
+    """The dep's value in a top-level dependencies object; only the full key path decides."""
     out = []
     for path, num, col, text in json_strings("\n".join(lines)):
         if len(path) == 2 and path[0] in NPM_OBJECTS and path[1] == dep:
@@ -620,31 +441,20 @@ def find_npm(lines, dep, _dep_type):
     return out
 
 
-# --------------------------------------------------------------------------
-# custom.regex over an annotated env file
-# --------------------------------------------------------------------------
-# The hint the customManager reads: `# renovate: datasource=... depName=<name>`.
-# The depName it names is the anchor; the declaration is the KEY= line under it,
-# or under the `# noforward` line the same regex allows in between.
+# custom.regex over an annotated env file: the KEY= line under a `# renovate: ... depName=` hint
 _ENV_ANN = re.compile(r"^# renovate:.*?\bdepName=(\S+)(?:\s|$)")
 _ENV_KV = re.compile(r"^([A-Z0-9_]+)=([^\s#]*)$")
 
 
 def find_annotated_env(lines, dep, _dep_type):
-    """The value of the KEY= line under the hint naming this dependency.
-
-    A hint with no readable KEY= line under it is not a site at all, so the
-    caller refuses rather than rewriting a neighbouring declaration. Two hints
-    naming the same dep yield two sites, and the count rule decides."""
+    """The value of the KEY= line under each hint naming this dep; a hint without one is no site."""
     out = []
     for num, line in enumerate(lines):
         match = _ENV_ANN.match(line)
         if match is None or match.group(1) != dep:
             continue
         key_line = num + 1
-        # The customManager regex allows whitespace between hint and key, and a
-        # `# noforward` line after it; reading less than that would report a dep
-        # the writer then refuses.
+        # Match the customManager regex: blank lines and a `# noforward` line may sit in between.
         while key_line < len(lines) and not lines[key_line].strip():
             key_line += 1
         if key_line < len(lines) and lines[key_line].strip() == "# noforward":
@@ -672,12 +482,7 @@ FINDERS = {
 
 
 def sites(manager, lines, dep, dep_type=""):
-    """Every declaration of `dep` in these lines, or None when this manager has
-    no exact locator. None is NOT "nothing to do": the caller refuses, because
-    guessing at an unknown syntax is what this module exists to stop.
-
-    Lines arrive from a CRLF-safe read, so the trailing CR is stripped for the
-    parse only -- it sits after every span, so the spans stay valid."""
+    """Every declaration of `dep`, or None (the caller refuses) when the manager has no exact locator."""
     finder = FINDERS.get(manager)
     if finder is None:
         return None
@@ -694,20 +499,10 @@ def _values(found):
 
 
 def resolve(manager, lines, dep, old, new, count):
-    """The verdict for ONE group of report rows -- `count` updates of `dep` in
-    this file, all from `old` to `new`.
+    """(EDIT|DONE|REFUSE, sites, reason) for `count` updates of `dep` from `old` to `new`.
 
-      EDIT   the sites to rewrite; every one carries `old` already
-      DONE   nothing to write, the declaration is at `new` (structural
-             idempotence: re-reading the file is the whole check)
-      REFUSE with the reason, printed rather than worked around
-
-    The count rule is the one that replaces proximity. A report row describes
-    ONE pin; if the file declares the dep at more lines than the report has rows
-    for it, which line the row means is not knowable, so nothing is written. And
-    when the counts DO agree the rewrite is the same under every assignment of
-    rows to lines, because every site in the group carries the same old value
-    and receives the same new one -- so there is nothing left to guess."""
+    More declarations at `old` than report rows refuse: which line a row means is not knowable.
+    """
     found = sites(manager, lines, dep)
     if found is None:
         return "REFUSE", [], (
@@ -716,11 +511,7 @@ def resolve(manager, lines, dep, old, new, count):
     if not found:
         return "REFUSE", [], (
             "no %s declaration of '%s' in this file" % (manager, dep))
-    # A located line carrying NO value spells the declaration in a form this
-    # module cannot read. Falling through would let the other sites decide, and
-    # a pubspec declaring `http` as a `hosted:` map then had its
-    # dependency_overrides entry rewritten instead -- the report's dep, the
-    # wrong declaration of it.
+    # A valueless site is an unreadable form; letting the other sites decide rewrites the wrong one.
     if any(not site.value for site in found):
         return "REFUSE", [], (
             "'%s' is declared at line(s) %s, and a line carrying no value "

@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# Tests for shared/config/sync-shared-config.sh -- the BASH twin of
-# Sync-SharedConfig.ps1, and the only one of the two that runs on a hub Linux
-# image (none ship pwsh). Nothing exercised it: test-shared-config.sh drives the
-# preflight gate, which shells out to the PowerShell half and cannot start on a
-# Linux runner at all. Pinned here is what the two must agree on, since a gate
-# passing under one and failing under the other is the failure mode: the three
-# verdicts, the exit codes (0 / 1 / 2 for broken input), and the two comparison
-# modes -- exact is byte for byte, body forgives the header prose and the
-# declared knob VALUES and nothing else.
+# sync-shared-config.sh must agree with its twin Sync-SharedConfig.ps1 on verdicts, exit codes and both modes.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -19,8 +11,7 @@ CANON_BODY="${HUB}/shared/linux/templates/antfrastructure.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# A consumer checkout declaring one 'exact' asset and one 'body' asset, each
-# holding a faithful copy. Every case below breaks exactly one thing about it.
+# A faithful consumer with one 'exact' and one 'body' asset; each case breaks one thing.
 _consumer() {
   local d
   d="$(mktemp -d "${_work}/consumer.XXXXXX")"
@@ -35,8 +26,7 @@ _consumer() {
 OUT=""; rc=0
 _check() { OUT="$(bash "${SYNC}" --repo-root "$1" --check 2>&1)"; rc=$?; }
 
-# Everything from the first line that is neither blank nor a comment: the
-# consumer's own header prose replaces the template's.
+# Replaces the leading comment/blank lines with the consumer's own header prose.
 _reheader() {
   local f="$1" tmp
   tmp="$(mktemp "${_work}/reheader.XXXXXX")"
@@ -54,8 +44,7 @@ t_assert_contains "${OUT}" "Shared config in sync." \
   "the pass must be the script's verdict, not silence"
 
 t_case "an 'exact' asset is byte for byte: even an added HEADER COMMENT is DRIFTED"
-# A leading comment is exactly what 'body' mode forgives, so this also pins the
-# manifest row: .clang-format is declared exact, and must be graded that way.
+# 'body' mode would forgive this, so it also pins .clang-format's manifest row as exact.
 _d="$(_consumer)"
 _tmp_clang="$(mktemp "${_work}/clang.XXXXXX")"
 { printf '# a comment this consumer added\n'; cat "${_d}/.clang-format"; } > "${_tmp_clang}"
@@ -73,11 +62,7 @@ t_assert_eq "1" "${rc}" "a declared asset that vanished must fail, not pass quie
 t_assert_contains "${OUT}" "MISSING .clang-format"
 
 t_case "line endings alone are not drift (the same content with CRLF passes)"
-# A Windows checkout holds the same content with CRLF and must not read as
-# drifted. The fixture has to CREATE that difference: the canonical
-# .clang-format is plain LF here (0 CR bytes), so the old `sed 's/\r$//'` was a
-# no-op on a file that had none and the assertion passed with the normalisation
-# removed -- the mutation over it survived, invisibly.
+# The canonical file is LF, so the fixture must add the CRs or the case proves nothing.
 _d="$(_consumer)"
 sed -i 's/$/\r/' "${_d}/.clang-format"
 t_assert_ok grep -q -e $'\r' "${_d}/.clang-format"

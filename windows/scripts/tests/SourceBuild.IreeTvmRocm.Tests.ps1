@@ -1,8 +1,5 @@
 #requires -Version 7.0
-# IREE + TVM on the rocm lane (Build-IreeFromSource.ps1, Build-TvmFromSource.ps1, rocm-checks\IREE.ps1
-# and TVM.ps1): lane gating with cpu/nvidia unchanged, the carried source patches against excerpts of
-# the pinned upstream files (IREE v3.11.0, TVM 994e0216), the device-bitcode pin, the feature marker
-# contract, and the smoke-check verdicts. NOT covered: the builds, the downloads, a real compile.
+# IREE + TVM on the rocm lane: cpu/nvidia unchanged, carried patches against pinned excerpts, pins, markers and checks.
 
 $script:IreeScript = 'windows\scripts\build\Build-IreeFromSource.ps1'
 $script:TvmScript = 'windows\scripts\build\Build-TvmFromSource.ps1'
@@ -425,8 +422,7 @@ Describe 'Build-IreeFromSource + Build-TvmFromSource: rocm-only steps sit behind
         $script:RocmStepTree[$rel] = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$null)
     }
 
-    # Script-level sites of a command or string literal. Guards = the if-conditions whose body encloses
-    # the site, innermost first; 'else' / 'condition' mark a site that no condition of ours protects.
+    # Guards are the enclosing if-conditions, innermost first; 'else' / 'condition' mark an unprotected site.
     function Get-RocmStepSite([string]$RelPath, [string]$Command, [string]$Literal) {
         $hits = $script:RocmStepTree[$RelPath].FindAll({ param($n)
                 if ($Command) { return $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $Command }
@@ -501,8 +497,7 @@ Describe 'Dockerfile.media-builder: the TVM_ROCM switch' {
 Describe 'rocm-checks\IREE.ps1' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:IreeCheck -FunctionName 'Get-ElfHeaderRecord', 'Get-AmdgpuCodeObjectFinding', 'Get-IreeHipSearchPathFinding', 'Get-IreeRocmGateMlir', 'Get-IreeRocmPythonProbe', 'Get-IreeRocmFinding')
 
-    # The search probe models dynamic_symbols.c: -Search concat is upstream's loop without the reset, legacy its
-    # one-name list, and a --hip_dylib_path after --list_devices=hip is ignored (measured on the 3.11.0 CLI).
+    # Models dynamic_symbols.c on the 3.11.0 CLI, where --hip_dylib_path after --list_devices=hip is ignored.
     function New-FakeIreeInvoke {
         param([string]$ListOutput, [byte[]]$Vmfb, [string]$Report, [int]$CompileExit = 0, [string]$Search = 'reset')
         $SearchNames = if ($Search -eq 'legacy') { , 'amdhip64.dll' } else { 'amdhip64_7.dll', 'amdhip64_6.dll', 'amdhip64.dll' }

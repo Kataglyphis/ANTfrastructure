@@ -1,9 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# rocm-lane helpers shared by Build-MigraphxFromSource.ps1 and Build-OrtAmdgpuEpFromSource.ps1:
-# lane guard, AMD LLVM tool paths, gfx targets, hash-pinned sources, licence texts. docs/windows-builds.md § ROCm layer.
+# rocm-lane helpers for the MIGraphX and ORT EP builds: see docs/windows-rocm.md § MIGraphX and the ORT plugin EP
 
 Set-StrictMode -Version Latest
 
@@ -134,10 +132,7 @@ function Get-SevenZipSkippedLink {
     .SYNOPSIS
         The in-archive links one 7-Zip extraction refused as dangerous; throws on any other failure.
     .DESCRIPTION
-        7-Zip 25+ refuses every symlink whose target climbs with '..', even one that stays inside the
-        tree, and exits 2: flatbuffers 25.12.19 carries nine (Java test dirs, ts/package.json), none of
-        them read by a C++ build. A refused link is never written, so nothing lands outside the
-        destination. Any other ERROR line, another exit code or an exit 2 without ERROR lines throws.
+        7-Zip 25+ refuses any '..' symlink with exit 2 and never writes it; any other error or exit code throws.
     #>
     param(
         # 7-Zip prints blank lines.
@@ -160,10 +155,7 @@ function Expand-PinnedArchive {
     .SYNOPSIS
         Expand-SourceTarball's two 7-Zip passes, except that links 7-Zip refuses as dangerous are skipped.
     .DESCRIPTION
-        Get-SevenZipSkippedLink grades each pass. The intermediate .tar is deleted once unpacked: the EP's
-        onnxruntime-ep-amdgpu.tar is an ONNX Runtime archive by name, which G2 refuses to find in the tree.
-        This lives here, not in Expand-SourceTarball, because WindowsSourceBuild.Common is mounted into
-        every media layer; fold it in at the next deliberate media rebuild. Returns the extracted source root.
+        The intermediate .tar is deleted, as G2 refuses an ORT-named archive; kept out of the media-mounted SourceBuild.Common.
     #>
     param(
         [Parameter(Mandatory)][string]$Archive,
@@ -276,8 +268,7 @@ function Get-MigraphxTreeFact {
     .SYNOPSIS
         One pinned fact read from a fetched tree's CMake text; throws when upstream moved it.
     .PARAMETER Fact
-        MigraphxVersion: rocm_setup_version() of the MIGraphX tree. ProtobufAbseil: the abseil tag
-        protobuf's FetchContent fallback clones (cmake/dependencies.cmake).
+        MigraphxVersion: the tree's rocm_setup_version(); ProtobufAbseil: the abseil tag protobuf's fallback clones.
     #>
     param(
         [Parameter(Mandatory)][ValidateSet('MigraphxVersion', 'ProtobufAbseil')][string]$Fact,
@@ -297,9 +288,7 @@ function Get-MigraphxRocmCmakeCommit {
     .SYNOPSIS
         The rocm-cmake commit MIGraphX's own requirements.txt pins; throws when upstream moved it.
     .DESCRIPTION
-        MIGraphX rocm-10.0 calls rocm_add_version_resource (rocm-cmake 33541cd51f, 2026-04-17), which
-        TheRock's rocm-cmake predates, so the build installs this commit ahead of TheRock. Only a full
-        40-hex commit is accepted: that id is what verifies the fetched tree (Save-GitCommitSource).
+        TheRock's rocm-cmake predates what MIGraphX calls; only a 40-hex id, which verifies the fetched tree, is accepted.
     #>
     param([Parameter(Mandatory)][AllowEmptyString()][string]$RequirementsText)
     $m = [regex]::Match($RequirementsText, '(?m)^\s*ROCm/rocm-cmake@(\S+)')
@@ -350,10 +339,7 @@ function Write-NlohmannJsonConfigShim {
     .SYNOPSIS
         A nlohmann_json package dir that loads TheRock's config and clears its INTERFACE_SOURCES.
     .DESCRIPTION
-        TheRock's copy was installed by an MSVC-style build, so its exported target lists
-        <prefix>/nlohmann_json.natvis as an interface source, and TheRock's dist does not ship that
-        file: "Cannot find source file: C:/TheRock/build/nlohmann_json.natvis" (2026-09-25). The natvis
-        is a debugger visualizer; headers, version and licence stay TheRock's. Returns the shim dir.
+        TheRock's exported target lists a .natvis its dist does not ship; headers, version and licence stay TheRock's.
     #>
     param(
         [Parameter(Mandatory)][string]$RocmRoot,
@@ -377,12 +363,7 @@ function Write-HipMsvcCmathOverlay {
     .SYNOPSIS
         An -isystem directory whose two HIP math headers step aside for the comparisons MSVC's <cmath> owns.
     .DESCRIPTION
-        Under clang, MSVC 14.51's <cmath> defines isgreater, isgreaterequal, isless, islessequal,
-        islessgreater and isunordered as constexpr wrappers over builtins, which HIP makes
-        __host__ __device__, so clang's HIP headers can no longer declare their __device__ versions
-        ("cannot overload __host__ __device__ function", 2026-09-25). Each overlay header renames those
-        six names, #include_next's the untouched original and restores them; device code then calls
-        MSVC's builtin versions. The wrapper includes both headers with <>, so -isystem reaches them.
+        See docs/windows-rocm.md § HIP compiles against MSVC 14.51.
     #>
     param([Parameter(Mandatory)][string]$WorkDir)
     $owned = 'isgreater', 'isgreaterequal', 'isless', 'islessequal', 'islessgreater', 'isunordered'
@@ -401,8 +382,7 @@ function Get-MigraphxPinnedSourceSpec {
     .SYNOPSIS
         Resolve-PinnedSource arguments for every archive the spike fetches, one owner for both builds.
     .PARAMETER Set
-        MigraphxDeps: MIGraphX's requirements.txt pins at its tag. OrtAmdgpuEp: one entry per
-        FetchContent name, each URL EXACTLY as the pinned EP commit declares it (absl: protobuf's).
+        MigraphxDeps: MIGraphX's requirements.txt pins; OrtAmdgpuEp: one entry per FetchContent name, URL exactly as declared.
     #>
     param([Parameter(Mandatory)][ValidateSet('MigraphxDeps', 'OrtAmdgpuEp')][string]$Set)
     $gh = 'https://github.com'

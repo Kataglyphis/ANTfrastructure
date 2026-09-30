@@ -1,23 +1,12 @@
 #!/usr/bin/env bash
-# setup-cuda-repo.sh - install the NVIDIA CUDA apt keyring/repo for the current
-# architecture, then refresh the apt cache.
-#
-# Extracted verbatim from the CUDA-repo RUN in linux/Dockerfile.nvidia. Invoked
-# via a BuildKit bind-mount of linux/scripts/01-core, exactly like the other
-# core scripts. Reads UBUNTU_CODENAME from the build environment (declared as an
-# ARG in Dockerfile.nvidia, which Docker exposes as an env var to the RUN).
+# NVIDIA CUDA apt keyring and repo for the build arch, plus the cross repo for a foreign TARGET_ARCH.
 set -euo pipefail
 
-# Apply the fast Ubuntu mirror rewrite (if enabled) before any apt access, so the
-# apt-get update below uses the configured mirror. No-op unless
-# USE_FAST_UBUNTU_MIRROR is truthy. Folded in here so callers invoke a single
-# script (was a separate use-fast-ubuntu-mirror.sh line in Dockerfile.nvidia).
+# Mirror rewrite before any apt access (no-op unless USE_FAST_UBUNTU_MIRROR).
 _SETUP_CUDA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "${_SETUP_CUDA_DIR}/use-fast-ubuntu-mirror.sh"
 
-# NVIDIA's repo component for a Debian arch. The BUILD host's component carries
-# the tools that must EXECUTE here (nvcc, ptxas, cicc); a foreign TARGET_ARCH
-# gets its libraries from the cross repo below, never from this one.
+# The build host's component carries tools that run here; a foreign target's libs come from the cross repo.
 cuda_repo_component() {
   case "${1:-}" in
     amd64)   printf '%s' 'x86_64' ;;
@@ -27,12 +16,7 @@ cuda_repo_component() {
   esac
 }
 
-# The flat cross repo for a target that is not the build arch (empty when the
-# target IS the build arch, or when NVIDIA publishes no cross repo for it).
-# Layout probed 2026-09-23: .../ubuntu2604/cross-linux-sbsa/Packages.gz, a FLAT
-# repo (no dists/), hence the trailing " /" in the sources line, and its debs
-# are Architecture: all — they install on an amd64 host without dpkg
-# --add-architecture and land in /usr/local/cuda-<ver>/targets/sbsa-linux.
+# Flat cross repo (no dists/, hence " /" below) whose Architecture: all debs need no dpkg --add-architecture.
 cuda_cross_repo_component() {
   local build="${1:-}" target="${2:-}"
   [ -n "${target}" ] && [ "${target}" != "${build}" ] || return 0
@@ -47,19 +31,11 @@ CUDA_ARCH="$(cuda_repo_component "${ARCH}")"
 [ -n "${CUDA_ARCH}" ] || { echo "WARNING: CUDA packages may not be available for arch ${ARCH}" >&2; CUDA_ARCH="${ARCH}"; }
 CUDA_CROSS_COMPONENT="$(cuda_cross_repo_component "${ARCH}" "${TARGET_ARCH:-${ARCH}}")"
 KEYRING_PKG="cuda-keyring_1.1-1_all.deb"
-# NVIDIA's repo path component is the Ubuntu VERSION DIGITS (ubuntu2604), NOT the
-# codename. This used to interpolate UBUNTU_CODENAME, which produced
-# .../repos/ubunturesolute/ -- a 404 on every arch, so the FIRST RUN of
-# Dockerfile.nvidia died under `set -euo pipefail` and the whole GPU lane was
-# unbuildable on the pinned 26.04. Probed 2026-09-16: ubunturesolute/sbsa 404,
-# ubuntu2604/sbsa 200. UBUNTU_CODENAME stays correct for the UBUNTU archive
-# sources elsewhere; only NVIDIA's paths are numeric.
+# NVIDIA paths use the version digits (ubuntu2604); the codename form 404s.
 : "${UBUNTU_VERSION:?UBUNTU_VERSION must be set (e.g. 26.04) to build the NVIDIA repo path}"
 NV_DISTRO="ubuntu${UBUNTU_VERSION//./}"
 KEYRING_URL="https://developer.download.nvidia.com/compute/cuda/repos/${NV_DISTRO}/${CUDA_ARCH}/${KEYRING_PKG}"
-# VERIFIED fetch (supply-chain audit #1): this .deb installs the apt TRUST
-# ANCHOR for every CUDA/cuDNN/TensorRT package — with an attacker-supplied
-# key, apt's own signature checking is defeated for the whole NVIDIA lane.
+# Verified fetch: this deb is the apt trust anchor for every NVIDIA package.
 # shellcheck disable=SC1091
 source "${_SETUP_CUDA_DIR}/downloads.sh"
 case "${CUDA_ARCH}" in
@@ -79,10 +55,7 @@ fi
 dpkg -i "/tmp/${KEYRING_PKG}"
 rm "/tmp/${KEYRING_PKG}"
 
-# The cross repo rides the SAME trust anchor the keyring deb just installed (one
-# host, one key), so it is added after it and before the update below. Without
-# signed-by apt would accept it on the global keyring, which is the weaker
-# check the rest of this lane refuses.
+# The cross repo is signed-by the keyring just installed, never the weaker global keyring.
 if [ -n "${CUDA_CROSS_COMPONENT}" ]; then
   printf 'deb [signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/%s/%s/ /\n' \
     "${NV_DISTRO}" "${CUDA_CROSS_COMPONENT}" > /etc/apt/sources.list.d/cuda-cross.list

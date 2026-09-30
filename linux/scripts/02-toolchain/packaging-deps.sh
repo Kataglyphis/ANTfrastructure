@@ -3,19 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGING_DEPS_MODE="${PACKAGING_DEPS_MODE:-required}"
-# ON by default since 2026-09-05: `flatpak list --runtime` in the shipped image
-# returned ZERO refs, so every consumer run re-downloaded ~1.9 GB across seven of
-# them -- the single largest download in their build.
-# docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
+# On by default, or every consumer run downloads them. docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
 INSTALL_FLATPAK_RUNTIMES="${INSTALL_FLATPAK_RUNTIMES:-true}"
 PACKAGING_DEPS_COMMAND="${PACKAGING_DEPS_COMMAND:-all}"
 
-# common.sh is a hard dependency: it provides download_verified_file,
-# apt_has_package and the logging helpers used throughout this script. Fail
-# early with a clear message instead of dying mid-flight on "command not found".
-# Probe the baked container layout (/opt/scripts/core) before the repo layout
-# (../01-core), matching install-deps-preamble.sh — this script is baked into
-# the toolchain image where 01-core lives at /opt/scripts/core, not ../01-core.
+# common.sh is required; probe the baked /opt/scripts/core before the repo layout.
 CORE_DIR=""
 for _candidate in "/opt/scripts/core" "$SCRIPT_DIR/../01-core"; do
     if [ -f "${_candidate}/common.sh" ]; then
@@ -32,11 +24,10 @@ source "${CORE_DIR}/common.sh"
 # shellcheck disable=SC1090,SC1091
 [ -f "${CORE_DIR}/package-lists.sh" ] && source "${CORE_DIR}/package-lists.sh"
 
-# logging.sh (via common.sh) provides info/warn but only the exiting `err`;
-# this script needs a non-exiting error logger for its usage/arg handling.
+# A non-exiting error logger, since logging.sh's err exits.
 error() { printf '[ERROR] %s\n' "$*" >&2; }
 
-# ── Cleanup trap ───────────────────────────────────────────────────────
+# Cleanup trap
 
 CLEANUP_FILES=()
 cleanup() {
@@ -68,7 +59,7 @@ run_step() {
     return "$status"
 }
 
-# ── Helper: run a command, retry with sudo on failure ──────────────────
+# Run a command, retrying with sudo on failure
 
 try_or_sudo() {
     local status=0
@@ -89,7 +80,7 @@ try_or_sudo() {
     fi
 }
 
-# ── APT dependency installation ────────────────────────────────────────
+# APT dependencies
 
 install_apt_deps() {
     local -a pkgs=()
@@ -108,9 +99,7 @@ install_apt_deps() {
         pkgs=(
             ca-certificates curl wget xz-utils
             dpkg
-            # LOG1 (2026-08-17): resolute renamed the fuse3 runtime lib
-            # libfuse3-3 → libfuse3-4 (soname bump); the old name had no install
-            # candidate and was silently dropped → AppImages could not mount.
+            # libfuse3-4 after resolute's soname bump; the old name would be dropped silently.
             libfuse3-4
             flatpak flatpak-builder
             elfutils
@@ -138,17 +127,9 @@ install_apt_deps() {
     info "Packaging prerequisites installed"
 }
 
-# ── appimagetool provisioning ─────────────────────────────────────────
+# appimagetool
 
-# The runtime appimagetool embeds into every AppImage it builds. Without it on
-# disk each consumer run fetches it from GitHub, so a build hangs on GitHub being
-# up. It is NOT downloaded: upstream publishes it only under the moving
-# `continuous` tag, the mutable-asset trap TS1 below documents. Every AppImage
-# BEGINS with that runtime and appimagetool is already SHA-pinned, so the bytes
-# come from the tool itself -- read, never executed, because an AppImage
-# self-mounts and QEMU user-mode cannot do that on a foreign arch (measured
-# 2026-09-06: `--appimage-offset` gives "Exec format error" on aarch64).
-# docs/consumer-image-contract.md#the-appimage-runtime-ships-with-the-tool
+# The runtime is read from the pinned tool's own bytes. docs/consumer-image-contract.md#the-appimage-runtime-ships-with-the-tool
 _APPIMAGE_SQUASHFS_OFFSET_PY='
 import struct, sys
 d = open(sys.argv[1], "rb").read()
@@ -170,8 +151,7 @@ ensure_appimagetool_runtime() {
     [ -n "${tool}" ] || return 0
     arch_name="$(uname -m)"
 
-    # The magic alone is not enough: "hsqs" occurs once in the ELF before the real
-    # filesystem (194183 vs 944632 on x86_64), so the superblock is validated.
+    # "hsqs" also occurs earlier in the ELF, so the superblock is validated, not just the magic.
     offset="$(python3 -c "${_APPIMAGE_SQUASHFS_OFFSET_PY}" "${tool}" 2>/dev/null)" || offset=""
     case "${offset}" in
         ''|*[!0-9]*)
@@ -196,16 +176,7 @@ ensure_appimagetool() {
     fi
 
     local arch asset url tmpfile sha256 version
-    # TS1 (2026-08-15): pin an IMMUTABLE versioned tag, not the moving
-    # `continuous` tag. `continuous` re-uploads its assets in place, so a
-    # cache-miss build after any upstream re-upload downloaded new bytes that no
-    # longer matched the pinned SHA256 → download_verified_file died with a
-    # tamper-shaped "checksum mismatch" that was actually just upstream drift.
-    # 1.9.1 (published 2025-11-18) is a stable release with the same asset names;
-    # SHA256s below are the GitHub API `digest` (server-computed) for 1.9.1's
-    # assets. Bump APPIMAGETOOL_VERSION + all four SHAs together on the next
-    # upgrade (Batch-3 rider moves these to versions.env keys with a stale-pin
-    # guard). Override via APPIMAGETOOL_VERSION for a controlled test.
+    # A versioned tag, never `continuous`, which re-uploads assets in place; bump the version and all four SHAs together.
     version="${APPIMAGETOOL_VERSION:-1.9.1}"
     arch="$(uname -m)"
     case "$arch" in
@@ -231,9 +202,7 @@ ensure_appimagetool() {
             ;;
     esac
 
-    # Immutable versioned asset URL (see TS1 note above). The old
-    # AppImageKit/releases/latest path 404'd; `continuous` fixed the 404 but
-    # reintroduced mutability — a pinned version tag fixes both.
+    # Immutable versioned asset URL.
     url="https://github.com/AppImage/appimagetool/releases/download/${version}/$asset"
     tmpfile="$(mktemp /tmp/appimagetool.XXXXXX)"
     CLEANUP_FILES+=("$tmpfile")
@@ -241,8 +210,7 @@ ensure_appimagetool() {
     info "Downloading appimagetool from $url"
     download_verified_file "$url" "$sha256" "$tmpfile"
 
-    # Explicit: +x over mktemp's 0600 ships 0711, and an AppImage must READ itself.
-    # docs/consumer-image-contract.md#executable-is-not-usable
+    # 0755, not +x over mktemp's 0600: an AppImage must read itself. docs/consumer-image-contract.md#executable-is-not-usable
     chmod 0755 "$tmpfile"
 
     # Install to first writable location
@@ -284,12 +252,9 @@ ensure_appimagetool_if_supported() {
     return 1
 }
 
-# ── Flatpak Runtime/SDK installation ──────────────────────────────────
+# Flatpak runtime and SDK
 
-# The seven refs a Flatpak build actually resolves. Two of them (Platform and Sdk)
-# were installed here before; the other five were left to every consumer run.
-# GL.default appears twice on purpose -- the base branch and its `extra` sibling
-# are separate refs. docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
+# GL.default twice: its extra branch is a separate ref. docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
 _flatpak_refs() {
     local version="$1" openh264="$2"
 
@@ -303,12 +268,7 @@ _flatpak_refs() {
         "org.freedesktop.Platform.openh264//${openh264}"
 }
 
-# A ref that does not install has two very different causes that read the same in
-# "did not install": a branch flathub does not publish, or a published branch whose
-# payload the run could not fetch (openh264 is extra-data -- flatpak downloads the
-# binary from Cisco at install time). Ask the remote which one it was, in the run
-# that hit it, instead of leaving it to log archaeology.
-# docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
+# Tells an unpublished branch from a failed payload fetch (openh264 is extra-data fetched from Cisco).
 _flatpak_diagnose_ref() {
     local ref="$1" name branches
     name="${ref%%//*}"
@@ -327,8 +287,7 @@ install_flatpak_runtime() {
         return 1
     fi
 
-    # Flathub builds these for x86_64 and aarch64 only; on any other arch the
-    # install is a guaranteed 404, not a transient failure worth retrying.
+    # Flathub builds these for x86_64 and aarch64 only; elsewhere a 404 is certain, not transient.
     local machine
     machine="$(uname -m)"
     case "${machine}" in

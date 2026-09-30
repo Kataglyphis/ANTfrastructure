@@ -1,24 +1,12 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Test-TargetArch.ps1 is the arm64 cross lane's PRIMARY correctness signal:
-# every shipped binary is PE-machine-checked against the target, and a COFF
-# archive (.lib) machine check that is NOT a naive bytes[0x3C] walk. The
-# Get-ArchiveMachine bound was fixed in production (the +6 bound was two bytes
-# short and threw on a small final member), not by a test — this suite pins it.
-#
-# The functions live inside the script body (not a module), so they are lifted
-# out of the script's AST via Get-ScriptFunctionDefinition. The $machineNames
-# hashtable they reference is a script-level variable, so it is defined in
-# BeforeAll before the dot-source.
+# Test-TargetArch.ps1 is the cross lane's primary correctness signal; this pins its PE and COFF-archive machine checks.
 
 Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 
     BeforeAll {
-        # $machineNames is a script-level hashtable the functions reference;
-        # Get-ScriptFunctionDefinition lifts only function bodies, so it must
-        # be in scope before the dot-source.
+        # Get-ScriptFunctionDefinition lifts only functions, so their script-level $machineNames must exist first.
         $script:machineNames = @{
             0x0000 = 'UNKNOWN'
             0x014C = 'I386'
@@ -38,8 +26,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('archgate-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Force -Path $script:tmp | Out-Null
 
-        # Fixture helpers as $script:-scoped scriptblocks (Pester 5+ It blocks
-        # are child scopes that do not see functions defined at the file level).
+        # Scriptblocks, not functions: Pester 5 It blocks do not see file-level functions.
         $script:NewPe = {
             param([string]$Path, [int]$Machine)
             $bytes = New-Object byte[] 0x48
@@ -57,8 +44,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
             $bytes[1] = ($Machine -shr 8) -band 0xFF
             [IO.File]::WriteAllBytes($Path, $bytes)
         }
-        # The ar (COFF archive) member header, one owner: the widths are the ar
-        # spec, and one wrong PadRight makes the fixture silently unparseable.
+        # The widths are the ar spec; one wrong PadRight makes the fixture silently unparseable.
         $script:WriteArMemberHeader = {
             param([System.IO.BinaryWriter]$Writer, [string]$MemberName)
             $Writer.Write([System.Text.Encoding]::ASCII.GetBytes($MemberName.PadRight(16).Substring(0, 16)))
@@ -97,7 +83,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
         if ($script:tmp -and (Test-Path $script:tmp)) { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    # ── Get-CoffMachine ────────────────────────────────────────────────────────
+    # Get-CoffMachine
 
     It 'Get-CoffMachine reads an AMD64 PE image' {
         $p = Join-Path $script:tmp 'amd64.dll'
@@ -165,7 +151,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
         Assert-Null $r 'wrong PE signature returns null'
     }
 
-    # ── Get-ArchiveMachine ──────────────────────────────────────────────────────
+    # Get-ArchiveMachine
 
     It 'Get-ArchiveMachine reads a short-import archive (AMD64)' {
         $p = Join-Path $script:tmp 'amd64.lib'
@@ -250,7 +236,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
         Assert-Null $r 'malformed size returns null, not an exception'
     }
 
-    # ── Format-Machine ──────────────────────────────────────────────────────────
+    # Format-Machine
 
     It 'Format-Machine names a known machine type' {
         Assert-Equal '0x8664 (AMD64)' (Format-Machine 0x8664) 'AMD64 named'

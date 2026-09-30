@@ -1,51 +1,33 @@
-# hadolint policy for linux/scripts/lint-dockerfiles.sh (preflight + CI + hook).
-#
-# Deliberately permissive at adoption: every byte changed in a Dockerfile to
-# satisfy a lint rule invalidates build layers that take hours to rebuild, so
-# rules the codebase knowingly violates are ignored HERE instead of "fixed"
-# in the Dockerfiles. Tighten incrementally when the affected layer is being
-# rebuilt anyway.
+# Permissive on purpose: editing a Dockerfile only to satisfy a rule rebuilds hours of layers.
 failure-threshold: warning
 
 ignored:
-  # Unpinned apt packages: the repo pins toolchain versions via versions.env +
-  # source builds; OS package pinning is deliberately left to the Ubuntu
-  # digest-pinned base (UBUNTU_DIGEST) instead of per-package pins.
+  # OS packages are pinned by the digest-pinned Ubuntu base, not per package.
   - DL3008
-  # `cd` inside RUN: build scripts (not Dockerfiles) own directory handling;
-  # the few RUN-level cds are inside subshell-scoped one-liners.
+  # Build scripts own directory handling; RUN-level cds are subshell-scoped.
   - DL3003
-  # set -o pipefail: install scripts set their own strict modes; RUN lines
-  # here mostly exec a single script.
+  # Install scripts set their own strict mode; RUN lines mostly exec one script.
   - DL4006
-  # ARG-driven FROM (BASE_IMAGE pattern) — the chain wires stages together via
-  # --build-arg BASE_IMAGE=<digest-pinned ref>; hadolint cannot see that.
+  # The chain passes a digest-pinned BASE_IMAGE build arg hadolint cannot see.
   - DL3006
   # :latest / floating default in ARG-driven FROMs (same BASE_IMAGE pattern).
   - DL3007
-  # Shell-form ENTRYPOINT/CMD is intentional (entrypoint scripts need env/PATH
-  # expansion; the Windows image execs entrypoint.cmd through cmd /S /C).
+  # Shell-form ENTRYPOINT/CMD is intentional: entrypoints need env and PATH expansion.
   - DL3025
-  # False positive on Windows Dockerfiles: multi-source COPY to C:\dest —
-  # hadolint only accepts a trailing forward slash, Windows paths end in `\`.
+  # Windows COPY destinations end in a backslash, which hadolint rejects.
   - DL3021
-  # PowerShell RUN lines (SHELL ["pwsh",...] + `# escape=\``) are not sh;
-  # hadolint's embedded shellcheck misparses backtick continuations.
+  # PowerShell RUN lines are not sh; shellcheck misparses backtick continuations.
   - SC1133
-  # Linux RUN one-liners use bash/dash features (pipefail, arrays, read -d,
-  # source) that shellcheck's POSIX-sh persona flags; the builds run them fine.
+  # Linux RUN one-liners use bash features that shellcheck's POSIX-sh persona flags.
   - SC3040
   - SC3045
   - SC3046
   - SC3054
   # RUN heredocs deliberately use `#!/usr/bin/env bash` shebangs.
   - SC2239
-  # Incremental ENV layering (ENV PATH=/new:${PATH} style within one statement)
-  # is the chain's documented pattern for stacking tool paths per stage.
+  # ENV PATH=/new:${PATH} is the chain's pattern for stacking tool paths per stage.
   - DL3044
-  # FROM --platform=${ARTIFACT_PLATFORM} is the Dockerfile.package
-  # artifact-source handoff mechanism (see verify-artifact-copy-parity.sh).
+  # FROM --platform=${ARTIFACT_PLATFORM} is Dockerfile.package's artifact handoff.
   - DL3029
-  # pip installs are orchestrated by build scripts with their own pinning
-  # (wheelhouse + versions.env); the one inline pip RUN bootstraps that.
+  # Build scripts pin pip installs; the one inline pip RUN bootstraps them.
   - DL3013

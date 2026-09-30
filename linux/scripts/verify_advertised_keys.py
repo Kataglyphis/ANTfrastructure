@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Every version-shaped ENV the runtime image advertises must be checked or excused.
 
-A new ARG/ENV added to Dockerfile.package is otherwise silently unverified by the
-smoke's advertised-vs-actual gate.
 docs/cross-build-verification.md#advertised-version-keys-advert-keys
 """
 import glob
@@ -11,8 +9,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# Both forms reach the image config the smoke reads. Globbed, not listed, so a
-# new Dockerfile cannot slip past. See docs/cross-build-verification.md.
+# Globbed, not listed, so a new Dockerfile cannot slip past.
 DOCKERFILE_GLOB = "linux/Dockerfile.*"
 SMOKE = "linux/scripts/06-packaging/smoke-runtime-image.sh"
 
@@ -48,10 +45,7 @@ EXCUSED = {
 SHAPED = re.compile(r"(VERSION|RELEASE|REF)$")
 
 
-# Table rows whose value the in-image probe never prints, so the row can only
-# SKIP. EMPTY since 2026-09-03: all ten were given probes and checked against the
-# shipped image. Adding an entry here accepts a row that cannot fail -- write the
-# probe instead. docs/refactoring-backlog.md WC
+# Rows the probe never prints can only SKIP; write the probe rather than add an entry.
 FROZEN_UNPROBED = set()
 
 
@@ -101,10 +95,7 @@ def main():
             sys.stderr.write(
                 "FAIL: STALE excuse for {} ({}) -- the image no longer advertises it; "
                 "delete the EXCUSED entry.\n".format(k, EXCUSED[k]))
-    # A row in the table only says the smoke INTENDS to check the key. The value
-    # comes from an `ADV <KEY>` line the in-image probe prints, and a row without
-    # one is a permanent SKIP that reads as a pass. Frozen at the 10 that were
-    # already inert; a NEW row without a probe fails. docs/refactoring-backlog.md WC
+    # A row without an `ADV <KEY>` probe line is a permanent SKIP that reads as a pass.
     probed = set(re.findall(r"printf\s+'ADV ([A-Z0-9_]+) ", smoke))
     unprobed = sorted(checked - probed)
     new_unprobed = [k for k in unprobed if k not in FROZEN_UNPROBED]

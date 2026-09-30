@@ -1,21 +1,12 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Deterministic container-store reset v2: stop -> RENAME state dirs aside ->
-# re-create -> start each service (verifying each) -> CNI + buildctl + docker
-# checks. ErrorActionPreference=Continue so no single failure aborts the run;
-# every step prints a verdict line.
-#
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Reset-ContainerStores.ps1'
+# Elevated store reset that renames state dirs aside; Continue so no single failure aborts, every step prints a verdict.
 
 $ErrorActionPreference = 'Continue'
 Set-StrictMode -Off
 
-# Tool resolution via the shared candidate-list owner (backlog #2).
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1')
 
@@ -54,8 +45,6 @@ Start-Sleep -Seconds 5
 Say ("  stevedore  = " + (Get-Service stevedore).Status) $(if ((Get-Service stevedore).Status -eq 'Running') { 'Green' } else { 'Red' })
 
 Say '== re-deploy GC policy toml ==' 'Cyan'
-# $PSScriptRoot, not a hardcoded checkout path: this script must work from
-# any clone location (a D:\GitHub literal broke C:-checkout hosts).
 & (Join-Path $PSScriptRoot 'Set-BuildkitdGcpolicy.ps1')
 Start-Sleep -Seconds 3
 
@@ -65,8 +54,6 @@ foreach ($f in @('C:\Program Files\containerd\cni\conf\0-containerd-nat.conf', '
 }
 
 Say '== buildctl worker ==' 'Cyan'
-# Get-PreferredToolPath: candidates first, then PATH; returns $null when
-# absent (the old `Test-Path $bt` threw on a $null path with buildctl missing).
 $bt = Get-PreferredToolPath -CommandName 'buildctl.exe' -CandidatePaths @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')
 if ($bt) { & $bt --addr npipe:////./pipe/buildkitd debug workers 2>&1 | Select-String -Pattern 'windows/amd64|worker' | ForEach-Object { $_.Line } | Write-Host } else { Say '  buildctl missing' 'Red' }
 

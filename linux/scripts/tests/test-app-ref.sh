@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# The app the wrapper builds (docs/linux-cross-builds.md#the-app-the-wrapper-builds):
-# runtime_resolve_app_ref turns versions.env's branch into ONE commit per run, and
-# assemble-torch-app.sh fetches a commit as itself. A stub git stands in for the
-# remote, so nothing here touches the network.
+# APP_REF resolves to one commit per run, fetched as itself; a stub git replaces the remote. See docs/linux-cross-builds.md#the-app-the-wrapper-builds
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -30,8 +27,7 @@ exit 0
 STUB
 chmod +x "${_bin}/git"
 
-# _resolve <APP_REF> -> the resolver's lines, then APP_REF=<result> and rc=<n>. A caller's
-# prefix assignment (LS_FAIL=1, DRY_RUN=1) reaches the stub and the resolver through env.
+# _resolve <APP_REF> -> output, APP_REF=<result>, rc=<n>; prefix assignments (LS_FAIL, DRY_RUN) reach it via env.
 _resolve() {
   : > "${_log}"
   env STUB_LOG="${_log}" LS_OUT="${_ls}" PATH="${_bin}:${PATH}" APP_REF="$1" bash -c '

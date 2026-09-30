@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# tvm-detect.sh - LLVM and SPIRV-Tools/Vulkan detection helpers for TVM builds
-# Split out of tvm.sh (pure structural refactor; no behavior change).
-# Source-only helper; sourced by tvm.sh — expects its shell options.
+# TVM's LLVM and SPIRV-Tools/Vulkan detection; sourced by tvm.sh, whose shell options it expects.
 
 detect_llvm_config() {
   if [ -n "${TVM_LLVM_CONFIG:-}" ]; then
@@ -9,12 +7,7 @@ detect_llvm_config() {
     return 0
   fi
 
-  # Keyed on the LLVM_RELEASE pin (as register-llvm-alternatives.sh is), not on a
-  # hardcoded descending list: that list tried the bare name LAST, so amd64 picked
-  # Ubuntu's llvm-config-21 and built TVM against LLVM 21 while arm64/riscv64 got
-  # the pinned 23.1.0 — media-amd64.log:1652/1688 of run 20260827-200128. The bare
-  # name is the update-alternatives link 01-core/verify.sh already asserts equals
-  # that major, so it stays as the fallback for a source-built tree.
+  # Keyed on the LLVM_RELEASE pin, not a descending list, which picked Ubuntu's older llvm-config on amd64.
   local major=""
   major="$(llvm_wanted_major)"
 
@@ -34,11 +27,7 @@ detect_llvm_config() {
   echo ""
 }
 
-# TVM_LLVM_VERSION (major*10 + minor) is CMake's verdict on which LLVM FindLLVM
-# actually resolved — the only place the truth appears, since USE_LLVM=ON lets
-# CMake keep searching on its own. Assert it against the LLVM_RELEASE pin: amd64
-# built TVM against LLVM 21 under a 23.1.0 pin and nothing said a word
-# (media-amd64.log:1688, run 20260827-200128). $1 = the tee'd cmake configure log.
+# $1 = configure log; TVM_LLVM_VERSION is the only record of which LLVM FindLLVM really resolved.
 assert_tvm_llvm_version_matches_pin() {
   local configure_log="$1"
   local want_major="" found="" got_major=""
@@ -74,12 +63,7 @@ sanitize_llvm_config_for_target() {
 
   target_arch="$(cross_target_arch 2>/dev/null || true)"
 
-  # If llvm-config can't run on the build host, --host-target yields nothing.
-  # This happens when it's the cross target's own llvm-config (an ELF the host
-  # can't exec). Passing it through would make CMake's FindLLVM invoke it and
-  # choke on a "Syntax error" as the shell reads the binary as a script. Treat a
-  # non-runnable llvm-config as unusable for the cross build and continue without
-  # LLVM (the target LLVM CMake package is preferred and checked separately).
+  # A target-arch llvm-config cannot run here, and FindLLVM would choke on it.
   if ! llvm_host_target="$("$llvm_config_path" --host-target 2>/dev/null)" \
      || [ -z "$llvm_host_target" ]; then
     log "Disabling TVM LLVM for cross target ${target_arch}: ${llvm_config_path} is not runnable on the build host" >&2
@@ -112,11 +96,7 @@ normalize_llvm_cmake_dir() {
   if [ -n "${config_path}" ] && [ -f "${config_path}" ]; then
     resolved_dir="$(dirname "${config_path}")"
     if [ "${resolved_dir}" != "${dir}" ]; then
-      # >&2 is load-bearing: this function's STDOUT is its RETURN VALUE
-      # (tvm-detect.sh:208, tvm.sh:210/215 all consume it via $( )), and
-      # log() routes to info() which writes to fd 1 (logging.sh:77,82).
-      # Unredirected, llvm_dir would become "[INFO] Normalizing...\n/path" --
-      # the same shape that produced CC="[INFO] ...gcc" on 2026-08-26.
+      # >&2: stdout is this function's return value, and log() writes to fd 1.
       log "Normalizing LLVM CMake package path from ${dir} to ${resolved_dir}" >&2
     fi
     printf '%s' "${resolved_dir}"
@@ -135,10 +115,7 @@ normalize_llvm_cmake_dir() {
   config_path="$(readlink -f "${alt}/LLVMConfig.cmake" 2>/dev/null || true)"
   if [ -n "${alt}" ] && [ -n "${config_path}" ] && [ -f "${config_path}" ]; then
     resolved_dir="$(dirname "${config_path}")"
-    # >&2: this function's stdout is its RETURN VALUE (three call sites use
-    # $( )), and log() -> info() writes to fd 1. Caught by
-    # verify_stdout_returns.py, which found this second occurrence after the
-    # first one in the same function had been fixed by hand.
+    # >&2: stdout is this function's return value, and log() writes to fd 1.
     log "Correcting LLVM CMake package path from ${dir} to ${resolved_dir}" >&2
     printf '%s' "${resolved_dir}"
     return 0
@@ -191,13 +168,7 @@ detect_cross_llvm_cmake_dir() {
   printf '%s' "${dir}"
 }
 
-# The LLVM a NATIVE build links: the build host's pinned build at /opt/llvm-target,
-# which Dockerfile.package ships as /usr/local/llvm-target and copy-media-payloads.sh
-# registers with the loader. Empty when it is absent (a bare host). Until 2026-09-26
-# llvm-config-<major> won, and on amd64 that is apt's bootstrap LLVM: branch head,
-# every target, and not in the final image, so the loader gave libtvm_compiler.so
-# llvm-target's X86-only libLLVM and tvm fell back to its runtime without a word
-# (BACKLOG CON35). $1 overrides the root for the suite.
+# Native builds link /opt/llvm-target, the LLVM the image ships, never apt's bootstrap one. $1 overrides the root.
 detect_native_llvm_cmake_dir() {
   local dir
   for dir in "${1:-/opt/llvm-target}/lib/cmake/llvm" "${1:-/opt/llvm-target}/lib64/cmake/llvm"; do
@@ -265,21 +236,14 @@ validate_detected_llvm_cmake_package() {
   llvm_config_file="${llvm_dir}/LLVMConfig.cmake"
   [ -f "${llvm_config_file}" ] || die "LLVMConfig.cmake missing at ${llvm_config_file}"
   if ! llvm_cmake_package_has_umbrella_lib "${prefix}"; then
-    # Was a call to sanitize_llvm_cmake_package_for_missing_umbrella_lib(), which
-    # has never been defined anywhere in the tree (predates the tvm.sh split) —
-    # so this branch previously died with a cryptic "command not found" (exit
-    # 127) whenever it was reached. Fail closed with an actionable message
-    # instead. If the sanitize-and-continue behavior is ever needed, implement
-    # that helper in 02-toolchain/llvm-cross.sh next to the other package helpers.
+    # Fail closed; a sanitize-and-continue helper would belong in 02-toolchain/llvm-cross.sh.
     die "Target LLVM CMake package under ${prefix} is missing the umbrella libLLVM. TVM's cross build needs a target LLVM that ships libLLVM.so (build it with LLVM_LINK_LLVM_DYLIB=ON) or a CMake package that provides it."
   fi
   llvm_cmake_package_has_component_metadata "${llvm_config_file}" || \
     die "Target LLVM package at ${llvm_dir} does not provide LLVM component metadata"
 }
 
-# Map canonical arch → Vulkan SDK arch directory name (/opt/vulkan/<ver>/<dir>).
-# Echoes "" for unknown arches. Shared by detect_spirv_tools_library and
-# detect_vulkan_library.
+# Canonical arch to its /opt/vulkan/<ver>/<dir> name, or "" when unknown.
 vulkan_sdk_arch_dir() {
   case "${CROSS_TARGET_ARCH:-${TARGET_ARCH:-${TARGETARCH:-}}}" in
     amd64|x86_64)  printf '%s' "x86_64" ;;
@@ -297,8 +261,7 @@ detect_spirv_tools_library() {
   _arch_dir="$(vulkan_sdk_arch_dir)"
 
   shopt -s nullglob
-  # 1) Target-arch path from cross-rebuilt SPIRV-Tools (Dockerfile.sdk).
-  #    Placed under /opt/vulkan/<version>/<arch_dir>/lib/.
+  # 1) The target-arch SPIRV-Tools vulkan.sh cross-builds.
   if [ -n "${_arch_dir}" ]; then
     candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libSPIRV-Tools.a)
     candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libSPIRV-Tools-shared.so)
@@ -328,19 +291,13 @@ detect_spirv_tools_library() {
   return 1
 }
 
-# Return 0 if the ELF at $1 matches the cross target arch. Conservatively returns
-# 0 (treat as matching) when the arch or ELF machine can't be determined, so a
-# missing readelf never spuriously drops a library. Used to reject host-arch libs
-# that would break a cross link.
+# 0 when the ELF at $1 matches the cross target, and when undeterminable, so a missing readelf drops nothing.
 elf_matches_target() {
   local file="$1"
   local machine target_arch expected
 
   command -v readelf >/dev/null 2>&1 || return 0
-  # `|| true`: callers invoke this in `if` conditions, so a readelf failure on
-  # a non-ELF file would not abort — but the failed assignment WOULD become the
-  # function's return value, silently reporting the file as mismatched. The
-  # docstring promises "conservatively return 0 when undeterminable".
+  # `|| true`: a failed assignment would become the return value and report a mismatch.
   machine="$(LC_ALL=C readelf -h "$file" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1 || true)"
   target_arch="$(cross_target_arch 2>/dev/null || echo "amd64")"
   expected="$(arch_elf_machine_grep_for "${target_arch}" 2>/dev/null || true)"
@@ -348,10 +305,7 @@ elf_matches_target() {
   echo "${machine}" | grep -qF "${expected}"
 }
 
-# TVM's Vulkan runtime links libvulkan.so. LunarG's SDK ships only the host
-# (x86_64) loader; a cross build needs the target-arch loader, which vulkan.sh
-# cross-builds into /opt/vulkan/<version>/<arch_dir>/lib. Echo the target
-# libvulkan.so path for this arch, or "" if none exists (caller disables Vulkan).
+# LunarG ships only the x86_64 loader: echo vulkan.sh's target libvulkan.so, or "" to disable Vulkan.
 detect_vulkan_library() {
   local candidates=()
   local _arch_dir

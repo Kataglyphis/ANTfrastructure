@@ -96,39 +96,26 @@ if [ ! -f "${ORT_SRC_DIR}/js/web/dist/ort-wasm-simd-threaded.jspi.mjs" ] || \
 fi
 
 cd "${ORT_SRC_DIR}/js"
-# npm ci ONLY (supply-chain audit #19): the old `|| npm install` fallback
-# IGNORED package-lock.json's pinned versions+integrity hashes and
-# re-resolved semver ranges on any transient failure — the shipped web
-# bundle was then built against unpinned deps. Retry ci, fail loudly.
+# npm ci only: an `npm install` fallback would re-resolve ranges and bypass the lockfile's integrity hashes.
 npm ci || { warn "npm ci failed in js/ — retrying once"; sleep 5; npm ci; } \
   || err "npm ci failed twice in js/ (lockfile-exact install is mandatory)"
 
 cd "${ORT_SRC_DIR}/js/common"
-# npm ci ONLY (supply-chain audit #19): the old `|| npm install` fallback
-# IGNORED package-lock.json's pinned versions+integrity hashes and
-# re-resolved semver ranges on any transient failure — the shipped web
-# bundle was then built against unpinned deps. Retry ci, fail loudly.
 npm ci || { warn "npm ci failed in js/common/ — retrying once"; sleep 5; npm ci; } \
   || err "npm ci failed twice in js/common/ (lockfile-exact install is mandatory)"
 
 patch_web_build_targets "${skip_webgpu}" "${skip_jspi}"
 
 cd "${ORT_SRC_DIR}/js/web"
-# npm ci ONLY (supply-chain audit #19): the old `|| npm install` fallback
-# IGNORED package-lock.json's pinned versions+integrity hashes and
-# re-resolved semver ranges on any transient failure — the shipped web
-# bundle was then built against unpinned deps. Retry ci, fail loudly.
 npm ci || { warn "npm ci failed in js/web/ — retrying once"; sleep 5; npm ci; } \
   || err "npm ci failed twice in js/web/ (lockfile-exact install is mandatory)"
 npm run build || err "npm run build failed in js/web/"
 
-# Validate JS build produced output
 if ! ls "${ORT_SRC_DIR}/js/web/dist"/*.js >/dev/null 2>&1 && ! ls "${ORT_SRC_DIR}/js/web/dist"/*.mjs >/dev/null 2>&1; then
   err "No .js or .mjs files found in js/web/dist/ after build"
 fi
 
-# Per-glob tolerance (dist may contain only .js or only .mjs — the validation
-# above is an OR), but the COPY as a whole must land: verify the destination.
+# Either glob may match nothing, so the copy is judged by what lands.
 cp -v "${ORT_SRC_DIR}/js/web/dist"/*.js "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
 cp -v "${ORT_SRC_DIR}/js/web/dist"/*.mjs "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
 if ! ls "${WASM_OUTPUT_DIR}"/*.js >/dev/null 2>&1 && ! ls "${WASM_OUTPUT_DIR}"/*.mjs >/dev/null 2>&1; then

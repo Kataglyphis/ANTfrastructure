@@ -2,15 +2,6 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# ==============================================================================
-# build-litert.sh - Build and install LiteRT from source
-# ==============================================================================
-#
-# Build Acceleration:
-#   USE_CCACHE=true     Enable ccache for faster rebuilds (default: true)
-#   USE_LLD=true        Use lld linker for faster linking (default: true)
-# ==============================================================================
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/../../core/common.sh"
@@ -39,13 +30,7 @@ LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.6}}"
 : "${LITERT_SRC:=${TMPDIR:-/tmp}/litert-$$}"
 : "${LITERT_PREFIX:=/usr/local}"
 : "${BUILD_TYPE:=Release}"
-# LiteRT-LM compiles PyTorch (torch_cpu); its aten/autograd translation units peak
-# at ~4GB per cc1plus -- far above the ~2GB/job that media_jobs assumes. At nproc-
-# scale parallelism (-j30 on a 32-core host) that OOM-kills cc1plus and can stall/
-# cancel the whole buildkit solve, especially under other memory load (e.g. a
-# Folding@home core). compute_cpp_heavy_jobs budgets ~4GB/job for exactly this
-# class of build; falls back to media_jobs if the helper is somehow unavailable.
-# Override with PARALLEL_JOBS=N or NPROC=N.
+# torch_cpu TUs peak near 4 GB per cc1plus, twice what media_jobs budgets; see docs/build-parallelism-memory-tuning.md
 : "${NPROC:=$(compute_cpp_heavy_jobs "" 2>/dev/null || media_jobs)}"
 : "${SKIP_DEP_INSTALL:=false}"
 
@@ -66,11 +51,6 @@ resolve_host_compiler() {
     local lang="$1"
     resolve_host_compiler_for_lang "${lang}"
 }
-
-# prepare_host_compiler_wrapper is provided by 01-core/compiler-resolution.sh
-# (loaded via media_common_init). The canonical version is a superset of the
-# former local copy — it falls back to a hand-written wrapper when
-# make_named_host_compiler_wrapper is unavailable.
 
 resolve_litert_tflite_host_tools_dir() {
     local candidate=""
@@ -104,8 +84,7 @@ append_litert_preferred_cmake_compiler_args() {
       return 0
   fi
 
-  # Native/amd64 artifact builds should prefer the source-built Clang from the
-  # toolchain image. GCC 16 currently ICEs in LiteRT's Samsung vendor code.
+  # GCC 16 ICEs in LiteRT's Samsung vendor code, so native builds prefer the toolchain image's Clang.
   if [ -x /usr/local/bin/clang ] && [ -x /usr/local/bin/clang++ ]; then
       native_clang="/usr/local/bin/clang"
       native_clangxx="/usr/local/bin/clang++"
@@ -131,19 +110,12 @@ append_litert_cache_linker_args() {
   append_cmake_cache_linker_args "$@"
 }
 
-# EIGEN-NET (2026-08-21): mirrored eigen fetch (LITERT_EIGEN_FETCH_FLAGS +
-# litert_eigen_fetch_flags_str). Defined ONCE in the file below and sourced by
-# both LiteRT builds -- the flags used to be duplicated verbatim here and in the
-# android lane, which is exactly how a mirror silently goes missing from one of
-# them. That file sits under android/ because it is the only directory both
-# images ship (see its header); Dockerfile.media bind-mounts this whole litert
-# tree, so it is always next to us. Hard source: if it is ever missing, the
-# build stops here instead of quietly configuring without the fallback mirror.
+# Shared with the android lane so neither loses eigen's fallback mirror.
 # shellcheck source=android/litert-eigen-fetch.sh
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/android/litert-eigen-fetch.sh"
 
-# Same directory, same reason (Dockerfile.android COPYs only android/).
+# Under android/ too, because Dockerfile.android COPYs only that dir.
 # shellcheck source=android/litert-qairt-guard.sh
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/android/litert-qairt-guard.sh"
@@ -153,9 +125,7 @@ litert_cross_wheel_platform_tag() {
         cross_wheel_platform_tag
         return $?
     fi
-    # Fallback when cross_wheel_platform_tag isn't sourced: reuse the canonical
-    # arch->wheel-tag map instead of a private copy. LiteRT only targets
-    # amd64/arm64/riscv64, all covered by arch_linux_platform_tag_for.
+    # Reuse the canonical arch->wheel-tag map rather than keep a private copy.
     if command -v arch_linux_platform_tag_for >/dev/null 2>&1 \
        && command -v cross_target_arch >/dev/null 2>&1; then
         arch_linux_platform_tag_for "$(cross_target_arch)"
@@ -164,23 +134,14 @@ litert_cross_wheel_platform_tag() {
     return 1
 }
 
-# Echoes the dir that directly HOLDS Qnn*.h. Upstream only probes <dir> vs
-# <dir>/QNN on its download path, never on a pre-set value.
-# docs/qnn-linux.md#qairt_headers_dir
+# Must name the dir that directly HOLDS Qnn*.h; see docs/qnn-linux.md#qairt_headers_dir
 _litert_qairt_include_dir() {
     local inc="${LITERT_QNN_HOME}/include/QNN"
     [ -f "${inc}/QnnLog.h" ] || err "LiteRT: ${inc}/QnnLog.h missing -- QAIRT layout moved; QAIRT_HEADERS_DIR must name the dir holding Qnn*.h"
     printf '%s\n' "${inc}"
 }
 
-
-# GCC 16.1.0 ICEs on LiteRT's Samsung vendor code. The ICE is triggered by the
-# cross-compiler toolchain used in cross builds; on native amd64 we keep the
-# sources and use clang instead (see append_litert_preferred_cmake_compiler_args).
-# Replace the vendor sources with a stub CMakeLists so the build proceeds. Track
-# the upstream GCC bug and revisit once 16.x is fixed or pinned to an older minor.
-# True only when the Samsung SDK header the vendor sources include is actually
-# findable; upstream vendors the .cc/.h but not the SDK it pulls in.
+# Upstream vendors the Samsung .cc/.h files but not the SDK header they include.
 _litert_samsung_sdk_present() {
     find "${LITERT_SRC}" /usr/include /usr/local/include \
         -name graph_wrapper_api.h -print -quit 2>/dev/null | grep -q .
@@ -196,10 +157,7 @@ message(STATUS "Samsung vendor disabled for ${arch}")
 CMAKE_EOF
 }
 
-# Cross builds only: wire the cross archiver and protect LiteRT's nested host-only
-# FlatBuffers/flatc build from the target toolchain env, pointing it at host
-# compilers. Appends -DLITERT_HOST_* to the caller's cmake_args array (nameref);
-# host_cc/host_cxx are passed by value (wrapping is internal, not needed back).
+# Keeps the target toolchain env away from LiteRT's nested host-only flatc build.
 _litert_configure_cross_host_flatbuffers() {
     local -n _lcf_args="$1"
     local host_cc="$2" host_cxx="$3"
@@ -208,8 +166,7 @@ _litert_configure_cross_host_flatbuffers() {
         append_cmake_cross_archiver_args _lcf_args resolve_cross_archive_tool
     fi
 
-    # Do not let the target-side toolchain/cache/linker environment leak into the
-    # host probe, or CMake's simple compiler checks can fail.
+    # A leaked target toolchain, cache or linker env fails CMake's host compiler checks.
     unset CC CXX AR AS LD NM RANLIB STRIP OBJCOPY
     unset CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER CMAKE_ASM_COMPILER_LAUNCHER
     unset CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS
@@ -237,9 +194,7 @@ configure_litert() {
     [ "${BUILD_TYPE}" = "Debug" ] && preset="default-debug"
     info Using preset: ${preset}
 
-    # Enable ruy but keep its profiler/instrumentation disabled to avoid linking
-    # against ruy_profiler_instrumentation (absent in some build environments /
-    # submodule combinations): RUY_PROFILER=0 disables the profiler, ruy stays on.
+    # ruy_profiler_instrumentation is absent in some submodule combinations, so keep ruy without its profiler.
     local cmake_args=(
         "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
         "-DRUY_PROFILER=0"
@@ -251,10 +206,7 @@ configure_litert() {
         "-DCMAKE_INSTALL_LIBDIR=lib"
         "-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}"
         "-DLITERT_AUTO_BUILD_TFLITE=ON"
-        # GPU off: no cross-buildable GPU delegate (EGL/CL deps need a target
-        # GPU driver at build time). NPU off by default; the QNN delegate (backlog
-        # QNN-LINUX) flips NPU+QNN on when the QAIRT zip is staged (arm64 only).
-        # XNNPACK+RUY cover CPU inference on all three arches.
+        # The GPU delegate needs a target GPU driver at build time; only a staged QAIRT SDK turns NPU on.
         "-DLITERT_ENABLE_GPU=OFF"
         "-DLITERT_ENABLE_NPU=OFF"
         "-DTFLITE_ENABLE_XNNPACK=ON"
@@ -262,20 +214,12 @@ configure_litert() {
         "-DPython3_EXECUTABLE=${HOST_PYTHON_BIN}"
     )
 
-    # EIGEN-NET: mirrored eigen fetch (this path still git-cloned it from gitlab).
     cmake_args+=("${LITERT_EIGEN_FETCH_FLAGS[@]}")
 
-    # Qualcomm dispatch (backlog QNN-LINUX). CORRECTED 2026-08-31 (Windows #154):
-    # TFLITE_ENABLE_QNN and QNN_HOME are NOT LiteRT options -- CMake dropped both
-    # silently while this printed "QNN delegate ON". The real switch is
-    # LITERT_ENABLE_QUALCOMM (litert/vendors/CMakeLists.txt:330), and setting
-    # QAIRT_HEADERS_DIR (:20) auto-forces it ON (:331-334). LITERT_ENABLE_NPU is real
-    # but is NOT the QNN gate -- it only feeds a #cmakedefine01 in build_config.h.
-    # QAIRT is consumed as HEADERS ONLY at configure time; backends load at runtime.
+    # QAIRT_HEADERS_DIR, not NPU, is the Qualcomm switch; see docs/qnn-linux.md#what-is-real-and-what-was-invented
     litert_vendor_header_stub="${LITERT_SRC}/litert/.vendor-headers-absent"
     mkdir -p "${litert_vendor_header_stub}"
-    # Suppress two of upstream's three unconditional configure-time downloads. Both
-    # gates require the header to EXIST, so a stub dir is safe and keeps them off.
+    # Upstream's NeuroPilot and LiteCore downloads skip when the header dir exists, so a stub keeps them off.
     cmake_args+=("-DNEUROPILOT_HEADERS_DIR=${litert_vendor_header_stub}"
                  "-DLITECORE_HEADERS_DIR=${litert_vendor_header_stub}")
     if [ -n "${LITERT_QNN_HOME:-}" ]; then
@@ -284,11 +228,7 @@ configure_litert() {
         info "LiteRT: Qualcomm dispatch ON (QAIRT headers from ${qairt_inc})"
         cmake_args+=("-DQAIRT_HEADERS_DIR=${qairt_inc}" "-DLITERT_ENABLE_NPU=ON")
     else
-        # NO staged SDK: QAIRT_HEADERS_DIR must stay UNSET (any value force-enables
-        # Qualcomm with headers we do not have), so upstream would file(DOWNLOAD) QAIRT
-        # 2.47 from softwarecenter.qualcomm.com -- ~1.5 GB, no EXPECTED_HASH, no error
-        # check, on every configure. Patch the block out instead, same shape as the
-        # Samsung vendor stub above.
+        # Any QAIRT_HEADERS_DIR force-enables Qualcomm, so patch out upstream's unhashed download instead.
         _litert_disable_qairt_header_download
     fi
 
@@ -297,10 +237,7 @@ configure_litert() {
         append_cmake_cross_args cmake_args
     fi
 
-    # Cross builds hit the GCC 16.1.0 ICE; native builds additionally need the
-    # Samsung SDK header, which upstream does not vendor. Gate on BOTH: a native
-    # amd64 build passed only while a warm cache still held graph_wrapper_api.h,
-    # then failed from scratch. docs/failure-modes.md
+    # Cross GCC 16 ICEs on the Samsung vendor code, and native builds lack its unvendored SDK header.
     if cross_build_is_active || ! _litert_samsung_sdk_present; then
         _litert_disable_samsung_vendor
     fi
@@ -315,9 +252,6 @@ configure_litert() {
     cmake --preset "${preset}" "${cmake_args[@]}"
 }
 
-# Single source of truth for the CMake build subdirectory name, which encodes
-# the Debug/Release convention. Used bare (relative to litert/) and joined onto
-# ${LITERT_SRC}/litert/ by the install paths below.
 litert_build_subdir() {
     [ "${BUILD_TYPE}" = "Debug" ] && printf 'cmake_build_debug' || printf 'cmake_build'
 }
@@ -329,16 +263,13 @@ build_litert() {
     run_cmake_build_with_fallback "$(litert_build_subdir)" "${NPROC}"
 }
 
-# The C API CMakeLists expects TF_SOURCE_DIR to contain tensorflow/lite, but
-# LiteRT lays out sources under tflite/. Create the compatibility symlink.
+# The C API CMakeLists expects tensorflow/lite under TF_SOURCE_DIR, but LiteRT keeps it in tflite/.
 _tflite_c_prepare_symlink() {
     info Creating tensorflow/lite symlink for C API build compatibility...
     mkdir -p "${LITERT_SRC}/tensorflow"
     ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
 }
 
-# Assemble the TFLite C API CMake args into the caller's array (nameref),
-# including cross compiler/archiver args and the host flatc tools dir.
 _tflite_c_cmake_args() {
     local -n _tca_args="$1"
     _tca_args=(
@@ -351,8 +282,6 @@ _tflite_c_cmake_args() {
         "-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}"
     )
 
-    # EIGEN-NET: the TO_URL knob used to live inline here; it now ships with its
-    # mirror fallback.
     _tca_args+=("${LITERT_EIGEN_FETCH_FLAGS[@]}")
 
     append_litert_preferred_cmake_compiler_args _tca_args
@@ -376,9 +305,7 @@ _tflite_c_cmake_args() {
     append_litert_cache_linker_args _tca_args
 }
 
-# Install the C API (with a manual .so copy fallback — some LiteRT revisions omit
-# the install rule) and verify libtensorflowlite_c.so exists. Runs in the build
-# dir (cwd), passed as $1 for the diagnostic paths.
+# Some LiteRT revisions omit the C API install rule, hence the manual .so copy.
 _tflite_c_install_and_verify() {
     local c_api_build="$1"
     info Installing TFLite C API...
@@ -448,9 +375,7 @@ install_litert() {
 
     install_manual
 
-    # QNN runtime staging (backlog QNN-LINUX, mirrors Windows build-litert #121):
-    # stage the backend libs beside the LiteRT install so the QNN delegate finds
-    # them on the library search path.
+    # The QNN delegate finds its backend libs on the library search path at runtime.
     if [ -n "${LITERT_QNN_HOME:-}" ]; then
         info "LiteRT: staging QNN backend libs beside ${LITERT_PREFIX}"
         stage_qnn_runtime "${LITERT_QNN_HOME}" "${LITERT_PREFIX}"
@@ -498,24 +423,16 @@ _litert_wheel_prepare_env() {
     mkdir -p "${LITERT_SRC}/tensorflow"
     ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
 
-    # Build base cmake flags early so EXTRA_CMAKE_FLAGS can be exported
-    # before the patch is applied (the patch script reads this env var).
+    # The patched pip script passes EXTRA_CMAKE_FLAGS, word-split, to every cmake call.
     extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5} -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON}"
     if [ -n "${LITERT_QNN_HOME:-}" ]; then
-        # Qualcomm dispatch (see the configure path above for why these are the
-        # real names): last-wins on the duplicate -D supersedes the NPU=OFF default.
+        # The later duplicate -D wins over the NPU=OFF default above.
         extra_cmake_flags+=" -DQAIRT_HEADERS_DIR=$(_litert_qairt_include_dir) -DLITERT_ENABLE_NPU=ON"
     fi
-    # EIGEN-NET: same mirrored eigen fetch as the configure paths above. The
-    # patched upstream build_pip_package_with_cmake.sh word-splits this string
-    # (`cmake ${EXTRA_CMAKE_FLAGS:-}`), so the flags must stay space-free.
     extra_cmake_flags+=" $(litert_eigen_fetch_flags_str)"
     export EXTRA_CMAKE_FLAGS="${extra_cmake_flags}"
 
-    # Patch upstream build_pip_package_with_cmake.sh so it honours the env vars
-    # we export (TENSORFLOW_DIR, TENSORFLOW_VERSION, EXTRA_CMAKE_FLAGS) and
-    # replaces -march=native with a cross-safe include path. apply-patch.sh is
-    # idempotent, so re-runs are safe.
+    # Upstream's pip script hardcodes what a cross build must override; see docs/upstreamable-patches.md § 13.
     bash /opt/scripts/core/apply-patch.sh \
         /opt/scripts/patches/litert/001-env-var-overrides.patch \
         "${pip_pkg_dir}" \
@@ -574,21 +491,12 @@ _litert_wheel_cross_args() {
     export EXTRA_CMAKE_FLAGS="${extra_cmake_flags}"
     export TENSORFLOW_TARGET="native"
     export WHEEL_PLATFORM_NAME="${wheel_platform_name}"
-    # Only emit -I flags for include dirs that actually resolved. The former
-    # unconditional "-I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"
-    # expanded to bare "-I -I -I" (those vars are never set in cross mode), which
-    # corrupted the compiler command line and made Abseil's ABSL_INTERNAL_AT_LEAST_CXX17
-    # probe fail -> "must use the same C++ standard" configure error. Feed the
-    # resolved target Python include dirs (base + arch) so the pywrap extension
-    # finds Python.h/pyconfig.h during cross compilation.
+    # Emit -I only for resolved dirs: a bare -I corrupts the command line and breaks Abseil's C++17 probe.
     local litert_build_flags="-idirafter /usr/include"
     [ -n "${TF_CXX_FLAGS:-}" ] && litert_build_flags+=" ${TF_CXX_FLAGS}"
     [ -n "${target_python_include:-}" ] && litert_build_flags+=" -I${target_python_include}"
     [ -n "${target_python_arch_include:-}" ] && litert_build_flags+=" -I${target_python_arch_include}"
-    # The pywrap extension #includes "pybind11/functional.h" and
-    # "numpy/arrayobject.h". Both ship arch-independent C-API headers in the build
-    # venv (see install-deps.sh), so the host interpreter's include dirs are correct
-    # even for a cross target (only the target Python.h above must be arch-specific).
+    # pybind11 and numpy headers are arch-independent, so the host venv's include dirs serve a cross target.
     local _pybind11_inc="" _numpy_inc=""
     if [ -n "${PYTHON:-}" ]; then
         _pybind11_inc="$(python_module_include "${PYTHON}" pybind11)"
@@ -630,16 +538,7 @@ _litert_wheel_run() {
     popd > /dev/null
 }
 
-# LiteRT v2.1.6's pip build ships the interpreter pybind extension FILE named
-# `_pywrap_tensorflow_interpreter_wrapper*.so`, but its PyInit_ symbol — and every
-# importer (tflite_runtime/interpreter.py imports `_pywrap_litert_interpreter_wrapper`)
-# — uses the litert name. So `import _pywrap_litert_interpreter_wrapper` can't find
-# the file and ai-edge-litert import dies with "cannot import name
-# '_pywrap_litert_interpreter_wrapper' from 'tflite_runtime'". The binary is already
-# the litert module (importing it under the tensorflow name fails with a missing
-# PyInit_ symbol), so the fix is purely to rename the FILE to match its symbol.
-# Post-process each staged wheel: unpack, rename the ext, repack (which recomputes
-# RECORD). Best-effort — a repack failure leaves the original wheel untouched.
+# The wheel names the ext file _pywrap_tensorflow_* while its PyInit_ symbol and importers use _pywrap_litert_*.
 _litert_fix_pywrap_ext_name() {
     local py="${PYTHON:-python3}" wheel tmp unpacked tf_so _renamed
     command -v "${py}" >/dev/null 2>&1 || return 0
@@ -688,8 +587,6 @@ _litert_build_wheel() {
     _litert_wheel_run
 }
 
-# Copy .so/.a libraries and create the libLiteRt -> libtensorflow-lite
-# compatibility symlinks GStreamer expects.
 _install_manual_libs_and_symlinks() {
     local build_dir="$1" lib_dir="$2"
 
@@ -699,9 +596,7 @@ _install_manual_libs_and_symlinks() {
     info Copying static libraries...
     find "${build_dir}" -name "*.a" -exec cp -v {} "${lib_dir}/" \; 2>/dev/null || true
 
-    # Create symlinks for tensorflow-lite compatibility
-    # LiteRT builds libLiteRt.so, but GStreamer expects libtensorflow-lite.so
-    # Handle both versioned and unversioned libraries
+    # GStreamer links libtensorflow-lite, which LiteRT ships as libLiteRt.
     for lib in "${lib_dir}"/libLiteRt.so*; do
         [ -f "${lib}" ] || continue
         libname=$(basename "${lib}")
@@ -711,18 +606,13 @@ _install_manual_libs_and_symlinks() {
     done
 }
 
-# Copy C++ and C API headers: tensorflow/lite source layout OR litert layout,
-# plus the tflite/ compatibility dir, the litert/c dir, and the
-# tensorflow/lite -> tflite symlink libcamera and other consumers expect.
 _install_manual_headers() {
     local src_dir="$1" include_dir="$2"
 
     info "Copying headers (C++ and C API)..."
     cd "${src_dir}"
 
-    # 1. Copy ALL headers (C and C++) preserving the directory structure.
-    # cpio needs --null to match find's -print0; without it cpio treats the whole
-    # NUL-delimited stream as one bogus path and copies only the first header.
+    # cpio needs --null to match find's -print0, or it copies only the first header.
     if [ -d "tensorflow/lite" ]; then
         info Found tensorflow/lite source layout...
         find tensorflow/lite -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm --null "${include_dir}/"
@@ -731,15 +621,13 @@ _install_manual_headers() {
         find litert -type f \( -name "*.h" -o -name "*.hpp" \) -print0 | cpio -pdm --null "${include_dir}/"
     fi
 
-    # 2. Copy tflite directory (contains TensorFlow Lite C++ compatibility headers)
-    # This is CRITICAL for libcamera's awb_nn.cpp which needs tensorflow/lite/interpreter.h
+    # libcamera's awb_nn.cpp reaches these through the tensorflow/lite symlink below.
     info Copying tflite C++ compatibility headers...
     if [ -d "tflite" ]; then
         cp -rv "tflite" "${include_dir}/" 2>/dev/null || true
         info tflite headers copied to ${include_dir}/tflite
     fi
 
-    # 3. Copy litert/c headers for C API compatibility
     info Ensuring strict C API compatibility...
     if [ -d "litert/c" ]; then
         cp -rv "litert/c" "${include_dir}/"
@@ -747,17 +635,12 @@ _install_manual_headers() {
         warn "litert/c headers not found in source tree; C API consumers may miss headers"
     fi
 
-    # 4. Create tensorflow/lite -> tflite symlink for compatibility
-    # libcamera and other projects expect headers at <tensorflow/lite/interpreter.h>
-    # but LiteRT provides them at <tflite/interpreter.h>
-    # NOTE: Since this is a symlink, tensorflow/lite/c will automatically resolve
-    # to tflite/c which should already have the C API headers from the tflite copy
+    # Consumers include <tensorflow/lite/...>, which LiteRT ships as tflite/.
     info Creating tensorflow/lite compat symlink...
     mkdir -p "${include_dir}/tensorflow"
     ln -sfn "../tflite" "${include_dir}/tensorflow/lite"
     info Created tensorflow/lite compatibility symlink
 
-    # Verify the symlink works for the critical header
     if [ -f "${include_dir}/tensorflow/lite/interpreter.h" ]; then
         info Verified: tensorflow/lite/interpreter.h is accessible
     else
@@ -767,13 +650,10 @@ _install_manual_headers() {
     fi
 }
 
-# Copy FlatBuffers headers. CMake builds may place them in different locations
-# depending on the subproject naming; check common locations and fall back to
-# a search for the flatbuffers.h file.
+# Where CMake puts the FlatBuffers headers depends on the subproject name, so probe, then search.
 _install_manual_flatbuffers() {
     local build_dir="$1" include_dir="$2"
 
-    # 5. Flatbuffers (Required by the C++ API)
     fb_found=0
     local _fbsrc
     for _fbsrc in "_deps/flatbuffers-src/include" "flatbuffers-flatc/include"; do
@@ -783,14 +663,12 @@ _install_manual_flatbuffers() {
             fb_found=1
         fi
     done
-    # Also check for an installed location within the build tree
     if [ -d "${build_dir}/flatbuffers-flatc/include/flatbuffers" ]; then
         info Copying flatbuffers headers from flatbuffers-flatc/include/flatbuffers...
         mkdir -p "${include_dir}/flatbuffers" || true
         cp -rv "${build_dir}/flatbuffers-flatc/include/flatbuffers"/* "${include_dir}/flatbuffers/" 2>/dev/null || true
         fb_found=1
     fi
-    # Final fallback: search for the flatbuffers.h file and copy its directory
     if [ "$fb_found" -eq 0 ]; then
         local fbheader fbdir
         fbheader=$(find "${LITERT_SRC}/litert" -type f -path "*/flatbuffers/flatbuffers.h" -print -quit 2>/dev/null || true)
@@ -807,10 +685,7 @@ _install_manual_flatbuffers() {
     fi
 }
 
-# Install Abseil (absl) headers transitively required by the tflite C++ headers
-# (tflite/util.h does `#include "absl/types/span.h"`). Canonical implementation
-# lives in 01-core/abseil-headers.sh (Critical Fix #2). The helper is idempotent
-# and skips if span.h is already present.
+# tflite/util.h includes absl/types/span.h, which the tflite headers do not ship.
 _install_manual_abseil() {
     local include_dir="$1"
     if ! install_abseil_headers "${include_dir}"; then
@@ -823,7 +698,6 @@ _install_manual_abseil() {
     fi
 }
 
-# Generate the litert.pc, tensorflow-lite.pc and tensorflowlite_c.pc files.
 _install_manual_pkgconfig() {
     local lib_dir="$1"
 
@@ -842,8 +716,7 @@ _install_manual_pkgconfig() {
       "-L\${libdir} -lLiteRt -ltensorflow-lite" \
       "-I\${includedir}"
 
-    # Libs.private passed as the 9th arg (requires left empty) so the helper
-    # emits the `Libs.private:` line — no post-hoc `cat >>` append needed.
+    # The 9th argument is Libs.private; the empty 8th is Requires.
     generate_pkgconfig_file "${lib_dir}/pkgconfig/tensorflow-lite.pc" \
       "TensorFlow Lite" "TensorFlow Lite Library (via LiteRT)" \
       "${LITERT_VERSION}" "${LITERT_PREFIX}" \
@@ -926,8 +799,7 @@ main() {
 
     info LiteRT build started
     fetch_litert
-    # QNN delegate (backlog QNN-LINUX): arm64-only, opt-in by staging the QAIRT
-    # zip. No zip = empty = today's flags, byte for byte (default supported state).
+    # QNN is opt-in: without a staged QAIRT zip this stays empty and the flags are unchanged.
     if command -v resolve_qnn_sdk >/dev/null 2>&1; then
         LITERT_QNN_HOME="$(resolve_qnn_sdk)"
     fi
@@ -935,13 +807,7 @@ main() {
     build_litert
     build_tflite_c_api
     install_litert
-    # AP4: strip ONLY litert's own libs (it installs into the shared
-    # ${LITERT_PREFIX}/lib = /usr/local/lib, next to the base CPython libs, so a
-    # whole-prefix strip would wrongly hit libpython etc.). strip_media_libs
-    # self-derives the cross <triplet>-strip (this script does not export STRIP);
-    # --strip-all keeps .dynsym. Best-effort, MEDIA_STRIP=0 disables. Runs BEFORE
-    # verify_installation so the verify exercises the stripped libs.
-    # DUPN1: MEDIA_STRIP gate lives inside the helper now.
+    # Only LiteRT's libs, since the prefix also holds libpython; before verify, so it checks the stripped libs.
     declare -F strip_media_libs >/dev/null 2>&1 \
         && strip_media_libs "${LITERT_PREFIX}/lib" \
             'libtensorflow-lite*.so*' 'libtensorflowlite_c*.so*' 'libtflite*.so*' || true

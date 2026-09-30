@@ -5,50 +5,17 @@
 
 <#
 .SYNOPSIS
-    Re-test whether the Windows process-isolation LAYER-COMMIT bug still exists
-    on this host. Run this after any Docker Engine / containerd / hcsshim /
-    Windows / base-image upgrade to check if `docker build --isolation process`
-    has become usable (which would let the WHOLE Windows build run at full CPU
-    count instead of only media-core via the run+commit workaround).
-
+    Re-tests whether `docker build --isolation process` can commit a file-writing layer on this host.
 .DESCRIPTION
-    Background (see docs/windows-builds.md § Build isolation and CPU parallelism):
-    on this host `docker build` is capped at 2 CPUs under Hyper-V isolation, and
-    `docker build --isolation process` exposes all CPUs but CANNOT COMMIT a
-    file-writing layer -- the wcifs minifilter refuses to detach the layer
-    (ERROR_FLT_DO_NOT_DETACH 0x801f0010) and the commit dies with
-    hcsshim::ActivateLayer 0x20 "file used by another process". Root cause is an
-    OS-class mismatch: client host build (26200) vs Server base image (ltsc2025 /
-    26100). See the windows-container-host-quirks memory for the full diagnosis.
-
-    This script runs two checks against a tiny self-contained probe image
-    (windows/scripts/diagnostics/Dockerfile.isolation-probe, ~100 MB layer, ~10s):
-
-      1. CONTROL  -- `docker run --isolation process` (expected: always works).
-      2. VERDICT  -- `docker build --isolation process` (the operation that fails
-                     today). SUCCESS here => the bug is GONE on this version.
-
-    It prints the exact Docker/containerd/host build numbers so you can record
-    which versions changed behaviour, then a clear BUG GONE / BUG PRESENT verdict.
-
+    Run after any engine, Windows or base-image upgrade; the failure is the host/base OS build skew in wcifs.
+    See docs/windows-build-lanes.md § Re-testing process isolation on new versions (is the bug gone yet?).
 .PARAMETER Docker
-    Path to docker.exe. Defaults to $env:DOCKER_EXE, then the Stevedore install
-    locations, then docker on PATH.
-
+    Path to docker.exe. Defaults to $env:DOCKER_EXE, the Stevedore locations, then PATH.
 .PARAMETER Base
-    Base image for the probe (default: mcr.microsoft.com/windows/servercore:ltsc2025).
-    Point this at a NEWER matching-build base image if one becomes available --
-    a host-build-matching base is one of the only real fixes.
-
+    Probe base image; a base whose build matches the host's is one of the only real fixes.
 .PARAMETER Count
-    Number of 2 MB files the probe writes (default 50 => ~100 MB layer). The bug
-    reproduced even at 100 MB, so a bigger layer is not needed.
-
+    Number of 2 MB files the probe writes (default 50, ~100 MB, already enough to reproduce).
 .EXAMPLE
-    .\windows\scripts\diagnostics\Test-ProcessIsolationCommit.ps1
-
-.EXAMPLE
-    # Test a hypothetical newer base image whose build matches the host:
     .\windows\scripts\diagnostics\Test-ProcessIsolationCommit.ps1 -Base mcr.microsoft.com/windows/servercore:ltsc2027
 #>
 [CmdletBinding()]
@@ -58,7 +25,7 @@ param(
     [int]$Count    = 50
 )
 
-# --- Resolve docker.exe: central candidate walk, not a pasted one (backlog #101) ---
+# Resolve docker.exe
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1')
 if (-not $Docker) { $Docker = Get-PreferredToolPath -CommandName 'docker' -CandidatePaths @($env:DOCKER_EXE, 'D:\Stevedore\bin\docker.exe', "$env:ProgramFiles\Stevedore\bin\docker.exe") }
 if (-not $Docker) { throw 'docker.exe not found. Pass -Docker <path>.' }
@@ -68,8 +35,7 @@ $dockerfile = Join-Path $scriptDir 'Dockerfile.isolation-probe'
 if (-not (Test-Path $dockerfile)) { throw "probe Dockerfile missing: $dockerfile" }
 $probeTag = 'local/isolation-probe:test'
 
-# Native stderr must NOT throw under PS 5.1: never run with EAP=Stop around the
-# docker calls; always capture 2>&1 and branch on $LASTEXITCODE.
+# Continue, so docker's stderr never throws; the exit code decides.
 $ErrorActionPreference = 'Continue'
 
 function Write-Head($t) { Write-Host "`n==== $t ====" -ForegroundColor Cyan }

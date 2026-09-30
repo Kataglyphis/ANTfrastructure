@@ -1,10 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Tests for the pure, docker-free helpers of WindowsContainerBuild.Reuse.psm1.
-# Nothing here starts a container: the orchestration function is covered only
-# by its parameter surface, which is the contract project wrappers depend on.
+# Docker-free: the orchestration function is covered only by its parameter surface, the contract wrappers use.
 
 Import-Module (Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules') 'WindowsContainerBuild.Reuse.psm1') -Force -DisableNameChecking
 
@@ -174,8 +171,7 @@ Describe 'WindowsContainerBuild.Reuse: Invoke-ContainerBuild contract' {
 
 Describe 'WindowsContainerBuild.Reuse: Wait-ContainerExit contract' {
 
-    # Behaviour lives in Modules.Orchestrators.Tests.ps1 (it needs a docker
-    # fake); this is the exported SURFACE, which is what a consumer breaks on.
+    # Behaviour is in Modules.Orchestrators.Tests.ps1; this pins the exported surface a consumer breaks on.
     It 'is exported (OxidANT hand-rolled this loop for want of it)' {
         Assert-NotNull (Get-Command Wait-ContainerExit -ErrorAction SilentlyContinue)
     }
@@ -204,9 +200,7 @@ Describe 'WindowsContainerBuild.Reuse: Wait-ContainerExit contract' {
     }
 
     It 'keeps the inspect-classifying helper internal' {
-        # Exporting it would make the three-way classification (read / gone /
-        # daemon unreachable) a consumer contract; it is an implementation
-        # detail of the wait.
+        # Exporting it would make the read/gone/unreachable classification a consumer contract.
         Assert-Null (Get-Command Get-ContainerInspectField -ErrorAction SilentlyContinue)
     }
 }

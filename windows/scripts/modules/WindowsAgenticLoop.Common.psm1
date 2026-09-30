@@ -1,24 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# CONSUMED-BY (downstream repos vendoring this repo as ExternalLib — verified
-# 2026-08-17; nothing INSIDE this repo imports this module except its tests, so
-# an in-repo dead-code sweep WILL flag it and would be wrong, backlog #105):
-#   BeschleunigerBallett/scripts/agentic-loop/Invoke-AgenticLoop.ps1
-# Renames/removals here are BREAKING changes for that repo.
-#
-# Reusable building blocks for a planner/executor agentic loop.
-# Requires PowerShell 7+ (Core). Not compatible with PS 5.1's parser.
-#
-# Supports two engines:
-#   opencode — invokes opencode v2 (refuses v1): `opencode run --agent <role>
-#              --model <model> --standalone`, plus --auto for the executor
-#   claude   — invokes `claude -p --model <model>` (Claude Code CLI) with a
-#              role system prompt appended from a prompt file
-#
-# Engine selection: $env:AGENTIC_ENGINE > config .engine > 'opencode'.
-# Model overrides:  $env:AGENTIC_PLANNER_MODEL / $env:AGENTIC_EXECUTOR_MODEL.
+# CONSUMED-BY BeschleunigerBallett/scripts/agentic-loop/Invoke-AgenticLoop.ps1, not in-repo: renames break it. See docs/windows-agentic-loop.md
 
 Set-StrictMode -Version Latest
 
@@ -26,12 +9,7 @@ Set-StrictMode -Version Latest
 $script:AgenticLogFile = $null
 $script:AgenticLogToConsole = $true
 $script:AgenticExitCode = 0
-# Seeded here, not only inside Invoke-AgenticLoop: consumers call
-# Complete-AgenticLoop from a finally block, and its defaults read these. If
-# Invoke-AgenticLoop throws BEFORE setting them (bad config, missing build
-# matrix), StrictMode turns the teardown into "the variable
-# $script:AgenticIterations cannot be retrieved", which masks the real error
-# the user needs to see.
+# Seeded at import: a consumer's finally calls Complete-AgenticLoop, which must not mask an early throw under StrictMode.
 $script:AgenticIterations = 0
 $script:AgenticTasksCompleted = 0
 $script:AgenticStartTime = $null
@@ -44,10 +22,7 @@ function Write-AgenticLog {
     $line = "[$(Get-Date -Format 'HH:mm:ss')] [$Level] $Message"
     if ($script:AgenticLogFile) { Add-Content -Path $script:AgenticLogFile -Value $line }
     if ($script:AgenticLogToConsole) { Write-Host $line }
-    # A FATAL must survive into the process exit code. Consumers call
-    # Complete-AgenticLoop from a finally block, and it exits with
-    # $script:AgenticExitCode - which stayed 0 even after a fatal config
-    # error, so an unattended run reported success while having done nothing.
+    # A FATAL must reach the exit code Complete-AgenticLoop exits with, or an unattended run reports success.
     if ($Level -eq 'FATAL') { $script:AgenticExitCode = 1 }
 }
 
@@ -86,8 +61,7 @@ function Initialize-AgenticLoop {
 }
 
 function Complete-AgenticLoop {
-    # Defaults come from the counters Invoke-AgenticLoop maintains in script
-    # scope, so argless callers still report the real totals.
+    # Defaults read Invoke-AgenticLoop's script-scope counters, so argless callers report real totals.
     param(
         [int]$Iteration = [int]$script:AgenticIterations,
         [int]$TasksCompleted = [int]$script:AgenticTasksCompleted,
@@ -116,9 +90,7 @@ function Test-IsWindows { return (Get-AgenticPlatform) -eq 'windows' }
 function Get-AgenticConfigValue {
     <#
     .SYNOPSIS
-      StrictMode-safe property lookup that works for both hashtables (tests)
-      and PSCustomObjects (ConvertFrom-Json). Returns $Default when the key
-      is absent or null.
+      StrictMode-safe lookup on a hashtable or PSCustomObject; $Default when absent or null.
     #>
     param($Object, [string]$Name, $Default = $null)
     if ($null -eq $Object) { return $Default }
@@ -134,13 +106,7 @@ function Get-AgenticConfigValue {
 function Get-AgenticConfigKey {
     <#
     .SYNOPSIS
-      The key names of a config node, for both hashtables (tests) and
-      PSCustomObjects (ConvertFrom-Json). Empty array for $null.
-
-      The leading ',' on every return is load-bearing, same as in
-      Get-AgenticBuildConfigs: without it PowerShell unrolls a 0- or 1-element
-      array on return, so a caller's `(Get-AgenticConfigKey $x).Count` fails
-      with "the property 'Count' cannot be found" under StrictMode.
+      Key names of a hashtable or PSCustomObject; the leading ',' stops a 0/1-element array unrolling.
     #>
     param($Object)
     if ($null -eq $Object) { return ,@() }
@@ -151,25 +117,9 @@ function Get-AgenticConfigKey {
 function Get-AgenticPromptOverlayPath {
     <#
     .SYNOPSIS
-      Resolve a prompt-overlay path (repo-relative, as stored) from the loop
-      config, preferring the selected engine's block but falling back to any
-      other engine block that declares it.
+      A prompt-overlay path: .promptOverlays first, then the selected engine's block, then any engine block.
     .DESCRIPTION
-      The shared ROLE prompt and a consumer's overlay are both engine-agnostic
-      by construction — the overlay keys live under .engines.<engine>.* only
-      because that is where the claude adapter first needed them. Reading them
-      back engine-scoped meant a consumer that had migrated to the overlay
-      shape under .engines.claude got NO composed prompt when it ran with
-      .engine = "opencode", so opencode consumers kept a hand-written role
-      prompt in .opencode/agents/ instead — the drift this module's
-      New-AgenticComposedPrompt docstring describes ("which is how one
-      consumer ended up with two full copies that had drifted 271 lines
-      apart").
-
-      A top-level .promptOverlays.<planner|executor>PromptOverlayFile is
-      honoured first and is the shape to prefer in new configs; the
-      engine-scoped keys stay supported so existing consumers keep working
-      without a config edit.
+      The overlay is engine-agnostic: see docs/windows-agentic-loop.md § Role prompts: one composition, both engines.
     #>
     param($Config, $EngineConfig, [Parameter(Mandatory)][string]$Key)
 
@@ -194,10 +144,7 @@ function Get-AgenticPromptOverlayPath {
 function Get-AgenticBuildConfigs {
     <#
     .SYNOPSIS
-      Resolve the per-platform build configuration list from the loop config.
-      Prefers buildMatrix (richer: per-config sanitizer, testCommand,
-      buildDir); falls back to legacy buildConfigurations (string arrays).
-      Returns $null when neither is present.
+      The per-platform build configs: buildMatrix, else legacy buildConfigurations, else $null.
     #>
     param($Config, [bool]$OnWindows = (Test-IsWindows))
     $platform = if ($OnWindows) { 'windows' } else { 'linux' }
@@ -215,10 +162,9 @@ function Get-AgenticBuildConfigs {
 function Resolve-AgenticEngine {
     <#
     .SYNOPSIS
-      Resolve the engine configuration (opencode | claude) from the loop
-      config into a flat hashtable consumed by Invoke-AgenticAgent.
-      Precedence: -EngineOverride > $env:AGENTIC_ENGINE > config .engine.
-      Models: env override > .engines.<engine>.* > legacy .models.*.
+      Flatten the engine config for Invoke-AgenticAgent.
+    .DESCRIPTION
+      Engine: -EngineOverride > $env:AGENTIC_ENGINE > .engine. Models: env > .engines.<engine>.* > legacy .models.*.
     #>
     param($Config, [string]$RepoRoot = (Get-Location).Path, [string]$EngineOverride = '')
     $engine = if ($EngineOverride) { $EngineOverride }
@@ -240,34 +186,7 @@ function Resolve-AgenticEngine {
         throw "No planner/executor model configured for engine '$engine' (need .engines.$engine.plannerModel/executorModel or legacy .models.*)"
     }
 
-    # Prompt files are stored repo-relative in the config.
-    #
-    # TWO shapes, because only one file can be passed to
-    # --append-system-prompt-file:
-    #
-    #   plannerPromptFile / executorPromptFile
-    #       Full override. The shared default is NOT used. This is how it always
-    #       worked and is kept for compatibility, but it is the shape that made
-    #       every consumer keep a whole copy of the shared prompt just to add a
-    #       few project-specific paragraphs - and those copies then drifted from
-    #       the default AND from each other.
-    #
-    #   plannerPromptOverlayFile / executorPromptOverlayFile   (preferred)
-    #       Project DELTA. The shared default from shared/agentic-loop/prompts/
-    #       is used as the base and the overlay is appended to it, composed into
-    #       one temp file at startup. A consumer then owns only what is actually
-    #       specific to it, and improvements to the shared prompt reach every
-    #       project without a copy-paste round.
-    #
-    # An overlay wins over a full override when both are set, and that is
-    # logged - a config carrying both is almost always a half-finished
-    # migration from the old shape.
-    #
-    # The overlay lookup is deliberately NOT limited to the selected engine's
-    # block (see Get-AgenticPromptOverlayPath): the role prompt and the project
-    # overlay are both engine-agnostic, and pinning the lookup to
-    # .engines.claude.* is what left the opencode engine with no composed prompt
-    # at all - the gap the .opencode/agents/ generation below closes.
+    # Full override or (preferred) overlay; see docs/windows-agentic-loop.md § Role prompts: one composition, both engines
     $plannerPromptFile = Get-AgenticConfigValue $engineCfg 'plannerPromptFile' $null
     $executorPromptFile = Get-AgenticConfigValue $engineCfg 'executorPromptFile' $null
     $plannerOverlay = Get-AgenticPromptOverlayPath -Config $Config -EngineConfig $engineCfg -Key 'plannerPromptOverlayFile'
@@ -286,9 +205,7 @@ function Resolve-AgenticEngine {
         $executorOverlay = Join-Path $RepoRoot $executorOverlay
     }
 
-    # Runs for EVERY engine, not just claude: the second output of the composer
-    # is $RepoRoot/.opencode/agents/<role>.md, which is the only way opencode
-    # can be handed a role prompt at all.
+    # For every engine: the generated .opencode/agents/<role>.md is opencode's only prompt channel.
     $plannerPromptFile = Resolve-AgenticRolePromptFile -Role 'planner' `
         -PromptFile $plannerPromptFile -OverlayPath $plannerOverlay -RepoRoot $RepoRoot
     $executorPromptFile = Resolve-AgenticRolePromptFile -Role 'executor' `
@@ -318,12 +235,9 @@ function Resolve-AgenticEngine {
 function Get-UsageLimitWaitSeconds {
     <#
     .SYNOPSIS
-      Detect a Claude usage/session-limit failure in agent output and return
-      how many seconds to sleep until the stated reset (plus a 2-minute
-      buffer). Returns 0 when the output is not a usage-limit failure, and
-      30 minutes when the limit is detected but the reset time can't be
-      parsed. The reset time in the message ("resets 11pm (Europe/Berlin)")
-      is interpreted in local time.
+      Seconds to sleep until a Claude usage limit resets (+2 min); 0 if none, 30 min if unparseable.
+    .DESCRIPTION
+      The stated reset time ("resets 11pm (Europe/Berlin)") is read as local time.
     #>
     param([string]$Output)
     if (-not $Output) { return 0 }
@@ -352,13 +266,8 @@ function Get-AgentTimeoutForRole {
 function Invoke-AgentProcess {
     <#
     .SYNOPSIS
-      Run a CLI agent process with the prompt piped via stdin. Stdout and
-      stderr are streamed to the console AND the agentic log file in real
-      time. Returns @{ ExitCode; Output }.  TimeoutSeconds 0 = no timeout.
+      Run an agent CLI with the prompt on stdin, streaming both outputs live; returns @{ ExitCode; Output }.
     #>
-    # PSSA false positive: the thread-job scriptblocks receive these variables
-    # via -ArgumentList + param() (the documented pattern for Start-ThreadJob);
-    # $using: is the alternative, not a requirement.
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseUsingScopeModifierInNewRunspaces', '', Justification = 'vars passed via -ArgumentList/param')]
     param([string]$Executable, [string[]]$ArgumentList, [string]$Message,
           [int]$TimeoutSeconds = 0, [string]$Label = 'agent', [switch]$RenderClaudeStream)
@@ -384,33 +293,24 @@ function Invoke-AgentProcess {
         $p.StartInfo = $psi
         $p.Start() | Out-Null
 
-        # Feed stdin
         $stdin = $p.StandardInput
         $stdin.Write($Message)
         $stdin.Close()
 
-        # Read stdout + stderr concurrently via Start-ThreadJob to avoid deadlock.
-        # ConcurrentQueue, not ConcurrentBag: captured Output is documented API
-        # and the bag enumerates LIFO, reversing every consumer's transcript.
-        # A queue has Enqueue, not Add: an .Add() here throws on the first
-        # line, the reader's catch swallows it, and Output comes back empty.
+        # Concurrent readers avoid the pipe deadlock; a queue, not a bag, because a bag enumerates LIFO.
         $outLines = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
         $errLines = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
         $renderStream = [bool]$RenderClaudeStream
         $stdoutJob = Start-ThreadJob -Name "agent-stdout-$Label" -ArgumentList $p, $logFile, $outLines, $renderStream -ScriptBlock {
             param($p, $logFile, $outLines, $renderStream)
-            # Emit a line to console + log. [Console]::Out (not Write-Host):
-            # thread-job host output is buffered until Receive-Job, which
-            # would defeat live streaming in the terminal.
+            # [Console]::Out, not Write-Host: thread-job host output is buffered until Receive-Job.
             $emit = { param($text) [Console]::Out.WriteLine($text); if ($logFile) { Add-Content $logFile -Value $text } }
             $r = $p.StandardOutput
             try {
                 while ($null -ne ($line = $r.ReadLine())) {
                     $outLines.Enqueue($line)
                     if ($renderStream -and $line.StartsWith('{')) {
-                        # Render claude stream-json events as compact progress lines
-                        # Per-line JSON probe: non-JSON lines are expected and
-                        # fall through to the plain-text emit below.
+                        # Non-JSON lines are expected and fall through to the plain emit.
                         $evt = $null
                         try { $evt = $line | ConvertFrom-Json } catch { $evt = $null }
                         if ($evt -and $evt.PSObject.Properties['type']) {
@@ -481,7 +381,6 @@ function Invoke-AgentProcess {
             $exitCode = $p.ExitCode
         }
 
-        # Drain readers
         Receive-Job -Job $stdoutJob -Wait -ErrorAction SilentlyContinue | Out-Null
         Receive-Job -Job $stderrJob -Wait -ErrorAction SilentlyContinue | Out-Null
 
@@ -506,8 +405,7 @@ function Invoke-AgentProcess {
 function Get-AgenticOpenCodeMajorVersion {
     <#
     .SYNOPSIS
-      Major version of an opencode CLI from its `--version` output: v1
-      prints "1.18.33", v2 "opencode v2.0.18". Unparseable text is 0.
+      Major version from `opencode --version` ("1.18.33", "opencode v2.0.18"); 0 when unparseable.
     #>
     param([string]$VersionText)
     if ($VersionText -match '(\d+)\.\d+\.\d+') { return [int]$Matches[1] }
@@ -519,13 +417,7 @@ function Get-AgenticOpenCodeCommandLine {
     .SYNOPSIS
       The opencode v2 `run` argument list for one role.
     .DESCRIPTION
-      Two flags beyond --agent/--model (docs/windows-agentic-loop.md#opencode-v2):
-      --standalone, because a v2 `run` otherwise attaches to the per-user
-      background service, where the agent keeps working after the loop's
-      timeout kills the client; and --auto for the executor only, because a
-      headless v2 run auto-REJECTS every permission that resolves to `ask`
-      (an external directory, a .env file) and exits 1. That mirrors the
-      claude engine: executor bypassPermissions, planner restricted.
+      --standalone and executor-only --auto: see docs/windows-agentic-loop.md § opencode v2.
     #>
     param([Parameter(Mandatory)][string]$Agent, [Parameter(Mandatory)][string]$Model)
     $runArgs = @('run', '--agent', $Agent, '--model', $Model, '--standalone')
@@ -536,8 +428,7 @@ function Get-AgenticOpenCodeCommandLine {
 function Invoke-OpenCode {
     <#
     .SYNOPSIS
-      Invoke opencode v2 with a prompt via stdin. Returns the captured stdout
-      string ($null when opencode is missing or older than v2).
+      Run opencode v2 with the prompt on stdin; stdout, or $null when opencode is missing or older than v2.
     #>
     param([string]$Agent, [string]$Model, [string]$Message, [int]$TimeoutSeconds = 300)
     if ($script:AgenticTimeoutSeconds -gt 0) { $TimeoutSeconds = $script:AgenticTimeoutSeconds }
@@ -565,11 +456,9 @@ function Invoke-OpenCode {
 function Invoke-ClaudeCode {
     <#
     .SYNOPSIS
-      Headless Claude Code run (`claude -p`) with the task message via stdin
-      and the role system prompt appended from a file. The planner is
-      sandboxed via --allowed-tools; the executor runs with the configured
-      permission mode (default bypassPermissions — intended for trusted
-      repos / sandboxes). Returns @{ ExitCode; Output }.
+      Headless `claude -p` with the task on stdin and the role prompt appended; returns @{ ExitCode; Output }.
+    .DESCRIPTION
+      The planner is sandboxed by --allowed-tools; the executor's default bypassPermissions suits trusted repos only.
     #>
     param([string]$Role, [string]$Model, [string]$Message, [hashtable]$EngineConfig)
     $timeoutSeconds = Get-AgentTimeoutForRole -EngineConfig $EngineConfig -Role $Role
@@ -581,8 +470,7 @@ function Invoke-ClaudeCode {
     $argList = [System.Collections.Generic.List[string]]::new()
     $argList.AddRange([string[]]@('-p', '--model', $Model))
     if ($EngineConfig.StreamOutput) {
-        # stream-json emits an event per assistant turn / tool call, so the
-        # console and log show live progress instead of silence-until-done.
+        # stream-json emits per-turn events, so progress is live instead of silence until done.
         $argList.AddRange([string[]]@('--output-format', 'stream-json', '--verbose'))
     } else {
         $argList.AddRange([string[]]@('--output-format', 'text'))
@@ -595,8 +483,7 @@ function Invoke-ClaudeCode {
     }
 
     if ($Role -eq 'planner' -and $EngineConfig.PlannerAllowedTools) {
-        # Planner sandbox: only the listed tools are allowed; everything else
-        # is denied in -p mode (no interactive prompt to approve).
+        # In -p mode anything unlisted is denied, since nobody can approve it.
         $argList.Add('--allowed-tools')
         foreach ($tool in ($EngineConfig.PlannerAllowedTools -split '\s+' | Where-Object { $_ })) { $argList.Add($tool) }
     } elseif ($EngineConfig.PermissionMode -eq 'bypassPermissions') {
@@ -630,9 +517,7 @@ function Invoke-ClaudeCode {
 function Invoke-AgenticAgent {
     <#
     .SYNOPSIS
-      Dispatch a role (planner | executor | fixer) to the configured engine
-      with retry + linear backoff. The fixer role uses the executor model.
-      Returns $true on success.
+      Dispatch planner | executor | fixer (executor model) with retry and linear backoff; $true on success.
     #>
     param([string]$Role, [string]$Message, [hashtable]$EngineConfig)
     $model = if ($Role -eq 'planner') { $EngineConfig.PlannerModel } else { $EngineConfig.ExecutorModel }
@@ -659,9 +544,7 @@ function Invoke-AgenticAgent {
             default { Write-AgenticLog "Unknown engine: $($EngineConfig.Engine)" 'FATAL'; return $false }
         }
         if ($exitCode -eq 0) { return $true }
-        # Usage/session-limit failures are not real errors: sleep until the
-        # stated reset and try again without burning a retry. Capped so a
-        # stuck limit can't spin forever (each pass sleeps >= 30 min anyway).
+        # A usage limit sleeps until its reset without burning a retry; capped so a stuck limit cannot spin forever.
         $limitWait = Get-UsageLimitWaitSeconds -Output $outputText
         if ($limitWait -gt 0 -and $EngineConfig.WaitForUsageLimitReset -and $limitWaits -lt 10 -and -not $script:AgenticDryRun) {
             $limitWaits++
@@ -681,9 +564,7 @@ function Invoke-AgenticAgent {
     }
 }
 
-# -- Default phase prompts ------------------------------------------------
-# Single source of truth shared with linux/scripts/lib/agentic-loop.sh:
-# shared/agentic-loop/prompts/*.md at the repo root.
+# -- Default phase prompts (shared/agentic-loop/prompts/, also read by linux/scripts/lib/agentic-loop.sh) --
 function Get-AgenticDefaultPrompt {
     param([Parameter(Mandatory)][ValidateSet('planner', 'refactor-planner', 'executor')][string]$Role)
     $path = Get-AgenticDefaultPromptPath -Role $Role
@@ -703,26 +584,13 @@ function Get-AgenticDefaultPromptPath {
 function Get-AgenticSystemPromptPath {
     <#
       .SYNOPSIS
-        Path to the shared, engine-agnostic ROLE prompt for $Role.
+        Path to the shared ROLE prompt (system-prompts/), not the TASK message in prompts/.
       .DESCRIPTION
-        Deliberately a different directory from Get-AgenticDefaultPromptPath.
-        Those two are easy to confuse and are NOT interchangeable:
-
-          shared/agentic-loop/prompts/<role>.md
-              the short TASK MESSAGE handed to the agent as its -p prompt
-          shared/agentic-loop/system-prompts/<role>.md
-              the long ROLE prompt passed via --append-system-prompt-file
-
-        Composing one into the other produces an agent told to do its job twice
-        in two different voices, so they get separate resolvers.
+        The two are not interchangeable: composing one into the other tells the agent its job twice.
     #>
     param(
         [Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role,
-        # Callers that only OPPORTUNISTICALLY want the shared prompt (the
-        # no-prompt-configured branch of Resolve-AgenticRolePromptFile, which
-        # may be running against a vendored copy of this module that has no
-        # shared/ tree above it) pass this and get $null instead of a FATAL
-        # that would fail a loop which used to start fine.
+        # $null instead of a FATAL, for a vendored copy with no shared/ tree above it.
         [switch]$AllowMissing
     )
     $path = Join-Path $PSScriptRoot "..\..\..\shared\agentic-loop\system-prompts\$Role.md"
@@ -737,8 +605,7 @@ function Get-AgenticSystemPromptPath {
 function Get-AgenticOpenCodeAgentPath {
     <#
       .SYNOPSIS
-        Where opencode reads the role prompt for $Role:
-        <RepoRoot>/.opencode/agents/<role>.md.
+        Where opencode reads the role prompt: <RepoRoot>/.opencode/agents/<role>.md.
     #>
     param(
         [Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role,
@@ -750,26 +617,9 @@ function Get-AgenticOpenCodeAgentPath {
 function Write-AgenticOpenCodeAgentFile {
     <#
       .SYNOPSIS
-        Generate <RepoRoot>/.opencode/agents/<role>.md from an already composed
-        role prompt body. Returns the path it wrote (or would have written).
+        Write <RepoRoot>/.opencode/agents/<role>.md from a composed role prompt; returns its path.
       .DESCRIPTION
-        The claude adapter can be handed a prompt file on the command line
-        (--append-system-prompt-file); opencode cannot. `opencode run --agent
-        <role>` resolves the role prompt from .opencode/agents/<role>.md in the
-        repo, and nothing in this module used to write that file. So the
-        composition below only ever reached the claude engine, and every
-        opencode consumer hand-maintained a full copy of the role prompt -
-        exactly the failure New-AgenticComposedPrompt's docstring names, "which
-        is how one consumer ended up with two full copies that had drifted 271
-        lines apart". Generating the file from the same two inputs is what stops
-        the fork recurring.
-
-        The write is idempotent (unchanged content is not rewritten, so mtimes
-        and file watchers stay quiet) and happens even under -DryRun: the file
-        is a derived artefact, not repo content, and a dry run whose whole point
-        is checking the prompt wiring has to produce it. A repo whose .gitignore
-        does not cover the path gets a WARN - a committed generated prompt is a
-        fork waiting to happen.
+        Idempotent and written even under -DryRun, which exists to check the prompt wiring; warns unless .gitignore covers it.
       .PARAMETER Body
         The composed prompt text (shared role prompt + overlay).
       .PARAMETER SourceLabel
@@ -819,29 +669,15 @@ function Write-AgenticOpenCodeAgentFile {
 function New-AgenticComposedPrompt {
     <#
       .SYNOPSIS
-        Writes "shared role prompt + project overlay" to a temp file and returns
-        its path.
+        Write shared role prompt + project overlay to one temp file, since --append-system-prompt-file takes one.
       .DESCRIPTION
-        Exists because --append-system-prompt-file takes exactly one file. Rather
-        than making every consumer copy the whole role prompt to add a few
-        project paragraphs - which is how one consumer ended up with two
-        full copies that had drifted 271 lines apart - the two are concatenated
-        here at startup.
-
-        A missing overlay is a WARN and falls back to the shared prompt alone: an
-        agentic run losing its project context is bad, but not as bad as the loop
-        refusing to start at all.
-        The SAME composition is written a second time, to
-        <RepoRoot>/.opencode/agents/<role>.md, whenever -RepoRoot is given —
-        that is the only channel opencode has for a role prompt. One
-        composition, two engines, no hand-copied third version.
+        A missing overlay only warns and falls back to the shared prompt, so the loop still starts.
       .PARAMETER Role
         planner | executor
       .PARAMETER OverlayPath
         Project-specific delta appended below the shared role prompt.
       .PARAMETER RepoRoot
-        Consumer repo root. When set, the composition is also emitted as
-        <RepoRoot>/.opencode/agents/<role>.md for the opencode engine.
+        When set, the composition is also written as <RepoRoot>/.opencode/agents/<role>.md for opencode.
     #>
     param(
         [Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role,
@@ -882,21 +718,9 @@ function New-AgenticComposedPrompt {
 function Resolve-AgenticRolePromptFile {
     <#
       .SYNOPSIS
-        Resolve the claude prompt file for one role AND emit the matching
-        .opencode/agents/<role>.md, for whichever of the two config shapes the
-        consumer uses. Returns the claude prompt-file path, or $null when the
-        config declares neither shape (unchanged from before).
+        The claude prompt file for a role ($null if none configured), always emitting .opencode/agents/<role>.md too.
       .DESCRIPTION
-        Three branches, one invariant: the opencode agent file is always
-        written, so the two engines can never be told different things.
-
-          overlay set   -> shared role prompt + overlay (the preferred shape)
-          override set  -> the override file verbatim (legacy full-copy shape)
-          neither       -> the shared role prompt alone
-
-        The last branch is why this runs unconditionally: a consumer with no
-        prompt config at all previously gave opencode nothing, which is the
-        vacuum a hand-written .opencode/agents/<role>.md was invented to fill.
+        Overlay: shared + overlay; override: verbatim; neither: shared alone, so both engines always get the same text.
     #>
     param(
         [Parameter(Mandatory)][ValidateSet('planner', 'executor')][string]$Role,
@@ -948,9 +772,7 @@ function Get-UncheckedTaskCount {
 function Get-BlockedTaskCount {
     <#
     .SYNOPSIS
-      Count blocked (- [b]) tasks. Blocked tasks are deliberately excluded
-      from Get-UncheckedTaskCount so a backlog containing only blocked
-      entries reads as an empty queue and lets the planner run again.
+      Count blocked (- [b]) tasks, which Get-UncheckedTaskCount excludes so the planner can run again.
     #>
     param([string]$BacklogPath = (Join-Path (Get-Location).Path 'BACKLOG.md'))
     if (-not (Test-Path $BacklogPath)) { return 0 }
@@ -961,11 +783,7 @@ function Get-BlockedTaskCount {
 function Remove-CheckedBacklogTasks {
     <#
     .SYNOPSIS
-      Remove completed (- [x]) task blocks from the backlog: the checked
-      title line plus its indented / blank body lines, up to the next
-      non-indented line (next task, heading, or plain text). Completed work
-      stays visible in git history instead of accumulating in the file.
-      Returns the number of removed task blocks.
+      Remove completed (- [x]) task blocks with their indented bodies; returns how many were removed.
     #>
     param([string]$BacklogPath = (Join-Path (Get-Location).Path 'BACKLOG.md'))
     if (-not (Test-Path $BacklogPath)) { return 0 }
@@ -1001,11 +819,7 @@ function Invoke-GitAutoCommit {
     } finally { Pop-Location }
 }
 
-# -- Build / Test / Quality wrappers --------------------------------------
-# One logged-execution core for the three wrappers (was three copies of the
-# same body around Invoke-Expression). The config-supplied command string runs
-# in a CHILD pwsh instead of in-process eval: same expressiveness for the
-# config author, cleaner exit-code semantics, no in-session state mutation.
+# -- Build / Test / Quality wrappers (the config's command runs in a child pwsh: clean exit code, no session mutation) --
 function Invoke-LoggedAgenticCommand {
     param(
         [Parameter(Mandatory)][string]$Command,
@@ -1060,8 +874,7 @@ function Invoke-QualityCommand {
 function Invoke-BuildFixer {
     <#
     .SYNOPSIS
-      Hand the tail of the loop log (which contains the build output) to the
-      executor-tier model with a focused "fix the build" prompt.
+      Hand the loop log's tail, which holds the build output, to the executor model with a fix-the-build prompt.
     #>
     param([string]$ConfigurationName, [hashtable]$EngineConfig, [int]$LogTailLines = 150)
     Write-AgenticSection "BUILD FIXER: $ConfigurationName"
@@ -1084,8 +897,7 @@ $logTail
 function Resolve-BuildMatrixEntry {
     <#
     .SYNOPSIS
-      Normalize a build config entry (string or object) to a hashtable with
-      Name, Sanitizer, TestCommand, BuildDir, BuildType.
+      Normalize a string or object build entry to @{ Name; Sanitizer; TestCommand; BuildDir; BuildType }.
     #>
     param($Entry)
     if ($Entry -is [string]) {
@@ -1103,8 +915,7 @@ function Resolve-BuildMatrixEntry {
 function Get-SanitizerEnvVars {
     <#
     .SYNOPSIS
-      Return a hashtable of environment variables for the given sanitizer type.
-      Used to configure ASAN_OPTIONS / TSAN_OPTIONS before running tests.
+      The ASAN_OPTIONS / TSAN_OPTIONS environment for a sanitizer type.
     #>
     param([string]$Sanitizer)
     switch ($Sanitizer) {
@@ -1117,8 +928,7 @@ function Get-SanitizerEnvVars {
 function Invoke-SanitizerTestCommand {
     <#
     .SYNOPSIS
-      Set sanitizer env vars, run the test command, then restore the original
-      environment. If the sanitizer is 'none', behaves like Invoke-TestCommand.
+      Run the test command under the sanitizer's env vars, then restore the environment.
     #>
     param([string]$Command, [string]$Sanitizer, [string]$RepoRoot)
     if ($Sanitizer -eq 'none' -or -not $Sanitizer) {
@@ -1134,9 +944,7 @@ function Invoke-SanitizerTestCommand {
     try {
         return Invoke-TestCommand -Command $Command -RepoRoot $RepoRoot
     } finally {
-        # A variable that was unset must end up unset -- SetEnvironmentVariable
-        # with a $null from PowerShell leaves it defined-empty (native children
-        # then see it as SET; the lld-link LIB lesson of arm64 runs 16/17).
+        # Unset must stay unset: SetEnvironmentVariable($null) from PowerShell leaves it defined-empty.
         foreach ($key in $savedVars.Keys) {
             if ($null -eq $savedVars[$key]) { Remove-Item -Path "Env:$key" -ErrorAction SilentlyContinue }
             else { [Environment]::SetEnvironmentVariable($key, $savedVars[$key]) }
@@ -1160,13 +968,7 @@ function Invoke-AgenticLoop {
         throw 'No build configs (need buildMatrix or buildConfigurations in config)'
     }
 
-    # Catch an unfinished copy of the config template. Without this the loop
-    # starts happily and only fails later, deep in a build step, with an error
-    # about a preset named "TODO-debug" - which reads like a broken toolchain
-    # rather than "you did not fill in the template". Found by adopting the
-    # templates into a scratch project and running them as a new user would.
-    # '@(...)' around the whole pipeline is required, not cosmetic: a pipeline
-    # yielding nothing returns $null, and $null.Count throws under StrictMode.
+    # An unfilled template otherwise fails deep in a build on preset "TODO-debug"; the outer @() keeps .Count safe.
     $unfilled = @(@($BuildConfigs | ForEach-Object {
         $entryName = if ($_ -is [string]) { $_ } else { Get-AgenticConfigValue $_ 'name' '' }
         if ("$entryName" -match 'TODO') { "buildMatrix entry '$entryName'" }
@@ -1195,7 +997,7 @@ function Invoke-AgenticLoop {
     $refactorEveryN = [int](Get-AgenticConfigValue $intervals 'refactorEveryNIterations' 3)
     $cfgMaxIter = [int](Get-AgenticConfigValue $intervals 'maxIterations' 0)
     $maxIter = if ($MaxIterations -ge 0) { $MaxIterations } else { $cfgMaxIter }
-    # Dry-run safety cap: when nothing was explicitly set, run at most 1 iteration
+    # A dry run with no explicit cap runs one iteration, not an unlimited loop.
     if ($script:AgenticDryRun -and $MaxIterations -lt 0 -and $cfgMaxIter -eq 0) {
         $maxIter = 1
         Write-AgenticLog 'Dry-run: maxIterations capped to 1 (config had 0 = unlimited)' 'WARN'
@@ -1217,11 +1019,9 @@ function Invoke-AgenticLoop {
     $windowsBuildScript = Get-AgenticConfigValue $buildCfg 'windowsScript' 'scripts/windows/Build-Windows-Container.ps1'
     $linuxBuildScript = Get-AgenticConfigValue $buildCfg 'linuxScript' 'scripts/linux/cmake-configure-build.sh'
 
-    # Full matrix sweep: every N iterations, run ALL configs instead of one.
-    # 0 = disabled (cycle one config per build trigger).
+    # Every N iterations build all configs instead of cycling one; 0 disables.
     $fullMatrixEveryN = [int](Get-AgenticConfigValue $intervals 'fullMatrixEveryNIterations' 0)
 
-    # Normalize build configs to matrix entries (supports both string[] and object[])
     $matrix = @()
     foreach ($entry in $BuildConfigs) { $matrix += Resolve-BuildMatrixEntry -Entry $entry }
     if ($matrix.Count -eq 0) { Write-AgenticLog 'No build configs in matrix' 'FATAL'; return }
@@ -1233,14 +1033,13 @@ function Invoke-AgenticLoop {
     Write-AgenticLog "Build-failure fixing: $fixBuildFailures (stop after $maxConsecutiveBuildFailures consecutive failures)"
 
     $iteration = 0; $tasksDone = 0
-    # Mirrored into script scope so Complete-AgenticLoop reports real totals
+    # Mirrored into script scope for Complete-AgenticLoop.
     $script:AgenticIterations = 0
     $script:AgenticTasksCompleted = 0
     $script:buildIdx = 0
     $script:consecutiveBuildFailures = 0
 
-    # Helper: build + test for a single matrix entry. On build failure,
-    # optionally dispatches the fixer agent and retries the build once.
+    # On a build failure the fixer may run, then the build is retried once.
     function Invoke-BuildAndTestForEntry {
         param($Entry)
         $cfg = $Entry.Name
@@ -1270,7 +1069,6 @@ function Invoke-AgenticLoop {
         return $ok
     }
 
-    # Helper: run the build phase (single config or full matrix sweep)
     function Invoke-BuildPhase {
         if ($fullMatrixEveryN -gt 0 -and ($iteration % $fullMatrixEveryN -eq 0) -and $iteration -gt 0) {
             Write-AgenticSection "FULL MATRIX SWEEP (iteration $iteration)"
@@ -1293,8 +1091,7 @@ function Invoke-AgenticLoop {
         $null = Invoke-AgenticAgent -Role 'executor' -Message $ExecutorPrompt -EngineConfig $engineConfig
         Write-AgenticLog 'Executor complete'
     }
-    # Helper: after-task phases (commit, build, quality). Returns $false when
-    # the consecutive-build-failure cap is hit.
+    # Commit, build, quality; $false once the consecutive-build-failure cap is hit.
     function Invoke-AfterTaskPhases {
         Invoke-GitAutoCommit -Message "${commitPrefix}: task #${tasksDone}" -RepoRoot $RepoRoot -Enabled $autoCommit
         if (-not $SkipBuild -and ($tasksDone % $buildEveryN -eq 0)) { Invoke-BuildPhase }
@@ -1320,8 +1117,7 @@ function Invoke-AgenticLoop {
                 if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
                 if (-not (Invoke-AfterTaskPhases)) {
                     Write-AgenticLog 'Too many consecutive build failures — stopping' 'ERROR'
-                    # Same failure-cap contract as the main loop below: without
-                    # this, -ExecutorOnly reported exit 0 on a capped run.
+                    # A capped run must not exit 0.
                     $script:AgenticExitCode = 1
                     break
                 }
@@ -1337,10 +1133,7 @@ function Invoke-AgenticLoop {
         $script:AgenticIterations = $iteration
         Write-AgenticSection "ITERATION $iteration"
 
-        # Phase 1: Planner — skipped while the queue still has actionable
-        # (- [ ]) tasks. Blocked (- [b]) tasks do not count, and the
-        # starvation guard forces a planner run after a zero-progress
-        # iteration, so a backlog of blocked entries cannot stall the loop.
+        # Planner skipped while actionable tasks remain; the starvation guard stops blocked ones stalling the loop.
         $backlogPath = Join-Path $RepoRoot 'BACKLOG.md'
         $pending = Get-UncheckedTaskCount -BacklogPath $backlogPath
         $blocked = Get-BlockedTaskCount -BacklogPath $backlogPath
@@ -1369,7 +1162,6 @@ function Invoke-AgenticLoop {
             } else {
                 $retries = 0; $tasksDone++; $iterTasks++; $u = $nu
                 $script:AgenticTasksCompleted = $tasksDone
-                # Prune any leftover checked entries before the auto-commit
                 if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
                 if (-not (Invoke-AfterTaskPhases)) {
                     Write-AgenticLog 'Too many consecutive build failures — stopping loop' 'ERROR'
@@ -1394,11 +1186,7 @@ function Invoke-AgenticLoop {
     }
 }
 
-# #142 (2026-08-21): explicit exports MATCHING the .psd1 FunctionsToExport.
-# Every consumer imports this .psm1 directly (by path), bypassing the
-# manifest — so the manifest's whitelist was inert and the internal
-# Invoke-LoggedAgenticCommand leaked as public API. Keep this list and the
-# .psd1 in lockstep (the manifest stays for manifest-path importers).
+# Keep in lockstep with the .psd1's FunctionsToExport: consumers import this .psm1 by path, bypassing the manifest.
 Export-ModuleMember -Function @(
     'Initialize-AgenticLoop',
     'Complete-AgenticLoop',

@@ -1,16 +1,12 @@
 # escape=`
-# =============================================================================
-# Verify the Import-Versions.ps1 override-persist fix (post-#50 env gap). Run:
-#   Invoke-DiagnosticProbe.ps1 -Dockerfile Dockerfile.load-versions-probe -BaseImage local/kataglyphis:bk-windows-toolchain
-# =============================================================================
+# Proves Import-Versions.ps1 bakes a process-env override to Machine; run via Invoke-DiagnosticProbe.ps1 -Dockerfile.
 ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
 FROM ${BASE_IMAGE} AS probe
 
 # Layer-cache buster (a CACHED run replays an old verdict).
 ARG PROBE_NONCE="0"
 
-# Simulates the #50 base-bake shape: the key sits in the PROCESS env (here via
-# ENV, in base via ARG) while Machine is empty - the fixed script must BAKE it.
+# The base's shape: the key is in the process env (ARG there) while Machine is empty.
 ENV GIT_VERSION="probe-override-value"
 
 RUN --mount=type=bind,source=windows/scripts,target=C:\bkmnt `

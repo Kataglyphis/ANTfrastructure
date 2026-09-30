@@ -1,17 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Sync-UvProjectDependencies and declared extras conflicts (2026-09-14).
-#
-# `uv sync --all-extras` is a hard error on a project that declares
-# `[tool.uv] conflicts` ("Extras `a` and `b` are incompatible with the declared
-# conflicts"), and there is no "install as much as possible" flag. The Linux
-# driver (01-core/python_uv.sh) has routed around that since 2026-08-11; this
-# module did not, so OrchestrANT's Windows lane died at its first uv sync from
-# 2026-09-12 until the port landed. These cases pin the port: the same groups
-# parsed out of every layout uv accepts, the same greedy keep-first choice, and
-# the argument shape the runner receives.
+# `uv sync --all-extras` fails on declared conflicts, so the module ports python_uv.sh's keep-first-member choice.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsUv.Common.psm1') -Force -DisableNameChecking
 
@@ -30,9 +20,7 @@ name = "x"
 conflicts = [ [ { extra = "a" }, { extra = "b" } ] ]
 '@
 
-# The conflicts table OrchestrANT writes: three families, one member per
-# line, another table after it. Read twice below - once for the parse, once
-# for the greedy choice - so it is declared once.
+# The table OrchestrANT writes: three families, one member per line, another table after it.
 $script:ThreeFamilies = @'
 [tool.uv]
 conflicts = [
@@ -60,8 +48,7 @@ function script:Get-ParsedFamilies {
     return (($groups | ForEach-Object { $_ -join ' ' }) -join '|')
 }
 
-# One conflicts pair, synced through a capturing runner under a given
-# UV_SYNC_EXTRAS; returns the argument list uv would have received.
+# Returns the arguments uv would receive for one conflicts pair under the given UV_SYNC_EXTRAS.
 function script:Get-SyncArguments {
     param([Parameter(Mandatory)][string]$Dir, [AllowNull()][string]$Extras, [switch]$UseLocked)
     $p = New-PyprojectFixture -Dir $Dir -Body $script:OnePair

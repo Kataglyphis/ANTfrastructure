@@ -6,26 +6,10 @@
 
 <#
 .SYNOPSIS
-    Captures the decisive evidence for the lost-shutdown-notification /
-    LSM-boot-hang regression (docs/failure-modes.md "Every RUN step reports
-    DONE 2841.2s"): full memory dumps of a fresh silo's earliest svchost
-    processes while LSM hangs START_PENDING.
-
+    Dumps a fresh silo's first svchosts twice, 30 s apart, while LSM hangs START_PENDING, to prove the wait is static.
 .DESCRIPTION
-    Run ELEVATED while a container start is imminent - a running chain build
-    starts one every few minutes, no extra probe needed. The script baselines
-    the existing silo svchosts, waits for a NEW silo (svchost with a
-    \Device\VhdHardDisk image path), then dumps its first svchosts twice,
-    30 s apart, inside the ~140 s hang window. One of them hosts
-    DcomLaunch/LSM; the second round proves the wait is static.
-
-    Analysis (WinDbg, no admin): .opendump <file> -> !runaway ; ~*kb
-    Find the LSM worker thread parked in KeWaitForSingleObject /
-    WaitForSingleObjectEx - the wait OBJECT names the component that never
-    signals, which is the open root-cause question.
-
-    Uses comsvcs.dll MiniDump so no Sysinternals install is required;
-    `procdump -ma` is the equivalent if present.
+    Run elevated during a build; see docs/failure-modes.md § Every RUN step reports `DONE 2841.2s`.
+    Analyse in WinDbg with .opendump, !runaway and ~*kb: the LSM thread's wait object names the silent component.
 #>
 [CmdletBinding()]
 param(
@@ -36,9 +20,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Setup only (out dir, silo descent) is shared with the other LSM probes; the
-# comsvcs MiniDump capture below stays here. Unlike them this one writes .dmp
-# files, so it keeps its own output subdirectory.
+# Only the setup is shared with the other LSM probes; this one writes .dmp files, so it keeps its own subdirectory.
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir -DefaultSubPath 'out\lsm-dumps'
@@ -49,9 +31,7 @@ Write-Host "Baseline: $($baseWininit.Count) wininit (host + existing silos). Wai
 $newWininit = Wait-ForNewSilo -BaselinePid $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3
 if (-not $newWininit) { throw 'No new silo appeared - is a build running? Start one RUN-bearing solve and retry.' }
 
-# The FIRST svchosts of the silo boot; one hosts DcomLaunch (and with it LSM).
-# During the hang window exactly the early ones exist - dump whatever is there.
-# Three is this probe's own appetite, not a property of the descent.
+# Only the early svchosts exist during the hang, and one of them hosts DcomLaunch and LSM.
 $targets = @(Get-SiloSvchost -ServicesParentPid $newWininit.ProcessId | Select-Object -First 3)
 if (-not $targets) { throw "silo wininit $($newWininit.ProcessId) spawned no svchost yet" }
 Write-Host ("New silo detected; dumping PIDs: {0}" -f (($targets.ProcessId) -join ', '))

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# ort-runtime-gate.sh - no apt ONNX Runtime, and every libonnxruntime on a loader path is a chain file.
-# Source-only (configure-runtime.sh, validate-media-runtime.sh). NOT covered: wheels, dlopen by path.
+# No apt ONNX Runtime, and every libonnxruntime on a loader path is a chain file; not wheels or dlopen by path.
 
 # ort_is_distro_package <name[:arch]>: 0 for an apt package that ships ONNX Runtime.
 ort_is_distro_package() {
@@ -18,8 +17,7 @@ ort_is_denied_soname() {
     return 1
 }
 
-# ort_dpkg_findings <dpkg-query -W -f='${Status}\t${Package}\n' output>: one line per ORT
-# package whose files are on disk.
+# ort_dpkg_findings <dpkg-query ${Status}\t${Package} output>: one line per ORT package with files on disk.
 ort_dpkg_findings() {
     local status pkg
     while IFS=$'\t' read -r status pkg; do
@@ -46,8 +44,7 @@ ort_apt_plan_findings() {
     return 0
 }
 
-# ort_apt_plan_gate <package>...: simulate the install a resolver is about to run; 1 when the plan pulls
-# a distro ORT. A plan apt cannot compute proves nothing -- ort_dpkg_gate is the backstop.
+# ort_apt_plan_gate <package>...: 1 when the simulated plan pulls a distro ORT; ort_dpkg_gate is the backstop.
 ort_apt_plan_gate() {
     local p
     local -a names=()
@@ -90,8 +87,7 @@ ort_conf_dirs() {
     done
 }
 
-# ort_loader_findings <chain-lib-dirs, ':'-separated> <dir>...: one line per ORT library in a
-# loader-searched dir that is not a chain file, plus NONE when the chain holds no ORT at all.
+# ort_loader_findings <chain-dirs, ':'-separated> <dir>...: each non-chain ORT lib, plus NONE if the chain has none.
 ort_loader_findings() {
     local chain_list="$1" d f have=0
     local -a roots=() chains=()
@@ -134,8 +130,7 @@ _ort_in_roots() {
     return 1
 }
 
-# ort_runtime_gate <chain-lib-dirs, ':'-separated>: fail unless the image's loader can only ever
-# reach the chain ORT and no apt ORT is installed.
+# ort_runtime_gate <chain-dirs, ':'-separated>: fail unless the loader reaches only the chain ORT and no apt ORT exists.
 ort_runtime_gate() {
     local -a dirs=() ldp=()
     ort_dpkg_gate || return 1

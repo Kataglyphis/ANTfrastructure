@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# The push hook is the only thing between a SAMPLED commit gate and CI. Two steps
-# carry that: staleness over the WHOLE manifest, then the real gate over what the
-# push adds. Both are pinned end to end -- stubbed git and a stubbed gate for the
-# argv and the abort paths, the real gate for the verdict.
-# docs/code-quality-tooling.md#the-pre-push-hook
+# Staleness over the whole manifest, then the real gate over the push; see docs/code-quality-tooling.md#the-pre-push-hook
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -46,8 +42,7 @@ t_assert_contains "$(_call 1)" "--stale-check" "the cheap whole-manifest pass go
 t_assert_contains "$(_call 2)" "--changed" "then the entries the push actually adds"
 
 t_case "the staleness pass covers the WHOLE manifest, not the diff"
-# Scoping it to the diff would leave the other ~370 entries exactly as invisible
-# between a commit and CI as they were before this hook existed.
+# Scoped to the diff, it would leave every other entry unchecked between a commit and CI.
 t_assert_eq "--stale-check" "$(_call 1)" "no --only, no --changed: every recorded entry is read"
 
 t_case "neither call opts out of isolation"
@@ -73,8 +68,7 @@ PATH="${_work}/bin:${PATH}" HOOK_TEST_ROOT="${_root}" HOOK_TEST_ARGV="${_ARGV}" 
 t_assert_contains "$(_call 2)" "--jobs 1"
 
 t_case "git's hook environment never reaches a gate"
-# With GIT_DIR inherited, a fixture's `git -C <tmp> init` re-inits the REAL repository
-# as bare -- it did, to the hub's own submodule gitdir, on 2026-09-22.
+# See docs/failure-modes.md#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense
 cat > "${_root}/docs/scripts/verify_mutations.py" <<'STUB'
 import os
 import pathlib
@@ -91,9 +85,7 @@ t_assert_eq "2" "$(_calls)" "both gate calls ran"
 t_assert_eq "0" "$(grep -c 'GIT_' "${_ARGV}")" "a GIT_* variable reached a gate; its fixtures would act on the real repository"
 _stub_gate
 
-# --- the REAL gate: the verdict, not just the plumbing ------------------------
-# A stub proves the hook calls something. Only the real gate proves the hook
-# STOPS a push over a mutation entry that no longer applies.
+# Only the real gate proves the hook stops a push over an entry that no longer applies.
 
 _real_rig() {  # <find string planted in the manifest>
   cp "${REAL_GATE}" "${_root}/docs/scripts/verify_mutations.py"
@@ -115,8 +107,7 @@ t_assert_contains "${_out}" "rc=1" "this is the rot class the repo keeps hitting
 t_assert_contains "${_out}" "probe.one" "and it must name the entry that rotted"
 
 t_case "the real staleness pass runs no test, so it costs a read per entry"
-# `"test": "false"` would fail every entry if the pass ran it; the healthy verdict
-# is the evidence that it did not.
+# `"test": "false"` would fail every entry if the pass ran it, so a healthy verdict proves it did not.
 cp "${REAL_GATE}" "${_root}/docs/scripts/verify_mutations.py"
 printf 'GUARD=on\n' > "${_root}/subject.sh"
 printf '[{"id":"probe.one","target":"subject.sh","find":"GUARD=on","replace":"GUARD=off","test":"false","why":"probe"}]\n' \

@@ -14,17 +14,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'  # fail-fast before module import
 
-# #108: repo layout is scripts/<group>/ while container mounts stay FLAT, so shared
-# assets sit beside this script (flat) or one level up (repo).
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
-# sccache 0.18 aborts an nvcc compile whose output is PTX only ('Missing "cubin" file output',
-# mozilla/sccache#2862, open), and ORT builds its LLM kernels for 120/121 as compute_12x PTX on
-# MSVC (REPLACE_SM120_REAL_WITH_VIRTUAL: native sm_120a pulls tcgen05 headers MSVC cannot host).
-# With Blackwell in the arch list nvcc therefore stays bare here; C/C++ keep the launcher. The
-# 2026-09-26 chain, the first with 120, died at [2323/2383] on fpA_intB_gemm (BACKLOG CON12).
+# sccache aborts PTX-only nvcc output (mozilla/sccache#2862), which ORT's Blackwell LLM kernels are on MSVC.
 function Disable-OrtCudaLauncherForPtx {
     param([string]$Architectures = (Get-CudaArchitectureList))
     if ($env:SCCACHE_CUDA_LAUNCHER -ne '1') { return $false }
@@ -34,8 +29,7 @@ function Disable-OrtCudaLauncherForPtx {
     return $true
 }
 
-# ── rocm-lane WebGPU EP spike (ORT_WEBGPU=1): the in-tree EP over Dawn/D3D12 with a pinned DXC.
-#    Inputs, fetches and the clang-cl notes: docs/windows-rocm.md § ONNX Runtime WebGPU EP.
+# rocm-lane WebGPU EP spike; see docs/windows-rocm.md § ONNX Runtime WebGPU EP (rocm lane, spike).
 function Get-OrtWebGpuPlan {
     param([Parameter(Mandatory)][hashtable]$GpuEnv, [bool]$Cross, [AllowEmptyString()][string]$SpikeFlag)
     if ($SpikeFlag -notin @('', '0', '1')) { throw "ORT_WEBGPU must be '0' or '1', got '$SpikeFlag'" }
@@ -46,8 +40,7 @@ function Get-OrtWebGpuPlan {
     return [pscustomobject]@{ OnLane = $onLane; WebGpu = ($onLane -and $SpikeFlag -eq '1') }
 }
 
-# The ORT_WEBGPU_WINDOWS_* pins, each shape-checked: the Dockerfile ARGs are valueless, so a
-# stage solved without the driver sees them empty and must refuse, not fetch unpinned.
+# Shape-checked: a stage solved without the driver sees the valueless ARGs empty and must refuse.
 function Get-OrtWebGpuPin {
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Source)
     $shape = [ordered]@{
@@ -92,13 +85,7 @@ function Get-OrtKleidiaiDepsEntry {
     return $entry
 }
 
-# KleidiAI's Windows path (under `if(MSVC)`, which clang-cl takes) hands its .S kernels to CMake's
-# ASM_MARMASM rule: raw armasm64 plus the file's COMPILE_OPTIONS. Measured 2026-09-28 in :winamd64
-# (KleidiAI v1.20.0, armasm64 14.51, Ninja): armasm64 has no C preprocessor (#if, //, #define), and
-# rejects the /arch:armv8.2 KleidiAI attaches (A2029). MLAS solves the same thing with `cl /P` then
-# armasm64. This is that step as a rule: clang-cl preprocesses with /EP (armasm64 reads only
-# `#line`, not clang's `# 1 "file"` markers) and /U__clang__ (half the files pick their GNU branch
-# for clang-cl), armasm64 assembles, and <FLAGS> is dropped. 178/178 objects built that way.
+# armasm64 has no preprocessor and rejects KleidiAI's /arch:armv8.2, so clang-cl /EP /U__clang__ runs first, as MLAS does.
 function Get-KleidiaiArmasmWrapper {
     param([Parameter(Mandatory)][string]$Triple)
     return (@(
@@ -109,9 +96,7 @@ function Get-KleidiaiArmasmWrapper {
         ) -join "`r`n") + "`r`n"
 }
 
-# The rule must be set AFTER KleidiAI's own enable_language(ASM_MARMASM), which defines it: a -D or
-# CMAKE_USER_MAKE_RULES_OVERRIDE_ASM_MARMASM is replaced there (both measured). Rule variables are read
-# at generate time from the directory scope, so a set() right below it wins.
+# Set right after KleidiAI's enable_language(ASM_MARMASM), which replaces a -D or a rules override.
 function Edit-KleidiaiMarmasmRule {
     param(
         [Parameter(Mandatory)][string]$CMakeText,
@@ -130,8 +115,7 @@ function Edit-KleidiaiMarmasmRule {
     return $CMakeText.Substring(0, $end) + $eol + $rule + $CMakeText.Substring($end)
 }
 
-# ORT's own KleidiAI tarball (deps.txt URL + SHA1), extracted, rule-patched and wrapped; the caller hands
-# the directory to FetchContent as FETCHCONTENT_SOURCE_DIR_KLEIDIAI.
+# ORT's own KleidiAI tarball, rule-patched for FETCHCONTENT_SOURCE_DIR_KLEIDIAI.
 function Initialize-OrtKleidiaiSource {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingBrokenHashAlgorithms', '', Justification = 'SHA1 is the pin ORT''s own deps.txt carries')]
     param(
@@ -229,8 +213,7 @@ function Save-OrtDawnDep {
     throw "Dawn dependency $Url@$Commit is at '$head' after $MaxAttempts attempt(s)"
 }
 
-# Zip members to files; $Map turns an entry name ('/'-separated) into a relative path, or $null to skip.
-# No member may land outside $Destination.
+# $Map turns an entry name into a relative path, or $null to skip; nothing may land outside $Destination.
 function Expand-OrtZipMember {
     param([Parameter(Mandatory)][string]$Zip, [Parameter(Mandatory)][string]$Destination, [Parameter(Mandatory)][scriptblock]$Map)
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -276,8 +259,7 @@ function Expand-OrtDawnArchive {
     if (@($got | Where-Object { $_ -match '^[^/]+/CMakeLists\.txt$' }).Count -eq 0) { throw "the Dawn archive $Zip has no top-level CMakeLists.txt" }
 }
 
-# Dawn's DXC targets become the pinned release: DXC's WinIncludes.h includes atlbase.h and the image has
-# no ATL. DAWN_USE_BUILT_DXC stays ON, so Dawn keeps its DXC path (ShaderF16, subgroups).
+# Building DXC needs ATL, which the image lacks; DAWN_USE_BUILT_DXC stays ON so Dawn keeps its DXC path.
 function Invoke-DawnPrebuiltDxcPatch {
     param([Parameter(Mandatory)][string]$DawnSrc)
     $cmake = @'
@@ -315,8 +297,7 @@ function Resolve-GnuPatchExe {
     throw 'GNU patch.exe is neither on PATH nor in <git>\usr\bin: ORT''s Dawn patches need it'
 }
 
-# Every WebGPU input, each pinned: the Dawn archive (SHA256 + ORT's SHA1), ORT's Dawn patches, four
-# DEPS commits and the DXC zip (SHA256). Nothing else is fetched. Returns @{ Pin; DawnSrc; DxcDir }.
+# Every WebGPU input is pinned (Dawn, ORT's patches, four DEPS commits, DXC); nothing else is fetched.
 function Initialize-OrtWebGpuInput {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingBrokenHashAlgorithms', '', Justification = 'SHA1 only matches ORT''s deps.txt; the SHA256 pin verifies')]
     param([Parameter(Mandatory)][string]$OrtSourceDir, [Parameter(Mandatory)][string]$WorkDir, [Parameter(Mandatory)][string]$Python)
@@ -370,8 +351,7 @@ function Get-OrtWebGpuConfigureFinding {
     if ($LogText -match 'Running fetch_dawn_dependencies') { 'WebGPU EP: Dawn ran fetch_dawn_dependencies, a fetch this build does not pin' }
 }
 
-# cmake --install skips Dawn's DXC pair: stage it beside onnxruntime.dll with DXC's licences.
-# Returns @{ dll = sha256 }. onnxruntime.dll must load DXC at run time, as upstream does.
+# cmake --install skips Dawn's DXC pair; onnxruntime.dll must load it at run time, as upstream does.
 function Install-OrtWebGpuRuntime {
     param([Parameter(Mandatory)][string]$DxcDir, [Parameter(Mandatory)][string]$OrtInstallDir)
     $bin = Join-Path $OrtInstallDir 'bin'
@@ -464,8 +444,7 @@ $OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables 
 
 Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GPU_TYPE) { $env:GPU_TYPE } else { 'none' })) ==="
 
-# #122: phase brackets via trap (#109 contract, without indenting the body). EAP=Stop
-# makes every failure terminating, so the trap stamps the open phase and rethrows.
+# EAP=Stop makes every failure terminating, so the trap stamps the open phase and rethrows.
 trap { Complete-CurrentBuildPhase -ErrorRecord $_; Write-BuildPhaseSummary -Label 'onnx'; break }
 Switch-BuildPhase '1. clone + source patches (DML clang-cl, rc filter)'
 Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime.git' -Tag "v$OnnxVersion" -SourceDir $SourceDir -Recursive | Out-Null
@@ -473,29 +452,22 @@ Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime.git' -Tag "v$
 $cmakeSrc = if (Test-Path "$SourceDir\cmake\CMakeLists.txt") { "$SourceDir\cmake" } else { $SourceDir }
 $buildDir = "$SourceDir\build"
 $ortInstallDir = "$InstallDir\lib\onnxruntime-source"
-# Resolved ONCE into a variable (#131): a condition starting with a command name is
-# parsed in command mode (the "python wheel 0s" trap).
+# A variable: a condition starting with a command name is parsed in command mode.
 $onnxCross = Test-WindowsCrossTarget
 
-# Inline patch (kept inline, NOT a .patch file): llvm-rc rejects non-ASCII bytes in the .rc resource.
-# This is a binary byte-filter (`-le 127`), not a textual diff -- not expressible as a unified diff.
+# Inline patch (kept inline, NOT a .patch file): llvm-rc rejects non-ASCII bytes, and a byte filter is no diff.
 $bytes = [System.IO.File]::ReadAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc")
 [System.IO.File]::WriteAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc", [byte[]]@($bytes | Where-Object { $_ -le 127 }))
 
-# -- DirectML EP clang-cl fixes (clang-cl + USE_DML=ON) --
-# Reviewable .patch first; Invoke-OnnxDmlClangClPatch (WindowsSourceBuild.Patches.psm1, #131)
-# is the EOL/context-tolerant drift fallback and documents each fix.
+# DirectML EP clang-cl fixes (llvm #57700): the .patch first, Invoke-OnnxDmlClangClPatch as the drift fallback.
 $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\003-dml-clangcl-compat.patch') -SourceDir $SourceDir `
     -FallbackNote 'falling back to inline regex patcher' `
     -Fallback { Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir; $true }
 
-# DirectML redist dir is CASE-SENSITIVE to ninja and upstream mixes the cases (dml.cmake
-# declares bin/arm64-win, providers_dml composes bin/ARM64-win -> 'no known rule to make
-# it', which reads like a missing package): docs/windows-cross-builds.md, DirectML row.
+# Ninja is case-sensitive, and upstream spells the DirectML redist dir both arm64-win and ARM64-win.
 $dmlProviders = Join-Path $SourceDir 'cmake\onnxruntime_providers_dml.cmake'
 if (Test-Path $dmlProviders) {
-    # Two separate edits so a future upstream move of either line fails loudly
-    # (-AssertGone) instead of silently missing; -SkipIfMatch keeps a re-run idempotent.
+    # Two edits, so an upstream move of either fails loudly; -SkipIfMatch keeps a re-run idempotent.
     [void](Invoke-InlineRegexPatch -Path $dmlProviders `
             -SkipIfMatch 'onnxruntime_dml_redist_platform' `
             -Guard 'if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
@@ -515,17 +487,12 @@ if (Test-Path $dmlProviders) {
 
 $py = Initialize-ToolchainPythonEnvironment
 
-# Bindings ride this build (ENABLE_PYTHON=ON below): pybind11 needs numpy headers at
-# compile time, the wheel step needs setuptools/wheel.
+# The bindings need numpy headers at compile time, the wheel step setuptools and wheel.
 Install-CpythonPip -Python $py
 Switch-BuildPhase '2. python deps + cmake args'
 Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setuptools', 'wheel', 'packaging')
 
-# ONNX CPU features atop the shared SIMD base, x86-only (clang-cl rejects them on aarch64):
-# mwaitpkg for spin_pause.cc's _tpause, aes/pclmul for CUDA crc64, f16c. AVX-512/AMX never
-# global -- per-TU on the MLAS kernels below: docs/windows-cross-builds.md § SIMD.
-# /clang:-Wno-unused-value: ORT's own comma-expression macros; ONE diagnostic, not a blanket
-# /w. Count check: windows\scripts\diagnostics\Measure-BuildWarnings.ps1.
+# x86-only features atop the SIMD base; AVX-512/AMX go per TU below (docs/windows-cross-builds.md § SIMD: the failure that hides inside a green build).
 $onnxTargetArch = Get-WindowsTargetArch
 $baseSimdFlags = Get-WindowsTargetSimdFlags -Arch $onnxTargetArch
 $x86OnlyFlags = if ($onnxTargetArch -eq 'amd64') { '/clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c' } else { '' }
@@ -533,22 +500,12 @@ $cxxFlags = (@('/WX-', $baseSimdFlags, $x86OnlyFlags,
                '/clang:-Wno-invalid-specialization', '/clang:-Wno-unused-value',
                (Get-WarningNoiseSuppressionFlags)) | Where-Object { $_ }) -join ' '
 
-# CUDA stays BARE unless SCCACHE_CUDA_LAUNCHER=1 (Invoke-CmakeConfigure honors only that), and
-# Disable-OrtCudaLauncherForPtx takes it back for a Blackwell arch list --
-# docs/windows-build-resources.md.
+# CUDA stays bare unless SCCACHE_CUDA_LAUNCHER=1, and Blackwell takes it back; see docs/windows-build-resources.md.
 
-# -- GPU detection (single shot via Get-GpuEnvironment; ONNX-specific flag names stay local) --
-# ONNX_FORCE_CPU=1 skips the ~1h CUDA/TensorRT kernel compiles so the DirectML clang-cl patch
-# can be iterated in ~15 min. Dev knob only; the media-core build never sets it.
+# GPU detection; ONNX_FORCE_CPU=1 is a dev knob that skips the hour of CUDA and TensorRT kernels.
 $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU'
 $gpuArgs = @()
-# if/elseif rather than `switch ($gpuEnv.GpuType)`: the switch-on-property syntax can
-# trigger parser errors in Windows PowerShell 5.1.
-# Cross lane: NEVER take CUDA from a HOST probe. GPU_TYPE is IMAGE state and the toolchain
-# image is shared, so an arm64 build would link x64 device libs into an "arm64" artifact.
-# #176 (2026-09-20): the POSITIVE cross signal is the image's arm64 payload -- lib\arm64
-# staged by Install-Cuda.ps1 -TargetArch arm64 -- so a cross image WITHOUT it stays
-# CPU + DirectML and one WITH it builds the CUDA EP for arm64.
+# On cross, CUDA comes only from the image's arm64 payload, never the host probe of the shared toolchain image.
 $cudaUsable = $gpuEnv.HasCuda -and ((-not $onnxCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
 if ($cudaUsable) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
@@ -566,8 +523,7 @@ if ($cudaUsable) {
             Invoke-InlineRegexPatch -Path $pch -Pattern 'target_precompile_headers\([^)]+\)' `
                 -WarnMessage "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $pch."
         }
-    # The CUDA include set defines ERROR/VERBOSE (wingdi.h, reached despite -DNOGDI); either
-    # token-pastes through LOGS_DEFAULT into the nonexistent Severity::k0 in tunable.h.
+    # The CUDA includes define ERROR/VERBOSE despite -DNOGDI, which paste into a nonexistent Severity::k0.
     $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\004-tunable-severity-macro-collision.patch') -SourceDir $SourceDir `
         -FallbackNote 'falling back to inline #undef insertion' `
         -Fallback {
@@ -577,9 +533,7 @@ if ($cudaUsable) {
                 -WarnMessage "tunable.h: tuning_context include anchor not found; LOGS_DEFAULT(ERROR) will fail as Severity::k0. Verify $tunable."
         }
 
-    # XQA's host-pass guard keys on HAS_SM80_OR_LATER, which sccache's nvcc decomposition can
-    # drop in the host sub-step (C2039 smemSize/kernelType). We always target sm80+, so make
-    # the host stub unconditional.
+    # sccache's nvcc decomposition can drop HAS_SM80_OR_LATER in the host pass, and we always target sm80+.
     $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\005-xqa-host-stub-sccache.patch') -SourceDir $SourceDir `
         -FallbackNote 'falling back to inline guard rewrite' `
         -Fallback {
@@ -589,12 +543,9 @@ if ($cudaUsable) {
                 -WarnMessage "xqa_impl_gen.cuh: host-stub guard anchor not found; XQA host stubs may fail as C2039 smemSize/kernelType. Verify $xqaGen."
         }
 
-    # Patch 006 (bare nvcc for onnxruntime_providers_cuda_llm) was retired with the #114
-    # sccache series (mozilla/sccache#2811): if undefined fused_moe/QkvToContext symbols
-    # return, check that series still applies before resurrecting a bare-nvcc exception.
+    # Undefined fused_moe/QkvToContext symbols point at the mozilla/sccache#2811 series, not at a bare-nvcc exception.
 
-        # clang-cl rejects the `and`/`or`/`not` keyword alternatives; .patch first, the generic
-        # Edit-CppKeywordAlternatives helper as the context-drift fallback.
+        # clang-cl rejects the `and`/`or`/`not` keyword alternatives; .patch first, Edit-CppKeywordAlternatives on drift.
         $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\001-softmax-clangcl-keywords.patch') -SourceDir $SourceDir `
             -FallbackNote 'falling back to keyword-alternatives in softmax sources' `
             -Fallback {
@@ -607,10 +558,7 @@ if ($cudaUsable) {
 
     # ONNX-specific CMake flags (names like `onnxruntime_USE_CUDA` are ORT-only -- kept local, not in the generic helper).
     $gpuArgs += '-Donnxruntime_USE_CUDA=ON'
-    # Classic TensorRT is x64-only (docs/windows-cross-builds.md § CUDA / cuDNN /
-    # TensorRT): a zip staged for the amd64 lane must never enable the EP on a cross
-    # build -- it would link x64 import libs into the arm64 provider. TensorRT-RTX
-    # (which does ship arm64) is not wired.
+    # Classic TensorRT is x64-only; see docs/windows-cross-builds.md § CUDA / cuDNN / TensorRT.
     $trtRoot = if ($onnxCross) { $null } else { $gpuEnv.TensorRtRoot }
     if ($trtRoot) {
         Write-Host "TensorRT detected at $trtRoot - enabling TensorRT EP"
@@ -620,8 +568,7 @@ if ($cudaUsable) {
     } else {
         $gpuArgs += '-Donnxruntime_USE_TENSORRT=OFF'
     }
-    # nvcc host = MSVC cl.exe (nvcc rejects clang-cl); C++17; /wd4067 is ORT-specific. Shared nvcc block
-    # (arch-aware since #176: the cross lane drives the Hostx64\arm64 cl + --use-local-env).
+    # nvcc's host is MSVC cl.exe, as nvcc rejects clang-cl; /wd4067 is ORT-specific.
     $gpuArgs += Get-NvccCudaCmakeArgs -CudaRoot $cudaRoot -CudaStandard '17' -ExtraCudaFlags '-Xcompiler=/wd4067'
     $cudnnLibDir = Get-CudnnLibraryDir -CudnnRoot $cudnnRoot
     if (-not $cudnnLibDir) {
@@ -637,18 +584,13 @@ if ($cudaUsable) {
     Write-Host 'No GPU layer detected: CPU-only build'
 }
 
-# DirectML EP ON: the vendored DirectMLHelpers headers only compile under clang-cl with the
-# out-of-lining patch above (llvm #57700); USE_DML=ON fetches the redist via NuGet.
-# Python bindings ON on both lanes (#120 step 2): the HOST interpreter RUNS the build, the
-# TARGET python314.lib is what the .pyd LINKS -- Get-TargetBuildPython encodes that split.
+# The host interpreter runs the build and the .pyd links the target python314.lib; Get-TargetBuildPython holds that split.
 $tpy = Get-TargetBuildPython
 $pythonArgs = if ($onnxCross -and -not $tpy.Available) {
     Write-Warning "ONNX: python bindings OFF -- no target CPython import lib at $($tpy.Lib) (Build-TargetCpython.ps1 did not run?)"
     @('-Donnxruntime_ENABLE_PYTHON=OFF')
 } else {
-    # `Python_*`, NOT `Python3_*`: ORT's find_package(Python ...) is UNVERSIONED, so Python3_*
-    # names are silently ignored. numpy's include dir is probed by RUNNING the host interpreter
-    # (its headers are arch-neutral) and handed over explicitly, off FindPython's cross path.
+    # `Python_*`: ORT's unversioned find_package ignores `Python3_*`; numpy's arch-neutral headers come from the host.
     $numpyInc = (Invoke-ShieldedNative -Label 'numpy include probe' -CommandLine """$($tpy.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
     if (-not $numpyInc -or -not (Test-Path (Join-Path $numpyInc 'numpy\arrayobject.h'))) {
         throw "ONNX: numpy include dir not usable ('$numpyInc') -- numpy must be importable by the build interpreter $($tpy.Exe) before configure"
@@ -656,40 +598,22 @@ $pythonArgs = if ($onnxCross -and -not $tpy.Available) {
     @('-Donnxruntime_ENABLE_PYTHON=ON') + @(Get-PythonCMakeHintArgs -Python $tpy -Prefix 'Python' -NumPyIncludeDir $numpyInc)
 }
 if ($onnxCross -and $tpy.Available) { Write-Host "ONNX: python bindings ON for the cross lane (#120 step 2) -- host interpreter $($tpy.Exe), TARGET import lib $($tpy.Lib)" }
-# DirectML ON on BOTH lanes (#113; GenAI #118) -- the one cross obstacle was the redist
-# path case patched above. Record: docs/windows-cross-builds.md, DirectML row.
+# DirectML on both lanes; the one cross obstacle was the redist path case patched above.
 $dmlArg = '-Donnxruntime_USE_DML=ON'
 if ($onnxCross) { Write-Host 'ONNX: DirectML EP ON for the cross lane too (backlog #113 - the redist DOES ship bin/arm64-win/DirectML.lib; the old failure was an upper-case path, not a missing package)' }
-# -- QNN EP (QAIRT SDK), backlog #121: OPT-IN by staging the login-gated zip in
-# windows\qnn-sdk\; no zip = EP off. PROVEN on the build-time path 2026-08-31
-# (full :winarm64 chain, QAIRT 2.44.0, aarch64-windows-msvc backends); runtime
-# execution still needs a Snapdragon host.
+# QNN EP: opt-in by staging the login-gated QAIRT zip in windows\qnn-sdk\; no zip, no EP.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
 $qnnArgs = if ($qnnSdk) { $qnnSdk.CmakeArgs } else { @() }
 if ($qnnSdk) { Write-Host "ONNX: QNN EP ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121" }
 else { Write-Host 'ONNX: QNN EP off -- no SDK zip staged in windows\qnn-sdk (opt-in; see windows\qnn-sdk\README.md, backlog #121)' }
-# -- KleidiAI in MLAS, arm64 only (2026-09-28). ORT's CMake option defaults OFF and only build.py
-# turns it on (it is ON in upstream's own Windows ARM64 builds); this script configures through
-# CMake directly, so the arm64 bundle shipped without it. MLAS routes MatMulNBits (the GenAI hot
-# path) through KleidiAI, and its SGEMM/conv overrides through KleidiAI's SME kernels when the CPU
-# has SME; every kernel is runtime-dispatched (IsProcessorFeaturePresent), so the armv8-a baseline
-# stays. Under MSVC -- which clang-cl counts as -- KleidiAI v1.20.0 builds only its _ASM kernel sets:
-# hex-encoded .S through ASM_MARMASM (armasm64, which MLAS's own .asm step already uses here) and C
-# wrappers without intrinsics. MLAS's kleidiai/*.cpp use baseline NEON only. The .S kernels need
-# the preprocess-then-armasm64 rule (Initialize-OrtKleidiaiSource), so FetchContent gets that tree.
+# KleidiAI in MLAS, arm64 only: only build.py enables it upstream; see the KleidiAI note in docs/windows-cross-builds.md.
 $kleidiArgs = @()
 $kleidiSrc = $null
 if ($onnxCross) {
     $kleidiSrc = Initialize-OrtKleidiaiSource -OrtSourceDir $SourceDir -WorkDir 'C:\temp\kleidiai' -Triple (Get-ClangTargetTriple -Arch $onnxTargetArch)
     $kleidiArgs = @('-Donnxruntime_USE_KLEIDIAI=ON', "-DFETCHCONTENT_SOURCE_DIR_KLEIDIAI=$($kleidiSrc.SourceDir -replace '\\', '/')")
 }
-# -- ThinLTO (owner decision 2026-09-28). ORT marks its own targets INTERPROCEDURAL_OPTIMIZATION,
-# which clang-cl turns into -flto=thin; the static libs are archived by llvm-lib and the DLLs linked
-# by lld-link (Invoke-CmakeConfigure's defaults), both of which read bitcode. versions.env's
-# ORT_ENABLE_LTO is the LINUX lanes' knob (AP6) and is not read here. Not with CUDA -- ORT itself
-# withholds /LTCG from a CUDA build, and nvcc's host compiler is MSVC cl, not clang-cl.
-# The archiver by its resolved path, as the other media scripts pass it: bitcode members need llvm-lib,
-# and a bare name is not guaranteed to resolve to it.
+# ThinLTO via ORT's own IPO (versions.env ORT_ENABLE_LTO is Linux's knob); never with CUDA, whose nvcc host is cl.
 $ltoArgs = if ($cudaUsable) { @() } else { @('-Donnxruntime_ENABLE_LTO=ON') + @(Get-LlvmArchiverCmakeArg) }
 Write-Host "ONNX: ThinLTO $(if ($ltoArgs.Count) { 'ON' } else { 'OFF (CUDA lane)' })"
 $cmakeArgs = @(
@@ -708,18 +632,14 @@ if ($webgpuPlan.WebGpu) {
 } elseif ($webgpuPlan.OnLane) {
     Write-Host 'ROCm lane: WebGPU EP spike off (ORT_WEBGPU is not 1)'
 }
-# #123: MLAS's amd64 kernels are MASM and stay on MSVC's ml64 BY MEASUREMENT -- llvm-ml 22
-# cannot assemble them (no listing directives, no includer-relative INCLUDE, no SDK macro
-# layer). Full record: docs/windows-backlog-archive-2026-08-26.md, #123.
+# MLAS's amd64 MASM kernels stay on MSVC's ml64: llvm-ml 22 cannot assemble them.
 Switch-BuildPhase '3. cmake configure'
-# Tee'd, not swallowed: the ASM_MASM identification lines must stay in the log so the
-# assembler in use is a fact, not an assumption.
+# Tee'd, so the log shows which assembler configure found.
 $ortCfgLog = Get-PersistentBuildLogPath -Name 'onnxruntime-configure.log' -FallbackDir $buildDir
 Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs 2>&1 |
     Tee-Object -FilePath $ortCfgLog
 if (-not $onnxCross) {
-    # The found assembler must be ml64 (#123); anything else is toolchain drift worth
-    # stopping on now, not 40 ninja-minutes later.
+    # Anything but ml64 is toolchain drift worth stopping on now.
     $masmLines = @(Get-Content $ortCfgLog | Where-Object { $_ -match 'ASM_MASM|Found assembler' })
     if ($masmLines.Count -eq 0 -or -not ($masmLines -join "`n" | Select-String -Pattern 'ml64' -Quiet)) {
         throw "ORT configure did not report ml64 as the ASM_MASM assembler (#123: MLAS needs MSVC's MASM, llvm-ml 22 cannot assemble it). ASM_MASM lines: $(if ($masmLines.Count) { $masmLines -join ' | ' } else { '<none>' }) -- see $ortCfgLog"
@@ -727,15 +647,13 @@ if (-not $onnxCross) {
     Write-Host "ASM_MASM assembler (#123, MSVC ml64 by design): $($masmLines -join ' | ')"
 }
 if ($ltoArgs.Count -gt 0) {
-    # CMP0069 already fails configure when CMake cannot do IPO for this compiler; this proves the
-    # property turned into compile flags instead of being dropped on the way.
+    # CMP0069 fails configure without IPO support; this proves the property became compile flags.
     $ltoLines = @(Select-String -LiteralPath (Join-Path $buildDir 'build.ninja') -Pattern '-flto' -SimpleMatch)
     if ($ltoLines.Count -eq 0) { throw "onnxruntime_ENABLE_LTO=ON, yet no compile line in build.ninja carries -flto -- see $ortCfgLog" }
     Write-Host "ORT: ThinLTO reaches $($ltoLines.Count) build.ninja line(s)"
 }
 if ($kleidiArgs.Count -gt 0) {
-    # ORT only WARNS when is_kleidiai_supported() says no, then builds without it: a bundle that
-    # "has" KleidiAI but ships plain MLAS. Fail at configure instead, and prove the target exists.
+    # ORT only warns when KleidiAI is unsupported and builds plain MLAS, so fail here and prove the target exists.
     $kaiDropped = @(Get-Content $ortCfgLog | Where-Object { $_ -match 'KleidiAI (is not supported|requires MSVC)|onnxruntime_USE_KLEIDIAI was set but it is not supported' })
     if ($kaiDropped.Count -gt 0) { throw "ORT configure dropped KleidiAI: $($kaiDropped -join ' | ') -- see $ortCfgLog" }
     $ninjaFile = Join-Path $buildDir 'build.ninja'
@@ -751,11 +669,9 @@ if ($webgpuPlan.WebGpu) {
 }
 Switch-BuildPhase '4. post-configure _deps patches + ninja-file tags'
 
-# -- Post-configure patches on the fetched _deps trees: inline, NOT .patch files --
-# static patches against CMake-fetched deps rot when ORT's dep pointer moves.
+# Post-configure patches on the fetched _deps, inline: static patches rot when ORT's dep pointer moves
 
-# onnx scoped_resource.h: INVALID_HANDLE_VALUE is a reinterpret_cast, not a valid non-type
-# template argument under clang; swap the alias for an interface-identical RAII class.
+# INVALID_HANDLE_VALUE is no valid template argument under clang, so an interface-identical RAII class replaces the alias.
 $scopedHandleFix = @'
 // [clang-cl compat, ANTfrastructure] INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
 // is not a valid non-type template argument under clang (reinterpret_cast in a
@@ -791,21 +707,16 @@ if (Test-Path $onnxScoped) {
         -WarnMessage "onnx scoped_resource.h: ScopedHandle alias not found — upstream may have fixed or reshaped it; verify clang-cl still compiles checker.cc." | Out-Null
 }
 
-# CUTLASS's fetched SHA follows ORT's ExternalProject pointer, so a static .patch would
-# silently rot -- hence the tree-walking helpers below. Guarded on the SAME decision as
-# the CUDA branch above (native GPU lane, or the cross lane with the arm64 payload).
+# CUTLASS's SHA follows ORT's pointer, so no static .patch; guarded like the CUDA branch above.
 if ($cudaUsable) {
     # CUTLASS headers: clang-cl can't handle `not`/`and`/`or` keyword alternatives.
     $cutlassInclude = "$buildDir\_deps\cutlass-src\include"
     if (Test-Path $cutlassInclude) {
         Get-ChildItem $cutlassInclude -Recurse -Filter '*.hpp' | ForEach-Object { Edit-CppKeywordAlternatives -Path $_.FullName }
     }
-    # CUTLASS enables the MSVC-only `_udiv128` for every _MSC_VER >= 1920, which clang-cl
-    # defines. Disable the GUARD, never rewrite the call: #73's `_udiv128 -> udiv128` made
-    # udiv128 call itself (225 -Winfinite-recursion warnings, latent stack overflow).
+    # Disable the MSVC-only _udiv128 guard for clang-cl, never rename the call: udiv128 would then call itself.
     $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
-    # The pattern is a PREFIX of its own replacement, so a resumed build (the _deps tree
-    # survives) would re-append it; the explicit skip also keeps the drift warning meaningful.
+    # The pattern prefixes its own replacement, so a resumed tree would re-append it.
     if ((Test-Path $cut) -and ((Get-Content -Raw $cut) -match '!defined\(__clang__\)')) {
         Write-Host 'cutlass/uint128.h: __clang__ guard already applied (resumed tree) - skipping'
     } else {
@@ -819,8 +730,7 @@ if ($cudaUsable) {
 
 # Strip MSVC-only flags from build.ninja
 Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
-    # [ \t]* not \s*: \s eats the line's own CR/LF when the flag terminates a
-    # line, merging it with the next ninja statement (probed 2026-08-04).
+    # [ \t]*, not \s*, which eats a line ending and merges the next ninja statement.
     '--compiler-options /experimental:external[ \t]*',
     '(?<=\s)/experimental:external(?=\s)',
     '(?<=\s)-WX(?=\s)',
@@ -829,16 +739,11 @@ Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
     '--threads \d+'
 )
 
-# MLAS's arch kernels get their SIMD features PER-TU in build.ninja: globally they crash
-# static init on an AVX2-only host, without them those TUs fail to compile. Arch-parameterized
-# -- an x86 literal matches nothing on aarch64, and a patch that matches nothing SUCCEEDS.
-# docs/windows-cross-builds.md § SIMD.
+# Per-TU SIMD for MLAS kernels, as global flags crash AVX2-only hosts; see docs/windows-cross-builds.md § SIMD: the failure that hides inside a green build.
 $targetArch    = Get-WindowsTargetArch
 $mlasArchFlags = Get-WindowsTargetKernelSimdFlags -Arch $targetArch
 $mlasTuPattern = Get-MlasKernelTuPattern -Arch $targetArch
-# SOURCE-DERIVED, not name-guessed: chasing names missed the *_fp16 family and then
-# dwconv.cpp. On cross, union the name pattern with every MLAS source that includes
-# fp16_common.h, so a new fp16 consumer is tagged the day it appears.
+# On cross, every MLAS source including fp16_common.h joins the pattern, since guessed names missed some.
 if ($onnxCross) {
     $mlasLibDir = Join-Path $SourceDir 'onnxruntime\core\mlas\lib'
     $fp16Consumers = @(
@@ -854,58 +759,43 @@ if ($onnxCross) {
     }
 }
 $mlasTuMinimum = Get-MlasKernelTuMinimum -Arch $targetArch
-# Marker proving a FLAGS line is already tagged, so a re-run does not append twice.
-# Arch-specific for the same reason as the pattern: 'avx512' is x86-only.
+# Marks a FLAGS line already tagged, so a re-run does not append twice; 'avx512' is x86-only.
 $mlasTaggedMarker = if ($targetArch -eq 'amd64') { 'avx512' } else { 'dotprod' }
 
-# The floor is the guard, the pattern alone is not: too few matches means the dispatched
-# kernels silently lose their SIMD features -- HARD FAILURE, build.ninja left untouched.
+# The floor is the guard: a pattern matching nothing succeeds and silently strips the kernels' SIMD.
 [void](Add-NinjaPerTuFlags -NinjaFile "$buildDir\build.ninja" -Label "MLAS $targetArch kernel (pattern: $mlasTuPattern)" -Floor $mlasTuMinimum -AlreadyTaggedPattern $mlasTaggedMarker -Select {
     param($line)
     if ($line -match 'onnxruntime_mlas\.dir' -and $line -match $mlasTuPattern) { $mlasArchFlags } else { '' }
 })
 
-# Memory-scaled parallelism: jobs = min(cores, memGB/MemGBPerJob), floor 2 (BUILD_JOBS
-# overrides); the -j2 retry is incremental, so an OOM costs a slow tail, not the build.
-# Ninja log on the PERSISTENT sccache mount (#4): when the vertex fails the container
-# filesystem dies with the solve, C:\sccache survives (never-swallow-logs).
+# The ninja log lives on the persistent sccache mount, which outlives a failed solve.
 $ninjaLog = Get-PersistentBuildLogPath -Name 'onnx-ninja.log' -FallbackDir $buildDir
-# MemGBPerJob=2 is measured, not guessed (backlog #28: peak per-process WorkingSet 998 MB).
+# MemGBPerJob=2 is measured: the peak per-process working set is about 1 GB; the -j2 retry is incremental.
 Switch-BuildPhase '5. ninja build + install'
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 2 -Install -LogFile $ninjaLog
 
-# Hit-rate evidence on STDERR -- the stream the 2MiB step-log clip never truncates
-# (AGENTS.md priority 1: caching must be MEASURED).
+# Hit-rate evidence on stderr, which the 2 MiB step-log clip never truncates.
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
-# cmake --install does not stage DirectML.dll, so a DML session would fail 0xC0000135. Must
-# run BEFORE Remove-SourceBuildTree. -SidecarFilter pins the pick to the TARGET's redist dir
-# (the nuget unpacks one per platform; an unfiltered -First 1 is arch-blind).
+# cmake --install skips DirectML.dll (0xC0000135); the filter picks the target's redist dir of the per-platform nuget.
 $ortDmlArchDir = "$(Get-WindowsTargetArch)" -replace '^amd64$', 'x64'
 Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
     -SidecarFilter { $_.Directory.Name -eq "$ortDmlArchDir-win" } `
     -BesidePrimary 'onnxruntime.dll' -InstallDir $ortInstallDir `
     -Reason 'the DirectML EP may fail to load at runtime (0xC0000135)'
 
-# QNN EP runtime (#121): cmake installs the provider DLL but not the SDK's backend DLLs
-# (redist, like DirectML.dll) -- stage them beside onnxruntime.dll for the DLL search path.
+# cmake installs the QNN provider DLL but not the SDK's backend DLLs.
 if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $ortInstallDir) }
 $webgpuDllSha = if ($webgpuPlan.WebGpu) { Install-OrtWebGpuRuntime -DxcDir $webgpu.DxcDir -OrtInstallDir $ortInstallDir } else { @{} }
 if ($webgpuPlan.WebGpu) { Add-OrtWebGpuWheelNotice -BuildDir $buildDir -DxcDir $webgpu.DxcDir -DxcVersion $webgpu.Pin.DXC_VERSION }
 
-# -- Python wheel (onnxruntime) -- setup.py bdist_wheel FROM the build dir, where cmake
-# assembled the package tree. No --wheel_name_suffix (our CUDA+TensorRT+DML combo matches no
-# upstream split, so it ships as plain `onnxruntime`); must run BEFORE Remove-SourceBuildTree.
+# Plain `onnxruntime` wheel: our CUDA+TensorRT+DML combo matches no upstream name suffix
 Switch-BuildPhase '6. python wheel'
-# $onnxCross (a VARIABLE), NOT `Test-WindowsCrossTarget -and ...`: a condition starting with
-# a command name is parsed in command mode, so `-and -not ...` became three ARGUMENTS and the
-# branch fired with the bindings ON ("python wheel 0s").
+# A variable: a condition starting with a command name parses in command mode, turning `-and -not` into arguments.
 if ($onnxCross -and -not $tpy.Available) {
     Write-Host 'Skipping the onnxruntime python wheel: cross build without a target CPython (bindings were OFF above)'
 } else {
-    # One call for both lanes: -CrossStage stages the target wheel (PE- and name-checked,
-    # never imported here); the native lane installs and import-asserts, so the shipped
-    # image can `import onnxruntime` out of the box.
+    # -CrossStage stages the target wheel unimported; the native lane installs and import-asserts it.
     Write-Host 'Building onnxruntime python wheel...'
     Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
         -Arguments """$SourceDir\setup.py"" bdist_wheel" `

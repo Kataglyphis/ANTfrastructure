@@ -23,8 +23,7 @@ sanitize_version() {
     echo "$version"
 }
 
-# Why the rustc version parse tolerates several spellings:
-# docs/cross-build-verification.md
+# docs/cross-build-verification.md#resolve_ci_version-the-version-a-ci-run-stamps
 resolve_ci_version() {
     local version_file="${1:-VERSION.txt}"
     local ref_name="${2:-${REF_NAME:-}}"
@@ -54,10 +53,7 @@ resolve_ci_version() {
     echo "$ver"
 }
 
-# Resolve, then publish as VERSION / MSIX_VERSION through BOTH channels a
-# GitHub step can be consumed by: GITHUB_ENV for later steps in the same job,
-# GITHUB_OUTPUT for `steps.<id>.outputs`. Safe to run outside Actions - both
-# writes are skipped when the variables are unset.
+# Publishes to GITHUB_ENV and GITHUB_OUTPUT alike, so later steps and step outputs both see it; no-op outside Actions.
 emit_github_version() {
     local version_file="${1:-VERSION.txt}"
     local ver msix_ver

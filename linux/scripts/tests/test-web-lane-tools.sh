@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# 06-packaging/web-lane-tools.sh off-target: the key, the fail-loud gate, the binary cache,
-# the auto|cross|native|legacy selection, the android-side producer and the Dockerfile wiring.
-# docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
+# web-lane-tools.sh off-target; see docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -16,10 +14,7 @@ DF_PACKAGE="${SCRIPTS}/../Dockerfile.package"
 _SB_ROOT="$(mktemp -d)"
 trap 'rm -rf "${_SB_ROOT}"' EXIT
 
-# _wlt <snippet>: <snippet> in a child bash with platform.sh, the fixtures and the library
-# loaded, CARGO_HOME/cache/artifact/provenance in a fresh sandbox ($SB); then "rc=<n>".
-# Hermetic: the caller's arch and Rust build env never reach it (the CI image exports
-# TARGET_ARCH=amd64); WLT_T_ARCH (default riscv64) is the fixture's target arch.
+# _wlt <snippet>: runs in a fresh sandbox $SB without the caller's arch or Rust env (CI exports TARGET_ARCH), then prints rc=<n>.
 _wlt() {
   local sb
   sb="$(mktemp -d "${_SB_ROOT}/sb.XXXXXX")"
@@ -46,7 +41,7 @@ _assert_native() {  # <out> <rc>: wasm-pack was compiled natively, into a scratc
   t_assert_contains "$1" "rc=$2"
 }
 
-# ---- 1. the key --------------------------------------------------------------------
+# 1. The key
 t_case "the key is deterministic, and every one of its eight fields changes it"
 _out="$(_wlt '
   k() { wlt_key "$(wlt_key_text "${1:-wasm-pack}" "${2:-0.15.0}" "${3:-riscv64gc-unknown-linux-gnu}" "${4:-1.98.1}" "${5--C x}")"; }
@@ -76,8 +71,7 @@ _out="$(_wlt 'ZSTD_SYS_USE_PKG_CONFIG=1; export ZSTD_SYS_USE_PKG_CONFIG; wlt_c_e
 t_assert_eq 2 "$(_count "${_out}" '^BZIP2_NO_PKG_CONFIG=1 LZMA_API_STATIC=1 -ZSTD_SYS_USE_PKG_CONFIG$')" \
   "the key text would claim a C env the build never had"
 
-# ---- 2. the gate, against stubbed readelf output --------------------------------------
-# $1 = facts for the fake binary, $2 = what --version prints; runs the full gate.
+# 2. The gate against stubbed readelf output; _gate <facts> [--version output]
 _gate() {
   _wlt 'wlt_fx_bin "${SB}/t" wasm-pack "'"${2:-0.15.0}"'" '"$1"'
     wlt_assert_binary wasm-pack "${SB}/t" riscv64 2.43 0.15.0; r=$?; echo "WHY=${_WLT_WHY}"; (exit "${r}")'
@@ -111,7 +105,7 @@ _out="$(_wlt 'wlt_fx_bin "${SB}/t" wasm-pack 0.15.0; unset -f readelf; PATH="${S
 t_assert_contains "${_out}" "WHY=readelf (none vs binutils on PATH)"
 t_assert_contains "${_out}" "rc=1"
 
-# ---- 3. real bytes, real readelf ---------------------------------------------------
+# 3. Real bytes, real readelf
 t_case "real readelf: an x86-64 ELF presented as riscv64 is refused"
 if command -v readelf >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
   t_fake_elf "${_SB_ROOT}/x86.elf" 62
@@ -128,8 +122,7 @@ else
     "WHY=readelf" "no readelf on this host: the gate must still refuse"
 fi
 
-# ---- 4. the cache ------------------------------------------------------------------
-# A healthy native-key entry for wasm-pack, as a previous native build stores it.
+# 4. The cache, seeded as a previous native build stores a healthy wasm-pack entry
 _SEED='k="$(wlt_key_text wasm-pack 0.15.0 riscv64gc-unknown-linux-gnu 1.98.1 "")"
   e="$(wlt_cache_entry "${k}")"
   wlt_fx_bin "${SB}/seed" wasm-pack 0.15.0 >/dev/null
@@ -186,7 +179,7 @@ t_assert_contains "${_out}" "wasm-pack-0.1.5_rust-1_t_5"
 t_assert_contains "${_out}" "wasm-pack-0.1.4_rust-1_t_4"
 t_assert_eq 0 "$(_count "${_out}" 'wasm-pack-0.1.3_')" "a pin bump must not grow the cache without bound"
 
-# ---- 5. auto | cross | native | legacy -------------------------------------------------
+# 5. auto | cross | native | legacy
 _install() { _wlt "$1"'
   wlt_install_from_source wasm-pack 0.15.0; r=$?; cat "${WLT_PROVENANCE}" 2>/dev/null; (exit "${r}")'; }
 _SKIP='_wlt_mark "${WLT_ARTIFACT_DIR}/riscv64gc-unknown-linux-gnu" wasm-pack skipped "native-build-platform: x"'
@@ -318,9 +311,7 @@ _out="$(WEB_LANE_TOOLS_CACHE=yes _install '')"
 t_assert_contains "${_out}" "ERROR: WEB_LANE_TOOLS_CACHE='yes' (want on, refresh or off)"
 t_assert_contains "${_out}" "rc=1"
 
-# ---- 6. the producer ---------------------------------------------------------------
-# $1 = the snippet's prelude; runs wlt_produce into $SB/out against a fixture 01-core,
-# then prints the manifests, the emitted binaries and every timeout the run went through.
+# 6. The producer; _produce <prelude> prints the manifests, emitted binaries and every timeout used
 _produce() {
   _wlt 'wlt_fx_core "${SB}/core"; WLT_CORE_DIR="${SB}/core"; '"$1"'
     wlt_produce "${SB}/out"; r=$?; for m in "${SB}"/out/*/*.manifest; do echo "== ${m##*/}"; cat "${m}"; done
@@ -403,7 +394,7 @@ t_case "the entry point: usage errors exit 2"
 t_assert_eq 2 "$(t_rc bash "${LIB}")"
 t_assert_eq 2 "$(t_rc bash "${LIB}" produce)"
 
-# ---- 7. drift: the RVV flags are cross-env.sh's ----------------------------------------
+# 7. Drift: the RVV flags are cross-env.sh's
 t_case "wlt_rustflags is what cross-env.sh exports, per arch"
 
 for _a in riscv64 arm64 amd64; do
@@ -414,7 +405,7 @@ for _a in riscv64 arm64 amd64; do
     "${_a}: the consumer would expect a key the producer never writes"
 done
 
-# ---- 8. the closure: android mounts exactly what the producer loads ----------------------
+# 8. The closure: android mounts exactly what the producer loads
 _stage() { awk -v s="$2" '$0 ~ "^FROM .* AS " s "$" {p=1; next} p && /^FROM / {exit} p' "$1"; }
 _producer="$(_stage "${DF_ANDROID}" web-lane-tools)"
 _mounted="$(printf '%s\n' "${_producer}" | grep -o 'source=linux/scripts/01-core/[a-z-]*\.sh,target=/tmp/wlt/01-core/[a-z-]*\.sh' \
@@ -451,7 +442,7 @@ for _pin in WASM_PACK_VERSION FLUTTER_RUST_BRIDGE_VERSION; do
     "a manual build's producer and consumer default to the same pin, or every key mismatches"
 done
 
-# ---- 9. package wiring and the operator switch ------------------------------------------
+# 9. Package wiring and the operator switch
 t_case "Dockerfile defaults are the library's defaults"
 t_assert_contains "${_code}" '${WEB_LANE_TOOLS_SOURCE:-auto}'
 t_assert_eq 1 "$(grep -c '^ARG WEB_LANE_TOOLS_SOURCE=auto$' "${DF_PACKAGE}")"

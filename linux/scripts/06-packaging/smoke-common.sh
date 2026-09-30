@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Shared smoke-test helpers: pass/fail + FAILURES, arch maps, ELF checks.
-# Sourced by every 06-packaging/smoke-*.sh.
+# Shared smoke helpers (pass/fail, arch maps, ELF checks), sourced by every 06-packaging/smoke-*.sh.
 
 if [ -n "${_SMOKE_COMMON_LOADED:-}" ]; then
   return 0
@@ -10,13 +9,7 @@ _SMOKE_COMMON_LOADED=1
 
 FAILURES=0
 
-# Fallback for cross_build_is_active when cross-env.sh is not loaded.
-# The real definition in cross-env.sh checks both BUILD_MODE and arch mismatch.
-# This fallback approximates it by checking BUILD_MODE and TARGET_ARCH != build arch.
-# Both sides are normalized to OCI names via smoke_host_arch (defined below;
-# resolved at call time) — TARGET_ARCH is usually an OCI name (amd64/arm64)
-# while uname -m yields machine names (x86_64/aarch64), so a raw comparison
-# never matched and native wrapper images skipped their functional checks.
+# Fallback without cross-env.sh; both sides normalized, as TARGET_ARCH is an OCI name and uname -m is not.
 if ! command -v cross_build_is_active >/dev/null 2>&1; then
   cross_build_is_active() {
     [ "${BUILD_MODE:-native}" = "cross" ] || return 1
@@ -29,20 +22,13 @@ fi
 pass() { printf '  PASS %s\n' "$*"; }
 fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
 
-# Print the standard result banner and exit non-zero on any failure.
-# Replaces the copy-pasted "=== Results: N failure(s) ===" + exit tail (and the
-# duplicate print_results() defs in smoke-android.sh / smoke-vulkan.sh).
+# Prints the result banner and exits non-zero on any failure.
 smoke_summary() {
   echo "=== Results: ${FAILURES} failure(s) ==="
   [ "${FAILURES}" -eq 0 ] || exit 1
 }
 
-# ── arch-map helpers ────────────────────────────────────────────────────────
-# Always-available thin wrappers over the canonical 01-core/platform.sh arch
-# functions.  Each prefers the platform.sh function when it has been sourced,
-# and otherwise applies the inline case ONCE.  These replace the ~10 copies of
-# `command -v arch_* || case "${arch}" in …` scattered across the smoke scripts.
-# All cover the three supported target arches (amd64/arm64/riscv64).
+# Arch maps: platform.sh's function when sourced, else one inline case.
 
 # uname -m style machine name for a target arch (amd64 -> x86_64, …).
 smoke_uname_name() {
@@ -58,8 +44,7 @@ smoke_uname_name() {
   fi
 }
 
-# OCI/Docker arch name for a machine name (default: $(uname -m)).
-# x86_64 -> amd64, aarch64 -> arm64, riscv64 -> riscv64; unknown passes through.
+# OCI arch name for a machine name (default: uname -m); unknown names pass through.
 smoke_host_arch() {
   local raw="${1:-$(uname -m)}"
   if command -v arch_normalize >/dev/null 2>&1; then
@@ -118,11 +103,7 @@ smoke_rust_target() {
   fi
 }
 
-# Load the canonical 01-core/platform.sh arch helpers when available, from the
-# baked-image layout (/opt/scripts/core) or the repo layout — whichever exists
-# first. Best-effort: the smoke_* wrappers above fall back to their inline
-# maps when platform.sh is absent. Replaces the hand-rolled copies that lived
-# in smoke-cross-all-arches.sh, smoke-toolchain.sh, and smoke-wrapper.sh.
+# Best-effort: the wrappers above fall back to their inline maps without platform.sh.
 smoke_load_platform() {
   local _dir _p
   _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -136,35 +117,19 @@ smoke_load_platform() {
   return 0
 }
 
-# ── binary / component gate helpers (backlog D3) ────────────────────────────
-# Four idioms that smoke-media.sh had hand-written at 5 + 4 + 2 sites, each
-# spelling its message out inline — so a wording or semantics fix only ever
-# reached the copy that happened to be edited. They live here now; the drift
-# guard in tests/test-smoke-arch-parity.sh keeps them here.
+# Gate helpers; tests/test-smoke-arch-parity.sh keeps them the only copy.
 
-# Resolve a tool to the path the caller should use: its PATH location when it
-# has one, else the supplied fallback. ALWAYS succeeds (the fallback branch is
-# a printf), so `x="$(smoke_resolve_bin …)"` cannot trip errexit; deciding
-# whether the result is usable stays with the caller's [ -x ] test. The
-# fallback matters because a build-stage RUN inherits the ENV of the PREVIOUS
-# layer: tools that ship under /opt/<pkg>/bin are routinely off PATH there.
+# Always succeeds, so $(...) cannot trip errexit; the fallback matters as /opt/<pkg>/bin is often off PATH in a RUN.
 smoke_resolve_bin() {
   command -v "$1" 2>/dev/null || printf '%s' "$2"
 }
 
-# True when a file carries the ELF magic. Deliberately the same 3-byte test
-# (bytes 2-4 of the header) the smoke-media sites used, so lifting them here
-# cannot change a verdict. `head` failing on a missing/unreadable file is
-# absorbed, so this returns a clean "no" instead of killing the smoke under
-# `set -e -o pipefail`.
+# ELF magic test; a missing or unreadable file is a clean "no", not a set -e death.
 smoke_is_elf() {
   [ "$(head -c4 "$1" 2>/dev/null | tail -c3 || true)" = "ELF" ]
 }
 
-# A binary that is PRESENT but cannot execute *here* is the normal build-sandbox
-# state (ld paths and ENV land later, in configure-runtime.sh), so report it as
-# INFO — but never as a pass, and never let a zero-byte/truncated/wrong-format
-# file through: that is a real defect and fails.
+# Present but not runnable here is normal in the build sandbox (INFO, never PASS); a non-ELF file fails.
 smoke_deferred_if_elf() {
   local label="$1" path="$2" info="$3"
   if smoke_is_elf "${path}"; then
@@ -174,30 +139,15 @@ smoke_deferred_if_elf() {
   fi
 }
 
-# Cross build: the artifact is foreign-arch, so nothing in this container can
-# run or import it. Prove presence, say so, and report rc 0 = "handled, skip
-# the functional half"; rc 1 = "not a cross build — go run the real check".
-# The noun/action pair is what distinguishes the binary sites ("binary" /
-# "execution") from the library and Python-bindings sites ("import").
+# rc 0: a cross build, presence proven, skip the functional half; rc 1: run the real check.
 smoke_cross_presence_gate() {
   local label="$1" path="$2" noun="${3:-binary}" action="${4:-execution}"
   cross_build_is_active 2>/dev/null || return 1
   pass "${label} ${noun} present at ${path} (cross build — ${action} skipped)"
 }
 
-# ELF machine string of a file (the value after "Machine:" in `LC_ALL=C readelf
-# -h`). Reads foreign-arch binaries fine — nothing is executed. Kept as the raw
-# pipeline rather than delegating to platform.sh's elf_machine_name(): all three
-# call sites guard readelf/readability themselves and depend on THIS pipeline's
-# exit status under `set -o pipefail`, and platform.sh is not sourced at all in
-# smoke-android.sh.
+# The readelf "Machine:" value of a file, executing nothing; platform.sh's elf_machine_name when sourced.
 smoke_elf_machine_of() {
-  # Same thin-wrapper contract as the arch helpers above: prefer the canonical
-  # platform.sh implementation, keep the inline pipeline only as the fallback
-  # for smokes that run without platform.sh mounted. Written as a copy first,
-  # which would have made this the FOURTH instance of the same readelf|sed|head
-  # pipeline — the exact sprawl this helper block exists to end. Delegating
-  # also inherits platform.sh's readelf-present and file-readable guards.
   if command -v elf_machine_name >/dev/null 2>&1; then
     elf_machine_name "$1"
     return
@@ -209,7 +159,6 @@ smoke_elf_machine_of() {
     | head -n1
 }
 
-# Check that a command's output contains an expected string.
 # Usage: check_version "gcc --version" "16.1.0" "host gcc"
 check_version() {
   local cmd="$1" expected="$2" label="$3"
@@ -222,15 +171,7 @@ check_version() {
   fi
 }
 
-# check_version_major_minor <cmd> <pinned x.y.z> <label>
-# For a tool installed from a MAJOR channel, where the patch digit really is
-# only a label. NOT for LLVM any more (2026-09-10): the shipped clang is built
-# from llvmorg-${LLVM_RELEASE} and verified against LLVM_COMMIT, so its patch
-# digit IS installed and its gates stay exact. The justification this comment
-# used to carry — "validate-compilers.sh already falls back this way" — was
-# false; that arm tested a substring against bare-digit output, could never
-# match, and has been deleted.
-# The trailing dot is load-bearing: a bare "23.1" also matches 23.10.x.
+# <cmd> <pinned x.y.z> <label>: for major-channel tools, not LLVM; the trailing dot keeps 23.1 off 23.10.
 check_version_major_minor() {
   local cmd="$1" expected="$2" label="$3"
   local ver mm
@@ -243,7 +184,6 @@ check_version_major_minor() {
   fi
 }
 
-# Check that a compiler's -dumpmachine starts with the expected prefix.
 # Usage: check_dumpmachine "/opt/gcc-16.1.0/bin/gcc" "x86_64" "host gcc"
 check_dumpmachine() {
   local cc="$1" expected="$2" label="$3"
@@ -257,19 +197,7 @@ check_dumpmachine() {
   fi
 }
 
-# Full compiler validation for a target architecture.
-# Runs: -dumpmachine, ELF machine, cc1 compile-to-object, link smoke.
-# Usage: validate_compiler_for_target <cc_path> <target_arch> [label] [mode]
-#   mode=native (default) — the compiler BINARY is expected to be target-arch
-#     (target-native compiler, e.g. the packaged cc); its ELF machine is checked.
-#   mode=cross            — the compiler is a cross compiler whose BINARY is
-#     host-arch (it merely emits target code), so the binary-ELF check is skipped;
-#     the produced object/exe ELF (checked below) is what must be target-arch.
-# (Complexity audit item 9: the old 108-line monolith split into five
-# independent checks. fail() accumulates into the shared counter, so the
-# driver needs no return plumbing; each helper takes explicit args and is
-# callable in isolation — deliberately NOT the _VCS_* implicit-global
-# convention validate-compilers.sh uses.)
+# Usage: validate_compiler_for_target <cc> <arch> [label] [native|cross]; cross skips the compiler binary's ELF check.
 
 _cc_check_dumpmachine() {
   local cc_path="$1" label="$2" expected_pattern="$3" target_arch="$4"
@@ -286,15 +214,11 @@ _cc_check_dumpmachine() {
   fi
 }
 
-# ELF machine check of the compiler BINARY — native mode only. A cross
-# compiler's binary is host-arch (it emits target code), so this check does
-# not apply; the object/exe ELF checks verify the emitted code instead.
+# Native mode only: a cross compiler's binary is host-arch by design.
 _cc_check_binary_elf() {
   local cc_path="$1" label="$2" expected_machine="$3"
   command -v readelf >/dev/null 2>&1 || return 0
-  # swap-native-gcc.sh replaces cross-arch compilers with #!/bin/sh wrappers;
-  # the real ELF binary is at <path>.real. See validate-compilers.sh:324-331.
-  # Resolve symlinks first: cc -> /usr/bin/cc -> /opt/gcc-X/bin/gcc (.real here).
+  # swap-native-gcc.sh's wrappers are scripts; the ELF is <path>.real, possibly behind symlinks.
   local cc_elf="${cc_path}"
   [ -e "${cc_path}.real" ] && cc_elf="${cc_path}.real"
   [ -e "${cc_elf}.real" ] || { local r; r="$(readlink -f "${cc_elf}" 2>/dev/null || true)"; [ -n "$r" ] && [ -e "${r}.real" ] && cc_elf="${r}.real"; }
@@ -332,10 +256,7 @@ _cc_check_object() {
   rm -rf "${tmpdir}"
 }
 
-# Loader assertion (smoke-depth R8): compile+link succeed with a WRONG
-# sysroot too — the classic escapees (bad dynamic-loader path, riscv64
-# --with-isa-spec mismatch) all link cleanly and only die on the target.
-# The requested ELF interpreter is readable on any host, no execution.
+# A wrong sysroot still links cleanly; the requested ELF interpreter shows it without running anything.
 _cc_check_loader() {
   local cc_exe="$1" label="$2" target_arch="$3"
   command -v readelf >/dev/null 2>&1 || return 0
@@ -354,9 +275,7 @@ _cc_check_loader() {
   esac
 }
 
-# Opportunistic real-execution proof when a qemu-user binary is present
-# (not installed in the toolchain/package images by default — the loader
-# assertion is the always-on gate).
+# Only when a qemu-user binary is present; the loader check is the always-on gate.
 _cc_check_qemu_exec() {
   local cc_path="$1" label="$2" target_arch="$3" tmpdir="$4"
   local qemu_bin=""
@@ -382,9 +301,7 @@ validate_compiler_for_target() {
   local mode="${4:-native}"
   local expected_pattern expected_machine tmpdir
 
-  # `|| true` so the guard below is REACHABLE: smoke_uname_name returns 1 on an
-  # unknown arch, and under set -e the bare substitution killed the script
-  # before the intended "Unknown arch" fail could fire.
+  # `|| true` keeps the "Unknown arch" guard below reachable under set -e.
   expected_pattern="$(smoke_uname_name "${target_arch}" 2>/dev/null || true)"
   expected_machine="$(smoke_elf_machine_grep "${target_arch}" 2>/dev/null || true)"
   [ -n "${expected_pattern}" ] || { fail "Unknown arch: ${target_arch}"; return 1; }
@@ -406,37 +323,12 @@ validate_compiler_for_target() {
   rm -rf "${tmpdir}"
 }
 
-# Split a comma/space-separated arch list into words. Self-contained on purpose:
-# the smoke scripts source only smoke-common.sh + platform.sh and run under a
-# non-login `bash -c` in Dockerfile.package, so they must NOT depend on
-# 01-core/build-helpers.sh being sourced. They previously called that file's
-# arch_list_to_words unqualified — undefined here, so the cross-compiler loops
-# silently produced an empty list ("0 failures" with nothing actually tested).
-# NEWLINE-separated on purpose (mirrors build-helpers.sh arch_list_to_words):
-# space-separated output silently stops splitting in `for` loops under
-# IFS=$'\n\t'; newlines split under both the default and the strict IFS.
+# Self-contained, as smokes do not source build-helpers.sh; newline-separated so a strict IFS still splits.
 smoke_arch_words() {
   printf '%s\n' "${1:-}" | tr ', ' '\n\n'
 }
 
-# ── generated ONNX fixture (SMOKE-DEPTH item c, 2026-08-23) ─────────────────
-# Print a self-contained Python program that BUILDS a one-node ONNX graph and
-# runs it through an InferenceSession. Until this existed nothing in the repo
-# ever executed an inference: the venv battery's session check went through
-# `torch.onnx.export`, which needs `onnxscript` — not in the venv — so it
-# printed "SKIP ort InferenceSession check" on all three shipped wave-5
-# arches. A green line with nothing behind it, and therefore no evidence that
-# ANY execution provider works.
-#
-# The model is emitted as RAW protobuf (~110 bytes, opset 13 `Add`) rather than
-# via the `onnx` package on purpose: `onnx` is not installed in the runtime
-# venv and pulling it in for a smoke would add a heavy build dependency to
-# every wrapper. Wire format only, no network, no temp files.
-#
-# Two consumers, one source of truth: smoke-torch-venv.sh pipes it into the
-# venv python in-image, and smoke-runtime-image.sh injects it as an env var
-# (so it also gates images that were built before this check existed).
-# Exit codes: 0 = ran, 1 = wrong result, 3 = onnxruntime/numpy unavailable.
+# Emits a Python inference over a raw-protobuf ONNX graph (the venv has no onnx). Exit 0 ran, 1 wrong, 3 unavailable.
 smoke_minimal_onnx_py() {
   cat <<'ONNX_PY'
 import sys
@@ -504,9 +396,7 @@ print("ONNX-EP OK: onnxruntime %s served the graph on %s (available: %s)"
 ONNX_PY
 }
 
-# GEN1: onnxruntime-genai binding / generate() smoke. The four tiers, the exit
-# codes (0/1/3) and the GENAI_* inputs: docs/gen1-riscv64-genai.md
-# One emitter per tier; smoke_genai_py concatenates them into one program.
+# GenAI smoke, one emitter per tier that smoke_genai_py joins. See docs/gen1-riscv64-genai.md
 
 # env inputs, the ELF machine table, and the import gate (SKIP vs FAIL).
 _smoke_genai_py_preamble() {
@@ -750,8 +640,7 @@ print("GENAI-BIND OK: onnxruntime_genai %s -- native binding exercised; see UNPR
 GENAI_PY_TAIL
 }
 
-# The whole program, in tier order. Emitted to stdout; the caller pipes it
-# into `python -` (or ships it through SMOKE_GENAI_PY).
+# The whole program in tier order, for `python -` or SMOKE_GENAI_PY.
 smoke_genai_py() {
   _smoke_genai_py_preamble
   _smoke_genai_py_tier1_version

@@ -1,29 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Machine-checkable version of docs/windows-host-setup.md.
-#
-# WHY THIS EXISTS: that guide has never been walked cold on a second machine.
-# Everything in it was written by someone who already knew the answers, on the
-# host where the knowledge was built - and that is exactly how a setup guide
-# rots without anyone noticing. On 2026-08-07 its CNI section still handed a
-# fresh host the bare `.conf` template, i.e. the instructions silently cost you
-# the entire nerdctl lane, and it read as authoritative the whole time.
-#
-# Prose cannot catch that. A check can. Every assertion below corresponds to a
-# claim the guide makes, so a new machine gets a VERDICT instead of trust.
-# When you change the guide, change this script - they are two views of one
-# contract.
-#
-# Non-admin by design: everything here is readable unelevated except the
-# Defender exclusions, which are reported as UNKNOWN rather than skipped, so
-# their absence can never masquerade as success.
-#
-#   pwsh -File windows\scripts\host\Test-HostSetup.ps1
-#   pwsh -File windows\scripts\host\Test-HostSetup.ps1 -SccacheEndpoint http://<ip>:5000
-#
-# Exit codes: 0 = all required checks passed, 1 = at least one FAIL.
+# docs/windows-host-setup.md as checks: change both together. Non-admin; exit 1 on any FAIL.
 
 [CmdletBinding()]
 param(
@@ -39,11 +17,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-# Test-Elevated: this script GRADES elevation as a check, it never acts on it.
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
 $script:Fail = 0
@@ -87,8 +62,7 @@ foreach ($svc in 'containerd', 'buildkitd') {
     else { Write-Check FAIL "service $svc not installed" '' 'Install Stevedore - see host-setup Phase A' }
 }
 
-# stevedore IS dockerd. The BuildKit lane does not build through it, but docker.exe
-# stays the publish/inspect tool, so Stopped is survivable and still worth knowing.
+# stevedore is dockerd: builds do not need it, docker.exe publish/inspect does, so Stopped only warns.
 $stev = Get-Service stevedore -ErrorAction SilentlyContinue
 if ($stev -and $stev.Status -eq 'Running') { Write-Check PASS 'service stevedore (dockerd; publish/inspect) running' }
 elseif ($stev) {
@@ -110,12 +84,7 @@ else { Write-Check WARN "nerdctl missing at $nerdctl - run/inspect lane unavaila
 
 # --- Phase A5: CNI ------------------------------------------------------------
 
-# BOTH forms are required — corrected 2026-08-07 after this very check told a
-# host that conflist-only was healthy while buildkitd was giving containers NO
-# network adapter at all. It previously FAILED on a bare .conf and PASSED on
-# conflist-only, i.e. it actively drove hosts into the state that breaks the
-# production build lane. buildkitd needs the .conf; nerdctl needs the .conflist;
-# neither reads the other. See docs/windows-host-setup.md § A5.
+# Both forms are required, buildkitd reads the .conf and nerdctl the .conflist: see docs/windows-host-setup.md § A5
 $conflist = Join-Path $CniConfDir '0-containerd-nat.conflist'
 $bareConf = Join-Path $CniConfDir '0-containerd-nat.conf'
 $haveList = Test-Path $conflist
@@ -135,16 +104,14 @@ if ($haveList) {
     Write-Check PASS 'CNI .conflist present (nerdctl reads this one)'
     if (-not $confText) { $confText = Get-Content $conflist -Raw }
 } else {
-    # Not fatal for the build lane: the chain builds on the .conf alone. Only
-    # the nerdctl lane (image admin, run/exec) is lost.
+    # Only a warning: the chain builds on the .conf alone, just the nerdctl lane is lost.
     Write-Check WARN 'CNI .conflist missing - nerdctl will PANIC (index out of range [0] with length 0)' `
         'the buildctl chain still builds; only the nerdctl lane is unusable' `
         'add the plugins[] conflist form alongside the .conf - template in host-setup A5'
 }
 
 if ($haveConf -and $haveList) {
-    # Presence is checked; CONTENT drift between the two is not, and nothing
-    # else checks it either. Cheap comparison of the load-bearing field.
+    # Nothing else checks content drift between the two, so compare the load-bearing field.
     $subnetConf = ([regex]::Match((Get-Content $bareConf -Raw), '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
     $subnetList = ([regex]::Match((Get-Content $conflist -Raw), '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
     if ($subnetConf -and $subnetList -and $subnetConf -ne $subnetList) {
@@ -171,12 +138,7 @@ if ($confText) {
 
 # --- Phase C: shim, gcpolicy, service config ---------------------------------
 
-# Shim identity: SHA256 against what Publish-ShimPatch.ps1 recorded at install
-# time, exactly like the BK driver's Assert-ShimPatch gate (2026-08-07). The
-# state path comes from the SHARED helper so there is one definition of where
-# that file lives. Size is only the fallback for a host that has not re-run the
-# deploy script since — and saying "still guessing" out loud is the point: this
-# script exists to hand a fresh machine a verdict, not a maybe.
+# SHA256 against Publish-ShimPatch.ps1's record, like Assert-ShimPatch; size is only a loudly-flagged fallback.
 $shim = Join-Path $StevedoreBin 'containerd-shim-runhcs-v1.exe'
 $shimFix = 'pwsh -File windows\scripts\host\Publish-ShimPatch.ps1 -ShimPath <build>  (admin)'
 if (-not (Test-Path $shim)) {
@@ -215,12 +177,7 @@ if (-not (Test-Path $shim)) {
     }
 }
 
-# Safe property reads: a registry value that does not EXIST (e.g. the
-# Environment value on a host that never ran apply-containerd-config) throws
-# PropertyNotFound on member access, which under Set-StrictMode surfaces later
-# as an unset-variable error and CRASHED this script mid-run (2026-08-09),
-# silently skipping the two checks below. .PSObject.Properties.Name -contains
-# avoids the throw entirely and turns "absent" into the honest WARN.
+# Under StrictMode an absent registry value throws on member access, so probe Properties.Name first.
 $cProps = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\containerd' -ErrorAction SilentlyContinue
 $cEnv = if ($cProps -and $cProps.PSObject.Properties.Name -contains 'Environment') { @($cProps.Environment) } else { @() }
 if ($cEnv -and ($cEnv -join ';') -match 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=') {
@@ -245,9 +202,7 @@ if (Test-Path $buildctl) {
 
 # --- Phase D: runtime preconditions -------------------------------------------
 
-# Every drive the build uses, not just C: — the layer stores live on C:, but the
-# repo checkout (the build context) may sit on a VHDX-backed volume with its own
-# exhaustion mode, which a C:-only check cannot see. Mirrors Assert-DiskHeadroom.
+# The repo drive too, like Assert-DiskHeadroom: a VHDX-backed checkout runs out on its own.
 $repoDrive = (Get-Item (Split-Path $scriptAssetRoot -Parent)).PSDrive.Name
 foreach ($driveLetter in (@('C', $repoDrive) | Select-Object -Unique)) {
     $psDrive = Get-PSDrive $driveLetter -ErrorAction SilentlyContinue

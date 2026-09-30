@@ -2,11 +2,7 @@
 .github
 output.log
 *.log
-# logs/ held 2.3 GB across 249 files by 2026-08-10 and GROWS every run; the
-# bare `*.log` above matches only root-level files (the same semantics trap
-# documented for *.zip below), so the whole tree was uploaded with EVERY stage
-# build — measured live: "transferring context: 2.38GB 19.3s" (needed content
-# is ~86 MB). Never COPY'd by any Dockerfile → zero cache impact.
+# Bare `*.log` matches root-level files only, so the ever-growing logs/ tree needs its own rule.
 logs/
 **/archive/
 README.md
@@ -20,13 +16,7 @@ out/
 *.tar
 *.tar.gz
 *.zip
-# windows/downloads is consumed ONLY by Dockerfile.nvidia, which Build-Buildkit.ps1 builds with
-# its own `windows` context (this root .dockerignore does not apply there; see
-# windows/.dockerignore). Excluding the whole dir here keeps the ~2 GB EULA-gated
-# TensorRT zip (plus any locally parked CUDA/cuDNN downloads) out of the ROOT context
-# that every other docker build in the chain uploads (~9 per full run, classic builder
-# = full context upload each). NB: a bare `*.zip` above matches only root-LEVEL zips
-# (Docker pattern semantics), so this explicit dir exclusion is load-bearing.
+# Only Dockerfile.nvidia reads this, through its own windows context; bare `*.zip` would not keep the TensorRT zip out of the root context.
 windows/downloads/
 *.swp
 *.swo
@@ -45,9 +35,7 @@ secrets/
 **/build/
 !linux/scripts/03-media/build/
 !linux/scripts/03-media/build/onnxruntime/build/
-# #108: the grouped scripts layout put chain components under scripts/build/ -
-# without this negation the generic **/build/ exclusion above swallows them
-# (cost one base solve: Test-Toolchain.ps1 "not found" in the context).
+# Chain scripts live under scripts/build/, which the generic **/build/ exclusion would swallow.
 !windows/scripts/build/
 **/dist/
 .venv/
@@ -69,19 +57,10 @@ windows/scripts/rust/
 windows/scripts/python/
 windows/scripts/certificates/
 
-# DocumANTation submodule (~9 MB): built standalone from its own Dockerfile,
-# never COPY'd by any chain Dockerfile — keep it out of every root context
-# upload (~9 per full classic run).
+# DocumANTation builds from its own Dockerfile; no chain Dockerfile COPYs it.
 external/
 
-# Scratch and one-shot helpers — mirrors the block at the end of .gitignore.
-# These are untracked by design, so git cannot keep them out of the BUILD
-# CONTEXT: a stray root-level probe script still gets uploaded with every root
-# solve and changes the context that ~9 builds send per full classic run.
-# NB: a bare `*.py` matches only root-LEVEL files (the same Docker pattern
-# semantics documented for *.zip and *.log above) — which is exactly the scope
-# wanted here. Verified 2026-08-25: no Dockerfile COPYs a root-level script;
-# every COPY source sits under linux/, windows/, shared/ or downloads/.
+# Untracked scratch helpers (mirrors .gitignore); bare patterns match root level only, where no Dockerfile COPYs from.
 .scratch/
 *.py
 *.sh
@@ -90,12 +69,8 @@ external/
 *.tmp
 *.bak
 
-# The QNN drop dir holds only documentation until an operator stages the SDK zip
-# (which is git-ignored). It is bind-mounted into the five most expensive media
-# RUNs — ORT cpu, ORT genai, litert, tvm, app-wheelhouse — so a README edit alone
-# re-pays ~95 min per arch. Scripts only NAME it in comments; none reads it.
+# The QNN drop dir is bind-mounted into the costliest media RUNs, so a README edit there must not bust them.
 linux/qnn-sdk/*.md
 
-# Home Assistant live state (DB, backups, core dump, secrets): no Dockerfile
-# reads it, and ~1.5 GB would otherwise ride in every root-context solve.
+# Home Assistant live state: large, secret, and read by no Dockerfile.
 linux/homeassistant/config/

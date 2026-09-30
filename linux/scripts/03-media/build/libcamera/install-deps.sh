@@ -22,10 +22,7 @@ target_packages=(
 if is_cross && \
    command -v cross_target_arch >/dev/null 2>&1 && \
    [ "$(cross_target_arch)" = "riscv64" ]; then
-  # This stage already copies /opt/gstreamer in before libcamera builds, and
-  # that prefix provides the target GLib pkg-config metadata and headers. Avoid
-  # libglib2.0-dev:riscv64 here because Ubuntu pulls in target python3, whose
-  # postinst cannot execute in this build stage.
+  # /opt/gstreamer already supplies target GLib, and libglib2.0-dev:riscv64 pulls a python3 whose postinst cannot run here.
   _filtered=()
   for _pkg in "${target_packages[@]}"; do
     [ "${_pkg}" = "libglib2.0-dev" ] || [ -z "${_pkg}" ] || _filtered+=("${_pkg}")

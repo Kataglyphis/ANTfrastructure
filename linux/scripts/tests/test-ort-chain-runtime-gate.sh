@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# No apt ONNX Runtime lands (2026-08-27 pulled libonnxruntime1.23); loader paths reach the chain only.
-# NOT covered: a real dpkg/apt/ldconfig -- their output is recorded text here; dlopen by full path.
+# No apt ONNX Runtime may land and loader paths reach only the chain; dpkg, apt and ldconfig output is recorded.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

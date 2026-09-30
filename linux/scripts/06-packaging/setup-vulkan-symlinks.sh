@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# setup-vulkan-symlinks.sh
-# Creates architecture symlinks under /opt/vulkan and links /opt/vulkan/active
-# to the appropriate architecture folder.
-#
-# The Vulkan SDK installs only under x86_64/; this creates aarch64/ and riscv64/
-# symlinks pointing at x86_64/ so the runtime can find ICDs on any architecture.
+# The SDK installs only x86_64/; alias the other arches to it so the runtime finds ICDs, and set /opt/vulkan/active.
 
 main() {
   local target_arch="${1:-${TARGET_ARCH:-${TARGETARCH:-amd64}}}"

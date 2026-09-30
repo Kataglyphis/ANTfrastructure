@@ -1,8 +1,5 @@
 #requires -Version 7.0
-# Tests for WindowsBuildKit.Common.psm1 — the CNI nat subnet-drift guard's math.
-# A wrong mask here makes Build-Buildkit.ps1's preflight PASS a drifted config,
-# which is exactly the silent no-network failure the guard exists to prevent
-# (cost a chain launch on 2026-08-03).
+# A wrong mask in the CNI nat subnet-drift guard passes a drifted config into a silent no-network build.
 
 Describe 'Test-IpInSubnet' {
 
@@ -58,9 +55,7 @@ Describe 'Get-CniNatSubnetDrift' {
     }
 
     It 'judges the .conflist form too (the host standardises on it for nerdctl)' {
-        # nerdctl panics on a bare single-plugin .conf, so 0-containerd-nat.conf
-        # was converted to conflist form on 2026-08-07. The drift guard must read
-        # the nested plugins[].ipam shape, or it silently stops guarding.
+        # The config is in conflist form (nerdctl panics on a bare .conf), so the guard must read plugins[].ipam.
         $conflist = '{ "cniVersion": "0.3.0", "name": "nat", "plugins": [ { "type": "nat", "ipam": { "subnet": "172.20.0.0/16" } } ] }'
         $r = Get-CniNatSubnetDrift -ConfText $conflist -AdapterIp '172.31.32.1'
         Assert-True ($null -ne $r) 'a drifted conflist must still report drift'
@@ -78,11 +73,7 @@ Describe 'Get-CniNatSubnetDrift' {
 
 Describe 'Get-CniConfFormIssue (wrong-filename guard)' {
 
-    # 2026-08-07: the .conf was renamed to .conflist to stop nerdctl panicking,
-    # and buildkitd silently lost container networking — empty ipconfig,
-    # "unreachable network" on a raw TCP connect, no networking block in the HCS
-    # spec. The drift guard passed green throughout, because drift and absence
-    # are different failures. These cases pin the distinction.
+    # Drift and absence are different failures: without the .conf buildkitd loses networking while the drift guard stays green.
 
     It 'passes when BOTH forms are present (the only healthy state)' {
         Assert-Null (Get-CniConfFormIssue -BuildkitConfExists $true -NerdctlConfExists $true) `
@@ -103,8 +94,7 @@ Describe 'Get-CniConfFormIssue (wrong-filename guard)' {
     }
 
     It 'does NOT fail the buildctl lane on conf-only (nerdctl absence is not this lane s problem)' {
-        # The chain builds fine on the .conf alone; only nerdctl breaks. Failing
-        # here would block builds for a tool the build does not use.
+        # The chain builds on the .conf alone; failing here would block builds for a tool they do not use.
         Assert-Null (Get-CniConfFormIssue -BuildkitConfExists $true -NerdctlConfExists $false) `
             'conf-only must not block the buildctl lane'
     }
@@ -112,9 +102,7 @@ Describe 'Get-CniConfFormIssue (wrong-filename guard)' {
 
 Describe 'ConvertFrom-CniConfList (derive the .conf from the .conflist)' {
 
-    # The host needs both forms; keeping them as hand-edited copies is the
-    # two-copies drift this repo eliminates elsewhere. Authored = conflist,
-    # derived = conf.
+    # The host needs both forms: the conflist is authored and the conf derived, never two hand-edited copies.
 
     It 'unwraps the single plugin and keeps the network identity' {
         $list = @'
@@ -139,8 +127,7 @@ Describe 'ConvertFrom-CniConfList (derive the .conf from the .conflist)' {
     }
 
     It 'REFUSES a multi-plugin conflist instead of silently taking plugins[0]' {
-        # Truncating to plugins[0] is exactly the unchecked indexing that makes
-        # nerdctl panic; doing it ourselves would drop configuration silently.
+        # Truncating to plugins[0] would silently drop configuration.
         $list = '{ "cniVersion": "0.3.0", "name": "nat", "plugins": [ {"type":"nat"}, {"type":"portmap"} ] }'
         Assert-Throws -MessagePattern '2 plugins' -Body { ConvertFrom-CniConfList -ConfListText $list }
     }
@@ -168,10 +155,7 @@ Describe 'ConvertFrom-CniConfList (derive the .conf from the .conflist)' {
 
 Describe 'ConvertTo-CanonicalJson (order-independent comparison)' {
 
-    # The first CNI sync check compared ConvertFrom-Json | ConvertTo-Json, which
-    # preserves parse order, and reported the reference host as "out of sync"
-    # while the two files were identical apart from field order. A guard that
-    # cries wolf gets ignored, so comparison is canonical.
+    # Canonical comparison: a guard that reports field order as "out of sync" gets ignored.
 
     It 'treats documents differing only in key order as equal' {
         $a = '{ "cniVersion": "0.3.0", "name": "nat", "type": "nat" }' | ConvertFrom-Json

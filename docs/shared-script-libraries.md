@@ -283,9 +283,12 @@ for why.
 
 ## `app-packaging.sh` — the two flatpak entry points
 
-The file's own header carries the three rules every packager in it obeys
-(container-native staging, flatpak-builder's exit code is not the verdict,
-nothing prints `Created:` without `app_packaging_assert_artifact`). Two entry
+Every packager in the file obeys three rules. Staging trees are container-native,
+never inside the mounted workspace: a bind-mounted host drive refuses chmod/fchmod
+for the container uid, so dpkg-deb, appimagetool and flatpak-builder fail there,
+and only finished artifacts are copied into `out/`. flatpak-builder's exit code is
+reported but never the verdict; `ostree --repo=<repo> refs` decides whether the app
+is committed. And nothing prints `Created:` without `app_packaging_assert_artifact`. Two entry
 points were added on 2026-09-15 for a consumer that packages a **CMake install
 tree** rather than a Flutter bundle; the finish-args block and the CON2 probe
 landed on 2026-09-17:

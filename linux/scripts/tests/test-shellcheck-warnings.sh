@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_shellcheck_warnings.py and the two lint-shell.sh modes it owns
-# (--list-files for the scope, --print-bin for the pinned binary). Each case copies
-# the gate into a throwaway tree with small .sh subjects that provoke SC2034/SC2155.
-# SKIP_REAL_TREE=1 drops the live-tree case (what the mutation manifest runs with).
-# docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings
+# verify_shellcheck_warnings.py; SKIP_REAL_TREE=1 (the mutation runs) drops the live-tree case; see docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GATE="${TESTS_DIR}/../verify_shellcheck_warnings.py"
@@ -22,19 +18,14 @@ if ! command -v shellcheck >/dev/null 2>&1; then
 fi
 SC_BIN="$(command -v shellcheck)"
 
-# A tree whose linux/scripts holds one subject per `<name>:<shape>` argument.
-# Shapes: unused (1x SC2034), unused2 (2x SC2034), masked (1x SC2155), clean,
-# sourcer+sourced (a pair whose variable only looks unused without -x; the
-# sourcer's directive names linux/scripts/lib.sh, so name the sibling `lib`).
+# _fixture <name>:<shape>...; a `sourcer`'s directive names linux/scripts/lib.sh, so name its `sourced` sibling `lib`.
 _fixture() {
   local d spec name shape
   d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts" "${d}/linux/host-config" "${d}/linux/llm-stack" "${d}/linux/webserver"
   cp "${GATE}" "${TESTS_DIR}/../quality_allow.py" "${TESTS_DIR}/../gate_scope.py" \
      "${LINT}" "${d}/linux/scripts/"
-  # lint-shell.sh sources the consumer-root contract from beside itself, so the
-  # fixture has to carry it: without it --list-files dies on line 1 and every
-  # assertion below would be about a broken copy rather than about the gate.
+  # lint-shell.sh sources lint-root.sh from beside itself, or --list-files dies on line 1.
   install -D -m 0644 "${TESTS_DIR}/../01-core/lint-root.sh" \
     "${d}/linux/scripts/01-core/lint-root.sh"
   for spec in "$@"; do
@@ -72,7 +63,7 @@ _load_rows() {
 }
 ROW_A1="linux/scripts/a.sh | SC2034 | 1 | baseline"
 
-# ── the fixtures really provoke what they claim ──────────────────────────────
+# The fixtures really provoke what they claim
 t_case "the subject shapes provoke exactly the codes the suite relies on"
 fix="$(_fixture a:unused m:masked)"
 out="$(shellcheck -f gcc -S warning "${fix}/linux/scripts/a.sh" "${fix}/linux/scripts/m.sh" 2>&1)"
@@ -80,7 +71,7 @@ t_assert_contains "${out}" "SC2034" "a.sh must carry an unused variable"
 t_assert_contains "${out}" "SC2155" "m.sh must carry a masked declaration"
 rm -rf "${fix}"
 
-# ── the four-way contract ────────────────────────────────────────────────────
+# The four-way contract
 t_case "a clean tree with no allow file passes"
 fix="$(_fixture c:clean)"
 t_assert_eq "0" "$(_rc "${fix}")"
@@ -129,7 +120,7 @@ printf '#!/usr/bin/env bash\nif true; then\n' > "${fix}/linux/scripts/e.sh"
 t_assert_eq "0" "$(_rc "${fix}")" "SC1070/SC1073 are error-level and must not be ratcheted here"
 rm -rf "${fix}"
 
-# ── -x: a per-file run must see what the whole-set run sees ──────────────────
+# -x: a per-file run must see what the whole-set run sees
 t_case "a variable consumed by a sourced sibling is unused in NEITHER mode"
 fix="$(_fixture m:sourcer lib:sourced)"
 t_assert_eq "0" "$(_rc "${fix}")" "the whole-set run follows the source= directive"
@@ -147,7 +138,7 @@ t_assert_eq "0" "$(SC_BIN="${stub}"; _rc "${fix}" --files linux/scripts/a.sh)" \
 t_assert_eq "1" "$(SC_BIN="${stub}"; _rc "${fix}")" "the whole-set run still sees it"
 rm -rf "${fix}"
 
-# ── --files: the staged-file mode of the pre-commit hook ─────────────────────
+# --files: the staged-file mode of the pre-commit hook
 t_case "--files checks only the listed files: a change in an unlisted file is not reported"
 fix="$(_fixture a:unused b:unused)"
 _freeze "${fix}" "${ROW_A1}" "linux/scripts/b.sh | SC2034 | 1 | baseline"
@@ -179,7 +170,7 @@ t_assert_contains "${out}" "note: linux/scripts/gone.sh is outside" "a deleted f
 t_assert_contains "${out}" "(0 of 3 file(s))"
 rm -rf "${fix}"
 
-# ── --write-baseline: how a freeze and a recorded decrease are produced ──────
+# --write-baseline: how a freeze and a recorded decrease are produced
 t_case "--write-baseline freezes the current counts with a dated, unreviewed reason"
 fix="$(_fixture a:unused2 m:masked)"
 t_assert_eq "0" "$(_write "${fix}")"
@@ -208,7 +199,7 @@ t_assert_eq "linux/scripts/a.sh | SC2034 | 1 | old
 linux/scripts/b.sh | SC2034 | 9 | untouched" "$(_rows "${fix}")" "a.sh re-counted with its reason kept; b.sh was not checked, so its row stays"
 rm -rf "${fix}"
 
-# ── the allow file is read by quality_allow.load_rows, keyed from the LEFT ───
+# The allow file is read by quality_allow.load_rows, keyed from the left
 t_case "a reason carrying | or # survives the round trip, and the shared reader agrees"
 fix="$(_fixture a:unused)"
 _freeze "${fix}" "linux/scripts/a.sh | SC2034 | 1 | why | because   # side note"
@@ -230,7 +221,7 @@ t_assert_contains "${out}" "<file> | SC<code> | <count> | <reason>" "and the sha
 t_assert_eq "0" "$(printf '%s' "${out}" | grep -c -e Traceback)" "a traceback is not a verdict"
 rm -rf "${fix}"
 
-# ── the tool itself: never a silent zero ─────────────────────────────────────
+# The tool itself: never a silent zero
 t_case "a failing lint-shell.sh --list-files is exit 2, not an empty scope that passes"
 fix="$(_fixture a:unused)"
 printf '#!/usr/bin/env bash\nexit 1\n' > "${fix}/linux/scripts/lint-shell.sh"
@@ -256,7 +247,7 @@ t_assert_contains "${out}" "could not provide the pinned shellcheck"
 t_assert_eq "0" "$(_rc "${fix}")" "SHELLCHECK_BIN names the binary explicitly"
 rm -rf "${fix}" "${bin}"
 
-# ── lint-shell.sh owns the binary, at the pinned version only ────────────────
+# lint-shell.sh owns the binary, at the pinned version only
 _pin_probe() {  # --print-bin with $1 as the PATH shellcheck's version and $2 as the cache
   local d="$1" ver="$2" cache="$3"
   printf '#!/usr/bin/env bash\nprintf "version: %%s\\n" "%s"\n' "${ver}" > "${d}/shellcheck"
@@ -284,7 +275,7 @@ t_assert_contains "$(bash "${LINT}" --list-files "${work}/crlfhook" 2>&1)" "crlf
   "a CRLF extension-less script must still classify as shell, or it is invisible to this gate AND to crlf-guard"
 rm -rf "${work}"
 
-# ── the real tree ────────────────────────────────────────────────────────────
+# The real tree
 t_case "the bash that runs lint-shell.sh comes from PATH (Windows' own search finds WSL's first)"
 _fake="$(mktemp -d)"
 printf '#!/usr/bin/env bash\nexit 0\n' > "${_fake}/bash"
@@ -299,9 +290,7 @@ if [ -z "${SKIP_REAL_TREE}" ]; then
   t_assert_eq "0" "$("${PY}" "${GATE}" >/dev/null 2>&1; echo $?)"
 fi
 
-# The --root arm, which no case above reaches: every fixture here is a tree
-# planted AROUND the gate, so it cannot tell --root from its own repo.
-# gate-tree.sh#gate_root_arm holds the two assertions; the subject is an SC2034 in the fixture.
+# Fixtures above plant the tree around the gate, so only this case tells --root from its own repo.
 t_case "--root grades the named tree, and reads its freeze file"
 _root_subject=$'#!/usr/bin/env bash\nunused_var=1'
 gate_root_arm "${PY}" "${GATE}" "${_root_subject}" shellcheck-warnings.allow 'zz-sentinel.sh | SC2034 | 1 | sentinel' zz-sentinel.sh

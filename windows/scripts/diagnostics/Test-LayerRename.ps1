@@ -5,51 +5,17 @@
 
 <#
 .SYNOPSIS
-    Re-test whether the RUN-SIDE wcifs rename bug still exists on this host:
-    create-then-rename of fresh files inside IMAGE-LAYER directories of a
-    process-isolated container fails ERROR_PATH_NOT_FOUND. Run this after any
-    Docker Engine / containerd / hcsshim / Windows / base-image upgrade,
-    alongside Test-ProcessIsolationCommit.ps1 (the layer-COMMIT variant of
-    the same wcifs bug).
-
+    Re-tests the run-side wcifs bug: create-then-rename inside image-layer dirs of a process-isolated container fails.
 .DESCRIPTION
-    Background (see docs/windows-builds.md § Run-side wcifs symptoms): the same
-    wcifs minifilter that breaks layer commits on this host/base skew (client
-    26200 vs Server ltsc2025/26100) also breaks runtime file operations inside
-    layer directories under process isolation. Create-then-RENAME of fresh
-    files fails ERROR_PATH_NOT_FOUND, which breaks git init/clone/checkout
-    ("could not write config file", "unable to write new index file") and
-    Dart's File.renameSync (e.g. the sqlite3 package's native-asset hook).
-    Plain copies and tar extractions succeed; fresh directories created in the
-    sandbox (e.g. C:\probe-fresh) are unaffected; bind-mounted paths bypass
-    wcifs entirely.
-
-    This script runs two checks with `docker run --isolation process`:
-
-      1. CONTROL  -- create+rename in a FRESH directory (expected: always works).
-      2. VERDICT  -- create+rename loop in an image-layer directory
-                     (C:\Windows\Temp). FAILURE here => the run-side bug is
-                     still PRESENT; SUCCESS => it is GONE on this version.
-
+    Run after any engine, Windows or base-image upgrade, beside Test-ProcessIsolationCommit.ps1 (the commit-side variant).
+    See docs/windows-build-lanes.md § Run-side wcifs symptoms (process isolation).
 .PARAMETER Docker
-    Path to docker.exe. Defaults to $env:DOCKER_EXE, then the Stevedore install
-    locations, then docker on PATH.
-
+    Path to docker.exe. Defaults to $env:DOCKER_EXE, the Stevedore locations, then PATH.
 .PARAMETER Base
-    Image to probe (default: mcr.microsoft.com/windows/servercore:ltsc2025).
-    Point this at the built developer image to probe its layer dirs instead.
-
+    Image to probe; point it at the built developer image to probe its own layers.
 .PARAMETER Count
-    Number of create+rename iterations in the layer dir (default 25). The bug
-    is deterministic in hot paths but a single rename can slip through.
-
+    Create+rename iterations in the layer dir (default 25), since a single rename can slip through.
 .EXAMPLE
-    .\windows\scripts\diagnostics\Test-LayerRename.ps1
-
-.EXAMPLE
-    # Probe the built image's own layers. The family Windows image reference is
-    # composed from versions.env rather than retyped, so this line cannot go
-    # stale on a tag bump:
     Import-Module .\windows\scripts\modules\WindowsContainerImage.Common.psm1
     .\windows\scripts\diagnostics\Test-LayerRename.ps1 -Base (Get-CiImageReference -Windows)
 #>
@@ -60,13 +26,12 @@ param(
     [int]$Count    = 25
 )
 
-# --- Resolve docker.exe: central candidate walk, not a pasted one (backlog #101) ---
+# Resolve docker.exe
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1')
 if (-not $Docker) { $Docker = Get-PreferredToolPath -CommandName 'docker' -CandidatePaths @($env:DOCKER_EXE, 'D:\Stevedore\bin\docker.exe', "$env:ProgramFiles\Stevedore\bin\docker.exe") }
 if (-not $Docker) { throw 'docker.exe not found. Pass -Docker <path>.' }
 
-# Native stderr must NOT throw under PS 5.1: never run with EAP=Stop around the
-# docker calls; always capture 2>&1 and branch on $LASTEXITCODE.
+# Continue, so docker's stderr never throws; the exit code decides.
 $ErrorActionPreference = 'Continue'
 
 function Write-Head($t) { Write-Host "`n==== $t ====" -ForegroundColor Cyan }
@@ -79,8 +44,7 @@ Write-Host ("Probe image    : {0}" -f $Base)
 & $Docker version --format 'Docker Engine  : {{.Server.Version}} (API {{.Server.APIVersion}})' 2>&1 | Write-Host
 & $Docker info --format 'containerd     : {{.ContainerdCommit.ID}}   default-isolation: {{.Isolation}}' 2>&1 | Write-Host
 
-# Both probes run in-container PowerShell; Rename-Item surfaces the same
-# ERROR_PATH_NOT_FOUND that breaks git and Dart's File.renameSync.
+# Rename-Item surfaces the same ERROR_PATH_NOT_FOUND that breaks git and Dart's File.renameSync.
 $controlCmd = @'
 $ErrorActionPreference = 'Stop'
 try {

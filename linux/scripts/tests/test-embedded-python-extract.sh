@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Tests for extract_embedded_python.py — the bridge that lets ruff see Python
-# living in shell heredocs (775 lines were invisible before 2026-09-01).
-# The two behaviours below were each proven by mutation.
-# docs/code-quality-tooling.md#python-that-lives-in-shell-heredocs
+# extract_embedded_python.py lets ruff see heredoc Python; see docs/code-quality-tooling.md#python-that-lives-in-shell-heredocs
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -27,8 +24,7 @@ PY
 }
 SH
 
-# A trailing redirection on the opener line is why the first version of the
-# extractor silently skipped smoke-runtime-image.sh's probe.
+# A trailing redirection on the opener line must not hide the block.
 cat > "${_work}/redirected.sh" <<'SH'
 "$py" - <<'PY' 2>/dev/null || echo 'probe crashed'
 import os
@@ -36,8 +32,7 @@ print(os.name)
 PY
 SH
 
-# `cat`ed blocks are FRAGMENTS assembled into one program later; alone they are
-# not valid Python and would produce false undefined-name failures.
+# A lone `cat`ed fragment is not a program and would report false undefined names.
 cat > "${_work}/fragment.sh" <<'SH'
 _tail() {
   cat <<'PY_TAIL'
@@ -69,12 +64,7 @@ t_assert_ok test "${_n}" -ge 5
 t_assert_contains "$(cat "${TESTS_DIR}/../lint-python.sh")" "extract_embedded_python.py" \
   "an extractor nothing calls is not a gate"
 
-# A FAMILY of cat'ed fragments (two or more sharing a marker prefix) IS
-# assembled and extracted -- that is how the 217 lines of genai smoke Python
-# finally reach ruff. A lone fragment still is not, per the case above.
-# One extract-and-count helper: the two cases below used to repeat these four
-# lines verbatim, which the code-dupes gate rightly flagged.
-# _count_extracted <outdir> <script.sh> <name-glob>
+# _count_extracted <outdir> <script.sh> <name-glob>: fragments sharing a marker prefix assemble into one file.
 _count_extracted() {
   python3 "${EXTRACT}" "$1" "$2" >/dev/null 2>&1
   find "$1" -name "$3" 2>/dev/null | wc -l
@@ -102,8 +92,7 @@ t_assert_contains "$(cat "${_FOUT}"/*demo_py*.py 2>/dev/null)" "def add" "fragme
 t_assert_contains "$(cat "${_FOUT}"/*demo_py*.py 2>/dev/null)" "print(add" "fragment B missing"
 
 t_case "markers containing DIGITS are not silently skipped"
-# GENAI_PY_T1..T4 were missed for exactly this reason: the marker class excluded
-# digits, so four of six fragments never reached ruff and nobody could tell.
+# A marker class without digits silently drops NAME_1-style fragments.
 _DIG="${_work}/dig.sh"
 cat > "${_DIG}" <<'DIGSH'
 one() {
@@ -122,9 +111,7 @@ t_assert_eq "1" "$(_count_extracted "${_DOUT}" "${_DIG}" '*num_py*.py')" \
   "digit-suffixed markers must be seen"
 
 t_case "an UPPERCASE interpreter variable is recognised"
-# `"${PY}" - <<'PYEOF'` did not match the old lowercase-only pattern, so the
-# ~330-line program inside assert_pinned_versions -- the largest embedded Python
-# in the tree -- was never linted, and nothing said so.
+# An uppercase interpreter variable such as `"${PY}" -` must match too.
 _UP="${_work}/upper.sh"
 cat > "${_UP}" <<'UPSH'
 run_it() {
@@ -141,10 +128,7 @@ t_assert_eq "1" "$(_count_extracted "${_UOUT}" "${_UP}" '*.py')" \
 t_assert_contains "$(cat "${_UOUT}"/*.py 2>/dev/null)" "value = 41" "body missing"
 
 t_case "a commented-out RUN opener extracts nothing"
-# CI-red on 2026-09-02: prose describing the pattern was read as a real heredoc,
-# so shell lines reached ruff as Python. Both fixtures below DO satisfy BLOCK
-# (opener + closing marker), so they extract without the guard -- that is what
-# makes these tests able to fail. docs/code-quality-tooling.md
+# Both fixtures satisfy BLOCK, so only the commented-opener guard keeps them out.
 _CMT="${_work}/comment.sh"
 cat > "${_CMT}" <<'CMTSH'
 # described, not used: python3 - <<'PYEOF'

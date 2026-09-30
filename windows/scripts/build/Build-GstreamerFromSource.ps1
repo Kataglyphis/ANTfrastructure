@@ -8,9 +8,8 @@
     Build GStreamer from source on Windows using Meson with clang-cl.
 
 .DESCRIPTION
-    Builds the GStreamer monorepo from source via Meson wraps: downloads the
-    GitHub /archive/ release tarball, extracts it with 7z, and compiles with
-    clang-cl (msvc-compatible ABI) against Visual Studio SDK paths.
+    Builds the GStreamer monorepo via Meson wraps from the GitHub release tarball,
+    compiling with clang-cl against the Visual Studio SDK.
 
 .PARAMETER GstVersion
     Git tag or branch to build (default: 1.29.2).
@@ -44,22 +43,17 @@ param(
     [string]$LogDir            = 'C:\temp\logs',
     [string]$GitRepo           = 'https://github.com/gstreamer/gstreamer.git',
     [switch]$KeepBuildArtifacts,
-    # Scrub package/temp scratch INSIDE this process: this script IS its own layer
-    # in the BK lane, and layers are additive.
+    # Scrub scratch inside this process: this script is its own additive layer in the BK lane.
     [switch]$ScrubAfter,
     [string[]]$MesonSetupArgs  = @(),
-    # Escape hatch for the mandatory-plugin contract (Get-RequiredGstPlugin).
-    # Deliberate exception, never routine: an image built with this flag is by
-    # definition not shippable.
+    # Skips the mandatory-plugin contract; an image built with it is not shippable.
     [switch]$SkipPluginGate
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# ---- module import (logging + build helpers + shared utilities) ----
-# Imports MUST precede any module-function call. #108: shared assets sit beside
-# this script in the flat container mount and one level up in the repo layout.
+# Imports first; shared assets sit beside this script in the flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $sharedPath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
 if (-not (Test-Path $sharedPath)) { throw "Required module not found: $sharedPath" }
@@ -71,9 +65,7 @@ if (-not (Test-Path $modulePath)) {
 }
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
-# The mandatory-plugin contract + pkg-config emitter. A separate module ON PURPOSE:
-# it is mounted by the merge builder only, so editing the contract cannot
-# invalidate the six media compile RUNs (see Dockerfile.media-merge-builder).
+# Separate on purpose: only the merge builder mounts it, so contract edits spare the media compile RUNs.
 $gstPluginModule = Join-Path $scriptAssetRoot 'modules\WindowsGstPlugins.Common.psm1'
 if (-not (Test-Path $gstPluginModule)) { throw "Required module not found: $gstPluginModule" }
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($gstPluginModule)))) { Import-Module $gstPluginModule }
@@ -85,18 +77,14 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($sourceBuildM
 $ortGateModule = @('modules', 'ortmods') | ForEach-Object { Join-Path $scriptAssetRoot $_ 'WindowsOrtProvenance.Build.psm1' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 Import-Module ($ortGateModule ?? $(throw 'WindowsOrtProvenance.Build.psm1 (the G2 ORT gate) is not mounted')) -DisableNameChecking
 
-# Merge-lane leaf modules (#134), mounted by Dockerfile.media-merge-builder ONLY,
-# so editing them costs the GStreamer layer and nothing else. Do NOT fold them
-# into WindowsSourceBuild.Common -- that one is in the closure of all 11 media RUNs.
+# Merge-lane leaf modules: do not fold them into WindowsSourceBuild.Common, which every media RUN mounts.
 foreach ($leafModule in @('WindowsMeson.Common.psm1', 'WindowsRustToolchain.Common.psm1')) {
     $leafPath = Join-Path $scriptAssetRoot "modules\$leafModule"
     if (-not (Test-Path $leafPath)) { throw "Required module not found: $leafPath" }
     if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($leafPath)))) { Import-Module $leafPath }
 }
 
-# Target-arch state, resolved ONCE: five decisions far apart in this file depend on
-# it (builtins selection, plugin contract, tflite pre-flight, meson options, the
-# post-install verification), and resolving late left the earliest arch-blind.
+# Resolved once, up front: five decisions far apart in this file depend on it.
 $script:GstTargetArch = Get-WindowsTargetArch
 $script:GstCross      = Test-WindowsCrossTarget -Arch $script:GstTargetArch
 
@@ -110,8 +98,7 @@ function log($text) {
     Write-StructuredLogEntry -Context $logContext -Text $text
 }
 
-# rocm lane only (cpu/nvidia get @(), same command line). amfcodec/d3d11/d3d12 `enabled` fail setup on a lost
-# dependency; hip's cannot at 1.29.2 (no enabled() branch), so Get-GstRocmMissingArtifact backs all four.
+# rocm lane only; hip's `enabled` cannot fail setup at 1.29.2, so Get-GstRocmMissingArtifact backs all four.
 function Get-GstRocmMesonArgs {
     param([Parameter(Mandatory)][hashtable]$GpuEnv)
     if (-not $GpuEnv.HasRocm) { return @() }
@@ -119,11 +106,7 @@ function Get-GstRocmMesonArgs {
         '-Dgst-plugins-bad:d3d11=enabled', '-Dgst-plugins-bad:d3d12=enabled')
 }
 
-# amd64 only (BACKLOG CON28). gdk-pixbuf 2.44.6 defaults man=true and fails setup without rst2man,
-# which took the gdkpixbuf plugin out of `auto` unseen; `enabled` makes the next such loss fail
-# setup instead. Its tests ship nothing and no consumer reads its typelib. The cross lane keeps
-# the plugin out: gdk-pixbuf runs glib-compile-resources at build time, and a cross build has
-# only the target's (docs/windows-cross-builds.md).
+# `enabled` makes a lost gdkpixbuf plugin fail setup; cross has no build-machine glib-compile-resources. docs/windows-cross-builds.md
 function Get-GstGdkPixbufMesonArgs {
     param([switch]$Cross)
     if ($Cross) { return @() }
@@ -131,8 +114,7 @@ function Get-GstGdkPixbufMesonArgs {
         '-Dgdk-pixbuf:tests=false', '-Dgdk-pixbuf:introspection=disabled')
 }
 
-# Entries under the ROCm root, per search-path variable meson or its cmake probe reads (cmake maps a
-# PATH ...\bin to a package prefix). Returns only the variables that change: Name -> {Value, Removed}.
+# Per search-path variable meson or its cmake probe reads, the entries under the ROCm root; only changed variables.
 function Get-GstRocmScrubbedSearchPath {
     param(
         [Parameter(Mandatory)][string]$RocmRoot,
@@ -173,8 +155,7 @@ function Get-GstRocmLeakFinding {
     }
 }
 
-# Applies the scrub to this process and returns it. An emptied variable is REMOVED: pkg-config reads a
-# set-but-empty PKG_CONFIG_LIBDIR as "no default dirs", and .NET 9+ keeps "" as a value.
+# An emptied variable is removed: pkg-config reads an empty PKG_CONFIG_LIBDIR as "no default dirs".
 function Set-GstRocmIsolation {
     param([Parameter(Mandatory)][string]$RocmRoot)
     $scrub = Get-GstRocmScrubbedSearchPath -RocmRoot $RocmRoot
@@ -218,16 +199,13 @@ try {
     log "GitRepo:   $GitRepo"
 
     Switch-BuildPhase '1. resolve directories'
-    # ---- 1. resolve directories ----
     $resolvedInstallDir = Resolve-DirectoryPath -Path $InstallDir
     $resolvedSrcDir     = Resolve-DirectoryPath -Path $SourceDir
     $resolvedBuildDir   = Resolve-DirectoryPath -Path $BuildDir
     $resolvedLogDir     = Resolve-DirectoryPath -Path $LogDir
 
     Switch-BuildPhase '2. Meson via source CPython'
-    # ---- 2. install Meson via source-built CPython ----
-    # pip is bootstrapped here if missing: the media branches build in parallel,
-    # so no ordering assumption on the other build scripts is safe.
+    # pip is bootstrapped here: the media branches build in parallel, so no other script's order can be assumed.
     log 'Using source-built CPython from toolchain layer...'
     $py = Initialize-ToolchainPythonEnvironment
     $pyExe = $py.Exe
@@ -240,12 +218,10 @@ try {
     & cmd.exe /c """$pyExe"" -m pip install meson > ""$pipLog"" 2>&1"
     $pipExit = $LASTEXITCODE
     Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
-    # A pip failure used to surface eight lines later as the misleading
-    # 'meson.exe not found after pip install'.
+    # Fail here, not later as a misleading 'meson.exe not found'.
     if ($pipExit -ne 0) { throw "pip install meson failed (exit $pipExit) -- see $pipLog (logged above)" }
 
-    # Ask Python where console scripts land: the in-tree PCbuild layout puts them
-    # under the source root, NOT next to python.exe.
+    # The in-tree PCbuild layout puts console scripts under the source root, not beside python.exe.
     $pythonScripts = (cmd.exe /c """$pyExe"" -c ""import sysconfig; print(sysconfig.get_path('scripts'))""" | Select-Object -First 1)
     if ($pythonScripts) { $pythonScripts = "$pythonScripts".Trim() }
     if (-not $pythonScripts -or -not (Test-Path (Join-Path $pythonScripts 'meson.exe'))) {
@@ -260,9 +236,7 @@ try {
     $mesonVer = & $mesonExe --version 2>&1 | Select-Object -First 1
     log "Meson version: $mesonVer"
 
-    # meson 1.12.0 build-only subproject fixes (glib(build) poisoning the host glib
-    # -> libnice -> webrtc/nice gone). Located through the interpreter module itself
-    # so a relocated site-packages cannot silently skip it; no-op on amd64.
+    # meson 1.12.0 build-subproject fixes, found via the module so a moved site-packages cannot skip them.
     $mesonInterp = (cmd.exe /c """$pyExe"" -c ""import mesonbuild.interpreter.interpreter as m; print(m.__file__)""" | Select-Object -First 1)
     if ($mesonInterp) { $mesonInterp = "$mesonInterp".Trim() }
     if (-not $mesonInterp -or -not (Test-Path $mesonInterp)) {
@@ -271,21 +245,16 @@ try {
     [void](Invoke-MesonBuildSubprojectPatch -InterpreterPath $mesonInterp)
 
     Switch-BuildPhase '3. clang-cl toolchain + sccache'
-    # ---- 3. set clang-cl as the compiler ----
     log 'Setting CC/CXX to clang-cl...'
     $env:CC  = 'clang-cl'
     $env:CXX = 'clang-cl'
-    # Verify clang-cl is on PATH
     $clangCheck = Get-Command 'clang-cl' -ErrorAction SilentlyContinue
     if (-not $clangCheck) {
         throw 'clang-cl not found on PATH. Ensure LLVM/Clang is installed.'
     }
     log "clang-cl found at: $($clangCheck.Source)"
 
-    # meson honors a space-separated launcher in CC/CXX (unlike the cmake builders).
-    # Same gate as everywhere else: remote backend only, since a container-local
-    # cache would die with the layer. #128: this script runs OUTSIDE
-    # Invoke-SourceBuildChain, so it makes the chain's fresh-server call itself.
+    # Outside Invoke-SourceBuildChain, so start the server here; remote backend only, a local cache dies with the layer.
     Start-SccacheServerSession
     if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) {
         if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
@@ -296,21 +265,13 @@ try {
         log 'sccache disabled (no remote backend configured or sccache.exe missing)'
     }
 
-    # GIT_SSL_NO_VERIFY is scoped to THIS ephemeral build container's meson
-    # subproject fetches, not a runtime trust boundary; Invoke-GitClone never
-    # forces it for ordinary clones.
+    # Scoped to this ephemeral container's meson subproject fetches; Invoke-GitClone never forces it.
     $env:GIT_TERMINAL_PROMPT = '0'
     $env:GIT_SSL_NO_VERIFY = '1'
-    # meson fetches [wrap-file] subprojects with urllib, which verifies TLS against
-    # a CA store this source-built CPython does not ship -- every wrap then burns
-    # its full retry budget. Same trust-boundary reasoning as GIT_SSL_NO_VERIFY.
+    # meson's urllib wrap fetches verify TLS against a CA store this CPython lacks.
     $env:PYTHONHTTPSVERIFY = '0'
 
-    # ---- 3b. EARLY fan-in fast-fail (backlog #66) ----------------------------
-    # Presence-only mirror of the full "must resolve NOW" pre-flight further down,
-    # which cannot move because it authors .pc files: a missing media fan-in fails
-    # in seconds instead of after the tarball, ~20 wrap downloads and five patch
-    # loops. Version floors and .pc semantics remain the full gate's job.
+    # Early presence-only fan-in check: fails in seconds, before any download; the full pre-flight below owns the .pc files.
     if (-not $SkipPluginGate) {
         $earlyOcvRoot = if ($env:OPENCV_ROOT) { $env:OPENCV_ROOT } else { Join-Path $resolvedInstallDir 'lib\opencv5' }
         $earlyOrtRoot = if ($env:ONNX_ROOT) { $env:ONNX_ROOT } else { Join-Path $resolvedInstallDir 'lib\onnxruntime-source' }
@@ -340,9 +301,7 @@ try {
     $tarballUrl = "https://github.com/gstreamer/gstreamer/archive/refs/tags/$GstVersion.tar.gz"
     $tarballPath = Join-Path $resolvedLogDir "gstreamer-$GstVersion.tar.gz"
     log "Downloading GStreamer source tarball from $tarballUrl ..."
-    # Shared helper: retry/backoff + redirect-following (GitHub /archive/ ->
-    # codeload). The wrap and libffi fetches below stay on cmd/curl -- bulk
-    # cmd.exe extraction, a different per-item flow.
+    # The wrap and libffi fetches below stay on cmd/curl: bulk extraction is a different per-item flow.
     Invoke-DownloadWithRetry -Url $tarballUrl -DestinationPath $tarballPath -Description "GStreamer $GstVersion source tarball"
     log 'Tarball downloaded. Extracting...'
 
@@ -356,8 +315,7 @@ try {
         Remove-Item $tarFile -Force
     }
     Remove-Item $tarballPath -Force
-    # Locate the real source dir (skip cpython/) and require a meson.build at its
-    # root: with -KeepBuildArtifacts a stale sibling could win a name-prefix match.
+    # Require a meson.build: with -KeepBuildArtifacts a stale sibling could win a name-prefix match.
     $gstDirs = @(Get-ChildItem -Path $resolvedSrcDir -Directory -Filter 'gstreamer*' |
         Where-Object { Test-Path (Join-Path $_.FullName 'meson.build') })
     if ($gstDirs.Count -ge 1) {
@@ -368,32 +326,25 @@ try {
     }
     log 'Extraction complete.'
 
-    # git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path (git
-    # apply); the helper shields git's stderr via cmd.exe (else PS 5.1 EAP=Stop throws).
+    # git-init so Invoke-SourcePatch takes its git-apply fast path.
     Initialize-ExtractedGitRepo -Path $gstSrcDir
 
     Switch-BuildPhase '5. wrap prefetch + meson fixups'
-    # ---- 5. pre-extract all wrap-git subprojects via tarball ----
-    # $libffiVer stays HERE: SourceBuild.PinParity's W1c scanner keys the pin site
-    # by FILE NAME, and moving it into the module makes the pin invisible to that gate.
+    # $libffiVer stays in this file: SourceBuild.PinParity finds the pin site by file name.
     $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
     # @(): the helper comma-wraps, but an empty result must still expose .Count.
     $wrapFailures = @(Invoke-GstWrapProvisioning -SubprojectDir $subprojDir -TempDir $resolvedLogDir `
         -LibffiVersion $libffiVer -Logger { param($m) log $m })
 
-    # FAIL CLOSED on any wrap loss (#88): what reaches this point is persistent
-    # (moved revision, dead mirror, broken TLS), because transient blips are
-    # already absorbed by the helper's retry/backoff.
+    # Fail closed on any wrap loss: the helper's retries already absorbed transient blips.
     if ($wrapFailures.Count -gt 0) {
         throw ("GStreamer subproject provisioning failed for $($wrapFailures.Count) wrap(s): " +
             ($wrapFailures -join ' | ') +
             ' — refusing to build a feature-reduced GStreamer (backlog #88).')
     }
 
-    # Delete ALL remaining [wrap-git] wraps tree-wide: any subproject can bundle
-    # its own, and git clone fails inside Windows containers. Pre-extracted wraps
-    # were handled above; anything left would FATAL in meson.
+    # Delete every remaining [wrap-git] wrap tree-wide: git clone fails inside Windows containers.
     Get-ChildItem -Path $gstSrcDir -Filter '*.wrap' -Recurse | Where-Object {
         $c = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
         $c -match '^\[wrap-git\]'
@@ -416,11 +367,7 @@ int _isatty(int);
 #define fileno _fileno' | Out-File -FilePath $stubFile -Encoding ASCII
         log "Created stub unistd.h at $stubFile"
     }
-    # io.h force-include shim, used INSTEAD of a bare -FIio.h on the cross lane:
-    # meson hands c_args to .S files too, so a force-included C header is parsed as
-    # assembly ("unrecognized instruction mnemonic" on openh264's aarch64 .S, and
-    # dav1d/libvpx/x264 ship aarch64 .S as well). __ASSEMBLER__ is clang-defined
-    # only for .S, so this is byte-identical to -FIio.h everywhere else.
+    # Instead of a bare -FIio.h on cross: meson hands c_args to aarch64 .S files too, which cannot parse a C header.
     $ioShim = Join-Path $stubDir 'gst-io-shim.h'
     if (-not (Test-Path $ioShim)) {
         '#pragma once
@@ -431,12 +378,7 @@ int _isatty(int);
         log "Created io.h force-include shim at $ioShim (assembly-safe)"
     }
 
-    # ---- 5b-bis. pre-place the win-pkgconfig binary (resilience, both lanes) ----
-    # win-pkgconfig is the ONE subproject that fetches with no fallback (a single
-    # MIRROR_URL, one urlopen, zero retries) and it alone cost three chain runs.
-    # download-binary.py exits early when the archive is already present with a
-    # matching sha256, so pre-placing it removes the network from the critical
-    # path. A failure here is a WARNING, not a throw -- meson still has its own try.
+    # Pre-place win-pkgconfig, the one subproject meson fetches with no retry; failure only warns, meson still tries.
     $wpcDir = Join-Path $gstSrcDir 'subprojects/win-pkgconfig'
     $wpcMeson = Join-Path $wpcDir 'meson.build'
     if (Test-Path $wpcMeson) {
@@ -449,11 +391,7 @@ int _isatty(int);
             if ($wpcHave) {
                 log "win-pkgconfig: pkg-config-$wpcVer.zip already present and matches $($wpcSha.Substring(0,12))..."
             } else {
-                # LAN preseed FIRST, upstream second: retries do not help against a
-                # sustained outage (the same reasoning as the Vulkan SDK in
-                # Build-Buildkit.ps1). Self-seeding -- whichever source works, the
-                # archive is PUT back, so the first success immunises the next run.
-                # Every step is fail-open; a preseed miss is not an error.
+                # LAN preseed first, since retries do not help against a sustained outage; an upstream hit seeds it back.
                 $wpcUpstream = "https://gstreamer.freedesktop.org/src/mirror/pkg-config/pkg-config-$wpcVer.zip"
                 $wpcDav = if ($env:SCCACHE_WEBDAV_ENDPOINT) { "$($env:SCCACHE_WEBDAV_ENDPOINT.TrimEnd('/'))/preseed/pkg-config-$wpcVer.zip" } else { '' }
                 $wpcUrl = if ($wpcDav) { $wpcDav } else { $wpcUpstream }
@@ -489,8 +427,7 @@ int _isatty(int);
         }
     }
 
-    # ---- 5c. detect CUDA (available from Dockerfile.nvidia layer) ----
-    # Get-GpuEnvironment sets CUDA_PATH/CUDA_HOME and prepends CUDA bin to PATH.
+    # Get-GpuEnvironment also sets CUDA_PATH/CUDA_HOME and prepends CUDA bin to PATH.
     $gpuEnv = Get-GpuEnvironment
     if ($gpuEnv.HasCuda) {
         log "CUDA detected at: $($gpuEnv.CudaRoot)"
@@ -505,23 +442,16 @@ int _isatty(int);
         log "ROCm lane ($($gpuEnv.RocmRoot)): meson pins $((Get-GstRocmMesonArgs -GpuEnv $gpuEnv) -join ' ')"
     }
 
-    # ---- 5d. find compiler-rt for lld-link (__udivti3, etc.) ----
-    # Resolve the LLVM install dir via clang-cl on PATH rather than a hardcoded
-    # scoop layout -- survives an LLVM/scoop relocation.
+    # compiler-rt for lld-link (__udivti3 & co), found via clang-cl on PATH rather than a scoop layout.
     $clangClCmd = Get-Command 'clang-cl' -ErrorAction SilentlyContinue
     $llvmRoot = if ($clangClCmd) { Split-Path (Split-Path $clangClCmd.Source) } else { Join-Path $env:USERPROFILE 'scoop\apps\llvm\current' }
-    # TARGET-FILTERED ON BOTH LANES: LLVM ships one builtins lib PER TARGET and this
-    # path goes straight to lld-link. Once Install-ScoopTools.ps1 also installed the
-    # aarch64 counterpart, amd64's arch-blind alphabetical -First 1 flipped to it and
-    # the merge died linking gstreamer-1.0-0.dll ("machine type arm64 conflicts with
-    # x64"). A selection that depends on what happens to be installed is no selection.
+    # Target-filtered on both lanes: LLVM ships one builtins lib per target, and an arch-blind pick once linked arm64 into amd64.
     $rtCandidates = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue)
     $wantRt = (Get-ClangTargetTriple -Arch $script:GstTargetArch) -replace '-.*$', ''   # x86_64/aarch64-pc-windows-msvc -> x86_64/aarch64
     $rtCandidates = @($rtCandidates | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
     if ($script:GstCross) {
         if ($rtCandidates.Count -eq 0) {
-            # SELF-HEAL: the source-built toolchain (#135) ships the host builtins
-            # only (fallback; the toolchain stage normally stages the lib already).
+            # SELF-HEAL: the source-built toolchain ships host builtins only, when the toolchain stage has not staged them.
             $rtHostLib = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
             if ($rtHostLib.Count -gt 0) {
                 $rtVer = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.1'
@@ -539,10 +469,7 @@ int _isatty(int);
             }
         }
         if ($rtCandidates.Count -eq 0) {
-            # WARN, do not throw: absence is already tolerated on amd64, so throwing
-            # only here would apply a stricter policy to the cross lane. Linking
-            # nothing is the honest outcome -- lld-link then names the missing
-            # __udivti3 & co precisely, unlike a machine-type conflict.
+            # WARN, do not throw: amd64 tolerates absence too, and lld-link then names the missing __udivti3 precisely.
             Write-Warning ("compiler-rt builtins for '$wantRt' not found under $llvmRoot\lib\clang " +
                            "(present: $((@(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue).Name | Sort-Object -Unique) -join ', ')). " +
                            'Linking WITHOUT compiler-rt rather than linking the host-arch library. If the link ' +
@@ -557,11 +484,7 @@ int _isatty(int);
         log "Found compiler-rt: $rtFullPath"
     }
 
-    # ---- 5d-bis. Vulkan import library must match the TARGET ----
-    # LunarG ships the aarch64 import libs in $VULKAN_SDK\Lib-ARM64 (an optional
-    # component); nothing pointed lld-link there, so gst-plugins-bad's Vulkan
-    # library linked the HOST import lib ("machine type x64 conflicts with arm64").
-    # LIB is searched in order, so prepending is enough.
+    # The Vulkan import lib must match the target; LIB is searched in order, so prepending the arch dir is enough.
     if ($script:GstCross) {
         if ([string]::IsNullOrWhiteSpace($env:VULKAN_SDK)) {
             throw 'VULKAN_SDK is not set, so the target-arch Vulkan import library cannot be located. gst-plugins-bad would link the host vulkan-1.lib and fail with a machine-type conflict.'
@@ -577,30 +500,19 @@ int _isatty(int);
         log "Vulkan: prepended $vkArchLib to LIB (target-arch import library)"
     }
 
-    # ---- 5e. Windows SDK GUID import libs for clang-cl/lld-link ----
-    # clang-cl's lld-link does not resolve the COM/DirectShow/MediaFoundation/KS
-    # GUIDs that link.exe auto-pulls from uuid.lib, so name the SDK import libs
-    # explicitly. Unreferenced symbols are not pulled, so this is harmless for
-    # plugins that do not need them (/FORCE:MULTIPLE covers dups).
+    # lld-link does not auto-pull the COM/DirectShow/MF/KS GUIDs link.exe gets from uuid.lib; unused ones are not pulled.
     $guidLibs = @(
         'uuid.lib', 'mfuuid.lib', 'strmiids.lib', 'ksuser.lib', 'dxguid.lib',
         'dmoguids.lib', 'wmcodecdspuuid.lib', 'mfplat.lib', 'mf.lib', 'mfreadwrite.lib'
     )
-    # Resolved HERE because both the link args below and the meson cross file in
-    # phase 6 need it: meson passes c_link_args THROUGH the compiler driver, which
-    # defaults to the HOST triple, so without --target lld-link is handed
-    # /machine:x64. Empty on amd64 and dropped below, so that lane is unchanged.
+    # meson links through the compiler driver, which defaults to the host triple, so link args need --target too.
     $gstTargetArch = $script:GstTargetArch   # resolved once at the top of this script
     $gstCrossArg = if ($script:GstCross) { "--target=$(Get-ClangTargetTriple -Arch $gstTargetArch)" } else { '' }
     $linkArgElems = ((@('/FORCE:MULTIPLE', $gstCrossArg, $rtFullPath) + $guidLibs) |
         Where-Object { $_ } | ForEach-Object { "'$_'" }) -join ','
     log "Link args: [$linkArgElems]"
 
-    # ---- 5f. patch gst-plugins-bad mediafoundation for clang-cl ----
-    # The plugin's WinRT-app-partition detection lacks the msvc guard its required
-    # GstWinRt helper library does have, so under clang-cl GstWinRt is never built
-    # yet mediafoundation still detects winapi_app and demands gstwinrt_dep. Gate
-    # winapi_app on msvc too: clang-cl then builds the desktop path (mfvideosrc).
+    # mediafoundation lacks GstWinRt's msvc guard, so under clang-cl it demands a GstWinRt that is never built.
     $mfMeson = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\sys\mediafoundation\meson.build'
     [void](Edit-SourceFile -Path $mfMeson -Marker "if runtimeobject_lib\.found\(\) and cxx\.get_id\(\) == 'msvc'" `
             -Description 'mediafoundation meson.build: gate winapi_app detection on msvc (clang-cl builds desktop path only)' `
@@ -610,11 +522,7 @@ int _isatty(int);
             [regex]::Replace($mfContent, "if runtimeobject_lib\.found\(\)(\s*\r?\n)", "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`$1", 1)
         })
 
-    # ---- 5g. bump cpp_std=c++11 pins to c++17 for the VS 18 MSVC STL ----
-    # Several gst-plugins-bad C++ libs pin cpp_std=c++11 (dxva, d3d11/12, ...), but
-    # VS 18's MSVC STL (14.51+) uses C++14 constructs unconditionally, which clang-cl
-    # rejects in C++11 mode. Bump every pin to c++17, what the rest of this image
-    # compiles with; wrap subprojects are pure C and carry no such pin.
+    # c++11 pins become c++17: VS 18's MSVC STL uses C++14 constructs that clang-cl rejects in C++11 mode.
     $cppStdPatched = 0
     Get-ChildItem -Path $gstSrcDir -Filter 'meson.build' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
         $content = [System.IO.File]::ReadAllText($_.FullName)
@@ -628,12 +536,7 @@ int _isatty(int);
     }
     log "Bumped cpp_std=c++11 -> c++17 in $cppStdPatched gst meson.build file(s) (VS 18 MSVC STL needs >= C++14 under clang-cl)"
 
-    # ---- 5h. port gst-plugins-bad ext/opencv to the OpenCV 5 header layout ----
-    # gstreamer 1.29.2's opencv plugin is written for OpenCV 4, which RELOCATED the
-    # APIs it uses (CascadeClassifier/CASCADE_* -> xobjdetect, contourArea &
-    # approxPolyDP & convexHull -> geometry, findChessboardCorners & findCirclesGrid
-    # & CALIB_CB_* -> calib + objdetect). Add the new header after each file's first
-    # opencv2 include -- same classic APIs, new homes, not a behavioural change.
+    # The opencv plugin targets OpenCV 4; OpenCV 5 moved the same APIs to new headers, so add those.
     $ocvExtDir = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\ext\opencv'
     $ocv5IncludeMap = @(
         @{ Pattern = 'CascadeClassifier|CASCADE_DO_CANNY_PRUNING|CASCADE_SCALE_IMAGE'; Add = @('opencv2/xobjdetect.hpp') },
@@ -654,15 +557,12 @@ int _isatty(int);
                 }
             }
         }
-        # POSIX ftello/fseeko are absent under the Windows CRT -> use the 64-bit
-        # MSVC equivalents (this build is Windows/clang-cl only).
+        # The Windows CRT has no POSIX ftello/fseeko.
         $c = $c -replace '\bftello\b', '_ftelli64' -replace '\bfseeko\b', '_fseeki64'
         if ($c -ne $orig) { [System.IO.File]::WriteAllText($_.FullName, $c); $ocvPortPatched++; log "OpenCV5 port -> $($_.Name)" }
     }
     log "OpenCV 5 header port applied to $ocvPortPatched gst ext/opencv file(s)"
-    # gst hardcodes the UNVERSIONED -lopencv_tracking (Linux naming), but OpenCV's
-    # Windows libs are versioned and already arrive with their real names via the
-    # opencv4.pc dependency, so lld-link cannot open the bare import lib.
+    # gst hardcodes Linux's unversioned -lopencv_tracking; opencv4.pc already brings the versioned Windows lib.
     $ocvMeson = Join-Path $ocvExtDir 'meson.build'
     if (Test-Path $ocvMeson) {
         $mc = [System.IO.File]::ReadAllText($ocvMeson)
@@ -670,20 +570,9 @@ int _isatty(int);
         if ($mc2 -ne $mc) { [System.IO.File]::WriteAllText($ocvMeson, $mc2); log 'Removed hardcoded -lopencv_tracking from ext/opencv/meson.build (opencv4.pc provides the versioned lib)' }
     }
 
-    # ---- 5c. MANDATORY PLUGIN PRE-FLIGHT ─────────────────────────────────────
-    # The three root causes (a missing opencv4.pc, ONNX Runtime shipping no .pc at
-    # all, and the FFmpeg.wrap trap that would build a second, older FFmpeg) plus
-    # the per-plugin mechanisms: docs/windows-builds.md § Mandatory GStreamer
-    # plugins (the contract).
-    #
-    # The .pc files are authored HERE, not by the OpenCV and ONNX builds: those are
-    # the two most expensive layers in the chain and a text file is not worth
-    # invalidating them. Arch filtering (dropping tflite) lives in the CONTRACT,
-    # never here -- pre-flight, smoke test and healthcheck disagreeing is the
-    # 2026-07-11 regression that shipped an image without plugins.
+    # Mandatory plugin pre-flight; .pc files authored here spare the costly OpenCV/ORT layers. See docs/windows-builds.md § Mandatory GStreamer plugins (the contract)
     $requiredPlugins = @(Get-RequiredGstPlugin -Arch $script:GstTargetArch)
-    # Declared before the branch so the meson args below can interpolate it
-    # unconditionally: StrictMode would fault on an undefined variable.
+    # Declared before the branch: the meson args interpolate it and StrictMode faults on an undefined variable.
     $script:TfliteIncludeArg = ''
     if ($SkipPluginGate) {
         log 'WARNING: -SkipPluginGate — the mandatory GStreamer plugin contract is DISABLED for this build.'
@@ -693,12 +582,9 @@ int _isatty(int);
 
         # opencv4.pc — describes the OpenCV 5 install under $OPENCV_ROOT.
         $ocvRoot = if ($env:OPENCV_ROOT) { $env:OPENCV_ROOT } else { Join-Path $resolvedInstallDir 'lib\opencv5' }
-        # The arch component of OpenCV's Windows layout (<root>\<arch>\vc18) is the
-        # one token that moves with the target, so it comes from the arch table.
+        # The <arch> in <root>\<arch>\vc18 moves with the target, so it comes from the arch table.
         $ocvLib = if ($env:OPENCV_LIB) { $env:OPENCV_LIB } else { Join-Path $ocvRoot "$(Get-OpenCvArchDir)\vc18\lib" }
-        # Header root = the directory CONTAINING opencv2/, found rather than assumed:
-        # OpenCV's Windows layout has moved between majors, and guessing wrong yields
-        # a .pc that resolves but cannot compile.
+        # Found, not assumed: OpenCV's Windows layout moved between majors, and a wrong guess compiles nothing.
         $ocvHeader = Get-ChildItem -Path $ocvRoot -Recurse -Filter 'opencv.hpp' -File -ErrorAction SilentlyContinue |
             Where-Object { $_.DirectoryName -match 'opencv2$' } | Select-Object -First 1
         if (-not $ocvHeader) { throw "opencv2/opencv.hpp not found under $ocvRoot — cannot describe the OpenCV install to pkg-config." }
@@ -711,11 +597,7 @@ int _isatty(int);
                 -Description 'OpenCV 5 (opencv4-named alias so gst-plugins-bad can resolve it)' `
                 -IncludeDir @($ocvInclude) -LibDir $ocvLib -Library $ocvLibs `
                 -PkgConfigDir (Join-Path $ocvLib 'pkgconfig'))
-        # gst derives its cascade-data dir from the opencv dependency's prefix +
-        # share/{opencv,OpenCV,opencv4} and errors when none is a directory -- but
-        # pkgconf RELOCATES that prefix from the .pc file LOCATION, ignoring the
-        # explicit prefix= line. So create share\opencv4 under every plausible
-        # prefix root and fill each from <root>\etc.
+        # gst needs share\opencv4 under the prefix, which pkgconf relocates from the .pc location: create it under each candidate.
         $ocvPrefixCandidates = @($ocvRoot, (Split-Path $ocvLib -Parent), $ocvLib) |
             Where-Object { $_ } | Select-Object -Unique
         foreach ($base in $ocvPrefixCandidates) {
@@ -735,12 +617,9 @@ int _isatty(int);
         $ortLib = Join-Path $ortRoot 'lib'
         $ortInclude = Join-Path $ortRoot 'include'
         if (-not (Test-Path (Join-Path $ortLib 'onnxruntime.lib'))) { throw "onnxruntime.lib not found in $ortLib — cannot describe ONNX Runtime to pkg-config." }
-        # Same env-name order as Build-OnnxFromSource.ps1: reading only ONNX_VERSION
-        # wrote a 1.28.0 .pc against a 1.29.0 install in standalone runs, and passed
-        # the >= 1.16.1 constraint silently.
+        # Same env-name order as Build-OnnxFromSource.ps1, or a standalone run writes a stale version into the .pc.
         $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.30.0' -StripVPrefix
-        # ORT's headers sit at include\ AND include\onnxruntime\core\session on some
-        # layouts; both are handed over so the plugin's #include resolves either way.
+        # Some layouts put ORT's headers under include\onnxruntime\core\session too.
         $ortIncludes = @($ortInclude, (Join-Path $ortInclude 'onnxruntime'),
             (Join-Path $ortInclude 'onnxruntime\core\session')) | Where-Object { Test-Path $_ }
         [void](Write-PkgConfigFile -Name 'libonnxruntime' -Version $ortVersion `
@@ -748,11 +627,7 @@ int _isatty(int);
                 -IncludeDir $ortIncludes -LibDir $ortLib -Library @('onnxruntime') `
                 -PkgConfigDir (Join-Path $ortLib 'pkgconfig'))
 
-        # OpenSSL for the TARGET arch (cross lane only): scoop installs the host
-        # architecture only, so pkg-config found the x64 .pc first and four targets
-        # (hls, dtls, aes, glib-networking's TLS backend) died with "machine type x64
-        # conflicts with arm64". The lib dir is found by SEARCH -- slproweb's layout
-        # is upstream's business -- and upstream .pc files win if the tree ships any.
+        # Target OpenSSL on cross: scoop's is host-only; its layout is searched, and upstream .pc files win if shipped.
         $sslPcDirs = @()
         if ($script:GstCross) {
             $sslRoot = 'C:\opt\openssl-arm64'
@@ -764,9 +639,7 @@ int _isatty(int);
                        'import library and fail with a machine-type conflict.')
             }
             $sslLibDir = $sslLibHit[0].Directory.FullName
-            # The include dir is FOUND, not composed: innounp extracts InnoSetup
-            # payloads under a literal {app} directory, so a composed <root>\include
-            # would silently not exist. opensslv.h sits at <include>\openssl\.
+            # Found, not composed: innounp extracts under a literal {app} directory.
             $sslIncHit = @(Get-ChildItem -Path $sslRoot -Recurse -Filter 'opensslv.h' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
             if ($sslIncHit.Count -eq 0) {
                 throw "OpenSSL headers for $($script:GstTargetArch) not found under $sslRoot (no opensslv.h). The extracted package layout changed."
@@ -779,8 +652,7 @@ int _isatty(int);
             } else {
                 $sslPcDir = Join-Path $resolvedLogDir 'openssl-arm64-pkgconfig'
                 New-Item -Path $sslPcDir -ItemType Directory -Force | Out-Null
-                # Three modules: consumers ask for libcrypto, libssl or the
-                # umbrella 'openssl' depending on the plugin.
+                # Plugins ask for libcrypto, libssl or the umbrella openssl.
                 [void](Write-PkgConfigFile -Name 'libcrypto' -Version '4.0.1' -Description 'OpenSSL cryptography library (aarch64)' `
                         -IncludeDir @($sslInc) -LibDir $sslLibDir -Library @('libcrypto') -PkgConfigDir $sslPcDir)
                 [void](Write-PkgConfigFile -Name 'libssl' -Version '4.0.1' -Description 'OpenSSL TLS library (aarch64)' `
@@ -792,25 +664,19 @@ int _isatty(int);
             }
         }
 
-        # Make the new pkgconfig dirs visible to meson for THIS process; the OpenSSL
-        # ones go FIRST so they win over the image's x64 openssl.pc. NB the explicit
-        # @(..) + @(..): '+' binds tighter than ',', so @($a + $b, $c) would nest.
+        # OpenSSL's dirs first, over the image's x64 openssl.pc; @() + @() because '+' binds tighter than ','.
         $newPcDirs = @($sslPcDirs) + @((Join-Path $ocvLib 'pkgconfig'), (Join-Path $ortLib 'pkgconfig'))
         $env:PKG_CONFIG_PATH = (@($newPcDirs + ($env:PKG_CONFIG_PATH -split ';' | Where-Object { $_ })) | Select-Object -Unique) -join ';'
         log "PKG_CONFIG_PATH = $env:PKG_CONFIG_PATH"
 
-        # Neutralise FFmpeg.wrap so libav* resolve from OUR FFmpeg install rather
-        # than the wrap's pinned 7.1.1 (see the header comment above).
+        # Disable FFmpeg.wrap so libav* resolve from our FFmpeg, not the wrap's pinned 7.1.1.
         $ffmpegWrap = Join-Path $gstSrcDir 'subprojects\FFmpeg.wrap'
         if (Test-Path $ffmpegWrap) {
             Move-Item -Path $ffmpegWrap -Destination "$ffmpegWrap.disabled" -Force
             log 'Disabled subprojects/FFmpeg.wrap — gst-libav must link the FFmpeg this image ships, not a wrap-pinned 7.1.1.'
         }
 
-        # PRESENCE-DRIVEN since #115: the cross lane BUILDS plain LiteRT, so the
-        # decision input is the artifact (tensorflowlite_c.lib in the fanned-in
-        # tree), never the lane. A cross merge from an older LiteRT-less core
-        # degrades to disabled-with-reason instead of throwing.
+        # Keyed on the fanned-in tensorflowlite_c.lib, not the lane: an older LiteRT-less cross core disables with a reason.
         $script:GstTfliteLibDir = if ($env:LITERT_LIB) { $env:LITERT_LIB } else { Join-Path $resolvedInstallDir 'lib\litert\lib' }
         $script:GstTfliteAvailable = (-not $script:GstCross) -or (Test-Path (Join-Path $script:GstTfliteLibDir 'tensorflowlite_c.lib'))
         if (-not $script:GstTfliteAvailable) {
@@ -818,12 +684,7 @@ int _isatty(int);
                  'predates the #115 LiteRT cross build (or media-litert was not fanned in). The meson feature is set ' +
                  'to disabled EXPLICITLY below, never auto.')
         } else {
-            # ── tflite: the one integration that does NOT use pkg-config ──────────
-            # gst ext/tflite probes the compiler for tensorflow/lite/c/c_api.h -- the
-            # PRE-RENAME TensorFlow path -- while LiteRT stages its headers under
-            # include\tflite\. A namespace mismatch, not a missing dependency: mirror
-            # the header tree under the name upstream probes for; the copies' own
-            # tflite/... includes still resolve from the same include root.
+            # tflite skips pkg-config and probes the pre-rename tensorflow/lite path, so mirror LiteRT's tflite\ headers there.
             $litertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { Join-Path $resolvedInstallDir 'lib\litert' }
             $litertInclude = if ($env:LITERT_INCLUDE) { $env:LITERT_INCLUDE } else { Join-Path $litertRoot 'include' }
             $litertLib = if ($env:LITERT_LIB) { $env:LITERT_LIB } else { Join-Path $litertRoot 'lib' }
@@ -842,9 +703,7 @@ int _isatty(int);
             }
             if (-not (Test-Path $tfAliasProbe)) { throw "tensorflow/lite/c/c_api.h still missing at $tfAliasProbe after staging the alias tree." }
     
-            # The link name upstream asks for, in preference order. If neither exists,
-            # say what IS there -- a bare "not found" would send someone hunting
-            # PKG_CONFIG_PATH for a plugin that never consults it.
+            # If neither link name exists, say what is there: this plugin never consults PKG_CONFIG_PATH.
             $tfliteLibName = $null
             foreach ($candidate in @($requiredPlugins | Where-Object { $_.Name -eq 'tflite' }).NeedsLib) {
                 if (Test-Path (Join-Path $litertLib "$candidate.lib")) { $tfliteLibName = $candidate; break }
@@ -858,15 +717,10 @@ int _isatty(int);
             }
             log "TFLite C API library: $tfliteLibName.lib in $litertLib"
     
-            # cc.find_library / cc.has_header consult the COMPILER's search paths, so
-            # INCLUDE/LIB is the mechanism that works here (lld-link reads LIB for its
-            # default search path). Do NOT also pass the dir as a /LIBPATH: c_link_arg
-            # -- clang-cl treats the whole token as an input filename and meson's
-            # compile+link sanity check fails before any plugin is configured.
+            # INCLUDE/LIB, not a /LIBPATH: c_link_arg, which clang-cl reads as an input file and fails meson's sanity check.
             $env:INCLUDE = (@($litertInclude) + @($env:INCLUDE -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
             $env:LIB = (@($litertLib) + @($env:LIB -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
-            # Forward slashes inside the meson array literal: meson parses those
-            # strings with escape sequences, so a native drive path would mangle.
+            # Forward slashes: meson parses escape sequences in its array literals.
             $script:TfliteIncludeArg = '-I' + ($litertInclude -replace '\\', '/')
             log "INCLUDE += $litertInclude ; LIB += $litertLib"
         }
@@ -874,9 +728,7 @@ int _isatty(int);
         # Everything the required set needs must resolve NOW, not after an hour.
         $pcModules = @($requiredPlugins | Where-Object { $_.Detection -eq 'pkg-config' } |
                 ForEach-Object { $_.NeedsPc } | Select-Object -Unique)
-        # The version floors upstream actually applies -- presence alone is not
-        # enough: FFmpeg shipped .pc files declaring `Version: ..`, which passes
-        # --exists and fails every constraint, so gst-libav was skipped silently.
+        # Upstream's version floors: a .pc with `Version: ..` passes --exists but fails every constraint.
         $pcMinimum = @{
             'libavcodec'     = '58.18.100'   # gst-libav/meson.build
             'libavformat'    = '58.12.100'
@@ -890,12 +742,7 @@ int _isatty(int);
         log '--- pre-flight OK: every mandatory plugin dependency resolves ---'
     }
 
-    # ── gst-plugins-base x86 SIMD gate (ARM cross only) ──────────────────────
-    # Upstream bug in gst-plugins-base/meson.build: the msvc branch assumes "not
-    # x86_64" means x86 32-bit, so have_sse/have_sse2 are set for aarch64 (only
-    # have_sse41 carries the cpu_family guard) and clang-cl accepts /arch:SSE for an
-    # aarch64 target silently. The x86 resampler sources then die in mmintrin.h.
-    # The fix extends the guard upstream already applies to have_sse41.
+    # gst-plugins-base's msvc branch sets have_sse/have_sse2 on aarch64; extend have_sse41's cpu_family guard to them.
     if ($script:GstCross) {
         $gstBaseMeson = Join-Path $gstSrcDir 'subprojects/gst-plugins-base/meson.build'
         if (-not (Test-Path $gstBaseMeson)) {
@@ -903,8 +750,7 @@ int _isatty(int);
         } elseif ((Get-Content -LiteralPath $gstBaseMeson -Raw) -match "cpu_family\(\) in \['x86'") {
             log 'gst-plugins-base x86 SIMD guard already applied.'
         } else {
-            # 'have_sse2?' deliberately does NOT match have_sse41: after 'have_sse'
-            # the next character there is '4', which fails the '\s*=' that follows.
+            # 'have_sse2?' cannot match have_sse41: the '4' fails the '\s*=' that follows.
             [void](Invoke-InlineRegexPatch -Path $gstBaseMeson -Guard 'have_sse\s*=\s*cc\.has_argument' `
                     -Pattern 'have_sse2?\s*=\s*cc\.has_argument\(sse2?_args\)' `
                     -Replacement "`$0 and host_machine.cpu_family() in ['x86', 'x86_64']" `
@@ -919,12 +765,7 @@ int _isatty(int);
         }
     }
 
-    # ── gst-plugins-bad Vulkan lib dir (ARM cross only) ──────────────────────
-    # Upstream bug, same class as the SSE gate: vulkan/meson.build picks the lib dir
-    # from build_machine (always x86_64 here) and passes it EXPLICITLY via `dirs:`,
-    # so no LIB ordering on our side can override it -- the aarch64 build linked the
-    # x64 vulkan-1.lib. meson's own VulkanDependencySystem maps build x86_64 + host
-    # aarch64 -> Lib-ARM64, which is exactly the branch added here.
+    # vulkan/meson.build picks its lib dir from build_machine via `dirs:`, which LIB order cannot override; key it on host.
     if ($script:GstCross) {
         $gstVkMeson = Join-Path $gstSrcDir 'subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build'
         if (-not (Test-Path $gstVkMeson)) {
@@ -951,46 +792,25 @@ int _isatty(int);
     }
 
     Switch-BuildPhase '6. meson setup'
-    # ---- 6. meson setup (retry with wrap cleanup) ----
-    # Meson cross file. --cross-file is the ONLY way to tell meson host_machine !=
-    # build_machine (there is no per-target compiler property); without one every
-    # host_machine.cpu_family() branch takes the x86 path and the configure is green
-    # but x86-shaped. Written to the LOG dir, which survives the retry's build-dir
-    # wipe, and deliberately carrying NO [built-in options] c_args/cpp_args: meson
-    # gives the command line higher precedence, so a --target here would be dropped.
+    # Only a cross file makes host_machine differ; it lives in the log dir, which survives the retry's build-dir wipe.
     $mesonCrossArgs = @()
     if (Test-WindowsCrossTarget -Arch $gstTargetArch) {
         $gstTriple = Get-ClangTargetTriple -Arch $gstTargetArch
-        # meson's own vocabulary, NOT this repo's arch names. A missing mapping
-        # THROWS: a wrong cpu_family configures green and yields an x86-shaped build.
+        # A missing mapping throws: a wrong cpu_family configures green and builds x86-shaped.
         $gstCpuFamily = switch ($gstTargetArch) {
             'arm64' { 'aarch64' }
             default { throw "build-gstreamer: no meson cpu_family mapping for target arch '$gstTargetArch' - add one before building it." }
         }
-        # CC/CXX may carry the sccache launcher, and meson [binaries] takes a LIST,
-        # so split rather than quote as one word.
-        #
-        # --target BELONGS IN THE EXELIST, not only in c_args: meson parses the
-        # triple out of `<exelist> --version` and derives the linker's and
-        # archiver's /MACHINE from it, so without it every archive and DLL is built
-        # /MACHINE:x64 over arm64 objects. [host_machine] cpu_family does NOT drive
-        # /MACHINE. The duplicate --target in -Dc_args below is harmless and stays:
-        # it keeps the flags right for subprojects that rebuild the command.
+        # --target in the exelist: meson derives the linker's and archiver's /MACHINE from `<exelist> --version`.
         $ccList = (((($env:CC -split '\s+') | Where-Object { $_ }) + @("--target=$gstTriple")) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
         $cxxList = (((($env:CXX -split '\s+') | Where-Object { $_ }) + @("--target=$gstTriple")) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
-        # Rust for the TARGET (#128): meson only builds gst-ptp-helper when the cross
-        # file names a rust compiler. The aarch64 std is added here and PROVEN with a
-        # one-line staticlib first -- a rust entry that fails meson's sanity check
-        # fails the whole setup, whereas an absent one just skips the helper.
+        # Target rust (for gst-ptp-helper) is proven first: a failing rust entry fails setup, an absent one skips the helper.
         $rustTargetLine = ''
         $rustTriple = Get-RustTargetTriple -Arch $gstTargetArch
         $rustup = (Get-Command rustup -ErrorAction SilentlyContinue).Source
         $rustc = (Get-Command rustc -ErrorAction SilentlyContinue).Source
         if ($rustup -and $rustc) {
-            # The image's rustup was installed from a local mirror that no longer
-            # exists, so `rustup target add` cannot fetch the aarch64 rust-std.
-            # Fetching exactly the tarball the cached manifest names lets rustup
-            # verify and install it offline-style. Fail-soft: the probe below decides.
+            # The image's rustup mirror is gone, so fetch the rust-std its cached manifest names; the probe below decides.
             $stdFetch = Install-RustTargetStdFromPinnedManifest -Triple $rustTriple
             log "  rustup| $stdFetch"
             & $rustup target add $rustTriple 2>&1 | ForEach-Object { log "  rustup| $_" }
@@ -1032,30 +852,17 @@ cpu_family = '$gstCpuFamily'
 cpu = '$gstCpuFamily'
 endian = 'little'
 "@
-        # NATIVE file (#128): a cross file describes the HOST machine only, so the
-        # BUILD machine had no C compiler at all, the build-machine glib fallback
-        # died and libnice's by-name lookup failed -- webrtc, gstwebrtcnice and
-        # libnice were the whole plugin-inventory gap between the lanes. Same
-        # compilers without the --target, i.e. exactly what the amd64 lane runs.
+        # A native file gives the build machine its compilers; without one the build-machine glib fallback and webrtc/nice die.
         $nccList = ((($env:CC -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
         $ncxxList = ((($env:CXX -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
-        # The build machine's LIBRARY dirs: the native compiler's sanity check linked
-        # against the arm64 CRT, because the RUN's LIB names the target's dirs and
-        # lld-link reads only LIB. /LIBPATH can never ride c_link_args with clang-cl
-        # (the driver reads a path-shaped token as an input file), but /vctoolsdir:
-        # and /winsdkdir: (+ /winsdkversion:) are understood by both driver and
-        # linker and pick the arch from /machine:. Both roots are derived from LIB.
+        # LIB names the target's dirs; /vctoolsdir: and /winsdkdir: pick the arch from /machine:, unlike /LIBPATH under clang-cl.
         $vcToolsDir = $null; $winSdkDir = $null; $winSdkVer = $null
         foreach ($entry in @(($env:LIB -split ';') | Where-Object { $_ })) {
             if (-not $vcToolsDir -and $entry -match '^(.*\\VC\\Tools\\MSVC\\[^\\]+)\\+lib\\') { $vcToolsDir = $Matches[1] }
             if (-not $winSdkDir -and $entry -match '^(.*\\Windows Kits\\10)\\+lib\\+([^\\]+)\\+(um|ucrt)\\') { $winSdkDir = $Matches[1]; $winSdkVer = $Matches[2] }
         }
         if (-not $vcToolsDir) { $vcToolsDir = Get-MsvcToolsRoot }
-        # The build machine's MSVC PROGRAMS: the libffi meson port preprocesses with
-        # cl and assembles with ml64 via find_program, and under VsDevCmd -arch=arm64
-        # PATH leads with bin\HostX64\ARM64 -- an ARM64-targeting cl defines _M_ARM64,
-        # ffitarget.h never enters its X86_WIN64 branch and ml64 dies. Meson consults
-        # [binaries] BEFORE PATH; missing tools throw here, not 40 minutes into ninja.
+        # libffi finds cl/ml64 on PATH, which VsDevCmd -arch=arm64 leads with ARM64-targeting tools; [binaries] wins over PATH.
         $buildCl   = Resolve-BuildMachineMsvcTool -VcToolsDir $vcToolsDir -Name 'cl.exe'
         $buildMl64 = Resolve-BuildMachineMsvcTool -VcToolsDir $vcToolsDir -Name 'ml64.exe'
         $buildLinkArgList = @()
@@ -1064,7 +871,7 @@ endian = 'little'
             $buildLinkArgList += "/winsdkdir:$($winSdkDir -replace '\\', '/')"
             if ($winSdkVer) { $buildLinkArgList += "/winsdkversion:$winSdkVer" }
         }
-        $buildLibDirs = $buildLinkArgList   # logged below under the old name
+        $buildLibDirs = $buildLinkArgList
         $buildLinkArgs = (($buildLinkArgList | ForEach-Object { "'" + $_ + "'" }) -join ', ')
         $nativeFile = Join-Path $resolvedLogDir 'meson-native-amd64.ini'
         Set-Content -Path $nativeFile -Encoding ASCII -Value @"
@@ -1103,21 +910,11 @@ cpp_link_args = [$buildLinkArgs]
         '-Dintrospection=disabled',
         '-Dtests=disabled',
         '-Dexamples=disabled',
-        # The monorepo's default_options say buildtype=debugoptimized (checked at
-        # 1.29.2): /Zi objects, and glib_debug=auto turns GLib's debug checks ON in
-        # every shipped GLib. The Linux lane passes release
-        # (build-gstreamer-monorepo.sh).
+        # The monorepo defaults to debugoptimized, which ships GLib with its debug checks on.
         '-Dbuildtype=release',
-        # meson keeps assert() in a release build unless b_ndebug says otherwise (its default
-        # is 'false' for every buildtype). if-release defines NDEBUG in every subproject: the
-        # C codecs (dav1d, x264, opus, ...) drop their asserts. Owner decision 2026-09-28.
-        # graphene's -Werror list (1.10.8) names no warning NDEBUG can newly raise.
+        # meson keeps assert() in release builds; if-release defines NDEBUG in every subproject.
         '-Db_ndebug=if-release',
-        # Enable all GStreamer plugin sets. meson's `auto` means "skip silently if
-        # the dependency is missing" -- which is how opencv/onnx/libav went missing
-        # from a SHIPPED image without one line of red. `enabled` fails meson setup
-        # in seconds instead, and the pre-flight above has already proven the .pc
-        # files resolve, so a failure here is a genuine toolchain problem.
+        # `enabled`, never `auto`: auto skips a plugin silently when its dependency is missing.
         '-Dgpl=enabled',
         '-Dbase=enabled',
         '-Dgood=enabled',
@@ -1126,76 +923,43 @@ cpp_link_args = [$buildLinkArgs]
         '-Dges=enabled',
         '-Drtsp_server=enabled',
         '-Dtools=enabled',
-        # $script:TfliteIncludeArg rides in c_args AND cpp_args: the tflite plugin's
-        # has_header probe runs against the C compiler while its sources are C++.
-        # -Wno-incompatible-pointer-types: clang 16+ promoted it to a default error
-        # and gst ext/onnx trips it. -Wno-undef: graphene tests bare `__GNUC__` in
-        # #if under a -Werror it brings along, and clang-cl defines no __GNUC__.
-        # $gstCrossArg must live on the COMMAND LINE, which outranks the cross file;
-        # the `if` guards the separator so amd64's value stays byte-identical.
-        # $ioFI is the assembly-safe shim on the cross lane -- see phase 5b.
+        # tflite's has_header probe uses the C compiler for C++ sources; -Wno-undef: graphene tests __GNUC__ under -Werror.
         "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef$(if ($gstCrossArg) { " $gstCrossArg" })",
         "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types$(if ($gstCrossArg) { " $gstCrossArg" })",
-        # ── Maximum feature set (see also $guidLibs above for the GUID fix) ──
-        # mediafoundation ENABLED: modern Windows webcam capture (mfvideosrc + the MF
-        # device provider) required by the Rust capture path; needs the GUID libs.
+        # mediafoundation (mfvideosrc) is what the Rust capture path uses; it needs the GUID libs above.
         '-Dgst-plugins-bad:mediafoundation=enabled',
-        # wasapi (v1) stays DISABLED: it links against Core Audio interface
-        # wasapi (v1) stays DISABLED: it links Core Audio interface GUIDs that live in
-        # NO SDK import lib (upstream expects source-level INITGUID, which clang-cl
-        # does not do). Not a feature loss -- wasapi2 is built by default.
+        # wasapi v1 needs Core Audio GUIDs no SDK import lib carries; wasapi2 is built by default.
         '-Dgst-plugins-bad:wasapi=disabled',
-        # graphene: its MSVC path calls SSE4.1 intrinsics with no target-feature
-        # guard, which clang-cl refuses. The scalar path is correct for geometry math.
+        # graphene's MSVC path calls SSE4.1 intrinsics without a target-feature guard, which clang-cl refuses.
         '-Dgraphene:sse2=false',
-        # svtjpegxs stays DISABLED: its SVT-JPEG-XS subproject does not compile under
-        # clang-cl. A niche codec, not worth patching the vendored SVT source.
+        # SVT-JPEG-XS does not compile under clang-cl.
         '-Dgst-plugins-bad:svtjpegxs=disabled',
-        # ── Genuinely-hard blockers under clang-cl: kept OFF (documented) ──
-        # cairo:win32 crashes clang-cl (LLVM 22 mmintrin.h __builtin_shufflevector);
-        # -Dcairo:win32=disabled intentionally fails cairo at meson setup.
+        # cairo:win32 crashes clang-cl (LLVM 22 mmintrin.h __builtin_shufflevector).
         '-Dcairo:win32=disabled',
-# Opus intrinsics stay DISABLED on both lanes. The x86 MMX/SSE path
-        # crashes clang-cl (mmintrin.h), and the cross-lane NEON enablement
-        # (tried 2026-08-30, reverted 2026-08-31) died two ways under clang-cl
-        # aarch64: RTCD applies -mfpu=neon (ARM32-only flag) and the RTCD CPU
-        # probe arm_armcpu.c uses MSVC's __emit, which clang-cl lacks. The
-        # working enablement recipe (intrinsics=enabled + rtcd=disabled) is
-        # recorded in docs/windows-cross-builds.md and the backlog; re-enable
-        # only in a dedicated test window on a real device.
+        # x86 crashes clang-cl and aarch64 RTCD needs MSVC's __emit; intrinsics=enabled + rtcd=disabled is the recipe (docs/windows-cross-builds.md).
         '-Dopus:intrinsics=disabled',
-        # nvcodec: gstnvdecoder.cpp needs gst-d3d11 headers clang-cl cannot find.
-        # The CUDA gst-lib is auto-detected separately.
+        # gstnvdecoder.cpp needs gst-d3d11 headers clang-cl cannot find; the CUDA gst-lib is detected separately.
         '-Dgst-plugins-bad:nvcodec=disabled',
-        # dots-viewer: Rust subproject; cargo crates.io index fetch fails in the
-        # offline container. Dev tool, not a media feature.
+        # A Rust dev tool whose crates.io index fetch fails in the offline container.
         '-Dgst-devtools:dots-viewer=disabled',
-        # /FORCE:MULTIPLE for libffi dups; compiler-rt for lld-link (__udivti3
-        # etc.); GUID import libs (see $guidLibs) for MF/WASAPI/DShow/KS symbols.
         "-Dc_link_args=[$linkArgElems]",
         "-Dcpp_link_args=[$linkArgElems]"
     ) + $(
-        # The mandatory contract expressed to meson, behind the same switch as the
-        # pre-flight so -SkipPluginGate really lets the build proceed without them.
+        # The mandatory contract, behind the same switch as the pre-flight.
         if ($SkipPluginGate) { @() } else {
             @(
                 '-Dlibav=enabled',
                 '-Dgst-plugins-bad:opencv=enabled',
                 '-Dgst-plugins-bad:onnx=enabled',
-                # NEVER 'auto' (the repo-wide rule): it would half-configure against
-                # an empty LiteRT tree and fail late. Since #115 the switch is
-                # ARTIFACT presence, not the lane; amd64 is always enabled.
+                # Never auto, which would half-configure against an empty LiteRT tree; the artifact decides.
                 $(if ($script:GstTfliteAvailable) { '-Dgst-plugins-bad:tflite=enabled' } else { '-Dgst-plugins-bad:tflite=disabled' })
             ) + @(
-                # Meson-native contract entries (#128: webrtc + nice, the one
-                # plugin-inventory difference between the lanes). `enabled` each, so
-                # a lane that cannot build libnice fails setup in seconds.
+                # Meson-native contract entries (webrtc, nice), each enabled so a missing libnice fails setup.
                 $requiredPlugins | Where-Object { $_.Detection -eq 'meson' } | ForEach-Object { "-D$($_.MesonOption)=enabled" }
             )
         }
     ) + @(Get-GstGdkPixbufMesonArgs -Cross:$script:GstCross) + @(
-        # glib's own test suite: 562 targets that ship nothing. The top-level
-        # -Dtests=disabled covers the GStreamer modules only; glib is a wrap.
+        # -Dtests=disabled covers GStreamer's modules only; glib is a wrap.
         '-Dglib:tests=false'
     ) + @(Get-GstRocmMesonArgs -GpuEnv $gpuEnv) + $mesonCrossArgs + $MesonSetupArgs
 
@@ -1204,8 +968,7 @@ cpp_link_args = [$buildLinkArgs]
     for ($attempt = 1; $attempt -le 2; $attempt++) {
         log "Running meson setup (attempt $attempt/2)..."
         log $setupArgsString
-        # Redirect ONLY stdout to file to avoid PowerShell's ErrorRecord trap
-        # from native stderr when $ErrorActionPreference='Stop'.
+        # Only stdout to a file: native stderr becomes a terminating ErrorRecord under EAP=Stop.
         $outFile = Join-Path $resolvedLogDir "meson-setup-$attempt-out.txt"
         & $mesonExe @setupArgs > $outFile
         $mesonExitCode = $LASTEXITCODE
@@ -1214,15 +977,12 @@ cpp_link_args = [$buildLinkArgs]
         Remove-Item $outFile -Force -ErrorAction SilentlyContinue
         if ($mesonExitCode -eq 0) { $mesonSucceeded = $true; break }
 
-        # Never swallow logs: meson's stdout only says "cannot compile programs";
-        # the compiler command line and its stderr live in meson-log.txt. Dump it
-        # BEFORE the attempt-1 cleanup wipes $resolvedBuildDir.
+        # The real compiler error lives in meson-log.txt; dump it before the attempt-1 cleanup wipes the build dir.
         $mesonLog = Join-Path $resolvedBuildDir 'meson-logs\meson-log.txt'
         $mesonLogLines = @()
         if (Test-Path $mesonLog) {
             $mesonLogLines = @(Get-Content $mesonLog)
-            # Excerpt, not the whole file: see Select-MesonLogExcerpt. The
-            # retry classification below still scans every line.
+            # An excerpt; the retry classification below still scans every line.
             $excerpt = Select-MesonLogExcerpt -Lines $mesonLogLines
             log "---- meson-log.txt excerpt (attempt $attempt, exit $mesonExitCode): $($excerpt.Total) lines; $($excerpt.DiagnosticTotal) diagnostic line(s), showing $($excerpt.Diagnostics.Count) with line numbers + the last $($excerpt.Tail.Count); full file: $mesonLog ----"
             $excerpt.Diagnostics | ForEach-Object { log $_ }
@@ -1233,15 +993,10 @@ cpp_link_args = [$buildLinkArgs]
             log "meson-log.txt not found at $mesonLog"
         }
 
-        # A deterministic meson configure error fails IDENTICALLY on retry, so the
-        # attempt-2 cleanup + full wrap re-download is pure waste. Retry ONLY
-        # transient failures.
+        # A deterministic configure error fails identically on retry, so retry only transient failures.
         $failureClass = Get-MesonSetupFailureClass -Output @($mesonOut) -LogLines $mesonLogLines
         $hardError = $failureClass.HardError
-        # ... EXCEPT that a failed subproject DOWNLOAD wears exactly that
-        # meson.build:LINE:COL costume and is NOT deterministic -- a 503 on
-        # gstreamer.freedesktop.org cost a whole chain run -- so a network-shaped
-        # failure is retried anyway. Signatures: Get-MesonSetupFailureClass.
+        # A failed subproject download looks the same but is transient, so a network signature is retried anyway.
         $networkError = $failureClass.NetworkError
         if ($hardError -and -not $networkError) {
             log "meson setup hit a deterministic configure error; NOT retrying (a retry repeats it identically after a full wrap re-download): $($hardError[-1].Trim())"
@@ -1267,10 +1022,7 @@ cpp_link_args = [$buildLinkArgs]
         log 'ROCm isolation proven: build.ninja and intro-dependencies.json never name the ROCm tree.'
     }
 
-    # Inline patch, NOT a .patch file: the webrtc-audio-processing wrap version
-    # floats with the GStreamer release, so a static patch would rot. Its SIMD
-    # kernels index vectors via MSVC union members; clang-cl's __m256 is a native
-    # vector type without members but supports the direct subscripting produced here.
+    # Inline, as the wrap version floats: MSVC's __m256 union members do not exist in clang-cl, which subscripts directly.
     $wrtcDir = Get-ChildItem -Path (Join-Path $gstSrcDir 'subprojects') -Directory -Filter 'webrtc-audio-processing-*' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($wrtcDir) {
         $simdMemberPatterns = @(
@@ -1288,9 +1040,7 @@ cpp_link_args = [$buildLinkArgs]
         }
     }
 
-    # Inline patch, NOT a .patch file: FFMPEG_VERSION=master floats, and master
-    # removed the V308/V408/V410 codec IDs gst-libav still lists in its exclusion
-    # conditions. R210, which shares the V410 line, still exists and is kept.
+    # Inline, as FFmpeg master floats: it removed codec IDs gst-libav still excludes; R210 on the V410 line stays.
     foreach ($avFile in @('gstavvidenc.c', 'gstavviddec.c')) {
         [void](Edit-SourceFile -Path (Join-Path $gstSrcDir "subprojects\gst-libav\ext\libav\$avFile") `
                 -Description "${avFile}: remove V308/V408/V410 exclusions (codec IDs dropped by FFmpeg)" `
@@ -1302,9 +1052,7 @@ cpp_link_args = [$buildLinkArgs]
             })
     }
 
-    # graphene's meson.build appends -Werror=undef AFTER our c_args (last flag wins),
-    # so its bare `#if __GNUC__` tests die under clang-cl. Drop that ONE flag at the
-    # source; ninja regenerates on meson.build changes, so patching here is safe.
+    # graphene appends -Werror=undef after our c_args, so its bare `#if __GNUC__` dies under clang-cl.
     $grapheneMeson = Get-ChildItem -Path (Join-Path $gstSrcDir 'subprojects') -Directory -Filter 'graphene-*' -ErrorAction SilentlyContinue |
         ForEach-Object { Join-Path $_.FullName 'meson.build' } | Where-Object { Test-Path $_ } | Select-Object -First 1
     if ($grapheneMeson) {
@@ -1318,11 +1066,7 @@ cpp_link_args = [$buildLinkArgs]
     }
 
     Switch-BuildPhase '7. compile'
-    # ---- 7. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
-    # Job budget + stall guard (backlog #65): `meson compile` without -j lets ninja
-    # default to cores+2 and ignore MEMORY_LIMIT_GB, and without the guard a wedged
-    # sccache server hangs the merge stage indefinitely. 2 GB/job: GStreamer TUs are
-    # C-sized, not ONNX-CUDA-sized.
+    # Explicit -j, or ninja ignores MEMORY_LIMIT_GB; the stall guard stops a wedged sccache hanging the merge.
     $gstJobs = Get-BuildJobCount -MemGBPerJob 2
     log "meson compile with -j $gstJobs (MEMORY_LIMIT_GB='$env:MEMORY_LIMIT_GB', cores=$([Environment]::ProcessorCount))"
     $compileSucceeded = $false
@@ -1330,11 +1074,7 @@ cpp_link_args = [$buildLinkArgs]
         log "Compiling GStreamer (attempt $cAttempt/2, may take 30-60 min)..."
         $gstStallGuard = Start-SccacheStallGuard -MarkerPath (Join-Path $resolvedLogDir 'gstreamer-stall-guard.marker')
         try {
-            # After a GStreamer version bump, re-run the host-arch link sweep with
-            # `--ninja-args=-k,0`: ninja stops at the FIRST failing target, so each
-            # plugin linking a host-arch third-party lib otherwise costs a full
-            # ~22-minute cycle to discover. NB the value needs ONE token with '=':
-            # argparse refuses a separate value starting with '-'.
+            # After a version bump, sweep host-arch links with `--ninja-args=-k,0` (one token: argparse refuses a leading '-').
             & $mesonExe compile -C $resolvedBuildDir -j $gstJobs 2>&1 | ForEach-Object { if ($_) { log $_ } }
         } finally {
             Stop-SccacheStallGuard -Guard $gstStallGuard
@@ -1342,10 +1082,7 @@ cpp_link_args = [$buildLinkArgs]
         if ($LASTEXITCODE -eq 0) { $compileSucceeded = $true; break }
         if ($cAttempt -eq 1) {
             log 'Compile attempt 1 failed; patching _commit conflict in GES and retrying...'
-            # Reactive by design: -FIio.h declares the CRT `_commit`, which can collide
-            # with ges-validate.c's own `_commit` validate-action. There is NO collision
-            # in gstreamer 1.29.2, so this path stays DORMANT insurance for a future
-            # clang / io.h / gstreamer combination. Not dead code.
+            # Dormant insurance, not dead code: -FIio.h's CRT `_commit` can collide with ges-validate.c's own.
             $gesValidate = Join-Path $gstSrcDir 'subprojects/gst-editing-services/ges/ges-validate.c'
             $gesPatch = Join-Path $scriptAssetRoot 'patches\gstreamer\001-ges-commit-rename.patch'
             if ((Test-Path $gesValidate) -and (Test-Path $gesPatch)) {
@@ -1366,15 +1103,8 @@ cpp_link_args = [$buildLinkArgs]
     log 'Compilation complete.'
 
     Switch-BuildPhase '8. install'
-    # ---- 8. install ----
     log 'Installing GStreamer...'
-    # CROSS LANE: install with DESTDIR set, to the SAME location. A post-install
-    # script that cannot run aborts the whole install, and gio-querymodules would
-    # have to EXECUTE an aarch64 binary on this x64 host; DESTDIR is meson's
-    # "staged/packaging install, do not run target binaries" signal.
-    # 'C:\' is chosen because meson's destdir_join drops the drive from the second
-    # path, so every installed path is byte-identical to the non-DESTDIR one.
-    # amd64 keeps the plain invocation: there every install script CAN run.
+    # Cross: DESTDIR C:\ skips install scripts that would run aarch64 binaries, and destdir_join keeps paths unchanged.
     $installArgs = @('install', '-C', $resolvedBuildDir)
     if ($script:GstCross) {
         $installArgs += @('--destdir', 'C:\')
@@ -1384,19 +1114,14 @@ cpp_link_args = [$buildLinkArgs]
     if ($LASTEXITCODE -ne 0) { throw 'meson install failed' }
     log 'Installation complete.'
 
-    # OpenSSL RUNTIME for the target (cross lane only, #127): the link resolves the
-    # import libs but nothing installed the DLLs, so hls/dtls/aes and gio's TLS
-    # module shipped importing libcrypto-4-arm64.dll that existed nowhere in the
-    # bundle. amd64 resolves scoop's x64 OpenSSL from the image PATH -- an
-    # image-level fact a bundle on a clean device cannot rely on.
+    # Stage the target OpenSSL DLLs: nothing else installs them, and a bundle on a clean device has no image PATH.
     if ($script:GstCross) {
         $sslRuntimeRoot = 'C:\opt\openssl-arm64'
         $sslDlls = @(Get-ChildItem -Path $sslRuntimeRoot -Recurse -File -Include 'libcrypto-*.dll', 'libssl-*.dll' -ErrorAction SilentlyContinue)
         if ($sslDlls.Count -eq 0) {
             throw "OpenSSL runtime DLLs (libcrypto-*/libssl-*) not found under $sslRuntimeRoot -- the hls/dtls/aes plugins and gio's TLS module would import a DLL the bundle does not carry (#127)"
         }
-        # The package carries each DLL several times; one per name is staged, the
-        # copy under a \bin directory preferred, so log and bundle agree.
+        # One copy per name, preferring \bin, so log and bundle agree.
         $sslByName = @{}
         foreach ($dll in ($sslDlls | Sort-Object { if ($_.DirectoryName -match '\\bin$') { 0 } else { 1 } }, FullName)) {
             if (-not $sslByName.ContainsKey($dll.Name.ToLowerInvariant())) { $sslByName[$dll.Name.ToLowerInvariant()] = $dll }
@@ -1421,7 +1146,6 @@ cpp_link_args = [$buildLinkArgs]
     Restore-GstRocmPath -Scrub $rocmScrub
 
     Switch-BuildPhase '9. verify (plugin + pc gates)'
-    # ---- 9. verify ----
     $gstLaunch = Join-Path $resolvedInstallDir 'bin\gst-launch-1.0.exe'
     if (Test-Path $gstLaunch) {
         log "Verification OK: $gstLaunch"
@@ -1430,40 +1154,28 @@ cpp_link_args = [$buildLinkArgs]
         log 'Build may have completed but binaries may be elsewhere. Check logs.'
     }
 
-    # ---- 8b. MANDATORY PLUGIN GATE (fatal) ───────────────────────────────────
-    # A missing stage artifact is a THROW, not a warning (docs/windows-build-invariants.md),
-    # and a plugin the media stack is built around is one -- logging "[INFO] not
-    # available" here is how a shipped image ended up without opencv and libav.
-    # SEPARATE from the meson feature flags on purpose: `enabled` only proves the
-    # dependency was found at configure time; gst-inspect proves what the image USES.
+    # Mandatory plugin gate, fatal: `enabled` proves configure found a dependency, gst-inspect that the plugin loads.
     $gstInspect = Join-Path $resolvedInstallDir 'bin\gst-inspect-1.0.exe'
     if (-not (Test-Path $gstInspect)) {
         throw "gst-inspect-1.0.exe missing at $gstInspect — cannot verify the mandatory plugin set."
     }
     $missingPlugins = @()
-    # Make every media DLL home searchable for the load probe: the image's runtime
-    # PATH listed ONNX under \lib while onnxruntime.dll + DirectML.dll ship in \bin,
-    # so onnx failed to load. Mirror the full set so the gate reflects the image.
+    # Every media DLL home on PATH, mirroring the image, so the load probe sees what the image sees.
     foreach ($d in @('C:\runtime\cuda-runtime\bin', "$env:ONNX_ROOT\bin", "$env:ONNX_GENAI_ROOT\bin", $env:FFMPEG_BIN,
             $env:OPENCV_BIN, $env:LITERT_BIN, $env:GSTREAMER_BIN, "$env:TVM_ROOT\bin", $env:IREE_BIN)) {
         if ($d -and (Test-Path $d) -and (($env:PATH -split ';') -notcontains $d)) { $env:PATH = "$d;$env:PATH" }
     }
-    # Force a FRESH registry scan against the (now-complete) PATH so a stale
-    # blacklist from an earlier partial-PATH scan cannot mask a real fix.
+    # A fresh registry scan, so a stale blacklist from a partial-PATH scan cannot mask a fix.
     $gstPluginDir = Join-Path $resolvedInstallDir 'lib\gstreamer-1.0'
     $prevGstDebug = $env:GST_DEBUG
     $prevGstReg = $env:GST_REGISTRY
     $env:GST_REGISTRY = Join-Path $env:TEMP_DIR 'gst-registry-verify.bin'
     Remove-Item $env:GST_REGISTRY -Force -ErrorAction SilentlyContinue
     $env:GST_DEBUG = 'GST_REGISTRY:4,GST_PLUGIN_LOADING:4'
-    # HOST tool -- deliberately NOT Get-MsvcTargetBinDir: dumpbin only READS the
-    # built DLLs (/dependents is machine-type agnostic) and must itself RUN on the
-    # amd64 build host. Retargeting could resolve to NOTHING, since the VC.Tools.ARM64
-    # component is only warn-gated in the shared base.
+    # The host dumpbin, not Get-MsvcTargetBinDir: it only reads the DLLs and must run here.
     $dumpbin = (Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
     $dllSearchDirs = @($gstPluginDir) + @($env:PATH -split ';' | Where-Object { $_ }) + @("$env:SystemRoot\System32")
-    # Recursively resolve a DLL's dependency tree and return the names that resolve
-    # nowhere. api-ms-win-* / ext-ms-win-* are virtual API sets, never "missing".
+    # The names in a DLL's dependency tree that resolve nowhere.
     function Get-UnresolvedDeps {
         param($DllPath, $Dumpbin, $SearchDirs, $Seen)
         $missing = [System.Collections.Generic.List[string]]::new()
@@ -1474,19 +1186,14 @@ cpp_link_args = [$buildLinkArgs]
             [void]$Seen.Add($dep.ToLower())
             $hit = $SearchDirs | Where-Object { $_ -and (Test-Path (Join-Path $_ $dep)) } | Select-Object -First 1
             if (-not $hit) { $missing.Add($dep) }
-            # Do NOT recurse into OS DLLs: their deep OneCore deps are absent on
-            # Server Core but loader-tolerated -- noise. Only walk OUR DLLs.
+            # Not into OS DLLs: their OneCore deps are absent on Server Core but loader-tolerated.
             elseif ($hit -notmatch '[\\/](System32|SysWOW64|WinSxS)([\\/]|$)') {
                 foreach ($m in (Get-UnresolvedDeps (Join-Path $hit $dep) $Dumpbin $SearchDirs $Seen)) { $missing.Add($m) }
             }
         }
         return $missing
     }
-    # CROSS LANE: gst-inspect-1.0.exe is an aarch64 binary and cannot RUN on this x64
-    # host, but "the DLL exists" is weaker than what this host can verify. Static
-    # checks that DO run: a dumpbin /dependents tree walk (catches the 0xC0000135
-    # class the old filename glob waved through) and a dumpbin /exports check for the
-    # plugin's own marker. The MACHINE check stays Test-TargetArch.ps1's job.
+    # Cross cannot run gst-inspect, so check statically: dependency tree walk and export marker (machine: Test-TargetArch.ps1).
     if ($script:GstCross) {
         foreach ($plugin in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch)) {
             $pluginDll = Get-ChildItem -Path $gstPluginDir -Filter "gst*$($plugin.Name)*.dll" -File -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -1499,10 +1206,7 @@ cpp_link_args = [$buildLinkArgs]
             if ($dumpbin) {
                 $unresolved = @(Get-UnresolvedDeps $pluginDll.FullName $dumpbin $dllSearchDirs ([System.Collections.Generic.HashSet[string]]::new())) | Select-Object -Unique
                 if ($unresolved) { $staticProblems += ($unresolved | ForEach-Object { "unresolved dependency: $_" }) }
-                # Export marker, MEASURED: modern GStreamer (>= 1.14 per-plugin
-                # registration) exports gst_plugin_<name>_get_desc, not the legacy
-                # gst_plugin_desc -- asserting the latter failed all four plugins,
-                # three of them proven loadable on amd64.
+                # GStreamer >= 1.14 exports gst_plugin_<name>_get_desc, not the legacy gst_plugin_desc.
                 $exports = @(& $dumpbin /exports $pluginDll.FullName 2>&1)
                 $marker = "gst_plugin_$($plugin.Name)_get_desc"
                 if (-not ($exports -match [regex]::Escape($marker))) {
@@ -1511,10 +1215,7 @@ cpp_link_args = [$buildLinkArgs]
                     $staticProblems += "$marker export missing (exports seen: $($exportNames -join ', '))"
                 }
             } else {
-                # A gate that verified NOTHING must not report PASS: dumpbin is the
-                # x64 host tool every other stage depends on, so its absence is a
-                # broken environment, not an optional check. On the cross lane this
-                # IS the plugin proof.
+                # A gate that verified nothing must not pass: on cross, dumpbin is the whole plugin proof.
                 $staticProblems += "dumpbin.exe not found under any VC\Tools\MSVC\*\bin\Hostx64\x64 -- the dependency and export checks could not run, so nothing about this plugin was verified beyond the file existing"
             }
             if ($staticProblems.Count -eq 0) {
@@ -1577,17 +1278,14 @@ cpp_link_args = [$buildLinkArgs]
         -Record (Join-Path $resolvedBuildDir 'build.ninja'), (Join-Path $resolvedBuildDir 'meson-info\intro-dependencies.json')
 
     Switch-BuildPhase '10. cleanup'
-    # ---- 10. cleanup ----
     if (-not $KeepBuildArtifacts.IsPresent -and $env:KEEP_BUILD_ARTIFACTS -ne '1') {
         log 'Cleaning up source and build directories...'
         Remove-SourceBuildTree -Path @($gstSrcDir, $resolvedBuildDir)
     }
 
-    # This script is not chain-run (no Invoke-SourceBuildChain tail), so dump
-    # the sccache counters itself — they die with the container otherwise.
+    # Not chain-run, so dump the sccache counters here; they die with the container otherwise.
     Write-SccacheStats -Label 'gstreamer'
-    # ... and flush/stop the session server the #128 prologue started (the
-    # error-log dump only means something after a clean server stop, #107).
+    # The error-log dump only means something after a clean server stop.
     Complete-SccacheServerSession
 
     Complete-CurrentBuildPhase
@@ -1596,20 +1294,16 @@ cpp_link_args = [$buildLinkArgs]
     log 'END - GStreamer source build completed successfully.'
 
 } catch {
-    # #109: name the phase in the failure - a 60-min meson run once died
-    # with a bare message; the phase table narrows it before the stack.
+    # Name the failing phase before the stack.
     Complete-CurrentBuildPhase -ErrorRecord $_
     Write-BuildPhaseSummary -Label 'gstreamer'
-    # Flush/stop the #128 session server on the FAILURE path too -- the error-log
-    # dump only means something after a clean stop, and the failing run is exactly
-    # the one whose log you want.
+    # Stop the server on failure too: the failing run is the one whose error log you want.
     try { Complete-SccacheServerSession } catch { Write-Warning "sccache session flush failed in catch: $($_.Exception.Message)" }
     log "FATAL ERROR: $($_.Exception.Message)"
     if ($_.Exception.InnerException) {
         log "Inner: $($_.Exception.InnerException.Message)"
     }
-    # Position + stack: without these a 60-min meson run died with a bare
-    # message and no line number to start from.
+    # Position and stack, or an hour-long run dies with a bare message.
     if ($_.InvocationInfo -and $_.InvocationInfo.PositionMessage) {
         log "Position: $($_.InvocationInfo.PositionMessage)"
     }

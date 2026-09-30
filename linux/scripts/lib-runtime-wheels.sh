@@ -1,12 +1,5 @@
 # shellcheck shell=bash
-# lib-runtime-wheels.sh — RUNTIME_WHEELS_SOURCE: where the wrapper's torch RUN gets /opt/wheels.
-#   auto, image  the android image itself, as every chain did before 2026-09-24 (default)
-#   export       /opt/wheels copied out of that SAME image before each arch's package build,
-#                sealed with a sha256 manifest, and handed to the wrapper as a directory
-# Host-side only and outside every image closure, so editing it re-keys no stage.
-# Loaded at top level by lib-orchestrator.sh. docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries
-# RUNTIME_WHEELS_MODE and RUNTIME_WHEELS_EXPORT_ROOT are this file's own state, set
-# by runtime_wheels_setup in the main shell; append_wrapper_build_args reads the root.
+# Host-side and outside every image closure, so edits re-key no stage. docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries
 [ -n "${_LIB_RUNTIME_WHEELS_SH_LOADED:-}" ] && return 0
 _LIB_RUNTIME_WHEELS_SH_LOADED=1
 
@@ -22,8 +15,7 @@ runtime_wheels_source_mode() {
   esac
 }
 
-# Main shell, after runtime_post_parse_setup. The export root is minted HERE: a
-# $(...) or a parallel-loop worker would lose the assignment.
+# Call in the main shell: a $(...) or parallel-loop worker would lose the export root.
 runtime_wheels_setup() {
   RUNTIME_WHEELS_SOURCE="${RUNTIME_WHEELS_SOURCE:-auto}"
   RUNTIME_WHEELS_EXPORT_ROOT=""
@@ -47,8 +39,7 @@ runtime_wheels_cleanup() {
   RUNTIME_WHEELS_EXPORT_ROOT=""
 }
 
-# One arch of the runtime lane. Image mode is runtime_build_chain alone; export mode
-# stages the wheelhouse first and removes it after the wrapper, on both paths.
+# Export mode removes the staged wheelhouse after the wrapper on both the success and failure paths.
 runtime_wheels_arch_chain() {
   local arch="$1" rc=0
   if [ "${RUNTIME_WHEELS_MODE:-image}" = export ]; then
@@ -68,8 +59,7 @@ runtime_wheels_discard() {
   return 0
 }
 
-# Copies /opt/wheels out of the image image-mode would mount (Dockerfile.torch's
-# wheels-export stage) into <root>/<arch>, then seals it. No -t, no image output.
+# Copies /opt/wheels from the very image image-mode would mount, so both modes ship the same wheels.
 runtime_wheels_export() {
   local arch="$1" ref dir pull="--pull=true"
   local -a args=()
@@ -102,8 +92,7 @@ runtime_wheels_export() {
   _runtime_wheels_seal "${arch}" "${ref}"
 }
 
-# <nameref> <arch> <ref>: the export build reads exactly what image mode mounts. Under
-# ARTIFACT_CONTEXT_ROOT a containerd-only ref arrives as the android layout, proved by digest.
+# <nameref> <arch> <ref>; under ARTIFACT_CONTEXT_ROOT a containerd-only ref arrives as the android layout.
 _runtime_wheels_source_args() {
   local -n _rwsa_out=$1
   local arch="$2" ref="$3" ctx have want
@@ -140,8 +129,7 @@ _runtime_wheels_local_digest() {
     | sort -u || true
 }
 
-# <arch> <ref>: an export without a wheel is an error; otherwise record the manifest
-# the wrapper build re-checks, beside the context rather than inside it.
+# <arch> <ref>; the manifest sits beside the context, not in it, for the wrapper build to re-check.
 _runtime_wheels_seal() {
   local arch="$1" ref="$2" dir="${RUNTIME_WHEELS_EXPORT_ROOT}/$1"
   if ! compgen -G "${dir}/opt/wheels/*.whl" >/dev/null; then
@@ -153,8 +141,7 @@ _runtime_wheels_seal() {
   log "[wheels] ${arch}: $(runtime_wheels_digest_line "${dir}/opt/wheels") (exported from ${ref:-the Dockerfile.torch default})"
 }
 
-# append_wrapper_build_args' export arm: the staged directory, re-verified byte for byte,
-# and nothing else. A missing or changed wheelhouse fails; there is no fallback to image.
+# No fallback to image mode: a missing or changed wheelhouse fails.
 runtime_wheels_wrapper_args() {
   local -n _rwwa_out=$1
   local arch="$2" dir="${RUNTIME_WHEELS_EXPORT_ROOT}/$2"
@@ -166,14 +153,12 @@ runtime_wheels_wrapper_args() {
   _rwwa_out+=(--build-arg "WHEELS_IMAGE=runtime_wheels" --build-context "runtime_wheels=${dir}")
 }
 
-# "<sha256>  ./<path>" for every file, sorted: the seal, and what the digest hashes. The awk
-# fixes the separator, which is " *" on a binary-mode sha256sum.
+# The awk fixes the separator, which binary-mode sha256sum writes as " *".
 _runtime_wheels_manifest() {
   (cd "$1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum | awk '{print substr($0, 1, 64) "  " substr($0, 67)}')
 }
 
-# files=N bytes=B sha256=D. setup-torch-venv.sh prints the same line inside the torch
-# RUN, so the two modes' wheelhouses compare by eye. docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
+# setup-torch-venv.sh prints the same line, so both modes compare by eye. docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
 runtime_wheels_digest_line() {
   local counts digest
   counts="$(find "$1" -type f -printf '%s\n' | awk '{n++; s+=$1} END {printf "files=%d bytes=%d", n, s}')" || return 1

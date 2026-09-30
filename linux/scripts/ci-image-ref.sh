@@ -1,38 +1,17 @@
 #!/usr/bin/env bash
 # ci-image-ref.sh - print the family CI container image reference.
 
-# versions.env owns the tags (Linux, Windows, the Windows arm64 cross bundle),
-# and the four container composite actions carry the composed refs as their
-# image input DEFAULTS - so a workflow step that wants the family image omits
-# the input and never calls this. This is for callers that CANNOT omit an input
-# because they call no action: a raw `docker run`, a local repro, a sweep script.
-# Its PowerShell twin is Get-CiImageReference (WindowsContainerImage.Common.psm1).
-# tests/test-ci-image-ref.sh holds this script and verify_ci_image_refs.py to the
-# same strings; ContainerImage.CiRef.Tests.ps1 holds the twin to versions.env.
+# For callers that use no action; see docs/shared-script-libraries.md#ci-image-refsh--the-family-ci-image-reference
 
-# It takes NO consumer root, unlike the other entry points here, and that is
-# deliberate rather than an oversight: the only file it reads is THIS repo's
-# versions.env, whichever tree is being built. A root parameter would imply a
-# per-consumer answer, and there isn't one.
-#
-#   ci-image-ref.sh                  # the Linux image (default)
-#   ci-image-ref.sh --windows        # the Windows image
-#   ci-image-ref.sh --windows-arm64  # the Windows arm64 cross bundle (windows-arm64-cross.yml)
+# No consumer root on purpose: it only ever reads this repo's versions.env.
 
-# stdout carries the reference and NOTHING else, so it is safe inside a command
-# substitution; every diagnostic goes to stderr. A missing key is a hard failure
-# rather than an empty string, because an empty image reference reaches
-# `docker run` as "run the argument after it as an image" and then fails a long
-# way from the cause.
+# A missing key fails hard: an empty ref makes docker run treat the next argument as the image.
 set -euo pipefail
 
 # Overridable for the self-test only; the default is this repo's own copy.
 : "${CI_IMAGE_REF_VERSIONS_ENV:=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/01-core/versions.env}"
 
-# PARSED, never sourced, and never routed through load_versions_env: that loader
-# lets an already-set environment variable win, which is right for a Dockerfile
-# ARG and wrong here - a stray CI_IMAGE_LINUX_TAG in the environment would
-# silently redirect every caller to another image. The file is the only answer.
+# Parsed, never sourced: load_versions_env lets a stray env var win and redirect every caller.
 ci_image_ref_read_key() {
   local key="${1:?key required}" file="${2:?versions.env path required}" value
   value="$(sed -n "s/^${key}=//p" "${file}" | tail -n 1)"

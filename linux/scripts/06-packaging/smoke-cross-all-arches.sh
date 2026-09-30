@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One probe per toolchain the image is supposed to carry: the host cc, the
-# GCC_PREFIX gcc, each target's cross gcc/g++, the target-native clang, and the
-# cc/c++/gcc/g++ symlink chain. Runs in the image and on the build host.
-#   smoke-cross-all-arches.sh [amd64,arm64,riscv64]
-# docs/cross-build-verification.md#cross-compiler-multi-arch-smoke
+# Usage: smoke-cross-all-arches.sh [amd64,arm64,riscv64]. See docs/cross-build-verification.md § Cross-compiler multi-arch smoke
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/smoke-common.sh"
@@ -62,8 +58,7 @@ _smoke_probe_cross_compilers() {
   return 0
 }
 
-# Prints the first requested arch whose uname name prefixes the triple, empty
-# when none does. docs/cross-build-verification.md#cross-compiler-multi-arch-smoke
+# Prints the first requested arch whose uname name prefixes the triple, or nothing.
 _smoke_clang_match_arch() {
   local clang_dump="$1" target_arches="$2" expected arch
   for arch in $(smoke_arch_words "${target_arches}"); do
@@ -77,8 +72,7 @@ _smoke_clang_match_arch() {
   return 0
 }
 
-# The binary has ONE default triple, so a sweep that stopped at the first arch
-# reported nothing when the triple was wrong.
+# One default triple, so every requested arch is tried, not only the first.
 _smoke_probe_llvm_target_clang() {
   local target_arches="$1"
   [ -x "${SMOKE_TARGET_CLANG}" ] || return 0

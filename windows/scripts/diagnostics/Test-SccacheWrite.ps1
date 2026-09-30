@@ -1,50 +1,20 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Diagnose WHY every sccache L0 (disk) cache write fails with
-    `The system cannot find the path specified. (os error 3)`.
-
+    Diagnoses why sccache L0 (disk) cache writes fail with os error 3, inside the media builder's exact cache mounts.
 .DESCRIPTION
-    Runs INSIDE a container RUN that carries the SAME cache mounts and the SAME
-    sccache environment as the media builder, so anything this script sees is
-    what the real build sees. Bind-mounted rather than COPY'd or inlined (the
-    #27 pattern) so it can be edited without busting a layer.
-
-    MEASURED CONTEXT (2026-08-15, the run this probe exists to explain):
-      onnx    0 misses  ->   0 writes ->   0 failures
-      opencv  1 miss    ->   1 write  ->   1 failure
-      genai 157 misses  -> 157 writes -> 157 failures
-    i.e. EVERY L0 write fails, 100%, in every stage - the earlier
-    "genai is special" reading was an artefact of the miss counts. And
-    `L1 (webdav) writes 0` alongside it: when L0 fails the whole write chain
-    dies there, so nothing ever reaches the remote either.
-
-    Two hypotheses this probe separates, which is its entire job:
-      A) C:\sccache itself is not writable (mount/ACL/filesystem level)
-         -> the raw .NET write tests below fail too.
-      B) The directory is fine and sccache's OWN write path is what breaks
-         (temp-file placement, cross-device rename, path length, ...)
-         -> raw writes SUCCEED and only the sccache compile fails.
-    Do not skip the raw tests: a probe that only runs sccache cannot tell
-    these apart, which is how the CWD theory survived as long as it did.
-
-    Exits 0 even when tests fail - this is a DIAGNOSTIC, its output is the
-    product. A non-zero exit would only truncate the evidence.
+    Raw .NET writes separate an unwritable directory (A) from a broken sccache write path (B); sccache alone cannot.
+    Always exits 0: the output is the product, and a non-zero exit would truncate the evidence.
 #>
 [CmdletBinding()]
 param(
     [string]$CacheDir = $env:SCCACHE_DIR,
 
-    # --- child mode (the script re-invokes ITSELF; see the spawn matrix) ------
-    # When -ChildWrite is given the script does nothing but attempt one write
-    # into that directory and append a one-line verdict to -ResultFile, then
-    # exits. Results go to a FILE because a detached child has no console to
-    # write to - printing would silently lose exactly the evidence we are after.
+    # Child mode for the spawn matrix: one write, verdict appended to a file since a detached child has no console.
     [string]$ChildWrite = '',
     [string]$ResultFile = '',
 
-    # Layer-cache buster, threaded through from the Dockerfile ARG. Unused apart
-    # from being echoed - its only job is to make each solve a distinct RUN.
+    # Layer-cache buster; only echoed, it makes each solve a distinct RUN.
     [string]$Nonce = ''
 )
 
@@ -59,9 +29,7 @@ function Write-Result {
 }
 
 if ($ChildWrite) {
-    # Report what this process can SEE as well as what it can DO: if a spawned
-    # child finds the cache mount missing or empty, that alone explains
-    # `os error 3` and makes the write result secondary.
+    # What the child sees too: a missing or empty mount alone would explain os error 3.
     $report = [ordered]@{
         user    = (whoami)
         pid     = $PID
@@ -104,13 +72,9 @@ if (Test-Path $CacheDir) {
     Write-Host "  exists     : yes"
     Write-Host "  attributes : $($di.Attributes)"
     Write-Host "  full name  : $($di.FullName)"
-    # A reparse point here would be the smoking gun for a mount that resolves
-    # differently for the server process than for this script.
+    # A reparse point could resolve differently for the server process than for this script.
     Write-Result 'not a reparse point' (-not ($di.Attributes -band [IO.FileAttributes]::ReparsePoint))
-    # Full listing with TYPE: sccache's disk cache buckets objects into
-    # single-hex-character directories. A plain FILE sitting where a bucket
-    # directory belongs would make an insert into that bucket fail - so the
-    # shape of this listing is evidence, not decoration.
+    # With types: a file where a single-hex bucket directory belongs would fail every insert into it.
     $top = @(Get-ChildItem $CacheDir -Force -ErrorAction SilentlyContinue)
     Write-Host "  entries    : $($top.Count)"
     foreach ($e in $top) {
@@ -122,10 +86,7 @@ if (Test-Path $CacheDir) {
     Write-Result "$CacheDir exists" $false 'MISSING - the cache mount is not present in this RUN'
 }
 
-# --- Hypothesis A: is the directory writable AT ALL, the way sccache uses it? -
-# sccache's disk cache stores objects under two nested hex directories and
-# writes via a temp file that is then renamed into place. Each step is tested
-# separately so the failing one is named, not guessed at.
+# Hypothesis A: each step of sccache's nested-dir, temp-then-rename write is tested alone, so the failing one is named.
 Write-Section 'raw filesystem tests (hypothesis A)'
 
 $probeRoot = Join-Path $CacheDir 'probe-tmp'
@@ -145,9 +106,7 @@ try {
     Write-Result 'write file in nested dir' $false $_.Exception.Message
 }
 
-# The rename step is the interesting one on Windows containers: a rename that
-# crosses a wcifs layer boundary can fail where a plain write succeeds (this
-# host has a known layer-rename quirk, cf. Test-LayerRename.ps1).
+# A rename across a wcifs layer boundary can fail where a plain write succeeds (cf. Test-LayerRename.ps1).
 $tmpFile = Join-Path $probeRoot 'staged.tmp'
 $renamed = Join-Path $nested 'renamed.bin'
 try {
@@ -158,9 +117,7 @@ try {
     Write-Result 'rename temp -> cache path' $false $_.Exception.Message
 }
 
-# Same again but staging from %TEMP%, which is where sccache would put its
-# temp file if it does NOT stage inside the cache dir. If THIS one fails while
-# the in-cache-dir rename above succeeds, the temp directory is the fault.
+# Staged from %TEMP% instead: failing only here points at the temp directory.
 $sysTmp = [IO.Path]::GetTempPath()
 Write-Host "  system temp: $sysTmp (exists: $(Test-Path $sysTmp))"
 $tmpFile2 = Join-Path $sysTmp ('sccache-probe-' + [Guid]::NewGuid().ToString('N') + '.tmp')
@@ -176,17 +133,7 @@ try {
 
 Remove-Item $probeRoot -Recurse -Force -ErrorAction SilentlyContinue
 
-# --- The distinction the earlier raw tests missed: NEW path vs EXISTING path --
-# Every raw test above creates its OWN directories (`probe-tmp\a1\b2`) and they
-# all pass, while sccache writes into the PRE-EXISTING bucket tree that came in
-# with the mount (`8\a\c\<hash>`). That difference was invisible for days.
-#
-# It also explains the one result that never made sense: the failure disappears
-# for the rest of a container's life after every bucket is moved off the mount
-# and back (which materialises the whole tree locally), and returns in the next
-# fresh container. If writing into an inherited deep path fails HERE, with no
-# sccache in the picture at all, then this is a mount/filesystem defect and not
-# an sccache bug - and it is reportable as such.
+# New vs inherited paths: a failed raw write into the mount's existing bucket tree is a filesystem defect, not sccache's.
 Write-Section 'raw write into a PRE-EXISTING deep path from the mount'
 
 $deep = Get-ChildItem $CacheDir -Force -Directory -ErrorAction SilentlyContinue |
@@ -208,13 +155,7 @@ if (-not $deep) {
     }
 }
 
-# --- Who can write into the cache mount: this process, or also children? -----
-# The raw tests above pass IN THIS PROCESS while sccache's server fails against
-# the same directory. The server is a DETACHED process, so the question is
-# whether spawned children lose access to the BuildKit cache mount. Three spawn
-# shapes, from most attached to fully detached, against BOTH the mount and a
-# plain directory as the control - a child that fails on both is simply broken
-# and says nothing about the mount.
+# The server is detached: do spawned children lose the mount? A plain dir is the control for each spawn shape.
 Write-Section 'spawn matrix: can a CHILD process write to the cache mount?'
 
 $self = $PSCommandPath
@@ -243,8 +184,7 @@ function Invoke-SpawnMode {
             $null = $p.WaitForExit(60000)
         }
         'detached' {
-            # Closest shape to `sccache --start-server`: no window, no console,
-            # parent does not wait on a job object it owns.
+            # The closest shape to `sccache --start-server`.
             $psi = [Diagnostics.ProcessStartInfo]::new($shell)
             foreach ($a in $childArgs) { $null = $psi.ArgumentList.Add($a) }
             $psi.UseShellExecute = $false
@@ -264,21 +204,7 @@ foreach ($mode in 'attached', 'hidden-async', 'detached') {
 Get-Content $resFile -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
 Remove-Item $resFile -Force -ErrorAction SilentlyContinue
 
-# --- Hypothesis B: WHICH sccache configuration breaks the write? -------------
-# The raw tests above proved C:\sccache is writable, so the fault is in
-# sccache's own write path. This matrix isolates WHICH part by varying one
-# factor at a time and compiling a genuinely unique file under each:
-#
-#   disk-only            no remote, no chain      -> is the plain disk cache OK?
-#   multilevel-mounted   disk,webdav on the mount -> the real build's config
-#   multilevel-plaindir  disk,webdav on a normal  -> does the cache MOUNT matter,
-#                        container directory         or is the chain broken
-#                                                    wherever it points?
-#   webdav-only          remote, no chain         -> is the remote itself fine?
-#
-# Reading the result: if disk-only and webdav-only both write cleanly while the
-# two multilevel rows fail, the defect is in sccache's multilevel layer and is
-# an upstream bug with a minimal repro, not a misconfiguration here.
+# Hypothesis B: vary one sccache factor per unique compile; only the multilevel rows failing is an upstream bug.
 $sccache = (Get-Command sccache.exe -ErrorAction SilentlyContinue)
 if (-not $sccache) {
     Write-Result 'sccache.exe on PATH' $false 'cannot run the compile test'
@@ -301,9 +227,7 @@ function Invoke-SccacheVariant {
     )
     Write-Section "variant: $Name"
 
-    # The server reads its configuration ONCE, at start. So every variant must
-    # stop the previous server first, or it silently measures the old config -
-    # the same trap that made SCCACHE_ERROR_LOG look broken for four builds.
+    # The server reads its config once at start, so a running one would silently measure the old config.
     & $sccache.Source --stop-server 2>&1 | Out-Null
     $global:LASTEXITCODE = 0
 
@@ -319,21 +243,12 @@ function Invoke-SccacheVariant {
     & $sccache.Source --zero-stats 2>&1 | Out-Null
     $global:LASTEXITCODE = 0
 
-    # Truncate the error log per variant, so the dump below belongs to THIS
-    # variant and not to the previous one (server is stopped, handle is free).
+    # Truncated per variant, so the dump below belongs to this variant.
     if ($env:SCCACHE_ERROR_LOG) {
         Set-Content -Path $env:SCCACHE_ERROR_LOG -Value $null -Force -ErrorAction SilentlyContinue
     }
 
-    # A unique body per variant: an identical source is a cache HIT and attempts
-    # no write at all - the trap that made two stages of this investigation
-    # worthless (onnx 0 misses -> 0 writes -> a meaningless "0 errors").
-    #
-    # The uniqueness must survive PREPROCESSING: sccache hashes the preprocessor
-    # output, so a unique value in a // comment changes nothing. The first cut of
-    # this probe did exactly that and every variant produced the identical hash
-    # key 8acec69b..., which turned the webdav-only row into a cache hit that
-    # measured nothing. Put the token in real code instead.
+    # A unique token in real code, not a comment: sccache hashes preprocessed output, and a hit attempts no write.
     $tag = [Guid]::NewGuid().ToString('N')
     $work = Join-Path $env:TEMP ('sccache-probe-' + $tag)
     $null = New-Item -ItemType Directory -Force -Path $work
@@ -348,9 +263,7 @@ int main() { std::printf("%d\n", probe_value_$tag()); return 0; }
     Push-Location $work
     try {
         $obj = Join-Path $work 'probe.obj'
-        # /Fo with NO colon after it: `/Fo:C:\x.obj` makes sccache build the
-        # bogus path `C:\:C:\x.obj` and fail with "failed to zip up compiler
-        # outputs", which looks like a cache bug and is not one (2026-08-14).
+        # /Fo without a colon: sccache turns /Fo:C:\x.obj into the bogus path C:\:C:\x.obj.
         & $sccache.Source clang-cl /c /nologo /EHsc "/Fo$obj" $src 2>&1 |
             Where-Object { $_ -notmatch 'DEBUG|INFO ' } | ForEach-Object { Write-Host "  cl| $_" }
         $compileOk = ($LASTEXITCODE -eq 0)
@@ -368,10 +281,7 @@ int main() { std::printf("%d\n", probe_value_$tag()); return 0; }
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
     Write-Result "$Name wrote to cache" ($writeErr -eq 0) "compile exit ok=$compileOk, write errors=$writeErr"
 
-    # Stop the server so its log FLUSHES (SCCACHE_IDLE_TIMEOUT=0 means it never
-    # exits on its own and the buffered tail dies with the RUN), then print the
-    # storage lines for THIS variant. This is where a failing variant names the
-    # path it could not write - the whole reason for running at debug level.
+    # Stopping flushes the log (the server never idles out), where a failing variant names the path it could not write.
     & $sccache.Source --stop-server 2>&1 | Out-Null
     $global:LASTEXITCODE = 0
     if ($env:SCCACHE_ERROR_LOG -and (Test-Path $env:SCCACHE_ERROR_LOG)) {
@@ -387,20 +297,7 @@ int main() { std::printf("%d\n", probe_value_$tag()); return 0; }
     return [pscustomobject]@{ Name = $Name; WriteErrors = $writeErr }
 }
 
-# CONFOUND, caught 2026-08-15 after the first matrix "proved" the mount guilty:
-# `multilevel-plaindir` changed TWO things at once - off the cache mount AND
-# into an EMPTY directory - while C:\sccache carries 114 MiB plus two foreign
-# entries in its root (a `logs` dir left over from before #90 moved the error
-# log out, and a stray `wtest.txt`). A two-variable comparison cannot name a
-# cause. These two rows split it apart:
-#   disk-mounted-subdir : EMPTY dir, still ON the mount  -> isolates the mount
-#   disk-plaindir       : same single-level config, off the mount (control)
-# PERSISTENT on purpose (not deleted at the end). The open question for the
-# "just point SCCACHE_DIR at a fresh directory" fix is whether a subdir that
-# WORKS while empty still works once a LATER container inherits the objects this
-# one wrote. Keeping it across runs answers that: run the probe twice and read
-# this row both times. Deleting it, as the first version did, made every run
-# test a fresh empty dir and could never have shown the regression.
+# An empty dir on the mount vs off it isolates the mount; kept across runs to test inheriting this run's objects.
 $mountSubdir = Join-Path $origDir 'probe-persist'
 $null = New-Item -ItemType Directory -Force -Path $mountSubdir -ErrorAction SilentlyContinue
 
@@ -414,7 +311,7 @@ $results += Invoke-SccacheVariant -Name 'webdav-only'         -Chain ''         
 $persistCount = @(Get-ChildItem $mountSubdir -Recurse -Force -File -ErrorAction SilentlyContinue).Count
 Write-Host "  (probe-persist now holds $persistCount file(s) - inherited by the NEXT run)"
 
-# Restore, so the error-log dump below reflects the REAL build configuration.
+# Restored, so the error-log dump below reflects the real build configuration.
 $env:SCCACHE_MULTILEVEL_CHAIN = $origChain
 $env:SCCACHE_WEBDAV_ENDPOINT = $origEndpoint
 $env:SCCACHE_DIR = $origDir
@@ -425,9 +322,7 @@ foreach ($r in $results) {
 }
 $byName = @{}
 foreach ($r in $results) { $byName[$r.Name] = $r.WriteErrors }
-# The one comparison that separates "the cache MOUNT is broken" from "the
-# EXISTING cache content is broken": same single-level config, both empty
-# targets, one on the mount and one off it.
+# Separates a broken mount from broken existing content: same config, empty targets on and off the mount.
 $onMountEmpty = $byName['disk-mounted-subdir']
 $offMountEmpty = $byName['disk-plaindir']
 $onMountFull = $byName['disk-only']
@@ -442,37 +337,18 @@ if ($null -ne $onMountEmpty -and $null -ne $offMountEmpty -and $null -ne $onMoun
     }
 }
 
-# --- Narrow it: is it the FOREIGN entries in the cache root? ------------------
-# The matrix says an empty dir on the mount writes fine while the populated root
-# does not, so something IN C:\sccache breaks inserts. A valid sccache disk
-# cache root holds only the 16 single-hex-character buckets (plus `preprocessor`
-# when the preprocessor cache is on). Everything else is debris - and here the
-# debris is OURS: `logs` is where the error log lived before #90 moved it out,
-# and `wtest.txt` is the residue of an old write test.
-#
-# This MOVES the foreign entries off the mount (into a container-local dir that
-# dies with the RUN, so they do not come back), then re-runs the failing variant
-# unchanged. If the write succeeds afterwards, the cause is named and fixed in
-# one step. Sizes are printed BEFORE the move: never discard evidence silently.
+# A valid root holds only the 16 hex buckets and `preprocessor`; anything else is moved off the mount, sizes printed first.
 Write-Section 'narrowing: quarantine foreign entries in the cache root'
 
 $quarantine = 'C:\sccache-quarantine'
 $null = New-Item -ItemType Directory -Force -Path $quarantine -ErrorAction SilentlyContinue
 
-# `bulk-inherit` / `probe-persist` are THIS PROBE's own state, deliberately left
-# on the mount so the NEXT run inherits it. Excluding them is not cosmetic: the
-# first inheritance experiment reported "0 files inherited" and looked like the
-# mount had lost 250 objects, when in fact this very sweep had classified the
-# directory as debris and moved it off the mount minutes earlier — the probe
-# destroyed its own experiment and produced a spectacular false conclusion.
+# The probe's own inherited state must never be swept as debris, or it destroys its own experiment.
 $probeOwned = @('preprocessor', 'bulk-inherit', 'probe-persist')
 $foreign = @(Get-ChildItem $origDir -Force -ErrorAction SilentlyContinue | Where-Object {
         -not ($_.PSIsContainer -and $_.Name -match '^[0-9a-f]$') -and $probeOwned -notcontains $_.Name
     })
-# The bisect below must run whenever disk-only failed, NOT only when foreign
-# entries happen to exist: an earlier probe already moved `logs`/`wtest.txt` off
-# the mount for good, so on the next run this list is empty and gating the whole
-# narrowing on it silently skipped the search entirely.
+# The bisect runs whenever disk-only failed, even with no foreign entries left to move.
 $after = $null
 if (-not $foreign) {
     Write-Host '  no foreign entries left in the root (an earlier run removed them).'
@@ -505,11 +381,7 @@ if ($null -ne $after -and $byName['disk-only'] -gt 0 -and $after.WriteErrors -eq
 } elseif ($stillFailing) {
     if ($null -ne $after) { Write-Host '  => NOT the foreign entries: the populated root still fails without them.' }
     if ($true) {
-        # --- Bisect what is left: `preprocessor`, then the 16 hash buckets ----
-        # Each step moves content OFF the mount and re-runs the same failing
-        # variant, so exactly one thing changes per measurement. Everything is
-        # moved BACK at the end (the quarantine dir is container-local and would
-        # otherwise take 114 MiB of real cache with it when the RUN ends).
+        # One change per measurement; everything moves back at the end, or the RUN would take the real cache with it.
         Write-Section 'bisecting the cache root'
         $moved = @{}
         function Move-Out {
@@ -530,12 +402,7 @@ if ($null -ne $after -and $byName['disk-only'] -gt 0 -and $after.WriteErrors -eq
         $noPre = Test-Root 'without-preprocessor'
         if ($noPre -eq 0) {
             Write-Host '  => CULPRIT: the `preprocessor` directory in the cache root.'
-            # Leave it OFF for the repeat/concurrency sections below. The first
-            # cut restored it before those ran, so they measured the broken state
-            # again (5/6 and 6/6 failures) and buried the finding one line above.
-            # Keeping it out also lets sccache build a FRESH preprocessor cache
-            # during the repeats, which answers the follow-up question in the same
-            # run: is the DIRECTORY's content stale, or is the FEATURE the problem?
+            # Left out, so the sections below test without it and show whether stale content or the feature is at fault.
             $null = $moved.Remove('preprocessor')
             Write-Host '  (left out of the mount so the sections below test without it)'
         } else {
@@ -561,10 +428,7 @@ if ($null -ne $after -and $byName['disk-only'] -gt 0 -and $after.WriteErrors -eq
                     }
                     Write-Host ("  narrowed to: {0}" -f ($suspects -join ','))
                 }
-                # The search above narrows by ELIMINATION - every half it tested
-                # came back clean, so the last suspect was never itself shown to
-                # fail. Restore it alone and reproduce, or this is an inference,
-                # not a finding.
+                # Elimination is an inference; restoring the suspect alone must reproduce the failure.
                 $culprit = $suspects[0]
                 Move-Back $culprit
                 $confirm = Test-Root "confirm-bucket-$culprit"
@@ -579,9 +443,7 @@ if ($null -ne $after -and $byName['disk-only'] -gt 0 -and $after.WriteErrors -eq
                         $sz = if ($k.PSIsContainer) { '' } else { " ($($k.Length) bytes)" }
                         Write-Host ("    {0} {1}{2}" -f $kind, $k.Name, $sz)
                     }
-                    # A valid bucket contains only further single-hex dirs. A file
-                    # at this level, or a zero-byte object deeper down, is the kind
-                    # of thing that makes an insert resolve a path that is not there.
+                    # A valid bucket holds only single-hex dirs; a file here or a zero-byte object deeper is an anomaly.
                     $odd = @($kids | Where-Object { -not ($_.PSIsContainer -and $_.Name -match '^[0-9a-f]$') })
                     if ($odd) { Write-Host ("  ANOMALY: {0} entr(y|ies) are not single-hex directories: {1}" -f $odd.Count, (($odd | ForEach-Object { $_.Name }) -join ', ')) }
                     $zero = @(Get-ChildItem $cb -Recurse -Force -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -eq 0 })
@@ -598,28 +460,13 @@ if ($null -ne $after -and $byName['disk-only'] -gt 0 -and $after.WriteErrors -eq
     }
 }
 
-# --- Is the failure even deterministic? --------------------------------------
-# The bisect ended in a contradiction: `disk-only` failed against the populated
-# root at the START of the run, yet the very same root (all 16 buckets restored)
-# wrote CLEANLY at the end. Two readings, and one measurement separates them:
-#
-#   a) the move-out/move-in cycle repaired whatever was stale -> now 0/N fail
-#   b) the failure is PATH-DEPENDENT - each variant compiles a unique source, so
-#      it lands in a different `<h0>\<h1>\<h2>` subpath, and only some are bad
-#      -> roughly a constant fraction of N fails
-#
-# A single compile cannot tell these apart, which is exactly how a one-shot
-# probe produced a confident wrong answer twice in this investigation already.
+# N unique compiles: a repaired root fails 0/N, a path-dependent defect a steady fraction; one compile cannot tell.
 Write-Section 'determinism: N unique compiles against the populated root'
 
 $env:SCCACHE_MULTILEVEL_CHAIN = $origChain
 $env:SCCACHE_WEBDAV_ENDPOINT = $origEndpoint
 $env:SCCACHE_DIR = $origDir
-# BOTH configurations, because the first cut of this section repeated ONLY
-# `disk-only` and reported "10/10 clean, repaired" — while the real build, which
-# uses the CHAIN, went on failing 157/157 in the very next run. The chain is the
-# configuration that matters; measuring the other one and generalising is the
-# same mistake this investigation has now made three times.
+# Both configurations: the real build uses the chain, so disk-only alone proves nothing about it.
 $repeat = 6
 $summary = @()
 foreach ($cfg in @(
@@ -650,15 +497,7 @@ if ($d -eq 0 -and $m -eq $repeat) {
     Write-Host ('  => Mixed result (disk {0}/{1}, chain {2}/{1}): path-dependent damage.' -f $d, $repeat, $m)
 }
 
-# --- The last untested variable: CONCURRENCY ---------------------------------
-# Every measurement so far compiled ONE file at a time, and every one of them
-# passed once the tree was rewritten - while the real build, running `ninja
-# -j19`, still fails 100 % of its writes (opencv 1/1, genai 157/157) minutes
-# after the probe reported 12/12 clean against the same mount. Serial-vs-parallel
-# is the difference the probe never reproduced.
-#
-# Caveat worth stating: a race would normally fail SOME writes, not all of them,
-# so this hypothesis does not fully fit either. Measure it rather than argue it.
+# Concurrency: the build writes in parallel (ninja -j), which the serial runs above never reproduce.
 Write-Section 'concurrency: N unique compiles AT ONCE'
 
 $parallel = 16
@@ -715,16 +554,7 @@ if ($pWriteErr -gt 0 -and $d -eq 0 -and $m -eq 0) {
     Write-Host '     does not reproduce the build; something else about the media RUN differs.'
 }
 
-# --- Path LENGTH: the difference the probe never imitated ---------------------
-# A fresh SCCACHE_DIR (`C:\sccache\v2`) writes cleanly in every probe and STILL
-# fails 1/1 in the build, so the cache directory is not the variable - the probe
-# itself is. One thing it has never reproduced: the build compiles from paths
-# like
-#   C:\temp\onnx-genai-src\build\Windows-ClangCL\Release\CMakeFiles\onnxruntime-genai-obj.dir\src\engine\decoders\...
-# while the probe compiles from a ~70-character temp dir. `os error 3`
-# (ERROR_PATH_NOT_FOUND) is exactly what Windows returns when a path exceeds
-# MAX_PATH without long-path support - the same code, from a completely
-# different cause than any directory-state theory.
+# Path length: os error 3 is also what a path past MAX_PATH returns, and the build compiles from deep CMake paths.
 Write-Section 'path length: compile from a DEEP source path'
 
 $deepRoot = 'C:\temp'
@@ -777,19 +607,7 @@ int main() { std::printf("%d\n", probe_value_$t()); return 0; }
     Remove-Item (Join-Path $deepRoot "$seg-1") -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# --- THE DECISIVE ONE: is it the BUILDKIT CACHE MOUNT? -----------------------
-# Two full builds established that sccache's local disk cache loses writes once
-# its directory holds content — 1849 of 1862 in opencv, with AND without the
-# multi-level chain, at 63 MiB against a 15 GiB limit. Every single-write probe
-# so far was too small to see it: the effect only appears after enough objects
-# have gone in, which is why one compile against a fresh dir always looked fine.
-#
-# This writes N objects into a FRESH directory ON the cache mount and into a
-# FRESH directory OFF it (plain container filesystem), same sccache, same
-# config, back to back. BuildKit's WCOW cache-mount support is new (moby/buildkit
-# #5603 / PR #5708, shipped v0.21.0; race fixed in PR #5885; "cache mounts fail
-# silently" is #1648) so "the mount cannot take sustained writes" is a live
-# hypothesis — and this is the first probe section big enough to test it.
+# Bulk: N objects on vs off the BuildKit cache mount, since losses only show once the directory holds content.
 Write-Section "bulk write test: cache MOUNT vs plain directory (N unique objects)"
 
 function Invoke-BulkWrite {
@@ -812,8 +630,7 @@ function Invoke-BulkWrite {
     Push-Location $work
     try {
         for ($i = 1; $i -le $Count; $i++) {
-            # Unique in REAL CODE — a unique // comment is stripped by the
-            # preprocessor and every TU would collide on one hash key.
+            # Unique in real code: a comment is preprocessed away and every TU would share one key.
             $t = [Guid]::NewGuid().ToString('N')
             $s = Join-Path $work "b$i.cpp"
             "int probe_$t() { return $i; }" | Set-Content -Path $s -Encoding ascii
@@ -836,13 +653,7 @@ function Invoke-BulkWrite {
     return [pscustomobject]@{ Label = $Label; Misses = $misses; WriteErrors = $werr }
 }
 
-# STABLE names, deliberately NOT deleted at the end. N=250 into a dir this same
-# container just created writes cleanly — measured — so writing volume is not the
-# trigger. What the build does and the probe never did is INHERIT a populated
-# directory across the container boundary: opencv's RUN opens a cache dir that a
-# PREVIOUS RUN filled, and fails 99 %; onnx fills its own and mostly succeeds.
-# Keeping these dirs makes the SECOND probe run the actual experiment — it starts
-# with whatever the first run left behind. Run the probe twice and compare.
+# Stable names, kept: the trigger is inheriting a populated dir across RUNs, so the second probe run is the experiment.
 $bulkN = 250
 $mountDir = Join-Path $CacheDir 'bulk-inherit'   # ON the BuildKit cache mount
 $plainDir = 'C:\bulk-plain-inherit'              # NOT a mount: container filesystem
@@ -867,9 +678,7 @@ if ($onMount.WriteErrors -gt 0 -and $offMount.WriteErrors -eq 0) {
     Write-Host ('  => Neither fails at N={0}. Either the threshold is higher, or the probe' -f $bulkN)
     Write-Host '     still differs from a real build. Do NOT read this as a clean bill.'
 }
-# NOT deleted: the next run must inherit them. `C:\bulk-plain-inherit` dies with
-# the container anyway, which is itself the control — only the mounted one can
-# carry state across the boundary.
+# Not deleted; the plain dir dies with the container, which makes it the control.
 Write-Host ("  kept for the next run: {0}" -f $mountDir)
 
 Write-Section 'sccache error log'

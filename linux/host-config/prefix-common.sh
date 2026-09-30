@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# prefix-common.sh — resolve the nerdctl prefix this host actually runs, and
-# render the canonical host-config templates against it. Sourced by
-# apply-host-config.sh and verify-host-config.sh.
-#
-# The canonical drop-in carries @NERDCTL_PREFIX@ rather than a literal path,
-# and the live systemd --user units are the authority on what to put there —
-# the same rule install-nerdctl-full.sh follows, for the reason recorded in
-# docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo
+# Renders host-config templates against the prefix the live units name: docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo
 
 # Print the prefix named by the live rootless units, e.g. /usr/local.
 nerdctl_host_prefix() {

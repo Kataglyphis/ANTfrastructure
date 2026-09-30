@@ -1,23 +1,14 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Shared plumbing for the HOST maintenance family (compact-host-vhdx,
-# rebuild-host-vhdx, deploy-shim-patch): all three are "stop services ->
-# mutate a host artifact -> restore services -> write a transcript", and until
-# 2026-08-21 each carried its own byte-identical transcript preamble and
-# service stop-loop (~90 duplicated lines, already diverging in formatting).
-# The start loop is shared too (Start-HostServices); WHAT a script restores and
-# whether it then throws stays in the script on purpose — best-effort mid-flow
-# vs must-succeed final is load-bearing, not drift.
+# Host-maintenance plumbing; what a script restores and whether it then throws stays in the script on purpose.
 
 Set-StrictMode -Version Latest
 
 function New-HostMaintenanceLog {
     <#
     .SYNOPSIS
-        Creates the transcript context: an in-memory line list plus the
-        resolved log path (default: out\<name>.log under the repo root).
+        Transcript context: an in-memory line list and the log path (default <repo>\out\<name>.log).
     #>
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -34,9 +25,7 @@ function New-HostMaintenanceLog {
 }
 
 function Write-HostStep {
-    # Timestamped console line that is ALSO captured in the transcript. The
-    # maintenance scripts wrap this in a local 2-line Write-Step so their ~50
-    # call sites keep the old signature.
+    # Takes $Log explicitly; the scripts wrap it in a script-scope Write-Step.
     param(
         [Parameter(Mandatory)]$Log,
         [string]$Message = '',
@@ -61,10 +50,7 @@ function Save-HostMaintenanceLog {
 function Stop-HostServices {
     <#
     .SYNOPSIS
-        Best-effort stop of the given services (a service that fails to stop
-        is logged, not fatal — the caller decides whether the missing member
-        of the returned list matters). Returns the names actually stopped, so
-        the caller's restore half starts only what this stopped.
+        Best-effort stop; returns the names actually stopped, so the restore starts only those.
     #>
     param(
         [Parameter(Mandatory)]$Log,
@@ -82,21 +68,14 @@ function Stop-HostServices {
         }
     }
     Start-Sleep -Seconds 3
-    # A real array, not the List: every caller reverses this in place via
-    # [array]::Reverse(), which binds a Generic List only as a converted COPY -
-    # the reversal was a silent no-op and services restarted in STOP order
-    # (measured 2026-09-01: buildkitd started before containerd and died on the
-    # missing containerd pipe after a shim deploy).
+    # A real array: [array]::Reverse() on a List reverses a converted copy, a silent no-op.
     return , $stopped.ToArray()
 }
 
 function Start-HostServices {
     <#
     .SYNOPSIS
-        Starts what Stop-HostServices stopped, in REVERSE stop order (dependents
-        first). A failure is a red line, never silence — the measured
-        2026-09-01 bug was buildkitd starting before containerd and dying on the
-        missing pipe while a swallowed error left the run looking green.
+        Starts what Stop-HostServices stopped, in reverse order; a failure is a red line, never silence.
     #>
     param(
         [Parameter(Mandatory)]$Log,

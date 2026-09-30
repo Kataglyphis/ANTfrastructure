@@ -3,23 +3,14 @@
 # SPDX-License-Identifier: MIT
 <#
 .SYNOPSIS
-    Builds clang/LLVM at the pinned LLVM_WINDOWS_VERSION carrying the two
-    AArch64 instruction-size fixes (llvm#219275, llvm#219276), installed where
-    it shadows the scoop clang-cl.
+    Builds clang/LLVM at LLVM_WINDOWS_VERSION with the AArch64 size fixes llvm#219275 and llvm#219276.
 
 .DESCRIPTION
-    Unpatched, clang-cl aborts on OpenCV/protobuf aarch64 sources, which is what
-    the lane's `+force-32bit-jump-tables` and `/Ob1` workarounds pay for. Root
-    cause and evidence: backlog #135, docs/windows-refactor-backlog.md.
-
-    Built from the pinned release, not main: the banner must still report
-    LLVM_WINDOWS_VERSION for Test-Toolchain.ps1's provenance gate, and the
-    source patches under windows/scripts/patches/ were written against it.
+    Unpatched, clang-cl aborts on OpenCV/protobuf aarch64 sources (docs/windows-refactor-backlog.md, #135).
+    The pinned release, not main: Test-Toolchain.ps1's provenance gate checks the banner version.
 
 .PARAMETER InstallPrefix
-    Where the built toolchain lands. Must come BEFORE the scoop shims on PATH:
-    every build script resolves the compiler by bare name, so shadowing is all
-    that is required.
+    Where the toolchain lands; it must precede the scoop shims on PATH, as scripts resolve compilers by bare name.
 
 .PARAMETER SkipIfPresent
     Do nothing when a patched clang is already installed at the prefix.
@@ -35,7 +26,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: container mounts are FLAT (C:\temp\scripts), the repo nests one level deeper.
+# Shared assets sit beside this script in the flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
@@ -46,16 +37,14 @@ Write-Host "=== clang/LLVM $LlvmVersion source build (AArch64 instruction-size f
 # WU spool writes land in the layer and kill its finalize; no-op outside a container (#158).
 Disable-ContainerWindowsUpdate
 
-# Toolchain-level home for the aarch64 builtins (#135); the merge-stage self-heal
-# stays as the fail-open fallback - a GitHub blip must not kill the LLVM layer.
+# Fail-open: a GitHub blip must not kill the LLVM layer, and the GStreamer self-heal is the fallback.
 function Install-TargetCompilerRt {
     param([Parameter(Mandatory)][string]$Prefix, [Parameter(Mandatory)][string]$Version)
     $existing = @(Get-ChildItem -Path (Join-Path $Prefix 'lib\clang') -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue)
     if ($existing.Count -gt 0) { Write-Host "aarch64 compiler-rt already staged ($($existing[0].FullName))."; return }
     $hostLib = @(Get-ChildItem -Path (Join-Path $Prefix 'lib\clang') -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
     if ($hostLib.Count -eq 0) { Write-Warning 'clang_rt.builtins-x86_64.lib not found - cannot place the aarch64 lib; merge-stage self-heal will cover the cross lane.'; return }
-    # Pin: baked env first, else the bind-mounted versions.env sibling (this RUN
-    # bakes no env for the key).
+    # The baked env, else the bind-mounted versions.env: this RUN bakes no env for the key.
     $rtSha = "$env:LLVM_WINDOWS_AARCH64_RT_SHA256".Trim()
     if (-not $rtSha) {
         $envFile = Join-Path $PSScriptRoot 'versions.env'
@@ -77,31 +66,23 @@ function Install-TargetCompilerRt {
 
 $clangCl = Join-Path $InstallPrefix 'bin\clang-cl.exe'
 if ($SkipIfPresent -and (Test-Path $clangCl)) {
-    # NOT a bare return: a cached C:\llvm-patched from before 2026-08-31 has no
-    # aarch64 builtins, and skipping the staging here would leave it that way forever.
+    # Not a bare return: an older cached prefix lacks the aarch64 builtins and would never gain them.
     Write-Host "Patched clang already present at $clangCl - verifying the aarch64 compiler-rt staging."
     Install-TargetCompilerRt -Prefix $InstallPrefix -Version $LlvmVersion
     return
 }
 
-# The SHA256 pin table, the LLVM_WINDOWS_SRC_SHA256 override and the
-# refuse-unpinned throw live in Get-LlvmSourceSha256 / Get-LlvmSourceTarball
-# (WindowsSourceBuild.Common.psm1) -- ONE owner, shared with
-# Build-TvmFromSource.ps1's mini-LLVM heal, which consumes the same tarball.
-# A hand-maintained pin table in two scripts is how a bump lands in one place
-# only and the other stage refuses (or worse, downloads pre-seeded) hours later.
+# The pins live in Get-LlvmSourceTarball, shared with TVM's mini-LLVM, so a bump cannot land in one place only.
 $srcDir = (Get-LlvmSourceTarball -Version $LlvmVersion -DestinationRoot $SourceRoot).SourceDir
 
-# The two AArch64 sizing fixes (upstream llvm#219275, llvm#219276), applied by the
-# same helper the OpenCV patches use so a drifted patch fails loudly here.
+# Through the shared patch helper, so a drifted patch fails loudly here.
 $patchDir = Join-Path $scriptAssetRoot 'patches\llvm'
 foreach ($p in @('001-aarch64-ehlabel-size.patch', '002-aarch64-seh-pseudo-size.patch')) {
     Invoke-SourcePatch -PatchFile (Join-Path $patchDir $p) -SourceDir $srcDir `
         -Description "llvm: $p" -IgnoreWhitespace
 }
 
-# Drift assertion: a silently unapplied patch rebuilds the very bug this stage
-# removes, and would only resurface hours later as an unattributable MC error.
+# An unapplied patch would rebuild the bug, resurfacing hours later as an unattributable MC error.
 $instrInfo = Join-Path $srcDir 'llvm\lib\Target\AArch64\AArch64InstrInfo.cpp'
 $text = [System.IO.File]::ReadAllText($instrInfo)
 if ($text -notmatch 'eh-asynch') {
@@ -117,17 +98,13 @@ Enter-VsDevCmdEnvironment
 $buildDir = Join-Path $SourceRoot 'build'
 $null = New-Item -ItemType Directory -Force -Path $buildDir
 
-# X86 stays in the target list: this is the HOST compiler for the cross lane and
-# the amd64 lane uses the same image.
+# X86 stays: this is the host compiler for the cross lane and the amd64 lane's compiler too.
 $cmakeArgs = @(
     '-G', 'Ninja',
     '-S', (Join-Path $srcDir 'llvm'),
     '-B', $buildDir,
     '-DCMAKE_BUILD_TYPE=Release',
-    # clang-tools-extra (CON10): only a clang-tidy built from THIS tree reads this
-    # clang's BMIs. A module file records the compiler's repository string, empty for
-    # a tarball build, and any other clang-tidy fails the compare ("built from a
-    # different branch () than the compiler"). No clangd: nothing runs it here.
+    # Only a clang-tidy from this tree reads this clang's BMIs, which record its (empty) repository string.
     '-DLLVM_ENABLE_PROJECTS=clang;lld;clang-tools-extra',
     '-DCLANG_ENABLE_CLANGD=OFF',
     '-DLLVM_ENABLE_RUNTIMES=compiler-rt',
@@ -138,17 +115,9 @@ $cmakeArgs = @(
     '-DLLVM_INCLUDE_BENCHMARKS=OFF',
     '-DLLVM_INCLUDE_EXAMPLES=OFF',
     '-DLLVM_ENABLE_PDB=OFF',
-    # DIA needs ATL, absent from the container's VS Build Tools (C1083), and only
-    # powers PDB symbolisation in the LLVM tools.
+    # DIA needs ATL, absent from the container's Build Tools, and only symbolises PDBs.
     '-DLLVM_ENABLE_DIA_SDK=OFF',
-    # compiler-rt: builtins for lld-link (__udivti3 …) AND the sanitizer
-    # runtimes — the smoke gate runs /fsanitize=address, and the one build with
-    # sanitizers OFF shipped a clang-cl that cannot (gate red 2026-09-01).
-    # libFuzzer: every image shipped clang_rt.fuzzer*, because the switch here was
-    # COMPILER_RT_BUILD_FUZZER, which names no option; it says ON now.
-    # profile (CON9): clang-cl coverage links clang_rt.profile (cmake/Tests.cmake). No
-    # recorded failure backed "fails to compile under clang-cl". profile_rocm is its
-    # HIP-offload twin, which the driver links only for HIP; this LLVM has no AMDGPU.
+    # Builtins for lld-link, sanitizers for the /fsanitize=address smoke, profile for coverage; this LLVM has no AMDGPU.
     '-DCOMPILER_RT_BUILD_BUILTINS=ON',
     '-DCOMPILER_RT_BUILD_LIBFUZZER=ON',
     '-DCOMPILER_RT_BUILD_PROFILE=ON',
@@ -159,9 +128,7 @@ $cmakeArgs = @(
     '-DCOMPILER_RT_BUILD_XRAY=OFF',
     '-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF'
 )
-# Remote backend only -- a container-local cache dies with the layer. #164: the
-# old SCCACHE_DIR/SERVE test was never set by the toolchain stage, so every
-# re-key compiled LLVM cold.
+# Remote backend only: a container-local cache dies with the layer.
 Start-SccacheServerSession
 if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) {
     if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
@@ -185,15 +152,13 @@ Complete-SccacheServerSession
 if (-not (Test-Path $clangCl)) { throw "clang-cl.exe not found at $clangCl after install." }
 $banner = (& $clangCl --version | Select-Object -First 1)
 Write-Host "Installed: $banner"
-# The banner must still say the pinned version or Test-Toolchain.ps1's
-# provenance gate rejects this compiler.
+# Test-Toolchain.ps1's provenance gate rejects a banner without the pinned version.
 if ($banner -notmatch [regex]::Escape($LlvmVersion)) {
     throw "Built clang reports '$banner' but LLVM_WINDOWS_VERSION is $LlvmVersion - the provenance gate would fail."
 }
 Install-TargetCompilerRt -Prefix $InstallPrefix -Version $LlvmVersion
 
-# What consumers take from THIS build fails the layer when absent (CON9, CON10), and
-# the 7.1 GB source plus Ninja tree the 2026-09-22 layer shipped goes.
+# What consumers take from this build must exist, and the 7 GB source and build tree must not ship.
 $consumed = @('bin\clang-tidy.exe', 'bin\clang-apply-replacements.exe',
     "lib\clang\$($LlvmVersion.Split('.')[0])\lib\windows\clang_rt.profile-x86_64.lib")
 $absent = $consumed.Where({ -not [IO.File]::Exists((Join-Path $InstallPrefix $_)) })

@@ -71,18 +71,10 @@ runs:
         EXCLUDE_SUBMODULES: ${{ inputs.exclude-submodules }}
       run: |
         git config --global core.longpaths true
-        # .gitmodules pins git@github.com: (SSH) URLs and the runner has no SSH
-        # key; rewrite to token HTTPS as actions/checkout would.
+        # .gitmodules uses SSH URLs and the runner has no key; rewrite to token HTTPS as actions/checkout does.
         git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "git@github.com:"
 
-        # Prune excluded submodules in GLOBAL config, deliberately: the nested
-        # `git submodule` processes spawned by --recursive each do their own
-        # config lookup, and global is the only scope all of them share. Setting
-        # it on the top-level repo would stop at depth 1 - useless here, since
-        # the chains that overflow are 5+ levels down.
-        # Both keys, because they gate different stages: `.active=false` keeps
-        # the submodule out of the active set, `.update=none` stops the checkout
-        # even if something else marks it active.
+        # Global config: it is the only scope every nested --recursive process reads; .active and .update gate different stages, so set both.
         if [ -n "${EXCLUDE_SUBMODULES}" ]; then
           while IFS= read -r sm; do
             sm="${sm%$'\r'}"

@@ -1,45 +1,9 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Backlog W1: pin-parity gate for the Windows source-build scripts.
-#
-# Every `Get-SourceBuildVersion ... -DefaultValue '<literal>'` fallback baked
-# into windows\scripts\*.ps1 must equal the canonical pin in
-# linux/scripts/01-core/versions.env: the default is what a script builds when
-# the corresponding env pin is NOT forwarded (local runs, new lanes, forgotten
-# ARG plumbing), so a drifted default silently builds a DIFFERENT version than
-# the pinned chain. The classic case is the LITERT_VERSION twin:
-# Build-LitertFromSource.ps1 and Export-LitertLmBridge.ps1 both bake the
-# same tag and must be bumped together — this suite pins the pair explicitly.
-#
-# Discovery is AST-based (CommandAst scan of top-level windows\scripts\*.ps1
-# plus modules\*.psm1 — every current and realistically future call site), so
-# NEW call sites are found automatically. Unknown-site guard: a discovered site
-# whose -EnvironmentVariables name no versions.env key fails the run unless it
-# is pin-free (-DefaultValue '') or on the explicit non-version allowlist
-# below — new scripts cannot drift silently.
-#
-# Comparison rule mirrors the helper (WindowsSourceBuild.Common.psm1): with
-# -StripVPrefix the leading 'v' is stripped from WHICHEVER value wins (env pin
-# or default), so parity for those sites is defined on the stripped forms
-# (e.g. default '1.28.0' vs ONNXRUNTIME_VERSION=v1.28.0 is IN sync). All other
-# sites compare raw — no over-normalization.
-#
-# Backlog W1b (second Describe below): the SAME drift class exists via the
-# OTHER resolver, Resolve-ContainerImageValue (WindowsContainerImage.Common.psm1)
-# -- the setup-*/verify-* container-image scripts bake version literals into its
-# -DefaultValue exactly like the source-build scripts do with
-# Get-SourceBuildVersion. Covered by a parallel AST scan + parity gate.
-#
-# Harness-style suite (TestHarness.psm1 Describe/It; PS 5.1 + 7.x, no Pester).
-# ConvertFrom-VersionsEnv comes from WindowsScripts.Shared.psm1, imported by
-# Invoke-Tests.ps1.
+# A baked -DefaultValue is what a script builds when its env pin is not forwarded, so each must equal versions.env.
 
-# ONE owner for the scan surface (#126, 2026-08-21): the three Describes
-# (W1/W1b/W1c) each enumerated + AST-parsed the same file set. The MATCHER
-# logic stays per-Describe on purpose — they scan different AST shapes and a
-# collapse bug would weaken the gate silently.
+# One scan surface for W1/W1b/W1c; the matchers stay per-Describe because they read different AST shapes.
 function Get-PinScanAst {
     param([string]$MustMentionPattern = '')
     $scriptsDir = Split-Path $PSScriptRoot -Parent
@@ -50,8 +14,7 @@ function Get-PinScanAst {
         $tokens = $null; $errors = $null
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
         if ($errors -and @($errors).Count -gt 0) {
-            # Fatal only when the file plausibly contains a site the caller
-            # would then miss; general syntax health is another gate's job.
+            # Fatal only when the file could hold a site the caller would miss; syntax health is another gate's job.
             if ($MustMentionPattern -and ((Get-Content -Path $f.FullName -Raw) -match $MustMentionPattern)) {
                 throw ('PinParity: ' + $f.Name + ' has parse errors; cannot scan: ' + @($errors)[0].Message)
             }
@@ -61,8 +24,7 @@ function Get-PinScanAst {
     }
 }
 
-# One owner for the CommandElements walk both scanners carried (F4): pure AST
-# mechanics. Argument is attached (-Name:value) or the next element.
+# A parameter's argument is attached (-Name:value) or the next element.
 function Get-CommandParameterArgumentMap {
     param([System.Management.Automation.Language.CommandAst]$Call)
     $map = [ordered]@{}
@@ -91,8 +53,6 @@ function Get-AstDefaultValue {
     return @{ Value = $null; IsLiteral = $false }
 }
 
-# Both Describe blocks below read the same canonical pin file; they differed only
-# in the label on the throw, which the duplication gate counted as a copied block.
 function Get-CanonicalPins {
     param([Parameter(Mandatory)][string]$Label)
     $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
@@ -105,18 +65,14 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
 
     function Get-PinParityPins { return (Get-CanonicalPins -Label 'PinParity') }
 
-    # Non-version -DefaultValue literals (paths/roots, deliberately never pinned
-    # in versions.env). Entry format: '<script name>|<EnvironmentVariables joined by ,>'.
-    # Empty-string defaults need no entry: they are pin-free (nothing baked in,
-    # nothing to drift) and are dropped by the scanner, e.g. build-tvm's VULKAN_SDK.
+    # Non-version defaults only; '' defaults are pin-free and need no entry.
     function Get-PinParityAllowlist {
         return @(
             'Build-LitertLmFromSource.ps1|VCPKG_ROOT'   # local toolchain root, not a version
         )
     }
 
-    # AST-scan for Get-SourceBuildVersion calls carrying a -DefaultValue.
-    # Returns one record per call site; literal-'' defaults are dropped (see above).
+    # Literal-'' defaults are dropped: they bake nothing that can drift.
     function Get-PinParitySite {
         $sites = @()
         foreach ($entry in @(Get-PinScanAst -MustMentionPattern 'Get-SourceBuildVersion')) {
@@ -167,9 +123,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
         return $sites
     }
 
-    # Canonical versions.env key for a site = the FIRST -EnvironmentVariables
-    # entry that exists in versions.env (mirrors the helper's own first-hit-wins
-    # resolution when the pins are exported into the environment).
+    # First -EnvironmentVariables entry in versions.env, matching the helper's first-hit-wins order.
     function Resolve-PinParityKey {
         param($Site, $Pins)
         foreach ($name in @($Site.EnvVars)) {
@@ -178,12 +132,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
         return $null
     }
 
-    # #134: when a commit-hash override (TVM_COMMIT) wins key resolution, the
-    # -DefaultValue is still the TAG fallback (v0.26.0) -- it is what the script
-    # builds when no env pin is forwarded, and a commit hash is not a sensible
-    # default. The DefaultValue comparison must therefore check it against the
-    # TAG pin (TVM_REF), not the commit override. Maps "<script>|<resolved key>"
-    # to the versions.env key the DefaultValue is actually baked from.
+    # A commit override (TVM_COMMIT) wins key resolution, but the default is the tag fallback, so compare against TVM_REF.
     $script:DefaultValueKeyOverride = @{
         'Build-TvmFromSource.ps1|TVM_COMMIT' = 'TVM_REF'
     }
@@ -210,9 +159,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
             if ($null -ne $key) { $found["$($s.Script)|$key"] = $true }
         }
         foreach ($expected in @(
-                # #134: TVM_COMMIT (a commit-hash override for the LLVM 23 break)
-                # is first in the array and wins the key resolution; the DefaultValue
-                # is the tag fallback, compared against TVM_REF below.
+                # TVM_COMMIT wins key resolution; the default itself is compared against TVM_REF.
                 'Build-TvmFromSource.ps1|TVM_COMMIT',
                 'Build-IreeFromSource.ps1|IREE_VERSION',
                 'Build-LitertFromSource.ps1|LITERT_VERSION',
@@ -224,9 +171,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 'Build-FfmpegFromSource.ps1|FFMPEG_VERSION',
                 'Build-FfmpegFromSource.ps1|PYAV_VERSION',
                 'Build-GstreamerFromSource.ps1|GSTREAMER_VERSION',
-                # 2026-08-21: gstreamer's .pc writer used a variable-indirected
-                # fallback W1c cannot see and drifted to 1.28.0 — converted to
-                # Get-SourceBuildVersion; this pin keeps it under W1's eye.
+                # The .pc writer's ORT pin must stay a W1 site: W1c cannot see a variable-indirected fallback.
                 'Build-GstreamerFromSource.ps1|ONNXRUNTIME_VERSION',
                 'Build-OnnxFromSource.ps1|ONNXRUNTIME_VERSION',
                 'Build-OnnxGenaiFromSource.ps1|ONNXRUNTIME_GENAI_VERSION')) {
@@ -244,16 +189,13 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 $failures += "$($s.Script):$($s.Line): -DefaultValue for $key is not a string literal ($($s.Default)) - parity cannot be verified statically; use a literal"
                 continue
             }
-            # #134: a commit-hash override (TVM_COMMIT) wins resolution but the
-            # DefaultValue is the tag fallback, so compare it against the TAG pin.
             $defaultKey = Resolve-DefaultValueKey -Site $s -ResolvedKey $key
             $expected = [string]$pins[$defaultKey]
             $cmpExpected = $expected
             $cmpActual = $s.Default
             $note = if ($defaultKey -ne $key) { " (DefaultValue is the $defaultKey tag fallback, not the $key commit override)" } else { '' }
             if ($s.StripV) {
-                # The script strips the leading v from whichever value wins, so
-                # parity for -StripVPrefix sites is defined on the stripped forms.
+                # The script strips the leading v from whichever value wins.
                 $cmpExpected = $cmpExpected -replace '^v', ''
                 $cmpActual = $cmpActual -replace '^v', ''
                 $note = " (compared after StripVPrefix: '$cmpActual' vs '$cmpExpected')"
@@ -294,54 +236,18 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
         Assert-Equal 2 $twins.Count 'exactly the two twin LITERT_VERSION default sites exist (build script + export bridge)'
         foreach ($s in $twins) {
             Assert-True $s.DefaultIsLiteral "$($s.Script):$($s.Line) LiteRT default must be a string literal"
-            # Raw compare: neither site uses -StripVPrefix, so the baked default
-            # must carry the exact canonical tag INCLUDING the v prefix.
+            # Neither twin uses -StripVPrefix, so the default must carry the v prefix too.
             Assert-True ($s.Default -ceq $canonical) "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' != versions.env LITERT_VERSION=$canonical - the two LiteRT defaults must be bumped together"
         }
     }
 }
 
-# ============================================================================
-# Backlog W1b: pin parity for the SECOND shadow-pin mechanism,
-# Resolve-ContainerImageValue (WindowsContainerImage.Common.psm1).
-#
-# Resolution order in the helper is Value > env var > -DefaultValue, so exactly
-# as with Get-SourceBuildVersion a drifted -DefaultValue literal silently wins
-# whenever the env pin is not forwarded. Parameter shape differs from the W1
-# helper and the scanner mirrors it faithfully:
-#   * -EnvironmentVariable is a SINGLE string (not an array) -- one env name
-#     per site; a non-literal name (e.g. verify-toolchain's $pinned.EnvVar or
-#     smoke-test's $Key) is recorded as '<dynamic>'.
-#   * -TrimVPrefix TrimStart('v')s the RESOLVED value, so parity for such
-#     sites is defined on the TrimStart('v') forms of both values.
-#   * literal-'' defaults are pin-free (env absent => empty => site-local
-#     "skip/unpinned" semantics) and are dropped, same rule as W1.
-#
-# Derived pins: CUDA_VERSION_MAJOR_MINOR is deliberately NOT a versions.env
-# key -- build.ps1/Build-Buildkit.ps1 derive it from CUDA_VERSION and bake it
-# as an ARG/env. Its baked default must therefore equal the major.minor of the
-# canonical CUDA_VERSION pin (a first-two-components rule here, mirroring the
-# derivation in windows/Build-Buildkit.ps1).
-#
-# KNOWN DRIFT AWAITING THE REBUILD WINDOW: see
-# $script:KnownDriftAwaitingRebuildWindow below. The 3 listed sites ARE
-# drifted today, but the script fixes are batched for the next Windows rebuild
-# window (editing windows\scripts\*.ps1 invalidates COPY layers), so this
-# suite must stay green while DOCUMENTING the drift. TestHarness.psm1 has no
-# Pester Set-ItResult -Pending, so pending is emulated: a dedicated It prints
-# a yellow [pend] line per tracked site and passes -- and hard guards turn it
-# RED the moment a listed default is fixed (entry must then be REMOVED), the
-# default drifts to yet another value, or the call site disappears.
-# ============================================================================
+# W1b: the same drift through Resolve-ContainerImageValue, whose -DefaultValue wins whenever the env pin is not forwarded.
 Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValue fallbacks vs versions.env' {
 
     function Get-RcivPins { return (Get-CanonicalPins -Label 'PinParity(W1b)') }
 
-    # Non-version Resolve-ContainerImageValue defaults (paths / derived URLs /
-    # dynamic pass-throughs -- deliberately never pinned in versions.env).
-    # Entry format: '<script name>|<EnvironmentVariable literal, or <dynamic>>'.
-    # Empty-string defaults need no entry (dropped by the scanner, e.g. the
-    # *_SHA256 pins and verify-toolchain's tool-version gates).
+    # Non-version defaults (paths, derived URLs, dynamic pass-throughs); '' defaults need no entry.
     function Get-RcivAllowlist {
         return @(
             'Install-Cuda.ps1|CUDNN_ROOT',               # install root path, default derived from $CudnnVersion - not a version
@@ -354,26 +260,14 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
         )
     }
 
-    # KNOWN LIVE DRIFT mechanism (backlog W1b): -DefaultValue literals that lag
-    # versions.env while their fix waits for a rebuild window (COPY-layer
-    # invalidation). Listed triples report as pending, NOT failures; THE MOMENT
-    # a listed default is fixed to match the pin, the guard test below FAILS
-    # with "remove from KnownDrift list" -- delete the entry in the same change
-    # that fixes the script. EMPTY since 2026-08-21: the store-reset rebuild
-    # window absorbed the last three (GIT_VERSION 2.54.0->2.55.0,
-    # WIX_UI_EXT_VERSION 4.0.4->4.0.6 x2).
+    # Drift whose fix waits for a rebuild window reports as pending; delete an entry in the change that fixes its script.
     $script:KnownDriftAwaitingRebuildWindow = @()
 
     function Get-RcivKnownDriftId {
         return @($script:KnownDriftAwaitingRebuildWindow | ForEach-Object { "$($_.Script)|$($_.EnvVar)" })
     }
 
-    # AST-scan for Resolve-ContainerImageValue calls carrying a -DefaultValue.
-    # Same file set as the W1 scanner (top-level windows\scripts\*.ps1 +
-    # modules\*.psm1); FindAll recurses into function bodies, so wrapper-internal
-    # sites (smoke-test's Get-ExpectedVersion) are found. smoke-test's local
-    # FALLBACK DEFINITION of the helper is a FunctionDefinitionAst, not a
-    # CommandAst, so it is correctly not a site. Literal-'' defaults dropped.
+    # FindAll recurses into function bodies, so wrapper-internal calls are sites; a fallback definition of the helper is not.
     function Get-RcivSite {
         $sites = @()
         foreach ($entry in @(Get-PinScanAst -MustMentionPattern 'Resolve-ContainerImageValue')) {
@@ -397,12 +291,7 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
                             $defaultIsLiteral = $d.IsLiteral
                         }
                         'EnvironmentVariable' {
-                            # SINGLE string parameter: accept ONLY a direct string
-                            # literal as the env name. Anything else ($Key,
-                            # $pinned.EnvVar, ...) is a dynamic pass-through --
-                            # a nested-literal FindAll (as W1 uses for its array
-                            # parameter) would mis-extract e.g. the member name
-                            # 'EnvVar' from $pinned.EnvVar.
+                            # Only a direct literal names the env var; a nested FindAll would pull 'EnvVar' out of $pinned.EnvVar.
                             if ($argAst -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
                                 $envVar = $argAst.Value
                             } elseif ($null -ne $argAst) {
@@ -430,8 +319,7 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
         return $sites
     }
 
-    # Expected pin for a site: direct versions.env key, or a derived rule.
-    # Returns $null when neither applies (unknown-site guard territory).
+    # A direct versions.env key or a derived pin; $null leaves the site to the unknown-site guard.
     function Resolve-RcivExpected {
         param($Site, $Pins)
         if ($Site.EnvVar -eq '<dynamic>' -or $Site.EnvVar -eq '<none>') { return $null }
@@ -439,8 +327,7 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
             return [pscustomobject]@{ Key = $Site.EnvVar; Expected = [string]$Pins[$Site.EnvVar]; Derivation = '' }
         }
         if ($Site.EnvVar -eq 'CUDA_VERSION_MAJOR_MINOR' -and $Pins.Contains('CUDA_VERSION')) {
-            # Mirror windows/Build-Buildkit.ps1's $cudaMajorMinor derivation: first two
-            # dotted components of the canonical CUDA_VERSION pin.
+            # Mirrors windows/Build-Buildkit.ps1's $cudaMajorMinor: the first two components of CUDA_VERSION.
             $parts = @(([string]$Pins['CUDA_VERSION']) -split '\.')
             $mm = if ($parts.Count -ge 2) { @($parts[0], $parts[1]) -join '.' } else { [string]$Pins['CUDA_VERSION'] }
             return [pscustomobject]@{ Key = 'CUDA_VERSION_MAJOR_MINOR'; Expected = $mm; Derivation = ' (derived: major.minor of CUDA_VERSION)' }
@@ -452,8 +339,7 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
         $pins = Get-RcivPins
         Assert-True ($pins.Count -gt 0) 'versions.env parsed to a non-empty table'
         $sites = @(Get-RcivSite)
-        # 5 version-pin sites (GIT_VERSION, WIX_VERSION, WIX_UI_EXT_VERSION x2,
-        # CUDA_VERSION_MAJOR_MINOR) + 4 allowlisted non-version sites = 9.
+        # 5 version-pin sites + 4 allowlisted non-version sites = 9.
         Assert-True ($sites.Count -ge 9) "expected at least 9 Resolve-ContainerImageValue -DefaultValue sites, scanner found $($sites.Count) - scan broke or sites were removed; update this suite deliberately"
     }
 
@@ -490,8 +376,7 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
             $cmpActual = $s.Default
             $note = $resolved.Derivation
             if ($s.TrimV) {
-                # The helper TrimStart('v')s whichever value wins, so parity for
-                # -TrimVPrefix sites is defined on the trimmed forms.
+                # The helper TrimStart('v')s whichever value wins.
                 $cmpExpected = $cmpExpected.TrimStart('v')
                 $cmpActual = $cmpActual.TrimStart('v')
                 $note += " (compared after TrimVPrefix: '$cmpActual' vs '$cmpExpected')"
@@ -540,25 +425,18 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
                     $cmpExpected = $cmpExpected.TrimStart('v')
                     $cmpActual = $cmpActual.TrimStart('v')
                 }
-                # Guard 2: fixed drift MUST be delisted (keeps this list honest,
-                # so it can never mask a FUTURE re-drift of the same site).
+                # Guard 2: fixed drift must be delisted, or the entry would mask a future re-drift.
                 Assert-True ($cmpActual -cne $cmpExpected) "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' now MATCHES versions.env $($resolved.Key)=$($resolved.Expected) - drift is FIXED: remove this entry from `$script:KnownDriftAwaitingRebuildWindow"
-                # Guard 3: the default must be EXACTLY the recorded drifted value;
-                # a third value means new, untracked drift -- fail loudly.
+                # Guard 3: a third value is new, untracked drift.
                 Assert-True ($s.Default -ceq $entry.DriftedDefault) "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' is neither the pin ($($resolved.Expected)) nor the recorded drifted value '$($entry.DriftedDefault)' - NEW drift; fix the script or update the KnownDrift entry deliberately"
-                # Harness has no Set-ItResult -Pending; this yellow line is the
-                # documented pending marker (the It itself stays green).
+                # The harness has no Set-ItResult -Pending; this yellow line is the pending marker.
                 Write-Host "  [pend] $($s.Script):$($s.Line): -DefaultValue '$($s.Default)' != versions.env $($resolved.Key)=$($resolved.Expected) - KNOWN drift awaiting the batched Windows rebuild window (backlog W1b); fix the script default in that window and delete the KnownDrift entry" -ForegroundColor Yellow
             }
         }
     }
 
     It 'WIX_UI_EXT_VERSION twin defaults (Install-ScoopTools.ps1 + Test-Toolchain.ps1) carry the SAME literal - install and verify gates must never disagree' {
-        # Same twin economics as the W1 LITERT pair: setup installs the WiX UI
-        # extension the default names, verify-toolchain asserts the extension the
-        # default names. Even while both are (known-)drifted from versions.env,
-        # they must at least agree with EACH OTHER, or a defaults-only container
-        # build installs one version and then fails its own toolchain gate.
+        # Even when drifted they must agree, or a defaults-only build installs one version and fails its own toolchain gate.
         $twins = @(Get-RcivSite | Where-Object {
                 ($_.Script -eq 'Install-ScoopTools.ps1' -or $_.Script -eq 'Test-Toolchain.ps1') -and
                 $_.EnvVar -eq 'WIX_UI_EXT_VERSION' })
@@ -571,14 +449,7 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
 }
 
 Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbacks vs versions.env' {
-    # Backlog #69: build-ffmpeg's `else { 'n13.0.19.0' }` drifted against
-    # NV_CODEC_HEADERS_REF=n13.1.15.0 - re-planting the exact incident
-    # versions.env documents ("a wrong nv-codec-headers ref 404'd and NVENC
-    # was silently skipped on both lanes"). W1/W1b scan only the two resolver
-    # helpers; this Describe covers the RAW idiom. Membership in versions.env
-    # is the version-ness filter: an else-literal for a key NOT in
-    # versions.env (FFMPEG_TOOLCHAIN, GPU_TYPE, PKG_CONFIG_PATH) is a
-    # behavior default, not a pin, and is ignored.
+    # The raw idiom the resolver scans miss; an else-literal for a key not in versions.env is a behaviour default, not a pin.
 
     function Get-IdiomPins {
         $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
@@ -592,15 +463,13 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
             $f = $entry.File; $ast = $entry.Ast
             foreach ($ifAst in @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.IfStatementAst] }, $true))) {
                 if ($null -eq $ifAst.ElseClause) { continue }
-                # env vars referenced by the CONDITION (covers bare $env:X,
-                # IsNullOrWhiteSpace($env:X), $env:X -match ...).
+                # Env vars the condition references, however it tests them.
                 $envNames = @($ifAst.Clauses[0].Item1.FindAll({ param($n)
                             $n -is [System.Management.Automation.Language.VariableExpressionAst] -and
                             $n.VariablePath.UserPath -like 'env:*' }, $true) |
                         ForEach-Object { $_.VariablePath.UserPath.Substring(4) } | Sort-Object -Unique)
                 if ($envNames.Count -eq 0) { continue }
-                # else branch must be a SINGLE bare string literal - anything
-                # richer (string building, cmdlet calls) is not the pin idiom.
+                # Only a single bare string literal in the else branch is the pin idiom.
                 $elseStrings = @($ifAst.ElseClause.FindAll({ param($n)
                             $n -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true))
                 if ($elseStrings.Count -ne 1) { continue }

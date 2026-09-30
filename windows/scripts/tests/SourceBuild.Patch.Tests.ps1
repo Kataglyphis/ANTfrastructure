@@ -1,7 +1,5 @@
 #requires -Version 7.0
-# Tests for the source-patch helpers that decide whether every upstream patch lands.
-# A silent regression here mis-patches a source tree and blows up mid-build, so these
-# are the highest-value units in the suite.
+# The patch helpers decide whether every upstream patch lands; a silent regression blows up mid-build.
 
 Describe 'Invoke-InlineRegexPatch' {
 
@@ -125,8 +123,7 @@ Describe 'Edit-SourceFile' {
     }
 
     It 'preserves a literal $-bearing injection verbatim (the reason this exists, not Invoke-InlineRegexPatch)' {
-        # A CMake ${VAR} routed through -replace would be misread as a replacement group ref and vanish;
-        # Edit-SourceFile keeps it because the transform is a scriptblock doing a literal .Replace.
+        # -replace would read CMake's ${VAR} as a group reference; the scriptblock's literal .Replace keeps it.
         Invoke-InTestDir { param($dir)
             $f = Join-Path $dir 'b.cmake'
             Set-Content -Path $f -Value 'set(X ANCHOR)' -NoNewline
@@ -167,8 +164,7 @@ Describe 'Edit-SourceFile' {
 
 Describe 'Invoke-SourcePatchWithFallback' {
 
-    # Each test dir becomes a tiny git repo so Invoke-SourcePatch's rung-1
-    # check runs through `git apply` (host patch.exe availability varies).
+    # A tiny git repo, so the check runs through `git apply` whatever patch.exe the host has.
     $newPatchRepo = {
         param($dir)
         $null = & git -C $dir init 2>&1

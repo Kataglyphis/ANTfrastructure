@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify-ubuntu-mirror-consistency.sh. APT-HTTP is the reason this gate
-# has two halves and both need proving: the original check only asserted that
-# use-fast-ubuntu-mirror.sh was REFERENCED, which is exactly how the CA-bootstrap
-# http downgrade shipped with no restore for custom mirrors. So the wiring half
-# (bootstrap_ca calls the restore, AFTER the ca-certificates install) and the
-# OUTCOME half (downgrade+restore really ends on https) each get their own red.
-# docs/code-quality-tooling.md#ubuntu-mirror-consistency-mirror-consistency
+# A wired restore is not a working one, so wiring and outcome each get a red; see docs/code-quality-tooling.md#ubuntu-mirror-consistency-mirror-consistency
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -15,9 +9,7 @@ DOCKERFILES="base toolchain sdk media android package torch"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# _tree: a throwaway repo root carrying the WHOLE 01-core (the gate runs the real
-# use-fast-ubuntu-mirror.sh and base-image.sh, which source the module framework)
-# plus the seven Dockerfiles it checks.
+# _tree: the whole 01-core, because the gate runs the real mirror scripts, plus the Dockerfiles it checks.
 _tree() {
   local d name; d="$(mktemp -d "${_work}/tree.XXXXXX")"
   mkdir -p "${d}/linux/scripts" "${d}/linux"
@@ -72,8 +64,7 @@ t_assert_eq "1" "$(t_rc _gate "${fix}")"
 t_assert_contains "$(t_out _gate "${fix}")" "bootstrap_ca does not call restore_mirror_https_scheme"
 
 t_case "a restore that runs BEFORE the ca-certificates install FAILS"
-# Restoring https before the CA store exists puts apt straight back into the
-# chicken-and-egg the downgrade was there to break.
+# https before the CA store exists re-creates the chicken-and-egg the downgrade breaks.
 fix="$(_tree)"
 python3 - "${fix}/linux/scripts/01-core/base-image.sh" <<'PY'
 import re
@@ -93,8 +84,7 @@ t_assert_contains "${_out}" "must run AFTER the ca-certificates install"
 # --- the outcome half (2): referenced != restored -----------------------------
 
 t_case "a restore that no-ops FAILS on the fixture, however well it is wired"
-# This is APT-HTTP itself: the call site was present and the sources still ended
-# on http for a custom mirror. Only running the pipeline can see that.
+# A present call site can still leave the sources on http; only running the pipeline shows it.
 fix="$(_tree)"
 sed -i 's/^restore_mirror_https_scheme() {$/restore_mirror_https_scheme() {\n  return 0/' \
   "${fix}/linux/scripts/01-core/base-image.sh"
@@ -110,8 +100,7 @@ t_assert_eq "1" "$(t_rc _gate "${fix}")"
 t_assert_contains "$(t_out _gate "${fix}")" "restore-mirror-scheme failed on the fixture"
 
 t_case "a downgrade that stops landing is reported as a broken PRECONDITION"
-# If use-fast-ubuntu-mirror.sh stops writing the http URL, the outcome check
-# would otherwise pass for the wrong reason -- nothing to restore.
+# Without a landed downgrade the outcome check would pass for the wrong reason.
 fix="$(_tree)"
 sed -i 's|^  sources_root="${UBUNTU_SOURCES_ROOT:-/}"$|  sources_root="/nonexistent-root"|' \
   "${fix}/linux/scripts/01-core/use-fast-ubuntu-mirror.sh"
@@ -137,8 +126,7 @@ _second_writer() {
 }
 
 t_case "two writers that disagree on -security FAIL, naming both sides"
-# VK2: amd64 without -security + ports with it left libcurl3t64-gnutls with no
-# common version, so every Multi-Arch:same library became uninstallable.
+# A -security skew between writers leaves Multi-Arch:same libraries with no common version.
 fix="$(_tree)"
 _second_writer "${fix}" 0
 _out="$(t_out _gate "${fix}")"
@@ -162,11 +150,7 @@ t_assert_contains "${_out}" "asymmetric for equal flags"
 
 t_case "a tree with no writer at all is reported, not silently green"
 fix="$(_tree)"
-# Neutralise EVERY writer, not just the target one: cross-apt.sh gained a
-# second caller (installed-foreign-arch sources), and leaving it live made this
-# fixture still find a writer, so the NOSITES red could never fire again.
-# The `command -v ubuntu_write_deb822_source` probe that remains must be read
-# as a probe, not a call — it once made a writer-less tree read green.
+# Every writer goes, or NOSITES never fires; the remaining `command -v` probe must not count as a call.
 sed -i 's|^[[:space:]]*ubuntu_write_deb822_source .*|  : # writer removed|' \
   "${fix}/linux/scripts/01-core/cross-apt.sh"
 t_assert_ok grep -q 'command -v ubuntu_write_deb822_source' \

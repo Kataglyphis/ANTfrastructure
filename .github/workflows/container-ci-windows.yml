@@ -1,29 +1,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The family's Windows container lane, ONCE (owner decision 2026-09-25: hub
-# reusable lanes, thin callers). A caller's per-platform file only says which
-# script builds its tree, with which arguments, and what to upload; this file
-# owns the job skeleton around it.
-#
-# target-arch: arm64 is the cross lane (windows-arm64-cross.yml in OxidANT,
-# AccelerANTgine and BeschleunigerBallett). It builds in the arm64 bundle on the
-# amd64 runner -- no Windows arm64 container image exists, docs/windows-cross-builds.md
-# -- so nothing built there can RUN there. Two things make up for that:
-#   * the static arch gate: Test-TargetArch.ps1 -ImportWalk on the uploaded tree,
-#     inside the same image (its System32 is the reference Server Core OS), which
-#     fails on an x64 object in the tree and on an import no clean device resolves;
-#   * `run-command`: a second job on GitHub's windows-11-arm runner that downloads
-#     the tree and RUNS it natively, the only execution any arm64 binary gets.
-#
-# The build script runs as `<script> <build-args>` inside the container, with the
-# workspace mounted at C:\ws. Put the lane's logic in that script, not here: it is
-# what a local container run executes too. An amd64 lane may add `version-file`
-# (the CI version, resolved on the host and handed to the container) and
-# `host-command` (what only the runner host can run: Server Core has no OpenGL).
-# OxidANT's windows-x64.yml, 2026-09-25, was the first amd64 lane to move here.
-# A caller's own secrets reach the container through CONTAINER_SECRET_ENV, as an
-# --env-file (BeschleunigerBallett's WebDAV and signing credentials).
+
+# Lane logic belongs in the caller's build script, which a local container run executes too, not in this skeleton.
 
 name: Container CI · Windows (reusable)
 
@@ -187,8 +165,7 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: bash third_party/ANTfrastructure/linux/scripts/02-toolchain/rust/version_util.sh --github-env "$VERSION_FILE"
 
-      # Inside the workspace, so the container sees it through the one bind mount it
-      # already has; the ladder in run-in-windows-container rewrites only that mount.
+      # Inside the workspace: the container's only bind mount, and the only one the run ladder rewrites.
       - name: Restore the compiler cache
         if: ${{ inputs.compiler-cache-key != '' }}
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -221,8 +198,7 @@ jobs:
               if ($pair -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') { throw "container-env line is not KEY=value: '$pair'" }
               '--env'; $pair
           })
-          # Secret pairs: each value masked, then all of them handed to docker as a file, never as an
-          # argument. A value is taken verbatim, and a bad line is refused without being echoed.
+          # Secrets are masked and reach docker as a file, never an argument; a bad line is refused unechoed.
           $secret = @($env:CONTAINER_SECRET_ENV -split "\r?\n" | Where-Object { $_ })
           foreach ($pair in $secret) {
               if ($pair -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') { throw 'a CONTAINER_SECRET_ENV line is not KEY=value (the line is withheld: it may hold a secret)' }
@@ -247,8 +223,7 @@ jobs:
           file-args: ${{ inputs.build-args }}
           extra-args: ${{ steps.env.outputs.args }}
 
-      # Pushes to the default branch only, like compiler-cache-save's `auto`: pull
-      # requests, dispatches and release pushes restore without spending quota.
+      # Default-branch pushes only, like compiler-cache-save's `auto`; other runs restore without spending quota.
       - name: Save the compiler cache
         if: >-
           ${{ always() && inputs.compiler-cache-key != '' && github.event_name == 'push'
@@ -258,8 +233,7 @@ jobs:
           path: ${{ steps.prep.outputs.workspace }}\.ci-cache
           key: compiler-cache-${{ inputs.compiler-cache-key }}-${{ github.run_id }}-${{ github.run_attempt }}
 
-      # The workspace is the bind mount the container built into, so the host sees
-      # every file the build left, at the same relative paths.
+      # The workspace is the container's bind mount, so the host sees the build's files at the same paths.
       - name: Run the host command
         if: ${{ inputs.host-command != '' }}
         shell: pwsh

@@ -7,9 +7,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
 if (-not (Test-Path $sharedModulePath)) {
@@ -24,11 +22,7 @@ Assert-ContainerCommandAvailable -Name 'clang-cl' | Out-Null
 Assert-ContainerCommandAvailable -Name 'lld-link' | Out-Null
 Assert-ContainerCommandAvailable -Name 'cmake' | Out-Null
 
-# LLVM is PINNED on Windows since 2026-08-07 (versions.env LLVM_WINDOWS_VERSION,
-# forwarded through Dockerfile.base -> Install-ScoopTools.ps1). Assert it HERE, in
-# the base build: a silent scoop fallback to a different clang-cl otherwise
-# surfaces ~2 h into media-core as a patch that no longer applies. Same shape as
-# the cmake assert below. versions.env's LLVM_RELEASE pins the LINUX lane only.
+# A silent scoop fallback to another clang-cl would otherwise surface hours later as a patch that no longer applies.
 $clangOut = & clang-cl --version
 if ($LASTEXITCODE -ne 0) { throw "clang-cl --version failed (exit code $LASTEXITCODE)" }
 $clangBanner = $clangOut | Select-Object -First 1
@@ -41,30 +35,14 @@ if ($expectedLlvm -and $clangBanner -notmatch [regex]::Escape($expectedLlvm)) {
         're-run windows/scripts/tests/Test-PatchesApplyClean.ps1 after a deliberate bump.')
 }
 
-# ninja + nasm are pinned for the same reason (build-graph executor and the x86 SIMD
-# assembler both shape what ships). Cheap asserts, same failure economics.
-# Attribution, twice corrected on 2026-08-24: until that day FFmpeg passed an
-# unconditional --disable-x86asm (nasm assembled nothing for it; GStreamer's
-# openh264 was its only consumer, Build-GstreamerFromSource.ps1:482). Since
-# backlog #119 the amd64 FFmpeg build enables x86asm again (the flag had no
-# recorded reason -- see Build-FfmpegFromSource.ps1's #119 block), so nasm
-# now shapes FFmpeg's x86 SIMD too and this assert is load-bearing for both.
-#
-# sccache is here for a DIFFERENT reason and it is the important one to keep:
-# it shapes nothing that ships, but multi-tier caching
-# (SCCACHE_MULTILEVEL_CHAIN=disk,webdav, wired in Dockerfile.media-builder)
-# needs >= v0.16.0, and an older sccache ignores that variable SILENTLY. Without
-# this assert the local L0 tier could simply not exist -- every compile back to
-# a WebDAV round-trip, no error, nothing slower than "a bit slower than we
-# remember". That is unfalsifiable in a log, so it is asserted here instead.
+# ninja and nasm shape what ships; an sccache older than v0.16.0 silently ignores SCCACHE_MULTILEVEL_CHAIN.
 foreach ($pinned in @(
         @{ Tool = 'ninja';   Args = @('--version'); EnvVar = 'NINJA_WINDOWS_VERSION' },
         @{ Tool = 'nasm';    Args = @('-v');        EnvVar = 'NASM_WINDOWS_VERSION' },
         @{ Tool = 'sccache'; Args = @('--version'); EnvVar = 'SCCACHE_WINDOWS_VERSION' })) {
     $expected = Resolve-ContainerImageValue -EnvironmentVariable $pinned.EnvVar -DefaultValue ''
     if (-not $expected) { continue }
-    # Real splatting (@<var>), not an array subexpression: the latter only works
-    # for native commands by accident of PS argument flattening.
+    # Real splatting: an array subexpression works for native commands only by accident of argument flattening.
     $toolArgs = $pinned.Args
     $banner = (& $pinned.Tool @toolArgs 2>&1 | Select-Object -First 1)
     if ($LASTEXITCODE -ne 0) { throw "$($pinned.Tool) $($toolArgs -join ' ') failed (exit code $LASTEXITCODE)" }
@@ -74,12 +52,7 @@ foreach ($pinned in @(
     Write-Host "$($pinned.Tool) OK: $banner"
 }
 
-# The version assert above is sufficient since 0.18.0 reports 0.18.0; the
-# retired main-at-git-rev source build still said 0.17.0. docs/windows-build-resources.md § sccache.
-
-# CMake is pinned (scoop main/cmake@CMAKE_VERSION from versions.env, baked by
-# Import-Versions.ps1) -- fail the base build here on a pin mismatch instead of
-# surfacing it hours later in a media build or the smoke test.
+# Fail the base build on a CMake pin mismatch, not hours later in a media build.
 $expectedCmake = Resolve-ContainerImageValue -EnvironmentVariable 'CMAKE_VERSION' -DefaultValue ''
 if ($expectedCmake) {
     $cmakeOut = & cmake --version
@@ -91,9 +64,7 @@ if ($expectedCmake) {
     Write-Host "cmake OK: $cmakeBanner"
 }
 
-# Resolve wix.exe via Get-Command (single source of truth, survives WiX install relocations
-# instead of hardcoding C:\WiX\wix.exe). Capture-then-read keeps the .Source deref
-# StrictMode-safe on the miss path.
+# Captured first: .Source on a miss would throw under StrictMode.
 $wixCommandInfo = Get-Command wix -ErrorAction SilentlyContinue
 if (-not $wixCommandInfo) { throw 'wix.exe not found on PATH (Assert-ContainerCommandAvailable failed)' }
 $wixCmd = $wixCommandInfo.Source
@@ -102,8 +73,7 @@ $wixCmd = $wixCommandInfo.Source
 if ($LASTEXITCODE -ne 0) { throw "wix --version failed (exit code $LASTEXITCODE)" }
 $wixExtensions = & $wixCmd extension list --global 2>&1
 $wixExtensions | Out-Host
-# Gate BEFORE the extension assert: a broken wix would otherwise masquerade as
-# "extension not installed" and send the operator chasing the wrong problem.
+# Before the extension assert, or a broken wix masquerades as a missing extension.
 if ($LASTEXITCODE -ne 0) { throw "wix extension list --global failed (exit code $LASTEXITCODE): $wixExtensions" }
 # Assert against the same versions.env value the install used (no hand-synced literal).
 $wixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.6'
@@ -112,26 +82,7 @@ if (-not ($wixExtensions | Select-String -SimpleMatch "WixToolset.UI.wixext $wix
 }
 
 
-# ---------------------------------------------------------------------------
-# ARM64 cross-target readiness (2026-08-22)
-#
-# The Windows build HOST is always amd64 (no arm64 Windows container base image
-# exists), so an arm64 lane is a CROSS build out of this same x64 image. Three
-# things must be true for that to work, and all three are cheap to check here
-# in the base -- where a failure costs one clear message instead of surfacing
-# hours into a media build as an opaque link error:
-#
-#   1. clang-cl can actually emit aarch64 code.
-#   2. Microsoft's ARM64 CRT/import libraries are present (clang-cl targets the
-#      MSVC ABI, so it links against them even though cl.exe is never invoked).
-#   3. The Windows SDK and Vulkan ARM64 import libraries are present.
-#
-# Compile-only on purpose: VsDevCmd has not run in this layer, so INCLUDE/LIB
-# are unset and a full link would fail for reasons unrelated to the toolchain.
-# The PE machine-type gate over the produced payload runs later, at the end of
-# Dockerfile.media-merge-builder's `built` stage (Test-TargetArch.ps1 over
-# C:\runtime) -- that is the first point where the whole media tree exists.
-# ---------------------------------------------------------------------------
+# ARM64 cross readiness: compile-only, since VsDevCmd has not run in this layer and a link would fail for unrelated reasons
 $archModulePath = Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1'
 if (-not (Test-Path $archModulePath)) { throw "Required module not found: $archModulePath" }
 Import-Module $archModulePath -Force
@@ -139,27 +90,15 @@ Import-Module $archModulePath -Force
 $armTriple  = Get-ClangTargetTriple -Arch 'arm64'
 $armMachine = Get-PeMachineType -Arch 'arm64'
 
-# Two helpers for the checks below. FILE-LOCAL on purpose, not a module: this
-# script runs in the base image, where only WindowsContainerImage.Common is
-# COPY'd (windows/Dockerfile.base), so promoting them to windows/scripts/modules
-# would silently widen this stage's build closure.
+# File-local helpers: moving them into a module would widen the base stage's build closure.
 
-# ONE owner for the WINDOWS_ARM64_STRICT escalation. The warning suffix is a
-# POLICY string -- it names the lane that is unaffected and the knob that makes
-# the check fatal -- and it was spelled out three times in this file, so a
-# change to the policy could land in one copy and miss the others.
 function Invoke-Arm64StrictPolicy {
     param([Parameter(Mandatory)][string]$Shortfall)
     if ($env:WINDOWS_ARM64_STRICT -eq '1') { throw $Shortfall }
     Write-Warning "$Shortfall (amd64 lane unaffected; WINDOWS_ARM64_STRICT=1 makes this fatal)"
 }
 
-# The versioned-directory probe both Microsoft component checks need: MSVC and
-# the Windows SDK each install their ARM64 import libraries under a VERSIONED
-# directory, so neither path can be spelled out -- both are <root>\<ver>\<rel>.
-# Four parameters, and every one of them is plain data (no behaviour flag): the
-# two call sites below differed only in root, relative path, label and remedy,
-# and were otherwise eleven byte-identical lines each.
+# MSVC and the SDK both install ARM64 libraries under <root>\<version>\<rel>.
 function Assert-Arm64ComponentLib {
     param(
         [Parameter(Mandatory)][string]$Label,
@@ -192,17 +131,12 @@ try {
     } elseif (-not (Test-Path $probeObj)) {
         $probeFailure = "clang-cl produced no object file for $armTriple"
     } else {
-        # An unlinked COFF object begins with IMAGE_FILE_HEADER, so the first two
-        # bytes ARE the Machine field (little-endian) - no MZ/PE offset walk needed.
+        # An unlinked COFF object starts with IMAGE_FILE_HEADER, whose first two bytes are the Machine field.
         $objBytes = [System.IO.File]::ReadAllBytes($probeObj)
         if ($objBytes.Length -lt 2) {
             $probeFailure = "clang-cl produced a truncated object file for $armTriple"
         } else {
-            # [int] casts are LOAD-BEARING, not style. PowerShell's -shl keeps the
-            # LEFT operand's type: [byte]0xAA -shl 8 is 0, not 0xAA00. Without the
-            # casts this reads 0x0064 for a perfectly good ARM64 object and reports
-            # a false FAIL -- the single most damaging way this check could be
-            # wrong, since it would condemn a working cross toolchain.
+            # The [int] casts matter: -shl keeps the left operand's type, so [byte]0xAA -shl 8 is 0.
             $objMachine = [int]$objBytes[0] -bor ([int]$objBytes[1] -shl 8)
             if ($objMachine -ne $armMachine) {
                 $probeFailure = ('clang-cl targeted the wrong architecture: object machine 0x{0:X4}, expected 0x{1:X4} ({2}).' -f $objMachine, $armMachine, $armTriple)
@@ -224,18 +158,12 @@ if (-not (Test-Path $msvcRoot)) {
 Assert-Arm64ComponentLib -Label 'MSVC ARM64 libraries' -Root $msvcRoot -RelativePath 'lib\arm64\libcmt.lib' -Remedy (
     'The VC.Tools.ARM64 component is not installed; clang-cl cannot link an aarch64 target without it.')
 
-# Windows SDK ARM64 import libraries. The SDK component is architecture-complete,
-# so this asserts an expectation rather than a separate install step.
+# The SDK component is architecture-complete, so this asserts an expectation, not an install step.
 $sdkLibRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Lib'
 Assert-Arm64ComponentLib -Label 'Windows SDK ARM64 import libraries' -Root $sdkLibRoot -RelativePath 'um\arm64\kernel32.lib' -Remedy (
     'Reinstall the Windows 11 SDK component with ARM64 support.')
 
-# Vulkan ARM64 cross libraries (optional LunarG component com.lunarg.vulkan.arm64,
-# added by Install-ScoopTools.ps1). Same escape hatch as the install step.
-# Warn-only by default, opt-in hard gate via WINDOWS_ARM64_STRICT=1 -- mirrors
-# Install-ScoopTools.ps1's install-side gate and the CUDA_STACK_STRICT idiom.
-# This must NOT throw by default: it runs in the shared base image, so a hard
-# failure here would block the amd64 lane over an arm64-only prerequisite.
+# Warn-only unless WINDOWS_ARM64_STRICT=1: the shared base must not block amd64 over an arm64-only prerequisite.
 if ($env:VULKAN_SDK) {
     $vkArmLib = Join-Path $env:VULKAN_SDK (Get-VulkanLibDirName -Arch 'arm64')
     if (Test-Path (Join-Path $vkArmLib 'vulkan-1.lib')) {

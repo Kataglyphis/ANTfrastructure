@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# llvm-validate.sh — LLVM cross-compiled package validation functions.
-# Sourced by llvm.sh; not executed standalone.
+# LLVM cross-package validation, sourced by llvm.sh.
 [ -n "${_LLVM_VALIDATE_SH_LOADED:-}" ] && return 0
 _LLVM_VALIDATE_SH_LOADED=1
 set -euo pipefail
