@@ -60,6 +60,35 @@
   base on its next build, as any pin bump does.
 - **Not done.** No GPU run (this host's NVIDIA driver is not loaded) and no variant chain
   run: `BACKLOG.md` CON42.
+## 2026-10-01 - Python apps ship as relocatable bundles; Windows venvs get the image's OpenCV
+
+- **Bundle builders.** A Python consumer can now turn its app into one folder: its own
+  CPython, the locked wheels, the chain ORT, its data and one launcher per console script.
+  `windows/scripts/python/New-PythonAppBundle.ps1` (module `WindowsPythonApp.Common`, C
+  launcher in `windows/scripts/python/app-launcher/`) and
+  `linux/scripts/06-packaging/python-app-bundle.sh` (+ `python-app-closure.sh`) both read the
+  consumer's `packaging/app.json`. The gates are the import walk, G6 and the app's own
+  self-test. Proven on OrchestrANT: Windows 561 MB, Linux 666 MB, each run again after being
+  moved. See [`docs/python-app-bundles.md`](docs/python-app-bundles.md).
+- **`Test-TargetArch.ps1 -Standalone`.** On a native lane the import walk only reports, because
+  the image's `PATH` supplies what is missing. A bundle has no image behind it, so `-Standalone`
+  makes the walk fatal there, as it is on a cross lane. It caught the gap below by name, where the
+  self-test had only said `DLL load failed`.
+- **Windows: OpenCV comes from the image, in bundles and in CI venvs.** PyPI's `cv2.pyd`
+  imports Media Foundation, which Server Core and Windows N lack. Copying the image's cv2 package
+  was not enough: its `config.py` names only OpenCV's `bin`, while the image's base
+  `sitecustomize.py` registers the other DLL homes. A venv or a bundle never runs that file, so
+  `import cv2` failed in both. The PE walk showed five FFmpeg DLLs as the gap.
+  - `Copy-ChainOpenCvPackage` walks the `.pyd`'s closure over the config dirs, `ONNX_ROOT\bin`
+    and every `C:\runtime` dir on `PATH`. The bundle copies the closure (56 DLLs) into `cv2\bin`;
+    a CI venv (`-ReferenceImage`) names the three image dirs instead.
+  - `Sync-UvProjectDependencies` now ends with `Sync-UvChainOpenCv`. Measured in `:winamd64`:
+    the CI venv imports cv2 5.0.0 with FFmpeg and DirectShow.
+  - `Get-PeImportClosure` is split out of `Copy-PeImportClosure` for that walk.
+- **Windows venvs ask uv for the GIL build.** `New-UvProjectEnvironment` passes
+  `Get-UvPythonRequest`'s `X.Y+gil`, the twin of Linux's `uv_python_request`. A plain `3.14`
+  took a free-threaded download in OrchestrANT's Windows CI.
+
 
 ## 2026-09-30 - GStreamer: a meson inherited without its launcher is reinstalled
 

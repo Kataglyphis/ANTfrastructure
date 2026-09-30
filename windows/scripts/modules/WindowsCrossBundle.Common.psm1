@@ -77,11 +77,11 @@ function Get-WindowsPackageArch {
     Static and delay-load imports; pass run-time-loaded DLLs in -Path. Unfound names are left to the device, never guessed.
     First search directory wins; a copied DLL of the wrong machine throws.
 #>
-function Copy-PeImportClosure {
+function Get-PeImportClosure {
+    # The DLLs -Path pulls in from -SearchDirectory (first hit wins), transitively; a name found nowhere there is the OS's.
     param(
         [Parameter(Mandatory)][string[]]$Path,
         [Parameter(Mandatory)][string[]]$SearchDirectory,
-        [Parameter(Mandatory)][string]$Destination,
         [ValidateSet('amd64', 'arm64')][string]$Arch = 'arm64'
     )
     $index = @{}
@@ -91,23 +91,36 @@ function Copy-PeImportClosure {
             if (-not $index.ContainsKey($key)) { $index[$key] = $dll.FullName }
         }
     }
-    $null = New-Item -ItemType Directory -Force -Path $Destination
     $taken = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $queue = [System.Collections.Generic.Queue[string]]::new([string[]]$Path)
-    $copied = [System.Collections.Generic.List[string]]::new()
+    $found = [System.Collections.Generic.List[string]]::new()
     while ($queue.Count -gt 0) {
         foreach ($name in @(Get-PeImportNames -Path $queue.Dequeue() -IncludeDelayLoad)) {
             $source = $index[$name.ToLowerInvariant()]
             if (-not $source -or -not $taken.Add($name)) { continue }
             $null = Assert-PeTargetMachine -Path $source -Arch $Arch -Context "closure DLL imported as $name, which the device could not load"
-            $target = Join-Path $Destination (Split-Path $source -Leaf)
-            Copy-Item -LiteralPath $source -Destination $target -Force
-            $copied.Add($target)
+            $found.Add($source)
             $queue.Enqueue($source)
         }
     }
-    # Unrolled, so @(Copy-PeImportClosure ...) is the flat list -- and empty when nothing was copied.
-    return $copied.ToArray()
+    # Unrolled, so @(Get-PeImportClosure ...) is the flat list -- and empty when nothing was found.
+    return $found.ToArray()
 }
 
-Export-ModuleMember -Function Get-CrossConfigureArgs, Get-WindowsPackageArch, Get-ProductDllSearchPath, Copy-PeImportClosure
+function Copy-PeImportClosure {
+    param(
+        [Parameter(Mandatory)][string[]]$Path,
+        [Parameter(Mandatory)][string[]]$SearchDirectory,
+        [Parameter(Mandatory)][string]$Destination,
+        [ValidateSet('amd64', 'arm64')][string]$Arch = 'arm64'
+    )
+    $null = New-Item -ItemType Directory -Force -Path $Destination
+    $copied = foreach ($source in @(Get-PeImportClosure -Path $Path -SearchDirectory $SearchDirectory -Arch $Arch)) {
+        $target = Join-Path $Destination (Split-Path $source -Leaf)
+        Copy-Item -LiteralPath $source -Destination $target -Force
+        $target
+    }
+    return @($copied)
+}
+
+Export-ModuleMember -Function Get-CrossConfigureArgs, Get-WindowsPackageArch, Get-ProductDllSearchPath, Get-PeImportClosure, Copy-PeImportClosure
