@@ -854,10 +854,15 @@ _vk_gate() {
 _VK_EXT_WSI_OK='VKEXT VK_KHR_display VK_KHR_get_surface_capabilities2 VK_KHR_surface VK_KHR_wayland_surface VK_KHR_xcb_surface VK_KHR_xlib_surface VK_EXT_acquire_xlib_display VK_EXT_headless_surface'
 _VK_EXT_WSI_NONE='VKEXT VK_KHR_display VK_KHR_get_surface_capabilities2 VK_KHR_surface VK_EXT_acquire_drm_display VK_EXT_headless_surface'
 
-t_case "a loader resolved inside /opt/vulkan is the pass"
-_VK="$(_vk_gate "VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
+# _vk_shipped <VKEXT line>: the gate on a loader resolved inside the shipped /opt/vulkan prefix.
+_vk_shipped() {
+  _vk_gate "VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
 VKOK 1.4.357
-${_VK_EXT_WSI_OK}")"
+$1"
+}
+
+t_case "a loader resolved inside /opt/vulkan is the pass"
+_VK="$(_vk_shipped "${_VK_EXT_WSI_OK}")"
 t_assert_contains "${_VK}" "libvulkan.so.1 loads from /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357" \
   "the pass line must name the path it read, not just say OK"
 t_assert_eq "" "$(printf '%s\n' "${_VK}" | grep -e '^FAIL')" "a shipped-prefix loader is not a failure"
@@ -879,24 +884,18 @@ t_case "the loader's window-system extensions are asserted (CON41)"
 t_assert_contains "${_VK}" "OK  the arm64 loader lists VK_KHR_surface VK_KHR_xcb_surface VK_KHR_xlib_surface VK_KHR_wayland_surface"
 
 t_case "a loader without X11/XCB/Wayland surfaces FAILS -- the arm64 :latest of 2026-09-29"
-_VK="$(_vk_gate "VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
-VKOK 1.4.357
-${_VK_EXT_WSI_NONE}")"
+_VK="$(_vk_shipped "${_VK_EXT_WSI_NONE}")"
 t_assert_contains "${_VK}" "FAIL the arm64 Vulkan loader lacks VK_KHR_xcb_surface VK_KHR_xlib_surface VK_KHR_wayland_surface" \
   "every windowed test aborts on such a loader; the message must name exactly what is missing"
 t_assert_eq "" "$(printf '%s\n' "${_VK}" | grep -e 'VK_KHR_surface VK_KHR_xcb' | grep -e '^FAIL')" \
   "VK_KHR_surface is present and must not be reported missing"
 
 t_case "one missing surface is enough to fail"
-_VK="$(_vk_gate "VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
-VKOK 1.4.357
-${_VK_EXT_WSI_OK/ VK_KHR_wayland_surface/}")"
+_VK="$(_vk_shipped "${_VK_EXT_WSI_OK/ VK_KHR_wayland_surface/}")"
 t_assert_contains "${_VK}" "FAIL the arm64 Vulkan loader lacks VK_KHR_wayland_surface --"
 
 t_case "a surface name that is only a PREFIX of a listed one does not count"
-_VK="$(_vk_gate "VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
-VKOK 1.4.357
-${_VK_EXT_WSI_OK/ VK_KHR_surface / VK_KHR_surface_maintenance1 }")"
+_VK="$(_vk_shipped "${_VK_EXT_WSI_OK/ VK_KHR_surface / VK_KHR_surface_maintenance1 }")"
 t_assert_contains "${_VK}" "FAIL the arm64 Vulkan loader lacks VK_KHR_surface --" \
   "VK_KHR_surface_maintenance1 is not VK_KHR_surface"
 
