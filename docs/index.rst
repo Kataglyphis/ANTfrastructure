@@ -156,6 +156,7 @@ Common development targets:
    artifact-copy-completeness
    vulkan-foreign-arch-sdk
    consumer-image-contract
+   image-decisions
    gen1-riscv64-genai
    qnn-linux
    riscv64-venv-parity

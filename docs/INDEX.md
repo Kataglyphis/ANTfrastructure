@@ -181,6 +181,7 @@ exists only in one of these, promote it to its owning page above.
 |---|---|---|
 | Open refactor work, Linux side | [`refactoring-backlog.md`](refactoring-backlog.md) |
 | Every open gap in the published images | [`BACKLOG.md`](../BACKLOG.md) | What a consumer lane hits or works around in `:latest`, `:winamd64` and the `:winarm64` bundle, each with its evidence and what closes it, plus what a 2026-09-25 re-measurement closed and what is deliberate. |
+| What the images deliberately leave out, and gaps checked closed | [`image-decisions.md`](image-decisions.md) | The decided non-gaps (no GTK4 dev headers, CPython 3.14 only, the CUDA arch set, riscv64 omissions …) and the 2026-09-25 checks that closed stale consumer notes; not a task list |
 | What to read in a running chain's log | [`build-watch-list.md`](build-watch-list.md) | The 2026-09-05 wave's closure changes, grouped by stage: the exact log line that proves each one worked and the exact line that means it failed, plus the read-only probes to run on the shipped bytes afterwards. Written because eleven backlog entries closed on static proof and a first rebuild attempt still found two build-killing bugs. |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
