@@ -2183,6 +2183,30 @@ _vk_loaded_path() {
   printf '%s' "${1}" | sed -n 's/^VKLIB //p' | head -1
 }
 
+# The surface extensions every arch's loader must list, as LunarG's amd64 one does:
+# without them each windowed Vulkan test aborts (CON41). Needs no ICD or display.
+# docs/vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems
+_VK_WSI_REQUIRED="VK_KHR_surface VK_KHR_xcb_surface VK_KHR_xlib_surface VK_KHR_wayland_surface"
+
+# <probe output> <arch>: the VKEXT line against _VK_WSI_REQUIRED. A loaded loader
+# lists extensions even with zero ICDs, so no line at all is a failure too.
+_vk_wsi_verdict() {
+  local exts e missing=""
+  exts="$(printf '%s\n' "$1" | sed -n 's/^VKEXT //p' | head -1)"
+  if [ -z "${exts}" ]; then
+    fail "the ${2} Vulkan loader listed no instance extensions, so its window-system support is unproven"
+    return 0
+  fi
+  for e in ${_VK_WSI_REQUIRED}; do
+    case " ${exts} " in *" ${e} "*) ;; *) missing="${missing} ${e}" ;; esac
+  done
+  if [ -n "${missing}" ]; then
+    fail "the ${2} Vulkan loader lacks${missing} -- every windowed Vulkan app aborts (docs/vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems)"
+  else
+    echo "  OK  the ${2} loader lists ${_VK_WSI_REQUIRED}"
+  fi
+}
+
 # Vulkan loader load test -- the .so-closure gate proves libvulkan resolves, not that
 # the loader dlopen()s at runtime. A missing ICD/GPU does NOT stop ctypes.CDLL and the
 # runtime image ALWAYS installs the Vulkan runtime files, so a load failure means the
@@ -2209,7 +2233,14 @@ try:
     assert l.vkEnumerateInstanceVersion(ctypes.byref(v)) == 0
     print("VKOK %d.%d.%d" % (v.value >> 22, (v.value >> 12) & 1023, v.value & 4095))
 except AttributeError:
-    print("VKOK (pre-1.1 loader)")' 2>&1)" || true
+    print("VKOK (pre-1.1 loader)")
+class E(ctypes.Structure):
+    _fields_ = [("name", ctypes.c_char * 256), ("rev", ctypes.c_uint32)]
+n = ctypes.c_uint32()
+if l.vkEnumerateInstanceExtensionProperties(None, ctypes.byref(n), None) == 0:
+    a = (E * n.value)()
+    if l.vkEnumerateInstanceExtensionProperties(None, ctypes.byref(n), a) == 0:
+        print("VKEXT " + " ".join(e.name.decode() for e in a[:n.value]))' 2>&1)" || true
     _vk_lib="$(_vk_loaded_path "${_vk_out}")"
     if printf '%s' "${_vk_out}" | grep -q "VKOK"; then
       case "${_vk_lib}" in
@@ -2217,6 +2248,7 @@ except AttributeError:
         '')            echo "  WARN libvulkan.so.1 loads but /proc/self/maps named no path -- non-fatal" ;;
         *)             fail "libvulkan.so.1 loaded from ${_vk_lib} in the ${target_arch} image, not from /opt/vulkan -- the shipped SDK prefix is not what the loader resolves to (pruned too far, or LD_LIBRARY_PATH lost it)" ;;
       esac
+      _vk_wsi_verdict "${_vk_out}" "${target_arch}"
     elif printf '%s' "${_vk_out}" | grep -qiE "OSError|No such file|cannot open shared object|not found"; then
       fail "libvulkan.so.1 missing/unloadable in ${target_arch} image (runtime always ships it): $(printf '%s' "${_vk_out}" | tail -1)"
     else

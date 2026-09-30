@@ -10937,5 +10937,61 @@
     "replace": "for dir in \"${1:-/opt/llvm-target}/lib64/cmake/llvm\"; do",
     "test": "bash linux/scripts/tests/test-tvm-llvm-resolve.sh",
     "why": "the shipped tree keeps its package under lib/cmake/llvm, so a native build falls back to llvm-config"
+  },
+  {
+    "id": "vulkan.loader-wsi-on",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "        -DBUILD_WSI_XCB_SUPPORT=ON \\\n        -DBUILD_WSI_XLIB_SUPPORT=ON \\\n",
+    "replace": "        -DBUILD_WSI_XCB_SUPPORT=OFF \\\n        -DBUILD_WSI_XLIB_SUPPORT=OFF \\\n",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "CON41: the arm64/riscv64 loader was cross-built with WSI OFF, so it listed no X11 surface extension and every windowed Vulkan test aborted there while amd64's LunarG loader drove llvmpipe under xvfb-run"
+  },
+  {
+    "id": "vulkan.loader-wsi-exports-checked",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "      if [ -n \"${_wsi_missing}\" ]; then",
+    "replace": "      if false; then",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "CON41: a loader that configured and installed but exports no vkCreate{Xcb,Xlib,Wayland}SurfaceKHR must fail the REQUIRED verdict at build time, not ship and abort a consumer's windowed tests"
+  },
+  {
+    "id": "vulkan.loader-wsi-reads-every-symbol",
+    "target": "linux/scripts/02-toolchain/vulkan.sh",
+    "find": "    grep -qw -- \"${s}\" <<<\"${syms}\" || missing=\"${missing} ${s}\"",
+    "replace": "    grep -q -- \"vkCreate\" <<<\"${syms}\" || missing=\"${missing} ${s}\"",
+    "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+    "why": "any vkCreate* export (vkCreateInstance is always there) must not stand in for the three surface entry points"
+  },
+  {
+    "id": "probe.vulkan-wsi-verdict-wired",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      _vk_wsi_verdict \"${_vk_out}\" \"${target_arch}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "CON41: the WSI verdict is unreachable unless check_vulkan_loader calls it, and then a WSI-less loader ships green on every arch again"
+  },
+  {
+    "id": "probe.vulkan-wsi-required-set",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "_VK_WSI_REQUIRED=\"VK_KHR_surface VK_KHR_xcb_surface VK_KHR_xlib_surface VK_KHR_wayland_surface\"",
+    "replace": "_VK_WSI_REQUIRED=\"VK_KHR_surface\"",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "VK_KHR_surface alone is exactly what the WSI-less arm64/riscv64 loader listed; the platform surfaces are the assertion"
+  },
+  {
+    "id": "probe.vulkan-wsi-empty-list-fails",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    fail \"the ${2} Vulkan loader listed no instance extensions, so its window-system support is unproven\"",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a probe that printed no VKEXT line must not pass vacuously"
+  },
+  {
+    "id": "probe.vulkan-wsi-whole-word",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    case \" ${exts} \" in *\" ${e} \"*) ;; *) missing=\"${missing} ${e}\" ;; esac",
+    "replace": "    case \" ${exts} \" in *\" ${e}\"*) ;; *) missing=\"${missing} ${e}\" ;; esac",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "VK_KHR_surface_maintenance1 is listed by every loader, WSI or not; a prefix match would accept it as VK_KHR_surface"
   }
 ]

@@ -841,28 +841,69 @@ _vk_gate() {
   VK_OUT="$1" bash -c '
     '"${_STUBS}"'
     _rt_run() { printf "%s\n" "${VK_OUT}"; }
+    '"$(sed -n '/^_VK_WSI_REQUIRED=/p' "${SMOKE}")"'
+    '"$(_extract _vk_wsi_verdict)"'
     '"$(_extract _vk_loaded_path)"'
     '"$(_extract check_vulkan_loader)"'
     check_vulkan_loader img arm64'
 }
 
+# The loader's instance extensions as the probe prints them. WSI_OK is the set the
+# CON41 fix measured on arm64 and riscv64 (and LunarG's amd64 loader lists);
+# WSI_NONE is what the arm64/riscv64 :latest of 2026-09-29 listed.
+_VK_EXT_WSI_OK='VKEXT VK_KHR_display VK_KHR_get_surface_capabilities2 VK_KHR_surface VK_KHR_wayland_surface VK_KHR_xcb_surface VK_KHR_xlib_surface VK_EXT_acquire_xlib_display VK_EXT_headless_surface'
+_VK_EXT_WSI_NONE='VKEXT VK_KHR_display VK_KHR_get_surface_capabilities2 VK_KHR_surface VK_EXT_acquire_drm_display VK_EXT_headless_surface'
+
 t_case "a loader resolved inside /opt/vulkan is the pass"
-_VK="$(_vk_gate 'VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
-VKOK 1.4.357')"
+_VK="$(_vk_gate "VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
+VKOK 1.4.357
+${_VK_EXT_WSI_OK}")"
 t_assert_contains "${_VK}" "libvulkan.so.1 loads from /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357" \
   "the pass line must name the path it read, not just say OK"
 t_assert_eq "" "$(printf '%s\n' "${_VK}" | grep -e '^FAIL')" "a shipped-prefix loader is not a failure"
 
 t_case "the distro loader answering instead of the shipped prefix FAILS"
-_VK="$(_vk_gate 'VKLIB /usr/lib/aarch64-linux-gnu/libvulkan.so.1.4.341
-VKOK 1.4.341')"
+_VK="$(_vk_gate "VKLIB /usr/lib/aarch64-linux-gnu/libvulkan.so.1.4.341
+VKOK 1.4.341
+${_VK_EXT_WSI_OK}")"
 t_assert_contains "${_VK}" "FAIL libvulkan.so.1 loaded from /usr/lib/aarch64-linux-gnu/libvulkan.so.1.4.341" \
   "a prune that took the prefix the image runs would otherwise pass on Ubuntu's loader"
 
 t_case "a load that names no path is a warning, not a verdict either way"
-_VK="$(_vk_gate 'VKOK 1.4.357')"
+_VK="$(_vk_gate "VKOK 1.4.357
+${_VK_EXT_WSI_OK}")"
 t_assert_contains "${_VK}" "WARN" "/proc/self/maps can be unreadable; that is not a defect"
 t_assert_eq "" "$(printf '%s\n' "${_VK}" | grep -e '^FAIL')" "an unread maps file must not fail the image"
+
+t_case "the loader's window-system extensions are asserted (CON41)"
+t_assert_contains "${_VK}" "OK  the arm64 loader lists VK_KHR_surface VK_KHR_xcb_surface VK_KHR_xlib_surface VK_KHR_wayland_surface"
+
+t_case "a loader without X11/XCB/Wayland surfaces FAILS -- the arm64 :latest of 2026-09-29"
+_VK="$(_vk_gate "VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
+VKOK 1.4.357
+${_VK_EXT_WSI_NONE}")"
+t_assert_contains "${_VK}" "FAIL the arm64 Vulkan loader lacks VK_KHR_xcb_surface VK_KHR_xlib_surface VK_KHR_wayland_surface" \
+  "every windowed test aborts on such a loader; the message must name exactly what is missing"
+t_assert_eq "" "$(printf '%s\n' "${_VK}" | grep -e 'VK_KHR_surface VK_KHR_xcb' | grep -e '^FAIL')" \
+  "VK_KHR_surface is present and must not be reported missing"
+
+t_case "one missing surface is enough to fail"
+_VK="$(_vk_gate "VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
+VKOK 1.4.357
+${_VK_EXT_WSI_OK/ VK_KHR_wayland_surface/}")"
+t_assert_contains "${_VK}" "FAIL the arm64 Vulkan loader lacks VK_KHR_wayland_surface --"
+
+t_case "a surface name that is only a PREFIX of a listed one does not count"
+_VK="$(_vk_gate "VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
+VKOK 1.4.357
+${_VK_EXT_WSI_OK/ VK_KHR_surface / VK_KHR_surface_maintenance1 }")"
+t_assert_contains "${_VK}" "FAIL the arm64 Vulkan loader lacks VK_KHR_surface --" \
+  "VK_KHR_surface_maintenance1 is not VK_KHR_surface"
+
+t_case "a loaded loader that listed no extensions FAILS rather than passing vacuously"
+_VK="$(_vk_gate 'VKLIB /opt/vulkan/1.4.357.0/aarch64/lib/libvulkan.so.1.4.357
+VKOK 1.4.357')"
+t_assert_contains "${_VK}" "FAIL the arm64 Vulkan loader listed no instance extensions"
 
 t_case "an unloadable libvulkan is still the hard failure it was"
 _VK="$(_vk_gate 'OSError: libvulkan.so.1: cannot open shared object file: No such file or directory')"

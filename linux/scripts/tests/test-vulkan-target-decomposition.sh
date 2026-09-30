@@ -13,6 +13,7 @@ _FNS=""
 for _fn in _cross_build_sdk_component \
            _vulkan_setup_cross_pkgconfig \
            _vulkan_target_copy_headers \
+           _vulkan_loader_wsi_missing \
            _vulkan_target_build_loader \
            _vulkan_target_build_spirv_tools \
            _vk_note_failure \
@@ -49,6 +50,13 @@ t_assert_contains "${_VK_REQ_SRC}" "vulkan-loader spirv-tools glslang" "required
 _FNS="${_FNS}
 ${_VK_REQ_SRC}"
 
+t_case "vulkan.sh still names the loader's WSI entry points (CON41)"
+_VK_WSI_SRC="$(sed -n '/^_VK_LOADER_WSI_SYMBOLS=/p' "${VULKAN_SH}")"
+t_assert_eq '_VK_LOADER_WSI_SYMBOLS="vkCreateXcbSurfaceKHR vkCreateXlibSurfaceKHR vkCreateWaylandSurfaceKHR"' \
+  "${_VK_WSI_SRC}" "X11, XCB and Wayland are what amd64's LunarG loader exports"
+_FNS="${_FNS}
+${_VK_WSI_SRC}"
+
 SDK="$(mktemp -d)"
 trap 'rm -rf "${SDK}"' EXIT
 
@@ -80,6 +88,9 @@ _fixture() {
       : > "${SDK}/x86_64/include/vk_video/vk_video.h"
       mkdir -p "${SDK}/source/Vulkan-Loader" "${SDK}/source/SPIRV-Tools" \
                "${SDK}/source/SPIRV-Headers" "${SDK}/source/glslang"
+      # What cmake --install would leave; readelf is stubbed to read it.
+      mkdir -p "${SDK}/aarch64/lib"
+      : > "${SDK}/aarch64/lib/libvulkan.so.1"
       ;;
   esac
 }
@@ -96,6 +107,10 @@ _trace() {
     die()  { printf 'DIE %s\n' "$*"; exit 9; }
     compute_jobs() { printf '4\n'; }
     cmake() { printf 'CMAKE %s\n' "$*"; return "${rc}"; }
+    # The loader's dynamic symbol table; READELF_SYMS overrides the healthy one.
+    readelf() { printf '%s\n' "${READELF_SYMS-  1: FUNC GLOBAL DEFAULT vkCreateXcbSurfaceKHR
+  2: FUNC GLOBAL DEFAULT vkCreateXlibSurfaceKHR
+  3: FUNC GLOBAL DEFAULT vkCreateWaylandSurfaceKHR}"; }
     _sudo_rec() { printf 'SUDO %s\n' "$*"; }
     SUDO=""
     [ "${record_sudo}" = "1" ] && SUDO=_sudo_rec
@@ -116,8 +131,8 @@ _out="$(_trace 0 0)"
 
 t_case "all three components: cmake argv is byte-for-byte the cross contract"
 t_assert_contains "${_out}" \
-  "CMAKE -S SDK/source/Vulkan-Loader -B TMP/vulkan-loader-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DVULKAN_HEADERS_INSTALL_DIR=SDK/x86_64 -DBUILD_TESTS=OFF -DBUILD_WSI_XCB_SUPPORT=OFF -DBUILD_WSI_XLIB_SUPPORT=OFF -DBUILD_WSI_WAYLAND_SUPPORT=OFF -DBUILD_WSI_DIRECTFB_SUPPORT=OFF" \
-  "loader flags/WSI-off set changed"
+  "CMAKE -S SDK/source/Vulkan-Loader -B TMP/vulkan-loader-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DVULKAN_HEADERS_INSTALL_DIR=SDK/x86_64 -DBUILD_TESTS=OFF -DBUILD_WSI_XCB_SUPPORT=ON -DBUILD_WSI_XLIB_SUPPORT=ON -DBUILD_WSI_XLIB_XRANDR_SUPPORT=ON -DBUILD_WSI_WAYLAND_SUPPORT=ON -DBUILD_WSI_DIRECTFB_SUPPORT=OFF" \
+  "loader flags changed: X11/XCB/Wayland WSI must stay ON (CON41)"
 t_assert_contains "${_out}" \
   "CMAKE -S SDK/source/SPIRV-Tools -B TMP/spirv-tools-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DSPIRV-Headers_SOURCE_DIR=SDK/source/SPIRV-Headers -DSPIRV_SKIP_TESTS=ON -DSPIRV_SKIP_EXECUTABLES=OFF -DSPIRV_WERROR=OFF" \
   "SPIRV-Tools flags changed (SPIRV_WERROR=OFF guards GCC 16 -Warray-bounds)"
@@ -135,6 +150,28 @@ t_case "headers are copied into the target archdir BEFORE the loader configures"
 t_assert_ok test -d "${SDK}/aarch64/include/vulkan"
 t_assert_ok test -d "${SDK}/aarch64/include/vk_video"
 t_assert_ok test -d "${SDK}/aarch64/lib"
+
+t_case "the loader's WSI exports are read, and a healthy loader counts as built"
+t_assert_contains "${_out}" "LOG Installed target Vulkan loader with X11/XCB/Wayland WSI"
+
+# ---------------------------------------------------------------------------
+t_case "a loader that configured and installed WITHOUT WSI is fatal (CON41)"
+# The shape that shipped: cmake exits 0, libvulkan.so.1 exists, the surface
+# entry points do not. A loader is REQUIRED, so this must die, not degrade.
+_fixture full
+_out="$( READELF_SYMS='  1: FUNC GLOBAL DEFAULT vkCreateInstance
+  2: FUNC GLOBAL DEFAULT vkCreateXlibSurfaceKHR' _trace 0 0 )"
+t_assert_contains "${_out}" "LOG Target Vulkan loader for aarch64 does not export vkCreateXcbSurfaceKHR vkCreateWaylandSurfaceKHR" \
+  "the message must name exactly the missing entry points"
+t_assert_contains "${_out}" "DIE REQUIRED Vulkan cross-component(s) failed for aarch64: vulkan-loader"
+
+t_case "a loader that was never installed has no WSI either"
+_fixture full
+rm -f "${SDK}/aarch64/lib/libvulkan.so.1"
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "does not export vkCreateXcbSurfaceKHR vkCreateXlibSurfaceKHR vkCreateWaylandSurfaceKHR" \
+  "a missing file must not read as an empty-but-healthy symbol table"
+t_assert_contains "${_out}" "DIE REQUIRED Vulkan cross-component(s) failed for aarch64: vulkan-loader"
 
 # ---------------------------------------------------------------------------
 t_case "a REQUIRED component that fails is fatal HERE, not a mystery hours later"

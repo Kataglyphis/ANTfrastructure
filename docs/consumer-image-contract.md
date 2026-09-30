@@ -360,7 +360,16 @@ absent (riscv64 has no upstream build) or when no squashfs superblock is found i
 a missing runtime costs a consumer one download, and is never worth failing a
 toolchain stage over.
 
-### The Android SDK roots are advertised
+### What changes with the next `:latest`
+
+These are in source and not yet in a published image. Drop the workaround once your
+lane runs on the next `:latest`.
+
+| What | Before | After |
+| --- | --- | --- |
+| A window on arm64/riscv64 Vulkan (CON41) | the loader lists no `VK_KHR_{xcb,xlib,wayland}_surface`, so a windowed test aborts and only amd64 renders under `xvfb-run` | all three arches list them; the image smoke fails an arch that does not ([why](vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems)) |
+
+## The Android SDK roots are advertised
 
 `Dockerfile.android` advertises where each Android payload lives; `Dockerfile.package`
 COPYs the payload those names point at but, until 2026-09-05, never re-declared the
