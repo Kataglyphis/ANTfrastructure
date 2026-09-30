@@ -1211,7 +1211,8 @@ _parity_ort_flavor() {
 }
 
 # A list, not case arms: the health check must enumerate entries that stopped failing.
-_PARITY_GST_KNOWN_BROKEN="arm64:libgstgtk4.so"
+# Empty since 2026-09-30: every loader exports the WSI surfaces (CON41), so arm64 gtk4 loads.
+_PARITY_GST_KNOWN_BROKEN=""
 
 # The gtk4 entry holds only where the resolved libvulkan lacks vkCreateWaylandSurfaceKHR.
 _rt_gtk4_vulkan_wayland() {

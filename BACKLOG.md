@@ -17,8 +17,13 @@ is blocked on the owner. A fix in source is not a fix in an image: the Linux one
 with CON11, the Windows ones with CON12, and each item says what to check afterwards.
 **CON11 shipped 2026-09-29** (`:latest` index `sha256:696642b2…`), and CON37 retired the
 consumer workarounds it made unnecessary the same day (git history, 2026-09-29/30). The
-consumers measured four gaps it did not close: CON38–CON41. CON38 and CON39 are fixed in source
-and wait for the next publish; CON40 (a lane-time script) is done (2026-09-30, git history).
+consumers measured four gaps it did not close, CON38–CON41, and all four are closed: CON40
+(a lane-time script) in source, CON38, CON39 and CON41 in the `:latest` of 2026-09-30 (amd64
+`502a5e9d…`, arm64 `4446422d…`, riscv64 `d5e4db6b…`), checked in each published child as
+uid 1001: atheris' `lib/linux/libclang_rt.fuzzer_no_main-<arch>.a`, clang-tidy through
+`/usr/bin/clang{,++}` selecting `/opt/gcc-16.2.0`, the loader's xcb/xlib/wayland surfaces and
+`vkcube` under `xvfb-run` on all three; gtk4 now loads on arm64, so the smoke's arm64 exception
+is gone. riscv64 builds no `libgstgtk4.so` at all (unchanged).
 
 ## Protocol
 
@@ -80,50 +85,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux image (all arches)
 
-- [b] **CON38 — atheris cannot find the image's libFuzzer** [S, ★]. Blocked on the next
-      `:latest` publish (owner). CON17's proof checked `clang -print-file-name=libclang_rt.fuzzer_no_main.a`,
-      which resolves (per-target layout, `lib/clang/23/lib/<triple>/`). atheris' own probe
-      (`setup_utils/find_libfuzzer.sh`, 3.0.0 and upstream) walks `clang -print-search-dirs` for
-      `lib/linux/libclang_rt.fuzzer_no_main-<arch>.a` and derives the asan/ubsan archives it merges
-      from that path, so a source build failed with `Failed to find libFuzzer` (WebDavClient,
-      2026-09-29). Fixed in source (2026-09-30), package stage: `link_compiler_rt_legacy_names`
-      (`package-image-wiring.sh`) links the fuzzer, asan and ubsan archives under the old names, and
-      `validate-compilers.sh smoke` runs atheris' probe. Proven in the published amd64/arm64 images
-      with the links recreated: the probe finds the archive, and atheris 3.0.0 (sdist) and upstream
-      e36da74 build from source on 3.14 with all three merged sanitizer `.so`s and fuzz 200 runs.
-      riscv64 gets the links, but atheris' probe knows no riscv64 (upstream): `LIBFUZZER_LIB` there.
-      Close once the smoke passes in a published `:latest`.
-- [b] **CON39 — clang-tidy misses the clang cfg** [S, ★★]. Blocked on the next `:latest` publish
-      (owner). Clang reads `<triple>-<driver>.cfg` from the directory it was reached through; the
-      compiler resolves `/proc/self/exe`, clang-tidy keeps the compile database's `/usr/bin/clang++`
-      and looked in `/usr/bin`: `Selected GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/16`
-      on all three arches (measured 2026-09-30). Fixed in source (2026-09-30), package stage:
-      `write_clang_gcc_toolchain_cfg` writes the pair into every directory of `/usr/bin` and
-      `/usr/local/bin` holding a link to the driver, and the smoke grades clang-tidy through
-      `/usr/bin/clang` and `/usr/bin/clang++`. Proven on amd64, arm64 and riscv64 with the function
-      run in the published images: `/opt/gcc-16.2.0` selected. Afterwards BeschleunigerBallett drops
-      its `--extra-arg=--gcc-toolchain=${GCC_PREFIX}`.
+None open.
 
 ## Open — Linux arm64 and riscv64
 
-- [b] **CON41 — The arm64 and riscv64 Vulkan loaders have no window-system support** [M, ★★].
-      Blocked on the next `:latest`. Measured on the 2026-09-29 image: amd64's LunarG loader
-      lists 26 instance extensions, and the cross-built `aarch64` and `riscv64` loaders list 22,
-      without `VK_KHR_{xcb,xlib,wayland}_surface`. So every GPU test that opens a window aborts
-      there (BeschleunigerBallett run 36615897603), and vkcube under `xvfb-run` gets no ICD
-      able to present. Cause: `_vulkan_target_build_loader` turned WSI `OFF` for a compute-only
-      TVM. Fixed in source (2026-09-30): X11, XCB, Xlib-XRandR and Wayland WSI are `ON`. The
-      stage dies if the built loader lacks `vkCreate{Xcb,Xlib,Wayland}SurfaceKHR`, and the
-      runtime smoke fails any arch whose loader does not list the four surface extensions.
-      Proven by cross-building the loader through the real function for both arches, swapping
-      it into the published images, and seeing vkcube render on llvmpipe over xcb. The fix
-      ships with the next `:latest`, and the rebuild starts at the sdk stage. Afterwards:
-      BeschleunigerBallett runs its GPU suites on arm64 again. The smoke's
-      `arm64:libgstgtk4.so` parity exception came from the same gap, so drop it once the
-      stale-exception walker reports that gtk4 loads. Note for any lane: `xvfb-run` must not
-      be the container's PID 1, where it never receives Xvfb's ready signal and hangs. Also
-      measured: riscv64 ships no `clang-format` on `PATH`; nothing in the fleet lints there
-      today.
+None open.
 
 ## Open — Windows `:winamd64`
 
