@@ -170,6 +170,48 @@ None open.
       - `:winamd64-rocm`: pushing it waits on a redistribution decision.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
+- [ ] **CON43 — The Windows arm64 lanes become `build + test`** [M, ★★]. Owner request
+      2026-09-30. Every `Windows arm64 · cross build + run` lane cross-builds on amd64 and then
+      only STARTS the product on `windows-11-arm`; none runs a test there, so arm64 has no
+      test verdict at all on Windows. What the run jobs do today (checked 2026-09-30):
+      BeschleunigerBallett `GraphicsEngine.exe --version` (LunarG's arm64 Vulkan runtime on
+      `PATH`), AccelerANTgine `AccelerANTgine.exe`, OxidANT four `kataglyphis_cli.exe`
+      subcommands, OmniAccelerANT (its own hybrid workflow, not this one) a 20 s launch smoke.
+
+      Plan:
+      1. **This hub: `container-ci-windows.yml` carries tests to the arm64 runner.** New inputs
+         beside `run-command`: `test-artifact-dir` (what the cross build stages for tests,
+         uploaded as a second artifact) and `test-command` (PowerShell run in it on
+         `windows-11-arm`, after `run-command`; any failing native command fails the lane, and
+         the job summary reports the pass/fail/skip counts it prints). A `Test-TargetArch.ps1`
+         gate over the test artifact too, so an amd64 test binary cannot pass on arm64 by
+         emulation (Windows on Arm runs x64 code transparently — that is exactly the false
+         green to rule out). Document the inputs in `.github/actions/README.md` and
+         `docs/windows-cross-builds.md`.
+      2. **Measure before wiring, per consumer:** does the cross build produce the test
+         binaries at all (ctest targets, `cargo test --no-run --target
+         aarch64-pc-windows-msvc`), and do they run from a different directory? CTest's
+         `CTestTestfile.cmake` embeds the container's absolute build paths (`C:\ws\…`), so
+         either stage the build tree at the same path on the runner, or run the test
+         executables directly from a generated list, or `ctest --test-dir` with the paths
+         rewritten. Pick per repo by what actually runs.
+      3. **BeschleunigerBallett:** the Release test suites the x64 lane runs, minus the same
+         `$gpuOnlySuites`/`gpu_excluded_suites` (no GPU driver on the runner; LunarG's loader
+         alone has no ICD). Pester already runs on x64 and needs no arm64 run.
+      4. **AccelerANTgine:** its ctest suites (Release). Pester as for BeschleunigerBallett.
+      5. **OxidANT:** the workspace's test executables from `cargo test --no-run` for the arm64
+         target. The WebGPU renderer tests need an adapter: check whether `windows-11-arm`
+         offers WARP/D3D12 or GL through wgpu; if not, they skip exactly as the x64 lane's
+         Server Core skip does, with the reason printed, not silently.
+      6. **OmniAccelerANT** (tracked in its own BACKLOG): the app job already has Flutter on the
+         arm64 runner, so `flutter test` runs natively there, plus the plugin's C ABI check.
+      7. **Rename** each lane to `Windows arm64 · cross build + test` only once its tests run
+         and gate; the name must keep telling the truth. The lane-name tables (e.g.
+         `docs/ci-build-triggers.md`) move with it.
+
+      Order: the hub inputs first (consumers call it at `@develop`, so push it before any
+      consumer uses the new inputs), then one consumer at a time, each proven by its green
+      arm64 run with a non-zero test count.
 - [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Blocked on the running
       `:latest` rebuild (2026-09-30) and on CON31's `:latest-nvidia` amd64 publish; owner
       request 2026-09-30, planned for after that build.
