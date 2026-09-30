@@ -1210,8 +1210,7 @@ _parity_ort_flavor() {
   esac
 }
 
-# A list, not case arms: the health check must enumerate entries that stopped failing.
-# Empty since 2026-09-30: every loader exports the WSI surfaces (CON41), so arm64 gtk4 loads.
+# A list, not case arms, so the health check can enumerate stale entries; empty since CON41 (arm64 gtk4 loads).
 _PARITY_GST_KNOWN_BROKEN=""
 
 # The gtk4 entry holds only where the resolved libvulkan lacks vkCreateWaylandSurfaceKHR.
