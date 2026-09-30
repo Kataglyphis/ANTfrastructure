@@ -93,18 +93,11 @@ _manifest_wrapper_gate() {
   return 1
 }
 
-# Refuse to SHRINK an already-published index. The coherence gate above asks
-# whether the arches agree on a generation; it cannot ask whether they are ALL
-# there. A single-arch run therefore assembles a single-arch index that is
-# internally coherent, and the push replaces a 3-arch :latest with a
-# 1-arch one. Observed live 2026-08-31: the published index had shrunk to
-# riscv64 alone. docs/refactoring-backlog.md
+# Refuse to shrink a published index: a coherent single-arch run would replace a 3-arch :latest.
 _manifest_completeness_gate() {
   local published published_err
   published_err="$(mktemp)" || return 1
-  # A 404 means nothing is published yet — legitimately nothing to protect. ANY
-  # other failure means we could not CHECK, which must not read as "safe to
-  # shrink". docs/cross-build-verification.md
+  # Only a 404 means nothing to protect; any other failure is "could not check", never "safe".
   if ! published="$("${NERDCTL_BIN:-nerdctl}" manifest inspect "${IMAGE_NAME}" 2>"${published_err}")"; then
     if grep -qE -e "not found|manifest unknown|MANIFEST_UNKNOWN|404" "${published_err}"; then
       rm -f "${published_err}"
@@ -117,9 +110,7 @@ _manifest_completeness_gate() {
     return 1
   fi
   rm -f "${published_err}"
-  # Compare SETS, not counts. Counting alone waves through a lateral swap:
-  # replacing a published {riscv64} with {amd64} keeps the count at 1 and drops
-  # an arch just as surely as shrinking would.
+  # Compare sets, not counts: swapping {riscv64} for {amd64} keeps the count and drops an arch.
   local published_arches want_arches dropped
   published_arches="$(printf '%s\n' "${published}" \
     | sed -n 's/.*"architecture"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | LC_ALL=C sort -u)"
@@ -137,8 +128,7 @@ _manifest_completeness_gate() {
   return 1
 }
 
-# PUBLISH GATE, no skip switch: the config ENV of every wrapper the index points at names nothing
-# outside the container. docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting
+# No skip switch. docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting
 _manifest_image_env_gate() {
   local arch tag env_lines failed=""
   for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
@@ -210,9 +200,7 @@ _manifest_extra_arg() {
   esac
 }
 
-# Register QEMU emulators for non-native target arches WITHOUT sudo: nested exec
-# inside the image needs binfmt_misc F=fix-binary, which buildkit's top-level-only
-# emulator does not provide. See docs/linux-cross-builds.md § Host prerequisite.
+# Nested exec needs binfmt_misc F=fix-binary, which buildkit's emulator lacks. See docs/linux-cross-builds.md § Host prerequisite
 ensure_foreign_binfmt() {
   local arches="$1"
   [ "${RUNTIME_REGISTER_BINFMT:-1}" = "1" ] || { log "RUNTIME_REGISTER_BINFMT=0 — skipping QEMU binfmt registration"; return 0; }
@@ -237,8 +225,7 @@ ensure_foreign_binfmt() {
   _BINFMT_ENSURED=1
 }
 
-# Registration above is best-effort and its silent failure surfaces hours later
-# as an output-less BuildKit step error, so prove the emulator is there and die here.
+# Registration fails silently and surfaces hours later in BuildKit, so prove the emulator here.
 _binfmt_qemu_name() {
   case "$1" in
     arm64|aarch64)  printf 'qemu-aarch64' ;;
@@ -255,8 +242,7 @@ verify_foreign_binfmt() {
     handler="$(_binfmt_qemu_name "${a}")"
     # Rootful / CI hosts register in the HOST namespace (update-binfmts).
     grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null && continue
-    # Rootless: the registration lives in the persistent rootlesskit namespace
-    # containerd and buildkitd share, NOT in the host's own binfmt_misc.
+    # Rootless registration lives in the rootlesskit namespace, not the host's binfmt_misc.
     if [ -n "${tool}" ] && "${tool}" nsenter -- \
          grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null; then
       continue
@@ -267,31 +253,24 @@ verify_foreign_binfmt() {
   log "QEMU binfmt verified for: ${arches}"
 }
 
-# The build-only half of main(): binfmt, the per-arch wrapper builds and the two
-# smoke passes. One region behind ONE `--manifest-only/--repair` test instead of
-# the same test in front of three phases; everything after it in main() publishes
-# what already exists. docs/refactoring-backlog.md F1
+# Build-only half of main(), skipped by --manifest-only/--repair.
 _manifest_build_and_smoke() {
   local arch
-  # Foreign-arch wrappers are built ON the target platform under QEMU, so the
-  # emulators must exist BEFORE the build loop -- not merely before the smokes.
+  # Foreign wrappers build under QEMU, so emulators must exist before the build loop.
   ensure_foreign_binfmt "${TARGET_ARCHES}"
 
   run_parallel_arch_loop runtime_wheels_arch_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
 
-  # GATE: boot-smoke every wrapper BEFORE the index goes live, so a broken image
-  # can never ship as :latest. RUNTIME_IMAGE_SMOKE=0 skips.
+  # Smoke before the index goes live so a broken image never ships as :latest.
   if [ "${RUNTIME_IMAGE_SMOKE}" = "1" ]; then
     [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${TARGET_ARCHES}"
     local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
     local wrapper_tag
-    # Two-pass order is load-bearing: content gate for EVERY arch first, then the
-    # boot smokes (docs/cross-build-verification.md § Verify the shipped BYTES).
+    # Content gate for every arch before any boot smoke. docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push
     for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
       wrapper_tag="$(runtime_wrapper_tag "${arch}")"
       log "Wrapper content gate: ${wrapper_tag} (${arch})"
-      # Pull only when MISSING: an unconditional pull re-points the tag at the
-      # previously PUBLISHED image, so --no-push runs smoke the stale release.
+      # Pull only when missing: a pull re-points the tag at the published image, the stale one under --no-push.
       if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
         run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
       fi
@@ -332,15 +311,13 @@ main() {
   # The app too: every arch of one index builds the same OrchestrANT commit.
   runtime_resolve_app_ref
 
-  # CROSS_NO_PUSH=1: nothing is pushed, so a registry-based `manifest create` has
-  # no descriptors and dies "no such manifest". Images are still built + smoked.
+  # Nothing pushed means manifest create has no descriptors and dies "no such manifest".
   if [ "${CROSS_NO_PUSH:-0}" = "1" ] && [ "${CREATE_MANIFEST}" -eq 1 ]; then
     log "CROSS_NO_PUSH=1 — skipping multi-arch manifest creation (no pushed per-arch refs to index)"
     CREATE_MANIFEST=0
   fi
 
-  # ONE test for the one question --manifest-only/--repair asks. Everything after
-  # this publishes an index over wrappers that already exist.
+  # Everything after this publishes an index over wrappers that already exist.
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
     log "Building ${ARTIFACT_BUILD_MODE} runtime package flow for architectures: ${TARGET_ARCHES}"
     _manifest_build_and_smoke
@@ -351,12 +328,10 @@ main() {
   # Publish the multi-arch manifest only after every per-arch image passed its smoke.
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then
     create_manifest
-    # Freshness gate: prove the index points at the per-arch tags just built.
-    # Advisory by default (runs after push); MANIFEST_FRESHNESS_STRICT=1 makes it fatal.
+    # Advisory, since it runs after the push; MANIFEST_FRESHNESS_STRICT=1 makes it fatal.
     if [ "${MANIFEST_FRESHNESS_GATE:-1}" = "1" ] \
        && [ -x "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" ]; then
-      # --tag: the index THIS run wrote. The script's default is only :latest,
-      # which a host-infixed (:latest-hostarm64) run never touches.
+      # --tag: the default :latest is never touched by a host-infixed run.
       if EXPECT_RUN_ID="${CROSS_RUN_ID:-}" \
          bash "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" --tag "${IMAGE_NAME##*:}"; then
         log "[manifest] freshness verified: every child matches its per-arch tag and shares this run's id"

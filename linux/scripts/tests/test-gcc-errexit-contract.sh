@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
-# The `if ! build_canadian_native_gcc_for …` call site suppresses errexit for that
-# function's whole body, so every failure inside it must raise explicitly. The
-# function needs a cross toolchain and a sysroot, so it cannot run here; what is
-# testable is the contract.
-# docs/failure-modes.md#a-callee-invoked-in-an-if--condition-runs-with-errexit-off
+# The function cannot run without a cross toolchain, so its contract is read; see docs/failure-modes.md#a-callee-invoked-in-an-if--condition-runs-with-errexit-off
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 GCC_SH="${TESTS_DIR}/../02-toolchain/gcc.sh"
 
 t_case "the mechanism: an if-condition suppresses errexit inside the callee"
-# Not a guard on our code — it records WHY the guard below is needed, because the
-# behaviour is easy to misremember and the cost of forgetting is a silent build.
+# Not a guard on our code: it pins the bash behaviour the guard below exists for.
 _swallowed="$(bash -c '
   set -e
   f() { false; echo "REACHED"; }
@@ -20,10 +15,7 @@ t_assert_eq "REACHED" "${_swallowed}" \
   "under \`if !\`, a failing command does NOT abort the callee"
 
 t_case "the Canadian native builder invocation raises on failure"
-# Without this the builder's exit code was discarded and the two -x checks below
-# it still passed, on the binaries install-gcc had already written. Walk the
-# invocation's OWN continuation lines: a window-grep also sees those -x checks'
-# own `|| die` and would pass with the guard removed (it did).
+# Only the invocation's own continuation lines: a window grep would also see the -x checks' `|| die`.
 _builder_block="$(awk '/^build_canadian_native_gcc_for\(\)/,/^\}/' "${GCC_SH}")"
 t_assert_contains "${_builder_block}" 'bash "${GCC_CROSS_BUILDER}"' \
   "the function must still be the one that invokes the builder"

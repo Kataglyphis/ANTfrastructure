@@ -5,21 +5,18 @@ if [ -f /opt/scripts/core/platform.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/platform.sh
 fi
-# apt_sources_set_architectures lives in cross-apt.sh (self-contained; sourcing
-# it only defines functions, no cross-env.sh dependency needed here).
+# cross-apt.sh only defines functions, so it loads without cross-env.sh.
 if [ -f /opt/scripts/core/cross-apt.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/cross-apt.sh
 fi
-# ubuntu_write_deb822_source / ubuntu_effective_ports_mirror_url live in
-# ubuntu-mirror.sh; cross_ensure_installed_foreign_arch_sources needs them.
+# cross_ensure_installed_foreign_arch_sources needs ubuntu-mirror.sh's helpers.
 if [ -f /opt/scripts/core/ubuntu-mirror.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/ubuntu-mirror.sh
 fi
 
-# download_file (retry-capable) lives in 01-core/downloads.sh; load it directly
-# since this installer runs without the full module chain.
+# This installer runs without the module chain, so load downloads.sh directly.
 if ! command -v download_file >/dev/null 2>&1; then
   for _asdk_dl in \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/downloads.sh" \
@@ -37,11 +34,7 @@ ensure_host_apt_architectures() {
   apt_sources_set_architectures "/etc/apt/sources.list.d/ubuntu.sources" "amd64 i386"
 }
 
-# Record WHY the payload is absent, in the image, for the consumers that would
-# otherwise re-derive the decision (and get it wrong on a host whose NDK path
-# cannot exist). smoke-android.sh reads this file rather than asking the arch
-# again. Dockerfile.android creates /opt/android only AFTER this script returns,
-# so create it here. Literal path on purpose: a knob would need a registry row.
+# Record why the payload is absent, so smoke-android.sh reads the decision instead of re-deriving it.
 if ! android_require_amd64_build_host "Android SDK/NDK installation"; then
   mkdir -p /opt/android
   {
@@ -72,9 +65,7 @@ if ! dpkg --print-foreign-architectures | grep -qx i386; then
   dpkg --add-architecture i386
 fi
 ensure_host_apt_architectures
-# Every installed foreign arch needs its own source, or the i386 install below
-# is unsatisfiable the moment archive and ports drift apart.
-# docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
+# Every foreign arch needs its own source. docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
 cross_ensure_installed_foreign_arch_sources
 apt-get update
 apt-get install -y --no-install-recommends \
@@ -86,33 +77,16 @@ apt-get install -y --no-install-recommends \
   unzip \
   xz-utils
 
-# ---------------------------------------------------------------------------
-# Shared cross-arch download cache (wired via Dockerfile.android:
-# --mount=type=cache,target=${ANDROID_SDK_CACHE_DIR},sharing=locked with an id
-# keyed by the SDK/NDK version tuple, deliberately NOT by TARGETARCH). This
-# script only ever runs on amd64 build hosts (see the
-# android_require_amd64_build_host gate above), so the installed tree —
-# linux-x86_64 host tooling plus sdkmanager packages keyed by name+version —
-# is identical for every target arch. The first arch populates
-# <cache>/sdk-tree; the 2nd/3rd arch restore from it instead of re-downloading
-# the multi-GB SDK/NDK from Google. sharing=locked already serializes
-# concurrent --parallel-archs builds on the mount; the populate at the bottom
-# is additionally staged + atomic-mv so an interrupted build can never publish
-# a partial tree. NOTE the cache mount is invisible at image runtime:
-# everything is still installed into ${ANDROID_HOME} in the image layer.
-# Unset/absent cache dir (script run outside the Dockerfile) => plain install.
+# Cross-arch cache keyed by the pins, not TARGETARCH: this only runs on amd64, so every arch installs the same tree.
 ANDROID_SDK_CACHE_DIR="${ANDROID_SDK_CACHE_DIR:-}"
 
-# Every sdkmanager component the image ships. Dockerfile.android's cache id names each pin in
-# this list (tests/test-android-sdk-cache-key.sh).
+# Dockerfile.android's cache id must name every pin in this list (tests/test-android-sdk-cache-key.sh).
 sdk_components=(
   "cmake;${ANDROID_CMAKE_VERSION}"
   "platform-tools"
   "platforms;android-${ANDROID_COMPILE_SDK}"
   "build-tools;${ANDROID_BUILD_TOOLS}"
-  # CON5: API 37 alongside 36, so a consumer can raise compileSdk without the
-  # image losing the level everything else builds against. 37.0 is the base
-  # platform package's name in Google's repository (see versions.env).
+  # The extra API level lets consumers raise compileSdk without losing the one everything builds against.
   "platforms;android-${ANDROID_EXTRA_COMPILE_SDK}"
   "build-tools;${ANDROID_EXTRA_BUILD_TOOLS}"
   "ndk;${ANDROID_NDK_VERSION}"
@@ -120,9 +94,7 @@ sdk_components=(
   "extras;google;m2repository"
 )
 
-# Prints each of sdk_components that ${ANDROID_HOME} does not hold, by the path
-# sdkmanager records in every installed package's package.xml. A restored cache
-# tree once lacked the two API 37 packages, and nothing noticed (BACKLOG CON14).
+# Components ANDROID_HOME lacks per package.xml, so a stale restored cache tree is caught.
 sdk_missing_components() {
   local installed pkg
   installed="$(find "${ANDROID_HOME}" -maxdepth 4 -name package.xml -exec \
@@ -162,18 +134,11 @@ if [ "${sdk_restored}" -eq 0 ]; then
 
   cd "${tmpdir}"
   zip_name="commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip"
-  # VERIFIED fetch (supply-chain audit #8): the unzipped sdkmanager bootstraps
-  # the NDK — the cross compiler for every Android artifact — and auto-accepts
-  # all licenses; every downstream hash check rests on this binary's integrity.
-  # The pin is noforward (not a build-arg): read it from the mounted versions.env
-  # when the env doesn't carry it (same pattern as install-rust.sh).
+  # Verified fetch: sdkmanager bootstraps the NDK; its pin is noforward, so read it from versions.env.
   if [ -z "${ANDROID_CMDLINE_TOOLS_SHA256:-}" ] && [ -f /opt/scripts/core/versions.env ]; then
     ANDROID_CMDLINE_TOOLS_SHA256="$(sed -n 's/^ANDROID_CMDLINE_TOOLS_SHA256=//p' /opt/scripts/core/versions.env)"
   fi
-  # Shared-cache lookup for the cmdline-tools zip (keyed by the version in the
-  # file name, re-verified against the sha pin when one is set). This covers
-  # partial invalidations: a bump of any other pin changes the sdk-tree cache
-  # key, but the unchanged cmdline-tools zip need not be re-downloaded.
+  # The zip is cached by file name and re-verified, so it survives bumps of the other pins.
   cached_zip=""
   if [ -n "${ANDROID_SDK_CACHE_DIR}" ] && [ -d "${ANDROID_SDK_CACHE_DIR}" ]; then
     cached_zip="${ANDROID_SDK_CACHE_DIR}/dl/${zip_name}"
@@ -196,9 +161,7 @@ if [ "${sdk_restored}" -eq 0 ]; then
       download_file "https://dl.google.com/android/repository/${zip_name}" "${zip_name}"
     fi
     if [ -n "${cached_zip}" ]; then
-      # Publish to the shared cache via copy-to-temp + atomic mv so a reader
-      # can never observe a partially written zip (belt-and-braces on top of
-      # the mount's sharing=locked serialization).
+      # Copy to a temp name, then mv, so no reader ever sees a partial zip.
       mkdir -p "${ANDROID_SDK_CACHE_DIR}/dl"
       cp "${zip_name}" "${cached_zip}.partial.$$"
       mv -f "${cached_zip}.partial.$$" "${cached_zip}"
@@ -252,9 +215,7 @@ if [ "${sdk_restored}" -eq 0 ]; then
         status=$?
       fi
       echo "$out"
-      # Trust the exit code only: sdkmanager prints "Done." per package, so a
-      # partially failed multi-package install still emits it — grepping for it
-      # here used to turn half-failed installs into false successes.
+      # Trust the exit code only: sdkmanager prints "Done." per package even when others fail.
       if [ "${status}" -eq 0 ]; then
         echo "sdkmanager install succeeded"
         return 0
@@ -268,23 +229,16 @@ if [ "${sdk_restored}" -eq 0 ]; then
     done
   }
 
-  # Accept any existing/required licenses before installing packages. FATAL on
-  # failure: an unaccepted license guarantees an opaque sdkmanager/gradle failure
-  # later, so fail loudly here where the cause is still visible.
+  # Fatal: an unaccepted license surfaces later as an opaque sdkmanager or gradle failure.
   accept_licenses
 
-  # sdkmanager_install already retries transient failures; call it directly
-  # instead of the old one-shot-then-retry duplication of the package list.
   sdkmanager_install "${sdk_components[@]}"
 
-  # Ensure licenses are accepted after installation too (some packages add new
-  # licenses). FATAL for the same reason as the pre-install acceptance above.
+  # Again after the install: some packages bring new licenses.
   accept_licenses
 fi
 
-# Postcondition: the NDK directory the whole Android lane cross-compiles with
-# must exist at the version-pinned path (same derivation the downstream builds
-# use: ${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}).
+# Downstream builds derive this exact NDK path, so it must exist.
 ndk_dir="${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}"
 if [ ! -d "${ndk_dir}" ]; then
   echo "ERROR: expected NDK directory '${ndk_dir}' missing after sdkmanager install" >&2
@@ -301,14 +255,7 @@ if [ -n "${ANDROID_NDK_HOME:-}" ] && [ -d "${ANDROID_NDK_HOME}" ]; then
   ln -sf "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64" "${ANDROID_NDK_HOME}/toolchain" || true
 fi
 
-# Populate the shared cross-arch cache (first arch through the mount only;
-# runs AFTER the NDK postcondition + toolchain symlink so the cached tree is
-# the fully validated install). Stage into a temp dir on the same cache
-# filesystem, then atomically mv into place: rename is atomic, so a build
-# killed mid-copy can never publish a partial tree — the next build simply
-# misses and re-populates. Failure to populate is non-fatal by design: THIS
-# arch's install is already complete in the image layer. A STALE tree is
-# replaced; between its removal and the mv the next build simply misses.
+# Publish the validated tree via a staged atomic mv; failure is non-fatal, since this arch is already installed.
 if [ "${sdk_restored}" -eq 0 ] && [ -n "${sdk_cache_tree}" ] && \
    { [ ! -d "${sdk_cache_tree}" ] || [ "${sdk_cache_stale}" -eq 1 ]; }; then
   rm -rf "${ANDROID_SDK_CACHE_DIR}"/sdk-tree.staging.*

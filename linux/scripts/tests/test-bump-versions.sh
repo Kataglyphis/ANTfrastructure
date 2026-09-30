@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# Characterisation of docs/scripts/bump_versions.py's report/write machinery,
-# driven IN-PROCESS: the real main(), tier sweep, write_env_values() and sha-pair
-# audit, with every upstream lookup replaced by a deterministic fake spec. That
-# is what the F1 row was blocked on -- it WRITES versions.env and checksums.
-# NOT covered: the spec_* lookups themselves (network); this suite pins the
-# machinery around them, and the fake specs are the offline proof.
-# docs/dependency-updates.md#version-bumping-as-agentsmd-carried-it
+# bump_versions.py's report/write machinery, in-process with fake specs. See docs/dependency-updates.md#version-bumping-as-agentsmd-carried-it
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -14,10 +8,7 @@ REPO="$(cd "${TESTS_DIR}/../../.." && pwd)"
 _WORK="$(mktemp -d)"
 trap 'rm -rf "${_WORK}"' EXIT
 
-# The driver: load the REAL module, point it at the fixture, install one named
-# scenario of fake tiers, and print rc plus stdout/stderr as three blocks, so
-# one run answers both "what did it say" and "what did it return". The SCENARIOS
-# table is the single owner of every fake spec this suite uses.
+# The real module on the fixture with one named fake scenario; prints rc, stdout and stderr as three blocks.
 _bv_prelude() {
   cat <<'PY'
 import contextlib, io, os, sys
@@ -76,8 +67,7 @@ def run(argv):
 PY
 }
 
-# _bv <scenario> <fixture> [cli args...] -- install the scenario, then drive the
-# real main() with the CLI args.
+# _bv <scenario> <fixture> [cli args...] -- install the scenario, then run the real main().
 _bv() {
   local scenario="$1" fixture="$2"; shift 2
   { _bv_prelude; printf 'install("%s")\nrun(cli)\n' "${scenario}"; } \
@@ -86,9 +76,7 @@ _bv() {
 
 _rc_of() { printf '%s\n' "$1" | sed -n 's/^__RC__ //p' | head -1; }
 
-# _after <text> <start-marker> -- the slice from the first line matching the
-# marker to the stderr block, so an order-sensitive case cannot pass on a line
-# from somewhere else in the report.
+# _after <text> <start-marker> -- marker to stderr, so an order-sensitive case cannot match elsewhere.
 _after() { printf '%s\n' "$1" | sed -n "/$2/,/^__STDERR__/p"; }
 
 # _fixture <name> <<'ENV' ... ENV -- a versions.env fixture, printed by path.

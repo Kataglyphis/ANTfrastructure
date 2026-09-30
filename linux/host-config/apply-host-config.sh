@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# apply-host-config.sh — install the canonical host config (backlog HC1).
-#
-#   bash linux/host-config/apply-host-config.sh          # diff + prompt
-#   bash linux/host-config/apply-host-config.sh --force  # no prompt
-#
-# REFUSES to run while a cross chain / buildkit build is active: applying
-# means restarting buildkitd, which kills in-flight builds. Restart is the
-# operator's explicit last step (printed, not executed) so a typo'd sudo
-# session can't bounce the daemon by accident.
+# Installs the canonical host config ([--force] skips the prompt); the buildkitd restart that kills builds is left to the operator.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

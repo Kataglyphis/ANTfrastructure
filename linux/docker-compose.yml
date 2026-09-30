@@ -3,9 +3,7 @@ services:
     build:
       context: .
       dockerfile: webserver/Dockerfile
-      # The built site, from wherever it was built. It is NOT in this repository
-      # (see linux/webserver/README.md): override the path for your checkout, or
-      # point it at a downloaded CI artifact.
+      # The built site is not in this repo (linux/webserver/README.md): point this at your build or a CI artifact.
       additional_contexts:
         site: ../../jotrockenmitlocken/build/web
     ports:

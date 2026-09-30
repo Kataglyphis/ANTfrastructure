@@ -1,7 +1,5 @@
 #requires -Version 7.0
-# rocm lane's LiteRT-LM GPU backend (Build-LitertLmBazel.ps1 + rocm-checks\LiteRtLm.ps1): cpu/nvidia
-# bazel command and env byte-identical, the env scrub, DXC and DLL pins, payload install, the body's
-# gating and order, the smoke check. NOT covered: a bazel build, the real prebuilt DLLs, a GPU run.
+# The rocm lane's LiteRT-LM GPU backend leaves cpu/nvidia's bazel command untouched; no bazel build, real DLLs or GPU.
 
 $script:LlmBazel = 'windows\scripts\build\Build-LitertLmBazel.ps1'
 $script:LlmCheck = 'windows\scripts\build\rocm-checks\LiteRtLm.ps1'

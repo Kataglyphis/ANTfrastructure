@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Neutralises upstream's unhashed ~1.5 GB QAIRT download. Sourced by both LiteRT
-# lanes; under android/ because Dockerfile.android COPYs only that dir.
-# docs/qnn-linux.md#no-staged-sdk-upstreams-unhashed-15-gb-download
+# Neutralises upstream's unhashed QAIRT download; see docs/qnn-linux.md#no-staged-sdk-upstreams-unhashed-15-gb-download
 
 # Android stages do not source logging.sh.
 _litert_qairt_log() { printf '[%s] %s\n' "$1" "$2" >&2; }

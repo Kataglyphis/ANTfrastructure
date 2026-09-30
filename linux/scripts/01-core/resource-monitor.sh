@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Low-overhead CSV sampler of RAM/disk/CPU during the long cross builds, plus a
-# summary naming the build activity at each pressure peak.
-# Usage, columns and integration: docs/build-resource-monitoring.md.
+# CSV sampler of RAM/disk/CPU during long cross builds, with a peak summary. docs/build-resource-monitoring.md
 set -uo pipefail
 
 _rm_now_epoch() { date +%s; }
 _rm_iso()       { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
-# ---- one cheap sample of every counter, appended as a CSV row -----------------
+# Sampling
 _rm_prev_busy=0
 _rm_prev_total=0
 
@@ -24,16 +22,12 @@ _rm_cpu_pct() {
     pct=0
   fi
   _rm_prev_busy="${busy}"; _rm_prev_total="${total}"
-  # Set a global, do NOT print: the caller used "$(_rm_cpu_pct)", and a command
-  # substitution is a subshell, so the delta state above never reached the
-  # monitor. Every sample was then the average since monitor START, not an
-  # instantaneous reading. docs/build-resource-monitoring.md
+  # A global, not stdout: a $(...) subshell would lose the delta state.
   _RM_CPU_PCT="${pct}"
 }
 
 _rm_context() {
-  # Best-effort "what is building right now": last meaningful line of the active
-  # build log, stripped of buildkit's byte-progress noise and CSV-escaped.
+  # Best-effort "what is building now": the last meaningful active-log line, minus progress noise.
   local log="$1"
   [ -n "${log}" ] && [ -r "${log}" ] || { printf '%s' ""; return 0; }
   tail -n 40 "${log}" 2>/dev/null \
@@ -47,8 +41,7 @@ _rm_context() {
 }
 
 _rm_stage() {
-  # Coarser phase label: the most recent buildkit stage name (#NN [name ...]) or
-  # orchestrator [stage X] marker in the active log; falls back to --label.
+  # Latest buildkit stage or orchestrator [stage X] marker in the active log, else --label.
   local log="$1" fallback="$2" s
   if [ -n "${log}" ] && [ -r "${log}" ]; then
     s="$(tail -n 200 "${log}" 2>/dev/null \
@@ -59,9 +52,7 @@ _rm_stage() {
 }
 
 _rm_active_log() {
-  # Explicit --stage-log, else the newest *.log in the dir — preferring one with a
-  # sibling `.log.run` marker (MON1: plain newest-*.log picked the orchestrator runlog,
-  # so every sample read stage=? and buildkitd stderr).
+  # --stage-log, else the newest *.log with a .log.run marker, so the orchestrator runlog is never picked.
   local explicit="$1" dir="$2" f
   if [ -n "${explicit}" ]; then printf '%s' "${explicit}"; return 0; fi
   [ -n "${dir}" ] && [ -d "${dir}" ] || { printf '%s' ""; return 0; }
@@ -103,8 +94,7 @@ _rm_sample_loop() {
     read -r diskkb_total diskkb_avail < <(df -Pk "${disk_path}" 2>/dev/null | awk 'NR==2{print $2, $4}')
     diskgb=$(( ${diskkb_avail:-0} / 1024 / 1024 ))
     diskpct=0; [ "${diskkb_total:-0}" -gt 0 ] && diskpct=$(( 100 * (diskkb_total - diskkb_avail) / diskkb_total ))
-    # `pgrep -c` prints "0" AND exits 1 on no match, so `|| true` and never
-    # `|| echo 0` — a second 0 would split the CSV row.
+    # pgrep -c prints 0 and exits 1 on no match; || echo 0 would add a second 0 and split the row.
     comp="$(pgrep -c -x 'cc1plus|cc1|clang|clang\+\+|rustc|lto1|cc1objplus|go|ld' 2>/dev/null || true)"
     [ -n "${comp}" ] || comp=0
     local active_log; active_log="$(_rm_active_log "${stage_log}" "${stage_log_dir}")"
@@ -123,7 +113,7 @@ _rm_sample_loop() {
   done
 }
 
-# ---- summary: find and explain the peak-pressure moments ----------------------
+# Summary of the peak-pressure moments
 rm_summarize() {
   local csv="$1"
   [ -r "${csv}" ] || { echo "resource-monitor: no CSV at ${csv}" >&2; return 1; }
@@ -176,7 +166,7 @@ rm_summarize() {
   echo "resource-monitor: summary written to ${out}" >&2
 }
 
-# ---- entrypoint ---------------------------------------------------------------
+# Entrypoint
 main() {
   if [ "${1:-}" = "summarize" ]; then
     shift; rm_summarize "${1:?usage: resource-monitor.sh summarize <csv>}"; return $?

@@ -3,8 +3,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 _ONNX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Preserve caller's SCRIPT_DIR — this may be the build-onnxruntime.sh directory
-# which dispatches to step scripts using SCRIPT_DIR. Do NOT overwrite it.
+# Keep the caller's SCRIPT_DIR: build-onnxruntime.sh dispatches its steps through it.
 ONNX_SCRIPT_DIR="${_ONNX_LIB_DIR}"
 : "${SCRIPT_DIR:=${ONNX_SCRIPT_DIR}}"
 
@@ -18,13 +17,7 @@ elif [ -f "${_ONNX_LIB_DIR}/../../../../core/common.sh" ]; then
   media_common_init "${_ONNX_LIB_DIR}"
 fi
 
-# media_common_init (above) provides the canonical logging (info/warn/err),
-# platform (arch_oci), cross (cross_build_enabled) and host-Python
-# (host_python_bin/host_python_major_minor) helpers via the 01-core module
-# framework — the same set armnn and every build-*.sh already rely on. The
-# previously copy-pasted re-implementations of these are gone; guard instead
-# that they actually loaded, so a broken bootstrap fails loudly HERE rather
-# than much later with a confusing "command not found".
+# A broken 01-core bootstrap must fail here, not later as a confusing "command not found".
 for _req_fn in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor resolve_qnn_sdk stage_qnn_runtime; do
   if ! command -v "${_req_fn}" >/dev/null 2>&1; then
     printf '[ERROR] onnxruntime lib/common.sh: required helper %s is undefined after media_common_init (01-core framework not loaded)\n' "${_req_fn}" >&2
@@ -33,14 +26,10 @@ for _req_fn in info warn err arch_oci cross_build_enabled host_python_bin host_p
 done
 unset _req_fn
 
-# is_amd64_arch has no canonical 01-core definition (arch_oci does), so it is
-# defined here — it is used by the sibling ONNX step scripts
-# (build-onnxruntime.sh, 40-build-wasm.sh, 50-build-js.sh).
+# 01-core has no is_amd64_arch, and the ONNX step scripts need one.
 is_amd64_arch() { [ "$(arch_oci)" = "amd64" ]; }
 
-# compute_jobs_with_mem_cap is loaded from the canonical parallelism.sh module
-# (sourced above via source_module). Do not add a fallback here — the canonical
-# version includes cgroup awareness, AGGRESSIVE_PARALLELISM, and PARALLEL_JOBS.
+# No local compute_jobs_with_mem_cap fallback: it would lose parallelism.sh's cgroup awareness.
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || err "Required command not found in PATH: $1"
@@ -98,12 +87,7 @@ init_defaults() {
   CMAKE_POLICY_VERSION_MINIMUM="${CMAKE_POLICY_VERSION_MINIMUM:-3.5}"
 
   SKIP_DEP_INSTALL="${SKIP_DEP_INSTALL:-false}"
-  # LOG2: build the browser-WebGPU wasm flavors (.asyncify + .jspi) in
-  # 40-build-wasm.sh so 50-build-js.sh can emit the ort.webgpu*/ort.jspi* JS
-  # bundles. Default ON; set false as the kill-switch if the flavor passes
-  # ever have to be shed (the js step then trims those bundles, pre-LOG2
-  # behavior). Replaces the removed ENABLE_ASYNCIFY/ASYNCIFY_STACK_SIZE knobs,
-  # whose pass aliased a plain (WebGPU-less) build to the .asyncify filenames.
+  # false sheds the WebGPU wasm flavors, and the js step then trims the ort.webgpu*/ort.jspi* bundles.
   ORT_WASM_WEBGPU_FLAVORS="${ORT_WASM_WEBGPU_FLAVORS:-true}"
 }
 
@@ -304,11 +288,7 @@ copy_onnx_headers_to_output() {
     while read -r header_path; do
       cp "${header_path}" "${output_dir}/include/" 2>/dev/null || true
     done < <(find "${search_dir}/include" \( -name "onnxruntime*.h" -o -name "onnxruntime*.inc" \) -type f 2>/dev/null || true)
-    # `.inc` included too: onnxruntime_experimental_c_api.h (new in the ORT
-    # 1.28 header set, pulled in by GenAI >= 0.15.2) does a RELATIVE
-    # `#include "onnxruntime_experimental_c_api.inc"` — flattening only the .h
-    # left that include dangling at the top level and GenAI died with
-    # "onnxruntime_experimental_c_api.inc: No such file or directory".
+    # .inc too: onnxruntime_experimental_c_api.h includes its .inc by relative path.
   done
 }
 
@@ -343,8 +323,7 @@ ensure_onnxruntime_symlink() {
   local output_dir="${1:?output dir required}"
   local onnx_lib="" onnx_base="" onnx_soname=""
 
-  # Guarded: an absent lib dir must fall through to the warn below, not abort
-  # the caller via set -e/pipefail (the GPU call site passes an unchecked dir).
+  # The GPU call site passes an unchecked dir, so a missing lib dir must not trip set -e.
   onnx_lib="$(find "${output_dir}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f 2>/dev/null | head -1 || true)"
   if [ -n "${onnx_lib}" ]; then
     onnx_base="$(basename "${onnx_lib}")"
@@ -353,22 +332,13 @@ ensure_onnxruntime_symlink() {
       info "Created symlink: libonnxruntime.so -> ${onnx_base}"
     fi
 
-    # The DT_SONAME link too. A consumer's NEEDED entry is the SONAME
-    # (libonnxruntime.so.1), never the real file (libonnxruntime.so.1.29.0) nor
-    # the linker name, so without this link validate-media-runtime.sh finds
-    # nothing in LIB_DIRS and "repairs" the miss out of apt: media-arm64
-    # 2026-08-27 logged "libonnxruntime.so.1 -> libonnxruntime1.23" and pulled
-    # 12 packages / 62.9 MB of a three-releases-old ORT over our build. amd64
-    # hid it because a NATIVE ldconfig synthesises the link; on cross the host
-    # ldconfig skips the foreign-arch ELF. objdump first for the same reason
-    # elf_needed_sonames prefers it: it reads foreign-arch ELF.
+    # Consumers NEED the SONAME link, which the host ldconfig never creates for a foreign-arch ELF.
     if command -v objdump >/dev/null 2>&1; then
       onnx_soname="$({ objdump -p "${onnx_lib}" 2>/dev/null || true; } | awk '/^[[:space:]]*SONAME/ { print $2; exit }')"
     elif command -v readelf >/dev/null 2>&1; then
       onnx_soname="$({ LC_ALL=C readelf -d "${onnx_lib}" 2>/dev/null || true; } | sed -n 's/.*(SONAME)[^[]*\[\(.*\)\].*/\1/p' | head -1)"
     fi
-    # An unreadable or path-bearing SONAME degrades to the previous behaviour
-    # (linker name only) instead of ln-ing into an unintended directory.
+    # A path-bearing SONAME would link into another directory, so it counts as unreadable.
     case "${onnx_soname}" in ""|*/*) onnx_soname="" ;; esac
 
     if [ -z "${onnx_soname}" ]; then
@@ -389,15 +359,7 @@ symlink_output_libraries_into_usr_local() {
   ldconfig 2>/dev/null || true
 }
 
-# Shared BUILD_ARGS base for the native ONNX Runtime builds ------------------
-#
-# The three native build scripts (30-build-native{,-amd,-nvidia}.sh) share an
-# identical leading set of build.sh flags; only the EP-specific flags
-# (--use_dnnl / --use_migraphx / --use_cuda / ...), cross handling, retry and
-# some diagnostics differ. This appends the common base to the named BUILD_ARGS
-# array; each EP script then appends only its own EP flags afterwards. build.sh
-# parses flags via argparse (no positionals), so flag order is not significant.
-# Args: <build_args_array_name> <build_dir> <config> <jobs>.
+# append_onnx_native_base_build_args <array> <build_dir> <config> <jobs>: the build.sh flags every native build shares.
 append_onnx_native_base_build_args() {
   local build_args_name="$1"
   # shellcheck disable=SC2178
@@ -412,15 +374,7 @@ append_onnx_native_base_build_args() {
     --compile_no_warning_as_error
     --skip_submodule_sync
     --skip_tests
-    # --skip_tests only skips RUNNING the tests. build.py never emits
-    # onnxruntime_BUILD_UNIT_TESTS=OFF, so onnxruntime_test_all and
-    # onnxruntime_shared_lib_test are still compiled and linked as part of `all`
-    # -- confirmed by grepping the emitted cmake line: the variable never appears.
-    # These images ship neither binary, so it is pure build time on every lane.
-    # On the CUDA lane it is also FATAL: onnxruntime_test_all fails to link with
-    #   undefined symbol: onnxruntime::CUDAExecutionProviderInfo::ToProviderOptions
-    # while every shipped library builds clean. The CUDA-EP-without-TensorRT
-    # combination is evidently not one upstream links that binary against.
+    # --skip_tests still compiles the test binaries, and onnxruntime_test_all fails to link on the CUDA lane.
     --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
     --allow_running_as_root
     --use_mimalloc
@@ -428,12 +382,7 @@ append_onnx_native_base_build_args() {
   )
 }
 
-# Shared artifact-finalization tail for the native ONNX Runtime builds -------
-#
-# The verify -> copy-libs -> ensure-symlink -> usr-local-symlink sequence is
-# byte-identical across the three native build scripts. The preceding wheel and
-# header copies differ, so those stay in the callers; the closing diagnostics
-# are report_onnx_build_output below. Args: <build_dir> <config> <output_dir> <src_dir>.
+# finalize_onnx_native_output <build_dir> <config> <output_dir> <src_dir>: the install tail every native build shares.
 finalize_onnx_native_output() {
   local build_dir="${1:?build dir required}"
   local build_config="${2:?build config required}"
@@ -446,11 +395,7 @@ finalize_onnx_native_output() {
   symlink_output_libraries_into_usr_local "${output_dir}"
 }
 
-# The closing "what did this stage produce" summary, one owner for all four
-# native/GPU/GenAI builds. Four copies had already drifted apart -- one listed
-# libraries with `sed -n '1,20p'` where the rest used `head -20`.
-# Args: <headline> <output_dir>. Every line is advisory: a stage must not fail
-# because a wheel directory it never fills is absent.
+# report_onnx_build_output <headline> <output_dir>: advisory only, since a stage may never fill its wheels dir.
 report_onnx_build_output() {
   local headline="${1:?headline required}"
   local output_dir="${2:?output dir required}"
@@ -472,15 +417,7 @@ append_onnx_cross_cmake_build_args() {
     info "Target Python dev files available; enabling ONNX Runtime Python in cross mode"
   fi
 
-  # Deliberately a REDUCED cross set — do NOT switch this to the shared
-  # append_cmake_cross_args set. In particular onnx must
-  # NOT receive CMAKE_LIBRARY_ARCHITECTURE: it breaks ONNX Runtime's FindPython
-  # NumPy detection (onnxruntime_python.cmake), failing the cross Python-wheel
-  # build with "Target Python::NumPy ... not found". Proven by an arm64 cross-build
-  # A/B: with CMAKE_LIBRARY_ARCHITECTURE the wheel build fails at cmake configure;
-  # without it, onnx configures and compiles cleanly. (CMAKE_AR/RANLIB and
-  # PKG_CONFIG_USE_CMAKE_PREFIX_PATH are harmless but omitted for parity with the
-  # long-proven working set.)
+  # Not append_cmake_cross_args: its CMAKE_LIBRARY_ARCHITECTURE breaks ORT's FindPython NumPy detection.
   build_args_ref+=(
     --cmake_extra_defines
     CMAKE_SYSTEM_NAME=Linux
@@ -497,17 +434,13 @@ append_onnx_cross_cmake_build_args() {
     onnxruntime_BUILD_UNIT_TESTS=OFF
     onnxruntime_GENERATE_TEST_REPORTS=OFF
   )
-  # RVV kernels are gated on ORT's own define, not on -march.
-  # docs/riscv64-rva23-baseline.md
+  # RVV kernels are gated on ORT's own define, not on -march; see docs/riscv64-rva23-baseline.md § Where it is set
   if [ "$(cross_target_arch)" = "riscv64" ]; then
     build_args_ref+=(--cmake_extra_defines onnxruntime_USE_RVV=ON)
   fi
 }
 
-# Append the optional LTO / WebGPU build flags, each gated on its ORT_ENABLE_*
-# env toggle (default false). Shared by the native CPU and AMD builds, which
-# opted into these identically. NOTE: the nvidia build inlines --use_webgpu
-# unconditionally, so it deliberately does NOT use this helper.
+# LTO and WebGPU stay off unless their ORT_ENABLE_* toggles say otherwise.
 append_onnx_optional_lto_webgpu_args() {
   local build_args_name="$1"
   # shellcheck disable=SC2178
@@ -518,26 +451,12 @@ append_onnx_optional_lto_webgpu_args() {
   fi
   if onnx_webgpu_enabled_for_target; then
     build_args_ref+=(--use_webgpu --use_external_dawn)
-    # Dawn's tint generates constexpr matcher functions (data.cc) that call the
-    # non-constexpr MatchMat helper. clang (Dawn's primary toolchain) ignores this;
-    # GCC 16 raises -Winvalid-constexpr and treats it as an ERROR — 36 in data.cc
-    # alone — because Dawn's build feeds clang-only -Wno-* flags (e.g.
-    # -Wno-unknown-warning-option) that GCC silently drops, leaving the diagnostic
-    # unsuppressed. It's the ONLY error blocking the Dawn build. Disable exactly
-    # that diagnostic for this build so Dawn compiles under GCC 16; harmless
-    # elsewhere (a single relaxed pedantic warning). Both spellings for safety:
-    # -Wno-error demotes it if Dawn uses -Werror, -Wno- disables it if it's a
-    # default-error.
+    # GCC 16 errors on the constexpr matchers Dawn's tint generates; Dawn only silences them with clang flags.
     build_args_ref+=(--cmake_extra_defines "CMAKE_CXX_FLAGS=-Wno-error=invalid-constexpr -Wno-invalid-constexpr")
   fi
 }
 
-# Decide whether to enable the WebGPU (Dawn) execution provider for THIS target.
-# Master toggle ORT_ENABLE_WEBGPU (default false). Dawn is validated on the amd64
-# native build; cross-compiling Dawn to arm64/riscv64 is unproven and would
-# hard-fail the onnx build, so on those arches WebGPU is enabled only when
-# ORT_WEBGPU_ALLOW_CROSS=true is ALSO set. This lets "turn WebGPU on" light up
-# amd64 without silently breaking the cross builds.
+# Cross-compiled Dawn is unproven, so non-amd64 targets also need ORT_WEBGPU_ALLOW_CROSS=true.
 onnx_webgpu_enabled_for_target() {
   [ "${ORT_ENABLE_WEBGPU:-false}" = "true" ] || return 1
   local arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
@@ -570,7 +489,7 @@ append_onnx_ccache_build_args() {
 
   if command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
     if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
-      # 2026-08-26: resolve the launcher instead of hardcoding ccache.
+      # The resolved launcher may be sccache, so ccache is only the fallback.
       compiler_cache_launcher_env 2>/dev/null || true
       _ort_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
       build_args_ref+=(
@@ -589,9 +508,7 @@ pc_numeric_version_from_ort_version() {
   local v="$1"
   local out
   
-  # Check if this is the main branch
   if [ "${v}" = "main" ] || [ "${v}" = "master" ]; then
-    # Fetch version from GitHub
     out="$(curl -sL --connect-timeout 10 --max-time 30 https://raw.githubusercontent.com/microsoft/onnxruntime/main/VERSION_NUMBER | tr -d '\n\r' | sed -E 's/[^0-9.].*//')"
     if [ -z "${out}" ]; then
       printf '%s' "0.0.0"
@@ -599,7 +516,6 @@ pc_numeric_version_from_ort_version() {
       printf '%s' "${out}"
     fi
   else
-    # Original logic for version tags
     out="$(printf '%s' "${v}" | sed -E 's/^v//' | sed -E 's/[^0-9.].*$//')"
     if [ -z "${out}" ]; then
       printf '%s' "0.0.0"

@@ -1,9 +1,4 @@
-// [LiteRTLM-winfix] CRT compat shim: litert-lm objects reference deprecated CRT globals
-// (_timezone/_daylight/_tzname/_environ/_sys_errlist/_sys_nerr + POSIX and __imp_ dllimport forms)
-// that the split UCRT does not export as data under litert_lm_main's -nostdlib link. Provide real
-// storage initialised from the UCRT accessors + the __imp_ pointer forms the dllimport references
-// dereference. Accessors are declared by hand (NOT via <time.h>/<stdlib.h>) because those headers
-// declare the very globals we define here as dllimport, which conflicts ("illegal initializer").
+// [LiteRTLM-winfix] The UCRT exports no data for these deprecated globals; accessors are hand-declared, the headers declare them dllimport.
 typedef unsigned long long crtcompat_size_t;
 extern "C" {
 int  _get_timezone(long*);

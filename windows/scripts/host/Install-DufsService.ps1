@@ -1,20 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Make the dufs WebDAV endpoint (sccache L2) SESSION-INDEPENDENT (attribution
-# dossier 2.8, 2026-08-11): today dufs runs as an ONLOGON scheduled task bound
-# to the RDP session - alive when the driver's endpoint gate checks, killable
-# by a mid-run logoff/lock, after which every multilevel WebDAV write fails
-# OPEN (policy l0: logged only) with an empty L2 as the only symptom. Two
-# instances were live on 2026-08-10 (one per logon event).
-# This script (ELEVATED):
-#   1. stops every running dufs.exe and disables/removes ONLOGON dufs tasks;
-#   2. registers ONE 'dufs-sccache-l2' scheduled task: ONSTART, SYSTEM,
-#      restart-on-failure - independent of any user session;
-#   3. starts it and verifies the endpoint answers.
-#
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\ANTfrastructure\windows\scripts\host\Install-DufsService.ps1'
+# Runs the sccache WebDAV endpoint as one ONSTART SYSTEM task, since a logon-bound one dies with the session silently.
 
 [CmdletBinding()]
 param(
@@ -27,9 +14,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 Assert-Elevated -Reason 'schtasks /RU SYSTEM needs admin'

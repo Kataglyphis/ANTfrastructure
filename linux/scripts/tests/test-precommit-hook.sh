@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# The commit hook's mutation step is SAMPLED, and a sample must never read as
-# full coverage. Pins the plan through --print-mutation-plan AND the hook's real
-# block end to end -- stubbed git, stubbed gate recording its argv -- so the
-# notice, its two numbers and the abort on a surviving mutation are all load-bearing.
-# docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
+# The hook's mutation step is sampled, and a sample must never read as full coverage; see docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -61,9 +57,7 @@ t_assert_contains "$(_mutation_notice 5 5)" "all 5 entries"
 t_case "the hook still names the gate it runs, so the registry's hook tier stays true"
 t_assert_ok grep -q -F -e 'docs/scripts/verify_mutations.py' "${HOOK}"
 
-# End-to-end rig: the hook cds into a sandbox root, so git, the fast preflight and
-# the mutation gate are all stubs there; the gate stub records the argv it was
-# handed, which is the only evidence of what the notice's numbers describe.
+# End-to-end rig in a sandbox root: git, preflight and the gate are stubs, and the gate records its argv.
 _root="${_work}/root"
 _ARGV="${_work}/argv.txt"
 mkdir -p "${_root}/linux/scripts" "${_root}/docs/scripts" "${_work}/bin"
@@ -109,8 +103,7 @@ _out="$(_run_hook 3 "${_work}/none.txt")"
 t_assert_fails test -e "${_ARGV}"
 t_assert_fails grep -q -e 'mutation gate' <<<"${_out}"
 
-# Every remaining abort path. A hook that stops refusing is a hook that ships
-# what it was built to stop, and each of these was reachable with the suite green.
+# Every remaining abort path: a hook that stops refusing ships what it was built to stop.
 _abort_rig() {  # $1 = which gate fails, $2 = staged list; prints the output, then rc=<n>
   printf '#!/usr/bin/env bash\nexit %s\n' "$([ "$1" = preflight ] && echo 1 || echo 0)" \
     > "${_root}/linux/scripts/preflight.sh"
@@ -140,9 +133,7 @@ t_assert_contains "${_out}" "pre-commit: FAILED" "the developer must be told whi
 t_assert_contains "${_out}" "rc=1" "and the commit must not proceed"
 
 t_case "no pinned shellcheck: the hook refuses rather than falling back to PATH"
-# The stub still PRINTS a usable path, so only the exit code of --print-bin can
-# make the hook stop; a hook that lints with an unpinned binary is a hook whose
-# verdict nobody can reproduce.
+# The stub still prints a usable path, so only --print-bin's exit code can stop the hook.
 _out="$(_abort_rig printbin)"
 t_assert_contains "${_out}" "no pinned shellcheck"
 t_assert_contains "${_out}" "rc=1" "and the commit must not proceed"
@@ -163,8 +154,7 @@ t_assert_contains "${_out}" "doc duplication FAILED"
 t_assert_contains "${_out}" "rc=1"
 
 t_case "stale derived doc numbers abort the commit when the manifest is staged"
-# 7482747c added two mutations, left the quoted total at 1332, and this hook said
-# OK; CI's preflight and all four mutation shards went red on it (36022089345).
+# A staged manifest moves the quoted totals, so the hook must re-derive them.
 _out="$(_abort_rig docnumbers)"
 t_assert_contains "${_out}" "derived doc numbers are STALE"
 t_assert_contains "${_out}" "rc=1"

@@ -2,12 +2,10 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 umask 022
-# CCACHE-CONTENT (2026-08-19): survive compiler rebuilds (see build-gcc.sh note)
+# Hash the compiler's content, not its mtime, so the cache survives compiler rebuilds.
 export CCACHE_COMPILERCHECK=content
 
-# build-clang.sh
-# Build LLVM/Clang from source for any architecture (RISC-V, ARM64, x86_64, etc.)
-# Usage: build-clang.sh --version 22 [options]
+# Builds LLVM/Clang from source for any arch; usage() lists the options.
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -49,7 +47,7 @@ Examples:
 USAGE
 }
 
-# --- Default Values ---
+# Defaults
 LLVM_VERSION=""
 LLVM_RELEASE="${LLVM_RELEASE:-}"
 LLVM_TAG=""
@@ -58,13 +56,7 @@ ARCH="$(uname -m)"
 NUM_JOBS=""
 LLVM_TARGETS=""
 
-# BOOTSTRAP defaults OFF everywhere since 2026-09-10. It used to default ON off
-# riscv64, which built `--target stage2` and then installed the plain `install`
-# target — i.e. it paid for TWO compilers and shipped the FIRST. OFF preserves
-# exactly the compiler that has always shipped and halves the cost, which now
-# matters: the build host's own arch is source-built too (llvm-cross.sh), so
-# this path went from optional to load-bearing. If a self-hosted compiler is
-# ever wanted, the fix is `--target stage2-install`, not flipping this back.
+# Bootstrap off: it doubles the cost of a now load-bearing build; a self-hosted compiler needs stage2-install.
 BOOTSTRAP="OFF"
 if [ "$ARCH" = "riscv64" ]; then
     info "RISC-V detected: NO-BOOTSTRAP (the default everywhere)."
@@ -118,7 +110,7 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-# --- Validate and compute values ---
+# Validate and compute values
 if [ -z "${LLVM_VERSION:-}" ]; then
     die "Missing required option: --version (e.g., --version 22)"
 fi
@@ -151,12 +143,9 @@ info "Install prefix: ${PREFIX}"
 info "Target arch: LLVM_TARGETS=${LLVM_TARGETS}"
 info "LTO: ${ENABLE_LTO}, Assertions: OFF, Bootstrap: ${BOOTSTRAP}"
 
-# --- Initialization & WORKDIR FIX ---
+# Work directory
 WD="$(pwd)"
-# LLVM_CROSS_SOURCE_ROOT: honored so the Dockerfile's /var/cache/llvm-src cache
-# mount actually backs this build's clone. Previously only llvm-cross.sh read
-# it — this RUN cloned ~2 GB into a throwaway dir while the mount sat empty,
-# and the target-clang RUN paid the same clone again.
+# Honour LLVM_CROSS_SOURCE_ROOT so the Dockerfile's /var/cache/llvm-src mount backs this clone.
 DEFAULT_LLVM_WORK_ROOT="${LLVM_BUILD_ROOT:-${LLVM_CROSS_SOURCE_ROOT:-${HOME}/tmp2/llvm-build-root}}"
 AUTO_WORKDIR="${DEFAULT_LLVM_WORK_ROOT}/llvm-work"
 
@@ -167,12 +156,7 @@ if [ "${WD}" = "/" ]; then
     WD="${AUTO_WORKDIR}"
 fi
 
-# TS4 (2026-08-24): the checkout lives on the /var/cache/llvm-src cachemount
-# and used to sit at a version-LESS path, guarded only by `[ ! -d SRC_DIR ]` —
-# so after an LLVM bump the mount still held the OLD tag, the guard skipped
-# the fetch, and cmake silently built last release's sources while the log
-# announced the new version (the cerbero-cache defect class; llvm-cross.sh:71
-# already keys its dir as llvm-project-${release}, this follows that pattern).
+# Version-keyed dir: on the shared cache mount a versionless path would silently rebuild the old tag.
 SRC_DIR="${WD}/llvm-project-${LLVM_TAG}"
 BUILD_DIR="${WD}/llvm-build"
 INSTALL_DIR="${PREFIX}"
@@ -180,7 +164,7 @@ INSTALL_DIR="${PREFIX}"
 require_sudo
 detect_system || echo "WARNING: detect_system failed; ARCH/HOST_ARCH/DISTRO may be unset (downstream steps may fail on unset vars)." >&2
 
-# ====== Preflight Checks ======
+# Preflight checks
 run_preflight_checks() {
     info "---- preflight: workdir safety ----"
     [ -n "${WD:-}" ] && [ "${WD}" != "/" ] || die "Unsafe WD: '${WD:-<empty>}' (should have been fixed)"
@@ -198,7 +182,7 @@ run_preflight_checks() {
     fi
 }
 
-# --- DYNAMIC JOB CALCULATION ---
+# Job count
 if [ -n "${NUM_JOBS:-}" ] && [[ "${NUM_JOBS}" =~ ^[0-9]+$ ]]; then
     : # Explicitly set by user, respect it.
 elif [ -n "${CLANG_NUM_JOBS:-}" ] && [[ "${CLANG_NUM_JOBS}" =~ ^[0-9]+$ ]]; then
@@ -225,10 +209,7 @@ fi
 
 run_preflight_checks
 
-# A dir that exists but does not hold the pinned tag is treated as ABSENT: a
-# truncated clone (ENOSPC, killed build) leaves a .git that would otherwise
-# pass a bare directory test forever. rev-parse must succeed AND the worktree
-# must be non-empty for the reuse branch.
+# A truncated clone leaves a .git that passes a bare dir test, so require a valid HEAD and tree.
 _src_valid=0
 if [[ -d "${SRC_DIR}/.git" ]] \
    && git -C "${SRC_DIR}" rev-parse -q --verify HEAD >/dev/null 2>&1 \
@@ -236,10 +217,7 @@ if [[ -d "${SRC_DIR}/.git" ]] \
     _src_valid=1
 fi
 if [[ "${_src_valid}" != "1" ]]; then
-    # Evict OTHER generations first: the mount is shared across rebuilds and a
-    # ~2 GB checkout per LLVM version would otherwise accumulate unbounded on a
-    # host that keeps running out of disk. Only siblings matching our own
-    # naming pattern are touched, and never the one we are about to (re)use.
+    # Evict other LLVM checkouts first: each is ~2 GB on a mount shared across rebuilds.
     for _old_src in "${WD}"/llvm-project-*; do
         [[ -d "${_old_src}" && "${_old_src}" != "${SRC_DIR}" ]] || continue
         info "Evicting stale llvm checkout $(basename "${_old_src}") (superseded by ${LLVM_TAG})"
@@ -299,13 +277,7 @@ if [ -n "${LINKER_FLAG}" ]; then
 fi
 
 if [ "$USE_CCACHE" = "1" ]; then
-    # Let CMake call the real compiler directly and inject the cache as a
-    # LAUNCHER. Exporting CC="<launcher> gcc" makes CMake generate broken ASM
-    # rules for .S files -- that applies to sccache exactly as it did to ccache,
-    # so the launcher form is not a style choice here.
-    # 2026-08-26: prefer sccache, fall back to ccache if its server will not
-    # answer, and add NEITHER if there is no usable cache (an empty launcher
-    # would make CMake try to exec "" for every TU).
+    # A launcher, never CC="<launcher> gcc" (broken .S rules); none at all if no cache answers.
     compiler_cache_launcher_env 2>/dev/null || true
     _clang_launcher="$(compiler_cache_launcher || true)"
     if [ -n "${_clang_launcher}" ]; then
@@ -327,8 +299,7 @@ else
 fi
 
 echo "==> Installing..."
-# The install target must match what was BUILT: `install` ships stage1 even when
-# stage2 was built, which is how a bootstrap build shipped the wrong compiler.
+# Install what was built: plain `install` ships stage1 even after a stage2 build.
 if [[ "${BOOTSTRAP}" == "ON" ]]; then
     ${SUDO} cmake --build . --target stage2-install
 else
@@ -344,8 +315,7 @@ alt_install_and_set clang /usr/bin/clang "${BIN_DIR}/clang" 200 \
     --slave /usr/bin/clangd clangd "${BIN_DIR}/clangd" \
     --slave /usr/bin/ld.lld ld.lld "${BIN_DIR}/ld.lld"
 
-# Keep the rest of the LLVM toolchain visible on PATH when apt.llvm.org is not
-# available and this script becomes the primary installation path.
+# Keep the whole toolchain on PATH for when this build is the primary install.
 if [ -d "${BIN_DIR}" ]; then
     for tool_path in "${BIN_DIR}"/*; do
         [ -x "${tool_path}" ] || continue
@@ -358,9 +328,7 @@ if [[ "${DO_STRIP}" == "1" ]]; then
     strip_elf_tree "${INSTALL_DIR}" "${NUM_JOBS:-$(nproc)}"
 fi
 
-# The checkout is verified against LLVM_TAG (and LLVM_COMMIT) before it is
-# reused, so keeping it is safe and turns every rebuild from a ~2 GB re-clone
-# into a no-op. KEEP_SRC=0 restores the old wipe.
+# The checkout is verified before reuse, so keeping it saves a ~2 GB re-clone; KEEP_SRC=0 wipes it.
 [[ "${KEEP_SRC}" == "0" ]] && rm -rf "${SRC_DIR}"
 [[ "${KEEP_BUILD}" != "1" ]] && rm -rf "${BUILD_DIR}"
 

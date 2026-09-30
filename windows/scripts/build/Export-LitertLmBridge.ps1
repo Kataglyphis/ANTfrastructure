@@ -1,37 +1,11 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# LiteRT-LM v0.14.0 OSS-export bridge — DOT-SOURCED by Build-LitertLmFromSource.ps1
-# (it needs the caller's imported modules, e.g. Invoke-InlineRegexPatch).
-#
-# Google shipped the v0.14.0 tag with a CMake layer that was never buildable
-# anywhere: it references the deleted constrained_decoding component, pins a
-# LiteRT external from BEFORE the support/ tree its own shim headers include,
-# and compiles none of the new logits_processor/support subsystems. Every
-# function here is CONDITION-GATED on its specific breakage signature, so a
-# future tag with a fixed export takes upstream's files untouched and this
-# whole file self-retires — delete it (and its three call sites + the
-# Dockerfile COPY) the day upstream's CMake catches up.
-#
-# ORDERING CONTRACT (enforced by the call sites in the main script):
-#   1. Invoke-LiteRtLmExportStubs   — post-clone, before anything reads the components CMake
-#   2. Invoke-LiteRtLmSupportGraft  — post-clone; writes $SourceDir\support + re-homed .cc
-#      files that step 3's Test-Path gates and the staging globs depend on
-#   3. Add-LiteRtLmV014OrphanSources — Phase 5, AFTER the cpu_affinity/orphans
-#      Edit-SourceFile injection wrote the base source list it retargets/extends
-# The prebuilt Gemma constraint-provider DLL staging stays in the main script's
-# Phase 8 (it is part of exe staging, not of the source bridge).
+# LiteRT-LM v0.14.0 export bridge, dot-sourced and called stubs, graft, orphans; see docs/windows-builds.md § Source Patch Policy.
 
 function Invoke-LiteRtLmExportStubs {
     param([Parameter(Mandatory)][string]$SourceDir)
-    # [LiteRTLM-winfix export-stubs] v0.14.0's OSS export ships a stale CMake layer:
-    # runtime/components/CMakeLists.txt still add_subdirectory()s + facade-links
-    # constrained_decoding (feature REMOVED upstream after 0.13.1 -- main renamed it
-    # logits_processor; no sources exist at the tag, Bazel can't build it either) and
-    # preprocessor (slimmed to header-only: 4 .h + BUILD, its CMakeLists.txt was never
-    # exported). Configure hard-fails on both. Since the referenced code does not exist
-    # at the tag, empty INTERFACE stubs are semantically exact -- nothing is stripped.
+    # [LiteRTLM-winfix export-stubs] The tag's CMake still links constrained_decoding and preprocessor, which have no CMakeLists here.
     $componentsDir  = Join-Path $SourceDir 'runtime\components'
     $componentsCml  = Join-Path $componentsDir 'CMakeLists.txt'
     $cdStubDir      = Join-Path $componentsDir 'constrained_decoding'
@@ -39,8 +13,7 @@ function Invoke-LiteRtLmExportStubs {
         (Select-String -LiteralPath $componentsCml -Pattern 'add_subdirectory\(constrained_decoding\)' -Quiet) -and
         -not (Test-Path (Join-Path $cdStubDir 'CMakeLists.txt'))) {
         New-Item -Path $cdStubDir -ItemType Directory -Force | Out-Null
-        # Target/alias names mirror v0.13.1's real CMakeLists so ANY stale reference
-        # (facade or per-target) resolves. Single-quoted here-string: ${...} stays CMake's.
+        # Names mirror v0.13.1's real CMakeLists so any stale reference resolves.
         $cdStub = @'
 # [Kataglyphis export-stub] constrained_decoding was removed from the OSS export
 # after v0.13.1 (renamed logits_processor on main) but this tag's CMake still
@@ -75,10 +48,7 @@ add_library(LiteRTLM::Runtime::Components::ConstrainedDecoding::GemmaModelConstr
     }
     $ppDir = Join-Path $componentsDir 'preprocessor'
     if ((Test-Path $ppDir) -and -not (Test-Path (Join-Path $ppDir 'CMakeLists.txt'))) {
-        # Header-only at this tag (the 0.13.1 .cc files are gone from the export), so
-        # INTERFACE targets carrying the include paths are the correct translation of
-        # what remains. stb_lib guard: the top-level CMake FetchContents it for the
-        # stb_image_preprocessor.h include; link it through when the target exists.
+        # Header-only at this tag, so INTERFACE targets carrying the include paths are exact.
         $ppStub = @'
 # [Kataglyphis export-stub] preprocessor is header-only in this export and its
 # CMakeLists.txt was not exported; this replacement defines the v0.13.1 target
@@ -115,24 +85,14 @@ add_library(LiteRTLM::Runtime::Components::Preprocessor::StbImage ALIAS runtime_
 
 function Invoke-LiteRtLmSupportGraft {
     param([Parameter(Mandatory)][string]$SourceDir)
-    # [LiteRTLM-winfix support-graft] v0.14.0 moved tokenizer/util/preprocessor impls
-    # upstream into the LiteRT repo's top-level support/ tree (litert::support; the
-    # runtime headers are copybara shims: `#include "support/util/..." // from @litert`).
-    # But litert-lm's CMake pins litert_external at a 2026-03 commit that PREDATES
-    # support/, and its source-staging globs (c/, runtime/, schema/) never copy a
-    # support/ dir into GENERATED_SRC_DIR -- so every shim include 404s and the two
-    # tokenizer targets have no sources. Bridge all of it from the LiteRT version this
-    # container already ships (LITERT_VERSION). Gated on the shim signature.
+    # [LiteRTLM-winfix support-graft] The shims include LiteRT's support/ tree, which the pinned litert_external predates.
     $mmShim = Join-Path $SourceDir 'runtime\util\memory_mapped_file.h'
     if (-not ((Test-Path $mmShim) -and
         (Select-String -LiteralPath $mmShim -Pattern '#include "support/' -Quiet) -and
         -not (Test-Path (Join-Path $SourceDir 'support\util\memory_mapped_file.h')))) {
         return
     }
-    # LITERT REF SYNC: same resolution chain as Build-LitertFromSource.ps1
-    # (LITERT_VERSION env fallback; keep in step with build-litert-from-source). The AUTHORITATIVE default lives
-    # there -- when bumping LiteRT, update BOTH defaults (a mismatched graft
-    # pulls a support/ tree from a different LiteRT than the one built).
+    # Twin of Build-LitertFromSource.ps1's default, or the graft comes from a different LiteRT than the one built.
     $litertRef = Get-SourceBuildVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.2.0'
     $supportClone = 'C:\temp\litert-support-src'
     if (Test-Path $supportClone) { Remove-Item $supportClone -Recurse -Force }
@@ -171,10 +131,7 @@ function Invoke-LiteRtLmSupportGraft {
             Write-Host "[LiteRTLM-winfix support-graft] re-homed $($r.From) -> $($r.To)"
         }
     }
-    # Stage support/** into GENERATED_SRC_DIR via the same glob pipeline as runtime/**.
-    # Both modules carry identical glob blocks; patch whichever exists. Track how
-    # many modules end up wired -- zero means the grafted support/ tree never
-    # reaches GENERATED_SRC_DIR and the build dies later on support/ includes.
+    # Zero wired modules means support/ never reaches GENERATED_SRC_DIR and the build dies later on its includes.
     $wiredModules = 0
     foreach ($modRel in @('cmake\modules\generators.cmake', 'cmake\modules\setup_generated_src_files.cmake')) {
         $modPath = Join-Path $SourceDir $modRel
@@ -187,10 +144,7 @@ function Invoke-LiteRtLmSupportGraft {
             Write-Warning "[LiteRTLM-winfix support-graft] $modRel glob anchor not found -- support/ staging NOT wired (build will fail on support/ includes)"
             continue
         }
-        # PROJECT_ROOT-anchored like the module's own runtime/ globs -- a bare
-        # "support/*.cc" resolves against cmake/packages/litert_lm and matches
-        # NOTHING, silently (cost one container run to learn). All single-quoted:
-        # ${...} here is CMake's, not PowerShell's.
+        # A bare "support/*.cc" resolves against cmake/packages/litert_lm and silently matches nothing.
         $newSrcLine = 'file(GLOB_RECURSE SUPPORT_SRC_FILES "${LITERTLM_PROJECT_ROOT}/support/*.cc")' + "`n" +
                       'file(GLOB_RECURSE SUPPORT_HDR_FILES "${LITERTLM_PROJECT_ROOT}/support/*.h")' + "`n" +
                       'list(APPEND ALL_SOURCE_FILES ${C_SRC_FILES} ${RUNTIME_SRC_FILES} ${SCHEMA_SRC_FILES} ${SUPPORT_SRC_FILES})'
@@ -203,12 +157,7 @@ function Invoke-LiteRtLmSupportGraft {
     if ($wiredModules -eq 0) {
         Write-Warning '[LiteRTLM-winfix support-graft] NO generators.cmake/setup_generated_src_files.cmake module was found+wired -- support/ staging is NOT hooked up and the build will fail on support/ includes'
     }
-    # litert::Model::CreateFromFd(fd, offset, size) postdates the litert_external
-    # pin (2026-03) -- the one caller is the NEW file-backed loading fast path, and
-    # upstream's GetTFLiteModel treats kUnimplemented from it as "fall back to
-    # buffer-backed loading" (the pre-0.14 path every prior release used). So stub
-    # the helper body to return kUnimplemented instead of forward-porting the API.
-    # Revisit when upstream's CMake bumps its litert pin past the CreateFromFd add.
+    # CreateFromFd postdates the litert_external pin, and upstream falls back to buffer-backed loading on kUnimplemented.
     [void](Invoke-InlineRegexPatch -Path (Join-Path $SourceDir 'runtime\components\model_resources_litert_lm.cc') `
             -Pattern 'LITERT_ASSIGN_OR_RETURN\(auto dup_file,[\s\S]*?return model;' `
             -Replacement ('return absl::UnimplementedError(' + "`n" +
@@ -219,18 +168,13 @@ function Invoke-LiteRtLmSupportGraft {
 }
 
 function Add-LiteRtLmV014OrphanSources {
-    # Takes the engine CMakeLists TEXT (after the base orphan injection wrote the
-    # source list this retargets/extends) and returns the bridged text. The caller
-    # owns the read/compare/write cycle.
+    # Runs after the base orphan injection; the caller owns the read/compare/write of the text.
     param(
         [Parameter(Mandatory)][string]$EngineCmakeText,
         [Parameter(Mandatory)][string]$SourceDir
     )
     $engineTxt = $EngineCmakeText
-    # v0.14.0 relocated two of the injected orphans; retarget the list entries when the
-    # new locations exist (0.13.1 keeps the old paths -- both gates are Test-Path on the
-    # NEW home, so this self-selects per version). The add_litertlm_library redirect
-    # resolves ../../support/... to GENERATED_SRC_DIR/support/... (the grafted tree).
+    # v0.14.0 relocated two orphans; gating on the new path self-selects per version.
     if (Test-Path (Join-Path $SourceDir 'support\preprocessor\image_preprocessor_utils.cc')) {
         $engineTxt = $engineTxt.Replace('../components/preprocessor/image_preprocessor_utils.cc',
                                         '../../support/preprocessor/image_preprocessor_utils.cc')
@@ -239,18 +183,7 @@ function Add-LiteRtLmV014OrphanSources {
         $engineTxt = $engineTxt.Replace('../components/constrained_decoding/llg_tool_call_utils.cc',
                                         '../components/logits_processor/constrained_decoding/llg_tool_call_utils.cc')
     }
-    # v0.14.0's NEW subsystems compile nowhere: components/CMakeLists.txt never
-    # add_subdirectory()s logits_processor (the renamed constrained decoding), and the
-    # grafted support/ impls have no targets either -- link died with undefined
-    # MelFilterbank::Initialize / CreateConstraintProvider / ConstrainedDecoder vtable /
-    # InputText::GetRawTextString. Same cure as the other orphans: compile them into the
-    # engine lib. Gated on the logits_processor dir (absent on 0.13.1).
-    # The miniaudio/stb preprocessors ARE demanded at link (AudioPreprocessorMiniAudio::
-    # Create, the ImagePreprocessor factory) and their externals are ALREADY FetchContent'd
-    # by upstream's top CMakeLists (kissfft_lib/miniaudio_lib/stb -- their CMake migration
-    # fetched the new deps but never wired the new sources); the dep block appended below
-    # links them through. LiteRtLmGemmaModelConstraintProvider_* are dllimports satisfied
-    # by upstream's OWN prebuilt import lib (prebuilt/windows_x86_64/), staged in Phase 8.
+    # v0.14.0's logits_processor and support/ impls have no targets, so they compile into the engine lib.
     if ((Test-Path (Join-Path $SourceDir 'runtime\components\logits_processor')) -and
         ($engineTxt -notmatch 'logits_processor/repetition_penalty_processor')) {
         $newOrphans = @(

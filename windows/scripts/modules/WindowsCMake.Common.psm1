@@ -5,24 +5,17 @@
 
 Set-StrictMode -Version Latest
 
-# Import WITHOUT -Force on purpose: entry scripts import this with -Force -Global
-# first, and a nested -Force re-import pulls that copy out of the global session
-# (shadowing pitfall, see Resolve-BuildModule.ps1).
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 $buildCommonPath = Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1'
 Import-Module $buildCommonPath
 
-# Get-SccacheStatsText + Get-MsvcToolsRoots; same no -Force rule as above.
 $sharedCommonPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 Import-Module $sharedCommonPath
 
-# Get-AsanRuntimeDirs; same no -Force rule as above. WindowsTesting.Common owns
-# the ASan runtime selection policy Get-SanitizerRuntimeDlls delegates to.
 $testingCommonPath = Join-Path $PSScriptRoot 'WindowsTesting.Common.psm1'
 Import-Module $testingCommonPath
 
-# Returns the path of the build tree's compile_commands.json, generating it from
-# the ninja build graph when CMake did not emit one (the input database for
-# clang-tidy/clangd). Project-agnostic: only the build root is needed.
+# Generates compile_commands.json from the ninja graph when CMake did not emit one.
 function Get-CompileCommandsDatabase {
   param(
     [Parameter(Mandatory)]
@@ -48,7 +41,7 @@ function Get-CompileCommandsDatabase {
 
   Write-BuildLogWarning -Context $Context -Message 'compile_commands.json missing; generating it from ninja compdb.'
 
-  # Call ninja via its resolved path to make mocking easier in tests
+  # The resolved path keeps ninja mockable in tests.
   $compdbOutput = & $ninjaCommand.Source '-C' $BuildRoot '-t' 'compdb' 2>&1
   if ($LASTEXITCODE -ne 0) {
     $compdbError = ($compdbOutput | Out-String).Trim()
@@ -65,11 +58,7 @@ function Get-CompileCommandsDatabase {
 }
 
 function Get-SanitizerRuntimeDlls {
-  # Get-AsanRuntimeDirs (WindowsTesting.Common) owns the runtime-selection
-  # policy: Microsoft's first -- the one cmake/Sanitizers.cmake links
-  # (docs/windows-clang-cl-sanitizers.md) -- LLVM's only as fallback. The two
-  # share the DLL name but not the export set, so staging the wrong one makes
-  # every instrumented build tool die at load with STATUS_ENTRYPOINT_NOT_FOUND.
+  # Microsoft's ASan runtime first: LLVM's shares the DLL name but not the exports (docs/windows-clang-cl-sanitizers.md).
   foreach ($runtimeDir in @(Get-AsanRuntimeDirs)) {
     $sanitizerDlls = @(Get-ChildItem -Path (Join-Path $runtimeDir 'clang_rt.*san*.dll') -ErrorAction SilentlyContinue)
     if ($sanitizerDlls.Count -gt 0) {
@@ -118,10 +107,7 @@ function Remove-BuildRootSafe {
   Write-BuildLogWarning -Context $Context -Message "Could not remove build directory ($Label): $Path. Continuing with in-place configure/build."
 }
 
-# The configure line of Invoke-CmakeConfigureAndBuild. -DisableSccache has to beat the
-# preset too: a COMPILER_CACHE=sccache preset makes Cache.cmake set the launcher again,
-# and a reused build tree keeps the old one in CMakeCache.txt. These -D go last, so
-# they also win over the caller's extra arguments.
+# The -DisableSccache -D flags go last so they beat the preset, a reused CMakeCache.txt and the caller's args.
 function Get-CmakeConfigureArgs {
   param(
     [Parameter(Mandatory)]
@@ -157,7 +143,6 @@ function Invoke-CmakeConfigureAndBuild {
     [switch]$DisableSccache
   )
 
-  # Debug: Log system info
   $cpuCount = [Environment]::ProcessorCount
   $logicalProcessors = (Get-CimInstance -ClassName Win32_ComputerSystem).NumberOfLogicalProcessors
   Write-BuildLog -Context $Context -Message "DEBUG: ========== SYSTEM INFO =========="
@@ -170,7 +155,6 @@ function Invoke-CmakeConfigureAndBuild {
   Write-BuildLog -Context $Context -Message "DEBUG: Preset: $Preset"
   Write-BuildLog -Context $Context -Message "DEBUG: Configuration: $Configuration"
 
-  # Set SCCACHE_MAX_JOBS if not already set - this is critical for parallelism!
   if (-not $env:SCCACHE_MAX_JOBS) {
     $env:SCCACHE_MAX_JOBS = $cpuCount.ToString()
     Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$cpuCount (was not set, defaulting to CPU count)"
@@ -178,22 +162,17 @@ function Invoke-CmakeConfigureAndBuild {
     Write-BuildLog -Context $Context -Message "DEBUG: SCCACHE_MAX_JOBS already set to: $env:SCCACHE_MAX_JOBS"
   }
 
-  # Disable sccache if requested
   if ($DisableSccache) {
     Write-BuildLog -Context $Context -Message "DEBUG: ========== DISABLING SCCACHE =========="
     $env:CMAKE_C_COMPILER_LAUNCHER = ""
     $env:CMAKE_CXX_COMPILER_LAUNCHER = ""
-    # Kept even though this repo no longer SETS a CUDA launcher (see the
-    # 2026-08-08 note below): the variable can arrive from the environment, and
-    # a wrapped nvcc breaks multi-arch builds outright. Clearing it here means
-    # -DisableSccache genuinely takes sccache out of the picture.
+    # Nothing here sets it, but it can arrive from the environment, and a wrapped nvcc breaks multi-arch builds.
     $env:CMAKE_CUDA_COMPILER_LAUNCHER = ""
     $env:RUSTC_WRAPPER = ""
     $env:CC_WRAPPER = ""
     $env:CXX_WRAPPER = ""
     Write-BuildLog -Context $Context -Message "DEBUG: Cleared all compiler wrapper environment variables"
 
-    # Try to stop sccache server
     $sccachePath = Get-Command 'sccache' -ErrorAction SilentlyContinue
     if ($sccachePath) {
       try {
@@ -205,13 +184,7 @@ function Invoke-CmakeConfigureAndBuild {
     }
   }
 
-  # KATAGLYPHIS_KEEP_BUILD_ROOT is the consumer-facing container contract: the
-  # container entry scripts set it when the build directory is a mounted volume
-  # (persistent build tree), so the env-var name must stay stable. Wiping a
-  # mount point leaves CMake unable to configure - it fails in
-  # CMakeTestCXXCompiler with "ninja: error: loading 'build.ninja'". Keeping the
-  # tree is also the entire point of mounting it: ninja can then work
-  # incrementally.
+  # Consumer contract, name must stay stable: set for a mounted build dir, whose wipe breaks CMake configure.
   $keepBuildRoot = -not [string]::IsNullOrWhiteSpace($env:KATAGLYPHIS_KEEP_BUILD_ROOT)
   if ($CleanBuildRoot -and -not $keepBuildRoot) {
     $label = if ([string]::IsNullOrWhiteSpace($CleanLabel)) { $Preset } else { $CleanLabel }
@@ -231,19 +204,16 @@ function Invoke-CmakeConfigureAndBuild {
     Write-BuildLog -Context $Context -Message "DEBUG: Using --parallel (unlimited, will use all $cpuCount cores)"
   }
 
-  # Add verbose flag to see actual commands being executed
   if ($VerboseOutput) {
     $buildArgs += @('--verbose')
     Write-BuildLog -Context $Context -Message "DEBUG: VerboseOutput mode enabled (--verbose)"
   }
 
-  # Debug: Log full commands
   $configureCmd = "cmake $($configureArgs -join ' ')"
   $buildCmd = "cmake $($buildArgs -join ' ')"
   Write-BuildLog -Context $Context -Message "DEBUG: Configure command: $configureCmd"
   Write-BuildLog -Context $Context -Message "DEBUG: Build command: $buildCmd"
 
-  # Check for ninja and log its version
   Write-BuildLog -Context $Context -Message "DEBUG: ========== NINJA INFO =========="
   $ninjaPath = Get-Command 'ninja' -ErrorAction SilentlyContinue
   if ($ninjaPath) {
@@ -255,24 +225,20 @@ function Invoke-CmakeConfigureAndBuild {
     Write-BuildLog -Context $Context -Message "DEBUG: Ninja not found on PATH"
   }
 
-  # Check for sccache and log comprehensive diagnostics
   Write-BuildLog -Context $Context -Message "DEBUG: ========== SCCACHE DIAGNOSTICS (BEFORE BUILD) =========="
   $sccachePath = Get-Command 'sccache' -ErrorAction SilentlyContinue
   if ($sccachePath) {
     Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $($sccachePath.Source)"
 
-    # Per-invocation sccache wiring, honoring -DisableSccache; the fully
-    # resolved path avoids PATH lookup issues in containers/CI.
+    # The resolved path avoids PATH lookup issues in containers and CI.
     if (-not $DisableSccache) {
       $sccacheExe = $sccachePath.Source
       Write-BuildLog -Context $Context -Message "DEBUG: Enabling sccache wrappers using: $sccacheExe"
       Enable-SccacheCompilerWrapper -SccacheExe $sccacheExe
-      # SCCACHE_MAX_JOBS is already defaulted above, before the wrapper choice.
     } else {
       Write-BuildLog -Context $Context -Message "DEBUG: sccache wrappers remain disabled (DisableSccache=true)"
     }
 
-    # Log all sccache-related environment variables
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache environment variables ---"
     $sccacheEnvVars = @(
       'SCCACHE_DIR', 'SCCACHE_CACHE_SIZE', 'SCCACHE_MAX_JOBS',
@@ -292,7 +258,6 @@ function Invoke-CmakeConfigureAndBuild {
       }
     }
 
-    # Try to start sccache server and get stats
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache server status ---"
     try {
       $sccacheStartResult = & sccache --start-server 2>&1
@@ -301,18 +266,12 @@ function Invoke-CmakeConfigureAndBuild {
       Write-BuildLog -Context $Context -Message "DEBUG: sccache server already running or failed to start"
     }
 
-    # Get full sccache stats.
-    # The reader is Get-SccacheStatsText (WindowsScripts.Shared), shared with
-    # Show-SccacheStats (WindowsBuild.Common) and Write-SccacheStats
-    # (WindowsSourceBuild.Common). This call site keeps its own sink -- the build
-    # context log, no pipeline step -- and deliberately omits -RequireRemote:
-    # these diagnostics are wanted for a container-local cache too.
+    # No -RequireRemote: these diagnostics are wanted for a container-local cache too.
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache stats (full) ---"
     foreach ($line in @(Get-SccacheStatsText | Where-Object { $null -ne $_ })) {
       Write-BuildLog -Context $Context -Message "DEBUG:   $line"
     }
 
-    # Try to get advanced stats if available
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache internal stats ---"
     foreach ($line in @(Get-SccacheStatsText -Advanced | Where-Object { $null -ne $_ })) {
       Write-BuildLog -Context $Context -Message "DEBUG:   $line"
@@ -321,7 +280,6 @@ function Invoke-CmakeConfigureAndBuild {
     Write-BuildLog -Context $Context -Message "DEBUG: sccache not found on PATH"
   }
 
-  # Check other environment variables that might affect parallelism
   Write-BuildLog -Context $Context -Message "DEBUG: ========== OTHER BUILD ENVIRONMENT =========="
   $otherEnvVars = @(
     'CMAKE_BUILD_PARALLEL_LEVEL', 'NINJA_STATUS', 'NINJA_FORCE_COLOR',
@@ -356,8 +314,7 @@ function Invoke-CmakeConfigureAndBuild {
   $buildStartTime = Get-Date
   Write-BuildLog -Context $Context -Message "DEBUG: Build started at $($buildStartTime.ToString('HH:mm:ss'))"
 
-  # Use direct invocation with real-time streaming to avoid output capture issues
-  # The Invoke-BuildExternal approach can lose output in Docker containers
+  # Streamed directly: Invoke-BuildExternal can lose output in Docker containers.
   $buildCmdLine = "cmake $($buildArgs -join ' ')"
   Write-BuildLog -Context $Context -Message "CMD: $buildCmdLine"
 
@@ -368,7 +325,6 @@ function Invoke-CmakeConfigureAndBuild {
       $env:PATH = (($sanitizerRuntimeDirs -join ';') + ';' + $env:PATH)
     }
 
-    # Stream output line by line for real-time logging and visibility
     & cmake @buildArgs 2>&1 | ForEach-Object {
       $line = $_.ToString()
       if (-not [String]::IsNullOrWhiteSpace($line)) {
@@ -393,7 +349,6 @@ function Invoke-CmakeConfigureAndBuild {
     throw "CMake build failed with exit code $buildExitCode"
   }
 
-  # Check if this is a debug build and copy the sanitizer dlls to the bin directory
   if ($Configuration -eq 'Debug') {
     Write-BuildLog -Context $Context -Message "DEBUG: Post-build step: Copying Sanitizer DLLs for debug build..."
     $binDir = Join-Path $BuildPath "bin\Debug"
@@ -411,7 +366,6 @@ function Invoke-CmakeConfigureAndBuild {
     }
   }
 
-  # Log sccache stats after build
   Write-BuildLog -Context $Context -Message "DEBUG: ========== SCCACHE DIAGNOSTICS (AFTER BUILD) =========="
   if ($sccachePath) {
     foreach ($line in @(Get-SccacheStatsText | Where-Object { $null -ne $_ })) {
@@ -440,11 +394,7 @@ function Test-ClangClThreadSanitizerSupport {
 }
 
 
-# --- CTest metadata after a container build ----------------------------------
-# A build produced INSIDE the container records container paths; running its
-# tests on the HOST needs those rewritten. -ContainerRoot is the mount target the
-# build ran under; C:/workspace was the image's WORKDIR until 2026-09-26 (BACKLOG
-# CON29) and stays the default.
+# --- CTest metadata after a container build (container paths rewritten for host test runs) ---
 
 function Get-CMakeShareDir {
     param([string]$CMakeExePath)

@@ -1,20 +1,12 @@
 #!/usr/bin/env bash
-# qnn-sdk.sh - Qualcomm QAIRT/QNN SDK resolution + runtime staging (Linux).
-# Backlog QNN-LINUX: arm64-only, OPT-IN by staging the login-gated zip in
-# linux/qnn-sdk/ (mounted at /opt/scripts/qnn-sdk on every heavy RUN). No zip
-# = QNN off, on every framework. Mirrors Windows Resolve-QnnSdk / Copy-QnnRuntime
-# (WindowsSourceBuild.Common.psm1, #121) so the Linux and Windows lanes stay
-# in step. Loaded by media_common_init and by tvm.sh via source_module.
+# QNN SDK, arm64 only and opt-in: stage the login-gated zip in linux/qnn-sdk/. Mirrors Resolve-QnnSdk on Windows.
 
 [ -n "${_QNN_SDK_LOADED:-}" ] && return 0
 _QNN_SDK_LOADED=1
 
 : "${QNN_SDK_LINUX_LIBDIR:=aarch64-oe-linux-gcc11.2}"
 
-# Resolves the staged QAIRT SDK. Echoes QNN_HOME on stdout; EMPTY = QNN off.
-# info() writes to stdout (fd 1), so every log call here goes to stderr (>&2)
-# to keep the $(...) capture clean. Mirrors Resolve-QnnSdk; asserts the same
-# canaries (QnnInterface.h anchor, libQnnCpu.so, QNN_OP_STFT for ORT 1.29).
+# Echoes QNN_HOME (empty = QNN off); logs go to stderr because info() writes to the captured stdout.
 resolve_qnn_sdk() {
     local drop_dir="${1:-/opt/scripts/qnn-sdk}"
     local arch
@@ -79,11 +71,7 @@ resolve_qnn_sdk() {
     printf '%s\n' "$qnn_home"
 }
 
-# Stage the QNN backend .so + hexagon-v* skel dirs into the framework lib dir.
-# Mirrors Copy-QnnRuntime: finds the lib dir under <target_dir> (prefer
-# <target_dir>/lib, else the first dir holding a .so, else create lib/).
-# Args: <qnn_home> <target_dir> [provider_pattern] — when a pattern is given,
-# the matching provider file must exist under the found lib dir (fail-loud).
+# stage_qnn_runtime <qnn_home> <target_dir> [provider_pattern]: mirrors Copy-QnnRuntime; a named provider must exist.
 stage_qnn_runtime() {
     local qnn_home="${1:?qnn_home required}"
     local target_dir="${2:?target dir required}"

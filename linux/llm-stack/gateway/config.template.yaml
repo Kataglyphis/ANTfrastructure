@@ -1,5 +1,4 @@
-# APISIX boot config for the llm-stack gateway, rendered by render_apisix.py.
-# Changing it needs a restart (serve-stack.sh up); linux/llm-stack/README.md § Gateway.
+# Rendered by render_apisix.py; a change needs a restart, see linux/llm-stack/README.md § Gateway.
 apisix:
   node_listen:
     - ip: ${listen_ip}

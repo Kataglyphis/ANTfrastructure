@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# test-ort-provenance-build.sh - G2 (03-media/ort-provenance.sh) over fixture trees under the consumers' strict mode, its
-# stamp as the census reads it, and its wiring. NOT covered: a real consumer build, record formats beyond these shapes.
+# G2 (03-media/ort-provenance.sh) on fixture trees in the consumers' strict mode, its stamp and wiring; no real build.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -450,8 +449,7 @@ t_assert_contains "$(sed -n 's/^  local src=[^ ]* out=\([^ ]*\) .*/\1/p' "${SCRI
 t_assert_eq 1 "$(ort_census_stamps_armed)" "the census arms its STAMP verdict on this helper"
 
 t_case "Dockerfile.media mounts G2 per file into exactly the five consumer RUNs and copies it nowhere (mutation)"
-# _runs <needle>: one line per continuation-joined RUN of Dockerfile.media that contains <needle>; a comment line inside
-# a RUN is skipped, as BuildKit skips it (the gstreamer RUN carries one between its mounts).
+# _runs <needle>: each joined Dockerfile.media RUN holding <needle>, skipping comment lines as BuildKit does.
 _runs() {
   awk -v needle="$1" '/^RUN / { buf = ""; inrun = 1 } inrun && /^[[:space:]]*#/ { next }
     inrun { buf = buf $0 " "; if ($0 !~ /\\$/) { inrun = 0; if (index(buf, needle)) print buf } }' "${DF}"
@@ -480,8 +478,7 @@ while IFS= read -r _m; do
 done <<< "${_mounts}"
 
 t_case "a record naming '/' or a dir with a trailing '/' passes under set -u (a cross build's CMAKE_FIND_ROOT_PATH)"
-# Both basename to EMPTY: '/' also reduces to no segment at all, and an empty subscript into the chain index
-# was a fatal "bad array subscript" — media-arm64/-riscv64 in the 2026-09-28 chain, after the whole GenAI build.
+# Both basename to empty, and an empty subscript into the chain index is a fatal "bad array subscript".
 _case records-root
 mkdir -p "${CASE}/sysroot"
 printf 'CMAKE_FIND_ROOT_PATH:PATH=/\nCMAKE_SYSROOT:PATH=%s/\nX:STRING=//\n' "${CASE}/sysroot" >> "${TREE}/build/CMakeCache.txt"

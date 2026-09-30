@@ -3,47 +3,19 @@
 
 #requires -Version 7.0
 
-# Staging the media runtime DLL closure next to a built executable.
-#
-# THE THREE CALL SITES. AccelerANTgine's scripts/windows/Build-Windows.ps1 ran
-# `Copy-RuntimeDependencies -TargetDir (Join-Path $dir 'bin')` after each of its
-# three builds -- ClangCL debug, ClangCL profile, ClangCL release -- against a
-# local Get-RuntimeDependencyDirectories. Its own comment said the pair stayed
-# there "under the two-consumer rule"; the rule is met now, so the resolver and
-# the copy live here and the three call sites are one exported function.
-#
-# WHY THE COPY IS BY DIRECTORY AND NOT BY NAME. The payload is GStreamer's bin
-# directory plus the chain ONNX Runtime / GenAI install directories, and neither has a
-# stable file list: GStreamer's core DLLs pull glib/gobject/orc/ffi by name that
-# changes with the build, and the ONNX install differs per execution provider.
-# A curated name list is a list that goes stale silently, one missing DLL at a
-# time, and the failure is a DLL-load error at app start with no clue in it.
-#
-# WHAT IS DELIBERATELY NOT HERE. Nothing throws when there is no payload. A
-# configuration with no GStreamer and no ONNX_ROOT is a legitimate build (the
-# media features are opt-in); the run warns, names the target, and carries on.
-#
-# ORT is the chain's only: a non-chain ONNX_ROOT, or an ORT DLL from any other directory, throws.
-# NOT covered: ORT linked into another DLL, or byte provenance of ONNX_ROOT (the ORT census).
+# Copied by directory, not name list, which would go stale one silent DLL-load failure at a time; ORT must be the chain's.
 
 Set-StrictMode -Version Latest
 
-# Write-BuildLog / Write-BuildLogWarning. Plain, unforced import: an entry
-# script's -Force -Global copy must not be displaced (WindowsCMake.Common's
-# header records what happens when it is).
+# Unforced: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
-# Get-OnnxChainLayout / Get-OnnxRuntimeFile. Same terms.
 Import-Module (Join-Path $PSScriptRoot 'WindowsOnnx.Common.psm1')
 
-# Appends a directory when it exists and is not already listed, resolved so two
-# spellings of one directory cannot both be walked.
+# Resolved first, so two spellings of one directory cannot both be walked.
 function Add-MediaRuntimeDirectory {
     [CmdletBinding()]
     param(
-        # AllowEmptyCollection, and it is load-bearing: a Mandatory collection
-        # parameter REFUSES an empty list, so the first call - when the list is
-        # still empty, which is every call - failed with "cannot be bound ...
-        # because it is an empty collection".
+        # A Mandatory collection refuses an empty list, which the first call always passes.
         [Parameter(Mandatory)][AllowEmptyCollection()][System.Collections.Generic.List[string]]$Directories,
         [string]$Candidate
     )
@@ -69,8 +41,7 @@ function Resolve-MediaRuntimeClosure {
         }
     }
 
-    # GSTREAMER_BIN is the family image's C:\runtime\bin, for the image's target arch; the rest
-    # are the SDK installer's. Without it an image build staged no GStreamer (AccelerANTgine run 36044940426).
+    # GSTREAMER_BIN is the image's C:\runtime\bin, without which an image build stages no GStreamer; the rest are the SDK's.
     $directories = [System.Collections.Generic.List[string]]::new()
     foreach ($candidate in (@($GStreamerRoot) + @(
                 $env:GSTREAMER_BIN,
@@ -119,17 +90,9 @@ function Assert-MediaRuntimeOnnxFromChain {
 .SYNOPSIS
     The directories whose DLLs make up the media runtime closure, in load order.
 .DESCRIPTION
-    GStreamer first (its bin directory carries the core plus the glib/gobject
-    dependency set), then the chain ONNX Runtime GenAI and ONNX Runtime install
-    directories, the chain ORT last so it wins a name collision.
-
-    Every source is PROBED, never assumed: a machine without GStreamer, or a
-    build with no ONNX_ROOT, returns fewer directories rather than failing.
-    What DOES throw: an ONNX_ROOT/ONNX_GENAI_ROOT that is not the chain install
-    (see Get-OnnxChainLayout), and an ONNX Runtime DLL in any other directory.
+    GStreamer, then GenAI, then ORT last so it wins a collision; absent sources are skipped, non-chain ORT throws.
 .PARAMETER GStreamerRoot
-    Extra GStreamer bin directories to probe BEFORE the well-known ones: $env:GSTREAMER_BIN
-    (the family image's C:\runtime\bin), then the GStreamer SDK installer's locations.
+    Extra GStreamer bin directories probed before $env:GSTREAMER_BIN and the SDK installer's locations.
 .PARAMETER OnnxRoot
     The chain ONNX Runtime install. Defaults to $env:ONNX_ROOT.
 .PARAMETER OnnxVersion
@@ -165,15 +128,7 @@ function Get-MediaRuntimeDirectory {
 .SYNOPSIS
     Stages the media runtime DLL closure into a directory beside a built exe.
 .DESCRIPTION
-    Copies every *.dll from each directory Get-MediaRuntimeDirectory found into
-    -TargetDir, and reports how many distinct names were staged. Later
-    directories win on a name collision, which is why the order the resolver
-    returns is load order and not alphabetical.
-
-    Returns the number of distinct DLL names staged, so a caller can gate on it;
-    zero is returned rather than thrown, because a configuration with no media
-    payload is a legitimate build. Throws when an ONNX Runtime DLL left in
-    -TargetDir is not byte-identical to the chain's, staged or not.
+    Returns the distinct DLL count, 0 for a legitimate no-media build; later dirs win; a non-chain ORT DLL throws.
 .PARAMETER Context
     Build context for logging.
 .PARAMETER TargetDir
@@ -197,13 +152,7 @@ function Copy-MediaRuntimeBundle {
         New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
     }
 
-    # @(...) AT THE CALL SITE, not only inside the resolver. PowerShell unrolls a
-    # returned array into the pipeline, so an empty one yields zero objects and
-    # the assignment lands $null. Under Set-StrictMode -Version Latest -- which
-    # every entry script in this family sets -- $null.Count then throws "The
-    # property 'Count' cannot be found on this object" and kills a Critical build
-    # step AFTER a fully successful compile, which is exactly the case this guard
-    # was written to handle gracefully.
+    # @() at the call site: an empty returned array unrolls to $null, whose .Count throws under StrictMode.
     $closure = Resolve-MediaRuntimeClosure -GStreamerRoot $GStreamerRoot -OnnxRoot $OnnxRoot -OnnxGenAiRoot $OnnxGenAiRoot
     $runtimeDirs = @($closure.Directories)
 

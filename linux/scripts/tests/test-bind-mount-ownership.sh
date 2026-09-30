@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# Tests for 01-core/bind-mount-ownership.sh: one chown with three decisions
-# around it, every one of them invisible in a green run. Only the paths that
-# actually differ are chowned; a failure as a NON-ROOT uid is explained and
-# tolerated; the same failure AS ROOT stops the run. AccelerANTgine carried
-# this split locally and its header asked for it to move upstream -- shipping
-# the shape without these cases would lose the reasons.
-#
-# chown / id / stat are stubbed; find, xargs and the filesystem are real.
+# Tests for bind-mount-ownership.sh's selective chown and its root/non-root verdicts; chown, id and stat are stubbed.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -33,9 +26,7 @@ if [ "\${1:-}" = "-u" ] && [ -n "\${STUB_UID:-}" ]; then printf '%s\\n' "\${STUB
 exec "${REAL_ID}" "\$@"
 STUB
 
-# STUB_STAT_UID/GID make the reference LOOK like it belongs to another uid, which
-# is what a bind mount does; without it every path in a throwaway tree already
-# matches and the interesting branch is unreachable.
+# STUB_STAT_UID/GID fake a bind mount's foreign owner; otherwise every path already matches.
 cat > "${BIN}/stat" <<STUB
 #!/usr/bin/env bash
 if [ -n "\${STUB_STAT_UID:-}" ]; then
@@ -63,10 +54,7 @@ _call() {
   while [ $# -gt 0 ] && [ "$1" != "--" ]; do env_pairs+=("$1"); shift; done
   shift
   LOG="$(mktemp "${_work}/log.XXXXXX")"
-  # The fixture switches, spelled with their defaults so each has an in-repo
-  # owner for the env-knob registry; `env` below overrides the ones a case is
-  # about. A stub's switch is not an operator switch and does not belong in
-  # lint-env-knobs.allow.
+  # Defaults spelled here give each stub switch an owner outside lint-env-knobs.allow.
   OUT="$(PATH="${BIN}:${PATH}" STUB_LOG="${LOG}" \
     STUB_CHOWN_RC=0 STUB_UID='' STUB_STAT_UID='' STUB_STAT_GID='' \
     env "${env_pairs[@]+"${env_pairs[@]}"}" \
@@ -75,17 +63,14 @@ _call() {
 }
 
 t_case "a target that does not exist is not an error"
-# A docs step that produced nothing has nothing to hand back; failing there
-# would make the finalize step the thing that breaks the lane.
+# A docs step that produced nothing must not have its finalize step break the lane.
 _call -- "${_work}/never-written" "${REF}"
 t_assert_eq "0" "${rc}" "output was: ${OUT}"
 t_assert_contains "${OUT}" "Nothing to fix"
 t_assert_eq "" "$(cat "${LOG}")" "nothing to fix means nothing to chown"
 
 t_case "a tree already owned by the reference is a no-op, with NO chown at all"
-# The whole reason the chown is selective: on a tree that is mostly correct,
-# recursing over it asks the kernel for a chown it refuses for a non-owner and
-# turns a no-op into an error.
+# Selective, since a recursive chown of a correct tree fails for a non-owner.
 _call -- "${TREE}" "${REF}"
 t_assert_eq "0" "${rc}" "output was: ${OUT}"
 t_assert_contains "${OUT}" "nothing to do"
@@ -105,8 +90,7 @@ t_assert_eq "" "$(printf '%s' "${_chown}" | grep -F -- ' -R ' || true)" \
   "a blanket chown -R is the form this replaced"
 
 t_case "chown is given -h, so a symlink is retargeted and not followed"
-# Following a symlink would chown whatever it points at, which may be outside
-# the tree the caller asked about.
+# Following a symlink could chown something outside the tree.
 t_assert_contains "${_chown}" "chown -h "
 
 t_case "the count in the log is the number of paths actually handed over"

@@ -16,9 +16,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
 if (-not (Test-Path $sharedModulePath)) {
@@ -38,14 +36,8 @@ $TargetArch = Resolve-ContainerImageValue -Value $TargetArch -EnvironmentVariabl
 .SYNOPSIS
     Stages the Windows-arm64 CUDA payload into an existing CUDA root.
 .DESCRIPTION
-    NVIDIA publishes the arm64 toolkit ONLY as per-component redist archives (no
-    runnable installer), so the cross lane downloads each component by SHA into
-    the SAME root the x64 toolkit uses: headers and nvcc stay x64 (host tools),
-    the arm64 libs/bin land in lib\arm64 / bin\arm64 -- exactly where
-    `nvcc -ccbin <arm64 cl>` and CMake's FindCUDAToolkit look. Probe-proven
-    2026-09-19 (out/probe-cuda-cross2: AA64 main.exe). The component set is the
-    ORT CUDA EP's link closure plus its runtime dlopens; docs/windows-cross-builds.md
-    owns the why, versions.env owns the pins.
+    arm64 ships only per-component redists, staged into the x64 root's lib\arm64 and bin\arm64, where nvcc and CMake look.
+    The set is the ORT CUDA EP's link closure plus its runtime dlopens; see docs/windows-cross-builds.md.
 #>
 function Install-CudaWindowsArm64Redist {
     param(
@@ -74,9 +66,7 @@ function Install-CudaWindowsArm64Redist {
         Invoke-DownloadWithRetry -Url $url -DestinationPath $zip -Description ("CUDA arm64 {0}" -f $c.Component) -ExpectSignature PK -ExpectedSha256 $sha
         $dir = Expand-ArchiveSubdirectory -ArchivePath $zip -DestinationPath $extract
         if (-not $dir) { throw "Extracted arm64 component directory not found under $extract" }
-        # lib\arm64 + bin\arm64 only: the headers are arch-neutral and already come
-        # from the x64 toolkit install above (copying component headers over them
-        # could mix per-component versions with the toolkit's).
+        # Libs and bins only: the x64 toolkit's arch-neutral headers must not mix with per-component versions.
         foreach ($pair in @(@{ From = 'lib\arm64'; To = 'lib\arm64' }, @{ From = 'bin\arm64'; To = 'bin\arm64' })) {
             $from = Join-Path $dir $pair.From
             if (-not (Test-Path $from)) { continue }
@@ -87,8 +77,7 @@ function Install-CudaWindowsArm64Redist {
         Remove-Item $zip -Force -ErrorAction SilentlyContinue
         Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
     }
-    # Assert the exact files the cross link needs: a silently empty copy would
-    # otherwise surface hours later as an ORT link error.
+    # A silently empty copy would otherwise surface hours later as an ORT link error.
     foreach ($must in @('lib\arm64\cudart.lib', 'lib\arm64\cudadevrt.lib', 'lib\arm64\cublas.lib', 'lib\arm64\cublasLt.lib', 'lib\arm64\curand.lib', 'lib\arm64\nppial.lib')) {
         if (-not (Test-Path (Join-Path $CudaRoot $must))) {
             throw ("arm64 CUDA payload incomplete: {0} missing under {1}" -f $must, $CudaRoot)
@@ -99,14 +88,9 @@ function Install-CudaWindowsArm64Redist {
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
-# Use NVIDIA's full CUDA installer (not Scoop -- Scoop's portable install strips CCCL headers).
-# The full installer includes CUB, Thrust, libcudacxx at include/cccl/ and a proper nv/target.h.
+# NVIDIA's installer, not Scoop, whose portable install strips the CCCL headers.
 Write-Host ('Installing CUDA Toolkit {0} via NVIDIA full installer...' -f $CudaVersion)
-# 13.4+ uses the NETWORK installer with a pinned subpackage list: the 3.9 GB
-# full installer dies in-container with 0xE0E00064 (self-extraction on the
-# wcifs layer; reproduced 2026-09-19, silent, no logs), while the network
-# installer installs the same toolkit in ~2 min. Older pins keep the full
-# installer. `thrust_*` carries the CCCL headers (include\cccl).
+# 13.4+: the full installer dies silently in-container (0xE0E00064), so the network one takes a pinned list; thrust_* carries CCCL.
 $cudaNetworkInstaller = [version]$CudaVersion -ge [version]'13.4'
 if ($cudaNetworkInstaller) {
     $cudaPkgs = @(
@@ -135,14 +119,12 @@ $proc.WaitForExit()
 $exitCode = $proc.ExitCode
 $proc.Dispose()
 Clear-PendingFileHandle
-# Check the exit code BEFORE removing the installer: on failure keep it for
-# analysis (same deliberate preservation as Install-Vs.ps1's finally block).
+# On failure the installer is kept for analysis.
 if ($exitCode -ne 0) {
     Write-Host "Installer was not deleted (left for analysis at $cudaInstaller)."
     throw ('CUDA installation failed with exit code: {0}' -f $exitCode)
 }
-# -ErrorAction SilentlyContinue: the installer occasionally still holds its own
-# file handle for a moment after exit; a failed cleanup must not fail the layer.
+# The installer can still hold its own handle just after exit; a failed cleanup must not fail the layer.
 Remove-Item $cudaInstaller -Force -ErrorAction SilentlyContinue
 Write-Host 'CUDA Toolkit installation complete. Waiting for files to settle...'
 Start-Sleep -Seconds 5
@@ -173,21 +155,16 @@ $env:PATH = "$cudaBinDir;$env:PATH"
 Write-Host "Set CUDA_ROOT to: $effectiveCudaRoot"
 Get-ChildItem -Path "$effectiveCudaRoot\bin" -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { Write-Host "  CUDA bin: $_" }
 
-# Full installer includes CCCL headers (cub, thrust, libcudacxx) at include/cccl/.
-# Just verify they're present.
 $cudaIncludeDir = "$effectiveCudaRoot\include"
 $ccclDir = Join-Path $cudaIncludeDir 'cccl'
 if (Test-Path (Join-Path $ccclDir 'cub\cub.cuh')) {
     Write-Host 'CCCL headers verified present (cub/cub.cuh found).'
 } else {
-    # CCCL presence is the whole reason the full installer is used over Scoop
-    # (see the comment at the top of this script) -- missing CCCL is fatal.
+    # Fatal: CCCL is why NVIDIA's installer is used at all.
     throw "CCCL cub/cub.cuh not found under $ccclDir -- the full CUDA installer did not deliver CCCL; downstream CUB/Thrust builds would fail hours later."
 }
 
-# nv/target.h: the full installer provides a proper version that handles both
-# host and device compilation (selects device branch when __CUDA_ARCH__ is defined).
-# Only create a stub if the file is completely missing.
+# A host-only stub only when the installer's nv/target.h is missing entirely.
 $nvDir = Join-Path $cudaIncludeDir 'nv'
 if (-not (Test-Path $nvDir)) { New-Item -Path $nvDir -ItemType Directory -Force | Out-Null }
 $nvTargetLines = @(
@@ -227,8 +204,7 @@ if ($TargetArch -ne 'amd64') {
 
 Write-Host ('Downloading cuDNN {0}...' -f $CudnnVersion)
 $cudaMajorVersion = $CudaVersionMajorMinor -replace '[^0-9].*', ''
-# NVIDIA's redist naming is NOT uniform: x64 is `..._cuda13-archive.zip`, arm64 is
-# `..._cuda13.4-archive.zip` (verified in redistrib_9.26.0.json, 2026-09-20).
+# Redist names differ per arch: x64 says _cuda13, arm64 _cuda13.4.
 if ($TargetArch -eq 'amd64') {
     $cudnnPlatform = 'windows-x86_64'
     $cudnnUrl = 'https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/{0}/cudnn-{0}-{1}_cuda{2}-archive.zip' -f $cudnnPlatform, $CudnnVersion, $cudaMajorVersion
@@ -241,8 +217,7 @@ if ($TargetArch -eq 'amd64') {
 Write-Host ('Download URL: {0}' -f $cudnnUrl)
 $cudnnArchive = Join-Path $TempDir 'cudnn.zip'
 $cudnnExtracted = Join-Path $TempDir 'cudnn_extracted'
-# SHA256 from NVIDIA's redist manifest, pinned in versions.env (CUDNN_ZIP_SHA256,
-# CUDNN_WINDOWS_ARM64_ZIP_SHA256 on the cross lane).
+# SHA256 from NVIDIA's redist manifest, pinned in versions.env.
 $cudnnSha = Resolve-ContainerImageValue -EnvironmentVariable $cudnnShaKey -DefaultValue ''
 Invoke-DownloadWithRetry -Url $cudnnUrl -DestinationPath $cudnnArchive -Description "cuDNN $CudnnVersion archive" -ExpectSignature PK -ExpectedSha256 $cudnnSha
 Write-Host 'Extracting cuDNN...'
@@ -267,7 +242,6 @@ if (-not $cudnnDlls) { throw "cuDNN DLLs (cudnn*.dll) not found under $CudnnRoot
 Write-Host ('cuDNN verified: {0} headers, {1} libs, {2} DLLs' -f $cudnnHeaders.Count, $cudnnLibs.Count, $cudnnDlls.Count)
 Write-Host 'cuDNN installation complete.'
 
-# Final push to release any lingering file handles before layer commit.
-# (The installer/archive files themselves were already removed right after use above.)
+# Release lingering file handles before the layer commit.
 Clear-PendingFileHandle
 

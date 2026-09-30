@@ -1,40 +1,4 @@
-# .github/workflows/submodule-pins.yml
-# The hub gating ITSELF on the invariant it hands the consumers.
-#
-# ANTfrastructure has shipped the submodule-pin guards (WindowsRepoHygiene.Common)
-# since 2026-08-07 and the shared suite that drives them
-# (shared/windows/tests/Submodule.Pins.Tests.ps1) since 2026-09-07 - and until
-# this workflow existed, nothing checked this repository's OWN
-# third_party/DocumANTation pin. A gate published for other repos and not run
-# here is a gate nobody has tested against a real bump.
-#
-# Runner is a WINDOWS one, not one of the ubuntu-26.04 runners the rest of the
-# Linux jobs use, because .github/actions/run-pester-suite installs Pester 3.4.0
-# by default - the dialect BeschleunigerBallett's Windows lane pins - and 3.4.0
-# is a Windows PowerShell-era module. The suite itself is version-agnostic (it
-# asserts with `throw`, not `Should`, and was verified under both 3.4.0 and
-# 6.1.0), so this can move to a cheaper runner the day the action can be told a
-# Core-compatible version.
-#
-# The LABEL is windows-2025, pinned, since 2026-09-08. It was windows-latest,
-# which is a moving alias: it resolves to windows-2025 today, so this is a no-op
-# now, but a future repoint would swap the OS image - and with it the Windows
-# PowerShell 5.1 that Pester 3.4.0 needs - under a green build with no commit to
-# blame. windows-2025 is what the rest of the family already uses.
-#
-# REUSABLE since 2026-09-14. Three consumers carried this workflow as a
-# near-copy (plus one embedded job), each with its own 40-line Pester
-# rationale. A consumer now calls it as
-#
-#   jobs:
-#     pins:
-#       uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@develop
-#
-# keeping only its own `on:` filters. The suite path defaults to the consumer's
-# vendored copy; the hub's own push/PR run passes nothing and falls back to its
-# in-tree copy. run-pester-suite is named at @develop in both cases: a
-# workflow_call workflow runs in the CALLER's checkout, where ./ does not
-# resolve to this repository.
+# The hub runs its own pin gate too; a Windows runner because run-pester-suite's Pester 3.4.0 is a Windows PowerShell-era module.
 name: Submodule pins (reusable)
 
 on:
@@ -75,36 +39,19 @@ on:
 permissions:
   contents: read
 
-# NO workflow-level `concurrency` here, deliberately, since 2026-09-15. This file
-# is a reusable workflow, and every consumer that called it failed before a
-# single job started, with GitHub's bare "this run likely failed because of a
-# workflow file issue" and zero jobs to inspect: OrchestrANT, OmniAccelerANT,
-# AccelerANTgine, OxidANT and jotrockenmitlocken, all five at once, the first
-# time they pushed a `uses:` of this lane. The hub's three other reusable
-# lanes - lint-gates.yml, python-ci-linux.yml, python-ci-windows.yml - carry no
-# such block and their callers start fine, which is the measurement that
-# isolated it. Concurrency belongs to the CALLER anyway: it is the caller that
-# knows which of its own runs may cancel each other, and every consumer copy
-# already declares its own group.
+# No workflow-level concurrency: here it failed every caller before a job started; callers own their groups.
 
 jobs:
   pins:
     runs-on: ${{ inputs.runner || 'windows-2025' }}
     timeout-minutes: 15
     env:
-      # The suite takes the repo root as a parameter and the composite action can
-      # only pass a path, so the root comes through the environment. It would
-      # fall back to GITHUB_WORKSPACE on its own; naming it here keeps the wiring
-      # visible instead of implied.
+      # The action can pass only a path, so the repo root comes through the environment.
       ANTFRASTRUCTURE_PIN_CHECK_REPO_ROOT: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Without this the submodule is never checked out, and the suite fails
-          # on its own vacuity guard rather than passing on an empty tree.
-          # Top-level only (the drift guard is non-recursive for the same
-          # reason) and at the default depth, which is what makes the
-          # reachability check exercise its shallow-clone escalation.
+          # Top level at default depth, so the reachability check exercises its shallow-clone escalation.
           submodules: true
 
       - name: Submodule pins sit at their recorded, restorable commits

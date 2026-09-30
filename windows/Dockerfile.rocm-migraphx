@@ -1,8 +1,7 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# rocm lane only: AMD MIGraphX from source and AMD's ORT plugin EP (migraphx-ep.dll) on the merged
-# rocm media. Lineage: media -> THIS -> llama -> torch. docs/windows-builds.md § ROCm layer.
+# rocm lane only; see docs/windows-rocm.md § MIGraphX and the ORT plugin EP (rocm lane, spike).
 
 ARG BASE_IMAGE=docker.io/local/kataglyphis:bk-windows-media-rocm
 
@@ -21,8 +20,7 @@ FROM ${BASE_IMAGE} AS built
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
-# Same sccache values and reasons as Dockerfile.media-merge-builder's `built` stage; the
-# build-host settings are ARGs only. docs/windows-build-resources.md#what-the-published-image-carries
+# Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
 ARG SCCACHE_WEBDAV_ENDPOINT
 ARG SCCACHE_LOG="warn"
 ARG SCCACHE_MULTILEVEL_CHAIN
@@ -34,8 +32,7 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_LOG="${SCCACHE_LOG}" `
     SCCACHE_IDLE_TIMEOUT="0"
 
-# Values: versions.env, forwarded by Get-MediaBranchVersionArg -Branch rocm-migraphx. ARG only:
-# a RUN sees them as env, and an ENV would bake build pins into every image downstream.
+# ARG only: an ENV would bake build pins into every downstream image.
 ARG ROCM_WINDOWS_GFX_FAMILY=gfx120X-all
 ARG MIGRAPHX_VERSION=2.17.0
 ARG MIGRAPHX_WINDOWS_COMMIT=becdb3da862f2297041b746b90bc6130e2b1d1f7

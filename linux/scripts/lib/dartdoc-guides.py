@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Render staged Markdown guides into a `dart doc` site and wire its navigation.
-
-`dart doc` emits API pages only: a project's prose lives in Markdown that dartdoc
-links to but never renders. This reuses dartdoc's own index.html as the page
-shell, so a guide page carries the same header, sidebars and theme as an API page.
-
-Driven entirely by the tab-separated config lib/dartdoc-build.sh writes, so
-nothing about any one project is baked in here.
-docs/shared-script-libraries.md#dartdoc-buildsh--theme-and-enrich-a-dart-doc-site
-"""
+"""Render staged Markdown guides into a `dart doc` site. See docs/shared-script-libraries.md#dartdoc-buildsh--theme-and-enrich-a-dart-doc-site"""
 
 from __future__ import annotations
 
@@ -112,13 +103,7 @@ def build_toc(headings) -> str:
 
 
 def _splice(page: str, start: str, end: str, replacement: str, where: str) -> str:
-    """Replace the region between two literal landmarks.
-
-    A landmark this cannot find is a HARD failure. `dart doc`'s HTML is not a
-    stable contract, so the day the shell changes these strings stop matching --
-    and returning the page untouched made that day look like a successful build
-    with every guide page silently unrendered.
-    """
+    """Replace the region between two landmarks; a missing one is fatal, as dart doc's HTML is unstable."""
     start_idx = page.find(start)
     end_idx = page.find(end, start_idx) if start_idx != -1 else -1
     if start_idx == -1 or end_idx <= start_idx:
@@ -163,22 +148,7 @@ def sidebar_nav(root: pathlib.Path, page_path: pathlib.Path, guides) -> str:
 
 
 def inject_sidebar_nav(text: str, nav_html: str, where) -> str:
-    """Hang the guide navigation off the left sidebar's first `<ol>`.
-
-    Already-injected pages and an empty nav are no-ops, and so is a page with no
-    STATIC sidebar: dartdoc emits two page shapes, and the second one's left
-    sidebar is `<div id="dartdoc-sidebar-left-content"></div>`, filled at runtime
-    from a `*-sidebar.html` fragment. There is nothing to splice into there. This
-    used to abort the whole run on the first such page -- measured on one
-    consumer, 1030 of 1459 pages -- so the guides never landed anywhere and the
-    docs lane could not finish. That consumer forked this file over exactly this
-    one function; upstreaming the behaviour is what retires the fork.
-
-    Nothing is weakened by it. The vacuity check in main() still fails a run in
-    which NOT ONE page ended up navigated, which is the failure that matters,
-    and every landmark read out of index.html -- the one shell every guide page
-    is built from -- stays hard.
-    """
+    """Hang the guide nav off the left sidebar's first `<ol>`; a runtime-filled sidebar is skipped, not fatal."""
     if NAV_MARKER in text or not nav_html:
         return text
     sidebar = text.find(LEFT_START)
@@ -197,10 +167,7 @@ def inject_footer(text: str, footer_html: str, where) -> str:
         return text.replace("</footer>", f"{footer_html}\n</footer>")
     if "</body>" in text:
         return text.replace("</body>", f"<footer>\n{footer_html}\n</footer>\n</body>")
-    # A FRAGMENT is not a document. The `*-sidebar.html` files dartdoc writes
-    # beside its pages are `<ol>` bodies with no `<html`, and a footer inside one
-    # would render in the middle of a sidebar. Skipping them is right; skipping a
-    # real page is not, so the refusal stays for anything that claims to be one.
+    # A *-sidebar.html fragment has no <html, and a footer there would land mid-sidebar.
     if "<html" not in text:
         return text
     raise SystemExit(f"{where}: neither '</footer>' nor '</body>' to attach the footer to.")
@@ -247,22 +214,18 @@ def main(argv) -> int:
         text = page_path.read_text(encoding="utf-8", errors="ignore")
         nav_html = sidebar_nav(root, page_path, guides)
         after = inject_sidebar_nav(text, nav_html, rel)
-        # Carrying the marker, not "was edited this run": a second pass over an
-        # already-navigated tree is a no-op, not a failure.
+        # Count the marker, not this run's edits, so a second pass is a no-op.
         navigated += NAV_MARKER in after
         final = inject_footer(after, footer_html, rel)
         footered += FOOTER_MARKER in final
         page_path.write_text(final, encoding="utf-8")
-    # Counted, not assumed: "Rendered N" over an untouched tree is exactly the
-    # failure this file's landmark checks exist to make impossible.
+    # Counted, not assumed: "Rendered N" over an untouched tree must fail.
     if guides and not navigated:
         raise SystemExit(
             f"{len(guides)} guide page(s) rendered but not one of the {pages} page(s) "
             f"under {root} carries the guide navigation; the site would not link them."
         )
-    # The footer gets the same treatment, for the same reason: since a page
-    # without a document body is skipped rather than fatal, "configured a footer
-    # and attached it to nothing" would otherwise pass silently.
+    # Fragments are skipped, so a footer attached to nothing would otherwise pass.
     if footer_html and not footered:
         raise SystemExit(
             f"a footer is configured but not one of the {pages} page(s) under {root} "

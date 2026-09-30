@@ -1,7 +1,5 @@
 #requires -Version 7.0
-# Tests for Resolve-GitRefCommit and Resolve-TorchAppRef (WindowsBuildDriver.Common.psm1):
-# versions.env's APP_REF names a branch, and the torch stage builds the COMMIT it points
-# at, so the layer moves exactly when the app does. Canned ls-remote text, no network.
+# APP_REF names a branch and the torch stage builds its commit, so the layer moves exactly when the app does.
 
 $script:AppRefHead = '1111111111111111111111111111111111111111'
 $script:AppRefTagObject = '2222222222222222222222222222222222222222'

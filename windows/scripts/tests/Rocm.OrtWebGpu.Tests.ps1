@@ -1,9 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# The rocm-lane WebGPU EP spike: Build-OnnxFromSource.ps1's plan, pins, fetch chain (offline, with fakes for the
-# two downloads), Dawn patch, configure/install/wheel gates, DXC's wheel notice, marker, deps.json rows, OrtWebGpu.ps1.
-# NOT covered: a real Dawn/ORT build or setup.py, CMake itself, a GPU, or GenAI failing for want of an adapter.
+
+# The rocm-lane WebGPU EP spike offline: plan, pins, fetch chain, Dawn patch and gates; no real build or GPU.
 
 $script:OrtBuildScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
 $script:OrtWebGpuCheck = 'windows\scripts\build\rocm-checks\OrtWebGpu.ps1'

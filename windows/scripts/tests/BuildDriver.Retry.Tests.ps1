@@ -1,8 +1,5 @@
 #requires -Version 7.0
-# Tests for WindowsBuildDriver.Common.psm1 — the transient-failure classifier and
-# cooldown gate behind Build-Buildkit.ps1. These failure paths previously only ever executed
-# during real multi-hour builds; a regression here silently changes when hours
-# of compile work get retried, preserved, or thrown away.
+# The BK retry classifier and cooldown otherwise run only in real builds, where a regression decides which hours are thrown away.
 
 Describe 'Test-TransientDockerFailure' {
 
@@ -40,10 +37,7 @@ Describe 'Invoke-TransientCooldown' {
 
 Describe 'Invoke-TransientCooldown determinism gate' {
 
-    # 2026-08-07: ImportLayer 0xb7 failed three times with byte-identical
-    # snapshot IDs. The tail matched the transient pattern, so the engine paid
-    # two retries plus cool-downs before giving up. A flake changes between
-    # attempts; a poisoned snapshot does not.
+    # A flake changes between attempts; a poisoned snapshot fails with byte-identical IDs.
 
     It 'refuses to retry when the failure is byte-identical to the previous one' {
         $tail = 'failed to commit 3p059m2d68o to o47dumb0ovs4 during finalize: failed to reimport snapshot: hcsshim::ImportLayer failed'
@@ -52,8 +46,7 @@ Describe 'Invoke-TransientCooldown determinism gate' {
     }
 
     It 'ignores buildkit timing prefixes when comparing (they differ every attempt)' {
-        # buildkit prefixes each line with "#<vertex> <elapsed> " — comparing raw
-        # would never match and the gate would never fire.
+        # buildkit prefixes each line with "#<vertex> <elapsed> ", so raw lines would never compare equal.
         $a = "#9 627.3 failed to reimport snapshot: hcsshim::ImportLayer failed"
         $b = "#9 1841.7 failed to reimport snapshot: hcsshim::ImportLayer failed"
         $r = Invoke-TransientCooldown -Tail $b -PreviousTail $a -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -Label 't'
@@ -76,16 +69,7 @@ Describe 'Invoke-TransientCooldown determinism gate' {
 
 Describe 'Mount contention: classified transient AND exempt from the determinism gate' {
 
-    # Two coupled defects found while the merge stage failed live (2026-08-07):
-    #
-    # 1. The media merge was given -MaxAttempts 5 on 2026-08-06 because
-    #    'failed to mount {windows-layer}' was measured going green only on the
-    #    third attempt — but that text was never in the transient pattern, so
-    #    the classifier said NON-transient and the retries never fired. The
-    #    raised attempt count was dead code for the failure it was raised for.
-    # 2. Once the pattern matches, the determinism gate would kill exactly those
-    #    retries, because the mount error names the same layer path each time.
-    #    Finalize failures are the opposite: identical there means poisoned.
+    # A mount failure is transient yet names the same layer every time; for finalize failures identical means poisoned.
 
     It 'classifies a windows-layer mount failure as transient' {
         Initialize-BuildDriverContext `

@@ -1,19 +1,5 @@
 #!/usr/bin/env bash
-# Cheap smoke tests for every consumer-facing module in linux/scripts/lib/.
-# docs/shared-script-libraries.md#what-holds-the-standalone-contract
-#
-# These libraries are sourced STANDALONE by external repos, which is exactly
-# how they rot: app-runner.sh's bootstrap comment (lib/app-runner.sh:33-40)
-# records that it was "the drifted copy" — no re-source guard, never loading
-# the real 01-core/logging.sh — and nothing noticed for a long time. This
-# suite guards the whole class:
-#   (1) every module parses (bash -n),
-#   (2) every module sources cleanly under `set -euo pipefail` (a strict-mode
-#       consumer must not be killed by an unbound var / failing top-level cmd),
-#   (3) sourcing actually DEFINES functions (a gutted or early-returning module
-#       that exports nothing is a drifted copy, not a library),
-#   (4) cmake-build.sh's cmake_build_parse_args works in isolation.
-# No network, no cmake execution — pure parse/source checks.
+# Smoke tests for every lib/ module a consumer sources standalone; see docs/shared-script-libraries.md#what-holds-the-standalone-contract
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -29,8 +15,7 @@ for mod in "${LIB_DIR}"/*.sh; do
   t_assert_ok bash -c "set -euo pipefail; source '${mod}'"
 
   t_case "${name}: sourcing defines at least one function"
-  # Count the function delta inside ONE shell so exported functions inherited
-  # from the test environment cannot fake a nonzero count.
+  # One shell, so functions exported by the test environment cannot fake a nonzero delta.
   fn_delta="$(bash -c "set -euo pipefail
     pre=\$(declare -F | wc -l)
     source '${mod}'
@@ -39,10 +24,7 @@ for mod in "${LIB_DIR}"/*.sh; do
   t_assert_ok test "${fn_delta}" -gt 0
 done
 
-# ── cmake-build.sh: drive the argument parser in isolation ────────────────────
-# cmake_build_parse_args needs no heavy env (only variables with defaults), so
-# exercise the documented precedence: CLI flags win, positional falls through
-# to CMAKE_BUILD_POSITIONAL (and becomes the preset only when --preset absent).
+# cmake_build_parse_args: flags win; a positional becomes the preset only without --preset.
 
 t_case "cmake_build_parse_args: explicit flags are parsed into their variables"
 _out="$(bash -c "set -euo pipefail
@@ -73,10 +55,7 @@ _out="$(bash -c "set -euo pipefail
 t_assert_eq "my-preset" "${_out}"
 
 
-# ── cmake-build.sh: Vulkan precedence (_cmake_build_resolve_vulkan) ───────────
-# The flag > inherited-env > caller-default chain, and the rule that the caller
-# default is adopted only when its setup script actually exists: a missing file
-# silently poisoned every later `. "${VULKAN_SETUP_SCRIPT}"`.
+# Vulkan: flag, then env, then the caller default, adopted only if its setup script exists.
 
 t_case "cmake_build_parse_args: --vulkan-* flags beat the inherited environment"
 _out="$(bash -c "set -euo pipefail
@@ -129,16 +108,7 @@ t_assert_fails bash -c "set -euo pipefail
   cmake_build_parse_args --no-such-flag"
 
 
-# ── cmake-build.sh: --configure-arg ───────────────────────────────────────────
-# The library configured with exactly `cmake -B <dir> --preset <name>` and had
-# no way to add a -D, so a wrapper that needed one (AccelerANTgine's
-# scripts/linux/ci-release.sh: -DCMAKE_LINK_WHAT_YOU_USE=FALSE and
-# -DCPACK_ENABLE_APPIMAGE) had to run the configure itself with
-# --skip-configure true, which is three library entry points instead of one
-# cmake_build_main. These cases pin BOTH halves: the flag parses, and the
-# arguments actually reach the configure command line in order -- asserted
-# against a STUB cmake that records its argv, because "the parser stored it" is
-# exactly the half that can be true while the command line is unchanged.
+# --configure-arg: parsing alone proves nothing, so a stub cmake's argv shows it reaches the configure.
 
 t_case "cmake_build_parse_args: --configure-arg is repeatable and keeps its order"
 _out="$(bash -c "set -euo pipefail
@@ -191,19 +161,13 @@ t_assert_fails bash -c "set -euo pipefail
   source '${LIB_DIR}/cmake-build.sh'
   cmake_build_parse_args --configure-arg"
 
-# The EMPTY-STRING case is the one the guard exists for. A missing value is
-# caught by `set -u` alone in a strict caller, so asserting only that would
-# prove nothing about the guard; an explicitly empty value is bound, reaches the
-# array, and would arrive at cmake as `cmake "" …`, whose error message is about
-# the source directory and names nothing the caller typed.
+# The empty value is what the guard is for; `set -u` already catches a missing one.
 t_case "cmake_build_parse_args: --configure-arg with an EMPTY value is fatal"
 t_assert_fails bash -c "set -euo pipefail
   source '${LIB_DIR}/cmake-build.sh'
   cmake_build_parse_args --configure-arg ''"
 
-# The forwarding half. A stub cmake records each invocation; cmake_build_run is
-# driven with the prepare_env step skipped (it is exercised elsewhere and wants
-# a container).
+# The forwarding half, via a stub cmake that records each invocation.
 _cmake_stub_dir="$(mktemp -d)"
 cat > "${_cmake_stub_dir}/cmake" <<'STUB'
 #!/usr/bin/env bash

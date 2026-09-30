@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# OpenCV, FFmpeg and the gst onnx plugin build against the chain ONNX Runtime only (owner rule 2026-09-23).
-# NOT covered: a real cmake/meson/configure run -- the gates read those tools' records, faked here.
+# OpenCV, FFmpeg and gst-onnx use only the chain ONNX Runtime; the build tools' records are faked here.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -162,8 +161,7 @@ t_assert_contains "${_cfgfn}" '| tee "${build_dir}/opencv-configure.log" || die'
 t_assert_contains "${_cfgfn}" 'opencv_ort_assert_configure "${build_dir}" "${ort_compat}" "${ort_ver}" || die'
 t_assert_contains "${_insfn}" 'opencv_ort_assert_installed "${OPENCV_PREFIX}" || die'
 
-# ── FFmpeg ───────────────────────────────────────────────────────────────────
-# n9.0.2 configure: `require libonnxruntime onnxruntime_c_api.h OrtGetApiBase -lonnxruntime`, no pkg-config.
+# FFmpeg n9.0.2 configure: `require libonnxruntime onnxruntime_c_api.h OrtGetApiBase -lonnxruntime`, no pkg-config.
 FF="${MEDIA}/ffmpeg/build-ffmpeg.sh"
 # One probe run in a child shell: $1 chain root, $2 ok|fail for the stubbed synth probe.
 _ff_probe() {

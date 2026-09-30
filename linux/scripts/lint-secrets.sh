@@ -1,52 +1,14 @@
 #!/usr/bin/env bash
-# lint-secrets.sh — secret-scanning gate: gitleaks. Closes the last gate
-# asymmetry (backlog 2026-08-10 SEC1): shell, Dockerfiles, workflows,
-# PowerShell and Python all have lint gates — committed secrets had none.
-#
-# Scan scope: the WORKING TREE (gitleaks detect --no-git), not git history —
-# tree scans are fast, deterministic, and gate what the NEXT commit would
-# ship. (A one-time full-history scan is a separate, manual exercise:
-#   gitleaks detect --source . --log-opts="--all"
-# — run it once, triage, then rely on this tree gate.)
-#
-# Consumer repos: the scan root is the argument, and so is the rule config —
-# a consumer that ships its own .gitleaks.toml is graded by ITS allowlist, not
-# by the hub's. Only a consumer WITHOUT one falls back to the hub config.
-#
-# gitleaks bootstrap: PATH copy preferred; else the pinned release is
-# downloaded once into a version-keyed cache dir and SHA256-verified — the
-# same pattern as lint-dockerfiles.sh/hadolint. The pin now lives in
-# 01-core/versions.env (GITLEAKS_VERSION / GITLEAKS_LINUX_*_SHA256); this
-# script no longer carries a second copy of the version.
-#
-# Usage: linux/scripts/lint-secrets.sh [path] [config]  (no args = repo root)
-#
-# The optional CONFIG exists because the probe below only finds a .gitleaks.toml
-# sitting at the scanned path ITSELF. A consumer that scans its subdirectories
-# one at a time -- which is how a vendored subtree is kept out of scope -- was
-# therefore graded by the HUB's allowlist and never by its own.
-# run-lint-gates.sh passes the consumer root's config for exactly that reason.
+# [path] [config]: gitleaks over the working tree, not history, so it gates what the next commit ships.
 set -uo pipefail
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# The tree to grade. Everything below — the scan itself AND the rule config —
-# is scoped to it; see tests/test-secret-scan.sh, case
-# "secret-scan.scope-is-the-argument".
-# Resolved to an ABSOLUTE path against the CALLER's cwd and BEFORE the cd below.
-# The natural consumer invocation is a relative one from the consumer's own root
-# (third_party/ANTfrastructure/linux/scripts/lint-secrets.sh .), and resolving it
-# after the cd re-anchored both the scan and the config lookup inside the hub
-# checkout — so the consumer's tree was never graded at all.
+# Resolve against the caller's cwd before the cd below, or a relative consumer root lands in the hub.
 
-# A single FILE is a legal scan root, not just a directory: a consumer that
-# excludes a vendored subtree scans its top-level entries one at a time, and
-# some of those are plain files (README.md, pubspec.yaml, a third_party/
-# CMakeLists.txt). `cd` on those failed with "scan root not found" and took the
-# whole gate down. gitleaks itself accepts either -- measured against the
-# pinned 8.30.1, a file source scans exactly that file.
+# A file is a legal scan root: consumers scan top-level entries one at a time to skip vendored trees.
 if [ -f "${1:-}" ]; then
   SCAN_ROOT="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 else
@@ -57,8 +19,7 @@ fi
 SCAN_CONFIG_DIR="${SCAN_ROOT}"
 [ -d "${SCAN_CONFIG_DIR}" ] || SCAN_CONFIG_DIR="$(dirname "${SCAN_ROOT}")"
 
-# Same reason, same timing: an explicit config is resolved against the CALLER's
-# cwd, before the cd below re-anchors every relative path inside the hub.
+# Resolved before the cd too: the probe only finds a .gitleaks.toml at the scanned path itself.
 CONFIG_ARG=""
 if [ -n "${2:-}" ]; then
   [ -f "$2" ] || err "gitleaks config not found: $2"
@@ -69,17 +30,13 @@ cd "${REPO_ROOT}" || err "cannot enter the hub checkout: ${REPO_ROOT}"
 
 CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
-# ---------------------------------------------------------------------------
-# Pin (versions.env is the single source of truth)
-# ---------------------------------------------------------------------------
+# Pin: versions.env is the single source of truth
 gitleaks_load_pin() {
   # shellcheck source=01-core/load-versions-env.sh
   source "${CORE_DIR}/load-versions-env.sh" \
     || err "load-versions-env.sh not available; cannot resolve the gitleaks pin"
   load_versions_env "${CORE_DIR}/versions.env"
-  # NOTE for test authors: the pin is READ FROM versions.env, so extract it
-  # from there (sed -n 's/^GITLEAKS_VERSION=//p' 01-core/versions.env), never
-  # by grepping this file for a literal.
+  # Tests read the pin from versions.env; this file carries no literal to grep.
   GITLEAKS_PIN="${GITLEAKS_VERSION:-}"
   [ -n "${GITLEAKS_PIN}" ] \
     || err "GITLEAKS_VERSION is not set (${CORE_DIR}/versions.env not found?)."
@@ -100,9 +57,7 @@ gitleaks_asset_and_sha() {
 
 gitleaks_load_pin
 
-# ---------------------------------------------------------------------------
-# gitleaks bootstrap (PATH copy preferred; else pinned, SHA-verified download)
-# ---------------------------------------------------------------------------
+# gitleaks bootstrap: PATH copy preferred, else a pinned, SHA-verified download
 GITLEAKS=""
 if command -v gitleaks >/dev/null 2>&1; then
   GITLEAKS="$(command -v gitleaks)"
@@ -126,12 +81,7 @@ else
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# Rule config: the scanned tree's own .gitleaks.toml wins. A consumer repo has
-# its own allowlist entries (each with a written justification) and the hub's
-# say nothing about ITS false positives — grading a consumer tree by the hub
-# config is the same category of error as scanning the wrong tree.
-# ---------------------------------------------------------------------------
+# Rule config: the scanned tree's own .gitleaks.toml wins; the hub's allowlist knows nothing of a consumer's.
 if [ -n "${CONFIG_ARG}" ]; then
   CONFIG="${CONFIG_ARG}"
 elif [ -f "${SCAN_CONFIG_DIR}/.gitleaks.toml" ]; then
@@ -140,24 +90,14 @@ else
   CONFIG="${REPO_ROOT}/.gitleaks.toml"
 fi
 
-# ---------------------------------------------------------------------------
-# Tree scan — ENFORCING. The initial run on 2026-08-10 was clean, so there is
-# no adoption ramp to pay: any finding is either a real leak (rotate + purge)
-# or a false positive (add a .gitleaksignore entry WITH a comment).
-# ---------------------------------------------------------------------------
+# Tree scan, enforcing: a finding is a leak to rotate or a .gitleaksignore entry with a comment.
 echo "== secret scan: gitleaks ${GITLEAKS_PIN} (working tree) =="
 echo "   scan root: ${SCAN_ROOT}"
 echo "   config:    ${CONFIG}"
-# --verbose PRINTS the findings; without it "leaks found: N" names none.
-# --redact keeps the values out of the log. Source AND config are spelled the
-# same way on purpose: gitleaks matches allowlist paths, and skips its own
-# config, only when they are.
-# docs/code-quality-tooling.md#the-secret-scan-scans-from-inside-the-tree
+# Source and config spelled alike: only then does gitleaks match allowlist paths. docs/code-quality-tooling.md#the-secret-scan-scans-from-inside-the-tree
 _CONFIG_ARG="${CONFIG}"
 [ "${CONFIG}" = "${SCAN_CONFIG_DIR}/.gitleaks.toml" ] && _CONFIG_ARG=".gitleaks.toml"
-# A single FILE is a legal scan target: the gate walks a scope one path at a
-# time and a top-level path can be a file. gitleaks still has to be entered
-# from a DIRECTORY, so cd to the parent and name the file as the source.
+# gitleaks must be entered from a directory, so a file target scans from its parent.
 _SCAN_DIR="${SCAN_ROOT}"
 _SCAN_SRC="."
 if [ -f "${SCAN_ROOT}" ]; then

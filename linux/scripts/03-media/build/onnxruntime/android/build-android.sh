@@ -12,12 +12,7 @@ case "${TARGET_ARCH}" in
     ;;
 esac
 
-# C3 (2026-08-24): NO silent version fallback. The literal that used to sit
-# here masked a broken ARG-forward and was actively wrong -- Dockerfile.android
-# never declared this build-arg, so BuildKit dropped it and this script built
-# v1.28.0 while versions.env pinned v1.29.0. An explicit `$1` still wins (manual
-# invocation), otherwise the forwarded value is REQUIRED and a missing one is a
-# loud failure instead of last release.
+# No default version: a dropped build-arg must fail loudly, not build a stale release.
 ORT_VERSION="${1:-${ONNXRUNTIME_VERSION:?ONNXRUNTIME_VERSION not forwarded into the android stage (see Dockerfile.android ARG/ENV) and no version given as $1}}"
 INSTALL_DIR="${ONNXRUNTIME_ROOT_ANDROID:-/opt/android/onnxruntime}"
 
@@ -37,14 +32,7 @@ android_apply_patch \
 : "${ANDROID_HOME:?ANDROID_HOME must be set}"
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
 
-# --no_telemetry, same as the native build (30-build-native.sh:63). Upstream
-# compiles Microsoft's 1DS telemetry SDK in unless this is passed, and the
-# android lane never passed it -- so the shipped amd64/arm64 Android ONNX
-# Runtime carried it. Found 2026-08-27 in the shipped payload.
-#
-# Keep every comment ABOVE this command. A comment placed after a `\`
-# continuation ends the logical line, so build.sh would run with NO arguments
-# at all -- which is exactly what broke the 2026-08-28 android stage.
+# --no_telemetry keeps Microsoft's 1DS SDK out; a comment between the `\` lines would cut the arguments off.
 ./build.sh \
   --no_telemetry \
   --allow_running_as_root \
@@ -64,15 +52,8 @@ android_apply_patch \
   --build
 
 mkdir -p "${INSTALL_DIR}/lib" "${INSTALL_DIR}/include" "${INSTALL_DIR}/java"
-# The headers always exist in the source tree — a failed copy here is a real
-# error, not an optional step.
 cp -r include/* "${INSTALL_DIR}/include/"
-# The build tree contains MULTIPLE copies of each .so/.aar (top level, java
-# build dirs, native-libs). A single `xargs cp -t` fails on the duplicate
-# basenames ("will not overwrite just-created", exit 123) — historically masked
-# by 2>/dev/null || true with first-copy-wins semantics. Keep that outcome
-# explicitly: copy the first occurrence of each basename, skip the rest, and
-# rely on the verification below for the real guarantee.
+# The build tree holds several copies of each .so/.aar, so keep the first of each basename.
 while IFS= read -r -d '' _artifact; do
   _base="$(basename "${_artifact}")"
   [ -e "${INSTALL_DIR}/lib/${_base}" ] || cp "${_artifact}" "${INSTALL_DIR}/lib/"
@@ -82,8 +63,7 @@ while IFS= read -r -d '' _artifact; do
   [ -e "${INSTALL_DIR}/java/${_base}" ] || cp "${_artifact}" "${INSTALL_DIR}/java/"
 done < <(find build/Android/Release -name "*.aar" -print0)
 
-# Verify the install actually landed before deleting the build tree — these
-# copies failing silently used to produce an "installed" stage with no library.
+# The copy loops succeed on zero matches, so prove the install landed before the tree goes.
 ls "${INSTALL_DIR}/lib/"libonnxruntime*.so >/dev/null 2>&1 \
   || { echo "ERROR: no libonnxruntime*.so under ${INSTALL_DIR}/lib after build (--build_shared_lib output missing)" >&2; exit 1; }
 ls "${INSTALL_DIR}/java/"*.aar >/dev/null 2>&1 \

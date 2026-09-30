@@ -1004,6 +1004,25 @@ Two things follow, both proven on 2026-08-27:
 
 Drop `TVM_COMMIT` back to empty the moment a TVM release ships the guards.
 
+### TVM cross wheels: what must not be simplified away
+
+`import tvm` needs both wheels: its first statement imports `tvm_ffi`, and the app
+venv installs the tvm family `--no-deps`, so a lone `apache-tvm` wheel ships an
+unimportable package. `USE_LLVM=ON` works cross only because `tvm.sh` rewrites
+FindLLVM's fallback to link the imported `libLLVM` dylib from `/opt/llvm-cross/<triplet>`
+instead of executing a foreign llvm-config, and that soname resolves at runtime
+through `/etc/ld.so.conf.d/000-llvm-target.conf`; dropping either half breaks the
+configure or the import. `apache-tvm-ffi` builds its Cython core `WITH_SOABI`, so
+it has the IREE/LiteRT host-SOABI problem, and `tvm-python.sh` withdraws staged
+wheels that do not carry the target suffix.
+
+The wheels reach `/opt/venv` only through `Dockerfile.torch`'s `/opt/wheels`
+mount, but the native `libtvm*.so` that `Dockerfile.media` copies to
+`/usr/local/lib` is dropped at the package boundary: `copy-media-payloads.sh`
+copies an explicit allowlist with no libtvm entry. If the wheel turns out not to
+bundle its own runtime, fix that allowlist; a COPY glob in `Dockerfile.torch`
+would fail every build while the file is absent.
+
 ### Operational env knobs (not versions.env)
 
 Runtime/orchestration switches that are **not** pins or feature toggles. The

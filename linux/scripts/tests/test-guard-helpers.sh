@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Tests for 01-core/guard-helpers.sh — first_match / probe / source_vendor /
-# csv_each. Pure unit tests: no network, no apt, temp dirs/files only.
+# 01-core/guard-helpers.sh (first_match, probe, source_vendor, csv_each) and common.sh's run_priv.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -29,10 +28,7 @@ _none="$(first_match "${_tmp}/fm" -name 'nope.xyz')"
 t_assert_eq "${_none}" ""
 
 t_case "first_match on a MISSING dir returns empty without tripping set -e"
-# Capture $? directly. A bare `( ... )` throws its status away (this file sets -u,
-# not -e), but wrapping it in `if` is no fix either: an if-condition SUPPRESSES
-# errexit inside the subshell, so the very abort under test cannot happen.
-# Backlog XM.
+# $? captured directly: an `if` around the subshell would suppress the very errexit under test.
 ( set -e; r="$(first_match "${_tmp}/does-not-exist" -name '*')"; [ -z "$r" ] )
 _fm_status=$?
 t_assert_eq "0" "${_fm_status}" "a missing dir must not abort a set -e caller"
@@ -51,8 +47,7 @@ t_assert_eq "${_out}" ""
 t_case "probe returns the real status (for use in a condition)"
 if probe sh -c 'exit 3'; then t_assert_eq "reached" "unreachable"; else t_assert_ok true; fi
 
-# ── source_vendor ─────────────────────────────────────────────────────────────
-# A vendored file that references an unset var — would abort a `set -u` caller.
+# source_vendor: a vendored file reading an unset var would abort a `set -u` caller.
 cat > "${_tmp}/vendor.sh" <<'EOF'
 VENDOR_SAW="${SOME_DEFINITELY_UNSET_VAR}unset-ok"
 EOF
@@ -93,17 +88,7 @@ t_assert_eq "${_CSV_SEEN}" "none"
 t_case "csv_each does NOT leak IFS to the caller"
 IFS_before="$IFS"; csv_each "x,y" _csv_collect; t_assert_eq "$IFS" "${IFS_before}"
 
-# ── run_priv (lives in 01-core/common.sh, where ${SUDO} does) ────────────────
-# Same named-idiom family as the four helpers above: it replaces the inline
-# SUDO-variable command prefix. That prefix is only safe when the next token is
-# a real command — put a sudo-only flag straight after it and, with SUDO empty
-# (already root: every foreign-arch cross container), the shell takes the FLAG
-# as the command and exits 127. That shipped as bug 7e6d627 and hid behind the
-# sdk cache until a no-cache run; test-invocation-lints.sh bans the spelling
-# tree-wide and run_priv is what it migrates to. Spelled out in words rather
-# than as the literal idiom on purpose: tests/ is exempt from that lint (these
-# suites quote patterns as fixtures), so a verbatim copy here would be a banned
-# form sitting in the one place nothing checks.
+# run_priv: an empty SUDO prefix runs a sudo-only flag as the command; not spelled here, tests/ is lint-exempt.
 mkdir -p "${_tmp}/bin"
 cat > "${_tmp}/bin/sudo" <<'FAKE'
 #!/usr/bin/env bash
@@ -111,9 +96,7 @@ printf 'SUDO-ARGV:%s\n' "$*"
 FAKE
 chmod +x "${_tmp}/bin/sudo"
 
-# common.sh is sourced in a SUBSHELL per call: it loads versions.env and sets a
-# pile of globals this suite must not inherit (the pattern test-arch-mapping.sh
-# uses for cross_wheel_platform_tag).
+# common.sh is sourced in a subshell per call: it sets globals this suite must not inherit.
 _run_priv() {  # _run_priv <SUDO-value> <run_priv args...>
   local _sudo="$1"; shift
   (

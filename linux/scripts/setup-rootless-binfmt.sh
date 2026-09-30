@@ -1,21 +1,13 @@
 #!/usr/bin/env bash
 # Register QEMU user-mode emulators for rootless containerd + BuildKit — NO sudo.
-# `tonistiigi/binfmt --install` does NOT work here: it registers inside a throwaway
-# namespace that --rm destroys. buildkitd shares containerd's rootlesskit namespace,
-# so registering QEMU there fixes both run and build.
-# Flags "POCF": P preserves argv[0]; F opens the interpreter fd at registration so
-# it is inherited into nested namespaces where the qemu path is not mounted.
+# `tonistiigi/binfmt --install` fails here: it registers in a throwaway namespace --rm destroys.
+# Registering in containerd's rootlesskit namespace, which buildkitd shares, fixes run and build.
+# Flags POCF: P keeps argv[0]; F opens the interpreter at registration so nested namespaces inherit it.
 # Registration dies with the namespace (reboot/containerd restart) — re-run or use --install-service.
 set -euo pipefail
 IFS=$'\n\t'
 
-# DEFAULT = every chain target EXCEPT this host's own arch. Registering a handler
-# for the native arch is actively wrong (binfmt_misc is consulted for native ELF
-# too), and the old literal "arm64,riscv64" also left amd64 unregistered on an
-# arm64 host. Orchestrated callers always pass --arches; this is the hand-run
-# path. docs/linux-cross-builds.md#non-amd64-build-hosts
-# This host's normalized arch ("" when unrecognized). One owner for the answer
-# that BOTH the default arch set and the emulator-image platform depend on.
+# Default arches exclude the host's own: binfmt_misc is consulted for native ELF too. See docs/linux-cross-builds.md#non-amd64-build-hosts
 _binfmt_host_arch() {
   case "$(uname -m)" in
     x86_64|amd64)   printf '%s' amd64 ;;
@@ -62,8 +54,7 @@ elf_magic_for() {
   case "$1" in
     arm64)   printf '\\x7f\\x45\\x4c\\x46\\x02\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\xb7\\x00' ;;
     riscv64) printf '\\x7f\\x45\\x4c\\x46\\x02\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\xf3\\x00' ;;
-    # x86-64 is e_machine 0x3e. Needed when the BUILD HOST is not amd64 -- the
-    # arch that used to be "the host" and therefore never needed emulating.
+    # x86-64 (e_machine 0x3e), needed when the build host is not amd64.
     amd64)   printf '\\x7f\\x45\\x4c\\x46\\x02\\x01\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x02\\x00\\x3e\\x00' ;;
     *) return 1 ;;
   esac
@@ -75,9 +66,7 @@ command -v containerd-rootless-setuptool.sh >/dev/null 2>&1 || {
   exit 1
 }
 
-# `-x` passes on a TRUNCATED extract too (interrupted tar, full disk), and the
-# retry then treats the ruin as present. The emulators are amd64 binaries on an
-# amd64 host, so just run one. docs/failure-modes.md
+# `-x` also passes a truncated extract, so run the binary. See docs/failure-modes.md
 _qemu_usable() {
   [ -x "$1" ] || return 1
   "$1" --version >/dev/null 2>&1
@@ -95,39 +84,24 @@ extract_emulators() {
     echo "[extract] emulators already present in ${QDIR} (use --force to refresh)"
     return 0
   fi
-  # THE EMULATOR IMAGE MUST MATCH THE HOST, NOT A FROZEN amd64: a qemu-user
-  # binary is a HOST-arch executable interpreting FOREIGN code. A hardcoded
-  # linux/amd64 was wrong twice over on arm64 — x86-64 ELF that cannot exec,
-  # and no qemu-x86_64 in that image at all.
-  # docs/linux-cross-builds.md#non-amd64-build-hosts
+  # A qemu-user binary runs on the host, so the image platform is the host's. See docs/linux-cross-builds.md#non-amd64-build-hosts
   local host_platform; host_platform="linux/$(_binfmt_host_arch)"
   echo "[extract] pulling + unpacking ${BINFMT_IMAGE} (${host_platform}) to ${QDIR}"
-  # NOT `local tmp`: this trap fires at SCRIPT EXIT, by which point a function
-  # local is out of scope and `set -u` kills the trap with "tmp: unbound
-  # variable" — masking whatever the real failure was.
+  # Global: the EXIT trap runs after this local scope ends, and set -u would kill it.
   _BINFMT_TMP="$(mktemp -d)"
   # Leak-on-error guard: host /tmp accumulates otherwise (EXIT-scoped trap).
   trap 'rm -rf "${_BINFMT_TMP:-}"' EXIT
   local tmp="${_BINFMT_TMP}"
-  # image save only reads the LOCAL store — pull first or a fresh host dies with
-  # 'image not found'. The pull is NOT guarded by `image inspect` any more:
-  # inspect answers "is this REFERENCE present", not "is this PLATFORM present",
-  # and BINFMT_IMAGE is a multi-arch index. A host that had already pulled one
-  # platform therefore skipped the pull and then died in `image save` with
-  # `content digest sha256:…: not found` — a message that names a blob and
-  # nothing else. Pulling per-platform is idempotent and cheap (~30 MB, and a
-  # no-op once the content is local), so just always ask.
+  # Always pull: image save reads only the local store, and inspect cannot tell which platforms are present.
   "${NERDCTL}" pull --platform "${host_platform}" "${BINFMT_IMAGE}" || {
-    # Offline host with the content already local: let `image save` be the real
-    # gate rather than failing here on a network error that may not matter.
+    # Offline with the content already local: let `image save` be the real gate.
     echo "[extract] WARN: pull of ${BINFMT_IMAGE} (${host_platform}) failed; trying the local store" >&2
   }
   "${NERDCTL}" image save --platform "${host_platform}" "${BINFMT_IMAGE}" -o "${tmp}/img.tar"
   mkdir -p "${tmp}/img"; tar -xf "${tmp}/img.tar" -C "${tmp}/img"
   local blob
   for blob in "${tmp}"/img/blobs/sha256/*; do
-    # grep (not -q) drains the listing fully — `grep -q` exits at first match,
-    # tar dies of SIGPIPE (141) and pipefail turns the match into a skip.
+    # Not grep -q: its early exit SIGPIPEs tar, and pipefail turns the match into a skip.
     tar -tf "${blob}" 2>/dev/null | grep 'usr/bin/qemu-' >/dev/null || continue
     # extract every qemu-* plus the binfmt helper, flattening usr/bin/
     tar -xf "${blob}" -C "${QDIR}" --strip-components=2 --wildcards \
@@ -146,9 +120,7 @@ extract_emulators() {
   ls -la "${QDIR}"
 }
 
-# Wait for the rootlesskit namespace: After= orders only unit start, not the
-# namespace unshare. On fresh boot nsenter dies with 'No such file' for child_pid.
-# See AGENTS.md § Prerequisites.
+# After= orders unit start, not the namespace unshare, so poll for it. See AGENTS.md § Prerequisites
 wait_for_namespace() {
   local pidfile="/run/user/$(id -u)/containerd-rootless/child_pid"
   local waited=0

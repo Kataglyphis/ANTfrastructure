@@ -1,8 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Smoke §25 (G1) and Test-OrtProvenanceTree (G6): the ORT census over synthetic PE trees, one verdict per case.
-# NOT covered: a real image or ORT build; the fingerprint strings are the shapes measured on 2026-09-23.
+
+# The ORT census (smoke §25, G6) over synthetic PE trees, one verdict per case; no real image or ORT build.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProvenance.Common.psm1') -Force -DisableNameChecking
 
@@ -13,8 +13,7 @@ $script:ForeignSrc = 'C:\__w\1\s\onnxruntime\core\session\inference_session.cc'
 $script:OxidantRun = 'invalid Once stateC:\temp\onnx-src\onnxruntime\core\C:\ws\third_party\OxidANT\crates\inferenceresourcesmodelsyolov10m.onnx'
 $script:SmokeScript = 'windows\scripts\build\Test-Container.ps1'
 
-# The PE fixtures (New-OrtTestPe, New-OrtTestExportTable) live in TestHarness.psm1 since 2026-09-25:
-# the cross-bundle closure suite builds import tables with them too.
+# The PE fixtures live in TestHarness.psm1, shared with the cross-bundle closure suite.
 
 function New-OrtTestWheel {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][hashtable]$Member)
@@ -71,9 +70,7 @@ function Get-OrtTestFatal {
     return @($Census.Findings | Where-Object { $_.Fatal -and (-not $Verdict -or $_.Verdict -eq $Verdict) })
 }
 
-# A G6 tree from a layout, then its census: 'host' = an exe, 'import' = a PE importing onnxruntime.dll,
-# 'names' = a dlopen-only consumer naming the chain directory (oxidant.dll), 'chain' = the chain copy,
-# 'exports' = an ORT under another name with no fingerprint, 'forwards' = a DLL forwarding OrtGetApiBase.
+# Layout keys: host exe, import (onnxruntime.dll), names (dlopen-only), chain, exports (renamed ORT), forwards (OrtGetApiBase).
 function Invoke-OrtLoaderTree {
     param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$Chain, [Parameter(Mandatory)][System.Collections.IDictionary]$Layout)
     foreach ($rel in $Layout.Keys) {

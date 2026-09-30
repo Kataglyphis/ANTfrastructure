@@ -1,19 +1,5 @@
 #requires -Version 7.0
-# #144 (2026-08-21): the library modules' ENTRY POINTS had zero tests — suites
-# covered leaf helpers only, so the composed paths (the part consumers actually
-# call) were unexercised. PATH-fake pattern as in the GitCloneRetry/NinjaRetry
-# suites: a .bat on PATH logs its argv and behaves per env knobs.
-#
-# Covered: Invoke-WasmOpt, Get-ReusableBuildContainer, Wait-ContainerExit,
-# Invoke-SlangShaderCompile (fail-fast contracts), Invoke-VulkanValidationRun
-# (fail-fast contracts).
-# NOT covered, deliberately (documented gaps, not fake-greens):
-#   Invoke-BuildCodeQL — resolves codeql.exe at a fixed workspace path and
-#   DOWNLOADS the CLI when absent; faking needs a real PE there (a renamed
-#   .bat is not executable).
-#   Invoke-CmakeConfigureAndBuild — needs a full WindowsBuild.Common context
-#   session and its tail semantics are consumer-lane territory; belongs in a
-#   dedicated suite alongside real rust-lane CI coverage.
+# The modules' entry points via PATH fakes; Invoke-BuildCodeQL needs a real codeql.exe PE, so it stays untested.
 
 $modDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
 Import-Module (Join-Path $modDir 'WindowsWasmOpt.Common.psm1') -Force -DisableNameChecking
@@ -79,11 +65,7 @@ Describe 'Invoke-WasmOpt (orchestrator)' {
 
 Describe 'Get-ReusableBuildContainer (orchestrator)' {
 
-    # FUNCTION fake, not a .bat: the module passes '{{.State.Running}}|{{.Image}}'
-    # as one argument, and a .bat goes through cmd.exe, which eats the bare `|`
-    # as a pipe (a real docker.EXE receives the raw command line - .bat fakes
-    # cannot). `& $DockerExe` resolves function names too, and the fake sets
-    # $global:LASTEXITCODE explicitly for the module's native-style checks.
+    # A function fake: a .bat routes '{{.State.Running}}|{{.Image}}' through cmd.exe, which eats the `|`.
     $newFakeDocker = {
         Set-Item function:global:WbtDockerFake {
             $joined = $args -join ' '
@@ -151,13 +133,7 @@ Describe 'Get-ReusableBuildContainer (orchestrator)' {
 
 Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
 
-    # FUNCTION fake for the same reason as Get-ReusableBuildContainer's above:
-    # '{{.State.Status}}' is one argument and a .bat would route it through
-    # cmd.exe. WBT_W_STATUS is a comma-separated SCRIPT of answers, one per
-    # probe (the last one repeats), so a wait can be driven through several
-    # states in one test; 'ERR:<text>' makes that probe exit 1 with <text> on
-    # stderr, which is how docker reports both a missing container and a dead
-    # daemon.
+    # WBT_W_STATUS is a comma-separated script of answers, the last repeating; 'ERR:<text>' exits 1 with <text> on stderr.
     $newFakeDocker = {
         Set-Item function:global:WbtWaitDockerFake {
             $joined = $args -join ' '
@@ -171,8 +147,7 @@ Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
                     Write-Error $answer.Substring(4) -ErrorAction Continue
                     return
                 }
-                # 'NOISY:<answer>' = exit 0 with a stderr notice FIRST, the way
-                # docker prints client warnings before its stdout value.
+                # 'NOISY:<answer>' prints a stderr notice first, as docker does with client warnings.
                 if ($answer -like 'NOISY:*') {
                     Write-Error 'WARNING: DOCKER_HOST env var is deprecated' -ErrorAction Continue
                     $global:LASTEXITCODE = 0
@@ -200,8 +175,7 @@ Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
     }
     $removeFakeDocker = { Remove-Item function:global:WbtWaitDockerFake }
 
-    # Installs the fake and the answer script, and always removes the fake, so
-    # a failing case cannot leak its state into the next one.
+    # Always removes the fake, so a failing case cannot leak state into the next.
     $withFake = {
         param([string]$Status, [string]$ExitCode, [scriptblock]$Body)
         & $newFakeDocker
@@ -282,8 +256,7 @@ Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
     }
 
     It 'a stderr notice on a ZERO-exit inspect is never the value (status nor exit code)' {
-        # A merged stream once made the notice the "value": a clean container
-        # read as a non-numeric exit code, a running one as finished.
+        # A merged stream would make the stderr notice the value.
         & $withFake 'NOISY:exited' 'NOISY:0' {
             Assert-Equal 0 (Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w')
         }
@@ -307,11 +280,7 @@ Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
 
 Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
 
-    # The wiring of Wait-ContainerExit into the orchestrator. The WAITING is
-    # covered above; what is pinned here is that the container's verdict wins,
-    # that the happy path is untouched, and that the run stays off both --rm
-    # (which would delete the exit code) and the reusable container's name
-    # (which would delete the build tree that makes reuse worth doing).
+    # The container's verdict wins; the run avoids --rm (loses the exit code) and the reusable name (loses the tree).
     $newFakeDocker = {
         Set-Item function:global:WbtBindDockerFake {
             $joined = $args -join ' '
@@ -327,14 +296,12 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
                 return $env:WBT_B_STATUS
             }
             if ($joined -match 'State\.ExitCode') { $global:LASTEXITCODE = 0; return $env:WBT_B_EXIT }
-            # A bare 'inspect <name>' is Remove-BuildContainerSafe's survivor
-            # probe; WBT_B_SURVIVE=1 fakes the wcifs lock (the survivor lives).
+            # A bare 'inspect <name>' is the survivor probe; WBT_B_SURVIVE=1 fakes the wcifs lock.
             if ($args[0] -eq 'inspect') {
                 $global:LASTEXITCODE = if ($env:WBT_B_SURVIVE -eq '1') { 0 } else { 1 }
                 return
             }
-            # --rm marks Test-ContainerBindMount's probe run, which is allowed
-            # to use it (it inspects nothing afterwards).
+            # --rm marks the bind-mount probe run, which inspects nothing afterwards.
             if ($args[0] -eq 'run' -and $joined -match '--rm') { $global:LASTEXITCODE = 0; return }
             # The build's own stdout, which must reach the host and never the result.
             if ($args[0] -eq 'run') { 'BUILD-STDOUT'; $global:LASTEXITCODE = [int]$env:WBT_B_RUN_EXIT; return }
@@ -428,9 +395,7 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
     }
 
     It 'reports the CLIENT code when docker run never created a container' {
-        # A bad image reference or an unmountable source fails before any
-        # container exists; there is nothing to wait on and the client's exit
-        # code is the whole story, so the old message stands.
+        # A failure before any container exists leaves nothing to wait on; the client's exit code is the whole story.
         & $build '125' 'MISSING' '0' { param($log, $dir)
             Assert-Throws { Invoke-ContainerBuild @common -RepoRoot $dir } `
                 'a run that never started must not be reported as a vanished container' `
@@ -439,8 +404,7 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
     }
 
     It 'falls back to a UNIQUE name when the pre-removal cannot free it (wcifs lock)' {
-        # A held name makes 'docker run --name' fail 125 and the wait would
-        # read the STALE exit code: a build that never ran, reported green.
+        # A held name fails 'docker run --name' with 125, and the wait would read a stale exit code.
         & $build '0' 'exited' '0' { param($log, $dir)
             $r = Invoke-WithEnv @{ WBT_B_SURVIVE = '1' } {
                 Invoke-ContainerBuild @common -RepoRoot $dir 3>$null
@@ -454,8 +418,7 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
     }
 
     It 'refuses to touch a leftover that is still RUNNING under its name' {
-        # Force-removing it would kill a concurrent build of this tree, or the
-        # evidence a timed-out wait deliberately kept.
+        # Force-removing it would kill a concurrent build of this tree, or evidence a timed-out wait kept.
         & $build '0' 'running' '0' { param($log, $dir)
             Assert-Throws { Invoke-ContainerBuild @common -RepoRoot $dir } `
                 'a live container must not be force-removed' -MessagePattern 'already running'

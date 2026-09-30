@@ -1,18 +1,9 @@
 #!/usr/bin/env bash
-# gate-tree.sh — a throwaway repo root for one gate under test. A gate derives its
-# scan root from its own path, so a fixture has to give it a tree of its own or it
-# reads the real repo. Source it and plant subjects under <tree>/linux/scripts.
-# docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional
+# gate-tree.sh — throwaway trees for gate tests, since a gate finds its root from its own path. See docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional
 [ -n "${_GATE_TREE_SH_LOADED:-}" ] && return 0
 _GATE_TREE_SH_LOADED=1
 
-# gate_tree <module.py>... -> tree path; every module named is copied in beside the gate.
-# A plain directory is enough. It was briefly a git checkout: the ratchet gates
-# defaulted --root to their own ROOT, which reached gate_scope.resolve_root's
-# git-toplevel check on every bare run and killed a mktemp -d fixture at "not a
-# git checkout". The gates now default --root to None, which resolve_root has
-# always documented as "the gate's own repo" and exempts from that check, so the
-# init here would be dead weight with a comment claiming it was load-bearing.
+# gate_tree <module.py>... -> a plain tree with the modules beside the gate (no --root, so no git needed).
 gate_tree() {
   local dir
   dir="$(mktemp -d)"
@@ -21,8 +12,7 @@ gate_tree() {
   printf '%s' "${dir}"
 }
 
-# gate_tree_subject <allow-name> <subject content> <allow content> <module.py>...
-# -> tree path with subject.sh planted, and <allow-name> only when non-empty.
+# gate_tree_subject <allow-name> <subject> <allow> <module.py>... -> tree with subject.sh, plus the allow file if non-empty.
 gate_tree_subject() {
   local allow_name="$1" subject="$2" allow="$3" dir
   shift 3
@@ -32,25 +22,14 @@ gate_tree_subject() {
   printf '%s' "${dir}"
 }
 
-# gate_tree_here <parent dir> <gate path> <rel dest> -> tree path; the gate
-# installed executable at the depth it resolves its own repo root from. For the
-# .sh gates that live outside linux/scripts/ and cannot use gate_tree.
+# gate_tree_here <parent> <gate> <rel dest> -> tree with a .sh gate installed at the depth it finds its root from.
 gate_tree_here() {
   local dir; dir="$(mktemp -d "$1/tree.XXXXXX")"
   install -D -m 0755 "$2" "${dir}/$3"
   printf '%s' "${dir}"
 }
 
-# gate_tree_git <subject content> [rel] [allow-name] [allow content] -> tree path.
-#
-# The --root arm needs a fixture the other builders here cannot give it. Rule 1
-# of the scan-root contract refuses a --root that is not a git TOPLEVEL, and
-# rule 3 reads the scope from `git ls-files` -- so a plain `mktemp -d` tree, the
-# shape every fixture above uses, cannot exercise --root at all: the gate exits 2
-# before grading anything. This one is a real checkout with the subject
-# COMMITTED, and the subject deliberately sits at scripts/, NOT linux/scripts/,
-# so a gate that ignored --root and graded its own repo could not accidentally
-# find it there either.
+# gate_tree_git <subject> [rel] [allow-name] [allow] -> committed checkout for --root; scripts/, never linux/scripts/.
 gate_tree_git() {
   local content="$1" rel="${2:-scripts/subject.sh}" allow_name="${3-}" allow="${4-}" dir
   dir="$(mktemp -d)"
@@ -62,15 +41,7 @@ gate_tree_git() {
   printf '%s' "${dir}"
 }
 
-# gate_root_arm <py> <gate> <subject> [<allow-name> <row> <needle>]
-#
-# The two assertions every --root case makes, written once: the gate must NAME
-# the fixture's subject (which this repo does not have), and a row planted at
-# <root>/<allow-name> must come back in the output (which happens only if the
-# freeze file followed the root). A gate with no freeze file passes three
-# arguments. Every other fixture here plants a tree AROUND the gate, so no other
-# case reaches --root -- the one argument a consumer depends on.
-# docs/code-quality-tooling.md#the-scan-root-contract
+# gate_root_arm <py> <gate> <subject> [<allow-name> <row> <needle>]: --root grades that tree and its freeze file. See docs/code-quality-tooling.md#the-scan-root-contract
 gate_root_arm() {
   local py="$1" gate="$2" subject="$3" allow_name="${4-}" row="${5-}" needle="${6-}" fx
   fx="$(gate_tree_git "${subject}")"
@@ -83,14 +54,7 @@ gate_root_arm() {
   fi
 }
 
-# gate_root_pair_arm <py> <gate> <content> <rel-a> <rel-b> <allow-name>
-#
-# The --root arm for the two DUPLICATION gates, which need a PAIR rather than one
-# subject: plant the same text at two paths in a throwaway checkout, prove the
-# gate finds the pair THERE, then freeze it at the measured budget in
-# <root>/<allow-name> and prove that silences it. The budget is read back from
-# the gate's own report, never written as a round number: both gates fail a
-# budget sitting above the measurement, which is the whole point of a ratchet.
+# gate_root_pair_arm <py> <gate> <content> <rel-a> <rel-b> <allow-name>: a --root pair, frozen at its measured budget.
 gate_root_pair_arm() {
   local py="$1" gate="$2" content="$3" a="$4" b="$5" allow_name="$6" fx n
   fx="$(gate_tree_git "${content}" "${a}")"
@@ -108,10 +72,7 @@ gate_root_pair_arm() {
   rm -rf "${fx}"
 }
 
-# gate_stub_recorder <path> — a stand-in for a python gate driven by a git hook:
-# appends the argv it was handed, one invocation per line, to $HOOK_TEST_ARGV and
-# exits with $HOOK_TEST_GATE_RC, or $HOOK_TEST_STALE_RC when handed --stale-check.
-# The recorded argv is the only evidence of what a hook's own notices describe.
+# gate_stub_recorder <path>: a gate stub logging argv to $HOOK_TEST_ARGV, exiting $HOOK_TEST_GATE_RC or _STALE_RC.
 gate_stub_recorder() {
   cat > "$1" <<'STUB'
 import os

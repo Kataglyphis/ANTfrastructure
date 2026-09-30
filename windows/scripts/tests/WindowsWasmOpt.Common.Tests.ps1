@@ -1,10 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Covers the pure parts of WindowsWasmOpt.Common: pin resolution out of
-# versions.env (the single source shared with linux/scripts/lib/wasm-opt.sh) and
-# the wasm-opt argument construction. The download itself is not exercised here.
+# The pin comes from versions.env, the single source shared with linux/scripts/lib/wasm-opt.sh.
 
 Describe 'WindowsWasmOpt.Common' {
   BeforeAll {

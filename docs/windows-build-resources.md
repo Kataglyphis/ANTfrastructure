@@ -403,6 +403,15 @@ after a decision history worth keeping:
   whenever `CUDA_ARCHITECTURES` names 120 or 121; C/C++ keep the launcher. Drop it when a
   released sccache fixes #2862. OpenCV passes `-real` archs only and is unaffected.
 
+**The disk level (L0) is off**: Windows BuildKit cache mounts lose writes into a directory
+an earlier RUN populated, so `SCCACHE_MULTILEVEL_CHAIN` stays unset and the WebDAV remote is
+the only tier; re-enable it with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav` only after
+`Test-SccacheWrite.ps1` and a media build with zero genai write errors say so. The `C:\sccache` mounts use
+`sharing=shared` because `locked` made the concurrent litert and tvm solves take turns;
+with L0 on, that means two sccache servers on one directory, which has never been measured
+here. A damaged L0 tree fails path-dependently with `os error 3`: point `SCCACHE_DIR` at a
+fresh subdirectory (`C:\sccache\v3`) instead of debugging it.
+
 ### What the published image carries
 
 **The build host's sccache settings are ARGs, never ENV (2026-09-23).** Until then

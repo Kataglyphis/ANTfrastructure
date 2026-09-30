@@ -1,11 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Clear-UnreachableSccacheEndpoint and the two launcher-wiring sites that call it through
-# Enable-SccacheCompilerWrapper. Real sockets on 127.0.0.1: a port bound but never
-# listening (refused for as long as the test holds it) and a listening one.
-# docs/windows-build-resources.md#the-consumer-side-probe
+
+# Real loopback sockets, refused and listening: see docs/windows-build-resources.md#the-consumer-side-probe
 
 $modDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
 # Unforced, like WindowsMediaRuntime.Common.Tests.ps1: a -Force reload breaks Shared's guarded import.
@@ -140,8 +137,7 @@ Describe 'Clear-UnreachableSccacheEndpoint' {
         }
     }
 
-    # Windows reports a refused loopback connect after ~2 s, the default bound, so only a
-    # smaller -TimeoutMs tells a probe that honours it from one that waits for the refusal.
+    # Windows refuses a loopback connect after ~2 s, the default bound, so only a smaller -TimeoutMs proves it is honoured.
     It 'honours -TimeoutMs: an unreachable endpoint is removed at the bound, not when Windows gives up' {
         Invoke-WithClosedEndpoint -Body {
             $ms = Measure-ProbeMs { Assert-Equal $true (Clear-UnreachableSccacheEndpoint -TimeoutMs 200 -WarningAction SilentlyContinue) }

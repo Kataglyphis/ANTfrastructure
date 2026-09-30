@@ -6,8 +6,7 @@ if [ -f /opt/scripts/core/platform.sh ]; then
   source /opt/scripts/core/platform.sh
 fi
 
-# download_and_extract (retry-capable, temp-file hygiene) lives in
-# 01-core/downloads.sh; load it directly for the prebuilt-tarball fallback.
+# The prebuilt-tarball fallback needs download_and_extract from 01-core/downloads.sh.
 if ! command -v download_and_extract >/dev/null 2>&1; then
   for _gst_dl in \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../01-core/downloads.sh" \
@@ -28,7 +27,6 @@ fi
 : "${GSTREAMER_VERSION:?GSTREAMER_VERSION must be set}"
 : "${GSTREAMER_ROOT_ANDROID:=/opt/android/gstreamer}"
 
-# If the repository contains a build script to cross-compile GStreamer for Android, run it.
 if [ -x /opt/scripts/03-media/gstreamer/android/build-android-from-source.sh ]; then
   echo "Found script build-android-from-source.sh -> building GStreamer for Android from source"
   /opt/scripts/03-media/gstreamer/android/build-android-from-source.sh \
@@ -36,8 +34,7 @@ if [ -x /opt/scripts/03-media/gstreamer/android/build-android-from-source.sh ]; 
 else
   echo "No build script found; falling back to downloading prebuilt GStreamer Android universal"
   _gst_univ_url="https://gstreamer.freedesktop.org/data/pkg/android/${GSTREAMER_VERSION}/gstreamer-1.0-android-universal-${GSTREAMER_VERSION}.tar.xz"
-  # VERIFIED when the pin exists (supply-chain audit #11): these are prebuilt
-  # .so's shipped in the Android artifacts. Pin bumps with GSTREAMER_VERSION.
+  # These prebuilt .so's ship in the Android artifacts, so verify whenever a pin exists; it bumps with GSTREAMER_VERSION.
   if [ -n "${GSTREAMER_ANDROID_UNIVERSAL_SHA256:-}" ]; then
     _gst_univ_tmp="$(mktemp /tmp/gst-android-universal-XXXXXX.tar.xz)"
     download_verified_file "${_gst_univ_url}" "${GSTREAMER_ANDROID_UNIVERSAL_SHA256}" "${_gst_univ_tmp}"

@@ -1,42 +1,5 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# ghcr-delete-tags.sh — delete NAMED legacy tags from the GHCR package.
-#
-# WHY THIS EXISTS (2026-08-27)
-# ---------------------------
-# ghcr-prune-package.sh deletes UNTAGGED versions. It deliberately keeps every
-# tagged one, because a tag is a promise someone may be relying on. That leaves
-# the other half of the mess untouched: tags that are provably dead — written by
-# a naming scheme the chain abandoned, or pointing at an index whose children
-# are already gone.
-#
-# Deleting a tag on GHCR means deleting the VERSION that carries it, and a
-# version can carry SEVERAL tags and be a CHILD of a kept index. Deleting the
-# wrong one silently breaks a tag nobody asked about. Hence the safety model.
-#
-# SAFETY MODEL (fail-closed at every step)
-#   * The tag list is EXPLICIT — passed as args or --from-file. There is no
-#     globbing and no heuristic: this script never decides what is legacy.
-#   * KEEP-set = every tag NOT on the delete list, resolved live against the
-#     registry, PLUS every digest those tags reference as index children.
-#   * A candidate version is SKIPPED when
-#       - its digest is in the KEEP-set (shared with a kept tag or child), or
-#       - it carries any tag that is not on the delete list, or
-#       - it is younger than KEEP_DAYS (guards a push in flight).
-#   * If a KEEP tag's own manifest cannot be read, the script ABORTS: an
-#     incomplete keep-set must never reach the delete loop.
-#   * Default is a DRY RUN. GHCR_DELETE_TAGS_CONFIRM=1 actually deletes.
-#
-# KNOBS
-#   GHCR_PKG / GHCR_OWNER            as in ghcr-prune-package.sh
-#   KEEP_DAYS                        age guard in days (default 2)
-#   GHCR_TOKEN                       PAT override (default: docker login)
-#   GHCR_DELETE_TAGS_CONFIRM=1       actually delete
-#
-# Usage:
-#   bash linux/host-config/ghcr-delete-tags.sh --from-file tags.txt
-#   bash linux/host-config/ghcr-delete-tags.sh old-tag-a old-tag-b
-# ==============================================================================
+# Deletes named tags ([--from-file f] tag...), dry run unless GHCR_DELETE_TAGS_CONFIRM=1: docs/linux-host-setup.md#b8-ghcr-registry-hygiene
 set -uo pipefail
 
 _GHCR_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

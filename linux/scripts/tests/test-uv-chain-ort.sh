@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# uv_reconcile_chain_ort, uv_sync_project's call of it and stage_chain_ort_wheels, on a real venv with the real census.
-# NOT covered: real uv (chain-ort-fixtures.py stands in), a real ORT wheel. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+# The chain-ORT reconcile on a real venv, with a stand-in uv; see docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -150,8 +149,7 @@ t_assert_eq "${_img}/${_cen}" \
 t_assert_eq "03-media/runtime/ort-venv-census.py" "$(bash -c 'source "$1"; printf %s "${_UV_ORT_CENSUS##*/scripts/}"' _ "${UV_SH}")" \
   "a checkout uses its own copy"
 
-# uv_sync_project with the stand-in uv: sync installs the PyPI feed, then the reconcile runs.
-# $1 = a venv pinned through _CURRENT_VENV_PATH, as uv_venv_create leaves it; empty = UV_PROJECT_ENVIRONMENT.
+# _sync [venv pinned via _CURRENT_VENV_PATH, as uv_venv_create leaves it]; empty uses UV_PROJECT_ENVIRONMENT.
 _sync() {
   local body target
   target="$(printf 'export UV_PROJECT_ENVIRONMENT=%q' "${VENV}")"

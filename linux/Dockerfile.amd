@@ -1,28 +1,6 @@
 # syntax=docker/dockerfile:1.27.0
 
-# ==============================================================================
-# Dockerfile.amd  —  Optional AMD GPU (MIGraphX) library layer
-#
-# Position in the chain:
-#   :sdk  →  THIS (:toolchain-amd)  →  :media-amd  →  :android-amd  →  :amd
-#
-# What this installs on top of the standard SDK image:
-#   • HIP runtime + compiler (hipcc)
-#   • MIOpen (Deep Neural Network library)
-#   • RCCL (multi-GPU collective comms)
-#   • rocBLAS, rocSPARSE, rocFFT, rocSOLVER (ROCm math libraries)
-#   • MIGraphX (AMD graph inference engine) — replaces ROCm EP with MIGraphX EP
-#
-# Packages from the AMD ROCm TheRock repository (stable.repo.amd.com) for
-# Ubuntu 26.04 (resolute). MIGraphX is in a separate repo path under
-# /rocm/migraphx/packages/ubuntu2604/.
-#
-# Usage:
-#   docker buildx build \
-#     --build-arg BASE_IMAGE=local/kataglyphis:sdk \
-#     -t local/kataglyphis:toolchain-amd \
-#     -f linux/Dockerfile.amd .
-# ==============================================================================
+# Optional AMD GPU (ROCm + MIGraphX) layer: :sdk -> :toolchain-amd -> :media-amd -> :android-amd -> :amd
 
 ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE}
@@ -31,9 +9,7 @@ ARG TARGETARCH
 ARG LLVM_RELEASE=23.1.1
 ARG ROCM_VERSION=10.0
 ARG MIGRAPHX_VERSION=2.17.0
-# AddressSanitizer-instrumented ROCm, BESIDE the normal one. Off by default:
-# 134.8 GiB installed, gfx942/gfx950 only, and neither MIGraphX nor the torch
-# wheels have an ASAN build. docs/linux-accelerator-images.md § ROCm
+# ASAN-instrumented ROCm beside the normal one, off by default. See docs/linux-accelerator-images.md § ROCm
 ARG ENABLE_ROCM_ASAN=false
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/

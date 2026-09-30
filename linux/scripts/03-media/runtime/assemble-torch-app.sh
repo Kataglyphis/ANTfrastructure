@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# A set -e death in these image-side scripts printed nothing at all until
-# 2026-09-03. docs/failure-modes.md#a-packaging-script-dies-with-no-message
+# See docs/failure-modes.md § A packaging script dies with no message
 # shellcheck source=linux/scripts/01-core/logging.sh
 source /opt/scripts/core/logging.sh
 install_err_trap
@@ -48,8 +47,7 @@ prepare_project_tree() {
   if ! [[ "${APP_REF}" =~ ^[0-9a-f]{40}$ ]]; then
     echo "WARNING: APP_REF=${APP_REF} is a name, not a commit: a cached build of this step does not see it move" >&2
   fi
-  # Retry inlined rather than reusing 01-core's retry(): this script ships
-  # standalone into images (Dockerfile.torch) that carry no 01-core.
+  # Inlined, not 01-core's retry(): Dockerfile.torch images carry no 01-core.
   for _attempt in 1 2 3; do
     if fetch_app_tree; then
       echo "OrchestrANT ${APP_REF} is commit $(git -C "${APP_DIR}" rev-parse HEAD)"
@@ -64,8 +62,7 @@ prepare_project_tree() {
     sleep 10
   done
 
-  # riscv64 is excluded from the app's `[tool.uv] environments`, and uv then HARD-
-  # REJECTS it (exit 2) instead of resolving live. Strip the gate from THIS clone only.
+  # uv hard-rejects (exit 2) an arch outside `[tool.uv] environments`; strip the gate from this clone only.
   if [ "$(uname -m)" = "riscv64" ] && [ -f "${APP_DIR}/pyproject.toml" ]; then
     if grep -qE '^environments[[:space:]]*=[[:space:]]*\[' "${APP_DIR}/pyproject.toml"; then
       sed -i '/^environments[[:space:]]*=[[:space:]]*\[/,/^\]/d' "${APP_DIR}/pyproject.toml"
@@ -146,8 +143,7 @@ collect_locked_local_skip_packages() {
       iree-compiler) append_unique_arg out_packages_ref iree-base-compiler ;;
       iree-runtime)  append_unique_arg out_packages_ref iree-base-runtime ;;
       opencv)        append_unique_arg out_packages_ref opencv-python ;;
-      # Any local ORT variant must beat the lock's PyPI onnxruntime -- both dists own
-      # site-packages/onnxruntime/, and the mix leaves a version-skewed capi behind.
+      # Both own site-packages/onnxruntime/, so a mix leaves a version-skewed capi.
       onnx)          append_unique_arg out_packages_ref onnxruntime ;;
     esac
   done
@@ -163,8 +159,7 @@ collect_locked_local_wheels() {
     wheel_basename="$(basename "${wheel_path}")"
     case "$(wheel_family "${wheel_basename}")" in
       torch|torchvision|litert)
-        # Always locked, never conditional on opencv: dropping one lets pip resolve
-        # UPSTREAM torch over the custom build.
+        # Always locked: dropping one lets pip resolve upstream torch over the custom build.
         out_wheels_ref+=("${wheel_path}")
         ;;
       opencv)
@@ -215,25 +210,17 @@ assert_ort_chain_only() {
   return 0
 }
 
-# Remove prebuilt wheels that conflict with the selected ONNX_PACKAGE variant.
-# /opt/wheels is a bind mount: Dockerfile.torch must mount it rw (BuildKit drops
-# the writes after the RUN). Read-only, `rm -f ... || true` failed SILENTLY and
-# a GPU venv shipped onnxruntime-gpu AND -webgpu, one shadowing the other.
+# Dockerfile.torch must mount /opt/wheels rw: read-only, these rm calls fail silently.
 prune_conflicting_onnx_wheels() {
   case "${ONNX_PACKAGE}" in
     onnxruntime|onnxruntime-webgpu)
-      # GPU-flavoured genai only: a bare *genai* glob deletes the CPU wheel
-      # build_uv_sync_args needs. docs/failure-modes.md
+      # GPU genai only: a bare *genai* glob deletes the CPU wheel build_uv_sync_args needs.
       rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*_migraphx-*.whl \
             /opt/wheels/*genai_cuda-*.whl /opt/wheels/*genai_rocm-*.whl \
             /opt/wheels/*genai_directml-*.whl
       ;;
     onnxruntime-gpu|onnxruntime-migraphx)
-      # Every OTHER flavour of the one onnxruntime distribution: the amd64 CPU
-      # step always builds onnxruntime_dnnl (and a plain onnxruntime can be
-      # staged), and both force-installed into the SAME site-packages/onnxruntime
-      # next to the GPU wheel -- whichever landed last owned capi/, and the
-      # smoke's ARCH-PARITY refused "MORE THAN ONE onnxruntime distribution".
+      # Every other flavour shares site-packages/onnxruntime with the GPU wheel; the last one in owns capi/.
       rm -f /opt/wheels/*webgpu*.whl /opt/wheels/onnxruntime_dnnl-*.whl \
             /opt/wheels/onnxruntime-[0-9]*.whl
       if [ "${ONNX_PACKAGE}" = "onnxruntime-gpu" ]; then
@@ -249,8 +236,7 @@ prune_conflicting_onnx_wheels() {
   esac
 }
 
-# Assemble the `uv sync` args into $1; locked packages from local wheels ($2 names,
-# $3 wheels) are skipped and installed directly. Namerefs _-prefixed (circular ref).
+# `uv sync` args into $1; $2/$3 local-wheel names/paths are installed directly. Namerefs _-prefixed.
 build_uv_sync_args() {
   local -n _sync_args="$1"
   local -n _locked_skip="$2"
@@ -262,15 +248,13 @@ build_uv_sync_args() {
     --extra "ml-ai" \
     --extra "docs")
 
-  # With torch from a local wheel (riscv64), the backend extra below must NOT be
-  # requested: its torch entry makes uv resolve the upstream source over our wheel.
+  # With a local torch wheel the backend extra would make uv resolve upstream torch over it.
   local _torch_from_local_wheel=false
   for package_name in "${_locked_skip[@]}"; do
     case "${package_name}" in torch|torchvision) _torch_from_local_wheel=true ;; esac
   done
 
-  # `torch` is declared ONLY in the app's pytorch-* backend extras, never in ml-ai,
-  # so the extra MUST be requested or the image ships torch-less. "none"/"" disables it.
+  # torch lives only in the app's pytorch-* extras; without one the image ships torch-less.
   if [ "${_torch_from_local_wheel}" = "false" ]; then
     case "${PYTORCH_EXTRA:-pytorch-cpu}" in
       none|"") ;;
@@ -284,14 +268,12 @@ build_uv_sync_args() {
       _sync_args+=(--no-install-package "${package_name}")
     done
     if [ "${#_locked_wheels[@]}" -gt 0 ]; then
-      # --no-deps on EVERY local-wheel force-reinstall: without it uv re-resolves the
-      # wheels' deps to LATEST and floats the venv off the lock (numpy, protobuf MAJOR).
+      # --no-deps on every local-wheel reinstall, or uv floats numpy/protobuf off the lock.
       uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}"
     fi
   fi
 
-  # --find-links only OFFERS /opt/wheels, so the lock's PyPI genai would install; skip it for any
-  # chain GenAI flavour (nvidia's onnxruntime_genai_cuda / _trt_rtx too). Same idiom as above.
+  # --find-links only offers /opt/wheels, so the lock's PyPI genai would win over any chain flavour.
   local _genai_wheel
   _genai_wheel="$(ls /opt/wheels/onnxruntime_genai*.whl 2>/dev/null | head -1 || true)"
   if [ -n "${_genai_wheel}" ]; then
@@ -305,8 +287,7 @@ build_uv_sync_args() {
   fi
 }
 
-# `uv lock` regeneration for the fallbacks below. A riscv64 RESOLUTION failure is
-# tolerated (the local wheels carry the venv); on amd64/arm64 it aborts.
+# A riscv64 resolution failure is tolerated (the local wheels carry the venv); elsewhere it aborts.
 uv_lock_regen() {
   local _ulr_log
   _ulr_log="$(mktemp)"
@@ -322,20 +303,14 @@ uv_lock_regen() {
   fi
   rm -f "${_ulr_log}"
   if [ "$(uname -m)" = "riscv64" ]; then
-    # EXPECTED on riscv64: some workspace extras (e.g. a pytorch backend whose
-    # torch has no lockable upstream riscv64 source) can't fully resolve under
-    # QEMU. This is by design — the caller (run_uv_sync_with_fallback) then
-    # force-reinstalls the local /opt/wheels, which is what the runtime actually
-    # needs — so this is INFO, not a failure.
+    # Expected: torch has no lockable riscv64 source, and the caller force-installs /opt/wheels anyway.
     echo "INFO: uv lock not fully regenerated on riscv64 (expected); runtime venv is carried by --find-links + force-installed local wheels"
     return 0
   fi
   return 1
 }
 
-# Run `uv sync` with $1 args. With a lockfile ($3=true) try --frozen first and
-# fall back to regenerating the lock; without one, lock then sync. Either
-# fallback force-reinstalls the local wheels ($2). Ordering is load-bearing.
+# <sync-args> <local-wheels> <have-lock>: --frozen first, else relock; ordering is load-bearing.
 run_uv_sync_with_fallback() {
   # shellcheck disable=SC2178  # nameref to caller's array (read as "${_sync_args[@]}")
   local -n _sync_args="$1"
@@ -351,13 +326,7 @@ run_uv_sync_with_fallback() {
     echo "Frozen upstream uv.lock failed for this Python/platform"
   fi
 
-  # riscv64: skip uv lock + uv sync entirely. The app's pyproject declares torch
-  # as `torch @ git+...` in the pytorch extras, so `uv lock` builds torch from
-  # git source under QEMU (hours of C++ compile) just for metadata — even though
-  # a prebuilt wheel is already installed from /opt/wheels. The local wheels are
-  # pre-installed by build_uv_sync_args; ensure_project_package_installed then
-  # installs the project's pure-Python core deps (no torch extras). This saves
-  # ~1h of QEMU emulation per riscv64 build.
+  # riscv64 skips lock and sync: `uv lock` would build the git torch under QEMU just for metadata.
   if [ "$(uname -m)" = "riscv64" ]; then
     echo "riscv64: skipping uv lock + uv sync (torch from local wheel, not git source build)"
     if [ "${#_locked_wheels[@]}" -gt 0 ]; then
@@ -373,12 +342,7 @@ run_uv_sync_with_fallback() {
   fi
 }
 
-# After uv sync, force-reinstall the prebuilt local wheels, first uninstalling
-# any PyPI onnxruntime/opencv families they replace so the local builds win.
-# Uninstall any PyPI build of a family we ship locally, BEFORE force-reinstalling
-# ours: an upstream pulled transitively (often under a variant name --
-# onnxruntime-gpu, opencv-python 4.x) would otherwise shadow the custom build.
-# torch/torchvision/ai-edge-litert are purged here too, for symmetry.
+# A transitive PyPI build of a locally shipped family (often a variant name) would shadow ours.
 _purge_shadowing_pypi_builds() {
   local have_onnx_family="$1" have_opencv_family="$2"
   local have_torch_family="$3" have_litert_family="$4"
@@ -402,8 +366,7 @@ _purge_shadowing_pypi_builds() {
   fi
 }
 
-# torch's own runtime deps the sync graph can miss. The PACKAGE name is
-# installed, the MODULE name imported -- they differ for typing-extensions.
+# A local torch skips its backend extra, so the lock omits its deps; pairs are package:module.
 _backfill_torch_runtime_deps() {
   local _venv_py="${VIRTUAL_ENV:-/opt/venv}/bin/python3"
   local -a _torch_dep_backfill=()
@@ -420,24 +383,13 @@ _backfill_torch_runtime_deps() {
   fi
 }
 
-# Install order is load-bearing -- other, then tvm, then iree.
-# Nameref params carry their own names: -n x="x" is a circular reference.
+# Install order is load-bearing: other, then tvm, then iree.
 _install_wheel_groups() {
   local -n _ow="$1" _tw="$2" _iw="$3"
 if [ "${#_ow[@]}" -gt 0 ]; then
-  # --no-deps: see the locked-wheels comment above — THIS site produced the
-  # live numpy/protobuf float (log: "- numpy==2.5.1 / + numpy==2.5.2" 0.5 s
-  # after uv sync had just enforced the lock).
+  # --no-deps, or uv floats numpy/protobuf off the lock.
   uv pip install --no-deps --force-reinstall "${_ow[@]}"
-  # --no-deps above means the ORT wheel's OWN runtime requirements are never
-  # installed. On riscv64 the sync did not supply them either, so the shipped
-  # venv carried a dangling edge: the wheel declares flatbuffers and protobuf,
-  # the venv has neither, and that surfaces as an ImportError in the USER's
-  # process -- never in our build. Both publish a pure-Python `any` wheel.
-  # protobuf is major-pinned deliberately: an unconstrained resolve is exactly
-  # the "protobuf MAJOR" float the comment above warns about (the 2026-09-02
-  # run installed 6.33.6 twice and 7.36.1 once).
-  # docs/refactoring-backlog.md AB
+  # --no-deps skipped the ORT wheel's own deps; protobuf is major-pinned so it cannot float.
   uv pip install 'protobuf>=6,<7' flatbuffers || \
     echo "WARNING: ORT runtime deps (protobuf/flatbuffers) not installed - the venv gate will name them"
 fi
@@ -447,39 +399,18 @@ if [ "${#_tw[@]}" -gt 0 ]; then
 fi
 if [ "${#_iw[@]}" -gt 0 ]; then
   if [ "$(uname -m)" = "riscv64" ]; then
-    # riscv64: install IREE --no-deps (its ml_dtypes/numpy deps have no riscv64
-    # wheels and a full-deps resolve would try to pull them). numpy is already
-    # present from the sync.
+    # --no-deps: IREE's ml_dtypes/numpy deps have no riscv64 wheels.
     uv pip install --no-deps --force-reinstall "${_iw[@]}" || \
       echo "WARNING: IREE riscv64 runtime wheel install failed (non-fatal; check_iree will optional-fail)"
-    # ml_dtypes has no riscv64 PyPI wheel, so source-build it INTO this venv
-    # (best-effort). It must go here, not via apt in setup-package-image.sh — the
-    # from-source py3.14 venv can't see the distro python's dist-packages. Without
-    # it `import iree.runtime` fails "No module named 'ml_dtypes'" (the runtime
-    # smoke WARN); the native iree-compile path is unaffected either way.
+    # Source-build ml_dtypes into this venv: it cannot see an apt install's dist-packages.
     uv pip install ml_dtypes || \
       echo "WARNING: ml_dtypes source-build failed on riscv64 (iree.runtime bf16 dtypes unavailable; native iree-compile unaffected)"
   else
-    # amd64/arm64: the cp314 wheel replaces any PyPI cp312-abi3 build. IREE's
-    # runtime deps (numpy from the lock; ml_dtypes) must NOT be re-resolved
-    # here — a full-deps force-reinstall floats numpy off the lock (the
-    # 2026-08-11 2.5.2 incident, second injector). Install the wheels
-    # --no-deps, then ml_dtypes alone (absent from the app lock).
-    # Hard-fail under set -e -- IREE is REQUIRED here.
+    # Required here; --no-deps keeps numpy on the lock, and ml_dtypes is not in it.
     uv pip install --no-deps --force-reinstall "${_iw[@]}"
     uv pip install --no-deps ml_dtypes
   fi
 fi
-
-# When torch ships as a LOCAL wheel (riscv64) its backend extra is never
-# requested from uv sync, so the lock graph omits torch's own runtime deps —
-# and the --no-deps force-reinstall above (correctly) no longer drags them
-# in as a side effect. Result on riscv64: `import torchvision` dies with
-# "No module named 'sympy'" (torch.fx symbolic shapes) while torch's core
-# ops happen to work. Backfill exactly the missing pure-python leaves,
-# --no-deps each (their own hard deps are in the list: sympy->mpmath,
-# jinja2->markupsafe). amd64/arm64 get all of these from the lock and the
-# import probes skip everything.
 }
 
 # Echoes the four family flags in a fixed order: onnx opencv torch litert.
@@ -515,9 +446,7 @@ reconcile_local_wheels() {
   local have_onnx_family=false have_opencv_family=false
   local have_torch_family=false have_litert_family=false
 
-  # Overridable ONLY so this function can be exercised off-target: /opt is
-  # root-owned, so a test cannot put fixtures where the image keeps its wheels.
-  # Unset, this is exactly /opt/wheels. docs/refactoring-backlog.md F1
+  # Overridable only for off-target tests: /opt is root-owned.
   local _wheels_dir="${LOCAL_WHEELS_DIR:-/opt/wheels}"
   shopt -s nullglob
   local_wheels=("${_wheels_dir}"/*.whl)
@@ -534,18 +463,7 @@ reconcile_local_wheels() {
   _purge_shadowing_pypi_builds "${have_onnx_family}" "${have_opencv_family}" \
     "${have_torch_family}" "${have_litert_family}"
 
-  # Partition IREE runtime wheels (riscv64 cross-built, best-effort) out of the
-  # main force-reinstall: they pull ml_dtypes, which has no riscv64 PyPI wheel and
-  # would source-build under QEMU -- a failure there must NOT abort venv assembly
-  # (this function runs under set -e). Install them WITHOUT deps and best-effort;
-  # numpy is already present, so iree.runtime + native iree-run-module still work,
-  # and if a hard dep is genuinely missing check_iree just optional-fails.
-  # TVM is partitioned out for the same reason as IREE: it's an OPTIONAL framework
-  # whose deps (ml_dtypes, scipy, ...) may have no riscv64 wheel and source-build
-  # under QEMU. Installing it in the main (non-best-effort) force-reinstall could
-  # abort venv assembly on a dep failure, breaking the runtime build for a wheel
-  # that's meant to be optional. Install it best-effort so `import tvm` degrades to
-  # the runtime smoke's optional-fail instead of failing the build.
+  # IREE and TVM install apart: their deps may lack riscv64 wheels, which must not abort venv assembly.
   local -a iree_wheels=() tvm_wheels=() other_wheels=()
   _partition_wheels_by_install_group iree_wheels tvm_wheels other_wheels "${local_wheels[@]}"
 
@@ -555,15 +473,9 @@ reconcile_local_wheels() {
   fi
 }
 
-# The build pins the runtime smoke asserts. The app lock may lag them
-# (OrchestrANT pins torchvision 0.28 while versions.env pins 0.29), and on the
-# arches PyTorch publishes cp314 wheels for, the pinned pair is a binary
-# install from the CPU index — exact and fast. riscv64 has no wheels and keeps
-# its versions.env <KEY>_RISCV64 pair, which the wheelhouse source-builds.
+# The app lock may lag the versions.env pins the smoke asserts; riscv64 keeps its source-built pair.
 enforce_torch_version_pins() {
-  # The wrapper stage does not export TARGET_ARCH, so defaulting to amd64 made
-  # this run on riscv64 and fail against the CPU index (no riscv64 wheels).
-  # uname is the image's own arch, which is the target here.
+  # uname, not TARGET_ARCH: the wrapper stage does not export it.
   local machine target_arch
   machine="$(uname -m)"
   case "${machine}" in
@@ -592,12 +504,7 @@ enforce_torch_version_pins() {
   local gpu_index
   gpu_index="$(_torch_pin_gpu_index "${PYTORCH_EXTRA:-pytorch-cpu}")" || return 1
   if [ -n "${gpu_index}" ]; then
-    # From the GPU line's OWN index, with deps, and pinned to the LOCAL
-    # VERSION (+${gpu_index}). Two uv traps bit the rocm lane 2026-09-27:
-    # a bare torch==2.14.0 resolved to PyPI's CUDA build (torch.version.hip
-    # None), and the local-version tag then hit uv's first-index-wins guard.
-    # Both indexes publish the +tag, so unsafe-best-match is safe. Detail:
-    # docs/linux-cross-builds.md § Torch pin enforcement on GPU lines.
+    # See docs/linux-cross-builds.md § Torch pin enforcement on GPU lines
     uv pip install --index-strategy unsafe-best-match \
       --index-url "https://download.pytorch.org/whl/${gpu_index}" \
       --extra-index-url https://pypi.org/simple \
@@ -609,10 +516,7 @@ enforce_torch_version_pins() {
   fi
 }
 
-# The download.pytorch.org line a GPU extra's pinned torch comes from, or empty
-# for the CPU path. CUDA uses the extra's own index (pytorch-cu130 -> cu130).
-# ROCm uses the PINNED line (the app's pytorch-rocm10 extra reads the same one),
-# and the CPU path would swap the ROCm torch for a CPU one without a word.
+# The GPU extra's download.pytorch.org line, empty for CPU; ROCm uses the pinned line, as the app's extra does.
 _torch_pin_gpu_index() {
   case "$1" in
     pytorch-cu*)   printf '%s' "${1#pytorch-}" ;;
@@ -623,8 +527,7 @@ _torch_pin_gpu_index() {
 
 install_project_environment() {
   activate_project_environment
-  # The arrays below are populated/consumed by the helpers via nameref (SC2034
-  # can't see cross-function nameref use, hence the per-line disables).
+  # SC2034 cannot see the helpers' nameref use.
   # shellcheck disable=SC2034
   local -a locked_skip_packages=()
   # shellcheck disable=SC2034
@@ -648,8 +551,7 @@ install_project_environment() {
   reconcile_local_wheels
   enforce_torch_version_pins
 
-  # If any dependency pulled in a PyPI opencv-python (4.x), remove it
-  # so the source-built OpenCV5 bindings win.
+  # A transitive PyPI opencv-python would shadow the source-built OpenCV5 bindings.
   if staged_opencv_python_available; then
     uv_uninstall_pip_opencv
   fi
@@ -664,21 +566,7 @@ install_project_environment() {
   assert_ort_chain_only
 }
 
-# `uv sync` installs the app project itself (OrchestrANT -> orchestrant)
-# alongside its dependencies on amd64/arm64. On riscv64 the [tool.uv] environments-gate
-# strip makes uv re-resolve, which drags the riscv64-gated `torch @ git+...` source build
-# into the graph; that build times out, so `uv sync` aborts BEFORE installing the app's
-# own pure-Python deps (loguru, tqdm, hydra-core, matplotlib, flask, ...) OR the project
-# itself. The local-wheel fallback only force-reinstalls the torch closure, so BOTH the
-# project and its core deps are absent -> the runtime app-wheel smoke dies with
-# `ModuleNotFoundError: No module named 'loguru'` (its first-imported core dep).
-#
-# Install the project WITH its core dependencies. torch/torchvision live ONLY in the
-# `pytorch-*` extras (never in [project].dependencies), so installing without any extra
-# pulls just the pure-Python deps and NEVER re-resolves the git torch source. The already
-# -installed local torch/vision wheels are left untouched (uv pip install is additive and
-# no core dep requires torch). Guarded by an import probe -- a no-op on amd64/arm64 where
-# uv sync already installed project + deps (the probe imports cleanly there).
+# riscv64 skips uv sync, so the project and its core deps come from here; no extra, so no git torch.
 ensure_project_package_installed() {
   if uv run --no-sync --active python -c 'import orchestrant' >/dev/null 2>&1; then
     echo "Project package orchestrant already installed"
@@ -689,16 +577,12 @@ ensure_project_package_installed() {
   install_fallback_project_extras || return 1
 }
 
-# uv sync requests --extra docs on every arch, so the fallback above must too or
-# riscv64 silently ships ~24 fewer packages. Runs AFTER the project install (that
-# one satisfies the closure's only sdist-only member, pyyaml) and never replaces
-# it. `ml-ai` stays out on purpose. docs/riscv64-venv-parity.md
+# uv sync requests --extra docs, so the fallback must too. See docs/riscv64-venv-parity.md
 install_fallback_project_extras() {
   local _attempt
   for _attempt in 1 2 3; do
     if uv pip install "${APP_DIR}[docs]"; then
-      # optuna: pure-Python ml-ai member, absent on riscv64. Must run after the
-      # project install above. docs/riscv64-venv-parity.md#optuna
+      # See docs/riscv64-venv-parity.md § optuna
       uv pip install optuna || \
         echo "WARNING: optuna not installed - the venv gate will name it" >&2
       return 0
@@ -706,9 +590,7 @@ install_fallback_project_extras() {
     echo "WARNING: docs-extra install attempt ${_attempt}/3 failed" >&2
     [ "${_attempt}" -eq 3 ] || sleep 10
   done
-  # Fail HERE, not three stages later. assert_app_venv_parity fails hard on the
-  # same condition, so returning 0 only moved the failure somewhere undiagnosable.
-  # APP_EXTRAS_REQUIRED=0 downgrades it. docs/riscv64-venv-parity.md
+  # Fail here: assert_app_venv_parity fails on the same condition later, where it is undiagnosable.
   if [ "${APP_EXTRAS_REQUIRED:-1}" = "1" ]; then
     echo "ERROR: docs extra NOT installed after 3 attempts; the venv would ship short and app-venv-parity would fail later. Set APP_EXTRAS_REQUIRED=0 to tolerate." >&2
     return 1
@@ -720,8 +602,7 @@ install_fallback_project_extras() {
 verify_project_environment() {
   activate_project_environment
 
-  # Uninstall any pip-installed opencv packages so the source-built
-  # OpenCV5 bindings at /opt/opencv5 (visible via .pth) are used.
+  # A pip opencv would shadow the source-built OpenCV5 bindings (.pth to /opt/opencv5).
   if staged_opencv_python_available; then
     uv_uninstall_pip_opencv
   fi
@@ -736,8 +617,7 @@ verify_project_environment() {
     uv run --no-sync --active python -c "import torch; cuda_ver = torch.version.cuda; print(f'PyTorch CUDA Build Version: {cuda_ver}'); assert cuda_ver is not None, 'ERROR: PyTorch was NOT built with CUDA!'"
     uv run --no-sync --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'CUDAExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have CUDAExecutionProvider!'"
   elif [ "${ENABLE_AMD:-false}" = "true" ]; then
-    # The rocm twin: without it a ROCm-less wrapper (CPU torch, no MIGraphX EP)
-    # built and shipped green -- no gate knew what a rocm image must carry.
+    # Without this a ROCm image with CPU torch and no MIGraphX EP ships green.
     echo "Testing ROCm Support (Build checks only, not runtime)"
     uv run --no-sync --active python -c "import torch; hip = torch.version.hip; print(f'PyTorch HIP Build Version: {hip}'); assert hip is not None, 'ERROR: PyTorch was NOT built with ROCm/HIP!'"
     uv run --no-sync --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'MIGraphXExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have MIGraphXExecutionProvider!'"
@@ -751,12 +631,7 @@ usage() {
   printf 'Usage: %s [install|verify|all]\n' "${0##*/}" >&2
 }
 
-# POS1 (2026-08-17): the cloned app tree shipped WITH its .git (packed objects,
-# remote URL, history) in the final uid-1001 image — attack-surface/hygiene +
-# size + provenance leak. The package is pip-installed into the venv and the
-# app's version comes from VERSION.txt (not setuptools-scm), so .git is dead
-# weight once install is done. Remove ONLY .git; the working tree stays (it may
-# be consulted at runtime). Best-effort — never fails a completed install.
+# No VCS data in the shipped image; the version comes from VERSION.txt and the working tree stays.
 cleanup_app_git() {
   [ -d "${APP_DIR}/.git" ] || return 0
   rm -rf "${APP_DIR}/.git" && echo "Removed ${APP_DIR}/.git (POS1: no VCS data in the shipped image)" || true

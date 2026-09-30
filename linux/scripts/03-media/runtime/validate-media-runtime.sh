@@ -6,11 +6,7 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   source /opt/scripts/core/cross-env.sh   # defines cross_build_is_active
 fi
 
-# Canonical NEEDED-walk primitives (elf_needed_sonames / elf_unresolved_needed,
-# backlog D4) live in 01-core/platform.sh: bind-mounted at /opt/scripts/core in
-# the Dockerfile.media package-stage RUN that executes this validator,
-# repo-relative when run from a checkout. Side-effect-free, so hard-require it
-# (a silent fallback would gut the whole missing-deps scan below).
+# Hard-require platform.sh's NEEDED walk: a silent fallback would gut the missing-deps scan.
 _VMR_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for _vmr_platform in /opt/scripts/core/platform.sh "${_VMR_SELF_DIR}/../../01-core/platform.sh"; do
   if [ -f "${_vmr_platform}" ]; then
@@ -28,11 +24,7 @@ ARTIFACTS=(
   "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg"
 )
 
-# _VMR_MA: Debian multiarch triplet — meson installs libcamera (and friends)
-# under lib/<triplet>/, which this list previously did NOT cover. The resolver
-# then declared the build's OWN libcamera libs "missing" and apt-installed
-# Ubuntu's older libcamera0.7 as a shadow copy next to the source-built one —
-# a false-positive "repair" that undercut the LIBCAMERA_VERSION pin.
+# meson installs under lib/<triplet>; unlisted, the build's own libcamera looks missing and apt shadows it.
 _VMR_MA="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || true)"
 LIB_DIRS=(
   "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib"
@@ -56,11 +48,6 @@ if [ -n "${_VMR_MA}" ]; then
   )
 fi
 
-# The "does this soname resolve under LIB_DIRS + standard lib dirs + ldconfig
-# cache" scan that find_missing_needed and scan_plugin_directory share is now
-# the canonical elf_unresolved_needed (01-core/platform.sh, sourced above),
-# called with LIB_DIRS as the extra search roots.
-
 known_so_packages_load() {
   local map_file="${1:-${SCRIPT_DIR:-.}/so-package-map.txt}"
   if [ -f "${map_file}" ]; then
@@ -69,8 +56,7 @@ known_so_packages_load() {
         ""|\#*) continue ;;
       esac
       KNOWN_SO_PACKAGES["${so_name}"]="${pkg}"
-      # Wildcard keys cover a whole SONAME family; kept in file order because
-      # the assoc array itself is unordered (hash order).
+      # Wildcard keys kept in file order: the assoc array is unordered.
       case "${so_name}" in
         *[*?[]*) KNOWN_SO_GLOBS+=("${so_name}") ;;
       esac
@@ -86,8 +72,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/ort-runtime-gate.sh"
 declare -A KNOWN_SO_PACKAGES=()
 declare -a KNOWN_SO_GLOBS=()
-# Reserved map target: the library comes from this repo's OWN build, so a miss
-# must never be "repaired" from apt (which would shadow it). See so-package-map.txt.
+# Map target for source-built libs: a miss is never "repaired" from apt, which would shadow them.
 SO_PACKAGE_DENY=source-built
 known_so_packages_load || {
   echo "WARNING: so-package-map.txt not found; continuing with an empty known-so map (dpkg-query/apt-cache lookups only)" >&2
@@ -205,8 +190,7 @@ if [ -d "${gst_plugin_dir}" ]; then
   ALL_MISSING+=("${plugin_missing[@]}")
 fi
 
-# GEN1: the genai libs were scanned by nothing; -d guard = no-op when the lane
-# is off. docs/failure-modes.md, docs/gen1-riscv64-genai.md
+# A no-op when the genai lane is off. See docs/gen1-riscv64-genai.md
 genai_lib_dir="${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}/lib"
 if [ -d "${genai_lib_dir}" ]; then
   mapfile -t genai_missing < <(scan_plugin_directory "${genai_lib_dir}")
@@ -217,10 +201,7 @@ mapfile -t UNIQ_MISSING < <(printf '%s\n' "${ALL_MISSING[@]}" | uniq_nonempty_li
 
 if [ ${#UNIQ_MISSING[@]} -eq 0 ]; then
   echo "All artifacts have their runtime dependencies satisfied."
-  # Deliberately NO exit here. The ELF architecture gate below must run on
-  # clean scans too: NEEDED sonames resolve by NAME, so a wrong-arch ffmpeg
-  # scans perfectly clean — the early `exit 0` this replaced made the
-  # wrong-arch check dead code on every healthy build.
+  # No exit: sonames resolve by name, so a wrong-arch ffmpeg scans clean and the ELF gate must still run.
 else
 
 echo ""
@@ -310,9 +291,7 @@ fi
 
 fi  # end of the dirty-scan resolution branch — ELF validation runs either way
 
-# ---------------------------------------------------------------------------
-# ELF architecture validation — verify key binaries match the target arch
-# ---------------------------------------------------------------------------
+# ELF architecture validation
 echo ""
 echo "=== ELF Architecture Validation ==="
 
@@ -324,9 +303,7 @@ case "${target_arch}" in
   *)       elf_machine_grep="" ;;
 esac
 
-# Directories that contain intentionally foreign-arch vendor binaries
-# (Qualcomm QNN, SNPE, MediaTek NeuroPilot, etc.). These are shipped as-is
-# and should NOT be flagged as ELF architecture mismatches.
+# Vendor libraries that ship foreign-arch on purpose (QNN, SNPE, NeuroPilot).
 VENDOR_ARCH_SKIP_PATTERNS=(
   "libQnn"
   "libSnpe"
@@ -358,8 +335,7 @@ is_vendor_binary() {
 core_mismatches=0
 so_mismatches=0
 if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
-  # CORE media binaries — never vendor, so a wrong arch here is always a genuine
-  # defect. These drive the FATAL gate below.
+  # Core binaries are never vendor, so a wrong arch here is always a defect.
   elf_binaries=(
     "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-launch-1.0"
     "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-inspect-1.0"
@@ -379,28 +355,20 @@ if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
         ;;
     esac
   done
-  # Shared-object sweep over LIB_DIRS is ADVISORY only. These dirs also hold
-  # intentionally foreign-arch vendor SDKs (Qualcomm QNN/QAIRT libQairt*/libPyQnn*/
-  # libDlContainerPy/libqnn-*, Hexagon DSP6 skels, MediaTek NeuroPilot, …) whose
-  # names the VENDOR_ARCH_SKIP_PATTERNS list cannot exhaustively enumerate — so
-  # treating a .so mismatch as fatal would abort on legitimately-bundled vendor
-  # libs (it did: 33 QAIRT/QNN libs on the amd64 image). Report, do not fail.
+  # Advisory only: these dirs also hold vendor SDKs that no name list can fully enumerate.
   for so_dir in "${LIB_DIRS[@]}"; do
     [ -d "${so_dir}" ] || continue
     for so in "${so_dir}"/*.so "${so_dir}"/*.so.*; do
       [ -f "${so}" ] || continue
       _so_base="$(basename "${so}")"
       is_vendor_binary "${_so_base}" && continue
-      # `|| true`: readelf exits 1 on non-ELF *.so files (GNU-ld linker scripts
-      # live in these dirs) and pipefail would abort the whole validator; the
-      # `""` case arm below is the intended handler for exactly that.
+      # `|| true`: readelf exits 1 on linker-script *.so files, which the "" arm handles.
       elf_machine="$(LC_ALL=C readelf -h "${so}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1 || true)"
       case "${elf_machine}" in
         *"${elf_machine_grep}"*) ;;
         "") continue ;;
         *)
-          # Full path, not the basename: the reader has to judge vendor-vs-leak
-          # and cannot do that from a name. docs/failure-modes.md
+          # Full path: vendor versus leak cannot be judged from a name.
           echo "  MISMATCH (advisory): ${so} ELF machine=${elf_machine} != expected ${elf_machine_grep}" >&2
           so_mismatches=$((so_mismatches + 1))
           ;;
@@ -411,13 +379,7 @@ else
   echo "  SKIP: readelf not available or unknown arch ${target_arch}" >&2
 fi
 
-# A wrong-arch CORE binary (ffmpeg/ffprobe/gst-launch/gst-inspect) is a genuine
-# host-vs-target-triple defect — the exact class this build fights — and is never
-# a vendor binary, so fail loud on it. The .so sweep stays advisory (see above);
-# escape hatch MEDIA_ELF_MISMATCH_FATAL=0 downgrades the core gate to a warning.
-# Says what it knows, not what it guesses: the basename-based vendor list cannot
-# enumerate every bundled SDK, so this sweep reports and never fails. The paths
-# above are what makes a mismatch judgeable.
+# A wrong-arch core binary is a host-vs-target defect: fatal unless MEDIA_ELF_MISMATCH_FATAL=0.
 [ "${so_mismatches}" -gt 0 ] && echo "  NOTE: ${so_mismatches} advisory .so ELF mismatch(es); not failing — check the paths above, a vendor SDK and a real wrong-arch leak look identical here" >&2
 if [ "${core_mismatches}" -gt 0 ]; then
   if [ "${MEDIA_ELF_MISMATCH_FATAL:-1}" = "1" ]; then
@@ -427,12 +389,7 @@ if [ "${core_mismatches}" -gt 0 ]; then
   echo "  WARN: ${core_mismatches} core ELF mismatch(es) (MEDIA_ELF_MISMATCH_FATAL=0; not failing)" >&2
 fi
 
-# The QEMU cross-arch binary smoke that used to sit here was removed 2026-09-02:
-# it invoked qemu-user with no QEMU_LD_PREFIX, so every foreign-arch binary died
-# in the dynamic loader and every failure was excused by the same clause. It
-# scored 7 failures and 0 passes in its last run. Functional coverage lives in
-# the runtime-image smoke, which boots the real image.
-# docs/failure-modes.md#a-smoke-that-never-passed-and-always-excused-itself
+# No QEMU smoke here. See docs/failure-modes.md § A smoke that never passed and always excused itself
 
 echo ""
 echo "=== Validation complete ==="
@@ -440,8 +397,7 @@ echo "=== Validation complete ==="
 # Whatever the repair or an earlier install pulled in: no distro ONNX Runtime ships.
 ort_dpkg_gate || exit 1
 
-# DENIED class (source-built SONAME missing) is meant to be empty by
-# construction; a non-zero count is a builder bug, not a tolerance case.
+# The DENIED class is empty by construction; any count is a builder bug.
 if [ "${_VMR_DENIED_FAILURES:-0}" -gt 0 ]; then
   echo "FAIL: ${_VMR_DENIED_FAILURES} DENIED source-built dependency failure(s) — see above" >&2
   exit 1

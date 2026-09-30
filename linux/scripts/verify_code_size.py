@@ -1,39 +1,7 @@
 #!/usr/bin/env python3
-"""Keep the size of shell functions and files honest.
+"""Function and file sizes must match their frozen numbers in both directions; also owns the shell code_lines view.
 
-The number in the allow file must match reality in BOTH directions, so a size can
-never drift unnoticed: growing one is allowed, but only as a deliberate, reviewable
-edit that shows up in the diff next to a reason. Blocking growth outright would
-just push a needed addition into the wrong file.
-
-The repo had no length metric at all: F1/F2 in the backlog were measured by hand,
-which is why their tables went stale between rounds and had to be re-measured five
-times in one day. Existing offenders are frozen in function-size.allow and
-file-size.allow with their current length, so the gate refuses only growth and new offenders — and shrinking
-one below its frozen number fails too, so the baseline cannot rot into cover.
-
-Length is weak evidence on its own. This does not ask anyone to split a function;
-it asks that the queue stay honest without a human re-counting.
-
-This module also owns strip_line/code_lines, the quote-, comment- and heredoc-aware
-view of shell source that every extent-based gate imports.
 docs/code-quality-tooling.md#what-a-shell-functions-extent-is
-
-GRADING A CONSUMER. `--root` and the two `--*-allow` flags are the same contract
-docs/scripts/verify_mutations.py already documents, and for the same reason the
-lint gates take one: a submodule checkout puts this script INSIDE the consumer,
-where a root derived from __file__ resolves to ANTfrastructure and the gate grades
-the wrong tree while reporting green over one nobody looked at. BOTH halves are
-rooted -- functions and files -- because half a gate over the right tree is still
-a gate over the wrong one.
-
-Under the hub's own root the scan set is the historical SCAN walk plus the flat
-FLAT_SCAN pass, so the hub's own verdict is unchanged. Under any other root it is
-every TRACKED subject minus the excluded top-level directories -- the same rule
-run-lint-gates.sh uses, so a consumer needs no per-repo configuration and a
-vendored subtree cannot creep in. FLAT_SCAN has no consumer meaning: it exists
-only because the hub's own Dockerfiles sit above every recursive scan root, and
-`git ls-files` finds a Dockerfile wherever a consumer keeps it.
 """
 import argparse
 import ast
@@ -55,19 +23,14 @@ FN_FMT = "<path> | <function> | <lines> | <reason>"
 FILE_FMT = "<path> | <lines> | <reason>"
 LIMIT = int(os.environ.get("FUNCTION_SIZE_LIMIT", "80"))
 FILE_LIMIT = int(os.environ.get("FILE_SIZE_LIMIT", "800"))
-# SCAN is the CORPUS: the trees walked recursively for every subject. FLAT_SCAN is
-# not a second corpus but a narrowing -- Dockerfiles sit at the top of linux/ and
-# have no function structure, so they are size-checked as files only, and windows/
-# is out of scope for this repo lane.
+# SCAN is walked recursively; FLAT_SCAN only adds the top-level Dockerfiles, sized as files.
 SCAN = ("linux/scripts", "linux/host-config", "docs/scripts", "linux/llm-stack")
 FLAT_SCAN = ("linux",)
-# Top-level directories that belong to somebody else. Only consulted under a foreign
-# --root: the hub's own SCAN never names one.
+# Directories never walked.
 SKIP_DIRS = {".git", "__pycache__", "patches"}
 def _is_subject(fn):
     return fn.endswith(".sh") or fn.endswith(".py") or fn.startswith("Dockerfile")
-# DEF_HEAD is the unanchored `name() {` / `function name {` head (shared with
-# verify_dead_functions.py); DEF is the column-0 form that opens a measured function.
+# DEF_HEAD is unanchored (verify_dead_functions.py shares it); DEF is the column-0 form.
 DEF_HEAD = r"(?:function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?|([A-Za-z_][A-Za-z0-9_]*)\(\))\s*\{"
 DEF = re.compile("^" + DEF_HEAD)
 
@@ -105,8 +68,7 @@ def _skip_quoted(line, i, stack, out):
 
 
 def _open_group(line, i, stack, out):
-    """Push the group opened at `i` -- $((, (( , $( or ( -- and return the next index,
-    or 0 when the char is emitted as ordinary code."""
+    """Push the $((, ((, $( or ( group opened at `i`; the next index, or 0 when the char is plain code."""
     n = _arith_open(line, i)
     if n:
         stack.append("arith")
@@ -133,8 +95,7 @@ def _close_group(line, i, stack):
 
 
 def _code_char(line, i, stack, out, docs):
-    """Advance one char of code; -1 at a comment. Quotes and the ( ) groups push onto
-    `stack`, a heredoc operator records its terminator in `docs` and leaves the code."""
+    """Advance one char of code, -1 at a comment; a heredoc operator records its terminator in `docs`."""
     c = line[i]
     if c == "#" and (i == 0 or line[i - 1] in " \t;(|&"):
         return -1
@@ -162,8 +123,7 @@ def _code_char(line, i, stack, out, docs):
 
 
 def strip_line(line, stack):
-    """Return (code, heredoc_terminators) for one line; `stack` carries quote and
-    $( ) context across lines so multi-line strings and substitutions parse right."""
+    """(code, heredoc_terminators) for one line; `stack` carries quote and $( ) context across lines."""
     out, docs, i = [], [], 0
     while 0 <= i < len(line):
         if stack and stack[-1] in ("sq", "dq"):
@@ -174,8 +134,7 @@ def strip_line(line, stack):
 
 
 def code_lines(lines):
-    """One stripped line per line in: comment text, quoted text and heredoc bodies gone,
-    quote and $( ) state carried across lines."""
+    """One line out per line in, with comments, quoted text and heredoc bodies blanked."""
     stack, pending, out = [], [], []
     for line in lines:
         if pending:
@@ -190,8 +149,7 @@ def code_lines(lines):
 
 
 def _rel(path, root):
-    """Allowlist keys are posix-spelled; os.path.relpath spells backslashes on Windows,
-    which made every frozen row report twice there (miss + stale)."""
+    """Posix-spelled relpath, since allowlist keys never carry Windows backslashes."""
     return os.path.relpath(path, root).replace(os.sep, "/")
 
 
@@ -217,12 +175,7 @@ def _flat_scan(root, tops, match):
 
 
 def _tracked_scan(root, match):
-    """Every TRACKED file outside the excluded tops whose name `match` accepts.
-
-    The ls-files call, the exclusion and the root checks belong to
-    gate_scope; what is this gate's own is the basename predicate and the
-    (abspath, rel) pair its callers want.
-    """
+    """(path, rel) for every tracked file gate_scope admits whose basename `match` accepts."""
     for rel in gate_scope.tracked(root, ["*"]):
         if match(os.path.basename(rel)):
             yield os.path.join(root, rel), rel
@@ -233,14 +186,7 @@ def _under(rel, tops):
 
 
 def subjects(root, match, tops=None):
-    """The scan set for one subject predicate, as (path, relpath).
-
-    Under the hub's own root this is the historical SCAN walk, so the hub's verdict
-    cannot move; under any other root it is the tracked set. `tops` is the --scan
-    narrowing: it REPLACES the walked trees, but only FILTERS the tracked set --
-    walking a consumer directory would give back exactly what ls-files was chosen
-    to keep out, a nested checkout's files and untracked build output.
-    """
+    """(path, relpath) scan set: SCAN walked under the hub, the tracked set elsewhere, which `tops` only filters."""
     root = os.path.abspath(root or ROOT)
     if root == os.path.abspath(ROOT):
         return _walk_scan(root, tops or SCAN, match)
@@ -249,17 +195,12 @@ def subjects(root, match, tops=None):
 
 
 def scan(*suffixes, root=None, tops=None):
-    """Yield (path, relpath) for every file in the scan set whose name ends in one of
-    `suffixes`. Sibling gates import this, so the no-argument call keeps meaning
-    exactly what it meant: the hub's own corpus."""
+    """(path, relpath) per scan-set file ending in `suffixes`; with no root, sibling gates get the hub corpus."""
     return subjects(root, lambda fn: fn.endswith(suffixes), tops)
 
 
 def shell_functions(path, rel):
-    """Yield (rel, name, start_line, body_lines) for every function in one shell file;
-    body_lines runs from the definition line to its closing brace inclusive. Braces are
-    counted over code_lines, so a `}` in a comment, a string or a heredoc body neither
-    ends a function early nor hides one, and neither does a definition head inside one."""
+    """(rel, name, start_line, body_lines) per shell function, braces counted over code_lines only."""
     try:
         lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
     except OSError:
@@ -303,9 +244,7 @@ def files(root=None, tops=None):
         n = _line_count(path)
         if n is not None:
             yield rel, n
-    # The hub's Dockerfiles sit above every recursive scan root, so its own run adds
-    # one flat pass. A --scan narrowing asked for exactly those trees, and a foreign
-    # root needs no pass at all: ls-files finds a Dockerfile wherever it lives.
+    # Only the hub needs the flat pass: its Dockerfiles sit above every recursive scan root.
     if tops or root != os.path.abspath(ROOT):
         return
     for path, rel in _flat_scan(root, FLAT_SCAN, lambda fn: fn.startswith("Dockerfile")):
@@ -351,16 +290,12 @@ def main():
     args = ap.parse_args()
 
     try:
-        # resolve_root, not abspath: `git rev-parse` succeeds in any
-        # SUBDIRECTORY of a checkout, so grading one anchors every allowlist
-        # key a level down without saying so.
+        # resolve_root, not abspath: a subdirectory root would silently shift every allowlist key.
         root = gate_scope.resolve_root(args.root, ROOT)
     except gate_scope.ScopeError as exc:
         return gate_scope.die(exc)
     hub = root == os.path.abspath(ROOT)
-    # A consumer's freeze belongs to the consumer: keeping these beside this script
-    # would put every repo's ratchet inside the hub, where no consumer can see it in
-    # its own diff.
+    # A consumer's freeze lives in the consumer, where its own diff shows it.
     fn_allow = args.fn_allow or (FN_ALLOW if hub else os.path.join(root, "function-size.allow"))
     file_allow = args.file_allow or (FILE_ALLOW if hub
                                      else os.path.join(root, "file-size.allow"))
@@ -370,9 +305,7 @@ def main():
         print("  root:       %s" % root)
         print("  fn-allow:   %s" % fn_allow)
         print("  file-allow: %s" % file_allow)
-    # A name can be defined more than once in one file (a stub redefined later),
-    # and the allow key is (file, name). Take the LONGEST -- the shortest would let
-    # a redefinition hide the offender.
+    # A redefined name keeps its longest body, so a short redefinition cannot hide the offender.
     longest: dict = {}
     for f, n, c in functions(root, args.scan):
         longest[(f, n)] = max(c, longest.get((f, n), 0))

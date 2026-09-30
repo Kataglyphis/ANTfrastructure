@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# smoke-critical-fixes.sh — the half of the critical-fixes battery that can only
-# mean anything INSIDE a built image: the per-arch /opt/python-cross staging
-# trees, the abseil headers LiteRT's own headers include, and the native cc's
-# target triple. preflight owns the repo-grep half (verify-critical-fixes.sh).
-# docs/cross-build-verification.md#the-in-image-half-of-critical-fixes
+# See docs/cross-build-verification.md § The in-image half of critical-fixes
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=linux/scripts/06-packaging/smoke-common.sh
@@ -17,9 +13,7 @@ LITERT_INCLUDE_DIRS=("${CF_SMOKE_ROOT}/usr/local/include" "${CF_SMOKE_ROOT}/opt/
 LITERT_HEADER_DIRS=("${CF_SMOKE_ROOT}/usr/local/include/tflite" "${CF_SMOKE_ROOT}/usr/local/include/c"
                     "${CF_SMOKE_ROOT}/usr/local/include/tensorflow" "${CF_SMOKE_ROOT}/opt/litert/include")
 
-# The .pc prefix a consumer's pkg-config resolves, with ${pcfiledir} expanded the
-# way pkg-config expands it. A relocatable prefix is correct and a literal one is
-# correct; only where it LANDS decides.
+# The .pc prefix as pkg-config resolves it: relocatable or literal, only where it lands decides.
 resolved_pc_prefix() {
   local pc="$1" raw dir
   raw="$(sed -n 's/^prefix=//p' "${pc}" | head -1)"
@@ -54,8 +48,7 @@ fix1_python_pc() {
   { [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch python-${PYTHON_MAJOR_MINOR:-3.14}.pc found (not a cross-compiler image)"; } || true
 }
 
-# The header that demands absl, so a missing absl is reported only where a
-# consumer would actually hit it.
+# The header that demands absl, so a missing absl is reported only where a consumer hits it.
 _absl_demander() {
   local dir hit
   for dir in "${LITERT_HEADER_DIRS[@]}"; do

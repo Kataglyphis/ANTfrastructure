@@ -1,19 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# media-env.sh
-# Canonical environment variables for media library paths.
-# Sourced by RUN steps in Dockerfile.media and Dockerfile.package to keep
-# PATH, PKG_CONFIG_PATH, LD_LIBRARY_PATH, GST_PLUGIN_PATH, and GI_TYPELIB_PATH
-# consistent across both Dockerfiles.
-#
-# Prefer updating this file rather than editing ENV blocks directly.
-# Run linux/scripts/04-runtime/verify-runtime-paths.sh to check consistency.
-#
-# Expected prefixes (set as individual variables or via ARG):
-#   GSTREAMER_PREFIX=/opt/gstreamer
-#   OPENCV_PREFIX=/opt/opencv5
-#   FFMPEG_PREFIX=/opt/ffmpeg
-#   LIBCAMERA_PREFIX=/opt/libcamera
+# Media paths shared by Dockerfile.media and Dockerfile.package; 04-runtime/verify-runtime-paths.sh checks them.
 
 set -a
 
@@ -22,8 +9,7 @@ set -a
 : "${FFMPEG_PREFIX:=/opt/ffmpeg}"
 : "${LIBCAMERA_PREFIX:=/opt/libcamera}"
 
-# Canonical wheelhouse location — single source of truth for the runtime wheel
-# scripts (collect-artifacts.sh, repair-wheels.sh, verify-wheels.sh).
+# The one wheelhouse the runtime wheel scripts share.
 : "${WHEELS_DIR:=/opt/wheels}"
 
 PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:${PATH}"

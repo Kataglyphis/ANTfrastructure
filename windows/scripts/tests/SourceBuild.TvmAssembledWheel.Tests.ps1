@@ -1,13 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The pure helpers behind the cross lane's hand-assembled TVM wheels (#133,
-# Build-TvmFromSource.ps1): Write-AssembledWheelDistInfo (METADATA / WHEEL /
-# top_level.txt for `python -m wheel pack`), Get-VendoredTvmFfiVersion (the
-# submodule's v* tag, PEP 440-normalised, else TVM's own >= bound) and
-# Get-PyprojectDependencies (the [project] dependencies block, never
-# hardcoded). Lifted out of the script's AST; no python, no TVM.
+# The pure helpers behind the cross lane's hand-assembled TVM wheels, lifted from the script; no python, no TVM.
 
 Describe 'TVM assembled-wheel helpers' {
 
@@ -44,10 +38,7 @@ Describe 'TVM assembled-wheel helpers' {
     }
 
     It 'reads the [project] dependencies block and nothing else' {
-        # Lists BEFORE dependencies (classifiers, authors, keywords) are the
-        # shape both real pyprojects have -- run 34: a regex that forbade any `[`
-        # between [project] and the list matched nothing and both wheels
-        # shipped with NO requirements (a defect the deps gate cannot see).
+        # Real pyprojects have lists before dependencies; a regex that forbids `[` there silently yields no requirements.
         $py = @(
             '[build-system]', 'requires = ["scikit-build-core>=0.11"]', '[project]', 'name = "apache-tvm"',
             'authors = [{ name = "Apache TVM Community", email = "dev@tvm.apache.org" }]',
@@ -59,18 +50,13 @@ Describe 'TVM assembled-wheel helpers' {
         $deps = @(Get-PyprojectDependencies -PyprojectText $py)
         Assert-Equal 'apache-tvm-ffi>=0.1.13.post2,ml_dtypes,numpy,typing_extensions' ($deps -join ',') 'exact list, torch extra excluded'
         Assert-Equal 0 (@(Get-PyprojectDependencies -PyprojectText "[project]`nname = ""x""")).Count 'no block -> empty'
-        # CRLF: the container's git checkout converts line endings, and .NET's
-        # multiline `$` matches only immediately before `\n` -- runs 34/35 shipped
-        # wheels with NO Requires-Dist because of exactly this (the same text
-        # parsed fine with LF on the host).
+        # The container checkout is CRLF, and .NET's multiline `$` matches only right before `\n`.
         Assert-Equal 'apache-tvm-ffi>=0.1.13.post2,ml_dtypes,numpy,typing_extensions' `
             ((Get-PyprojectDependencies -PyprojectText ($py -replace "`n", "`r`n")) -join ',') 'CRLF file parses identically'
     }
 
     It 'stops at the one-line list and never runs into [project.urls] / optional-dependencies (tvm-ffi shape, run 33)' {
-        # arm64 run 33: the assembled tvm-ffi wheel declared its Homepage URL,
-        # ninja, torch and setuptools as requirements because the capture ran past
-        # the one-line `dependencies = [...]` to the next `]` at a line start.
+        # A capture that runs past a one-line list to the next line-start `]` swallows URLs and extras.
         $py = @(
             '[project]', 'name = "apache-tvm-ffi"', 'requires-python = ">=3.9"',
             'dependencies = ["typing-extensions>=4.5"]',

@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
-# llvm-cross.sh — LLVM cross-compilation build functions.
-# Sourced by llvm.sh; not executed standalone.
+# LLVM cross-build functions, sourced by llvm.sh.
 [ -n "${_LLVM_CROSS_SH_LOADED:-}" ] && return 0
 _LLVM_CROSS_SH_LOADED=1
 set -euo pipefail
-# CCACHE-CONTENT (2026-08-19): survive compiler rebuilds (see build-gcc.sh note)
+# Hash the compiler's content, not its mtime, so the cache survives compiler rebuilds.
 export CCACHE_COMPILERCHECK=content
 
 install_cross_llvm_target_packages() {
   local target_label="$1"
 
-  # The build host's own arch needs no target packages — its native ones serve.
-  # Keyed on build_arch_oci(), not "amd64" (2026-09-08): on an arm64 host the
-  # roles swap and the literal made arm64 take the foreign-target path.
+  # The build host's own arch needs no target packages; compare with build_arch_oci, never a literal amd64.
   [ "${target_label}" = "$(build_arch_oci)" ] && return 0
   command -v install_target_packages >/dev/null 2>&1 || die "install_target_packages is unavailable; cross-env.sh must be sourced before llvm.sh"
 
@@ -33,13 +30,7 @@ _llvm_cross_resolve_dirs() {
 
   [ -n "${target_label}" ] || die "_build_llvm_cross_core: target architecture required"
   target_label="$(arch_normalize "${target_label}")"
-  # The build host used to be exempt here ("already serves it") — but what it
-  # serves is the apt.llvm.org BOOTSTRAP, whose per-major suite tracks the
-  # release branch head. So the host arch shipped whatever patch apt had that
-  # week (23.1.1 on 2026-09-07) while versions.env pinned 23.1.0, and
-  # materialize-llvm-target.sh's own comment predicted exactly that. Build the
-  # host arch from llvmorg-${LLVM_RELEASE} like every other target; apt stays a
-  # bootstrap (clang-tblgen).
+  # The build host's arch is source-built too: apt.llvm.org tracks the branch head, not the pinned release.
 
   triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || die "No triplet for ${target_label}"
 
@@ -47,8 +38,7 @@ _llvm_cross_resolve_dirs() {
   _r[target_label]="${target_label}"
   _r[triplet]="${triplet}"
 
-  # TG3 — ONE superset build per arch, installed to both prefixes (relocatable);
-  # clang_prefix is per-arch or the shared compiler stage clobbers /opt/llvm-target.
+  # One superset build per arch, installed to both prefixes; a shared clang_prefix would be clobbered.
   _r[llvm_prefix]="$(llvm_cross_install_prefix "${target_label}")" || die "Unable to resolve LLVM cross install prefix for ${target_label}"
   _r[clang_prefix]="/opt/llvm-target-${target_label}"
   # Configure with the clang prefix; /opt/llvm-cross is a second relocated install.
@@ -75,8 +65,7 @@ _llvm_cross_early_return() {
   local llvm_prefix="${_r[llvm_prefix]}" clang_prefix="${_r[clang_prefix]}"
   local installed_version llvm_ok=0 clang_ok=0
 
-  # The unified build produces BOTH trees; reuse only when both are current, so a
-  # partial state forces a full rebuild.
+  # Reuse only when both trees are current; a partial state forces a full rebuild.
   if llvm_cross_install_looks_complete "${target_label}"; then
     llvm_ok=1
   fi
@@ -108,8 +97,7 @@ _llvm_cross_retrieve_source() {
   local source_root="${_r[source_root]}" build_root="${_r[build_root]}" source_dir="${_r[source_dir]}" tag="${_r[tag]}" mode="${_r[mode]}" target_label="${_r[target_label]}"
 
   mkdir -p "${source_root}" "${build_root}"
-  # TS4: a truncated clone leaves a .git a bare test accepts forever — require a
-  # resolvable HEAD + worktree; evict superseded generations (~2 GB per release).
+  # A truncated clone passes a bare .git test, so require HEAD and tree; evict other ~2 GB checkouts.
   local _src_ok=0 _old_src
   if [ -d "${source_dir}/.git" ] \
      && git -C "${source_dir}" rev-parse -q --verify HEAD >/dev/null 2>&1 \
@@ -133,8 +121,7 @@ _llvm_cross_pre_build_hooks() {
   local -n _r="$1"
   local target_label="${_r[target_label]}" build_root="${_r[build_root]}"
 
-  # The unified build always needs the host-native helper-tool machinery (host gcc
-  # wrappers that compile the NATIVE tablegen/helper sub-build).
+  # Host gcc wrappers for the native tablegen/helper sub-build.
   _r[native_wrapper_dir]="${build_root}/${_r[triplet]}-native-tool-bin"
   _r[build_cc_real]="$(resolve_build_gcc_tool gcc 2>/dev/null || command -v gcc 2>/dev/null || true)"
   _r[build_cxx_real]="$(resolve_build_gcc_tool g++ 2>/dev/null || command -v g++ 2>/dev/null || true)"
@@ -143,8 +130,7 @@ _llvm_cross_pre_build_hooks() {
   _r[host_path]="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 }
 
-# Empty out-array when the target declares no runtime library path, or none of
-# its directories exist.
+# Empty out-array when the target has no existing runtime library dir.
 _llvm_cross_linker_flag_args() {
   local -n _lf_args="$1"
   local target_label="$2"
@@ -170,8 +156,7 @@ _llvm_cross_linker_flag_args() {
   )
 }
 
-# Launcher args for the OUTER (cross) build. The caller resolves the launcher
-# string because the NESTED native sub-build needs the same value.
+# Outer-build launcher args; the caller resolves the launcher because the nested native build needs it too.
 _llvm_cross_launcher_cmake_args() {
   local -n _cl_args="$1"
   local launcher="$2"
@@ -185,8 +170,7 @@ _llvm_cross_launcher_cmake_args() {
   )
 }
 
-# Do NOT reintroduce the core-only shape (empty projects / no native tablegen
-# wiring): that combination leaves libLLVMSupportLSP.a unbuilt.
+# Never return to the core-only shape: it leaves libLLVMSupportLSP.a unbuilt.
 _llvm_cross_superset_cmake_args() {
   local -n _ss_args="$1"
   local build_cc="$2" build_cxx="$3" launcher="$4" native_tool_dir="$5"
@@ -198,9 +182,7 @@ _llvm_cross_superset_cmake_args() {
     -DCOMPILER_RT_BUILD_SANITIZERS=ON
     -DCOMPILER_RT_BUILD_BUILTINS=ON
     -DCOMPILER_RT_BUILD_XRAY=OFF
-    # -fsanitize=fuzzer and atheris' source build need it (BACKLOG CON17). No private
-    # libc++: that is an ExternalProject a cross build need not risk; libFuzzer then
-    # uses libstdc++ like the fuzz target does (a -fsanitize=memory fuzz run would not).
+    # libFuzzer for -fsanitize=fuzzer and atheris, on libstdc++: a private libc++ ExternalProject is not worth the risk.
     -DCOMPILER_RT_BUILD_LIBFUZZER=ON
     -DCOMPILER_RT_USE_LIBCXX=OFF
     -DCOMPILER_RT_BUILD_PROFILE=ON
@@ -210,15 +192,13 @@ _llvm_cross_superset_cmake_args() {
     -DCOMPILER_RT_BUILD_CTX_PROFILE=OFF
     -DSANITIZER_CXX_ABI=libstdc++
     -DLLVM_USE_HOST_TOOLS=ON
-    # The NESTED native tablegen build compiled launcher-less until this was
-    # added (~2h cold); empty when no compiler cache is usable.
+    # The nested native tablegen build needs the launcher too; empty when no cache is usable.
     "-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DCMAKE_C_COMPILER=${build_cc};-DCMAKE_CXX_COMPILER=${build_cxx};-DCMAKE_ASM_COMPILER=${build_cc}${launcher:+;-DCMAKE_C_COMPILER_LAUNCHER=${launcher};-DCMAKE_CXX_COMPILER_LAUNCHER=${launcher}}"
     -DCLANG_TABLEGEN="${native_tool_dir}/clang-tblgen"
   )
 }
 
-# Resolve ONE tool through the three-rung ladder. ${!envvar:-} not ${!envvar}:
-# an unset var is a legitimate state here, not a bug (see the contract below).
+# ${!envvar:-}, not ${!envvar}: an unset var is a legitimate state here.
 _llvm_cross_resolve_tool() {
   local -n _rt1="$1"
   local key="$2" envvar="$3" tool="$4" triplet="$5" native_ok="$6"
@@ -232,15 +212,7 @@ _llvm_cross_resolve_tool() {
   _rt1["${key}"]="${val}"
 }
 
-# This function resolves its OWN toolchain and is valid for target == build host.
-# It used to read CC/AR/CROSS_TARGET_* bare, on the assumption that
-# setup_linux_cross_env had exported them — but that function returns EARLY when
-# the target is the build host, and since 2026-09-10 this file's own loop asks
-# for exactly that case (--include-amd64), on every host including amd64.
-#   rung 1  the exported cross env      -> a FOREIGN target keeps today's argv
-#   rung 2  target-explicit helpers     -> no dependence on the cross guard
-#   rung 3  the build host's own tools  -> ONLY when target triplet == build triplet
-# No rung left is a die() naming the tool and the ladder, never an empty -D<NAME>=.
+# Own toolchain, as the cross env exports nothing when target == build: env, target helpers, then host tools.
 _llvm_cross_resolve_configure_toolchain() {
   local -n _rt="$1"
   local target_label="$2" triplet="$3"
@@ -267,14 +239,7 @@ _llvm_cross_resolve_configure_toolchain() {
   _llvm_cross_resolve_tool _rt strip   STRIP   strip   "${triplet}" "${native_ok}"
 }
 
-# The LLVM triple for a Debian multiarch one. LLVM creates the per-target
-# compiler-rt directory from the string it was CONFIGURED with, and the clang
-# driver looks it up under the triple it NORMALIZES to; the two must agree or
-# every compiler-rt link fails on a compiler that compiles fine. Deriving the
-# vendor field cannot miss an arch, which a per-arch list demonstrably could,
-# and a string that is not a Debian multiarch triplet is refused rather than
-# passed through -- the silent fall-through is how amd64 shipped wrong.
-# docs/cross-build-verification.md#the-llvm-triple-and-the-compiler-rt-directory
+# Configured and normalized triples must agree. docs/cross-build-verification.md#the-llvm-triple-and-the-compiler-rt-directory
 llvm_cross_clang_triple() {
   local deb="$1"
   case "${deb}" in
@@ -354,12 +319,10 @@ _llvm_cross_build_and_install() {
 
   cmake --build "${build_dir}" --parallel "${jobs}"
 
-  # TVM consumes llvm-config out of /opt/llvm-cross; the default "all" target
-  # does not guarantee it under cross, so build it explicitly.
+  # TVM needs llvm-config from /opt/llvm-cross, which "all" does not guarantee under cross.
   cmake --build "${build_dir}" --parallel "${jobs}" --target llvm-config
 
-  # Install the ONE tree to BOTH prefixes. --strip uses the cross CMAKE_STRIP
-  # (host strip no-ops on foreign ELFs); an unstripped tree is multiple GB.
+  # One tree to both prefixes; --strip uses the cross strip, as the host's skips foreign ELFs.
   cmake --install "${build_dir}" --strip
   cmake --install "${build_dir}" --strip --prefix "${llvm_prefix}"
 }
@@ -383,8 +346,7 @@ _llvm_cross_setup_and_build() {
     setup_linux_cross_env
     llvm_cross_populate_tool_wrapper_dir "${wrapper_dir}"
 
-    # Host gcc wrappers + CLANG_TABLEGEN for the NATIVE tablegen/helper sub-build;
-    # without them the native support lib is silently left unbuilt.
+    # Without host wrappers and CLANG_TABLEGEN the native support lib is silently left unbuilt.
     build_cc="$(make_host_compiler_wrapper "${native_wrapper_dir}/host-gcc" "${build_cc_real}" "${host_path}")"
     build_cxx="$(make_host_compiler_wrapper "${native_wrapper_dir}/host-g++" "${build_cxx_real}" "${host_path}")"
 
@@ -395,8 +357,7 @@ _llvm_cross_setup_and_build() {
       || die "no LLVM triple for Debian multiarch triplet '${triplet}' (${target_label})"
     export PATH="${wrapper_dir}:${PATH}"
 
-    # preference INVERTED: sccache first, ccache only as the fallback. See
-    # docs/build-cache-tiers.md.
+    # sccache first, ccache only as fallback. See docs/build-cache-tiers.md
     local -a extra_cmake_args=()
     local _xc_launcher
     compiler_cache_launcher_env 2>/dev/null || true
@@ -419,8 +380,7 @@ _llvm_cross_post_build_hooks() {
   local target_label="${_r[target_label]}" clang_prefix="${_r[clang_prefix]}" release="${_r[release]}"
   local build_dir="${_r[build_dir]}" cmake_dir
 
-  # Validate both trees. The cross llvm-config is copied from the build tree
-  # because the installed one may be stripped.
+  # Copy llvm-config from the build tree: the installed one may be stripped.
   install_cross_llvm_config_binary "${target_label}" "${build_dir}"
   cmake_dir="$(llvm_cross_cmake_dir "${target_label}")" || die "Target LLVM CMake package missing after install for ${target_label}"
   validate_cross_llvm_cmake_package "${target_label}"
@@ -437,8 +397,7 @@ _llvm_cross_post_build_hooks() {
 _build_llvm_cross_core() {
   local mode="$1"
   local target_label="$2"
-  # MUST NOT be named `_r`/`_cfg`/`_bi`, nor collide with the *_args out-arrays:
-  # a self-referential `local -n` is a circular ref. docs/refactoring-backlog-archive-2026-08-31.md
+  # Never named _r/_cfg/_bi or like an *_args array: a self-referential local -n is circular.
   local -A _state=()
 
   _llvm_cross_resolve_dirs _state "${mode}" "${target_label}" || return 0
@@ -459,29 +418,17 @@ _build_llvm_cross_core() {
   _llvm_cross_post_build_hooks _state
 }
 
-# RUN 3 entry (build_cross_llvm_targets loop): runs the unified superset build,
-# producing BOTH /opt/llvm-cross/<triplet> (verified at RUN 3c) and
-# /opt/llvm-target-<arch>. `target-llvm`/`target-clang` now select only the
-# early-return reuse check; the compile itself is identical.
+# RUN 3 entry: the unified build yields /opt/llvm-cross/<triplet> and /opt/llvm-target-<arch> alike.
 build_cross_llvm_target() {
   _build_llvm_cross_core target-llvm "$1"
 }
 
-# RUN 3d entry (per-arch `setup-dependencies.sh target-clang`): the unified build
-# in RUN 3 already produced /opt/llvm-target-<arch> (+ /opt/llvm-cross), so this
-# early-returns without a second compile. If ever run standalone (both trees
-# absent) it performs the same unified build.
+# RUN 3d entry: normally reuses RUN 3's trees; run standalone it performs the same unified build.
 install_target_clang_toolchain() {
   _build_llvm_cross_core target-clang "${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
 }
 
-# The unified superset build (clang;clang-tools-extra;lld) links LLVMgold against
-# the binutils plugin API header (/usr/include/plugin-api.h, from binutils-dev).
-# The dedicated target-clang RUN (Dockerfile 3d) apt-installs binutils-dev inline,
-# but the LLVM RUN (3) runs with SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true and never
-# installs it — so the clang build that now lives here would silently drop the
-# gold plugin from /opt/llvm-target. Install it (host arch; the header is
-# arch-neutral) before the RUN-3 unified build. Idempotent + best-effort.
+# LLVMgold needs binutils-dev's plugin-api.h, which the LLVM RUN never installs; without it the plugin is dropped.
 _llvm_cross_ensure_host_binutils_dev() {
   [ -f /usr/include/plugin-api.h ] && return 0
   if declare -F apt_install >/dev/null 2>&1; then
@@ -504,25 +451,10 @@ build_cross_llvm_targets() {
   _llvm_cross_ensure_host_binutils_dev
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported LLVM cross target list: ${targets_raw}"
 
-  # --include-amd64 means "do not skip the BUILD HOST's arch" (the flag name
-  # predates the host-relative meaning). Without it the host arch never gets a
-  # pinned LLVM and materialize-llvm-target.sh falls back to the apt bootstrap.
-  #
-  # The HOST arch goes FIRST, deliberately: llvm_host_native_tool_dir prefers
-  # /opt/llvm-target-<host>, and that tree is produced by this very loop. Built
-  # in list order, the arches ahead of the host's turn would still take their
-  # tablegen from the apt bootstrap — a 23.1.1 tablegen generating .inc files
-  # for a 23.1.0 source tree. On an amd64 host the list order already happened
-  # to do the right thing; on arm64 it did not.
+  # --include-amd64 keeps the build host's arch, built first so later arches use its pinned tablegen, not apt's.
   local _host_arch _rest
   _host_arch="$(build_arch_oci 2>/dev/null || printf 'amd64')"
-  # `|| true` INSIDE a brace group, not after the pipeline: with a single-entry
-  # list that IS the host arch (--cross-targets arm64 on an arm64 host -- a
-  # native-only build), grep -vx matches nothing and exits 1, and `set -o
-  # pipefail` turns that into a silent death of the whole RUN with no message
-  # at all. The empty remainder is the CORRECT answer there, which is why
-  # ${_rest:+,${_rest}} below already handles it. Same class the `nm | grep -q`
-  # note in 01-core/platform.sh warns about.
+  # `|| true` INSIDE a brace group: a host-only list leaves grep -vx empty, which pipefail would make a silent death.
   _rest="$( { printf '%s' "${targets_raw}" | tr ',' '\n' | grep -vx "${_host_arch}" || true; } | paste -sd, - )"
   case ",${targets_raw}," in
     *",${_host_arch},"*) targets_raw="${_host_arch}${_rest:+,${_rest}}" ;;

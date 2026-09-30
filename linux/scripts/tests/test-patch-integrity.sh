@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify-patch-integrity.sh. A patch only detonates hours into a cross
-# build, so the two things this gate must actually do are go RED on a malformed
-# diff and RED on an orphaned one -- and stay ADVISORY about the apply site, which
-# is the distinction a stricter rewrite would silently lose.
-# docs/code-quality-tooling.md#patch-integrity-patch-integrity
+# Red on a malformed or orphaned patch, advisory about the apply site; see docs/code-quality-tooling.md#patch-integrity-patch-integrity
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -13,8 +9,7 @@ GATE="${TESTS_DIR}/../verify-patch-integrity.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# _tree: a throwaway repo root with the gate at its real depth; it resolves both
-# the patch dir and the script corpus from its own location.
+# _tree: the gate at its real depth, since it finds the patch dir and script corpus from there.
 _tree() {
   local d; d="$(gate_tree_here "${_work}" "${GATE}" linux/scripts/verify-patch-integrity.sh)"
   mkdir -p "${d}/linux/scripts/patches"
@@ -66,16 +61,14 @@ t_assert_eq "1" "$(t_rc _gate "${fix}")"
 t_assert_contains "$(t_out _gate "${fix}")" "orphaned patch — no build script references lonely.patch"
 
 t_case "a reference from something that is not a build script does not count"
-# The corpus is *.sh on purpose: a patch named only in a doc or a changelog is
-# still not applied by anything.
+# Only *.sh counts: a patch named in a doc is still applied by nothing.
 fix="$(_tree)"; _patch "${fix}" doc-only.patch good
 printf 'we used to apply doc-only.patch here\n' > "${fix}/linux/scripts/notes.md"
 t_assert_eq "1" "$(t_rc _gate "${fix}")"
 t_assert_contains "$(t_out _gate "${fix}")" "orphaned patch"
 
 t_case "a raw apply site is ADVISORY: reported as INFO, and still passes"
-# Some sites pre-date the idempotent helper. Turning this into a failure is the
-# tempting tightening that would break a green tree for no build reason.
+# Some sites predate the idempotent helper; failing them would break a green tree for no build reason.
 fix="$(_tree)"; _patch "${fix}" raw.patch good; _apply_site "${fix}" raw-use.sh raw.patch raw
 _out="$(t_out _gate "${fix}")"
 t_assert_eq "0" "$(t_rc _gate "${fix}")" "the advisory must not be an exit code"

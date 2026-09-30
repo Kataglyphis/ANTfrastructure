@@ -1,12 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Get-CMakeCrossArgs must carry the ASM language pair (added 2026-08-24 for
-# XNNPACK/MLAS .S kernels: without CMAKE_ASM_COMPILER_TARGET the x86 assembler
-# gets aarch64 sources and dies with "brackets expression not supported") and
-# must be EMPTY for the host arch (a host-tool configure passes -TargetArch
-# (Get-WindowsHostArch) and expects no cross flag at all).
+# Without the ASM target the x86 assembler gets aarch64 .S kernels; host-tool configures expect no cross flags at all.
 
 Describe 'Get-CMakeCrossArgs' {
     BeforeAll {

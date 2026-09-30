@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# Tests for docs/scripts/verify_mutations.py. It neuters a guarantee to check a
-# test can fail, so the cases that matter most are that the tree it was pointed at
-# comes back byte-identical (a build may be reading it), that --in-place -- the
-# opt-out these fixtures use -- still edits in place and restores, that no write
-# escapes the copy through a symlink, and that the two production call sites never
-# pass it.
-# docs/code-quality-tooling.md#the-mutation-gate-mutations
+# The pointed-at tree must stay byte-identical, since a build may be reading it; see docs/code-quality-tooling.md#the-mutation-gate-mutations
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -16,11 +10,7 @@ GATE="${REPO}/docs/scripts/verify_mutations.py"
 _work="$(mktemp -d)"; _tmp="$(mktemp -d)"
 trap 'rm -rf "${_work}" "${_tmp}"' EXIT
 
-# A subject with one guard, a test that may or may not look at it, and a manifest
-# naming one mutation. Written with printf: a nested heredoc here was the first
-# thing to go wrong. $4 is where the test command reaches for the subject --
-# "${_work}" is an absolute path outside any copy (so only --in-place can bite),
-# "." is relative to the gate's cwd (so an isolated copy bites instead).
+# _fixture <find> <replace> <yes|witness|broken|no> [dir]: "${_work}" is outside any copy, "." inside it.
 _fixture() {
   local find="$1" replace="$2" test_checks="$3" dir="${4:-${_work}}"
   printf 'GUARD=on\n' > "${_work}/subject.sh"
@@ -38,8 +28,7 @@ _fixture() {
     "${find}" "${replace}" "${dir}" > "${_work}/m.json"
 }
 
-# _posix_host <what>: true on a POSIX host. An MSYS host's native Python has no process groups, mode bits
-# or PATH-resolved scripts; the cases needing <what> SKIP there, loudly, and the Linux CI proves them.
+# _posix_host <what>: false on MSYS, whose Python lacks process groups, mode bits and PATH scripts; Linux CI proves those.
 _posix_host() {
   case "$(uname -s)" in
     MINGW* | MSYS* | CYGWIN*)
@@ -68,9 +57,7 @@ t_case "a mutation the tests SURVIVE is the whole point, and fails the gate"
 _fixture "GUARD=on" "GUARD=off" no
 _out="$(_run)"
 t_assert_contains "${_out}" "SURVIVED" "a test that passes without the guard must be named"
-# The message is not the contract: it has to EXIT non-zero, or CI stays green on
-# a vacuous test. Naming the problem and passing anyway is the failure mode this
-# whole tool exists to find.
+# The exit code is the contract: a printed SURVIVED that exits 0 keeps CI green.
 t_assert_eq "1" "$(_rc)" "a surviving mutation must fail the gate, not just print"
 t_assert_contains "${_out}" "guarantee removed" "the message must say what it means"
 
@@ -96,9 +83,7 @@ _run >/dev/null 2>&1
 t_assert_eq "GUARD=on" "$(cat "${_work}/subject.sh")" \
   "a tool that edits in place must never leave the tree mutated"
 
-# --- isolation: the default must not write into the tree it was given ---------
-# 2026-09-03: preflight and the pre-commit hook run this gate with the repo as
-# root while buildkit reads that same directory as a build context.
+# Isolation: preflight and the hook point the gate at the tree buildkit may be reading.
 
 t_case "by default the mutation lands in a COPY, and still bites there"
 _fixture "GUARD=on" "GUARD=off" yes .
@@ -110,8 +95,7 @@ t_assert_eq "${_before}" "$(_snapshot)" \
   "the tree the gate was pointed at must be byte-identical -- a build may be reading it"
 
 t_case "the pointed-at file is not even TRANSIENTLY mutated while the test runs"
-# Restoring afterwards is not enough: a concurrent reader (buildkit snapshotting
-# the context) sees whatever is on disk DURING the test. The witness records it.
+# A concurrent reader sees the disk during the test, so restoring afterwards is not enough.
 _fixture "GUARD=on" "GUARD=off" witness .
 _before="$(_snapshot)"
 t_assert_contains "$(_iso_run)" "bites" "the copy must still be the thing that got mutated"
@@ -154,8 +138,7 @@ t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "nothing
 fi
 
 t_case "--changed also selects by the TEST an entry runs, not only by target"
-# A commit that only weakens tests/t.sh touches no target; matching the test
-# path is what makes the gate re-verify the guarantee that test carries.
+# A commit that only weakens a test touches no target; matching the test path re-verifies it.
 if _posix_host "a script named git on PATH"; then
 _fixture "GUARD=on" "GUARD=off" yes .
 printf '#!/usr/bin/env bash\nprintf "t.sh\\n"\n' > "${_work}/bin/git"
@@ -163,9 +146,7 @@ t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "bites" 
   "an entry whose test file is in the diff must be selected"
 fi
 
-# --- --stale-check: the half of an entry that ROTS, without running one test ---
-# 378 entries in ~0.06s, which is what makes a whole-manifest pass affordable in
-# a hook. What it must never do is read as a substitute for the gate.
+# --stale-check runs no test, which makes it cheap enough for a hook and no substitute for the gate.
 
 _stale() { TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --stale-check; }
 _ran() { if [ -e "${_tmp}/ran" ]; then echo ran; else echo not-run; fi; }
@@ -188,8 +169,7 @@ t_assert_eq "0" "$(t_rc _stale)"
 t_assert_eq "not-run" "$(_ran)"
 
 t_case "--stale-check is NOT the gate: a mutation the tests SURVIVE still passes it"
-# It answers 'does this edit still apply', never 'can the test fail'. A caller that
-# ran only this and called it coverage would be the false green this tool exists for.
+# It answers 'does this edit still apply', never 'can the test fail'.
 _fixture "GUARD=on" "GUARD=off" no
 t_assert_eq "0" "$(t_rc _stale)" "a survivor is invisible to a check that runs no test"
 t_assert_eq "1" "$(_rc)" "and the real gate still fails on the same manifest"
@@ -283,14 +263,7 @@ for _d in ${_heavy}; do
   esac
 done
 
-# --- the copy asks git, copies files as carefully as dirs, and fails loudly ---
-#
-# All three were found at once on 2026-09-04: a 1.5 GB gitignored tarball was
-# copied into a 3 GB tmpfs on every run (COPY_EXCLUDES only ever pruned
-# DIRECTORIES, so listing the file there changed nothing), the copy hit ENOSPC,
-# `except OSError: pass` produced 0-byte test files, pytest collected nothing,
-# and nineteen entries were reported as vacuous bites -- a verdict about disk
-# space wearing the clothes of a verdict about the tests.
+# The copy skips git-ignored paths and excluded files, and a failed copy must never read as a vacuous bite.
 
 t_case "a gitignored file in the source is not copied (git is asked at the SOURCE)"
 _fixture "GUARD=on" "GUARD=off" yes .
@@ -327,14 +300,9 @@ case "${_out}" in *"vacuous bite"*) t_assert_eq "no vacuous verdict" "vacuous ve
 fi
 
 t_case "a test that times out is killed as a TREE, its grandchildren with it"
-# A test that forks a sleeper, records its pid, then spins past the entry's
-# timeout. Killing only the shell left the sleeper (and, in the real gate, a
-# whole pytest) running: one such orphan burned CPU for twenty minutes.
-# The timeout itself is a verdict on EVERY host: a Windows python has no
-# os.killpg, and the gate used to crash there on the first slow test.
+# Killing only the shell leaves its children running; the timeout must work where os.killpg is absent too.
 _fixture "GUARD=on" "GUARD=off" yes .
-# Green unmutated, spinning once the guard is gone: a probe that ALWAYS spins
-# fails its own baseline and is reported vacuous before the kill is exercised.
+# Spins only once mutated: an always-spinning probe would fail its baseline before the kill runs.
 printf 'grep -q "GUARD=on" ./subject.sh && exit 0\nsleep 60 &\necho $! > "%s/gpid"\nwhile :; do :; done\n' "${_tmp}" > "${_work}/t.sh"
 printf '[{"id":"probe","target":"subject.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t.sh","why":"probe","timeout":2}]\n' > "${_work}/m.json"
 _out="$(_iso_run)"
@@ -349,11 +317,7 @@ kill -9 "$(cat "${_tmp}/gpid" 2>/dev/null)" 2>/dev/null; rm -f "${_tmp}/gpid"
 
 # --- symlinks: the copy must neither dereference them nor let a write out ------
 
-# A tree with a `link`, mutating <target>. $2 places the link: "inside" points it
-# at a sibling of the subject, "outside" at a file the tree does not contain,
-# "dangling" at a name inside the tree that does not exist. The test records what
-# the COPY holds -- the only place the symlink handling is observable -- and what
-# the outside file said WHILE it ran.
+# _symlink_fixture <target> [inside|outside|dangling]: the test records what the copy holds and the outside file.
 _symlink_fixture() {
   _fixture "GUARD=on" "GUARD=off" yes .
   printf 'GUARD=on\n' > "${_tmp}/outside.txt"
@@ -396,21 +360,16 @@ t_assert_contains "${_out}" "target is a symlink" \
 t_assert_eq "1" "$(_iso_rc)" "a mutation that cannot be applied safely must fail the gate, not be skipped"
 
 t_case "a DANGLING symlink is still refused as a symlink, not reported as missing"
-# os.path.exists() follows the link, so a link to nothing looks like an absent
-# target -- which sends the reader hunting for a stale manifest entry instead of
-# the symlink that would have let a write escape the copy.
+# os.path.exists() follows the link, so a dangling one would read as a stale entry.
 _symlink_fixture link dangling
 _out="$(_iso_run 2>&1)"
 t_assert_contains "${_out}" "target is a symlink" "the link is the finding, not what it points at"
 t_assert_eq 0 "$(printf '%s' "${_out}" | grep -c 'target missing')" "and it must not be misreported as a stale entry"
 t_assert_eq "1" "$(_iso_rc)"
 
-# --- shards: the run is parallel, the proof is still one mutation at a time ----
-# 244 entries over 33 suites cost 8m47s serially, which is what kept the hook's
-# sample at six. Shards buy that back only if every entry is still proven alone.
+# Shards run in parallel, but every entry must still be proven alone.
 
-# $1 subjects, each with its own mutation and its own test; subject $2 gets a
-# test that CANNOT fail, so a run that drops a shard reports a green it did not earn.
+# _shard_fixture <n> <survivor>: n entries; the survivor's test cannot fail, so a dropped shard shows.
 _shard_fixture() {
   local n="$1" survivor="$2" entries="" id
   for id in $(seq 1 "${n}"); do

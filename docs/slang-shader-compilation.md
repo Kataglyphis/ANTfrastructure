@@ -81,6 +81,13 @@ between it and a committed, naga-rejected shader is that exit code. In both
 cases the destination file is left exactly as it was: nothing is copied until
 the validator has passed.
 
+The guard exists because slangc 2026.1 (the Vulkan SDK build in the Linux image)
+drops `@location(N)` from varying struct members in the combined emit while
+emitting it per entry point, so a regeneration yields WGSL naga rejects. Two
+defences are both needed: below `minSlangcVersionForWgsl` nothing is emitted, so
+the checked-in WGSL is never overwritten, and at or above it every emit is
+validated. The manifest is read with python3, not jq, because the image has no jq.
+
 A `depthTexturePatches` pattern that matches nothing is a WARNING, not a
 refusal — it means `slangc`'s output moved under the pattern, which is worth
 seeing but is not itself proof the emit is wrong.

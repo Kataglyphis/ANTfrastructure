@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# tvm-config.sh - CMake argument construction helpers for TVM builds
-# Split out of tvm.sh (pure structural refactor; no behavior change).
-# Source-only helper; sourced by tvm.sh — expects its shell options.
+# TVM CMake argument helpers; sourced by tvm.sh, whose shell options it expects.
 
 cross_linker_search_flags() {
   local triplet=""
@@ -30,11 +28,7 @@ cross_linker_search_flags() {
   printf '%s' "${flags}"
 }
 
-# ── emit blocks ──────────────────────────────────────────────────────────────
-# Each takes the caller's array NAME as $1 and appends in place; emission order
-# is semantics (later -D wins). Internals stay `_tvm_`-prefixed so a caller
-# array never collides with the nameref.
-# docs/refactoring-backlog-archive-2026-08-31.md
+# Emit blocks: each appends to the array named by $1, and order is semantics (later -D wins).
 
 # $1=array name  $2=cross link flags
 _tvm_emit_cross_args() {
@@ -63,9 +57,7 @@ _tvm_emit_llvm_args() {
   fi
 }
 
-# $1=array name. Overrides TVM's internal USE_CCACHE=AUTO detection so the
-# decision goes through compiler_cache_launcher() (sccache first, ccache
-# fallback, guarded launcher when mounted).
+# $1=array name; compiler_cache_launcher decides, not TVM's USE_CCACHE=AUTO.
 _tvm_emit_compiler_cache_args() {
   local -n _tvm_emit_ref="$1"
   local _tvm_launcher
@@ -79,16 +71,7 @@ _tvm_emit_compiler_cache_args() {
   fi
 }
 
-# $1=array name  $2=use vulkan (0/1)  $3=Vulkan_LIBRARY  $4=Vulkan_INCLUDE_DIR
-# $5=Vulkan_SPIRV_TOOLS_LIBRARY
-# For cross builds, point find_package(Vulkan) at the target-arch loader/
-# headers (resolve_tvm_vulkan); otherwise it resolves the host x86_64 loader
-# from the sourced SDK env and the target link fails "file in wrong format".
-# CUDA companion libraries. USE_CUDA alone leaves cuDNN/cuBLAS OFF, so TVM's
-# conv/gemm fall back to generated kernels instead of the vendor libraries.
-# Each is opt-OUT via its own knob, and only asked for when CUDA is ON --
-# requesting cuDNN without CUDA is a configure error, not a no-op.
-# docs/linux-accelerator-images.md
+# USE_CUDA alone leaves cuDNN/cuBLAS off; ask only with CUDA on, as cuDNN without it fails configure.
 _tvm_emit_cuda_companion_args() {
   local -n _tvm_cuda_ref="$1"
   local _cuda_on="$2"
@@ -104,6 +87,7 @@ _tvm_emit_cuda_companion_args() {
   )
 }
 
+# $1=array $2=use (0/1) $3..$5=Vulkan loader, headers, SPIRV-Tools; cross builds must pass the target's.
 _tvm_emit_vulkan_args() {
   local -n _tvm_emit_ref="$1"
   if [ "${2}" -eq 1 ]; then
@@ -122,15 +106,7 @@ _tvm_emit_vulkan_args() {
   fi
 }
 
-# Emits NOTHING. TVM_QNN_HOME is deliberately NOT local: tvm.sh reads it after
-# the build to stage the QAIRT runtime beside the install.
-# NO QNN FLAGS (corrected 2026-08-31, Windows backlog #154). USE_QNN and QNN_HOME
-# are not TVM options and never were -- "no zip = USE_QNN=OFF (the upstream default)"
-# was wrong twice: there is no such option and therefore no such default. TVM's own
-# `qnn` is the Quantized Neural Network op dialect, an unrelated name; its Snapdragon
-# path is USE_HEXAGON plus the separate Hexagon SDK, which is Linux-host/Android-target
-# and needs USE_LLVM. TVM_QNN_HOME is still resolved: tvm.sh uses it to stage the QAIRT
-# runtime beside the install, where the ORT QNN EP is what loads it.
+# Emits nothing (TVM has no QNN option); TVM_QNN_HOME stays global so tvm.sh can stage the QAIRT runtime.
 _tvm_resolve_qnn_home() {
   TVM_QNN_HOME="${TVM_QNN_HOME:-}"
   if [ -z "${TVM_QNN_HOME}" ] && command -v resolve_qnn_sdk >/dev/null 2>&1; then
@@ -138,9 +114,7 @@ _tvm_resolve_qnn_home() {
   fi
 }
 
-# append_tvm_cmake_args --out ARRAY_NAME [--option VALUE ...]
-# Option contract, and why locals are `_tvm_`-prefixed:
-# docs/refactoring-backlog-archive-2026-08-31.md
+# append_tvm_cmake_args --out ARRAY_NAME [--option VALUE ...]; locals are _tvm_-prefixed so no caller array collides.
 append_tvm_cmake_args() {
   local _tvm_out_name=""
   local _tvm_python_module=""
@@ -196,8 +170,7 @@ append_tvm_cmake_args() {
 
   local -n _tvm_out_ref="${_tvm_out_name}"
 
-  # Normalize 0/1 booleans to OFF/ON for TVM's CMake (which accepts both forms,
-  # but ON/OFF is what its docs and validate scripts print).
+  # ON/OFF is what TVM's docs and validate scripts print.
   local _tvm_cuda_flag="OFF"
   local _tvm_opencl_flag="OFF"
   if [ "${_tvm_use_cuda:-0}" -eq 1 ]; then _tvm_cuda_flag="ON"; fi

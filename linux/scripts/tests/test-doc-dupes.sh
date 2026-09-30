@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# The docs duplication gate, run against fixture pages: a reworded copy shares
-# no whole line, which is why it is measured in 8-word shingles.
-# docs/code-quality-tooling.md#the-allowlist-contract
+# Shingles, not lines, because a reworded copy shares no whole line; see docs/code-quality-tooling.md#the-allowlist-contract
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -13,8 +11,7 @@ _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 mkdir -p "${_work}/docs/scripts" "${_work}/linux/scripts"
 cp "${GATE}" "${_work}/docs/scripts/"
-# gate_scope.py too: the gate takes --root since 2026-09-15 and imports it at
-# module level, so a fixture without it fails with a traceback, not a verdict.
+# The gate imports gate_scope.py at module level; without it a fixture gets a traceback, not a verdict.
 cp "${TESTS_DIR}/../quality_allow.py" "${TESTS_DIR}/../gate_scope.py" "${_work}/linux/scripts/"
 : > "${_work}/docs/scripts/doc-dupes.allow"
 

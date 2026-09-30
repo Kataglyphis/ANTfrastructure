@@ -1,10 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The Windows publish gate (WindowsImageEnv.Common + Dockerfile.publish-gate + the driver's
-# three call sites). The matcher is graded by its Python twin's fixture; the driver's parent
-# gate runs lifted out with a fake buildctl. docs/windows-build-resources.md#what-the-published-image-carries
+
+# The publish gate, graded by its Python twin's fixture: see docs/windows-build-resources.md#what-the-published-image-carries
 
 $modDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
 Import-Module (Join-Path $modDir 'WindowsImageEnv.Common.psm1') -Force -DisableNameChecking
@@ -37,8 +35,7 @@ function Get-DefaultImageEnvScope {
 # Splatted into Invoke-WithFunctionModule: a mutant is a copy of the whole gate module.
 $imageEnvMutantSource = @{ Text = [IO.File]::ReadAllText($script:imageEnvModule) }
 
-# Runs $Body, given the variable's name, with a uniquely named Process variable that leaks a LAN
-# address: unique, because this host's own Machine scope may leak too.
+# Uniquely named, because this host's own Machine scope may leak a LAN address too.
 function Invoke-WithLeakingProcessVariable {
     param([Parameter(Mandatory)][scriptblock]$Body)
     $name = 'KATA_PUBLISH_GATE_PROBE_' + [guid]::NewGuid().ToString('N').Substring(0, 8)
@@ -169,10 +166,7 @@ function Get-EnclosingFunctionName {
     ''
 }
 
-# '' when Build-Buildkit.ps1 wires the publish gate as documented, else the first problem. ONE
-# Dockerfile.publish-gate solve, in Invoke-BkPublishGate (-NoOutput -NoParentGate, BASE_IMAGE =
-# $Image). The helper runs on the final tag before both exports and outside every -SkipSmokeGate
-# branch, on the toolchain right after its solve, and in Invoke-BkStage before buildctl.
+# '' when Build-Buildkit.ps1 wires the publish gate as documented, else the first problem.
 function Get-PublishGateWiringProblem {
     param([Parameter(Mandatory)][string]$Text)
     $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$null, [ref]$null)
@@ -246,8 +240,7 @@ Describe 'Build-Buildkit.ps1: where the publish gate runs' {
     }
 }
 
-# What Invoke-BkStage reads besides the driver's own state, and a buildctl that records each
-# solve as '<Dockerfile>|<BASE_IMAGE>' and fails the one named $FailDockerfile.
+# A fake buildctl records each solve as '<Dockerfile>|<BASE_IMAGE>' and fails $FailDockerfile.
 $script:gateScenarioPrelude = @'
 param($Dir, $FailDockerfile)
 $script:Solves = [System.Collections.Generic.List[string]]::new()
@@ -265,10 +258,7 @@ $BuildCtl = {
 }
 '@
 
-# Lifts Invoke-BkStage and Invoke-BkPublishGate (plus the driver's own initialisers of the state
-# they keep) out of $Driver over the prelude above, runs $Scenario there, and returns the solves
-# in order and the error message, if any, from a fresh test directory. -Find/-Replace mutate
-# the lifted functions.
+# Runs $Scenario over the driver's lifted gate functions; -Find/-Replace mutate them.
 function Invoke-GateScenario {
     param([Parameter(Mandatory)][string]$Driver, [Parameter(Mandatory)][scriptblock]$Scenario,
         [string]$FailDockerfile = '', [string]$Find = '', [AllowEmptyString()][string]$Replace = '')

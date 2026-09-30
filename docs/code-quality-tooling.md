@@ -320,8 +320,9 @@ already use supplies all four:
 4. **A `mutations.json` entry that neuters the verdict**, proven to make the
    suite fail.
 
-`tests/test-prevention-gates.sh` does this for `comment-size` (an 11-line block
-fails naming `file:line  11 lines`; a 10-line block passes) and for `masked-decls`
+`tests/test-prevention-gates.sh` does this for `comment-size` (a 2-line block
+fails naming `file:line  2 lines`; one line passes; one case per language and per
+data shape) and for `masked-decls`
 (`local x="$(date)"` fails naming the variable; the declare-then-assign split
 passes), plus the two-way allowlist contract for both — frozen at its own key the
 offender passes, and that same row against the clean subject is STALE. The
@@ -351,6 +352,7 @@ left the gate. The suite builds its fixture openers as `printf` ARGUMENTS so it 
 never itself an extraction target.
 
 Mutations: `comment-size.verdict-discarded`, `comment-size.limit-not-enforced`,
+`comment-size.every-language-is-a-subject`, `comment-size.heredoc-is-data`,
 `masked-decls.verdict-discarded`, `masked-decls.substitution-required`,
 `python-lint.gate-tier-neutered`, `python-lint.tier-boundary`,
 `python-lint.embedded-extraction-off`, `python-lint.embedded-file-discovery` and
@@ -507,7 +509,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1383 entries** over **114 distinct test commands**; both digits are
+manifest holds **1384 entries** over **114 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -924,12 +926,20 @@ asserts the exit code too.
 
 ## Comment size (`comment-size`)
 
-Owner directive 6 says two lines at the point of use; longer text belongs in
-`docs/` with a pointer. `verify_comment_size.py` fails on any NEW comment block
-over 10 lines in the `code-size` scan set, walked shell-only (`docs/scripts` has no
-`*.sh`, so it contributes none). The blocks frozen in `comment-size.allow` (182
-on 2026-09-25) are the inventory; shrinking one means deleting its line, and a stale entry fails too,
-so the list cannot rot.
+The family rule is one line, only the why ([`AGENTS.md` § Comments](../AGENTS.md#comments-one-line-only-the-why)).
+`verify_comment_size.py` fails on any NEW comment block over one line
+(`COMMENT_SIZE_LIMIT`) in every tracked source file of the graded repo, `third_party/` excepted:
+
+- **Languages.** `#` comments in shell, Python, PowerShell, YAML, TOML, CMake and Dockerfiles; `//` and
+  `/* */` in the C family, Rust, Dart, JS/TS and the shader languages.
+- **Data, not comments.** Heredoc bodies (a `<<` inside quotes opens none), PowerShell here-strings and
+  Python strings, found with Python's tokenizer.
+- **Exempt.** API docs (`///`, `//!`, `/** */`, docstrings and comment-based help are not `#` lines), licence
+  headers, tool directives, generated files and vendored trees (`pkg/`, `cargokit/`, Flutter runners,
+  `windows/upstream/`).
+
+The blocks frozen in `comment-size.allow` are the exceptions: help text a script prints from its own
+header. Shrinking one means deleting its line, and a stale entry fails too, so the list cannot rot.
 
 Entries are keyed on **file + the block's first comment line**, not on a line
 number — a block must not re-flag because something above it moved. One subtlety
@@ -2597,6 +2607,12 @@ the file — seven of them grew one; `lint-workflows.sh` runs actionlint from th
 linted root and passes no `-config-file`, so the hub's copy never applies to a
 consumer.
 
+actionlint lints `run:` blocks by exec'ing `shellcheck` by name, and when that
+name does not resolve it silently disables the rule and still reports clean. So
+`lint-workflows.sh` resolves shellcheck through `lint-shell.sh --print-bin`,
+refuses to grade when it cannot, and requires actionlint to report a planted
+SC1010 before it trusts a clean verdict.
+
 ### Four fleet workflow conventions (`workflow-lint`)
 
 `linux/scripts/verify_workflow_conventions.py`, run by `lint-workflows.sh` on the
@@ -2885,6 +2901,11 @@ Four rules, each of which a copy got wrong somewhere:
    could only yield files that exist; the index can name files a sparse checkout
    never materialised, and `except OSError: continue` turned that into a quiet
    partial grading.
+
+A gate's `--root` must default to `None`, never to its own `ROOT`. `resolve_root`
+maps `None` to the gate's own tree without asking git, while a named root must
+pass the toplevel check, so `default=ROOT` makes every bare run demand a git
+checkout and fails in the git-less mirror `docs/scripts/verify_mutations.py` grades.
 
 The freeze file follows the root. Keeping it beside the script would put every
 repo's ratchet inside the hub, where no consumer sees it in its own diff.

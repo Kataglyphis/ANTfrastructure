@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# serve-stack.sh -- render, validate, start, reload and stop the llm-stack gateway.
-# Commands, knobs and the reload contract: linux/llm-stack/README.md § Gateway.
+# Renders, validates, starts, reloads and stops the llm-stack gateway; see linux/llm-stack/README.md § Gateway.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

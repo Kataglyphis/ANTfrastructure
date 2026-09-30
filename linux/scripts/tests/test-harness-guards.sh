@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# The harness's own guard. t_assert_ok and t_assert_fails take a COMMAND and no
-# message, so `t_assert_fails test -f X "why"` runs `test -f X why` -- it fails
-# for the WRONG reason and passes vacuously. Four of those were written and
-# caught by review in one wave; nothing in the harness caught them.
-# docs/cross-build-verification.md#the-linuxscriptstests-suites
+# A message passed to t_assert_ok/t_assert_fails would pass vacuously; see docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -37,8 +33,7 @@ t_assert_contains "${_out}" "malformed test expression"
 t_assert_contains "${_out}" "t_assert_ok takes"
 
 t_case "only test/[ report a usage error, so nothing else is second-guessed"
-# A command that legitimately exits 2 must be judged on its exit code, not
-# rewritten into a harness complaint.
+# A command that legitimately exits 2 is judged on its exit code, not turned into a harness complaint.
 t_assert_contains "$(_harness 't_assert_fails bash -c "exit 2"')" "1 assertion(s) passed" \
   "exit 2 from a real command is a real failure"
 t_assert_contains "$(_harness 't_assert_ok bash -c "exit 0"')" "1 assertion(s) passed"

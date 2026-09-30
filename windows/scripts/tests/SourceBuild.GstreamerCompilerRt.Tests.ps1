@@ -1,13 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The patched-llvm toolchain (#135, default) builds compiler-rt builtins for the
-# HOST arch only, so the arm64 GStreamer link died on __udivti3 (found on the
-# 2026-08-30 arm64 cross run, merge stage). This pins the self-heal in
-# Build-GstreamerFromSource.ps1: on the cross lane it mines
-# clang_rt.builtins-aarch64.lib from the LLVM release archive next to the x86_64
-# one; the warn-and-continue policy is preserved on amd64 and as a fallback.
+
+# The patched LLVM builds host-arch builtins only, so the arm64 GStreamer link needs aarch64 compiler-rt mined in.
 
 Describe 'GStreamer cross-lane compiler-rt self-heal (#135 follow-up)' {
 
@@ -29,9 +24,7 @@ Describe 'GStreamer cross-lane compiler-rt self-heal (#135 follow-up)' {
     }
 
     It 'keeps the self-heal inside the cross-lane gate (amd64 never downloads)' {
-        # The fetch must sit between the `$script:GstCross` guard and the
-        # warn-and-continue block that follows it. Index-based so whitespace
-        # reformatting cannot break the assertion.
+        # Index-based, so whitespace reformatting cannot break the ordering assertion.
         $gateIdx = $gstText.IndexOf('if ($script:GstCross) {')
         $healIdx = $gstText.IndexOf('# SELF-HEAL')
         $warnIdx = $gstText.IndexOf('WARN, do not throw')

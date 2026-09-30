@@ -1,14 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Resolve-BuildMachineMsvcTool (Build-GstreamerFromSource.ps1): the x64-
-# targeting cl.exe / ml64.exe the meson native file names for the BUILD machine
-# after arm64 run 26 (the build-machine libffi found HostX64\ARM64\cl.exe on
-# PATH and ml64 died on FFI_TYPE_SMALL_STRUCT_4B). Lifted out of the script's
-# AST; fixture VC tools tree, no Visual Studio needed. Pins: forward-slash
-# path under bin/HostX64/x64, throws (never falls back) when the tool or the
-# root is missing.
+
+# The build machine's x64-targeting cl/ml64 by name, never PATH's ARM64 cl; a fixture VC tree, no Visual Studio needed.
 
 Describe 'Resolve-BuildMachineMsvcTool' {
 

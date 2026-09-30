@@ -1,22 +1,4 @@
-# Probe: can `docker build --isolation process` COMMIT a file-writing layer on
-# this host? This is the exact operation that fails today with the wcifs
-# ERROR_FLT_DO_NOT_DETACH -> hcsshim::ActivateLayer 0x20 bug (see
-# docs/windows-builds.md § Re-testing process isolation on new versions).
-#
-# Self-contained: uses the public servercore base, so it needs NO prior build
-# stages. The RUN writes a ~100 MB layer and the build's implicit commit at the
-# end of the step is what the bug kills. If `docker build --isolation process`
-# with this Dockerfile SUCCEEDS, the bug is gone.
-#
-# SHELL is `powershell` (Windows PowerShell 5.1), NOT `pwsh`, and must stay so:
-# servercore ships 5.1 only, and pwsh arrives later in the real chain via
-# Initialize-Pwsh.ps1. A `pwsh` SHELL here made every RUN die with
-# `hcs::System::CreateProcess ... The system cannot find the file specified`,
-# which the driver read as "process isolation cannot commit" and silently
-# downgraded every classic-lane build to Hyper-V isolation - i.e. to 2 CPUs on
-# a 32-core host (2026-08-21; same pwsh-in-probe class as the two bugs
-# recorded for probe-build-copy on 2026-08-10). The probe body is deliberately
-# 5.1-compatible; keep it that way.
+# SHELL stays PowerShell 5.1: servercore has no pwsh; see docs/windows-build-lanes.md § Re-testing process isolation on new versions (is the bug gone yet?).
 ARG BASE=mcr.microsoft.com/windows/servercore:ltsc2025
 FROM ${BASE}
 ARG COUNT=50

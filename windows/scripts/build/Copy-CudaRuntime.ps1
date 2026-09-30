@@ -3,17 +3,7 @@
 
 #requires -Version 7.0
 
-# Flatten the CUDA + cuDNN RUNTIME DLLs into ONE directory the merge image can put
-# on PATH. WHY A SCRIPT (not a COPY in the Dockerfile): the source DLLs live under
-# "C:\Program Files\..." (spaces break the shell-form COPY tokenizer) AND cuDNN 9
-# stows its DLLs in a CUDA-major SUBDIR under bin\ (so a whole-\bin COPY lands
-# cudnn64_9.dll one level too deep to be found on PATH). A recursive copy handles
-# both. Runs in a stage derived from media-core, which is built on the nvidia base
-# and therefore carries CUDA_ROOT / CUDNN_ROOT in its environment.
-#
-# The consumer is gst-plugins-bad's opencv plugin: OpenCV builds with
-# WITH_CUDA/WITH_CUDNN and HARD-links cudnn64_9.dll, so without it the plugin DLL
-# fails to load (Win32 126) in the (non-nvidia) merge image.
+# A script, not a COPY: spaces in Program Files and cuDNN 9's CUDA-major bin subdir; see docs/windows-builds.md § Copy-CudaRuntime.ps1.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -21,58 +11,18 @@ $ErrorActionPreference = 'Stop'
 $dest = 'C:\cuda-rt'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
-# The CUDA_ROOT guard is load-bearing, not defensive noise: with the variable
-# unset, `Join-Path $env:CUDA_ROOT 'bin'` throws ParameterBindingValidationException
-# ("Cannot bind argument to parameter 'Path' because it is null") under
-# $ErrorActionPreference='Stop' -- BEFORE the explanatory throw below can run.
-# The operator then sees an opaque binding error instead of "Is this stage
-# derived from the nvidia base?".
-#
-# That path is no longer hypothetical: every recorded chain run so far was
-# gpu=True, but the arm64 lane REFUSES -Gpu (arm64 CUDA is not wired into this
-# stack -- see (a) below for the corrected upstream picture), so this stage now
-# has a lane on which CUDA_ROOT is legitimately absent and the diagnostic is
-# the whole point.
-#
-# Arch-aware since #176: the nvidia stage now stages the Windows-arm64 payload
-# into the SAME root (bin\arm64), so a cross GPU lane must flatten the ARM64
-# DLLs -- a plain bin\ walk would copy the x64 ones into an "arm64" bundle.
-# WINDOWS_TARGET_ARCH is an ENV of this stage (Dockerfile.media-merge-builder);
-# this script runs standalone from C:\ and imports no modules.
+# Guarded: Join-Path on an unset root throws an opaque binding error; a cross GPU lane must read bin\arm64, not the x64 bin\.
 $targetArch = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_TARGET_ARCH)) { 'amd64' } else { $env:WINDOWS_TARGET_ARCH }
 $binSubdir = if ($targetArch -eq 'amd64') { 'bin' } else { 'bin\arm64' }
 $cudaBin = if ($env:CUDA_ROOT) { Join-Path $env:CUDA_ROOT $binSubdir } else { $null }
 $cudnnBin = if ($env:CUDNN_ROOT) { Join-Path $env:CUDNN_ROOT $binSubdir } else { $null }
-# Outer @() wraps the pipeline RESULT: zero roots (the arm64/CPU lane this stage
-# degrades cleanly for) and one root both make $roots.Count throw under StrictMode.
+# The outer @() matters: zero or one root makes $roots.Count throw under StrictMode.
 $roots = @(@(
     $cudaBin,                             # cudart64_*, cublas64_*, cufft64_*, ...
     $cudnnBin                             # cudnn64_9.dll + cudnn_*64_9 engines (under bin\<cuda-major>\)
 ) | Where-Object { $_ -and (Test-Path $_) })
 
-# Two DIFFERENT situations end up with no roots, and conflating them is what
-# made this stage a hard blocker for every non-GPU merge:
-#
-#   (a) NEITHER variable is even set -> this image is not derived from the
-#       nvidia base, so CUDA cannot be here and its absence is CORRECT. That is
-#       the CPU lane and, today, the arm64 cross lane. CORRECTED 2026-08-24:
-#       this used to read "permanently ... there is no CUDA for Windows-on-ARM
-#       at all", and that absolute was WRONG when written -- cuDNN ships a
-#       windows-arm64 archive at this repo's exact 9.25.0.15 pin (verified
-#       HTTP 200, lib/arm64 inside), CUDA 13.4 (preview) advertises Windows
-#       ARM64 incl. x86_64-hosted cross-compile, and TensorRT-RTX publishes
-#       Windows-on-Arm packages (only classic TensorRT is x64-only). arm64
-#       CUDA is unwired backlog work, not nonexistent. Degrade cleanly - the
-#       empty C:\cuda-rt still satisfies the unconditional COPY in
-#       Dockerfile.media-merge-builder, which a Dockerfile cannot make
-#       conditional.
-#   (b) A variable IS set but does not resolve -> the nvidia base WAS expected
-#       and something is genuinely wrong. Keep throwing; that is the case the
-#       message below was written for.
-#
-# The comment above (and Dockerfile.media-merge-builder) already described this
-# degrade-cleanly behaviour before the code implemented it -- the throw fired
-# regardless, so the merge died here long before the arch gate or GStreamer.
+# No root set is a CPU lane, whose empty dir still feeds the merge's unconditional COPY; a set root that does not resolve is a broken nvidia base.
 $cudaConfigured = [bool]$env:CUDA_ROOT -or [bool]$env:CUDNN_ROOT
 if ($roots.Count -eq 0) {
     if ($cudaConfigured) {
@@ -82,16 +32,7 @@ if ($roots.Count -eq 0) {
     exit 0
 }
 
-# TRIM (#54 re-scoped, 2026-08-20, probe-cuda-runtime-closure): the closure
-# walk over every consumer (opencv/gst/onnxruntime/cv2, 76 DLLs) shows these
-# are neither statically imported by anything in the merge image nor part of
-# a known DYNAMIC-load family - ~436 MB reclaimed. Deliberately NOT trimmed
-# despite being static-unreferenced: ALL cudnn_* sub-libraries (cudnn64_9 is
-# a stub that dlopens graph/ops/engines at runtime), nvrtc/nvjitlink/
-# nvfatbin/nvrtc-builtins (the JIT chain, dlopened by opencv cudev), and
-# curand (cheap insurance) - dumpbin sees static imports ONLY, and this host
-# cannot runtime-verify GPU loads (no NVIDIA GPU in containers), so every
-# dynamic-load family stays fail-safe.
+# Imported by nothing and in no dlopen family; cudnn_*, the nvrtc/nvjitlink JIT chain and curand stay, as only static imports were checked.
 $trimmed = @('cusparse64_*.dll', 'cusolver64_*.dll', 'cusolvermg64_*.dll', 'nvjpeg64_*.dll', 'npps64_*.dll')
 $count = 0
 $skipped = 0
@@ -99,8 +40,7 @@ foreach ($root in $roots) {
     Get-ChildItem -Path $root -Filter '*.dll' -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
         $name = $_.Name
         if ($trimmed | Where-Object { $name -like $_ }) { $skipped++; return }
-        # Flat destination: last writer wins on duplicate basenames (same DLL in
-        # multiple CUDA-version subdirs), which is fine for a single-CUDA image.
+        # Last writer wins on duplicate basenames, which is fine for a single-CUDA image.
         Copy-Item -Path $_.FullName -Destination (Join-Path $dest $name) -Force
         $count++
     }

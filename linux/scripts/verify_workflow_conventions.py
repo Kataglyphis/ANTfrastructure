@@ -1,62 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""Four fleet workflow conventions, asserted instead of restated in comments.
+"""Four fleet workflow conventions (runner-ban, job-timeout, permissions, artifact-error), asserted.
 
-Each of the four is written down somewhere in the fleet -- most of them in
-several workflow headers at once -- and enforced by nothing, so the copies drift
-and the rule is only as strong as the last person who read one.
-docs/code-quality-tooling.md#four-fleet-workflow-conventions-workflow-lint
-
-  runner-ban       A `*-latest` runner label is banned fleet-wide: the alias
-                   MOVES, so the OS under a green build changes with no commit
-                   to blame. Seven workflow headers say so today.
-  job-timeout      Every job that owns a runner carries `timeout-minutes`.
-                   Without it a hung step burns the account's six-hour default.
-  permissions      Every workflow declares `permissions:` at the top level or on
-                   every job, so GITHUB_TOKEN is not whatever the repository
-                   default happens to be that month.
-  artifact-error   `actions/upload-artifact` sets `if-no-files-found: error`.
-                   The default is `warn`: a build that produced nothing uploads
-                   nothing and stays green.
-
-THE RAMP. Three of the four have a real backlog in real workflows, so this
-follows lint-env-knobs.sh's ramp rather than turning eight repositories red in
-one commit: those three REPORT and pass unless armed with
-WORKFLOW_CONVENTIONS_GATE (`1`/`all`, or a comma-separated list of check names;
-`0`/`off`/`no`/`none`/`false`/empty disarms every ramped check). `runner-ban` is
-armed ALWAYS: it is measured clean across the whole fleet, so enforcing it costs
-nothing today and is the only state in which the seven headers are true.
-
-THE RATCHET, because "advisory" alone can grow for ever. Every repository's
-count of RAMPING findings per check is FROZEN in a CENSUS row of
-workflow-conventions.allow and may only go down: a count above its row fails
-whatever the arming says, and a check with findings and no row fails too, so a
-new violation is red on the day it lands even while the convention is ramping.
-An armed check is graded by the findings above and counts zero here, which gives
-every finding exactly one verdict and retires a row the moment its check is
-armed. Going down is the point of the ramp, so it is not made expensive: in this
-hub, whose commit can edit the row beside the fix, an unrecorded shrink FAILS
-the way every other allow file here does; in a consumer, which reads this table
-through the submodule and cannot edit it, the shrink is reported with the number
-to write down and passes. That asymmetry is the whole reason this is a count and
-not the frozen offender list shellcheck-warnings.allow can afford.
-
-DELIBERATE DEVIATIONS ARE DECLARED, not silent: a row in
-workflow-conventions.allow with a reason. That is verify_ci_image_refs.py's
-EXCUSED table, moved into a file because these rows name OTHER repositories'
-files and the hub cannot hold them all in one module's dict. A row that matches
-no live finding is stale and fails; a row naming a repository that
-.github/consumers.json does not declare is a typo and fails. The bookkeeping
-half never ramps -- an allowlist may not rot.
-
-Usage:
-    python3 linux/scripts/verify_workflow_conventions.py           # this repo
-    python3 linux/scripts/verify_workflow_conventions.py <root>    # a consumer
-
-The consumer root exists for the reason lint-workflows.sh takes one: a submodule
-checkout puts this script INSIDE the consumer, where a root derived from
-__file__ resolves to ANTfrastructure and the gate reports green over the wrong tree.
+Usage: verify_workflow_conventions.py [<consumer root>]; see docs/code-quality-tooling.md#four-fleet-workflow-conventions-workflow-lint
 """
 from __future__ import annotations
 
@@ -73,23 +20,18 @@ ALLOW = HERE / "workflow-conventions.allow"
 CONSUMERS = HUB_ROOT / ".github" / "consumers.json"
 
 CHECKS = ("runner-ban", "job-timeout", "permissions", "artifact-error")
-# Not a convention: the pseudo-check a file this gate cannot READ is reported
-# under. It never ramps, is never counted in the census and cannot be excused --
-# a workflow nothing graded is the hazard, not a finding about one.
+# Pseudo-check for an unreadable file: never ramped, counted or excused, since nothing graded it.
 PARSE = "parse"
 # Armed with no knob: measured clean fleet-wide, so it can only catch a NEW one.
 ALWAYS_ARMED = frozenset({"runner-ban"})
 ARM_ENV = "WORKFLOW_CONVENTIONS_GATE"
-# The obvious ways to say "off". Refusing them made switching the ramp off a
-# hard failure, which teaches people to delete the call instead.
+# Accepted spellings of "off", so disarming never tempts anyone to delete the call.
 DISARM = frozenset({"", "0", "off", "no", "none", "false"})
 CENSUS = "CENSUS"
 
 UPLOAD_ACTION = "actions/upload-artifact"
 LATEST_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*-latest$", re.IGNORECASE)
-# Keys whose scalar value GitHub resolves to a runner label: `runs-on` itself,
-# the `with:` inputs and matrix columns every lane in this fleet feeds it
-# through, and an `os` column, which is the conventional third spelling.
+# `runs-on` plus the input and matrix-column names this fleet feeds it through.
 RUNNER_KEYS = frozenset({"runs-on", "runs_on", "runner", "os"})
 EXPRESSION = "${{"
 
@@ -99,28 +41,16 @@ class ParseError(Exception):
 
 
 def fail(msg: str) -> None:
-    # Flushed against stdout so a CI log reads in the order it happened: the
-    # advisory lines and the failures below them are one narrative.
+    # Flush stdout first so a CI log keeps advisories and failures in order.
     sys.stdout.flush()
     sys.stderr.write("FAIL: %s\n" % msg)
     sys.stderr.flush()
 
 
-# --- the YAML subset ---------------------------------------------------------
-# Hand-parsed for verify_ci_image_refs.py's reason: the gate must run on the
-# stdlib alone, CI installs no PyYAML for it. The subset is block mappings,
-# block sequences (indented, or at the SAME column as their key, which is
-# ordinary YAML), flow sequences and flow mappings, plain and quoted scalars,
-# and block scalars kept as one opaque string. Anything outside it RAISES rather
-# than being read approximately -- anchors, aliases, merge keys, multi-document
-# files, a flow collection that spans lines or holds a collection as a KEY, a
-# document whose top level is not a mapping, and any line the walk did not
-# consume: a gate that guesses at its input is worse than one that says it
-# cannot read it.
+# A stdlib-only YAML subset; anything outside it (anchors, multi-line flow, unconsumed lines) raises, never guesses
 
 _KEY = re.compile(r"^(?P<key>(?:\"[^\"]*\"|'[^']*'|[^:#\s][^:#]*?))\s*:(?:\s+(?P<val>.*?))?\s*$")
-# `-` then whitespace or end of line. `-foo: bar` is a KEY named `-foo`, and
-# reading it as a sequence entry silently reshapes the document.
+# `-` then whitespace or end of line: `-foo: bar` is a key named `-foo`.
 _ITEM = re.compile(r"^-(?:(?P<gap>[ \t]+)(?P<rest>\S.*?))?[ \t]*$")
 _BLOCK = re.compile(r"^[|>][+-]?[0-9]*$")
 _FLOW_BREAK = ",:[]{}"
@@ -140,10 +70,7 @@ def _strip_comment(line: str) -> str:
     return "".join(out).rstrip()
 
 
-# --- flow collections --------------------------------------------------------
-# `runs-on: [ubuntu-latest]` and `jobs: {build: {...}}` are valid YAML that this
-# gate used to hand to _scalar() as one opaque string: the banned label inside
-# was never looked at and the file reported clean. Read for real, or refuse.
+# Flow collections are read for real, or a label inside `[ubuntu-latest]` would go unseen
 
 
 def _flow_ws(s: str, i: int) -> int:
@@ -267,11 +194,7 @@ class _Cursor:
 
 
 def _skip_continuation(cur: _Cursor, indent: int) -> None:
-    """Consume the deeper lines a scalar owns: a `|`/`>` block, or the wrapped
-    remainder of a plain multi-line scalar. A key cannot hold both a value and
-    children, so anything deeper here belongs to the value -- and leaving it in
-    the stream would end the enclosing mapping early and silently drop the rest
-    of the file, which is a workflow this gate then graded nothing about."""
+    """Consume the deeper lines a scalar owns, or they would end the enclosing mapping early."""
     while True:
         row = cur.peek()
         if row is None or row[0] <= indent:
@@ -303,8 +226,7 @@ def _parse_seq(cur: _Cursor, indent: int) -> list:
         if rest is None:
             out.append(_parse(cur, indent + 1))
             continue
-        # `- key: value` opens a mapping whose keys align where the dash's own
-        # padding put the first one -- measured, not assumed to be one space.
+        # The mapping's keys align where the dash's padding put the first, whatever its width.
         at = indent + 1 + len(m.group("gap"))
         if _KEY.match(rest):
             cur.rows[cur.i - 1] = (at, rest, row[2])
@@ -316,16 +238,7 @@ def _parse_seq(cur: _Cursor, indent: int) -> list:
 
 
 def _child(cur: _Cursor, indent: int):
-    """The node a valueless key owns, or None.
-
-    A block sequence may sit at the SAME column as its key -- `steps:` with its
-    `- uses:` entries flush underneath is ordinary, valid, extremely common
-    Actions YAML. Demanding a strictly deeper child read that as an empty key
-    and dropped every entry: an upload step with no `if-no-files-found` went
-    invisible under one, and a matrix `include:` truncated the rest of its job
-    under another, which then reported a `timeout-minutes` the job did carry. A
-    dash at exactly this column cannot belong to an ENCLOSING sequence, whose
-    own dash is necessarily further left, so there is no ambiguity to weigh."""
+    """The node a valueless key owns, or None; a block sequence may sit flush at the key's column."""
     nxt = cur.peek()
     if nxt is None:
         return None
@@ -348,8 +261,7 @@ def _parse_map(cur: _Cursor, indent: int) -> dict:
         cur.i += 1
         key = _scalar(m.group("key"), row[2])
         if not isinstance(key, str):
-            # `[a]: v`. Unhashable here, so without this it is a TypeError
-            # traceback rather than the refusal the subset promises.
+            # `[a]: v` is unhashable; refuse rather than raise a TypeError.
             raise ParseError("a flow collection as a mapping KEY is not supported")
         val = m.group("val")
         if val is None or val == "":
@@ -395,12 +307,11 @@ def line_of(node, key, default=0):
     return default
 
 
-# --- the four checks ---------------------------------------------------------
+# The four checks
 
 
 def _label_values(val) -> list:
-    """The literal strings in a runner-key value: a scalar, a sequence, or the
-    `runs-on: {group: ..., labels: [...]}` mapping GitHub also accepts."""
+    """Literal strings in a runner value: a scalar, a sequence, or the `{group:, labels:}` mapping form."""
     if isinstance(val, str):
         return [val]
     if isinstance(val, list):
@@ -447,8 +358,7 @@ def check_job_timeout(rel, doc):
     out = []
     for jid, (job, num) in _jobs(doc):
         if not isinstance(job, dict) or "uses" in job:
-            # A job that calls a reusable workflow may not carry
-            # timeout-minutes at all -- the callee's jobs own it.
+            # GitHub rejects timeout-minutes on a reusable-workflow call.
             continue
         if "timeout-minutes" not in job:
             out.append((rel, "job-timeout", jid, num,
@@ -491,9 +401,7 @@ def check_artifact_error(rel, doc):
         setting = value(with_block, "if-no-files-found") if isinstance(with_block, dict) else None
         if setting == "error":
             continue
-        # The allow file is pipe-delimited and a job id or a runner label cannot
-        # carry one, but a step NAME can. Normalise it here so the row a reader
-        # writes is exactly the detail the gate printed.
+        # The allow file is pipe-delimited, and a step name may contain a pipe.
         name = (value(step, "name") or value(step, "id") or "(unnamed)").replace("|", "/")
         out.append((rel, "artifact-error", name, line_of(step, "uses"),
                     "upload-artifact step %r sets if-no-files-found=%s; a build "
@@ -510,7 +418,7 @@ CHECKERS = {
 }
 
 
-# --- the EXCUSED-with-reason table and the census ratchet ---------------------
+# The EXCUSED-with-reason table and the census ratchet
 
 
 def _allow_fail(path: Path, num: int, msg: str):
@@ -570,13 +478,7 @@ def load_allow(path: Path):
 
 
 def declared_repos():
-    """(every repository .github/consumers.json declares, the hub's own name).
-
-    A missing or malformed file FAILS rather than returning an empty set: the
-    allow file's <repo> column is graded against this, so an empty answer turns
-    the typo check off and a mis-spelled row then excuses nothing, for ever,
-    while looking like an excuse that worked. That is the shape this gate is
-    for."""
+    """(declared repositories, hub name); fails rather than return an empty set that disables the typo check."""
     try:
         raw = CONSUMERS.read_text(encoding="utf-8")
     except OSError as exc:
@@ -604,12 +506,7 @@ def declared_repos():
 
 
 def repo_name(root: Path) -> str:
-    """The repository being linted, for the allow file's first column.
-
-    The origin remote, because a clone directory can be renamed and a submodule
-    checkout is named by its path, not by its project. Falls back to the
-    directory name, which is what a fixture checkout with no remote has.
-    """
+    """The linted repository's name from its origin remote (directories get renamed), else the directory name."""
     out = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"],
                          capture_output=True, text=True)
     url = out.stdout.strip() if out.returncode == 0 else ""
@@ -651,8 +548,7 @@ def collect(root: Path, files: list) -> list:
                              "cannot be read by this gate (%s), so NONE of the "
                              "four conventions was graded over it" % exc))
             continue
-        # A composite action has no `jobs:` and no `permissions:` of its own;
-        # only the two step-shaped checks can say anything about one.
+        # A composite action has no jobs or permissions, so only the step-shaped checks apply.
         is_action = rel.startswith(".github/actions/")
         for name in CHECKS:
             if is_action and name in ("job-timeout", "permissions"):
@@ -698,9 +594,7 @@ def grade_rows(rows: list, census: dict, repo: str, known: set, used: set):
 
 def grade_census(findings: list, repo: str, excused: set, census: dict,
                  is_hub: bool, live: frozenset) -> int:
-    """The ratchet: this repository's RAMPING count per check may only go down.
-    An armed check counts zero -- its findings already failed above, and one
-    finding may not produce two verdicts. -> the number of rows that failed."""
+    """Failed census rows: ramping counts may only go down, and armed checks count zero."""
     counts = {}
     for rel, check, detail, _num, _why in findings:
         if check not in live and check != PARSE and (repo, rel, check, detail) not in excused:
@@ -776,10 +670,7 @@ def main() -> int:
         fail("no workflow or action YAML under %s/.github -- wrong root?" % root)
         return 1
     if repo not in known:
-        # Every row of the allow file -- excuse and census alike -- is keyed on
-        # this name. Under a repository consumers.json does not declare, neither
-        # could ever be written, so the gate would grade the files with its whole
-        # bookkeeping half disconnected and still print OK.
+        # Every allow row is keyed on this name, so an undeclared one disconnects the bookkeeping.
         fail("%r, resolved from this tree's `origin` remote, is not declared in "
              ".github/consumers.json. No %s row can be keyed to it, so its "
              "%d file(s) would be graded with the excuse table and the census "

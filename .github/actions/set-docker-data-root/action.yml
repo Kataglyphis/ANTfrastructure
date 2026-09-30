@@ -95,8 +95,7 @@ runs:
                  "Pick another drive, or lower required-free-gb if you know the image is smaller.")
         }
 
-        # Stop first: the daemon rereads its config on start, and moving the
-        # data-root under a running daemon corrupts its view of existing layers.
+        # Stop first: moving the data-root under a running daemon corrupts its view of existing layers.
         $service = Get-Service -Name $svc -ErrorAction SilentlyContinue
         if (-not $service) {
           throw "No Windows service named '$svc'. Pass service-name if this runner calls it something else."
@@ -109,9 +108,7 @@ runs:
 
         New-Item -ItemType Directory -Path $dataRoot -Force | Out-Null
 
-        # MERGE rather than overwrite: the runner image may already ship daemon
-        # settings (mirrors, log limits) and clobbering them is a silent change
-        # in behaviour that would only surface much later.
+        # Merge, not overwrite: the runner image may already ship daemon settings.
         $cfgDir  = Join-Path $env:ProgramData 'Docker\config'
         $cfgPath = Join-Path $cfgDir 'daemon.json'
         New-Item -ItemType Directory -Path $cfgDir -Force | Out-Null
@@ -132,8 +129,7 @@ runs:
         Write-Host "Starting service '$svc'..."
         Start-Service -Name $svc
 
-        # The service reporting Running is not the same as the daemon accepting
-        # commands; poll until `docker version` succeeds.
+        # A Running service is not yet a daemon accepting commands.
         $deadline = (Get-Date).AddSeconds($timeout)
         $ready = $false
         while ((Get-Date) -lt $deadline) {
@@ -149,11 +145,7 @@ runs:
 
         Write-Host "Docker is ready. data-root configured at: $dataRoot"
 
-        # Verification, in plain text. `docker info --format '{{.DockerRootDir}}'`
-        # returns an EMPTY string on these runner images (documented in
-        # assert-docker-disk-space), so the templated query cannot be trusted -
-        # but the human-readable `docker info` still prints a "Docker Root Dir"
-        # line, and that IS the daemon telling us where it will write.
+        # Plain `docker info`: the --format query returns empty on these runner images.
         Write-Host '=== docker info (storage-relevant lines) ==='
         $info = (docker info 2>&1 | Out-String) -split "`r?`n"
         $info | Where-Object { $_ -match 'Root Dir|Storage Driver|Operating System|Docker Root|Windows' } |
@@ -173,9 +165,7 @@ runs:
           Write-Host "NOTE: this daemon does not report a Docker Root Dir; falling back to a write probe."
         }
 
-        # Independent of what the daemon says: the data-root must actually be
-        # populated once the daemon has started. An empty directory here means
-        # the daemon is still writing somewhere else.
+        # Whatever the daemon says, an empty data-root after start means it writes elsewhere.
         $seeded = @(Get-ChildItem -LiteralPath $dataRoot -Force -ErrorAction SilentlyContinue)
         Write-Host "=== $dataRoot after daemon start: $($seeded.Count) entries ==="
         $seeded | Select-Object -First 12 | ForEach-Object { Write-Host ("  " + $_.Name) }

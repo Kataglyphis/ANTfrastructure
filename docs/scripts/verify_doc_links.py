@@ -1,46 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""verify_doc_links.py -- the docs cross-reference gate.
-
-Why this exists
----------------
-The 2026-08-25 structural pass moved ~5,000 lines between pages and rewrote ~50
-cross-references by hand. It was verified once, with throwaway scripts, and then
-nothing kept it verified. This repo's own history says that is not enough: the
-Dev Drive incident recorded at the top of ``docs/INDEX.md`` is three copies of
-one command drifting apart because nothing was watching.
-
-So this checks the four ways a docs tree rots, all of them silent:
-
-1. **link**    a relative Markdown link whose target file no longer exists.
-2. **anchor**  a ``file.md#heading`` deep link whose heading was renamed.
-3. **section** the repo's own ``file.md`` + U+00A7 + ``Heading`` prose
-               convention. These are the ones that rot hardest, because they
-               are plain text -- nothing renders them, so nothing complains.
-4. **index**   a page reachable from neither ``docs/INDEX.md`` nor the Sphinx
-               toctree in ``docs/index.rst``. That is how ``build-cache-tiers.md``
-               (24 KB) became invisible: present, maintained, linked by nobody.
-5. **pointer** a ``<page>.md#anchor`` reference under ``docs/`` inside CODE. The repo keeps
-               comments short and points at a doc instead, so these outnumber
-               every other kind -- and nothing rendered them, so nothing
-               complained when the page or heading moved.
-               See docs/code-quality-tooling.md#code-to-docs-pointers-doc-links.
-6. **header**  a code file's HEADER pointer that names a page and no section.
-               The house comment rule says a header ends in a
-               ``docs/*.md#anchor``; a bare page name there survives a rename
-               of the section it meant, so nothing tells the next reader the
-               pointer now lands on a page that no longer explains this file.
-               Frozen, two-way, in ``doc-header-pointers.allow`` -- except for a
-               page in ``UNFREEZABLE_PAGES``, which no header may name at all.
-
-No network, no build -- safe for hooks and CI. The one project import is
-quality_allow, the repo's single owner of the two-way allow contract; a fixture
-that copies this gate out must copy that module beside it.
-
-Usage:  python3 docs/scripts/verify_doc_links.py [--quiet]
-Exit:   0 = clean, 1 = findings, 2 = usage/tree error.
-"""
+"""Docs cross-reference gate: links, anchors, section refs, index coverage, code and header pointers (docs/code-quality-tooling.md#code-to-docs-pointers-doc-links)."""
 
 from __future__ import annotations
 
@@ -50,11 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-# HUB_ROOT is where this gate LIVES; REPO_ROOT is the tree it GRADES, and main()
-# re-points the second one from --root. They differ the moment a consumer runs
-# it out of third_party/ANTfrastructure, where __file__ is the HUB: a gate that
-# never asked graded this repo and reported green over the consumer's own pages.
-# docs/code-quality-tooling.md#the-scan-root-contract
+# HUB_ROOT is where the gate lives, REPO_ROOT the tree it grades (--root): docs/code-quality-tooling.md#the-scan-root-contract
 HUB_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = HUB_ROOT
 DOCS = REPO_ROOT / "docs"
@@ -63,11 +20,7 @@ SECTION_SIGN = "§"
 # Root-level Markdown that participates in the cross-reference graph.
 ROOT_DOCS = ("README.md", "AGENTS.md", "CHANGELOG.md")
 
-# History is exempt from the anchor and section-ref checks. Archives and the
-# changelog are dated records of what was true on the day; a heading renamed
-# afterwards must not force an edit to the record, and rewriting them to keep a
-# gate quiet would falsify it. Their *links* are still checked for file
-# existence, because a moved page breaks those for a reader too.
+# Dated records skip the anchor and section checks (rewriting them would falsify them); their links are still checked.
 ARCHIVE_MARKERS = ("archive",)
 HISTORY_FILES = ("CHANGELOG.md",)
 
@@ -77,24 +30,13 @@ CODE_SCAN = ("linux", "docs/scripts", ".github", "Makefile")
 HEADER_LINES = 10
 HEADER_SUFFIXES = (".sh", ".py")
 HEADER_ALLOW = Path(__file__).with_name("doc-header-pointers.allow")
-# Pages a header pointer may never name, frozen or not: an OPEN backlog entry is
-# archived the day it closes, so the pointer is built to rot and freezing it only
-# hides that. Re-point at the durable page instead.
+# Pages no header may name, frozen or not: an open backlog entry is archived the day it closes.
 UNFREEZABLE_PAGES = ("refactoring-backlog.md",)
 CODE_SKIP_SUFFIXES = (".md", ".patch", ".diff")
 CODE_SKIP_PARTS = {"_build", ".venv", "__pycache__", ".pytest_cache", "node_modules"}
-# Output trees that must be skipped even when git cannot be consulted. The gate
-# runs inside a mirrored tree with no .git (verify_mutations.py copies the repo
-# minus .git before mutating), and there `git check-ignore` answers nothing --
-# which silently turned 566 scanned files into 5,467 and failed the gate on
-# model output. Git adds to this when it is available; this is the floor UNDER
-# both answers, because check-ignore stays silent on a TRACKED output file.
-# test-doc-links.sh pins that equality, so a new output directory fails loudly
-# here instead of rotting the gate.
+# Output trees skipped even where git cannot answer (the mutation gate's mirror has no .git); test-doc-links.sh pins the list.
 UNTRACKED_OUTPUT = (
-    # The built site the :webserver image serves. Gitignored since 2026-09-15
-    # and still on disk, which is exactly the shape this floor exists for: git
-    # ignores it, and without this row the git-free path disagrees with git.
+    # Gitignored but still on disk, the shape this floor exists for.
     "linux/webserver/dist",
     "linux/llm-stack/.env",
     "linux/llm-stack/ollama-binary.tar.zst",
@@ -102,34 +44,7 @@ UNTRACKED_OUTPUT = (
 
 
 def _ignored_paths(paths: list) -> set:
-    """Paths git ignores — build output and captured data, not source.
-
-    The gate scans every file under the code trees for `docs/*.md` pointers.
-    That is right for source and wrong for generated data: the benchmark results
-    that used to live under linux/llm-stack/ held MODEL OUTPUT, and a model that
-    writes a markdown link to some invented page under the docs directory was not
-    making a repo reference. Two such lines failed the gate with findings nobody
-    could act on. (The lab moved to OrchestrANT/benchmarks on 2026-09-12; the
-    mechanism stays because the next output tree needs no second decision.) (The example is deliberately paraphrased rather than
-    quoted — quoting it here made this very docstring trip the gate.)
-
-    Asking git is better than a hand-kept skip list: the same .gitignore that
-    keeps the data out of the repo now keeps it out of the lint, so the next
-    output directory needs no second decision.
-
-    But git is not always there. The mutation gate mirrors the repo WITHOUT
-    .git and runs this from the copy, where check-ignore answers nothing -- and
-    "scan everything" is not a safe default: it re-introduced exactly the
-    findings this function exists to suppress, and killed two mutation entries
-    by making their test fail before it was ever mutated. So a missing or
-    unhappy git falls back to UNTRACKED_OUTPUT rather than to silence.
-
-    A HAPPY git is not enough either: `check-ignore` never reports a TRACKED
-    file, and .gitignore deliberately re-admits dated run directories
-    (`!benchmark_results/20*/`), so a committed run would be scanned as source.
-    UNTRACKED_OUTPUT is a floor under both answers, not just the git-free one.
-    docs/code-quality-tooling.md#code-to-docs-pointers-doc-links
-    """
+    """Paths git ignores (output, not source) plus the UNTRACKED_OUTPUT floor, which also covers tracked output and a git-free mirror."""
     if not paths:
         return set()
     try:
@@ -141,20 +56,14 @@ def _ignored_paths(paths: list) -> set:
     except Exception:
         return _static_ignores(paths)
     if proc.returncode not in (0, 1):
-        # 0 = some ignored, 1 = none ignored. Anything else (128: not a repo)
-        # means git could not answer, and scanning everything would report
-        # findings in generated data that nobody can act on.
+        # 0 = some ignored, 1 = none; anything else means git could not answer.
         return _static_ignores(paths)
     asked = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
     return asked | _static_ignores(paths)
 
 
 def _static_ignores(paths: list) -> set:
-    """The git-free floor: the output trees, matched on path boundaries.
-
-    Boundaries matter: a bare prefix test lets "linux/llm-stack/.env" swallow
-    the tracked ".env.example" next to it.
-    """
+    """The git-free floor, matched on path boundaries so ".env" cannot swallow ".env.example"."""
     out = set()
     for p in paths:
         s = str(p)
@@ -180,9 +89,7 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 SECTION_REF = re.compile(
     r"([A-Za-z0-9._/-]+\.md)`?\s*(?:\]\([^)]*\))?\s*"
     + SECTION_SIGN
-    # Stop at [ and ] as well as sentence punctuation: without them a Markdown
-    # link whose TEXT half carries the reference ("[`x.md` REF Name](x.md#a)")
-    # has its trailing "](x.md" read as part of the section name.
+    # Stop at [ and ] too, or a link whose text carries the reference reads "](x.md" into the name.
     + r"\s*\"?([^.,;)|\"\[\]\n]{2,70})"
 )
 
@@ -235,13 +142,7 @@ def _is_hub() -> bool:
 
 
 def collect() -> dict[str, Doc]:
-    """The hub's curated page set, or -- under --root -- every tracked page.
-
-    The hub's set is ROOT_DOCS plus docs/**; a consumer has no such curation to
-    inherit and no reason to hide a page from the graph, so the scan-root
-    contract answers instead. That is what puts a consumer's own README (and,
-    say, OrchestrANT's benchmarks/README.md) into the graph at all.
-    """
+    """The hub's curated page set, or under --root every tracked page."""
     if _is_hub():
         paths = [REPO_ROOT / n for n in ROOT_DOCS]
         paths += sorted(DOCS.rglob("*.md"))
@@ -298,26 +199,13 @@ def _lead(anchor: str, n: int = 2) -> str:
 
 
 def _forms(anchor: str) -> tuple[str, ...]:
-    """An anchor plus the variants prose actually cites it by.
-
-    Numbered headings ("## 4. S3 -- per-stage registry cache refs") get cited
-    by their label alone, so the leading ordinal has to come off before the
-    comparison.
-    """
+    """An anchor plus the variants prose cites it by: numbered headings lose their leading ordinal."""
     stripped = NUM_PREFIX.sub("", anchor)
     return (anchor, stripped) if stripped != anchor else (anchor,)
 
 
 def _heading_match(want: str, anchors: set[str]) -> bool:
-    """True if `want` plausibly names one of `anchors`.
-
-    Prose abbreviates a heading, runs past it, and sometimes cites only the
-    identifier in its parentheses ("(#120 step 2)"). Exact equality is
-    therefore useless. Accept a prefix or a suffix in either direction, or --
-    for multi-word names -- agreement on the first two words. That is still
-    strict enough to fail loudly when a heading is renamed or its page is
-    split, which is the rot this exists to catch.
-    """
+    """True if `want` plausibly names one of `anchors`: a prefix or suffix either way, or the same first two words."""
     for raw in anchors:
         for a in _forms(raw):
             if not a:
@@ -351,9 +239,7 @@ def check_section_refs(docs: dict[str, Doc], findings: list[str]) -> int:
             if not want:
                 continue
             checked += 1
-            # Prose abbreviates: "§ Build Commands for the full sequence" points
-            # at the heading "Build Commands". Accept either as a prefix of the
-            # other, so a rename still fails but prose stays natural.
+            # Prose abbreviates, so either may be a prefix of the other; a rename still fails.
             if _heading_match(want, other.anchors):
                 continue
             findings.append(
@@ -365,9 +251,7 @@ def check_section_refs(docs: dict[str, Doc], findings: list[str]) -> int:
 def code_files() -> list[Path]:
     out: list[Path] = []
     if not _is_hub():
-        # A consumer has no CODE_SCAN layout to assume, and assuming one is how
-        # a gate silently grades nothing. Tracked files, minus the suffixes the
-        # hub path skips for the same reason.
+        # A consumer has no CODE_SCAN layout, and assuming one would silently grade nothing.
         return [REPO_ROOT / rel
                 for rel in gate_scope.tracked(str(REPO_ROOT), ["*"])
                 if not rel.endswith(CODE_SKIP_SUFFIXES)
@@ -414,10 +298,7 @@ def check_code_pointers(docs: dict[str, Doc], findings: list[str]) -> int:
 
 
 def header_pointers() -> dict[str, str]:
-    """{"<file>\t<page>": "<file>:<line>"} for every BARE docs pointer in the header of
-    a .sh/.py file. `page.md § Heading` on the same line is not bare -- SECTION_REF
-    already checks where that lands. The key carries no line number, so moving the
-    header inside the block does not re-flag it."""
+    """{"<file>\t<page>": "<file>:<line>"} for every bare pointer (no anchor, no section sign) in a .sh/.py header."""
     found: dict[str, str] = {}
     for f in code_files():
         if f.suffix not in HEADER_SUFFIXES:
@@ -438,8 +319,7 @@ def header_pointers() -> dict[str, str]:
 
 
 def check_header_pointers(findings: list[str]) -> int:
-    """The two-way freeze: a bare header pointer that is not frozen is NEW, and a frozen
-    one that gained an anchor (or left) is STALE and its row goes."""
+    """Two-way freeze: an unfrozen bare header pointer is new, a frozen one that is gone is stale."""
     found = header_pointers()
     frozen = load_keys(str(HEADER_ALLOW))
     for key in sorted(found):
@@ -463,12 +343,7 @@ def check_header_pointers(findings: list[str]) -> int:
     return len(found)
 
 
-# A bare, same-page reference: "(§ 1a)", "see § 3". Deliberately narrow.
-#   file group  when a filename precedes it -- "CHANGELOG.md § 2026-09-01",
-#               even with a link or whitespace between -- the reference belongs
-#               to that page and SECTION_REF already checks it. A single-char
-#               lookbehind is not enough: the space after ".md" defeats it.
-#   (?![\w.(])  excludes licence clauses ("Apache-2.0 §4(b)") and dates.
+# A bare same-page reference ("(§ 1a)"); a captured filename makes it cross-file, and (?![\w.(]) skips licence clauses and dates.
 LOCAL_SECTION_REF = re.compile(
     r"(?P<file>[A-Za-z0-9._/-]+\.md`?\s*(?:\]\([^)]*\))?\s*)?"
     + SECTION_SIGN
@@ -479,16 +354,7 @@ NUMBERED_HEADING = re.compile(r"^#{2,6}\s+(\d+[a-z]?)\.", re.MULTILINE)
 
 
 def check_local_section_refs(docs: dict[str, Doc], findings: list[str]) -> int:
-    """Validate bare same-page section references.
-
-    SECTION_REF only covers the cross-file form, so "(§ 1a)" was counted and
-    never checked -- a dangling one sat in geniex-local-ai-setup.md through
-    several renumberings without the gate noticing.
-
-    Only pages that actually define numbered sections are checked. Elsewhere a
-    "§ 4" belongs to something else entirely (a licence clause, a spec) and
-    guessing would trade a real gap for false alarms.
-    """
+    """Validate bare same-page section references, only on pages that define numbered sections."""
     checked = 0
     for doc in docs.values():
         if doc.is_archive:
@@ -513,10 +379,7 @@ def check_index_coverage(docs: dict[str, Doc], findings: list[str]) -> int:
     index_rst = DOCS / "index.rst"
     index_md = DOCS / "INDEX.md"
     if not index_rst.is_file() or not index_md.is_file():
-        # Required of the hub, whose INDEX.md is the map the whole doc system
-        # rests on. A consumer is not obliged to run Sphinx or keep an index at
-        # all, and inventing that obligation here would fail every consumer on
-        # its first run over something this gate was not asked about.
+        # Only the hub must keep an index; a consumer need not run Sphinx at all.
         if _is_hub():
             findings.append("[index]   docs/index.rst or docs/INDEX.md is missing")
         return 0
@@ -553,9 +416,7 @@ def main() -> int:
         return gate_scope.die(exc)
     DOCS = REPO_ROOT / "docs"
     if not _is_hub():
-        # The freeze file follows the root, like every other ratchet: a
-        # consumer's frozen pointers belong in the consumer's diff. An absent
-        # one means "nothing frozen", which is the honest starting state.
+        # The freeze file follows the root like every ratchet; absent means nothing frozen.
         HEADER_ALLOW = REPO_ROOT / HEADER_ALLOW.name
 
     if _is_hub() and not DOCS.is_dir():

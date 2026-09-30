@@ -44,9 +44,7 @@ llvm_repo_available() {
     200) return 0 ;;
     404) return 1 ;;
     *)
-      # Transient server/network trouble (503, 429, timeout → 000) must NOT
-      # hard-fail a multi-hour layer: every caller has a working fallback — the
-      # LLVM source build — so degrade to "repo unavailable" with a warning.
+      # Transient trouble must not fail a multi-hour layer: every caller falls back to the LLVM source build.
       warn "apt.llvm.org query for ${distro} returned HTTP ${status:-unknown}; treating the repo as unavailable (source-build fallback)"
       return 1
       ;;
@@ -96,14 +94,7 @@ add_llvm_repo() {
   $SUDO mkdir -p /etc/apt/sources.list.d
   echo "deb [signed-by=${key}] https://apt.llvm.org/${DISTRO}/ llvm-toolchain-${DISTRO}-${LLVM_WANTED} main" | $SUDO tee /etc/apt/sources.list.d/apt.llvm.org.list >/dev/null
 
-  # RE-SCOPED 2026-09-10 (was: "pin apt to the exact LLVM_RELEASE"). That pin
-  # could not work and failed SILENTLY: the suite tracks the release BRANCH
-  # HEAD, so once 23.1.1 landed no 23.1.0 existed, the `Pin: version 23.1.0*`
-  # glob matched nothing, and apt installed 23.1.1 at default priority. A
-  # control that asserts nothing while reading as working is worse than none.
-  # apt.llvm.org is now only the BOOTSTRAP (clang-tblgen); the SHIPPED clang is
-  # built from llvmorg-${LLVM_RELEASE} and verified against LLVM_COMMIT at clone
-  # time (llvm-cross.sh / build-clang.sh). Re-scopes audit finding #5.
+  # No version pin: the suite tracks the branch head, so it matched nothing; apt.llvm.org only bootstraps.
   $SUDO rm -f /etc/apt/preferences.d/apt-llvm-org-pin 2>/dev/null || true
 
   APT_UPDATED="" # force refresh

@@ -6,9 +6,7 @@
 Set-StrictMode -Version Latest
 
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-# Guarded and WITHOUT -Force: a forced nested re-import rebinds the dependency into
-# this module's scope and unloads the caller's top-level import. See
-# docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
 $patchesPath = Join-Path $PSScriptRoot 'WindowsSourceBuild.Patches.psm1'
@@ -17,8 +15,7 @@ $nativePath  = Join-Path $PSScriptRoot 'WindowsNative.Common.psm1'
 $targetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
 if ((Test-Path $patchesPath) -and -not (Get-Module -Name 'WindowsSourceBuild.Patches')) { Import-Module $patchesPath }
 if ((Test-Path $cudaPath) -and -not (Get-Module -Name 'WindowsSourceBuild.Cuda')) { Import-Module $cudaPath }
-# Canonical stderr-shield for native calls, re-exported here. Every COPY list
-# that carries this module must carry WindowsNative.Common.psm1 too.
+# Re-exported: every COPY list that carries this module must carry WindowsNative.Common.psm1 too.
 if (Test-Path $nativePath) {
     if (-not (Get-Module -Name 'WindowsNative.Common')) { Import-Module $nativePath }
 } else {
@@ -26,14 +23,11 @@ if (Test-Path $nativePath) {
         throw 'Invoke-ShieldedNative unavailable: WindowsNative.Common.psm1 is not next to WindowsSourceBuild.Common.psm1 (incomplete modules COPY list)'
     }
 }
-# Canonical TARGET-architecture facts, re-exported on the same terms as
-# WindowsNative.Common above; ship the module in every COPY list that has this one.
+# Re-exported on the same terms: every COPY list with this module needs WindowsTargetArch.Common.psm1.
 if (Test-Path $targetArchPath) {
     if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchPath }
 } else {
-    # THROW AT IMPORT, not a stub: ~29 names are re-exported and Export-ModuleMember
-    # ignores unmatched ones, so a broken COPY list would otherwise surface as a bare
-    # CommandNotFoundException deep inside the VsDevCmd bootstrap.
+    # Throw, not a stub: Export-ModuleMember skips unmatched names, so the gap would surface much later.
     throw ("WindowsTargetArch.Common.psm1 is not next to WindowsSourceBuild.Common.psm1 " +
            "(looked at: $targetArchPath). This is an incomplete modules COPY list -- every " +
            'Dockerfile that COPYs WindowsSourceBuild.Common.psm1 must COPY the arch module too.')
@@ -64,10 +58,7 @@ function Get-SourceBuildVersion {
 }
 
 function Reset-SourceBuildDirectory {
-    # MOUNT-FRIENDLY reset: a BuildKit cache-mount target dir cannot be removed
-    # ("used by another process"), so clear its CONTENTS -- git clones into an empty
-    # dir (docs/windows-builds.md § BuildKit/containerd lane). Any leftover tree is
-    # wiped either way: callers that want incremental reuse must skip the reset.
+    # A BuildKit cache-mount target cannot be removed, only emptied.
     param(
         [Parameter(Mandatory)]
         [string]$Path
@@ -96,8 +87,7 @@ function Invoke-GitClone {
         [switch]$Recursive,
         [switch]$SkipOnFailure,
         [int]$Depth = 1,
-        # #116: one TCP drop killed a 4-hour ride, and the driver does not
-        # infra-retry script failures, so the clone must retry ITSELF.
+        # The driver does not retry script failures, so the clone retries itself.
         [int]$MaxAttempts = 3,
         [int]$InitialDelaySeconds = 10
     )
@@ -105,16 +95,12 @@ function Invoke-GitClone {
     $ref = if ($Tag) { $Tag } else { $Branch }
     if ([string]::IsNullOrWhiteSpace($ref)) { throw 'Either -Branch or -Tag is required' }
 
-    # A 40-char hex string is a commit hash, not a branch/tag name: `git clone
-    # --branch <hash>` fails ("Remote branch <hash> not found"). Clone the
-    # default branch, then fetch + checkout the commit. Mirrors the Linux lane
-    # (tvm.sh lines 183-198). A shorter hex prefix also works with `git fetch`.
+    # `git clone --branch` rejects a commit hash, so a hash is fetched and checked out after the clone.
     $isCommitHash = $ref -match '^[0-9a-f]{7,40}$'
 
     $delay = $InitialDelaySeconds
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-        # Mount-safe wipe EVERY attempt: a half-transferred clone is unusable and
-        # git refuses a non-empty directory.
+        # Wipe on every attempt: git refuses a non-empty directory.
         Reset-SourceBuildDirectory -Path $SourceDir
 
         $oldEAP = $ErrorActionPreference
@@ -122,8 +108,7 @@ function Invoke-GitClone {
         $env:GIT_TERMINAL_PROMPT = '0'
 
         if ($isCommitHash) {
-            # Full clone (no --branch, no --depth): the commit may not be on the
-            # default branch's tip. Then fetch the commit shallowly and checkout.
+            # Full clone: the commit may not be reachable from a shallow default-branch tip.
             $cloneArgs = @('clone')
             if ($Recursive) { $cloneArgs += '--recursive' }
             $cloneArgs += $RepoUrl, $SourceDir
@@ -147,9 +132,7 @@ function Invoke-GitClone {
                 if ($Recursive -and $cloneExit -eq 0) {
                     $subOut = @(& git -C $SourceDir submodule update --init --recursive --depth 1 2>&1)
                     $cloneOut += $subOut
-                    # The submodule pass is part of the clone's success: without this
-                    # capture a failed init left an incomplete tree and a green clone
-                    # (the TVM commit-pin path is the real caller). #158.
+                    # A failed submodule init must fail the clone, or an incomplete tree passes as green.
                     $cloneExit = $LASTEXITCODE
                 }
             }
@@ -183,8 +166,7 @@ function Invoke-GitClone {
 }
 
 function Get-CMakeRocmIsolationArgs {
-    # On the rocm lane TheRock's bin is on PATH, so CMake would treat the ROCm tree as a package
-    # prefix (its flatbuffers, nlohmann_json, zlib ...). Non-HIP builds must never see it.
+    # TheRock's bin is on PATH on the rocm lane, so CMake would take its flatbuffers/zlib for non-HIP builds.
     if ($env:GPU_TYPE -ne 'rocm') { return @() }
     $root = @($env:ROCM_PATH, $env:HIP_PATH) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
     if (-not $root) { return @() }
@@ -201,8 +183,7 @@ function Invoke-CmakeConfigure {
         [string]$InstallPrefix,
         [string]$Generator = 'Ninja',
         [string]$Platform = '',
-        # [Alias('T')] is defensive: PowerShell binds parameters by unambiguous
-        # PREFIX, so a second T-parameter would make a bare `-T v143` ambiguous.
+        # The alias keeps `-T` unambiguous if another T-prefixed parameter is added.
         [Alias('T')]
         [string]$Toolset = '',
         [string]$BuildType = 'Release',
@@ -211,9 +192,7 @@ function Invoke-CmakeConfigure {
         [string]$Linker = 'lld-link',
         [string]$Archiver = 'llvm-lib',
         [string[]]$ExtraArgs = @(),
-        # Per-call cross override; empty resolves WINDOWS_TARGET_ARCH, so the amd64
-        # lane is unchanged. It exists for the HOST-TOOL configure, which also needs
-        # Invoke-WithHostArchLibraryEnvironment -- this parameter alone is not enough.
+        # A host-tool configure also needs Invoke-WithHostArchLibraryEnvironment; this alone is not enough.
         [string]$TargetArch = '',
         # A HIP consumer (find_package(hip) from TheRock) opts out of the rocm-lane prefix isolation.
         [switch]$AllowRocmPrefix,
@@ -243,9 +222,7 @@ function Invoke-CmakeConfigure {
             if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
             $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
             $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-            # CUDA launcher gated at THIS wiring site only (one switch, one place);
-            # rehabilitated 2026-08-18 by the #114 sccache patch series
-            # (mozilla/sccache#2811), three-canary bar applies. C/CXX are unconditional.
+            # The CUDA launcher stays opt-in (mozilla/sccache#2811); C/CXX are unconditional.
             if ($env:SCCACHE_CUDA_LAUNCHER -eq '1') {
                 $cmakeArgs += "-DCMAKE_CUDA_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
                 Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX launchers + CUDA OPT-IN ACTIVE - three-canary bar applies)"
@@ -257,10 +234,7 @@ function Invoke-CmakeConfigure {
         Write-Host 'sccache disabled (no remote backend configured; a container-local cache would only bloat layers)'
     }
 
-    # THE cross choke point: nearly every library in the chain configures through
-    # here. Get-CMakeCrossArgs is empty on the host arch (the @() wrap is
-    # load-bearing under StrictMode), and it goes BEFORE $ExtraArgs so a caller's
-    # explicit -D still wins -- cmake honours the LAST occurrence.
+    # Cross args go before $ExtraArgs so a caller's -D wins: cmake honours the last occurrence.
     $crossArgs = @(Get-CMakeCrossArgs -Arch $TargetArch)
     if ($crossArgs.Count -gt 0) {
         $cmakeArgs += $crossArgs
@@ -290,22 +264,7 @@ function Invoke-CmakeConfigure {
 }
 
 function Assert-CmakeArgsConsumed {
-    # A -D the project never declares is SILENTLY IGNORED: cmake exits 0, the build
-    # goes green, and a caller's "FEATURE ON" banner is a lie. That is exactly how
-    # -DUSE_QNN / -DIREE_TARGET_BACKEND_QNN / -DTFLITE_ENABLE_QNN shipped as no-ops
-    # while three build scripts printed "QNN ... ON" (found 2026-08-31).
-    #
-    # Detection is via CMakeCache.txt, not the configure output: an undeclared -D is
-    # recorded as `NAME:UNINITIALIZED=value`, a declared one gets a real type
-    # (`NAME:BOOL=...`). Measured on cmake 3.29.2. Reading the cache keeps `& cmake`
-    # streaming straight to the step log.
-    #
-    # WARNS, never throws: some unconsumed vars are legitimate (a toolchain var a
-    # subproject reads without caching, an option that only exists on another arch).
-    # The point is that they stop being invisible.
-    # BLIND SPOT, by construction: only the UNTYPED -DNAME= form is detectable. A
-    # typed -DNAME:BOOL= the project never declares is cached WITH that type, so it
-    # is indistinguishable from a declared option here. Pass feature flags untyped.
+    # CMake caches an undeclared -DNAME= as UNINITIALIZED but a typed -DNAME:BOOL= as declared: pass feature flags untyped.
     param(
         [Parameter(Mandatory)][string]$BuildDir,
         [string[]]$PassedArgs = @()
@@ -325,13 +284,10 @@ function Assert-CmakeArgsConsumed {
     }
 }
 
-# Test-SccacheRemoteConfigured lives in WindowsScripts.Shared.psm1; still
-# re-exported from here for existing consumers.
+# Test-SccacheRemoteConfigured lives in WindowsScripts.Shared.psm1 and is re-exported here.
 
 function Write-SccacheStats {
-    # The counters live in the sccache server and die with the container, so this
-    # is the only moment they exist. Never fails the build. -RequireRemote keeps
-    # the silent no-op without a remote backend (a query would spawn a local server).
+    # -RequireRemote: without a remote backend a stats query would spawn a local server.
     param([string]$Label = 'build')
     $lines = Get-SccacheStatsText -RequireRemote
     if ($null -eq $lines) { return }
@@ -340,8 +296,7 @@ function Write-SccacheStats {
 }
 
 function Enter-VsDevCmdEnvironment {
-    # -Arch defaults to the resolved TARGET arch, so every caller is cross-correct
-    # unchanged; -HostArch stays literal amd64 (no arm64 Windows base image exists).
+    # -HostArch stays amd64: no arm64 Windows base image exists.
     param(
         [string]$Arch = '',
         [string]$HostArch = 'amd64',
@@ -356,9 +311,7 @@ function Enter-VsDevCmdEnvironment {
     }
     if (-not (Test-Path $VsDevCmdPath)) { throw "VsDevCmd.bat not found at: $VsDevCmdPath" }
 
-    # TWO gates: a non-zero VsDevCmd exit means the `&& set` never ran (no env vars,
-    # surfacing hours later as cryptic INCLUDE/LIB errors), and it can also print an
-    # error banner and exit 0 -- so require a sentinel var to have landed as well.
+    # VsDevCmd can print an error banner and still exit 0, so a sentinel variable is checked too.
     $vsDevOut = @(cmd /c """$VsDevCmdPath"" -arch=$Arch -host_arch=$HostArch && set" 2>&1)
     if ($LASTEXITCODE -ne 0) {
         $tail = ($vsDevOut | Select-Object -Last 10) -join [Environment]::NewLine
@@ -378,10 +331,7 @@ function Enter-VsDevCmdEnvironment {
 }
 
 function Invoke-WithHostArchLibraryEnvironment {
-    # Runs $ScriptBlock with LIB/LIBPATH rewritten from the TARGET arch's library
-    # dirs to the HOST's -- the missing half of a host-tool pass on a cross lane
-    # (lld-link reads only LIB; a second VsDevCmd appends rather than resets).
-    # No-op on the native lane.
+    # lld-link reads only LIB and a second VsDevCmd appends to it, so a host-tool pass swaps the lib dirs.
     param([Parameter(Mandatory)][scriptblock]$ScriptBlock)
     $hostDir   = (Get-WindowsTargetArchInfo -Arch (Get-WindowsHostArch)).MsvcTargetLibDir
     $targetDir = (Get-WindowsTargetArchInfo).MsvcTargetLibDir
@@ -397,10 +347,7 @@ function Invoke-WithHostArchLibraryEnvironment {
         Write-Host "Host-arch library environment: LIB/LIBPATH \$targetDir -> \$hostDir for the duration of the host-tool pass"
         & $ScriptBlock
     } finally {
-        # A variable that was UNSET must end up unset again -- not defined-empty.
-        # A variable that was UNSET must end up unset, not defined-empty:
-        # SetEnvironmentVariable($name, $null) leaves LIB= in the process block,
-        # and lld-link then skips its MSVC/SDK auto-detection.
+        # Unset, not empty: an empty LIB makes lld-link skip its MSVC/SDK auto-detection.
         foreach ($name in 'LIB', 'LIBPATH') {
             if ($null -eq $saved[$name]) { Remove-Item -Path "Env:$name" -ErrorAction SilentlyContinue }
             else { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
@@ -408,12 +355,8 @@ function Invoke-WithHostArchLibraryEnvironment {
     }
 }
 
-# The throwing face of Shared's vswhere discovery (Get-VisualStudioInstallPath /
-# Get-MsvcToolsRoots): no Visual Studio means no source build.
 function Get-MsvcToolsRoot {
-    # @() re-wrap is LOAD-BEARING: PowerShell flattens a single-element array on
-    # return, so with exactly ONE installed toolset the [0] index would read a
-    # STRING and yield a single letter -- a silently misdirected patch path.
+    # @() is load-bearing: with one toolset the flattened return is a string and [0] its first letter.
     return @(Get-MsvcToolsRoots)[0]
 }
 
@@ -437,9 +380,7 @@ function Copy-CpythonPyConfigHeader {
 }
 
 function Get-SourceBuildPython {
-    # HOST-PINNED: every call site EXECUTES .Exe, and an aarch64 python.exe cannot
-    # run on the x64 build host. .LibDir/.Lib are the HOST import libs -- LINK
-    # inputs for the target come from Get-TargetBuildPython.
+    # Host-pinned because callers execute .Exe; target link inputs come from Get-TargetBuildPython.
     param(
         [string]$CpythonDir = ''
     )
@@ -453,10 +394,7 @@ function Get-SourceBuildPython {
 }
 
 function Get-TargetBuildPython {
-    # TARGET-arch complement to Get-SourceBuildPython (#120): .Exe stays the HOST
-    # interpreter, .Include is arch-neutral, .LibDir/.Lib are the TARGET import
-    # lib. Consumers MUST honour .Available -- -ResumeFrom can enter this chain
-    # after Build-TargetCpython.ps1 would have run.
+    # Callers must honour .Available: -ResumeFrom can skip Build-TargetCpython.ps1.
     param(
         [string]$CpythonDir = ''
     )
@@ -482,26 +420,22 @@ function Initialize-SourceBuildEnvironment {
     param(
         [string]$InstallDir = ''
     )
-    # Deliberately NO Set-StrictMode/$ErrorActionPreference here: set inside a
-    # module function they affect only this scope. Every build script sets its own.
+    # No Set-StrictMode/$ErrorActionPreference: inside a module function they only affect this scope.
     if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
-    # sccache does not create the parent dir of its error log, and the server
-    # spawns on the first wrapped compile, so create it before any cmake (#23).
+    # sccache does not create its error log's parent dir, and its server spawns on the first compile.
     if ($env:SCCACHE_ERROR_LOG) {
         $errLogDir = Split-Path $env:SCCACHE_ERROR_LOG -Parent
         if ($errLogDir -and -not (Test-Path $errLogDir)) {
             $null = New-Item -ItemType Directory -Force -Path $errLogDir -ErrorAction SilentlyContinue
         }
     }
-    # Keeps Windows Update from dropping an .msu into the layer -- see the
-    # function for the measured finalize failure. No-op outside a container.
+    # Keeps Windows Update from dropping an .msu into the image layer.
     Disable-ContainerWindowsUpdate
     return $InstallDir
 }
 
 function Initialize-SourceBuildScript {
-    # Standard build-script preamble: resolve the install prefix, then load
-    # versions.env. Scripts with work between the two call the parts directly.
+    # Scripts with work between these two steps call them directly.
     param(
         [string]$InstallDir = '',
         [string]$ScriptRoot = ''
@@ -567,17 +501,10 @@ function Copy-BuildArtifact {
 
 <#
 .SYNOPSIS
-    Appends per-TU flags to build.ninja FLAGS lines chosen by a selector, with a
-    coverage floor. ONE implementation for MLAS (ORT), XNNPACK (LiteRT) and the
-    IREE arm_64 ukernels (#131).
+    Appends per-TU flags to the build.ninja FLAGS lines a selector picks; returns the tagged count.
 .DESCRIPTION
-    Walks build.ninja once; -Select receives each `build ...` line and returns the
-    flags to append to that target's FLAGS line, or nothing to leave it alone. The
-    floor is load-bearing: a selector that matches nothing SUCCEEDS silently, so
-    below -Floor the file is left untouched and the call throws with the count.
-    -AlreadyTaggedPattern makes a re-run idempotent.
-.OUTPUTS
-    [int] tagged FLAGS lines.
+    -Select returns the flags for each `build` line, or nothing. Below -Floor the file stays untouched and the
+    call throws, because a selector that matches nothing would otherwise succeed silently.
 #>
 function Add-NinjaPerTuFlags {
     param(
@@ -613,12 +540,9 @@ function Add-NinjaPerTuFlags {
 
 <#
 .SYNOPSIS
-    Writes the standard ABSENT-ON-<ARCH>.txt marker for a component a cross branch
-    cannot build, creating the (empty) directories the merge's unconditional COPY
-    expects. Returns the marker path.
+    Writes the ABSENT-ON-<ARCH>.txt marker for a component a cross branch cannot build; returns its path.
 .DESCRIPTION
-    The one convention for "not built for the target" (#131). The marker travels
-    INTO the shipped bundle, so an empty directory carries its reason on the spot.
+    Also creates the empty directories the merge's unconditional COPY expects; the marker ships in the bundle.
 #>
 function Write-AbsentOnCrossMarker {
     param(
@@ -639,13 +563,9 @@ function Write-AbsentOnCrossMarker {
 
 <#
 .SYNOPSIS
-    Composes the CMake FindPython hint trio (EXECUTABLE / INCLUDE_DIR / LIBRARY)
-    for one or more variable prefixes from a Get-TargetBuildPython object -- host
-    interpreter to RUN, target import lib to LINK.
+    Composes the CMake FindPython hints per prefix: the host interpreter to run, the target import lib to link.
 .DESCRIPTION
-    The spellings are not interchangeable: ORT -> Python; GenAI -> Python AND the
-    pybind11-classic PYTHON; OpenCV -> PYTHON3 with forward slashes.
-    -NumPyIncludeDir adds <first prefix>_NumPy_INCLUDE_DIR.
+    Prefixes are not interchangeable: ORT uses Python, GenAI Python and PYTHON, OpenCV PYTHON3 with forward slashes.
 #>
 function Get-PythonCMakeHintArgs {
     param(
@@ -667,11 +587,7 @@ function Get-PythonCMakeHintArgs {
 
 <#
 .SYNOPSIS
-    Configures and builds a HOST-tool tree on a cross lane: host target on the
-    choke point AND the host's LIB/LIBPATH for the duration -- the pair LiteRT's
-    flatc pass and IREE's host pass both need. Native lane: a plain configure+build.
-.DESCRIPTION
-    Returns the install prefix's bin dir when -Install, else the build dir.
+    Builds a host-tool tree with the host target and host LIB/LIBPATH; returns the bin dir (-Install) or build dir.
 #>
 function Invoke-HostToolCmakeBuild {
     param(
@@ -687,9 +603,7 @@ function Invoke-HostToolCmakeBuild {
         [string]$Label = 'host tools'
     )
     Write-Host "$Label`: native $(Get-WindowsHostArch) configure + build into $BuildDir"
-    # `| Out-Host` is LOAD-BEARING: the block's pipeline output would otherwise
-    # become part of this function's return value, handing a caller build-log
-    # lines with the path last.
+    # `| Out-Host` is load-bearing: the block's output would otherwise leak into the return value.
     Invoke-WithHostArchLibraryEnvironment {
         Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $BuildDir -InstallPrefix $InstallPrefix -ExtraArgs $ExtraArgs -TargetArch (Get-WindowsHostArch) | Out-Null
         $log = Get-PersistentBuildLogPath -Name $LogName -FallbackDir $BuildDir
@@ -701,17 +615,10 @@ function Invoke-HostToolCmakeBuild {
 
 <#
 .SYNOPSIS
-    Locates, verifies and extracts a hand-staged Qualcomm AI Engine Direct
-    (QAIRT/"QNN") SDK zip; returns the facts the ONNX build needs, or $null when
-    no zip is staged (the default, supported state).
+    Extracts and verifies a hand-staged QAIRT ("QNN") SDK zip; returns @{ Home; LibDir; CmakeArgs } or $null.
 .DESCRIPTION
-    Backlog #121. Contract (same as the TensorRT zip): exactly one *.zip in
-    -DropDir; optional -ExpectedSha256 (empty = unverified, with a warning); the
-    SDK root is wherever include\QNN\QnnInterface.h lives; the target's
-    lib\<arch>\QnnCpu.dll must exist. Throws on two zips, a hash mismatch, a
-    non-SDK zip or a missing backend set -- never silently.
-.OUTPUTS
-    $null, or @{ Home; LibDir; CmakeArgs } (CmakeArgs = the two -D switches).
+    No zip ($null) is the supported default. Throws on two zips, a hash mismatch, a non-SDK zip or a missing
+    backend set.
 #>
 function Resolve-QnnSdk {
     param(
@@ -724,8 +631,7 @@ function Resolve-QnnSdk {
     if ($zips.Count -gt 1) { throw "QNN: exactly one SDK zip may sit in $DropDir (found $($zips.Count)): $($zips.Name -join ', ')" }
     if ($zips.Count -eq 0) { return $null }
     $zip = $zips[0].FullName
-    # Mismatch is FATAL, an empty pin is a warning -- Assert-FileSha256 owns that
-    # policy for every staged-zip consumer (QNN/TensorRT/compiler-rt). #158/F4.
+    # A mismatch is fatal, an empty pin only warns: Assert-FileSha256 owns that policy.
     Assert-FileSha256 -Path $zip -Expected $ExpectedSha256 -Label 'QNN SDK zip' -PinName 'QNN_SDK_ZIP_SHA256'
     if (-not $ExtractDir) { $ExtractDir = Join-Path $env:TEMP_DIR 'qnn-sdk-extract' }
     if (Test-Path $ExtractDir) { Remove-Item $ExtractDir -Recurse -Force }
@@ -735,10 +641,7 @@ function Resolve-QnnSdk {
     $home_ = $anchor.Directory.Parent.Parent.FullName
     $libDir = Join-Path $home_ "lib\$(Get-QnnSdkLibDirName -Arch $Arch)"
     if (-not (Test-Path (Join-Path $libDir 'QnnCpu.dll'))) { throw "QNN: $libDir\QnnCpu.dll missing -- the SDK carries no $(Get-QnnSdkLibDirName -Arch $Arch) backend set for this target" }
-    # Version compatibility check: the ORT version we build may reference QNN
-    # ops that are absent from an older SDK. QNN_OP_STFT is the canary — it
-    # was added in QNN API 2.25+ and ORT 1.29 uses it. When the SDK is too
-    # old, warn and return $null (QNN off) rather than failing the build.
+    # QNN_OP_STFT (API 2.25+) is the canary for an SDK too old for this ORT: QNN goes off instead of failing.
     $opDef = Join-Path $home_ 'include\QNN\QnnOpDef.h'
     if (Test-Path $opDef) {
         $opDefs = Get-Content $opDef -Raw
@@ -757,22 +660,18 @@ function Resolve-QnnSdk {
 
 <#
 .SYNOPSIS
-    Stages the QNN runtime beside onnxruntime.dll (the per-arch backend DLLs and
-    the hexagon-v* skel dirs), after asserting the provider DLL was installed.
-    Returns the number of DLLs staged.
+    Stages the QNN backend DLLs and hexagon-v* skel dirs beside the install's DLLs; returns the DLL count.
 #>
 function Copy-QnnRuntime {
     param(
         [Parameter(Mandatory)]$Sdk,            # Resolve-QnnSdk result
         [Parameter(Mandatory)][string]$OrtInstallDir
     )
-    # Find the bin dir: prefer onnxruntime.dll (ORT), but fall back to any DLL
-    # (GenAI, LiteRT, TVM, IREE don't have onnxruntime.dll but do have their own DLLs).
+    # GenAI, LiteRT, TVM and IREE have no onnxruntime.dll, so fall back to any DLL's directory.
     $ortDll = Get-ChildItem -Path $OrtInstallDir -Recurse -Filter 'onnxruntime.dll' -File | Select-Object -First 1
     if (-not $ortDll) {
         $anyDll = @(Get-ChildItem -Path $OrtInstallDir -Recurse -Filter '*.dll' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
         if (-not $anyDll) {
-            # No DLLs at all yet — use a bin dir under the install root
             $binOut = Join-Path $OrtInstallDir 'bin'
             if (-not (Test-Path $binOut)) { New-Item -Path $binOut -ItemType Directory -Force | Out-Null }
         } else {
@@ -791,9 +690,7 @@ function Copy-QnnRuntime {
 }
 
 function Invoke-PythonWheelBuild {
-    # Shared wheel-build shape for the ONNX + GenAI scripts: run python through the
-    # cmd.exe stderr shield (setup.py logs to stderr under EAP=Stop), gate on the
-    # exit code, then install the freshest wheel from the dist dir.
+    # Through cmd.exe: setup.py logs to stderr, which EAP=Stop would turn into an error.
     param(
         [Parameter(Mandatory)] $Python,           # Get-SourceBuildPython object
         [Parameter(Mandatory)] [string]$WorkingDir,
@@ -801,12 +698,9 @@ function Invoke-PythonWheelBuild {
         [Parameter(Mandatory)] [string]$ModuleName,
         [string]$DistDir = '',
         [switch]$NoDeps,
-        # CROSS LANE (#120): BUILD + STAGE only -- the .pyd is aarch64, so it cannot
-        # be installed or import-asserted here. Every PE member of the staged wheel
-        # is machine-checked instead; the merge arch gate cannot see inside a zip.
+        # A cross wheel cannot be imported here, so its PE members are machine-checked instead.
         [switch]$StageOnly,
-        # ONE call for both lanes (#131): on a cross lane this implies -StageOnly and
-        # appends `--plat-name <target tag>`; on the native lane it is a no-op.
+        # Cross lane: implies -StageOnly and adds `--plat-name`; a no-op on the native lane.
         [switch]$CrossStage
     )
     if ($CrossStage -and (Test-WindowsCrossTarget)) {
@@ -829,9 +723,7 @@ function Invoke-PythonWheelBuild {
 }
 
 function Assert-WheelTargetArch {
-    # PE-checks every .pyd/.dll/.exe member of a staged wheel against the TARGET
-    # machine, and asserts the filename carries the target's platform tag (a wheel
-    # tagged for the wrong platform would install and then fail at import).
+    # A wheel tagged for the wrong platform installs fine and then fails at import.
     param([Parameter(Mandatory)][string]$WheelPath)
     $wantTag = Get-PythonWheelTag
     $wantMachine = Get-PeMachineType
@@ -847,9 +739,7 @@ function Assert-WheelTargetArch {
         $pe = @(Get-ChildItem -Path $tmp -Recurse -File -Include '*.pyd', '*.dll', '*.exe')
         if ($pe.Count -eq 0) { throw "wheel $name contains no native modules at all -- the binding was not built" }
         foreach ($f in $pe) {
-            # The EXT_SUFFIX tag is part of the import contract: a target
-            # interpreter only loads <mod>.cp314-<its own platform>.pyd (or a bare
-            # <mod>.pyd), however correct the machine field is.
+            # The target interpreter only loads its own EXT_SUFFIX tag, whatever the PE machine field says.
             if ($f.Name -match '\.cp\d+-win_(amd64|arm64)\.pyd$' -and $f.Name -notmatch [regex]::Escape($wantTag)) {
                 throw "wheel ${name}: member $($f.Name) carries a host EXT_SUFFIX tag, expected '$wantTag' -- the target interpreter would never import it (the sitecustomize shim pins EXT_SUFFIX to the target; is it active?)"
             }
@@ -858,8 +748,7 @@ function Assert-WheelTargetArch {
                 throw ('wheel {0}: member {1} is machine 0x{2:X4}, expected 0x{3:X4} -- a host-arch binary inside a {4} wheel' -f $name, $f.Name, $m, $wantMachine, $wantTag)
             }
         }
-        # Names, not only a count (#130c): what a wheel actually embeds is a fact
-        # a consumer needs and a count cannot give.
+        # Names, not just a count: consumers need to know what the wheel embeds.
         $names = @($pe | ForEach-Object { $_.FullName.Substring($tmp.Length).TrimStart('\', '/') } | Sort-Object)
         Write-Host ('Wheel arch check OK: {0} -- {1} native member(s), all 0x{2:X4}: {3}' -f $name, $pe.Count, $wantMachine, (($names | Select-Object -First 60) -join ', ') + $(if ($names.Count -gt 60) { ", ... (+$($names.Count - 60))" } else { '' }))
     } finally { Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue }
@@ -868,11 +757,9 @@ function Assert-WheelTargetArch {
 function Complete-SourceBuild {
     <#
     .SYNOPSIS
-        The shared build-script epilogue: optional source-tree cleanup, the
-        completion banner (passed verbatim so log-watchers keep their grep anchors),
-        then `exit 0` -- and the exit is the point, because pwsh -File otherwise
-        propagates the LAST native exit code and a best-effort cleanup once failed
-        a fully green stage with exit 145. NOTE: never returns.
+        Build-script epilogue: optional cleanup, the banner verbatim (log-watchers grep it), then `exit 0`.
+    .DESCRIPTION
+        Never returns. The explicit exit matters: pwsh -File otherwise propagates the last native exit code.
     #>
     param(
         [Parameter(Mandatory)][string]$Banner,
@@ -890,14 +777,11 @@ function Remove-SourceBuildTree {
     )
     if ($env:KEEP_BUILD_ARTIFACTS -eq '1') {
         Write-Host "KEEP_BUILD_ARTIFACTS=1 - keeping: $($Path -join ', ')"
-        # Same contract as the normal exit below: this call never carries an
-        # exit code, on ANY path (the early return must not leak a stale one).
+        # This call must not leak an exit code on any path.
         $global:LASTEXITCODE = 0
         return
     }
-    # Kill lingering compiler daemons BEFORE deleting the tree: one holding a handle
-    # into it turns every deleted-while-open file into a PENDING-DELETE zombie, and
-    # those break the BuildKit snapshot finalize (hcsshim::ExportLayer 0x3).
+    # Daemons holding handles leave pending-delete files that break the BuildKit snapshot finalize.
     Stop-LingeringBuildProcess
     foreach ($p in $Path) {
         if ([string]::IsNullOrWhiteSpace($p) -or -not (Test-Path $p)) { continue }
@@ -906,16 +790,11 @@ function Remove-SourceBuildTree {
         & cmd.exe /c "rd /s /q ""$p""" 2>$null
         if (Test-Path $p) { Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue }
     }
-    # Cleanup is best-effort by design; its exit code must NEVER outlive this
-    # function -- `rd` exiting 145 once made the chain declare a green stage failed.
+    # Best-effort cleanup: a failing `rd` must not fail a green stage.
     $global:LASTEXITCODE = 0
 }
 
-# ── build phases (#109) ──────────────────────────────────────────────────────
-# Named phases with timing, failure attribution and an end-of-run summary for the
-# monolith build scripts. Marker-based, NOT scriptblock-taking: try/catch opens no
-# variable scope in PowerShell, so cross-phase state keeps flowing exactly as
-# before -- a function-invoked body would silently drop every assignment.
+# Build phases: markers, not scriptblocks, because a function-invoked body would drop every assignment.
 function Start-BuildPhase {
     param(
         [Parameter(Mandatory)][string]$Name
@@ -931,10 +810,7 @@ function Start-BuildPhase {
 function Switch-BuildPhase {
     <#
     .SYNOPSIS
-        Completes the tracked open phase (if any) and starts a new one; the module
-        owns the current-phase state, so callers lose the two-line couplet that
-        existed 21 times (#109). Pair with Complete-CurrentBuildPhase in the
-        script's final/catch brackets.
+        Completes the open phase (if any) and starts a new one; pair with Complete-CurrentBuildPhase in catch/finally.
     #>
     param([Parameter(Mandatory)][string]$Name)
     Complete-CurrentBuildPhase
@@ -942,8 +818,7 @@ function Switch-BuildPhase {
 }
 
 function Complete-CurrentBuildPhase {
-    # Safe no-op when no phase is open -- callable unconditionally from catch/final
-    # brackets. -ErrorRecord stamps the failing phase (see Complete-BuildPhase).
+    # A no-op when no phase is open, so catch/finally can call it unconditionally.
     param($ErrorRecord = $null)
     if (-not (Test-Path 'Variable:script:CurrentBuildPhase')) { return }
     if ($null -eq $script:CurrentBuildPhase) { return }
@@ -954,8 +829,7 @@ function Complete-CurrentBuildPhase {
 function Complete-BuildPhase {
     param(
         [Parameter(Mandatory)]$Phase,
-        # The caught ErrorRecord on the failure path: the phase stamps itself
-        # onto the error so a chain log names the phase, not just the line.
+        # Marks the phase failed so the chain log names the phase, not just the line.
         $ErrorRecord = $null
     )
     $Phase.Seconds = [math]::Round(((Get-Date) - $Phase.Started).TotalSeconds, 1)
@@ -980,9 +854,7 @@ function Write-BuildPhaseSummary {
 }
 
 function Get-WarningNoiseSuppressionFlags {
-    # #80: five diagnostic classes were 96% of an 87,515-line chain warning stream
-    # and BURIED the ~1,055 genuine signals. ONE list for every clang-cl CMake
-    # build -- per-script copies would drift.
+    # One list for every clang-cl CMake build: these five classes bury the genuine warnings.
     return '-Wno-unused-parameter -Wno-documentation-unknown-command -Wno-deprecated-copy -Wno-undef -Wno-missing-field-initializers'
 }
 
@@ -996,19 +868,14 @@ function Get-BuildJobCount {
     if ($env:MEMORY_LIMIT_GB -match '^\d+$') {
         $memGB = [int]$env:MEMORY_LIMIT_GB
     } elseif ($env:SCCACHE_WEBDAV_ENDPOINT) {
-        # #51: the budget is a SCHEDULING knob, so it must not ride as image
-        # ENV/ARG (both are cache keys). The driver publishes it to the LAN webdav
-        # instead; memoized per process, and fails open to CIM below.
+        # A scheduling knob must not be image ENV/ARG (both are cache keys), so the driver publishes it to webdav.
         if (-not (Test-Path 'Variable:script:WebdavMemoryLimitGb')) {
             $script:WebdavMemoryLimitGb = ''
             try {
                 $resp = & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --max-time 5 "$($env:SCCACHE_WEBDAV_ENDPOINT)/preseed/memory-limit-gb.txt" 2>$null
                 if ("$resp".Trim() -match '^\d+$') { $script:WebdavMemoryLimitGb = "$resp".Trim() }
             } catch {
-                # Fails open BY DESIGN: the webdav budget is an optimisation, and
-                # $script:WebdavMemoryLimitGb stays '' so the CIM branch below
-                # computes the job count instead. Throwing here would break every
-                # build on a host that merely cannot reach the LAN endpoint.
+                # Fails open: the webdav budget is an optimisation and the CIM branch below takes over.
                 Write-Debug ("webdav memory-limit probe failed ({0}) -- falling back to CIM" -f $_.Exception.Message)
             }
             $global:LASTEXITCODE = 0
@@ -1025,13 +892,7 @@ function Get-BuildJobCount {
 }
 
 function Start-SccacheStallGuard {
-    # Background watchdog for the sccache DEADLOCK (history:
-    # docs/windows-backlog-archive-2026-08-21.md). A quiet compiler fleet is only a
-    # PRE-FILTER; the verdict is a TIMED `sccache --show-stats` probe (#16). On
-    # confirmation kill EVERY sccache process -- clients block forever on a dead
-    # pipe -- and append the kill to $MarkerPath, which the parent's retry ladder
-    # reads (attempt-scoped) to tell a guard-kill from an OOM-shaped failure.
-    # Returns $null without sccache on PATH or without a remote backend (#20).
+    # A quiet fleet only pre-filters; a timed --show-stats probe confirms the deadlock, and $MarkerPath tells the retry ladder.
     param([int]$SampleSeconds = 60, [string]$MarkerPath = '', [int]$ProbeTimeoutMs = 15000)
     if (-not (Get-Command sccache.exe -ErrorAction SilentlyContinue)) { return $null }
     if (-not (Test-SccacheRemoteConfigured)) { return $null }
@@ -1049,15 +910,13 @@ function Start-SccacheStallGuard {
             if ($procs.Count -eq 0 -or $scc.Count -eq 0) { $prev = -1.0; continue }
             $cpu = 0.0
             foreach ($p in $procs) {
-                # A process can exit between enumeration and the property read;
-                # its CPU contribution is then simply skipped for this sample.
+                # A process can exit between enumeration and this read.
                 try { $cpu += $p.TotalProcessorTime.TotalSeconds } catch { continue }
             }
             $delta = if ($prev -ge 0) { $cpu - $prev } else { -1.0 }
             $prev = $cpu
             if ($delta -lt 0 -or $delta -ge 2.0) { continue }  # pre-filter: fleet is visibly working
-            # Quiet fleet + live sccache: ask the server itself. PassThru quirk
-            # (repo memory): touch .Handle before WaitForExit or ExitCode lies.
+            # Touch .Handle before WaitForExit, or a -PassThru process reports a wrong ExitCode.
             $probe = Start-Process -FilePath $sccacheExe -ArgumentList '--show-stats' `
                 -WindowStyle Hidden -PassThru -RedirectStandardOutput ([System.IO.Path]::GetTempFileName())
             $null = $probe.Handle
@@ -1072,8 +931,7 @@ function Start-SccacheStallGuard {
                 } catch { $recorded = $false }
             }
             if (-not $recorded) {
-                # Marker write failed (locked file/bad path): shout via the job
-                # stream so the kill is never invisible (#17).
+                # A kill must never be invisible, so fall back to the job stream.
                 Write-Output ("MARKER WRITE FAILED - " + $msg)
             }
             $scc | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -1092,25 +950,18 @@ function Stop-SccacheStallGuard {
 }
 
 function Get-PersistentBuildLogPath {
-    # A build log written inside $buildDir DIES WITH THE SOLVE; the sccache-logs
-    # cache mount is persistent and survives into the next run, so the full stream
-    # stays readable from a debug container. #43: one implementation, five callers.
+    # See docs/windows-build-invariants.md § A build log written inside the build dir dies with the solve
     param(
         [Parameter(Mandatory)][string]$Name,
-        # Where the log goes when no persistent cache mount is available (the
-        # host lane, or a container built without the sccache mount).
+        # Used when no persistent cache mount is available.
         [Parameter(Mandatory)][string]$FallbackDir
     )
-    # NEVER $env:SCCACHE_DIR -- that is sccache's own cache ROOT, and churning
-    # rotated logs through its LRU index made 100% of L0 cache writes fail
-    # (os error 3). Derived from SCCACHE_ERROR_LOG so both stay on the dedicated
-    # logs mount instead of hard-coding that path twice (#90).
+    # Never $env:SCCACHE_DIR: rotating logs through sccache's LRU index made its cache writes fail.
     $logRoot = if ($env:SCCACHE_ERROR_LOG) { Split-Path $env:SCCACHE_ERROR_LOG -Parent } else { '' }
     $logDir = if ($logRoot -and (Test-Path $logRoot)) { $logRoot } else { $FallbackDir }
     $null = New-Item -ItemType Directory -Force -Path $logDir
     $logPath = Join-Path $logDir $Name
-    # Copy+Remove, NOT Move-Item: the cache mount is rename-hostile. One .prev
-    # generation bounds growth.
+    # Copy+Remove, not Move-Item: the cache mount is rename-hostile.
     if (Test-Path $logPath) {
         Copy-Item -Path $logPath -Destination "$logPath.prev" -Force -ErrorAction SilentlyContinue
         Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
@@ -1119,10 +970,7 @@ function Get-PersistentBuildLogPath {
 }
 
 function Invoke-NinjaBuildWithRetry {
-    # Retry ladder: a guard-kill failure is NOT OOM-shaped (everything already
-    # compiled is an L0 hit) and the deadlock recurs, so it retries at FULL -j up to
-    # $StallRetries; only a plain compile failure falls through to the single
-    # incremental -j$RetryJobs attempt that handles the OOM shape.
+    # A guard-kill is not OOM-shaped, so it retries at full -j; only a compile failure drops to -j$RetryJobs once.
     param(
         [Parameter(Mandatory)]
         [string]$BuildDir,
@@ -1134,8 +982,7 @@ function Invoke-NinjaBuildWithRetry {
         [int]$StallRetries = 3,
         # Injectable for tests; default lives beside the build dir.
         [string]$StallMarkerPath = '',
-        # Explicit ninja targets (default: the whole graph) -- the runtime-only TVM
-        # cross build (#116). Every retry rung passes the same list.
+        # Explicit ninja targets (default: the whole graph), passed on every retry.
         [string[]]$Targets = @()
     )
     $env:NINJA_STATUS = "[%f/%t] "
@@ -1143,15 +990,12 @@ function Invoke-NinjaBuildWithRetry {
     $ninjaKeep = if ($env:NINJA_KEEP_GOING -eq '1') { @('-k', '0') } else { @() }
     if (-not $StallMarkerPath) { $StallMarkerPath = Join-Path $BuildDir '.sccache-stall-guard.marker' }
     Remove-Item -Path $StallMarkerPath -Force -ErrorAction SilentlyContinue
-    # The log is reset ONCE here; every invocation below appends (backlog #10 -
-    # the per-call append flag made each caller track whether it was first).
+    # Reset once here; every invocation below appends.
     if ($LogFile) { Remove-Item -Path $LogFile -Force -ErrorAction SilentlyContinue }
 
     $invokeNinja = {
         param($jobCount)
-        # Attempt-scoped marker (#17): truncate BEFORE each invocation so the
-        # post-attempt read attributes kills to THIS attempt only. Lines are printed
-        # when consumed below, so truncation never swallows a kill report.
+        # Truncate before each attempt so kills are attributed to this attempt only.
         Remove-Item -Path $StallMarkerPath -Force -ErrorAction SilentlyContinue
         if ($LogFile) { ninja -j $jobCount @ninjaKeep -C $BuildDir @Targets 2>&1 | Tee-Object -FilePath $LogFile -Append }
         else { ninja -j $jobCount @ninjaKeep -C $BuildDir @Targets 2>&1 }
@@ -1161,8 +1005,7 @@ function Invoke-NinjaBuildWithRetry {
     $guard = Start-SccacheStallGuard -MarkerPath $StallMarkerPath
     try {
         & $invokeNinja $jobs
-        # Guard-kill retries: full parallelism, bounded, and only while THIS
-        # attempt's marker shows a kill.
+        # Guard-kill retries: full parallelism, bounded, only while this attempt's marker shows a kill.
         for ($attempt = 1; $attempt -le $StallRetries -and $LASTEXITCODE -ne 0; $attempt++) {
             $kills = @(Get-Content $StallMarkerPath -ErrorAction SilentlyContinue)
             if ($kills.Count -eq 0) { break }
@@ -1171,9 +1014,7 @@ function Invoke-NinjaBuildWithRetry {
             & $invokeNinja $jobs
         }
         if ($LASTEXITCODE -ne 0 -and $jobs -gt $RetryJobs) {
-            # LOUD, not chatty (#75): one silent-looking line here once hid an
-            # 11 h 17 m self-heal that re-ground the same build 11 times. The ladder
-            # stays BOUNDED to exactly one incremental attempt.
+            # Loud and bounded to one attempt: a repeating downgrade is a crash signature.
             Write-Warning ("#75 JOB-DOWNGRADE: ninja -j$jobs failed (exit $LASTEXITCODE) - ONE bounded incremental retry at -j$RetryJobs. " +
                 'If this pattern repeats across runs at ~the same runtime, it is a crash signature (sccache server, OOM killer) - investigate, do not re-run the stage.')
             $incrementalStart = Get-Date
@@ -1210,8 +1051,7 @@ function Expand-SourceTarball {
         [Parameter(Mandatory)]
         [string]$Destination
     )
-    # Gate BOTH 7z passes: a corrupt or truncated tarball previously surfaced as
-    # "Failed to locate extracted source directory" instead of the real failure.
+    # Gate both 7z passes, or a corrupt tarball surfaces as a missing source directory.
     $pass1 = @(& 7z x "$Archive" -o"$Destination" -y -bd 2>&1)
     if ($LASTEXITCODE -ne 0) {
         throw "7z extraction of '$Archive' failed (exit $LASTEXITCODE): $((($pass1 | Select-Object -Last 5) -join '; '))"
@@ -1251,17 +1091,14 @@ function Get-LlvmArchiverCmakeArg {
     return @()
 }
 
-# #123: llvm-ml is LLVM's MASM-compatible assembler and replaces ml64.exe, the
-# last MSVC tool in the native lane. Unlike the archiver this THROWS when absent:
-# a silent fallback to ml64 would be the untracked exception #123 exists to remove.
+# llvm-ml replaces ml64.exe, the last MSVC tool; unlike the archiver, a missing one throws (see Get-LlvmMasmCmakeArg).
 function Resolve-LlvmMasm {
     $llvmMl = (Get-Command 'llvm-ml' -ErrorAction SilentlyContinue).Source
     if (-not $llvmMl) { $llvmMl = (Get-Command 'llvm-ml.exe' -ErrorAction SilentlyContinue).Source }
     return $llvmMl
 }
 function Get-LlvmMasmCmakeArg {
-    # CMake's own ASM_MASM rule is one llvm-ml accepts. Forward slashes: the value
-    # is also consumed inside CMake string expansions (IREE's custom command).
+    # Forward slashes: the value is also expanded inside CMake strings (IREE's custom command).
     $llvmMl = Resolve-LlvmMasm
     if (-not $llvmMl) { throw 'llvm-ml not found on PATH -- the pinned LLVM ships it (bin\llvm-ml.exe); without it the MASM sources would silently fall back to ml64 (#123)' }
     return @("-DCMAKE_ASM_MASM_COMPILER:FILEPATH=$($llvmMl -replace '\\', '/')")
@@ -1269,21 +1106,10 @@ function Get-LlvmMasmCmakeArg {
 
 <#
 .SYNOPSIS
-    THE SHA256 pin table for the llvm-project source tarball, and the refusal to
-    download an unpinned one (backlog #47). Returns the pin for -Version.
+    The one SHA256 pin table for the llvm-project source tarball; returns the pin for -Version.
 .DESCRIPTION
-    ONE owner, on purpose. The table used to be maintained BY HAND in two build
-    scripts -- Build-LlvmFromSource.ps1 (the #135 patched toolchain) and
-    Build-TvmFromSource.ps1 (the #47 mini-LLVM heal) -- and the throw in the first
-    one literally told the next bumper to edit the other as well. That is a
-    supply-chain hazard, not a deliberate twin: bump one and the other stage either
-    refuses hours later or, when LLVM_WINDOWS_SRC_SHA256 pre-seeds the current
-    version, sails past a pin nobody put in the record.
-    versions.env's LLVM_WINDOWS_SRC_SHA256 still overrides the entry for whichever
-    version is being built (#129); this table remains the record.
-.OUTPUTS
-    [string] the 64-char SHA256. THROWS for a version with no pin -- never returns
-    empty, because an empty -ExpectedSha256 is an unverified download.
+    Throws for an unpinned version rather than return empty: an empty -ExpectedSha256 is an unverified download.
+    LLVM_WINDOWS_SRC_SHA256 overrides the entry for the version being built.
 #>
 function Get-LlvmSourceSha256 {
     param(
@@ -1304,21 +1130,10 @@ function Get-LlvmSourceSha256 {
 
 <#
 .SYNOPSIS
-    Fetches the pin-verified llvm-project source tarball into -DestinationRoot and
-    extracts it there; returns @{ Tarball; SourceDir }.
+    Fetches and extracts the pin-verified llvm-project source tarball; returns @{ Tarball; SourceDir }.
 .DESCRIPTION
-    The download/extract half of the same #47 contract as Get-LlvmSourceSha256:
-    the pin is resolved BEFORE the request, so an unknown version throws instead of
-    downloading. Extraction is System32 bsdtar (xz support baked in) -- git's GNU
-    tar would need a separate xz.exe, and it parses C:\... as a remote-host spec.
-    Both gates the two former copies had are kept: tar's exit code AND the extracted
-    layout, because a non-zero tar can still leave a directory behind and a zero tar
-    can still land the tree somewhere else after an upstream repackaging.
-    Already-extracted trees are left alone, so a cached layer is not re-fetched;
-    callers that delete the tarball afterwards must test for it first.
-.OUTPUTS
-    [hashtable] Tarball = the .tar.xz path (absent when the tree was already
-    extracted), SourceDir = the llvm-project-<version>.src tree.
+    Uses System32 bsdtar: git's GNU tar lacks xz and parses C:\ as a remote host. An existing tree is left
+    alone, so Tarball may not exist.
 #>
 function Get-LlvmSourceTarball {
     param(
@@ -1345,32 +1160,21 @@ function Get-LlvmSourceTarball {
 
 <#
 .SYNOPSIS
-    Mines clang_rt.builtins-aarch64.lib from the LLVM release archive into the
-    directory that already holds the x86_64 builtins.
+    Mines clang_rt.builtins-aarch64.lib from the LLVM release archive beside the x86_64 builtins; returns its path.
 .DESCRIPTION
-    ONE owner for the aarch64 compiler-rt recipe the two source-build stages used
-    to paste (#135 follow-up): the patched-toolchain staging in
-    Build-LlvmFromSource.ps1 and the GStreamer merge-stage self-heal.
-    setup-scoop-tools keeps its own base-stage copy (this module is not mounted
-    before Dockerfile.base loads) with the same verify + System32-tar contract.
-    Download, verified-or-warn SHA256 (Assert-FileSha256), System32 bsdtar member
-    extraction, copy beside the host builtins. THROWS on any failure -- the
-    caller owns the fail-open/fail-closed policy.
+    Throws on any failure: the caller owns the fail-open/fail-closed policy.
 .PARAMETER Url
     The clang+llvm-<ver>-aarch64-pc-windows-msvc.tar.xz release URL.
 .PARAMETER DestinationDir
-    The directory the x86_64 builtins live in -- the one clang and every consumer
-    already search, so no discovery logic needs to learn a new path.
+    The x86_64 builtins directory, which clang and every consumer already search.
 .PARAMETER LibName
-    Archive member to mine (default clang_rt.builtins-aarch64.lib).
+    Archive member to mine.
 .PARAMETER ExpectedSha256
-    versions.env pin (LLVM_WINDOWS_AARCH64_RT_SHA256); empty warns, never fails.
+    The versions.env pin; empty warns, never fails.
 .PARAMETER PinName
-    The versions.env key, named in the verify messages.
+    The versions.env key named in the verify messages.
 .PARAMETER WorkDir
-    Scratch dir for the archive + extraction (default TEMP_DIR, else TEMP).
-.OUTPUTS
-    [string] the staged lib's path.
+    Scratch dir for the archive and extraction (default TEMP_DIR, else TEMP).
 #>
 function Install-AArch64CompilerRt {
     param(
@@ -1386,8 +1190,7 @@ function Install-AArch64CompilerRt {
         throw "aarch64 compiler-rt destination '$DestinationDir' does not exist - refusing a misplaced lib."
     }
     if (-not $WorkDir) { $WorkDir = if ($env:TEMP_DIR) { $env:TEMP_DIR } else { $env:TEMP } }
-    # %2B is GitHub's canonical spelling of '+' in the asset URL; the archive is
-    # read from a local copy, so decode it to the name the pin was measured on.
+    # Decode %2B to '+', the archive name the pin was measured on.
     $archiveName = [IO.Path]::GetFileName($Url) -replace '%2B', '+'
     $archive = Join-Path $WorkDir $archiveName
     $extract = Join-Path $WorkDir 'llvm-aarch64-rt'
@@ -1411,22 +1214,11 @@ function Install-AArch64CompilerRt {
 }
 
 function Initialize-PythonPlatformTag {
-    # Clang-built CPython's sys.version lacks the "64 bit (AMD64)" marker that
-    # sysconfig.get_platform() keys on, so the 64-bit interpreter reports win32 and
-    # pip resolves 32-bit wheels. _PYTHON_HOST_PLATFORM is POSIX-only, so the fix is
-    # a sitecustomize.py shim forcing win-amd64.
-    #
-    # -Arch follows the HOST: this shim configures the interpreter that RUNS the
-    # builds, and pip resolves DOWNLOADS against the same tag. EXT_SUFFIX is the
-    # separate fact, pinned to the TARGET on a cross lane, because it is what NAMES
-    # the .pyd and a target interpreter imports only its own tag.
+    # Clang-built CPython misreports win32; the tag follows the host (pip resolves with it), EXT_SUFFIX the target.
     param(
         [string]$CpythonDir = '',
         [string]$Arch = '',
-        # The platform tag belongs to the HOST interpreter this shim configures; the
-        # OpenCV DLL directory registered below is a fact about what this image
-        # STAGED, which on a cross lane is the TARGET tree. Defaults to the target
-        # arch; -Arch keeps steering only the tag.
+        # The staged OpenCV tree is the target's on a cross lane; -Arch only steers the platform tag.
         [string]$StagedOpenCvArch = ''
     )
     if ([string]::IsNullOrWhiteSpace($Arch)) { $Arch = Get-WindowsHostArch }
@@ -1434,8 +1226,6 @@ function Initialize-PythonPlatformTag {
     if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
     $platformName = Get-PythonPlatformName -Arch $Arch
     $openCvArchDir = Get-OpenCvArchDir -Arch $StagedOpenCvArch
-    # Cross lane only: the EXT_SUFFIX pin (see the header). Empty on amd64, so
-    # the native lane's shim is byte-identical to before #120 step 2.
     $crossExtTag = if (Test-WindowsCrossTarget) { Get-PythonWheelTag } else { '' }
     $sitePackages = Join-Path $CpythonDir 'Lib\site-packages'
     $shim = Write-PythonDllDirectoryShim -SitePackages $sitePackages -OpenCvArchDir $openCvArchDir `
@@ -1446,27 +1236,18 @@ function Initialize-PythonPlatformTag {
 
 <#
 .SYNOPSIS
-    Writes the sitecustomize.py shim that registers this bundle's native DLL
-    directories (and, for the HOST build interpreter, the platform-tag fixes).
+    Writes the sitecustomize.py shim that registers the bundle's DLL directories; returns its path.
 .DESCRIPTION
-    ONE writer for two interpreters (#125): the TARGET interpreter shipped at
-    C:\runtime\python needs it too, because Python >= 3.8 ignores PATH for
-    extension-module dependencies. Build-TargetCpython.ps1 passes -PlatformName
-    and -CrossExtTag EMPTY -- the target reports its own platform, and the
-    EXT_SUFFIX pin is a build-time concern of the host interpreter only.
-    EXPANDING here-string: the python body must contain NO '$' and NO backtick.
+    Python >= 3.8 ignores PATH for extension-module dependencies. The here-string expands, so the Python body
+    must contain no '$' and no backtick.
 .PARAMETER SitePackages
     Directory that receives sitecustomize.py (created if missing).
 .PARAMETER OpenCvArchDir
-    The opencv5\<this>\vc18\bin directory the bundle STAGED (target arch).
+    The opencv5\<arch>\vc18\bin directory the bundle staged.
 .PARAMETER PlatformName
-    When non-empty, patch sysconfig.get_platform() from 'win32' to this value
-    (the clang-built HOST CPython marker bug). Empty = leave it alone.
+    When set, patches sysconfig.get_platform() from 'win32' to this value (host interpreter only).
 .PARAMETER CrossExtTag
-    When non-empty, pin sysconfig EXT_SUFFIX to this wheel tag (host-side cross
-    build of target modules). Empty = leave it alone.
-.OUTPUTS
-    [string] the shim path.
+    When set, pins sysconfig EXT_SUFFIX to this wheel tag (host interpreter on a cross lane only).
 #>
 function Write-PythonDllDirectoryShim {
     param(
@@ -1539,16 +1320,13 @@ if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
 }
 
 function Test-PythonImport {
-    # EAP=Stop-safe binding assert: a stderr-noisy SUCCESS must not read as a
-    # failure, so route through cmd.exe and judge by exit code only.
+    # Through cmd.exe, judged by exit code only: a stderr-noisy success must not read as a failure.
     param(
         [Parameter(Mandatory)][hashtable]$Python,
         [Parameter(Mandatory)][string]$ModuleName,
         [string]$VersionExpression = ''
     )
-    # getattr fallback: the assert is about IMPORTABILITY, not version metadata.
-    # -I (isolated) drops CWD from sys.path -- a source dir named like the module
-    # SHADOWS the installed wheel. Single quotes only: PS 5.1 strips embedded ones.
+    # -I keeps a same-named source dir in CWD from shadowing the wheel; single quotes only, PS 5.1 strips double ones.
     if (-not $VersionExpression) { $VersionExpression = "getattr($ModuleName, '__version__', 'imported')" }
     $out = cmd.exe /c """$($Python.Exe)"" -I -c ""import $ModuleName; print($VersionExpression)"" 2>&1"
     $code = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
@@ -1558,9 +1336,7 @@ function Test-PythonImport {
 }
 
 function Install-StagedPythonWheel {
-    # One-stop wheel publish: stage into the central store, install into the source
-    # CPython (--no-deps for metadata that is unsatisfiable by design), then
-    # import-assert. Encapsulates the single-element array-unwrap footgun.
+    # -NoDeps is for wheels whose metadata is unsatisfiable by design.
     param(
         [Parameter(Mandatory)][hashtable]$Python,
         [Parameter(Mandatory)][string]$SourceDir,
@@ -1578,8 +1354,7 @@ function Install-StagedPythonWheel {
 }
 
 function Save-PythonWheel {
-    # Stage built wheel(s) into the central wheel store shipped in the image
-    # (C:\runtime\wheels; the final image exposes it as PYTHON_WHEELS).
+    # The final image exposes C:\runtime\wheels as PYTHON_WHEELS.
     param(
         [Parameter(Mandatory)][string]$SourceDir,
         [string]$Filter = '*.whl',
@@ -1601,31 +1376,22 @@ function Save-PythonWheel {
 }
 
 function Initialize-ToolchainPythonEnvironment {
-    # -Arch defaults to EMPTY, not a literal arch: Enter-VsDevCmdEnvironment resolves
-    # the target arch only when handed an empty string, so a literal default silently
-    # defeated it for all five callers routed through here. -HostArch stays literal.
+    # -Arch defaults to empty: Enter-VsDevCmdEnvironment resolves the target arch only from an empty string.
     param(
         [string]$Arch = '',
         [string]$HostArch = 'amd64'
     )
     Enter-VsDevCmdEnvironment -Arch $Arch -HostArch $HostArch
     Copy-CpythonPyConfigHeader
-    # NOT forwarded on purpose: the platform-tag shim configures the HOST interpreter
-    # that runs the builds, so it stays host-pinned even inside a target-arch VsDevCmd.
+    # -Arch is not forwarded: the platform-tag shim configures the host interpreter.
     Initialize-PythonPlatformTag | Out-Null
     return Get-SourceBuildPython
 }
 
-# ── sccache server session (#107) ────────────────────────────────────────────
-# Extracted from the chain functions so the prologue/epilogue choreography is
-# unit-testable; -SccachePath is the test seam. BEST-EFFORT throughout: a missing
-# sccache or a dead server must never fail a build that would otherwise be green.
+# sccache server session: best-effort, a missing or dead server must never fail a green build.
 
 function Start-SccacheServerSession {
-    # PROLOGUE: force a FRESH sccache server before the first compile (#97) --
-    # sccache reads SCCACHE_ERROR_LOG when the SERVER starts, and a server started
-    # implicitly by the first wrapped compile evidently misses it, which also makes
-    # the epilogue's flush meaningless.
+    # sccache reads SCCACHE_ERROR_LOG only at server start, so start a fresh server before the first compile.
     [CmdletBinding()]
     param(
         [string]$SccachePath = ''
@@ -1638,17 +1404,10 @@ function Start-SccacheServerSession {
     if (-not $SccachePath) { return }
     Write-Host "Starting the sccache server from a STABLE working directory (backlog #99)..."
     try {
-        # Stop first so the start below is the one that wins (usually a no-op
-        # in a fresh container - "no connection could be made" is expected).
+        # Stop first so this start wins; "no connection could be made" is expected in a fresh container.
         & $SccachePath --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
 
-        # START IT EXPLICITLY, FROM C:\ -- hygiene, NOT a fix: the CWD theory did
-        # not explain the cache-write failures (measured 2026-08-15, #99; do not
-        # re-litigate it). It does guarantee the server read THIS stage's env.
-        #
-        # TRUNCATE THE ERROR LOG FIRST: it lives on the shared, APPEND-only
-        # sccache-logs mount, so the epilogue otherwise replays a previous run's
-        # failures verbatim. Best-effort: never fail a green stage over a log file.
+        # The sccache-logs mount is append-only, so without truncation the epilogue replays old failures.
         if ($env:SCCACHE_ERROR_LOG) {
             try {
                 $errDir = Split-Path $env:SCCACHE_ERROR_LOG -Parent
@@ -1674,10 +1433,7 @@ function Start-SccacheServerSession {
 }
 
 function Complete-SccacheServerSession {
-    # EPILOGUE: flush the sccache SERVER before the run ends. With
-    # SCCACHE_IDLE_TIMEOUT=0 it never exits on its own, so the process tree is torn
-    # down with the error log still buffered and the file never lands on the mount;
-    # --stop-server also flushes the async webdav write-through tail.
+    # With SCCACHE_IDLE_TIMEOUT=0 the server never exits, so stop it to flush its error log and webdav tail.
     [CmdletBinding()]
     param(
         [string]$SccachePath = ''
@@ -1696,16 +1452,12 @@ function Complete-SccacheServerSession {
         }
     }
 
-    # DUMP THE SERVER LOG INTO THIS RUN's build log (#98): reading it from a LATER
-    # build does not work, because --no-cache empties the cache mount first (#96).
-    # It is the only account of WHY a write is rejected, and the failures are all
-    # at L0 -- read the per-layer block, not the summary counter.
+    # Dump the server log into this run's log: a later build's --no-cache empties the mount first.
     $errLog = $env:SCCACHE_ERROR_LOG
     if ($errLog -and (Test-Path $errLog)) {
         $lines = @(Get-Content $errLog -ErrorAction SilentlyContinue)
         Write-Host "`n=== sccache server log ($($lines.Count) lines, $errLog) ==="
-        # Failures first and in full; they are what this exists for. The tail
-        # gives surrounding context without dumping a debug-level flood.
+        # Failures in full; otherwise only a tail, not a debug-level flood.
         $failures = @($lines | Select-String -Pattern 'ERROR|WARN|failed|denied|refused' -SimpleMatch:$false)
         if ($failures.Count -gt 0) {
             Write-Host "--- $($failures.Count) error/warn line(s) ---"
@@ -1727,12 +1479,9 @@ function Invoke-SourceBuildChain {
         [Parameter(Mandatory)][object[]]$Stages,
         [string]$InstallDir = 'C:\runtime',
         [string]$ScriptDir  = 'C:\temp\scripts',
-        # Resume support: skip every stage BEFORE the named one, to re-enter a
-        # preserved container instead of re-paying hours of compile. Unknown names
-        # throw immediately -- a typo must not silently rebuild from the start.
+        # Skip the stages before this one; an unknown name throws so a typo cannot rebuild from the start.
         [string]$StartAt = '',
-        # Stop AFTER the named stage (inclusive): lets the BuildKit lane split one
-        # chain across RUN layers. Unknown names throw, same rationale as -StartAt.
+        # Stop after this stage (inclusive) so the BuildKit lane can split a chain across RUN layers.
         [string]$Until = ''
     )
     $ErrorActionPreference = 'Stop'
@@ -1743,8 +1492,6 @@ function Invoke-SourceBuildChain {
     if ($Until -and ($names -notcontains $Until)) {
         throw "Invoke-SourceBuildChain: -Until '$Until' is not a stage of '$Label' (stages: $($names -join ', '))"
     }
-    # Fresh sccache server + per-stage error-log attribution (#97/#99) — the
-    # full war story lives on the function.
     Start-SccacheServerSession
 
     $skipping = [bool]$StartAt
@@ -1758,9 +1505,7 @@ function Invoke-SourceBuildChain {
             }
         }
         Write-Host "`n=== $Label stage: $($stage.Name) ($([string]::Format('{0:HH:mm:ss}', (Get-Date)))) ==="
-        # A stage is either the standard shape (Script + SourceDir, invoked with the
-        # chain's contract) or carries its own Invoke scriptblock for a script with
-        # a DIFFERENT signature (#128).
+        # An Invoke scriptblock wraps a script whose signature differs from the chain contract.
         if ($stage.ContainsKey('Invoke')) {
             & $stage.Invoke $ScriptDir $InstallDir
         } else {
@@ -1773,22 +1518,15 @@ function Invoke-SourceBuildChain {
             break
         }
     }
-    # ONE stats dump per chain run: the counters die with the container, so this is
-    # the last chance to get them into the run log.
+    # The counters die with the container, so this is the last chance to log them.
     Write-SccacheStats -Label $Label
     Stop-LingeringBuildProcess
 }
 
-# ── BuildKit warm/materialize handoff ────────────────────────────────────────
-# Heavy-churn containers on this host can NEVER finalize their snapshot, so the
-# heavy build runs in a WARM solve with no exporter and hands its artifacts off to
-# a calm, short-lived container (docs/windows-builds.md § BuildKit/containerd
-# lane). Cache mounts reject directory RENAMES -- these helpers only CREATE files.
+# BuildKit warm/materialize handoff: heavy-churn containers cannot finalize, and cache mounts reject renames.
 
 function Export-BuildHandoff {
-    # Tar what the build wrote under -Roots since -Since and PUT it to WebDAV, not
-    # a cache mount: BuildKit clones cache mounts whenever the record is locked, so
-    # warm and materialize solves are not guaranteed to see the same instance.
+    # WebDAV, not a cache mount: BuildKit clones a locked cache mount, so two solves may see different copies.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][datetime]$Since,
@@ -1810,12 +1548,10 @@ function Export-BuildHandoff {
     $entries = @($entries)
     if ($entries.Count -eq 0) { throw "Export-BuildHandoff: nothing to hand off for '$Name' (Since=$Since)" }
     Set-Content -Path $listFile -Value $entries -Encoding UTF8
-    # System32 paths, NOT bare names: scoop's git puts MSYS tar/curl on PATH, and
-    # GNU tar parses a drive-qualified path as a remote host.
+    # System32 paths: scoop's git puts MSYS tar on PATH, which parses a drive path as a remote host.
     & (Join-Path $env:SystemRoot 'System32\tar.exe') -cf $tarFile -C C:\ -T $listFile
     if ($LASTEXITCODE -ne 0) { throw "Export-BuildHandoff: tar failed (exit $LASTEXITCODE)" }
-    # --retry: this PUT is the ONLY copy of an hours-long warm build.
-    # --retry-all-errors extends the retries to transient HTTP 5xx.
+    # --retry-all-errors: this PUT is the only copy of an hours-long warm build.
     & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --retry 3 --retry-delay 5 --retry-all-errors -T $tarFile "$Endpoint/bkhandoff/$Name.tar"
     if ($LASTEXITCODE -ne 0) { throw "Export-BuildHandoff: upload to $Endpoint/bkhandoff/$Name.tar failed (exit $LASTEXITCODE)" }
     $sizeMb = [math]::Round((Get-Item $tarFile).Length / 1MB, 1)
@@ -1825,8 +1561,7 @@ function Export-BuildHandoff {
 }
 
 function Import-BuildHandoff {
-    # Materialize a warm solve's handoff: GET the tar from the WebDAV server
-    # and extract it over C:\. Runs as the ONLY work of a calm RUN layer.
+    # Runs as the only work of a calm RUN layer.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -1836,14 +1571,12 @@ function Import-BuildHandoff {
         throw 'Import-BuildHandoff: no -Endpoint and SCCACHE_WEBDAV_ENDPOINT is unset'
     }
     $tarFile = Join-Path $env:TEMP "handoff-$Name.tar"
-    # Same retry rationale as the Export upload: the download gates an entire
-    # materialize layer on one HTTP round-trip.
+    # Same retries as the upload: one HTTP round-trip gates the whole layer.
     & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --retry 3 --retry-delay 5 --retry-all-errors -o $tarFile "$Endpoint/bkhandoff/$Name.tar"
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tarFile)) {
         throw "Import-BuildHandoff: download $Endpoint/bkhandoff/$Name.tar failed - did the warm solve run?"
     }
-    # The tar holds FILE entries only, and bsdtar's Windows long-path mode does not
-    # create missing parent chains -- pre-create every directory.
+    # The tar holds files only, and bsdtar's long-path mode does not create missing parents.
     $tarExe = Join-Path $env:SystemRoot 'System32\tar.exe'
     & $tarExe -tf $tarFile |
         ForEach-Object { Split-Path $_ -Parent } | Sort-Object -Unique |
@@ -1860,8 +1593,7 @@ function Import-BuildHandoff {
 }
 
 function Clear-BuildScratch {
-    # Remove package-manager and temp scratch that heavy builds leave in the
-    # container profile -- dead weight in an exported image. Best-effort by contract.
+    # Best-effort: build scratch in the container profile is dead weight in an exported image.
     [CmdletBinding()]
     param()
     $targets = @(
@@ -1883,11 +1615,7 @@ function Clear-BuildScratch {
 }
 
 function Disable-ContainerWindowsUpdate {
-    # Windows Update runs INSIDE a process-isolated build container, and an .msu
-    # written to its spool during a RUN kills the layer finalize deterministically
-    # ("unknown stream ID 9", measured 2026-08-25). PREVENTION ONLY: nothing under
-    # C:\Windows is ever deleted here. Host-guarded like Stop-LingeringBuildProcess,
-    # because outside a container this would switch off the developer's own updates.
+    # An .msu spooled during a RUN kills the layer finalize; host-guarded so it never touches a developer's updates.
     [CmdletBinding()]
     param([switch]$Force)
     if (-not $Force -and -not (Get-Service -Name 'cexecsvc' -ErrorAction SilentlyContinue)) {
@@ -1909,9 +1637,7 @@ function Disable-ContainerWindowsUpdate {
         if (-not (Test-Path $au)) { New-Item -Path $au -Force | Out-Null }
         New-ItemProperty -Path $au -Name 'NoAutoUpdate' -Value 1 -PropertyType DWord -Force | Out-Null
     } catch { Write-Warning "Disable-ContainerWindowsUpdate: could not set the NoAutoUpdate policy -- $($_.Exception.Message)" }
-    # The spool count is informational: an entry inherited from the parent image
-    # sits in a layer that already finalized. Only a file WRITTEN during this RUN
-    # lands in the diff.
+    # Informational: only a file written during this RUN lands in the layer diff.
     $spool = Join-Path $env:SystemRoot 'SoftwareDistribution\Download'
     $spoolItems = if (Test-Path $spool) { @(Get-ChildItem -LiteralPath $spool -Force -ErrorAction SilentlyContinue).Count } else { 0 }
     Write-Host ("Disable-ContainerWindowsUpdate: services disabled [{0}], NoAutoUpdate=1; spool holds {1} item(s) at RUN start (inherited -- only files written during this RUN can poison the layer)" -f ($touched -join ', '), $spoolItems)
@@ -1919,17 +1645,13 @@ function Disable-ContainerWindowsUpdate {
 }
 
 function Stop-LingeringBuildProcess {
-    # MSVC helper daemons (mspdbsrv, vctip, VBCSCompiler) must be dead before a
-    # BuildKit step returns: HCS tears the container down while they still hold
-    # sandbox handles, and the snapshot finalize then fails (ExportLayer 0x3).
-    # sccache is deliberately NOT on the list -- it lingered on healthy layers too.
+    # MSVC daemons still holding sandbox handles fail the snapshot finalize; sccache lingers harmlessly, so it is not listed.
     [CmdletBinding()]
     param(
         # Kill even outside a container (tests use this with fake process names).
         [switch]$Force
     )
-    # HOST GUARD: outside a Windows container this would kill a developer's live
-    # VS/MSBuild session. cexecsvc exists only inside Windows containers.
+    # Host guard (cexecsvc exists only in Windows containers): never kill a developer's live VS session.
     if (-not $Force -and -not (Get-Service -Name 'cexecsvc' -ErrorAction SilentlyContinue)) {
         $global:LASTEXITCODE = 0
         return
@@ -1962,8 +1684,7 @@ function Copy-SidecarDll {
     if ($BesidePrimary) {
         $primary = Get-ChildItem -Path $InstallDir -Filter $BesidePrimary -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $primary) {
-            # Loud, like the missing-sidecar branch below: a missing PRIMARY means
-            # the install step upstream failed.
+            # Loud: a missing primary means the upstream install step failed.
             Write-Warning "Copy-SidecarDll: primary '$BesidePrimary' not found under $InstallDir -- skipping $SidecarName staging ($Reason)"
             return
         }
@@ -1982,14 +1703,9 @@ function Copy-SidecarDll {
     }
 }
 
-# NB the test suites ARE consumers of the export list below -- Save-PythonWheel,
-# Get-CudaRoot, Resolve-TensorRtRoot and the sccache helpers stay exported for them.
+# The test suites consume the export list too (Save-PythonWheel, Get-CudaRoot, Resolve-TensorRtRoot, sccache).
 function Complete-SourceBuildChain {
-    # Shared epilogue for the build-*-all.ps1 chain wrappers: banner plus the
-    # in-layer scratch scrub. The scrub MUST happen HERE, not downstream: image
-    # layers are additive, so deleting this chain's scratch from a later layer only
-    # adds a whiteout entry and the bytes still ship. Safe against C:\temp --
-    # Clear-BuildScratch targets $env:TEMP, the container profile temp.
+    # Scrub here, not downstream: layers are additive, so a later delete only adds a whiteout.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Label,
@@ -1997,13 +1713,10 @@ function Complete-SourceBuildChain {
     )
     Write-Host "`n=== $Label chain completed ==="
 
-    # Server flush + error-log dump (#96/#98) — the full war story lives on
-    # the function.
     Complete-SccacheServerSession
 
     if ($ScrubAfter) { Clear-BuildScratch }
-    # Callers still end with their own explicit `exit 0`: pwsh -File otherwise
-    # propagates the LAST native exit code.
+    # Callers still end with `exit 0`: pwsh -File otherwise propagates the last native exit code.
     $global:LASTEXITCODE = 0
 }
 
@@ -2014,8 +1727,7 @@ Export-ModuleMember -Function @(
     'Complete-SourceBuildChain',
     'Start-SccacheServerSession',
     'Complete-SccacheServerSession',
-    # Stop-LingeringBuildProcess: internal (chain + ninja retry) — unexported
-    # 2026-08-21, zero external callers.
+    # Stop-LingeringBuildProcess stays internal.
     'Export-BuildHandoff',
     'Import-BuildHandoff',
     'Clear-BuildScratch',
@@ -2027,9 +1739,7 @@ Export-ModuleMember -Function @(
     'Get-CMakeRocmIsolationArgs',
     'Assert-CmakeArgsConsumed',
     'Test-SccacheRemoteConfigured',
-    # Re-exported from nested WindowsScripts.Shared for SCRIPT-scope callers:
-    # nested-module exports are invisible to scripts (repo scoping rule), and the
-    # omission would have thrown CommandNotFound after the multi-hour ONNX build.
+    # Re-exported from WindowsScripts.Shared: scripts cannot see nested-module exports.
     'Get-SccacheStatsText',
     'Write-SccacheStatsToStderr',
     'Write-SccacheStats',
@@ -2075,12 +1785,10 @@ Export-ModuleMember -Function @(
     'Test-CudaWindowsArm64Payload',
     'Get-NvccHostCompilerPath',
     'Get-LlvmArchiverCmakeArg',
-    # The ONE llvm-project source pin table + its fetch (#47/#129): both the
-    # patched-toolchain build and TVM's mini-LLVM heal call these directly.
+    # Called directly by Build-LlvmFromSource.ps1 and Build-TvmFromSource.ps1.
     'Get-LlvmSourceSha256',
     'Get-LlvmSourceTarball',
-    # ONE owner for the aarch64 compiler-rt mining recipe (#135 follow-up):
-    # called directly by Build-LlvmFromSource.ps1 and Build-GstreamerFromSource.ps1.
+    # Called directly by Build-LlvmFromSource.ps1 and Build-GstreamerFromSource.ps1.
     'Install-AArch64CompilerRt',
     'Resolve-LlvmMasm',
     'Get-LlvmMasmCmakeArg',
@@ -2133,24 +1841,17 @@ Export-ModuleMember -Function @(
     'Get-MlasKernelTuPattern',
     'Get-MlasKernelTuMinimum',
     'Get-CMakeCrossArgs',
-    # Called DIRECTLY by Build-GstreamerFromSource.ps1's meson native file (#134);
-    # invisible to Modules.ReExport.Tests.ps1, so Modules.ScriptCallClosure.Tests.ps1
-    # gates it.
+    # Called directly by Build-GstreamerFromSource.ps1; Modules.ScriptCallClosure.Tests.ps1 gates it.
     'Resolve-BuildMachineMsvcTool',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry',
-    # Called directly by Build-LlvmFromSource.ps1's compiler-rt staging;
-    # re-exported so that script does not need a second module import.
+    # Re-exported so Build-LlvmFromSource.ps1 needs no second module import.
     'Assert-FileSha256',
-    # Called directly by Build-LlvmFromSource.ps1's aarch64 compiler-rt staging and
-    # Build-GstreamerFromSource.ps1 (it was Build-TvmFromSource.ps1's LLVM-source
-    # fallback too, until that moved into Get-LlvmSourceTarball above).
-    # Latent on both lanes, so no build ever caught it -- Modules.ScriptCallClosure.Tests.ps1 did.
+    # Called directly by Build-LlvmFromSource.ps1 and Build-GstreamerFromSource.ps1.
     'Get-PreferredToolPath',
-    # #113: used directly by Build-GstreamerFromSource.ps1 -- module-internal use
-    # never needs the export list, direct script calls do.
+    # Called directly by Build-GstreamerFromSource.ps1.
     'Start-SccacheStallGuard',
     'Stop-SccacheStallGuard'
 )

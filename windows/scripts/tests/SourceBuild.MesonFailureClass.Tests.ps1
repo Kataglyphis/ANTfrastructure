@@ -1,14 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Get-MesonSetupFailureClass (Build-GstreamerFromSource.ps1): the retry
-# classifier for a failed `meson setup`. Lifted out of the script's AST. Pins
-# the arm64 run-25 misfire -- the SDK constant BINDINFO_OPTIONS_IGNORE_SSLERRORS_ONCE
-# inlined from a probe source must NOT read as a transient network failure --
-# while the two measured real network shapes (2026-08-23 HTTP 503, a DNS
-# URLError) still do, and the network scan stays inside meson stdout + the
-# log's tail where a fatal download error actually lands.
+
+# The meson setup retry classifier: a probe's SSLERRORS constant is no network failure, a real 503 or DNS error is.
 
 Describe 'Get-MesonSetupFailureClass' {
 

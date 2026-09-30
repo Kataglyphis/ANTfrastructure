@@ -1,15 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Write-BundleManifest.ps1 (#130) writes the bundle's self-description into
-# C:\runtime: BUNDLE-ENV.cmd, BUNDLE-ENV.ps1 and BUNDLE-README.md. It is the
-# consumer-side entry point: a consumer who copies C:\runtime to a device had
-# to reverse-engineer the DLL homes from the tree before this existed.
-#
-# The script has no functions to lift — it is procedural — so this suite runs
-# it against a synthetic bundle tree in a temp directory and checks the output
-# files. WINDOWS_TARGET_ARCH controls the arch the script reports.
+
+# Write-BundleManifest.ps1 is procedural, so it runs against a synthetic bundle tree and its output files are checked.
 
 Describe 'write-bundle-manifest: bundle self-description' {
 

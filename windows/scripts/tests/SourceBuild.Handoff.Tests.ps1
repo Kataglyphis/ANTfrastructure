@@ -1,10 +1,5 @@
 #requires -Version 7.0
-# Tests for the warm/materialize handoff transport (Export-BuildHandoff /
-# Import-BuildHandoff, WindowsSourceBuild.Common.psm1). The transport carries
-# heavy-build artifacts out of never-finalized WARM solves over WebDAV (see
-# docs/windows-builds.md § BuildKit/containerd lane). Tests run the FULL
-# round trip offline: curl.exe speaks file:// for both PUT and GET, so a temp
-# directory stands in for the dufs server.
+# The warm/materialize handoff round trip, offline: curl.exe speaks file:// for PUT and GET, so a directory stands in for dufs.
 
 Describe 'Export/Import-BuildHandoff round trip' {
 
@@ -28,16 +23,14 @@ Describe 'Export/Import-BuildHandoff round trip' {
             Assert-True (Test-Path (Join-Path $server 'bkhandoff\wbt.tar')) 'tar landed on the server'
             Assert-Equal 0 $LASTEXITCODE 'export clears the ambient exit code'
 
-            # Materialize: delete the delta file, import must restore it at the
-            # ORIGINAL absolute path (tar entries are relative to C:\).
+            # Import must restore it at the original absolute path (tar entries are relative to C:\).
             Remove-Item $newFile -Force
             Import-BuildHandoff -Name 'wbt' -Endpoint $endpoint
             Assert-True (Test-Path $newFile) 'import restored the delta file'
             Assert-Equal 'fresh' (Get-Content $newFile -Raw).Trim() 'content survived the round trip'
             Assert-Equal 0 $LASTEXITCODE 'import clears the ambient exit code'
 
-            # The pre-Since file must NOT be in the tar: delete it, re-import,
-            # and it must stay gone.
+            # The pre-Since file must not be in the tar, so it stays gone after a re-import.
             Remove-Item $oldFile -Force
             Import-BuildHandoff -Name 'wbt' -Endpoint $endpoint
             Assert-False (Test-Path $oldFile) 'files older than -Since are excluded from the handoff'
@@ -46,11 +39,7 @@ Describe 'Export/Import-BuildHandoff round trip' {
 
     It 'recreates the missing parent directory chain when the whole subtree is gone' {
         Invoke-InTestDir { param($dir)
-            # Pins the bsdtar workaround in Import-BuildHandoff: the tar holds
-            # FILE entries only, and bsdtar's Windows long-path mode does NOT
-            # create missing parent chains — the import must pre-create every
-            # directory itself. The round-trip case above deletes only files
-            # (sub\ survives), so it can never catch a regression here.
+            # bsdtar's long-path mode does not create missing parents, so the import must pre-create every directory.
             $server = Join-Path $dir 'srv'
             New-Item -ItemType Directory -Path (Join-Path $server 'bkhandoff') -Force | Out-Null
             $endpoint = 'file:///' + ($server -replace '\\', '/')
@@ -64,8 +53,7 @@ Describe 'Export/Import-BuildHandoff round trip' {
 
             Export-BuildHandoff -Since (Get-Date).AddMinutes(-5) -Name 'wbt-tree' -Endpoint $endpoint -Roots @($root)
 
-            # Delete the WHOLE subtree — a fresh materialize container has no
-            # C:\runtime at all, so no parent of any tar entry exists.
+            # A fresh materialize container has no C:\runtime, so no parent of any tar entry exists.
             Remove-Item $root -Recurse -Force
             Assert-False (Test-Path $root) 'precondition: the entire root subtree is gone'
 

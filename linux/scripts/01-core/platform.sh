@@ -4,12 +4,7 @@
 [ -n "${_PLATFORM_SH_LOADED:-}" ] && return 0
 _PLATFORM_SH_LOADED=1
 
-# Canonical boolean-truthiness predicate. Returns 0 for 1/true/yes/on (any
-# case), 1 otherwise. This is the single source of truth; build-helpers.sh's
-# _bool_truthy() and ubuntu-mirror.sh's ubuntu_mirror_is_truthy() are thin
-# aliases that delegate here. platform.sh is a true leaf sourced before both
-# in every load chain (common.sh: logging→platform→…→ubuntu-mirror;
-# cross-env.sh: platform→ubuntu-mirror), so the alias is always resolvable.
+# The one truthiness predicate; _bool_truthy and ubuntu_mirror_is_truthy delegate here (this leaf loads first).
 is_truthy() {
   case "${1:-}" in
     1|true|TRUE|yes|YES|on|ON) return 0 ;;
@@ -114,10 +109,7 @@ arch_from_target_triple() {
   esac
 }
 
-# Substring that appears in the `LC_ALL=C readelf -h` "Machine:" line for a normalized
-# architecture. Used to assert the actual ELF machine type of a binary, which
-# (unlike `gcc -dumpmachine`) distinguishes a target-native compiler binary
-# from a host-arch cross-compiler that merely *targets* the same triple.
+# readelf "Machine:" substring per arch; unlike gcc -dumpmachine it tells a native compiler from a cross one.
 arch_elf_machine_grep_for() {
   case "$(arch_normalize "$1")" in
     amd64) printf '%s' "X86-64" ;;
@@ -128,10 +120,7 @@ arch_elf_machine_grep_for() {
   esac
 }
 
-# Print the ELF machine string of a binary (the value after "Machine:" in
-# `LC_ALL=C readelf -h`). Never executes the binary, so it works for foreign-arch
-# binaries on any build host. Returns non-zero if readelf or the file is
-# unavailable.
+# Never executes the binary, so it works on foreign-arch files.
 elf_machine_name() {
   local file="$1"
 
@@ -142,9 +131,7 @@ elf_machine_name() {
     | head -n1
 }
 
-# Assert that a binary's ELF machine type matches the given normalized
-# architecture.  Uses arch_elf_machine_grep_for() and elf_machine_name().
-# Returns 0 on match, exits non-zero on mismatch (hard-fail).
+# Exits (not returns) on an ELF arch mismatch; only warns when the check cannot run.
 assert_elf_arch() {
   local bin="$1" arch="$2" expected_pattern machine
 
@@ -176,23 +163,14 @@ assert_elf_arch() {
   esac
 }
 
-# ── Canonical DT_NEEDED walk primitives (refactoring backlog D4) ─────────────
-# Three sites used to hand-roll this walk: validate-media-runtime.sh
-# (find_missing_needed + scan_plugin_directory, objdump), build-ffmpeg.sh
-# (emit_runtime_apt_manifest, objdump) and setup-torch-venv.sh
-# (_assert_ffmpeg_so_closure, transitive via ldd). They now all call these.
+# DT_NEEDED walk primitives
 
-# elf_needed_sonames <file>
-#   Print the DIRECT DT_NEEDED sonames of an ELF file, one per line, in link
-#   order. objdump primary (reads foreign-arch ELF too, so it is cross-safe),
-#   readelf -d fallback. NEVER fails: a missing/unreadable/non-ELF file prints
-#   nothing and returns 0 — every call site treats this walk as best-effort.
+# Direct DT_NEEDED sonames in link order, cross-safe via objdump; never fails, as callers treat it as best-effort.
 elf_needed_sonames() {
   local file="${1:-}"
   [ -e "${file}" ] || return 0
   if command -v objdump >/dev/null 2>&1; then
-    # `|| true` inside the group: objdump exits non-zero on non-ELF input and
-    # pipefail would otherwise surface that through the pipeline.
+    # objdump exits non-zero on non-ELF input, which pipefail would surface.
     { objdump -p "${file}" 2>/dev/null || true; } | awk '/NEEDED/{print $2}'
   elif command -v readelf >/dev/null 2>&1; then
     { LC_ALL=C readelf -d "${file}" 2>/dev/null || true; } \
@@ -201,10 +179,7 @@ elf_needed_sonames() {
   return 0
 }
 
-# _elf_soname_resolves <soname> [libdir...]
-#   0 iff <soname> exists as a file in one of the given lib dirs, the standard
-#   system lib dirs (/usr/lib, /lib and their multiarch variants), or the
-#   ldconfig cache. Internal helper for elf_unresolved_needed.
+# _elf_soname_resolves <soname> [libdir...]: found in the given dirs, the system lib dirs or the ldconfig cache.
 _elf_soname_resolves() {
   local so_name="$1" dir
   shift
@@ -212,25 +187,12 @@ _elf_soname_resolves() {
     [ -d "${dir}" ] || continue
     [ -f "${dir}/${so_name}" ] && return 0
   done
-  # grep WITHOUT -q: -q exits at the first match and can SIGPIPE ldconfig,
-  # which pipefail reports as failure even though the soname WAS found (the
-  # `nm | grep -q` bug class). Reading the full output is cheap and safe.
+  # No grep -q: its early exit can SIGPIPE ldconfig, and pipefail would call a found soname missing.
   [ -n "$({ ldconfig -p 2>/dev/null || true; } | grep -F " ${so_name} " || true)" ] && return 0
   return 1
 }
 
-# elf_unresolved_needed [--transitive] <file> [libdir...]
-#   Print the NEEDED sonames of <file> that resolve NEITHER in the given lib
-#   dirs NOR the standard system paths/ldconfig cache (see
-#   _elf_soname_resolves). Default mode walks the DIRECT NEEDED entries
-#   statically — works for foreign-arch ELF on any host.
-#   --transitive: resolve the FULL closure through the dynamic loader (ldd),
-#   honouring the ambient LD_LIBRARY_PATH/RPATH; the given lib dirs are
-#   prepended to LD_LIBRARY_PATH for the probe and the output is `sort -u`ed
-#   (the closure visits shared deps repeatedly). Requires a runnable binary
-#   (native arch or registered binfmt); falls back to the static direct walk
-#   when ldd is unavailable. NEVER fails (rc 0); empty output means
-#   "everything resolved".
+# Unresolved NEEDED sonames, static and cross-safe; --transitive uses ldd and so needs a runnable binary. Never fails.
 elf_unresolved_needed() {
   local transitive=0
   if [ "${1:-}" = "--transitive" ]; then
@@ -282,10 +244,7 @@ arch_list_csv_normalize() {
   printf '%s' "${_csv}"
 }
 
-# Canonical target-arch fallback chain: an explicit argument wins, then
-# TARGET_ARCH, then TARGETARCH, then ARCH; prints empty when none is set.
-# Single source of truth for the chain formerly copy-pasted (with drift)
-# across cross-env/cross-python/compiler-resolution/verify.
+# The one target-arch fallback chain: argument, TARGET_ARCH, TARGETARCH, ARCH; empty when none is set.
 default_target_arch() {
   printf '%s' "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
 }
@@ -351,11 +310,7 @@ build_arch_oci() {
   arch_normalize "$(_platform_raw_build_arch)"
 }
 
-# The platform the cross lane builds every stage on, and therefore the platform
-# every cross ARTIFACT is. cross-stage-build.sh owns the knob; this is the one
-# place its default is written. NOT linux/$(build_arch_oci): with the shipped
-# default an arm64 host still builds amd64-under-QEMU images, and a host-derived
-# answer would be wrong about exactly those.
+# Platform of every cross stage; not host-derived, since an arm64 host still builds amd64 images by default.
 cross_build_platform() { printf '%s' "${CROSS_BUILD_PLATFORM:-linux/amd64}"; }
 
 android_build_host_supported() {
@@ -397,10 +352,7 @@ android_abi_for_arch() {
   arch_android_abi_for "$1"
 }
 
-# The Android ABI the prebuilt SDKs under /opt/android are compiled for. It used
-# to follow arch_oci -- the BUILD HOST -- and every cross stage builds on amd64,
-# so the whole Android layer shipped as x86_64, which is emulator-only.
-# docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
+# The /opt/android ABI follows the target, never the build host. docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
 arch_for_android_abi() {
   case "$1" in
     arm64-v8a) printf '%s' "arm64" ;;

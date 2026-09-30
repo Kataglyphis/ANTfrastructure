@@ -1,20 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# entrypoint.sh — source env scripts (so they export into this shell) and exec the CMD.
-# Usage (Dockerfile):
-#   ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-#   CMD ["/bin/bash"]
-#
-# At runtime, set VULKAN_VERSION in the environment (e.g. via Dockerfile: ENV VULKAN_VERSION=1.3.258)
-# If VULKAN_VERSION is not set, the script will try to source the first matching /opt/vulkan/*/setup-env.sh.
+# Sources the env scripts into this shell, then execs CMD; VULKAN_VERSION picks the SDK, else the first found.
 
-# --- helper: safe source if file exists ---
 _safe_source() {
   local f="$1"
   if [ -f "$f" ]; then
-    # Vendor scripts (LunarG setup-env.sh reads $1 unguarded) must be sourced
-    # with nounset suspended — same pattern as vulkan-env.sh. Restore after.
+    # nounset off: LunarG's setup-env.sh reads $1 unguarded.
     local _ss_had_u=0
     case $- in *u*) _ss_had_u=1; set +u ;; esac
     source "$f"
@@ -30,9 +22,7 @@ _safe_source /usr/local/bin/gstreamer-env.sh || \
 _safe_source /usr/local/bin/libcamera-env.sh || \
   echo "Warning: /usr/local/bin/libcamera-env.sh not found or not sourced" >&2
 
-# A caller's LD_LIBRARY_PATH replaces the image's, and an older libstdc++ in it (a mounted
-# host's) then shadows GCC's: GLIBCXX_3.4.36 not found (BACKLOG CON23). GCC's runtime goes first.
-# _path_prepend_unique comes with the two env scripts sourced above.
+# GCC's runtime first: a caller's LD_LIBRARY_PATH may carry an older libstdc++ (GLIBCXX_3.4.36 not found).
 if [ -n "${GCC_PREFIX:-}" ] && declare -F _path_prepend_unique >/dev/null; then
   for _gcc_lib in "${GCC_PREFIX}/lib" "${GCC_PREFIX}/lib64"; do
     if [ -d "${_gcc_lib}" ]; then _path_prepend_unique LD_LIBRARY_PATH "${_gcc_lib}"; fi
@@ -40,13 +30,11 @@ if [ -n "${GCC_PREFIX:-}" ] && declare -F _path_prepend_unique >/dev/null; then
   unset _gcc_lib
 fi
 
-# Dockerfile.torch empties both (Docker cannot unset an inherited ENV): exported, they sent
-# a uid-1001 uv at the root-owned /opt/venv, over an activated venv (BACKLOG CON18).
+# Dockerfile.torch can only empty these; exported empty, they point uv at the root-owned /opt/venv.
 [ -n "${VIRTUAL_ENV:-}" ] || unset VIRTUAL_ENV
 [ -n "${UV_PYTHON:-}" ] || unset UV_PYTHON
 
-# Source Vulkan env: prefer the shared helper when available, otherwise fall back
-# to the local version-aware /opt/vulkan scan.
+# Vulkan env: the shared helper when present, else a local /opt/vulkan scan.
 VULKAN_PREFIX="${VULKAN_PREFIX:-/opt/vulkan}"
 
 if [ ! -d "${VULKAN_PREFIX}" ]; then

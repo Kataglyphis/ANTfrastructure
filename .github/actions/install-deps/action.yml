@@ -3,13 +3,7 @@ description: "Shared install deps logic used by consumer-repo workflow jobs"
 
 inputs:
   vulkan-version:
-    # Composite actions cannot read this repo's versions.env at default time, so
-    # this default CAN drift from the canonical VULKAN_VERSION pin — consumers
-    # should pass it explicitly (e.g. from their own versions file).
-    # It HAS drifted before (sat at 1.4.350.0 while versions.env moved to
-    # 1.4.357.0) and it WILL go stale again after the next VULKAN_VERSION bump:
-    # nothing regenerates this literal. Treat the default as a last-resort
-    # fallback only.
+    # A composite action cannot read versions.env, so nothing updates this literal after a VULKAN_VERSION bump.
     description: 'Vulkan SDK version (e.g. 1.4.357.0); pass explicitly to avoid relying on this default'
     required: false
     default: '1.4.357.0'
@@ -43,10 +37,7 @@ runs:
 
         echo "/usr/bin" >> "$GITHUB_PATH"
 
-        # Detect where cargo is installed and add that dir to PATH for subsequent steps.
-        # Two-step on purpose: dirname of an EMPTY string prints "." and exits 0,
-        # which put the current directory on GITHUB_PATH and made the
-        # $HOME/.cargo/bin fallback below unreachable.
+        # Two steps: dirname of an empty string prints ".", which would put the cwd on GITHUB_PATH.
         CARGO_BIN=$(command -v cargo 2>/dev/null || true)
         CARGO_BIN_DIR=""
         [ -n "$CARGO_BIN" ] && CARGO_BIN_DIR=$(dirname "$CARGO_BIN")
@@ -60,8 +51,7 @@ runs:
           export PATH="$HOME/.cargo/bin:$PATH"
         fi
 
-        # Optionally run the CONSUMER repo's setup script (path is theirs, not
-        # ANTfrastructure's — the skip branch keeps this action usable everywhere).
+        # The consumer's own setup script; skipped where a consumer has none.
         if [ "$RUN_SETUP_SCRIPT" = "true" ]; then
           if [ -f "scripts/linux/setup-dependencies.sh" ]; then
             sudo chmod +x scripts/linux/setup-dependencies.sh

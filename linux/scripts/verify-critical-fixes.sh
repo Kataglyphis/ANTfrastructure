@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# verify-critical-fixes.sh — the host half of the critical-fixes battery: every
-# check here reads the REPO TREE, so preflight can run it off-target. The probes
-# that only mean anything inside a built image live in
-# 06-packaging/smoke-critical-fixes.sh.
-# docs/cross-build-verification.md#the-in-image-half-of-critical-fixes
+# Host half of the critical-fixes battery, repo tree only; see docs/cross-build-verification.md#the-in-image-half-of-critical-fixes
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -48,8 +44,7 @@ fix5_gst_geometry_include() {
 
 fix6_native_gcc_system_paths() {
   echo "--- Fix 6: native-GCC system header/lib paths for torch-venv source builds ---"
-  # Pins the native-GCC system-path fix. See docs/cross-build-verification.md.
-  # The helper is inlined here to avoid pulling common.sh's dependency chain.
+  # See docs/cross-build-verification.md § Swapping the native GCC in the shipped image
   local stv="${REPO_ROOT}/linux/scripts/06-packaging/setup-torch-venv.sh"
   local swp="${REPO_ROOT}/linux/scripts/06-packaging/swap-native-gcc.sh"
   local dep="${REPO_ROOT}/linux/scripts/03-media/runtime/install-deps.sh"
@@ -88,18 +83,15 @@ fix7_hardening_2026_07() {
   local bimg="${REPO_ROOT}/linux/scripts/01-core/base-image.sh"
   local venv="${REPO_ROOT}/linux/scripts/01-core/versions.env"
 
-  # Cache: must use local/inline, NOT the dead registry -buildcache ref.
-  # Match the real code token ${tag}-buildcache, not prose that mentions it.
+  # Match the code token ${tag}-buildcache, not prose that mentions the dead registry cache.
   if grep -q 'type=local' "${csb}" 2>/dev/null && ! grep -qF '${tag}-buildcache' "${csb}" 2>/dev/null; then
     pass "cross-stage-build.sh uses local/inline cache (no dead -buildcache ref)"
   else
     fail "cross-stage-build.sh reverted to the self-defeating registry -buildcache"
   fi
-    # No launcher may point at BARE sccache — it aborts on internal errors where
-    # ccache execs the compiler. This class shipped inert repeatedly; gate it.
+    # Bare sccache aborts on internal errors, so launchers go through the guarded wrapper.
     local ccsh="${REPO_ROOT}/linux/scripts/01-core/compiler-cache.sh"
-    # Assert the DECISION (always sccache, never UNCACHED), not the spelling.
-    # Every writer must resolve to some sccache; none may fall back to empty.
+    # Assert the decision (always some sccache, never empty), not the spelling.
     if grep -qE '(RUSTC_WRAPPER|CMAKE_C(XX)?_COMPILER_LAUNCHER)="\$\{[A-Za-z_]+:-\}"' "${ccsh}" 2>/dev/null; then
       fail "compiler-cache.sh can leave a launcher EMPTY; the standing decision is always-sccache"
     elif grep -q '_sc_launcher="sccache"' "${ccsh}" 2>/dev/null \
@@ -108,8 +100,7 @@ fix7_hardening_2026_07() {
     else
       fail "compiler-cache.sh no longer resolves a guarded launcher with an sccache fallback"
     fi
-    # Repo-wide: no bare ="sccache" launcher export. Use compiler_cache_launcher()
-    # or the ${...:-sccache} fallback form.
+    # Repo-wide: launchers use compiler_cache_launcher() or ${...:-sccache}, never a bare ="sccache".
     local _bad_sccache
     _bad_sccache="$(grep -rlE '(RUSTC_WRAPPER|CMAKE_C(XX)?_COMPILER_LAUNCHER|CMAKE_CUDA_COMPILER_LAUNCHER|CMAKE_HIP_COMPILER_LAUNCHER)="sccache"' "${REPO_ROOT}/linux/scripts/" --include='*.sh' 2>/dev/null | grep -v 'verify-critical-fixes.sh' | sort -u || true)"
     if [ -n "${_bad_sccache}" ]; then
@@ -136,15 +127,13 @@ fix7_hardening_2026_07() {
   else
     fail "base-image.sh lost the image-wide apt retry config"
   fi
-  # Cache scope: base RUNs must NOT bind-mount the whole linux/scripts tree
-  # (that folds every script's checksum into the base cache key).
+  # A whole-tree scripts bind mount folds every script's checksum into the base cache key.
   if grep -qE -- '--mount=type=bind,source=linux/scripts,target' "${dbase}" 2>/dev/null; then
     fail "Dockerfile.base re-introduced a whole-tree scripts bind mount (busts base cache)"
   else
     pass "Dockerfile.base bind-mounts only the script sub-trees it uses"
   fi
-  # smoke-vulkan must NOT be invoked in build stages: it probes the full Vulkan
-  # SDK this cross-build never installs, so it can only ever fail a build.
+  # smoke-vulkan probes a full Vulkan SDK that build stages never install.
   if grep -rlE 'bash .*smoke-vulkan\.sh' "${REPO_ROOT}"/linux/Dockerfile.* 2>/dev/null | grep -q .; then
     fail "a Dockerfile RUNs smoke-vulkan.sh (no full Vulkan SDK here -> always fails)"
   else
@@ -222,8 +211,7 @@ fix9_riscv_isaspec_and_noise_2026_07() {
   local rw="${REPO_ROOT}/linux/scripts/03-media/runtime/repair-wheels.sh"
   local swap="${REPO_ROOT}/linux/scripts/06-packaging/swap-native-gcc.sh"
 
-  # build-gcc.sh pins riscv64 --with-isa-spec so the shipped native GCC's
-  # default -march stays assembler-compatible.
+  # The riscv64 --with-isa-spec pin keeps the native GCC's default -march assembler-compatible.
   if grep -qE '^[[:space:]]*riscv64-\*\)' "${gcc}" && \
      grep -q -- '--with-isa-spec=' "${gcc}" && \
      grep -q 'RISCV_GCC_ISA_SPEC-20191213' "${gcc}"; then
@@ -253,9 +241,7 @@ fix9_riscv_isaspec_and_noise_2026_07() {
 }
 
 fix10_libstdcxx_nostdinc_2026_08() {
-  # The PR100017 Canadian-cross fix (docs/upstream-libstdcxx-c++23-nostdinc++.md).
-  # build-gcc.sh patches -nostdinc++ into c++23 Makefile.in, self-retiring when
-  # upstream adds the flag. No static gate saw the block — pin it here.
+  # The self-retiring PR100017 -nostdinc++ patch; see docs/upstream-libstdcxx-c++23-nostdinc++.md
   local bg="${REPO_ROOT}/linux/scripts/02-toolchain/build-gcc.sh"
   if grep -q "src/c++23/Makefile.in" "${bg}" \
      && grep -q -- "-std=gnu++23 -nostdinc++" "${bg}"; then
@@ -276,8 +262,7 @@ fix10_libstdcxx_nostdinc_2026_08() {
   fi
 }
 
-# fix11: ORT has one source, the chain (owner rule 2026-09-23). A DENYLIST over this repo's scripts; NOT covered:
-# an upstream bump that fetches ORT by itself (G2/G1). docs/windows-build-invariants.md#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23
+# fix11: a denylist keeping ORT to one source; see docs/windows-build-invariants.md#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23
 
 # "<consumer script>|<call>": each ORT consumer calls its gate exactly once (G2, or its own configure gate).
 F11_GATE_CALLS=(
@@ -300,8 +285,7 @@ F11_GATE_CALLS=(
   "linux/scripts/03-media/runtime/validate-media-runtime.sh|ort_apt_plan_gate"
   "linux/scripts/03-media/runtime/validate-media-runtime.sh|ort_dpkg_gate"
 )
-# The G2 helpers: bind-mounted per file into the consumer RUNs, never baked into a shared module closure. Both sit
-# apart from the census (edited without re-keying a consumer build) and outside every dir an image copies whole.
+# G2 helpers are bind-mounted per file, apart from the census and outside any dir an image copies whole.
 F11_WIN_G2_MODULE="windows/scripts/modules/WindowsOrtProvenance.Build.psm1"
 F11_WIN_CENSUS_MODULE="windows/scripts/modules/WindowsOrtProvenance.Common.psm1"
 F11_LINUX_G2_HELPER="linux/scripts/03-media/ort-provenance.sh"
@@ -309,8 +293,7 @@ F11_LINUX_G2_HELPER="linux/scripts/03-media/ort-provenance.sh"
 F11_LINUX_G2_RUNS=("build-opencv.sh" "build-ffmpeg.sh" "build-gstreamer-stage.sh" "verify-genai-ort.sh")
 F11_GENAI_BUILD="linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh"
 
-# _f11_scan_files: the hub's build inputs on both lanes (repo-relative, NUL-separated, sorted), minus suites
-# and staging dirs.
+# _f11_scan_files: both lanes' build inputs, NUL-separated and sorted, minus suites and staging dirs.
 _f11_scan_files() {
   (cd "${REPO_ROOT}" && find windows linux/scripts linux/Dockerfile.* shared .github \
       \( -name tests -o -name upstream -o -name qnn-sdk -o -name downloads -o -name __pycache__ \
@@ -320,8 +303,7 @@ _f11_scan_files() {
       -print0 2>/dev/null | LC_ALL=C sort -z) || true
 }
 
-# _f11_corpus <out>: "<path>:<line>:<text>" for every non-comment line of the scan set (# lines and
-# PowerShell <# #> blocks dropped; trailing comments kept, so positive checks match exact code shapes).
+# _f11_corpus <out>: "<path>:<line>:<text>" per non-comment line; trailing comments stay, so checks match exact code.
 _f11_corpus() {
   _f11_scan_files | (cd "${REPO_ROOT}" && xargs -0 awk '
     FNR == 1 { blk = 0 }
@@ -331,8 +313,7 @@ _f11_corpus() {
     { sub(/\r$/, ""); print FILENAME ":" FNR ":" $0 }') > "$1" 2>/dev/null || true
 }
 
-# The corpus rules are QUEUED by the fix11_ort_* checks and judged by _f11_judge in ONE awk pass.
-# docs/onnxruntime-single-source.md#how-g4-runs-one-judging-pass
+# fix11_ort_* queue rules that _f11_judge runs in one awk pass; see docs/onnxruntime-single-source.md#how-g4-runs-one-judging-pass
 
 # _f11_rule <kind> <what> <re> <re2> <re3> <not> <path-in> <path-out> [<want> <name> <re-b>]: queue one rule.
 _f11_rule() {
@@ -341,14 +322,12 @@ _f11_rule() {
   _F11_RULES+=("${row%$'\t'}")
 }
 
-# _f11_deny <what> <re> [<re2> <re3> <not> <path-in> <path-out>]: PASS when no corpus line's LOWER-CASED text
-# matches every given ERE and not <not>, on a path matching <path-in> and not <path-out> ('' = unused).
+# _f11_deny <what> <re> [<re2> <re3> <not> <path-in> <path-out>]: PASS when no lower-cased line matches all ('' = unused).
 _f11_deny() {
   _f11_rule deny "$1" "$2" "${3:-}" "${4:-}" "${5:-}" "${6:-}" "${7:-}"
 }
 
-# _f11_require <path> <re> <want> <what> [<not>]: <want> ("N" exactly, "N+" at least) live lines of <path>
-# match <re> and not <not>. A <path> starting with ^ is an ERE over paths.
+# _f11_require <path|^path-ERE> <re> <N|N+> <what> [<not>]: exactly N, or at least N, live lines match.
 _f11_require() {
   local scope="$1"
   case "${scope}" in
@@ -369,8 +348,7 @@ _f11_count() {
   _f11_rule count "$1" "$3" '' '' '' "^${2//./\\.}\$"
 }
 
-# _f11_judge <corpus>: every queued rule in one pass, a verdict per rule in queue order. The regexes change
-# per rule, never per line: gawk recompiles a dynamic regex whenever its site sees a new one.
+# _f11_judge <corpus>: loops rules outside lines, since gawk recompiles a dynamic regex whenever it changes.
 _f11_judge() {
   local rules="$1.rules" out="$1.verdicts" v m n seen=0
   printf '%s\n' "${_F11_RULES[@]}" > "${rules}"
@@ -475,8 +453,7 @@ fix11_ort_fetch_denylist() {
     "ORT_LIB_LOCATION/ORT_DYLIB_PATH are set only by the two final images"
 }
 
-# _f11_env_writes <corpus>: "<path>:<line>: <name>=<value>" per ort-sys variable a line SETS (k=v, ${env:}, YAML/
-# Python maps, environ[..], SetEnvironmentVariable, setx, Set-Item, legacy ENV/ARG); value lower-cased, "" unread.
+# _f11_env_writes <corpus>: "<path>:<line>: <name>=<value>" per ort-sys variable set in any syntax; value lower-cased.
 _f11_env_writes() {
   awk -v N='(ort_lib_path|ort_lib_location|ort_dylib_path|ort_strategy|ort_skip_download|cargo_net_offline|ort_offline)' \
       -v Q="[\"']" -v V="^[^\"'[:space:]\`;),}|&<>]*" '
@@ -507,8 +484,7 @@ _f11_env_writes() {
       if (p ~ /(^|\/)Dockerfile[^\/]*$/) each(7, t) }' "$1" 2>/dev/null || true
 }
 
-# fix11_ort_cargo: ort's DEFAULT features include download-binaries, so every ort/ort-sys dependency (inline,
-# a [..dependencies.X] table, dotted X.* keys, or renamed by package = "ort") must say default-features = false.
+# fix11_ort_cargo: ort's default features include download-binaries, so every ort dependency needs default-features = false.
 fix11_ort_cargo() {
   local hits
   hits="$(cd "${REPO_ROOT}" && find . \( -name .git -o -name external -o -name out -o -name target -o -name node_modules \) \
@@ -537,8 +513,7 @@ fix11_ort_cargo() {
   _f11_verdict "${hits}" "no Cargo.toml here enables ort's download-binaries (explicitly or by default features)"
 }
 
-# fix11_ort_consumer_config: OpenCV pre-sets HAVE_ONNXRUNTIME wherever it turns ORT on and has no silent
-# WITH_ONNXRUNTIME=OFF; GenAI always gets ORT_HOME and never WinML's NuGet ORT.
+# fix11_ort_consumer_config: OpenCV pre-sets HAVE_ONNXRUNTIME and never drops ORT; GenAI always gets ORT_HOME, never WinML.
 fix11_ort_consumer_config() {
   local q="'"
   _f11_pair "every OpenCV configure that enables ORT pre-sets HAVE_ONNXRUNTIME (dnn's download branch)" \
@@ -564,8 +539,7 @@ fix11_ort_genai_calls() {
   fi
 }
 
-# fix11_ort_crate_env: G3 -- both final images point ort-sys at the chain, the paths they name are the
-# ones the chain build installs, and both smokes assert it.
+# fix11_ort_crate_env: G3, both final images point ort-sys at the chain install, and both smokes assert it.
 fix11_ort_crate_env() {
   local w="windows/Dockerfile" l="linux/Dockerfile.package" r
   r='(\$\{?onnx_root\}?|c:\\runtime\\lib\\onnxruntime-source)'
@@ -588,8 +562,7 @@ fix11_ort_crate_env() {
     "the Linux consumer contract asserts the ort crate env"
 }
 
-# _f11_instructions <dockerfile>...: "<dockerfile><TAB><instruction>" per instruction, lower-cased,
-# continuations joined (backslash, or backtick under a Windows escape directive).
+# _f11_instructions <dockerfile>...: "<dockerfile><TAB><instruction>", lower-cased, continuations joined per escape directive.
 _f11_instructions() {
   (cd "${REPO_ROOT}" && awk 'FNR == 1 { flush(); esc = ($0 ~ /^#[[:space:]]*escape=`/) ? "`" : "\\\\" }
     function flush() { if (buf ~ /[^[:space:]]/) print df "\t" tolower(buf); buf = ""; df = FILENAME }
@@ -616,8 +589,7 @@ _f11_unmounted_runs() {
     df ~ /^linux/ { n = split(runs, r, "|"); for (i = 1; i <= n; i++) if (r[i] != "" && index($0, r[i]) && !index($0, lm)) print df ": the " r[i] " RUN without " lm }'
 }
 
-# fix11_ort_gate_wiring: G2 is called by every consumer and mounted per file into its RUN, never into a
-# shared closure; G1 runs in both smokes; the invariant (G5) is written down.
+# fix11_ort_gate_wiring: G2 called and bind-mounted per consumer, G1 in both smokes, G5 written down.
 fix11_ort_gate_wiring() {
   local row f call mod="${F11_WIN_G2_MODULE##*/}" hl="${F11_LINUX_G2_HELPER##*/}" lmod
   lmod="${mod,,}"
@@ -646,8 +618,7 @@ fix11_ort_gate_wiring() {
   fi
 }
 
-# fix11_ort_census_roots: the census tells a chain build apart by the source root baked into its bytes,
-# so each lane's census must name the root its ORT build really uses.
+# fix11_ort_census_roots: the census fingerprints the baked-in source root, so it must match each lane's real root.
 fix11_ort_census_roots() {
   local win lin lc
   win="$(sed -n "/^[[:space:]]*\[string\]\\\$SourceDir = '\([^']*\)'.*/{s//\1/p;q;}" "${REPO_ROOT}/windows/scripts/build/Build-OnnxFromSource.ps1" 2>/dev/null)"

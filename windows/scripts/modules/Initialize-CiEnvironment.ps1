@@ -3,35 +3,14 @@
 
 #requires -Version 7.0
 
-# Shared bootstrap for the CI entry scripts (windows/scripts/python/Invoke-Ci*.ps1,
-# windows/scripts/rust/*.ps1): resolves and imports the requested ANTfrastructure
-# modules and optionally enters the consumer repo root.
-#
-# Deliberately a dot-sourced SCRIPT, not a .psm1: the Import-Module calls must run
-# in the CALLING script's session state. Routing them through a module would need
-# -Global, and nested Import-Module -Force from module scope has clobbered commands
-# on this lane before. Usage:
-#
-#   . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
-#   $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot `
-#       -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot
+# Dot-sourced, not a .psm1: the imports must land in the calling CI script's session state.
 
 function Initialize-CiEnvironment {
     param(
         [Parameter(Mandatory)]
         [string]$ScriptRoot,
         [string[]]$Modules = @('WindowsBuild.Common'),
-        # Resolve the repo root and Set-Location into it; the resolved path is
-        # returned as a [string]. WITHOUT this switch the function returns
-        # nothing at all -- that contract is kept as-is.
-        # WHAT ROOT? Three levels above the calling script = the ANTFRASTRUCTURE
-        # CHECKOUT ROOT (python -> scripts -> windows -> root). #140
-        # (2026-08-21): an earlier comment claimed "the parent of the
-        # ANTfrastructure checkout" — that was never what the code did, and no
-        # caller exists anywhere (all local consumer repos verified) that
-        # depends on either reading. A vendored consumer
-        # (<consumer>/third_party/ANTfrastructure/...) wanting ITS
-        # OWN root passes -RepoRoot explicitly.
+        # Enter and return the ANTfrastructure checkout root (three levels up); a vendored consumer passes -RepoRoot.
         [switch]$EnterRepoRoot,
         # Explicit repo-root override for vendored-checkout consumers.
         [string]$RepoRoot = ''
@@ -47,9 +26,7 @@ function Initialize-CiEnvironment {
     }
 
     if ($EnterRepoRoot) {
-        # [string]: Resolve-Path yields a PathInfo object; callers treat the return
-        # value as a plain path string, so hand them exactly that (same textual
-        # value -- only the wrapper type changes).
+        # [string]: callers expect a path string, not Resolve-Path's PathInfo.
         $resolvedRoot = if ($RepoRoot) { [string](Resolve-Path $RepoRoot) }
         else { [string](Resolve-Path (Join-Path $ScriptRoot '..\..\..')) }
         Set-Location $resolvedRoot
@@ -57,20 +34,14 @@ function Initialize-CiEnvironment {
     }
 }
 
-# ── shared CI-session preamble (#141, 2026-08-21) ────────────────────────────
-# One owner for the context/log/wrapper/uv block the four Invoke-Ci* drivers
-# carried as ~30-line drifting copies (CiTests had grown two extra wrappers
-# the others lacked). Dot-sourcing puts these functions into the CALLER's
-# script scope, so $script:CiContext below IS the calling script's variable.
+# Shared CI-session preamble; dot-sourced, so $script:CiContext is the calling script's variable.
 
 function New-CiSession {
     param(
         [Parameter(Mandatory)][string]$RepoRoot,
         [string]$LogDir = 'logs',
         [switch]$StopOnError,
-        # Also wire the uv delegate triple ($script:UvCommandRunner/-LogInfo/
-        # -LogWarning) that the packaging/docs/static drivers hand to
-        # WindowsUv.Common.
+        # Also set the $script:Uv* delegates the packaging, docs and static drivers hand to WindowsUv.Common.
         [switch]$WithUvDelegates
     )
     $script:CiContext = New-BuildContext -Workspace $RepoRoot -LogDir $LogDir -StopOnError:$StopOnError

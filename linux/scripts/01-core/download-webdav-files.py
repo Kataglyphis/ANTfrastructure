@@ -1,30 +1,5 @@
 #!/usr/bin/env python3
-"""Download a WebDAV tree, optionally filtered by file extension.
-
-Used by two lanes that have nothing else in common: the early `.pfx` certificate
-fetch on Windows (WindowsWebDav.Common.psm1) and a Flutter site pulling its
-markdown content on Linux. It lives under linux/scripts/01-core/ because it is
-platform-neutral and both lanes reach it from there; a one-line shim remains at
-the old windows/scripts/certificates/ path.
-
-    download-webdav-files.py <hostname> <username> <password> \
-        <remote_base_path> <local_base_path> [--extension .pfx|all]
-
---extension omitted, or `all`, hands the whole walk to the client's own
-`download_all_files_iterative`. That is the point of this rewrite: a 140-line
-hand-rolled traversal lived here, with its own URL joining, its own
-sub-path sanitising and its own streaming download, and every one of those was
-a second implementation of something the pinned client already does. Two
-consumers each carried a variant of it, and they had drifted.
-
-The extension-filtered path stays, because the certificate fetch genuinely wants
-one file type out of a shared folder, and it is built from the client's
-list_files/list_folders rather than from a private notion of what a WebDAV tree
-looks like.
-
-The pin lives in linux/scripts/01-core/versions.env (WEBDAVCLIENT_REF); nothing
-here installs anything.
-"""
+"""Download a WebDAV tree, optionally filtered by extension, with the client pinned by WEBDAVCLIENT_REF."""
 from __future__ import annotations
 
 import argparse
@@ -60,8 +35,7 @@ def download_everything(client: WebDavClient, remote: str, local: str) -> int:
     """The whole tree, through the client. No traversal of our own."""
     walk = getattr(client, "download_all_files_iterative", None)
     if walk is None:
-        # By NAME, not as an AttributeError three frames deep: this means the
-        # pinned WebDavClient predates the method, and the fix is the pin.
+        # The pinned client predates the method; say so instead of an AttributeError.
         print(
             "the pinned kataglyphis_webdavclient has no download_all_files_iterative; "
             "bump WEBDAVCLIENT_REF in linux/scripts/01-core/versions.env",
@@ -97,10 +71,8 @@ def download_filtered(client: WebDavClient, remote: str, local: str, extension: 
                 sub = sub[: len(sub) - len(decoded)]
             if sub == decoded:
                 sub = ""
-            # A LEADING SLASH IS NOT A ROOT HERE. Path("/x") is absolute, so it
-            # discards local_base_path silently and the write lands at the
-            # drive root -- on Windows, as "the system cannot find the path".
-            sub = str(sub).lstrip("/\\")
+            # A leading slash would make the join absolute and silently drop local_base_path.
+            sub =str(sub).lstrip("/\\")
             target = base / sub / decoded
             target.parent.mkdir(parents=True, exist_ok=True)
             url = join_remote_url(client.hostname, current, name)

@@ -1,15 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The 2026-08-21 host wipe in executable form: every command shape that must
-# never run again is asserted DENIED here, and the shapes that legitimately
-# reclaim disk are asserted to survive. The guard is a PreToolUse hook
-# (.claude\hooks\guard-destructive-deletes.ps1) - untested regexes in a
-# safety gate are worse than no gate, because they read as protection.
-#
-# This file is on the guard's own exemption list; it is the one place in the
-# repo allowed to spell out the forbidden command shapes verbatim.
+
+# Untested guard regexes read as protection; this file is exempt from the guard, so it may spell the denied shapes verbatim.
 
 $guard = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) '.claude\hooks\guard-destructive-deletes.ps1'
 
@@ -89,11 +82,7 @@ Describe 'guard-destructive-deletes: the reclaimable set still works' {
     }
 
     It 'carries no repository checkout as reclaimable' {
-        # Two dead rows lived here until 2026-09-15 ('d:\github\kataglyphis-antfrastructure',
-        # 'd:\github\kataglyphis-containerhub'): a drive and two repo names that
-        # stopped existing at the 2026-09-12 rename. A row matching nothing reads
-        # as "deleting a repo checkout is fine", which is the inverse of this
-        # guard's job. This case is what makes re-adding one a decision.
+        # A protected row naming a repo checkout reads as the inverse of the guard's job; re-adding one must be a decision.
         $guardText = Get-Content -Raw -LiteralPath $guard
         $block = [regex]::Match($guardText, '(?s)\$reclaimable = @\((.*?)\n\)').Groups[1].Value
         Assert-False ($block -match 'github') "a repository checkout is listed as reclaimable: $block"
@@ -132,8 +121,7 @@ Describe 'guard-destructive-deletes: no false positives on reading about deletes
 Describe 'guard-destructive-deletes: the copy-paste vector' {
 
     It 'denies WRITING a script that deletes from a protected root' {
-        # The actual 2026-08-21 vector: the agent never ran the command, it
-        # handed the user a script to paste into an elevated shell.
+        # A script handed to the user to paste into an elevated shell is a delete too.
         $body = @'
 $targets = @("C:\Program Files\Stevedore", "$env:LOCALAPPDATA\Programs")
 foreach ($t in $targets) { Remove-Item $t -Recurse -Force }
@@ -231,16 +219,7 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
     }
 
     It 'the user profile is still intact after the junction fixture' {
-        # Paranoia with teeth: if the teardown above ever deleted THROUGH the
-        # junction, this is what would notice.
-        #
-        # The canary is the profile's own ENTRY COUNT, taken before the tunnel
-        # was created, plus AppData -- which every Windows profile has. It used
-        # to be `.claude`, which exists on a developer box and NOT on a CI
-        # runner, so this test failed there for a reason that had nothing to do
-        # with deleting anything (2026-08-27). A count that only has to be
-        # >= the earlier one tolerates files appearing mid-run while still
-        # catching the wholesale emptying this exists to catch.
+        # Catches a teardown deleting through the junction: AppData exists on every profile, and the entry count may only grow.
         Assert-True (Test-Path -LiteralPath $env:USERPROFILE) 'the user profile is gone'
         Assert-True (Test-Path -LiteralPath (Join-Path $env:USERPROFILE 'AppData')) 'the profile was emptied through a junction'
         Assert-NotNull $script:profileEntriesBefore 'the junction fixture never ran, so this canary proves nothing'
@@ -253,8 +232,7 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
         $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\Clear-DiskSpace.ps1'
         Assert-True (Test-Path $script) "reclaim script not found at $script"
         $raw = Get-Content -Raw $script
-        # The delete is downstream of the -Apply gate: the report path exits
-        # before it. A refactor that moves the delete above the gate fails here.
+        # The delete must stay below the -Apply gate, where the report path has already exited.
         $applyGate = $raw.IndexOf('if (-not $Apply)')
         $delete = $raw.IndexOf('Remove-Item -LiteralPath $t.Path')
         Assert-True ($applyGate -gt 0) 'the -Apply gate is gone'
@@ -292,9 +270,7 @@ Describe 'guard-destructive-deletes: the hook is actually registered' {
             $p = Join-Path $root $f
             if (-not (Test-Path $p)) { continue }
             $raw = Get-Content -Raw $p
-            # Materialise the matches before reporting: under StrictMode a
-            # member access on an EMPTY MatchCollection throws, so the
-            # pass-case message would fail instead of the assertion.
+            # Materialised: under StrictMode a member access on an empty MatchCollection throws.
             $blanket = @([regex]::Matches($raw, '"(?:PowerShell|Bash)\((?:Remove-Item|rm)\s\*\)"') |
                     ForEach-Object { $_.Value })
             Assert-Equal 0 $blanket.Count "$f still allow-lists a blanket delete: $($blanket -join ', ')"
@@ -304,14 +280,7 @@ Describe 'guard-destructive-deletes: the hook is actually registered' {
 
 Describe 'guard-destructive-deletes: the GPU-driver pattern is proximity-scoped' {
 
-    # Added 2026-08-25. The vendor-word pattern (nvidia|adrenalin|radeon) is the
-    # only protected pattern that is not path-shaped, so it matched bare English
-    # anywhere in a text and denied ordinary documentation edits - six times in
-    # one day, on prose whose only delete-shaped token was a container run flag.
-    # It is now scoped to a delete verb within 200 characters. These tests pin
-    # BOTH halves: the false positives stop, and every real shape still dies.
-    # Proximity, not same-line: a real script assigns the path on one line and
-    # deletes on the next, and a line-scoped rule would stop seeing it.
+    # The vendor-word pattern is not path-shaped, so it needs a delete verb within 200 characters, not on the same line.
 
     It 'denies deleting a GPU driver directory outside the standard roots' {
         $c = 'Remove-Item -Recurse -Force D:\NVIDIA\DisplayDriver'
@@ -329,8 +298,7 @@ Describe 'guard-destructive-deletes: the GPU-driver pattern is proximity-scoped'
     }
 
     It 'allows prose naming a GPU vendor far from an unrelated delete-shaped flag' {
-        # The exact shape that blocked six documentation edits: a container run
-        # example whose --rm matches \brm\b, and a vendor word far away.
+        # A container run example whose --rm matches \brm\b, with a vendor word far away.
         $c = 'An ENABLED AMD RDNA4 dGPU makes every RUN-layer finalize fail.' +
              ("`nfiller prose to push the two apart. " * 40) +
              "`n    nerdctl run -it --rm ghcr.io/example/image:tag"

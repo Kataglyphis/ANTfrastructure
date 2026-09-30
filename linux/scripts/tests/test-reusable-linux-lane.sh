@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# The `arches` contract of python-ci-linux.yml: the input a Python consumer uses
-# to split its Linux lane into linux-x64.yml and linux-arm64.yml. The plan
-# step's own shell is RUN here, because a green CI run never shows the default
-# rows, the refusals or the runner labels this suite pins.
-# docs/python-ci.md#one-arch-per-caller-the-arches-input
+# Runs python-ci-linux.yml's `arches` plan step, whose rows and refusals a green run never shows; see docs/python-ci.md#one-arch-per-caller-the-arches-input
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -18,8 +14,7 @@ trap 'rm -rf "${_work}"' EXIT
 t_case "the lane file is where every consumer's uses: line expects it"
 t_assert_ok test -f "${LANE}"
 
-# _q <python-expression> -- one line, evaluated against the parsed lane. `lane`,
-# `jobs`, `inputs`, `plan`, `build` are in scope; V.value unwraps (value, line).
+# _q <python-expression> over the parsed lane (lane, jobs, inputs, plan, build); V.value unwraps (value, line).
 _q() {
   # shellcheck disable=SC2086  # _PY may be a multi-word command (uv run ...)
   ${_PY} - "${ROOT}/linux/scripts" "${LANE}" "$1" <<'PY' 2>&1
@@ -35,9 +30,7 @@ print(eval(sys.argv[3]))
 PY
 }
 
-# The plan step's `run:` block, dedented, as the file the runner would execute.
-# The YAML loader keeps block scalars opaque, so the text is cut by indentation
-# from the line the loader reports for `run:`.
+# The loader keeps block scalars opaque, so the step's `run:` text is cut by indentation.
 STEP="${_work}/plan-step.sh"
 # shellcheck disable=SC2086
 ${_PY} - "${ROOT}/linux/scripts" "${LANE}" "${STEP}" <<'PY'
@@ -59,8 +52,7 @@ for line in lines[at + 1:]:
 pathlib.Path(sys.argv[3]).write_text(textwrap.dedent('\n'.join(body)).strip() + '\n', encoding='utf-8')
 PY
 
-# _plan <arches> -- run the step as the runner does (`bash -e`), with the input
-# in ARCHES and a fresh GITHUB_OUTPUT. Prints the step's combined output.
+# _plan <arches>: run the step under `bash -e`, as the runner does, with a fresh GITHUB_OUTPUT.
 OUT="${_work}/github-output"
 _plan() {
   : > "${OUT}"
@@ -69,8 +61,7 @@ _plan() {
 _plan_rc() { _plan "$1" >/dev/null; echo $?; }
 _matrix() { _plan "$1" >/dev/null; sed -n 's/^matrix=//p' "${OUT}"; }
 
-# _rows <arches> -- the matrix's rows as `arch runs_on platform`, one per line,
-# read back through a real JSON parser so a malformed matrix cannot pass.
+# _rows <arches>: `arch runs_on platform` per row, via a real JSON parser so a malformed matrix fails.
 _rows() {
   local m; m="$(_matrix "$1")"
   # shellcheck disable=SC2086
@@ -92,8 +83,7 @@ t_assert_eq "string|false|x64 arm64" \
   "$(_q "'|'.join(str(V.value(inputs.get('arches', ({}, 0))[0], k)) for k in ('type', 'required', 'default'))")"
 
 t_case "the DEFAULT yields exactly the rows the static matrix held, in order"
-# Job names (matrix.arch) and artifact names (matrix.runs_on) are what a caller
-# sees; a changed row renames both under a green run.
+# A changed row silently renames the caller's jobs (matrix.arch) and artifacts (matrix.runs_on).
 t_assert_eq "${X64_ROW}
 ${ARM_ROW}" "$(_rows "x64 arm64")"
 t_assert_eq "0" "$(_plan_rc "x64 arm64")"
@@ -126,8 +116,7 @@ t_assert_eq "1" "$(_plan_rc "   ")"
 t_assert_contains "$(_plan "")" "arches is empty"
 
 t_case "no row runs on a moving *-latest label"
-# The labels live in a run: block, out of the YAML gate's reach; this is its
-# runner-ban, applied to what the step actually emits.
+# The YAML gate's runner ban cannot see labels emitted from a run: block.
 # shellcheck disable=SC2086
 t_assert_eq "[]" "$(${_PY} - "${ROOT}/linux/scripts" "$(_matrix "x64 arm64")" <<'PY' 2>&1
 import sys, json

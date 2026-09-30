@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Downloads the Ollama release tarball for the llm-stack image build.
-# Version AND checksums come from versions.env (single source of truth);
-# OLLAMA_VERSION/OLLAMA_*_SHA256 in the environment override for ad-hoc runs.
+# Fetches the Ollama tarball for the llm-stack build; versions.env pins it, the environment may override.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
@@ -16,8 +14,7 @@ load_versions_env "${CORE_DIR}/versions.env"
 ARCH="${1:-$(uname -m)}"
 OLLAMA_VERSION="${OLLAMA_VERSION:?OLLAMA_VERSION not set (versions.env missing?)}"
 
-# Ollama's release assets are named with Go arch names (amd64/arm64), NOT the
-# uname -m spellings (x86_64/aarch64). Mapping to the wrong name 404s.
+# Release assets use Go arch names, not uname -m spellings; the wrong one 404s.
 case "$ARCH" in
     x86_64|amd64)  ARCH_ALT="amd64"; EXPECTED_SHA="${OLLAMA_AMD64_SHA256:-}" ;;
     aarch64|arm64)  ARCH_ALT="arm64"; EXPECTED_SHA="${OLLAMA_ARM64_SHA256:-}" ;;
@@ -33,8 +30,7 @@ echo "  ->  ${OUTPUT}"
 
 curl -fsSL --retry 3 --retry-delay 10 -o "$OUTPUT" "$URL"
 
-# SHA256 gate (pins in versions.env, from the GitHub release API's asset digests).
-# An empty pin (e.g. new arch) skips with a loud note rather than failing.
+# An empty pin (a new arch) skips the gate loudly instead of failing.
 if [ -n "${EXPECTED_SHA}" ]; then
     echo "${EXPECTED_SHA}  ${OUTPUT}" | sha256sum -c - \
         || { echo "ERROR: checksum mismatch — deleting ${OUTPUT}" >&2; rm -f "$OUTPUT"; exit 1; }

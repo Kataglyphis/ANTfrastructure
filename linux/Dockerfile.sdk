@@ -7,8 +7,7 @@ SHELL ["bash", "-lc"]
 
 ARG BUILD_TYPE=Release
 ARG BUILD_MODE=native
-# Divide usable RAM by this in parallelism.sh so N concurrent per-arch builds
-# (--parallel-archs) don't collectively overcommit the host. 1 = serial default.
+# Divides usable RAM so --parallel-archs builds don't collectively overcommit the host.
 ARG BUILD_MEM_DIVISOR=1
 ARG VULKAN_VERSION=1.4.357.0
 ARG LLVM_RELEASE=23.1.1
@@ -31,63 +30,21 @@ ENV BUILD_MODE=${BUILD_MODE} \
     BUILDPLATFORM=${BUILDPLATFORM} \
     VULKAN_VERSION=${VULKAN_VERSION} \
     LLVM_RELEASE=${LLVM_RELEASE}
-# Flutter is amd64+arm64 only (riscv64 is silently skipped by setup-flutter.sh).
-# Only advertise FLUTTER_ROOT / prepend PATH on arches that actually install Flutter.
-# NOTE: arm64 images carry the x86-64 Flutter SDK (no linux-arm64 upstream archive
-# exists), so this advertisement does not imply a native arm64 Flutter toolchain.
+# Via profile.d, not ENV, so riscv64 (no Flutter) does not advertise a missing SDK.
 RUN if [ "${TARGET_ARCH:-${TARGETARCH:-amd64}}" != "riscv64" ]; then \
       echo 'export PATH="/opt/flutter/bin:${PATH}"' >> /etc/profile.d/flutter.sh && \
       echo 'export FLUTTER_ROOT=/opt/flutter'        >> /etc/profile.d/flutter.sh ; \
     fi
-# FLUTTER_ROOT / Flutter PATH are intentionally NOT in a global ENV because
-# Flutter is riscv64-skipped. Login shells pick them up via /etc/profile.d on
-# amd64/arm64 only (see RUN above), so on riscv64 the image honestly advertises
-# "no Flutter" instead of pointing at a non-existent dir.
-# Refresh the scripts the sdk stage's own RUNs execute from the build context,
-# PER-FILE, each RUN's traced source closure placed directly above it (the
-# Dockerfile.media per-file pattern). The compiler base bakes the whole
-# 01-core/ + 02-toolchain/ trees (Dockerfile.toolchain), but that base can be
-# OLDER than the current scripts (e.g. resuming the chain mid-way with a
-# pinned compiler) — without a refresh, a fix to e.g. vulkan.sh would silently
-# require a full compiler rebuild to take effect. The previous whole-dir COPYs
-# refreshed ~100 files here, which put the long Vulkan RUN below (~14 min/arch,
-# x3 arches) in the cache blast radius of EVERY file in those trees; only the
-# closures below are executed by this stage. Non-closure files still exist in
-# the image at the compiler base's version.
-#
-# platform.sh: sourced by the /opt/llvm-target RUN below for assert_elf_arch
-# (it is also part of the setup-dependencies.sh closure further down).
+# Per-file refresh of each RUN's source closure: the compiler base may bake older scripts, and whole dirs re-key the Vulkan RUN.
 COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
 
-# ------------------------------------------------------------------------------
-# Materialize the per-arch native Clang at the canonical /opt/llvm-target.
-# The SHARED compiler stage installs each cross target-clang into
-# /opt/llvm-target-<arch> (a single fixed prefix would clobber across arches and
-# leak one arch's clang into every image). Select THIS build's arch; amd64 is
-# native so it ships the host LLVM as its target-native clang. Downstream
-# (media/android/package) then inherits a correct, self-contained
-# /opt/llvm-target for every arch — the package image COPYs it to
-# /usr/local/llvm-target so each runtime ships its own native clang.
-# ------------------------------------------------------------------------------
-# DF2 (2026-08-18): the 86-line inline materialization moved to
-# materialize-llvm-target.sh (comment-preserving home; logic verbatim).
+# Pick this arch's /opt/llvm-target-<arch> as /opt/llvm-target; a shared fixed prefix would leak across arches.
 COPY --chmod=755 linux/scripts/02-toolchain/materialize-llvm-target.sh /opt/scripts/toolchain/materialize-llvm-target.sh
 RUN set -euo pipefail; \
     bash /opt/scripts/toolchain/materialize-llvm-target.sh; \
     rm -f /opt/scripts/toolchain/materialize-llvm-target.sh
 
-# ------------------------------------------------------------------------------
-# Vulkan SDK setup
-# ------------------------------------------------------------------------------
-# Transitive source closure of setup-dependencies.sh, shared by this vulkan RUN
-# and the verify RUN below. setup-dependencies.sh loads modules.sh, then
-# source_module's common/cross-env/repos/core/cmake/llvm/gcc/vulkan/verify
-# UNCONDITIONALLY at file scope (before command dispatch), and those pull in
-# the rest: common.sh → logging/platform/arch-mapping/ubuntu-mirror/downloads/
-# parallelism + versions.env; cross-env.sh → its four cross-* siblings;
-# llvm.sh → llvm-cross/llvm-validate; vulkan.sh → downloads + vulkan-env
-# (standalone-source fallbacks). platform.sh is already COPY'd above. Editing
-# any OTHER 01-core/02-toolchain file no longer re-runs this ~14-min RUN.
+# Vulkan SDK: the transitive source closure of setup-dependencies.sh, which sources its modules at file scope.
 COPY --chmod=755 \
     linux/scripts/01-core/modules.sh \
     linux/scripts/01-core/common.sh \
@@ -106,8 +63,6 @@ COPY --chmod=755 \
     linux/scripts/01-core/verify.sh \
     linux/scripts/01-core/vulkan-env.sh \
     /opt/scripts/core/
-# versions.env is DATA loaded by common.sh via load_versions_env — the Vulkan
-# SDK sha pin (VULKAN_SDK_SHA256) and toolchain version majors come from it.
 COPY --chmod=644 linux/scripts/01-core/versions.env /opt/scripts/core/versions.env
 COPY --chmod=755 \
     linux/scripts/02-toolchain/setup-dependencies.sh \
@@ -119,10 +74,7 @@ COPY --chmod=755 \
     linux/scripts/02-toolchain/gcc.sh \
     linux/scripts/02-toolchain/vulkan.sh \
     /opt/scripts/toolchain/
-# vulkan.sh's _vulkan_patch_component fixes upstream defects the PINNED SDK source
-# still carries, before the cross build sees them. Each patch is droppable the
-# moment the SDK ships the upstream fix -- the table that says when is in
-# docs/vulkan-foreign-arch-sdk.md#upstream-patches-recheck-on-every-sdk-bump
+# Patches for the pinned SDK source: docs/vulkan-foreign-arch-sdk.md#upstream-patches-recheck-on-every-sdk-bump
 COPY --chmod=755 linux/scripts/01-core/apply-patch.sh /opt/scripts/core/apply-patch.sh
 COPY --chmod=644 linux/scripts/patches/slang/ /opt/scripts/patches/slang/
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
@@ -132,25 +84,18 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" --vulkan-version "${VULKAN_VERSION}" vulkan
 
-# 6. VERIFICATION
+# Verification
 RUN set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify; \
-    # Vulkan SDK gate (audit round 2: the verify above checks compilers only —
-    # the SDK install had no assertion at all; verify.sh's contribution was
-    # literally a "Reminder: source setup-env.sh" log line). The install root
-    # must exist and be non-empty for the arch this SDK image targets.
+    # The verify above checks compilers only; this gates the Vulkan SDK install.
     test -d /opt/vulkan || { echo "ERROR: /opt/vulkan missing after Vulkan SDK install" >&2; exit 1; }; \
     [ -n "$(ls -A /opt/vulkan 2>/dev/null)" ] || { echo "ERROR: /opt/vulkan is empty after Vulkan SDK install" >&2; exit 1; }
 
-# ==============================================================================
-# Frameworks; TVM version contract (build itself REMOVED — see below)
-# ==============================================================================
+# TVM pins only: no build here, but this ENV is what media's tvm stage reads.
 ARG TVM_REF=v0.26.0
 ARG TVM_BUILD_TYPE=${BUILD_TYPE}
 ARG TVM_USE_VULKAN=1
-# CUDA / OpenCL are disabled by default — GPU EP layers build separately via
-# Dockerfile.nvidia / Dockerfile.amd. Exposed as ARGs for parity with
-# TVM_USE_VULKAN so callers can opt in without editing the script.
+# Off by default: the GPU layers build separately (Dockerfile.nvidia / Dockerfile.amd).
 ARG TVM_USE_CUDA=0
 ARG TVM_USE_OPENCL=0
 ARG TVM_INSTALL_PYTHON=1
@@ -163,70 +108,9 @@ ENV TVM_REF=${TVM_REF} \
     TVM_USE_OPENCL=${TVM_USE_OPENCL} \
     TVM_INSTALL_PYTHON=${TVM_INSTALL_PYTHON}
 
-# NO sdk-stage TVM build (removed 2026-08-12, refactoring-backlog BS2). This
-# stage used to run tvm.sh here (~14 min/arch, amd64-native, x3 per chain) but
-# NOTHING consumed the result: with no --prefix/--workdir it installed to
-# /opt/src/tvm-install plus a private venv at /opt/src/tvm/.venv, and no
-# downstream Dockerfile or script references /opt/src at all. The media image
-# builds its own TVM in a dedicated stage (Dockerfile.media `FROM base AS tvm`:
-# fresh clone in /tmp/tvm-src, install to /opt/tvm) and its final stage COPYs
-# only from THAT stage; any sdk-venv python install was additionally dead
-# because media's venv step recreates /opt/python/.venv with `uv venv --clear`.
-# The TVM_* ARG/ENV block above is KEPT deliberately: the ENV values persist
-# into the media image, whose tvm stage reads TVM_REF / TVM_USE_* from the
-# environment (an inherited ENV overrides media's same-named ARG default in
-# RUN steps), so the orchestrator's TVM pins still flow through this image.
-
-# ==============================================================================
-# Frameworks; Flutter SDK (amd64 + arm64; riscv64 skipped)
-# ==============================================================================
-# Closure of the flutter RUN: setup-flutter.sh is self-contained except for
-# /opt/scripts/core/downloads.sh (standalone-source fallback) and
-# /opt/scripts/core/versions.env (FLUTTER_SDK_SHA256 pin) — both already
-# COPY'd above the vulkan RUN.
+# Flutter SDK (amd64 + arm64; riscv64 skipped)
 COPY --chmod=755 linux/scripts/05-frameworks/flutter/setup-flutter.sh /opt/scripts/frameworks/flutter/setup-flutter.sh
-# The Flutter SDK cache id is keyed on FLUTTER_VERSION *and* ${TARGET_ARCH}.
-#   * VERSION — this is the bug fix. With the old arch-only id a
-#     FLUTTER_VERSION bump silently kept shipping the OLD SDK: the bump does
-#     re-run this RUN (the ARG is part of its cache key), but the re-run seeded
-#     /opt/flutter from the previous version's cache, found bin/flutter
-#     executable, skipped the install, and passed the gate. A wrong-version
-#     image that verifies green.
-#     Version-keyed ids work because BuildKit expands a mount id from the
-#     args/env in scope AT THIS INSTRUCTION, and `ARG FLUTTER_VERSION` is
-#     declared above in this same (single-FROM) stage — the same mechanism as
-#     id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION} in Dockerfile.media.
-#     Name a variable that is not in scope and the id silently degrades to the
-#     bare prefix, i.e. one store for every version.
-#   * ARCH — KEPT, even though the payload does not need it. setup-flutter.sh
-#     installs the same flutter_linux_<version>-stable.tar.xz on amd64 and
-#     arm64 (Google ships no linux-arm64 SDK: two ARCH_SUFFIX="" arms, one
-#     FLUTTER_SDK_SHA256 pin), so a lane-shared id would legitimately fetch it
-#     once instead of twice. It is not worth the coupling: sdk is a per-arch
-#     stage, so a lane-shared id has three concurrent writers under
-#     --parallel-archs, and every mode is a loss there — `locked` serializes
-#     the lanes on one download, `private` forks a NEW EMPTY dir per concurrent
-#     lane (so all three download anyway and the sharing buys nothing), and
-#     plain `shared` puts three writers in one dir. Per-lane means exactly ONE
-#     consumer per id per build, so the sharing mode stops mattering and a
-#     damaged cache can only ever cost the lane that damaged it. Revisit only
-#     with a real build behind it.
-# Seeding is ATOMIC and marked, and no copy error is swallowed. The tree is
-# copied to .staging, the completion marker is written last, and only then is
-# it renamed into place — so an interrupted copy (ENOSPC is this host's
-# recurring incident) can leave .staging behind but can NEVER publish a cache
-# that has bin/flutter and not the rest. Restore is gated on that marker. A
-# failed RESTORE fails the build (set -e, no `|| true`); a failed SEED warns
-# and discards .staging, because the image itself is complete either way.
-# riscv64 never touches the cache: seeding it would unpack an x86-64 SDK into a
-# riscv64 image and make it advertise a Flutter it cannot run, undoing the
-# /etc/profile.d honesty guard above. It still gets the empty /opt/flutter the
-# old code created.
-# Cost of the versioned id: a bump orphans the previous version's cache refs —
-# reclaim them with linux/host-config/prune-safe.sh.
-# The final gate is from audit round 2 (Flutter shipped with zero verification;
-# a failed install was only discovered by a user): every non-riscv64 lane must
-# end this RUN with an executable /opt/flutter/bin/flutter.
+# Keyed on version (an arch-only id kept shipping the old SDK) and lane (one writer per id); seeded atomically behind a marker.
 RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-sdk-${FLUTTER_VERSION}-${TARGET_ARCH} \
     set -euo pipefail; \
     if [ "${TARGET_ARCH:-amd64}" = "riscv64" ]; then \

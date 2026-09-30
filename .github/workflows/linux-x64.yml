@@ -1,5 +1,3 @@
-# .github/workflows/linux-x64.yml
-# Entry-point workflow: runs docs validation/build and the shell preflight gates.
 # Named by the fleet convention: docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names
 name: Linux x64 · preflight + mutation gate
 
@@ -13,60 +11,33 @@ on:
   pull_request:
     branches: [main, develop]
 
-# One run per ref: a force-push/new push supersedes the in-flight run instead
-# of burning runner minutes next to it. The called build-docs job additionally
-# carries its own job-level docs-deploy concurrency group
-# (cancel-in-progress: false) so two runs can never FTP-sync concurrently.
+# One run per ref; build-docs keeps its own non-cancelling deploy group.
 concurrency:
   group: linux-x64-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
 
-  # Fast, no-build gate: shellcheck + the verify-* suite (script-COPY coverage,
-  # critical-fixes, ARG consistency, version snapshot, mirror consistency;
-  # the runtime-path check also runs but is advisory-only — it prints WARNs
-  # and never fails). Catches the failure classes that otherwise only surface
-  # hours into a multi-arch build. Mirrors the local commit gate
-  # (linux/host-config/git-hooks/pre-commit),
-  # which is opt-in and silently skipped by contributors who don't enable it.
+  # No-build gate for failure classes that otherwise surface hours into a build; the local pre-commit twin is opt-in.
   preflight:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # preflight.sh ends with a python-lint gate (lint-python.sh) that needs
-      # ruff. It prefers a ruff on PATH and otherwise falls back to
-      # `uvx ruff@<pin>` - but this runner had neither, so the gate died with
-      #   ERROR: neither ruff nor uvx found - install uv (repo standard) or ruff
-      # AFTER every other check had already passed. uv is the repo standard, so
-      # install that rather than a second, unpinned ruff: lint-python.sh pins the
-      # version itself (RUFF_PIN) and uvx honours it.
+      # uvx runs lint-python.sh's pinned ruff (RUFF_PIN); this runner has neither ruff nor uv.
       - name: Install uv (provides uvx for the python-lint gate)
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-      # The mutation gate's 164 pytest baselines ran `python3 -m pytest` on a
-      # runner image that ships pip but no pytest, so every one exited 1 before
-      # collecting a test and 206 manifest entries sat permanently "vacuous"
-      # (2026-09-07 audit). Same install llm-stack-serving.yml uses, minus
-      # requests, which no manifest baseline imports at top level.
+      # The runner image ships no pytest, and without it every mutation baseline fails unmutated.
       - name: Install pytest (mutation-gate baselines)
         run: pip install --quiet pytest
-      # renovate_audit.py reads a YAML manifest back with a REAL parser before
-      # renovate-local.sh is allowed to keep an edit, and refuses the run when
-      # there is none -- so the script-tests slug needs PyYAML on this runner.
-      # Unpinned, like the pytest above and for the same reason: a runner
-      # convenience for a gate, shipped by no image, so versions.env owns no
-      # number for it (docs/dependency-updates.md#what-this-costs).
+      # Unpinned runner convenience, owned by no image: docs/dependency-updates.md#what-this-costs
       - name: Install PyYAML (renovate_audit.py's real YAML parser)
         run: pip install --quiet pyyaml
       # Every slug but the mutation gate, which the mutations job runs in shards.
       - name: Run preflight checks
         run: PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh
 
-  # The preflight `mutations` slug, split over four jobs: run whole inside
-  # preflight it hit the 45-min timeout on 2026-09-23. preflight.sh stays its one
-  # source (PREFLIGHT_MUTATION_SHARD=K/N -> docs/scripts/verify_mutations.py --shard).
-  # docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded
+  # The mutations slug (docs/scripts/verify_mutations.py) in four shards. See docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded
   mutations:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -78,8 +49,7 @@ jobs:
         shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # The same setup as preflight: without pytest and PyYAML the baselines
-      # fail unmutated and every entry under them reads vacuous (2026-09-07).
+      # Same setup as preflight: without pytest and PyYAML the baselines fail unmutated.
       - name: Install uv (provides uvx for the python-lint gate)
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Install pytest (mutation-gate baselines)

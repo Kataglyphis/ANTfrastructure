@@ -1,22 +1,11 @@
 #!/usr/bin/env bash
-# digest-pinning.sh — registry manifest digest resolution for pinned FROM refs.
+# Registry manifest digests for pinned FROM refs.
 [ -n "${_DIGEST_PINNING_SH_LOADED:-}" ] && return 0
 _DIGEST_PINNING_SH_LOADED=1
-#
-# Provides:
-#   registry_pin_ref()            — resolve registry digest, print "repo@sha256:..."
-#   _has_digest_pinned_base()     — detect if args already contain a digest-pinned ref
 
 _TAG_NAMING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Resolve the registry-resolvable manifest digest of a pushed tag and print a
-# digest-pinned reference like "repo@sha256:...".
-#
-# This intentionally uses `nerdctl manifest inspect --verbose` (which reports the
-# digest of the manifest as it exists in the registry) rather than the local
-# image store's RepoDigests. On this host BuildKit pushes a converted
-# `docker.v2+json` manifest whose digest differs from the local OCI manifest, so
-# RepoDigests is NOT registry-resolvable and must not be used for `FROM` pinning.
+# Prints repo@sha256 from the registry, never local RepoDigests: the pushed, converted manifest has another digest.
 registry_pin_ref() {
   local nerdctl_bin image_ref
 
@@ -42,8 +31,7 @@ registry_pin_ref() {
     return 1
   fi
 
-  # Separate stderr capture per pipeline stage: both stages run concurrently,
-  # so sharing one file with 2> would have each truncate/garble the other.
+  # One stderr file per stage: they run concurrently and would garble a shared one.
   local inspect_err digest_err
   inspect_err="$(mktemp)"
   digest_err="$(mktemp)"
@@ -64,11 +52,7 @@ registry_pin_ref() {
   printf '%s@%s' "${repo}" "${digest}"
 }
 
-# Detect whether the extra build args include a digest-pinned BASE_IMAGE.
-# Matches --build-arg BASE_IMAGE=...@sha256:... specifically (not any arg with
-# a sha256 prefix). When the base is content-addressed, --pull is unnecessary
-# because the digest uniquely identifies the image and can never resolve to a
-# stale version.
+# A digest-pinned BASE_IMAGE can never resolve stale, so --pull is unnecessary.
 _has_digest_pinned_base() {
   local arg
   for arg in "$@"; do

@@ -7,12 +7,8 @@
 .SYNOPSIS
     Builds AMD MIGraphX from source against TheRock and installs it to a prefix (rocm lane only).
 .DESCRIPTION
-    The spike behind windows/Dockerfile.rocm-migraphx. The host-only deps (abseil, protobuf,
-    msgpack-c, SQLite) build with the image's clang-cl, as upstream's Windows CI does; MIGraphX
-    itself compiles with TheRock's AMD clang++ by absolute path, because the hub's clang-cl has no
-    AMDGPU backend. rocMLIR is not in the tarball, so MIGRAPHX_ENABLE_MLIR=OFF - a configuration
-    no upstream CI builds. Refuses unless Get-GpuEnvironment reports HasRocm.
-    docs/windows-builds.md § ROCm layer.
+    Host deps build with clang-cl, MIGraphX with TheRock's AMD clang++ (clang-cl has no AMDGPU backend),
+    and MLIR stays off for lack of rocMLIR; rocm lane only. See docs/windows-builds.md § ROCm layer
 .PARAMETER InstallDir
     The MIGraphX prefix: bin (DLLs, migraphx-driver.exe), lib (import libs, CMake package), include.
 .PARAMETER WorkDir
@@ -105,13 +101,11 @@ function Get-MigraphxCmakeArgs {
         '-DBUILD_DEV=OFF', '-DBUILD_TESTING=OFF'
         '-DCMAKE_POLICY_DEFAULT_CMP0091:STRING=NEW', '-DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=MultiThreadedDLL'
         '-DFETCHCONTENT_FULLY_DISCONNECTED:BOOL=ON', '-DCMAKE_POLICY_DEFAULT_CMP0170:STRING=NEW'
-        # Ahead of clang's resource dir: HIP's math headers yield isgreater & co. to MSVC 14.51's constexpr
-        # <cmath> versions (Write-HipMsvcCmathOverlay). Only HIP sources include those two headers.
+        # Ahead of clang's resource dir, so HIP's math headers yield isgreater & co. to MSVC's constexpr <cmath>.
         "-DCMAKE_CXX_FLAGS:STRING=-isystem $($HipMathOverlay -replace '\\', '/')"
         "-DSQLite3_INCLUDE_DIR:PATH=$deps/include"
         "-DSQLite3_LIBRARY:FILEPATH=$deps/lib/sqlite3.lib"
-        # TheRock's header-only copy (the licence notice staged below is the one compiled in), through
-        # the shim that drops the natvis its dist lacks (Write-NlohmannJsonConfigShim).
+        # TheRock's header-only copy, whose licence is staged below, via a shim dropping the natvis its dist lacks.
         "-Dnlohmann_json_DIR:PATH=$($NlohmannJsonDir -replace '\\', '/')"
         "-DPython_EXECUTABLE:FILEPATH=$($Python -replace '\\', '/')"
         # The offload-arch check must use AMD's own tools, never whatever LLVM PATH finds first.
@@ -151,8 +145,7 @@ try {
     $sourceRoot = Save-PinnedSource -Source $source -WorkDir $WorkDir
     $treeVersion = Get-MigraphxTreeFact -Fact MigraphxVersion -CMakeText ([System.IO.File]::ReadAllText((Join-Path $sourceRoot 'CMakeLists.txt')))
     if ($treeVersion -ne $migraphxVersion) { throw "MIGRAPHX_WINDOWS_COMMIT is MIGraphX $treeVersion, but MIGRAPHX_VERSION is $migraphxVersion" }
-    # The four MLIR wrappers MLIR=OFF leaves undefined, backported from upstream 5a80dc91ba. git-init
-    # first, so Invoke-SourcePatch takes git apply rather than a patch.exe the image may not carry.
+    # Upstream 5a80dc91ba's MLIR-off stubs; git-init first so the patch goes through git apply.
     Initialize-ExtractedGitRepo -Path $sourceRoot
     Invoke-SourcePatch -PatchFile (Join-Path $scriptAssetRoot 'patches\migraphx\001-mlir-off-stubs.patch') -SourceDir $sourceRoot `
         -Description 'MIGraphX: MLIR-off stubs (backport of 5a80dc91ba)' -IgnoreWhitespace

@@ -1,14 +1,5 @@
 #requires -Version 7.0
-# Tests for the mandatory-GStreamer-plugin contract and the pkg-config plumbing
-# that makes it satisfiable.
-#
-# The defect these guard against shipped for months: gst-plugins-bad resolves its
-# opencv/onnx integrations through pkg-config ONLY, neither library installs a .pc
-# file, the meson features were left at `auto` (= skip silently), and the
-# healthcheck then printed [PASS] for plugins that did not exist. Nothing in the
-# build was ever red. The contract is now data (Get-RequiredGstPlugin) consumed by
-# three enforcement points, so the thing most worth testing is that the data and
-# the emitter stay correct and mutually consistent.
+# Meson `auto` skips a plugin silently when its .pc is missing, so the plugin contract and the .pc emitter must agree.
 
 Describe 'Get-RequiredGstPlugin (the contract)' {
 
@@ -21,11 +12,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
     }
 
     It 'records HOW each dependency is detected, because it is not uniform' {
-        # opencv/onnx/libav go through pkg-config; tflite probes the compiler
-        # (cc.find_library + cc.has_header) and consults no .pc at all; webrtc
-        # and nice are meson-native subprojects switched on by a meson option
-        # (#128). Checking the wrong way would pass vacuously or demand a file
-        # nothing reads.
+        # Checking the wrong way would pass vacuously or demand a file nothing reads.
         $byName = @{}
         foreach ($p in @(Get-RequiredGstPlugin)) { $byName[$p.Name] = $p }
         foreach ($n in 'libav', 'opencv', 'onnx') {
@@ -40,10 +27,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
     }
 
     It 'pins the tflite probe details upstream actually uses' {
-        # The header is the PRE-RENAME TensorFlow path while LiteRT ships the
-        # post-rename tflite/ layout — the mismatch that kept this plugin out of
-        # the image. If upstream ever moves to tflite/, this test is the place
-        # that should fail first.
+        # gst probes the pre-rename TensorFlow header while LiteRT ships tflite/; this fails first if upstream moves.
         $tflite = @(Get-RequiredGstPlugin | Where-Object { $_.Name -eq 'tflite' })[0]
         Assert-Equal 'tensorflow/lite/c/c_api.h' $tflite.NeedsHeader 'gst probes the old TensorFlow header path'
         Assert-True ($tflite.NeedsLib -contains 'tensorflowlite_c') 'primary cc.find_library name'
@@ -51,8 +35,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
     }
 
     It 'does NOT require tensorfilter (an NNStreamer element this repo never builds)' {
-        # It appeared in the old probe lists only because the lying healthcheck
-        # "found" it. Requiring it would fail every build forever.
+        # Requiring it would fail every build.
         $names = @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
         Assert-False ($names -contains 'tensorfilter') 'tensorfilter is not a GStreamer plugin'
     }
@@ -61,14 +44,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
         foreach ($p in @(Get-RequiredGstPlugin)) {
             Assert-True ([bool]$p.Why) "$($p.Name) must say WHY it is mandatory"
             Assert-True ([bool]$p.Provides) "$($p.Name) must say what it provides"
-            # Every entry must be checkable SOMEHOW — it names pkg-config
-            # modules, or the header/library the compiler probe needs, or (a
-            # meson-native subproject) the meson option the build switches to
-            # `enabled`, which makes meson itself the pre-flight. An entry with
-            # none of these would sail through unchecked.
-            # Property-presence guards: the entries are shaped per Detection kind
-            # and StrictMode throws on a missing member (measured on the first
-            # meson entry, 2026-08-25).
+            # Entry shapes differ per Detection kind and StrictMode throws on a missing member, hence the presence guards.
             $hasHeaderProbe = [bool]$p.PSObject.Properties['NeedsHeader'] -and [bool]$p.NeedsHeader -and [bool]$p.PSObject.Properties['NeedsLib'] -and $p.NeedsLib.Count -gt 0
             $hasMesonOption = ($p.Detection -eq 'meson') -and [bool]$p.PSObject.Properties['MesonOption'] -and [bool]$p.MesonOption
             $checkable = ($p.NeedsPc.Count -gt 0) -or $hasHeaderProbe -or $hasMesonOption
@@ -77,13 +53,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
     }
 
     It 'is arch-aware and, since #115/#128, demands the SAME six entries on both lanes' {
-        # The ONLY arch-conditional logic this module carries had ZERO test
-        # coverage until 2026-08-24. The mechanism (UnavailableOn filtering)
-        # stays tested even while its current key set is empty: #115 restored
-        # tflite on arm64 (plain LiteRT cross-builds; the plugin is enabled
-        # presence-driven) and #128 made webrtc/nice a both-lane requirement,
-        # so a re-appearing arm64 key -- someone re-dropping a plugin
-        # "temporarily" -- must fail HERE first.
+        # UnavailableOn stays tested while its key set is empty, so a plugin re-dropped on arm64 fails here first.
         $amd = @(Get-RequiredGstPlugin -Arch 'amd64' | ForEach-Object { $_.Name })
         $arm = @(Get-RequiredGstPlugin -Arch 'arm64' | ForEach-Object { $_.Name })
         Assert-Equal 6 $amd.Count 'amd64 keeps the full contract'
@@ -91,8 +61,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
         foreach ($n in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice') {
             Assert-True ($arm -contains $n) "'$n' must be mandatory on arm64"
         }
-        # The bare call must equal the amd64 view when WINDOWS_TARGET_ARCH is
-        # unset -- the compatibility guarantee the module header promises.
+        # With WINDOWS_TARGET_ARCH unset the bare call must equal the amd64 view.
         if (-not $env:WINDOWS_TARGET_ARCH) {
             $bare = @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
             Assert-Equal ($amd -join ',') ($bare -join ',') 'bare call defaults to the amd64 contract'
@@ -110,10 +79,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
     }
 
     It 'maps each plugin to the pkg-config name its upstream meson actually looks up' {
-        # Verified against gstreamer 1.29.2 sources: gst-plugins-bad resolves
-        # dependency('opencv4') and dependency('libonnxruntime'); gst-libav
-        # resolves the four libav* modules. A typo here means the pre-flight
-        # checks for something nothing needs.
+        # The names gstreamer's meson.build looks up; a typo makes the pre-flight check something nothing needs.
         $byName = @{}
         foreach ($p in @(Get-RequiredGstPlugin)) { $byName[$p.Name] = $p }
         Assert-True ($byName['opencv'].NeedsPc -contains 'opencv4') 'gst-plugins-bad looks up opencv4, not opencv5'
@@ -141,8 +107,7 @@ Describe 'Write-PkgConfigFile' {
             Assert-Match 'Version: 5\.0\.0' $text
             Assert-Match '-lopencv_core500' $text
             Assert-Match '-lopencv_imgproc500' $text
-            # pkg-config treats a backslash as an escape: a native Windows path
-            # produces flags that silently do not work.
+            # pkg-config treats a backslash as an escape, so native paths give flags that silently fail.
             Assert-False ($text -match '\\') 'no backslashes may survive into the .pc'
         }
     }
@@ -171,8 +136,7 @@ Describe 'Write-PkgConfigFile' {
 Describe 'Get-LibraryLinkName' {
 
     It 'derives -l names from the import libraries actually present' {
-        # Hardcoding OpenCV's module list would rot on the next bump; the whole
-        # point is to read the install.
+        # Hardcoding OpenCV's module list would rot on the next bump.
         Invoke-InTestDir { param($dir)
             foreach ($n in 'opencv_core500.lib', 'opencv_imgproc500.lib', 'opencv_dnn500.lib') {
                 Set-Content -Path (Join-Path $dir $n) -Value 'x' -NoNewline
@@ -192,22 +156,17 @@ Describe 'Get-LibraryLinkName' {
 
 Describe 'Assert-PkgConfigModule' {
 
-    # pkg-config lives in the CONTAINER image (scoop main/pkg-config), not on a
-    # dev host, so which failure fires depends on where the suite runs. Both
-    # paths matter and both are asserted; skipping either would leave the gate
-    # untested exactly where it runs for real.
+    # pkg-config exists only in the container image, so which failure fires depends on where the suite runs.
     $havePkgConfig = $null -ne (Get-Command pkg-config -ErrorAction SilentlyContinue)
 
     It 'throws when a required module cannot be resolved' {
         if ($havePkgConfig) {
-            # In-image: the message must name the unresolvable module, because
-            # that is what tells a human reading a build log which .pc to fix.
+            # The message must name the module so a build log says which .pc to fix.
             Assert-Throws -MessagePattern 'definitely-not-a-real-module' -Body {
                 Assert-PkgConfigModule -Module @('definitely-not-a-real-module-xyz') -Context 'test'
             }
         } else {
-            # On a host without the binary: refusing loudly is correct. The gate
-            # must never treat "cannot check" as "checked and fine".
+            # Without the binary the gate must refuse, never treat "cannot check" as "fine".
             Assert-Throws -MessagePattern 'pkg-config is not on PATH' -Body {
                 Assert-PkgConfigModule -Module @('definitely-not-a-real-module-xyz') -Context 'test'
             }
@@ -224,11 +183,7 @@ Describe 'Assert-PkgConfigModule' {
 
 Describe 'Assert-PkgConfigModule version floors' {
 
-    # Presence alone was not enough: FFmpeg shipped seven .pc files whose
-    # Version: field was literally '..' because its configure found neither a
-    # VERSION file nor git tags. --exists passed on all of them while every
-    # consumer constraint failed, so gst-libav was skipped and the pre-flight
-    # reported everything fine (measured 2026-08-07).
+    # Presence is not enough: a .pc with Version '..' passes --exists yet fails every consumer constraint.
 
     $havePkgConfig = $null -ne (Get-Command pkg-config -ErrorAction SilentlyContinue)
 

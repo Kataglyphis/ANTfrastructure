@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# report_onnx_build_output — the one owner of the closing "what did this stage
-# produce" summary the four onnxruntime build scripts print. Run off-target from
-# its own source with info() stubbed, plus the pin that no caller keeps a copy.
-# docs/code-quality-tooling.md#the-allowlist-contract
+# report_onnx_build_output owns the onnxruntime stage summary; see docs/code-quality-tooling.md#the-allowlist-contract
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -46,8 +43,7 @@ t_assert_eq "0" "$(t_rc bash "${_work}/run.sh" "Build complete" "${_work}/bare")
 t_assert_contains "$(_run "Build complete" "${_work}/bare")" "[INFO] Wheels in"
 
 t_case "no build script keeps a second copy of the summary"
-# The four copies had drifted before this owner existed (one used sed -n '1,20p'
-# where the others used head -20), which is exactly what one owner prevents.
+# Separate copies drift; one owner is the point.
 _copies="$(grep -l -e '-lh .*wheels.*\*\.whl' \
   "${ORT}/30-build-native.sh" "${ORT}/30-build-native-amd.sh" \
   "${ORT}/30-build-native-nvidia.sh" "${ORT}/60-build-genai.sh" 2>/dev/null || true)"
@@ -59,13 +55,7 @@ for _s in 30-build-native.sh 30-build-native-amd.sh 30-build-native-nvidia.sh 60
 done
 
 
-# ── The native ORT builds must not drift apart on the GCC-16 workarounds ─────
-# Each native build owns its OWN arg list, so a fix in one silently misses the
-# others. --no_telemetry: ORT 1.29 defaults telemetry ON, pulling in a vendored
-# sqlite that dies on GCC 16's -Werror=stringop-overflow (the CPU build got this
-# 2026-08-19 after it "killed the arm64 media lane 3x"; the GPU build had not).
-# append_onnx_optional_lto_webgpu_args: the only place attaching
-# -Wno-invalid-constexpr, without which Dawn cannot build under GCC 16.
+# Each native build owns its arg list, so every one must carry the GCC 16 workarounds for sqlite and Dawn.
 t_case "every native ORT build disables telemetry (GCC-16 sqlite -Werror)"
 for _s in 30-build-native.sh 30-build-native-nvidia.sh 30-build-native-amd.sh; do
   [ -f "${ORT}/${_s}" ] || continue
@@ -76,23 +66,13 @@ t_case "every native ORT build gets WebGPU/LTO through the shared owner"
 for _s in 30-build-native.sh 30-build-native-nvidia.sh; do
   [ -f "${ORT}/${_s}" ] || continue
   t_assert_ok grep -q "append_onnx_optional_lto_webgpu_args" "${ORT}/${_s}"
-  # ...and NOT by hand, which is what skipped the Dawn workaround. Comments are
-  # stripped first: this very file explains the flag in prose, and a naive grep
-  # counts that explanation as the offence it warns about.
+  # Comments stripped first: the build script explains the flag in prose.
   t_assert_eq "0" "$(sed 's/#.*$//' "${ORT}/${_s}" | grep -c -- "--use_external_dawn" || true)" \
     "${_s} must not hand-roll --use_external_dawn; the helper owns it"
 done
 
 
-# ── CUDA builds use the IMAGE's compiler, not a side toolchain ───────────────
-# OWNER DIRECTIVE 2026-09-17: always build with the container's own compilers
-# (GCC 16). CUDA 13.3's crt/host_config.h refuses __GNUC__ > 15, and the tempting
-# fix is CUDAHOSTCXX=g++-15 -- which was tried and is worse: device code then
-# links against a different libstdc++ than the rest of the image, and anything
-# spanning both dies on `std::__format::…@GLIBCXX_3.4.36`. The supported route is
-# -allow-unsupported-compiler via NVCC_PREPEND_FLAGS, which nvcc honours on every
-# invocation, so ONE env reaches ORT, OpenCV and TVM alike. Turning warnings off
-# is explicitly allowed; switching compilers is not.
+# CUDA lanes keep the image's own GCC; see docs/failure-modes.md#nvcc-rejects-the-images-gcc-16
 t_case "no CUDA lane pins a host compiler other than the image's own"
 _DF_MEDIA="${TESTS_DIR}/../../Dockerfile.media"
 t_assert_eq "0" "$(sed 's/#.*$//' "${_DF_MEDIA}" | grep -cE 'CUDAHOSTCXX|CUDAHOSTCC' || true)" \
@@ -102,8 +82,7 @@ t_assert_eq "0" "$(sed 's/#.*$//' "${ORT}/30-build-native-nvidia.sh" | grep -cE 
   "30-build-native-nvidia.sh must not redirect nvcc to another host compiler"
 
 t_case "GenAI's GPU build asks for TRT-RTX only when TensorRT ships"
-# --use_trt_rtx names the wheel onnxruntime-genai-trt-rtx, which REQUIRES
-# onnxruntime-trt-rtx; the Jetson lane (ENABLE_TENSORRT=false) ships neither.
+# --use_trt_rtx needs onnxruntime-trt-rtx, which the Jetson lane (no TensorRT) does not ship.
 _GENAI="${TESTS_DIR}/../03-media/build/onnxruntime/build/60-build-genai.sh"
 _sel="$(grep -E '^  (_genai_gpu_args=|\[ "\$\{ENABLE_TENSORRT)' "${_GENAI}")"
 t_assert_eq 2 "$(printf '%s\n' "${_sel}" | grep -c .)" "the selection is two lines this case can run"

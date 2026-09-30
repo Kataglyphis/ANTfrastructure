@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# The two riscv64 workarounds F1 named as seams inside _opencv_target_adjustments:
-# a static target harfbuzz for the freetype module, and an EXTERNAL libpng because
-# OpenCV 5.x's vendored copy fails its RVV configure probe under GCC 16.1.0. Both
-# are fail-EARLY by design -- a PNG-less OpenCV only surfaces as a red runtime
-# smoke a stage later. docs/cross-build-verification.md#the-linuxscriptstests-suites
+# The riscv64 seams fail early: a PNG-less OpenCV only shows a stage later; see docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -12,11 +8,7 @@ SUBJECT="${TESTS_DIR}/../03-media/build/opencv/build-opencv.sh"
 _ft="$(t_fn_src "${SUBJECT}" _ota_riscv64_freetype)" || exit 1
 _png="$(t_fn_src "${SUBJECT}" _ota_riscv64_png)" || exit 1
 
-# Both helpers read ABSOLUTE /usr/<triplet> paths, so no host fixture can stand in
-# for a staged sysroot -- only a chroot could. What IS testable, and what the two
-# seams actually own, is the DECISION: with nothing staged, does each one take its
-# named fallback and say why? The triplet stub points them at a name that exists
-# nowhere, which is the not-staged case for both.
+# Both read absolute /usr/<triplet> paths, so only the decision is tested: a bogus triplet means nothing is staged.
 _ft_run()  { bash -c '
     set -u
     cross_target_triplet() { printf "nosuch-triplet"; }
@@ -50,15 +42,13 @@ t_assert_contains "${_out}" "cv2 PNG encode unavailable"
 t_assert_contains "${_out}" "RC=0" "the opt-out continues the build"
 
 t_case "both seams append to the CALLER's array, they do not print flags"
-# A nameref out-array is what lets them stay separate functions; printing would
-# put the flags in a subshell the caller throws away (the YB/launcher defect).
+# Printed flags would land in a subshell the caller throws away.
 for _src in "${_ft}" "${_png}"; do
   t_assert_contains "${_src}" "local -n" "the out-array is a nameref"
 done
 
 t_case "and _opencv_target_adjustments actually calls both"
-# An extraction that forgets its call site is two functions' worth of riscv64
-# knowledge that stops reaching the cmake line, on the one arch nobody runs locally.
+# A forgotten call site silently drops the riscv64 fixes from the cmake line.
 _ota="$(t_fn_src "${SUBJECT}" _opencv_target_adjustments)" || exit 1
 t_assert_contains "${_ota}" "_ota_riscv64_freetype _ota_cmake_opts"
 t_assert_contains "${_ota}" "_ota_riscv64_png _ota_cmake_opts"

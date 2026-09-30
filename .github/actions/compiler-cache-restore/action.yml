@@ -47,9 +47,7 @@ runs:
         key: compiler-cache-${{ inputs.key }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: compiler-cache-${{ inputs.key }}-
 
-    # The directories must exist before docker run: a missing one is created
-    # root-owned, and the uid-1001 container then falls back to a /tmp cache
-    # without saying so (cmake-build.sh's writability fallback).
+    # Docker would create missing mount dirs root-owned, and the uid-1001 container would silently fall back to a /tmp cache.
     - name: Prepare the mount directories
       id: prepare
       shell: bash

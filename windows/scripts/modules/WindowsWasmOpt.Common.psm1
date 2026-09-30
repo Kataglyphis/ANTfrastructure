@@ -3,43 +3,15 @@
 
 #requires -Version 7.0
 
-# WindowsWasmOpt.Common - binaryen/wasm-opt bootstrap and optimisation helper.
-# The Windows twin of linux/scripts/lib/wasm-opt.sh.
-#
-# Two things every "check/shrink the wasm bundle" script needs and nothing
-# project-specific:
-#   1. a wasm-opt binary - not installed on most machines and not worth a
-#      package-manager dependency, so a pinned, SHA-verified binaryen release is
-#      fetched on demand and put on PATH
-#   2. the wasm feature flags that release has to be told about, because
-#      wgpu/naga-style toolchains emit instructions wasm-opt's validator
-#      rejects by default
-#
-# The version and the per-platform checksums come from the canonical
-# linux/scripts/01-core/versions.env (BINARYEN_VERSION,
-# BINARYEN_<PLATFORM>_<ARCH>_SHA256), the same file the bash twin reads, so the
-# pin exists in exactly one place across the two languages.
-#
-# This module is project-agnostic: the size budget, crate name and output paths
-# stay in the consuming script.
+# The Windows twin of linux/scripts/lib/wasm-opt.sh; the binaryen pin lives only in versions.env.
 
 Set-StrictMode -Version Latest
 
-# Import shared helpers (ConvertFrom-VersionsEnv, Invoke-DownloadWithRetry).
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-# Guarded, WITHOUT -Force (repo-wide nested-import rule, 2026-08-04): a forced
-# nested re-import rebinds the dependency into THIS module's private scope and
-# unloads the caller's top-level import — the PS module-scoping trap that broke
-# the BuildDriver test suite and forced build-gstreamer's import-Shared-twice
-# workaround. Trade-off (accepted): a long-lived dev session that edits Shared
-# must Remove-Module/reimport manually; containers always start fresh.
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
-# The wasm features wgpu/naga-style codegen emits: bulk-memory,
-# nontrapping-float-to-int, sign-extension and simd instructions among them.
-# The names are exactly what wasm-opt's validator asks for in its error
-# messages. --all-features is the fallback (see Invoke-WasmOpt) if a future
-# codegen change needs a feature not listed here.
+# wgpu/naga codegen emits these, which wasm-opt's validator rejects by default; Invoke-WasmOpt falls back to --all-features.
 $script:WasmOptFeatureFlags = @(
     '--enable-bulk-memory-opt'
     '--enable-nontrapping-float-to-int'
@@ -54,18 +26,12 @@ function Get-WasmOptFeatureFlag {
     return @($script:WasmOptFeatureFlags)
 }
 
-# Canonical versions.env, shared with the whole Linux pipeline and with
-# linux/scripts/lib/wasm-opt.sh.
+# Shared with linux/scripts/lib/wasm-opt.sh, so the pin exists once.
 function Get-WasmOptVersionsEnvPath {
     return (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')
 }
 
-# Resolves the pinned binaryen release for a platform/architecture: version,
-# release asset name, expected SHA256 and download URL.
-#
-# Environment overrides win over versions.env (same precedence as the bash
-# side's load_versions_env), so a caller can pin a different release without
-# editing the canonical file.
+# Environment overrides win over versions.env, the same precedence as the bash side's load_versions_env.
 function Get-BinaryenPin {
     param(
         [string]$VersionsEnvPath,
@@ -110,14 +76,7 @@ function Get-BinaryenPin {
     }
 }
 
-# Makes wasm-opt available on PATH, fetching the pinned binaryen release if it
-# is not already there. Returns the full path to the wasm-opt executable.
-#
-# The extraction directory is a stable, version-keyed cache (-CacheRoot,
-# default %TEMP%) rather than a throwaway directory, so repeated runs reuse the
-# download instead of re-fetching ~10 MB every time. A cache hit is decided by
-# the presence of bin\wasm-opt.exe inside the version-keyed directory, so
-# bumping BINARYEN_VERSION never reuses a stale binary.
+# A version-keyed cache under -CacheRoot: reruns skip the download, and a version bump never reuses a stale binary.
 function Install-WasmOpt {
     param(
         [string]$VersionsEnvPath,
@@ -126,8 +85,7 @@ function Install-WasmOpt {
         [string]$Platform = 'windows',
         [ValidateSet('x86_64', 'aarch64')]
         [string]$Architecture = 'x86_64',
-        # Bootstrap even when a wasm-opt is already on PATH (e.g. to guarantee
-        # the pinned version rather than whatever the machine happens to have).
+        # Bootstrap even when wasm-opt is on PATH, to guarantee the pinned version.
         [switch]$Force
     )
 
@@ -152,8 +110,7 @@ function Install-WasmOpt {
             Remove-Item $archivePath -Force -ErrorAction SilentlyContinue
             throw "binaryen download checksum mismatch: expected $($pin.Sha256), got $actualSha"
         }
-        # The tarball's top-level directory is already binaryen-<version>, i.e.
-        # exactly $installDir - extract into the cache root, not into it.
+        # The tarball's top-level directory is already binaryen-<version>, so extract into the cache root.
         tar -xzf $archivePath -C $CacheRoot
         if ($LASTEXITCODE -ne 0) {
             throw "Extracting $($pin.Asset) failed (tar exit code $LASTEXITCODE)."
@@ -172,8 +129,7 @@ function Install-WasmOpt {
     return $exePath
 }
 
-# Argument vector for one wasm-opt invocation. Pure - no process is started -
-# so the flag set stays unit-testable.
+# Pure, so the flag set stays unit-testable.
 function Get-WasmOptArgument {
     param(
         [Parameter(Mandatory)]
@@ -181,8 +137,7 @@ function Get-WasmOptArgument {
         [Parameter(Mandatory)]
         [string]$OutputPath,
         [string]$OptimizationLevel = '-Oz',
-        # Use --all-features instead of the explicit feature list (the retry
-        # path, for codegen emitting a feature the list predates).
+        # The retry path, for codegen emitting a feature the explicit list predates.
         [switch]$AllFeatures
     )
 
@@ -190,8 +145,7 @@ function Get-WasmOptArgument {
     return @($OptimizationLevel) + $features + @($InputPath, '-o', $OutputPath)
 }
 
-# Runs wasm-opt with the feature flags above, retrying once with --all-features
-# if the explicit set is not enough. Throws when both attempts fail.
+# Retries once with --all-features; throws when both attempts fail.
 function Invoke-WasmOpt {
     param(
         [Parameter(Mandatory)]

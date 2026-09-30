@@ -7,16 +7,12 @@ _UBUNTU_MIRROR_SH_LOADED=1
 
 _UBUNTU_MIRROR_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Defensive: guarantee the canonical is_truthy() (platform.sh) is available even
-# when this file is sourced standalone (use-fast-ubuntu-mirror.sh sources ONLY
-# ubuntu-mirror.sh). platform.sh has its own load guard, so this is a no-op when
-# it is already loaded.
+# use-fast-ubuntu-mirror.sh sources only this file, so pull in platform.sh for is_truthy.
 # shellcheck disable=SC1090,SC1091
 [ -n "${_PLATFORM_SH_LOADED:-}" ] || \
   { [ -f "${_UBUNTU_MIRROR_SH_DIR}/platform.sh" ] && source "${_UBUNTU_MIRROR_SH_DIR}/platform.sh"; }
 
-# Thin alias delegating to the canonical is_truthy() (platform.sh). Kept for the
-# existing callers (base-image.sh, cross-env.sh, use-fast-ubuntu-mirror.sh).
+# Alias of is_truthy, kept for existing callers.
 ubuntu_mirror_is_truthy() {
   is_truthy "${1:-false}"
 }
@@ -76,13 +72,7 @@ ubuntu_ports_mirror_from_archive() {
   esac
 }
 
-# Which archive an Ubuntu arch lives on. amd64 and i386 are on archive.ubuntu.com;
-# EVERY other arch is on ports.ubuntu.com. One table, so the HOST stanza and the
-# TARGET stanza can never disagree about where an arch comes from -- the class of
-# bug that already cost riscv64 its Qt6. `386` is arch_normalize's canonical
-# spelling for i386 (cross_target_arch answers `386`), so it must be listed too
-# or an i386 target silently takes the ports branch.
-# docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
+# One table for host and target stanzas (386 is i386). docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
 ubuntu_arch_uses_ports() {
   case "${1:-}" in
     amd64|i386|386) return 1 ;;
@@ -103,11 +93,7 @@ ubuntu_effective_ports_mirror_url() {
   ubuntu_ports_mirror_from_archive "${archive_url}"
 }
 
-# Write a deb822 apt source stanza to a file. Single source of truth for the
-# Ubuntu source templates used by cross-apt.sh (foreign-arch ports) and the
-# Dockerfile.media base-stage apt reset. Args:
-#   $1 file  $2 URIs  $3 codename  $4 architecture  [$5 with_security=1]
-# Suites are <codename>{,-updates,-backports}, plus -security unless $5 = 0.
+# The one Ubuntu deb822 template: <file> <URIs> <codename> <arch> [with_security=1]
 ubuntu_write_deb822_source() {
   local file="$1" uris="$2" codename="$3" arch="$4" with_security="${5:-1}"
   local suites="${codename} ${codename}-updates ${codename}-backports"

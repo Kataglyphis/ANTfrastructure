@@ -1,27 +1,9 @@
 #!/usr/bin/env bash
-# chain-verify.sh — cross-chain staleness verification shared by orchestrator
-# and standalone verify script.
-#
-# Source this directly or through artifact-common.sh.
-# Depends on: stage-defs.sh, digest-pinning.sh, logging.sh, tag-naming.sh.
+# Cross-chain staleness checks; needs stage-defs.sh, digest-pinning.sh, logging.sh, tag-naming.sh.
 [ -n "${_CHAIN_VERIFY_SH_LOADED:-}" ] && return 0
 _CHAIN_VERIFY_SH_LOADED=1
 _CHAIN_VERIFY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-#
-# Provides:
-#   _verify_link()                  — check one parent→child transition
-#   verify_cross_chain_staleness()  — verify every cross-lane stage transition
-#   describe_cross_chain()          — print the full stage graph with tag names
 
-# ==============================================================================
-# _verify_link
-#
-# Verify one parent→child stage transition by resolving registry digests.
-# Reports the parent digest, child tag, and child's base layer digest for
-# manual inspection.  Returns 0 even when unresolvable (non-fatal).
-#
-# Usage: _verify_link "compiler->sdk-arm64" "${parent_tag}" "${child_tag}"
-# ==============================================================================
 _resolve_pin_or_empty() {
   local nerdctl_bin="$1" tag="$2" d
   d="$(registry_pin_ref "${nerdctl_bin}" "${tag}" 2>/dev/null || true)"
@@ -29,6 +11,7 @@ _resolve_pin_or_empty() {
   printf '%s' "${d}"
 }
 
+# _verify_link <label> <parent_tag> <child_tag>: non-fatal; stale links count into _CHAIN_VERIFY_STALE_COUNT.
 _verify_link() {
   local label="$1" parent_tag="$2" child_tag="$3" parent_digest child_base_digest
 
@@ -39,10 +22,7 @@ _verify_link() {
     return 0
   fi
 
-  # Preferred path: a real verdict. Images built since ancestry.sh exists record
-  # the parent reference they were built FROM as a manifest annotation; comparing
-  # that against the parent tag's CURRENT digest answers "is this link stale?"
-  # directly instead of printing digests for the reader to eyeball.
+  # A recorded parent gives a real verdict; older images only get a digest dump below.
   if declare -F ancestry_recorded_parent >/dev/null 2>&1; then
     local recorded
     recorded="$(ancestry_recorded_parent "${child_tag}" 2>/dev/null || true)"
@@ -58,7 +38,6 @@ _verify_link() {
     fi
   fi
 
-  # Fallback (image predates the ancestry annotation): informational digest dump.
   if ! command -v python3 >/dev/null 2>&1; then
     warn "[verify] ${label}: python3 not available, skipping base layer check"
     return 0
@@ -77,17 +56,7 @@ _verify_link() {
   fi
 }
 
-# ==============================================================================
-# verify_cross_chain_staleness
-#
-# Verify every stage transition in the cross lane by checking whether downstream
-# registry images are stale relative to their parent.  Uses CROSS_STAGE_ORDER
-# from stage-defs.sh — no hardcoded transitions.
-#
-# Skips base (no parent) and runtime (delegates to separate script).
-#
-# Usage: verify_cross_chain_staleness "${TARGET_ARCHES}"
-# ==============================================================================
+# verify_cross_chain_staleness <arches_csv>: 1 when any link is stale.
 verify_cross_chain_staleness() {
   local arches_csv="$1"
   local stage parent parent_tag child_tag arch label
@@ -127,14 +96,6 @@ verify_cross_chain_staleness() {
   log "[verify] chain check complete: all links fresh (or pre-annotation)"
 }
 
-# ==============================================================================
-# describe_cross_chain
-#
-# Print the full stage graph with tag names, parent chains, and per-arch status.
-# Useful for understanding the build topology before running commands.
-#
-# Usage: describe_cross_chain "${TARGET_ARCHES}"
-# ==============================================================================
 describe_cross_chain() {
   local arches_csv="$1"
   local stage parent dockerfile tag
@@ -149,8 +110,7 @@ describe_cross_chain() {
     if cross_stage_is_per_arch "${stage}"; then
       printf '\n[%s]  ← %s\n' "${stage}" "${parent:-ubuntu:26.04}"
       printf '  Dockerfile: %s\n' "${dockerfile}"
-      # Say BEFORE the run that android will produce an empty payload here, so
-      # a non-amd64 operator is not left to infer it from the build log.
+      # Say before the run that android's payload will be empty on this host.
       if [ "${stage}" = "android" ] && \
          command -v android_build_host_supported >/dev/null 2>&1 && \
          ! android_build_host_supported; then

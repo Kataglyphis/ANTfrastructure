@@ -4,52 +4,34 @@ logs/**/*
 out/**/*
 __pycache__/
 *.pyc
-# resource-monitor.sh output: lands in the repo root whenever an orchestrator
-# runs without --log-dir (its --out-dir default is REPO_ROOT)
+# resource-monitor.sh writes to the repo root when run without --log-dir.
 resources-*.csv
 resources-*.summary.txt
 *.deb
 windows/downloads/*
-# Keep the README so a fresh clone has the directory: Dockerfile.nvidia does an
-# unconditional `COPY downloads C:\temp\downloads` that FAILS when the (otherwise
-# fully gitignored) directory is absent from the build context.
+# Keeps the directory in a fresh clone: Dockerfile.nvidia's COPY of it fails when it is absent.
 !windows/downloads/README.md
 linux/llm-stack/ollama-binary.tar.zst
 linux/llm-stack/.env
 linux/nextcloud-aio/.env
-# The built site the :webserver image serves. 82 MB of minified Flutter output,
-# built in ANOTHER repository from sources that are not here, and tracked until
-# 2026-09-15 -- which made every clone of this repo pay for an artifact it
-# cannot rebuild. The image takes it through a named BUILD CONTEXT now
-# (linux/webserver/README.md); the files stay on disk, they are simply not the
-# repository's to carry.
+# Built in another repository; the image takes it through a named build context (linux/webserver/README.md).
 linux/webserver/dist/
-# Per-run chain state, rewritten at every stage start/ok/fail by
-# build-cross-chain.sh:_chain_status_emit. It was tracked until 2026-09-15, which
-# made every chain run dirty the working tree and every pull need a stash.
+# Per-run chain state, rewritten at every stage by build-cross-chain.sh.
 /chain-status.json
 /chain-status-*.json
 .claude/*
-# ...except the safety gate. A guard that only exists on one machine is not a
-# guard: a fresh clone, or a `git clean -xdf`, would silently disarm it
-# (2026-08-21 host wipe). settings.local.json stays ignored - it is personal.
+# ...except the safety gate, which must survive a fresh clone; settings.local.json is personal.
 !.claude/settings.json
 !.claude/hooks/
 .claude/hooks/*
 !.claude/hooks/guard-destructive-deletes.ps1
-# The Linux port must survive a fresh clone for the same reason as the .ps1 —
-# and this negation is exactly what its first commit was missing: the ignore
-# above silently swallowed `git add`, CI went red on a file that existed only
-# in one working tree.
+# The Linux port too; without this negation `git add` silently skips it.
 !.claude/hooks/guard-destructive-deletes.py
 
-# Throwaway litert-lm fast-rebuild harness (overlays the build script onto a local
-# windows-media-litert base image to re-iterate only litert-lm; dev-only, not reproducible in CI)
+# Dev-only litert-lm fast-rebuild harness.
 .cxxtest.Dockerfile
 
-# Qualcomm AI Engine Direct (QAIRT/QNN) SDK zip, staged by hand for the ORT QNN EP
-# (Windows: #121; Linux ARM64: backlog QNN-LINUX). Login-gated + EULA-bound, never
-# committed. Only the README rides along on each lane.
+# Login-gated, EULA-bound SDK drops staged by hand; only the READMEs are committed.
 windows/qnn-sdk/*
 !windows/qnn-sdk/README.md
 linux/qnn-sdk/*
@@ -57,26 +39,7 @@ linux/qnn-sdk/*
 linux/hailo-sdk/*
 !linux/hailo-sdk/README.md
 
-# ---------------------------------------------------------------------------
-# Scratch and one-shot helpers — never committed
-# ---------------------------------------------------------------------------
-# Ad-hoc drivers (a refactor script, a probe, a generated fragment) land in the
-# repo ROOT because that is where a `uv run` / `bash` invocation resolves
-# relative paths — and that is exactly where `git add -A` sweeps them into a
-# commit. NO tracked file at the root is a script, so root-level scripts are
-# ignored outright; put anything else throwaway under .scratch/.
-#
-# Safe against every gate, checked 2026-08-25: lint-shell.sh and lint-python.sh
-# both discover from explicit directory allowlists (linux/scripts, docs/scripts,
-# linux/llm-stack, linux/webserver) that exclude the root and .scratch/, and
-# crlf-guard reads `git ls-files`, so it never sees an ignored file. No
-# Dockerfile COPYs a root-level script either — the mirrored entries in
-# .dockerignore keep a stray one out of the build context, where it would
-# otherwise change the root context ~9 builds upload per full run.
-#
-# If a helper earns a SECOND use it is not scratch any more: move it to
-# linux/scripts/ or docs/scripts/, give it a header and a test, and commit it
-# there. Committing one deliberately is still `git add -f <file>`.
+# Scratch: no tracked root file is a script, so root-level scripts never reach a commit; a reused helper moves to linux/scripts/.
 /.scratch/
 /*.py
 /*.sh
@@ -85,33 +48,16 @@ linux/hailo-sdk/*
 /*.tmp
 /*.bak
 
-# Windows cmd placeholder taken literally by a tool invoked from Git Bash: a
-# `%SystemDrive%/ProgramData/...` tree appears in the repo root after running the
-# Linux suites on a Windows host. No script here references it, so the producer is
-# external. It was committed by accident once (51b0768b); this stops the repeat.
+# An external tool run from Git Bash takes this cmd placeholder literally and leaves the tree here.
 /%SystemDrive%/
 
-# Superseded working clones. DocumANTation is a submodule at third_party/ since
-# 2026-09-07; the hand-clone that survived that move was removed the same day.
-# The rule stays because the next one would be one `git add -A` from becoming a
-# gitlink nobody meant to commit. preflight.sh excludes both paths from the
-# secret scan.
+# A hand clone here would be one `git add -A` from an unintended gitlink.
 /external/
 
 # pytest leaves this behind when a suite is run by hand; the doc/code gates scan the tree.
 .pytest_cache/
 
-# ---------------------------------------------------------------------------
-# Binaries and build output do not belong in git
-# ---------------------------------------------------------------------------
-# Not a style rule. This repository's pack is ~154 MB and almost all of it is
-# ONE tree: the built site under linux/webserver/dist/, tracked until
-# 2026-09-15, rewritten on every site build, and never rebuildable from
-# anything here. History keeps it (no rewrite -- see
-# docs/project-info.md#repository-size-and-large-files); these rules are what
-# stops the next one joining it. A binary that genuinely belongs in the repo is
-# committed deliberately with `git add -f` and gets a line in that section
-# saying what it is and why.
+# Binaries stay out of git; a deliberate one needs `git add -f` and a line in docs/project-info.md#repository-size-and-large-files
 *.7z
 *.dll
 *.dylib
@@ -129,10 +75,7 @@ linux/hailo-sdk/*
 # ...except the two small tracked images the README and the docs render with.
 !images/*.png
 
-# Agentic-loop role prompts for the opencode engine, GENERATED by
-# Write-AgenticOpenCodeAgentFile / write_opencode_agent_file from
-# shared/agentic-loop/system-prompts/<role>.md + the project overlay. A
-# tracked copy is how the prompts forked once already - edit the overlay.
+# Generated from shared/agentic-loop/system-prompts plus the project overlay; edit the overlay.
 .opencode/agents/
 
 # Agent scratch: transient patch/probe files, never part of the repo.

@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# check-ort-provenance.sh -- the ORT census: every ONNX Runtime binary under a root is the chain build,
-# byte for byte, and every importer resolves to it. G1 (the runtime smoke's check_ort_census) and G6
-# (consumer bundles: `check-ort-provenance.sh <dir>`). ort_census_probe.py gathers facts; the verdict
-# function below is pure. Does NOT cover header-only provenance (foreign headers or import libs ship no
-# bytes), files the running user cannot read, or a dlopen by absolute path chosen at run time.
-# docs/cross-build-verification.md#e-ort-single-source
-#
+# ORT census (G1, G6): every ORT binary under a root is chain bytes. See docs/cross-build-verification.md § E. ORT single source
+
 # Usage: check-ort-provenance.sh [--reference DIR]... [--manifest FILE]... [--exempt ARCH:PATH:WHY]... <dir> | --image
 # Defaults to the chain ORT of the image it runs in. Exit 0 = clean, 1 = findings, 2 = usage.
 
@@ -125,13 +120,7 @@ _ort_bin_verdict() {  # <sha> <path> <roots> [name|fp|def]
   [ "${#_ORTC_ALLOW[@]}" -gt 0 ] || return 0
   case "$2" in
     */site-packages/onnxruntime/capi/* | */dist-packages/onnxruntime/capi/*) return 0 ;;
-    # The wrapper's staged chain-wheel store (Dockerfile.torch ENV
-    # ORT_CHAIN_WHEEL_DIR=/opt/onnxruntime-wheels): stage_chain_ort_wheels
-    # byte-checks every wheel it copies there against the census, so its
-    # members are the chain's own bytes by construction. The census graded
-    # them ELSEWHERE the first time a wrapper shipped the store
-    # (rocm lane 2026-09-28). The store only holds wheels, so a member name
-    # is unambiguous — and a non-wheel ORT dropped there still fails.
+    # stage_chain_ort_wheels byte-checks every wheel in this store; a non-wheel ORT here still fails.
     /opt/onnxruntime-wheels/*.whl!*) return 0 ;;
   esac
   _ort_under "${2%%!*}" "${_ORTC_ALLOW[@]}" || printf 'ELSEWHERE\t%s\ta chain ORT copy outside the chain prefixes and */site-packages/onnxruntime/capi\n' "$2"
@@ -219,8 +208,7 @@ _ort_census_exempt() {  # <findings> <arch> <exemption>...
   return 0
 }
 
-# PURE: probe text, stamps-armed flag, arch and exemptions in; one TAB line per finding out.
-# Every verb but EXEMPT is fatal; no output at all is a pass.
+# Pure: probe, stamps-armed flag, arch, exemptions in; one TAB line per finding out, all fatal but EXEMPT.
 ort_census_verdicts() {
   local probe="${1//$'\r'/}" armed="${2:-0}" arch="${3:-}"
   if [ "$#" -ge 3 ]; then shift 3; else shift "$#"; fi

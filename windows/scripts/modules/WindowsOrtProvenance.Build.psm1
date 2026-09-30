@@ -2,8 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# G2 (owner rule 2026-09-23): a consumer's build tree (links followed), records, logs and fetch caches hold no ORT but the chain's; a
-# pass stamps it for G1. Imports nothing. NOT covered: an ORT under a non-ORT name, pip's pre-23.3 http cache, what loads at run time.
+# G2: a consumer's build tree, records, logs and fetch caches hold no ORT but the chain's; a pass stamps it for G1. Imports nothing.
 
 Set-StrictMode -Version Latest
 
@@ -25,8 +24,7 @@ function Get-OrtGateStampPath {
 }
 
 function Get-OrtGateDefaultCache {
-    # NuGet, pyke's ORT download, pip (built wheels + HTTP bodies) and uv, at each tool's override or its default under the profile.
-    # The env spelling first (what a container sets, what a test redirects); the known folder only when it is unset.
+    # Each tool's cache override, else its profile default; the env spelling first, since containers and tests set it.
     $local = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [Environment]::GetFolderPath('LocalApplicationData') }
     $user = if ($env:USERPROFILE) { $env:USERPROFILE } else { [Environment]::GetFolderPath('UserProfile') }
     $nuget = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } elseif ($user) { Join-Path $user '.nuget\packages' }
@@ -141,8 +139,7 @@ function Get-OrtGateLinkTarget {
 }
 
 function Get-OrtGateTreeFinding {
-    # Every file and dir under each root, hidden ones too. A dir link whose target leaves the roots, -Allowed (the chain and its
-    # shims) and the OS dir is walked as well, and each link lands in -Link for the record paths spelled through it.
+    # Hidden entries too; a dir link leaving the roots is walked and recorded in -Link for record paths spelled through it.
     param([AllowEmptyCollection()][string[]]$Root, [Parameter(Mandatory)][hashtable]$Index, [hashtable]$Count, [switch]$Cache,
         [AllowEmptyCollection()][string[]]$Allowed = @(), [System.Collections.IDictionary]$Link)
     $opt = [System.IO.EnumerationOptions]@{ AttributesToSkip = [System.IO.FileAttributes]0; IgnoreInaccessible = $false }
@@ -251,8 +248,7 @@ function Get-OrtGateRecordToken {
 }
 
 function Get-OrtGateRecordFinding {
-    # A record may name ORT only under the chain, a shim or the tree (read through the tree's links); a foreign include or lib dir
-    # holding ORT is a finding. The Windows dir is the OS's, not a build input: which ORT loads from System32 is G1's question.
+    # Records may name ORT only under the chain, a shim or the tree; the Windows dir is G1's question, not a build input.
     param([AllowEmptyCollection()][string[]]$Record, [Parameter(Mandatory)][hashtable]$Index, [string[]]$ChainRoot, [string[]]$Allowed, [hashtable]$Count,
         [System.Collections.IDictionary]$Link)
     $os = @([Environment]::GetFolderPath('Windows') | Where-Object { $_ })
@@ -301,8 +297,7 @@ function Get-OrtGateLogFinding {
 }
 
 function Assert-ChainOrtOnly {
-    # G2: throws on any finding (its own or -Finding from the consumer's gate); on a pass writes the G1 stamp.
-    # -Shim: a dir the consumer built from the chain (a header or ORT_HOME copy). -TreeRoot: source + build trees. -Log: at least one.
+    # Throws on any finding, the consumer's -Finding included; a pass writes the G1 stamp. -Shim: a chain-built copy dir.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][ValidatePattern('^[a-z0-9][a-z0-9-]*$')][string]$Consumer,

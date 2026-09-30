@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install-rust.sh
-# Installs rustup, cargo-c, nightly toolchain, and cross-compilation targets
-# for the host and all target architectures. Called from Dockerfile.toolchain,
-# and again by setup-package-image.sh on foreign-arch runtime images, where
-# the COPY'd toolchain is the builder's x86_64 one and cargo-c comes from apt
-# (RUST_INSTALL_CARGO_C=0). docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
+# Also rerun on foreign-arch runtime images. docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
 
 if [ -f /opt/scripts/core/platform.sh ]; then
   # shellcheck disable=SC1091
@@ -31,17 +26,11 @@ else
   rust_targets="${host_arch}"
 fi
 
-# Pin the toolchain: an unpinned `rustup | sh` installs TODAY's stable, so a
-# rebuild produced a different rustc/cargo than the shipped images (found in
-# the 2026-07 chain review). Pins live in versions.env; env wins if set.
+# Pinned: an unpinned rustup installs today's stable, not what the shipped images carry.
 : "${RUST_VERSION:=1.97.1}"
 : "${CARGO_C_VERSION:=0.10.24}"
 
-# Download rustup-init to a file (never pipe curl into sh: a truncated stream
-# would execute a partial script), then optionally pin it: RUSTUP_INIT_SHA256
-# comes from the environment, falling back to the versions.env key when the
-# core mount is present. Empty = skip (upstream rotates the script; see the
-# key's comment in versions.env).
+# Download to a file, never curl | sh (a truncated stream runs half a script); RUSTUP_INIT_SHA256 pins it.
 if [ -z "${RUSTUP_INIT_SHA256:-}" ] && [ -f /opt/scripts/core/versions.env ]; then
   RUSTUP_INIT_SHA256="$(sed -n 's/^RUSTUP_INIT_SHA256=//p' /opt/scripts/core/versions.env)"
 fi
@@ -68,37 +57,13 @@ try_rustup() {
   printf 'WARNING: optional rustup command failed: %s\n' "$*" >&2
 }
 
-# clippy and rustfmt are NOT optional (no try_rustup), for the same reason the
-# wasm target below is not. `--profile minimal` ships neither. The runtime stage
-# has no rustup, so a consumer cannot add a missing component itself — and it
-# does not even get a clean error: the images also carry Ubuntu's cargo/clippy
-# debs at /bin, so `cargo clippy` silently falls through to THAT one and builds
-# the project with rustc 1.93.1 instead of the pinned toolchain. The symptom is
-# unrelated-looking, e.g.
-#   error[E0658]: use of unstable library feature `array_windows`
-#     --> .../epaint-0.36.1/src/shapes/shape.rs
-# for code that compiles fine on the pinned rustc. A silently-degraded
-# toolchain is worse than a failed image build.
+# Required: the runtime has no rustup, and cargo clippy would silently fall back to Ubuntu's older /bin toolchain.
 rustup component add clippy
 
-# rustfmt, on the DEFAULT toolchain. NOT optional, for the same reason as the
-# wasm target below: `--profile minimal` ships neither, the runtime stage has no
-# rustup for a consumer to add one itself, and a consumer lane that calls
-# `cargo fmt` therefore cannot run its format gate at all - it dies with
-#   error: 'cargo-fmt' is not installed for the toolchain '<ver>-<host>'
-# OxidANT's workflow had been asserting in a comment that "rustfmt
-# and clippy are baked in at image-build time" while only clippy actually was;
-# the format gate was dead from the moment it stopped being
-# continue-on-error. Failing the image build is the correct response to a
-# missing lint component - a gate that cannot run is the failure mode this
-# repo keeps paying for.
+# Required: without rustfmt a consumer's cargo fmt gate cannot run at all.
 rustup component add rustfmt
 
-# The browser build target, on the DEFAULT (stable) toolchain: consumer CI
-# lanes run `cargo check --target wasm32-unknown-unknown` on stable, and the
-# runtime containers have no rustup on PATH to add it themselves - without
-# this the OxidANT wasm gate can only skip (found 2026-07-22).
-# Not optional (no try_): if the wasm target is missing the gate is dead.
+# Required: consumer lanes check wasm32 on stable, and the runtime has no rustup to add it.
 rustup target add wasm32-unknown-unknown
 
 # Pinned nightly (a bare "nightly" floats to today's build).

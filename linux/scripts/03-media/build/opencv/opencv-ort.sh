@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# opencv-ort.sh - OpenCV dnn/G-API get the chain ONNX Runtime and nothing else (owner rule 2026-09-23).
-# Source-only (build-opencv.sh). NOT covered: which libonnxruntime the loader picks (configure-runtime.sh).
+# Source-only: OpenCV dnn/G-API get the chain ONNX Runtime and nothing else; the loader's pick is configure-runtime.sh's.
 
 # The ORT the onnxruntime stage builds; build-opencv.sh fails without it.
 OPENCV_ORT_CHAIN_ROOT=/usr/local/lib/onnxruntime-cpu
 
-# opencv_ort_compat_tree <chain> <compat>: the chain in FindONNX's layout, minus the Windows-only
-# DML headers (FindONNX would turn on gapi's dml_ep.cpp, which cannot compile here).
+# opencv_ort_compat_tree <chain> <compat>: the chain in FindONNX's layout, minus the DML headers that enable gapi's uncompilable dml_ep.cpp.
 opencv_ort_compat_tree() {
     local chain="$1" compat="$2"
     if [ ! -d "${chain}/include" ] || [ ! -e "${chain}/lib/libonnxruntime.so" ]; then
@@ -32,8 +30,7 @@ opencv_ort_version() {
     printf '%s\n' "${lib##*/libonnxruntime.so.}"
 }
 
-# opencv_ort_cmake_args <out-array> <compat> <version>: every ORT input spelled out. HAVE_ONNXRUNTIME=1
-# is what skips dnn's 1.25.1 download (opencv 5.0.0 modules/dnn/CMakeLists.txt:141); the gate proves it.
+# opencv_ort_cmake_args <out-array> <compat> <version>: HAVE_ONNXRUNTIME=1 is what skips dnn's 1.25.1 download; the gate proves it.
 opencv_ort_cmake_args() {
     local -n _ooca_out="$1"
     _ooca_out+=(
@@ -54,8 +51,7 @@ _opencv_ort_cache() {
     sed -n "s/^$2:[A-Z]*=//p" "$1" | head -n 1 || true
 }
 
-# _opencv_ort_log_findings <configure-log> <version>: dnn's download/extract/static lines,
-# and the two lines that must be there.
+# _opencv_ort_log_findings <configure-log> <version>: dnn's download/extract/static lines, and the two lines that must be there.
 _opencv_ort_log_findings() {
     local log="$1" ver="$2"
     grep -e 'DNN: Downloading ONNX Runtime' -e 'DNN: Extracting ONNX Runtime' \
@@ -69,8 +65,7 @@ _opencv_ort_log_findings() {
     return 0
 }
 
-# _opencv_ort_lib_finding <what> <value> <chain-lib-real>: the one ORT library CMake picked
-# must be a live, shared file inside the chain.
+# _opencv_ort_lib_finding <what> <value> <chain-lib-real>: the ORT library CMake picked must be a live shared file in the chain.
 _opencv_ort_lib_finding() {
     local what="$1" v="$2" chain_real="$3" lib
     lib="$(readlink -f -- "${v:-/nonexistent}" 2>/dev/null || true)"
@@ -103,8 +98,7 @@ _opencv_ort_cache_findings() {
     done
 }
 
-# opencv_ort_configure_findings <log> <CMakeCache.txt> <compat> <chain> <version>: one line per sign
-# that configure saw an ORT other than the chain; no output = chain only. NOT covered: the install tree.
+# opencv_ort_configure_findings <log> <CMakeCache.txt> <compat> <chain> <version>: one line per non-chain ORT sign; none = chain only.
 opencv_ort_configure_findings() {
     [ -f "$1" ] || { echo "configure log missing: $1"; return 0; }
     [ -f "$2" ] || { echo "CMakeCache.txt missing: $2"; return 0; }
@@ -129,8 +123,7 @@ _opencv_ort_installed() {
     find "$1" \( -type f -o -type l \) -name 'libonnxruntime*' 2>/dev/null | LC_ALL=C sort || true
 }
 
-# opencv_ort_forward_installed <prefix> <chain-lib-dir>: dnn's install rule copies libonnxruntime.so*
-# into <prefix>; swap each for a link to the chain file, refusing bytes the chain does not have.
+# opencv_ort_forward_installed <prefix> <chain-lib-dir>: swap dnn's installed ORT copies for chain links, refusing foreign bytes.
 opencv_ort_forward_installed() {
     local prefix="$1" chain_lib="$2" f name
     local -a found=()
@@ -149,8 +142,7 @@ opencv_ort_forward_installed() {
     done
 }
 
-# opencv_ort_install_findings <prefix> <chain-lib-dir>: every libonnxruntime* under <prefix> must be a
-# live link into the chain; no output = no second ORT file. NOT covered: files outside <prefix>.
+# opencv_ort_install_findings <prefix> <chain-lib-dir>: each libonnxruntime* under <prefix> must be a live chain link; none = clean.
 opencv_ort_install_findings() {
     local f chain_real
     local -a found=()

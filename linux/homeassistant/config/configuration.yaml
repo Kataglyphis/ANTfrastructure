@@ -1,4 +1,3 @@
-#
 # Loads default set of integrations. Do not remove.
 default_config:
 
@@ -11,8 +10,7 @@ recorder:
 
 homeassistant:
   customize:
-    # Tasmota smartmeter counters arrive without metadata; the Energy
-    # dashboard needs real energy totals.
+    # Tasmota counters arrive without the metadata the Energy dashboard needs.
     sensor.bitshake_smartmeterreader_e320_e_in:
       unit_of_measurement: kWh
       state_class: total_increasing

@@ -4,12 +4,10 @@
 
 <#
 .SYNOPSIS
-    rocm image: IREE's hip HAL driver is compiled in and looks for TheRock's amdhip64_7.dll, and the
-    rocm target (iree-compile and iree.compiler) links a gfx1201 AMDGPU code object.
+    rocm image: IREE's hip driver looks for amdhip64_7.dll and the rocm target links a gfx1201 code object.
 .DESCRIPTION
-    Writes one finding per gap; nothing means pass. Lists, loads from an empty dir and compiles, so no GPU is needed.
-    NOT covered: creating a hip device or running a kernel (needs an RDNA3/4 GPU and AMD's driver).
-    Built by Build-IreeFromSource.ps1; docs/windows-builds.md § ROCm layer.
+    GPU-less (lists, loads from an empty dir, compiles); no hip device or kernel run.
+    See docs/windows-rocm.md § IREE and TVM on the rocm lane.
 #>
 
 Set-StrictMode -Version Latest
@@ -37,8 +35,7 @@ function Get-ElfHeaderRecord {
 
 <#
 .SYNOPSIS
-    A finding unless the blob holds a linked (ET_DYN) ELF64 AMDGPU (e_machine 224) object for $Mach.
-    gfx1201 is 0x4E, read off IREE 3.11's own gfx1201 output.
+    A finding unless the blob holds a linked (ET_DYN) ELF64 AMDGPU (e_machine 224) object for $Mach (gfx1201 = 0x4E).
 #>
 function Get-AmdgpuCodeObjectFinding {
     param(
@@ -57,8 +54,7 @@ function Get-AmdgpuCodeObjectFinding {
 
 <#
 .SYNOPSIS
-    A finding unless --hip_dylib_path=<empty dir> tried exactly <dir>\<name> for each Windows name, in
-    order. Without the carried reset patch, names 2 and 3 come out as concatenated paths.
+    A finding unless --hip_dylib_path=<empty dir> tried <dir>\<name> per name, in order; unpatched, names 2 and 3 concatenate.
 #>
 function Get-IreeHipSearchPathFinding {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Output, [Parameter(Mandatory)][string]$Dir)
@@ -76,8 +72,7 @@ function Get-IreeRocmGateMlir {
 
 <#
 .SYNOPSIS
-    The python half: the wheels list hip, their runtime extension carries the patched name, and
-    iree.compiler writes a rocm vmfb to argv[2]. Prints one JSON report line.
+    The python half: hip listed, the patched name in the runtime .pyd, a rocm vmfb at argv[2]; one JSON line.
 #>
 function Get-IreeRocmPythonProbe {
     return @"
@@ -122,8 +117,7 @@ function Get-IreeRocmFinding {
     if (-not [System.Text.Encoding]::Latin1.GetString([System.IO.File]::ReadAllBytes($run)).Contains('amdhip64_7.dll')) {
         'IREE: iree-run-module.exe does not look for amdhip64_7.dll -- the hip driver would find no HIP runtime on Windows'
     }
-    # Every load fails in an empty dir, so the error lists each candidate path. The path flag goes first:
-    # --list_devices runs while the flags are still being parsed.
+    # An empty dir makes every candidate fail and print; the path flag goes first because --list_devices acts mid-parse.
     $noHip = Join-Path $ScratchDir 'no-hip-runtime'
     [void](New-Item -ItemType Directory -Force -Path $noHip)
     $search = & $Invoke $run @("--hip_dylib_path=$noHip", '--list_devices=hip')

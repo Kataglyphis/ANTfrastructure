@@ -1,21 +1,12 @@
 #!/usr/bin/env bash
-# ctest-run.sh - generic "run a CMake project's test suite in a container" core.
-#
-# The test-phase twin of cmake-build.sh, deliberately separate: CI builds once
-# and runs ctest over several trees (plain, ASan, TSan), and sourcing the build
-# driver would drag in machinery a test run has no use for.
-# Variables: docs/shared-script-libraries.md § ctest-run.sh.
-#
-# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
+# Sourced core (no shell options), apart from cmake-build.sh: CI builds once, tests many trees. docs/shared-script-libraries.md#ctest-runsh--run-a-cmake-projects-test-suite-in-a-container
 [ -n "${_CTEST_RUN_SH_LOADED:-}" ] && return 0
 _CTEST_RUN_SH_LOADED=1
 
 # shellcheck source=./log-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
 
-# --verbose --extra-verbose --debug together with -T test: verbose output plus a
-# Testing/ subtree that CI can upload, and --output-on-failure so a failing test
-# prints its own stdout even when the rest is filtered.
+# -T test leaves a Testing/ tree CI can upload; --output-on-failure keeps a failing test's stdout.
 _CTEST_RUN_BUILTIN_ARGS=(
   --verbose
   --extra-verbose
@@ -24,9 +15,7 @@ _CTEST_RUN_BUILTIN_ARGS=(
   --output-on-failure
 )
 
-# NOTE: keep this heredoc free of apostrophes and inner single quotes:
-# ShellCheck 0.11 mis-parses ${VAR:-} expansions combined with apostrophes
-# inside heredocs (SC1073/SC1072 parser errors).
+# No apostrophes in this heredoc: ShellCheck 0.11 mis-parses ${VAR:-} beside them (SC1073/SC1072).
 ctest_run_usage() {
   cat <<EOF
 Usage: $(basename "$0") [options] [-- ctest args...]
@@ -45,13 +34,7 @@ ctest command line verbatim.
 EOF
 }
 
-# ---------------------------------------------------------------------------
-# Argument parsing
-# ---------------------------------------------------------------------------
-# Fills BUILD_DIR, BUILD_TYPE, CTEST_EXCLUDE and CTEST_RUN_PASSTHROUGH.
-#
-# Precedence per setting: CLI flag > pre-existing environment variable >
-# caller default.
+# Argument parsing. Precedence: CLI flag > environment > caller default.
 ctest_run_parse_args() {
   CTEST_RUN_PASSTHROUGH=()
 
@@ -107,12 +90,7 @@ ctest_run_parse_args() {
   CTEST_EXCLUDE="${CTEST_EXCLUDE:-${CTEST_EXCLUDE_DEFAULT:-${CTEST_RUN_DEFAULT_EXCLUDE:-}}}"
 }
 
-# ---------------------------------------------------------------------------
-# Environment preparation
-# ---------------------------------------------------------------------------
-# A bind-mounted workspace is owned by the host user, so git inside the
-# container refuses to touch it until it is marked safe - and tests that shell
-# out to git (or a CTest fixture that does) fail in confusing ways without it.
+# Environment preparation: git refuses a host-owned bind mount until it is marked safe.
 ctest_run_prepare_env() {
   local safe_dir="${CTEST_RUN_SAFE_DIRECTORY-/workspace}"
   if [[ -n "${safe_dir}" ]]; then
@@ -128,11 +106,7 @@ ctest_run_prepare_env() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Command construction + execution
-# ---------------------------------------------------------------------------
-# Builds the ctest argv into CTEST_CMD. Pure: nothing is executed and no
-# directory is changed, so the command line stays inspectable (and testable).
+# Command construction. Pure: fills CTEST_CMD without running anything, so it stays testable.
 ctest_run_build_command() {
   local default_args=("${CTEST_RUN_DEFAULT_ARGS[@]:-}")
   if [[ -z "${default_args[0]:-}" ]]; then
@@ -152,9 +126,7 @@ ctest_run_build_command() {
 ctest_run_execute() {
   if [[ -n "${BUILD_DIR}" ]]; then
     info "Changing to build directory: ${BUILD_DIR}"
-    # Checked explicitly rather than leaning on the caller's `set -e`: this
-    # library does not set -e itself, and a failed cd that is merely warned
-    # about would run the whole suite in the wrong directory.
+    # Checked explicitly: no set -e here, and a failed cd would run the suite in the wrong directory.
     [[ -d "${BUILD_DIR}" ]] || err "Build directory not found: ${BUILD_DIR}. Configure/build it first."
     cd "${BUILD_DIR}" || err "Cannot enter build directory: ${BUILD_DIR}"
   fi

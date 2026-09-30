@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# --no-push wrapper builds: Dockerfile.torch's wheels-source FROM names the
-# android tag, which lives only in the containerd store that BuildKit's OCI
-# worker cannot see. It must arrive as a DIRECTORY context: nerdctl maps every
-# oci-layout:// context onto one fixed store id, so a second OCI context beside
-# runtime_package made the android manifest unresolvable.
+# --no-push wrapper builds get the wheelhouse as a directory context; see docs/failure-modes.md § A no-push wrapper build cannot find its own android image
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -19,8 +15,7 @@ cross_build_host_infix() { printf hostarm64; }
 cross_android_tag() { printf "repo:cross-android-hostarm64-%s" "$1"; }
 runtime_stage_context_dir() { printf "%s/%s-%s" "${WORK}" "$1" "$2"; }'$'\n'"${RW_OPTIONAL_ARG_STUB}"
 
-# A nerdctl that logs its calls; `export` streams a rootfs holding a wheelhouse
-# AND an unrelated tree, or fails.
+# The rootfs holds an unrelated tree beside the wheelhouse, which must not be copied.
 _BIN="$(rw_nerdctl_dir)"
 _ROOTFS="$(rw_rootfs)"
 export ROOTFS="${_ROOTFS}"
@@ -75,8 +70,7 @@ t_assert_contains "$(t_fn_src "${RBF}" _runtime_build_wrapper)" \
   "an unchecked call would build on with the wrong wheels source"
 
 t_case "the wheelhouse the venv RUN prunes is writable, and a failed prune is loud"
-# Read-only, the ONNX-variant prune's rm died on EROFS behind `|| true`, and the
-# GPU venv shipped onnxruntime-gpu AND onnxruntime-webgpu (measured 2026-09-21).
+# A read-only mount makes the ONNX-variant prune's rm fail with EROFS, shipping two ORT variants.
 t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.torch")" \
   "--mount=type=bind,from=wheels-source,source=/opt/wheels,target=/opt/wheels,rw" \
   "the bind mount takes the writes (BuildKit discards them after the RUN)"

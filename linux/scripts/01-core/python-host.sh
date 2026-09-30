@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# python-host.sh - shared host Python environment setup for media build scripts.
-#
-# Sources this after common.sh / cross-python.sh are loaded.
-# Provides:
-#   setup_host_python_environment    - export HOST_PYTHON_BIN, PYTHON_EXECUTABLE,
-#                                     Python_EXECUTABLE, Python3_EXECUTABLE
-#   setup_host_python_with_major_minor - same + export PYTHON_MAJOR_MINOR
+# Host Python exports for the media builds; source after common.sh and cross-python.sh.
 
 [ -n "${_PYTHON_HOST_SH_LOADED:-}" ] && return 0
 _PYTHON_HOST_SH_LOADED=1

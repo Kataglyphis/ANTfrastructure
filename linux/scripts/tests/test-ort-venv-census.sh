@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# ort-venv-census.py (each case on the .py AND Build-TorchApp.ps1's copy) and its assemble-torch-app.sh wiring.
-# NOT covered: a real uv venv or a real ORT wheel (fixture dists), and the Windows wrapper.
+# ort-venv-census.py and Build-TorchApp.ps1's copy on fixture dists, plus the wiring; no real venv or wheel.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -18,8 +17,7 @@ awk '/^function Get-TorchAppOrtCensusSource/ {f=1} f && /^'"'"'@$/ {exit} p {pri
 t_case "Build-TorchApp.ps1 embeds a census"
 t_assert_contains "$(cat "${_WIN_COPY}")" "def check(store):" "the here-string was found and lifted"
 
-# Fixture dists: `wheel|install NAME VERSION TOP [flag...]` and `dir TOP`. An install is the wheel's
-# payload unless a flag bends it: tamper, drop, extra, stray, norecord; datalib moves the wheel's payload.
+# Fixture dists `wheel|install NAME VERSION TOP [flag...]` or `dir TOP`; flags: tamper drop extra stray norecord datalib.
 _fixture_py() {
   cat <<'FIXTURE_PY'
 import base64

@@ -3,33 +3,16 @@
 
 #requires -Version 7.0
 
-# Test execution on Windows: locating a test binary in a build tree, and running
-# it (or ctest) with the AddressSanitizer runtime reachable and ASAN_OPTIONS
-# scoped to the call.
-#
-# Upstreamed from BeschleunigerBallett's vendored
-# scripts/windows/modules copy (2026-08-11). Nothing in it was project-specific,
-# and a second consumer needed the same ASan-runtime discovery:
-# OmniAccelerANT's Start-Windows.ps1 was hand-rolling a narrower
-# version of Get-AsanRuntimeDirs that only ever matched the BuildTools SKU.
-#
-# The Visual Studio half now goes through Get-MsvcToolsRoots
-# (WindowsScripts.Shared) rather than globbing "Program Files*\Microsoft Visual
-# Studio\*\*": that is the vswhere-based single source this repo already
-# consolidated on, it finds Community/Professional/Enterprise as well as
-# BuildTools, retries a cold-boot race and falls back to filesystem discovery.
+# Runs test binaries and ctest with the ASan runtime reachable and ASAN_OPTIONS scoped to the call.
 
 Set-StrictMode -Version Latest
 
-# Logging/exec primitives (Write-BuildLog*, Invoke-BuildExternal). Plain,
-# unforced import so an entry script's -Force -Global copy is not displaced --
-# the shadowing pitfall documented in WindowsCMake.Common's header.
+# Not -Force, so an entry script's -Force -Global copy is not displaced.
 Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
 # Get-MsvcToolsRoots.
 Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1')
 
-# The MSVC ASan runtime directory, memoised: resolving it walks the VS install
-# tree, and a test step calls it once per executable.
+# Memoised: resolving walks the VS install tree, and a test step asks once per executable.
 $script:MsvcAsanRuntimeDir = $null
 
 $script:AsanRuntimeDllName = 'clang_rt.asan_dynamic-x86_64.dll'
@@ -58,20 +41,14 @@ function Add-AsanRuntimeDirIfPresent {
 function Get-VisualStudioAsanRuntimeDirs {
   <#
   .SYNOPSIS
-      Directories under the installed MSVC toolsets that ship the ASan runtime,
-      newest toolset first.
+      MSVC toolset directories that ship the ASan runtime, newest first.
   .DESCRIPTION
-      Microsoft's runtime, NOT LLVM's. On a Flutter/COM application the two are
-      not interchangeable: LLVM's clang_rt.asan_dynamic loads after ucrtbase, so
-      allocations made during CRT/COM startup are unhooked and it aborts with an
-      unsuppressible bad-free when combase/ole32 later frees them. Microsoft's
-      tracks Windows heap ownership and passes those foreign frees through.
+      See docs/windows-clang-cl-sanitizers.md § Microsoft's ASan runtime, not LLVM's.
   #>
   param()
 
   $runtimeDirs = [System.Collections.Generic.List[string]]::new()
-  # -AllowMissing: no Visual Studio just means one fewer runtime root, never a
-  # hard failure. -All so a machine with several installs is fully searched.
+  # No Visual Studio means one fewer root, never a failure; -All searches every install.
   foreach ($toolsRoot in @(Get-MsvcToolsRoots -AllowMissing -All)) {
     Add-AsanRuntimeDirIfPresent -RuntimeDirs $runtimeDirs -CandidateDir (Join-Path $toolsRoot 'bin\Hostx64\x64')
   }
@@ -106,9 +83,7 @@ function Get-LlvmAsanRuntimeDirs {
       Add-AsanRuntimeDirIfPresent -RuntimeDirs $runtimeDirs -CandidateDir (Join-Path $clangResourceDir.Trim() 'lib\windows')
     }
   } catch {
-    # Best-effort probe: clang-cl absent (or a broken --print-resource-dir) just
-    # means no ASAN runtime dir candidate from this source — the explicit
-    # LLVM-install candidates above still apply. Not actionable, say so quietly.
+    # Best-effort: the LLVM-install candidates above still apply.
     Write-Verbose "clang-cl resource-dir probe failed: $($_.Exception.Message)"
   }
 
@@ -118,11 +93,9 @@ function Get-LlvmAsanRuntimeDirs {
 function Get-AsanRuntimeDirs {
   <#
   .SYNOPSIS
-      Every directory holding an ASan runtime DLL, in load-preference order.
+      Every directory holding an ASan runtime DLL, Microsoft's first, then LLVM's.
   .PARAMETER RuntimeFlavor
-      'Msvc' or 'Clang' to restrict the search; 'Auto' (default) returns
-      Microsoft's first, then LLVM's. Prefer 'Msvc' for anything that hosts COM
-      or the CRT before main() -- see Get-VisualStudioAsanRuntimeDirs.
+      'Msvc' or 'Clang' restricts the search; prefer 'Msvc' for anything hosting COM or the CRT before main().
   #>
   param(
     [ValidateSet('Auto', 'Msvc', 'Clang')]
@@ -135,8 +108,7 @@ function Get-AsanRuntimeDirs {
     if ($script:MsvcAsanRuntimeDir) {
       Add-AsanRuntimeDirIfPresent -RuntimeDirs $asanRuntimeDirs -CandidateDir $script:MsvcAsanRuntimeDir
     } elseif ($env:VCToolsInstallDir) {
-      # Inside a VsDevCmd shell this is already the right toolset -- cheaper
-      # than asking vswhere, and it is what the container entrypoint sets.
+      # Inside a VsDevCmd shell this is already the right toolset, and cheaper than vswhere.
       $fromEnv = Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64'
       Add-AsanRuntimeDirIfPresent -RuntimeDirs $asanRuntimeDirs -CandidateDir $fromEnv
       if ($asanRuntimeDirs.Count -gt 0) {
@@ -167,10 +139,6 @@ function Get-AsanRuntimeDll {
   <#
   .SYNOPSIS
       Full path of the first ASan runtime DLL found, or $null.
-  .DESCRIPTION
-      The "I just need the file to copy next to my exe" entry point --
-      Get-AsanRuntimeDirs returns directories, and every consumer that only
-      wants to stage the DLL was re-deriving this join itself.
   #>
   param(
     [ValidateSet('Auto', 'Msvc', 'Clang')]
@@ -185,21 +153,16 @@ function Get-AsanRuntimeDll {
 function Resolve-TestExecutable {
   <#
   .SYNOPSIS
-      Locates a test binary inside a build tree.
+      Locates a test binary in a build tree: root, multi-config dirs, extra dirs, then a recursive search.
   .DESCRIPTION
-      Tries the build root, then the multi-config subdirectories, then the
-      caller's extra relative directories, before a recursive search.
-      Distinct from WindowsAppRunner.Common's Resolve-AppExecutablePath, which
-      searches an INSTALLED bundle (bin\, per-configuration bundle layout).
+      For an installed bundle use Resolve-AppExecutablePath (WindowsAppRunner.Common) instead.
   #>
   param(
     [Parameter(Mandatory)]
     [string]$BuildRoot,
     [Parameter(Mandatory)]
     [string]$ExecutableName,
-    # Extra build-root-relative directories to probe before the recursive
-    # fallback, e.g. @('Test\commit', 'Test\perf'). Project layouts differ;
-    # the defaults cover single- and multi-config generators only.
+    # Probed before the recursive fallback, e.g. @('Test\commit', 'Test\perf').
     [string[]]$AdditionalRelativeDirectory = @()
   )
 
@@ -228,16 +191,10 @@ function Resolve-TestExecutable {
 function Invoke-WithAsanOptions {
   <#
   .SYNOPSIS
-      Runs a script block with extra ASAN_OPTIONS prepended, then restores.
+      Runs a script block with extra ASAN_OPTIONS prepended, then restores them.
   .DESCRIPTION
-      The single home for the save/override/restore pattern - do not hand-roll
-      it at call sites. Option VALUES stay with the caller: test binaries
-      typically want report_globals=1, while a full GUI application needs
-      report_globals=0 + windows_hook_rtl_allocators=false, because GUI/driver
-      globals and RTL allocator hooking produce noise a test binary never sees.
-      An empty -Options adds nothing: the block runs with ASAN_OPTIONS exactly
-      as the caller had it (Invoke-WithRuntimePath -AsanOptions '' is how a
-      consumer opts out of the test-binary defaults).
+      Values stay with the caller: a GUI app needs report_globals=0 and windows_hook_rtl_allocators=false.
+      An empty -Options leaves ASAN_OPTIONS exactly as the caller had it.
   #>
   param(
     [Parameter(Mandatory)]
@@ -272,8 +229,7 @@ function Invoke-WithAsanOptions {
 function Invoke-WithRuntimePath {
   <#
   .SYNOPSIS
-      Runs a script block with extra directories on PATH and ASAN_OPTIONS set,
-      restoring both afterwards.
+      Runs a script block with extra PATH directories and ASAN_OPTIONS, restoring both afterwards.
   #>
   param(
     [string[]]$RuntimeDirs = @(),
@@ -303,11 +259,8 @@ function Invoke-ManualTestExecutable {
   .SYNOPSIS
       Runs one test binary with the ASan runtime reachable.
   .DESCRIPTION
-      Returns $false (with a warning) rather than throwing when the binary is
-      missing, or when Windows refuses to start it with STATUS_DLL_NOT_FOUND /
-      STATUS_ENTRYPOINT_NOT_FOUND -- a loader/runtime mismatch is an
-      environment problem, and failing the whole pipeline on it hides the test
-      results that DID run.
+      A missing binary or a loader failure returns $false with a warning: failing the pipeline would hide the
+      results that did run.
   #>
   param(
     [Parameter(Mandatory)]

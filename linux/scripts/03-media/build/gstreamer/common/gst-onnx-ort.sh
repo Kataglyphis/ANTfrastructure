@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# gst-onnx-ort.sh - gst-plugins-bad's onnx plugin compiles and links the chain ONNX Runtime only.
-# Source-only (build-gstreamer-monorepo.sh), read off meson's build.ninja. NOT covered: run time.
+# gst-onnx-ort.sh - proves from meson's build.ninja that the gst onnx plugin compiles and links the chain ORT only.
 
-# _gst_onnx_ninja_tokens <build.ninja> <output-regex>: one token per line of every statement
-# (build line + indented variables) whose first output matches.
+# _gst_onnx_ninja_tokens <build.ninja> <output-regex>: one token per line of each statement whose first output matches.
 _gst_onnx_ninja_tokens() {
     GST_ONNX_RE="$2" awk '
         /^build / { o = $2; sub(/:$/, "", o); p = (o ~ ENVIRON["GST_ONNX_RE"]) }
@@ -45,8 +43,7 @@ _gst_onnx_search() {
     return 0
 }
 
-# _gst_onnx_lib_findings <tokens> <builddir> <lib-root>...: every ORT library the link names, by path
-# or by -l through -L then LIBRARY_PATH, must resolve into a chain lib dir; at least one must exist.
+# _gst_onnx_lib_findings <tokens> <builddir> <lib-root>...: every ORT library the link names must resolve into a lib root.
 _gst_onnx_lib_findings() {
     local toks="$1" bdir="$2" t real refs=0 name prev=""
     shift 2
@@ -73,8 +70,7 @@ _gst_onnx_lib_findings() {
     [ "${refs}" -gt 0 ] || echo "LIB libgstonnx.so names no ONNX Runtime library at all"
 }
 
-# _gst_onnx_header_findings <tokens> <builddir> <include-root>...: every -I/-isystem/-idirafter dir
-# that holds onnxruntime_c_api.h must be a chain include dir; at least one must.
+# _gst_onnx_header_findings <tokens> <builddir> <include-root>...: every include dir holding onnxruntime_c_api.h must be a root.
 _gst_onnx_header_findings() {
     local toks="$1" bdir="$2" t d prev="" hits=0
     shift 2
@@ -91,8 +87,7 @@ _gst_onnx_header_findings() {
     [ "${hits}" -gt 0 ] || echo "HDR no include dir of the onnx plugin provides onnxruntime_c_api.h"
 }
 
-# gst_onnx_ort_findings <build.ninja> <builddir> <chain-root>...: one line per way the onnx plugin
-# reaches an ORT outside the chain roots; no output = chain only. NOT covered: what loads at run time.
+# gst_onnx_ort_findings <build.ninja> <builddir> <chain-root>...: one line per non-chain ORT reach; none = chain only.
 gst_onnx_ort_findings() {
     local ninja="$1" bdir="$2" r link comp
     shift 2

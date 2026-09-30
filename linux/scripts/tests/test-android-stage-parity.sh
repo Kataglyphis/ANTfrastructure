@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify-android-stage-parity.sh. The five android library stages are
-# copy-paste on purpose, so the gate's job is to make the copy mechanical: it must
-# go RED on a real divergence and on a stage it can no longer find, and stay green
-# on the two differences that are deliberate (the ANDROID_LIB value, and comments).
-# docs/code-quality-tooling.md#android-library-stage-parity-android-parity
+# Tests for verify-android-stage-parity.sh. See docs/code-quality-tooling.md#android-library-stage-parity-android-parity
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -14,12 +10,10 @@ STAGES="android-gstreamer android-onnx android-litert android-opencv android-ire
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# _tree: a throwaway repo root holding the real gate at its real depth, since it
-# derives the Dockerfile path from its own location.
+# The real gate at its real depth: it derives the Dockerfile path from its own location.
 _tree() { gate_tree_here "${_work}" "${GATE}" linux/scripts/01-core/verify-android-stage-parity.sh; }
 
-# _dockerfile <tree> [<stage>=<extra body line>]... — five stages, each with the
-# copy-paste body, plus whatever extra line the caller pins on a named stage.
+# _dockerfile <tree> [<stage>=<extra body line>]... — five copy-paste stages, plus extra lines on named ones.
 _dockerfile() {
   local d="$1" stage extra pair
   shift
@@ -56,8 +50,7 @@ t_assert_contains "${_out}" "stage 'android-onnx' diverges"
 t_assert_contains "${_out}" "android library stages have drifted apart"
 
 t_case "a divergence in the LAST stage fails too"
-# The first stage becomes the reference; a loop that stopped comparing after the
-# first match would let the tail of the list drift untouched.
+# The first stage is the reference; the tail of the list must be compared too.
 fix="$(_tree)"; _dockerfile "${fix}" "android-iree=RUN echo drifted"
 t_assert_eq "1" "$(t_rc _gate "${fix}")"
 t_assert_contains "$(t_out _gate "${fix}")" "stage 'android-iree' diverges"
@@ -70,9 +63,7 @@ t_assert_contains "${_out}" "android-onnx"
 t_assert_contains "${_out}" "android-litert" "a majority is not the reference; the first stage is"
 
 t_case "a renamed or deleted stage FAILS, it does not quietly check four"
-# The gate's own STAGES list is the contract. A stage it cannot find is a check
-# that silently stopped covering a fifth of the Dockerfile -- and the FIRST stage
-# going missing must not simply promote the second to reference.
+# The gate's STAGES list is the contract; a missing first stage must not promote the second.
 for _gone in android-opencv android-gstreamer; do
   fix="$(_tree)"; _dockerfile "${fix}"
   sed -i "s/^FROM android-sdk AS ${_gone}\$/FROM android-sdk AS ${_gone}-renamed/" \
@@ -86,8 +77,7 @@ fix="$(_tree)"; _dockerfile "${fix}" "android-litert=# a note about litert only"
 t_assert_eq "0" "$(t_rc _gate "${fix}")" "a per-stage comment is the point of keeping them separate stages"
 
 t_case "a stage block ends at the next FROM: the next stage's body is not borrowed"
-# Without that boundary the reference would swallow every later stage and the
-# comparison would be a stage against itself -- green whatever drifted.
+# Otherwise the reference swallows every later stage and compares against itself.
 fix="$(_tree)"; _dockerfile "${fix}"
 printf 'FROM scratch AS unrelated\nRUN echo not-a-library-stage\n' >> "${fix}/linux/Dockerfile.android"
 t_assert_eq "0" "$(t_rc _gate "${fix}")" "an unrelated trailing stage must not attach to android-iree"

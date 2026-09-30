@@ -127,9 +127,7 @@ setup_toolchain_vulkan_cross_metadata() {
   echo "Configured Vulkan cross metadata with SDK headers from ${sdk_dir} and loader from ${target_libdir}"
 }
 
-# Ensure basic build tooling present for building vvdec and host-side
-# introspection / GTK / Cairo checks. Install core packages first, then attempt
-# to install X protocol headers.
+# Host tools for building vvdec and for the host-side introspection, GTK and Cairo checks.
 host_packages=(build-essential cmake git pkg-config python3-gi gobject-introspection libgirepository1.0-dev libcairo2-dev libpcre2-dev)
 core_packages=(libx11-dev libxext-dev libxrender-dev libxau-dev libxdmcp-dev libxfixes-dev x11proto-dev libsodium-dev)
 
@@ -145,23 +143,13 @@ fi
 
 apt-get install -y --no-install-recommends "${host_packages[@]}" "${core_packages[@]}"
 
-# On riscv64, purge system pango shared libraries so Meson's force-fallback-for
-# builds pango from source. The system libpangoft2 is too old and lacks symbols
-# (e.g. pango_font_description_get_color) that the source-built pango needs.
+# The riscv64 system libpangoft2 lacks symbols the source-built pango needs; without it Meson builds pango from source.
 if [ "${is_riscv64_cross}" = "true" ]; then
   echo "Removing system riscv64 pango shared libraries to force source-built fallback..."
   rm -f /usr/lib/riscv64-linux-gnu/libpango*.so* /usr/lib/riscv64-linux-gnu/pkgconfig/pango*.pc 2>/dev/null || true
 fi
 
-# Render the qemu binary wrapper from the sibling template, substituting the
-# generation-time values (@WRAPPER_MODE@, @TARGET_TRIPLET@, @QEMU_RUNNER@,
-# @QEMU_SYSROOT@). Runtime expansions stay as plain ${var} in the template.
-# Pure-bash substitution is used instead of sed because the values are filesystem
-# paths that could contain any sed delimiter/replacement metacharacter; the
-# quoted replacement also keeps bash >= 5.2 patsub_replacement from interpreting
-# '&'. Hoisted to file scope (was defined inside the if-block); reads
-# target_triplet/qemu_runner/qemu_sysroot set by the _gi_cross_detect_* phases
-# of setup_gi_cross_wrappers.
+# Bash substitution, not sed: the values are paths, and quoting them keeps bash 5.2's patsub_replacement off '&'.
 # shellcheck disable=SC2154
 write_qemu_binary_wrapper() {
   local wrapper_path="$1"
@@ -184,25 +172,9 @@ write_qemu_binary_wrapper() {
   chmod +x "${wrapper_path}"
 }
 
-# Set up the cross gobject-introspection scanner/ldd/qemu wrappers + pkg-config
-# metadata. Keeps the cross pkg-config path target-only while exposing the
-# wrapped scanner path through a focused shim without dropping the target
-# package's real include/library flags. (Extracted from a 250-line inline
-# block, then decomposed into the _gi_cross_* phase functions below;
-# setup_gi_cross_wrappers orchestrates them.)
-#
-# The phases communicate through file-scope variables (deliberately not
-# local): target_triplet, target_gi_bindir/datadir/includedir/
-# libdir/requires/libs/cflags/compiler/generate/pc, gi_version,
-# gi_scanner, gi_host_ldd, gi_scanner_wrapper,
-# gi_scanner_triplet_wrapper, gi_scanner_default, gi_ldd_default,
-# gi_ldd_wrapper, gi_binary_wrapper, meson_binary_wrapper, qemu_runner,
-# qemu_sysroot. write_qemu_binary_wrapper (above) reads target_triplet/
-# qemu_runner/qemu_sysroot from here as well.
+# See docs/cross-build-verification.md § Cross gobject-introspection: naming the wrappers before writing them
 
-# Detect the build/target multiarch triplets and the target-side
-# gobject-introspection metadata (paths, tools, and the Requires/Libs/Cflags
-# taken from the target package's real .pc file when present).
+# Requires/Libs/Cflags come from the target package's real .pc when it exists.
 _gi_cross_detect_target_metadata() {
   target_triplet=""
   target_gi_bindir="/usr/bin"
@@ -240,13 +212,10 @@ _gi_cross_detect_target_metadata() {
   fi
 }
 
-# Detect the host-side introspection tooling (scanner, ldd, gi version) and
-# fix the wrapper install paths.
 _gi_cross_detect_host_tools() {
   gi_version="$(dpkg-query -W -f='${Version}' gobject-introspection 2>/dev/null || true)"
   gi_version="${gi_version%%-*}"
-  # Prefer the distro-provided scanner path even on reruns so we don't recurse
-  # back into the wrapper we install under /usr/local/bin for Meson's lookup.
+  # The distro scanner first, so a rerun does not recurse into the wrapper installed under /usr/local/bin.
   gi_scanner="$(PATH=/usr/bin:/bin command -v g-ir-scanner 2>/dev/null || command -v g-ir-scanner 2>/dev/null || true)"
   gi_host_ldd="$(PATH=/usr/bin:/bin command -v ldd 2>/dev/null || true)"
   gi_scanner_wrapper="/usr/local/bin/g-ir-scanner-${gi_cross_wrapper_arch}-cross"
@@ -285,8 +254,7 @@ _gi_cross_detect_qemu_runner() {
   esac
 }
 
-# Locate the qemu sysroot by probing for the target dynamic loader (hard
-# requirement).
+# The qemu sysroot is wherever the target's dynamic loader is; finding none is fatal.
 _gi_cross_detect_qemu_sysroot() {
   qemu_sysroot=""
   for candidate in "/usr/${target_triplet}" "/"; do
@@ -304,8 +272,7 @@ _gi_cross_detect_qemu_sysroot() {
         done
         ;;
       arm64)
-        # arm64 has a single loader path (riscv64 above has several); the
-        # one-element loop is intentional and keeps the break-2 structure uniform.
+        # A one-element loop, so the break 2 matches the riscv64 branch.
         # shellcheck disable=SC2066
         for loader in \
           "${candidate}/lib/ld-linux-aarch64.so.1"; do
@@ -324,8 +291,7 @@ _gi_cross_detect_qemu_sysroot() {
   fi
 }
 
-# Write the objdump-based cross ldd wrapper plus the arch-dispatching default
-# ldd shim.
+# The host ldd cannot load a target binary, so the default ldd hands target ELFs to an objdump-based one.
 _gi_cross_write_ldd_wrappers() {
   cat > "${gi_ldd_wrapper}" <<EOF
 #!/usr/bin/env bash
@@ -387,8 +353,7 @@ _gi_cross_write_binary_wrappers() {
   write_qemu_binary_wrapper "${meson_binary_wrapper}" meson
 }
 
-# Write the wrapped g-ir-scanner plus the triplet-prefixed and default shims
-# that dispatch to it.
+# The triplet-prefixed and the default scanner name both dispatch to the one wrapped g-ir-scanner.
 _gi_cross_write_scanner_wrappers() {
   cat > "${gi_scanner_wrapper}" <<EOF
 #!/usr/bin/env bash
@@ -415,8 +380,7 @@ EOF
   chmod +x "${gi_scanner_default}"
 }
 
-# Write the gobject-introspection pkg-config helper metadata pointing at the
-# wrapped scanner and target tools.
+# Meson takes g-ir-scanner from this .pc, so it must name the wrapper, not the host scanner.
 _gi_cross_write_pkgconfig() {
   mkdir -p /usr/local/lib/pkgconfig
   printf '%s\n' \
@@ -443,8 +407,6 @@ _gi_cross_write_pkgconfig() {
   cp /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc /usr/local/lib/pkgconfig/gobject-introspection-no-export-1.0.pc
 }
 
-# Orchestrating shell: detection phases first (they populate the file-scope
-# variables documented above), then the wrapper/metadata generation phases.
 setup_gi_cross_wrappers() {
   _gi_cross_detect_target_metadata
   _gi_cross_detect_host_tools
@@ -464,20 +426,15 @@ if [ "${prefer_toolchain_vulkan}" = "true" ]; then
   setup_toolchain_vulkan_cross_metadata
 fi
 
-# Some base images may not provide the \`xorgproto\` package name. Try a few
-# alternatives and fail early if none are available so the error is clear.
+# The X protocol headers go by different package names across base images, so try each.
 apt-get install -y --no-install-recommends xorg-dev || true
 if [ "${is_riscv64_cross}" = "true" ]; then
   apt-get install -y --no-install-recommends x11proto-dev || true
 else
   apt-get install -y --no-install-recommends x11proto-core-dev x11proto-dev || true
 fi
-# Ensure pkg-config metadata directories updated
 update-alternatives --set xauth /usr/bin/xauth 2>/dev/null || true
-# Install Csound packages required for building csound-related plugins.
-# The later GStreamer build already disables/excludes csound on ARM and RISC-V
-# cross targets, so avoid redundant host-side package churn here.
-# Also check target arch directly in case cross_build_is_active is not available.
+# The GStreamer build disables Csound on arm64/riscv64; TARGET_ARCH catches them where the cross helpers are absent.
 if [ "${MEDIA_SKIP_CSOUND:-0}" = "1" ] || echo "${TARGET_ARCH:-${TARGETARCH:-}}" | grep -qE '^(arm64|riscv64)$'; then
   echo "Skipping Csound pre-setup for $(cross_target_arch 2>/dev/null || echo target) cross builds because the Csound plugin is disabled on this target."
 else
@@ -485,16 +442,9 @@ else
     csound csound-utils csoundqt csoundqt-examples csound-doc libcsound64-dev pd-csound || \
   { echo "ERROR: required Csound packages not found in APT; please add an appropriate repo or package name." >&2; exit 1; }
 fi
-# Some Debian packages do not provide a pkg-config .pc file for Csound.
-# Create a minimal csound.pc in the appropriate multiarch pkgconfig
-# directory so downstream pkg-config checks succeed. Only create the
-# stub when not building for riscv targets (we skipped installing Csound
-# packages above for skipped cross targets), otherwise creating a stub may mask
-# missing package problems on supported arches.
+# Some Csound packages ship no csound.pc; a stub where Csound is skipped would mask a missing package.
 if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ]; then
-  # Runs for native and for any cross target that ships Csound (arm64; riscv64
-  # keeps MEDIA_SKIP_CSOUND=1). cross_target_triplet gives the target multiarch
-  # dir so the stub + CSOUND_LIB_DIR point at the target libcsound64.
+  # The target triplet, so the stub and CSOUND_LIB_DIR point at the target libcsound64.
   triplet=""
   if command -v cross_target_triplet >/dev/null 2>&1 && cross_build_enabled; then
     triplet="$(cross_target_triplet)"
@@ -510,8 +460,7 @@ if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ]; then
     libdir="/usr/lib"
   fi
   mkdir -p "$pcdir"
-  # Write a minimal csound.pc with the computed libdir. Keep ${prefix}
-  # and ${libdir}/${includedir} in the file as pkg-config variables.
+  # The escaped \${...} stay literal: pkg-config expands them itself.
   printf '%s\n' \
     "prefix=/usr" \
     "exec_prefix=\${prefix}" \
@@ -551,7 +500,4 @@ if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ]; then
 else
   echo "Skipping creation of csound.pc stub for cross targets where Csound is disabled"
 fi
-# NOTE: do NOT `rm -rf /var/lib/apt/lists/*` here — /var/lib/apt is a shared
-# BuildKit cache mount in Dockerfile.media, so wiping it only forces the next
-# stage's `apt-get update` to re-download every index (and it saves no image
-# size, since a cache mount is not a layer).
+# Keep /var/lib/apt/lists: it is a shared BuildKit cache mount, so wiping it only forces re-downloads and saves no image size.

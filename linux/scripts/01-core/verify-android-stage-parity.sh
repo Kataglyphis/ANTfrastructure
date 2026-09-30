@@ -1,17 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# verify-android-stage-parity.sh — the five parallel library stages in
-# linux/Dockerfile.android (android-gstreamer/-onnx/-litert/-opencv/-iree) are
-# INTENTIONALLY identical except for their `ARG ANDROID_LIB=<name>` value: they
-# must stay separate stages so BuildKit builds them concurrently in one graph
-# (collapsing them into a parameterized single stage would serialize five
-# orchestrator invocations), and this check makes the resulting copy-paste
-# mechanical instead of drift-prone. Any real divergence must be introduced
-# deliberately — by teaching THIS check about it, not by silent editing.
-#
-# Method: extract each stage block, drop comments/blank lines, normalize the
-# ANDROID_LIB value to a placeholder, and require all five normalized blocks to
-# be byte-identical.
+# The android library stages stay separate so BuildKit runs them concurrently; they must match modulo ANDROID_LIB.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DOCKERFILE="${REPO_ROOT}/linux/Dockerfile.android"

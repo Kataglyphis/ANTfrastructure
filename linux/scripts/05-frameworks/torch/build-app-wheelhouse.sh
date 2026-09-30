@@ -6,11 +6,7 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
     source /opt/scripts/core/cross-env.sh
 fi
 
-# shell_quote_args lives in common.sh, which cross-env.sh does NOT source.
-# Without it both wheel builds died instantly at
-# cmake_args_string="$(shell_quote_args ...)" ("command not found"), silently
-# absorbed by the best-effort WARN path — the long-standing "riscv64 cross
-# wheel build failed" was (at least partly) this.
+# shell_quote_args lives in common.sh, which cross-env.sh does not source.
 for _common in \
     "/opt/scripts/core/common.sh" \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/common.sh"; do
@@ -34,10 +30,7 @@ for _qnnmod in \
 done
 unset _qnnmod
 
-# Source canonical versions.env so PYTORCH_VERSION / TORCHVISION_VERSION are
-# always available even when this script is invoked outside the orchestrator
-# (which is the typical case in the media app-wheelhouse stage). Fallback paths
-# below still exist but now mirror versions.env rather than drifting.
+# versions.env directly: the media app-wheelhouse stage runs this outside the orchestrator.
 for _lvf in \
     "/opt/scripts/core/load-versions-env.sh" \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/load-versions-env.sh"; do
@@ -52,9 +45,7 @@ for _evf in \
     "/opt/scripts/core/versions.env" \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/versions.env"; do
     if [ -f "${_evf}" ]; then
-        # load_versions_env respects already-set env (orchestrator-forwarded
-        # PYTORCH_VERSION/etc. win over the baked copy) — unlike `set -a; source`,
-        # which clobbered them and inverted the documented precedence contract.
+        # Not `set -a; source`: load_versions_env keeps orchestrator-forwarded values.
         load_versions_env "${_evf}"
         break
     fi
@@ -66,9 +57,7 @@ unset _evf
 : "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.13.0}}"
 : "${PYTORCH_VERSION:=${PYTORCH_REF#v}}"
 : "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.28.0}}"
-# IREE (iree.dev) source tag for the riscv64 runtime wheel cross-build. Mirrors
-# versions.env IREE_VERSION (load_versions_env sets it above); the v3.11.0
-# fallback keeps this runnable outside the orchestrator. See build_iree_wheels.
+# The fallback only matters without versions.env.
 : "${IREE_REF:=${IREE_VERSION:-v3.11.0}}"
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
 : "${DEFAULT_PYPI_INDEX_URL:=https://pypi.org/simple}"
@@ -76,10 +65,7 @@ unset _evf
 if [ -f /opt/scripts/core/parallelism.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/parallelism.sh 2>/dev/null || true
-  # This wheelhouse compiles PyTorch from source (PYTORCH_REF); its aten/autograd
-  # TUs peak ~4GB/cc1plus, so budget ~4GB/job (compute_cpp_heavy_jobs) rather than
-  # the generic 2GB -- same OOM class as the litert build. Fall back to the older
-  # 2GB helper, then nproc, if the newer helper is absent (older sourced copy).
+  # torch's aten TUs peak ~4 GB per cc1plus, so budget 4 GB per job.
   if declare -F compute_cpp_heavy_jobs >/dev/null 2>&1; then
     MAX_JOBS="${MAX_JOBS:-$(compute_cpp_heavy_jobs "")}"
   elif declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
@@ -143,30 +129,16 @@ install_build_dependencies() {
     fi
 
     if command -v install_host_packages >/dev/null 2>&1; then
-        # ccache is a HOST tool (it wraps the cross-compiler invocations that run
-        # on the amd64 build host), so install it host-side. Without it the IREE
-        # bundled-LLVM (~1h) and riscv64 torch aten compiles rebuild from scratch
-        # every run even though the persistent /var/cache/ccache mount exists and
-        # build_iree_wheels/build_torch_wheel already wire the ccache launcher
-        # behind `command -v ccache`. This omission was the sole reason those
-        # multi-hour cross builds never cache-hit (amd64-native path already had it).
+        # ccache is a host tool; without it the multi-hour cross builds never hit the cache.
         install_host_packages git ninja-build cmake pkg-config unzip rsync ccache sccache
         install_host_packages libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev
         if ! install_target_packages libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev; then
             warn "Some riscv64 target build dependencies are unavailable; continuing with the staged sysroot"
         fi
-        # Target Python stdlib provides /usr/lib/python3.X/_sysconfigdata__linux_<triplet>.py,
-        # which resolve_target_python_sysconfig_export needs so the wheel builds
-        # use the TARGET Python ABI metadata (correct extension suffixes) instead
-        # of falling back to the host sysconfig. Own apt call: best-effort, and
-        # install_target_packages groups are all-or-nothing.
+        # Its sysconfigdata gives the target extension suffixes; own call, as a group is all-or-nothing.
         install_target_packages libpython3-stdlib || \
             warn "Target libpython3-stdlib unavailable; wheel builds will use host sysconfig"
-        # Target sleef: pytorch's bundled sleef compiles its codegen tools
-        # (mkrename/mkdisp) for the TARGET under cross and dies with
-        # "Exec format error" when the build runs them on the host. With the
-        # target libsleef-dev present, build_torch_wheel sets USE_SYSTEM_SLEEF=1
-        # and skips the bundled build entirely. Best-effort (ports coverage).
+        # Bundled sleef builds its codegen tools for the target and runs them on the host.
         install_target_packages libsleef-dev || \
             warn "Target libsleef-dev unavailable; bundled sleef will fail under cross (Exec format error)"
         return 0
@@ -178,25 +150,14 @@ install_build_dependencies() {
 }
 
 install_native_build_dependencies() {
-    # amd64 native IREE build: minimal host toolchain. ccache is the decisive lever
-    # (bundled LLVM is a ~1h one-time compile; /var/cache/ccache is a persistent
-    # BuildKit mount). git/cmake/ninja are usually already present from the base
-    # image; this is a best-effort top-up. No cross apt mirror needed (native).
+    # ccache is the decisive lever: IREE's bundled LLVM is a ~1 h compile.
     apt-get update -y || true
     apt-get install -y --no-install-recommends \
         git ninja-build cmake pkg-config unzip rsync ccache sccache || return 1
 }
 
 prepare_build_environment() {
-    # NOTE: prepare_workspace is NOT called here — main() already runs it
-    # (unconditionally, before this function) so the wheelhouse dir exists
-    # even when this function bails out early.
-    #
-    # Two modes:
-    #   * CROSS  (arm64/riscv64 foreign target): stage the foreign target Python
-    #     dev tree + cross toolchain (the proven riscv64 machinery, now also arm64).
-    #   * NATIVE (amd64 target == build arch): no foreign target-python staging;
-    #     IREE builds against the container's own from-source CPython 3.14.
+    # main() already ran prepare_workspace, so the wheelhouse exists even when this bails.
     if cross_build_is_active; then
         if ! command -v prepare_cross_target_env >/dev/null 2>&1; then
             warn "Cross environment helpers are unavailable; leaving the app wheelhouse empty"
@@ -215,9 +176,7 @@ prepare_build_environment() {
             return 1
         }
     else
-        # amd64 NATIVE: only IREE is source-built here (torch/vision come from PyPI
-        # on amd64), against the container's own CPython 3.14 — no foreign target
-        # Python staging, no cross toolchain.
+        # Native amd64 source-builds only IREE; torch comes from PyPI.
         install_native_build_dependencies || {
             warn "Failed to install native IREE build dependencies; leaving the app wheelhouse empty"
             return 1
@@ -226,11 +185,7 @@ prepare_build_environment() {
 
     BUILD_PYTHON="$(require_host_python)" || return 1
 
-    # Build-executor pins (supply-chain audit #18): setuptools/wheel/ninja
-    # EXECUTE code at build time and were resolved fresh from PyPI every run.
-    # setuptools keeps the documented <82 torch-compat ceiling — pinned to the
-    # newest release under it. Pure-python data deps (pyyaml, sympy, jinja2,
-    # ...) stay floating on purpose: they don't shape the emitted binaries.
+    # Build executors are pinned (setuptools below torch's <82 ceiling); data-only deps float.
     uv pip install --python "${BUILD_PYTHON}" -U \
         "setuptools==${PY_SETUPTOOLS_LT82_VERSION:-81.0.0}" \
         "wheel==${PY_WHEEL_VERSION:-0.47.0}" \
@@ -240,14 +195,7 @@ prepare_build_environment() {
         sympy filelock networkx jinja2
 }
 
-# pytorch's setup.py does NOT forward our CMAKE_ARGS -D flags into its cmake
-# invocation (verified from the logged configure line: none of the cross args
-# were present; only CC/CXX env reached the build, so cmake configured as a
-# NATIVE x86_64 build with a riscv64 compiler and cpuinfo picked x86 sources).
-# CMake >= 3.21 honors the CMAKE_TOOLCHAIN_FILE ENVIRONMENT variable natively
-# at project() time — the only reliable way to make a setup.py-driven cmake
-# cross-aware. Keep it minimal: system identity only; compilers keep flowing
-# via CC/CXX env exactly as they already (working) do.
+# torch's setup.py drops CMAKE_ARGS; CMake reads CMAKE_TOOLCHAIN_FILE from the environment instead.
 write_cross_cmake_toolchain_file() {
     local path="${APP_WHEELHOUSE_BUILD_ROOT}/cross-toolchain.cmake"
     local processor="${CMAKE_SYSTEM_PROCESSOR:-}"
@@ -265,19 +213,12 @@ set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR ${processor})
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 EOF
-    # The toolchain file is also our guaranteed channel for cache variables that
-    # pytorch's setup.py won't forward from CMAKE_ARGS: hand ProtoBuf.cmake a
-    # HOST-runnable protoc (see build_host_protoc in build_torch_wheel).
+    # The toolchain file is the one channel setup.py cannot drop: hand it a host-runnable protoc.
     if [ -n "${CROSS_HOST_PROTOC:-}" ] && [ -x "${CROSS_HOST_PROTOC}" ]; then
         printf 'set(CAFFE2_CUSTOM_PROTOC_EXECUTABLE "%s" CACHE FILEPATH "host protoc for cross builds")\n' \
             "${CROSS_HOST_PROTOC}" >> "${path}"
     fi
-    # Target Python Development artifacts: without these, FindPython reports
-    # "missing components: Development" under cross, pytorch silently flips
-    # BUILD_PYTHON to OFF, libtorch_python.so is never built, and the final
-    # torch._C stub link dies with "cannot find -ltorch_python" (all verified
-    # from configure/link logs). Explicit artifact cache vars satisfy
-    # FindPython/FindPython3 without probing.
+    # Without these pytorch silently turns BUILD_PYTHON off and the link fails on -ltorch_python.
     local py_inc py_lib
     py_inc="$(cross_target_python_include_dir 2>/dev/null || true)"
     py_lib="$(cross_target_python_library 2>/dev/null || true)"
@@ -292,12 +233,7 @@ EOF
     printf '%s' "${path}"
 }
 
-# Build the sysconfigdata export string for the target Python, but ONLY if the
-# module file is actually importable. Setting _PYTHON_SYSCONFIGDATA_NAME
-# without providing the module GUARANTEES an instant ModuleNotFoundError in
-# setup.py (that's exactly how the wheel builds used to die once they got past
-# shell_quote_args). Searches the staged target Python first, then the apt
-# target Python. Prints the export string (name + PYTHONPATH) or nothing.
+# Only when the module exists: _PYTHON_SYSCONFIGDATA_NAME without it is an instant ModuleNotFoundError.
 resolve_target_python_sysconfig_export() {
     local target_triplet="" name="" stage_root="" dir="" search_root
     target_triplet="$(cross_target_triplet 2>/dev/null || true)"
@@ -360,9 +296,7 @@ append_common_cross_cmake_args() {
     [ -n "${target_python_library}" ] && out_args_ref+=("-DPython3_LIBRARY=${target_python_library}" "-DPYTHON_LIBRARY=${target_python_library}")
     [ -n "${host_numpy_include}" ] && out_args_ref+=("-DNUMPY_INCLUDE_DIR=${host_numpy_include}")
     [ -n "${qemu_runner}" ] && out_args_ref+=("-DCMAKE_CROSSCOMPILING_EMULATOR=${qemu_runner}")
-    # Explicit success: without it, an empty qemu_runner makes the AND-list
-    # above this function's exit status (1), and set -e in the callers turns
-    # "no emulator configured" into a bogus build failure.
+    # Explicit: an empty qemu_runner would make the && list above the exit status.
     return 0
 }
 
@@ -388,9 +322,6 @@ parse_wheel_version() {
     printf '%s' "${wheel_basename}"
 }
 
-# retag_directory_wheels lives in 01-core/common.sh (sourced above); the three
-# call sites below pass BUILD_PYTHON as the wheel-tool launcher.
-
 extract_torch_wheel() {
     TORCH_STAGING_DIR="${APP_WHEELHOUSE_BUILD_ROOT}/torch-staging"
     rm -rf "${TORCH_STAGING_DIR}"
@@ -398,12 +329,7 @@ extract_torch_wheel() {
     unzip -q -o "${TARGET_TORCH_WHEEL}" -d "${TORCH_STAGING_DIR}"
 }
 
-# Safety net: a cross bdist_wheel that drops the compiled torch._C extension
-# leaves only the torch/_C/ *.pyi stub folder, and `import torch` then dies with
-# the misleading "loaded the torch/_C folder". If the wheel has no top-level
-# torch/_C*.so, inject the cmake-built one and repack (wheel pack redoes RECORD).
-# No-op on a healthy wheel: cmake links torch/_C.cpython-<abi>-<triplet>.so and
-# pytorch 2.13 does package it.
+# A cross bdist_wheel can drop torch._C; inject the cmake-built one and repack. No-op on a healthy wheel.
 _torch_ensure_c_extension() {
     local dist_dir="$1"
     local wheel_path built_c_ext staging suffix triplet pyabi listing dest_name
@@ -414,8 +340,7 @@ _torch_ensure_c_extension() {
     [ "${#wheels[@]}" -gt 0 ] || return 0
     wheel_path="${wheels[0]}"
 
-    # Read the listing first: `unzip -l | grep -q` dies of SIGPIPE and pipefail
-    # then reports 141, i.e. a present extension read as absent.
+    # Read first: `unzip -l | grep -q` dies of SIGPIPE, which pipefail reports as absent.
     if ! listing="$(unzip -l "${wheel_path}" 2>/dev/null)"; then
         warn "cannot list ${wheel_path} (unzip failed); skipping the torch _C extension check"
         return 0
@@ -438,8 +363,7 @@ _torch_ensure_c_extension() {
     fi
     built_c_ext="${built_c_exts[0]}"
 
-    # Keep cmake's name when already ABI-mangled, else synthesise
-    # cpython-<pyABI>-<triplet>.so (pyABI from the wheel's -cpXYZ- tag).
+    # Keep an ABI-mangled name, else synthesise one from the wheel's -cpXYZ- tag.
     dest_name="$(basename "${built_c_ext}")"
     if [ "${dest_name}" = "_C.so" ]; then
         triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
@@ -463,16 +387,10 @@ _torch_ensure_c_extension() {
     fi
 }
 
-# The build_torch_wheel phase helpers below read build_torch_wheel's locals via
-# bash dynamic scoping (the subshell inherits them; nested calls resolve them on
-# the call stack). They must be called only from build_torch_wheel.
+# build_torch_wheel's phase helpers read its locals by dynamic scope; call them only from there.
 # shellcheck disable=SC2154
 
-# Build the canonical HOST protoc with pytorch's own helper (scrubbed env: no
-# cross toolchain). Bundled protobuf otherwise builds protoc for the TARGET and
-# onnx codegen execs it on the host -> "Exec format error" (protoc-3.13.0.0).
-# Sets CROSS_HOST_PROTOC (consumed by write_cross_cmake_toolchain_file via the
-# generated toolchain file).
+# Bundled protobuf builds protoc for the target, which onnx codegen then runs on the host.
 _torch_build_host_protoc() {
     CROSS_HOST_PROTOC=""
     if [ ! -f "${src_dir}/scripts/build_host_protoc.sh" ]; then
@@ -480,12 +398,7 @@ _torch_build_host_protoc() {
         return 0
     fi
     log "Building host protoc via scripts/build_host_protoc.sh..."
-    # CMAKE_POLICY_VERSION_MINIMUM: bundled protobuf 3.13 declares
-    # cmake_minimum_required(<3.5), which cmake >=4 refuses outright; the flag is
-    # cmake's own documented escape hatch. No PATH scrub needed: /opt/cross-bin
-    # carries only triplet-prefixed names (bare cross cc/gcc live in
-    # /opt/cross-bin/bare, never on PATH), so bare gcc/g++ resolve to the host
-    # toolchain. CC=gcc/CXX=g++ pinning stays as defense-in-depth.
+    # CMAKE_POLICY_VERSION_MINIMUM: cmake 4 refuses protobuf 3.13's cmake_minimum_required(<3.5).
     if (cd "${src_dir}" && \
         env -u AR -u RANLIB -u LD -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
             -u CMAKE_TOOLCHAIN_FILE -u CMAKE_SYSTEM_NAME -u CMAKE_SYSTEM_PROCESSOR \
@@ -494,8 +407,7 @@ _torch_build_host_protoc() {
                 --other-flags "-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}" > /tmp/build_host_protoc.log 2>&1); then
         CROSS_HOST_PROTOC="${src_dir}/build_host_protoc/bin/protoc"
     fi
-    # Readiness gate = EXECUTE it, not just -x: a cross-built protoc is
-    # executable-on-disk but dies with Exec format error at run time.
+    # Run it, not just -x: a cross-built protoc is executable on disk only.
     if [ -n "${CROSS_HOST_PROTOC}" ] && "${CROSS_HOST_PROTOC}" --version >/dev/null 2>&1; then
         log "Host protoc ready: ${CROSS_HOST_PROTOC} ($("${CROSS_HOST_PROTOC}" --version 2>/dev/null))"
     else
@@ -505,10 +417,7 @@ _torch_build_host_protoc() {
     fi
 }
 
-# Bundled sleef cross-compiles its host-run codegen (mkrename) for the target ->
-# "Exec format error". Prefer the target's system sleef when libsleef-dev landed
-# (see install_build_dependencies); otherwise keep the bundled build so the
-# failure stays visible. Sets use_system_sleef.
+# Bundled sleef runs target-built codegen on the host; else keep it so the failure stays visible.
 _torch_detect_system_sleef() {
     use_system_sleef=0
     if command -v cross_package_status_present >/dev/null 2>&1 && \
@@ -520,14 +429,7 @@ _torch_detect_system_sleef() {
     fi
 }
 
-# Run pytorch's PEP517 wheel build (pip) in a scrubbed subshell with the full
-# cross env. PyTorch 2.14 moved to scikit-build-core and DELETED the
-# `setup.py bdist_wheel` path ("2.14-2.15: install and develop forward to pip");
-# the old call died with that message, so this is a pip wheel with the build
-# backend's requires pre-installed (--no-build-isolation). Reads
-# src_dir/cmake_args_string/wheel_platform/python_sysconfig_export/
-# use_system_sleef/dist_dir + CROSS_HOST_PROTOC (via write_cross_cmake_toolchain_
-# file) through dynamic scope. Returns non-zero on build failure.
+# pip wheel, not setup.py bdist_wheel: PyTorch 2.14 moved to scikit-build-core and removed that path.
 _torch_run_setup_py() {
     (
         cd "${src_dir}" && \
@@ -547,11 +449,7 @@ _torch_run_setup_py() {
         export BUILD_TEST=0 BUILD_BINARY=0 USE_KINETO=0 && \
         export USE_FBGEMM=0 USE_MKLDNN=0 USE_NNPACK=0 USE_QNNPACK=0 USE_PYTORCH_QNNPACK=0 USE_XNNPACK=0 && \
         export USE_SYSTEM_SLEEF="${use_system_sleef}" && \
-        # LOG26: USE_OPENMP=0 is riscv64-only (this function runs only for the
-        # riscv64 cross torch wheel — amd64/arm64 get PyPI wheels). The riscv64
-        # cross GCC's libgomp is not reliably coinstallable in the cross sysroot;
-        # OpenMP pragmas produce link errors against the foreign target. amd64
-        # (native) and arm64 (PyPI) both ship with OpenMP enabled.
+        # No OpenMP: the riscv64 cross GCC's libgomp is not reliably coinstallable in the sysroot.
         export USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_OPENMP=0 && \
         export CFLAGS="${CFLAGS:+${CFLAGS} }-idirafter /usr/include" && \
         export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-idirafter /usr/include" && \
@@ -562,12 +460,10 @@ _torch_run_setup_py() {
     )
 }
 
-# Retag, collect, install the built torch wheel; set TARGET_TORCH_WHEEL /
-# TARGET_TORCH_VERSION (globals) and extract it. Reads dist_dir + wheel_platform.
+# Sets the TARGET_TORCH_WHEEL/TARGET_TORCH_VERSION globals and extracts the wheel.
 _collect_torch_wheel() {
     local -a built_wheels=()
-    # Repair the 2.13 cross-build gap (missing torch/_C*.so) BEFORE retag/collect
-    # so the fixed wheel flows through the normal path.
+    # Before the retag, so the repaired wheel takes the normal path.
     _torch_ensure_c_extension "${dist_dir}"
     retag_directory_wheels "${dist_dir}" torch "${wheel_platform}" "${BUILD_PYTHON}"
 
@@ -603,8 +499,6 @@ build_torch_wheel() {
         return 1
     fi
 
-    # Export target sysconfigdata ONLY when the module is importable (name +
-    # PYTHONPATH together); see resolve_target_python_sysconfig_export.
     python_sysconfig_export="$(resolve_target_python_sysconfig_export)"
 
     git_clone_ref https://github.com/pytorch/pytorch.git "${PYTORCH_REF}" "${src_dir}" --recursive --shallow-submodules || {
@@ -620,10 +514,7 @@ build_torch_wheel() {
 
     append_common_cross_cmake_args cmake_args
     cmake_args+=("-DBLAS=OpenBLAS")
-    # Route the (multi-hour) aten compile through ccache so it cache-hits on
-    # rebuilds. The launcher works with the cross compiler; CCACHE_DIR is pointed
-    # at the persistent /var/cache/ccache mount in _torch_run_setup_py. Guarded so
-    # a host without ccache still builds (plain, no launcher).
+    # Cache the multi-hour aten compile; without a launcher the build runs plain.
     compiler_cache_launcher_env 2>/dev/null || true
     _cc_l="$(compiler_cache_launcher 2>/dev/null || true)"
     if [ -n "${_cc_l}" ]; then
@@ -656,20 +547,10 @@ patch_torchvision_setup() {
         "torchvision setup.py: TORCHVISION_TORCH_STAGING env var support"
 }
 
-# The build_torchvision_wheel phase helpers read that function's locals via bash
-# dynamic scoping; call them only from build_torchvision_wheel.
+# build_torchvision_wheel's phase helpers read its locals by dynamic scope; call them only from there.
 # shellcheck disable=SC2154
 
-# Run torchvision's setup.py bdist_wheel in a scrubbed subshell with the full
-# cross env + staged libtorch paths. Reads src_dir/cmake_args_string/
-# wheel_platform/python_sysconfig_export/target_torch_* via dynamic scope.
-# Returns non-zero on build failure.
-# -O3 -DNDEBUG is explicit because setuptools REPLACES the interpreter's
-# sysconfig CFLAGS once $CFLAGS/$CXXFLAGS are set (_distutils compilers/C/
-# unix.py: `cxxflags = os.environ.get('CXXFLAGS', cxxflags)`) -- exporting only
-# the -idirafter fallbacks left all 34 extension TUs at gcc's default -O0
-# (media-riscv64.log 2026-08-27). torchvision appends just `-g0 -DTORCH_*
-# -std=c++20` after these (DEBUG=0 branch), so this stays the last -O.
+# -O3 -DNDEBUG explicitly: a set $CFLAGS replaces sysconfig's, which left every extension at -O0.
 _torchvision_run_setup_py() {
     (
         cd "${src_dir}" && \
@@ -695,9 +576,7 @@ _torchvision_run_setup_py() {
     )
 }
 
-# torch.utils.cpp_extension swallows ninja's compile output on the non-verbose
-# path ("Error compiling objects for extension" with no detail). Re-run ninja in
-# the extension build dir to surface the real compiler error. Reads src_dir.
+# cpp_extension swallows ninja's output; rerun ninja to surface the real compiler error.
 _torchvision_ninja_diagnostic() {
     local _vis_ninja_dir
     _vis_ninja_dir="$(find "${src_dir}/build" -name build.ninja -printf '%h\n' -quit 2>/dev/null || true)"
@@ -751,8 +630,6 @@ build_torchvision_wheel() {
         return 1
     fi
 
-    # Export target sysconfigdata ONLY when the module is importable (name +
-    # PYTHONPATH together); see resolve_target_python_sysconfig_export.
     python_sysconfig_export="$(resolve_target_python_sysconfig_export)"
 
     git_clone_ref https://github.com/pytorch/vision.git "${TORCHVISION_REF}" "${src_dir}" || {
@@ -784,8 +661,7 @@ build_torchvision_wheel() {
     _collect_torchvision_wheel
 }
 
-# Why the torch wheel staging works this way:
-# docs/iree-two-stage-build.md
+# IREE stages. See docs/iree-two-stage-build.md
 
 # Sets wheel_platform. Returns 1 when IREE cannot be built at all.
 _iree_check_prereqs() {
@@ -796,57 +672,22 @@ _iree_check_prereqs() {
     [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 1; }
 }
 
-# ccache — the decisive lever for IREE build cost. IREE pins its OWN LLVM fork
-# (github.com/iree-org/llvm-project @ a bleeding-edge commit) and MLIR has no
-# stable API, so we CANNOT substitute ANTfrastructure's release-tag toolchain LLVM;
-# IREE must compile its bundled LLVM/MLIR (both host tools AND the riscv64 cross)
-# itself — ~1h. But the build tree lives on tmpfs (wiped each run) while
-# /var/cache/ccache is a PERSISTENT BuildKit cache mount (Dockerfile.media
-# app-wheelhouse RUN). Wiring the cmake compiler-launcher to ccache makes that
-# ~1h LLVM compile a ONE-TIME cost: every rerun cache-hits the objects. ccache
-# keys on compiler+flags, so the native-host build and the riscv64-cross build
-# keep separate entries and never collide. Guarded: plain rebuild if ccache is
-# absent. (Applies to the bundled llvm-project add_subdirectory too, which
-# inherits CMAKE_*_COMPILER_LAUNCHER; the small NATIVE tblgen sub-build may not.)
-#
-# Sets ccache_cmake_args/_iree_launcher and exports CCACHE_*/SCCACHE_* for the
-# steps below; nothing here may be `local`. See docs/refactoring-backlog-archive-2026-08-31.md
+# IREE's own LLVM fork takes ~1 h, so cache it; sets ccache_cmake_args/_iree_launcher, so nothing here is local.
 _iree_setup_compiler_cache() {
     if command -v ccache >/dev/null 2>&1; then
         export CCACHE_DIR="${CCACHE_DIR:-/var/cache/ccache}"
-        # How the cross wheels are packed:
-        # docs/iree-two-stage-build.md
         export CCACHE_MAXSIZE="${IREE_CCACHE_MAXSIZE:-64G}"
         export CCACHE_COMPRESS=1
         export CCACHE_SLOPPINESS="pch_defines,time_macros,include_file_mtime,include_file_ctime"
         mkdir -p "${CCACHE_DIR}" 2>/dev/null || true
-        # Apply it to the on-disk cache (see (2) above) and report what the
-        # cache ACTUALLY carries afterwards, so a future run's log proves the
-        # limit rather than restating the intent.
+        # Report the limit the cache really carries, so the log proves it.
         ccache -M "${CCACHE_MAXSIZE}" 2>/dev/null || warn "could not set ccache max size to ${CCACHE_MAXSIZE}"
         echo "[INFO] IREE ccache limit now: $(ccache -p 2>/dev/null | awk '/max_size/{print $2, $3}' || echo unknown)"
-        # 2026-08-26 (ccache->sccache switch): use whichever cache is actually
-        # usable. sccache takes its cap from SCCACHE_CACHE_SIZE, NOT from a
-        # `-M` call -- so the IREE_CCACHE_MAXSIZE override above has to be
-        # mirrored into the sccache env or IREE silently runs on the 30G
-        # inherited from Dockerfile.base, which is the bug fefce7d just fixed
-        # for ccache. Same fix, other tool.
+        # sccache ignores `-M`: its cap comes from SCCACHE_CACHE_SIZE, which mirrors the override below.
         compiler_cache_launcher_env 2>/dev/null || true
         _iree_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
-        # DIAGNOSTIC (2026-08-26, temporary): the IREE target build is the one
-        # place sccache died with "failed to spawn Command ... No such file or
-        # directory", and eight isolated reproduction attempts all failed to
-        # trigger it -- an out-of-band `nerdctl run` cannot recreate BuildKit's
-        # cache mounts, so the environment is never faithful. Ask the tool
-        # itself instead: SCCACHE_LOG makes the client print what it resolved
-        # and why the spawn failed, in the real stage. IREE_SCCACHE_LOG can
-        # raise it to debug; default is the quiet-but-useful level. Remove this
-        # block once the spawn failure is understood.
         case "${_iree_launcher}" in *sccache*)
-            # QUIET by default since 2026-08-27. This defaulted to sccache=info during
-            # the 2026-08-26 ENOENT hunt, which is over -- the cause was a shared
-            # sccache server, cured by SCCACHE_SERVER_UDS. Every IREE build has been
-            # verbose since. Set IREE_SCCACHE_LOG=sccache=info to bring it back.
+            # Quiet by default; IREE_SCCACHE_LOG=sccache=info brings the client log back.
             export SCCACHE_LOG="${IREE_SCCACHE_LOG:-}"
             export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache-iree.log}" ;;
         esac
@@ -863,11 +704,7 @@ _iree_setup_compiler_cache() {
 
 # Fetch the pinned IREE tree into src_dir. Returns 1 on clone/submodule failure.
 _iree_fetch_source() {
-    # Clone at the pinned tag, then init ALL submodules recursively — including
-    # third_party/torch-mlir + third_party/stablehlo — so the compiler ships the
-    # full frontend set (stablehlo + torch input dialects), not just TOSA/linalg.
-    # (--recursive also pulls torch-mlir's nested externals; --depth 1 keeps every
-    # clone shallow. Disk is cheap; a complete tree is what we want here.)
+    # All submodules: the compiler ships the stablehlo and torch input dialects, not just TOSA/linalg.
     rm -rf "${src_dir}"
     if ! git clone --branch "${IREE_REF}" --depth 1 https://github.com/iree-org/iree.git "${src_dir}"; then
         warn "IREE clone ${IREE_REF} failed"; return 1
@@ -879,20 +716,7 @@ _iree_fetch_source() {
 
 # Defeat IREE's abi3 wheel tagging in the freshly cloned tree (src_dir).
 _iree_patch_setup_py_abi3() {
-    # Build VERSION-SPECIFIC Python bindings against the container's from-source
-    # CPython (3.14), NOT IREE's default cp312-abi3 stable-ABI wheel. IREE otherwise
-    # forces abi3 two ways, and BOTH must be defeated:
-    #   1. CMakeLists.txt auto-enables IREE_ENABLE_PYTHON_STABLE_ABI on any CPython
-    #      >=3.12 (so nanobind builds a limited-API .so) — countered by passing
-    #      -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF on the target configure (below).
-    #   2. {runtime,compiler}/setup.py hard-code
-    #      `_is_abi3_build = sys.version_info >= (3,12) and not Py_GIL_DISABLED`,
-    #      whose bdist_wheel.get_tag() override then stamps the wheel "cp312"/"abi3"
-    #      regardless of the built .so — with no env escape hatch. Patch it to False
-    #      so the wheel takes its true tag (cp314-cp314) from the version-specific
-    #      extension. `False and ...` short-circuits, parens stay balanced.
-    # Result: iree_base_{compiler,runtime}-*-cp314-cp314-linux_riscv64.whl, bound to
-    # exactly the interpreter we ship. (verify-wheels.sh then matches on cp314-.)
+    # setup.py stamps abi3 with no escape hatch; the configure's STABLE_ABI=OFF is the other half.
     local _sp
     for _sp in "${src_dir}/runtime/setup.py" "${src_dir}/compiler/setup.py"; do
         if [ -f "${_sp}" ]; then
@@ -901,21 +725,12 @@ _iree_patch_setup_py_abi3() {
     done
 }
 
-# Stage 1 — native amd64 host build populating IREE_HOST_BIN_DIR.
-# Why COMPILER=OFF, which two tools it must install, and how the ON arm is
-# used as insurance: docs/iree-two-stage-build.md
+# See docs/iree-two-stage-build.md § Stage 1 — the native amd64 host tools
 _iree_build_host_stage() {
-    # Which host tools are required, and why the list depends on the TARGET's
-    # compiler mode: docs/iree-two-stage-build.md
+    # See docs/iree-two-stage-build.md § The host tools stage 2 needs from IREE_HOST_BIN_DIR
     local -a host_required_tools=(iree-c-embed-data iree-flatcc-cli)
     local -a host_compiler_modes=(OFF ON)
-    # IREE imports host tools only under
-    #   if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)   (tools/CMakeLists.txt)
-    # so a target on COMPILER=OFF -- our default -- DOES take that branch and needs
-    # iree-tblgen from the host. COMPILER=OFF never installs it, so demanding it
-    # from an OFF host build guarantees the escalation: a complete host build,
-    # deleted, then redone with ON. Ask for ON directly instead of paying for the
-    # discarded pass. It cost two full host builds in the 2026-09-02 run.
+    # A COMPILER=OFF target imports iree-tblgen from the host, and only an ON host build installs it.
     case "${IREE_CROSS_BUILD_COMPILER}" in
       ON|on|1|true|TRUE|yes|YES) : ;;
       *)
@@ -945,10 +760,7 @@ _iree_build_host_stage() {
             warn "IREE host configure (IREE_BUILD_COMPILER=${host_compiler_mode}) failed"
             continue
         fi
-        # Capture build output to a log and echo its tail on failure. BuildKit
-        # collapses the tens-of-thousands of ninja progress lines, so a bare failure
-        # surfaces NO error (the silent-fast-fail gotcha, iree-0714f) — the tail dump
-        # is the only way to see why the cross build actually died.
+        # BuildKit collapses ninja's output, so the log tail is the only way to see the error.
         if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
                  -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
                 cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}" \
@@ -957,10 +769,7 @@ _iree_build_host_stage() {
             echo "----- IREE host build: last 80 log lines -----"
             tail -n 80 "${host_build}.log" 2>/dev/null
             echo "----- end IREE host build log -----"
-            # Deliberately NOT `continue`: escalating a failed BUILD to ON
-            # compiles bundled llvm-project/MLIR/Clang for hours and then
-            # fails at the same wall, because ON builds everything OFF does
-            # and more. Fail now, while the log tail above is the answer.
+            # No escalation: ON's graph is a superset of OFF's and would fail the same way hours later.
             warn "not escalating to IREE_BUILD_COMPILER=ON: its build graph is a superset of this one, so it would fail the same way after a multi-hour LLVM compile"
             break
         fi
@@ -981,23 +790,13 @@ _iree_build_host_stage() {
     fi
 }
 
-# Stage 2 — cross the runtime + Python bindings against the host tools.
-# WERROR/OUTPUT_FORMAT_C are both REQUIRED off; why, and the incident runs:
-# docs/iree-two-stage-build.md
+# See docs/iree-two-stage-build.md § Stage 2 — cross the runtime and the Python bindings
 _iree_build_target_cross() {
     toolchain_file="$(write_cross_cmake_toolchain_file || true)"
     [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
     append_common_cross_cmake_args cmake_args
 
-    # The cross-built iree-compile bakes in its DEFAULT codegen target triple at
-    # compile time via LLVM_HOST_TRIPLE (llvm::sys::getProcessTriple(), which IREE's
-    # llvm-cpu backend uses when --iree-llvmcpu-target-triple is unset). Bundled
-    # LLVM's CMake auto-detects that triple from the BUILD host during a cross-build,
-    # so without this override an arm64/riscv64 iree-compile defaults to the x86_64
-    # build host and emits `embedded-elf-x86_64` — iree-run-module on the target then
-    # fails "HAL device not found" (INCOMPATIBLE). Pin both triples to the actual
-    # target so the shipped compiler defaults to the arch it runs on. (iree-0714t:
-    # arm64 native iree-compile smoke failed exactly this way.)
+    # LLVM takes its default triple from the build host; unpinned, a target iree-compile emits x86_64 code.
     iree_target_triple="$(cross_target_triplet 2>/dev/null || true)"
     if [ -n "${iree_target_triple}" ]; then
         cmake_args+=(
@@ -1006,39 +805,19 @@ _iree_build_target_cross() {
         )
     fi
 
-    # Build IREE's nanobind Python extensions with the TARGET Python's SOABI so the
-    # compiled module is named _runtime.cpython-314-<target>-linux-gnu.so, not the
-    # x86_64 build host's suffix. Without this, FindPython/nanobind introspect the
-    # host BUILD_PYTHON and stamp cpython-314-x86_64-linux-gnu.so, which the target
-    # (aarch64) Python cannot import — "cannot import name '_runtime' from
-    # 'iree._runtime_libs'" (iree-0714t). _PYTHON_SYSCONFIGDATA_NAME redirects the
-    # host interpreter's sysconfig to the target's EXT_SUFFIX, the same mechanism the
-    # torch/vision cross builds use (resolve_target_python_sysconfig_export). Applied
-    # only HERE — after the Stage-1 host tools build (bindings OFF) — so host binaries
-    # keep the x86_64 config; it stays in effect for the Stage-2 build + wheel pack.
+    # Target SOABI for the nanobind modules; set only now, so the stage-1 host tools kept the host config.
     local iree_sysconfig_export=""
     iree_sysconfig_export="$(resolve_target_python_sysconfig_export)"
     if [ -n "${iree_sysconfig_export}" ]; then eval "${iree_sysconfig_export}"; fi
 
-    # The bundled LLVM spawns a NATIVE sub-build (llvm-project/NATIVE) for the
-    # tblgen family, and LLVM's CrossCompile.cmake DEFAULTS that sub-build's
-    # compilers to the outer (CROSS) CMAKE_C(XX)_COMPILER — so llvm-min-tblgen
-    # came out arm64 and died "Exec format error" on the amd64 build host
-    # (media-arm64, 2026-08-08; riscv64 only ever survived this because host
-    # qemu binfmt silently emulated the wrong-arch tblgen — slowly). Pin the
-    # NATIVE sub-build to the true host compilers, with ccache so its objects
-    # cache like everything else. (';' is CMake's list separator — the whole
-    # value is ONE shell word.)
+    # LLVM's NATIVE tblgen sub-build defaults to the cross compilers; ';' is CMake's list separator.
     local native_flags="-DCMAKE_C_COMPILER=${host_cc};-DCMAKE_CXX_COMPILER=${host_cxx}"
     if [ "${#ccache_cmake_args[@]}" -gt 0 ]; then
         native_flags="${native_flags};-DCMAKE_C_COMPILER_LAUNCHER=${_iree_launcher:-ccache};-DCMAKE_CXX_COMPILER_LAUNCHER=${_iree_launcher:-ccache}"
     fi
 
     rm -rf "${target_build}"
-    # Which wheel projects this configuration will actually produce.
-    # The cross target is runtime-only unless IREE_CROSS_BUILD_COMPILER=ON,
-    # so demanding a compiler wheel afterwards would fail a build that did
-    # exactly what it was told to do.
+    # Runtime-only unless IREE_CROSS_BUILD_COMPILER=ON, so expect only the wheels it builds.
     case "${IREE_CROSS_BUILD_COMPILER}" in
       [Oo][Nn]|1|[Tt][Rr][Uu][Ee]) iree_wheel_projects=(compiler runtime) ;;
       *)                           iree_wheel_projects=(runtime) ;;
@@ -1074,17 +853,7 @@ _iree_build_target_cross() {
     fi
 }
 
-# ===== amd64 NATIVE: single-stage build =====
-# build arch == target arch, so no host/target split, no toolchain file,
-# no IREE_HOST_BIN_DIR, no qemu emulator. One cmake configure builds LLVM
-# + iree-compile + the runtime + the cp314 Python bindings for the host.
-# IREE_ENABLE_PYTHON_STABLE_ABI=OFF (plus the setup.py abi3 sed patch above)
-# forces version-specific cp314-cp314-linux_x86_64 wheels instead of IREE's
-# default cp312-abi3. OUTPUT_FORMAT_C=OFF is harmless natively (iree-compile
-# runs on the host) — kept OFF for parity + speed. Native build => the CPU
-# host-detection that fails the riscv64 iree-compile under QEMU is a non-issue.
-#
-# Leaves iree_wheel_projects empty so packaging defaults to both wheels.
+# Native amd64: one stage, no host/target split; leaves iree_wheel_projects empty, so both wheels.
 _iree_build_target_native() {
     local native_cc="" native_cxx=""
     for native_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${native_cc}" ] && break; done
@@ -1121,13 +890,7 @@ _iree_build_target_native() {
     fi
 }
 
-# Which wheel projects the build tree actually exposes depends on how the
-# target was configured. The NATIVE branch builds both; the CROSS branch is
-# runtime-only (IREE ignores IREE_HOST_BIN_DIR while COMPILER=ON and then
-# cannot cross-build its own tblgen — see the note at the cross configure).
-# Default to both so the native path is unchanged.
-#
-# Called LAST, so its status is build_iree_wheels' status.
+# Empty iree_wheel_projects means both; called last, so its status is build_iree_wheels'.
 _iree_package_wheels() {
     rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
     local _proj _pkg
@@ -1158,13 +921,9 @@ _iree_package_wheels() {
 }
 
 build_iree_wheels() {
-    # Default set HERE, not at file scope: the stage suites extract this block
-    # alone, so a top-level default would leave `set -u` nothing to read.
+    # Defaulted here, not at file scope: the stage suites extract this block alone.
     : "${IREE_CROSS_BUILD_COMPILER:=OFF}"
-    # Wheel projects this run expects. Set by the cross branch (runtime-only
-    # unless IREE_CROSS_BUILD_COMPILER=ON); the native branch leaves it empty
-    # and the packaging step defaults to both. Declared here so `set -u` does
-    # not trip on the native path.
+    # Set by the cross branch; declared here so set -u holds on the native path.
     local -a iree_wheel_projects=()
     local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/iree"
     local host_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-host"
@@ -1182,16 +941,10 @@ build_iree_wheels() {
 
     _iree_fetch_source || return 1
     _iree_patch_setup_py_abi3
-    # NO QNN FLAGS (corrected 2026-08-31, Windows backlog #154). IREE_TARGET_BACKEND_QNN
-    # and QNN_HOME are not IREE options -- they have never existed, at any version, and
-    # CMake dropped both silently while this logged "QNN target backend ON". IREE has no
-    # Qualcomm NPU path: Adreno via vulkan-spirv and the Snapdragon CPU via llvm-cpu is
-    # the whole story. The QAIRT runtime is still staged beside the install (ORT loads it).
+    # No QNN flags: IREE has no such options and no Qualcomm NPU path.
 
     if cross_build_is_active; then
-        # ===== CROSS (arm64/riscv64 foreign target): two-stage host + target build =====
-        # Both stages need these: stage 1 builds with them, stage 2 pins
-        # bundled LLVM's NATIVE tblgen sub-build to them.
+        # Stage 1 builds with the host compilers, stage 2 pins LLVM's NATIVE sub-build to them.
         local host_cc="" host_cxx=""
         for host_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${host_cc}" ] && break; done
         for host_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${host_cxx}" ] && break; done
@@ -1208,20 +961,12 @@ build_iree_wheels() {
 main() {
     prepare_workspace
     if ! prepare_build_environment; then
-        # Deliberate degradation: every bail-out above warns with its own reason
-        # and leaves the wheelhouse EMPTY rather than failing the media build.
-        # Say so once at the exit point so the log does not end on silence.
+        # Deliberate: an empty wheelhouse, not a failed media build.
         warn "app wheelhouse: environment not ready (see the warning above) — shipping an EMPTY wheelhouse"
         return 0
     fi
 
-    # torch/torchvision are cross-built ONLY for riscv64 (no upstream riscv64
-    # wheels exist). On amd64/arm64 torch/vision come from PyPI; only IREE is
-    # source-built there (PyPI ships cp312-abi3, but we need version-specific
-    # cp314). They are best-effort even on riscv64 (a native torch stage is the
-    # fallback), so a failure must NOT short-circuit main() before the REQUIRED
-    # build_iree_wheels runs (that fail-open skipped IREE when a transient
-    # ports.ubuntu.com outage broke torch in iree-0714k) — warn and continue.
+    # Best-effort riscv64-only torch/vision: a failure must not skip the required IREE build.
     if [ "$(cross_target_arch 2>/dev/null || echo)" = "riscv64" ]; then
         if ! build_torch_wheel; then
             warn "riscv64 torch cross-wheel failed — native torch stage is the fallback; continuing to IREE"
@@ -1231,12 +976,7 @@ main() {
         fi
     fi
 
-    # IREE is REQUIRED on ALL arches (amd64/arm64/riscv64): we ship version-specific
-    # cp314 wheels built from source, never the PyPI cp312-abi3 build. A failed build
-    # must FAIL THE IMAGE (fail early) so it gets fixed, never silently ship an image
-    # missing iree. The failure paths above dump the real cmake/ninja tail before
-    # returning non-zero. Bypass only with an explicit ALLOW_IREE_BUILD_FAIL=1 for a
-    # deliberate IREE-less debugging image.
+    # IREE is required on every arch; ALLOW_IREE_BUILD_FAIL=1 only for a deliberate IREE-less image.
     if ! build_iree_wheels; then
         if [ "${ALLOW_IREE_BUILD_FAIL:-0}" = "1" ]; then
             warn "IREE build failed but ALLOW_IREE_BUILD_FAIL=1 set — continuing without it"

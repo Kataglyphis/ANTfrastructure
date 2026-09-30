@@ -7,13 +7,8 @@
 .SYNOPSIS
     Builds AMD's ONNX Runtime plugin EP (migraphx-ep.dll) against the image's ORT and MIGraphX (rocm lane only).
 .DESCRIPTION
-    onnxruntime/onnxruntime-ep-amdgpu, pinned by commit, with USE_MIGRAPHX only: no DirectML copy
-    (ORT carries its own), no closed HIP backend, no amdgpu umbrella. Host-only C++, so clang-cl
-    builds it; upstream forces the static CRT (/MT) for the EP, which crosses to ORT and MIGraphX
-    only through C APIs. Every FetchContent download is pre-seeded from a SHA256-pinned archive and
-    FETCHCONTENT_FULLY_DISCONNECTED turns any other fetch into a configure error. The output
-    directory is self-contained for loading: MIGraphX and the TheRock HIP runtime sit beside the
-    EP. Refuses unless Get-GpuEnvironment reports HasRocm. docs/windows-builds.md § ROCm layer.
+    USE_MIGRAPHX only, every FetchContent pre-seeded from a SHA256-pinned archive; refuses off the rocm lane.
+    See docs/windows-rocm.md § MIGraphX and the ORT plugin EP (rocm lane, spike).
 .PARAMETER OnnxRuntimeDir
     The ORT install prefix; empty = $env:ONNX_ROOT (C:\runtime\lib\onnxruntime-source).
 #>
@@ -123,8 +118,7 @@ try {
     $buildDir = Join-Path $WorkDir 'ep-build'
     $epArgs = @(Get-OrtAmdgpuEpCmakeArgs -MigraphxDir $MigraphxDir -RocmRoot $rocmRoot -OrtCmakeDir $ortCmakeDir `
             -GpuTargets $gpuTargets -Python $python -SeedArgs $seedArgs) + @(Get-LlvmArchiverCmakeArg)
-    # -AllowRocmPrefix: find_package(hip) and migraphx's MIOpen/rocBLAS/hipBLASLt dependencies live in TheRock.
-    # Teed to a log that outlives the solve; G2 reads it for ORT fetch traces in phase 5.
+    # -AllowRocmPrefix: hip and migraphx's dependencies live in TheRock; G2 reads the teed log in phase 5.
     $epCfgLog = Get-PersistentBuildLogPath -Name 'ort-amdgpu-ep-configure.log' -FallbackDir $WorkDir
     Invoke-CmakeConfigure -SourceDir $epRoot -BuildDir $buildDir -InstallPrefix $InstallDir -BuildType $BuildType `
         -ExtraArgs $epArgs -AllowRocmPrefix 2>&1 | Tee-Object -FilePath $epCfgLog

@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# smoke-runtime-image.sh
-# Validates the runtime wrapper image: boot + metadata, then functional checks that
-# run the ML stack, ffmpeg and GStreamer INSIDE the image (qemu for cross arches).
-# RUNTIME_FUNCTIONAL_SMOKE=0 skips the functional half; ALLOW_TORCHLESS_RUNTIME=1
-# accepts a torch-less image. What each gate covers:
-# docs/cross-build-verification.md#in-image-smoke-tests-need-a-built-image-not-part-of-preflight
-#
-# Usage:
-#   smoke-runtime-image.sh <image-tag> [target-arch]
-#   smoke-runtime-image.sh ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-arm64 arm64
+# Runtime image smoke: boot, metadata, then in-image functional gates. docs/cross-build-verification.md#in-image-smoke-tests-need-a-built-image-not-part-of-preflight
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/smoke-common.sh"
@@ -21,14 +12,12 @@ NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 : "${RUNTIME_CLANG_VERSION_SMOKE:=1}"
 : "${RUNTIME_COMPILER_SMOKE:=1}"
 
-# Evaluate a python expression against the image's `nerdctl image inspect` JSON (the
-# [0] element on stdin). Uses the caller's ${image_tag} dynamically; empty on any error.
+# Reads the caller's ${image_tag} (dynamic scope); prints empty on any error.
 inspect_image_config() {
   "${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "$1" 2>/dev/null || true
 }
 
-# Run a command inside the image under test. Leading `-e KEY=VAL` / `--network X`
-# pairs are forwarded to nerdctl run; uses the caller's ${image_tag}/${target_arch}.
+# Leading -e/--network pairs go to nerdctl run; reads the caller's ${image_tag}/${target_arch}.
 _rt_run() {
   local -a _opts=()
   while [ "${1:-}" = "-e" ] || [ "${1:-}" = "--network" ]; do
@@ -39,8 +28,7 @@ _rt_run() {
     ${_opts[@]+"${_opts[@]}"} "${image_tag}" "$@"
 }
 
-# Host-side versions.env pin reader: env wins, then the file, EMPTY on a miss --
-# callers must treat empty as "not asserted". docs/gen1-riscv64-genai.md
+# Env wins over versions.env; EMPTY on a miss means "not asserted" (docs/gen1-riscv64-genai.md).
 _rt_versions_env_pin() {
   local _key="$1" _val="${!1:-}" _venv
   if [ -z "${_val}" ]; then
@@ -50,8 +38,7 @@ _rt_versions_env_pin() {
   printf '%s' "${_val}"
 }
 
-# Set by check_torchless_sentinel (1 = torch expected, 0 = sentinel present); read by
-# the app-wheel-smoke and version-pin sections.
+# check_torchless_sentinel sets 0 when the torch-less sentinel is present; later gates read it.
 _SMOKE_TORCH_EXPECTED=1
 
 check_image_availability() {
@@ -95,23 +82,13 @@ check_entrypoint() {
   echo ""
 }
 
-# Boot the image the way a USER does: no command, so the shipped ENTRYPOINT runs the
-# shipped CMD. Every other check passes an explicit argv, so entrypoint.sh's own
-# default path was never executed by the gate and a broken one shipped green. The probe
-# arrives on STDIN so the default CMD shell reads it, and `exit 42` proves the exec
-# chain hands the child's status back. A gate may not skip itself: a missing CMDOK
-# marker (inspect failed) or a CMD whose first word is not a shell FAILS.
-# Pure verdict function for the default-boot gate: rc + probe text in, one
-# pass/fail out. No container, so the reasoning is unit-testable -- which is how
-# the previous version's inert assertion would have been caught.
+# Default boot runs no argv, so the shipped ENTRYPOINT runs the shipped CMD; exit 42 proves status propagates.
 _boot_verdict() {
   local rc="$1" out="$2" target_arch="$3"
   if [ "${rc}" != "42" ]; then
     fail "default ENTRYPOINT+CMD boot returned ${rc}, expected the script's 42 (${target_arch}) -- entrypoint.sh does not exec the CMD or died before it: ${out}"
   elif ! printf '%s' "${out}" | grep -q "gstma=yes"; then
-    # NOT gst=set / vulkan=set: the image ENV sets both on its own, so those
-    # answer yes even with the entrypoint's sourcing gone. The multiarch plugin
-    # dir comes only from gstreamer-env.sh. docs/refactoring-backlog.md XQ
+    # Not gst=set/vulkan=set: the image ENV sets both; only gstreamer-env.sh adds the multiarch dir.
     fail "the entrypoint did not source gstreamer-env.sh (${target_arch}): ${out} -- GST_PLUGIN_PATH lacks the multiarch dir"
   elif ! printf '%s' "${out}" | grep -q "vkres=yes"; then
     fail "the entrypoint did not resolve VULKAN_SDK past /opt/vulkan/active (${target_arch}): ${out}"
@@ -136,8 +113,7 @@ check_default_entrypoint_boot() {
   esac
   cmd0="${cmd%% *}"
   case "${cmd0}" in
-    # Empty CMD is legitimate: entrypoint.sh's own `[ $# -eq 0 ]` fallback then
-    # supplies /bin/bash, which is still a shell reading our stdin.
+    # Empty CMD is fine: entrypoint.sh falls back to /bin/bash, still a shell reading stdin.
     ""|bash|sh|*/bash|*/sh) ;;
     *)
       fail "default ENTRYPOINT+CMD boot: image CMD is '${cmd}' but this probe needs a shell to read its stdin script (${target_arch}) -- Dockerfile.torch ships CMD [\"/bin/bash\"]; if the CMD changed on purpose, update this check instead of letting it self-disable"
@@ -157,9 +133,7 @@ check_default_entrypoint_boot() {
   echo ""
 }
 
-# The image's OWN healthcheck command. Test[0] is the OCI verb (CMD / CMD-SHELL);
-# the probe is what follows it, and reading only [0] can distinguish 'a HEALTHCHECK
-# exists' from 'none' but never right from wrong. docs/refactoring-backlog.md WE
+# Test[0] is the OCI verb (CMD/CMD-SHELL); the command is what follows it.
 _rt_healthcheck_cmd() {
   inspect_image_config "import sys,json; cfg=json.load(sys.stdin)[0].get('Config',{}); t=(cfg.get('Healthcheck') or {}).get('Test') or []; print(' '.join(t[1:]) if len(t) > 1 else '')"
 }
@@ -253,21 +227,13 @@ check_torchless_sentinel() {
     echo ""
 }
 
-# Wheel smoke -- delegate to the APP's own smoke module (single source of truth):
-# `python -m orchestrant.smoke` exercises each shipped wheel with REAL work, and
-# the app OWNS what its wheels must do. Torch-less images fall back to a bare
-# onnx/numpy import, since the suite treats torch as required.
+# The app owns what its wheels must do; torch-less images fall back to an onnx/numpy import.
 check_app_wheel_smoke() {
   local image_tag="$1"
   local target_arch="$2"
     if [ "${_SMOKE_TORCH_EXPECTED}" = "1" ]; then
       echo "--- Functional: app wheel smoke (python -m orchestrant.smoke) ---"
-      # RATCHET on the ok-count, not the exit status: the smoke exits 0 whenever
-      # failures==0 and reports a vanished component as a WARNING, so one identical
-      # PASS covered 15/15, 14/15 and 12/15. Floors may only ever go UP - raise one
-      # when an arch gains a component, never to make a red run green.
-      # GEN1: riscv64 12->13 (run 20260903 printed 14); arm64 held at 14.
-      # docs/gen1-riscv64-genai.md#the-app-wheel-floor
+      # Ratchet the ok-count, not exit 0 (a lost component only warns); floors only rise. docs/gen1-riscv64-genai.md#the-app-wheel-floor
       local _wheel_floor _wheel_out _wheel_ok
       case "${target_arch}" in
         amd64)   _wheel_floor=15 ;;
@@ -278,8 +244,7 @@ check_app_wheel_smoke() {
       if _wheel_out="$(_rt_run /opt/venv/bin/python -m orchestrant.smoke 2>&1)"; then
         printf '%s\n' "${_wheel_out}"
         _wheel_ok="$(printf '%s\n' "${_wheel_out}" | sed -n 's/.*=== \([0-9]\{1,\}\)\/[0-9]\{1,\} ok.*/\1/p' | tail -1)"
-        # An unreadable count must FAIL. Falling through to pass would leave only the
-        # exit status, which is what this ratchet exists to distrust.
+        # An unreadable count fails; passing would fall back to the exit status this ratchet distrusts.
         if [ -z "${_wheel_ok}" ]; then
           fail "app wheel smoke on ${target_arch}: could not read the ok-count from its summary; the ratchet cannot arm"
         elif [ "${_wheel_ok}" -lt "${_wheel_floor}" ] 2>/dev/null; then
@@ -302,12 +267,7 @@ check_app_wheel_smoke() {
     echo ""
 }
 
-# Run ONE real inference owned by THIS repo: smoke_minimal_onnx_py emits a one-node Add
-# graph as raw protobuf (no `onnx` package, no network, ~110 model bytes) and is injected
-# as an env var, so this gate also works against images built before the check existed.
-# EXIT STATUS IS NOT EVIDENCE: if SMOKE_ONNX_PY arrives empty, `python -` reads an EMPTY
-# program and exits 0 - the "green because nothing ran" class. A pass therefore demands
-# the `ONNX-EP OK:` sentinel in the program's OUTPUT, whatever the exit status says.
+# A pass needs the ONNX-EP OK: sentinel: an empty SMOKE_ONNX_PY makes `python -` exit 0 having run nothing.
 check_onnx_execution_provider() {
   local image_tag="$1"
   local target_arch="$2"
@@ -332,8 +292,7 @@ printf "%s\n" "${SMOKE_ONNX_PY}" | /opt/venv/bin/python -' 2>&1)" \
           fail "onnxruntime session check exited 0 but reported '${sentinel}' (${target_arch}) -- a non-OK verdict must never pass" ;;
       esac
     elif [ "${rc}" = "3" ]; then
-      # Not a skip in a WRAPPER: the image's own HEALTHCHECK is `import onnxruntime`,
-      # so an unimportable onnxruntime means every container would report unhealthy.
+      # Fail, not skip: the image's own HEALTHCHECK imports onnxruntime.
       fail "onnxruntime/numpy not importable in the runtime image (${target_arch}) -- the HEALTHCHECK imports onnxruntime, so this is a defect: ${sentinel}"
     else
       fail "onnxruntime InferenceSession FAILED on the generated Add graph (${target_arch}, rc=${rc}): ${sentinel}"
@@ -341,9 +300,7 @@ printf "%s\n" "${SMOKE_ONNX_PY}" | /opt/venv/bin/python -' 2>&1)" \
     echo ""
 }
 
-# GEN1: the onnxruntime-genai binding gate (payload smoke_genai_py), every arch.
-# Exit status is not evidence -- a pass demands the GENAI-BIND sentinel in the
-# OUTPUT. docs/gen1-riscv64-genai.md
+# A pass needs the GENAI-BIND sentinel in the output, not exit 0 (docs/gen1-riscv64-genai.md).
 check_genai_binding() {
   local image_tag="$1"
   local target_arch="$2"
@@ -378,21 +335,13 @@ printf "%s\n" "${SMOKE_GENAI_PY}" | /opt/venv/bin/python -' 2>&1)" \
     echo ""
 }
 
-# Not just "importable" but the CORRECT versions: delegate to smoke-torch-venv.sh's
-# assert-only mode, which catches a wrong version slipping in (lock drift, a stale local
-# wheel, a floated index). Which authority owns which pin, and why they are no longer
-# unioned: docs/cross-build-verification.md, "In-image smoke tests".
+# Asserts pinned versions, not just imports; pin owners: docs/cross-build-verification.md#in-image-smoke-tests-need-a-built-image-not-part-of-preflight
 check_ml_version_pins() {
   local image_tag="$1"
   local target_arch="$2"
     if [ "${_SMOKE_TORCH_EXPECTED}" = "1" ]; then
       echo "--- Functional: ML version-pin assertion (${target_arch}) ---"
-      # nerdctl run inherits nothing, and the toggle is ARG/ENV on a BUILDER
-      # stage only, so forward it explicitly. docs/failure-modes.md
-      # Only forward a NON-EMPTY pin: an empty value would reach the container
-      # as a set-but-empty var, and the consumer treats anything != "true" as
-      # "lane off" -- i.e. a failed versions.env lookup would silently DISARM
-      # the riscv64 genai assertion. Fail safe, not open. docs/failure-modes.md
+      # Forward only a non-empty pin: an empty one reads as "lane off" and disarms the riscv64 genai assert.
       _stv_pin="$(_rt_versions_env_pin GENAI_ALLOW_RISCV64)"
       _stv_env=()
       [ -n "${_stv_pin}" ] && _stv_env=(-e "GENAI_ALLOW_RISCV64=${_stv_pin}")
@@ -403,18 +352,14 @@ check_ml_version_pins() {
       if [ "${_stv_rc}" -eq 0 ]; then
         pass "ML-stack versions match pins (${target_arch})"
       else
-        # GEN1: the transitional riscv64 genai exemption is gone -- a missing
-        # riscv64 wheel is now a real defect. docs/gen1-riscv64-genai.md
+        # A missing riscv64 genai wheel is a real defect (docs/gen1-riscv64-genai.md).
         fail "ML-stack version-pin assertion FAILED in the runtime image (${target_arch})"
       fi
       echo ""
     fi
 }
 
-# IREE native tools -- the C side of what check_iree exercises in Python: iree-compile
-# lowers a one-op MLIR module and iree-run-module executes it (abs(-5)=5), proving the
-# compiled binaries interoperate on-target. GATES when the tools are present, WARN-only
-# when absent (the cross lane ships runtime-only).
+# Gates when the IREE tools are present, warns when absent (the cross lane ships runtime-only).
 check_iree_native() {
   local image_tag="$1"
   local target_arch="$2"
@@ -440,11 +385,7 @@ echo "$o" | grep -Eq "\b5(\.0+)?\b" || exit 2' 2>&1)"; then
       if printf '%s' "${iree_out}" | grep -q IREE_NATIVE_TOOLS_ABSENT; then
         echo "  WARN IREE native tools (iree-compile/iree-run-module) absent (${target_arch}) -- riscv64 compiler is best-effort; check_iree stays optional-fail there (non-fatal)"
       elif [ "${target_arch}" = "riscv64" ]; then
-        # WARN, don't fail, on riscv64: this runs the riscv64 iree-compile under QEMU,
-        # which advertises a synthetic max-ISA CPU that LLVM's RISC-V subtarget rejects
-        # ("64-bit code requested on a subtarget that doesn't support it"). An emulation
-        # limit, not a wheel defect - the wheels still build, install and import here,
-        # so codegen has to be verified on real hardware. amd64/arm64 keep GATING.
+        # Warn on riscv64 only: LLVM rejects QEMU's synthetic max-ISA CPU, an emulation limit.
         echo "  WARN IREE native compile/run FAILED under QEMU on riscv64 (non-fatal) --"
         echo "       cp314 wheels build/install/import; codegen unverifiable under QEMU's"
         echo "       synthetic max-ISA CPU (LLVM RISC-V subtarget rejects it). Verify on-device."
@@ -461,8 +402,7 @@ check_ffmpeg() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: ffmpeg ---"
-    # pipefail is REQUIRED: without it `ffmpeg -version | head -1` returns head's 0 and
-    # a binary with a missing .so (libopencore-amrwb.so.0, 2026-07-11) silently PASSES.
+    # pipefail is required: head's 0 would hide an ffmpeg that cannot load a .so.
     if _rt_run \
          bash -lc 'set -o pipefail; v="$(command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg)"; "$v" -version | head -1'; then
       pass "ffmpeg executes (${target_arch})"
@@ -472,11 +412,7 @@ check_ffmpeg() {
     echo ""
 }
 
-# Flutter must run as the image user, OFFLINE, on the target-arch Dart SDK the
-# package stage cached, and be USABLE by that user: an x86-64 dart in the arm64
-# image still executes on this host, and `flutter --version` ran fine while
-# `flutter pub get` was denied a root-owned .dart_tool nobody can fix at runtime.
-# docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
+# As the image user, offline: --version alone passes a foreign-arch dart or root-owned .dart_tool. docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
 check_flutter() {
   local image_tag="$1"
   local target_arch="$2"
@@ -508,10 +444,7 @@ check_flutter() {
   echo ""
 }
 
-# The Rust toolchain must be the image's OWN arch and run: every arm64/riscv64
-# image before 2026-09-03 carried the builder's x86_64 rustup (2 GB, exit 127),
-# and the ADV/HAVE table only SKIPs an unreadable rustc. Executes the pinned
-# rustc and reads the active toolchain's host triple. docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
+# Runs rustc for its host triple; the ADV/HAVE table only SKIPs an unreadable one. docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
 check_rust_toolchain() {
   local image_tag="$1"
   local target_arch="$2"
@@ -532,17 +465,10 @@ check_rust_toolchain() {
   echo ""
 }
 
-# ── CONSUMER CONTRACT (2026-09-04) ───────────────────────────────────────────
-# The properties a consuming CI lane depends on and cannot repair from outside the
-# image: caches outside the bind-mounted checkout, a writable Rust home, a set
-# ANDROID_HOME, and a Flutter SDK the runtime uid owns. All four shipped broken.
-# docs/consumer-image-contract.md#the-contract
+# Consumer contract. See docs/consumer-image-contract.md#the-contract
 _CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env"
 
-# Rows whose entire contract is "this is staged in the image, or every consumer run
-# pays for it again". One owner for all three: the verdict has the same shape, and
-# the cost is already written down once in _consumer_contract_symptom.
-# docs/consumer-image-contract.md#what-the-image-stages-so-a-run-does-not
+# Staged-or-every-run-pays rows. See docs/consumer-image-contract.md#what-the-image-stages-so-a-run-does-not
 _consumer_present_verdict() {
   local row="$1" got="$2"
   case "${got}" in
@@ -551,9 +477,7 @@ _consumer_present_verdict() {
   esac
 }
 
-# The consumer-visible failure each row prevents, quoted verbatim from the lane that
-# hit it, so a red run names the symptom in the OTHER repo and not just our path.
-# docs/consumer-image-contract.md#the-contract
+# Quotes each row's consumer-side symptom so a red run names the failure in the other repo.
 _consumer_contract_symptom() {
   case "$1" in
     ccache-dir|sccache-dir) printf '%s' 'the cache lands in the consumer checkout and flatpak-builder aborts: "Can'"'"'t initialize ccache use: Failed to set permissions of .../ccache.conf: Operation not permitted"' ;;
@@ -572,31 +496,21 @@ _consumer_contract_symptom() {
   esac
 }
 
-# Documented per-arch absences, same contract as _parity_exempt: listed = reviewed,
-# and an arm that STOPS applying fails so the table cannot rot. Key is <arch>:<row>.
-# docs/consumer-image-contract.md#per-arch-exemptions
+# Key <arch>:<row>; an arm that stops applying fails. docs/consumer-image-contract.md#per-arch-exemptions
 _consumer_contract_exempt() {
   case "$1:$2" in
-    # Upstream publishes no riscv64 Flutter SDK, so the .dart_tool directory the row
-    # asks about does not exist there and the row would read as unwritable.
-    # flutter-owner is NOT exempt: measured on the shipped riscv64 image, the row
-    # already holds. docs/consumer-image-contract.md#per-arch-exemptions
+    # No upstream riscv64 Flutter SDK, so there is no .dart_tool (flutter-owner still holds there).
     riscv64:dart-tool) return 0 ;;
-    # AppImage publishes no riscv64 build either: packaging-deps.sh's asset table
-    # covers x86_64/aarch64/armhf/i686 and refuses the rest, so the tool is absent
-    # there by construction and the AppImage format is not offered on riscv64.
+    # No riscv64 AppImage build; packaging-deps.sh refuses the arch.
     riscv64:appimagetool) return 0 ;;
-    # Flathub builds the freedesktop runtimes for x86_64 and aarch64 only, and the
-    # AppImage runtime is carved out of the appimagetool AppImage, which riscv64
-    # does not have either. Both are absent there by construction.
+    # Flathub runtimes are x86_64/aarch64 only; the AppImage runtime comes from appimagetool.
     riscv64:flatpak-runtimes) return 0 ;;
     riscv64:appimage-runtime) return 0 ;;
     *) return 1 ;;
   esac
 }
 
-# The probe FACT that re-checks one exempted row. An exemption re-checked by ANOTHER
-# row's fact cannot rot at all — appimagetool's was read from FACT flutter-sdk.
+# Each exemption is re-checked by its own row's fact; another row's fact never goes stale.
 _consumer_exempt_fact() {
   case "$1" in
     appimagetool) printf '%s' 'appimagetool-readable' ;;
@@ -604,10 +518,7 @@ _consumer_exempt_fact() {
   esac
 }
 
-# Facts only, ONE process in the image: what the contract-bearing vars say, a REAL
-# create+delete in each directory (access(2) answers yes for root and lies about a
-# read-only layer), and who owns the Flutter tree. Verdicts are reached on the host.
-# docs/consumer-image-contract.md#the-contract
+# Real create+delete per dir: access(2) says yes for root and lies about a read-only layer.
 _consumer_contract_probe() {
   cat <<'PROBE'
 set -uo pipefail
@@ -689,8 +600,7 @@ PROBE
   _consumer_ort_env_probe; printf '%s\n' 'echo CCPROBE_DONE'
 }
 
-# The ort-crate-env row's facts, spliced into the contract probe ahead of its sentinel; '<unset>' is not ''
-# (ort-sys reads a set-but-empty variable). docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
+# '<unset>' is not '': ort-sys reads a set-but-empty variable. docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
 _consumer_ort_env_probe() {
   cat <<'PROBE'
 printf 'ENV ort-lib-location %s\nENV ort-dylib-path %s\n' "${ORT_LIB_LOCATION:-}" "${ORT_DYLIB_PATH:-}"
@@ -703,14 +613,12 @@ printf 'FACT ort-probe yes\n'
 PROBE
 }
 
-# One "<verb> <key> <value>" fact out of the probe text; EMPTY on a miss, which every
-# caller turns into NOFACT rather than a pass. docs/consumer-image-contract.md#the-contract
+# EMPTY on a miss, which every caller turns into NOFACT, never a pass.
 _consumer_contract_fact() {
   printf '%s\n' "$1" | sed -n "s/^$2 $3 //p" | head -1
 }
 
-# One directory row: set, outside the consumer's /workspace checkout, and provably
-# writable by the image user. docs/consumer-image-contract.md#the-contract
+# Outside /workspace, the consumer's bind-mounted checkout, and writable by the image user.
 _consumer_dir_verdict() {
   local row="$1" val="$2" write="$3"
   case "${write}" in
@@ -728,9 +636,7 @@ _consumer_dir_verdict() {
   esac
 }
 
-# An exempted row still has to prove its exemption still applies: the rot signal is the
-# row's OWN probe fact, and a missing one is NOFACT, never a grant.
-# docs/consumer-image-contract.md#per-arch-exemptions
+# An exemption re-proves itself from the row's own fact; a missing fact is NOFACT, never a grant.
 _consumer_exempt_verdict() {
   case "$3" in
     yes) printf 'STALE %s FACT %s says it IS present on %s -- delete the %s:%s arm from _consumer_contract_exempt' "$1" "$4" "$2" "$2" "$1" ;;
@@ -739,12 +645,7 @@ _consumer_exempt_verdict() {
   esac
 }
 
-# The android row: both variables set AND the platform-tools directory really there,
-# because an exported path is not an SDK. docs/consumer-image-contract.md#the-contract
-# Gradle reads JAVA_HOME; a java on PATH with no JAVA_HOME is the shape the Android
-# lane died on. Both, plus a javac under it, or the row is red.
-# A tool that is executable but not readable runs for root and fails for everyone
-# else; the probe answers for the user the image ships.
+# Executable-but-unreadable runs for root only; the probe answers as the shipped image user.
 _consumer_tool_verdict() {
   local row="$1" path readable
   path="$(_consumer_contract_fact "$2" ENV appimagetool)"
@@ -780,11 +681,7 @@ _consumer_jdk_verdict() {
 
 _consumer_android_verdict() {
   local row="$1" val root dir onpath off
-  # The build host, not the target, decides whether an SDK exists to ship: the
-  # NDK is prebuilt/linux-x86_64 only, so a non-amd64-hosted android stage
-  # builds payload-off and android-sdk.sh records that in the image. Read the
-  # record. A MISSING fact is NOFACT, not a grant — an absent line must never
-  # silently restore the old verdict.
+  # The NDK is linux-x86_64 only, so the build host decides; read android-sdk.sh's payload-off record.
   off="$(_consumer_contract_fact "$2" FACT android-payload-off)"
   if [ -z "${off}" ]; then
     printf 'NOFACT %s no FACT android-payload-off line' "${row}"
@@ -811,8 +708,7 @@ _consumer_android_verdict() {
   fi
 }
 
-# The ownership row: a missing count is NOFACT, not zero -- the whole defect is that
-# root wrote into the tree after the COPY. docs/consumer-image-contract.md#the-contract
+# A missing count is NOFACT, not zero: the defect is root writing into the tree after the COPY.
 _consumer_owner_verdict() {
   local row="$1" n
   n="$(_consumer_contract_fact "$2" FACT flutter-foreign)"
@@ -826,8 +722,7 @@ _consumer_owner_verdict() {
   fi
 }
 
-# G3: ort-sys links the chain ORT dynamically with its download disarmed, and ort load-dynamic opens
-# the chain file. EMPTY when it holds. docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
+# EMPTY when ort-sys and load-dynamic both resolve the chain ORT. docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
 _consumer_ort_env_problem() {
   local p="$1" lreal dreal v
   lreal="$(_consumer_contract_fact "${p}" FACT ort-lib-real)"
@@ -878,9 +773,7 @@ _consumer_ort_env_verdict() {
   fi
 }
 
-# Pure verdict function: arch + probe text in, one "OK|BAD|EXEMPT|STALE|NOFACT <row>
-# <detail>" line per contract row plus "ASSERTED <n>". No container, so every failure
-# path is provable from a recorded probe. docs/consumer-image-contract.md#how-the-gate-proves-it
+# Pure verdicts from probe text, so every failure path is testable. docs/consumer-image-contract.md#how-the-gate-proves-it
 _consumer_contract_verdicts() {
   local arch="$1" probe="$2" row fact line asserted=0
   for row in ${_CONSUMER_CONTRACT_ROWS}; do
@@ -909,9 +802,7 @@ _consumer_contract_verdicts() {
   printf 'ASSERTED %d\n' "${asserted}"
 }
 
-# Why the probe's answers are evidence at all: it completed, and it ran as the image's
-# OWN user -- as root every directory answers writable. Prints the reason to stop, EMPTY
-# when the capture is usable. docs/consumer-image-contract.md#how-the-gate-proves-it
+# Usable only if the probe completed as the image user (root sees every dir writable); EMPTY when usable.
 _consumer_probe_verdict() {
   local probe="$1" want="$2" who
   if ! printf '%s\n' "${probe}" | grep -qxF -- 'CCPROBE_DONE'; then
@@ -928,10 +819,7 @@ _consumer_probe_verdict() {
   fi
 }
 
-# CONTRACT: what a consuming CI lane may rely on and cannot repair from outside a
-# read-only overlay layer. One probe run as the image's OWN user -- a root probe would
-# answer yes to every writability question -- then host-side verdicts.
-# docs/consumer-image-contract.md#the-contract
+# Probe as the image's own user: a root probe answers yes to every writability question.
 check_consumer_contract() {
   local image_tag="$1"
   local target_arch="$2"
@@ -968,11 +856,7 @@ printf "%s\n" "${RT_CONTRACT_SH}" | bash' 2>/dev/null)" || true
   echo ""
 }
 
-# Native shared-library dependency closure over the source-built /opt stacks: any
-# NEEDED soname absent from the runtime loader path is a real defect (the class that
-# shipped a libopencore-amrwb-broken ffmpeg and a libsleef-broken torch while amd64
-# stayed green). Venv extensions are EXCLUDED - they add their own package lib dirs at
-# import time, which a bare `ldd` cannot replicate; the import checks are their gate.
+# Venv extensions are excluded: they add package lib dirs at import time, which bare ldd cannot see.
 check_native_so_closure() {
   local image_tag="$1"
   local target_arch="$2"
@@ -993,12 +877,7 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
     echo ""
 }
 
-# HT4's structural half. The sdk stage's self-containment walk checks non-LLVM
-# NEEDED sonames against the BUILDER's ldconfig cache, so a soname present there
-# and absent here ships a binary that cannot start: liblldb was the instance,
-# taking lldb, lldb-dap and lldb-mcp -- 3 of amd64's 142 -- and only a
-# RUNTIME-side check catches the next one.
-# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+# The sdk stage checks sonames against the builder's ldconfig, so only a runtime check sees one missing here. docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
 check_llvm_target_startable() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1038,27 +917,12 @@ the sdk stage resolved them against the BUILDER's ldconfig cache (see BROKEN lin
     echo ""
 }
 
-# ── HT1: the shipped artifact trees must carry THIS image's arch ─────────────
-# artifact-source is the BUILDER's image, so a tree INSTALLED on the host instead of
-# cross-built ships x86_64 into the arm64/riscv64 runtime image -- rustup (2 GB, exit
-# 127) and Flutter's Dart SDK both did, and only their own gates caught them.
-# docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
+# Shipped trees must carry this image's arch. See docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
 
-# Trees whose ELF machine is NOT this image's by design, MEASURED on shipped bytes
-# rather than reasoned: the SDK is one linux-x86_64 tree copied unchanged into all
-# three images. The arm names the TREE, never an arch, so a newly host-installed tree
-# fails by default. docs/artifact-copy-completeness.md#what-the-exemptions-are-worth
-# /opt/android is exempt HERE and asserted THERE: an Android payload's arch is the
-# ANDROID target's, never the image's, so check_android_abi judges it against the
-# ABI the image advertises -- stricter than "matches the image", not a waiver.
-# docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
+# Foreign by design: the x86_64 SDK tree, and /opt/android (check_android_abi judges it). docs/artifact-copy-completeness.md#what-the-exemptions-are-worth
 _RT_TREE_ARCH_EXEMPT="/opt/android-sdk /opt/android"
 
-# Builder-arch objects a foreign image still ships, frozen WITH their count so a new
-# one fails while a known one is tracked: <arch>:<tree>:<machine>:<count>. These are
-# defects with a backlog entry, not waivers -- the list only ratchets down, and it is
-# EMPTY: the five llvm-target x86-64 libs it held were fixed at the source (HT3).
-# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+# Known builder-arch defects as <arch>:<tree>:<machine>:<count>; ratchets down only, never a waiver.
 _RT_TREE_ARCH_FROZEN=""
 
 # Prints the frozen count for this finding, empty when it is not frozen.
@@ -1074,11 +938,7 @@ _rt_tree_arch_exempt() {
   case " ${_RT_TREE_ARCH_EXEMPT} " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
-# Where the gate probes a manifest tree in the image: the manifest carries the COPY
-# SOURCE path and one COPY relocates it (ALLOWED_RELOCATIONS in verify-artifact-copy-parity.sh
-# owns the other half). /opt/vulkan used to be narrowed to active/ around a builder-arch
-# SDK that no longer ships; the WHOLE tree is asserted now.
-# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+# The manifest names the COPY source; mirror ALLOWED_RELOCATIONS in verify-artifact-copy-parity.sh.
 _rt_tree_probe_path() {
   case "$1" in
     /opt/llvm-target) printf '%s' /usr/local/llvm-target ;;
@@ -1086,9 +946,7 @@ _rt_tree_probe_path() {
   esac
 }
 
-# Manifest paths as they exist IN the image: ${VAR} resolved from the environment, else
-# from Dockerfile.package's own `ARG VAR=default`, then relocated. An unresolvable token
-# is printed as `UNRESOLVED <var>` so the gate fails rather than scanning nothing.
+# An unresolvable ${VAR} prints UNRESOLVED <var> so the gate fails instead of scanning nothing.
 _rt_manifest_trees() {
   local manifest="${_SCRIPT_DIR}/../runtime-artifacts.manifest"
   local dockerfile="${_SCRIPT_DIR}/../../Dockerfile.package"
@@ -1112,11 +970,7 @@ _rt_manifest_trees() {
   done < "${manifest}"
 }
 
-# ELF machine of every EXECUTABLE-or-.so object under $RT_TREES, aggregated per (tree,
-# machine) so the
-# verdict reads counts instead of thousands of paths. Only candidates count toward CAP:
-# rust-src alone would spend it before reaching toolchains/*/bin/rustc. Header reads in ONE
-# process, not a readelf exec per file, which under qemu would cost minutes. docs/artifact-copy-completeness.md#the-shipped-trees-must-carry-the-images-own-arch
+# One process, not a readelf per file (minutes under qemu); only candidates count toward CAP.
 _tree_arch_py() {
   cat <<'PY'
 import os
@@ -1184,8 +1038,7 @@ print("TREESCAN_DONE")
 PY
 }
 
-# Pure verdict function for the tree-arch gate: scanner text + the expected ELF machine
-# in, one "OK|BAD|NOELF|MISSING <tree> ..." line out per tree, NONE when it saw nothing.
+# One OK|BAD|NOELF|MISSING line per tree; NONE when the scanner saw nothing.
 _tree_arch_verdicts() {
   local probe="$1" want="$2" tree machine count sample n=0
   while read -r tree; do
@@ -1272,10 +1125,7 @@ printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
   echo ""
 }
 
-# RP1 (security): the shipped image must carry NO usable `sudo` - it was purged from
-# the final stage (Dockerfile.torch) as pure LPE surface, since no sudoers/group grants
-# exist. Every other setuid binary is inventoried (informational) so a new one is at
-# least VISIBLE in the smoke log rather than shipping unnoticed.
+# No usable sudo (pure LPE surface, no grants exist); other setuid binaries are listed so a new one shows.
 check_setuid_inventory() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1297,8 +1147,7 @@ exit 0'; then
     echo ""
 }
 
-# AP7 (size observability, INFORMATIONAL - never fails): one du block turns every
-# "shrink X" item into a number attributable to a prefix. Sorted largest-last.
+# Informational only: per-prefix sizes, so every shrink item has a number.
 check_size_observability() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1311,9 +1160,7 @@ du -sh /opt 2>/dev/null | sed "s/^/    /"' || echo "  (size probe unavailable)"
     echo ""
 }
 
-# SMK3: AP2 gate - the venv must ship byte-compiled. The uid-1001 runtime user cannot
-# write __pycache__ into the root-owned /opt/venv, so a regressed build-time compileall
-# makes every container start re-parse site-packages. HARD fail, not an artifact.
+# uid 1001 cannot write __pycache__ into root-owned /opt/venv, so an uncompiled venv re-parses every start.
 check_venv_bytecode() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1327,19 +1174,12 @@ check_venv_bytecode() {
     echo ""
 }
 
-# ── ARCH-PARITY table (2026-08-23) ──────────────────────────
-# TABLE CONFORMANCE, not a cross-arch diff: this smoke sees ONE image, so it asserts
-# that every component NAMED below is present on this arch or documented absent, and a
-# documented absence that stopped being true FAILS so the table cannot rot in place. A
-# component nobody wrote down is invisible to it. That blind spot, and why the stale arm
-# fails rather than warns: docs/cross-build-verification.md, "In-image smoke tests".
-# Prefix names are version-stripped (cmake-4.4.2 -> cmake) so a pin bump needs no edit.
+# Arch-parity table conformance, not a cross-arch diff. See docs/cross-build-verification.md#in-image-smoke-tests-need-a-built-image-not-part-of-preflight
 _PARITY_PREFIXES="OrchestrANT android android-sdk cmake ffmpeg gcc gstreamer libcamera opencv5 python scripts venv vulkan"
 # Wheel names in dist-info form ('-' and '.' normalised to '_').
 _PARITY_WHEELS="torch torchvision ai_edge_litert iree_base_compiler iree_base_runtime onnxruntime_genai"
 
-# How many names in $2 are package $1, '_' and '-' alike. A GPU GenAI ships under its flavour
-# name (onnxruntime-genai-cuda / -trt-rtx), so every flavour counts as onnxruntime-genai.
+# A GPU GenAI ships under its flavour name (onnxruntime-genai-cuda/-trt-rtx), so every flavour counts.
 _pkg_count() {
   local want="${1//_/-}" names="${2//_/-}"
   case "${want}" in
@@ -1348,31 +1188,18 @@ _pkg_count() {
   esac
 }
 
-# Documented per-arch absences; anything absent and NOT listed here is drift and fails.
-# EVERY ARM IS A DELETION CANDIDATE - the moment its component appears, check_arch_parity
-# fails and names the line to delete. So an arm may only encode a reason that is true
-# TODAY, never "not built yet", which would turn the table into a wish list.
+# An arm fails once its component appears, so encode only reasons true today, never "not built yet".
 _parity_exempt() {
   case "$1:$2" in
-    # Kitware publishes no riscv64 CMake archive, so 02-toolchain/cmake.sh
-    # deliberately installs the distro cmake there (4.2.3) instead.
+    # No Kitware riscv64 archive; 02-toolchain/cmake.sh installs the distro cmake there.
     riscv64:cmake) return 0 ;;
-    # NB (GEN1): the riscv64:onnxruntime_genai arm is deleted -- riscv64 now
-    # self-builds the wheel. Expect red on older images. docs/gen1-riscv64-genai.md
-    # The IREE COMPILER cannot be cross-built and upstream publishes no riscv64 wheel,
-    # so the cross target is runtime-only (IREE_CROSS_BUILD_COMPILER defaults OFF); see
-    # docs/linux-cross-builds.md, "IREE (Linux lane)". riscv64-only ON PURPOSE: arm64
-    # carries the compiler wheel and must keep asserting it.
+    # The IREE compiler cannot be cross-built and has no riscv64 wheel; arm64 ships it and keeps asserting.
     riscv64:iree_base_compiler) return 0 ;;
     *) return 1 ;;
   esac
 }
 
-# Which onnxruntime flavour each arch is SUPPOSED to carry, and only one of them: the
-# 2026-08-21 version shadow shipped a PyPI onnxruntime beside the built one and broke
-# every import with a VERS_1.29.0 symbol error.
-# $2 = the image's ENABLE_NVIDIA: a GPU image ships the CUDA build on every arch.
-# $3 = its ENABLE_AMD: the rocm image ships the MIGraphX build (amd64 only).
+# Exactly one onnxruntime flavour per arch; $2/$3 are the image's ENABLE_NVIDIA/ENABLE_AMD.
 _parity_ort_flavor() {
   [ "${2:-false}" = "true" ] && { printf '%s' 'onnxruntime_gpu'; return 0; }
   [ "${3:-false}" = "true" ] && { printf '%s' 'onnxruntime_migraphx'; return 0; }
@@ -1383,21 +1210,10 @@ _parity_ort_flavor() {
   esac
 }
 
-# GStreamer plugins KNOWN not to load on a given arch. Same contract: listed =
-# reviewed, unlisted = new drift (reported, still non-fatal). One "<arch>:<plugin>" list
-# rather than case arms because check_gstreamer_plugin_health needs both directions of
-# the same fact - is this failure documented, and which documented failures stopped
-# happening - and a predicate cannot be enumerated.
-# arm64:libgstgtk4.so - libgtk-4.so.1 wants vkCreateWaylandSurfaceKHR, which the
-# amd64-hosted cross build's /opt/vulkan loader does not export. Only there: where
-# the resolved loader exports it, gtk4 loads (_rt_gtk4_vulkan_wayland). A display
-# sink has no role in a headless wrapper, so it is accepted rather than fixed.
+# A list, not case arms: the health check must enumerate entries that stopped failing.
 _PARITY_GST_KNOWN_BROKEN="arm64:libgstgtk4.so"
 
-# libgstgtk4.so's entry holds only where the libvulkan the plugin RESOLVES lacks
-# vkCreateWaylandSurfaceKHR. The native arm64 image's entrypoint puts the
-# SDK's VulkanLoader first, which exports it, and there gtk4 loads: the fixed
-# state, not a stale entry. Probed through the entrypoint like every _rt_run.
+# The gtk4 entry holds only where the resolved libvulkan lacks vkCreateWaylandSurfaceKHR.
 _rt_gtk4_vulkan_wayland() {
   _rt_run bash -lc 'p=""
 for d in $(printf "%s" "${GST_PLUGIN_PATH:-}" | tr ":" " "); do
@@ -1454,10 +1270,7 @@ done' 2>/dev/null)"; then
       fi
     done
 
-    # The blind spot, with the raw material beside it: the loop can only judge names the
-    # table carries, so print the untracked prefixes - INFO, never a gate, since a gate
-    # would need all three images at once. Wheels are excluded: hundreds of dist-infos
-    # would bury it.
+    # Info only: untracked prefixes are the table's blind spot, and gating would need all three images.
     local untracked p
     untracked=""
     for p in ${prefixes}; do
@@ -1492,10 +1305,7 @@ done' 2>/dev/null)"; then
     echo ""
 }
 
-# ── SHIPPED-TRUTH gates ──────────────────────────────────────
-# One in-image probe emits facts only; every verdict is reached on the host, so
-# both gates can be driven with recorded probe text.
-# See docs/cross-build-verification.md, "Shipped-truth gates".
+# Shipped-truth gates. See docs/cross-build-verification.md § Shipped-truth gates
 _probe_advertised() {
   # What the image SAYS it is: the ENV keys it advertises.
   cat <<'PROBE'
@@ -1526,8 +1336,7 @@ PROBE
 }
 
 _probe_actual_versions() {
-  # What the image actually IS: every value read from the shipped thing itself,
-  # never from an ENV. The ADV/HAVE pair is what the shipped-truth gate compares.
+  # HAVE values come from the shipped thing itself, never from an ENV.
   cat <<'PROBE'
 printf 'HAVE PYTHON_MAJOR_MINOR %s\n' "$("$py" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
 _g="$(command -v gcc || true)"
@@ -1655,8 +1464,7 @@ PROBE
 }
 
 
-# The probe the runtime smoke runs INSIDE the image, in three named parts:
-# what it advertises, what it is, and what it holds. Emitted as one script.
+# One in-image script: what the image advertises, what it is, and what it holds.
 _shipped_truth_probe() {
   _probe_advertised
   _probe_actual_versions
@@ -1664,46 +1472,30 @@ _shipped_truth_probe() {
   _probe_elf_and_sonames
 }
 
-# Version-carrying env vars the shipped image sets. Each must equal what the image
-# ACTUALLY has; there is no exemption arm and no SKIP arm, because neither a label
-# that contradicts the artefact nor a row that cannot fail is a documented state.
-# A key the image deliberately does not advertise belongs in verify_advertised_keys.py's
-# EXCUSED table instead. docs/cross-build-verification.md
+# No exemption or SKIP arm; a deliberately unadvertised key goes in verify_advertised_keys.py's EXCUSED.
 _ADVERTISED_VERSION_KEYS="PYTHON_MAJOR_MINOR GCC_VERSION LLVM_RELEASE
 GSTREAMER_VERSION VULKAN_VERSION UBUNTU_VERSION CMAKE_VERSION NODE_VERSION UV_VERSION
 OPENCV_VERSION ONNXRUNTIME_VERSION ONNXRUNTIME_GENAI_VERSION PYAV_VERSION IREE_VERSION
 LITERT_VERSION RUST_VERSION WASM_PACK_VERSION FLUTTER_RUST_BRIDGE_VERSION
 PYTORCH_VERSION TORCHVISION_VERSION"
 
-# Extras the wrapper is ALWAYS built with (assemble-torch-app.sh's uv sync); the
-# selected pytorch-* extra is read from the image's own PYTORCH_EXTRA instead.
+# Mirrors assemble-torch-app.sh's uv sync; the pytorch-* extra comes from the image's PYTORCH_EXTRA.
 _VENV_CONTRACT_EXTRAS="ml-ai docs"
 
-# Documented package absences, same contract as _parity_exempt: listed = reviewed, and
-# an arm that STOPS applying fails so the table cannot rot. Key is <arch>:<extra>:<pkg>,
-# with DEP for a dangling transitive edge.
+# Key <arch>:<extra>:<pkg> (DEP = dangling transitive edge); an arm that stops applying fails.
 _venv_pkg_exempt() {
   case "$1:$2:$3" in
-    # cv2 is the source-built /opt/opencv5 binding injected into the venv, never the
-    # PyPI wheel; /opt/opencv5 itself is asserted by ARCH-PARITY.
+    # cv2 is the source-built /opt/opencv5 binding, never the PyPI wheel.
     *:ml-ai:opencv-python) return 0 ;;
-    # onnxruntime ships under its flavour name (onnxruntime_dnnl / _webgpu), which
-    # _parity_ort_flavor asserts; the plain name is never installed.
+    # onnxruntime ships under its flavour name, which _parity_ort_flavor asserts.
     *:ml-ai:onnxruntime|*:DEP:onnxruntime) return 0 ;;
-    # riscv64 ml-ai: scipy/scikit-learn/pandas need a compiled wheel that PyPI
-    # does not publish for this arch and offer no pure-Python fallback, so
-    # shipping them means BLAS/LAPACK + Fortran from source, hours per run.
-    # Measured 2026-09-02; the rest of the extra IS shipped (optuna and the ORT
-    # deps were installable and are now installed).
-    # OWNER DECISION, one line to reverse. docs/refactoring-backlog.md AA
+    # No riscv64 wheels on PyPI; building BLAS/LAPACK and Fortran from source costs hours per run.
     riscv64:ml-ai:scipy|riscv64:ml-ai:scikit-learn|riscv64:ml-ai:pandas) return 0 ;;
     *) return 1 ;;
   esac
 }
 
-# Pure verdict function for the advertised-vs-actual gate: probe text in, one
-# "OK|BAD|UNSET|UNREAD <key> ..." line out per key. No container, no globals.
-# Both "the image did not tell us" arms are fatal: docs/cross-build-verification.md
+# One OK|BAD|UNSET|UNREAD line per key; UNSET and UNREAD are both fatal.
 _advert_verdicts() {
   local probe="$1" key adv have
   for key in ${_ADVERTISED_VERSION_KEYS}; do
@@ -1725,15 +1517,13 @@ _advert_verdicts() {
   done
 }
 
-# Pure verdict function for the venv package-set gate: <arch> + probe text in,
-# "MISS|STALE|EXEMPT|NOREQ <extra> <pkg> [owner]" lines plus "ASSERTED <n>" out.
+# Emits MISS|STALE|EXEMPT|NOREQ <extra> <pkg> [owner] lines plus ASSERTED <n>.
 _venv_set_verdicts() {
   local arch="$1" probe="$2"
   local pkgs extras extra reqs r asserted=0 owner name
   pkgs="$(printf '%s\n' "${probe}" | sed -n 's/^PKG //p' | LC_ALL=C sort -u)"
   extras="${_VENV_CONTRACT_EXTRAS}"
-  # The image's OWN advertisement picks the pytorch-* extra, so a cpu wrapper is never
-  # asked for the rocm extra's wheels.
+  # The image's own PYTORCH_EXTRA picks the torch extra, so a cpu wrapper is never asked for rocm wheels.
   local torch_extra
   torch_extra="$(printf '%s\n' "${probe}" | sed -n 's/^ADV PYTORCH_EXTRA //p' | head -1)"
   case "${torch_extra}" in
@@ -1793,14 +1583,11 @@ printf "%s\n" "${RT_PROBE_SH}" | bash' 2>/dev/null)" || true
   echo ""
 }
 
-# A: the image must not advertise a version it does not have.
-# Pure verdict function for the riscv64 ISA gate: probe text in, one
-# "OK|BAD|SKIP <lib> <attr>" line out per shipped object.
+# riscv64 ISA gate: one OK|BAD|SKIP <lib> <attr> line per shipped object.
 _rvv_verdicts() {
   local probe="$1" lib attr n=0 cc vcc=0
   cc="$(printf '%s\n' "${probe}" | sed -n 's/^RVCC //p' | head -1)"
-  # Only demand vector once the image's OWN toolchain defaults to it. Before that
-  # switch a plain object is the documented old state, not a regression.
+  # Demand vector only once the image's own toolchain defaults to it; before that plain objects are expected.
   case "${cc}" in rva23*|*gcv*|*_v|*_v_*) vcc=1 ;; esac
   while read -r lib attr; do
     [ -n "${lib}" ] || continue
@@ -1846,8 +1633,7 @@ _soname_verdicts() {
   while read -r so win ours; do
     [ -n "${so}" ] || continue
     n=$((n + 1))
-    # Ours lives under /opt AND /usr/local (onnxruntime, litert). The failure
-    # to catch is a DISTRO copy winning, i.e. a multiarch or plain system dir.
+    # Ours lives under /opt and /usr/local; the failure is a distro copy from a system dir winning.
     case "${win}" in
       /opt/*|/usr/local/*) printf 'OK %s %s\n' "${so}" "${win}" ;;
       *)                   printf 'BAD %s %s %s\n' "${so}" "${win}" "${ours}" ;;
@@ -1878,8 +1664,7 @@ check_soname_precedence() {
   echo ""
 }
 
-# E (G1): every ONNX Runtime binary in the image is the chain build and every importer resolves to it.
-# The probe runs in the image (ld.so and LD_LIBRARY_PATH are its own); check-ort-provenance.sh decides.
+# Probes in-image so ld.so and LD_LIBRARY_PATH are the image's own; check-ort-provenance.sh decides.
 check_ort_census() {
   local image_tag="$1" target_arch="$2" probe armed verb path detail bad=0
   local -a args=()
@@ -1984,11 +1769,7 @@ check_venv_package_set() {
   echo ""
 }
 
-# GStreamer plugin health -- WARN only: unlike ffmpeg/opencv, a plugin whose runtime
-# .so is absent degrades gracefully (the element is just unavailable), so it must not
-# fail the gate - but it must stay visible. The functional pipeline check below is the
-# fail-loud gate for GStreamer CORE.
-# One scanner failure: prints its verdict, returns 0 when it is documented.
+# Plugin failures only warn (the element is just unavailable); returns 0 when documented.
 _gst_classify_failure() {
   local target_arch="$1" p="$2" gtk4_wl="$3"
   if [ "${p}" = libgstgtk4.so ] && [ "${gtk4_wl}" = yes ]; then
@@ -2006,19 +1787,12 @@ _gst_classify_failure() {
 # <arch> <failed basenames, newline-separated> <gtk4 wayland verdict>
 _gst_check_stale_exceptions() {
   local target_arch="$1" failed="$2" _gtk4_wl="$3"
-  # The OTHER direction, and why the table is a list: a documented failure that
-  # stopped failing. _gst_classify_failure only sees plugins that DID fail, so
-  # walk the table's own claims for this arch instead. POSITIVE EVIDENCE ONLY, two
-  # signals that must agree - absent from the scanner's failure list AND
-  # gst-inspect-1.0 loads the plugin file directly. Absence alone proves nothing (it
-  # may simply not be shipped); only both together falsify the entry, which is a
-  # defect of the same kind as a stale _parity_exempt arm.
+  # Stale only if the scanner did not fail it AND gst-inspect loads the file; absence proves nothing.
   local _kb_entry _kb_plugin
   for _kb_entry in ${_PARITY_GST_KNOWN_BROKEN}; do
     [ "${_kb_entry%%:*}" = "${target_arch}" ] || continue
     _kb_plugin="${_kb_entry#*:}"
-    # `failed` is NEWLINE-separated, so a `case " ${failed} " in *" plugin "*` guard
-    # only matched while exactly ONE plugin failed. Match the delimiter the list uses.
+    # `failed` is newline-separated: a space-delimited case pattern matches only a single entry.
     if printf '%s\n' "${failed}" | grep -qxF -- "${_kb_plugin}"; then
       continue   # still failing = entry still true
     fi
@@ -2045,17 +1819,12 @@ check_gstreamer_plugin_health() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: GStreamer plugin health (informational) ---"
-    # gst-inspect drives the plugin SCANNER, which dlopen()s each plugin and so reports
-    # UNDEFINED-SYMBOL failures (gtk4 -> vkCreateWaylandSurfaceKHR) that `ldd` cannot see.
-    # THE HEADLINE NUMBER IS STILL THE RAW LINE COUNT: classification works on unique
-    # libgst*.so basenames, a strictly smaller denominator, and quietly lowering a
-    # metric watched since wave-4 would hide a regression. Both are printed, side by side.
+    # The scanner dlopen()s plugins, catching undefined symbols ldd misses; the headline stays the raw count.
     local scan failed p known=0 unknown=0 total named unnamed
     scan="$(_rt_run bash -lc 'command -v gst-inspect-1.0 >/dev/null 2>&1 || { echo "GST_SCAN_ABSENT"; exit 0; }
 gst-inspect-1.0 2>&1 >/dev/null || true
 echo "GST_SCAN_DONE"' 2>/dev/null)" || true
-    # An empty scan is AMBIGUOUS -- a healthy image prints nothing here either -- so the
-    # probe stamps its own completion; without it "0 cannot load" is a false green.
+    # A healthy image also prints nothing, so the probe stamps completion to avoid a false green.
     if ! printf '%s\n' "${scan}" | grep -q '^GST_SCAN_DONE$'; then
       if printf '%s\n' "${scan}" | grep -q '^GST_SCAN_ABSENT$'; then
         echo "  WARN gst-inspect-1.0 is not on PATH in the ${target_arch} image -- plugin health UNKNOWN, not 0"
@@ -2093,8 +1862,7 @@ echo "GST_SCAN_DONE"' 2>/dev/null)" || true
     echo ""
 }
 
-# onnxruntime inference and the cv2 encode/decode round-trip live in the app wheel
-# smoke above.
+# onnxruntime inference and the cv2 round-trip live in check_app_wheel_smoke.
 
 check_gstreamer_core_pipeline() {
   local image_tag="$1"
@@ -2109,9 +1877,7 @@ check_gstreamer_core_pipeline() {
     echo ""
 }
 
-# Mandatory-plugin GATE on the real target arch (smoke-depth R1), mirroring the Windows
-# lane's 4-point contract: gst-inspect-1.0 <plugin> exits non-zero if the plugin is
-# missing OR fails to dlopen.
+# gst-inspect-1.0 <plugin> fails on a missing or undlopenable plugin; mirrors the Windows lane's contract.
 check_gstreamer_mandatory_plugins() {
   local image_tag="$1"
   local target_arch="$2"
@@ -2129,8 +1895,7 @@ check_application_import() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: application import ---"
-    # The actual deliverable: a broken/incomplete app install (missing runtime dep)
-    # shipped silently before, so import it through the venv python.
+    # Import via the venv python so a missing runtime dependency of the app fails here.
     if _rt_run \
          /opt/venv/bin/python -c "import orchestrant" >/dev/null 2>&1; then
       pass "application module imports (${target_arch})"
@@ -2140,15 +1905,12 @@ check_application_import() {
     echo ""
 }
 
-# Run the ACTUAL HEALTHCHECK command, not just parse its Test string: a broken
-# interpreter path or a mislinked onnxruntime leaves every container perpetually
-# `unhealthy` while a string-only check stays green.
+# Execute the HEALTHCHECK, not just parse it: a broken interpreter path passes a string check.
 check_healthcheck_exec() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: HEALTHCHECK command executes ---"
-    # Run the image's OWN command. A hardcoded copy passes while the shipped
-    # HEALTHCHECK is broken -- the one case this gate exists for.
+    # The image's own command: a hardcoded copy would pass while the shipped HEALTHCHECK is broken.
     local _hc
     _hc="$(_rt_healthcheck_cmd)"
     if [ -z "${_hc}" ]; then
@@ -2161,9 +1923,7 @@ check_healthcheck_exec() {
     echo ""
 }
 
-# WebRTC signalling server: start-webrtc-signalling.sh execs this binary. WARN-only --
-# same gst-plugins-rs/webrtc lane as the known webrtcbin2 gap (backlog), so its absence
-# must not gate the manifest, but a dead signalling entrypoint should stay visible.
+# Warn only: same gst-plugins-rs webrtc lane as the known webrtcbin2 gap, but keep it visible.
 check_webrtc_signalling() {
   local image_tag="$1"
   local target_arch="$2"
@@ -2177,19 +1937,15 @@ check_webrtc_signalling() {
     echo ""
 }
 
-# The path /proc/self/maps names for the loaded loader, out of the probe's output.
-# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+# The loader path /proc/self/maps names. docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
 _vk_loaded_path() {
   printf '%s' "${1}" | sed -n 's/^VKLIB //p' | head -1
 }
 
-# The surface extensions every arch's loader must list, as LunarG's amd64 one does:
-# without them each windowed Vulkan test aborts (CON41). Needs no ICD or display.
-# docs/vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems
+# Surface extensions every arch's loader must list, as LunarG's amd64 one does (docs/vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems).
 _VK_WSI_REQUIRED="VK_KHR_surface VK_KHR_xcb_surface VK_KHR_xlib_surface VK_KHR_wayland_surface"
 
-# <probe output> <arch>: the VKEXT line against _VK_WSI_REQUIRED. A loaded loader
-# lists extensions even with zero ICDs, so no line at all is a failure too.
+# <probe output> <arch>: the VKEXT line against _VK_WSI_REQUIRED; a loader lists extensions even with zero ICDs, so none is a failure.
 _vk_wsi_verdict() {
   local exts e missing=""
   exts="$(printf '%s\n' "$1" | sed -n 's/^VKEXT //p' | head -1)"
@@ -2207,19 +1963,12 @@ _vk_wsi_verdict() {
   fi
 }
 
-# Vulkan loader load test -- the .so-closure gate proves libvulkan resolves, not that
-# the loader dlopen()s at runtime. A missing ICD/GPU does NOT stop ctypes.CDLL and the
-# runtime image ALWAYS installs the Vulkan runtime files, so a load failure means the
-# lib is missing/broken and FAILS; only a container-infra error stays WARN. WHICH
-# libvulkan answered is asserted too: Ubuntu's multiarch loader is in every image, so a
-# linker fallback to it would pass a load-only check with /opt/vulkan unused or unshipped.
-# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+# Asserts which libvulkan loaded: Ubuntu's multiarch fallback would pass with /opt/vulkan unused.
 check_vulkan_loader() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: Vulkan loader ---"
-    # vkEnumerateInstanceVersion works with ZERO ICDs and no GPU, so a healthy loader
-    # cannot legitimately fail it. The AttributeError guard covers a 1.0 loader.
+    # vkEnumerateInstanceVersion needs no ICD or GPU; the AttributeError guard covers a 1.0 loader.
     _vk_out="$(_rt_run \
          /opt/venv/bin/python -c 'import ctypes
 l = ctypes.CDLL("libvulkan.so.1")
@@ -2257,22 +2006,11 @@ if l.vkEnumerateInstanceExtensionProperties(None, ctypes.byref(n), None) == 0:
     echo ""
 }
 
-# A cross-built SDK prefix that carries libraries but no tools links fine and is
-# useless to build an application with -- that shipped for months unnoticed because
-# every Vulkan check here asked about the loader, and then for months more because
-# the tools it did ask about were a WARN. REQUIRED is the set both foreign lanes
-# SHIPPED (measured 2026-09-05/07, 19 installs plus the glslangValidator alias);
-# REPORTED is what VK2's four remaining components will add, warned about until a
-# lane proves them and then promoted here.
-# docs/vulkan-foreign-arch-sdk.md#the-toolset-floor-only-ratchets-up
+# REQUIRED fails when absent, REPORTED only warns until a lane ships it. docs/vulkan-foreign-arch-sdk.md#the-toolset-floor-only-ratchets-up
 _VK_REQUIRED_TOOLS="glslang glslangValidator glslc spirv-as spirv-cfg spirv-cross spirv-diff spirv-dis spirv-lesspipe.sh spirv-link spirv-lint spirv-objdump spirv-opt spirv-reduce spirv-reflect spirv-reflect-pp spirv-val vkcube vkcubepp vulkaninfo"
 _VK_REPORTED_TOOLS="gfxrecon-info gfxrecon-replay slangc vulkanCapsViewer"
 
-# <arch>:<tools in bin>:<layer manifests>, both as ">=N" floors measured on shipped
-# bytes. amd64 carries the downloaded LunarG SDK (52 tools) and the foreign arches
-# the cross build (20). A count BELOW its floor fails; a count above it prints the
-# new floor to record, because "it shipped 2 of 52 for months" is exactly what a
-# number nobody asserted looks like.
+# <arch>:<tools>:<layer manifests> floors; below fails, above prints the new floor to record.
 _VK_TOOLSET_FROZEN="amd64:>=52:>=1 arm64:>=20:>=4 riscv64:>=20:>=4"
 
 # Prints "<tools> <layers>" for this arch, empty when the arch has no row.
@@ -2324,8 +2062,7 @@ the prefix carries libraries the linker is happy with but nothing you can build 
     tools="$(printf '%s\n' "${out}" | sed -n 's/^TOOLS \([0-9]*\)$/\1/p' | tail -1)"
     layers="$(printf '%s\n' "${out}" | sed -n 's/^LAYERS \([0-9]*\)$/\1/p' | tail -1)"
     layer="$(printf '%s' "${out}" | grep -c '^LAYER yes' || true)"
-    # `read < <(fn)` would report failure on the last line with no newline, which
-    # reads exactly like "no row" -- take the value first, then split it.
+    # read < <(fn) fails on a last line without newline, which looks like "no row".
     if floor="$(_vk_toolset_floor "${target_arch}")"; then
       read -r floor_tools floor_layers <<< "${floor}"
       _vk_floor_verdict "${target_arch}" tools "${tools:-0}" "${floor_tools}"
@@ -2354,12 +2091,7 @@ the target SDK only ratchets up (docs/vulkan-foreign-arch-sdk.md#the-toolset-flo
   fi
 }
 
-# The ABI /opt/android is compiled for, asserted against the ABI the image says it
-# targets. That tree is tree-arch EXEMPT on purpose -- an Android arm64-v8a payload
-# is AArch64 in EVERY image, including the amd64 one -- so nothing else could catch
-# a layer built for the wrong ABI, and it derived from the BUILD HOST for months.
-# It reached a consumer as a link error, not a missing file.
-# docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
+# /opt/android is tree-arch exempt, so only this catches a wrong-ABI payload. docs/linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host
 _ANDROID_ABI_MACHINE="arm64-v8a:183 x86_64:62 x86:3 riscv64:243"
 
 _android_abi_want() {
@@ -2370,8 +2102,7 @@ _android_abi_want() {
   return 1
 }
 
-# Archives matter as much as shared objects here: the reported failure was a .a
-# member, which `file` on the archive itself does not report.
+# Scans .a members too: `file` on an archive does not report its members' machine.
 _android_abi_py() {
   cat <<'PY'
 import collections, os, struct
@@ -2457,21 +2188,13 @@ EOF
     echo ""
 }
 
-# Native compiler compile + link + RUN. The build-time validate-compilers.sh compiles
-# and links in every wrapper image but never RUNS the result - a cross arch's binary
-# cannot execute on the x86_64 build host, so the shipped native GCC/G++ was only ever
-# ELF/link-verified. Here the wrapper runs under binfmt/qemu, so the on-target compiler
-# is finally proven end to end. Skip with RUNTIME_COMPILER_SMOKE=0.
+# Runs the compiled programs on-target, which the x86_64 build host never can; RUNTIME_COMPILER_SMOKE=0 skips.
 check_native_compiler_battery() {
   local image_tag="$1"
   local target_arch="$2"
     if [ "${RUNTIME_COMPILER_SMOKE}" = "1" ]; then
       echo "--- Functional: native compiler battery compile+link+run (${target_arch}) ---"
-      # A battery, not a hello-world: each case exercises a distinct piece of the
-      # shipped toolchain. C++ exceptions+STL is the load-bearing one - it regression-
-      # guards the -idirafter WRAPPER fix in swap-native-gcc.sh, where an installed
-      # specs file made throw/catch terminate at runtime. Sources use only double
-      # quotes / return codes so they stay clean inside bash -lc.
+      # Exceptions+STL guards swap-native-gcc.sh's -idirafter fix; sources avoid single quotes for bash -lc.
       local _san_run=0
       if [ "${target_arch}" = "$(smoke_host_arch)" ]; then _san_run=1; fi
       if _rt_run -e "SAN_RUN=${_san_run}" \
@@ -2522,11 +2245,7 @@ exit $rc'; then
     fi
 }
 
-# Clang/LLVM version alignment on the ACTUAL shipped image, per-arch under qemu. The
-# build-time checks run in the TOOLCHAIN stage where clang and LLVM_RELEASE agree by
-# construction, so they cannot catch a STALE toolchain - e.g. a --from-stage media
-# publish reusing a cross-sdk whose clang predates an LLVM_RELEASE bump. Disable with
-# RUNTIME_CLANG_VERSION_SMOKE=0.
+# Clang/LLVM version on the shipped image, per arch: the toolchain-stage checks cannot see a stale reused sdk (RUNTIME_CLANG_VERSION_SMOKE=0 disables).
 check_clang_llvm_release() {
   local image_tag="$1"
   local target_arch="$2"
@@ -2536,8 +2255,7 @@ check_clang_llvm_release() {
       if [ -z "${_llvm_release}" ]; then
         local _venv
         _venv="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/versions.env"
-        # `|| true`: under set -euo pipefail an absent key would abort the whole
-        # smoke with no summary; the explicit fail below reports it instead.
+        # `|| true`: under pipefail an absent key would abort the smoke without a summary; the fail below reports it.
         [ -f "${_venv}" ] && _llvm_release="$(grep -E '^LLVM_RELEASE=' "${_venv}" | head -1 | cut -d= -f2 || true)"
       fi
       if [ -z "${_llvm_release}" ]; then
@@ -2548,12 +2266,7 @@ rc=0
 for tool in clang clang++; do
   p="$(command -v "$tool" || true)"
   [ -n "$p" ] || { echo "  XX  $tool not on PATH"; rc=1; continue; }
-  # EXECUTE the tool for its version — never scrape the binary with strings.
-  # The old strings-based extraction false-negatived on arm64 (2026-08-11):
-  # the dylib-linked target clang keeps its version string in libLLVM.so, so
-  # the slim driver binary greps EMPTY while `clang --version` prints 22.1.8
-  # perfectly. This smoke runs INSIDE the image (qemu for cross arches), so
-  # execution is always available — verify the effect, not the bytes.
+  # Run the tool for its version, never strings(1): a dylib-linked clang keeps its version in libLLVM.so.
   ver="$("$tool" --version 2>/dev/null | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1 || true)"
   if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-NO-VERSION-OUTPUT} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
 done
@@ -2594,10 +2307,7 @@ main() {
   check_volume "${image_tag}" "${target_arch}"
   check_oci_labels "${image_tag}" "${target_arch}"
 
-  # 9. Functional checks (D1/D2): actually LOAD the compiled ML stack and RUN ffmpeg
-  #    INSIDE the image, under binfmt/qemu for cross arches - the checks above only
-  #    prove the image boots and its metadata is sane. Runs through the entrypoint so
-  #    the gstreamer/libcamera/vulkan env matches runtime.
+  # 9. Functional checks: load the ML stack and run ffmpeg inside the image, through the entrypoint so the runtime env applies.
   if [ "${RUNTIME_FUNCTIONAL_SMOKE:-1}" = "1" ]; then
     check_torchless_sentinel "${image_tag}" "${target_arch}"
     check_app_wheel_smoke "${image_tag}" "${target_arch}"

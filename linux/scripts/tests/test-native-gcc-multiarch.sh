@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# The Canadian native GCC (host == target) is configured with --enable-multiarch, and the swap
-# refuses a relocated GCC that prints another multiarch where it can run it. build-gcc.sh is
-# top-level, so its configure region runs with the command array printed, never executed.
-# NOT covered: what GCC's configure makes of the flag -- only a Linux chain run shows that.
-# docs/cross-build-verification.md#the-native-gcc-has-multiarch
+# Configure lines are printed, never run, so GCC's own reading of the flag is not covered; see docs/cross-build-verification.md#the-native-gcc-has-multiarch
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -13,9 +9,7 @@ SWAP="${TESTS_DIR}/../06-packaging/swap-native-gcc.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# ── build-gcc.sh: the configure line each GCC gets ───────────────────────────
-# From the shared predicate through the end of the target block, run with CONFIG_CMD printed
-# one word per line: an empty word would show as an empty line.
+# build-gcc.sh's configure region, CONFIG_CMD printed one word per line so an empty word shows.
 awk '/^_gcc_is_canadian_native\(\) \{$/{p=1} p{print} p && /^fi$/{exit}' "${BUILD_GCC}" > "${_work}/configure.sh"
 _configure_for() {  # <host> <target> -> the configure words, one per line
   env HOST_TRIPLET="$1" TARGET_TRIPLET="$2" SYSROOT=/ NATIVE_SYSTEM_HEADER_DIR="/usr/$2/include" bash -c '

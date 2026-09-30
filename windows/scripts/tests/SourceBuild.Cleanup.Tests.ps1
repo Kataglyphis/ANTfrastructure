@@ -1,10 +1,5 @@
 #requires -Version 7.0
-# Tests for Remove-SourceBuildTree's exit-code contract. Cleanup is best-effort
-# by design; its exit code must NEVER outlive the call: `rd` exiting 145
-# (ERROR_DIR_NOT_EMPTY) once made Invoke-SourceBuildChain declare a fully green
-# LiteRT-LM stage "failed (exit 145)" — the chain reads the AMBIENT
-# $LASTEXITCODE after each in-process stage, and stage scripts routinely end on
-# this call (2026-08-03 incident; AGENTS.md Windows Build Invariants).
+# The chain reads the ambient $LASTEXITCODE after each stage, so best-effort cleanup must never leak one.
 
 Describe 'Remove-SourceBuildTree exit-code contract' {
 

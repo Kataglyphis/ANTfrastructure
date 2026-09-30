@@ -10,8 +10,7 @@ function(myproject_enable_coverage project_name)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
       message(" -- ** Enabling coverage reporting**")
       if(MSVC)
-        # clang-cl: lld-link rejects the coverage driver flags, so compile via
-        # /clang:-prefixed flags and link clang_rt.profile explicitly.
+        # lld-link rejects the coverage driver flags: compile via /clang: flags, link clang_rt.profile explicitly.
         target_compile_options(${project_name} INTERFACE /clang:-fprofile-instr-generate /clang:-fcoverage-mapping)
         execute_process(
           COMMAND ${CMAKE_CXX_COMPILER} --print-resource-dir

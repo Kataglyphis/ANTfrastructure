@@ -153,10 +153,7 @@ runs:
             default { throw "target-arch must be amd64 or arm64, not '$env:RUN_IN_CONTAINER_TARGET_ARCH'" }
         }
         Write-Host "target-arch $env:RUN_IN_CONTAINER_TARGET_ARCH -> $image"
-        # Give the container every logical processor the runner has. This was
-        # pinned at 4, which throttled the 3-config clang-cl build on any
-        # runner with more cores. NUMBER_OF_PROCESSORS is what Windows reports
-        # to the host shell; the value is echoed so the log shows what we got.
+        # Default to every logical processor; a fixed count throttles the multi-config build on bigger runners.
         if ($env:RUN_IN_CONTAINER_CPUS) {
           $cores = [int]$env:RUN_IN_CONTAINER_CPUS
         } else {
@@ -166,19 +163,11 @@ runs:
         }
         Write-Host "Runner logical processors: $cores (container gets --cpus $cores)"
 
-        # Multi-value inputs are newline-delimited argv lists. Split on LF only
-        # and TrimEnd the CR afterwards rather than splitting on a CRLF regex:
-        # that also copes with a lone trailing CR, and it never touches
-        # significant leading/trailing SPACES inside an argument.
+        # Split on LF, then trim CR: copes with a lone CR and never touches spaces inside an argument.
         function ConvertTo-ArgList([string]$Text) {
           if ([string]::IsNullOrEmpty($Text)) { return @() }
           $lines = @($Text -split "`n" | ForEach-Object { $_.TrimEnd("`r") })
-          # A YAML `|` block scalar always ends in exactly ONE newline (clip
-          # mode), which -split turns into one trailing empty element. Drop that
-          # single artifact - and nothing else. Interior empty lines are KEPT on
-          # purpose: an argument whose value is an empty or unset secret must
-          # still occupy its own argv slot, otherwise the flag before it would
-          # silently swallow the NEXT flag as its value.
+          # Drop only the clip-mode trailing empty line; an interior empty line is an empty secret that must keep its argv slot.
           if ($lines[-1] -eq '') {
             if ($lines.Count -eq 1) { return @() }
             $lines = $lines[0..($lines.Count - 2)]
@@ -187,10 +176,7 @@ runs:
         }
         $extraArgs = ConvertTo-ArgList $env:RUN_IN_CONTAINER_EXTRA_ARGS
 
-        # Entrypoint: `-Command <script text>` or `-File <script> <args...>`.
-        # `-File` exists so that callers whose payload is a script plus an argv
-        # (typically because some elements are secrets) keep literal argument
-        # semantics instead of being re-parsed by PowerShell.
+        # -File keeps literal argv semantics (e.g. secrets) instead of PowerShell re-parsing them.
         $file = $env:RUN_IN_CONTAINER_FILE
         $command = $env:RUN_IN_CONTAINER_COMMAND
         if ($file -and $command) {
@@ -206,32 +192,21 @@ runs:
           $entryArgs = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $command)
         }
 
-        # Args as a splatted array, NOT backtick line-continuations: the runner
-        # checks out this YAML with autocrlf, and a PowerShell backtick before
-        # CRLF escapes the CR instead of the newline, breaking the continuation
-        # ("Missing expression after unary operator '--'"). An @(...) array spans
-        # newlines with no continuation char, so it is CRLF-safe.
+        # An array, not backtick continuations: under autocrlf a backtick escapes the CR instead of the newline.
         $tailArgs = $extraArgs + @(
           '--mount', ('type=bind,source=' + $env:RUN_IN_CONTAINER_MOUNT_SOURCE + ',target=' + $env:RUN_IN_CONTAINER_MOUNT_TARGET),
           '-w', $env:RUN_IN_CONTAINER_MOUNT_TARGET,
           $image
         ) + $entryArgs
 
-        # Same run expressed with the older -v syntax. Kept ready because the
-        # two are NOT equivalent for Windows containers: the daemon builds a
-        # different mount spec for --mount than for -v, and HCS rejects the
-        # former on this host while accepting the latter. Used by the fallback
-        # ladder below, which only reaches for it once the bare-image probe has
-        # shown the container itself is fine.
+        # The -v form for the fallback ladder: the daemon builds a different mount spec for it, which HCS may accept.
         $tailArgsV = $extraArgs + @(
           '-v', ($env:RUN_IN_CONTAINER_MOUNT_SOURCE + ':' + $env:RUN_IN_CONTAINER_MOUNT_TARGET),
           '-w', $env:RUN_IN_CONTAINER_MOUNT_TARGET,
           $image
         ) + $entryArgs
 
-        # `--isolation` FIRST, ahead of the resource limits: a Windows container
-        # that HCS refuses to create never gets far enough for --memory/--cpus
-        # to matter. See the `isolation` input for why `process` is the default.
+        # Isolation before the limits: a container HCS refuses to create never gets as far as --memory/--cpus.
         $isolationArgs = @()
         if ($env:RUN_IN_CONTAINER_ISOLATION) {
           $isolationArgs = @('--isolation', $env:RUN_IN_CONTAINER_ISOLATION)
@@ -245,21 +220,7 @@ runs:
         $out = docker @runArgs 2>&1
         $out | ForEach-Object { Write-Host $_ }
 
-        # hcs::CreateComputeSystem <id>: The request is not supported.
-        #
-        # HCS reports several unrelated refusals through this one message, and
-        # it names neither a flag nor an isolation mode. The two that reach a
-        # GitHub-hosted runner:
-        #   1. VM-backed (hyperv) isolation requested on a VM with no nested
-        #      virtualization. This is the one that killed the lane from
-        #      2026-05-19 on; the default is now an explicit `--isolation
-        #      process`, so a run only lands here if the caller overrode it.
-        #   2. A resource-limit combination the host's isolation mode rejects.
-        #
-        # Print the facts that decide between them BEFORE retrying - the
-        # original failure gave no way to tell, which is why the first fix
-        # guessed "resource limits" and stayed red. Then walk the ladder,
-        # loudly: a degraded run must never masquerade as a normal one.
+        # HCS words unrelated refusals identically: print the deciding facts first, then walk the ladder loudly.
         if ($LASTEXITCODE -ne 0 -and ($out -join "`n") -match 'CreateComputeSystem.*not supported') {
           Write-Host '::warning::docker run rejected with hcs::CreateComputeSystem "The request is not supported".'
           Write-Host '=== container-start diagnostics ==='
@@ -271,12 +232,7 @@ runs:
           Write-Host ' differing UBR/revision is fine. hyperv isolation needs nested'
           Write-Host ' virtualization, which GitHub-hosted runners do not have.)'
 
-          # Bare probe: no bind mount, no -w, no limits, nothing but the image.
-          # HCS reports "The request is not supported" for the CONTAINER and for
-          # its MOUNT with the same words, and the difference decides where to
-          # look next - a host/image mismatch, or the D:\ bind mount. Without
-          # this probe the two are indistinguishable from the log, which is why
-          # this failure survived several rounds of guessing.
+          # Bare probe: tells a refused container from a refused mount, which HCS words identically.
           Write-Host '--- probe: can this image start AT ALL (no mount, no limits)? ---'
           docker run --rm $image cmd /c ver
           $bareProbeOk = ($LASTEXITCODE -eq 0)
@@ -287,15 +243,7 @@ runs:
           }
           Write-Host '==================================='
 
-          # Rung 1: -v instead of --mount, keeping everything else.
-          #
-          # This is the rung that actually fixes it on windows-2025. The bare
-          # probe above starts the same image with the same isolation and no
-          # mount, and PASSES - so neither the image, the host build numbers nor
-          # the isolation mode are at fault, which is what several earlier
-          # guesses assumed. What HCS rejects is the mount spec the daemon
-          # builds for `--mount type=bind` on this host; the older -v form maps
-          # to a different spec that it accepts.
+          # Rung 1, the fix on windows-2025: HCS rejects the --mount type=bind spec but accepts -v.
           if ($bareProbeOk) {
             Write-Host '::warning::Retrying with -v instead of --mount type=bind.'
             $runArgs = @('run', '--rm') + $isolationArgs + @(
@@ -321,11 +269,7 @@ runs:
             }
           }
 
-          # Rung 2: let the daemon choose the isolation mode. Only worth trying
-          # when we asked for a specific one and HCS is still refusing.
-          # No backtick line-continuation here: the runner checks this YAML out
-          # with autocrlf, and a backtick before CRLF escapes the CR instead of
-          # the newline. Parenthesise the condition so it can span lines safely.
+          # Rung 3: the daemon's default isolation; parenthesised to span lines without a CRLF-unsafe backtick.
           $stillRefused = ($LASTEXITCODE -ne 0 -and $isolationArgs.Count -gt 0 -and
                            ($out -join "`n") -match 'CreateComputeSystem.*not supported')
           if ($stillRefused) {
@@ -339,9 +283,7 @@ runs:
           }
         }
 
-        # The step's own exit status. Without this the composite step reports
-        # the exit code of the last *PowerShell* statement, so a container that
-        # failed on every rung of the ladder could still be reported green.
+        # The step otherwise reports its last PowerShell statement, so a run that failed every rung could pass.
         if ($LASTEXITCODE -ne 0) {
           throw "docker run failed with exit code $LASTEXITCODE"
         }

@@ -1,20 +1,11 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The THIRD BUCKET on the Windows half: Add-BuildGateSkip and
-# Assert-BuildGates -TolerateSkips, the twin of gate_skip / assert_gates
-# --tolerate-skips in linux/scripts/01-core/gates.sh. The assertions are that an
-# unrunnable gate is RECORDED, that recording it is red until a call site asks
-# for tolerance in writing, and that tolerance never leaks into the other two
-# buckets. The last case MEASURES the one place the two halves deliberately
-# differ, rather than trusting the doc's word for it.
-# docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
+
+# The skip bucket, twin of gates.sh --tolerate-skips: see docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
 
 $script:GateModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsBuild.Common.psm1'
-# Un-Forced on purpose (repo rule, 2026-08-04): -Force in a harness suite
-# unloads a module the runner's other imports are already bound to -- one such
-# import silently dropped 104 assertions on 2026-08-28.
+# Not -Force: in a harness suite it unloads a module the runner's other imports are bound to.
 Import-Module $script:GateModule -DisableNameChecking
 
 # One owner for the throwaway directory both fixtures below need.
@@ -25,8 +16,7 @@ function script:New-ScratchDir {
     return $dir
 }
 
-# A build context with its log writer OPEN, so the messages a gate emits can be
-# read back and asserted on; SuppressConsoleOutput keeps the suite readable.
+# The log writer stays open so a gate's messages can be read back.
 function script:New-GateContext {
     $dir = New-ScratchDir -Prefix 'gatebucket'
     $ctx = New-BuildContext -Workspace $dir -LogDir $dir
@@ -35,17 +25,14 @@ function script:New-GateContext {
     return $ctx
 }
 
-# Closes the writer first: an un-flushed StreamWriter reads back short, which
-# would make every log assertion below fail for the wrong reason.
+# Closes the writer first: an un-flushed StreamWriter reads back short.
 function script:Get-GateLog {
     param([Parameter(Mandatory)][pscustomobject]$Context)
     Close-BuildLog -Context $Context
     return ('' + (Get-Content -Raw -LiteralPath $Context.LogPath))
 }
 
-# One owner for "this batch must be refused, and the refusal must say WHY":
-# four cases below differ only in the batch they build and the phrase the throw
-# has to carry, and the duplication gate caught the copies.
+# The batch must be refused, and the refusal must say why.
 function script:Assert-BatchRefused {
     param(
         [Parameter(Mandatory)][pscustomobject]$Context,
@@ -58,8 +45,7 @@ function script:Assert-BatchRefused {
     }
 }
 
-# The batch the tolerance cases all need: one gate that RAN, one that could not.
-# Second owner the dupes gate asked for, same reason as Assert-BatchRefused.
+# One gate that ran and one that could not.
 function script:New-SkippedBatch {
     $ctx = New-GateContext
     Invoke-BuildGate -Context $ctx -Name 'ran' -Script { } | Out-Null
@@ -104,8 +90,7 @@ Describe 'WindowsBuild.Common gates: the third bucket' {
     }
 
     It '-TolerateSkips reaches the skip bucket and nothing else' {
-        # The two batches it must still refuse. Kept in one case because the
-        # duplication gate is right that they are the same four lines twice.
+        # The two batches it must still refuse.
         $only = New-GateContext
         foreach ($absent in 'one', 'two') {
             Add-BuildGateSkip -Context $only -Name $absent -Reason 'absent'
@@ -153,14 +138,7 @@ Describe 'gate aggregation: the two halves, and the one place they differ' {
     }
 
     It 'MEASURED: a gate that calls exit kills the PowerShell driver' {
-        # run_gate wraps its command in a SUBSHELL because bash check helpers
-        # report failure with err(), which is `exit 1`. PowerShell has no
-        # in-process twin for that containment: `&` and ScriptBlock.Invoke()
-        # both let `exit` terminate the whole script, and a child runspace would
-        # break every closure a gate scriptblock relies on. So the contract on
-        # this half is that a gate reports failure by THROWING -- which the case
-        # above proves is contained. This one measures the rest of the sentence,
-        # so the asymmetry recorded in the doc is a fact, not an assumption.
+        # PowerShell cannot contain `exit` in-process like bash's run_gate subshell, so a gate here must fail by throwing.
         $dir = New-ScratchDir -Prefix 'gate-exit'
         $driver = Join-Path $dir 'driver.ps1'
         $body = @"

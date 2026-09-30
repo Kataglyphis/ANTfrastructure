@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# GStreamer's rocm lane (Build-GstreamerFromSource.ps1): AMD meson pins (none on cpu/nvidia), TheRock scrub +
-# restore, leak gate, post-install AMD file check. NOT covered: a real meson setup, what cmake finds unscrubbed.
+# GStreamer's rocm lane: AMD meson pins (none on cpu/nvidia), TheRock scrub and restore, leak and file gates.
 
 $script:gstScript = 'windows\scripts\build\Build-GstreamerFromSource.ps1'
 $script:gstPins = @('-Dgst-plugins-bad:hip=enabled', '-Dgst-plugins-bad:amfcodec=enabled',
@@ -26,8 +25,7 @@ Describe 'Get-GstRocmMesonArgs (rocm lane only)' {
     $script:baseArgs = @('setup', '--vsenv', '-Dwrap_mode=forcefallback', '-Dbad=enabled',
         '-Dgst-plugins-bad:nvcodec=disabled', '-Dglib:tests=false')
 
-    # One fixture per lane: the env Get-GpuEnvironment reads, over a tree it accepts. HIP_PATH points at a
-    # valid HIP tree on EVERY lane, so only GPU_TYPE can decide.
+    # HIP_PATH points at a valid HIP tree on every lane, so only GPU_TYPE can decide.
     function Get-GstLaneFixture {
         param([string]$Lane, [string]$Root)
         [void](New-Item -ItemType Directory -Force -Path (Join-Path $Root 'lib\cmake\hip'))
@@ -200,9 +198,7 @@ Describe 'Get-GstRocmLeakFinding (the proof for the scrub)' {
     }
 }
 
-# ---- rocm-checks/GStreamer.ps1 (runs in the final rocm image, no GPU) ----
-# Fixtures are real System32 bytes: msimg32.dll imports ntdll + GDI32 and exports AlphaBlend & co; a copy
-# with its GDI32 import renamed is the mutation that must go red.
+# rocm-checks/GStreamer.ps1 over real System32 bytes: msimg32.dll with its GDI32 import renamed must go red.
 $script:gstCheck = 'windows\scripts\build\rocm-checks\GStreamer.ps1'
 $script:sys32 = Join-Path $env:SystemRoot 'System32'
 

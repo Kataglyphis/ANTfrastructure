@@ -1,11 +1,5 @@
 # shellcheck shell=bash
-# hailo-build-lib.sh — the Hailo build's two switches and the checks behind them.
-#   HAILO_NESTED_CACHE=carry|off      carry (default): HailoRT's clean-env nested protobuf build gets
-#                                     the compiler cache. off: it builds uncached, as before 2026-09-24.
-#   HAILO_PYHAILORT_IPO=off|upstream  off (default): upstream's forced LTO is patched out, so pyhailort
-#                                     links a real module. upstream: as shipped, which lld links empty.
-# Sourced by build-hailort.sh and (for the knob check) lib-orchestrator.sh: no shell options, nothing
-# runs at load. docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches
+# lib-orchestrator.sh sources this on the host, so it sets no shell options and runs nothing at load; see docs/hailo-support.md § The nested build cache and pyhailort: two switches
 [ -n "${_HAILO_BUILD_LIB_LOADED:-}" ] && return 0
 _HAILO_BUILD_LIB_LOADED=1
 
@@ -40,15 +34,13 @@ hailo_validate_knobs() {
   return 0
 }
 
-# The EXPORTED variables a compile reads its cache from: both CMake launchers and every
-# SCCACHE_*/CCACHE_* (the sccache server address among them), minus versions.env's pins.
+# Exported only: both CMake launchers and every SCCACHE_*/CCACHE_* (the server address too), minus versions.env's pins.
 hailo_cache_env_names() {
   compgen -e | grep -E -e '^(SCCACHE_[A-Z0-9_]+|CCACHE_[A-Z0-9_]+|CMAKE_(C|CXX)_COMPILER_LAUNCHER)$' \
     | grep -vE -e '_(VERSION|SHA256)$' || true
 }
 
-# hailo_nested_env_home <dir>: the HOME the nested `bash -l` starts in. It mirrors the real HOME
-# with symlinks, and its .bash_profile runs the real login file, then exports the cache env.
+# hailo_nested_env_home <dir>: a symlink mirror of HOME whose .bash_profile runs the real login file, then exports the cache env.
 hailo_nested_env_home() {
   local dir="$1" real="${HOME:-/root}" entry name login="" v tool bin
   for entry in "${real}"/.[!.]* "${real}"/..?* "${real}"/*; do
@@ -74,8 +66,7 @@ hailo_nested_env_home() {
   } > "${dir}/.bash_profile"
 }
 
-# hailo_assert_clean_env_channel <file>: the carrier rides that exact line. A HailoRT bump that
-# changes it must re-derive the carrier, so its absence is fatal in carry mode.
+# hailo_assert_clean_env_channel <file>: the carrier rides that exact line, so a HailoRT bump that changes it is fatal.
 hailo_assert_clean_env_channel() {
   if grep -Fq -e "${_HAILO_CLEAN_ENV_CHANNEL}" "$1" 2>/dev/null; then
     return 0
@@ -84,8 +75,7 @@ hailo_assert_clean_env_channel() {
   return 1
 }
 
-# hailo_cache_counters <launcher> -> "requests|hits|misses|cap" of the cache that launcher feeds, or
-# "-|-|-|-". Anchored: sccache also prints "Compile requests executed" and "Cache hits (C/C++)".
+# hailo_cache_counters <launcher> -> "requests|hits|misses|cap" or "-|-|-|-"; anchored, as sccache also prints "Cache hits (C/C++)".
 hailo_cache_counters() {
   case "${1:-}" in
     *sccache*)
@@ -131,9 +121,7 @@ hailo_ninja_objects() {
   awk -F'\t' 'NR > 1 && $4 ~ /\.o(bj)?$/ && !seen[$4]++ { n++ } END { print n + 0 }' "$1"
 }
 
-# hailo_assert_nested_cache_reached <nested build dir> <mode> <launcher> <mark before>
-# carry with a launcher: rc 1 when fewer requests reached the cache than half the objects the
-# nested build compiled, or it left no .ninja_log. Everything else warns and returns 0.
+# hailo_assert_nested_cache_reached <nested build dir> <mode> <launcher> <mark before>; see docs/hailo-support.md § The gate
 hailo_assert_nested_cache_reached() {
   local dir="$1" mode="$2" launcher="$3" objs req r0 r1
   objs="$(hailo_ninja_objects "${dir}/.ninja_log")"
@@ -167,8 +155,7 @@ hailo_assert_nested_cache_reached() {
   _hailo_note "the nested build's ${objs} objects reached ${launcher} (${req} requests)"
 }
 
-# hailo_nested_configure <phase> <nested build dir> <file that spawns it> <cmake args...>: the
-# configure under HAILO_NESTED_CACHE, then the gate on the nested build it ran.
+# hailo_nested_configure <phase> <nested build dir> <file that spawns it> <cmake args...>
 hailo_nested_configure() {
   local phase="$1" nested="$2" spawner="$3" mode launcher before carrier rc=0
   shift 3
@@ -193,8 +180,7 @@ hailo_nested_configure() {
   hailo_assert_nested_cache_reached "${nested}" "${mode}" "${launcher}" "${before}"
 }
 
-# hailo_pyhailort_ipo <off|upstream> <bindings/python/src/CMakeLists.txt>: off turns upstream's forced
-# IPO off (a normal variable, so no -D reaches it); upstream restores it. rc 1 without the line.
+# hailo_pyhailort_ipo <off|upstream> <bindings/python/src/CMakeLists.txt>: a sed, since upstream's IPO is a normal variable no -D reaches.
 hailo_pyhailort_ipo() {
   local mode="$1" file="$2" from=TRUE to=FALSE
   if [ "${mode}" = upstream ]; then from=FALSE; to=TRUE; fi
@@ -216,8 +202,7 @@ _hailo_elf_machine() {
   esac
 }
 
-# hailo_assert_pyext_exports <.so> <target arch>: rc 1, with the reason in _HAILO_PYEXT_WHY, unless it
-# is built for that arch and exports PyInit__pyhailort. The stub that shipped had slim-LTO objects.
+# hailo_assert_pyext_exports <.so> <target arch>: rc 1 (reason in _HAILO_PYEXT_WHY) unless built for that arch and exporting PyInit__pyhailort.
 hailo_assert_pyext_exports() {
   local so="$1" want machine
   want="$(_hailo_elf_machine "$2")"
@@ -234,8 +219,7 @@ hailo_assert_pyext_exports() {
   _hailo_note "${so##*/}: ${machine}, exports PyInit__pyhailort"
 }
 
-# hailo_check_pyext <wheel or .so> <target arch> <ipo mode>: the export check. Fatal when the
-# build claims a real module (HAILO_PYHAILORT_IPO=off); upstream's own build only warns.
+# hailo_check_pyext <wheel or .so> <target arch> <ipo mode>: fatal under off, which claims a real module; upstream only warns.
 hailo_check_pyext() {
   local subject="$1" so="$1" tmp="" rc=0
   _HAILO_PYEXT_WHY="no _pyhailort*.so in ${subject}"

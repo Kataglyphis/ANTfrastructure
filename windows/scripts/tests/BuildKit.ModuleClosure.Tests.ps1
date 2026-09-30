@@ -1,25 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The module CLOSURE gate (#134). Two properties, both of which BuildKit will
-# happily let you break, and neither of which any other suite watches:
-#
-#  (1) COMPLETENESS — every module a mounted build script imports, transitively,
-#      must actually be in the module set that RUN mounts. Get it wrong and the
-#      failure is a "Required module not found" thrown ~40 minutes into a
-#      compile stage, on the build host only, because the script runs fine
-#      locally where the whole modules dir is on disk.
-#
-#  (2) MINIMALITY OF THE LEAF STAGES — the media lane's `tvmmods` and the merge
-#      lane's leaf modules exist to keep TVM-only and GStreamer-only code OUT of
-#      the six-module closure that every media RUN mounts. That win is invisible
-#      and evaporates the moment someone adds a second consumer or moves a leaf
-#      module into `buildmods`. Nothing would fail; the branches would just
-#      quietly start re-keying each other again.
-#
-# This is the Windows analogue of linux/scripts/verify_script_copy_coverage.py,
-# which globs linux/Dockerfile.* only and has never policed the Windows lane.
+
+# A mounted script's transitive imports must all be mounted, and leaf stages must keep one consumer; BuildKit checks neither.
 
 Describe 'BuildKit module closure' {
 
@@ -28,10 +11,7 @@ Describe 'BuildKit module closure' {
         $script:moduleDir = Join-Path $script:repoRoot 'windows\scripts\modules'
         $script:buildDir  = Join-Path $script:repoRoot 'windows\scripts\build'
 
-        # Every `modules\<Name>.psm1` mentioned in a file, whatever the idiom
-        # (Join-Path .. 'modules\X.psm1', a foreach list of bare names, a COPY
-        # line). Bare-name form is matched separately so the foreach list in
-        # Build-GstreamerFromSource.ps1 counts.
+        # Every `modules\<Name>.psm1` reference; bare names are matched separately so foreach lists count.
         function script:Get-ReferencedModules {
             param([string]$Path)
             $t = [System.IO.File]::ReadAllText($Path)
@@ -40,9 +20,7 @@ Describe 'BuildKit module closure' {
             @($names | Sort-Object -Unique)
         }
 
-        # Parse a Dockerfile into RUN records: which module-carrying stage it
-        # mounts (from=<stage>) or which single modules it mounts by file, and
-        # which build scripts it mounts.
+        # Per RUN: the module stage or module files it mounts, and its build scripts.
         function script:Get-RunMounts {
             param([string]$DockerfilePath)
             $joined = ([System.IO.File]::ReadAllText($DockerfilePath)) -replace '`\r?\n', ' '
@@ -59,8 +37,7 @@ Describe 'BuildKit module closure' {
             $runs
         }
 
-        # stage -> the modules its COPY lines put into C:\bkmods, following
-        # `FROM <parent> AS <name>` so a derived stage inherits its parent's set.
+        # Follows `FROM <parent> AS <name>` so a derived stage inherits its parent's modules.
         function script:Get-ModuleStages {
             param([string]$DockerfilePath)
             $joined = ([System.IO.File]::ReadAllText($DockerfilePath)) -replace '`\r?\n', ' '
@@ -115,8 +92,7 @@ Describe 'BuildKit module closure' {
                 }
             }
         }
-        # Scanner-rot guard: if the parse stops finding RUNs with scripts AND
-        # modules, an empty $bad would report green while checking nothing.
+        # Scanner-rot guard: an empty $bad over zero checked RUNs would report green.
         $checked = 0
         foreach ($df in @($script:mediaDf, $script:mergeDf)) {
             foreach ($run in (Get-RunMounts -DockerfilePath $df)) {
@@ -132,8 +108,7 @@ Describe 'BuildKit module closure' {
         $stages = Get-ModuleStages -DockerfilePath $script:mediaDf
         $stages.Keys | Should -Contain 'buildmods'
         $stages.Keys | Should -Contain 'tvmmods' -Because 'the TVM-private module stage is what #134 bought; without it the leaf is back in the shared closure'
-        # buildmods is mounted by every media RUN. A TVM-only module there means
-        # a TVM constant re-keys the ~75 min ONNX branch again.
+        # Every media RUN mounts buildmods, so a TVM-only module there re-keys the ONNX branch.
         @($stages['buildmods']) | Should -Not -Contain 'WindowsTvm.Common' `
             -Because 'WindowsTvm.Common belongs to tvmmods; in buildmods it re-keys ONNX, OpenCV and FFmpeg for a TVM-only change'
         @($stages['tvmmods']) | Should -Contain 'WindowsTvm.Common'
@@ -141,12 +116,8 @@ Describe 'BuildKit module closure' {
 
     It 'mounts tvmmods from exactly one RUN' {
         $consumers = @(Get-RunMounts -DockerfilePath $script:mediaDf | Where-Object { $_.FromStages -contains 'tvmmods' })
-        # Two consumers means the module is shared, and shared code belongs in
-        # buildmods -- at which point this stage is pure indirection and the
-        # comment above it is telling a story that is no longer true.
+        # A second consumer means the code is shared and belongs in buildmods.
         $consumers.Count | Should -Be 1 -Because 'a second tvmmods consumer means the code is shared and belongs in buildmods; widening this stage spends the cache win silently'
-        # 'Build-MediaTvmAll', not 'build-media-tvm-all': renamed in the
-        # approved-verb sweep; the expectation was left on the old name.
         $consumers[0].Scripts | Should -Contain 'Build-MediaTvmAll' -Because 'tvmmods exists for the media-tvm branch'
     }
 
@@ -163,12 +134,7 @@ Describe 'BuildKit module closure' {
     }
 
     It 'no chain stage bind-mounts the WHOLE modules directory' {
-        # A directory mount puts EVERY module in the RUN's cache key, so editing any
-        # one of them re-keys that compile. Dockerfile.toolchain-builder's patched-llvm
-        # RUN did this and it is the DEFAULT toolchain target, so a host-only module edit
-        # silently re-paid a full LLVM build plus the media lanes that derive from it.
-        # Dockerfile.probe is exempt BY DESIGN: PROBE_NONCE busts its layer anyway and it
-        # dispatches arbitrary diagnostic scripts (its own header states this).
+        # Dockerfile.probe is exempt: PROBE_NONCE busts its layer anyway. See docs/windows-build-invariants.md § A whole-directory modules mount puts EVERY module in the cache key
         $offenders = @()
         foreach ($df in (Get-ChildItem -Path $script:repoRoot -Filter 'Dockerfile*' -File -Recurse |
                          Where-Object { $_.FullName -like '*\windows\*' -and $_.Name -ne 'Dockerfile.probe' })) {

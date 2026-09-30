@@ -51,8 +51,7 @@ function(myproject_enable_cache)
       NAMES "${COMPILER_CACHE}"
       DOC "Path to the compiler cache executable") # creates CACHE_BINARY_${COMPILER_CACHE} or <VAR>-NOTFOUND
 
-    # find_program's <VAR>-NOTFOUND is already falsey; the old second test
-    # compared against "${PATH}-NOTFOUND" with PATH undefined, so it never fired.
+    # find_program's <VAR>-NOTFOUND is already falsey.
     if(CACHE_BINARY_${COMPILER_CACHE})
       message(STATUS "${COMPILER_CACHE} found at ${CACHE_BINARY_${COMPILER_CACHE}}. Enabling compiler cache.")
 

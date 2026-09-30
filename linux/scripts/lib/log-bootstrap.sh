@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# log-bootstrap.sh - the one owner of the lib/ logging bootstrap.
-#
-# Sourced first by every other lib/*.sh; it is the only file here that resolves
-# 01-core/logging.sh, and the only place the minimal fallbacks live.
-# docs/shared-script-libraries.md#the-logging-bootstrap
+# The only resolver of 01-core/logging.sh and the fallbacks for lib/*.sh. docs/shared-script-libraries.md#the-logging-bootstrap
 [ -n "${_LOG_BOOTSTRAP_SH_LOADED:-}" ] && return 0
 _LOG_BOOTSTRAP_SH_LOADED=1
 

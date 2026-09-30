@@ -1,41 +1,19 @@
 #!/usr/bin/env bash
-# rust-toolchain.sh - Rust toolchain prerequisites that must not assume rustup.
-#
-# Source it, then call the functions. Self-sufficient: log-bootstrap.sh gives
-# it info/warn/err whether or not the caller has its own.
-#
-#   source "<antfrastructure>/linux/scripts/lib/rust-toolchain.sh"
-#   ensure_wasm32_target || echo "cannot build wasm here"
+# Rust toolchain prerequisites that must not assume rustup; log-bootstrap.sh makes it self-sufficient.
 
 [ -n "${_RUST_TOOLCHAIN_LIB_LOADED:-}" ] && return 0
 _RUST_TOOLCHAIN_LIB_LOADED=1
 # shellcheck source=./log-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
 
-# Make the wasm32-unknown-unknown target usable WITHOUT assuming rustup exists.
-#
-# The cross images install Rust from the distribution, not via rustup: cargo
-# and rustc are /bin/cargo and /bin/rustc with a sysroot like /usr/lib/rust-1.x,
-# and /usr/local/cargo/bin only symlinks them. `rustup target add` therefore
-# exits 127 - "command not found" - and under `set -e` that kills the calling
-# step before it does any work. A consumer's wasm size-budget gate died exactly
-# that way on 2026-08-06, and the same line silently short-circuited a docs
-# demo rebuild's `&&` chain, so the docs step passed while the budget step
-# failed on the identical command.
-#
-# Returns 0 when a wasm32 build can proceed, 1 when the toolchain simply cannot
-# target wasm. Callers decide what that means for them - a size gate that
-# cannot weigh anything should SKIP loudly rather than report a regression it
-# did not measure.
+# Cross images ship distro Rust, where rustup exits 127; returns 1 when wasm is impossible, for the caller to decide.
 ensure_wasm32_target() {
   if command -v rustup >/dev/null 2>&1; then
     rustup target add wasm32-unknown-unknown
     return $?
   fi
 
-  # No rustup: ask rustc directly whether std for the target is installed.
-  # --print target-libdir names the directory even when it does not exist, so
-  # the existence check is the actual probe.
+  # --print target-libdir names the dir even when absent, so its existence is the probe.
   local libdir
   if libdir="$(rustc --print target-libdir --target wasm32-unknown-unknown 2>/dev/null)" \
      && [ -d "${libdir}" ]; then

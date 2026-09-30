@@ -1,139 +1,53 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Cached Windows toolchain base image.
-# Installs non-AI build tooling so CUDA/ONNX/OpenCV can live in a derived layer.
-# Build scripts live in the media layer.
+# Cached toolchain base: non-AI build tooling only, so CUDA/ONNX/OpenCV live in derived layers.
 
 ARG WINDOWS_LTSC=2025
-# Digest pin (versions.env WINDOWS_BASE_DIGEST): the :ltsc tag floats with
-# Microsoft's monthly patch releases; the digest makes a from-base rebuild
-# reproducible and base OS revisions deliberate (they matter here — the wcifs
-# commit bug is version-skew-sensitive). The digest wins over the tag.
+# The :ltsc tag floats monthly; the digest makes OS revisions deliberate (the wcifs commit bug is version-skew-sensitive).
 ARG WINDOWS_BASE_DIGEST=sha256:e18a49cbc074dfaa8e106296d51cebd62bbf6effb999f134a5c48eed1c2334e1
-# NB the tag part is COSMETIC — the digest wins (see above); a WINDOWS_LTSC
-# bump without a matching digest bump changes nothing. Single default only
-# (the inline :-2025 fallback duplicated the ARG default, #127).
+# The tag is cosmetic: a WINDOWS_LTSC bump without a digest bump changes nothing.
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC}@${WINDOWS_BASE_DIGEST}
-# PowerShell 7 (pwsh) version — single source of truth is versions.env, forwarded
-# by Build-Buildkit.ps1 as --build-arg. Installed early so all subsequent layers use pwsh
-# as the default container shell instead of Windows PowerShell 5.1.
-# The zip's SHA256 rides along as an ARG because this bootstrap runs before any
-# shared module (Invoke-DownloadWithRetry) or versions.env baking is available.
+# The hash rides as an ARG: this bootstrap runs before any module or versions.env bake exists.
 ARG PWSH_VERSION=7.6.6
 ARG PWSH_ZIP_SHA256=02fe458be20493fbdf43f61ea20610b811ee6c738ab1676c61b9cfcd1a33c860
 
-# GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
-# TEMP_DIR must sit above the VS layer (the pwsh bootstrap RUN below reads it);
-# the maintainer LABEL used to sit here too and cost a full VS rebuild per
-# metadata tweak — it now lives at the tail of this file.
+# TEMP_DIR sits above the VS layer because the pwsh bootstrap RUN reads it.
 ENV TEMP_DIR="C:\temp"
 
-# NOTE: ENV quoting is inconsistent but harmless — Docker strips quotes from simple values
 SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-# ── Install PowerShell 7 (pwsh) as the default shell ─────────────────────────
-# ZIP install avoids MSI dependency issues in containers. The version is pinned
-# via ARG PWSH_VERSION (from versions.env). After this, SHELL is switched to pwsh
-# for all subsequent layers.
-#
-# RETRY (added 2026-08-07): this is the FIRST network fetch of the chain's most
-# expensive stage — a transient blip cost the whole base build, so the fetch
-# retries three times with backoff + a SHA256 check inside the loop. The logic
-# lives in windows/scripts/host/Initialize-Pwsh.ps1 (backlog #27: was a 1200-char
-# single-line RUN). It is BIND-MOUNTED, not COPY'd — no layer, and nothing is
-# COPY'd this early in base by design. It runs under Windows PowerShell 5.1
-# (the SHELL is not switched to pwsh until below) and cannot use
-# Invoke-DownloadWithRetry (no module is mounted yet).
+# Install pwsh 7 (zip, not MSI); bind-mounted so nothing is COPY'd this early, and it runs under PowerShell 5.1.
 RUN --mount=type=bind,source=windows/scripts/host/Initialize-Pwsh.ps1,target=C:\Initialize-Pwsh.ps1 & 'C:\Initialize-Pwsh.ps1'
 
-# Ensure pwsh and the base Windows paths are on PATH for the SHELL switch below and all
-# subsequent RUN instructions. The base image's PATH is NOT inherited by Docker ENV
-# when the escape character is backtick, so WIN_BASE_PATH is set here explicitly.
-# This is the ONLY definition (a second one in the big tail ENV block used to
-# redefine it with nothing but a trailing-backslash drift — removed 2026-08-03);
-# PATH stays a separate instruction because it references both keys.
+# The base image's PATH is not inherited under the backtick escape, so WIN_BASE_PATH is spelled out once here.
 ENV PWSH_PATH="C:\Program Files\PowerShell\7" `
     WIN_BASE_PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH
 ENV PATH=$PWSH_PATH;$WIN_BASE_PATH
 
-# Switch the default container shell to pwsh (PowerShell 7) for all subsequent RUN instructions.
-# The native-exit-code preference is PSNativeCommandUseErrorActionPreference —
-# note the "Use" (backlog #81). Until 2026-08-14 this line set
-# $PSNativeCommandErrorActionPreference, which is not a PowerShell variable at
-# all: verified against pwsh 7.6.4 (exactly PWSH_VERSION), where
-# `Get-Variable PSNative*` returns only PSNativeCommandArgumentPassing and
-# PSNativeCommandUseErrorActionPreference. The assignment created an unrelated
-# variable and did nothing, so the base believed it had a guard it did not have.
-# It was harmless only by luck — the real variable already defaults to False —
-# and would have started throwing on every native non-zero exit the day pwsh
-# flips that default, which is its stated direction. The repo spells it
-# correctly in WindowsFormatting.Common.psm1.
+# Note the "Use": PSNativeCommandErrorActionPreference (without it) is not a pwsh variable and silently does nothing.
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
-# COPY-immediately-before-RUN throughout this file: each input lands in the layer
-# right before the step that consumes it, so editing a LATER script (or versions.env)
-# can never bust an EARLIER expensive layer. The most expensive layer of the whole
-# chain -- VS Build Tools -- therefore depends ONLY on the three modules its script
-# imports + Install-Vs.ps1 itself. (Copying the full modules directory here would bust
-# it on every module edit; the media stage copies its own build modules and the full
-# module set ships in the final image (windows/Dockerfile) for in-container CI.)
+# Each input is COPY'd right before its consumer, so a later edit never busts the VS layer above it.
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsContainerImage.Common.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      C:\temp\scripts\modules\
-# Install-Vs.ps1 deliberately runs BEFORE load-versions so a versions.env bump cannot
-# bust the most expensive layer. Its ONE versioned input -- the Windows SDK component
-# build -- therefore arrives as an ARG (Build-Buildkit.ps1 passes versions.env's
-# WINDOWS_SDK_BUILD as --build-arg; ARG values are env vars during this stage's RUNs,
-# which is where Install-Vs.ps1's $env:WINDOWS_SDK_BUILD read gets its value). Changing
-# the SDK pin SHOULD rebuild the VS layer.
+# Install-Vs.ps1 runs before the versions.env bake, so its versioned inputs arrive as ARGs.
 ARG WINDOWS_SDK_BUILD=26100
-# Same ARG route for the VS Build Tools major (versions.env VISUAL_STUDIO_VERSION):
-# Install-Vs.ps1's VsDevCmd sanity check derives its path from it instead of a literal.
 ARG VISUAL_STUDIO_VERSION=18
 COPY windows\scripts\host\Install-Vs.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\Install-Vs.ps1' -TempDir $env:TEMP_DIR
 
-# versions.env's COPY moved BELOW the expensive layers (#50, 2026-08-18):
-# it is shared by BOTH lanes, so editing a purely Linux key (PANDOC_VERSION,
-# ROCM_VERSION, ...) used to re-pay GB-scale scoop + vcpkg + the ~30-min rust
-# layer. The keys those layers actually consume arrive as ARGs here instead
-# (declared immediately above their consumer, #103 discipline); the COPY +
-# load-versions bake now sits after the rust layer, in front of
-# verify/finalize, which still read the baked Machine env - as do all later
-# stages (FROM this image). NB the consumed-key inventory includes
-# helper-reads (Resolve-ContainerImageValue / Get-SourceBuildVersion), not
-# just $env: literals - that is exactly how GIT_VERSION hid from the first
-# audit.
-#
-# setup-scoop-tools consumes (git installer URL derived from GIT_VERSION,
-# hash-verified; WiX + flutter + the scoop bootstrap pin):
-# Git is pinned, but NOT through scoop — the script builds the git-for-windows
-# release URL from GIT_VERSION and verifies the installer hash.
-# LLVM/ninja/nasm are PINNED (versions.env LLVM_WINDOWS_VERSION /
-# NINJA_WINDOWS_VERSION / NASM_WINDOWS_VERSION, 2026-08-07): they produce or
-# shape compiled output, and an unpinned clang-cl made the base image — the
-# most expensive layer in the chain — unreproducible. versions.env's
-# LLVM_RELEASE still pins only the LINUX lane; the two are independent on
-# purpose. The remaining scoop tools stay floating (see Install-ScoopTools.ps1).
-# The pins are declared HERE (not at the top): every RUN after an ARG
-# declaration keys its cache on the ARG's value, so declaring them above the
-# VS layer made a Vulkan/CMake/LLVM bump re-pay the VS Build Tools install.
-# Declared here they can only invalidate scoop and the tail (their sole
-# consumers).
+# Pins are ARGs declared right above their consumer: every RUN after an ARG keys its cache on it, and a Linux-only versions.env edit must not re-pay these layers.
 ARG VULKAN_VERSION=1.4.357.0
 ARG CMAKE_VERSION=4.4.3
 ARG LLVM_WINDOWS_VERSION=23.1.1
 ARG NINJA_WINDOWS_VERSION=1.13.2
 ARG NASM_WINDOWS_VERSION=3.02
-# sccache is pinned for a FEATURE gate, not output determinism (>= v0.16.0 or
-# the multilevel chain is ignored silently) — docs/windows-build-resources.md § sccache.
+# Pinned for a feature gate (below v0.16.0 the multilevel chain is silently ignored); see docs/windows-build-resources.md § Persistent compile cache (sccache).
 ARG SCCACHE_WINDOWS_VERSION=0.18.0
-# #50: these used to arrive via the baked versions.env Machine env; as ARGs
-# (auto-env during this stage's RUNs, names match the script reads) a Linux
-# key edit no longer re-pays this layer. Defaults mirror versions.env; the
-# drivers pass the live values.
+# Defaults mirror versions.env; the drivers pass the live values.
 ARG GIT_VERSION=2.55.0
 ARG GIT_WINDOWS_INSTALLER_SHA256=0c66e4a5875da5a74f9754386de7555ba301503b03bbdcdbafa69dc6464e548d
 ARG GIT_INSTALLER_URL=""
@@ -141,38 +55,20 @@ ARG SCOOP_INSTALLER_SHA256=94f983b190438311e006b957db7c8422709e0ba62a6c2ac04e278
 ARG WIX_VERSION=4.0.6
 ARG WIX_UI_EXT_VERSION=4.0.6
 ARG FLUTTER_VERSION=3.47.4
-# LAN preseed source for the 275 MB vulkan SDK exe: sdk.lunarg.com stalls out
-# reproducibly from inside containers (2026-08-19, 3x ~20-min deaths), so the
-# driver stages the exe on the webdav and setup-scoop-tools pulls it into
-# scoop's cache from there. Empty = direct (retried) vendor download. The
-# endpoint is a stable LAN URL, so it does not churn this layer's cache key.
+# sdk.lunarg.com stalls from inside containers, so the driver preseeds the Vulkan SDK exe on the LAN webdav; empty = vendor download.
 ARG VULKAN_PRESEED_ENDPOINT=""
-# Opt-in hard gate for the arm64 prerequisites (MSVC lib\arm64, Windows SDK
-# um\arm64, Vulkan Lib-ARM64). Default EMPTY = warn-only, because this base is
-# SHARED by the amd64 and arm64 lanes: a hard failure over an arm64-only
-# prerequisite would block the amd64 build too. Declared as a real ARG on
-# purpose -- ARG values become env vars during this stage's RUNs, and buildctl
-# silently DISCARDS --build-arg for names no Dockerfile declares, so a bare
-# $env: read would be unreachable from `docker build`.
+# Empty = warn-only, since the base is shared with amd64; see docs/windows-cross-builds.md § Vulkan needs an optional component.
 ARG WINDOWS_ARM64_STRICT=""
 COPY windows\scripts\host\Install-ScoopTools.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\Install-ScoopTools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
     -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION `
     -WindowsArm64Strict $env:WINDOWS_ARM64_STRICT
 
-# #50: VCPKG_REF as ARG for the same reason (was baked env).
 ARG VCPKG_REF=2026.07.29
 COPY windows\scripts\host\Install-Vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\Install-Vcpkg.ps1'
 
-# LLVM_GLOBAL_BIN removed 2026-07-14: llvm is a user-scope install and it
-# pointed at a never-created C:\ProgramData dir.
-#
-# SCOOP_GLOBAL_SHIMS was removed in the same pass for the same reason, and
-# RESTORED 2026-08-08: flutter IS installed `--global` (Install-ScoopTools.ps1),
-# so scoop DOES create C:\ProgramData\scoop\shims. Only FLUTTER_BIN being on
-# PATH separately masked the gap -- any future global package would have been
-# silently unresolvable. User shims keep priority (listed first below).
+# SCOOP_GLOBAL_SHIMS is needed: flutter is a --global scoop install.
 ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     SCOOP_GLOBAL=C:\ProgramData\scoop `
     SCOOP_USER_SHIMS=C:\Users\ContainerAdministrator\scoop\shims `
@@ -189,47 +85,25 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
     CARGO_HOME=C:\Users\ContainerAdministrator\.cargo `
     CARGO_BIN=C:\Users\ContainerAdministrator\.cargo\bin
 
-# SCOOP_HOME / SCOOP_GLOBAL are scoop's APP ROOTS -- they hold apps\, buckets\
-# and shims\ subdirectories but no executables of their own, so they were dead
-# weight on PATH (removed 2026-08-08). The shim dirs below are the real entries.
+# Scoop's app roots hold no executables, so only the shim dirs go on PATH (user shims first).
 ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$SCOOP_GLOBAL_SHIMS;$WIN_BASE_PATH
 
-# Tail scripts land here (not at the top) so editing them only rebuilds from
-# this point — and the EXPENSIVE one (rustup + frb-codegen, ~30 min) sits
-# FIRST so edits to the cheap assertion/config scripts below never re-pay it
-# (previously verify-toolchain shared the rust COPY+RUN and every tweak to the
-# assertion list cost a full rust reinstall).
-# sccache: the released 0.18.0 zip replaces the retired source build (#2722 +
-# #2811 + #2816 ship in it); installed into CARGO_BIN. docs/windows-build-resources.md § sccache.
+# The expensive rust layer comes first in the tail, so edits to the cheap scripts below never re-pay it.
 ARG SCCACHE_WINDOWS_ZIP_SHA256=8965c74d5e8a225244f741e18ad2f3f504f48228dc1bac948fc22761a348363d
 COPY windows\scripts\host\Install-RustToolchain.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\Install-RustToolchain.ps1'
 
-# versions.env bake, relocated BELOW the expensive layers (#50): a Linux-key
-# edit now invalidates only this cheap RUN + verify/finalize. load-versions
-# sets Machine env, which persists in the image regardless of layer position -
-# verify/finalize below and every later stage (FROM this image) read it
-# exactly as before. Windows keys consumed ABOVE this line ride as ARGs.
+# The versions.env bake sits below the expensive layers, so a Linux-key edit only re-runs the cheap tail.
 COPY windows\scripts\build\Import-Versions.ps1 C:\temp\scripts\
 COPY linux\scripts\01-core\versions.env C:\temp\
 RUN & 'C:\temp\scripts\Import-Versions.ps1' 2>&1 | Out-Null
 
-# Test-Toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard
-# matched exactly this one file, but a future verify-* script would have
-# silently busted the layers above). Pure assertion pass + the tiny
-# finalize config step share one RUN (125-layer budget); both are seconds.
-# WindowsTargetArch.Common.psm1 rides in THIS layer group, not higher up:
-# Test-Toolchain.ps1 is its ONLY consumer in the base (the host provisioning
-# scripts spell their few arm64 facts inline and import just the three modules
-# COPY'd before the VS layer). Placed above setup-scoop-tools it invalidated
-# scoop, vcpkg AND the ~30-min rust layer on every edit to a module whose whole
-# point is that adding a target is a one-line table edit.
+# Test-Toolchain.ps1 is this module's only base consumer, so it lands here and never busts scoop/vcpkg/rust.
 COPY windows\scripts\modules\WindowsTargetArch.Common.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\build\Test-Toolchain.ps1 `
      windows\scripts\build\Complete-Container.ps1 `
      C:\temp\scripts\
 RUN & 'C:\temp\scripts\Test-Toolchain.ps1'; & 'C:\temp\scripts\Complete-Container.ps1'
 
-# Metadata-only: lives at the tail so a maintainer/label tweak never rebuilds
-# anything above it (it used to sit ABOVE the VS Build Tools layer).
+# At the tail so a label tweak rebuilds nothing.
 LABEL maintainer="contact@jonasheinle.de"

@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# The package stage's clang wiring, off-target against a fake LLVM tree:
-#   write_clang_gcc_toolchain_cfg   the cfg pair beside every link to the driver (BACKLOG CON16, CON39)
-#   link_compiler_rt_legacy_names   the lib/linux names atheris probes for (CON38)
-#   _smoke_atheris_libfuzzer_probe  validate-compilers.sh's port of atheris' find_libfuzzer.sh
+# The package stage's clang wiring on a fake LLVM tree: the toolchain cfg pair, atheris' legacy compiler-rt names and its probe.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

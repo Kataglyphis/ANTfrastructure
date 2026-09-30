@@ -1,34 +1,6 @@
 #!/usr/bin/env bash
-# coverage.sh - generic coverage-report generation for CMake projects.
-#
-# Two independent backends, matching the two instrumentation flavours a project
-# typically has:
-#   gcovr    - GCC / --coverage builds, reads .gcda next to the objects
-#   llvm-cov - clang -fprofile-instr-generate builds, needs a .profraw that
-#              only exists once the instrumented binary has actually RUN
-#
-# This library is project-agnostic: nothing project-specific is hard-coded here.
-# A thin wrapper script sets the COVERAGE_* variables below (its project
-# defaults), sources this file, and calls the step functions it needs.
-#
-# It deliberately does NOT set -e / -u / -o pipefail so that sourcing it cannot
-# change the caller's shell options; wrappers are expected to run under
-# `set -euo pipefail` themselves.
-#
-# Optional caller variables (all have safe defaults):
-#   COVERAGE_GCOVR_EXCLUDES      array of gcovr --exclude regexes
-#   COVERAGE_GCOVR_OUTPUT        file gcovr writes to (default: stdout)
-#   COVERAGE_GCOVR_EXTRA_ARGS    array of extra gcovr arguments (e.g. --xml)
-#   COVERAGE_LLVM_IGNORE_REGEX   array of llvm-cov -ignore-filename-regex values
-#                                applied to both `report` and `export`
-#   COVERAGE_LLVM_RUN_ENV        array of NAME=VALUE assignments prefixed to the
-#                                instrumented run (default:
-#                                ASAN_OPTIONS=detect_leaks=0 - a coverage run
-#                                only wants the profile, not a LeakSanitizer
-#                                verdict)
-#
-# Logging comes from log-bootstrap.sh and tool presence checks from the
-# caller's require_tools when it declares one.
+# Sourced coverage core (no shell options): gcovr for GCC --coverage, llvm-cov for clang profiles.
+# Optional: COVERAGE_GCOVR_{EXCLUDES,OUTPUT,EXTRA_ARGS}, COVERAGE_LLVM_{IGNORE_REGEX,RUN_ENV} (arrays but OUTPUT).
 
 [ -n "${_COVERAGE_SH_LOADED:-}" ] && return 0
 _COVERAGE_SH_LOADED=1
@@ -38,13 +10,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
 # shellcheck source=../01-core/tool-checks.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/tool-checks.sh"
 
-# ---------------------------------------------------------------------------
-# gcovr backend
-# ---------------------------------------------------------------------------
-# Usage: coverage_run_gcovr [root]
-# root defaults to "." - gcovr walks it for .gcda/.gcno pairs, so it must be the
-# directory the objects were compiled under (usually the repo root, not the
-# build dir, since the paths baked into .gcno are relative to the compile dir).
+# gcovr: [root] must be the compile directory, since .gcno paths are relative to it.
 coverage_run_gcovr() {
   local root="${1:-.}"
 
@@ -72,17 +38,7 @@ coverage_run_gcovr() {
   gcovr "${args[@]}"
 }
 
-# ---------------------------------------------------------------------------
-# llvm-cov backend
-# ---------------------------------------------------------------------------
-# Usage: coverage_llvm_generate_profile <test-exe> <profraw-path> [exe args...]
-#
-# Generate the raw profile by RUNNING the instrumented suite. Nothing else in
-# the pipeline produces this file, which is why coverage silently never ran and
-# the merge below failed on a missing profraw. The suite passed here must be
-# device-free (no GPU/display) so it runs in headless CI.
-# LLVM_PROFILE_FILE both names and locates the output; detect_leaks=0 because a
-# coverage run only wants the profile, not a LeakSanitizer verdict.
+# llvm-cov: <test-exe> <profraw-path> [args...]; only running a device-free suite produces the profraw.
 coverage_llvm_generate_profile() {
   local test_suite="$1"
   local profraw="$2"
@@ -108,16 +64,7 @@ coverage_llvm_generate_profile() {
   fi
 }
 
-# Usage: coverage_llvm_report <test-exe> <profraw> <profdata> [json-output]
-# Merges the raw profile, prints the human-readable report, and - when a JSON
-# path is given - exports the machine-readable one (for Codecov and friends).
-#
-# Set COVERAGE_LLVM_HTML_DIR to ALSO emit the browsable `llvm-cov show` report
-# into that directory. Optional because the two consumers genuinely differ:
-# BeschleunigerBallett only feeds Codecov from the JSON, while
-# AccelerANTgine publishes the HTML next to its docs. Without it that
-# second consumer could not use this function at all and had to keep a private
-# llvm-cov pipeline - exactly the duplication this library exists to remove.
+# <test-exe> <profraw> <profdata> [json-output]; COVERAGE_LLVM_HTML_DIR also emits llvm-cov show HTML.
 coverage_llvm_report() {
   local test_suite="$1"
   local profraw="$2"

@@ -1,27 +1,5 @@
 #requires -Version 7.0
-# Reusable Windows build-container lifecycle and transfer helpers.
-#
-# CONSUMED-BY (downstream repos vendoring this repo as ExternalLib — verified
-# 2026-08-17; nothing INSIDE this repo imports this module except its tests, so
-# an in-repo dead-code sweep WILL flag it and would be wrong, backlog #105):
-#   BeschleunigerBallett/scripts/windows/Build-Windows-Container.ps1
-#     (Invoke-ContainerBuild, Get-ReusableBuildContainer, Copy-Into/From...,
-#      Resolve-DockerExe, Get-ContainerIsolationArgs, ...)
-#   OxidANT/scripts/windows/container/Invoke-StevedoreBuild.ps1
-#     (Resolve-DockerExe, Get-ContainerIsolationArgs, Remove-BuildContainerSafe;
-#      list re-read 2026-09-06 - it had drifted)
-# Renames/removals here are BREAKING changes for those repos.
-#
-# Building a large project inside a Windows container is dominated by two
-# costs: recompiling everything because the container is fresh, and moving the
-# build tree in and out. Reusing ONE container removes both - the build tree,
-# ninja graph and C++ module BMIs simply stay where they are.
-#
-# Measured on a ~690-object C++23 modules project: 9.6 s ninja / 44 s wall for
-# a no-change incremental build, vs 352-484 s with a fresh container per build.
-# Background - including the two supported transports and how to set each up,
-# plus three approaches that do NOT work - is in
-# docs/windows-container-build-performance.md.
+# CONSUMED-BY BeschleunigerBallett and OxidANT container scripts, renames break them; see docs/windows-container-build-performance.md
 
 Set-StrictMode -Version Latest
 
@@ -29,15 +7,9 @@ Set-StrictMode -Version Latest
 .SYNOPSIS
   Returns a reusable build container, creating or recreating it as needed.
 .DESCRIPTION
-  Reuses a running container, starts a stopped one, and recreates it whenever
-  the referenced image ID differs from the container's image - without that
-  check a rebuilt toolchain image is silently ignored and you keep building
-  against the old one.
+  Recreates it when the image ID changed, or a rebuilt toolchain image would be silently ignored.
 .OUTPUTS
-  [pscustomobject] with Reused ([bool] - true when an existing container was
-  reused and its build tree is intact) and Name ([string] - the container that
-  was actually used, which may differ from -Name when a -Fresh removal was
-  blocked by the wcifs teardown lock).
+  [pscustomobject] Reused (tree intact) and Name, which differs from -Name when the wcifs lock blocked a -Fresh removal.
 #>
 function Get-ReusableBuildContainer {
     [CmdletBinding()]
@@ -53,11 +25,7 @@ function Get-ReusableBuildContainer {
         Write-Host "Fresh container requested - discarding '$Name'."
         & $DockerExe rm -f $Name 2>&1 | Out-Null
 
-        # Removal can FAIL silently on hosts with the wcifs teardown lock. If it
-        # did, the old container is still there and would simply be reused -
-        # making -Fresh a no-op exactly when someone needs it (stale sources,
-        # deleted files, a corrupted tree). Verify, and fall back to a uniquely
-        # named container so "fresh" always means fresh.
+        # The wcifs teardown lock can fail the removal silently; a survivor gets a unique name so fresh means fresh.
         $previous = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
@@ -114,11 +82,7 @@ function Get-ReusableBuildContainer {
 .SYNOPSIS
   Streams a host directory into a running container via a tar pipe.
 .DESCRIPTION
-  Used where bind mounts are unavailable (Dev Drive hosts reject the
-  filesystem minifilter). ALWAYS pass -Exclude for deeply nested output
-  directories: a single path over the Windows limit fails with
-  "Can't create ...: Invalid argument" and aborts the WHOLE transfer, silently
-  turning a full copy into a partial one.
+  For hosts without bind mounts; -Exclude deep output dirs, as one over-long path silently aborts the whole transfer.
 #>
 function Copy-IntoBuildContainer {
     [CmdletBinding()]
@@ -143,12 +107,7 @@ function Copy-IntoBuildContainer {
 .SYNOPSIS
   Streams selected artifacts out of a container back to the host.
 .DESCRIPTION
-  With a reusable container the host copy is no longer the incremental seed,
-  so copy back only what the host actually runs (executables, debug info,
-  compile database, logs) instead of the whole build tree. tar does NOT
-  expand globs in item arguments (it reports "Cannot stat" and produces an
-  empty archive), so pass literal paths in -Items and select by -Exclude to
-  drop heavy intermediates.
+  Copy back only what the host runs; tar does not expand globs, so -Items are literal paths and -Exclude filters.
 #>
 function Copy-FromBuildContainer {
     [CmdletBinding()]
@@ -163,8 +122,7 @@ function Copy-FromBuildContainer {
 
     $excludeArgs = ($Exclude | ForEach-Object { "--exclude `"$_`"" }) -join ' '
     $itemArgs = ($Items -join ' ')
-    # tar's -C avoids a nested cmd /c inside the container, which would need
-    # quote-in-quote escaping for the exclude patterns.
+    # tar -C avoids a nested cmd /c, which would need quote-in-quote escaping for the excludes.
     $command = "`"$DockerExe`" exec $Container tar -cf - $excludeArgs -C $SourcePath $itemArgs | tar -xf - -C `"$TargetRoot`""
     cmd /c $command
     return ($LASTEXITCODE -eq 0)
@@ -175,10 +133,7 @@ function Copy-FromBuildContainer {
 .SYNOPSIS
   Ensures PowerShell Core (pwsh) is available inside a running container.
 .DESCRIPTION
-  Windows container images often ship only Windows PowerShell 5.1
-  (powershell.exe); build scripts requiring PS 7+ need pwsh installed via
-  scoop (pre-installed in the image). Measured 2026-07-29: ~10 s on first
-  install (scoop update may run); subsequent calls are a no-op ~1 s check.
+  Images that ship only Windows PowerShell 5.1 get pwsh through the image's scoop.
 .OUTPUTS
   [bool] - $true when pwsh is available (already present or installed).
 #>
@@ -206,16 +161,7 @@ function Initialize-ContainerPwsh {
 .SYNOPSIS
   Removes stale source directories from a reused build container.
 .DESCRIPTION
-  tar extracts over the existing tree but never removes files, so a source
-  deleted on the host keeps building inside a reusable container (observed
-  and repro'd 2026-07-19). This prunes everything under the workspace except
-  the build trees and the extra directories the caller keeps; sources
-  re-stream in seconds.
-
-  The keep test is designed so a wrong pattern CANNOT delete the build tree:
-  directories named "build", "build-*", "build_*" and the -KeepDirs names are
-  kept, everything else is removed. A future build-directory naming
-  convention must start with "build" to be kept.
+  tar never deletes, so a host-deleted source keeps building; keeps build, build-*, build_* and -KeepDirs, removes the rest.
 .OUTPUTS
   [bool] - $true when pruning reported no errors.
 #>
@@ -228,8 +174,7 @@ function Remove-StaleContainerSources {
         [string[]]$KeepDirs = @('logs')
     )
 
-    # Pipe the pruning script via stdin to avoid nested-quote hell with
-    # -Command when the script itself contains double-quoted strings.
+    # Piped via stdin: -Command would need nested quoting for the script's own double quotes.
     $keepList = ($KeepDirs | ForEach-Object { '"{0}"' -f $_ }) -join ','
     $pruneLines = @(
         ('$d = Get-ChildItem "{0}" -Directory -ErrorAction SilentlyContinue' -f $WorkspacePath),
@@ -242,8 +187,6 @@ function Remove-StaleContainerSources {
     $pruneTmp = [System.IO.Path]::GetTempFileName()
     try {
         Set-Content -Path $pruneTmp -Value $pruneLines -Encoding UTF8 -NoNewline
-        # pwsh 7 everywhere (host policy 2026-08-04) — every image in this
-        # chain carries pwsh from the base layer on.
         Get-Content $pruneTmp -Raw | & $DockerExe exec -i $Container pwsh -NoProfile -Command - | Out-Host
         $pruneExit = $LASTEXITCODE
     } finally {
@@ -260,13 +203,7 @@ function Remove-StaleContainerSources {
 .SYNOPSIS
   Verifies that every executable built in the container reached the host.
 .DESCRIPTION
-  A green build is not proof that anything was produced or delivered. Both
-  halves of that have failed silently in practice: a build cut off partway
-  still looked successful (no test exe at all), and an outbound tar that
-  used globs (which tar does not expand) copied NOTHING while stale host
-  artifacts masked it. Compares by EXISTENCE, not timestamps: on a no-change
-  build ninja does not relink, so executables are legitimately older than
-  the current run. Throws on either failure mode.
+  A green build proves neither production nor delivery; compares by existence, since a no-change build does not relink.
 .OUTPUTS
   [int] - the number of executables verified as delivered.
 #>
@@ -303,11 +240,7 @@ function Test-BuildArtifactsDelivered {
 .SYNOPSIS
   Locates docker.exe, preferring Stevedore's copy.
 .DESCRIPTION
-  Stevedore's docker.exe is the supported classic-lane client (nerdctl needs an
-  elevated shell for containerd's admin-only pipe; the BuildKit lane uses
-  buildctl instead — see windows/Build-Buildkit.ps1). Checks an explicit
-  override, then $env:DOCKER_EXE, then the usual Stevedore install locations,
-  then PATH.
+  Order: explicit override, $env:DOCKER_EXE, Stevedore install locations, PATH.
 #>
 function Resolve-DockerExe {
     [CmdletBinding()]
@@ -357,15 +290,9 @@ function Get-ContainerIsolationArgs {
 .SYNOPSIS
   Tests whether a bind mount of $SourcePath actually attaches.
 .DESCRIPTION
-  EXPECTED to fail on Dev Drive hosts: the filesystem minifilter cannot attach
-  unless 'fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"' has been run. Callers
-  fall back to a tar-pipe transport. Docker's stderr must not become a
-  terminating NativeCommandError (Windows PowerShell turns redirected native
-  stderr into ErrorRecords under $ErrorActionPreference = 'Stop').
+  Fails on a Dev Drive until 'fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"'; callers fall back to tar.
 .NOTES
-  Mount onto a FRESH target path: mounting over a directory baked into the
-  image (e.g. C:\workspace) fails at CreateComputeSystem when the host OS
-  build differs from the image base build.
+  Mount onto a fresh path: over an image-baked dir it fails when host and image builds differ.
 #>
 function Test-ContainerBindMount {
     [CmdletBinding()]
@@ -394,9 +321,7 @@ function Test-ContainerBindMount {
 .SYNOPSIS
   Removes a container, tolerating the wcifs layer-teardown lock.
 .DESCRIPTION
-  On some hosts the immediate remove fails even though a later manual
-  'docker rm' succeeds. Surface it as a warning; never let docker's stderr flip
-  a green build to a failure.
+  The immediate remove can fail where a later one succeeds, so it only warns and never fails a green build.
 #>
 function Remove-BuildContainerSafe {
     [CmdletBinding()]
@@ -425,20 +350,7 @@ function Remove-BuildContainerSafe {
 .SYNOPSIS
   Reads one 'docker inspect' format field and classifies the failure if it fails.
 .DESCRIPTION
-  Internal helper for Wait-ContainerExit (deliberately not exported). It exists
-  to keep three outcomes apart that need OPPOSITE reactions: the field was read;
-  the container is GONE (no amount of waiting will ever produce an answer); or
-  the client could not reach the daemon, which is a statement about the CLI and
-  says nothing at all about the container.
-
-  $ErrorActionPreference is pinned to 'Continue' around the call for the reason
-  it is everywhere else in this module: docker's stderr must not turn into a
-  terminating NativeCommandError.
-
-  Value comes ONLY from stdout: docker prints client notices (deprecations,
-  context warnings) on stderr BEFORE the field value, so a first-line pick over
-  a merged stream returns the notice as the "value" - a clean container read as
-  a non-numeric exit code. stderr is kept separately for the classification.
+  Keeps read, container gone and daemon unreachable apart; the value comes only from stdout, as notices precede it on stderr.
 .OUTPUTS
   [pscustomobject] with Ok, Value, ExitCode, Error, Missing, DaemonUnreachable.
 #>
@@ -455,8 +367,7 @@ function Get-ContainerInspectField {
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        # Redirected native stderr arrives as ErrorRecords - split the streams
-        # so a stderr notice can never be mistaken for the field value.
+        # Redirected stderr arrives as ErrorRecords, so the streams split cleanly.
         & $DockerExe inspect -f $Format $Name 2>&1 | ForEach-Object {
             if ($_ -is [System.Management.Automation.ErrorRecord]) { $stderrLines.Add("$_") }
             else { $stdoutLines.Add("$_") }
@@ -471,8 +382,7 @@ function Get-ContainerInspectField {
         $first = @($stdoutLines | Where-Object { $_.Trim() }) | Select-Object -First 1
         if ($first) { $value = $first.Trim() }
     }
-    # Classification prefers stderr; a docker that reports its failure on
-    # stdout instead must still be classifiable, hence the fallback.
+    # stdout is the fallback for a docker that reports its failure there.
     $errorSource = if ($stderrLines.Count -gt 0) { $stderrLines } else { $stdoutLines }
     $text = (@($errorSource) -join "`n").Trim()
 
@@ -483,8 +393,7 @@ function Get-ContainerInspectField {
         Error             = $text
         # 'Error: No such object: <name>' (inspect) / 'No such container'.
         Missing           = (($code -ne 0) -and ($text -match 'No such (object|container)'))
-        # 'error during connect: ... open //./pipe/docker_engine: The system
-        # cannot find the file specified.' - the client, not the container.
+        # 'error during connect: ... //./pipe/docker_engine': the client, not the container.
         DaemonUnreachable = (($code -ne 0) -and
             ($text -match 'error during connect|docker_engine|Cannot connect to the Docker daemon|daemon is not running'))
     }
@@ -494,43 +403,13 @@ function Get-ContainerInspectField {
 .SYNOPSIS
   Waits for a named container to stop and returns the exit code it really had.
 .DESCRIPTION
-  The docker CLI intermittently drops its pipe mid-run while the container keeps
-  working, and the client then reports a failure that did not happen - the build
-  is still compiling and usually goes on to succeed. OxidANT's Stevedore lane hit
-  it often enough to change shape for it; its
-  scripts/windows/container/Invoke-StevedoreBuild.ps1 header states the rule
-  this function upstreams verbatim: "The docker CLI intermittently drops its pipe
-  mid-run while the container keeps working, so the container is named (not
-  --rm) and this script waits on the actual container state, not the client exit
-  code." Same host, same family as the 2026-09-01 finding that a RUN step's
-  container exit NOTIFICATION is what goes missing while the work itself
-  completes (CHANGELOG, "the container-start wedge is a lost exit notification").
-
-  Only meaningful for a container whose MAIN process IS the workload
-  ('docker run --name ...' WITHOUT --rm - with --rm the daemon deletes the
-  container the instant it exits and takes the exit code with it). It does NOT
-  apply to 'docker exec' inside the reusable build container: that container's
-  main process is a 7-day ping, so State.Status reads 'running' no matter what
-  the exec'd build did.
-
-  Every failure is named instead of being folded into a bogus exit code. The
-  consumer's loop returned an EMPTY string when inspect failed and its caller
-  reported that as "exit ", which reads like a build failure and is not one. A
-  daemon that cannot be reached DURING the wait is the very fault being
-  tolerated, so it is retried until -TimeoutMinutes and then thrown with its own
-  count; a vanished container, any other inspect failure, and the timeout each
-  throw immediately, saying which case fired.
+  The docker CLI drops its pipe mid-run while the container keeps working; only for 'docker run --name' without --rm.
 .PARAMETER PollSeconds
-  Seconds between state probes (15 in the consumer this came from: a wasted
-  build-minute is cheap, a daemon round trip is not free).
+  Seconds between state probes.
 .PARAMETER TimeoutMinutes
-  Upper bound on the wait - the consumer's loop had none and could hang a lane
-  forever. [double] so sub-minute waits are expressible (the suite uses that);
-  the default is four hours, well past any cold build measured here (the slowest
-  is 474 s).
+  Upper bound on the wait; [double] so sub-minute waits are expressible.
 .PARAMETER Label
-  Prefix for the messages, so a caller running several phases can tell them
-  apart ('build' / 'test' in the consumer).
+  Message prefix, so a caller running several phases can tell them apart.
 .OUTPUTS
   [int] - the container's real exit code.
 #>
@@ -557,8 +436,7 @@ function Wait-ContainerExit {
         if ($probe.Ok) {
             $unreachable = 0
             $status = $probe.Value
-            # Fail CLOSED: only states documented to carry a final ExitCode end
-            # the wait; an empty or unknown state must not read as "finished".
+            # Fail closed: only states documented to carry a final ExitCode end the wait.
             if ($status -in @('exited', 'dead', 'removing', 'created')) { break }
             if ($status -notin @('running', 'paused', 'restarting')) {
                 throw ("[$Label] docker reported state '$status' for '$Name' - neither a running state " +
@@ -577,8 +455,7 @@ function Wait-ContainerExit {
                 'run that created it (a container that is waited on must be created WITHOUT --rm). ' +
                 "docker said: $($probe.Error)")
         } elseif ($probe.DaemonUnreachable) {
-            # An unreachable daemon says nothing about the container - keep
-            # asking until the timeout instead of failing a live build.
+            # An unreachable daemon says nothing about the container, so keep asking until the timeout.
             $unreachable++
             $stall = "the docker daemon was unreachable for $unreachable consecutive probe(s) ($($probe.Error))"
             if ($unreachable -eq 1) {
@@ -620,9 +497,7 @@ function Wait-ContainerExit {
 .SYNOPSIS
   Turns an environment hashtable into docker '-e NAME=VALUE' arguments.
 .DESCRIPTION
-  Plain hashtables are unordered, so their keys are emitted sorted to keep the
-  produced command line deterministic (and testable). Pass an [ordered]
-  dictionary to control the order yourself.
+  Hashtable keys are emitted sorted for a deterministic command line; an [ordered] dictionary keeps its order.
 .OUTPUTS
   [string[]] - flat '-e', 'NAME=VALUE', ... suitable for splatting.
 #>
@@ -644,29 +519,21 @@ function Get-ContainerEnvArgs {
 .SYNOPSIS
   Standard sccache environment for builds inside a Windows build container.
 .DESCRIPTION
-  Persistent compiler cache in the CONTAINER filesystem, deliberately not on a
-  named volume. Diagnosis and A/B: docs/windows-container-build-performance.md
-  § sccache's cache directory on a Windows container volume.
+  In the container filesystem, not a volume: docs/windows-container-build-performance.md § sccache's cache directory on a Windows container volume.
 .OUTPUTS
-  [ordered] dictionary of environment variables; merge caller-specific entries
-  into it before handing it to Invoke-ContainerBuild -CacheEnv.
+  [ordered] environment; merge caller entries into it before Invoke-ContainerBuild -CacheEnv.
 #>
 function Get-SccacheContainerEnv {
     [CmdletBinding()]
     param(
         [string]$CacheDir = 'C:\sccache-local',
         [string]$CacheSize = '20G',
-        # Must NOT live under $CacheDir: the server opens the log before it
-        # creates the cache dir and dies if its parent is missing. See
-        # docs/windows-container-build-performance.md § sccache's cache directory.
+        # Not under $CacheDir: the server opens the log before creating the cache dir and dies without a parent.
         [string]$ErrorLogPath = 'C:\sccache-error.log',
         [string]$LogLevel = 'warn'
     )
 
-    # Without SCCACHE_ERROR_LOG/SCCACHE_LOG, a failing cache write is silent:
-    # sccache reports the count in its stats and discards the reason. Measured
-    # 2026-07-20: 66 write errors out of 66 misses, i.e. every single write
-    # failing, with no way to see why.
+    # Without the logs a failing cache write is silent: sccache counts it and discards the reason.
     return [ordered]@{
         SCCACHE_DIR        = $CacheDir
         SCCACHE_CACHE_SIZE = $CacheSize
@@ -679,10 +546,7 @@ function Get-SccacheContainerEnv {
 .SYNOPSIS
   -CacheEnv plus this host's sccache remote tier, for the keys the caller did not set.
 .DESCRIPTION
-  Since 2026-09-23 the image carries no SCCACHE_WEBDAV_ENDPOINT, so a build host's endpoint and
-  SCCACHE_MULTILEVEL_CHAIN reach the container as run-time -e entries instead. A key the caller
-  set wins, '' included (the opt-out); a container that cannot reach the endpoint drops it
-  itself. docs/windows-build-resources.md#the-build-hosts-remote-tier-at-run-time
+  A caller's key wins, '' included (the opt-out): docs/windows-build-resources.md#the-build-hosts-remote-tier-at-run-time
 .OUTPUTS
   A new dictionary of the same kind as -CacheEnv; the caller's is never modified.
 #>
@@ -707,10 +571,7 @@ function Add-HostSccacheRemoteEnv {
 .SYNOPSIS
   Normalises -BuildCommand into the argv executed inside the container.
 .DESCRIPTION
-  Accepts a [scriptblock] (invoked with the in-container workspace path, so the
-  caller can bake absolute container paths into its arguments) or a ready-made
-  string array. Every token must be free of spaces: it travels
-  docker CLI -> cmd /S /C -> %*.
+  A scriptblock gets the in-container workspace path; tokens must be space-free, as they travel via cmd /S /C and %*.
 .OUTPUTS
   [string[]] - the argument vector.
 #>
@@ -734,34 +595,23 @@ function Resolve-ContainerBuildCommand {
   Tar-pipe by default, bind mount (the CI flow) via -UseBindMount. Setup,
   measurements and path rules: docs/windows-container-build-performance.md.
 .PARAMETER WorkspacePath
-  Mount target AND tar-pipe destination, shared by both transports so a CMake
-  cache survives a switch; must not be a path baked into the image.
+  Shared by both transports so a CMake cache survives a switch; never a path baked into the image.
 .PARAMETER BuildCommand
-  Scriptblock (receives the in-container workspace path) or string[] returning
-  the argv to run inside the container.
+  Scriptblock (receives the in-container workspace path) or string[] with the argv to run.
 .PARAMETER IncrementalDirs
-  Host-relative build directories to stream back IN before building, so ninja
-  rebuilds only what changed. Ignored when an existing container is reused -
-  its tree is already there and newer.
+  Host build dirs streamed in first so ninja rebuilds only changes; ignored for a reused container.
 .PARAMETER IncrementalExclude
-  Sub-paths, relative to each incremental directory, excluded from the inbound
-  transfer.
+  Sub-paths of each incremental directory excluded from the inbound transfer.
 .PARAMETER OutputDirs
   Workspace-relative directories streamed back to the host when they exist.
 .PARAMETER VerifyDirs
   Subset of -OutputDirs that must contain executables and have them delivered.
 .PARAMETER CacheEnv
-  Environment entries applied to the container (compiler cache, image
-  contract flags, ...). See Get-SccacheContainerEnv. This host's
-  SCCACHE_WEBDAV_ENDPOINT/SCCACHE_MULTILEVEL_CHAIN are added unless set here
-  ('' opts out): Add-HostSccacheRemoteEnv.
+  Container environment (see Get-SccacheContainerEnv); Add-HostSccacheRemoteEnv fills the host's remote tier.
 .PARAMETER WaitTimeoutMinutes
-  How long the bind-mount transport waits on a container that is still running
-  after the docker client returned. See Wait-ContainerExit.
+  How long the bind-mount run waits on a container still running after the client returned.
 .OUTPUTS
-  [pscustomobject] with Transport ('bindmount' | 'tarpipe'), Container (the
-  container actually used, or $null for a bind-mount run) and Verified (a
-  dictionary of directory -> delivered executable count).
+  [pscustomobject] Transport ('bindmount' | 'tarpipe'), Container ($null for bind mount), Verified (dir -> exe count).
 #>
 function Invoke-ContainerBuild {
     [CmdletBinding()]
@@ -783,40 +633,18 @@ function Invoke-ContainerBuild {
         [string[]]$IsolationArgs = @(),
         [string]$EntrypointPath = 'C:\temp\scripts\entrypoint.cmd',
         [string]$ProbeFile = 'CMakePresets.json',
-        # Bound for Wait-ContainerExit (~30x the slowest cold build measured);
-        # raise it for a slower project rather than removing the bound.
+        # Raise it for a slower project rather than removing the bound.
         [ValidateRange(0.01, 10080)][double]$WaitTimeoutMinutes = 240,
-        # Opt into the bind-mount transport. Off by default because it is
-        # MEASURED SLOWER on a Dev Drive host - see the measurements below.
+        # Off by default: measured slower on a Dev Drive host.
         [switch]$UseBindMount,
-        # Discard the reusable build container and start from a clean one. Use
-        # when a build behaves strangely, or after deleting files that the
-        # container may still hold (sources are overwritten in place, never
-        # pruned).
+        # Start from a clean container, e.g. after deleting files the reused one may still hold.
         [switch]$FreshContainer
     )
 
     $cacheArgs = Get-ContainerEnvArgs -Environment (Add-HostSccacheRemoteEnv -CacheEnv $CacheEnv)
     $buildArgs = Resolve-ContainerBuildCommand -BuildCommand $BuildCommand -WorkspacePath $WorkspacePath
 
-    # Bind mounting looks like the obvious win - no tar transport at all - and
-    # it is SLOWER here. Measured 2026-07-19 on a Dev Drive host, same tree,
-    # both transports at C:\ws:
-    #
-    #   no-change build   tar-pipe + reused container   9.6 s ninja / 44 s wall
-    #   no-change build   bind mount                   32.7 s ninja / 159 s wall
-    #   cold build        tar-pipe                    327.9 s / 364 s
-    #   cold build        bind mount                  318.1 s / 474 s
-    #
-    # Removing the transport does not pay for what it adds: the build tree then
-    # lives on the Dev Drive and every ninja stat and object write crosses the
-    # bindFlt filter from inside the container. Copying the sources in bulk once
-    # is cheaper than paying filtered I/O on ~1000 targets. Repeated to confirm
-    # it was not a first-run artifact (32.7 s vs 34.5 s).
-    #
-    # Kept behind an opt-in switch because the trade may invert elsewhere: on a
-    # non-Dev-Drive volume, or with a much smaller build tree, the transport can
-    # dominate instead.
+    # Bind mount is opt-in: see docs/windows-container-build-performance.md § Why the bind mount lost here
     $bindMountUsable = $false
     if ($UseBindMount) {
         Write-Host 'Probing bind mount support...'
@@ -826,8 +654,7 @@ function Invoke-ContainerBuild {
 
     if ($bindMountUsable) {
         Write-Host 'Bind mount usable - building directly in the working tree.'
-        # NAMED and NOT --rm - both load-bearing for Wait-ContainerExit:
-        # see docs/windows-container-build-performance.md § Reusable implementation.
+        # Named and not --rm, both load-bearing: docs/windows-container-build-performance.md § Reusable implementation
         $runContainer = "$ContainerName-bindmount"
         $leftover = Get-ContainerInspectField -DockerExe $DockerExe -Name $runContainer -Format '{{.State.Status}}'
         if ($leftover.Ok -and $leftover.Value -in @('running', 'paused', 'restarting')) {
@@ -837,24 +664,21 @@ function Invoke-ContainerBuild {
                 "'docker rm -f $runContainer'.")
         }
         if (-not (Remove-BuildContainerSafe -DockerExe $DockerExe -Name $runContainer)) {
-            # A held name makes 'docker run --name' fail 125 and the wait below
-            # read the STALE exit code; fall back unique, like -Fresh does.
+            # A held name fails 'docker run' and the wait would read the stale exit code.
             $runContainer = "$runContainer-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
             Write-Warning "Falling back to '$runContainer' so this run cannot inherit the old container's exit code."
         }
         $keep = $false
         $created = $false
         try {
-            # Out-Host: the build's stdout is for the operator, never part of this function's
-            # result (callers do `$null = Invoke-ContainerBuild`); $LASTEXITCODE survives the pipe.
+            # Out-Host: build output must not join this function's result; $LASTEXITCODE survives the pipe.
             & $DockerExe run --name $runContainer @IsolationArgs @cacheArgs `
                 --mount "type=bind,source=$RepoRoot,target=$WorkspacePath" `
                 -w $WorkspacePath $Image @buildArgs | Out-Host
             $clientExit = $LASTEXITCODE
             $created = $true
             if ($clientExit -ne 0) {
-                # No container, no state to wait on (unresolvable image, mount
-                # refused): see the performance doc § Reusable implementation.
+                # No container means no state to wait on (unresolvable image, refused mount).
                 $started = Get-ContainerInspectField -DockerExe $DockerExe -Name $runContainer `
                     -Format '{{.State.Status}}'
                 if ($started.Missing) {
@@ -866,15 +690,13 @@ function Invoke-ContainerBuild {
             $buildExit = Wait-ContainerExit -DockerExe $DockerExe -Name $runContainer -Label 'bindmount' `
                 -TimeoutMinutes $WaitTimeoutMinutes
             if ($clientExit -ne $buildExit) {
-                # Client and container disagree - never silent: if a green
-                # build is ever wrong, this line is the first place to look.
+                # Never silent: if a green build is ever wrong, this line is the first place to look.
                 Write-Warning ("The docker client exited $clientExit but the container's real exit code is " +
                     "$buildExit (dropped client pipe). Trusting the container.")
             }
             if ($buildExit -ne 0) { throw "Container build failed (exit $buildExit)." }
         } catch {
-            # Every throw above points the operator at 'docker logs'; removing
-            # the container here would destroy the evidence it just promised.
+            # The throws above point at 'docker logs', so a failed container is kept as evidence.
             if ($created) {
                 $keep = $true
                 Write-Warning ("Keeping container '$runContainer' so it can be inspected: " +
@@ -893,8 +715,7 @@ function Invoke-ContainerBuild {
         Write-Host 'Using tar-pipe transport with a reusable container (faster here; -UseBindMount to override).'
     }
 
-    # Returns the container actually used: a blocked -Fresh removal falls back
-    # to a uniquely named container, so never assume it matches $ContainerName.
+    # A blocked -Fresh removal falls back to a unique name, so it may not match $ContainerName.
     $containerInfo = Get-ReusableBuildContainer -DockerExe $DockerExe -Name $ContainerName -Image $Image `
         -RunArgs ($IsolationArgs + $cacheArgs) -Fresh:$FreshContainer
     $reusedContainer = $containerInfo.Reused
@@ -917,11 +738,7 @@ function Invoke-ContainerBuild {
             -SourceRoot $RepoRoot -TargetPath $WorkspacePath -Exclude $InboundExclude
         if (-not $sourcesIn) { throw 'Source transfer failed.' }
 
-        # Incremental builds: the host already holds the previous build tree (it
-        # is streamed back out after every build), so stream it back IN. ninja
-        # then rebuilds only what changed instead of every object from scratch.
-        # This avoids mounting the build dir as a volume, which CMake cannot
-        # configure inside (see Get-SccacheContainerEnv).
+        # Streamed in rather than mounted as a volume, which CMake cannot configure inside.
         $streamedIn = @()
         foreach ($buildDirName in $IncrementalDirs) {
             if ($reusedContainer) { break } # tree already lives in the container
@@ -930,11 +747,7 @@ function Invoke-ContainerBuild {
             if (-not (Test-Path $hostBuildDir)) { continue }
 
             Write-Host "Streaming existing $buildDirName into the container (incremental build)..."
-            # -IncrementalExclude exists because deeply nested generated output
-            # (cargo's cxxbridge tree) blows past the Windows path limit inside
-            # the container ("Can't create ...: Invalid argument"), which fails
-            # the WHOLE transfer. Such trees rebuild cheaply, so skipping them
-            # costs little.
+            # Deep generated trees (cxxbridge) exceed the path limit and fail the whole transfer; they rebuild cheaply.
             $treeIn = Copy-IntoBuildContainer -DockerExe $DockerExe -Container $container `
                 -SourceRoot $RepoRoot -TargetPath $WorkspacePath `
                 -Items @($buildDirName) `
@@ -945,25 +758,15 @@ function Invoke-ContainerBuild {
             $streamedIn += $buildDirName
         }
 
-        # A build tree streamed from the host carries a CMakeCache.txt with HOST
-        # source-directory paths (D:/...). Inside the container the source is at
-        # <workspace>/..., so CMake rejects the cache. Delete it so CMake
-        # reconfigures from scratch with container-local paths. Object files
-        # survive (ninja incremental), so this is fast after the first
-        # reconfigure. Only the trees actually streamed in this run need it - a
-        # reused container's tree was already generated at these paths, and
-        # wiping its CMakeFiles would throw away every object file.
+        # A streamed-in cache holds host source paths CMake rejects; only those trees, as a reused one's objects must survive.
         foreach ($buildDirName in $streamedIn) {
             Write-Host "Deleting stale CMakeCache.txt in $buildDirName (container paths differ from host)..."
             $stale = "$WorkspacePath\$buildDirName"
             & $DockerExe exec $container cmd /c "if exist $stale\CMakeCache.txt del /q $stale\CMakeCache.txt 2>nul" | Out-Host
-            # Also remove any stale CMakeFiles directory that could interfere
             & $DockerExe exec $container cmd /c "if exist $stale\CMakeFiles rmdir /s /q $stale\CMakeFiles 2>nul" | Out-Host
         }
 
-        # docker exec bypasses the image entrypoint, so invoke it explicitly to
-        # get the VS developer environment and the clang-cl ASAN runtime on PATH.
-        # Out-Host for the same reason as the bind-mount run above.
+        # docker exec bypasses the entrypoint, which provides the VS environment and the ASan runtime on PATH.
         & $DockerExe exec -w $WorkspacePath $container cmd /S /C $EntrypointPath @buildArgs | Out-Host
         $buildExit = $LASTEXITCODE
 
@@ -974,18 +777,7 @@ function Invoke-ContainerBuild {
             if ($LASTEXITCODE -eq 0) { $existing += $dir }
         }
         if ($existing.Count -gt 0) {
-            # -OutboundExclude drops deep or heavy intermediates on the way out
-            # for the same reason they are excluded on the way in: paths that
-            # exceed the Windows path limit abort the extraction ("Artifact
-            # extraction failed").
-            # The build tree now stays in the reusable container, so the host
-            # only needs what it actually runs: executables, their debug info,
-            # the compile database (clang-tidy) and logs. Copying the whole
-            # ~8.5 GB tree back was pure overhead, and its deep cargo/cxxbridge
-            # paths are what produced the "Artifact extraction failed" warnings.
-            # Dropping the heavy intermediates keeps the transfer small while
-            # the host still gets what it needs. The container keeps the full
-            # tree, so nothing here has to seed a rebuild.
+            # Only what the host runs: the container keeps the full tree, and deep paths abort extraction.
             $artifactsOut = Copy-FromBuildContainer -DockerExe $DockerExe -Container $container `
                 -SourcePath $WorkspacePath -TargetRoot $RepoRoot -Items $existing -Exclude $OutboundExclude
             if (-not $artifactsOut) {
@@ -994,8 +786,7 @@ function Invoke-ContainerBuild {
         }
 
         if ($buildExit -ne 0) {
-            # A dead/missing container is not a compile error - classify it:
-            # see docs/windows-builds.md (exec exit codes are unrecoverable).
+            # A dead or missing container is not a compile error, so classify it.
             $state = Get-ContainerInspectField -DockerExe $DockerExe -Name $container -Format '{{.State.Status}}'
             if ($state.Missing) {
                 throw ("The build container '$container' disappeared while the build was running (docker exec " +
@@ -1010,9 +801,6 @@ function Invoke-ContainerBuild {
             throw "Container build failed (exit $buildExit)."
         }
 
-        # A green build is not proof that anything was produced or delivered -
-        # both halves of that have already failed here silently (see
-        # Test-BuildArtifactsDelivered). Throws on either failure mode.
         foreach ($dir in $existing) {
             if ($VerifyDirs -notcontains $dir) { continue }
             $delivered = Test-BuildArtifactsDelivered -DockerExe $DockerExe -Container $container `
@@ -1021,10 +809,6 @@ function Invoke-ContainerBuild {
             Write-Host "Verified $delivered executable(s) delivered from $dir."
         }
     } finally {
-        # The container is intentionally reused across builds - that is what
-        # makes builds incremental without moving the tree. Remove it with
-        # 'docker rm -f <name>' (Remove-BuildContainerSafe tolerates the wcifs
-        # teardown lock) or rerun with -FreshContainer.
         Write-Host "Keeping build container '$container' for the next build (reset: -FreshContainer)."
     }
 

@@ -1,28 +1,9 @@
 #requires -Version 7.0
-# Backlog #106: the three scripts that run under Windows PowerShell 5.1 — in
-# Dockerfile.base BEFORE pwsh exists in the image — must stay 5.1-PARSEABLE.
-# A `#requires -Version 5.1` line cannot enforce that (it gates the MINIMUM
-# version, not the syntax level), and the constraint otherwise lives only in
-# comments. Found live on 2026-08-17: a probe script declared 5.1 while using
-# ProcessStartInfo.ArgumentList, which 5.1 does not have — declarations drift,
-# parsers do not.
-#
-# The check parses each script with the legacy-compatible tokenizer
-# (System.Management.Automation.PSParser), which rejects PS7-only syntax
-# (ternary `? :`, pipeline-chain `&&`/`||`) that pwsh's own parser accepts. It
-# cannot catch API-level drift (.NET-Core-only members) — that still needs the
-# real 5.1 run in the base build — but it catches the syntax class, which is
-# what actually creeps in.
+# Scripts run before pwsh exists must stay 5.1-parseable; #requires only gates the minimum version, PSParser checks syntax.
 
 Describe 'Dockerfile.base WPS-5.1 bootstrap scripts stay 5.1-parseable (#106)' {
     $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-    # EXACTLY ONE script runs under WPS 5.1 — this gate's own first run proved
-    # the audit wrong about that. #106 claimed Install-Vs.ps1 and
-    # Install-ScoopTools.ps1 were 5.1 too; both declare `#requires -Version 7.0`
-    # and both run AFTER Dockerfile.base's SHELL switches to pwsh (line ~69),
-    # while they execute at lines ~93/~125. Only Initialize-Pwsh.ps1 executes
-    # under the initial `powershell` SHELL (line ~30 → RUN at ~45). Keep this
-    # list in step with the SHELL ordering in Dockerfile.base, not with lore.
+    # Only what runs before Dockerfile.base's SHELL switches to pwsh; keep in step with that SHELL order.
     $bootstrapScripts = @(
         'windows\scripts\host\Initialize-Pwsh.ps1'    # first RUN of Dockerfile.base, WPS 5.1 SHELL
     )
@@ -50,8 +31,7 @@ Describe 'Dockerfile.base WPS-5.1 bootstrap scripts stay 5.1-parseable (#106)' {
         }
 
         It "avoids PS7 null-conditional member access: $rel" {
-            # PSParser does NOT flag `?.` — name it here so the failure points at
-            # the construct instead of a generic tokenizer error elsewhere.
+            # PSParser does not flag `?.`, so it is named here.
             Assert-True ($content -notmatch '\$\w+\?\.') "$rel uses PS7 null-conditional member access (`?.`), which 5.1 cannot parse."
         }
     }

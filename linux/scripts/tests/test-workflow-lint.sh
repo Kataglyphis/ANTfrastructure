@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Tests for lint-workflows.sh. Its own header names the hazard: "a lint gate that
-# checks nothing still reports green". Two ways that happens here -- linting the
-# WRONG tree (the consumer-root argument exists because a submodule checkout puts
-# this script inside the consumer), and running an UNPINNED binary. Both are
-# driven against the real actionlint, plus the refusals that keep the pin honest.
-# docs/code-quality-tooling.md#workflow-lint-workflow-lint
+# lint-workflows.sh against the real actionlint; see docs/code-quality-tooling.md#workflow-lint-workflow-lint
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -15,41 +10,22 @@ PIN="$(sed -n 's/^ACTIONLINT_VERSION=//p' "${SCRIPTS}/01-core/versions.env")"
 CONV="${SCRIPTS}/verify_workflow_conventions.py"
 HUB_ALLOW="${SCRIPTS}/workflow-conventions.allow"
 HUB_CONSUMERS="${SCRIPTS}/../../.github/consumers.json"
-# The same interpreter contract lint-workflows.sh documents: plain python3 is a
-# Microsoft Store stub on a Windows host, so honour PREFLIGHT_PYTHON.
+# Plain python3 is a Microsoft Store stub on a Windows host.
 _PY="${PREFLIGHT_PYTHON:-python3}"
-# preflight.sh ARMS the conventions gate for its own run. A suite that inherited
-# that value would call the ramped checks fatal in the cases below that exist to
-# prove they are not, and the ramp would look driven while nothing drove it.
+# preflight.sh arms the conventions gate, which would make the ramped checks below fatal.
 unset WORKFLOW_CONVENTIONS_GATE
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# _conv_half <tree> <allow body>: the conventions half of the gate, at the depth
-# it resolves its own allow file and consumers.json from. Every fake hub tree
-# below needs it, because lint-workflows.sh now runs two Python gates and a
-# missing one is a failure, not a skip.
+# _conv_half <tree> <allow body>: every fake hub tree needs it, since a missing Python half fails the gate.
 _conv_half() {
   install -D -m 0644 "${CONV}" "$1/linux/scripts/verify_workflow_conventions.py"
   install -D -m 0644 "${HUB_CONSUMERS}" "$1/.github/consumers.json"
   printf '%s\n' "$2" > "$1/linux/scripts/workflow-conventions.allow"
 }
 
-# _root <clean|broken|shellonly>: a consumer checkout with one workflow of that
-# shape. `shellonly` carries a defect NOTHING but the embedded shellcheck pass
-# of actionlint can see: SC1010, `[ ... ] then` with no separator. The YAML is
-# valid, the expressions are valid, the step is valid -- so a green verdict on
-# this fixture means the shell half of the gate did not run.
-
-# ubuntu-24.04, not ubuntu-latest: the `*-latest` ban is ENFORCED now and would
-# make every case above red for a reason none of them is about. Not
-# ubuntu-26.04 either: these fixtures carry no .github/actionlint.yaml, so the
-# preview label would fail actionlint's own runner-label rule instead. The
-# `permissions:` and `timeout-minutes:` are there for the same reason -- these
-# cases are about actionlint -- and the `origin` remote names a repository
-# consumers.json declares, because the conventions half refuses a tree whose
-# name no allow row could ever be keyed to.
+# _root <clean|broken|shellonly>: conventions-clean on purpose (ubuntu-24.04, a declared origin); `shellonly` is SC1010 only.
 _root() {
   local d; d="$(mktemp -d "${_work}/root.XXXXXX")"
   mkdir -p "${d}/.github/workflows"
@@ -83,9 +59,7 @@ t_assert_contains "${_out}" "WORKFLOW LINT FAILED"
 t_assert_contains "${_out}" "no_such_property" "the finding itself has to reach the log to be actionable"
 
 t_case "the root argument decides WHICH tree is linted"
-# A submodule checkout puts this script inside the consumer, where the default
-# root resolves to ANTfrastructure. The two verdicts must follow the ARGUMENT: the
-# broken checkout red, a clean sibling green while the broken one still exists.
+# Inside a consumer's submodule the default root is ANTfrastructure, so the verdict must follow the argument.
 t_assert_eq "1" "$(t_rc bash "${GATE}" "${broken}")"
 t_assert_eq "0" "$(t_rc bash "${GATE}" "${clean}")" \
   "a gate that ignored its argument would give both checkouts the same verdict"
@@ -100,16 +74,9 @@ t_case "the actionlint it runs is the pinned version"
 t_assert_contains "$(t_out bash "${GATE}" "${clean}")" "actionlint (${PIN})" \
   "a lint verdict nobody can reproduce is not a gate"
 
-# --- the bootstrap refusals: an unpinned binary must never run ----------------
-# The gate resolves its pin from the versions.env beside ITSELF, so a throwaway
-# copy at the real depth is what lets these be driven without a network.
+# Bootstrap refusals: an unpinned binary must never run (copies at the real depth read their own versions.env)
 
-# _stage <fixture root> <path under linux/scripts/> [mode] -- put one of this
-# repo's files into a fixture at the SAME relative path. "The real depth" is the
-# whole point of these trees (the gate resolves its pin from the versions.env
-# beside itself), so the destination is never spelled out separately from the
-# source: two functions below stage files, and writing the pair twice is how
-# they would drift apart.
+# _stage <fixture root> <path under linux/scripts/> [mode]: same relative path, since the gate reads its pin from beside itself.
 _stage() {
   install -D -m "${3:-0644}" "${SCRIPTS}/$2" "$1/linux/scripts/$2"
 }
@@ -119,8 +86,7 @@ _pin_tree() {  # <versions.env body>
   _stage "${d}" lint-workflows.sh 0755
   _stage "${d}" 01-core/load-versions-env.sh
   _stage "${d}" 01-core/downloads.sh
-  # The interpreter probe the gate sources before its Python half (2026-09-14):
-  # a fixture without it fails on the source line, not on what a case is about.
+  # The gate sources the interpreter probe before its Python half.
   _stage "${d}" 01-core/python-probe.sh
   printf '%s\n' "$1" > "${d}/linux/scripts/01-core/versions.env"
   mkdir -p "${d}/.github/workflows"
@@ -142,18 +108,12 @@ t_assert_eq "1" "$(t_rc _no_tool "${d}")"
 t_assert_contains "$(t_out _no_tool "${d}")" "ACTIONLINT_VERSION is not set"
 
 t_case "a pinned version with no pinned SHA256 is refused"
-# Downloading a release nobody checksummed is how a lint gate starts running a
-# binary the repo never chose.
+# An unchecksummed download is a binary the repo never chose.
 d="$(_pin_tree "ACTIONLINT_VERSION=${PIN}")"
 t_assert_eq "1" "$(t_rc _no_tool "${d}")"
 t_assert_contains "$(t_out _no_tool "${d}")" "No pinned actionlint SHA256"
 
-# --- the SHELL half of the gate ----------------------------------------------
-# actionlint embeds a shellcheck pass over every `run:` block and reaches it by
-# exec'ing the command name. With that name absent it DISABLES the rule and says
-# nothing at normal verbosity -- so the gate printed WORKFLOW LINT OK over
-# workflows whose shell nothing had read. These cases are the two halves of the
-# fix: the rule is on, and a gate that cannot switch it on refuses to grade.
+# The shell half; see docs/code-quality-tooling.md#workflow-lint-workflow-lint
 
 t_case "a run: block defect only shellcheck can see FAILS the gate"
 shellonly="$(_root shellonly)"
@@ -167,17 +127,12 @@ t_assert_contains "${_out}" "SC1010"
 t_case "the gate names the shellcheck it resolved, so the resolution is not a claim"
 t_assert_contains "$(t_out bash "${GATE}" "${clean}")" "shellcheck for run: blocks ("
 
-# A tree at the real depth again, this time varying the ACCESSOR the gate
-# resolves shellcheck through. Nothing else can drive "shellcheck could not be
-# resolved" without unpinning the host that runs this suite. The real pins and
-# the CI-image-ref half are copied in so a refusal below is about shellcheck and
-# nothing else.
+# _sc_tree <lint-shell.sh body>: swaps only the shellcheck accessor, so a refusal is about shellcheck alone.
 _sc_tree() {  # <lint-shell.sh body>
   local d; d="$(_pin_tree "$(cat "${SCRIPTS}/01-core/versions.env")")"
   install -D -m 0644 "${SCRIPTS}/verify_ci_image_refs.py" \
     "${d}/linux/scripts/verify_ci_image_refs.py"
-  # gate_scope.py too: verify_ci_image_refs.py imports it, and a fixture that
-  # does not carry what the gate NEEDS fails with a traceback, not a verdict.
+  # verify_ci_image_refs.py imports gate_scope.py; without it the fixture yields a traceback.
   install -D -m 0644 "${SCRIPTS}/gate_scope.py" "${d}/linux/scripts/gate_scope.py"
   _conv_half "${d}" "$(cat "${HUB_ALLOW}")"
   printf '#!/usr/bin/env bash\n%s\n' "$1" > "${d}/linux/scripts/lint-shell.sh"
@@ -189,8 +144,7 @@ _sc_tree() {  # <lint-shell.sh body>
 _sc_run() { bash "$1/linux/scripts/lint-workflows.sh" "$1"; }
 
 t_case "the fixture itself is sound: with the REAL accessor this tree lints green"
-# Without this the two refusals below could both be passing for the wrong reason
-# (a broken fixture), which is the shape this repo keeps finding.
+# Otherwise the refusals below could pass because the fixture is broken.
 d="$(_sc_tree "exec bash '${SCRIPTS}/lint-shell.sh' \"\$@\"")"
 t_assert_contains "$(t_out _sc_run "${d}")" "shellcheck for run: blocks ("
 t_assert_eq "0" "$(t_rc _sc_run "${d}")" \
@@ -203,40 +157,24 @@ t_assert_eq "1" "$(t_rc _sc_run "${d}")" \
 t_assert_contains "$(t_out _sc_run "${d}")" "shellcheck could not be resolved"
 
 t_case "a resolved binary that reports nothing also fails: the rule must actually FIRE"
-# --print-bin answers with a real, correctly NAMED, executable shellcheck that
-# happens to find nothing -- the shape of every way the rule can be present and
-# useless (a stub on PATH, an unusable build, a platform where actionlint's own
-# name lookup misses the file bash just found). Every precondition passes here;
-# only the planted-SC1010 self-test can tell it from a working gate.
+# A correctly named shellcheck that finds nothing passes every precondition; only the SC1010 self-test catches it.
 _fake="${_work}/fake-sc"
 mkdir -p "${_fake}"
 printf '#!/usr/bin/env bash\nexit 0\n' > "${_fake}/shellcheck"
 chmod +x "${_fake}/shellcheck"
 d="$(_sc_tree "echo '${_fake}/shellcheck'")"
-# System tools only, so the ACCESSOR's answer is the only shellcheck in play:
-# CI's runner carries one on PATH, and it would answer actionlint's name lookup
-# behind the stub and make this case pass while proving nothing.
+# System PATH only: CI's own shellcheck would otherwise answer actionlint's lookup behind the stub.
 _sc_run_isolated() { PATH="/usr/bin:/bin" bash "$1/linux/scripts/lint-workflows.sh" "$1"; }
 t_assert_eq "1" "$(t_rc _sc_run_isolated "${d}")" \
   "the gate must not report a verdict it could not have reached"
 _out="$(t_out _sc_run_isolated "${d}")"
 t_assert_contains "${_out}" "did not report the planted SC1010"
-# The precondition is satisfied here on purpose: a refusal from the NAME check
-# instead would leave the self-test unproven, and the mutation gate said so.
+# The name check must pass here, or the self-test goes unproven.
 t_assert_fails grep -q -F -e 'does not resolve on PATH' <<<"${_out}"
 
-# --- the four fleet conventions ----------------------------------------------
-# Four rules the fleet transmitted as copied header comments and enforced
-# nowhere. The `*-latest` ban is enforced from day one because the fleet is
-# measured clean of it; the other three carry a real backlog, so they REPORT and
-# pass until WORKFLOW_CONVENTIONS_GATE arms them. Both halves of that ramp are
-# driven here, because "advisory" that cannot become fatal is just a comment
-# with a longer path.
+# The four fleet conventions; see docs/code-quality-tooling.md#four-fleet-workflow-conventions-workflow-lint
 
-# _conv_root <name> <body>: a consumer checkout whose `origin` names a
-# repository .github/consumers.json declares, which is how the gate keys the
-# allow file's rows. Without a remote it would fall back to the mktemp
-# directory name and no row could ever match.
+# _conv_root <name> <body>: `origin` names a declared repository, which is what keys the allow rows.
 _conv_root() {
   local d; d="$(mktemp -d "${_work}/conv.XXXXXX")"
   mkdir -p "${d}/.github/workflows"
@@ -246,8 +184,7 @@ _conv_root() {
   printf '%s' "${d}"
 }
 
-# A workflow that keeps all four conventions, so a red below is about the one
-# thing the case changed.
+# Keeps all four conventions, so a red below is about the one thing its case changed.
 _CONV_CLEAN='name: ci
 on: push
 permissions:
@@ -277,8 +214,7 @@ jobs:
 
 _conv() { "${_PY}" "${CONV}" "$1"; }
 
-# _conv_hub <allow body> -> a hub tree carrying that allow file, the real
-# consumers.json, and the gate at the depth it resolves both from.
+# _conv_hub <allow body>: a hub tree with that allow file and the real consumers.json.
 _conv_hub() {
   local d; d="$(mktemp -d "${_work}/convhub.XXXXXX")"
   _conv_half "${d}" "$1"
@@ -304,8 +240,7 @@ t_assert_eq "1" "$(t_rc _conv "${d}")" \
 t_assert_contains "$(t_out _conv "${d}")" "[runner-ban] runner label 'ubuntu-latest'"
 
 t_case "a *-latest label reached through a matrix column is caught too"
-# `runs-on: \${{ matrix.runs_on }}` puts the banned alias two lines away from
-# the key a grep for `runs-on:.*-latest` would look at.
+# Through a matrix the banned alias sits lines away from `runs-on:`, out of a grep's reach.
 d="$(_conv_root OxidANT 'name: ci
 on: push
 permissions:
@@ -324,9 +259,7 @@ t_assert_eq "1" "$(t_rc _conv "${d}")"
 t_assert_contains "$(t_out _conv "${d}")" "runner label 'windows-latest'"
 
 t_case "the three ramped conventions REPORT and pass while unarmed"
-# Its own census, not the real one: the ramp is the gate's behaviour, and a real
-# repository that clears its backlog drops its rows (OxidANT did on 2026-09-24,
-# and this case, graded against the real file, went red with it).
+# A fixture census: real rows disappear as a repository clears its backlog.
 _RAMP_CENSUS='CENSUS | OxidANT | job-timeout | 1 | fixture census for the ramp cases
 CENSUS | OxidANT | permissions | 1 | fixture census for the ramp cases
 CENSUS | OxidANT | artifact-error | 1 | fixture census for the ramp cases'
@@ -362,8 +295,7 @@ t_assert_eq "1" "$(t_rc _typo "${ramped}")" \
 t_assert_contains "$(t_out _typo "${ramped}")" "names unknown check(s): job-timeouts"
 
 t_case "a job that CALLS a reusable workflow is not asked for timeout-minutes"
-# GitHub rejects the key on such a job outright, so demanding it would make the
-# only fix an invalid workflow.
+# GitHub rejects timeout-minutes on such a job.
 d="$(_conv_root OxidANT 'name: ci
 on: push
 permissions:
@@ -372,20 +304,14 @@ jobs:
   call:
     uses: ./.github/workflows/other.yml')"
 t_assert_eq "0" "$(t_rc _conv "${d}")"
-# The FINDING text, not the bare check name: the banner and the census ratchet
-# both name every check, armed or not, so `[job-timeout]` alone matches a line
-# that says nothing about this job.
+# The finding text: the banner and census name every check, so a bare `[job-timeout]` always matches.
 t_assert_fails grep -q -F -e "[job-timeout] job 'call'" <<<"$(t_out _conv "${d}")"
 
-# --- the EXCUSED-with-reason table -------------------------------------------
-# A deviation is declared, never silent; and the declaration is graded too, so
-# the list can only shrink by becoming true.
+# The EXCUSED-with-reason table, itself graded so it can only shrink
 
 _ROW='OxidANT | .github/workflows/ci.yml | job-timeout | build | measured at 4 minutes and bounded upstream; a timeout here would only fire on an outage'
 
-# One deviation and nothing else, so an excuse that works turns the tree green
-# under FULL arming - which is the only way to see that it silenced the finding
-# rather than that some other finding was missing.
+# Exactly one deviation, so green under full arming proves the excuse silenced it.
 one_off="$(_conv_root OxidANT 'name: ci
 on: push
 permissions:
@@ -407,8 +333,7 @@ _out="$(t_out _excused)"
 t_assert_contains "${_out}" "EXCUSED .github/workflows/ci.yml:6 [job-timeout] measured at 4 minutes"
 
 t_case "a row that matches nothing is STALE and fails whatever the arming says"
-# The arming knob ramps the FINDINGS; the bookkeeping half never ramps, or the
-# table rots into a list of things that used to be true.
+# Only findings ramp; bookkeeping never does, or the table rots.
 clean_root="$(_conv_root OxidANT "${_CONV_CLEAN}")"
 _stale() { _conv_at "${hub}" "${clean_root}"; }
 t_assert_eq "1" "$(t_rc _stale)" \
@@ -416,9 +341,7 @@ t_assert_eq "1" "$(t_rc _stale)" \
 t_assert_contains "$(t_out _stale)" "STALE allow row"
 
 t_case "a row for ANOTHER repository is neither used nor stale here"
-# One table is shared by every consumer through the submodule, so a row about
-# BeschleunigerBallett must not turn OxidANT red - and must not be reported
-# resolved either, because this tree cannot see the file it names.
+# Every consumer shares one table, and this tree cannot see another repository's files.
 hub2="$(_conv_hub 'BeschleunigerBallett | .github/workflows/reusable-linux.yml | job-timeout | asan | a row about a tree this run cannot see')"
 _foreign() { _conv_at "${hub2}" "${clean_root}"; }
 t_assert_eq "0" "$(t_rc _foreign)"
@@ -449,9 +372,7 @@ t_assert_eq "1" "$(t_rc _conv_at "${hub6}" "${ramped}")" \
 t_assert_contains "$(t_out _conv_at "${hub6}" "${ramped}")" "duplicate row"
 
 t_case "a workflow the parser cannot READ fails, and is not graded advisory"
-# The subset stops at anchors and aliases. Reporting a file it could not read as
-# three passing conventions is the exact shape this gate exists to refuse, so
-# the pseudo-check never ramps.
+# The parser's subset stops at anchors and aliases, and [parse] never ramps.
 d="$(_conv_root OxidANT 'name: ci
 on: push
 permissions: &p
@@ -475,13 +396,9 @@ t_assert_eq "1" "$(t_rc _conv "${empty}")" \
   "an empty file list is a wrong root, not a clean repository"
 t_assert_contains "$(t_out _conv "${empty}")" "wrong root?"
 
-# --- the parser: the subset has to be the subset it claims -------------------
-# Every case below was once a SILENT wrong answer: the gate printed a verdict and
-# exited 0 over a file it had mis-read. That is worse than an unenforced
-# convention, because it looks exactly like a clean bill.
+# The parser: a mis-read file must never pass as clean
 
-# A ceiling no fixture here can reach, so a ratchet verdict never lands in the
-# middle of a parser case and gets read as a parse one.
+# An unreachable census ceiling keeps ratchet verdicts out of the parser cases.
 _CEIL='CENSUS | OxidANT | job-timeout | 9 | a fixture ceiling: these cases are about the parser, not the ratchet
 CENSUS | OxidANT | permissions | 9 | a fixture ceiling
 CENSUS | OxidANT | artifact-error | 9 | a fixture ceiling'
@@ -490,10 +407,7 @@ _p() { _conv_at "${phub}" "$1"; }
 _p_armed() { WORKFLOW_CONVENTIONS_GATE=1 _conv_at "${phub}" "$1"; }
 
 t_case "a block sequence at the SAME column as its key is read, not dropped"
-# `steps:` with its entries flush underneath is ordinary, valid Actions YAML.
-# Demanding a strictly deeper child parsed it as an empty key, so this upload
-# step -- which sets no if-no-files-found at all -- was invisible, and the file
-# was reported clean on all four conventions with rc 0.
+# Entries flush under `steps:` are valid YAML and must not parse as an empty key.
 d="$(_conv_root OxidANT 'name: ci
 on: push
 permissions:
@@ -512,9 +426,7 @@ t_assert_contains "$(t_out _p "${d}")" "[artifact-error] upload-artifact step" \
 t_assert_eq "1" "$(t_rc _p_armed "${d}")"
 
 t_case "...and a same-column sequence does not truncate the keys after it"
-# The other half of the same bug. A matrix `include:` written flush swallowed the
-# rest of its job, so the gate reported "no timeout-minutes" for a job that HAS
-# one and missed the windows-latest two lines above it at the same time.
+# A flush matrix `include:` must not swallow the rest of its job.
 d="$(_conv_root OxidANT 'name: ci
 on: push
 permissions:
@@ -535,8 +447,7 @@ t_assert_fails grep -q -F -e '[job-timeout]' <<<"${_out}" \
   "the job carries timeout-minutes: 5, so reporting it missing IS the truncation"
 
 t_case "a flow sequence is READ, so a banned label inside one cannot hide"
-# `runs-on: [ubuntu-latest]` fell through as one opaque string: clean report,
-# rc 0, over the one convention this gate enforces with no knob at all.
+# Read as one opaque string, `[ubuntu-latest]` would slip past the runner ban.
 d="$(_conv_root OxidANT 'name: ci
 on: [push, pull_request]
 permissions:
@@ -559,9 +470,7 @@ t_assert_eq "1" "$(t_rc _p "${d}")"
 t_assert_contains "$(t_out _p "${d}")" "runner label 'ubuntu-latest'"
 
 t_case "a flow collection outside the subset REFUSES rather than guessing"
-# One that spans lines. The header promises that anything outside the subset
-# raises; a gate that guesses at its input is worse than one that says it cannot
-# read the file.
+# A flow collection spanning lines is outside the subset, so it must raise.
 d="$(_conv_root OxidANT 'name: ci
 on: push
 permissions:
@@ -585,9 +494,7 @@ t_assert_contains "${_out}" "[parse]"
 t_assert_contains "${_out}" "no YAML at all"
 
 t_case "a line the walk never reached is a refusal, not a shorter document"
-# Whatever the walk leaves behind was graded by nothing, and a mapping that ends
-# early is exactly how a truncation reports four clean conventions over half a
-# file. Here a mis-indented key sits under no parent at all.
+# What the walk leaves behind was graded by nothing; here a mis-indented key has no parent.
 d="$(_conv_root OxidANT 'name: ci
 on: push
 permissions:
@@ -603,23 +510,19 @@ t_assert_eq "1" "$(t_rc _p "${d}")"
 t_assert_contains "$(t_out _p "${d}")" "outside the document the walk read"
 
 t_case "a repository consumers.json does not declare is refused, not graded half-way"
-# Every allow row -- excuse and CENSUS alike -- is keyed on this name, so under an
-# undeclared one neither can ever be written: the findings would be graded with
-# the whole bookkeeping half disconnected, and the gate would still print OK.
+# Every allow row is keyed on the repository name, so an undeclared one disconnects the bookkeeping.
 d="$(_conv_root NotAConsumer "${_CONV_CLEAN}")"
 t_assert_eq "1" "$(t_rc _p "${d}")"
 t_assert_contains "$(t_out _p "${d}")" "not declared in .github/consumers.json"
 
 t_case "WORKFLOW_CONVENTIONS_GATE=0 disarms the ramp instead of failing to parse"
-# The obvious way to switch a ramp off was a hard FAIL ("names unknown check(s):
-# 0"), which teaches people to delete the call rather than turn the knob down.
+# Failing on 0 would teach people to delete the call rather than turn the knob down.
 _off() { WORKFLOW_CONVENTIONS_GATE=0 _conv_at "${phub}" "$1"; }
 t_assert_eq "0" "$(t_rc _off "${ramped}")"
 t_assert_contains "$(t_out _off "${ramped}")" "advisory artifact-error,job-timeout,permissions"
 
 t_case "a consumers.json that cannot be READ fails; the typo check may not switch itself off"
-# It used to swallow OSError/ValueError and return an empty set, which silently
-# disabled the allow file's repo-column check: checks nothing, reports green.
+# An empty set here would silently disable the allow file's repo-column check.
 nocons="$(mktemp -d "${_work}/nocons.XXXXXX")"
 install -D -m 0644 "${CONV}" "${nocons}/linux/scripts/verify_workflow_conventions.py"
 printf '%s\n' "${_CEIL}" > "${nocons}/linux/scripts/workflow-conventions.allow"
@@ -632,9 +535,7 @@ printf '%s\n' '{ "consumers": [' > "${badcons}/.github/consumers.json"
 t_assert_eq "1" "$(t_rc _conv_at "${badcons}" "${clean_root}")"
 t_assert_contains "$(t_out _conv_at "${badcons}" "${clean_root}")" "not valid JSON"
 
-# --- the census ratchet ------------------------------------------------------
-# The ramp only promises to REPORT. The census is what stops the reported backlog
-# growing: frozen per repository per check, and it may only go down.
+# The census ratchet: advisory backlogs are frozen per repository and check, and may only shrink
 
 t_case "a NEW finding over the frozen count FAILS while its check is still advisory"
 hubc="$(_conv_hub 'CENSUS | OxidANT | job-timeout | 1 | one lane, the ceiling for this fixture')"
@@ -661,14 +562,12 @@ t_assert_eq "1" "$(t_rc _conv_at "${hubd}" "${ramped}")"
 t_assert_contains "$(t_out _conv_at "${hubd}" "${ramped}")" "has no CENSUS row for it"
 
 t_case "a count that went DOWN in a consumer is reported with its number, and passes"
-# The corpus is other repositories' workflows and they cannot edit this table, so
-# a consumer that FIXED a workflow must not go red waiting for a hub commit.
+# Consumers cannot edit the hub's table, so a fix there must not go red waiting for a hub commit.
 hube="$(_conv_hub 'CENSUS | OxidANT | job-timeout | 9 | deliberately above the fixture, to drive the shrink arm')"
 t_assert_eq "0" "$(t_rc _conv_at "${hube}" "${one_off}")"
 t_assert_contains "$(t_out _conv_at "${hube}" "${one_off}")" "RATCHET [job-timeout] is down to 1"
 
-# A tree whose `origin` names the HUB, which is the half of the ratchet that is
-# strict: this repository's commit can edit the row beside the fix.
+# Named the hub, whose own commit can edit the row, so its shrink must be recorded.
 hub_root="$(_conv_root ANTfrastructure 'name: ci
 on: push
 permissions:
@@ -717,18 +616,12 @@ t_assert_eq "1" "$(t_rc _conv_at "${hubk}" "${clean_root}")"
 t_assert_contains "$(t_out _conv_at "${hubk}" "${clean_root}")" "consumers.json does not declare"
 
 t_case "preflight ARMS the ramp; a knob with no caller ramps nothing"
-# WORKFLOW_CONVENTIONS_GATE had zero callers anywhere in the fleet when it
-# landed, which made "advisory until armed" a promise nobody could keep.
+# Without a caller, "advisory until armed" is a promise nobody keeps.
 t_assert_contains "$(cat "${SCRIPTS}/preflight.sh")" \
   "env WORKFLOW_CONVENTIONS_GATE=permissions bash linux/scripts/lint-workflows.sh"
 
 t_case "the SHIPPED allow file parses and its census is EXACT for this repo"
-# The excuse table ships empty; the census does not, and a number that is merely
-# typed rots. Requiring rc 0 over this repo's own .github is what makes the
-# shipped counts a measurement rather than a claim.
-# THIS TREE's workflows under an `origin` that names this repository: the
-# mutation gate runs this suite from a throwaway COPY with no .git in it at all,
-# where the gate rightly refuses a tree it cannot key a single allow row to.
+# A fresh repo with this origin, because the mutation gate runs this suite from a copy with no .git.
 hub_probe="$(mktemp -d "${_work}/hubprobe.XXXXXX")"
 cp -r "${SCRIPTS}/../../.github" "${hub_probe}/.github"
 git -C "${hub_probe}" init -q

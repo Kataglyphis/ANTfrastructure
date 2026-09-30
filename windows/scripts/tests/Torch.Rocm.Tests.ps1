@@ -1,11 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Windows ROCm torch (Install-TorchRocm.ps1, rocm-checks\Torch.ps1, Dockerfile.torch): the lane gate, the
-# pinned runtime set (both gfx120X GPUs, PyPI's ai-edge-litert) and its ROCM_WINDOWS_RELEASE coupling, the
-# source-built wheels, rocBLAS GPU coverage, the venv fit, the offline install inputs, the hash cache, the
-# smoke findings, the one shared venv probe, and that cpu/nvidia still build the unchanged `app` stage.
-# NOT covered: the probe on the image's CPython; the source build itself (Torch.RocmSourceBuild.Tests.ps1).
+# NOT covered: the probe on the image's CPython, and the source build (Torch.RocmSourceBuild.Tests.ps1).
 
 $script:TorchRocmScript = 'windows\scripts\build\Install-TorchRocm.ps1'
 $script:TorchRocmCheck = 'windows\scripts\build\rocm-checks\Torch.ps1'
@@ -92,8 +88,7 @@ function Get-TorchDockerfileStage {
     return [pscustomobject]@{ Global = @($global); Stages = @($stages); ByName = $byName }
 }
 
-# The cpu/nvidia `app` stage as it was before the rocm split, continuations joined; APP_REF's
-# default is synced from versions.env, so masked. Editing a line here changes that image.
+# APP_REF's default syncs from versions.env, so it is masked; editing a line here changes the cpu/nvidia image.
 $script:TorchAppStageGolden = @(@'
 ARG APP_REF=<versions.env>
 ARG PYTORCH_EXTRA=pytorch-cpu
@@ -104,8 +99,7 @@ RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked $e
 ENV TORCH_APP_DIR="C:\opt\OrchestrANT"
 '@ -split '\r?\n')
 
-# Why the cpu/nvidia image is unchanged: TORCH_ROCM only picks the last stage, `app` is the golden
-# list above, and the tail holds only ARG/HEALTHCHECK/LABEL. One message per breach.
+# TORCH_ROCM picks only the last stage, so a golden `app` and an ARG/HEALTHCHECK/LABEL tail keep cpu/nvidia unchanged.
 function Get-TorchDockerfileProblem {
     param([string]$Text = (Get-TorchDockerfileText))
     $df = Get-TorchDockerfileStage -Text $Text

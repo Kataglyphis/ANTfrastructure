@@ -1,16 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Copy-TargetPythonDeps.ps1 is the arm64 cross lane's Python dependency
-# gate: every Requires-Dist of every staged wheel must resolve to a wheel in
-# the store, and a drop in wheel or requirement count is a hard failure (the
-# run-34/35 defect class: empty Requires-Dist from a CRLF regex bug made the
-# gate greener, not red).
-#
-# The helpers (Get-WheelDistName, Get-RequirementName, Get-WheelRequirements)
-# live inside the script body, not a module, so they are lifted via
-# Get-ScriptFunctionDefinition.
+# The helpers live in the script body, not a module, so they are lifted via Get-ScriptFunctionDefinition.
 
 Describe 'stage-target-python-deps: wheel requirement parsing' {
 
@@ -21,8 +12,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('stagedeps-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Force -Path $script:tmp | Out-Null
 
-        # Builds a minimal .whl ZIP with a dist-info/METADATA containing the
-        # given Requires-Dist lines (and a body after a blank line).
+        # The description after the blank line checks that parsing stops at the headers.
         $script:NewWheel = {
             param([string]$Path, [string]$Name, [string[]]$RequiresDist, [string]$RequiresPython = '>=3.9')
             $distInfo = "$Name.dist-info"
@@ -43,7 +33,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
         if ($script:tmp -and (Test-Path $script:tmp)) { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    # ── Get-WheelDistName ─────────────────────────────────────────────────────
+    # Get-WheelDistName
 
     It 'Get-WheelDistName extracts the distribution name from a PEP 427 filename' {
         Assert-Equal 'onnxruntime' (Get-WheelDistName 'onnxruntime-1.22.0-cp314-cp314-win_amd64.whl') 'simple name'
@@ -56,7 +46,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
         Assert-Equal 'foo-bar' (Get-WheelDistName 'foo_bar-1.0-py3-none-any.whl') 'underscore to dash'
     }
 
-    # ── Get-RequirementName ───────────────────────────────────────────────────
+    # Get-RequirementName
 
     It 'Get-RequirementName extracts the canonical name from a requirement string' {
         Assert-Equal 'numpy' (Get-RequirementName 'numpy>=1.21.6') 'with version bound'
@@ -75,7 +65,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
         Assert-Null (Get-RequirementName '') 'empty string'
     }
 
-    # ── Get-WheelRequirements ──────────────────────────────────────────────────
+    # Get-WheelRequirements
 
     It 'Get-WheelRequirements reads Requires-Dist lines from a wheel METADATA' {
         $p = Join-Path $script:tmp 'test-1.0.0-py3-none-any.whl'

@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
-# Tests for 01-core/cli-parsers.sh — the arg loop behind all six orchestrator
-# entry points. Pins the two-arg value guard (a trailing `--target-arches` or
-# one that swallowed the NEXT flag used to assign ""/"--push" silently and
-# fall through to CROSS_DEFAULT_ARCHES — building all three arches).
+# Tests for cli-parsers.sh: an empty or swallowed flag value must fail, not fall back to every arch.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/../01-core/cli-parsers.sh"
 
-# Minimal two-arg/one-arg parser standing in for parse_shared_orchestrator_args
-# (dispatch_parsed_args' guard works on the (flag, value) tail by contract).
+# Stands in for parse_shared_orchestrator_args: the guard works on the (flag, value) tail.
 _fake_parser() {
   # args: <out_nameref-placeholder> <flag> <value>
   case "$2" in
@@ -53,11 +49,7 @@ parse_shared_orchestrator_args _ta _uf _fu _fp _ir _vv _pu \
 t_assert_eq "2" "${_rc}" "two-arg flag must return 2"
 t_assert_eq "arm64,riscv64" "${_ta}"
 
-# ---------------------------------------------------------------------------
-# O5: per-script flag allowlist. A shared flag listed in
-# ORCHESTRATOR_UNSUPPORTED_FLAGS warns (and reports it warned via rc 0); a
-# supported flag stays silent (rc 1). The warning must name the flag and say it
-# has no effect, so a user passing an inert --push/--parallel-archs is told.
+# O5: an inert shared flag warns by name (rc 0); a supported one stays silent (rc 1).
 warn() { printf '[WARN] %s\n' "$*" >&2; }   # stub for orchestrator_warn_if_unsupported
 
 t_case "O5: an inert shared flag warns and returns 0"

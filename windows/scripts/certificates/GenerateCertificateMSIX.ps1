@@ -1,15 +1,10 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Generate a modern self-signed MSIX DEV-signing certificate (KSP provider)
-# and export it as a password-protected PFX. Template/utility script — run
-# manually with your own values.
+# Manual utility: a self-signed MSIX dev-signing certificate exported as a password-protected PFX.
 
 
-# PSSA suppression, justified: throwaway self-signed DEV certificate; the
-# password is a caller-supplied parameter of a local, manual utility (same
-# rationale as New-MsixPackage.ps1 / WindowsMsix.Signing.psm1).
+# Suppressed: a throwaway dev certificate whose password the caller supplies.
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'dev/test signing cert; manual utility')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '', Justification = 'dev/test signing cert; manual utility')]
 param(
@@ -21,7 +16,6 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# 1. Generate a modern self-signed certificate using a modern KSP
 $cert = New-SelfSignedCertificate `
     -Type Custom `
     -Subject $Publisher `
@@ -34,10 +28,8 @@ $cert = New-SelfSignedCertificate `
     -Provider "Microsoft Software Key Storage Provider" `
     -HashAlgorithm SHA256
 
-# 2. Convert the password to a SecureString
 $securePassword = ConvertTo-SecureString -String $Password -Force -AsPlainText
 
-# 3. Export to a modern .pfx file
 Export-PfxCertificate `
     -Cert $cert `
     -FilePath $PfxPath `

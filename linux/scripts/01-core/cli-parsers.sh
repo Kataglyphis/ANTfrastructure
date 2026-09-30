@@ -1,11 +1,9 @@
 # shellcheck shell=bash
-# Shared CLI argument parsing for orchestrator and runtime build scripts.
-# Sourced by artifact-common.sh — never source this directly.
+# Shared CLI parsing for the orchestrator and runtime scripts; sourced only through artifact-common.sh.
 [ -n "${_CLI_PARSERS_SH_LOADED:-}" ] && return 0
 _CLI_PARSERS_SH_LOADED=1
 
-# Every parser below returns the number of args it consumed — 1 or 2 — or 0 when
-# it did not recognize the flag; 255 means --help.
+# Every parser returns the args it consumed (1 or 2), 0 for an unknown flag, 255 for --help.
 _parse_mirror_flags() {
   local -n _pmf_use=$1
   local -n _pmf_url=$2
@@ -40,8 +38,7 @@ _parse_global_flags() {
   esac
 }
 
-# For build-cross-chain.sh, build-cross-compiler.sh, build-cross-stage.sh and
-# verify-cross-chain.sh: namerefs for the shared vars, then $1 $2 from their loop.
+# The cross orchestrators' shared flags: seven namerefs, then the loop's $1 $2.
 parse_shared_orchestrator_args() {
   local -n _psoa_target_arches=$1
   local -n _psoa_use_fast_mirror=$2
@@ -76,9 +73,7 @@ parse_shared_orchestrator_args() {
   esac
 }
 
-# Shared flags parse in every entry point but are inert in some (--push in
-# build-cross-chain, --parallel-archs in build-cross-stage). Each script lists its
-# own in ORCHESTRATOR_UNSUPPORTED_FLAGS; warn, never reject (Batch 5 / O5).
+# Flags inert in one entry point (its ORCHESTRATOR_UNSUPPORTED_FLAGS) warn, never reject.
 orchestrator_warn_if_unsupported() {
   local flag="$1" script="${2:-this script}" u
   # shellcheck disable=SC2086  # intentional word-split of the space-separated list
@@ -91,8 +86,7 @@ orchestrator_warn_if_unsupported() {
   return 1
 }
 
-# Runs a parser and turns its return code into _DP_SHIFT (0/1/2 args to shift);
-# 255 for --help still propagates to the caller.
+# Turns a parser's return code into _DP_SHIFT; 255 (--help) still propagates.
 dispatch_parsed_args() {
   local _dp_rc=0
   _DP_SHIFT=0
@@ -100,9 +94,7 @@ dispatch_parsed_args() {
   case $_dp_rc in
     1) _DP_SHIFT=1; return 0 ;;
     2)
-      # Reject an empty or flag-like value centrally: a trailing --target-arches
-      # used to assign "", which falls through to CROSS_DEFAULT_ARCHES and builds
-      # all three arches instead of erroring.
+      # An empty value would fall through to the default and build every arch.
       local _dp_val="${*: -1}" _dp_flag="${*: -2:1}"
       if [ -z "${_dp_val}" ] || [ "${_dp_val#--}" != "${_dp_val}" ]; then
         echo "ERROR: ${_dp_flag} requires a value (got '${_dp_val}')" >&2
@@ -113,8 +105,7 @@ dispatch_parsed_args() {
   esac
 }
 
-# dispatch_parsed_args plus the 255 → usage+exit case, so callers only look at
-# _DP_SHIFT. Usage: consume_shared_arg usage_fn parse_fn NAMEREFS... "$1" "${2:-}"
+# consume_shared_arg <usage_fn> <parse_fn> <namerefs...> "$1" "${2:-}": handles --help, so callers read only _DP_SHIFT.
 consume_shared_arg() {
   local usage_fn="$1"
   shift
@@ -128,8 +119,7 @@ consume_shared_arg() {
   esac
 }
 
-# Returns 0 when _DP_SHIFT is 1 or 2 (caller: shift "${_DP_SHIFT}"; continue),
-# 1 when it is 0 (caller handles the arg itself).
+# 0: the caller shifts _DP_SHIFT and continues; 1: the caller handles the arg itself.
 consume_dp_shift() {
   case "${_DP_SHIFT}" in
     1) return 0 ;;
@@ -138,8 +128,7 @@ consume_dp_shift() {
   esac
 }
 
-# For build-runtime-artifacts.sh and build-runtime-manifest.sh, whose flag sets
-# are nearly identical: namerefs, then $1 $2 from their loop.
+# The runtime scripts' shared flags: eleven namerefs, then the loop's $1 $2.
 parse_shared_runtime_args() {
   local -n _target_arches=$1
   local -n _artifact_image_prefix=$2
@@ -184,28 +173,18 @@ parse_shared_runtime_args() {
   esac
 }
 
-# ==============================================================================
-# runtime_post_parse_setup
-#
-# Shared post-parse setup for runtime build scripts.
-# Call after argument parsing to normalize arches, set RUNTIME_IMAGE_PREFIX,
-# and prepare local context chain.  Requires IMAGE_PREFIX or IMAGE_NAME to be
-# set before calling.
-# ==============================================================================
+# runtime_post_parse_setup [arches_var] [image_prefix]: needs IMAGE_PREFIX or IMAGE_NAME set.
 runtime_post_parse_setup() {
   local arches_var_name="${1:-TARGET_ARCHES}"
   local image_prefix="${2:-${IMAGE_PREFIX:-${IMAGE_NAME:-}}}"
 
   cd "${REPO_ROOT}" || exit 1
 
-  # Resolve the arches variable dynamically
   local raw_arches="${!arches_var_name}"
   raw_arches="$(normalize_target_arches "${raw_arches}")"
   printf -v "${arches_var_name}" '%s' "${raw_arches}"
 
-  # A variant's runtime lane reads the variant's android (the artifact prefix
-  # follows cross_variant_infix), so it must WRITE variant tags too: a plain
-  # :latest prefix here published CUDA/ROCm wrappers as the default :latest-<arch>.
+  # A variant must write variant tags too, or its wrappers overwrite the default :latest-<arch>.
   local _variant; _variant="$(cross_variant)" || exit 1
   if [ -n "${_variant}" ]; then
     case "-${image_prefix##*:}-" in

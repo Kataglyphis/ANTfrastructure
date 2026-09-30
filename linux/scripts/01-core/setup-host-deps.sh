@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# setup-host-deps.sh
-# Manual developer-onboarding helper: installs common host development
-# dependencies (toolchains, coverage/analysis tooling) across Linux package
-# managers (apt/yum/dnf/pacman). Run by hand; not invoked by CI or the build.
+# Manual developer onboarding for apt/yum/dnf/pacman hosts; CI and the build never run it.
 
 SCRIPT_NAME=$(basename "$0")
 
@@ -52,10 +49,7 @@ install_base_packages() {
   sudo apt-get install -y --no-install-recommends python3-pip
 }
 
-# Load the VERIFIED repo helpers (repos.sh pins the Kitware and apt.llvm.org
-# key sha256s via download_verified_file). The old inline wget|gpg|tee blocks
-# here fetched the SAME keys unverified — supply-chain audit findings #5/#6:
-# one repo, two call sites, one verified and one not.
+# repos.sh verifies the Kitware and apt.llvm.org keys; never fetch them unverified here.
 _shd_source_repo_helpers() {
   local dir
   dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -113,9 +107,7 @@ _register_alternative() {
 
 install_llvm_and_alternatives() {
   sudo apt-get install -y --no-install-recommends wget gnupg lsb-release ca-certificates
-  # add_llvm_repo (repos.sh) replaces the old `wget llvm.sh | sudo bash`: the
-  # remote script was unpinned root execution AND skipped the apt pin to
-  # ${LLVM_RELEASE}* that the helper applies (supply-chain audit finding #5).
+  # add_llvm_repo, never `wget llvm.sh | sudo bash` (unpinned remote code as root).
   _shd_source_repo_helpers
   add_llvm_repo
   sudo apt-get update -qq
@@ -123,8 +115,7 @@ install_llvm_and_alternatives() {
     "clang-${LLVM_WANTED}" "clang-tidy-${LLVM_WANTED}" "clang-format-${LLVM_WANTED}" \
     "llvm-${LLVM_WANTED}" "lld-${LLVM_WANTED}" "lldb-${LLVM_WANTED}"
 
-  # Registers clang and, as slaves-by-name, clang-tidy/clang-format/llvm-profdata/
-  # llvm-cov (each --installed when its versioned binary exists).
+  # The extra tools are registered only when their versioned binaries exist.
   _register_alternative clang "${CLANG_WANTED}" 100 clang-tidy clang-format llvm-profdata llvm-cov
 
   clang --version

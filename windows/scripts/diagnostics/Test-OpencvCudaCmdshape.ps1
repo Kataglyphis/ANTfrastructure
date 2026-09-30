@@ -3,13 +3,9 @@
 # SPDX-License-Identifier: MIT
 <#
 .SYNOPSIS
-    What SHAPE are OpenCV's CUDA nvcc commands? (#115 facts: rsp layout,
-    inline args, command lengths, dryrun sub-command lengths.)
+    Dissects the shape of OpenCV's CUDA nvcc commands (rsp layout, lengths) and why sccache forwards them.
 .DESCRIPTION
-    Configure-only (no compile): clone OpenCV at the pinned ref, configure
-    with CUDA, then dissect build.ninja's CUDA rule (rspfile / rspfile_content)
-    and one real .cu command: lengths inline vs rsp content, and the longest
-    line nvcc --dryrun prints for it.
+    Configure-only: clones OpenCV at the pinned ref, configures with CUDA, then replays one real .cu command.
 #>
 [CmdletBinding()]
 param(
@@ -28,15 +24,12 @@ if (-not (Test-Path 'ocv\.git')) {
     & git clone --depth 1 --branch $ver https://github.com/opencv/opencv.git ocv 2>&1 | Select-Object -Last 1 | ForEach-Object { "$_" }
     if ($LASTEXITCODE -ne 0) { throw "clone failed" }
 }
-# The CUDA kernels live in opencv_contrib (cudev/cudaarithm/...) - without
-# it WITH_CUDA=ON configures green with ZERO .cu targets.
+# The CUDA kernels live in opencv_contrib; without it WITH_CUDA=ON configures green with zero .cu targets.
 if (-not (Test-Path 'contrib\.git')) {
     & git clone --depth 1 --branch $ver https://github.com/opencv/opencv_contrib.git contrib 2>&1 | Select-Object -Last 1 | ForEach-Object { "$_" }
     if ($LASTEXITCODE -ne 0) { throw "contrib clone failed" }
 }
-# opencv's CMake rejects clang-cl for CUDA outright ("Clang unsupported on
-# your platform", probe run 6). Production gets past it with the
-# clang-cl-compat patch - apply the same one (bind-mounted).
+# OpenCV's CMake rejects clang-cl for CUDA; production's clang-cl-compat patch gets past it.
 Set-Location ocv
 & git apply 'C:\bkmnt\patches\opencv\001-cmake-clang-cl-compat.patch'
 if ($LASTEXITCODE -ne 0) { throw "clang-cl compat patch failed ($LASTEXITCODE)" }
@@ -84,11 +77,7 @@ Write-Host ("command tail: {0}" -f $cmd.Substring([Math]::Max(0, $cmd.Length - 3
 $rspRef = [regex]::Match($cmd, '--options-file\s+("?[^"\s]+"?)|@(\S+\.rsp)')
 Write-Host ("rsp reference in command: '{0}'" -f $rspRef.Value)
 
-# ---- replay + flag bisection: WHY does sccache forward this command? -------
-# Shapes C/D proved -Fd and -MD/-MT/-MF innocent in isolation; replay the
-# REAL command (and targeted reductions) and read `requests executed` per
-# variant. executed=0 => classified uncacheable; the first variant that
-# flips to executed>0 names the culprit token.
+# Flag bisection: executed=0 means uncacheable, and the first variant that flips names the culprit token.
 $sccache = "$env:USERPROFILE\.cargo\bin\sccache.exe"
 $env:SCCACHE_MULTILEVEL_CHAIN = ''
 $env:SCCACHE_WEBDAV_ENDPOINT = ''
@@ -103,12 +92,7 @@ $variants = [ordered]@{
 $i = 0
 foreach ($name in $variants.Keys) {
     $i++
-    # $target, NOT $obj: $obj never existed in this script (copied from the
-    # ONNX replay). An undefined var makes Escape('') an EMPTY pattern, and
-    # -replace with an empty pattern INTERLEAVES the replacement between
-    # every character - that single bug manufactured the "24k command"
-    # (2040 real chars + 2039 insertions = 24,491), the cmd-8191 death, and
-    # the argv corruption behind "cannot find binary path". Probes 8-13.
+    # An empty pattern would make -replace interleave the replacement between every character.
     if (-not $target) { throw 'target empty - refusing to build variants from garbage' }
     $v = $variants[$name] -replace [regex]::Escape($target), "replay$i.obj"
     $v = $v -replace '-MF \S+', "-MF replay$i.d"
@@ -117,17 +101,11 @@ foreach ($name in $variants.Keys) {
     $env:SCCACHE_SERVER_PORT = "43$($i)0"
     & $sccache --stop-server 2>&1 | Out-Null
     & $sccache --start-server 2>&1 | Out-Null
-    # Direct spawn (CreateProcess, 32k limit) - a cmd.exe wrapper dies at 8191
-    # with "The command line is too long." (probe 9: all variants, 2s).
-    # Token splitter that survives MIXED-quote args (-Xcompiler="-O2 -Ob2",
-    # -DX="long long"): a token is any run of non-space chars and quoted
-    # spans. The naive '"..."|\S+' split tore those into two broken args and
-    # every harness failure since probe 10 was THAT, not sccache.
+    # Direct spawn (cmd.exe dies at 8191 chars); tokens keep mixed-quote args like -Xcompiler="-O2 -Ob2" whole.
     $tokens = @([regex]::Matches($v, '(?:[^\s"]+|"[^"]*")+') | ForEach-Object { $_.Value -replace '"', '' })
     Write-Host ("  len={0} tokens={1}" -f $v.Length, $tokens.Count)
     if ($name -eq 'full') {
-        # Control: the SAME tokens through bare nvcc. If this fails, the
-        # harness (not sccache) is broken - never let that masquerade again.
+        # Control: the same tokens through bare nvcc; a failure here is the harness, not sccache.
         $bareOut = & $tokens[0] @($tokens[1..($tokens.Count-1)] | ForEach-Object { $_ -replace 'replay1', 'bare0' }) 2>&1
         Write-Host ("  bare-control exit={0}" -f $LASTEXITCODE)
         if ($LASTEXITCODE -ne 0) { ($bareOut | Select-Object -Last 2) | ForEach-Object { "  bare| $_" } }
@@ -142,8 +120,7 @@ foreach ($name in $variants.Keys) {
         Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue |
             Select-String 'which|binary|Error|failed|dryrun' | Select-Object -Last 4 |
             ForEach-Object { "  srv| $($_.Line.Trim().Substring(0, [Math]::Min(220, $_.Line.Trim().Length)))" }
-        # The FULL CannotCache echo, chunked - the 220-char cap above hid the
-        # very token list that names the mis-detected "second input".
+        # The full CannotCache line, chunked: its token list names the mis-detected second input.
         $cc = (Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue | Select-String 'CannotCache' | Select-Object -First 1).Line
         if ($cc) { for ($p = 0; $p -lt $cc.Length; $p += 220) { Write-Host ("  cc| {0}" -f $cc.Substring($p, [Math]::Min(220, $cc.Length - $p))) } }
     }

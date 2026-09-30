@@ -3,15 +3,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 022
 
-# build-gcc.sh
-# Builds GCC from source and registers it as the system default via update-alternatives.
-# Default build directory is $HOME/tmp2/gcc-build-<version> (no /tmp usage).
-#
-# Usage:
-#   ./build-gcc.sh --version 16.1.0
-#   ./build-gcc.sh --version 14.2.0 --prefix /opt/gcc-14 --jobs 8
-#   GCC_VERSION=16.1.0 ./build-gcc.sh
-#   GCC_VERSION=16.1.0 PREFIX=/opt/gcc-16 BUILD_DIR="$HOME/tmp2/mybuild" JOBS=4 ./build-gcc.sh
+# Builds GCC from source (native, cross or Canadian cross); usage() lists the options.
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -141,8 +133,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-# Preserve GCC_VERSION from the environment and keep GCC_VERSION_ENV as a
-# legacy fallback when the CLI does not provide --version.
+# GCC_VERSION_ENV is a legacy fallback when neither --version nor GCC_VERSION is set.
 GCC_VERSION="${GCC_VERSION:-${GCC_VERSION_ENV:-}}"
 if [ -z "${GCC_VERSION}" ]; then
   die "GCC version is required. Use --version <X.Y.Z> or set GCC_VERSION environment variable."
@@ -196,22 +187,9 @@ else
   JOBS="${JOBS_REQUESTED:-$(nproc || echo 1)}"
 fi
 
-# ccache wiring. Two paths:
-#  * host/cross builds (HOST_TRIPLET empty): GCC itself is compiled by the host
-#    gcc — classic "ccache gcc" works. On a bootstrapped host build only stage1
-#    goes through ccache (stages 2/3 are compiled by the just-built xgcc; GCC 16
-#    ships no bootstrap-ccache build config — verified against the 16.2.0
-#    tarball, so --with-build-config cannot route them either).
-#  * Canadian cross (HOST_TRIPLET set): the caller passes CC/CXX as the
-#    cross compilers; prefix them instead of replacing them. These are
-#    single-stage builds, so ccache covers effectively everything.
-# CCACHE_BASEDIR relativizes the per-target BUILD_DIRs out of the hash inputs —
-# without it, identical translation units from different target build dirs can
-# never hit. SLOPPINESS drops __DATE__/locale/mtime noise for the same reason.
+# Compiler cache: a bootstrapped build caches only stage1; a Canadian cross prefixes the caller's CC/CXX.
 if [ "${USE_CCACHE}" = "1" ]; then
-  # 2026-08-26: the launcher is now sccache, with ccache as the fallback when
-  # sccache is missing or its server will not answer. The flag stays --ccache
-  # so callers (llvm.sh:28) keep working; it means "use the compiler cache".
+  # The flag keeps its --ccache name for existing callers; it means sccache, with ccache as fallback.
   compiler_cache_launcher_env 2>/dev/null || true
   CC_LAUNCHER="$(compiler_cache_launcher || true)"
   if [ -n "${CC_LAUNCHER}" ]; then
@@ -224,33 +202,17 @@ if [ "${USE_CCACHE}" = "1" ]; then
     fi
   fi
 
-  # Relativize the per-target BUILD_DIRs out of the hash inputs. Without it,
-  # identical translation units from different target build dirs can never hit.
-  #   ccache : CCACHE_BASEDIR (single dir)
-  #   sccache: SCCACHE_BASEDIRS (comma-separated LIST, and it only exists from
-  #            v0.14.0 — versions.env pins 0.17.0 precisely for this).
-  # sccache also hashes the working directory by default; the config baked in
-  # Dockerfile.base turns that off, or the relativization would be undone.
+  # Keep per-target BUILD_DIRs out of the hash (SCCACHE_BASEDIRS needs sccache >= 0.14; Dockerfile.base stops cwd hashing).
   export CCACHE_BASEDIR="${BUILD_DIR}"
   export SCCACHE_BASEDIRS="${BUILD_DIR}"
   export CCACHE_SLOPPINESS="locale,time_macros,include_file_mtime,include_file_ctime"
-  # CCACHE-CONTENT (2026-08-19): hash the compiler BINARY CONTENT, not
-  # mtime/size — a base-image bump rebuilds GCC and the default check then
-  # invalidates EVERY downstream cache entry even though the binary is
-  # byte-identical in behavior (bit wave4: warm LLVM cache, 0% hits).
-  # sccache needs NO counterpart: it does not key on mtime+size the way ccache
-  # does by default, so the invalidation this setting exists to prevent does
-  # not arise there. If a rebuild ever shows ~0% sccache hits right after a
-  # compiler rebuild, THIS is the assumption to re-test first.
+  # Hash compiler content, not mtime: a rebuilt identical GCC would void every entry. sccache does not key on mtime.
   export CCACHE_COMPILERCHECK=content
 fi
 
 TARBALL="gcc-${GCC_VERSION}.tar.xz"
 DOWNLOAD_BASE="https://gcc.gnu.org/pub/gcc/releases/gcc-${GCC_VERSION}"
-# NET1 (2026-08-18): gcc.gnu.org is a single host and the earliest,
-# highest-blast-radius fetch of the chain. Try the GNU mirror redirector first
-# for the TARBALL (zero trust cost — sha512 verification below is against the
-# canonical server either way); checksum + signature stay canonical-only.
+# Tarball from the GNU mirror redirector first; checksum and signature stay canonical-only, so trust is unchanged.
 MIRROR_BASE="https://ftpmirror.gnu.org/gnu/gcc/gcc-${GCC_VERSION}"
 MIRROR_TARBALL_URL="${MIRROR_BASE}/${TARBALL}"
 TARBALL_URL="${DOWNLOAD_BASE}/${TARBALL}"
@@ -286,12 +248,7 @@ if [ "${USE_CCACHE}" = "1" ]; then
 fi
 info ""
 
-# 1) Install build deps (Ubuntu/Debian)
-# GCC_SKIP_BUILD_DEPS=1 skips this (used by the parallel cross-target driver in
-# gcc.sh: build_host_gcc already installed this exact set, so the CONCURRENT
-# per-target build-gcc.sh invocations must not re-run apt — they collide on the
-# dpkg lock and die ("Could not get lock /var/lib/apt/lists/lock"). Backlog
-# GCC_PARALLEL_TARGETS validation, 2026-08-30.)
+# 1) Build deps; GCC_SKIP_BUILD_DEPS=1 skips this for parallel targets, whose concurrent apt runs hit the dpkg lock.
 if [ "${GCC_SKIP_BUILD_DEPS:-0}" != "1" ]; then
 info "Installing build dependencies..."
 apt_install \
@@ -317,10 +274,7 @@ else
 info "Skipping build dependencies (GCC_SKIP_BUILD_DEPS=1, installed by the host build)"
 fi
 
-# GCC release tarballs already ship generated parser/doc artifacts, so the
-# build does not need flex, bison, or texinfo just to rebuild them.
-# Default warning-suppression flags keep the toolchain build log focused on
-# actionable failures while still allowing callers to override them.
+# Tarballs ship generated parsers and docs, so no flex/bison/texinfo; overridable -w keeps the log actionable.
 : "${CFLAGS:=-g -O2 -w}"
 : "${CXXFLAGS:=-g -O2 -w}"
 : "${FFLAGS:=-g -O2 -w}"
@@ -331,10 +285,7 @@ fi
 : "${STAGE1_CFLAGS:=${BOOT_CFLAGS}}"
 export CFLAGS CXXFLAGS FFLAGS FCFLAGS CFLAGS_FOR_BUILD CXXFLAGS_FOR_BUILD BOOT_CFLAGS STAGE1_CFLAGS
 
-# texinfo is deliberately absent (see above) but gcc's makefiles still probe
-# makeinfo and spam "Makeinfo is missing" warnings through the ~1h build log.
-# MAKEINFO=true registers a no-op makeinfo at configure time, silencing the
-# probe and skipping doc targets without installing texinfo.
+# A no-op makeinfo: without texinfo the makefiles still probe for it and flood the log.
 : "${MAKEINFO:=true}"
 export MAKEINFO
 
@@ -342,11 +293,7 @@ export MAKEINFO
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
-# Emit the "GPG was skipped" warning and honor the GCC_REQUIRE_GPG policy: a
-# skipped verification (no gpg, or the release key was unreachable — common in
-# sandboxed build networks) is a loud warning by default, fatal when
-# GCC_REQUIRE_GPG=1. A failed VERIFY with the key present is handled separately
-# (always fatal) in verify_gcc_gpg_signature.
+# A skipped GPG check warns, or is fatal under GCC_REQUIRE_GPG=1; a bad signature is always fatal.
 _gcc_gpg_require_or_warn() {
   echo "WARNING: GPG signature verification was SKIPPED (no gpg or key unavailable); tarball is only SHA512-verified." >&2
   if [ "${GCC_REQUIRE_GPG:-0}" = "1" ]; then
@@ -355,33 +302,14 @@ _gcc_gpg_require_or_warn() {
   fi
 }
 
-# Optional GPG verification of the downloaded GCC tarball against the GCC
-# release signing keys. Policy: no .sig on server → skip cleanly; .sig present
-# but undownloadable → fatal; BAD signature with the signer's key present →
-# fatal; signer key unobtainable / gpg missing → _gcc_gpg_require_or_warn.
-#
-# GCC releases are signed by ONE OF several release managers' personal keys —
-# NOT a single project key. gcc-16.2.0 is signed by Richard Biener's key while
-# this script previously pinned only Jakub Jelinek's, so verification failed on
-# a perfectly genuine tarball (with SHA512 already OK). Worse, that failure was
-# gpg's "no public key" status, which the old code conflated with a BAD
-# signature and reported as possible tampering. The two conditions demand
-# opposite reactions:
-#   NO_PUBKEY / ERRSIG  → we LACK evidence      → the skipped-verification path
-#   BADSIG / EXPKEYSIG / REVKEYSIG → evidence of a WRONG signature → fatal
-# gpg's exit code cannot distinguish them; --status-fd can, so the verdict is
-# parsed from there.
-#
-# Override the accepted set with GCC_GPG_KEYS (space-separated fingerprints),
-# e.g. when a future release is signed by a manager not listed here.
+# Several release managers sign; a missing key (NO_PUBKEY) takes the skip path, a bad signature is fatal. GCC_GPG_KEYS overrides.
 verify_gcc_gpg_signature() {
   # Fingerprints from https://gcc.gnu.org/mirrors.html ("release keys").
   local default_keys="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62 7F74F97C103468EE5D750B583AB00996FC26A641 33C235A34C46AA3FFB293709A328C3A2C3C45C06 13975A70E63C361C73AE69EF6EEB81F8981C74C7"
   local keys="${GCC_GPG_KEYS:-${default_keys}}"
 
   if ! _gcc_probe_url "${SIG_URL}"; then
-    # "not found" and "host did not answer" are indistinguishable here, so this
-    # must obey GCC_REQUIRE_GPG like every other skipped-verification path.
+    # Absent and unreachable look alike here, so obey GCC_REQUIRE_GPG.
     _gcc_gpg_require_or_warn
     return 0
   fi
@@ -399,11 +327,7 @@ verify_gcc_gpg_signature() {
   fi
 
   echo "Attempting GPG verification..."
-  # This script sets IFS=$'\n\t' (line 3), so an unquoted ${keys} does NOT
-  # split on the spaces separating the fingerprints — the first build with the
-  # key SET iterated once over the whole string as a single bogus "key" and
-  # every import failed. `local IFS` scopes the default splitting to this
-  # function; it is restored automatically on return.
+  # The script runs with IFS=$'\n\t', which would not split the space-separated fingerprints.
   local IFS=$' \t\n'
   local key
   for key in ${keys}; do
@@ -414,17 +338,12 @@ verify_gcc_gpg_signature() {
     echo "WARNING: could not import GCC release signing key ${key} from any keyserver." >&2
   done
 
-  # Machine-readable verdict. gpg exits non-zero for BOTH "bad signature" and
-  # "signer's key not in keyring"; only the status lines tell them apart.
+  # gpg exits non-zero for a bad signature and a missing key alike; only the status lines differ.
   local status
   status="$(gpg --status-fd 1 --verify "${TARBALL}.sig" "${TARBALL}" 2>/dev/null || true)"
 
   if printf '%s\n' "${status}" | grep -q "^\[GNUPG:\] GOODSIG "; then
-    # Good cryptographic signature — now require the signer to be in the
-    # accepted set, so a good signature from an arbitrary imported key cannot
-    # pass. VALIDSIG carries the signing-key fingerprint as its first field and
-    # the PRIMARY key's fingerprint as its last; releases may be signed with a
-    # subkey, so either one matching the accepted set is sufficient.
+    # The signer (subkey or primary) must be an accepted key, not merely any imported one.
     local signer_fpr primary_fpr
     signer_fpr="$(printf '%s\n' "${status}" | awk '/^\[GNUPG:\] VALIDSIG /{print $3; exit}')"
     primary_fpr="$(printf '%s\n' "${status}" | awk '/^\[GNUPG:\] VALIDSIG /{print $NF; exit}')"
@@ -440,9 +359,7 @@ verify_gcc_gpg_signature() {
   fi
 
   if printf '%s\n' "${status}" | grep -qE "^\[GNUPG:\] (NO_PUBKEY|ERRSIG) "; then
-    # The signer's public key is not in the keyring (e.g. all keyserver imports
-    # failed, or a new release manager not in the set). We cannot verify —
-    # which is the SKIPPED case by policy, not evidence of tampering.
+    # A missing signer key is no evidence either way: the skipped path, not tampering.
     local missing
     missing="$(printf '%s\n' "${status}" | awk '/^\[GNUPG:\] NO_PUBKEY /{print $3; exit}')"
     echo "WARNING: signature is by key ${missing:-unknown}, which could not be obtained." >&2
@@ -456,19 +373,14 @@ verify_gcc_gpg_signature() {
   exit 1
 }
 
-# Fetch the GCC tarball into ${BUILD_DIR}. Opt-in tarball cache: when
-# GCC_TARBALL_CACHE_DIR is set (e.g. by gcc.sh's multi-target orchestration),
-# reuse a previously downloaded tarball instead of re-downloading into every
-# per-target BUILD_DIR. The reused copy still goes through the exact same
-# SHA512/GPG verification below — the cache only replaces the network fetch,
-# never the verification. Inert (behavior unchanged) when the variable is unset.
+# GCC_TARBALL_CACHE_DIR replaces only the download; the cached copy is still verified.
 fetch_gcc_tarball() {
   if [ ! -f "${TARBALL}" ] && [ -n "${GCC_TARBALL_CACHE_DIR:-}" ] && [ -f "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" ]; then
     echo "Reusing cached tarball: ${GCC_TARBALL_CACHE_DIR}/${TARBALL}"
     cp "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" "${TARBALL}"
   fi
   if [ ! -f "${TARBALL}" ]; then
-    # NET1: mirror redirector first, canonical gcc.gnu.org as fallback.
+    # Mirror redirector first, canonical gcc.gnu.org as fallback.
     wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 3 "${MIRROR_TARBALL_URL}" -O "${TARBALL}" \
       || wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${TARBALL_URL}"
   else
@@ -476,14 +388,7 @@ fetch_gcc_tarball() {
   fi
 }
 
-# Verify the tarball against the server's sha512.sum. If the server has a
-# checksum file, failing to fetch or match it aborts (no silent downgrade to an
-# unverified build); a missing checksum file is only a warning.
-# The tarball is fetched MIRROR-first while the checksum lives only on the
-# canonical host, so "could not verify" is not the same as "nothing to verify".
-# docs/refactoring-backlog.md XK
-# One reachability probe for both proofs. The explicit timeout matters: wget's
-# defaults outlast a short outage and turn it into a silent skip.
+# Explicit timeout for both proofs. docs/failure-modes.md#a-checksum-probe-that-cannot-reach-the-server-reads-as-nothing-to-verify
 _gcc_probe_url() { wget -q --timeout=20 -t 3 --spider "$1"; }
 
 _gcc_sha_unverified_or_die() {
@@ -519,9 +424,7 @@ verify_gcc_sha512() {
   fi
 }
 
-# Opt-in tarball cache: store the verified tarball for reuse by later targets.
-# Inert when GCC_TARBALL_CACHE_DIR is unset. Copies via a temp name + rename so a
-# concurrent reader never sees a partially written cache entry.
+# Store the verified tarball via temp name and rename, so a concurrent reader never sees a partial file.
 cache_store_gcc_tarball() {
   if [ -n "${GCC_TARBALL_CACHE_DIR:-}" ] && [ ! -f "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" ]; then
     mkdir -p "${GCC_TARBALL_CACHE_DIR}"
@@ -544,23 +447,7 @@ if [ ! -d "gcc-${GCC_VERSION}" ]; then
 else
     echo "Source already extracted: gcc-${GCC_VERSION}"
 fi
-# libstdc++ Canadian-cross fix (GCC PR100017 / PR101060), scoped to the C++23
-# MODULE directory upstream forgot to propagate it to.
-#
-# src/c++17/Makefile.am carries `-nostdinc++` in AM_CXXFLAGS precisely so the
-# TARGET libstdc++ build cannot pull in the *host* compiler's libstdc++ headers.
-# src/c++23 (which builds the `std`/`std.compat` modules from std.cc) is MISSING
-# it. In a Canadian cross (host != build) the host g++ headers are on the search
-# path; `#include <cfenv>` -> the target `<fenv.h>` wrapper -> `#include_next
-# <fenv.h>` then finds the *host* libstdc++ `<fenv.h>` wrapper, which shares the
-# guard `_GLIBCXX_FENV_H` with the target wrapper and is therefore guard-skipped,
-# so the underlying libc <fenv.h> is NEVER reached. Result: `::fenv_t` (and every
-# fe* symbol) is undeclared -> `error: 'fenv_t' has not been declared in '::'`,
-# the std.cc compile fails, and libstdc++'s recipe silently ships an EMPTY module
-# (stamp-modules-bits "Error 1 (ignored)").  The target sysroot's <fenv.h> is
-# fine; the header is simply never included.  Fix = mirror the c++17 flag into the
-# c++23 module dir.  Patch the shipped Makefile.in (release tarballs pre-generate
-# it; maintainer-mode is off so touching Makefile.in won't trigger a regen).
+# PR100017: give src/c++23 the -nostdinc++ c++17 has. See docs/upstream-libstdcxx-c++23-nostdinc++.md § Root cause (one paragraph)
 _c23_mkin="gcc-${GCC_VERSION}/libstdc++-v3/src/c++23/Makefile.in"
 if [ -f "${_c23_mkin}" ] && ! grep -q -- '-nostdinc++' "${_c23_mkin}"; then
   sed -i 's|^\(\t*\)-std=gnu++23[[:space:]]*\\$|\1-std=gnu++23 -nostdinc++ \\|' "${_c23_mkin}"
@@ -571,13 +458,7 @@ fi
 
 rm -rf "gcc-${GCC_VERSION}-build"
 
-# Canadian cross (host != build): GCC's binaries run on the *host* arch and link
-# against GMP/MPFR/MPC/ISL. The build host only has build-arch (amd64) -dev
-# packages, so configure fails with "correct version of gmp.h... no". Pull the
-# math libraries into the GCC source tree so configure builds them in-tree,
-# cross-compiled for the host arch. (Plain target cross builds keep build==host
-# == amd64 and can use the system libgmp-dev, so this is scoped to Canadian
-# cross to avoid lengthening the host/target GCC builds.)
+# Canadian cross: build GMP/MPFR/MPC/ISL in-tree for the host arch, which has no -dev packages here.
 if [ -n "${HOST_TRIPLET}" ]; then
   echo "Canadian cross: fetching in-tree GCC prerequisites (gmp/mpfr/mpc/isl)..."
   ( cd "gcc-${GCC_VERSION}" && ./contrib/download_prerequisites ) \
@@ -588,13 +469,7 @@ BUILD_SUBDIR="${BUILD_DIR}/gcc-${GCC_VERSION}-build"
 mkdir -p "${BUILD_SUBDIR}"
 cd "${BUILD_SUBDIR}"
 
-# Pre-create the install prefix BEFORE configure. GCC's in-tree prerequisite
-# configures (isl in particular) resolve/cd into the eventual --prefix while
-# probing; when it does not exist yet they print a spurious
-# "cd: ${PREFIX}: No such file or directory" to stderr. It is harmless (the dir
-# is also created at install time below) but reads as an error in the toolchain
-# build log. Creating it up front keeps the log clean. Idempotent; mirrors the
-# install-time mkdir and uses ${SUDO} for the same non-root-host case.
+# Pre-create the prefix: in-tree prerequisite configures cd into it and log a spurious error otherwise.
 ${SUDO} mkdir -p "${PREFIX}"
 
 echo "Configuring build (languages: c,c++,fortran)..."
@@ -607,13 +482,7 @@ CONFIG_CMD=(
   "--enable-checking=release"
 )
 
-# --with-system-zlib makes GCC link its LTO support against the *host* system
-# zlib. For a Canadian cross (host==target!=build) the host is the foreign arch
-# and no host zlib lives in the cross sysroot, so the GCC build fails with
-# "zlib.h: No such file or directory" while compiling lto-compress.cc. Fall back
-# to GCC's bundled in-tree zlib (the zlib/ subdir of the release tarball), which
-# configure builds cross-compiled for the host. Native and plain-target cross
-# builds keep build==amd64 and use the faster system zlib.
+# A Canadian cross has no host zlib in the sysroot, so it takes GCC's bundled zlib instead of the system one.
 if [ -z "${HOST_TRIPLET}" ]; then
   CONFIG_CMD+=("--with-system-zlib")
 else
@@ -653,10 +522,7 @@ _gcc_is_canadian_native() {
   return 1
 }
 
-# The Canadian native gets Debian multiarch, as the amd64 full-make GCC has it.
-# --with-native-system-header-dir turns GCC's multiarch auto-check off, so its link line
-# lacked /usr/lib/<triplet> and CMake found no distro library there.
-# docs/cross-build-verification.md#the-native-gcc-has-multiarch
+# Explicit multiarch for the Canadian native. docs/cross-build-verification.md#the-native-gcc-has-multiarch
 _gcc_native_multiarch() {
   if _gcc_is_canadian_native; then printf '%s' --enable-multiarch; fi
   return 0
@@ -671,24 +537,12 @@ if [ -n "${TARGET_TRIPLET}" ]; then
     "--with-native-system-header-dir=${NATIVE_SYSTEM_HEADER_DIR}"
     ${_gcc_ma:+"${_gcc_ma}"}
   )
-  # riscv64 (A2): GCC 16 defaults to the newer RISC-V ISA spec, whose canonical
-  # -march expansion uses profile extension names (zmmul/zaamo/zalrsc/zca/zcd)
-  # that an older binutils `as` rejects with "invalid -march= option". The build
-  # itself is unaffected (it drives the assembler explicitly), but the SHIPPED
-  # native riscv64 GCC then cannot assemble its own default output on-device.
-  # Pin the ISA spec the bundled assembler understands so the default -march
-  # stays assembler-compatible; this changes only the march NAMING, not codegen
-  # (same ISA). Override with RISCV_GCC_ISA_SPEC=<spec>, or RISCV_GCC_ISA_SPEC=
-  # (empty) to disable. NOTE: validated by shellcheck only in-repo; confirm with
-  # a real riscv64 GCC rebuild (an on-device `gcc hello.c` must assemble).
+  # Pin an ISA spec the bundled binutils names, or the shipped riscv64 GCC's default -march will not assemble.
   case "${TARGET_TRIPLET}" in
     riscv64-*)
       _isa_spec="${RISCV_GCC_ISA_SPEC-20191213}"
       [ -n "${_isa_spec}" ] && CONFIG_CMD+=("--with-isa-spec=${_isa_spec}")
-      # Ubuntu's baseline WITH vector. An ISA string, not the `rva23u64` profile
-      # NAME: gcc's own arch-canonicalize rejects profile names at configure time
-      # ("Unexpected arch: `rva23`"), though -march= accepts them.
-      # docs/riscv64-rva23-baseline.md
+      # An ISA string, not the rva23u64 profile name, which GCC's configure rejects. docs/riscv64-rva23-baseline.md
       _rv_arch="${RISCV_GCC_ARCH-rv64gcv_zicsr_zifencei_zba_zbb_zbs_zicond}"
       _rv_abi="${RISCV_GCC_ABI-lp64d}"
       [ -n "${_rv_arch}" ] && CONFIG_CMD+=("--with-arch=${_rv_arch}")
@@ -697,32 +551,19 @@ if [ -n "${TARGET_TRIPLET}" ]; then
   esac
 fi
 
-# Canadian cross: GCC itself is cross-compiled to run on a different host. The
-# resulting binaries are host-architecture executables that produce target-arch
-# code. This requires the cross-compiler for the host triplet to be on PATH.
+# Canadian cross: GCC itself runs on the host triplet, whose cross compiler must be on PATH.
 if [ -n "${HOST_TRIPLET}" ]; then
   BUILD_TRIPLET="$(gcc -dumpmachine 2>/dev/null || cc -dumpmachine 2>/dev/null || echo x86_64-pc-linux-gnu)"
   CONFIG_CMD+=("--build=${BUILD_TRIPLET}" "--host=${HOST_TRIPLET}")
   export CC="${CC:-${HOST_TRIPLET}-gcc}"
   export CXX="${CXX:-${HOST_TRIPLET}-g++}"
-  # The cross compiler (and its triplet-prefixed binutils) live in a non-default
-  # prefix such as /opt/gcc-<ver>/bin which is only added to /etc/profile.d (not
-  # sourced by this non-login build subprocess). The GCC Makefile drives several
-  # steps via the *bare* program names (GCC_FOR_TARGET=${HOST_TRIPLET}-gcc, the
-  # `specs` target, AS/LD lookups), so without this the build dies with
-  # "${HOST_TRIPLET}-gcc: command not found" (make Error 127). Put the cross
-  # toolchain bin dir on PATH so every bare ${HOST_TRIPLET}-* tool resolves.
-  # ${CC##* }: CC may be launcher-prefixed ("ccache <triplet>-gcc"); resolve the
-  # PATH dir from the compiler word, not the whole (multi-word) command —
-  # `command -v` on the full string fails and the dirname fallback would degrade
-  # to "." (prepending CWD to PATH instead of the cross toolchain dir).
+  # The Makefile runs bare ${HOST_TRIPLET}-* tools, so PATH gets the compiler word's dir (CC may carry a launcher).
   _cross_cc_word="${CC##* }"
   _cross_bin_dir="$(dirname "$(command -v "${_cross_cc_word}" 2>/dev/null || echo "${_cross_cc_word}")")"
   if [ -d "${_cross_bin_dir}" ]; then
     export PATH="${_cross_bin_dir}:${PATH}"
   fi
-  # Pin the build->target compilers explicitly so target libgcc/libstdc++ are
-  # built with our cross compiler regardless of make's default lookup.
+  # Pin the target compilers so target libgcc/libstdc++ use our cross compiler.
   export CC_FOR_TARGET="${CC_FOR_TARGET:-${CC}}"
   export CXX_FOR_TARGET="${CXX_FOR_TARGET:-${CXX}}"
   export GCC_FOR_TARGET="${GCC_FOR_TARGET:-${CC}}"
@@ -755,23 +596,13 @@ trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
 
 # 4) Build & install
 echo "Building (this will take a long time)..."
-# Zero ccache stats so the post-build block below reports THIS build's hit rate
-# (media builds already print these; the compiler stage was silent). Best-effort:
-# absent/failing ccache must never fail the build.
-# ZEROED ONCE PER RUN, not once per GCC (fixed 2026-08-27). This used to reset
-# before every compiler, so a run that builds five GCCs produced five disjoint
-# windows (measured: 3.02 / 2.50 / 1.81 / 6.45 / 2.00 %) and no aggregate --
-# leaving the one question the sccache migration exists to answer, "did the hit
-# rate improve on a warm cache", unanswerable. The marker lives in /tmp so it
-# spans every compiler inside one RUN step, which is also the lifetime of the
-# sccache server whose counters we are reading.
+# Zero cache stats once per RUN (the /tmp marker), so the hit rate aggregates over every GCC it builds.
 if [ "${USE_CCACHE}" = "1" ] && [ ! -e /tmp/.gcc-cache-stats-zeroed ]; then
   ccache -z >/dev/null 2>&1 || true
   sccache --zero-stats >/dev/null 2>&1 || true
   : > /tmp/.gcc-cache-stats-zeroed 2>/dev/null || true
 fi
-# The Canadian native builds libsanitizer like the full-make GCC.
-# docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
+# The Canadian native builds libsanitizer. docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
 _gcc_extra_target_libs() {
   if _gcc_is_canadian_native; then printf '%s' target-libsanitizer; fi
   return 0
@@ -782,18 +613,9 @@ if [ -n "${TARGET_TRIPLET}" ]; then
 else
   make -j"${JOBS}"
 fi
-# ccache stats for this GCC compile phase (on bootstrapped host builds only
-# stage1 goes through ccache — see the ccache wiring note above). House style
-# matches 01-core/compiler-cache.sh; best-effort, never fails the build.
+# Cache stats for this compile phase, best effort; zero hits is the earliest sign of a dead cache.
 if [ "${USE_CCACHE}" = "1" ]; then
-  # Whichever launcher actually ran: report it. A zero-hit report here is the
-  # cheapest early warning that the cache silently stopped working.
-  # SUBSTRING, not identity (fixed 2026-08-27). CC_LAUNCHER comes from
-  # compiler_cache_launcher, which returns a PATH like
-  # /opt/scripts/core/sccache-launcher.sh -- so `sccache)` matched nothing and
-  # every GCC stage silently reported CCACHE stats while sccache did the work.
-  # Third site of this exact trap in one day; the other two were
-  # compiler-cache.sh and build-app-wheelhouse.sh.
+  # Substring match: CC_LAUNCHER is a path such as .../sccache-launcher.sh.
   case "${CC_LAUNCHER:-}" in
     *sccache*) sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' || true ;;
     *)         ccache --show-stats 2>/dev/null | head -5 || true ;;
@@ -835,9 +657,7 @@ if [ "${SKIP_SYSTEM_REGISTRATION}" != "1" ]; then
     exit 1
   fi
 
-  # alt_install_and_set (01-core/common.sh) registers each link and immediately
-  # --sets it (the --set is tolerant, matching the previous _set_alt || true).
-  # ALTS_PRIORITY=150 is passed explicitly to preserve the historical priority.
+  # alt_install_and_set registers each link and selects it, tolerating a failed --set.
   alt_install_and_set gcc /usr/bin/gcc "${GCC_BIN}" "${ALTS_PRIORITY}"
   if [ -x "${GXX_BIN}" ]; then alt_install_and_set g++ /usr/bin/g++ "${GXX_BIN}" "${ALTS_PRIORITY}"; fi
 
@@ -858,8 +678,7 @@ fi
 # 6e) Strip binaries if requested
 if [ "${DO_STRIP}" = "1" ]; then
   info "Stripping binaries in ${PREFIX}..."
-  # The build machine's strip too: ${TARGET_TRIPLET}-strip cannot read a plain cross
-  # compiler's x86-64 executables, whose cc1plus shipped at 444-534 MB (BACKLOG CON36).
+  # The build machine's strip too: the target's strip cannot read a plain cross compiler's x86-64 binaries.
   mapfile -t strip_files < <(${SUDO} find "${PREFIX}" -type f -executable -exec file {} + 2>/dev/null \
     | awk -F': *' '/ELF.*(executable|shared object)/{print $1}')
   for strip_bin in strip ${TARGET_TRIPLET:+"${TARGET_TRIPLET}-strip"}; do

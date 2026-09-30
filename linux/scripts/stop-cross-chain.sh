@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# stop-cross-chain.sh — stop a cross chain AND its nerdctl/buildctl children.
-# Finds the chain via pidfile, falls back to pgrep -f 'build-cross-chain[.]sh'
-# (the [.] bracket trick avoids self-match). Walks the process subtree
-# directly, so a trap-less orchestrator is still fully cleaned up.
+# stop-cross-chain.sh — stop a cross chain and its children; walks the process tree, so a trap-less chain is cleaned too.
 
 _STOP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/01-core" && pwd)"
 # shellcheck source=linux/scripts/01-core/logging.sh
@@ -30,9 +27,7 @@ path with CROSS_CHAIN_PIDFILE) and falls back to pgrep on build-cross-chain.sh.
 EOF
 }
 
-# Exclude self and ancestors from the pgrep fallback: a launcher whose argv
-# contains the string would be a false target. The [.] trick only stops pgrep
-# from self-matching; ancestors need explicit filtering.
+# The [.] trick only stops pgrep matching itself; a launcher whose argv names the chain must be excluded too.
 _stop_self_and_ancestors() {
   local p="$$"
   while [ -n "${p}" ] && [ "${p}" -gt 1 ] 2>/dev/null; do

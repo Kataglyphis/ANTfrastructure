@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# cmake-build.sh - generic "configure + build a CMake project in a container" core.
-#
-# Project-agnostic: a wrapper sets the CMAKE_BUILD_DEFAULT_* variables, may
-# declare cmake_build_prebuild_hook, sources this file and calls
-# cmake_build_main "$@". Variables and the hook contract (a non-zero return is
-# FATAL by default) are in docs/shared-script-libraries.md § cmake-build.sh.
-#
-# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
+# Sourced core, so it sets no shell options. docs/shared-script-libraries.md#cmake-buildsh--configure--build-a-cmake-project-in-a-container
 [ -n "${_CMAKE_BUILD_SH_LOADED:-}" ] && return 0
 _CMAKE_BUILD_SH_LOADED=1
 
@@ -38,13 +31,7 @@ ${CMAKE_BUILD_USAGE_INTRO:-Configures and builds a CMake project.} Options:
 EOF
 }
 
-# ---------------------------------------------------------------------------
-# Argument parsing
-# ---------------------------------------------------------------------------
-# Vulkan precedence: an explicit --vulkan-* flag beats the inherited
-# environment, and CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT is the last resort,
-# applied only when that script really exists on disk.
-# docs/shared-script-libraries.md#cmake-buildsh--configure--build-a-cmake-project-in-a-container
+# Argument parsing. A --vulkan-* flag beats the environment; the default setup script applies only if it exists.
 _cmake_build_resolve_vulkan() {
   local version_arg="$1" setup_arg="$2" sdk_arg="$3"
 
@@ -64,13 +51,7 @@ _cmake_build_resolve_vulkan() {
   fi
 }
 
-# Fills PRESET, BUILD_DIR, CLEAN_BUILD_DIR, SKIP_CONFIGURE, CMAKE_BUILD_CONFIG,
-# CMAKE_BUILD_TARGET, PARALLEL_JOBS, MB_PER_JOB, CARGO_CACHE_DIR,
-# ALLOW_PREBUILD_FAILURE, CMAKE_BUILD_CONFIGURE_ARGS and CMAKE_BUILD_POSITIONAL.
-#
-# Precedence per setting: CLI flag > pre-existing environment variable >
-# caller default. A trailing positional argument is accepted as the preset so
-# `<script> linux-release-clang` keeps working.
+# Precedence: CLI flag > environment > caller default; a trailing positional is the preset.
 cmake_build_parse_args() {
   local preset_arg="" build_dir_arg="" clean_arg="" skip_arg=""
   local config_arg="" target_arg=""
@@ -80,11 +61,7 @@ cmake_build_parse_args() {
   MB_PER_JOB="${CMAKE_BUILD_DEFAULT_MB_PER_JOB:-4000}"
   ALLOW_PREBUILD_FAILURE="${CMAKE_BUILD_DEFAULT_ALLOW_PREBUILD_FAILURE:-false}"
   CMAKE_BUILD_POSITIONAL=()
-  # Extra configure-step arguments, accumulated across repeats of
-  # --configure-arg. Seeded from the caller default (an ARRAY a sourcing wrapper
-  # sets; there is no environment-string form, because splitting one would break
-  # the first -D whose value contains a space) and RESET here, so a second parse
-  # in the same shell cannot inherit the first call's flags.
+  # An array, never an env string (splitting breaks -D values with spaces); reset so a re-parse inherits nothing.
   CMAKE_BUILD_CONFIGURE_ARGS=( ${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]+"${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]}"} )
 
   while [[ $# -gt 0 ]]; do
@@ -94,14 +71,7 @@ cmake_build_parse_args() {
       --clean-build-dir)     clean_arg="${2:-}";          shift 2 ;;
       --build-config)        config_arg="${2:-}";         shift 2 ;;
       --build-target)        target_arg="${2:-}";         shift 2 ;;
-      # REPEATABLE, and the only way to get a -D into the configure step. Before
-      # it existed a wrapper that needed one had to skip the library's configure
-      # entirely (--skip-configure true) and issue its own `cmake -B … --preset`,
-      # which is three library entry points where one call would do -- see
-      # AccelerANTgine's scripts/linux/ci-release.sh, whose header named this
-      # flag as the thing that collapses that block. An EMPTY value is fatal
-      # rather than dropped: `cmake ""` fails with a message about the source
-      # directory, nowhere near the caller that meant to pass a flag.
+      # Repeatable; an empty value is fatal because `cmake ""` fails far from the caller.
       --configure-arg)
         [[ -n "${2:-}" ]] || err "--configure-arg expects a value (e.g. --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE)"
         CMAKE_BUILD_CONFIGURE_ARGS+=("$2"); shift 2 ;;
@@ -149,26 +119,14 @@ cmake_build_parse_args() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Environment preparation
-# ---------------------------------------------------------------------------
-# Makes a container image usable as an unprivileged build environment:
-# git safe.directory, ccache/sccache sanity, Vulkan env, writable cargo and
-# compiler-cache directories. Safe to call more than once.
+# Environment preparation for an unprivileged build; safe to call more than once.
 cmake_build_prepare_env() {
   local safe_dir="${CMAKE_BUILD_SAFE_DIRECTORY-/workspace}"
   if [[ -n "${safe_dir}" ]]; then
     git config --global --add safe.directory "${safe_dir}" || true
   fi
 
-  # The :latest image sets CCACHE_SECONDARY_STORAGE=true, but that variable
-  # is ccache's remote_storage and must be a URL - ccache parses "true" as one and
-  # dies with "URL scheme must not be empty: true" on EVERY compile. sccache
-  # (clang presets) ignores it, so only the gcc presets are hit, which is why the
-  # gcc lanes - benchmarks (gcc) included - were red for months. Neutralize any
-  # CCACHE_SECONDARY_STORAGE that is not an actual URL so the deployed image works
-  # without a rebuild (the env is also removed at source in ANTfrastructure's
-  # Dockerfile.package). A real remote URL, if ever set, is left intact.
+  # ccache reads CCACHE_SECONDARY_STORAGE as a URL; a non-URL value fails every gcc compile.
   if [[ -n "${CCACHE_SECONDARY_STORAGE:-}" && "${CCACHE_SECONDARY_STORAGE}" != *"://"* ]]; then
     echo "Ignoring invalid CCACHE_SECONDARY_STORAGE='${CCACHE_SECONDARY_STORAGE}' (not a URL)"
     unset CCACHE_SECONDARY_STORAGE
@@ -182,15 +140,12 @@ cmake_build_prepare_env() {
     . "${VULKAN_SETUP_SCRIPT}"
   fi
 
-  # How the cmake argument set is assembled:
-  # docs/cross-build-verification.md
+  # See docs/cross-build-verification.md#cmake-buildsh-a-writable-cargo_home
   if ! { mkdir -p "${CARGO_HOME:-/usr/local/cargo}/registry" 2>/dev/null \
          && [[ -w "${CARGO_HOME:-/usr/local/cargo}/registry" ]]; }; then
     if [[ -n "${CARGO_CACHE_DIR:-}" ]]; then
       export CARGO_HOME="${CARGO_CACHE_DIR}"
-      # Also redirect the cargo target directory to the same volume (under
-      # a subdirectory) so compiled artifacts bypass the 9p host mount which
-      # has known permission issues with cargo's temp-file rename operations.
+      # The target dir too: the 9p host mount breaks cargo's temp-file renames.
       export CARGO_TARGET_DIR="${CARGO_CACHE_DIR}/target"
       mkdir -p "${CARGO_TARGET_DIR}"
     else
@@ -201,15 +156,7 @@ cmake_build_prepare_env() {
     echo "CARGO_HOME not writable in this image; using ${CARGO_HOME}"
   fi
 
-  # Same treatment for the compiler caches. The image bakes
-  # SCCACHE_DIR=/var/cache/sccache (ANTfrastructure Dockerfile.base), which is
-  # only writable through BuildKit cache mounts during IMAGE builds; at
-  # runtime it is root-owned, and as a non-root user every sccache-wrapped
-  # compile dies with "failed to create directory ... Permission denied"
-  # (sccache exits 254 — the exact failure that held the Linux CI x86 lane
-  # red from 2026-07-28 to 2026-08-02). The cache never persisted across CI
-  # containers anyway (no cache mount at runtime), so a container-local
-  # fallback loses nothing.
+  # The baked cache dirs are root-owned at runtime, failing non-root compiles; nothing persisted there anyway.
   local cache_var cache_dir fallback
   for cache_var in SCCACHE_DIR CCACHE_DIR; do
     cache_dir="${!cache_var:-}"
@@ -222,8 +169,7 @@ cmake_build_prepare_env() {
   done
 }
 
-# Memory-aware job count: the project's get_build_jobs wins, then
-# 01-core/parallelism.sh, then a plain core count.
+# The project's get_build_jobs wins, then parallelism.sh, then a plain core count.
 cmake_build_jobs() {
   local mb_per_job="${1:-4000}"
 
@@ -245,15 +191,7 @@ cmake_build_jobs() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Configure + build
-# ---------------------------------------------------------------------------
-# The configure banner, and its own function ONLY because of the complexity
-# gate: cmake_build_run sat at 14 of its 15 allowed paths, and a log line that
-# names the extra arguments must not be what pushes it over. The extras are
-# ECHOED and not merely passed -- a -D that reaches cmake but no log is the
-# class of thing that gets blamed on the preset for a day. The `+x` guard keeps
-# a caller running under `set -u` alive when the array was never set.
+# Configure + build. Split out for the complexity gate; extras are echoed so every -D shows in the log.
 _cmake_build_log_configure() {
   local _n=0
   [[ -n "${CMAKE_BUILD_CONFIGURE_ARGS+x}" ]] && _n="${#CMAKE_BUILD_CONFIGURE_ARGS[@]}"
@@ -311,13 +249,7 @@ cmake_build_run() {
   if declare -F cmake_build_prebuild_hook >/dev/null 2>&1; then
     info "Running pre-build step${CMAKE_BUILD_PREBUILD_LABEL:+: ${CMAKE_BUILD_PREBUILD_LABEL}}"
     if ! cmake_build_prebuild_hook; then
-      # This used to be `|| warn "<step> failed"`. A warning is the wrong
-      # severity: the pre-build step generates inputs the build or the runtime
-      # depends on, so swallowing its exit code produces a "green" build with
-      # missing artifacts that only fails much later (a shader precompile
-      # failure once left CI with no SPIR-V at all, and the build still
-      # passed). Failing loudly is the default; --allow-prebuild-failure is
-      # the deliberate opt-out for callers that really can continue without it.
+      # Fatal by default: the pre-build step generates inputs, so a swallowed failure builds green without them.
       if [[ "${ALLOW_PREBUILD_FAILURE}" == "true" ]]; then
         warn "Pre-build step${CMAKE_BUILD_PREBUILD_LABEL:+ (${CMAKE_BUILD_PREBUILD_LABEL})} failed; continuing because --allow-prebuild-failure was given"
       else

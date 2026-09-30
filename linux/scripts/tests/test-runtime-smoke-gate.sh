@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Tests for _runtime_run_package_smoke (LOG29): the wrapper-smoke gate that
-# runs the Dockerfile.package `--target wrapper-smoke` stage between the package
-# build and the wrapper build. Exercises the early-return paths and the build
-# invocation, with all runtime helpers stubbed.
+# _runtime_run_package_smoke, the `--target wrapper-smoke` gate between package and wrapper builds, with helpers stubbed.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${TESTS_DIR}/../01-core"
@@ -16,8 +13,7 @@ warn() { :; }
 retry() { shift 2; "$@"; }
 run()   { "$@"; }
 
-# Source the unit under test (it defines _runtime_run_package_smoke).
-# Sourced first so its definitions are available, then overridden below.
+# Sourced before the overrides below, which must win.
 PACKAGE_DOCKERFILE_PATH="${CORE_DIR}/../../Dockerfile.package"
 NERDCTL_BIN=nerdctl
 source "${CORE_DIR}/runtime-build-fns.sh"

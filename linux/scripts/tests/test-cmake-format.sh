@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Tests for check_cmake_format, the inline preflight gate: the repo's own CMake
-# files must satisfy cmake-format --check under the root .cmake-format.yaml.
+# Tests for check_cmake_format, the inline preflight gate over the repo's own CMake files.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -11,13 +10,10 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 printf '%s\n' "${FN_SRC}" > "${WORK}/guard.sh"
 
-# One fixture tree, one venv: the gate's own uv path provisions cmake-format on
-# the first run and reuses the fixture-local .venv-cmake-format afterwards.
+# One tree, one venv: the first run provisions cmake-format via uv, later ones reuse it.
 TREE="${WORK}/tree"
 mkdir -p "${TREE}/cmake"
-# 01-core/tool-checks.sh: code-quality.sh sources it for has_tool/require_tools
-# (it used to carry an inline copy). A fixture tree missing a real dependency
-# fails as a bash "No such file" and every assertion below reads that instead.
+# Every file code-quality.sh sources, or each case below reads "No such file" instead.
 for _m in lib/code-quality.sh lib/log-bootstrap.sh 01-core/python_uv.sh \
           01-core/logging.sh 01-core/tool-checks.sh cmake-format.requirements.txt; do
   install -D -m 0644 "${REPO_ROOT}/linux/scripts/${_m}" "${TREE}/linux/scripts/${_m}"
@@ -66,12 +62,7 @@ _guard
 t_assert_eq "1" "${rc}" "zero files found must fail loud, not report green over nothing"
 t_assert_contains "${OUT}" "returned nothing" "the refusal must say the walk came back empty"
 
-# --- the walk's default exclusions -------------------------------------------
-# flutter_lane_prepare_env defaults PUB_CACHE to <repo>/.pub-cache on purpose,
-# so a consumer that runs the prologue and then this walk graded its
-# DEPENDENCIES' CMake files -- 28 of them in OmniAccelerANT, fl_chart's
-# example/linux/CMakeLists.txt among them. The hub made the directory, so the
-# hub excludes it, and a consumer's own list has to survive that.
+# Default exclusions: the hub's own prologue puts PUB_CACHE in the repo, so the hub must skip it.
 source "${REPO_ROOT}/linux/scripts/lib/code-quality.sh"
 _WALK="${WORK}/walk"
 mkdir -p "${_WALK}/src" "${_WALK}/.pub-cache/hosted/fl_chart/example/linux" "${_WALK}/vendor"

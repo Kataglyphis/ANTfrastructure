@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_code_complexity.py. Each case builds a t_gate_tree holding the
-# gate and its two imports, feeds a subject.sh on stdin. Measured numbers are read back through the real CLI with the
-# limits forced to zero, so no case depends on the parser's internals.
-# docs/code-quality-tooling.md#shell-complexity-code-complexity
+# verify_code_complexity.py, measured via the real CLI with limits at zero. See docs/code-quality-tooling.md#shell-complexity-code-complexity
 set -u
 source "$(dirname "${BASH_SOURCE[0]}")/test-harness.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/gate-tree.sh"
@@ -11,8 +8,7 @@ PY="${PREFLIGHT_PYTHON:-python3}"
 GATE=verify_code_complexity.py
 ROW="linux/scripts/subject.sh | f"
 
-# _tree [allow-row...]: a tree holding the gate, its imports, subject.sh from stdin
-# and, when rows are given, a code-complexity.allow.
+# _tree [allow-row...]: the gate, its imports, subject.sh from stdin, plus a code-complexity.allow given rows.
 _tree() {
   local root; root="$(t_gate_tree "${GATE}" verify_code_size.py quality_allow.py gate_scope.py)"
   cat > "${root}/linux/scripts/subject.sh"
@@ -34,8 +30,7 @@ _run_on() {
   local fix; fix="$("$1" "$2" | _tree "${@:3}")"
   _gate "${fix}"; rm -rf "${fix}"
 }
-# _contract <generator> <over> <under> <metric> <count> <unit> <limit-unit>: the five
-# directions for one metric; <over> makes an offender measuring <count>, <under> none.
+# _contract <gen> <over> <under> <metric> <count> <unit> <limit-unit>: the five directions for one metric.
 _contract() {
   local gen="$1" over="$2" under="$3" metric="$4" n="$5" unit="$6" lim="$7" out
   out="$(_run_on "${gen}" "${over}")"
@@ -52,8 +47,7 @@ _contract() {
   t_assert_contains "${out}" "rc=1" "a stale row is a failure, not a warning"
 }
 
-# _pins <cc> <nesting> <why-cc> [why-nesting]: both metrics of the subject.sh on
-# stdin, in ONE gate run. <why-nesting> defaults to <why-cc>.
+# _pins <cc> <nesting> <why-cc> [why-nesting]: both metrics of stdin's subject.sh in one gate run.
 _pins() {
   local fix out; fix="$(_tree)"
   out="$(COMPLEXITY_LIMIT=0 NESTING_LIMIT=-1 "${PY}" "${fix}/linux/scripts/${GATE}" 2>&1)"

@@ -1,14 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# verify-ubuntu-mirror-consistency.sh - Check that every Dockerfile has the
-# canonical Ubuntu mirror ARGs, and that Dockerfile.base has the mirror RUN.
-# ALSO asserts the mirror SCHEME outcome (APT-HTTP, 2026-08-24): the original
-# check only proved use-fast-ubuntu-mirror.sh was *referenced*, which is
-# exactly how the bootstrap-ca http downgrade shipped with no restore for
-# custom mirrors and nobody noticed. Referenced != restored — so this gate now
-# runs the real downgrade+restore pipeline against a fixture and requires the
-# sources to END on https, and requires bootstrap_ca to call the restore AFTER
-# the ca-certificates install.
+# Mirror ARGs in every Dockerfile, and proof by fixture that the CA-bootstrap http downgrade ends back on https.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 errors=0
@@ -51,16 +43,11 @@ for df in "${DOCKERFILES[@]}"; do
   fi
 done
 
-# --- SCHEME outcome (APT-HTTP) ------------------------------------------
+# Scheme outcome
 BASE_IMAGE_SH="${REPO_ROOT}/linux/scripts/01-core/base-image.sh"
 FAST_MIRROR_SH="${REPO_ROOT}/linux/scripts/01-core/use-fast-ubuntu-mirror.sh"
 
-# (1) Wiring: bootstrap_ca must call restore_mirror_https_scheme, and the call
-# must come after the ca-certificates install line — a working-but-unwired
-# restore function is exactly the failure mode this gate exists to catch.
-# NB: `|| true` on the grep pipelines — a no-match grep would otherwise abort
-# the whole gate under set -eo pipefail WITHOUT printing the ERROR line
-# (observed in mutation testing: rc=1 but silent).
+# bootstrap_ca must call the restore after the ca-certificates install; || true stops a no-match grep dying silently.
 bootstrap_body="$(awk '/^bootstrap_ca\(\)/,/^}/' "${BASE_IMAGE_SH}")"
 install_ln="$(printf '%s\n' "${bootstrap_body}" | { grep -n 'apt-get install -y --no-install-recommends ca-certificates' || true; } | head -1 | cut -d: -f1)"
 restore_ln="$(printf '%s\n' "${bootstrap_body}" | { grep -n '^  restore_mirror_https_scheme$' || true; } | head -1 | cut -d: -f1)"
@@ -72,9 +59,7 @@ elif [ -z "${install_ln}" ] || [ "${restore_ln}" -le "${install_ln}" ]; then
   errors=$((errors + 1))
 fi
 
-# (2) Outcome: run the REAL pipeline on a fixture — bootstrap-style downgrade
-# via use-fast-ubuntu-mirror.sh, then the restore subcommand — and assert the
-# sources end on https with no downgraded http entry left.
+# Run the real downgrade and restore on a fixture; the sources must end on https.
 fixture_root="$(mktemp -d)"
 trap 'rm -rf "${fixture_root}"' EXIT
 mkdir -p "${fixture_root}/etc/apt/sources.list.d"
@@ -104,12 +89,7 @@ else
   fi
 fi
 
-# --- (3) POCKET SYMMETRY -------------------------------------------------
-# Host and ports sources must expose the SAME suite set. An amd64 stanza
-# written without -security while ports had it made every Multi-Arch:same
-# library uninstallable for the foreign arch (VK2, 2026-09-08) -- and each
-# file is perfectly valid on its own, so only the pair can be checked.
-# docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
+# Pocket symmetry. docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
 
 # shellcheck source=/dev/null
 . "${REPO_ROOT}/linux/scripts/01-core/ubuntu-mirror.sh"
@@ -126,8 +106,7 @@ if ! cmp -s "${fixture_root}/host.suites" "${fixture_root}/ports.suites" \
   errors=$((errors + 1))
 fi
 
-# Shipped call sites must agree on that flag. Tests and this file are excluded
-# on purpose: their calls are fixtures, free to be deliberately skewed.
+# Shipped call sites must agree on the flag; tests and this file hold fixtures, free to skew.
 if ! _flag_report="$(python3 - "${REPO_ROOT}/linux" <<'PYEOF'
 import pathlib
 import re

@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Tests for 01-core/arch-mapping.sh — per-architecture string mappings used by
-# the strict compiler/ELF validation scripts — plus the platform.sh mapping
-# tables (backlog T4, the "D2 guard"): the per-arch string tables in
-# 01-core/platform.sh are regression magnets (a single-character drift like
-# riscv64gc→riscv64 silently produces wrong wheels/toolchains much later), so
-# their exact outputs are frozen here.
+# Tests for arch-mapping.sh and platform.sh's per-arch tables, frozen: a one-character drift ships wrong wheels.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -28,13 +23,7 @@ t_assert_eq "X86"     "$(arch_to_llvm_target amd64)"
 t_assert_eq "AArch64" "$(arch_to_llvm_target arm64)"
 t_assert_eq "RISCV"   "$(arch_to_llvm_target riscv64)" "LLVM backend dir is RISCV — a 'consistency' rename to RISCV64 breaks the compiler stage"
 
-# arch_list_csv_normalize MUST emit COMMA-separated output even when the
-# CALLER runs under a strict IFS (e.g. build_python.sh sets IFS=$'\n\t'). The
-# pre-2026-08-09 implementation joined "${normalized_arches[*]}" with the
-# caller's IFS first char and only tr'ed spaces, so under IFS=$'\n\t' the list
-# came back newline-separated: build_python.sh's IFS=',' split then saw ONE
-# bogus multi-line arch, staging nothing for arm64/riscv64 (regression found
-# by the toolchain smoke's absent-cross-Python gate).
+# The CSV must not depend on the caller's IFS: build_python.sh runs under IFS=$'\n\t'.
 t_case "arch_list_csv_normalize is IFS-independent (strict caller IFS must still yield CSV)"
 t_assert_eq "amd64,arm64,riscv64" \
   "$(IFS=$'\n\t'; arch_list_csv_normalize 'amd64,arm64,riscv64')"
@@ -72,10 +61,7 @@ t_assert_eq "riscv64" "$(arch_cmake_system_processor_for riscv64)"
 t_assert_eq "mips64"  "$(arch_cmake_system_processor_for mips64)" \
   "contract differs from the triplet mappers: unknown arch passes through (no failure)"
 
-# End-to-end: common.sh's cross_wheel_platform_tag = arch_linux_platform_tag_for
-# over cross_target_arch. Stub cross_target_arch (normally from cross-env.sh)
-# BEFORE sourcing common.sh in a subshell so no cross env is needed; the riscv64
-# lane is the one where a wrong tag ships an unusable wheelhouse.
+# cross_target_arch is stubbed before sourcing common.sh, so no cross env is needed.
 t_case "cross_wheel_platform_tag end-to-end with stubbed cross_target_arch"
 t_assert_eq "linux_riscv64" "$(
   cross_target_arch() { printf '%s' riscv64; }
@@ -90,11 +76,7 @@ t_assert_eq "linux_aarch64" "$(
   cross_wheel_platform_tag
 )"
 
-# ── D4 NEEDED-walk primitives (elf_needed_sonames / elf_unresolved_needed) ───
-# The harness has no compiled ELF fixtures, so exercise the pure text-parsing
-# path: a stub objdump on PATH replays captured `objdump -p` output. Sonames
-# use a libkataglyphis-test-* namespace guaranteed absent from any host, plus
-# libc.so.6 which resolves on every glibc host (standard dirs/ldconfig cache).
+# ── D4 NEEDED walk via a stub objdump; libkataglyphis-test-* sonames exist on no host, libc.so.6 on every one ──
 _elf_stub_dir="$(mktemp -d)"
 cat > "${_elf_stub_dir}/objdump" <<'STUB'
 #!/usr/bin/env bash

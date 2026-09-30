@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# probe-hailo-nested-cache.sh — does a nested build spawned through HailoRT's clean-env channel reach
-# the compiler cache in THIS image? Three passes: HAILO_NESTED_CACHE=off, then carry cold and warm.
-# Seconds, no network, writes only under TMPDIR. Exit 0 when the warm pass hit on every object.
-# docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches
+# Does a nested build through HailoRT's clean-env channel reach the cache in this image? See docs/hailo-support.md § The gate
 set -euo pipefail
 IFS=$'\n\t'
 

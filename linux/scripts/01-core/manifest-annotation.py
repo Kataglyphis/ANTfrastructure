@@ -1,21 +1,7 @@
 #!/usr/bin/env python3
-"""Extract one OCI manifest annotation from `nerdctl manifest inspect --verbose` output.
+"""Print one annotation from `nerdctl manifest inspect --verbose` stdin, read from the base64 `Raw` manifest.
 
-Reads JSON from stdin in the format produced by:
-    nerdctl manifest inspect --verbose <ref>
-
-`manifest inspect` reports annotations only inside the base64-encoded `Raw`
-field (the verbatim manifest bytes as they exist in the registry) — the decoded
-top level does not surface them. So decode `Raw` and read `.annotations[key]`
-from there.
-
-Usage:
-    nerdctl manifest inspect --verbose REF | manifest-annotation.py KEY
-
-Prints the annotation value and exits 0 when present.
-Exits 2 when the manifest parses but carries no such annotation (the caller
-distinguishes "unknown provenance" from a hard error).
-Exits 1 on unusable input.
+Exit 2 when the annotation is absent (unknown provenance), 1 on unusable input.
 """
 import base64
 import binascii
@@ -41,8 +27,7 @@ def main():
     except (json.JSONDecodeError, ValueError) as exc:
         fail(f"invalid JSON input: {exc}")
 
-    # A manifest LIST inspects as a JSON array; the cross lane publishes
-    # single-platform (linux/amd64) manifests, so the first entry is the one.
+    # A manifest list inspects as an array; the cross lane publishes single-platform manifests.
     if isinstance(data, list):
         if not data:
             fail("empty JSON array")

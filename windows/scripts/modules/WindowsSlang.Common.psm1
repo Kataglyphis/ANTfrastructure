@@ -3,55 +3,15 @@
 
 #requires -Version 7.0
 
-# WindowsSlang.Common - generic "compile a Slang shader tree to SPIR-V and WGSL"
-# driver. The Windows twin of linux/scripts/lib/slang-compile.sh; the two are
-# behaviourally identical and must be kept in step.
-#
-# This module is project-agnostic: the shader list, entry points, stages,
-# targets, the combined-WGSL copy map and the post-emit patch table are all
-# data, read from the manifest JSON the caller points at. A consuming script
-# keeps only paths - manifest, Slang source root, the SPIR-V/WGSL output roots
-# and the repository root the manifest's wgslMap destinations resolve against.
-#
-# Manifest schema, staleness rule and exit-code contract:
-# docs/slang-shader-compilation.md.
-#
-# Staleness: an output is reused only when it is newer than its source AND every
-# .slang file under the source tree AND the manifest file itself (conservative -
-# an import or manifest edit rebuilds every dependent).
-#
-# Failure model: every fatal condition is reported with Write-Error. The module
-# sets $ErrorActionPreference = 'Stop' in its own scope (module scope does not
-# inherit the caller's), so those are terminating errors that abort the calling
-# script AND its caller - a missing slangc must never be a silent skip, which
-# once let CI pass green with no compiled shaders at all. The exit codes named
-# in the comments below are the contract the bash twin implements literally.
+# Twin of linux/scripts/lib/slang-compile.sh, keep them in step: see docs/slang-shader-compilation.md
 
+# Module scope does not inherit the caller's, and Write-Error must terminate: a missing slangc is never a silent skip.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# ---------------------------------------------------------------------------
-# Combined-WGSL emit correctness guard.
-#
-# WGSL requires every non-builtin member of an inter-stage (varying) struct to
-# carry @location(N). slangc 2026.1-52-gc8ddf20bb - the build in Vulkan SDK
-# 1.4.341.1, i.e. the ANTfrastructure Linux image - drops that attribute in the
-# COMBINED emit (no -entry/-stage) while emitting it correctly per entry point,
-# so a regeneration on that toolchain silently produced WGSL naga rejects.
-# 2026.8 is correct on both Windows and Linux. Two defences, both needed:
-#   1. the manifest's minSlangcVersionForWgsl floor - below it we do not emit at
-#      all, so the (correct) checked-in WGSL is never overwritten;
-#   2. Test-WgslVaryingsAreLocated - at or above the floor we emit and then
-#      verify, so ANY future emit regression fails the build instead of being
-#      copied.
-# The same rule is reimplemented in linux/scripts/lib/slang-compile.sh - keep
-# the two in step, and with whatever test the consuming project pins it with
-# (here: BuildIntegrity.CheckedInWgslVaryingStructsCarryLocations).
-# ---------------------------------------------------------------------------
+# --- Combined-WGSL emit guard: see docs/slang-shader-compilation.md § The combined-emit outcomes ---
 
-# A struct with at least one @builtin/@location member is an IO struct; every
-# member of it must then carry one of those attributes. Returns the offending
-# "<line>: struct <name>: <text>" descriptions (empty array = valid).
+# In an IO struct (any @builtin/@location member) every member needs one; returns the offenders, empty when valid.
 function Test-WgslVaryingsAreLocated {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -88,10 +48,7 @@ function Test-WgslVaryingsAreLocated {
     return , $offenders
 }
 
-# Compares the leading MAJOR.MINOR only. slangc prints e.g. "2026.8" or
-# "2026.1-52-gc8ddf20bb". An unparseable version is treated as new enough: the
-# emit guard above is the backstop, and refusing to compile on an unrecognised
-# version string would be worse.
+# MAJOR.MINOR only; an unparseable version counts as new enough, since the emit guard is the backstop.
 function Test-SlangcVersionAtLeast {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Have,
           [Parameter(Mandatory)][AllowEmptyString()][string]$Want)
@@ -105,8 +62,7 @@ function Test-SlangcVersionAtLeast {
     return $haveVersion -ge $wantVersion
 }
 
-# slangc is resolved from VULKAN_SDK\Bin, then PATH. The Vulkan SDK ships slangc
-# (verified: VulkanSDK 1.4.350.0). Returns $null when neither has it.
+# VULKAN_SDK\Bin (the SDK ships slangc), then PATH; $null when neither has it.
 function Resolve-Slangc {
     if ($env:VULKAN_SDK) {
         $candidate = Join-Path $env:VULKAN_SDK 'Bin\slangc.exe'
@@ -117,31 +73,14 @@ function Resolve-Slangc {
     return $null
 }
 
-# slangc resolves `import <name>` to <name>.slang on the -I paths. Add the
-# source root, the importing shader's own directory and every subdirectory so
-# `import aces` finds common/aces.slang regardless of where the importing
-# shader lives.
+# Every subdirectory on -I, so `import aces` finds common/aces.slang wherever the importer lives.
 function Get-SlangIncludeArgument {
     param(
         [Parameter(Mandatory)][string]$SourceRoot,
         [Parameter(Mandatory)][string]$SourceDirectory
     )
 
-    # ORDER IS LOAD-BEARING. `import <name>` resolves to the FIRST <name>.slang
-    # on the -I list, so two modules sharing a basename resolve by whatever
-    # order the directory walk happens to produce. Kept in lockstep with the
-    # Linux twin (_slang_compile_collect_subdirs in linux/scripts/lib/
-    # slang-compile.sh), where an unsorted walk made common/noise.slang vs
-    # compute/noise.slang resolve one way locally and the other way on CI -
-    # failing every clang lane with "undefined identifier 'snoise'".
-    #
-    #   1. sort, so the answer is reproducible;
-    #   2. hoist a top-level common\ ahead of the rest - "shared modules live in
-    #      common/" is this driver's standing assumption, and the consumer side
-    #      documents the same "common/ preference" when it resolves imports.
-    #
-    # The generated build tree is excluded: it holds no .slang sources and can
-    # only add ambiguity.
+    # Order matters, the first <name>.slang wins: sorted, top-level common\ first, build tree out; same as the Linux twin.
     $includeArgs = @('-I', $SourceRoot, '-I', $SourceDirectory)
     $buildRoot = Join-Path $SourceRoot 'build'
     $subdirs = Get-ChildItem -Path $SourceRoot -Directory -Recurse -ErrorAction SilentlyContinue |
@@ -157,20 +96,7 @@ function Get-SlangIncludeArgument {
     return , $includeArgs
 }
 
-# ---------------------------------------------------------------------------
-# Full pipeline
-# ---------------------------------------------------------------------------
-# Compiles every enabled manifest row to its targets (skipping up-to-date
-# outputs), then performs the combined WGSL emit for every wgslMap entry.
-#
-# Paths are all the consumer has to supply:
-#   -ManifestPath        manifest JSON
-#   -SourceRoot          root of the .slang tree
-#   -SpirvOutputRoot     'spirv' target output root  (<SourceRoot>\build\spirv)
-#   -WgslOutputRoot      'wgsl' target output root   (<SourceRoot>\build\wgsl)
-#   -CombinedOutputDir   staging dir for the combined emit (<SourceRoot>\build)
-#   -DestinationRoot     root the wgslMap "dst" paths resolve against, i.e. the
-#                        consuming repository root
+# Full pipeline; -DestinationRoot is the consuming repo root that wgslMap "dst" paths resolve against.
 function Invoke-SlangShaderCompile {
     param(
         [Parameter(Mandatory)][string]$ManifestPath,
@@ -198,8 +124,7 @@ function Invoke-SlangShaderCompile {
 
     $slangc = Resolve-Slangc
     if (-not $slangc) {
-        # Contract (bash twin): exit 2 - see above. A missing slangc that only
-        # warned once let CI pass green with no shaders at all.
+        # Contract (bash twin): exit 2; a warning here once let CI pass green with no shaders.
         Write-Error 'slangc.exe not found in VULKAN_SDK or PATH. Install the Vulkan SDK (ships slangc) or add slangc to PATH.'
         return
     }
@@ -211,8 +136,7 @@ function Invoke-SlangShaderCompile {
         -not ($_.PSObject.Properties['disabled'] -and $_.disabled)
     })
 
-    # Every .slang file is a potential import dependency, and a manifest edit can
-    # retarget any output (conservative staleness).
+    # Conservative staleness: any .slang may be imported, and a manifest edit can retarget any output.
     $allSlangFiles = @(Get-ChildItem -Path $SourceRoot -Recurse -File -Filter '*.slang' -ErrorAction SilentlyContinue)
     $newestSource = (($allSlangFiles + @(Get-Item $ManifestPath)) |
         Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc
@@ -223,8 +147,7 @@ function Invoke-SlangShaderCompile {
     foreach ($entry in $manifestRows) {
         $srcPath = Join-Path $SourceRoot $entry.file
         if (-not (Test-Path $srcPath)) {
-            # A manifest row whose source is gone is a manifest bug: fail the
-            # run rather than quietly compiling one shader fewer.
+            # A manifest bug: fail the run rather than quietly compile one shader fewer.
             Write-Warning "Manifest references missing file: $srcPath"
             $failed += $srcPath
             continue
@@ -236,8 +159,7 @@ function Invoke-SlangShaderCompile {
             $outExt = if ($target -eq 'spirv') { 'spv' } else { 'wgsl' }
             $outDir = if ($target -eq 'spirv') { $SpirvOutputRoot } else { $WgslOutputRoot }
             if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
-            # Mirror the source subdirectory under the target's output root so
-            # distinct shaders with the same entry-point name do not collide.
+            # Mirrors the source subdirectory, so equal entry-point names in different shaders cannot collide.
             $relDir = Split-Path $entry.file -Parent
             $targetOutDir = if ($relDir) { Join-Path $outDir $relDir } else { $outDir }
             if (-not (Test-Path $targetOutDir)) { New-Item -ItemType Directory -Force -Path $targetOutDir | Out-Null }
@@ -273,24 +195,13 @@ function Invoke-SlangShaderCompile {
         return
     }
 
-    # -----------------------------------------------------------------------
-    # Combined WGSL emit: compile each wgslMap source WITHOUT -entry/-stage to
-    # get all entry points in one WGSL file, then copy it to the destination
-    # shader directory the manifest names (e.g. a Rust crate's shaders folder,
-    # so include_str! picks up the Slang-emitted WGSL).
-    # -----------------------------------------------------------------------
+    # --- Combined WGSL emit: all entry points in one file, copied where the manifest's dst names ---
     $wgslFailed = @()
     $wgslInvalid = @()
     $wgslEmitted = 0
     if (-not (Test-Path $CombinedOutputDir)) { New-Item -ItemType Directory -Force -Path $CombinedOutputDir | Out-Null }
 
-    # Toolchain floor: below it slangc's combined emit is known to drop varying
-    # @location attributes, so skip the emit entirely rather than overwrite the
-    # checked-in WGSL with output naga rejects. Regenerating after a .slang edit
-    # then needs a newer slangc - the consuming project is expected to pin that
-    # with a test (here:
-    # BuildIntegrity.CheckedInWgslIsNotOlderThanItsSlangSource) so a skipped and
-    # forgotten regeneration fails.
+    # Below the floor the emit is skipped, never overwriting checked-in WGSL; consumers pin regeneration with a test.
     $minSlangcVersion = if ($manifestData.PSObject.Properties['minSlangcVersionForWgsl']) {
         $manifestData.minSlangcVersionForWgsl
     } else { '' }
@@ -319,10 +230,7 @@ function Invoke-SlangShaderCompile {
             continue
         }
 
-        # Post-emit patch table (depthTexturePatches): why each patch exists is
-        # documented in the "_comment" fields next to the patterns in the
-        # manifest. A patch that matches nothing is reported loudly - it means
-        # slangc's output shape changed under us.
+        # The manifest's "_comment" fields say why each patch exists; one matching nothing means slangc's output moved.
         $patchProp = $manifestData.depthTexturePatches.PSObject.Properties[$entry.out]
         if ($patchProp) {
             $wgslText = Get-Content -Path $tmpOut -Raw
@@ -336,8 +244,7 @@ function Invoke-SlangShaderCompile {
             Set-Content -Path $tmpOut -Value $wgslText -NoNewline -Encoding utf8
         }
 
-        # Reject a structurally invalid emit BEFORE it can overwrite the checked-in
-        # file, so a broken regeneration can never be committed silently.
+        # Validated before the copy, so a broken regeneration can never be committed silently.
         $offenders = Test-WgslVaryingsAreLocated -Path $tmpOut
         if ($offenders.Count -gt 0) {
             Write-Warning ("[ERROR] $($entry.out): slangc $slangcVersion emitted varying struct member(s) with " +
@@ -347,7 +254,6 @@ function Invoke-SlangShaderCompile {
             continue
         }
 
-        # Copy to the destination shader directory (replaces hand-written WGSL).
         $dstDir = Join-Path $DestinationRoot $entry.dst
         if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
         Copy-Item -Path $tmpOut -Destination (Join-Path $dstDir $entry.out) -Force
@@ -360,8 +266,7 @@ function Invoke-SlangShaderCompile {
 
     Write-Host "[INFO] Slang shader compilation finished ($compiled SPIR-V/WGSL artifact(s) + $wgslEmitted combined WGSL file(s))"
 
-    # Fatal, and last so the SPIR-V summary above is still reported: an emit that
-    # violates WGSL's varying rules is a toolchain regression, not a warning.
+    # Fatal but last, so the summary still prints: an invalid emit is a toolchain regression.
     if ($wgslInvalid.Count -gt 0) {
         Write-Error ("$($wgslInvalid.Count) combined WGSL emit(s) had varying struct members without " +
             "@builtin/@location:`n  " + ($wgslInvalid -join "`n  ") +

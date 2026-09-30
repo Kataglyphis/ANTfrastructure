@@ -1,35 +1,21 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The engine-adapter half of the agentic loop: config load, the opencode and
-# claude adapters, stream rendering, usage-limit back-off and invoke_agent's
-# retry ladder. Sourced by agentic-loop.sh, which owns log()/section() and the
-# loop driver -- this half is not a standalone library.
-# docs/agentic-loop-build-matrix.md#the-two-bash-files
+# Engine adapters; not standalone, agentic-loop.sh owns log()/section(). docs/agentic-loop-build-matrix.md#the-two-bash-files
 [ -n "${_AGENTIC_ENGINES_SH_LOADED:-}" ] && return 0
 _AGENTIC_ENGINES_SH_LOADED=1
 
-# ── Engine configuration ────────────────────────────────────────────────
-# Shared jq prelude for the consolidated single-pass config readers below
-# (load_engine_config, resolve_build_matrix_entry, _agentic_load_loop_config).
-# `v` renders a scalar exactly the way an individual `$(jq -r '<path>')`
-# command substitution did: null -> "null", numbers/booleans -> literal text,
-# trailing newlines stripped (command substitution strips those too).
+# Engine configuration: `v` renders a scalar exactly as a `$(jq -r '<path>')` substitution would.
 _AGENTIC_JQ_PRELUDE='def v: if . == null then "null" else tostring end | sub("\n+$"; "");'
 
-# ── Role-prompt composition (Bash twin of the PS module's ───────────────
-#    New-AgenticComposedPrompt / Write-AgenticOpenCodeAgentFile)
-# The two silent gaps it closes, and why it runs for every engine and both
-# roles: docs/agentic-loop-build-matrix.md#role-prompt-composition
+# Role-prompt composition, twin of New-AgenticComposedPrompt. docs/agentic-loop-build-matrix.md#role-prompt-composition
 
 # <hub>/linux/scripts/lib -> <hub>
 _agentic_hub_root() {
     (cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 }
 
-# The shared, engine-agnostic ROLE prompt.  NOT the same artefact as
-# shared/agentic-loop/prompts/<role>.md (the short task message).
+# The engine-agnostic role prompt, not prompts/<role>.md (the short task message).
 agentic_system_prompt_path() {
     echo "$(_agentic_hub_root)/shared/agentic-loop/system-prompts/${1}.md"
 }
@@ -48,10 +34,7 @@ _agentic_trim_blanks() {
         awk 'NF || started { started = 1; print }'
 }
 
-# Write <repo_root>/.opencode/agents/<role>.md from an already composed body.
-# Idempotent (unchanged content is not rewritten) and deliberately runs under
-# DRY_RUN too: the file is a derived artefact, not repo content, and a dry run
-# whose whole point is checking the prompt wiring has to produce it.
+# Runs under DRY_RUN too: the file is derived, and a dry run exists to check this wiring.
 write_opencode_agent_file() {
     local role="$1" repo_root="$2" body_file="$3" source_label="$4"
     local out="${repo_root}/.opencode/agents/${role}.md"
@@ -89,11 +72,7 @@ EOF
     fi
 }
 
-# Resolve one role's claude prompt file AND emit its .opencode/agents/<role>.md.
-# Sets _AGENTIC_RESOLVED_PROMPT_FILE (a global, because log() writes to stdout
-# and would poison a command substitution).  Three branches, one invariant: the
-# opencode agent file is always written, so the two engines can never be told
-# different things.
+# Returns via a global (log() writes stdout); always writes the opencode agent file so both engines agree.
 _AGENTIC_RESOLVED_PROMPT_FILE=""
 resolve_role_prompt_file() {
     local role="$1" override="$2" overlay="$3" repo_root="$4"
@@ -138,9 +117,7 @@ resolve_role_prompt_file() {
         return 0
     fi
 
-    # Neither shape configured. This branch is why the call is unconditional:
-    # a consumer with no prompt config at all used to hand opencode nothing,
-    # which is the vacuum a hand-written .opencode/agents/<role>.md filled.
+    # No prompt config at all: without this branch opencode would get nothing.
     if [[ -f "$shared" ]]; then
         write_opencode_agent_file "$role" "$repo_root" "$shared" "no project overlay configured"
     else
@@ -149,8 +126,7 @@ resolve_role_prompt_file() {
     return 0
 }
 
-# A prompt/overlay path is stored repo-relative in the config; anchor a relative
-# one at the repo root.  An empty value stays empty, an absolute one is untouched.
+# Config paths are repo-relative; empty and absolute values pass through.
 _agentic_repo_path() {
     local path="$1" repo_root="$2"
     if [[ -n "$path" && "$path" != /* ]]; then
@@ -160,9 +136,7 @@ _agentic_repo_path() {
     fi
 }
 
-# Composes BOTH role prompts from the globals load_engine_config just read and
-# writes each resolved path back over its global.  Kept out of the config reader
-# because it WRITES files (the composed prompt and .opencode/agents/<role>.md).
+# Kept out of the config reader because it writes files.
 _agentic_compose_role_prompts() {
     local repo_root="$1"
     resolve_role_prompt_file planner "$CLAUDE_PLANNER_PROMPT_FILE" \
@@ -173,20 +147,12 @@ _agentic_compose_role_prompts() {
     CLAUDE_EXECUTOR_PROMPT_FILE="$_AGENTIC_RESOLVED_PROMPT_FILE"
 }
 
-# Reads engine selection + per-engine model/prompt settings from the config
-# JSON.  Sets globals consumed by invoke_agent / invoke_claude.
 # Precedence: env override > .engines.<engine>.* > legacy .models.*
 load_engine_config() {
     local config_json="$1" repo_root="${2:-$(pwd)}"
     if ! command -v jq &>/dev/null; then log "jq required" "FATAL"; return 1; fi
 
-    # One jq pass parses every engine-config field into a local map, emitted
-    # as @sh-quoted shell assignments (evaluated below).  Field semantics are
-    # unchanged from the previous one-jq-call-per-field version: `// empty`
-    # fields become "", defaulted fields keep their defaults, env overrides
-    # still win, a jq/JSON failure yields "" for every field, and the
-    # globals are only assigned in the original order (so the early return
-    # below still leaves CLAUDE_* / AGENT_* untouched, exactly as before).
+    # A jq failure yields "" for every field; assignment order keeps the early return from touching CLAUDE_*/AGENT_*.
     local -A _c=()
     local _al_cfg
     _al_cfg=$(jq -r --arg eo "${AGENTIC_ENGINE:-}" "${_AGENTIC_JQ_PRELUDE}"'
@@ -233,9 +199,7 @@ load_engine_config() {
     AGENTIC_PLANNER_OVERLAY_FILE="$(_agentic_repo_path "${_c[planner_overlay]-}" "$repo_root")"
     AGENTIC_EXECUTOR_OVERLAY_FILE="$(_agentic_repo_path "${_c[executor_overlay]-}" "$repo_root")"
 
-    # Runs for EVERY engine, not just claude: the composer's second output is
-    # <repo_root>/.opencode/agents/<role>.md, the only channel opencode has for
-    # a role prompt.  docs/agentic-loop-build-matrix.md#role-prompt-composition
+    # Every engine: .opencode/agents/<role>.md is opencode's only channel for a role prompt.
     _agentic_compose_role_prompts "$repo_root" || return 1
 
     AGENT_TIMEOUT="${_c[timeout]-}"
@@ -263,8 +227,7 @@ agent_timeout_for_role() {
     echo "${AGENT_TIMEOUT:-0}"
 }
 
-# ── Streaming helpers ───────────────────────────────────────────────────
-# Echo every line to the console AND the log file as it arrives.
+# Streaming helpers
 agent_stream_passthrough() {
     local line
     while IFS= read -r line; do
@@ -273,9 +236,7 @@ agent_stream_passthrough() {
     done
 }
 
-# Render claude stream-json events into compact human-readable progress
-# lines (tool calls, assistant text, tool errors, final result + cost),
-# written live to console + log.  Non-JSON lines pass through unchanged.
+# Non-JSON lines pass through unchanged.
 claude_stream_render() {
     local line rendered r
     while IFS= read -r line; do
@@ -315,10 +276,7 @@ claude_stream_render() {
     done
 }
 
-# ── OpenCode invocation ─────────────────────────────────────────────────
-# Twin of the PS module's Get-AgenticOpenCodeMajorVersion: v1 prints
-# "1.18.33", v2 "opencode v2.0.18". Unparseable text is 0.
-# $1 is the `opencode --version` output.
+# OpenCode invocation. Twin of Get-AgenticOpenCodeMajorVersion; unparseable --version text is 0.
 opencode_major_version() {
     if [[ "${1:-}" =~ ([0-9]+)\.[0-9]+\.[0-9]+ ]]; then
         echo "${BASH_REMATCH[1]}"
@@ -327,11 +285,7 @@ opencode_major_version() {
     fi
 }
 
-# opencode v2 `run` arguments, one per line, for <agent> <model>.
-# --standalone: a v2 run otherwise attaches to the per-user background
-# service, which keeps working after the timeout kills the client. --auto, for
-# the executor only: a headless v2 run auto-REJECTS every `ask` permission and
-# exits 1. docs/windows-agentic-loop.md#opencode-v2
+# --standalone: else v2 attaches to a service that outlives the timeout; --auto: headless v2 rejects every ask. docs/windows-agentic-loop.md#opencode-v2
 opencode_run_args() {
     local agent="$1" model="$2"
     printf '%s\n' run --agent "$agent" --model "$model" --standalone
@@ -383,12 +337,7 @@ invoke_opencode() {
     return $exit_code
 }
 
-# ── Claude Code invocation ──────────────────────────────────────────────
-# Headless Claude Code run: role prompt is appended as a system prompt from
-# the configured prompt file.  The planner is sandboxed via --allowed-tools
-# (read-only + BACKLOG.md edits); the executor runs with the configured
-# permission mode (default: bypassPermissions, intended for trusted repos /
-# sandboxes).
+# Claude Code invocation: planner sandboxed by --allowed-tools; executor defaults to bypassPermissions (trusted repos only).
 invoke_claude() {
     local role="$1" model="$2" message="$3"
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
@@ -402,8 +351,7 @@ invoke_claude() {
 
     local args=(-p --model "$model")
     if [[ "${CLAUDE_STREAM_OUTPUT:-true}" == "true" ]]; then
-        # stream-json emits an event per assistant turn / tool call, so the
-        # console and log show live progress instead of silence-until-done.
+        # stream-json shows live progress instead of silence until done.
         args+=(--output-format stream-json --verbose)
     else
         args+=(--output-format text)
@@ -423,8 +371,7 @@ invoke_claude() {
     fi
 
     if [[ "$role" == "planner" && -n "${CLAUDE_PLANNER_ALLOWED_TOOLS:-}" ]]; then
-        # Planner sandbox: only the listed tools are allowed; everything else
-        # is denied in -p mode (no interactive prompt to approve).
+        # -p mode has no approval prompt, so unlisted tools are denied.
         # shellcheck disable=SC2206
         args+=(--allowed-tools ${CLAUDE_PLANNER_ALLOWED_TOOLS})
     elif [[ "${CLAUDE_PERMISSION_MODE:-bypassPermissions}" == "bypassPermissions" ]]; then
@@ -470,12 +417,7 @@ invoke_claude() {
     return $exit_code
 }
 
-# ── Usage-limit handling ────────────────────────────────────────────────
-# Detect a Claude usage/session-limit failure in the log tail and return the
-# seconds to sleep until the stated reset (+ 2 min buffer) on stdout.
-# Prints 0 when the recent output is not a usage-limit failure, and 1800
-# when the limit is detected but the reset time can't be parsed. The reset
-# time in the message ("resets 11pm (Europe/Berlin)") is taken as local time.
+# Usage limits: prints seconds to the stated reset (+2 min), 0 if none hit, 1800 if the reset is unparseable.
 usage_limit_wait_seconds() {
     local tail_text
     tail_text=$(tail -n 30 "$LOG_FILE" 2>/dev/null)
@@ -493,8 +435,7 @@ usage_limit_wait_seconds() {
     echo $(( target - now + 120 ))
 }
 
-# ── Engine dispatcher with retry/backoff ────────────────────────────────
-# Roles: planner | executor | fixer (fixer maps to the executor model/agent).
+# Engine dispatcher; the fixer role maps to the executor model/agent.
 invoke_agent() {
     local role="$1" message="$2"
     local model
@@ -518,9 +459,7 @@ invoke_agent() {
                 return 1 ;;
         esac
         [[ $rc -eq 0 ]] && return 0
-        # Usage/session-limit failures are not real errors: sleep until the
-        # stated reset and try again without burning a retry. Capped so a
-        # stuck limit can't spin forever (each pass sleeps >= 30 min anyway).
+        # A usage limit is not an error: wait for the reset without burning a retry, capped against a stuck limit.
         if [[ "${WAIT_FOR_USAGE_LIMIT_RESET:-true}" == "true" && "${DRY_RUN:-false}" != "true" && "$limit_waits" -lt 10 ]]; then
             local limit_wait
             limit_wait=$(usage_limit_wait_seconds)

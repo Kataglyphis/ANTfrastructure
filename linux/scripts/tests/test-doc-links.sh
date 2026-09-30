@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_doc_links.py. The gate derives its root from its own path, so
-# each case copies it into a throwaway tree with a minimal docs/ and code tree.
-# The copy sits OUTSIDE the scanned dirs, and fixture pointers are spelled via
-# ${D} so this file's own text is not read as pointers by the real gate.
-# docs/code-quality-tooling.md#code-to-docs-pointers-doc-links
+# Fixture pointers use ${D} so the real gate does not scan them; see docs/code-quality-tooling.md#code-to-docs-pointers-doc-links
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -13,14 +9,11 @@ GATE="${REPO_ROOT}/docs/scripts/verify_doc_links.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
 D='docs/'
 
-# A tree with one indexed page (heading + stable id) and one code file whose
-# content is $1. Extra pages/files are added by the caller before running.
+# _fixture <code>: one indexed page (heading + stable id) and a subject.sh holding <code>.
 _fixture() {
   local d; d="$(mktemp -d)"
   mkdir -p "${d}/docs" "${d}/tools/gate" "${d}/linux/scripts"
-  # gate_scope.py too, beside the gate: the docs gates take --root since
-  # 2026-09-15 and import it at module level, so a fixture without it fails
-  # with a traceback instead of a verdict.
+  # The gate imports gate_scope.py at module level; without it a fixture gets a traceback, not a verdict.
   cp "${GATE}" "${REPO_ROOT}/linux/scripts/quality_allow.py"      "${REPO_ROOT}/linux/scripts/gate_scope.py" "${d}/tools/gate/"
   printf '# Guide\n\n<a id="stable"></a>\n## Real Heading\n\ntext\n' > "${d}/docs/guide.md"
   printf '# Index\n\n- [guide](guide.md)\n' > "${d}/docs/INDEX.md"
@@ -91,8 +84,7 @@ t_assert_contains "${out}" "${D}orphan.md is linked from no row in docs/INDEX.md
 rm -rf "${fix}"
 
 t_case "a bare (S 1a) pointing at no section on the page fails"
-# SECTION_REF only covers the cross-file form, so these were counted and never
-# checked -- a dangling one survived several renumberings unnoticed.
+# SECTION_REF only covers the cross-file form, so a bare local ref needs its own check.
 fix="$(_fixture ':')"
 printf '# Guide\n\n## 1b. Real\n\ntext (\xc2\xa7 1a) more\n' > "${fix}/docs/guide.md"
 SGN="$(printf '\302\247')"
@@ -106,8 +98,7 @@ t_assert_eq "0" "$(_rc "${fix}")"
 rm -rf "${fix}"
 
 t_case "a licence clause on a page with no numbered sections is not a section ref"
-# "Apache-2.0 S4(b)" must not be guessed at -- checking pages that define no
-# numbered sections would trade a real gap for false alarms.
+# Pages with no numbered sections are skipped, so a licence clause is never guessed at.
 fix="$(_fixture ':')"
 printf '# Guide\n\n## Real Heading\n\nApache-2.0 \xc2\xa74(b) requires notice.\n' > "${fix}/docs/guide.md"
 t_assert_eq "0" "$(_rc "${fix}")"
@@ -163,15 +154,7 @@ t_assert_contains "$(_run "${fix}")" "must not point at an OPEN backlog page" \
 rm -rf "${fix}"
 
 t_case "the scanned set does not depend on .git being present"
-# The mutation gate mirrors the repo WITHOUT .git and runs this suite from the
-# copy. There `git check-ignore` exits 128 and answers nothing; treating that
-# as "nothing is ignored" quietly turned 566 scanned files into 5,467, failed
-# the gate on model output, and killed BOTH doc-links mutation entries before
-# either was ever mutated. Neither side could see it: one change made the gate
-# ask git, the other took git away.
-# Comparing the two lists is NOT enough -- with git present the fallback branch
-# never runs, and that version of this test let the mutation survive. So point
-# the gate at a directory that is not a repository and prove the wiring.
+# The mutation mirror has no .git, so the fallback is driven against a real non-repository directory.
 t_assert_eq "wired" "$(t_gate_probe docs/scripts/verify_doc_links.py <<'PYCHK'
 cand = []
 for name in g.CODE_SCAN:
@@ -241,8 +224,7 @@ PYCHK
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"
 
-# The --root arm. `${D}` keeps this file's own text out of the real gate's
-# pointer scan, like every other fixture pointer here.
+# The --root arm; `${D}` keeps this file's text out of the real gate's pointer scan.
 t_case "--root grades the named tree, not this repo"
 _root_fx="$(gate_tree_git "$(printf '# Fixture\n\nSee [gone](%snope.md).\n' "${D}")" README.md)"
 t_assert_eq "1" "$(t_rc "${PY}" "${GATE}" --root "${_root_fx}")" "a dangling fixture link must fail"

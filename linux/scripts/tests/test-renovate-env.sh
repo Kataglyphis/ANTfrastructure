@@ -1,21 +1,12 @@
 #!/usr/bin/env bash
-# The annotated versions.env arm of the local apply half: a self-contained key's
-# version is moved, a key the file-scoped packageRule still sends to a human is
-# refused unwritten, and a hint the parsers cannot read is refused rather than
-# guessed at.
-#
-# DOES NOT COVER: WHICH keys are self-contained. That list is policy in
-# .github/renovate.json, not a property this suite can derive, and a paired
-# *_SHA256 refresh is still bump_versions.py's job -- see
-# docs/dependency-updates.md#the-annotated-env-manifest.
+# The versions.env apply arm; which keys are self-contained is policy, not tested; see docs/dependency-updates.md#the-annotated-env-manifest
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/renovate-fixtures.sh"
 
 ENV_REL="linux/scripts/01-core/versions.env"
 
-# One allowlisted dep and one that stays approval-gated, so the two verdicts are
-# read off the same file and the same run's config.
+# One allowlisted dep and one approval-gated, so both verdicts come from one file and one config.
 ENV_REPO="$(_repo env-manifest)"
 mkdir -p "${ENV_REPO}/linux/scripts/01-core"
 cat > "${ENV_REPO}/${ENV_REL}" <<'ENV'
@@ -52,8 +43,7 @@ _report "${CMAKE_REPORT}" regex "${ENV_REL}" Kitware/CMake 4.4.2 4.4.3
 NODE_REPORT="${WORK}/env-node.json"
 _report "${NODE_REPORT}" regex "${ENV_REL}" node 24.21.0 24.22.0
 
-# Every case applies the same annotated manifest through the same config; one
-# owner, so the invocation cannot drift between them.
+# One owner for the apply call, so it cannot drift between cases.
 _apply_regex() { RUN_CONFIG="${ENV_CONFIG}" _run "$1" "$2" --apply --managers custom.regex; }
 
 t_case "an allowlisted annotated key is written"

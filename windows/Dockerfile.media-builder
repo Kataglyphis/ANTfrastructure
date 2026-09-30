@@ -1,172 +1,28 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Consolidated builder image for the three media branches, driven by
-# windows/Build-Buildkit.ps1. Each branch is a `*-built` target that runs its
-# heavy compile as a plain LAYER with real per-stage caching:
-#   media-core-built-onnx -> -ffmpeg -> -opencv -> media-core-built  (chained)
-#   media-litert-built, media-tvm-built                              (parallel)
-# Heavy-lane RUNs bind-mount their script closure per file rather than COPYing
-# it, so a script edit re-keys only the RUN that mounts it.
-#
-# The docker-classic lane's stages (media-core-env, media-core, media-litert,
-# media-tvm — COPY-only shells whose compile ran via `docker run` + `docker
-# commit` because dockerd is capped at 2 CPUs here) were DELETED on 2026-08-26
-# with that lane; see docs/windows-build-lanes.md § The classic lane was
-# retired. Nothing in this file should grow a COPY of a build script again:
-# if a RUN needs a script, it mounts it.
+# The three media branches; RUNs bind-mount their script closure per file, so never COPY a build script here.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
-# Solve-chain handoff images for the BuildKit media-core lane (see the
-# media-core-built-* stages below for why this is four solves, not one).
+# Handoff images between the chained media-core solves.
 ARG MEDIA_CORE_ONNX_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-onnx
 ARG MEDIA_CORE_OPENCV_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-opencv
 ARG MEDIA_CORE_FFMPEG_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-ffmpeg
 ARG MEDIA_CORE_HAILO_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-hailo
 
-# ── Common base: shared boilerplate for all three builders ────────────────────
+# Common base for all three builders
 FROM ${BASE_IMAGE} AS common
 
-# MEMORY_LIMIT_GB deliberately has NO ARG/ENV here (#51): a scheduling
-# knob as image metadata was a CACHE KEY - toggling -ConcurrentAux
-# invalidated every litert/tvm compile. The driver publishes it on the
-# webdav; Get-BuildJobCount fetches it at RUN time (fail-open to CIM).
-# Compile TARGET architecture. FIRST declared here, deliberately: base/sdk/
-# toolchain install host tooling shared by both lanes, and an ARG there would
-# key their cache on it -- re-paying the VS Build Tools layer on every lane
-# switch (Dockerfile.base: "every RUN after an ARG declaration keys its cache
-# on the ARG's value"). Mirrored to ENV so the build scripts' arch resolution
-# (Get-WindowsTargetArch -> $env:WINDOWS_TARGET_ARCH) sees it at RUN time and
-# in every derived stage.
+# First declared here, not in base/sdk/toolchain, whose cache an ARG would key on every lane switch.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-# Build-host settings (endpoint, chain, force-local) are ARGs redeclared in every compiling
-# stage, never ENV. docs/windows-build-resources.md#what-the-published-image-carries
-# Overridable so a single stage can be re-run at debug level without editing
-# this file: Build-Buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
+# Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
 ARG SCCACHE_LOG="warn"
 
-# THE CACHE LAYOUT. Unset (the default) = NO chain: the WebDAV remote is the one
-# and only cache. To restore the two-level layout later:
-#   Build-Buildkit.ps1 ... -BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav
-#
-# WHY THE DISK LEVEL IS OFF (2026-08-16, backlog #99): Windows BuildKit cache
-# mounts LOSE WRITES into a directory an earlier RUN populated (isolated A/B:
-# 158/250 failures on the inherited mount dir vs 0/250 on plain fs — full
-# measurement + per-stage failure ladder in docs/windows-builds.md, #99
-# archive). The WebDAV remote is not a cache mount and is unaffected.
-#
-# RESTORE THE TWO-LEVEL LAYOUT once BuildKit's WCOW cache mounts mature (support
-# only landed in v0.21.0, moby/buildkit#5603 / PR #5708; a mounter race was fixed
-# in PR #5885; "cache mounts fail silently" is #1648). Re-verify by rebuilding
-# media with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav` and checking that
-# genai reports 0 write errors — not by assuming a newer buildkit fixed it.
-# `windows/scripts/diagnostics/Test-SccacheWrite.ps1` answers it in ~2 minutes.
-#
-# THE C:\sccache CACHE MOUNTS BELOW USE sharing=shared, NOT locked (#134,
-# 2026-08-26). `locked` serialises every RUN that mounts the same id — and
-# -ConcurrentAux runs media-litert and media-tvm as CONCURRENT child solves, so
-# the lock made two parallel branches take turns. It bought nothing in exchange:
-# with the chain unset (the default above) sccache runs remote-only and never
-# touches this mount at all — SCCACHE_DIR alone does nothing, see the note below.
-# IF YOU RE-ENABLE THE DISK LEVEL (`-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav`),
-# re-examine this: `shared` then means two concurrent sccache servers on one
-# directory. That is what sccache's local backend is built for, but it has never
-# been measured here, and #99's write-loss history on WCOW cache mounts is the
-# reason to measure rather than assume.
-
-# Also an ARG so an experiment can start from a GUARANTEED-EMPTY cache dir:
-#   -BuildArg SCCACHE_DIR=C:\sccache\v3
-# This matters because the L0 failure rate depends on how much the directory
-# already holds — measured 2026-08-16 with `chain=disk`: onnx started empty and
-# wrote 1263 objects with 225 failures, opencv then started with those 1263 and
-# failed 1849 of 1862, genai 157 of 157. Comparing a fresh-dir run against a
-# run that inherits a full one measures the wrong thing.
+# The disk level is off by default; see docs/windows-build-resources.md § Persistent compile cache (sccache).
 ARG SCCACHE_DIR="C:\sccache\v2"
 
-# DIAGNOSTIC ONLY (backlog #99). The cmake launcher wiring is gated on a
-# configured REMOTE (Test-SccacheRemoteConfigured); with the endpoint cleared,
-# sccache is not wired at all and a run reports `Compile requests 0` -- which
-# reads like a clean build and measures nothing. Set to 1 to wire sccache with a
-# LOCAL-ONLY backend so the disk level can be measured by itself:
-#   -BuildArg SCCACHE_FORCE_LOCAL=1,SCCACHE_WEBDAV_ENDPOINT=,SCCACHE_MULTILEVEL_CHAIN=
-# Never for production builds: without a remote the cache is only as persistent
-# as SCCACHE_DIR's mount, and the whole point of the gate is to stop that
-# happening by accident.
-
-# NB: OPENCV_LINK_CHAIN_FFMPEG deliberately does NOT live in this common block.
-# It sat here for one day (2026-08-16→17) and a single flip of the value re-ran
-# the whole media branch including the ~50-min ONNX stage, although only the
-# opencv stage reads it. It is declared in `media-core-built-opencv` below —
-# backlog #103, the concrete instance of the #49 disease.
-
-# sccache TWO-TIER, wired 2026-08-08. Until then WebDAV was the only tier, so
-# every one of the ~5000 compiles per stage paid an HTTP round-trip even on a hit.
-#
-# SCCACHE_DIR ALONE DOES NOTHING. With a remote configured, sccache runs in
-# single-level *legacy* mode and the disk backend is not in the chain at all --
-# this repo's own note claimed the opposite until it was checked against
-# mozilla/sccache's docs/Configuration.md. The chain variable is what selects
-# the hierarchy: "Order matters: left-to-right is fast-to-slow (L0, L1, ...)",
-# read-through / write-through with automatic backfill.
-#
-# Requires sccache >= v0.16.0 (2026-06-19). Older versions ignore the variable
-# SILENTLY, which is why sccache is now PINNED in versions.env and asserted by
-# Test-Toolchain.ps1 -- a speed feature that can vanish without a signal is
-# worse than no feature at all.
-#
-# SCCACHE_CACHE_SIZE=15G is deliberate: buildkitd's tier-0 GC rule bounds
-# type==exec.cachemount (windows/buildkitd.toml), so an unbounded L0 would be
-# evicted between chains and quietly buy nothing. Raise BOTH together or
-# neither. NB the cap figure quoted here was stale ("20GB/168h"): as of
-# 2026-08-15 that tier is reservedSpace 30GB / maxUsedSpace 60GB — the
-# reservedSpace FLOOR was the actual fix for backlog #89, where GC reclaimed the
-# whole mount mid-chain and every write after the first stage failed. Read the
-# live numbers from buildkitd.toml, not from this comment.
-#
-# SCCACHE_DIR points at a SUBDIRECTORY (`\v2`), not at the mount root. The tree
-# that grew directly in C:\sccache is damaged in a PATH-DEPENDENT way: writing
-# an object whose hash lands on a bad path fails with `The system cannot find
-# the path specified. (os error 3)`, which is why a build (157 objects, spread
-# over every bucket) failed 157/157 while single-compile probes were erratic -
-# 1/1, then 5/6, then 0/6, depending on where that one hash landed. Chasing that
-# noise cost several wrong "root causes" (the CWD, the multilevel chain, the
-# mount itself, the foreign `logs` dir, process detachment, concurrency - each
-# measured and each dead). A FRESH directory writes cleanly, on this mount, in
-# every probe and across container boundaries; the damaged tree is simply
-# abandoned. Bump to \v3 if it ever recurs, and see backlog #99.
-#
-# SCCACHE_ERROR_LOG lives on its OWN cache mount (C:\sccache-logs,
-# id=sccache-logs-winamd64), NOT inside SCCACHE_DIR - corrected 2026-08-15,
-# backlog #90. It used to sit at C:\sccache\logs\, i.e. inside the directory
-# sccache itself manages by LRU, and sccache deleted it: a probe of a healthy
-# mount holding 236 MB of cache content found `logs\` simply GONE, even though
-# the creation code runs on every entrypoint and the mount persists. That is
-# why the server's error trail was unobtainable through the whole multi-day
-# write-failure investigation - it was pruned by design, not lost by accident,
-# which left the genai 157/157 write failures undiagnosable. A log must live
-# where no other tool has a delete policy over it.
-# Owner directive: NEVER swallow logs. SCCACHE_LOG="warn" is NOT optional
-# decoration - corrected 2026-08-15. The previous note claimed "the error log is
-# always on and near-free" with SCCACHE_LOG left unset. That was FALSE: with no
-# level configured sccache never initialises its logger, so SCCACHE_ERROR_LOG
-# names a file that is never created. Proof: after moving the log to its own
-# unpruned mount the directory existed and the file still did not (LOGDIR=True,
-# NO_ERRORLOG) - while a hand probe that set SCCACHE_LOG=info DID produce
-# content. `warn` is the cheap level that still captures write/read failures
-# (opendal reports them at WARN); `debug` remains opt-in because it is
-# voluminous.
-# Historical note (backlog #23): the original \logs subdirectory was meant to
-# keep postmortems out of the GC-capped cache root (shared with build-onnx's
-# persistent ninja log);
-# Initialize-SourceBuildEnvironment creates it before the server spawns.
-# SCCACHE_IDLE_TIMEOUT=0 (2026-08-10 night): the default 600 s idle exit
-# killed the server mid-vertex during the long bare-CUDA tail (>10 min with
-# zero C/CXX requests), so the end-of-build stats emission talked to a
-# FRESH server and reported all-zero counters (runs 12+13) - measurement
-# poison, and the async webdav write-through tail dies with the server too.
-# The RUN step's process tree ends with the step, so 0 leaks nothing.
+# CACHE_SIZE stays within buildkitd.toml's cache-mount GC cap; without SCCACHE_LOG the error log is never written.
 ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
@@ -175,48 +31,9 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
-# NO versions.env COPY HERE — deliberately removed 2026-08-07.
-#
-# It used to sit in this stage so the run-time `Import-Versions.ps1` would read
-# CURRENT values instead of the stale copy baked into the base image. The cost
-# was brutal and invisible: this stage is the ancestor of all three branch envs,
-# so ANY byte changed in versions.env invalidated all six media compiles — three
-# Windows-only toolchain pins triggered a full ~75-minute ONNX rebuild that day.
-#
-# Versions now arrive as build-args (Get-MediaBranchVersionArg, forwarded by both
-# drivers) and are declared as ARG+ENV in each `media-*-env` stage below, so a
-# pin only invalidates the branch that actually consumes it. The stale-file trap
-# is closed at the other end: `Import-Versions.ps1` now treats a value already
-# present in the process environment as authoritative and never overwrites it,
-# so the base-baked file can only fill gaps, never win.
-#
-# CONSEQUENCE FOR NEW BUILD SCRIPTS: whatever a script reads must be listed in
-# Get-MediaBranchVersionArg. Anything missing silently falls back to the
-# base-baked value — audit with the greps documented at that function.
+# No versions.env COPY: pins arrive as build-args, so a script's new key must be listed in Get-MediaBranchVersionArg.
 
-# ── Mount source for the BK lane's module closure ────────────────────────────
-# Every compile RUN below needs the SAME five modules (the in-container closure
-# of the build scripts: SourceBuild.Common + its imports Shared, Patches, Cuda,
-# Native.Common). They used to be listed as five separate --mount lines in each
-# of six RUNs — 30 duplicated lines that had to be edited in lockstep.
-#
-# Cache behaviour is UNCHANGED by this collapse, which is the whole reason it is
-# safe: because all six RUNs mount all five files, editing any one of them
-# already invalidated all six. Keying them on one stage that contains exactly
-# those five files preserves the property that actually matters — edits to the
-# ~24 host-only modules (BuildDriver, BuildKit, Flutter, …) still touch nothing
-# here, which is why a whole-modules-dir mount remains wrong.
-#
-# Parent is BASE_IMAGE, not `common`: `common` also carries versions.env, and
-# there is no reason for a versions bump to key into this stage.
-#
-# PATH TRAP (cost a chain launch on 2026-08-07): in `--mount=...,from=<stage>`
-# the SOURCE is a Unix-style path inside that stage, with NO drive letter, even
-# on Windows containers. `source=C:\bkmods` is normalised to "/C:/bkmods" and
-# fails the solve with `failed to calculate checksum ... not found`. The COPY
-# destination below stays Windows-shaped (C:\bkmods); only the mount source is
-# `/bkmods`. Probed on this host before re-landing: a bare Test-Path assertion
-# through the mount returns the file content.
+# The shared module closure; mount it with source=/bkmods (see docs/windows-build-invariants.md § In `RUN --mount=...,from=<stage>` the SOURCE path is Unix-style).
 FROM ${BASE_IMAGE} AS buildmods
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsScripts.Shared.psm1 `
@@ -226,34 +43,16 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      C:\bkmods\
 
-# ── TVM-private module closure (#134) ────────────────────────────────────────
-# Derived FROM buildmods, so it is the same six modules PLUS the TVM leaf, and
-# it re-solves only when buildmods or the leaf changes. ONLY media-tvm-built
-# mounts this; every other compile RUN keeps mounting `buildmods` directly.
-#
-# THE POINT: before this stage existed, the six buildmods modules were the only
-# module home on this lane, and they are mounted into every media RUN — so a
-# TVM-only constant could not live in a module without re-keying the ~75 min
-# ONNX branch, the OpenCV branch and the FFmpeg branch. media-tvm runs parallel
-# to media-core, so a TVM-private module costs nothing on the long pole.
-# Editing WindowsTvm.Common.psm1 re-runs the TVM branch alone.
-#
-# Do NOT mount tvmmods from a second RUN. A module two branches need belongs in
-# buildmods, and quietly widening this stage would spend the cache win while
-# leaving the comment above claiming it.
-# BuildKit.ModuleClosure.Tests.ps1 enforces both halves.
+# TVM-private closure, so a TVM edit never re-keys ONNX; mount it from media-tvm-built only (ModuleClosure tests enforce it).
 FROM buildmods AS tvmmods
 COPY windows\scripts\modules\WindowsTvm.Common.psm1 C:\bkmods\
 
-# ── media-litert version env — the branch's shared version ancestor
+# media-litert version env
 FROM common AS media-litert-env
 
 ARG LITERT_VERSION=v2.2.0
 ARG LITERT_LM_VERSION=0.17.1
-# PROTOC_VERSION is NOT independent software: it must match the protobuf runtime
-# pinned inside LiteRT-LM (v0.14.0 -> 6.31.1 -> protoc 31.1). A stale value emits
-# gencode the pinned headers #error on (bit us 2026-08-03). JRE_VERSION feeds
-# Bazel. Both are here because the versions.env COPY is gone — see `common`.
+# PROTOC_VERSION must match LiteRT-LM's pinned protobuf runtime, or its headers #error on the gencode.
 ARG PROTOC_VERSION=35.1
 ARG JRE_VERSION=21
 # rocm lane only: Build-LitertLmBazel.ps1 verifies LiteRT-LM's GPU payload against these.
@@ -271,7 +70,7 @@ ENV LITERT_VERSION="${LITERT_VERSION}" `
     LITERT_LM_WEBGPU_DAWN_SHA256="${LITERT_LM_WEBGPU_DAWN_SHA256}" `
     LITERT_LM_DXC_ZIP_SHA256="${LITERT_LM_DXC_ZIP_SHA256}"
 
-# ── media-tvm version env — SHARED ANCESTOR of both lanes (see media-core-env)
+# media-tvm version env
 FROM common AS media-tvm-env
 
 ARG TVM_REF=v0.26.0
@@ -285,59 +84,21 @@ ENV TVM_REF="${TVM_REF}" `
     IREE_VERSION="${IREE_VERSION}" `
     IREE_ROCM_DEVICE_BC_SHA256="${IREE_ROCM_DEVICE_BC_SHA256}"
 
-# #49 (2026-08-19): the BK compile stages NO LONGER descend from the shared
-# media-core-env ancestor - each stage declares exactly the version keys its
-# component consumes, so a PyAV/FFmpeg bump re-runs ffmpeg+downstream instead
-# of the full ~75-min ONNX build, and a GenAI bump re-runs genai alone.
-# ENV (not bare ARG) so the values persist into the downstream stages via the
-# image config: CUDA_ARCHITECTURES/PYTHON_VERSION set here are inherited by
-# ffmpeg/opencv/genai. (media-core-env, the classic lane's single-stage
-# ancestor, was deleted with that lane on 2026-08-26 — #134.)
+# Each compile stage declares only its own version keys; ENV so CUDA_ARCHITECTURES/PYTHON_VERSION reach the downstream stages.
 FROM common AS media-core-built-onnx
 ARG ONNXRUNTIME_VERSION=v1.30.0
 ARG CUDA_ARCHITECTURES="86;87;89;120"
 ARG PYTHON_VERSION=3.14.7
-# QNN SDK zip integrity pin (#121/#154): a SHARED key, declared in EVERY stage
-# that mounts windows/qnn-sdk -- "onnx-only" was the belief that left three stages
-# extracting the zip unverified. Empty = unpinned / no EP.
+# Declared in every stage that mounts windows/qnn-sdk, or that stage extracts the zip unverified; empty = no EP.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" `
     PYTHON_VERSION="${PYTHON_VERSION}" `
     QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
-# Both DORMANT by default (empty ARG = inert; the scripts test for -eq '1').
-# Declared in the CONSUMING stage per the #103 lesson, and declared AT ALL
-# because buildctl silently DISCARDS a --opt build-arg no Dockerfile ARG
-# matches (the lesson that cost a 25-minute "the flag does not work" run).
-#
-#   SCCACHE_CUDA_LAUNCHER    routes nvcc through sccache. DEFAULT ON since
-#                            2026-08-18: the 2026-08-10 miscompile was
-#                            root-caused to the dryrun quote-collapse bug
-#                            (mozilla/sccache#2811), the patched sccache
-#                            shipped with the #114 base ride, and the
-#                            three-canary bar passed the same evening -
-#                            fused_moe compile green, providers_cuda link
-#                            green COLD (153 device writes) and green on the
-#                            HIT run at a 100.00% CUDA/PTX/CUBIN hit rate
-#                            (207/816 hits). Opt OUT for experiments with:
-#                            -BuildArg SCCACHE_CUDA_LAUNCHER=
-#                            Do not flip this back off silently - without it
-#                            the onnx stage re-pays ~25 min of CUDA compiles
-#                            per rebuild.
-#   SCCACHE_REPRO_CUDA_LLM   RETIRED 2026-08-18 with patch 006 (it existed
-#                            only to skip 006 for the #2808 server-trace
-#                            repro; 006's fused_moe family now goes through
-#                            the launcher by default). ARG kept declared so
-#                            historical commands don't silently no-op via
-#                            buildctl's discard behavior; the env is unread.
-# ARG only, deliberately NO ENV mirror: a declared ARG is already an env var
-# inside this stage's RUN steps, while an ENV would BAKE the experiment value
-# into the image and every downstream stage would inherit it (discovered
-# 2026-08-18: the opencv experiment's launcher leaked into genai's build).
+# ARG only: an ENV would leak the value into every downstream stage; see docs/windows-build-resources.md § Persistent compile cache (sccache).
 ARG SCCACHE_CUDA_LAUNCHER="1"
 ARG SCCACHE_REPRO_CUDA_LLM=""
-# rocm-lane WebGPU EP spike + its pins (Get-BkRocmStageArg): valueless, so the cpu/nvidia RUN env
-# gains nothing. docs/windows-rocm.md § ONNX Runtime WebGPU EP.
+# Valueless, so the cpu/nvidia RUN env gains nothing; see docs/windows-rocm.md § ONNX Runtime WebGPU EP (rocm lane, spike).
 ARG ORT_WEBGPU
 ARG ORT_WEBGPU_WINDOWS_DAWN_VERSION
 ARG ORT_WEBGPU_WINDOWS_DAWN_SHA256
@@ -360,36 +121,12 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
     & 'C:\bkmnt\Build-MediaCoreAll.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
-# FFMPEG BEFORE OPENCV (swapped 2026-08-16, backlog #94). OpenCV's videoio
-# needs FFmpeg to EXIST at configure time or it silently falls back to the
-# prebuilt `opencv_videoio_ffmpeg*.dll` it downloads itself — which is what
-# shipped for months: `FFMPEG: YES (prebuilt binaries)`, avcodec 61 while this
-# chain builds avcodec 63, two FFmpeg generations in one image and
-# cv::VideoCapture using the older. The swap is safe because the dependency runs
-# ONE way: FFmpeg is configured without `--enable-libopencv`, so it needs
-# nothing from OpenCV. (GStreamer↔OpenCV genuinely IS circular — that is #93,
-# a different problem with a different fix.)
-#
-# Every RUN below now passes BOTH -ResumeFrom and -Until. The ffmpeg step used
-# to pass only -ResumeFrom and rely on being LAST in the stage list; after the
-# swap that would have silently dragged OpenCV into the ffmpeg layer.
+# FFmpeg before OpenCV, whose videoio otherwise falls back to its own prebuilt FFmpeg; every RUN passes -ResumeFrom and -Until.
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-ffmpeg
-# Target arch, REDECLARED: ARGs do not cross stage boundaries (same rule the
-# sccache block further down documents). Without this the stage falls back to
-# the amd64 default while its parent image was built for arm64 -- measured
-# 2026-08-23: the FFmpeg cross block never ran, configure link-probed as x64,
-# and lld-link rejected the arm64 onnxruntime.lib with "machine type arm64
-# conflicts with x64", which configure reports as "libonnxruntime not found".
+# Redeclared: ARGs do not cross stages, and the amd64 default would silently build x64 against an arm64 parent.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-# (A KATA_ARCH_PROBE ENV sat here from 2026-08-23: a second ENV carrying the same
-# ARG under a different name, to discriminate "the build-arg never reached the
-# ARG" from "something re-sets the WINDOWS_TARGET_ARCH name specifically". It was
-# the former. Removed 2026-08-26 with its reader in Build-FfmpegFromSource.ps1
-# (#134) — a diagnostic left in place after its question is answered becomes a
-# thing future readers must first prove is not load-bearing.)
-# #49: ffmpeg-component keys live HERE - a bump re-runs ffmpeg+downstream,
-# never the ONNX stage above.
+# FFmpeg's keys live here, so a bump never re-runs the ONNX stage.
 ARG FFMPEG_VERSION=n9.0.2
 ARG PYAV_VERSION=18.1.0
 ARG NV_CODEC_HEADERS_REF=n13.1.15.0
@@ -433,45 +170,13 @@ FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built-opencv
 # Target arch, REDECLARED - see the media-core-built-ffmpeg stage above.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-# DEFAULT ON since 2026-08-17: OpenCV links the FFmpeg this chain builds
-# (avcodec 63) instead of downloading its own prebuilt one (avcodec 61,
-# avdevice NO). Verified by the full-chain smoke gate: 188 passed / 1 failed,
-# the 1 being the deliberately-red #93 GStreamer guard. Requires the FFmpeg-9
-# source patch + PkgConfig shim (both applied by Build-OpencvFromSource.ps1
-# when this is 1). Opt OUT with: -BuildArg OPENCV_LINK_CHAIN_FFMPEG=
-#
-# Declared HERE, not in `common` (#103): only this stage reads it, and in the
-# common ENV block one flip re-ran the ~50-min ONNX stage for nothing. Here a
-# flip re-runs opencv+genai only (~25 min). NB the ARG must exist in the
-# Dockerfile or buildctl silently DISCARDS the --opt build-arg (cost a
-# 25-minute run on 2026-08-16).
+# OpenCV links the chain's FFmpeg; declared here, not in `common`, so a flip re-runs only opencv and genai.
 ARG OPENCV_LINK_CHAIN_FFMPEG="1"
-# DEFAULT ON since 2026-08-19 (#115 closed): OpenCV's CUDA compiles route
-# through the sccache launcher. The old blocker - every .cu rejected as
-# CannotCache(multiple input files) because the SEPARATED --diag-suppress
-# form was missing from sccache's nvcc table - is fixed upstream
-# (mozilla/sccache#2816, merged 2026-08-26; pin bumped to 8ab39266). Canary bar
-# passed 2026-08-19 evening: COLD run wrote all CUDA categories (155
-# cudafe++/nvcc, 620 cicc/ptxas) with a green link; the no-cache HIT run
-# came back at 100.00% across every CUDA category (99.97% overall) and cut
-# the stage from ~13 to ~4.3 min. Opt OUT for experiments with:
-#   -BuildArg OPENCV_CUDA_LAUNCHER=
-# DELIBERATELY NOT named SCCACHE_CUDA_LAUNCHER: the driver's -BuildArg is
-# global across stages, and the shared name once flipped the ONNX stage's
-# cache key too (2026-08-18). The stage-local name maps onto the env var
-# only HERE, INSIDE the RUN - never via ENV (an ENV mapping once baked the
-# flag into the image and genai inherited an active CUDA launcher).
-# History, for the record: the 2026-08-18 run 2 verdict "rsp files pass
-# through uncached" was true but NOT the root cause - the diag-suppress
-# table gap was (backlog #115).
+# Not SCCACHE_CUDA_LAUNCHER: -BuildArg is global, so the shared name would re-key ONNX; mapped inside the RUN only.
 ARG OPENCV_CUDA_LAUNCHER="1"
-# Companion experiment knob: disable CMake's CUDA response files so nvcc
-# calls arrive inline and can enter sccache's decomposition at all (rsp files
-# are passed through uncached - measured 2026-08-18). Only meaningful with
-# OPENCV_CUDA_LAUNCHER=1 AND the shipped quote fix (#114). RUN-scoped, no
-# ENV bake.
+# Experiment knob: no CUDA response files, which sccache passes through uncached.
 ARG OPENCV_CUDA_NO_RSP=""
-# #49: opencv-component keys live HERE.
+# OpenCV's own version keys.
 ARG OPENCV_SOURCE_VERSION=5.0.0
 ARG OPENCV_VERSION=5.0.0
 ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}" `
@@ -493,22 +198,13 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     $env:SCCACHE_CUDA_LAUNCHER = $env:OPENCV_CUDA_LAUNCHER; `
     & 'C:\bkmnt\Build-MediaCoreAll.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
-# HAILO (Phase 3, 2026-09-21; docs/hailo-support.md): HailoRT for Windows -
-# library + hailortcli, both arches. TAPPAS is Linux-only and pyhailort's
-# Windows wheel is a later phase. A DIRECT script call (no Build-MediaCoreAll
-# phase): it shares nothing with the ONNX/FFmpeg/OpenCV phases but the module
-# closure, and the payload installs under C:\runtime\hailo, which the merge
-# copies wholesale with C:\runtime.
+# HailoRT, called directly: it shares only the module closure with the other phases; see docs/hailo-support.md.
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-hailo
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 ARG HAILORT_VERSION=5.4.0
 ENV HAILORT_VERSION="${HAILORT_VERSION}"
-# Integrity pins, forwarded (not just baked): the base image bakes versions.env at
-# ITS build time, so a parent built before the Hailo pins existed would leave
-# HAILORT_SOURCE_SHA256/HAILO_PROTOBUF_* EMPTY -- and an empty -ExpectedSha256 is
-# "no check". The script throws on empty pins; these ARGs are how the current
-# versions.env reaches it.
+# Forwarded as ARGs: an older parent's baked versions.env would leave these empty, and the script throws on empty pins.
 ARG HAILORT_SOURCE_SHA256=7a0e43df03cad7086643029fd7dc3773a8231b1f6383705fe3036896a70472b0
 ARG HAILO_PROTOBUF_VERSION=21.12
 ARG HAILO_PROTOBUF_SHA256=22fdaf641b31655d4b2297f9981fa5203b2866f8332d3c6333f6b0107bb320de
@@ -528,13 +224,10 @@ FROM ${MEDIA_CORE_HAILO_IMAGE} AS media-core-built
 # Target arch, REDECLARED - see the media-core-built-ffmpeg stage above.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-# #49: the genai key lives HERE - a GenAI bump re-runs this stage alone.
+# The genai key lives here, so a GenAI bump re-runs this stage alone.
 ARG ONNXRUNTIME_GENAI_VERSION=v0.15.2
 ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
-# QNN SDK integrity pin (#154): every stage that MOUNTS windows/qnn-sdk must declare
-# this, or Resolve-QnnSdk falls through to its unverified-extract warning. It reached
-# only media-core-built-onnx until 2026-08-31 -- three of four stages extracted the
-# staged zip with no SHA check at all.
+# Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 # Build-host sccache settings: RUN env only, never image ENV (see `common`).
@@ -553,22 +246,14 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
 FROM media-litert-env AS media-litert-built
-# QNN SDK integrity pin (#154): every stage that MOUNTS windows/qnn-sdk must declare
-# this, or Resolve-QnnSdk falls through to its unverified-extract warning. It reached
-# only media-core-built-onnx until 2026-08-31 -- three of four stages extracted the
-# staged zip with no SHA check at all.
+# Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 # Build-host sccache settings: RUN env only, never image ENV (see `common`).
 ARG SCCACHE_WEBDAV_ENDPOINT
 ARG SCCACHE_MULTILEVEL_CHAIN
 ARG SCCACHE_FORCE_LOCAL
-# LiteRT SDK = CMake (sccache mount); LiteRT-LM = bazel (own repository cache
-# mount id=bazel-litertlm-winamd64; bazel's output_base stays container-local
-# - it is rename-heavy and this cache mount is wcifs rename-hostile). The
-# frozen CMake litert-lm fallback (Build-LitertLmFromSource.ps1 + export
-# bridge + link diag + litert-lm patches/shims) stays bind-mounted so a
-# BAZEL_REPO_CACHE-less / fallback run still has it.
+# bazel's output_base stays container-local (rename-heavy, and the cache mount is rename-hostile); the CMake fallback stays mounted.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
@@ -585,16 +270,12 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
     $env:BAZEL_REPO_CACHE = 'C:\bzl-repo-cache'; & 'C:\bkmnt\Build-LitertAll.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
-# tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
+# tvm: direct solve, same mount pattern.
 FROM media-tvm-env AS media-tvm-built
-# QNN SDK integrity pin (#154): every stage that MOUNTS windows/qnn-sdk must declare
-# this, or Resolve-QnnSdk falls through to its unverified-extract warning. It reached
-# only media-core-built-onnx until 2026-08-31 -- three of four stages extracted the
-# staged zip with no SHA check at all.
+# Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
-# The TVM ROCm spike switch: the driver passes 1 on the rocm lane (0 under -NoRocmSpikes).
-# ARG only, no ENV mirror: Build-TvmFromSource.ps1 reads it at RUN time and nothing downstream should.
+# ARG only, no ENV: Build-TvmFromSource.ps1 reads it at RUN time and nothing downstream should.
 ARG TVM_ROCM=0
 # Build-host sccache settings: RUN env only, never image ENV (see `common`).
 ARG SCCACHE_WEBDAV_ENDPOINT

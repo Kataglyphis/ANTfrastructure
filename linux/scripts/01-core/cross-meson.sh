@@ -1,7 +1,5 @@
 # shellcheck shell=bash
-# Source-only helper -- do not execute directly.
-# cross-meson.sh - Meson cross-compilation helpers.
-# Sourced by cross-env.sh.
+# Meson and CMake cross-compilation helpers, sourced by cross-env.sh.
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   echo "This script is meant to be sourced, not executed" >&2
@@ -65,9 +63,7 @@ append_cmake_cross_args() {
   cross_build_enabled || return 0
   setup_linux_cross_env
 
-  # CMake picks up CMAKE_* from the environment automatically, but explicit -D
-  # arguments take precedence and serve as defense-in-depth against stale
-  # inherited env vars or CMake toolchain files that might override them.
+  # Explicit -D wins over stale inherited env vars or toolchain files.
   _out+=(
     "-DCMAKE_SYSTEM_NAME=Linux"
     "-DCMAKE_SYSTEM_PROCESSOR=${CROSS_TARGET_PROCESSOR}"
@@ -100,9 +96,7 @@ ensure_meson_cross_file() {
   rustc_bin="$(command -v rustc 2>/dev/null || true)"
   [ -n "${rustc_bin}" ] || rustc_bin="rustc"
   exe_wrapper=""
-  # Some cross builds need to run target-side helpers during Meson setup. Reuse
-  # an explicitly provided wrapper first, then fall back to the generic qemu
-  # target-runner wrapper installed by pre-setup hooks.
+  # Target-side helpers during setup need a runner: MESON_EXE_WRAPPER, else the pre-setup qemu wrapper.
   if [ -n "${MESON_EXE_WRAPPER:-}" ] && [ -x "${MESON_EXE_WRAPPER}" ]; then
     exe_wrapper="${MESON_EXE_WRAPPER}"
   else
@@ -116,9 +110,7 @@ ensure_meson_cross_file() {
     exe_wrapper_line="exe_wrapper = '${exe_wrapper}'"
   fi
 
-  # Meson's Rust cross sanity checks do not reliably infer the target triple
-  # from the linker alone. Inject it only when the invocation does not already
-  # specify --target so cargo-backed subprojects keep working.
+  # Meson's Rust sanity check cannot infer the target, so the wrapper adds --target when absent.
   if [ -n "${rust_target}" ]; then
     rust_wrapper_dir="${MESON_RUST_TOOLCHAIN_DIR:-${TMPDIR:-/tmp}/meson-rust-toolchain}"
     rust_wrapper="$(make_meson_cross_rust_wrapper "${rust_wrapper_dir}/rustc-$(cross_target_arch)" "${rustc_bin}" "${rust_target}")"
@@ -127,14 +119,7 @@ ensure_meson_cross_file() {
     rust_binary_line="rust = '${rustc_bin}'"
   fi
 
-  # Meson generates a private CMake toolchain for CMake-based subprojects
-  # (e.g. libcamera's bundled libyuv) from this cross file's [cmake] section —
-  # it does NOT inherit the CMAKE_* environment variables exported by
-  # setup_linux_cross_env. Without CMAKE_LIBRARY_ARCHITECTURE, a subproject's
-  # find_package(JPEG)/find_library() cannot locate the target's multiarch
-  # libraries under /usr/lib/<triplet>, and raw "-l<name>" link flags fail with
-  # "unable to find library". Mirroring the multiarch dir here keeps CMake
-  # subprojects cross-aware for every consumer, not just libcamera.
+  # CMake subprojects get their toolchain from [cmake] below, not from the exported CMAKE_* env.
   local target_libdir="/usr/lib/${triplet}"
 
   cat > "${path}" <<EOF

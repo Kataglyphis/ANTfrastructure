@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Tests for run-lint-gates.sh and 01-core/gates.sh. Everything here is about the
-# one failure mode a lint aggregator actually has: reporting GREEN over a tree it
-# never looked at. So the assertions are on the scope construction, the vacuity
-# guards and the accumulate-then-re-raise contract - not on shellcheck's or
-# gitleaks' own verdicts, which their own suites already own and which would
-# make this suite need three network bootstraps to say anything.
+# run-lint-gates.sh and gates.sh graded on scope and vacuity: an aggregator's failure is green over nothing.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -14,8 +9,7 @@ GATE="${SCRIPTS}/run-lint-gates.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# A consumer-shaped checkout: first-party tree, a vendored third_party/ subtree,
-# and one first-party file sitting directly inside third_party/.
+# A consumer with a vendored third_party/ subtree and one first-party file directly in third_party/.
 _consumer() {
   local d; d="$(mktemp -d "${_work}/root.XXXXXX")"
   mkdir -p "${d}/scripts/lib" "${d}/third_party/Vendored/deep"
@@ -40,8 +34,7 @@ t_assert_eq "2" "$(t_rc bash "${GATE}" "${_work}")" \
 t_assert_eq "2" "$(t_rc bash "${GATE}" "$(_consumer)" --nonsense)" \
   "an unknown flag must not be swallowed into a default scope"
 
-# Sourced, not executed: the scope functions are what this suite grades, and the
-# three gate binaries they eventually call each need a network bootstrap.
+# Sourced, not run: the gate binaries it would call each need a network bootstrap.
 # shellcheck source=../run-lint-gates.sh
 source "${GATE}"
 
@@ -96,11 +89,7 @@ t_assert_eq "1" "$(t_rc assert_gates)" \
   "an aggregator that graded nothing reporting OK is the hazard, not an edge case"
 t_assert_contains "$(t_out assert_gates)" "no gate ran"
 
-# --- the shared-config gate --------------------------------------------------
-# What is pinned is the one thing this gate can get wrong that nothing else
-# would notice: passing while comparing NOTHING. The verdict logic itself
-# belongs to test-shared-config-sync.sh; here it only has to be reached, and it
-# must not be reachable by accident.
+# Shared-config gate: only its passing over nothing is pinned here; test-shared-config-sync.sh owns its verdicts.
 _HUB="$(cd "${SCRIPTS}/../.." && pwd)"
 
 _declaring() {  # _declaring <manifest-body> -> a git root carrying a faithful copy
@@ -142,17 +131,11 @@ t_assert_eq "0" "$(t_rc assert_gates)" \
   "it must be able to be green, or the reds above prove only that it is broken"
 t_assert_eq "2" "$(t_rc run_gate "nocmd")"
 
-# --- the third bucket: a gate that COULD NOT run -----------------------------
-# A missing tool is neither a pass nor a failure, and the two ways to pretend
-# otherwise are both lies this file exists to prevent. So the assertions are
-# that the record is KEPT, that keeping it is red until somebody asks for
-# tolerance in writing, and that tolerance never reaches the other two buckets.
-# docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
+# A gate that could not run is neither pass nor failure; see docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
 
 t_case "gates.sh: gate_skip records the gate and its reason, and grades nothing"
 gate_reset "T"
-# t_out is a command SUBSTITUTION, so the record it makes dies with the
-# subshell; the call that has to leave a mark on this shell is the bare one.
+# t_out's record dies with its subshell; the bare call below is what marks this shell.
 _skip_out="$(t_out gate_skip "clang-tidy" "not installed in this image")"
 t_assert_contains "${_skip_out}" "SKIPPED"
 t_assert_contains "${_skip_out}" "not installed in this image" \
@@ -212,13 +195,7 @@ t_assert_eq "2" "$(t_rc assert_gates --fail-on-skip)" \
   "--fail-on-skip is the OLD spelling and is now the DEFAULT; accepting it would green batches it used to red"
 t_assert_contains "$(t_out assert_gates --nonsense)" "unknown argument"
 
-# --- run_gate contains a helper that reports failure with exit ---------------
-# The bug the subshell fixes. Upstream check helpers report failure with err(),
-# which is `exit 1`; run as a bare "$@" that exit unwinds the DRIVER, so the
-# gates after it never run and assert_gates never prints a verdict - "stop at
-# the first failure" arriving through the back door. Graded by running ONE
-# driver against the shipped file and against a copy with the subshell removed:
-# the copy has to die, or the shipped file's pass proves nothing.
+# run_gate's subshell keeps a helper's `exit 1` from unwinding the driver; a copy without it must die.
 _GATES="${SCRIPTS}/01-core/gates.sh"
 _subshell_hits() { grep -c '( "\$@" )' "$1" || true; }
 
@@ -257,10 +234,7 @@ t_assert_eq "" "$(printf '%s\n' "${_bare_out}" | grep 'VERDICT-REACHED' || true)
 t_assert_eq "" "$(printf '%s\n' "${_bare_out}" | grep '== after ==' || true)" \
   "and it must take the remaining gates with it - that loss is the cost being pinned"
 
-# --- the ratchet gates, opt-in -----------------------------------------------
-# Eight --root gates exist for consumers and no consumer ran them, because the
-# aggregator never called them. They are now behind --ratchets: registered only
-# when asked, because a tree with no freeze files is red on its first run.
+# Ratchet gates are opt-in: a tree with no freeze files is red on its first run.
 t_case "--ratchets is accepted and sets the flag; no flag, no ratchet"
 _LINT_GATES_RATCHETS=0
 _lint_gates_parse_args "$(_consumer)" --ratchets
@@ -283,10 +257,7 @@ for _ratchet in "${_LINT_GATES_RATCHET_GATES[@]}"; do
     "${_ratchet}.py must take --root, or the step grades the hub over a consumer"
 done
 
-# Rule 2 of the scan-root contract: an empty scan is a decision, never a default,
-# and the decision belongs to whoever pointed the gate at the tree. Eight gates
-# each reporting green over nothing is the vacuity this whole suite is about, so
-# the aggregator answers ONCE, with `allow`, and says so out loud.
+# Scan-root rule 2: an empty scan is the caller's decision, so the aggregator allows it once, out loud.
 t_case "an empty *.sh scan is allowed once by the aggregator, not eight times in silence"
 t_assert_contains "$(cat "${GATE}")" 'gate_scope.assert_non_empty(RELS, ROOT, ["*.sh"], "allow", "ratchets")' \
   "the one owner of rule 2 must be asked, not re-implemented in bash"
@@ -320,8 +291,7 @@ t_assert_contains "$(PREFLIGHT_PYTHON=/nonexistent/python t_out _lint_gates_inte
   "the failure must name the knob that fixes it"
 
 t_case "a working PREFLIGHT_PYTHON is published verbatim, a command line included"
-# The probe's own hint is PREFLIGHT_PYTHON="uv run --no-project python", so a
-# multi-word value must pass the probe and reach the call sites unquoted.
+# The probe's own hint is a multi-word PREFLIGHT_PYTHON, so it must reach the call sites unquoted.
 _fakepy="$(mktemp -d)/fakepy"
 printf '#!/bin/sh\nexit 0\n' > "${_fakepy}"; chmod +x "${_fakepy}"
 _LINT_GATES_PY=""

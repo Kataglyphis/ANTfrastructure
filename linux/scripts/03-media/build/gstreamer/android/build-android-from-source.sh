@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/../../android-build-preamble.sh"
 
-# 1. Parse Arguments
+# Arguments
 GST_VERSION="${GSTREAMER_VERSION:-1.29.2}"
 ANDROID_SDK="${ANDROID_HOME:-/opt/android-sdk}"
 ANDROID_NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/${ANDROID_NDK_VERSION:-29.0.14206865}}"
@@ -25,7 +25,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# 2. Set environment for non-interactive apt
 export DEBIAN_FRONTEND=noninteractive
 export DEBCONF_NONINTERACTIVE_SEEN=true
 
@@ -72,8 +71,7 @@ patch_cerbero_system_m4_usage() {
     [ -f "${autoconf_recipe}" ] || return 0
     [ -f "${libtool_recipe}" ] || return 0
 
-    # Container layout first: the 4-up repo-relative fallback resolves to a
-    # nonexistent /opt/01-core/apply-patch.sh in the flattened container layout.
+    # Container layout first: in the flattened /opt/scripts tree the repo-relative path does not exist.
     local _apply_patch _patches_root _scripts_dir
     if [ -f /opt/scripts/core/apply-patch.sh ]; then
         _apply_patch=/opt/scripts/core/apply-patch.sh
@@ -90,10 +88,7 @@ patch_cerbero_system_m4_usage() {
 }
 
 override_pkgconfig_dead_mirror() {
-    # PKGCFG-MIRROR: both freedesktop pkg-config hosts are dead; macports serves
-    # the byte-identical tarball (the recipe's checksum still guards the bytes).
-    # Patch named recipes, never a grep-picked one — readdir order is filesystem-
-    # dependent and v1 patched a stray patch-file while echoing success.
+    # PKGCFG-MIRROR: macports serves the byte-identical tarball, still guarded by the recipe's checksum.
     local f patched=0
     for f in recipes/pkg-config.recipe \
              $(grep -rl "pkgconfig\.freedesktop\.org/releases\|gstreamer\.freedesktop\.org/src/mirror/pkg-config" recipes/ packages/ 2>/dev/null); do
@@ -114,18 +109,13 @@ override_pkgconfig_dead_mirror() {
     fi
 }
 
-# Pull a plain "attr = 'value'" (also f-string) out of a cerbero recipe. Recipes are
-# executable python: this is a TEXTUAL read, so callers must refuse what it cannot parse.
+# A textual read of executable python: callers must refuse whatever it cannot parse.
 _cerbero_recipe_str() {
     sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*f\\{0,1\\}['\"]\\([^'\"]*\\)['\"].*/\\1/p" "$1" | head -1
 }
 
 override_soundtouch_codeberg_checksum() {
-    # Forgejo re-compresses Codeberg auto-archives, so any static hash drifts (3x
-    # here) while the SOURCE does not: re-pin dynamically, trusting TLS + the
-    # immutable tag. Best-effort — on any failure cerbero's own checksum still guards.
-    # A point fix on purpose: 13 other forge auto-archives re-checked 2026-08-23 all
-    # still matched their pins, so only Forgejo needs this.
+    # Forgejo re-compresses Codeberg auto-archives, so the hash drifts while the source does not.
     local recipe="recipes/soundtouch.recipe"
     [ -f "${recipe}" ] || return 0
     command -v curl >/dev/null 2>&1 && command -v sha256sum >/dev/null 2>&1 || {
@@ -142,17 +132,14 @@ override_soundtouch_codeberg_checksum() {
         echo "WARNING: could not parse soundtouch name/version/url/checksum from recipe; leaving as-is" >&2
         return 0
     fi
-    # ver/nam are spliced into a sed replacement and into a URL: refuse anything
-    # outside a version/name charset (no delimiter, '&', backslash or metacharacter).
+    # ver/nam are spliced into a sed replacement and a URL, so only a plain version/name charset passes.
     case "${ver}${nam}" in
         *[!A-Za-z0-9._+-]*)
             echo "WARNING: soundtouch name/version have unexpected characters ('${nam}' '${ver}'); leaving recipe as-is" >&2
             return 0 ;;
     esac
 
-    # Expand the recipe's OWN url: hardcoding one would re-pin a checksum upstream
-    # had just fixed the day this recipe moves to a byte-stable source. Anything
-    # left unexpanded means this script no longer understands the URL, so it stops.
+    # The recipe's own url: a hardcoded one would re-pin over upstream's fix once the recipe moves source.
     url="$(printf '%s' "${url_tpl}" | sed \
         -e "s|%(version)s|${ver}|g" -e "s|%(name)s|${nam}|g" \
         -e "s|{version}|${ver}|g" -e "s|{name}|${nam}|g")"
@@ -161,8 +148,7 @@ override_soundtouch_codeberg_checksum() {
             echo "WARNING: soundtouch url '${url_tpl}' has placeholders this script cannot expand; leaving recipe as-is" >&2
             return 0 ;;
     esac
-    # The Forgejo auto-archive endpoint is what justifies trading a pinned hash for
-    # TLS+tag; off it, the recipe's own checksum stands.
+    # Only a Forgejo auto-archive justifies trading the pinned hash for TLS plus the tag.
     case "${url}" in
         https://codeberg.org/*/archive/*) ;;
         *)
@@ -172,8 +158,7 @@ override_soundtouch_codeberg_checksum() {
 
     tmp="$(mktemp)"
     if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 -o "${tmp}" "${url}"; then
-        # `|| actual=""` is load-bearing under `set -euo pipefail`: without it a
-        # failing sha256sum aborts the build instead of reaching the guard below.
+        # `|| actual=""` keeps a failing sha256sum under pipefail from aborting before the guard below.
         actual="$(sha256sum "${tmp}" | awk '{print $1}')" || actual=""
         if [ -z "${actual}" ]; then
             echo "WARNING: could not hash the fetched soundtouch archive; leaving recipe as-is" >&2
@@ -190,10 +175,7 @@ override_soundtouch_codeberg_checksum() {
 }
 
 override_glib_libiconv_dep() {
-    # CERB-ICONV: glib's recipe declares the libiconv dep only below API 28, but other
-    # Android recipes install GNU libiconv's renaming iconv.h anyway and nothing orders
-    # them — lose that race and glib links without -liconv ("undefined symbol:
-    # libiconv_open"). Declaring the dep is deterministic and adds no recipe.
+    # CERB-ICONV: see docs/upstreamable-patches.md § 17. cerbero: glib does not declare its libiconv dependency on Android
     local recipe="recipes/glib.recipe"
     [ -f "${recipe}" ] || {
         echo "WARNING: recipes/glib.recipe missing - glib<-libiconv dep NOT declared (CERB-ICONV)" >&2
@@ -214,8 +196,7 @@ override_glib_libiconv_dep() {
         echo "WARNING: glib's API<28 libiconv guard not found (upstream reformat?) - dep NOT declared (CERB-ICONV)" >&2
         return 0
     fi
-    # A botched sed would surface hours later; recipes are exec'd python, so
-    # compile() is a real syntax gate — roll back on failure.
+    # Recipes are exec'd python, so compile() catches a botched sed now instead of hours into the build.
     if command -v python3 >/dev/null 2>&1 \
        && ! python3 -c "import sys; compile(open(sys.argv[1]).read(), sys.argv[1], 'exec')" "${recipe}" 2>/dev/null; then
         mv -f "${recipe}.cerb-iconv.bak" "${recipe}"
@@ -229,10 +210,7 @@ override_glib_libiconv_dep() {
 # Concurrency: override with JOBS, or tune ANDROID_GSTREAMER_PER_JOB_MB.
 PER_JOB_MB="${ANDROID_GSTREAMER_PER_JOB_MB:-1500}"
 
-# The preamble sourced at the top of this file owns the on-demand load and the
-# fallback; ANDROID_GSTREAMER_PER_JOB_MB is why media_jobs takes a cap at all.
-# The only behaviour this gave up is `nproc --all` in the no-parallelism.sh
-# fallback, which the android image never takes (it ships /opt/scripts/core).
+# Pass the cap: this lane OOMs at media_jobs' generic per-job budget.
 [ -n "${JOBS:-}" ] || JOBS="$(media_jobs "${PER_JOB_MB}")"
 
 export JOBS
@@ -240,16 +218,13 @@ export CMAKE_BUILD_PARALLEL_LEVEL="${JOBS}"
 export MAKEFLAGS="-j${JOBS}"
 export NINJAFLAGS="-j${JOBS}"
 
-# Cargo/Rust build parallelism (important for gst-plugins-rs)
 export CARGO_BUILD_JOBS="${JOBS}"
-# Codegen units begrenzen = weniger RAM pro Crate
+# Capping codegen units caps the RAM each crate takes.
 export CARGO_PROFILE_RELEASE_CODEGEN_UNITS="${JOBS}"
-# Optional: LTO deaktivieren spart RAM bei Release-Builds
-# export CARGO_PROFILE_RELEASE_LTO="false"
 
 echo "Using JOBS=${JOBS} (CMAKE_BUILD_PARALLEL_LEVEL=${CMAKE_BUILD_PARALLEL_LEVEL}, CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}, per_job_mb=${PER_JOB_MB})"
 
-# 3. Pre-install dependencies
+# Host dependencies
 echo "==> Pre-installing dependencies..."
 apt-get update
 apt-get install -y --no-install-recommends \
@@ -263,12 +238,10 @@ apt-get install -y --no-install-recommends \
     libegl1-mesa-dev git m4 xutils-dev ccache \
     libssl-dev
 
-# 4. Setup Cerbero with fallback mechanism
+# Cerbero checkout
 cd /opt
 if [ ! -d "cerbero" ]; then
-    # Pinned shallow clone, HARD-FAIL on a missing tag (supply-chain audit #20):
-    # the old fallback to the MOVING origin/<major.minor> branch silently made the
-    # build unreproducible, and cerbero pins every downstream GStreamer source.
+    # Hard-fail on a missing tag: cerbero pins every downstream GStreamer source, so a moving branch is unreproducible.
     echo "==> Cloning cerbero at pinned tag: $GST_VERSION"
     if ! git clone --depth 1 --branch "$GST_VERSION" https://gitlab.freedesktop.org/gstreamer/cerbero.git; then
         echo "Error: cerbero has no tag '$GST_VERSION'." >&2
@@ -286,7 +259,7 @@ override_soundtouch_codeberg_checksum
 override_pkgconfig_dead_mirror
 override_glib_libiconv_dep
 
-# 5. Setup Python Virtual Environment
+# Python venv
 HOST_PYTHON="$(resolve_host_python)"
 export UV_PYTHON="${HOST_PYTHON}" \
        MEDIA_HOST_PYTHON="${HOST_PYTHON}"
@@ -296,7 +269,7 @@ export UV_PYTHON="${VIRTUAL_ENV}/bin/python" \
        MEDIA_HOST_PYTHON="${VIRTUAL_ENV}/bin/python"
 uv pip install distro "setuptools==70.0.0" wheel
 
-# 6. Detect build host
+# Build host
 BUILD_ARCH=$(uname -m)
 case "$BUILD_ARCH" in
     x86_64|amd64) CERBERO_HOST_ARCH="X86_64" ;;
@@ -304,7 +277,7 @@ case "$BUILD_ARCH" in
     *) echo "Unsupported: $BUILD_ARCH"; exit 1 ;;
 esac
 
-# 7. Map target architecture
+# Target architecture
 case "$TARGET_ARCH" in
     arm64|aarch64)
         CERBERO_TARGET_ARCH="ARM64"
@@ -328,16 +301,10 @@ case "$TARGET_ARCH" in
         ;;
 esac
 
-# 8. Create Cerbero home directory structure
-#
-# CERB-CACHE: cerbero's resumable state on a per-arch BuildKit cachemount. What
-# resumes, why a resume is NOT a re-verification, why this is not /opt/cerbero and
-# what it costs in disk: docs/build-cache-tiers.md § 1.1.
+# Cerbero state dir: see docs/build-cache-tiers.md § 1.1 The cerbero state cachemount (CERB-CACHE)
 CERBERO_HOME="${CERBERO_HOME:-/var/cache/cerbero}"
 
-# CERB-HOME-GUARD: two paths below rm -rf CERBERO_HOME's CONTENTS, so this knob —
-# which reads like a mere path preference — could erase the checkout or /opt's
-# SDK/NDK/GCC tree mid-build. Anything but a dedicated state dir is refused loudly.
+# CERB-HOME-GUARD: CERBERO_HOME's contents get rm -rf'd, so only a dedicated state dir is accepted.
 cerbero_home_reject() {
     echo "ERROR: CERBERO_HOME='${CERBERO_HOME}' is not a usable cerbero state dir: $1" >&2
     echo "       Its CONTENTS are rm -rf'd on cleanup and on CERBERO_CACHE_RESET=1." >&2
@@ -357,16 +324,14 @@ CERBERO_HOME="${CERBERO_HOME%/}"
 [ -n "${CERBERO_HOME}" ] || cerbero_home_reject "must not be the filesystem root"
 [ "$(dirname "${CERBERO_HOME}")" != "/" ] \
     || cerbero_home_reject "must not be a top-level directory (/opt would erase the SDK/NDK/GCC)"
-# /opt/cerbero is the checkout of section 4 and is rm -rf'd after the build:
-# reject it and every ANCESTOR of it ...
+# The checkout /opt/cerbero is deleted after the build: reject it and every ancestor of it.
 # shellcheck disable=SC2194  # the constant subject is deliberate: the VARIABLE
 # is the pattern here, which is what tests "is CERBERO_HOME an ancestor of it?"
 case "/opt/cerbero/" in
     "${CERBERO_HOME}"/*)
         cerbero_home_reject "would delete the cerbero checkout at /opt/cerbero" ;;
 esac
-# ... and every path INSIDE it, which is not destructive but silently pointless:
-# the checkout removal takes the state with it, so nothing would ever resume.
+# State inside the checkout is deleted with it, so nothing would ever resume.
 case "${CERBERO_HOME}/" in
     /opt/cerbero/*)
         cerbero_home_reject "must not live inside the cerbero checkout /opt/cerbero (deleted after the build)" ;;
@@ -377,9 +342,7 @@ mkdir -p "${CERBERO_HOME}"
 mkdir -p "${CERBERO_PREFIX}"
 
 cerbero_state_is_mounted() {
-    # PROVE the mount: an earlier seed-cache attempt shipped inert because nothing
-    # ever mounted its directory. Every uncertain answer is "not mounted", the safe
-    # direction — the cleanup then deletes the state instead of baking it into a layer.
+    # Uncertain means "not mounted": the cleanup then deletes the state instead of baking it into a layer.
     [ -d "${CERBERO_HOME}" ] || return 1
     grep -qF " ${CERBERO_HOME} " /proc/self/mountinfo 2>/dev/null && return 0
     local dev_state dev_parent
@@ -388,8 +351,7 @@ cerbero_state_is_mounted() {
     [ -n "${dev_state}" ] && [ "${dev_state}" != "${dev_parent}" ]
 }
 
-# Cold-start escape hatch for a POISONED state dir. Contents only, never the
-# mountpoint: rm -rf on one fails EBUSY and would kill the run AFTER emptying it.
+# Contents only: rm -rf on the mountpoint itself fails EBUSY after emptying it and kills the run.
 CERBERO_CACHE_RESET="${CERBERO_CACHE_RESET:-0}"
 if [ "${CERBERO_CACHE_RESET}" = "1" ]; then
     echo "==> CERBERO_CACHE_RESET=1 — clearing ${CERBERO_HOME} for a cold cerbero build"
@@ -409,11 +371,10 @@ else
     echo "         state is deleted at the end instead of shipping in the layer (CERB-CACHE)" >&2
 fi
 
-# 9. Map API level to Cerbero's DistroVersion enum
+# API level to cerbero's DistroVersion
 CERBERO_VARIANTS_OVERRIDE=""
 
-# Note: Cerbero's bundled riscv64 Android config requires API 35 and disables Rust.
-# Other Android targets still use the older distro version mapping.
+# Cerbero's bundled riscv64 Android config requires API 35 and disables Rust.
 if [ "${CERBERO_TARGET_ARCH}" = "RISCV64" ]; then
     DISTRO_VERSION="ANDROID_VANILLAICECREAM"
     CERBERO_VARIANTS_OVERRIDE="variants.override('norust')"
@@ -434,7 +395,7 @@ else
     exit 1
 fi
 
-# 10. Create comprehensive configuration file
+# Cerbero config
 cat > ${CONFIG_NAME}.cbc <<EOF
 import os
 from cerbero.config import Architecture, Distro, Platform, DistroVersion
@@ -509,7 +470,7 @@ else
     echo "==> Note: Cerbero CLI has no --jobs/-j; relying on env (MAKEFLAGS/CMAKE_BUILD_PARALLEL_LEVEL/NINJAFLAGS)"
 fi
 
-# 11. Execute build
+# Build
 (
     unset RUSTUP_HOME CARGO_HOME RUSTC_WRAPPER
     export DEBIAN_FRONTEND=noninteractive
@@ -519,9 +480,7 @@ fi
     export ANDROID_SDK_ROOT="${ANDROID_SDK}"
     export ANDROID_NDK_HOME="${ANDROID_NDK}"
     
-    # Pre-install what cerbero's bootstrap would apt-get without -y (it would prompt).
-    # Must FAIL here (no `|| true`): a mirror outage swallowed now resurfaces hours
-    # later as an inscrutable bootstrap failure; transient hiccups retry via 80-retries.
+    # Cerbero's bootstrap would apt-get these without -y; fail here, as a swallowed outage resurfaces hours later.
     echo "==> Installing system packages required by Cerbero (non-interactive)"
     apt-get update
     apt-get install -y --no-install-recommends \
@@ -541,7 +500,7 @@ fi
     uv run ./cerbero-uninstalled -c ${CONFIG_NAME}.cbc "${CERBERO_JOBS_ARGS[@]}" package gstreamer-1.0
 )
 
-# 12. Extract package
+# Extract package
 mkdir -p "$INSTALL_PATH"
 
 echo "==> Searching for package..."
@@ -582,9 +541,7 @@ echo "==> GStreamer ${GST_VERSION} for Android ${TARGET_ARCH} (API ${ANDROID_API
 echo "==> Installed to: $INSTALL_PATH"
 echo ""
 
-# Cleanup (CERB-CACHE). The checkout is dead weight once the package is extracted;
-# the STATE is only deleted when it is NOT on a cachemount, because then it would
-# ship as ~10-15 GB of layer. Trade-offs and orphan reclaim: docs/build-cache-tiers.md § 1.1.
+# Cleanup (CERB-CACHE): state not on a cachemount is deleted, or it would ship in the layer.
 echo "==> Cleaning up the Cerbero checkout..."
 CERBERO_SIZE=$(du -sh /opt/cerbero 2>/dev/null | cut -f1 || echo "unknown")
 cd /
@@ -592,9 +549,7 @@ rm -rf /opt/cerbero
 echo "==> Removed the Cerbero checkout (freed ${CERBERO_SIZE})."
 
 if cerbero_state_is_mounted; then
-    # SUCCESS path only: the package exists, so the extracted/compiled trees are dead
-    # weight (the pickle marks those recipes built). Only sources/local survives —
-    # the tarballs and git repos that make the next run network-independent.
+    # Success path only: the pickle marks the rest built, and sources/local keeps the next run network-independent.
     find "${CERBERO_HOME}/sources" -mindepth 1 -maxdepth 1 ! -name local -exec rm -rf {} + 2>/dev/null || true
     echo "==> Kept cerbero state on the cachemount ${CERBERO_HOME} ($(du -sh "${CERBERO_HOME}" 2>/dev/null | cut -f1 || echo unknown)) for the next attempt."
 else

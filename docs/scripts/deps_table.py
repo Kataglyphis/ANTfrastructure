@@ -1,22 +1,4 @@
-"""Shared deps-table renderer for sync_versions.py and generate-website-licenses.py.
-
-Single source of truth for rendering docs/deps/deps.json into the markdown
-dependency table (third-party-licenses.md block + website license pages).
-Extracted 2026-08-10 (backlog F2): the two scripts carried duplicated
-renderers with DIVERGENT missing-var behavior — generate-website-licenses.py
-got the 2026-08-08 loud-KeyError fix while sync_versions.py still silently
-em-dashed a renamed/removed versions.env key (and in --write mode had already
-written the degraded table before exiting nonzero).
-
-Behavior contract (the generate-website-licenses semantics):
-  * an entry whose "var" is missing from the provided versions dict raises
-    KeyError — loud, and BEFORE anything is written by either caller;
-  * entries without "var" fall back to "version_fixed", else an em-dash.
-
-Callers pass their own parsed versions dict (the two scripts' parsers
-deliberately differ: sync_versions skips empty-valued keys) and wrap the
-returned body lines however they need (marker comments, page templates).
-"""
+"""Renders docs/deps/deps.json for sync_versions.py and generate-website-licenses.py; a missing "var" raises before anything is written."""
 
 from __future__ import annotations
 
@@ -35,8 +17,7 @@ def resolve_dep_version(entry: dict, versions: dict[str, str]) -> str:
     var = entry.get("var")
     if var:
         if var not in versions:
-            # Loud failure: a renamed/removed versions.env key used to degrade
-            # silently to version_fixed or an em-dash on the PUBLISHED pages.
+            # A renamed key must not degrade silently on the published pages.
             raise KeyError(
                 f"deps.json entry {entry.get('name')!r}: var {var!r} "
                 f"not found in versions.env"
@@ -78,13 +59,7 @@ def render_obligations_lines() -> list[str]:
 
 
 def render_source_offer_lines(versions: dict[str, str]) -> list[str]:
-    """The corresponding-source pointers for every copyleft component.
-
-    GPL/LGPL/MPL require the complete corresponding source, or a written offer,
-    to accompany the binary. Publishing the image without either is the single
-    obligation most often missed, so the pointers are generated from the same
-    pins the build uses and cannot drift from them.
-    """
+    """Corresponding-source pointers for every copyleft component, generated from the build's own pins."""
     import license_obligations as lo
 
     metadata = load_deps_metadata()
@@ -93,9 +68,7 @@ def render_source_offer_lines(versions: dict[str, str]) -> list[str]:
         for subsection in section["subsections"]:
             for entry in subsection["entries"]:
                 if lo.requires_source(entry["spdx"]) and entry.get("source"):
-                    # Qualified by image: FFmpeg and GStreamer appear in both the
-                    # Linux and Windows sections with DIFFERENT patch sets, so an
-                    # unqualified heading would collide and hide one of them.
+                    # Qualified by image: FFmpeg and GStreamer ship different patch sets per section.
                     label = f"{entry['name']} — {section['title']}"
                     rows.append((label, entry["spdx"], entry["source"]))
 
@@ -126,10 +99,7 @@ def render_source_offer_lines(versions: dict[str, str]) -> list[str]:
 
 
 def render_modified_lines() -> list[str]:
-    """Components this project patches before redistributing.
-
-    Apache-2.0 section 4(b) and the GPL family both require saying so.
-    """
+    """Components patched before redistribution, which Apache-2.0 4(b) and the GPL family require stating."""
     metadata = load_deps_metadata()
     rows = [
         (f"{e['name']} — {s['title']}", e["modified"])
@@ -153,12 +123,7 @@ def render_modified_lines() -> list[str]:
 
 
 def render_deps_table_lines(versions: dict[str, str]) -> list[str]:
-    """Render the table body as a list of lines (no surrounding markers).
-
-    The body starts with an empty line (before the first section heading) and
-    ends with an empty line (after the last table row) — both callers rely on
-    that shape, so "\n".join(...) reproduces their historical output exactly.
-    """
+    """The table body without markers, starting and ending with an empty line, which both callers rely on."""
     metadata = load_deps_metadata()
     lines: list[str] = []
 

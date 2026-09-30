@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# Tests for 01-core/ancestry.sh + 01-core/manifest-annotation.py — the
-# stale-ancestor guard that makes cross-INVOCATION staleness a hard failure
-# instead of a rule in a document.
+# Tests for the stale-ancestor guard; SC2218 off, as shellcheck 0.9.0 does not track the sourced ancestry_* functions.
 # shellcheck disable=SC2218
-# SC2218 (function defined later): all ancestry_* / registry_pin_ref functions
-# are sourced from ancestry.sh at line 25; shellcheck 0.9.0 does not track
-# sourced definitions and flags them as undefined-later.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${TESTS_DIR}/../01-core"
 source "${TESTS_DIR}/test-harness.sh"
 
-# ancestry.sh expects logging + the stage graph from its caller; stub them so
-# the unit under test stays isolated.
+# ancestry.sh expects logging and the stage graph from its caller; stubbed here.
 log()  { printf '[INFO] %s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
 
@@ -42,8 +36,7 @@ t_assert_eq ",annotation.org.kataglyphis.parent-digest=repo/img@sha256:aaa" \
             "$(ancestry_output_annotations "repo/img@sha256:aaa" "")"
 
 t_case "a comma in the pin is refused, never emitted into the --output spec"
-# A comma would be parsed as an output-opt separator and silently corrupt the
-# exporter spec, so the annotation is dropped instead.
+# A comma would split the exporter spec, so the annotation is dropped instead.
 t_assert_eq "" "$(ancestry_output_annotations "repo/img@sha256:a,b" "sdk" 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
@@ -51,9 +44,7 @@ t_case "_ancestry_digest_of reduces a pinned ref to its digest"
 t_assert_eq "sha256:abc" "$(_ancestry_digest_of "ghcr.io/o/r:tag@sha256:abc")"
 t_assert_eq "sha256:abc" "$(_ancestry_digest_of "sha256:abc")"
 
-# ---------------------------------------------------------------------------
-# manifest-annotation.py: annotations live only in the base64 `Raw` field of
-# `nerdctl manifest inspect --verbose` output.
+# manifest-annotation.py: annotations live only in the base64 `Raw` of `nerdctl manifest inspect --verbose`.
 _mk_inspect_json() {
   local annotations="$1"
   python3 - "${annotations}" <<'PY'
@@ -87,8 +78,7 @@ out="$( { printf '['; _mk_inspect_json '{"org.kataglyphis.parent-digest":"repo/i
        | python3 "${CORE_DIR}/manifest-annotation.py" "${KEY}")"
 t_assert_eq "repo/img@sha256:first" "${out}"
 
-# ---------------------------------------------------------------------------
-# _ancestry_check_link: the actual verdict. Stub the two registry reads.
+# _ancestry_check_link: the verdict, with the two registry reads stubbed.
 RECORDED=""
 CURRENT=""
 ancestry_recorded_parent() { [ -n "${RECORDED}" ] || return 2; printf '%s' "${RECORDED}"; }
@@ -129,8 +119,7 @@ t_case "a partial run passes when every ancestor is current"
 RECORDED="repo/img@sha256:same"; CURRENT="repo/img@sha256:same"
 t_assert_ok ancestry_assert_chain "media" "amd64,arm64"
 
-# ---------------------------------------------------------------------------
-# XC3: run-id annotation + generation-coherence logic.
+# XC3: run-id annotation + generation coherence
 t_case "ancestry_run_id_annotation emits the run-id annotation fragment"
 t_assert_eq ",annotation.org.kataglyphis.run-id=r-123" \
             "$(ancestry_run_id_annotation "r-123")"
@@ -163,8 +152,7 @@ t_assert_ok ancestry_run_ids_coherent "" "" ""
 t_case "a single arch is trivially coherent"
 t_assert_ok ancestry_run_ids_coherent "run-A"
 
-# ---------------------------------------------------------------------------
-# XC2: annotation threading helpers (runtime-build-fns.sh + tag-naming.sh).
+# XC2: annotation threading helpers (runtime-build-fns.sh + tag-naming.sh)
 source "${CORE_DIR}/tag-naming.sh"
 source "${CORE_DIR}/runtime-build-fns.sh"
 
@@ -174,12 +162,7 @@ t_assert_eq "RUNTIME_ANDROID_PIN_riscv64" "$(runtime_android_pin_varname riscv64
 t_assert_eq "RUNTIME_ANDROID_PIN_a_b"     "$(runtime_android_pin_varname "a-b")"
 
 t_case "runtime_android_pin: threaded pin wins, and a resume resolves instead of dropping"
-# Contract CHANGED 2026-08-27 (XC2-PARTIAL-RUN). The threaded env var still
-# wins outright. What changed is the UNSET case: it used to return empty, which
-# is how a `--only runtime` resume shipped wrappers with no parent-digest at
-# all. It now resolves the mutable android tag itself -- but only when a repo is
-# actually configured, so the no-repo case stays empty and callers that never
-# had provenance still behave as before.
+# Unset, it resolves the android tag when a repo is configured, so a resume keeps its parent-digest.
 unset RUNTIME_ANDROID_PIN_arm64 || true
 ( unset IMAGE_REPO IMAGE_REGISTRY_PREFIX 2>/dev/null || true
   t_assert_eq "" "$(runtime_android_pin arm64)" )
@@ -201,15 +184,7 @@ t_case "runtime_image_output_arg with nothing recordable reduces to a plain -t e
 t_assert_eq "type=image,name=repo:runtime-arm64" \
             "$(runtime_image_output_arg "repo:runtime-arm64" "" "" "")"
 
-# XC3-INERT fix (2026-08-23): the contract is now `-t` PLUS provenance LABELS.
-# `-t` stays because RTCACHE3 proved the annotated `--output type=image,name=…`
-# exporter never creates a local containerd tag on this rootless host (the
-# freshly built wrapper was invisible; push/manifest resolved the STALE tag and
-# :latest-cross shipped byte-identical 5x). Labels are the way provenance comes
-# back on that path: they live in the image CONFIG blob, so unlike exporter
-# annotations they survive `-t` and the later push. Stamped on BOTH paths —
-# labels cost nothing on an unpushed image, and a local-only build that carries
-# its own provenance is strictly better than one that does not.
+# `-t` plus labels: the annotated exporter creates no local tag here, and config-blob labels survive `-t` and push.
 t_case "append_runtime_image_output stamps -t plus provenance labels (not pushed)"
 _out=()
 append_runtime_image_output _out "repo:runtime-arm64" 0 "repo@sha256:android" android
@@ -239,11 +214,7 @@ _out=()
 ancestry_label_args _out "" android ""
 t_assert_eq "" "${_out[*]}"
 
-# REGRESSION GUARD (found by this very test file, 2026-08-23): the newline guard
-# was first written as `case $v in *"$(printf '\n')"*)`. Command substitution
-# STRIPS trailing newlines, so that pattern collapsed to `*""*` — it matched
-# every value and silently suppressed ALL provenance labels while logging a
-# bogus "contains a newline" warning. A value with no newline must be recorded.
+# `$(printf '\n')` is empty after substitution, so a newline guard built on it matches every value.
 t_case "ancestry_label_args: an ordinary value is NOT mistaken for a newline"
 _out=()
 ancestry_label_args _out "repo@sha256:deadbeef" android "run-1"
@@ -259,14 +230,9 @@ t_case "ancestry_recorded_label reports absent (exit 2) for an unstamped image"
 NERDCTL_BIN="$(command -v true)" ancestry_recorded_label "repo:whatever" "org.kataglyphis.run-id" >/dev/null 2>&1
 t_assert_eq "2" "$?"
 
-# ---------------------------------------------------------------------------
-# Coverage for the label/registry reader layer (adversarial review 2026-08-23
-# proved these paths had ZERO exercise: the freshness guard never ran, the
-# unified reader was never called, and the wrapper assert had no test at all).
-# ---------------------------------------------------------------------------
+# The label/registry reader layer
 
-# A fake nerdctl whose behaviour is driven by files, so the freshness guard's
-# three outcomes (fresh / diverged / no-registry) are all reachable.
+# An env-driven fake nerdctl, so fresh, diverged and no-registry are all reachable.
 _stub_nerdctl="$(mktemp)"
 cat >"${_stub_nerdctl}" <<'STUB'
 #!/usr/bin/env bash
@@ -282,9 +248,7 @@ exit 0
 STUB
 chmod +x "${_stub_nerdctl}"
 
-# NOTE: the stub is an EXTERNAL script, so its knobs must be exported — and a
-# `VAR=x t_assert_eq "$(fn)"` prefix would not help anyway, because the command
-# substitution is expanded BEFORE the temporary environment is applied.
+# Exported: the stub is external, and a `VAR=x` prefix applies only after `$(fn)` has expanded.
 export NERDCTL_BIN="${_stub_nerdctl}"
 
 t_case "ancestry_recorded_label returns the label when local bytes ARE the registry copy"
@@ -335,9 +299,7 @@ ancestry_recorded_annotation() { return 1; }
 ancestry_recorded_provenance repo:tag org.kataglyphis.run-id >/dev/null 2>&1
 t_assert_eq "1" "$?"
 
-# The post-build self-check: a silently inert stamp mechanism must FAIL the
-# build, but an unreadable image must not (that is the RTCACHE3 lesson applied
-# to the fix itself — a correct-looking flag that does nothing ships green).
+# An inert stamp must fail the build; an unreadable image must not.
 t_case "runtime_assert_provenance_stamped FAILS when the requested label did not land"
 ancestry_recorded_label() { return 2; }
 CROSS_RUN_ID="run-XYZ" runtime_assert_provenance_stamped repo:wrapper >/dev/null 2>&1
@@ -362,9 +324,7 @@ unset NERDCTL_BIN STUB_LABEL_VALUE STUB_LOCAL_DIGEST
 rm -f "${_stub_nerdctl}"
 
 
-# --from-stage compiler has only `base` above it, and base has no parent: ZERO
-# links is legitimate there. The first version of the zero-link guard failed it
-# and blocked the 2026-09-01 RVV rebuild at startup.
+# From --from-stage compiler there is no link above, which is legitimate.
 t_case "no ancestor links above the start stage is not a failure"
 t_assert_contains "$(cat "${TESTS_DIR}/../01-core/ancestry.sh")" "_ANCESTRY_LINKS_FOUND" \
   "the guard must separate 'nothing to compare' from 'nothing resolved'"

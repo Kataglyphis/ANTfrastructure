@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify-runtime-paths.sh. LOG31: this gate once NEVER failed -- an
-# inner warning swallowed by an outer green. Its contract since is deliberately
-# split, and BOTH halves need proving: a missing tracked file FAILS hard, while
-# every path-mismatch WARN stays advisory because the extraction is heuristic.
-# A suite that only pinned the WARN text would leave the toothless half toothless.
-# docs/code-quality-tooling.md#runtime-path-consistency-runtime-paths
+# verify-runtime-paths.sh: a missing tracked file fails hard, path mismatches only WARN; see docs/code-quality-tooling.md#runtime-path-consistency-runtime-paths
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -15,9 +10,7 @@ GATE="${TESTS_DIR}/../04-runtime/verify-runtime-paths.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# _tree: a throwaway repo root with the gate at its real depth and the four files
-# it declares as infrastructure. The loader is the real one -- the fixture proves
-# the gate's own logic, not a reimplementation of versions.env parsing.
+# _tree: a repo root with the gate at its real depth and the real versions.env loader.
 _tree() {
   local d; d="$(gate_tree_here "${_work}" "${GATE}" linux/scripts/04-runtime/verify-runtime-paths.sh)"
   install -D -m 0644 "${CORE}/load-versions-env.sh" "${d}/linux/scripts/01-core/load-versions-env.sh"
@@ -50,8 +43,7 @@ t_assert_eq "0" "$(t_rc _gate "${fix}")" "the gate must be able to be green, or 
 t_assert_contains "$(t_out _gate "${fix}")" "Done: path-mismatch WARN lines above are advisory"
 
 t_case "each tracked file the gate declares as infrastructure FAILS hard when it is gone"
-# A rename that silently drops half the comparison is the LOG31 shape: the check
-# still printed a green summary while checking nothing.
+# A rename must not silently drop half the comparison behind a green summary.
 for _missing in linux/scripts/04-runtime/runtime-paths.env \
                 linux/scripts/01-core/versions.env \
                 linux/Dockerfile.package \
@@ -71,9 +63,7 @@ t_assert_contains "${_out}" "Dockerfile.media" "an early exit sends the reader b
 t_assert_contains "${_out}" "(LOG31)"
 
 t_case "a path mismatch is ADVISORY: it WARNs and the gate still exits 0"
-# The extraction is a heuristic over ENV blocks and produces false positives on a
-# healthy tree (ARG-composed paths, unexpanded refs). Promoting these to failures
-# is the tempting tightening that would make the gate unusable, not stronger.
+# The ENV-block extraction is heuristic and has false positives, so failing on it would make the gate unusable.
 fix="$(_tree)"
 _dockerfile "${fix}" media /opt/opencv5/bin
 _out="$(t_out _gate "${fix}")"
@@ -88,10 +78,7 @@ t_assert_eq "0" "$(t_out _gate "${fix}" | grep -c -e '/srv/nowhere')" \
   "the WARN case list is narrow on purpose; widening it floods a healthy tree"
 
 t_case "a canonical path is expanded from versions.env before it is compared"
-# A version embedded MID-path is where the expansion is load-bearing: the
-# ${...}-stripping alone turns /opt/${GCC_VERSION}-tools into /opt/-tools, which
-# is still an /opt path, still absent, and therefore a WARN about a path the
-# Dockerfile does carry.
+# Mid-path, stripping ${...} alone would turn /opt/${GCC_VERSION}-tools into an absent /opt/-tools.
 fix="$(_tree)"
 printf 'PATH_GCC_TOOLS=/opt/${GCC_VERSION}-tools\n' >> "${fix}/linux/scripts/04-runtime/runtime-paths.env"
 _dockerfile "${fix}" package /opt/opencv5/bin /opt/ffmpeg/bin /opt/16.2.0-tools

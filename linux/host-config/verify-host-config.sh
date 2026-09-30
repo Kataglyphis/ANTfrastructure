@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# verify-host-config.sh — drift check: live host config vs the canonical repo
-# copies (backlog HC1). WARN-ONLY by design (exit 0 unless --strict): CI
-# runners and fresh hosts legitimately lack the live files, and preflight
-# must not fail on them. The point is VISIBILITY — the gckeepstorage
-# regression survived two days because nothing compared live vs intended.
-#
-# Usage: verify-host-config.sh [--strict]   (--strict: drift => exit 1)
+# Live vs canonical host config; warn-only unless --strict, since CI runners and fresh hosts lack the live files.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

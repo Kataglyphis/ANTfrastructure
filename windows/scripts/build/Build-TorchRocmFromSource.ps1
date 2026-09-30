@@ -7,17 +7,12 @@
 .SYNOPSIS
     Builds the torch wheel for Windows ROCm from upstream source against TheRock (rocm lane only).
 .DESCRIPTION
-    The first RUN of Dockerfile.torch's torch-rocm-wheels stage; Build-TorchvisionRocmFromSource.ps1 is the second
-    and dot-sources this file for its helpers. Upstream pytorch at TORCH_ROCM_WINDOWS_PYTORCH_COMMIT (PYTORCH_VERSION),
-    compiled against the SDK at C:\TheRock\build for the ROCM_WINDOWS_GFX_FAMILY targets, following TheRock's
-    external-builds/pytorch/build_prod_wheels.py. The wheel loads ROCm like AMD's: torch/_rocm_init.py and
-    rocm[libraries]==ROCM_WINDOWS_RELEASE. AOTriton (flash/mem-efficient SDPA) and torch.distributed are off.
-    docs/windows-rocm.md § PyTorch on the rocm lane.
+    Follows TheRock's build_prod_wheels.py; Build-TorchvisionRocmFromSource.ps1 dot-sources this file for its helpers.
+    See docs/windows-rocm.md § PyTorch on the rocm lane (torch stage).
 .PARAMETER OutputDir
     Receives exactly torch-<v>+rocm<r>-cp314-cp314-win_amd64.whl.
 .PARAMETER WorkDir
-    Sources, the build venv and the build tree; short on purpose (Windows path limits). The torch tree is
-    removed at the end, the venv (torch installed) stays for the torchvision RUN.
+    Sources, build venv and tree, short for Windows path limits; the venv stays for the torchvision RUN.
 #>
 param(
     [string]$OutputDir = 'C:\torch-rocm-wheels',
@@ -135,8 +130,7 @@ function Get-TorchRocmWheelName {
 }
 
 function Assert-TorchRocmSystemLibomp {
-    # torch_cpu.dll imports MSVC's libomp140.x86_64.dll. VS 18 ships it only under debug_nonredist, so the wheel does
-    # not carry it: the image's VS install puts it in System32 (docs/windows-rocm.md § PyTorch on the rocm lane).
+    # VS 18 ships libomp140 only under debug_nonredist, so the wheel relies on System32's; see docs/windows-rocm.md § PyTorch on the rocm lane (torch stage).
     param([Parameter(Mandatory)][string]$System32)
     $dll = Join-Path $System32 'libomp140.x86_64.dll'
     if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { throw "$dll is missing: torch_cpu.dll imports it (USE_OPENMP), so import torch would fail" }
@@ -161,8 +155,7 @@ function Set-TorchRocmProcessEnv {
 }
 
 function Copy-TorchRocmVenvShim {
-    # Build-TorchApp's venv fix-ups: without the base sitecustomize.py the clang-built CPython reports win32
-    # (uv resolves 32-bit wheels, the torch wheel is tagged win32); python3.dll serves abi3 pyds.
+    # Without the base sitecustomize.py the clang-built CPython reports win32 and uv resolves 32-bit wheels.
     param([Parameter(Mandatory)][string]$BaseSitePackages, [Parameter(Mandatory)][string]$BasePythonDir, [Parameter(Mandatory)][string]$Venv)
     $shim = Join-Path $BaseSitePackages 'sitecustomize.py'
     if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) { throw "$shim not found: the build venv would report win32 and resolve 32-bit wheels" }
@@ -230,8 +223,7 @@ function Get-TorchRocmRuntimePin {
 }
 
 function Save-TorchRocmRuntimeWheel {
-    # Fetches the runtime pins into $Dir and returns uv's hash-pinned requirement lines: the build venv
-    # needs rocm_sdk, because torch/_rocm_init.py runs on the `import torch` torchvision's setup does.
+    # The build venv needs rocm_sdk: torch/_rocm_init.py runs on the `import torch` torchvision's setup does.
     param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][object[]]$Pin)
     New-Item -ItemType Directory -Force -Path $Dir | Out-Null
     foreach ($p in $Pin) {

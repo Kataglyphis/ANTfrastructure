@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# verify-media-artifacts.sh
-# Validates that each media build stage produced actual output before the next
-# stage consumes it.  Called from Dockerfile.media RUN steps after each library
-# build completes.
-#
-# Usage:
-#   verify-media-artifacts.sh <stage> [prefix_dir]
-#
-# Stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, litert, litert-headers,
-#         opencv, opencv-core, ffmpeg, gstreamer, libcamera, app-wheels
+# Usage: verify-media-artifacts.sh <stage> [prefix_dir]; stops the build before an empty stage is consumed.
 
 case "${1:-}" in
   -h|--help)
@@ -69,14 +60,11 @@ verify_file_exists() {
   return 0
 }
 
-# Locate a <pc_name>.pc under <prefix> and report. Required by default; pass
-# "optional" as the 4th arg to downgrade a miss to an INFO instead of a failure.
+# <prefix> <pc_name> <label> [optional]: "optional" downgrades a miss to INFO.
 verify_pkgconfig() {
   local prefix="$1" pc_name="$2" label="$3" optional="${4:-}"
   local pc
-  # `|| true` (like verify_shared_lib below): an absent prefix makes find exit
-  # non-zero, which must surface as this function's "not found" verdict — not
-  # as a set -e abort of the whole verifier.
+  # `|| true`: an absent prefix must be a "not found" verdict, not a set -e abort.
   pc="$(find "${prefix}" -name "${pc_name}" -type f 2>/dev/null | head -1 || true)"
   if [ -n "${pc}" ]; then
     pass_check "${label} pkg-config: ${pc}"
@@ -106,10 +94,7 @@ verify_shared_lib() {
   return 0
 }
 
-# Side-effect-free probe: succeeds if <dir> contains a file matching <pattern>.
-# Use for one-of/fallback logic — the verify_* helpers above increment FAILURES
-# BEFORE returning 1, so `verify_x A || verify_x B` counts a failure even when
-# B passes (that broken idiom is why this exists).
+# Side-effect-free, for one-of logic: `verify_x A || verify_x B` counts A's failure even when B passes.
 probe_lib() {
   local dir="$1" glob_pattern="$2"
   [ -n "$(find "${dir}" -maxdepth 2 -name "${glob_pattern}" -type f 2>/dev/null | head -1 || true)" ]
@@ -130,12 +115,7 @@ verify_any_lib() {
   return 1
 }
 
-# AP7 (media half) — per-prefix size observability. INFORMATIONAL ONLY: never
-# touches FAILURES, never returns non-zero. The media image is ~42 GB with no
-# per-prefix breakdown anywhere; this prints one so every size item (AP1/AP4/S2/
-# TG4) becomes a measured number on the very next build. Mirrors the runtime
-# half's check_size_observability (smoke-runtime-image.sh). `|| true` on each
-# probe so a missing prefix or a du hiccup can never abort the verifier.
+# Informational only: never touches FAILURES or returns non-zero.
 report_prefix_sizes() {
   echo "--- Size: per-prefix disk usage (informational, ${TARGET_ARCH:-${TARGETARCH:-native}}) ---" >&2
   du -sh /opt/* 2>/dev/null | sort -h | sed 's/^/    /' >&2 || true
@@ -153,8 +133,7 @@ case "${STAGE}" in
     verify_shared_lib "${PREFIX}/lib" "libonnxruntime.so*" "libonnxruntime.so"
     verify_dir_not_empty "${PREFIX}/include" "ONNX Runtime CPU include dir"
     verify_file_exists "${PREFIX}/include/onnxruntime/core/session/onnxruntime_c_api.h" "ONNX Runtime C API header"
-    # QNN EP (backlog QNN-LINUX): if the QNN provider .so was installed, the
-    # backend .so libs must be staged beside it. Absent provider = QNN off (default).
+    # A QNN provider needs its backend libs beside it; no provider means QNN is off.
     if find "${PREFIX}/lib" -maxdepth 1 -name 'libonnxruntime_providers_qnn.so*' -type f 2>/dev/null | grep -q .; then
       if ! find "${PREFIX}/lib" -maxdepth 1 -name 'libQnn*.so' -type f 2>/dev/null | grep -q .; then
         echo "FAIL [${STAGE}]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged — QNN runtime missing"
@@ -170,30 +149,19 @@ case "${STAGE}" in
       echo "SKIP [${STAGE}]: BUILD_GENAI is not true"
       exit 0
     fi
-    # 60-build-genai.sh exits 0 after pre-creating an EMPTY output tree
-    # (ensure_onnx_output_tree) where it skips — mirror those skips instead of
-    # "verifying" empty dirs. Since GENAI-DRIFT (2026-08-24) the producer's
-    # cross skip is arch-specific: only non-arm64 cross targets bail. arm64
-    # cross-builds the wheel for real ("Created wheel for onnxruntime-genai:
-    # onnxruntime_genai-0.15.2-cp314-cp314-linux_aarch64.whl", media-arm64.log
-    # 2026-08-27) while this gate still skipped it as "does not cross-build".
-    # GEN1: riscv64 joined the producer's cross allowlist and this SKIP; keep the
-    # two allowlists in lockstep. docs/gen1-riscv64-genai.md
+    # Mirror 60-build-genai.sh's skips; keep both cross allowlists in lockstep. See docs/gen1-riscv64-genai.md
     _vma_host="$(uname -m)"
     case "${_vma_host}" in x86_64) _vma_host=amd64 ;; aarch64) _vma_host=arm64 ;; esac
     _vma_target="${TARGET_ARCH:-${TARGETARCH:-${_vma_host}}}"
     case "${_vma_target}" in x86_64) _vma_target=amd64 ;; aarch64) _vma_target=arm64 ;; esac
-    # GEN1 escape hatch: trust the producer's marker; the env test is only a
-    # pre-marker fallback. docs/gen1-riscv64-genai.md
+    # The producer's marker wins; the env test is only a fallback.
     if [ "${_vma_target}" = "riscv64" ] \
        && { [ -f "${PREFIX}/.gen1-lane-off" ] \
             || [ "${GENAI_ALLOW_RISCV64:-false}" != "true" ]; }; then
       echo "SKIP [${STAGE}]: riscv64 GenAI lane is off (GEN1 escape hatch); producer created a placeholder tree"
       exit 0
     fi
-    # The producer may have skipped for a reason that is NOT the escape hatch
-    # (e.g. target Python dev files missing). Still a hard failure with the lane
-    # on, but say WHY. docs/gen1-riscv64-genai.md
+    # Any other producer skip is still a failure with the lane on; say why.
     if [ -f "${PREFIX}/.gen1-skip-reason" ]; then
       echo "FAIL [${STAGE}]: producer skipped the GenAI build: $(cat "${PREFIX}/.gen1-skip-reason" 2>/dev/null)" >&2
       exit 1
@@ -208,8 +176,7 @@ case "${STAGE}" in
       echo "SKIP [${STAGE}]: only the arm64/riscv64 cross lanes build GenAI (producer skips ${_vma_target})"
       exit 0
     fi
-    # A dir that exists is no evidence — the producer mkdir -p's lib/ include/
-    # wheels/ on every path. Require an actual artifact.
+    # The producer creates the dirs on every path, so require an artifact.
     verify_any_lib "ONNX Runtime GenAI artifact" \
       "${PREFIX}/lib:libonnxruntime-genai*.so*" \
       "${PREFIX}/lib:libonnxruntime_genai*.so*" \
@@ -232,10 +199,7 @@ case "${STAGE}" in
 
   litert)
     PREFIX="${PREFIX:-/usr/local}"
-    # NOT ${PREFIX}/include|lib generically: the base image already fills
-    # /usr/local (from-source CPython), so those checks were unconditionally
-    # true even when build-litert.sh installed nothing. Require LiteRT's OWN
-    # evidence: its header tree plus at least one lib (shared or static).
+    # LiteRT's own files: CPython already fills /usr/local/include and lib.
     if [ ! -d "${PREFIX}/include/tensorflow/lite" ] && [ ! -d "${PREFIX}/include/tflite" ]; then
       fail_check "no LiteRT header tree under ${PREFIX}/include (tensorflow/lite or tflite)"
     else
@@ -250,8 +214,7 @@ case "${STAGE}" in
 
   litert-headers)
     PREFIX="${PREFIX:-/usr/local}"
-    # One verdict for the one-of check (the old `verify_A || verify_B` idiom
-    # counted A's failure even when B passed — fail_check increments first).
+    # One verdict: `verify_A || verify_B` would count A's failure.
     if [ -d "${PREFIX}/include/tensorflow/lite" ] \
        && [ -n "$(ls -A "${PREFIX}/include/tensorflow/lite" 2>/dev/null || true)" ]; then
       pass_check "TFLite headers: ${PREFIX}/include/tensorflow/lite"
@@ -265,8 +228,7 @@ case "${STAGE}" in
 
   opencv-core)
     PREFIX="${PREFIX:-/opt/opencv5}"
-    # Was two INFO-only optional-lib checks — they could never fail, so a build
-    # that produced no libopencv_core at all passed. One-of, hard.
+    # Hard one-of: a build without libopencv_core must fail.
     verify_any_lib "libopencv_core.so" \
       "${PREFIX}/lib:libopencv_core.so*" \
       "${PREFIX}/lib64:libopencv_core.so*"
@@ -288,8 +250,7 @@ case "${STAGE}" in
     PREFIX="${PREFIX:-/opt/ffmpeg}"
     verify_file_exists "${PREFIX}/bin/ffmpeg" "ffmpeg binary"
     verify_file_exists "${PREFIX}/bin/ffprobe" "ffprobe binary"
-    # Skip -version check: ffmpeg's shared libs aren't registered with ldconfig yet
-    # at this build stage (configure-runtime.sh runs later in the final stage).
+    # No -version run: configure-runtime.sh registers the libs with ldconfig later.
     verify_dir_not_empty "${PREFIX}/lib" "FFmpeg lib dir"
     ;;
 
@@ -297,8 +258,7 @@ case "${STAGE}" in
     PREFIX="${PREFIX:-/opt/gstreamer}"
     verify_file_exists "${PREFIX}/bin/gst-launch-1.0" "gst-launch-1.0"
     verify_file_exists "${PREFIX}/bin/gst-inspect-1.0" "gst-inspect-1.0"
-    # Skip --version check: shared libs aren't registered with ldconfig yet at
-    # this build stage (configure-runtime.sh runs later in the final stage).
+    # No --version run: configure-runtime.sh registers the libs with ldconfig later.
     verify_dir_not_empty "${PREFIX}/lib" "GStreamer lib dir"
     ;;
 
@@ -322,11 +282,7 @@ case "${STAGE}" in
       echo "SKIP [${STAGE}]: not riscv64"
       exit 0
     fi
-    # "not empty" was vacuous: the Dockerfile touches a .placeholder whenever
-    # the wheelhouse build failed, so this gate passed on exactly the failures
-    # it exists to catch. riscv64 has NO PyPI wheels — require a real .whl.
-    # ALLOW_EMPTY_APP_WHEELS=1 is the explicit escape hatch for a deliberate
-    # wheel-less image (same pattern as ALLOW_IREE_BUILD_FAIL).
+    # A real .whl, not "not empty": a failed wheelhouse build leaves a .placeholder.
     if probe_lib "${PREFIX}" "*.whl"; then
       pass_check "app wheelhouse contains wheels"
     elif [ "${ALLOW_EMPTY_APP_WHEELS:-0}" = "1" ]; then
@@ -350,24 +306,18 @@ case "${STAGE}" in
     ;;
 
   sizes)
-    # Explicit invocation of the informational size report (AP7). No integrity
-    # checks, no failure path — just the per-prefix breakdown.
     report_prefix_sizes
     ;;
 
   media-inputs)
     echo "=== Media inputs stage integrity check ==="
     verify_dir_not_empty "${ONNXRUNTIME_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}/lib" "ONNX CPU libs in media-inputs"
-    # LOG35: the old `verify_A || verify_B` idiom counted A's failure even when
-    # B passed (verify_dir_not_empty increments FAILURES before returning 1).
-    # Use verify_any_lib for a single one-of verdict instead.
+    # One verdict: `verify_A || verify_B` would count A's failure.
     verify_any_lib "OpenCV libs in media-inputs" \
       "${OPENCV_OUTPUT_DIR:-/opt/opencv5}/lib:libopencv_core.so*" \
       "${OPENCV_OUTPUT_DIR:-/opt/opencv5}/lib64:libopencv_core.so*"
     verify_file_exists "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg" "ffmpeg in media-inputs" || true
-    # LOG36: TVM libs are built in the media stage but were dropped at the
-    # media→package COPY. Verify they exist HERE (the media stage); the copy
-    # gap is fixed in copy-media-payloads.sh. Optional — amd64-only.
+    # Optional TVM libs, checked here so a loss at the package COPY is attributable.
     for _tvm_lib in /usr/local/lib/libtvm.so /usr/local/lib/libtvm_runtime.so; do
       [ -e "${_tvm_lib}" ] && verify_file_exists "${_tvm_lib}" "TVM ${_tvm_lib##*/} in media-inputs" || true
     done
@@ -377,9 +327,7 @@ case "${STAGE}" in
         verify_dir_not_empty "/opt/acl/lib" "ACL in media-inputs" || true
         ;;
     esac
-    # AP7: emit the per-prefix size breakdown at the media consolidation point
-    # (this arm runs on every media build) so the numbers land without a
-    # dedicated Dockerfile RUN line. Informational — cannot affect FAILURES.
+    # This arm runs on every media build, so the size report needs no RUN line of its own.
     report_prefix_sizes
     ;;
 

@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# Tests for check_shared_config, the inline preflight gate: ANTfrastructure's own
-# root .cmake-format.yaml is a consumer copy and must match shared/config's.
-#
-# WHICH assets the gate looks at now comes from the root
-# .antfrastructure-shared.manifest, not from the `--ignore` list this function used
-# to carry. So the manifest is part of the owner-shaped fixture below, and the
-# four names with no root copy here are asserted to be ABSENT from the report
-# rather than present as SKIP lines -- an undeclared asset is not this
-# mechanism's business and is never mentioned. See shared/config/README.md.
+# preflight's check_shared_config: the manifest declares the assets, and undeclared ones are never mentioned; see shared/config/README.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -19,10 +11,7 @@ trap 'rm -rf "${WORK}"' EXIT
 printf '%s\n' "${FN_SRC}" > "${WORK}/guard.sh"
 
 TREE=""
-# _tree <name> — an owner-shaped fixture: the real shared/config/ set, the root
-# manifest that declares what this repo takes, and the one root copy the gate
-# compares. The sync script itself is part of that set: check_shared_config
-# shells out to it, so a fixture without it fails at exec.
+# _tree <name>: the real shared/config set, including the sync script check_shared_config shells out to.
 _tree() {
   TREE="${WORK}/$1"
   mkdir -p "${TREE}/shared/config"

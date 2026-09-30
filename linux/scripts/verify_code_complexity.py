@@ -1,27 +1,7 @@
 #!/usr/bin/env python3
-"""Cyclomatic complexity and nesting depth of every shell and Python function in the
-code-size scan set, under the four-way allow contract (code-complexity.allow).
-Heredoc bodies, comments and quoted text are invisible to the shell counter; a
-reserved word counts only in command position, case arms count, $(...)'s ')' does not.
+"""Cyclomatic complexity and nesting depth of every function in verify_code_size's scan set (code-complexity.allow).
+
 docs/code-quality-tooling.md#shell-complexity-code-complexity
-
-WHAT THIS GATE READS. It owns no scan set: `scan` -- and the ROOT that walk is
-measured against -- are verify_code_size's, so the two gates grade the same files
-by construction. That import is also how the root defect reached here: SCAN is
-four top-level directories resolved from a __file__ which, inside a consumer's
-third_party/ANTfrastructure, is the VENDORED hub and not the consumer.
-
-GRADING A CONSUMER. `--root` and `--allow` are the same contract
-docs/scripts/verify_mutations.py already documents, and for the same reason the
-lint gates take one: a submodule checkout puts this script INSIDE the consumer,
-where a root derived from __file__ resolves to ANTfrastructure and the gate grades
-the wrong tree while reporting green over one nobody looked at.
-
-Under the hub's own root the scan set is verify_code_size.scan's historical walk,
-so the hub's own verdict is unchanged. Under any other root it is every TRACKED
-*.sh and *.py minus the excluded top-level directories -- the same rule
-run-lint-gates.sh uses, so a consumer needs no per-repo configuration and a
-vendored subtree cannot creep in.
 """
 import argparse
 import ast
@@ -63,17 +43,14 @@ def shell_code(body_lines):
 
 
 class _Walker:
-    """Token-level state of one shell body: block depth, ( ) depth, whether the next
-    token sits in command position, and case frames ([parens_at_entry,
-    word|pattern|body]) so a case arm's ')' is told from $(...)'s."""
+    """Token state of one shell body; case frames tell a case arm's ')' from $(...)'s."""
 
     def __init__(self):
         self.cc, self.depth, self.top, self.parens, self.frames = 1, 0, 0, 0, []
         self.cmd = True
 
     def word(self, tok, delimited):
-        """A reserved word out of command position, or a `}` glued to what precedes it
-        (the tail of `${x:-$(cmd)}`), is ordinary text."""
+        """A reserved word out of command position, or a glued `}` as in `${x:-$(cmd)}`, is ordinary text."""
         if tok in KEYWORDS and not self.cmd:
             return ""
         if tok == "}" and not delimited:
@@ -144,8 +121,7 @@ def _py_paths(node):
 
 
 def py_metrics(node):
-    """(cyclomatic complexity, nesting depth) of one Python def, nested defs excluded.
-    An elif is an If inside its parent's orelse and continues that parent's depth."""
+    """(cyclomatic complexity, nesting depth) of one def, nested defs excluded; an elif keeps its parent's depth."""
     cc, top = 1, 0
 
     def walk(n, depth):
@@ -180,11 +156,7 @@ def py_functions(path, rel):
 
 
 def _tracked(root, *suffixes):
-    """Yield (path, rel) for every TRACKED file under `root` ending in one of `suffixes`.
-
-    `git ls-files`, not a walk: a vendored submodule is a GITLINK, so the scope
-    cannot swallow another repo's code, and build output cannot get in.
-    """
+    """Yield (path, rel) per tracked file with one of `suffixes`; ls-files keeps submodules and build output out."""
     out = subprocess.run(["git", "-C", root, "ls-files", "-z", "--"]
                          + ["*" + s for s in suffixes],
                          capture_output=True, text=True)
@@ -198,8 +170,7 @@ def _tracked(root, *suffixes):
 
 
 def scanner(root):
-    """The (path, rel) source for `root`: verify_code_size's own walk under the hub,
-    every tracked subject elsewhere."""
+    """The (path, rel) source: verify_code_size's walk under the hub, every tracked file elsewhere."""
     if root == os.path.abspath(ROOT):
         return scan
     return functools.partial(_tracked, root)
@@ -237,15 +208,11 @@ def main():
     args = ap.parse_args()
 
     try:
-        # resolve_root, not abspath: `git rev-parse` succeeds in any
-        # SUBDIRECTORY of a checkout, so grading one anchors every allowlist
-        # key a level down without saying so.
+        # resolve_root, not abspath: a subdirectory root would silently shift every allowlist key.
         root = gate_scope.resolve_root(args.root, ROOT)
     except gate_scope.ScopeError as exc:
         return gate_scope.die(exc)
-    # A consumer's freeze belongs to the consumer: keeping it beside this script
-    # would put every repo's ratchet inside the hub, where no consumer can see it
-    # in its own diff.
+    # A consumer's freeze lives in the consumer, where its own diff shows it.
     allow = args.allow or (ALLOW if root == os.path.abspath(ROOT)
                            else os.path.join(root, "code-complexity.allow"))
     allow_name = os.path.basename(allow)

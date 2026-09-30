@@ -1,23 +1,11 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# NOTE (downstream consumers -- do NOT remove as "dead code"): this module has no
-# callers inside THIS repo, but OmniAccelerANT's
-# scripts/windows/Build-Windows.ps1 imports it from its ANTfrastructure submodule at
-# third_party/ANTfrastructure/windows/scripts/modules/. It was deleted
-# once in 5be9b1e and restored (2026-07-15) -- grep known consumers before any
-# future sweep of windows/scripts/modules/.
+# Consumed by OmniAccelerANT's Build-Windows.ps1 with no in-repo caller: see docs/consumer-inventory.md § Why a grep was not enough
 
 
-# WindowsFlutter.Common.psm1
-# Reusable functions for building and patching Flutter Windows applications in a containerized environment.
 
-# Write-BuildLog / Write-BuildLogWarning come from the sibling
-# WindowsBuild.Common module; without this import a standalone consumer hits
-# CommandNotFound at runtime. Guarded, WITHOUT -Force (repo-wide nested-import
-# rule, 2026-08-04): a forced nested re-import would pull a caller's top-level
-# import out of the global session state.
+# Guarded, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 if (-not (Get-Module -Name 'WindowsBuild.Common')) {
     Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
 }
@@ -64,28 +52,19 @@ function Repair-FlutterPluginSymlink {
                 $pluginName = $plugin.name
                 $pluginPath = $plugin.path
 
-                # Ensure Windows paths and remove trailing slash
                 $pluginPath = $pluginPath -replace '/', '\'
                 $pluginPath = $pluginPath.TrimEnd('\')
 
                 $junctionPath = Join-Path $symlinksDir $pluginName
 
-                # Clean up any broken symlinks or existing folders before trying to link/copy
                 if (Test-Path -LiteralPath $junctionPath -ErrorAction SilentlyContinue) {
                     Remove-Item -LiteralPath $junctionPath -Force -Recurse -ErrorAction SilentlyContinue
                 }
-                # Fallback for broken symlinks which Test-Path might miss
+                # Test-Path misses a broken symlink.
                 & cmd.exe /c "rmdir /q /s `"$junctionPath`" 2>nul"
                 & cmd.exe /c "del /q /f `"$junctionPath`" 2>nul"
 
-                # Prefer a junction over a recursive copy: for plugins with a deep
-                # vendored tree (e.g. kataglyphis_native_inference's
-                # native/KataglyphisCppInference/ExternalLib/*), copying into the
-                # even-deeper .plugin_symlinks path overruns MAX_PATH (260 chars) and
-                # aborts before windows\ is copied, leaving a broken junction. A
-                # junction is container-local-safe and immune to MAX_PATH; fall back to
-                # a copy only if it fails to resolve (the copy rationale — avoiding
-                # symlink access-denied — applies only to bind-mounted paths).
+                # A junction, not a copy: copying a deep vendored plugin tree overruns MAX_PATH.
                 Write-BuildLog -Context $Context -Message "Creating junction for $pluginName..."
                 & cmd.exe /c "mklink /J `"$junctionPath`" `"$pluginPath`"" 2>&1 | Out-Null
                 if (-not (Test-Path (Join-Path $junctionPath 'windows'))) {
@@ -177,29 +156,18 @@ function Sync-FastLocalArtifactsToHost {
         New-Item -ItemType Directory -Force -Path $OriginalBuildRoot | Out-Null
     }
     
-    # /E copies all subdirectories without deleting existing
-    # /MT:16 enables extremely fast multithreaded copying across the bind mount
-    # /R:1 /W:1 prevents Robocopy from hanging on locked files (1 million retries by default!)
-    # /FFT uses 2-second FAT file time granularity (crucial for Docker bind mounts to prevent false "modified" detects)
-    # /NOOFFLOAD prevents Windows from trying and failing to use hardware copy offload over the VM boundary
-    # /XF and /XD aggressively exclude the thousands of intermediate C++ object and Rust metadata files we don't need on the host
+    # /R:1 /W:1 avoid robocopy's million retries on a locked file; /FFT stops false "modified" on bind mounts.
     $robocopyArgs = @(
         $BuildRoot,
         $OriginalBuildRoot,
         "/E", "/MT:16", "/R:1", "/W:1", "/FFT", "/NOOFFLOAD",
-        # CMakeCache.txt is bound to the directory and generator that wrote it
-        # ($BuildRoot, Ninja). Copied onto the host it breaks the NEXT run: Flutter
-        # configures the host tree with the Visual Studio generator, CMake finds this
-        # cache pointing at another dir with another generator and aborts. CMakeFiles
-        # is excluded below for the same reason - the host gets artifacts, not state.
+        # CMake state is bound to its dir and generator, and would abort the host's next VS-generator configure.
         "/XF", "*.obj", "*.tlog", "*.lastbuildstate", "*.idb", "*.ilk", "*.pdb", ".ninja*", "CMakeCache.txt",
         "/XD", "*.dir", "CMakeFiles", "x64_x64-ClangCL*",
         "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul"
     )
     & robocopy.exe $robocopyArgs > $null 2>&1
-    # Robocopy exit codes 0-7 are success variants (1 = files copied); >= 8
-    # means at least one copy failed. Sync-back is best-effort, so a failure
-    # warns instead of throwing - but it must not pass silently.
+    # robocopy >= 8 is a failed copy: best-effort sync-back warns, never silently.
     $robocopyExit = $LASTEXITCODE
     if ($robocopyExit -ge 8) {
         Write-BuildLogWarning -Context $Context -Message "robocopy sync-back of build artifacts to '$OriginalBuildRoot' failed (exit code $robocopyExit); host copy may be incomplete."
@@ -222,8 +190,6 @@ function Sync-FastLocalArtifactsToHost {
             "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul"
         )
         & robocopy.exe $robocopyRustArgs > $null 2>&1
-        # Same exit-code contract as the artifact sync above: >= 8 is a real
-        # failure (warn, best-effort), 1-7 are success variants (reset).
         $robocopyRustExit = $LASTEXITCODE
         if ($robocopyRustExit -ge 8) {
             Write-BuildLogWarning -Context $Context -Message "robocopy sync-back of Rust artifacts to '$HostRustTargetDir' failed (exit code $robocopyRustExit); host copy may be incomplete."
@@ -232,10 +198,7 @@ function Sync-FastLocalArtifactsToHost {
     }
 }
 
-# Generates API docs with a pub-activated dartdoc, NOT the SDK-bundled
-# `dart doc`. The dartdoc shipped with the pinned Flutter SDK (9.0.4) crashes on
-# any Flutter app with a _stripDocImports RangeError; >= 9.0.9 fixes it.
-# Docs: docs/windows-reference.md.
+# A pub-activated dartdoc: the SDK-bundled 9.0.4 crashes on Flutter apps (_stripDocImports), >= 9.0.9 does not.
 function Invoke-FlutterApiDocs {
   param(
     [Parameter(Mandatory)]
@@ -254,9 +217,7 @@ function Invoke-FlutterApiDocs {
   }
 }
 
-# Back-compat aliases: the 2026-08-04 lint wave renamed these exports to
-# PSSA-approved verbs, but this module is EXTERNAL-CONSUMER API (see AGENTS.md
-# invariants) — other Kataglyphis repos may still call the old names.
+# Pre-rename names kept for external consumers that may still call them.
 Set-Alias -Name Clean-FlutterPluginSymlinks -Value Clear-FlutterPluginSymlink
 Set-Alias -Name Fix-FlutterPluginSymlinks -Value Repair-FlutterPluginSymlink
 Set-Alias -Name Patch-PermissionHandlerWindows -Value Update-PermissionHandlerWindows

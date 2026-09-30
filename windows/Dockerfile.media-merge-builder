@@ -1,19 +1,7 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The media fan-in: COPY --from of the three media branch trees, the canonical env
-# layout, then the GStreamer build and the four bundle gates — all as plain layers
-# in the `built` target, driven by windows/Build-Buildkit.ps1.
-#
-# It used to end at a `merge` target that only staged scripts, because the compile
-# then ran as `docker run` + `docker commit` on the docker-classic lane (dockerd is
-# capped at 2 CPUs here and process isolation could not commit layers). That lane
-# was retired on 2026-08-26 and the `merge` target went with it — see
-# docs/windows-build-lanes.md § The classic lane was retired. The gates that make
-# this stage the arm64 bundle's proof (plugin build, bundle manifest, target python
-# deps, arch gate + import walk) all live AFTER the old split point and were never
-# reachable from `merge`, which is why that lane could not pass its own smoke gate.
+# Media fan-in: the three branch trees, the env layout, then GStreamer and the bundle gates in `built`.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
 ARG CORE_IMAGE=local/kataglyphis:windows-media-core
@@ -24,51 +12,15 @@ FROM ${CORE_IMAGE} AS media-core
 FROM ${LITERT_IMAGE} AS media-litert
 FROM ${TVM_IMAGE} AS media-tvm
 
-# Flatten the CUDA/cuDNN runtime DLLs into one dir the merge image can put on
-# PATH. A COPY cannot do this: the sources are under "C:\Program Files\..."
-# (spaces) and cuDNN 9 buries its DLLs in a CUDA-major subdir under bin\, so a
-# recursive script is needed. See Copy-CudaRuntime.ps1.
-#
-# FROM ${BASE_IMAGE}, not ${CORE_IMAGE} (#134, 2026-08-26). Both carry the CUDA
-# install — the GPU lane's chain is base -> Dockerfile.nvidia (= windows-sdk,
-# where CUDA_ROOT/CUDNN_ROOT are ENV'd) -> toolchain, and CORE_IMAGE descends
-# from toolchain — so this stage reads nothing that media-core adds. Hanging it
-# off the branch image made it re-run on EVERY media-core rebuild, and it feeds
-# the fan-in, already the flakiest stage here (-MaxAttempts 5). Anchoring on the
-# toolchain base means it re-runs only when the toolchain does.
+# A script, not a COPY, flattens the spaced, nested CUDA/cuDNN DLL dirs; on BASE_IMAGE so media-core rebuilds never re-run it.
 FROM ${BASE_IMAGE} AS cuda-runtime-stage
-# Target arch, REDECLARED (ARGs do not cross a FROM boundary). This stage flattens
-# the CUDA/cuDNN runtime DLLs for the lane: bin\ natively, bin\arm64 on the cross
-# lane (#176 -- the arm64 payload exists as of 2026-09-20). The plain arm64 CPU
-# lane still has neither variable set, so it needs to know the lane in order to
-# degrade cleanly instead of hunting for a CUDA install that cannot be there.
-# Copy-CudaRuntime.ps1 stages an EMPTY C:\cuda-rt and exits 0 when neither
-# CUDA_ROOT nor CUDNN_ROOT is set, so the COPY below still succeeds; it throws
-# only when one IS set but does not resolve (nvidia base expected, layout
-# broken). Until 2026-08-23 it threw in BOTH cases, which made this stage a hard
-# blocker for every non-GPU merge.
+# Redeclared (ARGs do not cross FROM): the script picks bin\ or bin\arm64 by lane.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 COPY windows\scripts\build\Copy-CudaRuntime.ps1 C:\Copy-CudaRuntime.ps1
 RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\Copy-CudaRuntime.ps1
 
-# ── Mount source for the BK lane's module closure ────────────────────────────
-# Same pattern (and same reasoning) as Dockerfile.media-builder's `buildmods`:
-# one stage holding exactly the in-container module closure, mounted as a single
-# --mount line instead of six that had to be kept in lockstep by hand. This
-# closure carries FOUR merge-only modules on top of the media-builder six:
-# Installer.Common, GstPlugins.Common, and (since #134) Meson.Common and
-# RustToolchain.Common. GStreamer's script is the only consumer of all four.
-#
-# THEY EXIST AS SEPARATE MODULES PRECISELY SO THEY CAN LIVE HERE. The
-# media-builder six are mounted into every media compile RUN, so putting the
-# plugin contract, the meson interpreter patch or the rust-std repair into
-# Shared/SourceBuild.Common would make every edit to them re-run ONNX (~75 min),
-# OpenCV, FFmpeg, GenAI, litert and tvm — for code none of them call. Meson and
-# RustToolchain were stage-local functions inside Build-GstreamerFromSource.ps1
-# until #134 for exactly that reason; the leaf-module split is what let them out.
-# Parent is BASE_IMAGE so the fan-in COPYs (and therefore the three branch
-# images) never key into it.
+# The four merge-only leaf modules live here, never in the media buildmods, whose edits would re-run every media compile.
 FROM ${BASE_IMAGE} AS buildmods
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsScripts.Shared.psm1 `
@@ -82,30 +34,15 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsRustToolchain.Common.psm1 `
      C:\bkmods\
 
-# Fan-in WITHOUT the script COPYs: the `built` stage chains from here so a
-# GStreamer script edit re-runs only the RUN that bind-mounts it, never the
-# fan-in COPY layers. (A `merge` target used to build on top of this with the
-# scripts baked in, for the retired classic lane's run+commit step. Do not
-# re-introduce baked script COPYs here — mounting is what keeps the fan-in
-# layers out of every script's cache key.)
+# No script COPYs in the fan-in: mounting keeps these layers out of every script's cache key.
 FROM ${BASE_IMAGE} AS merge-fanin
 
-# Compile TARGET architecture -- see Dockerfile.media-builder for why this is
-# declared at the media layer and never in base. Mirrored to ENV so the merge
-# stage's build scripts resolve the same arch as the branch builds did.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-# OpenCV's install layout is <root>\<arch>\vc18\{bin,lib}. This has to be its own
-# ARG because a Dockerfile cannot branch on WINDOWS_TARGET_ARCH, and the ENV
-# below is not decoration: it WINS over the arch-aware fallback in
-# Build-GstreamerFromSource.ps1 (that fallback only runs when $env:OPENCV_LIB
-# is unset). Left at x64 on an arm64 build, GStreamer's pkg-config step looks for
-# import libs in the x64 tree, finds none, and throws. The driver derives it from
-# the arch table and forwards it alongside WINDOWS_TARGET_ARCH.
+# A Dockerfile cannot branch on the arch, and the OPENCV_LIB it feeds wins over GStreamer's arch-aware fallback.
 ARG OPENCV_ARCH_DIR=x64
 ARG GSTREAMER_VERSION=1.29.2
-# Component versions are consumed by the branch builds; re-declared here only so the
-# image carries the canonical version env vars (sync_versions.py verifies them).
+# Re-declared only so the image carries the canonical version env (sync_versions.py verifies them).
 ARG ONNXRUNTIME_VERSION=v1.30.0
 ARG ONNXRUNTIME_GENAI_VERSION=v0.15.2
 ARG OPENCV_SOURCE_VERSION=5.0.0
@@ -117,11 +54,7 @@ ARG TVM_REF=v0.26.0
 ARG IREE_VERSION=v3.11.0
 ARG HAILORT_VERSION=5.4.0
 
-# ONE ENV instruction for everything below PATH: the classic builder emits a
-# layer PER INSTRUCTION (even metadata), and windows-torch hit Docker's hard
-# 125-layer cap on 2026-08-03 ("max depth exceeded" in the final stage) with
-# ~28 separate ENV lines here as the main cost. Same-instruction ${} refs don't
-# resolve, so derived paths are written out literally (layouts documented below).
+# One ENV for the 125-layer cap; same-instruction ${} refs do not resolve, so paths are literal.
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
     OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
@@ -144,14 +77,7 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     LITERT_LM_ROOT="C:\runtime\lib\litert-lm" `
     LITERT_LM_INCLUDE="C:\runtime\lib\litert-lm\include" `
     LITERT_LM_BIN="C:\runtime\lib\litert-lm\bin" `
-    # NO LITERT_LM_LIB: LiteRT-LM ships here as an EXECUTABLE deliverable
-    # (bin\litert_lm_main.exe + its co-located runtime DLLs), built through the
-    # bazel path, which produces no installable library set. The variable was
-    # declared 2026-07-05 and pointed at a directory that never existed; the
-    # #127 smoke assertion (2026-08-21) is what finally caught it, eleven weeks
-    # later, because until then nothing read it. If LiteRT-LM ever has to be
-    # LINKED against, that is a build-side change first (export the libs), and
-    # the ENV follows — not the other way round.
+    # No LITERT_LM_LIB: the bazel build ships an executable and no library set.
     OPENCV_ROOT="C:\runtime\lib\opencv5" `
     OPENCV_INCLUDE="C:\runtime\lib\opencv5\include" `
     OPENCV_LIB="C:\runtime\lib\opencv5\${OPENCV_ARCH_DIR}\vc18\lib" `
@@ -170,100 +96,47 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
-# ── Fan-in: merge the branch install trees ───────────────────────────────────
-# Branch A carries the largest tree (ORT, GenAI, OpenCV, FFmpeg) — copy it first,
-# then layer the independent branches' components on top.
+# Fan-in, largest branch tree first
 COPY --from=media-core C:\runtime C:\runtime
-# CUDA/cuDNN RUNTIME DLLs. The CUDA-built libs fanned in above (OpenCV with
-# WITH_CUDA/WITH_CUDNN, onnxruntime's CUDA EP, TVM's CUDA backend) hard- or
-# delay-link cudnn64_9.dll + cudart/cublas, which live in the nvidia base's
-# NVIDIA install dirs -- NOT under C:\runtime, so the fan-in above missed them
-# and gst-plugins-bad's opencv plugin (and any GPU code path) failed to LOAD
-# with Win32 126 "The specified module could not be found". Stage the runtime
-# DLLs from media-core (built on the nvidia base, so it carries them) into a
-# stable dir that the ENV PATH below exposes.
-# The CUDA/cuDNN runtime DLLs, pre-flattened into one dir by cuda-runtime-stage
-# (see the stage above): a plain COPY of a no-space, single-level dir -- so it
-# lands cudnn64_9.dll + cudart/cublas directly on the PATH set below.
+# The CUDA-built libs link cudnn/cudart, which live outside C:\runtime; without this they fail to load with Win32 126.
 COPY --from=cuda-runtime-stage C:\cuda-rt C:\runtime\cuda-runtime\bin
-# media-core's CPython site-packages: on amd64 they carry the installed python
-# bindings (onnxruntime + onnxruntime-genai wheels, cv2 from cmake --install)
-# plus their pypi deps (numpy, ...) and the platform-tag sitecustomize shim —
-# fan them in so `import onnxruntime/cv2` works in this image's CPython. On the
-# arm64 cross lane this HOST tree holds host pip deps + the host shim only; the
-# aarch64 bindings live in the TARGET tree (C:\runtime\python\Lib\site-packages:
-# cv2 + its own shim) and in C:\runtime\wheels (ORT/GenAI/PyAV + their staged
-# win_arm64 deps) since #120/#125/#126.
+# Host CPython bindings; the cross lane's aarch64 ones live in C:\runtime\python and C:\runtime\wheels.
 COPY --from=media-core C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
 COPY --from=media-litert C:\runtime\lib\litert C:\runtime\lib\litert
 COPY --from=media-litert C:\runtime\lib\litert-lm C:\runtime\lib\litert-lm
 COPY --from=media-tvm C:\runtime\lib\tvm C:\runtime\lib\tvm
 # IREE native tools + libs (iree-compile, iree-run-module) from the same branch.
 COPY --from=media-tvm C:\runtime\iree C:\runtime\iree
-# media-tvm's wheel store entries (tvm/iree wheels) merge over media-core's
-# (distinct filenames; C:\runtime\wheels is the central store, see PYTHON_WHEELS).
+# tvm/iree wheels merge over media-core's; the filenames are distinct.
 COPY --from=media-tvm C:\runtime\wheels C:\runtime\wheels
-# TVM's Python wheel (plus pip) lives in the branch CPython's site-packages;
-# merging it here makes `import tvm` work in this image's CPython. The GStreamer
-# script bootstraps pip itself if this copy ever lacks it.
+# Makes `import tvm` work in this image's CPython.
 COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
 
-# ── Canonical component layout: see the single consolidated ENV above ────────
-# (GSTREAMER/ONNX/LITERT/LITERT_LM/OPENCV/FFMPEG/TVM/IREE roots + version
-# aliases + PYTHON_WHEELS all live there; OpenCV bin/lib deliberately point at
-# the MSVC-style x64\vc18 subtree its Windows install emits.)
-#
-# PATH references the vars above, and PKG_CONFIG_PATH lets GStreamer auto-detect
-# FFmpeg + OpenCV (libav*.pc enables gst-libav; LiteRT and ONNX Runtime ship no
-# .pc files). GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
+# PKG_CONFIG_PATH lets GStreamer auto-detect FFmpeg (gst-libav) and OpenCV.
 ENV PATH=C:\runtime\cuda-runtime\bin;$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\bin;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\bin;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$HAILO_BIN;$PATH `
     PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;C:\runtime\lib\pkgconfig
 
-# Re-COPY versions.env (base bakes a stale copy — build scripts re-read this at run time).
-# See the identical pattern in Dockerfile.media-builder (common stage).
+# Re-COPY: the base bakes a stale versions.env, and the build scripts re-read it at run time.
 COPY linux\scripts\01-core\versions.env C:\temp\versions.env
 
-# Floors on the target python deps gate. Declared GLOBALLY so the driver's
-# --build-arg binds, then redeclared and ENV'd in `built` (its RUN reads them):
-# declared after that RUN, they were empty and the floors were dead since landing.
+# Declared globally so the driver's --build-arg binds, then redeclared in `built`, whose RUN reads them.
 ARG DEPS_MIN_BUNDLE_WHEELS=0
 ARG DEPS_MIN_FIRST_TOUCH_REQS=0
 
-# ── BuildKit lane (direct solve, de-warmed 2026-08-06 round 2) ──────────────
-# GStreamer builds AND exports in one plain RUN. The former warm/materialize
-# pair existed for the ExportLayer-0x3 defect — root cause was the runhcs
-# shim's hardcoded 30s tearDownTimeout killing the minutes-long heavy-churn
-# silo teardown; fixed by the patched shim in Stevedore\bin (see
-# Dockerfile.media-builder's BK header + docs/windows-builds.md § roadmap
-# "DEFECT SOLVED").
+# GStreamer builds and exports in one plain RUN.
 FROM merge-fanin AS built
-# Target python deps floors: redeclared inside the stage (ARGs do not cross a
-# FROM) and ENV'd ABOVE the Copy-TargetPythonDeps RUN that reads them - a drop
-# in wheel/requirement count is a finding, not a greener gate.
+# ENV'd above the RUN that reads them, so a drop in wheel count fails the gate.
 ARG DEPS_MIN_BUNDLE_WHEELS=0
 ARG DEPS_MIN_FIRST_TOUCH_REQS=0
 ENV DEPS_MIN_BUNDLE_WHEELS=${DEPS_MIN_BUNDLE_WHEELS} `
     DEPS_MIN_FIRST_TOUCH_REQS=${DEPS_MIN_FIRST_TOUCH_REQS}
-# ARGs do not cross stage boundaries — redeclare for sccache. Build-host settings
-# are ARGs only, never ENV: docs/windows-build-resources.md#what-the-published-image-carries
+# Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
 ARG SCCACHE_WEBDAV_ENDPOINT
-# Overridable so a single stage can be re-run at debug level without editing
-# this file: Build-Buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
+# Overridable for a one-stage debug re-run: -BuildArg SCCACHE_LOG=debug.
 ARG SCCACHE_LOG="warn"
-# WebDAV-only sccache, as in (and to change with) media-builder's `common`, which is not an ancestor.
-# FROM does inherit the parent image's ENV: docs/windows-build-resources.md#an-image-this-run-did-not-build
-#
-# SCCACHE_MULTILEVEL_CHAIN is UNSET on purpose since 2026-08-16: the local L0 tier
-# sits on a BuildKit cache mount, and on Windows those lose writes once the
-# directory holds objects an EARLIER RUN wrote (158 of 250 vs 0 of 250 into a
-# plain directory, same program, same moment). Restore `disk,webdav` here AND in
-# Dockerfile.media-builder together, once WCOW cache mounts are proven — see
-# backlog #99 for the measurement and the re-verification recipe.
+# Unset (remote-only) like media-builder's `common`; change both together, see docs/windows-build-resources.md § Persistent compile cache (sccache).
 ARG SCCACHE_MULTILEVEL_CHAIN
-# ARG-backed like the media builder's block (2026-08-21 parity fix): the
-# hardcoded SCCACHE_DIR here could not be overridden the way media-builder's
-# ARG documents as necessary for experiments, and SCCACHE_FORCE_LOCAL was
-# missing entirely — the two production ENV blocks are now literally identical.
+# Kept identical to media-builder's sccache block.
 ARG SCCACHE_DIR="C:\sccache\v2"
 ARG SCCACHE_FORCE_LOCAL
 ENV SCCACHE_DIR="${SCCACHE_DIR}" `
@@ -271,8 +144,7 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `
     SCCACHE_IDLE_TIMEOUT="0"
-# Same cache id as the media builder on purpose: GStreamer compiles the same
-# clang-cl TUs against the same headers, so a shared L0 is a hit, not a conflict.
+# Same cache id as the media builder: the same clang-cl TUs make a shared L0 a hit, not a conflict.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-GstreamerFromSource.ps1,target=C:\bkmnt\Build-GstreamerFromSource.ps1 `
@@ -282,17 +154,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/patches/gstreamer,target=C:\bkmnt\patches\gstreamer `
     & 'C:\bkmnt\Build-GstreamerFromSource.ps1' -InstallDir 'C:\runtime' -LogDir 'C:\temp\logs' -ScrubAfter
 
-# OpenCV's STANDALONE GStreamer videoio plugin (backlog #93). MUST run after
-# the GStreamer RUN above — that is the whole point: OpenCV itself configured
-# in media-core BEFORE GStreamer existed, so its videoio carries
-# `GStreamer: NO`; this builds `opencv_videoio_gstreamer*.dll` out-of-tree
-# against the INSTALLED OpenCV + the GStreamer just built, and drops it next to
-# opencv_videoio*.dll where the runtime plugin loader probes. One source file,
-# minutes, no second OpenCV pass.
-# NB `cv2.getBuildInformation()` STILL says `GStreamer: NO` afterwards — that
-# string is compile-time; the runtime truth is
-# `cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER)` (asserted by the smoke
-# test since 2026-08-17).
+# OpenCV's standalone GStreamer videoio plugin, after GStreamer exists; getBuildInformation() still says NO, hasBackend() is the truth.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-OpencvGstreamerPlugin.ps1,target=C:\bkmnt\Build-OpencvGstreamerPlugin.ps1 `
@@ -300,73 +162,21 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Build-OpencvGstreamerPlugin.ps1' -InstallDir 'C:\runtime'
 
-# #130 (2026-08-25): the bundle describes ITSELF -- BUNDLE-ENV.cmd/.ps1 (every
-# DLL home, the target python, the wheel store) and BUNDLE-README.md (install
-# steps, the one-time gio-querymodules run on a device, what is absent on this
-# lane in the branches' own words). Both lanes, same facts; three text files,
-# invisible to the arch gate below.
+# The bundle describes itself (BUNDLE-ENV, BUNDLE-README); text files, invisible to the arch gate.
 RUN --mount=type=bind,source=windows/scripts/build/Write-BundleManifest.ps1,target=C:\bkmnt\Write-BundleManifest.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Write-BundleManifest.ps1' -ScriptDir 'C:\bkmnt'
-# #126 (2026-08-25): on a cross lane, stage the PyPI runtime deps of the
-# bundle's wheels for the TARGET tag (host pip in download mode) and gate that
-# every Requires-Dist resolves inside C:\runtime\wheels. Native lane: notice
-# only (deps are installed into the shipped interpreter itself). Runs BEFORE
-# the arch gate so the downloaded wheels are machine-checked and import-walked
-# like everything else.
+# Before the arch gate, so the staged target-tag deps are machine-checked and import-walked too.
 RUN --mount=type=bind,source=windows/scripts/build/Copy-TargetPythonDeps.ps1,target=C:\bkmnt\Copy-TargetPythonDeps.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Copy-TargetPythonDeps.ps1' -ScriptDir 'C:\bkmnt' `
         -MinBundleWheels ([int]$env:DEPS_MIN_BUNDLE_WHEELS) `
         -MinFirstTouchRequirements ([int]$env:DEPS_MIN_FIRST_TOUCH_REQS)
 
-# ── Target-architecture gate ────────────────────────────────────────────────
-# Asserts that everything staged into C:\runtime was actually built for
-# WINDOWS_TARGET_ARCH. This is the LAST stage that assembles the media payload,
-# so it is the right place: every library the chain produces is present.
-#
-# It matters most for a cross build, where NOTHING produced can be executed on
-# this x64 host -- the PE machine type is the only correctness signal available.
-# It is cheap and kept enabled for amd64 too, where it catches the mirror-image
-# defect: an aarch64 artifact leaking into the native lane.
-#
-# ARCH_GATE_MIN_INSPECTED is a floor, not a target: a run that inspects almost
-# nothing (mis-pathed tree, staging that silently produced no binaries) must
-# FAIL rather than report a clean pass over an empty set.
-# ARCH_GATE_HOST_TOOLS allowlists build-time tools that legitimately stay
-# host-arch because they are never shipped to the target. On the cross lane the
-# driver EXTENDS this pattern with the fanned-in host-CPython site-packages
-# (backlog #117): those .pyds are the x64 build interpreter's and legitimately
-# host-arch, but they must be REPORTED as allowlisted, not silently outside the
-# scan root -- "0 violations" is only a whole-image statement if the gate saw
-# the whole image.
-#
-# Both scan roots are listed unconditionally; Test-TargetArch.ps1 warns and
-# continues on a root that does not exist (amd64 keeps its coverage, and on
-# amd64 the site-packages tree is native x64 and simply passes).
-#
-# -IncludeArchives (2026-08-24): .lib import archives ARE the consumer surface
-# of this bundle -- onnxruntime.lib, onnxruntime-genai.lib, the OpenCV and
-# GStreamer import libs are exactly what a downstream link consumes. The COFF
-# archive decoder (incl. ARM64EC handling) existed unused in the script.
-# The distlib/setuptools alternations (2026-08-24, found by the FIRST amd64 run
-# of the extended gate): pip and setuptools vendor their console-script LAUNCHER
-# stubs for every architecture BY DESIGN (t32/w32/cli-32/gui-32 are I386,
-# w64-arm/cli-arm64/gui-arm64 are ARM64) -- they ship inside every Python
-# install on every platform and setuptools picks the matching one at
-# script-creation time. They are data payload of the packaging tools, not
-# shipped binaries of this image, and tripped the amd64 gate as 10 "violations"
-# out of 1148. On the cross lane the driver's whole-site-packages pattern
-# already covered them.
+# Arch gate: on a cross lane the PE machine type is the only correctness signal; the floor fails a run that inspected nothing.
 ARG ARCH_GATE_MIN_INSPECTED=10
 ARG ARCH_GATE_HOST_TOOLS="protoc\.exe|flatc\.exe|\\_deps\\|\\distlib\\[tw](32|64)[^\\]*\.exe|\\setuptools\\(cli|gui)[^\\]*\.exe"
-# -ImportWalk (#127): every shipped PE + every wheel's native members must
-# resolve their imports against the bundle, the loader's API sets or this
-# container's System32 names -- CRT excluded from System32 on a cross lane.
-# Mounts ONE module, not the buildmods closure: Test-TargetArch.ps1 imports
-# exactly WindowsTargetArch.Common.psm1 (and that module is dependency-free by
-# design). Mounting ten to use one is how a script silently grows a dependency
-# nobody declared — this way an added import fails the gate loudly instead.
+# One module mounted, not the closure, so an undeclared new import fails the gate loudly.
 RUN --mount=type=bind,source=windows/scripts/build/Test-TargetArch.ps1,target=C:\bkmnt\Test-TargetArch.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     & 'C:\bkmnt\Test-TargetArch.ps1' -Path @('C:\runtime', 'C:\temp\cpython\Lib\site-packages') -Arch $env:WINDOWS_TARGET_ARCH `

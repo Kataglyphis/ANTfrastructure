@@ -1,7 +1,5 @@
 # shellcheck shell=bash
-# Source-only helper -- do not execute directly.
-# cross-gcc.sh - GCC toolchain detection helpers.
-# Sourced by cross-env.sh.
+# GCC toolchain detection helpers, sourced by cross-env.sh.
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   echo "This script is meant to be sourced, not executed" >&2
@@ -11,20 +9,7 @@ fi
 [ -z "${_CROSS_GCC_LOADED:-}" ] || return 0
 _CROSS_GCC_LOADED=1
 
-# SSOT-of-the-default for the source-built GCC toolchain inside the cross-env
-# sourcing pass (backlog DUP2). cross-env.sh hard-sources this file (no `[ -f ]`
-# guard), so every consumer of that pass can call these helpers instead of
-# re-spelling the version.
-#
-# The fallback literal below stays an inline literal ON PURPOSE and must NOT be
-# routed through common.sh / versions.env: a mount audit of the RUNs that bind
-# cross-gcc.sh found two that mount NEITHER (Dockerfile.toolchain's RUN at line
-# 266 and Dockerfile.media's RUN at line 414), so there GCC_VERSION can only
-# come from the stage ARG/ENV and the literal IS the last-resort value. Keeping
-# it in the `VAR:-literal` expansion form is also what lets
-# verify-arg-consistency.sh's "GCC toolchain default literal check" pin it to
-# versions.env, which is how the ~25 sibling copies across linux/ are kept from
-# drifting on the next GCC bump.
+# Inline literal on purpose: some RUNs mount no versions.env, and verify-arg-consistency.sh pins this `:-` form.
 gcc_toolchain_version() {
   printf '%s' "${GCC_VERSION:-16.2.0}"
 }
@@ -37,16 +22,7 @@ gcc_toolchain_bindir() {
   printf '%s' "$(gcc_toolchain_prefix)/bin"
 }
 
-# gcc_toolchain_resolve_prefix -> which prefix on THIS machine holds a usable
-# GCC, which is not the question gcc_toolchain_prefix() answers (that composes a
-# path from the VERSION). Two consumers got it wrong by typing /opt/gcc-15.2.0
-# into a workflow env, where it went stale and took every clang lane red.
-#
-# MYPROJECT_GCC_TOOLCHAIN_PATH, then GCC_PREFIX, then the composed prefix IF it
-# carries lib/gcc/*/*/crtbeginS.o, then the newest /opt/gcc-* that does. That crt
-# probe matters: clang pointed at a half-installed prefix fails at LINK time
-# naming crtbeginS.o and nothing else. Returns 1 and prints nothing when there is
-# none -- an empty answer used as a path becomes `--gcc-toolchain=`.
+# The prefix on this machine with a usable GCC (crtbeginS.o present); 1 and no output when none, never an empty path.
 gcc_toolchain_resolve_prefix() {
   local candidate
   for candidate in "${MYPROJECT_GCC_TOOLCHAIN_PATH:-}" "${GCC_PREFIX:-}"; do
@@ -73,15 +49,7 @@ gcc_toolchain_resolve_prefix() {
   return 1
 }
 
-# Point clang at the source-built GCC (headers, libstdc++, crt). Exports the
-# --gcc-toolchain flags only; CC/CXX selection stays with the caller, and GCC
-# itself rejects the flag, so this is a no-op unless clang is in use.
-#
-# RESTORED 2026-09-15: deleted 2026-09-05 for having no caller, which was true
-# here and false of the family -- two consumers had each re-derived it. Callers:
-# AccelerANTgine scripts/linux/ci-run-all.sh, BeschleunigerBallett
-# scripts/linux/run-static-analysis-format.sh.
-# Docs: docs/linux-cross-builds.md#operational-env-knobs-not-versionsenv
+# Consumer-facing (no caller here): --gcc-toolchain flags for clang only. docs/linux-cross-builds.md#operational-env-knobs-not-versionsenv
 export_clang_gcc_toolchain_env() {
   : "${CROSS_GCC_TOOLCHAIN_PATH:=$(gcc_toolchain_resolve_prefix || gcc_toolchain_prefix)}"
   local root="${CROSS_GCC_TOOLCHAIN_PATH}"
@@ -214,8 +182,7 @@ make_named_host_compiler_wrapper() {
   make_host_compiler_wrapper "${wrapper_dir}/${wrapper_name}" "${compiler}"
 }
 
-# Resolve a GCC cross archive tool (ar, ranlib, etc.) for the current cross target.
-# Looks for <triplet>-gcc-<tool> first, then falls back to <triplet>-<tool>.
+# Prefers <triplet>-gcc-<tool> over <triplet>-<tool>.
 resolve_cross_archive_tool() {
   local tool="$1"
   local triplet="${2:-${CROSS_TARGET_TRIPLET:-}}"

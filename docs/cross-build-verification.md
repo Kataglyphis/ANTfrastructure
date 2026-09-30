@@ -71,12 +71,12 @@ exits non-zero if any did.
 Since 2026-08-08 preflight also validates the stage graph itself (slug
 `stage-graph` — parent refs, dockerfile existence, tag resolution, cycles);
 previously that ran only at build kickoff. The script-tests slug now prints an
-assertion aggregate (`<N> suites, <M> assertions`, `run-tests.sh:36`) — a
+assertion aggregate (`<N> suites, <M> assertions`, `run-tests.sh:31`) — a
 sudden drop in those numbers is the alarm it looks like: the harness fails
 suites that run zero assertions, and the aggregate makes shrinking coverage
 visible. The current figures are deliberately not restated here — they grow
 with every suite that lands, so a stale baseline in this doc would make a real
-collapse read as growth (`run-tests.sh:34-35` picks a deliberately absurd
+collapse read as growth (`run-tests.sh:30` picks a deliberately absurd
 "24 suites, 3 assertions" as its own example for that reason). Read them with
 `bash linux/scripts/tests/run-tests.sh`.
 
@@ -269,7 +269,7 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:43-59`, 37 slugs), which is also the vocabulary
+(`preflight.sh:36-52`, 37 slugs), which is also the vocabulary
 `PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
 both membership and run order** — the table below groups them by kind and will
 drift if a slug is added without touching it.

@@ -1,19 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# swap-native-gcc.sh
-#
-# Swaps the amd64-hosted GCC at /opt/gcc-${GCC_VERSION} with the target-native
-# GCC (cross-compiled from source during the compiler image build, stored at
-# /opt/gcc-${GCC_VERSION}-native-${TARGET_ARCH}/).
-#
-# Performs ELF architecture assertions before and after the swap, creates
-# symlinks for GCC target lib/include directories, and runs a compile smoke test.
-#
-# Environment:
-#   TARGET_ARCH   amd64, arm64, or riscv64
-#   GCC_VERSION   e.g. 16.1.0
-#   BUILD_MODE    cross or native
+# Swaps the host GCC for the cross-built target-native one; env: TARGET_ARCH, GCC_VERSION, BUILD_MODE.
 
 _swap_gcc_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for _swap_mod_path in \
@@ -27,8 +15,6 @@ for _swap_mod_path in \
 done
 source_module platform.sh
 
-# Assert the prebuilt target-native GCC exists + is the right ELF arch, then swap
-# it in for the host GCC at /opt/gcc-${GCC_VERSION}.
 _assert_and_relocate_native_gcc() {
   local native_gcc="$1"
   if [ ! -d "${native_gcc}" ]; then
@@ -48,8 +34,7 @@ _assert_and_relocate_native_gcc() {
   echo "Replaced host GCC with target-native ${TARGET_ARCH} GCC at /opt/gcc-${GCC_VERSION}"
 }
 
-# Symlink the relocated GCC's (empty) target lib/include dirs at the system
-# multiarch dirs so it finds the runtime image's libraries and headers.
+# The relocated GCC's target lib/include dirs are empty; point them at the image's multiarch dirs.
 _link_multiarch_dirs() {
   local triplet="$1"
   local gcc_target_lib="/opt/gcc-${GCC_VERSION}/${triplet}/lib"
@@ -70,23 +55,7 @@ _link_multiarch_dirs() {
   fi
 }
 
-# The relocated Canadian-cross native GCC/G++ keeps the sysroot baked in at
-# compiler-build time, so it does NOT search the runtime image's
-# /usr/include by default. Source builds under QEMU (e.g. pip compiling C or
-# C++ extensions when PyPI ships no target-arch wheel) then fail to find
-# libc headers:
-#   C:   "fatal error: string.h: No such file or directory"
-#   C++: <cstdlib> does `#include_next <stdlib.h>` -> "stdlib.h: No such"
-# CPATH (=-I, before system dirs) fixes plain C includes but NOT the C++
-# #include_next, which must resolve /usr/include AFTER libstdc++ headers. So
-# also inject the system dirs with -idirafter (appended AFTER all built-in
-# dirs) via *FLAGS. Same logic as the canonical helper
-# append_cross_idirafter() in 01-core/common.sh, inlined because this runs
-# in the android stage without common.sh; kept in sync via
-# verify-critical-fixes.sh fix6. Written to
-# profile.d so login-shell compiles inherit it (setup-torch-venv.sh runs
-# under `bash -lc`). No-op on arches that ship prebuilt wheels; amd64 never
-# reaches this block (host GCC, no swap).
+# Inlined twin of common.sh's append_cross_idirafter (android stage lacks it). docs/cross-build-verification.md#swapping-the-native-gcc-in-the-shipped-image
 _write_native_gcc_profile_d() {
   local triplet="$1"
   mkdir -p /etc/profile.d
@@ -101,8 +70,7 @@ EOF
   echo "Wrote /etc/profile.d/50-native-gcc-paths.sh (CPATH/*FLAGS/LIBRARY_PATH -> system dirs)"
 }
 
-# Why the native GCC swap is ordered this way:
-# docs/cross-build-verification.md
+# Wrappers, not a specs file. See docs/cross-build-verification.md#swapping-the-native-gcc-in-the-shipped-image
 _wrap_native_gcc_drivers() {
   local triplet="$1"
   local gcc_bindir="/opt/gcc-${GCC_VERSION}/bin"
@@ -110,8 +78,7 @@ _wrap_native_gcc_drivers() {
   for _tool in gcc g++ cpp cc c++ gfortran gccgo \
                "${triplet}-gcc" "${triplet}-g++" "${triplet}-cpp"; do
     _real="${gcc_bindir}/${_tool}"
-    # Skip missing tools and symlinks (cc->gcc, c++->g++ resolve to a wrapped
-    # target already; wrapping the link too would double-add -idirafter).
+    # Symlinks resolve to a wrapped target already; wrapping them would double-add -idirafter.
     [ -e "${_real}" ] || continue
     [ -L "${_real}" ] && continue
     [ -e "${_real}.real" ] && continue
@@ -133,8 +100,7 @@ EOF
   done
   echo "Wrapped ${_wrapped} native-GCC driver(s) with -idirafter system-header injection"
 
-  # A stale specs file from a previous (broken) build of this script would
-  # re-break exceptions even with the wrappers in place -- remove it.
+  # A stale specs file would re-break exceptions even with the wrappers in place.
   local gcclib="/opt/gcc-${GCC_VERSION}/lib/gcc/${triplet}/${GCC_VERSION}"
   rm -f "${gcclib}/specs"
 }
@@ -146,14 +112,7 @@ _smoke_native_gcc() {
     file /tmp/gcc_smoke
     echo "GCC compile smoke test PASSED"
   else
-    # Classify the probe failure. On riscv64 the source-built GCC 16 emits its
-    # default -march using the new ISA-spec profile extension names
-    # (rv64..._zmmul_zaamo_zalrsc_zca_zcd) that the bundled binutils `as`
-    # rejects -- a known GCC/binutils ISA-spec skew. It is NON-FATAL for the
-    # cross build (this native GCC only matters for on-device compiles), so log
-    # a clear NOTE instead of leaking the raw "Assembler ... Fatal error" line
-    # (which reads as a real build failure in logs/monitors). Any OTHER probe
-    # failure is still surfaced verbatim.
+    # A riscv64 -march its bundled `as` rejects is a known, non-fatal ISA-spec skew; log a NOTE, not the raw error.
     if grep -q 'invalid -march=' /tmp/gcc_smoke.err 2>/dev/null; then
       echo "NOTE: native ${TARGET_ARCH} GCC default -march uses ISA-spec profile extension names its bundled assembler does not accept (known GCC/binutils ISA-spec skew; non-fatal for cross builds -- affects only on-device compilation). Tracked as build-arg RISCV_GCC_ISA_SPEC in the toolchain build."
     else
@@ -164,8 +123,7 @@ _smoke_native_gcc() {
   rm -f /tmp/gcc_smoke.c /tmp/gcc_smoke /tmp/gcc_smoke.err
 }
 
-# The sanitizer runtime a -fsanitize build needs; hwasan only where GCC's
-# configure.tgt builds it. docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
+# hwasan only where GCC's configure.tgt builds it. docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
 _assert_native_gcc_sanitizers() {
   local prefix="$1" arch="$2" lib hit missing=""
   local -a libs=(asan ubsan lsan tsan)
@@ -180,9 +138,7 @@ _assert_native_gcc_sanitizers() {
   echo "Sanitizer runtime present in ${prefix}: ${libs[*]}"
 }
 
-# The relocated GCC's multiarch, which puts /usr/lib/<triplet> on its link line: CMake reads
-# CMAKE_LIBRARY_ARCHITECTURE from there. Asserted only where this host can run the target
-# binary, like the smoke below. docs/cross-build-verification.md#the-native-gcc-has-multiarch
+# CMake reads CMAKE_LIBRARY_ARCHITECTURE from the multiarch; checked only where the target runs. docs/cross-build-verification.md#the-native-gcc-has-multiarch
 _assert_native_gcc_multiarch() {
   local gcc="$1" triplet="$2" got
   if ! "${gcc}" -dumpversion >/dev/null 2>&1; then
@@ -198,13 +154,7 @@ main() {
   : "${TARGET_ARCH:?TARGET_ARCH is required}"
   : "${GCC_VERSION:?GCC_VERSION is required}"
 
-  # The producer decides by BUILD HOST, so the consumer must too: gcc.sh:376
-  # takes `link_amd64_host_as_cross` (plain symlinks over the host GCC) exactly
-  # when target == build_arch_oci, and therefore never builds the Canadian
-  # /opt/gcc-<ver>-native-<arch> for that arch. Testing the literal amd64 here
-  # made a native arm64 build host demand a prefix its own toolchain image
-  # deliberately does not produce. On an amd64 build host this reduces to the
-  # old literal, so all three targets behave exactly as before.
+  # Decide by build host like gcc.sh: it builds no native prefix for the host's own arch.
   local build_arch
   build_arch="$(build_arch_oci)"
   if [ "${TARGET_ARCH}" = "${build_arch}" ]; then

@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# verify-artifact-copy-parity.sh must fail when a manifest artifact is NOT copied
-# (the Flutter 2026-09-03 drop-at-the-boundary bug) and when a copy has no manifest
-# entry (a stray/renamed COPY). Runs against fixtures, not the real tree.
-# docs/artifact-copy-completeness.md
+# verify-artifact-copy-parity.sh fails on an uncopied manifest artifact and on an undeclared COPY; docs/artifact-copy-completeness.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -11,9 +8,7 @@ GATE="${TESTS_DIR}/../verify-artifact-copy-parity.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# The gate reads runtime-artifacts.manifest from ITS OWN dir, so a fixture run
-# needs a copy of the gate beside a fixture manifest. Symlink the gate, write the
-# manifest next to it, and point the gate at a fixture Dockerfile.
+# The gate reads runtime-artifacts.manifest from its own dir, so each fixture gets a copy of the gate.
 _stage() {
   local dir="${_work}/$1"; rm -rf "${dir}"; mkdir -p "${dir}"
   cp "${GATE}" "${dir}/gate.sh"
@@ -26,8 +21,7 @@ _stage() {
 _MANIFEST='/opt/flutter | flutter
 /opt/vulkan | vulkan'
 
-# Build a package Dockerfile whose package-image stage COPYs exactly the given
-# paths from artifact-source. One owner for the fixture shape (helper-first).
+# A package Dockerfile whose package-image stage COPYs exactly the given paths.
 _dockerfile() {
   printf 'FROM base AS artifact-source\nFROM base AS package-image\n'
   local p

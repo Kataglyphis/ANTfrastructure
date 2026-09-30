@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# Build-Buildkit.ps1 -Variant: the resolver's refusals, the lane tags (golden tables per variant),
-# the rocm-only build-args and the rocm chain's wiring (sdk slot, migraphx/llama). NOT covered: a real solve.
+# Build-Buildkit.ps1 -Variant: refusals, golden lane tags, rocm build-args and chain wiring; not a real solve.
 
 # The two sides of every build-arg parity check below: the ARGs a Dockerfile declares, and versions.env.
 function Get-DriverVariantDeclaredArg([string]$Dockerfile, [string]$NamePattern = '\w+') {
@@ -87,7 +86,7 @@ Describe 'Resolve-BkVariant' {
         Assert-Throws { Invoke-Resolve -Variant 'rocm' -PushRef 'localhost:5000/k' } 'rocm with no tag' -MessagePattern 'winamd64-rocm'
         Assert-Throws { Invoke-Resolve -PushRef "${repo}:winamd64-rocm" } 'default bytes under the rocm tag' -MessagePattern 'not -Variant rocm'
         Assert-Throws { Invoke-Resolve -Gpu $true -PushRef "${repo}:winamd64-rocm" } 'nvidia bytes under the rocm tag' -MessagePattern 'not -Variant rocm'
-        # nvidia has a tag of its own too since 2026-09-27 (owner decision), on both lanes.
+        # nvidia has a tag of its own too, on both lanes.
         Invoke-Resolve -Gpu $true -PushRef "${repo}:winamd64-nvidia" | Out-Null
         Invoke-Resolve -Variant 'nvidia' -TargetArch 'arm64' -PushRef "${repo}:winarm64-nvidia" | Out-Null
         Assert-Throws { Invoke-Resolve -Gpu $true -PushRef "${repo}:winamd64" } 'CUDA bytes under the default tag' -MessagePattern "':winamd64-nvidia'"
@@ -146,8 +145,7 @@ Describe 'Get-BkRocmStageArg (rocm-only build-args)' {
     }
 
     It 'sends Dockerfile.torch and the onnx stage exactly the pins each declares' {
-        # torch: the pins, plus the torch-rocm-wheels stage's versions and GPU family; a pin two of its
-        # stages declare (rocm-1 and torch-rocm-wheels) is still one build-arg.
+        # A pin two torch stages declare (rocm-1 and torch-rocm-wheels) is still one build-arg.
         foreach ($c in @(@{ Stage = 'torch'; Df = 'windows\Dockerfile.torch'; Pin = 'TORCH_ROCM_WINDOWS_\w+|PYTORCH_VERSION|TORCHVISION_VERSION|ROCM_WINDOWS_GFX_FAMILY'; Switch = 'TORCH_ROCM' }
                 @{ Stage = 'media-core'; Df = 'windows\Dockerfile.media-builder'; Pin = 'ORT_WEBGPU_WINDOWS_\w+'; Switch = 'ORT_WEBGPU' })) {
             $sent = @((Get-BkRocmStageArg -Variant 'rocm' -Stage $c.Stage -VersionTable (Get-DriverVariantPin)).Keys | Where-Object { $_ -ne $c.Switch })
@@ -223,7 +221,7 @@ Describe 'Get-BkTag: lane tags (golden table)' {
         'windows-torch'             = 'windows-torch-rocm'
         'winamd64-rocm'             = 'winamd64-rocm'
     }
-    # nvidia since 2026-09-27: its own tag from sdk on, like rocm, on both arches (arm64 after the infix).
+    # nvidia gets its own tag from sdk on, like rocm, on both arches (arm64 after the infix).
     $script:NvidiaGolden = [ordered]@{
         'windows-base'              = @('windows-base', 'windows-base')
         'windows-sdk'               = @('windows-sdk-nvidia', 'windows-sdk-nvidia')

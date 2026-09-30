@@ -1,36 +1,10 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Make OpenCV 5.0.0's videoio compile against FFmpeg 9 (avcodec 63).
-    Backlog #94.
-
+    Makes OpenCV 5.0.0's videoio compile against FFmpeg 9, which removed AVCodec pix_fmts and supported_framerates.
 .DESCRIPTION
-    FFmpeg deprecated the direct AVCodec fields `pix_fmts` and
-    `supported_framerates` in 7.1 and REMOVED them by 9.0, in favour of
-
-        avcodec_get_supported_config(avctx, codec, config, flags,
-                                     &out_configs, &out_num_configs)
-
-    OpenCV 5.0.0 predates the removal, so its videoio fails to build against the
-    FFmpeg this chain ships:
-
-        cap_ffmpeg_hw.hpp(760,761,762)     no member named 'pix_fmts'
-        cap_ffmpeg_impl.hpp(2632,2633)     no member named 'supported_framerates'
-
-    Applied as an in-script edit rather than a .patch file ON PURPOSE: a unified
-    diff has to match upstream context byte for byte, and the same five sites
-    move with every OpenCV point release. Matching the ACCESSOR (`c->pix_fmts`)
-    instead of its surroundings survives that; the assertions below turn any
-    upstream reshuffle into a loud failure instead of a silent no-op — the rule
-    from backlog #56.
-
-    Deliberately keeps the existing loops untouched. With the last argument of
-    avcodec_get_supported_config() left NULL, the returned array is still
-    terminated the old way (AV_PIX_FMT_NONE / a zero AVRational), so only the
-    way the pointer is OBTAINED changes.
-
-    Version-guarded: the shims fall back to the old fields below avcodec 61.13,
-    so this does not trade one incompatibility for the reverse one.
+    An in-script edit, not a .patch: matching the accessor survives point releases that move the context.
+    Version-guarded, so FFmpeg below avcodec 61.13 keeps using the old fields.
 #>
 [CmdletBinding()]
 param(
@@ -49,9 +23,7 @@ foreach ($f in $hwFile, $implFile) {
     }
 }
 
-# Inserted after the LAST #include of the file: anchoring on an include keeps
-# working when upstream reorders code, and both files include the FFmpeg headers
-# before any use, so LIBAVCODEC_VERSION_INT is defined by then.
+# The shims keep the classic terminators, so every existing caller loop stays untouched.
 $shimHw = @'
 
 // >>> OCV_FFMPEG9_SHIM BEGIN
@@ -107,30 +79,12 @@ function Add-ShimAfterLastInclude {
     param([string]$Path, [string]$Shim)
 
     $text = Get-Content -LiteralPath $Path -Raw
-    # Marker must be the SHIM's own delimiter, never the helper NAME: the
-    # accessor rewrite runs first and puts `ocv_codec_pix_fmts(c)` into the file,
-    # so a name-based check reports "already present" and silently skips the
-    # insert — leaving calls to a function that was never defined. The dry run
-    # caught exactly that.
+    # The shim's own delimiter, never the helper name: the accessor rewrite already put that name in the file.
     if ($text -match [regex]::Escape($shimMarker)) {
         Write-Host "  $(Split-Path $Path -Leaf): shim already present, skipping insert"
         return
     }
-    # ANCHOR: after the `extern "C" { ... }` block that pulls in
-    # <libavcodec/avcodec.h>. Two earlier anchors both failed for reasons worth
-    # keeping:
-    #
-    #  * `(?m)^\s*#\s*include[^\r\n]*$` matched ZERO includes in a CRLF checkout
-    #    (`[^\r\n]*` stops before `\r`; .NET's `$` only matches before `\n`),
-    #    while matching all 20 in the same file with LF endings.
-    #  * "after the LAST #include" then put the shim inside
-    #    `#ifdef HAVE_VA_INTEL` / `hwcontext_drm.h` territory — a preprocessor
-    #    branch that is FALSE in this build, so the helpers were compiled out and
-    #    the call sites failed with "use of undeclared identifier".
-    #
-    # The end of the FFmpeg `extern "C"` block is unconditional, sits after
-    # avcodec.h (so LIBAVCODEC_VERSION_INT is defined), and is above every use
-    # site in both files.
+    # After the FFmpeg extern "C" block: unconditional, past avcodec.h, and above every use (the last #include is in a false #ifdef).
     $externIdx = -1
     foreach ($m in [regex]::Matches($text, 'extern\s*"C"\s*\{')) {
         $window = $text.Substring($m.Index, [Math]::Min(4000, $text.Length - $m.Index))
@@ -154,15 +108,7 @@ function Add-ShimAfterLastInclude {
     if ($at -lt 0) {
         throw "ffmpeg9-avcodec-config: unbalanced `extern `"C`"` block in $Path - cannot anchor the compatibility shim"
     }
-    # cap_ffmpeg_impl.hpp wraps the block as
-    #     #ifdef __cplusplus
-    #     extern "C" {
-    #     #endif   ... includes ...   #ifdef __cplusplus
-    #     }
-    #     #endif
-    # so the matching `}` is INSIDE `#ifdef __cplusplus`. Landing there compiles
-    # (this is C++), but stepping past the trailing `#endif` puts the shim at
-    # genuine top level in both files instead of relying on that.
+    # Step past the closing brace's `#ifdef __cplusplus` guard so the shim sits at true top level.
     $tail = $text.Substring($at, [Math]::Min(200, $text.Length - $at))
     $endifMatch = [regex]::Match($tail, '^\s*(\r?\n)?[ \t]*#[ \t]*endif[^\r\n]*')
     if ($endifMatch.Success) { $at += $endifMatch.Length }
@@ -170,8 +116,7 @@ function Add-ShimAfterLastInclude {
     Set-Content -LiteralPath $Path -Value $updated -NoNewline -Encoding ascii
     Write-Host "  $(Split-Path $Path -Leaf): inserted shim after the FFmpeg extern-C block (offset $at)"
 
-    # The shim must precede every call site, or the compiler reports "use of
-    # undeclared identifier" 20 minutes into the build. Check it here instead.
+    # A shim after the first call site fails the compile 20 minutes in; check it here instead.
     $firstUse = [regex]::Match($updated, 'ocv_codec_(pix_fmts|frame_rates)\s*\(\s*(c|codec)\s*\)')
     $shimAt = $updated.IndexOf($shimMarker)
     if ($firstUse.Success -and $shimAt -ge 0 -and $firstUse.Index -lt $shimAt) {
@@ -196,15 +141,7 @@ function Set-AccessorRequired {
 
 Write-Host 'Patching OpenCV videoio for FFmpeg 9 (backlog #94)...'
 
-# ORDER MATTERS: rewrite the accessors FIRST, insert the shim SECOND. Doing it
-# the other way round rewrites the shim's own pre-FFmpeg-9 fallback
-# (`return c ? c->pix_fmts : NULL;`) into a call to itself — infinite recursion
-# on any older FFmpeg, and it compiles cleanly. Caught by the dry run, not by
-# review; keep the order and keep the dry run.
-#
-# IDEMPOTENT: the source tree can be re-patched (a resumed chain, a retried
-# layer), so an already-patched file is a no-op, not an error. Only an
-# UNPATCHED file that lacks the expected accessor is a real failure.
+# Accessors first: the reverse order rewrites the shim's fallback into infinite recursion. A patched file is a no-op.
 function Update-VideoioFile {
     param([string]$Path, [string]$Pattern, [string]$Replacement, [string]$What, [string]$Shim)
 
@@ -221,10 +158,7 @@ Update-VideoioFile -Path $hwFile -Pattern '\bc->pix_fmts\b' -Replacement 'ocv_co
 Update-VideoioFile -Path $implFile -Pattern '\bcodec->supported_framerates\b' -Replacement 'ocv_codec_frame_rates(codec)' `
     -What 'codec->supported_framerates' -Shim $shimImpl
 
-# Fail loudly if any direct field access survived anywhere in videoio: a missed
-# site is a compile error later in a 20-minute build, and the message there
-# ("no member named ...") does not point back here. The shim's own fallback
-# branch legitimately uses the old fields, so cut those spans out first.
+# A missed site fails the compile much later with no pointer back here; the shims' own fallbacks are cut out first.
 $leftovers = @()
 foreach ($f in Get-ChildItem -Path $videoioSrc -Filter 'cap_ffmpeg*.hpp' -File) {
     $t = Get-Content -LiteralPath $f.FullName -Raw

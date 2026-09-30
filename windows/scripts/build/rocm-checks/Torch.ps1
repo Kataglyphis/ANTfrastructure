@@ -14,8 +14,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# The probe prints one JSON line; an import error is reported in it, never raised.
-# "venv" is read before any import: Install-TorchRocm.ps1 checks the pins against it.
+# Import errors go into the JSON line, never raised; "venv" is read first because Install-TorchRocm.ps1 checks pins on it.
 function Get-TorchRocmProbeSource {
     return @'
 import contextlib, ctypes, hashlib, importlib.metadata as md, io, json, os, re, sys, sysconfig
@@ -132,8 +131,7 @@ function Get-TorchRocmFinding {
     foreach ($dist in 'rocm', 'rocm-sdk-core', 'rocm-sdk-libraries') {
         if ("$($dists[$dist])" -ne $Release) { "Torch: dist $dist is '$($dists[$dist])', expected $Release" }
     }
-    # torch's own kernels are compiled in (the source build's PYTORCH_ROCM_ARCH); ROCm's libraries'
-    # kernels come in rocm-sdk-device-<gfx> wheels. Both must cover every GPU rocBLAS serves.
+    # torch's kernels come from PYTORCH_ROCM_ARCH, ROCm's from rocm-sdk-device-<gfx> wheels; both must cover every rocBLAS GPU.
     $arch = @("$($Report['arch'])" -split '[\s;,]+' | Where-Object { $_ })
     if ($arch.Count -eq 0) { 'Torch: torch reports no compiled GPU arch (torch._C._cuda_getArchFlags): it carries no kernels' }
     $sdkDevice = @($dists.Keys | Where-Object { $_.StartsWith('rocm-sdk-device-') })

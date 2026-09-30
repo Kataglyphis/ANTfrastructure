@@ -1,9 +1,5 @@
 #requires -Version 7.0
-# Tests for Invoke-CpythonPip — the shared `python -m pip` wrapper (routed through cmd.exe so
-# pip's stderr progress doesn't trip EAP=Stop). A regression here would either swallow a failed
-# pip install or abort a build on a non-critical wheel that should have been -Optional. A fake
-# interpreter (a .bat that exits non-zero) drives the exit-code handling without needing Python.
-# Invoke-InTestDir zeroes $LASTEXITCODE, isolating each case from prior native exits.
+# A fake interpreter (a .bat that exits non-zero) drives Invoke-CpythonPip's exit-code handling without Python.
 
 Describe 'Invoke-CpythonPip' {
 

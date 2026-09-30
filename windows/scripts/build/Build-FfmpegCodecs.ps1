@@ -3,17 +3,7 @@
 
 #requires -Version 7.0
 
-# FFmpeg's software codecs for the Windows image: dav1d (AV1 decode), x264 (H.264 encode) and x265
-# (HEVC encode), built as STATIC libraries into a private prefix and linked into FFmpeg's DLLs, so
-# no codec DLL can collide with GStreamer's own dav1d/x264 in C:\runtime\bin. Before 2026-09-28 the
-# Windows FFmpeg had none of them: no software AV1 decode, no H.264/HEVC encode (the Linux lanes
-# take the distro's). Called by Build-FfmpegFromSource.ps1 before configure, with the modules it
-# imports already loaded.
-#
-# Pins: dav1d and x264 are the exact sources GStreamer 1.29.2's wraps build (subprojects/dav1d.wrap,
-# subprojects/x264.wrap), so the image carries one version of each. x265 has no wrap there.
-# amd64 only for now: the arm64 cross lane needs GStreamer's meson cross file and its aarch64 asm
-# shim reproduced here first, so it returns no codecs and says so.
+# dav1d/x264/x265 as static libs linked into FFmpeg's DLLs, so none collides with GStreamer's; run by Build-FfmpegFromSource.ps1.
 
 param(
     [Parameter(Mandatory)][string]$Prefix,
@@ -24,11 +14,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# arm64 first needs GStreamer's meson cross file and aarch64 asm shim reproduced here.
 if (Test-WindowsCrossTarget -Arch $TargetArch) {
     Write-Host "FFmpeg codecs: none on the $(Get-WindowsTargetArch -Arch $TargetArch) cross lane yet (dav1d/x264/x265 are amd64-only; GStreamer's own dav1d/x264 plugins still ship there)"
     return [pscustomobject]@{ ConfigureFlags = @(); PkgConfigDir = $null; ConfigSymbols = @() }
 }
 
+# dav1d and x264 pin the sources GStreamer's wraps build, so the image carries one version of each.
 $dav1dVersion = Get-SourceBuildVersion -EnvironmentVariables @('DAV1D_VERSION') -DefaultValue '1.4.1'
 $dav1dSha256 = Get-SourceBuildVersion -EnvironmentVariables @('DAV1D_SHA256') -DefaultValue '8d407dd5fe7986413c937b14e67f36aebd06e1fa5cfec679d10e548476f2d5f8'
 $x264Branch = Get-SourceBuildVersion -EnvironmentVariables @('X264_MESON_BRANCH') -DefaultValue '164.3108-meson'
@@ -41,9 +33,7 @@ Reset-SourceBuildDirectory -Path $Prefix
 $null = [System.IO.Directory]::CreateDirectory($WorkDir)
 $libDir = Join-Path $Prefix 'lib'
 
-# FFmpeg's msvc toolchain turns a .pc file's -l<name> into <name>.lib, while meson names a static library
-# lib<name>.a (x264's meson port even calls its library libx264, so its .pc says -llibx264). The target
-# name is therefore read from the installed .pc itself, never assumed. Copy, so the install stays as written.
+# FFmpeg's msvc toolchain wants the .pc's -l<name> as <name>.lib, but meson installs lib<name>.a: read the name from the .pc.
 function Copy-CodecStaticLib([string]$From, [string]$PcName) {
     $src = Join-Path $libDir $From
     if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { throw "codec build installed no $src" }
@@ -52,15 +42,13 @@ function Copy-CodecStaticLib([string]$From, [string]$PcName) {
     $libsLine = @(Get-Content -LiteralPath $pc | Where-Object { $_ -match '^Libs:' }) | Select-Object -First 1
     $names = @([regex]::Matches("$libsLine", '(?:^|\s)-l(\S+)') | ForEach-Object { $_.Groups[1].Value })
     if ($names.Count -ne 1) { throw "$pc names $($names.Count) -l librar(ies) in '$libsLine', expected exactly one" }
-    # FFmpeg's msvc flag filter maps -l<name> to <name>.lib, with two exceptions (configure, n9.0.2):
-    # -lz -> zlib.lib and -lx264 -> libx264.lib.
+    # The two exceptions in FFmpeg n9.0.2's msvc flag filter: -lz -> zlib.lib, -lx264 -> libx264.lib.
     $libName = switch ($names[0]) { 'z' { 'zlib.lib' } 'x264' { 'libx264.lib' } default { "$($names[0]).lib" } }
     Copy-Item -LiteralPath $src -Destination (Join-Path $libDir $libName) -Force
     Write-Host "FFmpeg codecs: $From -> $libName (from $PcName)"
 }
 
-# This stage runs before GStreamer's, which is where meson normally arrives: install it the same way
-# (pip into the toolchain's source-built CPython), unless an earlier step already put one on PATH.
+# This runs before GStreamer's stage, which is where meson normally arrives.
 function Initialize-CodecMeson {
     if (Get-Command meson -ErrorAction SilentlyContinue) { return }
     $py = Initialize-ToolchainPythonEnvironment
@@ -84,12 +72,9 @@ function Invoke-CodecMeson([string]$Name, [string]$SourceDir, [string[]]$Options
     try {
         $setup = @('setup', $buildDir, $SourceDir, "--prefix=$Prefix", '--libdir=lib',
             '--buildtype=release', '-Db_ndebug=true', '--default-library=static',
-            # FFmpeg's DLLs link the STATIC CRT (avcodec imports no CRT DLL; its configure passes no
-            # -MD). meson's default is /MD, whose __imp_ CRT references configure's dav1d link test
-            # cannot resolve (measured: _aligned_malloc, _beginthreadex, realloc).
+            # FFmpeg's DLLs link the static CRT, so meson's /MD default leaves __imp_ refs configure cannot resolve.
             '-Db_vscrt=mt') + $Options
-        # Out-Host throughout: this script's ONLY pipeline output is its result object, which the
-        # caller assigns. Native output left on the pipeline would arrive there as extra elements.
+        # Out-Host throughout: the result object must be this script's only pipeline output.
         & meson @setup | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "$Name meson setup failed ($LASTEXITCODE)" }
         & meson install -C $buildDir | Out-Host
@@ -125,9 +110,7 @@ Copy-CodecStaticLib -From 'libx264.a' -PcName 'x264.pc'
 # ── x265: HEVC encode (CMake; x86 asm through nasm) ───────────────────────────
 $x265Root = Get-CodecTarball -Name "x265 $x265Version" -Sha256 $x265Sha256 `
     -Url "https://bitbucket.org/multicoreware/x265_git/downloads/x265_$x265Version.tar.gz"
-# x265 4.1 sets CMP0025 and CMP0054 to OLD, which CMake 4 refuses ("no longer supports it", measured in
-# :winamd64 with CMake 4.4). NEW is what every current CMake does anyway; its 2.8.8 minimum is covered
-# by CMAKE_POLICY_VERSION_MINIMUM below. A bump that drops or rewrites the lines fails here, loudly.
+# x265 4.1 sets CMP0025/CMP0054 to OLD, which CMake 4 refuses; a bump that rewrites those lines fails here loudly.
 $x265Cml = Join-Path $x265Root 'source\CMakeLists.txt'
 $x265Text = [System.IO.File]::ReadAllText($x265Cml)
 foreach ($policy in 'CMP0025', 'CMP0054') {

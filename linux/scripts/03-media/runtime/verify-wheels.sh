@@ -29,12 +29,7 @@ for wheel in "${WHEELS_DIR}"/*.whl; do
   case "${base}" in
     *"${PY_TAG}-"*|*py2.py3-none-*|*py3-none-*) continue ;;
   esac
-  # Accept stable-ABI (abi3) wheels whose interpreter floor is <= the container's.
-  # abi3 is the CPython stable ABI: a cp3Y-abi3 wheel is forward-compatible and
-  # installs/runs on cp3Z for any Z >= Y. This is exactly how IREE ships its
-  # iree_base_compiler / iree_base_runtime wheels (cp312-abi3), including the
-  # riscv64 cross-build on container Python 3.14. Same tag as the amd64/arm64 PyPI
-  # IREE wheels — abi3 is not a defect, it's the intended, correct packaging.
+  # A cp3Y-abi3 wheel runs on any cp3Z with Z >= Y (IREE ships cp312-abi3).
   if [[ "${base}" =~ -cp([0-9])([0-9]+)-abi3- ]]; then
     _w_major="${BASH_REMATCH[1]}"
     _w_minor="${BASH_REMATCH[2]}"
@@ -58,23 +53,7 @@ else
   echo "All wheel tags verified"
 fi
 
-# ---------------------------------------------------------------------------
-# SOABI / default-triple assert (backlog: cross-wheel SOABI assert). The tag
-# loop above only checks the wheel FILENAME's Python tag (cpXY) — which is
-# version-matched between the host and the target, so it CANNOT catch an
-# arch/SOABI mismatch: a wheel named foo-cp314-cp314-linux_riscv64.whl can still
-# carry a native extension stamped `.cpython-314-x86_64-linux-gnu.so` (a
-# cross-build that leaked the host BUILD_PYTHON's SOABI), which installs fine and
-# only explodes at `import` on-target ("cannot open shared object"). Check the
-# ACTUAL extension SOABI inside each wheel against the TARGET triple.
-#
-# Uses TARGET_ARCH (NOT the running interpreter's EXT_SUFFIX): during a cross
-# build this script runs on the amd64 HOST, so the host suffix would falsely
-# reject every correct riscv64/arm64 wheel. The Python VERSION is host==target
-# (both cp314), so only the arch triple has to be derived from TARGET_ARCH.
-#
-# Advisory by default (WARN) — a wrong triple map must never break the build we
-# cannot re-validate here; WHEEL_SOABI_STRICT=1 promotes mismatches to fatal.
+# Filename tags miss a leaked host SOABI; the triple comes from TARGET_ARCH (this runs on the host). Advisory.
 _wheel_target_triplet() {
   local a="${1:-}"
   if declare -F arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
@@ -102,10 +81,7 @@ else
   _soabi_bad=0
   shopt -s nullglob
   for wheel in "${WHEELS_DIR}"/*.whl; do
-    # List native cpython extension .so members whose SOABI suffix != expected.
-    # abi3 (.abi3.so) and generic .so (bundled C libs, no cpython tag) are skipped
-    # here — abi3 is intentionally arch/version-forward, and non-extension .so are
-    # the runtime .so-closure smoke's job, not the Python-import SOABI's.
+    # cpython-tagged extensions only: plain .so files are the closure smoke's job.
     _bad_so="$(python -c '
 import sys, zipfile, re
 wheel, expected = sys.argv[1], sys.argv[2]

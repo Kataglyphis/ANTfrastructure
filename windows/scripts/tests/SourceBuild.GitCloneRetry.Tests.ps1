@@ -1,20 +1,9 @@
 #requires -Version 7.0
-# Tests for Invoke-GitClone's retry (WindowsSourceBuild.Common.psm1, #116) —
-# one TCP drop (curl 18 at 610 s of the LiteRT clone) killed a 4-hour ride
-# because the driver correctly does not infra-retry script failures. A fake
-# git.bat on PATH (same pattern as the NinjaRetry tests) drives every path;
-# each invocation is appended to a log file so the attempt COUNT is asserted,
-# and the partial-tree case proves Reset-SourceBuildDirectory wipes leftovers
-# between attempts. InitialDelaySeconds 0 keeps the suite sleep-free.
+# The driver does not retry script failures, so Invoke-GitClone must; a fake git.bat on PATH logs every attempt.
 
 Describe 'Invoke-GitClone retry' {
 
-    # Behavior is steered per-case via env:
-    #   WBT_GIT_LOG      — file every invocation appends its arguments to
-    #   WBT_GIT_MODE     — 'fail' = always exit 128
-    #   WBT_GIT_FAILONCE — marker file: if present, delete it, leave a PARTIAL
-    #                      tree in the target and exit 128 (transient drop)
-    #   WBT_GIT_TARGET   — the clone target dir the fake writes into
+    # Env knobs: WBT_GIT_LOG, WBT_GIT_MODE=fail, WBT_GIT_FAILONCE (marker: one partial-tree drop), WBT_GIT_TARGET.
     $newFakeGit = {
         param($dir)
         $lines = @(

@@ -1,37 +1,14 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The CPack wiring that BeschleunigerBallett and AccelerANTgine each carried a
-# private copy of. The two files shared 189 lines of code with no shared
-# ancestry - one was seeded by copying the other - so every packaging fix had to
-# be made twice and, in practice, was not: the copies had already drifted on the
-# Windows package file name, on CPACK_PACKAGING_INSTALL_PREFIX, and on where
-# CPACK_PACKAGE_EXECUTABLES was set.
-#
-# WHAT IS HERE AND WHAT IS NOT. This module owns the *mechanism*: which
-# generators a platform gets, how the architecture string is normalised into the
-# package name, the shape of the NSIS/WiX/DEB/AppImage blocks. It owns none of
-# the *values* - icons, installer copy, the WiX upgrade GUID, the Debian
-# dependency list. Those are per-product and are arguments, two of them
-# mandatory precisely so a second consumer cannot inherit the first one's
-# identity by accident. cmake/README.md's "packaging metadata stays in the
-# consumer" rule is about exactly those values, and it still holds: the caller
-# supplies every one of them.
-#
-# WHY A MACRO AND NOT A FUNCTION. CPack reads CPACK_* out of the directory scope
-# that runs include(CPack). Variables set inside a function() would be discarded
-# before CPack ever saw them, so this has to expand in the caller's scope.
-#
-# The caller runs include(CPack) itself, after this returns, so it can still
-# override or add to anything set here.
+
+# A macro, not a function: CPack reads CPACK_* from the scope that runs include(CPack), which the caller does afterwards.
 
 include_guard(GLOBAL)
 
-# Configures the CPack variables shared by the Kataglyphis C++ projects.
-#
+# Configures the shared CPack variables; sets KATAGLYPHIS_CPACK_ARCH, the normalised arch in the package name.
 #   kataglyphis_cpack_common(
 #     VENDOR                 <string>          # required: vendor + DEB maintainer
-#     WIX_UPGRADE_GUID       <guid>            # required, see below
+#     WIX_UPGRADE_GUID       <guid>            # required, no default: products sharing one uninstall each other
 #     [EXECUTABLE            <name>]           # default ${PROJECT_NAME}
 #     [LICENSE_FILE          <path>]           # default ${PROJECT_SOURCE_DIR}/LICENSE
 #     [README_FILE           <path>]           # default ${PROJECT_SOURCE_DIR}/README.md
@@ -51,27 +28,9 @@ include_guard(GLOBAL)
 #     [DEBIAN_SECTION        <string>]         # default "devel"
 #     [DEBIAN_PRIORITY       <string>]         # default "optional"
 #     [UNIX_INSTALL_PREFIX   <path>]           # CPACK_PACKAGING_INSTALL_PREFIX; unset if omitted
-#     [SHORT_WINDOWS_FILE_NAME])               # see below
-#
-# WIX_UPGRADE_GUID is mandatory and deliberately has NO default. An MSI upgrade
-# code is a product's identity: two products sharing one means installing either
-# silently uninstalls the other. The two consumers this module was hoisted from
-# were carrying the SAME literal GUID, which is the bug that made this a
-# required parameter rather than an optional one with a fallback.
-#
-# SHORT_WINDOWS_FILE_NAME replaces the fully descriptive package file name with
-# <project>-<version>-<config>-<arch> on Windows only. The long name embeds the
-# compiler id and version, which is what you want for tracking an ABI back to a
-# build - but NSIS resolves paths against MAX_PATH, and a deep workspace plus
-# the long name overflows it.
-#
-# Leaves KATAGLYPHIS_CPACK_ARCH set for the caller: the normalised architecture
-# that went into the package name.
+#     [SHORT_WINDOWS_FILE_NAME])               # Windows: <project>-<version>-<config>-<arch>, within NSIS's MAX_PATH
 
-# The VC++ runtime an arm64-native package installs: InstallRequiredSystemLibraries'
-# list without vcruntime<ver>_1.dll. The arm64 redist folder carries that one as
-# ARM64EC, an x64-machine PE that only x64 and ARM64EC code imports, and the Windows
-# cross lanes' arch gate refuses it (docs/windows-cross-builds.md).
+# Drops vcruntime<ver>_1.dll: the arm64 redist ships it as ARM64EC, which the cross lanes' arch gate refuses.
 function(kataglyphis_arm64_system_runtime_libs out_var)
   set(_libs ${ARGN})
   list(
@@ -85,11 +44,7 @@ function(kataglyphis_arm64_system_runtime_libs out_var)
       PARENT_SCOPE)
 endfunction()
 
-# The DLL closure a Windows build script staged for its packages (Copy-PeImportClosure over the
-# built binaries, docs/windows-cross-builds.md): what the product imports that no install rule
-# ships, the media stack above all. Installed beside the executables, so every package runs on
-# a clean machine. The directory is named at configure time and filled before packaging; empty
-# names none.
+# Installs the DLL closure a build script staged beside the executables, so every package runs on a clean machine.
 function(kataglyphis_install_package_dlls)
   set(KATAGLYPHIS_PACKAGE_DLL_DIR
       ""
@@ -145,12 +100,7 @@ macro(kataglyphis_cpack_common)
     message(FATAL_ERROR "kataglyphis_cpack_common: VENDOR is required - it becomes CPACK_PACKAGE_VENDOR and the "
                         "Debian maintainer field.")
   endif()
-  # Shape-check rather than trust: a mistyped GUID reaches WiX as a failure in a
-  # Windows-only packaging job, long after the configure that accepted it.
-  #
-  # Spelled out group by group because CMake's regex engine has no bounded
-  # repetition - `[0-9A-Fa-f]{8}` is matched LITERALLY, so the obvious pattern
-  # rejects every well-formed GUID instead of the malformed ones.
+  # Spelled out per group: CMake regex has no bounded repetition, so `{8}` would match literally.
   set(_kgcpack_hex4 "[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]")
   if(NOT
      KGCPACK_WIX_UPGRADE_GUID
@@ -196,9 +146,7 @@ macro(kataglyphis_cpack_common)
     set(KGCPACK_DEBIAN_PRIORITY "optional")
   endif()
 
-  # The resource files are shown in the installer UI. A missing one surfaces as
-  # an empty licence page, or as a CPack failure at package time on a machine
-  # that is not the one that made the mistake. Catch it at configure time.
+  # Catch a missing installer resource at configure time, not at package time on another machine.
   foreach(_kgcpack_resource IN ITEMS LICENSE_FILE README_FILE WELCOME_FILE)
     if(NOT EXISTS "${KGCPACK_${_kgcpack_resource}}")
       message(FATAL_ERROR "kataglyphis_cpack_common: ${_kgcpack_resource} does not exist: "
@@ -207,9 +155,7 @@ macro(kataglyphis_cpack_common)
   endforeach()
   unset(_kgcpack_resource)
 
-  # Explicit package naming makes an ABI problem visible in the file name before
-  # anyone unpacks it, and ties a build to one toolchain. PROJECT_ARCH is
-  # honoured as an override so a cross build can name its target, not its host.
+  # PROJECT_ARCH lets a cross build name its target, not its host.
   if(NOT DEFINED PROJECT_ARCH)
     if(CMAKE_SYSTEM_PROCESSOR)
       set(PROJECT_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
@@ -228,9 +174,7 @@ macro(kataglyphis_cpack_common)
     set(KATAGLYPHIS_CPACK_ARCH "aarch64")
   endif()
 
-  # The VC++ runtime ships with the package. On a Windows arm64 target the module's own
-  # install is replaced by one without the ARM64EC file (kataglyphis_arm64_system_runtime_libs),
-  # at the module's own destination and component; a caller's _SKIP is honoured as ever.
+  # Windows arm64 reinstalls the VC++ runtime without the ARM64EC file, at the module's own destination.
   if(WIN32
      AND KATAGLYPHIS_CPACK_ARCH STREQUAL "aarch64"
      AND NOT CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP)
@@ -270,9 +214,7 @@ macro(kataglyphis_cpack_common)
   set(CPACK_PACKAGE_DESCRIPTION "${PROJECT_DESCRIPTION}")
   set(CPACK_PACKAGE_HOMEPAGE_URL "${PROJECT_HOMEPAGE_URL}")
   set(CPACK_PACKAGE_EXECUTABLES "${KGCPACK_EXECUTABLE}" "${KGCPACK_EXECUTABLE}")
-  # Assigned to CPACK_PACKAGE_ICON once, at the very end: the AppImage branch
-  # replaces the installer bitmap with an installed icon NAME, and routing both
-  # through one variable is what stops them fighting over statement order.
+  # Assigned once at the end, so the AppImage icon name and the installer bitmap cannot fight over order.
   set(_kgcpack_package_icon "${KGCPACK_PACKAGE_ICON}")
   # Use all cores.
   set(CPACK_THREADS 0)
@@ -317,13 +259,7 @@ macro(kataglyphis_cpack_common)
     # Standard install location, under Program Files.
     set(CPACK_PACKAGE_INSTALL_DIRECTORY "${PROJECT_NAME}")
 
-    # CPACK_CREATE_DESKTOP_LINKS on its own makes a shortcut whose working
-    # directory is the install root, so the exe cannot find what it loads
-    # relative to itself. SetOutPath before CreateShortCut is what fixes that.
-    #
-    # There is a bug in NSIS that does not handle full UNIX paths properly, so
-    # keep at least one set of four backslashes:
-    # https://gitlab.kitware.com/cmake/community/-/wikis/doc/cpack/Packaging-With-CPack
+    # SetOutPath gives the shortcut bin/ as working dir; keep the four backslashes (NSIS bug, https://gitlab.kitware.com/cmake/community/-/wikis/doc/cpack/Packaging-With-CPack).
     set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS
         "
     SetOutPath \\\"$INSTDIR\\\\bin\\\"
@@ -342,17 +278,12 @@ macro(kataglyphis_cpack_common)
       set(CPACK_WIX_USE_LONG_FILE_NAMES ON)
       set(CPACK_WIX_PROPERTY_ARPURLINFOABOUT "${PROJECT_HOMEPAGE_URL}")
       set(CPACK_WIX_PROPERTY_ARPHELPLINK "${PROJECT_HOMEPAGE_URL}")
-      # The MSI platform follows the target, as the file name does. Left unset,
-      # CPack derives x64 from the pointer size and stamps an arm64 payload x64.
+      # Left unset, CPack derives x64 from the pointer size and stamps an arm64 payload x64.
       if(KATAGLYPHIS_CPACK_ARCH STREQUAL "aarch64")
         set(CPACK_WIX_ARCHITECTURE "arm64")
       endif()
 
-      # WiX accepts only real RTF for the licence page and aborts with
-      # 'unsupported WiX License file extension' otherwise. Both consumers keep
-      # a checked-in LICENSE.rtf, so this synthesis is the fallback for a fresh
-      # tree that has not got one yet - not something that runs on every
-      # configure.
+      # WiX accepts only real RTF; this synthesis is the fallback for a tree without LICENSE.rtf.
       if(NOT EXISTS "${KGCPACK_WIX_LICENSE_RTF}")
         file(
           WRITE "${KGCPACK_WIX_LICENSE_RTF}"
@@ -363,8 +294,7 @@ macro(kataglyphis_cpack_common)
     endif()
 
   else()
-    # Linux and other UNIX systems. Source stays TGZ; binaries are TGZ plus, on
-    # Debian/Ubuntu, DEB and optionally an AppImage.
+    # UNIX: TGZ, plus DEB and optionally an AppImage on Debian/Ubuntu.
     if(KGCPACK_UNIX_INSTALL_PREFIX)
       set(CPACK_PACKAGING_INSTALL_PREFIX "${KGCPACK_UNIX_INSTALL_PREFIX}")
     endif()
@@ -397,42 +327,10 @@ macro(kataglyphis_cpack_common)
               "share/applications; without it CPack produces an AppImage no desktop can launch.")
         endif()
 
-        # appimagetool comes from KataglyphisAppImage, which provisions it from
-        # an IMMUTABLE release tag against the SHA256 pinned in
-        # linux/scripts/01-core/versions.env and calls message(FATAL_ERROR) when
-        # either the download or the checksum does not hold.
-        #
-        # WHAT THIS REPLACES, and why the replacement is not like-for-like: the
-        # blocks that stood in both consumers downloaded appimagetool from the
-        # MUTABLE `continuous` tag with no EXPECTED_HASH, and reported both a
-        # failed download and "no appimagetool available at all" with
-        # message(WARNING). CPACK_ENABLE_APPIMAGE=ON therefore produced a green
-        # Package job with no AppImage in it - the request was silently dropped
-        # - and, when the download did succeed, packaged with bytes nobody had
-        # verified.
-        #
-        # DELIBERATE BEHAVIOUR CHANGE: a packaging job that cannot get a
-        # verified tool now FAILS the configure step instead of skipping the
-        # generator. Runs that were quietly shipping only TGZ/DEB will start
-        # going red; that is the point, and the fix is to make the tool
-        # available, never to restore the warning.
+        # A verified, pinned appimagetool or a failed configure; never restore a warn-and-skip path.
         include(KataglyphisAppImage)
 
-        # A type-2 AppImage must READ its own appended squashfs (through
-        # /proc/self/exe) to run - even with APPIMAGE_EXTRACT_AND_RUN=1, which
-        # only skips the FUSE mount. The :latest image ships
-        # /usr/local/bin/appimagetool as -rwx--x--x (execute-only for non-root),
-        # so the CI user (uid 1001) can exec but not read it, and it dies with
-        # "Cannot open /proc/self/exe: Permission denied". compare_files against
-        # itself is a portable read-access probe: it opens the file for reading
-        # and returns non-zero if it cannot.
-        #
-        # KataglyphisAppImage prefers an appimagetool on PATH (inside a
-        # ANTfrastructure image that IS the checksum-verified one packaging-deps.sh
-        # installed). NO_SYSTEM_SEARCH is how we tell it to skip that step when
-        # the PATH copy is the unreadable one, so it downloads the pinned asset
-        # - which it chmods world-readable - instead of handing back a tool that
-        # cannot run.
+        # An AppImage must read itself, and the image's copy is execute-only for non-root: skip it for the pinned download.
         set(_kgcpack_provision_args "")
         find_program(KATAGLYPHIS_CPACK_APPIMAGETOOL_ON_PATH NAMES appimagetool)
         if(KATAGLYPHIS_CPACK_APPIMAGETOOL_ON_PATH)
@@ -457,13 +355,7 @@ macro(kataglyphis_cpack_common)
         kataglyphis_provision_appimagetool(_kgcpack_appimagetool ${_kgcpack_provision_args})
         unset(_kgcpack_provision_args)
 
-        # No `if(_kgcpack_appimagetool)` guard: the call above either returns a
-        # verified tool or stops the configure. A guard here would be dead code
-        # pretending the skip path still exists.
-        #
-        # ARCH is exported because appimagetool refuses to guess it when the
-        # host and the payload could disagree, and APPIMAGE_EXTRACT_AND_RUN
-        # because the CI containers have no FUSE.
+        # ARCH because appimagetool will not guess it; APPIMAGE_EXTRACT_AND_RUN because CI containers have no FUSE.
         set(_kgcpack_wrapper "${PROJECT_BINARY_DIR}/tools/appimagetool-wrapper.sh")
         file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
         file(
@@ -486,8 +378,7 @@ macro(kataglyphis_cpack_common)
         set(CPACK_APPIMAGE_TOOL_EXECUTABLE "${_kgcpack_wrapper}")
         set(CPACK_APPIMAGE_DESKTOP_FILE "${KGCPACK_APPIMAGE_DESKTOP_FILE}")
         if(KGCPACK_APPIMAGE_ICON_NAME)
-          # Not a path: the AppImage generator resolves this against the icons
-          # the project installed under share/icons.
+          # A name, resolved against the icons installed under share/icons.
           set(_kgcpack_package_icon "${KGCPACK_APPIMAGE_ICON_NAME}")
         endif()
         message(STATUS "AppImage packaging enabled with appimagetool: ${_kgcpack_appimagetool}")
@@ -501,8 +392,7 @@ macro(kataglyphis_cpack_common)
     set(CPACK_PACKAGE_ICON "${_kgcpack_package_icon}")
   endif()
 
-  # A macro expands in the caller's scope, so every temporary above would
-  # otherwise stay visible to the rest of the project.
+  # A macro expands in the caller's scope, so clear every temporary.
   unset(_kgcpack_package_icon)
   unset(_kgcpack_arch_lc)
   unset(_kgcpack_flags)

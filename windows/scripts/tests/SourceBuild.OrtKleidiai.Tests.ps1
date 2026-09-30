@@ -1,8 +1,5 @@
 #requires -Version 7.0
-# Build-OnnxFromSource.ps1's KleidiAI path (arm64, 2026-09-28): the deps.txt row it trusts, the
-# ASM_MARMASM rule it patches into KleidiAI's CMakeLists.txt, and the preprocess-then-armasm64 wrapper.
-# Proven end to end in :winamd64 (KleidiAI v1.20.0, armasm64 14.51): 178/178 with these functions,
-# A2029 (/arch) and A2003/A2230/A2034 (no preprocessor, GNU markers, GNU branch) without them.
+# KleidiAI on arm64: the trusted deps.txt row, the patched ASM_MARMASM rule and the preprocess-then-armasm64 wrapper.
 
 $script:ortScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
 

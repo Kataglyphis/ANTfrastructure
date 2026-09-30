@@ -5,58 +5,17 @@
 
 <#
 .SYNOPSIS
-    Test whether the host GPU can be passed through to a process-isolated Windows
-    container so DirectX / DirectML runs on real hardware (not the WARP software
-    renderer). Run after any Docker Engine / containerd / hcsshim / Windows /
-    base-image / GPU-driver upgrade to check if GPU-in-container has become usable.
-
+    Tests whether the host GPU passes through to a process-isolated container, so DirectML runs on hardware, not WARP.
 .DESCRIPTION
-    Background (see docs/windows-builds.md § GPU acceleration in containers and the
-    directml-clangcl-port / windows-container-host-quirks memories):
-
-    On Windows, GPU acceleration in containers is DirectX-only (Direct3D 12 and the
-    frameworks on top of it -- including DirectML). It requires:
-      * process isolation           (Hyper-V-isolated containers get NO GPU)
-      * --device class/5B45201D-F2F2-4F3B-85BB-30FF1F953599   (the DirectX GPU
-        device interface class; NOTE the exact GUID -- a wrong variant is silently
-        accepted by `docker run` but assigns nothing, leaving only WARP)
-      * a base-image OS build that MATCHES the host build. Basic process isolation
-        tolerates skew (a 26100 image runs on a 26200 host), but GPU driver-store
-        INJECTION does not -- CreateComputeSystem fails with "The system cannot
-        find the path specified" when the builds differ. This is the SAME
-        client-host (26200) vs Server base image (ltsc2025 / 26100) skew that
-        breaks `docker build --isolation process` layer commits.
-
-    This host's GPUs (AMD Radeon RX 9070 XT + iGPU) ARE GPU-PV partitionable
-    (Get-VMHostPartitionableGpu lists them), and DirectML is vendor-agnostic, so
-    the RX 9070 XT is the REAL GPU path here (there is no NVIDIA GPU -- CUDA/TensorRT
-    are dead weight on this box). The blocker is purely the base-image/host build
-    skew, not the GPU or the DirectML build.
-
-    The script:
-      1. Prints host build, image OsVersion, and host partitionable GPUs.
-      2. CONTROL   -- `docker run --isolation process` with NO device (must work).
-      3. GPU       -- `docker run --isolation process --device class/<GPU-GUID>`,
-                      then compiles + runs a DXGI adapter enumerator inside the
-                      container and reports HARDWARE vs SOFTWARE(WARP) adapters.
-      4. Verdict   -- PASSTHROUGH WORKS / BLOCKED (build skew) / DEVICE-NOT-INJECTED.
-
+    Needs process isolation, the exact DirectX device class and a base image whose OS build matches the host's.
+    Re-run after an engine, Windows, base-image or driver upgrade; see docs/windows-build-resources.md § GPU acceleration in containers.
 .PARAMETER Image
-    Container image to test. Must contain clang-cl + the Windows SDK (the family
-    Windows CI image does). Left empty it is composed by Get-CiImageReference
-    -Windows from versions.env, so it follows a fleet-wide tag bump with no edit
-    here; the ref is deliberately not written out in this comment either.
-
+    Image with clang-cl and the Windows SDK; empty = the family Windows CI image composed from versions.env.
 .PARAMETER Docker
     Path to docker.exe. Defaults to Stevedore's, then PATH.
-
-.EXAMPLE
-    pwsh -File windows/scripts/diagnostics/Test-GpuPassthrough.ps1
 #>
 param(
-    # Empty, not the ref: a param default is evaluated before the module below is
-    # imported, so the composed value cannot be written here -- it is resolved
-    # right after the import instead.
+    # Empty: a param default runs before the module import that composes the ref.
     [string]$Image = '',
     [string]$Docker = ''
 )
@@ -68,9 +27,7 @@ Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsCont
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force -DisableNameChecking
 if ([string]::IsNullOrWhiteSpace($Image)) { $Image = Get-CiImageReference -Windows }
 
-# The DirectX GPU device interface class GUID (Microsoft-documented). A wrong
-# variant (e.g. ...-4AA3-9020-C4B8B62E36F7) is accepted by docker but matches no
-# device, so the container silently falls back to WARP -- use exactly this one.
+# Exactly this DirectX class: docker accepts a wrong GUID variant silently and the container falls back to WARP.
 $GpuDeviceClass = 'class/5B45201D-F2F2-4F3B-85BB-30FF1F953599'
 
 if ([string]::IsNullOrWhiteSpace($Docker)) {

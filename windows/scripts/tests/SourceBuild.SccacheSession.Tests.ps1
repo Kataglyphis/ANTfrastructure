@@ -1,10 +1,5 @@
 #requires -Version 7.0
-# Tests for Start-/Complete-SccacheServerSession (WindowsSourceBuild.Common.psm1,
-# #107) — the sccache prologue/epilogue extracted from the chain functions. The
-# two behaviors that each cost a false alarm are pinned here: the PER-STAGE
-# error-log truncation (an append-only log on the shared mount replayed a
-# previous run's failures as a live regression) and the failures-first dump.
-# -SccachePath is the test seam: a fake .cmd logs every invocation.
+# Per-stage truncation matters: an append-only log on the shared mount replays old failures as live ones.
 
 # File scope: both Describes below use the same fake (WBT_SCC_LOG appender).
 $newFakeSccache = {
@@ -53,8 +48,7 @@ Describe 'Start-SccacheServerSession' {
 
     It 'is a silent no-op when sccache is absent' {
         Invoke-InTestDir { param($dir)
-            # PATH reduced to the (sccache-less) test dir so the default
-            # Get-Command resolution finds nothing.
+            # PATH is only the test dir, so Get-Command finds no sccache.
             Invoke-WithEnv @{ PATH = $dir; SCCACHE_ERROR_LOG = '' } {
                 Start-SccacheServerSession 6>$null
             }

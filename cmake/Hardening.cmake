@@ -20,8 +20,7 @@ macro(
       /DYNAMICBASE
       /guard:cf)
     list(APPEND NEW_LINK_OPTIONS /NXCOMPAT)
-    # CET shadow stacks exist on x64 only, and an ARM64 link refuses /CETCOMPAT. A
-    # Windows cross build names its target here (Get-CMakeCrossArgs).
+    # An ARM64 link refuses /CETCOMPAT; a Windows cross build names its target via Get-CMakeCrossArgs.
     if(NOT
        CMAKE_SYSTEM_PROCESSOR
        MATCHES
@@ -40,16 +39,6 @@ macro(
       -U_FORTIFY_SOURCE
       -D_FORTIFY_SOURCE=3)
     message(STATUS "*** g++/clang _FORTIFY_SOURCE=3 enabled")
-
-    #    check_cxx_compiler_flag(-fpie PIE)
-    #if(PIE)
-    #  set(NEW_COMPILE_OPTIONS ${NEW_COMPILE_OPTIONS} -fpie)
-    #  set(NEW_LINK_OPTIONS ${NEW_LINK_OPTIONS} -pie)
-    #
-    #  message(STATUS "*** g++/clang PIE mode enabled")
-    #else()
-    #  message(STATUS "*** g++/clang PIE mode NOT enabled (not supported)")
-    #endif()
 
     check_cxx_compiler_flag(-fstack-protector-strong STACK_PROTECTOR)
     if(STACK_PROTECTOR)

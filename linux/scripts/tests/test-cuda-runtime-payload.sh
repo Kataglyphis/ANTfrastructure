@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# The GPU variant's CUDA/cuDNN/NCCL carry-over into the runtime package image.
-# Nothing copied them past the artifact boundary, so every CUDA-built library
-# reached the runtime image without libcudart/libcudnn and could not load.
+# The GPU variant's CUDA/cuDNN/NCCL carry-over, without which CUDA-built libraries cannot load at runtime.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -13,9 +11,7 @@ for _fn in _dest copy_path copy_glob copy_cuda_payload; do
   _FNS+="$(t_fn_src "${PAY}" "${_fn}")"$'\n' || exit 1
 done
 
-# An artifact tree shaped like the media image: the toolkit under a versioned
-# dir, cuda/cuda-13 as ABSOLUTE alternatives links (they dangle through a bind
-# mount), cuDNN/NCCL in the multiarch dir with relative soname chains.
+# Shaped like the media image: cuda/cuda-13 are absolute alternatives links, which dangle through a bind mount.
 _mk_artifact() {
   local a="$1"
   mkdir -p "${a}/usr/local/cuda-13.3/bin" "${a}/usr/local/cuda-13.3/targets/sbsa-linux/lib" \

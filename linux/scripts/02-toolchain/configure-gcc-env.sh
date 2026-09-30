@@ -1,21 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# configure-gcc-env.sh - Environment configuration for GCC installation.
-# Called from build-gcc.sh after GCC is installed.
+# Environment setup after build-gcc.sh installs GCC.
 
-# Prepend var_value to a ':'-separated var in an /etc/environment-style file,
-# de-duplicating it, and leave exactly ONE line for var_name.
-#
-# TS7 fix: the old body had two corruption bugs on this system file.
-#   1. It stripped the existing value with `sed "s|${var_value}:||g"`, an
-#      UNANCHORED SUBSTRING edit. Prefix-nesting mangled siblings: removing
-#      '/opt/gcc' from '/opt/gcc-16/bin:/usr/bin' left '-16/bin:/usr/bin', and
-#      an unescaped var_value with a sed metacharacter matched wrong. We now
-#      split on ':' and drop only EXACT-equal elements.
-#   2. It deleted the old line with `sed -i "/d" ... 2>/dev/null || true` then
-#      appended — so a MASKED delete failure left DUPLICATE var_name lines. We
-#      now filter every prior var_name line out and write exactly one back,
-#      atomically via a temp file (no delete-then-append gap).
+# Prepends var_value to a :-list in an /etc/environment-style file, leaving exactly one var_name line.
 _append_env_var() {
   local var_name="$1" var_value="$2" env_file="$3"
 
@@ -24,8 +11,7 @@ _append_env_var() {
   local existing
   existing=$(grep -E "^${var_name}=" "${env_file}" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' || true)
 
-  # Rebuild the ':'-list by EXACT-element filtering (never substring), dropping
-  # any prior occurrence of var_value, then prepend it exactly once.
+  # Exact-element filtering: a substring edit would mangle siblings like /opt/gcc-16/bin.
   local -a parts=()
   IFS=':' read -ra parts <<< "${existing}"
   local rebuilt="" part
@@ -36,8 +22,7 @@ _append_env_var() {
   done
   rebuilt="${var_value}${rebuilt:+:${rebuilt}}"
 
-  # Remove EVERY prior var_name line by exact-key filtering, append exactly one
-  # fresh line, replace the file's content in place (keeps perms/owner via cp).
+  # Drop every prior var_name line and write one back; cp keeps the file's perms and owner.
   local tmp
   tmp=$(mktemp)
   grep -vE "^${var_name}=" "${env_file}" 2>/dev/null > "${tmp}" || true
@@ -106,9 +91,7 @@ EOF
   echo "Created ${PATH_FILE}"
 }
 
-# 6d) For Docker: Also add to /etc/environment for non-interactive shells.
-# SUDO is declared local so _append_env_var's ${SUDO:-} resolves to it (as it did
-# when this block lived inline in _configure_gcc_environment).
+# 6d) /etc/environment for non-interactive Docker shells; _append_env_var's ${SUDO:-} reads this local SUDO.
 _gcc_env_docker_environment() {
   local PREFIX="$1" SUDO="${2:-}"
   echo "Adding GCC paths to /etc/environment for Docker compatibility..."

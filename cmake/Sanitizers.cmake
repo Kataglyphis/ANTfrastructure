@@ -65,8 +65,7 @@ function(
     if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" AND MSVC)
       set(_CLANGCL_COMPILE_SAN_FLAGS "")
 
-      # Detect clang resource directory early; needed for explicit runtime linking
-      # because lld-link does not understand -fsanitize= flags.
+      # lld-link does not understand -fsanitize=, so the runtime is linked explicitly from here.
       execute_process(
         COMMAND ${CMAKE_CXX_COMPILER} --print-resource-dir
         OUTPUT_VARIABLE _CLANG_RESOURCE_DIR
@@ -76,8 +75,7 @@ function(
       endif()
 
       if("address" IN_LIST SANITIZERS)
-        # -shared-libsan: clang-cl defaults to the STATIC ASan runtime, whose
-        # MT_StaticRelease failifmismatch records collide with /MD builds.
+        # -shared-libsan: the default static ASan runtime's failifmismatch records collide with /MD.
         list(
           APPEND
           _CLANGCL_COMPILE_SAN_FLAGS
@@ -87,8 +85,7 @@ function(
 
       if("undefined" IN_LIST SANITIZERS)
         list(APPEND _CLANGCL_COMPILE_SAN_FLAGS -fsanitize=undefined)
-        # Without ASan there is no /MD UBSan runtime (ubsan_standalone is /MT), so
-        # trap on UB instead of linking one — docs/windows-clang-cl-sanitizers.md.
+        # Without ASan there is no /MD UBSan runtime, so trap instead: docs/windows-clang-cl-sanitizers.md
         if(NOT
            "address"
            IN_LIST
@@ -117,8 +114,7 @@ function(
           list(APPEND _CLANGCL_COMPILE_SAN_DEBUG_FLAGS "$<$<CONFIG:Debug>:${_clangcl_flag}>")
         endforeach()
 
-        # No -fsanitize= at link: UBSan either traps (no runtime) or gets its
-        # handlers from the ASan runtime linked explicitly below.
+        # No -fsanitize= at link: UBSan traps or takes its handlers from the ASan runtime linked below.
         target_compile_options(${project_name} INTERFACE ${_CLANGCL_COMPILE_SAN_DEBUG_FLAGS} "$<$<CONFIG:Debug>:/Zi>")
         target_link_options(${project_name} INTERFACE "$<$<CONFIG:Debug>:/INCREMENTAL:NO>")
       endif()
@@ -129,8 +125,7 @@ function(
           INTERFACE "$<$<CONFIG:Debug>:_DISABLE_VECTOR_ANNOTATION>" "$<$<CONFIG:Debug>:_DISABLE_STRING_ANNOTATION>"
                     "$<$<CONFIG:Debug>:_DISABLE_OPTIONAL_ANNOTATION>")
 
-        # Prefer Microsoft's ASan runtime over LLVM's: same import-lib names, but
-        # LLVM's aborts full apps at startup — docs/windows-clang-cl-sanitizers.md.
+        # Prefer Microsoft's ASan runtime; LLVM's aborts full apps at startup: docs/windows-clang-cl-sanitizers.md
         set(_ASAN_LINK_DIR "")
         if(DEFINED ENV{VCToolsInstallDir})
           file(TO_CMAKE_PATH "$ENV{VCToolsInstallDir}" _VCTOOLS)
@@ -148,8 +143,7 @@ function(
           endforeach()
         endif()
         if(NOT _ASAN_LINK_DIR AND _CLANG_RUNTIME_DIR)
-          # Expected fallback for standalone test/fuzz exes; a full app aborts
-          # under LLVM's runtime — docs/windows-clang-cl-sanitizers.md.
+          # Fine for standalone test and fuzz exes; a full app aborts under LLVM's runtime.
           set(_ASAN_LINK_DIR "${_CLANG_RUNTIME_DIR}")
           message(WARNING "Microsoft ASan runtime not found; falling back to LLVM's clang_rt "
                           "(fine for standalone test exes; a full app will abort on startup under it).")

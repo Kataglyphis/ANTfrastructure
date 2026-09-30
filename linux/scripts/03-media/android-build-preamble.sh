@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# android-build-preamble.sh
-# Shared preamble for Android library build scripts (onnxruntime, litert, opencv, gstreamer).
-# Usage: source this file, then call android_build_preamble_init <label> [api_level_default]
+# Usage: source, then android_build_preamble_init <label> [api_level_default]
 set -euo pipefail
 
 android_build_preamble_init() {
@@ -23,10 +21,7 @@ android_build_preamble_init() {
 
   ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${api_default}" "${label}")"
 
-  # LOG13: wire the compiler cache launcher so android-iree (and any other
-  # project that respects CMAKE_*_COMPILER_LAUNCHER / RUSTC_WRAPPER) gets
-  # sccache instead of falling back to inherited ccache or nothing. The five
-  # RUN blocks stay byte-identical — only the preamble changes.
+  # Wired here so every android stage gets sccache while the Dockerfile RUN blocks stay identical.
   if [ -f /opt/scripts/core/compiler-cache.sh ]; then
     # shellcheck disable=SC1091
     source /opt/scripts/core/compiler-cache.sh
@@ -37,19 +32,14 @@ android_build_preamble_init() {
   export DEBIAN_FRONTEND=noninteractive
 }
 
-# Host compiler resolution, shared by every android stage: source the canonical
-# helper, fall back to an inline copy. docs/refactoring-backlog.md F5
+# Host compiler resolution: the canonical helper when shipped, else an inline copy.
 
 if [ -f /opt/scripts/core/compiler-resolution.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/compiler-resolution.sh
   resolve_host_compiler() { resolve_host_compiler_for_lang "$1"; }
 else
-  # Prefer EXPLICIT /usr/bin host compilers (aligned with the litert copy):
-  # the android stages inherit PATH=/opt/gcc-<ver>/bin:... from the toolchain,
-  # so a bare `command -v gcc` resolved the custom CROSS GCC as the host
-  # compiler. (Normally dead code — Dockerfile.android ships the canonical
-  # compiler-resolution.sh since 2026-08-08 and the branch above wins.)
+  # Explicit /usr/bin first: PATH leads with /opt/gcc-<ver>/bin, whose gcc is the cross compiler.
   resolve_host_compiler() {
     local candidate
     case "$1" in
@@ -67,11 +57,7 @@ else
   }
 fi
 
-# media_jobs [cap_mb] for the Android build scripts: same signature and same
-# default as 03-media/core/common.sh, but the Android scripts do NOT call
-# media_common_init, so parallelism.sh is sourced on demand (container path) and
-# plain nproc is the fallback. Both definitions taking the cap is what lets the
-# gstreamer lane's 1500 MB stop being a fourth copy of this block.
+# media_jobs [cap_mb], as in core/common.sh; Android scripts skip media_common_init, so source on demand.
 
 media_jobs() {
   local jobs
@@ -86,9 +72,7 @@ media_jobs() {
   printf '%s\n' "${jobs}"
 }
 
-# Shallow-clone helper for the Android build scripts.
-# Replaces the repeated `cd /opt; rm -rf <dir>; git clone --depth 1 -b <ref>
-# <url> <dir>; cd <dir>` idiom. Leaves the shell inside the freshly cloned dir.
+# Usage: <url> <ref> <dir>; leaves the shell inside the fresh clone.
 android_clone_shallow() {
   local url="$1" ref="$2" dir="$3"
   cd /opt
@@ -97,12 +81,7 @@ android_clone_shallow() {
   cd "${dir}"
 }
 
-# Patch-application helper for the Android build scripts.
-# Replaces the repeated container-vs-repo apply-patch.sh + patches/ resolver.
-# Container layout (apply-patch.sh + patches/ COPY'd into the android stages)
-# is tried first; otherwise the repo layout is derived from the CALLER's path
-# (BASH_SOURCE[1], the build-android.sh under 03-media/build/<lib>/android/).
-# Args: <patch-relative-path> <target-dir> <description>.
+# Usage: <patch-rel-path> <target-dir> <desc>; outside a container the repo root comes from the caller's path.
 android_apply_patch() {
   local patch_rel="$1" target_dir="$2" desc="$3"
   local _apply_patch _patches_root

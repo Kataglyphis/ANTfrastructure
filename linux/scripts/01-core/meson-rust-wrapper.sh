@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# meson-rust-wrapper.sh - Rustc wrapper for Meson cross-compilation.
-# Substituted at build time with RUSTC_BIN and RUST_TARGET.
+# Rustc wrapper for Meson cross builds; the __RUSTC_BIN__/__RUST_TARGET__ placeholders are substituted at build time.
 
 set -euo pipefail
 

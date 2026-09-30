@@ -1,34 +1,13 @@
 #!/usr/bin/env bash
-# artifact-common.sh — aggregator entry point for the build scripts layer.
-#
-# Sources all 01-core modules in dependency order:
-#   1. common.sh              (versions.env, logging, platform, ubuntu-mirror, downloads, parallelism)
-#   2. tag-naming.sh          (cross-chain + runtime tag functions)
-#   3. stage-defs.sh          (declarative cross-lane stage graph)
-#   4. digest-pinning.sh      (registry digest resolution)
-#   5. chain-verify.sh        (cross-chain staleness verification + describe)
-#   5b. ancestry.sh           (parent-digest annotations + stale-ancestor assert)
-#   6. build-helpers.sh       (nerdctl wrappers, build-arg helpers)
-#   7. cross-stage-build.sh   (cross-stage build orchestration: build, push, pin)
-#   8. context-management.sh  (runtime context, OCI export, stage handoff)
-#   9. version-forwarding.sh  (auto-discovered --build-arg forwarding)
-#  10. cli-parsers.sh         (shared CLI argument parsing)
-#  11. runtime-build-fns.sh   (per-arch build chain functions)
-#  12. compiler-resolution.sh (host compiler resolution for media builds)
-#  13. parallel-loop.sh       (per-architecture parallel build loop)
+# Aggregator: sources common.sh and the host-side 01-core modules in dependency order.
 
 _ARTIFACT_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RUNTIME_CONTEXT_ROOT="${RUNTIME_CONTEXT_ROOT:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/opencode/runtime-build-contexts}"
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
-# Load common.sh (versions.env, platform.sh, logging.sh, ubuntu-mirror.sh,
-# downloads.sh, parallelism.sh).  common.sh has its own _VERSIONS_ENV_LOADED
-# guard so double-sourcing is safe.
 # shellcheck disable=SC1091
 [ -f "${_ARTIFACT_COMMON_DIR}/common.sh" ] && source "${_ARTIFACT_COMMON_DIR}/common.sh"
-
-# canonical_target_arch() is provided by platform.sh (sourced above)
 
 normalize_target_arches() {
   local raw_arches="$1"
@@ -40,35 +19,14 @@ normalize_target_arches() {
   printf '%s' "${result}"
 }
 
-# Resolve TARGET_ARCHES from the canonical variable name or common aliases.
-# Checks TARGET_ARCHES, then TARGET_ARCH, then ARCHITECTURES, then falls back
-# to the provided default (or CROSS_DEFAULT_ARCHES).
-#
-# Usage: TARGET_ARCHES="$(resolve_arch_list)"                 # uses CROSS_DEFAULT_ARCHES as fallback
-#        TARGET_ARCHES="$(resolve_arch_list "amd64,arm64")"   # custom fallback
+# resolve_arch_list [fallback]: TARGET_ARCHES, TARGET_ARCH, ARCHITECTURES, then the fallback.
 resolve_arch_list() {
   local fallback="${1:-${CROSS_DEFAULT_ARCHES:-amd64,arm64,riscv64}}"
   local raw="${TARGET_ARCHES:-${TARGET_ARCH:-${ARCHITECTURES:-${fallback}}}}"
   normalize_target_arches "${raw}"
 }
 
-# Source focused modules in dependency order.
-#   tag-naming.sh         — cross-chain + runtime tag functions
-#   stage-defs.sh          — declarative cross-lane stage graph
-#   digest-pinning.sh      — registry manifest digest resolution
-#   chain-verify.sh        — cross-chain staleness verification + describe
-#   build-helpers.sh       — nerdctl wrappers, build-arg helpers
-#   cross-stage-build.sh   — shared cross-stage build + pin orchestration
-#   context-management.sh  — runtime context, OCI export, stage handoff
-#   version-forwarding.sh  — auto-discovered --build-arg forwarding
-#   cli-parsers.sh         — shared CLI argument parsing
-#   runtime-build-fns.sh   — per-arch runtime build chain functions
-#   compiler-resolution.sh — host compiler resolution for media builds
-#   parallel-loop.sh       — per-architecture parallel build loop
-# NOTE: abseil-headers.sh is deliberately NOT in this loop (backlog A3):
-# install_abseil_headers has no host-side caller. Its in-image consumers
-# (build-litert.sh, build-libcamera.sh) load it via 03-media/core/common.sh's
-# `source_module abseil-headers.sh`.
+# No abseil-headers.sh: it has no host-side caller, and its in-image consumers source_module it.
 # shellcheck disable=SC1090,SC1091
 _ac_module=""
 for _ac_module in \

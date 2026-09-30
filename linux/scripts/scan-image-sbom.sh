@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# scan-image-sbom.sh — the scanner half of the SBOM, as one command.
-# Exactly what docs/sbom.md#generating-them documents: a `registry:` syft read
-# of the PUBLISHED image (no pull, no daemon — how an amd64 runner catalogues
-# the riscv64 child), the >=50-package refusal, then docs/scripts/compare_sbom.py.
-# All of it was inline in .github/workflows/sbom.yml, where the output filename
-# had drifted from what compare_sbom.py reads and the comparison ran nowhere.
-# Usage: bash linux/scripts/scan-image-sbom.sh <platform> [image]
+# scan-image-sbom.sh <platform> [image] — the scanner half of the SBOM. See docs/sbom.md#generating-them
 
 set -euo pipefail
 
@@ -14,8 +8,7 @@ cd "${REPO_ROOT}"
 
 CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
-# Pinned, and pinned in ONE place: the tag every lane runs comes from
-# versions.env, so a scan cannot quietly target a different image than CI runs.
+# The tag comes from versions.env, so a scan targets exactly the image CI runs.
 # shellcheck source=01-core/load-versions-env.sh
 source "${CORE_DIR}/load-versions-env.sh"
 load_versions_env "${CORE_DIR}/versions.env"
@@ -23,44 +16,18 @@ load_versions_env "${CORE_DIR}/versions.env"
 PLATFORM="${1:?platform required, e.g. linux/amd64}"
 IMAGE="${2:-${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_LINUX_TAG}}"
 
-# The upstream installer with an explicit version, which is what this did while
-# it lived in the workflow.
-#
-# The version comes from versions.env like the image tag above — it was a
-# `SYFT_VERSION="v1.20.0"` literal here until 2026-09-09, three lines under a
-# header that already claimed "pinned in ONE place". `:?` and not `:-`: a
-# default here would be that literal all over again, and an empty string handed
-# to install.sh means "latest", i.e. an unpinned scanner deciding what the SBOM
-# we publish says we ship. Refuse instead.
+# `:?`, not `:-`: an empty version makes install.sh fetch the latest, unpinned scanner.
 : "${SYFT_VERSION:?SYFT_VERSION is not set (versions.env not found, or the key was removed from it)}"
 SYFT_BIN_DIR="${SYFT_BIN_DIR:-${TMPDIR:-/tmp}}/syft-${SYFT_VERSION}"
 # Upstream tags carry the leading v; `syft --version` reports the bare number.
 SYFT_WANT="${SYFT_VERSION#v}"
 
-# The version a syft binary reports, or EMPTY when it cannot be read.
-#
-# `|| true` is not a swallowed error, it is the return channel: this file runs
-# under `set -euo pipefail`, where a binary that exits non-zero (or a grep that
-# finds no version in its output) aborts the whole script from inside the
-# command substitution — before the caller can print "ignoring it" and fall back
-# to the pinned bootstrap. Measured: a `syft` on PATH that just exits 3 killed
-# the script silently, rc=1, no message. The empty string it returns instead is
-# not tolerated anywhere: the PATH branch rejects it, and the SYFT_ACTUAL check
-# below exits 1 on it.
+# Empty when unreadable; `|| true` stops set -e killing the script inside the substitution, and both callers reject empty.
 syft_version_of() {
   "$1" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1 || true
 }
 
-# A syft on PATH is used ONLY when it IS the pinned version. It used to win
-# unconditionally ("a workstation run needs no download at all"), which quietly
-# made the pin advisory: the package counts and licence percentages in
-# docs/sbom.md were measured on 2026-08-25 with the syft that happened to be on
-# PATH — 1.51.0, thirty-one minor releases past the pin — while every line
-# around them says the scanner is pinned to v1.20.0. Cataloguer coverage and
-# licence conclusion both change across that range, so those are numbers from a
-# scanner nobody chose, and a re-run on another workstation would not reproduce
-# them. Preferring the pin costs one download and buys a reproducible SBOM;
-# SYFT_VERSION is the knob for deliberately scanning with a different one.
+# A PATH syft only at the pinned version: cataloguer coverage and licences change between releases.
 SYFT=""
 if command -v syft >/dev/null 2>&1; then
   _path_syft="$(command -v syft)"
@@ -82,9 +49,7 @@ if [ -z "${SYFT}" ]; then
   SYFT="${SYFT_BIN_DIR}/syft"
 fi
 
-# The bootstrap is checked too, not just the PATH copy: install.sh resolving the
-# tag to something else, or a stale cached SYFT_BIN_DIR, would otherwise publish
-# an SBOM under a version this repo never pinned.
+# Check the bootstrap too: install.sh or a stale SYFT_BIN_DIR could yield another version.
 SYFT_ACTUAL="$(syft_version_of "${SYFT}")"
 if [ "${SYFT_ACTUAL}" != "${SYFT_WANT}" ]; then
   echo "${SYFT} reports '${SYFT_ACTUAL:-nothing}', versions.env pins SYFT_VERSION=${SYFT_VERSION}." >&2
@@ -93,8 +58,7 @@ if [ "${SYFT_ACTUAL}" != "${SYFT_WANT}" ]; then
 fi
 "${SYFT}" version
 
-# scanned-linux-amd64, not scanned-amd64: compare_sbom.py reads the OS out of
-# this name to pick which curated section it is allowed to compare against.
+# compare_sbom.py reads the OS out of this name to pick the curated section.
 OS_NAME="${PLATFORM%%/*}"
 ARCH="${PLATFORM##*/}"
 STEM="out/sbom/scanned-${OS_NAME}-${ARCH}"
@@ -106,8 +70,7 @@ echo "== syft registry:${IMAGE} --platform ${PLATFORM} =="
   -o "spdx-json=${STEM}.spdx.json" \
   -o "cyclonedx-json=${STEM}.cdx.json"
 
-# A scan that finds almost nothing means a broken reference or a cataloguer
-# regression, not a clean image. Fail rather than publish it.
+# Almost nothing found means a broken reference or cataloguer regression, not a clean image.
 python3 - "${STEM}.spdx.json" <<'PY'
 import json
 import sys

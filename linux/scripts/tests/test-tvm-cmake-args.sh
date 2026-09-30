@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-# Golden argv for append_tvm_cmake_args (05-frameworks/tvm-config.sh): captured
-# byte-for-byte pre-refactor, -D order load-bearing, do NOT tidy the expected
-# blocks. Collaborators are all stubs.
-# docs/cross-build-verification.md#the-linuxscriptstests-suites
+# Golden argv for append_tvm_cmake_args: -D order is load-bearing, never tidy the expected blocks; see docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 # shellcheck source=../05-frameworks/tvm-config.sh
 source "${TESTS_DIR}/../05-frameworks/tvm-config.sh"
 
-# ── stubbed collaborators ────────────────────────────────────────────────────
+# Stubbed collaborators
 STUB_CROSS=0
 STUB_LAUNCHER=""
 STUB_QNN=""
@@ -25,7 +22,6 @@ info() { printf 'INFO:%s\n' "$*" >&2; }
 # The real die (logging.sh) EXITS; the arg-validation tests below rely on that.
 die() { printf 'DIE:%s\n' "$*" >&2; exit 97; }
 
-# Seeds the array like both real call sites, publishes it in GLOBAL _got.
 # Not a subshell: TVM_QNN_HOME is set non-locally and would be swallowed.
 _got=""
 _emit() {
@@ -35,7 +31,7 @@ _emit() {
   printf '%s\n' "${_got}"
 }
 
-# ── native-vulkan-off ──
+# native-vulkan-off
 STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
 unset TVM_QNN_HOME
 t_case "native build, Vulkan OFF, no LLVM_DIR, no launcher, no QNN"
@@ -64,7 +60,7 @@ EOF
 t_assert_eq "${_want}" "${_got}" "native-vulkan-off: emitted CMake args drifted from the golden"
 t_assert_eq "" "${TVM_QNN_HOME:-}" "native-vulkan-off: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# ── native-vulkan-on ──
+# native-vulkan-on
 STUB_CROSS=0; STUB_LAUNCHER="/usr/bin/sccache"; STUB_QNN=""
 unset TVM_QNN_HOME
 t_case "Vulkan ON emits all three Vulkan_* flags in LIBRARY, INCLUDE_DIR, SPIRV_TOOLS order"
@@ -104,7 +100,7 @@ EOF
 t_assert_eq "${_want}" "${_got}" "native-vulkan-on: emitted CMake args drifted from the golden"
 t_assert_eq "" "${TVM_QNN_HOME:-}" "native-vulkan-on: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# ── cross-linkflags ──
+# cross-linkflags
 STUB_CROSS=1; STUB_LAUNCHER=""; STUB_QNN=""
 unset TVM_QNN_HOME
 t_case "cross build: cross args, USE_ALTERNATIVE_LINKER=OFF, three *_LINKER_FLAGS"
@@ -143,7 +139,7 @@ EOF
 t_assert_eq "${_want}" "${_got}" "cross-linkflags: emitted CMake args drifted from the golden"
 t_assert_eq "" "${TVM_QNN_HOME:-}" "cross-linkflags: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# ── cross-linkflags-ambient ──
+# cross-linkflags-ambient
 STUB_CROSS=1; STUB_LAUNCHER=""; STUB_QNN=""
 export CMAKE_EXE_LINKER_FLAGS="-Wl,-exe" CMAKE_SHARED_LINKER_FLAGS="-Wl,-shared" CMAKE_MODULE_LINKER_FLAGS="-Wl,-module"
 unset TVM_QNN_HOME
@@ -181,7 +177,7 @@ t_assert_eq "${_want}" "${_got}" "cross-linkflags-ambient: emitted CMake args dr
 t_assert_eq "" "${TVM_QNN_HOME:-}" "cross-linkflags-ambient: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 unset CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS
 
-# ── cross-nolinkflags ──
+# cross-nolinkflags
 STUB_CROSS=1; STUB_LAUNCHER=""; STUB_QNN=""
 unset TVM_QNN_HOME
 t_case "cross build with empty --cross-link-flags emits NO *_LINKER_FLAGS"
@@ -213,7 +209,7 @@ EOF
 t_assert_eq "${_want}" "${_got}" "cross-nolinkflags: emitted CMake args drifted from the golden"
 t_assert_eq "" "${TVM_QNN_HOME:-}" "cross-nolinkflags: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# ── llvmdir-ignore ──
+# llvmdir-ignore
 STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
 unset TVM_QNN_HOME
 t_case "--llvm-dir + --llvm-ignore-paths emit LLVM_DIR then CMAKE_IGNORE_PATH"
@@ -244,7 +240,7 @@ EOF
 t_assert_eq "${_want}" "${_got}" "llvmdir-ignore: emitted CMake args drifted from the golden"
 t_assert_eq "" "${TVM_QNN_HOME:-}" "llvmdir-ignore: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# ── llvmdir-ignore-ambient ──
+# llvmdir-ignore-ambient
 STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
 export CMAKE_IGNORE_PATH="/ambient"
 unset TVM_QNN_HOME
@@ -277,7 +273,7 @@ t_assert_eq "${_want}" "${_got}" "llvmdir-ignore-ambient: emitted CMake args dri
 t_assert_eq "" "${TVM_QNN_HOME:-}" "llvmdir-ignore-ambient: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 unset CMAKE_IGNORE_PATH
 
-# ── llvmdir-only ──
+# llvmdir-only
 STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
 unset TVM_QNN_HOME
 t_case "empty --llvm-ignore-paths suppresses CMAKE_IGNORE_PATH entirely"
@@ -307,7 +303,7 @@ EOF
 t_assert_eq "${_want}" "${_got}" "llvmdir-only: emitted CMake args drifted from the golden"
 t_assert_eq "" "${TVM_QNN_HOME:-}" "llvmdir-only: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# ── cuda-opencl ──
+# cuda-opencl
 STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
 unset TVM_QNN_HOME
 t_case "--use-cuda 1 / --use-opencl 1 normalise to ON"
@@ -340,11 +336,7 @@ EOF
 t_assert_eq "${_want}" "${_got}" "cuda-opencl: emitted CMake args drifted from the golden"
 t_assert_eq "" "${TVM_QNN_HOME:-}" "cuda-opencl: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# ── cuda companions ──
-# USE_CUDA alone leaves cuDNN/cuBLAS OFF, so TVM targets the GPU but falls back
-# to generated kernels for conv/gemm. The companions are opt-OUT, and must be
-# asked for ONLY with CUDA on (requesting cuDNN without CUDA is a configure
-# error, not a no-op).
+# CUDA companions: USE_CUDA alone leaves conv/gemm on generated kernels; cuDNN without CUDA fails configure
 t_case "the CUDA companions are ON by default, and only when CUDA is"
 _emit --out arr --python-module ON --build-type Debug \
   --cc /usr/bin/gcc --cxx /usr/bin/g++ \
@@ -363,10 +355,7 @@ t_assert_eq "0" "$(printf '%s' "${_got}" | grep -c -- '-DUSE_CUDNN' || true)" \
 t_assert_eq "0" "$(printf '%s' "${_got}" | grep -c -- '-DUSE_CUBLAS' || true)" \
   "cuBLAS must not be requested without CUDA"
 
-# NO SUBSHELL. t_assert_* increments the harness counter, and a subshell cannot
-# mutate its parent: an earlier version of this block wrapped each knob in
-# `( ... )`, and a deliberately wrong assertion printed FAIL while the suite
-# still reported "50 passed" and exited 0. Set, call, unset instead.
+# No subshells: t_assert_* counts in the parent shell, so a subshell's FAIL would be lost.
 t_case "each companion has its own opt-out knob"
 # shellcheck disable=SC2034  # read by append_tvm_cmake_args (sourced), not visibly here
 TVM_USE_CUDNN=0
@@ -388,7 +377,7 @@ unset TVM_USE_CUBLAS
 t_assert_contains "${_got}" "-DUSE_CUBLAS=OFF" "TVM_USE_CUBLAS=0 must turn cuBLAS off"
 t_assert_contains "${_got}" "-DUSE_CUDNN=ON"  "and must NOT drag cuDNN off with it"
 
-# ── qnn-on ──
+# qnn-on
 STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN="/opt/qairt/2.0"
 unset TVM_QNN_HOME
 t_case "resolve_qnn_sdk hit emits NO QNN cmake flags but still exports TVM_QNN_HOME"
@@ -417,7 +406,7 @@ EOF
 t_assert_eq "${_want}" "${_got}" "qnn-on: emitted CMake args drifted from the golden"
 t_assert_eq "/opt/qairt/2.0" "${TVM_QNN_HOME:-}" "qnn-on: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# ── vulkan-lib-only ──
+# vulkan-lib-only
 STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
 unset TVM_QNN_HOME
 t_case "Vulkan ON with only --vulkan-library emits just Vulkan_LIBRARY"
@@ -452,7 +441,7 @@ EOF
 t_assert_eq "${_want}" "${_got}" "vulkan-lib-only: emitted CMake args drifted from the golden"
 t_assert_eq "" "${TVM_QNN_HOME:-}" "vulkan-lib-only: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# ── argument validation: the whole point of the keyword interface ─────────────
+# Argument validation, the point of the keyword interface
 STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
 unset TVM_QNN_HOME
 
@@ -483,8 +472,7 @@ _out="$( (_emit --out "" --python-module OFF --build-type Release \
                 --llvm-dir "" --llvm-ignore-paths "" --use-vulkan 0) 2>&1 )" && _rc=0 || _rc=$?
 t_assert_eq "97" "${_rc}" "an empty --out must abort via die"
 
-# Nameref collision: internals are _tvm_-prefixed now, so caller arrays named
-# out_ref/llvm_dir work. docs/refactoring-backlog-archive-2026-08-31.md
+# Internals are _tvm_-prefixed so a caller array's name cannot collide with the nameref.
 t_case "a caller array named out_ref (or llvm_dir) no longer collides with the nameref"
 _collide() {
   local -a out_ref=( -G Ninja )
@@ -497,9 +485,7 @@ _out="$(_collide 2>&1)" && _rc=0 || _rc=$?
 t_assert_eq "0" "${_rc}" "binding an array named out_ref must not be a circular reference"
 t_assert_contains "${_out}" "-DUSE_LLVM=OFF"
 
-# ── emit-block seams: each helper tested directly ────────────────────────────
-# Not a subshell — _tvm_resolve_qnn_home sets a GLOBAL. $1.. is the helper call,
-# whose first argument is always the array NAME "arr".
+# Emit-block helpers, directly; not a subshell, since _tvm_resolve_qnn_home sets a global
 _direct() {
   local -a arr=()
   "$@"

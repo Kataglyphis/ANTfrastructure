@@ -1,37 +1,11 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# appimagetool, provisioned the way this repo already provisions it everywhere
-# else: from an IMMUTABLE release tag, against a recorded SHA256, failing the
-# configure step when either the download or the checksum does not hold.
-#
-# What this replaces in the consumers: BeschleunigerBallett and AccelerANTgine
-# each download appimagetool from the MUTABLE `continuous` release tag with no
-# EXPECTED_HASH at all, and report a failure with message(WARNING) - so a
-# tampered, truncated or simply absent tool produces a warning nobody reads and
-# a build that carries on to package with whatever it got. Both properties are
-# wrong, and both are already solved here:
-#
-#   * linux/scripts/01-core/versions.env holds APPIMAGETOOL_VERSION plus one
-#     SHA256 per supported host arch. It is the single place a bump happens, and
-#     it carries the note explaining why `continuous` is banned (its assets are
-#     re-uploaded in place, which once surfaced as a tamper-shaped mismatch).
-#   * linux/scripts/02-toolchain/packaging-deps.sh installs the tool into the
-#     images from exactly those pins, checksum-verified.
-#
-# So this module reads the SAME pin file rather than restating the values, and
-# prefers an already-provisioned appimagetool (inside a ANTfrastructure image there
-# is one on PATH and it got there through the verified path above) before it
-# downloads anything itself.
-#
-# There is deliberately NO warn-and-continue branch. A packaging step that
-# cannot get a verified tool has to stop.
+
+# appimagetool from the immutable tag and SHA256 pinned in versions.env; no warn-and-continue branch, an unverified tool stops the configure.
 
 include_guard(GLOBAL)
 
-# The pin file. Resolved relative to THIS module so it is correct both in this
-# repo and in a consumer that has third_party/ANTfrastructure/cmake on
-# CMAKE_MODULE_PATH. Override only to test against a different pin set.
+# Relative to this module, so it resolves both here and in a consumer's third_party/ANTfrastructure.
 set(KATAGLYPHIS_VERSIONS_ENV
     "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/01-core/versions.env"
     CACHE FILEPATH "ANTfrastructure versions.env holding the appimagetool pins")
@@ -86,17 +60,8 @@ function(
       PARENT_SCOPE)
 endfunction()
 
-# Resolves the pinned appimagetool release for a host architecture.
-#
-#   kataglyphis_appimagetool_pin(<out_version> <out_asset> <out_sha256>
-#                                [ARCH <uname-m value>]
-#                                [VERSIONS_ENV <file>])
-#
-# ARCH defaults to CMAKE_HOST_SYSTEM_PROCESSOR: the tool runs on the machine
-# doing the build, not on the target, so a cross build still needs the host's
-# asset. Exposed separately from the provisioning function so a consumer (and
-# this repo's own checks) can assert against the pins without a network round
-# trip.
+# Resolves the pinned appimagetool release for a host arch (the tool runs on the build host, not the target).
+#   kataglyphis_appimagetool_pin(<out_version> <out_asset> <out_sha256> [ARCH <uname -m>] [VERSIONS_ENV <file>])
 function(
   kataglyphis_appimagetool_pin
   out_version
@@ -120,11 +85,7 @@ function(
     set(KATAGLYPHIS_APPIMAGE_ARCH "${CMAKE_HOST_SYSTEM_PROCESSOR}")
   endif()
   if(NOT KATAGLYPHIS_APPIMAGE_ARCH)
-    # CMAKE_HOST_SYSTEM_PROCESSOR is only filled in by project(); in script mode
-    # (cmake -P, which is how this module gets exercised standalone) it is
-    # EMPTY, and without this fallback the arch dispatch below reports "no
-    # pinned asset for host architecture ''" - a real dead end that looks like
-    # an unsupported platform. uname -m is what packaging-deps.sh keys on too.
+    # CMAKE_HOST_SYSTEM_PROCESSOR is empty in script mode (cmake -P), before any project().
     if(CMAKE_HOST_UNIX)
       execute_process(
         COMMAND uname -m
@@ -139,8 +100,7 @@ function(
                         "explicitly: kataglyphis_appimagetool_pin(... ARCH <uname -m value>).")
   endif()
 
-  # The arms mirror packaging-deps.sh ensure_appimagetool one for one, so the
-  # two provisioning paths cannot disagree about which asset an arch gets.
+  # Mirrors packaging-deps.sh ensure_appimagetool arm for arm, so both paths pick the same asset.
   if(KATAGLYPHIS_APPIMAGE_ARCH MATCHES "^(x86_64|amd64|AMD64)$")
     set(_kataglyphis_asset_arch "x86_64")
     set(_kataglyphis_sha_key "APPIMAGETOOL_X86_64_SHA256")
@@ -175,23 +135,8 @@ function(
       PARENT_SCOPE)
 endfunction()
 
-# Makes a verified appimagetool available and returns its path.
-#
-#   kataglyphis_provision_appimagetool(<out_var>
-#                                      [DESTINATION <dir>]
-#                                      [VERSIONS_ENV <file>]
-#                                      [NO_SYSTEM_SEARCH])
-#
-# Resolution order:
-#   1. -DKATAGLYPHIS_APPIMAGETOOL=<path>   an explicit, caller-owned tool
-#   2. appimagetool on PATH                inside a ANTfrastructure image this is
-#                                          the checksum-verified one that
-#                                          packaging-deps.sh installed
-#                                          (NO_SYSTEM_SEARCH skips this)
-#   3. download the pinned asset           EXPECTED_HASH, TLS on, fatal on any
-#                                          failure
-#
-# DESTINATION defaults to ${CMAKE_BINARY_DIR}/_kataglyphis_appimagetool.
+# Returns a verified appimagetool: -DKATAGLYPHIS_APPIMAGETOOL, else PATH (unless NO_SYSTEM_SEARCH), else the pinned download.
+#   kataglyphis_provision_appimagetool(<out_var> [DESTINATION <dir>] [VERSIONS_ENV <file>] [NO_SYSTEM_SEARCH])
 function(kataglyphis_provision_appimagetool out_var)
   cmake_parse_arguments(
     KATAGLYPHIS_APPIMAGE
@@ -219,9 +164,7 @@ function(kataglyphis_provision_appimagetool out_var)
     return()
   endif()
 
-  # appimagetool IS an AppImage: a Linux ELF that mounts its own squashfs. There
-  # is nothing to provision on a non-Linux host, and pretending otherwise would
-  # hand the caller a file it cannot execute.
+  # appimagetool is itself a Linux AppImage; a non-Linux host could not execute it.
   if(NOT CMAKE_HOST_UNIX)
     message(FATAL_ERROR "KataglyphisAppImage: AppImage packaging is Linux-only; this host is "
                         "'${CMAKE_HOST_SYSTEM_NAME}'. Guard the call with if(UNIX).")
@@ -254,8 +197,7 @@ function(kataglyphis_provision_appimagetool out_var)
 
   set(_kataglyphis_tool "${KATAGLYPHIS_APPIMAGE_DESTINATION}/${_kataglyphis_asset}")
 
-  # A previous configure already verified this exact file; re-checking the hash
-  # is cheap and means a corrupted cache is caught instead of reused.
+  # Re-hash a previously verified file so a corrupted cache is caught, not reused.
   if(EXISTS "${_kataglyphis_tool}")
     file(SHA256 "${_kataglyphis_tool}" _kataglyphis_have_sha)
     if(_kataglyphis_have_sha STREQUAL _kataglyphis_sha)
@@ -275,15 +217,7 @@ function(kataglyphis_provision_appimagetool out_var)
   file(MAKE_DIRECTORY "${KATAGLYPHIS_APPIMAGE_DESTINATION}")
   message(STATUS "KataglyphisAppImage: downloading pinned appimagetool ${_kataglyphis_version} (${_kataglyphis_asset})")
 
-  # Download to a .part path and only publish it under the real name after the
-  # checksum holds, so an interrupted or rejected download can never be picked
-  # up as a provisioned tool by the next configure.
-  #
-  # The verification is written out rather than delegated to file(DOWNLOAD)'s
-  # EXPECTED_HASH for two reasons, both observed: EXPECTED_HASH raises its own
-  # error that bypasses STATUS entirely (so none of the guidance below would
-  # ever be printed), and it leaves the rejected bytes sitting at the
-  # destination path.
+  # A .part path renamed only once verified; not EXPECTED_HASH, whose error skips STATUS and leaves rejected bytes behind.
   set(_kataglyphis_part "${_kataglyphis_tool}.part")
   file(REMOVE "${_kataglyphis_part}")
   file(
@@ -322,8 +256,7 @@ function(kataglyphis_provision_appimagetool out_var)
      _kataglyphis_actual_sha
      STREQUAL
      _kataglyphis_sha)
-    # Delete first: rejected bytes left on disk are what turn one bad configure
-    # into a build that silently packages with garbage later.
+    # Delete first, so a later configure cannot package with the rejected bytes.
     file(REMOVE "${_kataglyphis_part}")
     message(
       FATAL_ERROR
@@ -339,8 +272,7 @@ function(kataglyphis_provision_appimagetool out_var)
 
   file(RENAME "${_kataglyphis_part}" "${_kataglyphis_tool}")
 
-  # mktemp-style 0600 would ship a tool that cannot read ITSELF, and an AppImage
-  # has to (docs/consumer-image-contract.md#executable-is-not-usable).
+  # An AppImage must read itself: docs/consumer-image-contract.md#executable-is-not-usable
   file(
     CHMOD
     "${_kataglyphis_tool}"

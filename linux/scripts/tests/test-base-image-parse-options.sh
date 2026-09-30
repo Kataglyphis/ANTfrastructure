@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-# Pins the per-command asymmetries of 01-core/base-image.sh parse_options that a
-# "harmonizing" rewrite would eat.
-# docs/cross-build-verification.md#the-linuxscriptstests-suites
+# Pins base-image.sh parse_options' asymmetries against a "harmonizing" rewrite. See docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
 BASE_IMAGE_SH="${TESTS_DIR}/../01-core/base-image.sh"
 
-# ---------------------------------------------------------------------------
-# Mode 1: run base-image.sh for real and report "<rc>|<stderr>".
-# ---------------------------------------------------------------------------
+# Mode 1: run base-image.sh for real and report "<rc>|<stderr>"
 bi_run() {
   local out rc=0
   out="$(NO_COLOR=1 bash "${BASE_IMAGE_SH}" "$@" 2>&1 >/dev/null)" || rc=$?
@@ -86,11 +82,7 @@ t_assert_contains "$(bi_msg "${_r}")" "Usage: base-image.sh <command> [options]"
 t_case "--help prints usage and succeeds"
 t_assert_ok bash "${BASE_IMAGE_SH}" --help
 
-# ---------------------------------------------------------------------------
-# Mode 2: source ONLY the parser region with a stub die(), so a parse can be
-# asserted on the variables it assigns. Each case runs in a FRESH bash PROCESS,
-# not a subshell — see docs/cross-build-verification.md
-# ---------------------------------------------------------------------------
+# Mode 2: only the parser region with a stub die(), each case in a fresh bash process. See docs/cross-build-verification.md
 BI_TMP="$(mktemp -d)"
 trap 'rm -rf "${BI_TMP}"' EXIT
 awk '/^require_single_value\(\) \{$/{f=1} /^base_image_arch\(\) \{$/{f=0} f' \
@@ -171,11 +163,7 @@ for _b in 1 true TRUE yes YES 0 false FALSE no NO; do
 done
 
 t_case "the -security rewrite DEFAULT is on -- AS1"
-# Not a style choice. With it off the host keeps its -security on
-# security.ubuntu.com while the target pocket comes from the fast mirror: the
-# same pocket from two archives, and a lagging mirror then reproduces the
-# Multi-Arch:same version skew that cost riscv64 its Qt6. Read the shipped
-# default out of the script, so flipping it back reddens here.
+# Off, one pocket comes from two archives, and a lagging mirror causes Multi-Arch:same version skew.
 t_assert_contains "$(grep -e 'rewrite_security="\${FAST_UBUNTU_REWRITE_SECURITY' "${TESTS_DIR}/../01-core/base-image.sh")" \
   ":-true}" "false stays the explicit opt-out; it must not be what you get by saying nothing"
 
@@ -226,10 +214,7 @@ t_assert_ok bi_remaining bogus-command
 t_assert_fails bi_remaining bogus-command extra
 
 t_case "the riscv64 Node fallback compares versions, not the v-prefix"
-# `node --version` prints v22.22.1; the pin is 22.22.1. The old line compared
-# them raw and warned "Installed Node.js v22.22.1 instead of pinned 22.22.1" on
-# every riscv64 build -- about a version EQUAL to the pin. Only the package
-# revision differs there, which is exactly what the fallback is for.
+# `node --version` prints a v-prefix the pin lacks, so compare only after stripping it.
 _BI_SRC="$(cat "${BASE_IMAGE_SH}")"
 t_assert_contains "${_BI_SRC}" '_node_have="${_node_have#v}"' \
   "the v-prefix is stripped before the comparison"

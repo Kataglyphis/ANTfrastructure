@@ -1,20 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the --no-push OCI-layout stage handoff (refactoring backlog C,
-# 2026-08-30): cross-stage-build.sh + the build-cross-chain.sh guard.
-#
-# WHY THIS SUITE EXISTS
-# ---------------------
-# Multi-stage --no-push chains were REFUSED because BuildKit's OCI worker
-# resolves FROM against the registry. The handoff fixes it: every locally-built
-# stage is exported to an OCI layout and handed to the child as
-#   --build-context <parent-tag>=oci-layout://<dir>
-# and android additionally lands in the runtime lane's artifact dir. These
-# tests pin the three behaviors that would silently regress to the 2026-08-08
-# stale-parent bug if someone removed or reordered the wiring:
-#   * push=0 with a built parent context → --build-context appended
-#   * push=0 without the context → no --build-context (registry fallback)
-#   * push=1 → never a --build-context
-#   * the chain guard allows a FULL no-push chain but still refuses mid-chain
+# The --no-push OCI-layout handoff: without --build-context BuildKit resolves FROM against a stale registry parent.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -149,10 +134,7 @@ t_case "guard: CROSS_NO_PUSH_FORCE still escapes the refusal"; case_guard_force_
 t_case "guard: handoff disabled → full-chain no-push refused (old behavior)"; case_guard_handoff_disabled_refuses
 
 
-# The production callers reach cross_stage_context_dir through $(...), so an
-# assignment inside it never escapes. Before 2026-09-01 this suite called
-# cross_ensure_local_context_workdir DIRECTLY and was green while the handoff
-# never activated in a real chain. Pin the subshell shape.
+# Production reaches cross_stage_context_dir through $(...), so an assignment inside it never escapes.
 t_case "a workdir minted inside \$(...) does NOT reach the caller"
 export CROSS_NO_PUSH=1
 CROSS_CONTEXT_WORKDIR=""
@@ -185,10 +167,7 @@ t_assert_eq "0" "$(grep -c -e 'CROSS_CONTEXT_WORKDIR}/android-artifacts' \
 
 # ── XN: the --no-push android handoff ────────────────────────────────────────
 t_case "the artifact context the runtime lane reads is the one android wrote"
-# cross_stage_context_dir composes <stage>-<arch>; runtime_artifact_context_dir
-# used to join with a slash, so under --no-push the package build looked in a
-# directory nobody creates and silently fell back to the stale registry tag.
-# Both sides are extracted so this compares the REAL composers, not a copy.
+# Both real composers are extracted, so a mismatch cannot hide behind a copy.
 _ctx_producer="$(sed -n '/^cross_stage_context_dir() {/,/^}/p' \
   "${TESTS_DIR}/../01-core/cross-stage-build.sh")"
 _ctx_consumer="$(sed -n '/^runtime_artifact_context_dir() {/,/^}/p' \

@@ -1,26 +1,14 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Source of truth for the containerd side: it runs with NO config.toml here, so the
-# debug flags, the shim teardown env var and the Defender exclusions below ARE the
-# configuration and live only in the service's registry values.
-# Admin, and NEVER while a build solves: applying restarts containerd (refuses unless -Force).
-# What each setting is for: docs/windows-host-setup.md § C1.
+# containerd runs without config.toml, so its service registry values are the config: see docs/windows-host-setup.md § C1
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
     [string]$ServiceName = 'containerd',
     [string]$LogLevel = 'debug',
     [string]$LogFile = 'C:\ProgramData\containerd\containerd-debug.log',
-    # CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT; empty string REMOVES it. The
-    # companion TASK_CLOSE_TIMEOUT stays unset on purpose - upstream derives it
-    # as 2x teardown + 30s, so the two values cannot fall out of step by hand.
-    # 45m -> 5m (2026-09-01): under the lost-notification regression the 45 min
-    # became a flat tax on EVERY RUN (2841.2 s vs 441.3 s measured); 5m still
-    # covers the legitimate 117 s worst case 2.5x. A drift-repair run with the
-    # old default silently restored 45m - that is exactly how the regression
-    # would come back with every gate green (audit finding 2026-09-01).
+    # The shim teardown timeout (a Go duration; empty removes it); TASK_CLOSE_TIMEOUT stays unset so upstream derives it.
     [string]$TeardownTimeout = '5m',
     [string[]]$ExclusionPath = @(
         'C:\ProgramData\containerd',
@@ -39,10 +27,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: shared assets sit beside this script in the FLAT container mount and one
-# level up in the repo's scripts/<group>/ layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-# Test-Elevated: this script REPORTS elevation and degrades, it does not stop on it.
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
 $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
@@ -69,10 +55,7 @@ if (Test-Path $LogFile) {
 
 $isAdmin = Test-Elevated
 
-# --- CNI: the .conflist is AUTHORED, the .conf is DERIVED ---------------------
-# The host needs BOTH forms - buildkitd reads the .conf, nerdctl the .conflist -
-# and each breaks silently without its own; deriving keeps their CONTENT from
-# drifting (docs/windows-build-invariants.md § CNI .conf is DERIVED).
+# CNI: see docs/windows-build-invariants.md § The CNI .conf is DERIVED from the .conflist
 if (-not $SkipCniSync) {
     $cniModule = Join-Path $scriptAssetRoot 'modules\WindowsBuildKit.Common.psm1'
     if (-not (Test-Path $cniModule)) { throw "required module not found: $cniModule" }
@@ -85,8 +68,7 @@ if (-not $SkipCniSync) {
     } else {
         $derived = ConvertFrom-CniConfList -ConfListText (Get-Content $confListPath -Raw)
         $existing = if (Test-Path $confPath) { (Get-Content $confPath -Raw) } else { '' }
-        # Canonical compare (sorted keys, no whitespace): a round-trip through
-        # ConvertTo-Json preserves parse order and cries wolf on field-order diffs.
+        # Canonical compare: a ConvertTo-Json round-trip keeps field order and would flag order-only diffs.
         $same = $false
         if ($existing) {
             try {

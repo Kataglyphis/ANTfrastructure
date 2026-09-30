@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_masked_assignments.py. `local x="$(cmd)"` returns local's
-# status, so set -e never sees cmd fail. shellcheck's SC2155 misses the
-# `${y:-$(cmd)}` spelling, and lint-shell.sh gates at -S error where a warning
-# cannot fail — which is why this gate exists.
-# docs/failure-modes.md#a-declaration-that-masks-its-commands-exit-status
+# SC2155 misses `${y:-$(cmd)}`, and lint-shell.sh fails only on errors; see docs/failure-modes.md#a-declaration-that-masks-its-commands-exit-status
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -28,9 +24,7 @@ t_case "the allowlist keys on file+variable, not line number"
 t_assert_eq "0" "$(grep -c -E '\t[0-9]+\t' "${TESTS_DIR}/../masked-assignments.allow")" \
   "a line number would re-flag every site whenever something above it moves"
 
-# The --root arm, which no case above reaches: every fixture here is a tree
-# planted AROUND the gate, so it cannot tell --root from its own repo.
-# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a masked `local x=$(...)` in the fixture, frozen nowhere.
+# The cases above run on the real tree, so only gate_root_arm reaches --root.
 t_case "--root grades the named tree, and reads its freeze file"
 _root_subject=$'f() {\n  local b="${B:-$(date)}"\n  echo "${b}"\n}'
 gate_root_arm "${PY}" "${GATE}" "${_root_subject}" masked-assignments.allow $'zz-sentinel.sh\tZZ_SENTINEL' ZZ_SENTINEL

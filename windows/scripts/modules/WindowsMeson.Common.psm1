@@ -1,36 +1,11 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Meson plumbing for the GStreamer monorepo build: the build-only-subproject
-# interpreter patch, the two failure-triage helpers, and the wrap
-# download/extract pair.
-#
-# WHY THIS IS ITS OWN MODULE — CACHE BOUNDARY, NOT TASTE.
-# These five functions lived inside Build-GstreamerFromSource.ps1 (backlog
-# #128/#133) with a comment explaining that a module was the WRONG home: at the
-# time the only module homes available were the six in `buildmods`, which are
-# the import closure of WindowsSourceBuild.Common and are mounted into all 11
-# media/merge RUNs — so editing any of them re-keyed every media branch on both
-# lanes. That reasoning was correct and is now obsolete: #134 gave the merge
-# lane its own leaf modules, and this file is mounted by
-# Dockerfile.media-merge-builder ONLY. A change here costs the GStreamer layer
-# and nothing else.
-#
-# Keep that property: do NOT add this module to Dockerfile.media-builder's
-# `buildmods` stage, and do not move these functions into a module that is.
-# The same rule, and the same reason, as WindowsGstPlugins.Common.psm1.
-#
-# DELIBERATELY DEPENDENCY-FREE: no Import-Module. Three are pure string/collection
-# functions with fixture tests; two shell out to curl.exe and 7z.exe; the wrap
-# provisioner composes those two and takes its logger as a scriptblock rather than
-# reaching for Shared. Nothing here needs Shared, and staying dependency-free is
-# what lets the merge Dockerfile mount this file alone.
+# Dependency-free merge-lane leaf, never in the media-builder buildmods: see docs/windows-build-resources.md § The Windows cache, tier by tier
 
 Set-StrictMode -Version Latest
 
-# meson 1.12.0 build-only-subproject bugs; the site-count throws are
-# load-bearing. Full failure chain: docs/failure-modes.md § meson cross.
+# The site-count throws are load-bearing: see docs/failure-modes.md § meson cross
 function Invoke-MesonBuildSubprojectPatch {
     param(
         [Parameter(Mandatory)]
@@ -43,9 +18,7 @@ function Invoke-MesonBuildSubprojectPatch {
     # (2) failed build-only subprojects must be recorded under THEIR machine.
     $markerKey = '[kataglyphis meson build-subproject machine-key fix]'
     if ($text -notmatch [regex]::Escape($markerKey)) {
-        # [ \t] rather than \s in the line anchors: \s matches the newline and a
-        # trailing `\s*$` swallows the blank line after a site (measured in the
-        # fixture test -- one line fewer after patching).
+        # [ \t], not \s: a trailing `\s*$` swallows the blank line after a site.
         $rxKey = '(?m)^([ \t]+return self\.disabled_subproject\(subp_name, exception=e)\)[ \t]*$'
         $hits = [regex]::Matches($text, $rxKey).Count
         if ($hits -ne 2) { throw "Invoke-MesonBuildSubprojectPatch: expected exactly 2 'disabled_subproject(subp_name, exception=e)' sites in $InterpreterPath, found $hits -- meson layout changed; the cross lane would lose webrtc/nice without this fix" }
@@ -76,19 +49,7 @@ function Invoke-MesonBuildSubprojectPatch {
     return $true
 }
 
-# meson-log.txt for the monorepo is 400k-800k lines (every subproject's cached
-# probe sources are inlined) and streaming all of it through `log` after a failed
-# `meson setup` took 30-60 min per attempt on arm64 runs 23-25 -- longer than the
-# configure itself, and the diagnosis was always in a handful of lines. Keep
-# what carries a diagnosis: every ERROR / Exception / "required but not found" /
-# "conflicts with" / "buildable: NO" / "Cannot run cross" line with its 1-based
-# line number, the $BlockContext lines after a "Sanity check compile stderr:" or
-# "Sanity check compiler command line:" header (the block runs 23 and 24 hid
-# in), and the last $TailLines lines. Deliberately NOT `error:`/`WARNING`: every
-# feature probe that legitimately fails leaves `error:` lines, and they would
-# fill the cap before the real failure. The full file stays at its path inside
-# the preserved failed container; the caller's retry classification still scans
-# every line. Pure function (fixture test SourceBuild.MesonLogExcerpt.Tests.ps1).
+# meson-log.txt runs to 800k lines; keep diagnostic lines, sanity-check blocks and the tail, never probe `error:` noise.
 function Select-MesonLogExcerpt {
     param(
         [AllowEmptyCollection()]
@@ -103,8 +64,7 @@ function Select-MesonLogExcerpt {
     $total = @($Lines).Count
     $keepUntil = -1
     $diagCount = 0
-    # -cmatch on purpose: -match is case-insensitive and `ERROR` would catch every
-    # probe's `error:` line (the noise this excerpt exists to drop).
+    # -cmatch: case-insensitive `ERROR` would catch every probe's `error:` line.
     for ($i = 0; $i -lt $total; $i++) {
         $line = $Lines[$i]
         $isBlock = $line -cmatch $blockPattern
@@ -127,17 +87,7 @@ function Select-MesonLogExcerpt {
     }
 }
 
-# Classifies a failed `meson setup` for the retry decision (the two costumes are
-# explained at the call site): HardError = `meson.build:LINE:COL: ERROR/Exception`
-# lines anywhere; NetworkError = download/DNS/TLS signatures. The network scan
-# covers meson's stdout plus only the LAST $NetworkTail lines of meson-log.txt,
-# with word boundaries on the exception names -- meson-log.txt inlines every
-# probe's source, and on arm64 run 25 the unbounded case-insensitive `SSLError`
-# matched the SDK constant `BINDINFO_OPTIONS_IGNORE_SSLERRORS_ONCE` (urlmon.h)
-# inside one of them, turning a deterministic failure into a "transient" retry:
-# a full wrap re-download, the identical failure, a second log dump -- an hour
-# for nothing. A real download failure is fatal to configure, so its text sits
-# at the end of the log. Pure function (SourceBuild.MesonFailureClass.Tests.ps1).
+# Network signatures only in the log's tail, with word boundaries: inlined probe sources mention SSLERRORS too.
 function Get-MesonSetupFailureClass {
     param(
         [AllowEmptyCollection()]
@@ -159,15 +109,7 @@ function Get-MesonSetupFailureClass {
     }
 }
 
-# Downloads one wrap source archive with curl (see the UA note inside) and
-# writes it to $DestinationPath. Shared by the wrap pre-extraction loop and the
-# libffi force-download, which used to carry two copies of this body.
-#
-# -Logger is the ONE delta against the stage-script original (#134): the body
-# called the script's `log`, a closure over its structured-log context, which
-# cannot follow a function into a module. Callers pass their own; without one
-# the progress lines go to Write-Host, so the function stays usable standalone
-# and in fixtures.
+# -Logger replaces the stage script's `log` closure, which cannot follow a function into a module.
 function Invoke-WrapDownload {
     param(
         [Parameter(Mandatory)][string]$Url,
@@ -175,14 +117,7 @@ function Invoke-WrapDownload {
         [string]$Description = '',
         [scriptblock]$Logger = $null
     )
-    # freedesktop/videolan GitLab sit behind the Anubis anti-scraper: browser
-    # User-Agents without JS get an HTML challenge page, plain curl UAs pass.
-    # The shared Invoke-DownloadWithRetry sends a browser UA (right for the
-    # CDNs it serves) - on verify10 it "downloaded" 7 challenge pages and the
-    # #88 gate refused them all (correctly, but for the wrong-looking reason:
-    # "extraction failed"). Verified 2026-08-17: same URL, browser UA = 7.5 KB
-    # HTML, curl UA = 400 KB BZh. So wraps go through curl.exe with its native
-    # UA + a magic-byte check.
+    # curl's native UA: see docs/windows-build-invariants.md § freedesktop/videolan GitLab downloads must go through Invoke-WrapDownload
     $emit = { param($m) if ($Logger) { & $Logger $m } else { Write-Host $m } }
     $label = if ($Description) { $Description } else { $Url }
     for ($attempt = 1; $attempt -le 4; $attempt++) {
@@ -203,13 +138,7 @@ function Invoke-WrapDownload {
     throw "download failed after 4 attempts: $label"
 }
 
-# Extracts a downloaded .tar.gz/.tar.bz2 subproject archive into a scratch dir
-# beside $Target (7z two-pass: decompress, then untar the LARGEST inner .tar --
-# WindowsSourceBuild.Common's Expand-SourceTarball takes the first instead),
-# then moves the single top-level source dir onto $Target. Returns $true when a
-# directory was moved. Both 7z passes are exit-checked; see the note inside.
-# Near-duplicate of Expand-ArchiveSubdirectory/Expand-SourceTarball; merging the
-# three is #134's recorded follow-up, deliberately not done in that wave.
+# Untars the largest inner .tar, unlike Expand-SourceTarball's first; $true when a directory moved onto $Target.
 function Expand-SubprojectArchive {
     param(
         [Parameter(Mandatory)][string]$Archive,
@@ -217,11 +146,7 @@ function Expand-SubprojectArchive {
     )
     $extractDir = Join-Path (Split-Path -Parent $Target) ('_ext_' + (Split-Path -Leaf $Target))
     New-Item -Path $extractDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-    # Both passes are exit-checked (2026-08-26 audit): they used to swallow
-    # stdout AND stderr with no check, so a truncated or HTML-instead-of-archive
-    # download surfaced far downstream as "meson could not find the subproject"
-    # instead of naming the extraction failure -- the exact symptom
-    # Expand-SourceTarball's comment records having fixed once already.
+    # Exit-checked: a bad archive otherwise surfaces far downstream as a missing meson subproject.
     cmd.exe /c "7z.exe x ""$Archive"" -o""$extractDir"" -y >nul 2>&1"
     if ($LASTEXITCODE -ne 0) { throw "Expand-SubprojectArchive: 7z failed (exit $LASTEXITCODE) on $Archive -- truncated download or not an archive (size $((Get-Item $Archive -ErrorAction SilentlyContinue).Length) bytes)" }
     $tarFile = @(Get-ChildItem -Path $extractDir -Filter '*.tar' | Sort-Object Length -Descending | Select-Object -First 1)
@@ -240,25 +165,16 @@ function Expand-SubprojectArchive {
     return $moved
 }
 
-# Pre-extract every [wrap-git] subproject via tarball, plus libffi (glib's hard
-# dependency, which has no wrap of its own here). git clone fails inside Windows
-# containers, so meson must never see a live wrap-git.
-#
-# RETURNS the failure list; it does NOT throw. Failure collection is #88's contract:
-# 22 silently-warned wrap losses once shipped a feature-reduced image. The caller
-# owns the fail-closed throw so that gate stays visible at the call site.
-# The accumulator is a LOCAL list, never `$script:` -- inside a module `$script:`
-# is MODULE scope, so a caller reading its own `$script:wrapFailures` would see
-# zero failures and the #88 gate would pass on a broken provisioning run.
+# git clone fails in Windows containers, so wrap-gits become tarballs; returns failures for the caller's fail-closed throw.
 function Invoke-GstWrapProvisioning {
     param(
         [Parameter(Mandatory)][string]$SubprojectDir,
         [Parameter(Mandatory)][string]$TempDir,
-        # Resolved by the caller: the pin idiom must stay in the stage script,
-        # where SourceBuild.PinParity's W1c scanner keys on the file name.
+        # Resolved by the caller, where SourceBuild.PinParity's scanner keys on the file name.
         [Parameter(Mandatory)][string]$LibffiVersion,
         [scriptblock]$Logger = { param($m) Write-Host $m }
     )
+    # A local list: script scope here is the module's, which the caller's gate never reads.
     $failures = [System.Collections.Generic.List[string]]::new()
     $say = { param($m) & $Logger $m }
 
@@ -271,8 +187,7 @@ function Invoke-GstWrapProvisioning {
         $dir = if ($content -match '(?ms)directory\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
         $target = Join-Path $SubprojectDir $dir
         if (Test-Path $target) { Remove-Item -Path $_.FullName -Force; return }
-        # Strip .git in BOTH branches: GitLab answers .git-in-path /-/archive/ URLs
-        # with an HTML page, not a tarball (libdv.git = 17 KB HTML, libdv = 421 KB BZh).
+        # GitLab answers a .git-in-path /-/archive/ URL with HTML, not a tarball.
         $base = $url -replace '\.git$', ''
         $tarballUrl = if ($url -match 'github\.com') { "$base/archive/$rev.tar.gz" }
                       else { "$base/-/archive/$rev/$dir-$rev.tar.bz2" }
@@ -288,8 +203,7 @@ function Invoke-GstWrapProvisioning {
                 $failures.Add("$fname (downloaded but extraction into $dir failed)")
             }
         } catch {
-            # Real error text KEPT: a 404 on a moved revision and a TLS failure
-            # need different fixes.
+            # The real error text: a moved revision and a TLS failure need different fixes.
             $failures.Add("$fname : $($_.Exception.Message)")
             & $say "ERROR: wrap download failed: $fname - $($_.Exception.Message)"
         }
@@ -316,9 +230,7 @@ function Invoke-GstWrapProvisioning {
         Remove-Item -Path (Join-Path $SubprojectDir 'libffi.wrap') -Force -ErrorAction SilentlyContinue
     }
 
-    # NOT comma-wrapped: the caller @()-wraps (repo idiom), and a comma here would
-    # nest the array so .Count read 1 for an empty AND a filled list alike -- the #88
-    # gate would then fire on every successful build. Measured both ways.
+    # Not comma-wrapped: the caller @()-wraps, and nesting would make .Count read 1 even when empty.
     return [string[]]$failures.ToArray()
 }
 

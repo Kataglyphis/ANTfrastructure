@@ -4,35 +4,19 @@ set -euo pipefail
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
 
-# EIGEN-NET (2026-08-21): LITERT_EIGEN_FETCH_FLAGS -- LiteRT's eigen fetch with a
-# fallback mirror. Defined ONCE in litert-eigen-fetch.sh next to this script and
-# shared with the cross build (03-media/build/litert/build-litert.sh); the flags
-# used to be duplicated verbatim in both, which is exactly how one lane quietly
-# loses the mirror. See that file's header for why it lives in this directory.
-# Hard source: a missing helper fails the stage instead of silently configuring
-# a single-homed fetch.
+# Shared with build-litert.sh so neither lane loses eigen's fallback mirror.
 # shellcheck source=litert-eigen-fetch.sh
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/litert-eigen-fetch.sh"
 
-# YA (2026-09-03): upstream file(DOWNLOAD)s ~1.5 GB of QAIRT, unhashed and
-# unchecked, whenever QAIRT_HEADERS_DIR is empty -- which it always is here: the
-# only SDK this repo stages is the LINUX aarch64-oe-linux-gcc11.2 build, wrong ABI
-# for android. docs/qnn-linux.md
+# No android-ABI QAIRT is ever staged; see docs/qnn-linux.md#no-staged-sdk-upstreams-unhashed-15-gb-download
 # shellcheck source=litert-qairt-guard.sh
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/litert-qairt-guard.sh"
 
-# resolve_host_compiler now comes from android-build-preamble.sh, sourced above.
-
 android_build_preamble_init "Android LiteRT build" "${ANDROID_API_LEVEL:-34}"
 
-# C3 (2026-08-24): NO silent version fallback. The literal that used to sit
-# here masked a broken ARG-forward and was actively wrong -- Dockerfile.android
-# never declared this build-arg, so BuildKit dropped it and this script built
-# v2.1.6 while versions.env pinned v2.2.0. An explicit `$1` still wins (manual
-# invocation), otherwise the forwarded value is REQUIRED and a missing one is a
-# loud failure instead of last release.
+# No inline default: a literal would hide an ARG that Dockerfile.android failed to forward.
 LITERT_VERSION="${LITERT_VERSION:-${1:?LITERT_VERSION not forwarded into the android stage (see Dockerfile.android ARG/ENV) and no version given as $1}}"
 INSTALL_DIR="${LITERT_ROOT_ANDROID:-/opt/android/litert}"
 : "${CMAKE_POLICY_VERSION_MINIMUM:=3.5}"
@@ -52,13 +36,7 @@ HOST_CXX="$(resolve_host_compiler cxx)"
 
 mkdir -p litert/build-android && cd litert/build-android
 
-# LiteRT's cmake configure pulls several vendored archives via FetchContent
-# (e.g. qnn_headers.zip). Those downloads occasionally truncate mid-transfer and
-# cmake then aborts at configure time with "ZIP decompression failed (-5) / file
-# failed to extract" -- a transient flake, not a real error. Retry the configure,
-# wiping the partial FetchContent state between attempts so it re-downloads from
-# scratch. Same transient-download hardening used for the pinned tarballs
-# elsewhere in the tree.
+# FetchContent downloads can truncate mid-transfer, so a failed configure retries from wiped state.
 configure_litert_android() {
   cmake -GNinja \
     -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \

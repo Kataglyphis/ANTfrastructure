@@ -1,8 +1,5 @@
 #requires -Version 7.0
-# Tests for Copy-BuildArtifact (stage built files by extension into an install layout) and
-# Get-SourceBuildVersion -StripVPrefix. Copy-BuildArtifact drives the manual-install step in
-# build-litert / build-onnx-genai (upstreams whose cmake --install is a no-op), so a regression
-# would silently ship an incomplete install tree.
+# Copy-BuildArtifact is the install for upstreams whose cmake --install is a no-op, so a regression ships an incomplete tree.
 
 Describe 'Copy-BuildArtifact' {
 
@@ -52,11 +49,7 @@ Describe 'Copy-BuildArtifact' {
 }
 
 Describe 'Remove-MakefileShowIncludes' {
-    # The function moved from WindowsSourceBuild.Common.psm1 into its only
-    # consumer, Build-FfmpegFromSource.ps1 (2026-08-03, layer economics).
-    # These tests keep pinning the PRODUCTION definition: extract exactly the
-    # function's AST from the script (dot-sourcing the whole script would start
-    # a build) and load it into this scope.
+    # AST-extracted from its only consumer: dot-sourcing Build-FfmpegFromSource.ps1 would start a build.
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-FfmpegFromSource.ps1' -FunctionName 'Remove-MakefileShowIncludes')
 
     It 'strips /showIncludes and the awk dep pipeline, keeping unrelated lines' {
@@ -92,12 +85,10 @@ Describe 'Remove-MakefileShowIncludes' {
 }
 
 Describe 'Assert-FfmpegPkgConfig' {
-    # Same AST-extraction rationale as above: the gate lives in the FFmpeg script
-    # so it stays out of the three media branches' compile closure.
+    # The gate lives in the FFmpeg script, outside the three media branches' compile closure.
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-FfmpegFromSource.ps1' -FunctionName 'Assert-FfmpegPkgConfig')
 
-    # Shape of a healthy file, as FFmpeg's configure emits it once the VERSION
-    # file exists and the MSYS prefix has been rewritten.
+    # A healthy file, as FFmpeg's configure emits it after the MSYS prefix rewrite.
     function New-TestPc {
         param($Dir, $Name, $Version = '62.11.100', $Prefix = 'C:/runtime/ffmpeg')
         Set-Content (Join-Path $Dir "$Name.pc") @"
@@ -125,9 +116,7 @@ Cflags: -I`${includedir}
     }
 
     It 'throws when the pkgconfig directory does not exist at all' {
-        # The regression this refactor closed: the gate used to sit inside an
-        # `if (Test-Path $dir)` in the caller, so the TOTAL failure was the one
-        # case that passed silently.
+        # A missing directory is the total failure and must not pass silently.
         Invoke-InTestDir { param($dir)
             Assert-Throws -Body { Assert-FfmpegPkgConfig -PkgConfigDir (Join-Path $dir 'nope') } `
                 -MessagePattern 'no pkgconfig directory' `

@@ -14,7 +14,6 @@ ACL_BUILD_DIR="${ACL_BUILD_DIR:-${ACL_SRC_DIR}/build}"
 ARCH="${TARGET_ARCH:-${TARGETARCH:-$(uname -m)}}"
 
 clone_acl() {
-  # Shared shallow-clone helper (same one litert/opencv/libcamera use).
   retry 3 10 "ACL git clone" clone_or_update_repo "${ACL_REPO}" "${ACL_SRC_DIR}" "${ACL_VERSION}"
 }
 
@@ -40,9 +39,7 @@ build_acl() {
     export CXX="${cross_prefix}g++"
   fi
 
-  # scons defaults to a SINGLE job (-j1) — without this the template-heavy ACL
-  # CL/NEON kernels compile serially and dominate the whole media build (~30 min
-  # on cross). Parallelize with a memory-capped job count (ACL C++ is RAM-heavy).
+  # scons defaults to -j1; media_jobs caps the count by memory because ACL's C++ is RAM-heavy.
   local acl_jobs
   acl_jobs="$(media_jobs)"
   info "Building ACL with -j${acl_jobs}"
@@ -58,10 +55,7 @@ build_acl() {
     "${@}"
 
   mkdir -p "${ACL_INSTALL_DIR}/lib" "${ACL_INSTALL_DIR}/include"
-  # Each copy is individually tolerant (a build may produce only .so or only
-  # .a depending on flags), but the install as a WHOLE is verified below —
-  # these copies failing silently would leave armnn to fail much later with a
-  # missing-ACL mystery.
+  # A build may yield only .so or only .a, so each copy may miss; the checks below verify the install as a whole.
   cp -a build/*.so "${ACL_INSTALL_DIR}/lib/" 2>/dev/null || true
   cp -a build/*.a "${ACL_INSTALL_DIR}/lib/" 2>/dev/null || true
   cp -a include/* "${ACL_INSTALL_DIR}/include/" 2>/dev/null || true
@@ -73,10 +67,7 @@ build_acl() {
     || die "ACL install verification failed: arm_compute headers missing from ${ACL_INSTALL_DIR}/include"
 
   info "ACL installed to ${ACL_INSTALL_DIR}"
-  # AP4: strip ACL's libs (dedicated /opt/acl prefix). strip_media_prefixes
-  # self-derives the cross <triplet>-strip; --strip-all keeps .dynsym.
-  # Best-effort, MEDIA_STRIP=0 disables. arm64-only lane.
-  # DUPN1: MEDIA_STRIP gate lives inside the helper now.
+  # Best-effort strip of the dedicated prefix; MEDIA_STRIP=0 disables it inside the helper.
   declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${ACL_INSTALL_DIR}" || true
   ls -la "${ACL_INSTALL_DIR}/lib/" | head -10
 }

@@ -1,34 +1,23 @@
 #requires -Version 7.0
-# Tests for the two host preflight gates in WindowsBuildDriver.Common.psm1 that
-# were hardened on 2026-08-07: Assert-DiskHeadroom (now multi-drive) and
-# Assert-ShimPatch (now SHA256-based, size only as a fallback).
-#
-# Both gates only ever run at the start of a multi-hour build, so a regression
-# in either is invisible until it costs a run: a disk gate that watches the
-# wrong volume passes a build straight into the "hcsshim fails weirdly" band,
-# and a shim gate that waves the stock binary through hands you ExportLayer 0x3
-# after the compile is already paid for.
+# The host preflight gates run only before a multi-hour build, so a regression in them surfaces only after it is paid for.
 
 Describe 'Assert-DiskHeadroom (multi-drive)' {
 
     It 'passes when every checked drive clears the floor' {
-        # MinFreeGb 0: no real drive can be below it, so this exercises the
-        # success path without depending on the machine's actual free space.
+        # MinFreeGb 0 exercises the success path without depending on the host's free space.
         Assert-DiskHeadroom -MinFreeGb 0
         Assert-DiskHeadroom -Drive @('C') -MinFreeGb 0
     }
 
     It 'accepts letter, colon and full-path forms for the same drive' {
-        # The drivers pass $repoRoot (a path); humans pass 'D:'. Both must
-        # normalize to one letter rather than blowing up in Get-PSDrive.
+        # Drivers pass a path, humans pass 'D:'; both must normalize to one letter.
         foreach ($form in @('C', 'C:', 'C:\', "$env:SystemRoot")) {
             Assert-DiskHeadroom -Drive @($form) -MinFreeGb 0
         }
     }
 
     It 'ignores a drive letter that does not exist on this host' {
-        # A repo checked out on C: collapses the list to one entry; a bogus
-        # letter must not be an error (the gate is about space, not topology).
+        # A bogus letter must not be an error: the gate is about space, not topology.
         Assert-DiskHeadroom -Drive @('Q', 'Z') -MinFreeGb 0
     }
 
@@ -40,8 +29,7 @@ Describe 'Assert-DiskHeadroom (multi-drive)' {
     }
 
     It 'reports EVERY short drive, not just the first' {
-        # The whole point of the change: a full context drive next to a healthy
-        # store drive used to be invisible. Both must appear in one message.
+        # A full context drive next to a healthy store drive must show up in the same message.
         $repoDrive = (Get-Item $PSScriptRoot).PSDrive.Name
         $threw = $null
         try { Assert-DiskHeadroom -Drive @($repoDrive) -MinFreeGb 100000000 } catch { $threw = $_.Exception.Message }
@@ -123,8 +111,7 @@ Describe 'Assert-ShimPatch (hash gate)' {
     }
 
     It 'names a revert to stock specifically when the stock hash is known' {
-        # The operator-facing difference that matters: "reverted to stock" tells
-        # you a Stevedore update did it; "changed" leaves you guessing.
+        # "Reverted to stock" tells the operator a Stevedore update did it; "changed" leaves them guessing.
         Invoke-InTestDir { param($dir)
             $shim = Join-Path $dir 'shim.exe'
             $stock = Join-Path $dir 'shim.exe.orig'
@@ -151,8 +138,7 @@ Describe 'Assert-ShimPatch (hash gate)' {
     }
 
     It 'ignores a state file recorded for a DIFFERENT install path' {
-        # Comparing hashes across two unrelated binaries would be worse than no
-        # check at all, so the gate must fall back instead.
+        # Comparing hashes of two unrelated binaries is worse than no check, so the gate must fall back.
         Invoke-InTestDir { param($dir)
             $shim = Join-Path $dir 'shim.exe'
             $other = Join-Path $dir 'elsewhere.exe'
@@ -182,8 +168,7 @@ Describe 'Assert-ShimPatch (size fallback, no recorded hash)' {
         Invoke-InTestDir { param($dir)
             $shim = Join-Path $dir 'shim.exe'
             Set-Content -Path $shim -Value 'x' -NoNewline
-            # The patched sentinel must not collide with the fixture's real size
-            # (1 byte), or the patched branch wins and the stock check never runs.
+            # The patched sentinel must not match the fixture's 1-byte size, or the stock check never runs.
             Assert-Throws -MessagePattern 'STOCK binary' -Body {
                 Assert-ShimPatch -ShimPath $shim -StatePath (Join-Path $dir 'absent.json') `
                     -PatchedSize @(999999) -StockSize @((Get-Item $shim).Length)
@@ -203,8 +188,7 @@ Describe 'Assert-ShimPatch (size fallback, no recorded hash)' {
     It 'throws when no shim is installed and -Force is not passed (fail-closed, backlog #48)' {
         Invoke-InTestDir { param($dir)
             Assert-Throws -MessagePattern 'shim not found' -Body {
-                # -AlternateRoot @(): a build host HAS a real shim, which the fallback
-                # probe would find, and the not-found path would never run.
+                # -AlternateRoot @(): a build host has a real shim the fallback probe would find.
                 Assert-ShimPatch -ShimPath (Join-Path $dir 'missing.exe') -AlternateRoot @() -WarningAction SilentlyContinue
             }
         }
@@ -230,10 +214,7 @@ Describe 'Assert-ShimPatch (size fallback, no recorded hash)' {
 
 Describe 'Get-StageDiskFloorGb / Assert-StageDiskHeadroom (shared by both lanes)' {
 
-    # The floors were calibrated against a measured run after an estimated 80 GB
-    # media floor refused a legitimate rebuild at 72.3 GB free. They now live in
-    # the module so the classic lane — which had NO per-stage check at all —
-    # enforces the same numbers instead of a second copy that drifts.
+    # The floors live in the module so every lane enforces the same numbers.
 
     It 'gives heavy stages a higher floor than trimmings' {
         Assert-True ((Get-StageDiskFloorGb -Label 'Dockerfile.nvidia') -gt (Get-StageDiskFloorGb -Label 'Dockerfile.torch')) `
@@ -243,9 +224,7 @@ Describe 'Get-StageDiskFloorGb / Assert-StageDiskHeadroom (shared by both lanes)
     }
 
     It 'matches BOTH lanes label shapes for the same stage' {
-        # BK labels look like 'Dockerfile.media-builder:media-core-built-onnx';
-        # classic ones like 'Dockerfile.media-builder-media-core'. A floor that
-        # only matched one shape would silently fall back to the default.
+        # A floor matching only one label shape (BK or classic) would silently fall back to the default.
         Assert-Equal (Get-StageDiskFloorGb -Label 'Dockerfile.media-builder:media-core-built-onnx') `
                      (Get-StageDiskFloorGb -Label 'Dockerfile.media-builder-media-core') `
                      'the same stage must get the same floor in either lane'
@@ -260,17 +239,7 @@ Describe 'Get-StageDiskFloorGb / Assert-StageDiskHeadroom (shared by both lanes)
     }
 
     It 'passes when the floor is clearable and throws when it is not' {
-        # The pass case derives its floor from the ACTUAL free space instead of
-        # `-FloorGb 0`. That form looked up the 40 GB table default and assumed
-        # the runner clears it - "real disk clears 40" was written right here -
-        # which made the test a property of the host. On 2026-08-12 a
-        # windows-2025 runner had 32.5 GB free on C: and this was the single red
-        # test in an otherwise green 480-test suite, failing with a message about
-        # buildkit store GC that had nothing to do with the code under test.
-        #
-        # The table-lookup path is not lost: the preceding test already asserts
-        # Get-StageDiskFloorGb returns 40 for an unknown label, which is the same
-        # code `-FloorGb 0` reaches.
+        # The floor derives from actual free space, not `-FloorGb 0`, so the result never depends on the host's disk.
         $freeGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
         $clearable = [math]::Max(1, $freeGb - 1)
         Assert-StageDiskHeadroom -Label 'test' -FloorGb $clearable
@@ -287,10 +256,7 @@ Describe 'Get-StageDiskFloorGb / Assert-StageDiskHeadroom (shared by both lanes)
 
 Describe 'Get-StageDiskFloorGb per SUB-stage (refined after a 1.5 GB false refusal)' {
 
-    # The first table lumped every media-* label at one floor, which applies
-    # ONNX's appetite to sub-stages an order of magnitude lighter — it refused
-    # the FFmpeg sub-stage at 53.5 GB free over a 55 GB floor. Blocking correct
-    # work is the same class of failure as waving danger through.
+    # One floor for every media-* label would refuse sub-stages an order of magnitude lighter than ONNX.
 
     It 'gives ONNX the highest media floor and FFmpeg a lower one' {
         $onnx = Get-StageDiskFloorGb -Label 'Dockerfile.media-builder:media-core-built-onnx'
@@ -299,8 +265,7 @@ Describe 'Get-StageDiskFloorGb per SUB-stage (refined after a 1.5 GB false refus
     }
 
     It 'does not let the generic media rule swallow the specific sub-stages' {
-        # Ordering bug guard: a generic 'media-core' rule placed first would
-        # catch 'media-core-built-onnx' and silently under-protect it.
+        # A generic 'media-core' rule placed first would catch 'media-core-built-onnx' and under-protect it.
         Assert-Equal 55 (Get-StageDiskFloorGb -Label 'Dockerfile.media-builder:media-core-built-onnx')
         Assert-Equal 45 (Get-StageDiskFloorGb -Label 'Dockerfile.media-builder:media-core-built-opencv')
     }
@@ -314,8 +279,7 @@ Describe 'Get-StageDiskFloorGb per SUB-stage (refined after a 1.5 GB false refus
 
 Describe 'Assert-NoActiveRdna4Gpu (RDNA4 layer-lock gate, 2026-08-10)' {
 
-    # Fake PnP device rows: the gate must judge from FriendlyName + Status
-    # alone, so tests never depend on this host's real GPUs.
+    # Fake PnP rows: the gate judges FriendlyName + Status alone, never this host's real GPUs.
     $rdna4On   = [pscustomobject]@{ FriendlyName = 'AMD Radeon RX 9070 XT'; Status = 'OK' }
     $rdna4Off  = [pscustomobject]@{ FriendlyName = 'AMD Radeon RX 9070 XT'; Status = 'Error' }
     $igpu      = [pscustomobject]@{ FriendlyName = 'AMD Radeon(TM) Graphics'; Status = 'OK' }
@@ -328,19 +292,14 @@ Describe 'Assert-NoActiveRdna4Gpu (RDNA4 layer-lock gate, 2026-08-10)' {
     }
 
     It 'names the toggle recipe in the refusal' {
-        # Set-Rdna4Gpu, not toggle-rdna4-gpu: the script was renamed in the
-        # approved-verb sweep (Toggle is not an approved PowerShell verb) and
-        # this pattern was left behind, so the test has been red ever since
-        # while the gate itself was fine. The assertion's intent is unchanged --
-        # the refusal must still name the script that gets you out of it.
+        # The refusal must name the script that gets you out of it.
         Assert-Throws -MessagePattern 'Set-Rdna4Gpu' -Body {
             Assert-NoActiveRdna4Gpu -Devices @($rdna4On)
         }
     }
 
     It 'interpolates the device name into the refusal (no literal {0})' {
-        # Regression pin: -f binds tighter than +, so an unparenthesized
-        # string concat left a literal {0} in the user-facing message.
+        # -f binds tighter than +, so an unparenthesized concat left a literal {0} in the message.
         Assert-Throws -MessagePattern 'RX 9070 XT' -Body {
             Assert-NoActiveRdna4Gpu -Devices @($rdna4On)
         } -Message 'the refusal must name the actual device'
@@ -368,8 +327,7 @@ Describe 'Assert-NoActiveRdna4Gpu (RDNA4 layer-lock gate, 2026-08-10)' {
     }
 
     It 'survives Adrenalin (TM)-style renames of the FriendlyName' {
-        # Drivers have shipped 'Radeon (TM)' / 'Radeon(TM)' spellings before; a
-        # rename must not silently disarm the gate (review sweep, 2026-08-10).
+        # Drivers have shipped both 'Radeon (TM)' spellings; a rename must not disarm the gate.
         foreach ($name in @('AMD Radeon(TM) RX 9070 XT', 'AMD Radeon (TM) RX 9070 XT')) {
             Assert-Throws -Body {
                 Assert-NoActiveRdna4Gpu -Devices @([pscustomobject]@{ FriendlyName = $name; Status = 'OK' })
@@ -401,10 +359,7 @@ Describe 'Assert-BuildkitdStepLogEnv (step-log clip preflight, backlog 0a)' {
     }
 
     It 'survives the REAL registry read on a key with no Environment value (run-13 regression)' {
-        # Winmgmt exists on every Windows host and carries no Environment
-        # value - the exact shape of the wiped-env case. The gate must reach
-        # its own refusal (or -Force warning), never a StrictMode
-        # PropertyNotFound from the raw `.Environment` access.
+        # Winmgmt has no Environment value: the gate must refuse, never hit a StrictMode PropertyNotFound.
         Assert-Throws -MessagePattern 'BUILDKIT_STEP_LOG_MAX_SIZE' -Body {
             Assert-BuildkitdStepLogEnv -ServiceName 'Winmgmt'
         } -Message 'missing value must produce the gate refusal, not a property error'

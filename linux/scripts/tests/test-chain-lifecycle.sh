@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Tests for 01-core/chain-lifecycle.sh — the orchestrator-lifecycle primitives
-# shared by build-cross-chain.sh and stop-cross-chain.sh (Batch 5 / O1+O2):
-# canonical CROSS_RUN_ID generation, the well-known pidfile path, and the
-# child-subtree termination walk.
+# chain-lifecycle.sh (O1/O2: run ids, pidfile, subtree kill) and build-cross-chain.sh's log and disk guards.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${TESTS_DIR}/../01-core"
@@ -12,8 +9,7 @@ source "${CORE_DIR}/chain-lifecycle.sh"
 workdir="$(mktemp -d)"
 trap 'rm -rf "${workdir}"' EXIT
 
-# ---------------------------------------------------------------------------
-# O2: run-id generation.
+# O2: run-id generation
 t_case "cross_run_id_generate returns a non-empty timestamped id"
 rid="$(cross_run_id_generate)"
 t_assert_contains "${rid}" "-" "id must join a timestamp and a random suffix"
@@ -45,8 +41,7 @@ cross_run_id_ensure
 t_assert_eq "my-custom-run" "${CROSS_RUN_ID}" "a caller override must win"
 unset CROSS_RUN_ID || true
 
-# ---------------------------------------------------------------------------
-# O2: pidfile path.
+# O2: pidfile path
 t_case "cross_chain_pidfile_path honors CROSS_CHAIN_PIDFILE"
 t_assert_eq "/run/mychain.pid" \
   "$(CROSS_CHAIN_PIDFILE=/run/mychain.pid cross_chain_pidfile_path)"
@@ -55,10 +50,7 @@ t_case "cross_chain_pidfile_path defaults under TMPDIR"
 t_assert_eq "/custom/tmp/kata-cross-chain.pid" \
   "$(TMPDIR=/custom/tmp CROSS_CHAIN_PIDFILE= cross_chain_pidfile_path)"
 
-# ---------------------------------------------------------------------------
-# O1: child-subtree termination. Launch a root process that itself backgrounds a
-# leaf sleep, then TERM the subtree of the root and confirm the leaf dies while
-# the walk never targets the root's PARENT (this test process).
+# O1: TERM a root's subtree: its leaf dies, and the root's parent (this test) is never targeted
 t_case "chain_terminate_descendants TERMs the descendant subtree"
 bash -c 'sleep 30 & echo $! > "'"${workdir}"'/leaf.pid"; wait' &
 root=$!
@@ -75,17 +67,11 @@ t_assert_fails kill -0 "${leaf}"
 kill "${root}" 2>/dev/null || true
 wait "${root}" 2>/dev/null || true
 
-# ---------------------------------------------------------------------------
-# STALE-LOG (2026-08-23): the two log-hygiene guards are only as good as their
-# LOG_DIR default. Both live in build-cross-chain.sh, which runs `main "$@"` at
-# the bottom and therefore cannot be sourced — so the assertions below evaluate
-# the SHIPPED text of the pieces under test (never a copy that could drift).
+# STALE-LOG: build-cross-chain.sh runs main at the bottom, so its shipped text is evaluated piece by piece
 CHAIN_SH="${TESTS_DIR}/../build-cross-chain.sh"
 
 t_case "LOG_DIR defaults to out/build-logs so both guards are armed without --log-dir"
-# Regression: an empty default made the truncate marker AND the archiver inert
-# for every run launched without --log-dir — wave5j's failed android-*.log was
-# still in out/build-logs when wave5k ran, and a watcher read it as new errors.
+# An empty default leaves the truncate marker and the archiver inert without --log-dir.
 t_assert_eq "/repo/out/build-logs" "$(
   unset LOG_DIR
   REPO_ROOT=/repo
@@ -101,13 +87,11 @@ t_assert_eq "/custom/logs" "$(
   printf '%s' "${LOG_DIR}"
 )" "--log-dir / an exported LOG_DIR must not be overridden"
 
-# Pull the archiver in with its logging stubbed out (logging.sh is not sourced
-# here — the suite deliberately loads chain-lifecycle.sh only).
+# The archiver, with logging stubbed: only chain-lifecycle.sh is sourced.
 log()  { :; }
 warn() { :; }
 eval "$(sed -n '/^_chain_live_sibling_pid()/,/^}/p' "${CHAIN_SH}")"
-# Isolate from the HOST's real pidfile: a chain actually running on this
-# machine would otherwise make the archiver correctly refuse, failing these.
+# Away from the host's real pidfile: a running chain there would make the archiver refuse.
 cross_chain_pidfile_path() { printf '%s' "${TMPDIR:-/tmp}/no-such-chain.$$.pid"; }
 eval "$(sed -n '/^_chain_archive_prev_logs() {$/,/^}$/p' "${CHAIN_SH}")"
 t_case "the archiver function was extracted from the shipped script"
@@ -124,9 +108,7 @@ t_assert_ok   test -f "${LOG_DIR}/archive/20260822-155127-8fd813db/android-amd64
 t_assert_fails test -e "${LOG_DIR}/android-amd64.log"
 
 t_case "archiving leaves foreign logs (the operator's live tee transcript) alone"
-# LOG_DIR now defaults to out/build-logs, which is also where the nohup/tee
-# transcript of the RUNNING chain lives; mv'ing a file an open tee holds would
-# silently redirect the operator's terminal log into archive/.
+# The running chain's tee transcript lives there too; moving it would redirect the operator's log.
 LOG_DIR="${workdir}/logs-b"; mkdir -p "${LOG_DIR}"
 printf 'stale stage log\n' > "${LOG_DIR}/media-arm64.log"
 printf '%s' 'prior-run'    > "${LOG_DIR}/media-arm64.log.run"
@@ -151,11 +133,7 @@ _chain_archive_prev_logs
 t_assert_ok    test -f "${LOG_DIR}/sdk-amd64.log"
 t_assert_fails test -d "${LOG_DIR}/archive"
 
-# ---------------------------------------------------------------------------
-# The default only helps if the directory exists before the first writer runs:
-# _chain_status_emit skips a missing dir outright (no chain-status.json on a
-# fresh clone with no out/), and an uncreatable dir must DISABLE logging rather
-# than kill a multi-hour chain from inside a `set -e` command substitution.
+# The log dir must exist before the first writer; an uncreatable one disables logging, never kills the chain
 eval "$(sed -n '/^_chain_prepare_log_dir() {$/,/^}$/p' "${CHAIN_SH}")"
 REPO_ROOT="${TESTS_DIR}/../../.."
 
@@ -176,10 +154,7 @@ else
   t_assert_eq "1" "1"   # root (or a permissionless fs) cannot exercise this
 fi
 
-# ---------------------------------------------------------------------------
-# The second guard: cross_stage_log_redirect truncates once per run id, so a
-# stage log only ever holds the CURRENT run (this is what the 575k-line media
-# log that spanned several rebuilds cost us).
+# cross_stage_log_redirect truncates once per run id, so a stage log holds only the current run
 source "${CORE_DIR}/cross-stage-build.sh"
 
 t_case "cross_stage_log_redirect appends within a run and truncates a new one"
@@ -199,13 +174,7 @@ t_case "an empty LOG_DIR (opt-out) still yields no log path"
 LOG_DIR=""
 t_assert_eq "" "$(cross_stage_log_redirect media-arm64)"
 
-# ---------------------------------------------------------------------------
-# Bounded archive retention. _chain_archive_prev_logs only ever ADDS, and it now
-# runs on EVERY chain start: when the default landed, out/build-logs was already
-# 13G — 12G of it archive/, 40 run dirs, the largest 6.3G — on a filesystem at
-# 92% used, i.e. the box whose builds die of ENOSPC. The assertions below pin
-# down BOTH halves: that retention prunes, and that it cannot prune anything it
-# does not own.
+# Bounded archive retention: the archiver only adds, on every start, so retention must prune only what it owns
 log()  { :; }    # re-stub: sourcing cross-stage-build.sh may pull in the real ones
 warn() { :; }
 is_dry_run() { [ "${DRY_RUN:-0}" = "1" ]; }   # stands in for build-helpers.sh's
@@ -213,10 +182,7 @@ eval "$(sed -n '/^_chain_prune_archived_logs() {$/,/^}$/p' "${CHAIN_SH}")"
 t_case "the retention function was extracted from the shipped script"
 t_assert_eq "function" "$(type -t _chain_prune_archived_logs || true)"
 
-# Build an archive/ tree: one dir per run id given, each with a file inside so a
-# removal has to be recursive to succeed. Retention orders by mtime (the two run
-# id shapes do not interleave lexically), so stamp the dirs oldest-first in
-# argument order — after writing their contents, which would bump the mtime.
+# One non-empty dir per run id, mtimes oldest-first: retention orders by mtime, as the id shapes do not sort together.
 _mk_archive() {
   local root="$1"; shift
   local id i=0
@@ -253,9 +219,7 @@ t_assert_fails test -e "${LOG_DIR}/archive/20260102-000000-f2"
 t_assert_ok    test -d "${LOG_DIR}/archive/20260107-000000-f7"
 
 t_case "retention never touches a non-run-id sibling under archive/"
-# A dir nobody's run id could produce, and a loose file: neither may be a
-# candidate, and neither may count against the keep budget either (so the run
-# dirs are still pruned down to exactly ${keep}).
+# Neither may be a candidate, nor count against the keep budget.
 LOG_DIR="${workdir}/ret-b"
 _mk_archive "${LOG_DIR}" 20260101-000000-b1 20260102-000000-b2 20260103-000000-b3
 mkdir -p "${LOG_DIR}/archive/wave5o-transcripts"
@@ -270,13 +234,7 @@ t_assert_ok    test -f "${LOG_DIR}/archive/wave5o-transcripts/keep-me.log"
 t_assert_ok    test -f "${LOG_DIR}/archive/notes.txt"
 
 t_case 'a PID-named run dir (the ${CROSS_RUN_ID:-$$} fallback) is prunable by age'
-# archive/365161 — 6.3G, the single biggest dir in the 13G tree — is named by
-# cross-stage-build.sh's stage-marker helper `rid="${CROSS_RUN_ID:-$$}"`, i.e. by the orchestrator
-# PID. Two consequences this case pins down: such a dir IS a run dir (excluding
-# it from the pattern would leave the worst offender unreclaimable), and age
-# must come from mtime — sorted by NAME, a leading '3' files 365161 after every
-# 2026* id, so the biggest, oldest dir on the box would rank as the NEWEST and
-# survive forever while the small ones got pruned.
+# A PID-named dir is a run dir too, and only mtime ranks it: by name a leading 3 sorts after every 2026 id.
 LOG_DIR="${workdir}/ret-h"
 _mk_archive "${LOG_DIR}" 365161 20260101-000000-h1 1847483 20260102-000000-h2
 CROSS_LOG_ARCHIVE_KEEP=2
@@ -287,8 +245,7 @@ t_assert_ok    test -d "${LOG_DIR}/archive/1847483"
 t_assert_ok    test -d "${LOG_DIR}/archive/20260102-000000-h2"
 
 t_case "retention skips a symlinked run dir instead of following it"
-# The link is named so it sorts OLDEST: a follow-the-symlink bug would eat it
-# (and its target's contents) first.
+# Named to sort oldest, so a follow-the-link bug would delete it and its target first.
 LOG_DIR="${workdir}/ret-c"
 _mk_archive "${LOG_DIR}" 20260101-000000-c1 20260102-000000-c2
 mkdir -p "${workdir}/outside-c"
@@ -312,9 +269,7 @@ t_assert_fails test -e "${LOG_DIR}/archive/20260102-000000-g2"
 CROSS_RUN_ID="20260105-000000-current"
 
 t_case "an empty LOG_DIR can never become a delete of whatever cwd holds"
-# The path is built as ${LOG_DIR}/archive. An empty (or unset) LOG_DIR must
-# return before that is ever formed — never fall through to a relative
-# 'archive/*' resolved against the process's working directory.
+# An empty or unset LOG_DIR must return before a relative archive/* can resolve against cwd.
 decoy="${workdir}/decoy"
 _mk_archive "${decoy}" 20260101-000000-d1 20260102-000000-d2 20260103-000000-d3
 CROSS_LOG_ARCHIVE_KEEP=1
@@ -324,10 +279,7 @@ t_assert_ok test -f "${decoy}/archive/20260101-000000-d1/media-amd64.log"
 t_assert_ok test -f "${decoy}/archive/20260101-000000-d1/media-amd64.log"
 
 t_case "the removal is ATTEMPTED only for a validated run dir, never an empty path"
-# Stronger than "the decoy survived": shadow rm with a recorder, so the exact
-# argv of every removal the function would make is captured. An empty LOG_DIR
-# or an empty victim would show up here as `rm -rf -- /` or `rm -rf -- /archive`
-# long before it needed a directory to exist to do damage.
+# A recording rm shows an empty path as `rm -rf -- /archive` before any directory is needed to do damage.
 rmlog="${workdir}/rm-calls.txt"; : > "${rmlog}"
 rm() { printf '%s\n' "$*" >> "${rmlog}"; }
 LOG_DIR=""
@@ -366,12 +318,7 @@ CROSS_LOG_ARCHIVE_KEEP=""
 _chain_prune_archived_logs
 t_assert_ok test -d "${LOG_DIR}/archive/20260101-000000-e1"
 
-# ---------------------------------------------------------------------------
-# chain-status.json must NOT follow LOG_DIR. Readers look for the repo-root copy;
-# when LOG_DIR gained a default, a ${LOG_DIR}-relative path would have frozen that
-# copy at the last run's "ok" — a brand-new stale-GREEN artifact, the exact class
-# this item exists to kill. (The file is gitignored since 2026-09-15; the pin is
-# about WHERE it is written, not about tracking.)
+# chain-status.json stays at the repo root where readers look; under LOG_DIR that copy would freeze stale green
 declare -A _CHAIN_STATUS=()
 CROSS_STAGE_ORDER=( runtime )
 cross_stage_pin_varname() { printf ''; }
@@ -395,17 +342,7 @@ t_assert_ok test -f "${workdir}/statuslogs/elsewhere.json"
 t_assert_contains "$(cat "${workdir}/statuslogs/elsewhere.json")" "failed"
 unset CROSS_CHAIN_STATUS_FILE
 
-# ---------------------------------------------------------------------------
-# WIRING, not just the functions. Every assertion above exercises a function
-# lifted out of the shipped file — all of them stay green if the CALLS are
-# deleted from main(), which is how a guard ends up inert while its tests look
-# like coverage (the exporter flag that never tagged, the strip gate that never
-# ran). So assert the call sites themselves, in order, inside main().
-# ---------------------------------------------------------------------------
-# B2: the lane-entry disk gate. `_chain_stage_disk_guard` only runs BETWEEN
-# stages, and the runtime lane is one stage of three ~120G wrapper builds: the
-# 2026-09-01 run entered it with 88G free and died 28 min later. This gate is
-# the one that can REFUSE, so it must actually be able to go red.
+# B2: the lane-entry disk gate, the only one that can refuse, so it must be able to go red
 source "${CORE_DIR}/disk-guard.sh"
 eval "$(sed -n '/^_chain_runtime_lane_need_gb() {$/,/^}$/p' "${CHAIN_SH}")"
 eval "$(sed -n '/^_chain_runtime_lane_disk_gate() {$/,/^}$/p' "${CHAIN_SH}")"
@@ -420,10 +357,7 @@ BUILDKIT_CACHE_DIR="${workdir}/lane-bc"; mkdir -p "${BUILDKIT_CACHE_DIR}"
 _lane_free=999
 _disk_guard_free_gb() { printf '%s' "${_lane_free}"; }
 
-# The runtime lane builds arches SERIALLY and rmi's each wrapper before the next,
-# so peak is ONE wrapper -- --parallel-archs must not scale it. The first cut of
-# this gate multiplied by PARALLEL_ARCHS and would have demanded 360G for a run
-# that never needs more than 120G at once.
+# The lane builds arches serially and removes each wrapper, so the peak is one wrapper.
 t_case "lane need is ONE wrapper, whatever --parallel-archs says"
 PARALLEL_ARCHS=0; t_assert_eq "120" "$(_chain_runtime_lane_need_gb)"
 PARALLEL_ARCHS=1; t_assert_eq "120" "$(_chain_runtime_lane_need_gb)"
@@ -435,16 +369,14 @@ _lane_free=500
 t_assert_contains "$(cat "${workdir}/lane.txt")" "runtime lane: 500G free"
 
 t_case "the lane gate REFUSES when the lane cannot possibly fit"
-# MUTATION ANCHOR: this is the assertion that goes red if the gate is removed,
-# stubbed to `return 0`, or its threshold is silently defaulted to 0.
+# Red if the gate is removed, stubbed to `return 0`, or its threshold defaults to 0.
 _lane_free=88
 ( _chain_runtime_lane_disk_gate ) > "${workdir}/lane.txt" 2>&1 && _lane_rc=0 || _lane_rc=$?
 t_assert_eq "1" "${_lane_rc}" "88G free against a ~120G lane MUST refuse"
 t_assert_contains "$(cat "${workdir}/lane.txt")" "runtime lane refused: 88G free"
 t_assert_contains "$(cat "${workdir}/lane.txt")" "FORCE_LOW_DISK=1"
 
-# $@ = VAR=VAL knobs for ONE gate run; the subshell keeps them from leaking into
-# the next case. Sets _lane_rc, logs to lane.txt.
+# _lane_run [VAR=VAL...]: one gate run in a subshell so knobs cannot leak; sets _lane_rc, logs to lane.txt.
 _lane_run() {
   ( [ "$#" -eq 0 ] || export "$@"; _chain_runtime_lane_disk_gate ) \
     > "${workdir}/lane.txt" 2>&1 && _lane_rc=0 || _lane_rc=$?
@@ -465,14 +397,7 @@ _lane_run
 t_assert_eq "0" "${_lane_rc}" "an unreadable df must never refuse a multi-hour lane"
 _disk_guard_free_gb() { printf '%s' "${_lane_free}"; }
 
-# ---------------------------------------------------------------------------
-# DISK2: the buildkit fallback must be reachable from the two gates that REFUSE.
-# DISK1 shipped it wired into the in-stage sampler only, so a run that died at
-# lane entry or between stages still logged `NOTHING was reclaimable` while the
-# store held 415G. Behaviour of the fallback itself is proven in
-# test-disk-guard.sh; what is proven here is the WIRING and the episode latch.
-# docs/build-cache-tiers.md#321-the-buildkit-store-fallback-disk1
-# The guard's two eviction passes share one owner; drive the real ones.
+# DISK2: both refusing gates must reach the buildkit fallback. See docs/build-cache-tiers.md#321-the-buildkit-store-fallback-disk1
 eval "$(sed -n '/^_chain_evict_slugs() {$/,/^}$/p' "${CHAIN_SH}")"
 eval "$(sed -n '/^_chain_bc_free_gb()/p;/^_chain_bc_total_gb()/p;/^_chain_num_below()/p;/^_chain_num_above()/p' "${CHAIN_SH}")"
 eval "$(sed -n '/^_chain_stage_disk_guard() {$/,/^}$/p' "${CHAIN_SH}")"
@@ -484,8 +409,7 @@ _disk_guard_buildkit_fallback() {
   _DISK_GUARD_BUILDKIT_FREED_GB="${_BK_FREED:-0}"
   [ -z "${_BK_RESCUE_TO:-}" ] || _lane_free="${_BK_RESCUE_TO}"
 }
-# $1 = free GB at entry. The latch is left DIRTY on purpose: a gate that does not
-# open its own episode would find it spent and never reach the store.
+# $1 = free GB; the latch is left dirty, so a gate that opens no episode of its own never reaches the store.
 _bk_reset_calls() { : > "${_BK_LOG}"; _lane_free="$1"; _DISK_GUARD_BUILDKIT_PRUNES=9; }
 _bk_calls() { cat "${_BK_LOG}"; }
 
@@ -505,8 +429,7 @@ t_assert_contains "$(cat "${workdir}/lane.txt")" "+ 223G of buildkit layer cache
 _BK_FREED=0; _BK_RESCUE_TO=""
 
 t_case "the between-stage guard reaches the store before giving up on cache exports"
-# CROSS_NO_LOCAL_CACHE_EXPORT=1 costs every remaining stage its local cache
-# export; the store is the last thing to try before paying that.
+# Giving up costs every remaining stage its local cache export, so the store comes first.
 _chain_runtime_lane_is_next() { return 1; }
 _bk_reset_calls 10
 unset CROSS_NO_LOCAL_CACHE_EXPORT
@@ -525,8 +448,7 @@ t_assert_eq "0" "$(grep -c -e 'CROSS_NO_LOCAL_CACHE_EXPORT' "${workdir}/sg.txt" 
 _BK_RESCUE_TO=""
 
 t_case "each gate opens its OWN reclaim episode"
-# The latch is per process and the two gates are hours apart: without the reset
-# the base stage's prune would still be latched when the runtime lane refuses.
+# The latch is per process and the gates are hours apart, so each must reset it.
 _bk_reset_calls 88
 _lane_run
 t_assert_contains "$(_bk_calls)" "latch=0" "the lane gate must clear a stale latch before pruning"
@@ -542,12 +464,7 @@ t_assert_eq "" "$(_bk_calls)" "40G threshold with 500G free must never touch bui
 unset CROSS_NO_LOCAL_CACHE_EXPORT
 _lane_free=999
 
-# ---------------------------------------------------------------------------
-# DISK3: the image store is the third lever and the ONLY one whose safety depends
-# on nothing being in flight. Behaviour is proven in test-disk-guard.sh; what is
-# proven here is that both between-runs gates reach it, that neither hands it a
-# stage-in-flight of 1, and WHICH tags they protect.
-# docs/build-cache-tiers.md#322-the-image-store-lever-disk3
+# DISK3: the image store is safe only with nothing in flight. See docs/build-cache-tiers.md#322-the-image-store-lever-disk3
 _IM_LOG="${workdir}/im.txt"
 _disk_guard_image_store_fallback() {
   printf 'CALL %s %s in_flight=%s\n' "$1" "$2" "${4:-}" >> "${_IM_LOG}"
@@ -601,10 +518,7 @@ t_assert_eq "" "$(_im_calls)"
 unset CROSS_NO_LOCAL_CACHE_EXPORT
 _lane_free=999
 
-# ---------------------------------------------------------------------------
-# B3: a runtime failure skips EVERY gate downstream of the per-arch wrapper loop
-# in build-runtime-manifest.sh. The 2026-09-01 run ended with a bare
-# "[ERROR] runtime stage failed" and `grep -c` returning 0 for all of them.
+# B3: a runtime failure skips every gate after the per-arch wrapper loop, so the report must name them
 eval "$(sed -n '/^_chain_runtime_arch_state() {$/,/^}$/p' "${CHAIN_SH}")"
 eval "$(sed -n '/^_chain_runtime_failure_report() {$/,/^}$/p' "${CHAIN_SH}")"
 _CHAIN_RUNTIME_GATES="$(sed -n 's/^_CHAIN_RUNTIME_GATES="\(.*\)"$/\1/p' "${CHAIN_SH}")"
@@ -643,8 +557,7 @@ t_assert_contains "${out}" "runtime-image-smoke" "the skipped gates must be name
 t_assert_contains "${out}" "manifest-only" "the repair path must be warned off unverified wrappers"
 
 t_case "an all-arches-built failure must NOT claim the gates were skipped"
-# The lane can also fail AFTER the loop (a manifest push). Claiming a skip there
-# would be a lie, and a lie in the failure summary is worse than the silence.
+# The lane can also fail after the loop (a manifest push), where claiming a skip would be false.
 ancestry_recorded_run_id() { printf '%s' "${CROSS_RUN_ID}"; }
 _CHAIN_ARCH_OUTCOMES=""; _CHAIN_GATES_NOT_RUN="stale-value"
 _chain_runtime_failure_report > "${workdir}/b3-report.txt"
@@ -653,9 +566,7 @@ t_assert_eq "amd64=built-this-run,arm64=built-this-run,riscv64=built-this-run" "
 t_assert_eq "" "${_CHAIN_GATES_NOT_RUN}"
 t_assert_contains "${out}" "AT or AFTER"
 
-# ---------------------------------------------------------------------------
-# The outcomes must survive into chain-status.json, so a later --manifest-only
-# repair cannot assemble an index believing everything was checked.
+# Outcomes reach chain-status.json, so a --manifest-only repair cannot assume everything was checked
 t_case "chain-status.json records the per-arch outcomes and the skipped gates"
 CROSS_CHAIN_STATUS_FILE="${workdir}/b3-status.json"
 _CHAIN_ARCH_OUTCOMES="amd64=missing,arm64=built-this-run"
@@ -674,9 +585,7 @@ t_assert_fails grep -q -e 'arch_outcomes' "${CROSS_CHAIN_STATUS_FILE}"
 t_assert_ok python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "${CROSS_CHAIN_STATUS_FILE}"
 unset CROSS_CHAIN_STATUS_FILE
 
-# ---------------------------------------------------------------------------
-# B2 wiring. The in-stage guard and the lane gate are inert unless run_runtime_stage
-# actually calls them, and the failure report is inert unless the build loop does.
+# Wiring: every function above stays green if its call site is deleted, so assert the calls
 t_case "run_runtime_stage gates on disk, then samples ACROSS the helper call"
 t_assert_eq \
   "_chain_runtime_lane_disk_gate,_chain_disk_watch_start,_chain_disk_watch_stop" \
@@ -693,8 +602,7 @@ t_assert_eq \
       | grep -oE '_chain_runtime_failure_report|_chain_status_emit|err ' \
       | sed 's/ $//' | paste -sd, -)" \
   "the report must run before _chain_status_emit, and err must stay last"
-# set -e IS live inside a `|| { ... }` group: a report that returned non-zero
-# would skip the status write AND change the chain's exit code from 1 to its own.
+# set -e is live inside `|| { ... }`: a failing report would skip the status write and change the exit code.
 t_assert_contains \
   "$(sed -n '/^_chain_run_build_loop() {$/,/^}$/p' "${CHAIN_SH}")" \
   "_chain_runtime_failure_report || true" \
@@ -740,11 +648,7 @@ t_assert_ok test -f "${_sib_logs}/media-arm64.log"
 kill "${_sib_pid}" 2>/dev/null || true
 rm -rf "${_sib_pf}" "${_sib_logs}"
 
-# ---------------------------------------------------------------------------
-# B3: the between-stage guard must aim at the NEXT lane, not at a fixed floor.
-# Reclaiming at 40G before a lane whose entry gate refuses below ~120G arrives
-# too late: the 2026-09-02 run needed six manual prunes to get there.
-# ---------------------------------------------------------------------------
+# B3: the between-stage guard aims at the next lane's need, not a fixed 40G floor that reclaims too late
 eval "$(sed -n '/^_chain_runtime_lane_is_next() {$/,/^}$/p' "${CHAIN_SH}")"
 
 t_case "the runtime lane is recognised as the next enabled stage"

@@ -1,7 +1,5 @@
 # shellcheck shell=bash
-# Source-only helper -- do not execute directly.
-# cross-apt.sh - Cross-compilation APT helpers.
-# Sourced by cross-env.sh.
+# Cross-compilation apt helpers, sourced by cross-env.sh.
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   echo "This script is meant to be sourced, not executed" >&2
@@ -12,10 +10,7 @@ fi
 _CROSS_APT_LOADED=1
 
 
-# Rewrite a deb822 sources file through an awk program: `<file> <caller>
-# <awk-args...>`. Owns the temp/cleanup/mode contract for every caller, and a
-# failing awk must never reach the `mv`. awk only, no cross_* deps.
-# docs/cross-build-verification.md#rewriting-a-deb822-sources-file-in-place
+# <file> <caller> <awk-args...>: docs/cross-build-verification.md#rewriting-a-deb822-sources-file-in-place
 _apt_sources_rewrite() {
   local sources_file="$1" caller="$2" tmp=""
   shift 2
@@ -34,8 +29,7 @@ _apt_sources_rewrite() {
   mv "${tmp}" "${sources_file}"
 }
 
-# Set/overwrite the `Architectures:` line in every stanza of a deb822 sources
-# file. Also sourced STANDALONE by 02-toolchain/android-sdk.sh ("amd64 i386").
+# Every stanza's Architectures: line; android-sdk.sh also sources this file standalone for it.
 apt_sources_set_architectures() {
   local sources_file="$1" arch_string="$2"
 
@@ -72,18 +66,12 @@ apt_sources_set_architectures() {
   '
 }
 
-# Delegates to ubuntu-mirror.sh's single table. Same answer as the old inline
-# arm64|riscv64 case for every arch this chain builds; the difference is that a
-# NEW arch is right here for free instead of silently taking the archive branch.
+# ubuntu-mirror.sh's table, not an inline list, so a new arch cannot silently take the archive branch.
 cross_target_uses_ubuntu_ports() {
   ubuntu_arch_uses_ports "$(cross_target_arch)"
 }
 
-# The per-arch sources file for an arch: ports for every arch the table claims,
-# the archive for amd64/i386 (AS1). The arch spelling is passed through
-# untouched -- it lands verbatim on the deb822 `Architectures:` line, where apt
-# wants dpkg's spelling (`i386`), not arch_normalize's (`386`).
-# docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
+# The arch passes through unnormalized: apt wants dpkg's spelling (i386). docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
 cross_apt_sources_file_for_arch() {
   local arch
   arch="${1:-$(cross_target_arch)}" || return 1
@@ -95,10 +83,7 @@ cross_apt_sources_file_for_arch() {
   fi
 }
 
-# The mirror URL that arch's packages come from. Ports arches take the ports
-# mirror (fast-mirror aware, like every other ports writer); amd64/i386 take the
-# archive mirror -- an amd64/i386 cross target used to get an architecture from
-# `dpkg --add-architecture` and NO source at all (AS1).
+# Ports mirror for ports arches, archive mirror for amd64/i386, which otherwise got no source at all.
 cross_apt_mirror_url_for_arch() {
   local arch
   arch="${1:-$(cross_target_arch)}" || return 1
@@ -157,18 +142,10 @@ apt_source_declares_arch() {
   return 1
 }
 
-# Assigned (not read from the environment) so it is not an operator knob: the
-# unit tests point it at a fixture dir, production never changes it.
+# Not an env knob: only tests point it at a fixture dir.
 _CROSS_APT_SOURCES_DIR=/etc/apt/sources.list.d
 
-# The build host's OWN arch is never "foreign". On an arm64/riscv64 build host
-# the host's packages come from ports too, so pruning that source left apt with
-# the amd64 archive alone -- every unqualified name then resolved to :amd64,
-# which is how binutils:amd64 replaced the native aarch64 assembler and made
-# gcc's `as -EL` fail in the media stage. amd64 hosts are unaffected: no
-# ubuntu-ports*.sources ever declares amd64.
-# The glob covers both per-arch prefixes: ubuntu-ports-<arch> for ports targets
-# and ubuntu-archive-<arch> for amd64/i386 targets (AS1).
+# Never prunes the build host's own arch: without it an arm64 host resolved binutils to :amd64.
 cross_prune_foreign_arch_apt_sources() {
   local keep_source="${1:-}"
   local existing_arch_source host_arch
@@ -195,9 +172,7 @@ cross_prepare_apt_sources_for_target() {
 
   target_arch="${TARGET_ARCH:-${TARGETARCH:-}}"
   [ -n "${target_arch}" ] || return 0
-  # Canonicalized, so the keep-source below names the file
-  # cross_configure_foreign_arch_apt_sources will write (it uses
-  # cross_target_arch too).
+  # Canonical, so the keep-source matches what cross_configure_foreign_arch_apt_sources writes.
   target_arch="$(cross_target_arch)"
 
   if cross_build_enabled; then
@@ -230,9 +205,6 @@ cross_apt_update() {
   _CROSS_ENV_APT_UPDATED=1
 }
 
-# A pocket the HOST sources lack strands every Multi-Arch:same library one
-# version behind the target's, and apt then reports the DEPENDENT as
-# uninstallable. Repair an inherited skew here, at the point of use.
 # docs/cross-build-verification.md#host-and-target-apt-sources-must-expose-the-same-pockets
 cross_align_host_apt_pockets() {
   local host_sources="$1" codename="$2"
@@ -248,10 +220,7 @@ cross_align_host_apt_pockets() {
   _CROSS_ENV_APT_UPDATED=0
 }
 
-# Write the target's own per-arch sources file, whichever archive serves it.
-# There is deliberately no `cross_target_uses_ubuntu_ports || return 0` here:
-# returning early for an amd64/i386 target left `dpkg --add-architecture` with
-# an architecture and NO archive, and the pocket repair never fired (AS1).
+# No early return for archive arches: amd64/i386 targets need a source too.
 cross_configure_foreign_arch_apt_sources() {
   local target_arch build_arch distro target_url target_sources host_sources
 
@@ -277,11 +246,7 @@ cross_configure_foreign_arch_apt_sources() {
   ubuntu_write_deb822_source "${target_sources}" "${target_url}" "${distro}" "${target_arch}" 1
 }
 
-# The compiler base installs libc6 for every cross target, but media's apt reset
-# leaves sources for the build host and the current target only. A frozen foreign
-# arch then makes the next fresh install from the other archive unsatisfiable
-# ("libc6:arm64 Breaks libc6:i386 (!= ...)").
-# docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
+# Every installed foreign arch keeps a source: docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
 cross_ensure_installed_foreign_arch_sources() {
   local build_arch arch file url distro
 
@@ -297,9 +262,7 @@ cross_ensure_installed_foreign_arch_sources() {
     if [ "${arch}" = "${build_arch}" ]; then
       continue
     fi
-    # An amd64/i386 foreign arch is served by the ARCHIVE, not by ports -- the
-    # old `ubuntu_arch_uses_ports || continue` skipped it entirely, so a fresh
-    # install from the other archive was unsatisfiable (AS1).
+    # amd64/i386 come from the archive, so no ports-only filter here.
     file="$(cross_apt_sources_file_for_arch "${arch}")"
     if [ -f "${file}" ]; then
       continue
@@ -310,8 +273,7 @@ cross_ensure_installed_foreign_arch_sources() {
   return 0
 }
 
-# A phased-back libc6:<host> makes EVERY foreign-arch install unsatisfiable
-# ("libc6:amd64 Breaks libc6:riscv64 (!= <ver>)"). docs/cross-build-verification.md
+# A phased-back host libc6 makes every foreign-arch install unsatisfiable.
 _CROSS_APT_PHASED_CONF=/etc/apt/apt.conf.d/99cross-phased-updates
 
 cross_allow_phased_updates() {
@@ -339,8 +301,7 @@ cross_package_has_install_candidate() {
 
   [ -n "${pkg}" ] || return 1
 
-  # `apt-cache show` can return package metadata even when apt cannot install the
-  # package on this release/architecture combination.
+  # Not `apt-cache show`: it returns metadata for packages apt cannot install here.
   candidate="$(apt-cache policy "${pkg}" 2>/dev/null | awk '/^[[:space:]]*Candidate:/ { print $2; exit }')"
   [ -n "${candidate}" ] && [ "${candidate}" != "(none)" ]
 }
@@ -362,12 +323,7 @@ cross_resolve_target_package() {
   fi
 }
 
-# A per-package retry must never buy a package by uninstalling the toolchain.
-# Unqualified names can resolve to a foreign arch once the host's own apt source
-# is missing, and apt then satisfies e.g. `gfortran` with gfortran:amd64 —
-# removing gcc/binutils:arm64 on the way. With the retry's output discarded that
-# swap was invisible until gcc's `as -EL` failed hours later. Simulate first and
-# refuse (loudly) rather than install.
+# A retry must never buy a package by removing the toolchain, e.g. gfortran:amd64 replacing gcc:arm64.
 _apt_install_would_remove() {
   apt-get install -s -y --no-install-recommends "$1" 2>/dev/null \
     | grep -q '^Remv '
@@ -375,17 +331,10 @@ _apt_install_would_remove() {
 
 install_host_packages() {
   [ "$#" -gt 0 ] || return 0
-  # Fast path: one atomic transaction.
   if apt-get install -y --no-install-recommends "$@"; then
     return 0
   fi
-  # A SINGLE unavailable/renamed package (e.g. a SONAME rename across an Ubuntu
-  # release — resolute dropped the `libxml2` runtime name for `libxml2-16`) makes
-  # the whole atomic install fail, which silently drops EVERY other requested lib
-  # (callers use `|| true`). That is exactly how the final image ended up missing
-  # libopenh264/libsrtp2/libwavpack/libcsound64/libv4l/libgudev runtime libs even
-  # though those packages are perfectly installable. Fall back to per-package
-  # installs so one bad name can't take the rest down, and report what was skipped.
+  # One renamed package fails the whole transaction, and callers `|| true` it, so retry per package.
   echo "WARN: batch host-package install failed; retrying per-package to isolate unavailable names" >&2
   local pkg
   local -a _skipped=() _destructive=()
@@ -415,16 +364,7 @@ cross_filter_known_foreign_postinst_noise() {
   done
 }
 
-# Is this package present on disk in a usable state? On cross builds a
-# foreign-arch package whose postinst failed (Exec format error — target
-# binaries can't run on the build host) is still fully unpacked, so its
-# headers/libs ARE usable for cross-compiling. Treat unpacked/half-configured
-# as present; only "not installed at all" counts as missing.
-# T1a: named for what it ACTUALLY does — queries the dpkg install STATUS, not the
-# filesystem (the old name `cross_package_files_present` implied a file probe and
-# misled every caller/comment). A foreign-arch package counts as present when its
-# status is installed OR merely unpacked/half-configured (its headers+libs are on
-# disk for cross-compiling even when the postinst couldn't run on the build host).
+# dpkg status, not files: a foreign package whose postinst could not run is still unpacked and usable.
 cross_package_status_present() {
   local pkg="${1%%=*}"
   local status
@@ -444,8 +384,7 @@ install_target_packages() {
   [ "$#" -gt 0 ] || return 0
   if cross_build_enabled; then
     cross_prepare_foreign_arch
-    # T1b: `:-0` so cross-apt.sh sourced standalone under `set -u` (before
-    # cross-env.sh's default at :7 is in scope) reads a value instead of crashing.
+    # `:-0` for a standalone source under set -u, before cross-env.sh sets the default.
     if [ "${_CROSS_ENV_APT_UPDATED:-0}" != "1" ]; then
       apt-get update
       _CROSS_ENV_APT_UPDATED=1
@@ -460,28 +399,16 @@ install_target_packages() {
   [ "${#pkgs[@]}" -gt 0 ] || return 0
 
   if cross_build_enabled; then
-    # Run in a subshell so pipefail applies to the pipeline without leaking
-    # into (or depending on) the caller's shell options.
+    # A subshell keeps pipefail off the caller's options.
     (
       set -o pipefail
       apt-get install -y --no-install-recommends "${pkgs[@]}" 2>&1 \
         | cross_filter_known_foreign_postinst_noise
     ) || apt_rc=$?
 
-    # Trust a clean atomic install: apt-get succeeded, every package is unpacked.
-    # Do NOT run the cross_package_status_present sweep on this path — it is a
-    # dpkg-status probe (installed/unpacked/half-configured all count as present),
-    # used ONLY below as a disambiguator AFTER apt has already errored, never to
-    # second-guess a clean atomic install.
     [ "${apt_rc}" -eq 0 ] && return 0
 
-    # The atomic transaction failed. That can be harmless foreign-arch postinst
-    # noise (every package still unpacked), but it can ALSO be a single
-    # unresolvable/renamed name (e.g. a SONAME rename across an Ubuntu release)
-    # that aborts the WHOLE transaction and takes every other requested package
-    # down with it — apt installs nothing. Because callers routinely `|| true`
-    # this (gstreamer graphics/HLS/X11 batches), that silently strips ~20 libs
-    # at once. Retry each package on its own so one bad name can't drop the rest.
+    # Postinst noise or one renamed package that sank the whole transaction: retry per package.
     echo "install_target_packages: batch apt-get exited ${apt_rc}; retrying per-package to isolate unavailable names" >&2
     local _pkg_rc
     for pkg in "${pkgs[@]}"; do
@@ -491,19 +418,12 @@ install_target_packages() {
         apt-get install -y --no-install-recommends "${pkg}" 2>&1 \
           | cross_filter_known_foreign_postinst_noise
       ) || _pkg_rc=$?
-      # T1c: surface the per-package rc (diagnosability). Non-zero here is often
-      # benign foreign-arch postinst noise — the dpkg-status sweep below is the
-      # real arbiter of what landed — but seeing WHICH package and WHAT rc turns
-      # a silent `|| true` into an attributable signal when a name genuinely fails.
+      # Often benign postinst noise; the status sweep below decides, this only attributes it.
       [ "${_pkg_rc}" -ne 0 ] && \
         echo "install_target_packages: '${pkg}' apt-get exited ${_pkg_rc} (per-package retry; status sweep decides)" >&2
     done
 
-    # Now disambiguate: which packages genuinely did not land? The dpkg-status
-    # check tolerates foreign-arch postinst noise (apt errored but the package is
-    # unpacked) while still catching genuinely-absent packages (dependency
-    # conflicts, ports outages) that would otherwise surface much later as
-    # baffling feature-skips.
+    # Absent packages otherwise surface much later as baffling feature skips.
     for pkg in "${pkgs[@]}"; do
       cross_package_status_present "${pkg}" || missing+=("${pkg}")
     done
@@ -569,8 +489,7 @@ cross_pkg_config_libdir() {
     "/usr/share/pkgconfig"
   )
 
-  # Include host-arch pkgconfig dirs so host libraries (e.g. xcb)
-  # are resolvable when building host-arch tools during cross builds.
+  # Host-arch dirs too, for host tools built during a cross build.
   local _build_multiarch=""
   if [ -n "${DEB_BUILD_MULTIARCH:-}" ]; then
     _build_multiarch="${DEB_BUILD_MULTIARCH}"
@@ -578,8 +497,6 @@ cross_pkg_config_libdir() {
     _build_multiarch="$(dpkg-architecture -qDEB_BUILD_MULTIARCH 2>/dev/null || true)"
   fi
   if [ -z "${_build_multiarch}" ]; then
-    # Why the cross pkg-config libdir is derived, not guessed:
-    # docs/cross-build-verification.md
     if ! command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
       printf 'cross_pkg_config_libdir: WARNING: arch_deb_multiarch_triplet_for is not defined — 01-core/platform.sh was never sourced here. Dropping the host-arch pkgconfig dir; host-arch tools may fail to configure. Source/mount platform.sh alongside cross-apt.sh.\n' >&2
     else

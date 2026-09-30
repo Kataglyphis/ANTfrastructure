@@ -1,21 +1,12 @@
 #!/usr/bin/env bash
-# slang-compile.sh - generic "compile a Slang shader tree to SPIR-V and WGSL" driver.
-#
-# Project-agnostic: a wrapper sets SLANG_COMPILE_MANIFEST and
-# SLANG_COMPILE_SOURCE_ROOT (plus optional output roots), sources this file and
-# calls slang_compile_main. Variables, manifest schema, return codes and the
-# staleness rule are in docs/slang-shader-compilation.md.
-#
-# PowerShell twin: windows/scripts/modules/WindowsSlang.Common.psm1 -- keep in step.
-# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
+# Sourced (no shell options); keep in step with WindowsSlang.Common.psm1. Contract: docs/slang-shader-compilation.md
 [ -n "${_SLANG_COMPILE_SH_LOADED:-}" ] && return 0
 _SLANG_COMPILE_SH_LOADED=1
 
 # shellcheck source=./log-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
 
-# Fatal-but-not-exiting variant: prints like err, but lets slang_compile_main
-# return a specific code to its wrapper instead of exiting the shell itself.
+# Prints like err but returns, so slang_compile_main can hand its wrapper a specific code.
 _slang_compile_error() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; }
 
 # Fills in the derived path defaults. Idempotent.
@@ -27,8 +18,7 @@ _slang_compile_apply_defaults() {
   SLANG_COMPILE_DEST_ROOT="${SLANG_COMPILE_DEST_ROOT:-$(pwd)}"
 }
 
-# The output root for a manifest target. Unknown targets are emitted as WGSL,
-# matching the extension rule in slang_compile_targets.
+# Unknown targets are emitted as WGSL, matching the extension rule in slang_compile_targets.
 _slang_compile_output_root() {
   if [[ "$1" == "spirv" ]]; then
     printf '%s\n' "${SLANG_COMPILE_SPIRV_OUTPUT_ROOT}"
@@ -37,18 +27,7 @@ _slang_compile_output_root() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Manifest reader
-# ---------------------------------------------------------------------------
-# The manifest is read with python3, NOT jq: jq is absent from the ANTfrastructure
-# Linux image (verified 2026-08-02 - a jq dependency here made shader
-# precompilation fail, and the consumer's `|| warn` hid it, leaving CI with no
-# SPIR-V at all), while python3 ships in the image and is already a documented
-# project dependency. One reader, no second parser to drift.
-#
-# slang_compile_manifest_query <query-name> [args...]
-# Emits pipe-delimited rows on stdout. Every query lives here so the JSON schema
-# is touched in exactly one place.
+# Manifest reader: python3, not jq (absent from the image); the one place that touches the schema.
 slang_compile_manifest_query() {
   python3 - "${SLANG_COMPILE_MANIFEST}" "$@" <<'PY'
 import json, sys
@@ -77,29 +56,9 @@ else:
 PY
 }
 
-# ---------------------------------------------------------------------------
-# Combined-WGSL emit correctness guard.
-#
-# WGSL requires every non-builtin member of an inter-stage (varying) struct to
-# carry @location(N). slangc 2026.1-52-gc8ddf20bb - the build in Vulkan SDK
-# 1.4.341.1, i.e. the ANTfrastructure Linux image - drops that attribute in the
-# COMBINED emit (no -entry/-stage) while emitting it correctly per entry point,
-# so a regeneration on that toolchain silently produced WGSL naga rejects.
-# 2026.8 is correct on both Windows and Linux. Two defences, both needed:
-#   1. the manifest's minSlangcVersionForWgsl floor: below it we do not emit at
-#      all, so the (correct) checked-in WGSL is never overwritten.
-#   2. slang_compile_wgsl_varyings_are_located: at or above the floor we emit and
-#      then verify, so ANY future emit regression fails the build instead of
-#      being copied.
-# The same rule is reimplemented in the PowerShell twin
-# (windows/scripts/modules/WindowsSlang.Common.psm1) - keep the two in step, and
-# with whatever test the consuming project pins it with.
-# ---------------------------------------------------------------------------
+# Combined-WGSL emit guard, twinned in PowerShell. See docs/slang-shader-compilation.md#the-combined-emit-outcomes
 
-# slang_compile_wgsl_varyings_are_located <file>
-# A struct with at least one @builtin/@location member is an IO struct; every
-# member of it must then carry one of those attributes. Prints offenders and
-# returns non-zero when the file is invalid.
+# <file>; every member of an IO struct needs @builtin or @location. Prints offenders, non-zero if any.
 slang_compile_wgsl_varyings_are_located() {
   python3 - "$1" <<'PY'
 import re, sys
@@ -135,11 +94,7 @@ sys.exit(1 if offenders else 0)
 PY
 }
 
-# slang_compile_version_at_least <have> <want> - compares the leading
-# MAJOR.MINOR only. slangc prints e.g. "2026.8" or "2026.1-52-gc8ddf20bb". An
-# unparseable version is treated as new enough: the emit guard above is the
-# backstop, and refusing to compile on an unrecognised version string would be
-# worse.
+# MAJOR.MINOR only; an unparseable version counts as new enough, with the emit guard as backstop.
 slang_compile_version_at_least() {
   local have="$1" want="$2"
   local have_major have_minor want_major want_minor
@@ -151,8 +106,7 @@ slang_compile_version_at_least() {
   ((have_minor >= want_minor))
 }
 
-# Prints the slangc to use: $VULKAN_SDK/bin/slangc, then PATH. Returns 1 when
-# neither exists (the caller turns that into the "exit 2" contract).
+# $VULKAN_SDK/bin/slangc, then PATH; returns 1 when neither exists, which the caller maps to exit 2.
 slang_compile_resolve_slangc() {
   if [[ -n "${VULKAN_SDK:-}" && -f "${VULKAN_SDK}/bin/slangc" ]]; then
     printf '%s\n' "${VULKAN_SDK}/bin/slangc"
@@ -165,16 +119,13 @@ slang_compile_resolve_slangc() {
   return 1
 }
 
-# Newest mtime across every .slang file under the source tree and the manifest
-# itself: every .slang file is a potential import dependency, and a manifest
-# edit can retarget any output (conservative staleness).
+# Conservative: any .slang may be imported, and a manifest edit can retarget any output.
 slang_compile_newest_source_stamp() {
   { find "${SLANG_COMPILE_SOURCE_ROOT}" -type f -name '*.slang' -printf '%T@\n'
     find "${SLANG_COMPILE_MANIFEST}" -printf '%T@\n'; } | sort -g | tail -n 1
 }
 
-# The slang compile contract and its fallbacks:
-# docs/cross-build-verification.md
+# See docs/cross-build-verification.md#slang-compile-shader-compilation-contract
 _slang_compile_collect_subdirs() {
   local -a common_dirs=() other_dirs=()
   local dir rel
@@ -195,10 +146,7 @@ _slang_compile_collect_subdirs() {
   )
 }
 
-# slangc resolves `import <name>` to <name>.slang on the -I paths. Add the
-# source root, the source's own directory and every subdirectory so
-# `import aces` finds common/aces.slang regardless of where the importing
-# shader lives. Fills SLANG_COMPILE_INCLUDE_ARGS.
+# slangc resolves `import <name>` on -I paths only, so add every subdirectory.
 slang_compile_include_args() {
   local src_parent="$1"
   SLANG_COMPILE_INCLUDE_ARGS=("-I" "${SLANG_COMPILE_SOURCE_ROOT}" "-I" "$src_parent")
@@ -208,15 +156,7 @@ slang_compile_include_args() {
   done
 }
 
-# ---------------------------------------------------------------------------
-# Per-entry-point compilation (the manifest[] rows)
-# ---------------------------------------------------------------------------
-# Compiles every enabled (file, entry, target) row, skipping outputs that are
-# already up to date. Sets SLANG_COMPILE_COMPILED_COUNT and
-# SLANG_COMPILE_FAILED_ENTRIES - the latter also collects rows naming a source
-# file that does not exist, which is a manifest bug and must never pass
-# silently. Always returns 0 so that the caller's `set -e` stays in force inside
-# this function; slang_compile_main turns a non-empty failure list into exit 1.
+# Per-entry-point compilation. Returns 0 to keep set -e in force; a missing source counts as a failure.
 slang_compile_targets() {
   local slangc="$1" newest_source="$2"
   local failed_entries=()
@@ -241,8 +181,7 @@ slang_compile_targets() {
       else
         out_ext="wgsl"
       fi
-      # Mirror the source subdirectory under the target's output root so
-      # distinct shaders with the same entry-point name do not collide.
+      # Mirror the source subdirectory so same-named entry points do not collide.
       rel_dir="$(dirname "$file")"
       base_name="$(basename "$file" .slang)"
       out_dir="$(_slang_compile_output_root "$target")/${rel_dir}"
@@ -276,16 +215,7 @@ slang_compile_targets() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# Combined WGSL emit: compile each wgslMap source WITHOUT -entry/-stage to get
-# all entry points in one WGSL file, then copy it to the destination directory
-# the manifest names (e.g. a Rust crate's shader directory, so include_str!
-# picks up the Slang-emitted WGSL).
-# ---------------------------------------------------------------------------
-# One wgslMap row: emit, patch, validate, copy. Four outcomes, and which is
-# which is the contract the caller's counters are built on:
-# 0 copied, 1 emit failed, 2 rejected by the varying validator, 3 source absent.
-# docs/slang-shader-compilation.md#the-combined-emit-outcomes
+# Combined WGSL emit: 0 copied, 1 emit failed, 2 invalid, 3 source absent. docs/slang-shader-compilation.md#the-combined-emit-outcomes
 _slang_emit_one_wgsl() {
   local slangc="$1" src_file="$2" out_name="$3" dst_rel="$4" slangc_version="$5"
   local src_path tmp_out dst_dir offenders
@@ -303,9 +233,7 @@ _slang_emit_one_wgsl() {
     return 1
   fi
 
-  # Post-emit patch table (depthTexturePatches): why each patch exists is
-  # documented in the "_comment" fields next to the patterns in the manifest.
-  # tr strips the CR a Windows host may add (harmless on Linux).
+  # Each patch's reason is in the manifest's _comment fields; tr strips a Windows CR.
   patch_count="$(slang_compile_manifest_query patch_count "$out_name" | tr -d '\r')"
   for ((i = 0; i < patch_count; i++)); do
     pattern="$(slang_compile_manifest_query patch_field "$out_name" "$i" pattern | tr -d '\r')"
@@ -320,8 +248,7 @@ _slang_emit_one_wgsl() {
     fi
   done
 
-  # Reject a structurally invalid emit BEFORE it can overwrite the checked-in
-  # file, so a broken regeneration can never be committed silently.
+  # Validate before overwriting the checked-in file, so a broken emit is never committed.
   if ! offenders="$(slang_compile_wgsl_varyings_are_located "$tmp_out")"; then
     {
       echo "[ERROR] ${out_name}: slangc ${slangc_version} emitted varying struct member(s) with neither"
@@ -338,23 +265,14 @@ _slang_emit_one_wgsl() {
   cp "$tmp_out" "${dst_dir}/${out_name}"
 }
 
-# Sets SLANG_COMPILE_WGSL_EMITTED_COUNT and SLANG_COMPILE_INVALID_EMITS (emits
-# that violated the WGSL varying rules; none of those are copied). Always
-# returns 0 - see slang_compile_targets for why - and slang_compile_main reports
-# the invalid emits last, after the summary line, then exits 1.
+# Returns 0 like slang_compile_targets; slang_compile_main reports invalid emits last, then exits 1.
 slang_compile_combined_wgsl() {
   local slangc="$1"
   local wgsl_failed=() wgsl_invalid=()
   SLANG_COMPILE_WGSL_EMITTED_COUNT=0
   mkdir -p "${SLANG_COMPILE_COMBINED_OUTPUT_DIR}"
 
-  # Toolchain floor: below it slangc's combined emit is known to drop varying
-  # @location attributes, so skip the emit entirely rather than overwrite the
-  # checked-in WGSL with output naga rejects. Regenerating after a .slang edit
-  # then needs a newer slangc - the consuming project is expected to pin that
-  # with a test (here:
-  # BuildIntegrity.CheckedInWgslIsNotOlderThanItsSlangSource) so a skipped and
-  # forgotten regeneration fails.
+  # Below the floor the combined emit drops @location, so skip it; the consumer pins stale WGSL with a test.
   local min_slangc_version slangc_version wgsl_emit_enabled=1
   min_slangc_version="$(slang_compile_manifest_query min_slangc_version | tr -d '\r')"
   slangc_version="$("$slangc" -version 2>&1 | head -n 1 | tr -d '\r')"
@@ -388,9 +306,7 @@ slang_compile_combined_wgsl() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
 # Full pipeline
-# ---------------------------------------------------------------------------
 slang_compile_main() {
   _slang_compile_apply_defaults
 
@@ -438,8 +354,7 @@ slang_compile_main() {
 
   info "Slang shader compilation finished (${SLANG_COMPILE_COMPILED_COUNT} SPIR-V/WGSL artifact(s) + ${SLANG_COMPILE_WGSL_EMITTED_COUNT} combined WGSL file(s))"
 
-  # Fatal, and last so the SPIR-V summary above is still reported: an emit that
-  # violates WGSL's varying rules is a toolchain regression, not a warning.
+  # Fatal, and last so the SPIR-V summary still prints: an invalid emit is a toolchain regression.
   if [[ ${#SLANG_COMPILE_INVALID_EMITS[@]} -gt 0 ]]; then
     {
       echo "[ERROR] ${#SLANG_COMPILE_INVALID_EMITS[@]} combined WGSL emit(s) had varying struct members without @builtin/@location:"

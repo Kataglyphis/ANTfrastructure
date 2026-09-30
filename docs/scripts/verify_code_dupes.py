@@ -1,78 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""verify_code_dupes.py -- the CODE duplication gate (shell, PowerShell, Dockerfiles, docs).
-
-Why this exists
----------------
-``verify_doc_dupes.py`` guards prose. Nothing guarded code. The tree went
-through four manual de-duplication rounds in July 2026 (dedup-pass-2026-07-04,
--05, -05b, -05c), each ending with "the tree is clean" -- and then nothing kept
-it that way. A cleanup that is not a gate is a snapshot, and copies creep back.
-
-It also covers the 79 Markdown files ``verify_doc_dupes.py`` never sees: that
-gate scans ``docs/*.md`` plus two root files, so nested READMEs (for example
-``linux/qnn-sdk/README.md``) were unguarded.
-
-How it differs from the prose gate
-----------------------------------
-Prose is compared as words. Code cannot be: rename a variable and a verbatim
-copy shares no line, yet it is still a copy that will rot in one place only.
-So every unit is TOKENISED and NORMALISED first -- comments dropped, string
-literals folded to ``"S"``, numbers to ``N``, variable names to ``$V`` -- and
-the shingles are taken over those tokens. That finds renamed clones (type-2),
-which is the kind this repo actually grows.
-
-Units are the things a human would move: a shell function, a PowerShell
-function or filter, a Dockerfile instruction (continuations joined), a Markdown
-paragraph.
-
-Deliberate twins
-----------------
-This repo has a PROTECTED list -- deliberate dedup, standalone bundling,
-load-bearing case arms, ARG sprawl, the LiteRT-LM patch stack. Those are
-correct and permanent. They live in ``code-dupes.allow`` with a budget and a
-reason, exactly like the prose gate, so a deliberate twin stays quiet while a
-regression past its budget fails.
-
-Clone families
---------------
-A family is ONE block and the files that all hold it -- keyed by the block's
-owner set, not by file adjacency. Clustering on adjacency merged every family
-that shared a single file and once printed one useless "88 files" blob.
-
-Run ``--baseline`` once to freeze what exists today; after that NEW or GROWING
-duplication fails, and so does a budget the measurement has dropped below or a
-row whose pair no longer overlaps -- the four-way rule of quality_allow, kept
-local because the key here is an UNORDERED file pair. A gate that fires on day
-one about work nobody plans to undo is a gate people learn to ignore.
-
-The Windows lane
-----------------
-``windows/`` held 50,862 lines of PowerShell that no structural gate scanned.
-That was never a decision, only where the effort went, and it is how the
-``Build-Windows.ps1`` and ``Resolve-BuildModule.ps1`` families were free to
-drift. ``.ps1``/``.psm1`` are now a fourth kind, scanned wherever they live --
-``windows/`` included. The lane's prose and Dockerfiles stay out (``md`` and
-``docker`` keep their own backlog there), so ``windows`` is a PER-KIND skip
-now, not a blanket one.
-
-Its 50k lines are frozen the same way every other pre-existing offender is: one
-``code-dupes.allow`` row per pair, budget EQUAL to today's measurement. Nothing
-has to be de-duplicated before the gate is useful, and nothing may grow.
-
-No network, and one project import: the shared allow reader
-(``linux/scripts/quality_allow.py``). Safe for hooks and CI.
-
-``--baseline`` rewrites the WHOLE file, so the parser refuses it together with
-``--kind``: scoping the rewrite would drop every other kind's curated rows --
-236 of today's 241 for ``--kind md``.
-
-Usage:  python3 docs/scripts/verify_code_dupes.py [--report] [--baseline]
-                                                  [--threshold N] [--kind K]
-Exit:   0 = clean, 1 = findings, 2 = usage/tree error.
-docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs
-"""
+"""Code duplication gate on normalised tokens, so renamed clones match: docs/code-quality-tooling.md#contract-tightening-2026-09-03-code-dupes-env-knobs"""
 
 from __future__ import annotations
 
@@ -84,16 +13,10 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
-# HUB_ROOT is where this gate LIVES; REPO_ROOT is the tree it GRADES, and
-# main() re-points the second one from --root. They are the same thing until a
-# consumer passes --root, which is the whole point of the scan-root contract:
-# in a consumer's third_party/ANTfrastructure checkout, __file__ resolves to the
-# HUB, so a gate that never asked would report green over a tree nobody wanted.
-# docs/code-quality-tooling.md#the-scan-root-contract
+# HUB_ROOT is where the gate lives, REPO_ROOT the tree it grades (--root): docs/code-quality-tooling.md#the-scan-root-contract
 HUB_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = HUB_ROOT
-# Follows the root as well: keeping every repo's budget inside the hub would put
-# a consumer's ratchet where that consumer never sees it in its own diff.
+# Follows the root too, so a consumer's ratchet lands in its own diff.
 ALLOW_FILE = Path(__file__).with_name("code-dupes.allow")
 ALLOW_FMT = "a | b | budget | reason"
 
@@ -101,36 +24,22 @@ sys.path.insert(0, str(HUB_ROOT / "linux" / "scripts"))
 from quality_allow import iter_rows  # noqa: E402
 import gate_scope  # noqa: E402
 
-# Never scanned: vendored trees, generated output, and the records that narrate
-# the same work on purpose.
-# "third_party" joined 2026-09-07: the external/ -> third_party/ submodule move
-# (2026-09-05) renamed the vendored tree but not this exclusion, so a checkout
-# with initialized submodules scanned DocumANTation's own prose for
-# ANTfrastructure duplication. "external" stays for the leftover husk.
+# Never scanned: vendored trees, generated output, and records that narrate the same work on purpose.
 SKIP_DIRS = {".git", "external", "third_party", "node_modules", "out", "archive",
              "_build", "dist", "sphinx-kataglyphis-theme", "logs",
              # Third-party and generated: nothing here is ours to de-duplicate.
              ".venv", "venv", "site-packages", ".tox", "license-assets",
-             # The tool caches. code-quality-tooling.md has listed these as
-             # excluded since the table was written; the set never had them, so
-             # one hand-run of pytest planted two identical README.md files and
-             # failed the gate on them. Declaring pytest a host tool made that
-             # everyone's problem, not just one lane's.
+             # Tool caches: a hand-run pytest plants identical README.md files.
              ".pytest_cache", "__pycache__", ".dart_tool",
              "source_templates", "deps"}
 SKIP_NAME_MARKERS = ("archive", "backlog", "CHANGELOG")
-# Skips that belong to ONE kind. "windows" was a blanket skip while no kind
-# could read PowerShell; now that "ps" can, the lane's scripts are in scope and
-# only its prose and Dockerfiles keep the backlog exemption.
+# Per-kind skips: windows scripts are in scope, only its prose and Dockerfiles keep the exemption.
 KIND_SKIP_DIRS = {"shell": {"windows"}, "docker": {"windows"}, "md": {"windows"}}
 
-# Code repeats itself far more than prose, so the window is wider than the
-# prose gate's 8 words: 12 normalised tokens of shell is already a real gesture
-# ("if not command -v X >/dev/null 2>&1; then warn ...; return 1; fi").
+# Code repeats itself more than prose, so the window is wider than the prose gate's 8 words.
 SHINGLE = 12
 MIN_TOKENS = SHINGLE + 6
-# A shingle owned by more units than this is idiom, not duplication --
-# `set -euo pipefail`, the standard arg-parse while/case, the smoke preamble.
+# A shingle owned by more units than this is idiom (set -euo pipefail, arg-parse loops), not duplication.
 MAX_OWNERS = 6
 DEFAULT_THRESHOLD = 10
 # A clone family is one block held by >2 files; below this it is a coincidence.
@@ -142,24 +51,19 @@ VARIABLE = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*(:[-=+?][^}]*)?\}|\$[A-Za-z_][
 NUMBER = re.compile(r"\b\d+(\.\d+)?\b")
 TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*|\$V|\"S\"|\bN\b|[^\s\w]")
 SHELL_FUNC = re.compile(r"^([A-Za-z_][A-Za-z0-9_:-]*)\s*\(\)\s*\{\s*$")
-# PowerShell opens a body on the header line OR on the next one, so the brace is
-# optional here; _brace_units counts from the header either way.
+# PowerShell opens a body on the header line or the next, so the brace is optional.
 PS_FUNC = re.compile(r"^\s*(?:function|filter)\s+([^\s({]+)\s*(?:\([^)]*\))?\s*\{?\s*$",
                      re.IGNORECASE)
-# Blanked before the unit split: an unbalanced brace inside a <# #> comment
-# would otherwise swallow the rest of the file into one unit.
+# Blanked first: an unbalanced brace in a <# #> comment would swallow the rest of the file.
 PS_BLOCK_COMMENT = re.compile(r"<#.*?#>", re.S)
-# $env:PATH and $script:Foo are one variable each, not "$V : NAME". Folding the
-# qualifier away is what lets a renamed copy match, the whole point of the
-# normalisation.
+# $env:PATH and $script:Foo are one variable each, so a renamed copy still matches.
 PS_SCOPE_VAR = re.compile(r"\$(?:global|script|local|private|using|env|variable):",
                           re.IGNORECASE)
 DOCKER_INSTR = re.compile(r"^\s*(FROM|RUN|COPY|ADD|ARG|ENV|WORKDIR|ENTRYPOINT|CMD|LABEL|USER|VOLUME|EXPOSE|HEALTHCHECK|SHELL|ONBUILD|STOPSIGNAL)\b",
                           re.IGNORECASE)
 
 
-# Spellings the shell treats as identical. Folding them is free accuracy: a copy
-# that swapped [[ ]] for [ ], or backticks for $(), is still a copy.
+# Spellings the shell treats as identical: a copy that swapped [[ ]] for [ ] or backticks for $() is still a copy.
 BRACKET = re.compile(r"\[\[(.*?)\]\]")
 BACKTICK = re.compile(r"`([^`]*)`")
 
@@ -218,10 +122,7 @@ def normalise(text: str) -> list[str]:
 
 
 def _brace_units(lines: list[str], header: re.Pattern) -> list[tuple[int, str]]:
-    """Brace-delimited named blocks, with everything outside one chunked on blank
-    lines. `header` is what opens a block -- shell's `name() {` or PowerShell's
-    `function Name`. One owner for both: the brace walk is identical, and the two
-    copies of it were exactly what this gate exists to refuse."""
+    """Brace-delimited blocks opened by `header` (shell or PowerShell); everything else is chunked on blank lines."""
     units: list[tuple[int, str]] = []
     i, n = 0, len(lines)
     loose: list[str] = []
@@ -262,8 +163,7 @@ def shell_units(path: Path) -> list[tuple[int, str]]:
 
 
 def ps_units(path: Path) -> list[tuple[int, str]]:
-    """PowerShell functions and filters, block comments blanked first (newlines
-    kept, so every reported line number is still the file's own)."""
+    """PowerShell functions and filters; block comments are blanked with their newlines, so line numbers hold."""
     text = PS_BLOCK_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"),
                                 path.read_text(encoding="utf-8", errors="replace"))
     return _brace_units(text.split("\n"), PS_FUNC)
@@ -309,8 +209,7 @@ def md_units(path: Path) -> list[tuple[int, str]]:
 def _file_kind(name: str) -> str | None:
     if name.endswith(".sh"):
         return "shell"
-    # Before the Dockerfile prefix on purpose: windows/scripts/tests holds
-    # Dockerfile.EolAttributes.Tests.ps1, a Pester suite, not a Dockerfile.
+    # Before the Dockerfile prefix: Dockerfile.EolAttributes.Tests.ps1 is a Pester suite.
     if name.endswith((".ps1", ".psm1")):
         return "ps"
     if name.startswith("Dockerfile"):
@@ -343,8 +242,7 @@ def collect() -> list[tuple[Path, str]]:
 
 UNIT_READERS = {"shell": shell_units, "ps": ps_units,
                 "docker": docker_units, "md": md_units}
-# Per-kind folding applied to a unit's text before the shared normaliser sees
-# it, never to the text the report quotes back.
+# Per-kind folding before normalisation, never applied to the text the report quotes.
 KIND_FOLD = {"ps": lambda text: PS_SCOPE_VAR.sub("$", text)}
 
 
@@ -365,12 +263,7 @@ def load_allow() -> dict[frozenset[str], tuple[int, str]]:
 
 
 def _index_units(files):
-    """Shingle-index every unit in scope.
-
-    Returns (owners, heads, texts, unit_lines, kind_of): which units hold each
-    shingle, which shingles OPEN a unit (they make the best excerpts), and the
-    text and normalised lines of each unit for later reporting.
-    """
+    """(owners, heads, texts, unit_lines, kind_of): shingle holders, unit-opening shingles for excerpts, and report data."""
     owners: dict[tuple, set[tuple[str, int]]] = defaultdict(set)
     heads: set[tuple] = set()
     texts: dict[tuple[str, int], str] = {}
@@ -396,34 +289,19 @@ def _index_units(files):
 
 
 def _collect_shared(owners, heads, kind_of):
-    """Turn the shingle index into pair counts, spread and clone families.
-
-    Returns (shared, spread, families, suppressed). A family is keyed by the
-    BLOCK's owner set, never by file adjacency -- keying on adjacency once
-    collapsed most of the tree into one meaningless "88 files" family.
-    """
+    """(shared, spread, families, suppressed); a family is keyed by the block's owner set, never by file adjacency."""
     shared: Counter = Counter()
     spread: Counter = Counter()
-    # A family is keyed by the BLOCK's owner set, never by file adjacency: one
-    # file in two families must not merge them (that printed "88 files" once).
     families: dict[frozenset[str], list] = {}
     suppressed = 0
     for shingle, holders in owners.items():
         if len(holders) > MAX_OWNERS:
-            # The perverse property, now turned into the tool's best feature: a
-            # block copied into TEN files is worth extracting far more than one
-            # copied into two, yet it is exactly the one the owner cutoff hides.
-            # Keep the widest ones as a ranked worklist instead of dropping them.
+            # Kept as a ranked worklist: a block in ten files is the best extraction, yet the cutoff hides it.
             suppressed += 1
             spread[frozenset(h[0] for h in holders)] += 1
             continue
         if len(holders) > 1:
-            # Same-FILE pairs are included: two twin helpers in one file were
-            # invisible before (proven with a probe), and that is exactly the
-            # copy-paste a reviewer scrolling one file also misses.
-            # EXCEPT Dockerfiles: they have no include or function mechanism, so
-            # a repeated RUN mount preamble is not extractable and reporting it
-            # is noise the reader can do nothing about.
+            # Same-file pairs count too, except in Dockerfiles, which have nothing to extract a repeat into.
             for a, b in itertools.combinations(sorted(holders), 2):
                 if a[0] == b[0] and kind_of.get(a[0]) == "docker":
                     continue
@@ -449,10 +327,7 @@ def _print_report(args, files, texts, allowed, runs, spread):
               f"{a[0]}  <->  {b[0]}   ({why})")
     if allowed:
         print()
-    # Rank by BLOCK SIZE, not by how many files hold it. One shingle across
-    # 34 files is `set -euo pipefail` -- idiom. Ten shingles across 8 files
-    # is a copied helper. Sorting by file count buries the second under the
-    # first (learned the hard way on the 199-shingle usage() pair).
+    # Rank by block size, not file count: one shingle in 34 files is idiom, ten in eight a copied helper.
     WIDE_MIN_SHINGLES = 5
     wide = [(cnt, fs) for fs, cnt in spread.items()
             if len(fs) > MAX_OWNERS and cnt >= WIDE_MIN_SHINGLES]
@@ -469,8 +344,7 @@ def _print_report(args, files, texts, allowed, runs, spread):
 
 
 def _print_bookkeeping(shrunk, stale, measured, threshold) -> int:
-    """Allow rows whose budget no longer equals reality: shrunk (paste the printed
-    row) or stale (delete the row). Returns 1 if either list is non-empty."""
+    """Allow rows whose budget no longer equals reality, shrunk or stale; returns 1 if any."""
     if shrunk:
         print(f"code duplication gate: {len(shrunk)} allowlist budget(s) above the "
               f"measurement -- record the new budget\n", file=sys.stderr)
@@ -490,8 +364,7 @@ def _print_bookkeeping(shrunk, stale, measured, threshold) -> int:
 
 
 def _print_families(ranked, stream) -> None:
-    """One family = one BLOCK and the >2 files that all hold it, capped, with an
-    excerpt so the reader can act."""
+    """Each family (one block held by more than two files), capped, with an excerpt to act on."""
     for cnt, held, sh, at in ranked[:FAMILY_MAX_REPORTED]:
         excerpt = " ".join(sh)
         print(f"  clone family: ONE block of {cnt} shingle(s), "
@@ -522,12 +395,7 @@ def _print_findings(findings, runs, texts, ranked) -> None:
 
 
 def _dispatch_mode(args, owners, texts, unit_lines, per_file, allow):
-    """The modes that answer instead of judging. None means "carry on and judge".
-
-    They live here rather than in main() so that adding one does not raise main's
-    complexity -- which is exactly what --explain did, and what the complexity
-    ratchet caught.
-    """
+    """Modes that answer instead of judging, kept out of main() for its complexity budget; None means judge."""
     if args.explain:
         return _explain_pair(args.explain, owners, texts, unit_lines)
     if args.baseline:
@@ -568,14 +436,7 @@ def _explain_counts(owners, a_file, b_file):
     return counted, idiom
 
 def _explain_pair(paths, owners, texts, unit_lines) -> int:
-    """Answer the question every allowlist review asks: what ARE these shingles?
-
-    --report gives a pair and a number. Deciding whether a row is a deliberate twin
-    or a real copy needs the units behind that number, and the number is not the
-    whole truth either: shingles held by more than MAX_OWNERS units are dropped as
-    idiom before the count is taken, so a pair can look small while sharing plenty
-    that is merely widespread. Both halves are printed.
-    """
+    """What a pair shares unit by unit, including the shingles the idiom cutoff drops from the count."""
     pair = _explain_targets(paths, texts)
     if pair is None:
         return 2
@@ -608,8 +469,7 @@ def _explain_pair(paths, owners, texts, unit_lines) -> int:
     return 0
 
 def _write_baseline(per_file, allow) -> int:
-    """Rewrite the allow file: rows sorted by budget, existing reasons kept
-    verbatim, new rows dated; only the header comments survive."""
+    """Rewrite the allow file sorted by budget, keeping existing reasons and dating new rows."""
     lines = [
         "# code-dupes.allow -- deliberate twins, with a budget and a reason.",
         "# Format: fileA | fileB | budget | reason",
@@ -635,8 +495,7 @@ def _build_parser() -> argparse.ArgumentParser:
                     help=f"shared shingles that constitute duplication (default {DEFAULT_THRESHOLD})")
     ap.add_argument("--report", action="store_true",
                     help="list every pair over the threshold, allowed ones included")
-    # Mutually exclusive, not a hand-written guard: --baseline rewrites the WHOLE
-    # allow file, so scoping it would silently discard every other kind's rows.
+    # --baseline rewrites the whole allow file, so scoping it with --kind would drop every other kind's rows.
     scope = ap.add_mutually_exclusive_group()
     scope.add_argument("--baseline", action="store_true",
                        help=f"rewrite {ALLOW_FILE.name} to freeze today's duplication as budgets"
@@ -653,13 +512,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return ap
 
 def _apply_root(arg) -> None:
-    """Re-point the graded tree and its budget file. One place, before scope.
-
-    Raises SystemExit rather than handing main() an error to branch on: an
-    unusable root is not a finding, it is the end of the run, and putting the
-    try/except in main() only buys the caller one more path through a function
-    the complexity ratchet already holds at its limit.
-    """
+    """Re-point the graded tree and its budget file; an unusable root ends the run via SystemExit."""
     global REPO_ROOT, ALLOW_FILE
     try:
         root = Path(gate_scope.resolve_root(arg, str(HUB_ROOT)))
@@ -684,8 +537,7 @@ def main() -> int:
 
     shared, spread, families, suppressed = _collect_shared(owners, heads, kind_of)
 
-    # Collapse unit pairs to FILE pairs: the allowlist and the reader both think
-    # in files, and one copied helper usually shows up as several unit pairs.
+    # Collapse unit pairs to file pairs, as the allowlist and the reader think in files.
     measured: dict[frozenset[str], tuple[int, tuple, tuple]] = {}
     for (a, b), n in shared.items():
         key = frozenset((a[0], b[0]))   # 1 element when the twin is same-file
@@ -710,10 +562,7 @@ def main() -> int:
             continue
         findings.append((n, a, b, budget))
 
-    # Rank by the longest CONTIGUOUS identical run, not by scattered shingle
-    # overlap: 199 scattered shingles across two sibling CLIs' usage() heredocs
-    # is not extractable, while 20 consecutive identical lines is a helper
-    # waiting to be born. Shingle count stays as the tie-breaker.
+    # Rank by the longest contiguous identical run, which is extractable where scattered overlap is not.
     runs = {}
     for _n, a, b, _x in list(findings) + list(allowed):
         runs[(a, b)] = longest_common_run(unit_lines.get(a, []), unit_lines.get(b, []))

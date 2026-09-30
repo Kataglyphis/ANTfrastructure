@@ -34,8 +34,7 @@ patch_libcamera_riscv64_cross_sources() {
     "libcamera riscv64 cross: add libtiff to apps_lib dependencies"
 }
 
-# Upstream compiles libyuv's RVV rows only under clang, but its header enables
-# them for any RVV compiler. docs/riscv64-rva23-baseline.md#libyuv-rvv
+# Upstream compiles libyuv's RVV rows only under clang; see docs/riscv64-rva23-baseline.md#libyuv-rvv
 patch_libyuv_rvv_sources() {
   local _libyuv_src="${LIBCAMERA_SRC}/subprojects/libyuv"
 
@@ -46,8 +45,7 @@ patch_libyuv_rvv_sources() {
     "libyuv: compile the RVV rows with GCC"
 }
 
-# Proves the patch reached shipped bytes.
-# docs/riscv64-rva23-baseline.md#libyuv-rvv
+# Proves the RVV patch reached the shipped library; see docs/riscv64-rva23-baseline.md#libyuv-rvv
 verify_libyuv_rvv_rows() {
   local _lib _rows
 
@@ -63,7 +61,6 @@ verify_libyuv_rvv_rows() {
   echo "libyuv: ${_rows} RVV rows"
 }
 
-# Defaults (can be overridden via env vars)
 : "${LIBCAMERA_SRC:=${TMPDIR:-/tmp}/libcamera-$$}"
 : "${LIBCAMERA_BUILD_DIR:=${LIBCAMERA_SRC}/build}"
 : "${LIBCAMERA_GIT:=https://git.libcamera.org/libcamera/libcamera.git}"
@@ -74,34 +71,23 @@ verify_libyuv_rvv_rows() {
 
 echo "build-libcamera: src=${LIBCAMERA_SRC} builddir=${LIBCAMERA_BUILD_DIR} prefix=${LIBCAMERA_PREFIX} buildtype=${BUILD_TYPE_LOWER}"
 
-# Prefer the installed helper if available, otherwise source relative to this script
 if [ -f /usr/local/bin/gstreamer-env.sh ]; then
   # shellcheck disable=SC1091
   source /usr/local/bin/gstreamer-env.sh
 else
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # Repo layout: this script lives in 03-media/build/libcamera/ and 04-runtime/
-  # is a SIBLING of 03-media/, i.e. three levels up from here.
   # shellcheck disable=SC1091
   source "${SCRIPT_DIR}/../../../04-runtime/gstreamer-env.sh"
 fi
 
 
 
-# If libcamera already present via pkg-config, skip
 if pkg-config --exists libcamera >/dev/null 2>&1; then
   echo "libcamera already available via pkg-config — skipping libcamera build."
   exit 0
 fi
 
-# Clone (or refresh) the source via the shared 01-core helper — same fetch/
-# shallow-clone logic used by the litert/opencv build scripts. The upstream
-# git.libcamera.org edge intermittently serves a Traefik default cert (TLS
-# verify fails); fall back to the official GitHub mirror when the primary is
-# unreachable so the cross build isn't blocked by an upstream outage.
-# LIBCAMERA_VERSION (versions.env; tag/branch/commit): until 2026-08-08 this
-# clone was UNPINNED — the only media library tracking upstream master, so two
-# builds of the same chain could compile different libcamera code.
+# git.libcamera.org intermittently serves a default TLS cert, hence the GitHub mirror fallback.
 if ! retry 3 10 "libcamera git clone" clone_or_update_repo "${LIBCAMERA_GIT}" "${LIBCAMERA_SRC}" "${LIBCAMERA_VERSION:-}"; then
   echo "[WARN] libcamera primary remote ${LIBCAMERA_GIT} failed; falling back to mirror ${LIBCAMERA_GIT_MIRROR}"
   rm -rf "${LIBCAMERA_SRC}"
@@ -111,7 +97,6 @@ cd "${LIBCAMERA_SRC}"
 
 mkdir -p "${LIBCAMERA_BUILD_DIR}"
 
-# configure & build
 if ! command -v uv >/dev/null 2>&1; then
   echo "Error: 'uv' is required to build libcamera but was not found. Please install Astral 'uv' and re-run the build."
   exit 1
@@ -124,8 +109,7 @@ fi
 echo "Using existing Astral uv venv (expected at /opt/python/.venv)"
 setup_host_python_environment
 
-# Install build tools into the uv venv
-# Executor pins per supply-chain audit #18 (inline defaults = versions.env).
+# Build tools are pinned for the supply chain; inline defaults mirror versions.env.
 uv pip install --upgrade pip \
   "setuptools==${PY_SETUPTOOLS_VERSION:-83.0.0}" \
   "wheel==${PY_WHEEL_VERSION:-0.47.0}" \
@@ -135,7 +119,6 @@ uv pip install --upgrade pip \
   "pybind11==${PY_PYBIND11_VERSION:-3.1.0}"
 UV_RUN_PREFIX=(uv run --)
 
-# Ensure GoogleTest is available
 if [ ! -f /usr/include/gtest/gtest.h ]; then
   if [ -d /usr/src/googletest ]; then
     mkdir -p /tmp/gtest-build
@@ -145,11 +128,7 @@ if [ ! -f /usr/include/gtest/gtest.h ]; then
   fi
 fi
 
-# Ensure abseil-cpp headers are available for tflite-dependent sources
-# (rpi/awb_nn.cpp includes tflite/interpreter.h -> tflite/util.h -> absl/types/span.h).
-# Canonical implementation: 01-core/abseil-headers.sh (Critical Fix #2).
-# libcamera ships in the same image as LiteRT which installs abseil under
-# /usr/local/include/absl, so this install pinpoints the same location.
+# rpi/awb_nn.cpp reaches absl/types/span.h through the tflite headers; same prefix LiteRT uses.
 if ! install_abseil_headers "/usr/local/include"; then
   err "Failed to install abseil-cpp headers for tflite compat"
 fi
@@ -190,13 +169,7 @@ fi
 if cross_build_is_active; then
   cross_triplet="$(cross_target_triplet)"
 
-  # RV1-FOLGE 5 (2026-08-20): glibconfig.h lives in gstreamer's LIBDIR
-  # include (lib/*/glib-2.0/include), and the riscv64 pkg-config context
-  # loses that -I (the same prefix-expansion defect as RV1-GST-PC) — the
-  # gstlibcamera element then dies `fatal error: glibconfig.h`. Repair at
-  # the FILESYSTEM: link it next to the glib headers that ARE found
-  # (include/glib-2.0/), which fixes every /opt/gstreamer consumer here.
-  # Idempotent; no-op when pkg-config resolves correctly (file exists).
+  # riscv64 pkg-config drops glib's libdir include, so link glibconfig.h beside the glib headers it does find.
   if [ -d /opt/gstreamer/include/glib-2.0 ] \
      && [ ! -e /opt/gstreamer/include/glib-2.0/glibconfig.h ]; then
     _glibconf="$(find /opt/gstreamer -name glibconfig.h 2>/dev/null | head -1)"
@@ -206,29 +179,13 @@ if cross_build_is_active; then
     fi
   fi
 
-  # lc-compliance is a test application, not a runtime dependency. Cross builds
-  # currently pick up an incomplete GTest link line here, so keep the shipped
-  # libcamera runtime/plugin artifacts and skip that test tool.
+  # lc-compliance is only a test tool, and cross builds get an incomplete GTest link line for it.
   MESON_SETUP_ARGS+=(-Dlc-compliance=disabled)
 
-  # RV1 RE-LIFT (2026-08-21): the gstlibcamera element returns on riscv64 —
-  # its 2026-08-20 link failure (undefined g_object_ref …) came from the
-  # introspection-less gstreamer install exporting no usable glib .pc;
-  # introspection is back on (see build-gstreamer-monorepo.sh), restoring
-  # the wave-3 layout the element linked against. The glibconfig-symlink
-  # repair above stays as a harmless no-op belt.
-
-  # GCC 16 emits a FALSE-POSITIVE -Warray-bounds on libcamera's shared std::mutex
-  # teardown / logger path. The -Wno-error=array-bounds added to CXXFLAGS above
-  # does NOT reach the target compiler in a meson cross build (env C*FLAGS apply
-  # only to the build machine), so disable -Werror for ALL cross targets — not
-  # just riscv64. Without this a fresh arm64 libcamera compile hard-fails
-  # (arm64 previously only "passed" on a cached layer).
+  # In a meson cross build env CXXFLAGS reach only the build machine, so GCC 16's false -Warray-bounds needs this.
   MESON_SETUP_ARGS+=(-Dwerror=false)
 
-  # Generic target headers like elfutils/tiff live in /usr/include, while some
-  # arch-specific target headers such as opensslconf.h live in the multiarch
-  # include dir. The cross compiler does not reliably search both roots here.
+  # The cross compiler does not reliably search both /usr/include and the multiarch include dir.
   if [ -d /usr/include ]; then
     append_flag_if_missing CPPFLAGS "-idirafter /usr/include"
     append_flag_if_missing CFLAGS "-idirafter /usr/include"
@@ -239,10 +196,7 @@ if cross_build_is_active; then
   fi
 
   if command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
-    # (-Dwerror=false is now applied for all cross targets above.)
-    # Upstream apps_lib compiles dng_writer.cpp (which uses libtiff) when libtiff
-    # is found, but omits libtiff from its dependency list, so consumers fail to
-    # link. Add the missing dependency.
+    # Upstream's apps_lib uses libtiff without depending on it; see docs/upstreamable-patches.md § 4.
     patch_libcamera_riscv64_cross_sources
   fi
 fi
@@ -265,13 +219,11 @@ patch_libyuv_rvv_sources
 : "${NPROC:=$(media_jobs)}"
 ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" -v || { echo "ninja build failed"; exit 1; }
 
-# install (use sudo if not root)
 ensure_sudo_or_die
 ${SUDO_WRAP} ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" install
 
 verify_libyuv_rvv_rows
 
-# update ld cache if possible
 ${SUDO_WRAP} ldconfig || true
 
 echo "libcamera installed to ${LIBCAMERA_PREFIX} (or already present via pkg-config)."
@@ -292,9 +244,7 @@ if [ -n "${PYCAMERA_DIR}" ] && [ -d "${PYCAMERA_DIR}" ]; then
   WHEEL_DIR=$(mktemp -d)
   cp -r "${PYCAMERA_DIR}" "${WHEEL_DIR}/"
   
-  # Wheel version derived from the pinned LIBCAMERA_VERSION (strip a leading v;
-  # a branch name or bare SHA falls back to 0.0.0+<ref>). Previously hardcoded
-  # "0.3.0" no matter which libcamera was actually built.
+  # A branch or bare SHA is not a valid version, so it becomes the local part of 0.0.0+<ref>.
   _lc_wheel_version="${LIBCAMERA_VERSION:-}"
   _lc_wheel_version="${_lc_wheel_version#v}"
   case "${_lc_wheel_version}" in
@@ -324,8 +274,5 @@ fi
 
 rm -rf "${LIBCAMERA_SRC}" || true
 
-# AP4: strip the installed libcamera prefix (symbol tables only — --strip-all
-# keeps .dynsym so dynamic linking is unaffected). STRIP is live
-# (setup_linux_cross_env at the top). Best-effort; MEDIA_STRIP=0 disables.
-# DUPN1: MEDIA_STRIP gate lives inside the helper now.
+# --strip-all keeps .dynsym, so dynamic linking is unaffected; MEDIA_STRIP=0 disables it.
 declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${LIBCAMERA_PREFIX}" || true

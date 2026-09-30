@@ -2,9 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# Assertion harness for Test-Container.ps1 (the test sections stay in the script).
-# Run state (-ExitOnFirstFailure, counters) is MODULE state: a module has its own session
-# state, so $script: vars never cross the caller boundary in either direction.
+# Test-Container.ps1's assertion harness; run state is module state, as $script: never crosses the caller boundary.
 
 Set-StrictMode -Version Latest
 
@@ -30,8 +28,7 @@ function Initialize-SmokeTestRun {
 function Get-SmokeTestSummary {
     <#
     .SYNOPSIS
-        Counters for the caller's SUMMARY block: $script:passed read in the calling script
-        resolves to the CALLER's scope -- a different variable that is always zero.
+        Counters for the caller's SUMMARY; its own $script:passed is a different, always-zero variable.
     #>
     [OutputType([pscustomobject])]
     param()
@@ -43,14 +40,12 @@ function Get-SmokeTestSummary {
         Total          = $script:passed + $script:failed + $script:skipped
         Aborted        = $script:abortRun
         FailureDetails = @($script:failureDetails)
-        # Per-section PASSED counts, keyed by the leading number of the Write-TestHeader
-        # title: a single MinPassed floor let whole subsystems vanish green.
+        # Per-section counts: a single MinPassed floor let whole subsystems vanish green.
         SectionPassed  = $script:sectionCounts
     }
 }
 
 function Complete-SmokeSection {
-    # Internal: record the passed-delta of the section in flight.
     if ($script:currentSection) {
         $script:sectionCounts[$script:currentSection] = $script:passed - $script:sectionStartPassed
     }
@@ -64,13 +59,11 @@ $script:failureDetails = @()
 $script:sectionCounts = [ordered]@{}
 $script:currentSection = ''
 $script:sectionStartPassed = 0
-# -ExitOnFirstFailure short-circuits instead of throwing: a throw blew straight past the
-# SUMMARY / FAILURE DETAILS dump at the bottom.
+# -ExitOnFirstFailure short-circuits rather than throws, which would skip the SUMMARY dump.
 $script:abortRun = $false
 
 function Skip-Test {
-    # The [SKIP]-print + counter idiom: hand-rolled at 15 sites, where a forgotten
-    # $script:skipped++ silently under-counted.
+    # One home, so a skip can never be printed without being counted.
     param([Parameter(Mandatory)][string]$Reason)
     if ($script:abortRun) { return }
     Write-Host "  [SKIP] $Reason" -ForegroundColor Yellow
@@ -80,8 +73,7 @@ function Skip-Test {
 function Write-TestHeader {
     param([string]$Title)
     Complete-SmokeSection
-    # Section key = the leading number of the title ('8. ONNX Runtime' -> '8');
-    # a numberless title keys on its full text.
+    # Keyed by the title's leading number ('8. ONNX Runtime' -> '8'), else the full title.
     $script:currentSection = if ($Title -match '^\s*(\d+)') { $Matches[1] } else { $Title }
     $script:sectionStartPassed = $script:passed
     Write-Host "`n========================================" -ForegroundColor Cyan
@@ -119,9 +111,7 @@ function Assert-Test {
 function Initialize-SmokeScratch {
     <#
     .SYNOPSIS
-        Scrub-then-create for a smoke scratch dir. A previous section's throw leaks its
-        scratch, and a bare New-Item -Force then hands the next run stale artifacts
-        masquerading as fresh compile outputs.
+        Scrub-then-create a scratch dir, so a previous section's leaked scratch cannot pose as fresh output.
     #>
     param([Parameter(Mandatory)][string]$Path)
     if (Test-Path $Path) { Remove-Item $Path -Recurse -Force -ErrorAction SilentlyContinue }
@@ -131,8 +121,7 @@ function Initialize-SmokeScratch {
 function Assert-PythonSnippet {
     <#
     .SYNOPSIS
-        Run `python -c $Code`; require exit 0 AND every -ExpectMatch regex in the combined
-        output. Sites needing setup/teardown stay hand-written with Assert-Test.
+        Run `python -c $Code`; require exit 0 and every -ExpectMatch regex in the combined output.
     #>
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -155,9 +144,7 @@ function Request-SmokeAbort {
 
 function Assert-CommandExists {
     param([string]$Name)
-    # GetNewClosure: the scriptblock is invoked inside Assert-Test, whose own $Name
-    # parameter shadows this one under PowerShell's dynamic scoping — without the
-    # closure this evaluated Get-Command "Command 'git' on PATH" and always failed.
+    # Captured under another name: Assert-Test's own $Name shadows this one under dynamic scoping.
     $commandName = $Name
     Assert-Test -Name "Command '$Name' on PATH" -Condition { $null -ne (Get-Command $commandName -ErrorAction SilentlyContinue) }.GetNewClosure() -FailMessage "$Name not found on PATH"
 }
@@ -173,11 +160,7 @@ function Assert-DirectoryExists {
 }
 
 function Assert-ArtifactPresent {
-    # Assert >=1 file matching $Filter exists under $Root (optionally a $Subdir),
-    # recursively. Collapses the "Get-ChildItem -Recurse then Assert-Test count>0"
-    # idiom repeated across the native-library sections (ONNX/GenAI/OpenCV/LiteRT/
-    # LiteRT-LM/TVM). With -Informational a miss is a [SKIP] (yellow) not a [FAIL]
-    # -- for optional artifacts like LiteRT's DLLs (it builds static by default).
+    # At least one $Filter match under $Root; with -Informational a miss is a SKIP, for optional artifacts.
     param(
         [string]$Root,
         [string]$Filter,
@@ -196,16 +179,12 @@ function Assert-ArtifactPresent {
         }
         return
     }
-    # GetNewClosure: $count is function-local, so Assert-Test's scope can't see it
-    # via dynamic scoping (unlike the script-scope vars used in inline conditions).
+    # GetNewClosure: Assert-Test's scope cannot see the function-local $count.
     Assert-Test -Name $Description -Condition { $count -gt 0 }.GetNewClosure() -FailMessage "No file matching '$Filter' found under $searchRoot"
 }
 
 function Test-TensorRtTreeStaged {
-    # TensorRT is EULA-gated and OPTIONAL (docs/windows-builds.md § TensorRT setup): the zip-less
-    # GPU lane is the documented normal state. Presence must mean "root set AND non-empty", the
-    # same rule Resolve-TensorRtRoot applies at build time -- a plain Test-Path would call the
-    # guaranteed-empty C:\tensorrt "present" and demand an EP the ORT build compiled out.
+    # Set AND non-empty, like Resolve-TensorRtRoot: the optional C:\tensorrt exists empty on the zip-less lane.
     param([string]$Root = $env:TENSORRT_ROOT)
     if ([string]::IsNullOrWhiteSpace($Root)) { return $false }
     if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return $false }
@@ -213,11 +192,7 @@ function Test-TensorRtTreeStaged {
 }
 
 function Assert-NativeLinkRun {
-    # Compile + link + RUN a tiny C++ TU against a native library to prove its
-    # header + import lib + DLL actually work together at runtime. Existence checks
-    # are blind to missing dependent DLLs, CRT mismatches, and ABI breaks -- the
-    # exact 'links clean but is dead' class the litert_lm abseil-ODR bug taught us.
-    # Only meaningful in the final image, where clang-cl and the libs coexist.
+    # Compile, link and run a tiny TU: existence checks miss dependent DLLs, CRT mismatches and ABI breaks.
     param(
         [string]$Name,
         [string]$WorkName,        # unique temp-dir suffix
@@ -228,9 +203,7 @@ function Assert-NativeLinkRun {
         [string]$DllDir,          # prepended to PATH so the DLL resolves at run
         [string]$ExpectMatch,     # regex the program's stdout must match
         [string]$FailMessage,
-        # CROSS LANE (#176): compile+link FOR the target arch and assert the produced
-        # exe's PE machine instead of running it -- an aarch64 exe cannot execute on
-        # this x64 host. Same 1:1 run->PE-machine substitution §14 does.
+        # Cross lane: assert the exe's PE machine instead of running it, as an aarch64 exe cannot run here.
         [switch]$CrossLinkOnly
     )
     $work = $WorkName; $body = $Source; $incs = $IncludeDirs
@@ -265,12 +238,7 @@ function Assert-NativeLinkRun {
     }.GetNewClosure() -FailMessage $FailMessage
 }
 
-# ONE definition, deliberately holding the SUPERSET of what the callers need.
-# An Add-Type'd type is session-global and both call sites guard on the type
-# already existing, so two definitions meant the FIRST function to run in a
-# session decided what the second one got. Assert-AllDllsLoad's copy omitted
-# GetProcAddress, which Assert-DllLoads calls for -Export: a sweep followed by
-# an export check reported MethodNotFound as a missing export.
+# One superset definition: an Add-Type type is session-global, so the first definition loaded would win.
 function Initialize-KataNativeProbe {
     if ('KataNativeProbe' -as [type]) { return }
     Add-Type -TypeDefinition @'
@@ -285,12 +253,7 @@ public static class KataNativeProbe {
 }
 
 function Assert-DllLoads {
-    # LoadLibrary a native DLL (with its own dir + any dependency dirs on PATH) and optionally
-    # GetProcAddress a known export. Proves the DLL AND its full dependent-DLL chain actually
-    # resolve at load time -- the header-agnostic complement to Assert-NativeLinkRun, for libs
-    # whose headers churn across releases (TVM) or whose C API is awkward to compile (GenAI).
-    # A successful LoadLibrary is the real signal (it catches a missing dependent DLL, the same
-    # 0xC0000135 class as the OpenCV/OpenGL defect); the export check is a bonus.
+    # LoadLibrary proves the whole dependent-DLL chain resolves, for libs whose headers are awkward to compile against.
     param(
         [string]$Name,
         [string]$DllPath,
@@ -299,11 +262,7 @@ function Assert-DllLoads {
         [string]$FailMessage
     )
     $dllPath = $DllPath; $depDirs = $DependencyDirs; $export = $Export
-    # OUTSIDE the closure ON PURPOSE. .GetNewClosure() binds the scriptblock to a new
-    # dynamic module that cannot see this module's PRIVATE functions, so calling the
-    # initializer from inside the condition fails to resolve it at all. The type is
-    # session-global, so registering it here is equivalent -- and it is what the
-    # sibling Assert-AllDllsLoad already does for its own reason.
+    # Outside the closure: GetNewClosure's dynamic module cannot see this module's private functions.
     Initialize-KataNativeProbe
     Assert-Test -Name $Name -Condition {
         if (-not (Test-Path $dllPath)) { return $false }
@@ -322,9 +281,7 @@ function Assert-DllLoads {
 
 function Assert-EnvVarSet {
     param([string]$Name, [string]$ExpectedPrefix = '')
-    # GetNewClosure + renamed captures: Assert-Test's $Name parameter shadows this
-    # one at invocation time (dynamic scoping), so the env var that was actually
-    # queried used to be the test title — always failing.
+    # Renamed captures: Assert-Test's own $Name shadows this one under dynamic scoping.
     $envName = $Name
     $envPrefix = $ExpectedPrefix
     Assert-Test -Name "Env var $Name" -Condition {
@@ -336,20 +293,7 @@ function Assert-EnvVarSet {
 }
 
 function Assert-AllDllsLoad {
-    # Backlog #57: LoadLibrary EVERY shipped DLL under a root, not a hand-picked
-    # sample. The named Assert-DllLoads call sites cover ~10 hardcoded libraries;
-    # OpenCV alone ships ~25-30 modules with BUILD_opencv_world=OFF, of which
-    # exactly ONE (opencv_core) was load-tested — the rest were existence checks.
-    #
-    # That is the OPENGL32 defect verbatim: OpenCV built with WITH_OPENGL=ON
-    # linked fine and failed 0xC0000135 at LOAD on Server Core, and only a load
-    # test caught it. Existence proves a file was produced; it says nothing about
-    # whether its dependency chain resolves on THIS image.
-    #
-    # Not every DLL is legitimately loadable standalone (plugins expecting a host
-    # to have initialised first, delay-load stubs), so unloadable-by-design names
-    # go in -Allow with a reason at the call site — an explicit, reviewable list
-    # rather than a silent sample.
+    # Every shipped DLL, not a sample: only a load test catches a broken dependency chain; -Allow lists by-design failures.
     param(
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Root,
@@ -357,10 +301,7 @@ function Assert-AllDllsLoad {
         [string[]]$Allow = @(),
         [int]$MinimumChecked = 1
     )
-    # The probing happens HERE, not inside the Assert-Test condition: -FailMessage
-    # is a plain string evaluated at CALL time, so a message referring to results
-    # computed inside the condition would always be empty. Do the work first,
-    # then assert on a value that already exists.
+    # Probed here, not in the condition: -FailMessage is evaluated at call time and would miss the results.
     Initialize-KataNativeProbe
     $problems = @()
     $checked = 0
@@ -368,10 +309,7 @@ function Assert-AllDllsLoad {
         $problems += "root not found: $Root"
     } else {
         $dlls = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter '*.dll' -File -ErrorAction SilentlyContinue)
-        # Rot guard: an empty or moved root would otherwise pass vacuously —
-        # the exact shape this test exists to eliminate. Counted AFTER the
-        # -Allow filter (see below), not on the raw find: a root that is 100 %
-        # allow-listed would otherwise satisfy the guard while checking nothing.
+        # Rot guard, counted after -Allow, so an empty or fully allow-listed root cannot pass vacuously.
         $candidates = @($dlls | Where-Object { $Allow -notcontains $_.Name })
         if ($candidates.Count -lt $MinimumChecked) {
             $problems += "only $($candidates.Count) non-allow-listed DLL(s) under $Root (of $($dlls.Count) found), expected at least $MinimumChecked - wrong root, or over-broad -Allow?"
@@ -381,13 +319,7 @@ function Assert-AllDllsLoad {
                 foreach ($d in $dlls) {
                     if ($Allow -contains $d.Name) { continue }
                     $checked++
-                    # The DLL's OWN directory must lead, per DLL. LoadLibraryW with
-                    # a full path does NOT add that directory to the dependency
-                    # search order, so a DLL in a SUBdirectory whose dependents sit
-                    # beside it would report a fabricated Win32 126. Assert-DllLoads
-                    # already does this correctly; putting only $Root on PATH (the
-                    # first version here) happened to work for OpenCV's flat bin\
-                    # and would have invented failures at the next call site.
+                    # Each DLL's own dir leads: a full-path LoadLibraryW does not search it for dependents.
                     $env:PATH = ((@((Split-Path $d.FullName)) + @($Root) + $DependencyDirs) -join ';') + ';' + $prev
                     $h = [KataNativeProbe]::LoadLibraryW($d.FullName)
                     if ($h -eq [IntPtr]::Zero) {

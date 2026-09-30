@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# web-lane-tools.sh -- wasm-pack and flutter_rust_bridge_codegen built from source, for
-# the arch upstream publishes no binary for. Sourced by setup-package-image.sh (sets no
-# shell options); `bash web-lane-tools.sh produce <out>` is Dockerfile.android's cross
-# producer. docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
+# Sourced by setup-package-image.sh, so it sets no shell options. docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 
 : "${WLT_ARTIFACT_DIR:=/tmp/wlt/artifact}"
 : "${WLT_CACHE_DIR:=/root/.cache/web-lane-tools}"
@@ -23,8 +20,7 @@ wlt_rustflags() {
   return 0
 }
 
-# Vendored static bzip2/xz/zstd: under PKG_CONFIG_ALLOW_CROSS the -sys crates link the
-# BUILD host's .so. WLT_C_ENV_KEY is this function written as key text.
+# Static bzip2/xz/zstd, else the -sys crates link the build host's .so; keep WLT_C_ENV_KEY in sync.
 wlt_c_env() {
   export BZIP2_NO_PKG_CONFIG=1 LZMA_API_STATIC=1
   unset ZSTD_SYS_USE_PKG_CONFIG
@@ -41,8 +37,7 @@ wlt_loader() {
   return 0
 }
 
-# wlt_key_text <tool> <version> <triple> <rustc-release> <rustflags>: everything the bytes
-# depend on. Who built it (cross or native) is recorded in the manifest, never keyed.
+# <tool> <version> <triple> <rustc-release> <rustflags>; who built it goes in the manifest, never the key.
 wlt_key_text() {
   printf 'schema=%s\ntool=%s\nversion=%s\ntarget=%s\nrustc=%s\nrustflags=%s\nc_env=%s\ncargo_args=%s\n' \
     "${WLT_KEY_SCHEMA}" "$1" "$2" "$3" "$4" "$5" "${WLT_C_ENV_KEY}" "${WLT_CARGO_ARGS}"
@@ -167,10 +162,7 @@ _wlt_gate_exec() {
   return 0
 }
 
-# wlt_assert_binary <tool> <file> <arch> [glibc-ceiling] [version]: the gate every
-# from-source binary passes; with <version> it also runs `<file> --version`. On failure
-# _WLT_WHY names what and why. Not covered: behaviour beyond --version, a consistently
-# forged binary+manifest pair (the trust boundary of every cachemount), C++ deps.
+# <tool> <file> <arch> [glibc-ceiling] [version]; on failure _WLT_WHY says why.
 wlt_assert_binary() {
   local tool="$1" file="$2" arch="$3" ceiling="${4:-}" version="${5:-}"
   _WLT_WHY=""
@@ -187,8 +179,7 @@ wlt_assert_binary() {
   return 0
 }
 
-# Stage <src> at <dest> and gate the staged bytes: its sha256 against <want> ("-" when
-# nothing is claimed), then wlt_assert_binary. <version> empty skips the --version run.
+# Gates the staged bytes; <want> "-" claims no sha256, an empty <version> skips --version.
 _wlt_verify() {
   local tool="$1" version="$2" arch="$3" ceiling="$4" src="$5" want="$6" dest="$7" got
   rm -f "${dest}"
@@ -202,8 +193,7 @@ _wlt_verify() {
   return 0
 }
 
-# wlt_cache_lookup <tool> <version|""> <arch> <ceiling> <keytext> <entry> <dest>: a verified
-# hit is staged at <dest>. Any other entry is deleted with a WARN, and the caller rebuilds.
+# <tool> <version|""> <arch> <ceiling> <keytext> <entry> <dest>; an unverified entry is deleted.
 wlt_cache_lookup() {
   local tool="$1" version="$2" arch="$3" ceiling="$4" keytext="$5" entry="$6" dest="$7" why=""
   if [ ! -d "${entry}" ]; then
@@ -235,8 +225,7 @@ _wlt_cache_trim() {  # <tool>: keep the newest three entries
   return 0
 }
 
-# wlt_cache_store <tool> <entry> <keytext> <binary> <built-by>: written beside the entry,
-# then renamed into place, so a failed store leaves nothing visible. Never fails the build.
+# Write beside, then rename, so a failed store leaves nothing visible; never fails the build.
 wlt_cache_store() {
   local tool="$1" entry="$2" keytext="$3" bin="$4" built_by="$5" tmp
   tmp="${WLT_CACHE_DIR}/.tmp.$$.${tool}"
@@ -355,8 +344,7 @@ _wlt_native() {  # <keytext> <arch> <ceiling> <work>
   _wlt_install "${tool}" "${version}" native "${work}/${tool}" "${key}"
 }
 
-# legacy: the pre-2026-09-23 leg, verbatim. cargo installs into CARGO_HOME itself (.crates.toml
-# kept) in the stage's own env: no gate, cache or provenance, and a failure only WARNs.
+# Legacy leg: plain cargo install, no gate, cache or provenance; a failure only warns.
 _wlt_legacy() {  # <tool> <version>
   if "${CARGO_HOME:-/usr/local/cargo}/bin/cargo" install --locked "$1" --version "$2"; then
     echo "OK: $1 $2 installed"
@@ -366,9 +354,7 @@ _wlt_legacy() {  # <tool> <version>
   return 0
 }
 
-# wlt_install_from_source <tool> <version>: install_web_lane_toolchain's from-source leg.
-# Returns 1 only for a defect (a bad knob, a binary that claims to be good and is not, an
-# image that cannot bound or install it) or for cross without a provable artifact.
+# Returns 1 only for a defect, or for cross without a provable artifact.
 wlt_install_from_source() {
   local tool="$1" version="$2" mode="${WEB_LANE_TOOLS_SOURCE:-auto}" arch triple rustc ceiling work rc=2
   wlt_validate_knobs || return 1
@@ -406,7 +392,7 @@ wlt_install_from_source() {
   return "${rc}"
 }
 
-# ---- the producer (Dockerfile.android, stage web-lane-tools) -------------------------
+# The producer (Dockerfile.android, stage web-lane-tools)
 
 wlt_validate_cross_arches() {
   local list="$1" a
@@ -508,8 +494,7 @@ _wlt_produce_one() {  # <tool> <version> <dir> <target> <build>
   return 0
 }
 
-# cross-env.sh and every file it sources: the producer's whole 01-core closure, which
-# Dockerfile.android mounts file by file (test-web-lane-tools.sh pins all three lists).
+# cross-env.sh's closure, mounted file by file by Dockerfile.android; test-web-lane-tools.sh pins the lists.
 WLT_CORE_FILES='cross-env.sh platform.sh ubuntu-mirror.sh cross-gcc.sh cross-python.sh cross-apt.sh cross-meson.sh'
 
 # By explicit path, never source_module: android-sdk's /opt/scripts/core is an older copy.
@@ -525,8 +510,7 @@ _wlt_load_core() {  # <core-dir>
   return 0
 }
 
-# wlt_produce <out>: only a bad knob or a missing core file fails the android stage; a
-# cargo or gate failure is recorded as status=failed and the package stage decides.
+# Only a bad knob or missing core file fails; other failures record status=failed for the package stage.
 wlt_produce() {
   local out="$1" core="${WLT_CORE_DIR}" target build triple list reason="" status=skipped entry tool
   [ -n "${core}" ] || core="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd || true)"

@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# The clang-<arch>/clang++-<arch> wrappers 02-toolchain/llvm.sh writes are the only
-# path where clang IS the compiler, so what they bake into their exec line is the
-# whole cross contract: target triple, sysroot, and the source-built GCC root.
-# docs/linux-cross-builds.md#clang-cross-wrappers
+# llvm.sh's clang-<arch> wrappers bake the whole cross contract. See docs/linux-cross-builds.md#clang-cross-wrappers
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -14,8 +11,7 @@ _src="$(t_fn_src "${SUBJECT}" _llvm_install_cross_clang_wrapper)" || exit 1
 _bin="$(mktemp -d)"
 trap 'rm -rf "${_bin}"' EXIT
 
-# _install <target> <gcc_prefix> — run the per-target callback with its enclosing
-# scope stubbed and /usr/local/bin redirected into a throwaway dir.
+# _install <target> <gcc_prefix> — the per-target callback, scope stubbed, /usr/local/bin redirected.
 _install() {
   bash -c "set -eu
 arch_deb_multiarch_triplet_for() { printf 'x86_64-linux-gnu'; }

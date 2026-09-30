@@ -1,38 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""Emit an SPDX 2.3 document for the CURATED half of this project's inventory.
-
-Why a second SBOM path exists
------------------------------
-`syft` (or any image scanner) catalogues components that carry package
-METADATA: dpkg/apt entries, Python site-packages, npm, Go and Rust binaries.
-It cannot see a C/C++ library built from source into `/opt` -- ONNX Runtime,
-OpenCV, FFmpeg, GStreamer, libcamera leave no manifest behind. Those are
-precisely the components under copyleft licences here, so an image scan alone
-would produce an SBOM that silently omits every entry carrying a
-corresponding-source obligation.
-
-So the two halves are complementary and both are published:
-
-  * this script -- the curated, source-built components, with their licences,
-    their upstream revisions and their source pointers, straight from
-    `deps.json` + `versions.env`;
-  * `.github/workflows/sbom.yml` -- `syft` against the published image, for the
-    thousands of apt/pip components no human can maintain by hand.
-
-Consumers who need one document can merge them; the two are deliberately kept
-distinguishable by `creationInfo.creators` so it stays obvious which half a
-package came from.
-
-Usage:
-    python docs/scripts/generate_sbom.py --write        # write out/sbom/*.spdx.json
-    python docs/scripts/generate_sbom.py --check        # fail if it would change
-    python docs/scripts/generate_sbom.py --stdout       # print, write nothing
-
-Deliberately dependency-free: SPDX 2.3 JSON is plain JSON, and this must run in
-the pre-commit hook and in CI without installing anything.
-"""
+"""Emit the curated SPDX 2.3 SBOM (docs/sbom.md § Why there are two halves); stdlib only, so hooks and CI install nothing."""
 
 from __future__ import annotations
 
@@ -56,8 +25,7 @@ OUT_FILE = OUT_DIR / "sbom-curated.spdx.json"
 SPDX_VERSION = "SPDX-2.3"
 DOC_NAME = "ANTfrastructure-curated"
 
-# SPDX requires any non-listed licence id to be declared. Ours are the two
-# deliberate coarse buckets -- see license_obligations.py for why they exist.
+# SPDX requires non-listed licence ids to be declared; these are license_obligations.py's two coarse buckets.
 EXTRACTED = {
     "LicenseRef-Proprietary-EULA": (
         "Proprietary vendor EULA (NVIDIA CUDA/cuDNN/TensorRT, Microsoft Visual Studio Build "
@@ -88,8 +56,7 @@ def spdx_id(*parts: str) -> str:
     """SPDXID must match [a-zA-Z0-9.-]+ -- component names here do not."""
     raw = "-".join(parts)
     slug = re.sub(r"[^A-Za-z0-9.-]+", "-", raw).strip("-")
-    # Names collide once punctuation is stripped ("FFmpeg" in two sections), so
-    # a short digest of the full raw string keeps every SPDXID unique.
+    # Names collide once punctuation is stripped, so a digest of the raw string keeps each SPDXID unique.
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
     return f"SPDXRef-Package-{slug[:60]}-{digest}"
 
@@ -156,9 +123,7 @@ def build_document(versions: dict[str, str]) -> dict:
         "dataLicense": "CC0-1.0",
         "SPDXID": "SPDXRef-DOCUMENT",
         "name": DOC_NAME,
-        # No timestamp and no random namespace on purpose: the document must be
-        # byte-reproducible so `--check` can gate it. The image-scan SBOM in CI
-        # carries the build-time provenance instead.
+        # No timestamp or random namespace: the document must be byte-reproducible for --check.
         "documentNamespace": (
             "https://github.com/Kataglyphis/ANTfrastructure/spdx/curated"
         ),

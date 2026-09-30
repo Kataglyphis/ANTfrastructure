@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# RUNTIME_WHEELS_SOURCE (lib-runtime-wheels.sh): image, the android-image mount every chain
-# used before 2026-09-24, and export, a sealed directory staged before each package build.
-# Hermetic: nerdctl and every build are stubs, the lib and the 01-core wrapper path are real.
-# It proves the argument vectors, the order, the refusals and the seal. It runs no BuildKit,
-# so it does NOT prove the named-context override or that both modes mount the same bytes:
-# the host A/B does. docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
+# RUNTIME_WHEELS_SOURCE with stubbed nerdctl; runs no BuildKit, so the host A/B proves the mounts: docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -24,8 +19,7 @@ _FNS+=$'\n'"$(rw_fns "${CTX}" runtime_pushes_wrapper_images runtime_pushes_inter
   runtime_use_local_artifact_context runtime_artifact_context_dir runtime_artifact_context_ref \
   _with_throwaway_container _export_cid_wheels runtime_wheels_context_dir)" || exit 1
 
-# Everything below the wrapper build is a recorder. run_nerdctl_build plays BuildKit's local
-# exporter for --target wheels-export (EXPORT_WHEELS=0: an empty /opt/wheels, EXPORT_RC fails it).
+# Recorders below the wrapper build; EXPORT_WHEELS=0 exports an empty /opt/wheels, EXPORT_RC fails the export.
 _STUBS='log() { printf "%s\n" "$*"; }
 warn() { printf "%s\n" "$*" >&2; }
 is_dry_run() { [ "${DRY_RUN:-0}" = 1 ]; }
@@ -185,8 +179,7 @@ _out="$(RUNTIME_WHEELS_SOURCE='export' ARTIFACT_CONTEXT_ROOT="${WORK}/aa" ARTIFA
 t_assert_contains "${_out}" "needs ARTIFACT_CONTEXT_MODE=oci" "a rootfs-directory artifact cannot be proved and is refused"
 
 t_case "--no-push with the android tag published (the cross host's case): export refuses"
-# A --no-push chain threads no pin, so runtime_android_pin falls back to the registry and
-# names the PUBLISHED digest; this run's android is in containerd under its tag (_D1).
+# Without a threaded pin runtime_android_pin names the published digest, not this run's local _D1.
 _R="repo@sha256:$(printf 'a%.0s' $(seq 64))"
 for _pulled in "" 1; do
   _fresh; _layout '{"schemaVersion":2,"manifests":[{"mediaType":"x","digest":"'"${_D1}"'","size":1}]}'

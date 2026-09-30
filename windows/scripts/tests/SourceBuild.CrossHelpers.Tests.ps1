@@ -1,12 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The #131 cross-lane helpers that replaced three-to-six hand-rolled copies
-# each: Add-NinjaPerTuFlags (fake build.ninja), Write-AbsentOnCrossMarker,
-# Get-PythonCMakeHintArgs, Get-TargetBuildPython (fixture CPython tree),
-# Invoke-InlineRegexPatch -SkipIfMatch/-AssertGone, and the PE asserts over a
-# real system DLL. Pure fixtures -- nothing here needs a toolchain.
+
+# The shared cross-lane helpers over fixtures and one real system DLL; nothing here needs a toolchain.
 
 Describe 'Add-NinjaPerTuFlags' {
 

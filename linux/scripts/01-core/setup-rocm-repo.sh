@@ -1,39 +1,21 @@
 #!/usr/bin/env bash
-# setup-rocm-repo.sh - add the AMD ROCm TheRock apt repos, install the
-# MIGraphX/ROCm stack, then remove the repos again so shipped images do not
-# fetch from them.
-#
-# ROCm 10.0 migrated to AMD's "TheRock" distribution (stable.repo.amd.com),
-# which uses deb822 .sources format with suite "stable" and splits MIGraphX
-# into a separate repo path. Package names are prefixed amdrocm-*.
-#
-# Invoked via a BuildKit bind-mount of linux/scripts/01-core. ROCM_VERSION and
-# MIGRAPHX_VERSION are declared as ARGs in Dockerfile.amd (for version-tracking
-# and sync_versions.py consistency); the TheRock repo URL is not version-
-# parameterized — the version is baked into the repo's package metadata.
+# ROCm TheRock apt repos: install the MIGraphX/ROCm stack, then remove the repos so images never fetch from them.
 set -euo pipefail
 
-# GPU5 (2026-08-17): the amd64-only promise below used to be a COMMENT only —
-# an arm64 build died later with a generic apt "package not found" instead of
-# the promised loud failure. Enforce it up front.
+# amd64-only, enforced up front so arm64 fails loudly instead of as a generic apt miss.
 if [ "$(dpkg --print-architecture 2>/dev/null || uname -m)" != "amd64" ] \
    && [ "$(uname -m)" != "x86_64" ]; then
   echo "ERROR: the ROCm/MIGraphX lane is amd64-only (AMD publishes no arm64 ROCm apt packages for this repo layout)." >&2
   exit 1
 fi
 
-# Apply the fast Ubuntu mirror rewrite (if enabled) before any apt access, so the
-# repo setup + package installs below use the configured mirror. No-op unless
-# USE_FAST_UBUNTU_MIRROR is truthy. Folded in here so callers invoke a single
-# script (was a separate use-fast-ubuntu-mirror.sh line in Dockerfile.amd).
+# Mirror rewrite before any apt access (no-op unless USE_FAST_UBUNTU_MIRROR).
 _SETUP_ROCM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "${_SETUP_ROCM_DIR}/use-fast-ubuntu-mirror.sh"
 
 apt-get update && apt-get install -y --no-install-recommends wget gpg curl ca-certificates
 mkdir -p /etc/apt/keyrings
-# VERIFIED fetch (supply-chain audit #2): this key signs every ROCm/MIGraphX
-# package — the old wget|gpg pipe installed it TOFU with no integrity check.
-# Same pattern repos.sh already uses for the Kitware and apt.llvm.org keys.
+# Verified fetch: this key signs every ROCm/MIGraphX package.
 # shellcheck disable=SC1091
 source "${_SETUP_ROCM_DIR}/downloads.sh"
 _rocm_key_sha="${ROCM_GPG_KEY_SHA256:-}"
@@ -50,16 +32,7 @@ fi
 gpg --dearmor < "${_rocm_key_tmp}" > /etc/apt/keyrings/rocm.gpg
 rm -f "${_rocm_key_tmp}"
 
-# ==========================================================================
-# HARDCODED amd64-ONLY: both repo stanzas pin Architectures: amd64, so this
-# AMD/MIGraphX layer can ONLY be built for linux/amd64.  AMD publishes no
-# arm64 ROCm apt packages; do NOT "fix" this by substituting ${TARGETARCH} —
-# an arm64 build must fail loudly here rather than silently produce an image
-# without the ROCm stack.
-# ==========================================================================
-# deb822 .sources format — TheRock distribution (stable.repo.amd.com).
-# Core ROCm and MIGraphX are separate repos sharing the same GPG key and
-# Origin ("AMD ROCm").
+# Both stanzas pin amd64 on purpose: AMD publishes no arm64 ROCm packages, so never substitute ${TARGETARCH}.
 cat > /etc/apt/sources.list.d/rocm.sources <<'SOURCES'
 Types: deb
 URIs: https://stable.repo.amd.com/rocm/core/packages/ubuntu2604/
@@ -76,13 +49,7 @@ Architectures: amd64
 Signed-By: /etc/apt/keyrings/rocm.gpg
 SOURCES
 
-# ENABLE_ROCM_ASAN=true adds the parallel ASAN repo (same key, same Origin).
-# OFF by default and that is a size decision, not caution: measured 2026-09-22,
-# amdrocm-llvm-dev-asan10.0 alone is 61.7 GiB installed and the full ASAN set is
-# 134.8 GiB, against ~19 GiB for the whole normal image. It also only exists for
-# gfx942/gfx950, and there is no ASAN MIGraphX and no ASAN torch wheel — so the
-# two things this image is FOR stay uninstrumented either way.
-# docs/linux-accelerator-images.md § ROCm
+# The ASAN repo is off by default for its size. docs/linux-accelerator-images.md#asan-a-separate-image-never-latest-rocm
 if [ "${ENABLE_ROCM_ASAN:-false}" = "true" ]; then
   cat >> /etc/apt/sources.list.d/rocm.sources <<'ASAN_SOURCES'
 
@@ -106,9 +73,7 @@ echo 'Package: amdrocm*' >> /etc/apt/preferences.d/rocm-pin
 echo 'Pin: release o=AMD ROCm' >> /etc/apt/preferences.d/rocm-pin
 echo 'Pin-Priority: 1001' >> /etc/apt/preferences.d/rocm-pin
 apt-get update
-# TheRock package names (amdrocm-* prefix). Versionless metapackages resolve
-# to the version in the repo (10.0). MIGraphX comes from the separate repo
-# stanza above.
+# Versionless amdrocm-* metapackages resolve to the repo's ROCm version.
 apt-get install -y --no-install-recommends \
     amdrocm-core-dev \
     amdrocm-runtime-dev \
@@ -121,11 +86,7 @@ apt-get install -y --no-install-recommends \
     amdrocm-solver-dev \
     amdrocm-migraphx \
     amdrocm-migraphx-dev
-# The ASAN tree installs BESIDE the normal one, at /opt/rocm/core-asan-<ver>.
-# Its debs register the SAME update-alternatives names (core, rocm-lib, rocm-bin,
-# hipcc, ...) at the same priority, so /opt/rocm/lib, /opt/rocm/bin and hipcc can
-# end up resolving into the ASAN tree — a coin flip between rebuilds, not a
-# deterministic failure. Re-point every hijacked alternative, then ASSERT.
+# ASAN debs claim the same alternatives at the same priority, so re-point any they won, then assert.
 if [ "${ENABLE_ROCM_ASAN:-false}" = "true" ]; then
   _rocm_asan_ver="${ROCM_VERSION:-$(sed -n 's/^ROCM_VERSION=//p' "${_SETUP_ROCM_DIR}/versions.env")}"
   apt-get install -y --no-install-recommends "amdrocm-asan${_rocm_asan_ver}"
@@ -145,15 +106,10 @@ if [ "${ENABLE_ROCM_ASAN:-false}" = "true" ]; then
   echo "rocm-asan: installed beside the normal tree; the normal one still owns /opt/rocm/{core,lib,bin} and hipcc"
 fi
 
-# GPU4 (2026-08-17): dropped the former `rm -rf /var/lib/apt/lists/*` — the
-# lists live in a shared cache MOUNT (not in the layer), so the rm only wiped
-# the cache for sibling RUNs (the GPU1 failure class). The repo-source removal
-# below is the real in-layer hygiene and stays.
+# Keep the apt lists (a shared cache mount, not in the layer); only the repo sources go.
 rm -f /etc/apt/sources.list.d/rocm.sources /etc/apt/preferences.d/rocm-pin
 
-# TheRock installs into versioned subdirs (/opt/rocm/core-10.0/) and uses
-# update-alternatives to create /opt/rocm/core. Create convenience symlinks
-# so /opt/rocm/bin and /opt/rocm/include resolve as the old 7.x layout did.
+# TheRock installs into versioned subdirs; recreate the flat /opt/rocm/{bin,include,lib} layout.
 [ -d /opt/rocm/core/bin ] && [ ! -e /opt/rocm/bin ] && ln -s core/bin /opt/rocm/bin
 [ -d /opt/rocm/core/include ] && [ ! -e /opt/rocm/include ] && ln -s core/include /opt/rocm/include
 [ -d /opt/rocm/core/lib ] && [ ! -e /opt/rocm/lib ] && ln -s core/lib /opt/rocm/lib
@@ -164,7 +120,6 @@ test -x /opt/rocm/bin/hipcc || command -v hipcc >/dev/null 2>&1 || { echo "hipcc
 test -f /opt/rocm/include/migraphx/migraphx.hpp \
   || test -f /opt/rocm/core/include/migraphx/migraphx.hpp \
   || { echo "migraphx.hpp not found"; exit 1; }
-# TheRock installs per-GFX math libs in subdirs (e.g. /opt/rocm/lib/gfx1030/);
-# check the files exist rather than relying on ldconfig's flat view.
+# Math libs sit in per-GFX subdirs, so check the files rather than ldconfig's flat view.
 find /opt/rocm -name 'librocblas*' -o -name 'librccl*' -o -name 'librocfft*' -o -name 'librocsparse*' 2>/dev/null | head -1 | grep -q . \
   || { echo "ROCm math libs not found under /opt/rocm"; exit 1; }

@@ -1,32 +1,23 @@
 #!/usr/bin/env bash
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# renovate-fleet.sh -- renovate-local.sh over EVERY repo the family has, from
-# the top or from any one of them, in an order the results can be landed in.
-# What it finds, how it orders it, what it does about the same repo checked out
-# eight times, and its exit codes: docs/dependency-updates.md#the-fleet
+# renovate-fleet.sh -- renovate-local.sh over every family repo, in landing order. See docs/dependency-updates.md#the-fleet
 set -uo pipefail
 
-# err/note/note_listing/refuse_listing, the same four renovate-local.sh reports
-# through: a refusal that reads differently in the two tools is two contracts.
-# The argument is the name a fatal message is signed with.
+# Shared with renovate-local.sh so a refusal reads the same in both; the argument signs fatal messages.
 # shellcheck source=renovate-say.sh
 . "$(dirname "${BASH_SOURCE[0]}")/renovate-say.sh" renovate-fleet.sh \
   || { printf 'renovate-fleet.sh: cannot load renovate-say.sh beside me\n' >&2; exit 1; }
 
 rule() { note "=============================================================="; }
 
-# The budget, as the plan prints it -- a function, because an inline `&&`/`||`
-# pair inside a heading is a place to get a fact backwards.
+# A function: an inline `&&`/`||` pair inside the heading is easy to get backwards.
 budget_text() {
   if [ "${BUDGET}" -gt 0 ]; then printf '%ss per repo' "${BUDGET}"; return 0; fi
   printf 'OFF (--timeout 0): one repo CAN hold this run for ever'
 }
 
-# The help text, in a heredoc rather than as a comment block the header sed-s
-# back out: the usage IS user-facing output, and a comment that is secretly
-# output cannot be shortened without silently changing the interface.
+# A heredoc, not a header sed-ed back out: usage is interface, and comments get shortened.
 usage() {
   cat <<'USAGE'
 renovate-fleet.sh [--apply [--dry-run]] [--only <csv>] [--skip <csv>]
@@ -60,20 +51,13 @@ LOCAL="${SELF_DIR}/renovate-local.sh"
 MODE=report
 DRY_RUN=0
 HERE=0
-# OFF by default, and it stays that way: the answer to "one repo, eight
-# checkouts" is to write in exactly one of them.
+# Off by default: with one repo in several checkouts, write in exactly one of them.
 VENDORED_MODE=0
 ONLY=""; SKIP=""; MANAGERS=""
 ROOT=""
-# The per-repo wall clock, in seconds. NOT a tuning knob for slow networks: the
-# fleet finds every repo of the owner's beside the top, and on this machine that
-# includes llvm-project, where a single `git status --porcelain` did not come
-# back in 600s (measured 2026-09-11). One repo must not be able to hold the
-# other six, so every repo gets a budget and the row says when it ran out.
+# Per-repo seconds, not a network knob: one huge repo must not hold the rest of the fleet.
 BUDGET=600
-# ...and how long after the TERM a repo gets to put its tree back before the
-# KILL. renovate-local.sh rolls back on a signal; a KILL cannot be trapped, so
-# this is the whole window it has.
+# The rollback window between TERM and KILL; a KILL cannot be trapped.
 BUDGET_GRACE=30
 
 while [ $# -gt 0 ]; do
@@ -101,9 +85,7 @@ done
 case "${BUDGET}" in
   ''|*[!0-9]*) err "--timeout takes whole seconds (0 turns the budget off), not '${BUDGET}'" ;;
 esac
-# A budget nothing can enforce is not a budget. `timeout` is coreutils and is on
-# every Linux this tree runs on; when it is genuinely absent the human is told
-# what they are choosing rather than handed a limit that silently is not one.
+# A budget nothing can enforce is refused rather than silently ignored.
 if [ "${BUDGET}" -gt 0 ] && ! command -v timeout >/dev/null 2>&1; then
   err "no 'timeout' on PATH, so the ${BUDGET}s per-repo budget cannot be enforced -- install coreutils, or run with --timeout 0 and accept that one repo can hold the fleet"
 fi
@@ -114,13 +96,7 @@ ROOT="$(cd "${ROOT}" && pwd)"
 git -C "${ROOT}" rev-parse --git-dir >/dev/null 2>&1 || err "not a git repo: ${ROOT}"
 ROOT="$(git -C "${ROOT}" rev-parse --show-toplevel)"
 
-# --------------------------------------------------------------------------
-# Identity. One repository is checked out under several paths AND under both url
-# spellings -- OrchestrANT declares ANTfrastructure over https, everyone else over
-# git@ -- so a fleet keyed on paths or on raw urls counts it as several. The key
-# is the normalised remote: host/owner/name, lowercased, no scheme, user or .git.
-# KNOWN LIMIT: an ssh url with an explicit PORT turns its port into a path
-# segment here. No remote in this family has one; this is where it is fixed.
+# Identity is the normalised remote (host/owner/name), one key for every path and url spelling; an ssh :port breaks it.
 normalize_url() {
   printf '%s' "$1" \
     | sed -e 's#^[a-zA-Z+]*://##' -e 's#^[^@/]*@##' -e 's#:#/#' \
@@ -135,19 +111,10 @@ repo_identity() {
   normalize_url "${url}"
 }
 
-# host/owner out of an identity: the two leading segments. What "the same owner
-# as the root" means, and it is read from the ROOT's own remote rather than
-# written down here -- a name list is the thing this file exists not to have.
+# The owner comes from the root's own remote, never from a name list.
 identity_owner() { printf '%s' "$1" | cut -d/ -f1,2; }
 
-# --------------------------------------------------------------------------
-# STOPPING. Ctrl-C signals the process GROUP, so this shell and the
-# renovate-local.sh it waits on both get it; bash defers the handler until that
-# child returns, which is exactly the window the child needs to put its own tree
-# back. What was missing until 2026-09-11 was everything after that -- there was
-# no INT trap at all, the `for` loop simply went on, and a six-repo fleet
-# APPLIED five more repos after the user asked it to stop.
-# --------------------------------------------------------------------------
+# Stopping: bash defers the handler until the running child returns, which lets it roll its own tree back first.
 FLEET_STOP=""
 FLEET_STOP_RC=0
 NOT_RUN=()
@@ -167,13 +134,7 @@ trap 'stop_run "SIGTERM." 143' TERM
 trap 'stop_run "SIGHUP -- the terminal went away." 129' HUP
 trap 'stop_run "SIGPIPE -- the reader of this output went away." 141' PIPE
 
-# --------------------------------------------------------------------------
-# Discovery.
-# --------------------------------------------------------------------------
-# The outermost superproject of whatever the caller pointed at, so that running
-# this from inside third_party/OxidANT means the same thing as running it from
-# the top. That IS the owner's requirement, in their words: "von diesem
-# mutterrepo aus ODER in den einzelnen subrepos".
+# Discovery: climb to the outermost superproject, so a run from any subrepo equals one from the top.
 climb_to_top() {
   local here="$1" up n=0
   while [ "${n}" -lt "${MAX_DEPTH}" ]; do
@@ -185,22 +146,10 @@ climb_to_top() {
   printf '%s' "${here}"
 }
 
-# How deep the submodule walk goes. The family's deepest real chain is
-# consumer -> OxidANT -> ANTfrastructure -> DocumANTation -> awesome-beamer, i.e.
-# 4. The bound is not a tuning knob: a .gitmodules that points at an ancestor
-# makes the walk run forever, and a fleet tool that hangs is worse than one
-# that stops and says how deep it looked.
+# Not a tuning knob: a .gitmodules pointing at an ancestor would otherwise recurse forever.
 MAX_DEPTH=8
 
-# Every submodule reachable from <dir>, as
-# "<state><TAB><identity><TAB><abs path><TAB><the repo that vendors it>".
-# state is `checkout` or `uninit`. An UNINITIALISED submodule used to be
-# `continue`d, which made everything BENEATH it invisible: measured 2026-09-11
-# where acon vendors zdep and zdep vendors hub, acon's de-initialised copy of
-# zdep's hub took acon's rank from 2 to 1 and put acon -- which vendors zdep --
-# in FRONT of zdep. A fresh clone that has not run `git submodule update --init
-# --recursive` is exactly that state, and .gitmodules still carries the url, so
-# the edge is kept and named and only the subtree under it is really lost.
+# Emits "<checkout|uninit>\t<identity>\t<abs path>\t<vendoring repo>"; an uninit submodule keeps its edge.
 walk_submodules() {
   local dir="$1" depth="$2" name path abs id declared
   [ "${depth}" -gt 0 ] || return 0
@@ -229,12 +178,7 @@ VENDORED=(); DUPLICATES=(); NO_OWN=(); SELF_VENDORED=(); CYCLES=(); EXTERNAL=0
 UNINIT=(); NO_IDENTITY=(); FOREIGN=()
 GRAPH=""
 
-# The OWN checkouts: the ones a human pushes from. A repo's own checkout is a
-# directory beside the top superproject, ONE level deep, whose remote has the
-# same owner as the root's. Not a name list, and not a recursive filesystem
-# sweep either -- a sweep reaches the scratch clones under _ratchet/ and
-# _hubgate_logs/ (six of them on this machine), and a fleet that writes into a
-# scratch clone is the accident this whole file is shaped around.
+# Own checkouts sit one level beside the top; a recursive sweep would reach scratch clones.
 discover_own() {
   local d id rem
   TOP="$(climb_to_top "${ROOT}")"
@@ -244,11 +188,7 @@ discover_own() {
   for d in "${FAMILY_DIR}"/*; do
     [ -e "${d}/.git" ] || continue
     id="$(repo_identity "${d}" 2>/dev/null)" || id=""
-    # COLLECTED, not dropped. This read used to end in `|| continue`, so a
-    # checkout with no `origin` -- one cloned from a mirror, one whose remote is
-    # called `upstream` -- appeared in no plan, no summary and no heading at all,
-    # while six headings named things the fleet had deliberately not touched.
-    # Measured on this machine 2026-09-11, that silently swallowed _flutter-probe.
+    # Collected, not dropped: a checkout without origin must still be named.
     if [ -z "${id}" ]; then
       rem="$(git -C "${d}" remote 2>/dev/null | tr '\n' ' ')"
       NO_IDENTITY+=("$(basename "${d}")  (remotes here: ${rem:-none at all})")
@@ -262,13 +202,7 @@ discover_own() {
   done
 }
 
-# Every vendored checkout under every own checkout -- ONE walk per own repo, its
-# results tagged with the own repo they came from so the ordering below can read
-# the same rows instead of walking the tree a second time.
-#
-# Three things come out of it: where each identity is vendored (so the summary
-# can NAME the copies it did not touch), which of the owner's identities have no
-# own checkout at all, and the transitive fleet-dependency set of each own repo.
+# One walk per own repo, rows tagged with that repo so the ordering reuses them.
 discover_graph() {
   local i state id abs owner_dir
   GRAPH="$(mktemp)" || err "mktemp failed"
@@ -280,28 +214,16 @@ discover_graph() {
   while IFS=$'\t' read -r i state id abs owner_dir; do
     if [ -n "${id}" ]; then classify_vendored "${i}" "${state}" "${id}" "${abs}" "${owner_dir}"; fi
   done < "${GRAPH}"
-  # find_cycles reads the sets the WALK produced, before the closure below can
-  # make a three-repo cycle look like a mutual pair it is not.
+  # Before close_deps, which would make a three-repo cycle look like a mutual pair.
   find_cycles
   close_deps
   return 0
 }
 
-# One submodule, into every list it belongs in. FOUR kinds, and only the second
-# is the owner's question:
-#   * a copy of the vendoring repo ITSELF -- constrains no order, but is named
-#   * a SECOND checkout of a repo the fleet updates in its own tree -- the
-#     duplicate this file exists to answer, and an ordering constraint
-#   * a repo of the owner's with NO own checkout -- named, not updated
-#   * somebody else's upstream -- COUNTED, not listed: printing all of them
-#     buried the seven ANTfrastructure copies in noise (measured over the real
-#     family 2026-09-11: 56 rows, 36 of them the owner's, 20 somebody else's,
-#     which is the count the tool itself prints)
+# Kinds: a self copy (named), a member's second checkout (an order edge), an owner repo with no own checkout (named), foreign (counted).
 classify_vendored() {
   local i="$1" state="$2" id="$3" abs="$4" owner_dir="$5"
-  # A SECOND `local`: an assignment reading a name declared in the SAME `local`
-  # has not taken effect yet in every shell, so `rel` would be the whole
-  # absolute path in some of them and the family-relative one here (SC2318).
+  # A second `local`: a name assigned in the same `local` is not visible yet in every shell (SC2318).
   local rel="${abs#${FAMILY_DIR}/}"
   local by="${owner_dir#${FAMILY_DIR}/}"
   if [ "${state}" = uninit ]; then
@@ -314,9 +236,7 @@ classify_vendored() {
     esac
     return 0
   fi
-  # The dependency EDGE is recorded whether or not there is a checkout to look
-  # inside: what a repo declares is the fact the order is built on, not what
-  # happens to be cloned today. Only the LISTING needs a working tree.
+  # The declared edge orders the fleet even without a checkout; only the listing needs a tree.
   case " ${OWN_IDS[*]-} " in
     *" ${id} "*)
       add_dep "${i}" "${id}"
@@ -351,22 +271,9 @@ own_index() {
   return 1
 }
 
-# --------------------------------------------------------------------------
-# ORDER. A repo runs AFTER every fleet repo it vendors: ANTfrastructure is pinned
-# by everyone, and a consumer bumped before the hub lands points at a commit
-# that does not exist yet. The rank is the number of fleet identities the repo
-# vendors transitively, and sorting on it IS a topological order because
-# A vendoring B makes deps(A) a strict superset of deps(B).
-# Why equal ranks are not a cycle, and the honest limit no ordering can fix
-# (this tool pushes nothing, so the order is the order to LAND results in):
-# docs/dependency-updates.md#order
-# --------------------------------------------------------------------------
+# Order: rank by transitive fleet deps, topological since vendoring makes deps a superset. See docs/dependency-updates.md#order
 
-# The proof above needs deps(A) to CONTAIN deps(B), and the walk cannot always
-# see deps(B) -- an uninitialised submodule hides everything under it. When B is
-# a fleet member the fleet holds its OWN checkout of B and has already read
-# deps(B) there, so union those in to a fixpoint. What is left unknowable is an
-# uninitialised copy of a repo with no own checkout: print_unplaced names it.
+# Union in each member's own deps to a fixpoint: an uninit submodule hides its subtree from the walk.
 close_deps() {
   local i j d d2 changed=1
   while [ "${changed}" -eq 1 ]; do
@@ -385,13 +292,9 @@ close_deps() {
   done
 }
 
-# How many identities are in a " a b c " dependency set. `wc -w` rather than a
-# counting loop whose variable nothing reads.
 dep_count() { printf '%s' "$1" | wc -w | tr -d ' '; }
 
-# A vendors B and B vendors A: two repos that cannot both go second. There is no
-# correct order for such a pair, so the fleet says so instead of implying its
-# arbitrary choice was one.
+# A mutual pair has no correct order, so it is reported rather than ordered arbitrarily.
 find_cycles() {
   local i j
   for i in "${!OWN_IDS[@]}"; do
@@ -420,11 +323,7 @@ order_fleet() {
   rm -f "${sorted}"
 }
 
-# --vendored: append the checkouts that are the ONLY copy of one of the owner's
-# repos (NO_OWN holds exactly those identities). AFTER refuse_duplicate_own, so
-# that refusal keeps its meaning, and LAST, because a vendored copy is
-# downstream of everything that declares it. First copy of each identity only.
-# docs/dependency-updates.md#the-same-repo-checked-out-several-times
+# Appended last: a vendored copy is downstream of all. See docs/dependency-updates.md#the-same-repo-checked-out-several-times
 ORDER_VENDORED=0
 order_vendored_in_place() {
   local id row rel
@@ -440,8 +339,7 @@ order_vendored_in_place() {
   done
 }
 
-# --only / --skip, by directory name. Both are commas, and a name in neither
-# list is IN when --only is empty and OUT when it is not.
+# --skip wins; a name in neither list is in only while --only is empty.
 selected() {
   local name="$1" w
   local -a want=()
@@ -455,15 +353,7 @@ selected() {
   return 1
 }
 
-# TWO OWN CHECKOUTS OF ONE REPOSITORY. A second clone beside the first, a
-# `git worktree`, a `ANTfrastructure-2` kept for a bisect: all three carry one
-# origin, all three used to be members, and `--apply` wrote the same update into
-# every one (measured 2026-09-11: `hub` and `hub2`, both rewritten, both rc 0,
-# neither named anywhere). The fleet cannot know which one the human pushes
-# from, and guessing is how work got lost twice -- so it refuses, by name,
-# before anything is written, and --only/--skip are the answer the human gives
-# back. Checked over the SELECTED set, so `--skip hub2` really does settle it.
-# docs/dependency-updates.md#the-same-repo-checked-out-several-times
+# Which of two own checkouts is pushed from is unknowable, so refuse. See docs/dependency-updates.md#the-same-repo-checked-out-several-times
 refuse_duplicate_own() {
   local i j
   local -a dups=()
@@ -485,9 +375,7 @@ refuse_duplicate_own() {
     -- ${dups[@]+"${dups[@]}"}
 }
 
-# --------------------------------------------------------------------------
-# The plan, printed before anything runs and printed in FULL by --dry-run.
-# --------------------------------------------------------------------------
+# Plan
 print_plan() {
   local i
   rule
@@ -518,10 +406,7 @@ print_plan() {
 }
 
 
-# One row per repo of the owner's that has no own checkout, with HOW MANY
-# vendored copies it has and one of them as an example. Listing every copy put
-# 29 lines under this heading over the real family and buried the six answers in
-# them; the count is the fact, the path is the pointer to look at.
+# A count and one example per repo: listing every vendored copy buried the answers.
 NO_OWN_ROWS=()
 summarise_no_own() {
   local id n first
@@ -532,19 +417,10 @@ summarise_no_own() {
   done
 }
 
-# THE DUPLICATE-CHECKOUT ANSWER, and the point of this whole file: a repo is
-# UPDATED where it lives as a repository, and the POINTERS to it are moved where
-# it is vendored. A vendored checkout is never a fleet member, and it is NAMED,
-# because eight working trees of ANTfrastructure written by one --apply is how work
-# got lost twice in one day. The measurements and the argument:
-# docs/dependency-updates.md#the-same-repo-checked-out-several-times
+# Update a repo where it lives, move only pointers where it is vendored. See docs/dependency-updates.md#the-same-repo-checked-out-several-times
 print_duplicates() {
   summarise_no_own
-  # This heading used to say "NONE of them is written". Renovate applies nothing
-  # in a vendored copy, but moving the pointer is `git submodule update
-  # --remote`, which fetches and CHECKS OUT inside that working tree: measured
-  # 2026-09-11, a vendored hub went 31a4445 -> 256c4c6 and gained a tracked
-  # file. A promise this tool does not keep is worse than no promise.
+  # `git submodule update --remote` checks out inside the copy, so never claim it stays untouched.
   if note_listing \
       "THE SAME REPO, CHECKED OUT AGAIN. Each of these is a second working" \
       "tree of a repo the fleet already updates above. No update is APPLIED in" \
@@ -571,8 +447,7 @@ print_duplicates() {
   fi
 }
 
-# What the fleet could NOT place, said out loud. Every heading above names
-# something deliberately not touched; these three used to be the silence.
+# Name what the fleet could not place instead of staying silent about it.
 print_unplaced() {
   if note_listing \
       "UNINITIALISED SUBMODULE(S). There is no checkout here, so nothing can" \
@@ -596,9 +471,7 @@ print_unplaced() {
     -- ${FOREIGN[@]+"${FOREIGN[@]}"} || true
 }
 
-# --------------------------------------------------------------------------
-# Running one repo, and never letting it take the others with it.
-# --------------------------------------------------------------------------
+# Running one repo without letting it take the others with it
 RESULTS=()
 WORST=0
 
@@ -607,14 +480,12 @@ record() {
   case "$3" in
     0) ;;
     2) [ "${WORST}" -eq 1 ] || WORST=2 ;;
-    # 1, and every rc that is not in the contract at all -- a signal, a crash.
-    # Those are "could not complete", never "needs a human".
+    # Any rc outside the contract (a signal, a crash) is "could not complete".
     *) WORST=1 ;;
   esac
 }
 
-# What the fleet itself checks before handing a repo to renovate-local.sh, so a
-# repo that cannot be worked on is a named row rather than a wall of output.
+# An unworkable repo becomes a named row rather than a wall of output.
 preflight_repo() {
   local dir="$1" name="$2" branch gd
   gd="$(git -C "${dir}" rev-parse --absolute-git-dir 2>/dev/null)" || gd=""
@@ -627,10 +498,7 @@ preflight_repo() {
     return 1
   fi
   preflight_in_progress "${dir}" "${name}" "${gd}" || return 1
-  # A DETACHED HEAD is a refusal on purpose: this tool commits nothing, so the
-  # human commits -- and a commit made on a detached HEAD is the work that gets
-  # lost. It is checked LAST because a rebase also detaches HEAD, and
-  # "switch <branch> first" is actively wrong advice in the middle of one.
+  # Detached HEAD refuses (the human's commit would get lost); last, as a rebase detaches HEAD too.
   branch="$(git -C "${dir}" rev-parse --abbrev-ref HEAD 2>/dev/null)"
   if [ "${branch}" = HEAD ] || [ -z "${branch}" ]; then
     record "${name}" preflight 1 "detached HEAD -- \`git -C ${dir} switch <branch>\` first"
@@ -639,12 +507,7 @@ preflight_repo() {
   return 0
 }
 
-# A merge, cherry-pick, revert, rebase or bisect that is still RUNNING. HEAD is
-# on a branch and the git dir is nameable, so nothing above catches it -- and
-# measured 2026-09-11 the fleet applied straight into a conflicted merge (UU
-# README.md, MERGE_HEAD present, HEAD on `main`), rc 0, merge still in progress
-# afterwards. The next `git commit -a` finishes THAT merge and carries the
-# renovate edit into it, under the merge's own message.
+# Finishing an in-progress merge/rebase/etc. would carry the renovate edit into its commit.
 preflight_in_progress() {
   local dir="$1" name="$2" gd="$3" what="" fix=""
   if   [ -e "${gd}/rebase-merge" ] || [ -e "${gd}/rebase-apply" ]; then
@@ -665,9 +528,7 @@ preflight_in_progress() {
   return 1
 }
 
-# Which phase this whole run is in: report, plan (--apply --dry-run) or apply.
-# One owner, because run_one and print_summary both need it and two derivations
-# of one fact drift.
+# One owner for the phase: run_one and print_summary both need it.
 fleet_phase() {
   if [ "${MODE}" != apply ]; then printf 'report'; return 0; fi
   if [ "${DRY_RUN}" -eq 1 ]; then printf 'plan'; return 0; fi
@@ -689,32 +550,22 @@ run_one() {
   note "${name}  [${phase}]  ${dir}"
   rule
   preflight_repo "${dir}" "${name}" || return 0
-  # --foreground is load-bearing: without it `timeout` puts the child in a NEW
-  # process group, and the Ctrl-C that signals THIS group would never reach
-  # renovate-local.sh -- the repo would keep writing while the fleet tried to
-  # stop. With it the child stays in the group and rolls its own tree back.
+  # --foreground keeps the child in our process group, so Ctrl-C reaches it and it rolls back.
   if [ "${BUDGET}" -gt 0 ]; then
     runner=(timeout --foreground --kill-after="${BUDGET_GRACE}s" "${BUDGET}s")
   fi
-  # No pipeline: `rc=$?` after one would report the last stage. The output is
-  # printed as it comes because a fleet run is long and a silent one is
-  # indistinguishable from a hung one.
+  # No pipeline, so rc is the child's; output streams because a silent run looks hung.
   ${runner[@]+"${runner[@]}"} bash "${LOCAL}" ${argv[@]+"${argv[@]}"} "${dir}"
   rc=$?
   record "${name}" "${phase}" "${rc}" "$(meaning "${phase}" "${rc}")"
-  # A repo killed by a signal is a stop request even when this shell was not
-  # signalled itself -- which is the case when somebody kills the child, or when
-  # a kill reached only part of the group.
+  # A child killed by a signal means stop, even when this shell was not signalled.
   case "${rc}" in
     129|130|143) stop_run "${name} was stopped by a signal (rc ${rc})." "${rc}" ;;
   esac
   return 0
 }
 
-# The rc says the same thing in every phase; what it MEANS for the tree does
-# not. A report writes nothing, so "every reported update is at its new value"
-# would be a claim about an apply that never happened -- and a summary row a
-# reader has to translate is a summary row that gets misread.
+# Phase-aware: a report or plan row must not claim what only an apply does.
 meaning() {
   case "$1/$2" in
     */124)    printf 'ran past the %ss budget and was killed (--timeout)' "${BUDGET}" ;;
@@ -748,12 +599,7 @@ print_summary() {
   note "Nothing is staged, committed or pushed. Land them in the order above."
 }
 
-# The all-green line is phase-aware for the same reason the rows are: a plan
-# run that signs off with "every update is applied" is a summary the reader
-# has to translate, and a summary that needs translating gets misread. An
-# INTERRUPTED run gets neither: it says what stopped it and names every repo it
-# never started, because "nothing anywhere says you interrupted this and I
-# carried on" was the whole defect.
+# Phase-aware too; an interrupted run names what stopped it and every repo it never started.
 print_signoff() {
   if [ -n "${FLEET_STOP}" ]; then
     note "INTERRUPTED: ${FLEET_STOP}"

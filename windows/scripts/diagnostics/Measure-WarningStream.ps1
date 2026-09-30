@@ -1,28 +1,11 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Classify a build log's compiler-warning stream: separate the five known
-    noise classes from the signal classes they bury (backlog #80).
-
+    Separates a build log's five known noise warning classes from the signal classes they bury.
 .DESCRIPTION
-    Corpus measurement behind this tool (49 runs): 96 % of all warnings were
-    five noise classes (-Wunused-parameter alone: 68,502), hiding 1,055 genuine
-    signals — vtable/ABI breaks (-Winconsistent-missing-override), ODR/link
-    hazards (-Wundefined-var-template), Windows linkage
-    (-Winconsistent-dllimport), runaway recursion (-Winfinite-recursion) and
-    C4715 (undefined behaviour: falling off a value-returning function).
-
-    This is the OBSERVABILITY half of #80: it makes any existing log readable
-    in seconds. The other half — suppressing the noise classes at build-script
-    level so the volume never exists — touches the bind-mounted build scripts
-    and lands separately.
-
-    Diagnostic: exits 0 unless the log is missing; its output is the product.
-
+    Exits 0 unless the log is missing; the output is the product.
 .PARAMETER LogPath
-    A build log (driver stage log or Tee'd run log). Anything with clang-cl /
-    MSVC warning lines works.
-
+    A build log with clang-cl or MSVC warning lines.
 .PARAMETER Top
     How many warning classes to list in the frequency table.
 #>
@@ -35,8 +18,7 @@ param(
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path $LogPath)) { throw "analyze-warning-stream: log not found: $LogPath" }
 
-# The classes worth acting on, with WHY. Kept as data so the next class costs
-# one line, and so the summary can explain itself.
+# Data, so a new class costs one line and the summary can explain itself.
 $signalClasses = [ordered]@{
     '-Winconsistent-missing-override' = 'vtable/ABI: override without the keyword — breaks when the base changes'
     '-Wundefined-var-template'        = 'ODR/link hazard: instantiation without a definition'

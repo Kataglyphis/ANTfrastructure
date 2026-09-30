@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Characterisation of lib/agentic-loop.sh — the three subjects nothing covered:
-# engine-config precedence, invoke_agent's retry ladder with the engine faked,
-# and one drain of the executor queue. Written so the engine-adapter half can be
-# split from the loop-driver half (backlog F2) against a fixed behaviour.
-# docs/agentic-loop-build-matrix.md#bash-agentic-loopsh
+# Characterisation of lib/agentic-loop.sh and its engine half. See docs/agentic-loop-build-matrix.md#bash-agentic-loopsh
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -44,8 +40,7 @@ _out="$(_lib 'load_engine_config "'"${_work}"'/config.json" "'"${_work}"'" >/dev
         echo "${AGENTIC_ENGINE}|${PLANNER_MODEL}|${EXECUTOR_MODEL}|${AGENT_RETRIES}|${AGENT_RETRY_DELAY}|${CLAUDE_PERMISSION_MODE}"')"
 t_assert_eq "opencode|oc/planner|oc/executor|2|20|bypassPermissions" "${_out}"
 
-# The claude engine is selected the same way in the next two cases; one helper
-# so the second is a call, not a copy.
+# Selects the claude engine for the next two cases.
 _claude_cfg() { _lib "export AGENTIC_ENGINE=claude
         load_engine_config '${_work}/config.json' '${_work}' >/dev/null
         $1"; }
@@ -72,8 +67,7 @@ t_assert_contains "${_out}" "rc=1" "returning 0 here would run the loop with an 
 
 # ── 2. invoke_agent, with the engine faked ──────────────────────────────
 _ATTEMPTS="${_work}/attempts"
-# DRY_RUN=true skips invoke_agent's back-off sleeps; without it this case sleeps
-# AGENT_RETRY_DELAY * attempt seconds for real.
+# DRY_RUN=true skips invoke_agent's real back-off sleeps.
 _agent() { _lib "
 : > '${_ATTEMPTS}'
 invoke_opencode() { echo \"\$1\" >> '${_ATTEMPTS}'; return ${1}; }
@@ -97,13 +91,7 @@ _agent 0 opencode fixer >/dev/null
 t_assert_eq "executor" "$(cat "${_ATTEMPTS}")"
 
 t_case "every OTHER role survives that mapping under a consumer's errexit"
-# The mapping was written `[[ "$role" == fixer ]] && oc_agent=executor`, and it was
-# reported as fatal for every other role under a consumer's `set -e`. MEASURED, it
-# is not: bash exempts every command of an AND-OR list except the one after the
-# final && or ||, so the failing test neither exits the shell nor fires an ERR trap
-# under `set -eE`. It WOULD be fatal one edit later -- as the last statement of the
-# function the list becomes its return status -- so the shape is gone and the
-# behaviour is pinned here. docs/agentic-loop-build-matrix.md#the-two-bash-files
+# An AND-OR list's failing test is errexit-exempt, but fatal as a function's last statement. See docs/agentic-loop-build-matrix.md#the-two-bash-files
 _out="$(bash -c "set -eu
 LOG_FILE='${_work}/loop.log'
 : > '${_ATTEMPTS}'
@@ -120,9 +108,7 @@ t_assert_contains "${_out}" "Unknown engine"
 t_assert_contains "${_out}" "rc=1"
 t_assert_eq "0" "$(wc -c < "${_ATTEMPTS}")" "no adapter may be invoked for an engine that does not exist"
 
-# ── 3. one drain of the executor queue ──────────────────────────────────
-# invoke_agent is faked to tick exactly one task, which is what "the executor
-# made progress" means to the drain loop.
+# ── 3. one executor-queue drain; the faked agent ticks one task, i.e. progress ──
 _drain() { _lib "
 _AL[repo_root]='${_work}'; _AL[delete_completed]=false; _AL[max_retries]=2
 _AL[tasks_completed]=0; _AL[consecutive_build_failures]=0
@@ -153,9 +139,7 @@ _out="$(_drain ":")"
 t_assert_contains "${_out}" "Tasks in queue: 0"
 t_assert_contains "${_out}" "completed=0" "blocked work must let the planner run again, not stall the executor"
 
-# ── 3b. the opencode command line: v2 only ──────────────────────────────
-# The strings are what each CLI's `--version` really prints (1.18.33, 2.0.18).
-# docs/windows-agentic-loop.md#opencode-v2
+# ── 3b. opencode v2 only; the strings are real --version output. See docs/windows-agentic-loop.md#opencode-v2
 t_case "opencode_major_version reads both CLIs' --version; unreadable is 0"
 t_assert_eq "1" "$(_lib 'opencode_major_version "1.18.33"')"
 t_assert_eq "2" "$(_lib 'opencode_major_version "opencode v2.0.18"')"
@@ -180,10 +164,7 @@ t_assert_contains "${_out}" "opencode v2 is required; PATH has '1.18.33'"
 t_assert_contains "${_out}" "rc=1"
 t_assert_eq "0" "$(grep -c RAN-RUN <<< "${_out}")" "v1 must not be handed v2's flags"
 
-# ── 4. the F2 seam: two files, one entry point ──────────────────────────
-# The engine half is loaded BY agentic-loop.sh from its own directory, so a
-# consumer that sources only the entry point still gets every adapter, and
-# neither file may carry a second copy of the other's functions.
+# ── 4. the F2 seam: the entry point loads the engine half, and no function lives in both ──
 ENGINES="${TESTS_DIR}/../lib/agentic-engines.sh"
 
 t_case "sourcing the entry point alone defines both halves"
@@ -211,9 +192,7 @@ _dupes="$(cat "${LIB}" "${ENGINES}" | sed -n 's/^\([a-z_][a-z0-9_]*\)() {$/\1/p'
 t_assert_eq "" "${_dupes}" "one owner per function — a re-inlined copy would drift like the pre-split preamble did"
 
 t_case "the jq prelude crosses the seam: a driver-side reader still parses a matrix entry"
-# _AGENTIC_JQ_PRELUDE is defined in the engine half and used by
-# resolve_build_matrix_entry in the driver half; an unsourced sibling makes the
-# jq program a bare filter and every MATRIX_* field silently empty.
+# Without the engine half's prelude every MATRIX_* field would be silently empty.
 cat > "${_work}/matrix.json" <<'J'
 { "buildMatrix": { "linux": [ { "name": "rel", "sanitizer": "asan", "testCommand": "ctest" } ] } }
 J
@@ -222,10 +201,7 @@ _out="$(_lib 'resolve_build_matrix_entry "'"${_work}"'/matrix.json" 0 linux
 t_assert_eq "rel|asan|ctest|build" "${_out}"
 
 t_case "the jq precondition survives in load_engine_config, which run_agentic_loop delegates to"
-# PATH is emptied after sourcing, so `command -v jq` misses exactly the way a
-# host without jq does. run_agentic_loop carried a second copy of this guard;
-# deleting the copy must not lose the verdict, and deleting the OWNER must
-# turn this red rather than let a jq-less host reach the planner.
+# An emptied PATH misses jq like a jq-less host; the one owner must say so, exactly once.
 _out="$(bash -c "set -u
 LOG_FILE='${_work}/loop.log'
 source '${LIB}'
@@ -236,11 +212,7 @@ t_assert_contains "${_out}" "jq required"
 t_assert_contains "${_out}" "rc=1" "no jq must stop the loop before it plans anything"
 t_assert_eq "1" "$(printf '%s\n' "${_out}" | grep -c 'jq required')" "the owner must state the reason exactly once"
 
-# ── 5. the F1 seam: the planner phase ───────────────────────────────────
-# _agentic_planner_phase owns the skip/starvation/refactor-cycle decision and
-# reports through a nameref whether it ran, which is the state run_agentic_loop
-# reads to tell "no actionable tasks left" from "planner was skipped".
-# $1 iteration, $2 skip_planner_when_pending, $3 force_planner.
+# ── 5. the F1 seam: _planner <iteration> <skip_when_pending> <force>; the phase reports via nameref if it ran ──
 _planner() { _lib "
 _AL[repo_root]='${_work}'; _AL[iteration]=$1; _AL[skip_planner_when_pending]=$2
 _AL[refactor_every_n]=10

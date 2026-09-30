@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the GPU variant chain (owner directive 2026-09-22): CROSS_VARIANT
-# (or ENABLE_NVIDIA / ENABLE_AMD) must move EVERY tag the chain writes from its
-# gpu stage on under -<variant>, insert that stage between sdk and media, and
-# leave the default chain's graph and tags byte-identical. The graph is decided
-# when stage-defs.sh is sourced, so each case sources it in a fresh bash.
+# stage-defs.sh decides the stage graph when sourced, so each case sources it in a fresh bash.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -91,8 +87,7 @@ RFNS="${CORE}/runtime-build-fns.sh"
 t_assert_eq "onnxruntime-gpu pytorch-cu130" "$(ENABLE_NVIDIA=true bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')"
 t_assert_eq "onnxruntime-migraphx pytorch-rocm10" "$(ENABLE_AMD=true bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')"
 t_assert_eq "" "$(bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')" "a CPU image keeps the Dockerfile defaults"
-# --dry-run is a FLAG here (DRY_RUN in the environment is not read), and every
-# call is time-boxed: a regression must fail the suite, never start a real build.
+# --dry-run is a flag here (DRY_RUN is not read); the timeout keeps a regression from starting a real build.
 _RT="${TESTS_DIR}/../build-runtime-artifacts.sh"
 t_assert_contains "$(env -u CROSS_VARIANT ENABLE_NVIDIA=true timeout 60 bash "${_RT}" --image-prefix example.io/r:latest --target-arches amd64 --dry-run 2>&1)" \
   "carries no -nvidia" "a GPU wrapper can never land on the default :latest-<arch>"
@@ -119,8 +114,7 @@ _FNS=""
 for _fn in _dest copy_path _src_resolve copy_rocm_payload; do _FNS+="$(t_fn_src "${PAY}" "${_fn}")"$'\n'; done
 _rocm() { SRCPREFIX="$1" COPY_TARGET_DIR="$2" ENABLE_AMD="${3:-true}" \
   bash -c "set -euo pipefail; warn() { :; }"$'\n'"${_FNS}"$'\ncopy_rocm_payload' 2>&1; }
-# TheRock (setup-rocm-repo.sh): real /opt/rocm, core via update-alternatives,
-# lib -> core/lib. The alternatives link is ABSOLUTE and lives outside the tree.
+# TheRock layout: core is an absolute update-alternatives link that points outside the tree.
 _SRC="$(mktemp -d)"; _DST="$(mktemp -d)"
 mkdir -p "${_SRC}/opt/rocm/core-10.0/lib" "${_SRC}/etc/alternatives"
 : > "${_SRC}/opt/rocm/core-10.0/lib/libamdhip64.so.7"
@@ -150,9 +144,7 @@ t_assert_eq "" "$(_rocm "${_EMPTY}" "${_DST3}" false)" "a non-rocm image copies 
 rm -rf "${_SRC}" "${_DST}" "${_SRC2}" "${_DST2}" "${_EMPTY}" "${_DST3}" "${_SRC4}"
 
 t_case "the ASAN tree is optional, off, and cannot reach the default rocm image"
-# 134.8 GiB installed, gfx942/gfx950 only, no ASAN MIGraphX and no ASAN torch
-# wheel (measured against the live repo index 2026-09-22): a default :latest-rocm
-# that carries it is not shippable.
+# The ASAN tree is huge and covers only a few GPU targets, so a default image must not carry it.
 _asan_copy() {  # $1 = ENABLE_ROCM_ASAN -> prints "<asan-present> <normal-present>"
   local src dst; src="$(mktemp -d)"; dst="$(mktemp -d)"
   mkdir -p "${src}/opt/rocm/core-10.0/lib" "${src}/opt/rocm/core-asan-10.0/lib"

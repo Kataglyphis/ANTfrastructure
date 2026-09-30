@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
-# code-quality.sh - generic "format and statically analyse a C/C++ tree" core.
-#
-# Wrappers set the CODE_QUALITY_* variables, source this file, then call the step
-# functions. Variables, and the seven known Linux/Windows divergences, are in
-# docs/code-quality-tooling.md § linux/scripts/lib/code-quality.sh.
-#
-# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
+# Sourced core, so it sets no shell options. docs/code-quality-tooling.md#linuxscriptslibcode-qualitysh--the-shared-library
 
 [ -n "${_CODE_QUALITY_SH_LOADED:-}" ] && return 0
 _CODE_QUALITY_SH_LOADED=1
@@ -13,9 +7,7 @@ _CODE_QUALITY_SH_LOADED=1
 # shellcheck source=./log-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
 
-# has_tool/require_tools: the canonical pair, which itself declares each only
-# when the caller has not - so a project common.sh still wins. This replaced two
-# byte-similar inline copies (here and in coverage.sh).
+# Declares has_tool/require_tools only when the caller has not, so a project's own win.
 # shellcheck source=../01-core/tool-checks.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/tool-checks.sh"
 
@@ -23,17 +15,7 @@ _code_quality_project_root() {
   printf '%s\n' "${CODE_QUALITY_PROJECT_ROOT:-$(pwd)}"
 }
 
-# ---------------------------------------------------------------------------
-# cmake-format availability
-# ---------------------------------------------------------------------------
-# cmake-format ships as a Python package, so a machine without it needs a
-# virtualenv first. Venv creation and requirements install are delegated to the
-# caller-supplied scripts (which in turn defer to 01-core/python_uv.sh) instead
-# of a hand-rolled uv variant; they operate on the caller's cwd, hence the
-# subshell cd.
-# The default bootstrap, in its own function so the ensure_ function below keeps
-# one job. _CQ_CORE/_CQ_REQS are resolved from THIS file, so they are right in a
-# consumer's vendored checkout too.
+# cmake-format availability; paths resolve from this file, so a vendored checkout works too.
 _CQ_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CQ_CORE="${_CQ_LIB_DIR}/../01-core"
 _CQ_REQS="${_CQ_LIB_DIR}/../cmake-format.requirements.txt"
@@ -41,8 +23,7 @@ _CQ_REQS="${_CQ_LIB_DIR}/../cmake-format.requirements.txt"
 _code_quality_default_venv_create() {
   # shellcheck source=../01-core/python_uv.sh
   source "${_CQ_CORE}/python_uv.sh"
-  # "" for the python version: no --python pin, so UV_PYTHON (which the CI
-  # images export) decides. A pinned version fails in an image that ships one.
+  # No --python pin: the CI image's UV_PYTHON decides, and a pin fails there.
   uv_venv_create "${venv_dir}" ""
 }
 
@@ -69,13 +50,7 @@ code_quality_ensure_cmake_format() {
   create_script="${CODE_QUALITY_UV_VENV_CREATE_SCRIPT:-}"
   install_script="${CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT:-}"
 
-  # A DEFAULT since 2026-09-15, not an error. Three consumers had each written
-  # the same two-function uv bootstrap around this call, and a fourth (this
-  # repo's own preflight) a fifth copy -- every one of them saying "make a venv
-  # with 01-core/python_uv.sh and install the hub's pinned cmake-format
-  # requirements", which is the only answer there has ever been. The knobs stay
-  # for a caller that genuinely needs its own venv policy; unset now means the
-  # hub's answer rather than a refusal.
+  # Unset knobs mean the hub's venv and pinned requirements, not a refusal.
   _code_quality_apply_default_bootstrap
 
   if ! has_tool uv; then
@@ -84,9 +59,7 @@ code_quality_ensure_cmake_format() {
 
   info "cmake-format not found. Preparing Python environment..."
 
-  # A venv from the OTHER platform (Scripts/python.exe in a tree mounted into
-  # a Linux container, or bin/python on a Windows host) dies in uv with
-  # "Exec format error" - probe the interpreter and recreate instead of dying.
+  # A venv from the other platform dies in uv with "Exec format error"; probe and recreate.
   if [[ -d "${venv_dir}" ]]; then
     local venv_python="${venv_dir}/bin/python"
     [[ -x "${venv_python}" ]] || venv_python="${venv_dir}/Scripts/python.exe"
@@ -103,8 +76,7 @@ code_quality_ensure_cmake_format() {
   fi
   (cd "${root}" && "${install_script}")
 
-  # bin/ is the POSIX venv layout; a venv created on Windows (Git Bash) has
-  # Scripts/ instead. Neither existing is a broken venv and must fail by name.
+  # A Windows-created venv has Scripts/; neither existing is a broken venv, failed by name.
   local activate="${venv_dir}/bin/activate"
   [[ -f "${activate}" ]] || activate="${venv_dir}/Scripts/activate"
   if [[ ! -f "${activate}" ]]; then
@@ -118,11 +90,7 @@ code_quality_ensure_cmake_format() {
   fi
 }
 
-# ---------------------------------------------------------------------------
 # File enumeration
-# ---------------------------------------------------------------------------
-# Fills the global array _CODE_QUALITY_NAME_PREDICATE with the
-# `( -name '*.ext' -o -name '*.ext2' ... )` fragment of a find command.
 _code_quality_name_predicate() {
   _CODE_QUALITY_NAME_PREDICATE=('(')
   local first=1 ext
@@ -134,20 +102,11 @@ _code_quality_name_predicate() {
   _CODE_QUALITY_NAME_PREDICATE+=(')')
 }
 
-# Directories the HUB's OWN helpers create inside a CONSUMER's tree, excluded
-# by the hub because the hub put them there. flutter_lane_prepare_env defaults
-# PUB_CACHE to <repo>/.pub-cache on purpose, so a consumer that runs the
-# prologue and then a tree-walking gate grades its DEPENDENCIES' CMake files --
-# OmniAccelerANT measured 28, fl_chart's example/linux/CMakeLists.txt among
-# them. A consumer's own list is ADDED to these, never replaced by them.
-# docs/shared-script-libraries.md#05-frameworksflutterlane-prologuesh
+# Hub helpers create these in consumer trees; a consumer's list adds to them. docs/shared-script-libraries.md#05-frameworksflutterlane-prologuesh
 CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES=(
   '*/.pub-cache/*'
 )
 
-# Prints, one per line, every CMakeLists.txt / *.cmake under
-# CODE_QUALITY_CMAKE_SEARCH_ROOT that no exclude glob matches -- the defaults
-# above plus whatever CODE_QUALITY_CMAKE_EXCLUDE_PATHS the consumer sets.
 # Paths stay relative to the search root, as cmake-format wants them.
 code_quality_find_cmake_files() {
   local root="${CODE_QUALITY_CMAKE_SEARCH_ROOT:-.}"
@@ -163,8 +122,7 @@ code_quality_find_cmake_files() {
   find "${find_args[@]}"
 }
 
-# Prints, one per line, every clang-format-able source under the given
-# directories (extensions from CODE_QUALITY_CPP_FORMAT_EXTENSIONS).
+# Extensions come from CODE_QUALITY_CPP_FORMAT_EXTENSIONS.
 code_quality_find_cpp_files() {
   [[ $# -gt 0 ]] || return 0
 
@@ -177,9 +135,7 @@ code_quality_find_cpp_files() {
   find "$@" -type f "${_CODE_QUALITY_NAME_PREDICATE[@]}"
 }
 
-# Prints, one per line, every translation unit clang-tidy should analyse under
-# the given directories (extensions from CODE_QUALITY_CLANG_TIDY_EXTENSIONS).
-# Headers are deliberately excluded: clang-tidy needs a compile-DB entry.
+# Headers are excluded: clang-tidy needs a compile-DB entry.
 code_quality_find_clang_tidy_files() {
   [[ $# -gt 0 ]] || return 0
 
@@ -192,26 +148,12 @@ code_quality_find_clang_tidy_files() {
   find "$@" -type f "${_CODE_QUALITY_NAME_PREDICATE[@]}"
 }
 
-# Prints, one per line, every tracked *.dart file under the given root (default
-# "."). The Windows twin is Get-ProjectDartFiles in
-# windows/scripts/modules/WindowsFormatting.Common.psm1.
-#
-# `dart format .` is not an equivalent: the Linux CI lanes install the Flutter
-# SDK *inside* the mounted workspace (flutter_dir: /workspace/flutter), so a
-# recursive walk reformats the SDK. Measured 2026-09-03 on Kataglyphis-Inference-
-# Engine: "Formatted 7404 files (627 changed)", 604 of them under flutter/ —
-# enough to fail --set-exit-if-changed on its own. Listing tracked files instead
-# also skips vendored submodules and build trees. Docs: docs/code-quality-tooling.md.
+# Tracked files, not `dart format .`: CI installs Flutter inside the workspace, and the walk would reformat it.
 code_quality_find_dart_files() {
   code_quality_find_tracked_files "${1:-.}" '*.dart'
 }
 
-# Prints, one per line, every tracked file under `root` matching the given git
-# pathspecs, with the trees this family never grades removed: build outputs, the
-# vendored roots ExternalLib/, third_party/ and flutter/, and rust_builder/ --
-# Cargokit's GENERATED flutter_rust_bridge package. Paths are prefixed with
-# `root` unless it is ".". This is the ONE owner of that exclusion set; a caller
-# that restates it drifts away from the rest of the gates instead.
+# The one owner of the never-graded trees; a caller that restates the list drifts from the other gates.
 code_quality_find_tracked_files() {
   local root="${1:-.}"
   shift
@@ -227,11 +169,7 @@ code_quality_find_tracked_files() {
   done
 }
 
-# ---------------------------------------------------------------------------
-# Formatting steps
-# ---------------------------------------------------------------------------
-# Rewrites the given CMake files in place. A leading `--check` argument instead
-# reports drift without writing: non-zero exit, each offender named on stderr.
+# Formatting steps. A leading --check reports drift (non-zero, offenders on stderr) without writing.
 code_quality_run_cmake_format() {
   local mode=(-i)
   if [[ "${1:-}" == "--check" ]]; then
@@ -250,8 +188,7 @@ code_quality_run_cmake_format() {
   cmake-format "${args[@]}" "$@"
 }
 
-# Rewrites the given C/C++ sources in place (clang-format -i), in ONE
-# invocation - see divergence 5 above.
+# One invocation, unlike Windows. docs/code-quality-tooling.md#known-divergences-from-the-windows-path--read-before-unifying-the-two
 code_quality_run_clang_format() {
   [[ $# -gt 0 ]] || return 0
 
@@ -259,10 +196,7 @@ code_quality_run_clang_format() {
   clang-format -i "$@"
 }
 
-# Reports how many of the given sources deviate from .clang-format WITHOUT
-# rewriting them, using --dry-run -Werror (non-zero exit per deviating file is
-# the signal, not an error). Always returns 0: callers that want a gate should
-# test CODE_QUALITY_CLANG_FORMAT_DEVIATIONS, which this sets.
+# Always returns 0; gate on CODE_QUALITY_CLANG_FORMAT_DEVIATIONS, which this sets.
 code_quality_check_clang_format() {
   CODE_QUALITY_CLANG_FORMAT_DEVIATIONS=0
   [[ $# -gt 0 ]] || return 0
@@ -291,18 +225,7 @@ code_quality_check_clang_format() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# Compile database preparation
-# ---------------------------------------------------------------------------
-# Takes the build directory, and sets CODE_QUALITY_COMPILE_DB_DIR to the
-# directory that should be passed to `clang-tidy -p`. That is normally the build
-# directory itself; when the DB was produced inside a container it is a
-# temporary copy with the paths rewritten. Pair every call with
-# code_quality_cleanup_compile_db.
-#
-# Returns non-zero (after err, which exits in the default logging) when the DB
-# does not exist - see divergence 6 above: the Linux path deliberately does NOT
-# regenerate it from ninja.
+# Compile DB: sets CODE_QUALITY_COMPILE_DB_DIR (pair with code_quality_cleanup_compile_db); never regenerates one.
 code_quality_prepare_compile_db() {
   local build_dir="$1"
   local compile_db_path="${build_dir}/compile_commands.json"
@@ -353,13 +276,7 @@ code_quality_cleanup_compile_db() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# clang-tidy
-# ---------------------------------------------------------------------------
-# Usage: code_quality_run_clang_tidy <compile-db-dir> <file>...
-# Extra arguments come from CODE_QUALITY_CLANG_TIDY_ARGS; -fix is appended when
-# CODE_QUALITY_CLANG_TIDY_FIX is "true". One invocation for the whole file list
-# - see divergence 5 above.
+# clang-tidy: <compile-db-dir> <file>...; one invocation, flags from CODE_QUALITY_CLANG_TIDY_ARGS/_FIX.
 code_quality_run_clang_tidy() {
   local db_dir="$1"
   shift

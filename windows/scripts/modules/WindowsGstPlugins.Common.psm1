@@ -1,15 +1,11 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The mandatory-GStreamer-plugin contract and its pkg-config plumbing. Merge-lane
-# leaf: never add it to Dockerfile.media-builder's `buildmods` (AGENTS.md § the
-# three module tiers, #134).
+# Merge-lane leaf, never in the media-builder buildmods: see docs/windows-build-resources.md § The Windows cache, tier by tier
 
 Set-StrictMode -Version Latest
 
-# Arch resolution lives here, not at the three call sites -- them disagreeing is the
-# 2026-07-11 regression (docs/windows-build-invariants.md § mandatory GStreamer plugins).
+# Arch filtering lives in the contract, never at a call site: see docs/windows-build-invariants.md § The mandatory GStreamer plugin set is a contract
 $gstTargetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
 if (Test-Path $gstTargetArchPath) {
     if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $gstTargetArchPath }
@@ -20,33 +16,7 @@ if (Test-Path $gstTargetArchPath) {
 }
 
 function Get-RequiredGstPlugin {
-    # THE contract for which GStreamer plugin integrations must exist in a
-    # shipped image. One definition, three consumers: the GStreamer build gates
-    # on it, the smoke test asserts it, the healthcheck reports it. Those three
-    # previously disagreed, and the cost was 2026-07-11: `gst-inspect-1.0
-    # opencv|libav` exited -1 in the published winamd64 image while the
-    # healthcheck printed [PASS] for them. Nothing ever failed; the image simply
-    # shipped without the plugins.
-    #
-    # Each entry carries WHY it is mandatory and what supplies it, because a bare
-    # name gives a future maintainer no way to judge a removal request.
-    #
-    # Detection tells the pre-flight HOW upstream looks the dependency up, which
-    # is not uniform: opencv/onnx/libav go through pkg-config, tflite does not
-    # use pkg-config at all (cc.find_library + cc.has_header). Checking the wrong
-    # way would either pass vacuously or demand a .pc that nothing consumes.
-    #
-    # NOT in this list, deliberately:
-    #   tensorfilter — an NNStreamer element, NOT a GStreamer plugin. This repo
-    #     does not build NNStreamer, so it was never going to exist; it appeared
-    #     in the old probe lists purely because the lying healthcheck "found" it.
-    #     Requiring it would make every build fail forever. If NNStreamer is
-    #     wanted, that is a new source-build stage, not a plugin gate entry.
-    # -Arch selects the TARGET lane. Empty resolves through Get-WindowsTargetArch,
-    # which answers 'amd64' whenever WINDOWS_TARGET_ARCH is unset -- so every
-    # existing caller and every existing test keeps getting the same four entries
-    # in the same order. UnavailableOn is keyed by arch and no entry carries an
-    # 'amd64' key, which makes the filter provably a no-op on the native lane.
+    # The one plugin contract build, smoke test and healthcheck share; Detection says how upstream finds each dependency.
     [CmdletBinding()]
     param([string]$Arch = '')
 
@@ -77,16 +47,10 @@ function Get-RequiredGstPlugin {
             Detection = 'pkg-config'
             NeedsPc   = @('libonnxruntime')
             Why       = 'the inference path of the media stack; ORT is built with CUDA/DML/TensorRT EPs specifically so pipelines can use it'
-            # ORT is cross-built for aarch64 (CPU EP; CUDA and DML are off there,
-            # but the plugin only needs libonnxruntime itself).
+            # ORT is cross-built for aarch64; the plugin needs only libonnxruntime, not CUDA or DML.
             UnavailableOn = @{}
         },
-        # webrtc + nice (#128, 2026-08-25): the one plugin-inventory difference
-        # between the lanes (webrtc only on amd64; libnice's build-machine glib
-        # fallback needed a meson native file on cross). Both are meson-native
-        # subprojects (no external .pc, no header probe): the pre-flight has
-        # nothing to check, meson gets `enabled` for each, and the post-build
-        # DLL + gst-inspect gate proves them like every other entry.
+        # Meson-native subprojects: nothing to pre-flight, so the post-build DLL and gst-inspect gate proves them.
         [pscustomobject]@{
             Name      = 'webrtc'
             Provides  = 'webrtcbin — WebRTC peer connection inside a pipeline (gst-plugins-bad ext/webrtc)'
@@ -110,34 +74,16 @@ function Get-RequiredGstPlugin {
             Provides  = 'tfliteinference — TensorFlow Lite / LiteRT inference inside a pipeline'
             Detection = 'compiler'
             NeedsPc   = @()
-            # gst-plugins-bad ext/tflite probes the COMPILER, not pkg-config:
-            #   cc.find_library('tensorflowlite_c')  (fallback: 'tensorflow-lite')
-            #   cc.has_function('TfLiteInterpreterCreate', ...)
-            #   cc.has_header('tensorflow/lite/c/c_api.h', ...)
-            # The header path is the pre-rename TensorFlow one. LiteRT v2.x
-            # stages its headers under tflite/ (Google renamed TFLite → LiteRT),
-            # so an alias tree is required — see the pre-flight in
-            # Build-GstreamerFromSource.ps1.
+            # ext/tflite probes the compiler for the pre-rename header, so LiteRT's tflite/ tree needs an alias.
             NeedsHeader = 'tensorflow/lite/c/c_api.h'
             NeedsLib    = @('tensorflowlite_c', 'tensorflow-lite')
             Why         = 'LiteRT is built from source into this image; without this plugin nothing in a GStreamer pipeline can use it'
-            # arm64 key REMOVED 2026-08-24 (#115): media-litert now RUNS on the
-            # cross lane (plain LiteRT is pure CMake; only the LiteRT-LM stage
-            # self-skips for its Bazel reasons), tensorflowlite_c.lib is fanned
-            # into the merge, and Build-GstreamerFromSource.ps1 enables the
-            # tflite feature presence-driven. The contract is 4 on BOTH lanes
-            # again -- and per the never-auto doctrine, a cross merge where the
-            # plugin fails to build must go RED here, not quietly ship 3.
-            # (History: this key existed 2026-08-21..24 while the branch was
-            # dropped wholesale; its stated reason was corrected twice.)
+            # Required on the cross lane too: a cross merge that fails to build it must go red.
             UnavailableOn = @{}
         }
     )
 
-    # Filter, then explain. A dropped entry is logged rather than silently
-    # vanishing: "the image shipped without the plugin and nothing failed" is the
-    # documented 2026-07-11 regression, so a REMOVAL must be visible in the log
-    # of whichever consumer asked.
+    # A dropped entry is logged: a silent removal is how an image once shipped without plugins.
     $available = @($contract | Where-Object { -not $_.UnavailableOn.ContainsKey($gstArch) })
     foreach ($dropped in @($contract | Where-Object { $_.UnavailableOn.ContainsKey($gstArch) })) {
         Write-Verbose "Get-RequiredGstPlugin: '$($dropped.Name)' is not required on $gstArch - $($dropped.UnavailableOn[$gstArch])"
@@ -146,19 +92,7 @@ function Get-RequiredGstPlugin {
 }
 
 function Write-PkgConfigFile {
-    # Author a pkg-config .pc file for a CMake-installed library that ships none.
-    #
-    # WHY THIS EXISTS: GStreamer's meson finds most optional integrations ONLY
-    # through pkg-config. Two of this image's headline libraries provide no .pc
-    # file at all — OpenCV's CMake install emits pkg-config only when
-    # OPENCV_GENERATE_PKGCONFIG is on (off by default, and its name would be
-    # opencv5.pc, which `dependency('opencv4')` does not look for), and ONNX
-    # Runtime ships none on any platform. So gst-plugins-bad silently skipped the
-    # opencv and onnx plugins, and the image shipped without them for months.
-    #
-    # Paths are emitted with FORWARD slashes: pkg-config treats a backslash as an
-    # escape character, so a Windows path written natively silently mangles into
-    # an unusable -I/-L flag.
+    # Meson finds OpenCV and ORT only through .pc files they do not ship; forward slashes, as pkg-config escapes on '\'.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Name,           # module name == <Name>.pc, what dependency() looks up
@@ -169,12 +103,7 @@ function Write-PkgConfigFile {
         [Parameter(Mandatory)][string[]]$Library,      # link names WITHOUT extension
         [Parameter(Mandatory)][string]$PkgConfigDir,
         [string[]]$ExtraCflags = @(),
-        # The pkg-config `prefix` variable. Cflags/Libs below are emitted absolute
-        # (not ${prefix}-relative), so prefix is consumed ONLY by callers that read
-        # get_variable('prefix') — notably gst-plugins-bad opencv/meson.build, which
-        # derives its data dir as <prefix>/share/opencv4. Defaults to LibDir to keep
-        # existing callers unchanged; pass the install ROOT when a consumer resolves
-        # sibling data (share/, etc/) off the prefix.
+        # Read only via get_variable('prefix') (opencv's share/opencv4); pass the install root then, default LibDir.
         [string]$Prefix = ''
     )
     $fwd = { param($p) ($p -replace '\\', '/') }
@@ -198,16 +127,12 @@ function Write-PkgConfigFile {
 }
 
 function Get-LibraryLinkName {
-    # The -l names for every import library in a directory, optionally filtered.
-    # Enumerated rather than hardcoded: OpenCV with BUILD_opencv_world=OFF emits
-    # one .lib per module and the SET changes with the enabled module list, so a
-    # hand-maintained list would rot into a link error on the next OpenCV bump.
+    # Enumerated, not hardcoded: OpenCV's per-module .lib set changes with its module list.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$LibDir,
         [string]$Filter = '*.lib',
-        # Drop debug-suffixed libs (…d.lib) — pkg-config has no config concept
-        # and linking both flavours is a duplicate-symbol trap.
+        # pkg-config has no config concept, and linking both flavours duplicates symbols.
         [switch]$ExcludeDebug
     )
     if (-not (Test-Path $LibDir)) { return @() }
@@ -218,20 +143,13 @@ function Get-LibraryLinkName {
 }
 
 function Assert-PkgConfigModule {
-    # Fail-fast gate: every named module must resolve through pkg-config BEFORE
-    # meson runs. A missing one otherwise surfaces as a silently-skipped plugin
-    # after a ~60-minute configure+compile, which is how the opencv/onnx/libav
-    # gap survived unnoticed. Seconds here, an hour there.
+    # Before meson: a missing module otherwise becomes a silently skipped plugin an hour later.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Module,
         [string]$PkgConfigPath = $env:PKG_CONFIG_PATH,
         [string]$Context = 'GStreamer plugin integrations',
-        # module -> minimum version the CONSUMER demands. Checking presence alone
-        # is not enough: FFmpeg shipped seven .pc files whose `Version:` field was
-        # literally ".." (its configure found neither a VERSION file nor git
-        # tags), so `--exists` passed while every consumer constraint failed.
-        # That defect survived months precisely because the files were there.
+        # module -> minimum version the consumer demands; presence alone passes a .pc whose Version is "..".
         [hashtable]$MinimumVersion = @{}
     )
     if ($Module.Count -eq 0) { return }
@@ -249,9 +167,7 @@ function Assert-PkgConfigModule {
         $ver = (& $pkgConfig.Source '--modversion' $m 2>&1 | Select-Object -First 1)
         $wanted = $MinimumVersion[$m]
         if ($wanted) {
-            # --atleast-version does the comparison pkg-config itself would do
-            # for the consumer, so a malformed version ('..') fails here rather
-            # than surfacing an hour later as a silently skipped meson feature.
+            # The same comparison meson would make, so a malformed version fails here.
             $global:LASTEXITCODE = 0
             $null = & $pkgConfig.Source "--atleast-version=$wanted" $m 2>&1
             if ($LASTEXITCODE -ne 0) {

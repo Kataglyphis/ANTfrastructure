@@ -1,35 +1,5 @@
 #!/usr/bin/env bash
-# app-packaging.sh - generic "package a built Linux desktop app" core.
-#
-# A wrapper sets the APP_PACKAGING_* variables, sources this file and calls the
-# step functions. Sets no -e/-u/-o pipefail: sourcing must not change the
-# caller's shell options.
-#
-# Caller variables (all optional):
-#   APP_PACKAGING_APP_ID_PREFIX   reverse-DNS prefix for the app id  (org.example)
-#   APP_PACKAGING_COMMENT         .desktop Comment=                  (the app name)
-#   APP_PACKAGING_MAINTAINER      deb Maintainer:                    (Unknown <dev@localhost>)
-#   APP_PACKAGING_DESCRIPTION     deb long description               (<app> desktop application.)
-#   APP_PACKAGING_ICON_FALLBACKS  probed after web/icons/Icon-512.png
-#   APP_PACKAGING_WORKDIR         staging root, container-native     (/tmp/packaging-work)
-#   KATAGLYPHIS_FLATPAK_WORKDIR   flatpak staging root               (/tmp/flatpak-work)
-#   KATAGLYPHIS_FLATPAK_FINISH_ARGS  extra finish-args, space-separated (appended)
-#
-# Three things here were learned the hard way and must not be "simplified":
-#
-#   1. Every staging tree is container-native, never inside the mounted
-#      workspace. A bind-mounted host drive cannot chmod/fchmod for the
-#      container uid: dpkg-deb then refuses a DEBIAN directory it left at 777,
-#      appimagetool fails on its AppDir, and flatpak-builder cannot create its
-#      OSTree repo. Only finished artifacts are copied into out/.
-#   2. The flatpak step does NOT gate on flatpak-builder's exit code. The export
-#      can be complete while a later stage fails, so it asks
-#      `ostree --repo=<repo> refs` whether the app is committed. The exit code
-#      is reported, never used as the verdict.
-#   3. Nothing prints "Created: …" without app_packaging_assert_artifact. All
-#      four formats used to announce success unconditionally, so a dpkg-deb or
-#      appimagetool that had already failed still looked green with no file on
-#      disk — and that lies on every filesystem, not just a mounted one.
+# Sourced core, so it sets no shell options; knobs APP_PACKAGING_*. docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
 
 [ -n "${_APP_PACKAGING_SH_LOADED:-}" ] && return 0
 _APP_PACKAGING_SH_LOADED=1
@@ -59,9 +29,7 @@ app_packaging_run_privileged_cmd() {
   fi
 }
 
-# "Created: …" used to be printed unconditionally, so a dpkg-deb or appimagetool
-# that had already failed still reported success and the lane looked green with
-# no artifact on disk. Every packaging function ends here now — AGENTS.md § 4.
+# Every packager ends here, so a failed dpkg-deb or appimagetool never prints "Created:" over no file.
 app_packaging_assert_artifact() {
   local artifact="${1:?artifact path required}"
   if [ ! -s "$artifact" ]; then
@@ -80,15 +48,7 @@ app_packaging_ensure_appimagetool_via_antfrastructure() {
   command -v appimagetool >/dev/null 2>&1
 }
 
-# The flatpak scope rule both entry points obey: a remote is added only when
-# NEITHER scope knows it, and a ref is installed only when neither scope has it
-# (a system-wide copy is not a reason to pull a per-user one -- ~1.9 GB/arch).
-# `container` mode wraps every flatpak call in dbus-run-session and installs
-# per-user only, because the CI container user cannot write the system
-# installation; `runtime` mode installs user-first with a system fallback. The
-# two ENTRY POINTS stay separate -- apt/privilege policy differs -- this is the
-# half they must not disagree about.
-# docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
+# Adds a remote or ref only when neither scope has it: a system copy must not pull a ~1.9 GB user one.
 app_packaging_flatpak_ensure_refs() {
   local mode="${1:?mode required (container|runtime)}" arch="${2:-}"
   shift 2
@@ -132,16 +92,7 @@ app_packaging_flatpak_ensure_refs() {
 app_packaging_setup_dependencies_for_container() {
   local matrix_arch="${1:?matrix_arch required}"
 
-  # The CI image already ships these: ANTfrastructure's Dockerfile.base runs
-  # linux/scripts/02-toolchain/packaging-deps.sh, whose
-  # packaging_prerequisite_packages list is exactly dpkg / flatpak /
-  # flatpak-builder / elfutils / libfuse2(t64) / dbus-user-session / wget.
-  # Installing them again was not merely wasteful, it was impossible: the image
-  # runs as an unprivileged user with no working sudo, so this
-  # apt-get took the whole native-linux lane down on both arches.
-  #
-  # Probe instead of assume — if a future image drops one of them, apt-get is
-  # still attempted and the failure names what is missing.
+  # The CI image ships these and has no working sudo, so apt-get runs only for what is missing.
   local -a required_cmds=(dpkg flatpak flatpak-builder dbus-run-session wget)
   local -a missing_cmds=()
   local _cmd
@@ -175,10 +126,7 @@ app_packaging_setup_dependencies_for_container() {
       ;;
   esac
 
-  # Probe BOTH scopes first (CON2): the image installs flathub + the runtime
-  # pair SYSTEM-wide as root, and the container runs as uid 1001, so an
-  # unconditional --user install pulled a second per-user copy of the two
-  # largest refs (~1.9 GB per run per arch).
+  # Probe both scopes: the image installs the pair system-wide, and uid 1001 would pull a user copy.
   app_packaging_flatpak_ensure_refs container "$flatpak_arch" \
     "org.freedesktop.Platform/${flatpak_arch}/${FLATPAK_RUNTIME_VERSION}" \
     "org.freedesktop.Sdk/${flatpak_arch}/${FLATPAK_RUNTIME_VERSION}"
@@ -323,18 +271,10 @@ app_packaging_map_arch_to_appimage() {
   esac
 }
 
-# The THREE binaries both flatpak packagers need, each reported with the reason
-# the packaging step needs it: a bare "not found" names no package to install,
-# and for ostree that is the whole difficulty. IT JOINED THE LIST on 2026-09-15
-# -- the verdict is app_packaging_assert_flatpak_committed's `ostree refs`, but
-# Debian's and Ubuntu's `flatpak` depends on libostree and NOT on the CLI, so a
-# box with both other tools present passed this check and then reported "is not
-# in <repo>" over an export that had SUCCEEDED. That is what kept AccelerANTgine
-# on a local copy of this check rather than calling it.
+# ostree too: Debian's flatpak depends on libostree, not the CLI the verdict runs.
 app_packaging_require_flatpak_tools() {
   local _t _why _missing=0
-  # Every missing tool is reported, not just the first: one apt-get installs all
-  # three, so stopping at the first costs a second round trip to find the next.
+  # Report every missing tool at once: one apt-get installs all three.
   for _t in flatpak flatpak-builder ostree; do
     if command -v "$_t" >/dev/null 2>&1; then
       continue
@@ -350,10 +290,7 @@ app_packaging_require_flatpak_tools() {
   return "${_missing}"
 }
 
-# THE VERDICT for both flatpak packagers, and it is not flatpak-builder's exit
-# code: the export can be complete while a later stage fails with `fchmod:
-# Operation not permitted` on a bind-mounted host drive, and a zero exit can
-# leave an empty repo. What decides is whether the app is committed.
+# The verdict is the committed ref: flatpak-builder's exit code lies in both directions.
 app_packaging_assert_flatpak_committed() {
   local repo_dir="${1:?repo dir required}" app_id="${2:?app id required}" fb_rc="${3:-0}"
   if ! ostree --repo="$repo_dir" refs 2>/dev/null | grep -q "^app/${app_id}/"; then
@@ -382,10 +319,7 @@ app_packaging_resolve_appimagetool() {
   echo "appimagetool"
 }
 
-# Prints the first icon that exists, or nothing. The Flutter default wins:
-# web/icons/Icon-512.png is a real 512x512 PNG, which is what flatpak-builder
-# demands ("… is not a valid icon" otherwise). APP_PACKAGING_ICON_FALLBACKS is
-# probed only after it, for projects that do not ship the Flutter web icons.
+# Flutter's Icon-512.png wins: flatpak-builder demands a real 512x512 icon.
 app_packaging_detect_icon_file() {
   local candidate
   for candidate in \
@@ -423,9 +357,7 @@ X-GNOME-UsesNotifications=true
 EOF
 }
 
-# The six facts all three bundle packagers derive identically. Sets the CALLER's
-# locals by dynamic scope; each caller still declares them and adds only what is
-# its own -- deb and appimage an `arch` spelling, flatpak its manifest paths.
+# Sets the caller's locals by dynamic scope, so each caller must declare them.
 app_packaging_resolve_bundle_facts() {
   local matrix_arch="${1:?matrix_arch is required}" app_name="${2:?app_name is required}"
 
@@ -452,8 +384,7 @@ app_packaging_package_linux_bundle_deb() {
     return 1
   fi
 
-  # Staged container-native: dpkg-deb refuses a DEBIAN dir it cannot chmod to
-  # 0755, and a bind-mounted host drive silently leaves it 777 — AGENTS.md § 4.
+  # Container-native: dpkg-deb refuses the DEBIAN dir a bind-mounted drive leaves at 777.
   deb_root="${KATAGLYPHIS_PACKAGING_WORKDIR:-/tmp/packaging-work}/deb"
   rm -rf "$deb_root"
   mkdir -p "$deb_root/DEBIAN"
@@ -510,8 +441,7 @@ app_packaging_package_linux_bundle_appimage() {
   app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
   arch="$(app_packaging_map_arch_to_appimage "$matrix_arch")"
   icon_name="$package_name"
-  # Container-native for the same reason as the deb root: appimagetool chmods
-  # its AppDir, which a bind-mounted host drive refuses — AGENTS.md § 4.
+  # Container-native: appimagetool chmods its AppDir, which a bind-mounted drive refuses.
   appdir="${KATAGLYPHIS_PACKAGING_WORKDIR:-/tmp/packaging-work}/${package_name}.AppDir"
   output_name="${package_name}-${version}-${arch}.AppImage"
 
@@ -551,12 +481,7 @@ EOF
   app_packaging_assert_artifact "out/${output_name}"
 }
 
-# The manifest's finish-args block: the four args every bundle needs, plus
-# whatever KATAGLYPHIS_FLATPAK_FINISH_ARGS adds. APPENDED, never replaced -- a
-# camera needs --device=all (flatpak has no --device=video), a model loaded from
-# a user-chosen path needs a --filesystem=..., and the generated four are what
-# keep network/wayland/dri. Space-separated; each entry becomes one YAML line.
-# docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
+# KATAGLYPHIS_FLATPAK_FINISH_ARGS is appended, never replacing the four that keep network/wayland/dri.
 app_packaging_flatpak_finish_args_block() {
   local -a finish_args=(
     --share=network
@@ -580,9 +505,7 @@ app_packaging_package_linux_bundle_flatpak() {
 
   local bundle_dir version package_name app_id binary_name icon_file manifest_dir manifest_file repo_dir build_dir output_name flatpak_arch
   app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
-  # Everything flatpak touches needs fchmod, which a bind-mounted host drive
-  # refuses — manifest and files/ are staging, the repo and build tree are
-  # intermediates. Only the finished bundle belongs in out/. See AGENTS.md § 4.
+  # Everything flatpak touches needs fchmod, so stage container-native; only the bundle goes to out/.
   local flatpak_work="${KATAGLYPHIS_FLATPAK_WORKDIR:-/tmp/flatpak-work}"
   manifest_dir="${flatpak_work}/manifest"
   manifest_file="${manifest_dir}/${app_id}.yml"
@@ -634,24 +557,17 @@ modules:
         path: files
 EOF
 
-  # KATAGLYPHIS_FLATPAK_VERBOSE=1 adds -v; the packaging failure on a Windows
-  # host is not yet understood and the default output does not name the path.
+  # KATAGLYPHIS_FLATPAK_VERBOSE=1 adds -v: the default output does not name the failing path.
   local -a fb_flags=()
   [ -n "${KATAGLYPHIS_FLATPAK_VERBOSE:-}" ] && fb_flags+=(-v)
-  # The exit code is deliberately not the gate. flatpak-builder can export the
-  # app completely and still fail afterwards in `Pruning cache` with
-  # `fchmod: Operation not permitted` on a bind-mounted host drive. What decides
-  # is whether the app is committed — see AGENTS.md § 4.
+  # Not the gate: a complete export can still fail afterwards in Pruning cache on fchmod.
   local fb_rc=0
   flatpak-builder "${fb_flags[@]}" --force-clean --disable-rofiles-fuse --arch="$flatpak_arch" \
     --state-dir="${flatpak_work}/state" "$build_dir" "$manifest_file" --repo="$repo_dir" || fb_rc=$?
 
   app_packaging_assert_flatpak_committed "$repo_dir" "$app_id" "$fb_rc" || return 1
 
-  # build-bundle chmods the file it writes, which a bind-mounted host drive
-  # refuses — the failure reads as `error: fchmod: Operation not permitted` and
-  # looks like it came from the `Pruning cache` line above it. Write it
-  # container-native, then copy the finished bundle out.
+  # build-bundle chmods its output, which a bind-mounted drive refuses; stage it, then copy out.
   local staged_bundle
   staged_bundle="${flatpak_work}/$(basename "$output_name")"
   if ! flatpak build-bundle "$repo_dir" "$staged_bundle" "$app_id"; then
@@ -663,10 +579,7 @@ EOF
   app_packaging_assert_artifact "${output_name}"
 }
 
-# Resolve the flatpak architecture the same way for the runtime install and the
-# build: an explicit spelling wins, then flatpak's own default, then this file's
-# app_packaging_map_arch_to_flatpak over the OCI arch. Prints it; stdout stays
-# clean because nothing else here writes to fd 1.
+# Shared by install and build: explicit arch, then flatpak's default, then the OCI mapping.
 app_packaging_resolve_flatpak_arch() {
   local explicit="${1:-}"
   if [[ -n "$explicit" ]]; then
@@ -684,14 +597,7 @@ app_packaging_resolve_flatpak_arch() {
   app_packaging_map_arch_to_flatpak "$(arch_oci)"
 }
 
-# app_packaging_ensure_flatpak_runtime [arch] [runtime] [sdk] [runtime_version]
-#
-# flathub plus the runtime+SDK pair, for a packaging run that is NOT inside the
-# family CI image. Deliberately not app_packaging_setup_dependencies_for_container
-# (apt, privilege helper); the scope probe they share is
-# app_packaging_flatpak_ensure_refs, and every step here stays user-first with a
-# system fallback:
-# docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
+# [arch] [runtime] [sdk] [runtime_version]; outside the CI image, user-first with a system fallback.
 app_packaging_ensure_flatpak_runtime() {
   local flatpak_arch="${1:-}"
   local runtime="${2:-org.freedesktop.Platform}"
@@ -710,9 +616,7 @@ app_packaging_ensure_flatpak_runtime() {
     "${sdk}/${flatpak_arch}/${runtime_version}"
 }
 
-# CMake install rules name their files after the PROJECT; flatpak wants them
-# named after the APP ID. Renames in place when the project-named file is there,
-# and tolerates a tree that already carries the app-id name (a second run).
+# CMake names files after the project, flatpak after the app id; a second run finds them renamed.
 app_packaging_rename_installed_file() {
   local dir="${1:?directory required}" from_name="${2:?source name required}" to_name="${3:?target name required}"
   local source=""
@@ -727,9 +631,7 @@ app_packaging_rename_installed_file() {
   fi
 }
 
-# The manifest for a cmake-install payload: one `simple` module that copies the
-# staged prefix to /app. Its own function so the packager stays under the
-# function-size limit; the here-document is most of its length.
+# Split out to keep the packager under the function-size limit.
 app_packaging_write_cmake_flatpak_manifest() {
   local path="${1:?manifest path required}" app_id="${2:?app id required}"
   local runtime="${3:?runtime required}" runtime_version="${4:?runtime version required}"
@@ -762,15 +664,7 @@ app_packaging_write_cmake_flatpak_manifest() {
 MANIFEST
 }
 
-# app_packaging_package_cmake_install_flatpak <build_dir> <out_dir> <app_id>
-#   <project_name> <version_suffix> [runtime] [sdk] [runtime_version] [branch] [arch]
-#
-# The CMAKE-INSTALL twin of app_packaging_package_linux_bundle_flatpak, which
-# packages a Flutter *bundle* tree this project does not have. It obeys the three
-# conventions in this file's header: container-native staging (so <out_dir> may be
-# the build directory on a mounted workspace), ostree and not the exit code as the
-# verdict, and no success line without app_packaging_assert_artifact. Detail:
-# docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
+# <build_dir> <out_dir> <app_id> <project_name> <version_suffix> [runtime] [sdk] [runtime_version] [branch] [arch]
 app_packaging_package_cmake_install_flatpak() {
   local build_dir="${1:?build_dir is required}"
   local out_dir="${2:?out_dir is required}"
@@ -807,10 +701,7 @@ app_packaging_package_cmake_install_flatpak() {
   app_packaging_rename_installed_file "${source_dir}/app/share/metainfo" \
     "${project_name}.appdata.xml" "${app_id}.appdata.xml"
 
-  # The install can "succeed" with nothing in bin/ (a component filter, a target
-  # that was never built). flatpak-builder would then commit an app whose
-  # `command` names a file that is not there, and it would fail on a user
-  # machine instead. Fail here, naming the path that is missing.
+  # An install can succeed with nothing in bin/; fail here instead of on a user's machine.
   if [[ ! -x "${source_dir}/app/bin/${project_name}" ]]; then
     echo "Error: Flatpak staging failed: expected an executable at ${source_dir}/app/bin/${project_name}" >&2
     return 1
@@ -830,8 +721,7 @@ app_packaging_package_cmake_install_flatpak() {
 
   app_packaging_assert_flatpak_committed "$repo_dir" "$app_id" "$fb_rc" || return 1
 
-  # build-bundle chmods the file it writes, which a bind-mounted host drive
-  # refuses - write it container-native, then copy the finished bundle out.
+  # build-bundle chmods its output, which a bind-mounted drive refuses; stage it, then copy out.
   local out_name="${project_name}-${version_suffix}-linux.flatpak"
   local staged_bundle="${stage_root}/${out_name}"
   if ! flatpak build-bundle "$repo_dir" "$staged_bundle" "$app_id" "$branch"; then

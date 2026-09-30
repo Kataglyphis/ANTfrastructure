@@ -3,11 +3,6 @@
 
 #requires -Version 7.0
 
-# PSSA suppression, justified: the Test-Connection below is a deliberate
-# network-reachability probe against a fixed public host before the multi-GB
-# VS Build Tools download — no system information is exposed. (This edit
-# rides in a base-layer window: Install-Vs.ps1 is COPY'd before the VS layer,
-# so touching it re-pays the VS install.)
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingComputerNameHardcoded', '', Justification = 'reachability probe against a fixed public host')]
 param(
     [string]$TempDir       = 'C:\temp'
@@ -17,36 +12,23 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference    = 'SilentlyContinue'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $installerModulePath = Join-Path $scriptAssetRoot 'modules\WindowsInstaller.Common.psm1'
 if (-not (Test-Path $installerModulePath)) { throw "Required module not found: $installerModulePath" }
 Import-Module $installerModulePath -Force
 
-# For Assert-Elevated (the one home of the admin gate). Allowed here:
-# WindowsScripts.Shared is the first of the three modules COPY'd into
-# C:\temp\scripts\modules by Dockerfile.base before this script runs.
+# Dockerfile.base copies only this script's three modules into the VS layer; import no other.
 $sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
 if (-not (Test-Path $sharedModulePath)) { throw "Required module not found: $sharedModulePath" }
 Import-Module $sharedModulePath -Force
 
-# For Resolve-VsBuildToolsRoot (shared VsDevCmd probe, also used by the smoke test).
-# Allowed here: WindowsContainerImage.Common is one of the three modules COPY'd
-# into Dockerfile.base BEFORE the setup-* scripts run.
 $containerImageModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
 if (-not (Test-Path $containerImageModulePath)) { throw "Required module not found: $containerImageModulePath" }
 Import-Module $containerImageModulePath -Force
 
-# Admin-Check. Assert-Elevated throws (not Write-Error+exit: under EAP=Stop
-# Write-Error is itself terminating, which made the old `exit 1` dead code).
-# WindowsScripts.Shared is COPY'd into C:\temp\scripts\modules beside this
-# script in Dockerfile.base, so the import holds inside the VS layer too.
 Assert-Elevated -Reason 'the VS Build Tools installer needs it'
 
-# Single source for the VS major: previously computed twice, 100 lines apart,
-# with the same '18' fallback — a drift between the two was a live bug waiting.
 $script:VsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
 
 function Write-InstallerLogDump {
@@ -86,12 +68,7 @@ function Write-InstallerLogDump {
     try { Test-Connection -ComputerName www.microsoft.com -Count 1 -ErrorAction Stop | Select-Object Address,ResponseTime } catch { Write-Host "Network check failed: $($_.Exception.Message)" }
 }
 
-# (TLS 1.2 is set per-attempt by Invoke-DownloadWithRetry -- no separate
-# Enable-Tls12ForDownloads needed; nothing else here downloads.)
-
-# Prepare temp directory for installer logs
-
-# ensure we run the installer with the temp dir we control
+# The installer writes its logs to TEMP, where Write-InstallerLogDump reads them.
 $env:TEMP = $TempDir
 $env:TMP  = $TempDir
 
@@ -99,22 +76,12 @@ Write-Host "Using TEMP=$env:TEMP for installer temporary files and logs."
 New-Item -Path $TempDir -ItemType Directory -Force | Out-Null
 $installer = Join-Path $TempDir 'vs_buildtools.exe'
 
-# Optionale ENV-Variablen analog Dockerfile
-
-# Pre-declare: the finally below reads $proc, and a failure before Start-Process
-# (download, arg building) would otherwise leave it unset — under StrictMode the
-# finally would then throw and REPLACE the real exception.
+# The finally reads $proc; unset under StrictMode it would throw and replace the real exception.
 $proc = $null
 
 try {
     Write-Host 'Downloading Visual Studio Build Tools Installer...'
-    # Prefer the major-pinned channel (aka.ms/vs/<major>/release) so a VS major bump
-    # can never ride in silently — but Microsoft publishes that alias LATE for new
-    # majors (for 18 it still bounces to a Bing HTML page, which the MZ guard
-    # rejects), so fall back to aka.ms/vs/stable with a loud warning. The VsDevCmd
-    # major sanity check below still catches a silent stable->19 flip. A hard SHA256
-    # pin is deliberately NOT used (the bootstrapper refreshes within a channel every
-    # few weeks); the actual hash is LOGGED for provenance instead.
+    # The major-pinned alias is published late for new majors, so stable is the fallback; no SHA pin, the bootstrapper refreshes in-channel.
         $vsUrls = @(
         "https://aka.ms/vs/$script:VsMajor/release/vs_buildtools.exe",
         'https://aka.ms/vs/stable/vs_buildtools.exe'
@@ -122,10 +89,7 @@ try {
     $vsDownloaded = $false
     foreach ($vsUrl in $vsUrls) {
         try {
-            # -ExpectSignature MZ rejects-and-retries HTML pages served in place of the
-            # binary (missing alias / flaky aka.ms redirect — same class as the nuget bug).
-            # 3 pinned attempts (#79): budget 2 once lost the pinned alias to a
-            # transient aka.ms hiccup and silently degraded to floating stable.
+            # MZ rejects an HTML page served in place of the binary; 3 pinned attempts ride out a transient aka.ms hiccup.
             $attempts = if ($vsUrl -match 'stable') { 4 } else { 3 }
             Invoke-DownloadWithRetry -Url $vsUrl -DestinationPath $installer `
                 -Description "VS Build Tools installer ($vsUrl)" -ExpectSignature MZ -MaxAttempts $attempts
@@ -149,39 +113,22 @@ try {
 
         '--add', 'Microsoft.VisualStudio.Workload.MSBuildTools',              # Core MSBuild toolset
         '--add', 'Microsoft.VisualStudio.Workload.VCTools',                   # C++ desktop build tools
-        #'--add', 'Microsoft.VisualStudio.Workload.AzureBuildTools',          # Azure development build tools
-        #'--add', 'Microsoft.VisualStudio.Workload.UniversalBuildTools',       # UWP build tools
-        #'--add', 'Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools', # .NET desktop build tools
 
         # Core Build Components
 
         '--add', 'Microsoft.Component.MSBuild',                              # MSBuild compiler
         '--add', 'Microsoft.VisualStudio.Component.CoreBuildTools',          # Core build utilities
-        # '--add', 'Microsoft.VisualStudio.Component.TextTemplating',        # T4 text template engine
-        
+
         # Windows SDK & Native Desktop
 
         '--add', "Microsoft.VisualStudio.Component.Windows11SDK.$(if ($env:WINDOWS_SDK_BUILD) { $env:WINDOWS_SDK_BUILD } else { '26100' })", # Windows 11 SDK
-        # '--add','Microsoft.VisualStudio.Workload.NativeDesktop',           # only for full GUI functionality 
-                                                                             # NOT for CICD
 
         # LLVM/Clang
 
         '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.Clang',           # Clang compiler for Windows
         '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset',    # Clang-cl toolset
 
-        # ARM64 target support (2026-08-22)
-        #
-        # This is installed for its LIBRARIES, not its compiler. Every stage of
-        # this chain compiles with clang-cl and links with lld-link; the bundled
-        # Hostx64\arm64\cl.exe is never invoked. But clang-cl targets the MSVC
-        # ABI, so an aarch64-pc-windows-msvc build links against Microsoft's
-        # ARM64 CRT and import libraries (VC\Tools\MSVC\<v>\lib\arm64) -- which
-        # ship ONLY with this component. Without it, cross-compiling produces
-        # objects that cannot be linked.
-        #
-        # The Windows SDK component above is architecture-complete and already
-        # carries Lib\<ver>\um\arm64, so no SDK change is needed alongside this.
+        # ARM64 target: installed for its CRT and import libs, which clang-cl's MSVC-ABI cross links need; its cl.exe is never run
         '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',          # MSVC ARM64 CRT + import libs (cross target)
 
         # VC++ Analysis & Tools
@@ -193,26 +140,13 @@ try {
         
         '--add', 'Microsoft.VisualStudio.Component.VC.CoreBuildTools',       # C++ core build tools
         '--add', 'Microsoft.VisualStudio.Component.VC.CoreIde',              # C++ core IDE features
-        # MUST stay explicit (2026-09-19): the VCTools workload alone stopped
-        # REGISTERING this component on the VS stable channel while its files
-        # stayed on disk, and CPython's find_msbuild.bat requires exactly this
-        # id via vswhere -- the toolchain died 80 min into the chain. The x64
-        # assertion below now gates it at base time.
+        # Explicit: the VCTools workload alone may not register it, and CPython's find_msbuild.bat asks vswhere for it
         '--add', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'         # MSVC v143 compiler (x86/x64)
-        # '--add', 'Microsoft.VisualStudio.Component.VC.Redist.14.Latest',   # C++ redistributable
-        
-        # VC++ Libraries
-        
-        # '--add', 'Microsoft.VisualStudio.Component.VC.ATL',                 # Active Template Library
-        # '--add', 'Microsoft.VisualStudio.Component.VC.ATLMFC',              # MFC library support
-        # '--add', 'Microsoft.VisualStudio.Component.VC.CLI.Support'          # C++/CLI support
-        
-        
+
+
         # .NET
         '--add','Microsoft.NetCore.Component.SDK',                            # .NET SDK (dotnet tools)
         '--add','Microsoft.VisualStudio.Component.NuGet.BuildTools'           # NuGet Package Manager / restore tools
-        # '--add', 'Microsoft.VisualStudio.Component.Roslyn.Compiler',        # C#/VB managed compiler
-        # '--add', 'Microsoft.VisualStudio.Component.Roslyn.LanguageServices' # C#/VB language services
 
     )
 
@@ -240,22 +174,12 @@ try {
         Write-Host 'Installation succeeded.'
     }
 
-    # VS major from versions.env's VISUAL_STUDIO_VERSION (reaches this pre-load-versions
-    # layer as a --build-arg, same route as WINDOWS_SDK_BUILD above). Probe via the
-    # shared Resolve-VsBuildToolsRoot so this check and the smoke test can never
-    # diverge on which Program Files roots they accept.
+    # The smoke test probes through the same resolver, so both accept the same Program Files roots.
     $vsBuildToolsRoot = Resolve-VsBuildToolsRoot -VsMajor $script:VsMajor
     if ($vsBuildToolsRoot) {
         Write-Host "VsDevCmd found ($vsBuildToolsRoot)."
 
-        # Hard gate on the x64 MSVC component REGISTRATION (2026-09-19).
-        # CPython's PCbuild\find_msbuild.bat requires
-        # Microsoft.VisualStudio.Component.VC.Tools.x86.x64 through vswhere;
-        # the VS stable channel stopped registering it while the files stayed
-        # on disk, so the toolchain stage died with "Failed to find MSBuild"
-        # ~80 minutes into the chain. Assert the QUERY, not the files: a file
-        # check passes on the broken shape. x64 is load-bearing on BOTH lanes
-        # (CPython is built x64 for the cross lane too), hence a throw.
+        # Assert the vswhere registration, not the files: they can stay on disk unregistered, and CPython needs x64 on both lanes.
         $vswhereExe = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
         $x64Registered = ''
         if (Test-Path $vswhereExe) {
@@ -270,28 +194,13 @@ try {
         }
         Write-Host "MSVC x64 component registered ($x64Registered)."
 
-        # Hard gate on the ARM64 cross-target LIBRARIES (2026-08-22).
-        #
-        # Asserted here, in the layer that installs them, because a silently
-        # dropped VS component otherwise surfaces hours later as an opaque
-        # link error deep in a media build -- the failure class every gate in
-        # this repo exists to convert into one clear message.
-        #
-        # NB this deliberately checks lib\arm64, NOT bin\Hostx64\arm64\cl.exe:
-        # we never invoke that compiler (the chain is clang-cl + lld-link), and
-        # a cl.exe probe would pass even if the libraries -- the part that is
-        # actually load-bearing for a cross link -- were missing.
+        # Checks lib\arm64, not the arm64 cl.exe: the libraries are what a clang-cl cross link needs.
         $msvcLibArm64 = Get-ChildItem -Path (Join-Path $vsBuildToolsRoot 'VC\Tools\MSVC') -Directory -ErrorAction SilentlyContinue |
             ForEach-Object { Join-Path $_.FullName 'lib\arm64\libcmt.lib' } |
             Where-Object { Test-Path $_ } |
             Select-Object -First 1
         if (-not $msvcLibArm64) {
-            # WARN, not throw: this base image is SHARED by both lanes, so an
-            # arm64-only prerequisite must never block an amd64 build.
-            # WINDOWS_ARM64_STRICT=1 opts into the hard gate (same shape as
-            # CUDA_STACK_STRICT). The installer log dump is deliberately kept on
-            # the strict path only - it is multi-hundred lines and would drown
-            # a routine amd64 build in noise.
+            # Warn, not throw: the base image is shared, so an arm64-only prerequisite must not block amd64.
             $msg = ('MSVC ARM64 libraries missing (no VC\Tools\MSVC\<ver>\lib\arm64\libcmt.lib under ' +
                     "$vsBuildToolsRoot). The VC.Tools.ARM64 component did not install; " +
                     'clang-cl cannot link an aarch64-pc-windows-msvc target without it.')
@@ -303,10 +212,7 @@ try {
         } else {
             Write-Host "MSVC ARM64 cross libraries present ($msvcLibArm64)."
         }
-        # Success-path scrub: the installer leaves dd_setup_* / *vs_installer*.log
-        # behind in $TempDir, and they would otherwise ride along in the committed
-        # layer. Failure paths deliberately KEEP them — they are the evidence
-        # Write-InstallerLogDump prints (same pattern as preserving the installer).
+        # Only the success path scrubs the logs; failure paths keep them as evidence.
         Get-ChildItem -Path $TempDir -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -like 'dd_setup_*' -or $_.Name -like '*vs_installer*.log' } |
             Remove-Item -Force -ErrorAction SilentlyContinue
@@ -318,12 +224,10 @@ try {
     }
 }
 finally {
-    # Clean up any lingering VS installer processes
     Get-Process -Name '*vs_installer*', '*vs_buildtools*', '*vs_setup*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host 'Cleaned up lingering VS installer processes'
 
-    # On failure keep the installer for analysis; on success remove it so it does
-    # not ride along in the base layer.
+    # Kept on failure for analysis, removed on success so it does not ride in the base layer.
     if ($proc -and ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010)) {
         Write-Host "Installer was not deleted (left for analysis at $installer)."
     } elseif (Test-Path $installer) {

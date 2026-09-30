@@ -1,22 +1,5 @@
 #!/usr/bin/env bash
-# cross-env-doctor.sh — validate the cross-compilation environment contract.
-#
-# Usage (executable):
-#   TARGET_ARCH=riscv64 linux/scripts/01-core/cross-env-doctor.sh
-#   linux/scripts/01-core/cross-env-doctor.sh riscv64
-# Usage (sourced):
-#   source cross-env-doctor.sh && cross_env_doctor riscv64
-#
-# What it does:
-#   1. Sources cross-env.sh and runs setup_linux_cross_env for TARGET_ARCH
-#      (from arg 1 or the environment). BUILD_MODE defaults to "cross" here —
-#      the doctor exists to diagnose the cross path.
-#   2. Validates the Tier-1 contract vars are set and CC/CXX are executable.
-#   3. Prints the effective config table, including the Tier-2 rust/cmake
-#      derivations.
-#   4. Compiles a tiny C program with $CC and asserts the output ELF machine
-#      matches the target architecture.
-#   5. Exits nonzero with a consolidated failure list.
+# cross-env-doctor.sh [arch] (or sourced: cross_env_doctor [arch]): checks the cross env contract and a compiled ELF's machine.
 
 _CROSS_DOCTOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -26,15 +9,12 @@ _doctor_kv() {
   printf '  %-38s = %s\n' "$1" "${2:-<unset>}"
 }
 
-# Print a dynamically named variable (e.g. CARGO_TARGET_..._LINKER).
 _doctor_kv_indirect() {
   local name="$1"
   _doctor_kv "${name}" "${!name-}"
 }
 
-# Step 1: target selection + env setup. Appends a failure description to the
-# nameref'd array if the requested arch is invalid, cross is inactive, or
-# setup_linux_cross_env fails.
+# Each phase appends failure descriptions to the nameref'd array.
 _doctor_phase_target_setup() {
   local -n _dpts_failures="$1"
   local target_arch="$2"
@@ -48,8 +28,6 @@ _doctor_phase_target_setup() {
   fi
 }
 
-# Step 2: Tier-1 contract vars. Verifies required vars are set and that CC/CXX
-# point to executable binaries. Appends one failure per missing/broken var.
 _doctor_phase_tier1_contract() {
   local -n _dpt1_failures="$1"
   local var
@@ -67,8 +45,6 @@ _doctor_phase_tier1_contract() {
   done
 }
 
-# Step 3: effective config table (Tier 1, rust derivations, cmake derivations).
-# Pure printing; no failures.
 _doctor_phase_config_table() {
   local rust_env_upper rust_env_lower bare_dir
 
@@ -108,9 +84,6 @@ _doctor_phase_config_table() {
   done
 }
 
-# Step 4: compile a hello-world C program with $CC and assert the output ELF
-# machine field matches the target architecture. Appends a failure description
-# on any error (CC unset, compile failure, readelf missing, machine mismatch).
 _doctor_phase_compile_smoke() {
   local -n _dpcs_failures="$1"
 
@@ -146,7 +119,6 @@ _doctor_phase_compile_smoke() {
   fi
 }
 
-# Step 5: print a consolidated verdict. Returns 1 on failures, 0 on success.
 _doctor_phase_verdict() {
   local -n _dpv_failures="$1"
   if [ "${#_dpv_failures[@]}" -gt 0 ]; then
@@ -167,6 +139,7 @@ cross_env_doctor() {
   target_arch="$(default_target_arch "${1:-}")"
   local -a failures=()
 
+  # The doctor exists to diagnose the cross path.
   export BUILD_MODE="${BUILD_MODE:-cross}"
 
   printf '== cross-env doctor ==\n'
@@ -180,7 +153,6 @@ cross_env_doctor() {
   _doctor_phase_verdict        failures
 }
 
-# Executed directly (not sourced): run the doctor.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   set -euo pipefail
   cross_env_doctor "$@"

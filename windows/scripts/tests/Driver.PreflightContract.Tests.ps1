@@ -1,7 +1,5 @@
 #requires -Version 7.0
-# Backlog 0c, single-driver since 2026-08-31: this suite owned PARITY between build.ps1
-# and Build-Buildkit.ps1 until the classic driver was deleted. What survives is the half
-# that still bites — a preflight gate silently added or dropped in the one driver left.
+# A preflight gate silently added to or dropped from Build-Buildkit.ps1 fails here.
 
 
 Describe 'driver preflight contract (Build-Buildkit.ps1)' {

@@ -47,6 +47,7 @@ Start at
 | Linux container builds | `docs/linux-build-basics.md` |
 | clang-format / clang-tidy / cmake-format and the canonical configs | `docs/code-quality-tooling.md` |
 | The five shell-safety bug classes | ANTfrastructure `AGENTS.md` § *Shell safety conventions* |
+| Code comments: one line, only the why; API docs short; gated | ANTfrastructure `AGENTS.md` § *Comments: one line, only the why* |
 
 Two facts worth stating here because they bite immediately, not because this
 repo owns them:

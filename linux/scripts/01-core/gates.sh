@@ -1,30 +1,7 @@
 #!/usr/bin/env bash
-# gates.sh - "run every gate, then fail once" for shell drivers.
+# Run every gate, then fail once. docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
 
-# Three repos re-invented this independently (GATE_FAILURES, FAILED=1,
-# $script:GateFailures): every tool RUNS even after an earlier one fails, and
-# the exit status is decided once, at the end. Stopping at the first failure
-# costs one push per finding.
-#
-#   gate_reset [label]      start a batch (clears the counters)
-#   run_gate <name> cmd...  run one gate; a non-zero exit is RECORDED
-#   gate_skip <name> [why]  record a gate that COULD NOT run, and why
-#   assert_gates [--tolerate-skips]
-#                           0 when all passed; 1 naming every failure or skip
-
-# `|| FAILED=1` RECORDS a failure, it does not swallow one - but only because
-# assert_gates re-raises it. run_gate without a closing assert_gates is
-# suppression wearing a costume, so assert_gates fails when NO gate ran at all:
-# an aggregator that graded nothing must not report green.
-# docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
-
-# THE THIRD BUCKET (2026-09-09). A gate can also be UNRUNNABLE - its tool is not
-# installed - which is neither a pass nor a failure. Counting it as a pass is
-# the suppression this file exists to prevent, so gate_skip records it instead.
-# A skipped gate never makes an otherwise-empty batch green, and it is RED BY
-# DEFAULT: tolerating one is an explicit, greppable --tolerate-skips, because
-# "allowed to fail" is exactly what the fleet rule forbids as a default.
-# docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
+# A batch where nothing ran is never green, and a skip is red unless assert_gates gets --tolerate-skips.
 
 [ -n "${_GATES_SH_LOADED:-}" ] && return 0
 _GATES_SH_LOADED=1
@@ -41,9 +18,7 @@ gate_reset() {
   _GATE_LABEL="${1:-gates}"
 }
 
-# run_gate <name> <command> [args...]
-# Never returns non-zero for a FAILING gate - that is the point; it returns 2
-# only for a caller error (no command), which is a bug, not a finding.
+# run_gate <name> <cmd...>: returns 0 even when the gate fails (assert_gates re-raises), 2 on caller error.
 run_gate() {
   local name="${1:?gate name required}"
   shift
@@ -54,11 +29,7 @@ run_gate() {
   _GATE_RAN=$((_GATE_RAN + 1))
   printf '\n== %s ==\n' "${name}"
   local status=0
-  # SUBSHELL, and not a bare "$@": upstream check helpers report failure
-  # with err(), which is `exit 1`. Called directly that exit unwinds THIS
-  # shell, so the driver dies before assert_gates - every finding already
-  # recorded is lost and the batch never prints a verdict. The subshell
-  # contains it, so "run every gate, then fail once" holds for those too.
+  # Subshell: helpers that fail via err() (exit 1) would otherwise kill the driver before assert_gates.
   ( "$@" ) || status=$?
   if [ "${status}" -eq 0 ]; then
     printf '== %s: ok ==\n' "${name}"
@@ -69,10 +40,7 @@ run_gate() {
   return 0
 }
 
-# gate_skip <name> [reason...]
-# For a gate that was NOT run and therefore graded nothing. The reason is part
-# of the record on purpose: "skipped" without one is indistinguishable from a
-# gate somebody quietly deleted.
+# gate_skip <name> [reason...]: a skip without a reason reads like a quietly deleted gate.
 gate_skip() {
   local name="${1:?gate name required}"
   shift

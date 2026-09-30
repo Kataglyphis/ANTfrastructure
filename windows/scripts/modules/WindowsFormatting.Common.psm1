@@ -2,10 +2,7 @@ Set-StrictMode -Version Latest
 #requires -Version 7.0
 
 
-# The uv venv lifecycle (health-check, recreate, requirements install) lives in
-# WindowsUv.Common - single source of truth instead of a per-module variant.
-# No -Force when already loaded: a nested force-reimport moves the module's
-# exports out of the global session state on Windows PowerShell 5.1.
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 if (-not (Get-Module -Name 'WindowsUv.Common')) {
   Import-Module (Join-Path $PSScriptRoot 'WindowsUv.Common.psm1')
 }
@@ -16,8 +13,7 @@ if (-not (Get-Module -Name 'WindowsBuild.Common')) {
 
 $script:CppExtensions = @('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.ixx')
 
-# One enumeration policy for tracked sources: git ls-files fast path, else a
-# Get-ChildItem fallback. Private; the public wrappers pass pathspec + predicate.
+# git ls-files fast path, else a Get-ChildItem walk; the public wrappers pass pathspec and predicate.
 function Get-ProjectSourceFiles {
   param(
     [Parameter(Mandatory)]
@@ -39,29 +35,18 @@ function Get-ProjectSourceFiles {
           Where-Object {
             ($_.ToString() -notmatch '\\build([\\-]|\\)') -and
             ($_.ToString() -notmatch '\\(ExternalLib|third_party)\\') -and
-            # -notmatch, not -match. This read `-match '\\_deps\\'` until
-            # 2026-07-20, which inverted the intent: it kept ONLY files under a
-            # CMake _deps/ directory and dropped every project source. _deps is
-            # untracked, so `git ls-files` returned nothing and the whole
-            # clang-format step silently formatted zero files - which is why
-            # the formatting drift never shrank no matter how often the step
-            # ran.
+            # -notmatch: -match here keeps only _deps and silently formats zero files.
             ($_.ToString() -notmatch '\\_deps\\') -and
             ($_.ToString() -notmatch '\\vcpkg_installed\\')
           })
         return @($trackedPaths | Sort-Object -Unique)
       }
     } catch {
-      # Best-effort: fall through to the filesystem enumeration below.
       Write-Verbose "git ls-files enumeration failed: $($_.Exception.Message)"
     }
   }
 
-  # This fallback is NOT rare: the container receives sources by tar-pipe, so
-  # there is no .git directory, `git ls-files` fails, and everything below is
-  # what actually selects files during a containerized build. It must exclude
-  # at least as much as the git path above - Python virtualenvs vendor C
-  # headers (lxml, numpy) that are emphatically not our sources.
+  # The usual path in a tar-piped container (no .git), so it must exclude at least as much, venvs included.
   $files = Get-ChildItem -Path $WorkspacePath -Recurse -File -ErrorAction SilentlyContinue |
     Where-Object {
       (& $FileFilter $_) -and
@@ -82,10 +67,7 @@ function Get-ProjectCmakeFiles {
   param(
     [Parameter(Mandatory)]
     [string]$WorkspacePath,
-    # Extra regexes a project excludes on top of the built-in build/_deps/vendor
-    # set. A consumer whose tree has its own generated CMake (a packaging
-    # staging dir, a patch shim) had to re-implement the whole enumeration to
-    # drop it; now it passes a pattern.
+    # Extra regexes excluded on top of the built-in build/_deps/vendor set.
     [string[]]$ExcludePattern = @()
   )
 
@@ -110,10 +92,7 @@ function Get-ProjectCppFiles {
     -FileFilter { param($f) $script:CppExtensions -contains $f.Extension.ToLowerInvariant() })
 }
 
-# Thin adapter kept for caller compatibility: the venv health-check/recreate
-# and requirements install now live in WindowsUv.Common (Initialize-UvVenv +
-# Install-UvRequirements). Same name, same signature, same return value (the
-# venv's python.exe path).
+# Adapter over WindowsUv.Common kept for callers; returns the venv's python.exe path.
 function Initialize-UvVenvPython {
   param(
     [Parameter(Mandatory)]
@@ -122,11 +101,7 @@ function Initialize-UvVenvPython {
     [string]$WorkspacePath,
     [string]$PythonVersion = '3.12',
     [string]$EnvName = '.venv',
-    # The requirements file to install into the venv. Default (empty) keeps
-    # today's behaviour: <workspace>/requirements.txt, skipped when absent. A
-    # caller that only needs cmake-format points this at the hub's pinned
-    # linux/scripts/cmake-format.requirements.txt instead of installing a
-    # project's whole dependency set to get one formatter.
+    # Default <workspace>/requirements.txt if present; cmake-format alone needs only linux/scripts/cmake-format.requirements.txt.
     [string]$RequirementsPath = ''
   )
 
@@ -163,9 +138,7 @@ function Invoke-CmakeFormatStep {
     [pscustomobject]$Context,
     [Parameter(Mandatory)]
     [string]$WorkspacePath,
-    # Report instead of rewriting. A gate judges the tree as COMMITTED: with
-    # --in-place the step can only ever pass and the change turns up in someone
-    # else's `git status`. The Linux twin has said so since it was corrected.
+    # Report instead of rewriting: with --in-place a gate can only pass and the change lands in someone's git status.
     [switch]$Check,
     [string]$RequirementsPath = '',
     [string[]]$ExcludePattern = @()
@@ -235,19 +208,8 @@ function Invoke-ClangFormatStep {
 <#
 .SYNOPSIS
   Reports how many sources deviate from .clang-format WITHOUT rewriting them.
-
 .DESCRIPTION
-  Invoke-ClangFormatStep runs `clang-format -i`, which rewrites in place. That
-  makes it unusable as a routine check here: 72 of 125 own sources under Src/
-  and Test/ currently deviate (measured 2026-07-19), so running it would
-  produce one enormous reformatting commit as a side effect of asking a
-  question. Whether to take that sweep is a deliberate decision - it collides
-  with everything in flight and wants a .git-blame-ignore-revs entry.
-
-  This uses `--dry-run -Werror`, which changes nothing and exits non-zero per
-  deviating file, so drift can be tracked over time. It deliberately does NOT
-  fail the build: with a known 72-file backlog a failing gate would be
-  switched off within a day. Make it fail only once the count is near zero.
+  Deliberately not failing: with a large known backlog a failing gate would be switched off; make it fail near zero.
 #>
 function Invoke-ClangFormatCheck {
   param(
@@ -278,18 +240,7 @@ function Invoke-ClangFormatCheck {
 
   $deviating = New-Object System.Collections.Generic.List[string]
 
-  # clang-format --dry-run -Werror exits non-zero for every deviating file -
-  # that IS the signal here, not an error. PowerShell 7.3+ defaults
-  # $PSNativeCommandUseErrorActionPreference to true, so under the build's
-  # $ErrorActionPreference = 'Stop' each deviating file would throw and abort
-  # the step on the first hit.
-  # Every deviating file makes clang-format exit non-zero AND write to stderr,
-  # and here both are the expected signal rather than a failure. Getting that
-  # past PowerShell took two tries: PowerShell 7.3+ turns a non-zero native
-  # exit into a throw under $ErrorActionPreference='Stop', and Windows
-  # PowerShell 5.1 (which the build container runs) turns redirected native
-  # stderr into a terminating ErrorRecord. Dispatching through cmd.exe sidesteps
-  # both - cmd swallows the output and only the exit code comes back.
+  # Via cmd.exe: the expected non-zero exit and stderr would otherwise throw under Stop in PS 7.3+ and 5.1.
   foreach ($cppFile in $cppFiles) {
     $quoted = '"{0}" --dry-run -Werror "{1}" >nul 2>nul' -f $clangFormatSource, $cppFile
     & cmd.exe /c $quoted
@@ -308,10 +259,7 @@ function Invoke-ClangFormatCheck {
   }
 }
 
-# Tracked .dart files, vendored trees excluded. `dart format .` must not be used
-# on Windows: it walks .git/modules, and a deep vendored submodule gitdir
-# overruns MAX_PATH, so the listing throws and the gate dies before formatting
-# anything. Docs: docs/windows-reference.md.
+# Not `dart format .`: it walks .git/modules, where a deep submodule gitdir overruns MAX_PATH.
 function Get-ProjectDartFiles {
   param(
     [Parameter(Mandatory)]

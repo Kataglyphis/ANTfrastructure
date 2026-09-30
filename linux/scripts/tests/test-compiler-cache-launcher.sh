@@ -1,35 +1,10 @@
 #!/usr/bin/env bash
-# Tests for 01-core/common.sh compiler_cache_launcher — the function whose
-# STDOUT becomes CC/CXX.
-#
-# WHY THIS SUITE EXISTS (2026-08-26)
-# ----------------------------------
-# compiler_cache_launcher returns the launcher NAME on stdout and callers do
-# CC="$(compiler_cache_launcher) gcc". The helpers it calls log with info(),
-# which writes to fd 1 (logging.sh:77) — so an unredirected helper leaks its
-# log line into the command substitution. That shipped for exactly one build:
-# GCC was configured with
-#   CC="[INFO] Using sccache with SCCACHE_DIR=... (cap 30G)sccache gcc"
-# and died as "configure: error: C compiler cannot create executables", a
-# message that points nowhere near the actual cause.
-#
-# These tests assert the CONTRACT rather than the implementation: whatever the
-# function prints on stdout must be a bare launcher name, and nothing else.
+# compiler_cache_launcher's stdout becomes CC/CXX, so it must be a bare name; info() writes to fd 1.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
-# Load only the function under test, with stub helpers around it, so the suite
-# stays a pure unit test (no apt, no sccache server, no network).
-# $1 (optional): a directory to present as _COMMON_SH_DIR. The function under
-# test looks for its guarded launcher there, and common.sh:6 sets that variable
-# when the module is really sourced. Extracting the function with sed leaves it
-# UNSET, and the suite runs under `set -u` -- so from c42091e (2026-08-26, the
-# commit that added the launcher lookup) every case died on
-#   _COMMON_SH_DIR: unbound variable
-# and reported an empty stdout instead of testing anything. The suite written to
-# catch a stdout leak was itself dead the day after it landed; caught 2026-08-27
-# by preflight, which the `2 check(s) failed` / exit-0 bug had also been hiding.
+# Only the function, helpers stubbed; [dir] stands in for _COMMON_SH_DIR, which extraction leaves unset under set -u.
 _load_launcher() {
   _COMMON_SH_DIR="${1:-${TMPDIR:-/tmp}/ccl-empty.$$}"
   mkdir -p "${_COMMON_SH_DIR}"
@@ -88,9 +63,7 @@ case "${_out}${_out2}" in
   *)                     t_assert_eq "ok" "ok" ;;
 esac
 
-# ── mutation check: prove the test can actually FAIL ─────────────────────────
-# A guard that cannot fail is worse than none, so demonstrate the detector
-# fires on the exact pre-fix behaviour (helper stdout NOT redirected).
+# ── mutation check: the detector must fire on an unredirected helper ─────────
 t_case "MUTATION: an unredirected helper is detected as pollution"
 _leaky="$(
   source "${TESTS_DIR}/../01-core/logging.sh"
@@ -105,12 +78,7 @@ case "${_leaky}" in
 esac
 
 
-# ── the address must reach the shell that runs the COMPILES (YB) ─────────────
-# compiler_cache_launcher is always resolved with $( ), and a subshell cannot
-# export to its parent, so the sccache server address set inside it never
-# reached ninja: every client fell back to TCP 4226 and rootless BuildKit steps
-# were served by each other's server. compiler_cache_launcher_env is the one
-# owner of the parent-shell half.
+# ── the address must reach the compiling shell (YB): a $( ) subshell cannot export to its parent ──
 _load_env_fn() {
   # shellcheck disable=SC1090
   source "${TESTS_DIR}/../01-core/logging.sh"
@@ -174,8 +142,7 @@ while IFS=: read -r _f _n _; do
     */tests/*|*/01-core/common.sh|*/01-core/compiler-cache.sh) continue ;;
   esac
   [ -n "${_n}" ] || continue
-  # The owner is called guarded (2>/dev/null || true): 01-core may be absent, and a
-  # bare call there is rc 127 under set -e where the line below degrades to ccache.
+  # Called guarded: without 01-core a bare call is rc 127 under set -e.
   if [ "$(sed -n "$((_n - 1))p" "${_f}" | tr -d ' \t')" != "compiler_cache_launcher_env2>/dev/null||true" ]; then
     _unpaired="${_unpaired} ${_f}:${_n}"
   fi
@@ -190,27 +157,19 @@ t_assert_eq \
   "without it these stages run BARE sccache, where an sccache fault ABORTS the build"
 
 t_case "every production call to compiler_cache_launcher_env tolerates 01-core being absent"
-# Four of these files document running without 01-core, and each call sits directly
-# above `compiler_cache_launcher 2>/dev/null || echo ccache` -- a fallback that exists
-# BECAUSE the function may be missing. A bare call there is rc 127 under set -e.
+# Each call sits above a ccache fallback that exists because 01-core may be absent.
 _unguarded="$(grep -rn 'compiler_cache_launcher_env' "${TESTS_DIR}/.." --include='*.sh' \
   | grep -v '/tests/' | grep -v '01-core/common.sh' | grep -v '2>/dev/null || true' || true)"
 t_assert_eq "" "${_unguarded}" "unguarded call site(s) would abort the stage instead of degrading to ccache"
 
-# ── the media half: media_compiler_launcher (backlog F3) ─────────────────────
-# build-ffmpeg.sh and build-pyav.sh each carried their own copy of "establish the
-# address, resolve a launcher, fall back to ccache". One owner now, in the file
-# they both already source. It takes an out-variable NAME rather than printing,
-# because a $( ) caller would discard the address it just exported -- the defect
-# the cases above exist for. docs/cross-build-verification.md#the-media-compile-cache-launcher
+# ── media half (F3): an out-variable, not $( ). See docs/cross-build-verification.md#the-media-compile-cache-launcher
 _MEDIA_COMMON="${TESTS_DIR}/../03-media/core/common.sh"
 _MW="$(mktemp -d)"
 trap 'rm -rf "${_MW}"' EXIT
 
 # One call with the collaborators faked. $1 is shell run before the call.
 _media_launcher() {
-  # platform.sh, not a stub: is_truthy is the canonical predicate the owner calls,
-  # and a second copy of its table here is exactly what the dupes gate is for.
+  # platform.sh, not a stub: a second copy of is_truthy's table is what the dupes gate flags.
   bash -c "set -u
     source '${TESTS_DIR}/../01-core/platform.sh'
     source '${_MEDIA_COMMON}'

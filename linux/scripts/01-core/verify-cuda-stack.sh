@@ -1,22 +1,5 @@
 #!/usr/bin/env bash
-# verify-cuda-stack.sh - verification banner for the installed CUDA / cuDNN /
-# TensorRT / NCCL stack. Prints versions; missing components WARN (stderr).
-#
-# Default contract is warn-only (the accelerator layer is opt-in and partial
-# installs are legitimate during bring-up). Set CUDA_STACK_STRICT=1 to turn
-# every missing component into a hard failure — the real gate for images that
-# claim a complete CUDA stack.
-#
-# History: the original version had ` || true)` pasted INSIDE three command
-# substitutions, so the "not found" branches were unreachable (the variable
-# always contained the literal string ` || true)`) and, under the then-active
-# `set -e`, grep against that garbage filename hard-failed healthy images.
-# The warn-only contract this file claims never actually existed until the
-# 2026-08-08 rewrite.
-#
-# Environment:
-#   CUDA_HOME          canonical CUDA install (default /usr/local/cuda)
-#   CUDA_STACK_STRICT  1 = missing components fail the script (default 0)
+# Prints the CUDA/cuDNN/TensorRT/NCCL versions; a missing part only warns unless CUDA_STACK_STRICT=1.
 set -uo pipefail  # deliberately NO -e: probes below handle their own rc
 
 _MISSING=0
@@ -43,12 +26,7 @@ else
   _cuda_warn "cuDNN version header not found"
 fi
 
-# TensorRT is OPTIONAL: a CUDA+cuDNN image is a legitimate configuration (the
-# Jetson lane ships one). Under CUDA_STACK_STRICT=1 a missing NvInferVersion.h
-# used to set _MISSING and exit 1, so "build without TensorRT" could not be
-# expressed at all -- the layer went red on its very last instruction.
-# CUDA_STACK_REQUIRE_TENSORRT=0 says "not expected here"; the default keeps the
-# historical contract for the lanes that do ship it.
+# TensorRT is optional (the Jetson lane ships none); CUDA_STACK_REQUIRE_TENSORRT=0 says so under strict mode.
 echo "--- TensorRT ---"
 if [ "${CUDA_STACK_REQUIRE_TENSORRT:-1}" = "1" ]; then
   trt_hdr="$(find /usr/include /usr/local/tensorrt/include -name "NvInferVersion.h" 2>/dev/null | head -1 || true)"

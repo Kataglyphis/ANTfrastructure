@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Wiring tests for the _iree_* stage helpers of build-app-wheelhouse.sh: the
-# dynamic-scope couplings a refactor can sever.
-# docs/cross-build-verification.md#the-linuxscriptstests-suites
+# The dynamic-scope couplings between build-app-wheelhouse.sh's _iree_* helpers; see docs/cross-build-verification.md#the-linuxscriptstests-suites
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -188,10 +186,7 @@ _run
 _cmake_log="$(cat "${TMP}/cmake.log")"
 t_case "cross lane runs the host stage then the target stage"
 t_assert_eq "0" "${RC}" "build_iree_wheels rc"
-# The host stage must NOT probe COMPILER=OFF when the target is OFF (the
-# default): the target then imports iree-tblgen from the host, OFF never
-# installs it, so that probe is a complete host build thrown away before the
-# mandatory ON pass. docs/iree-two-stage-build.md
+# The target imports iree-tblgen from the host, which OFF never installs; see docs/iree-two-stage-build.md
 t_assert_contains "${_cmake_log}" "-DIREE_BUILD_COMPILER=ON -DIREE_BUILD_PYTHON_BINDINGS=OFF" \
   "target OFF => host stage goes straight to COMPILER=ON"
 case "${_cmake_log}" in
@@ -230,10 +225,7 @@ STUB_QNN=""
 
 # ── skip / failure paths: each must return 1 FROM build_iree_wheels ──────────
 t_case "missing cmake skips IREE with rc=1"
-# PATH used to keep /usr/bin, where the real cmake lives, so the guard under test
-# was never reached: the case passed off a real cmake failing on the stub source
-# tree. nocmake/ holds only the git+ninja stubs, and build_iree_wheels runs no
-# external command before the check. Assert the REASON too. Backlog XL.
+# nocmake/ holds only the git and ninja stubs, so no real cmake can pass the case for the wrong reason.
 APP_WHEELHOUSE_BUILD_ROOT="${TMP}/work"; APP_WHEELHOUSE_DIR="${TMP}/wheels"
 _rc=0; _nocmake_out="$( PATH="${TMP}/nocmake"; build_iree_wheels 2>&1 )" || _rc=$?
 t_assert_eq "1" "${_rc}" "prereq failure must return 1"
@@ -253,9 +245,7 @@ t_assert_eq "1" "${RC}" "clone failure must return 1"
 t_assert_eq "0" "$(_wheels)" "no wheels on a failed clone"
 STUB_GIT_FAIL=0; export STUB_GIT_FAIL
 
-# Build-stage failures, mutation-covering `|| return 1` at all five call sites.
-# rc alone does not discriminate, so assert the packaging diagnostic is ABSENT
-# too — docs/cross-build-verification.md
+# rc alone does not discriminate, so the packaging diagnostic must be absent too; see docs/cross-build-verification.md
 _no_packaging_diag() { t_assert_fails grep -qF -e "wheel project" "${TMP}/err.log"; }
 export STUB_CMAKE_FAIL=""
 

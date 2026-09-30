@@ -5,43 +5,25 @@
 
 <#
 .SYNOPSIS
-  Creates a ZIP archive for Windows builds.
-
+  Zips a Rust release binary for a Windows build.
 .DESCRIPTION
-  - Uses WindowsBuild.Common.psm1 for structured logging.
-  - Creates a ZIP archive from a release binary.
-  - Supports customizing archive name, binary name, and version.
-
-  RESTORED 2026-09-14. Deleted in 2eaed40e (2026-09-08, "no consumer") while
-  OxidANT's .github/workflows/rust_windows2025.yml (windows-x64.yml since
-  2026-09-24) reached it by hub PATH
-  (`file: C:\ws\third_party\ANTfrastructure\windows\scripts\rust\New-Archive.ps1`),
-  a reference shape the consumer inventory did not grade until the
-  `windows-lang-script` class landed in .github/consumers.json.
-
+  Consumers call it by hub path, so it is live without a caller in this repo.
 .PARAMETER Workspace
-  The workspace directory. Defaults to $env:WORKSPACE or current directory.
-
+  The workspace directory; defaults to $env:WORKSPACE, then the current directory.
 .PARAMETER Binary
-  The binary name (without .exe extension). Required.
-
+  The binary name without .exe. Required.
 .PARAMETER BinaryFile
-  The binary filename (with .exe). Defaults to $Binary.exe.
-
+  The binary file name; defaults to $Binary.exe.
 .PARAMETER Version
   The version string for the archive name.
-
 .PARAMETER ArchiveName
-  Custom archive name. If not specified, generates from Binary and Version.
-
+  Custom archive name; generated from Binary and Version when empty.
 .PARAMETER ArchiveDir
-  Directory for staging. Defaults to 'dist'.
-
+  Staging directory; defaults to 'dist'.
 .PARAMETER Platform
-  Platform identifier (e.g., 'windows-2025').
-
+  Platform identifier, e.g. 'windows-2025'.
 .PARAMETER Arch
-  Architecture identifier (e.g., 'x64').
+  Architecture identifier, e.g. 'x64'.
 #>
 
 param(
@@ -70,7 +52,6 @@ if ([string]::IsNullOrWhiteSpace($BinaryFile)) {
     $BinaryFile = "$Binary.exe"
 }
 
-# Import ANTfrastructure build framework (relative to this script's location in ANTfrastructure)
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
 Initialize-CiEnvironment -ScriptRoot $PSScriptRoot
 
@@ -100,8 +81,7 @@ try {
         }
     }
 
-    # NOTE: $script:ArchiveName/$script:ArchiveDir used inside scriptblock via script scope;
-    # for new scripts, prefer $using:ArchiveName or pass via -ArgumentList to Invoke-BuildStep
+    # The step's scriptblock reads these through script scope.
     Write-BuildLog -Context $Context -Message "Archive name: $ArchiveName"
 
     Invoke-BuildStep -Context $Context -StepName "Prepare Archive" -Critical -Script {

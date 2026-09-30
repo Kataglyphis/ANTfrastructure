@@ -1,40 +1,13 @@
 #!/usr/bin/env bash
-# Guards against the pipefail-SIGPIPE false-failure bug class (backlog T2).
-#
-# Under `set -o pipefail`, `producer | grep -q MATCH` is a trap whenever the
-# producer emits more than one pipe buffer: grep -q exits at the FIRST match
-# and closes the pipe, the still-writing producer takes SIGPIPE (exit 141),
-# and pipefail reports the whole PIPELINE as failed — so the SUCCESS direction
-# (symbol present) fails while the failure direction (no match; grep drains
-# everything, producer exits 0) looks fine. Empirically hit 2026-08-10:
-# smoke-media.sh reported libtensorflowlite_c.so as a stub although nm showed
-# TfLiteInterpreterCreate exported — fixed in 7ca9e4b by capture-then-case
-# (see 06-packaging/smoke-media.sh ~lines 97-130).
-#
-# This suite (1) proves both directions of the failure mode deterministically
-# and (2) lints the script tree so unbounded-producer `| grep -q` sites under
-# pipefail cannot quietly return.
+# Under pipefail, `producer | grep -q` fails when the match is FOUND early: the producer loses the pipe.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
-# ---------------------------------------------------------------------------
-# Part 1 — behavioral proof. seq 300000 emits ~2 MB, far beyond any Linux pipe
-# capacity (64K default, 1M fcntl max), so the producer is GUARANTEED to still
-# be writing when grep -q exits early — no timing race, the outcome is
-# deterministic in both directions.
+# Part 1: seq 300000 outgrows any pipe buffer, so the producer is always still writing when grep -q exits.
 
-# The producer's exit code depends on the SIGPIPE disposition it INHERITS,
-# which we do not control — GitHub's runner execs job steps with SIGPIPE set to
-# SIG_IGN, and an ignored SIGPIPE is inherited across fork+exec:
-#   SIGPIPE default  -> seq is killed by the signal            -> rc 141
-#   SIGPIPE ignored  -> write() returns EPIPE, seq diagnoses
-#                       "write error: Broken pipe" and exits   -> rc 1
-# Both are the SAME bug — under pipefail the pipeline reports failure on the
-# SUCCESS direction — so assert the property that actually matters (non-zero)
-# and report which disposition produced it. Pinning 141 made this suite pass
-# locally and fail on every GitHub runner.
+# rc is 141 under default SIGPIPE but 1 where it is inherited as ignored (GitHub runners): assert non-zero.
 t_case "pipefail + EARLY match: pipeline reports failure (producer lost the pipe)"
 bash -c 'set -o pipefail; seq 300000 | grep -q "^1$"' 2>/dev/null; rc=$?
 case "${rc}" in
@@ -65,18 +38,9 @@ rc=$?
 t_assert_eq "0" "${rc}" "no pipe, no SIGPIPE"
 t_assert_eq "SAFE" "${out}"
 
-# ---------------------------------------------------------------------------
-# Part 2 — tree lint. Pragmatic heuristic: the producers that bit us (and are
-# structurally unbounded on real libraries) are the ELF inspectors nm/objdump/
-# ldd. Bounded producers — `find ... -print -quit | grep -q .` (emits at most
-# one line), `echo`/`printf` of a variable, `head -1` — cannot outlive grep by
-# a pipe buffer and are NOT flagged.
+# Part 2: only the unbounded ELF inspectors nm/objdump/ldd are flagged; bounded producers cannot outlive grep.
 
-# Emits "file:line:code" for every suspicious site under $1. Skips:
-#   - files that never set pipefail (the bug needs it),
-#   - the tests/ dir (this suite deliberately contains the anti-pattern),
-#   - comment lines,
-#   - lines carrying `-print -quit` (the bounded find idiom).
+# _scan_pipefail_grepq <root>: "file:line:code" per hit; skips non-pipefail files, tests/, comments, `-print -quit`.
 _UNBOUNDED_GREPQ_RE='(^|[^[:alnum:]_./-])(nm|objdump|ldd)[[:space:]][^|]*\|[[:space:]]*grep[[:space:]]+-q'
 _scan_pipefail_grepq() {
   local root="$1" f hit code stripped
@@ -92,8 +56,7 @@ _scan_pipefail_grepq() {
   done < <(find "${root}" -name '*.sh' -type f ! -path '*/tests/*' 2>/dev/null | sort)
 }
 
-# Self-test first: a lint that silently matches nothing is worse than no lint
-# (see the toothless-verify-runtime-paths backlog entry).
+# Self-test first: a lint that silently matches nothing is worse than no lint.
 _fixdir="$(mktemp -d)"
 trap 'rm -rf "${_fixdir}"' EXIT
 cat >"${_fixdir}/bad.sh" <<'EOF'
@@ -120,11 +83,7 @@ t_assert_eq "1" "$(printf '%s\n' "${_selftest_hits}" | grep -c .)" \
   "comments, capture-then-case, bounded find, and no-pipefail files must not be flagged"
 
 t_case "no unbounded nm/objdump/ldd | grep -q under pipefail in linux/scripts"
-# Known offenders (documented grandfather list, DO NOT grow it — fix new sites
-# with capture-then-case instead). Entries are substrings matched against the
-# "file:line:code" hit, e.g. "06-packaging/foo.sh:" or a code fragment.
-# Currently EMPTY: the only real site (smoke-media.sh LiteRT nm check) was
-# already fixed in 7ca9e4b before this suite landed.
+# Grandfathered substrings of "file:line:code"; never grow it, fix new sites with capture-then-case.
 KNOWN_OFFENDERS=()
 _hits="$(_scan_pipefail_grepq "${SCRIPTS_DIR}")"
 for _k in ${KNOWN_OFFENDERS[@]+"${KNOWN_OFFENDERS[@]}"}; do

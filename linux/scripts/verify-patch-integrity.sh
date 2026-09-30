@@ -1,22 +1,5 @@
 #!/usr/bin/env bash
-# verify-patch-integrity.sh — static integrity gate for linux/scripts/patches/.
-#
-# A malformed or orphaned patch is a landmine: it only detonates deep inside a
-# multi-hour cross build when apply-patch.sh finally reaches it. This catches
-# both classes in seconds, before the rebuild:
-#
-#   1. WELL-FORMED   — every *.patch parses as a unified diff (---/+++/@@ hunks),
-#                      so `git apply`/`patch -p1` will not choke on a truncated or
-#                      hand-mangled file.
-#   2. REFERENCED    — every *.patch is named by at least one build script, so a
-#                      renamed/removed apply site cannot leave a patch silently
-#                      dead (its fix quietly stops being applied).
-#
-# Non-fatal advisory: patches whose apply site does NOT route through the
-# idempotent apply-patch.sh helper (raw `git apply`/`patch`) are reported as
-# INFO, not failures — some sites legitimately pre-date the helper.
-#
-# Usage: linux/scripts/verify-patch-integrity.sh
+# Every linux/scripts/patches/*.patch is a well-formed diff named by a build script, caught here rather than hours into a build.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -55,13 +38,9 @@ for _p in "${_patches[@]}"; do
     fail "not a valid unified diff (missing ---/+++/@@): ${_rel}"
   fi
 
-  # 2. Referenced by some build script (by basename). The old
-  # `| grep -qv "^${_p}$"` self-exclusion was a no-op — an --include='*.sh'
-  # search can never emit the .patch path itself — and, worse, `grep -qv`
-  # answers "is there ANY non-matching line", which is not the intended set
-  # subtraction anyway. A plain -q match is the honest form.
+  # 2. Referenced by some build script, by basename.
   if grep -rlF "${_base}" "${SCRIPTS_DIR}" --include='*.sh' | grep -q .; then
-    # 2b. Advisory: does any referencing site route through apply-patch.sh?
+    # 2b. Advisory only: some apply sites predate the idempotent apply-patch.sh helper.
     if grep -rlF "${_base}" "${SCRIPTS_DIR}" --include='*.sh' \
          | xargs grep -lE 'apply-patch\.sh|android_apply_patch' 2>/dev/null | grep -q .; then
       pass "referenced via apply-patch helper: ${_base}"

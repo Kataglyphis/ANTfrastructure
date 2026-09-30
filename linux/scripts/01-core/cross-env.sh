@@ -14,9 +14,6 @@ _CROSS_ENV_APT_UPDATED="${_CROSS_ENV_APT_UPDATED:-0}"
 cross_foreign_arch_ports_mirror_url() {
   local archive_url explicit_ports_url
 
-  # A1: dropped the dead `${UBUNTU_PORTS_MIRROR_URL:-}` inner fallback — that
-  # (un-prefixed) name was never set anywhere and is undocumented (only the
-  # FAST_ variant is a real operator knob), so the fallback always resolved empty.
   explicit_ports_url="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
   if ubuntu_mirror_is_truthy "${USE_FAST_UBUNTU_MIRROR:-false}"; then
     archive_url="${FAST_UBUNTU_MIRROR_URL:-$(ubuntu_default_archive_mirror_url)}"
@@ -35,18 +32,12 @@ cross_target_is_foreign() {
   [ "$(build_arch_oci)" != "$(arch_oci)" ]
 }
 
-# NAMING: cross_build_is_active() is the CANONICAL public name for the
-# cross-build guard — use it in new code. is_cross() and cross_build_enabled()
-# are kept as compatibility aliases for the 60+ existing callers; do not add
-# new callers of those names. All three share this single implementation body.
-
-# All-purpose cross-build guard used by 60+ media/toolchain/framework scripts.
+# The canonical cross-build guard; is_cross and cross_build_enabled are aliases for existing callers only.
 cross_build_is_active() {
   cross_mode_requested || return 1
   cross_target_is_foreign
 }
 
-# Compatibility aliases — delegate to the canonical implementation above.
 is_cross() { cross_build_is_active; }
 cross_build_enabled() { cross_build_is_active; }
 
@@ -111,26 +102,7 @@ cross_effective_targets_raw() {
   cross_targets_effective_raw "$@"
 }
 
-# ── cross-target iteration ────────────────────────────────────────────────────
-# Centralizes the "for each supported cross target" loop whose amd64|arm64|riscv64
-# set is otherwise hardcoded in ~6 places.
-#
-# Contract:
-#   for_each_cross_target <callback> [--include-amd64] [target_list]
-#
-#   * <callback>       required; invoked once per normalized target as
-#                      `<callback> <target>`.
-#   * --include-amd64  include amd64 in the iteration (default: amd64 is skipped,
-#                      since it is normally the native build arch).
-#   * [target_list]    CSV/space list to iterate; defaults to
-#                      cross_targets_effective_raw (VERIFY_CROSS_TARGETS /
-#                      CROSS_TARGETS / ARCH / TARGETARCH / TARGET_ARCH).
-#
-# The list is normalized via arch_list_csv_normalize, then each target is
-# validated against the supported cross set (amd64|arm64|riscv64); anything else
-# (e.g. 386) is logged and skipped. Returns 2 if no callback was given, 1 if the
-# list normalizes to nothing valid, otherwise the callback's aggregated non-zero
-# exit status (0 when every invocation succeeded).
+# for_each_cross_target <callback> [--include-amd64] [targets]: 2 without a callback, 1 for no valid target, else the callbacks' rc.
 for_each_cross_target() {
   local callback=""
   local target_list=""
@@ -164,19 +136,10 @@ for_each_cross_target() {
   }
 
   local target rc=0
-  # Split on commas via `IFS=',' read` (scoped to the builtin). This function is
-  # sourced into scripts that set IFS=$'\n\t' (all 02/03 build scripts), where a
-  # bare ${normalized//,/ } expansion does not split on spaces and the loop
-  # would run once with the whole list as a single bogus target.
+  # IFS=',' read: callers run under IFS=$'\n\t', where a space-joined list does not split.
   local -a _fect_targets=()
   IFS=',' read -r -a _fect_targets <<< "${normalized}"
-  # The BUILD HOST's own arch is not a cross target — it is served natively, so
-  # it is skipped unless --include-amd64 asks for it (the flag name predates
-  # this and now means "include the host's arch"; kept for its 7 callers).
-  # Keyed on build_arch_oci(), NOT the literal "amd64" (2026-09-08): with the
-  # literal, an arm64 host skipped amd64 — which it must cross-build — and
-  # iterated arm64 — which it must not — so the LLVM verify demanded a cross
-  # install for the NATIVE arch and killed the compiler stage at `verify`.
+  # Skips the build host's own arch, not literal amd64; --include-amd64 means "include the host arch".
   local host_arch
   host_arch="$(build_arch_oci 2>/dev/null || echo amd64)"
   for target in "${_fect_targets[@]}"; do
@@ -199,13 +162,7 @@ cross_bin_dir() {
   printf '%s' "${CROSS_BIN_DIR:-/opt/cross-bin}"
 }
 
-# Directory holding BARE-named cross tools (gcc, cc, as, ld, ...). It is
-# deliberately NOT on PATH: bare cross names shadowing host tools broke every
-# host-side compile (e.g. the riscv64 host-protoc "Exec format error" bug).
-# Consumers that genuinely need bare names (gcc -B lookups, rust cc-crate
-# fallbacks) must prepend this directory themselves for that single scope:
-#   bare="$(cross_bare_bin_path)" && do_thing -B"${bare}/"
-# Echoes the path only if the directory exists; returns 1 otherwise.
+# Bare-named cross tools, never on PATH (they shadowed host tools); consumers opt in per scope. 1 when absent.
 cross_bare_bin_path() {
   local dir
   dir="$(cross_bin_dir)/bare"
@@ -259,23 +216,7 @@ cross_build_lower_rust() {
   cross_build_rust_triple | tr '[:upper:]-' '[:lower:]_'
 }
 
-# Wire the Rust *target* toolchain env for a cross cdylib/staticlib link. Without
-# CARGO_TARGET_<triple>_LINKER cargo links target artifacts with the host
-# cc/rust-lld and fails ("<obj> is incompatible with elf64-x86-64"). Point the
-# target triple's linker + cc-rs compiler at the real cross gcc (which carries
-# its own as/ld); the host CARGO_TARGET_<build>/HOST_CC stay untouched so
-# proc-macros and build scripts keep using the native toolchain.
-#
-# Shared by setup-gstreamer.sh (prepare_host_cargo_toolchain_env) and
-# install-rice-proto.sh; the monorepo reuses the former. Callers keep their own
-# success/WARN logging so per-site log output is unchanged.
-#
-# Args: <rust_env> [rust_lower] [cc] [cxx]
-#   rust_env   uppercased/underscored target triple (RISCV64GC_UNKNOWN_LINUX_GNU)
-#   rust_lower lowercased/underscored triple for CC_<lower>/CXX_<lower> (optional)
-#   cc         target C compiler (must be executable)
-#   cxx        target C++ compiler (optional; exported as CXX_<lower> if executable)
-# Returns 0 on success; 1 when rust_env or a usable cc is missing.
+# export_cargo_target_linker <RUST_ENV> [rust_lower] [cc] [cxx]: target linker only, host proc-macros stay native; 1 without a usable cc.
 export_cargo_target_linker() {
   local rust_env="$1" rust_lower="${2:-}" cc="${3:-}" cxx="${4:-}"
   [ -n "${rust_env}" ] && [ -n "${cc}" ] && [ -x "${cc}" ] || return 1
@@ -297,29 +238,20 @@ install_cross_bin_symlinks() {
     return 1
   }
 
-  # Resolve all cross toolchain tools. Data-driven: each entry is "tool_name".
-  # All resolve via resolve_cross_gcc_tool (any failure short-circuits).
   local -A tools=()
   local tool
   for tool in gcc g++ ar as ld nm ranlib strip objcopy; do
     tools["${tool}"]="$(resolve_cross_gcc_tool "${tool}" "${triplet}")" || return 1
   done
 
-  # Layout contract (see cross_bare_bin_path):
-  #   ${bin_dir}       — ONLY triplet-prefixed names; safe to put on PATH,
-  #                      they can never shadow host cc/gcc/as/ld.
-  #   ${bin_dir}/bare  — bare names for the few consumers that need them
-  #                      (gcc -B, rust cc-crate); NEVER placed on PATH here.
+  # ${bin_dir} holds only triplet-prefixed names (PATH-safe); bare names go to bare/, never on PATH.
   local bare_dir="${bin_dir}/bare"
   mkdir -p "${bin_dir}" "${bare_dir}"
 
-  # Triplet-prefixed symlinks (safe to put on PATH).
   for tool in gcc g++ as ld ar nm ranlib strip objcopy; do
     ln -sf "${tools[${tool}]}" "${bin_dir}/${triplet}-${tool}"
   done
 
-  # Bare-name symlinks (gcc-alias cc, g++-alias c++ — see cross_bare_bin_path
-  # for the NEVER-on-PATH contract; consumers must explicitly opt in).
   local bare_aliases=(gcc g++ cc c++ as ld ar nm ranlib strip objcopy)
   local bare_alias_tool=(gcc  g++ gcc g++ as ld ar nm ranlib strip objcopy)
   local i
@@ -327,9 +259,7 @@ install_cross_bin_symlinks() {
     ln -sf "${tools[${bare_alias_tool[$i]}]}" "${bare_dir}/${bare_aliases[$i]}"
   done
 
-  # Stale-layout cleanup: earlier revisions symlinked bare names directly in
-  # ${bin_dir} (which sat on PATH — the systemic footgun). Remove any leftovers
-  # so a rebuilt layer can never resurrect bare cross tools onto PATH.
+  # An older layout put bare names in ${bin_dir}; remove them so they never return to PATH.
   local stale
   for stale in gcc g++ cc c++ as ld ar nm ranlib strip objcopy clang clang++; do
     [ -L "${bin_dir}/${stale}" ] && rm -f "${bin_dir}/${stale}"
@@ -394,10 +324,7 @@ source "${_CROSS_ENV_DIR}/cross-apt.sh"
 # shellcheck disable=SC1091
 source "${_CROSS_ENV_DIR}/cross-meson.sh"
 
-# Private: resolve the core architecture identifiers (triplet, rust target, etc.).
-# Populates the provided associative array with keys:
-#   target_arch, build_arch, triplet, processor, rust_target, rust_env,
-#   rust_env_lower, build_rust_lower, gcc_prefix, gcc_major, runtime_libdir
+# Fills the nameref'd associative array with the arch, triplet, rust and gcc identifiers.
 _cross_env_resolve_identifiers() {
   local -n _eri_out=$1
 
@@ -410,29 +337,20 @@ _cross_env_resolve_identifiers() {
   _eri_out[rust_env_lower]="$(cross_target_lower_rust)"
   _eri_out[build_rust_lower]="$(cross_build_lower_rust 2>/dev/null || true)"
   _eri_out[gcc_prefix]="$(gcc_toolchain_prefix)"
-  # DUP2: the version default lives ONCE, in cross-gcc.sh's
-  # gcc_toolchain_version(). cross-env.sh hard-sources cross-gcc.sh above, and
-  # the line right before this one already calls gcc_toolchain_prefix()
-  # unguarded, so the helper is guaranteed to be defined here — this is not a
-  # new dependency. Semantics are unchanged: gcc_toolchain_version() expands to
-  # exactly the nested fallback this line used to spell out.
+  # The version default lives once, in cross-gcc.sh's gcc_toolchain_version.
   _eri_out[gcc_major]="${GCC_WANTED:-$(gcc_toolchain_version)}"
   _eri_out[gcc_major]="$(version_major "${_eri_out[gcc_major]}")"
   _eri_out[runtime_libdir]="${_eri_out[gcc_prefix]}/lib/gcc/${_eri_out[triplet]}/${_eri_out[gcc_major]}"
 }
 
-# Private: resolve all cross-compiler tool paths for a target triplet.
-# Populates the provided associative array with keys:
-#   cc, cxx, ar, as, ld, nm, ranlib, strip, objcopy,
-#   build_cc, build_cxx, build_ar, build_ranlib
+# <triplet> <array>: fills the cross and build tool paths; 1 when a required one is missing.
 _cross_env_resolve_tools() {
   local triplet="$1"
   local -n _ert_out=$2
 
   _ert_out[cc]="$(require_cross_gcc_tool gcc "${triplet}" 'cross compiler')" || return 1
   if ! _ert_out[cxx]="$(require_cross_gcc_tool g++ "${triplet}" 'cross compiler')"; then
-    # Some cross-triplet g++ binaries may not be found by
-    # resolve_cross_gcc_tool even though they exist. Derive from CC.
+    # resolve_cross_gcc_tool can miss an existing triplet g++, so derive it from CC.
     if command -v derive_cxx_from_cc >/dev/null 2>&1; then
       _ert_out[cxx]="$(derive_cxx_from_cc "${_ert_out[cc]}")"
       [ -x "${_ert_out[cxx]}" ] || return 1
@@ -451,7 +369,6 @@ _cross_env_resolve_tools() {
   _ert_out[build_ranlib]="$(resolve_build_gcc_tool ranlib 2>/dev/null || true)"
 }
 
-# Private: set up cross Python staging directories.
 _cross_env_setup_python_staging() {
   local target_arch="$1"
 
@@ -468,9 +385,6 @@ _cross_env_setup_python_staging() {
   export PYTHON_CROSS_ACTIVE_ROOT
 }
 
-# Each _export_* helper consumes the resolved associative array and exports a
-# single logical group. Together they form _cross_env_export_all.
-
 _export_arch_vars() {
   local -n _eav=$1
   export TARGET_ARCH="${_eav[target_arch]}"
@@ -484,10 +398,7 @@ _export_arch_vars() {
 }
 
 _export_path() {
-  # /opt/cross-bin holds ONLY triplet-prefixed tool names, so fronting PATH
-  # with it is harmless to host-side compiles. Bare names live in
-  # /opt/cross-bin/bare, which is intentionally NOT put on PATH — see
-  # cross_bare_bin_path() for the opt-in contract.
+  # Only triplet-prefixed names live here, so fronting PATH cannot shadow host tools.
   local dir
   dir="$(cross_bin_dir 2>/dev/null || true)"
   if [ -n "${dir}" ] && [ -d "${dir}" ]; then
@@ -571,11 +482,7 @@ _export_cargo_vars() {
   export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/opt/cargo-target/${_ecv[target_arch]}}"
   export "CARGO_TARGET_${_ecv[rust_env]}_LINKER=${CC}"
   export "CARGO_TARGET_${_ecv[rust_env]}_AR=${AR}"
-  # The `cc` crate (build scripts of ring, openssl-sys, …) does NOT read
-  # CARGO_TARGET_*_LINKER — it needs CC_<target>/CXX_<target>. Without it, it
-  # guesses `<triple>-gcc`, which for riscv64gc-unknown-linux-gnu does not exist,
-  # so it falls back to the host gcc and passes it the target -mabi=lp64d flag →
-  # "unrecognized argument in option '-mabi=lp64d'". Point it at the cross-GCC.
+  # The cc crate ignores CARGO_TARGET_*_LINKER and would otherwise fall back to the host gcc with target flags.
   local _cross_rust_env_lc
   _cross_rust_env_lc="$(cross_target_rust_triple | tr '[:upper:]-' '[:lower:]_')"
   export "CC_${_cross_rust_env_lc}=${CC}"
@@ -587,9 +494,6 @@ _export_cargo_vars() {
   fi
 }
 
-# Export the full cross-compilation environment by dispatching to the per-group
-# helpers above. Consumes the associative array with all keys produced by
-# _cross_env_resolve_identifiers and _cross_env_resolve_tools.
 _cross_env_export_all() {
   local -n _eea=$1
   _export_arch_vars     _eea
@@ -614,8 +518,7 @@ setup_linux_cross_env() {
   _cross_env_export_all _env
 }
 
-# Why the cross env is scrubbed for host sub-builds:
-# docs/cross-build-verification.md
+# cross_compile_cmake_lib_from_source <name> <url[|mirror...]> <prefix> <sentinel> [cmake args]: best-effort.
 cross_compile_cmake_lib_from_source() {
   local name="$1" url="$2" prefix="$3" sentinel="$4"
   shift 4
@@ -633,17 +536,7 @@ cross_compile_cmake_lib_from_source() {
 
   echo "[INFO] Cross-compiling ${name} from source for ${arch:-target} (${url})..."
   src="$(mktemp -d "${TMPDIR:-/tmp}/${name}-src-XXXXXX")" || return 0
-  # URL may carry '|'-separated fallback mirrors so a single-source outage does
-  # not skip the whole lib. Try each in order until one lands. Two mirror kinds:
-  #   * a plain https tarball  -> download_and_extract (curl + strip 1)
-  #   * a `git+<repo>#<ref>`   -> shallow git clone
-  # The git kind exists because the buildkit RUN network can reach github.com via
-  # git (OpenCV clones fine) + the apt mirrors, but curl to codeload.github.com /
-  # downloads.sourceforge.net fails there — which is exactly what silently
-  # disabled riscv64 OpenCV PNG across iree-0714a..0714e (2026-07-15). git clone
-  # is the reliable primitive in that environment.
-  # NOTE: split into a local array — do NOT `set --`, which would clobber the
-  # extra cmake args still held in "$@" (used below) after the shift 4.
+  # `git+<repo>#<ref>` mirrors exist because RUN networks reach github via git but not always via curl; a local array keeps "$@".
   local _dl_ok="" _u _repo _ref
   local -a _mirrors=()
   local _IFS_save="$IFS"; IFS='|' read -r -a _mirrors <<< "${url}"; IFS="${_IFS_save}"

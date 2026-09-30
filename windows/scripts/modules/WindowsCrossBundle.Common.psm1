@@ -1,16 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# What a consumer's Windows product needs from the hub (docs/windows-cross-builds.md § Consumer
-# cross lanes). To BUILD a cross target: the CMake arguments that name it (Get-CrossConfigureArgs).
-# To RUN on a clean machine, x64 or arm64: every DLL its binaries import, transitively, beside
-# them -- the VC++ runtime included, because a clean device has no redist (Copy-PeImportClosure,
-# searching Get-ProductDllSearchPath). Test-TargetArch.ps1 -ImportWalk then grades an arm64
-# folder, and container-ci-windows.yml's windows-11-arm job runs it.
-#
-# A NEW module on purpose: WindowsTargetArch.Common, where the PE readers live, is mounted into
-# every media stage, so growing it would re-key the whole image chain.
+# Apart from WindowsTargetArch.Common, which every media stage mounts; see docs/windows-cross-builds.md § Consumer cross lanes
 
 Set-StrictMode -Version Latest
 
@@ -25,12 +16,8 @@ $script:ImageRuntimeBin = 'C:\runtime\bin'
 .SYNOPSIS
     Where a product's DLL closure comes from, in the order Copy-PeImportClosure should search.
 .DESCRIPTION
-    1. ONNX_ROOT\bin, first so an ORT-family import resolves to the chain build.
-    2. The image's runtime bin, the media stack (GStreamer, GLib, OpenCV, FFmpeg).
-    3. VCToolsRedistDir\<x64|arm64>\Microsoft.VC*.CRT, the VC++ runtime of the toolset that
-       built the product, Microsoft's supported app-local deployment.
-    Only directories that exist are returned, so a missing variable narrows the search instead
-    of failing it; the closure's own machine check and the arch gate stay the verdict.
+    ONNX_ROOT\bin (the chain's ORT) first, then the image runtime bin, then the toolset's VC++ CRT redist dir.
+    Only existing directories are returned, so a missing variable narrows the search instead of failing it.
 #>
 function Get-ProductDllSearchPath {
     param([string]$Arch = '', [string]$RuntimeBin = $script:ImageRuntimeBin)
@@ -50,10 +37,7 @@ function Get-ProductDllSearchPath {
 .SYNOPSIS
     The CMake configure arguments that make a consumer's build a cross build; empty on the host.
 .DESCRIPTION
-    Get-CMakeCrossArgs (the triple, CMAKE_SYSTEM_NAME/PROCESSOR, so try_run is never attempted),
-    plus two a consumer names when it has them, because both otherwise follow the HOST's pointer
-    size: -Corrosion adds Rust_CARGO_TARGET, and -Vulkan adds Vulkan_LIBRARY from the SDK's
-    per-arch Lib directory (Lib-ARM64 comes with the optional com.lunarg.vulkan.arm64 component).
+    Get-CMakeCrossArgs plus -Corrosion (Rust_CARGO_TARGET) and -Vulkan (per-arch Vulkan_LIBRARY), which follow the host otherwise.
 #>
 function Get-CrossConfigureArgs {
     param(
@@ -79,8 +63,7 @@ function Get-CrossConfigureArgs {
 
 <#
 .SYNOPSIS
-    What a Windows package calls the target: x64 or arm64, the spelling of an AppxManifest's
-    ProcessorArchitecture, `wix build -arch` and the VC++ redist directory alike.
+    x64 or arm64: the target as AppxManifest, `wix build -arch` and the VC++ redist directory spell it.
 #>
 function Get-WindowsPackageArch {
     param([string]$Arch = '')
@@ -91,12 +74,8 @@ function Get-WindowsPackageArch {
 .SYNOPSIS
     Copies the DLLs -Path imports, transitively, from -SearchDirectory into -Destination; returns the copies.
 .DESCRIPTION
-    Static and delay-load imports, the set Test-TargetArch.ps1 -ImportWalk grades. A DLL loaded by name
-    at run time (ONNX Runtime under ort's load-dynamic, a GStreamer plugin) is in neither table, so it
-    enters the walk by being passed in -Path. A name found in no search directory is left to the
-    device -- an API set, an OS DLL, or a gap that Test-TargetArch.ps1 -ImportWalk reports -- so this
-    never guesses. The first search directory holding a name wins. Every copied DLL must be -Arch's
-    machine: a host-arch DLL in the closure throws, because the device could never load it.
+    Static and delay-load imports; pass run-time-loaded DLLs in -Path. Unfound names are left to the device, never guessed.
+    First search directory wins; a copied DLL of the wrong machine throws.
 #>
 function Copy-PeImportClosure {
     param(

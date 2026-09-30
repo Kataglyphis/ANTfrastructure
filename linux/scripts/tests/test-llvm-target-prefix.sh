@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# The /opt/llvm-target repair: what fills the prefix, and what must never fill it.
-# A glob over the builder's multiarch dir shipped five x86-64 libs into both
-# foreign images; the rule is now DT_NEEDED-driven and lives in ONE owner.
-# docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
+# The /opt/llvm-target fill is DT_NEEDED-driven; see docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -16,10 +13,7 @@ _FILL_SRC="$(t_fn_src "${MAT}" _llvm_target_fill_needed)" || exit 1
 
 # ── _elf_needed reads NEEDED and only NEEDED ────────────────────────────────
 t_case "_elf_needed returns the NEEDED sonames, never SONAME or RUNPATH"
-# Verbatim shape of `readelf -d` on the shipped /usr/local/llvm-target/bin/clang:
-# the SONAME and RUNPATH lines carry [brackets] too, and a rule that matched them
-# would have the prefix chasing its own name (libLLVM.so.21.1 read as a consumer
-# of itself was exactly the misreading this suite exists to prevent).
+# `readelf -d` of the shipped clang: SONAME and RUNPATH carry [brackets] too and must not read as NEEDED.
 _RE_BIN="$(mktemp -d)"
 cat > "${_RE_BIN}/readelf" <<'STUB'
 #!/usr/bin/env bash
@@ -40,9 +34,7 @@ t_assert_eq "" "$(printf '%s\n' "${_needed}" | grep -e 'libclang-cpp.so.21.1' -e
   "a SONAME or RUNPATH read as a NEEDED makes a lib look like its own consumer"
 rm -rf "${_RE_BIN}"
 
-# ── _llvm_target_fill_needed over a fixture prefix ──────────────────────────
-# NEEDED_MAP is "<basename> <soname>..." per line: the fill's only view of an ELF,
-# so the fixture files can be empty and the run costs no compiler.
+# _fill <prefix> <src> <map>: map lines "<basename> <soname>..." are the fill's only view of an ELF.
 _fill() {
   local prefix="$1" src="$2" map="$3"
   NEEDED_MAP="${map}" bash -c '
@@ -54,8 +46,7 @@ _fill() {
     _llvm_target_fill_needed "$1" "$2"' _ "${prefix}" "${src}"
 }
 
-# The builder's multiarch dir, as measured in the amd64 artifact image: the pinned
-# release beside Ubuntu's llvm-20 and llvm-21, which is why a glob over it is wrong.
+# The builder's multiarch dir holds Ubuntu's llvm-20/21 beside the pin, so a glob over it is wrong.
 _mk_fixture() {
   _P="$(mktemp -d)"; _S="$(mktemp -d)"
   mkdir -p "${_P}/bin" "${_P}/lib"
@@ -84,8 +75,7 @@ t_assert_eq "libLLVM.so.23.1 " "$(_lib_names "${_P}")" "libc belongs to the ldco
 rm -rf "${_P}" "${_S}"
 
 t_case "a dangling dev symlink is replaced by the real soname"
-# The apt LLVM tree ships lib/<soname> as a link into the multiarch dir it was
-# copied away from: -e is FALSE for it, and cp refuses to write through it.
+# A copied apt tree's lib/<soname> links nowhere: -e is false for it and cp will not write through it.
 _mk_fixture
 ln -s ../../x86_64-linux-gnu/libLLVM.so.23.1 "${_P}/lib/libLLVM.so.23.1"
 _fill "${_P}" "${_S}" "clang libLLVM.so.23.1"
@@ -140,18 +130,13 @@ t_assert_eq "BORROW" "$(_fam libc++.so.1)" \
 t_assert_eq "BORROW" "$(_fam libstdc++.so.6)"
 t_assert_eq "BORROW" "$(_fam libc++abi.so.1)"
 
-# ── _llvm_target_repair_links over the measured Debian layout ───────────────
-# The amd64 prefix is an apt tree: `ls -la /usr/lib/llvm-23/lib` links the dev
-# entries at ../../x86_64-linux-gnu RELATIVE TO ITS OWN LOCATION, so `cp -a` to
-# /opt/llvm-target breaks 19 of them in the sdk stage; ldconfig later deletes the
-# 7 that look like sonames and 12 reach the shipped image.
+# Repair: the apt prefix's dev links are relative to its own location, so `cp -a` elsewhere breaks them.
 _REPAIR_SRC="$(t_fn_src "${MAT}" _llvm_target_repair_links)" || exit 1
 _repair() {
   bash -c "${_FAM_SRC}"$'\n'"${_REPAIR_SRC}"$'\n''_llvm_target_repair_links "$1" "$2"' _ "$1" "$2" 2>&1
 }
 
-# root/ is the ORIGINAL prefix (every link resolves there); dest/llvm-target is
-# the copy at a different depth, which is what breaks them.
+# root/ is the original prefix where every link resolves; dest/llvm-target is the copy at another depth.
 _mk_apt_fixture() {
   _T="$(mktemp -d)"
   mkdir -p "${_T}/root/lib/python3.14/site-packages/lldb/native" "${_T}/root/include" \
@@ -199,11 +184,7 @@ t_assert_ok test -f "${_P}/lib/libclang-23.so.23"
 t_case "an LLVM-family soname the prefix does not have is materialised"
 t_assert_ok test -f "${_P}/lib/liblldb-23.so.1"
 
-# The Debian multiarch dev shape: lib/libX.so.N -> ../../<triplet>/libX.so.N. The
-# target's basename IS the link's own name, so the repair copies the real file
-# exactly onto the link's path -- and relinking there would replace the file it
-# just wrote with a symlink to itself. `find -xtype l` calls that dangling, which
-# is how it took the whole sdk stage down on 2026-09-05 (libclang-cpp.so.23.1).
+# A target with the link's own name is copied onto the link; relinking would replace it with a self-link.
 t_case "a link whose target carries its OWN name ends as the file, not a self-link"
 t_assert_eq "" "$(readlink "${_P}/lib/libLLVM.so.23.1" || true)" \
   "anything here means the real file was overwritten by a link to itself"
@@ -249,8 +230,7 @@ t_assert_fails test -e "${_P}/lib/libGONE.so"
 rm -rf "${_T}"
 
 t_case "a dangling link the repair CANNOT reach fails the sdk stage"
-# The one path that survives the loop: a materialised directory that brings a
-# broken link of its own. A stage that ships it is the whole defect returning.
+# The one path past the loop: a materialised directory bringing a broken link of its own.
 _mk_apt_fixture
 ln -s ../../nowhere "${_T}/include/llvm-23/llvm/stale.h"
 _out="$(_repair "${_P}" "${_T}/root")" && _rc=0 || _rc=$?

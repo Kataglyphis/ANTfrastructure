@@ -77,9 +77,7 @@ install_deps() {
   require_sudo
   detect_system
 
-  # Dockerfile.toolchain already provides the compiler toolchain and source-built
-  # Python interpreter for this image. Keep TVM's apt step limited to framework
-  # dependencies so this script consumes that toolchain instead of reinstalling it.
+  # Dockerfile.toolchain provides the compilers and Python; install only TVM's own deps.
   apt_install \
     pkg-config ninja-build \
     libopenblas-dev
@@ -107,14 +105,7 @@ require_toolchain_compilers() {
 source "${SCRIPT_DIR}/tvm-llvm-compat.sh"
 
 
-# TVM v0.25.0 already includes LLVM 22 compatibility fixes.
-# patch_tvm_for_llvm_22 was removed after the v0.24.0 -> v0.25.0 bump.
-
-# ── main() phase helpers ─────────────────────────────────────────────────────
-# These are extracted from main() and communicate through main()'s local
-# variables via bash dynamic scoping (the same pattern tvm-python.sh uses). They
-# must be called ONLY from main(), in the order main() calls them, so every input
-# local is already assigned under `set -u`.
+# main() phase helpers share its locals by dynamic scope: call them only from main(), in its order.
 # shellcheck disable=SC2154
 
 # Parse CLI options into main()'s option locals.
@@ -162,22 +153,12 @@ install_tvm_deps_phase() {
   fi
 }
 
-# Clone TVM if needed, then fetch + checkout the requested ref, refreshing
-# submodules on a fresh clone or when the checkout moved.
+# Submodules refresh on a fresh clone or when the checkout moved.
 fetch_tvm_source() {
   local _tvm_cloned=0
-  # Set when we took the NON-recursive fallback clone below, which leaves every
-  # submodule empty. Tracked separately because the HEAD-moved test alone is not
-  # enough: pinning TVM_COMMIT to the DEFAULT BRANCH HEAD checks out the commit
-  # that is already checked out, so HEAD does not move and the submodule update
-  # was skipped -- CMake then died at `add_subdirectory` on an empty
-  # 3rdparty/tvm-ffi. Measured 2026-08-27, the first time TVM_COMMIT was ever set.
+  # The fallback clone leaves submodules empty, and a TVM_COMMIT at the branch head does not move HEAD.
   local _tvm_needs_submodules=0
-  # TVM_COMMIT (versions.env, opt-in) beats the tag: tags are MOVABLE refs and
-  # TVM is a COMPILER whose output ships in the images (supply-chain audit,
-  # class b). Also clone SHALLOW AT THE REF now — the old bare
-  # `git clone --recursive` first pulled the whole default branch + all
-  # submodules unpinned before the checkout ever ran.
+  # TVM_COMMIT beats the tag: tags move, and TVM is a compiler whose output ships.
   local _tvm_want="${TVM_COMMIT:-$ref}"
   if [ ! -d "$tvm_dir/.git" ]; then
     log "Cloning TVM into $tvm_dir at ${_tvm_want}"
@@ -203,10 +184,7 @@ fetch_tvm_source() {
   fi
 }
 
-# Resolve the LLVM to build against, setting llvm_config / llvm_dir /
-# llvm_cmake_value / llvm_ignore_paths. Both modes prefer an LLVM CMake package
-# -- a cross build the target's, a native build the one the image ships as
-# /usr/local/llvm-target -- and fall back to a (target-sanitized) llvm-config.
+# Sets llvm_config/llvm_dir/llvm_cmake_value/llvm_ignore_paths; a CMake package wins over llvm-config.
 resolve_tvm_llvm() {
   [ -n "$llvm_config" ] || llvm_config="$(detect_llvm_config)"
   [ -z "$llvm_dir" ] || llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
@@ -214,19 +192,13 @@ resolve_tvm_llvm() {
   if cross_build_is_active; then
     [ -n "$llvm_dir" ] || llvm_dir="$(detect_cross_llvm_cmake_dir)"
   else
-    # Not llvm-config-<major>: on amd64 that is apt's bootstrap LLVM, which the
-    # final image does not carry (BACKLOG CON35, detect_native_llvm_cmake_dir).
+    # Not llvm-config-<major>: on amd64 that is apt's bootstrap LLVM, which the image does not carry.
     [ -n "$llvm_dir" ] || llvm_dir="$(detect_native_llvm_cmake_dir)"
   fi
   if [ -n "$llvm_dir" ]; then
     llvm_dir="$(normalize_llvm_cmake_dir "$llvm_dir")"
     validate_detected_llvm_cmake_package "$llvm_dir"
-    # TVM's FindLLVM would normally fall back to executing this package's
-    # llvm-config (on a cross build a target-arch binary the build host cannot
-    # run) when llvm_map_components_to_libnames("all") comes back empty under a
-    # dylib build — patch_tvm_findllvm_dylib_fallback() rewrites that fallback
-    # to link the imported LLVM dylib target instead, so no target binary is
-    # ever executed on the host.
+    # patch_tvm_findllvm_dylib_fallback keeps FindLLVM from running this package's llvm-config.
     log "Using LLVM CMake package: $llvm_dir"
     llvm_cmake_value="ON"
   else
@@ -249,9 +221,7 @@ resolve_tvm_llvm() {
   fi
 }
 
-# Choose the C/C++ compilers (default GCC to avoid clang++/LLVM-packaging header
-# conflicts) and, if LLVM injects a conflicting cxxabi.h, wrap them to prefer
-# GCC's header. Sets desired_cc / desired_cxx.
+# GCC by default, wrapped when LLVM injects a conflicting cxxabi.h. Sets desired_cc/desired_cxx.
 select_tvm_compilers() {
   local gcc_bin="gcc-${GCC_WANTED}"
   local gxx_bin="g++-${GCC_WANTED}"
@@ -267,12 +237,7 @@ select_tvm_compilers() {
   desired_cxx="${wrapped#* }"
 }
 
-# Resolve the Vulkan loader for cross builds. LunarG's SDK ships only the host
-# (x86_64) libvulkan; linking it into a target binary fails "file in wrong format".
-# If vulkan.sh cross-built a target-arch libvulkan (under /opt/vulkan/<ver>/<arch>/
-# lib), point TVM at it; otherwise disable Vulkan for this cross target. Native
-# builds keep find_package(Vulkan) via the sourced SDK env. Sets use_vulkan /
-# vulkan_library / vulkan_include.
+# Cross builds need vulkan.sh's target libvulkan, else Vulkan goes off; native uses the SDK env.
 resolve_tvm_vulkan() {
   [ "$use_vulkan" -eq 1 ] || return 0
   cross_build_is_active || return 0
@@ -298,8 +263,7 @@ resolve_tvm_vulkan() {
   log "Using target Vulkan loader: ${vulkan_library} (include: ${vulkan_include:-default})"
 }
 
-# Resolve the SPIRV-Tools library for Vulkan, dropping it when its ELF arch does
-# not match the target (loaded SDK libs may be x86_64-only). Sets spirv_tools_lib.
+# Drops a SPIRV-Tools library whose ELF arch is not the target's: SDK libs may be x86_64-only.
 resolve_tvm_spirv_tools() {
   [ "$use_vulkan" -eq 1 ] || return 0
 
@@ -350,25 +314,14 @@ configure_tvm_cmake() {
     --vulkan-library "$vulkan_library" \
     --vulkan-include "$vulkan_include"
 
-  # 2>&1 | tee, with pipefail (line 2) keeping a failed configure fatal: the log is
-  # where TVM prints TVM_LLVM_VERSION, the only proof of which LLVM it really found.
+  # pipefail keeps a failed configure fatal; the log holds TVM_LLVM_VERSION, the proof of the LLVM found.
   local configure_log="${build_dir}/cmake-configure.log"
   cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}" 2>&1 | tee "$configure_log"
 
   [ "$llvm_cmake_value" = "OFF" ] || assert_tvm_llvm_version_matches_pin "$configure_log"
 }
 
-# TVM's FindLLVM does find_package(LLVM CONFIG) then
-# llvm_map_components_to_libnames(LLVM_LIBS "all"). When the LLVM package was built
-# as a dylib (LLVM_LINK_LLVM_DYLIB=ON, LLVM_DYLIB_COMPONENTS=all), the LLVM CMake
-# macro strips "all" to an empty list, so LLVM_LIBS comes back empty and upstream
-# falls back to EXECUTING ${LLVM_TOOLS_BINARY_DIR}/llvm-config. For a cross build
-# that is the target-arch binary and can't run on the amd64 host (CMake dies with
-# "llvm-config: Syntax error"). The package still exports the imported "LLVM" dylib
-# target, and FindLLVM already links it when LLVM_LIBS contains "LLVM" (its
-# "Link with dynamic LLVM library" path). So rewrite the empty-LLVM_LIBS fallback
-# to point at that target instead of shelling out. No-op for static-lib packages
-# (LLVM_LIBS is already populated) and safe for native builds.
+# A dylib LLVM package leaves LLVM_LIBS empty and FindLLVM runs the target llvm-config; link the LLVM target.
 patch_tvm_findllvm_dylib_fallback() {
   local findllvm="${tvm_dir}/cmake/utils/FindLLVM.cmake"
 
@@ -387,19 +340,7 @@ patch_tvm_findllvm_dylib_fallback() {
   log "Patched TVM FindLLVM.cmake: link imported LLVM dylib target when components resolve empty"
 }
 
-# NO patch_tvm_for_llvm_23 HERE — and that is deliberate (2026-08-27).
-#
-# TVM v0.26.0 does not compile against LLVM 23. A hand-written patch was tried
-# and MEASURED on a real arm64 tvm-stage build: it fixed four of the five
-# TVM_LLVM_VERSION >= 230 sites in llvm_instance.cc and none of the two OTHER
-# files upstream had to guard, so the build still died —
-#   codegen_llvm.cc  Intrinsic::matchIntrinsicSignature + MatchIntrinsicTypes_*
-#   llvm_module.cc   the ORC JIT lambda signature
-# — while the patch function logged success. A patch that cannot succeed but
-# reports that it did is worse than none, so it was removed rather than grown.
-#
-# The mechanism is versions.env's TVM_COMMIT, pinned to an upstream commit that
-# already carries every guard. See the WATCH note there for when to drop it.
+# No LLVM 23 patch here: versions.env's TVM_COMMIT pins an upstream commit that carries the guards.
 
 main() {
   # Option locals (populated by parse_tvm_args).
@@ -424,9 +365,7 @@ main() {
   local desired_cc="" desired_cxx="" spirv_tools_lib=""
   # Cross Vulkan loader/headers resolved by resolve_tvm_vulkan (target arch dir).
   local vulkan_library="" vulkan_include=""
-  # Shared by BOTH the native configure path (configure_tvm_cmake) and the wheel
-  # path (tvm_build_wheel); declared in main() so both siblings see it via
-  # dynamic scope. configure_tvm_cmake computes it.
+  # Set by configure_tvm_cmake and read by tvm_build_wheel, both via dynamic scope.
   local cross_link_flags=""
 
   parse_tvm_args "$@"

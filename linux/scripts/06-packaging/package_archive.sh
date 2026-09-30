@@ -99,9 +99,7 @@ info "Binary file: $BinaryFile"
 mkdir -p "$(dirname "$ArchiveName")"
 mkdir -p "$ArchiveDir"
 
-# Packaging dependency installation was moved to
-# ../02-toolchain/packaging-deps.sh. That script is invoked earlier and
-# is responsible for installing prerequisites (appimagetool, flatpak, etc.).
+# Prerequisites (appimagetool, flatpak) come from ../02-toolchain/packaging-deps.sh.
 if [ -n "$BinaryPath" ]; then
     # Allow explicit binary path (useful for non-Rust projects)
     if [ ! -f "$BinaryPath" ]; then
@@ -137,8 +135,3 @@ fi
 if [ "$WRITE_GITHUB_OUTPUT" = "true" ] && [ -n "${GITHUB_OUTPUT:-}" ]; then
     echo "ARCHIVE_PATH=$ArchivePath" >> "$GITHUB_OUTPUT" || true
 fi
-
-# Helper: create a simple .deb package using dpkg-deb if requested
-# create_deb() removed 2026-08-08: 104 lines, zero callers anywhere in the
-# repo, and positioned after the script's outputs were already written — it
-# could never have run. Recover from git history if .deb packaging returns.

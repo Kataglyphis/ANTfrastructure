@@ -5,19 +5,7 @@ FROM ${BASE_IMAGE}
 
 SHELL ["bash", "-lc"]
 
-# NOTE: Build scripts for the heavy compiler RUNs are bind-mounted
-# (--mount=type=bind) rather than COPYed. Unlike COPY, a bind mount does NOT
-# create an image layer — but its CONTENT still enters the RUN's cache key, so
-# mounting the whole 01-core/02-toolchain trees would let ANY of ~100 script
-# edits (including host-only orchestrator modules) invalidate the multi-hour
-# GCC/LLVM/Rust/Python layers. The heavy RUNs below therefore bind-mount ONLY
-# the per-file transitive source-closure of their entrypoint script (traced via
-# verify_script_copy_coverage.py --report-core-usage plus manual source/exec
-# tracing): editing an unmounted script leaves the compiler layers cached, while
-# editing a mounted file rebuilds exactly the RUNs that consume it. Cheap RUNs
-# (3b/3c) keep whole-dir mounts. The /opt/scripts bundle at the END of this file
-# is plain COPY (content-keyed, cheap tail), so downstream stages still see the
-# full script set without touching the compiler layers.
+# Heavy RUNs bind-mount only their entrypoint's source closure: mount content is in the cache key.
 
 ARG LLVM_RELEASE=23.1.1
 ARG GCC_VERSION=16.2.0
@@ -26,23 +14,15 @@ ARG TARGETPLATFORM
 ARG BUILDARCH
 ARG BUILDPLATFORM
 ARG BUILD_MODE=native
-# Divide usable RAM by this in parallelism.sh so N concurrent per-arch builds
-# (--parallel-archs) don't collectively overcommit the host. 1 = serial default.
+# Divides usable RAM so --parallel-archs builds don't collectively overcommit the host.
 ARG BUILD_MEM_DIVISOR=1
 ARG CROSS_TARGETS=amd64,arm64,riscv64
 ARG PYTHON_VERSION=3.14.7
-# SHA-256 of the CPython source tarball, mirrored from versions.env (enforced by
-# verify-arg-consistency.sh). MUST be declared + forwarded to the Python RUN
-# below, else build_python.sh sees it empty and downloads CPython UNVERIFIED.
+# Must reach the Python RUN, or build_python.sh downloads CPython unverified.
 ARG PYTHON_TGZ_SHA256=62859805f6fdf25e2bcbf3fa3217801e1996887ca33e6a2af80674bdfa2dbe07
 ARG GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE=0
 ARG GCC_HOST_BOOTSTRAP=0
-# Opt-in concurrent per-target GCC builds (gcc.sh:404). Default 0 keeps the
-# sequential path byte-identical. Forwarded from the host env by the
-# orchestrator (stage-defs.sh compiler case, append_optional_build_arg), so
-# `GCC_PARALLEL_TARGETS=1 bash build-cross-chain.sh ...` reaches the container.
-# Before that forward existed the launch-time flag was silently dropped and the
-# sequential default won every time (backlog GCC_PARALLEL_TARGETS validation).
+# Opt-in concurrent per-target GCC builds; stage-defs.sh forwards it from the host env.
 ARG GCC_PARALLEL_TARGETS=0
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
@@ -66,24 +46,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     RUSTC_WRAPPER="" \
     PKG_CONFIG_ALLOW_CROSS=1
 
-# ------------------------------------------------------------------------------
-# Toolchain setup
-# ------------------------------------------------------------------------------
-# 1. GCC (Heavy Layer)
-# If this succeeds, it is cached forever unless GCC_VERSION changes.
-# Per-file bind mounts = the transitive source-closure of the dockerfile-gcc
-# path ONLY (TG1-residual 2026-08-24): llvm.sh is now sourced lazily in the
-# llvm-needing dispatch arms (see the header note in setup-dependencies.sh),
-# so this RUN mounts NO llvm file — audit: every function defined in
-# llvm.sh/llvm-cross.sh/llvm-validate.sh grepped against the eager closure
-# has exactly 3 consumers (install_llvm_clang, install_target_clang_toolchain,
-# verify_cross_llvm_targets), none reachable from dockerfile-gcc; build-clang.sh
-# is only exec'd via llvm.sh's llvm_build_script; vulkan-env.sh is sourced only
-# by vulkan.sh (not mounted here since TG1-bounded). An llvm/vulkan-family edit
-# therefore no longer invalidates this multi-hour layer. The LLVM RUN below
-# keeps the llvm family — the two lists deliberately DIFFER now.
-# versions.env is mounted because common.sh load_versions_env()-reads it
-# at runtime (env/ARG values still win; the file is only the fallback).
+# GCC: no llvm/vulkan file is mounted, since setup-dependencies.sh sources llvm.sh lazily; the LLVM RUN's list differs on purpose.
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
@@ -121,44 +84,13 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
     bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-gcc
 
-# 2. ENVIRONMENT CONFIGURATION
-# We apply ENV vars here so subsequent RUN instructions (LLVM/Vulkan)
-# automatically use the new GCC without needing to source /etc/environment.
-# LIBRARY_PATH is needed at link time (for the linker to find libgcc_s, etc.)
-# LD_LIBRARY_PATH is needed at runtime (for the dynamic loader)
+# Later RUNs use the new GCC without sourcing /etc/environment.
 ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
     PKG_CONFIG_PATH="${GCC_PREFIX}/lib64/pkgconfig:${GCC_PREFIX}/lib/pkgconfig" \
     LD_LIBRARY_PATH="${GCC_PREFIX}/lib64:${GCC_PREFIX}/lib" \
     LIBRARY_PATH="${GCC_PREFIX}/lib64:${GCC_PREFIX}/lib"
 
-# 3. LLVM / CLANG (Heavy Layer)
-# If this fails, Docker restores the image state at 'Step 2' instantly.
-# Per-file bind mounts = the GCC RUN's closure PLUS the llvm family
-# (llvm.sh -> llvm-cross.sh + llvm-validate.sh, sourced by the
-# dockerfile-llvm dispatch arm; build-clang.sh is exec'd by
-# llvm_build_script on the source-build fallback path). vulkan-env.sh is
-# NOT mounted: its only consumer is vulkan.sh, which this RUN never sources
-# (TG1-residual audit — see setup-dependencies.sh header).
-#
-# This RUN's unified superset build (TG3, llvm-cross.sh) produces BOTH
-# /opt/llvm-cross/<triplet> AND /opt/llvm-target-<arch> per cross arch —
-# the former dedicated target-clang RUN (3d) is deleted (TG3-residual
-# 2026-08-24): since the TG3 unification, `mode` selects nothing but a log
-# string in llvm-cross.sh (grep '_r\[mode\]\|${mode}' — one log line), so
-# 3d could only ever early-return or redo the IDENTICAL build. Its
-# early-return probe (`clang --version` on a foreign-arch ELF) failed in
-# practice, forcing a full ccache-absorbed recompile (~97s) AND baking the
-# multi-GB /var/tmp build tree into the 3d layer (3d had no /var/tmp
-# tmpfs). The trees 3d re-verified stay gated: RUN 3's post-build hooks
-# die on a missing clang/cmake package, RUN 3c runs the qemu llvm-config +
-# CMake link smoke, and sdk's materialize-llvm-target.sh asserts the ELF
-# arch of /opt/llvm-target-<arch>/bin/clang.
-#
-# binutils-dev is installed HARD here (hoisted from the deleted RUN 3d):
-# the superset build links LLVMgold against /usr/include/plugin-api.h, and
-# the in-script _llvm_cross_ensure_host_binutils_dev helper is
-# best-effort/WARN-only — without this line a transient apt failure would
-# silently ship a target clang without the gold plugin.
+# LLVM: one superset build yields /opt/llvm-cross and /opt/llvm-target per arch; binutils-dev is hard so LLVMgold always builds.
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
@@ -204,37 +136,21 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     LLVM_CROSS_SOURCE_ROOT=/var/cache/llvm-src \
     bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-llvm
 
-# 3b. ENSURE LLVM 22 IS THE SYSTEM DEFAULT
-# apt.llvm.org or source-build may install binaries at /usr/lib/llvm-*/bin/
-# without always registering them as the highest-priority alternatives.
-# Explicit update-alternatives here guarantees clang/clang++ resolve to the
-# requested major version for CMake presets and downstream builds.
-# Uses the bind-mounted copy to avoid cache invalidation on script-only changes.
+# Installs under /usr/lib/llvm-*/bin are not always the top alternative, so clang is pinned to LLVM_RELEASE.
 RUN --mount=type=bind,source=linux/scripts/02-toolchain/register-llvm-alternatives.sh,target=/tmp/register-llvm-alternatives.sh,ro \
     set -euo pipefail; LLVM_RELEASE="${LLVM_RELEASE}" bash /tmp/register-llvm-alternatives.sh
 
-# 3c. VERIFY TOOLCHAIN CONTRACT
+# Toolchain contract
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain,target=/opt/scripts/toolchain,ro \
     set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
-# (RUN 3d deleted — TG3-residual 2026-08-24. The unified superset build in
-# RUN 3 already installs /opt/llvm-target-<arch> for every cross arch; see
-# the RUN 3 comment above for the full rationale and the gates that still
-# verify those trees.)
-
-# 4. RUST / CARGO
-# Install the host Rust toolchain in the compiler layer and add the target stdlibs
-# plus Cargo linker hints needed by the amd64-hosted cross build lane.
-# Pins from versions.env (auto-forwarded as build args by the orchestrator).
+# Rust: host toolchain plus the cross target stdlibs
 ARG RUST_VERSION=1.98.1
 ARG CARGO_C_VERSION=0.10.25
 ARG RUST_NIGHTLY_TOOLCHAIN=nightly-2026-06-28
-# Per-file bind mounts = the transitive source-closure of install-rust.sh
-# (platform.sh + cross-env.sh and the cross-* modules cross-env.sh pulls in).
-# versions.env is mounted so install-rust.sh can pick up the optional
-# RUSTUP_INIT_SHA256 pin (noforward key, so it never arrives as a build arg).
+# versions.env is mounted for RUSTUP_INIT_SHA256, a noforward key that never arrives as a build arg.
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
     --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \
@@ -251,11 +167,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
     --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/toolchain/install-rust.sh
 
-# 5. PYTHON (Source-Built Interpreter)
-# Keep the interpreter in the shared compiler layer so downstream images only
-# create their own venvs on top of a single source-built CPython install.
-# Per-file bind mounts = the transitive source-closure of build_python.sh
-# (modules.sh bootstrap + the source_module'd 01-core leaves).
+# Source-built CPython, shared by every downstream venv
 RUN --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \
@@ -280,26 +192,13 @@ RUN --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scri
     PYTHON_TGZ_SHA256="${PYTHON_TGZ_SHA256}" \
     bash /opt/scripts/python/build_python.sh "${PYTHON_VERSION}"
 
-# Canonical venv path/env for downstream stages. The venv itself is deliberately
-# NOT created here: Dockerfile.media's base stage recreates it from scratch
-# (`uv venv --clear`) with its own package set, its `FROM base AS tvm` stage
-# builds in a throwaway venv of its own (tvm-python.sh `uv venv --seed
-# $tvm_dir/.venv`), and the package image builds its own via
-# setup-package-image.sh — a toolchain-level pre-create was always discarded
-# downstream. (This used to cite "sdk's TVM build"; that stage was deleted on
-# 2026-08-12 — see the "NO sdk-stage TVM build" note in Dockerfile.sdk, backlog
-# BS2 — so only the address changed, not the reason. Named, not line-numbered:
-# comment anchors rot, and this one already had.)
+# Path only: every downstream stage creates its own venv, so one made here would be discarded.
 ENV VIRTUAL_ENV=/opt/python/.venv \
     PATH=/opt/python/.venv/bin:${PATH} \
     UV_PYTHON=/opt/python/.venv/bin/python \
     MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python
 
-# Script bundle for downstream stages, as plain COPYs: each layer's cache key
-# is the CONTENT of exactly the paths it copies, so an unrelated linux/scripts
-# edit no longer invalidates the bundle and the old manual `echo "bundle vN"`
-# cache-buster is obsolete (bump-forgetting was a real foot-gun). The compiler
-# layers above are untouched either way.
+# Script bundle as plain COPYs, content-keyed, so no manual cache-buster is needed.
 COPY --chmod=755 linux/scripts/01-core/ /opt/scripts/core/
 COPY --chmod=755 linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh \
@@ -310,23 +209,16 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh \
                  linux/scripts/06-packaging/smoke-cross-all-arches.sh \
                  /opt/scripts/packaging/
 
-# Same validation the old bundle RUN performed: every script parses, the
-# toolchain installer answers --help, and the staged-python .pc fixup runs.
 RUN set -euo pipefail; \
     find /opt/scripts -name '*.sh' -type f -print0 | while IFS= read -r -d '' f; do bash -n "$f"; done; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --help >/dev/null; \
     bash /opt/scripts/python/fix-staged-python-pc.sh
 
-# Execute the toolchain smoke (GCC/LLVM/Rust/Python + every cross-linker's ELF
-# output) right after the bundle, so a broken compiler stage fails HERE instead
-# of hours later in a downstream media/package build. Hard-fail via smoke_summary.
+# A broken compiler stage fails here, not hours later in a downstream build.
 RUN set -euo pipefail; \
     bash /opt/scripts/packaging/smoke-toolchain.sh
 
-# sudo pass-through wrapper: avoids sudo-rs env filtering issues in container.
-# Strips --preserve-env* flags (which sudo-rs mis-handles) and executes the
-# remaining command directly.  Warns on stderr when stripping flags and
-# errors when no command remains after stripping.
+# sudo-rs mishandles --preserve-env*, so this pass-through strips it and runs the command.
 RUN cat > /usr/local/bin/sudo <<'SUDO_WRAPPER' && chmod +x /usr/local/bin/sudo
 #!/bin/bash
 args=()

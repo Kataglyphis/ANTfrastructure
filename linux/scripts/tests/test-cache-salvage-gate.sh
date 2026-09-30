@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the D5 free-space gate on the post-failure cache-export salvage
-# (_cross_salvage_disk_ok in 01-core/cross-stage-build.sh). The salvage re-drives
-# up to 15 named media targets and writes GBs of cache export for stages that get
-# rebuilt anyway — at exactly the moment disk is scarce. Rationale:
-# docs/build-cache-tiers.md#31-preflight-trim-d4-and-the-salvage-disk-gate-d5
+# Tests for the D5 free-space gate on the cache-export salvage. See docs/build-cache-tiers.md#31-preflight-trim-d4-and-the-salvage-disk-gate-d5
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

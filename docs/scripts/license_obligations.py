@@ -1,32 +1,11 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""What each licence in `deps.json` requires of THIS project, as data.
-
-Why this exists
----------------
-A licence list that names licences answers "what is in here". It does not answer
-the question that actually matters when you publish an image to a public
-registry: **what does each of those licences oblige me to do?** Until
-2026-08-25 the generated pages carried 97 component rows, zero licence texts and
-no corresponding-source offer -- while the published runtime image ships a
-GPLv3 FFmpeg (built `--enable-gpl --enable-version3`) and a GPLv3 GCC.
-
-So obligations live here, keyed by SPDX id, and the generator renders them.
-Adding a component with an unmapped licence fails the gate rather than silently
-producing a row with no obligation attached.
-
-This is a structured reading of licence texts, not legal advice. It is meant to
-make the obligations visible and reviewable -- a lawyer's answer still governs,
-especially for the proprietary EULAs, where the question is not "what must I
-publish" but "may I redistribute this at all".
-"""
+"""What each licence in deps.json obliges the distributor to do, keyed by SPDX id; an unmapped licence fails. Not legal advice."""
 
 from __future__ import annotations
 
-# --- obligation codes -------------------------------------------------------
-# Each is one thing the distributor must DO. Kept small and concrete so a
-# reader can check the image against them.
+# Obligation codes: each is one thing the distributor must do.
 
 KEEP_NOTICE = "keep-notice"
 INCLUDE_TEXT = "include-text"
@@ -66,9 +45,7 @@ DESCRIPTIONS: dict[str, str] = {
     ),
 }
 
-# --- SPDX id -> obligations -------------------------------------------------
-# `source_required` marks the families where a corresponding-source pointer is
-# mandatory; the generator gates on it for every component that ships.
+# SPDX id -> obligations; OFFER_SOURCE marks the families the generator gates a source pointer on.
 
 OBLIGATIONS: dict[str, tuple[str, ...]] = {
     # Permissive
@@ -102,8 +79,7 @@ OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "GPL-2.0-only": (KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE, STATE_CHANGES, SAME_LICENCE),
     "GPL-2.0-or-later": (KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE, STATE_CHANGES, SAME_LICENCE),
     "GPL-3.0-or-later": (KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE, STATE_CHANGES, SAME_LICENCE),
-    # The Runtime Library Exception covers programs COMPILED with GCC. It does
-    # not cover shipping GCC itself, which this project's runtime image does.
+    # The exception covers programs compiled with GCC, not shipping GCC itself, which the runtime image does.
     "GPL-3.0-or-later WITH GCC-exception-3.1": (
         KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE, STATE_CHANGES, SAME_LICENCE,
     ),
@@ -114,10 +90,7 @@ OBLIGATIONS: dict[str, tuple[str, ...]] = {
     # Proprietary
     "LicenseRef-Proprietary-EULA": (EULA_REVIEW,),
 
-    # Deliberately coarse: a distro base image or a tool bundle is hundreds of
-    # packages under many licences. Their own copyright files travel in the
-    # image (/usr/share/doc/*/copyright is not stripped), which is what
-    # discharges the notice requirement for them.
+    # Coarse on purpose: the bundle's own copyright files stay in the image and discharge the notice.
     "LicenseRef-Distro-Bundle": (KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE),
 }
 
@@ -127,16 +100,8 @@ SOURCE_REQUIRED = frozenset(
 
 
 def obligations_for(expression: str) -> tuple[str, ...]:
-    """Union of obligations across an SPDX expression.
-
-    Dual licensing ("Apache-2.0 OR MIT") is rendered as the UNION, not the
-    cheaper half: the project has not recorded which arm it elects, so the
-    stricter reading is the honest one to display. Record an election in
-    deps.json (a single spdx id) to narrow it.
-    """
-    # Split on the AND/OR operators only. A `X WITH Y` pair is ONE licence id
-    # in SPDX and must survive intact -- splitting it would look up a base id
-    # whose obligations differ from the exception-bearing one.
+    """Union of obligations across an SPDX expression; OR counts as the union until deps.json records an election."""
+    # Split on AND/OR only: `X WITH Y` is one licence id whose obligations differ from X's.
     parts = [
         p.strip()
         for p in expression.replace(" OR ", " AND ").split(" AND ")

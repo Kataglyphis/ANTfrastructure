@@ -1,6 +1,5 @@
 #requires -Version 7.0
-# TestHarness Invoke-WithEnv: $null REMOVES a variable, and one that was unset is unset again after.
-# NOT covered: Machine/User scope (the harness only touches the process block).
+# Invoke-WithEnv: $null removes a variable, and an unset one is unset again after (process scope only).
 
 Describe 'TestHarness: Invoke-WithEnv removes and restores for real' {
     $script:Probe = 'KATAGLYPHIS_WITHENV_PROBE'

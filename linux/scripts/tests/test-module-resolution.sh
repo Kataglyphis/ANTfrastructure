@@ -1,15 +1,5 @@
 #!/usr/bin/env bash
-# Tests for 01-core/modules.sh source_module resolution order (2026-08-30).
-#
-# WHY THIS SUITE EXISTS
-# ---------------------
-# The old candidate list started with ${caller_dir}/${name}. Sourcing
-# 03-media/build/onnxruntime/build/lib/common.sh bare (SCRIPT_DIR unset) made
-# source_module "common.sh" resolve to THAT SAME FILE — an infinite re-source
-# loop (media_common_init → common.sh → media_common_init …) that ended in a
-# stack-overflow SIGSEGV. Framework dirs now come first; the caller-local slot
-# is a last resort. These tests pin the resolution order so a future
-# "convenience" reordering cannot resurrect the recursion.
+# source_module tries framework dirs before the caller's, or a same-named common.sh re-sources itself forever.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -39,8 +29,7 @@ case_01core_preferred() {
 }
 
 case_recursion_shape() {
-  # Nested shell: caller_dir holds a common.sh (poison); 01-core exists. The
-  # module must resolve to 01-core and never reach the caller-local file.
+  # caller_dir holds a poison common.sh; resolution must reach 01-core, never the caller-local file.
   _out="$(timeout 5 bash -c '
     source "$1" 2>/dev/null || exit 99
     export SCRIPT_DIR="$2"

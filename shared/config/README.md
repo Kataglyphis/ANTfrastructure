@@ -263,7 +263,7 @@ wired this gate into an aggregator, and why the shared files then drifted
 unwatched in every repo at once.
 
 An absent manifest is a FAILURE in the **aggregator**, not a skip
-(`linux/scripts/run-lint-gates.sh:164-179`, gate `shared-config`): skipping would
+(`_lint_gates_shared_config` in `linux/scripts/run-lint-gates.sh`, gate `shared-config`): skipping would
 restore the older and worse failure, a gate that is present, green, and comparing
 nothing. The declaration is two lines, and the error message spells them out.
 

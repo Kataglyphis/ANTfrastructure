@@ -1,7 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Build-TorchApp.ps1's ORT census (its ort-venv-census.py copy, runner, verdict, wiring) and uv sync's ORT skips.
 # NOT covered: the census's own verdicts (test-ort-venv-census.sh), a real venv, ORT under a non-onnxruntime lock name.
 
 # Rooted = as given, so a mutation run can point this at a broken copy of the script.

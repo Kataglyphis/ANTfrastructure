@@ -1,8 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# G2 (Assert-ChainOrtOnly) over fixture trees, its stamp as G1 reads it, and its wiring into the five consumer builds.
-# NOT covered: a real consumer build, record formats beyond the shapes written here, what loads at run time.
+
+# G2 (Assert-ChainOrtOnly) over fixture trees, the stamp G1 reads, and its wiring into the five ORT consumers.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProvenance.Build.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProvenance.Common.psm1') -Force -DisableNameChecking

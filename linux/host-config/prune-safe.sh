@@ -1,30 +1,5 @@
 #!/usr/bin/env bash
-# prune-safe.sh — reclaim buildkit disk WITHOUT destroying compile caches
-# (backlog CACHE1, 2026-08-17).
-#
-# THE INCIDENT THIS PREVENTS: `nerdctl builder prune -f` deletes EVERYTHING
-# reclaimable in the buildkit store — including `type==exec.cachemount`
-# records, which is where RUN --mount=type=cache lives: ccache, sccache,
-# uv, pip, cargo, apt, llvm-src. On 2026-08-17 repeated disk-alarm prunes
-# wiped the ccache mounts and both target-LLVM builds ran COLD (+~1.5-2h
-# on the compiler stage). Measured store split at the time: 207 GB layer
-# cache (`regular`, cheap to regenerate) vs 4.9 GB cache mounts (hours of
-# compile time). The old command threw away the 4.9 GB to get the 207 GB.
-#
-# WHAT THIS DOES INSTEAD: prune ONLY `type==regular` records (layer cache)
-# via buildctl's --filter — nerdctl builder prune has no such flag. Cache
-# mounts, frontend and internal records are never candidates. Prints the
-# cachemount inventory before/after so survival is PROVEN, not assumed.
-#
-# USAGE:
-#   linux/host-config/prune-safe.sh              # reclaim ALL layer cache
-#   PRUNE_KEEP_GB=100 linux/host-config/prune-safe.sh
-#                                                # keep newest ~100 GB of it
-#   DRY_RUN=1 linux/host-config/prune-safe.sh    # report only, prune nothing
-#
-# Mid-run safety: buildkit skips in-use records, so running this during a
-# chain is safe for correctness — but later stages lose layer reuse and
-# rebuild more. Fine in a disk emergency; prefer between-stage windows.
+# Prunes layer cache only, never cachemounts ([PRUNE_KEEP_GB=N] [DRY_RUN=1]): docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches
 set -euo pipefail
 
 export BUILDKIT_HOST="${BUILDKIT_HOST:-unix:///run/user/$(id -u)/buildkit/buildkitd.sock}"

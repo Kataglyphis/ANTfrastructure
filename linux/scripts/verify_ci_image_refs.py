@@ -1,61 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""Every CI lane in the family runs in the SAME images, and this proves it.
+"""Every CI lane runs in the images versions.env composes; a spelled-out copy of the ref is a finding.
 
-versions.env owns the convention (IMAGE_REGISTRY_PREFIX + CI_IMAGE_LINUX_TAG /
-CI_IMAGE_WINDOWS_TAG / CI_IMAGE_WINDOWS_ARM64_TAG, the last one the arm64 cross
-bundle). Each language has exactly ONE way to ask it for the composed ref: YAML
-omits the image input and inherits the four container composite actions'
-DEFAULT (a Windows step that says `target-arch: arm64` inherits the
-`image-arm64` default), Bash calls linux/scripts/ci-image-ref.sh, PowerShell
-calls Get-CiImageReference. Anything that spells the ref out instead is a COPY,
-and a copy is frozen at the tag it was written on. These four checks are what
-make a copy, or a default that stopped matching, visible:
-
-  A. Each image input of the four actions (`image`, and on the Windows pair
-     `image-arm64`) still has a `default:`, and that default equals the ref
-     composed from versions.env for that input. A tag bump therefore lands in
-     one file and the copies cannot drift away from it.
-  B. Every `kataglyphis_beschleuniger:<tag>` literal anywhere under .github/
-     names one of the canonical tags. This is the drift detector: an
-     arch-suffixed tag, a stale tag, or plain `:latest` (whose per-platform
-     children were deleted and never restored) fails here rather than at
-     `docker pull` time in someone else's lane.
-  C. A step that `uses:` one of the four actions and passes an image input
-     containing a literal must pass the canonical ref FOR THAT INPUT. B alone
-     cannot catch a Linux lane handed `:winamd64`, or a Windows `image:` handed
-     the arm64 bundle -- every one of those tags is canonical, just not there.
-  D. No COPY of a currently-canonical ref: not in a tracked *.sh / *.ps1 /
-     *.psm1 anywhere under the root, and not as the whole value of a YAML
-     mapping key other than `default:`. A/B/C were all blind to this, which is
-     how three copies survived a green verdict: they were CANONICAL, so B waved
-     them through, and C only ever compared platforms. `default:` is the one
-     exemption because it is the OWNER of the value -- an action input's
-     default (graded by A) or a `workflow_call` input's, which has nowhere else
-     to come from. Everything else has an owner to ask.
-
-Deliberate overrides are not forbidden, they are declared: add a row to EXCUSED
-with the reason. A stale row (the tag no longer appears) fails too, so the list
-can only shrink by being true. D has no such route on purpose: a lane that
-means to pin an OLDER image writes a non-canonical tag and is judged by B, so
-"I must spell today's ref out here" has no case left to make.
-
-Usage:
-    python3 linux/scripts/verify_ci_image_refs.py           # this repo
-    python3 linux/scripts/verify_ci_image_refs.py <root>    # a consumer repo
-
-The consumer root exists for the same reason lint-workflows.sh takes one: a
-submodule checkout puts this script INSIDE the consumer, where the default root
-resolves to ANTfrastructure and the gate would report green over the wrong tree.
-versions.env always comes from THIS repo regardless of the root.
-
-A/B/C read <root>/.github/ by glob; D's script half reads the git INDEX through
-gate_scope (its rule 3), because a walk of a working tree picks up .venv/,
-build-*/ and .pub-cache/ -- measured 38 such files in one consumer against 21
-tracked ones -- and cannot see that third_party/ is a separate root with its own
-run. The wrong-root case is caught before that by A/B/C's "no workflow or action
-YAML" refusal.
+Usage: verify_ci_image_refs.py [<consumer root>]  (versions.env always comes from this repo)
 """
 from __future__ import annotations
 
@@ -70,10 +18,7 @@ VERSIONS_ENV = HERE / "01-core" / "versions.env"
 sys.path.insert(0, str(HERE))
 import gate_scope  # noqa: E402
 
-# The four composite actions the whole family reaches its containers through,
-# each one's image inputs, and the canonical ref each input is for. Relative to
-# <root>/.github/actions/. The Windows pair also runs the arm64 cross bundle:
-# `target-arch: arm64` selects their `image-arm64` input.
+# Action (under <root>/.github/actions/) -> image input -> canonical ref; `target-arch: arm64` selects `image-arm64`.
 CONTAINER_ACTIONS = {
     "prepare-linux-ci-host": {"image": "linux"},
     "run-in-linux-container": {"image": "linux"},
@@ -81,20 +26,15 @@ CONTAINER_ACTIONS = {
     "run-in-windows-container": {"image": "windows", "image-arm64": "windows-arm64"},
 }
 
-# Non-canonical `kataglyphis_beschleuniger:<tag>` literals that are correct
-# anyway, keyed "<path relative to root>::<tag>" with the reason. A row whose
-# tag no longer appears at that path is STALE and fails: this list may only
-# shrink by becoming true.
+# "<path>::<tag>" -> reason for a deliberate non-canonical tag; a row whose tag is gone is STALE and fails.
 EXCUSED: dict[str, str] = {}
 
-# D's script half. .psm1 is in the list because Get-CiImageReference lives in
-# one and a module is exactly where a "shared" copy would be parked.
+# .psm1 included: a module is exactly where a "shared" copy would be parked.
 SCRIPT_PATTERNS = ("*.sh", "*.ps1", "*.psm1")
 
 REF_RE = re.compile(r"kataglyphis_beschleuniger:([A-Za-z0-9][A-Za-z0-9._-]*)")
 USES_RE = re.compile(r"^(\s*)(?:-\s+)?uses:\s*(\S+)")
-# D's YAML half: a mapping line whose VALUE is the whole ref. A ref inside a
-# `run:` block or an expression is not this shape, and is judged by B and C.
+# A mapping line whose whole value is the ref; refs inside `run:` or expressions are B's and C's.
 YAML_ENTRY_RE = re.compile(r"^\s*(?:-\s+)?([A-Za-z_][A-Za-z0-9_.-]*):\s*(.*?)\s*$")
 IMAGE_RE = re.compile(r"^\s*(image|image-arm64):\s*(.*?)\s*$")
 LIST_ITEM_RE = re.compile(r"^(\s*)-\s")
@@ -146,33 +86,14 @@ def script_files(root: Path) -> list[Path]:
 
 
 def frozen_ref_re(refs: dict[str, str]) -> re.Pattern:
-    """Matches a currently-canonical ref, and only when it is the WHOLE tag.
-
-    The trailing guard is what keeps the per-arch children of the manifest out
-    of it: `...:latest-arm64` in smoke-runtime-image.sh is a real tag the
-    build chain produces, not a copy of the CI ref that starts the same way.
-
-    `.` is deliberately NOT in that guard, though a tag may contain one. Every
-    derived tag this repo builds separates with `-` (tag-naming.sh: cross-sdk-,
-    runtime-package-, ...), so excluding `.` bought nothing -- and it cost the
-    commonest prose shape there is, a sentence ending "runs in <ref>.", which
-    is precisely where two of the three surviving copies were found. A dotted
-    tag that starts with a canonical one would be a loud false positive; a copy
-    hidden behind a full stop is a silent false negative, and this gate exists
-    because the silent kind is what got through.
-    """
+    """A canonical ref as a whole tag; `.` is not a continuation, so a ref ending a sentence still counts."""
     return re.compile(
         "(?:%s)(?![A-Za-z0-9_-])"
         % "|".join(re.escape(ref) for ref in sorted(set(refs.values()))))
 
 
 def ask_instead(path: Path) -> str:
-    """The owner THIS file's language has, named in the finding.
-
-    Keyed on the suffix rather than a lookup table: git's pathspec matching is
-    case-insensitive wherever core.ignorecase is on, so a `Build.PS1` must not
-    be able to turn a finding into a KeyError.
-    """
+    """The ref owner for this file's language, by lower-cased suffix since pathspecs may ignore case."""
     if path.suffix.lower() == ".sh":
         return "bash <ANTfrastructure>/linux/scripts/ci-image-ref.sh [--windows|--windows-arm64]"
     return "Get-CiImageReference [-Windows [-TargetArch arm64]] (WindowsContainerImage.Common.psm1)"
@@ -183,9 +104,7 @@ def check_script_copies(root: Path, files: list[Path], frozen: re.Pattern) -> in
     bad = 0
     for path in files:
         rel = path.relative_to(root).as_posix()
-        # Strict decoding, like every other reader here: errors="replace" would
-        # turn a file this gate cannot read into a silent green, which is the
-        # exact failure mode it was written to end.
+        # Strict decoding: errors="replace" would turn an unreadable file into a silent green.
         text = path.read_text(encoding="utf-8")
         for n, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
             if not frozen.search(line):
@@ -219,13 +138,7 @@ def check_yaml_copies(root: Path, files: list[Path], frozen: re.Pattern) -> int:
 
 
 def image_input_default(text: str, name: str = "image") -> str | None:
-    """The `default:` of the top-level input `name`, or None when it has none.
-
-    Hand-parsed on purpose: the gate must run with the stdlib alone (CI installs
-    no PyYAML for it), and the shape it reads -- two-space input key, four-space
-    key/value under it -- is the shape every action.yml in this repo is written
-    in and the shape actionlint enforces.
-    """
+    """The `default:` of top-level input `name`, or None; hand-parsed because the gate runs on the stdlib alone."""
     # The input NAME inside an action's `inputs:` block, not a value.
     input_key = re.compile(r"^  %s:\s*$" % re.escape(name))
     lines = text.replace("\r\n", "\n").split("\n")
@@ -303,12 +216,7 @@ def action_inputs(uses: str) -> dict[str, str] | None:
 
 
 def check_call_sites(root: Path, files: list[Path], refs: dict[str, str]) -> int:
-    """C: a literal handed to one of the four actions matches THAT INPUT's ref.
-
-    B cannot see this: `:winamd64` passed to run-in-linux-container, or the arm64
-    bundle passed to a Windows action's `image`, is a perfectly canonical tag,
-    for the wrong operating system or the wrong target.
-    """
+    """C: a literal handed to one of the four actions matches that input's ref, a canonical-but-wrong tag B cannot see."""
     bad = 0
     for path in files:
         rel = path.relative_to(root).as_posix()
@@ -332,9 +240,7 @@ def check_call_sites(root: Path, files: list[Path], refs: dict[str, str]) -> int
                 continue
             platform = pending[0][image.group(1)]
             found = REF_RE.search(image.group(2))
-            # No literal means an expression or the omitted input -- both resolve
-            # through the action default, and any literal inside the expression
-            # was already judged by check_literals.
+            # No literal resolves through the action default; literals in expressions were check_literals'.
             if found and found.group(1) != refs[platform].rsplit(":", 1)[1]:
                 fail("%s:%d: `%s:` of a %s action is handed ':%s'; it must run %s"
                      % (rel, lineno, image.group(1), platform.split("-")[0], found.group(1), refs[platform]))
@@ -355,14 +261,12 @@ def main() -> int:
         fail("no workflow or action YAML under %s/.github -- wrong root?" % root)
         return 1
 
-    # Only after the wrong-root refusal above: gate_scope needs a checkout, and
-    # "you pointed me at a tree with no workflows" is the more useful message.
+    # After the wrong-root refusal, whose message is more useful than gate_scope's.
     try:
         scripts = script_files(root)
     except gate_scope.ScopeError as exc:
         return gate_scope.die(exc)
-    # A repo may legitimately have no shell or PowerShell at all (ANThology has
-    # none), so an empty script set is allowed -- and SAID, not assumed.
+    # A repo may legitimately have no scripts at all, so an empty set is allowed but reported.
     gate_scope.assert_non_empty(scripts, root, SCRIPT_PATTERNS, "allow", "ci-image-refs")
 
     bad, checked = check_action_defaults(root, refs)

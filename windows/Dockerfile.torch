@@ -1,80 +1,35 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Windows mirror of linux/Dockerfile.torch: assembles the
-# OrchestrANT app environment as its OWN chain stage between
-# media and final (media -> torch -> final; windows/Dockerfile builds FROM this
-# image and adds only the cheap dev-image trimmings). An APP_REF bump therefore
-# rebuilds torch + final — minutes, network-bound — never the compile chain.
-#
-# In-chain (default): .\windows\Build-Buildkit.ps1        (torch is in the default stages)
-# App-only iteration:  .\windows\Build-Buildkit.ps1 -Stages torch,final
-# Building on the PUBLISHED image is NOT driver-supported: the torch stage's
-# BASE_IMAGE is pinned to the local `windows-media` tag. The classic lane's
-# -TorchBaseImage went with build.ps1 (deleted 2026-08-31); overriding BASE_IMAGE
-# now needs a direct buildctl solve.
-#
-# The assembly script deletes + reclones C:\opt\OrchestrANT
-# wholesale, so re-running on a base that already carries an older app env
-# (e.g. the published image) is safe and total.
+# The app env as its own stage (media -> torch -> final), so an APP_REF bump never rebuilds the compile chain.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-media
 # '1' on the rocm lane only (Build-Buildkit.ps1): the last FROM then takes rocm-1, else rocm-0 = app.
 ARG TORCH_ROCM=0
 FROM ${BASE_IMAGE} AS app
 
-# Kept in sync with versions.env by sync_versions.py; Build-Buildkit.ps1 overrides it
-# with the COMMIT that ref points at now (or the latest release tag's, with -LatestApp).
+# Synced by sync_versions.py; Build-Buildkit.ps1 passes the commit the ref points at now.
 ARG APP_REF=develop
-# Torch BACKEND extra from the app's pyproject: pytorch-cpu (default),
-# pytorch-cu130, ... 'none' disables (torch is only declared inside the extras).
+# The app's torch extra; 'none' disables torch, which is declared only inside the extras.
 ARG PYTORCH_EXTRA=pytorch-cpu
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
-# Fresh copy from the build context (NOT the baked one): app-assembly fixes must
-# reach this leaf without waiting for a full base republish.
-# WindowsNative.Common must ride along explicitly: assemble-torch-app imports it
-# (Invoke-ShieldedNative), and the BK lane's parent lineage (merge-fanin ->
-# toolchain -> base) carries only Shared/ContainerImage/Installer in
-# C:\temp\scripts\modules — the retired classic merge stage was the only place with
-# a fuller module COPY, and the final image's whole-modules COPY comes one stage too late.
+# Build-TorchApp.ps1 imports these modules, and the parent lineage carries neither.
 COPY windows\scripts\modules\WindowsNative.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\build\Build-TorchApp.ps1 C:\temp\scripts\
-# Wheel download cache (added 2026-08-08). Neither UV_CACHE_DIR nor
-# PIP_CACHE_DIR existed anywhere in the Windows lane, so this stage re-downloaded
-# its whole wheel set on every run -- and with PYTORCH_EXTRA=pytorch-cu130 that
-# is multiple GB of CUDA-flavoured torch over the network, for bytes that never
-# change between runs. The comment below already calls this step "minutes-long,
-# network-bound"; this is the cache that makes it stop being network-bound.
-#
-# Low risk by construction, unlike a source-tree cache: uv treats its cache as
-# pure content-addressed scratch, so BuildKit cloning the mount under lock (the
-# documented caveat) costs at worst a cold re-download, and nothing here renames
-# a directory on the mount.
-#
-# Sized 10G against the tier-0 GC cap for type==exec.cachemount (20GB/168h in
-# windows/buildkitd.toml), which the 15G sccache L0 already shares. If either
-# grows, raise the cap in the same change or both start getting evicted between
-# chains and quietly buy nothing.
-# Set INSIDE the RUN, not as ENV: an ENV would bake UV_CACHE_DIR into the
-# shipped image, pointing every runtime `uv`/`pip` invocation at a build-only
-# mount path that does not exist there. Build-time state belongs in the build
-# step, not in the artifact.
+# Wheel cache set inside the RUN, not ENV, which would point the shipped uv at a build-only path; it shares buildkitd.toml's cache-mount GC cap.
 RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
     $env:UV_CACHE_DIR = 'C:\uvcache'; $env:PIP_CACHE_DIR = 'C:\uvcache\pip'; `
     & 'C:\temp\scripts\Build-TorchApp.ps1' -AppRef $env:APP_REF -PytorchExtra $env:PYTORCH_EXTRA -Mode all
 
 ENV TORCH_APP_DIR="C:\opt\OrchestrANT"
 
-# rocm lane only: torch, then torchvision, built from upstream source against TheRock, on the rocm
-# BASE_IMAGE and NOT on app, so an APP_REF move never re-runs this multi-hour compile. Only rocm-1
-# mounts it, so cpu/nvidia never build it. docs/windows-rocm.md § PyTorch on the rocm lane.
+# rocm only, on BASE_IMAGE not app, so an APP_REF move never re-runs it; see docs/windows-rocm.md § PyTorch on the rocm lane (torch stage).
 FROM ${BASE_IMAGE} AS torch-rocm-wheels
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
-# Same sccache values and reasons as Dockerfile.rocm-migraphx; the build-host settings are ARGs only.
+# Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
 ARG SCCACHE_WEBDAV_ENDPOINT
 ARG SCCACHE_LOG="warn"
 ARG SCCACHE_MULTILEVEL_CHAIN
@@ -85,8 +40,7 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `
     SCCACHE_IDLE_TIMEOUT="0"
-# Values: versions.env, forwarded by Get-BkRocmStageArg -Stage torch. The runtime trio is the one
-# rocm-1 installs: the build venv needs rocm_sdk, because `import torch` runs torch/_rocm_init.py.
+# The build venv needs the rocm_sdk trio, because `import torch` runs torch/_rocm_init.py.
 ARG ROCM_WINDOWS_GFX_FAMILY=gfx120X-all
 ARG PYTORCH_VERSION=v2.14.0
 ARG TORCH_ROCM_WINDOWS_PYTORCH_COMMIT=2b3ec34829036a65cd9d1398ea72a0167dc37470
@@ -125,13 +79,11 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/modules/WindowsMigraphx.Common.psm1,target=C:\bkmnt\modules\WindowsMigraphx.Common.psm1 `
     & 'C:\bkmnt\Build-TorchvisionRocmFromSource.ps1' -OutputDir 'C:\torch-rocm-wheels' -WorkDir 'C:\b'
 
-# cpu/nvidia: rocm-0 IS app, byte for byte. rocm-1 swaps the app venv's CPU torch for the ROCm torch
-# built above and re-verifies the app on it. docs/windows-builds.md § ROCm layer.
+# rocm-0 is app byte for byte; rocm-1 swaps in the ROCm torch and re-verifies the app.
 FROM app AS rocm-0
 
 FROM app AS rocm-1
-# Pins: versions.env TORCH_ROCM_WINDOWS_* (self-measured SHA256s: AMD publishes none). AMD's
-# rocm[libraries] runtime and the device wheels per GPU (gfx1201 unsuffixed, gfx1200 as *_GFX1200).
+# SHA256s are self-measured: AMD publishes none.
 ARG TORCH_ROCM_WINDOWS_ROCM_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm/rocm-10.0.0.tar.gz
 ARG TORCH_ROCM_WINDOWS_ROCM_SHA256=65b5982249612a310135f5e061b9f28909e8ad718a1ddb3f1abba92298b7216b
 ARG TORCH_ROCM_WINDOWS_SDK_CORE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-core/rocm_sdk_core-10.0.0-py3-none-win_amd64.whl
@@ -145,8 +97,7 @@ ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_SHA256=f33226078932ee2200f5595c521895e
 # The venv's ai-edge-litert (PyPI, published SHA256), installed --no-deps in the same offline step.
 ARG TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_URL=https://files.pythonhosted.org/packages/3c/33/1e7b4ac36d983aa6153b10f1e8686d7f6ff47bda1216d6d8f047a19f3cc6/ai_edge_litert-2.2.0-cp314-cp314-win_amd64.whl
 ARG TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_SHA256=4e5e35da364495fdf0abefd6ef32d299133619df4cbab757941b0462066e93bc
-# Same uv cache mount as app: the pinned wheels are cached by SHA256 under C:\uvcache\torch-rocm.
-# -TorchRocm 1 is literal: only TORCH_ROCM=1 selects this stage, and an env read could fail open to CPU torch.
+# -TorchRocm 1 is literal: an env read could fail open to CPU torch.
 RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
     --mount=type=bind,from=torch-rocm-wheels,source=/torch-rocm-wheels,target=C:\bkmnt\torch-rocm-wheels `
     --mount=type=bind,source=windows/scripts/build/Install-TorchRocm.ps1,target=C:\bkmnt\Install-TorchRocm.ps1 `
@@ -160,18 +111,11 @@ FROM rocm-${TORCH_ROCM}
 # ARGs stop at FROM: the LABEL reads APP_REF, so redeclare it (sync_versions.py syncs both).
 ARG APP_REF=develop
 
-# Provenance stamps DELIBERATELY declared below the assembly RUN: ARGs enter
-# the env (and thus the cache key) of every later instruction, and the drivers
-# pass a fresh timestamp on every invocation — declared above the RUN they
-# forced the minutes-long, network-bound app assembly to re-execute on every
-# chain run even with zero changes. Down here they only re-stamp the LABEL.
+# Below the assembly RUN: a fresh timestamp per run would otherwise re-key it.
 ARG BUILD_DATE=""
 ARG VCS_REF=""
 
-# Healthcheck: exercise the APP venv's onnxruntime import (mirror of
-# linux/Dockerfile.torch's healthcheck). windows/Dockerfile (final) overrides
-# this with the broader dev-image probe; this one stands when the torch image
-# is run directly. WORKDIR/VOLUME/ENTRYPOINT come from the final stage.
+# Stands when the torch image runs directly; the final image overrides it.
 HEALTHCHECK --interval=5m --timeout=30s --start-period=60s --retries=3 `
   CMD ["C:\\opt\\OrchestrANT\\.venv\\Scripts\\python.exe", "-c", "import onnxruntime"]
 

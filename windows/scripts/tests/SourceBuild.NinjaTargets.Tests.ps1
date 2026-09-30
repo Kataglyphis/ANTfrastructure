@@ -1,12 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Invoke-NinjaBuildWithRetry -Targets (added 2026-08-24 for the runtime-only
-# TVM cross build): the explicit target list must reach EVERY ninja invocation
-# of the retry ladder, or a retry silently rebuilds the whole graph (and, for
-# TVM, the compiler the lane must not ship). Same fake ninja.bat as the retry
-# suite, driven through the same env knobs.
+
+# -Targets must reach every ninja call of the retry ladder, or a retry silently rebuilds the whole graph.
 
 Describe 'Invoke-NinjaBuildWithRetry -Targets' {
 
@@ -54,11 +50,7 @@ Describe 'Invoke-NinjaBuildWithRetry -Targets' {
         Assert-True ($calls[0] -match "-C $([regex]::Escape($script:tmp))\s*$") "no trailing targets: $($calls[0])"
     }
 
-    # Invoke-HostToolCmakeBuild (arm64 run 18, 2026-08-25): the helper's block
-    # tees every ninja line onto the pipeline, so without `| Out-Host` its
-    # return value was [ninja lines..., path] and IREE's `Join-Path $dir $tool`
-    # died with "A drive with the name 'ninja' does not exist". A CHATTY fake
-    # ninja + a fake cmake reproduce it: the return must be exactly one string.
+    # A chatty fake ninja: without `| Out-Host` its lines would leak into the helper's return ahead of the path.
     It 'Invoke-HostToolCmakeBuild returns exactly the directory path, not the build output' {
         $env:WBT_NINJA_FAILONCE = ''
         $chatty = Join-Path $script:tmp 'chatty'

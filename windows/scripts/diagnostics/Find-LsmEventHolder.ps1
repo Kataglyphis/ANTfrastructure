@@ -6,22 +6,10 @@
 
 <#
 .SYNOPSIS
-    Names the OTHER holder of the event LSM waits on during the container boot
-    hang. Get-LsmWaitObject.ps1 showed the event is unsignalled with
-    HandleCount 2; this resolves who owns the second handle.
-
+    Names the other holder of the unsignalled event the silo's LSM waits on during the container boot hang.
 .DESCRIPTION
-    Attaches non-invasively to the silo's LSM svchost to read the waited handle
-    off the stack, then enumerates every handle on the system via
-    NtQuerySystemInformation(SystemExtendedHandleInformation) and matches on the
-    kernel object pointer. Whoever else holds that pointer is the component
-    expected to signal the event.
-
-    Run ELEVATED while container starts are happening (a build or probe loop).
-    Findings go to out/lsm-attach/, readable by the caller.
-
-.EXAMPLE
-    pwsh -File windows\scripts\diagnostics\Find-LsmEventHolder.ps1
+    Reads the waited handle off the LSM svchost's stack (non-invasive cdb), then matches its kernel object across all handles.
+    Run elevated; findings go to out/lsm-attach/.
 .EXAMPLE
     pwsh -File windows\scripts\diagnostics\Find-LsmEventHolder.ps1 -Handle 0x338 -LsmPid 37236
 #>
@@ -32,16 +20,13 @@ param(
     # Skip discovery and inspect a known process/handle pair.
     [int]$LsmPid = 0,
     [uint32]$Handle = 0,
-    # Start the container to inspect instead of waiting for someone else's:
-    # coordinating an elevated watcher with an external build is what made the
-    # first three attempts miss the hang window entirely.
+    # By default it starts its own container, since a watcher misses an external build's hang window.
     [switch]$NoBait
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Setup only (cdb discovery, out dir, bait, silo descent) is shared with the
-# other LSM probes; the R10 read and the handle scan below stay here.
+# Only the setup is shared with the other LSM probes; the R10 read and handle scan stay here.
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
@@ -96,7 +81,7 @@ function Get-ProcLabel([long]$procId) {
     return "pid $procId  $($p.Name)  (parent $ppid $pn)"
 }
 
-# --- 1. locate the hung LSM svchost and the handle it waits on --------------
+# 1. Locate the hung LSM svchost and the handle it waits on
 if (-not $LsmPid -or -not $Handle) {
     $cdb = Get-CdbPath
 
@@ -117,16 +102,11 @@ if (-not $LsmPid -or -not $Handle) {
     $sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
     foreach ($p in $svchosts) {
         $log = Join-Path $OutDir "holder-probe-$($p.ProcessId)-$stamp.txt"
-        # Two passes on purpose. Combining them as `~*e .printf ...; kb` makes
-        # .printf swallow the semicolons ("Bad register error at '@r10; kb'")
-        # and NO stack is printed at all - measured 2026-09-02. Pass 1 is the
-        # plain ~*kb that is known to work.
+        # Two passes: .printf swallows the semicolons after it, so a combined command prints no stack.
         & $cdb -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
         if (-not (Select-String -Path $log -Pattern 'lsm!CService::Start' -Quiet -ErrorAction SilentlyContinue)) { continue }
 
-        # Which THREAD owns that frame. Reading the first WaitForSingleObjectEx
-        # in the process instead named the SCM dispatcher's own idle wait
-        # (sechost!ScDispatcherLoop), which every service process has.
+        # Bind the frame to its thread: the process's first wait is the SCM dispatcher's idle loop.
         $idx = $null; $cur = $null
         foreach ($ln in (Get-Content $log)) {
             if ($ln -match '^[.#]?\s*(\d+)\s+Id:\s') { $cur = $Matches[1]; continue }
@@ -134,10 +114,7 @@ if (-not $LsmPid -or -not $Handle) {
         }
         if ($null -eq $idx) { Write-Warning "pid $($p.ProcessId) shows LSM but no thread could be bound to it"; continue }
 
-        # Pass 2: R10 of exactly that thread. The x64 syscall stub does
-        # `mov r10,rcx`, so for a blocked NtWaitForSingleObject R10 still holds
-        # argument 1 - the handle. kb's "args to child" columns are home-space
-        # reconstructions and are not trustworthy here.
+        # The syscall stub does mov r10,rcx, so R10 holds the handle; kb's args-to-child columns are unreliable.
         $rlog = Join-Path $OutDir "holder-r10-$($p.ProcessId)-$stamp.txt"
         & $cdb -pv -p $p.ProcessId -y $sym -c ".reload /f; ~$($idx)s; r r10; qd" > $rlog 2>&1
         $rm = Select-String -Path $rlog -Pattern 'r10=([0-9a-f`]+)' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -150,14 +127,12 @@ if (-not $LsmPid -or -not $Handle) {
     if (-not $LsmPid) { throw 'No svchost showed lsm!CService::Start - hang window missed, retry on the next container.' }
 }
 
-# --- 2. resolve the kernel object and every holder of it -------------------
+# 2. Resolve the kernel object and every holder of it
 Write-Host "Enumerating system handles..."
 $rows = [HandleScan]::All()
 Write-Host "  $($rows.Count) handles system-wide"
 
-# Windows redacts kernel pointers for non-elevated callers: the call still
-# succeeds and PIDs/handles are correct, only Object comes back 0 — which would
-# match every row against every other. Refuse rather than report nonsense.
+# Non-elevated callers get zeroed object pointers, which would match every row.
 if (-not ($rows | Where-Object { $_.Item3 -ne 0 } | Select-Object -First 1)) {
     throw 'All object pointers are 0 - kernel addresses are redacted here. Re-run elevated.'
 }
@@ -167,13 +142,10 @@ if (-not $mine) { throw "handle 0x$($Handle.ToString('x')) not found in pid $Lsm
 $obj = $mine.Item3
 Write-Host ("object: 0x{0:x}" -f $obj) -ForegroundColor Cyan
 
-# @() matters: a single match is a bare Tuple, which has no .Count, and
-# StrictMode turns that into "property Count cannot be found".
+# @(): a single match is a bare Tuple, which has no .Count under StrictMode.
 $holders = @($rows | Where-Object { $_.Item3 -eq $obj })
 
-# The object's own HandleCount, measured in the SAME run as the holder list:
-# reading the two from different container instances left it unclear whether a
-# second handle exists at all (2026-09-02).
+# HandleCount from the same run as the holder list, so both describe one container.
 $detail = ''
 if ($cdb -and (Get-Process -Id $LsmPid -ErrorAction SilentlyContinue)) {
     $hlog = Join-Path $OutDir "handle-detail-$LsmPid-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"

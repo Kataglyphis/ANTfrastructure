@@ -1,25 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# tvm-llvm-compat.sh
-# Compiler wrapper generator for TVM's LLVM integration.
-# Extracted from tvm.sh to reduce the size of the main build script.
-#
-# Problem:
-# TVM's LLVM integration adds `-isystem /usr/lib/llvm-XX/include` to the compile command.
-# On Ubuntu, that directory may contain a top-level `cxxabi.h` that conflicts with
-# GCC's libstdc++ headers (see __cxa_init_primary_exception conflict).
-#
-# Approach:
-# Create a tiny shim include dir that provides `cxxabi.h` forwarding to GCC's header,
-# then wrap the compiler to inject `-I<shim>` as the first argument so it wins over
-# `-isystem /usr/lib/llvm-XX/include`.
-#
-# Prints: "<wrapped_cc> <wrapped_cxx>" (or original compilers if no action needed)
+# LLVM's -isystem include dir can carry a cxxabi.h that clashes with libstdc++'s; a -I shim forwards to GCC's.
 
-# Locate GCC's libstdc++ cxxabi.h (the one that must shadow LLVM's). Resolves the
-# GCC version + install prefix from the real g++, then returns the first readable
-# candidate header. Prints the path, or nothing if none is found.
+# Prints GCC's libstdc++ cxxabi.h for the real g++, or nothing.
 _detect_gcc_cxxabi_header() {
   local real_cxx="$1"
 
@@ -29,9 +13,7 @@ _detect_gcc_cxxabi_header() {
     [ -n "$gcc_full" ] || gcc_full="$($real_cxx -dumpversion 2>/dev/null || true)"
     gcc_major="${gcc_full%%.*}"
   fi
-  # Fallback to the canonical GCC version from versions.env if present
-  # (avoids the stale hardcoded `14` that predates the source-built GCC 16.x
-  # toolchain). GCC_VERSION is exported by artifact-common.sh / common.sh.
+  # Fall back to the versions.env GCC_VERSION.
   if [ -z "$gcc_major" ] && [ -n "${GCC_VERSION:-}" ]; then
     gcc_major="${GCC_VERSION%%.*}"
   fi
@@ -73,9 +55,7 @@ _detect_gcc_cxxabi_header() {
   done
 }
 
-# Create the shim cxxabi.h (forwarding to GCC's header) plus cc/cxx wrapper
-# scripts that inject -I<shim> as the first arg so it wins over LLVM's -isystem.
-# Prints "<wrapper_cc> <wrapper_cxx>".
+# Prints "<wrapper_cc> <wrapper_cxx>"; -I<shim> comes first so it wins over LLVM's -isystem.
 _write_cxxabi_shim_and_wrappers() {
   local build_dir="$1" real_cc="$2" real_cxx="$3" gcc_cxxabi_header="$4"
 

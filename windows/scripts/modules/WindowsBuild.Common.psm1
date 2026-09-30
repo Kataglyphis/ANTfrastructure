@@ -5,18 +5,11 @@
 
 Set-StrictMode -Version Latest
 
-# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, ConvertTo-ParameterList, etc.)
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-# Guarded, WITHOUT -Force (repo-wide nested-import rule, 2026-08-04): a forced
-# nested re-import rebinds the dependency into THIS module's private scope and
-# unloads the caller's top-level import — the PS module-scoping trap that broke
-# the BuildDriver test suite and forced build-gstreamer's import-Shared-twice
-# workaround. Trade-off (accepted): a long-lived dev session that edits Shared
-# must Remove-Module/reimport manually; containers always start fresh.
+# Guarded, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
-# -- Logging primitives (module-internal; formerly WindowsLogging.Common.psm1, whose
-# only consumer was this module). Scripts use the Write-BuildLog* wrappers below. --
+# -- Logging primitives (module-internal; scripts use the Write-BuildLog* wrappers) --
 
 function New-LogContext {
     param(
@@ -161,8 +154,7 @@ function New-BuildContext {
         Results     = @{
             Succeeded       = New-Object System.Collections.Generic.List[string]
             Failed          = New-Object System.Collections.Generic.List[string]
-            # Steps that failed but were declared non-gating (Invoke-BuildStep -AllowFailure),
-            # e.g. experimental toolchains. Reported in the summary but do NOT set exit 1.
+            # Non-gating failures (Invoke-BuildStep -AllowFailure): in the summary, never exit 1.
             AllowedFailures = New-Object System.Collections.Generic.List[string]
             Errors          = @{}
             Durations       = [ordered]@{}
@@ -244,22 +236,15 @@ function Invoke-BuildExternal {
         [string]$File,
         [object]$Parameters,
         [switch]$IgnoreExitCode,
-        # Secret VALUES (passwords, tokens) that must never reach the log: any
-        # parameter that exactly matches one of these strings is shown as
-        # '<redacted>' in the logged/thrown command line. Execution is
-        # unaffected - the real values are still passed to the process.
-        # Optional and additive: existing callers are unchanged.
+        # Secret values logged as '<redacted>' when a parameter matches exactly; the process still gets them.
         [string[]]$RedactParameterValues
     )
 
     $parameterList = ConvertTo-ParameterList -Value $Parameters
 
-    # Coerce to an array to ensure .Count property exists even when ConvertTo-ParameterList
-    # returns a scalar or unexpected type. This prevents errors like "The property
-    # 'Count' cannot be found on this object." when callers pass strings.
+    # @(): a scalar result has no .Count under StrictMode.
     $parameterList = @($parameterList)
 
-    # Display copy of the parameter list for logging/error messages only.
     $logParameterList = $parameterList
     $secretValues = @($RedactParameterValues | Where-Object { -not [string]::IsNullOrEmpty($_) })
     if ($secretValues.Count -gt 0) {
@@ -273,8 +258,7 @@ function Invoke-BuildExternal {
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    # Test-Path guard: before the first native call of a session LASTEXITCODE
-    # does not exist, and reading it under StrictMode raises a noisy error.
+    # LASTEXITCODE does not exist before a session's first native call, and StrictMode throws on it.
     $previousLastExitCode = if (Test-Path variable:global:LASTEXITCODE) { $global:LASTEXITCODE } else { 0 }
     $global:LASTEXITCODE = 0
 
@@ -318,17 +302,7 @@ function Invoke-BuildOptional {
         [string]$Name
     )
 
-    # Registers the step with $Context. The old body was a bare try/catch that
-    # never touched $Context.Results, so an optional step could not appear in
-    # the summary AT ALL -- not as succeeded, not as failed, not in the
-    # durations. A consumer run with a failing MSI step and a failing license
-    # check still reported "7 steps, 7 succeeded, 0 failed (100% success rate)".
-    #
-    # This mirrors Invoke-BuildStep -AllowFailure instead of calling it, on
-    # purpose: Invoke-BuildStep returns $true/$false, while this function has
-    # always returned nothing and passed the script block's own output straight
-    # through. Delegating would either inject a stray boolean into that output
-    # or, piped to Out-Null, swallow the tool output the caller wants to read.
+    # Mirrors Invoke-BuildStep -AllowFailure rather than calling it, whose boolean would pollute the passed-through output.
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     try {
         & $Script
@@ -347,11 +321,7 @@ function Invoke-BuildOptional {
     $Context.Results.Durations[$Name] = $stopwatch.Elapsed.TotalSeconds
 }
 
-# The three gate buckets, created together so Add-BuildGateSkip works on a
-# context no Invoke-BuildGate has touched yet -- a batch whose every tool turned
-# out to be missing is exactly the case the skip bucket exists for, and it must
-# still reach the no-gate-ran arm rather than a NullReferenceException.
-# Private: it is state management, not a step a driver ever calls.
+# All three buckets at once, so an all-skip batch reaches the no-gate-ran arm instead of a null reference.
 function Initialize-BuildGateBuckets {
     param(
         [Parameter(Mandatory)]
@@ -367,25 +337,15 @@ function Initialize-BuildGateBuckets {
 
 <#
 .SYNOPSIS
-    Runs one GATING step: a failure is recorded and the run continues; the verdict
-    is raised once, later, by Assert-BuildGates.
+    Runs one GATING step: a failure is recorded and the run continues; Assert-BuildGates raises the verdict.
 .DESCRIPTION
-    The exact inverse of Invoke-BuildOptional, and the PowerShell twin of
-    linux/scripts/01-core/gates.sh. Invoke-BuildOptional records a failure as a
-    non-gating AllowedFailure; Invoke-BuildStep throws on the first one. Neither
-    covers the shape every multi-tool lint step actually wants: run codespell AND
-    bandit AND ruff AND ty, report every finding in one pass, then fail.
-
-    Recording a failure here is not suppression BECAUSE Assert-BuildGates re-raises
-    it. A run of Invoke-BuildGate with no closing Assert-BuildGates is advisory
-    lint wearing a gate's name -- which is what three drivers in this fleet were.
+    PowerShell twin of linux/scripts/01-core/gates.sh; without a closing Assert-BuildGates it is advisory lint.
 .PARAMETER Context
     Build context from New-BuildContext / New-CiSession.
 .PARAMETER Name
     Gate name, as it will appear in the summary and in the final failure message.
 .PARAMETER Script
-    The gate. Any terminating error, or a non-zero exit propagated by
-    Invoke-BuildCommand, counts as a failure.
+    The gate; a terminating error or a propagated non-zero exit is a failure.
 #>
 function Invoke-BuildGate {
     param(
@@ -419,29 +379,15 @@ function Invoke-BuildGate {
 
 <#
 .SYNOPSIS
-    Records a gate that COULD NOT run -- its tool is absent -- and why. The third
-    bucket: neither a pass nor a failure.
+    Records a gate that could not run (its tool is absent) and why: neither a pass nor a failure.
 .DESCRIPTION
-    The PowerShell twin of gate_skip in linux/scripts/01-core/gates.sh. Both
-    other ways of handling an unrunnable gate are the suppression Invoke-BuildGate
-    exists to prevent: Invoke-BuildOptional files it as a non-gating
-    AllowedFailure, and simply not calling Invoke-BuildGate leaves the batch
-    silently one gate smaller with nothing in the log to say so.
-
-    A skip does NOT count as a gate that ran, so a batch of nothing but skips
-    still trips the no-gate-ran arm of Assert-BuildGates -- nothing was graded,
-    so there is no result to tolerate. And it is RED BY DEFAULT: lifting it takes
-    an explicit -TolerateSkips at the Assert-BuildGates call site, which is one
-    grep away from an audit, because "allowed to fail" is exactly what the fleet
-    rule forbids as a default.
-    docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
+    Red by default and never counted as a gate that ran: docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
 .PARAMETER Context
     Build context from New-BuildContext / New-CiSession.
 .PARAMETER Name
     Gate name, as it will appear in the skip list and in the verdict.
 .PARAMETER Reason
-    Why it could not run. Optional only to match gate_skip's signature; a skip
-    without one is indistinguishable from a gate somebody quietly deleted.
+    Why it could not run; optional only to match gate_skip's signature.
 #>
 function Add-BuildGateSkip {
     param(
@@ -464,25 +410,15 @@ function Add-BuildGateSkip {
 
 <#
 .SYNOPSIS
-    Raises the verdict for every Invoke-BuildGate in this context. Throws on any
-    failure, on any un-tolerated skip, and when NO gate ran.
+    Raises the verdict for every Invoke-BuildGate in this context: throws on a failure, an untolerated skip, or no gate run.
 .DESCRIPTION
-    The throw is what puts the step into Results.Failed for the caller's own
-    Invoke-BuildStep wrapper, so one failing gate fails the build exactly once
-    and the summary names all of them.
-
-    The no-gate-ran arm is not an edge case: an aggregator whose gate list came
-    out empty -- a bad filter, a skipped bootstrap -- reporting success is the
-    failure mode this whole mechanism exists to prevent. It outranks
-    -TolerateSkips: a batch of nothing but skips graded nothing, so there is no
-    result for the switch to tolerate.
+    An empty gate list reporting success is the failure this exists to prevent, so no-gate-ran outranks -TolerateSkips.
 .PARAMETER Context
     The same context the gates ran against.
 .PARAMETER Label
     Name for the batch in the failure message (default 'gates').
 .PARAMETER TolerateSkips
-    Let an Add-BuildGateSkip record pass. Off by default, so tolerance is a
-    thing a driver has to ASK for at a call site anybody can grep for.
+    Let an Add-BuildGateSkip record pass; off by default so tolerance is visible at the call site.
 #>
 function Assert-BuildGates {
     param(
@@ -492,12 +428,7 @@ function Assert-BuildGates {
         [switch]$TolerateSkips
     )
 
-    # Two statements, and @() on both sides: an if-EXPRESSION enumerates its
-    # result, so a one-element list arrives as a bare string and an empty one as
-    # $null -- and .Count on either throws under Set-StrictMode -Version Latest,
-    # which every suite and driver in this tree runs with. Measured 2026-09-09:
-    # the first cut of this line was the expression form and 6 of the 11 cases
-    # in tests/BuildGates.ThirdBucket.Tests.ps1 died on exactly that.
+    # Not an if-expression: it unrolls a 1-element list to a string and an empty one to $null.
     $skips = @()
     if ($Context.Results.ContainsKey('GateSkips')) {
         $skips = @($Context.Results['GateSkips'])
@@ -543,8 +474,7 @@ function Invoke-BuildStep {
         [Parameter(Mandatory)]
         [scriptblock]$Script,
         [switch]$Critical,
-        # When set, a failure is recorded as a non-gating AllowedFailure (warning, not error) and
-        # never throws -- for steps that are permitted to fail (e.g. experimental Python builds).
+        # Record a failure as a non-gating AllowedFailure instead of throwing.
         [switch]$AllowFailure
     )
 
@@ -560,7 +490,6 @@ function Invoke-BuildStep {
         $Context.Results.Succeeded.Add($StepName) | Out-Null
         Write-BuildLogSuccess -Context $Context -Message "<<< Completed: $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
         
-        # Add a diagnostic entry to the JSON summary tracking the duration of this step
         if ($null -eq $Context.Results.Durations) {
             $Context.Results.Durations = [ordered]@{}
         }
@@ -639,9 +568,7 @@ function Write-BuildSummary {
     }
 
     Write-BuildLog -Context $Context -Message ""
-    # Allowed failures MUST count towards the total. Leaving them out made the
-    # headline read "100% success rate" on runs where non-gating steps had
-    # failed -- the exact number someone skims instead of reading the log.
+    # Allowed failures count toward the total, or the headline reads 100% over failed steps.
     $allowedCount = if ($null -ne $Context.Results.AllowedFailures) { $Context.Results.AllowedFailures.Count } else { 0 }
     $total = $Context.Results.Succeeded.Count + $Context.Results.Failed.Count + $allowedCount
     $successRate = if ($total -gt 0) { [math]::Round(($Context.Results.Succeeded.Count / $total) * 100, 1) } else { 0 }
@@ -713,8 +640,7 @@ function Write-BuildSummary {
 }
 
 function Get-PyprojectPackageName {
-    # Package name for CI runs: pyproject.toml [project] name, falling back to
-    # the repo-root leaf directory. Shared by the python CI entry scripts.
+    # pyproject.toml [project] name, else the repo-root leaf directory.
     param(
         [Parameter(Mandatory)]
         [string]$RepoRoot,
@@ -731,10 +657,7 @@ function Get-PyprojectPackageName {
 }
 
 function New-UvBuildDelegates {
-    # The three delegates every python CI entry script hands to
-    # New-UvProjectEnvironment/Remove-UvProjectEnvironment, bound to one build
-    # context. Defined HERE (not WindowsUv.Common) so the closures resolve
-    # Invoke-BuildExternal/Write-BuildLog* in the module that owns them.
+    # Defined here, not in WindowsUv.Common, so the closures resolve Invoke-BuildExternal and Write-BuildLog*.
     param(
         [Parameter(Mandatory)]
         [pscustomobject]$Context
@@ -772,7 +695,6 @@ Export-ModuleMember -Function @(
     'ConvertTo-ParameterList'
 )
 
-# $true when a TCP connect to ANY address of Host:Port completes within TimeoutMs, resolution included.
 # All addresses at once: Windows takes ~2 s to report a refused ::1 before trying 127.0.0.1.
 function Test-TcpEndpointReachable {
     param(
@@ -812,11 +734,7 @@ function Test-TcpEndpointReachable {
 .SYNOPSIS
     Removes an SCCACHE_WEBDAV_ENDPOINT this process cannot reach, so sccache falls back to its disk cache.
 .DESCRIPTION
-    sccache 0.18 checks its storage when the server starts and EXITS when the check fails, so
-    every compile behind the launcher dies instead of running uncached. Images published before
-    2026-09-23 carry the build host's LAN endpoint. A reachable endpoint is left alone, and
-    SCCACHE_MULTILEVEL_CHAIN goes too when it names webdav. One WARN per removal.
-    docs/windows-build-resources.md#the-consumer-side-probe
+    sccache exits at server start on an unreachable store, killing every compile: docs/windows-build-resources.md#the-consumer-side-probe
 .OUTPUTS
     [bool] - $true when the endpoint was removed.
 #>
@@ -861,30 +779,13 @@ function Enable-SccacheCompilerWrapper {
     $null = Clear-UnreachableSccacheEndpoint
     $env:CMAKE_C_COMPILER_LAUNCHER = $SccacheExe
     $env:CMAKE_CXX_COMPILER_LAUNCHER = $SccacheExe
-    # NO CMAKE_CUDA_COMPILER_LAUNCHER: tried and reverted 2026-08-08 —
-    # sccache-wrapped nvcc loses its per-arch intermediate .cubin files
-    # before `fatbinary` combines them, and ONNX builds four -gencode arches
-    # per TU. Full diagnosis in WindowsSourceBuild.Common.psm1.
+    # No CUDA launcher: sccache-wrapped nvcc loses the per-arch .cubin files before fatbinary combines them.
     $env:RUSTC_WRAPPER = $SccacheExe
     $env:CC_WRAPPER = $SccacheExe
     $env:CXX_WRAPPER = $SccacheExe
 }
 
-# --------------------------------------------------------------------------
-# Restored from 04e1e07 (pre-refactor): functions still consumed by downstream
-# Build-Windows.ps1 scripts (OmniAccelerANT,
-# OxidANT).
-#
-# The lesson these keep re-teaching: cef62c3 deleted six exported functions
-# after a repo-wide sweep found "zero callers" — but the sweep could only see
-# THIS repo. Consumers pin a submodule commit, so they neither break at delete
-# time nor appear in the sweep, and a consumer that starts calling one
-# afterwards is broken the moment it bumps its pin. That is exactly what
-# happened to Sync-BuildArtifacts: deleted 2026-07-07, first called by
-# OxidANT later, found broken at three call sites on 2026-08-11.
-# Before deleting an EXPORTED function here, grep the consumer repos too — or
-# deprecate instead of deleting.
-# --------------------------------------------------------------------------
+# Consumer API with no in-repo caller: see docs/consumer-inventory.md § Why a grep was not enough
 function Initialize-BuildCacheEnvironment {
     param(
         [Parameter(Mandatory=$true)]
@@ -918,11 +819,7 @@ function Initialize-BuildCacheEnvironment {
 
     Write-BuildLog -Context $Context -Message "Initialized Fast Local Cache at: $fastLocalCache"
     
-    # If sccache is present on PATH, enable compiler wrapper environment
-    # variables globally so downstream CMake/configure steps will pick up
-    # sccache without requiring explicit caller configuration. This can be
-    # disabled by clearing the variables later or passing DisableSccache to
-    # the specific build invocation.
+    # Process-wide, so later CMake/configure steps pick sccache up without caller wiring.
     $sccacheCmd = Get-Command 'sccache' -ErrorAction SilentlyContinue
     if ($sccacheCmd) {
         $sccacheExe = $sccacheCmd.Source
@@ -987,13 +884,7 @@ function Remove-BuildRoot {
 }
 
 function Show-SccacheStats {
-    # The pipeline-step face of the shared sccache reader. Only the sink (a named
-    # build step writing through Write-BuildLog) is local; the invocation is
-    # Get-SccacheStatsText (WindowsScripts.Shared), shared with
-    # WindowsSourceBuild.Common's Write-SccacheStats and WindowsCMake.Common's
-    # pre/post-build dumps. Unlike the former Invoke-BuildExternal call, a
-    # non-zero sccache exit no longer fails the step -- stats are diagnostics,
-    # not a gate, which is what the other two call sites already assumed.
+    # Stats are diagnostics, not a gate: a non-zero sccache exit does not fail the step.
     param(
         [Parameter(Mandatory=$true)]
         [pscustomobject]$Context
@@ -1075,25 +966,11 @@ function Sync-BuildArtifacts {
     .SYNOPSIS
         Mirrors a directory tree with robocopy, optionally skipping build cache.
     .DESCRIPTION
-        Moves a source tree onto fast local storage before building and brings
-        the artifacts back afterwards - what a bind-mounted or network workspace
-        needs to avoid paying filter-driver I/O per object.
-
-        Deleted in cef62c3 as "zero callers" (a sweep that could only see this
-        repo), then re-implemented locally in OxidANT,
-        which is where the robocopy exit-code handling below was actually
-        debugged. Restored 2026-08-11 with THAT implementation, not the 2026-07
-        original: the original treated exit >= 8 as noteworthy and the original
-        exclusion set was file-level. This one is the version that has survived
-        CI.
+        Moves a bind-mounted or network workspace onto fast local storage and back, avoiding per-object filter-driver I/O.
     .PARAMETER ExcludeCommonRustAndCppCache
-        Skips the heavy, regenerable directories - the Rust target tree, .git,
-        node_modules and the clang-cl build trees. Do NOT pass it when copying a
-        tree you intend to build in INCREMENTALLY: without those directories
-        every build is a full rebuild.
+        Skip regenerable dirs (Rust target, .git, node_modules, clang-cl trees); not for trees built incrementally.
     .PARAMETER ExcludeDirs
-        Extra directory names to skip (robocopy /XD matches a bare name at ANY
-        depth, not just the top level).
+        Extra directory names to skip; robocopy /XD matches a bare name at any depth.
     .PARAMETER ExcludeFiles
         Extra file patterns to skip (robocopy /XF).
     #>
@@ -1115,10 +992,7 @@ function Sync-BuildArtifacts {
             'build-clangcl-debug', 'build-clangcl-release', 'build-clangcl-profile')
     }
 
-    # /E subdirs, /MT multithreaded, /R:1 /W:1 no retry-hangs on locked files,
-    # /FFT coarse timestamps (bind mounts), /NOOFFLOAD no copy-offload over the
-    # VM boundary - same rationale as Sync-FastLocalArtifactsToHost in
-    # WindowsFlutter.Common.psm1.
+    # /R:1 /W:1 avoid retry hangs on locked files, /FFT suits bind-mount timestamps, /NOOFFLOAD the VM boundary.
     $robocopyArgs = @(
         $Source, $Destination,
         '/E', '/MT:16', '/R:1', '/W:1', '/FFT', '/NOOFFLOAD',
@@ -1129,23 +1003,15 @@ function Sync-BuildArtifacts {
 
     & robocopy.exe @robocopyArgs > $null 2>&1
     $robocopyExit = $LASTEXITCODE
-    # Robocopy exit codes are a BITMASK, not a severity scale:
-    #   1 copied, 2 extra, 4 mismatch, 8 some files could not be copied,
-    #   16 serious error / nothing copied.
-    # Only 16 means the mirror did not happen. Bit 8 (exit 9 = 8+1 in CI) fires
-    # routinely on a live bind-mounted tree - a transient lock on one file while
-    # the rest copy fine - and treating it as fatal killed the packaging step.
+    # robocopy exits with a bitmask: only 16 means no mirror; bit 8 is routine for a transient lock on a live tree.
     if ($robocopyExit -ge 16) {
         throw "Sync-BuildArtifacts failed (robocopy exit $robocopyExit, serious error): '$Source' -> '$Destination'"
     }
     if (($robocopyExit -band 8) -ne 0) {
-        # Through the build log, not Write-Warning: a partial copy is exactly
-        # the kind of thing you go looking for in the log file afterwards, and
-        # Write-Warning never reaches it. This is also what $Context is FOR.
+        # The build log, not Write-Warning, which never reaches the log file.
         Write-BuildLogWarning -Context $Context -Message "Sync-BuildArtifacts: robocopy exit $robocopyExit - some files could not be copied (likely a transient lock); continuing."
     }
-    # Do not leak robocopy's nonzero SUCCESS codes into callers that treat
-    # $LASTEXITCODE as pass/fail.
+    # robocopy's nonzero success codes must not leak into callers reading $LASTEXITCODE.
     $global:LASTEXITCODE = 0
 }
 

@@ -1,13 +1,11 @@
 #requires -Version 7.0
-# Install-NewHost.ps1 Sync-ShimForkCheckout: the hcsshim fork is built from a PINNED commit, and a
-# work dir left by an older pin must not rebuild the old tree. NOT covered: clone, go build, deploy.
+# The hcsshim fork builds from a pinned commit, so a work dir left at an older pin must not rebuild the old tree.
 
 Describe 'Install-NewHost: shim fork checkout follows the pin' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-NewHost.ps1' -FunctionName 'Sync-ShimForkCheckout')
     $script:Git = (Get-Command git -ErrorAction Stop).Source
 
-    # Runs $Case with an upstream of two commits and a work clone left at the OLDER one. GIT_* removed:
-    # a hook exports GIT_DIR, and `git -C <dir>` would then act on the hook's repo.
+    # GIT_* removed: a hook exports GIT_DIR, and `git -C <dir>` would then act on the hook's repo.
     function Invoke-ForkCase {
         param([scriptblock]$Case)
         Invoke-WithEnv @{ GIT_DIR = $null; GIT_WORK_TREE = $null; GIT_INDEX_FILE = $null } { Invoke-InTestDir { param($dir)

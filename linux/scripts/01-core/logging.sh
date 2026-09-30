@@ -2,24 +2,13 @@
 # logging.sh - shared logging helpers
 [ -n "${_LOGGING_SH_LOADED:-}" ] && return 0
 _LOGGING_SH_LOADED=1
-#
-# Exposes:
-#   info <msg...>
-#   warn <msg...>
-#   err  <msg...>   (exits 1)
-#   log  <msg...>   (alias for info, kept for backwards compatibility)
-#   die  <msg...>   (alias for err, kept for backwards compatibility)
-#
-# Color control:
-#   LOG_COLOR=auto|always|never  (default: auto)
-#   NO_COLOR disables colors (https://no-color.org/)
+# LOG_COLOR=auto|always|never, NO_COLOR wins; err and die exit 1.
 
 _log_color_mode() {
   printf '%s' "${LOG_COLOR:-auto}"
 }
 
 _log_use_color() {
-  # NO_COLOR disables all colors
   if [ -n "${NO_COLOR:-}" ]; then
     return 1
   fi
@@ -28,7 +17,6 @@ _log_use_color() {
     always) return 0 ;;
     never)  return 1 ;;
     auto|*)
-      # Use color only when stdout is a TTY and TERM is not dumb
       [ -t 1 ] || return 1
       [ "${TERM:-}" != "dumb" ] || return 1
       return 0
@@ -46,7 +34,6 @@ _log_prefix_plain() {
 }
 
 _log_prefix_color() {
-  # bold blue/yellow/red + reset
   case "$1" in
     INFO)  printf '%b' "\033[1;34m[INFO]\033[0m" ;;
     WARN)  printf '%b' "\033[1;33m[WARN]\033[0m" ;;
@@ -82,15 +69,7 @@ err()  { _log_emit ERROR 2 "$@"; exit 1; }
 log() { info "$@"; }
 die() { err "$@"; }
 
-# Verification helpers: print PASS / FAIL / SKIP lines with LOG_COLOR awareness.
-#
-# IMPORTANT: The `fail()` here is DECORATIVE only — it prints FAIL but does NOT
-# increment any FAILURES counter.  Verfication scripts (smoke-*, verify-*) MUST
-# define their own local `fail()` that increments FAILURES, e.g.:
-#   FAILURES=0
-#   fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
-# Or source 06-packaging/smoke-common.sh which already does this.
-#
+# fail() only prints: verify scripts must define a counting fail() or source 06-packaging/smoke-common.sh.
 pass() {
   if _log_use_color; then
     printf '  \033[1;32mPASS\033[0m %s\n' "$*"
@@ -111,9 +90,7 @@ skip() {
   printf '  SKIP %s\n' "$*"
 }
 
-# ERR trap: the action is baked into the trap string, never read via dynamic
-# scope; _LOG_TRAP_ACTION covers callers that re-arm the bare string themselves.
-# docs/failure-modes.md
+# The trap string carries its action (no dynamic scope). docs/failure-modes.md#loggingsh-line-nnn-action-unbound-variable-instead-of-the-real-error
 _LOG_TRAP_ACTION="err"
 
 on_err() {
@@ -130,21 +107,14 @@ _install_trap() {
   local quoted_action
   printf -v quoted_action '%q' "${action}"
 
-  # ${quoted_action} expands NOW; LINENO/BASH_COMMAND stay escaped so they
-  # expand AT FIRE TIME — reverse that and every failure reports this line.
+  # quoted_action expands now; LINENO/BASH_COMMAND must expand at fire time or every failure reports this line.
   # shellcheck disable=SC2064  # expand-now is intentional: see above
   trap "on_err \"\${LINENO}\" \"\${BASH_COMMAND}\" ${quoted_action}" ERR
 }
 install_err_trap()  { _install_trap err; }
 install_warn_trap() { _install_trap warn; }
 
-# ── Sudo guard ────────────────────────────────────────────────────────────────
-# Canonical sudo-guard core. Populates BOTH SUDO_WRAP and SUDO to "sudo" (when
-# not root and sudo is available) or "" (when root), so callers of either
-# ensure_sudo_or_die (reads SUDO_WRAP) or require_sudo (reads SUDO) get a valid
-# wrapper. Dies with the provided message when non-root and sudo is missing.
-#
-# Usage: _ensure_sudo_wrapper [die-message]
+# Sudo guard: sets both SUDO_WRAP and SUDO, since ensure_sudo_or_die and require_sudo callers read different ones.
 # shellcheck disable=SC2034  # SUDO_WRAP and SUDO are consumed by external callers
 _ensure_sudo_wrapper() {
   local die_msg="${1:-This command requires sudo or root. Install sudo or run as root.}"
@@ -161,10 +131,6 @@ _ensure_sudo_wrapper() {
   fi
 }
 
-# Ensure we can run privileged commands.  Sets SUDO_WRAP="sudo" or SUDO_WRAP=""
-# depending on EUID.  Exits if no sudo is available and we are not root.
-#
-# Usage: ensure_sudo_or_die
 ensure_sudo_or_die() {
   _ensure_sudo_wrapper "This command requires sudo or root. Install sudo or run as root."
 }

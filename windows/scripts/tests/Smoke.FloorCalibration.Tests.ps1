@@ -1,23 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The smoke gate has TWO floors and they drifted apart unnoticed:
-#   * per-section floors ($sectionFloors in Test-Container.ps1), lane-aware
-#   * one global floor (-SmokeMinPassed, passed as MIN_PASSED by the drivers)
-# On 2026-08-22 the global floor was 160 on BOTH lanes while the GPU sections
-# alone floor at 190 — i.e. the global gate could not fire before the section
-# gates did, and a GPU run could lose 60 of its 220 assertions unnoticed.
-# A floor nobody can reach is decoration.
-#
-# This pins the relationship rather than the numbers: the global floor must not
-# exceed the section floors of the lane it guards (or it fails runs that are
-# legitimately at floor), and must not be so far below them that it is inert.
-#
-# 2026-08-24: the table gained a THIRD column (the arm64 cross lane, which now
-# runs the host-toolchain sections instead of being skipped wholesale), and this
-# suite polices the same relationship for it. Skipping this suite is exactly how
-# the arm64 lane would go green on nothing.
+
+# Per lane, the global smoke floor must neither exceed the section floors nor sit so far below them that it is inert.
 
 Describe 'smoke gate: the global floor is calibrated against the section floors' {
 
@@ -26,8 +11,7 @@ Describe 'smoke gate: the global floor is calibrated against the section floors'
         $s = Join-Path $root 'scripts\build\Test-Container.ps1'
         if (-not (Test-Path $s)) { throw "smoke test not found: $s" }
         $block = [regex]::Match((Get-Content -Raw $s), '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
-        # Named columns since #131 (2026-08-25): '<sec>' = @{ Gpu = n; Cpu = n; Arm64 = n }.
-        # Groups 2/3/4 keep the GPU/CPU/ARM64 order the assertions below rely on.
+        # '<sec>' = @{ Gpu = n; Cpu = n; Arm64 = n }: groups 2/3/4 keep the order the assertions rely on.
         $script:floorTriples = [regex]::Matches($block, "'(\d+)'\s*=\s*@\{\s*Gpu\s*=\s*(\d+);\s*Cpu\s*=\s*(\d+);\s*Arm64\s*=\s*(\d+)\s*\}")
         $script:driver = Get-Content -Raw (Join-Path $root 'Build-Buildkit.ps1')
     }
@@ -51,8 +35,7 @@ Describe 'smoke gate: the global floor is calibrated against the section floors'
         $cpuFloor = [int][regex]::Match($script:driver, '\[int\]\$SmokeMinPassed\s*=\s*(\d+)').Groups[1].Value
 
         Assert-True ($gpuFloor -gt 0) 'the GPU lane floor is gone from Build-Buildkit.ps1'
-        # Must not exceed the section sum: a run sitting exactly at every section
-        # floor is legitimate and must not be failed by the global gate.
+        # A run sitting exactly at every section floor is legitimate, so never above the section sum.
         Assert-True ($gpuFloor -le $gpuSum) "GPU global floor $gpuFloor exceeds the sum of the GPU section floors ($gpuSum)"
         Assert-True ($cpuFloor -le $cpuSum) "CPU global floor $cpuFloor exceeds the sum of the CPU section floors ($cpuSum)"
         # ...and must stay within reach of them, or it never fires.
@@ -70,11 +53,7 @@ Describe 'smoke gate: the global floor is calibrated against the section floors'
     }
 
     It 'payload sections floor at 0 on arm64 and stay 0 — never "fixed" by a skip' {
-        # Sections that execute the aarch64 payload cannot pass on an x64 host;
-        # their arm64 floor is 0 by construction. A nonzero value here means
-        # someone raised a floor for a section the suite skips wholesale, which
-        # would fail every arm64 run; a HOST section at 0 means coverage was
-        # quietly forfeited.
+        # Payload sections cannot pass on an x64 host, so they floor at 0; a host section at 0 forfeits coverage.
         $payload = @('7', '8', '9', '10', '11', '12', '13', '17', '18', '20', '21', '22')
         $hostSections = @('1', '2', '3', '4', '5', '6', '14', '15', '16', '19', '23', '25')
         foreach ($t in $script:floorTriples) {

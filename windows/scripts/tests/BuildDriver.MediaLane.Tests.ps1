@@ -1,19 +1,7 @@
 #requires -Version 7.0
-# Tests for the lane-shared media helpers in WindowsBuildDriver.Common.psm1
-# (Get-MediaBranchVersionArg / Get-MediaMergeVersionArg / Assert-SccacheEndpoint /
-# Get-MediaMemoryBudget). These are the ONE canonical definition both drivers
-# (build.ps1 classic, Build-Buildkit.ps1 BK) consume — a drifting key set here
-# silently rebuilds hours of cached layers in one lane or starves the merge
-# builder of a version pin. Everything runs against a fake version table; no
-# versions.env, docker, or network involved (the only endpoint probed is a
-# closed localhost port).
+# Both drivers consume these media helpers: a drifting key rebuilds hours of cached layers or starves the merge of a pin.
 
-# Fake versions.env table: every key any media branch consumes, with values
-# that are obviously fake, PLUS two decoys (MEMORY_LIMIT_GB / BASE_IMAGE) that
-# must NEVER leak into version build-args — they are lane-shaped, added by the
-# callers themselves.
-# FFmpeg's static software codecs: media-core keys, never the merge. One table, merged into the
-# fake versions.env below and into media-core's expected build args.
+# FFmpeg's static codec pins: media-core keys, never the merge's.
 $script:WbtCodecPins = @{
     DAV1D_VERSION = 'dav1d-20'; DAV1D_SHA256 = 'dav1dsha-21'; X264_MESON_BRANCH = 'x264b-22'
     X264_MESON_COMMIT = 'x264c-23'; X265_VERSION = 'x265-24'; X265_SHA256 = 'x265sha-25'
@@ -36,12 +24,10 @@ function New-WbtFakeMediaVersionTable {
         TVM_REF                   = 'tvm-9'
         IREE_VERSION              = 'iree-10'
         GSTREAMER_VERSION         = 'gst-11'
+        # Lane-shaped decoys that must never leak into version build-args.
         MEMORY_LIMIT_GB           = '999'
         BASE_IMAGE                = 'decoy/image:tag'
-        # Added 2026-08-07 with the removal of the media stages' versions.env
-        # COPY: these keys now travel as build-args (they used to reach the
-        # scripts through the copied file), so the branch maps read them and a
-        # fixture without them fails on the WRONG key.
+        # These travel as build-args too, so a fixture without them fails on the wrong key.
         PYTHON_VERSION            = 'py-12'
         PROTOC_VERSION            = 'protoc-13'
         JRE_VERSION               = 'jre-14'
@@ -61,9 +47,7 @@ Describe 'Get-MediaBranchVersionArg' {
 
     It 'returns exactly the pinned key set per branch, values from the version table' {
         $table = New-WbtFakeMediaVersionTable
-        # Table-driven: branch -> expected build-arg hashtable. NOTE the
-        # deliberate rename OPENCV_VERSION (versions.env) -> OPENCV_SOURCE_VERSION
-        # (Dockerfile ARG) on the core branch.
+        # Note the deliberate rename OPENCV_VERSION -> OPENCV_SOURCE_VERSION (Dockerfile ARG) on the core branch.
         $cases = @(
             @{ Branch = 'media-core'; Expected = @{
                     ONNXRUNTIME_VERSION       = 'ort-1'
@@ -85,8 +69,7 @@ Describe 'Get-MediaBranchVersionArg' {
                     LITERT_LM_VERSION = 'lm-8'
                     PROTOC_VERSION    = 'protoc-13'
                     JRE_VERSION       = 'jre-14'
-                    # #154: this branch MOUNTS windows/qnn-sdk, so it needs the same
-                    # integrity pin as media-core or Resolve-QnnSdk extracts unverified.
+                    # This branch mounts windows/qnn-sdk, so without the pin Resolve-QnnSdk extracts unverified.
                     QNN_SDK_ZIP_SHA256 = 'qnnsha-13'
                     LITERT_LM_WEBGPU_ACCELERATOR_SHA256 = 'lmacc-15'
                     LITERT_LM_WEBGPU_SAMPLER_SHA256     = 'lmsmp-16'
@@ -97,7 +80,7 @@ Describe 'Get-MediaBranchVersionArg' {
             @{ Branch = 'media-tvm'; Expected = @{
                     TVM_REF      = 'tvm-9'
                     IREE_VERSION = 'iree-10'
-                    # #154: mounts windows/qnn-sdk, same integrity pin as the others.
+                    # Mounts windows/qnn-sdk, so it needs the same integrity pin as the others.
                     QNN_SDK_ZIP_SHA256 = 'qnnsha-13'
                     IREE_ROCM_DEVICE_BC_SHA256 = 'ireebc-19'
                 }
@@ -191,8 +174,7 @@ Describe 'Assert-SccacheEndpoint' {
     }
 
     It 'media with an unreachable endpoint throws naming the endpoint (closed localhost port)' {
-        # Offline-safe reachability probe: nothing listens on 127.0.0.1:1, so the
-        # HEAD request is refused locally without touching the network.
+        # Nothing listens on 127.0.0.1:1, so the probe is refused without touching the network.
         Assert-Throws { Assert-SccacheEndpoint -Stages @('media') -SccacheEndpoint 'http://127.0.0.1:1' } `
             -MessagePattern 'not reachable' `
             'a dead endpoint must fail the gate before hours of uncached compiling'
@@ -201,11 +183,7 @@ Describe 'Assert-SccacheEndpoint' {
 
 Describe 'Get-MediaMemoryBudget' {
 
-    # SEAM GAP: total host RAM is read straight from Win32_ComputerSystem inside
-    # the function (no parameter to inject it), so the subtraction cases below
-    # read the SAME CIM value themselves and compare — deterministic on a given
-    # host, but not a true fake. -RequestedGb and -HostReserveGb are the only
-    # injectable seams.
+    # Host RAM comes from CIM inside the function, so these cases read the same value: deterministic, not faked.
 
     It 'an explicit -RequestedGb always wins' {
         Assert-Equal 12 (Get-MediaMemoryBudget -RequestedGb 12) 'explicit request bypasses auto-detect'

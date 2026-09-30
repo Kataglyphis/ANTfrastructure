@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the soname-precedence gate in 06-packaging/smoke-runtime-image.sh.
-# Owner rule: our /opt build must win the ld.so lookup over any distro rival.
-# The BAD case below is what the shipped arm64 image actually did on 2026-09-01.
-# docs/cross-build-verification.md#which-shared-library-a-consumer-actually-gets
+# Our build must win the ld.so lookup over any distro rival; see docs/cross-build-verification.md#which-shared-library-a-consumer-actually-gets
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -22,9 +19,7 @@ t_assert_contains \
   "OK ${_GST}"
 
 t_case "our OTHER prefix counts as ours: /usr/local, not just /opt"
-# This exact line failed the 2026-09-01 riscv64 manifest run: libonnxruntime.so.1
-# sits in /opt/opencv5/lib and resolves to our canonical /usr/local ORT install.
-# The gate called that a distro win and stopped the chain.
+# Resolving to our /usr/local ORT install is ours, not a distro win.
 t_assert_contains \
   "$(_soname_verdicts "SONAME libonnxruntime.so.1 /usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1 /opt/opencv5/lib")" \
   "OK libonnxruntime.so.1"

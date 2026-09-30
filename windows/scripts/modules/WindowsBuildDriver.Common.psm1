@@ -1,63 +1,46 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Build-driver core for windows/Build-Buildkit.ps1: transient-failure classification,
-# version/build-arg shaping, host gates. In a module so the failure paths are UNIT-TESTABLE
-# (BuildDriver.Retry.Tests.ps1).
-# Edit cost: the final stage's whole-dir modules COPY (windows/Dockerfile) — cheap, it is
-# the last stage. The docker-classic half died with build.ps1 (deleted 2026-08-31).
-# Build-Buildkit.ps1 calls Initialize-BuildDriverContext once; functions read that module
-# scope so call sites keep their signatures, and explicit parameters always win.
+# Build-Buildkit.ps1's core, a module so its failure paths are unit-testable; explicit parameters beat the driver context.
 
 Set-StrictMode -Version Latest
 
-# Import WITHOUT -Force and only if absent: a forced nested re-import rebinds Shared into
-# this module's private scope and unloads the caller's top-level import.
+# Only if absent, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 if (-not (Get-Command Resolve-LatestVersionTag -ErrorAction SilentlyContinue)) {
     Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -DisableNameChecking
 }
 
-# Transient hcsshim/containerd failures kill container creation, typically right after a
-# big layer commit; every retry loop classifies against this ONE pattern.
+# The one transient-failure pattern every retry loop classifies against.
 $script:BuildDriverContext = @{
     TransientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
 }
 
 function Initialize-BuildDriverContext {
-    # Docker/LogDir/NoCache went with build.ps1 (2026-08-31): nothing read them any more.
     param([string]$TransientPattern = '')
     if ($TransientPattern) { $script:BuildDriverContext.TransientPattern = $TransientPattern }
 }
 
 function Test-TransientDockerFailure {
-    # Single source of truth for "is this a transient container-infrastructure failure?".
     param([string]$Tail)
     return [bool]($Tail -and ($Tail -match $script:BuildDriverContext.TransientPattern))
 }
 
 function Invoke-TransientCooldown {
-    # $true (after sleeping the cooldown) when the tail looks transient AND a retry remains,
-    # so the caller can `continue`; $false means hard failure.
+    # $true after the cooldown when the failure is transient and a retry remains; $false is a hard failure.
     param(
         [Parameter(Mandatory)] [string]$Tail,
         [Parameter(Mandatory)] [int]$Attempt,
         [int]$MaxAttempts = 3,
         [string]$Label = '',
         [int]$CooldownSeconds = 60,
-        # Caller already classified the failure as transient -- skip the re-test so the
-        # condition is expressed exactly ONCE per call path.
+        # The caller already classified it as transient; skip the re-test.
         [switch]$AssumeTransient,
         # The PREVIOUS attempt's tail: byte-identical means DETERMINISTIC, not transient.
         [string]$PreviousTail = '',
-        # Failure classes worth retrying EVEN WHEN the tail repeats verbatim. Snapshot MOUNT
-        # contention is the measured case (the media merge went green on the third attempt);
-        # an identical ImportLayer/ExportLayer at finalize is the opposite - a poisoned snapshot.
+        # Retried even when identical: snapshot-mount contention clears, unlike a poisoned snapshot at finalize.
         [string]$RetryDespiteIdenticalPattern = 'failed to mount \{windows-layer|failed to calculate checksum of ref'
     )
-    # DETERMINISM GATE: a flake changes between attempts, a poisoned snapshot does not.
-    # Compared AFTER stripping buildkit's per-line elapsed-seconds prefix (docs/failure-modes.md
-    # § `ImportLayer ... (0xb7)` on the SAME chain-IDs across retries).
+    # A flake changes between attempts, a poisoned snapshot does not: docs/failure-modes.md § `ImportLayer ... (0xb7)` on the SAME chain-IDs across retries
     if ($PreviousTail -and ($RetryDespiteIdenticalPattern -and $Tail -match $RetryDespiteIdenticalPattern)) {
         Write-Host "[$Label] identical failure, but it is snapshot-mount contention — retrying anyway (measured to go green on a later attempt)." -ForegroundColor Yellow
     } elseif ($PreviousTail) {
@@ -78,8 +61,6 @@ function Invoke-TransientCooldown {
 }
 
 # ── Lane-shared version/driver helpers ───────────────────────────────────────
-# ONE canonical definition: both drivers carried hand-copied twins that had started to
-# drift, so a version pin added for one lane silently missed the other.
 
 function Get-VersionTableValue {
     param(
@@ -91,19 +72,13 @@ function Get-VersionTableValue {
 }
 
 function Get-MediaBranchVersionArg {
-    # The version build-args of one media branch — VERSIONS ONLY (callers add
-    # BASE_IMAGE / MEMORY_LIMIT_GB / sccache themselves; those are lane-shaped).
+    # Versions only; callers add the lane-shaped BASE_IMAGE, MEMORY_LIMIT_GB and sccache args.
     param(
         [Parameter(Mandatory)][ValidateSet('media-core', 'media-litert', 'media-tvm', 'rocm-migraphx')][string]$Branch,
         [Parameter(Mandatory)][hashtable]$VersionTable
     )
     switch ($Branch) {
-        # COMPLETENESS IS LOAD-BEARING: the media stages no longer COPY versions.env, so these
-        # maps are the ONLY channel by which current pins reach a branch's build scripts -- a
-        # key missing here silently falls back to the base image's baked value. Re-audit when
-        # adding a build script:
-        #   grep -ohE '\$env:[A-Z_]+' windows/scripts/build/build-*.ps1
-        #   grep -ohE "EnvironmentVariables?\s+@?\('[A-Z_, ']+" windows/scripts/build/build-*.ps1
+        # Must list every pin a branch's scripts read: a missing key silently falls back to the base image's baked value.
         'media-core' {
             return @{
                 ONNXRUNTIME_VERSION       = Get-VersionTableValue $VersionTable 'ONNXRUNTIME_VERSION'
@@ -113,8 +88,7 @@ function Get-MediaBranchVersionArg {
                 OPENCV_VERSION            = Get-VersionTableValue $VersionTable 'OPENCV_VERSION'
                 FFMPEG_VERSION            = Get-VersionTableValue $VersionTable 'FFMPEG_VERSION'
                 PYAV_VERSION              = Get-VersionTableValue $VersionTable 'PYAV_VERSION'
-                # Integrity pin for the hand-staged QAIRT SDK zip (ORT QNN EP, #121); empty
-                # by default (no zip = EP off), same contract as TENSORRT_ZIP_SHA256.
+                # Hand-staged QAIRT SDK zip pin; empty by default (no zip = QNN EP off).
                 QNN_SDK_ZIP_SHA256        = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
                 NV_CODEC_HEADERS_REF      = Get-VersionTableValue $VersionTable 'NV_CODEC_HEADERS_REF'
                 # AMF headers for FFmpeg; only the rocm lane fetches them, every lane carries the pin.
@@ -136,13 +110,11 @@ function Get-MediaBranchVersionArg {
             return @{
                 LITERT_VERSION    = Get-VersionTableValue $VersionTable 'LITERT_VERSION'
                 LITERT_LM_VERSION = Get-VersionTableValue $VersionTable 'LITERT_LM_VERSION'
-                # litert-lm pins host protoc to its internal protobuf runtime; a mismatch
-                # emits gencode the pinned headers #error on (35.1 vs 6.31.1).
+                # Host protoc must match litert-lm's protobuf runtime, or its headers #error on the gencode.
                 PROTOC_VERSION    = Get-VersionTableValue $VersionTable 'PROTOC_VERSION'
                 # Bazel needs a JRE; litert-lm resolves it from this pin.
                 JRE_VERSION       = Get-VersionTableValue $VersionTable 'JRE_VERSION'
-                # Same QAIRT zip pin as media-core (#154): this branch MOUNTS
-                # windows/qnn-sdk too, so without it Resolve-QnnSdk extracts unverified.
+                # This branch mounts windows/qnn-sdk too; without the pin the SDK is extracted unverified.
                 QNN_SDK_ZIP_SHA256 = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
                 # rocm lane's LiteRT-LM GPU payload pins (Build-LitertLmBazel.ps1); unused on cpu/nvidia.
                 LITERT_LM_WEBGPU_ACCELERATOR_SHA256 = Get-VersionTableValue $VersionTable 'LITERT_LM_WEBGPU_ACCELERATOR_SHA256'
@@ -155,16 +127,14 @@ function Get-MediaBranchVersionArg {
             return @{
                 TVM_REF      = Get-VersionTableValue $VersionTable 'TVM_REF'
                 IREE_VERSION = Get-VersionTableValue $VersionTable 'IREE_VERSION'
-                # Same QAIRT zip pin as media-core (#154): this branch MOUNTS
-                # windows/qnn-sdk too, so without it Resolve-QnnSdk extracts unverified.
+                # This branch mounts windows/qnn-sdk too; without the pin the SDK is extracted unverified.
                 QNN_SDK_ZIP_SHA256 = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
                 # rocm lane: IREE's device-bitcode download pin (Build-IreeFromSource.ps1); unused on cpu/nvidia.
                 IREE_ROCM_DEVICE_BC_SHA256 = Get-VersionTableValue $VersionTable 'IREE_ROCM_DEVICE_BC_SHA256'
             }
         }
         'rocm-migraphx' {
-            # Not a media branch: windows/Dockerfile.rocm-migraphx, rocm lane only. Every pin of its
-            # two scripts by prefix; ARG parity with that Dockerfile is Rocm.Migraphx.Tests.ps1.
+            # Not a media branch (Dockerfile.rocm-migraphx); Rocm.Migraphx.Tests.ps1 holds ARG parity.
             $keys = @('MIGRAPHX_VERSION', 'ROCM_WINDOWS_GFX_FAMILY') +
                 @($VersionTable.Keys | Where-Object { $_ -match '^(MIGRAPHX_WINDOWS|ORT_AMDGPU_EP)_' } | Sort-Object)
             $out = @{}
@@ -175,12 +145,8 @@ function Get-MediaBranchVersionArg {
 }
 
 function Get-MediaMergeVersionArg {
-    # The merge builder's canonical version env = union of all branch version
-    # args MINUS core-branch compile inputs its Dockerfile declares no ARG for,
-    # PLUS its own GStreamer pin.
     param([Parameter(Mandatory)][hashtable]$VersionTable)
-    # BRANCH-ONLY keys: compile inputs the merge Dockerfile declares no ARG for. Forwarding
-    # them only produces "unused build-arg" warnings and pollutes the merge stage's cache key.
+    # No merge ARG exists for these; forwarding them only warns and pollutes the merge stage's cache key.
     $branchOnly = @(
         'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES',
         'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',   # media-core: FFmpeg AMF headers
@@ -213,9 +179,7 @@ function Get-BuildVcsRef {
 function Resolve-GitRefCommit {
     <#
     .SYNOPSIS
-        The commit `git ls-remote <repo> refs/heads/<ref> refs/tags/<ref> refs/tags/<ref>^{}`
-        names for $Ref: a branch wins over a same-named tag, an annotated tag gives the
-        commit it peels to. Returns '' (never throws) when nothing matches.
+        The commit ls-remote output names for $Ref: a branch beats a same-named tag, tags peel; '' when none.
     #>
     param([string[]]$LsRemoteOutput, [string]$Ref)
     if (-not $LsRemoteOutput -or -not $Ref) { return '' }
@@ -231,9 +195,7 @@ function Resolve-GitRefCommit {
 }
 
 function Resolve-TorchAppRef {
-    # versions.env APP_REF names the OrchestrANT ref the torch stage tracks; the stage
-    # builds the COMMIT it points at now, so the layer moves exactly when the app does.
-    # -LatestApp tracks the newest release tag instead. docs/windows-builds.md § Ref
+    # APP_REF resolved to its current commit, so the layer moves exactly when the app does: docs/windows-builds.md § The torch step
     param(
         [Parameter(Mandatory)][hashtable]$VersionTable,
         [switch]$LatestApp
@@ -261,15 +223,13 @@ function Resolve-TorchAppRef {
 }
 
 function Assert-SccacheEndpoint {
-    # Fail-fast sccache gate shared by both lanes: compile stages REQUIRE the
-    # remote cache unless -NoSccache is a deliberate choice.
+    # Compile stages require the remote cache unless -NoSccache is a deliberate choice.
     param(
         [Parameter(Mandatory)][string[]]$Stages,
         [string]$SccacheEndpoint = '',
         [switch]$NoSccache
     )
-    # 'media' only: the toolchain stage has no sccache wiring, and gating it on the endpoint
-    # blocked toolchain-only builds for a cache they never used.
+    # Only media: the toolchain stage has no sccache wiring to gate on.
     $compileStages = @('media')
     if ($NoSccache -or @($Stages | Where-Object { $compileStages -contains $_ }).Count -eq 0) { return }
     if ([string]::IsNullOrWhiteSpace($SccacheEndpoint)) {
@@ -289,17 +249,11 @@ function Assert-SccacheEndpoint {
 }
 
 function Assert-DiskHeadroom {
-    # Fail-fast disk gate: below ~25 GB free hcsshim stops failing honestly (vanished tools,
-    # "failed to write compressed diff", ImportLayer 0xb7) and its poisoned snapshots outlive
-    # the run -- docs/failure-modes.md § disk exhaustion in costume. Checks EVERY drive the
-    # build touches: the CONTEXT drive can be a VHDX-backed D: (docs/windows-build-lanes.md
-    # § VHDX-backed checkouts), and it fails the same dishonest way a full store drive does.
+    # Every drive the build touches, context included: docs/failure-modes.md § `ExportLayer 0x3`, spawn flakes, `ExportLayer 0x70` — disk exhaustion in costume
     param(
-        # Extra drive letters to gate on. C (the layer stores) is always checked;
-        # the drivers add their repo-root drive. Duplicates are harmless.
+        # Extra drive letters; C (the layer stores) is always checked.
         [string[]]$Drive = @('C'),
-        # 40 GB: comfortably above the ~25 GB misbehaviour band, with room for one heavy
-        # layer's scratch.
+        # Clear of the ~25 GB band where hcsshim misbehaves, with room for one heavy layer's scratch.
         [int]$MinFreeGb = 40,
         [switch]$Force
     )
@@ -308,7 +262,7 @@ function Assert-DiskHeadroom {
         'then admin `nerdctl --namespace buildkit rmi` for superseded bk-* stage tags. ' +
         'For a VHDX-backed checkout the lever is a different one entirely: ' +
         'windows\scripts\host\Optimize-HostVhdx.ps1 / Update-HostVhdx.ps1.'
-    # Normalize: accept 'C', 'C:', 'C:\' and full paths alike, dedupe, keep order.
+    # Accepts 'C', 'C:', 'C:\' and full paths alike.
     $letters = [System.Collections.Generic.List[string]]::new()
     foreach ($d in (@('C') + $Drive)) {
         if ([string]::IsNullOrWhiteSpace($d)) { continue }
@@ -318,8 +272,7 @@ function Assert-DiskHeadroom {
     $short = @()
     foreach ($letter in $letters) {
         $psDrive = Get-PSDrive $letter -ErrorAction SilentlyContinue
-        # A drive that does not exist is not a failure: on another machine the repo may sit
-        # on C:, collapsing the list to one entry.
+        # A missing drive is not a failure: another machine may keep the repo on C:.
         if (-not $psDrive -or $null -eq $psDrive.Free) { continue }
         $freeGb = [math]::Round($psDrive.Free / 1GB, 1)
         if ($freeGb -ge $MinFreeGb) {
@@ -341,8 +294,7 @@ function Assert-DiskHeadroom {
 }
 
 function Get-ShimPatchStatePath {
-    # Where Publish-ShimPatch.ps1 records what it installed. HOST state, not repo state: it
-    # describes THIS machine's Stevedore install, so it must not travel with a checkout.
+    # Host state, not repo state: it describes this machine's Stevedore install.
     param([string]$StatePath = '')
     if ($StatePath) { return $StatePath }
     if ($env:KATAGLYPHIS_SHIM_STATE) { return $env:KATAGLYPHIS_SHIM_STATE }
@@ -351,15 +303,13 @@ function Get-ShimPatchStatePath {
 }
 
 function Write-ShimPatchState {
-    # Record the SHA256 of the shim just deployed; this hash is what Assert-ShimPatch checks
-    # the live binary against on every BK build.
+    # The hash Assert-ShimPatch checks the live binary against on every BK build.
     param(
         [Parameter(Mandatory)][string]$ShimPath,
         [string]$StatePath = '',
         # Free-text: which patch variant went in ('local-45min', 'upstream-env', …).
         [string]$Variant = '',
-        # The stock binary deploy-shim-patch preserved, if any -- lets the gate say
-        # "reverted to stock" instead of the vaguer "hash changed".
+        # The preserved stock binary, so the gate can say "reverted to stock".
         [string]$StockBackupPath = ''
     )
     $resolved = Get-ShimPatchStatePath -StatePath $StatePath
@@ -382,20 +332,14 @@ function Write-ShimPatchState {
 }
 
 function Assert-ShimPatch {
-    # BuildKit-lane gate: the patched containerd-shim-runhcs-v1 (upstream microsoft/hcsshim#2855)
-    # is silently restored to stock by every Stevedore/containerd update, and stock means the
-    # 30s tearDownTimeout -- the first heavy media finalize then dies ExportLayer 0x3, hours in.
-    # PRIMARY: SHA256 recorded by Publish-ShimPatch.ps1 (refreshes when YOU deploy, so unlike a
-    # size table it cannot rot). FALLBACK (no state file): the weak size heuristic, which warns
-    # instead of failing. Only the OpenCV canary PROVES the patch took effect.
+    # Works around microsoft/hcsshim#2855, whose patch every Stevedore update reverts: hash first, size heuristic as fallback.
     param(
         [string]$ShimPath = "$env:ProgramFiles\Stevedore\bin\containerd-shim-runhcs-v1.exe",
         # Sizes measured on the reference host; extend as hcsshim moves.
         [long[]]$PatchedSize = @(25332736, 25329664),
         [long[]]$StockSize = @(23279616),
         [string]$StatePath = '',
-        # Roots buildctl resolution uses; injectable so the not-found path is testable
-        # on a host that HAS a real shim installed.
+        # Injectable so the not-found path is testable on a host with a real shim.
         [string[]]$AlternateRoot = @(
             "$env:ProgramFiles\Stevedore\bin\containerd-shim-runhcs-v1.exe",
             'D:\Stevedore\bin\containerd-shim-runhcs-v1.exe'
@@ -407,8 +351,7 @@ function Assert-ShimPatch {
         '-ShimPath <your build> (and -ServiceEnvironment for an upstream-patch build, which needs ' +
         'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT set or it silently keeps the 30s default). ' +
         'Recipe + patch: windows/upstream/hcsshim-teardown-timeout/.'
-    # FAIL CLOSED on a shim we cannot find (backlog #48): "could not check" is the one answer
-    # that must not read as "fine". Probe the roots buildctl resolution uses before giving up.
+    # Fail closed: "could not check" must not read as "fine".
     if (-not (Test-Path $ShimPath)) {
         $alt = @($AlternateRoot) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
         if ($alt) {
@@ -432,8 +375,7 @@ function Assert-ShimPatch {
         try { $state = Get-Content $statePath -Raw | ConvertFrom-Json }
         catch { Write-Warning "shim state file $statePath is unreadable ($($_.Exception.Message)) - falling back to the size check." }
     }
-    # A state file written for a DIFFERENT install path describes another binary; treat it
-    # as absent rather than comparing unrelated hashes.
+    # A state file for a different install path describes another binary.
     if ($state -and $state.shimPath -and $state.shimPath -ne $ShimPath) {
         Write-Warning "shim state file $statePath records '$($state.shimPath)', not '$ShimPath' - falling back to the size check."
         $state = $null
@@ -484,14 +426,10 @@ function Assert-ShimPatch {
 }
 
 function Get-StageDiskFloorGb {
-    # Free-space floor for ONE stage, keyed on its label: observed consumption plus runway
-    # clear of the ~25 GB band where hcsshim stops failing honestly. The floors are MEASURED
-    # and both directions of error hurt -- docs/windows-build-lanes.md § Driver preflight
-    # gates ("Per-stage disk floors are CALIBRATED, not guessed").
+    # Measured floors: see docs/windows-build-lanes.md § Driver preflight gates and isolation policy
     [CmdletBinding()]
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Label)
-    # PER SUB-STAGE, not per branch, and ordered most-specific first: 'media-core-built-onnx'
-    # must not be caught by the generic media rule below it.
+    # Most specific first, so a sub-stage is not caught by the generic media rule.
     switch -Regex ($Label) {
         'nvidia|sdk'                { return 60 }   # CUDA ~36 GB + export headroom
         'Dockerfile\.rocm$'         { return 45 }   # rocm sdk: 2.3 GB tarball + 9.56 GB tree at peak, + export
@@ -502,8 +440,7 @@ function Get-StageDiskFloorGb {
         'media-litert'              { return 45 }
         'media-tvm'                 { return 40 }
         'media-merge|merge'         { return 45 }   # mounts three branch trees at once
-        # CLASSIC lane: its media-core is ONE run+commit doing the WHOLE chain, so it needs
-        # the heaviest floor, not the lightest (a cross-lane parity test enforces that).
+        # Classic lane: one run+commit does the whole chain, so it takes the heaviest floor.
         'media-core|media-builder'  { return 55 }
         'toolchain'                 { return 40 }
         default                     { return 40 }
@@ -511,9 +448,7 @@ function Get-StageDiskFloorGb {
 }
 
 function Assert-StageDiskHeadroom {
-    # Per-stage gate: the start-of-run check passed at 164 GB free and the chain still walked
-    # down to 23 GB INSIDE a heavy stage, where the only escape (killing the solve) poisons a
-    # snapshot. Refusing to ENTER a stage that cannot fit costs nothing.
+    # A chain can drain the disk mid-stage, where killing the solve poisons a snapshot; refusing entry costs nothing.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][AllowEmptyString()][string]$Label,
@@ -524,8 +459,7 @@ function Assert-StageDiskHeadroom {
     if ($FloorGb -le 0) { $FloorGb = Get-StageDiskFloorGb -Label $Label }
     $psDrive = Get-PSDrive $Drive -ErrorAction SilentlyContinue
     if (-not $psDrive -or $null -eq $psDrive.Free) {
-        # Say so instead of returning silently (backlog #48): "no output" is
-        # indistinguishable from "plenty of space" in a 2 MB build log.
+        # Silence would read as "plenty of space" in the build log.
         Write-Warning "[$Label] disk headroom NOT checked: drive '$Drive' has no readable free space (network drive, or wrong letter?)."
         return
     }
@@ -543,9 +477,7 @@ function Assert-StageDiskHeadroom {
 }
 
 function Assert-BuildkitdStepLogEnv {
-    # Host-drift preflight (backlog 0a): buildkitd must carry BUILDKIT_STEP_LOG_MAX_SIZE=-1 or
-    # every RUN step's log clips at 2MiB and buries the causal error (a Stevedore repair once
-    # wiped it; never swallow logs). Registry READ is non-admin; the fix needs elevation + a restart.
+    # Without BUILDKIT_STEP_LOG_MAX_SIZE=-1 step logs clip at 2MiB and bury the causal error; a Stevedore repair can wipe it.
     param(
         [string]$ServiceName = 'buildkitd',
         # Injectable for tests: pass the service's Environment multi-string.
@@ -555,11 +487,9 @@ function Assert-BuildkitdStepLogEnv {
     $envStrings = $EnvironmentOverride
     if ($null -eq $envStrings) {
         $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
-        # No service registered = not this host's lane; the buildctl
-        # resolution in the driver is the authority on that failure.
+        # No service means not this host's lane; the driver's buildctl resolution reports that.
         if (-not (Test-Path $svcKey)) { return }
-        # Property-guarded read: `.Environment` on a key WITHOUT that value throws
-        # PropertyNotFound under StrictMode - EXACTLY the wiped-env case this gate exists for.
+        # Guarded: under StrictMode .Environment throws on exactly the wiped-env case this gate exists for.
         $props = Get-ItemProperty -Path $svcKey -ErrorAction SilentlyContinue
         $envStrings = if ($props -and $props.PSObject.Properties.Name -contains 'Environment') { $props.Environment } else { @() }
     }
@@ -572,14 +502,11 @@ function Assert-BuildkitdStepLogEnv {
     throw "REFUSING to start: $msg Pass -SkipHostChecks to override."
 }
 
-# SINGLE SOURCE for the RDNA4 hazard set (backlog #1): gate, toggle script and layer-lock
-# A/B all resolve through this pattern; it forked into three divergent copies once. RDNA4
-# discrete cards: RX 9xxx / AI PRO R9700 - extend as SKUs appear.
+# The one RDNA4 hazard pattern (RX 9xxx, AI PRO R9700) for gate, toggle and A/B; extend as SKUs appear.
 $script:Rdna4HazardPattern = 'Radeon\s*(\(TM\)\s*)?(AI\s+PRO\s+)?(RX\s+|R)?9\d{3}'
 
 function Get-Rdna4HazardDevice {
-    # Display-class PnP devices matching the RDNA4 hazard set (-ActiveOnly: the ENABLED ones).
-    # $Devices and -Pattern are test injection points; production uses the single-source default.
+    # $Devices and -Pattern are test seams; -ActiveOnly keeps the enabled ones.
     param(
         [object[]]$Devices = $null,
         [string]$Pattern = '',
@@ -595,9 +522,7 @@ function Get-Rdna4HazardDevice {
 }
 
 function Set-Rdna4DeviceState {
-    # Toggle primitive shared by Set-Rdna4Gpu.ps1 and the layer-lock A/B (backlog #6).
-    # ELEVATED callers only, and always verify the post-state: a swallowed Enable-PnpDevice
-    # failure strands the host on the iGPU while the console claims otherwise.
+    # Elevated callers only; the post-state is verified because a swallowed failure strands the host on the iGPU.
     param(
         [Parameter(Mandatory)][object]$Device,
         [Parameter(Mandatory)][ValidateSet('Enabled', 'Disabled')][string]$State
@@ -615,16 +540,11 @@ function Set-Rdna4DeviceState {
 }
 
 function Assert-NoActiveRdna4Gpu {
-    # Host gate: an ENABLED AMD RDNA4 dGPU + Adrenalin locks freshly-written container layer
-    # files, so EVERY process-isolated RUN-layer finalize dies `hcsshim::ActivateLayer 0x20`
-    # (docker/for-win#14977; A/B-proven here; COPY-only layers are unaffected, which is why
-    # light probes look green). Build window: disable the dGPU, build, re-enable via
-    # windows\scripts\host\Set-Rdna4Gpu.ps1 (elevated).
-    # docs/failure-modes.md § `hcsshim::ActivateLayer 0x20` on an AMD Radeon host.
+    # Works around docker/for-win#14977: see docs/failure-modes.md § `hcsshim::ActivateLayer 0x20` on an AMD Radeon host
     param(
         # Injectable for tests. Default: live display-class PnP devices.
         [object[]]$Devices = $null,
-        # Test-only override; production resolves via Get-Rdna4HazardDevice (backlog #1).
+        # Test-only override of the hazard pattern.
         [string]$HazardPattern = '',
         [switch]$Force
     )
@@ -633,8 +553,7 @@ function Assert-NoActiveRdna4Gpu {
 
     $active = @($hazards | Where-Object { $_.Status -eq 'OK' })
     if ($active.Count -eq 0) {
-        # -f binds TIGHTER than + (an unwrapped concat printed a literal {0}): keep the
-        # concat parenthesized.
+        # -f binds tighter than +, so the concat stays parenthesized.
         Write-Host (("RDNA4 gate: {0} present but DISABLED - RUN-layer finalize is safe; re-enable after the " +
             "build with windows\scripts\host\Set-Rdna4Gpu.ps1 (elevated).") -f $hazards[0].FriendlyName) -ForegroundColor Cyan
         return
@@ -649,8 +568,7 @@ function Assert-NoActiveRdna4Gpu {
 }
 
 function Get-MediaMemoryBudget {
-    # MEMORY_LIMIT_GB auto-detect shared by both lanes: host RAM minus reserve,
-    # floor 8 GB; an explicit request always wins.
+    # Host RAM minus the reserve, at least 8 GB; an explicit request wins.
     param(
         [int]$RequestedGb = 0,
         [int]$HostReserveGb = 22

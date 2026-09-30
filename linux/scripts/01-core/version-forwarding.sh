@@ -1,16 +1,5 @@
 #!/usr/bin/env bash
-# version-forwarding.sh — forward versions.env vars as --build-arg to
-# nerdctl build.
-#
-# Every KEY=value line in versions.env is forwarded, EXCEPT variables whose
-# assignment is immediately preceded by a `# noforward` comment line
-# (orchestrator/host-only values). Forgetting a marker is harmless: a build
-# arg no Dockerfile declares is ignored by BuildKit; forgetting to forward a
-# consumed variable is not (the stale Dockerfile ARG default wins silently).
-#
-# Provides:
-#   _VERSION_BUILD_ARG_VARS        — discovered variable names
-#   append_version_build_args()    — append --build-arg VAR=$VAR for all tracked versions
+# Forwards every versions.env var except `# noforward` ones: an extra arg is ignored, a missing one lets a stale ARG win.
 [ -n "${_VERSION_FORWARDING_SH_LOADED:-}" ] && return 0
 _VERSION_FORWARDING_SH_LOADED=1
 
@@ -39,12 +28,7 @@ if [ -z "${_VERSION_BUILD_ARG_VARS_CACHED:-}" ]; then
   _VERSION_BUILD_ARG_VARS_CACHED=1
 fi
 
-# $2 = target arch. A version differs per arch when upstream ships no artifact
-# for it, and the image must ADVERTISE what it actually contains: <KEY>_<ARCH>
-# in versions.env is that arch's truth and wins for it.
-# docs/cross-build-verification.md#per-arch-version-truth
-# A forwarded key that merely ENDS in _<ARCH> (GENAI_ALLOW_RISCV64) is a key in
-# its own right, never another key's override.
+# <KEY>_<ARCH> overrides KEY for that arch unless it is a key itself. docs/cross-build-verification.md#per-arch-version-truth
 _vf_is_tracked() {
   local _vfit
   for _vfit in "${_VERSION_BUILD_ARG_VARS[@]}"; do

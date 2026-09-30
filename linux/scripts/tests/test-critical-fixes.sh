@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Characterisation of verify-critical-fixes.sh, the host half of the battery. The
-# gate is a wall of greps over the repo tree, so a suite has to give it a tree of
-# its own and knock out one guarded line at a time. The /opt-probing half moved to
-# 06-packaging/smoke-critical-fixes.sh, which is why this can be complete at all.
-# docs/cross-build-verification.md#the-in-image-half-of-critical-fixes
+# verify-critical-fixes.sh greps a repo tree, so each row knocks one line out of a fixture tree; see docs/cross-build-verification.md#the-in-image-half-of-critical-fixes
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -20,9 +16,7 @@ _classifier="$(t_fn_src "${CSB}" _cross_stage_push_error_is_transient)" || exit 
 
 _write() { install -D -m 0644 /dev/stdin "$1"; }
 
-# _tree — a throwaway repo root holding the gate at its real depth plus the
-# minimal healthy version of every file it greps. The transient-push classifier
-# is the REAL one (the gate extracts and RUNS it), so the fixture cannot drift.
+# _tree: a healthy fixture root; the push classifier is the real one because the gate runs it.
 _tree() {
   local d
   d="$(mktemp -d "${_work}/tree.XXXXXX")"
@@ -220,8 +214,7 @@ F
 
 _gate() { bash "$1/linux/scripts/verify-critical-fixes.sh"; }
 
-# The gate minus its driver: its F11_* tables and every function, extracted with t_fn_src, so a row runs only
-# the fix it knocks out (a whole gate per row made this suite 45-59 s on CI). The Cargo case runs the real gate.
+# The gate minus its driver, so a row runs only the fix it knocks out; a whole gate per row is too slow.
 _FIX_FUNCS=()
 read -r -a _FIX_FUNCS <<< "$(sed -n 's/^FIX_FUNCS=(\(.*\))$/\1/p' "${GATE}")"
 _gate_lib="set -euo pipefail"$'\n'"source '${PKG}/smoke-common.sh'"$'\n'"$(awk '/^F11_[A-Z0-9_]+=\($/ { a = 1 }
@@ -235,8 +228,7 @@ for _fn in "${_FIX_FUNCS[@]}"; do _FN_OF["${_fn%%_*}"]="${_fn}"; done
 # _run_fix <tree> <fix function>: that one fix over <tree>, ending in the gate's own summary and exit code.
 _run_fix() { REPO_ROOT="$1" bash -c "${_gate_lib}"$'\n'"$2"$'\n''smoke_summary'; }
 
-# _red <fixN> <relpath> <sed expr> <expected message> — one guarded line knocked out of a copy of the
-# healthy fixture; the finding has to be a FAIL line of that fix.
+# _red <fixN> <relpath> <sed expr> <expected message>: the knocked-out line must yield a FAIL of that fix.
 _rows=0
 _red() {
   local d out rc=0 line fails=""
@@ -270,8 +262,7 @@ t_assert_eq "$(printf '%s\n' "${_healthy_out}" | sed '1,2d;$d')" "${_each%$'\n\n
   "the fixes run one at a time must print what the gate prints, or the rows below test something else"
 
 t_case "the /opt-probing half is GONE from the host gate"
-# It skipped on every host run it ever had, and fix4 was a tautology there
-# (host cc is the host arch). Its real verdicts live in smoke-critical-fixes.sh.
+# On a host it can only skip or be tautological; its verdicts live in smoke-critical-fixes.sh.
 for _moved in "Fix 1:" "Fix 2:" "Fix 3:" "Fix 4:"; do
   case "${_healthy_out}" in
     *"${_moved}"*) t_assert_eq "moved" "still here" "${_moved} must not run on the host" ;;
@@ -279,10 +270,7 @@ for _moved in "Fix 1:" "Fix 2:" "Fix 3:" "Fix 4:"; do
   esac
 done
 
-# One table, not a wall of near-identical calls: at 29 rows the call shape is
-# itself a clone family, and the dupes gate reads it as a copy.
-# @LHS@ is the third fixture trap on GH5's list — spelled out, the row would BE a
-# bare launcher export and the real gate's repo-wide scan would fail on the suite.
+# A table so the dupes gate sees no clone family; @LHS@ keeps a literal bare launcher export out of the repo scan.
 _bare_export_lhs='CMAKE_C_COMPILER_LAUNCHER='
 _group=""
 while IFS="$(printf '\t')" read -r _g _f _e _m; do
@@ -474,9 +462,7 @@ _dead="$(PATH="${_work}/deadawk:${PATH}" bash -c "${_gate_lib}"$'\n'"_F11_RULES=
 t_assert_contains "${_dead}" "got 0 verdict(s) for 1 rule(s) -- the judging pass broke"
 t_assert_contains "${_dead}" "=== Results: 1 failure(s) ==="
 
-# ── the in-image half ───────────────────────────────────────────────────────
-# CF_SMOKE_ROOT is what makes these provable off-target: the probes read a
-# prefixed filesystem, so a fixture root stands in for a shipped image.
+# In-image half: CF_SMOKE_ROOT lets a fixture root stand in for a shipped image.
 
 _img() { CF_SMOKE_ROOT="$1" TARGET_ARCH="${2:-}" bash "${IMAGE_SMOKE}"; }
 
@@ -488,8 +474,6 @@ _pc() {
 }
 
 t_case "fix1 — a relocatable \${pcfiledir} prefix is CORRECT, and the shipped trees use it"
-# The literal-prefix assertion this replaces reported FAIL on all three arches of
-# cross-android-amd64 on 2026-09-05, against a .pc that resolves exactly right.
 _root="$(mktemp -d "${_work}/img.XXXXXX")"
 _pc "${_root}" amd64 '${pcfiledir}/../..'
 _pc "${_root}" arm64 "${_root}/opt/python-cross/arm64/usr/local"
@@ -508,16 +492,12 @@ t_assert_contains "$(t_out _img "${_root}")" "SKIP: no per-arch python-3.14.pc f
 t_assert_contains "$(t_out _img "${_root}")" "SKIP: no per-arch lib-dynload found"
 
 t_case "fix2 — absl is looked for where install_abseil_headers PUTS it"
-# The three dirs the old probe searched are none of them the install prefix, so
-# it reported FAIL against an image that carries absl exactly where it belongs.
 _root="$(mktemp -d "${_work}/img.XXXXXX")"
 mkdir -p "${_root}/usr/local/include/absl/types"
 : > "${_root}/usr/local/include/absl/types/span.h"
 t_assert_contains "$(t_out _img "${_root}")" "absl/types/span.h found in ${_root}/usr/local/include"
 
 t_case "fix2 — headers that include absl/ with no absl shipped is the REAL defect"
-# Measured in latest-cross-{amd64,arm64,riscv64} on 2026-09-05: 1322 LiteRT
-# headers, 707 of them including absl/, and no absl directory at all.
 _root="$(mktemp -d "${_work}/img.XXXXXX")"
 mkdir -p "${_root}/usr/local/include/tflite"
 printf '#include "absl/types/span.h"\n' > "${_root}/usr/local/include/tflite/util.h"
@@ -525,8 +505,7 @@ t_assert_eq "1" "$(t_rc _img "${_root}")"
 t_assert_contains "$(t_out _img "${_root}")" "cannot build"
 
 t_case "fix2 — no LiteRT headers at all SKIPs; an EMPTY stub dir is not evidence"
-# /usr/local/include/tensorflow ships as two empty directories on all three
-# arches, and the old probe treated that stub as proof LiteRT was present.
+# Shipped images carry /usr/local/include/tensorflow as empty stub directories.
 _root="$(mktemp -d "${_work}/img.XXXXXX")"
 mkdir -p "${_root}/usr/local/include/tensorflow/lite"
 t_assert_eq "0" "$(t_rc _img "${_root}")"
@@ -544,8 +523,6 @@ t_assert_eq "1" "$(t_rc _img "${_root}")"
 t_assert_contains "$(t_out _img "${_root}")" "1 dangling symlinks found in lib-dynload (riscv64)"
 
 t_case "fix4 — the native cc must be the TARGET arch, not the builder's"
-# This is the assertion the whole battery exists for: a foreign-arch image whose
-# cc is still the builder's compiler.
 _root="$(mktemp -d "${_work}/img.XXXXXX")"
 _other=riscv64
 [ "$(uname -m)" = "riscv64" ] && _other=arm64
@@ -558,8 +535,6 @@ else
 fi
 
 t_case "the packaging answer to fix2 — the payload copy carries absl, not just the headers that need it"
-# copy_media_payloads copied /usr/local/include/{tflite,tensorflow,flatbuffers,c}
-# and left absl behind, which is why the probe above is red on shipped bytes.
 _PAY="$(cat "${PAYLOADS}")"
 t_assert_contains "${_PAY}" "/usr/local/include/absl" "the LiteRT headers it copies include absl/"
 t_assert_contains "${_PAY}" "/usr/local/include/tflite" "and the headers themselves are still copied"

@@ -4,37 +4,21 @@
 
 <#
 .SYNOPSIS
-    Pre-bump validator: confirm every static .patch under windows/scripts/patches/ still applies
-    cleanly to its pinned upstream via `git apply --check`.
+    Check that every static .patch under windows/scripts/patches/ still applies to its pinned upstream.
 
 .DESCRIPTION
-    The Windows source-build patches are pinned to specific upstream versions (onnxruntime v1.27.0,
-    gstreamer 1.29.2, ...). When you bump a version you must re-verify the committed patches still
-    apply -- otherwise the build silently falls back to the inline patchers (or fails). This tool
-    automates that check WITHOUT a container rebuild:
-
-      for each *.patch:
-        1. parse its `+++ b/<path>` headers to learn which files it touches;
-        2. shallow + sparse + blobless clone the pinned upstream (only those paths);
-        3. `git apply --check -p1 --ignore-whitespace` -- the exact flags Invoke-SourcePatch uses;
-        4. report OK / FAIL.
-
-    Requires network + git. Not part of the container build; run it on the host before a version bump
-    or in CI. The pinned tags below mirror linux/scripts/01-core/versions.env -- keep them in sync
-    (override any with -Versions @{ ONNXRUNTIME = 'v1.28.0' }).
+    Sparse-clones each pinned upstream and runs the build's own `git apply --check -p1 --ignore-whitespace`.
+    Needs network and git; run it before a version bump. See windows/scripts/patches/README.md.
 
 .PARAMETER PatchRoot
-    Root of the patch tree (default: the patches/ dir next to this script's parent).
+    Root of the patch tree (default: windows/scripts/patches).
 
 .PARAMETER Versions
-    Optional hashtable overriding the pinned tags per repo key (ONNXRUNTIME, OPENCV, FFMPEG, GSTREAMER, LLVM, HAILORT,
-    MIGRAPHX - a 40-hex commit).
+    Hashtable overriding the pinned ref per repo key; MIGRAPHX takes a 40-hex commit.
 
 .PARAMETER WorkDir
-    Scratch dir for the shallow clones (default: a temp dir; removed on completion).
+    Scratch dir for the clones (default: a temp dir, removed afterwards).
 
-.EXAMPLE
-    pwsh -File windows/scripts/tests/Test-PatchesApplyClean.ps1
 .EXAMPLE
     pwsh -File windows/scripts/tests/Test-PatchesApplyClean.ps1 -Versions @{ ONNXRUNTIME = 'v1.28.0' }
 #>
@@ -52,8 +36,7 @@ if (-not $PatchRoot) { $PatchRoot = Join-Path (Split-Path $PSScriptRoot -Parent)
 if (-not (Test-Path $PatchRoot)) { throw "patch root not found: $PatchRoot" }
 if (-not $WorkDir) { $WorkDir = Join-Path ([System.IO.Path]::GetTempPath()) ("patchcheck_{0}" -f ([guid]::NewGuid().ToString('N'))) }
 
-# Map each patch subdirectory to its upstream repo + the pinned ref.
-# Read from versions.env (single source of truth) — no hand-synced duplicate.
+# Refs come from versions.env; these literals are only the fallback when it is missing.
 Import-Module (Join-Path $PSScriptRoot 'TestHarness.psm1') -Force -DisableNameChecking
 $versionsFile = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
 $defaultRefs = @{
@@ -122,10 +105,7 @@ try {
         $repoKey = Split-Path (Split-Path $p.FullName -Parent) -Leaf
         $spec = $repoMap[$repoKey]
         if (-not $spec) {
-            # FAIL, not SKIP (backlog item 33, review find 2026-08-10): a new
-            # patch directory added without a $repoMap entry used to escape
-            # this gate (and CI's patch-drift job) silently - the exact
-            # rot-goes-unnoticed class this tool exists to prevent.
+            # FAIL, not SKIP: an unmapped patch directory would otherwise escape this gate silently.
             $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = '?'; Status = 'FAIL (no repo mapping - add it to $repoMap)' })
             continue
         }
@@ -148,19 +128,14 @@ try {
             }
             $clones[$cacheKey] = $clone
         }
-        # Materialize exactly the files the patch touches, using NON-cone sparse-checkout with the
-        # literal target paths. Cone mode's `sparse-checkout add <dir>` rejects some perfectly-valid
-        # directory args with "specify directories rather than patterns" and, worse, leaves the tree
-        # in a state where a later file silently isn't checked out -- making a good patch look rotten.
-        # Non-cone `set` with the exact forward-slash file paths is deterministic and blob-minimal.
+        # Non-cone `set` with literal paths: cone mode rejects some valid dirs and can silently skip a later file.
         $targetArgs = @($targets)
         $scOut = & git -C $clone sparse-checkout set --no-cone -- @targetArgs 2>&1
         if ($LASTEXITCODE -ne 0) {
             $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = "FAIL (sparse-checkout: $($scOut | Select-Object -First 1))" })
             continue
         }
-        # Report a missing target file distinctly from a hunk mismatch -- otherwise a checkout gap
-        # masquerades as patch rot.
+        # Report a missing target apart from a hunk mismatch, or a checkout gap looks like patch rot.
         $missing = @($targets | Where-Object { -not (Test-Path (Join-Path $clone $_)) })
         if ($missing.Count -gt 0) {
             $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = "FAIL (target not checked out: $($missing[0]))" })

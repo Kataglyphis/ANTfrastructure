@@ -5,26 +5,11 @@
 
 <#
 .SYNOPSIS
-    Host resource sampler + analyzer for the Windows container build
-    (started/stopped by windows/Build-Buildkit.ps1; can also run standalone).
+    Host resource sampler and per-phase analyzer for the Windows container build.
 
 .DESCRIPTION
-    SAMPLING (default): appends one CSV row every -IntervalSeconds with host CPU,
-    RAM, commit charge, and the Hyper-V container VM footprint (vmmem*), tagged
-    with the current BUILD PHASE read from -PhaseFile (the driver rewrites that file
-    at every docker build / run+commit / commit step). Runs until killed -- the
-    orchestrator owns the lifecycle. Locale-independent (CIM, no perf-counter
-    names -- Get-Counter paths are localized and break on non-English hosts).
-
-    ANALYSIS (-Summarize): groups an existing CSV by phase and prints which steps
-    exhausted the machine the most (sorted by lowest free RAM, i.e. peak memory
-    pressure first), plus CPU utilisation per phase.
-
-    Columns: ts, phase, cpuPct, freeGB, usedGB, committedGB, vmmemGB
-      cpuPct      -- average Win32_Processor LoadPercentage (instantaneous)
-      freeGB      -- FreePhysicalMemory (true free+zero pages; standby cache NOT counted)
-      committedGB -- system commit charge (grows when the build forces paging)
-      vmmemGB     -- working set of vmmem* (the Hyper-V VM hosting the build container)
+    Appends a phase-tagged CSV row every -IntervalSeconds until killed; -Summarize ranks phases by lowest free RAM.
+    Reads CIM, not Get-Counter (its paths are localized); freeGB excludes the standby cache.
 
 .EXAMPLE
     # sample every 20s into a CSV, phase-tagged (how the driver invokes it)
@@ -80,7 +65,7 @@ if ($Summarize) {
     return
 }
 
-# ---- sampling loop (runs until the parent kills this process) ----
+# Sampling loop; the parent owns the lifecycle and kills it
 $csvDir = Split-Path -Parent $CsvPath
 if ($csvDir -and -not (Test-Path $csvDir)) { New-Item -ItemType Directory -Force $csvDir | Out-Null }
 if (-not (Test-Path $CsvPath)) {
@@ -102,9 +87,7 @@ while ($true) {
         $phase = $phase -replace ',', ';'
         "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$phase,$cpu,$freeGB,$usedGB,$committedGB,$vmmemGB" | Add-Content -Path $CsvPath
     } catch {
-        # never let a transient CIM hiccup kill the series mid-build — but carry
-        # the WHY: a 2026-09-01 run produced 4.7h of bare sample-error rows and
-        # the cause was undiagnosable (docs/windows-refactor-backlog.md #161).
+        # A transient CIM hiccup must not kill the series, but the row carries its reason.
         $why = ($_.Exception.Message -replace '[,\r\n]', ';')
         "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),sample-error,$why,,,," | Add-Content -Path $CsvPath -ErrorAction SilentlyContinue
     }

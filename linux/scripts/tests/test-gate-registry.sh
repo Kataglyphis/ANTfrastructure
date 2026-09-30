@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_gate_registry.py. The gate derives its root from its own path,
-# so each case copies it (plus the two modules it imports) into a throwaway tree
-# holding a mini preflight.sh, suites, mutations.json, hook and docs/, then runs
-# the real script against it.
-# docs/code-quality-tooling.md#gate-proof-registry-gate-registry
+# The gate reads its root from its own path, so it runs in a mini fixture repo; see docs/code-quality-tooling.md#gate-proof-registry-gate-registry
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -16,12 +12,7 @@ mutation-id:beta.over-ordinary
 mutation-id:alpha.foreign
 mutation-family:wheels'
 
-# Thirteen slugs, one per proof/tier shape -- alpha, beta, gamma, omega, delta,
-# epsilon, zeta, eta, theta, iota, kappa, lambda, script-tests -- plus
-# ordinary.sh, the counter-shape no run_check registers. Each shape is named
-# where its own case asserts on it.
-# _subjects <dir>: the gate under test, its imports, and one script, lib, allow
-# file and suite per fixture shape.
+# _subjects <dir>: one script, lib, allow file and suite per slug shape; ordinary.sh is registered by nothing.
 _subjects() {
   local d="$1"
   cp "${GATE_DIR}/verify_gate_registry.py" "${GATE_DIR}/quality_allow.py" \
@@ -156,8 +147,7 @@ _unfrozen() {
   printf '%s' "${fix}"
 }
 
-# _stale_after <fix> <line> <needle>: the fixture's own freezes back plus one more
-# line, which nothing in the tree matches -- so the gate must fail saying STALE.
+# _stale_after <fix> <line> <needle>: the fixture's freezes plus a line nothing matches, which must fail as STALE.
 _stale_after() {
   printf 'delta\nomega\n%s\n%s\n' "${FROZEN_IDS}" "$2" > "$1/linux/scripts/gate-proofs.allow"
   t_assert_eq "1" "$(_rc "$1")" "a freeze nothing carries any more is STALE"
@@ -234,9 +224,7 @@ t_assert_contains "$(_row "${fix}" script-tests)" "| script-tests.helper |" \
   "a shell gate imports nothing, so its extractor or sub-gate would otherwise belong to no row at all"
 
 t_case "a mutation may pin the CALL SITE, in a file the gate does not own"
-# preflight.sh belongs to zeta (an inline gate lives in it), so by target alone
-# alpha.callsite credits nobody -- and the four ids over the real preflight.sh and
-# the real pre-commit hook sat frozen on exactly that.
+# preflight.sh belongs to zeta, so by target alone alpha.callsite would credit nobody.
 t_assert_contains "$(_row "${fix}" alpha)" "| alpha.callsite |" \
   "the target names verify_alpha.py and the suite it must turn red is alpha's own"
 t_assert_eq "0" "$(_count_in_row "${fix}" zeta 'alpha.callsite')" \
@@ -254,8 +242,7 @@ t_assert_contains "$(_row "${fix}" omega)" "| CI |" "a gate the hook never names
 t_assert_contains "$(_row "${fix}" theta)" "| CI |" "and one whose lib the hook never sources"
 
 t_case "a gate named by a SECOND hook is not reported as CI-only"
-# Reading one hook path is what kept a pre-push hook's gates out of the tier
-# column -- a false statement in a generated file.
+# Reading only one hook would report a pre-push gate as CI-only.
 t_assert_contains "$(_row "${fix}" lambda)" "| hook (whole tree)+CI |" \
   "only pre-push names verify_lambda.py, and it names it unconditionally"
 t_assert_eq "0" "$(_count_in_row "${fix}" lambda '| CI |')" \

@@ -4,9 +4,7 @@
 
 _PACKAGE_LISTS_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Thin wrapper around apt_has_package (canonical, in common.sh). Exists so
-# callers that source package-lists.sh without common.sh still get a working
-# probe via the fallback body below.
+# Defers to common.sh's apt_has_package, with a fallback for callers that source only this file.
 apt_package_exists() {
   if declare -F apt_has_package >/dev/null 2>&1; then
     apt_has_package "$@"
@@ -50,11 +48,7 @@ append_available_packages() {
     fi
   done
 
-  # Never drop silently: an archive/mirror hiccup here used to erase
-  # clang/lld/valgrind from the base image with no trace in the build log.
-  # Keep this one-liner greppable. warn comes from logging.sh; fall back to
-  # plain stderr for callers that source this file without the framework
-  # (same contingency as apt_package_exists above).
+  # Never drop silently: a mirror hiccup would otherwise erase clang/lld from the image without a trace.
   if [ "${#_absent[@]}" -gt 0 ]; then
     if declare -F warn >/dev/null 2>&1; then
       warn "append_available_packages: requested-but-absent packages dropped: ${_absent[*]}"
@@ -91,14 +85,7 @@ base_image_os_packages() {
   local _cdp _pkg
   local -a _cpython_dev=()
 
-  # STRUCTURAL host/target CPython dev-package parity (backlog TS3): the dev
-  # packages CPython's stdlib extensions link against come from the shared
-  # cpython-dev-packages.sh table instead of literals here — the same table
-  # drives the cross-target install and the extension asserts in
-  # 02-toolchain/python/build_python.sh plus the staged-artifact asserts in
-  # 06-packaging/smoke-toolchain.sh. Before this, host closure for several of
-  # them rested on TRANSITIVE pulls from the GUI dev packages below (the
-  # 2026-08-09 libsqlite3-dev incident class).
+  # CPython dev packages come from the table the target install and extension asserts also read, never literals.
   if ! declare -F cpython_ext_dev_packages >/dev/null 2>&1; then
     for _cdp in "${_PACKAGE_LISTS_SH_DIR}/cpython-dev-packages.sh" \
                 /opt/scripts/core/cpython-dev-packages.sh; do

@@ -1,11 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Brings a fresh Stevedore host to a green Test-HostSetup.ps1 plus a dufs
-# sccache L2 endpoint by orchestrating the per-concern scripts, never duplicating them.
-# Admin, and NEVER while a build solves: the sub-scripts restart containerd/buildkitd.
-# Guide, flags and examples: docs/windows-host-setup.md § Phase A5 + Phase C.
+# Admin, never while a build solves (it restarts containerd/buildkitd); see docs/windows-host-setup.md § A5. CNI nat conf.
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
@@ -38,14 +34,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
-# Test-Elevated, not Assert-Elevated: -ReportOnly downgrades the requirement,
-# so this site needs the ANSWER, not the stop.
+# Test-Elevated, not Assert-Elevated: -ReportOnly runs without admin.
 $isAdmin = Test-Elevated
 if (-not $isAdmin -and -not $ReportOnly) {
     throw 'Run from an elevated (admin) shell: service config, Defender exclusions, scoop installs and file installs need it.'
@@ -59,8 +52,7 @@ function Write-Step {
 }
 
 function Get-LanIpv4Address {
-    # The address containers reach the host on: a physical adapter with a real
-    # default gateway, skipping the HNS/reserved adapters and link-local.
+    # The address containers reach the host on: an up adapter with a real gateway, never HNS or link-local.
     $cfg = Get-NetIPConfiguration -ErrorAction SilentlyContinue |
         Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' -and
             $_.NetAdapter.InterfaceAlias -notmatch '^vEthernet|Loopback|Bluetooth|WLAN' }
@@ -76,9 +68,7 @@ function Get-LanIpv4Address {
 }
 
 function Get-NatAdapterCidr {
-    # Live vEthernet (nat) -> "network/prefix", derived at runtime because dockerd
-    # recreates the HNS nat network on a new subnet. Byte-wise mask: the .NET
-    # Address net-order conversion hits int64 sign traps on 172.x/192.x octets.
+    # Derived live (dockerd moves the nat subnet); a byte-wise mask avoids .NET's sign traps on 172.x/192.x.
     $n = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Where-Object { $_.InterfaceAlias -eq 'vEthernet (nat)' } | Select-Object -First 1
     if (-not $n) { throw "No 'vEthernet (nat)' adapter found - is Windows Containers enabled (Stevedore + reboot)?" }
@@ -137,8 +127,7 @@ function Invoke-StepCni {
         Write-Step "cni        : .conflist already at the live subnet ($natCidr) - no change"
     }
 
-    # HASHTABLE splat, never an array: array splatting binds by position and would
-    # deliver '-ReportOnly' as $ServiceName (AGENTS.md § array-splat trap).
+    # Hashtable splat: an array binds by position and would pass '-ReportOnly' as $ServiceName.
     $acArgs = @{ ReportOnly = $ReportOnly }
     Write-Step 'containerd : applying Set-ContainerdConfig.ps1 (debug flags, teardown env, Defender, .conf derive)'
     & (Join-Path $scriptRoot 'Set-ContainerdConfig.ps1') @acArgs
@@ -216,9 +205,7 @@ function Invoke-StepShim {
         Write-Step "shim       : would deploy $build"
         return
     }
-    # Hashtable splat (NOT an array) so -ShimPath/-Force bind by name. The shim
-    # is the fork's env-configurable build, so it needs the mandatory 5m knob:
-    # without it, defaults stay stock 30 s (docs/windows-host-setup.md § R1).
+    # Hashtable splat; without the 5m knob the fork's shim keeps the stock 30 s (docs/windows-host-setup.md § R1).
     $dsp = @{
         ShimPath           = $build
         Force              = $Force
@@ -229,8 +216,7 @@ function Invoke-StepShim {
 }
 
 function Sync-ShimForkCheckout {
-    # Fetch-by-SHA keeps the build reproducible and the tree one commit deep; a reused
-    # work dir from an older pin is re-pinned too, so it cannot rebuild the old tree.
+    # Fetch by SHA, re-pinning a reused work dir too, so an old tree is never rebuilt.
     param([Parameter(Mandatory)][string]$Git, [Parameter(Mandatory)][string]$Work, [Parameter(Mandatory)][string]$Pin)
     $head = & $Git -C $Work rev-parse HEAD 2>$null
     if ($LASTEXITCODE -eq 0 -and $head -eq $Pin) { return $false }
@@ -242,9 +228,7 @@ function Sync-ShimForkCheckout {
 }
 
 function Invoke-BuildPatchedShim {
-    # The fork branch carries the #2855 env-var patch; the old 45min constant
-    # patch is RETIRED, so this build asserts the patch is present instead of
-    # applying it. Fork/pin/5m facts: docs/windows-host-setup.md § R1.
+    # The fork carries the env-var patch, so the build asserts it instead of applying one; see docs/windows-host-setup.md § R1.
     $forkUrl = 'https://github.com/Kataglyphis/hcsshim.git'
     $forkBranch = 'feature/configurable-teardown-timeout'
     $forkPin = '5e9df53c58f59d1282f18730acdea52689303bfe'
@@ -280,8 +264,7 @@ function Invoke-BuildPatchedShim {
     }
     if (-not (Test-Path $src)) { throw "task_hcs.go not found at $src - unexpected hcsshim layout?" }
 
-    # Fail loudly on a tree WITHOUT the knob: defaults are stock 30s, so a
-    # missing patch builds a green binary that silently keeps the defect.
+    # A tree without the knob builds a green binary that silently keeps the defect.
     $raw = Get-Content -Raw $src
     if ($raw -notmatch 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT') {
         throw "the pinned fork tree lacks the CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT knob at $src - refusing to build a silently stock shim"
@@ -379,9 +362,7 @@ if (-not $SkipGcPolicy) { Invoke-StepGcPolicy }
 if (-not $SkipShim)     { Invoke-StepShim }
 if (-not $SkipDufs)     { Invoke-StepDufs }
 
-# The steps above may leave buildkitd stopped or a fresh .conf on disk; one
-# restart finalises the CNI + step-log env. Guarded like the GC-policy restart:
-# it kills every in-flight solve.
+# One restart makes the new CNI .conf and step-log env live; guarded, since it kills in-flight solves.
 if (-not $ReportOnly) {
     if (-not $Force) {
         $live = @(Get-Process -Name 'buildctl' -ErrorAction SilentlyContinue)

@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""Every preflight slug needs a proof -- a test suite naming its script, or a
-mutation -- and docs/code-quality-gates.md must be the table this derives.
-Unproven slugs are frozen in gate-proofs.allow and may only leave it.
-docs/code-quality-tooling.md#gate-proof-registry-gate-registry"""
+"""Every preflight slug needs a proof (a suite naming its script, or a mutation), tabled in docs/code-quality-gates.md.
+Unproven slugs are frozen in gate-proofs.allow; see docs/code-quality-tooling.md#gate-proof-registry-gate-registry"""
 import argparse
 import json
 import os
@@ -37,12 +35,7 @@ GUARD = re.compile(r'^if \[ -n "\$\{(_[A-Za-z0-9_]+)\}" \]; then$')
 CHANGED = "--changed"
 ALLOW_LIT = re.compile(r"[A-Za-z0-9_./-]+\.allow\b")
 IMPORT = re.compile(r"^from\s+([A-Za-z_][A-Za-z0-9_]*)\s+import\b", re.MULTILINE)
-# The interpreter is a VARIABLE wherever a gate can be run by a consumer
-# (01-core/python-probe.sh, 2026-09-15): plain `python3` on a Windows host is
-# the Microsoft Store stub, so those call sites expand ${PREFLIGHT_PYTHON} and
-# its published copies instead. A pattern that knew only the literal quietly
-# stopped crediting lint-python.sh with extract_embedded_python.py, which is
-# the registry losing a fact rather than the fact changing.
+# Consumer-run gates call Python through these variables (plain python3 is a Windows Store stub), not the literal.
 PY_VAR = r"\$\{(?:PREFLIGHT_PYTHON|_PY|_LINT_PY|_LINT_GATES_PY|PY)(?::-[^}]*)?\}"
 SHELLS_OUT = re.compile(r"(?:python3?|bash|sh|" + PY_VAR + r")\s+([A-Za-z0-9_./-]+\.(?:py|sh))\b")
 WORD = re.compile(r"(?<![\w/.-])([A-Za-z_][A-Za-z0-9_]*)(?![\w/.-])")
@@ -63,8 +56,7 @@ def known_slugs(text):
 
 
 def run_checks(text):
-    """[(slug, name, tokens, command_text)] for every run_check call, multi-line quoted
-    commands included; a slug's `[ -f ] ... MISSING` fallback line is dropped."""
+    """[(slug, name, tokens, command_text)] per run_check call, dropping a slug's `MISSING` fallback line."""
     lines = text.split("\n")
     found = []
     i = 0
@@ -106,9 +98,7 @@ def shell_defs():
 
 
 def resolve_script(tokens, cmd, defs, preflight_rel):
-    """(rel, (start, count) or None, needle): the first .py/.sh token that is a repo
-    file (needle = its basename), else the file defining the last shell function the
-    command names (needle = the function name)."""
+    """(rel, extent or None, needle) from the first repo .py/.sh token, else the last shell function named."""
     for tok in tokens:
         if tok.endswith((".py", ".sh")) and os.path.isfile(os.path.join(ROOT, tok)):
             return tok, None, os.path.basename(tok)
@@ -124,8 +114,7 @@ def resolve_script(tokens, cmd, defs, preflight_rel):
 
 
 def _rel(path):
-    """Repo-relative keys are posix-spelled; os.path.relpath uses backslashes on
-    Windows, where every mutation target then reported as off-convention."""
+    """Posix-spelled repo-relative path, since mutations.json targets never carry backslashes."""
     return os.path.relpath(path, ROOT).replace(os.sep, "/")
 
 
@@ -156,8 +145,7 @@ def imported_modules(rel, text):
     script_dir = os.path.dirname(rel)
     out = []
     for mod in IMPORT.findall(text):
-        # Posix spelling kept: these keys are compared to mutations.json targets,
-        # and os.path.join spells backslashes on Windows.
+        # Posix spelling: compared to mutations.json targets.
         cand = (script_dir + "/" + mod + ".py") if script_dir else mod + ".py"
         if os.path.isfile(os.path.join(ROOT, cand)):
             out.append(cand)
@@ -177,8 +165,7 @@ def id_slug(entry):
 
 
 def shelled_out(rel, text):
-    """The helpers a .sh gate RUNS as a separate program. A shell gate imports
-    nothing, so without this its extractor or sub-gate belongs to no row at all."""
+    """Helpers a .sh gate runs as programs, since a shell gate imports nothing."""
     if not rel.endswith(".sh"):
         return []
     out = set()
@@ -198,9 +185,7 @@ def names_suite(entry, tests):
 
 
 def calls_the_gate(entry, script, files, tests):
-    """A mutation may pin the CALL SITE rather than the gate: the target is a file the
-    gate does not own -- a shared orchestrator, a git hook -- that NAMES the gate's
-    script, and the suite it must turn red is one of the gate's own."""
+    """Does the mutation pin a call site: a non-owned target naming the gate's script, tested by its suite?"""
     if entry["target"] in files or not names_suite(entry, tests):
         return False
     path = os.path.join(ROOT, entry["target"])
@@ -208,16 +193,13 @@ def calls_the_gate(entry, script, files, tests):
 
 
 def mutation_ids(entries, slug, script, files, tests):
-    """An entry is credited to the gate its id prefix names when its target is that
-    gate's own script, an imported or shelled-out helper of it, or a call site."""
+    """Ids credited to `slug`: its prefix, targeting the gate's own files or a call site."""
     return [e["id"] for e in entries if id_slug(e) == slug
             and (e["target"] in files or calls_the_gate(e, script, files, tests))]
 
 
 def _id_verdict(e, known, owners, files, credited):
-    """Why a mutation id credits no gate -- a slug prefix that does not own its target,
-    or a non-slug prefix over a file some gate does own -- or None: it credits its gate,
-    or its prefix is a descriptive family the allowlist must declare."""
+    """Why a mutation id credits no gate, or None when it does or its prefix is a family."""
     slug, target = id_slug(e), e["target"]
     names = ", ".join(sorted(s for s, fs in owners.items() if target in fs))
     holds = "owned by %s" % names if names else "owned by no gate"
@@ -231,8 +213,7 @@ def _id_verdict(e, known, owners, files, credited):
 
 
 def id_verdicts(table):
-    """({frozen key: why it credits no gate}, {family key: id count}): every id is
-    credited to the gate its prefix names, off-convention, or in a descriptive family."""
+    """({frozen key: why it credits no gate}, {family key: id count}) over every mutation id."""
     known = set(known_slugs(_read(PREFLIGHT)))
     owners = {row["slug"]: set(row["own files"]) for row in table}
     credited = {row["slug"]: set(row["mutations"]) for row in table}
@@ -261,8 +242,7 @@ def suites():
 
 
 def hook_texts():
-    """Every versioned git hook, as text. The tier column is a statement about ALL
-    of them: reading one path made a second hook's gates report as CI-only."""
+    """Every versioned git hook as text; the tier column speaks for all of them."""
     if not os.path.isdir(HOOK_DIR):
         return []
     paths = [os.path.join(HOOK_DIR, fn) for fn in sorted(os.listdir(HOOK_DIR))]
@@ -294,9 +274,7 @@ def hook_blocks(text):
 
 
 def hook_scope(needle, text):
-    """How ONE hook runs the gate: "scoped" when a staged-files block hands it that
-    list (`--changed` is the same list under another name), "relevant" when such a
-    block runs it whole-tree, "whole" at the hook's top level, None if unnamed."""
+    """How one hook runs the gate: "scoped" (staged files or --changed), "relevant", "whole", or None."""
     for var, body in hook_blocks(text):
         if mentions(needle, body):
             return "scoped" if CHANGED in body or mentions(var, body) else "relevant"
@@ -304,9 +282,7 @@ def hook_scope(needle, text):
 
 
 def hook_tier(slug, needle, fast, texts):
-    """_FAST_SLUGS runs the whole gate on every commit; any other hook runs it
-    unconditionally, whole-tree behind a staged-files `if`, or over that list, and
-    the column must say which. The widest scope any hook gives it wins."""
+    """The hook tier column: _FAST_SLUGS first, else the widest scope any hook gives the gate."""
     if slug in fast:
         return "hook+CI"
     scopes = {hook_scope(needle, text) for text in texts}

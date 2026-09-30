@@ -1,20 +1,4 @@
-# .github/workflows/windows-x64.yml
-# Source-level gate for the Windows build tooling: PowerShell parse/analyzer
-# lint plus the windows/scripts/tests suites. Deliberately builds NO container
-# images (the image chain is built locally; see docs/windows-builds.md).
-#
-# Runner is windows-2025, PINNED, because several suites exercise Windows-shaped
-# fixtures (C:\ paths, vswhere output, cmd.exe guards); running everything on
-# one Windows runner avoids a per-suite OS matrix. pwsh 7 and Pester v5 are
-# preinstalled on the hosted image.
-#
-# The label was windows-latest until 2026-09-08. windows-latest is a MOVING
-# alias - it points at windows-2025 today, which is why the switch changes
-# nothing right now - and the day GitHub repoints it, these suites would move
-# runner image under a green build with no commit to blame. The rest of the
-# family (BeschleunigerBallett, OmniAccelerANT, OrchestrANT) and this repo's own
-# python-ci-windows.yml were already on windows-2025; this closes the split.
-# Named by the fleet convention: docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names
+# No images here, the chain builds locally (docs/windows-builds.md); named per docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names
 name: Windows x64 · script tests
 on:
   push:
@@ -35,8 +19,7 @@ on:
 permissions:
   contents: read
 
-# One run per ref: a force-push supersedes the in-flight run instead of
-# burning Windows runner minutes next to it.
+# One run per ref: a newer push supersedes the in-flight run.
 concurrency:
   group: windows-x64-${{ github.ref }}
   cancel-in-progress: true
@@ -52,19 +35,12 @@ jobs:
         shell: pwsh
         run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
 
-      # -FailOnAnalyzer since 2026-09-08: the finding backlog it was waiting on
-      # is triaged to zero (the last three were empty catch blocks), so analyzer
-      # findings are fatal here instead of advisory. Without the switch this step
-      # printed findings and still exited 0 - a check that cannot fail.
+      # Without -FailOnAnalyzer the analyzer prints findings and still exits 0.
       - name: Lint (parse gate + PSScriptAnalyzer)
         shell: pwsh
         run: pwsh -NoProfile -File windows/scripts/Invoke-Lint.ps1 -FailOnAnalyzer
 
-      # Hermetic Pester floor: the suites need Pester v5; the hosted image
-      # currently ships 5.9.0 (so this is a fast no-op-ish install), but
-      # runner-image updates have swapped preinstalled module versions before.
-      # Installing our own pinned floor keeps the test run independent of
-      # whatever the image happens to carry.
+      # Our own floor: runner-image updates have swapped preinstalled module versions before.
       - name: Ensure Pester >= 5.7
         shell: pwsh
         run: Install-Module Pester -MinimumVersion 5.7 -Scope CurrentUser -Force -SkipPublisherCheck
@@ -73,14 +49,7 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1
 
-  # Backlog 0b (2026-08-10): the 2026-08-03 versions.env bump carried FIVE
-  # latent Windows breaks because nothing exercised the patch stack against
-  # the new pins. This job re-verifies every committed .patch against its
-  # pinned upstream (shallow + sparse + blobless clones - megabytes, not a
-  # container build) on every trigger, which includes versions.env changes
-  # via the workflow paths above. The remaining HUMAN half of 0b: a
-  # versions.env bump still needs one local `[build-win]`-style full chain
-  # before it can be trusted - CI has no GPU and builds no containers.
+  # Patches against their pinned upstreams on every versions.env change; a bump still needs one local full chain.
   patch-drift:
     runs-on: windows-2025
     timeout-minutes: 20

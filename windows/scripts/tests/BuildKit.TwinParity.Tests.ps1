@@ -1,30 +1,13 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Guards the version-env contract in Dockerfile.media-builder.
-#
-# HISTORY: until 2026-08-07 each classic media-<branch> stage had a
-# media-<branch>-bk ENV twin, and this suite existed to catch the two copies
-# drifting apart (sync_versions.py policed the VALUES, this suite the SETS).
-# The twins are gone: both lanes now descend from a single media-<branch>-env
-# ancestor, so drift is structurally impossible rather than policed.
-#
-# What is still worth asserting is what that refactor must never lose:
-#   1. the shared -env stage exists and declares the version ARGs,
-#   2. every ARG it declares is mirrored into ENV — the BK lane's build scripts
-#      read versions from the ENVIRONMENT, and an unmirrored ARG silently falls
-#      back to the base image's baked Machine env (i.e. a stale version),
-#   3. BOTH lanes descend from it — the classic builder stage and the BK
-#      compile stage — because that shared ancestry IS the anti-drift mechanism,
-#   4. nobody re-declares those ARGs in a descendant, which would reintroduce a
-#      twin by the back door.
+
+# Every version ARG of a shared -env stage must be mirrored into ENV, or build scripts read the base image's stale value.
 
 
 BeforeAll {
     $script:dfPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Dockerfile.media-builder'
 
-    # Minimal stage-aware Dockerfile scan:
     # stage name -> @{ Parent; Args = [set]; EnvMirrored = [set] }
     $script:stages = @{}
     $current = $null
@@ -41,8 +24,7 @@ BeforeAll {
             $script:stages[$current].Args += $Matches[1]
             $inEnvContinuation = $false
         }
-        # ENV mirror lines: NAME="${NAME}" — first line starts with ENV, backtick
-        # continuations carry further NAME="${NAME}" pairs.
+        # The first ENV line starts with ENV; backtick continuations carry more NAME="${NAME}" pairs.
         if ($line -match '^\s*ENV\s') { $inEnvContinuation = $true }
         if ($inEnvContinuation) {
             foreach ($m in [regex]::Matches($line, '([A-Za-z_][A-Za-z0-9_]*)="\$\{\1\}"')) {
@@ -52,24 +34,13 @@ BeforeAll {
         }
     }
 
-    # branch -> the shared env stage and the BK stage that must descend from it.
-    # media-core is NOT in this list since #49 (2026-08-19): its BK lane is
-    # partitioned per component and carries per-stage version blocks - the
-    # dedicated Describe below asserts that contract instead.
-    #
-    # The `Classic = 'media-litert' / 'media-tvm'` column was dropped on
-    # 2026-08-26 (#134) with the docker-classic lane and its COPY-only stages.
-    # The env stages themselves stay: they are still the shared ancestors, now
-    # of one descendant each, and they are still where a version bump must land
-    # so it re-keys the branch exactly once.
+    # branch -> env stage and its BK descendant; media-core is partitioned per component and has its own Describe.
     $script:branches = @(
         @{ Env = 'media-litert-env'; Bk = 'media-litert-built' }
         @{ Env = 'media-tvm-env';    Bk = 'media-tvm-built' }
     )
 
-    # #49 contract: each BK media-core stage declares EXACTLY its component's
-    # version keys, so a single-component bump re-runs that stage + downstream
-    # instead of the full ~75-min ONNX build.
+    # Each media-core stage declares exactly its component's keys, so one bump never re-runs the ONNX build.
     $script:coreComponentKeys = @{
         'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION')
         'media-core-built-ffmpeg' = @('FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF',
@@ -79,13 +50,7 @@ BeforeAll {
         'media-core-built-opencv' = @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION')
         'media-core-built'        = @('ONNXRUNTIME_GENAI_VERSION')
     }
-    # DELIBERATELY CROSS-COMPONENT (#154, 2026-08-31). QNN_SDK_ZIP_SHA256 was a
-    # media-core-built-onnx key on the belief that only ORT reads it. Every stage that
-    # MOUNTS windows/qnn-sdk calls Resolve-QnnSdk, and an absent pin there means the
-    # zip is extracted with NO integrity check at all -- which is what onnx, genai,
-    # litert and tvm did until this was fixed. So it is exempt from the foreign-key
-    # rule below: re-keying a stage on a QAIRT bump is CORRECT, because that stage
-    # really does extract the new zip.
+    # Cross-component on purpose: every stage mounting windows/qnn-sdk extracts the zip and needs the pin.
     $script:sharedCoreKeys = @('QNN_SDK_ZIP_SHA256')
     $script:qnnMountingCoreStages = @('media-core-built-onnx', 'media-core-built')
 }
@@ -111,8 +76,7 @@ Describe 'Dockerfile.media-builder version-env contract' {
     It 'descends the branch build from the shared env stage' {
         foreach ($b in $script:branches) {
             $script:stages.Keys | Should -Contain $b.Bk
-            # The BK head stage inherits directly; later partitions chain from
-            # handoff images (${MEDIA_CORE_*_IMAGE}) built off that same head.
+            # The head stage inherits directly; later partitions chain from handoff images built off it.
             $script:stages[$b.Bk].Parent | Should -Be $b.Env `
                 -Because 'the branch build must inherit the shared version env, not restate it'
         }
@@ -129,10 +93,6 @@ Describe 'Dockerfile.media-builder version-env contract' {
 }
 
 Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
-    # ('keeps the classic lane on the shared media-core-env ancestor' was removed
-    # on 2026-08-26 with the docker-classic lane: media-core and media-core-env
-    # are both gone from Dockerfile.media-builder — #134.)
-
     It 'starts the BK partition from common, not the shared env stage' {
         $script:stages['media-core-built-onnx'].Parent | Should -Be 'common' `
             -Because 'descending from media-core-env would make every component bump re-pay the ONNX stage (#49)'
@@ -147,8 +107,7 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
                 $script:stages[$name].EnvMirrored | Should -Contain $k `
                     -Because "an unmirrored ARG silently falls back to the base image's baked env"
             }
-            # No foreign component keys: a key creeping back into an earlier
-            # stage re-couples the cache chain the split exists to cut.
+            # A foreign key creeping back into an earlier stage re-couples the cache chain.
             $foreign = @($script:coreComponentKeys.Keys | Where-Object { $_ -ne $name } |
                     ForEach-Object { $script:coreComponentKeys[$_] }) | Where-Object { $_ -in $script:stages[$name].Args }
             @($foreign) | Should -BeNullOrEmpty `
@@ -157,9 +116,7 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
     }
 
     It 'declares the shared QAIRT pin in EVERY media-core stage that mounts the SDK (#154)' {
-        # The regression this pins: an SDK-mounting stage without the pin calls
-        # Resolve-QnnSdk with an empty -ExpectedSha256, which warns and extracts
-        # UNVERIFIED instead of failing. Three of four stages did exactly that.
+        # Without the pin Resolve-QnnSdk only warns and extracts unverified.
         foreach ($name in $script:qnnMountingCoreStages) {
             foreach ($k in $script:sharedCoreKeys) {
                 $script:stages[$name].Args | Should -Contain $k `
@@ -171,24 +128,7 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
     }
 
     It 'covers the driver''s whole media-core version-arg set with the per-stage union (no drift)' {
-        # WHAT THIS REPLACED, AND WHY IT IS NOT THE SAME TEST (#134, 2026-08-26).
-        # This used to compare the per-stage union against media-core-env's ARG
-        # block. That stage was the classic lane's single-stage ancestor and was
-        # deleted with the lane — but the property it proved is load-bearing and
-        # had no other gate: a key the DRIVER forwards that NO stage declares is
-        # silently dropped, and the branch's build scripts fall back to the value
-        # baked into the base image, possibly months old
-        # (WindowsBuildDriver.Common.psm1, Get-MediaBranchVersionArg: "COMPLETENESS IS LOAD-BEARING").
-        # The union is therefore now checked against the driver's own map. That
-        # is a cross-FILE check between the two things that must agree, where the
-        # old one compared two blocks of the same Dockerfile.
-        #
-        # The table below is the versions.env-side key set the media-core map
-        # reads (note the deliberate OPENCV_VERSION -> OPENCV_SOURCE_VERSION
-        # rename on the way out). If the driver grows a key that is not here,
-        # Get-VersionTableValue throws "versions.env has no key X" and this test
-        # fails — which is the correct outcome: a new key needs a home in
-        # $script:coreComponentKeys and in a stage.
+        # A forwarded key no stage declares is silently dropped, so the union is checked against the driver's own map.
         $table = @{}
         foreach ($k in @('ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_VERSION',
                          'FFMPEG_VERSION', 'PYAV_VERSION', 'QNN_SDK_ZIP_SHA256',
@@ -196,8 +136,7 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
                          'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT', 'X265_VERSION', 'X265_SHA256',
                          'CUDA_ARCHITECTURES', 'PYTHON_VERSION')) { $table[$k] = 'fixture' }
         $driverKeys = @((Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $table).Keys) | Sort-Object -Unique
-        # Shared keys count toward the union: they have a home in a stage, just in
-        # more than one of them (#154).
+        # Shared keys count toward the union: they live in more than one stage.
         $union      = @(@($script:coreComponentKeys.Values | ForEach-Object { $_ }) + $script:sharedCoreKeys) | Sort-Object -Unique
         ($union -join ',') | Should -Be ($driverKeys -join ',') `
             -Because 'a version the driver forwards but no stage declares falls back to the base image''s baked value, silently'

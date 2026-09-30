@@ -1,34 +1,11 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Rust toolchain repair for images whose rustup was fed from a local mirror that
-# no longer exists.
-#
-# WHY THIS IS ITS OWN MODULE — CACHE BOUNDARY, NOT TASTE.
-# This lived inside Build-GstreamerFromSource.ps1 (backlog #133) because the
-# only module homes then available were the six in `buildmods` — the import
-# closure of WindowsSourceBuild.Common, mounted into all 11 media/merge RUNs, so
-# an edit there re-keyed every media branch on both lanes. #134 gave the merge
-# lane its own leaf modules; this file is mounted by
-# Dockerfile.media-merge-builder ONLY, so a change costs the GStreamer layer and
-# nothing else.
-#
-# Keep that property: do NOT add this module to Dockerfile.media-builder's
-# `buildmods` stage. Same rule, same reason, as WindowsMeson.Common.psm1 and
-# WindowsGstPlugins.Common.psm1.
-#
-# It is one function today. That is deliberate: a rust-toolchain concern does
-# not belong in a meson module, and the next rust-for-the-target helper (the
-# corrosion crates LiteRT-LM needs, #133(d)) has an obvious home here.
+# Merge-lane leaf, never in the media-builder buildmods: see docs/windows-build-resources.md § The Windows cache, tier by tier
 
 Set-StrictMode -Version Latest
 
-# Guarded, WITHOUT -Force (repo-wide nested-import rule): a forced nested
-# re-import rebinds Shared into this module's private scope and unloads the
-# caller's top-level import (the PS module-scoping trap). Needed for
-# Invoke-DownloadWithRetry; the fixture test injects -Downloader instead and so
-# never reaches it.
+# Guarded, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 $rustSharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 if (Test-Path $rustSharedPath) {
     if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $rustSharedPath }
@@ -39,17 +16,7 @@ if (Test-Path $rustSharedPath) {
            'that carries this module.')
 }
 
-# Makes `rustup target add <triple>` possible in an image whose rustup was fed
-# from a local mirror that is gone (#128 / #133). Install-RustToolchain.ps1
-# rewrote the channel manifest's URLs to file:///<mirror>/dist/<date>/<file>
-# and deleted the mirror after the install; the cached manifest under
-# <rustup home>\toolchains\<tc>\lib\rustlib\multirust-channel-manifest.toml
-# still names every component with that URL AND upstream's sha256. Fetching
-# exactly that tarball from static.rust-lang.org into the path the manifest
-# expects gives rustup a file it can hash-verify against the pinned manifest
-# -- the pin stays the authority, the network only supplies the bytes.
-# Returns a one-line verdict (never throws): the caller's staticlib probe is
-# the gate. -Downloader is injectable for the fixture test.
+# The manifest still names the deleted mirror's file:// URL and upstream's sha256, so upstream bytes land where it expects.
 function Install-RustTargetStdFromPinnedManifest {
     param(
         [Parameter(Mandatory)]

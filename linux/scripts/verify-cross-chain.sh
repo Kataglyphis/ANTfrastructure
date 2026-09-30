@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# verify-cross-chain.sh — thin forwarder to build-cross-chain.sh --verify-chain.
-# The stage graph and digest resolution live in exactly one place.
+# Forwards to build-cross-chain.sh --verify-chain, the one owner of the stage graph.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 

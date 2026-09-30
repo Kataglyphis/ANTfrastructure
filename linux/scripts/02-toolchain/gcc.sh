@@ -32,13 +32,7 @@ install_cross_gcc_sysroot_packages() {
     *)       die "Unsupported cross target: ${normalized_target}" ;;
   esac
 
-  # Only FOREIGN targets need a cross sysroot; the build host's own arch does
-  # not, because its native libc already is one. Keyed on build_arch_oci() and
-  # NOT on the literal "amd64" (2026-09-08): the old test made an arm64 host
-  # ask for libc6-dev-arm64-cross, which Ubuntu does not ship for an arm64
-  # host, so the aarch64 cross-GCC then linked against a sysroot that was never
-  # installed and died with `cannot find crti.o` 27 min into the stage. On an
-  # amd64 host this is byte-for-byte the previous behaviour.
+  # Only foreign targets need a cross sysroot; compare with the build arch, never a literal amd64.
   if [ "${normalized_target}" != "$(build_arch_oci)" ]; then
     pkgs+=("libc6-dev-${normalized_target}-cross" "linux-libc-dev-${normalized_target}-cross")
   fi
@@ -74,8 +68,7 @@ stage_cross_gcc_sysroot_libs() {
   log "Staged target sysroot libs for ${triplet} into ${dst_dir}"
 }
 
-# Debian cross packages install at /usr/<triplet>/lib/ but GCC with
-# --with-sysroot=/ searches /usr/lib/<triplet>/. Create symlink bridges.
+# Debian cross packages use /usr/<triplet>/lib, but --with-sysroot=/ searches /usr/lib/<triplet>.
 bridge_cross_lib_sysroot() {
   local triplet="$1"
   local src="/usr/${triplet}/lib"
@@ -89,17 +82,12 @@ bridge_cross_lib_sysroot() {
   log "Bridged cross sysroot: ${dst} -> ${src}"
 }
 
-# Scratch root for all GCC build trees and helper wrapper dirs. Kept under
-# $HOME (tmp2) so we never depend on a small / contended /tmp tmpfs.
+# Build scratch under $HOME, never a small shared /tmp tmpfs.
 gcc_cross_scratch_root() {
   printf '%s' "${GCC_CROSS_SCRATCH_ROOT:-${HOME}/tmp2}"
 }
 
-# Hard-fail unless an ELF binary's actual machine type matches the expected
-# architecture. This is the real guard that a target-native compiler binary is
-# not secretly a host-arch cross-compiler: `gcc -dumpmachine` cannot tell them
-# apart (both report the target triple), but the ELF machine type can. Uses
-# readelf only, so it works on the build host without executing the binary.
+# The ELF machine type, unlike gcc -dumpmachine, tells a target-native compiler from a host-arch cross one.
 assert_gcc_elf_arch() {
   local file="$1"
   local arch="$2"
@@ -128,21 +116,7 @@ assert_gcc_elf_arch() {
   esac
 }
 
-# Symlink the target binutils (as/ld/ar/...) into a GCC prefix under their
-# triplet-prefixed names AND into the GCC "tooldir" (${prefix}/${triplet}/bin/)
-# under their *unprefixed* names.
-#
-# The tooldir is critical: when the cross/Canadian-cross GCC needs its
-# assembler/linker it runs `gcc -print-prog-name=as`, which searches GCC's own
-# exec prefixes (including ${prefix}/${triplet}/bin/) for the *unprefixed* tool
-# name `as`. It does NOT search PATH for `${triplet}-as`. Without the tooldir
-# entry GCC falls back to the bare name `as`, which at exec time resolves to the
-# build host's native assembler (e.g. amd64 /usr/bin/as). That native assembler
-# then rejects the target `-march=` string (e.g. riscv64's
-# rv64imafdc_zicsr_zifencei_zmmul_zaamo_zalrsc_zca_zcd) with
-# "invalid -march= option", which previously surfaced as a Canadian-cross link
-# test failure. Populating the tooldir makes GCC resolve the correct target
-# assembler/linker.
+# Also link unprefixed into the tooldir: GCC looks there for a bare "as", else it runs the build host's.
 link_cross_binutils() {
   local prefix="$1"
   local triplet="$2"
@@ -153,8 +127,7 @@ link_cross_binutils() {
   for tool in as ld ar nm ranlib strip objcopy objdump; do
     resolved="$(command -v "${triplet}-${tool}" 2>/dev/null || true)"
     if [ -z "${resolved}" ]; then
-      # objdump is not strictly required for compile/link; only hard-fail on the
-      # tools GCC actually drives.
+      # Only the tools GCC drives are fatal; objcopy and objdump are optional.
       case "${tool}" in
         as|ld|ar|nm|ranlib|strip)
           die "Expected cross binutils not found: ${triplet}-${tool}" ;;
@@ -166,17 +139,12 @@ link_cross_binutils() {
   done
 }
 
-# Build the build-host (native) GCC that drives every cross/Canadian-cross
-# build. Bootstrapping can be disabled via GCC_HOST_BOOTSTRAP=0 to save ~2/3 of
-# the build time at the cost of the bootstrap miscompile self-check.
+# The build-host GCC; GCC_HOST_BOOTSTRAP=0 saves about 2/3 of its time but drops the miscompile self-check.
 build_host_gcc() {
   local full_version="$1"
   local prefix="$2"
   local scratch_root
-  # --ccache: the RUN's /var/cache/ccache mount was dead weight before this —
-  # nothing ever exec'd ccache, so from-scratch rebuilds got zero reuse. On a
-  # bootstrapped host build only stage1 is cacheable (stages 2/3 compile with
-  # the just-built xgcc); the cross/Canadian builds below cache fully.
+  # Only stage1 of a bootstrapped build is cacheable; the cross and Canadian builds cache fully.
   local -a host_args=(--version "${full_version}" --ccache)
 
   scratch_root="$(gcc_cross_scratch_root)"
@@ -197,8 +165,7 @@ build_host_gcc() {
   assert_gcc_elf_arch "${prefix}/bin/gcc" "$(build_arch_oci)" "host gcc"
 }
 
-# For an amd64 target on an amd64 build host, the "cross" compiler is just the
-# native host GCC exposed under its triplet name.
+# A target equal to the build arch just exposes the native GCC under its triplet names.
 link_amd64_host_as_cross() {
   local prefix="$1"
   local triplet="$2"
@@ -213,8 +180,7 @@ link_amd64_host_as_cross() {
   link_cross_binutils "${prefix}" "${triplet}"
 }
 
-# Build a host-hosted cross GCC (build-host binary that emits target code) into
-# the shared prefix under the triplet-prefixed tool names.
+# A cross GCC that runs on the build host and emits target code, under triplet-prefixed names.
 build_cross_gcc_for() {
   local full_version="$1"
   local prefix="$2"
@@ -245,10 +211,7 @@ build_cross_gcc_for() {
   assert_gcc_elf_arch "${prefix}/bin/${triplet}-gcc" "$(build_arch_oci)" "cross gcc (${triplet})"
 }
 
-# Canadian cross: use the just-built host-hosted cross GCC to build a GCC whose
-# binaries run *natively* on the target architecture (host triple == target
-# triple, build host stays amd64). The result is later swapped into
-# /opt/gcc-<ver> by Dockerfile.android so /usr/bin/cc is a native binary.
+# Canadian cross to a GCC that runs natively on the target; Dockerfile.android swaps it in as /usr/bin/cc.
 build_canadian_native_gcc_for() {
   local full_version="$1"
   local prefix="$2"
@@ -264,19 +227,9 @@ build_canadian_native_gcc_for() {
   [ -x "${cross_cxx}" ] || die "Cross compiler ${cross_cxx} not found for Canadian cross"
   log "Building native GCC ${full_version} for ${normalized_target} (Canadian cross via ${cross_cc})"
 
-  # NOTE: do NOT shadow the bare 'as'/'ld'/etc. with the target binutils on
-  # PATH. This is a Canadian cross (build=amd64, host==target=${triplet}); the
-  # configure/make of GCC must compile *build-side* helper programs with the
-  # native amd64 compiler, which needs the native amd64 assembler/linker. The
-  # cross compiler resolves its own triplet-prefixed tools, and build-gcc.sh
-  # already exports AS/LD/AR/... as ${triplet}-* for the host/target side and
-  # CC_FOR_BUILD/CXX_FOR_BUILD for the build side. Globally aliasing bare 'as'
-  # to the target assembler breaks the build-side C++14 compiler probe.
+  # Never shadow bare as/ld with target binutils on PATH: GCC's build-side helpers need the native ones.
 
-  # Link-capability check. A failure here almost always means a missing target
-  # sysroot (libc6-dev-<arch>-cross). Skipping the native build would only
-  # defer the failure to Dockerfile.android, so hard-fail at this cheaper stage
-  # unless the caller explicitly opts into skipping.
+  # A failed link test almost always means a missing target sysroot; fail here, not in Dockerfile.android.
   log "Testing cross-compiler link capability for ${normalized_target}..."
   if ! link_err="$(printf 'int main(){return 0;}\n' | "${cross_cc}" -x c - -o "${scratch_root}/_cc_linktest_${normalized_target}" 2>&1)"; then
     if [ "${GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE:-0}" = "1" ]; then
@@ -292,19 +245,7 @@ Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalize
   rm -f "${scratch_root}/_cc_linktest_${normalized_target}"
   log "Cross-compiler link test passed for ${normalized_target}"
 
-  # Canadian-cross libstdc++ `std` module (GCC PR100017/PR101060): building
-  # libstdc++ for host==target==${triplet} (build=amd64) used to fail std.cc with
-  #   .../libstdc++-v3/include/cfenv|fenv.h: error: 'fenv_t' has not been declared in '::'
-  #   make[3]: [Makefile:868: stamp-modules-bits] Error 1 (ignored)  -> EMPTY module
-  # Root cause was host-libstdc++ include contamination: the target <fenv.h>
-  # wrapper's `#include_next <fenv.h>` hit the HOST wrapper (same guard
-  # _GLIBCXX_FENV_H), got guard-skipped, so libc <fenv.h> was never reached.
-  # FIXED in build-gcc.sh: it adds `-nostdinc++` to src/c++23/Makefile.in
-  # AM_CXXFLAGS (upstream applied this to src/c++17 but not the c++23 module dir).
-  # If you EVER see those fenv errors again here, the build-gcc.sh patch failed to
-  # apply -- do not dismiss it as benign. See [[canadian-cross-fenv-module-noise]].
-      # The caller uses `if !`, which suppresses errexit in here: without an explicit
-      # die the builder's exit code was discarded. docs/refactoring-backlog.md WG
+  # The caller's `if !` disables errexit here, so die explicitly. docs/failure-modes.md#a-callee-invoked-in-an-if--condition-runs-with-errexit-off
   CC="${cross_cc}" CXX="${cross_cxx}" \
     ac_cv_prog_cc_works=yes \
     ac_cv_prog_CC_works=yes \
@@ -327,17 +268,13 @@ Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalize
   [ -x "${native_prefix}/bin/gcc" ] || die "Expected native GCC not found: ${native_prefix}/bin/gcc"
   [ -x "${native_prefix}/bin/g++" ] || die "Expected native G++ not found: ${native_prefix}/bin/g++"
 
-  # The whole reason this stage exists: the produced gcc/g++ must be TARGET-arch
-  # ELF binaries, not host-arch. This catches a misconfigured Canadian cross at
-  # the toolchain stage rather than three Dockerfiles later.
+  # The point of this stage: target-arch ELF, caught here rather than three Dockerfiles later.
   assert_gcc_elf_arch "${native_prefix}/bin/gcc" "${normalized_target}" "target-native gcc (${normalized_target})"
   assert_gcc_elf_arch "${native_prefix}/bin/g++" "${normalized_target}" "target-native g++ (${normalized_target})"
   log "Installed native GCC ${full_version} for ${normalized_target} at ${native_prefix}"
 }
 
-# Normalize a GCC version to the strict X.Y.Z form, falling back to <default>
-# when the input does not already match. Shared by install_gcc's cross and
-# from-source paths (previously duplicated inline).
+# Strict X.Y.Z, else <default>.
 gcc_resolve_full_version() {
   local full="$1" default="$2"
   if [[ ! "${full}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -346,9 +283,7 @@ gcc_resolve_full_version() {
   printf '%s' "${full}"
 }
 
-# Locate build-gcc.sh next to this script, make it executable, and echo its
-# path (dies if missing). Centralizes the locate+chmod+die block previously
-# duplicated in build_source_cross_gcc_targets and install_gcc.
+# Path of the executable build-gcc.sh beside this script; dies if missing.
 gcc_locate_builder() {
   local script_dir builder
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -358,16 +293,12 @@ gcc_locate_builder() {
   printf '%s' "${builder}"
 }
 
-# Per-target callback for for_each_cross_target. Builds/links the cross GCC
-# toolchain for one already-normalized target. full_version, prefix and
-# requested_major are read from the enclosing build_source_cross_gcc_targets
-# scope via bash dynamic scoping.
+# Per-target callback; full_version, prefix and requested_major come from the caller by dynamic scope.
 _gcc_build_cross_target() {
   local normalized_target="$1"
   local triplet tool actual_tool actual_version
 
-  # Skipped when the parallel driver already ran its serial apt pre-pass:
-  # concurrent per-target callbacks would collide on the dpkg frontend lock.
+  # Skipped after the parallel driver's serial apt pass: concurrent callbacks would collide on the dpkg lock.
   if [ "${GCC_SYSROOT_PREINSTALLED:-0}" != "1" ]; then
     install_cross_gcc_sysroot_packages "${normalized_target}"
   fi
@@ -378,9 +309,7 @@ _gcc_build_cross_target() {
   else
     stage_cross_gcc_sysroot_libs "${prefix}" "${triplet}"
     build_cross_gcc_for "${full_version}" "${prefix}" "${triplet}"
-    # build_canadian_native_gcc_for returns 1 (instead of dying) when the
-    # opt-in skip knob is set; keep that skip from aborting the remaining
-    # targets even with errexit live.
+    # Returns 1 only for the opt-in skip, which must not abort the remaining targets.
     if ! build_canadian_native_gcc_for "${full_version}" "${prefix}" "${triplet}" "${normalized_target}"; then
       warn "Skipping Canadian native GCC for ${normalized_target}; continuing with remaining targets"
     fi
@@ -402,24 +331,7 @@ _gcc_build_cross_target() {
   fi
 }
 
-# Opt-in concurrent per-target builds (GCC_PARALLEL_TARGETS=1; default 0 keeps
-# the sequential flow byte-identical). The serial tails of each target's build
-# (configure, in-tree gmp/mpfr/mpc/isl, libstdc++'s poorly-parallel chunks)
-# overlap, worth roughly a third of the multi-target wall-clock.
-#
-# Constraints honored:
-#   * apt sysroot installs are hoisted into a serial pre-pass — two concurrent
-#     callbacks would collide on the dpkg frontend lock.
-#   * the build-arch target (amd64 on an amd64 host) is only symlinking against
-#     the host GCC; it runs serially first so the parallel slots are all real
-#     compiles.
-#   * JOBS is divided by the number of concurrent builds; without that each
-#     target would request the full nproc and oversubscribe the host 2-3x.
-#   * per-target output goes to its own log (interleaved make -j output from
-#     concurrent builds is unattributable on failure); the failing target's
-#     tail is replayed into the main log.
-# Reads full_version/prefix/requested_major from the caller's scope like the
-# sequential callback (bash dynamic scoping; subshells inherit copies).
+# GCC_PARALLEL_TARGETS=1: serial apt pass, then concurrent builds with JOBS split and one log per target.
 _gcc_build_cross_targets_parallel() {
   local targets_csv="$1"
   local -a all_targets=() par_targets=()
@@ -430,10 +342,7 @@ _gcc_build_cross_targets_parallel() {
   for_each_cross_target install_cross_gcc_sysroot_packages --include-amd64 "${targets_csv}"
   # The callbacks below must not re-run apt (dpkg lock).
   local GCC_SYSROOT_PREINSTALLED=1
-  # build-gcc.sh's build-deps apt (build-essential/gmp/mpfr/mpc/...) was already
-  # installed by build_host_gcc, so the concurrent per-target invocations must
-  # skip it too — two apt-get at once collide on /var/lib/apt/lists/lock.
-  # (2026-08-30, first parallel validation build: exact failure.)
+  # build_host_gcc already installed build-gcc.sh's deps, and concurrent apt runs would collide on the lock.
   export GCC_SKIP_BUILD_DEPS=1
 
   local build_arch
@@ -488,10 +397,7 @@ build_source_cross_gcc_targets() {
   GCC_CROSS_BUILDER="$(gcc_locate_builder)"
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported GCC cross target list: ${targets_raw}"
 
-  # Share one downloaded GCC tarball across the host build and every
-  # per-target build below (each uses its own BUILD_DIR under the scratch
-  # root, so without this the same tarball is downloaded once per target).
-  # build-gcc.sh still runs its full SHA512/GPG verification on every use.
+  # One tarball download for every per-target build; build-gcc.sh still verifies each use.
   export GCC_TARBALL_CACHE_DIR="${GCC_TARBALL_CACHE_DIR:-$(gcc_cross_scratch_root)/gcc-tarball-cache}"
 
   build_host_gcc "${full_version}" "${prefix}"
@@ -522,8 +428,7 @@ install_gcc() {
   esac
   local full_version="${GCC_VERSION:-${default_full_version}}"
 
-  # In cross mode, keep the host compiler native and install target-specific
-  # GNU toolchains under their triplet names (for example aarch64-linux-gnu-gcc).
+  # Cross mode: the host compiler stays native; each target gets a triplet-named toolchain.
   if cross_mode_requested; then
     full_version="$(gcc_resolve_full_version "${full_version}" "${default_full_version}")"
 
@@ -532,8 +437,7 @@ install_gcc() {
     return 0
   fi
 
-  # For GCC >= 15, build from source: apt ships gcc-15/gcc-16 but gcc-16 is a
-  # dated snapshot (16-20260322), not the pinned release.
+  # GCC >= 15 builds from source: apt's gcc-16 is a dated snapshot, not the pinned release.
   if [ -n "${gcc_major}" ] && [ "${gcc_major}" -ge 15 ] 2>/dev/null; then
     local builder
     builder="$(gcc_locate_builder)"

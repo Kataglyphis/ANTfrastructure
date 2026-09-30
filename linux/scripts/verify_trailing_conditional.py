@@ -1,21 +1,7 @@
 #!/usr/bin/env python3
-"""Fail on a NEW shell function whose returned status is a CONDITION's -- a trailing
-`&&` list, a bare test, the last arm of a `||`, the tail of a `do`/`then`/`in` block,
-or a bare call to a same-file function that is one of those -- because its false arm
-returns 1 on the "nothing to do" path and kills the caller under `set -e`.
-Predicates whose status IS the answer are frozen two-way in trailing-conditional.allow.
-docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional
+"""Fail on a NEW shell function returning a condition's status, whose false arm kills a `set -e` caller.
 
-GRADING A CONSUMER. `--root` and `--allow` are the same contract
-docs/scripts/verify_mutations.py already documents, and for the same reason the lint
-gates take one: a submodule checkout puts this script INSIDE the consumer, where a
-root derived from __file__ resolves to ANTfrastructure and the gate grades the wrong
-tree while reporting green over one nobody looked at.
-
-Under the hub's own root the scan set is the historical linux/ walk, so the hub's own
-verdict is unchanged. Under any other root it is every TRACKED *.sh minus the excluded
-top-level directories -- the same rule run-lint-gates.sh uses, so a consumer needs no
-per-repo configuration and a vendored subtree cannot creep in."""
+Predicates are frozen in trailing-conditional.allow; see docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional"""
 import argparse
 import os
 import re
@@ -38,8 +24,7 @@ CALL = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(?:\s|$)")
 
 
 def top_ops(code):
-    """Yield (index, op) for `;`, `&&`, `||`, `|` at paren depth 0 outside `[[ ]]`.
-    Quotes and comments are already gone; `[[ a =~ (x|y) ]]` must not read as a pipe."""
+    """Yield (index, op) for `;`, `&&`, `||`, `|` at paren depth 0 and outside `[[ ]]`, where `|` is regex."""
     depth = bracket = i = 0
     while i < len(code):
         two, one = code[i:i + 2], code[i]
@@ -66,9 +51,7 @@ def top_ops(code):
 
 
 def body_lines(body):
-    """The function's own code lines: stripping is `verify_code_size.code_lines`, then
-    the definition head goes off the first line and the closing brace off the last, so a
-    one-line `f() { …; }` presents the same body as a multi-line one."""
+    """code_lines of the body without its head and closing brace, so one-line and multi-line bodies match."""
     lines = code_lines(body)
     if not lines:
         return []
@@ -82,8 +65,7 @@ def body_lines(body):
 
 
 def last_statement(lines, end):
-    """(statement, first index, last index) for the last live statement at or before
-    `end`, joined backwards over operator/backslash continuations; ("", -1, -1) if none."""
+    """(statement, first, last index) of the last statement at or before `end`, continuations joined."""
     while end >= 0 and not lines[end].strip():
         end -= 1
     if end < 0:
@@ -101,8 +83,7 @@ def is_simple(stmt):
 
 
 def unwrap_group(stmt):
-    """`{ a; [ -n "$x" ]; }` returns its LAST inner statement's status, so that is what
-    the verdict is about. Returns the inner text, or "" when stmt is not a group."""
+    """The last inner statement of a `{ ...; }` group, whose status it returns, or ""."""
     if not (stmt.startswith("{") and stmt.endswith("}")):
         return ""
     inner = stmt[1:-1].strip().rstrip(";").strip()
@@ -111,14 +92,12 @@ def unwrap_group(stmt):
 
 
 def closes_a_block(stmt):
-    """A bare `done`/`fi`/`esac`/`}` returns the status of the block it closes, so the
-    verdict is inside; the same word in a pipeline (`done | sort -u`) does not."""
+    """Is this a bare block closer, which returns its block's status (unlike `done | sort -u`)?"""
     return is_simple(stmt) and stmt.split()[0] in CLOSERS
 
 
 def returned_statement(lines):
-    """(statement, line offset) whose status the function returns: its last statement,
-    stepping THROUGH a block closer into the last statement of the block itself."""
+    """(statement, line offset) whose status the function returns, stepping into a closed block."""
     end = len(lines) - 1
     while end >= 0:
         stmt, start, last = last_statement(lines, end)
@@ -158,8 +137,7 @@ def delegate(stmt):
 
 
 def file_sites(path, rel):
-    """{function: site} for one file: the direct findings, then every function whose
-    tail is a bare call to one of them, to a fixed point inside the file."""
+    """{function: site}: direct findings, then functions tail-calling one, to a fixed point."""
     found, calls = {}, {}
     for _r, name, start, body in shell_functions(path, rel):
         stmt, off = returned_statement(body_lines(body))
@@ -185,14 +163,12 @@ def _walk_scan(root, tops):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
             for fn in sorted(files):
                 if fn.endswith(".sh"):
-                    # Posix-spelled keys: os.path.relpath uses backslashes on Windows,
-                    # where every frozen row then reported as miss + stale.
+                    # Posix-spelled keys, or Windows backslashes break every frozen row.
                     yield os.path.relpath(os.path.join(base, fn), root).replace(os.sep, "/")
 
 
 def scan_paths(root, scan):
-    """The files to grade, relative to `root`: --scan narrows it, the hub's own root
-    keeps the historical walk, and any other root is what git tracks there."""
+    """Files to grade: --scan's walk, the hub's historical walk, or another root's tracked *.sh."""
     if scan:
         return sorted(_walk_scan(root, scan))
     if gate_scope.is_hub(root, ROOT):
@@ -221,20 +197,14 @@ def main():
 
     try:
 
-        # resolve_root, not abspath: a SUBDIRECTORY of a checkout passes
-
-        # `git rev-parse`, and grading a fragment anchors every allowlist
-
-        # key one level down without saying so.
+        # resolve_root, not abspath: a subdirectory root would silently shift every allowlist key.
 
         root = gate_scope.resolve_root(args.root, ROOT)
 
     except gate_scope.ScopeError as exc:
 
         return gate_scope.die(exc)
-    # A consumer's freeze belongs to the consumer: keeping it beside this script
-    # would put every repo's ratchet inside the hub, where no consumer can see it
-    # in its own diff.
+    # A consumer's freeze lives in the consumer, where its own diff shows it.
     allow_file = args.allow or (ALLOW if root == os.path.abspath(ROOT)
                                 else os.path.join(root, "trailing-conditional.allow"))
 

@@ -1,24 +1,14 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# BuildKit-lane helpers (host-side; consumed by windows/Build-Buildkit.ps1 and
-# the test suites). Deliberately a SEPARATE module from WindowsScripts.Shared:
-# the shared module is COPY'd into the base image, so edits there cascade a
-# full-chain rebuild — this one is only picked up by the final stage's
-# whole-dir modules COPY (cheap) and never by the builder images.
+# Host-side BuildKit helpers, kept out of WindowsScripts.Shared, whose edits rebuild the whole chain from the base image.
 
 Set-StrictMode -Version Latest
 
 function Test-IpInSubnet {
     <#
     .SYNOPSIS
-        Pure CIDR containment check: is $Ip inside $Cidr (e.g. '172.31.32.0/20')?
-    .NOTES
-        IPv4 only. The bit-math lives here (instead of inline in the CNI drift
-        guard) because a silent mistake here makes the guard PASS drifted
-        configs — the exact failure it exists to prevent. Table-tested in
-        windows/scripts/tests/BuildKit.Subnet.Tests.ps1.
+        IPv4 CIDR containment: is $Ip inside $Cidr (e.g. '172.31.32.0/20')?
     #>
     param(
         [Parameter(Mandatory)][string]$Ip,
@@ -38,30 +28,12 @@ function Test-IpInSubnet {
 function Get-CniNatSubnetDrift {
     <#
     .SYNOPSIS
-        Detects CNI-vs-HNS nat subnet drift. Returns $null when healthy, else a
-        ready-to-throw diagnosis string (caller decides whether to throw).
+        CNI-vs-HNS nat subnet drift: $null when healthy, else a ready-to-throw diagnosis.
     .DESCRIPTION
-        dockerd restarts recreate the Windows 'nat' HNS network on a new subnet,
-        silently orphaning the static CNI conf — BK containers then get IPs whose
-        gateway does not exist (no DNS, no egress; the first downloading RUN dies
-        with "remote name could not be resolved"). Compares the conf's ipam.subnet
-        against the live 'vEthernet (nat)' adapter address.
+        A dockerd restart recreates the nat network on a new subnet, orphaning the CNI conf and killing container egress.
     #>
     param(
-        # BOTH CNI forms, most-preferred first. nerdctl cannot parse a bare
-        # .conf: it indexes plugins[0] without a length check and PANICS (index
-        # out of range) on the single-plugin form — in `network create`
-        # (netutil_windows.go:40) and again in `run`
-        # (container_network_manager.go:857).
-        # CORRECTION (measured 2026-08-07): the earlier claim here that "BuildKit
-        # reads either form" is FALSE. With only the .conflist present, buildkitd
-        # gave its containers NO network adapter at all. BOTH files must exist —
-        # see Get-CniConfFormIssue, which is the check for that; THIS function
-        # only judges subnet drift and passed happily while the lane had no
-        # network, because drift and absence are different failures.
-        # Checking both names still matters here: this function's "file absent =
-        # nothing to judge" contract would otherwise make it a silent no-op on
-        # whichever name happens to be missing.
+        # Both names, or "absent = nothing to judge" silently skips whichever one is missing.
         [string[]]$ConfPath = @(
             'C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist',
             'C:\Program Files\containerd\cni\conf\0-containerd-nat.conf'
@@ -76,9 +48,7 @@ function Get-CniNatSubnetDrift {
         if (-not $confFile) { return $null }  # no conf = no drift to judge (network setup docs cover absence)
         $ConfText = Get-Content -Raw $confFile
     }
-    # Live lookup only when the caller did not bind -AdapterIp at all: an
-    # explicitly passed empty value means "adapter absent" (test seam) and must
-    # NOT fall through to the real host adapter.
+    # An explicitly bound empty -AdapterIp means "adapter absent" and must not fall through to the live adapter.
     if (-not $AdapterIp -and -not $PSBoundParameters.ContainsKey('AdapterIp')) {
         $AdapterIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
             Where-Object { $_.InterfaceAlias -match '^vEthernet \(nat\)$' } |
@@ -96,31 +66,15 @@ function Get-CniNatSubnetDrift {
 function ConvertFrom-CniConfList {
     <#
     .SYNOPSIS
-        Derives the single-plugin .conf form from a .conflist. Pure text in,
-        text out — no filesystem, so it is testable without admin.
+        Derives the single-plugin .conf text from a .conflist; rejects multi-plugin lists instead of truncating.
     .DESCRIPTION
-        The host must carry BOTH forms (buildkitd reads .conf, nerdctl reads
-        .conflist — see Get-CniConfFormIssue). Keeping them as two hand-edited
-        copies is the two-copies-drift shape this repo eliminates everywhere
-        else: presence is guarded, but nothing stops the CONTENT diverging, and
-        a subnet edit applied to only one file gives the two clients different
-        networks. So the .conflist is AUTHORED and the .conf is DERIVED.
-
-        A conflist wraps one or more plugins in `plugins[]` and carries the
-        network identity (cniVersion, name) at the top level; the .conf form is
-        that identity merged with the single plugin. Multi-plugin conflists
-        cannot be expressed as one .conf and are rejected rather than silently
-        truncated to plugins[0] — which is exactly the unchecked indexing that
-        makes nerdctl panic on the .conf form.
+        See docs/windows-build-invariants.md § The CNI .conf is DERIVED from the .conflist, not hand-edited.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$ConfListText)
 
     $list = $ConfListText | ConvertFrom-Json
-    # Property-existence check, not a truthiness test: under Set-StrictMode
-    # -Version Latest, reading a missing property THROWS PropertyNotFound before
-    # `-not` ever sees it, so a plain `if (-not $list.plugins)` would surface a
-    # PowerShell internal error instead of this function's diagnosis.
+    # Existence, not truthiness: under StrictMode a missing property throws before -not sees it.
     if (-not ($list.PSObject.Properties.Name -contains 'plugins')) {
         throw 'not a conflist: no plugins[] array present'
     }
@@ -129,9 +83,7 @@ function ConvertFrom-CniConfList {
         throw ("conflist carries $($plugins.Count) plugins; the .conf form holds exactly one. " +
             'Collapsing it would silently drop configuration — split the deployment by hand instead.')
     }
-    # Network identity FIRST, then the plugin body — the conventional CNI field
-    # order and the one the hand-written file on this host already used, so a
-    # rewrite does not reshuffle a file an operator has to read.
+    # Identity first, then the plugin body: the conventional CNI order, so a rewrite does not reshuffle the file.
     $conf = [ordered]@{}
     foreach ($key in 'cniVersion', 'name') {
         if ($list.PSObject.Properties.Name -contains $key) { $conf[$key] = $list.$key }
@@ -147,14 +99,7 @@ function ConvertFrom-CniConfList {
 function ConvertTo-CanonicalJson {
     <#
     .SYNOPSIS
-        Order- and whitespace-independent JSON rendering, for COMPARING two
-        documents that mean the same thing.
-    .DESCRIPTION
-        Added after the first version of the CNI sync check reported the
-        reference host as "out of sync" when the two files were semantically
-        identical and differed only in property ORDER — `ConvertFrom-Json |
-        ConvertTo-Json` preserves the order it parsed. A guard that cries wolf
-        gets ignored, so the comparison sorts keys recursively instead.
+        Key-sorted, whitespace-free JSON for comparing documents; a ConvertTo-Json round-trip keeps parse order.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)]$InputObject)
@@ -180,31 +125,9 @@ function ConvertTo-CanonicalJson {
 function Get-CniConfFormIssue {
     <#
     .SYNOPSIS
-        Detects a CNI conf present under the WRONG FILENAME for the buildctl
-        lane. Returns $null when healthy, else a ready-to-throw diagnosis.
+        A CNI conf missing under the name the buildctl lane reads: $null when healthy, else a ready-to-throw diagnosis.
     .DESCRIPTION
-        MEASURED 2026-08-07, and it cost a launched chain: with ONLY
-        0-containerd-nat.conflist present, buildkitd gives its containers NO
-        NETWORK ADAPTER AT ALL. Not a DNS problem — a probe container showed an
-        empty `ipconfig`, and a raw TCP connect to a literal GitHub IP failed
-        with "unreachable network". The containerd debug log confirmed it: the
-        HcsCreateComputeSystem spec for buildkitsandbox carried Storage,
-        MappedDirectories and MappedPipes but no networking block. Restoring
-        0-containerd-nat.conf (keeping the .conflist) and restarting buildkitd
-        fixed it immediately: IPv4 172.31.44.107, gateway 172.31.32.1, DNS
-        192.168.188.1, github.com resolved.
-
-        So the two clients genuinely disagree, and the repo's earlier claim that
-        "containerd and BuildKit read either form" is FALSE:
-          * buildkitd needs the .conf  — it does not pick up a .conflist-only dir
-          * nerdctl needs the .conflist — it indexes plugins[0] with no length
-            check and PANICS on the single-plugin .conf form
-        Therefore BOTH files must exist. Keeping them in sync is the price of
-        having both lanes.
-
-        The subnet-drift guard cannot catch this: it checks whichever form it
-        finds and passed happily while the lane had no network at all. Different
-        failure, different check.
+        See docs/windows-build-invariants.md § The CNI nat config must exist as BOTH .conf AND .conflist.
     #>
     param(
         [string]$ConfDir = 'C:\Program Files\containerd\cni\conf',
@@ -232,9 +155,7 @@ function Get-CniConfFormIssue {
             'edit it back to the single-plugin form; then Restart-Service buildkitd -Force.')
     }
     if (-not $haveNd) {
-        # Not fatal for THIS lane — the buildctl chain works on the .conf alone.
-        # Reported so the nerdctl lane's absence is a known state, not a surprise
-        # the next time someone needs `nerdctl images`.
+        # Not fatal here: the buildctl chain works on the .conf alone.
         return $null
     }
     return $null

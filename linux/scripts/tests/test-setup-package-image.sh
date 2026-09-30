@@ -1,20 +1,14 @@
 #!/usr/bin/env bash
-# setup-package-image.sh helpers run off-target with their collaborators stubbed:
-#   ensure_native_rust_toolchain  docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
-#   bootstrap_flutter_sdk         docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
-# Plus the uid the chown and the useradd must agree on, across two Dockerfiles.
-#   docs/artifact-copy-completeness.md#the-runtime-uid-is-a-contract
+# setup-package-image.sh helpers with stubbed collaborators; the runtime uid: docs/artifact-copy-completeness.md#the-runtime-uid-is-a-contract
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SUBJECT="${TESTS_DIR}/../06-packaging/setup-package-image.sh"
 
-# ---- ensure_native_rust_toolchain: RUSTUP_HOME/CARGO_HOME are temp dirs, dpkg and the installer stubs
+# ensure_native_rust_toolchain; see docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
 _fn_src="$(t_fn_src "${SUBJECT}" ensure_native_rust_toolchain)" || exit 1
 
-# $1 = image arch (what dpkg reports), $2.. = toolchain dirs to pre-create.
-# Prints the function's output, then "installer=<args or none>" and the
-# surviving toolchain dirs.
+# _rust <dpkg arch> [toolchain dirs...]: prints the output, the installer call and what survived.
 _rust() {
   local arch="$1"; shift
   local tmp; tmp="$(mktemp -d)"
@@ -44,10 +38,7 @@ t_assert_contains "${_out}" "installer=/opt/scripts/toolchain/install-rust.sh ca
 t_assert_contains "${_out}" "left=" "both trees are wiped before the install"
 t_assert_eq "left=" "$(printf '%s\n' "${_out}" | grep '^left=')" "no x86_64 dir survives"
 
-# Dockerfile.package keeps the crate downloads on a BuildKit cache mount at
-# ${CARGO_HOME}/registry. `rm -rf "${CARGO_HOME}"` over a live mountpoint fails
-# EBUSY, which took the whole arm64 package image down on 2026-09-05 -- amd64
-# never reaches the wipe, so it looked green.
+# ${CARGO_HOME}/registry is a BuildKit cache mount, and `rm -rf` over a live mountpoint fails EBUSY.
 t_case 'the wipe spares CARGO_HOME/registry, which may be a live cache mount'
 _out="$(_rust arm64 1.98.0-x86_64-unknown-linux-gnu)"
 t_assert_eq "cargo_left=registry " "$(printf '%s\n' "${_out}" | grep '^cargo_left=')" \
@@ -71,13 +62,10 @@ _out="$(_rust riscv64)"
 t_assert_contains "${_out}" "installer=/opt/scripts/toolchain/install-rust.sh cargo_c=0 mode=native" "self-heals instead of shipping apt's rustc"
 
 
-# ---- hand_root_created_paths_to_runtime_user: real find over a real tree, chown stubbed on PATH
+# hand_root_created_paths_to_runtime_user: real find over a real tree, chown stubbed on PATH
 _fn_src="$(t_fn_src "${SUBJECT}" hand_root_created_paths_to_runtime_user)" || exit 1
 
-# $1 = RUNTIME_UID. The fixture trees are owned by whoever runs the suite, so
-# $(id -u) is the amd64 shape (COPY --chown already did it) and any other uid the
-# post-reinstall shape (root created everything). -exec runs the REAL chown, so
-# the stub has to be on PATH, not a shell function.
+# _handover <RUNTIME_UID>: $(id -u) is the already-chowned shape; chown is a PATH stub because find -exec runs the binary.
 _handover() {
   local tmp stub; tmp="$(mktemp -d)"; stub="${tmp}/stub"
   mkdir -p "${stub}" "${tmp}/rustup/toolchains/1.98.0" "${tmp}/rustup/tmp" "${tmp}/cargo/bin"
@@ -116,22 +104,14 @@ t_assert_ok test "$(_at wire_cargo_symlinks)" -lt "${_handover_at}"
 t_assert_contains "${_main}" 'hand_root_created_paths_to_runtime_user "${RUSTUP_HOME:?}" "${CARGO_HOME:?}"' \
   "both trees, or the half root re-installed stays unwritable at uid 1001"
 
-# ---- bootstrap_flutter_sdk: /opt/flutter is a temp tree; flutter/git/dpkg/assert_elf_arch record their calls
-# It carries no chown of its own -- it calls the same handover the rust trees use,
-# so the fixture sources both functions and the assertions below are on the helper's
-# real find, not a second copy of it.
+# bootstrap_flutter_sdk, with the real handover helper; see docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
 _fn_src="$(t_fn_src "${SUBJECT}" bootstrap_flutter_sdk)" || exit 1
 _handover_src="$(t_fn_src "${SUBJECT}" hand_root_created_paths_to_runtime_user)" || exit 1
 
 # A uid this test does NOT run as, so every fixture path reads as root-created.
 _UID_FOREIGN=1001; [ "$(id -u)" != 1001 ] || _UID_FOREIGN=1002
 
-# $1 = whether /opt/flutter/bin/flutter exists (yes|no), $2 = the stub flutter's
-# exit code, $3 = what it prints, $4 = RUNTIME_UID. The fixture carries what root
-# leaves behind in the real stage (bin/cache, fetched git refs, the flutter_tools
-# .dart_tool) beside a framework file the COPY --chown already owned. `chown` is a
-# PATH stub because `find -exec` runs the binary, never a shell function. Prints
-# the function's output, then "rc=<n>".
+# _flutter <bin/flutter present yes|no> <flutter rc> <flutter output> <RUNTIME_UID>: prints the output, then rc=<n>.
 _flutter() {
   local present="$1" flutter_rc="$2" flutter_out="$3" uid="$4"
   local tmp; tmp="$(mktemp -d)"
@@ -204,7 +184,7 @@ t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c '^chown')" \
 t_assert_contains "${_out}" "rc=0" "and it still succeeds"
 
 
-# ---- the chown target (Dockerfile.package) and the user (Dockerfile.torch)
+# The chown target (Dockerfile.package) and the user (Dockerfile.torch)
 _DF_DIR="${TESTS_DIR}/../.."
 _uid_arg() { grep -oP '(?<=^ARG RUNTIME_UID=)\d+' "${_DF_DIR}/$1" | head -1; }
 
@@ -227,7 +207,7 @@ for _tree in rustup cargo; do
     "/usr/local/${_tree} root-owned = rustup dies on '\$RUSTUP_HOME/tmp: Permission denied' at uid 1001"
 done
 
-# ---- the JDK the Android SDK arrives without
+# The JDK the Android SDK arrives without
 t_case "the runtime image asks for a JDK by name, not best-effort"
 _sdp="$(t_fn_src "${SUBJECT}" select_dev_packages)"
 t_assert_contains "${_sdp}" 'JDK_PACKAGE:?' \
@@ -259,9 +239,7 @@ t_assert_contains "${_out}" "installed no javac" "Gradle needs a compiler, not a
 t_assert_contains "${_out}" "rc=1" "and the stage must stop"
 rm -rf "${_tmp}"
 
-# ---------------------------------------------------------------------------
-# install_web_lane_toolchain: the Flutter web lane rebuilt its own tools on every
-# consumer run. docs/consumer-image-contract.md#the-web-lane-toolchain
+# install_web_lane_toolchain; see docs/consumer-image-contract.md#the-web-lane-toolchain
 
 _web="$(t_fn_src "${SUBJECT}" install_web_lane_toolchain)" || exit 1
 _web="${_web}
@@ -276,10 +254,7 @@ source $(printf '%q' "${TESTS_DIR}/../01-core/platform.sh")
 source $(printf '%q' "${TESTS_DIR}/web-lane-fixtures.sh")
 source $(printf '%q' "${TESTS_DIR}/../06-packaging/web-lane-tools.sh")"
 
-# web-lane-tools.sh's cache, artifact and provenance inside <home>, recording
-# rustup/cargo in its bin/, and TARGET_ARCH matching the stubbed uname. Hermetic: an
-# operator's WEB_LANE_TOOLS_* switch, and the CI image's own versions.env and *_SHA256
-# pins (which turn every from-source case into a prebuilt one), are cleared.
+# Clears operator switches and the CI image's *_SHA256 pins, which would turn every from-source case prebuilt.
 _web_sandbox() {
   wlt_fx_home "$1"
   # shellcheck disable=SC2034  # read by the eval'd web-lane-tools.sh
@@ -291,9 +266,7 @@ _web_sandbox() {
     FLUTTER_RUST_BRIDGE_LINUX_X86_64_SHA256 FLUTTER_RUST_BRIDGE_LINUX_AARCH64_SHA256
 }
 
-# uname and the verified download are the only two things standing between this
-# function and the network; both are stubbed, nothing here fetches anything.
-# ${_WEB_STUBS} is prepended to every fixture below.
+# uname and the verified download are the function's only ways to the network.
 _WEB_STUBS='
 uname() { printf "%s\n" "${FAKE_MACHINE:-x86_64}"; }
 download_verified_file() {
@@ -312,8 +285,7 @@ download_verified_file() {
 }
 '
 
-# Drive the real function with rustup/cargo as recorders under a fake CARGO_HOME;
-# $1/$2 are their exit codes.
+# _web_run <rustup rc> <cargo rc>
 _web_run() {
   local home
   home="$(mktemp -d)"
@@ -331,9 +303,7 @@ _web_run() {
   rm -rf "${home}"
 }
 
-# --- the prebuilt route: a verified download instead of ~200 crates under QEMU
-# One fixture for every case that differs only in what the environment says:
-# "$@" is VAR=VALUE overrides applied after the healthy defaults.
+# Prebuilt route; _web_env_run [VAR=VALUE...] overrides the healthy defaults
 _web_env_run() {
   local home ve kv
   home="$(mktemp -d)"
@@ -403,8 +373,7 @@ t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'CARGO install')" \
 t_assert_contains "${_out}" "EXIT 0"
 
 t_case "the tarball layout is taken as it arrives, not assumed"
-# wasm-pack nests the binary under a version-named directory, frb puts it at the
-# top level; both must land in CARGO_HOME/bin.
+# wasm-pack nests its binary in a versioned dir, frb does not.
 t_assert_contains "${_out}" "OK: flutter_rust_bridge_codegen 2.13.0 installed from the upstream"
 
 t_case "aarch64 reads its OWN pin, not the x86_64 one"

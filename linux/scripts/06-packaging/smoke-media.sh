@@ -7,18 +7,12 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 echo "=== Media Library Functional Smoke Tests ==="
 echo ""
 
-# ---------------------------------------------------------------------------
-# ONNX Runtime — import + inference
-# ---------------------------------------------------------------------------
+# ONNX Runtime: import and inference
 echo "--- ONNX Runtime ---"
 _ort_lib_dir="${ONNXRUNTIME_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}"
 if cross_build_is_active 2>/dev/null; then
   if find "${_ort_lib_dir}" -name "libonnxruntime.so*" -type f 2>/dev/null | grep -q .; then
-    # The gate re-tests cross_build_is_active, which is definitionally true
-    # inside this branch (nothing above changes BUILD_MODE/TARGET_ARCH), so it
-    # cannot decline here — it is called for the message, not the decision.
-    # Bare call under `set -e`: if the gate ever DID decline, the script would
-    # abort here with no diagnostic. Make the impossible case loud instead.
+    # Called for its message; `|| fail` makes an impossible decline loud instead of a silent set -e exit.
     smoke_cross_presence_gate "onnxruntime" "${_ort_lib_dir}" "library" "import" \
       || fail "onnxruntime presence gate declined inside the cross branch (BUILD_MODE/TARGET_ARCH changed mid-script?)"
   else
@@ -28,9 +22,7 @@ elif command -v python3 >/dev/null 2>&1; then
   if python3 -c "import onnxruntime" 2>/dev/null; then
     onnx_ver="$(python3 -c "import onnxruntime; print(onnxruntime.__version__)" 2>/dev/null || echo '?')"
     pass "onnxruntime Python module imports (v${onnx_ver})"
-    # Functional check that can both pass AND fail: the previous variant fed
-    # ort.SessionOptions() to InferenceSession as the model argument (always
-    # TypeError) and had no fail branch, so it silently proved nothing.
+    # A check that can both pass and fail.
     if python3 -c "
 import sys
 import onnxruntime as ort
@@ -44,8 +36,7 @@ if 'CPUExecutionProvider' not in providers:
       fail "onnxruntime CPUExecutionProvider not available (get_available_providers failed or lacks CPU EP)"
     fi
   else
-    # Import can legitimately fail in the build sandbox — but then at least
-    # PROVE the library exists (the old branch claimed "present" unchecked).
+    # Import may fail in the build sandbox, but the library must exist.
     if find "${_ort_lib_dir}" -name "libonnxruntime.so*" -type f 2>/dev/null | grep -q .; then
       echo "  INFO: onnxruntime present but import fails in build sandbox — functional gate is the runtime smoke"
     else
@@ -54,13 +45,10 @@ if 'CPUExecutionProvider' not in providers:
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# ONNX Runtime GenAI — import check
-# ---------------------------------------------------------------------------
+# ONNX Runtime GenAI: import check
 echo "--- ONNX Runtime GenAI ---"
 if cross_build_is_active 2>/dev/null; then
-  # NOT a bare `[ -d ]`: the producer mkdir -p's its output tree on every
-  # path, so an existing-but-empty dir is no evidence. Require a real file.
+  # The producer creates its dirs on every path, so require a real file.
   if find "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" /usr/local/lib \
        -name "libonnxruntime*genai*" -type f 2>/dev/null | grep -q .; then
     pass "onnxruntime_genai library present (cross build — import skipped)"
@@ -72,23 +60,14 @@ elif command -v python3 >/dev/null 2>&1; then
     pass "onnxruntime_genai Python module imports"
   elif find "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" /usr/local/lib \
          -name "libonnxruntime*genai*" -type f 2>/dev/null | grep -q .; then
-    # In the MEDIA stage the genai native lib + wheel are produced, but the wheel
-    # is only pip-installed into /opt/venv later, at PACKAGING time
-    # (assemble-torch-app.sh). System python3 here therefore cannot import it —
-    # exactly like plain onnxruntime above (its C libs ship, no wheel installed),
-    # which this smoke correctly downgrades to INFO. Mirror that: defer the
-    # functional import gate to the runtime torch-venv smoke (smoke-torch-venv.sh),
-    # which validates `import onnxruntime_genai` inside /opt/venv. A hard fail here
-    # was a false negative (the media stage never installs the genai wheel).
+    # The wheel reaches /opt/venv only at packaging; smoke-torch-venv.sh gates the import there.
     echo "  INFO: onnxruntime_genai lib present but import fails in build sandbox (wheel installs into /opt/venv at packaging) — functional gate is the runtime torch-venv smoke"
   else
     echo "  INFO: onnxruntime_genai not installed (optional)"
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# LiteRT — C API shared library check
-# ---------------------------------------------------------------------------
+# LiteRT: C API shared library check
 echo "--- LiteRT ---"
 lite_lib=""
 for candidate in \
@@ -101,30 +80,14 @@ for candidate in \
 done
 if [ -n "${lite_lib}" ]; then
   pass "LiteRT shared library found: ${lite_lib}"
-  # Symbol depth (smoke-depth R7): `[ -f ]` passes on a 12-byte stub. `nm -D`
-  # reads foreign-arch ELF fine, so this works on the cross branch too.
-  #
-  # BUT the TfLite C API (TfLiteInterpreterCreate/TfLiteModelCreate) lives in the
-  # SEPARATE C-API library libtensorflowlite_c.so (built by build-litert.sh
-  # build_tflite_c_api). ${lite_lib} above is libtensorflow-lite.so, which is the
-  # C++ library (a symlink to libLiteRt.so) and LEGITIMATELY exports no C API
-  # symbols — checking it was a false negative. Check the C-API lib instead.
+  # Symbols, not `[ -f ]`: the C API is in libtensorflowlite_c.so, not the C++ lib; nm -D reads foreign ELF too.
   lite_c_lib=""
   for _c in /usr/local/lib/libtensorflowlite_c.so /usr/local/lib/libtensorflowlite_c.so.*; do
     [ -f "${_c}" ] && { lite_c_lib="${_c}"; break; }
   done
   if command -v nm >/dev/null 2>&1; then
     if [ -n "${lite_c_lib}" ]; then
-      # Capture nm output to a var FIRST, then match with `case` — NOT
-      # `nm | grep -q`. Under `set -o pipefail`, `grep -q` exits on the first
-      # match and closes the pipe; nm (still emitting ~130 symbols) then takes
-      # SIGPIPE (141), and pipefail reports the whole PIPELINE as failed —
-      # turning a successful match into a false "stub/misbuilt" verdict. (The bug
-      # is masked when the symbol is ABSENT: grep drains all input, nm never gets
-      # SIGPIPE.) Empirically hit 2026-08-10: TfLiteInterpreterCreate@@VERS_1.0 is
-      # exported by libtensorflowlite_c.so, yet the old pipeline reported a stub.
-      # nm prints versioned names as `TfLiteInterpreterCreate@@VERS_1.0`; the glob
-      # substrings match those fine.
+      # Capture, then case: under pipefail `nm | grep -q` turns nm's SIGPIPE into a false "stub" verdict.
       _lite_c_syms="$(nm -D --defined-only "${lite_c_lib}" 2>/dev/null || true)"
       case "${_lite_c_syms}" in
         *TfLiteInterpreterCreate*|*TfLiteModelCreate*)
@@ -133,9 +96,7 @@ if [ -n "${lite_lib}" ]; then
           fail "LiteRT C API lib ${lite_c_lib} exports no TfLite C API symbols (stub/misbuilt)" ;;
       esac
     else
-      # C-API lib genuinely absent — real gap for anything linking -ltensorflowlite_c.
-      # Soft INFO (not FAIL) to avoid a hard gate on arches where it may not build;
-      # the C++ lib above is present, and LiteRT web/python paths do not need it.
+      # INFO, not FAIL: it may not build on every arch, and the web/python paths need no C API.
       echo "  INFO: LiteRT C-API lib libtensorflowlite_c.so not found (C++ lib present; C API consumers would need it)"
     fi
   fi
@@ -150,14 +111,7 @@ else
   echo "  INFO: LiteRT headers not found in standard locations (optional)"
 fi
 
-# LiteRT web (WASM/JS) — prebuilt browser runtimes vendored for all arches.
-# Validate each .wasm is REAL WebAssembly (4-byte magic \0asm) + a JS loader ships.
-# NON-FATAL BY DESIGN: these are OPTIONAL, best-effort-vendored browser assets
-# (served to clients, never loaded by the container), and the vendor script itself
-# tolerates a registry hiccup. So a shortfall/corruption is SURFACED as WARN for a
-# human to fix — it must NOT break the media build (which runs this under set -e).
-# Expected counts ($3) are the known-good variant counts; a mismatch (partial vendor
-# or an upstream layout change) WARNs rather than fails.
+# Browser assets the container never loads: real WASM magic plus a JS loader, and a shortfall only WARNs.
 echo "--- LiteRT web (WASM/JS) ---"
 _check_web_runtime() {
   local label="$1" dir="$2" expect="${3:-1}"
@@ -182,11 +136,7 @@ _check_web_runtime() {
     pass "${label} web runtime valid (${n} verified .wasm in ${dir})"
   fi
 }
-# Functional step-up: make the V8 WASM engine (via node) actually COMPILE every
-# module's full bytecode — catches body truncation/corruption/invalid-opcode the
-# magic check cannot. No shims needed (compile, not instantiate). NON-FATAL: an
-# engine rejection WARNs (optional asset; also avoids a hard fail if a future node
-# lacks a wasm feature these modules use); absent/no-node is skipped.
+# node compiles every module's bytecode, catching corruption the magic check cannot; a rejection only WARNs.
 _web_wasm_node_compile() {
   local label="$1" dir="$2"
   command -v node >/dev/null 2>&1 || { echo "  INFO: node unavailable; skipping ${label} WASM engine-compile"; return 0; }
@@ -216,15 +166,12 @@ _check_web_runtime "LiteRT.js"  /usr/local/lib/litert-web 4
 _web_wasm_node_compile "LiteRT.js" /usr/local/lib/litert-web
 _check_web_runtime "LiteRT-LM (mediapipe-genai)" /usr/local/lib/litert-lm-web 3
 _web_wasm_node_compile "LiteRT-LM (mediapipe-genai)" /usr/local/lib/litert-lm-web
-# onnxruntime-web: compiled once on amd64, shared to all arches. INFO (not FAIL)
-# when absent — it is only populated after the amd64 media build in a chain.
+# onnxruntime-web comes from the amd64 media build, so it is absent until that has run.
 echo "--- onnxruntime web (WASM/JS) ---"
 _check_web_runtime "onnxruntime-web" /usr/local/lib/onnxruntime-web 3
 _web_wasm_node_compile "onnxruntime-web" /usr/local/lib/onnxruntime-web
 
-# ---------------------------------------------------------------------------
-# OpenCV — import + functional test
-# ---------------------------------------------------------------------------
+# OpenCV: import and functional test
 echo "--- OpenCV ---"
 if command -v python3 >/dev/null 2>&1; then
   cv2_pkg="$(find /opt/opencv5 -path "*/site-packages" -type d 2>/dev/null | head -1 || true)"
@@ -232,14 +179,7 @@ if command -v python3 >/dev/null 2>&1; then
     if smoke_cross_presence_gate "opencv" "${cv2_pkg}" "Python bindings" "import"; then
       :   # presence proven by the gate; the import half is deliberately skipped
     elif ! python3 -c "import numpy" 2>/dev/null; then
-      # numpy is a packaging-stage dependency (installed into /opt/venv at
-      # packaging), NOT present in the media build sandbox. cv2 cannot import
-      # without numpy regardless of cv2's own health, so an import failure here
-      # is an environment artifact, not a cv2 defect — defer to the runtime
-      # torch-venv smoke (where numpy + cv2 coexist), exactly like the
-      # onnxruntime import above. Without this gate, forensic#3's native
-      # hard-fail below fired on every full media build (numpy is absent here) —
-      # only surfaced now because prior validations were runtime-lane only.
+      # numpy arrives only at packaging, so cv2 cannot import here; the torch-venv smoke gates it.
       echo "  INFO: cv2 import needs numpy, absent in the media build sandbox (a /opt/venv packaging dep) — deferred to the runtime torch-venv smoke (functional gate)"
     elif PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "import cv2" 2>/dev/null; then
       cv2_ver="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "import cv2; print(cv2.__version__)" 2>/dev/null || echo '?')"
@@ -253,13 +193,10 @@ assert gray.shape == (64, 64), f'unexpected shape {gray.shape}'
 " 2>/dev/null; then
         pass "opencv functional: cvtColor+BGR2GRAY roundtrip OK"
       else
-        # import succeeded, so execution demonstrably works here — a failing
-        # roundtrip is a real defect, not a sandbox artifact.
+        # The import worked, so a failing roundtrip is a real defect.
         fail "opencv functional: cvtColor+BGR2GRAY roundtrip FAILED (import works, so this is real)"
       fi
-      # imencode/imdecode + videoio (smoke-depth R9): videoio has the worst
-      # silent-breakage record of any OpenCV module and had ZERO coverage at
-      # any layer on Linux.
+      # videoio has the worst silent-breakage record of any OpenCV module.
       if PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
 import cv2, numpy as np, tempfile, os
 img = np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8)
@@ -278,15 +215,7 @@ r, f = c.read(); assert r and f.shape == (32, 32, 3)
       else
         fail "opencv imencode/videoio roundtrip FAILED (import works, so this is real)"
       fi
-      # LOG11: assert TBB is the parallel framework (not pthreads fallback).
-      # build-opencv.sh sets -DWITH_TBB=ON unconditionally, but libtbb-dev was
-      # host-only — cross arches silently fell back to pthreads. This catches
-      # a TBB probe miss.
-      # LOG21: assert the highgui window backend. Cross arches are headless BY
-      # DESIGN (GTK's libpango1.0-dev is not multiarch-coinstallable, see
-      # opencv/install-deps.sh). amd64 has GTK3. A cross image that suddenly
-      # gains GTK would be a surprise worth investigating, and a cross image
-      # that loses it is expected — so assert the DELIBERATE state.
+      # Cross arches are headless by design (pango is not multiarch-coinstallable); assert that deliberate state.
       _ocv_gui="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
 import cv2
 for line in cv2.getBuildInformation().splitlines():
@@ -307,6 +236,7 @@ for line in cv2.getBuildInformation().splitlines():
           *) pass "opencv GUI backend: ${_ocv_gui}" ;;
         esac
       fi
+      # TBB, not the pthreads fallback a missed probe leaves behind.
       _ocv_pf="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
 import cv2
 for line in cv2.getBuildInformation().splitlines():
@@ -320,8 +250,7 @@ for line in cv2.getBuildInformation().splitlines():
           *)     fail "opencv parallel framework is NOT TBB (got: ${_ocv_pf})" ;;
         esac
       fi
-      # LOG24: assert the ONNX Runtime DNN backend is available. The image
-      # ships a source-built ONNX Runtime; cv2.dnn should be able to use it.
+      # cv2.dnn must see the ONNX Runtime the image ships.
       if PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
 import cv2
 backends = cv2.dnn.getAvailableBackends()
@@ -336,16 +265,10 @@ if not any('onnx' in str(b).lower() or 'ort' in str(b).lower() for b in backends
         fail "opencv DNN ONNX Runtime backend NOT available (WITH_ONNXRUNTIME=ON may have missed)"
       fi
     elif cross_build_is_active 2>/dev/null; then
-      # CROSS build: the interpreter runs on the amd64 host but cv2 is a
-      # foreign-arch extension, so an import failure here is expected — the
-      # runtime smoke validates it on-target. Legitimate PASS-with-caveat.
+      # Cross: cv2 is a foreign-arch extension; the runtime smoke imports it on-target.
       pass "opencv Python bindings present at ${cv2_pkg} (import skipped: foreign-arch extension under cross build — validated on-target by the runtime smoke)"
     else
-      # NATIVE build (forensic#3): the interpreter IS the target arch AND numpy
-      # is importable (the elif above already deferred the numpy-absent case), so
-      # a cv2 import failure is a REAL defect (missing/broken .so), NOT a sandbox
-      # artifact — the old code masked it as an unconditional PASS. Fail loud and
-      # surface the actual import error for diagnosis.
+      # Native with numpy present: an import failure is a real defect, so name its error.
       _cv2_import_err="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "import cv2" 2>&1 | tail -1)"
       fail "opencv Python bindings FAIL to import on a NATIVE build with numpy present (${_cv2_import_err:-see above}) — real cv2 defect, not a sandbox artifact"
     fi
@@ -354,9 +277,7 @@ if not any('onnx' in str(b).lower() or 'ort' in str(b).lower() for b in backends
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# GStreamer — version + pipeline smoke
-# ---------------------------------------------------------------------------
+# GStreamer: version and pipeline smoke
 echo "--- GStreamer ---"
 _gst_bin="${GSTREAMER_PREFIX:-/opt/gstreamer}/bin"
 if command -v gst-inspect-1.0 >/dev/null 2>&1; then
@@ -373,10 +294,7 @@ if [ -n "${_gst_inspect}" ]; then
     gst_ver="$("${_gst_inspect}" --version 2>/dev/null | head -1 || echo '?')"
     pass "gst-inspect-1.0 functional: ${gst_ver}"
   else
-    # Binary exists but can't execute — likely missing GLIBCXX from source-built GCC
-    # in the BuildKit sandbox. Expected during Docker build (ldconfig + ENV land in
-    # configure-runtime.sh) — but a broken binary must not count as a PASS: INFO,
-    # plus an ELF-magic assertion so corrupt/wrong-format binaries still fail.
+    # Not runnable in the sandbox until configure-runtime.sh; INFO, but a non-ELF still fails.
     smoke_deferred_if_elf "gst-inspect-1.0" "${_gst_inspect}" \
       "gst-inspect-1.0 present but not executable in build sandbox — functional gate is the runtime smoke"
   fi
@@ -385,13 +303,10 @@ if [ -n "${_gst_inspect}" ]; then
     if "${_gst_launch}" videotestsrc num-buffers=1 ! fakesink 2>/dev/null; then
       pass "GStreamer pipeline: videotestsrc ! fakesink OK"
     else
-      # gst-inspect --version already executed fine in this environment, so a
-      # failing pipeline is a real defect (missing coreelements etc.), not a
-      # sandbox artifact.
+      # gst-inspect ran here, so a failing pipeline is a real defect.
       fail "GStreamer pipeline videotestsrc ! fakesink FAILED (gst-inspect executes, so this is real)"
     fi
-    # Why the GTK/pango expectations differ per arch:
-    # docs/cross-build-verification.md
+    # See docs/cross-build-verification.md § smoke-media: the mandatory-plugin gate and its build-sandbox deferrals
     _ffmpeg_execok=0
     { _ff_probe="$(smoke_resolve_bin ffmpeg "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"; \
       [ -x "${_ff_probe}" ] && "${_ff_probe}" -version >/dev/null 2>&1; } && _ffmpeg_execok=1
@@ -412,8 +327,7 @@ if [ -n "${_gst_inspect}" ]; then
       fi
       _gst_missing="${_gst_missing} ${_p}"
     done
-    # Name ONLY what actually loaded — the old message listed all four even
-    # when the deferral above had skipped some.
+    # Name only what loaded; deferred plugins are listed apart.
     if [ -n "${_gst_missing}" ]; then
       fail "GStreamer mandatory plugins MISSING/unloadable:${_gst_missing}"
     elif [ -n "${_gst_loaded}" ]; then
@@ -421,9 +335,7 @@ if [ -n "${_gst_inspect}" ]; then
     else
       echo "  INFO: every mandatory GStreamer plugin was deferred to the packaging-stage smoke:${_gst_deferred} — nothing verified here"
     fi
-    # Data roundtrip (R2): negotiation + a real encoder + non-empty output —
-    # `videotestsrc ! fakesink` proves the registry, not that a buffer with
-    # real caps survives convert→encode.
+    # fakesink proves the registry; this proves real caps survive convert and encode.
     _gst_tmp="$(mktemp -d)"
     if "${_gst_launch}" -q videotestsrc num-buffers=4 ! video/x-raw,width=64,height=64,framerate=10/1 \
          ! videoconvert ! jpegenc ! multifilesink location="${_gst_tmp}/f%d.jpg" 2>/dev/null \
@@ -438,9 +350,7 @@ else
   fail "gst-inspect-1.0 not found (checked PATH and ${_gst_bin})"
 fi
 
-# ---------------------------------------------------------------------------
-# FFmpeg — version + encode/decode roundtrip
-# ---------------------------------------------------------------------------
+# FFmpeg: version and encode/decode roundtrip
 echo "--- FFmpeg ---"
 _ffmpeg_bin="$(smoke_resolve_bin ffmpeg "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"
 if [ -x "${_ffmpeg_bin}" ]; then
@@ -451,10 +361,7 @@ if [ -x "${_ffmpeg_bin}" ]; then
     if [ "${ffmpeg_ver}" != "?" ]; then
       pass "ffmpeg functional: ${ffmpeg_ver}"
     else
-      # Execution can legitimately fail here (ldconfig/ENV land later in
-      # configure-runtime.sh) — but a broken binary must not count as a PASS.
-      # Downgrade to INFO and at least assert it is a real ELF, so a
-      # zero-byte/corrupt/wrong-format ffmpeg still fails the smoke.
+      # Not runnable here until configure-runtime.sh; INFO, but a non-ELF still fails.
       smoke_deferred_if_elf "ffmpeg" "${_ffmpeg_bin}" \
         "ffmpeg present but not executable in build sandbox (ld paths land in configure-runtime) — functional gate is the runtime smoke"
     fi
@@ -475,10 +382,7 @@ if [ -x "${_ffmpeg_bin}" ]; then
     else
       echo "  INFO: ffmpeg encode test skipped (binary not executable here, or libx264 not built)"
     fi
-    # Codec depth beyond H.264 (smoke-depth R4) — only when the binary
-    # demonstrably executes. build-ffmpeg.sh probe-gates every --enable-*: a
-    # probe that silently misses DROPS the codec and the build stays green,
-    # so buildconf-vs-registration consistency is the cheap honest gate...
+    # build-ffmpeg.sh probe-gates every --enable-*, and a missed probe drops the codec silently.
     if [ "${ffmpeg_ver}" != "?" ]; then
       _ff_bc="$("${_ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null || true)"
       for _c in libx265 libdav1d libsvtav1 libvpx libopus libvvdec; do
@@ -492,8 +396,7 @@ if [ -x "${_ffmpeg_bin}" ]; then
             fi ;;
         esac
       done
-      # ...and a real per-codec encode+decode roundtrip (32x32, 2 frames —
-      # sub-second each) proves the codepath, not just the registry.
+      # A real roundtrip per codec proves the codepath, not just the registry.
       for _spec in libx265 libvpx-vp9; do
         "${_ffmpeg_bin}" -hide_banner -h "encoder=${_spec}" >/dev/null 2>&1 || continue
         _ff_tmp="$(mktemp -d)"
@@ -506,17 +409,13 @@ if [ -x "${_ffmpeg_bin}" ]; then
         fi
         rm -rf "${_ff_tmp}"
       done
-      # LOG20: drawtext filter — needs libfreetype + libharfbuzz + libfontconfig
-      # (all probe-gated in build-ffmpeg.sh). Assert the filter is REGISTERED,
-      # not just that --enable-libfreetype is in buildconf.
+      # drawtext needs three probe-gated libraries; assert the filter is registered, not the buildconf.
       if "${_ffmpeg_bin}" -hide_banner -filters 2>/dev/null | grep -q "drawtext"; then
         pass "ffmpeg drawtext filter registered"
       else
         fail "ffmpeg drawtext filter NOT registered (libfreetype/libharfbuzz/libfontconfig probe may have missed)"
       fi
-      # LOG22: Vulkan filters — --enable-vulkan enables the hwaccel context,
-      # but *_vulkan filters need glslangValidator at build time. Assert at least
-      # scale_vulkan is registered.
+      # The *_vulkan filters also need glslangValidator at build time.
       if "${_ffmpeg_bin}" -hide_banner -filters 2>/dev/null | grep -q "scale_vulkan"; then
         pass "ffmpeg scale_vulkan filter registered"
       else
@@ -529,13 +428,10 @@ else
   fail "ffmpeg not found (checked PATH and ${FFMPEG_PREFIX:-/opt/ffmpeg}/bin)"
 fi
 
-# ---------------------------------------------------------------------------
-# libcamera — pkg-config + cam binary
-# ---------------------------------------------------------------------------
+# libcamera: pkg-config and cam binary
 echo "--- libcamera ---"
 _lc_prefix="${LIBCAMERA_PREFIX:-/opt/libcamera}"
-# Ensure pkg-config can find libcamera. Native meson installs under the
-# multiarch libdir (lib/x86_64-linux-gnu/pkgconfig), cross under plain lib.
+# Native meson installs under lib/<triplet>/pkgconfig, cross under plain lib.
 _lc_pc="$(find "${_lc_prefix}/lib" "${_lc_prefix}/lib64" -name libcamera.pc -type f -print -quit 2>/dev/null || true)"
 export PKG_CONFIG_PATH="${_lc_pc:+$(dirname "${_lc_pc}"):}${_lc_prefix}/lib/pkgconfig:${_lc_prefix}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 if command -v pkg-config >/dev/null 2>&1; then
@@ -561,9 +457,7 @@ else
   echo "  INFO: no libcamera CLI tool found (checked PATH and ${_lc_prefix}/bin)"
 fi
 
-# ---------------------------------------------------------------------------
 # GCC
-# ---------------------------------------------------------------------------
 echo "--- GCC ---"
 if command -v gcc >/dev/null 2>&1; then
   gcc_ver="$(gcc --version 2>/dev/null | head -1 || echo '?')"
@@ -572,9 +466,7 @@ else
   fail "gcc not found"
 fi
 
-# ---------------------------------------------------------------------------
 # Clang
-# ---------------------------------------------------------------------------
 echo "--- Clang ---"
 if command -v clang >/dev/null 2>&1; then
   clang_ver="$(clang --version 2>/dev/null | head -1 || echo '?')"
@@ -583,9 +475,7 @@ else
   fail "clang not found"
 fi
 
-# ---------------------------------------------------------------------------
-# CMake (LOG35: /opt/cmake ships unasserted)
-# ---------------------------------------------------------------------------
+# CMake
 echo "--- CMake ---"
 _cmake_bin="$(smoke_resolve_bin cmake /opt/cmake/bin/cmake)"
 if [ -x "${_cmake_bin}" ]; then
@@ -599,16 +489,12 @@ else
   fail "cmake not found (checked PATH and /opt/cmake/bin/cmake)"
 fi
 
-# ---------------------------------------------------------------------------
 # CUDA (optional)
-# ---------------------------------------------------------------------------
 echo "--- CUDA (optional) ---"
 if command -v nvcc >/dev/null 2>&1; then
   cuda_ver="$(nvcc --version 2>/dev/null | grep "release" | head -1 || echo '?')"
   pass "nvcc functional: ${cuda_ver}"
-  # Device-less kernel compile (smoke-depth R11): version output proves the
-  # frontend runs; compiling a __global__ kernel proves the full toolchain
-  # (cudafe, ptxas, host compiler handshake) — no GPU needed.
+  # A __global__ kernel proves cudafe, ptxas and the host compiler, with no GPU.
   _cu_tmp="$(mktemp -d)"
   printf '__global__ void k(int*o){*o=42;}\nint main(){return 0;}\n' > "${_cu_tmp}/t.cu"
   if nvcc -std=c++17 -c "${_cu_tmp}/t.cu" -o "${_cu_tmp}/t.o" 2>"${_cu_tmp}/e"; then
@@ -622,14 +508,11 @@ elif [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   fail "ENABLE_NVIDIA=true but nvcc is not on PATH"
 fi
 
-# ---------------------------------------------------------------------------
-# Vulkan SDK — header, active symlink, glslangValidator (LOG32)
-# ---------------------------------------------------------------------------
+# Vulkan SDK: header, active link, glslangValidator
 echo "--- Vulkan SDK ---"
 _vk_root="${VULKAN_SDK_ROOT:-/opt/vulkan}"
 if [ -d "${_vk_root}" ]; then
-  # 1. vulkan/vulkan.h present. The SDK installs to /opt/vulkan/<version>/<arch>/
-  # (two levels deep), so the glob covers both one- and two-level layouts.
+  # 1. The SDK installs two levels deep (/opt/vulkan/<version>/<arch>/).
   _vk_inc=""
   for _cand in "${_vk_root}/active/include" "${_vk_root}"/*/include "${_vk_root}"/*/*/include; do
     [ -f "${_cand}/vulkan/vulkan.h" ] && { _vk_inc="${_cand}"; break; }
@@ -639,8 +522,7 @@ if [ -d "${_vk_root}" ]; then
   else
     fail "vulkan/vulkan.h not found under ${_vk_root}"
   fi
-  # 2. active symlink or version+arch directory resolves. The installer does not
-  # create an `active` symlink, so accept a versioned archdir as an alternative.
+  # 2. The installer creates no active link, so a versioned archdir also counts.
   if [ -L "${_vk_root}/active" ] || [ -d "${_vk_root}/active" ]; then
     pass "Vulkan active link resolves: ${_vk_root}/active"
   elif [ -n "${_vk_inc}" ]; then
@@ -666,13 +548,9 @@ else
   echo "  INFO: Vulkan SDK not found at ${_vk_root} (optional in some images)"
 fi
 
-# ---------------------------------------------------------------------------
 # Torch
-# ---------------------------------------------------------------------------
 echo "--- Torch ---"
-# In the MEDIA stage torch is genuinely absent (installed later) — but this
-# script ALSO runs in the package wrapper-smoke, where /opt/venv is mandatory.
-# The old hardcoded "not installed" INFO was false there (smoke-depth R16b).
+# Absent in the media stage, but this also runs in the package wrapper smoke, where /opt/venv is mandatory.
 if [ -x /opt/venv/bin/python ]; then
   if /opt/venv/bin/python -c "import torch" 2>/dev/null; then
     pass "torch imports from /opt/venv ($(/opt/venv/bin/python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo '?'))"

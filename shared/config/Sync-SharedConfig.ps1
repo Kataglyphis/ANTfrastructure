@@ -8,17 +8,8 @@
   Checks or refreshes a consumer's copies of the ANTfrastructure-owned shared files.
 
 .DESCRIPTION
-  See README.md next to this script for WHY these files are copied into
-  consumers rather than referenced, and for the manifest format.
-
-  Two states that used to look alike are now separate. A file the consumer
-  DECLARES and holds at different content has DRIFTED - a defect. A file the
-  consumer does not declare is simply not its business and is never mentioned.
-  A file it declares but does not hold is MISSING, which is its own failure with
-  its own message.
-
-  shared/config/sync-shared-config.sh is the bash twin of this script and must
-  stay behaviourally identical; both read the same two manifests.
+  A declared file is DRIFTED or MISSING; an undeclared one is never mentioned. See README.md next to this script.
+  Behaviourally identical to its bash twin, sync-shared-config.sh.
 
 .PARAMETER RepoRoot
   Consumer repository root holding the local copies.
@@ -30,12 +21,10 @@
   Overwrite the consumer's copies with the canonical ones.
 
 .PARAMETER Manifest
-  Path to the consumer manifest. Defaults to
-  <RepoRoot>/.antfrastructure-shared.manifest when that file exists.
+  Consumer manifest; defaults to <RepoRoot>/.antfrastructure-shared.manifest when that file exists.
 
 .PARAMETER Ignore
-  LEGACY, and only honoured when no manifest is in play: file names this project
-  deliberately owns, e.g. -Ignore gcovr.cfg.
+  LEGACY, only without a manifest: file names this project owns, e.g. -Ignore gcovr.cfg.
 
 .OUTPUTS
   Exit code 0 when in sync (or written), 1 when -Check found MISSING or DRIFTED.
@@ -52,8 +41,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# Exit 2 for "this script or its inputs are broken", so it never reads as the
-# exit 1 that means "a consumer copy has drifted". The bash twin does the same.
+# Exit 2 for broken inputs, never the exit 1 that means a copy drifted (as the bash twin).
 trap {
   [Console]::Error.WriteLine($_.Exception.Message)
   exit 2
@@ -75,9 +63,7 @@ function Read-ManifestRow {
     if ($line.Length -eq 0 -or $line.StartsWith('#')) { continue }
     $rows += , @($line -split $Separator | ForEach-Object { $_.Trim() })
   }
-  # Comma on purpose: returning an array of ONE row would unroll on the way out
-  # and hand the caller that row's fields instead, so a single-line manifest
-  # read as one character per field ('antfrastructure-sh' -> 'c').
+  # The comma stops PowerShell unrolling a one-row array into that row's fields.
   return , $rows
 }
 
@@ -109,12 +95,7 @@ function Test-ProseLine {
 }
 
 function Get-Comparable {
-  <#
-    The text the gate actually compares. Line endings normalised, because a
-    CRLF/LF-only difference is not drift in any sense the reader cares about.
-    In 'body' mode the leading prose is dropped - every consumer rewrites the
-    header to say where the file came from - and a declared knob line is masked.
-  #>
+  <# The compared text: line endings normalised; in 'body' mode leading prose dropped and knob lines masked. #>
   param([string]$Path, [string]$Mode, [string[]]$Knobs)
   $text = ((Get-Content -LiteralPath $Path -Raw) -replace "`r`n", "`n").TrimEnd("`n")
   $lines = @($text -split "`n")
@@ -163,11 +144,7 @@ function Get-LegacyAsset {
 }
 
 function Expand-LegacyIgnore {
-  <#
-    Accept a COMMA-SEPARATED -Ignore as well as a real array: under `pwsh -File`
-    every argument arrives as a plain string, so `-Ignore a,b` would otherwise
-    bind as ONE element that matches no file name and silently does nothing.
-  #>
+  <# Splits a comma-separated -Ignore, since `pwsh -File` binds `-Ignore a,b` as one string. #>
   param([string[]]$Raw)
   $names = @($Raw | Where-Object { $_ } | ForEach-Object { $_ -split ',' } |
     ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -180,13 +157,7 @@ function Expand-LegacyIgnore {
 }
 
 function Assert-CanonicalPresent {
-  <#
-    A missing CANONICAL file is a defect in THIS repo and has to say so loudly:
-    -Write would die inside Copy-Item with a bare "path not found" and -Check
-    would blame the CONSUMER for a file that is actually missing HERE. Scoped to
-    what the consumer DECLARED, for the reason the whole script now exists: an
-    asset nobody takes is nobody's failure.
-  #>
+  <# A missing canonical file for a declared asset is this repo's defect, not the consumer's. #>
   param($Declared)
   foreach ($d in $Declared) {
     if (Test-Path -LiteralPath (Join-Path $hubRoot $d.Asset.Canonical)) { continue }
@@ -196,12 +167,7 @@ function Assert-CanonicalPresent {
 }
 
 function Write-Copy {
-  <#
-    -Write is a verbatim copy, so it only serves 'exact' assets. Splicing a
-    canonical body under a consumer's own header while preserving its knob
-    values is a merge, not a copy; doing it silently wrong would defeat the very
-    gate this script is. So body-mode assets refuse, naming the manual step.
-  #>
+  <# A verbatim copy, so body-mode assets (a merge under the consumer's header) refuse and name the manual step. #>
   param($Declared, [string]$Canonical, [string]$Local)
   if ($Declared.Asset.Mode -eq 'body') {
     throw ("Cannot -Write '$($Declared.Local)': asset '$($Declared.Asset.Id)' is body-mode. " +

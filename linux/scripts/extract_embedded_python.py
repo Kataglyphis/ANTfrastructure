@@ -1,44 +1,22 @@
 #!/usr/bin/env python3
-"""Write embedded Python to <outdir> so ruff can see it.
-
-Two shapes:
-
-* a heredoc an interpreter RUNS is self-contained and is emitted on its own;
-* blocks that are `cat`ed are FRAGMENTS assembled into one program later (the
-  `_smoke_genai_py_*` emitters in `06-packaging/smoke-common.sh` are 217 such
-  lines). Individually they are invalid Python, so they used to be dropped and
-  ruff never saw them. They are now concatenated per marker family, in file
-  order, and emitted only when the result actually parses — which keeps
-  non-Python heredocs out without guessing.
-
-See docs/code-quality-tooling.md.
-"""
+"""Write embedded Python to <outdir> for ruff. See docs/code-quality-tooling.md#python-that-lives-in-shell-heredocs"""
 import ast
 import os
 import re
 import sys
 
 BLOCK = re.compile(
-    # The opener may carry trailing redirections (`<<'PY' 2>/dev/null || ...`).
-    # DIGITS belong in the marker class: without them GENAI_PY_T1..T4 were missed
-    # silently, so four of that program's six fragments never reached ruff.
+    # Openers may carry redirections; digits in the marker class catch GENAI_PY_T1..T4.
     r"([^\n]*)<<-?'([A-Z_0-9]*(?:PY|PYEOF|PYTHON)[A-Z_0-9]*)'[^\n]*\n(.*?)\n[ \t]*\2[ \t]*$",
     re.S | re.M)
-# `python3 - <<'PY'`, `"${PY}" - <<'PY'`, `${PREFLIGHT_PYTHON} - <<'PY'`, …
-# The interpreter is often a VARIABLE, and its name varies in case and spelling.
-# The old pattern hard-coded lowercase `${py}` and `PREFLIGHT_PYTHON`, so
-# `"${PY}" -` did not match and the ~330-line program inside
-# assert_pinned_versions -- the largest embedded Python in the tree -- was never
-# linted, silently (found 2026-09-02).
+# The interpreter is often a variable whose name varies in case and spelling ("${PY}" -, ${PREFLIGHT_PYTHON} -).
 RUNS_IT = re.compile(
     r"(python3?|\$\{?[A-Za-z_]*PY(?:THON)?[A-Za-z_0-9]*\}?)[^|]*(-|\s)$|python3? -",
     re.I)
 CATS_IT = re.compile(r"\bcat\b")
-# A comment cannot open a heredoc. Prose that QUOTES an opener is not one.
-# docs/code-quality-tooling.md#comment-openers
+# A comment cannot open a heredoc. docs/code-quality-tooling.md#comment-openers
 COMMENT_OPENER = re.compile(r"[ \t]*#")
-# Everything up to and including PY is the family, so two unrelated programs in
-# one file (ONNX_PY vs GENAI_PY_*) are never spliced together.
+# The family ends at PY, so unrelated programs in one file (ONNX_PY, GENAI_PY_*) never splice.
 FAMILY = re.compile(r"(PY(?:EOF|THON)?).*$")
 
 
@@ -59,9 +37,7 @@ def main():
                 text = fh.read()
         except OSError:
             continue
-        # Test files carry deliberately-broken FIXTURE heredocs (that is what they
-        # assert on), so assembling theirs would report their fixtures as real
-        # findings. Directly-executed blocks above are unaffected.
+        # Test fixtures are deliberately broken; assembling them would report fake findings.
         is_fixture_source = os.sep + "tests" + os.sep in os.path.abspath(src)
         fragments = {}
         for m in BLOCK.finditer(text):
@@ -78,10 +54,7 @@ def main():
             elif CATS_IT.search(opener) and not is_fixture_source:
                 fragments.setdefault(FAMILY.sub(r"\1", marker), []).append(body)
         for family, frags in sorted(fragments.items()):
-            # A family of ONE is not "assembled" -- it is a lone fragment, and
-            # linting one alone reports bogus undefined names (ast.parse catches
-            # syntax errors, not F821). That is exactly what the old
-            # never-extract-a-fragment rule protected against, so keep it.
+            # A lone fragment lints with bogus undefined names, which ast.parse cannot catch.
             if len(frags) < 2:
                 continue
             joined = "\n".join(frags) + "\n"

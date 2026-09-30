@@ -1,13 +1,5 @@
 #requires -Version 7.0
-# WindowsSourceBuild.Common re-exports ~22 names it does not define (from
-# Shared/Cuda/Patches/Native), and its nested imports are CONDITIONALLY
-# skipped when the module is already loaded — so Export-ModuleMember can
-# silently no-op on an absent name depending on load order. That class
-# produced two production CommandNotFound incidents (the module's own
-# comments record them). This suite is the deterministic version of that
-# check: a FRESH child pwsh imports ONLY WindowsSourceBuild.Common and
-# every name in its export list must resolve. In-process would be useless —
-# this session's earlier imports are exactly the pollution being tested for.
+# Export-ModuleMember skips absent names silently, so a fresh child pwsh imports only this module and every export must resolve.
 
 Describe 'WindowsSourceBuild.Common re-export integrity (fresh session)' {
 
@@ -15,12 +7,9 @@ Describe 'WindowsSourceBuild.Common re-export integrity (fresh session)' {
         $modPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSourceBuild.Common.psm1'
         Assert-True (Test-Path $modPath) "module not found at $modPath"
 
-        # The export list, parsed from the file (self-updating: a name added
-        # to Export-ModuleMember is automatically covered here).
+        # Parsed from the file, so a name added to Export-ModuleMember is covered automatically.
         $raw = Get-Content -Raw $modPath
-        # Scan only from the first Export-ModuleMember on (audit 2026-08-21:
-        # the unanchored form matched any bare quoted Verb-Noun line in the
-        # whole file) and allow multi-hyphen names.
+        # From Export-ModuleMember on, or any quoted Verb-Noun line in the file would match.
         $raw = $raw.Substring($raw.IndexOf('Export-ModuleMember'))
         $names = [regex]::Matches($raw, "(?m)^\s*'([A-Za-z]+(?:-[A-Za-z0-9]+)+)',?\s*$") |
             ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique

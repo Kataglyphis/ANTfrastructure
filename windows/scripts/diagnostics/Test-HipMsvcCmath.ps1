@@ -1,12 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Does HIP compile in a rocm image against its MSVC <cmath>, and does it still need the overlay?
-#   Invoke-DiagnosticProbe.ps1 -ProbeScript Test-HipMsvcCmath.ps1 -BaseImage <rocm tag> -VerdictPattern '\[ OK \]|\[FAIL\]|\[INFO\]'
-# The image's path is the default config beside TheRock's clang (windows/scripts/hip). --no-default-config
-# drops it: a raw compile that passes means a toolset or TheRock bump made the overlay unnecessary.
-# Every compile runs through entrypoint.cmd, as the smoke gate's, so the VS environment is the image's.
+# Does HIP compile against the rocm image's MSVC <cmath>, and does it still need the overlay (--no-default-config drops it)?
 param([string]$Nonce = '')
 
 $ErrorActionPreference = 'Continue'

@@ -15,23 +15,7 @@ done
 [ "${_FOUND_MODULES}" -eq 1 ] || { echo "Error: modules.sh not found" >&2; exit 1; }
 unset _bs_path _FOUND_MODULES
 
-# Source required modules. cmake.sh, vulkan.sh AND llvm.sh are sourced LAZILY
-# (in their own dispatch arms below), NOT here. TG1 established the pattern
-# for cmake/vulkan; TG1-residual (2026-08-24) extends it to llvm.sh, whose
-# whole family (llvm.sh -> llvm-cross.sh + llvm-validate.sh at source time,
-# plus the build-clang.sh it exec's) has exactly THREE consumers outside
-# those files (audit: every function defined in the trio grepped against the
-# eager closure — zero hits anywhere on the gcc path):
-#   install_llvm_clang             -> llvm / dockerfile-llvm / all arms
-#   install_target_clang_toolchain -> target-clang arm
-#   verify_cross_llvm_targets      -> verify_summary (verify / all arms),
-#                                     behind the declare -F guard in
-#                                     01-core/verify.sh
-# Each of those arms sources llvm.sh first, so the GCC RUN (dockerfile-gcc)
-# drops the four llvm bind-mounts and an llvm-cross.sh / llvm-validate.sh /
-# build-clang.sh edit no longer invalidates the multi-hour GCC layer. A
-# wrongly-classified arm fails FAST at `source_module llvm.sh`
-# (module-not-found) BEFORE any compile starts — never mid-build.
+# cmake.sh, vulkan.sh and llvm.sh load lazily in their own arms, so an LLVM edit never invalidates the GCC layer.
 source_module common.sh
 source_module cross-env.sh
 source_module repos.sh
@@ -185,10 +169,7 @@ main() {
       install_vulkan_for_current_env "$VULKAN_VERSION_DEFAULT"
       ;;
     verify)
-      # llvm.sh MUST be sourced here: verify_summary calls
-      # verify_cross_llvm_targets behind a `declare -F` guard — without this
-      # the cross-LLVM verification (toolchain RUN 3c + the sdk verify RUN)
-      # would silently self-disable instead of failing.
+      # Required here: verify_summary's declare -F guard would otherwise skip the cross-LLVM check silently.
       source_module llvm.sh   # TG1-residual: lazy — see the header note
       verify_summary
       ;;

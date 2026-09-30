@@ -78,13 +78,8 @@ that owns the topic.
    another dependency pulls the distro copy back in. Enforced on the SHIPPED
    bytes by the soname-precedence gate. Same rule for `PATH`,
    `PKG_CONFIG_PATH` and `PYTHONPATH`.
-6. **Short code comments. Long text goes in `docs/` and gets linked.** One or
-   two lines at the point of use, only where the code cannot say it itself.
-   Anything longer — forensics, dated evidence, why-not-the-obvious-thing,
-   measured numbers, a failure narrative — moves into a `docs/*.md` page and the
-   code carries a pointer to it. The owner reads code to read code; an essay in
-   the middle of a function pushes the logic off screen. Full rule and worked
-   example: § Comments: as few as possible, as short as possible.
+6. **One-line comments, only the why.** Write them the way an experienced
+   developer would, in every repo of the family: § Comments: one line, only the why.
 
 ## Container Architecture
 
@@ -281,37 +276,25 @@ owns which topic, and it opens with the rule — then link to it from the code.
 For a CONSUMER repo, the shape of that split is
 [`shared/templates/README.md`](shared/templates/README.md).
 
-### Comments: as few as possible, as short as possible
+### Comments: one line, only the why
 
-**Owner rule (2026-08-28, restated 2026-09-01 as a project priority, number 6
-today).** Code comments here had grown into essays. They are now held to this:
+**Owner rule for every repo of the family (2026-09-30).** Comment like an experienced developer:
 
-- Comment only where the code cannot say it: a non-obvious *why*, a trap, a
-  load-bearing constraint.
-- **Two lines is the ceiling.** If it needs a third, the content belongs in
-  `docs/` and the comment becomes a one-line pointer — e.g.
-  `# See docs/build-cache-tiers.md § 5.1`.
-- No narration of what the code plainly does, no incident history, no
-  restating a decision a doc already owns.
+- **One line.** No comment blocks.
+- **Only the why**: a non-obvious reason, a trap, a load-bearing constraint. Code that
+  needs a what-comment needs a better name instead.
+- **No** narration, restated code, incident history, dates, decision prose, or commented-out code.
+- **A trap that needs more** gets a short paragraph in the `docs/` page that owns the topic,
+  and the code keeps a one-line pointer: `# See docs/build-cache-tiers.md § 5.1`.
+- **API docs stay, but short**: a one-line docstring, `///` or `.SYNOPSIS`, with parameters only where
+  they are not obvious.
+- **Not comments**: license headers, shebangs, tool directives (`# shellcheck`, `# noqa`,
+  `#requires`, `// NOLINT`, ...) and markers a tool or test reads.
 
-**Move it, never drop it.** This tree's comments often hold the ONLY record of a
-real failure. When you shorten one, the detail must land in a `docs/` page in the
-same edit — verify the page contains it before you delete the lines. Trimming a
-comment down to nothing is data loss, not cleanup.
-
-Worked example: an 8-line block in `01-core/runtime-build-fns.sh` became three
-lines — what it does, the one knob pair, and a pointer — with the retry counts,
-the classifier and the incident moved into
-[`cross-build-verification.md`](docs/cross-build-verification.md).
-
-**Why agents relapse here** (observed repeatedly, including 2026-09-01): the
-surrounding code is full of older long comments, and "match the file's style"
-pulls you back into writing essays. It does not apply to this rule. Match the
-style for naming and structure; hold this line regardless of what the neighbours
-look like. Do NOT go rewrite pre-existing long comments as a side quest either —
-the rule governs what you write and what you touch, not a tree-wide sweep.
-
-The same goes for prose written for the owner: short sentences, plain words.
+The comment-size gate (`linux/scripts/verify_comment_size.py`) holds every tracked source
+file, in every language, to this: [`code-quality-tooling.md`](docs/code-quality-tooling.md#comment-size-comment-size).
+Surrounding older text is no excuse; hold the line. The same goes for prose written for the
+owner: short sentences, plain words.
 
 ### Contributing Reusable Work Here
 

@@ -5,82 +5,37 @@
 
 <#
 .SYNOPSIS
-    EXPERIMENTAL BuildKit/containerd driver for the Windows image chain:
-    base -> [nvidia|rocm] -> toolchain -> media -> [migraphx -> llama] -> torch -> final —
-    every stage a plain build under PROCESS isolation with ALL host CPUs.
-
+    BuildKit/containerd driver for the Windows image chain, every stage process-isolated with all host CPUs.
 .DESCRIPTION
-    Unlike docker's classic builder on this host, buildkitd+containerd commits
-    process-isolated layers and gives RUN steps all CPUs, so this driver builds
-    the SAME Dockerfiles via buildctl, selecting the `*-built` targets. The
-    classic lane was retired 2026-08-26 and its driver deleted 2026-08-31: this is
-    the only Windows driver, and there is no fallback.
-
-    Prerequisites (one-time, admin): buildkitd + containerd services running,
-    and C:\Program Files\containerd\cni\conf\0-containerd-nat.conf present —
-    without the conf, RUN steps get NO network adapter and every download fails.
-
-    Results land in the CONTAINERD image store as
-    docker.io/local/kataglyphis:bk-<stage>, fully qualified because buildkit
-    normalizes FROM refs and stage handoff matches the stored name via
-    `--opt image-resolve-mode=local`. These images are INVISIBLE to docker;
-    use -FinalTar for a docker-loadable tarball.
-
+    Needs the buildkitd/containerd services and the CNI nat conf; images land in containerd as bk-<stage>, invisible to docker.
+    Call it directly or with &: pwsh -File passes -Stages as one string and fails the ValidateSet.
 .PARAMETER FinalTar
-    Optional path: additionally export the final image as a docker-load tar.
+    Also export the final image as a docker-load tar.
 .PARAMETER Variant
-    '' (CPU + DirectML), nvidia (= -Gpu) or rocm (amd64 only). Both variants take the sdk
-    slot and write every tag from sdk on with their infix (-nvidia, -rocm), so neither
-    overwrites the default images, and each publishes under a tag of its own: :winamd64-nvidia,
-    :winamd64-rocm, and :winarm64-nvidia for the cross bundle (AGENTS.md § Image and tag
-    naming; the nvidia build wrote :winamd64 until 2026-09-27). docs/windows-builds.md § ROCm layer.
+    '' (CPU + DirectML), nvidia (= -Gpu) or rocm (amd64 only); both variants take the sdk slot under their own tags.
 .PARAMETER Stages
-    Subset of base,sdk,toolchain,media,migraphx,llama,torch,final. migraphx and llama are
-    rocm-only: dropped from the default list on other variants, refused when named.
+    Subset of base,sdk,toolchain,media,migraphx,llama,torch,final; migraphx and llama are rocm-only.
 .PARAMETER NoRocmSpikes
-    rocm only: skip the migraphx stage and build TVM without ROCm (TVM_ROCM=0). Both modes
-    write the same tags, so the smoke gate checks the image carries the mode this run asked for.
-
-.EXAMPLE
-    .\windows\Build-Buildkit.ps1                                   # CPU + DirectML, :winamd64
-.EXAMPLE
-    .\windows\Build-Buildkit.ps1 -Gpu                              # CUDA in the sdk slot, bk-*-nvidia tags, :winamd64-nvidia
-.EXAMPLE
-    .\windows\Build-Buildkit.ps1 -Variant rocm                     # ROCm in the sdk slot, bk-*-rocm tags, :winamd64-rocm
-.EXAMPLE
-    .\windows\Build-Buildkit.ps1 -Variant rocm -NoRocmSpikes       # no MIGraphX, TVM without ROCm
+    rocm only: skip the migraphx stage and build TVM without ROCm.
 .EXAMPLE
     .\windows\Build-Buildkit.ps1 -Variant rocm -Stages torch,final # reuses bk-windows-media-llama-rocm
 .EXAMPLE
-    .\windows\Build-Buildkit.ps1 -Stages toolchain -Verbose   # one stage
-.NOTES
-    INVOCATION TRAP: `pwsh -File ... -Stages sdk,toolchain,media` passes the
-    list as ONE string and dies on the ValidateSet — `-File` cannot build
-    arrays. Fix the CALL, not the ValidateSet — call the script directly, or use
-    the call operator with a real array:
-
-        & .\windows\Build-Buildkit.ps1 -Gpu -Stages @('sdk','toolchain','media')
+    & .\windows\Build-Buildkit.ps1 -Gpu -Stages @('sdk','toolchain','media')
 #>
 [CmdletBinding()]
 param(
     # The nvidia variant's original spelling; -Variant nvidia means the same.
     [switch]$Gpu,
-    # Empty = the default (CPU + DirectML) image. nvidia and rocm (amd64-only) take the sdk
-    # slot under their own -<variant> tags (docs/windows-builds.md § ROCm layer).
+    # Empty = the default (CPU + DirectML) image; see docs/windows-rocm.md § The ROCm layer (`Dockerfile.rocm`).
     [ValidateSet('', 'nvidia', 'rocm')]
     [string]$Variant = '',
     # rocm only: drop the migraphx stage and pass TVM_ROCM=0 to media-tvm.
     [switch]$NoRocmSpikes,
-    # #135: the patched clang (AArch64 getInstSizeInBytes fix, llvm#219275 +
-    # #219276) is now the DEFAULT toolchain. The workarounds in
-    # Build-OpencvFromSource.ps1 have been removed in the same change.
+    # Inert: the patched clang (llvm#219275/#219276) is the default toolchain.
     [switch]$PatchedLlvm,
-    # Opt OUT of the patched toolchain (use the stock scoop clang-cl). Only for
-    # debugging the patches themselves.
+    # Stock scoop clang-cl instead of the patched one; only for debugging the patches.
     [switch]$StockLlvm,
-    # The build host is always windows/amd64, so 'arm64' is a CROSS build whose
-    # product is an artifact bundle, not a runnable image. base/sdk/toolchain are
-    # shared host tooling; only media onward forks on the target arch.
+    # arm64 is a cross build producing a bundle, not a runnable image; only media onward forks on it.
     [ValidateSet('amd64', 'arm64')]
     [string]$TargetArch = 'amd64',
     # 'rocm' stays in the set only to refuse it with the migration message (Resolve-BkVariant).
@@ -96,49 +51,31 @@ param(
     [switch]$LatestApp,
     [string]$FinalTar = '',
     [switch]$NoCache,
-    # Extra 'KEY=VALUE' build-args forwarded to EVERY solve — escape hatch for
-    # one-off investigations. Inert unless a Dockerfile declares a matching ARG.
+    # 'KEY=VALUE' build-args for every solve; inert unless a Dockerfile declares the ARG.
     [string[]]$BuildArg = @(),
-    # SMOKE GATE (backlog #44): after `final` the image must pass
-    # Test-Container.ps1. -SkipSmokeGate is for iterating on the chain
-    # itself; it does not make an unverified image safe to ship.
+    # For iterating on the chain only: it does not make an unverified image safe to ship.
     [switch]$SkipSmokeGate,
-    # Coverage floors, not just "0 failures" — a fully-skipped run used to exit 0.
-    # Measured 2026-08-14 baseline: 184 passed / 1 skipped; raise with it, lower
-    # only EXPLICITLY. A ceiling >= the suite's Skip-Test site count (33) is
-    # inert — it cannot trip even if every section skips.
+    # Coverage floors: raise with the measured baseline, lower only explicitly.
     [int]$SmokeMinPassed = 170,
     [int]$SmokeMaxSkipped = 3,
-    # Per-stage cache bypass (backlog #64), e.g. -NoCacheStage opencv. Matched as
-    # a substring of the stage LABEL; chain-wide -NoCache overrides everything.
+    # Substring of a stage label, e.g. opencv; -NoCache overrides it.
     [string[]]$NoCacheStage = @(),
-    # Optional cross-host/CI cache ref (import and/or export). Registry auth must
-    # already be wired — docker login credentials are NOT shared with buildkitd.
+    # Registry auth must already be wired: docker login credentials are not shared with buildkitd.
     [string]$ExportCacheRef = '',
     [string]$ImportCacheRef = '',
-    # OPT-IN: build the memory-bound aux branches (litert + tvm) CONCURRENTLY in
-    # child drivers after media-core, each on half the memory budget. The
-    # sequential default is the safe long-pole schedule.
+    # Opt-in: litert and tvm in concurrent child drivers after media-core, each on half the memory budget.
     [switch]$ConcurrentAux,
-    # Push the final image after the local export. buildctl forwards the CLIENT's
-    # docker credential store, so a prior `docker login <registry>` suffices.
+    # buildctl forwards the client's docker credential store, so a prior docker login suffices.
     [string]$PushRef = '',
-    # Override the host preflight gates (disk headroom + patched runhcs shim) —
-    # deliberate exceptions only; see Assert-DiskHeadroom / Assert-ShimPatch.
+    # Skips the disk and shim preflight gates; deliberate exceptions only.
     [switch]$SkipHostChecks,
-    # Backlog #18: bypass ONLY the RDNA4 gate without also disarming the
-    # disk/shim gates the way the all-or-nothing -SkipHostChecks does.
+    # Bypasses only the RDNA4 gate, leaving the disk and shim gates armed.
     [switch]$SkipRdna4Gate,
-    # Bypass ONLY the buildkitd step-log-env gate (0a) for one launch. The 2MiB
-    # clip stays active, so chatty step middles are lost (causal errors still
-    # reach stderr); restore properly via Install-NewHost.ps1.
+    # Bypasses the step-log-env gate once; the 2MiB clip stays, so restore it via Install-NewHost.ps1.
     [switch]$SkipStepLogGate,
-    # Disable the per-run resource CSV sampler (Build-ResourceSampler.ps1).
-    # The sampler is a detached process writing CPU/RAM/commit/vmmem every 20s,
-    # phase-tagged; disable it only when you do not want the overhead.
+    # Disables the detached per-run resource CSV sampler.
     [switch]$NoResourceLog,
-    # Free-space floor for the preflight gate; below ~25 GB hcsshim misbehaves
-    # in ways that do not look like a disk problem.
+    # Below ~25 GB hcsshim fails in ways that do not look like a disk problem.
     [int]$MinFreeGb = 40
 )
 
@@ -150,20 +87,16 @@ Push-Location $repoRoot
 try {
 
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsScripts.Shared.psm1') -Force
-# Per-arch build-args come from the SAME table the in-container scripts read,
-# so the two cannot drift.
+# The same arch table the in-container scripts read, so the two cannot drift.
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsTargetArch.Common.psm1') -Force
 # Shared transient-failure engine; the BK lane passes its own pattern below.
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildDriver.Common.psm1') -Force
 
 <#
 .SYNOPSIS
-    Normalizes -Gpu/-Variant and refuses what a variant cannot build or push.
+    Normalizes -Gpu/-Variant and refuses what a variant cannot build or push; returns @{ Variant; Stages }.
 .DESCRIPTION
-    -Gpu is the nvidia variant. rocm is amd64-only; its migraphx/llama stages are
-    dropped from the default -Stages on other variants (refused when named), and a
-    rocm run may not skip a post-media stage between two it builds (stale parent,
-    backlog #39). A push tag must match the variant. Returns @{ Variant; Stages }.
+    A rocm run may not skip a post-media stage between two it builds, or the next one builds on a stale parent.
 #>
 function Resolve-BkVariant {
     param(
@@ -194,8 +127,7 @@ function Resolve-BkVariant {
             if ($StagesBound) { throw '-Stages migraphx contradicts -NoRocmSpikes, which skips it' }
             $Stages = @($Stages | Where-Object { $_ -ne 'migraphx' })
         }
-        # Each post-media rocm stage builds FROM the previous one's tag: a gap would inherit an EARLIER run's image.
-        # final is in the chain because rocm is amd64-only, so it always builds FROM torch.
+        # Each post-media stage builds FROM the previous tag, final too (rocm is amd64-only), so a gap inherits an older image.
         $chain = @(@('media', 'migraphx', 'llama', 'torch', 'final') | Where-Object { -not ($NoRocmSpikes -and $_ -eq 'migraphx') })
         $built = @(for ($i = 0; $i -lt $chain.Count; $i++) { if ($Stages -contains $chain[$i]) { $i } })
         $gap = @(if ($built.Count -gt 1) { $chain[$built[0]..$built[-1]] | Where-Object { $Stages -notcontains $_ } })
@@ -208,8 +140,7 @@ function Resolve-BkVariant {
     if ($PushRef) {
         $lastSegment = ($PushRef -split '/')[-1]
         $pushTag = if ($lastSegment -match ':') { ($lastSegment -split ':')[-1] } else { '' }
-        # A variant is a tag of its own (AGENTS.md § Image and tag naming): its bytes never go
-        # under the default tag, and no other lane's bytes go under a variant's.
+        # A variant's bytes never go under another lane's tag (AGENTS.md § Image and tag naming).
         $foreign = @('nvidia', 'rocm') | Where-Object { $_ -ne $Variant -and $pushTag -like "*-$_" }
         if ($foreign) { throw "-PushRef '$PushRef' names the $foreign variant's tag, but this run is not -Variant $foreign" }
         $own = (Get-WindowsTargetTagSuffix -Arch $TargetArch) + $(if ($Variant) { "-$Variant" })
@@ -263,15 +194,11 @@ $isNvidia = $Variant -eq 'nvidia'
 
 $script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
-# Per-RUN id in every stage-log name (backlog #61): label-only names made run N
-# truncate run N-1's evidence, and left too few names for the rotation to rotate.
+# Per-run id in every stage-log name, so run N never truncates run N-1's evidence.
 $script:RunId = (Get-Date).ToString('yyyyMMdd-HHmmss')
 # Stage -> seconds; the run manifest below is the only record of per-stage cost.
 $script:StageTimings = [ordered]@{}
-# Resource sampler (#134 free follow-up): the classic driver wired this; the BK
-# driver did not, so no building driver produced the per-run resource CSV. The
-# sampler is a detached process (Build-ResourceSampler.ps1) that appends
-# CPU/RAM/commit/vmmem every 20s, phase-tagged from $script:PhaseFile.
+# The detached resource sampler tags each CSV row with the phase written here.
 $script:PhaseFile = Join-Path $script:LogDir 'current-phase.txt'
 $script:ResourceCsv = $null
 $script:SamplerProc = $null
@@ -288,28 +215,23 @@ function Assert-NoCacheStageMatched {
                'stage labels in the output above (they are the same labels used for the log filenames).')
     }
 }
-# Retention (backlog #30): ~80 files is several full chains of forensics.
+# ~80 files is several full chains of forensics.
 Limit-DiagnosticLogs -Directory $script:LogDir -Keep 80
 
-# --- buildctl resolution (shared helper, #101; Shared.psm1 is imported above) -
+# buildctl resolution
 $BuildCtl = Resolve-BuildCtlPath -BuildCtl $BuildCtl
 & $BuildCtl debug info *> $null
 if ($LASTEXITCODE -ne 0) { throw 'buildkitd not reachable (service running? user in docker-users?)' }
 
-# --- CNI nat subnet drift guard --------------------------------------------
-# dockerd restarts recreate the 'nat' HNS network on a new subnet while the CNI
-# conf pins a static one; drifted, containers get IPs with no gateway.
+# A dockerd restart moves the nat HNS subnet away from the CNI conf's, leaving containers without a gateway.
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildKit.Common.psm1') -Force
 $cniDrift = Get-CniNatSubnetDrift
 if ($cniDrift) { throw $cniDrift }
-# Separate check: the drift guard passes green when the .conf has been renamed
-# to .conflist for nerdctl and containers get NO adapter. Both must exist.
+# The drift guard stays green when the .conf was renamed to .conflist, yet containers get no adapter.
 $cniForm = Get-CniConfFormIssue
 if ($cniForm) { throw $cniForm }
 
-# Transient patterns: hcs-temp finalize/export flakes, where completed RUN
-# vertices stay cached so a retry only re-pays finalize. The negative lookahead
-# on 'reimport snapshot' keeps a genuine ExportLayer 0x3 defect failing loudly.
+# Retry only re-pays finalize; the reimport lookahead keeps a real ExportLayer 0x3 defect failing loudly.
 Initialize-BuildDriverContext -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot(?!.*ExportLayer)|failed to write compressed diff|failed to extract layer|failed to mount \{windows-layer|failed to calculate checksum of ref'
 
 # --- versions (single source of truth) ---
@@ -324,27 +246,18 @@ $cudaMajorMinor = ((Get-Ver 'CUDA_VERSION') -split '\.')[0..1] -join '.'
 $MediaMemoryGb = Get-MediaMemoryBudget -RequestedGb $MediaMemoryGb -HostReserveGb $HostReserveGb
 Write-Host "BuildKit lane: process isolation, all CPUs; memory budget $MediaMemoryGb GB (published via webdav, #51)" -ForegroundColor Cyan
 Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
-# -ConcurrentAux halves the children's budget ONLY through the webdav publish
-# below; -NoSccache must not silently run both at the full host RAM instead.
+# The children's halved budget travels only via the webdav publish, which -NoSccache disables.
 if ($ConcurrentAux -and $NoSccache) {
     throw ('-ConcurrentAux relies on the WebDAV memory publish to halve the aux children''s budget, ' +
            'which -NoSccache disables. Drop -NoSccache, or run the aux branches sequentially.')
 }
 
-# --- cross-target gates: refuse the combinations that cannot work, in
-# milliseconds rather than hours into a stage that cannot produce anything ----
+# Cross-target gates: refuse impossible combinations now, not hours into a stage
 if ($TargetArch -ne 'amd64') {
     if ($isNvidia) {
-        # #176: the nvidia stage installs the x64 toolkit (headers + nvcc, the host
-        # tools) and stages the arm64 redist payload into the same root (lib\arm64,
-        # bin\arm64); ORT, GenAI, OpenCV and TVM all build their CUDA paths for arm64
-        # through the documented `vcvarsall x64_arm64` + `nvcc --use-local-env` flow.
-        # Output is an artifact bundle, statically verified only (no arm64 device on
-        # this host).
         Write-Host ('[bk] GPU: arm64 cross CUDA/cuDNN (bundle only; the arm64 payload is statically verified)') -ForegroundColor Yellow
     }
-    # Asking for torch EXPLICITLY is an error; inheriting it from the $Stages
-    # default just drops it — throwing there made plain -TargetArch arm64 fail.
+    # An explicit torch is an error; the default list just drops it, or plain -TargetArch arm64 would fail.
     if ($Stages -contains 'torch') {
         $torchWhy = ('the torch stage runs ``uv sync``, which must EXECUTE the target interpreter - impossible in a ' +
                      'cross build. Independently, the pinned PyTorch publishes no win_arm64 wheel for the pinned Python.')
@@ -354,58 +267,38 @@ if ($TargetArch -ne 'amd64') {
         $Stages = @($Stages | Where-Object { $_ -ne 'torch' })
         Write-Host "[bk] stage 'torch' dropped for $TargetArch : $torchWhy" -ForegroundColor Yellow
     }
-    # Every media branch builds on the cross lane (#115, #116); what a branch
-    # cannot build for the target ships as an empty, marker-carrying tree --
-    # exclusion table in docs/windows-cross-builds.md.
+    # What a branch cannot build for the target ships as an empty marker tree; see docs/windows-cross-builds.md.
     Write-Host ("[bk] TARGET ARCH: $TargetArch (CROSS build - host stays windows/amd64). " +
                 'Output is an artifact bundle, not a runnable image.') -ForegroundColor Yellow
 }
-# Branches the merge fan-in requires: all three on BOTH lanes (#115, #116).
+# The merge fan-in needs all three branches on both lanes.
 $script:MergeRequiredBranches = @('media-core', 'media-litert', 'media-tvm')
-# Forwarded to the stages AFTER the arch fork only: declaring this ARG on the
-# shared base/sdk/toolchain would re-pay the VS Build Tools layer on every switch.
-# OPENCV_ARCH_DIR rides along because the merge Dockerfile bakes OPENCV_LIB/BIN
-# as ENV, which WINS over the arch-aware fallback in Build-GstreamerFromSource.ps1.
+# Only for stages after the arch fork: on base/sdk/toolchain the ARG would re-key the VS layer.
 $archArgs = @{
     WINDOWS_TARGET_ARCH = $TargetArch
     OPENCV_ARCH_DIR     = Get-OpenCvArchDir -Arch $TargetArch
 }
-# A FLOOR on files inspected: the Dockerfile default of 10 cannot detect losing
-# a whole component. Measured counts minus headroom; raise with the bundle,
-# never lower one to make a red run green -- a drop IS the finding.
-# amd64 arch gate ~1134, import walk ~1100+; arm64 arch gate ~992, import walk ~606
-# (arm64 has 3 ABSENT components, so its walk covers fewer files — 606 is the
-# known-good, NOT 840 which was set against the arch-gate binary count).
+# Floors from measured counts minus headroom (arm64's import walk covers ~606); never lower one to turn a run green.
 $archArgs['ARCH_GATE_MIN_INSPECTED'] = if ($TargetArch -eq 'amd64') { '650' } else { '580' }
 if ($TargetArch -ne 'amd64') {
-    # #117: every .pyd in the merged HOST site-packages is the x64 build
-    # interpreter's -- a REPORTED allowlist skip, never silent out-of-scope.
+    # The host site-packages .pyds are the x64 build interpreter's: a reported allowlist skip, never silently out of scope.
     $archArgs['ARCH_GATE_HOST_TOOLS'] = 'protoc\.exe|flatc\.exe|\\_deps\\|\\cpython\\Lib\\site-packages\\'
 }
-# Floors on the target python deps gate: a drop in wheel or requirement count
-# is a finding (requirements disappeared = greener gate hiding a defect).
-# amd64: 6 bundle wheels, ~14 first-touch reqs. arm64: 6 bundle wheels, ~10.
+# A drop in wheel or requirement count is a finding, not a greener gate.
 $archArgs['DEPS_MIN_BUNDLE_WHEELS'] = '6'
 $archArgs['DEPS_MIN_FIRST_TOUCH_REQS'] = if ($TargetArch -eq 'amd64') { '10' } else { '8' }
 
-# --- host preflight (docs/windows-host-setup.md § Phase D item 3): a disk shortage surfaces
-# as something unrelated (a missing ninja) and a Stevedore update reverts the
-# shim patch. -Drive covers the repo drive, which buildctl streams the context from.
+# Host preflight; see docs/windows-host-setup.md § Phase D.
 Assert-DiskHeadroom -Drive @($repoRoot) -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
 Assert-ShimPatch -Force:$SkipHostChecks
-# Host-drift preflight (backlog 0a): the 2MiB step-log clip hid verdicts for a day.
+# The 2MiB step-log clip hides verdicts.
 Assert-BuildkitdStepLogEnv -Force:($SkipHostChecks -or $SkipStepLogGate)
 Assert-NoActiveRdna4Gpu -Force:($SkipHostChecks -or $SkipRdna4Gate)
 
-# --- tags: fully-qualified for containerd-store handoff; bk- namespaced so the
-# classic docker lane's local/kataglyphis:windows-* tags can never collide ---
-# amd64 keeps the historical unsuffixed names, a cross target appends its arch —
-# except the shared pre-fork stages (suffixing would fork the chain's most
-# expensive layers) and the final tags, which already spell their arch.
+# Tags: pre-fork stages stay unsuffixed (a suffix would fork the most expensive layers), final tags spell their arch.
 $script:NoSuffixTags = @('windows-base', 'windows-sdk', 'windows-toolchain', 'winamd64', 'winarm64',
     'winamd64-nvidia', 'winarm64-nvidia', 'winamd64-rocm')
-# A variant owns the sdk slot, so every tag from sdk on gets '-<variant>' and the default keeps
-# its names. nvidia shared the default's until 2026-09-27, so one overwrote the other.
+# A variant owns the sdk slot, so every tag from sdk on gets '-<variant>' and never overwrites the default's.
 $script:BkVariantInfix = if ($Variant) { "-$Variant" } else { '' }
 function Get-BkTag([string]$Name) {
     $infix = $script:BkVariantInfix
@@ -414,15 +307,12 @@ function Get-BkTag([string]$Name) {
     return "docker.io/local/kataglyphis:bk-$Name$variant$suffix"
 }
 
-# NB winarm64 labels a windows/amd64 image carrying an aarch64 payload - never
-# publish it with --platform windows/arm64, that yields a manifest nothing runs.
+# winarm64 is a windows/amd64 image with an aarch64 payload: never publish it as --platform windows/arm64.
 $script:FinalTagName = (Get-WindowsTargetTagSuffix -Arch $TargetArch) + $script:BkVariantInfix
 
-# Which -NoCacheStage entries matched a stage label; checked at the end of the
-# run so a typo fails LOUDLY instead of building everything from cache (#64).
+# Checked at the end of the run, so a -NoCacheStage typo fails loudly instead of building from cache.
 $script:NoCacheStageMatched = @{}
-# Tags this run built, and images the publish gate passed: a BASE_IMAGE in neither is graded
-# before a stage inherits its ENV. docs/windows-build-resources.md#an-image-this-run-did-not-build
+# A BASE_IMAGE in neither set is graded first; see docs/windows-build-resources.md § An image this run did not build.
 $script:BkBuiltTags = [System.Collections.Generic.HashSet[string]]::new()
 $script:BkGatedImages = [System.Collections.Generic.HashSet[string]]::new()
 
@@ -434,24 +324,18 @@ function Invoke-BkStage {
         [string]$Target = '',
         [string]$Context = '.',
         [string]$Label = '',
-        # WARM solve: no exporter, so nothing finalizes and the ExportLayer 0x3
-        # defect never fires (docs/windows-builds.md § BuildKit/containerd lane).
-        # Artifacts leave via the C:\bkhandoff cache mount (Export-BuildHandoff).
+        # Warm solve without an exporter, so nothing finalizes.
         [switch]$NoOutput,
-        # Raw --output override (docker-tar / push), so the FinalTar and PushRef
-        # re-solves ride the same retry + log plumbing as every stage.
+        # Raw --output (docker-tar, push), so those re-solves share the retry and log plumbing.
         [string]$OutputSpec = '',
-        # Transient-failure budget: 3 suits any stage touching ONE snapshot tree.
-        # The media MERGE stage fans in three branch images and was measured
-        # green only on its third attempt, so it asks for more.
+        # 3 suits a stage touching one snapshot tree; the merge fan-in asks for more.
         [int]$MaxAttempts = 3,
         # Set by Invoke-BkPublishGate only: the gate's own BASE_IMAGE is what it grades.
         [switch]$NoParentGate
     )
     if (-not $NoOutput -and -not $Tag -and -not $OutputSpec) { throw 'Invoke-BkStage: need -Tag, -OutputSpec or -NoOutput' }
     if (-not $Label) { $Label = [IO.Path]::GetFileName($Dockerfile) + $(if ($Target) { ":$Target" } else { '' }) }
-    # A parent this run did not build may predate the 2026-09-23 fix: grade the ENV it passes
-    # down now, in seconds, not at the final gate. docs/windows-build-resources.md#an-image-this-run-did-not-build
+    # Grade an unbuilt parent's ENV now, in seconds, not at the final gate.
     $parent = "$($BuildArgs['BASE_IMAGE'])"
     if (-not $NoParentGate -and $parent -and -not $script:BkBuiltTags.Contains($parent) -and -not $script:BkGatedImages.Contains($parent)) {
         Invoke-BkPublishGate -Image $parent -Label "publish-gate:$($parent -replace '^.*:', '')" -Hint (
@@ -460,10 +344,7 @@ function Invoke-BkStage {
             'from a fresh driver process.')
     }
 
-    # PER-STAGE DISK GATE: the launch gate passed at 164 GB free and a heavy
-    # stage still walked to 23 GB, where hcsshim stops failing honestly — and
-    # killing the solve to escape poisons a snapshot. -Drive from the REPO root,
-    # not 'C' (backlog #48); shared floors live in WindowsBuildDriver.Common.
+    # Per stage too: one heavy stage can walk the disk into hcsshim's dishonest-failure band.
     Assert-StageDiskHeadroom -Label $Label -Drive (Split-Path -Qualifier $repoRoot).TrimEnd(':') -Force:$SkipHostChecks
     $dfDir = Split-Path (Join-Path $repoRoot $Dockerfile) -Parent
     $dfName = [IO.Path]::GetFileName($Dockerfile)
@@ -479,15 +360,11 @@ function Invoke-BkStage {
     )
     if ($OutputSpec) { $bkArgs += @('--output', $OutputSpec) }
     elseif (-not $NoOutput) { $bkArgs += @('--output', "type=image,name=$Tag,unpack=true") }
-    # Per-stage cache bust (backlog #64), the lever the determinism gate asks for.
-    # Substring of the same $Label the logs and the disk gate use, so 'opencv'
-    # catches 'Dockerfile.media-builder:media-core-built-opencv'.
-    # final-tar/final-push re-export the post-smoke final solve and stay cache hits (#158).
+    # final-tar/final-push re-export the smoked final solve, so they stay cache hits.
     $exportOnlyLabel = $Label -in @('final-tar', 'final-push')
     $matched = @()
     if (-not $exportOnlyLabel) { $matched = @($NoCacheStage | Where-Object { $Label -like "*$_*" }) }
-    # Recorded so a typo fails at the END of the run: printing only on a match
-    # would leave a misspelled entry silent and every stage cached (fail-open).
+    # Recorded so a misspelled entry fails at the end of the run instead of silently caching everything.
     foreach ($m in $matched) { $script:NoCacheStageMatched[$m] = $true }
     $stageNoCache = $matched.Count -gt 0
     if (($NoCache -or $stageNoCache) -and -not $exportOnlyLabel) { $bkArgs += @('--no-cache') }
@@ -500,19 +377,15 @@ function Invoke-BkStage {
         $v = $BuildArgs[$k]
         if ($null -ne $v -and "$v" -ne '') { $bkArgs += @('--opt', "build-arg:$k=$v") }
     }
-    # Arch is the one build-arg whose absence is INVISIBLE downstream: the stage
-    # falls back to its amd64 default and fails much later as something unrelated.
+    # A missing arch arg is invisible: the stage falls back to amd64 and fails much later as something else.
     if ($BuildArgs.ContainsKey('WINDOWS_TARGET_ARCH')) {
         Write-Host "    [build-arg] WINDOWS_TARGET_ARCH=$($BuildArgs['WINDOWS_TARGET_ARCH'])" -ForegroundColor DarkGray
     } elseif ($TargetArch -ne 'amd64') {
         Write-Host "    [build-arg] WINDOWS_TARGET_ARCH NOT PASSED to this stage (target is $TargetArch) - it will default to amd64" -ForegroundColor Yellow
     }
-    # -BuildArg passthrough, applied LAST so an explicit one-off overrides the
-    # stage's computed value rather than being silently dropped by it.
+    # Applied last, so an explicit one-off overrides the stage's computed value.
     foreach ($extra in $BuildArg) {
-        # Strict KEY validation: buildctl silently discards build-args for ARG
-        # names no Dockerfile declares, so a mangled key is invisible downstream
-        # (`pwsh -File` flattens a comma array into one quoted string).
+        # buildctl silently discards undeclared ARG names, so a key mangled by pwsh -File would vanish.
         if ($extra -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') {
             throw ("-BuildArg '$extra' is not in KEY=VALUE form with a clean identifier key. " +
                 'If several args arrived as ONE quoted string, the caller crossed a process boundary ' +
@@ -525,9 +398,7 @@ function Invoke-BkStage {
     Set-BuildPhase $Label
     $stageClock = [System.Diagnostics.Stopwatch]::StartNew()
     $dest = if ($NoOutput) { '(warm solve, no output)' } else { $Tag }
-    # Retries on transient infra failures; a third attempt is cheap because
-    # completed RUN vertices stay cached. Fresh log per RUN but APPENDED per
-    # attempt (#41) — truncating destroyed attempt 1's real compile error.
+    # Appended per attempt: truncating would destroy attempt 1's real compile error.
     Remove-Item -Path $stageLog -Force -ErrorAction SilentlyContinue
     $previousTail = ''
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
@@ -536,13 +407,12 @@ function Invoke-BkStage {
         & $BuildCtl @bkArgs 2>&1 | Tee-Object -FilePath $stageLog -Append
         if ($LASTEXITCODE -eq 0) { break }
         $tail = if (Test-Path $stageLog) { (Get-Content $stageLog -Tail 40 -ErrorAction SilentlyContinue) -join "`n" } else { '' }
-        # -PreviousTail arms the determinism gate: an identical failure is a
-        # poisoned snapshot, not a flake, and retrying only burns the budget.
+        # An identical failure is a poisoned snapshot, not a flake, so it is not retried.
         if (Invoke-TransientCooldown -Tail $tail -PreviousTail $previousTail -Attempt $attempt -MaxAttempts $MaxAttempts -Label "bk:$Label" -CooldownSeconds 15) {
             $previousTail = $tail
             continue
         }
-        # Surface the CAUSE, not just a log path (backlog #42).
+        # Surface the cause, not just a log path.
         if ($tail) {
             Write-Host "`n--- [bk:$Label] tail of the failing attempt ---" -ForegroundColor Yellow
             Write-Host $tail
@@ -556,8 +426,7 @@ function Invoke-BkStage {
     Write-Host ("[bk:{0}] OK -> {1}  ({2:hh\:mm\:ss})" -f $Label, $dest, $stageClock.Elapsed) -ForegroundColor Green
 }
 
-# The publish gate: $Image's environment carries no build-host setting. -Hint is appended to a failure.
-# docs/windows-build-resources.md#what-the-published-image-carries
+# Fails when $Image's ENV carries a build-host setting; see docs/windows-build-resources.md § What the published image carries.
 function Invoke-BkPublishGate {
     param([Parameter(Mandatory)][string]$Image, [string]$Label = 'publish-gate', [string]$Hint = '')
     try {
@@ -574,9 +443,7 @@ function Invoke-BkPublishGate {
 
 $sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
 
-# Preseed the vulkan SDK exe onto the LAN webdav: sdk.lunarg.com stalls
-# reproducibly INSIDE containers while the host pulls the same file fine.
-# Fail-open - the container keeps its own retried direct-download path.
+# Preseed the Vulkan SDK on the webdav: sdk.lunarg.com stalls inside containers; fail-open to their direct download.
 if ($SccacheEndpoint) {
     $vkVer = Get-Ver 'VULKAN_VERSION'
     $vkName = "vulkansdk-windows-X64-$vkVer.exe"
@@ -584,10 +451,7 @@ if ($SccacheEndpoint) {
     $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
     $vkUrl = "https://sdk.lunarg.com/sdk/download/$vkVer/windows/$vkName"
 
-    # ONLY a 404 is fatal: VULKAN_VERSION then names a file LunarG does not
-    # publish FOR WINDOWS (its Windows SDK lags linux); 403/5xx stay fail-open.
-    # Two traps: `-I` buries the status in headers (hence the one-byte RANGE),
-    # and `-o $null` renders as an empty string, so curl writes the body out.
+    # Only a 404 is fatal (no Windows SDK for that version); a one-byte range because -I buries the status.
     $vkProbe = (& $curlExe -sS -o NUL -w '%{http_code}' -L --max-time 30 -r 0-0 $vkUrl 2>$null)
     $global:LASTEXITCODE = 0
     if ("$vkProbe".Trim() -eq '404') {
@@ -619,10 +483,7 @@ if ($SccacheEndpoint) {
     }
     $global:LASTEXITCODE = 0
 
-    # #51: MEMORY_LIMIT_GB is a SCHEDULING knob, so it must not be an image
-    # ARG/ENV (a cache key - a different-RAM host would invalidate everything).
-    # Published to the endpoint instead, and PHASED: full budget for media-core
-    # alone, halved for the two concurrent children, full again for the merge.
+    # A scheduling knob published on the webdav, never an ARG/ENV, which would make it a cache key.
     function Publish-MemoryBudget {
         param([Parameter(Mandatory)][int]$Gb, [string]$Phase = '')
         try {
@@ -642,8 +503,7 @@ if ($SccacheEndpoint) {
 
 $started = Get-Date
 
-# Resource sampler (#134): start HERE, after every preflight gate has passed,
-# so a rejected launch cannot orphan the detached process (backlog #63).
+# Started after every preflight gate, so a rejected launch cannot orphan the detached sampler.
 if (-not $NoResourceLog) {
     $script:ResourceCsv = Join-Path $script:LogDir ("resources-" + $script:RunId + ".csv")
     Set-BuildPhase 'init'
@@ -670,9 +530,7 @@ if ($Stages -contains 'base') {
         PWSH_ZIP_SHA256       = Get-Ver 'PWSH_ZIP_SHA256'
         WINDOWS_SDK_BUILD     = Get-Ver 'WINDOWS_SDK_BUILD'
         VISUAL_STUDIO_VERSION = Get-Ver 'VISUAL_STUDIO_VERSION'
-        # #50: consumed below versions.env's relocated COPY, so they ride as
-        # ARGs - a Linux-key edit no longer re-pays scoop/vcpkg/rust. Keep in
-        # sync with the ARG block in Dockerfile.base.
+        # Keep in sync with Dockerfile.base's ARG block.
         GIT_VERSION                  = Get-Ver 'GIT_VERSION'
         GIT_WINDOWS_INSTALLER_SHA256 = Get-Ver 'GIT_WINDOWS_INSTALLER_SHA256'
         SCOOP_INSTALLER_SHA256       = Get-Ver 'SCOOP_INSTALLER_SHA256'
@@ -687,9 +545,7 @@ if ($Stages -contains 'base') {
 
 if ($Stages -contains 'sdk') {
     if ($isNvidia) {
-        # WINDOWS_TARGET_ARCH rides the nvidia stage only when GPU is on: on the
-        # cross lane Install-Cuda.ps1 switches to the arm64 redist payload, and the
-        # arm64 SHAs are inert on amd64 (the x64 installer path never reads them).
+        # The arch picks Install-Cuda.ps1's arm64 redist payload on the cross lane; the arm64 SHAs are inert on amd64.
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.nvidia' -Context 'windows' -Tag (Get-BkTag 'windows-sdk') -BuildArgs @{
             BASE_IMAGE               = Get-BkTag 'windows-base'
             CUDA_VERSION             = Get-Ver 'CUDA_VERSION'
@@ -729,8 +585,7 @@ if ($Stages -contains 'sdk') {
             VULKAN_RT_WINDOWS_ZIP_SHA256 = Get-Ver 'VULKAN_RT_WINDOWS_ZIP_SHA256'
         }
     } else {
-        # CPU lane: containerd has no unprivileged `tag`; re-export base under
-        # the sdk name via a trivial FROM (cache-hit, seconds).
+        # containerd has no unprivileged tag, so a trivial FROM re-exports base under the sdk name.
         $alias = Join-Path $script:LogDir 'Dockerfile.bk-sdk-alias'
         "FROM $(Get-BkTag 'windows-base')`r`n" | Set-Content $alias -Encoding ASCII
         Invoke-BkStage -Dockerfile ('out/windows-build-logs/' + [IO.Path]::GetFileName($alias)) -Tag (Get-BkTag 'windows-sdk') -Label 'bk-cpu-alias'
@@ -738,9 +593,7 @@ if ($Stages -contains 'sdk') {
 }
 
 if ($Stages -contains 'toolchain') {
-    # $sccache carries SCCACHE_WEBDAV_ENDPOINT; the patched-llvm stage gates its
-    # sccache wiring on Test-SccacheRemoteConfigured (#164), so without it the
-    # stage compiles LLVM cold.
+    # Without the endpoint the patched-llvm stage compiles LLVM cold.
     $toolchainArgs = @{
         BASE_IMAGE     = Get-BkTag 'windows-sdk'
         PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
@@ -763,10 +616,9 @@ if ($Stages -contains 'media') {
     $loopBranches = $MediaBranches
     $auxProcs = @()
     if ($ConcurrentAux -and ($MediaBranches -contains 'media-litert') -and ($MediaBranches -contains 'media-tvm')) {
-        # media-core (the long pole) stays sequential below; the child drivers
-        # each build one aux branch on half the memory budget.
+        # media-core, the long pole, stays sequential; each child builds one aux branch.
         $loopBranches = @($MediaBranches | Where-Object { $_ -notin @('media-litert', 'media-tvm') })
-        # Sole owner of the halved aux budget (#175); published below (#51).
+        # Sole owner of the halved aux budget, published below.
         $auxMem = [Math]::Max(8, [int]($MediaMemoryGb / 2))
     }
     foreach ($branch in $loopBranches) {
@@ -774,22 +626,16 @@ if ($Stages -contains 'media') {
             BASE_IMAGE      = Get-BkTag 'windows-toolchain'
         } + $branchArgs[$branch] + $sccache + $archArgs + (Get-BkRocmStageArg -Variant $Variant -Stage $branch -NoRocmSpikes ([bool]$NoRocmSpikes) -VersionTable $versions)
         if ($branch -eq 'media-core') {
-            # DIRECT SOLVES: the warm/materialize pairs existed for the
-            # ExportLayer-0x3 defect, fixed by the patched runhcs shim — see
-            # docs/windows-build-lanes.md § Traps (Stevedore updates overwrite the
-            # patch). The per-library split stays for per-layer caching.
+            # Direct solves rely on the patched runhcs shim (see docs/windows-build-lanes.md § Traps); one solve per library for caching.
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs $branchBuildArgs
             $onnxArg   = @{ MEDIA_CORE_ONNX_IMAGE = Get-BkTag 'windows-media-core-onnx' }
             $opencvArg = @{ MEDIA_CORE_OPENCV_IMAGE = Get-BkTag 'windows-media-core-opencv' }
             $ffmpegArg = @{ MEDIA_CORE_FFMPEG_IMAGE = Get-BkTag 'windows-media-core-ffmpeg' }
             $hailoArg  = @{ MEDIA_CORE_HAILO_IMAGE = Get-BkTag 'windows-media-core-hailo' }
-            # ORDER onnx -> ffmpeg -> opencv -> hailo -> genai (backlog #94):
-            # OpenCV must configure AFTER FFmpeg exists or it silently links its
-            # own downloaded prebuilt. Keep in step with Dockerfile.media-builder.
+            # onnx, ffmpeg, opencv, hailo, genai: OpenCV must configure after FFmpeg exists, as in Dockerfile.media-builder.
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-ffmpeg' -Tag (Get-BkTag 'windows-media-core-ffmpeg') -BuildArgs ($branchBuildArgs + $onnxArg)
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-opencv' -Tag (Get-BkTag 'windows-media-core-opencv') -BuildArgs ($branchBuildArgs + $ffmpegArg)
-            # HailoRT (Phase 3): between opencv and the media-core-built stage that
-            # carries GenAI + the core env; HAILORT_VERSION rides versions.env.
+            # HailoRT sits between opencv and the GenAI stage.
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-hailo' -Tag (Get-BkTag 'windows-media-core-hailo') -BuildArgs ($branchBuildArgs + $opencvArg + @{
                 HAILORT_VERSION        = Get-Ver 'HAILORT_VERSION'
                 HAILORT_SOURCE_SHA256  = Get-Ver 'HAILORT_SOURCE_SHA256'
@@ -810,54 +656,40 @@ if ($Stages -contains 'media') {
         foreach ($aux in 'media-litert', 'media-tvm') {
             $auxArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath,
                 '-Stages', 'media', '-MediaBranches', $aux, '-MediaMemoryGb', $auxMem)
-            # The child resolves its tags from ITS arch: without this an arm64 parent
-            # builds aux images under amd64 tags and the merge fans in stale trees.
+            # Without it an arm64 parent's children build under amd64 tags and the merge fans in stale trees.
             if ($TargetArch -ne 'amd64') { $auxArgs += @('-TargetArch', $TargetArch) }
             if ($isNvidia) { $auxArgs += '-Gpu' }
             # Without the variant the children build FROM the default toolchain under default tags.
             if ($Variant -eq 'rocm') { $auxArgs += @('-Variant', 'rocm') + @(if ($NoRocmSpikes) { '-NoRocmSpikes' }) }
             if ($SccacheEndpoint) { $auxArgs += @('-SccacheEndpoint', $SccacheEndpoint) }
-            # Children inherit the cache/tooling knobs — without these a
-            # -NoCache parent quietly built its aux branches FROM cache.
+            # Without these a -NoCache parent's aux branches would build from cache.
             if ($NoCache) { $auxArgs += '-NoCache' }
-            # -NoCacheStage must ride along (the children build litert/tvm), but
-            # ONLY entries this child's branch can match: a parent-scoped label
-            # would trip the child's own matched-nothing gate. -File cannot
-            # deliver arrays (see .NOTES), so entries go one per argument.
+            # Only entries this child can match, one per argument (-File cannot pass arrays).
             $auxNoCache = @($NoCacheStage | Where-Object { $aux -match [regex]::Escape(($_ -replace '^media-', '')) -or $_ -match ($aux -replace '^media-', '') })
             foreach ($ncs in $auxNoCache) {
                 $auxArgs += @('-NoCacheStage', $ncs)
-                # The CHILD builds these branches, so mark them matched here too or a
-                # correct parent run ends red in the matched-nothing gate (#158).
+                # Marked here too, or a correct parent run ends red in the matched-nothing gate.
                 $script:NoCacheStageMatched[$ncs] = $true
             }
             if ($ImportCacheRef) { $auxArgs += @('-ImportCacheRef', $ImportCacheRef) }
             if ($ExportCacheRef) { $auxArgs += @('-ExportCacheRef', $ExportCacheRef) }
             if ($BuildCtl) { $auxArgs += @('-BuildCtl', $BuildCtl) }
-            # PREFLIGHT OVERRIDES: each child re-runs the FULL host preflight,
-            # so an override the parent was launched with must reach it or the
-            # child throws 1-2h in, after media-core is paid for (backlog #62).
+            # Each child re-runs the full preflight, so the parent's overrides must reach it.
             if ($SkipHostChecks) { $auxArgs += '-SkipHostChecks' }
             if ($SkipRdna4Gate) { $auxArgs += '-SkipRdna4Gate' }
             if ($SkipStepLogGate) { $auxArgs += '-SkipStepLogGate' }
             if ($NoSccache) { $auxArgs += '-NoSccache' }
-            # Children must NOT start their own resource sampler: the parent's
-            # sampler already covers the whole machine (#134).
+            # The parent's sampler already covers the whole machine.
             $auxArgs += '-NoResourceLog'
             if ($PSBoundParameters.ContainsKey('MinFreeGb')) { $auxArgs += @('-MinFreeGb', $MinFreeGb) }
             if ($PSBoundParameters.ContainsKey('HostReserveGb')) { $auxArgs += @('-HostReserveGb', $HostReserveGb) }
-            # Forward -BuildArg: the litert/tvm solves are the CHILDREN's, so a
-            # parent-only compile knob is a no-op for two of three branches.
+            # The litert/tvm solves are the children's, so a parent-only knob would miss them.
             foreach ($ba in $BuildArg) { $auxArgs += @('-BuildArg', $ba) }
-            # QUOTE spaced elements: Start-Process -ArgumentList joins with
-            # spaces and does NOT quote, so a path under 'C:\Program Files'
-            # splits mid-token and kills both children right after media-core.
+            # Start-Process -ArgumentList joins with spaces and never quotes, so spaced paths would split.
             $auxArgsQuoted = @($auxArgs | ForEach-Object { if ("$_" -match '\s') { '"{0}"' -f $_ } else { "$_" } })
             $auxProcs += Start-Process -FilePath 'pwsh' -ArgumentList $auxArgsQuoted -PassThru -NoNewWindow
         }
-        # FAIL FAST + never orphan (backlog #62): Wait-Process on the whole set
-        # hid a child dying at minute 5, and an unguarded parent left two
-        # buildctl trees solving against the same store.
+        # Fail fast on the first dead child, and never orphan the other's buildctl tree.
         try {
             while ($true) {
                 $exited = @($auxProcs | Where-Object { $_.HasExited })
@@ -882,13 +714,11 @@ if ($Stages -contains 'media') {
             Publish-MemoryBudget -Gb ([int]$MediaMemoryGb) -Phase 'merge phase'
         }
     }
-    # The merge needs ALL THREE branch images and must run exactly ONCE: this
-    # gate also keeps the single-branch -ConcurrentAux children out of it.
+    # The merge needs all three branches and runs once, which keeps the single-branch children out of it.
     $allBranches = $script:MergeRequiredBranches
     $runMerge = @($allBranches | Where-Object { $_ -notin $MediaBranches }).Count -eq 0
     if ($runMerge) {
-        # The merge Dockerfile's unconditional COPY --from lines are satisfied
-        # by each branch shipping its own (possibly empty, marker-carrying) tree.
+        # Every branch ships a tree, possibly an empty marker one, so the unconditional COPY --from lines hold.
         $litertImage = Get-BkTag 'windows-media-litert'
         $tvmImage    = Get-BkTag 'windows-media-tvm'
         # Canonical merge version env + BK tag wiring.
@@ -898,13 +728,10 @@ if ($Stages -contains 'media') {
             LITERT_IMAGE    = $litertImage
             TVM_IMAGE       = $tvmImage
         } + $archArgs
-        # -MaxAttempts 5: mounting three branch trees is the only stage measured
-        # burning its whole 3-attempt budget.
+        # Mounting three branch trees is the only stage measured burning all 3 attempts.
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs ($mergeArgs + $sccache) -MaxAttempts 5
     } else {
-        # FAIL CLOSED (backlog #39): skipping the merge is fine alone, but
-        # torch/final resolve BASE_IMAGE from the 'windows-media' tag, so they
-        # would silently ship the PREVIOUS run's media image with a zero exit.
+        # Fail closed: later stages would silently build on the previous run's media image.
         $downstream = @('migraphx', 'llama', 'torch', 'final') | Where-Object { $Stages -contains $_ }
         if ($downstream) {
             throw ("[bk:merge] REFUSING to build $($downstream -join '+') from a STALE '$(Get-BkTag 'windows-media')': " +
@@ -916,8 +743,7 @@ if ($Stages -contains 'media') {
     }
 }
 
-# migraphx and llama exist on the rocm lane only (Resolve-BkVariant), each FROM the one before it;
-# each handoff tag is named once here and read by the stage that builds FROM it.
+# rocm-only handoff tags, each named once and read by the stage that builds FROM it.
 $migraphxTag = Get-BkTag 'windows-media-migraphx'
 $llamaTag = Get-BkTag 'windows-media-llama'
 if ($Stages -contains 'migraphx') {
@@ -942,8 +768,7 @@ if ($Stages -contains 'llama') {
 # Get-BkTag carries the lane: bk-windows-torch, or bk-windows-torch-rocm on the rocm lane.
 $torchTag = Get-BkTag 'windows-torch'
 
-# Provenance stamps computed ONCE, so the FinalTar/PushRef re-solves stay cache
-# hits of the final solve instead of regenerating LABEL with empty values.
+# Computed once, so the FinalTar/PushRef re-solves stay cache hits of the final solve.
 $stampArgs = @{
     BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     VCS_REF    = Get-BuildVcsRef
@@ -953,8 +778,7 @@ if ($Stages -contains 'torch') {
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.torch' -Tag $torchTag -BuildArgs ($stampArgs + @{
         BASE_IMAGE = $(if ($Variant -eq 'rocm') { $llamaTag } else { Get-BkTag 'windows-media' })
         APP_REF    = Resolve-TorchAppRef -VersionTable $versions -LatestApp:$LatestApp
-        # Without this a -Gpu chain ships CPU torch (Dockerfile default). The rocm lane keeps the
-        # cpu extra; TORCH_ROCM swaps in torch built from source (docs/windows-rocm.md § PyTorch on the rocm lane).
+        # Without it a -Gpu chain ships CPU torch; rocm keeps the cpu extra and TORCH_ROCM swaps torch later.
         PYTORCH_EXTRA = $(if ($isNvidia) { 'pytorch-cu130' } else { 'pytorch-cpu' })
     } + (Get-BkRocmStageArg -Variant $Variant -Stage 'torch' -VersionTable $versions) +
         # rocm compiles torch from source in this Dockerfile (torch-rocm-wheels); cpu/nvidia solve args stay as they were.
@@ -962,8 +786,7 @@ if ($Stages -contains 'torch') {
 }
 
 if ($Stages -contains 'final') {
-    # The arm64 lane skips the torch stage (guarded at launch), so its final
-    # image is based on the merged media stage directly.
+    # arm64 has no torch stage, so its final image builds on the merged media.
     $finalBase = if ($TargetArch -eq 'amd64') { $torchTag } else { Get-BkTag 'windows-media' }
     # The Vulkan loader's pins: the final stage installs it on PATH (BACKLOG CON25).
     $finalArgs = $stampArgs + @{
@@ -971,16 +794,11 @@ if ($Stages -contains 'final') {
         VULKAN_VERSION               = Get-Ver 'VULKAN_VERSION'
         VULKAN_RT_WINDOWS_ZIP_SHA256 = Get-Ver 'VULKAN_RT_WINDOWS_ZIP_SHA256'
     } + $archArgs
-    # -Label 'final': the default label is the filename ('Dockerfile'), so
-    # -NoCacheStage final matched only the re-exports, not this stage.
+    # The default label 'Dockerfile' would let -NoCacheStage final match only the re-exports.
     Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final' -Tag (Get-BkTag $script:FinalTagName) -BuildArgs $finalArgs
-    # SMOKE GATE (backlog #44). Runs as a buildctl solve, not `nerdctl run`,
-    # because containerd's pipe is admin-only and this driver is non-admin.
+    # Smoke gate: a buildctl solve, since containerd's pipe is admin-only and this driver is not.
     if ($TargetArch -ne 'amd64' -and -not $SkipSmokeGate) {
-        # CROSS LANE: the suite runs its host-toolchain sections and skips the
-        # payload ones itself. 76 sits just under the arm64 section-floor sum of
-        # 82 (Smoke.FloorCalibration.Tests.ps1 pins the ≤-sum and ≥-90% bounds);
-        # no gate here proves the payload RUNS.
+        # Just under the arm64 section-floor sum (Smoke.FloorCalibration.Tests.ps1 pins the bounds).
         $armMinPassed = 76
         $armMaxSkipped = 20
         if ($PSBoundParameters.ContainsKey('SmokeMinPassed')) { $armMinPassed = $SmokeMinPassed }
@@ -992,18 +810,13 @@ if ($Stages -contains 'final') {
             BASE_IMAGE  = Get-BkTag $script:FinalTagName
             MIN_PASSED  = "$armMinPassed"
             MAX_SKIPPED = "$armMaxSkipped"
-            # #176: on the cross GPU lane -ExpectGpu makes a LOST CUDA env red instead
-            # of a silent skip; the payload sections still skip in-suite, so the
-            # floor lane stays Arm64 (Test-Container.ps1's selector checks cross first).
+            # Makes a lost CUDA env red instead of a silent skip.
             EXPECT_GPU  = $(if ($isNvidia) { '1' } else { '0' })
         } -MaxAttempts 1
     } elseif ($TargetArch -ne 'amd64') {
         Write-Host '[bk:smoke-gate] skipped (-SkipSmokeGate). NB the arm64 payload is statically verified only.' -ForegroundColor Yellow
     } elseif (-not $SkipSmokeGate) {
-        # LANE-AWARE FLOOR: 170 is the CPU number (just under its section-floor
-        # sum of 180); on the GPU lane it would tolerate losing 60 of the 220
-        # assertions a green run executes. 190 is the GPU column's sum in
-        # Test-Container.ps1. An explicit -SmokeMinPassed always wins.
+        # The CPU floor would let the GPU lane lose 60 assertions; 190 is the GPU column's sum, and an explicit value wins.
         $effectiveMinPassed = $SmokeMinPassed
         if ($isNvidia -and -not $PSBoundParameters.ContainsKey('SmokeMinPassed')) {
             $effectiveMinPassed = 190
@@ -1016,8 +829,7 @@ if ($Stages -contains 'final') {
             MIN_PASSED  = "$effectiveMinPassed"
             MAX_SKIPPED = "$SmokeMaxSkipped"
             EXPECT_GPU  = $(if ($isNvidia) { '1' } else { '0' })
-            # rocm carries the default stack, so the CPU floor stands; Test-RocmImage.ps1 adds the ROCm
-            # checks, including every windows/scripts/build/rocm-checks/*.ps1.
+            # rocm keeps the CPU floor; Test-RocmImage.ps1 adds the ROCm checks on top.
             EXPECT_ROCM = $(if ($Variant -eq 'rocm') { '1' } else { '0' })
         }
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.smoke-gate' -Label 'smoke-gate' -NoOutput -BuildArgs $smokeArgs -MaxAttempts 1
@@ -1025,14 +837,11 @@ if ($Stages -contains 'final') {
     } else {
         Write-Host '[bk:smoke-gate] SKIPPED (-SkipSmokeGate) — this image is UNVERIFIED' -ForegroundColor Yellow
     }
-    # PUBLISH GATE, never skipped (not even by -SkipSmokeGate): no build-host setting in the
-    # final image's environment. docs/windows-build-resources.md#what-the-published-image-carries
+    # The publish gate is never skipped, not even by -SkipSmokeGate.
     Invoke-BkPublishGate -Image (Get-BkTag $script:FinalTagName)
-    # FAIL LOUDLY, pre-export (audit #15), on a -NoCacheStage entry that matched
-    # nothing: a typo would otherwise leave every stage cached and look green.
+    # Before export, so a -NoCacheStage typo cannot ship a fully cached image as green.
     & Assert-NoCacheStageMatched
-    # FinalTar / PushRef: the same final solve from cache, different exporter.
-    # Push auth uses THIS shell's docker credential store (`docker login` first).
+    # The same final solve from cache with another exporter; push auth is this shell's docker login.
     if ($FinalTar) {
         Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-tar' -OutputSpec "type=docker,name=local/kataglyphis:$($script:FinalTagName),dest=$FinalTar" -BuildArgs $finalArgs
     }
@@ -1042,19 +851,15 @@ if ($Stages -contains 'final') {
     }
 }
 
-# The matched-nothing gate fires PRE-EXPORT inside the final block; this copy
-# covers runs WITHOUT 'final', where that site never executes.
+# Covers runs without 'final', where the pre-export check never executes.
 if ($Stages -notcontains 'final') {
     & Assert-NoCacheStageMatched
 }
 
 $elapsed = (Get-Date) - $started
-# Run manifest (backlog #61): machine-parseable per-stage seconds, one file per
-# run — otherwise a green run records no per-stage cost anywhere.
+# The run manifest is the only record of a green run's per-stage cost.
 if ($script:StageTimings.Count -gt 0) {
     $manifest = Join-Path $script:LogDir ("bk-" + $script:RunId + "-manifest.txt")
-    # arch= added 2026-08-31: with two lanes at gpu=False the header could not
-    # attribute a run to amd64 vs arm64, which is exactly what #152's A/B needs.
     $lines = @("run=$($script:RunId) arch=$TargetArch variant=$(if ($Variant) { $Variant } else { 'default' }) stages=$($Stages -join ',') gpu=$($isNvidia) total_s=$([math]::Round($elapsed.TotalSeconds,1))")
     foreach ($k in $script:StageTimings.Keys) { $lines += ("{0}={1}" -f $k, $script:StageTimings[$k]) }
     Set-Content -Path $manifest -Value $lines -Encoding utf8
@@ -1065,10 +870,7 @@ if ($script:StageTimings.Count -gt 0) {
 Write-Host ("`n[bk] Done in {0:hh\:mm\:ss}. Stages: {1}{2}" -f $elapsed, ($Stages -join ', '), $(if ($Variant) { " ($Variant)" } else { ' (CPU)' })) -ForegroundColor Green
 
 } finally {
-    # Stop the resource sampler and print the per-phase exhaustion summary —
-    # ALSO on failure (that is when you most want to know which step ate the
-    # machine). WHOLE BODY guarded: a throw here must not replace the real
-    # stage exception or skip Pop-Location.
+    # Sampler summary on failure too; guarded so it never replaces the real exception or skips Pop-Location.
     try {
         Set-BuildPhase 'done'
         if ($script:SamplerProc -and -not $script:SamplerProc.HasExited) {

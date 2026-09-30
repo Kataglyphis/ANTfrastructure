@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# activate-cross-python.sh
-# Activate the correct per-architecture cross-compiled Python staging root
-# so Meson (gst-python) links against the target libpython instead of the
-# host amd64 libpython. Called from Dockerfile.media base and gstreamer stages.
+# Points /opt/python-target at the target arch's Python so Meson (gst-python) links the target libpython.
 
 if [ "${BUILD_MODE:-native}" != "cross" ] || [ "${TARGET_ARCH:-amd64}" = "amd64" ]; then
   exit 0

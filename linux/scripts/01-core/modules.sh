@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# modules.sh - shared module loader
-#
-# Provides: source_module <filename>
-#           source_modules_framework
-#
-# Supports both repository layout:
-#   linux/scripts/01-core, 02-toolchain, ...
-# and container layout:
-#   /opt/scripts/core, /opt/scripts/toolchain
+# Module loader for both the repo layout (01-core, 02-toolchain) and the container one (/opt/scripts/core).
 
 _find_scripts_root() {
   local start_dir="$1"
@@ -55,13 +47,7 @@ source_module() {
     caller_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
   fi
 
-  # Framework dirs FIRST, caller-local LAST (2026-08-30). The old order started
-  # with ${caller_dir}/${name}, so sourcing 03-media/build/onnxruntime/build/
-  # lib/common.sh bare (SCRIPT_DIR unset) resolved source_module "common.sh" to
-  # THAT SAME FILE — an infinite re-source loop (media_common_init → common.sh
-  # → media_common_init … → SIGSEGV). Every source_module name is an 01-core
-  # module, so nothing legitimate ever wanted a caller-local shadow; the
-  # caller_dir slot stays as the last resort only.
+  # Framework dirs first, caller-local last: a same-named caller file would otherwise re-source itself forever.
   local -a candidates=()
   if [ -n "${SCRIPTS_ROOT:-}" ] && [ "${SCRIPTS_ROOT}" != "${caller_dir}" ]; then
     candidates+=(

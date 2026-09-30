@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# Tests for 01-core/parallel-loop.sh.
-#
-# The headline case is a regression guard: run_parallel_arch_loop used to clean
-# its flag dir with `trap 'rm -rf "${_flagdir}"' RETURN`. A RETURN trap set
-# inside a function is NOT scoped to it — it stays armed and fires again when
-# the CALLER returns, where ${_flagdir} (a local) no longer exists. Under the
-# orchestrator's `set -u` that killed build-cross-chain.sh with a bare
-# "_flagdir: unbound variable" right after the build loop, i.e. AFTER every
-# stage had succeeded, turning a green chain into exit 1.
+# A RETURN trap set in a function also fires when its caller returns, after the function's locals are gone.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${TESTS_DIR}/../01-core"
@@ -26,11 +18,7 @@ t_case "arch_loop_flag_prefix honors TMPDIR and returns a bare prefix"
 t_assert_eq "/custom/tmp/cross-loop-flags" \
             "$(TMPDIR=/custom/tmp arch_loop_flag_prefix cross-loop-flags)"
 
-# ---------------------------------------------------------------------------
-# Regression: a caller returning after run_parallel_arch_loop must not trip
-# over a still-armed RETURN trap. This is run in a child bash under the same
-# `set -euo pipefail` the orchestrator uses, because the failure mode is the
-# shell aborting — which cannot be observed from inside the same process.
+# A child bash under the orchestrator's `set -euo pipefail`: the failure mode is the shell aborting.
 _run_caller_scenario() {
   bash -c '
     set -euo pipefail
@@ -75,13 +63,7 @@ PARALLEL_ARCHS=0
 t_assert_fails run_parallel_arch_loop worker_fail "${workdir}/f2" 4 amd64 arm64
 t_assert_ok    run_parallel_arch_loop worker_fail "${workdir}/f3" 4 amd64
 
-# ---------------------------------------------------------------------------
-# PARALLEL-path failure harvest: workers run as background subshells; a failed
-# lane is persisted as a failed-<arch> flag file and harvested after the join
-# into a nonzero return, while sibling lanes still complete their work. Safe
-# to assert from this process: cleanup is explicit at the single exit point
-# (see the no-RETURN-trap contract at the top of parallel-loop.sh), so no
-# trap is left armed to corrupt our own returns.
+# The parallel path harvests failed-<arch> flags after the join; with no RETURN trap it is safe in this process.
 t_case "parallel path: one failing arch -> nonzero return, sibling lane completed"
 worker_par() {
   if [ "$1" = "amd64" ]; then
@@ -104,13 +86,7 @@ t_assert_eq "0" "$(find "${workdir}" -maxdepth 1 \( -name 'f4.*' -o -name 'f5.*'
   "parallel runs must not leak their flag dirs"
 PARALLEL_ARCHS=0
 
-# ---------------------------------------------------------------------------
-# O4: PARALLEL_LOOP_FAIL_FAST (sequential path). Default keep-going still
-# attempts every arch after a failure (CI resilience); opt-in fail-fast aborts
-# the loop on the first failure so the remaining arches aren't ground for hours.
-# A worker records each arch it is invoked for (into an order file), so we can
-# assert exactly which arches ran. The scenario runs in a child bash under the
-# same set the orchestrator uses; amd64 is made to fail first.
+# PARALLEL_LOOP_FAIL_FAST=1 stops the sequential loop at the first failure; workers log each arch they ran.
 
 t_case "O4: fail-fast aborts the sequential loop after the first arch failure"
 : > "${workdir}/ff-order"
@@ -139,11 +115,7 @@ t_assert_eq "amd64 arm64 riscv64" "$(tr '\n' ' ' < "${workdir}/kg-order" | sed '
   "default keep-going must attempt all three arches"
 
 
-# ── XO: harvesting the --no-push flags ───────────────────────────────────────
-# Each per-arch worker is a background subshell, so it persists state to files
-# instead of arrays. On the push path it writes pin.<stage>.<arch> AND
-# built.<stage>.<arch>; under --no-push there is no pin to write, only built.
-# The harvest iterated pin.* alone, so those runs lost every BUILT_THIS_RUN flag.
+# Workers persist state to files; --no-push writes only built.*, so the harvest must not key on pin.*.
 _harvest_into() {
   local d="${1}"
   bash -c '

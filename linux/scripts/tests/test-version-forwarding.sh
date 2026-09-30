@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Tests for 01-core/version-forwarding.sh — the awk discovery that decides
-# which versions.env keys become --build-arg on every build, including the
-# `# noforward` opt-out parsing.
+# version-forwarding.sh: which versions.env keys become --build-arg, and the `# noforward` opt-out.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -51,11 +49,7 @@ case "${joined}" in
   *) t_assert_eq "ok" "ok" ;;
 esac
 
-# C3 REGRESSION GUARD (2026-08-24): a build-arg that the orchestrator PASSES but
-# the Dockerfile never DECLARES is silently dropped by BuildKit, and the build
-# script then falls back to an inline literal. That was live, not theoretical:
-# android shipped onnxruntime v1.28.0 against a v1.29.0 pin and litert v2.1.6
-# against a v2.2.0 pin. Two halves must both hold, so assert both.
+# BuildKit silently drops a build-arg the Dockerfile never declares, and the script then falls back to a literal.
 _dfa="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}/linux/Dockerfile.android"
 for _v in ONNXRUNTIME_VERSION LITERT_VERSION IREE_VERSION; do
   t_case "Dockerfile.android DECLARES ARG ${_v} (else BuildKit drops the forward)"
@@ -77,9 +71,7 @@ for _lib in onnxruntime litert iree; do
   fi
 done
 
-# Per-arch truth: riscv64 has no upstream CMake/Node artifact, so the image must
-# advertise the distro versions it really carries — the shipped-truth probe
-# compares ADV against the binaries. docs/cross-build-verification.md#per-arch-version-truth
+# Per-arch overrides; see docs/cross-build-verification.md#per-arch-version-truth
 _fwd() {  # _fwd <arch> <KEY> -> the value that would be forwarded
   local _a=(); append_version_build_args _a "$1"
   printf '%s\n' "${_a[@]}" | sed -n "s/^$2=//p" | head -1
@@ -93,8 +85,7 @@ t_assert_eq "9.9.9" "$(CMAKE_VERSION=9.9.9 CMAKE_VERSION_RISCV64=1.1.1 _fwd amd6
 t_assert_eq "9.9.9" "$(CMAKE_VERSION=9.9.9 CMAKE_VERSION_RISCV64=1.1.1 _fwd '' CMAKE_VERSION)" \
   "no arch given: the base value stands"
 
-# The values above are fixtures; these read the real versions.env through the
-# chain's own loader, in a subshell so the fixtures stay isolated.
+# The real versions.env through the chain's loader, in a subshell so the fixtures stay isolated.
 _fwd_live() {
   bash -c 'source "$0/01-core/artifact-common.sh" >/dev/null 2>&1
            source "$0/01-core/version-forwarding.sh"
@@ -108,8 +99,7 @@ t_assert_eq "22.22.1" "$(_fwd_live riscv64 NODE_VERSION)"  "Node.js publishes no
 t_assert_eq "4.4.3"   "$(_fwd_live amd64 CMAKE_VERSION)"   "amd64 keeps the Kitware pin"
 
 t_case "a forwarded key that merely ends in _<ARCH> is not an override"
-# The override lookup is skipped for any name that is itself forwarded, so a
-# real key is never mistaken for another key's per-arch value.
+# The override lookup skips names that are forwarded keys themselves.
 _tracked() { if _vf_is_tracked "$1"; then echo tracked; else echo unknown; fi; }
 t_assert_eq "tracked" "$(_tracked GENAI_ALLOW_RISCV64)" "it is a versions.env key of its own"
 t_assert_eq "unknown" "$(_tracked CMAKE_VERSION_RISCV64)" "the override is # noforward, so it is not a key"
@@ -117,11 +107,7 @@ t_assert_eq "unknown" "$(_tracked NOT_A_VERSIONS_ENV_KEY)" "and an unrelated nam
 t_assert_eq "true" "$(_fwd_live riscv64 GENAI_ALLOW_RISCV64)" \
   "GENAI_ALLOW_RISCV64 is a key in its own right and must still be forwarded"
 
-# TS4 REGRESSION GUARD (2026-08-24): the llvm-project checkout lives on a
-# shared cachemount. build-clang.sh used a version-LESS path behind a bare
-# directory-exists guard, so an LLVM bump silently rebuilt LAST release's
-# sources. Assert the path is keyed on the tag and the reuse test verifies
-# CONTENT (rev-parse + populated worktree), in both toolchain entry points.
+# The llvm checkout sits on a shared cache mount, so an unkeyed path would rebuild the last release's sources.
 _bc="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}/linux/scripts/02-toolchain/build-clang.sh"
 _lc="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}/linux/scripts/02-toolchain/llvm-cross.sh"
 t_case "build-clang.sh keys its llvm checkout dir on the LLVM tag"
@@ -137,8 +123,7 @@ t_case "both entry points evict superseded llvm generations"
 if [ "$(grep -l 'Evicting stale llvm checkout' "${_bc}" "${_lc}" | wc -l)" -eq 2 ]; then t_assert_eq ok ok; else
   t_assert_eq "eviction in both" "missing" "unbounded ~2GB-per-release growth on the shared cachemount"; fi
 
-# Quoting a `;`-bearing versions.env value must change the stderr noise and
-# nothing else. docs/cross-build-verification.md#per-arch-version-truth
+# Quoting a `;`-bearing value must only silence stderr; see docs/cross-build-verification.md#per-arch-version-truth
 _VE="${TESTS_DIR}/../01-core/versions.env"
 _LVE="${TESTS_DIR}/../01-core/load-versions-env.sh"
 

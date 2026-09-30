@@ -2,24 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 #requires -Version 7.0
-#
-# Windows mirror of linux/scripts/03-media/runtime/assemble-torch-app.sh:
-# clone OrchestrANT at $AppRef, `uv sync` its environment on the
-# source-built CPython, then RECONCILE so the wheels built by this lane
-# (onnxruntime / onnxruntime-genai / tvm, staged at C:\runtime\wheels) always win
-# over anything PyPI resolved -- remaining dependencies come from PyPI/pytorch
-# index. The source-built cv2 (no wheel by design) plus the sitecustomize shim
-# (platform tag + native DLL dirs) are staged into the venv, mirroring the
-# linux staged-OpenCV5 handling. GUI extra (wxPython) excluded, like linux.
+# Windows mirror of assemble-torch-app.sh; see docs/windows-builds.md § The torch step (OrchestrANT app environment).
 param(
 
     [string]$AppRef = '',
     [string]$AppDir = 'C:\opt\OrchestrANT',
     [string]$WheelDir = 'C:\runtime\wheels',
     [ValidateSet('install', 'verify', 'all')][string]$Mode = 'all',
-    # Torch BACKEND extra (torch is declared ONLY inside these extras in the
-    # app's pyproject -- see the linux script's 2026-07-12 lesson): pytorch-cpu
-    # (default), pytorch-cu130, ... 'none' disables.
+    # Torch backend extra, the only place the app declares torch: pytorch-cpu (default), pytorch-cu130, ...; 'none' disables.
     [string]$PytorchExtra = ''
 )
 
@@ -27,21 +17,13 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-# Canonical stderr-shielded native runner (this script's local Invoke-TorchAppNative
-# was the prototype; it is now promoted to WindowsNative.Common.psm1 and consumed
-# from there). This script runs in the torch stage, where the whole modules dir
-# is COPY'd.
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $nativeModulePath = Join-Path $scriptAssetRoot 'modules\WindowsNative.Common.psm1'
 if (-not (Test-Path $nativeModulePath)) { throw "Required module not found: $nativeModulePath" }
 Import-Module $nativeModulePath -Force
 
-# The else-literal must equal versions.env APP_REF; SourceBuild.PinParity gates
-# exactly that, and it had drifted a patch behind (v0.0.27 vs v0.0.28), which
-# means an unattended run with no APP_REF in the environment built the wrong tag.
+# The else-literal must equal versions.env APP_REF; SourceBuild.PinParity gates it.
 if ([string]::IsNullOrWhiteSpace($AppRef)) { $AppRef = if ($env:APP_REF) { $env:APP_REF } else { 'develop' } }
 if ([string]::IsNullOrWhiteSpace($PytorchExtra)) { $PytorchExtra = if ($env:PYTORCH_EXTRA) { $env:PYTORCH_EXTRA } else { 'pytorch-cpu' } }
 
@@ -51,8 +33,7 @@ $venvDir = Join-Path $AppDir '.venv'
 $venvPython = Join-Path $venvDir 'Scripts\python.exe'
 $venvSite = Join-Path $venvDir 'Lib\site-packages'
 
-# Verbatim copy of linux/scripts/03-media/runtime/ort-venv-census.py, which the Linux lane runs;
-# TorchApp.OrtCensus.Tests.ps1 pins the two together.
+# Verbatim copy of linux/scripts/03-media/runtime/ort-venv-census.py; TorchApp.OrtCensus.Tests.ps1 pins the two together.
 function Get-TorchAppOrtCensusSource {
     return @'
 #!/usr/bin/env python3
@@ -273,8 +254,7 @@ if __name__ == "__main__":
 '@
 }
 
-# Runs the census in -Python with -I, the program on stdin; returns its exit code and output.
-# A missing interpreter throws, so a stale $LASTEXITCODE can never read as a verdict.
+# Runs the census from stdin under -I; a missing interpreter throws, so a stale $LASTEXITCODE is never a verdict.
 function Invoke-TorchAppOrtCensus {
     param(
         [Parameter(Mandatory)][ValidateSet('check', 'purge-list')][string]$Mode,
@@ -365,14 +345,10 @@ function Install-TorchAppEnvironment {
         [void](Invoke-ShieldedNative -Label 'git clone (app)' -CommandLine "git clone --branch $AppRef --depth 1 $appRepo ""$AppDir""")
     }
 
-    # Venv on the SOURCE-built CPython (matches our cp314 wheels; see the
-    # media-merge UV_PYTHON seeding fix). copy link mode: hardlinks don't
-    # survive docker layer boundaries.
+    # The source-built CPython matches our cp314 wheels; copy mode, as hardlinks do not survive layer boundaries.
     $env:UV_PYTHON = $cpythonExe
     $env:UV_LINK_MODE = 'copy'
-    # No uv wheel cache: everything resolved here is installed exactly once into
-    # the venv, and uv's cache (multiple GB of torch/onnxruntime wheels) would
-    # otherwise be committed into the torch layer.
+    # No uv cache: gigabytes of torch/onnxruntime wheels would otherwise be committed into the torch layer.
     $env:UV_NO_CACHE = '1'
 
     Push-Location $AppDir
@@ -380,14 +356,10 @@ function Install-TorchAppEnvironment {
         $extraArgs = '--extra ml-ai --extra docs'
         if ($PytorchExtra -and $PytorchExtra -ne 'none') { $extraArgs += " --extra $PytorchExtra" }
         if ($env:SKIP_TORCH_TEST_EXTRAS -ne 'true') { $extraArgs += ' --extra test' }
-        # ai-edge-litert installs from the app lock like the rest: 2.1.3 had no cp314
-        # wheel, the 2.1.6 that OrchestrANT v0.0.28 locks has one, and the app smoke
-        # passes it on Server Core (BACKLOG CON28, 2026-09-26).
         $baseSyncArgs = "--find-links ""$WheelDir"" $extraArgs"
         $lockPath = Join-Path $AppDir 'uv.lock'
 
-        # Frozen first when the repo ships a lock; regenerate on failure
-        # (this Python/platform may not be covered by the upstream lock).
+        # Frozen first; regenerate on failure, since the upstream lock may not cover this Python/platform.
         $haveLock = Test-Path $lockPath
         $frozenOk = $false
         if ($haveLock) {
@@ -402,55 +374,30 @@ function Install-TorchAppEnvironment {
             [void](Invoke-ShieldedNative -Label 'uv sync' -CommandLine "uv sync $syncArgs")
         }
 
-        # -- Reconcile (linux reconcile_local_wheels): our source builds WIN. --
-        # Uninstall any PyPI build of a family we ship locally BEFORE
-        # force-reinstalling, so a transitively-pulled upstream (onnxruntime-gpu,
-        # opencv-python 4.x) cannot shadow the custom build.
-        # ORT names come from the census, never a fixed list: a variant missing from a list stays beside the chain wheel.
+        # Reconcile: uninstall PyPI builds of our families (ORT names from the census, never a list) before reinstalling ours.
         $ortPurge = @(Get-TorchAppOrtPurgeName -Python $venvPython -Store $WheelDir)
         Write-Host "ORT distributions the chain wheels replace: $(if ($ortPurge.Count) { $ortPurge -join ', ' } else { 'none' })"
         [void](Invoke-ShieldedNative -Optional -Label 'uninstall pypi onnx/genai/opencv families' `
                 -CommandLine "uv pip uninstall --python ""$venvPython"" $($ortPurge -join ' ') opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless")
         $localWheels = @(Get-ChildItem -Path $WheelDir -Filter '*.whl' -ErrorAction SilentlyContinue | ForEach-Object { '"{0}"' -f $_.FullName })
         if ($localWheels.Count -eq 0) { throw "no local wheels found in $WheelDir -- the media build should have staged onnxruntime/genai/tvm" }
-        # --no-deps is REQUIRED: onnxruntime_genai_cuda declares its dependency as
-        # `onnxruntime-gpu`, but this lane ships the combined `onnxruntime` wheel
-        # (CUDA+TRT+DML in one) -- letting uv resolve that metadata is unsatisfiable
-        # on cp314 and would shadow our build even if it resolved. (linux dodges
-        # this by PRUNING genai wheels on plain-onnxruntime lanes; we want genai.)
+        # --no-deps is required: genai-cuda names onnxruntime-gpu, which our combined onnxruntime wheel replaces.
         [void](Invoke-ShieldedNative -Label 'force-reinstall local wheels (no-deps)' `
                 -CommandLine "uv pip install --python ""$venvPython"" --force-reinstall --no-deps $($localWheels -join ' ')")
-        # Stage from the base interpreter's site-packages (venvs do not see it):
-        # - cv2: no wheel exists by design (opencv-python is a separate project)
-        # - tvm_ffi: tvm 0.25's FFI split makes it a hard top-level import, and
-        #   the version our tvm build installed (0.1.12 final) has NO usable
-        #   PyPI wheel (only 0.1.12rc0 sdist/rc) -- copy the working one
-        # - sitecustomize.py: win-amd64 tag + add_dll_directory for the image's
-        #   native DLL homes (everything else is lazy/optional or rides the app
-        #   lock; force-adding e.g. ml_dtypes drags a cp314-less sdist build in)
-        # ml_dtypes: iree.runtime hard-imports it; our wheels install --no-deps
-        # here and the app lock does not carry it, so stage the base copy (pip
-        # resolution risks a cp314-less sdist -- same reason as tvm_ffi).
+        # From base site-packages, which venvs do not see: cv2 has no wheel, tvm_ffi and ml_dtypes no usable cp314 one.
         foreach ($staged in @('cv2', 'tvm_ffi', 'ml_dtypes', 'sitecustomize.py')) {
             $src = Join-Path $baseSite $staged
             if (Test-Path $src) {
                 Copy-Item $src -Destination $venvSite -Recurse -Force
                 Write-Host "Staged $staged into venv site-packages"
             } elseif ($staged -eq 'sitecustomize.py') {
-                # HARD fail (2026-08-21): unlike cv2/tvm_ffi/ml_dtypes, nothing
-                # downstream ever imports sitecustomize explicitly — a missing
-                # copy silently drops the win-amd64 platform tag AND the
-                # add_dll_directory calls for the image's native DLL homes,
-                # and Test-TorchAppEnvironment cannot catch it.
+                # Hard fail: nothing imports sitecustomize explicitly, so its loss would pass every later check.
                 throw "$src not found -- the venv would silently lose the platform tag + DLL-dir wiring"
             } else {
                 Write-Warning "$src not found -- venv will miss $staged"
             }
         }
-        # abi3 wheels (IREE's cp312-abi3 pyds) link python3.dll, which uv venvs
-        # do NOT stage next to their python.exe -- the import then dies with
-        # STATUS_DLL_NOT_FOUND (same trap PyAV hit in the pip-route spikes).
-        # Copy it from the source CPython beside the venv interpreter.
+        # abi3 pyds link python3.dll, which uv venvs do not stage beside python.exe (STATUS_DLL_NOT_FOUND).
         $venvScripts = Split-Path $venvPython -Parent
         $py3Dll = Join-Path $venvScripts 'python3.dll'
         if (-not (Test-Path $py3Dll)) {
@@ -474,8 +421,7 @@ function Test-TorchAppEnvironment {
     Assert-TorchAppOrtChainOnly -Python $venvPython -Store $WheelDir
     $verifyPy = Join-Path $env:TEMP 'verify-torch-app.py'
     $gpuLane = ($env:GPU_TYPE -eq 'nvidia')
-    # try/finally: the staged verify script must not survive this function on the
-    # FAILURE path either (it would otherwise ride into the layer/debug image).
+    # The staged verify script must not ride into the layer on the failure path either.
     try {
         Set-Content -Path $verifyPy -Encoding ASCII -Value @'
 import os
@@ -509,11 +455,7 @@ print('torch-app-env OK')
     } finally {
         Remove-Item $verifyPy -Force -ErrorAction SilentlyContinue
     }
-    # The app's OWN wheel-smoke suite ("exercise the installed ML wheels with
-    # real work"; exits non-zero on any required failure -- upstream designed it
-    # to gate container builds). Measured on app v0.0.28 with ai-edge-litert
-    # installed (2026-09-26): 13/15 ok, 0 failures, the WARNs opencv-codecs (no
-    # .exr) and opencv-freetype.
+    # The app's own wheel-smoke suite, which upstream designed to gate container builds.
     [void](Invoke-ShieldedNative -Label 'app smoke suite (python -m orchestrant.smoke)' `
             -CommandLine """$venvPython"" -m orchestrant.smoke")
     [void](Invoke-ShieldedNative -Optional -Label 'uv pip list' -CommandLine "uv pip list --python ""$venvPython""")
@@ -523,6 +465,5 @@ print('torch-app-env OK')
 if ($Mode -in @('install', 'all')) { Install-TorchAppEnvironment }
 if ($Mode -in @('verify', 'all')) { Test-TorchAppEnvironment }
 
-# Explicit success: pwsh -File (and docker RUN) propagate the LAST native exit
-# code otherwise. Real failures throw above; reaching EOF IS success.
+# pwsh -File propagates the last native exit code otherwise; real failures throw above.
 exit 0

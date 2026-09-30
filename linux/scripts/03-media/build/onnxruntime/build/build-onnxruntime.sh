@@ -60,18 +60,11 @@ run_gpu_build_step() {
 
 ensure_onnx_gpu_placeholder_output_dir
 
-# Run a web (WASM/JS) build step only on amd64; emscripten/web builds are not
-# produced for the cross targets. DRYs the identical is_amd64_arch gate.
+# Web builds run on amd64 only; the cross targets produce no emscripten output.
 run_web_build_step() {
   local script="$1" label="$2"
   if is_amd64_arch; then
-    # onnx-web (WASM + its JS wrapper) is OPTIONAL — the runtime image is
-    # Python/native and does not consume it. 40-build-wasm.sh already ships
-    # without it on failure; the JS wrapper DEPENDS on that WASM, so it cannot
-    # be more-mandatory than the thing it wraps. A transient npm/GitHub network
-    # error (electron postinstall, SafeInt FetchContent) must therefore NOT
-    # abort the whole media stage — warn and ship without onnx-web. Set
-    # ORT_WEB_REQUIRED=1 to restore hard-fail.
+    # The runtime image never consumes onnx-web, so a transient npm/GitHub failure must not abort the media stage.
     if ! bash "${SCRIPT_DIR}/${script}" "${FORWARDED_ARGS[@]}"; then
       if [ "${ORT_WEB_REQUIRED:-0}" = "1" ]; then
         err "${label} failed and ORT_WEB_REQUIRED=1"

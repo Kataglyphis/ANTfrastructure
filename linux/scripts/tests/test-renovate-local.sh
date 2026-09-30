@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
-# Tests for renovate-local.sh + renovate_planner.py + renovate_locator.py -- the
-# half Renovate cannot do. Every case runs the REAL script against a throwaway
-# checkout, with the Renovate round trip replaced by the two documented inputs
-# (RENOVATE_LOCAL_REPORT / RENOVATE_LOCAL_CONFIG): no network, no node, no live
-# repository. The world those cases run in is renovate-fixtures.sh beside this
-# file; the read-back wave is test-renovate-audit.sh.
+# renovate-local.sh and its planner/locator on throwaway checkouts, Renovate replaced by RENOVATE_LOCAL_REPORT/CONFIG.
 
-# The eight lettered cases below are the ones that WITHDREW the previous apply
-# engine, whose locator searched for the OLD VALUE and then claimed a line near
-# something that named the dep. Each is red against that approach and green
-# against locating by the manager's own syntax.
-# docs/dependency-updates.md#how-one-value-gets-rewritten
+# Lettered cases fail any locator that searches for the old value; see docs/dependency-updates.md#how-one-value-gets-rewritten
 set -u
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/renovate-fixtures.sh"
 
@@ -307,13 +298,7 @@ t_assert_eq "2" "${RC}" "the refusal is the RESULT, so the run exits 2 and never
 t_assert_contains "${OUT}" "${REFUSE_WHY}" "the rule's description is printed"
 t_assert_eq "  http: 1.1.0" "$(_pub "${Q}" 3)" "nothing written"
 
-# --------------------------------------------------------------------------
-# The second wave. Every case below is a defect that was MEASURED against this
-# tool on 2026-09-10, with the fixture that found it. They are grouped by the
-# property they hold, and each one writes something wrong -- or leaves the tree
-# half-written -- against the code as it stood that morning.
-# --------------------------------------------------------------------------
-# (A) Containment. The report's packageFile is JSON someone else wrote.
+# (A) Containment: the report's packageFile is JSON someone else wrote.
 t_case "(A) a report naming a file OUTSIDE the checkout writes nothing"
 AB="$(_plant ab pubspec.yaml 'name: fixture\ndependencies:\n  http: 1.1.0\n')"
 OUTSIDE="${WORK}/outside.yaml"
@@ -390,11 +375,7 @@ t_assert_eq "1" "${RC}" "--dry-run must fail where --apply would"
 t_assert_contains "${OUT}" "cannot write pkg/pubspec.yaml" "and name the file it cannot write"
 t_assert_eq "  http: 1.1.0" "$(_pub "${CP}" 3)" "--dry-run wrote nothing"
 
-# _sub_repo and SUB_REPORT -- the superproject-plus-manifest fixture these cases
-# and the rollback cases in test-renovate-exit.sh both drive -- live in
-# renovate-fixtures.sh. They were here until 2026-09-10, when the exit suite
-# needed the same shape to prove the gitlink half is put back too, and a second
-# copy of a submodule fixture is exactly the clone the duplication gate catches.
+# _sub_repo and SUB_REPORT live in renovate-fixtures.sh, shared with test-renovate-exit.sh.
 
 t_case "(C3) a plan spanning a gitlink and an unwritable manifest moves NO gitlink"
 CS="$(_sub_repo cs)"
@@ -423,8 +404,7 @@ printf '# lock-b\n' > "${DF}/b/Cargo.lock"
 _commit "${DF}"
 DF_REPORT="${WORK}/df.json"
 _report_pair "${DF_REPORT}" cargo serde =1.0.100 =1.0.229 a/Cargo.toml b/Cargo.toml
-# a cargo that MUTATES the lock and then fails -- exactly what a resolution
-# conflict or a dead registry does, and what no pre-flight can predict.
+# A cargo that mutates the lock then fails, as a resolution conflict or dead registry does.
 FAIL_STUBS="${WORK}/fail-stubs"
 mkdir -p "${FAIL_STUBS}"
 printf '#!/usr/bin/env bash\nprintf "touched\\n" >> Cargo.lock\nexit 1\n' > "${FAIL_STUBS}/cargo"
@@ -475,12 +455,7 @@ t_assert_eq "1" "${RC}" "the run must FAIL even with every tool present"
 t_assert_contains "${OUT}" "sits beside uv.lock, poetry.lock" "it names both"
 t_assert_eq '  "ruff==0.9.0",' "$(_line "${EA}/pyproject.toml" 4)" "nothing written"
 
-# (F1) github-actions: a `uses:` that is not a step's. Each decoy is planted
-# ALONE, because that is what makes the measurement: with one match in the file
-# the old finder WROTE it, and with several it would have refused for a count
-# mismatch and proved nothing. Two cases that differ only in the decoy share one
-# assertion helper -- the copy the duplication gate catches.
-#   _refuses_actions <repo> <decoy line> <that line, unchanged>
+# (F1) A `uses:` that is not a step's, each decoy planted alone so a single match cannot hide behind a count mismatch.
 _refuses_actions() {
   _run "$1" "${B_REPORT}" --apply --managers github-actions
   t_assert_eq "2" "${RC}" "the refusal is the RESULT, so the run exits 2 and never 0"
@@ -539,10 +514,7 @@ t_assert_eq "2" "${RC}" "the refusal is the RESULT, so the run exits 2 and never
 t_assert_contains "${OUT}" "no cargo declaration of 'serde'" "and refuses by name"
 t_assert_eq 'serde = "=1.0.100"' "$(_cargo_line "${FF}" 5)" "the metadata key is untouched"
 
-# (F4) npm: which object a key sits in, tracked rather than assumed. The
-# array-nested decoy lives in the npm case above, beside the `scripts` one --
-# two cases planting near-identical package.json fixtures is the copy the
-# duplication gate catches, and one fixture carrying every decoy reads better.
+# (F4) npm: the array-nested decoy lives in the npm case above, beside the `scripts` one.
 t_case "(F4b) npm: a manifest written on ONE line is read too"
 FH="$(_plant fh package.json '{"name":"fixture","scripts":{"left-pad":"1.1.0"},"dependencies":{"left-pad":"1.1.0"}}\n')"
 _run "${FH}" "${M_REPORT}" --apply --managers npm
@@ -569,15 +541,7 @@ _run_stubbed "${GW}" "${GW_REPORT}" --apply --managers cargo
 t_assert_eq "0" "${RC}" "the second apply must succeed"
 t_assert_contains "${OUT}" "already applied" "and report DONE, structurally"
 
-# (G2) A report whose old and new are the SAME string is a LOCKFILE-ONLY update:
-# the declared range already covers the release, so the manifest line is written
-# to itself for one reason only -- it registers the lockfile refresh, which is
-# the whole update. Measured 2026-09-11 against OxidANT: the read-back audit
-# counted the no-op as "the declaration the report named was left alone" and
-# refused the entire run, so every cargo manifest with an in-range patch
-# available made --apply unusable. The manifest half must stay still AND the
-# lock tool must still run; asserting only the first would pass on a tool that
-# dropped the update silently.
+# (G2) old == new is a lockfile-only update: the manifest stays and the lock tool must still run.
 t_case "(G2) cargo: a range moving to itself refreshes the lock, not the file"
 GP="$(_repo gp)"
 printf '[package]\nname = "fixture"\n\n[dependencies]\ncxx = "1.0"\n' > "${GP}/Cargo.toml"
@@ -592,14 +556,7 @@ t_assert_contains "$(cat "${ARGV_LOG}")" "cargo | update -p cxx@1.0 | gp" \
   "and the lockfile owner ran for the named dep, disambiguated by the range"
 t_assert_ok git -C "${GP}" diff --quiet HEAD
 
-# --------------------------------------------------------------------------
-# (H) The cleanliness check and a NESTED submodule. One question asked once per
-# direction, because the fix is a single option and the way to get it wrong is
-# to widen it: `--ignore-submodules=all` passes (H1) and (H2) and silently fails
-# (H3), which is the gitlink --apply exists to move. What (H1) was measured
-# doing before the option, on all four family consumers from WSL:
-# docs/dependency-updates.md#the-nested-submodule-that-no-end-of-line-option-can-reach
-# --------------------------------------------------------------------------
+# (H) Nested submodules: `--ignore-submodules=all` would pass H1/H2 and fail H3; see docs/dependency-updates.md#the-nested-submodule-that-no-end-of-line-option-can-reach
 H_REPORT="${WORK}/h.json"
 _report "${H_REPORT}" git-submodules .gitmodules sub main main
 
@@ -609,11 +566,7 @@ printf 'scribbled\n' >> "${H1}/sub/deep/d.txt"
 _run "${H1}" "${H_REPORT}" --apply --dry-run --managers git-submodules
 t_assert_eq "0" "${RC}" "the run must reach the plan, not a refusal"
 t_assert_fails grep -q "these paths have local changes" <<<"${OUT}"
-# The SECOND diff in classify_one needs the option too. Given it to the first
-# call only, this tree comes back clean, falls through to the elif, and the
-# eol-classifier -- which carries no --ignore-cr-at-eol either -- reads the same
-# `-dirty` suffix as an end-of-line disagreement and refuses instead. Same
-# false refusal, different message.
+# Both diffs in classify_one need the option, or the eol-classifier misreads `-dirty` as an EOL disagreement.
 t_assert_fails grep -q "wrong git for this working tree" <<<"${OUT}"
 t_assert_contains "${OUT}" "gitlink(s), moved to the tip" "the plan is printed instead"
 

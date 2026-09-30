@@ -3,8 +3,7 @@ set -Eeuo pipefail
 
 # shellcheck disable=SC1091
 source /opt/scripts/core/platform.sh
-# A set -e death in these image-side scripts printed nothing at all until
-# 2026-09-03. docs/failure-modes.md#a-packaging-script-dies-with-no-message
+# See docs/failure-modes.md § A packaging script dies with no message
 # shellcheck source=linux/scripts/01-core/logging.sh
 source /opt/scripts/core/logging.sh
 install_err_trap
@@ -68,8 +67,7 @@ add_prefix_python_paths_to_venv() {
     done
 }
 
-# Install the source-built target Python (staged at /opt/python-cross by the
-# cross build) into /usr/local, if present for this arch.
+# The source-built target Python the cross build stages at /opt/python-cross, if present.
 install_staged_target_python() {
     local python_mm="$1"
     local target_arch="${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
@@ -91,34 +89,18 @@ install_staged_target_python() {
                 echo "ERROR: ${staged_python_root} exists but carries no executable usr/local/bin/python${python_mm}" >&2
                 return 1
             else
-                # Expected: Dockerfile.package stages no /opt/python-cross, so the
-                # distro python is used and PYTHON_VERSION is not advertised.
+                # Expected: Dockerfile.package stages none, so PYTHON_VERSION is not advertised.
                 echo "No staged target Python at ${staged_python_root}; using the distro python${python_mm}."
             fi
             ;;
     esac
 }
 
-# Choose the dev/runtime apt packages (python-dev, matching gcc/g++, llvm/clang
-# extras) based on what's available, then install them.
-# (Complexity audit F-G: this function used to weld two unrelated jobs —
-# package selection/install AND clang toolchain pinning — into 102 lines with
-# a nested function leaking globally. Split into select_dev_packages /
-# install_dev_packages / clang_embedded_deb_version / pin_clang_alternatives;
-# the wrapper keeps the old name for its single caller.)
+# The dev/runtime apt packages that exist here (python-dev, gcc/g++, llvm/clang extras).
 select_dev_packages() {
     local -n _sdp_out=$1
     local python_mm="$2" gcc_major="$3"
-    # NOTE: `cargo`/`rustc` here are Ubuntu's debs, and the deb set ships NO
-    # rustup. That matters because wire_cargo_symlinks() below links whatever
-    # `command -v` happens to find into ${CARGO_HOME}/bin — so when this stage's
-    # base has no rustup-installed toolchain, `cargo` silently resolves to
-    # /usr/bin/cargo and `rustup` resolves to nothing at all. A consumer then
-    # sees the confusing pair "cargo works, rustup: command not found"
-    # (OxidANT, 2026-08-07). report_rust_provenance()
-    # at the end of main() now prints which one actually won.
-    # (Nothing is added to this list here - see the note below the
-    # append_available_packages call about gstreamer/gtk4 dev packages.)
+    # Ubuntu's cargo/rustc come without rustup; report_rust_provenance says which toolchain won.
     _sdp_out=(libtbb-dev python3-venv python3-pip cargo rustc)
 
     if [ ! -x "/usr/local/bin/python${python_mm}" ]; then
@@ -133,15 +115,7 @@ select_dev_packages() {
         _sdp_out+=("gcc-${gcc_major}" "g++-${gcc_major}")
     fi
 
-    # LLVM apt packages. The major MUST track LLVM_RELEASE, because
-    # pin_clang_alternatives below looks for /usr/lib/llvm-${LLVM_RELEASE%%.*}
-    # -- a hard-coded major here would install llvm-22 while that search asks
-    # for llvm-23, and the apt candidate could then never win.
-    # append_available_packages SKIPS packages apt does not have, which is the
-    # trap: on a distro that has not published the new major yet, asking only
-    # for it installs NOTHING and silently drops the libLLVM/libclang dev libs
-    # this stage needs. So ask for the wanted major AND keep 22 as a floor --
-    # whichever exists is taken, and having both is harmless.
+    # The major tracks LLVM_RELEASE for pin_clang_alternatives; 22 stays a floor, as absent packages are skipped.
     local _pkg_llvm_major
     _pkg_llvm_major="${LLVM_RELEASE%%.*}"
     [ -n "${_pkg_llvm_major}" ] || _pkg_llvm_major=22
@@ -151,36 +125,17 @@ select_dev_packages() {
         "libclang-rt-${_pkg_llvm_major}-dev" "libfuzzer-${_pkg_llvm_major}-dev"
     append_available_packages _sdp_out clang-22 lld-22 llvm-22 llvm-22-dev \
         libclang-rt-22-dev libfuzzer-22-dev cargo-c
-    # What consumer lanes installed per run or went without (BACKLOG CON19/CON20):
-    # lavapipe, a Vulkan device for headless GPU tests; perf, which 26.04 moved out of
-    # linux-tools into linux-perf; gperftools' libprofiler; jq; and Xvfb.
+    # What consumer lanes installed per run: lavapipe, perf (26.04's linux-perf), libprofiler, jq, Xvfb.
     append_available_packages _sdp_out mesa-vulkan-drivers linux-perf \
         libgoogle-perftools-dev jq xvfb
 
-    # DO NOT add libgstreamer*-dev or libgtk-4-dev here. Both look like the
-    # obvious fix for a consumer whose `--features gstreamer` / `gui_linux`
-    # build cannot find headers, and both are wrong:
-    #   * GStreamer is SOURCE-BUILT into ${GSTREAMER_PREFIX} and its .pc files
-    #     are already on PKG_CONFIG_PATH. 03-media/runtime/install-deps.sh
-    #     deliberately `apt-get purge`s every distro gstreamer package; adding
-    #     the -dev deb back reintroduces exactly what that purge removes.
-    #   * libgtk-4-dev is excluded on purpose - see the comment above that same
-    #     purge: the foreign-arch GTK dev package drags in the GLib/GIR dev
-    #     chain, which pulls target-side Python and breaks cross builds on
-    #     python3-minimal's postinst.
-    # libssl-dev already arrives via package-lists.sh.
+    # Never libgstreamer*-dev (ours is source-built, the distro one purged) or libgtk-4-dev (breaks cross builds).
 
-    # Gradle refuses to run without a JDK, and the SDK COPY leaves the source
-    # stage's one behind (it went to /usr/lib/jvm via apt, not /opt/android-sdk).
-    # Asked for by name, not through append_available_packages: a silently
-    # skipped JDK ships an Android SDK that cannot build anything.
+    # Gradle needs a JDK; by name, since a silently skipped JDK ships an Android SDK that builds nothing.
     _sdp_out+=("${JDK_PACKAGE:?JDK_PACKAGE is required (01-core/versions.env)}")
 }
 
-# JAVA_HOME must survive a JDK bump, and Ubuntu's real path carries both the
-# version and the arch (java-21-openjdk-riscv64). Resolve it once from the
-# installed javac and park a stable symlink the image ENV can point at.
-# docs/consumer-image-contract.md#the-android-lane-needs-a-jdk
+# A JAVA_HOME that survives JDK bumps. See docs/consumer-image-contract.md § The Android lane needs a JDK
 anchor_java_home() {
     local javac home
     javac="$(command -v javac 2>/dev/null || true)"
@@ -196,15 +151,10 @@ install_dev_packages() {
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
 }
 
-# Read a clang binary's version from its embedded DEB metadata, --version
-# fallback. (Bundled sibling of validate-compilers.sh's _vc_clang_embedded_version.)
+# A clang binary's version from its embedded DEB metadata, --version as the fallback.
 clang_embedded_deb_version() {
     local _bin="$1" _ver=""
-    # The binary's --version reports the RUNTIME libclang-cpp version, not
-    # the binary's own built-in version. The apt clang-<major> package ships
-    # libclang-cpp.so at /usr/lib which shadows the source-built lib at the
-    # toolchain's own lib/ dir.  Read the version from the binary's embedded
-    # DEB package metadata instead — it reflects the source-built version.
+    # --version reports the runtime libclang-cpp, which apt's copy in /usr/lib shadows.
     _ver="$( strings "${_bin}" 2>/dev/null \
         | grep -o '"version":"[^"]*"' \
         | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true )"
@@ -216,20 +166,7 @@ clang_embedded_deb_version() {
 }
 
 pin_clang_alternatives() {
-    # The shipped clang{,++} MUST equal LLVM_RELEASE (asserted by the runtime
-    # clang-version smoke). Two candidate toolchains can provide it:
-    #   1. /usr/local/llvm-target  — the source-built target clang. For arm64/riscv64
-    #      this is cross-built to exactly LLVM_RELEASE. For amd64 it is a COPY of the
-    #      compiler stage's apt clang, which LAGS if that (heavy, long-cached) layer
-    #      was baked before apt.llvm.org published the point release (e.g. ships 22.1.2
-    #      while LLVM_RELEASE=22.1.8).
-    #   2. /usr/lib/llvm-<major>   — the apt clang-<major> just (re)installed in THIS
-    #      freshly apt-updated package stage. Once apt.llvm.org catches up it is exactly
-    #      LLVM_RELEASE, which rescues amd64 without rebuilding the compiler layer.
-    # Pin whichever candidate's version == LLVM_RELEASE, PREFERRING the source toolchain
-    # (so arm64/riscv64 keep their cross-built clang); fall back to the first present
-    # candidate if neither matches (better a working clang than none). The apt clang-<major>
-    # package is retained regardless for its libLLVM/libclang dev libs.
+    # clang must equal LLVM_RELEASE: the matching candidate wins, source first; amd64's copy can lag apt.
     local _want_llvm _llvm_major _cand _chosen=""
     _want_llvm="${LLVM_RELEASE:-}"
     if [ -z "${_want_llvm}" ] && [ -f /opt/scripts/core/versions.env ]; then
@@ -248,8 +185,7 @@ pin_clang_alternatives() {
         update-alternatives --install /usr/bin/clang clang "${_chosen}/bin/clang" 1000 \
             --slave /usr/bin/clang++ clang++ "${_chosen}/bin/clang++" 2>/dev/null || true
         update-alternatives --set clang "${_chosen}/bin/clang" 2>/dev/null || true
-        # Belt-and-suspenders: if the apt package installed plain symlinks that
-        # alternatives did not adopt, point them at the chosen toolchain directly.
+        # apt may leave plain symlinks that alternatives did not adopt.
         [ "$(readlink -f /usr/bin/clang 2>/dev/null)" = "$(readlink -f "${_chosen}/bin/clang")" ] || \
             ln -sf "${_chosen}/bin/clang" /usr/bin/clang
         [ -x "${_chosen}/bin/clang++" ] && \
@@ -260,8 +196,7 @@ pin_clang_alternatives() {
 }
 
 
-# Wire /usr/local python/pip/config + libpython symlinks (and create the dirs
-# the cargo/venv phases below rely on).
+# Also creates the dirs the cargo and venv phases rely on.
 wire_python_symlinks() {
     local python_mm="$1"
     local python_bin python_cfg pip_bin triplet lib
@@ -308,25 +243,7 @@ preserve_custom_gcc() {
     fi
 }
 
-# Symlink the cargo/rust toolchain binaries into CARGO_HOME/bin.
-#
-# NEVER overwrite what rustup already put there. link_command_if_present resolves
-# via `command -v`, i.e. through PATH - and in the built image PATH carries /bin
-# and /usr/local/bin AHEAD of /usr/local/cargo/bin:
-#
-#   PATH=/opt/venv/bin:...:/bin:/bin:/usr/local/bin:...:/usr/local/cargo/bin:...
-#
-# so `command -v rustc` finds Ubuntu's apt rustc and `ln -sf` then replaces the
-# rustup shim with it. The pinned toolchain is present and correct in the image -
-# Dockerfile.package COPYs /usr/local/{rustup,cargo} from the toolchain stage -
-# and this function quietly demoted it afterwards.
-#
-# Measured 2026-08-12: the image carried RUST_VERSION=1.97.1 as pinned, yet
-# consumers ran rustc 1.93.1 and OxidANT died on
-# "rustc 1.93.1 is not supported by ... sysinfo@0.39.6 requires rustc 1.95".
-#
-# The fallback these links exist for - an image with NO rustup at all - still
-# works: nothing is at the link path then, so the apt binary is linked as before.
+# Never overwrite rustup's shims: PATH finds apt's rustc first, so ln -sf would demote the pinned toolchain.
 _link_unless_rustup_provides() {
     local command_name="$1" link_path="$2"
 
@@ -337,11 +254,7 @@ _link_unless_rustup_provides() {
     link_command_if_present "${command_name}" "${link_path}"
 }
 
-# The artifact image is an amd64 host, so the COPY'd /usr/local/{rustup,cargo}
-# is x86_64 on every foreign arch: 2 GB that cannot execute, shipped that way in
-# every arm64/riscv64 image until 2026-09-03. Replace it with a native install
-# when no toolchain for this image's own triple is present (amd64 is a no-op).
-# docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
+# See docs/failure-modes.md § The copied Rust toolchain is the builder's arch
 ensure_native_rust_toolchain() {
     local triple
     triple="$(rust_target_triple_for_arch "$(dpkg --print-architecture)")" || return 0
@@ -350,11 +263,7 @@ ensure_native_rust_toolchain() {
         return 0
     fi
     echo "Rust toolchain in ${RUSTUP_HOME} is not ${triple}: $(ls "${RUSTUP_HOME}/toolchains" 2>/dev/null | tr '\n' ' ')-- reinstalling natively"
-    # NOT rm -rf "${CARGO_HOME}": Dockerfile.package keeps the crate downloads on a
-    # BuildKit cache mount at ${CARGO_HOME}/registry, and rm over a live mountpoint
-    # fails EBUSY -- which took the arm64 package image down on 2026-09-05. amd64
-    # never reaches this line because its copied toolchain is already native. The
-    # registry is a download cache, not toolchain state, so the fresh install reuses it.
+    # Spare ${CARGO_HOME}/registry: it is a live BuildKit cache mount, and rm over it fails EBUSY.
     rm -rf "${RUSTUP_HOME:?}"
     if [ -d "${CARGO_HOME:?}" ]; then
         find "${CARGO_HOME}" -mindepth 1 -maxdepth 1 ! -name registry -exec rm -rf {} +
@@ -362,12 +271,7 @@ ensure_native_rust_toolchain() {
     RUST_INSTALL_CARGO_C=0 BUILD_MODE=native bash /opt/scripts/toolchain/install-rust.sh
 }
 
-# Hand the paths root wrote in THIS RUN to the runtime user. Only what root
-# still owns is chowned: a blanket chown -R rewrites metadata on a tree that
-# entered the stage via COPY --chown and copies it up into this layer (rustup
-# 2.0 GB + cargo 173 MB, /opt/flutter 716 MB). Modes are untouched, so a tree
-# stays owner-writable, never world-writable.
-# docs/artifact-copy-completeness.md#the-rust-toolchain-must-be-writable-by-the-runtime-user
+# Only what root owns: chown -R would copy whole trees up. See docs/artifact-copy-completeness.md § The rust toolchain must be writable by the runtime user
 hand_root_created_paths_to_runtime_user() {
     local uid="${RUNTIME_UID:?}"
     find "$@" ! -user "${uid}" -exec chown -h "${uid}:${uid}" {} +
@@ -382,10 +286,7 @@ wire_cargo_symlinks() {
     _link_unless_rustup_provides cargo-cinstall "${CARGO_HOME}/bin/cargo-cinstall"
     _link_unless_rustup_provides rustup "${CARGO_HOME}/bin/rustup"
 
-    # Fail the BUILD rather than ship a silently downgraded toolchain. A version
-    # skew here does not surface in the image - it surfaces days later in a
-    # consumer, as an MSRV error on some dependency, pointing at the dependency
-    # instead of at us.
+    # Fail here: a skew otherwise surfaces days later as a consumer's MSRV error on some dependency.
     if [ -n "${RUST_VERSION:-}" ] && [ -x "${CARGO_HOME}/bin/rustc" ]; then
         local _got
         if ! _got="$("${CARGO_HOME}/bin/rustc" --version 2>&1)"; then
@@ -405,65 +306,29 @@ wire_cargo_symlinks() {
     fi
 }
 
-# Create the runtime uv venv with build tooling. riscv64 can't run compiled
-# wheels under QEMU, so it uses apt packages via --system-site-packages instead.
+# riscv64 takes apt packages via --system-site-packages: compiled wheels fail under QEMU.
 create_runtime_venv() {
     local python_mm="$1"
 
     rm -rf "${VIRTUAL_ENV}"
     uv venv --seed --python "/usr/local/bin/python${python_mm}" "${VIRTUAL_ENV}"
     if [ "${TARGET_ARCH:-}" = "riscv64" ] || [ "$(uname -m)" = "riscv64" ]; then
-        # QEMU-riscv64 cannot run the gcc preprocessor, so compiled wheels
-        # fail.  Install packages via apt (system-wide) and make them
-        # visible to the venv via --system-site-packages.
+        # QEMU-riscv64 cannot run the gcc preprocessor.
         rm -rf "${VIRTUAL_ENV}"
-        # NOTE: ml_dtypes for iree is NOT installed here via apt — python3-ml-dtypes
-        # lands in the DISTRO python's /usr/lib/python3/dist-packages, which the
-        # from-source CPython 3.14 venv (site under /usr/local/lib/python3.14) never
-        # sees even with --system-site-packages. It is source-built into the venv in
-        # assemble-torch-app.sh's riscv64 IREE branch instead.
+        # Not ml_dtypes: this venv never sees the distro python's dist-packages (assemble-torch-app.sh builds it).
         apt-get install -y --no-install-recommends \
             python3-numpy python3-meson python3-ninja python3-cmake \
             python3-wheel python3-setuptools python3-packaging 2>/dev/null || true
         uv venv --seed --system-site-packages --python "/usr/local/bin/python${python_mm}" "${VIRTUAL_ENV}"
-        # Executor pins per supply-chain audit #18; the :- fallbacks below ARE
-        # the live values (this script sources platform.sh/package-lists.sh
-        # only, not common.sh, so nothing loads the baked versions.env into
-        # its env) and must stay equal to versions.env's PY_* keys —
-        # verify-arg-consistency's drift check compares them. 2026-08-24:
-        # fallbacks re-synced (wheel
-        # 0.47.0->0.48.0, setuptools 83->84, meson 1.11.2->1.12.0) and the
-        # last three BARE installs pinned (cmake/packaging here, +numpy below;
-        # pip cmake 4.4.2 ships a riscv64 manylinux wheel, packaging is a
-        # pure-python `any` wheel — both safe on this QEMU branch).
+        # These fallbacks are the live values (nothing loads versions.env here); verify-arg-consistency keeps them equal.
         uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" "cmake==${PY_CMAKE_VERSION:-4.4.2}" "packaging==${PY_PACKAGING_VERSION:-26.3}"
     else
-        # numpy pinned here only (riscv64 gets apt python3-numpy above);
-        # 2.5.2 ships cp314 manylinux wheels for x86_64 and aarch64.
+        # numpy only here: riscv64 takes apt's python3-numpy.
         uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" "numpy==${PY_NUMPY_VERSION:-2.5.2}" "meson==${PY_MESON_VERSION:-1.12.0}" "ninja==${PY_NINJA_VERSION:-1.13.0}" "cmake==${PY_CMAKE_VERSION:-4.4.2}" "packaging==${PY_PACKAGING_VERSION:-26.3}"
     fi
 }
 
-# Assert that the DEV surface this image intends to expose is actually
-# reachable through pkg-config, and fail the build here rather than in a
-# consumer's CI hours later. A consumer cannot repair any of this itself: the
-# runtime container runs as uid 1001, where `apt-get` dies with
-# "Permission denied".
-#
-# Only things the image genuinely promises are checked. GTK4 dev is absent BY
-# DESIGN (see select_dev_packages), so it is reported, not enforced
-# - asserting it would turn a deliberate policy into a build failure.
-# Repair the gstreamer multiarch symlink BEFORE asserting the dev surface
-# (2026-08-11, first cross-arch run of the Klasse-B gate): NATIVE meson
-# installs to lib/<triplet>/ (Debian default) but the CROSS builds pass
-# libdir=lib (cargo_wrapper invocation in the media logs proves it), so on
-# arm64/riscv64 configure-runtime's `multiarch -> lib/<triplet>` symlink
-# points at an EMPTY directory while the real .pc files sit in lib/pkgconfig.
-# The July images shipped this dangling dev surface silently — the new gate
-# is the first thing to look. Point multiarch at whichever directory actually
-# carries gstreamer-1.0.pc. ROOT fix (make configure-runtime resolve the real
-# libdir, or force cross meson to lib/<triplet>) is backlogged for the media
-# closure window — this keeps the package lane honest either way.
+# Safety net for configure-runtime.sh's multiarch link, run before the dev surface is asserted.
 repair_gstreamer_multiarch_link() {
     local prefix="${GSTREAMER_PREFIX:-/opt/gstreamer}" cand dir
     [ -e "${prefix}/lib/multiarch/pkgconfig/gstreamer-1.0.pc" ] && return 0
@@ -478,12 +343,10 @@ repair_gstreamer_multiarch_link() {
     return 0   # nothing found — let verify_consumer_dev_surface fail loudly
 }
 
+# Fail here, not in a consumer's CI: at uid 1001 a consumer cannot apt-get the fix. GTK 4 dev is absent by design.
 verify_consumer_dev_surface() {
     local missing=() mod
-    # gstreamer-*: the SOURCE-built stack under ${GSTREAMER_PREFIX}. If these
-    # stop resolving, either the prefix moved or PKG_CONFIG_PATH regressed -
-    # both silently break every consumer's `--features gstreamer`.
-    # openssl: openssl-sys (ort, and anything reqwest-shaped) needs it.
+    # The source-built GStreamer, and openssl for openssl-sys.
     for mod in gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0 openssl; do
         pkg-config --exists "${mod}" 2>/dev/null || missing+=("${mod}")
     done
@@ -515,11 +378,7 @@ verify_consumer_dev_surface() {
     fi
 }
 
-# Diagnostic, deliberately non-fatal: print WHICH Rust the image ended up with.
-# Two can coexist — the pinned rustup toolchain under ${CARGO_HOME} and Ubuntu's
-# cargo/rustc debs — and the loser is invisible until a consumer's build picks
-# the wrong one. Not a hard gate, because whether rustup belongs in this image
-# is a policy call, not a build error.
+# Prints which Rust won, as rustup's and Ubuntu's can coexist; only the RUST_VERSION check is a gate.
 report_rust_provenance() {
     echo "--- Rust provenance in the package image ---"
     local tool path
@@ -540,13 +399,7 @@ report_rust_provenance() {
     fi
     echo "--------------------------------------------"
 
-    # HARD GATE. The image previously shipped Ubuntu's rustc while versions.env
-    # pinned a much newer one, because Dockerfile.package declared CARGO_HOME /
-    # RUSTUP_HOME / PATH for a toolchain it never COPY'd in. Nothing failed at
-    # build time; it surfaced only when a consumer's dependency demanded a
-    # newer rustc than the image happened to have, in a message that blamed
-    # the dependency. Never again silently: if the shipped rustc does not match
-    # RUST_VERSION, the image is wrong and this build stops.
+    # Hard gate: a shipped rustc off RUST_VERSION surfaces only as a consumer's dependency error.
     local want="${RUST_VERSION:-}" got
     if [ -z "${want}" ]; then
         echo "  NOTE: RUST_VERSION unset; cannot verify the toolchain matches its pin." >&2
@@ -562,12 +415,7 @@ report_rust_provenance() {
     echo "OK: shipped rustc ${got} matches the RUST_VERSION pin"
 }
 
-# The sdk stage ships Flutter bare (empty bin/cache): the Dart SDK and the
-# flutter_tools snapshot are per-arch and only this target-arch stage can create
-# them. Runs as root, so EVERY path root leaves behind -- bin/cache, the fetched
-# git objects, flutter_tools/.dart_tool -- goes through the same handover the rust
-# trees use; the rest of the tree is the COPY --chown's and must not be rewritten.
-# docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
+# See docs/artifact-copy-completeness.md § Bootstrapping Flutter in the package stage
 bootstrap_flutter_sdk() {
     [ -x /opt/flutter/bin/flutter ] || return 0
     local arch out
@@ -584,16 +432,7 @@ bootstrap_flutter_sdk() {
     echo "OK: Flutter bootstrapped for ${arch}"
 }
 
-# The web lane, measured in a consumer run: two `cargo install` from source per
-# invocation (wasm-pack 258 crates, flutter_rust_bridge_codegen 174), plus a
-# nightly rustup auto-install through a path rustup itself calls deprecated.
-# CON1: install the DATED pin, not the floating channel -- a dated toolchain is
-# immutable, so `rustup toolchain install <pin>` is a no-op on a warm image; a
-# floating `nightly` is UPDATED, and the update renames files out of a read-only
-# image layer (EXDEV). A consumer that still names the channel auto-installs it
-# at runtime into the writable RUSTUP_HOME: works, pays the download per run.
-# Availability failures WARN; a bad knob or a binary that fails its gate is fatal.
-# docs/consumer-image-contract.md#the-web-lane-toolchain
+# The dated nightly, not the channel, whose update renames files out of a read-only layer. See docs/consumer-image-contract.md § The web-lane toolchain
 install_web_lane_toolchain() {
     local rustup="${CARGO_HOME:?}/bin/rustup" cargo="${CARGO_HOME:?}/bin/cargo"
     local name version
@@ -630,8 +469,7 @@ install_web_lane_toolchain() {
     done
 }
 
-# Upstream's own release asset for this machine, or empty when there is none (riscv64:
-# web-lane-tools.sh). docs/consumer-image-contract.md#the-web-lane-toolchain
+# Upstream's release asset for this machine, or empty when there is none (riscv64).
 _web_lane_asset_url() {
     local name="$1" version="$2" target="$3"
 
@@ -645,10 +483,7 @@ _web_lane_asset_url() {
     esac
 }
 
-# The versions.env pin matching that asset. An arch with no pin installs nothing
-# unverified -- it falls back to the from-source build, which crates.io checksums.
-# The package stage does not load versions.env wholesale, but 01-core is COPYd
-# into the image, so the authority for the pins travels with the scripts.
+# The asset's versions.env pin; without one the caller builds from source, which crates.io checksums.
 _web_lane_asset_sha() {
     local key=""
 
@@ -666,10 +501,7 @@ _web_lane_asset_sha() {
     sed -n "s/^${key}=//p" "${VERSIONS_ENV:-/opt/scripts/core/versions.env}" 2>/dev/null | head -1
 }
 
-# A verified download instead of ~200 crates compiled under QEMU. Returns
-# non-zero for anything the caller should build from source instead: no asset
-# for this machine, no pinned hash, a failed download or a tarball without the
-# binary in it. docs/consumer-image-contract.md#the-web-lane-toolchain
+# A verified download instead of ~200 crates under QEMU; non-zero means build from source.
 install_web_lane_prebuilt() {
     local name="$1" version="$2"
     local machine target url sha tmp dir found
@@ -699,8 +531,7 @@ install_web_lane_prebuilt() {
         echo "WARN: ${name} ${version} prebuilt did not download/verify; building from source"
         rm -rf "${dir}"; return 1
     fi
-    # wasm-pack ships the binary under a version-named directory, frb at the top
-    # level -- take whichever layout arrived rather than assuming one.
+    # wasm-pack nests the binary in a versioned dir, frb does not.
     if ! tar -xzf "${tmp}" -C "${dir}"; then
         echo "WARN: ${name} ${version} prebuilt would not unpack; building from source"
         rm -rf "${dir}"; return 1
@@ -745,18 +576,13 @@ main() {
     bash /opt/scripts/03-media/final/configure-runtime.sh
     ldconfig
 
-    # Verify BEFORE the apt lists are wiped, so a failure can still be
-    # diagnosed with apt-cache inside a `docker run` on the failed layer.
+    # Before the apt lists go, so apt-cache can still diagnose a failure on this layer.
     repair_gstreamer_multiarch_link
     verify_consumer_dev_surface
     report_rust_provenance
     bootstrap_flutter_sdk
 
-    # RP2: /var/cache/apt and /var/lib/apt are BuildKit cache MOUNTS here
-    # (Dockerfile.package:307-308, sharing=locked). Wiping them has ZERO
-    # image-size benefit (a mount never commits to the layer) and forces sibling
-    # arches to re-download all apt metadata on their next run. Only clean a real
-    # committed dir. `mountpoint` missing → falls back to the old wipe (safe).
+    # Clean only committed dirs: the apt cache mounts never reach the layer and siblings reuse them.
     mountpoint -q /var/cache/apt || apt-get clean
     mountpoint -q /var/lib/apt   || rm -rf /var/lib/apt/lists/*
 }

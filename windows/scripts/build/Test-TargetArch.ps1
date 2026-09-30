@@ -5,48 +5,20 @@
 
 <#
 .SYNOPSIS
-    Asserts every shipped binary in a tree was built for the expected target
-    architecture.
+    Asserts every shipped binary in a tree was built for the expected target architecture.
 .DESCRIPTION
-    The Windows arm64 lane is a CROSS build: an x64 container emitting aarch64
-    binaries. Nothing it produces can be EXECUTED on the build host, so the
-    usual "run it and see" smokes are unavailable and this static check is the
-    primary in-lane correctness signal.
-
-    The failure it exists to catch is x64 leakage: a host tool (in-tree protoc,
-    flatc, a CMake code generator) or a prebuilt vendor DLL landing in the
-    install prefix alongside genuinely cross-built output. That produces a
-    bundle that looks complete, passes every presence check, and dies on first
-    load on real hardware.
-
-    This is the Windows twin of the Linux lane's ELF-machine check in
-    validate-media-runtime.sh, including its escape-hatch convention.
-
-    THREE deliberate design points, each learned from a gate that could not fail:
-
-      1. A MINIMUM inspected count (-MinInspected). A tree that staged nothing,
-         or a path typo, otherwise passes green with zero files checked - the
-         exact failure mode Dockerfile.smoke-gate's MIN_PASSED floor exists for.
-      2. COFF archives (.lib) are NOT PE files. A naive bytes[0x3C] walk over an
-         archive reads whatever happens to sit at that offset and may compare
-         equal by accident. Archives are decoded from their first member header
-         instead.
-      3. The host-tool allowlist is EXPLICIT and reported. Anything skipped is
-         printed, so "we allowlisted the whole tree" cannot happen quietly.
+    The cross lane's output cannot run here, so this static check catches x64 leakage from host tools or vendor DLLs.
+    See docs/windows-cross-builds.md § Verification.
 .PARAMETER Path
     One or more roots to scan. Defaults to C:\runtime.
 .PARAMETER Arch
     Expected target architecture. Defaults to the resolved WINDOWS_TARGET_ARCH.
 .PARAMETER MinInspected
-    Minimum number of binaries that must be inspected for the run to count as
-    meaningful. 0 disables the floor (only for a deliberately tiny tree).
+    Minimum number of binaries inspected for the run to count; 0 needs -AllowEmptyTree.
 .PARAMETER HostToolPattern
-    Regex of paths that are permitted to remain host-architecture (build-time
-    tools that never ship to the target). Matched against the full path.
+    Regex of full paths allowed to stay host-architecture (build tools that never ship).
 .PARAMETER IncludeArchives
-    Also verify .lib archives. Off by default: import libraries for a target are
-    unambiguous, but static archives pulled from vendor SDKs are a common source
-    of noise. Turn on for a strict release gate.
+    Also verify .lib archives; off by default because vendor static archives are noisy.
 .EXAMPLE
     Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 -MinInspected 20
 #>
@@ -60,35 +32,13 @@ param(
     [int]$MinInspected = 1,
     [string]$HostToolPattern = '',
     [switch]$IncludeArchives,
-    # #127 (2026-08-25): after the machine check, walk every inspected PE's
-    # import table (plus the native members of every wheel under the roots)
-    # and resolve each imported DLL name against (a) the bundle itself, (b) the
-    # loader's virtual API sets (api-ms-*/ext-ms-*), (c) the OS DLL name list of
-    # this container's System32. On a CROSS lane the CRT family
-    # (vcruntime/msvcp/concrt/...) is NOT accepted from System32: a clean device
-    # has no redist, so the bundle must carry it. An unresolved import is the
-    # 0xC0000135-at-first-touch class the machine check cannot see (#124).
+    # Resolves every import against bundle, API sets and System32 (never the CRT on cross): the 0xC0000135 class.
     [switch]$ImportWalk,
-    # Regex of import names that are legitimately external to both bundle and
-    # OS (driver/toolkit-provided). Reported, never counted.
+    # Regex of driver- or toolkit-provided imports; reported, never counted.
     [string]$ImportAllowlist = '^(nvcuda|nvml|nvapi64|cudart64_[0-9]+|cublas|cublasLt|cudnn|nvinfer|nvonnxparser|nvrtc|cufft|curand|cusparse|cusolver|nvjitlink|nvcomp|vulkan-1|opengl32|d3d12core|QnnHtp|QnnCpu|QnnSystem)[A-Za-z0-9_-]*\.dll$',
-    # Regex of OS DLLs that a Windows CLIENT SKU ships but this Server Core
-    # reference container does not, so they never appear in (c) above yet are
-    # on every device the bundle targets. Measured arm64 run 13 (2026-08-25),
-    # each name a real import of a shipped plugin: DirectSound (gstdirectsound*),
-    # Media Foundation (gstmediafoundation -- MF is absent on Server Core, the
-    # same fact behind OpenCV's WITH_MSMF=OFF), and the print spooler
-    # (tcl9tk90.dll -> winspool.drv). libcdsprpc/libadsprpc are Qualcomm's
-    # FastRPC drivers (ADSP/CDSP), imported by the QAIRT HTP stub DLLs and
-    # present on every Windows-on-Snapdragon device -- the exact target of the
-    # arm64 lane (found 2026-08-31 once the QNN EP landed in the bundle).
-    # Reported as "device OS", never counted.
-    # Keep it to names the client SKU carries unconditionally -- an optional
-    # feature (e.g. a Media Feature Pack SKU) would belong in -ImportAllowlist.
+    # DLLs every client SKU ships but Server Core lacks, plus Qualcomm's FastRPC drivers; reported as device OS, never counted.
     [string]$ClientOsPattern = '^(dsound|mf|mfplat|mfreadwrite|mfcore|winspool)\.(dll|drv)$|^lib(cds|ads)prpc\.dll$',
-    # Opt-in for a tree that legitimately holds (almost) no binaries. Required
-    # whenever -MinInspected is 0 or less, so that "no coverage floor" can only
-    # ever be a deliberate statement rather than a dropped build-arg.
+    # Required for -MinInspected 0 or less, so a dropped build-arg cannot disable the floor.
     [switch]$AllowEmptyTree
 )
 
@@ -96,9 +46,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets live beside this script in the flat
-# layout and one level up in the repo layout.
+# Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $archModulePath = Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1'
 if (-not (Test-Path $archModulePath)) { throw "Required module not found: $archModulePath" }
@@ -108,8 +56,7 @@ $targetArch = Get-WindowsTargetArch -Arch $Arch
 $expected = Get-PeMachineType -Arch $targetArch
 $expectedName = (Get-WindowsTargetArchInfo -Arch $targetArch).PeMachineName
 
-# Known COFF machine types, for a diagnostic that names what was actually found
-# instead of printing a bare hex number.
+# Named, so a diagnostic says what was found instead of a bare hex number.
 $machineNames = @{
     0x0000 = 'UNKNOWN'
     0x014C = 'I386'
@@ -124,12 +71,7 @@ $machineNames = @{
     0x5064 = 'RISCV64'
 }
 
-# Machine types that legitimately satisfy a given target. ARM64EC and ARM64X are
-# part of the ARM64 family and DO appear in Microsoft's own SDK: on a stock
-# Windows Kit, ucrt\arm64\ucrt.osmode_permissive.lib reports 0xA641 while its
-# siblings report 0xAA64. Comparing against 0xAA64 alone rejects a perfectly
-# good Microsoft library and prints "UNRECOGNIZED", which names nothing and
-# sends the reader hunting a non-existent build defect.
+# ARM64EC and ARM64X belong to the ARM64 family and appear in Microsoft's own SDK libs.
 $acceptedMachines = @{
     0x8664 = @(0x8664)
     0xAA64 = @(0xAA64, 0xA641, 0xA64E)
@@ -140,12 +82,7 @@ function Format-Machine {
     return ('0x{0:X4} ({1})' -f $Value, $name)
 }
 
-<#
-Reads the COFF machine type from a PE image (.exe/.dll) or a COFF object (.obj).
-Returns $null when the file is not a recognizable PE/COFF image, so callers can
-report "unreadable" separately from "wrong architecture" - conflating the two
-sent past investigations chasing the wrong problem.
-#>
+# COFF machine of a PE image or object; $null keeps "unreadable" apart from "wrong architecture".
 function Get-CoffMachine {
     param([Parameter(Mandatory)][string]$LiteralPath)
 
@@ -160,8 +97,7 @@ function Get-CoffMachine {
 
         $mz = $br.ReadBytes(2)
         if ($mz[0] -eq 0x4D -and $mz[1] -eq 0x5A) {
-            # PE image: e_lfanew at 0x3C points at the "PE\0\0" signature, and the
-            # COFF header (whose first field is Machine) follows it.
+            # e_lfanew at 0x3C points at "PE\0\0", followed by the COFF header whose first field is Machine.
             if ($fs.Length -lt 0x40) { return $null }
             $fs.Position = 0x3C
             $peOffset = $br.ReadInt32()
@@ -172,8 +108,7 @@ function Get-CoffMachine {
             return [int]$br.ReadUInt16()
         }
 
-        # Unlinked COFF object: the IMAGE_FILE_HEADER starts at byte 0, so the
-        # first two bytes ARE the Machine field.
+        # An unlinked COFF object starts with IMAGE_FILE_HEADER, whose first field is Machine.
         $fs.Position = 0
         $machine = [int]$br.ReadUInt16()
         if ($machineNames.ContainsKey($machine) -and $machine -ne 0) { return $machine }
@@ -185,12 +120,7 @@ function Get-CoffMachine {
     }
 }
 
-<#
-Reads the machine type of a COFF archive (.lib) from its first real member.
-An archive is NOT a PE file: it starts with the "!<arch>\n" magic followed by
-60-byte member headers. Import libraries additionally carry a short-import
-header whose Machine field sits at offset 4 of the member payload.
-#>
+# Machine of a COFF archive (.lib), which is not a PE file, read from its first real member.
 function Get-ArchiveMachine {
     param([Parameter(Mandatory)][string]$LiteralPath)
 
@@ -203,11 +133,7 @@ function Get-ArchiveMachine {
     $magic = [System.Text.Encoding]::ASCII.GetString($bytes, 0, 8)
     if ($magic -ne "!<arch>`n") { return $null }
 
-    # The whole member walk is guarded: a malformed or truncated archive must
-    # yield $null ("unreadable"), never an IndexOutOfRangeException. An escaping
-    # exception would abort the entire scan without naming the offending file -
-    # breaking the contract the caller relies on to separate "unreadable" from
-    # "wrong architecture".
+    # A malformed archive must read as unreadable, never throw and abort the whole scan unnamed.
     try {
         $pos = 8
         while (($pos + 60) -le $bytes.Length) {
@@ -218,10 +144,7 @@ function Get-ArchiveMachine {
             $name = [System.Text.Encoding]::ASCII.GetString($bytes, $pos, 16).Trim()
             $dataStart = $pos + 60
 
-            # Skip the linker members ("/", "//") and the ARM64EC symbol member.
-            # A short-import header is 20 bytes and its Machine field sits at
-            # offset 6..7, so the guard must cover $dataStart+7 - the previous
-            # +6 bound was two bytes short and threw on a small final member.
+            # Skip linker and ARM64EC symbol members; a short-import Machine field is bytes 6..7, hence +8.
             if ($name -notmatch '^/{1,2}$' -and $name -ne '<ECSYMBOLS>' -and
                 $size -ge 20 -and ($dataStart + 8) -le $bytes.Length) {
                 $m0 = [int]$bytes[$dataStart] -bor ([int]$bytes[$dataStart + 1] -shl 8)
@@ -243,11 +166,7 @@ function Get-ArchiveMachine {
     return $null
 }
 
-# .pyd is a DLL with a different suffix and IS staged into the scanned tree
-# (build-onnx-genai copies *.pyd into C:\runtime\lib\...; opencv5 ships them
-# too). Omitting it meant native Python extensions were skipped SILENTLY and,
-# because they never incremented the inspected count, -MinInspected could not
-# notice either - a hole in the default mode with no flag to reveal it.
+# A .pyd is a DLL too; skipping it would also hide it from -MinInspected.
 $extensions = @('.dll', '.exe', '.pyd')
 if ($IncludeArchives) { $extensions += '.lib' }
 
@@ -288,7 +207,7 @@ foreach ($root in $Path) {
         }
 }
 
-# ── #127: static import walk ─────────────────────────────────────────────────
+# Static import walk
 $importUnresolved = @()
 $importWalked = 0
 $importExternal = @()
@@ -296,8 +215,7 @@ $importClientOs = @()
 if ($ImportWalk) {
     $walkFiles = [System.Collections.Generic.List[string]]::new()
     foreach ($f in $script:peFiles) { $walkFiles.Add($f) }
-    # Wheels: their native members are what `pip install` puts into the device's
-    # site-packages; walk them exactly like shipped files.
+    # A wheel's native members are what pip installs on the device.
     $wheelTmp = Join-Path ([System.IO.Path]::GetTempPath()) ('archgate-wheels-' + [guid]::NewGuid().ToString('N'))
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     foreach ($root in $Path) {
@@ -307,9 +225,7 @@ if ($ImportWalk) {
             foreach ($m in @(Get-ChildItem -Path $dest -Recurse -File -Include '*.dll', '*.pyd', '*.exe')) { $walkFiles.Add($m.FullName) }
         }
     }
-    # Name universes. Bundle = every DLL/PYD/EXE file name under the roots and
-    # inside the wheels (consumers register the bundle's DLL homes; the device's
-    # loader only needs the NAME to exist somewhere it is told to look).
+    # Names only: consumers register the bundle's DLL homes, so the loader just needs the name somewhere there.
     $bundleNames = @{}
     foreach ($f in $walkFiles) { $bundleNames[([IO.Path]::GetFileName($f)).ToLowerInvariant()] = $true }
     $systemNames = @{}
@@ -343,10 +259,7 @@ if ($ImportWalk) {
     foreach ($e in ($importExternal | Select-Object -First 20)) { Write-Host "    external (driver/toolkit): $e" }
     foreach ($e in ($importClientOs | Select-Object -First 20)) { Write-Host "    device OS (client SKU, not on this Server Core reference): $e" }
     if ($importUnresolved.Count -gt 0) {
-        # By NAME first: 200 edges are usually three DLLs, and the name says
-        # whether the gap is real (measured amd64 run 4, 2026-08-25: 186x
-        # python314.dll + 8x python3.dll -- the HOST interpreter lives outside
-        # the roots on the native lane -- and 6x scoop's libcrypto/libssl-4-x64).
+        # By name first: hundreds of edges are usually a few DLLs, and the name says whether the gap is real.
         $byName = $importUnresolved | Group-Object { $_.Import.ToLowerInvariant() } | Sort-Object Count -Descending
         $heading = if ($crossLane) { '  UNRESOLVED IMPORTS (the device loader could not satisfy these):' } else { '  unresolved against the roots + System32 (native lane: the image PATH resolves these -- informational):' }
         Write-Host $heading -ForegroundColor $(if ($crossLane) { 'Red' } else { 'Yellow' })
@@ -360,8 +273,7 @@ if ($ImportWalk) {
 }
 
 if ($skippedHostTools.Count -gt 0) {
-    # Printed, never silent: an over-broad allowlist is itself a defect, and the
-    # only way to notice is to see what it swallowed.
+    # Printed: an over-broad allowlist is only noticed by what it swallowed.
     Write-Host ("  host-tool allowlist skipped {0} file(s) (pattern: {1}):" -f $skippedHostTools.Count, $HostToolPattern)
     $skippedHostTools | ForEach-Object { Write-Host "    - $_" }
 }
@@ -376,10 +288,7 @@ if ($ImportWalk -and $importUnresolved.Count -gt 0) {
     if ($crossLane) {
         throw "target-arch verification FAILED for $targetArch`: $($importUnresolved.Count) unresolved import(s) across $importWalked walked file(s) -- see the list above (#127)"
     }
-    # Native lane: the deliverable is the IMAGE, whose PATH carries the host
-    # CPython, scoop's OpenSSL and the toolkits, so "not under the roots" is not
-    # "not loadable". The walk stays informational here; it is a hard gate only
-    # where the bundle must stand alone (measured amd64 run 4, 2026-08-25).
+    # The native lane ships the image, whose PATH supplies these; the walk gates only where the bundle stands alone.
     Write-Host ("  import walk: {0} edge(s) unresolved against the roots on the native lane -- informational, the image PATH supplies them (hard gate on cross lanes only)" -f $importUnresolved.Count) -ForegroundColor Yellow
 }
 if ($ImportWalk -and $MinInspected -gt 0 -and $importWalked -lt $MinInspected) {
@@ -394,14 +303,7 @@ if ($violations.Count -gt 0) {
     $failed = $true
 }
 
-# "No floor" must be an explicit CHOICE, never an accident. The caller passes
-# -MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED) from a Dockerfile ARG, and
-# [int]$null is 0 -- so the day that ARG stops reaching the RUN environment (a
-# renamed build-arg, an undeclared ARG silently dropped by buildctl, a stage that
-# forgot to redeclare it across a FROM boundary) this gate would quietly stop
-# being a gate and report a clean pass over whatever it happened to find. That is
-# the exact "verified nothing, said PASS" shape this script exists to prevent, so
-# it fails loudly instead.
+# [int]$null is 0, so an ARCH_GATE_MIN_INSPECTED build-arg that stops reaching the RUN must fail here, not disable the floor.
 if ($MinInspected -le 0 -and -not $AllowEmptyTree) {
     throw ("verify-target-arch: -MinInspected resolved to $MinInspected, which disables the coverage floor " +
            'entirely. That is almost never intended -- it usually means the ARCH_GATE_MIN_INSPECTED build-arg ' +

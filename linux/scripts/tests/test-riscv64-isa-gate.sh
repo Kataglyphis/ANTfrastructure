@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the riscv64 ISA gate in 06-packaging/smoke-runtime-image.sh. The
-# attribute strings below were read off the shipped image on 2026-09-01: apt's
-# libc HAS the vector extension, our own pre-RVA23 OpenCV did not.
-# See docs/riscv64-rva23-baseline.md.
+# The riscv64 ISA gate in smoke-runtime-image.sh, on attribute strings read off a shipped image; see docs/riscv64-rva23-baseline.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -22,9 +19,7 @@ RVARCH libopencv_core.so ${_OLD_OPENCV}")" "BAD libopencv_core.so" \
   "after the switch a sub-baseline object is a regression"
 
 t_case "the same object is only reported OLD while the image predates the switch"
-# Scoping this to the image's OWN toolchain is what keeps the gate from failing
-# images built before the RVA23 change -- without it, it would have broken the
-# in-flight 2026-09-01 repair run, which rebuilds no compiler.
+# Keyed on the image's own toolchain, so images built before the RVA23 switch do not fail.
 t_assert_contains "$(_rvv_verdicts "RVCC
 RVARCH libopencv_core.so ${_OLD_OPENCV}")" "OLD libopencv_core.so"
 

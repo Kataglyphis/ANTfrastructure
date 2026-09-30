@@ -1,46 +1,14 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# NOTE ON THE POWERSHELL VERSION: this is the one file in the repo that is NOT
-# `#requires -Version 7.0`. It is LAUNCHED with pwsh 7 (see the hook command in
-# .claude/settings.json) like everything else, but it is written to run under
-# Windows PowerShell 5.1 as well, and the hook falls back to it if pwsh cannot
-# start. Reason: a PreToolUse guard that fails to launch fails OPEN - the tool
-# call proceeds unguarded. pwsh is an installed program, and installed programs
-# are exactly what went missing on 2026-08-21. The always-present 5.1 fallback
-# is what makes this guard survive the failure mode it exists to prevent. Keep
-# it 5.1-safe: no ternaries, no ??, no pwsh-only cmdlets.
-#
-# PreToolUse guard: refuses destructive deletes / uninstalls that reach OUTSIDE
-# the reclaimable set.
-#
-# WHY THIS EXISTS (2026-08-21): a "free some disk space" command written by an
-# agent did not stop at the container stores - it walked into installed
-# programs and the user profile, and every application on the host (editor,
-# VCS, GPU driver stack, container runtime) had to be reinstalled by hand. No
-# permission prompt stood in the way, because a blanket delete rule had been
-# allow-listed. This guard is the mechanical stop that was missing.
-#
-# It is deliberately BLUNT and FAIL-CLOSED on the protected roots: a delete
-# that mentions Program Files, C:\Windows, C:\ProgramData (outside the
-# container stores), a user profile, AppData or a drive root is DENIED - not
-# "asked". Denied means no prompt can wave it through. If such a delete is
-# genuinely wanted, a human runs it themselves, outside the agent.
-#
-# It guards two vectors, because the 2026-08-21 incident used the second one:
-#   1. commands the agent runs   (Bash / PowerShell tool)
-#   2. commands the agent WRITES for the user to paste (Write / Edit tool)
-#
-# Contract: reads the PreToolUse hook payload as JSON on stdin (or -InputJson
-# for tests), prints a permission decision on stdout, always exits 0.
-# Silence = no opinion, the normal permission flow continues.
+
+# PreToolUse delete guard; stays Windows PowerShell 5.1-safe because the hook falls back to 5.1 and a guard that cannot launch fails open.
 
 [CmdletBinding()]
 param([string]$InputJson)
 
 $ErrorActionPreference = 'Stop'
 
-# ---------------------------------------------------------------- payload ---
+# Payload
 if (-not $InputJson) {
     try { $InputJson = [Console]::In.ReadToEnd() } catch { exit 0 }
 }
@@ -92,17 +60,9 @@ $reclaimable = @(
     '$env:temp'
     '%temp%'
 )
-# NO repo-root row. Two used to sit here -- 'd:\github\kataglyphis-antfrastructure'
-# and 'd:\github\kataglyphis-containerhub' -- naming a drive and two repository
-# names that have not existed since the 2026-09-12 rename and the move to C:. A
-# reclaimable row that matches nothing is not harmless: it reads as "deleting a
-# repo checkout is fine here", which is the opposite of what this guard is for,
-# and the next reader would have spelled the CURRENT checkout to make it work.
-# If a repo root ever genuinely needs to be reclaimable, spell the real path and
-# add a Guard.DestructiveDeletes.Tests.ps1 case with it.
+# No repo checkout belongs in that list; Guard.DestructiveDeletes.Tests.ps1 makes adding one a deliberate decision.
 
-# Any of these under a delete verb = hard stop. Everything a host needs to
-# stay a working host, plus the profile that carries the user's settings.
+# A delete verb on any of these is denied outright, never asked.
 $protectedPatterns = @(
     @{ Rx = 'c:\\program files'; What = 'C:\Program Files' }
     @{ Rx = 'c:\\windows'; What = 'C:\Windows' }
@@ -116,21 +76,7 @@ $protectedPatterns = @(
     @{ Rx = '\\\.vscode|\\scoop|\\\.ssh|\\\.gitconfig|\\\.claude|\\\.aws|\\\.docker'; What = 'a per-user tool or config directory' }
     @{ Rx = '(^|[\s''"=])[a-z]:\\(\*|\s|$|''|")'; What = 'a drive root' }
     @{ Rx = '(^|\s)-(r|rf|fr)\s+\\(\s|$)'; What = 'the filesystem root' }
-    # Near = only counts when a delete verb sits within N characters of the
-    # match. Every other pattern above is PATH-SHAPED (it carries a `\` or a
-    # drive letter), so it cannot collide with prose. This one is bare English
-    # words, and the repo's own documentation is full of them: a page that says
-    # "an ENABLED AMD RDNA4 dGPU" and, three thousand characters later, shows a
-    # `nerdctl run --rm` example was denied, because `--rm` matches \brm\b and
-    # the vendor word matched anywhere in the same text. That fired on ordinary
-    # docs edits six times on 2026-08-25.
-    #
-    # Proximity is the right primitive here, NOT same-line matching: a real
-    # script assigns the path on one line and deletes on the next, and a
-    # line-scoped rule would stop seeing it. 200 characters comfortably spans
-    # that shape while excluding unrelated prose. The window is measured on the
-    # quote-retaining text, so a QUOTED verb near the token still denies --
-    # deliberately the conservative direction for a safety gate.
+    # Bare words collide with prose, so Near scopes them to N chars around a delete verb (proximity, not same line: scripts assign then delete).
     @{ Rx = 'nvidia|adrenalin|radeon'; What = 'a GPU driver installation'; Near = 200 }
 )
 
@@ -151,9 +97,7 @@ function Test-DestructiveText {
         return @{ Decision = 'deny'; Reason = 'uninstalls software on this host' }
     }
 
-    # Normalise the FULL text for path matching: lowercase, forward slashes to
-    # backslashes, then blank out the reclaimable roots so that a legitimate
-    # store cleanup does not read as a profile delete.
+    # Blank out the reclaimable roots so a store cleanup does not read as a profile delete.
     $norm = $Text.ToLowerInvariant().Replace('/', '\')
     foreach ($ok in $reclaimable) { $norm = $norm.Replace($ok.ToLowerInvariant(), ' <reclaimable> ') }
 
@@ -164,8 +108,7 @@ function Test-DestructiveText {
             }
             continue
         }
-        # Proximity-scoped pattern: every occurrence is checked, so a token that
-        # appears once in prose and once beside a delete still denies.
+        # Check every occurrence: a token once in prose and once beside a delete still denies.
         foreach ($m in [regex]::Matches($norm, $p.Rx)) {
             $lo = [Math]::Max(0, $m.Index - $p.Near)
             $hi = [Math]::Min($norm.Length, $m.Index + $m.Length + $p.Near)
@@ -175,8 +118,7 @@ function Test-DestructiveText {
         }
     }
 
-    # Outside the protected roots a recursive/wildcard delete is not forbidden,
-    # but it never happens silently either.
+    # Outside the protected roots a recursive or wildcard delete is allowed, but never silently.
     if ([regex]::IsMatch($bare, '(-recurse\b|-force\b|\s-r\b|\s-rf\b|\s-fr\b|/s\b|\*)')) {
         return @{ Decision = 'ask'; Reason = 'is a recursive or wildcard delete' }
     }
@@ -184,7 +126,7 @@ function Test-DestructiveText {
     return $null
 }
 
-# ------------------------------------------------------------------ route ---
+# Route
 $tool = [string]$ev.tool_name
 $in = $ev.tool_input
 

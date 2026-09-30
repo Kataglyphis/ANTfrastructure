@@ -1,7 +1,6 @@
-# BASE: see Dockerfile (same pinning contract). Backlog #26.
+# BASE: same pinning contract as Dockerfile.
 ARG BASE=mcr.microsoft.com/windows/servercore:ltsc2025
 FROM ${BASE}
 RUN fsutil file createnew C:\big1.bin 104857600 && fsutil file createnew C:\big2.bin 104857600
-# Forward slashes: a trailing backslash is the Dockerfile ESCAPE char and
-# eats the newline (degrades the dest to a FILE named "modules" at EOF).
+# Forward slashes: a trailing backslash escapes the newline and turns the dest into a file.
 COPY hello.txt C:/temp/scripts/modules/

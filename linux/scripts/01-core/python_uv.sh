@@ -1,22 +1,5 @@
 #!/usr/bin/env bash
 # python_uv.sh - shared Python/uv helpers for CI and build scripts
-#
-# Exposes:
-#   uv_venv_create <path> [python_version]     - Create a uv virtual environment
-#                                                 (pass "" to let uv/UV_PYTHON pick)
-#   uv_pip_install_requirements [venv] [reqs]   - pip install -r into a venv
-#                                                 (pins --python; see comment)
-#   uv_venv_activate <path>                     - Activate a virtual environment
-#   uv_venv_deactivate                          - Deactivate current venv
-#   uv_venv_remove <path>                       - Remove a virtual environment
-#   uv_sync_project [--locked] [--no-wxpython]  - Sync dependencies with uv
-#   uv_reconcile_chain_ort <venv>               - Put a venv's ONNX Runtime on the image's chain wheels
-#   uv_run <args...>                            - Run command with uv
-#   uv_ensure_installed                         - Ensure uv is installed
-#   timestamp                                   - Get timestamp for logs
-#   detect_workspace                            - Detect and export WORKSPACE_ROOT
-#   is_experimental_python <version>            - Check if Python version is experimental
-#   uv_python_request <version>                 - The uv request for a version (3.14 -> 3.14+gil)
 
 _PYTHON_UV_LOADED="${_PYTHON_UV_LOADED:-}"
 
@@ -27,13 +10,9 @@ _PYTHON_UV_LOADED=1
 _MODULE_DIR="${BASH_SOURCE[0]%/*}"
 source "$_MODULE_DIR/logging.sh" || { echo "Error: failed to source logging.sh" >&2; exit 1; }
 
-# Add known experimental Python versions here so callers can test/build
-# against newer interpreter releases. Keep the default aligned with the
-# source-built interpreter used by the container images.
+# Keep the default aligned with the images' source-built interpreter.
 declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-3.14t}"
-# Default interpreter used when callers don't specify one. DEFAULT_PYTHON_VERSION
-# was removed from versions.env — derived from the canonical PYTHON_MAJOR_MINOR
-# (itself derived from PYTHON_VERSION by common.sh).
+# Derived from PYTHON_MAJOR_MINOR, which common.sh derives from PYTHON_VERSION.
 declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-${PYTHON_MAJOR_MINOR:-3.14}}"
 declare -g _CURRENT_VENV_PATH=""
 # The ORT census: the checkout's copy, else the torch image's (Dockerfile.torch COPYs it into final/).
@@ -72,10 +51,7 @@ uv_ensure_installed() {
   local uv_install_sh uv_install_sha
   if ! command -v uv >/dev/null 2>&1; then
     info "Installing uv..."
-    # Download the installer to a file (never pipe curl into sh: a truncated
-    # stream would execute a partial script), then optionally pin it via the
-    # UV_INSTALL_SH_SHA256 env var / versions.env key (empty = skip; upstream
-    # rotates the script — see the key's comment in versions.env).
+    # Download to a file, never curl | sh (a truncated stream runs half a script); UV_INSTALL_SH_SHA256 pins it.
     uv_install_sha="${UV_INSTALL_SH_SHA256:-}"
     if [ -z "$uv_install_sha" ] && [ -f "$_MODULE_DIR/versions.env" ]; then
       uv_install_sha="$(sed -n 's/^UV_INSTALL_SH_SHA256=//p' "$_MODULE_DIR/versions.env")"
@@ -95,14 +71,12 @@ uv_ensure_installed() {
   info "uv version: $(uv --version)"
 }
 
-# The uv DISCOVERY request for a version: a bare X.Y[.Z] gets `+gil`, since uv lets a plain 3.14+ request
-# take a free-threaded build (BACKLOG CON40). `uv python install` rejects `+gil`; it installs the GIL build.
+# uv discovery request for X.Y[.Z]: `+gil`, as a plain 3.14+ may pick a free-threaded build; `uv python install` rejects `+gil`.
 uv_python_request() {
   if [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then printf '%s+gil' "$1"; else printf '%s' "$1"; fi
 }
 
-# Ensure the requested interpreter exists, installing it through uv when missing. The executable
-# name keeps a free-threaded `t` (`python3.14t`), so `3.14t` is never satisfied by `python3.14`.
+# Installs the interpreter through uv when missing; the name keeps a free-threaded `t`, so `3.14t` never matches `python3.14`.
 uv_ensure_python_available() {
   local req_version="$1"
   local exe_ver
@@ -122,8 +96,7 @@ uv_ensure_python_available() {
   info "Interpreter ${exe_name} not found. Trying to install via uv..."
   uv_ensure_installed
 
-  # Try uv install; don't fail the entire script if uv cannot install — emit
-  # a warning and let callers decide how to proceed.
+  # A failed install only warns; callers decide how to proceed.
   if uv python install "${exe_ver}" 2>/dev/null; then
     info "uv installed python ${exe_ver}; re-checking for ${exe_name}"
     # Ensure uv's bin is on PATH (uv python install may place runtimes in ~/.local)
@@ -142,10 +115,7 @@ uv_ensure_python_available() {
 
 uv_venv_create() {
   local venv_path="$1"
-  # Pass an explicit empty string as python_version to skip the --python pin
-  # and let uv resolve the interpreter itself (this honours UV_PYTHON, which
-  # the CI container images export to point at their system interpreter).
-  # Omitting the argument keeps the historical DEFAULT_PYTHON_VERSION pin.
+  # An explicit "" skips the --python pin so uv honours UV_PYTHON; omitted means DEFAULT_PYTHON_VERSION.
   local python_version="${2-$DEFAULT_PYTHON_VERSION}"
   local clear_flag="${3:---clear}"
 
@@ -158,10 +128,7 @@ uv_venv_create() {
 
   local uv_args=(venv --seed "$venv_path")
   if [ -n "$python_version" ]; then
-    # Try to ensure requested Python is available via uv (if possible) before
-    # creating the venv. If uv cannot provide the interpreter, uv venv will
-    # still attempt to create the venv with whatever python is available and
-    # may fail; callers can override by passing an explicit python path.
+    # Best effort; callers can pass an explicit interpreter path instead.
     uv_ensure_python_available "$python_version" || true
     uv_args+=("--python=$(uv_python_request "$python_version")")
   fi
@@ -172,19 +139,12 @@ uv_venv_create() {
   return 0
 }
 
-# Install a requirements file into a specific venv. The --python pin is
-# deliberate and load-bearing: uv honours UV_PYTHON OVER the activated venv,
-# and the CI container images export UV_PYTHON=/opt/venv/bin/python (a
-# root-owned system venv) - so a plain `uv pip install` inside an activated
-# .venv still targets /opt/venv and dies with "Permission denied (os error
-# 13)" for the non-root CI user (uid 1001). --python forces the writable
-# local environment. Reproduced and verified in the :latest-cross image.
+# --python is load-bearing: UV_PYTHON beats an activated venv. docs/python-ci.md#trap-2--uv_python-beats-the-activated-venv
 uv_pip_install_requirements() {
   local venv_path="${1:-.venv}"
   local requirements_file="${2:-requirements.txt}"
 
-  # bin/python is the POSIX venv layout; Windows (Git Bash) venvs carry
-  # Scripts/python.exe instead. Missing both is a broken venv and dies by name.
+  # Git Bash venvs carry Scripts/python.exe instead of bin/python.
   local venv_python="$venv_path/bin/python"
   [ -x "$venv_python" ] || venv_python="$venv_path/Scripts/python.exe"
   if [ ! -x "$venv_python" ]; then
@@ -235,15 +195,7 @@ uv_venv_remove() {
   fi
 }
 
-# Extras that must NOT be installed together, one per line as a group.
-#
-# `uv sync --all-extras` is a hard error on any project that declares
-# `[tool.uv] conflicts` — uv refuses with
-#   error: Extras `a` and `b` are incompatible with the declared conflicts
-# and there is no "install as much as possible" flag. Measured 2026-08-11:
-# OrchestrANT declares 12 pairwise conflicts across two
-# mutually-exclusive families (the ml-ai backends and the pytorch backends), so
-# every one of its CI lanes failed here regardless of what it was asked to do.
+# Conflicting extras, one group per line. docs/python-ci.md#trap-1----all-extras-is-fatal-with-declared-conflicts
 _uv_conflict_groups() {
   local pyproject="${1:-pyproject.toml}"
   [ -f "$pyproject" ] || return 0
@@ -276,13 +228,7 @@ _uv_conflict_groups() {
   ' "$pyproject"
 }
 
-# Which extras to exclude so that --all-extras becomes satisfiable.
-#
-# Greedy over the groups in DECLARATION ORDER: keep an extra unless it conflicts
-# with one already kept, otherwise exclude it. Deterministic, and it keeps the
-# first-declared member of each family — which for OrchestrANT means the
-# plain `ml-ai` and `pytorch-cpu`, the right choices for CI. A project that wants
-# a different member sets UV_SYNC_EXTRAS and skips all of this.
+# Greedy in declaration order, so each family keeps its first-declared member; UV_SYNC_EXTRAS overrides.
 _uv_extras_to_exclude() {
   local groups keep=" " drop=" " a b
   groups="$(_uv_conflict_groups "${1:-pyproject.toml}")" || return 0
@@ -361,12 +307,9 @@ uv_sync_project() {
     sync_args+=(--no-build-isolation-package wxpython)
   fi
   
-  # Why venv creation branches on the interpreter:
-  # docs/cross-build-verification.md
+  # Why venv creation branches on the interpreter: docs/cross-build-verification.md
   local _venv="${_CURRENT_VENV_PATH:-${VIRTUAL_ENV:-}}"
-  # Writability is checked, not assumed: pinning to a venv this uid cannot
-  # write is strictly worse than not pinning at all, because uv then fails deep
-  # into the sync instead of falling back to its own discovery.
+  # Pin only a writable venv: an unwritable pin fails deep in the sync instead of falling back.
   local _pinned=0
   if [ -n "$_venv" ] && [ -x "$_venv/bin/python" ] && [ -w "$_venv/lib" ]; then
     sync_args+=(--python "$_venv/bin/python")
@@ -376,11 +319,7 @@ uv_sync_project() {
     warn "Refusing to pin uv sync to ${_venv}: ${_venv}/lib is not writable by uid $(id -u)."
     warn "  Falling back to uv's own discovery rather than failing mid-sync."
   else
-    # Say WHY, because the pin silently not applying is exactly how the sync ends
-    # up in /opt/venv. Measured 2026-08-12: this branch was taken on a runner
-    # where the venv had just been created at an absolute path, and the run then
-    # died with "Permission denied (os error 13)" - the diagnosis was impossible
-    # from the log because nothing said which interpreter uv had chosen.
+    # Say why: a pin that silently does not apply is how the sync ends up in /opt/venv.
     warn "No usable venv resolved for uv sync."
     warn "  VIRTUAL_ENV='${VIRTUAL_ENV:-}'  _CURRENT_VENV_PATH='${_CURRENT_VENV_PATH:-}'"
     if [ -n "$_venv" ]; then
@@ -388,26 +327,11 @@ uv_sync_project() {
     fi
   fi
 
-  # Three different knobs can redirect `uv sync`, and ALL of them point at the
-  # root-owned system venv in these images. Clear them for the CALL, not for the
-  # shell:
-  #   UV_PYTHON=/opt/venv/bin/python  - exported by the image; uv honours it
-  #                                     over both --active and an activated venv.
-  #   VIRTUAL_ENV=/opt/venv           - exported by the image; what --active binds
-  #                                     to.
-  # Leaving either in place is how this lane kept dying with
-  #   error: failed to remove file `/opt/venv/...`: Permission denied (os error 13)
+  # Clear UV_PYTHON and VIRTUAL_ENV for this call only: the images point both at the root-owned /opt/venv.
   local -a _env_clear=(-u UV_PYTHON -u VIRTUAL_ENV)
 
   if [ "$_pinned" -eq 1 ]; then
-    # UV_PROJECT_ENVIRONMENT is the knob that actually decides WHERE `uv sync`
-    # installs. --python only chooses the INTERPRETER; with --active still in
-    # play uv resolved the environment to VIRTUAL_ENV=/opt/venv and tried to
-    # rewrite it, so a correctly-pinned interpreter still produced
-    #   failed to remove file `/opt/venv/CACHEDIR.TAG`: Permission denied
-    # (OrchestrANT, both arches, 2026-08-14). Name the environment
-    # explicitly and drop --active: with VIRTUAL_ENV cleared there is no active
-    # environment for it to mean anything about.
+    # UV_PROJECT_ENVIRONMENT decides where sync installs; --python only picks the interpreter.
     _env_clear+=("UV_PROJECT_ENVIRONMENT=${_venv}")
     info "uv sync target environment: ${_venv}"
   else
@@ -420,16 +344,7 @@ uv_sync_project() {
   uv_reconcile_chain_ort "${_venv}"
 }
 
-# `uv run` with the image's redirections out of scope, which uv_sync_project
-# already does for its half and this did not. The images export
-# UV_PYTHON=/opt/venv/bin/python and VIRTUAL_ENV=/opt/venv (root-owned), and uv
-# honours UV_PYTHON OVER an activated venv: a gate that creates a venv without
-# activating it ran every analyser against /opt/venv as uid 1001 ("failed to
-# remove file `/opt/venv/.../bin/cygdb`: Permission denied"), and a gate that
-# DOES activate still lost its per-version venv, rebuilt from the image
-# interpreter with default groups -- where pytest, living in an extra, is not.
-# When this run made or activated a venv, name it: --active means nothing once
-# VIRTUAL_ENV is gone, so the pin has to be explicit.
+# uv run without the images' /opt/venv redirections; our own venv is named explicitly for --active.
 uv_run() {
   local _venv="${_CURRENT_VENV_PATH:-}"
   if [ -n "${_venv}" ] && [ -x "${_venv}/bin/python" ]; then
@@ -439,8 +354,7 @@ uv_run() {
   fi
 }
 
-# `uv run` re-syncs to the lock, which would put PyPI ORT back: hold it off while a
-# reconciled venv is live, release only what this module set.
+# uv run re-syncs to the lock and would restore PyPI ORT, so hold sync off; release only our own hold.
 _uv_chain_ort_hold_sync() {
   if [ "$1" = hold ] && [ -z "${UV_NO_SYNC:-}" ]; then
     export UV_NO_SYNC=1
@@ -452,16 +366,14 @@ _uv_chain_ort_hold_sync() {
   return 0
 }
 
-# The ORT distributions in a venv, one name per line, from the census assemble-torch-app.sh
-# uses on the image's own venv. $1 = the venv's interpreter.
+# ORT distributions in the venv of interpreter $1, from the same census assemble-torch-app.sh uses.
 _uv_chain_ort_names() {
   local out
   out="$("$1" -I "${_UV_ORT_CENSUS}" --purge-list 2>&1)" || { printf '%s\n' "${out}"; return 1; }
   printf '%s\n' "${out}" | sed -n 's/^ORT-CENSUS PURGE \([a-z0-9][a-z0-9-]*\)$/\1/p'
 }
 
-# Moves a synced venv's ONNX Runtime onto the image's chain wheels (ORT_CHAIN_WHEEL_DIR) and
-# proves it, or fails; outside our images only warns. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+# Moves the venv's ORT onto the chain wheels. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
 uv_reconcile_chain_ort() {
   local venv="$1" store="${ORT_CHAIN_WHEEL_DIR:-}" py names
   local -a drop=() wheels=()
@@ -503,8 +415,7 @@ _uv_chain_ort_preflight() {
   return 0
 }
 
-# Before uv: every store ORT wheel must fit this venv's ABI tag (cp313, cp314t), or the leg cannot
-# carry ORT inside our images. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+# Every store wheel must fit this venv's ABI tag (cp313, cp314t) before uv touches anything.
 _uv_chain_ort_abi_fits() {
   local venv="$1" py="$2" abi w tag bad=""
   shift 2
@@ -523,8 +434,7 @@ _uv_chain_ort_abi_fits() {
   return 1
 }
 
-# No ORT distribution to purge: inside our images nothing may import as ORT either (an unowned
-# copy, a dist without a Name); the census --check output is the evidence.
+# With no ORT dist to purge, nothing may import as ORT either (an unowned copy inside our images).
 _uv_chain_ort_unowned() {
   local venv="$1" py="$2" store="$3" out
   out="$("${py}" -I -c 'import importlib.util as u, sys; hits = [p for p in ("onnxruntime", "onnxruntime_genai", "onnxruntime_extensions") if u.find_spec(p)]; print(*hits); sys.exit(1 if hits else 0)' 2>&1)" && return 0
@@ -533,8 +443,7 @@ _uv_chain_ort_unowned() {
   return 1
 }
 
-# After uv: the census proves every ORT dist is a chain wheel byte for byte; the import proves it
-# loads here (a DLL the venv lacks passes the byte census and the ABI-tag check alike).
+# The census proves the bytes; the import catches a missing library that the census and ABI check both pass.
 _uv_chain_ort_prove() {
   local venv="$1" py="$2" store="$3" out
   out="$("${py}" -I "${_UV_ORT_CENSUS}" --check --store "${store}" 2>&1)" || {
@@ -549,8 +458,7 @@ _uv_chain_ort_prove() {
   return 0
 }
 
-# Nothing to replace. No ORT dist: no hold (inside our images, no unowned ORT either). Outside our
-# images: say loudly what uv resolved and change nothing. $1 venv, $2 interpreter, $3 store, then the dists.
+# Nothing to replace: release the hold, or outside our images report what uv resolved. Args: venv py store dists...
 _uv_chain_ort_notice() {
   local venv="$1" py="$2" store="$3"
   shift 3

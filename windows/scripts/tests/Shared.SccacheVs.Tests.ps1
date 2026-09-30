@@ -1,16 +1,5 @@
 #requires -Version 7.0
-# Tests for the shared helpers that replaced three duplicated implementations each:
-#   Get-SccacheStatsText  <- the sccache --show-stats copies in WindowsCMake.Common
-#                            (inline), WindowsBuild.Common (Show-SccacheStats) and
-#                            WindowsSourceBuild.Common (Write-SccacheStats)
-#   Get-VisualStudioInstallPath / Get-MsvcToolsRoots
-#                         <- Get-VsInstallPath/Get-MsvcToolsRoot (throwing) and the
-#                            inline non-throwing vswhere probe in
-#                            WindowsCMake.Common::Get-SanitizerRuntimeDlls
-# Only the host-independent parts are asserted: the remote gate, and the
-# throwing-vs-silent contract when vswhere.exe cannot be found. Both are driven
-# purely from the environment, so they behave the same with or without a real
-# Visual Studio installation on the machine.
+# Only the environment-driven parts of the shared sccache and vswhere helpers, so results never depend on the host's VS.
 
 Describe 'Get-SccacheStatsText' {
 
@@ -78,9 +67,7 @@ Describe 'Get-MsvcToolsRoots' {
     }
 
     It 'supports the -AllowMissing caller pattern without throwing (empty -> $null)' {
-        # PowerShell unrolls an empty return, so callers wrap in @(...) before
-        # taking the first entry -- this is exactly what Get-SanitizerRuntimeDlls
-        # does, and it must yield $null rather than blowing up.
+        # An empty return unrolls, so callers wrap in @(...) and must get $null, not an error.
         Invoke-WithEnv @{ 'ProgramFiles(x86)' = 'X:\no-such-program-files' } {
             Assert-Null (@(Get-MsvcToolsRoots -AllowMissing) | Select-Object -First 1)
         }

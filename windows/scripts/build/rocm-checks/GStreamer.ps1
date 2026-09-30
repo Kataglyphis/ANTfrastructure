@@ -6,12 +6,8 @@
 .SYNOPSIS
     rocm-image check for GStreamer's AMD paths (hip, amfcodec, d3d11, d3d12); writes one finding per breach.
 .DESCRIPTION
-    GPU-less and static where it must be: each plugin and its library exist, their import closure resolves
-    on PATH/System32, the HIP runtime gsthip opens at HIP_PATH exports what the loader resolves, and every
-    plugin whose closure this Server Core image can satisfy loads in gst-inspect-1.0.
-    NOT covered: element registration (hipupload, amfh264enc, ... need an AMD GPU and driver), symbols a
-    newer GStreamer adds to its HIP loader, and loading hip/amfcodec when their GL/Vulkan closure needs a
-    host DLL Server Core lacks. docs/windows-builds.md § ROCm layer.
+    GPU-less: plugin files, their import closure, the HIP runtime's exports and a gst-inspect load; no elements.
+    See docs/windows-rocm.md § GStreamer on the rocm lane.
 #>
 
 Set-StrictMode -Version Latest
@@ -39,8 +35,7 @@ function Get-GstPeExportName {
         })
 }
 
-# Import edges the way LoadLibraryW resolves them: search dirs only, never the DLL's own folder.
-# System32 DLLs are not walked (their OneCore deps are loader-tolerated noise on Server Core).
+# Resolves like LoadLibraryW (search dirs, never the DLL's folder); System32 DLLs are not walked, their OneCore deps are noise.
 function Get-GstDllClosure {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -73,8 +68,7 @@ function Get-GstHiprtcDllName {
     return 'hiprtc{0:D2}{1:D2}.dll' -f $ver['MAJOR'], $ver['MINOR']
 }
 
-# The HIP runtime gsthip dlopens: gsthiploader.cpp takes the first HIP_PATH\bin\amdhip64_*.dll.
-# Symbol lists = its LOAD_SYMBOL calls (and gsthiprtc.cpp's) at the pinned GStreamer, GL pair included.
+# The symbol lists mirror gsthiploader.cpp's and gsthiprtc.cpp's LOAD_SYMBOL calls at the pinned GStreamer.
 function Get-GstHipRuntimeFinding {
     param(
         [Parameter(Mandatory)][string]$HipRoot,
@@ -112,8 +106,7 @@ function Get-GstHipRuntimeFinding {
     }
 }
 
-# Exit code and stdout of gst-inspect-1.0 <plugin>; ExitCode is $null on a hang (the tree is killed).
-# stderr stays on the console: it is the diagnostic when a plugin fails to load.
+# ExitCode is $null on a hang; stderr stays on the console because it is the load-failure diagnostic.
 function Invoke-GstInspectProbe {
     param(
         [Parameter(Mandatory)][string]$GstInspect,
@@ -132,8 +125,7 @@ function Invoke-GstInspectProbe {
     } finally { $child.Dispose() }
 }
 
-# One plugin: file present, closure resolves (host-provided GL/Vulkan aside), no static vendor-runtime link,
-# and a load probe unless the closure needs a host DLL this image does not carry.
+# The load probe is skipped when the closure needs a host GL/Vulkan DLL that Server Core does not ship.
 function Get-GstPluginFinding {
     param(
         [Parameter(Mandatory)][string]$Plugin,

@@ -5,10 +5,7 @@
 
 Set-StrictMode -Version Latest
 
-# Import shared helpers (Resolve-DirectoryPath, New-Timestamp, ConvertTo-ParameterList, etc.)
-# Guarded, WITHOUT -Force (repo-wide nested-import rule): a forced nested
-# re-import rebinds Shared into this module's private scope and unloads the
-# caller's top-level import (the PS module-scoping trap).
+# Guarded, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
@@ -86,8 +83,7 @@ Export-ModuleMember -Function @(
     'Stop-StructuredLogging',
     'Write-StructuredLogEntry',
     'Enable-Tls12ForDownloads',
-    # Re-exported from WindowsScripts.Shared (imported above) so a caller gets these via a
-    # single Import-Module -- no "import Shared last" ordering dance / nested -Force clobber.
+    # Re-exported from WindowsScripts.Shared, so one Import-Module suffices.
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',

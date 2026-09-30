@@ -34,8 +34,7 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    # shell is declared explicitly on every step: composite steps do not
-    # inherit a workflow's defaults.run.shell.
+    # Composite steps do not inherit a workflow's default shell.
     - name: Probe for SARIF results
       id: probe
       shell: pwsh
@@ -44,8 +43,7 @@ runs:
         $files = @(Get-ChildItem -Path $dir -Filter *.sarif -ErrorAction SilentlyContinue)
         $found = if ($files.Count -gt 0) { 'true' } else { 'false' }
         Write-Host "SARIF probe: $dir -> $($files.Count) file(s)"
-        # -Encoding utf8 on Windows PowerShell 5.1 writes a BOM that breaks
-        # GITHUB_OUTPUT parsing; utf8NoBOM is required.
+        # A BOM would break GITHUB_OUTPUT parsing.
         "found=$found" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
 
     - name: Upload SARIF

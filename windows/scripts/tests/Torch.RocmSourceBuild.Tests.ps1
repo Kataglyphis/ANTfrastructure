@@ -1,8 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Build-TorchRocmFromSource.ps1's pure parts: the wheel versions and names, the version.txt check, the steps both RUNs share,
-# torch/_rocm_init.py, the torch and torchvision build env, the OpenMP runtime check, the venv shim and the runtime pins.
 # NOT covered: the compile itself, which only a real rocm-lane build of Dockerfile.torch runs.
 
 $script:TorchRocmBuilder = 'windows\scripts\build\Build-TorchRocmFromSource.ps1'

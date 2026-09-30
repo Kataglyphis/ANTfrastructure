@@ -1,33 +1,7 @@
 #!/usr/bin/env python3
-"""Print one image-config LABEL of a REMOTE image, without pulling it.
+"""Print one image-config LABEL of a remote image without pulling it; `nerdctl image inspect` sees only the local store.
 
-Why this exists (XC3, 2026-08-23)
----------------------------------
-The runtime lane records its provenance (run-id, parent digest, parent stage)
-as image LABELS, because RTCACHE3 forced the builds onto plain ``-t`` and that
-path cannot carry buildkit exporter annotations.  Labels live in the image
-*config blob*, so they do reach the registry with the push -- but ``nerdctl
-image inspect`` only ever answers from the LOCAL store.
-
-That gap made the XC3 coherence gate inert in exactly the situation it was
-written for: a ``--repair`` / ``--manifest-only`` run, possibly on a different
-host, where the per-arch wrapper tags are not in the local store at all.  The
-gate then read three empty run-ids, dropped them as "unknown", and happily
-assembled a mixed-generation manifest.
-
-Fetching the config blob is cheap (a manifest plus a few KB of JSON), so this
-helper does exactly that and nothing else.
-
-Contract (mirrors manifest-annotation.py, whose exit codes callers branch on):
-  exit 0 -- label found, value printed on stdout
-  exit 2 -- image readable but carries no such label
-  exit 1 -- could not read the image at all (network, auth, unsupported ref)
-
-Auth: anonymous Bearer via the registry's own WWW-Authenticate challenge, with
-a best-effort fallback to credentials already stored in
-``$DOCKER_CONFIG/config.json`` / ``~/.docker/config.json``.  Anything it cannot
-authenticate is reported as "could not read" (1), never as "absent" (2) -- the
-caller must not mistake a permission problem for missing provenance.
+Exit 0 found, 2 absent, 1 unreadable; an auth failure is 1, never 2, so it cannot pass for missing provenance.
 """
 
 from __future__ import annotations
@@ -56,12 +30,7 @@ EXIT_ABSENT = 2
 
 
 def _split_ref(ref: str):
-    """Split <host>/<repo>:<tag|@digest> into (host, repo, reference).
-
-    Docker-style short refs (no dot/colon in the first segment) imply Docker
-    Hub, which this chain never uses; treat them as unsupported rather than
-    guessing a host.
-    """
+    """Split <host>/<repo>:<tag|@digest> into (host, repo, reference); short Docker Hub refs give None."""
     remainder = ref
     digest = ""
     if "@" in remainder:
@@ -180,8 +149,7 @@ def main(argv) -> int:
     except ValueError:
         return EXIT_UNREADABLE
 
-    # A per-arch wrapper tag is a plain manifest. An index has no single config
-    # to read, and picking one arbitrarily would answer about the wrong image.
+    # An index has no single config, and picking one would answer about the wrong image.
     config = manifest.get("config") or {}
     config_digest = config.get("digest")
     if not config_digest:

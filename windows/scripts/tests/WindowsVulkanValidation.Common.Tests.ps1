@@ -1,11 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# Covers the pure parts of WindowsVulkanValidation.Common: the log scan, the
-# hazard report, and the vk_layer_settings.txt staging/cleanup contract. The
-# executable-running part needs a GPU and a Vulkan SDK, so it is exercised by
-# the consuming project's wrapper instead.
+# Running the executable needs a GPU and a Vulkan SDK, so the consuming project's wrapper covers it.
 
 Describe 'WindowsVulkanValidation.Common' {
   BeforeAll {

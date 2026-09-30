@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for verify_code_size.py. The gate derives its root from its own path, so
-# each case builds a throwaway tree and runs the real script against it. Both
-# metrics share one four-way contract, so the cases below share one fixture
-# builder and one runner.
-# docs/code-quality-tooling.md#code-size--functions-and-files-code-size
+# verify_code_size.py: both metrics share one four-way contract and one runner. See docs/code-quality-tooling.md#code-size--functions-and-files-code-size
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -21,13 +17,11 @@ _tree() {
   printf '%s' "${d}"
 }
 
-# A tree holding one subject.sh. `shape` decides whether the <n> lines form one
-# long FUNCTION or just a long FILE, and which allow file the line lands in.
+# _fixture <shape> <n> [allow]: one subject.sh of <n> lines, as one long function or a long file.
 _fixture() {
   local shape="$1" n="$2" allow="${3-}" d
   d="$(_tree)"
-  # NOTE: the redirect must sit inside each arm. A trailing `esac > "${subject}"`
-  # expands ${subject} before any arm runs, so the content lands in the default file.
+  # Redirect inside each arm: a trailing `esac > "${subject}"` expands before any arm runs.
   case "${shape}" in
     function)
       { echo "big() {"; for _ in $(seq 1 $((n - 2))); do echo "  :"; done; echo "}"; } \
@@ -35,9 +29,7 @@ _fixture() {
       [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/function-size.allow"
       ;;
     twice)
-      # The same name defined twice, LONG first and short after. "Last wins" would
-      # then report 3 lines and the offender would hide behind its own redefinition,
-      # so the gate must take the longest.
+      # Long first, then short: "last wins" would hide the offender behind its redefinition.
       { echo "big() {"; for _ in $(seq 1 $((n - 2))); do echo "  :"; done; echo "}"
         echo "big() {"; echo "  :"; echo "}"; } \
         > "${d}/linux/scripts/subject.sh"
@@ -133,9 +125,7 @@ t_case "a name defined twice is measured at its longest, not its last"
 _says  twice 100 "" "is 100 lines" "the short redefinition must not mask the long one"
 _exits twice 100 "linux/scripts/subject.sh | big | 100 | baseline" 0 "frozen at the real length"
 
-# ── extents: braces that are not code ────────────────────────────────────────
-# subject.sh is read from stdin and every function reports its own length, so a
-# case asserts the measured extent directly. docs/code-quality-tooling.md#what-a-shell-functions-extent-is
+# ── extents: braces that are not code. See docs/code-quality-tooling.md#what-a-shell-functions-extent-is
 _measure() {
   local d out
   d="$(_tree)"
@@ -203,8 +193,7 @@ t_assert_contains "${_out}" "subject.sh:writer is 7 lines" "the writer runs to i
 _no_function "${_out}" "phantom" "it is a line of the heredoc the writer emits"
 
 t_case "a { inside a comment no longer swallows the rest of the file"
-# The old raw count never closed outer, so outer was invisible to every gate that
-# inherits these extents and inner sat inside an extent that ran to EOF.
+# A raw brace count never closes outer, hiding it and running inner's extent to EOF.
 _out="$(_measure <<'SH'
 outer() {
   # an unbalanced { in prose
@@ -219,11 +208,7 @@ t_assert_contains "${_out}" "subject.sh:outer is 4 lines" "outer must be measure
 t_assert_contains "${_out}" "subject.sh:inner is 3 lines" "inner is its own function"
 
 t_case "the REAL scan set covers linux/llm-stack -- EX1, and its rows rest on it"
-# Every other case builds a throwaway tree, so none of them can see the scan set the
-# gate actually ships with. linux/llm-stack was outside it until 2026-09-07: 43 files
-# and 19,874 lines, including the second-largest .py in the repo, invisible to every
-# extent gate. Assert the BEHAVIOUR (a file only that tree has is walked), not the
-# literal tuple, so a rename of the directory fails here rather than going quiet.
+# Only this case sees the shipped scan set; asserting behaviour makes a directory rename fail here.
 t_assert_eq "scanned" "$(t_gate_probe linux/scripts/verify_code_size.py <<'PYCHK'
 want = "linux/llm-stack/backends.json"
 seen = any(rel == want for _, rel in g.scan(".json"))
@@ -231,9 +216,7 @@ print("scanned" if seen else f"MISSING {want} from SCAN={g.SCAN}")
 PYCHK
 )" "removing linux/llm-stack from SCAN silently un-freezes its reviewed rows"
 
-# The --root arm, which no case above reaches: every fixture here is a tree
-# planted AROUND the gate, so it cannot tell --root from its own repo.
-# gate-tree.sh#gate_root_arm holds the two assertions; the subject is a 90-line function in the fixture.
+# --root: the fixtures above plant trees around the gate, so none can tell --root from its own repo.
 t_case "--root grades the named tree, and reads its freeze file"
 _root_subject="$( { echo "big() {"; for _ in $(seq 1 90); do echo "  :"; done; echo "}"; } )"
 gate_root_arm "${PY}" "${SCRIPTS_DIR}/verify_code_size.py" "${_root_subject}" function-size.allow 'zz-sentinel.sh | zz | 999 | sentinel' zz-sentinel.sh

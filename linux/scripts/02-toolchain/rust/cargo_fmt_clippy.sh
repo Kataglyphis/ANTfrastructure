@@ -1,34 +1,12 @@
 #!/usr/bin/env bash
-# cargo_fmt_clippy.sh - rustfmt --check and clippy -D warnings over a crate.
-#
-# PROBE, DO NOT ADD. This script used to open with `rustup component add rustfmt`,
-# which made it unusable in the image it exists for: the runtime stage ships NO
-# rustup (install-rust.sh bakes rustfmt and clippy in at image-build time), so it
-# exited 127 before cargo ever ran. OxidANT's rust_ubuntu26_04.yml:134-139 records
-# that as "it died with exit 127 on every single build", and both of its lanes
-# hand-rolled the two cargo calls to get around it.
-#
-# Environment:
-#   CARGO_CLIPPY_ARGS - the feature/scope arguments clippy runs with
-#     (default: --all-features). This is the OTHER reason consumers hand-rolled
-#     the pair: --all-features was hard-coded here, and a workspace whose
-#     optional features do not all build on the runner could not use the driver
-#     at all. Set it to what that repo needs, e.g. '--workspace --locked'.
-#     Empty is allowed and means "clippy's own defaults".
-#
-# Positional arguments still go to `cargo fmt` (--check keeps its place after
-# the --) and NO LONGER to clippy: forwarding one argument list to two tools
-# that read it differently is how a --features meant for fmt became a scope
-# change for clippy.
+# rustfmt and clippy gates; CARGO_CLIPPY_ARGS (default --all-features) scopes clippy, positionals go to fmt only.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../01-core/logging.sh
 source "$SCRIPT_DIR/../../01-core/logging.sh"
 
-# Already available, else installable, else a hard error naming both ways out.
-# The probe is the component's own --version THROUGH cargo, not `rustup component
-# list`: in the baked-in case there is no rustup to ask.
+# Probe through cargo, never rustup: the images bake the components in and ship no rustup.
 _ensure_component() {
   local component="$1" subcommand="$2"
   if cargo "$subcommand" --version >/dev/null 2>&1; then

@@ -62,12 +62,7 @@ runs:
   using: 'composite'
   steps:
     - name: docker run
-      # An EXPLICIT `shell: bash` runs as `bash -e -o pipefail {0}` - identical
-      # to what the calling Linux workflow gets from its
-      # `defaults.run.shell: bash`. pipefail is load-bearing here: without it
-      # the `| tee` pipeline below reports tee's exit code and masks docker's,
-      # which hid failed configures/builds for months (see the Linux workflow
-      # header comment in BeschleunigerBallett).
+      # Explicit bash runs with pipefail, without which `| tee` would mask docker's exit code.
       shell: bash
       run: |
         if [ -n "${{ inputs.log-file }}" ]; then

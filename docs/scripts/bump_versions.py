@@ -1,33 +1,7 @@
 #!/usr/bin/env python3
-"""bump_versions.py — automated updater for linux/scripts/01-core/versions.env.
+"""Refresh the versions.env keys Renovate does not own, with the *_SHA256/*_COMMIT pins a bump drags along.
 
-What owns what (2026-09-11): Renovate's customManager reports every
-`# renovate:`-annotated key in versions.env (89 of 99 tracked; the exceptions
-are documented in docs/dependency-updates.md#what-is-still-not-annotated-and-why)
-and its local --apply half writes the self-contained ones. THIS script owns the
-rest: the paired *_SHA256/*_COMMIT refresh a bump drags with it, the tracked
-keys Renovate cannot see, the registry digests, and the SLAVED PROTOC
-derivation.
-
-Queries every remaining upstream (GitHub releases with per-asset sha256
-digests, registry manifests, nuget/nodejs/LunarG endpoints), then:
-
-  --check          report current vs latest for every tracked key (default)
-  --write          bump the SAFE set to latest and refresh the paired *_SHA256
-                   pins in one pass; HIGH-RISK keys are always report-only
-  --only K1,K2     restrict --write to specific keys (must be in the safe set)
-
-After a --write, finish with (same ritual as AGENTS.md § Version Bumping):
-    python docs/scripts/sync_versions.py --write
-    bash linux/scripts/01-core/verify-arg-consistency.sh
-    bash linux/scripts/preflight.sh
-
-GitHub is queried via `git ls-remote --tags` (NOT the REST API), so there is
-no rate limit to wait for. Checksums come from each project's published
-sums-file release asset where one exists (pwsh hashes.sha256, uv *.sha256,
-cmake SHA-256.txt, ollama sha256sum.txt, hadolint/actionlint checksums, node
-SHASUMS256.txt, NVIDIA redist manifests) and otherwise from downloading the
-artifact and hashing it (release downloads are not rate-limited either).
+After --write: sync_versions.py --write, verify-arg-consistency.sh, preflight.sh (AGENTS.md § Version Bumping).
 """
 from __future__ import annotations
 
@@ -49,14 +23,11 @@ VERSIONS_ENV = REPO_ROOT / "linux/scripts/01-core/versions.env"
 
 UA = {"User-Agent": "kataglyphis-bump-versions"}
 
-# Set by main() under --write: extras (checksum downloads, some GBs) are only
-# computed when the result will actually be written.
+# Set under --write: the checksum downloads (some GBs) only run when the result is written.
 WRITE_MODE = False
 
 
-# ---------------------------------------------------------------------------
 # HTTP helpers
-# ---------------------------------------------------------------------------
 def _headers(extra: dict | None = None) -> dict:
     h = dict(UA)
     tok = os.environ.get("GITHUB_TOKEN")
@@ -91,21 +62,12 @@ def http_header(url: str, header: str, accept: str, auth: str | None = None) -> 
         return r.headers.get(header, "")
 
 
-# sha256("") — the fingerprint of a silently failed/empty download. Committing
-# it as a pin bricks the consuming stage (BT2, 2026-08-19: nearly happened
-# with the nonexistent libtensorflow 2.21 artifact).
+# sha256("") marks a silently empty download; committed as a pin it bricks the consuming stage.
 _EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 
 def sha256_of_gz_stream(url: str) -> str:
-    """Hash the DECOMPRESSED stream of a .tar.gz (F6, 2026-08-27).
-
-    GitHub pledges codeload archive byte-stability for "no less than a year",
-    not forever, because the gzip container may be re-encoded. The decompressed
-    stream is stable for as long as the commit exists, so pins meant to outlive
-    that pledge are taken this way -- matched by download_verified_file()'s
-    "stream" mode on the consuming side. Never change one side alone.
-    """
+    """Hash a .tar.gz's decompressed stream, which outlives GitHub's gzip stability pledge; pairs with download_verified_file()'s "stream" mode."""
     import gzip
     h = hashlib.sha256()
     with urllib.request.urlopen(urllib.request.Request(url, headers=_headers()), timeout=600) as r:
@@ -139,12 +101,7 @@ def artifact_exists(url: str) -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# Datasources — GitHub via `git ls-remote` (NO REST API => NO rate limit).
-# Checksums come from published sums-file assets where a project ships them,
-# else by downloading the asset and hashing it (release downloads are not
-# API-rate-limited either).
-# ---------------------------------------------------------------------------
+# Datasources: GitHub via `git ls-remote`, not the REST API, so there is no rate limit.
 PRERELEASE_RX = re.compile(r"(?i)(rc|alpha|beta|preview|pre[0-9._-]|dev|init|test|next|nightly)")
 
 
@@ -168,8 +125,7 @@ def _vkey(name: str) -> list[int]:
 
 
 def ls_remote_tag_commit(repo: str, tag: str) -> str:
-    """Peeled commit SHA of a tag via git ls-remote (annotated tags resolve
-    through ^{}; lightweight tags fall back to the tag ref itself)."""
+    """Peeled commit SHA of a tag via git ls-remote; a lightweight tag falls back to its own ref."""
     out = subprocess.run(
         ["git", "ls-remote", f"https://github.com/{repo}.git",
          f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"],
@@ -189,9 +145,7 @@ def ls_remote_tag_commit(repo: str, tag: str) -> str:
 
 
 def gh_latest(repo: str, pattern: str | None = None) -> str:
-    """Newest version tag of a GitHub repo via ls-remote. `pattern` restricts
-    the tag shape (default: plain version tags); prerelease-looking tags are
-    always excluded."""
+    """Newest non-prerelease version tag of a GitHub repo; `pattern` restricts the tag shape."""
     rx = re.compile(pattern) if pattern else re.compile(r"^(v|version_)?\d+(?:[._]\d+)*$")
     cand = [t for t in ls_remote_tags(repo) if rx.match(t) and not PRERELEASE_RX.search(t)]
     if not cand:
@@ -200,8 +154,7 @@ def gh_latest(repo: str, pattern: str | None = None) -> str:
 
 
 def asset_sha256(repo: str, tag: str, asset: str, sums: tuple[str, ...] = ()) -> str:
-    """sha256 of a release asset: prefer the project's published sums file(s);
-    fall back to downloading the asset itself and hashing it."""
+    """sha256 of a release asset from the project's sums file, else by downloading and hashing it."""
     base = f"https://github.com/{repo}/releases/download/{tag}/"
     for sums_name in sums:
         try:
@@ -241,9 +194,7 @@ def nvidia_redist_latest(product: str) -> str:
     return max(versions, key=lambda v: [int(x) for x in v.split(".")]) if versions else ""
 
 
-# ---------------------------------------------------------------------------
 # versions.env access
-# ---------------------------------------------------------------------------
 def read_env() -> dict[str, str]:
     vals = {}
     for line in VERSIONS_ENV.read_text(encoding="utf-8").splitlines():
@@ -254,20 +205,10 @@ def read_env() -> dict[str, str]:
 
 
 def read_holds() -> set[str]:
-    """Keys whose contiguous leading comment block contains 'bump:hold'.
-
-    A hold pins a key against ANY automated write (safe tier and --write-all)
-    until a human removes the marker — used when upstream's latest release is
-    broken (e.g. LiteRT-LM v0.14.0's incomplete GitHub CMake export). Blank
-    lines end a comment block, so the marker must sit directly above the key.
-    """
+    """Keys whose contiguous leading comment block holds 'bump:hold', which blocks every automated write."""
     holds: set[str] = set()
     block_held = False
-    # Structural validation (backlog F4): a hold only attaches via a CONTIGUOUS
-    # comment block, so an innocently inserted blank line between the marker
-    # and its KEY= silently DISARMS the hold — for protoc that is precisely the
-    # 2026-08-03 gencode-#error incident replayed. Track every marker line and
-    # hard-fail if any never attached to a key.
+    # A blank line between marker and KEY= silently disarms a hold, so fail on any marker that never attaches.
     pending_marker_lines: list[int] = []
     orphaned: list[int] = []
     for lineno, line in enumerate(VERSIONS_ENV.read_text(encoding="utf-8").splitlines(), 1):
@@ -281,8 +222,7 @@ def read_holds() -> set[str]:
             holds.add(m.group(1))
             pending_marker_lines.clear()
         elif pending_marker_lines:
-            # Non-comment, non-key line (blank line, stray text) ended the
-            # block without attaching — the hold is disarmed.
+            # A blank or stray line ended the block before any key.
             orphaned.extend(pending_marker_lines)
             pending_marker_lines.clear()
         block_held = False
@@ -300,14 +240,7 @@ def read_holds() -> set[str]:
 
 
 def derive_protoc_from_litert_lm(litert_lm_version: str) -> str | None:
-    """Derive the CORRECT host protoc for LITERT_LM_VERSION (a slaved pin).
-
-    PROTOC_VERSION is not independent software: it must match the protobuf
-    runtime pinned inside LiteRT-LM's cmake/packages/protobuf/protobuf.cmake
-    (GIT_TAG vMAJOR.MINOR.PATCH, e.g. v6.31.1 -> protoc 31.1). Auto-bumping it
-    to latest once shipped gencode the pinned runtime #error'd on (2026-08-03).
-    Returns e.g. '31.1', or None when the file/tag layout is unrecognizable.
-    """
+    """The slaved PROTOC_VERSION for a LiteRT-LM tag, from its pinned protobuf runtime (v6.31.1 -> '31.1'); None if unrecognizable."""
     url = (
         "https://raw.githubusercontent.com/google-ai-edge/LiteRT-LM/"
         f"v{litert_lm_version.lstrip('v')}/cmake/packages/protobuf/protobuf.cmake"
@@ -332,8 +265,7 @@ _LITERT_LM_GPU_DLL_PINS = (
 
 
 def litert_lm_gpu_pins(tag_text) -> dict[str, str]:
-    """The rocm lane's LiteRT-LM GPU pins at one tag. `tag_text(path)` returns a repo file's
-    text: each DLL's git-LFS pointer oid IS its sha256, and WORKSPACE pins the DXC zip."""
+    """The rocm lane's LiteRT-LM GPU pins at a tag: each DLL's git-LFS oid is its sha256, WORKSPACE pins the DXC zip."""
     pins = {}
     for key, dll in _LITERT_LM_GPU_DLL_PINS:
         m = re.search(r"^oid sha256:([0-9a-f]{64})$", tag_text(f"prebuilt/windows_x86_64/{dll}"), re.MULTILINE)
@@ -358,9 +290,7 @@ def spec_litert_lm(cur):
 
 
 def renovate_owned() -> set[str]:
-    """Keys whose detection Renovate owns: the KEY= line under a `# renovate:`
-    hint. The coverage audit counts them as classified, so a key can leave a
-    tier here the moment its annotation lands (and vice versa)."""
+    """Keys under a `# renovate:` hint, whose detection Renovate owns and the coverage audit counts as classified."""
     out: set[str] = set()
     lines = VERSIONS_ENV.read_text(encoding="utf-8").splitlines()
     for i, line in enumerate(lines):
@@ -378,11 +308,7 @@ def renovate_owned() -> set[str]:
 
 
 def write_env_values(updates: dict[str, str]) -> list[str]:
-    """Rewrite KEY=value lines in place, preserving everything else byte-for-byte.
-
-    Held keys (see read_holds) are dropped here as a last line of defense; the
-    tier loops in main() already skip them with a visible HELD note.
-    """
+    """Rewrite KEY=value lines in place, byte for byte otherwise; held keys are dropped as a last defense."""
     for held in read_holds() & set(updates):
         updates.pop(held)
     text = VERSIONS_ENV.read_text(encoding="utf-8", newline="")
@@ -398,10 +324,7 @@ def write_env_values(updates: dict[str, str]) -> list[str]:
     return changed
 
 
-# ---------------------------------------------------------------------------
-# Key specs — each returns (new_version, {other_env_key: value}) or raises.
-# `impact` documents which build layers a bump invalidates (cost awareness).
-# ---------------------------------------------------------------------------
+# Key specs: each returns (new_version, {paired_env_key: value}) or raises.
 def spec_pwsh(cur):
     tag = gh_latest("PowerShell/PowerShell")
     v = tag.lstrip("v")
@@ -413,8 +336,7 @@ def spec_pwsh(cur):
 
 
 def spec_git(cur):
-    # ONLY .windows.1 releases: Install-ScoopTools.ps1 derives the installer URL
-    # with a hardcoded ".windows.1" tag suffix (respins need -GitInstallerUrl).
+    # Only .windows.1 releases: Install-ScoopTools.ps1 hardcodes that installer suffix.
     tag = gh_latest("git-for-windows/git", pattern=r"^v\d+\.\d+\.\d+\.windows\.1$")
     v = tag.split(".windows.")[0].lstrip("v")
     extras = {}
@@ -510,9 +432,7 @@ def spec_binaryen(cur):
     if v != cur and WRITE_MODE:
         for env_key, asset in [
             ("BINARYEN_LINUX_X86_64_SHA256", f"binaryen-{v}-x86_64-linux.tar.gz"),
-            # F6: aarch64 tarball ships in every release alongside x86_64 (asset
-            # name verified on version_131) and is consumed by lib/wasm-opt.sh for
-            # arm64 — refresh it in step so a binaryen bump can't freeze it stale.
+            # lib/wasm-opt.sh consumes the aarch64 tarball on arm64.
             ("BINARYEN_LINUX_AARCH64_SHA256", f"binaryen-{v}-aarch64-linux.tar.gz"),
             ("BINARYEN_WINDOWS_X86_64_SHA256", f"binaryen-{v}-x86_64-windows.tar.gz"),
         ]:
@@ -521,10 +441,7 @@ def spec_binaryen(cur):
 
 
 def spec_shellcheck(cur):
-    # F6: shellcheck ships byte-stable release ASSETS (not archive tarballs), so
-    # both pins refresh cleanly on a bump. koalaman/shellcheck publishes no sums
-    # file, so asset_sha256 falls back to download-and-hash. Both current SHAs
-    # verified to match v0.11.0's assets. Keep the leading v (env stores it).
+    # No sums file, so asset_sha256 downloads and hashes; the env keeps the leading v.
     v = gh_latest("koalaman/shellcheck")
     extras = {}
     if v != cur and WRITE_MODE:
@@ -537,17 +454,13 @@ def spec_shellcheck(cur):
 
 
 def spec_gstreamer(cur):
-    # The repo deliberately pins an odd-minor (development-series) release, so the
-    # newest tag overall is the right comparison — not stable-only.
+    # The repo pins an odd-minor development release, so compare with the newest tag overall.
     tags = http_json(
         "https://gitlab.freedesktop.org/api/v4/projects/gstreamer%2Fgstreamer/repository/tags?per_page=100")
     v = max((t["name"] for t in tags if re.match(r"^\d+\.\d+\.\d+$", t["name"])),
             key=lambda s: [int(x) for x in s.split(".")], default="")
     extras = {}
-    # F6: the android-universal tarball ships a `.sha256sum` sidecar on freedesktop
-    # (verified for 1.29.2) — refresh GSTREAMER_ANDROID_UNIVERSAL_SHA256 from it so
-    # a gstreamer bump can't freeze it stale. Not every dev tag publishes an
-    # android build; a --write to such a version fails loud on the missing sidecar.
+    # From the android tarball's .sha256sum sidecar; a dev tag without an android build fails loud here.
     if v and v != cur and WRITE_MODE:
         url = (f"https://gstreamer.freedesktop.org/data/pkg/android/{v}/"
                f"gstreamer-1.0-android-universal-{v}.tar.xz.sha256sum")
@@ -602,15 +515,13 @@ def spec_cargo_c(cur):
 
 
 def spec_flutter(cur):
-    # flutter/flutter's GitHub "latest release" is unmaintained (returns stale
-    # betas); the flutter_infra_release JSON is the authoritative stable pointer.
+    # GitHub's "latest release" is stale; flutter_infra_release is the authoritative stable pointer.
     data = http_json("https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json")
     stable_hash = data["current_release"]["stable"]
     rel = next(r for r in data["releases"] if r["hash"] == stable_hash and r["channel"] == "stable")
     v = rel["version"]
     extras = {}
-    # F6: the same release object carries the SDK tarball's sha256 — refresh
-    # FLUTTER_SDK_SHA256 in step so a flutter bump can't freeze it stale.
+    # The same release object carries the SDK tarball's sha256.
     if v != cur and WRITE_MODE and rel.get("sha256"):
         extras["FLUTTER_SDK_SHA256"] = rel["sha256"]
     return v, extras
@@ -626,8 +537,7 @@ def _nuget_pkg_latest(pkg: str, same_major_as: str = "") -> str:
 
 
 def spec_wix(cur):
-    # Same-major lock: WiX majors (4 -> 5 -> 7) change the CLI/authoring model —
-    # newer majors show up in the report note, not as an automatic bump.
+    # Same major only: a WiX major changes the CLI and authoring model.
     return _nuget_pkg_latest("wix", same_major_as=cur), {}
 
 
@@ -648,20 +558,7 @@ def spec_python(cur):
 
 
 def spec_vulkan(cur):
-    # ONE key, TWO lanes: VULKAN_VERSION feeds the linux base/sdk AND the windows
-    # scoop layer (see its SPECS row). LunarG versions the SDK PER PLATFORM and
-    # Windows lags -- latest.json on 2026-08-26 read
-    # {"linux":"1.4.357.1","mac":"1.4.357.1","windows":"1.4.357.0"}.
-    #
-    # This used to read linux.txt alone. The 2026-08-26 bump therefore wrote
-    # 1.4.357.1, and the Windows base build died in Install-ScoopTools.ps1 with a
-    # 404 on vulkansdk-windows-X64-1.4.357.1.exe -- after the VS Build Tools
-    # layer, i.e. the expensive way to find out. Same shape as LLVM_WINDOWS_VERSION,
-    # which cannot follow LLVM_RELEASE to 23.1.0 because upstream ships no
-    # win64 installer for it: an upstream "latest" is not a per-platform "exists".
-    #
-    # So: take the OLDEST of the platforms this repo actually installs. A shared
-    # key can only carry a version that exists on every lane consuming it.
+    # One key feeds the linux and windows lanes and LunarG versions per platform, so take the oldest of the two.
     latest = json.loads(http_text("https://vulkan.lunarg.com/sdk/latest.json"))
     consumed = {p: str(latest[p]).strip() for p in ("linux", "windows") if latest.get(p)}
     if not consumed:
@@ -677,11 +574,7 @@ def spec_vulkan(cur):
             f" -- pinning the oldest ({v}), since VULKAN_VERSION feeds both lanes"
         )
     extras = {}
-    # BT1 (2026-08-19): VULKAN_SDK_SHA256 is a manually-paired pin ("bump
-    # together" recipe in versions.env) that sat OUTSIDE the tool's refresh
-    # net — a version-only write killed all three sdk lanes on checksum
-    # verify. LunarG publishes no digest endpoint, so stream-hash the tarball
-    # (write-mode only; ~600 MB, the CUDA spec sets the precedent).
+    # LunarG publishes no linux digest, so stream-hash the tarball.
     if v != cur and WRITE_MODE:
         url = f"https://sdk.lunarg.com/sdk/download/{v}/linux/vulkansdk-linux-x86_64-{v}.tar.xz"
         extras["VULKAN_SDK_SHA256"] = sha256_of_url(url)
@@ -701,13 +594,7 @@ def vulkan_rt_windows_zip_sha256(v):
 
 
 def spec_abseil(cur):
-    """F6(a): ABSEIL_VERSION rides with TWO paired pins (abseil-headers.sh):
-    ABSEIL_COMMIT — the tag resolved to an immutable SHA, because the
-    /archive/<commit>.tar.gz form is byte-stable while the tag form is not —
-    and ABSEIL_TARBALL_STREAM_SHA256, the hash of the DECOMPRESSED stream
-    (F6, 2026-08-27) -- durable past GitHub's one-year byte-stability pledge,
-    and matched by download_verified_file()'s "stream" mode. Refresh both in step so a version bump can't freeze them stale.
-    REPORT-tier like before: the tarball feeds cross-compile fallbacks."""
+    """ABSEIL_VERSION drags its immutable commit and that archive's decompressed-stream sha256 along."""
     v = gh_latest("abseil/abseil-cpp")  # tags are bare datestamps (20260817.0)
     extras = {}
     if v != cur and WRITE_MODE:
@@ -719,15 +606,7 @@ def spec_abseil(cur):
 
 
 def spec_appimagetool(cur):
-    """TS1: immutable release tag (never `continuous`, which re-uploads assets
-    in place); one AppImage per supported host arch, verified at install time
-    by packaging-deps.sh ensure_appimagetool. Upstream publishes no sums file,
-    so asset_sha256 falls back to download-and-hash (~9 MB each; all four
-    1.9.1 digests verified against the live assets 2026-08-24). REPORT-tier
-    deliberately: packaging-deps.sh still carries the four sha256 pins as
-    case-arm literals and reads only APPIMAGETOOL_VERSION from its env, so an
-    automated bump would desync versions.env from the literals actually
-    enforced. Move to SAFE once the consumer reads the *_SHA256 keys."""
+    """Report tier until packaging-deps.sh reads the *_SHA256 keys instead of its own literals."""
     v = gh_latest("AppImage/appimagetool")
     extras = {}
     if v != cur and WRITE_MODE:
@@ -752,11 +631,7 @@ def spec_windows_digest(cur):
 
 
 def spec_cuda(cur):
-    """CUDA latest from the redist index; a CHANGED version also re-downloads
-    the full Windows installer (~4 GB, background-tolerable) to refresh
-    CUDA_INSTALLER_SHA256 — a stale hash would fail the next GPU base build.
-    13.4 renamed the installer to _windows_x86_64; older versions used the
-    un-suffixed name, so this spec only handles the current shape."""
+    """CUDA from the redist index; a changed version re-downloads the ~4 GB Windows installer (13.4+ name) for its hash."""
     v = nvidia_redist_latest("cuda")
     extras = {}
     if v and v != cur and WRITE_MODE:
@@ -767,9 +642,7 @@ def spec_cuda(cur):
 
 
 def spec_cudnn(cur):
-    """cuDNN: the redist index lists 3-part labels, but the download URLs need
-    the FULL 4-part version — read it (and the zip's sha256) from the redist
-    manifest itself, preferring the cuda major that matches CUDA_VERSION."""
+    """cuDNN's full 4-part version and zip sha256 from the redist manifest, preferring CUDA_VERSION's major."""
     label = nvidia_redist_latest("cudnn")
     if not label:
         return "", {}
@@ -790,10 +663,7 @@ def spec_cudnn(cur):
 
 
 def spec_llama_cpp_hip(cur):
-    """llama.cpp's Windows ROCm and Vulkan zips (windows/Dockerfile.rocm-llama): the
-    newest bNNNN tag that publishes a win-rocm-<ROCM_WINDOWS_RELEASE major.minor> zip
-    AND a win-vulkan-x64 zip, since both share the one build pin. The asset name,
-    both SHA256s and the tag's LICENSE SHA256 move with the build."""
+    """Newest llama.cpp bNNNN publishing both the win-rocm-<major.minor> and win-vulkan-x64 zips, which share one pin."""
     rocm = ".".join(read_env()["ROCM_WINDOWS_RELEASE"].split(".")[:2])
     tags = sorted((t for t in ls_remote_tags("ggml-org/llama.cpp") if re.fullmatch(r"b\d+", t)),
                   key=_vkey, reverse=True)
@@ -816,8 +686,7 @@ def spec_llama_cpp_hip(cur):
 
 
 def spec_ort_webgpu_dxc(cur):
-    """DXC's newest non-prerelease release (windows Build-OnnxFromSource.ps1, rocm WebGPU spike):
-    its one dxc_<date>.zip carries the dxcompiler.dll/dxil.dll pair; name and SHA move with the tag."""
+    """DXC's newest release zip (dxcompiler.dll + dxil.dll); its dated name and SHA move with the tag."""
     rel = http_json("https://api.github.com/repos/microsoft/DirectXShaderCompiler/releases/latest")
     tag = rel["tag_name"]
     zips = [a["name"] for a in rel.get("assets", []) if re.fullmatch(r"dxc_\d{4}_\d{2}_\d{2}\.zip", a["name"])]
@@ -830,7 +699,7 @@ def spec_ort_webgpu_dxc(cur):
     return tag, extras
 
 
-# --- report-only latest lookups (high-risk stack pins) ---
+# Report-only latest lookups (high-risk stack pins)
 def _r(repo, strip_v=True, pattern=None, prefix=""):
     def fn(cur):
         pat = pattern
@@ -843,9 +712,7 @@ def _r(repo, strip_v=True, pattern=None, prefix=""):
 
 
 SAFE: list[tuple[str, Callable, str]] = [
-    # Renovate writes the self-contained annotated keys now (its file-scoped
-    # allowlist); what stays here is every key whose bump ALSO moves a paired
-    # *_SHA256 in versions.env, which a datasource cannot compute.
+    # Keys whose bump also moves a paired *_SHA256, which a Renovate datasource cannot compute.
     ("PWSH_VERSION", spec_pwsh, "windows base (full — pwsh is layer 1)"),
     ("GIT_VERSION", spec_git, "windows base scoop layer"),
     ("NUGET_VERSION", spec_nuget, "windows toolchain run (cheap)"),
@@ -870,28 +737,19 @@ SAFE: list[tuple[str, Callable, str]] = [
 
 
 REPORT: list[tuple[str, Callable]] = [
-    # Everything Renovate can DETECT moved to its annotations
-    # (docs/dependency-updates.md#what-is-still-not-annotated-and-why). What is
-    # left is what a datasource cannot do: paired checksum/commit extras,
-    # artifact gating, and the SLAVED PROTOC derivation.
-    #
-    # LiteRT-LM drives that derivation -- the loop below reads its
-    # protobuf.cmake for the slaved PROTOC_VERSION, which is why both stay.
+    # What a datasource cannot do: paired extras, artifact gating, and PROTOC's derivation from LiteRT-LM.
     ("LITERT_LM_VERSION", spec_litert_lm),
     ("PROTOC_VERSION", _r("protocolbuffers/protobuf")),
-    # BT2: TF stopped publishing the libtensorflow C tarball after 2.18.1 --
-    # gate the report on the ARTIFACT existing, not the git tag.
+    # TF stopped publishing the libtensorflow C tarball, so gate on the artifact, not the tag.
     ("TENSORFLOW_C_VERSION", lambda cur: (
         (lambda tag: tag if artifact_exists(
             f"https://storage.googleapis.com/tensorflow/versions/{tag}/libtensorflow-cpu-linux-x86_64.tar.gz")
          else cur)(gh_latest("tensorflow/tensorflow").lstrip("v")), {})),
-    # Paired extras: these versions drag hashes the datasource cannot compute
-    # (CUDA installer, cuDNN zip), refreshed by their specs under --write-all.
+    # These drag hashes a datasource cannot compute, refreshed under --write-all.
     ("ABSEIL_VERSION", spec_abseil),
     ("CUDA_VERSION", spec_cuda),
     ("CUDNN_VERSION", spec_cudnn),
-    # APPIMAGETOOL_VERSION: report-only until its consumer reads the key (TS1
-    # rider); spec_appimagetool refreshes all four per-arch SHAs.
+    # Report-only until its consumer reads the SHA keys.
     ("APPIMAGETOOL_VERSION", spec_appimagetool),
     # Windows rocm lane's FFmpeg AMF headers; the header asset's SHA moves with the tag.
     ("AMF_HEADERS_VERSION", spec_amf_headers),
@@ -903,21 +761,13 @@ REPORT: list[tuple[str, Callable]] = [
 
 
 MANUAL = [
-    # sccache for the LINUX lane. Pinned deliberately at the version that has
-    # SCCACHE_BASEDIRS (>=0.14.0); the distro package is older and lacks it.
-    # MANUAL rather than SAFE because a bump must be paired with fresh SHA256s
-    # for both targets, which the sweep cannot compute.
+    # Pinned for SCCACHE_BASEDIRS (>=0.14.0); a bump needs fresh SHA256s for both targets.
     "SCCACHE_LINUX_VERSION",
     "SCCACHE_LINUX_X86_64_SHA256",
     "SCCACHE_LINUX_AARCH64_SHA256",
-    # Slaved to LiteRT's vendored protobuf commit (versions.env carries the
-    # bump:hold and the re-derivation recipe), so it has no upstream feed of
-    # its own. Listed here so the registry reports zero UNCLASSIFIED keys.
+    # Slaved to LiteRT's vendored protobuf (bump:hold and recipe in versions.env); no feed of its own.
     "LITERT_TFLITE_PROTOC_VERSION",
-    # No reliable programmatic source, platform choices, or deliberate pins:
-    # TensorRT (EULA portal), MIGraphX (rides the ROCm release), Android
-    # cmdline-tools/NDK (repository XML is a moving matrix), host/base platform
-    # pins, the deliberately-dated Rust nightly, and the branch trackers.
+    # No reliable programmatic source, platform choices, or deliberate pins.
     "TENSORRT_VERSION", "MIGRAPHX_VERSION",
     # Windows rocm lane: slaved to MIGRAPHX_WINDOWS_COMMIT's requirements.txt, re-derived with it.
     "MIGRAPHX_WINDOWS_ABSEIL_VERSION", "MIGRAPHX_WINDOWS_PROTOBUF_VERSION",
@@ -929,27 +779,22 @@ MANUAL = [
     "VISUAL_STUDIO_VERSION", "RUST_NIGHTLY_TOOLCHAIN",
     "OPENCV_VERSION", "FFMPEG_VERSION",
     "JRE_VERSION", "LIBFFI_MESON_VERSION",
-    # F7 (2026-08-18): deliberate pins + non-versions
+    # Deliberate pins and non-versions
     "PY_SETUPTOOLS_LT82_VERSION",  # deliberate <82 compat pin — pairs with PY_SETUPTOOLS_VERSION
     "FLATPAK_RUNTIME_VERSION",     # freedesktop runtime BRANCH (24.08), not a package version
-    # Renovate detects the annotated keys; these have no feed at all and stay
-    # operator-managed (per-arch truth overrides, a version embedded in a patch,
-    # the documented SQLITE3_WASM tag-shape exception).
+    # No feed at all: per-arch overrides, a version embedded in a patch, the SQLITE3_WASM tag-shape exception.
     "CMAKE_VERSION_RISCV64", "NODE_VERSION_RISCV64",
     "CMAKE_POLICY_VERSION_MINIMUM",
     "ANDROID_AGP_VERSION", "ANDROID_GRADLE_VERSION",
     "SQLITE3_WASM_VERSION",
-    # F7: Windows-lane pins — bump via the WINDOWS backlog, not this tool
+    # Windows-lane pins: bumped via the Windows backlog, not this tool
     "LLVM_WINDOWS_VERSION", "NASM_WINDOWS_VERSION",
     "NINJA_WINDOWS_VERSION", "SCCACHE_WINDOWS_VERSION",
-    # The released-zip checksum (SCCACHE_WINDOWS_VERSION's pair): refreshed by
-    # hand off the release asset, which is why it is registered here.
+    # SCCACHE_WINDOWS_VERSION's zip checksum, refreshed by hand.
     "SCCACHE_WINDOWS_ZIP_SHA256",
-    # The Windows ROCm torch source build's commits: the PYTORCH_VERSION / TORCHVISION_VERSION tags'
-    # (git ls-remote recipe in versions.env), moved by hand with those keys.
+    # The PYTORCH_VERSION/TORCHVISION_VERSION tags' commits, moved by hand with them.
     "TORCH_ROCM_WINDOWS_PYTORCH_COMMIT", "TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT",
-    # AMD's Windows ROCm runtime wheels: no feed and no published hashes; re-measured by hand
-    # with ROCM_WINDOWS_RELEASE, which Install-TorchRocm.ps1 asserts every URL carries.
+    # No feed or published hashes: re-measured by hand with ROCM_WINDOWS_RELEASE.
     "TORCH_ROCM_WINDOWS_ROCM_URL", "TORCH_ROCM_WINDOWS_ROCM_SHA256",
     "TORCH_ROCM_WINDOWS_SDK_CORE_URL", "TORCH_ROCM_WINDOWS_SDK_CORE_SHA256",
     "TORCH_ROCM_WINDOWS_SDK_LIBRARIES_URL", "TORCH_ROCM_WINDOWS_SDK_LIBRARIES_SHA256",
@@ -961,45 +806,23 @@ MANUAL = [
 
 
 def audit_sha_pairs() -> int:
-    """Backlog F6 prep: no *_SHA256/*_SHA512 key may sit outside the refresh net.
-
-    Coverage heuristic (documented, deliberately simple): a pin key counts as
-    covered when its NAME appears in this script's source — every bump spec
-    hardcodes the sha keys it refreshes in its extras dict. Keys under
-    bump:hold are frozen by definition; the allowlist carries the documented
-    exceptions. Anything else = a version bump would silently freeze its SHA,
-    surfacing only as a download-verify failure mid-chain.
-    """
+    """Fail when a *_SHA256/*_SHA512 key is not named in this source (a spec refreshes it), held, or allowlisted."""
     env = read_env()
     holds = read_holds()
     allow = {
-        # EULA-gated manual download — deliberately empty, documented in
-        # versions.env next to the key.
+        # EULA-gated manual download, deliberately empty.
         "TENSORRT_ZIP_SHA256",
-        # Same contract for the Qualcomm AI Engine Direct SDK zip (ORT QNN EP,
-        # backlog #121): login-gated, staged by hand in windows/qnn-sdk/.
+        # Login-gated Qualcomm SDK zip, staged by hand.
         "QNN_SDK_ZIP_SHA256",
-        # F6: unversioned bootstrap installer scripts — their upstream URL is
-        # always-latest (no release tag to bump in step with), so they cannot be
-        # tracked by a version bump. The hash is pinned and re-reviewed BY HAND
-        # on each deliberate update (the fetch recipe lives in versions.env next
-        # to each key). Allowlisted, not held: they DO change, just not on a
-        # version schedule.
+        # Always-latest bootstrap installers: the hash is re-reviewed by hand on each deliberate update.
         "RUSTUP_INIT_SHA256",   # sh.rustup.rs
         "UV_INSTALL_SH_SHA256",  # astral.sh/uv/install.sh
         "SCOOP_INSTALLER_SHA256",  # get.scoop.sh
-        # F6 (2026-08-24): pins paired with MANUAL-tier version keys that no
-        # spec can track — re-derived BY HAND on their deliberate bumps:
-        # ANDROID_SDK_VERSION is MANUAL (the repository XML is a moving
-        # matrix); the fetch recipe AND the repository2-3.xml sha1 cross-check
-        # live next to the key in versions.env.
+        # Paired with the MANUAL ANDROID_SDK_VERSION; recipe and sha1 cross-check beside the key.
         "ANDROID_CMDLINE_TOOLS_SHA256",
-        # Slaved to LLVM_WINDOWS_VERSION (MANUAL, F7: Windows-lane — bumped
-        # via the Windows backlog, "Bump BOTH lines together" per the
-        # versions.env comment; an unknown version without a sha throws).
+        # Slaved to the MANUAL LLVM_WINDOWS_VERSION, bumped together.
         "LLVM_WINDOWS_SRC_SHA256",
-        # Windows rocm lane MIGraphX spike: slaved to MIGRAPHX_WINDOWS_COMMIT / ORT_AMDGPU_EP_COMMIT
-        # (requirements.txt, the EP's FetchContent URLs); re-measured BY HAND with that commit bump.
+        # Slaved to MIGRAPHX_WINDOWS_COMMIT / ORT_AMDGPU_EP_COMMIT, re-measured by hand.
         "MIGRAPHX_WINDOWS_SOURCE_SHA256", "MIGRAPHX_WINDOWS_ABSEIL_SHA256", "MIGRAPHX_WINDOWS_PROTOBUF_SHA256",
         "MIGRAPHX_WINDOWS_MSGPACK_SHA256", "MIGRAPHX_WINDOWS_SQLITE_SHA256",
         "ORT_AMDGPU_EP_SOURCE_SHA256", "ORT_AMDGPU_EP_FMT_SHA256", "ORT_AMDGPU_EP_GSL_SHA256",
@@ -1051,13 +874,7 @@ def _parse_args():
 
 
 def _lookup(key, spec, cur):
-    """(failed, latest, extras) for one key, failure PRINTED and swallowed.
-
-    A lookup failure must not abort the sweep (a single flaky registry would
-    hide every other key's status) — but it must not vanish into a rc-0 report
-    either: a cron/CI caller previously read "success" while half the keys said
-    "lookup failed". The caller counts these; nonzero exit at the end.
-    """
+    """(failed, latest, extras) for one key; a failure is printed and counted, never aborts the sweep."""
     try:
         latest, extras = spec(cur)
     except Exception as e:  # noqa: BLE001 — report and move on, never abort the sweep
@@ -1103,26 +920,19 @@ def _report_row(key, cur, latest, extras, env, holds, updates, write_all):
     marker = "BUMP (--write-all)" if write_all else "NEWER AVAILABLE"
     print(f"{key:32} {cur:22} {latest:22} {marker}")
     if key == "LITERT_LM_VERSION":
-        # F4 soft rider: PROTOC_VERSION is a slaved, bump:hold'd pin — a
-        # LiteRT-LM bump without re-deriving it replays the 2026-08-03
-        # gencode-#error incident. Nudge with the NEW tag's derivation.
+        # PROTOC_VERSION is slaved to this pin; nudge with the new tag's derivation.
         _derived = derive_protoc_from_litert_lm(latest)
         _hint = "PROTOC_VERSION is SLAVED to this pin (bump:hold) — re-derive when bumping"
         if _derived:
             _hint += f"; the new tag's protobuf.cmake wants protoc {_derived}"
         print(f"  NOTE: {_hint}")
     if write_all:
-        # Extras (paired *_SHA256 refreshes, e.g. CUDA installer / cuDNN zip)
-        # MUST be applied together with the version — discarding them once
-        # shipped a 13.3.1 version pin with 13.3.0's installer hash, which the
-        # download gate then (correctly) refused mid-build.
+        # Extras land with the version, or the download gate refuses the stale hash mid-build.
         _record(key, latest, extras, updates)
 
 
 def _sweep(entries, env, holds, only, updates, args, *, report):
-    """One tier's loop. SAFE and REPORT differ only in the row renderer and the
-    write switch (`--write` vs `--write-all`); the walk, the `--only` filter and
-    the lookup-failure count are shared. Returns that count."""
+    """One tier's loop (SAFE and REPORT differ only in row renderer and write switch); returns the lookup-failure count."""
     failures = 0
     for entry in entries:
         key, spec = entry[0], entry[1]
@@ -1147,10 +957,7 @@ def _print_manual(env):
 
 
 def _print_unclassified(env):
-    # Coverage self-audit: every versions.env key must be SAFE, REPORT, MANUAL,
-    # or a recognized non-version key (checksums/digests are refreshed as the
-    # paired extras of their version key; toggles/paths/registry aren't
-    # versions). Anything else prints here — add it to a tier when it appears.
+    # Every versions.env key must sit in a tier or match the non-version filter.
     covered = ({k for k, _, _ in SAFE} | {k for k, _ in REPORT} | set(MANUAL) | renovate_owned())
     nonversion = re.compile(
         r"(SHA256|^ORT_|_ENABLE_|^USE_|^FAST_UBUNTU|^IMAGE_REGISTRY_PREFIX$"
@@ -1166,8 +973,7 @@ def _print_unclassified(env):
 
 
 def _write_phase(updates, lookup_failures):
-    """Apply the write and print the ritual. Returns an exit code when the run
-    ends here (nothing to write), or None to fall through to the shared verdict."""
+    """Apply the write and print the ritual; returns an exit code, or None to fall through to the verdict."""
     if not updates:
         print("\nNothing to write — safe set already at latest.")
         if lookup_failures:

@@ -1,36 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""verify_dockerfile_context_paths.py -- every COPY/ADD source and every
-`--mount=type=bind,source=` in EVERY Dockerfile resolves inside that
-Dockerfile's build context.
+"""Every COPY/ADD source and bind-mount source in every Dockerfile resolves inside its build context.
 
-The class: a file moves or is deleted, the Dockerfile that names it is not
-touched, and nothing complains until someone runs that build -- where BuildKit
-fails during context checksum, before the first instruction, so the message
-names a path and not the lane that died. Two live instances stood for weeks:
-Dockerfile.sccache-write-probe mounted a script an archive sweep had moved into
-diagnostics/archive/, and Dockerfile.probe mounted windows/upstream/
-sccache-nvcc-quote-fix after #137 deleted it -- the second killed EVERY probe
-solve, live probes included. Both are static facts about the tree.
-
-linux/scripts/verify_script_copy_coverage.py is the sibling gate and answers a
-different question: it asks whether a path referenced INSIDE the image was
-provided (/opt/scripts only, Linux only). This one asks whether the host-side
-source exists at all, for every Dockerfile in the repo and both platforms.
 docs/code-quality-tooling.md#dockerfile-context-paths-context-paths
-
-Scope / limits, chosen so a false red is impossible without a table entry:
-  - `--from=` COPYs and `from=` mounts name a stage or image, not the context;
-    they are out of scope by construction.
-  - A `${VAR}` segment becomes a glob wildcard, so a build-arg templated path
-    passes when SOME concrete value exists (the arg is not knowable statically).
-  - Absolute and URL sources are not context paths and are skipped.
-  - CONTEXTS holds every Dockerfile whose context is not the repo root, and
-    GENERATED the few sources a documented step produces before the build.
-    Both are per-Dockerfile, so an entry can never widen to another image.
-
-Exit status: non-zero iff any source does not resolve.
 """
 from __future__ import annotations
 
@@ -41,43 +14,31 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# The build context each Dockerfile is solved with, repo-relative, for the ones
-# that are NOT solved from the repo root. Every value is the context its caller
-# actually passes -- the caller is named so a drift is checkable, not assumed.
+# Build contexts other than the repo root, each as its named caller passes it.
 CONTEXTS: dict[str, str] = {
-    # windows/Build-Buildkit.ps1 solves this one with -Context 'windows'
-    # (windows/.dockerignore, not the root one, applies to it).
+    # windows/Build-Buildkit.ps1 passes -Context 'windows', so windows/.dockerignore applies.
     "windows/Dockerfile.nvidia": "windows",
-    # linux/webserver/build-and-run.sh solves from linux/ -- the COPY sources
-    # are spelled ./webserver/... , which only resolves one level up.
+    # linux/webserver/build-and-run.sh solves from linux/, hence the ./webserver/... sources.
     "linux/webserver/Dockerfile": "linux",
     # llm-stack's compose/build solves in place, next to entrypoint.sh.
     "linux/llm-stack/Dockerfile": "linux/llm-stack",
 }
 
-# Dockerfiles whose context is a directory GENERATED at run time, so no path in
-# this checkout can stand in for it. Not an allowlist for missing files: the
-# whole Dockerfile is off-subject because its context is not in the repo.
+# Dockerfiles whose whole context is generated at run time, so they are off-subject.
 GENERATED_CONTEXT: dict[str, str] = {
-    # Test-BuildCopy.ps1 mints a temp probe dir, writes hello.txt into it and
-    # solves both files with `--local context=$probeDir`.
+    # Test-BuildCopy.ps1 solves both with `--local context=$probeDir`, a temp dir it fills.
     "windows/scripts/diagnostics/probe-build-copy/Dockerfile": "Test-BuildCopy.ps1",
     "windows/scripts/diagnostics/probe-build-copy/Dockerfile.heavy": "Test-BuildCopy.ps1",
 }
 
-# Sources a documented step produces INTO the context before the build runs, so
-# they are legitimately absent from a fresh checkout. Keyed by Dockerfile; the
-# value names the producer, which is what makes the entry auditable.
+# Sources a named producer writes into the context before the build, per Dockerfile.
 GENERATED: dict[str, dict[str, str]] = {
     "linux/llm-stack/Dockerfile": {
         "ollama-binary.tar.zst": "linux/llm-stack/scripts/download-ollama.sh",
     },
 }
 
-# A FLOOR under the git answer below, not a substitute for it: `git ls-files`
-# reports nothing in a checkout git refuses (dubious ownership, a bind-mounted
-# tree, a mirror with no .git), and the gate then grades somebody's `external/`
-# scratch clone and buries this repo's own findings. Both answers, always.
+# A floor under `git ls-files`, which reports nothing in a checkout git refuses.
 SKIP_DIRS = {".git", "external", "out", "logs", "node_modules", "__pycache__", ".venv", "third_party"}
 NOT_A_CONTEXT_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|/|https?://|git@|github\.com/)")
 VAR = re.compile(r"\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*")
@@ -93,9 +54,7 @@ def read(path: Path) -> str:
 
 
 def escape_char(text: str) -> str:
-    """The line-continuation character. Windows Dockerfiles open with
-    `# escape=\\`` because their paths are full of backslashes -- reading them
-    with the default rule joins nothing and every COPY goes unseen."""
+    """The line-continuation character, from a `# escape=` directive (Windows Dockerfiles use a backtick)."""
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
@@ -109,8 +68,7 @@ def escape_char(text: str) -> str:
 
 
 def logical_lines(text: str) -> list[tuple[int, str]]:
-    """(1-based line number of the instruction, whole instruction) pairs, with
-    continuations folded in and comment lines between them dropped."""
+    """(1-based line number, whole instruction) pairs, continuations folded and interior comments dropped."""
     joiner = escape_char(text)
     out: list[tuple[int, str]] = []
     pending: list[str] = []
@@ -132,8 +90,7 @@ def logical_lines(text: str) -> list[tuple[int, str]]:
 
 
 def mount_sources(line: str) -> list[str]:
-    """Host paths a line's bind mounts read. `from=` names a stage or an image,
-    whose contents this gate cannot and must not judge."""
+    """Host paths a line's bind mounts read; `from=` mounts name a stage or image and are skipped."""
     out = []
     for mount in BIND_MOUNT.findall(line):
         fields = dict(MOUNT_KV.findall(mount))
@@ -161,9 +118,7 @@ def copy_sources(line: str) -> list[str]:
 
 
 def resolves(context: Path, source: str) -> bool:
-    """Does `source` name at least one path under the context? A ${VAR} segment
-    becomes a wildcard: the build arg picks one of several real paths, and which
-    one is not a static fact."""
+    """Does `source` name a path under the context? ${VAR} becomes a wildcard, since its value is not static."""
     pattern = LEADING_DOT.sub("", VAR.sub("*", source.replace("\\", "/"))).rstrip("/")
     if not pattern:
         return context.is_dir()
@@ -187,9 +142,7 @@ def check(path: Path, rel: str) -> list[tuple[int, str]]:
 
 
 def tracked() -> set[str] | None:
-    """Every path git tracks, or None outside a work tree. An `external/` or
-    `out/` checkout is somebody's scratch copy with its own build contract; the
-    subject of this gate is what the repo ships."""
+    """Every path git tracks, or None outside a work tree."""
     try:
         listing = subprocess.run(["git", "-C", str(ROOT), "ls-files"], check=True,
                                  capture_output=True, text=True).stdout
@@ -199,8 +152,7 @@ def tracked() -> set[str] | None:
 
 
 def dockerfiles() -> list[tuple[Path, str]]:
-    """Every tracked Dockerfile, as (path, repo-relative path). A name like
-    Dockerfile.ProbeShell.Tests.ps1 is a test ABOUT a Dockerfile, not one."""
+    """Every tracked Dockerfile as (path, rel); Dockerfile.X.Tests.ps1 is a test about one, not one."""
     known = tracked()
     out = []
     for path in sorted(ROOT.rglob("Dockerfile*")):
@@ -209,8 +161,7 @@ def dockerfiles() -> list[tuple[Path, str]]:
             continue
         if path.name != "Dockerfile" and not re.fullmatch(r"Dockerfile\.[A-Za-z0-9_-]+", path.name):
             continue
-        # No work tree (the suites' throwaway roots): grade everything found.
-        # Erring wide adds subjects, never drops one.
+        # Without a work tree (the suites' throwaway roots) grade everything: erring wide drops nothing.
         if known is not None and rel not in known:
             continue
         out.append((path, rel))

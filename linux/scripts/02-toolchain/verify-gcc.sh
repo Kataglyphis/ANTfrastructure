@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# verify-gcc.sh - Verification of GCC installation.
-# Called from build-gcc.sh after GCC is installed and configured.
+# GCC install verification, called from build-gcc.sh.
 
 verify_gcc_installation() {
   local PREFIX="$1"

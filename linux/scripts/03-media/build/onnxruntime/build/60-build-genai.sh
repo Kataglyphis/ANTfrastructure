@@ -10,9 +10,7 @@ detect_jobs
 setup_host_python_environment
 HOST_PYTHON="${HOST_PYTHON_BIN}"
 
-# Early exit check - ensure output dir exists even when skipping so Docker
-# COPY --from=onnxruntime won't fail when the GenAI build is intentionally
-# skipped (e.g. BUILD_GENAI=false).
+# A skip still creates the output tree, so the Dockerfile's COPY --from=onnxruntime succeeds.
 [[ "${BUILD_GENAI}" != "true" ]] && {
   info "Skipping GenAI build (BUILD_GENAI=${BUILD_GENAI})"
   ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
@@ -22,34 +20,19 @@ HOST_PYTHON="${HOST_PYTHON_BIN}"
 
 ARCH="$(arch_oci 2>/dev/null || uname -m 2>/dev/null || echo unknown)"
 
-# GEN1: riscv64 builds onnxruntime-genai from source; upstream ships no wheel.
-# Escape hatch GENAI_ALLOW_RISCV64=false restores the pre-GEN1 skip exactly.
-# Evidence, unproven parts, back-out: docs/gen1-riscv64-genai.md
+# See docs/gen1-riscv64-genai.md § The escape hatch: `GENAI_ALLOW_RISCV64`
 GENAI_ALLOW_RISCV64="${GENAI_ALLOW_RISCV64:-false}"
 if [ "${ARCH}" = "riscv64" ] && [ "${GENAI_ALLOW_RISCV64}" != "true" ]; then
   info "Skipping onnxruntime-genai on ${ARCH}: GENAI_ALLOW_RISCV64=${GENAI_ALLOW_RISCV64} (GEN1 escape hatch)"
   # Create placeholder output directories so later Dockerfile COPYs succeed
   ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
-  # Marker, not just a log line: the verifier runs in a different RUN and must
-  # read what happened, not re-derive it. docs/gen1-riscv64-genai.md
+  # See docs/gen1-riscv64-genai.md § The `.gen1-lane-off` marker
   : > "${GENAI_OUTPUT_DIR}/.gen1-lane-off" 2>/dev/null || true
   echo "[INFO] Created placeholder GenAI output dir (GEN1 lane off): ${GENAI_OUTPUT_DIR}" || true
   exit 0
 fi
 
-# GENAI-DRIFT producer half (2026-08-24): this gate used to skip GenAI on EVERY
-# cross build, so the arm64 lane never produced a local onnxruntime_genai wheel
-# and app assembly silently fell back to the uv.lock's PyPI 0.14.0 against the
-# versions.env v0.15.2 pin (the smoke-torch-venv.sh tolerance line). arm64 now
-# cross-compiles the wheel with the same machinery as the ORT CPU wheel in this
-# lane (setup_linux_cross_env + the reduced ORT cross define set, see
-# append_onnx_cross_cmake_build_args in lib/common.sh); the wheel lands in
-# ${GENAI_OUTPUT_DIR}/wheels, collect-artifacts.sh gathers it into /opt/wheels
-# and repair-wheels.sh retags it linux_aarch64 — the exact path the onnxruntime
-# wheel already takes.
-#
-# GEN1: riscv64 joins the allowlist, same cross path. Keep it in lockstep with
-# verify-media-artifacts.sh's onnxruntime-genai arm. docs/gen1-riscv64-genai.md
+# The cross allowlist must match verify-media-artifacts.sh's onnxruntime-genai arm.
 GENAI_CROSS_BUILD=false
 if cross_build_is_active; then
   case "${ARCH}" in
@@ -63,14 +46,10 @@ if cross_build_is_active; then
   command -v setup_linux_cross_env >/dev/null 2>&1 \
     || err "cross mode but setup_linux_cross_env is unavailable (01-core cross-env.sh not loaded)"
   if ! { command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; }; then
-    # Same gate the ORT cross wheel uses (30-build-native.sh): without target
-    # Python dev files the binding would compile against HOST python headers.
-    # Keep the documented skip rather than ship an unprovable binding.
+    # Without target Python dev files the binding would compile against the host's headers.
     warn "Skipping onnxruntime-genai ${ARCH} cross build: target Python dev files not ready (GENAI-DRIFT stays open; the app lock's PyPI genai fills in)"
     ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
-    # Record WHY, so the verifier's hard-fail names the real cause instead of
-    # "none of the expected libraries found". Not .gen1-lane-off: the lane is
-    # ON, so this still FAILS -- it just fails legibly. docs/gen1-riscv64-genai.md
+    # The lane is on, so the verifier still fails; this file makes it name the real cause.
     printf 'target Python dev files not ready\n' \
       > "${GENAI_OUTPUT_DIR}/.gen1-skip-reason" 2>/dev/null || true
     exit 0
@@ -80,7 +59,6 @@ if cross_build_is_active; then
   info "Cross-building onnxruntime-genai for ${ARCH} (triplet ${CROSS_TARGET_TRIPLET}, rust target ${CROSS_RUST_TARGET})"
 fi
 
-# Validate native CPU build completed (GenAI depends on ORT)
 info "Checking for ONNX Runtime at: ${NATIVE_CPU_OUTPUT_DIR}"
 info "NATIVE_CPU_OUTPUT_DIR=${NATIVE_CPU_OUTPUT_DIR}"
 
@@ -95,23 +73,19 @@ if [[ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/lib"/*.so* 2>/dev/null)" ]]; then
   err "No .so files found in ${NATIVE_CPU_OUTPUT_DIR}/lib. Run 30-build-native.sh first."
 fi
 
-# Check specifically for libonnxruntime.so (may be a symlink)
 ensure_onnxruntime_symlink "${NATIVE_CPU_OUTPUT_DIR}"
 if [[ ! -e "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so" ]] && [[ ! -L "${NATIVE_CPU_OUTPUT_DIR}/lib/libonnxruntime.so" ]]; then
   err "No libonnxruntime.so* files found in ${NATIVE_CPU_OUTPUT_DIR}/lib"
 fi
 
-# Check for required header
 if [[ ! -f "${NATIVE_CPU_OUTPUT_DIR}/include/onnxruntime_c_api.h" ]]; then
   err "ONNX Runtime header not found at ${NATIVE_CPU_OUTPUT_DIR}/include/onnxruntime_c_api.h. Run 30-build-native.sh first."
 fi
 info "Found onnxruntime_c_api.h at ${NATIVE_CPU_OUTPUT_DIR}/include/onnxruntime_c_api.h"
 
-# Check GenAI source exists
 [[ -d "${GENAI_SRC_DIR}" ]] || err "GenAI source not found at ${GENAI_SRC_DIR}. Run 20-fetch.sh first."
 
-# GEN1: upstream cmake/target_platform.cmake FATALs on riscv64 at configure
-# time; riscv64-only patch. docs/gen1-riscv64-genai.md
+# See docs/gen1-riscv64-genai.md § The upstream patch: `cmake/target_platform.cmake`
 if [ "${ARCH}" = "riscv64" ]; then
   _genai_apply_patch="/opt/scripts/core/apply-patch.sh"
   _genai_patch_file="/opt/scripts/patches/onnxruntime-genai/001-riscv64-target-platform.patch"
@@ -123,34 +97,22 @@ fi
 
 info ">>> GenAI build: ${GENAI_CONFIG} (${JOBS} parallel jobs)"
 
-# Create Python virtual environment with uv
 info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 
-# G2 grades this RUN's uv cache by SOURCE: a PyPI ORT any earlier build
-# downloaded under the same cache-mount id fails the gate even when this build
-# never touched it (rocm lane 2026-09-27: the app lock's onnxruntime 1.27 from
-# an earlier uv sync). Clean it here, in the one RUN that owns the mount, and
-# let the chain wheel come from /usr/local/lib/onnxruntime-cpu. G2 then grades
-# a cache that this run populated.
+# G2 grades this RUN's shared uv cache, so a PyPI ORT that an earlier build cached there must go first.
 command -v uv >/dev/null 2>&1 && uv cache clean onnxruntime >/dev/null 2>&1 || true
 
-# Install Python build dependencies with uv
 info "Installing Python build dependencies (pip, numpy, wheel, setuptools, requests)"
 ensure_uv_python_packages "${HOST_PYTHON}" pip numpy wheel setuptools requests
 
 info "Using Python: ${HOST_PYTHON}"
 info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)')"
 
-# Prepare output directories
 ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
 
-# Build GenAI
 cd "${GENAI_SRC_DIR}"
 
-# Common base args shared between GPU and CPU builds
-# GEN1: riscv64 keeps --use_guidance (llguidance via Corrosion). The preflight
-# drops it only on positive evidence of a missing rustup std for the triple.
-# docs/gen1-riscv64-genai.md
+# See docs/gen1-riscv64-genai.md § The riscv64-only preflight
 GENAI_GUIDANCE_ARGS=(--use_guidance)
 if [ "${ARCH}" = "riscv64" ]; then
   _genai_rust_target="${CROSS_RUST_TARGET:-}"
@@ -171,20 +133,12 @@ GENAI_BASE_ARGS=(
   --skip_tests
   --skip_examples
   ${GENAI_GUIDANCE_ARGS[@]+"${GENAI_GUIDANCE_ARGS[@]}"}
-  # GenAI's ENABLE_TELEMETRY defaults ON (cmake/options.cmake) and FetchContent-
-  # builds Microsoft's 1DS SDK (cpp_client_telemetry) — the same dep whose
-  # vendored sqlite dies on GCC-16's stringop-overflow -Werror on arm64 (killed
-  # the arm64 ORT media lane 3×; see the ORT-1.29 note in 30-build-native.sh).
-  # Same policy as ORT: neither the arm64 build break NOR a telemetry SDK in
-  # shipped images — off on every arch.
+  # GenAI's telemetry defaults on and fetches the 1DS SDK, whose vendored sqlite fails GCC 16's -Werror.
   --no_telemetry
   --cmake_extra_defines
   "CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM}"
 )
 
-# Shared build acceleration (lld + ccache) — applied to GENAI_BASE_ARGS so they
-# are actually passed to build.py (previously targeted an undeclared BUILD_ARGS
-# array and silently no-op'd via `|| true`).
 append_onnx_lld_build_args GENAI_BASE_ARGS
 append_onnx_ccache_build_args GENAI_BASE_ARGS
 
@@ -193,21 +147,11 @@ if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
   _genai_target_py_include="$(cross_target_python_include_dir)" \
     || err "cross_target_python_include_dir failed despite cross_target_python_dev_ready passing"
   _genai_py_mm="$(host_python_major_minor)" || err "cannot resolve host python major.minor"
-  # The TARGET python's EXT_SUFFIX, e.g. .cpython-314-aarch64-linux-gnu.so
-  # (verified against the shipped arm64 image's /opt/venv python). Without this
-  # pybind11 names the module with the HOST suffix (…-x86_64-linux-gnu.so),
-  # which the target python never even considers at import time
-  # (importlib.machinery.EXTENSION_SUFFIXES) — the wheel would install but
-  # `import onnxruntime_genai` would die with ModuleNotFoundError on arm64.
-  # GEN1: derived the same way for riscv64 — unconfirmed, but fails safe via the
-  # assert below. docs/gen1-riscv64-genai.md
+  # Without the target's EXT_SUFFIX pybind11 names the module for the host, and the target Python cannot import it.
   _GENAI_MODULE_EXT=".cpython-${_genai_py_mm//./}-${CROSS_TARGET_TRIPLET}.so"
   GENAI_BASE_ARGS+=(
     --cmake_extra_defines
-    # The proven reduced ORT cross set (append_onnx_cross_cmake_build_args):
-    # deliberately NO CMAKE_LIBRARY_ARCHITECTURE. /usr/local in this container
-    # holds TARGET-arch libs, so LIBRARY/INCLUDE=ONLY against sysroot / finds
-    # target artifacts (that is how the ORT cross wheel links).
+    # No CMAKE_LIBRARY_ARCHITECTURE: /usr/local holds target-arch libs, so ONLY-mode finds against / resolve there.
     CMAKE_SYSTEM_NAME=Linux
     CMAKE_SYSTEM_PROCESSOR="${CROSS_TARGET_PROCESSOR}"
     CMAKE_C_COMPILER="${CC}"
@@ -218,35 +162,19 @@ if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
     CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
     CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
     CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
-    # Cross builds don't run tests/benchmarks; skip compiling them (upstream's
-    # own cross targets — android/ios — pass exactly these OFF in build.py).
+    # A cross build cannot run tests or benchmarks, so it does not compile them.
     ENABLE_TESTS=OFF
     ENABLE_MODEL_BENCHMARK=OFF
-    # llguidance (--use_guidance) builds through Corrosion, which passes an
-    # explicit `--target` to cargo — the CARGO_BUILD_TARGET env exported by
-    # setup_linux_cross_env would be silently overridden by Corrosion's
-    # host-triple default. Corrosion also FATALs cleanly if the rustup std for
-    # this triple is missing, and wires CARGO_TARGET_<T>_LINKER to
-    # CMAKE_C_COMPILER (the cross gcc) itself.
+    # See docs/gen1-riscv64-genai.md § Corrosion cross wiring, for reference
     "Rust_CARGO_TARGET=${CROSS_RUST_TARGET}"
-    # Interpreter = the HOST venv python (runs `pip wheel`, matches the target
-    # python's 3.14). pybind11 2.13 classic mode (FindPythonLibsNew) reads
-    # everything else from that interpreter and OVERWRITES predefined values
-    # unless PYBIND11_PYTHONLIBS_OVERWRITE=OFF — pybind11's own documented
-    # cross-compile knob ("Turn off if cross-compiling and manually setting
-    # these values"). With it off, the predefined include dir (TARGET python
-    # headers) and module extension survive; its new-tools mode honors a
-    # predefined PYTHON_MODULE_EXTENSION unconditionally.
+    # pybind11's classic mode overwrites the predefined target include dir and suffix unless PYBIND11_PYTHONLIBS_OVERWRITE=OFF.
     "Python_EXECUTABLE=${HOST_PYTHON}"
     "PYTHON_EXECUTABLE=${HOST_PYTHON}"
     "PYTHON_INCLUDE_DIR=${_genai_target_py_include}"
     PYBIND11_PYTHONLIBS_OVERWRITE=OFF
     "PYTHON_MODULE_EXTENSION=${_GENAI_MODULE_EXT}"
   )
-  # Born with the right wheel platform tag (setuptools' get_platform() honors
-  # _PYTHON_HOST_PLATFORM; same idiom as the torch/vision cross wheels in
-  # build-app-wheelhouse.sh). repair-wheels.sh's blanket cross retag then
-  # no-ops on this wheel instead of being its only line of defense.
+  # setuptools honours _PYTHON_HOST_PLATFORM, so the wheel is born with the target platform tag.
   _PYTHON_HOST_PLATFORM="$(cross_wheel_platform_tag)" \
     || err "cross_wheel_platform_tag failed for ${ARCH}"
   export _PYTHON_HOST_PLATFORM
@@ -266,9 +194,7 @@ if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     warn "No versioned libonnxruntime.so found in ${ORT_HOME}/lib"
   fi
 
-  # --use_trt_rtx renames the wheel onnxruntime-genai-trt-rtx and makes it
-  # REQUIRE onnxruntime-trt-rtx. Without TensorRT (the Jetson lane) nothing ships
-  # that, and the venv carried a dangling dependency edge.
+  # --use_trt_rtx makes the wheel require onnxruntime-trt-rtx, which nothing ships without TensorRT.
   _genai_gpu_args=(--use_cuda --cuda_home "${CUDA_HOME:-/usr/local/cuda}")
   [ "${ENABLE_TENSORRT:-true}" = "false" ] || _genai_gpu_args+=(--use_trt_rtx)
   info "GenAI build args: ${GENAI_BASE_ARGS[*]} ${_genai_gpu_args[*]}"
@@ -280,16 +206,7 @@ else
   ORT_HOME="${NATIVE_CPU_OUTPUT_DIR}"
   info "Building onnxruntime-genai with CPU ORT from ${ORT_HOME}"
 
-  # HOST-LINK LEAK (wave7b 2026-08-24, first live run of the arm64 cross
-  # build): setup_linux_cross_env exports LIBRARY_PATH with the TARGET libdirs
-  # (cross-env.sh ~:534), and gcc's host `cc` honors LIBRARY_PATH for -m64
-  # links too — so cargo's HOST build scripts (proc-macro2, anyhow, zerocopy,
-  # rustversion…) died with "aarch64 libgcc_s.so.1 is incompatible with
-  # elf64-x86-64" on every retry. The TARGET half never needed LIBRARY_PATH
-  # here: cmake gets explicit cross compilers/sysroot flags and cargo links
-  # the target through CARGO_TARGET_<T>_LINKER (Rust_CARGO_TARGET above). So
-  # scrub it for the build.py invocation only — everything else in the cross
-  # env stays untouched.
+  # The cross env's target LIBRARY_PATH breaks cargo's host build-script links; see docs/gen1-riscv64-genai.md § Corrosion cross wiring, for reference
   if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
     info "GenAI cross: clearing LIBRARY_PATH for the build (host build-script links; was: ${LIBRARY_PATH:-<unset>})"
     unset LIBRARY_PATH
@@ -304,15 +221,12 @@ fi
 collect_wheels_from_tree "${GENAI_SRC_DIR}/build" "${GENAI_OUTPUT_DIR}" "GenAI wheel"
 
 if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
-  # Gate honesty: no wheel means fail HERE, not a silent PyPI fallback at app
-  # assembly. riscv64 flows through unchanged. docs/gen1-riscv64-genai.md
+  # See docs/gen1-riscv64-genai.md § The cross-wheel gate in the producer
   _genai_whl="$(ls "${GENAI_OUTPUT_DIR}/wheels"/onnxruntime_genai-*.whl 2>/dev/null | head -1 || true)"
   [ -n "${_genai_whl}" ] \
     || err "cross GenAI build produced no onnxruntime_genai wheel in ${GENAI_OUTPUT_DIR}/wheels"
 
-  # Prove the shipped bytes: every .so inside the wheel must be TARGET-arch
-  # ELF, and the pybind module must carry the TARGET EXT_SUFFIX (a host-suffixed
-  # module would install fine and then ModuleNotFoundError at import).
+  # A host-arch ELF or host-suffixed module would install fine and fail only at import.
   _genai_tmp="$(mktemp -d)"
   "${HOST_PYTHON}" -m zipfile -e "${_genai_whl}" "${_genai_tmp}/" \
     || err "cannot unpack ${_genai_whl} for verification"
@@ -328,11 +242,9 @@ if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
   fi
   rm -rf "${_genai_tmp}"
 elif [ -z "$(ls -A "${GENAI_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ]; then
-  # Native only: attempt to build a wheel from the GenAI Python package
   maybe_build_source_wheel "${GENAI_SRC_DIR}" "${GENAI_OUTPUT_DIR}" "${HOST_PYTHON}" "GenAI"
 fi
 
-# Copy headers
 if [[ -f "${GENAI_SRC_DIR}/src/ort_genai.h" ]]; then
   cp "${GENAI_SRC_DIR}/src/ort_genai.h" "${GENAI_OUTPUT_DIR}/include/"
   cp "${GENAI_SRC_DIR}/src/ort_genai_c.h" "${GENAI_OUTPUT_DIR}/include/" 2>/dev/null || true
@@ -341,8 +253,6 @@ else
   warn "GenAI headers not found at ${GENAI_SRC_DIR}/src/"
 fi
 
-# Copy libraries
-# GenAI builds to build/Linux/Release/ (or similar based on config)
 GENAI_LIB_DIR="${GENAI_SRC_DIR}/build/Linux/${GENAI_CONFIG}"
 if [[ -d "${GENAI_LIB_DIR}" ]]; then
   find "${GENAI_LIB_DIR}" -maxdepth 1 -type f \
@@ -350,8 +260,7 @@ if [[ -d "${GENAI_LIB_DIR}" ]]; then
     -exec cp -t "${GENAI_OUTPUT_DIR}/lib/" {} + 2>/dev/null || true
 fi
 
-# QNN EP (backlog QNN-LINUX): GenAI inherits the QNN EP from the ORT build; stage
-# the backend libs beside the GenAI install, mirroring the Windows lane (#121).
+# GenAI inherits ORT's QNN EP, so the QNN backend libs must sit beside the GenAI install too.
 _genai_qnn_home="$(resolve_qnn_sdk)"
 if [ -n "$_genai_qnn_home" ]; then
   info "GenAI: staging QNN backend libs beside the GenAI install (backlog QNN-LINUX)"

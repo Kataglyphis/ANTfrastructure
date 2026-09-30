@@ -1,47 +1,5 @@
 #!/usr/bin/env bash
-# lint-shell.sh — shellcheck gate for the repo's bash scripts.
-#
-# Catches the "undefined/typo'd function, quoting, bad redirection" failure
-# class (docs/cross-build-verification.md#failure-classes-from-build-history, row 6)
-# in seconds, instead of after a
-# multi-hour QEMU cross build. The tree is kept clean at -S error; warnings are
-# non-fatal here and ratcheted per file+code by verify_shellcheck_warnings.py.
-#
-# The shellcheck binary is bootstrapped on demand: a PATH copy is used ONLY when its
-# version equals the pin (SHELLCHECK_VERSION / SHELLCHECK_*_SHA256 in versions.env);
-# otherwise that pinned release is downloaded once into a version-keyed cache dir and
-# SHA256-verified — the same pattern as lint-dockerfiles.sh /
-# lint-workflows.sh. A failed bootstrap FAILS the gate (no silent skip: a
-# skipped lint gate reads as green while checking nothing).
-#
-# Usage:
-#   lint-shell.sh                 # check ALL bash under linux/{scripts,llm-stack,webserver} at -S error
-#   lint-shell.sh a.sh b.sh ...   # check only the given files (pre-commit staged mode)
-#   lint-shell.sh --root <dir>    # check a CONSUMER repo's shell scripts instead of this one
-#   lint-shell.sh --warning ...   # additionally print warning-level findings (non-fatal)
-#   lint-shell.sh --list-files    # print the root-relative file set and exit (the scope's one owner;
-#                                 # verify_shellcheck_warnings.py ratchets warnings over exactly it)
-#   lint-shell.sh --print-bin     # print the resolved shellcheck path and exit (the binary's one owner)
-#
-# --root is the same contract lint-workflows.sh documents, for the same reason:
-# a submodule checkout puts this script INSIDE the consumer, where the default
-# root resolves to ANTfrastructure and the gate grades the wrong tree while
-# reporting green over one nobody looked at. The shellcheck bootstrap, its cache
-# and versions.env always come from THIS repo regardless of the root.
-#
-# Under a root the file set is `git ls-files -- '*.sh'`, not a find: a vendored
-# submodule (this very repo, at third_party/ANTfrastructure) is a GITLINK there, so
-# the consumer's scope cannot quietly swallow the hub's own scripts — the same
-# failure from the other direction. That the root must be a git checkout is
-# therefore stated and checked, not assumed.
-#
-# And an EMPTY file list under an explicit root is an ERROR, never the
-# "no shell scripts to check" pass below: this script skips paths that do not
-# exist, so a scope built from a wrong prefix arrived here empty and reported
-# green over nothing. That is the defect every line of this header is about.
-#
-# Exit status: non-zero iff any error-level finding exists (the gate),
-# bootstrapping shellcheck fails, or an explicit root yields nothing to check.
+# [--root <dir>] [--warning] [--list-files|--print-bin] [file ...]: pinned shellcheck at -S error; a failed bootstrap fails.
 set -euo pipefail
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; NC='\033[0m'
@@ -54,9 +12,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
-# --root is parsed and resolved by the contract's one owner; the tree to grade
-# is what comes back. Everything below is scoped to it; the hub paths above
-# (CORE_DIR, the bootstrap cache) stay anchored to REPO_ROOT on purpose.
+# Everything below is scoped to the root; CORE_DIR and the bootstrap cache stay in REPO_ROOT.
 # shellcheck source=01-core/lint-root.sh
 . "${CORE_DIR}/lint-root.sh"
 lint_root_begin "${REPO_ROOT}" "$@" || exit 1
@@ -76,18 +32,13 @@ for arg in "$@"; do
   esac
 done
 
-# ---------------------------------------------------------------------------
-# Bootstrap of shellcheck (PATH copy only AT the pin; else pinned, SHA-verified download)
-# ---------------------------------------------------------------------------
+# Bootstrapping shellcheck: PATH copy only at the pin, else a pinned, SHA-verified download
 shellcheck_asset_and_sha() {
   case "$(uname -s)/$(uname -m)" in
     Linux/x86_64|Linux/amd64)
       printf 'shellcheck-%s.linux.x86_64.tar.xz %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_LINUX_X86_64_SHA256:-}" ;;
     Linux/aarch64|Linux/arm64)
-      # Upstream ships a real aarch64 asset. Without this arm the bootstrap
-      # returned 1 -> "Unsupported platform", so lint-shell.sh (and therefore
-      # preflight.sh, and therefore `make preflight` / `make lint`) could not
-      # run AT ALL on a native ARM build host.
+      # Without this arm no lint gate could run on a native ARM build host.
       printf 'shellcheck-%s.linux.aarch64.tar.xz %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_LINUX_AARCH64_SHA256:-}" ;;
     MINGW*/x86_64|MSYS*/x86_64|CYGWIN*/x86_64)
       # The plain .zip release asset is the Windows binary (shellcheck.exe).
@@ -144,16 +95,9 @@ if [ "${PRINT_BIN}" -eq 1 ]; then
   exit 0
 fi
 
-# Default target set: every tracked .sh under linux/scripts, the runtime service
-# scripts (llm-stack, webserver), the host-config operator tools, and the
-# extension-less git hooks. host-config (2026-08-27) and git-hooks (2026-09-04)
-# were both added after the same finding: a scope that quietly excludes the
-# thing it was meant to protect. The ratchet asks THIS set.
-# docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings
+# The warning ratchet grades exactly this set. docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings
 
-# Under --root the hub's four directories mean nothing, so the scope is the
-# consumer's tracked *.sh instead — see lint_root_tracked for why that is
-# git ls-files and never a find.
+# Under --root the scope is the consumer's tracked *.sh (see lint_root_tracked).
 if [ "${#FILES[@]}" -eq 0 ] && [ "${LINT_ROOT_GIVEN}" -eq 1 ]; then
   while IFS= read -r -d '' _tracked; do
     FILES+=("${SCAN_ROOT}/${_tracked}")
@@ -168,27 +112,7 @@ elif [ "${#FILES[@]}" -eq 0 ]; then
     -type f | sort)
 fi
 
-# Keep only existing shell scripts (a staged list may include deletions and
-# files of other types).
-#
-# Extension-less scripts count too, IF they carry a shell shebang: git hooks are
-# bash but cannot have a .sh suffix, so the commit hook
-# (linux/host-config/git-hooks/pre-commit) would be checked by no gate at all.
-# Its predecessor sat with an SC1072/SC1073 parse error until 2026-08-08 for
-# exactly that reason. The shebang test keeps this from sweeping in READMEs and
-# binaries. LOAD-BEARING: without it the live hook is unlinted.
-# Note this only affects EXPLICITLY passed files — the default sweep above still
-# discovers *.sh only, so the gate's default scope is unchanged.
-#
-# ${FILES[@]+...}: an empty find result leaves FILES unset, and expanding an
-# unset array trips `set -u` on bash < 4.4 (harmless on 5.x, cheap to guard).
-#
-# Under an explicit root a relative name is the CONSUMER's, so it is anchored
-# there rather than at the caller's cwd — and a name that then resolves to
-# nothing is an ERROR, not a skip. The lenient skip above exists for the staged
-# pre-commit list, which legitimately carries deletions; a caller that named a
-# root and a file meant both, and dropping the file quietly shrinks the graded
-# set while the banner still counts up to a pass.
+# Shebang-checked extension-less files keep git hooks linted; under a root a missing named file is an error.
 CHECK=()
 for f in ${FILES[@]+"${FILES[@]}"}; do
   if [ "${LINT_ROOT_GIVEN}" -eq 1 ]; then
@@ -199,13 +123,12 @@ for f in ${FILES[@]+"${FILES[@]}"}; do
     [ -e "${f}" ] || err "no such path under ${SCAN_ROOT}: ${f}"
   fi
   [ -f "${f}" ] || continue
-  # Test the BASENAME, not the path: a directory component may carry a dot
-  # (a path like ".githooks/pre-commit" matched the "has an extension" arm).
+  # The basename, not the path: a directory like .githooks/ carries a dot.
   case "${f##*/}" in
     *.sh) CHECK+=("${f}") ;;
     *.*)  ;;   # some other extension: not ours
     *)
-      # No extension at all — admit it only on a shell shebang.
+      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.
       case "$(head -c 128 "${f}" 2>/dev/null | head -n 1 | tr -d '\r')" in
         '#!'*[bd]'ash'|'#!'*[bd]'ash '*|'#!/bin/sh'|'#!/bin/sh '*|'#!'*'env sh'|'#!'*'env '[bd]'ash')
           CHECK+=("${f}") ;;
@@ -220,8 +143,7 @@ if [ "${LIST_FILES}" -eq 1 ]; then
 fi
 
 if [ "${#CHECK[@]}" -eq 0 ]; then
-  # A root was NAMED and nothing came back: the caller handed this gate a tree
-  # and would read the pass below as a verdict about it. Refuse instead.
+  # A named root with nothing to check must not read as a pass.
   [ "${LINT_ROOT_GIVEN}" -eq 0 ] \
     || err "no shell script to check under ${SCAN_ROOT}; a root was given explicitly, so reporting green over an empty file list would be a verdict about nothing."
   pass "no shell scripts to check"
@@ -231,7 +153,7 @@ fi
 shellcheck_ensure
 info "shellcheck: ${SHELLCHECK_BIN} ($("${SHELLCHECK_BIN}" --version | sed -n 's/^version: //p'))"
 
-# --- The gate: -S error must be clean. ---
+# The gate: -S error must be clean
 error_files=()
 for f in "${CHECK[@]}"; do
   "${SHELLCHECK_BIN}" -S error "${f}" >/dev/null 2>&1 || error_files+=("${f}")
@@ -247,14 +169,7 @@ if [ "${#error_files[@]}" -gt 0 ]; then
 fi
 pass "shellcheck -S error clean (${#CHECK[@]} file(s))"
 
-# --- Fatal even though it is only a warning: SC2215. ---
-#
-# `cmd \` followed by a comment line ends the logical line, so the command runs
-# with NO arguments and shellcheck reports the orphaned flags as SC2215 -- at
-# warning level, which the gate above filters out. That is not a style nit: on
-# 2026-08-28 it made the android ONNX Runtime build run `./build.sh` bare, which
-# silently dropped every flag (Release, --no_telemetry, --allow_running_as_root)
-# and killed the android stage after four hours of chain time.
+# SC2215 is fatal though a warning: a comment after `cmd \` runs cmd without its flags.
 sc2215_files=()
 for f in "${CHECK[@]}"; do
   "${SHELLCHECK_BIN}" --include=SC2215 -S warning "${f}" >/dev/null 2>&1 || sc2215_files+=("${f}")
@@ -270,7 +185,7 @@ if [ "${#sc2215_files[@]}" -gt 0 ]; then
 fi
 pass "SC2215 clean (no flags orphaned by a bad line break)"
 
-# --- Non-fatal warning report (opt-in). ---
+# Non-fatal warning report (opt-in)
 if [ "${SHOW_WARNINGS}" -eq 1 ]; then
   warn_files=()
   for f in "${CHECK[@]}"; do

@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# ensure_appimagetool's install mode. appimagetool is an AppImage: it reads
-# /proc/self/exe for its own squashfs offset, so executable-but-unreadable is a
-# tool that works for root and for nobody else.
-# docs/consumer-image-contract.md#the-contract
+# appimagetool reads its own /proc/self/exe, so an unreadable copy works only for root; see docs/consumer-image-contract.md#the-contract
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -24,9 +21,7 @@ t_assert_contains "${_src}" 'chmod 0755 "$tmpfile"' \
 t_assert_eq 0 "$(printf '%s\n' "${_src}" | grep -c 'chmod +x "\$tmpfile"')" \
   "chmod +x preserves mktemp's 0600 for group and other"
 
-# ---------------------------------------------------------------------------
-# The AppImage runtime: taken from appimagetool's own bytes, never downloaded.
-# docs/consumer-image-contract.md#the-appimage-runtime-ships-with-the-tool
+# The runtime comes from appimagetool's own bytes; see docs/consumer-image-contract.md#the-appimage-runtime-ships-with-the-tool
 
 t_case "the runtime stager is reached from BOTH of ensure_appimagetool's success paths"
 _ea="$(t_fn_src "${SUBJECT}" ensure_appimagetool)"
@@ -35,8 +30,7 @@ t_assert_eq "2" "$(printf '%s\n' "${_ea}" | grep -c 'ensure_appimagetool_runtime
 t_assert_contains "${_ea}" 'info "appimagetool already present' \
   "the early-present arm is the one a cached layer takes, and it is the easy one to forget"
 
-# Drive the real function with a fake appimagetool whose first N bytes ARE the
-# runtime, in a sandbox HOME/skel — no network, no /etc write.
+# _pd_stage <offset> <home>: the real stager on a fake appimagetool whose first bytes are the runtime.
 _pd_stage() {
   local offset="$1" home="$2"
   local tool="${_PD_BIN}/appimagetool"
@@ -96,8 +90,7 @@ t_case "no appimagetool is a no-op, not a failure"
 t_assert_contains "${_src}" 'command -v appimagetool 2>/dev/null)" || return 0' \
   "riscv64 has no upstream appimagetool; that must not fail a toolchain stage"
 
-# ---------------------------------------------------------------------------
-# The Flatpak runtime set. docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
+# See docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
 
 t_case "all seven refs a Flatpak build resolves are installed, not just two"
 _refs="$( eval "$(t_fn_src "${SUBJECT}" _flatpak_refs)"; _flatpak_refs 24.08 2.5.1 )"

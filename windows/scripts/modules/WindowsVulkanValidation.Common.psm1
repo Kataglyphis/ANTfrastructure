@@ -3,26 +3,16 @@
 
 #requires -Version 7.0
 
-# Project-agnostic driver: run a Vulkan executable with the Khronos layer's
-# synchronization validation on and fail if the log holds a SYNC-HAZARD.
-#
-# Sync validation turns on only through a vk_layer_settings.txt that the loader reads
-# from the CWD or the executable's directory - hence the stage/restore dance below.
-#
-# Invoke-VulkanValidationRun leaves the exit code in $LASTEXITCODE instead of
-# returning it (a returned value would collect the executable's stdout), same
-# contract as WindowsAppRunner.Common's Invoke-AppRun.
+# Sync validation turns on only through a vk_layer_settings.txt beside the executable, hence the staging.
 
 Set-StrictMode -Version Latest
 
-# Packaged minimal settings, staged when the caller passes no -SettingsPath, so a
-# project with no checked-in settings file still gets a sync-validation run.
+# Staged without -SettingsPath, so a project with no settings file still gets a sync-validation run.
 function Get-VulkanLayerSettingsDefaultPath {
     return (Join-Path $PSScriptRoot 'vk_layer_settings.default.txt')
 }
 
-# Returns a staging handle for Restore-VulkanLayerSettings. An existing
-# vk_layer_settings.txt is moved aside, never destroyed.
+# An existing vk_layer_settings.txt is moved aside, never destroyed; the handle goes to Restore-VulkanLayerSettings.
 function Copy-VulkanLayerSettings {
     param(
         [Parameter(Mandatory)]
@@ -54,8 +44,7 @@ function Copy-VulkanLayerSettings {
     }
 }
 
-# Safe to call from a finally block: a $null handle is ignored and missing files are
-# not an error, so a failure mid-run still cleans up.
+# Safe in a finally block: a $null handle and missing files are ignored.
 function Restore-VulkanLayerSettings {
     param(
         [Parameter(ValueFromPipeline)]
@@ -65,8 +54,7 @@ function Restore-VulkanLayerSettings {
     process {
         if ($null -eq $Staging) { return }
 
-        # Never leave a copy lying around next to the binary - it would silently
-        # enable (expensive) sync validation on every later, unrelated run.
+        # A leftover copy would silently enable expensive sync validation on every later run.
         Remove-Item -LiteralPath $Staging.StagedPath -Force -ErrorAction SilentlyContinue
 
         if ($Staging.BackupPath -and (Test-Path $Staging.BackupPath)) {
@@ -75,8 +63,7 @@ function Restore-VulkanLayerSettings {
     }
 }
 
-# Returns MatchInfo objects, so callers keep line numbers and text. Matching is
-# literal (-SimpleMatch): a -Pattern entry is a substring, not a regex.
+# -Pattern entries are literal substrings (-SimpleMatch), not regexes.
 function Get-VulkanValidationHazard {
     param(
         [Parameter(Mandatory)]
@@ -116,8 +103,7 @@ function Test-VulkanValidationLog {
         [string]$LogPath,
         [string[]]$Pattern = @('SYNC-HAZARD'),
         [string]$Label = 'SYNCHRONIZATION HAZARDS',
-        # Suppresses the "=== NO ... DETECTED ===" success line for callers that
-        # print their own.
+        # Suppresses the success line for callers that print their own.
         [switch]$Quiet
     )
 
@@ -133,27 +119,21 @@ function Test-VulkanValidationLog {
     return $true
 }
 
-# Environment and staged settings are restored in a finally block, so a crashing run
-# leaves neither behind; the log is always written and $LASTEXITCODE is 1 when the
-# process could not start at all.
+# Sets $LASTEXITCODE instead of returning it, since a return would collect the executable's stdout.
 function Invoke-VulkanValidationRun {
     param(
         [Parameter(Mandatory)]
         [string]$ExecutablePath,
         [string[]]$Arguments = @(),
-        # The application usually resolves shaders/models/textures relative to
-        # the CWD, which is rarely the directory the binary lives in.
+        # Apps resolve shaders and models relative to the CWD, rarely the binary's directory.
         [string]$WorkingDirectory = (Get-Location).Path,
         [Parameter(Mandatory)]
         [string]$LogPath,
-        # Khronos validation layer directory (the Vulkan SDK's Bin). Empty leaves
-        # VK_LAYER_PATH alone, so a system-installed layer is used as-is.
+        # The Vulkan SDK's Bin; empty leaves VK_LAYER_PATH alone, so a system layer is used.
         [string]$LayerPath,
-        # Source of the vk_layer_settings.txt staged next to the executable.
         # Defaults to the module's packaged minimal settings file.
         [string]$SettingsPath,
-        # 0 (the default) waits forever and streams the output live; a positive value
-        # redirects to files, waits with a timeout and kills the process on overrun.
+        # 0 streams live and waits forever; a positive value redirects to files and kills on overrun.
         [int]$TimeoutSeconds = 0
     )
 
@@ -199,8 +179,7 @@ function Invoke-VulkanValidationRun {
                     -WorkingDirectory (Get-Location).Path -LogPath $LogPath -TimeoutSeconds $TimeoutSeconds
             } else {
                 & $ExecutablePath @Arguments 2>&1 | Tee-Object -FilePath $LogPath
-                # $LASTEXITCODE is undefined until the first native command of
-                # the session has run, hence the Test-Path guard under StrictMode.
+                # $LASTEXITCODE is undefined until the session's first native command (StrictMode).
                 $exitCode = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
                 if ($null -eq $exitCode) { $exitCode = 0 }
             }
@@ -223,8 +202,7 @@ function Invoke-VulkanValidationRun {
     $global:LASTEXITCODE = $exitCode
 }
 
-# Timeout branch: Start-Process is the only killable handle but cannot stream through
-# Tee-Object, hence the temp files. Returns 124 on timeout, as `timeout(1)` does.
+# Start-Process is killable but cannot stream through Tee-Object, hence temp files; 124 on timeout, like timeout(1).
 function Invoke-VulkanValidationTimedProcess {
     param(
         [Parameter(Mandatory)]
@@ -249,8 +227,7 @@ function Invoke-VulkanValidationTimedProcess {
             NoNewWindow            = $true
             PassThru               = $true
         }
-        # Start-Process rejects an empty -ArgumentList, so only pass it when
-        # the caller actually supplied arguments.
+        # Start-Process rejects an empty -ArgumentList.
         if ($Arguments.Count -gt 0) { $startArgs['ArgumentList'] = $Arguments }
 
         $process = Start-Process @startArgs
@@ -260,8 +237,7 @@ function Invoke-VulkanValidationTimedProcess {
             $process.WaitForExit()
             $exitCode = 124
         } else {
-            # WaitForExit(ms) can return before .ExitCode is settled; the parameterless
-            # overload blocks until it is.
+            # WaitForExit(ms) can return before .ExitCode settles; the parameterless overload waits for it.
             $process.WaitForExit()
             $exitCode = $process.ExitCode
         }

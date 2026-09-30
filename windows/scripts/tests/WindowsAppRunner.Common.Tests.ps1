@@ -11,9 +11,7 @@ Describe 'WindowsAppRunner.Common' {
     $script:workDir = (New-Item -ItemType Directory -Path (Join-Path $script:root 'work') -Force).FullName
     $script:buildRoot = (New-Item -ItemType Directory -Path (Join-Path $script:root 'build') -Force).FullName
 
-    # A .cmd stands in for the built application: it is executable everywhere
-    # Windows PowerShell runs, prints its working directory and returns a
-    # non-zero exit code so both can be asserted.
+    # A .cmd stands in for the app: it prints its working directory and exits non-zero, so both can be asserted.
     $script:appName = 'apprunner-probe.cmd'
     $binReleaseDir = (New-Item -ItemType Directory -Path (Join-Path $script:buildRoot 'bin\Release') -Force).FullName
     Set-Content -Path (Join-Path $binReleaseDir $script:appName) `

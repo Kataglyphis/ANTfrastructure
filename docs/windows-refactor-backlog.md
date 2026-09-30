@@ -224,7 +224,7 @@ this repo's cp314 pin).
 - **#149** — the `c9586c1^` warm/materialize rollback recipe: DEAD, not stale.
   FOUR independent breakages (every script path, the missing TargetArch + Tvm
   modules, the swapped media-core order, the QAIRT pin). The restore recipe is now
-  a derivation rule in `Invoke-BkWarm.ps1:15-38` — derive each RUN from the stage that
+  a derivation rule in `windows-build-lanes.md` § Restoring the warm/materialize rollback — derive each RUN from the stage that
   runs that script TODAY. Archive: `windows-backlog-archive-2026-08-31.md`
   § Resolved 2026-08-31 (second pass).
 

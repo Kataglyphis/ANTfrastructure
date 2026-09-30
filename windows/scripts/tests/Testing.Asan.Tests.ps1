@@ -1,14 +1,5 @@
 #requires -Version 7.0
-# Tests for WindowsTesting.Common and WindowsClang.Common, both upstreamed from
-# BeschleunigerBallett's vendored scripts/windows/modules copies on
-# 2026-08-11 (they were never covered there).
-#
-# Only host-independent behaviour is asserted. The ASan-runtime *discovery*
-# depends on which Visual Studio / LLVM the machine has, so what is pinned here
-# is the contract that survives either answer: it never throws, it always
-# returns an array, and -Msvc never yields an LLVM path (mixing the two is the
-# exact defect the module exists to prevent — LLVM's clang_rt.asan_dynamic
-# aborts a COM/CRT-hosting application with an unsuppressible bad-free).
+# Host-independent only: -Msvc must never yield LLVM's ASan runtime, which aborts COM/CRT hosts with a bad-free.
 
 Describe 'Invoke-WithAsanOptions' {
 
@@ -37,10 +28,7 @@ Describe 'Invoke-WithAsanOptions' {
     }
 
     It 'runs the block with ASAN_OPTIONS untouched for an empty -Options' {
-        # A mandatory [string] refused '' outright, so AccelerANTgine's
-        # Start-Windows.ps1 (-AsanOptions '' for its full-application runs) died
-        # before running anything: "Cannot bind argument to parameter 'Options'
-        # because it is an empty string" (its CI run 36020001871).
+        # Consumers pass -AsanOptions '' for full-application runs; a mandatory [string] would refuse it.
         Invoke-WithEnv @{ ASAN_OPTIONS = 'pre=1' } {
             Invoke-WithAsanOptions -Options '' -Script { $script:seenEmpty = $env:ASAN_OPTIONS }
             Assert-Equal 'pre=1' $script:seenEmpty 'nothing may be prepended, not even a separator'
@@ -86,10 +74,7 @@ Describe 'Invoke-WithRuntimePath' {
 Describe 'Get-AsanRuntimeDirs' {
 
     It 'never throws on a host with no Visual Studio and no LLVM' {
-        # -AllowMissing inside Get-VisualStudioAsanRuntimeDirs is what makes this
-        # true: no VS install means one fewer runtime root, not a failure.
-        # Asserted as an explicit flag because the no-hit answer is legitimately
-        # empty, so no return-value assertion can distinguish it from a throw.
+        # An explicit flag: the no-hit answer is legitimately empty, so no return value tells it from a throw.
         $threw = $false
         try {
             $null = Get-AsanRuntimeDirs -RuntimeFlavor Msvc
@@ -102,10 +87,7 @@ Describe 'Get-AsanRuntimeDirs' {
     }
 
     It '@()-wrapping gives an array on any host, including the no-hit one' {
-        # PowerShell unrolls a returned empty array, so `$x = Get-AsanRuntimeDirs`
-        # yields $null when nothing is found. Every caller therefore wraps -
-        # @(Get-AsanRuntimeDirs ...) - and Invoke-WithRuntimePath normalizes
-        # $null/scalar input as its second line of defence. This pins BOTH.
+        # PowerShell unrolls a returned empty array to $null, so every caller wraps the call in @().
         $dirs = @(Get-AsanRuntimeDirs -RuntimeFlavor Msvc)
         Assert-True ($dirs -is [array]) '@() must always produce an array'
     }

@@ -6,24 +6,10 @@
 
 <#
 .SYNOPSIS
-    Inspects the HOST's Local Session Manager. The container-side diagnosis
-    stalled at "LSM waits for a session state that never arrives"; if the
-    container's LSM is a client of the host's, a wedged host broker would
-    explain every symptom at once.
-
+    Snapshots the host's Local Session Manager idle and during a container hang, in case a wedged host broker is the cause.
 .DESCRIPTION
-    Both other diagnostics find their target through the silo (a fresh
-    wininit.exe -> its services.exe -> their svchosts), so the host's own LSM
-    has never been looked at. This attaches to it NON-INVASIVELY only: the
-    debugger never controls the target, so it cannot take down a process the
-    session stack depends on. There is deliberately no -Invasive switch.
-
-    Needs no container and no timing window - the host LSM is always running.
-
-    Findings go to out/lsm-attach/, readable by the caller.
-
-.EXAMPLE
-    pwsh -File windows\scripts\diagnostics\Get-HostLsm.ps1
+    Attaches non-invasively only (deliberately no -Invasive), so it cannot take down a process the session stack needs.
+    Findings go to out/lsm-attach/.
 #>
 [CmdletBinding()]
 param(
@@ -32,8 +18,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Setup only (cdb discovery, out dir, bait, silo wait) is shared with the other
-# LSM probes; every cdb command string below stays here, where it is read.
+# Only the setup is shared with the other LSM probes; the cdb command strings stay here.
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
@@ -51,14 +36,7 @@ if ($prot -and $prot.LaunchProtected) { throw "LSM runs protected (LaunchProtect
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
 
-# No .printf here: its comma-separated argument list swallows the following
-# semicolons, and cdb then runs NOTHING after it ("Bad register error at
-# '@r10; kv; ...'") - measured 2026-09-02, it cost a whole run's stacks and
-# locks. Plain commands separated by ';' work.
-#
-# gServer is the process-wide ContainerSessionServer; dumping around it is a
-# blind read (no private symbols) but the session counters that
-# Increase/DecreaseTotalSessionCount maintain live in there.
+# No .printf: it swallows the semicolons after it; gServer holds the session counters (a blind read, no private symbols).
 $cmds = @(
     '.reload /f'
     '~*kv'
@@ -81,9 +59,7 @@ function Invoke-HostLsmSnapshot([string]$tag) {
     return $out
 }
 
-# An idle host LSM proves nothing: with no container starting, "no thread in
-# AskForSession" is simply what idle looks like. Snapshot BEFORE and DURING a
-# hang, and compare.
+# An idle snapshot alone proves nothing, so compare it with one taken during a hang.
 Write-Host "snapshot A (idle) ..."
 $logA = Invoke-HostLsmSnapshot 'A-idle'
 
@@ -91,8 +67,7 @@ $baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Se
 Start-SiloBaitContainer -Tag 'hostlsm'
 Write-Host "bait started; waiting for its silo ..."
 
-# 180 s, not the 900 s the watch-only probes use: this bait was started three
-# lines ago, so a silo that has not appeared by then is not coming.
+# 180 s, not 900: this bait just started, so a silo that has not appeared by then is not coming.
 if (-not (Wait-ForNewSilo -BaselinePid $baseWininit -TimeoutSec 180 -PollSec 2)) {
     Write-Warning 'no silo appeared; snapshot B will be another idle sample'
 }

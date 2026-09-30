@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """Distro package names in linux/scripts vs the live Ubuntu indices.
 
-Ubuntu 26.04 renamed libfreetype6-dev and dropped libopenexr-3-dev; the tree
-only kept working because warm apt caches held the old index, and an unguarded
-install_target_packages killed a stage four hours in. Full story + the
-guarded/unguarded contract: docs/failure-modes.md#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in
-
-Exit 0 = clean or SKIPped (no network, no cache); 1 = a dead name at an
-UNGUARDED call site; 2 = the extractor itself is broken (self-check).
+Exit 0 = clean or SKIPped; 1 = a dead name at an unguarded call site; 2 = the extractor is broken.
+docs/failure-modes.md#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in
 """
 
 from __future__ import annotations
@@ -45,16 +40,14 @@ PROBE_CMDS = (
     "dpkg -l", "dpkg -s", "dpkg-query", "apt-cache",
 )
 
-# Names here come from a NON-Ubuntu apt repo, so the Ubuntu indices cannot rule
-# on them: a miss is reported UNVERIFIABLE, never dead. A stale entry fails.
+# Files installing from a non-Ubuntu apt repo: a miss there is UNVERIFIABLE, never dead.
 VENDOR_REPO_FILES = (
     "linux/scripts/01-core/install-cuda-stack.sh",
     "linux/scripts/01-core/install-tensorrt.sh",
     "linux/scripts/01-core/setup-cuda-repo.sh",
     "linux/scripts/01-core/setup-rocm-repo.sh",
 )
-# Only vendor-shaped names are exempt; plain Ubuntu packages in the same file
-# (curl, gpg, ...) stay failable. See docs/cross-build-verification.md.
+# Only vendor-shaped names are exempt; plain Ubuntu packages in those files stay failable.
 VENDOR_NAME_RE = re.compile(r"^(lib)?(nccl|cudnn|cuda|tensorrt|nv|amdrocm|rocm|hip)")
 
 
@@ -186,8 +179,7 @@ def _array_refs(text):
 
 
 def _scan_arrays(raw):
-    """NAME=( ... ) literals whose name ends in packages/pkgs, bodies spanning lines
-    and several names per line -> {name: [(lineno, [(lineno, package)])]}."""
+    """*packages/*pkgs NAME=( ... ) literals, multi-line bodies included -> {name: [(lineno, [(lineno, pkg)])]}."""
     arrays, i = {}, 0
     while i < len(raw):
         m = ARRAY_START_RE.match(raw[i])
@@ -274,8 +266,7 @@ def _call_site(text, m, rel, lineno, block_guard):
 
 
 def _scan_call_sites(raw, rel):
-    """Every installer call in one file -> (reqs, referenced arrays). A for-loop over
-    an array installs it one name at a time, so its expansion counts as a reference."""
+    """(reqs, referenced arrays) per installer call; a for-loop over an array counts as a reference."""
     reqs, refs, guard_stack = [], set(), []
     for lineno, acc in logical_lines(raw):
         text = strip_comment(acc)
@@ -474,8 +465,7 @@ def load_arch(arch, codename, pocket, mirrors, cdir, ttl, timeout, refresh):
     base = (mirrors[0] if arch == "amd64" else mirrors[1]).rstrip("/") + "/"
     urls = [f"{base}dists/{codename}{suffix}/{c}/binary-{arch}/Packages.xz"
             for c in COMPONENTS]
-    # A PARTIAL fetch is not a usable index: a missing component makes real
-    # packages look dead and would fail the gate wrongly. All or nothing.
+    # All or nothing: a partial index makes real packages look dead.
     real, virtual, ok_n = set(), {}, 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         for blob in pool.map(lambda u: _try(u, timeout), urls):
@@ -618,8 +608,7 @@ def _log_notes(codename, skipped_arrays, virtual_only, vendor, somap, dead_guard
 
 
 def _verdict(codename, args, reqs, names, skipped_arrays):
-    """The network half: load the indices, then report. 0 = clean or SKIP, 1 = a dead
-    name at an unguarded site. docs/cross-build-verification.md"""
+    """The network half: 0 = clean or SKIP, 1 = a dead name at an unguarded site."""
     mirrors = read_mirrors()
     cdir = cache_dir(codename)
     loaded = _load_indices(codename, mirrors, cdir, args)

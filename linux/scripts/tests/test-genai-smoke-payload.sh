@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# test-genai-smoke-payload.sh — drives the GEN1 payload (smoke-common.sh
-# smoke_genai_py + its six per-tier emitters) as a standalone program.
-#
-# The payload only ever runs inside a foreign-arch runtime image, so nothing
-# else in the tree can see it fail. Pinned here is the contract
-# check_genai_binding depends on — the GENAI-BIND/GENAI-GEN sentinels, the 0/1/3
-# exit codes, and the three hand-checked verdicts (absent -> SKIP(3),
-# installed-but-unimportable -> FAIL(1), working -> OK(0)). docs/gen1-riscv64-genai.md
-# docs/failure-modes.md#genai-bind-skip-reported-green-while-the-native-binding-is-broken
+# smoke_genai_py only runs in foreign-arch images, so it is driven standalone here; see docs/gen1-riscv64-genai.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -22,11 +14,7 @@ _emit() { bash -c "source '${SMOKE_COMMON}'; $1"; }
 PROG="${_WORK}/genai_smoke.py"
 _emit smoke_genai_py > "${PROG}"
 
-# ── A. the decomposition itself ─────────────────────────────────────────────
-# Each tier must be separately emittable, and the concatenation must be the
-# whole program — otherwise a tier can silently drop out of the payload.
-# Byte-level, via files: command substitution eats the blank line each tier
-# ends with, and that blank line is part of the program.
+# A. Tiers concatenate to the program; compared as files because $(...) eats each tier's trailing blank line.
 _TIERS=(preamble tier1_version tier2_elf tier3_native tier4_generate verdict)
 : > "${_WORK}/concat.py"
 for _t in "${_TIERS[@]}"; do
@@ -53,8 +41,7 @@ t_assert_contains "$(_emit _smoke_genai_py_verdict)"       "GENAI-BIND OK:"
 # ── fixtures ────────────────────────────────────────────────────────────────
 EMPTY="${_WORK}/empty"; mkdir -p "${EMPTY}"
 
-# A stub that behaves like a healthy binding: version, a loaded native
-# extension, the pybind names, capability predicates, Tensor, Config.
+# A stub that behaves like a healthy binding.
 STUB="${_WORK}/stub"; mkdir -p "${STUB}/onnxruntime_genai" "${STUB}/numpy"
 t_fake_elf "${STUB}/onnxruntime_genai/ext_x86_64.so" 62
 t_fake_elf "${STUB}/onnxruntime_genai/ext_riscv64.so" 243
@@ -83,8 +70,7 @@ for _n in os.environ.get("STUB_GENAI_DROP", "").split(","):
     if _n:
         globals().pop(_n, None)
 PY
-# Minimal numpy so tier 3's Tensor round-trip is ARMED (the host has no numpy;
-# without this the tier reports UNPROVEN and proves nothing).
+# Minimal numpy, or tier 3 reports UNPROVEN on a host without numpy and proves nothing.
 cat > "${STUB}/numpy/__init__.py" <<'PY'
 float32 = "float32"
 class _Arr:
@@ -94,8 +80,7 @@ def array(data, dtype=None):
     return _Arr([[float(x) for x in row] for row in data])
 PY
 
-# Installed-but-unimportable: the DISTRIBUTION metadata is present, the import
-# blows up. This must be a FAIL, never a SKIP. docs/failure-modes.md
+# Installed but unimportable is a FAIL; see docs/failure-modes.md#genai-bind-skip-reported-green-while-the-native-binding-is-broken
 BROKEN="${_WORK}/broken"
 mkdir -p "${BROKEN}/onnxruntime_genai" "${BROKEN}/onnxruntime_genai-0.15.2.dist-info"
 printf 'raise ImportError("libonnxruntime-genai.so: undefined symbol: Oga_stub")\n' \
@@ -112,8 +97,7 @@ BROKEN_FLAVOUR="${_WORK}/broken-flavour"; _flavoured_site "${BROKEN}" "${BROKEN_
 STUB_FLAVOUR="${_WORK}/stub-flavour"; _flavoured_site "${STUB}" "${STUB_FLAVOUR}" cuda
 cp -r "${STUB}/numpy" "${STUB_FLAVOUR}/"
 
-# Run the payload the way the image does: piped into `python -`.
-# -S keeps host site-packages out, so PYTHONPATH is the whole world here.
+# Piped into `python -` as in the image; -S keeps host site-packages out.
 _run() {  # $1 = PYTHONPATH, rest = VAR=VAL ...
   local pp="$1"; shift
   _OUT="$(env -u GENAI_MODEL_DIR -u GENAI_EXPECT_VERSION -u GENAI_EXPECT_ARCH \
@@ -219,10 +203,7 @@ _run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
 t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "GENAI_MODEL_DIR=/nonexistent-genai-model is not a directory"
 
-# ── D. the SMOKE_GENAI_PY injection path ────────────────────────────────────
-# check_genai_binding ships the program through an env var and pipes it into
-# `python -`; that boundary is how it reaches images built before the check
-# existed, and an empty crossing is exit 4 upstream. Pin both halves.
+# D. The program crosses into the image via SMOKE_GENAI_PY; an empty crossing is exit 4.
 t_case "the program survives the SMOKE_GENAI_PY env-var round trip with the same verdict"
 _INJ_OUT="$(env -u GENAI_MODEL_DIR PYTHONPATH="${STUB}" PYTHONDONTWRITEBYTECODE=1 \
   GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
@@ -248,15 +229,10 @@ t_assert_eq "4" "${_INJ_RC}"
 t_assert_contains "${_INJ_OUT}" "GENAI-BIND ABSENT:"
 
 
-# DRIFT GUARD. The cases above run a hand-copied replica of the wrapper in
-# check_genai_binding, so a change to the real one would not fail them.
-# Mutation-proven: renaming the real ABSENT sentinel left the suite green.
+# Drift guard: the cases above run a hand copy of check_genai_binding's wrapper.
 t_case "the replica above still matches check_genai_binding's real wrapper"
 _SRI="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
-# grep -F -e, not t_assert_contains: the haystack is a whole file and a failure
-# message must not print it. The -e is load-bearing (host grep is ugrep).
-# Extract just check_genai_binding's wrapper: the file has a second `exit 4`
-# elsewhere, so a whole-file grep would stay green while this one rotted.
+# Only the wrapper: the file has a second `exit 4` that would keep a whole-file check green.
 _WRAP="$(sed -n '/SMOKE_GENAI_PY:-/,/python -.$/p' "${_SRI}")"
 t_assert_contains "${_WRAP}" "GENAI-BIND ABSENT:" "wrapper lost its ABSENT sentinel"
 t_assert_contains "${_WRAP}" "exit 4" "wrapper no longer exits 4 on an empty payload"

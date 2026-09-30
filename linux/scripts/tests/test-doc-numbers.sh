@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Doc numbers that are DERIVED, never re-typed: the mutation-manifest counts, the
-# hook's fast-slug list and the dead-function census, measured here and compared
-# against the three pages that quote them. Three waves in a row shipped a stale
-# count that hand-editing failed to catch; --update rewrites the digits instead.
-# docs/code-quality-tooling.md#doc-numbers-are-derived
+# Quoted doc numbers are measured, never re-typed; --update rewrites them; see docs/code-quality-tooling.md#doc-numbers-are-derived
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -210,8 +206,7 @@ t_case "only the owning page quotes a whole-manifest total"
 t_assert_eq "" "$(_kind bare-total)" "a second page re-quotes the manifest total"
 
 t_case "a count binds to the marker it precedes, not to a number further left"
-# --update rewrites whatever the regex matched, so a gap allowed to span digits
-# would let it overwrite a correct unrelated number on the same line.
+# --update rewrites the match, so a gap spanning digits would overwrite an unrelated number.
 _fam="$(python3 - "${TESTS_DIR}/test-doc-numbers.sh" <<'FAM'
 import io, re, sys
 src = io.open(sys.argv[1], encoding="utf-8").read()

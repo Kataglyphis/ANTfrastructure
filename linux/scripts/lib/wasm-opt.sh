@@ -1,30 +1,5 @@
 #!/usr/bin/env bash
-# wasm-opt.sh - binaryen/wasm-opt bootstrap and optimisation helper.
-#
-# Two things every "check/shrink the wasm bundle" script needs and nothing
-# project-specific:
-#   1. a wasm-opt binary - not installed in most CI images and not worth a
-#      distro package (they lag badly), so a pinned, SHA-verified binaryen
-#      release is fetched on demand and put on PATH
-#   2. the wasm feature flags that release has to be told about, because
-#      wgpu/naga-style toolchains emit instructions wasm-opt's validator
-#      rejects by default
-#
-# The version and the per-platform checksums come from
-# 01-core/versions.env (BINARYEN_VERSION, BINARYEN_<PLATFORM>_<ARCH>_SHA256) so
-# the pin is shared with the PowerShell twin
-# (windows/scripts/modules/WindowsWasmOpt.Common.psm1) instead of being
-# duplicated per language. Both may be overridden from the environment, which is
-# also how a caller pins a different release without editing versions.env.
-#
-# This library is project-agnostic: the size budget, crate name and output paths
-# stay in the consuming script. It deliberately does NOT set -e / -u / -o
-# pipefail so that sourcing it cannot change the caller's shell options.
-#
-# Usage:
-#   source "<antfrastructure>/linux/scripts/lib/wasm-opt.sh"
-#   wasm_opt_ensure                              # bootstraps if needed
-#   wasm_opt_optimize in.wasm out.wasm [-Oz]     # feature flags + fallback
+# Sourced (no shell options): a pinned, SHA-verified binaryen, since distro packages lag; pin shared with PowerShell via versions.env.
 
 [ -n "${_WASM_OPT_SH_LOADED:-}" ] && return 0
 _WASM_OPT_SH_LOADED=1
@@ -34,11 +9,7 @@ _WASM_OPT_CORE_DIR="${_WASM_OPT_LIB_DIR}/../01-core"
 # shellcheck source=./log-bootstrap.sh
 source "${_WASM_OPT_LIB_DIR}/log-bootstrap.sh"
 
-# The wasm features wgpu/naga-style codegen emits: bulk-memory,
-# nontrapping-float-to-int, sign-extension and simd instructions among them.
-# The names are exactly what wasm-opt's validator asks for in its error
-# messages. --all-features is the fallback (see wasm_opt_optimize) if a future
-# codegen change needs a feature not listed here.
+# Features wgpu/naga codegen emits that wasm-opt's validator rejects by default; --all-features is the fallback.
 WASM_OPT_FEATURE_FLAGS=(
   --enable-bulk-memory-opt
   --enable-nontrapping-float-to-int
@@ -49,8 +20,7 @@ WASM_OPT_FEATURE_FLAGS=(
   --enable-multivalue
 )
 
-# wasm_opt_load_pin - export BINARYEN_VERSION and BINARYEN_*_SHA256 from
-# versions.env unless they are already set in the environment.
+# The environment wins, which is how a caller pins another release without editing versions.env.
 wasm_opt_load_pin() {
   local versions_file="${1:-${_WASM_OPT_CORE_DIR}/versions.env}"
 
@@ -61,8 +31,7 @@ wasm_opt_load_pin() {
     return 0
   fi
 
-  # Standalone fallback (library copied out of the tree): read just the keys we
-  # need. versions.env is inert KEY=value data and must never be `source`d.
+  # Read only the keys we need: versions.env is inert data and must never be sourced.
   local line name
   [[ -f "${versions_file}" ]] || return 0
   while IFS= read -r line || [[ -n "${line}" ]]; do
@@ -75,8 +44,7 @@ wasm_opt_load_pin() {
   done < "${versions_file}"
 }
 
-# wasm_opt_asset_name [version] - binaryen release asset for the running
-# platform, e.g. binaryen-version_131-x86_64-linux.tar.gz.
+# [version]; e.g. binaryen-version_131-x86_64-linux.tar.gz.
 wasm_opt_asset_name() {
   local version="${1:-${BINARYEN_VERSION:-}}"
   local machine
@@ -89,10 +57,7 @@ wasm_opt_asset_name() {
   printf 'binaryen-%s-%s-linux.tar.gz\n' "${version}" "${machine}"
 }
 
-# wasm_opt_expected_sha [version] - the pinned checksum matching
-# wasm_opt_asset_name. Only the architectures actually pinned in versions.env
-# are supported; anything else is a hard error rather than an unverified
-# download.
+# An arch without a pinned checksum is a hard error, never an unverified download.
 wasm_opt_expected_sha() {
   local machine
   machine="$(uname -m)"
@@ -103,16 +68,7 @@ wasm_opt_expected_sha() {
   esac
 }
 
-# wasm_opt_ensure - make wasm-opt available on PATH, fetching the pinned
-# binaryen release if it is not already there.
-#
-# The extraction directory is a stable, version-keyed cache
-# (WASM_OPT_CACHE_DIR, default ${TMPDIR:-/tmp}) rather than a fresh mktemp -d,
-# so repeated runs on the same machine (a CI job with a warm workspace, a
-# developer iterating locally) reuse the download instead of re-fetching ~10 MB
-# every time. A cache hit is decided by the presence of bin/wasm-opt inside the
-# version-keyed directory, so bumping BINARYEN_VERSION never reuses a stale
-# binary.
+# A version-keyed cache (WASM_OPT_CACHE_DIR), so reruns reuse the download and a bump never reuses a stale binary.
 wasm_opt_ensure() {
   if command -v wasm-opt >/dev/null 2>&1; then
     return 0
@@ -141,8 +97,7 @@ wasm_opt_ensure() {
     mkdir -p "${cache_root}" || err "Cannot create binaryen cache directory ${cache_root}"
     local tmp_dir
     tmp_dir="$(mktemp -d)" || err "mktemp -d failed"
-    # Stop at a failed/failing-checksum download rather than falling through to
-    # tar, which would only report "cannot open" and bury the real cause.
+    # Stop here: tar would only report "cannot open" and bury a failed download or checksum.
     if ! download_verified_file \
       "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN_VERSION}/${asset}" \
       "${expected_sha}" \
@@ -150,8 +105,7 @@ wasm_opt_ensure() {
       rm -rf "${tmp_dir}"
       err "Verified download of ${asset} failed (checksum mismatch or network error)."
     fi
-    # Extract into the cache root: the tarball's top-level directory is already
-    # binaryen-${BINARYEN_VERSION}, i.e. exactly ${install_dir}.
+    # The tarball's top directory is binaryen-${BINARYEN_VERSION}, i.e. exactly ${install_dir}.
     tar -xzf "${tmp_dir}/${asset}" -C "${cache_root}" || { rm -rf "${tmp_dir}"; err "Extracting ${asset} failed"; }
     rm -rf "${tmp_dir}"
   else
@@ -162,9 +116,7 @@ wasm_opt_ensure() {
   export PATH="${install_dir}/bin:${PATH}"
 }
 
-# wasm_opt_optimize <input> <output> [level] - run wasm-opt with the feature
-# flags above, retrying once with --all-features if the explicit set is not
-# enough (a newer codegen emitting a feature this list predates).
+# <input> <output> [level]; retries once with --all-features for a feature newer than the list.
 wasm_opt_optimize() {
   local input="${1:?input wasm required}"
   local output="${2:?output wasm required}"

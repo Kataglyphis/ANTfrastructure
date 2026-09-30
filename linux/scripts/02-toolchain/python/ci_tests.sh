@@ -1,17 +1,5 @@
 #!/usr/bin/env bash
-# ci_tests.sh - Generic Python CI test runner
-#
-# Usage:
-#   ci_tests.sh [package_name] [py_versions_string]
-#
-# Environment variables:
-#   PACKAGE_NAME - Package name (default: derived from pyproject.toml or current dir)
-#   PY_VERSIONS - Space-separated Python versions (default: "3.14", the image
-#                 interpreter; docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi)
-#   EXPERIMENTAL_PYTHON_VERSIONS - Experimental versions that don't block
-#                          (default: "3.14t"; declared by 01-core/python_uv.sh)
-#   CI_TESTS_LOG_FILE - Log file path (default: docs/test_results/ci_tests-<timestamp>.log)
-#   WORKSPACE_ROOT - Workspace root directory
+# PY_VERSIONS defaults to the image interpreter. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
 
 set -euo pipefail
 
@@ -31,12 +19,7 @@ fi
 PACKAGE_NAME="$(derive_package_name "${1:-${PACKAGE_NAME:-}}")"
 
 PY_VERSIONS="${2:-${PY_VERSIONS:-3.14}}"
-# EXPERIMENTAL_PYTHON_VERSIONS is declared, defaulted and READ by
-# 01-core/python_uv.sh (is_experimental_python loops over it), sourced above via
-# ci-common.sh — so there is nothing to set here. This script used to assign
-# EXPERIMENTAL_VERSIONS, a name no consumer ever read: exporting the documented
-# knob changed nothing, and the dead assignment only looked live because the two
-# defaults happened to be the same string.
+# EXPERIMENTAL_PYTHON_VERSIONS is owned and read by 01-core/python_uv.sh; nothing to set here.
 
 LOG_FILE="${CI_TESTS_LOG_FILE:-$WORKSPACE_ROOT/docs/test_results/ci_tests-$(timestamp).log}"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -74,12 +57,7 @@ for V in $PY_VERSIONS; do
 
   uv_venv_activate "$VENV_DIR"
 
-  # An EXPERIMENTAL interpreter is allowed to fail its dependency sync without
-  # taking the matrix down - that is the whole point of listing it separately.
-  # Venv CREATION above was already guarded this way; the sync was not, so a
-  # free-threaded build with one unbuildable wheel still failed the whole run.
-  # Picked up from OrchestrANT, which had added the guard to
-  # its private copy of this script (2026-08-11).
+  # An experimental interpreter may fail its sync, like its venv creation, without failing the matrix.
   if is_experimental_python "$V"; then
     if ! uv_sync_project --no-wxpython; then
       warn "[experimental] Failed to sync dependencies for $V; continuing"

@@ -1,24 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# smoke-torch-venv.sh
-# Standalone integrity smoke for the shipped PyTorch venv (/opt/venv). Imports
-# the critical packages and prints versions, so a broken/incomplete venv is
-# caught explicitly rather than surfacing later at app runtime.
-#
-# Why this exists in addition to assemble-torch-app.sh's build-time verify:
-#   - It runs against ANY built or pulled image (post-build / pre-flight),
-#     whereas the build-time verify only runs when assembly SUCCEEDS — the numpy
-#     wheel-install collision (fix 9f07334) failed *before* that verify ran.
-#   - It also catches the subtler "silent drop": when the frozen uv.lock fails
-#     for a Python/platform (`Extra 'none' is not defined ...`) and assembly
-#     falls back to force-reinstalling wheels, a dependency can go missing while
-#     the build still succeeds. An explicit import check surfaces that.
-# See docs/cross-build-verification.md (failure class #5).
-#
-# Usage:  smoke-torch-venv.sh            # uses /opt/venv
-#         VENV=/path smoke-torch-venv.sh # override venv location
-# Exit:   non-zero if any REQUIRED import fails (skips cleanly if no venv).
+# Venv smoke (VENV, default /opt/venv) for any built image; a wheel fallback can drop deps silently. docs/cross-build-verification.md#smoke-torch-venv-what-the-venv-assertions-cover
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=linux/scripts/06-packaging/smoke-common.sh
@@ -38,8 +21,7 @@ REQUIRED_MODULES=(
   "contourpy|contourpy|contourpy.__version__"
 )
 
-# Optional modules (warn, do not fail): the app package name can vary and GPU
-# EPs are build-dependent.
+# Warn only: GPU EPs are build-dependent.
 OPTIONAL_MODULES=(
   "onnxruntime|onnxruntime|onnxruntime.__version__"
 )
@@ -59,20 +41,16 @@ try_import() {
   return 1
 }
 
-# Read a pin from versions.env, stripping var=, quotes, trailing comment, and a
-# leading `v`. Empty when the file or key is absent.
+# A versions.env pin without quotes, comment or leading v; empty when the file or key is absent.
 _stv_vpin() {
   local file="$1" key="$2"
   [ -f "${file}" ] || return 0
-  # `|| true`: the doc contract above is "empty when the key is absent", but a
-  # zero-match grep exits 1 and pipefail would turn the bare assignment at the
-  # OPENCV_VERSION call site into a script abort instead of an empty pin.
+  # || true: under pipefail a zero-match grep would abort the caller instead of returning empty.
   grep -E "^[[:space:]]*${key}=" "${file}" 2>/dev/null | tail -1 \
     | sed -E "s/^[[:space:]]*${key}=//; s/[\"']//g; s/#.*//; s/[[:space:]]+$//; s/^v//" || true
 }
 
-# What this gate does and does not cover:
-# docs/cross-build-verification.md
+# See docs/cross-build-verification.md#smoke-torch-venv-what-the-venv-assertions-cover
 assert_pinned_versions() {
   local versions_env="${VERSIONS_ENV:-/opt/scripts/core/versions.env}"
   [ -f "${versions_env}" ] || versions_env="${_SCRIPT_DIR}/../01-core/versions.env"
@@ -419,8 +397,7 @@ PYEOF
   tolerated="$(printf '%s\n' "${out}" | sed -n 's/^VERSION-ASSERT: \([0-9]*\) TOLERATED.*/\1/p')"
   if [ "${rc}" -eq 0 ]; then
     if [ -n "${tolerated}" ]; then
-      # Deliberately still a pass, but never a quiet one: the tolerance is a
-      # dated single line in KNOWN_DRIFT above, not a blanket exemption.
+      # A pass, but never a quiet one: each tolerance is one KNOWN_DRIFT line, not a blanket exemption.
       pass "installed ML-stack versions match pins, with ${tolerated} TOLERATED drift(s) (see the !! lines above)"
     else
       pass "installed ML-stack versions match pins (uv.lock + versions.env)"
@@ -430,15 +407,10 @@ PYEOF
   fi
 }
 
-# APP-PARITY (2026-09-01): assert the venv really carries what `uv sync --extra
-# ml-ai --extra docs` promises. riscv64 never runs uv sync (its fallback path
-# installed the app's core deps only, which is how it shipped 109 packages fewer
-# than amd64), so every riscv64 absence is one dated EXEMPT line with a reason
-# instead of silence. docs/riscv64-venv-parity.md
+# riscv64 never runs uv sync, so each absence there needs an EXEMPT line with a reason. docs/riscv64-venv-parity.md
 assert_app_venv_parity() {
   echo "--- app venv parity (uv sync extras) ---"
-  # Images that carry a venv but never ran assemble-torch-app.sh have no extras
-  # to assert; the app package is the marker that it ran.
+  # The app package marks that assemble-torch-app.sh ran; without it there are no extras to assert.
   if ! "${PY}" -c 'import orchestrant' >/dev/null 2>&1; then
     printf '  SKIP app package not installed in this venv -- extras parity not applicable\n'
     return 0
@@ -528,10 +500,7 @@ PYEOF
   fi
 }
 
-# `import tvm` is not codegen: tvm/base.py falls back to its runtime without a word when
-# libtvm_compiler.so does not load, which is how amd64 shipped a TVM that compiled nothing
-# (BACKLOG CON35). A shipped compiler must load, and with LLVM compiled in it must build
-# one PrimFunc for the host. Exit status is not evidence: a pass needs the OK sentinel.
+# import tvm silently falls back to runtime-only when libtvm_compiler.so fails to load; a pass needs the OK sentinel.
 assert_tvm_codegen() {
   local out rc
   if out="$("${PY}" - 2>&1 <<'PYEOF'
@@ -568,10 +537,7 @@ PYEOF
 main() {
   echo "=== smoke: torch venv integrity (${VENV}) ==="
   if [ ! -x "${PY}" ]; then
-    # The skip exists for images that legitimately ship no venv (toolchain,
-    # media). Stages where the venv is MANDATORY set STV_REQUIRE_VENV=1 —
-    # without it, the package-stage gate passed precisely when setup-torch-venv
-    # failed hardest (no /opt/venv at all → SKIP → exit 0 → green).
+    # Stages that must ship a venv set STV_REQUIRE_VENV=1, or a missing venv would skip to green.
     if [ "${STV_REQUIRE_VENV:-0}" = "1" ]; then
       echo "  FAIL venv interpreter missing at ${PY} but STV_REQUIRE_VENV=1 (venv is mandatory in this image)" >&2
       exit 1
@@ -581,9 +547,7 @@ main() {
   fi
   pass "venv python present: $("${PY}" --version 2>&1)"
 
-  # STV_ASSERT_ONLY=1 runs ONLY the version-pin assertion (the runtime-image gate
-  # already imports torch/onnx/cv2 inline, so it delegates here just for versions
-  # -- no need to repeat the import PASS lines / ABI bridge).
+  # The runtime-image gate does its own imports and delegates only the version asserts here.
   if [ "${STV_ASSERT_ONLY:-0}" = "1" ]; then
     assert_pinned_versions
     assert_app_venv_parity
@@ -591,8 +555,7 @@ main() {
     return 0
   fi
 
-  # cv2 is required by default (package-stage integrity), but callers that ship
-  # cv2 as optional on some arches can set STV_CV2_REQUIRED=0.
+  # Callers whose cv2 is optional on some arches set STV_CV2_REQUIRED=0.
   local cv2_required="${STV_CV2_REQUIRED:-1}"
 
   local spec
@@ -616,11 +579,7 @@ main() {
     fail "torch.from_numpy failed (numpy/torch ABI mismatch)"
   fi
 
-  # Compute battery (smoke-depth R5/R6): before this, the ONLY real torch/
-  # torchvision/onnxruntime compute exercise lived in an EXTERNAL repo's app
-  # smoke — zero in-repo functional coverage for the core ML stack. Gate with
-  # STV_COMPUTE=0 for callers that need the fast presence-only path.
-  # (~3 s native, ~8 s under qemu.)
+  # Real compute, not just imports; STV_COMPUTE=0 gives the fast presence-only path.
   if [ "${STV_COMPUTE}" = "1" ]; then
     if "${PY}" - <<'STV_PY' 2>/dev/null
 import torch
@@ -645,18 +604,7 @@ STV_PY
     then pass "torchvision compute: nms (._C ext) + v2.Resize OK"
     else fail "torchvision compute FAILED (the _C extension is the classic ABI-drift victim)"
     fi
-    # Real InferenceSession: get_available_providers() is a capability LIST —
-    # it answers from a library that cannot actually load a graph.
-    # SMOKE-DEPTH(c) 2026-08-23: this used to generate the model with
-    # torch.onnx.export, which needs `onnxscript` — absent from the shipped
-    # venv — so the except-branch exited 3 and the smoke printed "SKIP ort
-    # InferenceSession check" on ALL THREE wave-5 arches. Permanently green,
-    # never once executed. smoke_minimal_onnx_py emits the graph as raw
-    # protobuf instead: no `onnx`/`onnxscript` dependency, no network, and it
-    # no longer needs torch either (so a torch-less image is covered too).
-    # Same rule as the host-side gate in smoke-runtime-image.sh: exit status is
-    # not evidence. `python -` on an EMPTY program exits 0, so a pass requires
-    # the program's own `ONNX-EP OK:` sentinel in the OUTPUT.
+    # A pass needs the ONNX-EP OK: sentinel: an empty program makes `python -` exit 0 having run nothing.
     if _stv_onnx_out="$(smoke_minimal_onnx_py | "${PY}" - 2>&1)"
     then _stv_rc=0
     else _stv_rc=$?
@@ -673,9 +621,7 @@ STV_PY
     assert_tvm_codegen
   fi
 
-  # Not just "importable" but "the CORRECT versions": assert each ML package
-  # matches its pin (uv.lock for uv-resolved packages, versions.env for the ones
-  # we build / force-reinstall from a local wheel).
+  # Pins: uv.lock for resolved packages, versions.env for the ones we build or force-reinstall.
   assert_pinned_versions
   assert_app_venv_parity
 

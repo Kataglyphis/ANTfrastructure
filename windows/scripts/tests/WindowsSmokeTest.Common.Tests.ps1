@@ -1,13 +1,5 @@
 #requires -Version 7.0
-# Tests for the smoke-test assertion harness, extracted from
-# Test-Container.ps1 on 2026-08-08.
-#
-# The extraction's one real hazard is scope: Assert-Test used to read
-# $ExitOnFirstFailure and $script:passed out of the CALLING SCRIPT's scope
-# through PowerShell's dynamic scoping, and a module cannot see either. Both
-# failure modes are silent -- the switch would simply stop working, and the
-# summary would report 0/0 and exit 0 on a run that failed. Hence the pointed
-# tests below.
+# A module cannot see its caller's scope, so state once read by dynamic scoping must fail loudly here.
 
 $modulePath = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'modules\WindowsSmokeTest.Common.psm1'
 Import-Module $modulePath -Force
@@ -56,11 +48,7 @@ Describe 'Smoke harness counters' {
 }
 
 Describe '-ExitOnFirstFailure across the module boundary' {
-    # THE regression this extraction could have introduced. Before the move the
-    # switch was a parameter of the calling script that Assert-Test happened to
-    # see via dynamic scoping; inside a module that lookup finds nothing, and a
-    # $null test is falsy -- so the abort would simply never fire and nothing
-    # would report that it had stopped working.
+    # Inside a module the dynamic-scope lookup finds nothing, so the abort would silently never fire.
 
     It 'aborts at the first failure and short-circuits later assertions' {
         Initialize-SmokeTestRun -ExitOnFirstFailure
@@ -113,10 +101,7 @@ Describe 'Path and command assertions' {
     }
 
     It 'Assert-CommandExists queries the NAME, not the test title' {
-        # Regression from the original harness: Assert-Test's own $Name parameter
-        # shadowed this one under dynamic scoping, so it used to look up a command
-        # literally called "Command 'git' on PATH" and always failed. The fix is
-        # the .GetNewClosure() capture, which must survive the move into a module.
+        # Assert-Test's own $Name shadows this one under dynamic scoping; the .GetNewClosure() capture prevents it.
         Initialize-SmokeTestRun
         Assert-CommandExists -Name 'Get-ChildItem'
         Assert-CommandExists -Name 'definitely-not-a-real-command-xyzzy'
@@ -157,11 +142,7 @@ Describe 'Path and command assertions' {
 
 Describe 'The native DLL probe type' {
 
-    # Neither function had a test until 2026-09-09, which is how KataNativeProbe came
-    # to be Add-Type'd twice with DIFFERENT member sets. The type is session-global and
-    # both sites guarded on it already existing, so the first function to run decided
-    # what the second one got: this exact order reported a MethodNotFound on
-    # GetProcAddress as a missing export. The order is the test.
+    # KataNativeProbe is session-global, so the first function to Add-Type it decides its members; the order is the test.
 
     It 'a DLL sweep does not poison the -Export check that runs after it' {
         Invoke-InTestDir { param($dir)
@@ -178,8 +159,7 @@ Describe 'The native DLL probe type' {
     }
 
     It 'the export check reports a REAL missing export as a failure' {
-        # The guard on the test above: it must fail for the right reason when the
-        # export is genuinely absent, not pass because nothing was checked.
+        # Guards the test above: it must fail for a genuinely absent export, not pass because nothing was checked.
         Initialize-SmokeTestRun
         Assert-DllLoads -Name 'absent export' `
             -DllPath (Join-Path $env:WINDIR 'System32\kernel32.dll') `
@@ -192,10 +172,7 @@ Describe 'The native DLL probe type' {
 
 Describe 'TensorRT staged-state detection' {
 
-    # The smoke's TensorRT EP asserts follow this decision (2026-09-20): required when a
-    # tree is staged, asserted ABSENT when not. A plain Test-Path would call the
-    # guaranteed-empty C:\tensorrt "staged" and demand an EP the ORT build compiled out
-    # (USE_TENSORRT=OFF) -- three false reds on the documented normal zip-less lane.
+    # A plain Test-Path would call the always-empty C:\tensorrt staged and demand an EP the build compiled out.
 
     It 'is false for an unset, empty, or missing root' {
         Invoke-WithEnv @{ TENSORRT_ROOT = '' } {

@@ -1,20 +1,10 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Print OpenCV's compiled-in video backends and cross-check them against the
-    FFmpeg this chain builds (backlog #93/#94/#95).
-
+    Prints OpenCV's video backends inside a media image and cross-checks them against the chain's FFmpeg.
 .DESCRIPTION
-    Runs INSIDE a media image. Exists so the #95 smoke-test assertions can be
-    watched FAILING against the real artifact before the #93/#94 fixes land — a
-    guard written after the fact proves nothing about the defect it should catch.
-
-    Asks `cv2.getBuildInformation()` and NOTHING else for the backend verdict.
-    `cv2.videoio_registry.getBackends()` lists GSTREAMER as a known backend ID
-    whether or not it was compiled in, which is precisely how this shipped
-    unnoticed; it is printed here only to show the two disagreeing.
-
-    Diagnostic: always exits 0. Its output is the product.
+    getBackends() lists GSTREAMER whether or not it is compiled in, so it is printed only to show the disagreement.
+    Always exits 0; the output is the product.
 #>
 [CmdletBinding()]
 param([string]$Nonce = '')
@@ -45,9 +35,7 @@ foreach ($line in ($info -split "`r?`n")) {
 }
 
 Write-Host "`n--- the three #95 assertions, run here ---"
-# Plugin-aware since 2026-08-17: #93's fix is a runtime-loaded plugin, so the
-# build-info line stays `GStreamer: NO` on a CORRECT image. hasBackend() is the
-# authoritative check (it attempts the plugin load).
+# GStreamer is a runtime plugin, so build info says NO even on a correct image; hasBackend() attempts the load.
 $gstInfo = $info -match '(?m)^\s*GStreamer:\s+YES'
 $gstReg = (& python -c "import cv2; print(cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER))" 2>&1 | Out-String) -match 'True'
 $gst = $gstInfo -or $gstReg
@@ -74,16 +62,7 @@ $reg = & python -c "import cv2; print([str(b) for b in cv2.videoio_registry.getB
 Write-Host ("  registry lists GSTREAMER: {0}" -f ($reg -match 'GSTREAMER'))
 Write-Host ("  actually compiled in    : {0}" -f $gst)
 
-# --- Can OpenCV actually FIND the chain's FFmpeg? (prerequisite for #94) -----
-# The #94 fix is "swap the opencv/ffmpeg stages so OpenCV configures after
-# FFmpeg exists", but that only helps if OpenCV can then DETECT it. On Windows
-# OpenCV downloads a prebuilt `opencv_videoio_ffmpeg*.dll` unless
-# OPENCV_FFMPEG_SKIP_DOWNLOAD=ON, and with the download skipped it falls back to
-# pkg-config. So the question that decides whether the swap is worth a 90-minute
-# build is simply: does pkg-config resolve libavcodec here?
-#
-# Answer it BEFORE reordering stages. If detection fails, the swap turns
-# `FFMPEG: YES (prebuilt)` into `FFMPEG: NO`, which is WORSE than today.
+# Can OpenCV find the chain's FFmpeg at all? With the download skipped it falls back to pkg-config.
 Write-Host "`n--- prerequisite check for the #94 swap: is the chain's FFmpeg discoverable? ---"
 
 $ffRoots = @($env:FFMPEG_BIN, 'C:\runtime\ffmpeg\bin', 'C:\runtime\bin') | Where-Object { $_ }
@@ -115,18 +94,7 @@ if (-not $pkgConfig) {
     }
 }
 
-# --- Does CMAKE find FFmpeg? (the question the pkg-config check did NOT answer)
-# The 2026-08-16 regression came from testing the wrong layer: `pkg-config
-# --modversion libavcodec` succeeds here, and OpenCV still configured
-# `FFMPEG: NO`, because its pkg-config route is gated on PKG_CONFIG_FOUND —
-# which OpenCV never sets on Windows (it does not call find_package(PkgConfig)).
-#
-# So ask CMAKE, with the exact call OpenCV's detect_ffmpeg.cmake makes:
-#   ocv_check_modules(FFMPEG libavcodec libavformat libavutil libswscale)
-# which is pkg_check_modules underneath. If this configures and reports FOUND,
-# then supplying PkgConfig to OpenCV (via a CMAKE_PROJECT_INCLUDE shim, the same
-# mechanism this repo already uses for IREE) makes the route viable. If it does
-# NOT, the find_package route with our own FindFFMPEG is the only option left.
+# Ask CMake, not shell pkg-config, which can say yes while OpenCV configures without FFmpeg; see docs/windows-builds.md § OpenCV 5.x.
 Write-Host "`n--- does CMake's pkg_check_modules resolve FFmpeg here? (#94 route test) ---"
 
 $cmake = Get-Command cmake -ErrorAction SilentlyContinue
@@ -165,13 +133,7 @@ endif()
     Remove-Item $cmWork -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# --- Why did the last OpenCV configure decide as it did? ---------------------
-# opencv-configure.log lives on the sccache-logs mount and OUTLIVES the solve
-# that wrote it, so a failed configure can be read back without rebuilding.
-# Filter out the pkgconfig-shim's own STATUS line: CMake includes
-# CMAKE_PROJECT_INCLUDE once per project() call, so it repeats ~20x and drowns
-# the one message that matters (that is exactly what happened when the gate's
-# inline dump showed 40 identical lines and nothing else).
+# The persistent configure log outlives the solve; the shim's STATUS line repeats per project() call, so it is filtered.
 Write-Host "`n--- last OpenCV configure: FFmpeg decision ---"
 $cfgLog = 'C:\sccache-logs\opencv-configure.log'
 if (Test-Path $cfgLog) {

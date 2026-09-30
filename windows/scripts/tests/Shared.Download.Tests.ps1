@@ -1,7 +1,5 @@
 #requires -Version 7.0
-# Tests for Invoke-DownloadWithRetry — the shared retry/backoff download helper. Exercised
-# via file:// URLs (System.Net.WebClient supports them), so the retry + non-empty-verify
-# logic is covered with no network access. InitialDelaySeconds 0 keeps the tests instant.
+# file:// URLs cover Invoke-DownloadWithRetry's retry and non-empty checks without network access.
 
 Describe 'Invoke-DownloadWithRetry' {
 

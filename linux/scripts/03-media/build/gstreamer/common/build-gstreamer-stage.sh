@@ -29,13 +29,7 @@ GSTREAMER_VERSION="${1:?gstreamer version is required}"
 GSTREAMER_PREFIX="${2:-/opt/gstreamer}"
 BUILD_TYPE="${3:-Release}"
 
-# Disable Python bindings for cross builds targeting foreign arches.
-# setup-gstreamer.sh and build-gstreamer-monorepo.sh also check
-# cross_target_python_dev_ready and arch-specific patterns, but those
-# are finer-grained checks that may not cover all edge cases (e.g.
-# arm64 with staged Python that still fails GIR generation).
-# This early override ensures consistent behavior regardless of the
-# downstream script's own detection logic.
+# Decided once here: the downstream per-arch checks miss cases such as arm64 whose staged Python still fails GIR.
 if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-amd64}}" != "amd64" ]; then
   export GSTREAMER_ENABLE_PYTHON_BINDINGS=false
 fi
@@ -53,22 +47,18 @@ ensure_gstreamer_multiarch_layout() {
 
 ensure_gstreamer_multiarch_layout
 
-# Ensure CC/CXX are exported for cross-compilation. setup_linux_cross_env may
-# fail to export CXX. Use canonical helper from compiler-resolution.sh.
+# setup_linux_cross_env may fail to export CXX.
 if [ "${BUILD_MODE:-native}" = "cross" ] && { [ -z "${CC:-}" ] || [ -z "${CXX:-}" ]; }; then
   if command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
     resolve_cross_cc_cxx_for_arch || true
   fi
 fi
-# Fix broken libstdc++.so symlinks that point to wrong-arch libraries.
-# The SDK image's apt packages may create symlinks in /usr/lib/<triplet>/
-# that point to the host (amd64) libstdc++ instead of the target arch one.
+# The SDK image's apt packages can point /usr/lib/<triplet>/libstdc++.so at the host's libstdc++.
 if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "amd64" ]; then
   if command -v fix_libstdcxx_symlink >/dev/null 2>&1; then
     fix_libstdcxx_symlink || true
   else
-    # Inline fallback when compiler-resolution.sh doesn't have the helper
-    # (older SDK images). Uses arch_deb_multiarch_triplet_for if available.
+    # Older SDK images lack the helper.
     _fix_arch="${TARGET_ARCH:-${TARGETARCH:-}}"
     _fix_triplet=""
     if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
@@ -89,14 +79,7 @@ if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" 
   fi
 fi
 
-# The fix above only repoints the libstdc++.so DEV symlink and only for a
-# wrong-ARCH target. But the onnx/onnxruntime plugin link resolves the RUNTIME
-# libstdc++.so.6 (via -rpath-link /usr/lib/<triplet>), and on cross that lib is
-# either the host-arch GCC copy or the older Ubuntu Ports libstdc++ — both lack
-# GLIBCXX_3.4.35 / std::__format that libonnxruntime.so (built with GCC 16)
-# needs, causing "undefined reference" link failures that abort the GStreamer
-# build. Pin BOTH the dev and runtime target-arch libstdc++ to GCC 16's
-# target-arch build (a backward-compatible superset).
+# The onnx plugin link resolves the runtime libstdc++.so.6, and apt's lacks the GLIBCXX libonnxruntime needs.
 if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "amd64" ]; then
   if command -v pin_target_libstdcxx >/dev/null 2>&1; then
     pin_target_libstdcxx "${TARGET_ARCH:-${TARGETARCH:-}}" || true
@@ -106,9 +89,7 @@ fi
 cd /opt
 bash /opt/scripts/03-media/build/gstreamer/common/pre-setup.sh
 bash /opt/scripts/03-media/build/gstreamer/common/install-vvdec.sh
-# Provide the system rice-proto C library so gst-plugins-rs webrtcbin2 can build
-# (best-effort; only runs when GST_RS_BUILD_ALL=true). Must precede meson setup
-# so dependency('rice-proto') resolves.
+# Before meson setup, so webrtcbin2's dependency('rice-proto') resolves.
 bash /opt/scripts/03-media/build/gstreamer/common/install-rice-proto.sh
 
 export SODIUM_USE_PKG_CONFIG=1
@@ -125,13 +106,10 @@ fi
 export SODIUM_SHARED=1
 export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
 
-# skia is built when GST_RS_BUILD_ALL=true (default); skia-safe compiles Skia
-# from source where no prebuilt exists. Force it off only when build-all is off.
+# skia-safe compiles Skia from source where no prebuilt exists, so only build-all pays for it.
 [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || append_flag_if_missing MESON_ARGS "-Dgst-plugins-rs:skia=disabled"
 
-# Dump diagnostic logs on GStreamer build failure, then propagate the exit code.
-# This replaces the previous set +e / set -e pattern, keeping errexit active
-# throughout the script so intermediate command failures are not masked.
+# An ERR trap rather than set +e, so errexit stays active and no intermediate failure is masked.
 _dump_gst_build_logs() {
   local _log
   echo "=== GStreamer build failed — dumping diagnostic logs ===" >&2
@@ -151,8 +129,5 @@ bash /opt/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh \
 
 trap - ERR
 
-# AP4: strip the installed gstreamer prefix (symbol tables only — --strip-all
-# keeps .dynsym so plugin/loader dynamic linking is unaffected). STRIP is live
-# (setup_linux_cross_env). Best-effort; MEDIA_STRIP=0 disables.
-# DUPN1: MEDIA_STRIP gate lives inside the helper now.
+# --strip-all keeps .dynsym, so plugin loading is unaffected; MEDIA_STRIP=0 disables it.
 declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${GSTREAMER_PREFIX}" || true

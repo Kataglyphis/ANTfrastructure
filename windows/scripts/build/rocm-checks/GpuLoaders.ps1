@@ -6,14 +6,8 @@
 .SYNOPSIS
     rocm-image check for the sdk layer's GPU API loaders (Vulkan, OpenCL); writes one finding per gap.
 .DESCRIPTION
-    GPU-less. vulkan-1.dll resolves to System32's copy (FFmpeg and Python search no PATH), equal to the
-    pinned one beside its licence in VULKAN_LOADER_DIR, exports vkGetInstanceProcAddr and
-    vkEnumerateInstanceVersion, and is not older than the SDK headers. HKLM\SOFTWARE\Khronos\OpenCL\Vendors
-    names TheRock's amdocl64.dll as REG_DWORD 0, that DLL loads and exports the ICD entry points, and
-    clGetPlatformIDs through OpenCL.dll lists AMD's platform, which AMD's ICD reports even with no GPU.
-    Both loaders run in a child with a timeout.
-    NOT covered: devices. No GPU and no Vulkan ICD here, so zero devices is the expected answer.
-    docs/windows-rocm.md § The ROCm layer.
+    GPU-less: System32 holds the pinned Vulkan loader, and TheRock's registered ICD makes OpenCL list AMD's platform.
+    Zero devices is the expected answer. See docs/windows-rocm.md § The ROCm layer.
 #>
 
 Set-StrictMode -Version Latest
@@ -71,8 +65,7 @@ function Get-VulkanLoaderCopyFinding {
     }
 }
 
-# Lines of the child probe below: 'vulkan|path|gipa|eiv|rc|major|minor|patch', 'opencl|path|rc|count',
-# 'platform|name|devrc|devices', 'icd|path|icdGetPlatformIDs|getExtFnAddr', '<kind>-load|win32error'.
+# $Line holds the child probe's 'kind|field|...' records; GpuLoaderProbe.Run below defines each kind's fields.
 function Get-GpuLoaderProbeFinding {
     param(
         [AllowNull()]$ExitCode,

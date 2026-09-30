@@ -1,11 +1,8 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-#
-# The per-run resource CSV (Build-ResourceSampler.ps1) was wired into the
-# classic driver build.ps1 but NOT into Build-Buildkit.ps1 — so no building
-# driver produced it (#134 free follow-up: "do it, or drop the sampler"). This
-# suite pins the wiring so it cannot regress.
+
+# Pins Build-Buildkit.ps1's wiring of the per-run resource CSV, which the BK driver once lacked.
 
 Describe 'BK driver resource sampler wiring (#134)' {
 
@@ -24,8 +21,6 @@ Describe 'BK driver resource sampler wiring (#134)' {
     }
 
     It 'starts the sampler after preflight gates pass' {
-        # Build-ResourceSampler.ps1: renamed in the approved-verb sweep, this
-        # pattern was left on the old name. The driver wiring never changed.
         Assert-Match 'Build-ResourceSampler\.ps1' $script:drv
         Assert-Match '\$script:SamplerProc = Start-Process' $script:drv
     }

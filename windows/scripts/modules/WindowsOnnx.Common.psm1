@@ -3,37 +3,14 @@
 
 #requires -Version 7.0
 
-# ONNX Runtime for consumers: the chain install at ONNX_ROOT, never a NuGet package (owner rule 2026-09-23).
-# NOT covered: byte provenance under ONNX_ROOT (the ORT census). docs/windows-build-invariants.md#the-unreferenced-windowsscripts-modules-are-external-consumer-api
-#
-# RESTORED 2026-09-14, for the SECOND time. Deleted in f0d12ff (2026-06-24),
-# restored 2026-08-11, deleted again in 2eaed40e (2026-09-08, "no consumer"),
-# while AccelerANTgine's scripts/windows/Build-Windows.ps1 still imports it BY
-# NAME through Resolve-BuildModule and calls Get-OnnxPackageLayout -- which is
-# exactly the reference shape a path grep cannot see. Its Windows lane was red
-# from the pin bump that carried the deletion until this restore. The
-# consumer inventory (.github/consumers.json) now records that consumer, and
-# the rule in AGENTS.md § Contributing Reusable Work Here is: a hub file may
-# be deleted only when the inventory reports it as named by nobody.
-#
-# One substitution against the deleted original: it called
-# Resolve-ContainerNormalizedPath (WindowsContainerImage.Common), which was a
-# pure pass-through to Resolve-NormalizedPath and has since been removed too.
-# This calls Resolve-NormalizedPath from WindowsScripts.Shared directly - same
-# behaviour, one fewer hop.
+# Chain ORT for consumers, imported by name by AccelerANTgine: see docs/windows-build-invariants.md#the-unreferenced-windowsscripts-modules-are-external-consumer-api
 
 Set-StrictMode -Version Latest
 
-# Resolve-NormalizedPath. Plain, unforced import: an entry script's
-# -Force -Global copy must not be displaced (see WindowsCMake.Common's header).
+# Unforced: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1')
 
-# Assert-PeTargetMachine, on the same unforced terms. This module is NOT
-# reached through WindowsSourceBuild.Common (which re-exports the arch
-# accessors) -- it is imported directly by the external AccelerANTgine
-# Build-Windows.ps1, so it cannot borrow that re-export and must import the arch
-# table itself. Both files live in windows\scripts\modules, which windows\Dockerfile
-# COPYs as a whole directory, so co-location is guaranteed.
+# Imported directly by consumers, so it cannot borrow WindowsSourceBuild.Common's re-export of the arch table.
 Import-Module (Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1')
 
 # NuGet ids that carry ORT: every *OnnxRuntime* package (GenAI, EPs, Intel's OpenVINO build) and Windows ML.
@@ -82,10 +59,8 @@ function Get-OnnxRuntimeFile {
 .SYNOPSIS
     The chain ONNX Runtime install (plus the chain GenAI, when given), validated.
 .DESCRIPTION
-    ONNX_ROOT must hold bin\onnxruntime.dll for the TARGET machine; a NuGet tree or a
-    release zip (lib\onnxruntime.dll) throws. A GenAI root must hold lib\ (or bin\)onnxruntime-genai.dll,
-    no NuGet runtimes\ or .nupkg, and no ONNX Runtime file of its own. RuntimeDirectories lists the existing DLL
-    directories with the chain ORT LAST, so it wins any name collision when staged.
+    ONNX_ROOT needs bin\onnxruntime.dll for the target machine; a NuGet tree, release zip or ORT-carrying GenAI root throws.
+    RuntimeDirectories lists the chain ORT last, so it wins any name collision when staged.
 #>
 function Get-OnnxChainLayout {
     [OutputType([pscustomobject])]

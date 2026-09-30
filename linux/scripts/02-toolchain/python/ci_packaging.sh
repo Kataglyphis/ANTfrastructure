@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# ci_packaging.sh - Generic Python package builder
-#
-# Usage:
-#   ci_packaging.sh [python_version]
-#
-# Environment variables:
-#   PYTHON_VERSION - Python version (default: 3.14)
-#   WORKSPACE_ROOT - Workspace root directory
+# Builds the sdist and wheels, auditwheel-repairing platform wheels; PYTHON_VERSION (arg 1) defaults to 3.14.
 
 set -euo pipefail
 

@@ -2,8 +2,7 @@
 [ -n "${_ABSEIL_HEADERS_SH_LOADED:-}" ] && return 0
 _ABSEIL_HEADERS_SH_LOADED=1
 
-# Defensive loggers (real definitions live in logging.sh via artifact-common.sh
-# / common.sh module chain). If sourced standalone we still need to log.
+# Fallback loggers for a standalone source; logging.sh owns the real ones.
 if ! command -v info >/dev/null 2>&1; then
   info() { printf '[INFO] %s\n' "$*"; }
 fi
@@ -11,31 +10,17 @@ if ! command -v warn >/dev/null 2>&1; then
   warn() { printf '[WARN] %s\n' "$*" >&2; }
 fi
 
-# download_file lives in downloads.sh (normally loaded via common.sh); load it
-# from the same directory when this file is sourced standalone.
+# Standalone source: load downloads.sh from beside this file.
 if ! command -v download_file >/dev/null 2>&1; then
   # shellcheck disable=SC1091
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/downloads.sh"
 fi
 
-# install_abseil_headers — fetch and extract the abseil-cpp public headers so
-# downstream consumers of tflite/interpreter.h can resolve absl/types/span.h.
-#
-# This is the single canonical implementation of "Critical Fix #2" (see
-# verify-critical-fixes.sh). It replaces the previously duplicated blocks in
-# build-litert.sh and build-libcamera.sh so both installs share the same robust
-# extraction fallback chain.
-#
-# Usage:  install_abseil_headers <dest_include_dir> [abseil_tag]
-# Env:    ABSEIL_VERSION  (default 20240722.0)
-# Idempotent: skips when <dest_include_dir>/absl/types/span.h already exists.
-# Returns: 0 on success (or skip), 1 on hard failure (caller decides to err/warn).
+# install_abseil_headers <dest_include_dir> [tag]: absl headers for tflite consumers; returns 1 on failure, caller decides.
 install_abseil_headers() {
   local dest_dir="${1:-/usr/local/include}"
   local absl_tag="${2:-${ABSEIL_VERSION:-20260526.0}}"
-  # Immutable /archive/<commit>.tar.gz form when the commit pin is set
-  # (supply-chain audit #15): the tag-tarball form is movable (tags can be
-  # re-pointed) and not byte-stable across GitHub compression changes.
+  # A commit archive is immutable; a tag tarball can be re-pointed and is not byte-stable.
   local absl_commit="${ABSEIL_COMMIT:-}"
   local absl_url
   if [ -n "${absl_commit}" ]; then
@@ -53,9 +38,7 @@ install_abseil_headers() {
 
   info "Downloading abseil-cpp headers (tag ${absl_tag}) to ${dest_dir}/absl/ ..."
 
-  # Stage the tarball via the shared download helper (curl-preferred, wget
-  # fallback, 3 retries). Guarded so a missing tool degrades to the same
-  # warn-and-return-1 path as before instead of download_file's hard die().
+  # Guarded so a missing curl/wget returns 1 instead of hitting download_file's die().
   local absl_tar_resolved=""
   if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; then
     if [ -n "${absl_commit}" ] && [ -n "${ABSEIL_TARBALL_STREAM_SHA256:-}" ]; then
@@ -75,8 +58,7 @@ install_abseil_headers() {
 
   mkdir -p "${dest_dir}/absl"
 
-  # Primary extraction path: GNU tar with wildcards. Falls back to a manifest
-  # extract for tar builds without wildcards, then to a manual find/copy.
+  # GNU tar wildcards, else a manifest extract, else a manual find/copy.
   if ! tar -xzf "${absl_tar}" -C "${dest_dir}" --strip-components=1 \
         --wildcards '*/absl/*.h' '*/absl/**/*.h' 2>/dev/null; then
     if ! tar -xzf "${absl_tar}" -C "${dest_dir}" --strip-components=1 --no-wildcards \

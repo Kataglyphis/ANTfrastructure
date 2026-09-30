@@ -5,22 +5,10 @@
 
 <#
 .SYNOPSIS
-  Generic MSIX packaging script for Rust desktop applications.
-
-.DESCRIPTION
-  - Uses WindowsBuild.Common.psm1 for structured logging.
-  - Builds a Rust binary (unless -SkipBuild is passed).
-  - Copies required assets, dlls, resources, and logos.
-  - Generates the AppxManifest.xml from a template.
-  - Packs the MSIX.
-  - Optionally signs the MSIX or generates a test certificate.
+  Builds, stages, packs and optionally signs an MSIX for a Rust desktop application.
 #>
 
-# PSSA suppressions, justified: this script signs DEV/test MSIX packages with a
-# throwaway self-signed certificate. The password travels as a plain build
-# parameter by design (CI secret injection); converting the public parameter
-# surface to SecureString would break existing callers for no real secrecy
-# gain (the PFX and its password live in the same build workspace).
+# Dev/test signing: a plain-text password parameter by design (CI secret injection, PFX in the same workspace).
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'dev/test signing cert; see comment above')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '', Justification = 'dev/test signing cert; see comment above')]
 param(
@@ -46,11 +34,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Import ANTfrastructure build framework (relative to this script's location in ANTfrastructure).
-# WindowsScripts.Shared and WindowsMsix.Common are requested explicitly because
-# Initialize-CiEnvironment defaults to WindowsBuild.Common only -- which is why this
-# script used to carry its own copies of Assert-Command, ConvertTo-NormalizedVersion
-# and an SDK-tool lookup.
+# Initialize-CiEnvironment loads only WindowsBuild.Common by default, so the other two are named.
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
 Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @(
     'WindowsBuild.Common',
@@ -58,7 +42,6 @@ Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @(
     'WindowsMsix.Common'
 )
 
-# Initialize Build Context
 $logDir = Join-Path $Workspace "logs"
 if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir | Out-Null
@@ -66,14 +49,6 @@ if (-not (Test-Path $logDir)) {
 
 $Context = New-BuildContext -Workspace $Workspace -LogDir $logDir -StopOnError
 Open-BuildLog -Context $Context
-
-# Assert-Command and ConvertTo-NormalizedVersion now come from
-# WindowsScripts.Shared, and the SDK-tool lookup from WindowsMsix.Common's
-# Resolve-WindowsSdkToolPath. The local copies were behaviourally identical for
-# the first two; the third was strictly worse -- it only globbed the two
-# hardcoded "Windows Kits\10\bin" roots, while the shared one honours
-# WindowsSdkVerBinPath / WindowsSdkBinPath / WindowsSDKVersion first and accepts
-# an explicit override path. Same not-found contract either way: $null.
 
 function New-PasswordSecureString([string]$Password) {
     if ([string]::IsNullOrWhiteSpace($Password)) { throw "A non-empty -CertificatePassword is required" }
@@ -115,8 +90,7 @@ function Import-CertificateAndSign {
         $thumb = $thumbprint
         Write-BuildLog -Context $Context -Message "Imported certificate thumbprint: $thumb"
 
-        # Give the certificate store a moment to settle before signtool reads it
-        # (previously a decorated 6x300ms sleep loop).
+        # Give the certificate store a moment to settle before signtool reads it.
         Start-Sleep -Milliseconds 1800
 
         try {
@@ -133,17 +107,14 @@ function Import-CertificateAndSign {
         $exit = $LASTEXITCODE
         Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
         if ($sigOut) { $sigOut = @($sigOut); Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
-        # A non-zero signtool exit must not pass silently: throw so the catch
-        # below attempts the direct-invocation fallback (and the fallback's own
-        # failure propagates to the critical build step).
+        # Throw so the catch below tries the direct-PFX fallback.
         if ($exit -ne 0) {
             throw "signtool sign (by thumbprint) failed with exit code $exit"
         }
     } catch {
         Write-BuildLogWarning -Context $Context -Message "Import/sign by thumbprint failed, falling back to direct signtool invocation. Details: $($_.Exception.Message)"
         $signArgs = @("sign", "/fd", "SHA256", "/f", $CertificatePath, "/p", $CertificatePassword, "/v", $PackageFile)
-        # Display copy only: never log the PFX password. The element after '/p'
-        # is masked; $signArgs itself stays intact for execution.
+        # Display copy only: the password after '/p' is masked, $signArgs stays intact.
         $displayArgs = @($signArgs)
         $pIndex = [Array]::IndexOf($displayArgs, '/p')
         if ($pIndex -ge 0 -and ($pIndex + 1) -lt $displayArgs.Count) { $displayArgs[$pIndex + 1] = '<redacted>' }
@@ -152,9 +123,7 @@ function Import-CertificateAndSign {
         $exit = $LASTEXITCODE
         Write-BuildLog -Context $Context -Message "DEBUG: signtool exit code: $exit"
         if ($sigOut) { Write-BuildLog -Context $Context -Message ("DEBUG: signtool output:`n$($sigOut -join "`n")") }
-        # Fallback failed too: fail the signing step. This propagates through
-        # the critical "Sign MSIX" build step (Context has -StopOnError) into
-        # the script's exit 1 path instead of shipping an unsigned package.
+        # Fail the critical step instead of shipping an unsigned package.
         if ($exit -ne 0) {
             throw "signtool sign (fallback, direct PFX) failed with exit code $exit"
         }
@@ -182,10 +151,7 @@ try {
     $Workspace = (Resolve-Path $Workspace).Path
     $Version = ConvertTo-NormalizedVersion $Version
     
-    # An ABSOLUTE -CargoTargetDir is used as given. Join-Path on an absolute
-    # second argument returns something like C:\ws\D:\cache, which cargo then
-    # creates as a literal directory -- so a caller redirecting the target dir
-    # onto another volume silently got a target tree inside the workspace.
+    # Join-Path with an absolute second argument yields C:\ws\D:\cache, which cargo creates literally.
     $resolvedCargoTargetDir = if ([System.IO.Path]::IsPathRooted($CargoTargetDir)) {
         $CargoTargetDir
     } else {
@@ -204,8 +170,7 @@ try {
     Invoke-BuildStep -Context $Context -StepName "Verify Dependencies" -Critical -Script {
         Assert-Command -Name "cargo" -InstallHint "Install Rust toolchain via rustup"
         
-        # Resolve-WindowsSdkToolPath joins the name onto candidate dirs verbatim,
-        # so it wants the ".exe" that the old local helper used to append.
+        # Resolve-WindowsSdkToolPath joins the name verbatim, so it needs the .exe.
         $script:makeappxExe = Resolve-WindowsSdkToolPath -ToolName "makeappx.exe"
         if ([string]::IsNullOrWhiteSpace($makeappxExe)) { throw "makeappx not found. Install Windows SDK" }
 
@@ -263,10 +228,7 @@ try {
         if (-not (Test-Path $resolvedManifestPath)) { throw "Manifest template not found: $resolvedManifestPath" }
 
         Write-BuildLog -Context $Context -Message "Generating AppxManifest.xml..."
-        # ONE expansion through the module, not a seven-call .Replace chain: the
-        # chain did no XML escaping, so an ampersand or an angle bracket in a
-        # display name or description produced a manifest makeappx rejects with
-        # a parser error that names a line number and nothing else.
+        # The module XML-escapes the values; an unescaped & or < makes makeappx reject the manifest.
         $manifestContent = Expand-XmlTemplateTokens -Template (Get-Content $resolvedManifestPath -Raw) -TokenMap @{
             '__PACKAGE_NAME__'           = $PackageName
             '__PUBLISHER__'              = $Publisher
@@ -284,7 +246,6 @@ try {
         $script:packageFile = Join-Path $outDir ("{0}_{1}_x64.msix" -f $PackageName, $Version)
         if (Test-Path $packageFile) { Remove-Item $packageFile -Force }
 
-        # makeappx pack /d <staging> /p <output> /o
         Invoke-BuildExternal -Context $Context -File $makeappxExe -Parameters @("pack", "/d", $stagingRoot, "/p", $packageFile, "/o")
     }
 

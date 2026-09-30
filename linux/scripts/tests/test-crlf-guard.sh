@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Tests for check_crlf_guard, the inline preflight gate: a tracked shell script
-# whose WORKING-TREE bytes carry CR must be named and fail in every shape git can
-# report (w/crlf, w/mixed, w/-text), an index-only CRLF must not, the scope is
-# lint-shell.sh's, and any stage failing must not pass on the empty result.
-# docs/code-quality-tooling.md#crlf-guard-the-worked-example
+# check_crlf_guard judges working-tree bytes only; see docs/code-quality-tooling.md#crlf-guard-the-worked-example
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -25,8 +21,7 @@ _repo() {
   git -C "${REPO}" config core.autocrlf false
   mkdir -p "${REPO}/linux/scripts/01-core"
   cp "${REPO_ROOT}/linux/scripts/lint-shell.sh" "${REPO}/linux/scripts/lint-shell.sh"
-  # lint-shell.sh sources 01-core/lint-root.sh; a fixture that copies only the
-  # entry point makes the source fail and the guard fall to its sentinel.
+  # lint-shell.sh sources lint-root.sh; without it the guard falls to its failure sentinel.
   cp "${REPO_ROOT}/linux/scripts/01-core/lint-root.sh" "${REPO}/linux/scripts/01-core/lint-root.sh"
   printf 'echo hi\n' > "${REPO}/good.sh"
   printf 'echo bad\n' > "${REPO}/bad.sh"

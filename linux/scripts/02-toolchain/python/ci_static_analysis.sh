@@ -1,28 +1,7 @@
 #!/usr/bin/env bash
-# ci_static_analysis.sh - Generic Python static analysis runner
-#
-# Usage:
-#   ci_static_analysis.sh [arch] [python_version] [package_name]
-#
-# Environment variables:
-#   ARCH - Architecture (optional, for CI matrix parity)
-#   PYTHON_VERSION - Python version (default: 3.14)
-#   PACKAGE_NAME - Package name (derived from pyproject.toml if not specified)
-#   WORKSPACE_ROOT - Workspace root directory
-#   STATIC_ANALYSIS_EXTRA_PATHS - extra paths to analyse, space-separated and
-#     relative to WORKSPACE_ROOT (default: empty). A consumer whose package is
-#     not the whole first-party tree names the rest here: OrchestrANT's
-#     benchmarks/, frontend/ and bench/ were outside every analyser until this
-#     existed. Word-split on purpose -- it is a path LIST, not one path -- so
-#     the value must not contain spaces inside a path.
-#   BANDIT_EXCLUDES - bandit's -x list, comma-separated (default: the seven
-#     paths below). Setting it REPLACES the default; a consumer that names its
-#     own exclude set means that set.
+# Gating static analysis. docs/python-ci.md#the-static-analysis-knobs-and-the-bandit-trap-between-them
 
-# -e stays: a failing venv bootstrap or `uv sync` below must still abort. It is
-# compatible with the gate batch because run_gate runs its command in a `||`
-# list, which -e does not treat as fatal - the failure is recorded and re-raised
-# once, by assert_gates at the bottom.
+# -e aborts on setup failures; gate failures are recorded by run_gate and raised once by assert_gates.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,10 +26,7 @@ EXTRA_PATHS=( ${STATIC_ANALYSIS_EXTRA_PATHS} )
 if [ "${#EXTRA_PATHS[@]}" -gt 0 ]; then
   info "Extra analysis paths: ${EXTRA_PATHS[*]}"
 fi
-# bandit's -x list, and the default is the literal the gate line used to spell.
-# Setting it REPLACES that list. Why it is a knob, and why the bandit gate line
-# below passes ONE -r and then the whole target list rather than one -r per
-# path: docs/python-ci.md#the-static-analysis-knobs-and-the-bandit-trap-between-them
+# Setting BANDIT_EXCLUDES replaces this default list rather than extending it.
 BANDIT_EXCLUDES="${BANDIT_EXCLUDES:-tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results}"
 
 VENV_DIR="$WORKSPACE_ROOT/.venv_static_analysis"
@@ -59,22 +35,13 @@ UV_VENV_CLEAR=1 uv_venv_ensure "$VENV_DIR" "$PYTHON_VERSION" "virtual environmen
 
 uv_sync_project --no-wxpython
 
-# GATING since 2026-09-08. Every tool used to run behind `|| true` with its
-# diagnostics sent to /dev/null: six analysers whose findings reached no log
-# and whose verdict reached no exit code. A gate that passes while covering
-# nothing is a defect.
-#
-# run_gate/assert_gates (01-core/gates.sh) keep the one good property the
-# `|| true` chain had by accident - all six run, so one push names every
-# finding - and add the one it lacked: a verdict.
+# Every analyser runs, so one push names every finding, and assert_gates gives one verdict.
 gate_reset "static analysis (${PACKAGE_NAME})"
 
 run_gate "codespell" uv_run codespell "$PACKAGE_NAME" tests docs/source/conf.py setup.py README.md ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}
 run_gate "bandit" uv_run bandit -r "$PACKAGE_NAME" ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"} -x "$BANDIT_EXCLUDES"
 run_gate "vulture" uv_run vulture "$PACKAGE_NAME" tests docs/source/conf.py setup.py ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}
-# --no-fix, not --fix: a gate judges the tree as COMMITTED. `--fix` rewrote the
-# working tree and then reported on the repaired copy, so this step could only
-# ever be green and the finding surfaced in the next `git status` instead.
+# --no-fix: a gate judges the tree as committed, not a copy it just repaired.
 run_gate "ruff check" uv_run ruff check --no-fix "$PACKAGE_NAME" tests docs/source/conf.py setup.py ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}
 # --check --diff, not a bare `format`: report, do not rewrite. Same argument.
 run_gate "ruff format" uv_run ruff format --check --diff "$PACKAGE_NAME" tests docs/source/conf.py setup.py ${EXTRA_PATHS[@]+"${EXTRA_PATHS[@]}"}

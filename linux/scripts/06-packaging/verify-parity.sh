@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# This standalone host-side tool only needs the log/warn/err/pass/fail/info/retry
-# helpers, which all live in the self-contained logging.sh — no need to pull in
-# the heavyweight artifact-common.sh aggregator (~14 transitive modules). (The
-# old REPO_ROOT="../.." also mis-resolved: from 06-packaging it lands at
-# linux/scripts, so the source path doubled to linux/scripts/linux/scripts/...)
+# Host-side tool: logging.sh alone covers it, so skip the artifact-common.sh aggregator.
 _CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" && pwd)"
 
 # shellcheck disable=SC1091
@@ -114,10 +110,7 @@ normalize_find_output() {
     "$1"
 }
 
-# ---------------------------------------------------------------------------
-# Shared diff helper -- eliminates duplicated diff/count/report logic
-# from check_packages, check_files, check_libs, and check_python.
-# ---------------------------------------------------------------------------
+# Shared diff helper
 run_diff_check() {
   local check_name="$1"
   local native_file="$2"
@@ -145,9 +138,7 @@ run_diff_check() {
   return 1
 }
 
-# ---------------------------------------------------------------------------
-# Check: OS packages (dpkg -l)
-# ---------------------------------------------------------------------------
+# Check: OS packages
 check_packages() {
   echo_header "OS Packages (dpkg -l)"
 
@@ -171,27 +162,17 @@ check_packages() {
   run_diff_check "OS packages" "${native_file}.norm" "${cross_file}.norm" "All OS packages match ($(wc -l < "${native_file}.norm") packages)"
 }
 
-# Venv-activation prologue run inside the container before a python/pip command.
-# MUST be single-quoted so ${_v} stays literal in the value; because shell
-# variable expansion is not recursive, splicing it into a double-quoted command
-# string (e.g. "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}'") keeps ${_v}
-# literal for the container shell while ${py_cmd} still interpolates host-side.
+# Single-quoted so ${_v} reaches the container shell literally; expansion is not recursive.
 _VENV_ACTIVATE_PROLOGUE='for _v in /opt/venv /opt/python/.venv; do [ -f "${_v}/bin/activate" ] && { . "${_v}/bin/activate"; break; }; done 2>/dev/null || true;'
 
-# ---------------------------------------------------------------------------
 # Check: Python packages
-# ---------------------------------------------------------------------------
 check_python() {
   echo_header "Python Packages"
 
   local native_file="${WORKDIR}/native-pip.txt"
   local cross_file="${WORKDIR}/cross-pip.txt"
 
-  # NOTE: no `bash -lc` prefix here — container_exec is the single wrapper
-  # (it already runs the flattened "$*" via `--entrypoint=/bin/bash ... -lc`).
-  # A prefixed `bash -lc "cmd"` used to double-wrap: the inner bash received
-  # only `bash` as its -c payload, so the venv prologue never ran and this
-  # check silently compared SYSTEM packages instead of the venv.
+  # No bash -lc prefix: container_exec already wraps, and double-wrapping skips the venv prologue.
   container_exec_strip "${NATIVE_IMAGE}" \
     "${_VENV_ACTIVATE_PROLOGUE} pip list --format=columns 2>/dev/null || pip3 list --format=columns" \
     > "${native_file}" 2>/dev/null || {
@@ -218,9 +199,7 @@ check_python() {
   run_diff_check "Python packages" "${native_file}.norm" "${cross_file}.norm" "All Python packages match ($(wc -l < "${native_file}.norm") packages)"
 }
 
-# ---------------------------------------------------------------------------
-# Check: Binary versions
-# ---------------------------------------------------------------------------
+# Check: binary versions
 check_versions() {
   echo_header "Binary Version Checks"
 
@@ -257,8 +236,7 @@ check_versions() {
     native_out="$(container_exec_strip "${NATIVE_IMAGE}" "${tool_spec} 2>&1" 2>/dev/null | head -1 || true)"
     cross_out="$(container_exec_strip "${CROSS_IMAGE}" "${tool_spec} 2>&1" 2>/dev/null | head -1 || true)"
 
-    # Two EMPTY outputs compare equal. Count only checks that read something
-    # from BOTH images. docs/failure-modes.md
+    # Two empty outputs compare equal, so count only checks that read both images.
     [ -n "${native_out}" ] && [ -n "${cross_out}" ] && compared=$((compared + 1))
     printf '%s\t%s\n' "${tool_spec%% *}" "${native_out}" >> "${native_file}"
     printf '%s\t%s\n' "${tool_spec%% *}" "${cross_out}" >> "${cross_file}"
@@ -288,18 +266,14 @@ check_versions() {
   return 1
 }
 
-# ---------------------------------------------------------------------------
-# Check: File tree
-# ---------------------------------------------------------------------------
+# Check: file tree
 check_files() {
   echo_header "File Tree Comparison"
 
   local native_file="${WORKDIR}/native-files.txt"
   local cross_file="${WORKDIR}/cross-files.txt"
 
-  # Single-quoted so the container shell receives the \( ... \) grouping
-  # intact. The prune group must come FIRST (no leading -type f, no trailing
-  # slash on the -path patterns) or it never prunes anything.
+  # The prune group must come first, with no trailing slash on -path, or nothing is pruned.
   local find_cmd='find / \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -print'
 
   container_exec_strip "${NATIVE_IMAGE}" "${find_cmd}" 2>/dev/null | sort > "${native_file}" || true
@@ -319,17 +293,14 @@ check_files() {
   run_diff_check "File trees" "${native_file}.clean" "${cross_file}.clean" "File trees match ($(wc -l < "${native_file}.clean") files)"
 }
 
-# ---------------------------------------------------------------------------
-# Check: Shared library inventory
-# ---------------------------------------------------------------------------
+# Check: shared library inventory
 check_libs() {
   echo_header "Shared Library Inventory"
 
   local native_file="${WORKDIR}/native-libs.txt"
   local cross_file="${WORKDIR}/cross-libs.txt"
 
-  # Single-quoted payload so '*.so*' stays quoted for the container shell
-  # instead of being re-globbed against the container workdir.
+  # '*.so*' stays quoted for the container shell, not globbed against its workdir.
   local libs_cmd="find /usr/lib /usr/local/lib /opt -maxdepth 5 -name '*.so*' -type f"
 
   container_exec_strip "${NATIVE_IMAGE}" "${libs_cmd}" 2>/dev/null \
@@ -349,9 +320,7 @@ check_libs() {
   run_diff_check "Shared library sets" "${native_file}" "${cross_file}" "Shared library sets match ($(wc -l < "${native_file}") libraries)"
 }
 
-# ---------------------------------------------------------------------------
-# Check: Python import smoke test
-# ---------------------------------------------------------------------------
+# Check: Python imports
 check_imports() {
   echo_header "Python Import Smoke Test"
 
@@ -369,16 +338,10 @@ check_imports() {
   local native_out cross_out
 
   for mod in "${modules[@]}"; do
-    # Python strings use DOUBLE quotes: py_cmd is spliced into a single-quoted
-    # `python3 -c '...'` below, so a single quote inside it would terminate
-    # that quoting in the container shell and break the -c payload.
+    # Double quotes only: py_cmd goes inside a single-quoted python3 -c '...'.
     py_cmd="import ${mod}; print(\"${mod} ok:\", ${mod}.__version__ if hasattr(${mod}, \"__version__\") else \"loaded\")"
 
-    # No `bash -lc` prefix — container_exec already wraps (see check_python).
-    # Judge by RC, not by a sentinel word: the old `|| echo "FAILED"` appended
-    # AFTER the captured traceback (the in-container 2>&1 puts it on stdout),
-    # so `${out%% *}` parsed "Traceback", never "FAILED" — an ImportError
-    # could not increment failures (audit round 2, failure-path F21).
+    # Judge by exit status: a sentinel word lands after the traceback on the same stdout.
     local native_rc=0 cross_rc=0
     native_out="$(container_exec_strip "${NATIVE_IMAGE}" \
       "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null)" || native_rc=$?
@@ -405,12 +368,7 @@ check_imports() {
   return 1
 }
 
-# ---------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
-# main() decomposed (complexity audit F-F): it carried five responsibilities in
-# 107 lines, while this file already showed the clean per-function shape in its
-# check_* functions.
 
 verify_parity_parse_args() {
   while [ $# -gt 0 ]; do
@@ -462,8 +420,7 @@ verify_parity_run_checks() {
   local -a CHECK_LIST=()
   IFS=',' read -ra CHECK_LIST <<< "${CHECKS}"
 
-  # Data-driven dispatch: each known check maps to its check_<name> function, so
-  # adding a check is one set entry rather than another copy-pasted case arm.
+  # Each entry dispatches to check_<name>; a new check is one entry here.
   local -A KNOWN_CHECKS=(
     [packages]=1 [python]=1 [versions]=1 [files]=1 [libs]=1 [imports]=1
   )

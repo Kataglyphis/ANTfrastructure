@@ -1,8 +1,5 @@
 #requires -Version 7.0
-# Windows ROCm sdk layer (Install-Rocm.ps1, Install-VulkanLoader.ps1, Dockerfile.rocm, Test-RocmImage.ps1,
-# rocm-checks\GpuLoaders.ps1): guards, layout gate, ICD registration, loader install, env contract, PATH
-# rules, check grading. NOT covered: the real downloads, hipcc, a real ICD or loader in the image, and the
-# rest of the driver wiring (Driver.Variant.Tests.ps1).
+# The Windows ROCm sdk layer: guards, layout, ICD and loader install, env and PATH contract; no real downloads or hipcc.
 
 Describe 'Install-Rocm: tarball URL' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Rocm.ps1' -FunctionName 'Get-RocmWindowsTarballUrl')
@@ -492,8 +489,7 @@ Describe 'Install-VulkanLoader: LunarG''s pinned loader zip' {
         }
     }
 
-    # Install-VulkanLoader over a file:// mirror of LunarG's layout: the real download, SHA256 and version checks.
-    # The loader is a real PE (System32\version.dll), so its version resource is real too.
+    # A file:// mirror of LunarG's layout with a real PE loader, so download, SHA256 and version checks run for real.
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsContainerImage.Common.psm1' -FunctionName 'Resolve-ContainerImageValue',
         'Initialize-ContainerImageTempDirectory', 'Clear-PendingFileHandle')
     # A fixture SystemDir stands in for System32; -SystemCopy pre-seeds its vulkan-1.dll with that file's bytes.

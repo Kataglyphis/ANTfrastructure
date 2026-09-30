@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# prune-vulkan-host-sdk.sh drives what /opt/vulkan weighs in every runtime image:
-# it must drop the builder-arch prefix on a foreign arch, keep it where the image
-# runs it, and refuse to guess when it cannot map the arch.
-# docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
+# prune-vulkan-host-sdk.sh; see docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -11,8 +8,7 @@ PRUNE="${TESTS_DIR}/../06-packaging/prune-vulkan-host-sdk.sh"
 ROOT="$(mktemp -d)"
 trap 'rm -rf "${ROOT}"' EXIT
 
-# The shipped shape: a versioned dir with the SDK's x86_64 prefix, its ./vulkansdk
-# build tree, and — when the cross build landed — a target prefix holding a loader.
+# _fixture [arch dir] [loader|symlink|other]: the shipped SDK shape, plus a target prefix when given.
 _fixture() {
   local arch_dir="${1:-}" loader="${2:-loader}"
   rm -rf "${ROOT:?}"/*
@@ -28,14 +24,9 @@ _fixture() {
   esac
 }
 
-# BUILDARCH pinned: since 2026-09-10 the builder prefix is whatever the BUILD
-# HOST is (it was the frozen literal x86_64, which kept the wrong tree whenever
-# the cross lane built on a non-amd64 host). Every case below describes the
-# amd64-hosted lane, so it must say so — unpinned, these rows asserted whatever
-# machine ran the suite and went red the moment it ran on an arm64 box.
+# BUILDARCH pinned: the builder prefix follows the build host, and these cases describe the amd64-hosted lane.
 _run() { BUILDARCH="${2:-amd64}" bash "${PRUNE}" "$1" "${ROOT}" 2>&1; }
 
-# ---------------------------------------------------------------------------
 t_case "a foreign arch with its own loader loses the builder prefix and the sources"
 _fixture aarch64
 _out="$(_run arm64)"
@@ -66,8 +57,7 @@ t_assert_ok test -e "${ROOT}/1.4.357.0/x86_64/lib/libvulkan.so.1"
 t_assert_contains "${_out}" "WARNING keeping" "a silent prune here would ship an image with no loader at all"
 
 t_case "the setup-vulkan-symlinks fallback shape is not mistaken for a cross build"
-# aarch64 -> x86_64 is the fallback link the package stage makes; following it and
-# deleting the target would delete the tree the link points at.
+# The package stage's aarch64 -> x86_64 fallback link; pruning x86_64 would delete what it points at.
 _fixture aarch64 symlink
 _out="$(_run arm64)"
 t_assert_ok test -e "${ROOT}/1.4.357.0/x86_64/lib/libvulkan.so.1"
@@ -91,8 +81,7 @@ t_case "an absent root is a no-op, never an error"
 t_assert_ok bash "${PRUNE}" arm64 "${ROOT}/does-not-exist"
 
 t_case "an unmappable arch is a hard error, never a guess"
-# arch_uname_name_for echoes an unknown arch back, so the prefix would simply not
-# exist and the prune would silently keep 1.8 GB. Prove it fails loudly instead.
+# arch_uname_name_for echoes an unknown arch back, which would silently keep the whole host prefix.
 _fixture aarch64
 t_assert_fails bash "${PRUNE}" not-an-arch "${ROOT}"
 t_assert_contains "$(bash "${PRUNE}" not-an-arch "${ROOT}" 2>&1 || true)" \
@@ -117,11 +106,8 @@ t_assert_ok test "${_RUN_LINE}" -lt "${_COPY_LINE}"
 t_assert_contains "$(sed -n "1,${_RUN_LINE}p" "${_DF}")" "AS artifact-source" \
   "the prune must run in the stage the COPY reads from"
 
-# ---------------------------------------------------------------------------
 t_case "the builder prefix follows the BUILD HOST, not a frozen x86_64"
-# An arm64-hosted cross build produces an aarch64 SDK prefix. With the old
-# literal, THAT tree was kept as 'the builder's' and the target's was pruned —
-# exactly backwards. The fixture is the mirror image of the amd64 one.
+# The mirror image of the amd64 fixture: an arm64 host's own prefix is aarch64.
 rm -rf "${ROOT:?}"/*
 mkdir -p "${ROOT}/1.4.357.0/aarch64/lib" "${ROOT}/1.4.357.0/riscv64/lib" \
          "${ROOT}/1.4.357.0/source/glslang"
@@ -134,11 +120,8 @@ t_assert_ok test '!' -e "${ROOT}/1.4.357.0/aarch64"
 t_assert_ok test -e "${ROOT}/1.4.357.0/riscv64/lib/libvulkan.so.1"
 t_assert_contains "${_out}" "riscv64 runs riscv64/lib/libvulkan.so.1"
 
-# ---------------------------------------------------------------------------
 t_case "a native arm64 build drops the LunarG tarball's x86_64 prefix too"
-# Measured in cross-media-arm64 (2026-09-21): aarch64 (514 MB, the image's own)
-# next to the tarball's x86_64 (1.8 GB). Builder == target, so the builder rule
-# kept everything and the runtime image shipped 61 x86-64 objects.
+# Builder == target, so the builder rule alone would keep the tarball's x86_64 prefix.
 _fixture aarch64
 _out="$(_run arm64 arm64)"
 t_assert_eq "" "$(compgen -G "${ROOT}/1.4.357.0/x86_64")" "the x86_64 tarball prefix is gone"

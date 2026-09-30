@@ -1,24 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# verify-arg-consistency.sh - Verify that versions.env, the build-arg
-# forwarding, and the Dockerfile ARG safety-net defaults agree:
-#   1. Every Dockerfile ARG whose name is a versions.env variable must be
-#      forwarded by version-forwarding.sh (i.e. not marked `# noforward`).
-#   2. Every such ARG's literal default must equal the versions.env value.
+# versions.env, the build-arg forwarding and the Dockerfile ARG safety-net defaults must agree.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 VERSIONS_ENV="${REPO_ROOT}/linux/scripts/01-core/versions.env"
 
-# The cross-chain Dockerfiles: the ones the forwarding in version-forwarding.sh
-# actually feeds. sync_versions.py dockerfile_target_files() syncs ARG defaults
-# for a wider set (these plus windows/ and the documentation image), which are
-# built by their own scripts and so are deliberately not checked for forwarding.
+# Only the Dockerfiles the forwarding feeds; sync_versions.py's wider set is built by its own scripts.
 DOCKERFILES=(base toolchain sdk media android package torch nvidia amd)
 
 echo "=== Version ARG consistency check ==="
 
-# Reuse the discovery from version-forwarding.sh (single definition of the
-# forward-all-except-`# noforward` rule and of _VERSION_BUILD_ARG_VARS).
+# version-forwarding.sh owns the forward-all-except-`# noforward` rule.
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/version-forwarding.sh"
 
@@ -37,8 +29,7 @@ for name in "${DOCKERFILES[@]}"; do
   [ -f "$df_path" ] || continue
   while IFS='=' read -r var val_raw; do
     [ -n "$var" ] || continue
-    # ARGs derived from another ARG (e.g. PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*})
-    # are computed in-Dockerfile and need no forwarding from versions.env.
+    # ARGs derived from another ARG are computed in the Dockerfile and need no forwarding.
     case "$val_raw" in '${'*) continue ;; esac
     # Only ARGs whose name exists in versions.env are expected to be forwarded.
     [ -n "${_version_values[$var]:-}" ] || continue
@@ -94,11 +85,7 @@ fi
 
 echo ""
 echo "=== ARG safety-net default presence check ==="
-# A default-less `ARG NAME` whose name is a forwarded versions.env variable is
-# only safe when the SAME file also declares `ARG NAME=<default>` somewhere
-# (stage-level re-declarations inherit the pre-FROM global default). A file
-# with no defaulted declaration at all silently builds with an EMPTY value on
-# any non-orchestrated `docker build` — the LITERTJS_VERSION failure class.
+# A default-less versions.env ARG needs a defaulted declaration in the same file, or a plain docker build gets "".
 DEFAULTLESS_ERRORS=0
 for name in "${DOCKERFILES[@]}"; do
   df="linux/Dockerfile.${name}"
@@ -107,13 +94,7 @@ for name in "${DOCKERFILES[@]}"; do
   while IFS= read -r var; do
     [ -n "$var" ] || continue
     [ -n "${_version_values[$var]:-}" ] || continue
-    # C3 exemption (2026-08-24): a default-less ARG is DELIBERATE when its
-    # consumer is `:?`-guarded — the guard makes an unforwarded value a LOUD
-    # build failure, which is strictly stronger than a default (a default is
-    # how android silently built onnxruntime v1.28.0 against a v1.29.0 pin;
-    # see commit aea9871). Exempt exactly the ARGs whose Dockerfile promotes
-    # them to ENV and whose build scripts carry the :?-guard; anything else
-    # default-less is still the LITERTJS_VERSION failure class and errors.
+    # Exempt: a :?-guarded consumer fails loudly, which beats a default that silently builds the wrong pin.
     case "${df}:${var}" in
       linux/Dockerfile.android:ONNXRUNTIME_VERSION|\
       linux/Dockerfile.android:LITERT_VERSION|\
@@ -141,21 +122,7 @@ fi
 
 echo ""
 echo "=== Script :- default drift check (advisory) ==="
-# Many build scripts embed a hardcoded fallback for a versions.env variable as
-# ${VAR:-literal} (a "third channel": the value is neither an ARG default nor
-# read from versions.env at runtime — several scripts don't source
-# load_versions_env). Those literals can silently drift from versions.env.
-# This check surfaces such drift. It is ADVISORY (never fails the build) because,
-# unlike Dockerfile ARG defaults, script defaults legitimately diverge:
-#   * TVM_REF: tvm.sh defaults to the 'main' branch for standalone runs, while
-#     versions.env pins the built ref.
-#   * PYTHON_VERSION: CI tooling defaults to a MAJOR.MINOR (3.14) to name the
-#     interpreter, not the full patch version.
-#   * FFMPEG_ENABLE_X265 / ORT_ENABLE_WEBGPU / ORT_WEBGPU_ALLOW_CROSS /
-#     GENAI_ALLOW_RISCV64: scripts deliberately default conservative (feature
-#     off) for standalone runs; versions.env opts the orchestrated image builds
-#     in. GENAI_ALLOW_RISCV64: docs/gen1-riscv64-genai.md
-# Add such intentional cases to SCRIPT_DEFAULT_DRIFT_ALLOW below.
+# Advisory: standalone script defaults may differ on purpose (TVM_REF=main, features off); allow those here.
 declare -A SCRIPT_DEFAULT_DRIFT_ALLOW=(
   [TVM_REF]=1 [PYTHON_VERSION]=1
   [FFMPEG_ENABLE_X265]=1 [ORT_ENABLE_WEBGPU]=1 [ORT_WEBGPU_ALLOW_CROSS]=1
@@ -163,9 +130,7 @@ declare -A SCRIPT_DEFAULT_DRIFT_ALLOW=(
 )
 DRIFT_WARN=0
 while IFS= read -r hit; do
-  # hit is "path:${VAR:-literal}" or "path:${VAR:=literal}" — the := assign
-  # form (used by `: "${VAR:=x}"` pins) is the same third channel and drifts
-  # just as silently, so both separators are gated.
+  # := fallbacks drift as silently as :- ones, so both separators are gated.
   file="${hit%%:*}"; match="${hit#*:}"
   var="${match#\$\{}"; var="${var%%:[-=]*}"
   lit="${match#*:[-=]}"; lit="${lit%\}}"
@@ -173,8 +138,7 @@ while IFS= read -r hit; do
   env_val="${_version_values[$var]:-}"
   [ -n "$env_val" ] || continue
   [ -n "${SCRIPT_DEFAULT_DRIFT_ALLOW[$var]:-}" ] && continue
-  # Skip non-literal fallbacks: empty, the 'unset' sentinel, nested expansions
-  # (${..$..}), command substitutions, or backticks — not values to compare.
+  # Skip non-literal fallbacks: empty, the 'unset' sentinel, expansions and command substitutions.
   case "$lit" in ''|unset|*'$'*|*'('*|*'`'*) continue ;; esac
   env_val="${env_val%\"}"; env_val="${env_val#\"}"   # strip surrounding quotes
   if [ "$lit" != "$env_val" ]; then
@@ -192,11 +156,7 @@ fi
 
 echo ""
 echo "=== case-mapped version literal check ==="
-# Two version literals live in case/function mappings that neither the ARG
-# checks nor the ${VAR:-default} scan above can see; they drift silently on a
-# bump and then override or misreport the real version:
-#   * gcc.sh: `16) default_full_version="16.2.0"` (major -> full version)
-#   * common.sh llvm_release_version: `22) ... 22.1.8`
+# Version literals in case mappings (gcc.sh major->full, common.sh llvm_release_version) that no scan above sees.
 LITERAL_ERRORS=0
 _gcc_full="${_version_values[GCC_VERSION]:-}"
 if [ -n "${_gcc_full}" ]; then
@@ -223,21 +183,7 @@ fi
 
 echo ""
 echo "=== GCC toolchain default literal check ==="
-# DUP2: the source-built GCC version is re-spelled as an inline `:-`/`:=`
-# fallback in ~25 places across linux/ — shell scripts, the runtime .env path
-# table, and inline Dockerfile RUN env. Those sites CANNOT all be collapsed
-# into one helper: a mount audit found RUNs that bind the consuming script
-# WITHOUT common.sh or versions.env, so there the literal IS the value and
-# calling a shared helper would be the `is_truthy: command not found` class of
-# bug. What they CAN be is pinned. Every plain-literal fallback for
-# GCC_VERSION must equal versions.env GCC_VERSION, and every one for
-# GCC_WANTED (a major) must equal its major component. This is FATAL, not
-# advisory, because unlike the generic scan above there is no legitimate
-# divergence here: all of these name the same /opt/gcc-<ver> toolchain.
-# Skipped by construction: empty fallbacks and non-literal ones (another
-# expansion or a command substitution as the default) — the character class
-# below excludes braces and `$`. This file is excluded because it quotes the
-# pattern; the generic advisory scan above still covers both variables.
+# Fatal: RUNs without common.sh use the inline GCC_VERSION/GCC_WANTED literal as the value, so each must match.
 GCC_LITERAL_ERRORS=0
 _gcc_env_full="${_version_values[GCC_VERSION]:-}"
 _gcc_env_full="${_gcc_env_full%\"}"; _gcc_env_full="${_gcc_env_full#\"}"
@@ -266,14 +212,7 @@ else
   done < <(grep -rnoP '\$\{(GCC_VERSION|GCC_WANTED):[-=][^{}$]+\}' \
              "${REPO_ROOT}/linux" 2>/dev/null \
            | grep -v '/verify-arg-consistency\.sh:' || true)
-  # A collapse to zero scanned sites would make this check silently vacuous
-  # (the stale-gate class this repo has been burned by twice); say the count.
-  # A scan that finds NOTHING must not report OK. If a refactor rewrites the
-  # literals into a form this pattern cannot see, the gate would silently go
-  # vacuous and the next GCC bump would drift unnoticed — exactly the
-  # "gate that cannot fail" class this repo keeps rediscovering. The floor is
-  # deliberately well below the current count so ordinary churn does not trip
-  # it, but a collapse to near-zero does.
+  # A scan that finds almost nothing must not pass: the pattern has stopped matching the tree.
   if [ "${_gcc_sites}" -lt 10 ]; then
     echo "[ERROR] GCC literal gate scanned only ${_gcc_sites} site(s) (expected >=10) — the scan pattern no longer matches the tree; fix the pattern rather than trusting this pass" >&2
     GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))
@@ -290,14 +229,7 @@ fi
 
 echo ""
 echo "=== hand-forward of auto-forwarded ARG check ==="
-# append_version_build_args auto-forwards EVERY non-`# noforward` versions.env
-# variable into every build (via append_common_build_args). A script that ALSO
-# writes a literal `--build-arg VAR=` for such a name duplicates the forward —
-# a drift seed: the hand-written line survives refactors of the auto-forward
-# and the two channels can silently diverge (backlog XC7: stage-defs.sh
-# hand-forwarded VULKAN_VERSION). Narrow by construction: only names in
-# _VERSION_BUILD_ARG_VARS, only literal `--build-arg` tokens in build scripts;
-# tests/ is excluded (assertion messages quote the pattern as text).
+# A literal --build-arg for an auto-forwarded variable is a second channel that drifts; tests/ quote it, so skip them.
 HANDFWD_ERRORS=0
 _vars_alt="$(IFS='|'; printf '%s' "${_VERSION_BUILD_ARG_VARS[*]}")"
 while IFS= read -r hit; do
