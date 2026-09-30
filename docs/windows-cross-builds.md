@@ -1056,6 +1056,12 @@ entry. Three things about that step are load-bearing:
   day came out without aarch64 OpenSSL, because this step only warns. The step now reads
   `architecture.arm64` from `buckets\main\bucket\openssl.json`, the manifest the x64 install
   resolves as well. The two architectures therefore move together, and the hash is still checked.
+- **Take it from the LAN preseed first.** slproweb throttles each connection to ~20 KB/s. The
+  x64 installer (251 MB) ran 3.6 h as one stream and then failed. `Build-Buildkit.ps1` downloads
+  both installers host-side in 32 parallel ranges (`Save-ParallelRangeDownload`, about 1 MB/s
+  in total), checks their SHA256 against the same manifest, and puts them on the WebDAV under
+  `preseed/`. This step fetches from there first and falls back to slproweb. The x64 installer
+  lands in scoop's cache under scoop's own name, like the Vulkan SDK.
 
 The package ships **no** `.pc` files, so the GStreamer build authors `libcrypto`, `libssl` and
 `openssl` with `Write-PkgConfigFile` — the same helper OpenCV and ONNX Runtime already need for

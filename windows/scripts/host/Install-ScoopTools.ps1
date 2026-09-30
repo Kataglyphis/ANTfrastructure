@@ -64,6 +64,39 @@ function Install-ScoopPackage {
     }
 }
 
+# A LAN preseed under scoop's own cache name (app#version#sha7(url).ext); scoop still checks the hash, and a miss is fail-open.
+function Copy-PreseedToScoopCache {
+    param(
+        [Parameter(Mandatory)][string]$App,
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$Url
+    )
+    if (-not $env:VULKAN_PRESEED_ENDPOINT) { return }
+    try {
+        $urlSha = [System.Security.Cryptography.SHA256]::Create()
+        $tok = ([BitConverter]::ToString($urlSha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Url))) -replace '-', '').ToLower().Substring(0, 7)
+        $leaf = Split-Path -Leaf $Url
+        $ext = [System.IO.Path]::GetExtension($leaf)
+        $cacheDir = Join-Path $env:USERPROFILE 'scoop\cache'
+        $null = New-Item -ItemType Directory -Force -Path $cacheDir
+        $src = "$($env:VULKAN_PRESEED_ENDPOINT)/preseed/$leaf"
+        # Staged outside the cache, so a failed fetch leaves nothing that scoop would take for the installer.
+        $null = New-Item -ItemType Directory -Force -Path $TempDir
+        $staged = Join-Path $TempDir "$App-preseed$ext"
+        & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --retry 3 --retry-delay 5 --retry-all-errors --remove-on-error -o $staged $src
+        if ($LASTEXITCODE -eq 0) {
+            $dest = Join-Path $cacheDir "$App#$Version#$tok$ext"
+            Move-Item -LiteralPath $staged -Destination $dest -Force
+            Write-Host "$App preseed: $dest ($([math]::Round((Get-Item $dest).Length / 1MB)) MB) from $src"
+        } else {
+            Write-Warning "$App preseed fetch failed (exit $LASTEXITCODE) - falling back to the direct download"
+        }
+    } catch {
+        Write-Warning "$App preseed skipped: $($_.Exception.Message)"
+    }
+    $global:LASTEXITCODE = 0
+}
+
 # Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
@@ -156,26 +189,8 @@ Invoke-ScoopStep -Description 'scoop config use_external_7zip true' -Command { s
 #endregion
 #region 4. Vulkan LAN preseed + pinned installs (cmake/vulkan/flutter)
 # Preseeded from the LAN under scoop's cache name, since sdk.lunarg.com stalls in containers; scoop still checks the hash.
-if ($env:VULKAN_PRESEED_ENDPOINT -and $VulkanVersion) {
-    try {
-        $vkVendorUrl = "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/vulkansdk-windows-X64-$VulkanVersion.exe"
-        $vkUrlSha = [System.Security.Cryptography.SHA256]::Create()
-        $vkTok = ([BitConverter]::ToString($vkUrlSha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($vkVendorUrl))) -replace '-', '').ToLower().Substring(0, 7)
-        $vkCacheDir = Join-Path $env:USERPROFILE 'scoop\cache'
-        $null = New-Item -ItemType Directory -Force -Path $vkCacheDir
-        $vkDest = Join-Path $vkCacheDir "vulkan#$VulkanVersion#$vkTok.exe"
-        $vkSrc = "$($env:VULKAN_PRESEED_ENDPOINT)/preseed/vulkansdk-windows-X64-$VulkanVersion.exe"
-        & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --retry 3 --retry-delay 5 --retry-all-errors -o $vkDest $vkSrc
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "vulkan preseed: $vkDest ($([math]::Round((Get-Item $vkDest).Length / 1MB)) MB) from $vkSrc"
-        } else {
-            Remove-Item $vkDest -Force -ErrorAction SilentlyContinue
-            Write-Warning "vulkan preseed fetch failed (exit $LASTEXITCODE) - falling back to the direct download"
-        }
-        $global:LASTEXITCODE = 0
-    } catch {
-        Write-Warning "vulkan preseed skipped: $($_.Exception.Message)"
-    }
+if ($VulkanVersion) {
+    Copy-PreseedToScoopCache -App 'vulkan' -Version $VulkanVersion -Url "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/vulkansdk-windows-X64-$VulkanVersion.exe"
 }
 Install-ScoopPackage -Package 'main/vulkan' -Version $VulkanVersion
 
@@ -277,6 +292,13 @@ if ($rtTarget.Count -gt 0) {
         Write-Warning ($msg + ' Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
     }
 }
+# Both OpenSSL architectures follow the bucket manifest the x64 install reads: slproweb deletes superseded installers, so a literal pin 404s.
+$sslManifest = $null
+try {
+    $sslManifest = Get-Content -Raw -LiteralPath (Join-Path $scoopRoot 'buckets\main\bucket\openssl.json') | ConvertFrom-Json
+} catch {
+    Write-Warning "the main bucket's openssl manifest is unreadable: $($_.Exception.Message)"
+}
 # aarch64 OpenSSL beside the host one, warn-only; see docs/windows-cross-builds.md § aarch64 OpenSSL is a base prerequisite too.
 $sslArm64Root = 'C:\opt\openssl-arm64'
 $sslArm64Lib = @(Get-ChildItem -Path $sslArm64Root -Recurse -Filter 'libcrypto.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
@@ -285,13 +307,19 @@ if ($sslArm64Lib.Count -gt 0) {
 } else {
     $sslExe  = Join-Path $env:TEMP 'Win64ARMOpenSSL.exe'
     try {
-        # From the bucket manifest the x64 install below reads: slproweb deletes superseded installers, so a literal pin 404s.
-        $sslManifest = Get-Content -Raw -LiteralPath (Join-Path $scoopRoot 'buckets\main\bucket\openssl.json') | ConvertFrom-Json
+        if (-not $sslManifest) { throw "no main bucket openssl manifest to read the arm64 url and hash from" }
         $sslUrl = $sslManifest.architecture.arm64.url
         $sslSha = $sslManifest.architecture.arm64.hash
         if (-not $sslUrl -or -not $sslSha) { throw "the main bucket's openssl manifest ($($sslManifest.version)) names no arm64 url and hash" }
         Write-Host "Fetching aarch64 OpenSSL $($sslManifest.version) from $sslUrl (installed beside the x64 build, never replacing it)"
-        Invoke-DownloadWithRetry -Url $sslUrl -DestinationPath $sslExe
+        # The LAN preseed first: slproweb throttles each connection to ~20 KB/s. The hash check below covers either source.
+        $global:LASTEXITCODE = 1
+        if ($env:VULKAN_PRESEED_ENDPOINT) {
+            $sslPreseed = "$($env:VULKAN_PRESEED_ENDPOINT)/preseed/$(Split-Path -Leaf $sslUrl)"
+            & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --retry 3 --retry-delay 5 --retry-all-errors --remove-on-error -o $sslExe $sslPreseed
+        }
+        if ($LASTEXITCODE -eq 0) { Write-Host "  taken from the preseed $sslPreseed" } else { Invoke-DownloadWithRetry -Url $sslUrl -DestinationPath $sslExe }
+        $global:LASTEXITCODE = 0
         $got = (Get-FileHash -LiteralPath $sslExe -Algorithm SHA256).Hash
         if ($got -ine $sslSha) { throw "sha256 mismatch: got $got, expected $sslSha (this is the hash scoop's own openssl manifest pins for the arm64 asset)" }
         # Extract with innounp, never run the installer (a silent run exits 0 and installs nothing); declared, not order-dependent.
@@ -337,6 +365,11 @@ if ($sslArm64Lib.Count -gt 0) {
                        "gst-plugins-bad's hls/dtls/aes and glib-networking's openssl TLS backend will fail to link. " +
                        'Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
     }
+}
+
+# The x64 installer comes from the same throttled host: a 251 MB single stream ran 3.6 h and then failed (2026-09-30).
+if ($sslManifest) {
+    Copy-PreseedToScoopCache -App 'openssl' -Version $sslManifest.version -Url $sslManifest.architecture.'64bit'.url
 }
 
 # Floating: tools the build only invokes; pin one the moment it links into shipped binaries. One call each keeps the retry.

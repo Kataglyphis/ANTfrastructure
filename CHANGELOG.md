@@ -7,6 +7,25 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-30 - Windows base: both OpenSSL installers come from the LAN preseed
+
+- **What went wrong.** A `:winamd64` base build sat 3.6 h in `scoop install main/openssl`,
+  then failed. scoop purged its cache and started again. slproweb serves each connection at
+  ~9–25 KB/s, and the x64 installer is 251 MB.
+- **Measured.** One connection gets 1 MB in 41 s. Eight connections each get their 1 MB inside
+  45 s, so the throttle is per connection, not per host.
+- **The fix, on the pattern of the Vulkan preseed.**
+  - `Build-Buildkit.ps1` reads scoop's `openssl.json`.
+  - `Save-ParallelRangeDownload` (`WindowsBuildDriver.Common`) fetches both installers host-side
+    in 32 ranges, joins them and checks their SHA256. It then puts them on the WebDAV under
+    `preseed/`.
+  - `Install-ScoopTools.ps1` drops the x64 installer into scoop's cache under scoop's own name,
+    through `Copy-PreseedToScoopCache`, which the Vulkan preseed now uses too. The aarch64 step
+    fetches from the preseed first. Both fall back to slproweb, and both hashes are still checked.
+- **Measured after.** 251.1 MB in 269 s and 219.6 MB in 234 s, both hash-verified.
+  `BuildDriver.RangeDownload.Tests.ps1` holds the range split to exact, gapless coverage; an
+  off-by-one overlap fails it.
+
 ## 2026-09-30 - Windows base: aarch64 OpenSSL follows scoop's manifest instead of a pin
 
 - **What went wrong.** `Install-ScoopTools.ps1` fetched a literal `Win64ARMOpenSSL-4_0_2.exe`.

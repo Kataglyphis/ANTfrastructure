@@ -263,7 +263,9 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    — and export `SCCACHE_WEBDAV_ENDPOINT=http://<host-LAN-IP>:5000`; the
    compile scripts pick it up inside RUN steps.
    **A hand-started dufs does NOT survive reboots** (cost a failed run on
-   2026-08-04). The driver also preseeds the Vulkan SDK and publishes the
+   2026-08-04). The driver also preseeds the Vulkan SDK and both OpenSSL
+   installers (x64 and arm64, fetched in 32 parallel ranges, because slproweb
+   throttles each connection to ~20 KB/s) and publishes the
    memory budget on this server, and `Assert-SccacheEndpoint` fails the media
    stages fast without it. Make it boot-persistent once, elevated:
    `pwsh -File windows\scripts\host\Install-DufsService.ps1 -ServeDir C:\sccache-cache`

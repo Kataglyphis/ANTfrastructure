@@ -578,6 +578,83 @@ function Get-MediaMemoryBudget {
     return [math]::Max(8, $usableGb - $HostReserveGb)
 }
 
+function Get-ByteRangeSplit {
+    # Inclusive byte ranges covering 0..Length-1 exactly, in at most Parts pieces.
+    param(
+        [Parameter(Mandatory)][long]$Length,
+        [Parameter(Mandatory)][ValidateRange(1, 256)][int]$Parts
+    )
+    if ($Length -le 0) { throw "Get-ByteRangeSplit: length must be positive, got $Length" }
+    $size = [long][math]::Ceiling($Length / [double]$Parts)
+    for ($from = [long]0; $from -lt $Length; $from += $size) {
+        [pscustomobject]@{ From = $from; To = [long][math]::Min($Length, $from + $size) - 1 }
+    }
+}
+
+function Save-ParallelRangeDownload {
+    # slproweb throttles each connection to ~20 KB/s, so a 251 MB installer needs many ranges at once.
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$Destination,
+        [Parameter(Mandatory)][string]$ExpectedSha256,
+        [ValidateRange(1, 64)][int]$Parts = 32
+    )
+    if ((Test-Path -LiteralPath $Destination) -and ((Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash -ieq $ExpectedSha256)) { return }
+    $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
+    $head = @(& $curlExe -sfIL --max-time 60 $Url)
+    if ($LASTEXITCODE -ne 0) { throw "HEAD $Url failed (curl exit $LASTEXITCODE)" }
+    # The last Content-Length: -L prints the headers of every redirect hop.
+    $lengths = @($head | Select-String -Pattern '^Content-Length:\s*(\d+)' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+    if ($lengths.Count -eq 0) { throw "HEAD $Url returned no Content-Length" }
+    $ranges = @(Get-ByteRangeSplit -Length ([long]$lengths[-1]) -Parts $Parts)
+    $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination)
+    $jobs = for ($i = 0; $i -lt $ranges.Count; $i++) {
+        $part = "$Destination.part$i"
+        # --speed-time turns a stalled range into a retry rather than an hours-long wait.
+        $proc = Start-Process -FilePath $curlExe -NoNewWindow -PassThru -ArgumentList @(
+            '-sfL', '--retry', '8', '--retry-delay', '5', '--retry-all-errors', '--speed-limit', '1024', '--speed-time', '120',
+            '-r', "$($ranges[$i].From)-$($ranges[$i].To)", '-o', $part, $Url)
+        $null = $proc.Handle   # without a cached handle, ExitCode reads empty once the process is gone
+        [pscustomobject]@{ Process = $proc; Part = $part; Size = $ranges[$i].To - $ranges[$i].From + 1 }
+    }
+    $jobs.Process | Wait-Process
+    $bad = @($jobs | Where-Object {
+            $_.Process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $_.Part) -or (Get-Item -LiteralPath $_.Part).Length -ne $_.Size })
+    if ($bad.Count -gt 0) { throw "$($bad.Count) of $($jobs.Count) range(s) of $Url failed or came back short" }
+    $out = [System.IO.File]::Create($Destination)
+    try {
+        foreach ($job in $jobs) {
+            $in = [System.IO.File]::OpenRead($job.Part)
+            try { $in.CopyTo($out) } finally { $in.Dispose() }
+        }
+    } finally { $out.Dispose() }
+    $jobs.Part | Remove-Item -Force
+    $got = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash
+    if ($got -ine $ExpectedSha256) { throw "sha256 mismatch for ${Url}: got $got, expected $ExpectedSha256" }
+}
+
+function Publish-PreseedFile {
+    # Puts one host-side download on the webdav under preseed/, unless it is there already; the caller decides fail-open.
+    param(
+        [Parameter(Mandatory)][string]$Endpoint,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$LocalDir,
+        # Gets the local path and must leave the verified file there.
+        [Parameter(Mandatory)][scriptblock]$Fetch
+    )
+    $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
+    $onDav = "$Endpoint/preseed/$Name"
+    & $curlExe -sfI $onDav *> $null
+    if ($LASTEXITCODE -eq 0) { Write-Host "preseed: $Name already on the webdav"; return }
+    Write-Host "preseed: downloading $Name host-side..."
+    $null = New-Item -ItemType Directory -Force -Path $LocalDir
+    $local = Join-Path $LocalDir $Name
+    & $Fetch $local
+    & $curlExe -sf --retry 3 --retry-delay 5 --retry-all-errors -T $local $onDav
+    if ($LASTEXITCODE -ne 0) { throw "webdav PUT of $Name failed (exit $LASTEXITCODE)" }
+    Write-Host "preseed: $Name staged at $onDav"
+}
+
 Export-ModuleMember -Function Initialize-BuildDriverContext,
     Test-TransientDockerFailure, Invoke-TransientCooldown,
     Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
@@ -585,4 +662,5 @@ Export-ModuleMember -Function Initialize-BuildDriverContext,
     Assert-DiskHeadroom, Assert-ShimPatch,
     Get-ShimPatchStatePath, Write-ShimPatchState,
     Get-StageDiskFloorGb, Assert-StageDiskHeadroom, Assert-NoActiveRdna4Gpu,
-    Get-Rdna4HazardDevice, Set-Rdna4DeviceState, Assert-BuildkitdStepLogEnv
+    Get-Rdna4HazardDevice, Set-Rdna4DeviceState, Assert-BuildkitdStepLogEnv,
+    Get-ByteRangeSplit, Save-ParallelRangeDownload, Publish-PreseedFile

@@ -447,7 +447,6 @@ $sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
 if ($SccacheEndpoint) {
     $vkVer = Get-Ver 'VULKAN_VERSION'
     $vkName = "vulkansdk-windows-X64-$vkVer.exe"
-    $vkOnDav = "$SccacheEndpoint/preseed/$vkName"
     $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
     $vkUrl = "https://sdk.lunarg.com/sdk/download/$vkVer/windows/$vkName"
 
@@ -463,23 +462,31 @@ if ($SccacheEndpoint) {
                'a scoop install error.')
     }
 
+    $preseedDir = Join-Path $PSScriptRoot 'downloads'
     try {
-        & $curlExe -sfI $vkOnDav *> $null
-        if ($LASTEXITCODE -ne 0) {
-            $vkLocal = Join-Path $PSScriptRoot 'downloads' $vkName
-            if (-not (Test-Path $vkLocal)) {
-                Write-Host "preseed: downloading $vkName host-side..."
-                & $curlExe -sfL --retry 3 --retry-delay 5 --retry-all-errors $vkUrl -o $vkLocal
-                if ($LASTEXITCODE -ne 0) { throw "host download failed (exit $LASTEXITCODE)" }
-            }
-            & $curlExe -sf --retry 3 --retry-delay 5 --retry-all-errors -T $vkLocal $vkOnDav
-            if ($LASTEXITCODE -ne 0) { throw "webdav PUT failed (exit $LASTEXITCODE)" }
-            Write-Host "preseed: $vkName staged at $vkOnDav"
-        } else {
-            Write-Host "preseed: $vkName already on the webdav"
+        Publish-PreseedFile -Endpoint $SccacheEndpoint -Name $vkName -LocalDir $preseedDir -Fetch {
+            param($to)
+            if (Test-Path $to) { return }
+            & $curlExe -sfL --retry 3 --retry-delay 5 --retry-all-errors $vkUrl -o $to
+            if ($LASTEXITCODE -ne 0) { throw "host download failed (exit $LASTEXITCODE)" }
         }
     } catch {
         Write-Warning "vulkan preseed skipped (container falls back to direct download): $($_.Exception.Message)"
+    }
+    $global:LASTEXITCODE = 0
+
+    # Both OpenSSL installers too: slproweb throttles each connection, and one 251 MB stream ran 3.6 h and failed (2026-09-30).
+    try {
+        $sslManifest = Invoke-RestMethod -TimeoutSec 60 -Uri 'https://raw.githubusercontent.com/ScoopInstaller/Main/master/bucket/openssl.json'
+        foreach ($sslArch in '64bit', 'arm64') {
+            $sslAsset = $sslManifest.architecture.$sslArch
+            Publish-PreseedFile -Endpoint $SccacheEndpoint -Name (Split-Path -Leaf $sslAsset.url) -LocalDir $preseedDir -Fetch {
+                param($to)
+                Save-ParallelRangeDownload -Url $sslAsset.url -Destination $to -ExpectedSha256 $sslAsset.hash
+            }
+        }
+    } catch {
+        Write-Warning "openssl preseed skipped (the container falls back to slproweb): $($_.Exception.Message)"
     }
     $global:LASTEXITCODE = 0
 
