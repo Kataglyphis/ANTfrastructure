@@ -17,7 +17,8 @@ is blocked on the owner. A fix in source is not a fix in an image: the Linux one
 with CON11, the Windows ones with CON12, and each item says what to check afterwards.
 **CON11 shipped 2026-09-29** (`:latest` index `sha256:696642b2…`), and CON37 retired the
 consumer workarounds it made unnecessary the same day (git history, 2026-09-29/30). The
-consumers measured four gaps it did not close: CON38–CON41.
+consumers measured four gaps it did not close: CON38–CON41. CON38 and CON39 are fixed in source
+and wait for the next publish; CON40 (a lane-time script) is done (2026-09-30, git history).
 
 ## Protocol
 
@@ -79,26 +80,29 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux image (all arches)
 
-- [ ] **CON38 — atheris cannot find the image's libFuzzer** [S, ★]. CON17's proof checked
-      `clang -print-file-name=libclang_rt.fuzzer_no_main.a`, which resolves (per-target layout,
-      `lib/clang/23/lib/<triple>/`). atheris' own probe (`setup_utils/find_libfuzzer.sh`, 3.0.0
-      and upstream) looks for the old layout, `lib/linux/libclang_rt.fuzzer_no_main-<arch>.a`, so
-      an atheris SOURCE build in the image still fails with `Failed to find libFuzzer`
-      (WebDavClient, 2026-09-29). Its 3.1.0 cp314 wheel needs no build, which is how WebDavClient
-      dropped its 3.13 pin. Fix: a compatibility link in the old layout in `llvm-cross.sh`'s
-      compiler-rt install, plus a smoke that runs atheris' probe, not clang's.
-- [ ] **CON39 — clang-tidy misses the clang cfg** [S, ★★]. CON16's
-      `<native-triple>-clang{,++}.cfg` sit beside the real compiler; clang-tidy resolves the
-      driver through `/usr/bin/clang++` (a link) and looks for the cfg there, so it selects the
-      distro GCC. BeschleunigerBallett passes `--extra-arg=--gcc-toolchain=${GCC_PREFIX}` to
-      clang-tidy until this is fixed (measured 2026-09-29 in `:latest`). Fix: install the cfg
-      pair beside every name the driver is reached by, and let `validate-compilers.sh smoke`
-      check the selection through clang-tidy too.
-- [ ] **CON40 — `uv_ensure_python_available` drops a free-threaded suffix** [S, ★].
-      `01-core/python_uv.sh` strips the `t` from `3.14t`; after a `3.14t` leg in the same
-      container, a later `uv venv --python 3.14` picked `3.14.7+freethreaded` (WebDavClient,
-      2026-09-29, one container for several legs). CI gives every leg a fresh container, so no
-      lane is red today.
+- [b] **CON38 — atheris cannot find the image's libFuzzer** [S, ★]. Blocked on the next
+      `:latest` publish (owner). CON17's proof checked `clang -print-file-name=libclang_rt.fuzzer_no_main.a`,
+      which resolves (per-target layout, `lib/clang/23/lib/<triple>/`). atheris' own probe
+      (`setup_utils/find_libfuzzer.sh`, 3.0.0 and upstream) walks `clang -print-search-dirs` for
+      `lib/linux/libclang_rt.fuzzer_no_main-<arch>.a` and derives the asan/ubsan archives it merges
+      from that path, so a source build failed with `Failed to find libFuzzer` (WebDavClient,
+      2026-09-29). Fixed in source (2026-09-30), package stage: `link_compiler_rt_legacy_names`
+      (`package-image-wiring.sh`) links the fuzzer, asan and ubsan archives under the old names, and
+      `validate-compilers.sh smoke` runs atheris' probe. Proven in the published amd64/arm64 images
+      with the links recreated: the probe finds the archive, and atheris 3.0.0 (sdist) and upstream
+      e36da74 build from source on 3.14 with all three merged sanitizer `.so`s and fuzz 200 runs.
+      riscv64 gets the links, but atheris' probe knows no riscv64 (upstream): `LIBFUZZER_LIB` there.
+      Close once the smoke passes in a published `:latest`.
+- [b] **CON39 — clang-tidy misses the clang cfg** [S, ★★]. Blocked on the next `:latest` publish
+      (owner). Clang reads `<triple>-<driver>.cfg` from the directory it was reached through; the
+      compiler resolves `/proc/self/exe`, clang-tidy keeps the compile database's `/usr/bin/clang++`
+      and looked in `/usr/bin`: `Selected GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/16`
+      on all three arches (measured 2026-09-30). Fixed in source (2026-09-30), package stage:
+      `write_clang_gcc_toolchain_cfg` writes the pair into every directory of `/usr/bin` and
+      `/usr/local/bin` holding a link to the driver, and the smoke grades clang-tidy through
+      `/usr/bin/clang` and `/usr/bin/clang++`. Proven on amd64, arm64 and riscv64 with the function
+      run in the published images: `/opt/gcc-16.2.0` selected. Afterwards BeschleunigerBallett drops
+      its `--extra-arg=--gcc-toolchain=${GCC_PREFIX}`.
 
 ## Open — Linux arm64 and riscv64
 
