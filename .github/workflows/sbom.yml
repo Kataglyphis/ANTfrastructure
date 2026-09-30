@@ -24,7 +24,8 @@ jobs:
   scan:
     name: syft ${{ matrix.platform }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    # Paging through swap took a runner-sized scan from 8 to 16 minutes locally, on a faster disk.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +50,17 @@ jobs:
           sudo mkdir -p /mnt/syft-tmp
           sudo chown "$(id -u):$(id -g)" /mnt/syft-tmp
           echo "TMPDIR=/mnt/syft-tmp" >> "${GITHUB_ENV}"
+
+      # syft's image index alone is 11 GB and the scan peaks at 31 GB (measured 2026-09-30); the runner has 16 GB.
+      - name: Give the scanner swap
+        run: |
+          set -euo pipefail
+          free -h
+          sudo fallocate -l 24G /mnt/syft-swap
+          sudo chmod 600 /mnt/syft-swap
+          sudo mkswap /mnt/syft-swap
+          sudo swapon /mnt/syft-swap
+          free -h
 
       # The same driver docs/sbom.md runs on a workstation; an empty image means the versions.env family image.
       - name: Scan the published image
