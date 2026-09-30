@@ -45,16 +45,41 @@ wire_clang_llvm_tools() {
     echo "OK: ${n} LLVM tools on PATH from ${dir}, clang's own"
 }
 
-# A bare clang took the distro GCC's libstdc++ instead of ${GCC_PREFIX}'s, which built every
-# library the image ships, so linking one failed (BACKLOG CON16). Clang reads
-# <triple>-<driver>.cfg beside itself; the native triple's pair leaves --target builds alone.
+# A bare clang selects ${GCC_PREFIX} through <native-triple>-<driver>.cfg in the directory it was
+# REACHED through, so each one linking to it gets the pair (CON16, CON39; docs/linux-cross-builds.md#clang-cross-wrappers).
 write_clang_gcc_toolchain_cfg() {
-    local dir triple drv
-    dir="$(dirname "$(readlink -f /usr/bin/clang)")"
+    local link="${1:-/usr/bin/clang}" real dir triple drv d
+    local -a link_dirs=("${@:2}")
+    [ "${#link_dirs[@]}" -gt 0 ] || link_dirs=(/usr/bin /usr/local/bin)
+    real="$(readlink -f "${link}")"
+    dir="$(dirname "${real}")"
     [ -d "${GCC_PREFIX:?GCC_PREFIX is required}/lib/gcc" ] || { echo "ERROR: ${GCC_PREFIX} holds no GCC for clang to select" >&2; return 1; }
     triple="$("${dir}/clang" -print-target-triple)"
-    for drv in clang clang++; do
-        printf -- '--gcc-toolchain=%s\n' "${GCC_PREFIX}" > "${dir}/${triple}-${drv}.cfg"
+    while IFS= read -r d; do
+        for drv in clang clang++; do
+            printf -- '--gcc-toolchain=%s\n' "${GCC_PREFIX}" > "${d}/${triple}-${drv}.cfg"
+        done
+        echo "OK: ${d}/${triple}-clang{,++}.cfg select ${GCC_PREFIX}"
+    done < <({ printf '%s\n' "${dir}"; find -L "${link_dirs[@]}" -maxdepth 1 -samefile "${real}" -printf '%h\n' 2>/dev/null || true; } | sort -u)
+}
+
+# atheris' find_libfuzzer.sh looks for lib/linux/libclang_rt.<rt>-<arch>.a, the layout before
+# per-target runtime directories, and derives the sanitizers it merges from it (BACKLOG CON38).
+link_compiler_rt_legacy_names() {
+    local clang="${1:-/usr/bin/clang}" resdir triple arch rt src n=0
+    resdir="$("${clang}" -print-resource-dir)"
+    triple="$("${clang}" -print-target-triple)"
+    arch="${triple%%-*}"
+    mkdir -p "${resdir}/lib/linux"
+    for rt in fuzzer fuzzer_no_main fuzzer_interceptors asan ubsan_standalone ubsan_standalone_cxx; do
+        src="libclang_rt.${rt}.a"
+        [ -f "${resdir}/lib/${triple}/${src}" ] || src="libclang_rt.${rt}-${arch}.a"
+        if [ ! -f "${resdir}/lib/${triple}/${src}" ]; then
+            echo "WARN: ${resdir}/lib/${triple} has no libclang_rt.${rt}; no legacy name for it"
+            continue
+        fi
+        ln -sfn "../${triple}/${src}" "${resdir}/lib/linux/libclang_rt.${rt}-${arch}.a"
+        n=$((n + 1))
     done
-    echo "OK: ${dir}/${triple}-clang{,++}.cfg select ${GCC_PREFIX}"
+    echo "OK: ${n} compiler-rt archives linked under ${resdir}/lib/linux for ${arch}"
 }

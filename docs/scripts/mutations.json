@@ -11017,5 +11017,53 @@
     "replace": "    exe_ver=\"${req_version%t}\"",
     "test": "bash linux/scripts/tests/test-uv-python-request.sh",
     "why": "python3.14 must not satisfy a 3.14t request (CON40)"
+  },
+  {
+    "id": "packaging.clang-cfg-beside-every-link",
+    "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+    "find": "find -L \"${link_dirs[@]}\" -maxdepth 1 -samefile \"${real}\" -printf '%h\\n' 2>/dev/null || true;",
+    "replace": "true;",
+    "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+    "why": "clang-tidy reaches clang through /usr/bin, so the cfg pair must sit there too (CON39)"
+  },
+  {
+    "id": "packaging.legacy-rt-link",
+    "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+    "find": "        ln -sfn \"../${triple}/${src}\" \"${resdir}/lib/linux/libclang_rt.${rt}-${arch}.a\"",
+    "replace": "        :",
+    "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+    "why": "atheris probes lib/linux/libclang_rt.fuzzer_no_main-<arch>.a only (CON38)"
+  },
+  {
+    "id": "packaging.legacy-rt-suffixed-source",
+    "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+    "find": "        [ -f \"${resdir}/lib/${triple}/${src}\" ] || src=\"libclang_rt.${rt}-${arch}.a\"",
+    "replace": "        :",
+    "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+    "why": "TheRock's staged fuzzer_no_main carries only the suffixed name (CON38)"
+  },
+  {
+    "id": "packaging.atheris-probes-legacy-path",
+    "target": "linux/scripts/06-packaging/validate-compilers.sh",
+    "find": "    x86_64 | aarch64) lib=\"lib/linux/libclang_rt.fuzzer_no_main-${machine}.a\" ;;",
+    "replace": "    x86_64 | aarch64) lib=\"lib/${machine}-unknown-linux-gnu/libclang_rt.fuzzer_no_main.a\" ;;",
+    "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+    "why": "the smoke must probe what atheris probes, not what clang finds (CON38)"
+  },
+  {
+    "id": "packaging.atheris-sanitizer-siblings",
+    "target": "linux/scripts/06-packaging/validate-compilers.sh",
+    "find": "    [ -f \"${found/.fuzzer_no_main/.${rt}}\" ] || validate_fail",
+    "replace": "    true || validate_fail",
+    "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+    "why": "atheris merges the sanitizers named after the libFuzzer path (CON38)"
+  },
+  {
+    "id": "packaging.tidy-gcc-graded",
+    "target": "linux/scripts/06-packaging/validate-compilers.sh",
+    "find": "    _smoke_gcc_selection \"clang-tidy via ${cc}\" \"${sel}\"",
+    "replace": "    :",
+    "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+    "why": "clang-tidy's GCC selection must be graded, not only the bare driver's (CON39)"
   }
 ]

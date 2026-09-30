@@ -639,13 +639,27 @@ _smoke_gcc_sanitizers() {
 }
 
 # A bare clang++ selects the image's GCC through the native triple's config file
-# (setup-package-image.sh write_clang_gcc_toolchain_cfg, BACKLOG CON16).
+# (setup-package-image.sh write_clang_gcc_toolchain_cfg, BACKLOG CON16), and so does
+# clang-tidy, which reaches the driver through the unresolved /usr/bin link (CON39).
 _smoke_clang_gcc_toolchain() {
-  local sel
+  local sel d cc
   sel="$(clang++ -x c++ -v -fsyntax-only /dev/null 2>&1 | sed -n 's/^Selected GCC installation: //p')"
-  case "${sel}" in
-    "${GCC_PREFIX:?GCC_PREFIX must be set}"/*) echo "SMOKE OK: bare clang++ selects ${sel}" ;;
-    *) validate_fail "clang-gcc-toolchain" "bare clang++ selects '${sel:-no GCC}', not ${GCC_PREFIX}" ;;
+  _smoke_gcc_selection "bare clang++" "${sel}"
+  d="$(mktemp -d)"
+  : > "${d}/t.cpp"
+  for cc in /usr/bin/clang /usr/bin/clang++; do
+    printf '[{"directory":"%s","file":"t.cpp","command":"%s -c t.cpp -o t.o"}]\n' "${d}" "${cc}" > "${d}/compile_commands.json"
+    sel="$(clang-tidy -p "${d}" --checks=-*,misc-definitions-in-headers --extra-arg=-v "${d}/t.cpp" 2>&1 \
+      | sed -n 's/^Selected GCC installation: //p' || true)"
+    _smoke_gcc_selection "clang-tidy via ${cc}" "${sel}"
+  done
+  rm -rf "${d}"
+}
+
+_smoke_gcc_selection() {
+  case "$2" in
+    "${GCC_PREFIX:?GCC_PREFIX must be set}"/*) echo "SMOKE OK: $1 selects $2" ;;
+    *) validate_fail "clang-gcc-toolchain" "$1 selects '${2:-no GCC}', not ${GCC_PREFIX}" ;;
   esac
 }
 
@@ -677,6 +691,35 @@ _smoke_clang_libfuzzer() {
   rm -rf "${d}"
 }
 
+# atheris' own probe (setup_utils/find_libfuzzer.sh, 3.0.0 and upstream), not clang's lookup: it
+# walks -print-search-dirs for the legacy lib/linux name (link_compiler_rt_legacy_names, CON38).
+_smoke_atheris_libfuzzer_probe() {
+  local machine lib dir found="" rt
+  local -a dirs=()
+  machine="$(uname -m)"
+  case "${machine}" in
+    x86_64 | aarch64) lib="lib/linux/libclang_rt.fuzzer_no_main-${machine}.a" ;;
+    *) echo "SMOKE NOTE: atheris' probe knows no ${machine}; atheris needs LIBFUZZER_LIB there"; return 0 ;;
+  esac
+  IFS=':' read -r -a dirs <<< "$(clang -print-search-dirs 2>/dev/null | sed -n 's/^libraries: =//p')"
+  for dir in "${dirs[@]}"; do
+    if [ -f "${dir}/${lib}" ]; then found="${dir}/${lib}"; break; fi
+  done
+  if [ -z "${found}" ]; then
+    validate_fail "atheris-libfuzzer" "atheris' probe finds no ${lib} under clang's library dirs"
+    return 0
+  fi
+  # setup.py merges the sanitizers named after the same path, and needs LLVMFuzzerRunDriver.
+  for rt in asan ubsan_standalone ubsan_standalone_cxx; do
+    [ -f "${found/.fuzzer_no_main/.${rt}}" ] || validate_fail "atheris-libfuzzer" "no ${found/.fuzzer_no_main/.${rt}} beside ${found}"
+  done
+  if objdump -t "${found}" 2>/dev/null | grep LLVMFuzzerRunDriver >/dev/null; then
+    echo "SMOKE OK: atheris' probe finds ${found}"
+  else
+    validate_fail "atheris-libfuzzer" "${found} has no LLVMFuzzerRunDriver (atheris calls it outdated)"
+  fi
+}
+
 validate_smoke() {
   local gcc_ver="${GCC_VERSION:-16.2.0}"
   local llvm_ver="${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)}"
@@ -700,6 +743,7 @@ validate_smoke() {
   _smoke_clang_gcc_toolchain
   _smoke_llvm_tool_versions
   _smoke_clang_libfuzzer
+  _smoke_atheris_libfuzzer_probe
 
   if [ "${_VALIDATE_ERRORS}" -gt 0 ]; then
     echo "SMOKE FAILED: ${_VALIDATE_ERRORS} check(s) failed" >&2

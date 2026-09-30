@@ -1055,6 +1055,17 @@ the package stage writes `<native-triple>-clang.cfg` and `-clang++.cfg` beside t
 compiler, holding `--gcc-toolchain=${GCC_PREFIX}` (BACKLOG CON16), which clang reads
 for a native build only; a `--target` build loads neither.
 
+Clang looks for the pair in the directory it was *reached through*, not the one it
+resolves to. The compiler resolves `/proc/self/exe`, so a bare `clang++` finds the pair
+beside `/usr/local/llvm-target/bin/clang-23`; clang-tidy builds its driver from the
+compile database's `/usr/bin/clang++` unresolved and looked in `/usr/bin`, where the
+first image after CON11 had no pair: `Selected GCC installation: /usr/bin/../lib/gcc/x86_64-linux-gnu/16`
+(BACKLOG CON39, measured 2026-09-30). `write_clang_gcc_toolchain_cfg` therefore writes
+the pair into every directory of `/usr/bin` and `/usr/local/bin` holding a link to the
+driver (`find -L … -samefile`), and `validate-compilers.sh smoke` grades clang-tidy
+through `/usr/bin/clang` and `/usr/bin/clang++`. A database naming a bare `clang++`
+(no directory) still reaches no pair; CMake always writes the full path.
+
 **`CROSS_GCC_TOOLCHAIN_PATH` and `export_clang_gcc_toolchain_env` were deleted on
 2026-09-05** (backlog CL3). The function exported `--gcc-toolchain` into
 `CFLAGS`/`CXXFLAGS`/`LDFLAGS` and had no caller in the build, so the knob changed
