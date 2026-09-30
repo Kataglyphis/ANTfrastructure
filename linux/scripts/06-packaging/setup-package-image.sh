@@ -733,6 +733,7 @@ main() {
     preserve_custom_gcc "${GCC_VERSION}"
     wire_clang_llvm_tools
     write_clang_gcc_toolchain_cfg
+    link_compiler_rt_legacy_names
     ensure_native_rust_toolchain
     wire_cargo_symlinks
     install_web_lane_toolchain

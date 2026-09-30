@@ -368,6 +368,8 @@ lane runs on the next `:latest`.
 | What | Before | After |
 | --- | --- | --- |
 | A window on arm64/riscv64 Vulkan (CON41) | the loader lists no `VK_KHR_{xcb,xlib,wayland}_surface`, so a windowed test aborts and only amd64 renders under `xvfb-run` | all three arches list them; the image smoke fails an arch that does not ([why](vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems)) |
+| clang-tidy on a compile database naming `/usr/bin/clang++` (CON39) | selects the distro GCC 16; BeschleunigerBallett passes `--extra-arg=--gcc-toolchain=${GCC_PREFIX}` | `/usr/bin` carries the cfg pair too, so it selects `${GCC_PREFIX}` ([`linux-cross-builds.md` § Clang cross wrappers](linux-cross-builds.md#clang-cross-wrappers)) |
+| An atheris source build (CON38) | `Failed to find libFuzzer`: its `find_libfuzzer.sh` probes only `lib/linux/libclang_rt.fuzzer_no_main-<arch>.a` | the fuzzer, asan and ubsan archives are linked under that name as well; riscv64 still needs `LIBFUZZER_LIB`, since atheris' probe knows no riscv64 |
 
 ## The Android SDK roots are advertised
 
