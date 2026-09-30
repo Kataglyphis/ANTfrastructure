@@ -704,6 +704,12 @@ Describe 'rocm-checks\Torch.ps1: the one venv probe, shared with Install-TorchRo
         }
         return [pscustomobject]@{ Rc = $LASTEXITCODE; Out = $out; CacheMade = (Test-Path (Join-Path $Dir 'cache')) }
     }
+    # A refusal: a non-zero exit, the named reason in the output, and no wheel cache created.
+    function Assert-TorchRocmInstallRefused { param([object]$Result, [string]$Pattern, [string]$Why)
+        Assert-True ($Result.Rc -ne 0) "exit code $($Result.Rc); output: $($Result.Out)"
+        Assert-Match $Pattern $Result.Out $Why
+        Assert-False $Result.CacheMade 'refused before any download'
+    }
 
     It 'returns the last JSON line as a hashtable, ran the probe source and removed its file' {
         Invoke-InTestDir { param($dir)
@@ -748,18 +754,14 @@ Describe 'rocm-checks\Torch.ps1: the one venv probe, shared with Install-TorchRo
     It 'Install-TorchRocm checks the wheels against the check''s venv report, before any download' {
         Invoke-InTestDir { param($dir)
             $r = Invoke-TorchRocmInstallerTo -Dir $dir -Venv "@{ tag = 'cp313'; torch = '2.14.0+cpu'; torchvision = '0.29.0+cpu'; setuptools = '83.0.0' }"
-            Assert-True ($r.Rc -ne 0) "exit code $($r.Rc); output: $($r.Out)"
-            Assert-Match 'the app venv runs cp313' $r.Out 'the report''s venv facts reached the wheel check'
-            Assert-False $r.CacheMade 'refused before any download'
+            Assert-TorchRocmInstallRefused $r 'the app venv runs cp313' 'the report''s venv facts reached the wheel check'
         }
     }
 
     It 'Install-TorchRocm refuses, before any download, a missing source-built wheel directory' {
         Invoke-InTestDir { param($dir)
             $r = Invoke-TorchRocmInstallerTo -Dir $dir -Venv "@{ tag = 'cp314'; torch = '2.14.0+cpu'; torchvision = '0.29.0+cpu'; setuptools = '83.0.0' }" -WheelDir (Join-Path $dir 'nowhere')
-            Assert-True ($r.Rc -ne 0) "exit code $($r.Rc); output: $($r.Out)"
-            Assert-Match 'no source-built wheels at' $r.Out 'the torch-rocm-wheels mount is required'
-            Assert-False $r.CacheMade 'refused before any download'
+            Assert-TorchRocmInstallRefused $r 'no source-built wheels at' 'the torch-rocm-wheels mount is required'
         }
     }
 
@@ -770,12 +772,9 @@ Describe 'rocm-checks\Torch.ps1: the one venv probe, shared with Install-TorchRo
             New-Item -ItemType Directory -Force -Path $lib | Out-Null
             foreach ($gfx in 'gfx1036', 'gfx1200', 'gfx1201') { [System.IO.File]::WriteAllText((Join-Path $lib "TensileLibrary_lazy_$gfx.dat"), 'x') }
             $r = Invoke-TorchRocmInstallerTo -Dir $dir -Venv $venv -Env @{ HIP_PATH = (Join-Path $dir 'rocm') }
-            Assert-True ($r.Rc -ne 0) "exit code $($r.Rc); output: $($r.Out)"
-            Assert-Match "rocBLAS serves gfx1036, the device pins cover only gfx1201, gfx1200" $r.Out 'coverage refusal'
-            Assert-False $r.CacheMade 'refused before any download'
+            Assert-TorchRocmInstallRefused $r "rocBLAS serves gfx1036, the device pins cover only gfx1201, gfx1200" 'coverage refusal'
             $r = Invoke-TorchRocmInstallerTo -Dir $dir -Venv $venv
-            Assert-Match 'neither HIP_PATH nor ROCM_PATH is set' $r.Out 'no ROCm root'
-            Assert-False $r.CacheMade 'refused before any download'
+            Assert-TorchRocmInstallRefused $r 'neither HIP_PATH nor ROCM_PATH is set' 'no ROCm root'
         }
     }
 }
@@ -869,16 +868,7 @@ Describe 'Dockerfile.torch: cpu and nvidia build the unchanged app stage' {
         $runs = @($lines | Where-Object { $_ -match '^RUN\s' })
         Assert-Equal 2 $runs.Count 'torch and torchvision are two RUNs, so a torchvision failure keeps the torch layer'
         $builder = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-TorchRocmFromSource.ps1'))
-        $closure = [System.Collections.Generic.List[string]]::new()
-        $queue = [System.Collections.Generic.Queue[string]]::new()
-        foreach ($m in [regex]::Matches($builder, "'(Windows[A-Za-z0-9._]+)\.psm1'")) { $queue.Enqueue($m.Groups[1].Value) }
-        while ($queue.Count -gt 0) {
-            $m = $queue.Dequeue()
-            if ($closure.Contains($m)) { continue }
-            $closure.Add($m)
-            $text = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) "windows\scripts\modules\$m.psm1"))
-            foreach ($s in [regex]::Matches($text, "PSScriptRoot\s+'([A-Za-z0-9._]+)\.psm1'")) { $queue.Enqueue($s.Groups[1].Value) }
-        }
+        $closure = Get-ModuleImportClosure -Seed @([regex]::Matches($builder, "'(Windows[A-Za-z0-9._]+)\.psm1'") | ForEach-Object { $_.Groups[1].Value })
         foreach ($run in $runs) {
             foreach ($m in 'target=C:\sccache,id=sccache-winamd64-2', 'target=C:\sccache-logs,id=sccache-logs-winamd64',
                 'source=windows/scripts/build/Build-TorchRocmFromSource.ps1,target=C:\bkmnt\Build-TorchRocmFromSource.ps1',

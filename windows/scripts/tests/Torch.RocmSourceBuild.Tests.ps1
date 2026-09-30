@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Build-TorchRocmFromSource.ps1's pure parts: the wheel versions and names, the version.txt check,
+# Build-TorchRocmFromSource.ps1's pure parts: the wheel versions and names, the version.txt check, the steps both RUNs share,
 # torch/_rocm_init.py, the torch and torchvision build env, the OpenMP runtime check, the venv shim and the runtime pins.
 # NOT covered: the compile itself, which only a real rocm-lane build of Dockerfile.torch runs.
 
@@ -30,8 +30,52 @@ Describe 'Build-TorchRocmFromSource: versions and wheel names' {
     }
 }
 
+Describe 'Build-TorchRocmFromSource: the steps both RUNs share' {
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmBuilder -FunctionName 'Save-TorchRocmTree', 'Assert-TorchRocmTreeVersion',
+        'Get-TorchRocmPythonTag', 'Install-TorchRocmBuiltWheel', 'Get-TorchRocmWheelName')
+
+    It 'fetches the commit its key pins and holds the tree''s version.txt to the version key' {
+        Invoke-InTestDir { param($dir)
+            function git { }
+            function Save-GitCommitSource { param($Name, $Repository, $Commit, $WorkDir)
+                $src = Join-Path $WorkDir $Name; [void][System.IO.Directory]::CreateDirectory($src)
+                [System.IO.File]::WriteAllText((Join-Path $src 'version.txt'), "0.29.0a0`n"); [System.IO.File]::WriteAllText((Join-Path $src 'commit'), $Commit)
+                return $src
+            }
+            $src = Invoke-WithEnv @{ T_COMMIT = ' abc123 '; T_VERSION = '0.29.0' } { Save-TorchRocmTree -Name 'vision' -Repository 'r' -CommitKey 'T_COMMIT' -VersionKey 'T_VERSION' -WorkDir $dir }
+            Assert-Equal 'abc123' ([System.IO.File]::ReadAllText((Join-Path $src 'commit'))) 'the trimmed commit pin'
+            Assert-Throws { Invoke-WithEnv @{ T_COMMIT = 'abc'; T_VERSION = '0.30.0' } { Save-TorchRocmTree -Name 'vision' -Repository 'r' -CommitKey 'T_COMMIT' -VersionKey 'T_VERSION' -WorkDir $dir } } `
+                'another release' -MessagePattern 'T_COMMIT commit is 0\.29\.0.*pin is 0\.30\.0'
+        }
+    }
+
+    It 'reads the venv''s cpXY tag and refuses anything else' {
+        function fakepy { $script:FakeTag }
+        $script:FakeTag = 'cp314'
+        Assert-Equal 'cp314' (Get-TorchRocmPythonTag -Python 'fakepy') 'the tag'
+        $script:FakeTag = 'Traceback'
+        Assert-Throws { Get-TorchRocmPythonTag -Python 'fakepy' } 'no tag' -MessagePattern "reports tag 'Traceback'"
+    }
+
+    It 'installs and imports the exact wheel the build left, and refuses a build that left none' {
+        Invoke-InTestDir { param($dir)
+            $script:Logged = [System.Collections.Generic.List[string]]::new()
+            function Invoke-TorchRocmLogged { param($CommandLine, $WorkingDir, $LogName) $script:Logged.Add("$LogName :: $CommandLine") }
+            $name = 'torchvision-0.29.0+rocm10.0.0-cp314-cp314-win_amd64.whl'
+            $arg = @{ Python = 'py'; SourceDir = $dir; Distribution = 'torchvision'; BuildVersion = '0.29.0+rocm10.0.0'; PythonTag = 'cp314'; WorkDir = $dir; LogPrefix = 'tv'; ImportCode = 'import torchvision' }
+            Assert-Throws { Install-TorchRocmBuiltWheel @arg } 'no wheel' -MessagePattern 'torchvision build left no'
+            Assert-Equal 0 $script:Logged.Count 'nothing installed without the wheel'
+            [void][System.IO.Directory]::CreateDirectory((Join-Path $dir 'dist'))
+            [System.IO.File]::WriteAllText((Join-Path $dir "dist\$name"), 'x')
+            Assert-Equal (Join-Path $dir "dist\$name") (Install-TorchRocmBuiltWheel @arg) 'returns the wheel'
+            Assert-Match "^tv-install\.log :: uv pip install --python ""py"" --no-deps "".*$([regex]::Escape($name))""$" $script:Logged[0] 'install'
+            Assert-Equal 'tv-import.log :: "py" -c "import torchvision"' $script:Logged[1] 'import in the build venv'
+        }
+    }
+}
+
 Describe 'Build-TorchRocmFromSource: the ROCm loader and the build env' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmBuilder -FunctionName 'Get-TorchRocmInitSource', 'Get-TorchRocmCommonEnv', 'Get-TorchRocmTorchEnv', 'Get-TorchRocmVisionEnv')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmBuilder -FunctionName 'Get-TorchRocmInitSource', 'Get-TorchRocmCommonEnv', 'Get-TorchRocmTorchEnv', 'Get-TorchRocmVisionEnv', 'Copy-TorchRocmEnv')
 
     It '_rocm_init.py preloads ROCm through rocm_sdk at the release, as AMD''s wheels do' {
         $src = Get-TorchRocmInitSource -Release '10.0.0'
