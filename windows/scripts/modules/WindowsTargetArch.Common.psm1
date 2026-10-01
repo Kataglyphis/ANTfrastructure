@@ -49,6 +49,8 @@ $script:TargetArchTable = @{
         CMakeSystemProcessor = 'AMD64'
         # QAIRT SDK lib\<this>\ holds the per-arch QNN backend DLLs.
         QnnLibDir = 'x86_64-windows-msvc'
+        # Package file names, wix build -arch, AppxManifest ProcessorArchitecture and VC\Redist\MSVC\<ver>\<this>.
+        PackageArch = 'x64'
     }
     arm64 = @{
         Arch = 'arm64'
@@ -74,6 +76,7 @@ $script:TargetArchTable = @{
         LibMachine = 'arm64'
         CMakeSystemProcessor = 'ARM64'
         QnnLibDir = 'aarch64-windows-msvc'
+        PackageArch = 'arm64'
     }
 }
 
@@ -413,6 +416,11 @@ function Get-QnnSdkLibDirName {
     return (Get-WindowsTargetArchInfo -Arch $Arch).QnnLibDir
 }
 
+function Get-WindowsPackageArch {
+    param([string]$Arch = '')
+    return (Get-WindowsTargetArchInfo -Arch $Arch).PackageArch
+}
+
 function Get-PythonPlatformName {
     param([string]$Arch = '')
     return (Get-WindowsTargetArchInfo -Arch $Arch).PythonPlatform
@@ -618,6 +626,7 @@ Export-ModuleMember -Function @(
     'Get-PythonWheelTag',
     'Get-QnnSdkLibDirName',
     'Get-PythonPlatformName',
+    'Get-WindowsPackageArch',
     'Get-CpythonBuildPlatform',
     'Get-CpythonOutputDir',
     'Get-RustTargetTriple',

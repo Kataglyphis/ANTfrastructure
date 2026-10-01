@@ -7,6 +7,30 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - Python app bundles and their packages for Windows arm64
+
+- **`Invoke-CiPackaging.ps1 -TargetArch arm64`** builds a consumer's app for arm64 in
+  `:winarm64`. Empty takes the image's `WINDOWS_TARGET_ARCH`, so x64 runs as before. It
+  builds only the pure wheel: no Cython step, which compiles for the host, and no host venv
+  sync. The bundle and its zip, MSI and MSIX go to `dist\windows-arm64`.
+- **`New-PythonAppBundle.ps1 -TargetArch arm64`:**
+  - `New-PythonAppCrossRuntime` lays out the image's target CPython with `PC\layout --arch arm64`.
+  - `Install-PythonAppCrossPackage` installs the lock with `uv pip install --target
+    --python-platform aarch64-pc-windows-msvc`.
+  - The chain cv2 comes from the target CPython, and the launchers are compiled for aarch64.
+  - The self-test is deferred: `Test-PythonAppSelfTest.ps1`, now standalone, goes next to the
+    bundle for the `windows-11-arm` job.
+  - `bundle.json` records `arch` and `python`.
+- **`New-PythonAppPackage.ps1`** reads the arch from `bundle.json`. It names the packages
+  `windows-<x64|arm64>` and passes it to `wix build -arch` and to the AppxManifest's
+  `ProcessorArchitecture`. An arm64 bundle is packed and signed, never started. The new
+  `Get-WindowsPackageArch` is the one place that spells the arch the x64/arm64 way.
+- **Proven** in `:winarm64` with OrchestrANT 0.0.29: the arch gate passed over 191 PE files, G6
+  passed, and all three packages were built and the MSIX signed. They are three times the x64
+  size (zip 902 MB), because the image's arm64 OpenCV is a CUDA build. That gap, and the
+  image's host CPython that predates the version-string fix, are BACKLOG CON48.
+- Pester: `PythonApp.Cross.Tests.ps1`, plus arm64 cases in the wheel, MSIX and target-arch suites.
+
 ## 2026-10-01 - A staged test can report its own skip; OrchestrANT's permissions census is at 0
 
 - **`Invoke-StagedTests.ps1` reads an optional `skip_pattern` per `tests.json` entry.**

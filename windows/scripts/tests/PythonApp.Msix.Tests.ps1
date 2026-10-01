@@ -10,12 +10,20 @@ function script:New-TestMsixApp {
         scripts = @('demo-gui', 'demo-cli'); gui_script = 'demo-gui' }
 }
 
+# Writes the test app's manifest into -Dir and returns it parsed.
+function script:Read-TestAppxManifest([string]$Dir, [string]$Arch = '') {
+    # No -Arch at all unless one is given, so the default is what gets tested.
+    $archArg = @{}
+    if ($Arch) { $archArg['Arch'] = $Arch }
+    $path = New-PythonAppAppxManifest -App (New-TestMsixApp) -Version '1.2.3' -Publisher 'CN=Pub Lisher' -Destination "$Dir\AppxManifest.xml" @archArg
+    return [xml](Get-Content -LiteralPath $path -Raw)
+}
+
 Describe 'New-PythonAppAppxManifest' {
 
     It 'gives every script a console app with its own alias, and lists only gui_script in Start' {
         Invoke-InTestDir { param($d)
-            $path = New-PythonAppAppxManifest -App (New-TestMsixApp) -Version '1.2.3' -Publisher 'CN=Pub Lisher' -Destination "$d\AppxManifest.xml"
-            [xml]$xml = Get-Content -LiteralPath $path -Raw
+            $xml = Read-TestAppxManifest $d
             Assert-Equal 'PubLisher.DemoApp|CN=Pub Lisher|1.2.3.0' "$($xml.Package.Identity.Name)|$($xml.Package.Identity.Publisher)|$($xml.Package.Identity.Version)" 'identity'
             $apps = @($xml.Package.Applications.Application)
             Assert-Equal 'demogui,democli' (($apps | ForEach-Object Id) -join ',') 'one app per script'
@@ -26,6 +34,14 @@ Describe 'New-PythonAppAppxManifest' {
             Assert-Equal 'true,true' (($apps | ForEach-Object { $_.GetAttribute('SupportsMultipleInstances', $desktop4) }) -join ',') 'multiple instances'
             Assert-Equal '|none' (($apps | ForEach-Object { $_.VisualElements.GetAttribute('AppListEntry') }) -join '|') 'only the GUI script is listed'
             Assert-Equal 'A <demo> & more' $xml.Package.Properties.Description 'escaped and read back'
+            Assert-Equal 'x64' $xml.Package.Identity.ProcessorArchitecture 'x64 unless told otherwise'
+        }
+    }
+
+    It 'names the arm64 bundle arm64, and refuses an arch spelling MSIX does not take' {
+        Invoke-InTestDir { param($d)
+            Assert-Equal 'arm64' (Read-TestAppxManifest $d 'arm64').Package.Identity.ProcessorArchitecture 'ProcessorArchitecture'
+            Assert-Throws { New-PythonAppAppxManifest -App (New-TestMsixApp) -Version '1.2.3' -Publisher 'CN=Pub' -Destination "$d\a.xml" -Arch 'amd64' }
         }
     }
 

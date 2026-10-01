@@ -308,7 +308,10 @@ AccelerANTgine and BeschleunigerBallett (owner decision 2026-09-25). OmniAcceler
 `windows-arm64.yml` (2026-09-27) is a hybrid: Flutter cannot cross-build `windows-arm64` from an
 x64 host (flutter/flutter#62597, open), so its natives cross-build here and a second job builds
 the Flutter app natively on `windows-11-arm` against them. Its vendored Cargokit gained
-`windows-arm64` and a switch that takes a prebuilt library for that.
+`windows-arm64` and a switch that takes a prebuilt library for that. OrchestrANT's
+`windows-arm64-cross.yml` (2026-10-01) is the Python one: `Invoke-CiPackaging.ps1 -TargetArch
+arm64` lays out an app bundle and its packages, and the run job starts the bundle and the
+unpacked zip (`docs/python-app-bundles.md` § Packages).
 
 Each caller is thin. It names its build script, the script's arguments and the directory the
 product lands in. The hub's reusable `container-ci-windows.yml` owns everything else, and it

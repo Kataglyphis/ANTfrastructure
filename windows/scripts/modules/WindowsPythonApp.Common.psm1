@@ -6,11 +6,12 @@
 Set-StrictMode -Version Latest
 
 # Guarded, never -Force: a forced nested import unloads the caller's top-level copy.
-foreach ($sibling in 'WindowsOrtPayload.Common', 'WindowsCrossBundle.Common') {
+foreach ($sibling in 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common') {
     if (-not (Get-Module -Name $sibling)) { Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking }
 }
 
 $script:LauncherSource = Join-Path (Split-Path $PSScriptRoot -Parent) 'python\app-launcher\launcher.c'
+$script:SelfTestScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'python\Test-PythonAppSelfTest.ps1'
 
 function Get-PythonAppConfig {
     <#
@@ -57,16 +58,25 @@ function New-PythonAppRuntime {
 
     $python = Join-Path $BuildDir 'python.exe'
     if (-not (Test-Path -LiteralPath $python -PathType Leaf)) { throw "No built CPython at $python" }
-    $layout = Join-Path $SourceDir 'PC\layout'
-    if (-not (Test-Path -LiteralPath $layout -PathType Container)) { throw "No PC\layout in ${SourceDir}: the CPython source tree is incomplete" }
+    if (-not (Test-Path -LiteralPath (Join-Path $SourceDir 'PC\layout') -PathType Container)) { throw "No PC\layout in ${SourceDir}: the CPython source tree is incomplete" }
+    return Invoke-PythonAppLayout -HostPython $python -SourceDir $SourceDir -Destination $Destination -Arguments @('--build', $BuildDir, '--include-venv')
+}
+
+# Runs PC\layout into -Destination, empties the copied site-packages and returns the runtime's python.exe.
+function Invoke-PythonAppLayout {
+    param(
+        [Parameter(Mandatory)][string]$HostPython,
+        [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$Destination,
+        [Parameter(Mandatory)][string[]]$Arguments
+    )
     # Tests, IDLE and Tk have no place in an app; pip stays out, since uv installs from outside.
-    & $python $layout --source $SourceDir --build $BuildDir --copy $Destination --include-stable --include-venv --precompile
+    & $HostPython (Join-Path $SourceDir 'PC\layout') --source $SourceDir @Arguments --copy $Destination --include-stable --precompile
     if ($LASTEXITCODE -ne 0) { throw "PC\layout failed (exit $LASTEXITCODE)" }
     $runtimePython = Join-Path $Destination 'python.exe'
     if (-not (Test-Path -LiteralPath $runtimePython -PathType Leaf)) { throw "PC\layout left no python.exe in $Destination" }
-    # PC\layout copies the image's own site-packages (chain wheels, cv2 bindings); an app starts from its lock alone.
-    $sitePackages = Join-Path $Destination 'Lib\site-packages'
-    Get-ChildItem -LiteralPath $sitePackages -Force -ErrorAction SilentlyContinue |
+    # PC\layout copies the image's own site-packages (chain wheels, cv2 bindings, a shim); an app starts from its lock alone.
+    Get-ChildItem -LiteralPath (Join-Path $Destination 'Lib\site-packages') -Force -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -ne 'README.txt' } | Remove-Item -Recurse -Force
     return $runtimePython
 }
@@ -86,20 +96,22 @@ function Get-PythonAbiTag {
 function Select-PythonAppWheel {
     <#
     .SYNOPSIS
-        The app's win_amd64 wheel for -AbiTag (or abi3), else its pure wheel; binaries for another ABI alone are an error, not a fallback.
+        The app's -PlatformTag wheel for -AbiTag (or abi3), else its pure wheel; binaries for another ABI alone are an error, not a fallback.
     #>
     [OutputType([IO.FileInfo])]
     param(
         [Parameter(Mandatory)][IO.FileInfo[]]$Wheels,
-        [Parameter(Mandatory)][string]$AbiTag
+        [Parameter(Mandatory)][string]$AbiTag,
+        [string]$PlatformTag = 'win_amd64'
     )
-    $binary = @($Wheels | Where-Object { $_.Name -match '-win_amd64\.whl$' })
-    $match = @($binary | Where-Object { $_.Name -match "-($([regex]::Escape($AbiTag))|abi3)-win_amd64\.whl$" })
+    $platform = [regex]::Escape($PlatformTag)
+    $binary = @($Wheels | Where-Object { $_.Name -match "-$platform\.whl$" })
+    $match = @($binary | Where-Object { $_.Name -match "-($([regex]::Escape($AbiTag))|abi3)-$platform\.whl$" })
     if ($match.Count -gt 0) { return $match[0] }
     if ($binary.Count -gt 0) { throw "No $AbiTag wheel, only $(($binary | ForEach-Object Name) -join ', '); build it with the bundle's interpreter (uv build --python X.Y+gil)" }
     $pure = @($Wheels | Where-Object { $_.Name -match '-none-any\.whl$' })
     if ($pure.Count -gt 0) { return $pure[0] }
-    throw "No win_amd64 or none-any wheel among $(($Wheels | ForEach-Object Name) -join ', ')"
+    throw "No $PlatformTag or none-any wheel among $(($Wheels | ForEach-Object Name) -join ', ')"
 }
 
 # Throws with -What when uv fails, so no step can forget $LASTEXITCODE.
@@ -148,6 +160,77 @@ function Install-PythonAppPackage {
     Invoke-AppUv -What "installing the chain ORT wheel $OrtWheel" -Arguments @('pip', 'install', '--python', $Python, '--compile-bytecode', '--no-index', '--no-deps', $OrtWheel)
 }
 
+function New-PythonAppCrossRuntime {
+    <#
+    .SYNOPSIS
+        Lays the image's target CPython (C:\runtime\python) out as an app runtime in -Destination; returns its python.exe.
+    .DESCRIPTION
+        The arm64 bundle ships the target CPython installed, not its PCbuild directory, so this gathers PC\layout's inputs
+        into a flat build dir and runs the host interpreter of the same source tree on CPython's own PC\layout, which only
+        copies the target binaries. No venv launcher was staged, so there is no --include-venv.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][string]$TargetPython,
+        [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$HostPython,
+        [Parameter(Mandatory)][ValidateSet('arm64')][string]$Arch,
+        [Parameter(Mandatory)][string]$WorkDir,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    foreach ($required in (Join-Path $TargetPython 'python.exe'), (Join-Path $SourceDir 'PC\layout')) {
+        if (-not (Test-Path -LiteralPath $required)) { throw "No ${required}: the image carries no target CPython for $Arch" }
+    }
+    $flat = Join-Path $WorkDir "pcbuild-$Arch"
+    if (Test-Path -LiteralPath $flat) { Remove-Item -LiteralPath $flat -Recurse -Force }
+    $null = New-Item -ItemType Directory -Force -Path $flat
+    Get-ChildItem -LiteralPath $TargetPython -File | Where-Object { $_.Extension -in '.exe', '.dll' } | Copy-Item -Destination $flat
+    Get-ChildItem -LiteralPath (Join-Path $TargetPython 'DLLs') -File | Where-Object { $_.Extension -in '.pyd', '.dll' } | Copy-Item -Destination $flat
+    Copy-Item -LiteralPath (Join-Path $SourceDir 'LICENSE') -Destination (Join-Path $flat 'LICENSE.txt')
+    return Invoke-PythonAppLayout -HostPython $HostPython -SourceDir $SourceDir -Destination $Destination -Arguments @('--build', $flat, '--arch', $Arch)
+}
+
+function Install-PythonAppCrossPackage {
+    <#
+    .SYNOPSIS
+        Installs the locked dependencies, the app wheel and the chain ORT wheel into a target runtime's site-packages.
+    .DESCRIPTION
+        uv resolves for -Platform from the host interpreter and writes with --target, since the target interpreter cannot
+        run here. A dependency with no wheel at all (antlr4-python3-runtime) is built by the host; a compiled one would
+        carry host binaries, which the bundle's arch gate refuses. -Exclude leaves packages out of the lock export: the
+        PyPI ORT the chain wheel replaces, and an OpenCV the chain cv2 replaces (PyPI has no win_arm64 opencv-python).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$HostPython,
+        [Parameter(Mandatory)][string]$SitePackages,
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$AppWheel,
+        [Parameter(Mandatory)][string[]]$Extras,
+        [Parameter(Mandatory)][string]$OrtWheel,
+        [Parameter(Mandatory)][string]$WorkDir,
+        [Parameter(Mandatory)][string]$Platform,
+        [Parameter(Mandatory)][string]$PythonVersion,
+        [string[]]$Exclude = @('onnxruntime')
+    )
+
+    $requirements = Join-Path $WorkDir 'requirements.cross.txt'
+    $export = @('export', '--locked', '--no-dev', '--no-emit-project', '--format', 'requirements.txt') +
+        @($Extras | ForEach-Object { '--extra', $_ }) + @($Exclude | ForEach-Object { '--no-emit-package', $_ }) + @('--output-file', $requirements)
+    Push-Location $RepoRoot
+    try { Invoke-AppUv -What 'uv export' -Arguments $export } finally { Pop-Location }
+    $common = @('pip', 'install', '--python', $HostPython, '--target', $SitePackages, '--python-platform', $Platform,
+        '--python-version', $PythonVersion, '--compile-bytecode')
+    Invoke-AppUv -What 'installing the locked dependencies' -Arguments ($common + @('--requirement', $requirements))
+    Invoke-AppUv -What "installing $AppWheel" -Arguments ($common + @('--no-deps', $AppWheel))
+    Invoke-AppUv -What "installing the chain ORT wheel $OrtWheel" -Arguments ($common + @('--no-index', '--no-deps', $OrtWheel))
+    # uv's script trampolines match the HOST arch; the bundle has launchers of its own, and the arch gate would refuse these.
+    $scripts = Join-Path $SitePackages 'bin'
+    if (Test-Path -LiteralPath $scripts) { Remove-Item -LiteralPath $scripts -Recurse -Force }
+}
+
 function Copy-ChainOpenCvPackage {
     <#
     .SYNOPSIS
@@ -165,7 +248,8 @@ function Copy-ChainOpenCvPackage {
         [string]$RuntimeRoot = 'C:\runtime',
         [switch]$ReferenceImage,
         # Bundle dirs that already hold part of the closure (the chain ORT's capi): searched first, named in config, never copied.
-        [string[]]$SharedDirectory = @()
+        [string[]]$SharedDirectory = @(),
+        [ValidateSet('amd64', 'arm64')][string]$Arch = 'amd64'
     )
 
     if (-not (Test-Path -LiteralPath (Join-Path $Source '__init__.py') -PathType Leaf)) { throw "No chain cv2 at $Source; the image predates it" }
@@ -186,13 +270,13 @@ function Copy-ChainOpenCvPackage {
     if ($pyd.Count -ne 1) { throw "Expected one cv2*.pyd under $dest, found $($pyd.Count)" }
 
     if ($ReferenceImage) {
-        $closure = @(Get-PeImportClosure -Path $pyd[0].FullName -SearchDirectory $search -Arch amd64)
+        $closure = @(Get-PeImportClosure -Path $pyd[0].FullName -SearchDirectory $search -Arch $Arch)
         $used = @($closure | ForEach-Object { Split-Path $_ -Parent }) | Select-Object -Unique
         $result = @($search | Where-Object { $used -contains $_ })
         $paths = @($result | ForEach-Object { "    r'$_'," })
     } else {
         $shared = @($SharedDirectory | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | ForEach-Object { (Resolve-Path -LiteralPath $_).ProviderPath })
-        $closure = @(Get-PeImportClosure -Path $pyd[0].FullName -SearchDirectory (@($shared) + $search) -Arch amd64)
+        $closure = @(Get-PeImportClosure -Path $pyd[0].FullName -SearchDirectory (@($shared) + $search) -Arch $Arch)
         $bin = Join-Path $dest 'bin'
         $null = New-Item -ItemType Directory -Force -Path $bin
         $result = @(foreach ($source in $closure) {
@@ -226,14 +310,17 @@ function Install-PythonAppChainOpenCv {
         [Parameter(Mandatory)][string]$Python,
         [Parameter(Mandatory)][string]$SitePackages,
         [string]$Source = 'C:\temp\cpython\Lib\site-packages\cv2',
-        [string]$RuntimeRoot = 'C:\runtime'
+        [string]$RuntimeRoot = 'C:\runtime',
+        [ValidateSet('amd64', 'arm64')][string]$Arch = 'amd64',
+        # Cross: the target runtime cannot run here, so the host interpreter of the same CPython compiles, and no PyPI cv2 was installed.
+        [string]$HostPython = ''
     )
 
-    Remove-AppDistribution -Python $Python -Pattern '^opencv(-contrib)?-python(-headless)?$'
+    if (-not $HostPython) { Remove-AppDistribution -Python $Python -Pattern '^opencv(-contrib)?-python(-headless)?$' }
     # opencv_dnn imports onnxruntime.dll: it loads the bundle's chain ORT rather than shipping a second copy.
-    $copied = @(Copy-ChainOpenCvPackage -SitePackages $SitePackages -Source $Source -RuntimeRoot $RuntimeRoot -SharedDirectory (Join-Path $SitePackages 'onnxruntime\capi'))
+    $copied = @(Copy-ChainOpenCvPackage -SitePackages $SitePackages -Source $Source -RuntimeRoot $RuntimeRoot -SharedDirectory (Join-Path $SitePackages 'onnxruntime\capi') -Arch $Arch)
     # The launchers pass -B, so bytecode the bundle does not ship is recompiled on every start.
-    & $Python -m compileall -q (Join-Path $SitePackages 'cv2')
+    & $(if ($HostPython) { $HostPython } else { $Python }) -m compileall -q (Join-Path $SitePackages 'cv2')
     if ($LASTEXITCODE -ne 0) { throw "compiling the chain cv2 package failed (exit $LASTEXITCODE)" }
     return $copied
 }
@@ -278,7 +365,8 @@ function New-PythonAppLauncher {
         [Parameter(Mandatory)][string]$Destination,
         [Parameter(Mandatory)][string]$DataEnv,
         [Parameter(Mandatory)][string]$DataDir,
-        [Parameter(Mandatory)][string]$WorkDir
+        [Parameter(Mandatory)][string]$WorkDir,
+        [ValidateSet('amd64', 'arm64')][string]$Arch = 'amd64'
     )
 
     if ($EntryPoint -notmatch '^(?<m>[\w.]+):(?<f>\w+)$') { throw "Entry point '$EntryPoint' is not 'module:function'" }
@@ -295,8 +383,10 @@ function New-PythonAppLauncher {
     ) | Set-Content -LiteralPath $header -Encoding ascii
     $exe = Join-Path $Destination "$Name.exe"
     $obj = Join-Path $WorkDir "$Name.obj"
+    # A bare clang-cl targets x64 even in the arm64 bundle's VS environment, so a cross build names its triple.
+    $target = @(if ($Arch -ne 'amd64') { "/clang:--target=$(Get-ClangTargetTriple -Arch $Arch)" })
     # /MT: the launcher sits beside runtime\, not in it, so it cannot lean on the VC++ DLLs the runtime carries.
-    & clang-cl /nologo /O2 /MT /W3 /FI $header "/Fo$obj" "/Fe$exe" $script:LauncherSource /link /SUBSYSTEM:CONSOLE
+    & clang-cl /nologo /O2 /MT /W3 @target /FI $header "/Fo$obj" "/Fe$exe" $script:LauncherSource /link /SUBSYSTEM:CONSOLE
     if ($LASTEXITCODE -ne 0) { throw "clang-cl could not build the $Name launcher (exit $LASTEXITCODE)" }
     return $exe
 }
@@ -309,11 +399,12 @@ function Copy-PythonAppRuntimeClosure {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Runtime,
-        [Parameter(Mandatory)][string[]]$SearchDirectory
+        [Parameter(Mandatory)][string[]]$SearchDirectory,
+        [ValidateSet('amd64', 'arm64')][string]$Arch = 'amd64'
     )
 
     $native = @(Get-ChildItem -LiteralPath $Runtime -Recurse -File -Include '*.pyd', '*.dll', '*.exe' | ForEach-Object { $_.FullName })
-    return Copy-PeImportClosure -Path $native -SearchDirectory $SearchDirectory -Destination $Runtime -Arch amd64
+    return Copy-PeImportClosure -Path $native -SearchDirectory $SearchDirectory -Destination $Runtime -Arch $Arch
 }
 
 function Invoke-PythonAppSelfTest {
@@ -329,31 +420,8 @@ function Invoke-PythonAppSelfTest {
         [string]$Root = ''
     )
 
-    $exe = Join-Path $Bundle "$($Command[0]).exe"
-    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "No launcher $exe for the self-test" }
-    $rest = @($Command | Select-Object -Skip 1)
-    # stderr is shown, never parsed: ORT prints EP errors there (DirectML on a host without a GPU).
-    $stdout = @(& $exe @rest 2>&1 | ForEach-Object {
-            if ($_ -is [System.Management.Automation.ErrorRecord]) { Write-Host "  stderr: $_" } else { "$_" }
-        })
-    $code = $LASTEXITCODE
-    $text = $stdout -join [Environment]::NewLine
-    Write-Host $text
-    if ($code -ne 0) { throw "self-test '$($Command -join ' ')' exited $code" }
-    # The report is the last block from a bare '{' line to a bare '}' line; ORT's fallback notice has braces of its own.
-    $lines = @($text -split "`r?`n")
-    $end = -1
-    for ($i = $lines.Count - 1; $i -ge 0; $i--) { if ($lines[$i] -ceq '}') { $end = $i; break } }
-    $start = -1
-    for ($i = $end; $i -ge 0; $i--) { if ($lines[$i] -ceq '{') { $start = $i; break } }
-    if ($start -lt 0 -or $end -lt $start) { throw "self-test '$($Command -join ' ')' printed no JSON report" }
-    $report = ($lines[$start..$end] -join "`n") | ConvertFrom-Json -AsHashtable
-    if (-not $report['ok']) { throw "self-test '$($Command -join ' ')' did not report ok" }
-    $module = [string]$report['onnxruntime_module']
-    if ($Root -and $module -and -not $module.StartsWith($Root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
-        throw "The self-test loaded ONNX Runtime from $module, outside $Root"
-    }
-    return $report
+    # One checker, which a cross lane also copies beside the bundle for a runner without this module.
+    return & $script:SelfTestScript -Bundle $Bundle -Command $Command -Root $Root
 }
 
 function ConvertTo-PythonAppIcon {
@@ -535,7 +603,8 @@ function New-PythonAppAppxManifest {
         [Parameter(Mandatory)][hashtable]$App,
         [Parameter(Mandatory)][string]$Version,
         [Parameter(Mandatory)][string]$Publisher,
-        [Parameter(Mandatory)][string]$Destination
+        [Parameter(Mandatory)][string]$Destination,
+        [ValidateSet('x64', 'arm64')][string]$Arch = 'x64'
     )
 
     if ($Version -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}$') { throw "MSIX versions here are major.minor.build, with .0 appended; '$Version' is not" }
@@ -577,7 +646,7 @@ function New-PythonAppAppxManifest {
   xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap uap3 desktop desktop4 rescap">
-  <Identity Name="$identity" Publisher="$(Protect-PythonAppXml $Publisher)" Version="$Version.0" ProcessorArchitecture="x64" />
+  <Identity Name="$identity" Publisher="$(Protect-PythonAppXml $Publisher)" Version="$Version.0" ProcessorArchitecture="$Arch" />
   <Properties>
     <DisplayName>$(Protect-PythonAppXml $name)</DisplayName>
     <PublisherDisplayName>$(Protect-PythonAppXml $App['publisher'])</PublisherDisplayName>
@@ -602,6 +671,6 @@ $(($apps -join "`n").TrimEnd())
     return $Destination
 }
 
-Export-ModuleMember -Function Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
+Export-ModuleMember -Function Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
     New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-PythonAppWxs,
     New-PythonAppSigningCertificate, New-PythonAppAppxManifest

@@ -102,6 +102,23 @@ None open.
         static import). Nothing runs an inference, a GStreamer pipeline or a
         plugin, and the bundle's own tools and Python never execute
         (`docs/windows-cross-builds.md` § Consumer cross lanes).
+- [ ] **CON48 — Two `:winarm64` gaps the arm64 Python app lane meets** [S, ★]. Found 2026-10-01
+      in OrchestrANT's lane (`docs/python-app-bundles.md` § Packages, Windows arm64).
+      1. **Its arm64 OpenCV is a CUDA build.** `cv2.pyd` imports the `opencv_cuda*` modules, so an
+         app bundle carries cuFFT, cuBLASLt and NPP, more than 1 GB unpacked. The packages are
+         three times the x64 ones (zip 902 MB). **Owner decision 2026-10-01:** `:winarm64` is built
+         without NVIDIA (CUDA, cuDNN, TensorRT and what links them); that stack belongs in
+         `:winarm64-nvidia`, as on amd64.
+      2. **Its host CPython predates the version-string fix.** The published `:winarm64` (built
+         2026-09-22) carries the host CPython from before
+         `001-short-clang-compiler-id.patch` (CHANGELOG 2026-09-30): its `sys.version` ends in
+         VS clang's git URL, so a venv over `C:\temp\cpython\PCbuild\amd64` reports
+         `sysconfig.get_platform() == 'win32'`. The base interpreter hides it with the image's
+         `sitecustomize.py` shim; a uv venv does not load that, and `uv sync` then finds no `win32`
+         wheel (`onnxruntime-genai-cuda`, measured in OrchestrANT's arm64 lane). `:winamd64` (built
+         2026-09-30) already reports `win-amd64` in a venv. The arm64 Python app lane does not sync
+         a host venv (`Invoke-CiPackaging.ps1 -TargetArch arm64`), so it is not blocked.
+         Close 2 with the next `:winarm64` build: a venv over its host CPython must report `win-amd64`.
 - [b] **CON31 — Variants that are not published** [L, ★]. Blocked on owner decisions.
       - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
