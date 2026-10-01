@@ -51,8 +51,8 @@ function Get-StagedTestCount {
             }
         }
         'pytest' {
-            # The final "== 928 passed, 31 skipped in 9.1s ==" line; errors count as failures, xfails as skips.
-            $hit = @($Lines | Select-String -Pattern '^=+ .*\b(passed|failed|skipped|errors?|no tests ran)\b.* in [\d.]+s') | Select-Object -Last 1
+            # The final "928 passed, 31 skipped in 9.1s" line, framed in = unless -q; errors are failures, xfails skips.
+            $hit = @($Lines | Select-String -Pattern '^(=+ )?(\d+ \w+(, )?)+.* in [\d.]+s\b|^(=+ )?no tests ran in ') | Select-Object -Last 1
             if (-not $hit) { throw "no pytest summary ('== N passed ... in Ns ==') in its output" }
             $n = @{}
             foreach ($m in [regex]::Matches($hit.Line, '(\d+) (\w+)')) { $n[$m.Groups[2].Value] = [int]$m.Groups[1].Value }

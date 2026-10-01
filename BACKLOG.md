@@ -72,7 +72,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       The consumer work runs in each repo, tracked in its own BACKLOG.
       **Here:**
       1. Python lanes run the project's `testpaths` and gate a `3.14t` leg through
-         `free-threaded-extras` (`docs/python-ci.md` § What the test leg runs).
+         `free-threaded-extras` (`docs/python-ci.md` § What the test leg runs). (Done
+         2026-10-01.)
       2. `container-ci-windows.yml` takes a binary-free test tree and `Invoke-StagedTests.ps1`
          reads pytest, for OrchestrANT's arm64 suite. (Done 2026-10-01.)
       3. Chromium in `:latest` (`linux/Dockerfile.package`) for `flutter test --platform chrome`.
@@ -82,8 +83,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       5. A software Vulkan ICD for Windows x64 and arm64 (Mesa lavapipe; WARP/Dozen lacks ray
          tracing). Ship it in the image or as a pinned, SHA-checked download; the consumers
          run the goldens with it.
-      6. A native `windows-11-arm` Python job in `python-ci-windows.yml` for WebDavClient. Its
-         lock has win_arm64 wheels except py-spy, which needs a platform marker.
+      6. A native `windows-11-arm` Python job in `python-ci-windows.yml` for WebDavClient:
+         `arm64-tests` and `Invoke-PythonTestLegs.ps1`. (Done 2026-10-01.) WebDavClient
+         marks py-spy and line_profiler off ARM64 (1f9bb5f), and turns the job on with its
+         next pin bump.
 
 ## Open — Linux image (all arches)
 

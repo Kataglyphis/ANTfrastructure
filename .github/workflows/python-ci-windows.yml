@@ -115,6 +115,38 @@ on:
         required: false
         type: string
         default: scripts
+      arm64-tests:
+        description: >-
+          Also run the pytest suite natively on windows-11-arm, one leg per
+          `arm64-python-versions`, through the caller's pinned
+          windows/scripts/python/Invoke-PythonTestLegs.ps1 with the uv
+          versions.env pins. No container: no Windows arm64 image runs on a
+          hosted runner. Default false, so existing callers are unchanged.
+        required: false
+        type: boolean
+        default: false
+      arm64-python-versions:
+        description: Space-separated Python legs for the arm64 job; a `t` suffix is a free-threaded leg.
+        required: false
+        type: string
+        default: '3.14'
+      arm64-extras:
+        description: Comma-separated extras each arm64 leg syncs. Empty syncs all extras, as the Linux lane does.
+        required: false
+        type: string
+        default: ''
+      free-threaded-extras:
+        description: >-
+          Extras a free-threaded arm64 leg (`3.14t`) syncs instead of
+          `arm64-extras`, as in python-ci-linux.yml.
+        required: false
+        type: string
+        default: ''
+      test-paths:
+        description: Paths the arm64 job hands pytest. Empty runs the project's own testpaths, as in python-ci-linux.yml.
+        required: false
+        type: string
+        default: ''
     secrets:
       GHCR_PAT:
         description: >-
@@ -177,6 +209,35 @@ jobs:
           name: ${{ inputs.artifact-name }}
           if-no-files-found: warn
           path: ${{ inputs.artifact-paths }}
+
+  # Runner-native: the suite needs a checkout and uv-managed Pythons, not the x64 image.
+  test-python-on-windows-arm64:
+    if: ${{ inputs.arm64-tests }}
+    name: pytest on windows-11-arm
+    runs-on: windows-11-arm
+    timeout-minutes: 45
+    steps:
+      # Top level only: the legs script lives in third_party/ANTfrastructure.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: ${{ inputs.fetch-depth }}
+          submodules: true
+
+      # Inputs reach the script through env, never interpolated into it.
+      - name: Test each Python leg natively
+        env:
+          PY_VERSIONS: ${{ inputs.arm64-python-versions }}
+          PY_EXTRAS: ${{ inputs.arm64-extras }}
+          FT_EXTRAS: ${{ inputs.free-threaded-extras }}
+          TEST_PATHS: ${{ inputs.test-paths }}
+        run: |
+          if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw "the arm64 test job must be on arm64, not $env:PROCESSOR_ARCHITECTURE" }
+          $legs = 'third_party/ANTfrastructure/windows/scripts/python/Invoke-PythonTestLegs.ps1'
+          if (-not (Test-Path -LiteralPath $legs)) {
+            throw "Missing $legs - arm64-tests needs an ANTfrastructure pin that ships it (CON50)."
+          }
+          & $legs -InstallUv -PythonVersions $env:PY_VERSIONS -Extras $env:PY_EXTRAS -FreeThreadedExtras $env:FT_EXTRAS -TestPaths $env:TEST_PATHS
 
   # Independent of the build: a syntax error in the build scripts is exactly when this gate matters.
   lint-powershell:

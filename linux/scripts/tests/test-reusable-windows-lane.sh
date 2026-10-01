@@ -109,4 +109,16 @@ t_case "a missing submodule fails with a message that names the fix"
 # `pwsh -File <absent>` reads as a broken lane, not an un-checked-out submodule.
 t_assert_eq "True" "$(_raw_has 'Test-Path -LiteralPath $gate')"
 
+t_case "arm64-tests is a boolean that DEFAULTS OFF, and its job is gated on it"
+# Defaulting on would hand every existing caller a windows-11-arm job its lock was never checked for.
+t_assert_eq "boolean" "$(_q "V.value(V.value(inputs,'arm64-tests'),'type')")"
+t_assert_eq "false" "$(_q "V.value(V.value(inputs,'arm64-tests'),'default')")"
+t_assert_contains "$(_q "V.value(V.value(jobs,'test-python-on-windows-arm64'),'if')")" "inputs.arm64-tests" \
+  "an ungated job runs on every caller"
+t_assert_eq "windows-11-arm" "$(_q "V.value(V.value(jobs,'test-python-on-windows-arm64'),'runs-on')")"
+
+t_case "the arm64 job hands its inputs over through env, never interpolated into the script"
+t_assert_eq "False" "$(_q "'\${{' in '\n'.join(str(V.value(s,'run') or '') for s in V.value(V.value(jobs,'test-python-on-windows-arm64'),'steps'))")"
+t_assert_eq "True" "$(_raw_has '& $legs -InstallUv -PythonVersions $env:PY_VERSIONS -Extras $env:PY_EXTRAS -FreeThreadedExtras $env:FT_EXTRAS -TestPaths $env:TEST_PATHS')"
+
 t_summary

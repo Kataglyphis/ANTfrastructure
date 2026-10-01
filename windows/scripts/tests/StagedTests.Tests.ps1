@@ -30,6 +30,7 @@ Describe 'Invoke-StagedTests.ps1' {
             (New-FakeTest 'core_test' 'gtest' 0 '[==========] 4 tests ran.', '[  PASSED  ] 3 tests.', '[  SKIPPED ] 1 test, listed below:'),
             (New-FakeTest 'crate' 'cargo' 0 ($libtest -f 5, 2), ($libtest -f 1, 0)),
             (New-FakeTest 'py' 'pytest' 0 'tests/unit/test_a.py ....', '======= 928 passed, 31 skipped, 2 xfailed, 1 xpassed in 9.10s ======='),
+            (New-FakeTest 'py_quiet' 'pytest' 0 '....', '7 passed, 1 skipped in 0.42s'),
             (New-FakeTest 'smoke' 'exitcode' 0 'ok')
         )
         $red = @(
@@ -38,7 +39,7 @@ Describe 'Invoke-StagedTests.ps1' {
             (New-FakeTest 'red_py' 'pytest' 1 '===== 1 failed, 5 passed, 2 errors in 1.20s ====='),
             (New-FakeTest 'bad' 'exitcode' 2 'boom')
         )
-        foreach ($case in @(@($green, 'TESTS: passed=939 failed=0 skipped=36'), @($red, 'TESTS: passed=11 failed=6 skipped=0'))) {
+        foreach ($case in @(@($green, 'TESTS: passed=946 failed=0 skipped=37'), @($red, 'TESTS: passed=11 failed=6 skipped=0'))) {
             Invoke-InTestDir { param($d) Assert-Equal $case[1] (Invoke-FakeSuite -Dir $d -Tests $case[0]) $case[1] }
         }
     }
