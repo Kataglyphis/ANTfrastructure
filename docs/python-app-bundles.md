@@ -128,14 +128,20 @@ directory on `PATH`. Then it rewrites the loader config:
 
 | Where | `BINARIES_PATHS` | Why |
 |---|---|---|
-| bundle | `LOADER_DIR\bin`, with the closure copied there (56 DLLs) | the bundle must not name image paths |
+| bundle | `LOADER_DIR\bin`, with the closure copied there (54 DLLs), then `..\onnxruntime\capi` | the bundle must not name image paths, and must carry one chain ORT |
 | CI venv (`-ReferenceImage`) | the image dirs the closure came from: OpenCV's `bin`, `onnxruntime-source\bin`, `ffmpeg\bin` | nothing to copy; the venv lives inside the image |
 
 `config-3.14.py` points at the copied `.pyd` through `LOADER_DIR` in both cases. Linux keeps
 PyPI's opencv-python, which works there.
 
+In a bundle the walk searches the bundle's own `onnxruntime\capi` first (`-SharedDirectory`).
+What it finds there is named in `config.py`, not copied. So `opencv_dnn` loads the chain ORT the
+app already ships, rather than a second copy in `cv2\bin`. Measured in `:winamd64` on
+2026-10-01: `import cv2` alone succeeds before `onnxruntime` is imported, and the bundle went
+from 561 to 550 MB.
+
 **G6 prints `UNRESOLVED` for `opencv_dnn`, `opencv_gapi` and `avfilter` on this tree. That
-is expected.** They import `onnxruntime.dll`, which sits beside them in `cv2\bin`. G6 models
+is expected.** They import `onnxruntime.dll`, which lives in `onnxruntime\capi`. G6 models
 only the exe directories, not `os.add_dll_directory`, so `Assert-ChainOrtTree -WaiveUnresolved`
 reports those findings without failing on them. Every byte verdict stays fatal. The import walk
 covers the same edges by name, and the self-test covers them at load time.
@@ -170,11 +176,12 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
 
 | Package | Built by | Started as |
 |---|---|---|
-| `<id>-<version>-linux-x86_64.tar.gz` | `python-app-package.sh` | unpacked, then `bin/<script>` |
-| `<id>_<version>_amd64.deb` | `python-app-package.sh` | as root: installed with `dpkg -i`, started as `/usr/bin/<script>`, removed again, and `/opt/<id>` must then be gone. Without root (CI's uid 1001), the payload is unpacked with `dpkg-deb -x` instead |
-| `<id>-<version>-x86_64.AppImage` | `python-app-package.sh` | `APPIMAGE_EXTRACT_AND_RUN=1` (no FUSE in a container), started under a script's name |
+| `<id>-<version>-linux-<x86_64\|aarch64>.tar.gz` | `python-app-package.sh` | unpacked, then `bin/<script>` |
+| `<id>_<version>_<amd64\|arm64>.deb` | `python-app-package.sh` | as root: installed with `dpkg -i`, started as `/usr/bin/<script>`, removed again, and `/opt/<id>` must then be gone. Without root (CI's uid 1001), the payload is unpacked with `dpkg-deb -x` instead |
+| `<id>-<version>-<x86_64\|aarch64>.AppImage` | `python-app-package.sh` | `APPIMAGE_EXTRACT_AND_RUN=1` (no FUSE in a container), started under a script's name |
 | `<id>-<version>-windows-x64.zip` | `New-PythonAppPackage.ps1` | unpacked, then `<script>.exe` |
 | `<id>-<version>-windows-x64.msi` | `New-PythonAppPackage.ps1` | inside an elevated Windows container only: installed, the installed `<script>.exe` started, the system `PATH` checked, removed again, and the install folder must then be gone. Anywhere else (a developer's machine), an administrative unpack (`msiexec /a`) proves the payload without touching the machine |
+| `<id>-<version>-windows-x64.msix` + `…-test-signing.cer` | `New-PythonAppPackage.ps1` | unpacked with `makeappx unpack`, then `<script>.exe`. Inside an elevated Windows container, the `.cer` is also trusted for a moment, `signtool verify /pa` must pass, and the root is removed again. Server Core cannot install an MSIX at all |
 
 - **deb:** the bundle goes to `/opt/<id>`, with one `/usr/bin` symlink per script; the
   launchers resolve themselves with `readlink -f`. There is also a desktop file for
@@ -193,6 +200,18 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
   points to `gui_script`, and the folder goes on the system `PATH` for the CLIs. The PNG icon
   is wrapped as an `.ico`. Paths that would pass MAX_PATH under `C:\Program Files` are
   refused at build time.
+- **MSIX:** `New-PythonAppAppxManifest` writes the manifest. Each script becomes a full-trust
+  console app with its own execution alias, which is how the CLIs reach `PATH`. Only
+  `gui_script` is listed in Start. `makeappx` packs the bundle where it lies through a mapping
+  file, with no staged copy.
+  - **Signing:** a test certificate whose subject is the manifest's `CN=<publisher>`. It is
+    made in memory (`New-PythonAppSigningCertificate`), so no certificate store is touched.
+    The unprotected `.pfx` is deleted once `signtool` has signed. The `.cer` ships next to the
+    MSIX.
+  - **Installing it:** import the `.cer` into *Local Machine → Trusted People* first. It is a
+    test signature, not a trusted publisher.
+  - Measured in `:winamd64` on 2026-10-01: 240 MB, identity `JonasHeinle.OrchestrANT`
+    0.0.29.0, `signtool verify /pa` passes against the shipped `.cer`.
 - **Nothing writes into an installed package.** The builders compile all bytecode
   (`uv pip install --compile-bytecode`; python-build-standalone's stdlib and the chain cv2
   separately), and the launchers pass `-B`. Otherwise an admin's first start leaves
@@ -205,12 +224,17 @@ ORT's `libonnxruntime.so` and its Python binding, both built in the Ubuntu 26.04
 next newest need 2.38: GCC 16's `libstdc++` and the closure's `libxcb`. Reaching older
 distributions means building the chain ORT against an older glibc, not changing the packager.
 
+**aarch64 builds the same three packages.** The arm64 image's chain ORT wheel is
+`onnxruntime_webgpu`, which the builder takes like the CPU one. Measured under QEMU on
+2026-10-01 with the arm64 `:latest`: the closure, G6 and the self-test passed. The tar.gz
+(232 MB) and the deb (190 MB, the same `Depends`) each started once. The AppImage cannot be
+proven under `qemu-user`, which cannot load the static-PIE `appimagetool`. CI's arm64 lane
+runs on a real `ubuntu-26.04-arm` runner, where it builds and starts it.
+
 ## Not yet
 
-- **MSIX**, through the hub's `Invoke-MsixPackage`. A Server Core container cannot install an
-  MSIX, so its test there can only be structural.
+- **An MSIX install test.** Server Core cannot install an MSIX, so the package is proven
+  unpacked and by its signature; an install needs a client Windows host.
 - **flatpak.** The bundle needs glibc 2.43 (above), and org.freedesktop.Platform 24.08 ships
   an older one, so it does not fit that runtime as built.
-- **arm64 on Linux**: the script knows `aarch64`, but it has not been run there.
-- **Size.** OrchestrANT's core dependencies pull in Cython and matplotlib at runtime, and on
-  Windows the chain ORT ships twice: in `onnxruntime\capi` and in `cv2\bin`.
+- **Size.** OrchestrANT's core dependencies pull in Cython and matplotlib at runtime.
