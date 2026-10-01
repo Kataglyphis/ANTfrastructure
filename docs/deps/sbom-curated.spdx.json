@@ -741,6 +741,58 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Chrome-for-Testing-amd64-arm64-cbacc559",
+      "name": "Chrome for Testing (amd64, arm64)",
+      "versionInfo": "154.0.8037.92",
+      "downloadLocation": "https://googlechromelabs.github.io/chrome-for-testing/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Test runtimes (Dockerfile.package)",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-chromedriver-amd64-arm64-25d99c2d",
+      "name": "chromedriver (amd64, arm64)",
+      "versionInfo": "154.0.8037.92",
+      "downloadLocation": "https://googlechromelabs.github.io/chrome-for-testing/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Test runtimes (Dockerfile.package)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Android-Emulator-amd64-9a0c86c1",
+      "name": "Android Emulator (amd64)",
+      "versionInfo": "37.2.12",
+      "downloadLocation": "https://android.googlesource.com/platform/external/qemu",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 AND GPL-2.0-only AND LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "Apache-2.0 AND GPL-2.0-only AND LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Test runtimes (Dockerfile.package)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, offer-source, same-licence, eula-review | Corresponding source required. Upstream: https://android.googlesource.com/platform/external/qemu at emu-master-dev"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Android-15-API-35-system-image-Google-APIs-x86--8ae4f8c5",
+      "name": "Android 15 (API 35) system image, Google APIs x86_64 (amd64)",
+      "versionInfo": "9",
+      "downloadLocation": "https://android.googlesource.com/platform/manifest",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 AND GPL-2.0-only AND LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "Apache-2.0 AND GPL-2.0-only AND LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Test runtimes (Dockerfile.package)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, offer-source, same-licence, eula-review | Corresponding source required. Upstream: https://android.googlesource.com/platform/manifest at android15-release"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Linux-Images-OrchestrANT-945e3a1a",
       "name": "OrchestrANT",
       "versionInfo": "develop",
@@ -2160,6 +2212,26 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Flutter-SDK-36007425"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Chrome-for-Testing-amd64-arm64-cbacc559"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-chromedriver-amd64-arm64-25d99c2d"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Android-Emulator-amd64-9a0c86c1"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Android-15-API-35-system-image-Google-APIs-x86--8ae4f8c5"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

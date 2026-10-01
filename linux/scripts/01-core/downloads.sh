@@ -83,6 +83,28 @@ download_verified_file() {
   }
 }
 
+# download_verified_cached <url> <sha256> <dest> [cache_dir]: a cached copy is re-verified before every reuse.
+download_verified_cached() {
+  local url="$1" sha="$2" dest="$3" cache_dir="${4:-}" cached=""
+  if [ -n "${cache_dir}" ] && mkdir -p "${cache_dir}" 2>/dev/null; then
+    cached="${cache_dir}/${sha}-${url##*/}"
+    if [ -f "${cached}" ] && printf '%s  %s\n' "${sha}" "${cached}" | sha256sum -c - >/dev/null 2>&1; then
+      cp "${cached}" "${dest}" || return 1
+      printf 'cache hit: %s\n' "${url##*/}"
+      return 0
+    fi
+    rm -f "${cached}"
+  fi
+  download_verified_file "${url}" "${sha}" "${dest}" || return 1
+  [ -n "${cached}" ] || return 0
+  # A temp name, then mv, so a concurrent build never reads a partial file.
+  if ! { cp "${dest}" "${cached}.partial.$$" && mv -f "${cached}.partial.$$" "${cached}"; }; then
+    rm -f "${cached}.partial.$$"
+    printf 'WARNING: could not cache %s in %s\n' "${url##*/}" "${cache_dir}" >&2
+  fi
+  return 0
+}
+
 clone_or_update_repo() {
   local repo_url="$1"
   local dest_dir="$2"

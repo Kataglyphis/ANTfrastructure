@@ -532,6 +532,52 @@
           ]
         },
         {
+          "title": "Test runtimes",
+          "dockerfile": "Dockerfile.package",
+          "entries": [
+            {
+              "name": "Chrome for Testing (amd64, arm64)",
+              "var": "CHROME_FOR_TESTING_VERSION",
+              "url": "https://googlechromelabs.github.io/chrome-for-testing/",
+              "license": "Google Chrome Terms of Service (the zip's ABOUT names chrome://terms); Chromium's notices at chrome://credits",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "chromedriver (amd64, arm64)",
+              "var": "CHROME_FOR_TESTING_VERSION",
+              "url": "https://googlechromelabs.github.io/chrome-for-testing/",
+              "license": "BSD 3-Clause (LICENSE.chromedriver and THIRD_PARTY_NOTICES.chromedriver in the zip)",
+              "spdx": "BSD-3-Clause"
+            },
+            {
+              "name": "Android Emulator (amd64)",
+              "var": "ANDROID_EMULATOR_VERSION",
+              "url": "https://developer.android.com/studio/run/emulator",
+              "license": "Android SDK License; Apache 2.0 (LICENSE), a QEMU derivative (GPLv2), per-component NOTICE.csv",
+              "spdx": "Apache-2.0 AND GPL-2.0-only AND LicenseRef-Proprietary-EULA",
+              "source": {
+                "kind": "upstream-branch",
+                "url": "https://android.googlesource.com/platform/external/qemu",
+                "ref": "emu-master-dev",
+                "note": "NOTICE.csv in the emulator directory names the source of every bundled component."
+              }
+            },
+            {
+              "name": "Android 15 (API 35) system image, Google APIs x86_64 (amd64)",
+              "var": "ANDROID_EMULATOR_SYSIMG_REVISION",
+              "url": "https://developer.android.com/studio/run/managing-avds",
+              "license": "Android SDK License; AOSP components under their own licences (NOTICE.txt in the image), the kernel GPLv2",
+              "spdx": "Apache-2.0 AND GPL-2.0-only AND LicenseRef-Proprietary-EULA",
+              "source": {
+                "kind": "upstream-branch",
+                "url": "https://android.googlesource.com/platform/manifest",
+                "ref": "android15-release",
+                "note": "NOTICE.txt beside system.img maps each file to its licence; the goldfish kernel is in android.googlesource.com/kernel/common."
+              }
+            }
+          ]
+        },
+        {
           "title": "Runtime",
           "dockerfile": "Dockerfile.torch",
           "entries": [

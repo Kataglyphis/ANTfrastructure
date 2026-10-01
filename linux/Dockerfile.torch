@@ -85,6 +85,7 @@ COPY --chmod=755 linux/scripts/04-runtime/entrypoint.sh /usr/local/bin/entrypoin
 COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 COPY --chmod=755 linux/scripts/04-runtime/libcamera-env.sh /usr/local/bin/libcamera-env.sh
 COPY --chmod=755 linux/scripts/04-runtime/start-webrtc-signalling.sh /usr/local/bin/start-webrtc-signalling.sh
+COPY --chmod=755 linux/scripts/04-runtime/android-avd.sh /usr/local/bin/android-avd.sh
 
 WORKDIR ${WORKDIR}
 VOLUME ["${WORKDIR}"]

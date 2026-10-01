@@ -29,6 +29,8 @@ and no extra `-e`:
 | 4 | `java` is on `PATH` and `JAVA_HOME` names a JDK with `bin/javac` | Gradle stops the Android lane with *"JAVA_HOME is not set and no 'java' command could be found in your PATH"*, and `flutter doctor` reports *"No Java Development Kit (JDK) found"* |
 | 5 | `appimagetool` is READABLE by the image user, not merely executable | it is an AppImage and reads `/proc/self/exe` for its own squashfs offset, so mode 711 gives *"Cannot open /proc/self/exe: Permission denied"* and produces no `.AppImage` |
 | 6 | Every path under `/opt/flutter` is owned by uid 1001, `packages/flutter_tools/.dart_tool` included | `flutter pub get` fails with *"Cannot open file … package_config.json (OS Error: Permission denied, errno = 13)"* |
+| 7 | `CHROME_EXECUTABLE` names Chrome for Testing, which renders a page headless as uid 1001, and `chromedriver` of the same version is on `PATH` (amd64, arm64; [why](#browser-tests-run-in-chrome-for-testing)) | `flutter doctor` reports *"Cannot find Chrome executable at google-chrome"*, and `flutter test --platform chrome` has no browser |
+| 8 | On amd64, `$ANDROID_HOME` holds the pinned emulator and one x86_64 system image with ARM translation, and `android-avd.sh` is on `PATH` ([why](#the-android-emulator-runs-on-amd64-with-kvm)) | an Android lane has no device: `adb` reports *"no devices/emulators found"* |
 
 Row 6 is the one a consumer **cannot** repair at runtime. The directory sits in a
 read-only overlay layer, so a non-owner can neither empty nor rename it — both
@@ -126,17 +128,20 @@ so the table cannot rot in place. Each arm is re-checked by **its own** probe
 fact, named by `_consumer_exempt_fact`; `yes` is `STALE` and names the arm for
 deletion, a missing fact is `NOFACT` and never a grant.
 
-Four arms, all `riscv64`. The first two were measured on the image shipped
-2026-09-05 rather than argued from the build graph:
+Seven arms. The first two were measured on the image shipped 2026-09-05 rather
+than argued from the build graph, the last three on the CON50 proof images of 2026-10-01:
 
-| arm | rot fact | what the riscv64 image reports |
+| arm | rot fact | what the image reports |
 |---|---|---|
 | `dart-tool` | `flutter-sdk` | `/opt/flutter` exists and is **empty**, so `packages/flutter_tools/.dart_tool` is absent and the row would read as unwritable. Upstream publishes no riscv64 SDK; `check_flutter` asserts that absence instead |
 | `appimagetool` | `appimagetool-readable` | no `appimagetool` on `PATH` at all — `packaging-deps.sh`'s asset table covers x86_64/aarch64/armhf/i686 and refuses the rest |
 | `flatpak-runtimes` | `flutter-sdk` | no refs: Flathub builds the freedesktop runtimes for x86_64 and aarch64 only, and the installer skips every other arch |
 | `appimage-runtime` | `flutter-sdk` | no runtime: it is carved out of `appimagetool`, which riscv64 does not have |
+| `riscv64:chrome` | `chrome` | `CHROME_EXECUTABLE` is empty: Chrome for Testing publishes `linux64` and `linux-arm64` only |
+| `arm64:android-emulator` | `android-emulator` | no `$ANDROID_HOME/emulator`: Google publishes the Linux emulator for x86_64 hosts only |
+| `riscv64:android-emulator` | `android-emulator` | as on arm64 |
 
-**Open gap (2026-09-25):** the last two arms are re-checked by `flutter-sdk`,
+**Open gap (2026-09-25):** the `flatpak-runtimes` and `appimage-runtime` arms are re-checked by `flutter-sdk`,
 another row's fact, because `_consumer_exempt_fact` maps every row but
 `appimagetool` to it. A riscv64 image that gained Flatpak runtimes or an AppImage
 runtime would still read `EXEMPT`, which is the rot the next paragraph describes.
@@ -373,6 +378,8 @@ lane runs on the next `:latest`.
 | lavapipe on arm64/riscv64 (CON44) | 4-lane subgroups: a draw that builds an acceleration structure SEGVs; BeschleunigerBallett exports `LP_NATIVE_VECTOR_WIDTH=256` itself | the image sets `LP_NATIVE_VECTOR_WIDTH=256` on every arch, and the smoke fails a lavapipe whose `subgroupSize` is not 8 ([why](failure-modes.md#lavapipe-segfaults-building-an-acceleration-structure-on-arm64)) |
 | A C host that loads GStreamer or libcamera first | `libunwind.so.8` from `libgstreamer-1.0`/`libcamera-base` turns a C++ exception through `std::call_once` into a SIGSEGV | both build without libunwind ([why](failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind)) |
 | `gst-inspect-1.0 -b` on amd64 (CON47) | lists `libgstvalidatessim.so` | lists nothing; the SSIM plugin still works under `gst-validate-1.0` ([why](failure-modes.md#the-core-registry-blacklists-libgstvalidatessimso)) |
+| A browser for `flutter test --platform chrome` (CON50) | none; `flutter doctor` reports *"Cannot find Chrome executable"* | Chrome for Testing and its chromedriver on amd64 and arm64, `CHROME_EXECUTABLE` set ([how](#browser-tests-run-in-chrome-for-testing)) |
+| An Android device on amd64 (CON50) | none; Android tests ran on the x64 VM only | the emulator and an x86_64 system image with ARM translation, booted by `android-avd.sh` on `/dev/kvm` ([how](#the-android-emulator-runs-on-amd64-with-kvm)) |
 
 ## The Android SDK roots are advertised
 
@@ -600,3 +607,116 @@ beside a plugin. A bundle fails as STALE with an older chain DLL, FOREIGN with a
 NuGet, PyPI or pyke ORT (statically linked ones included), and UNRESOLVED when an
 importer has no app-local chain copy or a Linux `.so` has no `$ORIGIN` RUNPATH to
 one.
+
+## Browser tests run in Chrome for Testing
+
+`flutter test --platform chrome` needs a browser, and Ubuntu 26.04 ships Chromium as a
+snap only. The image ships Google's Chrome for Testing instead (CON50), the build
+Playwright also downloads, from Google's own bucket:
+
+| what | where | pin in `versions.env` |
+| --- | --- | --- |
+| Chrome for Testing (Stable) | `/opt/chrome-for-testing/chrome`, started by `/usr/local/bin/chrome` | `CHROME_FOR_TESTING_VERSION`, a SHA256 per arch |
+| chromedriver of the same version | `/usr/local/bin/chromedriver` | `CHROMEDRIVER_LINUX64_SHA256`, `CHROMEDRIVER_LINUX_ARM64_SHA256` |
+
+`CHROME_EXECUTABLE=/usr/local/bin/chrome` on amd64 and arm64. It is **empty on
+riscv64**, where Google publishes no build, so a lane runs the browser leg only when
+the variable is set:
+
+```bash
+if [ -n "${CHROME_EXECUTABLE:-}" ]; then
+  flutter test --platform chrome
+else
+  echo "no browser in this image on $(uname -m); browser tests skipped"
+fi
+```
+
+A test file that reads the checkout with `dart:io` cannot run in a browser. Mark it
+`@TestOn('vm')` (or one test `testOn: 'vm'`), and the browser leg skips it while the VM
+leg still runs it. Measured on OmniAccelerANT (2026-10-01, the proof image below): 37
+tests pass in Chrome, including all four of the native plugin's.
+`pinned_artefacts_test.dart` and `settings_asset_paths_test.dart` fail there only for
+`dart:io` (*"Unsupported operation: Platform._script"*, *"_Namespace"*), and one
+`webrtc_settings_test.dart` case asserts the off-web behaviour.
+
+`06-packaging/install-chrome-for-testing.sh` is the package stage's last RUN, after the
+emulator, so a Chrome bump re-runs one layer of about 0.45 GB (+0.2 GB compressed per
+arch). It installs the zip's `deb.deps` under their Ubuntu 26.04 names (only
+`fonts-liberation` was new), checks every ELF with `ldd`, compares both binaries with
+the pin, and renders a JavaScript page headless. The runtime smoke's `chrome` row
+repeats the last two as uid 1001.
+
+### Why the wrapper passes `--no-sandbox` and `--no-zygote`
+
+`/usr/local/bin/chrome` is
+`exec /opt/chrome-for-testing/chrome/chrome --no-sandbox --no-zygote --disable-dev-shm-usage "$@"`.
+Point `CHROME_EXECUTABLE` at it, never at the binary.
+
+- **Sandbox.** Chrome sandboxes its renderers with user namespaces, or with a
+  setuid-root helper. The image ships no setuid helper. Whether a container may create
+  user namespaces is the host's call: Docker's default seccomp profile, the AppArmor
+  restriction of Ubuntu 23.10+ hosts and qemu-user can each refuse them. Measured
+  2026-10-01 as uid 1001: the bare binary started on amd64 under Rancher Desktop, and on
+  arm64 under qemu-user it died with *"No usable sandbox! If you are running on Ubuntu
+  23.10+ …"*. The container is the isolation boundary and a test browser loads only the
+  consumer's own pages, so the wrapper turns the sandbox off everywhere. Flutter passes
+  `--no-sandbox` itself only when headless; the wrapper also covers `flutter run -d
+  chrome` under Xvfb and chromedriver.
+- **Zygote.** Under qemu-user the zygote's children die with *"qemu: uncaught target
+  signal 5 (Trace/breakpoint trap)"*, and `--dump-dom` prints nothing. The package
+  stage builds arm64 under QEMU, so its own headless check failed until the wrapper
+  passed `--no-zygote` (a page then took 21 s). Without a sandbox the zygote buys
+  nothing on native hardware either.
+- **`/dev/shm`.** A container's defaults to 64 MB, which a renderer can exhaust;
+  `--disable-dev-shm-usage` moves that to `/tmp`.
+
+## The Android emulator runs on amd64 with KVM
+
+The amd64 image ships the Android emulator and one x86_64 system image with ARM
+translation, so an arm64-v8a APK installs and runs (CON50). Both come from Google's
+zips, each SHA256-pinned, and their SHA-1 equals Google's repository XML:
+
+| what | where | pin in `versions.env` |
+| --- | --- | --- |
+| emulator | `$ANDROID_HOME/emulator` | `ANDROID_EMULATOR_VERSION`, `ANDROID_EMULATOR_BUILD` |
+| `system-images;android-<API>;google_apis;x86_64` | `$ANDROID_HOME/system-images/android-<API>/google_apis/x86_64` | `ANDROID_EMULATOR_API`, `ANDROID_EMULATOR_SYSIMG_REVISION` |
+| `android-avd.sh create\|start\|stop [name]` | `/usr/local/bin` | — |
+
+- **amd64 only.** Google publishes the Linux emulator for x86_64 hosts only, and
+  GitHub's arm64 runners have no KVM. arm64 and riscv64 record that in
+  `/opt/android/.android-emulator-off`. It adds 4.66 GB to the amd64 image (+2.1 GB
+  compressed); the system image is 3.5 GB of it.
+- **API 35, not 30.** API 30's translator (`ndk_translation` 0.2.2) stops
+  OmniAccelerANT's release APK right after the Flutter engine starts:
+  *"ndk_translation: Undefined instruction 0x7ee1b800"* (scalar `FCVTZU`), then SIGILL.
+  API 35's translator runs the same APK. `test-chrome-and-emulator.sh` refuses an older
+  pin.
+
+A lane needs an x86_64 host with KVM, and the device passed in:
+
+```bash
+docker run --device /dev/kvm --group-add "$(stat -c %g /dev/kvm)" \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest bash -lc '
+    android-avd.sh start          # creates the AVD once, boots headless, waits for sys.boot_completed
+    adb install --abi arm64-v8a build/app/outputs/flutter-apk/app-release.apk
+    android-avd.sh stop'
+```
+
+- **The KVM device.** uid 1001 is not in the device's group, hence `--group-add`;
+  without it `android-avd.sh start` stops with *"/dev/kvm is not usable by uid 1001"*.
+  On a GitHub-hosted x64 runner, make the device usable first:
+  `echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules`,
+  then `sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm`.
+- **The AVD.** It lives in `$ANDROID_AVD_HOME` (default `~/.android/avd`), because
+  `$ANDROID_HOME` is root-owned. `android-avd.sh` writes the two ini files itself:
+  `avdmanager` does not recognise an emulator installed from its zip (*"\"emulator\"
+  package must be installed!"*). `AVD_PORT`, `AVD_BOOT_TIMEOUT`, `AVD_RAM_MB`,
+  `AVD_CORES` and `AVD_DATA_SIZE` tune it.
+- **`--abi arm64-v8a`.** An APK that also carries an `x86_64` slice is otherwise
+  installed as x86_64, and a library built for arm64 only is then missing.
+- **Measured 2026-10-01** under Rancher Desktop with KVM, in the proof image: boot in
+  25 s, `ro.product.cpu.abilist=x86_64,arm64-v8a`, and OmniAccelerANT's release APK
+  installed with `primaryCpuAbi=arm64-v8a` and stayed up.
+- **What the image cannot prove.** The build host has no KVM, so the runtime smoke never
+  boots it. Its `android-emulator` row checks the parts as uid 1001: the emulator runs,
+  both versions equal the pins, and `android-avd.sh` is on `PATH`.

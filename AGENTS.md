@@ -840,6 +840,11 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` ย
   SONAME `libv4l2.so.0`. Its TensorRT is a private 10.x beside the variant's 11.x, and no
   process may hold TensorRT 11 in its global symbol scope while it runs `nvinfer`:
   [`linux-accelerator-images.md` ยง DeepStream](docs/linux-accelerator-images.md#deepstream-nvidia-variant).
+- **The image's Chrome starts through `/usr/local/bin/chrome`; its emulator is amd64-only**
+  (CON50). `CHROME_EXECUTABLE` names that wrapper, which adds `--no-sandbox --no-zygote`: never
+  point it at the binary, and never ship a setuid sandbox helper. Keep the emulator's system
+  image at an API whose ARM translator runs arm64 apps (35; 30 SIGILLs):
+  [`consumer-image-contract.md`](docs/consumer-image-contract.md#browser-tests-run-in-chrome-for-testing).
 - **Nothing under `/opt` or `/usr/local` may need `libunwind.so.8`** (owner decision
   2026-10-01: every variant). GStreamer core and libcamera build with `libunwind=disabled`;
   a C host that loads either first turns a C++ exception through `std::call_once` into a

@@ -466,7 +466,7 @@ check_rust_toolchain() {
 }
 
 # Consumer contract. See docs/consumer-image-contract.md#the-contract
-_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env"
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator"
 
 # Staged-or-every-run-pays rows. See docs/consumer-image-contract.md#what-the-image-stages-so-a-run-does-not
 _consumer_present_verdict() {
@@ -492,6 +492,8 @@ _consumer_contract_symptom() {
     appimage-runtime) printf '%s' 'appimagetool refetches runtime-<arch> from the type2-runtime continuous release on every build, so packaging hangs on GitHub being reachable' ;;
     web-lane-tools) printf '%s' 'flutter_rust_bridge_codegen build-web cargo-installs wasm-pack (258 crates) and itself (174) from source in every run' ;;
     ort-crate-env) printf '%s' 'an ort-sys build (OxidANT'"'"'s onnxruntime feature) statically links pyke'"'"'s ORT 1.28.0 from pyke'"'"'s CDN instead of the chain ORT, and ort load-dynamic opens whichever libonnxruntime.so the loader finds first' ;;
+    chrome)        printf '%s' 'flutter doctor reports "Cannot find Chrome executable at google-chrome" and "flutter test --platform chrome" has no browser, so the web lane tests nothing in one' ;;
+    android-emulator) printf '%s' 'an Android lane has no device to install on: adb reports "no devices/emulators found" and every on-device test is skipped' ;;
     *)             printf '%s' 'no symptom recorded for this row' ;;
   esac
 }
@@ -506,6 +508,10 @@ _consumer_contract_exempt() {
     # Flathub runtimes are x86_64/aarch64 only; the AppImage runtime comes from appimagetool.
     riscv64:flatpak-runtimes) return 0 ;;
     riscv64:appimage-runtime) return 0 ;;
+    # Chrome for Testing ships linux64 and linux-arm64 builds only.
+    riscv64:chrome) return 0 ;;
+    # Google ships the Linux emulator for x86_64 hosts only, and it needs KVM.
+    arm64:android-emulator|riscv64:android-emulator) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -514,6 +520,7 @@ _consumer_contract_exempt() {
 _consumer_exempt_fact() {
   case "$1" in
     appimagetool) printf '%s' 'appimagetool-readable' ;;
+    chrome|android-emulator) printf '%s' "$1" ;;
     *)            printf '%s' 'flutter-sdk' ;;
   esac
 }
@@ -597,7 +604,47 @@ else
   printf 'FACT web-lane-tools no\n'
 fi
 PROBE
-  _consumer_ort_env_probe; printf '%s\n' 'echo CCPROBE_DONE'
+  _consumer_ort_env_probe; _consumer_test_runtimes_probe; printf '%s\n' 'echo CCPROBE_DONE'
+}
+
+# CON50's browser and emulator, run as the image user: docs/consumer-image-contract.md#browser-tests-run-in-chrome-for-testing
+_consumer_test_runtimes_probe() {
+  cat <<'PROBE'
+printf 'ENV chrome-executable %s\n' "${CHROME_EXECUTABLE:-}"
+if [ -n "${CHROME_EXECUTABLE:-}" ] && [ -x "${CHROME_EXECUTABLE}" ]; then
+  printf 'FACT chrome yes\n'
+  printf 'FACT chrome-version %s\n' "$("${CHROME_EXECUTABLE}" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+){3}' | head -1)"
+  printf 'FACT chromedriver-version %s\n' "$(chromedriver --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+){3}' | head -1)"
+  case "$(timeout 300 "${CHROME_EXECUTABLE}" --headless --dump-dom 'data:text/html,<script>document.write("kg-"+6*7)</script>' 2>/dev/null)" in
+    *kg-42*) printf 'FACT chrome-headless yes\n' ;;
+    *)       printf 'FACT chrome-headless no\n' ;;
+  esac
+else
+  printf 'FACT chrome no\n'
+fi
+_emu="${ANDROID_HOME:-/nonexistent}/emulator"
+if [ -x "${_emu}/emulator" ]; then
+  printf 'FACT android-emulator yes\n'
+  printf 'FACT android-emulator-version %s\n' "$(sed -n 's/^Pkg.Revision=//p' "${_emu}/source.properties" 2>/dev/null)"
+  if "${_emu}/emulator" -version 2>/dev/null | grep -q 'Android emulator version'; then
+    printf 'FACT android-emulator-runs yes\n'
+  else
+    printf 'FACT android-emulator-runs no\n'
+  fi
+  for _sp in "${ANDROID_HOME}"/system-images/*/*/x86_64/source.properties; do
+    [ -f "${_sp}" ] || continue
+    printf 'FACT android-system-image android-%s;%s;%s;r%s\n' "$(sed -n 's/^AndroidVersion.ApiLevel=//p' "${_sp}")" \
+      "$(sed -n 's/^SystemImage.TagId=//p' "${_sp}")" "$(sed -n 's/^SystemImage.Abi=//p' "${_sp}")" "$(sed -n 's/^Pkg.Revision=//p' "${_sp}")"
+  done
+  if command -v android-avd.sh >/dev/null 2>&1; then
+    printf 'FACT android-avd yes\n'
+  else
+    printf 'FACT android-avd no\n'
+  fi
+else
+  printf 'FACT android-emulator no\n'
+fi
+PROBE
 }
 
 # '<unset>' is not '': ort-sys reads a set-but-empty variable. docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
@@ -773,6 +820,58 @@ _consumer_ort_env_verdict() {
   fi
 }
 
+# <row> <probe> <pin>; a rendered page proves V8 and the renderer, not only that the binary exists.
+_consumer_chrome_verdict() {
+  local row="$1" p="$2" want="$3" have drv
+  case "$(_consumer_contract_fact "${p}" FACT chrome)" in
+    yes) ;;
+    no) printf 'BAD %s CHROME_EXECUTABLE (%s) names no executable browser' "${row}" \
+          "$(_consumer_contract_fact "${p}" ENV chrome-executable)"; return 0 ;;
+    *)  printf 'NOFACT %s no FACT chrome line' "${row}"; return 0 ;;
+  esac
+  have="$(_consumer_contract_fact "${p}" FACT chrome-version)"
+  drv="$(_consumer_contract_fact "${p}" FACT chromedriver-version)"
+  if [ -z "${want}" ]; then
+    printf 'BAD %s no CHROME_FOR_TESTING_VERSION pin to compare with' "${row}"
+  elif [ "${have}" != "${want}" ]; then
+    printf 'BAD %s chrome reports %s, the pin is %s' "${row}" "${have:-nothing}" "${want}"
+  elif [ "${drv}" != "${want}" ]; then
+    printf 'BAD %s chromedriver reports %s, the pin is %s' "${row}" "${drv:-nothing}" "${want}"
+  elif [ "$(_consumer_contract_fact "${p}" FACT chrome-headless)" != yes ]; then
+    printf 'BAD %s headless chrome rendered no page as the image user' "${row}"
+  else
+    printf 'OK %s Chrome for Testing %s renders headless' "${row}" "${want}"
+  fi
+}
+
+# <row> <probe> <emulator pin> <system image pin>; booting needs KVM, so the image proves the parts only.
+_consumer_emulator_verdict() {
+  local row="$1" p="$2" want="$3" img="$4" have got
+  case "$(_consumer_contract_fact "${p}" FACT android-payload-off)" in
+    yes) printf 'SKIP %s the android payload is off for this build host' "${row}"; return 0 ;;
+    no) ;;
+    *)  printf 'NOFACT %s no FACT android-payload-off line' "${row}"; return 0 ;;
+  esac
+  case "$(_consumer_contract_fact "${p}" FACT android-emulator)" in
+    yes) ;;
+    no) printf 'BAD %s ANDROID_HOME/emulator/emulator is missing' "${row}"; return 0 ;;
+    *)  printf 'NOFACT %s no FACT android-emulator line' "${row}"; return 0 ;;
+  esac
+  have="$(_consumer_contract_fact "${p}" FACT android-emulator-version)"
+  got="$(_consumer_contract_fact "${p}" FACT android-system-image)"
+  if [ "$(_consumer_contract_fact "${p}" FACT android-emulator-runs)" != yes ]; then
+    printf 'BAD %s the emulator does not run as the image user' "${row}"
+  elif [ "${have}" != "${want}" ]; then
+    printf 'BAD %s emulator %s, the pin is %s' "${row}" "${have:-unknown}" "${want:-unset}"
+  elif [ "${got}" != "${img}" ]; then
+    printf 'BAD %s system image %s, the pin is %s' "${row}" "${got:-none}" "${img}"
+  elif [ "$(_consumer_contract_fact "${p}" FACT android-avd)" != yes ]; then
+    printf 'BAD %s android-avd.sh is not on PATH' "${row}"
+  else
+    printf 'OK %s emulator %s with %s' "${row}" "${want}" "${img}"
+  fi
+}
+
 # Pure verdicts from probe text, so every failure path is testable. docs/consumer-image-contract.md#how-the-gate-proves-it
 _consumer_contract_verdicts() {
   local arch="$1" probe="$2" row fact line asserted=0
@@ -788,6 +887,10 @@ _consumer_contract_verdicts() {
         appimagetool)  line="$(_consumer_tool_verdict "${row}" "${probe}")" ;;
         flutter-owner) line="$(_consumer_owner_verdict "${row}" "${probe}")" ;;
         ort-crate-env) line="$(_consumer_ort_env_verdict "${row}" "${probe}")" ;;
+        chrome)        line="$(_consumer_chrome_verdict "${row}" "${probe}" "$(_rt_versions_env_pin CHROME_FOR_TESTING_VERSION)")" ;;
+        android-emulator)
+                       line="$(_consumer_emulator_verdict "${row}" "${probe}" "$(_rt_versions_env_pin ANDROID_EMULATOR_VERSION)" \
+                                 "android-$(_rt_versions_env_pin ANDROID_EMULATOR_API);google_apis;x86_64;r$(_rt_versions_env_pin ANDROID_EMULATOR_SYSIMG_REVISION)")" ;;
         flatpak-runtimes|appimage-runtime|web-lane-tools)
                        line="$(_consumer_present_verdict "${row}" \
                                  "$(_consumer_contract_fact "${probe}" FACT "${row}")")" ;;

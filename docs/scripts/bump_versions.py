@@ -427,6 +427,23 @@ def spec_pandoc(cur):
     return v, extras
 
 
+def spec_chrome_for_testing(cur):
+    """Google's Stable Chrome for Testing; the bucket publishes md5 only, so each zip is hashed."""
+    v = http_json("https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+                  )["channels"]["Stable"]["version"]
+    extras = {}
+    if v != cur and WRITE_MODE:
+        base = f"https://storage.googleapis.com/chrome-for-testing-public/{v}"
+        for env_key, plat, comp in [
+            ("CHROME_FOR_TESTING_LINUX64_SHA256", "linux64", "chrome"),
+            ("CHROME_FOR_TESTING_LINUX_ARM64_SHA256", "linux-arm64", "chrome"),
+            ("CHROMEDRIVER_LINUX64_SHA256", "linux64", "chromedriver"),
+            ("CHROMEDRIVER_LINUX_ARM64_SHA256", "linux-arm64", "chromedriver"),
+        ]:
+            extras[env_key] = sha256_of_url(f"{base}/{plat}/{comp}-{plat}.zip")
+    return v, extras
+
+
 def spec_binaryen(cur):
     v = gh_latest("WebAssembly/binaryen", pattern=r"^version_\d+$")
     extras = {}
@@ -723,6 +740,7 @@ SAFE: list[tuple[str, Callable, str]] = [
     ("OLLAMA_VERSION", spec_ollama, "llm-stack image only"),
     ("PANDOC_VERSION", spec_pandoc, "documentation image only"),
     ("BINARYEN_VERSION", spec_binaryen, "none (host-side bootstrap)"),
+    ("CHROME_FOR_TESTING_VERSION", spec_chrome_for_testing, "linux package chrome layer (amd64, arm64)"),
     ("HADOLINT_VERSION", spec_hadolint, "none (host-side lint bootstrap)"),
     ("ACTIONLINT_VERSION", spec_actionlint, "none (host-side lint bootstrap)"),
     ("SHELLCHECK_VERSION", spec_shellcheck, "none (host-side lint bootstrap; linux+windows)"),
@@ -787,6 +805,8 @@ MANUAL = [
     "CMAKE_VERSION_RISCV64", "NODE_VERSION_RISCV64",
     "CMAKE_POLICY_VERSION_MINIMUM",
     "ANDROID_AGP_VERSION", "ANDROID_GRADLE_VERSION",
+    # A bump must re-prove an arm64 app boot under the image's ndk_translation (CON50).
+    "ANDROID_EMULATOR_VERSION", "ANDROID_EMULATOR_BUILD", "ANDROID_EMULATOR_API", "ANDROID_EMULATOR_SYSIMG_REVISION",
     "SQLITE3_WASM_VERSION",
     # Windows-lane pins: bumped via the Windows backlog, not this tool
     "LLVM_WINDOWS_VERSION", "NASM_WINDOWS_VERSION",
@@ -821,6 +841,8 @@ def audit_sha_pairs() -> int:
         "SCOOP_INSTALLER_SHA256",  # get.scoop.sh
         # Paired with the MANUAL ANDROID_SDK_VERSION; recipe and sha1 cross-check beside the key.
         "ANDROID_CMDLINE_TOOLS_SHA256",
+        # Paired with the MANUAL ANDROID_EMULATOR_* pins; sha1 cross-check beside the keys.
+        "ANDROID_EMULATOR_SHA256", "ANDROID_EMULATOR_SYSIMG_SHA256",
         # Slaved to the MANUAL LLVM_WINDOWS_VERSION, bumped together.
         "LLVM_WINDOWS_SRC_SHA256",
         # Slaved to MIGRAPHX_WINDOWS_COMMIT / ORT_AMDGPU_EP_COMMIT, re-measured by hand.

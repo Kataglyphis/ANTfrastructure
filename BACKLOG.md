@@ -77,9 +77,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       2. `container-ci-windows.yml` takes a binary-free test tree and `Invoke-StagedTests.ps1`
          reads pytest, for OrchestrANT's arm64 suite. (Done 2026-10-01.)
       3. Chromium in `:latest` (`linux/Dockerfile.package`) for `flutter test --platform chrome`.
+         **In source 2026-10-01, not yet published:** Chrome for Testing + chromedriver on amd64
+         and arm64 (none exists for riscv64), `CHROME_EXECUTABLE` set. Proven on a throwaway
+         image FROM `:latest`: OmniAccelerANT runs 37 tests in Chrome; two files need
+         `@TestOn('vm')` (`docs/consumer-image-contract.md` § Browser tests).
       4. An Android emulator and arm64-v8a system image for OmniAccelerANT's APK. arm64
          runners have no KVM, so it runs as an x64 image with ARM translation or on another
-         runner. Measure before choosing.
+         runner. Measure before choosing. **Measured and in source 2026-10-01, not yet
+         published:** an x86_64 API 35 `google_apis` image on amd64 (API 30's translator
+         SIGILLs on the APK); booted in 25 s with KVM and ran the arm64-v8a release APK. The
+         consumer lane needs an x64 runner with `/dev/kvm` passed in.
       5. A software Vulkan ICD for Windows x64 and arm64 (Mesa lavapipe; WARP/Dozen lacks ray
          tracing). Ship it in the image or as a pinned, SHA-checked download; the consumers
          run the goldens with it.
