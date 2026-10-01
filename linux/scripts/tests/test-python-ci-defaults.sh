@@ -18,10 +18,11 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/python_uv.sh
 detect_workspace() { export WORKSPACE_ROOT="${FIXTURE_WS}"; }
 prepare_ci_workspace() { :; }
 derive_package_name() { printf 'pkg'; }
-uv_venv_create() { echo "interpreter $2" >> "${REC}"; }
+uv_venv_create() { echo "interpreter $2" >> "${REC}"; _LEG="$2"; }
 uv_venv_ensure() { echo "interpreter $2" >> "${REC}"; printf -v "$4" 1; }
-uv_run() { echo "run $*" >> "${REC}"; }
-uv_venv_activate() { :; }; uv_venv_deactivate() { :; }; uv_venv_remove() { :; }; uv_sync_project() { :; }
+uv_run() { echo "run $*" >> "${REC}"; ! { [ "$1" = pytest ] && [ -n "${FAIL_TEST_LEG:-}" ] && [ "${FAIL_TEST_LEG}" = "${_LEG:-}" ]; }; }
+uv_sync_project() { echo "sync ${_LEG:-} extras=${UV_SYNC_EXTRAS:-}" >> "${REC}"; [ -z "${FAIL_SYNC_LEG:-}" ] || [ "${FAIL_SYNC_LEG}" != "${_LEG:-}" ]; }
+uv_venv_activate() { :; }; uv_venv_deactivate() { :; }; uv_venv_remove() { :; }
 CI_COMMON
 
 # _driver <ci_tests|ci_build_docs> [positionals...]: a caller that sets no version knob, as the reusable lane.
@@ -29,7 +30,7 @@ _driver() {
   : > "${REC}"
   env -u PY_VERSIONS -u COVERAGE_VERSION -u EXPERIMENTAL_PYTHON_VERSIONS PATH="${_work}/bin:${PATH}" \
     REC="${REC}" FIXTURE_WS="${WS}" GIT_CONFIG_GLOBAL="${_work}/gitconfig" CI_TESTS_LOG_FILE="${_work}/tests.log" \
-    bash "${TREE}/02-toolchain/python/$1.sh" "${@:2}" >/dev/null 2>&1
+    bash "${TREE}/02-toolchain/python/$1.sh" "${@:2}" > "${_work}/out" 2>&1
 }
 _legs() { sed -n 's/^interpreter //p' "${REC}" | tr '\n' ' ' | sed 's/ $//'; }
 
@@ -61,5 +62,32 @@ t_assert_eq "${IMAGE_PY}" "$(_legs)" "the docs venv syncs on the image interpret
 t_assert_eq "default leg" "$(cat "${WS}/docs/source/_static/coverage/index.html" 2>&1)"
 t_assert_eq "default leg" "$(cat "${WS}/docs/source/_static/coverage.xml" 2>&1)"
 t_assert_contains "$(cat "${REC}")" "make html" "and the docs are built"
+
+t_case "with no PYTEST_PATHS pytest runs the project's own testpaths, not a hard-coded subdirectory"
+t_assert_ok _driver ci_tests
+t_assert_contains "$(cat "${REC}")" "run pytest -v --cov=pkg" "no path before the options: pyproject's testpaths decide"
+
+t_case "PYTEST_PATHS narrows pytest to the listed paths, comma-separated"
+export PYTEST_PATHS=tests/unit,tests/integration
+t_assert_ok _driver ci_tests
+unset PYTEST_PATHS
+t_assert_contains "$(cat "${REC}")" "run pytest tests/unit tests/integration -v"
+
+t_case "FREE_THREADED_SYNC_EXTRAS makes the free-threaded leg sync only those extras, the GIL leg all of them"
+export FREE_THREADED_SYNC_EXTRAS=test
+t_assert_ok _driver ci_tests pkg "${IMAGE_PY} ${IMAGE_PY}t"
+t_assert_contains "$(cat "${REC}")" "sync ${IMAGE_PY}t extras=test"
+t_assert_contains "$(cat "${REC}")" "sync ${IMAGE_PY} extras="
+
+t_case "and that leg gates: its failing tests fail the run"
+export FAIL_TEST_LEG="${IMAGE_PY}t"
+t_assert_fails _driver ci_tests pkg "${IMAGE_PY} ${IMAGE_PY}t"
+unset FREE_THREADED_SYNC_EXTRAS FAIL_TEST_LEG
+
+t_case "without it the free-threaded leg stays experimental, and a failed sync leaves a warning annotation"
+export FAIL_SYNC_LEG="${IMAGE_PY}t"
+t_assert_ok _driver ci_tests pkg "${IMAGE_PY} ${IMAGE_PY}t"
+unset FAIL_SYNC_LEG
+t_assert_contains "$(cat "${_work}/out")" "::warning title=Python ${IMAGE_PY}t not tested::"
 
 t_summary

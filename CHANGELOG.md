@@ -26,6 +26,26 @@
   OmniAccelerANT waits for Flutter in the riscv64 image.
 - Suite `test-riscv64-cross.sh`, seven mutations in the `riscv64-cross` family.
 
+## 2026-10-01 - Python lanes run the whole suite, `3.14t` can gate, and arm64 runs pytest (CON50)
+
+- **`ci_tests.sh` passes pytest no path of its own.** It used to hard-code `tests/unit`, so
+  pytest never read the consumer's `testpaths`. WebDavClient's six WebDAV client tests and
+  every consumer's `tests/integration` ran on no lane, on any arch. `PYTEST_PATHS` (input
+  `test-paths`) still narrows it on request.
+- **A free-threaded leg can be real.** With `free-threaded-extras` (`FREE_THREADED_SYNC_EXTRAS`),
+  a `*t` leg syncs only the core and those extras, and gates. Without it the leg stays
+  experimental, and a failed venv, sync or test run now prints a `::warning::` annotation
+  instead of passing silently. On 2026-10-01 `3.14t` ran 0 tests on every lane of
+  OrchestrANT and WebDavClient, with every job green.
+- **`container-ci-windows.yml` takes a test tree with no binaries.** Set
+  `test-arch-gate-min-inspected: 0` for a Python suite that the product's own interpreter
+  runs: any PE file in the tree must still be arm64, but none is required and no import
+  walk runs. `Invoke-StagedTests.ps1` gains the `pytest` kind, read from pytest's final
+  summary line.
+- Tests: `test-python-ci-defaults.sh` (+5 cases), three new `python.ci-tests-*` mutations, and
+  `StagedTests.Tests.ps1` (pytest).
+- BACKLOG CON50 holds the cross-consumer audit and the owner's decisions.
+
 ## 2026-10-01 - `:winarm64` rebuilt without NVIDIA; the arm64 lanes run tests
 
 - **`:winarm64` is published again, at hub 59a4bca3.** The image of 2026-09-22 predated

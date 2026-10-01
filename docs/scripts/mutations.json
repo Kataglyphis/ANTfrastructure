@@ -7531,6 +7531,30 @@
     "why": "the docs venv syncs on that interpreter too, and the page would publish the coverage of a leg the default matrix no longer runs"
   },
   {
+    "id": "python.ci-tests-runs-the-configured-testpaths",
+    "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+    "find": "    \"${test_paths[@]}\" -v",
+    "replace": "    tests/unit -v",
+    "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+    "why": "a hard-coded subdirectory is how WebDavClient's real WebDAV tests and every consumer's integration suite ran on no lane for a year"
+  },
+  {
+    "id": "python.ci-tests-free-threaded-leg-syncs-its-own-extras",
+    "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+    "find": "    UV_SYNC_EXTRAS=\"$leg_extras\" uv_sync_project --no-wxpython",
+    "replace": "    uv_sync_project --no-wxpython",
+    "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+    "why": "with all extras the free-threaded leg needs wheels that only exist for the GIL build, so its sync fails and it tests nothing"
+  },
+  {
+    "id": "python.ci-tests-experimental-sync-failure-is-annotated",
+    "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+    "find": "      echo \"::warning title=Python ${V} not tested::its dependencies did not sync, so no test ran on it (experimental leg)\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+    "why": "a green job over a leg that ran nothing is the false coverage 3.14t gave every Python consumer; the annotation is the only signal that survives the green check"
+  },
+  {
     "id": "lib.cmake-build-configure-args-reach-cmake",
     "target": "linux/scripts/lib/cmake-build.sh",
     "find": "      cmake -B \"${BUILD_DIR}\" --preset \"${PRESET}\" ${CMAKE_BUILD_CONFIGURE_ARGS[@]+\"${CMAKE_BUILD_CONFIGURE_ARGS[@]}\"}",

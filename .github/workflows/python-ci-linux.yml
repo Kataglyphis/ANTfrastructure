@@ -33,6 +33,21 @@ on:
         required: false
         type: string
         default: ''
+      test-paths:
+        description: >-
+          Comma-separated pytest paths. Empty (the default) runs the project's own
+          configured testpaths, so no part of the suite is left on no lane.
+        required: false
+        type: string
+        default: ''
+      free-threaded-extras:
+        description: >-
+          Comma-separated extras a free-threaded leg (e.g. 3.14t) syncs instead of
+          all of them. Set, that leg gates like any other; empty keeps it
+          experimental, and a failed sync is reported as a warning annotation.
+        required: false
+        type: string
+        default: ''
       static-analysis-python-version:
         description: Interpreter for ci_static_analysis.sh. Empty keeps the driver's default.
         required: false
@@ -163,7 +178,10 @@ jobs:
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
-          extra-args: --platform ${{ matrix.platform }}
+          extra-args: >-
+            --platform ${{ matrix.platform }}
+            -e PYTEST_PATHS=${{ inputs.test-paths }}
+            -e FREE_THREADED_SYNC_EXTRAS=${{ inputs.free-threaded-extras }}
           script: >-
             bash -lc "bash scripts/linux/ci_tests.sh
             '${{ inputs.package-name }}' '${{ inputs.test-python-versions }}'"

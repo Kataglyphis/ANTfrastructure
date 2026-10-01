@@ -44,6 +44,46 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         (`ModuleImportPattern`); set `'(?!)'` so clang-tidy reads every `Src/` TU (CON10).
       - Consumers: drop `Clear-UnreachableSccacheEndpoint` from the hub path once no published
         image carries the endpoint (it was the first CON12 problem).
+- [ ] **CON50 — Every test on every arch lane** [L, ★★★]. Owner goal 2026-10-01. A read-only
+      audit of the six consumers that day (latest green develop runs) found Linux arm64 at
+      parity with Linux x64 everywhere. The gaps are the Windows lanes, suites that run on no
+      lane, and one narrowing:
+      - **OxidANT:** Windows x64/arm64 run 167 tests to Linux's 358. The renderer integration
+        tests, `kataglyphis_inference` and `kataglyphis_telemetry` are missing.
+      - **BeschleunigerBallett:** no GPU suites (40) or perf suite on Windows. Windows arm64 is
+        Release-only.
+      - **AccelerANTgine:** its suites were placeholders, so 0% of `Src/` is covered on every
+        arch.
+      - **OmniAccelerANT:** the plugin's Dart tests and gtest and the integration test run
+        nowhere. The web lane never tests in a browser, and Android only on the x64 VM.
+      - **OrchestrANT:** Windows arm64 runs none of the 959 pytest tests. The benchmark lab
+        suites run on Linux x64 only.
+      - **WebDavClient:** `tests/unit` holds 3 dummy tests, and the 6 WebDAV tests ran nowhere.
+        There is no Windows arm64 lane.
+      - **Both Python repos:** `3.14t` ran 0 tests.
+
+      Owner decisions the same day:
+      - `3.14t` becomes a real leg.
+      - The Windows GPU tests run now: OxidANT's wgpu suites on the runner host and on
+        windows-11-arm, and BeschleunigerBallett's Vulkan goldens on a software rasterizer.
+      - AccelerANTgine gets real tests.
+      - Web tests run in Chromium, and Android tests on an emulator.
+
+      The consumer work runs in each repo, tracked in its own BACKLOG.
+      **Here:**
+      1. Python lanes run the project's `testpaths` and gate a `3.14t` leg through
+         `free-threaded-extras` (`docs/python-ci.md` § What the test leg runs).
+      2. `container-ci-windows.yml` takes a binary-free test tree and `Invoke-StagedTests.ps1`
+         reads pytest, for OrchestrANT's arm64 suite. (Done 2026-10-01.)
+      3. Chromium in `:latest` (`linux/Dockerfile.package`) for `flutter test --platform chrome`.
+      4. An Android emulator and arm64-v8a system image for OmniAccelerANT's APK. arm64
+         runners have no KVM, so it runs as an x64 image with ARM translation or on another
+         runner. Measure before choosing.
+      5. A software Vulkan ICD for Windows x64 and arm64 (Mesa lavapipe; WARP/Dozen lacks ray
+         tracing). Ship it in the image or as a pinned, SHA-checked download; the consumers
+         run the goldens with it.
+      6. A native `windows-11-arm` Python job in `python-ci-windows.yml` for WebDavClient. Its
+         lock has win_arm64 wheels except py-spy, which needs a platform marker.
 
 ## Open — Linux image (all arches)
 

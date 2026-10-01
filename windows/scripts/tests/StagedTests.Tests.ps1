@@ -24,19 +24,21 @@ function script:Invoke-FakeSuite {
 
 Describe 'Invoke-StagedTests.ps1' {
 
-    It 'sums each framework''s summary, and counts failures, crashes included, instead of throwing' {
+    It 'sums each framework''s summary (pytest errors as failures, xfails as skips), and counts failures, crashes included' {
         $libtest = 'test result: ok. {0} passed; 0 failed; {1} ignored; 0 measured; 0 filtered out'
         $green = @(
             (New-FakeTest 'core_test' 'gtest' 0 '[==========] 4 tests ran.', '[  PASSED  ] 3 tests.', '[  SKIPPED ] 1 test, listed below:'),
             (New-FakeTest 'crate' 'cargo' 0 ($libtest -f 5, 2), ($libtest -f 1, 0)),
+            (New-FakeTest 'py' 'pytest' 0 'tests/unit/test_a.py ....', '======= 928 passed, 31 skipped, 2 xfailed, 1 xpassed in 9.10s ======='),
             (New-FakeTest 'smoke' 'exitcode' 0 'ok')
         )
         $red = @(
             (New-FakeTest 'red_test' 'gtest' 1 '[  PASSED  ] 2 tests.', '[  FAILED  ] 1 test, listed below:'),
             (New-FakeTest 'crash_test' 'gtest' 3 '[  PASSED  ] 4 tests.'),
+            (New-FakeTest 'red_py' 'pytest' 1 '===== 1 failed, 5 passed, 2 errors in 1.20s ====='),
             (New-FakeTest 'bad' 'exitcode' 2 'boom')
         )
-        foreach ($case in @(@($green, 'TESTS: passed=10 failed=0 skipped=3'), @($red, 'TESTS: passed=6 failed=3 skipped=0'))) {
+        foreach ($case in @(@($green, 'TESTS: passed=939 failed=0 skipped=36'), @($red, 'TESTS: passed=11 failed=6 skipped=0'))) {
             Invoke-InTestDir { param($d) Assert-Equal $case[1] (Invoke-FakeSuite -Dir $d -Tests $case[0]) $case[1] }
         }
     }

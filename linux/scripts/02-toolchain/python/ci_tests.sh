@@ -13,6 +13,8 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "  package_name defaults to \$PACKAGE_NAME or derived from pyproject.toml"
   echo "  py_versions_string defaults to \$PY_VERSIONS or '3.14'"
   echo "  log file defaults to \$CI_TESTS_LOG_FILE or 'docs/test_results/ci_tests-<timestamp>.log'"
+  echo "  \$PYTEST_PATHS (comma list) narrows pytest; empty runs the project's configured testpaths"
+  echo "  \$FREE_THREADED_SYNC_EXTRAS (comma list) makes a free-threaded leg sync only those extras and gate"
   exit 0
 fi
 
@@ -20,6 +22,11 @@ PACKAGE_NAME="$(derive_package_name "${1:-${PACKAGE_NAME:-}}")"
 
 PY_VERSIONS="${2:-${PY_VERSIONS:-3.14}}"
 # EXPERIMENTAL_PYTHON_VERSIONS is owned and read by 01-core/python_uv.sh; nothing to set here.
+
+# Empty runs the project's own testpaths: a hard-coded subdir once left a consumer's real suite on no lane.
+PYTEST_PATHS="${PYTEST_PATHS:-}"
+# Set, a free-threaded leg syncs only these extras and gates like any other; unset, it stays experimental.
+FREE_THREADED_SYNC_EXTRAS="${FREE_THREADED_SYNC_EXTRAS:-}"
 
 LOG_FILE="${CI_TESTS_LOG_FILE:-$WORKSPACE_ROOT/docs/test_results/ci_tests-$(timestamp).log}"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -37,8 +44,17 @@ mkdir -p "$WORKSPACE_ROOT/docs/test_results"
 
 TEST_EXIT=0
 
+read -r -a test_paths <<< "${PYTEST_PATHS//,/ }"
+
 for V in $PY_VERSIONS; do
-  if is_experimental_python "$V"; then
+  # A free-threaded leg with its own extras is a real leg; its sync can no longer fail on GIL-only wheels.
+  leg_extras=""
+  experimental=0
+  if [[ "$V" == *t ]] && [ -n "$FREE_THREADED_SYNC_EXTRAS" ]; then
+    leg_extras="$FREE_THREADED_SYNC_EXTRAS"
+    info "[stable] Running Python $V with extras '${leg_extras}' only"
+  elif is_experimental_python "$V"; then
+    experimental=1
     info "[experimental] Running Python $V in non-blocking mode"
   else
     info "[stable] Running Python $V"
@@ -46,8 +62,9 @@ for V in $PY_VERSIONS; do
 
   VENV_DIR="$WORKSPACE_ROOT/.venv-${V}"
 
-  if is_experimental_python "$V"; then
+  if [ "$experimental" -eq 1 ]; then
     if ! uv_venv_create "$VENV_DIR" "$V"; then
+      echo "::warning title=Python ${V} not tested::its venv could not be created (experimental leg)"
       warn "[experimental] Failed to create venv for $V; continuing"
       continue
     fi
@@ -57,20 +74,23 @@ for V in $PY_VERSIONS; do
 
   uv_venv_activate "$VENV_DIR"
 
-  # An experimental interpreter may fail its sync, like its venv creation, without failing the matrix.
-  if is_experimental_python "$V"; then
+  # An experimental interpreter may fail its sync without failing the matrix, but never silently.
+  if [ "$experimental" -eq 1 ]; then
     if ! uv_sync_project --no-wxpython; then
+      echo "::warning title=Python ${V} not tested::its dependencies did not sync, so no test ran on it (experimental leg)"
       warn "[experimental] Failed to sync dependencies for $V; continuing"
       uv_venv_deactivate
       uv_venv_remove "$VENV_DIR"
       continue
     fi
+  elif [ -n "$leg_extras" ]; then
+    UV_SYNC_EXTRAS="$leg_extras" uv_sync_project --no-wxpython
   else
     uv_sync_project --no-wxpython
   fi
 
   pytest_args=(
-    tests/unit -v
+    "${test_paths[@]}" -v
     --cov="$PACKAGE_NAME"
     --cov-report=term-missing
     --cov-report="html:$WORKSPACE_ROOT/docs/test_results/coverage-html-${V}"
@@ -83,8 +103,11 @@ for V in $PY_VERSIONS; do
     --md-report-output "$WORKSPACE_ROOT/docs/test_results/pytest-report-${V}.md"
   )
 
-  if is_experimental_python "$V"; then
-    uv_run pytest "${pytest_args[@]}" || warn "[experimental] Unit tests failed for $V; continuing"
+  if [ "$experimental" -eq 1 ]; then
+    uv_run pytest "${pytest_args[@]}" || {
+      echo "::warning title=Python ${V} tests failed::the experimental leg's tests failed; see report-${V}.xml"
+      warn "[experimental] Tests failed for $V; continuing"
+    }
   else
     uv_run pytest "${pytest_args[@]}" || TEST_EXIT=$?
   fi
