@@ -129,6 +129,9 @@ ARG USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL
 # Re-declared: the rootfs-export handoff drops base's image config, and with it every base ENV.
 ENV NVIDIA_DRIVER_CAPABILITIES=all \
     NVIDIA_VISIBLE_DEVICES=all
+# "yes" with DeepStream, else empty: its legacy nvstreammux fails on GStreamer >= 1.28. docs/linux-accelerator-images.md#nvstreammux-the-new-one-only
+ARG DS_NEW_MUX=${ENABLE_DEEPSTREAM/false/}
+ENV USE_NEW_NVSTREAMMUX=${DS_NEW_MUX/true/yes}
 ARG VULKAN_VERSION=1.4.357.0
 ENV VULKAN_VERSION=${VULKAN_VERSION}
 # The smoke compares these with the binaries: docs/consumer-image-contract.md#the-web-lane-toolchain

@@ -258,6 +258,9 @@ CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true bash linux/scripts/build-cross-chain
 | `/opt/nvidia/deepstream/tensorrt-10.16.1.11/` | DeepStream's own TensorRT 10 (§ TensorRT 10 beside 11) |
 | `/opt/gstreamer/lib/<triplet>/gstreamer-1.0/deepstream` | a link to `…/lib/gst-plugins`; the registry scan follows it, so no `GST_PLUGIN_PATH` is needed |
 | `/etc/ld.so.conf.d/010-deepstream-tensorrt.conf` | the TensorRT 10 lib dir, the only DeepStream path on the loader path |
+| `/usr/lib/<triplet>/libnvinfer_builder_resource_*.so.10.16.1` | links into the TensorRT 10 prefix, which an engine build `dlopen()`s by file name (§ [TensorRT builder resources, by file name](#tensorrt-builder-resources-by-file-name)) |
+| `/usr/lib/<triplet>/libv4l/plugins/libcuvidv4l2_plugin.so` | a link to NVIDIA's NVDEC plugin, so the distro `libv4l2` loads it (§ [NVDEC through the distro libv4l2](#nvdec-through-the-distro-libv4l2)) |
+| `ENV USE_NEW_NVSTREAMMUX=yes` | the new `nvstreammux`; the legacy one fails on GStreamer ≥ 1.28 (§ [nvstreammux: the new one only](#nvstreammux-the-new-one-only)) |
 
 `deepstream-9.1/lib` is deliberately **not** on the loader path. `libnvv4l2.so` there
 carries the SONAME `libv4l2.so.0`, so `ldconfig` would hand NVIDIA's copy to every V4L2
@@ -274,30 +277,113 @@ the six TensorRT 10 debs (from the CUDA repo's `Packages` index), and the source
 ### What needs a GPU host
 
 - **The driver's own libraries**: `libcuda.so.1` and `libnvidia-ml.so.1` come from the host,
-  injected by `nvidia-container-toolkit` (`--gpus all`). NVIDIA states driver 595.58.03 or
-  newer for DeepStream 9.1. The image's `cuda-compat` libcuda is forward compatibility for
-  data-centre GPUs only, so a GeForce card (the RTX 2080 on the build host) needs a new
+  injected by `nvidia-container-toolkit` (`--gpus all`, or `--device nvidia.com/gpu=all`
+  through CDI; rootless nerdctl: [`linux-host-setup.md` § B2c](linux-host-setup.md#b2c-a-gpu-container-on-an-x86-desktop-with-rootless-nerdctl)).
+  NVIDIA states driver 595.58.03 or newer for DeepStream 9.1. The image's `cuda-compat`
+  libcuda is forward compatibility for data-centre GPUs only, so a GeForce card needs a new
   enough host driver itself.
 - **Everything beyond registration.** Without a GPU the gates prove the elements load and
   register. Measured without a driver, `nvstreammux` stops at PAUSED with
   `Cuda failure: status=100` and `Unable to set device in gst_nvstreammux_change_state`
   (100 is `cudaErrorNoDevice`).
 
-The run that proves inference, from the sample data asset
-(`deepstream-sample-data_9.1.0.deb`, sha256 `21ee7ddc…5e98`, not in the image):
+The gate command, from the sample data asset (`deepstream-sample-data_9.1.0.deb`, sha256
+`21ee7ddc…5e98`, not in the image), in the image's environment, which sets
+`USE_NEW_NVSTREAMMUX=yes` (§ [nvstreammux: the new one only](#nvstreammux-the-new-one-only)):
 
 ```bash
 cd /opt/nvidia/deepstream/deepstream-9.1/samples/configs/deepstream-app
 gst-launch-1.0 -e filesrc location=../../streams/sample_720p.h264 ! h264parse ! nvv4l2decoder \
-  ! mux.sink_0 nvstreammux name=mux batch-size=1 width=1280 height=720 \
+  ! mux.sink_0 nvstreammux name=mux batch-size=1 \
   ! nvinfer config-file-path=config_infer_primary.txt ! fakesink
 ```
 
 `config_infer_primary.txt` builds an FP16 engine from `resnet18_trafficcamnet_pruned.onnx`
-on first use. `nvv4l2decoder` is NVDEC through NVIDIA's libv4l2 plugin
-(`lib/libv4l/plugins/libcuvidv4l2_plugin.so`), which the distro `libv4l2` loads only from
-`/usr/lib/x86_64-linux-gnu/libv4l/plugins/`; the image does not put it there. If that run
-shows `nvv4l2decoder` needs it, the fix is the plugin link, not the SONAME hijack.
+on first use. The new mux has no `width`/`height` properties; `nvinfer` scales.
+
+### The GPU run (2026-10-01)
+
+**Passed**, on an RTX 2080 (sm_75, compute capability 7.5), host driver 595.58.03 through
+CDI with rootless nerdctl. It ran in a throwaway container FROM the published `:latest` amd64
+child as root: the variant's CUDA 13.4.2 + cuDNN 9.26.0.51 installed the way
+`Dockerfile.nvidia` does (`ENABLE_TENSORRT=false`), then `deepstream.sh build` and
+`deepstream.sh stage-runtime`. The pipelines ran in the package stage's environment (no CUDA
+on `LD_LIBRARY_PATH`). Pass/fail and functional facts only; the licence forbids publishing
+benchmark results (§ [Licence](#licence-the-owner-decision)).
+
+| Check | Result |
+| --- | --- |
+| The nine gate elements register against the real driver, fresh registry | pass, no `Cuda failure` during the scan |
+| TensorRT engine build for sm_75 (engine file removed first) | pass: `serialize cuda engine to file: …onnx_b30_gpu0_fp16.engine successfully` |
+| `nvv4l2decoder` (NVDEC) with the distro `libv4l2` 1.32.0 | pass **with** the plugin link (§ [NVDEC through the distro libv4l2](#nvdec-through-the-distro-libv4l2)); without it, fail |
+| decode → `nvstreammux` → `nvinfer` → `nvvideoconvert` → `nvdsosd` (`process-mode=1`, GPU) | pass: a pad probe on `nvdsosd` counted 1442 frames, all `NVBUF_MEM_CUDA_DEVICE`, 30214 objects in four classes |
+| Two sources, batch 2, `nvinfer` → `nvtracker` (NvDCF, `config_tracker_NvDCF_perf.yml`) → `nvmultistreamtiler` → `nvdsosd` | pass: 2884 frames from both pads, every object carries a tracker id |
+| `nvstreamdemux` back to two branches; `nvurisrcbin` on an MP4 | pass, both to EOS |
+| An `nvdsosd` frame copied out to JPEG | pass: boxes and labels drawn on the cars and people |
+| The same pipeline as the runtime user (uid 1001) | pass |
+| CUDA 13.4 runs the 13.2-built kernels (phase 3) | pass: `libnvbufsurftransform.so` and the tracker (RUNPATH `/usr/local/cuda-13.2/lib64`, absent) load `libcudart.so.13.4.92` and run their sm_75 SASS; TensorRT 10.16 (a CUDA 13.2 build, `getInferLibVersion()` 101601) builds and runs the engine |
+| The legacy `nvstreammux` (`USE_NEW_NVSTREAMMUX` unset) | **fail**, every time: § [nvstreammux: the new one only](#nvstreammux-the-new-one-only) |
+
+Reproduce it in the package stage's environment, not with `Dockerfile.nvidia`'s `ENV`. That
+stage puts `lib64/stubs` on `LD_LIBRARY_PATH` (the package stage replaces the variable).
+There, the registry scan's `hip` plugin `dlopen()`s `libcuda.so`, gets the stub, and the
+stub's SONAME `libcuda.so.1` then stands in for the driver for the rest of the scan: measured,
+`nvh264dec`, `nvh264enc` and `cudaconvert` vanish from the registry and DeepStream's
+`plugin_init` logs `Cuda failure: status=34` (`cudaErrorStubLibrary`). The build stages have
+no GPU, so only a hand-run gate meets this.
+
+Three defects surfaced, each fixed in the source (they need an nvidia chain run to reach an
+image): the builder-resource links, the libv4l2 plugin link, and the mux switch below. A
+fourth, outside DeepStream, turned the first into a segfault:
+[`failure-modes.md` § An exception through std::call_once segfaults in libunwind](failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind).
+
+### TensorRT builder resources, by file name
+
+The first engine build stopped with
+`Error Code 6: API Usage Error (Unable to load library: libnvinfer_builder_resource_sm75.so.10.16.1 … No such file or directory)`.
+`libnvinfer.so.10` `dlopen()`s its builder resources by file name. Their SONAME is
+`do_not_link_against_nvinfer_builder_resource_sm75`, and `ld.so.cache` holds only SONAMEs, so
+the `ld.so.conf` entry for the private prefix does not help; `dlopen()` finds the file name
+only in a default directory. A distro TensorRT lives there, the private copy does not.
+`deepstream.sh` therefore links each `libnvinfer_builder_resource_*.so.10.16.1` into
+`/usr/lib/<triplet>/` (in both `build` and `stage-runtime`), and the gates check the links.
+The names carry the full TensorRT version, so they cannot collide with TensorRT 11's.
+
+### NVDEC through the distro libv4l2
+
+Without the link, `nvv4l2decoder` opened `/dev/nvidia0` as a plain V4L2 node:
+`Error getting capabilities for device '/dev/nvidia0': It isn't a v4l2 driver`. NVDEC is
+NVIDIA's libv4l2 plugin (`lib/libv4l/plugins/libcuvidv4l2_plugin.so`), and the distro
+`libv4l2` loads plugins only from `/usr/lib/<triplet>/libv4l/plugins/` (a compile-time path,
+no environment override). `stage-runtime` links the plugin there; with the link the decoder
+runs on the distro `libv4l2`, so the SONAME hijack in NVIDIA's `install.sh` stays out.
+Measured on a non-NVIDIA node (`v4l2_open("/dev/null")`): the plugin's `init` returns NULL
+and `libv4l2` moves on. Without a driver its `dlopen()` fails on `libcuda.so.1`, which
+`libv4l2` also skips. GStreamer's own `v4l2src` does not use `libv4l2` by default.
+
+### nvstreammux: the new one only
+
+NVIDIA's legacy `nvstreammux` is a prebuilt static archive
+(`libnvdsgst_multistream_legacy.a`) linked into the source-built plugin, and it is the
+default unless `USE_NEW_NVSTREAMMUX=yes`. On GStreamer 1.29.2 it accepts the first buffer and
+returns `GST_FLOW_ERROR` with no message; the pipeline reports only
+`h264parse0: Internal data stream error … reason error (-5)`. Traced instruction by
+instruction: the legacy chain maps the input buffer, unmaps it, and then reads
+`GstMapInfo.data`. Since GStreamer 1.28, `gst_memory_unmap()` calls `gst_map_info_clear()`,
+which sets `memory`, `flags` and `data` to NULL to catch exactly that use-after-unmap, so the
+check sees NULL and fails. GStreamer 1.24, which NVIDIA builds against, left the struct
+alone.
+
+The new mux (`gst-nvmultistream2`, Apache-2.0 source, built here) has no such read, and
+NVIDIA's other readers of the switch (`libnvdsgst_customhelper.so`, `libnvds_yml_parser.so`)
+follow the same variable. So `Dockerfile.package` sets `ENV USE_NEW_NVSTREAMMUX=yes` when
+`ENABLE_DEEPSTREAM=true` and leaves it empty otherwise. Applications built for the legacy mux
+must use the new mux's properties (`config-file-path`, no `width`/`height`).
+
+Other prebuilt NVIDIA plugins may carry the same read. The run exercised `nvvideoconvert`,
+`nvv4l2decoder`, `nvmultistreamtiler` and the tracker library, all without failures; the
+rest of the prebuilt plugins (`deepstream_bins`, `dewarper`, `of`, `segvisual`, …) were not
+run.
 
 **GPU architectures.** NVIDIA's prebuilt kernels carry SASS for sm_75, 80, 89, 90, 100,
 110, 120 and 121, plus PTX for sm_90. The two source components with CUDA code
@@ -345,8 +431,8 @@ The runtime is built against CUDA 13.2, the variant ships 13.4.2. Measured: ever
 soname the tree needs (`libcudart.so.13`, `libcublas.so.13`, `libcufft.so.12`,
 `libnpp*.so.13`, `libnvjpeg.so.13`) resolves against 13.4.2 through `ld.so.conf`, and `ldd -r`
 reports no missing symbol in any library whose sonames all resolve. The `RUNPATH` entry
-`/usr/local/cuda-13.2/lib64` in NVIDIA's binaries simply does not exist here. Whether the
-kernels run is part of the GPU run above.
+`/usr/local/cuda-13.2/lib64` in NVIDIA's binaries simply does not exist here. The kernels
+run on 13.4 as well ([§ The GPU run](#the-gpu-run-2026-10-01)).
 
 ### What the build changes against upstream
 
@@ -400,11 +486,15 @@ the package stage (against the wired plugin link) and by the runtime smoke
 - **Only plugins in `gst-plugins/`**, and a registry scan that does not crash. The check
   reads `nm` to the end: a `grep -q` under `pipefail` SIGPIPEs `nm` on a large plugin, and
   the first run moved `libgstnvvideo4linux2.so` out that way.
+- **The `dlopen()` links**: every TensorRT builder resource resolves by file name from the
+  default directory (build and package), and the package's `libv4l2` plugin dir holds the
+  NVDEC plugin (`DSV_WIRED=1` only).
 - **Registration** of `nvinfer`, `nvstreammux`, `nvvideoconvert`, `nvtracker`, `nvdsosd`,
   `nvv4l2decoder`, `nvmultistreamtiler`, `nvstreamdemux` and `nvurisrcbin`, with CUDA's stub
   `libcuda`/`libnvidia-ml` standing in for the driver.
 
-Not covered: inference, NVDEC, a TensorRT engine build. Those need the GPU run above.
+Not covered by the gates: inference, NVDEC, a TensorRT engine build. The GPU run above
+covered them once; no lane has a GPU.
 
 ### Licence: the owner decision
 

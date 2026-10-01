@@ -7,6 +7,31 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - DeepStream's GPU gate passes; four defects it found are fixed (CON42)
+
+- **The GPU gate passed** on the build host's RTX 2080 (sm_75, driver 595.58.03, CDI through
+  rootless nerdctl), in a throwaway container FROM the published `:latest` amd64 child plus
+  the variant's CUDA 13.4.2: TensorRT 10.16 builds the sample engine for sm_75; NVDEC
+  decodes; decode → `nvstreammux` → `nvinfer` → `nvtracker` → `nvmultistreamtiler` →
+  `nvdsosd` (GPU mode) runs with detections and tracker ids in the metadata, as root and as
+  uid 1001; `nvstreamdemux` and `nvurisrcbin` run; NVIDIA's CUDA 13.2 kernels run on 13.4.
+  Pass/fail only: the licence forbids publishing benchmark results.
+- **TensorRT builder resources are linked by file name.** An engine build `dlopen()`s
+  `libnvinfer_builder_resource_sm75.so.10.16.1` by name, which `ld.so.cache` never holds;
+  `deepstream.sh` links them into `/usr/lib/<triplet>/` and the gates check the links.
+- **NVDEC works through the distro `libv4l2`**, with NVIDIA's `libcuvidv4l2_plugin.so` linked
+  into its plugin dir by `stage-runtime` (and gated); no SONAME hijack.
+- **The image selects the new `nvstreammux`** (`USE_NEW_NVSTREAMMUX=yes` with DeepStream,
+  empty otherwise). NVIDIA's prebuilt legacy mux reads `GstMapInfo.data` after unmap, which
+  GStreamer ≥ 1.28 clears; it failed every buffer with no message.
+- **GStreamer core and libcamera build without libunwind**, in every variant.
+  `libunwind.so.8` ahead of `libgcc_s` turned an exception through `std::call_once` into a
+  segfault (`docs/failure-modes.md`); it took the TensorRT error above down with it.
+  Backtraces fall back to glibc's `backtrace()`.
+- **Host setup:** a GPU container on an x86 desktop with rootless nerdctl (`linux-host-setup.md`
+  § B2c): the Secure Boot key, the CDI spec in `~/.config/cdi` plus `cdi_spec_dirs`, and
+  regenerating it after every driver update.
+- **Still open for CON42:** the owner-approved nvidia chain run with `ENABLE_DEEPSTREAM=true`.
 ## 2026-10-01 - Python app bundles become tar.gz, deb, AppImage, zip and MSI, each started once
 
 - **Packagers.** `linux/scripts/06-packaging/python-app-package.sh` (tar.gz, deb, AppImage) and

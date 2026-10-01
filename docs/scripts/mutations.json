@@ -11219,11 +11219,75 @@
     "why": "grep -q SIGPIPEs nm on a large plugin, and under pipefail a real plugin is moved out of gst-plugins/"
   },
   {
+    "id": "deepstream.link-builder-resources",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "find": "    ln -sfn \"${f}\" \"${dir}/${f##*/}\"\n",
+    "replace": "    :\n",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "libnvinfer.so.10 dlopen()s its builder resources by file name, which ld.so.cache never holds; without the links no engine builds"
+  },
+  {
+    "id": "deepstream.link-v4l2-plugin",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "find": "  ln -sfn \"${plugin}\" \"${dir}/libcuvidv4l2_plugin.so\"\n",
+    "replace": "  :\n",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "the distro libv4l2 loads plugins only from its own dir; without the link nvv4l2decoder opens /dev/nvidia0 as a plain V4L2 node"
+  },
+  {
+    "id": "deepstream.stage-runtime-links-v4l2",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "find": "  ds_link_trt_builder_resources\n  ds_link_v4l2_plugin\n",
+    "replace": "  ds_link_trt_builder_resources\n",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "the package stage is the only place the NVDEC plugin gets linked"
+  },
+  {
+    "id": "deepstream.verify-builder-resources",
+    "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+    "find": "|| bad+=\" ${f##*/}\"",
+    "replace": "|| true",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "a missing builder-resource link must fail the gate, not wait for the first engine build on a GPU"
+  },
+  {
+    "id": "deepstream.verify-v4l2-plugin-wired",
+    "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+    "find": "  dsv_check_v4l2_plugin\n  dsv_check_trt_builder_resources\n",
+    "replace": "  dsv_check_trt_builder_resources\n",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "the NVDEC plugin link is a gate of the package stage"
+  },
+  {
+    "id": "deepstream.new-nvstreammux-env",
+    "target": "linux/Dockerfile.package",
+    "find": "ENV USE_NEW_NVSTREAMMUX=${DS_NEW_MUX/true/yes}",
+    "replace": "ENV USE_NEW_NVSTREAMMUX=",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "NVIDIA's prebuilt legacy nvstreammux reads GstMapInfo.data after gst_buffer_unmap(); GStreamer >= 1.28 clears it and every batch fails"
+  },
+  {
     "find": "    \"libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*\" \\\n    \"libcudnn${CUDNN_MAJOR}-headers-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*\"; } || \\",
     "id": "cuda-stack.cudnn-headers-pinned",
     "replace": "    \"libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*\"; } || \\",
     "target": "linux/scripts/01-core/install-cuda-stack.sh",
     "test": "bash linux/scripts/tests/test-cuda-cross-sbsa.sh",
     "why": "without the headers pin the pinned cuDNN tier always fails and an unpinned cuDNN is installed"
+  },
+  {
+    "id": "no-libunwind.gstreamer",
+    "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+    "find": "\"-Dgstreamer:libunwind=disabled\"",
+    "replace": "\"-Dgstreamer:libunwind=auto\"",
+    "test": "bash linux/scripts/tests/test-no-libunwind.sh",
+    "why": "libgstreamer's libunwind.so.8 ahead of libgcc_s turns an exception through std::call_once into a segfault"
+  },
+  {
+    "id": "no-libunwind.libcamera",
+    "target": "linux/scripts/03-media/build/libcamera/build-libcamera.sh",
+    "find": "  -Dlibunwind=disabled\n",
+    "replace": "  -Dlibunwind=auto\n",
+    "test": "bash linux/scripts/tests/test-no-libunwind.sh",
+    "why": "libcamera-base's libunwind.so.8 crashes a process the same way, even under RTLD_LOCAL"
   }
 ]

@@ -335,6 +335,7 @@ ds_build() {
   ds_fix_layout "$(ds_root)"
   rm -rf "${tmp}"
   ds_write_trt_ldconf
+  ds_link_trt_builder_resources
   DS_ROOT="$(ds_root)" DS_TRT_PREFIX="$(ds_trt_prefix)" bash "${DS_SCRIPT_DIR}/deepstream-verify.sh"
 }
 
@@ -346,6 +347,8 @@ ds_stage_runtime() {
   [ -d "${root}/lib/gst-plugins" ] || ds_die "ENABLE_DEEPSTREAM=true but ${root} was not copied into this image"
   ds_apt_install "${DS_RUNTIME_PACKAGES[@]}"
   ds_write_trt_ldconf
+  ds_link_trt_builder_resources
+  ds_link_v4l2_plugin
   # The licence makes only the runtime .so files distributable; static archives serve builds only.
   find "${root}" -name '*.a' -type f -delete
   gst_dir="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gstreamer-1.0"
@@ -354,10 +357,33 @@ ds_stage_runtime() {
   DSV_WIRED=1 DS_ROOT="${root}" DS_TRT_PREFIX="$(ds_trt_prefix)" bash "${DS_SCRIPT_DIR}/deepstream-verify.sh"
 }
 
-# libnvinfer.so.10 has no RUNPATH and dlopen()s its builder resources, so its dir must be on the loader path; the .10 sonames collide with nothing.
+# libnvinfer.so.10 has no RUNPATH, so nvinfer and the tracker find TensorRT 10 through the loader path; the .10 sonames collide with nothing.
 ds_write_trt_ldconf() {
   printf '%s/lib\n' "$(ds_trt_prefix)" > /etc/ld.so.conf.d/010-deepstream-tensorrt.conf
   ldconfig
+}
+
+# An engine build dlopen()s these by file name, which ld.so.cache never holds (it keys them by their do_not_link_against_* SONAME), so they need a default-dir link.
+ds_link_trt_builder_resources() {
+  local f n=0 dir
+  dir="$(dsv_syslib_dir)"
+  while IFS= read -r f; do
+    ln -sfn "${f}" "${dir}/${f##*/}"
+    n=$((n + 1))
+  done < <(dsv_trt_builder_resources "$(ds_trt_prefix)")
+  [ "${n}" -gt 0 ] || ds_die "no TensorRT builder resources in $(ds_trt_prefix)/lib"
+  ds_log "linked ${n} TensorRT ${DEEPSTREAM_TENSORRT_VERSION} builder resources into ${dir}"
+}
+
+# nvv4l2decoder reaches NVDEC through this libv4l2 plugin, and the distro libv4l2 loads plugins only from its own dir.
+ds_link_v4l2_plugin() {
+  local plugin dir
+  plugin="$(ds_root)/lib/libv4l/plugins/libcuvidv4l2_plugin.so"
+  dir="$(dsv_v4l2_plugin_dir)"
+  [ -f "${plugin}" ] || ds_die "the runtime has no ${plugin}"
+  mkdir -p "${dir}"
+  ln -sfn "${plugin}" "${dir}/libcuvidv4l2_plugin.so"
+  ds_log "libv4l2 plugin ${plugin##*/} -> ${dir}"
 }
 
 ds_assert_absent() {
