@@ -1523,6 +1523,35 @@ tag to cut. `versions.env` `APP_REF=develop` names what to track, not what to bu
 The Windows lane does the same in `Resolve-TorchAppRef` and `Build-TorchApp.ps1`:
 [`windows-builds.md`](windows-builds.md).
 
+### The chain wheels and the app's lock
+
+OrchestrANT's lock resolves every package from PyPI and the PyTorch indexes, torch
+included: the 2026-10-01 chain logged `torch pins satisfied` on amd64 and arm64, with
+no override. The chain's own wheels in `/opt/wheels` replace the
+lock's entries of the same family: ONNX Runtime (under its flavour name), GenAI,
+ai-edge-litert, IREE, OpenCV and a local torch. `install_project_environment` runs
+four steps in this order:
+
+1. **`uv sync`** names each replaced family in `--no-install-package`
+   (`collect_locked_local_skip_packages`, plus GenAI in `build_uv_sync_args`). It
+   installs nothing else first: an exact sync removes what it was told not to
+   install, so a wheel installed before it was removed and installed again, the
+   detour of the 2026-10-01 chain (`ai-edge-litert`, `onnxruntime-genai`).
+2. **`reconcile_local_wheels`** is the one place that installs the store, `--no-deps`.
+3. **`enforce_torch_version_pins`.**
+4. **`assert_chain_wheels_installed`** fails the stage unless every staged wheel is
+   what the venv has, by the `direct_url.json` uv records
+   ([`failure-modes.md`](failure-modes.md#the-torch-stage-fails-with-chain-wheel-fail)).
+   `assert_ort_chain_only` then proves the ORT bytes.
+
+**Why the lock cannot name the store.** A `[tool.uv.sources]` entry routed to a flat
+index at `/opt/wheels` makes `uv lock` fail everywhere the store is absent, which is
+OrchestrANT's CI and every dev host: `Failed to read --find-links directory:
+/opt/wheels` (exit 2, measured 2026-10-01 with the image's uv 0.12.17). A source
+marker cannot help, since PEP 508 has no "inside the image" marker. And a lock that
+did resolve there would record each chain wheel's SHA256, which the next chain
+rebuilds.
+
 ## Orchestrator stage selection
 
 Resuming mid-chain, building one stage, and the parallel-arch knobs.

@@ -116,18 +116,19 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       CON47's patch. Done when a `CROSS_VARIANT=rocm` chain publishes and its runtime smoke
       shows the three new checks green.
 
-- [ ] **CON52 — The torch stage installs the chain wheels through the lock, without the
-      uninstall/reinstall detour** [M, ★★]. Measured in the 2026-10-01 `:latest` chain
-      (amd64 and arm64): torch and torchvision now come straight from OrchestrANT's lock
-      (`torch pins satisfied`, no override), as intended. The chain's own wheels in
-      `/opt/wheels` do not: `ai-edge-litert` and `onnxruntime-genai` are installed by
-      `reconcile_local_wheels`, removed again by `uv sync` because the lock does not name
-      them, then reinstalled ("Using prebuilt local wheels", "Pinning local
-      onnxruntime-genai"). Plan: OrchestrANT's `pyproject.toml` names them with
-      `[tool.uv.sources]` (or a `find-links` index over `/opt/wheels`) so the lock resolves
-      to the chain's builds and `uv sync` keeps them; then `assemble-torch-app.sh` drops
-      the reinstall and fails when a lock entry does not resolve to `/opt/wheels`.
-      `uv sync --inexact` would only hide the detour. The consumer half is OrchestrANT's.
+- [ ] **CON52 — The torch stage installs the chain wheels once and proves them** [M, ★★].
+      Measured in the 2026-10-01 `:latest` chain (amd64 and arm64): torch and torchvision come
+      straight from OrchestrANT's lock (`torch pins satisfied`); `ai-edge-litert` and
+      `onnxruntime-genai` were installed before `uv sync`, removed by it and installed again.
+      **Fixed in source (2026-10-01):** `reconcile_local_wheels` is the one install point, and
+      `assert_chain_wheels_installed` (`CHAIN-WHEEL FAIL`) proves every staged wheel is the
+      venv's. Proven in a container FROM the published `:latest` amd64 child with that chain's
+      `/opt/wheels` and OrchestrANT 7daaa3e6: no uninstall in the sync, each wheel installed
+      once, `CHAIN-WHEEL PASS` + `ORT-CENSUS PASS`; a PyPI `onnxruntime-genai` 0.15.2 in place
+      of the chain's fails the gate. OrchestrANT's lock stays on PyPI: routing a package to
+      `/opt/wheels` makes `uv lock` fail off the image (`docs/linux-cross-builds.md` § The
+      chain wheels and the app's lock). Ships with the next chain; done when its torch stage
+      logs `CHAIN-WHEEL PASS` on amd64, arm64 and riscv64.
 
 - [ ] **CON53 — BuildKit cache housekeeping on the build host** [S, ★]. Both causes found and
       fixed in the source on 2026-10-01 (CHANGELOG; `docs/build-cache-tiers.md` § 3.2.1,

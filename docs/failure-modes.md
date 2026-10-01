@@ -70,6 +70,7 @@ Two neighbours, so you land on the right page:
 - [`RUNTIME_WHEELS_SOURCE=export` stops a runtime lane](#runtime_wheels_sourceexport-stops-a-runtime-lane)
 - [A GPU venv ships two onnxruntime distributions](#a-gpu-venv-ships-two-onnxruntime-distributions)
 - [The torch stage fails with `ORT-CENSUS FAIL`](#the-torch-stage-fails-with-ort-census-fail)
+- [The torch stage fails with `CHAIN-WHEEL FAIL`](#the-torch-stage-fails-with-chain-wheel-fail)
 - [A build or smoke stops on an ONNX Runtime that is not the chain's](#a-build-or-smoke-stops-on-an-onnx-runtime-that-is-not-the-chains)
 - [The wrapper smoke fails `clang --version` after a partial rebuild](#the-wrapper-smoke-fails-clang---version-after-a-partial-rebuild)
 - [`fatal error: sanitizer/common_interface_defs.h: No such file or directory` on arm64/riscv64](#fatal-error-sanitizercommon_interface_defsh-no-such-file-or-directory-on-arm64riscv64)
@@ -1175,6 +1176,17 @@ It comes from Linux `assemble-torch-app.sh`, from Windows `Build-TorchApp.ps1` (
 - On nvidia the chain GenAI is `onnxruntime-genai-cuda` or `-trt-rtx`, not `onnxruntime-genai`. ARCH-PARITY, VENV-SET and the GEN1 binding check count any `onnxruntime-genai(-<flavour>)` as the GenAI (`_pkg_count`, `genai_dist_version`); do not add an `onnxruntime-genai` arm to `_venv_pkg_exempt`, which would read STALE on every image that ships the plain name.
 
 **Not covered here:** whether the store wheel itself was compiled by the chain (the image census), files installed outside site-packages, and ORT vendored under another distribution and package name.
+
+### The torch stage fails with `CHAIN-WHEEL FAIL`
+
+**Symptom.** The Linux torch stage stops after the torch pins with lines like these:
+- `CHAIN-WHEEL FAIL onnxruntime-genai: the venv has 0.15.2 from an index; the chain staged onnxruntime_genai-0.15.2-cp314-cp314-linux_x86_64.whl (0.15.2)`
+- `CHAIN-WHEEL FAIL ai-edge-litert: not in the venv; the chain staged ai_edge_litert-2.2.0-...whl (2.2.0)`
+- then `CHAIN-WHEEL FAIL: N staged wheel(s) are not what the venv imports`
+
+**Cause.** `assert_chain_wheels_installed` in `assemble-torch-app.sh` requires every wheel in `/opt/wheels` to be the installed distribution of its name, read from the `direct_url.json` uv writes (`file:///opt/wheels/<file>`). Same name and version are not enough: OrchestrANT's lock names PyPI builds of ai-edge-litert, onnxruntime-genai and IREE, and a PyPI build of the same version is not the chain's. Exempt: TVM (optional, its install may fail), OpenCV when the source-built bindings are staged (removed on purpose), and IREE on riscv64 (non-fatal there). The lock cannot name `/opt/wheels` itself: off the image `uv lock` stops with `Failed to read --find-links directory: /opt/wheels`, and no PEP 508 marker tells the image from a dev host ([`linux-cross-builds.md` § The chain wheels and the app's lock](linux-cross-builds.md#the-chain-wheels-and-the-apps-lock)).
+
+**Fix.** Find who installed the PyPI build after `reconcile_local_wheels`, the one place that installs the store. The sync must name the family in `--no-install-package` (`collect_locked_local_skip_packages`, and the GenAI arm of `build_uv_sync_args`); a family missing there lets the lock install it. `enforce_torch_version_pins` reinstalling torch over a staged torch wheel reads the same way. Never exempt the wheel.
 
 ### A build or smoke stops on an ONNX Runtime that is not the chain's
 

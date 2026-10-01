@@ -241,7 +241,7 @@ _bua="$(t_fn_src "${ASSEMBLE}" build_uv_sync_args)" || exit 1
 _sync_for() {  # $@ = the staged wheel basenames; prints the uv sync args
   local d; d="$(mktemp -d "${_work}/sync.XXXXXX")"
   for _w in "$@"; do : > "${d}/${_w}"; done
-  bash -c "uv() { :; }"$'\n'"${_bua//\/opt\/wheels/${d}}"$'\n''declare -a a=() s=() w=(); build_uv_sync_args a s w; printf "%s\n" "${a[@]}"' 2>&1
+  bash -c "uv() { :; }"$'\n'"${_bua//\/opt\/wheels/${d}}"$'\n''declare -a a=() s=(); build_uv_sync_args a s; printf "%s\n" "${a[@]}"' 2>&1
 }
 for _g in onnxruntime_genai-0.15.2 onnxruntime_genai_cuda-0.15.2 onnxruntime_genai_trt_rtx-0.15.2; do
   t_assert_contains "$(_sync_for onnxruntime_gpu-1.30.0-cp314-cp314-linux_x86_64.whl "${_g}-cp314-cp314-linux_x86_64.whl")" \
@@ -249,6 +249,12 @@ for _g in onnxruntime_genai-0.15.2 onnxruntime_genai_cuda-0.15.2 onnxruntime_gen
 done
 t_assert_eq "" "$(_sync_for onnxruntime_gpu-1.30.0-cp314-cp314-linux_x86_64.whl | grep -x -e onnxruntime-genai || true)" \
   "no chain GenAI staged: the lock decides (control)"
+
+t_case "building the sync args installs nothing: an exact uv sync would remove it again (CON52)"
+_d="$(mktemp -d "${_work}/sync.XXXXXX")"
+for _w in onnxruntime_genai-0.15.2-cp314-cp314-linux_x86_64.whl ai_edge_litert-2.2.0-cp314-cp314-linux_x86_64.whl; do : > "${_d}/${_w}"; done
+_out="$(bash -c "uv() { printf 'UV %s\n' \"\$*\"; }"$'\n'"${_bua//\/opt\/wheels/${_d}}"$'\n''declare -a a=() s=(ai-edge-litert); build_uv_sync_args a s' 2>&1)"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '^UV ' || true)" "no uv call before the sync"
 
 t_case "the purge takes the census's names and nothing else"
 _out="$(_wiring "$(_fake_census 0 $'noise\nORT-CENSUS PURGE onnxruntime\nORT-CENSUS PURGE onnxruntime-genai\nORT-CENSUS PURGE bad;name')" _ort_purge_names)"
