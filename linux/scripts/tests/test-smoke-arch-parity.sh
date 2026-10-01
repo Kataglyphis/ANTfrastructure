@@ -303,7 +303,8 @@ S="$1"; SCAN="$2"
 source "${S}/rt.sh" >/dev/null 2>&1
 # The shipped list is empty (CON41); a fixture entry keeps the exception machinery under test.
 _PARITY_GST_KNOWN_BROKEN="arm64:libgstgtk4.so"
-_rt_run() { printf "%s\n" "${SCAN}"; }
+# The blacklist probe reads the same stub; an empty blacklist keeps these cases about the scanner.
+_rt_run() { printf "%s\nGST_BLACKLIST_DONE\n" "${SCAN}"; }
 FAILURES=0
 check_gstreamer_plugin_health "sandbox-image" "arm64" 2>&1
 echo "FAILURES=${FAILURES}"

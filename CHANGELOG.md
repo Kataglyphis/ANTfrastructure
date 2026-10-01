@@ -7,6 +7,30 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - lavapipe gets 8-lane subgroups, the SSIM validate plugin stops blacklisting itself, libunwind is gone from the media closure
+
+For the `:latest` rebuild the owner approved on 2026-10-01. None of it is in a published image yet.
+
+- **`ENV LP_NATIVE_VECTOR_WIDTH=256` in the package image, every arch (CON44).** Mesa 26.0.8's
+  lavapipe sorts its BVH with 8-lane subgroups; llvmpipe gives 4 on arm64 and riscv64 (measured
+  with `vulkaninfo` in the published `:latest`), and the scatter SEGVs. The runtime smoke's
+  `check_lavapipe_subgroup` fails a variable other than 256 or a `subgroupSize` other than 8.
+  BeschleunigerBallett can drop its own export once it runs on the new image.
+- **The SSIM validate plugin no longer blacklists itself (CON47).** It was no loader error:
+  `plugin_init` returned FALSE outside gst-validate, and the core registry scans
+  `gstreamer-1.0/validate/` too. Patch `007` returns TRUE there, as the gapplication plugin does;
+  proven by building gst-devtools 1.29.2 with the hub's patcher (blacklist 1 → 0, the override
+  still writes its frames under gst-validate). The plugin-health check now FAILS on any
+  undocumented blacklisted plugin, and `check_gst_validate_ssim` runs the override on amd64.
+- **The libcamera half of the libunwind fix is measured, and the owner chose "everywhere".**
+  `build-libcamera.sh` built with and without `-Dlibunwind=disabled`: without it
+  `libcamera-base` NEEDs `libunwind.so.8` and a C host that loads it first segfaults on an
+  exception through `std::call_once`; with it the exception is caught. A readelf sweep over all
+  three published arches found no other user under `/opt` or `/usr/local`, only distro `Xvfb`
+  and gperftools outside it. `check_no_libunwind_closure` now fails a shipped file that needs it.
+- Tests: `test-lavapipe-vector-width.sh`, `test-gst-validate-ssim.sh`, `test-no-libunwind.sh`
+  (extended); 18 mutation entries.
+
 ## 2026-10-01 - Windows Python lanes: static analysis runs at all, and wheels are built for the GIL
 
 OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub owned two of them.

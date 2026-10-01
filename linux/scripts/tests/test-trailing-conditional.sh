@@ -180,7 +180,7 @@ _tmp="$(mktemp -d)"; mkdir -p "${_tmp}/subprojects"
 t_assert_eq "0" "$(_rc_of "_apply_patch=/bin/true; _patch_dir=${_tmp}; echo() { :; }" \
   03-media/build/gstreamer/common/patch-gstreamer-sources.sh patch_gstreamer_sources \
   "patch_gstreamer_sources ${_tmp}")" \
-  "a tree without gst-libav must not fail the two unguarded call sites"
+  "a tree without the last patch target must not fail the two unguarded call sites"
 rm -rf "${_tmp}"
 
 t_case "csv_each returns 0 when the last CSV element is empty"

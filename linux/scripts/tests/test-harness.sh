@@ -59,6 +59,22 @@ t_stubbed_script() {
   printf 'set -uo pipefail\nsource %q\n%s\n' "${_lib}" "${_args}"
 }
 
+# t_rt_sandbox: a dir holding the runtime smoke minus its main() call (rt.sh), beside every sibling it sources.
+t_rt_sandbox() {
+  local _d; _d="$(mktemp -d)"
+  cp "${_T_SCRIPTS}/06-packaging"/*.sh "${_T_SCRIPTS}/06-packaging"/*.py "${_d}/"
+  sed '$d' "${_T_SCRIPTS}/06-packaging/smoke-runtime-image.sh" > "${_d}/rt.sh"
+  printf '%s' "${_d}"
+}
+
+# t_rt_recorded <sandbox> <probe text> <call...>: the call's output with _rt_run printing the recorded probe, then FAILURES=<n>.
+t_rt_recorded() {
+  local _sb="$1" _probe="$2"; shift 2
+  PROBE="${_probe}" bash -c "source '${_sb}/rt.sh' >/dev/null 2>&1
+_rt_run() { printf '%s\n' \"\${PROBE}\"; }
+$*; echo \"FAILURES=\${FAILURES}\"" 2>&1
+}
+
 # t_stage_build_args <repo root> <arch>: "ARGS=<n>", then each build arg an orchestrator hands a stage, one per line.
 t_stage_build_args() {
   bash -c 'REPO_ROOT="$1"; source "$1/linux/scripts/lib-orchestrator.sh" >/dev/null 2>&1

@@ -370,6 +370,9 @@ lane runs on the next `:latest`.
 | A window on arm64/riscv64 Vulkan (CON41) | the loader lists no `VK_KHR_{xcb,xlib,wayland}_surface`, so a windowed test aborts and only amd64 renders under `xvfb-run` | all three arches list them; the image smoke fails an arch that does not ([why](vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems)) |
 | clang-tidy on a compile database naming `/usr/bin/clang++` (CON39) | selects the distro GCC 16; BeschleunigerBallett passes `--extra-arg=--gcc-toolchain=${GCC_PREFIX}` | `/usr/bin` carries the cfg pair too, so it selects `${GCC_PREFIX}` ([`linux-cross-builds.md` § Clang cross wrappers](linux-cross-builds.md#clang-cross-wrappers)) |
 | An atheris source build (CON38) | `Failed to find libFuzzer`: its `find_libfuzzer.sh` probes only `lib/linux/libclang_rt.fuzzer_no_main-<arch>.a` | the fuzzer, asan and ubsan archives are linked under that name as well; riscv64 still needs `LIBFUZZER_LIB`, since atheris' probe knows no riscv64 |
+| lavapipe on arm64/riscv64 (CON44) | 4-lane subgroups: a draw that builds an acceleration structure SEGVs; BeschleunigerBallett exports `LP_NATIVE_VECTOR_WIDTH=256` itself | the image sets `LP_NATIVE_VECTOR_WIDTH=256` on every arch, and the smoke fails a lavapipe whose `subgroupSize` is not 8 ([why](failure-modes.md#lavapipe-segfaults-building-an-acceleration-structure-on-arm64)) |
+| A C host that loads GStreamer or libcamera first | `libunwind.so.8` from `libgstreamer-1.0`/`libcamera-base` turns a C++ exception through `std::call_once` into a SIGSEGV | both build without libunwind ([why](failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind)) |
+| `gst-inspect-1.0 -b` on amd64 (CON47) | lists `libgstvalidatessim.so` | lists nothing; the SSIM plugin still works under `gst-validate-1.0` ([why](failure-modes.md#the-core-registry-blacklists-libgstvalidatessimso)) |
 
 ## The Android SDK roots are advertised
 

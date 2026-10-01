@@ -54,6 +54,12 @@ patch_gstreamer_sources() {
     bash "${_apply_patch}" "${_patch_dir}/006-libav-removed-codec-fallbacks.patch" "${repo_root}" \
       "gst-libav removed codec fallbacks"
   fi
+
+  # 007: the SSIM validate plugin fails init in the core registry, which blacklists it; docs/upstreamable-patches.md#22-gst-devtools-the-ssim-validate-plugin-fails-init-outside-gst-validate
+  if [ -f "${repo_root}/subprojects/gst-devtools/validate/plugins/ssim/gstvalidatessim.c" ]; then
+    bash "${_apply_patch}" "${_patch_dir}/007-validate-ssim-register-outside-validate.patch" "${repo_root}" \
+      "gst-devtools ssim plugin registers outside gst-validate"
+  fi
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

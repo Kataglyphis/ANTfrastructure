@@ -2432,12 +2432,12 @@
     "why": "an EXIT trap whose last command is a false && list returns 1 under set -e, turning a chain that finished green into a failed run"
   },
   {
-    "id": "trailing-return.gst-patch-006-guard",
+    "id": "trailing-return.gst-patch-last-guard",
     "target": "linux/scripts/03-media/build/gstreamer/common/patch-gstreamer-sources.sh",
-    "find": "  if [ -f \"${repo_root}/subprojects/gst-libav/ext/libav/gstavvidenc.c\" ]; then\n    bash \"${_apply_patch}\" \"${_patch_dir}/006-libav-removed-codec-fallbacks.patch\" \"${repo_root}\" \\\n      \"gst-libav removed codec fallbacks\"\n  fi",
-    "replace": "  [ -f \"${repo_root}/subprojects/gst-libav/ext/libav/gstavvidenc.c\" ] && \\\n    bash \"${_apply_patch}\" \"${_patch_dir}/006-libav-removed-codec-fallbacks.patch\" \"${repo_root}\" \\\n      \"gst-libav removed codec fallbacks\"",
+    "find": "  if [ -f \"${repo_root}/subprojects/gst-devtools/validate/plugins/ssim/gstvalidatessim.c\" ]; then\n    bash \"${_apply_patch}\" \"${_patch_dir}/007-validate-ssim-register-outside-validate.patch\" \"${repo_root}\" \\\n      \"gst-devtools ssim plugin registers outside gst-validate\"\n  fi",
+    "replace": "  [ -f \"${repo_root}/subprojects/gst-devtools/validate/plugins/ssim/gstvalidatessim.c\" ] && \\\n    bash \"${_apply_patch}\" \"${_patch_dir}/007-validate-ssim-register-outside-validate.patch\" \"${repo_root}\" \\\n      \"gst-devtools ssim plugin registers outside gst-validate\"",
     "test": "bash linux/scripts/tests/test-trailing-conditional.sh",
-    "why": "the last guarded patch decides the function's status, and both call sites invoke it bare under set -euo pipefail, so a tree without gst-libav would abort the GStreamer build"
+    "why": "the last guarded patch decides the function's status, and both call sites invoke it bare under set -euo pipefail, so a tree without gst-devtools would abort the GStreamer build"
   },
   {
     "id": "code-size.extent-code-lines",
@@ -11289,5 +11289,149 @@
     "replace": "  -Dlibunwind=auto\n",
     "test": "bash linux/scripts/tests/test-no-libunwind.sh",
     "why": "libcamera-base's libunwind.so.8 crashes a process the same way, even under RTLD_LOCAL"
+  },
+  {
+    "id": "lavapipe-width.package-env",
+    "target": "linux/Dockerfile.package",
+    "find": "ENV LP_NATIVE_VECTOR_WIDTH=256\n",
+    "replace": "ENV LP_NATIVE_VECTOR_WIDTH=128\n",
+    "test": "bash linux/scripts/tests/test-lavapipe-vector-width.sh",
+    "why": "128-bit NEON/RVV gives lavapipe 4-lane subgroups and its BVH sort SEGVs"
+  },
+  {
+    "id": "lavapipe-width.smoke-width",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    if [ \"${width}\" != 256 ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-lavapipe-vector-width.sh",
+    "why": "an image without the variable must fail even where the CPU default hides it"
+  },
+  {
+    "id": "lavapipe-width.smoke-subgroup",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    elif [ \"${sub}\" != 8 ]; then",
+    "replace": "    elif false; then",
+    "test": "bash linux/scripts/tests/test-lavapipe-vector-width.sh",
+    "why": "4-lane subgroups are the cause; the knob alone is not proof"
+  },
+  {
+    "id": "lavapipe-width.smoke-no-icd",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      fail \"lavapipe's ICD (lvp_icd.json) is missing",
+    "replace": "      pass \"lavapipe's ICD (lvp_icd.json) is missing",
+    "test": "bash linux/scripts/tests/test-lavapipe-vector-width.sh",
+    "why": "no lavapipe means nothing was measured"
+  },
+  {
+    "id": "lavapipe-width.smoke-called",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    check_lavapipe_subgroup \"${image_tag}\" \"${target_arch}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-lavapipe-vector-width.sh",
+    "why": "an uncalled check guards nothing"
+  },
+  {
+    "id": "gst-blacklist.undocumented",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      undocumented=\"${undocumented} ${p}\"",
+    "replace": "      :",
+    "test": "bash linux/scripts/tests/test-gst-validate-ssim.sh",
+    "why": "libgstvalidatessim.so sat blacklisted in :latest with the plugin-health check green"
+  },
+  {
+    "id": "gst-blacklist.unreadable",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    fail \"the GStreamer registry blacklist could not be read",
+    "replace": "    pass \"the GStreamer registry blacklist could not be read",
+    "test": "bash linux/scripts/tests/test-gst-validate-ssim.sh",
+    "why": "an unread blacklist is not an empty one"
+  },
+  {
+    "id": "gst-blacklist.parse",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "/BLACKLISTED \\1/p\"",
+    "replace": "/LISTED \\1/p\"",
+    "test": "bash linux/scripts/tests/test-gst-validate-ssim.sh",
+    "why": "the probe must turn gst-inspect-1.0 -b's list into BLACKLISTED lines"
+  },
+  {
+    "id": "gst-blacklist.called",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    _gst_check_stale_exceptions \"${target_arch}\" \"${failed}\" \"${_gtk4_wl}\"\n    _gst_check_blacklist \"${target_arch}\"\n",
+    "replace": "    _gst_check_stale_exceptions \"${target_arch}\" \"${failed}\" \"${_gtk4_wl}\"\n",
+    "test": "bash linux/scripts/tests/test-gst-validate-ssim.sh",
+    "why": "the plugin-health check must fail on a blacklisted plugin, not only warn"
+  },
+  {
+    "id": "gst-blacklist.called-early",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      fi\n      _gst_check_blacklist \"${target_arch}\"\n",
+    "replace": "      fi\n",
+    "test": "bash linux/scripts/tests/test-gst-validate-ssim.sh",
+    "why": "a scanner pass that did not finish must not skip the blacklist"
+  },
+  {
+    "id": "gst-validate-ssim.frames",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    elif [ \"${frames:-0}\" -ge 1 ] 2>/dev/null; then",
+    "replace": "    elif true; then",
+    "test": "bash linux/scripts/tests/test-gst-validate-ssim.sh",
+    "why": "the SSIM override must write frames under gst-validate"
+  },
+  {
+    "id": "gst-validate-ssim.amd64-ships",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "        fail \"gst-validate-1.0 is missing from the amd64 image",
+    "replace": "        pass \"gst-validate-1.0 is missing from the amd64 image",
+    "test": "bash linux/scripts/tests/test-gst-validate-ssim.sh",
+    "why": "amd64 builds gst-devtools natively, so its absence is a regression"
+  },
+  {
+    "id": "gst-validate-ssim.patch-wired",
+    "target": "linux/scripts/03-media/build/gstreamer/common/patch-gstreamer-sources.sh",
+    "find": "\"${_patch_dir}/007-validate-ssim-register-outside-validate.patch\"",
+    "replace": "\"${_patch_dir}/007-disabled.patch\"",
+    "test": "bash linux/scripts/tests/test-gst-validate-ssim.sh",
+    "why": "without 007 the core registry blacklists the SSIM plugin"
+  },
+  {
+    "id": "gst-validate-ssim.patch-content",
+    "target": "linux/scripts/patches/gstreamer/007-validate-ssim-register-outside-validate.patch",
+    "find": "+    return TRUE;\n",
+    "replace": "+    return FALSE;\n",
+    "test": "bash linux/scripts/tests/test-gst-validate-ssim.sh",
+    "why": "FALSE outside gst-validate is what blacklisted the plugin"
+  },
+  {
+    "id": "no-libunwind.smoke-hits",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    if [ -n \"${hits}\" ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-no-libunwind.sh",
+    "why": "a shipped file that needs libunwind.so.8 must fail the image"
+  },
+  {
+    "id": "no-libunwind.smoke-done",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    if ! printf '%s\\n' \"${out}\" | grep -q '^UNWIND_SCAN_DONE$'; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-no-libunwind.sh",
+    "why": "an unfinished scan is not a clean one"
+  },
+  {
+    "id": "no-libunwind.smoke-empty",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    elif ! [ \"${scanned:-0}\" -ge 1 ] 2>/dev/null; then",
+    "replace": "    elif false; then",
+    "test": "bash linux/scripts/tests/test-no-libunwind.sh",
+    "why": "a scan that read nothing proves nothing"
+  },
+  {
+    "id": "no-libunwind.smoke-called",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    check_no_libunwind_closure \"${image_tag}\" \"${target_arch}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-no-libunwind.sh",
+    "why": "an uncalled check guards nothing"
   }
 ]
