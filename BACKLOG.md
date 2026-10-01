@@ -129,15 +129,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       the reinstall and fails when a lock entry does not resolve to `/opt/wheels`.
       `uv sync --inexact` would only hide the detour. The consumer half is OrchestrANT's.
 
-- [ ] **CON53 — BuildKit cache housekeeping on the build host** [S, ★]. Two findings from
-      the 2026-10-01 chains, both outside the image:
-      - The cache-mount ids (`sccache-amd64` and its siblings) each exist as more than one
-        record since a fork on 2026-09-27; the compilers write to one, the rest only cost
-        disk. Find which record the current Dockerfiles mount, prove the others unused,
-        remove them, and let `prune-safe.sh` report a duplicate id.
-      - `PRUNE_KEEP_GB=100 linux/host-config/prune-safe.sh` once left 0.17 GB of regular
-        records instead of ~100 GB (the same call on 2026-10-01 evening kept 91 GB as
-        asked). Reproduce, find why the keep target was ignored, and add a test.
+- [ ] **CON53 — BuildKit cache housekeeping on the build host** [S, ★]. Both causes found and
+      fixed in the source on 2026-10-01 (CHANGELOG; `docs/build-cache-tiers.md` § 3.2.1,
+      `docs/linux-host-setup.md` § B7): `--keep-storage` bounds the whole store, so the keep
+      value now adds the cache mounts; and BuildKit's non-blocking `sharing=shared` lookup
+      makes a second record when the first is locked mid-release, which `prune-safe.sh` now
+      lists. Left: remove the 52 GB of surplus records (six ids; `/uv-cache-riscv64` 25.9 GB)
+      with `PRUNE_DUP_CACHEMOUNTS=1 linux/host-config/prune-safe.sh` once no chain holds the
+      store; it refuses while one does.
 
 ## Open — Linux arm64 and riscv64
 

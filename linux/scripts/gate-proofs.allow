@@ -149,3 +149,5 @@ mutation-family:riscv64-cross
 # CON50's browser and emulator installers, the AVD helper and their contract rows: package-stage and
 # runtime scripts no slug owns. Proof: test-chrome-and-emulator.sh and test-runtime-image-gates.sh.
 mutation-family:chrome-emulator
+# The host prune tool (linux/host-config/prune-safe.sh), which no slug owns. Proof: linux/scripts/tests/test-prune-safe.sh.
+mutation-family:prune-safe

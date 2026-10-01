@@ -555,7 +555,20 @@ about **1.5–2 h of cold LLVM rebuilds** for a few GB.
 
 `prune-safe.sh` prunes `type==regular` only, through `buildctl --filter`
 (nerdctl has no such flag), takes `PRUNE_KEEP_GB` and `DRY_RUN`, and proves
-cachemount survival by counting the records before and after. Through wave 4:
+cachemount survival by counting the records before and after. `PRUNE_KEEP_GB`
+is GB of *layer cache*: the script adds the cache mounts and local sources to
+the `--keep-storage` it passes, because that flag bounds the whole store
+([`build-cache-tiers.md` § 3.2.1](build-cache-tiers.md#321-the-buildkit-store-fallback-disk1)).
+
+**A cache id with more than one record** is listed after the cache mounts. With
+`sharing=shared`, BuildKit looks a cache id up without waiting: when the record
+it would reuse is locked, for instance mid-release by a parallel stage, it
+creates a second one. From then on it reuses the lowest record id it can lock
+(its bolt index order), and the other is touched only in the next such race.
+On 2026-10-01 six ids carried 52 GB of surplus that way (`/uv-cache-riscv64`
+alone 25.9 GB). The Dockerfiles' mount options were uniform; the race is
+BuildKit's. `PRUNE_DUP_CACHEMOUNTS=1` removes the surplus records, and refuses
+while any build holds a record. Through wave 4:
 **12 invocations, ~1 TB reclaimed, 0 cachemount losses.**
 
 **Mid-run, use `PRUNE_KEEP_GB>=100`.** Smaller budgets evict the in-flight

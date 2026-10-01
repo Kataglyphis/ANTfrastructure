@@ -7,6 +7,23 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - The layer-cache keep value means layer cache; surplus cache-mount records (CON53)
+
+- **`--keep-storage` bounds the whole store**, cache mounts included (BuildKit v0.33.0
+  `cache/manager.go` sums every unshared record before the type filter applies). Against
+  196 GB of cache mounts, `PRUNE_KEEP_GB=100 prune-safe.sh` therefore deleted every idle
+  layer record (0.17 GB left). `_disk_guard_regular_keep_mb` (`01-core/disk-guard.sh`) adds
+  the unprunable records' size from `buildctl du --format '{{json .}}'`; `prune-safe.sh` and
+  the chain's DISK1 fallback both pass that, so `PRUNE_KEEP_GB` and `CROSS_BUILDKIT_KEEP_GB`
+  are GB of layers.
+- **Surplus cache-mount records:** with `sharing=shared` BuildKit creates a second record for
+  a cache id when the one it would reuse is locked mid-release, then keeps reusing the lowest
+  record id. Six ids held 52 GB of surplus on this host. `prune-safe.sh` lists them, and
+  `PRUNE_DUP_CACHEMOUNTS=1` removes them; it refuses while a build holds a record. It now reads
+  the store as JSON (exact bytes; it needs `jq`) and rejects a non-numeric `PRUNE_KEEP_GB`.
+- Suite `test-prune-safe.sh`, a `test-disk-guard.sh` case, seven `prune-safe`/`disk-guard`
+  mutations (`mutation-family:prune-safe` declared).
+
 ## 2026-10-01 - A browser and an Android emulator in `:latest` (CON50 items 3 and 4)
 
 - **Chrome for Testing on amd64 and arm64.** Google's Stable build and its chromedriver, a
@@ -55,7 +72,6 @@
   no SHA check, a free-threaded leg ignoring its extras, and a bare `--python`. A real run
   on an x64 host against WebDavClient, with legs `3.14t 3.14`, gave the 3.14 leg a GIL 3.14.7:
   10 passed.
-
 ## 2026-10-01 - riscv64 consumer lanes: cross-build on amd64, test under QEMU (CON48)
 
 - **Owner decision:** a consumer's riscv64 lane builds on the amd64 runner and runs only
