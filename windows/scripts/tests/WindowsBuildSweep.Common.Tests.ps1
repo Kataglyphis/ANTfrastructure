@@ -89,4 +89,19 @@ Describe 'WindowsBuildSweep.Common' {
       Test-LinuxContainerSupport -DockerExe 'docker-that-does-not-exist' | Should -BeFalse
     }
   }
+
+  Context 'Invoke-InLinuxContainerBuild' {
+    It 'hands bash LF-only lines when the command came from a CRLF file' {
+      # A here-string in a CRLF-checked-out script keeps its CRs; bash then rejects `set -e<CR>`.
+      $global:FakeEngineArgs = $null
+      Set-Item function:global:FakeEngineRun { $global:FakeEngineArgs = @($args) }
+      try {
+        Invoke-InLinuxContainerBuild -RepoRoot 'C:\repo' -Image 'img' -Command "echo a`r`necho b`r`n" -DockerExe 'FakeEngineRun'
+        $global:FakeEngineArgs[-3..-1] -join '|' | Should -BeExactly "bash|-c|set -e`necho a`necho b`n"
+      } finally {
+        Remove-Item function:global:FakeEngineRun
+        Remove-Variable -Name FakeEngineArgs -Scope Global
+      }
+    }
+  }
 }

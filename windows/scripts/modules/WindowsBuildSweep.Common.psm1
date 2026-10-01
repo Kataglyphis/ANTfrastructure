@@ -135,7 +135,8 @@ function Invoke-InLinuxContainerBuild {
     $parts = $spec.Split(':')
     $runArgs += @('--mount', "type=volume,source=$($parts[0]),target=$($parts[1])")
   }
-  $runArgs += @($Image, 'bash', '-c', "set -e`n$Command")
+  # A caller's here-string carries its file's CRLF, and bash reads `set -e<CR>` as an invalid option.
+  $runArgs += @($Image, 'bash', '-c', "set -e`n$($Command -replace "`r`n", "`n")")
 
   & $exe @runArgs
 }

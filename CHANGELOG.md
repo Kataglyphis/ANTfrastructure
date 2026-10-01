@@ -7,6 +7,14 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - `Invoke-InLinuxContainerBuild` hands bash LF-only lines
+
+- **What went wrong.** A caller builds its container command in a here-string, and a here-string
+  keeps its file's line endings. OmniAccelerANT's `Invoke-Renovate.ps1` is checked out with
+  CRLF, so bash received `set -e<CR>` and stopped at once: `set: -: invalid option`.
+- **The fix.** `WindowsBuildSweep.Common`'s `Invoke-InLinuxContainerBuild` turns CRLF into LF
+  before `bash -c`. Pester: `WindowsBuildSweep.Common.Tests.ps1`.
+
 ## 2026-10-01 - Python app bundles and their packages for Windows arm64
 
 - **`Invoke-CiPackaging.ps1 -TargetArch arm64`** builds a consumer's app for arm64 in
