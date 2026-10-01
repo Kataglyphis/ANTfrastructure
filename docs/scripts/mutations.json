@@ -11505,5 +11505,61 @@
     "replace": "match.start(2), match.end(2), \"\")]",
     "test": "bash linux/scripts/tests/test-renovate-cmake.sh",
     "why": "a tag archive behind a URL_HASH moved alone leaves the hash of the OLD archive, so the next configure fails its download check; the edit must be refused, not written"
+  },
+  {
+    "id": "riscv64-cross.llvm-needs-riscv64-backend",
+    "target": "linux/scripts/lib/riscv64-cross.sh",
+    "find": "grep -q -e ' riscv64 '",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+    "why": "the image's own clang 23 is X86-only and newest; picked for its version, it fails every riscv64 compile with 'No available targets'"
+  },
+  {
+    "id": "riscv64-cross.wrapper-no-unused-arguments",
+    "target": "linux/scripts/lib/riscv64-cross.sh",
+    "find": " --start-no-unused-arguments -fuse-ld=lld",
+    "replace": " -fuse-ld=lld",
+    "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+    "why": "link flags on every compile line warn 'argument unused during compilation', which a -Werror consumer turns into a failed build"
+  },
+  {
+    "id": "riscv64-cross.wrapper-gcc-runtime-dir",
+    "target": "linux/scripts/lib/riscv64-cross.sh",
+    "find": " -L${sysroot}/opt/gcc-16.2.0/lib",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+    "why": "clang does not search a cross GCC's lib/ for libstdc++; every C++ link fails 'unable to find library -lstdc++'"
+  },
+  {
+    "id": "riscv64-cross.env-refuses-missing-sysroot",
+    "target": "linux/scripts/lib/riscv64-cross.sh",
+    "find": "if [ ! -e \"${sysroot}/lib/ld-linux-riscv64-lp64d.so.1\" ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+    "why": "without a sysroot the lane would fail later and far from the cause, or compile against nothing it can run"
+  },
+  {
+    "id": "riscv64-cross.sysroot-relativizes-absolute-links",
+    "target": "linux/scripts/02-toolchain/riscv64-sysroot.sh",
+    "find": "-lname '/*'",
+    "replace": "-lname '/nothing/*'",
+    "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+    "why": "an absolute link in a mounted sysroot resolves against the build container's root, so /etc/alternatives and .so dev links point at amd64 files or nothing"
+  },
+  {
+    "id": "riscv64-cross.sysroot-index-from-repodigests",
+    "target": "linux/scripts/02-toolchain/riscv64-sysroot.sh",
+    "find": "sed -n \"s|^${repo}@||p\"",
+    "replace": "sed -n \"s|^nothing@||p\"",
+    "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+    "why": "a tag re-read from the registry can be a newer push than the amd64 image the lane pulled, pairing mismatched sysroot and toolchain"
+  },
+  {
+    "id": "riscv64-cross.index-lookup-matches-arch",
+    "target": "linux/scripts/02-toolchain/registry-platform-digest.py",
+    "find": "        and m.get(\"platform\", {}).get(\"architecture\") == want_arch\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+    "why": "matching on the OS alone takes whichever linux manifest comes first, and an amd64 sysroot under a riscv64 compiler fails only at link time"
   }
 ]

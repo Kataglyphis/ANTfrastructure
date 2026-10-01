@@ -52,6 +52,7 @@ rather than an uninitialised checkout.
 | `SanitizerSupport.cmake` | `myproject_supports_sanitizers`, `myproject_default_debug_sanitizers` — what this toolchain can run, and Debug defaults |
 | `Sanitizers.cmake` | `myproject_enable_sanitizers` — applies the selected set to a target, Debug-gated; clang-cl runtime story: [`../docs/windows-clang-cl-sanitizers.md`](../docs/windows-clang-cl-sanitizers.md) |
 | `Speedup.cmake` | parallel build level from the detected core count |
+| `toolchains/riscv64-linux-gnu.cmake` | the riscv64 cross toolchain for the amd64 image: the clang wrappers, the riscv64 sysroot, the distro LLVM's `clang-scan-deps` and binutils, and `/usr/bin/env` as the cross emulator because binfmt runs the tests. Needs `riscv64_cross_env` first; consumers name it as `$env{RISCV64_CMAKE_TOOLCHAIN_FILE}` — [`../docs/riscv64-cross-test-lanes.md`](../docs/riscv64-cross-test-lanes.md) |
 | `StandardProjectSettings.cmake` | build-type default (`RelWithDebInfo`), `compile_commands.json`, colour diagnostics |
 | `StaticAnalyzers.cmake` | `myproject_enable_clang_tidy` (optional 3rd arg: `--header-filter` regex; report-only, never `--fix`), `myproject_enable_cppcheck` (probes the binary, disables with a warning if unusable) |
 | `Tests.cmake` | `myproject_enable_coverage` — per-compiler coverage flags (GNU, clang, clang-cl incl. explicit `clang_rt.profile` linkage); every build type except Release |

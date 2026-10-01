@@ -75,7 +75,20 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux arm64 and riscv64
 
-None open.
+- [ ] **CON48 — riscv64 consumer lanes: cross-build on amd64, test under QEMU** [M, ★★].
+      Owner decision 2026-10-01: a consumer's riscv64 lane cross-compiles on the amd64 runner
+      and runs only the tests under QEMU user-mode; a fully emulated build (20-30x slower)
+      would pass GitHub's 6 h limit for the C++ repos. The hub half is the
+      `setup-riscv64-cross` action, the reusable `container-ci-riscv64.yml`,
+      `lib/riscv64-cross.sh` and the CMake toolchain
+      ([`docs/riscv64-cross-test-lanes.md`](docs/riscv64-cross-test-lanes.md)). Consumers:
+      OxidANT (pilot), AccelerANTgine, BeschleunigerBallett. **OmniAccelerANT waits** until the
+      riscv64 image carries Flutter. Open:
+      - The image's `VK_ADD_LAYER_PATH` and the login shell's `VULKAN_SDK` name the x86_64
+        prefix on amd64; arch-neutral values (`/opt/vulkan/active/...`) would let the lane drop
+        its overrides.
+      - GPU suites run on riscv64 lavapipe under QEMU (OxidANT: 16 min 55 s locally on 32 cores)
+        but are skipped in CI for time; measure one opt-in CI run before turning them on.
 
 ## Open — Windows `:winamd64`
 

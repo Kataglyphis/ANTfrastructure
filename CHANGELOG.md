@@ -7,6 +7,25 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - riscv64 consumer lanes: cross-build on amd64, test under QEMU (CON48)
+
+- **Owner decision:** a consumer's riscv64 lane builds on the amd64 runner and runs only
+  the tests under QEMU user-mode. A fully emulated build is 20-30x slower and would pass
+  the 6 h job limit for the C++ repos. Page: `docs/riscv64-cross-test-lanes.md`.
+- **`setup-riscv64-cross` (action)** registers `tonistiigi/binfmt:qemu-v10.2.3` (pinned by
+  digest) with the `F` flag and exports the image's riscv64 child into a sysroot with
+  `linux/scripts/02-toolchain/riscv64-sysroot.sh` (allowlist, absolute links made
+  relative, the index taken from the pulled amd64 image's `RepoDigests`).
+- **`lib/riscv64-cross.sh`** (`riscv64_cross_env`): the distro clang (the image's clang 23
+  is X86-only), triple-named wrappers over the sysroot and its GCC 16.2.0 libstdc++, the
+  cc-rs/Cargo/pkg-config variables, `QEMU_CPU=rva23u64` (`rv64` and `rva22u64` SIGILL in
+  the image's RVV glibc), and arch-neutral `VULKAN_SDK`/`VK_ADD_LAYER_PATH`.
+  `cmake/toolchains/riscv64-linux-gnu.cmake` is the CMake side.
+- **`container-ci-riscv64.yml`** (reusable) wraps host prep, the action, the compiler cache
+  and one container step. Consumers: OxidANT, AccelerANTgine, BeschleunigerBallett;
+  OmniAccelerANT waits for Flutter in the riscv64 image.
+- Suite `test-riscv64-cross.sh`, seven mutations in the `riscv64-cross` family.
+
 ## 2026-10-01 - `Invoke-InLinuxContainerBuild` hands bash LF-only lines
 
 - **What went wrong.** A caller builds its container command in a here-string, and a here-string
