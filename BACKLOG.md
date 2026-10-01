@@ -87,32 +87,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux image (all arches)
 
-- [b] **CON44 — `LP_NATIVE_VECTOR_WIDTH=256` in the image** [S, ★★]. Mesa 26.0.8's lavapipe
-      compiles its BVH radix sort (`lvp_acceleration_structure.c`, `subgroup_size_log2 = 3`) for
-      8-lane subgroups; llvmpipe's subgroup is its vector width / 32, so 4 lanes on arm64 NEON,
-      and the sort's scatter writes through garbage addresses: every lavapipe draw that builds an
-      acceleration structure SEGVs on arm64 (BeschleunigerBallett run 36746313937, root-caused
-      2026-09-30 from a core: a 4-lane `st1` in `rs_scatter_smem`; x64 with 128 reproduces it,
-      arm64 with 256 draws). riscv64 has 4-lane subgroups too (`vulkaninfo`, 2026-10-01).
-      **Fixed in source (2026-10-01), package stage:** `ENV LP_NATIVE_VECTOR_WIDTH=256` for every
-      arch, and the runtime smoke's `check_lavapipe_subgroup` fails a variable other than 256 or
-      a lavapipe `subgroupSize` other than 8 (`docs/failure-modes.md`). Ships with the `:latest`
-      rebuild started 2026-10-01. Then: check it in the published children, and
-      BeschleunigerBallett drops its own export in `run-ctest.sh` (2ac0e785). Retire it once the
-      image's Mesa has upstream ebcfbe60 (2026-08-22), which deletes that sort.
-
-- [b] **CON47 — `libgstvalidatessim.so` fails to load in the published `:latest`** [S, ★].
-      Seen 2026-10-01 by the CON42 spike in the amd64 child (`502a5e9d…`). Measured 2026-10-01:
-      no loader error; `ldd -r` is clean, and `gst-inspect-1.0 -b` blacklists it because its
-      `plugin_init` returns FALSE outside gst-validate, while the core registry scans
-      `gstreamer-1.0/validate/` too. Under `gst-validate-1.0` it works. arm64 and riscv64 ship no
-      gst-devtools (cross builds disable it) and blacklist nothing.
-      **Fixed in source (2026-10-01), media stage (gstreamer):** patch `007` returns TRUE there,
-      proven by building gst-devtools 1.29.2 with the hub's patcher in a container FROM `:latest`
-      amd64 (blacklist 1 → 0; gst-validate's SSIM override writes its frames both ways). The
-      runtime smoke's plugin-health check now fails on any undocumented blacklisted plugin, and
-      `check_gst_validate_ssim` runs the override on amd64. Ships with the `:latest` rebuild
-      started 2026-10-01; then check it in the published amd64 child.
+- [ ] **CON44 — `LP_NATIVE_VECTOR_WIDTH=256` in the image** [S, ★★]. Mesa 26.0.8's lavapipe
+      compiles its BVH radix sort for 8-lane subgroups, but llvmpipe's subgroup is its vector
+      width / 32: 4 lanes on arm64 NEON and riscv64, where every acceleration-structure build
+      SEGVs (BeschleunigerBallett run 36746313937; detail in `docs/failure-modes.md`). The
+      image sets `ENV LP_NATIVE_VECTOR_WIDTH=256`, and the `:latest` published 2026-10-01
+      proves it in all three children (`check_lavapipe_subgroup`: 8 lanes on amd64, arm64 and
+      riscv64). Open:
+      - BeschleunigerBallett drops its own export in `run-ctest.sh` (2ac0e785).
+      - Retire the `ENV` once the image's Mesa has upstream ebcfbe60 (2026-08-22), which
+        deletes that sort.
 
 ## Open — Linux arm64 and riscv64
 
@@ -170,10 +154,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       1. **An nvidia variant chain run** with `ENABLE_DEEPSTREAM=true`, owner-approved. It has
          never run; everything below was proven in throwaway containers FROM the published
          `:latest` amd64 child plus the variant's CUDA install. It is also the first build of
-         the GPU run's three fixes and of GStreamer and libcamera without libunwind. That one
-         is in every variant by owner decision (2026-10-01, "everywhere"), so it reaches
-         `:latest` with the rebuild started 2026-10-01 and `:latest-rocm` with its next chain.
-         Its libcamera half is measured too (2026-10-01, `docs/failure-modes.md`).
+         the GPU run's three fixes in a chain. GStreamer and libcamera without libunwind are in
+         every variant by owner decision (2026-10-01, "everywhere"): the `:latest` published
+         2026-10-01 proves it in all three children (no shared object under `/opt` or
+         `/usr/local` needs `libunwind.so.8`); `:latest-rocm` gets it with its next chain.
 
       Measured 2026-10-01 (DeepStream v9.1.0, commit 581889df; runtime
       `deepstream-binaries-x86_9.1.0_amd64.deb`; GStreamer 1.29.2; CUDA 13.4.2; GCC 16.2):
