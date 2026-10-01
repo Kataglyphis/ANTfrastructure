@@ -25,7 +25,7 @@ on:
         type: string
         default: ''
       cache-lane:
-        description: compiler-cache-restore's lane id, e.g. `riscv64-cargo` (not `cache-key`: gitleaks reads a literal `*-key:` as a credential).
+        description: compiler-cache-restore's lane id, e.g. `riscv64-cargo`; not named cache-key, which gitleaks reads as a credential.
         required: true
         type: string
       cache-mounts:
