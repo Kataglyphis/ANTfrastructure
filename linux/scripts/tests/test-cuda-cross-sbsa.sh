@@ -26,6 +26,11 @@ t_assert_contains "${_src}" 'signed-by=/usr/share/keyrings/cuda-archive-keyring.
 t_assert_contains "${_src}" '/%s/ /\n' "a flat repo needs the trailing ' /' or apt looks for dists/"
 t_assert_eq "" "$(printf '%s\n' "${_src}" | grep 'trusted=yes')" "never trusted=yes"
 
+t_case "the pinned cuDNN tier pins the headers package too"
+# Without it apt picks the newest headers, -dev's exact dependency fails, and the unpinned tier installs a newer cuDNN (9.27 for a 9.26 pin, 2026-10-01).
+t_assert_contains "$(cat "${STACK_SH}")" '"libcudnn${CUDNN_MAJOR}-headers-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*"; } || \' \
+  "the headers pin sits in the same apt call as the -dev pin"
+
 t_case "the cross package set is the target's libraries — and NCCL is absent on purpose"
 eval "$(t_fn_src "${STACK_SH}" cuda_cross_packages)"
 _pkgs="$(cuda_cross_packages 13-4 13)"

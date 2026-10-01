@@ -72,6 +72,8 @@ ARG ENABLE_NVIDIA
 ARG ENABLE_AMD
 # Drops /opt/rocm/core-asan-* from the payload unless the image is an ASAN one.
 ARG ENABLE_ROCM_ASAN
+# Copies /opt/nvidia/deepstream out of the artifact; false leaves it behind.
+ARG ENABLE_DEEPSTREAM
 
 SHELL ["bash", "-lc"]
 
@@ -102,7 +104,7 @@ RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     set -euo pipefail; \
     # No soname repair here: that belongs to the sdk stage alone (materialize-llvm-target.sh).
     ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \
-      ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" \
+      ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" ENABLE_DEEPSTREAM="${ENABLE_DEEPSTREAM:-false}" \
       SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
     rm -f /tmp/copy-media-payloads.sh
 
@@ -117,7 +119,7 @@ ARG FFMPEG_PREFIX=/opt/ffmpeg
 ARG LIBCAMERA_PREFIX=/opt/libcamera
 ARG GSTREAMER_VERSION OPENCV_OUTPUT_DIR ONNXRUNTIME_OUTPUT_DIR ONNXRUNTIME_GENAI_OUTPUT_DIR GSTREAMER_PREFIX
 ARG ANDROID_SDK_VERSION ANDROID_NDK_VERSION ANDROID_COMPILE_SDK ANDROID_BUILD_TOOLS ANDROID_CMAKE_VERSION ANDROID_API_LEVEL
-ARG ENABLE_NVIDIA ENABLE_AMD
+ARG ENABLE_NVIDIA ENABLE_AMD ENABLE_DEEPSTREAM
 ARG GCC_VERSION LLVM_RELEASE PYTHON_VERSION PYTHON_MAJOR_MINOR
 ARG JDK_PACKAGE=openjdk-21-jdk-headless
 ARG WASM_PACK_VERSION=0.15.0
@@ -252,6 +254,7 @@ COPY --chmod=755 linux/scripts/03-media/build/litert/android/ /opt/scripts/03-me
 COPY --chmod=755 linux/scripts/03-media/build/onnxruntime/android/ /opt/scripts/03-media/onnxruntime/android/
 COPY --chmod=755 linux/scripts/03-media/build/opencv/android/ /opt/scripts/03-media/opencv/android/
 COPY --chmod=755 linux/scripts/05-frameworks/tvm.sh /opt/scripts/frameworks/tvm.sh
+COPY --chmod=755 linux/scripts/05-frameworks/deepstream-verify.sh /opt/scripts/frameworks/deepstream-verify.sh
 COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh /opt/scripts/python/build_python.sh
 COPY --chmod=755 linux/scripts/02-toolchain/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh
 COPY --chmod=755 linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh
@@ -320,6 +323,17 @@ RUN set -euo pipefail; \
     else \
         TARGET_ARCH="${_ta}" \
         bash /opt/scripts/packaging/validate-compilers.sh package; \
+    fi
+
+# DeepStream's runtime wiring and gates, or proof that the image carries none: docs/linux-accelerator-images.md#deepstream-nvidia-variant
+RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-frameworks,readonly \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    set -euo pipefail; \
+    if [ "${ENABLE_DEEPSTREAM:-false}" = "true" ]; then \
+        DS_CORE_DIR=/opt/scripts/core bash /opt/scripts/05-frameworks/deepstream.sh stage-runtime; \
+    else \
+        bash /opt/scripts/05-frameworks/deepstream.sh assert-absent; \
     fi
 
 LABEL org.opencontainers.image.title="Kataglyphis Package" \

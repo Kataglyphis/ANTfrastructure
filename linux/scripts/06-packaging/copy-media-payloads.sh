@@ -79,6 +79,7 @@ copy_media_payloads() {
 
   copy_cuda_payload
   copy_rocm_payload
+  copy_deepstream_payload
 
   unset COPY_TARGET_DIR
 }
@@ -107,6 +108,16 @@ copy_cuda_payload() {
     '/usr/include/nccl*'; do
     copy_glob "${pattern}"
   done
+}
+
+# Only on request: an image built without ENABLE_DEEPSTREAM=true must not carry it, whatever its artifact holds.
+copy_deepstream_payload() {
+  [ "${ENABLE_DEEPSTREAM:-false}" = "true" ] || return 0
+  if [ ! -d "${SRCPREFIX}/opt/nvidia/deepstream" ]; then
+    printf '[ERROR] ENABLE_DEEPSTREAM=true but the artifact has no /opt/nvidia/deepstream\n' >&2
+    return 1
+  fi
+  copy_path /opt/nvidia/deepstream
 }
 
 # Every link hop re-read under SRCPREFIX: through the bind mount an absolute target resolves in the build container.

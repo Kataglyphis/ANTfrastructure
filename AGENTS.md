@@ -833,6 +833,13 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` ย
   the code in `03-media/build/hailo/`, outside `01-core`, so a change there re-keys only
   the wrapper's Hailo RUN:
   [`hailo-support.md`](docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches).
+- **DeepStream is nvidia-variant only, off by default, and never pushed yet**
+  (`ENABLE_DEEPSTREAM`, CON42). A default or rocm chain refuses it, and a DeepStream chain
+  refuses to push until the owner decides the licence question. Never put
+  `/opt/nvidia/deepstream/deepstream-*/lib` on `ld.so.conf`: its `libnvv4l2.so` carries the
+  SONAME `libv4l2.so.0`. Its TensorRT is a private 10.x beside the variant's 11.x, and no
+  process may hold TensorRT 11 in its global symbol scope while it runs `nvinfer`:
+  [`linux-accelerator-images.md` ยง DeepStream](docs/linux-accelerator-images.md#deepstream-nvidia-variant).
 - **ONNX Runtime has exactly one source on both lanes: the chain build** (owner
   rule 2026-09-23, no exceptions). On Linux that is `/usr/local/lib/onnxruntime-cpu`
   on every variant, plus `/usr/local/lib/onnxruntime-gpu` on the GPU variants, and

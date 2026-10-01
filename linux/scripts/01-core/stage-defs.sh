@@ -23,6 +23,11 @@ case "${CROSS_GPU_VARIANT}" in
   rocm)   ENABLE_AMD=true; ENABLE_NVIDIA=false
           export CROSS_VARIANT=rocm ENABLE_NVIDIA ENABLE_AMD ;;
 esac
+# DeepStream is CUDA-only; refused here so a default or rocm chain can never start with it.
+if [ "${ENABLE_DEEPSTREAM:-false}" = "true" ] && [ "${CROSS_GPU_VARIANT}" != "nvidia" ]; then
+  printf '[ERROR] ENABLE_DEEPSTREAM=true needs the nvidia variant (CROSS_VARIANT=nvidia); this chain is "%s"\n' "${CROSS_GPU_VARIANT:-default}" >&2
+  return 1
+fi
 
 # <first_stage> <arches>: prints why a variant run must not start. docs/linux-accelerator-images.md#nvidia-gpu-build-linux
 cross_variant_refusal() {
@@ -33,6 +38,10 @@ cross_variant_refusal() {
       printf 'the %s variant cannot build %s: base, compiler and sdk are shared with the default chain. Rebuild them there, then start this one at gpu.' "${v}" "${first}"
       return 0 ;;
   esac
+  if [ "${ENABLE_DEEPSTREAM:-false}" = "true" ] && [ "${CROSS_NO_PUSH:-0}" != "1" ]; then
+    printf 'the nvidia variant with ENABLE_DEEPSTREAM=true cannot push: publishing NVIDIA'"'"'s DeepStream runtime awaits the owner'"'"'s licence decision (docs/linux-accelerator-images.md#licence-the-owner-decision). Build it --no-push.'
+    return 0
+  fi
   plat="$(cross_build_platform)"; plat_arch="${plat#linux/}"
   if [ "${plat_arch}" != "amd64" ] && [ "${CROSS_NO_PUSH:-0}" != "1" ]; then
     printf 'the %s variant can only PUSH from an amd64 build platform (CROSS_BUILD_PLATFORM is %s): the shared sdk it builds on is the amd64 lane'"'"'s. On an arm64 host build it --no-push (the Jetson lane, docs/linux-accelerator-images.md).' "${v}" "${plat}"
@@ -225,6 +234,7 @@ cross_stage_build_args() {
       # ENABLE_TENSORRT=false keeps the CUDA EP without TensorRT (Jetson); TVM_USE_CUDA would otherwise inherit 0.
       append_optional_build_arg _csba_out ENABLE_TENSORRT "${ENABLE_TENSORRT:-}"
       append_optional_build_arg _csba_out TVM_USE_CUDA "${TVM_USE_CUDA:-}"
+      append_optional_build_arg _csba_out ENABLE_DEEPSTREAM "${ENABLE_DEEPSTREAM:-}"
       # CUDA_MB_PER_CICC sizes the CUDA job count; merely exported, it never reaches the container.
       append_optional_build_arg _csba_out CUDA_MB_PER_CICC "${CUDA_MB_PER_CICC:-}"
       ;;

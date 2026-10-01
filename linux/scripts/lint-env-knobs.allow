@@ -61,6 +61,9 @@ CPP_HEAVY_MB_PER_JOB
 CROSS_BIN_DIR
 CROSS_CACHE_MAX_GB
 CROSS_LAYER_COMPRESSION  # PUSH1: zstd (default) | gzip — layer encoding for pushed cross-stage images
+DS_CORE_DIR              # CON42: the 01-core dir deepstream.sh reads versions.env and downloads.sh from (default: beside it, else /opt/scripts/core)
+DS_DOWNLOAD_CACHE        # CON42: a dir of sha256-verified DeepStream/TensorRT 10 downloads; Dockerfile.media points it at a cache mount
+DS_JOBS                  # CON42: make -j for the DeepStream components (default nproc)
 PAR_INTRA_STEP_BUDGET    # PAR4: assumed concurrent heavy steps per build under --parallel-archs (default 2; multiplies BUILD_MEM_DIVISOR)
 CROSS_TARGET_ARCH
 CTEST_EXCLUDE_DEFAULT

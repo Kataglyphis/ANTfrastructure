@@ -11073,5 +11073,165 @@
     "replace": "    :",
     "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
     "why": "clang-tidy's GCC selection must be graded, not only the bare driver's (CON39)"
+  },
+  {
+    "find": "[[ \"${!v:-}\" =~ ^[0-9a-f]{64}$ ]] || echo \"${v}='${!v:-}' is not a 64-hex sha256\"",
+    "id": "deepstream.pin-sha256-shape",
+    "replace": "true",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "a malformed sha256 pin must be refused before any download"
+  },
+  {
+    "find": "^10(\\.[0-9]+){3}$",
+    "id": "deepstream.trt10-only",
+    "replace": "^[0-9]+(\\.[0-9]+){3}$",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "DeepStream 9.1 does not build against TensorRT 11, so a non-10 pin must be refused"
+  },
+  {
+    "find": "    arm64) echo \"arm64 has no DeepStream route",
+    "id": "deepstream.arch-arm64",
+    "replace": "    arm64) return 0; echo \"arm64 has no DeepStream route",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "arm64 has no DeepStream route yet and must be refused"
+  },
+  {
+    "find": "[ \"${ENABLE_NVIDIA:-false}\" = \"true\" ] || { echo \"ENABLE_DEEPSTREAM=true needs",
+    "id": "deepstream.needs-nvidia",
+    "replace": "true || { echo \"ENABLE_DEEPSTREAM=true needs",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "DeepStream outside the nvidia variant must be refused"
+  },
+  {
+    "find": "  \"src/gst-plugins/gst-nvinferserver|Triton: links libnvds_infer_server.so (src/utils/nvdsinferserver)\"\n",
+    "id": "deepstream.exclusion-triton",
+    "replace": "",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "a component that cannot build here must stay excluded"
+  },
+  {
+    "find": "grep -E ' (gst_plugin_[A-Za-z0-9_]+_get_desc|gst_plugin_desc)$' >/dev/null || printf '%s\\n' \"${f}\"",
+    "id": "deepstream.non-plugin-detect",
+    "replace": "grep -E ' (gst_plugin_[A-Za-z0-9_]+_get_desc|gst_plugin_desc)$' >/dev/null || true",
+    "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "a helper .so left in gst-plugins/ crashes the registry scan, so it must be found"
+  },
+  {
+    "find": "[ ! -e \"${DS_OPT}\" ] ||",
+    "id": "deepstream.assert-absent",
+    "replace": "true ||",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "an ENABLE_DEEPSTREAM=false image carrying the tree must fail"
+  },
+  {
+    "find": "  [ \"${ENABLE_DEEPSTREAM:-false}\" = \"true\" ] || return 0\n",
+    "id": "deepstream.copy-gate",
+    "replace": "",
+    "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "an image that did not ask must not receive the artifact's DeepStream tree"
+  },
+  {
+    "find": "    printf '[ERROR] ENABLE_DEEPSTREAM=true but the artifact has no /opt/nvidia/deepstream\\n' >&2\n    return 1",
+    "id": "deepstream.copy-missing-fatal",
+    "replace": "    return 0",
+    "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "asking for DeepStream from an artifact without it must fail"
+  },
+  {
+    "find": "    printf 'BROKEN %s -> %s\\n' \"${file}\" \"${soname}\"",
+    "id": "deepstream.verify-broken",
+    "replace": "    :",
+    "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "an unexcused unresolved soname must fail the closure gate"
+  },
+  {
+    "find": "[ -n \"${used[${f}|${n}]:-}\" ] ||",
+    "id": "deepstream.verify-stale",
+    "replace": "true ||",
+    "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "an allowlist entry that no longer applies must fail as stale"
+  },
+  {
+    "find": "*) printf 'SECOND-GSTREAMER",
+    "id": "deepstream.verify-second-gstreamer",
+    "replace": "*) : 'SECOND-GSTREAMER",
+    "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "a plugin resolving GStreamer outside /opt/gstreamer must fail"
+  },
+  {
+    "find": "if [ \"${ENABLE_DEEPSTREAM:-false}\" = \"true\" ] && [ \"${CROSS_GPU_VARIANT}\" != \"nvidia\" ]; then",
+    "id": "stage-graph.deepstream-needs-nvidia-chain",
+    "replace": "if false; then",
+    "target": "linux/scripts/01-core/stage-defs.sh",
+    "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+    "why": "a default or rocm chain must refuse ENABLE_DEEPSTREAM=true"
+  },
+  {
+    "find": "      append_optional_build_arg _csba_out ENABLE_DEEPSTREAM \"${ENABLE_DEEPSTREAM:-}\"\n",
+    "id": "stage-graph.deepstream-media-arg",
+    "replace": "",
+    "target": "linux/scripts/01-core/stage-defs.sh",
+    "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+    "why": "without the build arg the media stage builds no DeepStream"
+  },
+  {
+    "find": "  append_optional_build_arg \"$1\" ENABLE_DEEPSTREAM \"${ENABLE_DEEPSTREAM:-}\"\n",
+    "id": "deepstream.runtime-arg-forwarded",
+    "replace": "",
+    "target": "linux/scripts/01-core/build-helpers.sh",
+    "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+    "why": "without the build arg the package asserts the tree absent and fails"
+  },
+  {
+    "find": "  if [ \"${ENABLE_DEEPSTREAM:-false}\" = \"true\" ] && [ \"${CROSS_NO_PUSH:-0}\" != \"1\" ]; then",
+    "id": "stage-graph.deepstream-no-push-before-licence",
+    "replace": "  if false; then",
+    "target": "linux/scripts/01-core/stage-defs.sh",
+    "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+    "why": "a DeepStream chain must not push before the owner's licence decision"
+  },
+  {
+    "find": "  [ -z \"${pulled}\" ] || ds_die \"these packages would install a distro GStreamer",
+    "id": "deepstream.no-distro-gstreamer",
+    "replace": "  true || ds_die \"these packages would install a distro GStreamer",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "a build dependency that pulls a distro GStreamer puts a second copy beside /opt/gstreamer"
+  },
+  {
+    "find": "    CXX:gcc|CXX:cc|CC:*) printf '%s%s -include %s' \"${DS_CACHE_LAUNCHER:+${DS_CACHE_LAUNCHER} }\" \"${base}\" \"$3\" ;;",
+    "id": "deepstream.c-compiler-kept",
+    "replace": "    CXX:gcc|CXX:cc|CC:*) printf '%sg++ -include %s' \"${DS_CACHE_LAUNCHER:+${DS_CACHE_LAUNCHER} }\" \"$3\" ;;",
+    "target": "linux/scripts/05-frameworks/deepstream.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "each Makefile's own compiler must survive: CXX:=gcc compiles C, and CC:=g++ links C++"
+  },
+  {
+    "find": "grep -E ' (gst_plugin_[A-Za-z0-9_]+_get_desc|gst_plugin_desc)$' >/dev/null ||",
+    "id": "deepstream.non-plugin-no-sigpipe",
+    "replace": "grep -qE ' (gst_plugin_[A-Za-z0-9_]+_get_desc|gst_plugin_desc)$' ||",
+    "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+    "test": "bash linux/scripts/tests/test-deepstream.sh",
+    "why": "grep -q SIGPIPEs nm on a large plugin, and under pipefail a real plugin is moved out of gst-plugins/"
+  },
+  {
+    "find": "    \"libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*\" \\\n    \"libcudnn${CUDNN_MAJOR}-headers-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*\"; } || \\",
+    "id": "cuda-stack.cudnn-headers-pinned",
+    "replace": "    \"libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*\"; } || \\",
+    "target": "linux/scripts/01-core/install-cuda-stack.sh",
+    "test": "bash linux/scripts/tests/test-cuda-cross-sbsa.sh",
+    "why": "without the headers pin the pinned cuDNN tier always fails and an unpinned cuDNN is installed"
   }
 ]

@@ -79,6 +79,17 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | cuDNN | 9.26.0.51 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 | TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
+### Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only) (`Dockerfile.media`)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| DeepStream runtime (NVIDIA's prebuilt deepstream-binaries-x86 .deb: nvvideoconvert, nvv4l2decoder, the tiler, libnvbufsurface and the nvds libraries) | 9.1.0 | [github.com/NVIDIA/DeepStream/releases/tag/v9.1.0](https://github.com/NVIDIA/DeepStream/releases/tag/v9.1.0) | NVIDIA SDK License Agreement + DeepStream supplement (LicenseAgreement.pdf, shipped in the tree) |
+| DeepStream sources (gst-plugins, gst-utils, utils; built against /opt/gstreamer) | 9.1.0 | [github.com/NVIDIA/DeepStream](https://github.com/NVIDIA/DeepStream) | Apache 2.0 |
+| TensorRT 10 (DeepStream's private copy beside TENSORRT_VERSION) | 10.16.1.11 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
+| civetweb (nvds_rest_server) | v1.16 | [github.com/civetweb/civetweb](https://github.com/civetweb/civetweb) | MIT |
+| prometheus-cpp (nvds_rest_server) | v1.2.4 | [github.com/jupp0r/prometheus-cpp](https://github.com/jupp0r/prometheus-cpp) | MIT |
+| opentelemetry-cpp (nvds_rest_server) | v1.23.0 | [github.com/open-telemetry/opentelemetry-cpp](https://github.com/open-telemetry/opentelemetry-cpp) | Apache 2.0 |
+
 ### Optional GPU — AMD (`Dockerfile.amd`)
 
 | Software | Version | Repository | License |
