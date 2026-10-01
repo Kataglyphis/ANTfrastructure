@@ -7,6 +7,7 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonAp
 
 # Runs -Body with a global uv that records each call's arguments and exits -Exit; returns the calls.
 function script:Invoke-WithFakeUv {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'the fake uv runs in a child scope the tested code resolves; only the global scope survives it')]
     param([Parameter(Mandatory)][scriptblock]$Body, [int]$Exit = 0)
     $global:FakeUvCalls = [Collections.Generic.List[string]]::new()
     $global:FakeUvExit = $Exit
