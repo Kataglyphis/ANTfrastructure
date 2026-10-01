@@ -91,17 +91,28 @@ Describe 'WindowsBuildSweep.Common' {
   }
 
   Context 'Invoke-InLinuxContainerBuild' {
+    # A fake engine that records its arguments; runs like Invoke-WithFakeUv above. The fake engine
+    # command is resolved by the tested code in a child scope, so only the global scope survives it.
+    function script:Invoke-WithFakeEngine {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'the fake engine runs in a child scope the tested code resolves; only the global scope survives it')]
+        param([Parameter(Mandatory)][scriptblock]$Body)
+        $global:FakeEngineArgs = $null
+        Set-Item function:global:FakeEngineRun { $global:FakeEngineArgs = @($args) }
+        try {
+            $null = & $Body
+            return $global:FakeEngineArgs
+        } finally {
+            Remove-Item function:global:FakeEngineRun
+            Remove-Variable -Name FakeEngineArgs -Scope Global
+        }
+    }
+
     It 'hands bash LF-only lines when the command came from a CRLF file' {
       # A here-string in a CRLF-checked-out script keeps its CRs; bash then rejects `set -e<CR>`.
-      $global:FakeEngineArgs = $null
-      Set-Item function:global:FakeEngineRun { $global:FakeEngineArgs = @($args) }
-      try {
+      $args_seen = Invoke-WithFakeEngine {
         Invoke-InLinuxContainerBuild -RepoRoot 'C:\repo' -Image 'img' -Command "echo a`r`necho b`r`n" -DockerExe 'FakeEngineRun'
-        $global:FakeEngineArgs[-3..-1] -join '|' | Should -BeExactly "bash|-c|set -e`necho a`necho b`n"
-      } finally {
-        Remove-Item function:global:FakeEngineRun
-        Remove-Variable -Name FakeEngineArgs -Scope Global
       }
+      $args_seen[-3..-1] -join '|' | Should -BeExactly "bash|-c|set -e`necho a`necho b`n"
     }
   }
 }
