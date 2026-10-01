@@ -1,0 +1,88 @@
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+
+# Lane logic belongs in the caller's script, which a local container run executes too. See docs/riscv64-cross-test-lanes.md
+
+name: Container CI · riscv64 cross (reusable)
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      script:
+        description: >-
+          The command run inside the amd64 family image, e.g.
+          `bash -lc 'bash scripts/linux/ci-container-steps.sh riscv64-test'`. The
+          sysroot is mounted and binfmt registered; the script sources
+          linux/scripts/lib/riscv64-cross.sh and calls riscv64_cross_env itself.
+        required: true
+        type: string
+      container-args:
+        description: Extra `docker run` arguments, e.g. `-e CARGO_HOME=/tmp/cargo-home`.
+        required: false
+        type: string
+        default: ''
+      cache-key:
+        description: compiler-cache-restore's lane id, e.g. `riscv64-cargo`.
+        required: true
+        type: string
+      cache-mounts:
+        description: compiler-cache-restore's `mounts`.
+        required: false
+        type: string
+        default: 'sccache:/var/cache/sccache ccache:/var/cache/ccache'
+      cache-env:
+        description: compiler-cache-restore's `env`.
+        required: false
+        type: string
+        default: 'SCCACHE_CACHE_SIZE=2G CCACHE_MAXSIZE=2G'
+      timeout-minutes:
+        description: The job's limit. Cross builds run natively; only the tests run under QEMU.
+        required: false
+        type: number
+        default: 120
+    secrets:
+      GHCR_PAT:
+        required: false
+
+jobs:
+  cross-test:
+    name: riscv64 cross build + QEMU test
+    runs-on: ubuntu-26.04
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      # compiler-cache-save deletes its key's older entries.
+      actions: write
+    steps:
+      - name: Prepare the CI host
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
+        with:
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GHCR_PAT }}
+
+      - name: Set up riscv64 cross testing
+        id: rv
+        uses: Kataglyphis/ANTfrastructure/.github/actions/setup-riscv64-cross@develop
+
+      - name: Restore the compiler cache
+        id: cc
+        uses: Kataglyphis/ANTfrastructure/.github/actions/compiler-cache-restore@develop
+        with:
+          key: ${{ inputs.cache-key }}
+          mounts: ${{ inputs.cache-mounts }}
+          env: ${{ inputs.cache-env }}
+
+      - name: Cross build and run the tests under QEMU
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
+        with:
+          extra-args: --platform linux/amd64 ${{ steps.rv.outputs.docker-args }} ${{ steps.cc.outputs.docker-args }} ${{ inputs.container-args }}
+          script: ${{ inputs.script }}
+
+      - name: Save the compiler cache
+        if: always() && steps.cc.outputs.path != ''
+        uses: Kataglyphis/ANTfrastructure/.github/actions/compiler-cache-save@develop
+        with:
+          key: ${{ inputs.cache-key }}

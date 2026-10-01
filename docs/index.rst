@@ -161,6 +161,7 @@ Common development targets:
    qnn-linux
    riscv64-venv-parity
    riscv64-rva23-baseline
+   riscv64-cross-test-lanes
    upstreamable-patches
    upstream/README
    iree-two-stage-build

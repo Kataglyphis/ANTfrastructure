@@ -1,0 +1,66 @@
+name: 'Set up riscv64 cross testing'
+description: >-
+  Lets an amd64 Linux lane cross-build for riscv64 and run the tests under QEMU.
+  Registers QEMU's riscv64 binfmt handler with the F flag, so containers execute
+  riscv64 binaries without a qemu inside them, and exports the family image's
+  riscv64 child into a sysroot directory. Run it after prepare-linux-ci-host
+  pulled the amd64 image: the sysroot then matches that image's index. Pass
+  docker-args to run-in-linux-container's extra-args; inside the container,
+  source linux/scripts/lib/riscv64-cross.sh and call riscv64_cross_env.
+  See docs/riscv64-cross-test-lanes.md.
+
+inputs:
+  image:
+    description: >-
+      The family image whose riscv64 child becomes the sysroot. Omit it: the
+      default is the checked copy of versions.env's tag (verify_ci_image_refs.py).
+    required: false
+    default: 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest'
+  mount-target:
+    description: Where the sysroot is mounted in the container (RISCV64_SYSROOT).
+    required: false
+    default: '/opt/riscv64-sysroot'
+  binfmt-image:
+    description: >-
+      The QEMU user-mode build that is registered. qemu 10.2.3: its rva23u64
+      model runs the image's RVV glibc; rv64 and rva22u64 raise SIGILL.
+    required: false
+    default: 'tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0'
+
+outputs:
+  docker-args:
+    description: 'The `-v` and `-e` arguments to append to run-in-linux-container''s extra-args.'
+    value: ${{ steps.sysroot.outputs.docker-args }}
+  sysroot:
+    description: 'The sysroot directory on the runner.'
+    value: ${{ steps.sysroot.outputs.sysroot }}
+
+runs:
+  using: composite
+  steps:
+    - name: Register QEMU binfmt for riscv64
+      shell: bash
+      env:
+        BINFMT_IMAGE: ${{ inputs.binfmt-image }}
+      run: |
+        set -euo pipefail
+        docker run --rm --privileged "${BINFMT_IMAGE}" --install riscv64
+        entry=/proc/sys/fs/binfmt_misc/qemu-riscv64
+        cat "${entry}"
+        # Without F the kernel resolves the interpreter inside each container, which has no qemu.
+        grep -q -e '^flags: .*F' "${entry}" || { echo "::error::${entry} lacks the F flag"; exit 1; }
+
+    - name: Build the riscv64 sysroot
+      id: sysroot
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        MOUNT_TARGET: ${{ inputs.mount-target }}
+        SYSROOT: ${{ runner.temp }}/riscv64-sysroot
+      run: |
+        set -euo pipefail
+        bash "${GITHUB_ACTION_PATH}/../../../linux/scripts/02-toolchain/riscv64-sysroot.sh" \
+          --dest "${SYSROOT}" --image "${IMAGE}" --engine docker --remove-image
+        df -h / | tail -n 1
+        echo "sysroot=${SYSROOT}" >> "${GITHUB_OUTPUT}"
+        echo "docker-args=-v ${SYSROOT}:${MOUNT_TARGET}:ro -e RISCV64_SYSROOT=${MOUNT_TARGET}" >> "${GITHUB_OUTPUT}"

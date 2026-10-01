@@ -380,6 +380,17 @@ lane hit the same "no profile can be merged" (2026-09-24).
 `linux/scripts/tests/test-compiler-llvm-tools.sh` pins it with two fake LLVM
 installs.
 
+## `riscv64-cross.sh` — cross-build for riscv64, test under QEMU
+
+`riscv64_cross_env` turns the amd64 image into a riscv64 cross environment over a
+sysroot exported from the image's riscv64 child (`RISCV64_SYSROOT`, default
+`/opt/riscv64-sysroot`). It writes triple-named clang wrappers, exports the cc-rs, Cargo
+and pkg-config variables for `riscv64gc-unknown-linux-gnu`, names the CMake toolchain in
+`RISCV64_CMAKE_TOOLCHAIN_FILE`, sets the QEMU CPU model, and fails when a riscv64 binary
+does not execute. Why each piece is there, and what it was measured against:
+[`riscv64-cross-test-lanes.md`](riscv64-cross-test-lanes.md).
+`linux/scripts/tests/test-riscv64-cross.sh` pins it.
+
 ## `docs-build.sh` — build a Sphinx documentation tree
 
 Every project in this family builds its docs the same way: get a virtualenv with

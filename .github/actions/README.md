@@ -241,6 +241,20 @@ boilerplate in one place and become boilerplate in ten - and drift between
 those copies (a different retry count, a missing submodule flag) produces
 failures that reproduce in only one lane.
 
+### `setup-riscv64-cross`
+Lets an amd64 Linux lane cross-build for riscv64 and run the tests under QEMU
+(CON48). Registers the pinned `tonistiigi/binfmt` riscv64 handler with the `F`
+flag, so containers execute riscv64 binaries without a qemu inside them, and
+exports the family image's riscv64 child into a sysroot
+(`linux/scripts/02-toolchain/riscv64-sysroot.sh`). Run it after
+`prepare-linux-ci-host`, so the sysroot matches the pulled amd64 image's index.
+Inputs: `image`, `mount-target` (default `/opt/riscv64-sysroot`),
+`binfmt-image`. Outputs: `docker-args` (the read-only mount and
+`RISCV64_SYSROOT`), `sysroot`. Inside the container a lane sources
+`linux/scripts/lib/riscv64-cross.sh` and calls `riscv64_cross_env`. The reusable
+`container-ci-riscv64.yml` wraps it with the compiler cache and one container
+step: [`docs/riscv64-cross-test-lanes.md`](../../docs/riscv64-cross-test-lanes.md).
+
 ### `run-in-linux-container`
 Runs a bash command inside a Linux container image (`docker run --rm`).
 Inputs: `image` (optional — defaults to the family Linux image; see above),
