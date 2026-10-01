@@ -15,7 +15,8 @@ function script:Invoke-WithFakeUv {
         & $Body
         return @($global:FakeUvCalls)
     } finally {
-        Remove-Item function:global:uv
+        # Not function:global:uv: Remove-Item ignores that scope prefix, and the fake outlived the suite to answer later suites' uv.
+        Remove-Item -Path Function:\uv
         Remove-Variable -Name FakeUvCalls, FakeUvExit -Scope Global
     }
 }

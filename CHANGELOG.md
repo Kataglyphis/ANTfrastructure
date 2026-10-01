@@ -25,6 +25,10 @@
   and inputs passed through env. Three new `windows-lane` mutations prove it bites.
   `windows-lane.powershell-lint-defaults-off` now names its own input, because a bare
   `default: false` matched twice.
+- **`PythonApp.Cross.Tests.ps1` removes its fake `uv` again.** `Remove-Item
+  function:global:uv` ignores the scope prefix, so the fake outlived its suite and answered
+  every later suite's `uv` (the full run failed `PythonTestLegs.Tests.ps1` on it). It now uses
+  `Remove-Item -Path Function:\uv`.
 - Suite `PythonTestLegs.Tests.ps1`. Hand mutations bite: no `continue` after a failed sync,
   no SHA check, a free-threaded leg ignoring its extras, and a bare `--python`. A real run
   on an x64 host against WebDavClient, with legs `3.14t 3.14`, gave the 3.14 leg a GIL 3.14.7:
