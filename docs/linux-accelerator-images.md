@@ -231,8 +231,8 @@ USB-camera object detection at 30 fps with 13 ms GPU inference.
 ## DeepStream (nvidia variant)
 
 > **Off by default, and never in `:latest` or `:latest-rocm`.** `ENABLE_DEEPSTREAM=true`
-> builds it, and only an nvidia chain accepts that. amd64 only. Publishing it is an open
-> owner decision (§ [Licence](#licence-the-owner-decision)). Tracked as CON42 in
+> builds it, and only an nvidia chain accepts that. amd64 only. The owner allowed publishing
+> it on 2026-10-01 (§ [Licence](#licence-the-owner-decision)). Tracked as CON42 in
 > [`BACKLOG.md`](../BACKLOG.md).
 
 [NVIDIA DeepStream](https://github.com/NVIDIA/DeepStream) 9.1 is two things. Its
@@ -433,10 +433,13 @@ What the image would redistribute that is not a `.so`: `LicenseAgreement.pdf`, t
 already open for `:winamd64` (`docs/third-party-licenses.md`, `eula-review`).
 
 Whether a general-purpose development image counts as an "application" with "material
-additional functionality" is a legal question, not a build one. Until the owner decides,
-nothing built with `ENABLE_DEEPSTREAM=true` is pushed. The fallback, if the answer is no: a
-consumer lane installs the same checksum-pinned assets at lane time with
-`deepstream.sh build`, and no published image carries them.
+additional functionality" is a legal question, not a build one.
+
+**Decided 2026-10-01: the owner allows publishing it** in `:latest-nvidia`. The chain no
+longer refuses a push with `ENABLE_DEEPSTREAM=true`. What ships is held to the supplement's
+words where that costs nothing: the package stage deletes the two static `.a` archives (a
+build-time input only), and `LicenseAgreement.pdf` ships beside the runtime. The
+`pyservicemaker` wheel stays. No page here records DeepStream timings (Supplement § 3 I).
 
 ## The media fan-out strategy, as AGENTS.md carried it
 

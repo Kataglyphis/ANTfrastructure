@@ -92,7 +92,7 @@ t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a; pri
   "ENABLE_DEEPSTREAM=true" "the package stage gets it too, or it would assert the tree absent"
 
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true bash "${CHAIN}" --describe-chain --target-arches amd64)" \
-  "ENABLE_DEEPSTREAM=true cannot push" "no DeepStream image is published before the owner's licence decision"
+  "stages=gpu..runtime" "the owner allowed publishing DeepStream (2026-10-01), so a pushing chain is accepted"
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true CROSS_NO_PUSH=1 bash "${CHAIN}" --describe-chain --target-arches amd64)" \
   "stages=gpu..runtime" "a --no-push DeepStream chain stays allowed"
 

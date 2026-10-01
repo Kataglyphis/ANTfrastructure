@@ -346,6 +346,8 @@ ds_stage_runtime() {
   [ -d "${root}/lib/gst-plugins" ] || ds_die "ENABLE_DEEPSTREAM=true but ${root} was not copied into this image"
   ds_apt_install "${DS_RUNTIME_PACKAGES[@]}"
   ds_write_trt_ldconf
+  # The licence makes only the runtime .so files distributable; static archives serve builds only.
+  find "${root}" -name '*.a' -type f -delete
   gst_dir="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gstreamer-1.0"
   [ -d "${gst_dir}" ] || ds_die "no GStreamer plugin directory at ${gst_dir}"
   ln -sfn "${root}/lib/gst-plugins" "${gst_dir}/deepstream"

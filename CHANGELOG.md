@@ -7,6 +7,20 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - DeepStream may be published: the owner's licence decision (CON42)
+
+- **The owner allowed publishing NVIDIA's DeepStream runtime in `:latest-nvidia`.** The
+  stage graph no longer refuses a pushing chain with `ENABLE_DEEPSTREAM=true`; its test now
+  asserts the chain is accepted, and the gate's mutation entry is gone with the gate.
+- **The image ships the runtime `.so` files, not the static archives.** The licence
+  supplement makes "the runtime files ending with “.so”" distributable; the package stage's
+  `deepstream.sh stage-runtime` deletes `libnvdsgst_multistream_legacy.a` and
+  `libnvds_service_maker_utils.a`, which only a build links. `LicenseAgreement.pdf` ships.
+- **Still open for CON42:** a GPU run (the host's driver is blocked by Secure Boot: the DKMS
+  key is not enrolled) and an owner-approved nvidia variant chain run.
+- **CON47:** `libgstvalidatessim.so` fails to load in the published `:latest`, found by the
+  spike; tracked to be measured and fixed.
+
 ## 2026-10-01 - DeepStream for the nvidia variant (CON42): spike measured, source in, off by default
 
 - **The spike (phases 1–3), without a chain.** In throwaway containers FROM the published

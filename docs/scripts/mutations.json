@@ -11195,14 +11195,6 @@
     "why": "without the build arg the package asserts the tree absent and fails"
   },
   {
-    "find": "  if [ \"${ENABLE_DEEPSTREAM:-false}\" = \"true\" ] && [ \"${CROSS_NO_PUSH:-0}\" != \"1\" ]; then",
-    "id": "stage-graph.deepstream-no-push-before-licence",
-    "replace": "  if false; then",
-    "target": "linux/scripts/01-core/stage-defs.sh",
-    "test": "bash linux/scripts/tests/test-gpu-variant.sh",
-    "why": "a DeepStream chain must not push before the owner's licence decision"
-  },
-  {
     "find": "  [ -z \"${pulled}\" ] || ds_die \"these packages would install a distro GStreamer",
     "id": "deepstream.no-distro-gstreamer",
     "replace": "  true || ds_die \"these packages would install a distro GStreamer",
