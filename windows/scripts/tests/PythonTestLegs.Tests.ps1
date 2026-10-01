@@ -70,10 +70,10 @@ Describe 'Invoke-PythonTestLegs.ps1' {
             $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash
             $envFile = Join-Path $d 'versions.env'
             $install = @{ InstallUv = $true; UvArch = 'arm64'; VersionsEnvPath = $envFile; UvReleaseBase = ([uri](Join-Path $d 'rel')).AbsoluteUri; PythonVersions = '3.14t' }
-            Set-Content -LiteralPath $envFile -Value 'UV_VERSION=9.9.9', "UV_WINDOWS_ARM64_SHA256=$sha"
+            Set-Content -LiteralPath $envFile -Value @('UV_VERSION=9.9.9', "UV_WINDOWS_ARM64_SHA256=$sha")
             Invoke-FakeLegs -Dir $d -Arguments $install
             Assert-Match '\|run --no-sync python -m pytest$' (Get-FakeUvCall $d) 'the downloaded uv ran the leg'
-            Set-Content -LiteralPath $envFile -Value 'UV_VERSION=9.9.9', "UV_WINDOWS_ARM64_SHA256=$('0' * 64)"
+            Set-Content -LiteralPath $envFile -Value @('UV_VERSION=9.9.9', "UV_WINDOWS_ARM64_SHA256=$('0' * 64)")
             Assert-Throws { Invoke-FakeLegs -Dir $d -Arguments $install } -MessagePattern 'SHA256 mismatch'
             Set-Content -LiteralPath $envFile -Value 'UV_VERSION=9.9.9'
             Assert-Throws { Invoke-FakeLegs -Dir $d -Arguments $install } -MessagePattern 'UV_WINDOWS_ARM64_SHA256 is not set'
