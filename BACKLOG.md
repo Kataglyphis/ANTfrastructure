@@ -211,16 +211,24 @@ None open.
       - Docs: [`docs/dependency-updates.md`](docs/dependency-updates.md) § CMake dependencies.
         Test: `linux/scripts/tests/test-renovate-cmake.sh`, mutations `renovate-cmake.*`.
 
-      Left, in the consumers, after this hub commit is on the default branch (Renovate reads
-      the preset from there):
-      - Step 2: pin corrosion `GIT_TAG master` to a release tag (AccelerANTgine, BeschleunigerBallett).
-      - Move googletest from the commit archive to `archive/refs/tags/v1.17.0.zip`: AccelerANTgine
-        and BeschleunigerBallett `third_party/CMakeLists.txt`, OmniAccelerANT's plugin `linux/`
-        and `windows/CMakeLists.txt`.
-      - Drop the CMake regex managers in AccelerANTgine's and BeschleunigerBallett's
-        `.github/renovate.json` (keep BeschleunigerBallett's `.gitmodules` FUZZTEST one). With
-        both in place every pin they cover is reported twice, and `--apply` refuses it.
-      - Step 6: the fleet report run with `--managers custom.regex`.
+      **The consumer half, 2026-10-01** (the preset is on `develop` since c7671f18):
+      - Step 2: corrosion is pinned to commit `c4786e7a`, today's master, not to a tag. v0.6.1
+        lacks the `CARGO_HOME` and cxxbridge-cmd fixes after it; move to the next tag
+        (AccelerANTgine 5dc8140, BeschleunigerBallett).
+      - googletest moved from the commit archive to `archive/refs/tags/v1.18.0.zip`, which
+        contains that commit, in AccelerANTgine, BeschleunigerBallett and OmniAccelerANT's
+        plugin `linux/` and `windows/CMakeLists.txt`.
+      - The repo-level CMake managers are gone from AccelerANTgine's and BeschleunigerBallett's
+        `.github/renovate.json`; BeschleunigerBallett keeps its `.gitmodules` FUZZTEST one.
+      - Step 6: `Invoke-Renovate.ps1 -Recurse -Managers custom.regex` from OmniAccelerANT lists
+        AccelerANTgine's abseil (20260526.0 → 20260817.0), GSL (v4.2.1 → v4.2.2) and
+        cxxbridge-cmd (1.0.191 → 1.0.202), once each. OmniAccelerANT's googletest is current. Its
+        first try died on `set -e<CR>`, fixed in `Invoke-InLinuxContainerBuild` (CHANGELOG).
+        OxidANT was skipped: a killed `--apply` of 2026-09-28 left its inflight marker, which
+        only the owner clears.
+      - BeschleunigerBallett's own report (`renovate-local.sh --managers custom.regex`): GSL
+        (v4.2.1 → v4.2.2) and abseil (20260526.0 → 20260817.0), once each.
+      Done once BeschleunigerBallett and OmniAccelerANT have pushed their CMake commits.
 - [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
       (phases 1–3) done 2026-10-01, the GPU gate passed the same day; phases 4 and 6 are in
       the source, off by default (`ENABLE_DEEPSTREAM=false`). Blocked on one thing outside the
