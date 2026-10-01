@@ -255,6 +255,7 @@ cat > "${_bk}/bin/buildctl" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${BUILDCTL_LOG}"
 [ "${BUILDCTL_UNREACHABLE:-0}" = "1" ] && exit 1
+case " $* " in *" --format "*) printf '%s\n' "${BUILDCTL_DU_JSON:-[]}"; exit 0 ;; esac
 if [ "$1" = "du" ] && [ "$2" = "--filter" ]; then
   n=97
   [ -f "${BUILDCTL_PRUNED}" ] && n="${BUILDCTL_MOUNTS_AFTER:-${n}}"
@@ -340,6 +341,21 @@ CROSS_BUILDKIT_KEEP_GB=0 _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null
 t_assert_eq "0" "$(grep -c -e 'keep-storage' "${BUILDCTL_LOG}" || true)" \
   "0 is the explicit 'reclaim all layer cache' escape hatch"
 t_assert_contains "$(cat "${BUILDCTL_LOG}")" "prune --filter type==regular"
+
+t_case "keep-storage adds the records the type==regular filter can never free"
+# --keep-storage bounds the WHOLE store; 196 GB of cache mounts against a bare 120000 emptied the layer cache (CON53).
+if command -v jq >/dev/null 2>&1; then
+  _bk_reset
+  BUILDCTL_DU_JSON='[{"id":"a","recordType":"exec.cachemount","size":196000000000,"shared":false},
+    {"id":"b","recordType":"source.local","size":2500000000,"shared":false},
+    {"id":"c","recordType":"exec.cachemount","size":9000000000,"shared":true},
+    {"id":"d","recordType":"regular","size":110000000000,"shared":false}]' \
+    _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
+  t_assert_contains "$(cat "${BUILDCTL_LOG}")" "prune --filter type==regular --keep-storage 318500" \
+    "120G of layers on top of 198500 MB of cache mounts and sources; shared and regular records do not count"
+else
+  echo "  (skipped: jq not installed)"
+fi
 
 t_case "a garbage keep value falls back to the default instead of reaching buildctl"
 # The value reaches arithmetic and --keep-storage, so a typo must not become `000` or a syntax error.

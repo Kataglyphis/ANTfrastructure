@@ -378,6 +378,19 @@ the store is smaller than the keep value the prune is a no-op and the log says
 it freed 0 G — honest, and the operator still gets the `NOTHING was reclaimable`
 warning from the reclaim record.
 
+**The keep value is layer cache, so the cache mounts are added to it.**
+BuildKit's `--keep-storage` bounds the *whole* store: `cache/manager.go`
+(v0.33.0) sums every unshared record, of every type, before the type filter is
+applied, and deletes filtered records until that sum fits. The `type==regular`
+filter never frees cache mounts or local sources, so a bare `120000` against
+196 GB of cache mounts (2026-10-01) deletes every idle layer record. That is how
+`PRUNE_KEEP_GB=100 prune-safe.sh` once left 0.17 GB (CON53); the same call
+"kept" 91 GB later that day only because a running chain held those records.
+`_disk_guard_regular_keep_mb` now adds the unprunable records' size, read from
+`buildctl du --format '{{json .}}'`, so 120 means 120 GB of layers. A cache
+mount in use by a running build reports 0 B there, so mid-run the result is a
+floor. Proof: `test-disk-guard.sh` and `test-prune-safe.sh`.
+
 **Once per reclaim episode.** The watchdog samples every
 `CROSS_DISK_WATCH_SECS` (120 s). After the first prune the store is already at
 `--keep-storage`, so a repeat would walk the whole store — 36 s of I/O during a

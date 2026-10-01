@@ -175,6 +175,35 @@ _disk_guard_keep_gb() {
   printf '%s' "${keep}"
 }
 
+# The store as JSON, exact bytes (du's text rounds); "$@" are du filters. Empty when the store is unreachable.
+_disk_guard_du_json() {
+  _disk_guard_buildctl du "$@" --format '{{json .}}' 2>/dev/null || true
+}
+
+# MB of records a type==regular prune never frees; --keep-storage counts them (it bounds the WHOLE store). Empty when unknown.
+_disk_guard_unprunable_mb() {
+  _disk_guard_du_json \
+    | jq -r '[.[] | select((.shared | not) and ((.recordType // "") as $t | $t != "" and $t != "regular")) | .size]
+             | (add // 0) / 1000000 | ceil' 2>/dev/null || true
+}
+
+# --keep-storage (MB) that retains <keep_gb> of layer cache ON TOP of the unprunable records; without them a 100G keep empties the layer cache.
+_disk_guard_regular_keep_mb() {
+  local fixed
+  fixed="$(_disk_guard_unprunable_mb)"
+  case "${fixed}" in ''|*[!0-9]*) fixed=0 ;; esac
+  printf '%s' "$(( ${1:-0} * 1000 + fixed ))"
+}
+
+# One "<cache id> <kept record> <stale record> <bytes> <in use>" line per surplus record. BuildKit reuses the lowest record id it can lock and makes a new one only while that is locked, so the rest are dead weight.
+_disk_guard_cachemount_duplicates() {
+  _disk_guard_du_json --filter type==exec.cachemount \
+    | jq -r 'map(. + {cid: ((.description | capture("with id \"(?<i>[^\"]*)\"") | .i)
+                            // (.description | capture("^cached mount (?<i>[^ ]+)") | .i) // "?")})
+             | group_by(.cid) | map(select(length > 1) | sort_by(.id)) | .[]
+             | .[0] as $k | .[1:][] | [$k.cid, $k.id, .id, .size, (.inUse // false)] | @tsv' 2>/dev/null || true
+}
+
 # Prints free GB and succeeds only when <path> is below <target_gb>; bad input or unknown df means "do nothing".
 _disk_guard_lever_needed() {
   local before
@@ -222,7 +251,7 @@ _disk_guard_buildkit_ready() {
 _disk_guard_buildkit_prune() {
   local keep="${1:-0}"
   if [ "${keep}" -gt 0 ]; then
-    _disk_guard_buildctl prune --filter type==regular --keep-storage "$(( keep * 1000 ))" >/dev/null 2>&1
+    _disk_guard_buildctl prune --filter type==regular --keep-storage "$(_disk_guard_regular_keep_mb "${keep}")" >/dev/null 2>&1
   else
     _disk_guard_buildctl prune --filter type==regular >/dev/null 2>&1
   fi

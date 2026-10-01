@@ -2306,7 +2306,7 @@
   {
     "id": "disk-guard.buildkit-keep-storage",
     "target": "linux/scripts/01-core/disk-guard.sh",
-    "find": "prune --filter type==regular --keep-storage \"$(( keep * 1000 ))\"",
+    "find": "prune --filter type==regular --keep-storage \"$(_disk_guard_regular_keep_mb \"${keep}\")\"",
     "replace": "prune --filter type==regular",
     "test": "bash linux/scripts/tests/test-disk-guard.sh",
     "why": "a mid-run prune must keep layer cache, not empty the store"
@@ -11697,5 +11697,61 @@
     "replace": "if false; then",
     "test": "bash linux/scripts/tests/test-chrome-and-emulator.sh",
     "why": "without /dev/kvm the emulator falls back to minutes of software emulation instead of saying how to pass the device"
+  },
+  {
+    "id": "disk-guard.buildkit-keep-counts-unprunable",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "printf '%s' \"$(( ${1:-0} * 1000 + fixed ))\"",
+    "replace": "printf '%s' \"$(( ${1:-0} * 1000 ))\"",
+    "test": "bash linux/scripts/tests/test-disk-guard.sh",
+    "why": "--keep-storage bounds the whole store; without the cache mounts added, a 120G keep empties the layer cache"
+  },
+  {
+    "id": "prune-safe.keep-counts-unprunable",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "select((.shared | not) and ((.recordType // \"\") as $t | $t != \"\" and $t != \"regular\"))",
+    "replace": "select(false)",
+    "test": "bash linux/scripts/tests/test-prune-safe.sh",
+    "why": "a 100G keep against 150G of cache mounts prunes every layer record (CON53)"
+  },
+  {
+    "id": "prune-safe.dup-keeps-lowest-id",
+    "target": "linux/scripts/01-core/disk-guard.sh",
+    "find": "map(select(length > 1) | sort_by(.id))",
+    "replace": "map(select(length > 1) | sort_by(.id) | reverse)",
+    "test": "bash linux/scripts/tests/test-prune-safe.sh",
+    "why": "BuildKit reuses the lowest record id; removing it would orphan the live compile cache"
+  },
+  {
+    "id": "prune-safe.dup-opt-in",
+    "target": "linux/host-config/prune-safe.sh",
+    "find": "if [ \"${PRUNE_DUP_CACHEMOUNTS:-0}\" = \"1\" ] && [ -n \"${dups}\" ]; then",
+    "replace": "if [ -n \"${dups}\" ]; then",
+    "test": "bash linux/scripts/tests/test-prune-safe.sh",
+    "why": "a plain prune must never delete a cache-mount record"
+  },
+  {
+    "id": "prune-safe.dup-refuses-in-use",
+    "target": "linux/host-config/prune-safe.sh",
+    "find": "  if [ \"${in_use}\" -gt 0 ] || ",
+    "replace": "  if false || ",
+    "test": "bash linux/scripts/tests/test-prune-safe.sh",
+    "why": "a running build may fall back to the surplus record"
+  },
+  {
+    "id": "prune-safe.count-expects-removed-dups",
+    "target": "linux/host-config/prune-safe.sh",
+    "find": "n_expected=$(( n_before - ${#dup_ids[@]} ))",
+    "replace": "n_expected=$(( n_before ))",
+    "test": "bash linux/scripts/tests/test-prune-safe.sh",
+    "why": "a requested surplus removal is not a lost cache and must not fail the run"
+  },
+  {
+    "id": "prune-safe.keep-value-validated",
+    "target": "linux/host-config/prune-safe.sh",
+    "find": "case \"${PRUNE_KEEP_GB}\" in ''|*[!0-9]*) echo",
+    "replace": "case \"${PRUNE_KEEP_GB}\" in __never__) echo",
+    "test": "bash linux/scripts/tests/test-prune-safe.sh",
+    "why": "a garbage keep value must not reach buildctl arithmetic"
   }
 ]

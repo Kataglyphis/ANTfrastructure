@@ -405,7 +405,8 @@ when the run will enter the lane with less than stage cost + lane need.
 with the daemon: `systemctl --user restart buildkit.service` (no build running),
 then `PRUNE_KEEP_GB=<N> linux/host-config/prune-safe.sh`. `--keep-storage` bounds
 the WHOLE store, and the non-candidates (cache mounts ~166G + `source.local` ~10G)
-count toward it, so N below ~180 prunes every regular record. Local
+count toward it; since CON53 (2026-10-01) the script and the chain's fallback add
+them, so `<N>` is GB of layer cache, not of the store. Local
 `:latest-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
 them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume.
 
