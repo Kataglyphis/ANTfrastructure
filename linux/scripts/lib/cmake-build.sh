@@ -7,6 +7,8 @@ _CMAKE_BUILD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CMAKE_BUILD_CORE_DIR="${_CMAKE_BUILD_LIB_DIR}/../01-core"
 # shellcheck source=./log-bootstrap.sh
 source "${_CMAKE_BUILD_LIB_DIR}/log-bootstrap.sh"
+# shellcheck source=../01-core/vulkan-env.sh
+source "${_CMAKE_BUILD_CORE_DIR}/vulkan-env.sh"
 
 cmake_build_usage() {
   cat <<EOF
@@ -136,8 +138,7 @@ cmake_build_prepare_env() {
     source_vulkan_env
   elif [[ -n "${VULKAN_SETUP_SCRIPT:-}" && -f "${VULKAN_SETUP_SCRIPT}" ]]; then
     info "Sourcing Vulkan env from: ${VULKAN_SETUP_SCRIPT}"
-    # shellcheck disable=SC1090
-    . "${VULKAN_SETUP_SCRIPT}"
+    vulkan_env_source_script "${VULKAN_SETUP_SCRIPT}"
   fi
 
   # See docs/cross-build-verification.md#cmake-buildsh-a-writable-cargo_home

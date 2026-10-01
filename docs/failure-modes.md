@@ -61,6 +61,7 @@ Two neighbours, so you land on the right page:
 - [Headless Chrome prints nothing under qemu-user](#headless-chrome-prints-nothing-under-qemu-user)
 - [Chrome stops with `No usable sandbox!`](#chrome-stops-with-no-usable-sandbox)
 - [An arm64 app dies in `ndk_translation` on an API 30 emulator](#an-arm64-app-dies-in-ndk_translation-on-an-api-30-emulator)
+- [The Vulkan variables name an arch-specific SDK dir](#vulkan-env-names-an-arch-specific-sdk-dir)
 - [The core registry blacklists `libgstvalidatessim.so`](#the-core-registry-blacklists-libgstvalidatessimso)
 - [DeepStream: `nvstreammux` stops the pipeline with `reason error (-5)` and no message](#deepstream-nvstreammux-stops-the-pipeline-with-reason-error--5-and-no-message)
 - [DeepStream: `Unable to load library: libnvinfer_builder_resource_sm75.so.10.16.1`](#deepstream-unable-to-load-library-libnvinfer_builder_resource_sm75so10161)
@@ -1065,6 +1066,30 @@ instruction 0x7ee1b800`, and the tombstone ends in `libndk_translation.so`
 
 **Fix.** An API 35 system image, whose translator runs the same APK. The image pins it:
 [`consumer-image-contract.md`](consumer-image-contract.md#the-android-emulator-runs-on-amd64-with-kvm).
+<a id="vulkan-env-names-an-arch-specific-sdk-dir"></a>
+### The Vulkan variables name an arch-specific SDK dir
+
+**Symptom.** After the entrypoint, `env | grep /opt/vulkan/` names `/opt/vulkan/<version>/<arch>`
+rather than `/opt/vulkan/active`. Natively that is the right SDK; a riscv64 test under QEMU in
+the amd64 image then loses Vulkan, both in CMake and in the loader
+([the two messages](riscv64-cross-test-lanes.md#traps-each-found-by-a-failing-run)).
+
+**Cause.** The entrypoint, not the login shell, sources LunarG's `setup-env.sh`. That script
+sets `VULKAN_SDK` to `$(readlink -f <its dir>)/$(uname -m)`, so in the amd64 image every
+variable derived from it names `/opt/vulkan/<version>/x86_64`: `VULKAN_SDK`,
+`VK_ADD_LAYER_PATH`, `PATH`, `LD_LIBRARY_PATH`, `PKG_CONFIG_PATH`, `CMAKE_PREFIX_PATH`.
+Measured 2026-10-01 in the published `:latest` amd64 child; with `--entrypoint bash` the
+image ENV's `/opt/vulkan/active` survives. Under `QEMU_LD_PREFIX` a riscv64 process re-roots
+an absolute path into the riscv64 sysroot, which has no `x86_64` dir, so it falls through to
+the amd64 files. `/opt/vulkan/active` exists in both and names each one's own SDK.
+
+**Fix.** `vulkan_env_prefer_active_link` (`01-core/vulkan-env.sh`) rewrites every component
+under the link's target back to `<root>/active`, without duplicates; `vulkan_env_source` and
+the entrypoint call it (CON48). Native runs are unchanged, since the link resolves to the same
+dir. The runtime smoke's boot probe fails an image that still prints a `/opt/vulkan/<version>/`
+component (`vkarch=`), and requires `VK_ADD_LAYER_PATH` (`vkadd=yes`) as its proof that the
+entrypoint sourced `setup-env.sh`. Until a consumer's lane runs on an image with it,
+`riscv64_cross_env` sets `VULKAN_SDK` and `VK_ADD_LAYER_PATH` to the link itself.
 
 ### The core registry blacklists `libgstvalidatessim.so`
 

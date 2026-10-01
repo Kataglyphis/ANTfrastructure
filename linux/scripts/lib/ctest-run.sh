@@ -5,6 +5,8 @@ _CTEST_RUN_SH_LOADED=1
 
 # shellcheck source=./log-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
+# shellcheck source=../01-core/vulkan-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/vulkan-env.sh"
 
 # -T test leaves a Testing/ tree CI can upload; --output-on-failure keeps a failing test's stdout.
 _CTEST_RUN_BUILTIN_ARGS=(
@@ -101,8 +103,7 @@ ctest_run_prepare_env() {
     source_vulkan_env
   elif [[ -n "${VULKAN_SETUP_SCRIPT:-}" && -f "${VULKAN_SETUP_SCRIPT}" ]]; then
     info "Sourcing Vulkan env from: ${VULKAN_SETUP_SCRIPT}"
-    # shellcheck disable=SC1090
-    . "${VULKAN_SETUP_SCRIPT}"
+    vulkan_env_source_script "${VULKAN_SETUP_SCRIPT}"
   fi
 }
 

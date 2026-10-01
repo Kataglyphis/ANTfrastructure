@@ -90,8 +90,11 @@ _boot_verdict() {
   elif ! printf '%s' "${out}" | grep -q "gstma=yes"; then
     # Not gst=set/vulkan=set: the image ENV sets both; only gstreamer-env.sh adds the multiarch dir.
     fail "the entrypoint did not source gstreamer-env.sh (${target_arch}): ${out} -- GST_PLUGIN_PATH lacks the multiarch dir"
-  elif ! printf '%s' "${out}" | grep -q "vkres=yes"; then
-    fail "the entrypoint did not resolve VULKAN_SDK past /opt/vulkan/active (${target_arch}): ${out}"
+  elif ! printf '%s' "${out}" | grep -q "vkadd=yes"; then
+    # VK_ADD_LAYER_PATH, not VULKAN_SDK: the image ENV sets VULKAN_SDK, only setup-env.sh sets this one.
+    fail "the entrypoint did not source the Vulkan SDK's setup-env.sh (${target_arch}): ${out} -- VK_ADD_LAYER_PATH is unset"
+  elif ! printf '%s' "${out}" | grep -q "vkarch=neutral"; then
+    fail "the entrypoint left a Vulkan variable on an arch-specific SDK dir (${target_arch}): ${out} -- a foreign-arch process (riscv64 under QEMU in the amd64 image) then loads this arch's layers; docs/failure-modes.md#vulkan-env-names-an-arch-specific-sdk-dir"
   else
     pass "default ENTRYPOINT+CMD boot: ${out} (exit status propagated)"
   fi
@@ -125,7 +128,8 @@ check_default_entrypoint_boot() {
   out="$(printf '%s\n' \
            'echo "BOOT uid=$(id -u) gst=${GST_PLUGIN_PATH:+set} vulkan=${VULKAN_SDK:+set}"' \
     'case "${GST_PLUGIN_PATH}" in *linux-gnu/gstreamer-1.0*) echo "gstma=yes";; *) echo "gstma=no";; esac' \
-    'case "${VULKAN_SDK}" in /opt/vulkan/active|"") echo "vkres=no";; *) echo "vkres=yes";; esac' \
+    'echo "vkadd=${VK_ADD_LAYER_PATH:+yes}"' \
+    'p=""; for v in VULKAN_SDK VK_ADD_LAYER_PATH PATH LD_LIBRARY_PATH PKG_CONFIG_PATH CMAKE_PREFIX_PATH; do eval "val=\${${v}-}"; case ":${val}:" in *:/opt/vulkan/[0-9]*) p="${p}${v},";; esac; done; echo "vkarch=${p:-neutral}"' \
            'exit 42' \
          | "${NERDCTL_BIN}" run --rm -i --platform "linux/${target_arch}" "${image_tag}" 2>/dev/null)" \
     && rc=0 || rc=$?

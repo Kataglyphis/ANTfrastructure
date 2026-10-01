@@ -270,11 +270,13 @@ cat > "${_RT_SANDBOX}/fake-nerdctl" <<'SH'
 #!/usr/bin/env bash
 # Only the boot probe's `run --rm -i <image>` shape is used: execute the piped
 # script with the env the entrypoint is supposed to have exported.
-# The shapes matter, not just set-ness: the multiarch plugin dir and a RESOLVED
-# VULKAN_SDK are what only gstreamer-env.sh adds, and the gate now checks for
-# them. /fake/gst would answer "set" with the sourcing gone. Backlog XQ.
+# The shapes matter, not just set-ness: the multiarch plugin dir and VK_ADD_LAYER_PATH
+# are what only the entrypoint's sourcing adds, and the gate checks for them; /fake/gst
+# would answer "set" with the sourcing gone (Backlog XQ). Every Vulkan variable stays on
+# /opt/vulkan/active (CON48).
 exec env GST_PLUGIN_PATH=/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0 \
-         VULKAN_SDK=/opt/vulkan/1.4.357.0/x86_64 bash -s
+         VULKAN_SDK=/opt/vulkan/active \
+         VK_ADD_LAYER_PATH=/opt/vulkan/active/share/vulkan/explicit_layer.d bash -s
 SH
 chmod +x "${_RT_SANDBOX}/fake-nerdctl"
 

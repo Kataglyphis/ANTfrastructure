@@ -380,6 +380,7 @@ lane runs on the next `:latest`.
 | `gst-inspect-1.0 -b` on amd64 (CON47) | lists `libgstvalidatessim.so` | lists nothing; the SSIM plugin still works under `gst-validate-1.0` ([why](failure-modes.md#the-core-registry-blacklists-libgstvalidatessimso)) |
 | A browser for `flutter test --platform chrome` (CON50) | none; `flutter doctor` reports *"Cannot find Chrome executable"* | Chrome for Testing and its chromedriver on amd64 and arm64, `CHROME_EXECUTABLE` set ([how](#browser-tests-run-in-chrome-for-testing)) |
 | An Android device on amd64 (CON50) | none; Android tests ran on the x64 VM only | the emulator and an x86_64 system image with ARM translation, booted by `android-avd.sh` on `/dev/kvm` ([how](#the-android-emulator-runs-on-amd64-with-kvm)) |
+| `VULKAN_SDK` and the variables `setup-env.sh` derives from it, after the entrypoint (CON48) | `/opt/vulkan/<version>/<arch>`; a riscv64 lane under QEMU in the amd64 image overrides `VULKAN_SDK` and `VK_ADD_LAYER_PATH` (`riscv64_cross_env`) | `/opt/vulkan/active` on every arch; the boot smoke fails an arch dir ([why](failure-modes.md#vulkan-env-names-an-arch-specific-sdk-dir)) |
 
 ## The Android SDK roots are advertised
 

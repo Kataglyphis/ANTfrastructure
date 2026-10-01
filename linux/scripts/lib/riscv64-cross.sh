@@ -79,7 +79,7 @@ riscv64_cross_env() {
   # QEMU remaps absolute opens into the sysroot, so the image's arch-neutral paths reach riscv64 files.
   export QEMU_LD_PREFIX="${sysroot}"
   export QEMU_CPU="${QEMU_CPU:-${RISCV64_CROSS_QEMU_CPU}}"
-  # The login shell names the x86_64 SDK; the arch-neutral link re-roots to riscv64 in CMake and under QEMU.
+  # Images before CON48 leave the entrypoint's x86_64 SDK dir here; the link re-roots to riscv64 in CMake and under QEMU.
   export VULKAN_SDK=/opt/vulkan/active
   export VK_ADD_LAYER_PATH=/opt/vulkan/active/share/vulkan/explicit_layer.d
   # execve is not remapped, so a forked scanner would be the amd64 one.
