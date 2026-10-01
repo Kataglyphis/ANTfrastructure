@@ -7,6 +7,28 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - A browser and an Android emulator in `:latest` (CON50 items 3 and 4)
+
+- **Chrome for Testing on amd64 and arm64.** Google's Stable build and its chromedriver, a
+  SHA256 per zip in `versions.env`, installed by `06-packaging/install-chrome-for-testing.sh`
+  as the package stage's last RUN. `CHROME_EXECUTABLE=/usr/local/bin/chrome`, a wrapper adding
+  `--no-sandbox --no-zygote --disable-dev-shm-usage`; empty on riscv64, which has no build.
+  +0.45 GB per arch.
+- **The Android emulator and `system-images;android-35;google_apis;x86_64` on amd64**, from
+  Google's zips by `06-packaging/install-android-emulator.sh`. `android-avd.sh create|start|stop`
+  in `/usr/local/bin` boots it headless on `/dev/kvm`. +4.66 GB on amd64. API 30's ARM
+  translator SIGILLs on OmniAccelerANT's APK; API 35's runs it.
+- **Proven on a throwaway image FROM the published `:latest`** (`sha256:1a913b84…`), not on a
+  rebuilt chain: headless Chrome as uid 1001 on amd64, and on arm64 under QEMU; OmniAccelerANT's
+  tests in Chrome (37 pass, two files need `dart:io`); the emulator booted in 25 s with KVM and
+  ran the arm64-v8a release APK. Ships with the next `:latest` rebuild.
+- **Gates.** The consumer contract gains the `chrome` and `android-emulator` rows (exempt on
+  riscv64, and on arm64 and riscv64). `download_verified_cached` (`01-core/downloads.sh`)
+  re-verifies a cache-mount copy before every reuse. `bump_versions.py` refreshes the CfT pins
+  and holds the emulator's.
+- Tests: `test-chrome-and-emulator.sh` (new), `test-runtime-image-gates.sh` (+8 cases), 11
+  `chrome-emulator.*` mutations.
+
 ## 2026-10-01 - A runner-native pytest job on windows-11-arm (CON50 item 6)
 
 - **`python-ci-windows.yml` gains `arm64-tests`** (default false), with
@@ -33,7 +55,6 @@
   no SHA check, a free-threaded leg ignoring its extras, and a bare `--python`. A real run
   on an x64 host against WebDavClient, with legs `3.14t 3.14`, gave the 3.14 leg a GIL 3.14.7:
   10 passed.
-
 
 ## 2026-10-01 - riscv64 consumer lanes: cross-build on amd64, test under QEMU (CON48)
 

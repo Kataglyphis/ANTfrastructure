@@ -233,6 +233,11 @@ ENV ANDROID_TARGET_ABI=${ANDROID_TARGET_ABI}
 # A symlink setup-package-image.sh resolves from javac, so a JDK bump needs no edit here. docs/consumer-image-contract.md#the-android-lane-needs-a-jdk
 ENV JAVA_HOME=/usr/lib/jvm/default-java
 
+# Empty on riscv64, which has no Chrome for Testing build: docs/consumer-image-contract.md#browser-tests-run-in-chrome-for-testing
+ARG CHROME_ARCH=${TARGET_ARCH:-${TARGETARCH}}
+ARG CHROME_ON=${CHROME_ARCH/riscv64/}
+ENV CHROME_EXECUTABLE=${CHROME_ON:+/usr/local/bin/chrome}
+
 # Appended: platform-tools' own mke2fs would otherwise shadow /usr/sbin/mke2fs.
 ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools"
 
@@ -340,6 +345,18 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-
     else \
         bash /opt/scripts/05-frameworks/deepstream.sh assert-absent; \
     fi
+
+# Last, emulator first: a Chrome bump then re-runs one small layer. docs/consumer-image-contract.md#the-android-emulator-runs-on-amd64-with-kvm
+RUN --mount=type=bind,source=linux/scripts/06-packaging/install-android-emulator.sh,target=/tmp/tr/install-android-emulator.sh,ro \
+    --mount=type=cache,target=/var/cache/test-runtimes,id=test-runtimes-dl,sharing=shared \
+    set -euo pipefail; \
+    TEST_RUNTIMES_CACHE_DIR=/var/cache/test-runtimes bash /tmp/tr/install-android-emulator.sh
+RUN --mount=type=bind,source=linux/scripts/06-packaging/install-chrome-for-testing.sh,target=/tmp/tr/install-chrome-for-testing.sh,ro \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/test-runtimes,id=test-runtimes-dl,sharing=shared \
+    set -euo pipefail; \
+    TEST_RUNTIMES_CACHE_DIR=/var/cache/test-runtimes bash /tmp/tr/install-chrome-for-testing.sh
 
 LABEL org.opencontainers.image.title="Kataglyphis Package" \
       org.opencontainers.image.description="Runtime package image with assembled cross-compiled artifacts"

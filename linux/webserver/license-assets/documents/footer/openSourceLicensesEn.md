@@ -117,6 +117,15 @@ its own license terms.
 | TorchVision | v0.29.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
 | Flutter SDK | 3.47.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
+### Test runtimes (`Dockerfile.package`)
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| Chrome for Testing (amd64, arm64) | 154.0.8037.92 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | Google Chrome Terms of Service (the zip's ABOUT names chrome://terms); Chromium's notices at chrome://credits |
+| chromedriver (amd64, arm64) | 154.0.8037.92 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | BSD 3-Clause (LICENSE.chromedriver and THIRD_PARTY_NOTICES.chromedriver in the zip) |
+| Android Emulator (amd64) | 37.2.12 | [developer.android.com/studio/run/emulator](https://developer.android.com/studio/run/emulator) | Android SDK License; Apache 2.0 (LICENSE), a QEMU derivative (GPLv2), per-component NOTICE.csv |
+| Android 15 (API 35) system image, Google APIs x86_64 (amd64) | 9 | [developer.android.com/studio/run/managing-avds](https://developer.android.com/studio/run/managing-avds) | Android SDK License; AOSP components under their own licences (NOTICE.txt in the image), the kernel GPLv2 |
+
 ### Runtime (`Dockerfile.torch`)
 
 | Software | Version | Repository | License |
@@ -411,6 +420,20 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 - **Licence:** MPL-2.0
 - **Source:** <https://github.com/zeromq/libzmq>
 - **Revision:** 4.3.5
+
+### Android Emulator (amd64) — Linux Images
+
+- **Licence:** Apache-2.0 AND GPL-2.0-only AND LicenseRef-Proprietary-EULA
+- **Source:** <https://android.googlesource.com/platform/external/qemu>
+- **Revision:** emu-master-dev
+- NOTICE.csv in the emulator directory names the source of every bundled component.
+
+### Android 15 (API 35) system image, Google APIs x86_64 (amd64) — Linux Images
+
+- **Licence:** Apache-2.0 AND GPL-2.0-only AND LicenseRef-Proprietary-EULA
+- **Source:** <https://android.googlesource.com/platform/manifest>
+- **Revision:** android15-release
+- NOTICE.txt beside system.img maps each file to its licence; the goldfish kernel is in android.googlesource.com/kernel/common.
 
 ### ccache — Linux Images
 

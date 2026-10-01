@@ -33,6 +33,15 @@ _STUBS='set -u
     fail() { printf "FAIL %s\n" "$*"; FAILURES=$((FAILURES+1)); }
     pass() { printf "PASS %s\n" "$*"; }'
 
+# _t_edit_table <fn> [prefix]: each stdin row is <sed edit><TAB><text>; <fn> <edit> must print <prefix><text>.
+_t_edit_table() {
+  local _sed _want
+  while IFS="$(printf '\t')" read -r _sed _want; do
+    [ -n "${_sed}" ] || continue
+    t_assert_contains "$("$1" "${_sed}")" "${2-}${_want}" "${_sed}"
+  done
+}
+
 # _gate <fn> [healthcheck] [app smoke output] [in-image rc]
 _gate() {
   local fn="$1" hc="${2-}" wheel_out="${3-}" run_rc="${4-0}" hc_json
@@ -475,6 +484,10 @@ $(_extract _consumer_android_verdict)
 $(_extract _consumer_owner_verdict)
 $(_extract _consumer_probe_verdict)
 $(_extract _consumer_contract_verdicts)"
+# The probe exactly as check_consumer_contract sends it: the main body and both fragments it calls.
+_CC_PROBE_FNS="$(_extract _consumer_contract_probe)
+$(_extract _consumer_ort_env_probe)
+$(_extract _consumer_test_runtimes_probe)"
 
 # Verdict lines for one probe capture on one arch. $3 overrides the row table.
 _cc_verdicts() {
@@ -623,7 +636,7 @@ CCPROBE_DONE' riscv64 appimagetool)" "EXEMPT appimagetool" \
 
 t_case "every per-arch exemption's rot fact is a fact the probe really emits"
 # A rot fact the probe never prints is a NOFACT on every run.
-_CC_PROBE_SRC="$(_extract _consumer_contract_probe)"
+_CC_PROBE_SRC="${_CC_PROBE_FNS}"
 while IFS= read -r _row; do
   [ -n "${_row}" ] || continue
   _f="$(bash -c "$(_extract _consumer_exempt_fact)"$'\n'"_consumer_exempt_fact '${_row}'")"
@@ -647,8 +660,7 @@ _cc_gate() {
     inspect_image_config() { printf "%s" "${CC_USER}"; }
     _rt_run() { printf "%s\n" "${CC_PROBE}"; }
     '"${_CC_PARTS}"'
-    '"$(_extract _consumer_contract_probe)"'
-    '"$(_extract _consumer_ort_env_probe)"'
+    '"${_CC_PROBE_FNS}"'
     '"$(_extract _consumer_contract_symptom)"'
     '"$(_extract check_consumer_contract)"'
     [ -z "${CC_ROWS}" ] || _CONSUMER_CONTRACT_ROWS="${CC_ROWS}"
@@ -665,7 +677,7 @@ mkdir -p "${_CC_TMP}"/{cc,sc,ru/tmp,ca,sdk/platform-tools,ort}
 _CC_RAW="$(CCACHE_DIR="${_CC_TMP}/cc" SCCACHE_DIR="${_CC_TMP}/sc" RUSTUP_HOME="${_CC_TMP}/ru" \
   CARGO_HOME="${_CC_TMP}/ca" ANDROID_HOME="${_CC_TMP}/sdk" ANDROID_SDK_ROOT="${_CC_TMP}/sdk" \
   ORT_LIB_LOCATION="${_CC_TMP}/ort" ORT_DYLIB_PATH="${_CC_TMP}/ort/libonnxruntime.so" ORT_SKIP_DOWNLOAD=1 CARGO_NET_OFFLINE='' \
-  env -u ORT_LIB_PATH bash -c "$(_extract _consumer_contract_probe)"$'\n'"$(_extract _consumer_ort_env_probe)"$'\n'"_consumer_contract_probe | bash" 2>&1)"
+  env -u ORT_LIB_PATH bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)"
 t_assert_contains "${_CC_RAW}" "CCPROBE_DONE" "exit status is not evidence; the sentinel is"
 t_assert_contains "${_CC_RAW}" "WHO " "the gate refuses to judge a probe that did not say who it ran as"
 for _r in ccache-dir sccache-dir rustup-tmp cargo-home dart-tool; do
@@ -687,9 +699,9 @@ t_case "the probe answers YES only where it really wrote"
 t_assert_contains "${_CC_RAW}" "WRITE ccache-dir yes" "a writable directory must read as writable"
 t_assert_eq "" "$(ls -A "${_CC_TMP}/cc")" "and the probe must leave nothing behind in it"
 : > "${_CC_TMP}/notadir"
-t_assert_contains "$(CARGO_HOME="${_CC_TMP}/notadir/x" bash -c "$(_extract _consumer_contract_probe)"$'\n'"$(_extract _consumer_ort_env_probe)"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
+t_assert_contains "$(CARGO_HOME="${_CC_TMP}/notadir/x" bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
   "WRITE cargo-home no" "a path the probe cannot create a file in must read as unwritable, for root too"
-t_assert_contains "$(CARGO_HOME="${_CC_TMP}/absent" bash -c "$(_extract _consumer_contract_probe)"$'\n'"$(_extract _consumer_ort_env_probe)"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
+t_assert_contains "$(CARGO_HOME="${_CC_TMP}/absent" bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
   "WRITE cargo-home no" "a MISSING directory is what the consumer's [ -w ] calls false; a probe that creates it reports green where they fail"
 rm -rf "${_CC_TMP}"
 
@@ -765,6 +777,99 @@ t_assert_contains "$(_jdkv "FACT java-on-path yes
 FACT javac yes
 ENV java-home /usr/lib/jvm/default-java")" "OK jdk" "the fixed shape"
 t_assert_contains "$(_jdkv "ENV java-home /x")" "NOFACT jdk" "a probe that emitted no java facts proves nothing"
+
+# CON50's browser and emulator rows; the pins come from the env, which _rt_versions_env_pin reads first.
+_CC_TR_PARTS="${_CC_PARTS}
+$(_extract _rt_versions_env_pin)
+$(_extract _consumer_chrome_verdict)
+$(_extract _consumer_emulator_verdict)"
+# _cc_tr <probe> <arch> <row>
+_cc_tr() {
+  CC_PROBE="$1" CHROME_FOR_TESTING_VERSION=154.0.8037.92 ANDROID_EMULATOR_VERSION=37.2.12 ANDROID_EMULATOR_API=35 \
+    ANDROID_EMULATOR_SYSIMG_REVISION=9 bash -c '
+    '"${_CC_TR_PARTS}"'
+    _CONSUMER_CONTRACT_ROWS="$2"
+    _consumer_contract_verdicts "$1" "${CC_PROBE}"' _ "$2" "$3" 2>&1
+}
+_CC_CHROME='ENV chrome-executable /usr/local/bin/chrome
+FACT chrome yes
+FACT chrome-version 154.0.8037.92
+FACT chromedriver-version 154.0.8037.92
+FACT chrome-headless yes'
+_CC_EMU='FACT android-payload-off no
+FACT android-emulator yes
+FACT android-emulator-version 37.2.12
+FACT android-emulator-runs yes
+FACT android-system-image android-35;google_apis;x86_64;r9
+FACT android-avd yes'
+_cc_edit() { printf '%s\n' "$1" | sed -e "$2"; }
+
+t_case "CON50: the pinned browser rendering headless holds the chrome row on amd64 and arm64"
+for _a in amd64 arm64; do
+  t_assert_contains "$(_cc_tr "${_CC_CHROME}" "${_a}" chrome)" "OK chrome Chrome for Testing 154.0.8037.92 renders headless" "${_a}"
+done
+
+t_case "CON50: a browser that renders nothing, runs off the pin or lacks its chromedriver is BAD (mutation)"
+t_assert_contains "$(_cc_tr "$(_cc_edit "${_CC_CHROME}" 's/^FACT chrome-headless yes/FACT chrome-headless no/')" amd64 chrome)" \
+  "BAD chrome headless chrome rendered no page"
+t_assert_contains "$(_cc_tr "$(_cc_edit "${_CC_CHROME}" 's/^FACT chrome-version .*/FACT chrome-version 153.0.1.1/')" amd64 chrome)" \
+  "BAD chrome chrome reports 153.0.1.1, the pin is 154.0.8037.92"
+t_assert_contains "$(_cc_tr "$(_cc_edit "${_CC_CHROME}" '/^FACT chromedriver-version/d')" amd64 chrome)" \
+  "BAD chrome chromedriver reports nothing"
+t_assert_contains "$(_cc_tr 'ENV chrome-executable
+FACT chrome no' arm64 chrome)" "BAD chrome CHROME_EXECUTABLE () names no executable browser" "an arm64 image without its browser"
+t_assert_contains "$(_cc_tr 'ENV chrome-executable /x' amd64 chrome)" "NOFACT chrome" "a probe that never answered proves nothing"
+
+t_case "CON50: riscv64 is exempt from the chrome row, and the arm rots the day a browser appears"
+t_assert_contains "$(_cc_tr 'FACT chrome no' riscv64 chrome)" "EXEMPT chrome"
+t_assert_contains "$(_cc_tr "${_CC_CHROME}" riscv64 chrome)" "STALE chrome FACT chrome says it IS present on riscv64"
+
+t_case "CON50: the pinned emulator, system image and AVD helper hold the row on amd64"
+t_assert_contains "$(_cc_tr "${_CC_EMU}" amd64 android-emulator)" \
+  "OK android-emulator emulator 37.2.12 with android-35;google_apis;x86_64;r9"
+
+t_case "CON50: every broken part of the emulator payload is BAD (mutation)"
+_emu_bad() { _cc_tr "$(_cc_edit "${_CC_EMU}" "$1")" amd64 android-emulator; }
+_t_edit_table _emu_bad <<'ROWS'
+s/^FACT android-emulator yes/FACT android-emulator no/	BAD android-emulator ANDROID_HOME/emulator/emulator is missing
+s/^FACT android-emulator-runs yes/FACT android-emulator-runs no/	BAD android-emulator the emulator does not run as the image user
+s/^FACT android-emulator-version .*/FACT android-emulator-version 37.2.11/	BAD android-emulator emulator 37.2.11, the pin is 37.2.12
+s/;r9$/;r8/	BAD android-emulator system image android-35;google_apis;x86_64;r8, the pin is android-35;google_apis;x86_64;r9
+/^FACT android-system-image/d	BAD android-emulator system image none
+s/^FACT android-avd yes/FACT android-avd no/	BAD android-emulator android-avd.sh is not on PATH
+s/^FACT android-payload-off no/FACT android-payload-off yes/	SKIP android-emulator
+/^FACT android-payload-off/d	NOFACT android-emulator no FACT android-payload-off line
+ROWS
+
+t_case "CON50: arm64 and riscv64 are exempt from the emulator row, each re-checked by the emulator's own fact"
+for _a in arm64 riscv64; do
+  t_assert_contains "$(_cc_tr 'FACT android-emulator no' "${_a}" android-emulator)" "EXEMPT android-emulator" "${_a}"
+  t_assert_contains "$(_cc_tr "${_CC_EMU}" "${_a}" android-emulator)" "STALE android-emulator FACT android-emulator says it IS present on ${_a}"
+done
+
+t_case "CON50: the probe emits every fact the two rows read, as a real run of it"
+_TR_TMP="$(mktemp -d)"
+mkdir -p "${_TR_TMP}/bin" "${_TR_TMP}/sdk/emulator" "${_TR_TMP}/sdk/system-images/android-35/google_apis/x86_64"
+printf '#!/bin/sh\ncase "$*" in *--version*) echo "Google Chrome for Testing 154.0.8037.92 " ;; *--dump-dom*) echo "<body>kg-42</body>" ;; esac\n' \
+  > "${_TR_TMP}/bin/chrome"
+printf '#!/bin/sh\necho "ChromeDriver 154.0.8037.92 (x)"\n' > "${_TR_TMP}/bin/chromedriver"
+printf '#!/bin/sh\necho "Android emulator version 37.2.12.0 (build_id 16428233)"\n' > "${_TR_TMP}/sdk/emulator/emulator"
+: > "${_TR_TMP}/bin/android-avd.sh"
+chmod +x "${_TR_TMP}"/bin/* "${_TR_TMP}/sdk/emulator/emulator"
+printf 'Pkg.Revision=37.2.12\n' > "${_TR_TMP}/sdk/emulator/source.properties"
+printf 'Pkg.Revision=9\nAndroidVersion.ApiLevel=35\nSystemImage.TagId=google_apis\nSystemImage.Abi=x86_64\n' \
+  > "${_TR_TMP}/sdk/system-images/android-35/google_apis/x86_64/source.properties"
+_TR_RAW="$(PATH="${_TR_TMP}/bin:${PATH}" CHROME_EXECUTABLE="${_TR_TMP}/bin/chrome" ANDROID_HOME="${_TR_TMP}/sdk" \
+  bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)"
+for _f in "FACT chrome yes" "FACT chrome-version 154.0.8037.92" "FACT chromedriver-version 154.0.8037.92" \
+          "FACT chrome-headless yes" "FACT android-emulator yes" "FACT android-emulator-version 37.2.12" \
+          "FACT android-emulator-runs yes" "FACT android-system-image android-35;google_apis;x86_64;r9" "FACT android-avd yes"; do
+  t_assert_contains "${_TR_RAW}" "${_f}" "the probe reads it from the image"
+done
+t_assert_contains "$(CHROME_EXECUTABLE='' ANDROID_HOME="${_TR_TMP}/none" \
+  bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
+  $'FACT chrome no' "an empty CHROME_EXECUTABLE is riscv64's shape"
+rm -rf "${_TR_TMP}"
 
 # Vulkan loader: Ubuntu's multiarch libvulkan is in every image, so which one answered matters
 _vk_gate() {
@@ -846,7 +951,7 @@ done
 
 t_case "the contract asserts every promise the consuming lane depends on"
 # The suites iterate the row list, so a dropped row would take its guarantee with it silently.
-for _r in ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner ort-crate-env; do
+for _r in ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner ort-crate-env chrome android-emulator; do
   t_assert_contains " ${_CONSUMER_CONTRACT_ROWS} " " ${_r} " \
     "${_r} is a promise the consumer's acceptance check makes; it must stay in the table"
 done
@@ -881,6 +986,7 @@ $(_extract _consumer_ort_env_problem)
 $(_extract _consumer_ort_env_verdict)"
 _ortv() { bash -c "${_CC_ORT_PARTS}"$'\n''_consumer_ort_env_verdict ort-crate-env "$1"' _ "$1" 2>&1; }
 _ort_edit() { printf '%s\n' "${_CC_ORT_OK}" | sed -e "$1"; }
+_ort_bad() { _ortv "$(_ort_edit "$1")"; }
 
 t_case "G3: the chain lib dir, a dynamic link and a disarmed download hold the row"
 t_assert_contains "$(_ortv "${_CC_ORT_OK}")" "OK ort-crate-env ORT_LIB_LOCATION -> /usr/local/lib/onnxruntime-cpu/lib" \
@@ -893,10 +999,7 @@ t_assert_contains "$(CC_PROBE="${_CC_ORT_OK}" bash -c "${_CC_PARTS}"$'\n'"${_CC_
   | grep -e '^OK ort-crate-env' || true)" "OK ort-crate-env" "the verdict table routes the row to its own verdict"
 
 t_case "G3: every way back to pyke's ORT, or to a non-chain one, is BAD (mutation)"
-while IFS="$(printf '\t')" read -r _sed _want; do
-  [ -n "${_sed}" ] || continue
-  t_assert_contains "$(_ortv "$(_ort_edit "${_sed}")")" "BAD ort-crate-env ${_want}" "${_sed}"
-done <<'ROWS'
+_t_edit_table _ort_bad "BAD ort-crate-env " <<'ROWS'
 s#^ENV ort-lib-location .*#ENV ort-lib-location#;s#^FACT ort-lib-real .*#FACT ort-lib-real#	ORT_LIB_LOCATION () resolves to nothing
 s#^FACT ort-lib-real .*#FACT ort-lib-real /opt/opencv5/lib#	ORT_LIB_LOCATION (/usr/local/lib/onnxruntime-cpu/lib) resolves to /opt/opencv5/lib
 s#^FACT ort-link-lib yes#FACT ort-link-lib no#	/usr/local/lib/onnxruntime-cpu/lib has no libonnxruntime.so

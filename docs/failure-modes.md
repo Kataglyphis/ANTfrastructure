@@ -58,6 +58,9 @@ Two neighbours, so you land on the right page:
 - [A CUDA compile is `Killed` though average memory looked fine](#a-cuda-compile-is-killed-though-average-memory-looked-fine)
 - [An exception through std::call_once segfaults in libunwind](#an-exception-through-stdcall_once-segfaults-in-libunwind)
 - [lavapipe segfaults building an acceleration structure on arm64](#lavapipe-segfaults-building-an-acceleration-structure-on-arm64)
+- [Headless Chrome prints nothing under qemu-user](#headless-chrome-prints-nothing-under-qemu-user)
+- [Chrome stops with `No usable sandbox!`](#chrome-stops-with-no-usable-sandbox)
+- [An arm64 app dies in `ndk_translation` on an API 30 emulator](#an-arm64-app-dies-in-ndk_translation-on-an-api-30-emulator)
 - [The core registry blacklists `libgstvalidatessim.so`](#the-core-registry-blacklists-libgstvalidatessimso)
 - [DeepStream: `nvstreammux` stops the pipeline with `reason error (-5)` and no message](#deepstream-nvstreammux-stops-the-pipeline-with-reason-error--5-and-no-message)
 - [DeepStream: `Unable to load library: libnvinfer_builder_resource_sm75.so.10.16.1`](#deepstream-unable-to-load-library-libnvinfer_builder_resource_sm75so10161)
@@ -1021,6 +1024,45 @@ writes through garbage addresses. Measured 2026-10-01 with `vulkaninfo` in the p
 runtime smoke's `check_lavapipe_subgroup` fails an image whose variable or lavapipe subgroup is
 anything else. Retire both once the image's Mesa carries upstream ebcfbe60 (2026-08-22), which
 deletes that sort.
+
+### Headless Chrome prints nothing under qemu-user
+
+**Symptom.** In an emulated arm64 container, `chrome --headless --dump-dom <url>` prints
+nothing and exits 134; stderr shows `qemu: uncaught target signal 5 (Trace/breakpoint trap)
+- core dumped`. The package stage's Chrome check fails this way when it builds arm64 under QEMU.
+
+**Cause.** Chrome forks its renderers from a zygote, and the forked children die under
+qemu-user. Measured 2026-10-01 with Chrome for Testing 154: `--no-zygote` renders the page in
+21 s.
+
+**Fix.** Start Chrome through `/usr/local/bin/chrome` (`$CHROME_EXECUTABLE`), which passes
+`--no-zygote`:
+[`consumer-image-contract.md`](consumer-image-contract.md#why-the-wrapper-passes---no-sandbox-and---no-zygote).
+
+### Chrome stops with `No usable sandbox!`
+
+**Symptom.** `FATAL:content/browser/zygote_host/zygote_host_impl_linux.cc:129] No usable
+sandbox! If you are running on Ubuntu 23.10+ …`, exit 134, as uid 1001 in a container.
+
+**Cause.** The renderer sandbox needs user namespaces or a setuid-root helper. The image ships
+no setuid helper, and the host decides about user namespaces. Measured 2026-10-01: the bare
+binary started on amd64 under Rancher Desktop and died this way on arm64 under qemu-user.
+
+**Fix.** The same wrapper passes `--no-sandbox`:
+[`consumer-image-contract.md`](consumer-image-contract.md#why-the-wrapper-passes---no-sandbox-and---no-zygote).
+
+### An arm64 app dies in `ndk_translation` on an API 30 emulator
+
+**Symptom.** An arm64-v8a APK installs on an x86_64 Android 11 (API 30) emulator, the Flutter
+engine starts, then the process dies with SIGILL. logcat shows `ndk_translation: Undefined
+instruction 0x7ee1b800`, and the tombstone ends in `libndk_translation.so`
+`DecodeSimdScalarTwoRegMisc`.
+
+**Cause.** API 30's ARM translator (`ndk_translation` 0.2.2) lacks some ARMv8.0 instructions;
+`0x7ee1b800` is scalar `FCVTZU`. Seen 2026-10-01 with OmniAccelerANT's release APK.
+
+**Fix.** An API 35 system image, whose translator runs the same APK. The image pins it:
+[`consumer-image-contract.md`](consumer-image-contract.md#the-android-emulator-runs-on-amd64-with-kvm).
 
 ### The core registry blacklists `libgstvalidatessim.so`
 

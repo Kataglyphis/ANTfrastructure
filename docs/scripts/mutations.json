@@ -3330,8 +3330,8 @@
   {
     "id": "probe.jdk-row-asserted",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env\"",
-    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env\"",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "dropping the row ships an Android SDK with no JDK again: Gradle stops the whole lane and the gate says nothing"
   },
@@ -3370,16 +3370,16 @@
   {
     "id": "probe.appimagetool-row-asserted",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env\"",
-    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env\"",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "dropping the row lets an unreadable appimagetool ship again and the gate says nothing"
   },
   {
     "id": "probe.flatpak-row-asserted",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env\"",
-    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools ort-crate-env\"",
+    "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
+    "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "dropping the row from the list is how a contract stops being asserted without anything looking broken: the gate still passes, and the seven missing runtimes cost every consumer run ~1.9 GB again"
   },
@@ -5818,8 +5818,8 @@
   {
     "id": "probe.ort-crate-env-row",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": " web-lane-tools ort-crate-env\"",
-    "replace": " web-lane-tools\"",
+    "find": " web-lane-tools ort-crate-env chrome android-emulator\"",
+    "replace": " web-lane-tools chrome android-emulator\"",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "G3 on the shipped Linux image: the row is the assertion"
   },
@@ -5890,8 +5890,8 @@
   {
     "id": "probe.ort-crate-env-probe-spliced",
     "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-    "find": "  _consumer_ort_env_probe; printf '%s\\n' 'echo CCPROBE_DONE'",
-    "replace": "  printf '%s\\n' 'echo CCPROBE_DONE'",
+    "find": "  _consumer_ort_env_probe; _consumer_test_runtimes_probe; printf '%s\\n' 'echo CCPROBE_DONE'",
+    "replace": "  _consumer_test_runtimes_probe; printf '%s\\n' 'echo CCPROBE_DONE'",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "the facts must reach the probe the image runs"
   },
@@ -11609,5 +11609,93 @@
     "replace": "",
     "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
     "why": "matching on the OS alone takes whichever linux manifest comes first, and an amd64 sysroot under a riscv64 compiler fails only at link time"
+  },
+  {
+    "id": "chrome-emulator.wrapper-no-sandbox",
+    "target": "linux/scripts/06-packaging/install-chrome-for-testing.sh",
+    "find": "--no-sandbox --no-zygote",
+    "replace": "--no-zygote",
+    "test": "bash linux/scripts/tests/test-chrome-and-emulator.sh",
+    "why": "a container gives uid 1001 neither a setuid helper nor user namespaces, so Chrome's sandbox cannot start"
+  },
+  {
+    "id": "chrome-emulator.wrapper-no-zygote",
+    "target": "linux/scripts/06-packaging/install-chrome-for-testing.sh",
+    "find": "--no-sandbox --no-zygote --disable-dev-shm-usage",
+    "replace": "--no-sandbox --disable-dev-shm-usage",
+    "test": "bash linux/scripts/tests/test-chrome-and-emulator.sh",
+    "why": "under qemu-user the zygote's children die with SIGTRAP, so an emulated arm64 package build renders nothing"
+  },
+  {
+    "id": "chrome-emulator.cft-headless-check",
+    "target": "linux/scripts/06-packaging/install-chrome-for-testing.sh",
+    "find": "case \"${dom}\" in *cft-42*) ;;",
+    "replace": "case \"${dom}\" in *) ;;",
+    "test": "bash linux/scripts/tests/test-chrome-and-emulator.sh",
+    "why": "a browser that starts but renders nothing would ship as a working CHROME_EXECUTABLE"
+  },
+  {
+    "id": "chrome-emulator.cache-reverified",
+    "target": "linux/scripts/01-core/downloads.sh",
+    "find": "if [ -f \"${cached}\" ] && printf '%s  %s\\n' \"${sha}\" \"${cached}\" | sha256sum -c - >/dev/null 2>&1; then",
+    "replace": "if [ -f \"${cached}\" ]; then",
+    "test": "bash linux/scripts/tests/test-chrome-and-emulator.sh",
+    "why": "a cache mount outlives every build, so an entry trusted without re-hashing is an unverified download"
+  },
+  {
+    "id": "chrome-emulator.emu-sysimg-revision",
+    "target": "linux/scripts/06-packaging/install-android-emulator.sh",
+    "find": "_emu_expect \"${img}\" Pkg.Revision \"${ANDROID_EMULATOR_SYSIMG_REVISION}\"",
+    "replace": "true",
+    "test": "bash linux/scripts/tests/test-chrome-and-emulator.sh",
+    "why": "a system image other than the pin can carry a translator that SIGILLs on arm64 code"
+  },
+  {
+    "id": "chrome-emulator.emu-amd64-only",
+    "target": "linux/scripts/06-packaging/install-android-emulator.sh",
+    "find": "if [ \"${arch}\" != amd64 ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-chrome-and-emulator.sh",
+    "why": "the Linux emulator is x86_64-only; on arm64 it would ship 4.4 GB that cannot run"
+  },
+  {
+    "id": "chrome-emulator.smoke-headless",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "printf 'BAD %s headless chrome rendered no page as the image user'",
+    "replace": "printf 'OK %s headless chrome rendered no page as the image user'",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the runtime smoke must fail an image whose browser cannot render as uid 1001"
+  },
+  {
+    "id": "chrome-emulator.smoke-riscv64-exempt",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    riscv64:chrome) return 0 ;;\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "riscv64 has no Chrome for Testing build; without the arm the row reads BAD there"
+  },
+  {
+    "id": "chrome-emulator.smoke-emulator-image",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif [ \"${got}\" != \"${img}\" ]; then",
+    "replace": "  elif false; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a system image off the pin must fail the row, not pass it"
+  },
+  {
+    "id": "chrome-emulator.package-env-riscv64",
+    "target": "linux/Dockerfile.package",
+    "find": "ARG CHROME_ON=${CHROME_ARCH/riscv64/}",
+    "replace": "ARG CHROME_ON=${CHROME_ARCH}",
+    "test": "bash linux/scripts/tests/test-chrome-and-emulator.sh",
+    "why": "riscv64 would advertise a CHROME_EXECUTABLE that does not exist"
+  },
+  {
+    "id": "chrome-emulator.avd-kvm-check",
+    "target": "linux/scripts/04-runtime/android-avd.sh",
+    "find": "if [ ! -r \"${AVD_KVM_DEVICE}\" ] || [ ! -w \"${AVD_KVM_DEVICE}\" ]; then",
+    "replace": "if false; then",
+    "test": "bash linux/scripts/tests/test-chrome-and-emulator.sh",
+    "why": "without /dev/kvm the emulator falls back to minutes of software emulation instead of saying how to pass the device"
   }
 ]

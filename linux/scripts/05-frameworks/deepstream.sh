@@ -109,16 +109,9 @@ ds_cuda_ver() {
   "${CUDA_HOME:-/usr/local/cuda}/bin/nvcc" --version | sed -n 's/.*release \([0-9][0-9]*\.[0-9][0-9]*\),.*/\1/p'
 }
 
-# ds_fetch <url> <sha256> <dest>: download_verified_file, reusing a verified copy from DS_DOWNLOAD_CACHE.
+# ds_fetch <url> <sha256> <dest>: a verified download, reusing a verified copy from DS_DOWNLOAD_CACHE.
 ds_fetch() {
-  local url="$1" sha="$2" dest="$3" cached=""
-  [ -n "${DS_DOWNLOAD_CACHE:-}" ] && cached="${DS_DOWNLOAD_CACHE}/${sha}-${url##*/}"
-  if [ -n "${cached}" ] && [ -f "${cached}" ] && printf '%s  %s\n' "${sha}" "${cached}" | sha256sum -c - >/dev/null 2>&1; then
-    cp "${cached}" "${dest}"; return 0
-  fi
-  download_verified_file "${url}" "${sha}" "${dest}"
-  if [ -n "${cached}" ]; then mkdir -p "${DS_DOWNLOAD_CACHE}" && cp "${dest}" "${cached}"; fi
-  return 0
+  download_verified_cached "$1" "$2" "$3" "${DS_DOWNLOAD_CACHE:-}"
 }
 
 ds_stage_runtime_deb() {
