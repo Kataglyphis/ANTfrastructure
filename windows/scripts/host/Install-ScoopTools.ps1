@@ -149,10 +149,16 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 #endregion
 #region 2. WiX toolset (dotnet tool, pinned)
 # Shared with Test-Toolchain.ps1's assert; the defaults keep a standalone run working.
-$WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '4.0.6'
-$WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.6'
+$WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '7.0.0'
+$WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '7.0.0'
+# The owner accepted the wix7 OSMF EULA (2026-10-01); another major is a new licence decision, never accepted silently.
+if ($WixVersion -notmatch '^7\.') { throw "WiX $WixVersion needs the owner's decision on its EULA; only wix7's was accepted (docs/dependency-updates.md, the WiX guard)" }
 Invoke-ScoopStep -Description "dotnet tool install wix $WixVersion" -Command {
     dotnet tool install --tool-path C:\WiX wix --version $WixVersion
+}
+# Without it every wix 7 build stops with WIX7015; it is recorded per user, and the image's user is the one that builds.
+Invoke-ScoopStep -Description 'wix eula accept wix7' -Command {
+    & 'C:\WiX\wix.exe' eula accept wix7
 }
 Invoke-ScoopStep -Description "wix extension add WixToolset.UI.wixext/$WixUiExtVersion" -Command {
     & 'C:\WiX\wix.exe' extension add --global "WixToolset.UI.wixext/$WixUiExtVersion"

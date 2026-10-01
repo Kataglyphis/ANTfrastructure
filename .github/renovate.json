@@ -43,10 +43,10 @@
       "allowedVersions": "<3.15.0"
     },
     {
-      "description": "WIX_VERSION / WIX_UI_EXT_VERSION stay on WiX 4: a WiX major changes the CLI/authoring model, which is why bump_versions.py same-major-locks them.",
+      "description": "WIX_VERSION / WIX_UI_EXT_VERSION stay on WiX 7: the owner accepted the wix7 OSMF EULA (2026-10-01), and a new major is a new licence decision; bump_versions.py same-major-locks them too.",
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["wix", "WixToolset.UI.wixext"],
-      "allowedVersions": "<5.0.0"
+      "allowedVersions": "<8.0.0"
     },
     {
       "description": "PY_SETUPTOOLS_LT82_VERSION is capped for the torch wheelhouse: only candidates below 82 are offered. Scoped by currentValue so PY_SETUPTOOLS_VERSION keeps seeing the newest release.",

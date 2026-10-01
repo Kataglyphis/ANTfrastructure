@@ -326,6 +326,21 @@ is the same file an x64 lane uses with `target-arch: amd64`:
 4. The product is uploaded.
 5. With a `run-command`, a second job on `windows-11-arm` downloads the product and runs that
    command in it natively. This is the only execution an arm64 binary from the family gets.
+6. With a `test-artifact-dir` and a `test-command` (CON43, 2026-10-01), the build also stages
+   test binaries. They get the same arch gate as the product, because Windows on Arm runs x64
+   code transparently and an amd64 test would pass there by emulation. They are uploaded as
+   `<artifact-name>-tests`, and the second job runs `test-command` in them after `run-command`.
+   - **The verdict is a printed line,** `TESTS: passed=<n> failed=<n> skipped=<n>`. The job
+     fails without it, on any failure, and when nothing passed, so an empty run cannot read
+     as green. The counts go to the job summary.
+   - **`windows/scripts/build/Invoke-StagedTests.ps1` prints that line.** It is
+     self-contained, since the runner has no checkout. A consumer's build copies it and a
+     `tests.json` into the test directory. Each entry names one binary and how to count it:
+     `gtest` from googletest's `[  PASSED  ]`/`[  FAILED  ]`/`[  SKIPPED ]` summary, `cargo`
+     from libtest's `test result:` lines, `exitcode` as one test. A failing test is counted,
+     not thrown, so the line always prints. A missing binary or an unreadable summary is an
+     error.
+   - A lane is renamed `Windows arm64 · cross build + test` only once its tests gate.
 
 Three inputs serve the x64 lanes that moved onto the same file (the family's next sharing step,
 2026-09-25: OxidANT's `windows-x64.yml` first, then AccelerANTgine's, and BeschleunigerBallett's on 2026-09-26):

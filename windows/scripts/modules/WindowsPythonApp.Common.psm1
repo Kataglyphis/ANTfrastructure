@@ -384,7 +384,7 @@ function ConvertTo-PythonAppIcon {
     return $Destination
 }
 
-# WiX 4.0.6 takes no File directly under a Directory and has no <Files> harvesting: one Component per file, ids counted.
+# One Component per file, ids counted: proven since WiX 4.0.6, which had no <Files> harvesting, and still valid under 7.
 function Add-WxsTree {
     param([Text.StringBuilder]$Tree, [Text.StringBuilder]$Files, [IO.DirectoryInfo]$Directory, [string]$DirectoryId, [int]$Depth, [hashtable]$Counter)
     foreach ($file in @(Get-ChildItem -LiteralPath $Directory.FullName -File | Sort-Object Name)) {
