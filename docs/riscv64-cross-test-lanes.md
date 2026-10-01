@@ -124,8 +124,8 @@ Ubuntu 26.04's `qemu-user` 10.2.1 runs them too. `riscv64_cross_env` sets
   backend (C++ modules), and `riscv64-linux-gnu-ar` on `PATH` dangles; the toolchain file
   names the distro LLVM's `clang-scan-deps` and `llvm-*`.
 - **The reusable workflow's cache input is `cache-lane`, not `cache-key`.** A consumer's
-  literal `cache-key: riscv64-clang` is a `generic-api-key` finding for gitleaks (entropy
-  3.5), so every caller's secret scan would go red.
+  literal value under a key named `cache-key` (`riscv64-clang`, say) is a `generic-api-key`
+  finding for gitleaks (entropy 3.5), so every caller's secret scan would go red.
 - **Corrosion needs `Rust_CARGO_TARGET=riscv64gc-unknown-linux-gnu`**, like the Windows
   arm64 lane's `-Corrosion` switch.
 

@@ -1,5 +1,4 @@
-# riscv64 cross toolchain for the family amd64 image; riscv64_cross_env (linux/scripts/lib/riscv64-cross.sh) must run first.
-# See docs/riscv64-cross-test-lanes.md
+# riscv64 cross toolchain; riscv64_cross_env runs first. See docs/riscv64-cross-test-lanes.md#the-pieces
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR riscv64)
 
