@@ -9,9 +9,11 @@
 .DESCRIPTION
     Self-contained on purpose: the arm64 runner has no checkout, so a consumer's build copies this script and its
     tests.json into the test-artifact-dir. Each entry is { "exe": "<path relative to the manifest>", "args": [...],
-    "kind": "gtest" | "cargo" | "exitcode" }. gtest and cargo are counted from their own summaries; an exitcode entry
-    is one test. A failing test is counted, not thrown, so the verdict line always prints; a missing binary or a
-    summary that cannot be read is an error.
+    "kind": "gtest" | "cargo" | "exitcode", "skip_pattern": "<regex>" }. gtest and cargo are counted from their own
+    summaries; an exitcode entry is one test. skip_pattern (optional) names the line a test prints when it skips
+    itself, which its framework counts as passed (a wgpu test without an adapter): each match moves one test from
+    passed to skipped. A failing test is counted, not thrown, so the verdict line always prints; a missing binary
+    or a summary that cannot be read is an error.
 #>
 [CmdletBinding()]
 param(
@@ -74,6 +76,10 @@ foreach ($entry in $entries) {
     }
     $lines | ForEach-Object { Write-Host $_ }
     $counts = Get-StagedTestCount -Kind $entry.kind -Lines $lines -ExitCode $code
+    if ($entry.PSObject.Properties['skip_pattern']) {
+        $selfSkipped = [Math]::Min(@($lines | Select-String -Pattern $entry.skip_pattern).Count, $counts.Passed)
+        $counts.Passed -= $selfSkipped; $counts.Skipped += $selfSkipped
+    }
     Write-Host "   -> passed $($counts.Passed), failed $($counts.Failed), skipped $($counts.Skipped) (exit $code)"
     Add-StagedCount $total -Passed $counts.Passed -Failed $counts.Failed -Skipped $counts.Skipped
 }

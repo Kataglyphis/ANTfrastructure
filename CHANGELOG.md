@@ -7,6 +7,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - A staged test can report its own skip; OrchestrANT's permissions census is at 0
+
+- **`Invoke-StagedTests.ps1` reads an optional `skip_pattern` per `tests.json` entry.**
+  A wgpu test without an adapter prints `SKIP: no GPU adapter` and returns, which cargo
+  counts as passed. Each line matching the pattern moves one test from passed to skipped,
+  so a windows-11-arm runner with no GPU no longer reports those tests as passed.
+  OxidANT's renderer entry already names it. Pester: `StagedTests.Tests.ps1`.
+- **`workflow-conventions.allow` drops `CENSUS | OrchestrANT | permissions | 2`.**
+  OrchestrANT's lane files now set `permissions: contents: read` at the top, so the count
+  is 0 and the row has nothing left to freeze.
+
 ## 2026-10-01 - Renovate reads and bumps CMake dependencies (CON46, hub part)
 
 - **The shared preset (`default.json`) gains two regex `customManagers`** over every
