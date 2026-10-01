@@ -134,6 +134,9 @@ mutation-family:wheels-source
 mutation-family:hailo
 mutation-family:deepstream
 mutation-family:no-libunwind
+mutation-family:lavapipe-width
+mutation-family:gst-blacklist
+mutation-family:gst-validate-ssim
 mutation-family:cuda-stack
 mutation-family:cmake-arch
 mutation-family:tvm-llvm

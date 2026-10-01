@@ -6,10 +6,7 @@ source "${TESTS_DIR}/test-harness.sh"
 PKG_DIR="${TESTS_DIR}/../06-packaging"
 RT_SMOKE="${PKG_DIR}/smoke-runtime-image.sh"
 
-# The smoke minus its main() call, beside every sibling it sources.
-_SB="$(mktemp -d)"; trap 'rm -rf "${_SB}"' EXIT
-cp "${PKG_DIR}"/*.sh "${PKG_DIR}"/*.py "${_SB}/"
-sed '$d' "${RT_SMOKE}" > "${_SB}/rt.sh"
+_SB="$(t_rt_sandbox)"; trap 'rm -rf "${_SB}"' EXIT
 _rt() { bash -c "source '${_SB}/rt.sh' >/dev/null 2>&1"$'\n'"$1" 2>&1; }
 
 t_case "the sandbox holds: main() is the smoke's last line, and the smoke sources cleanly"

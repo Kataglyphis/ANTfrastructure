@@ -1818,7 +1818,7 @@ exit 1' _ "${_kb_plugin}" >/dev/null 2>&1; then
 check_gstreamer_plugin_health() {
   local image_tag="$1"
   local target_arch="$2"
-    echo "--- Functional: GStreamer plugin health (informational) ---"
+    echo "--- Functional: GStreamer plugin health (scanner lines informational, blacklist fatal) ---"
     # The scanner dlopen()s plugins, catching undefined symbols ldd misses; the headline stays the raw count.
     local scan failed p known=0 unknown=0 total named unnamed
     scan="$(_rt_run bash -lc 'command -v gst-inspect-1.0 >/dev/null 2>&1 || { echo "GST_SCAN_ABSENT"; exit 0; }
@@ -1831,6 +1831,7 @@ echo "GST_SCAN_DONE"' 2>/dev/null)" || true
       else
         echo "  WARN the GStreamer plugin scan did not complete in the ${target_arch} image -- plugin health UNKNOWN, not 0"
       fi
+      _gst_check_blacklist "${target_arch}"
       echo ""
       return 0
     fi
@@ -1859,6 +1860,114 @@ echo "GST_SCAN_DONE"' 2>/dev/null)" || true
     echo "  ... of those, by unique libgst*.so basename: ${known} documented, ${unknown} undocumented${unnamed_note}"
 
     _gst_check_stale_exceptions "${target_arch}" "${failed}" "${_gtk4_wl}"
+    _gst_check_blacklist "${target_arch}"
+    echo ""
+}
+
+# The registry blacklists a plugin whose dlopen or plugin_init failed, with no scanner line; docs/failure-modes.md#the-core-registry-blacklists-libgstvalidatessimso
+_gst_check_blacklist() {
+  local target_arch="$1" out p undocumented=""
+  out="$(_rt_run bash -lc 'gi="$(command -v gst-inspect-1.0 || echo /opt/gstreamer/bin/gst-inspect-1.0)"
+"$gi" -b 2>/dev/null | sed -n "s/^  *\([^ ]*\.so\)\$/BLACKLISTED \1/p"
+echo "GST_BLACKLIST_DONE"' 2>/dev/null)" || true
+  if ! printf '%s\n' "${out}" | grep -q '^GST_BLACKLIST_DONE$'; then
+    fail "the GStreamer registry blacklist could not be read in the ${target_arch} image"
+    return 0
+  fi
+  while IFS= read -r p; do
+    [ -n "${p}" ] || continue
+    p="${p##*/}"
+    if _parity_gst_plugin_known "${target_arch}" "${p}"; then
+      echo "  ~~   ${p} is blacklisted -- documented ${target_arch} exception (_parity_gst_plugin_known)"
+    else
+      undocumented="${undocumented} ${p}"
+    fi
+  done <<< "$(printf '%s\n' "${out}" | sed -n 's/^BLACKLISTED //p' | sort -u)"
+  if [ -n "${undocumented}" ]; then
+    fail "the GStreamer registry blacklists${undocumented} on ${target_arch}: dlopen or plugin_init failed (gst-inspect-1.0 <file> names the cause)"
+  else
+    pass "the GStreamer registry blacklists no plugin on ${target_arch}"
+  fi
+}
+
+# gst-devtools is native-only (cross builds disable it), so amd64 must ship it and its SSIM override must work.
+check_gst_validate_ssim() {
+  local image_tag="$1"
+  local target_arch="$2"
+    echo "--- Functional: gst-validate SSIM plugin ---"
+    local out frames
+    out="$(_rt_run bash -lc 'command -v gst-validate-1.0 >/dev/null 2>&1 || { echo "NO_VALIDATE"; exit 0; }
+d="$(mktemp -d)"
+GST_VALIDATE_CONFIG="validatessim, element-classification=Video/Sink, output-dir=${d}" \
+  timeout 120 gst-validate-1.0 videotestsrc num-buffers=3 ! video/x-raw,format=I420,width=64,height=48 ! fakevideosink >/dev/null 2>&1
+echo "SSIM_FRAMES $(find "${d}" -name "*.png" | wc -l)"' 2>/dev/null)" || true
+    frames="$(printf '%s\n' "${out}" | sed -n 's/^SSIM_FRAMES //p' | head -1)"
+    if printf '%s\n' "${out}" | grep -q '^NO_VALIDATE$'; then
+      if [ "${target_arch}" = amd64 ]; then
+        fail "gst-validate-1.0 is missing from the amd64 image (gst-devtools is built natively there)"
+      else
+        echo "  INFO no gst-devtools on ${target_arch}: cross builds disable it"
+      fi
+    elif [ "${frames:-0}" -ge 1 ] 2>/dev/null; then
+      pass "gst-validate's SSIM override writes frames (${frames}) on ${target_arch}"
+    else
+      fail "gst-validate's SSIM override wrote no frame on ${target_arch}: ${out:-no output}"
+    fi
+    echo ""
+}
+
+# libunwind.so.8 ahead of libgcc_s turns an exception through std::call_once into a segfault: docs/failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind
+check_no_libunwind_closure() {
+  local image_tag="$1"
+  local target_arch="$2"
+    echo "--- SHIPPED: nothing under /opt or /usr/local needs libunwind.so.8 ---"
+    local out hits scanned
+    out="$(_rt_run bash -lc 'command -v readelf >/dev/null 2>&1 || { echo "NO_READELF"; exit 0; }
+find /opt /usr/local -xdev \( -path /opt/android -o -path /opt/android-sdk -o -path /opt/flutter \) -prune \
+  -o -type f -name "*.so*" -print 2>/dev/null > /tmp/elfs
+echo "SCANNED $(wc -l < /tmp/elfs)"
+xargs -a /tmp/elfs -d "\n" -P "$(nproc)" -n 64 sh -c "for f; do readelf -d \"\$f\" 2>/dev/null | grep -q \"Shared library: .libunwind\\.so\\.8.\" && echo \"NEEDS \$f\"; done; exit 0" _
+echo "UNWIND_SCAN_DONE"' 2>/dev/null)" || true
+    if ! printf '%s\n' "${out}" | grep -q '^UNWIND_SCAN_DONE$'; then
+      fail "the libunwind scan did not complete in the ${target_arch} image: $(printf '%s\n' "${out}" | tail -1)"
+      echo ""
+      return 0
+    fi
+    scanned="$(printf '%s\n' "${out}" | sed -n 's/^SCANNED //p' | head -1)"
+    hits="$(printf '%s\n' "${out}" | sed -n 's/^NEEDS //p' | sort)"
+    if [ -n "${hits}" ]; then
+      printf '%s\n' "${hits}" | sed 's/^/    /'
+      fail "$(printf '%s\n' "${hits}" | wc -l) shipped file(s) need libunwind.so.8 on ${target_arch}: build them without it (-Dlibunwind=disabled)"
+    elif ! [ "${scanned:-0}" -ge 1 ] 2>/dev/null; then
+      fail "the libunwind scan found no shared object under /opt or /usr/local on ${target_arch}"
+    else
+      pass "none of ${scanned} shared objects under /opt and /usr/local needs libunwind.so.8 (${target_arch})"
+    fi
+    echo ""
+}
+
+# Mesa 26.0's lavapipe BVH sort needs 8-lane subgroups: docs/failure-modes.md#lavapipe-segfaults-building-an-acceleration-structure-on-arm64
+check_lavapipe_subgroup() {
+  local image_tag="$1"
+  local target_arch="$2"
+    echo "--- Functional: lavapipe subgroup size ---"
+    local out width sub
+    out="$(_rt_run bash -lc 'printf "WIDTH %s\n" "${LP_NATIVE_VECTOR_WIDTH:-unset}"
+icd=/usr/share/vulkan/icd.d/lvp_icd.json
+[ -f "${icd}" ] || { echo "NO_LVP"; exit 0; }
+VK_DRIVER_FILES="${icd}" VK_ICD_FILENAMES="${icd}" timeout 120 vulkaninfo 2>/dev/null \
+  | sed -n "s/^[[:space:]]*subgroupSize[[:space:]]*= *\([0-9][0-9]*\).*/SUBGROUP \1/p" | head -1' 2>/dev/null)" || true
+    width="$(printf '%s\n' "${out}" | sed -n 's/^WIDTH //p' | head -1)"
+    sub="$(printf '%s\n' "${out}" | sed -n 's/^SUBGROUP //p' | head -1)"
+    if [ "${width}" != 256 ]; then
+      fail "LP_NATIVE_VECTOR_WIDTH is '${width:-unreadable}' in the ${target_arch} image, not 256"
+    elif printf '%s\n' "${out}" | grep -q '^NO_LVP$'; then
+      fail "lavapipe's ICD (lvp_icd.json) is missing from the ${target_arch} image"
+    elif [ "${sub}" != 8 ]; then
+      fail "lavapipe reports subgroupSize '${sub:-none}' on ${target_arch}, not 8: its BVH build would SEGV"
+    else
+      pass "lavapipe runs 8-lane subgroups on ${target_arch} (LP_NATIVE_VECTOR_WIDTH=256)"
+    fi
     echo ""
 }
 
@@ -2355,6 +2464,8 @@ main() {
     check_soname_precedence "${image_tag}" "${target_arch}"
     check_ort_census "${image_tag}" "${target_arch}"
     check_gstreamer_plugin_health "${image_tag}" "${target_arch}"
+    check_gst_validate_ssim "${image_tag}" "${target_arch}"
+    check_no_libunwind_closure "${image_tag}" "${target_arch}"
     check_gstreamer_core_pipeline "${image_tag}" "${target_arch}"
     check_gstreamer_mandatory_plugins "${image_tag}" "${target_arch}"
     check_deepstream "${image_tag}" "${target_arch}"
@@ -2362,6 +2473,7 @@ main() {
     check_healthcheck_exec "${image_tag}" "${target_arch}"
     check_webrtc_signalling "${image_tag}" "${target_arch}"
     check_vulkan_loader "${image_tag}" "${target_arch}"
+    check_lavapipe_subgroup "${image_tag}" "${target_arch}"
     check_vulkan_toolset "${image_tag}" "${target_arch}"
     check_android_abi "${image_tag}" "${target_arch}"
     check_native_compiler_battery "${image_tag}" "${target_arch}"

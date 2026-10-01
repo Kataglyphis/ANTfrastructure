@@ -57,6 +57,8 @@ Two neighbours, so you land on the right page:
 - [nvcc rejects the image's GCC 16](#nvcc-rejects-the-images-gcc-16)
 - [A CUDA compile is `Killed` though average memory looked fine](#a-cuda-compile-is-killed-though-average-memory-looked-fine)
 - [An exception through std::call_once segfaults in libunwind](#an-exception-through-stdcall_once-segfaults-in-libunwind)
+- [lavapipe segfaults building an acceleration structure on arm64](#lavapipe-segfaults-building-an-acceleration-structure-on-arm64)
+- [The core registry blacklists `libgstvalidatessim.so`](#the-core-registry-blacklists-libgstvalidatessimso)
 - [DeepStream: `nvstreammux` stops the pipeline with `reason error (-5)` and no message](#deepstream-nvstreammux-stops-the-pipeline-with-reason-error--5-and-no-message)
 - [DeepStream: `Unable to load library: libnvinfer_builder_resource_sm75.so.10.16.1`](#deepstream-unable-to-load-library-libnvinfer_builder_resource_sm75so10161)
 - [DeepStream: `nvv4l2decoder`: `/dev/nvidia0` "isn't a v4l2 driver"](#deepstream-nvv4l2decoder-devnvidia0-isnt-a-v4l2-driver)
@@ -979,11 +981,66 @@ throws and catches: it crashes when `libunwind.so.8` is loaded first (also when
 `gst-launch-1.0` or Python always loads `libgstreamer` before any C++ library.
 
 **Fix.** GStreamer core and libcamera build without libunwind
-(`-Dgstreamer:libunwind=disabled`, libcamera's `-Dlibunwind=disabled`); their backtraces
-fall back to glibc's `backtrace()`. Measured with GStreamer 1.29.2 core rebuilt that way:
-the same `nvinfer` failure reports TensorRT's error and an element error instead of a
-segfault. `tests/test-no-libunwind.sh` pins both flags. Do not install `libunwind-dev` to
-"get better backtraces" back.
+(`-Dgstreamer:libunwind=disabled`, libcamera's `-Dlibunwind=disabled`), in every variant (owner
+decision 2026-10-01: everywhere, not only where DeepStream runs). Their backtraces fall back
+to glibc's `backtrace()`. Both halves are measured:
+
+- **GStreamer.** GStreamer 1.29.2 core rebuilt that way: the same `nvinfer` failure reports
+  TensorRT's error and an element error instead of a segfault.
+- **libcamera** (2026-10-01, `build-libcamera.sh` run twice in a container FROM the published
+  `:latest` amd64, v0.7.2, GCC 16.2). Without the flag meson finds `libunwind 1.8.3` and
+  `libcamera-base.so.0.7.2` NEEDs `libunwind.so.8`; a C host that `dlopen()`s it first (either
+  `RTLD_GLOBAL` or `RTLD_LOCAL`) and then a C++ library whose `std::call_once` throws dies with
+  SIGSEGV (rc 139). With the flag the NEEDED list has `libgcc_s.so.1` instead and the exception
+  is caught. A C++ executable that loads it later passes either way: its own `libgcc_s` is
+  already first.
+
+What else in the image needs `libunwind.so.8` (readelf over every ELF, all three arches,
+2026-10-01): under `/opt` and `/usr/local` only those two libraries, directly or through them.
+Outside it, distro packages only: `Xvfb` (amd64, arm64) and gperftools' `libprofiler` and
+`libtcmalloc*` (amd64). Those are Ubuntu's builds; a C host that preloads `libprofiler` brings the
+hazard back. The runtime smoke's `check_no_libunwind_closure` fails any shipped file under `/opt`
+or `/usr/local` that needs it, and `tests/test-no-libunwind.sh` pins both flags and that verdict.
+`libunwind-dev` stays installed (several `install-deps.sh` and the runtime image ship it), so
+the flags are the guard: do not set them back to `auto` to "get better backtraces".
+
+### lavapipe segfaults building an acceleration structure on arm64
+
+**Symptom.** A Vulkan test on lavapipe (Mesa's CPU device) dies with SIGSEGV as soon as a draw
+builds an acceleration structure; the core shows a 4-lane `st1` in `rs_scatter_smem`. Seen on
+arm64 in BeschleunigerBallett run 36746313937; amd64 passes.
+
+**Cause.** Mesa 26.0.8's lavapipe compiles its BVH radix sort (`lvp_acceleration_structure.c`,
+`subgroup_size_log2 = 3`) for 8-lane subgroups. llvmpipe's subgroup is its vector width / 32:
+256 bits (8 lanes) on AVX2, but 128 (4 lanes) on arm64 NEON and on riscv64. The scatter then
+writes through garbage addresses. Measured 2026-10-01 with `vulkaninfo` in the published
+`:latest`: `subgroupSize` 8 on amd64, 4 on arm64 and riscv64, and 8 on all three with
+`LP_NATIVE_VECTOR_WIDTH=256`.
+
+**Fix.** The package image sets `ENV LP_NATIVE_VECTOR_WIDTH=256` on every arch (CON44), and the
+runtime smoke's `check_lavapipe_subgroup` fails an image whose variable or lavapipe subgroup is
+anything else. Retire both once the image's Mesa carries upstream ebcfbe60 (2026-08-22), which
+deletes that sort.
+
+### The core registry blacklists `libgstvalidatessim.so`
+
+**Symptom.** `gst-inspect-1.0 -b` lists `libgstvalidatessim.so`, and
+`gst-inspect-1.0 <path>/validate/libgstvalidatessim.so` says it "appears to be a GStreamer
+plugin, but it failed to initialize". No `Failed to load plugin` line, no missing symbol
+(`ldd -r` is clean). amd64 only: cross builds disable gst-devtools.
+
+**Cause.** gst-devtools installs its validate plugins under `<libdir>/gstreamer-1.0/validate/`,
+and the core registry scans plugin directories recursively, so it loads them too. The SSIM
+plugin's `plugin_init` returns FALSE when gst-validate is not initialized, and the registry
+blacklists a plugin whose init fails. Under `gst-validate-1.0`, which keeps its own registry, it
+loads and works.
+
+**Fix.** `patches/gstreamer/007-validate-ssim-register-outside-validate.patch` returns TRUE
+there instead, registering nothing, like the gapplication plugin already does
+([`upstreamable-patches.md` § 22](upstreamable-patches.md#22-gst-devtools-the-ssim-validate-plugin-fails-init-outside-gst-validate)).
+The runtime smoke's plugin-health check now fails on any blacklisted plugin that
+`_PARITY_GST_KNOWN_BROKEN` does not document, and `check_gst_validate_ssim` runs the override
+under gst-validate on amd64.
 
 ### DeepStream: `nvstreammux` stops the pipeline with `reason error (-5)` and no message
 

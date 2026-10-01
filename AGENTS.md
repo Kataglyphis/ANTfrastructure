@@ -840,6 +840,12 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` ย
   SONAME `libv4l2.so.0`. Its TensorRT is a private 10.x beside the variant's 11.x, and no
   process may hold TensorRT 11 in its global symbol scope while it runs `nvinfer`:
   [`linux-accelerator-images.md` ยง DeepStream](docs/linux-accelerator-images.md#deepstream-nvidia-variant).
+- **Nothing under `/opt` or `/usr/local` may need `libunwind.so.8`** (owner decision
+  2026-10-01: every variant). GStreamer core and libcamera build with `libunwind=disabled`;
+  a C host that loads either first turns a C++ exception through `std::call_once` into a
+  segfault. `libunwind-dev` stays installed, so the flags are the guard: never set them back to
+  `auto` for backtraces. The runtime smoke fails a shipped file that needs it:
+  [`failure-modes.md`](docs/failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind).
 - **ONNX Runtime has exactly one source on both lanes: the chain build** (owner
   rule 2026-09-23, no exceptions). On Linux that is `/usr/local/lib/onnxruntime-cpu`
   on every variant, plus `/usr/local/lib/onnxruntime-gpu` on the GPU variants, and

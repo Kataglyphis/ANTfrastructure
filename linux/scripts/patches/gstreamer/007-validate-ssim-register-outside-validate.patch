@@ -1,0 +1,14 @@
+diff --git a/subprojects/gst-devtools/validate/plugins/ssim/gstvalidatessim.c b/subprojects/gst-devtools/validate/plugins/ssim/gstvalidatessim.c
+--- a/subprojects/gst-devtools/validate/plugins/ssim/gstvalidatessim.c
++++ b/subprojects/gst-devtools/validate/plugins/ssim/gstvalidatessim.c
+@@ -752,8 +752,9 @@
+   GList *tmp, *config;
+   GstStructure *config_structure = NULL;
+ 
++  /* The core registry scans validate/ too; FALSE there blacklists the plugin. */
+   if (!gst_validate_is_initialized ())
+-    return FALSE;
++    return TRUE;
+ 
+   config = gst_validate_plugin_get_config (plugin);
+   for (tmp = config; tmp; tmp = tmp->next) {

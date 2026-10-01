@@ -134,6 +134,8 @@ ARG DS_NEW_MUX=${ENABLE_DEEPSTREAM/false/}
 ENV USE_NEW_NVSTREAMMUX=${DS_NEW_MUX/true/yes}
 ARG VULKAN_VERSION=1.4.357.0
 ENV VULKAN_VERSION=${VULKAN_VERSION}
+# Mesa 26.0's lavapipe BVH sort needs 8-lane subgroups; 128-bit NEON/RVV gives 4 and SEGVs. docs/failure-modes.md#lavapipe-segfaults-building-an-acceleration-structure-on-arm64
+ENV LP_NATIVE_VECTOR_WIDTH=256
 # The smoke compares these with the binaries: docs/consumer-image-contract.md#the-web-lane-toolchain
 ENV WASM_PACK_VERSION=${WASM_PACK_VERSION}
 ENV FLUTTER_RUST_BRIDGE_VERSION=${FLUTTER_RUST_BRIDGE_VERSION}

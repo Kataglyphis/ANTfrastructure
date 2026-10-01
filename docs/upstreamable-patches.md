@@ -44,6 +44,7 @@ the branch you intend to target before filing.
 | 17 | [cerbero: glib misses its libiconv dep](#17-cerbero-glib-does-not-declare-its-libiconv-dependency-on-android) | cerbero | **A** | ★★ |
 | 10 | [~~OpenCV 5 header moves~~](#10-gstreamer-opencv-5-moved-symbols-into-new-headers--already-fixed-upstream) | gst-plugins-bad | **✔** | ★★ |
 | 20 | [OpenCV: `<complex.h>` leaves `complex` defined](#20-opencv-hal_internalcpp-trusts-the-include-path-for-complexh) | OpenCV | **A** | ★★ |
+| 22 | [gst-devtools: SSIM plugin fails init outside gst-validate](#22-gst-devtools-the-ssim-validate-plugin-fails-init-outside-gst-validate) | gst-devtools | **A** | ★ |
 | 6 | [MLAS: `MlasHGemmSupported` undefined](#6-mlas-mlashgemmsupported-is-declared-but-never-defined-in-gemm-only-builds) | OpenCV (their MLAS trim) | **B** | ★★ |
 | 7 | [onnxruntime: Android Gradle Plugin 8](#7-onnxruntime-android-gradle-plugin-742-is-too-old-for-current-tooling) | onnxruntime | **B** | ★ |
 | 9 | [~~cargo build target is not forwarded~~](#9-gst-plugins-rs-cargo_build_target-never-reaches-cargo--withdrawn) | gst-plugins-rs | **withdrawn** | — |
@@ -58,10 +59,10 @@ the branch you intend to target before filing.
 | 16 | [libyuv: RVV rows are clang-gated](#16-libyuv-the-rvv-rows-are-clang-gated) | libyuv | **✔** | ★★★ |
 | 21 | [slang: riscv64 pointer size and byte order](#21-slang-riscv64-pointer-size-and-byte-order) | slang (Vulkan SDK) | **✔** | ★★ |
 
-Sorted by how ready each one is, not by number. Seven are ready to write today;
+Sorted by how ready each one is, not by number. Eight are ready to write today;
 the rest need the rework named in their entry.
 
-**Twelve entries carry a ready-to-send message; the others deliberately do not.**
+**Thirteen entries carry a ready-to-send message; the others deliberately do not.**
 11 and 14 need the patch itself reshaped before any message would be
 honest — writing the text now would only make a diff look sendable that is not.
 8 and 9 are withdrawn, 15 is grade C, and 10, 12, 16 and 21 are already fixed
@@ -774,6 +775,37 @@ the first translation unit at an `#error`. Our patch backports upstream PR #1230
 (ask the compiler first); drop it when the SDK's slang carries it. The check and
 the drop condition:
 [`vulkan-foreign-arch-sdk.md` § Upstream patches](vulkan-foreign-arch-sdk.md#upstream-patches-recheck-on-every-sdk-bump).
+
+---
+
+## 22. gst-devtools: the SSIM validate plugin fails init outside gst-validate
+
+`linux/scripts/patches/gstreamer/007-validate-ssim-register-outside-validate.patch` ·
+applied by `03-media/build/gstreamer/common/patch-gstreamer-sources.sh` ·
+applies to **GStreamer 1.29.2**; `main` still has the same code (checked 2026-10-01).
+
+gst-devtools installs its validate plugins into `<libdir>/gstreamer-1.0/validate/`, which the
+core registry's recursive scan also reaches. `gst_validate_ssim_init()` returns FALSE when
+gst-validate is not initialized, so every plain GStreamer process blacklists the plugin
+(`gst-inspect-1.0 -b`). The gapplication plugin returns TRUE in the same situation. Returning
+TRUE there too registers nothing in the core registry, and under gst-validate, which has its
+own registry, nothing changes: the override still writes its frames (measured both ways,
+[`failure-modes.md`](failure-modes.md#the-core-registry-blacklists-libgstvalidatessimso)).
+
+**Why it is a good contribution.** One line, every installed devtools build shows the
+blacklist entry, and it matches a sibling plugin.
+
+**PR message**
+
+```
+validate: ssim: do not fail plugin init outside gst-validate
+
+Validate plugins live under <libdir>/gstreamer-1.0/validate, which the core
+registry scans too. Returning FALSE when gst-validate is not initialized makes
+every core registry blacklist libgstvalidatessim.so. Return TRUE without
+registering anything, as the gapplication plugin does; gst-validate's own
+registry still loads and initializes it.
+```
 
 ---
 
