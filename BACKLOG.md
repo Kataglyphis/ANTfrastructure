@@ -123,13 +123,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `setup-riscv64-cross` action, the reusable `container-ci-riscv64.yml`,
       `lib/riscv64-cross.sh` and the CMake toolchain
       ([`docs/riscv64-cross-test-lanes.md`](docs/riscv64-cross-test-lanes.md)). Consumers:
-      OxidANT (pilot), AccelerANTgine, BeschleunigerBallett. **OmniAccelerANT waits** until the
-      riscv64 image carries Flutter. Open:
+      OxidANT (pilot), AccelerANTgine, BeschleunigerBallett, all green (2026-10-01); OxidANT's
+      GPU suites run weekly (measured on GitHub: 358 passed, test step 43.5 min).
+      **OmniAccelerANT waits** until the riscv64 image carries Flutter. Open:
       - The image's `VK_ADD_LAYER_PATH` and the login shell's `VULKAN_SDK` name the x86_64
         prefix on amd64; arch-neutral values (`/opt/vulkan/active/...`) would let the lane drop
         its overrides.
-      - GPU suites run on riscv64 lavapipe under QEMU (OxidANT: 16 min 55 s locally on 32 cores)
-        but are skipped in CI for time; measure one opt-in CI run before turning them on.
 
 ## Open — Windows `:winamd64`
 
@@ -164,112 +163,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         decision that allowed it in `docs/windows-rocm.md` § Redistribution.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
-- [ ] **CON43 — The Windows arm64 lanes become `build + test`** [M, ★★]. Owner request
-      2026-09-30. Every `Windows arm64 · cross build + run` lane cross-builds on amd64 and then
-      only STARTS the product on `windows-11-arm`; none runs a test there, so arm64 has no
-      test verdict at all on Windows. What the run jobs do today (checked 2026-09-30):
-      BeschleunigerBallett `GraphicsEngine.exe --version` (LunarG's arm64 Vulkan runtime on
-      `PATH`), AccelerANTgine `AccelerANTgine.exe`, OxidANT four `kataglyphis_cli.exe`
-      subcommands, OmniAccelerANT (its own hybrid workflow, not this one) a 20 s launch smoke.
-
-      Plan:
-      1. **This hub: `container-ci-windows.yml` carries tests to the arm64 runner.** New inputs
-         beside `run-command`: `test-artifact-dir` (what the cross build stages for tests,
-         uploaded as a second artifact) and `test-command` (PowerShell run in it on
-         `windows-11-arm`, after `run-command`; any failing native command fails the lane, and
-         the job summary reports the pass/fail/skip counts it prints). A `Test-TargetArch.ps1`
-         gate over the test artifact too, so an amd64 test binary cannot pass on arm64 by
-         emulation (Windows on Arm runs x64 code transparently — that is exactly the false
-         green to rule out). Document the inputs in `.github/actions/README.md` and
-         `docs/windows-cross-builds.md`.
-      2. **Measure before wiring, per consumer:** does the cross build produce the test
-         binaries at all (ctest targets, `cargo test --no-run --target
-         aarch64-pc-windows-msvc`), and do they run from a different directory? CTest's
-         `CTestTestfile.cmake` embeds the container's absolute build paths (`C:\ws\…`), so
-         either stage the build tree at the same path on the runner, or run the test
-         executables directly from a generated list, or `ctest --test-dir` with the paths
-         rewritten. Pick per repo by what actually runs.
-      3. **BeschleunigerBallett:** the Release test suites the x64 lane runs, minus the same
-         `$gpuOnlySuites`/`gpu_excluded_suites` (no GPU driver on the runner; LunarG's loader
-         alone has no ICD). Pester already runs on x64 and needs no arm64 run.
-      4. **AccelerANTgine:** its ctest suites (Release). Pester as for BeschleunigerBallett.
-      5. **OxidANT:** the workspace's test executables from `cargo test --no-run` for the arm64
-         target. The WebGPU renderer tests need an adapter: check whether `windows-11-arm`
-         offers WARP/D3D12 or GL through wgpu; if not, they skip exactly as the x64 lane's
-         Server Core skip does, with the reason printed, not silently.
-      6. **OmniAccelerANT** (tracked in its own BACKLOG): the app job already has Flutter on the
-         arm64 runner, so `flutter test` runs natively there, plus the plugin's C ABI check.
-      7. **Rename** each lane to `Windows arm64 · cross build + test` only once its tests run
-         and gate; the name must keep telling the truth. The lane-name tables (e.g.
-         `docs/ci-build-triggers.md`) move with it.
-
-      Order: the hub inputs first (consumers call it at `@develop`, so push it before any
-      consumer uses the new inputs), then one consumer at a time, each proven by its green
-      arm64 run with a non-zero test count.
-      **Status 2026-10-01:** steps 1-7 are done. Each lane is "Windows arm64 · cross build +
-      test" since its first green run with tests: AccelerANTgine `passed=4`, OxidANT
-      `passed=167`, BeschleunigerBallett `passed=496 skipped=4`, OmniAccelerANT `flutter test`
-      `passed=41` plus the C ABI check. Left: OrchestrANT's Python lane ("cross build + run",
-      2026-10-01) starts the bundle and the unzipped package with `--self-test`, while its
-      pytest suite runs only on x64. Running pytest on the device means shipping pytest and
-      the tests beside the bundle as a `test-artifact-dir`.
-- [ ] **CON46 — Renovate detects and bumps the CMake third-party deps** [M, ★★]. Owner request
-      2026-10-01. The consumers declare C++ dependencies in CMake, and the shared preset
-      (`default.json`) has no `customManagers` at all, so Renovate sees none of them (checked
-      2026-10-01):
-      - `FetchContent_Declare(googletest URL https://github.com/google/googletest/archive/<sha>.zip)`:
-        AccelerANTgine and BeschleunigerBallett `third_party/CMakeLists.txt`, OmniAccelerANT's
-        plugin `linux/` and `windows/CMakeLists.txt` (the same commit in all four).
-      - `GIT_REPOSITORY … GIT_TAG …`: abseil (BeschleunigerBallett through `set(ABSL_TAG …)`),
-        microsoft/GSL, and corrosion at `GIT_TAG master` — a floating ref, so no build is
-        reproducible until it is pinned.
-
-      Plan:
-      1. Inventory every `FetchContent_Declare`, `ExternalProject_Add`, `CPMAddPackage` and
-         `set(<X>_TAG …)` feeding one, across the fleet (`.github/consumers.json`), skipping
-         vendored trees.
-      2. Pin the floating refs (corrosion `master`) to a tag or commit first.
-      3. Add regex `customManagers` to `default.json`: the archive-URL form (datasource
-         `github-tags` with `currentDigest`, or `git-refs`), the `GIT_REPOSITORY`/`GIT_TAG` form
-         across lines, and the `set(<X>_TAG …)` indirection. Where a declaration is too irregular
-         for a safe regex, a `# renovate: datasource=… depName=…` comment above it (one convention,
-         documented in `docs/dependency-updates.md`).
-      4. Make `renovate-local.sh --apply` rewrite what those managers report (it rewrites the
-         manifests Renovate reports today); a SHA-pinned archive URL must move to the new
-         commit's archive, and a `URL_HASH`, where present, with it.
-      5. Tests: fixtures for each form in the renovate test suite (detect, then apply), and
-         a mutation entry per manager.
-      6. Prove it with a report run over the fleet (`Invoke-Renovate.ps1 -Recurse`, report-first:
-         `-Apply` only on the owner's word), each dep listed with its current and newest version.
-
-      **Status 2026-10-01:** the hub part (steps 1, 3, 4, 5) is in.
-      - Step 1, read-only over the local checkouts: no `CPMAddPackage` anywhere. The pins
-        are the ones above, plus BeschleunigerBallett's vendored KTX at `GIT_TAG main`,
-        which the preset skips.
-      - Step 3, changed: a commit archive is **skipped**, not tracked by digest. The preset
-        reads `archive/refs/tags/<tag>` instead, so googletest moves to a release tag.
-      - Step 4, changed: a tag archive behind `URL_HASH` is **refused**, not re-hashed.
-      - Docs: [`docs/dependency-updates.md`](docs/dependency-updates.md) § CMake dependencies.
-        Test: `linux/scripts/tests/test-renovate-cmake.sh`, mutations `renovate-cmake.*`.
-
-      **The consumer half, 2026-10-01** (the preset is on `develop` since c7671f18):
-      - Step 2: corrosion is pinned to commit `c4786e7a`, today's master, not to a tag. v0.6.1
-        lacks the `CARGO_HOME` and cxxbridge-cmd fixes after it; move to the next tag
-        (AccelerANTgine 5dc8140, BeschleunigerBallett).
-      - googletest moved from the commit archive to `archive/refs/tags/v1.18.0.zip`, which
-        contains that commit, in AccelerANTgine, BeschleunigerBallett and OmniAccelerANT's
-        plugin `linux/` and `windows/CMakeLists.txt`.
-      - The repo-level CMake managers are gone from AccelerANTgine's and BeschleunigerBallett's
-        `.github/renovate.json`; BeschleunigerBallett keeps its `.gitmodules` FUZZTEST one.
-      - Step 6: `Invoke-Renovate.ps1 -Recurse -Managers custom.regex` from OmniAccelerANT lists
-        AccelerANTgine's abseil (20260526.0 → 20260817.0), GSL (v4.2.1 → v4.2.2) and
-        cxxbridge-cmd (1.0.191 → 1.0.202), once each. OmniAccelerANT's googletest is current. Its
-        first try died on `set -e<CR>`, fixed in `Invoke-InLinuxContainerBuild` (CHANGELOG).
-        OxidANT first refused: a killed `--apply` of 2026-09-28 had left its inflight marker. Its
-        tree was clean, the owner had the marker deleted, and the rerun read all eight repos (rc 0).
-      - BeschleunigerBallett's own report (`renovate-local.sh --managers custom.regex`): GSL
-        (v4.2.1 → v4.2.2) and abseil (20260526.0 → 20260817.0), once each.
-      Done once BeschleunigerBallett and OmniAccelerANT have pushed their CMake commits.
 - [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
       (phases 1–3) done 2026-10-01, the GPU gate passed the same day; phases 4 and 6 are in
       the source, off by default (`ENABLE_DEEPSTREAM=false`). Blocked on one thing outside the
