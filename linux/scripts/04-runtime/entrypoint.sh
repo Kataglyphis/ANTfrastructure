@@ -88,6 +88,10 @@ if ! _try_source_shared_vulkan_env; then
     fi
   fi
 fi
+# Back to /opt/vulkan/active: a riscv64 test under QEMU in the amd64 image must not get the x86_64 SDK.
+if declare -F vulkan_env_prefer_active_link >/dev/null 2>&1 || _safe_source /opt/scripts/core/vulkan-env.sh; then
+  vulkan_env_prefer_active_link "${VULKAN_PREFIX}"
+fi
 fi
 
 # Optional: run a one-shot setup script (execute, not source) if present

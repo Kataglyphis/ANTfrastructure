@@ -93,6 +93,53 @@ vulkan_env_find_setup_script() {
   return 1
 }
 
+# setup-env.sh resolves to <root>/<version>/<uname -m>; the arch-neutral link keeps foreign-arch processes (QEMU) on their own files.
+vulkan_env_prefer_active_link() {
+  local root="${1:-}"
+  local link resolved var val comp out seen
+  [ -n "${root}" ] || root="$(_vulkan_env_default_prefix)"
+  link="${root%/}/active"
+  [ -n "${VULKAN_SDK:-}" ] && [ -L "${link}" ] || return 0
+  resolved="$(readlink -f "${link}" 2>/dev/null)" || return 0
+  [ -n "${resolved}" ] && [ "$(readlink -f "${VULKAN_SDK}" 2>/dev/null)" = "${resolved}" ] || return 0
+  for var in VULKAN_SDK PATH LD_LIBRARY_PATH VK_ADD_LAYER_PATH PKG_CONFIG_PATH CMAKE_PREFIX_PATH; do
+    val="${!var-}"
+    [ -n "${val}" ] || continue
+    out=""
+    seen=":"
+    local -a _vk_comps=()
+    IFS=':' read -r -a _vk_comps <<< "${val}"
+    for comp in "${_vk_comps[@]}"; do
+      case "${comp}" in
+        "${resolved}") comp="${link}" ;;
+        "${resolved}"/*) comp="${link}${comp#"${resolved}"}" ;;
+      esac
+      case "${seen}" in *":${comp}:"*) continue ;; esac
+      seen="${seen}${comp}:"
+      out="${out:+${out}:}${comp}"
+    done
+    printf -v "${var}" '%s' "${out}"
+    export "${var?}"
+  done
+}
+
+# Sources one setup-env.sh, then puts it back on <root>/active; root defaults to two levels up (<root>/<version>/setup-env.sh).
+vulkan_env_source_script() {
+  local script="$1"
+  local root="${2:-}"
+  local _vke_had_u=0
+  [ -r "${script}" ] || return 1
+  [ -n "${root}" ] || root="$(dirname "$(dirname "${script}")")"
+  # setup-env.sh may inspect $1/$2, so clear this helper's function args first.
+  set --
+  # LunarG's setup-env.sh reads $1 unguarded, so source it with nounset off and restore it after.
+  case $- in *u*) _vke_had_u=1; set +u ;; esac
+  # shellcheck disable=SC1090,SC1091
+  . "${script}"
+  [ "${_vke_had_u}" = "1" ] && set -u
+  vulkan_env_prefer_active_link "${root}"
+}
+
 vulkan_env_source() {
   local prefix="${1:-$(_vulkan_env_default_prefix)}"
   local sanitize_mode="${2:-keep-libs}"
@@ -108,14 +155,7 @@ vulkan_env_source() {
   if [ -n "${setup_path}" ]; then
     # Strict callers capture stdout, so only launchers get the info line.
     [ "${strict}" = "1" ] || _vulkan_env_log "Sourcing Vulkan env from ${setup_path}"
-    # setup-env.sh may inspect $1/$2, so clear this helper's function args first.
-    set --
-    # LunarG's setup-env.sh reads $1 unguarded, so source it with nounset off and restore it after.
-    local _vke_had_u=0
-    case $- in *u*) _vke_had_u=1; set +u ;; esac
-    # shellcheck disable=SC1090,SC1091
-    . "${setup_path}"
-    [ "${_vke_had_u}" = "1" ] && set -u
+    vulkan_env_source_script "${setup_path}" "${prefix}"
     case "${sanitize_mode}" in
       sanitize-libs)
         # sanitize_vulkan_sdk_env lives in 02-toolchain/vulkan.sh; sanitize only when it is loaded.

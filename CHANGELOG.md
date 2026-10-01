@@ -25,6 +25,33 @@
 - Suite `test-chain-wheels-installed.sh`; six `wheels.chain-*` mutations.
 
 
+## 2026-10-01 - The entrypoint leaves the Vulkan variables on `/opt/vulkan/active` (CON48)
+
+- **Measured** in the published `:latest` children: the entrypoint sources LunarG's
+  `setup-env.sh`, which resolves `VULKAN_SDK` to `/opt/vulkan/<version>/<uname -m>` and puts
+  that dir into `VK_ADD_LAYER_PATH`, `PATH`, `LD_LIBRARY_PATH`, `PKG_CONFIG_PATH` and
+  `CMAKE_PREFIX_PATH` (`x86_64` on amd64, `aarch64` on arm64). The image ENV alone
+  (`--entrypoint bash`) keeps `/opt/vulkan/active`; the login shell sources nothing. A riscv64
+  process under QEMU in the amd64 image re-roots `/opt/vulkan/active` into its sysroot, but
+  not the `x86_64` dir, which is why `riscv64_cross_env` had to override two of them.
+- **`vulkan_env_prefer_active_link`** (`01-core/vulkan-env.sh`) rewrites every component
+  under the link's target back to `<root>/active`, without duplicating an entry the image ENV
+  already has. `vulkan_env_source`, the entrypoint, and a new `vulkan_env_source_script`
+  (now used by `lib/cmake-build.sh` and `lib/ctest-run.sh` for `--vulkan-setup-script`)
+  call it. Natively nothing changes: the link resolves to the same dir. Checked by mounting
+  the new files over the published amd64 and arm64 children: `vkarch=neutral`, the loader
+  finds `VkLayer_khronos_validation.json` through the link, `glslc` runs.
+- **The boot smoke** no longer requires `VULKAN_SDK` resolved past the link. It proves the
+  entrypoint sourced `setup-env.sh` through `VK_ADD_LAYER_PATH` (`vkadd=yes`), and fails any
+  of the six variables with a `/opt/vulkan/<version>/` component (`vkarch=`). The published
+  children print `vkarch=VULKAN_SDK,VK_ADD_LAYER_PATH,PATH,LD_LIBRARY_PATH,PKG_CONFIG_PATH,CMAKE_PREFIX_PATH,`,
+  so the next chain cannot ship the old shape.
+- Suite `test-vulkan-env-active-link.sh`, probe cases in `test-runtime-image-gates.sh`, nine
+  mutations (`vulkan.env-*`, `lib.*-vulkan-script-on-link`, `boot.vulkan-*`). Docs:
+  [`failure-modes.md`](docs/failure-modes.md#vulkan-env-names-an-arch-specific-sdk-dir).
+  Ships with the next chain; `riscv64_cross_env` keeps its override until consumers run on it.
+
+
 ## 2026-10-01 - The layer-cache keep value means layer cache; surplus cache-mount records (CON53)
 
 - **`--keep-storage` bounds the whole store**, cache mounts included (BuildKit v0.33.0

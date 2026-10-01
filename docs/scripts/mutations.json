@@ -208,6 +208,70 @@
     "why": "the image ENV sets GST_PLUGIN_PATH, so gst=set answers yes without the entrypoint"
   },
   {
+    "id": "boot.vulkan-arch-neutral",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif ! printf '%s' \"${out}\" | grep -q \"vkarch=neutral\"; then",
+    "replace": "  elif ! printf '%s' \"${out}\" | grep -q \"vkarch=\"; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "setup-env.sh pins every Vulkan variable to /opt/vulkan/<ver>/<arch>, and the probe line exists either way (CON48)"
+  },
+  {
+    "id": "boot.vulkan-sourced",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif ! printf '%s' \"${out}\" | grep -q \"vkadd=yes\"; then",
+    "replace": "  elif ! printf '%s' \"${out}\" | grep -q \"vkadd=\"; then",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "the image ENV sets VULKAN_SDK, so only VK_ADD_LAYER_PATH proves the entrypoint sourced setup-env.sh"
+  },
+  {
+    "id": "vulkan.env-prefer-active-link",
+    "target": "linux/scripts/01-core/vulkan-env.sh",
+    "find": "  vulkan_env_prefer_active_link \"${root}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
+    "why": "without it vulkan_env_source and every explicit setup script keep setup-env.sh's arch dir, which a foreign-arch process under QEMU then reads (CON48)"
+  },
+  {
+    "id": "vulkan.env-component-boundary",
+    "target": "linux/scripts/01-core/vulkan-env.sh",
+    "find": "        \"${resolved}\"/*) comp=\"${link}${comp#\"${resolved}\"}\" ;;",
+    "replace": "        \"${resolved}\"*) comp=\"${link}${comp#\"${resolved}\"}\" ;;",
+    "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
+    "why": "x86_64-other is a sibling of x86_64, not inside it"
+  },
+  {
+    "id": "vulkan.env-no-duplicate-entry",
+    "target": "linux/scripts/01-core/vulkan-env.sh",
+    "find": "      case \"${seen}\" in *\":${comp}:\"*) continue ;; esac\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
+    "why": "the image ENV already lists /opt/vulkan/active/bin, so the rewrite would add it twice"
+  },
+  {
+    "id": "lib.cmake-build-vulkan-script-on-link",
+    "target": "linux/scripts/lib/cmake-build.sh",
+    "find": "    vulkan_env_source_script \"${VULKAN_SETUP_SCRIPT}\"\n",
+    "replace": "    . \"${VULKAN_SETUP_SCRIPT}\"\n",
+    "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
+    "why": "a consumer lane that names --vulkan-setup-script re-pins the arch dir the entrypoint left on the link (CON48)"
+  },
+  {
+    "id": "lib.ctest-run-vulkan-script-on-link",
+    "target": "linux/scripts/lib/ctest-run.sh",
+    "find": "    vulkan_env_source_script \"${VULKAN_SETUP_SCRIPT}\"\n",
+    "replace": "    . \"${VULKAN_SETUP_SCRIPT}\"\n",
+    "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
+    "why": "a consumer lane that names --vulkan-setup-script re-pins the arch dir the entrypoint left on the link (CON48)"
+  },
+  {
+    "id": "vulkan.env-script-root",
+    "target": "linux/scripts/01-core/vulkan-env.sh",
+    "find": "  [ -n \"${root}\" ] || root=\"$(dirname \"$(dirname \"${script}\")\")\"\n",
+    "replace": "  [ -n \"${root}\" ] || root=\"$(dirname \"${script}\")\"\n",
+    "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
+    "why": "the link sits beside <version>/, two levels above setup-env.sh"
+  },
+  {
     "id": "qairt.include-root-not-qnn-dir",
     "target": "linux/scripts/03-media/build/litert/build-litert.sh",
     "find": "    local inc=\"${LITERT_QNN_HOME}/include/QNN\"",

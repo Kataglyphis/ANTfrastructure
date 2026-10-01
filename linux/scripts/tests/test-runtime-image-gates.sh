@@ -57,6 +57,7 @@ _gate() {
     _rt_run() { printf "%s\n" "${WHEEL_OUT}"; return "${RUN_RC}"; }
     _SMOKE_TORCH_EXPECTED=1
     '"$(_extract _rt_healthcheck_cmd)"'
+    '"$(_extract _boot_verdict)"'
     '"$(_extract "$1")"'
     '"${fn}"' img amd64
     printf "FAILURES=%s\n" "${FAILURES}"' 2>&1
@@ -124,17 +125,53 @@ t_case "the image ENV alone is NOT enough to pass"
 # The image ENV already sets GST_PLUGIN_PATH and VULKAN_SDK, so their presence proves no sourcing.
 t_assert_contains "$(_boot 42 "BOOT uid=0 gst=set vulkan=set
 gstma=no
-vkres=no")" "did not source gstreamer-env.sh" \
+vkadd=
+vkarch=neutral")" "did not source gstreamer-env.sh" \
   "set-ness of a var the image already exports proves nothing"
 
-t_case "a resolved VULKAN_SDK is required too"
+t_case "the Vulkan SDK env must be sourced too"
+# The image ENV sets VK_LAYER_PATH and VULKAN_SDK; only setup-env.sh sets VK_ADD_LAYER_PATH.
 t_assert_contains "$(_boot 42 "gstma=yes
-vkres=no")" "did not resolve VULKAN_SDK" "the entrypoint resolves it past /opt/vulkan/active"
+vkadd=
+vkarch=neutral")" "did not source the Vulkan SDK" "a bypassed setup-env.sh leaves VK_ADD_LAYER_PATH unset"
 
-t_case "the real shipped shape passes"
-t_assert_contains "$(_boot 42 "BOOT uid=0 gst=set vulkan=set
-gstma=yes
-vkres=yes")" "PASS" "what the published image actually prints"
+t_case "an arch-specific Vulkan dir fails (CON48)"
+# What the :latest of 2026-10-01 prints: setup-env.sh resolved every variable to /opt/vulkan/<ver>/x86_64.
+for _vk in "VULKAN_SDK,VK_ADD_LAYER_PATH,PATH,LD_LIBRARY_PATH,PKG_CONFIG_PATH,CMAKE_PREFIX_PATH," "LD_LIBRARY_PATH," neutral; do
+  _want="arch-specific SDK dir"
+  [ "${_vk}" = neutral ] && _want="PASS"
+  t_assert_contains "$(_boot 42 "gstma=yes
+vkadd=yes
+vkarch=${_vk}")" "${_want}" "vkarch=${_vk}: only the arch-neutral shape the patched entrypoint prints may pass"
+done
+
+# _boot_probe <env...>: the real check_default_entrypoint_boot through _gate, its probe run by a local bash with that env.
+_boot_probe() {
+  local fake
+  fake="$(mktemp)"
+  printf '#!/usr/bin/env bash\nexec env -i %s bash -s\n' "$*" > "${fake}"
+  chmod +x "${fake}"
+  NERDCTL_BIN="${fake}" _gate check_default_entrypoint_boot
+  rm -f "${fake}"
+}
+
+t_case "the probe flags each variable setup-env.sh resolves to the arch dir (CON48)"
+_vk_ma="GST_PLUGIN_PATH=/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0"
+_out="$(_boot_probe "${_vk_ma}" VULKAN_SDK=/opt/vulkan/1.4.357.0/x86_64 \
+  VK_ADD_LAYER_PATH=/opt/vulkan/1.4.357.0/x86_64/share/vulkan/explicit_layer.d \
+  PATH=/opt/vulkan/1.4.357.0/x86_64/bin:/opt/vulkan/active/bin:/usr/bin:/bin)"
+t_assert_contains "${_out}" "vkarch=VULKAN_SDK,VK_ADD_LAYER_PATH,PATH," "the probe must name every pinned variable"
+t_assert_contains "${_out}" "FAIL" "the published 2026-10-01 shape must fail"
+
+t_case "the probe passes the arch-neutral link and a later component"
+# Only a set VK_ADD_LAYER_PATH matters for vkadd, so a short one keeps this case its own.
+_out="$(_boot_probe "${_vk_ma}" VK_ADD_LAYER_PATH=/x PATH=/usr/bin:/bin:/opt/vulkan/active/bin \
+  LD_LIBRARY_PATH=/usr/lib:/opt/vulkan/active/lib)"
+t_assert_contains "${_out}" "vkarch=neutral" "the link is not an arch dir"
+t_assert_contains "${_out}" "PASS default ENTRYPOINT+CMD boot" "the neutral shape passes end to end"
+_out="$(_boot_probe "${_vk_ma}" VULKAN_SDK=/opt/vulkan/active VK_ADD_LAYER_PATH=/x \
+  PATH=/usr/bin:/bin LD_LIBRARY_PATH=/usr/lib:/opt/vulkan/1.4.357.0/aarch64/lib)"
+t_assert_contains "${_out}" "vkarch=LD_LIBRARY_PATH," "a pinned component after others still counts"
 
 # _rust <what the image prints for rustc --version, rustup show active-toolchain, command -v cargo-cbuild>
 _rust() {
