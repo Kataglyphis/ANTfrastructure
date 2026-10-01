@@ -98,6 +98,37 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - Retire the `ENV` once the image's Mesa has upstream ebcfbe60 (2026-08-22), which
         deletes that sort.
 
+- [ ] **CON51 — `:latest-rocm` rebuilt with the 2026-10-01 media fixes** [M, ★★]. Owner
+      decision 2026-10-01: GStreamer and libcamera without libunwind "everywhere". `:latest`
+      carries it since 2026-10-01 (all three children pass the libunwind smoke), and
+      `:latest-nvidia` gets it from the chain run CON42 is waiting on. `:latest-rocm`
+      (2026-09-28, hub 1754a1dd) still links `libunwind.so.8` and lacks CON44's `ENV` and
+      CON47's patch. Done when a `CROSS_VARIANT=rocm` chain publishes and its runtime smoke
+      shows the three new checks green.
+
+- [ ] **CON52 — The torch stage installs the chain wheels through the lock, without the
+      uninstall/reinstall detour** [M, ★★]. Measured in the 2026-10-01 `:latest` chain
+      (amd64 and arm64): torch and torchvision now come straight from OrchestrANT's lock
+      (`torch pins satisfied`, no override), as intended. The chain's own wheels in
+      `/opt/wheels` do not: `ai-edge-litert` and `onnxruntime-genai` are installed by
+      `reconcile_local_wheels`, removed again by `uv sync` because the lock does not name
+      them, then reinstalled ("Using prebuilt local wheels", "Pinning local
+      onnxruntime-genai"). Plan: OrchestrANT's `pyproject.toml` names them with
+      `[tool.uv.sources]` (or a `find-links` index over `/opt/wheels`) so the lock resolves
+      to the chain's builds and `uv sync` keeps them; then `assemble-torch-app.sh` drops
+      the reinstall and fails when a lock entry does not resolve to `/opt/wheels`.
+      `uv sync --inexact` would only hide the detour. The consumer half is OrchestrANT's.
+
+- [ ] **CON53 — BuildKit cache housekeeping on the build host** [S, ★]. Two findings from
+      the 2026-10-01 chains, both outside the image:
+      - The cache-mount ids (`sccache-amd64` and its siblings) each exist as more than one
+        record since a fork on 2026-09-27; the compilers write to one, the rest only cost
+        disk. Find which record the current Dockerfiles mount, prove the others unused,
+        remove them, and let `prune-safe.sh` report a duplicate id.
+      - `PRUNE_KEEP_GB=100 linux/host-config/prune-safe.sh` once left 0.17 GB of regular
+        records instead of ~100 GB (the same call on 2026-10-01 evening kept 91 GB as
+        asked). Reproduce, find why the keep target was ignored, and add a test.
+
 ## Open — Linux arm64 and riscv64
 
 - [ ] **CON48 — riscv64 consumer lanes: cross-build on amd64, test under QEMU** [M, ★★].
@@ -147,17 +178,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         decision that allowed it in `docs/windows-rocm.md` § Redistribution.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
-- [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
+- [ ] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
       (phases 1–3) done 2026-10-01, the GPU gate passed the same day; phases 4 and 6 are in
-      the source, off by default (`ENABLE_DEEPSTREAM=false`). Blocked on one thing outside the
-      build:
-      1. **An nvidia variant chain run** with `ENABLE_DEEPSTREAM=true`, owner-approved. It has
-         never run; everything below was proven in throwaway containers FROM the published
+      the source, off by default (`ENABLE_DEEPSTREAM=false`). One thing left:
+      1. **An nvidia variant chain run** with `ENABLE_DEEPSTREAM=true`, owner-approved. Started
+         2026-10-01 21:34 (amd64, from `gpu`, hub 629afe5d); done when `:latest-nvidia` is
+         published with `check_deepstream` green. Until then everything below was proven in
+         throwaway containers FROM the published
          `:latest` amd64 child plus the variant's CUDA install. It is also the first build of
          the GPU run's three fixes in a chain. GStreamer and libcamera without libunwind are in
          every variant by owner decision (2026-10-01, "everywhere"): the `:latest` published
          2026-10-01 proves it in all three children (no shared object under `/opt` or
-         `/usr/local` needs `libunwind.so.8`); `:latest-rocm` gets it with its next chain.
+         `/usr/local` needs `libunwind.so.8`); `:latest-rocm` gets it with CON51.
 
       Measured 2026-10-01 (DeepStream v9.1.0, commit 581889df; runtime
       `deepstream-binaries-x86_9.1.0_amd64.deb`; GStreamer 1.29.2; CUDA 13.4.2; GCC 16.2):
