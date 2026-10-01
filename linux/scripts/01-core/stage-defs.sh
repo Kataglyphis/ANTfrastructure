@@ -38,10 +38,6 @@ cross_variant_refusal() {
       printf 'the %s variant cannot build %s: base, compiler and sdk are shared with the default chain. Rebuild them there, then start this one at gpu.' "${v}" "${first}"
       return 0 ;;
   esac
-  if [ "${ENABLE_DEEPSTREAM:-false}" = "true" ] && [ "${CROSS_NO_PUSH:-0}" != "1" ]; then
-    printf 'the nvidia variant with ENABLE_DEEPSTREAM=true cannot push: publishing NVIDIA'"'"'s DeepStream runtime awaits the owner'"'"'s licence decision (docs/linux-accelerator-images.md#licence-the-owner-decision). Build it --no-push.'
-    return 0
-  fi
   plat="$(cross_build_platform)"; plat_arch="${plat#linux/}"
   if [ "${plat_arch}" != "amd64" ] && [ "${CROSS_NO_PUSH:-0}" != "1" ]; then
     printf 'the %s variant can only PUSH from an amd64 build platform (CROSS_BUILD_PLATFORM is %s): the shared sdk it builds on is the amd64 lane'"'"'s. On an arm64 host build it --no-push (the Jetson lane, docs/linux-accelerator-images.md).' "${v}" "${plat}"

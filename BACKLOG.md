@@ -58,6 +58,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       smoke, then let BeschleunigerBallett drop its own. Retire it once the image's Mesa has
       upstream ebcfbe60 (2026-08-22), which deletes that sort. Ships with the next `:latest`.
 
+- [ ] **CON47 — `libgstvalidatessim.so` fails to load in the published `:latest`** [S, ★].
+      Seen 2026-10-01 by the CON42 spike in the amd64 child (`502a5e9d…`), independent of
+      DeepStream: the GStreamer registry scan reports the plugin as failing to load. It is
+      gst-devtools' SSIM validate plugin. Measure the exact loader error on all three arches
+      (`GST_DEBUG=GST_PLUGIN_LOADING:5 gst-inspect-1.0 …/libgstvalidatessim.so`, `ldd -r`),
+      fix the cause in the media stage (a missing dependency, or a symbol from a library the
+      image does not ship), or drop the plugin from the build with the reason if it cannot
+      work in the image; then make the runtime smoke's plugin-health check fail on it instead
+      of only warning.
+
 ## Open — Linux arm64 and riscv64
 
 None open.
@@ -167,16 +177,18 @@ None open.
          `-Apply` only on the owner's word), each dep listed with its current and newest version.
 - [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
       (phases 1–3) done 2026-10-01; phases 4 and 6 are in the source, off by default
-      (`ENABLE_DEEPSTREAM=false`). Blocked on three things outside the build:
-      1. **Owner: may NVIDIA's DeepStream runtime be published on GHCR?** The facts, with the
-         licence's own words: `docs/linux-accelerator-images.md` § Licence: the owner decision.
-         Until then the chain refuses to push with `ENABLE_DEEPSTREAM=true` (`--no-push` only).
-         The same question as `:winamd64`'s TensorRT (`eula-review`).
-      2. **A GPU run** (phase 2's gate). This host's RTX 2080 has no NVIDIA kernel driver loaded
-         (no `/dev/nvidia*`); loading it is a root action for the owner. The command, and why the
+      (`ENABLE_DEEPSTREAM=false`). Blocked on two things outside the build (the licence, item 1, is decided):
+      1. **Licence: decided 2026-10-01, publishing allowed.** The chain no longer refuses a push
+         with `ENABLE_DEEPSTREAM=true`; the package stage drops the static `.a` archives
+         (`docs/linux-accelerator-images.md` § Licence: the owner decision).
+      2. **A GPU run** (phase 2's gate), owner-approved 2026-10-01. This host's RTX 2080 has the
+         driver installed (595.58.03, DKMS, `nvidia-driver-open`) but not loaded: Secure Boot is
+         on and the DKMS signing key `/var/lib/shim-signed/mok/MOK.der` is not enrolled, so the
+         kernel logs `Loading of module with unavailable key is rejected` at every boot. Needs
+         the owner (root + reboot): `mokutil --import` that key, enroll it in MOK Manager, then
+         the NVIDIA Container Toolkit (not in Ubuntu's repos) and a CDI spec for nerdctl. The command, and why the
          2080 (sm_75) is covered: `docs/linux-accelerator-images.md` § What needs a GPU host.
-      3. **An nvidia variant chain run** with `ENABLE_DEEPSTREAM=true` (`--no-push` until 1),
-         owner-approved. It has never run; everything below was proven in throwaway containers
+      3. **An nvidia variant chain run** with `ENABLE_DEEPSTREAM=true`, owner-approved. It has never run; everything below was proven in throwaway containers
          FROM the published `:latest` amd64 child plus the variant's CUDA install.
 
       Measured 2026-10-01 (DeepStream v9.1.0, commit 581889df; runtime
