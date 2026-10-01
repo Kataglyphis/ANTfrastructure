@@ -1791,7 +1791,9 @@ regex manager's `currentDigest` capture:
   (`UBUNTU_DIGEST`, `WINDOWS_BASE_DIGEST`), so the docker datasource reports
   when a tag's digest moves.
 * **Two more same-major/range guards** -- the WiX pair behind
-  `allowedVersions <5`, and `PY_SETUPTOOLS_LT82_VERSION` behind
+  `allowedVersions <8` (it was `<5` until the owner accepted the wix7 OSMF EULA on
+  2026-10-01; a new major is a new licence decision, and `Install-ScoopTools.ps1`
+  refuses one), and `PY_SETUPTOOLS_LT82_VERSION` behind
   `allowedVersions <82` scoped with a slashed `matchCurrentValue` regex (both
   keys are `depName=setuptools`, which is why the scope needs one).
 * **Proven on the live report**: 29 pending updates with zero lookup

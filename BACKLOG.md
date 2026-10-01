@@ -152,6 +152,9 @@ None open.
       Order: the hub inputs first (consumers call it at `@develop`, so push it before any
       consumer uses the new inputs), then one consumer at a time, each proven by its green
       arm64 run with a non-zero test count.
+      **Status 2026-10-01:** step 1 is in. The inputs, the arch gate over the test tree, the
+      `TESTS:` verdict and `Invoke-StagedTests.ps1` are in place, with Pester tests. Steps 2-7
+      (the consumers) are open.
 - [ ] **CON46 — Renovate detects and bumps the CMake third-party deps** [M, ★★]. Owner request
       2026-10-01. The consumers declare C++ dependencies in CMake, and the shared preset
       (`default.json`) has no `customManagers` at all, so Renovate sees none of them (checked

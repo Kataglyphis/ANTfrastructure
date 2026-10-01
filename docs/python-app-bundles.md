@@ -194,8 +194,9 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
     `<publisher> <noreply@invalid>`, which says plainly that no address was given.
 - **AppImage:** `AppRun` starts `gui_script`. Started through a symlink named after another
   script, it runs that script instead (`$ARGV0`).
-- **MSI** (WiX 4.0.6, which has no `<Files>` harvesting): `New-PythonAppWxs` writes the whole
-  tree out, so every file gets WiX's own component. The install is per machine into
+- **MSI** (WiX 7, built for 4.0.6, which had no `<Files>` harvesting): `New-PythonAppWxs`
+  writes the whole tree out, so every file gets WiX's own component. The same source builds,
+  installs and uninstalls under WiX 7 (measured in `:winamd64`, 2026-10-01). The install is per machine into
   `Program Files\<name>`. `msi_upgrade_code` keys a major upgrade, a Start menu shortcut
   points to `gui_script`, and the folder goes on the system `PATH` for the CLIs. The PNG icon
   is wrapped as an `.ico`. Paths that would pass MAX_PATH under `C:\Program Files` are

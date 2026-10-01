@@ -7,6 +7,31 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - WiX 7 (OSMF EULA accepted) and arm64 tests on windows-11-arm (CON43, hub part)
+
+- **WiX 4.0.6 → 7.0.0, with the owner's acceptance of the wix7 OSMF EULA (2026-10-01).**
+  WiX 4 left community support on 2025-02-05.
+  - `Install-ScoopTools.ps1` runs `wix eula accept wix7` after the install. Without it,
+    every build stops with `WIX7015`, measured. It refuses any other major, since a new EULA
+    is a new licence decision. Renovate's guard moves from `<5` to `<8`.
+  - Measured in `:winamd64` with WiX 7.0.0:
+    - OxidANT's `wix/main.wxs` (UI extension, payload fragment) builds, installs and
+      uninstalls.
+    - A CPack `WIX` package (`CPACK_WIX_VERSION 4` mode) builds.
+    - OrchestrANT's Python app MSI builds, installs, starts, is on `PATH` and uninstalls.
+  - The images carry WiX 7 from their next build. Until then they keep 4.0.6, whose sources
+    are the same.
+- **`container-ci-windows.yml` carries tests to the arm64 runner.**
+  - New inputs `test-artifact-dir` and `test-command`. The staged tests get the product's
+    arch gate, so an amd64 test cannot pass by emulation.
+  - The run job demands one `TESTS: passed=<n> failed=<n> skipped=<n>` line, and fails
+    without it, on a failure, or with nothing passed.
+  - `windows/scripts/build/Invoke-StagedTests.ps1` prints that line from googletest,
+    libtest and exit-code results. It is self-contained, because the runner has no checkout.
+  - Docs: [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) § Consumer cross
+    lanes. Test: `windows/scripts/tests/StagedTests.Tests.ps1`.
+  - The consumers follow one at a time (CON43).
+
 ## 2026-10-01 - Windows uv venvs install a missing version before asking for its GIL build
 
 - **Fixed a regression from 88e27ab9.** A version the host lacked stopped the venv:

@@ -74,7 +74,12 @@ It stops after the pull on purpose: what follows differs per lane. Since
 `run-in-windows-container` for a lane whose logic lives in one build script
 (OxidANT's and AccelerANTgine's x64 and arm64 lanes, BeschleunigerBallett's arm64
 one); a lane with more steps than that calls the actions itself
-(BeschleunigerBallett's and OmniAccelerANT's `windows-x64.yml`).
+(BeschleunigerBallett's and OmniAccelerANT's `windows-x64.yml`). For an arm64 cross lane,
+`test-artifact-dir` and `test-command` (CON43) carry staged tests to the `windows-11-arm`
+run job, arch-gated like the product. The lane must print one
+`TESTS: passed=<n> failed=<n> skipped=<n>` line, which `windows/scripts/build/Invoke-StagedTests.ps1`
+writes. See
+[`docs/windows-cross-builds.md` § Consumer cross lanes](../../docs/windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml).
 
 ### `set-docker-data-root`
 Points the Docker daemon's data-root at another drive **before the image is
