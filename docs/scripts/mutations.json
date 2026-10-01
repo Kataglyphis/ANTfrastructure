@@ -504,6 +504,54 @@
     "why": "the exact cbbd0da7 shape: a trailing && list makes the function return 1 on every arch without a local torch wheel and set -e kills setup-torch-venv.sh silently (2026-09-03 amd64 build)"
   },
   {
+    "id": "wheels.chain-no-pre-sync-install",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "    printf 'Chain GenAI wheel replaces the locked onnxruntime-genai: %s\\n' \"${_genai_wheel##*/}\"\n",
+    "replace": "    printf 'Chain GenAI wheel replaces the locked onnxruntime-genai: %s\\n' \"${_genai_wheel##*/}\"\n    uv pip install --no-deps --force-reinstall \"${_genai_wheel}\"\n",
+    "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+    "why": "an install before the exact uv sync is removed by it and installed again by reconcile_local_wheels: the CON52 detour"
+  },
+  {
+    "id": "wheels.chain-gate-called",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "  enforce_torch_version_pins\n  assert_chain_wheels_installed\n",
+    "replace": "  enforce_torch_version_pins\n",
+    "test": "bash linux/scripts/tests/test-chain-wheels-installed.sh",
+    "why": "without the gate a lock's PyPI build in place of a chain wheel ships green"
+  },
+  {
+    "id": "wheels.chain-url-exact",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "    if url == want:",
+    "replace": "    if url.startswith(f\"file://{store}/\"):",
+    "test": "bash linux/scripts/tests/test-chain-wheels-installed.sh",
+    "why": "another file in the same store (an older chain's wheel) is not the staged one"
+  },
+  {
+    "id": "wheels.chain-fatal",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "sys.exit(1 if bad else 0)",
+    "replace": "sys.exit(0)",
+    "test": "bash linux/scripts/tests/test-chain-wheels-installed.sh",
+    "why": "a FAIL line that does not stop the build is the old silent shadowing"
+  },
+  {
+    "id": "wheels.chain-iree-exempt-riscv64-only",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "      iree|iree-compiler|iree-runtime) [ \"$(uname -m)\" = \"riscv64\" ] && continue ;;",
+    "replace": "      iree|iree-compiler|iree-runtime) continue ;;",
+    "test": "bash linux/scripts/tests/test-chain-wheels-installed.sh",
+    "why": "IREE's install is fatal off riscv64, so the lock's PyPI IREE there must fail the gate"
+  },
+  {
+    "id": "wheels.chain-sync-installs-nothing",
+    "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+    "find": "  uv sync \"${_sync_args[@]}\" || echo \"WARNING: uv sync after lock regeneration had issues; reconcile_local_wheels installs the chain wheels next\"\n",
+    "replace": "  uv sync \"${_sync_args[@]}\" || echo \"WARNING: uv sync after lock regeneration had issues; reconcile_local_wheels installs the chain wheels next\"\n  uv pip install --no-deps --force-reinstall /opt/wheels/*.whl || true\n",
+    "test": "bash linux/scripts/tests/test-chain-wheels-installed.sh",
+    "why": "reconcile_local_wheels is the one install point; a second one in the fallback is the detour again"
+  },
+  {
     "id": "rust.native-toolchain-triple",
     "target": "linux/scripts/06-packaging/setup-package-image.sh",
     "find": "compgen -G \"${RUSTUP_HOME}/toolchains/*-${triple}\" >/dev/null",

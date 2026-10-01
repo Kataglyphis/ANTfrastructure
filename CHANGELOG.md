@@ -7,6 +7,26 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - The torch stage installs the chain wheels once, and proves them (CON52)
+
+## 2026-10-01 - The torch stage installs the chain wheels once, and proves them (CON52)
+
+- **The detour is gone.** The 2026-10-01 chain installed `ai-edge-litert` and
+  `onnxruntime-genai` from `/opt/wheels` before `uv sync`, which removed them again (an
+  exact sync drops what `--no-install-package` excludes), and `reconcile_local_wheels`
+  installed them a second time. `build_uv_sync_args` and `run_uv_sync_with_fallback`
+  now install nothing, and `collect_locked_local_wheels` is gone: `reconcile_local_wheels`
+  is the one install point.
+- **`assert_chain_wheels_installed`** runs after the torch pins and fails the stage
+  (`CHAIN-WHEEL FAIL`) unless every staged wheel is the venv's distribution of its name,
+  by uv's `direct_url.json`. Exempt: TVM, source-bound OpenCV, riscv64 IREE.
+- **OrchestrANT's lock stays on PyPI.** Routing a package to `/opt/wheels` makes
+  `uv lock` fail off the image (`Failed to read --find-links directory`), and no marker
+  tells the image apart. Doc: `docs/linux-cross-builds.md` § The chain wheels and the
+  app's lock; failure mode `CHAIN-WHEEL FAIL`.
+- Suite `test-chain-wheels-installed.sh`; six `wheels.chain-*` mutations.
+
+
 ## 2026-10-01 - The layer-cache keep value means layer cache; surplus cache-mount records (CON53)
 
 - **`--keep-storage` bounds the whole store**, cache mounts included (BuildKit v0.33.0

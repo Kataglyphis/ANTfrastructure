@@ -150,30 +150,6 @@ collect_locked_local_skip_packages() {
   shopt -u nullglob
 }
 
-collect_locked_local_wheels() {
-  local -n out_wheels_ref=$1
-  local wheel_path wheel_basename
-
-  shopt -s nullglob
-  for wheel_path in /opt/wheels/*.whl; do
-    wheel_basename="$(basename "${wheel_path}")"
-    case "$(wheel_family "${wheel_basename}")" in
-      torch|torchvision|litert)
-        # Always locked: dropping one lets pip resolve upstream torch over the custom build.
-        out_wheels_ref+=("${wheel_path}")
-        ;;
-      opencv)
-        if staged_opencv_python_available; then
-          echo "Skipping ${wheel_basename} (source-built OpenCV5 bindings found)"
-        else
-          out_wheels_ref+=("${wheel_path}")
-        fi
-        ;;
-    esac
-  done
-  shopt -u nullglob
-}
-
 # A missing chain ORT wheel is fatal: the app lock's PyPI onnxruntime would ship in its place.
 assert_chain_ort_wheel_staged() {
   local _w _dir="${LOCAL_WHEELS_DIR:-/opt/wheels}"
@@ -236,11 +212,10 @@ prune_conflicting_onnx_wheels() {
   esac
 }
 
-# `uv sync` args into $1; $2/$3 local-wheel names/paths are installed directly. Namerefs _-prefixed.
+# `uv sync` args into $1 ($2: locked names a chain wheel replaces); installs nothing, since an exact sync removes it.
 build_uv_sync_args() {
   local -n _sync_args="$1"
   local -n _locked_skip="$2"
-  local -n _locked_wheels="$3"
   local package_name
 
   # No GUI extra: it pulls wxPython, which is unused here and fails on Python 3.14.
@@ -263,22 +238,17 @@ build_uv_sync_args() {
   fi
 
   if [ "${#_locked_skip[@]}" -gt 0 ]; then
-    printf 'Using prebuilt local wheels for locked packages: %s\n' "${_locked_skip[*]}"
+    printf 'Chain wheels replace these locked packages: %s\n' "${_locked_skip[*]}"
     for package_name in "${_locked_skip[@]}"; do
       _sync_args+=(--no-install-package "${package_name}")
     done
-    if [ "${#_locked_wheels[@]}" -gt 0 ]; then
-      # --no-deps on every local-wheel reinstall, or uv floats numpy/protobuf off the lock.
-      uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}"
-    fi
   fi
 
   # --find-links only offers /opt/wheels, so the lock's PyPI genai would win over any chain flavour.
   local _genai_wheel
   _genai_wheel="$(ls /opt/wheels/onnxruntime_genai*.whl 2>/dev/null | head -1 || true)"
   if [ -n "${_genai_wheel}" ]; then
-    printf 'Pinning local onnxruntime-genai wheel over the app lock: %s\n' "${_genai_wheel##*/}"
-    uv pip install --no-deps --force-reinstall "${_genai_wheel}"
+    printf 'Chain GenAI wheel replaces the locked onnxruntime-genai: %s\n' "${_genai_wheel##*/}"
     _sync_args+=(--no-install-package onnxruntime-genai)
   fi
 
@@ -310,12 +280,11 @@ uv_lock_regen() {
   return 1
 }
 
-# <sync-args> <local-wheels> <have-lock>: --frozen first, else relock; ordering is load-bearing.
+# <sync-args> <have-lock>: --frozen first, else relock; the chain wheels come from reconcile_local_wheels after it.
 run_uv_sync_with_fallback() {
   # shellcheck disable=SC2178  # nameref to caller's array (read as "${_sync_args[@]}")
   local -n _sync_args="$1"
-  local -n _locked_wheels="$2"
-  local have_lock="$3"
+  local have_lock="$2"
   local -a frozen_sync_args=()
 
   if [ "${have_lock}" = "true" ]; then
@@ -329,17 +298,11 @@ run_uv_sync_with_fallback() {
   # riscv64 skips lock and sync: `uv lock` would build the git torch under QEMU just for metadata.
   if [ "$(uname -m)" = "riscv64" ]; then
     echo "riscv64: skipping uv lock + uv sync (torch from local wheel, not git source build)"
-    if [ "${#_locked_wheels[@]}" -gt 0 ]; then
-      uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}" || true
-    fi
     return 0
   fi
 
   uv_lock_regen
-  uv sync "${_sync_args[@]}" || echo "WARNING: uv sync after lock regeneration had issues; force-reinstalling local wheels"
-  if [ "${#_locked_wheels[@]}" -gt 0 ]; then
-    uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}" || true
-  fi
+  uv sync "${_sync_args[@]}" || echo "WARNING: uv sync after lock regeneration had issues; reconcile_local_wheels installs the chain wheels next"
 }
 
 # A transitive PyPI build of a locally shipped family (often a variant name) would shadow ours.
@@ -473,6 +436,44 @@ reconcile_local_wheels() {
   fi
 }
 
+# Fail-closed: each staged wheel is the venv's dist (uv's direct_url); TVM, bound OpenCV, riscv64 IREE are optional.
+assert_chain_wheels_installed() {
+  local _dir="${LOCAL_WHEELS_DIR:-/opt/wheels}" _w _b
+  local -a _check=()
+  shopt -s nullglob
+  for _w in "${_dir}"/*.whl; do
+    _b="${_w##*/}"
+    case "$(wheel_family "${_b}")" in
+      tvm) continue ;;
+      opencv) staged_opencv_python_available && continue ;;
+      iree|iree-compiler|iree-runtime) [ "$(uname -m)" = "riscv64" ] && continue ;;
+    esac
+    _check+=("${_b}")
+  done
+  shopt -u nullglob
+  [ "${#_check[@]}" -gt 0 ] || return 0
+  "${VENV}/bin/python" -I - "${_dir}" "${_check[@]}" <<'PY'
+import importlib.metadata as md, json, re, sys
+store, bad = sys.argv[1].rstrip("/"), 0
+for wheel in sys.argv[2:]:
+    name, version = re.sub(r"[-_.]+", "-", wheel.split("-")[0]).lower(), wheel.split("-")[1]
+    try:
+        dist = md.distribution(name)
+        url = json.loads(dist.read_text("direct_url.json") or "{}").get("url", "")
+    except md.PackageNotFoundError:
+        dist, url = None, ""
+    want = f"file://{store}/{wheel}"
+    if url == want:
+        print(f"CHAIN-WHEEL OK {name} {dist.version} = {wheel}")
+    else:
+        bad += 1
+        have = f"the venv has {dist.version} from {url or 'an index'}" if dist else "not in the venv"
+        print(f"CHAIN-WHEEL FAIL {name}: {have}; the chain staged {wheel} ({version})")
+print("CHAIN-WHEEL PASS" if not bad else f"CHAIN-WHEEL FAIL: {bad} staged wheel(s) are not what the venv imports")
+sys.exit(1 if bad else 0)
+PY
+}
+
 # The app lock may lag the versions.env pins the smoke asserts; riscv64 keeps its source-built pair.
 enforce_torch_version_pins() {
   # uname, not TARGET_ARCH: the wrapper stage does not export it.
@@ -531,8 +532,6 @@ install_project_environment() {
   # shellcheck disable=SC2034
   local -a locked_skip_packages=()
   # shellcheck disable=SC2034
-  local -a locked_local_wheels=()
-  # shellcheck disable=SC2034
   local -a sync_args=()
   local have_lock=false
 
@@ -541,15 +540,15 @@ install_project_environment() {
 
   cd "${APP_DIR}"
   collect_locked_local_skip_packages locked_skip_packages
-  collect_locked_local_wheels locked_local_wheels
   if [ -f "${APP_DIR}/uv.lock" ]; then
     have_lock=true
   fi
 
-  build_uv_sync_args sync_args locked_skip_packages locked_local_wheels
-  run_uv_sync_with_fallback sync_args locked_local_wheels "${have_lock}"
+  build_uv_sync_args sync_args locked_skip_packages
+  run_uv_sync_with_fallback sync_args "${have_lock}"
   reconcile_local_wheels
   enforce_torch_version_pins
+  assert_chain_wheels_installed
 
   # A transitive PyPI opencv-python would shadow the source-built OpenCV5 bindings.
   if staged_opencv_python_available; then
