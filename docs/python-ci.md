@@ -355,6 +355,34 @@ Tests: `linux/scripts/tests/test-python-ci-defaults.sh`, mutations
 `python.ci-tests-free-threaded-leg-syncs-its-own-extras` and
 `python.ci-tests-experimental-sync-failure-is-annotated`.
 
+## Windows arm64: the runner-native test job
+
+`python-ci-windows.yml` with `arm64-tests: true` adds a `windows-11-arm` job. No Windows arm64
+image runs on a hosted runner, so it takes no container. It checks the caller out with its
+ANTfrastructure pin and runs `windows/scripts/python/Invoke-PythonTestLegs.ps1 -InstallUv`.
+
+- **uv** is the `UV_VERSION` release zip, checked against `UV_WINDOWS_ARM64_SHA256` in
+  `versions.env`. `bump_versions.py` refreshes that pin with the Linux ones.
+- **Legs** come from `arm64-python-versions` (default `3.14`). Each leg gets its own venv
+  through `New-UvProjectEnvironment`, so a bare `3.14` asks for `3.14+gil`. Without that, a
+  `3.14t` leg earlier in the same job would hand it the free-threaded build (§ Free-threaded
+  and GIL legs in one container).
+- **Extras:** `arm64-extras` (empty means all extras), `free-threaded-extras` for a `t` leg,
+  and `test-paths`, all as on Linux. Every leg gates. A failed leg does not stop the next one,
+  and the error names every failed leg and its step: venv, sync or pytest.
+- **Wheels only, in practice.** The runner has MSVC but not the family's clang-cl setup, and
+  a package without a `win_arm64` wheel would build with the default `cl`. Keep such packages
+  off ARM64 with a marker, `"<pkg>; platform_machine != 'ARM64'"`. Linux aarch64 reports
+  `aarch64`, so the marker leaves Linux alone. WebDavClient does that for py-spy (no
+  `win_arm64` wheel) and line_profiler (none for 3.14t). Check a lock before you turn the job
+  on: `uv export --locked`, then
+  `uv pip install --dry-run --no-deps --only-binary :all: --python-platform aarch64-pc-windows-msvc`.
+  Run it once per leg's interpreter (`--python 3.14t` for the free-threaded leg).
+
+The consumer must pin an ANTfrastructure that ships the script. The job refuses an older pin
+by name instead of failing on a missing file. Test: `windows/scripts/tests/PythonTestLegs.Tests.ps1`
+(a uv stand-in that records each call).
+
 ## Free-threaded and GIL legs in one container
 
 uv 0.12 lets a plain `3.14` request take a free-threaded build: once a `3.14t` leg has

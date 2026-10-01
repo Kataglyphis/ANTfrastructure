@@ -366,6 +366,7 @@ def spec_uv(cur):
             ("UV_AMD64_SHA256", "uv-x86_64-unknown-linux-gnu.tar.gz"),
             ("UV_ARM64_SHA256", "uv-aarch64-unknown-linux-gnu.tar.gz"),
             ("UV_RISCV64_SHA256", "uv-riscv64gc-unknown-linux-gnu.tar.gz"),
+            ("UV_WINDOWS_ARM64_SHA256", "uv-aarch64-pc-windows-msvc.zip"),
         ]:
             extras[env_key] = asset_sha256("astral-sh/uv", tag, asset, sums=(f"{asset}.sha256",))
     return v, extras

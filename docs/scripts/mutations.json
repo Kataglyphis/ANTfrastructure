@@ -7717,10 +7717,34 @@
   {
     "id": "windows-lane.powershell-lint-defaults-off",
     "target": ".github/workflows/python-ci-windows.yml",
-    "find": "        default: false",
-    "replace": "        default: true",
+    "find": "which is what lint-path is.\n        required: false\n        type: boolean\n        default: false",
+    "replace": "which is what lint-path is.\n        required: false\n        type: boolean\n        default: true",
     "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
     "why": "an input that defaults ON makes every caller that predates it suddenly run a Windows lint job"
+  },
+  {
+    "id": "windows-lane.arm64-tests-defaults-off",
+    "target": ".github/workflows/python-ci-windows.yml",
+    "find": "existing callers are unchanged.\n        required: false\n        type: boolean\n        default: false",
+    "replace": "existing callers are unchanged.\n        required: false\n        type: boolean\n        default: true",
+    "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+    "why": "on by default, every existing caller gets a windows-11-arm job its lock was never checked for"
+  },
+  {
+    "id": "windows-lane.arm64-job-gated",
+    "target": ".github/workflows/python-ci-windows.yml",
+    "find": "    if: ${{ inputs.arm64-tests }}\n",
+    "replace": "    if: ${{ true }}\n",
+    "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+    "why": "an ungated arm64 job runs on every caller, whatever arm64-tests says"
+  },
+  {
+    "id": "windows-lane.arm64-inputs-through-env",
+    "target": ".github/workflows/python-ci-windows.yml",
+    "find": "-PythonVersions $env:PY_VERSIONS ",
+    "replace": "-PythonVersions '${{ inputs.arm64-python-versions }}' ",
+    "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+    "why": "an input interpolated into the script is a script injection; env carries it as data"
   },
   {
     "id": "windows-lane.powershell-lint-job-is-gated",

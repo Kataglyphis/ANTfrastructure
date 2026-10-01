@@ -7,6 +7,30 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - A runner-native pytest job on windows-11-arm (CON50 item 6)
+
+- **`python-ci-windows.yml` gains `arm64-tests`** (default false), with
+  `arm64-python-versions`, `arm64-extras`, `free-threaded-extras` and `test-paths`. The job
+  checks the caller out and runs the new `windows/scripts/python/Invoke-PythonTestLegs.ps1`
+  from its ANTfrastructure pin, with no container. Each leg has its own venv through
+  `New-UvProjectEnvironment`, so a `3.14` leg after a `3.14t` leg still gets the GIL build.
+  Every leg gates. The error names each leg that failed and the step: venv, sync or pytest.
+  Page: `docs/python-ci.md` § Windows arm64: the runner-native test job.
+- **`versions.env`: `UV_WINDOWS_ARM64_SHA256`** (noforward) pins uv's
+  `uv-aarch64-pc-windows-msvc.zip`, matching the release's own `.sha256`.
+  `bump_versions.py`'s `spec_uv` refreshes it with the Linux pins.
+- **`Invoke-StagedTests.ps1` reads a `-q` pytest summary.** pytest drops the `=` frame
+  around the counts line under `-q`, so `7 passed, 1 skipped in 0.42s` is now read as well.
+- `test-reusable-windows-lane.sh` holds the job's contract: off by default, gated on the input,
+  and inputs passed through env. Three new `windows-lane` mutations prove it bites.
+  `windows-lane.powershell-lint-defaults-off` now names its own input, because a bare
+  `default: false` matched twice.
+- Suite `PythonTestLegs.Tests.ps1`. Hand mutations bite: no `continue` after a failed sync,
+  no SHA check, a free-threaded leg ignoring its extras, and a bare `--python`. A real run
+  on an x64 host against WebDavClient, with legs `3.14t 3.14`, gave the 3.14 leg a GIL 3.14.7:
+  10 passed.
+
+
 ## 2026-10-01 - riscv64 consumer lanes: cross-build on amd64, test under QEMU (CON48)
 
 - **Owner decision:** a consumer's riscv64 lane builds on the amd64 runner and runs only
