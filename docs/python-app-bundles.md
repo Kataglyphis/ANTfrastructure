@@ -254,11 +254,12 @@ packages to `dist\windows-arm64`:
 Measured in `:winarm64` on 2026-10-01 for OrchestrANT 0.0.29:
 
 - The arch gate passed over 191 PE files, and G6 passed.
-- The packages are three times the x64 ones: zip 902 MB, MSI 793 MB, MSIX 924 MB.
-- The size is the image's arm64 OpenCV, a CUDA build: `cv2.pyd` imports the `opencv_cuda*`
-  modules, which bring cuFFT, cuBLASLt and NPP, more than 1 GB unpacked. The chain ORT wheel
-  adds `onnxruntime_providers_cuda.dll` (192 MB).
-- `:winarm64` drops the NVIDIA stack by owner decision (2026-10-01; it belongs in `:winarm64-nvidia`), which removes all of it (hub BACKLOG CON48).
+- That first `:winarm64` (2026-09-22) still carried the NVIDIA stack: its OpenCV was a CUDA
+  build, so the packages were zip 902 MB, MSI 793 MB and MSIX 924 MB. The owner decided the
+  same day that `:winarm64` has no NVIDIA, which `:winarm64-nvidia` carries instead.
+- With the rebuilt `:winarm64` (2026-10-01, hub 59a4bca3), OrchestrANT's CI run 36876194988
+  packed zip 204 MB, MSI 167 MB and MSIX 207 MB. The arch gate passed over 166 PE files, and
+  `windows-11-arm` started the bundle and the unzipped package, both reporting `ok`.
 
 ## Not yet
 

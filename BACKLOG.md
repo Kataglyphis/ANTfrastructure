@@ -6,9 +6,10 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-09-30.** Published: `:latest` (2026-09-30, hub 9e9d9828; amd64 `502a5e9d…`,
+**State 2026-10-01.** Published: `:latest` (2026-09-30, hub 9e9d9828; amd64 `502a5e9d…`,
 arm64 `4446422d…`, riscv64 `d5e4db6b…`), `:winamd64` and `:winamd64-nvidia` (2026-09-27, hub
-a33a460b), `:winamd64-rocm` (2026-09-28), `:latest-rocm` (2026-09-28, hub 1754a1dd).
+a33a460b), `:winamd64-rocm` (2026-09-28), `:latest-rocm` (2026-09-28, hub 1754a1dd), `:winarm64`
+(2026-10-01, hub 59a4bca3, without NVIDIA; `:winarm64-nvidia` is not rebuilt yet).
 `:latest-nvidia` is not published. Every Linux image gap up to CON41 shipped and was checked
 in the published children (git history). Decisions and gaps checked closed live in
 [`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
@@ -115,23 +116,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         static import). Nothing runs an inference, a GStreamer pipeline or a
         plugin, and the bundle's own tools and Python never execute
         (`docs/windows-cross-builds.md` § Consumer cross lanes).
-- [ ] **CON48 — Two `:winarm64` gaps the arm64 Python app lane meets** [S, ★]. Found 2026-10-01
-      in OrchestrANT's lane (`docs/python-app-bundles.md` § Packages, Windows arm64).
-      1. **Its arm64 OpenCV is a CUDA build.** `cv2.pyd` imports the `opencv_cuda*` modules, so an
-         app bundle carries cuFFT, cuBLASLt and NPP, more than 1 GB unpacked. The packages are
-         three times the x64 ones (zip 902 MB). **Owner decision 2026-10-01:** `:winarm64` is built
-         without NVIDIA (CUDA, cuDNN, TensorRT and what links them); that stack belongs in
-         `:winarm64-nvidia`, as on amd64.
-      2. **Its host CPython predates the version-string fix.** The published `:winarm64` (built
-         2026-09-22) carries the host CPython from before
-         `001-short-clang-compiler-id.patch` (CHANGELOG 2026-09-30): its `sys.version` ends in
-         VS clang's git URL, so a venv over `C:\temp\cpython\PCbuild\amd64` reports
-         `sysconfig.get_platform() == 'win32'`. The base interpreter hides it with the image's
-         `sitecustomize.py` shim; a uv venv does not load that, and `uv sync` then finds no `win32`
-         wheel (`onnxruntime-genai-cuda`, measured in OrchestrANT's arm64 lane). `:winamd64` (built
-         2026-09-30) already reports `win-amd64` in a venv. The arm64 Python app lane does not sync
-         a host venv (`Invoke-CiPackaging.ps1 -TargetArch arm64`), so it is not blocked.
-         Close 2 with the next `:winarm64` build: a venv over its host CPython must report `win-amd64`.
 - [b] **CON31 — Variants that are not published** [L, ★]. Blocked on owner decisions.
       - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
@@ -182,9 +166,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       Order: the hub inputs first (consumers call it at `@develop`, so push it before any
       consumer uses the new inputs), then one consumer at a time, each proven by its green
       arm64 run with a non-zero test count.
-      **Status 2026-10-01:** step 1 is in. The inputs, the arch gate over the test tree, the
-      `TESTS:` verdict and `Invoke-StagedTests.ps1` are in place, with Pester tests. Steps 2-7
-      (the consumers) are open.
+      **Status 2026-10-01:** steps 1-7 are done. Each lane is "Windows arm64 · cross build +
+      test" since its first green run with tests: AccelerANTgine `passed=4`, OxidANT
+      `passed=167`, BeschleunigerBallett `passed=496 skipped=4`, OmniAccelerANT `flutter test`
+      `passed=41` plus the C ABI check. Left: OrchestrANT's Python lane ("cross build + run",
+      2026-10-01) starts the bundle and the unzipped package with `--self-test`, while its
+      pytest suite runs only on x64. Running pytest on the device means shipping pytest and
+      the tests beside the bundle as a `test-artifact-dir`.
 - [ ] **CON46 — Renovate detects and bumps the CMake third-party deps** [M, ★★]. Owner request
       2026-10-01. The consumers declare C++ dependencies in CMake, and the shared preset
       (`default.json`) has no `customManagers` at all, so Renovate sees none of them (checked
@@ -237,8 +225,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         AccelerANTgine's abseil (20260526.0 → 20260817.0), GSL (v4.2.1 → v4.2.2) and
         cxxbridge-cmd (1.0.191 → 1.0.202), once each. OmniAccelerANT's googletest is current. Its
         first try died on `set -e<CR>`, fixed in `Invoke-InLinuxContainerBuild` (CHANGELOG).
-        OxidANT was skipped: a killed `--apply` of 2026-09-28 left its inflight marker, which
-        only the owner clears.
+        OxidANT first refused: a killed `--apply` of 2026-09-28 had left its inflight marker. Its
+        tree was clean, the owner had the marker deleted, and the rerun read all eight repos (rc 0).
       - BeschleunigerBallett's own report (`renovate-local.sh --managers custom.regex`): GSL
         (v4.2.1 → v4.2.2) and abseil (20260526.0 → 20260817.0), once each.
       Done once BeschleunigerBallett and OmniAccelerANT have pushed their CMake commits.

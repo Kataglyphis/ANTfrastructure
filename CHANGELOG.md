@@ -26,6 +26,25 @@
   OmniAccelerANT waits for Flutter in the riscv64 image.
 - Suite `test-riscv64-cross.sh`, seven mutations in the `riscv64-cross` family.
 
+## 2026-10-01 - `:winarm64` rebuilt without NVIDIA; the arm64 lanes run tests
+
+- **`:winarm64` is published again, at hub 59a4bca3.** The image of 2026-09-22 predated
+  the variant split and carried CUDA, cuDNN and TensorRT (`GPU_TYPE=nvidia`). By owner
+  decision that stack belongs in `:winarm64-nvidia`, as on amd64.
+- **The rebuild drops the NVIDIA stack.** It is the default variant, so the sdk slot is an
+  alias of base. Its config has no `CUDA_PATH`, `TENSORRT_ROOT` or `GPU_TYPE`.
+- **The rebuild also brings WiX 7 and the CPython version-string fix.** The toolchain stage
+  stops on a `sys.version` without `AMD64`, so a venv reports `win-amd64` again.
+- **It took 2 h 46 min.** That includes a full base and toolchain rebuild, since WiX 7 changed
+  the base. The smoke and publish gates passed.
+- **The effect, in OrchestrANT's arm64 lane:**
+  - zip 902 → 204 MB, MSI 793 → 167 MB, MSIX 924 → 207 MB;
+  - 166 PE files under the arch gate;
+  - `--self-test` passes on `windows-11-arm` for the bundle and the unzipped package.
+- **CON43's consumer half is done.** AccelerANTgine, OxidANT, BeschleunigerBallett and
+  OmniAccelerANT run their tests on `windows-11-arm`, and each lane is now "Windows arm64 ·
+  cross build + test".
+
 ## 2026-10-01 - `Invoke-InLinuxContainerBuild` hands bash LF-only lines
 
 - **What went wrong.** A caller builds its container command in a here-string, and a here-string
@@ -55,7 +74,7 @@
 - **Proven** in `:winarm64` with OrchestrANT 0.0.29: the arch gate passed over 191 PE files, G6
   passed, and all three packages were built and the MSIX signed. They are three times the x64
   size (zip 902 MB), because the image's arm64 OpenCV is a CUDA build. That gap, and the
-  image's host CPython that predates the version-string fix, are BACKLOG CON48.
+  image's host CPython that predates the version-string fix, are BACKLOG CON49.
 - Pester: `PythonApp.Cross.Tests.ps1`, plus arm64 cases in the wheel, MSIX and target-arch suites.
 
 ## 2026-10-01 - A staged test can report its own skip; OrchestrANT's permissions census is at 0
