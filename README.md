@@ -155,6 +155,7 @@ Accelerators whose runtime fits the default image are built into it instead:
 | Hailo-10H (HailoRT, `hailortcli`, `hailonet`, TAPPAS, pyhailort: a real module in images built with the `HAILO_PYHAILORT_IPO` switch at its default, which fails the build on a module without `PyInit__pyhailort`; `import hailo_platform` on Python 3.14 is checked but only warns, proven on amd64 only, [`docs/hailo-support.md`](docs/hailo-support.md#pyhailort)) | always | amd64, arm64 (riscv64: no upstream support) |
 | Qualcomm QNN (ORT QNN EP) | only when a QAIRT zip is staged in `linux/qnn-sdk/` at build time ([`docs/qnn-linux.md`](docs/qnn-linux.md)) - **the current release was built without it** | arm64 |
 | NVIDIA CUDA / AMD ROCm | no - `:latest-nvidia` / `:latest-rocm` (neither published yet) | NVIDIA: amd64, arm64 (SBSA/Jetson); ROCm: amd64 |
+| NVIDIA DeepStream 9.1 | no - an opt-in for `:latest-nvidia` (`ENABLE_DEEPSTREAM=true`), not pushed until the licence question is decided ([`docs/linux-accelerator-images.md`](docs/linux-accelerator-images.md#deepstream-nvidia-variant)) | amd64 |
 
 ### Which GPUs `:latest-nvidia` runs on
 

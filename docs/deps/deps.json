@@ -367,6 +367,54 @@
           ]
         },
         {
+          "title": "Optional \u2014 NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only)",
+          "dockerfile": "Dockerfile.media",
+          "entries": [
+            {
+              "name": "DeepStream runtime (NVIDIA's prebuilt deepstream-binaries-x86 .deb: nvvideoconvert, nvv4l2decoder, the tiler, libnvbufsurface and the nvds libraries)",
+              "var": "DEEPSTREAM_VERSION",
+              "url": "https://github.com/NVIDIA/DeepStream/releases/tag/v9.1.0",
+              "license": "NVIDIA SDK License Agreement + DeepStream supplement (LicenseAgreement.pdf, shipped in the tree)",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "DeepStream sources (gst-plugins, gst-utils, utils; built against /opt/gstreamer)",
+              "var": "DEEPSTREAM_VERSION",
+              "url": "https://github.com/NVIDIA/DeepStream",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "TensorRT 10 (DeepStream's private copy beside TENSORRT_VERSION)",
+              "var": "DEEPSTREAM_TENSORRT_VERSION",
+              "url": "https://developer.nvidia.com/tensorrt",
+              "license": "NVIDIA TensorRT EULA",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "civetweb (nvds_rest_server)",
+              "var": "DEEPSTREAM_CIVETWEB_VERSION",
+              "url": "https://github.com/civetweb/civetweb",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "prometheus-cpp (nvds_rest_server)",
+              "var": "DEEPSTREAM_PROMETHEUS_CPP_VERSION",
+              "url": "https://github.com/jupp0r/prometheus-cpp",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "opentelemetry-cpp (nvds_rest_server)",
+              "var": "DEEPSTREAM_OPENTELEMETRY_CPP_VERSION",
+              "url": "https://github.com/open-telemetry/opentelemetry-cpp",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            }
+          ]
+        },
+        {
           "title": "Optional GPU \u2014 AMD",
           "dockerfile": "Dockerfile.amd",
           "entries": [

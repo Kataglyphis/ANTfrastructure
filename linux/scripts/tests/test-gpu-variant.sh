@@ -7,7 +7,7 @@ CORE="${TESTS_DIR}/../01-core"
 
 # Run <snippet> with the real modules sourced under the given environment.
 _graph() {
-  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD "$@" bash -c '
+  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM "$@" bash -c '
     set -u
     source "'"${CORE}"'/platform.sh"; source "'"${CORE}"'/build-helpers.sh"
     source "'"${CORE}"'/tag-naming.sh"; source "'"${CORE}"'/stage-defs.sh" || exit 3
@@ -52,7 +52,7 @@ CHAIN="${TESTS_DIR}/../build-cross-chain.sh"; STAGE_SH="${TESTS_DIR}/../build-cr
 # Leading VAR=value words are the environment; the rest runs time-boxed.
 _chain() {
   local -a _e=(); while [[ "${1:-}" == *=* ]]; do _e+=("$1"); shift; done
-  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM "${_e[@]}" timeout 60 "$@" 2>&1 \
+  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM "${_e[@]}" timeout 60 "$@" 2>&1 \
     | grep -E '^\[(ERROR|INFO)\] (Cross chain|the |an? )' | head -1
 }
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chain --target-arches amd64)" \
@@ -81,6 +81,20 @@ t_assert_contains "$(_args media CROSS_VARIANT=nvidia)" "ENABLE_NVIDIA=true" \
 t_assert_contains "$(_args gpu CROSS_VARIANT=nvidia)" "ENABLE_TENSORRT=false" "TensorRT is off by default"
 t_assert_contains "$(_args media CROSS_VARIANT=rocm)" "ENABLE_AMD=true"
 t_assert_eq "" "$(_args media | grep -o 'ENABLE_[A-Z]*=')" "the default media stage forwards no accelerator toggle"
+
+t_case "DeepStream: only an nvidia chain may ask for it, and the ask reaches media and the runtime lane"
+t_assert_contains "$(SNIPPET='echo reached' _graph ENABLE_DEEPSTREAM=true)" "ENABLE_DEEPSTREAM=true needs the nvidia variant" \
+  ":latest must never carry DeepStream"
+t_assert_contains "$(SNIPPET='echo reached' _graph CROSS_VARIANT=rocm ENABLE_DEEPSTREAM=true)" "this chain is \"rocm\""
+t_assert_eq "reached" "$(SNIPPET='echo reached' _graph CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true)"
+t_assert_contains "$(_args media CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true)" "ENABLE_DEEPSTREAM=true"
+t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a; printf "%s " "${a[@]}"' _graph CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true)" \
+  "ENABLE_DEEPSTREAM=true" "the package stage gets it too, or it would assert the tree absent"
+
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true bash "${CHAIN}" --describe-chain --target-arches amd64)" \
+  "ENABLE_DEEPSTREAM=true cannot push" "no DeepStream image is published before the owner's licence decision"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true CROSS_NO_PUSH=1 bash "${CHAIN}" --describe-chain --target-arches amd64)" \
+  "stages=gpu..runtime" "a --no-push DeepStream chain stays allowed"
 
 t_case "the runtime lane refuses to write default tags under a variant"
 RFNS="${CORE}/runtime-build-fns.sh"

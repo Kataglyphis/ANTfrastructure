@@ -228,6 +228,216 @@ USB-camera object detection at 30 fps with 13 ms GPU inference.
   lane on the amd64 host, which does not exist yet (`BACKLOG.md` CON31: no arm64
   route).
 
+## DeepStream (nvidia variant)
+
+> **Off by default, and never in `:latest` or `:latest-rocm`.** `ENABLE_DEEPSTREAM=true`
+> builds it, and only an nvidia chain accepts that. amd64 only. Publishing it is an open
+> owner decision (§ [Licence](#licence-the-owner-decision)). Tracked as CON42 in
+> [`BACKLOG.md`](../BACKLOG.md).
+
+[NVIDIA DeepStream](https://github.com/NVIDIA/DeepStream) 9.1 is two things. Its
+GStreamer plugins, utilities and apps are Apache-2.0 source. Its runtime (`nvvideoconvert`,
+`nvv4l2decoder`, the tiler, `libnvbufsurface`, the tracker's `libnvds_nvmultiobjecttracker`,
+the `nvds_*` libraries) is a prebuilt `.deb` under NVIDIA's SDK licence. The image unpacks
+the `.deb` and builds the source against the image's own GStreamer 1.29.2, not against the
+Ubuntu 24.04 GStreamer 1.24 that NVIDIA targets.
+
+```bash
+CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true bash linux/scripts/build-cross-chain.sh \
+  --target-arches amd64 --parallel-archs --log-dir ./out/build-logs/nvidia
+```
+
+### What ships
+
+| Path | What |
+| --- | --- |
+| `/opt/nvidia/deepstream/deepstream-9.1/` | the runtime `.deb`'s tree, plus the components built from `DEEPSTREAM_COMMIT` installed into it, as NVIDIA's `build/build.sh` does |
+| `/opt/nvidia/deepstream/deepstream` | a link to it, which some upstream Makefiles and configs name |
+| `…/deepstream-9.1/sources/includes/` | the SDK headers, for building custom parsers and plugins |
+| `…/deepstream-9.1/LicenseAgreement.pdf` | NVIDIA's licence, as the `.deb` ships it |
+| `/opt/nvidia/deepstream/tensorrt-10.16.1.11/` | DeepStream's own TensorRT 10 (§ TensorRT 10 beside 11) |
+| `/opt/gstreamer/lib/<triplet>/gstreamer-1.0/deepstream` | a link to `…/lib/gst-plugins`; the registry scan follows it, so no `GST_PLUGIN_PATH` is needed |
+| `/etc/ld.so.conf.d/010-deepstream-tensorrt.conf` | the TensorRT 10 lib dir, the only DeepStream path on the loader path |
+
+`deepstream-9.1/lib` is deliberately **not** on the loader path. `libnvv4l2.so` there
+carries the SONAME `libv4l2.so.0`, so `ldconfig` would hand NVIDIA's copy to every V4L2
+user in the image (NVIDIA's `install.sh` does exactly that, with an `update-alternatives`
+entry). The libraries find each other through their `RUNPATH`
+(`/opt/nvidia/deepstream/deepstream-9.1/lib`); measured 2026-10-01, every element resolves
+that way with `LD_LIBRARY_PATH` unset.
+
+The script is `linux/scripts/05-frameworks/deepstream.sh` (`build` in the media stage,
+`stage-runtime` or `assert-absent` in the package stage). Every download is pinned in
+`versions.env` (`DEEPSTREAM_*`) with a SHA256: the release `.deb` (GitHub's asset digest),
+the six TensorRT 10 debs (from the CUDA repo's `Packages` index), and the source commits.
+
+### What needs a GPU host
+
+- **The driver's own libraries**: `libcuda.so.1` and `libnvidia-ml.so.1` come from the host,
+  injected by `nvidia-container-toolkit` (`--gpus all`). NVIDIA states driver 595.58.03 or
+  newer for DeepStream 9.1. The image's `cuda-compat` libcuda is forward compatibility for
+  data-centre GPUs only, so a GeForce card (the RTX 2080 on the build host) needs a new
+  enough host driver itself.
+- **Everything beyond registration.** Without a GPU the gates prove the elements load and
+  register. Measured without a driver, `nvstreammux` stops at PAUSED with
+  `Cuda failure: status=100` and `Unable to set device in gst_nvstreammux_change_state`
+  (100 is `cudaErrorNoDevice`).
+
+The run that proves inference, from the sample data asset
+(`deepstream-sample-data_9.1.0.deb`, sha256 `21ee7ddc…5e98`, not in the image):
+
+```bash
+cd /opt/nvidia/deepstream/deepstream-9.1/samples/configs/deepstream-app
+gst-launch-1.0 -e filesrc location=../../streams/sample_720p.h264 ! h264parse ! nvv4l2decoder \
+  ! mux.sink_0 nvstreammux name=mux batch-size=1 width=1280 height=720 \
+  ! nvinfer config-file-path=config_infer_primary.txt ! fakesink
+```
+
+`config_infer_primary.txt` builds an FP16 engine from `resnet18_trafficcamnet_pruned.onnx`
+on first use. `nvv4l2decoder` is NVDEC through NVIDIA's libv4l2 plugin
+(`lib/libv4l/plugins/libcuvidv4l2_plugin.so`), which the distro `libv4l2` loads only from
+`/usr/lib/x86_64-linux-gnu/libv4l/plugins/`; the image does not put it there. If that run
+shows `nvv4l2decoder` needs it, the fix is the plugin link, not the SONAME hijack.
+
+**GPU architectures.** NVIDIA's prebuilt kernels carry SASS for sm_75, 80, 89, 90, 100,
+110, 120 and 121, plus PTX for sm_90. The two source components with CUDA code
+(`nvdsinfer`, `nvll_osd`) build with nvcc's default, sm_75 SASS plus sm_75 PTX, so they run
+on every card from Turing on (newer ones JIT the PTX once). TensorRT 10.16 ships builder
+resources for sm_75, 80, 86, 89, 90, 100 and 120. So the RTX 2080 (sm_75) can run
+DeepStream, although the variant's `CUDA_ARCHITECTURES` (86;87;89;120) leaves it out of
+ONNX Runtime and OpenCV.
+
+### TensorRT 10 beside 11
+
+DeepStream 9.1 needs TensorRT 10, and the variant pins 11.3:
+
+- NVIDIA's prebuilt `libnvds_nvmultiobjecttracker.so`, `libnvds_inferutils.so` and
+  `libnvds_utils.so` link `libnvinfer.so.10` (and `libnvonnxparser.so.10`).
+- The Apache-2.0 `nvdsinfer` does not compile against TensorRT 11.3: 56 errors, from
+  `IInt8Calibrator`, `BuilderFlag::kINT8`/`kFP16`, `kEXPLICIT_BATCH`,
+  `IBuilder::platformHasFastFp16`, `ITensor::setType` and `ILayer::setPrecision`, all
+  removed in 11.
+
+So the image carries TensorRT 10.16.1.11 privately. NVIDIA publishes it only in the
+`ubuntu2404` CUDA repo, built for CUDA 13.2. The sonames differ (`.10` vs `.11`), so the two
+do not collide on disk or in `ld.so.cache`.
+
+**One process must not have TensorRT 11 in its global symbol scope.** Both libraries
+export the same unversioned symbols (`createInferBuilder_INTERNAL`, `getInferLibVersion`,
+…). Measured 2026-10-01 with a library linked against `libnvinfer.so.10`, loaded after
+`libnvinfer.so.11`:
+
+| TensorRT 11 opened with | the `.10` library's `getInferLibVersion()` |
+| --- | --- |
+| `RTLD_LOCAL` | 101601 (its own, correct) |
+| `RTLD_GLOBAL` | 110300 (TensorRT 11's, the wrong ABI) |
+
+GStreamer loads plugins with local binding, and ONNX Runtime opens its TensorRT EP the same
+way, so the image's own consumers stay apart. An application that links `libnvinfer.so.11`
+directly, or `dlopen`s it with `RTLD_GLOBAL`, must not also run DeepStream's `nvinfer` or
+`nvtracker`.
+
+`ENABLE_TENSORRT` stays `false` for the variant; DeepStream does not need it.
+
+### CUDA 13.2 vs 13.4
+
+The runtime is built against CUDA 13.2, the variant ships 13.4.2. Measured: every CUDA
+soname the tree needs (`libcudart.so.13`, `libcublas.so.13`, `libcufft.so.12`,
+`libnpp*.so.13`, `libnvjpeg.so.13`) resolves against 13.4.2 through `ld.so.conf`, and `ldd -r`
+reports no missing symbol in any library whose sonames all resolve. The `RUNPATH` entry
+`/usr/local/cuda-13.2/lib64` in NVIDIA's binaries simply does not exist here. Whether the
+kernels run is part of the GPU run above.
+
+### What the build changes against upstream
+
+Each of these is a measured failure of NVIDIA's own `build/build.sh` flow in this image:
+
+- **GCC 16.** Its libstdc++ no longer includes `<cstdint>` and `<algorithm>` transitively,
+  and `-Werror` turns its new `non-c-typedef-for-linkage` warning into an error. The build
+  pre-includes a compat header through `CXX`, `CC` and `NVCC_PREPEND_FLAGS`, and adds
+  `-Wno-error=non-c-typedef-for-linkage` where the compiler is C++. Each Makefile keeps its
+  own compiler: `gstnvcustomhelper` compiles C with `CXX:=gcc` (g++ rejects its enum
+  conversions), `nvds_analytics` compiles C++ with make's default `cc`, and a `CC:=g++`
+  must stay g++ or libstdc++ goes unlinked. Affected: `nvds_analytics`, `gst-nvdsmetamux`,
+  `gst-nvdspreprocess` and two `ds3d` CUDA libraries.
+- **nvcc and `/usr/include/gstreamer-1.0`.** `gst-nvvideotestsrc` hard-codes the distro
+  include path for its CUDA file; the build hands nvcc `/opt/gstreamer`'s through
+  `NVCC_CFLAGS`, which that Makefile appends to.
+- **Only plugins in `lib/gst-plugins/`.** Upstream installs `libpostprocess_impl.so` and
+  `libcustom2d_preprocess.so` there. The registry scan `dlclose()`s them, which unloads
+  libraries that registered static quark strings, and the next plugin segfaults in
+  `g_quark_from_static_string` (seen with `nvmultistreamtiler`, from a clean registry). The
+  build moves them to `lib/`.
+- **Headers at `sources/includes`**, placed before the build: `ds3d/dataloader/lidarsource`
+  includes from there, the full SDK's layout.
+- **`/opt/nvidia/deepstream/deepstream`**, also before the build: `nvmsgbroker`,
+  `gst-nvdynamicsrcbin` and others link from it.
+- **protoc**: Ubuntu 26.04's `protoc` is 3.21.12, the version upstream downloads, so the
+  build uses it rather than a second copy.
+- **opentelemetry-cpp without gRPC**: `nvds_rest_server` uses only the OTLP HTTP exporter.
+
+Not built, each with its reason in `DS_EXCLUDED` (`deepstream.sh`): the Triton pair
+(`nvdsinferserver`, `gst-nvinferserver`; no Triton server in the image), the two Azure IoT
+adaptors (no azure-iot-sdk-c), `gst-nvdsudp` (NVIDIA's login-gated Rivermax SDK) and
+`gst-dsexample-cuda` (an example; upstream skips it too).
+
+### The gates
+
+`linux/scripts/05-frameworks/deepstream-verify.sh`, run at the end of the media build, in
+the package stage (against the wired plugin link) and by the runtime smoke
+(`check_deepstream`, which also fails a tree in any non-nvidia image):
+
+- **Soname closure** with `LD_LIBRARY_PATH` unset. `libcuda.so.1` and `libnvidia-ml.so.1`
+  are the driver's. Eleven other misses are documented exceptions (UCX, RealSense, libtorch,
+  NVIDIA Maxine, the Triton filter, and `libnvdsgst_sparse4d.so`, whose `RUNPATH` NVIDIA left
+  pointing at `deepstream-9.0`); an exception that stops applying fails as stale. The
+  third-party libraries built for `nvds_rest_server` get an `$ORIGIN` `RUNPATH`, since their
+  own install paths do not exist in the image.
+- **One GStreamer**: every plugin resolves `libgst*-1.0.so.0` from `/opt/gstreamer`, and the
+  tree ships no GStreamer core library.
+- **No libv4l2 hijack**: the lib dir is on no `ld.so.conf`, and `libv4l2.so.0` resolves to the
+  distro's.
+- **Only plugins in `gst-plugins/`**, and a registry scan that does not crash. The check
+  reads `nm` to the end: a `grep -q` under `pipefail` SIGPIPEs `nm` on a large plugin, and
+  the first run moved `libgstnvvideo4linux2.so` out that way.
+- **Registration** of `nvinfer`, `nvstreammux`, `nvvideoconvert`, `nvtracker`, `nvdsosd`,
+  `nvv4l2decoder`, `nvmultistreamtiler`, `nvstreamdemux` and `nvurisrcbin`, with CUDA's stub
+  `libcuda`/`libnvidia-ml` standing in for the driver.
+
+Not covered: inference, NVDEC, a TensorRT engine build. Those need the GPU run above.
+
+### Licence: the owner decision
+
+The runtime `.deb` ships NVIDIA's *Software License Agreement for NVIDIA Software
+Development Kits* (v. September 14, 2021) with a *DeepStream Supplement*, as
+`LicenseAgreement.pdf`. The repository's README says all release assets fall under it. The
+passages that decide publishing on GHCR:
+
+- § 1.1 (iii): the licence to "Distribute those portions of the SDK that are identified in
+  this Agreement as distributable, as incorporated in object code format into a software
+  application that meets the distribution requirements".
+- § 1.2 (i): "Your application must have material additional functionality, beyond the
+  included portions of the SDK."
+- § 2.2: "you may not distribute or sublicense the SDK as a stand-alone product."
+- Supplement § 1: "The following portions of the SDK are distributable under the Agreement:
+  the runtime files ending with “.so” as part of your application".
+- Supplement § 3 I: "You are not permitted to disclose the results of any benchmarking or
+  other competitive analysis relating to the SDK without the prior written permission from
+  NVIDIA". So this page records no DeepStream timings.
+- Supplement § 3 II: "The SDK is licensed for use with a computer system incorporating one
+  or more NVIDIA GPU hardware products and running NVIDIA software drivers."
+
+What the image would redistribute that is not a `.so`: `LicenseAgreement.pdf`, the static
+`libnvdsgst_multistream_legacy.a` and `libnvds_service_maker_utils.a`, and the
+`pyservicemaker` wheel. TensorRT 10 falls under its own EULA, like the TensorRT 11 question
+already open for `:winamd64` (`docs/third-party-licenses.md`, `eula-review`).
+
+Whether a general-purpose development image counts as an "application" with "material
+additional functionality" is a legal question, not a build one. Until the owner decides,
+nothing built with `ENABLE_DEEPSTREAM=true` is pushed. The fallback, if the answer is no: a
+consumer lane installs the same checksum-pinned assets at lane time with
+`deepstream.sh build`, and no published image carries them.
+
 ## The media fan-out strategy, as AGENTS.md carried it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.

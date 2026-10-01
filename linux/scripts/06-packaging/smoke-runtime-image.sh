@@ -2279,6 +2279,28 @@ exit $rc'; then
     fi
 }
 
+# DeepStream only on the nvidia variant, then its own gates in the image: docs/linux-accelerator-images.md#deepstream-nvidia-variant
+check_deepstream() {
+  local image_tag="$1"
+  local target_arch="$2"
+    echo "--- Functional: DeepStream (nvidia variant only) ---"
+    local out rc=0
+    out="$(_rt_run bash -lc 'set -uo pipefail
+[ -e /opt/nvidia/deepstream ] || { echo "ABSENT"; exit 0; }
+[ "${ENABLE_NVIDIA:-false}" = true ] || { echo "PRESENT-IN-A-NON-NVIDIA-IMAGE"; exit 1; }
+root="$(readlink -f /opt/nvidia/deepstream/deepstream)"; trt="$(ls -d /opt/nvidia/deepstream/tensorrt-* | head -1)"
+DSV_WIRED=1 DS_ROOT="${root}" DS_TRT_PREFIX="${trt}" bash /opt/scripts/frameworks/deepstream-verify.sh' 2>&1)" || rc=$?
+    printf '%s\n' "${out}" | sed 's/^/    /'
+    if [ "${rc}" != 0 ]; then
+      fail "DeepStream gates failed in the runtime image (${target_arch})"
+    elif [ "${out}" = "ABSENT" ]; then
+      pass "no DeepStream in this image (${target_arch})"
+    else
+      pass "DeepStream elements register and resolve (${target_arch})"
+    fi
+    echo ""
+}
+
 main() {
   local image_tag="${1:-}"
   local target_arch="${2:-}"
@@ -2335,6 +2357,7 @@ main() {
     check_gstreamer_plugin_health "${image_tag}" "${target_arch}"
     check_gstreamer_core_pipeline "${image_tag}" "${target_arch}"
     check_gstreamer_mandatory_plugins "${image_tag}" "${target_arch}"
+    check_deepstream "${image_tag}" "${target_arch}"
     check_application_import "${image_tag}" "${target_arch}"
     check_healthcheck_exec "${image_tag}" "${target_arch}"
     check_webrtc_signalling "${image_tag}" "${target_arch}"

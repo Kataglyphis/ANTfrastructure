@@ -7,6 +7,46 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - DeepStream for the nvidia variant (CON42): spike measured, source in, off by default
+
+- **The spike (phases 1–3), without a chain.** In throwaway containers FROM the published
+  `:latest` amd64 child plus the variant's CUDA 13.4.2: NVIDIA's DeepStream 9.1 runtime `.deb`
+  unpacked, and its Apache-2.0 plugins and libraries built against `/opt/gstreamer` 1.29.2
+  (not Ubuntu 24.04's 1.24). `nvinfer`, `nvstreammux`, `nvvideoconvert`, `nvtracker`,
+  `nvdsosd`, `nvv4l2decoder`, `nvmultistreamtiler`, `nvstreamdemux` and `nvurisrcbin`
+  register without a GPU. No GStreamer or GLib symbol is missing, and no CUDA symbol against
+  13.4.2 (the runtime targets 13.2).
+- **TensorRT 10 beside 11.** NVIDIA's tracker and infer utilities link `libnvinfer.so.10`, and
+  the `nvdsinfer` source does not compile against 11.3 (56 errors, APIs removed in 11). The
+  image carries TensorRT 10.16.1.11 privately. Measured: with TensorRT 11 in a process's
+  global scope, a library linked against `.10` binds to 11's unversioned symbols.
+- **Upstream fixes the build needs here.** GCC 16 (missing transitive `<cstdint>`/`<algorithm>`,
+  a new `-Werror`), each Makefile keeping its own compiler (one compiles C with `CXX:=gcc`), an
+  `$ORIGIN` RUNPATH for the `nvds_rest_server` dependencies, and helper libraries moved out of
+  `gst-plugins/`: the registry scan `dlclose()`d them and the next plugin segfaulted in
+  `g_quark_from_static_string`.
+- **Proven with the hub script, not only the spike.** `deepstream.sh build` passes its gates in a
+  fresh container (48 components, 2m58s warm with sccache), and `stage-runtime` passes on a clean
+  `:latest` with only the runtime packages, as root and as the runtime user. The gates caught
+  three real faults on the way there, each fixed: the otel libraries without a RUNPATH, NVIDIA's
+  `libnvdsgst_sparse4d.so` whose RUNPATH names `deepstream-9.0`, and a `grep -q` whose SIGPIPE
+  under `pipefail` classed `libgstnvvideo4linux2.so` as a helper library.
+- **In the source, off by default.** `linux/scripts/05-frameworks/deepstream.sh` and
+  `deepstream-verify.sh`, a gated `deepstream` stage in `Dockerfile.media`, the package's
+  `stage-runtime` / `assert-absent` RUN, `check_deepstream` in the runtime smoke,
+  `DEEPSTREAM_*` pins with SHA256s, `test-deepstream.sh`, new cases in `test-gpu-variant.sh`,
+  and 19 mutation entries. `ENABLE_DEEPSTREAM=true` is refused outside the nvidia variant, and
+  a DeepStream chain refuses to push until the owner decides whether NVIDIA's licence allows
+  publishing it (the facts: `docs/linux-accelerator-images.md` § Licence: the owner decision).
+- **cuDNN pin fix (found on the way).** The nvidia variant never installed its `CUDNN_VERSION`:
+  `libcudnn9-dev-cuda-13=9.26.0.51*` depends on the exact `libcudnn9-headers-cuda-13`, apt took
+  the newest headers, the pinned tier failed, and the unpinned tier installed 9.27.0.42.
+  `install-cuda-stack.sh` now pins the headers package in the same call.
+- **Cache cost.** `versions.env` is in the base closure, so this commit re-keys every chain from
+  base on its next build, as any pin bump does.
+- **Not done.** No GPU run (this host's NVIDIA driver is not loaded) and no variant chain
+  run: `BACKLOG.md` CON42.
+
 ## 2026-09-30 - GStreamer: a meson inherited without its launcher is reinstalled
 
 - **What went wrong.** The default `:winamd64` merge stopped in `Build-GstreamerFromSource.ps1`

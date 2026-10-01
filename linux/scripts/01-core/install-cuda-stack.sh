@@ -59,11 +59,12 @@ if [ -n "${CUDA_CROSS_TARGET_DIR:-}" ]; then
     *) echo "ERROR: ${_cuda_cross_probe} is not AArch64 — the cross repo served host packages" >&2; exit 1 ;;
   esac
 fi
-# An empty CUDNN_VERSION skips the pinned tier.
+# An empty CUDNN_VERSION skips the pinned tier; -dev depends on the exact headers package, so it is pinned too.
 { [ -n "${CUDNN_VERSION:-}" ] && \
 apt-get install -y --no-install-recommends \
     "libcudnn${CUDNN_MAJOR}-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*" \
-    "libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*"; } || \
+    "libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*" \
+    "libcudnn${CUDNN_MAJOR}-headers-cuda-${CUDA_MAJOR}=${CUDNN_VERSION}*"; } || \
 apt-get install -y --no-install-recommends \
     libcudnn${CUDNN_MAJOR}-cuda-${CUDA_VER_DOT} \
     libcudnn${CUDNN_MAJOR}-dev-cuda-${CUDA_VER_DOT} || \

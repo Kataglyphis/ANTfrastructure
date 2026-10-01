@@ -83,6 +83,7 @@ append_runtime_accelerator_build_args() {
   append_optional_build_arg "$1" ENABLE_NVIDIA "${ENABLE_NVIDIA:-}"
   append_optional_build_arg "$1" ENABLE_AMD "${ENABLE_AMD:-}"
   append_optional_build_arg "$1" ENABLE_ROCM_ASAN "${ENABLE_ROCM_ASAN:-}"
+  append_optional_build_arg "$1" ENABLE_DEEPSTREAM "${ENABLE_DEEPSTREAM:-}"
 }
 
 append_common_build_args() {

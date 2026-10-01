@@ -165,87 +165,69 @@ None open.
          a mutation entry per manager.
       6. Prove it with a report run over the fleet (`Invoke-Renovate.ps1 -Recurse`, report-first:
          `-Apply` only on the owner's word), each dep listed with its current and newest version.
-- [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Blocked on CON31's
-      `:latest-nvidia` amd64 publish; owner request 2026-09-30.
+- [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
+      (phases 1–3) done 2026-10-01; phases 4 and 6 are in the source, off by default
+      (`ENABLE_DEEPSTREAM=false`). Blocked on three things outside the build:
+      1. **Owner: may NVIDIA's DeepStream runtime be published on GHCR?** The facts, with the
+         licence's own words: `docs/linux-accelerator-images.md` § Licence: the owner decision.
+         Until then the chain refuses to push with `ENABLE_DEEPSTREAM=true` (`--no-push` only).
+         The same question as `:winamd64`'s TensorRT (`eula-review`).
+      2. **A GPU run** (phase 2's gate). This host's RTX 2080 has no NVIDIA kernel driver loaded
+         (no `/dev/nvidia*`); loading it is a root action for the owner. The command, and why the
+         2080 (sm_75) is covered: `docs/linux-accelerator-images.md` § What needs a GPU host.
+      3. **An nvidia variant chain run** with `ENABLE_DEEPSTREAM=true` (`--no-push` until 1),
+         owner-approved. It has never run; everything below was proven in throwaway containers
+         FROM the published `:latest` amd64 child plus the variant's CUDA install.
 
-      Today (checked 2026-09-30): the one GStreamer build (media stage, same options for
-      every variant) ships gst-plugins-bad's `nvcodec` (NVDEC/NVENC + CUDA memory elements,
-      driver loaded at run time) in every image, `:latest` included; nothing in
-      `03-media/build/gstreamer/` reads `ENABLE_NVIDIA`, and nothing in the hub names
-      DeepStream. Upstream is [NVIDIA/deepstream](https://github.com/nvidia/deepstream),
-      tag `v9.1.0`: a monorepo whose `src/gst-plugins/`, `src/utils/` and sample/reference
-      apps are source (Apache-2.0, `make && make install` per component, `build/build.sh`
-      for all), while the runtime (`deepstream-binaries-{x86,aarch64}_9.1.0`,
-      `deepstream-9.1_9.1.0-1_{amd64,arm64}.deb`, installed to
-      `/opt/nvidia/deepstream/deepstream-9.1/`) is proprietary, under NVIDIA's SDK licence.
-      It targets Ubuntu 24.04, CUDA 13.2, TensorRT 10.16.x, driver 595+; Jetson through
-      JetPack 7.2; SBSA only inside NVIDIA's container.
+      Measured 2026-10-01 (DeepStream v9.1.0, commit 581889df; runtime
+      `deepstream-binaries-x86_9.1.0_amd64.deb`; GStreamer 1.29.2; CUDA 13.4.2; GCC 16.2):
+      - **Phase 1 — passes.** 48 source components build against `/opt/gstreamer`; all nine
+        checked elements register without a GPU (`nvinfer`, `nvstreammux`, `nvvideoconvert`,
+        `nvtracker`, `nvdsosd`, `nvv4l2decoder`, `nvmultistreamtiler`, `nvstreamdemux`,
+        `nvurisrcbin`), from the hub script itself in a fresh container and again after the
+        package step on a clean `:latest` (as root and as the runtime user). `ldd -r` finds
+        no GStreamer or GLib symbol missing against 1.29.2, and every GStreamer soname
+        resolves from `/opt/gstreamer`. The fixes it needed (GCC 16's
+        missing transitive includes and new `-Werror`, Makefiles that compile C as `CXX:=gcc`,
+        a registry-scan segfault from helper libraries in `gst-plugins/`, `sources/includes`,
+        `$ORIGIN` for the `nvds_rest_server` dependencies) and the six components left out,
+        with reasons: the doc section.
+        Soname closure without `LD_LIBRARY_PATH`: only the driver's `libcuda.so.1` and
+        `libnvidia-ml.so.1`, plus eleven documented misses (UCX, RealSense, libtorch,
+        NVIDIA Maxine, Triton, and a sparse4d library whose RUNPATH NVIDIA left at 9.0).
+      - **Phase 2 — TensorRT 10 is required, beside 11.** NVIDIA's prebuilt tracker, inferutils
+        and utils link `libnvinfer.so.10`, and the source `nvdsinfer` fails against 11.3 with 56
+        errors (APIs removed in 11). The image carries TensorRT 10.16.1.11 privately
+        (`ubuntu2404` repo, CUDA 13.2 build). One process must not hold TensorRT 11 in its
+        global scope: with `libnvinfer.so.11` opened `RTLD_GLOBAL`, a library linked against
+        `.10` got 110300 from `getInferLibVersion()` instead of 101601. `ENABLE_TENSORRT` stays
+        false for the variant; DeepStream does not need it, so this does not close CON31's
+        TensorRT point. The GPU gate itself is open (blocker 2).
+      - **Phase 3 — loads on 13.4.2.** Every CUDA soname resolves against 13.4.2 and no CUDA
+        symbol is missing. Kernels run only in the GPU run.
+      - **Phases 4 and 6 — in the source.** `05-frameworks/deepstream.sh` (media stage `build`,
+        package `stage-runtime` / `assert-absent`), `deepstream-verify.sh` (closure, one
+        GStreamer, no `libv4l2` hijack, plugin dir, registration; also `check_deepstream` in
+        the runtime smoke), `DEEPSTREAM_*` pins with SHA256s in `versions.env`, the
+        `ENABLE_DEEPSTREAM` refusals outside the nvidia variant, `test-deepstream.sh` and 19
+        mutation entries.
+      - **Phase 5** — facts prepared, decision open (blocker 1).
+      - **Found on the way, fixed:** the variant's cuDNN pin was never installed. The pinned apt
+        tier failed (`libcudnn9-dev` needs the exact `libcudnn9-headers`, which apt took newest)
+        and the unpinned tier installed 9.27.0.42 for the 9.26.0.51 pin.
 
-      The gaps against this image:
-
-      | | DeepStream 9.1 | `:latest-nvidia` source |
-      | --- | --- | --- |
-      | OS | Ubuntu 24.04 | Ubuntu 26.04 |
-      | CUDA | 13.2 | 13.4.2 |
-      | TensorRT | 10.16.x (`nvinfer`) | 11.3.0.99 pinned, `ENABLE_TENSORRT=false` |
-      | GStreamer | the 24.04 distro 1.24 | the hub's own 1.29.2 |
-      | arm64 | Jetson / SBSA container | no route yet (CON31) |
-
-      Plan, one gate per phase; stop and record the measurement where a gate fails:
-      1. **Feasibility spike, no chain.** In a throwaway container FROM the published
-         `:latest-nvidia` amd64 child: build `src/gst-plugins/` and `src/utils/` against
-         `/opt/gstreamer` (pkg-config from the image), install the x86 runtime `.deb`
-         contents unpacked into a prefix (not `dpkg -i`, which pulls 24.04 deps), and run
-         `gst-inspect-1.0` on `nvinfer`, `nvstreammux`, `nvvideoconvert`, `nvtracker`,
-         `nvdsosd`. Record every unresolved soname (`ldd`, pkg-config, never a guess) and
-         every GStreamer/GLib ABI symbol the binaries miss against 1.29.2.
-         Gate: all five load. Otherwise decide between (a) pinning a GStreamer 1.24 build
-         for this variant only, (b) waiting for a DeepStream built against newer
-         GStreamer, (c) dropping CON42.
-      2. **TensorRT.** `nvinfer` links TensorRT 10.16.x; the hub pins 11.3. Decide: a
-         DeepStream-only 10.16 beside 11.3 (two sonames, `libnvinfer.so.10` vs `.11`,
-         `RUNPATH` from DeepStream's libs), or moving the variant's pin to 10.16, or waiting
-         for a DeepStream on TensorRT 11. Whichever wins also closes CON31's "no
-         `libnvinfer` in the runtime payload", so it turns `ENABLE_TENSORRT` on for the
-         nvidia variant (owner decision 2026-09-22 kept it off; this revisits it).
-         Gate: `gst-launch-1.0` of `nvstreammux ! nvinfer config-file-path=<sample> !
-         fakesink` runs on a real GPU (this host's RTX 2080 needs its NVIDIA driver loaded
-         first, a root action) — and `nvinfer`'s TensorRT engine build succeeds on sm_75,
-         which the variant's `CUDA_ARCHITECTURES` (86;87;89;120) does not compile for:
-         note what that means for the 2080 or test on a newer card.
-      3. **CUDA 13.4 vs 13.2.** The runtime is built against 13.2; confirm it loads and
-         runs on 13.4.2 (minor-version compatibility) in the phase-2 run. If not, record
-         the symbol and decide per phase-1 options.
-      4. **Source, pins and provenance.** New `versions.env` pins: `DEEPSTREAM_VERSION=9.1.0`,
-         the tag's commit, and a SHA256 per release asset and arch, checked like every
-         other download (never a floating `latest` release). A new
-         `05-frameworks/deepstream.sh` builds the open-source part against `/opt/gstreamer`
-         and stages the runtime; a `Dockerfile.nvidia`- or media-stage RUN gated on
-         `ENABLE_NVIDIA` + a new `ENABLE_DEEPSTREAM` (default false), so `:latest` and
-         `:latest-rocm` never carry it. Renovate: add the GitHub release as a datasource,
-         reported only (report-first).
-      5. **Licence.** The runtime is proprietary: record what is redistributed in
-         `docs/third-party-licenses.md`, ship NVIDIA's EULA text in the image, and get an
-         owner decision on publishing it on GHCR at all (the same question as
-         `:winamd64-rocm`'s redistribution decision in CON31). Fallback: install at lane
-         time from the checksum-pinned asset instead of baking it in.
-      6. **Gates in the image.** Smoke (wrapper and runtime-image smoke): the five
-         elements `gst-inspect` clean without a GPU (they register; inference needs one),
-         the runtime libraries resolve (DT_NEEDED against the image, the same closure
-         discipline as `check-bundle-closure.sh`), and no second GStreamer copy wins a
-         soname over `/opt/gstreamer` (SHIPPED-TRUTH D). Unit tests for the script's pin
-         and checksum handling; mutation entries for each refusal.
-      7. **arm64.** Only after CON31 has an arm64 CUDA route: Jetson (JetPack 7.2) and SBSA
-         are different targets, and NVIDIA supports SBSA only in its container. Scope it as
-         its own item then; amd64 first.
-      8. **Consumers and docs.** `docs/linux-accelerator-images.md` gets a DeepStream
-         section (what ships, what needs a driver, the licence); `consumer-image-contract.md`
-         lists the new names (`DEEPSTREAM_ROOT`, the plugin path); OmniAccelerANT's Stream
-         page is the first consumer to evaluate (an `nvinfer` path beside its ONNX Runtime
-         one), as its own item there.
-
-      Effort: phases 1-3 are a spike of a day or two and decide everything else; 4-6 are
-      one chain run of the nvidia variant (amd64 only, ~hours with a warm cache).
+      Still to do:
+      - The GPU run: confirm `nvv4l2decoder` decodes with the distro `libv4l2` plus NVIDIA's
+        plugin; if it needs `libcuvidv4l2_plugin.so` in `/usr/lib/x86_64-linux-gnu/libv4l/plugins/`,
+        link the plugin there, never the SONAME hijack NVIDIA's `install.sh` uses.
+      - Size: TensorRT 10 alone is 2.6 GB (builder resources for every GPU generation).
+        Trimming them to `CUDA_ARCHITECTURES` would drop the 2080's sm_75: an owner call.
+      - **Phase 7 (arm64)**: out of scope until CON31 has an arm64 CUDA route. The Jetson
+        runtime `.deb` is pinned (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it.
+      - **Phase 8**: `consumer-image-contract.md` names (`DEEPSTREAM_ROOT`, the plugin link)
+        and OmniAccelerANT's `nvinfer` path, after a published image exists.
+      - Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only). The v9.1.0 release
+        also hosts 9.1.1 assets for NVIDIA's `develop` branch; the pin stays on 9.1.0.
 - [b] **CON34 — The rocm image's HIP/MSVC `<cmath>` overlay is installed by the llama
       stage, not by `Dockerfile.rocm`** [S, ★]. Blocked on the next rocm build (owner):
       it re-keys from base anyway since `versions.env` changed, so the move adds no rebuild

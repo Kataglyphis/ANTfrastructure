@@ -507,6 +507,84 @@
       "licenseComments": "Obligations: eula-review"
     },
     {
+      "SPDXID": "SPDXRef-Package-Linux-Images-DeepStream-runtime-NVIDIA-s-prebuilt-deepstream-36710752",
+      "name": "DeepStream runtime (NVIDIA's prebuilt deepstream-binaries-x86 .deb: nvvideoconvert, nvv4l2decoder, the tiler, libnvbufsurface and the nvds libraries)",
+      "versionInfo": "9.1.0",
+      "downloadLocation": "https://github.com/NVIDIA/DeepStream/releases/tag/v9.1.0",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only) (Dockerfile.media)",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-DeepStream-sources-gst-plugins-gst-utils-utils--4d025ded",
+      "name": "DeepStream sources (gst-plugins, gst-utils, utils; built against /opt/gstreamer)",
+      "versionInfo": "9.1.0",
+      "downloadLocation": "https://github.com/NVIDIA/DeepStream",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only) (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-TensorRT-10-DeepStream-s-private-copy-beside-TE-23857f63",
+      "name": "TensorRT 10 (DeepStream's private copy beside TENSORRT_VERSION)",
+      "versionInfo": "10.16.1.11",
+      "downloadLocation": "https://developer.nvidia.com/tensorrt",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only) (Dockerfile.media)",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-civetweb-nvds-rest-server-87a966dd",
+      "name": "civetweb (nvds_rest_server)",
+      "versionInfo": "v1.16",
+      "downloadLocation": "https://github.com/civetweb/civetweb",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only) (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-prometheus-cpp-nvds-rest-server-b6df6427",
+      "name": "prometheus-cpp (nvds_rest_server)",
+      "versionInfo": "v1.2.4",
+      "downloadLocation": "https://github.com/jupp0r/prometheus-cpp",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only) (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-opentelemetry-cpp-nvds-rest-server-f0bbfb81",
+      "name": "opentelemetry-cpp (nvds_rest_server)",
+      "versionInfo": "v1.23.0",
+      "downloadLocation": "https://github.com/open-telemetry/opentelemetry-cpp",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only) (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Linux-Images-ROCm-812b560b",
       "name": "ROCm",
       "versionInfo": "10.0",
@@ -1992,6 +2070,36 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-TensorRT-49ee4087"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-DeepStream-runtime-NVIDIA-s-prebuilt-deepstream-36710752"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-DeepStream-sources-gst-plugins-gst-utils-utils--4d025ded"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-TensorRT-10-DeepStream-s-private-copy-beside-TE-23857f63"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-civetweb-nvds-rest-server-87a966dd"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-prometheus-cpp-nvds-rest-server-b6df6427"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-opentelemetry-cpp-nvds-rest-server-f0bbfb81"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
