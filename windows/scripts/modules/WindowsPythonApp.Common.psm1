@@ -163,7 +163,9 @@ function Copy-ChainOpenCvPackage {
         [Parameter(Mandatory)][string]$SitePackages,
         [string]$Source = 'C:\temp\cpython\Lib\site-packages\cv2',
         [string]$RuntimeRoot = 'C:\runtime',
-        [switch]$ReferenceImage
+        [switch]$ReferenceImage,
+        # Bundle dirs that already hold part of the closure (the chain ORT's capi): searched first, named in config, never copied.
+        [string[]]$SharedDirectory = @()
     )
 
     if (-not (Test-Path -LiteralPath (Join-Path $Source '__init__.py') -PathType Leaf)) { throw "No chain cv2 at $Source; the image predates it" }
@@ -189,8 +191,18 @@ function Copy-ChainOpenCvPackage {
         $result = @($search | Where-Object { $used -contains $_ })
         $paths = @($result | ForEach-Object { "    r'$_'," })
     } else {
-        $result = @(Copy-PeImportClosure -Path $pyd[0].FullName -SearchDirectory $search -Destination (Join-Path $dest 'bin') -Arch amd64)
-        $paths = @("    os.path.join(LOADER_DIR, 'bin'),")
+        $shared = @($SharedDirectory | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | ForEach-Object { (Resolve-Path -LiteralPath $_).ProviderPath })
+        $closure = @(Get-PeImportClosure -Path $pyd[0].FullName -SearchDirectory (@($shared) + $search) -Arch amd64)
+        $bin = Join-Path $dest 'bin'
+        $null = New-Item -ItemType Directory -Force -Path $bin
+        $result = @(foreach ($source in $closure) {
+                if ($shared -contains (Split-Path $source -Parent)) { continue }
+                $target = Join-Path $bin (Split-Path $source -Leaf)
+                Copy-Item -LiteralPath $source -Destination $target -Force
+                $target
+            })
+        $paths = @("    os.path.join(LOADER_DIR, 'bin'),") +
+            @($shared | ForEach-Object { "    os.path.normpath(os.path.join(LOADER_DIR, r'$([IO.Path]::GetRelativePath($dest, $_))'))," })
     }
     Set-Content -LiteralPath (Join-Path $dest 'config.py') -Encoding utf8NoBOM -Value (@('import os', '', 'BINARIES_PATHS = [') + $paths + '] + BINARIES_PATHS')
     $pydDir = [IO.Path]::GetRelativePath($dest, $pyd[0].DirectoryName).Replace('\', '/')
@@ -218,7 +230,8 @@ function Install-PythonAppChainOpenCv {
     )
 
     Remove-AppDistribution -Python $Python -Pattern '^opencv(-contrib)?-python(-headless)?$'
-    $copied = @(Copy-ChainOpenCvPackage -SitePackages $SitePackages -Source $Source -RuntimeRoot $RuntimeRoot)
+    # opencv_dnn imports onnxruntime.dll: it loads the bundle's chain ORT rather than shipping a second copy.
+    $copied = @(Copy-ChainOpenCvPackage -SitePackages $SitePackages -Source $Source -RuntimeRoot $RuntimeRoot -SharedDirectory (Join-Path $SitePackages 'onnxruntime\capi'))
     # The launchers pass -B, so bytecode the bundle does not ship is recompiled on every start.
     & $Python -m compileall -q (Join-Path $SitePackages 'cv2')
     if ($LASTEXITCODE -ne 0) { throw "compiling the chain cv2 package failed (exit $LASTEXITCODE)" }
@@ -388,6 +401,18 @@ function Add-WxsTree {
     }
 }
 
+# Text for an installer manifest's attributes and elements.
+function Protect-PythonAppXml([string]$Text) { return [Security.SecurityElement]::Escape($Text) }
+
+# What every installer shows: gui_script (else the first script) and the description (else the name).
+function Get-PythonAppShown {
+    param([Parameter(Mandatory)][hashtable]$App)
+    return [pscustomobject]@{
+        Gui         = if ($App.ContainsKey('gui_script') -and $App['gui_script']) { $App['gui_script'] } else { @($App['scripts'])[0] }
+        Description = if ($App.ContainsKey('description')) { $App['description'] } else { $App['name'] }
+    }
+}
+
 function New-PythonAppWxs {
     <#
     .SYNOPSIS
@@ -417,41 +442,41 @@ function New-PythonAppWxs {
         Sort-Object Length -Descending | Select-Object -First 1
     if ($longest -and ($installRoot.Length + $longest.Length) -ge 260) { throw "$installRoot$longest is $($installRoot.Length + $longest.Length) characters; MSI stops at 259" }
 
-    $gui = if ($App.ContainsKey('gui_script') -and $App['gui_script']) { $App['gui_script'] } else { @($App['scripts'])[0] }
-    $x = { param($text) [Security.SecurityElement]::Escape([string]$text) }
+    $shown = Get-PythonAppShown -App $App
+    $gui = $shown.Gui
+    $description = $shown.Description
     $key = "Software\$($App['publisher'])\$name"
     $tree = [Text.StringBuilder]::new()
     $files = [Text.StringBuilder]::new()
     Add-WxsTree -Tree $tree -Files $files -Directory (Get-Item -LiteralPath $Bundle) -DirectoryId 'INSTALLFOLDER' -Depth 4 -Counter @{ n = 0 }
-    $homepage = if ($App.ContainsKey('homepage')) { "`n    <Property Id=`"ARPURLINFOABOUT`" Value=`"$(& $x $App['homepage'])`" />" } else { '' }
-    $description = if ($App.ContainsKey('description')) { $App['description'] } else { $name }
+    $homepage = if ($App.ContainsKey('homepage')) { "`n    <Property Id=`"ARPURLINFOABOUT`" Value=`"$(Protect-PythonAppXml $App['homepage'])`" />" } else { '' }
     $wxs = @"
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="$(& $x $name)" Manufacturer="$(& $x $App['publisher'])" Version="$Version" UpgradeCode="$($App['msi_upgrade_code'])" Scope="perMachine">
+  <Package Name="$(Protect-PythonAppXml $name)" Manufacturer="$(Protect-PythonAppXml $App['publisher'])" Version="$Version" UpgradeCode="$($App['msi_upgrade_code'])" Scope="perMachine">
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
-    <Icon Id="app.ico" SourceFile="$(& $x $IconPath)" />
+    <Icon Id="app.ico" SourceFile="$(Protect-PythonAppXml $IconPath)" />
     <Property Id="ARPPRODUCTICON" Value="app.ico" />$homepage
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="$(& $x $name)">
+      <Directory Id="INSTALLFOLDER" Name="$(Protect-PythonAppXml $name)">
 $($tree.ToString().TrimEnd())
         <Component Id="PathEntry">
           <Environment Id="PathEntry" Name="PATH" Value="[INSTALLFOLDER]" Action="set" Part="last" System="yes" Permanent="no" />
-          <RegistryValue Root="HKLM" Key="$(& $x $key)" Name="PathEntry" Type="integer" Value="1" KeyPath="yes" />
+          <RegistryValue Root="HKLM" Key="$(Protect-PythonAppXml $key)" Name="PathEntry" Type="integer" Value="1" KeyPath="yes" />
         </Component>
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder">
       <Component Id="StartMenuShortcut">
-        <Shortcut Id="AppShortcut" Name="$(& $x $name)" Description="$(& $x $description)" Target="[INSTALLFOLDER]$(& $x $gui).exe" WorkingDirectory="INSTALLFOLDER" Icon="app.ico" />
-        <RegistryValue Root="HKLM" Key="$(& $x $key)" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+        <Shortcut Id="AppShortcut" Name="$(Protect-PythonAppXml $name)" Description="$(Protect-PythonAppXml $description)" Target="[INSTALLFOLDER]$(Protect-PythonAppXml $gui).exe" WorkingDirectory="INSTALLFOLDER" Icon="app.ico" />
+        <RegistryValue Root="HKLM" Key="$(Protect-PythonAppXml $key)" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </StandardDirectory>
     <ComponentGroup Id="AppFiles">
 $($files.ToString().TrimEnd())
     </ComponentGroup>
-    <Feature Id="Main" Title="$(& $x $name)">
+    <Feature Id="Main" Title="$(Protect-PythonAppXml $name)">
       <ComponentGroupRef Id="AppFiles" />
       <ComponentRef Id="PathEntry" />
       <ComponentRef Id="StartMenuShortcut" />
@@ -463,5 +488,120 @@ $($files.ToString().TrimEnd())
     return $Destination
 }
 
+function New-PythonAppSigningCertificate {
+    <#
+    .SYNOPSIS
+        A throwaway code-signing certificate for -Subject, made in memory and written as .pfx and .cer; returns its thumbprint.
+    .DESCRIPTION
+        No certificate store is touched, so a developer's run leaves nothing behind. The .pfx is unprotected: delete it once signed.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][string]$Subject,
+        [Parameter(Mandatory)][string]$PfxPath,
+        [Parameter(Mandatory)][string]$CerPath
+    )
+
+    $x509 = 'Security.Cryptography.X509Certificates'
+    $rsa = [Security.Cryptography.RSA]::Create(2048)
+    try {
+        $request = New-Object "$x509.CertificateRequest" $Subject, $rsa, ([Security.Cryptography.HashAlgorithmName]::SHA256), ([Security.Cryptography.RSASignaturePadding]::Pkcs1)
+        $request.CertificateExtensions.Add((New-Object "$x509.X509BasicConstraintsExtension" $false, $false, 0, $true))
+        $request.CertificateExtensions.Add((New-Object "$x509.X509KeyUsageExtension" ([Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature), $true))
+        $codeSigning = [Security.Cryptography.OidCollection]::new()
+        $null = $codeSigning.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3'))
+        $request.CertificateExtensions.Add((New-Object "$x509.X509EnhancedKeyUsageExtension" $codeSigning, $false))
+        $now = [DateTimeOffset]::UtcNow
+        $cert = $request.CreateSelfSigned($now.AddDays(-1), $now.AddYears(1))
+        [IO.File]::WriteAllBytes($PfxPath, $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx))
+        [IO.File]::WriteAllBytes($CerPath, $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+        return $cert.Thumbprint
+    } finally {
+        $rsa.Dispose()
+    }
+}
+
+function New-PythonAppAppxManifest {
+    <#
+    .SYNOPSIS
+        AppxManifest.xml for an MSIX of the bundle: one full-trust console app per script, each with an execution alias.
+    .DESCRIPTION
+        The aliases put the scripts on PATH as the MSI's PATH entry does; only gui_script appears in the Start menu.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][hashtable]$App,
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$Publisher,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    if ($Version -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}$') { throw "MSIX versions here are major.minor.build, with .0 appended; '$Version' is not" }
+    # The manifest's Publisher must equal the signing certificate's subject; a DN special character would need escaping in both.
+    if ($Publisher -notmatch '^CN=[A-Za-z0-9 ._-]+$') { throw "MSIX publisher '$Publisher' must be CN= plus letters, digits, space, '.', '_' or '-'" }
+    $identity = (@($App['publisher'], $App['name']) | ForEach-Object { $_ -replace '[^A-Za-z0-9]', '' }) -join '.'
+    if ($identity.Length -lt 3 -or $identity.Length -gt 50) { throw "MSIX identity '$identity' must be 3 to 50 characters" }
+    $name = $App['name']
+    $shown = Get-PythonAppShown -App $App
+    $about = Protect-PythonAppXml $shown.Description
+    $seen = @{}
+    $apps = foreach ($script in @($App['scripts'])) {
+        $id = $script -replace '[^A-Za-z0-9]', ''
+        if ($id -notmatch '^[A-Za-z]' -or $seen.ContainsKey($id)) { throw "Script '$script' gives MSIX application id '$id', which is not a unique id starting with a letter" }
+        $seen[$id] = $true
+        $isGui = $script -eq $shown.Gui
+        $display = Protect-PythonAppXml $(if ($isGui) { $name } else { $script })
+        $listed = if ($isGui) { '' } else { ' AppListEntry="none"' }
+        $exe = Protect-PythonAppXml "$script.exe"
+        @"
+    <Application Id="$id" Executable="$exe" EntryPoint="Windows.FullTrustApplication" desktop4:Subsystem="console" desktop4:SupportsMultipleInstances="true">
+      <uap:VisualElements DisplayName="$display" Description="$about" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png"$listed />
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="$exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="$exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+"@
+    }
+    $manifest = @"
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 desktop desktop4 rescap">
+  <Identity Name="$identity" Publisher="$(Protect-PythonAppXml $Publisher)" Version="$Version.0" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>$(Protect-PythonAppXml $name)</DisplayName>
+    <PublisherDisplayName>$(Protect-PythonAppXml $App['publisher'])</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>$about</Description>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Applications>
+$(($apps -join "`n").TrimEnd())
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
+"@
+    Set-Content -LiteralPath $Destination -Value $manifest -Encoding utf8NoBOM
+    return $Destination
+}
+
 Export-ModuleMember -Function Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
-    New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-PythonAppWxs
+    New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-PythonAppWxs,
+    New-PythonAppSigningCertificate, New-PythonAppAppxManifest

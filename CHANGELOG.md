@@ -7,6 +7,33 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - Python app packages: MSIX, Linux aarch64, and one chain ORT per Windows bundle
+
+- **MSIX.** `New-PythonAppPackage.ps1` builds it by default, next to the zip and MSI.
+  - `New-PythonAppAppxManifest` gives each script a full-trust console app with its own
+    execution alias, so the CLIs reach `PATH` as the MSI's PATH entry does. Only `gui_script`
+    is listed in Start.
+  - `makeappx` packs the bundle in place through a mapping file.
+  - The signature is a test certificate for `CN=<publisher>`, made in memory by
+    `New-PythonAppSigningCertificate`, so no store is touched. Its `.cer` ships beside the MSIX.
+  - Proven in `:winamd64`: the unpacked package starts, and inside the container
+    `signtool verify /pa` passes once the `.cer` is trusted; the root is removed again.
+    makeappx refuses `desktop4:Subsystem="console"` without `SupportsMultipleInstances`
+    (80080204).
+  - Test: `windows/scripts/tests/PythonApp.Msix.Tests.ps1`.
+- **Linux aarch64 builds the bundle and its packages.** `ci_packaging.sh` no longer skips
+  non-x86_64.
+  - Proven under QEMU with the arm64 `:latest`: closure, G6 and self-test pass, and the tar.gz
+    (232 MB) and deb (190 MB) each start once.
+  - That image's chain ORT wheel is `onnxruntime_webgpu`. The AppImage needs a real arm64 host
+    (`qemu-user` cannot load `appimagetool`), which CI's arm64 lane is.
+- **One chain ORT per Windows bundle.** `Copy-ChainOpenCvPackage -SharedDirectory` searches
+  the bundle's own `onnxruntime\capi` first and names it in cv2's `config.py`, instead of
+  copying a second `onnxruntime.dll` and `DirectML.dll` into `cv2\bin`.
+  - Proven in `:winamd64`: `import cv2` succeeds before `onnxruntime` is imported, and G6 and
+    the import walk pass.
+  - The bundle went from 561 to 550 MB.
+
 ## 2026-10-01 - lavapipe gets 8-lane subgroups, the SSIM validate plugin stops blacklisting itself, libunwind is gone from the media closure
 
 For the `:latest` rebuild the owner approved on 2026-10-01. None of it is in a published image yet.

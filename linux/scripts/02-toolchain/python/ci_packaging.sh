@@ -65,10 +65,6 @@ ls -la dist || true
 
 # packaging/app.json opts a consumer in: the app bundle, then its packages, each started once (docs/python-app-bundles.md § Packages).
 if [ -f packaging/app.json ]; then
-  if [ "$(uname -m)" = x86_64 ]; then
-    bash "$SCRIPT_DIR/../../06-packaging/python-app-bundle.sh" --wheel-dir dist --out-dir build/app-bundle
-    bash "$SCRIPT_DIR/../../06-packaging/python-app-package.sh" --bundle build/app-bundle --out-dir dist/packages
-  else
-    warn "packaging/app.json: the app bundle is proven on x86_64 only so far, so $(uname -m) ships wheels alone"
-  fi
+  bash "$SCRIPT_DIR/../../06-packaging/python-app-bundle.sh" --wheel-dir dist --out-dir build/app-bundle
+  bash "$SCRIPT_DIR/../../06-packaging/python-app-package.sh" --bundle build/app-bundle --out-dir dist/packages
 fi

@@ -89,17 +89,43 @@ Describe 'Sync-UvChainOpenCv' {
     }
 }
 
+# Copies the fixture's cv2 for a bundle (FFmpeg only on PATH) and returns the copied DLL names plus the written config.
+function script:Invoke-BundleCopy {
+    param([Parameter(Mandatory)][pscustomobject]$Fixture, [string[]]$SharedDirectory = @())
+    $copied = Invoke-WithEnv @{ PATH = "$($Fixture.FfBin);$env:SystemRoot\System32"; ONNX_ROOT = $null } {
+        @(Copy-ChainOpenCvPackage -SitePackages $Fixture.Site -Source $Fixture.Source -RuntimeRoot $Fixture.Root -SharedDirectory $SharedDirectory)
+    }
+    return [pscustomobject]@{
+        Names  = (@($copied | ForEach-Object { Split-Path $_ -Leaf }) | Sort-Object) -join ','
+        Config = Get-Content -LiteralPath (Join-Path $Fixture.Site 'cv2\config.py') -Raw
+    }
+}
+
 Describe 'Copy-ChainOpenCvPackage for a bundle' {
 
     It 'copies the whole closure, FFmpeg included, into cv2\bin and loads from there' {
         Invoke-InTestDir { param($d)
             $f = New-ChainOpenCvFixture -Dir $d
-            $copied = Invoke-WithEnv @{ PATH = "$($f.FfBin);$env:SystemRoot\System32"; ONNX_ROOT = $null } {
-                @(Copy-ChainOpenCvPackage -SitePackages $f.Site -Source $f.Source -RuntimeRoot $f.Root)
+            $r = Invoke-BundleCopy -Fixture $f
+            Assert-Equal 'avcodec-63.dll,avutil-61.dll,opencv_world500.dll' $r.Names 'the closure, no unrelated DLL'
+            Assert-Match "os\.path\.join\(LOADER_DIR, 'bin'\)" $r.Config 'relative, so the bundle relocates'
+            Assert-False $r.Config.Contains($f.Root) 'no image path'
+        }
+    }
+
+    It 'loads ORT from the bundle''s own onnxruntime\capi instead of copying a second chain ORT into cv2\bin' {
+        Invoke-InTestDir { param($d)
+            $f = New-ChainOpenCvFixture -Dir $d
+            New-OrtTestPe -Path (Join-Path $f.OcvBin 'opencv_world500.dll') -Import 'avcodec-63.dll', 'onnxruntime.dll'
+            $capi = Join-Path $f.Site 'onnxruntime\capi'
+            foreach ($ortHome in (Join-Path $f.Root 'bin'), $capi) {
+                New-OrtTestPe -Path (Join-Path $ortHome 'onnxruntime.dll') -Import 'DirectML.dll'
+                New-OrtTestPe -Path (Join-Path $ortHome 'DirectML.dll')
             }
-            Assert-Equal 'avcodec-63.dll,avutil-61.dll,opencv_world500.dll' ((@($copied | ForEach-Object { Split-Path $_ -Leaf }) | Sort-Object) -join ',') 'the closure, no unrelated DLL'
-            Assert-Match "os\.path\.join\(LOADER_DIR, 'bin'\)" (Get-Content -LiteralPath (Join-Path $f.Site 'cv2\config.py') -Raw) 'relative, so the bundle relocates'
-            Assert-False ((Get-Content -LiteralPath (Join-Path $f.Site 'cv2\config.py') -Raw).Contains($f.Root)) 'no image path'
+            $r = Invoke-BundleCopy -Fixture $f -SharedDirectory $capi
+            Assert-Equal 'avcodec-63.dll,avutil-61.dll,opencv_world500.dll' $r.Names 'no ORT or DirectML copy'
+            Assert-False (Test-Path -LiteralPath (Join-Path $f.Site 'cv2\bin\onnxruntime.dll')) 'cv2\bin holds no onnxruntime.dll'
+            Assert-True $r.Config.Contains("os.path.normpath(os.path.join(LOADER_DIR, r'..\onnxruntime\capi'))") "capi, relative: $($r.Config)"
         }
     }
 }
