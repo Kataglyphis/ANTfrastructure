@@ -120,6 +120,9 @@ mutation-family:compiler-llvm-tools
 # suite that must then go red.
 # docs/dependency-updates.md#the-mechanics-of-a-refusal
 mutation-family:renovate
+# The shared preset's CMake matchStrings (default.json) and the CMake reader --apply audits with:
+# no slug owns either. Proof: linux/scripts/tests/test-renovate-cmake.sh.
+mutation-family:renovate-cmake
 
 # shared-config owns sync-shared-config.sh, which READS this manifest but never
 # names it on the preflight command line - the hub uses --ignore, not a manifest,

@@ -183,6 +183,27 @@ None open.
          a mutation entry per manager.
       6. Prove it with a report run over the fleet (`Invoke-Renovate.ps1 -Recurse`, report-first:
          `-Apply` only on the owner's word), each dep listed with its current and newest version.
+
+      **Status 2026-10-01:** the hub part (steps 1, 3, 4, 5) is in.
+      - Step 1, read-only over the local checkouts: no `CPMAddPackage` anywhere. The pins
+        are the ones above, plus BeschleunigerBallett's vendored KTX at `GIT_TAG main`,
+        which the preset skips.
+      - Step 3, changed: a commit archive is **skipped**, not tracked by digest. The preset
+        reads `archive/refs/tags/<tag>` instead, so googletest moves to a release tag.
+      - Step 4, changed: a tag archive behind `URL_HASH` is **refused**, not re-hashed.
+      - Docs: [`docs/dependency-updates.md`](docs/dependency-updates.md) § CMake dependencies.
+        Test: `linux/scripts/tests/test-renovate-cmake.sh`, mutations `renovate-cmake.*`.
+
+      Left, in the consumers, after this hub commit is on the default branch (Renovate reads
+      the preset from there):
+      - Step 2: pin corrosion `GIT_TAG master` to a release tag (AccelerANTgine, BeschleunigerBallett).
+      - Move googletest from the commit archive to `archive/refs/tags/v1.17.0.zip`: AccelerANTgine
+        and BeschleunigerBallett `third_party/CMakeLists.txt`, OmniAccelerANT's plugin `linux/`
+        and `windows/CMakeLists.txt`.
+      - Drop the CMake regex managers in AccelerANTgine's and BeschleunigerBallett's
+        `.github/renovate.json` (keep BeschleunigerBallett's `.gitmodules` FUZZTEST one). With
+        both in place every pin they cover is reported twice, and `--apply` refuses it.
+      - Step 6: the fleet report run with `--managers custom.regex`.
 - [b] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
       (phases 1–3) done 2026-10-01, the GPU gate passed the same day; phases 4 and 6 are in
       the source, off by default (`ENABLE_DEEPSTREAM=false`). Blocked on one thing outside the

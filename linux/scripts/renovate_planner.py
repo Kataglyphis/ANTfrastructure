@@ -14,10 +14,8 @@ Subcommands (argv[1]); every line of output is tab-separated:
   edit     <root> <plan.json>                    write, then audit the file or put it back
 """
 import collections
-import fnmatch
 import json
 import os
-import re
 import stat
 import sys
 import tempfile
@@ -97,16 +95,9 @@ def resolved_config(log):
     return out
 
 
-def _compile(pat):
-    """A Renovate matcher: /regex/ as written, anything else as a glob."""
-    if len(pat) > 1 and pat.startswith("/") and pat.endswith("/"):
-        return re.compile(pat[1:-1])
-    return re.compile(fnmatch.translate(pat))
-
-
 def _first_match(pats, files):
     for pat in pats or []:
-        rx = _compile(pat)
+        rx = renovate_locator.renovate_pattern(pat)
         for f in files:
             if rx.search(f):
                 return f
@@ -156,7 +147,7 @@ def _one(pat, val):
     if neg:
         pat = pat[1:]
     if pat.startswith("/") or "*" in pat or "?" in pat:
-        hit = bool(_compile(pat).search(val))
+        hit = bool(renovate_locator.renovate_pattern(pat).search(val))
     else:
         hit = pat == val
     return hit != neg
@@ -232,8 +223,9 @@ def plan_group(group, edits):
     except OSError as exc:
         emit("SKIP", row, DASH, "cannot read %s: %s" % (row["file"], exc))
         return
+    syntax = renovate_locator.syntax(row["manager"], row["file"])
     kind, found, why = renovate_locator.resolve(
-        row["manager"], lines, row["dep"], old, new, len(group))
+        syntax, lines, row["dep"], old, new, len(group))
     if kind == "REFUSE":
         emit("SKIP", row, DASH, why)
         return
@@ -242,7 +234,7 @@ def plan_group(group, edits):
         return
     # A real parser's second opinion, here so an unsanctioned group is skipped while the rest applies.
     _, _, why = renovate_audit.expected(
-        row["manager"], "\n".join(lines), [(row["dep"], old, new, len(group))])
+        syntax, "\n".join(lines), [(row["dep"], old, new, len(group))])
     if why:
         emit("SKIP", row, DASH, why)
         return
@@ -349,11 +341,11 @@ def _manager_of(steps, rel):
 
 def _sanction(rel, target):
     """What a real parser lets this run change in one file; per file, so two groups claiming one value fail."""
-    target["manager"] = _manager_of(target["steps"], rel)
+    target["syntax"] = renovate_locator.syntax(_manager_of(target["steps"], rel), rel)
     target["before"] = "\n".join(target["lines"])
     target["groups"] = groups_of(target["steps"])
     _, _, why = renovate_audit.expected(
-        target["manager"], target["before"], target["groups"])
+        target["syntax"], target["before"], target["groups"])
     if why:
         sys.exit("%s: %s. Nothing written, in any file" % (rel, why))
 
@@ -369,7 +361,7 @@ def _edited(target):
 def predict(files):
     """The post-write audit over the text the write would produce; `edit` still proves the file off disk."""
     for rel, target in files.items():
-        why = renovate_audit.audit(target["manager"], target["before"],
+        why = renovate_audit.audit(target["syntax"], target["before"],
                                    _edited(target), target["groups"])
         if why:
             sys.exit("%s: %s. Nothing written, in any file" % (rel, why))
@@ -394,7 +386,7 @@ def _audited(files):
     """Why each written file, read back off disk and re-parsed, is not what the plan claimed."""
     out = []
     for rel, target in files.items():
-        why = renovate_audit.audit(target["manager"], target["before"],
+        why = renovate_audit.audit(target["syntax"], target["before"],
                                    "\n".join(_read_lines(target["path"])),
                                    target["groups"])
         if why:

@@ -57,10 +57,12 @@ agent must not rediscover the hard way:
   detector. The apply half is this repo's own code: git for gitlinks, a located
   single-line rewrite for cargo/pub/npm/pep621/pip_requirements/pre-commit/
   github-actions (a manager with no locator, `dockerfile` among them, is refused
-  by name), and `custom.regex` over `versions.env` for the
+  by name), `custom.regex` over `versions.env` for the
   self-contained keys its file-scoped packageRule clears (the rest stay
-  approval-gated), then that ecosystem's own lock tool -- `versions.env` has none
-  this script runs: its coupled checksums stay approval-gated and move with
+  approval-gated), and `custom.regex` over CMake files for the forms the shared
+  preset reads ([CMake dependencies](#cmake-dependencies)), then that ecosystem's
+  own lock tool -- `versions.env` and CMake have none this script runs:
+  `versions.env`'s coupled checksums stay approval-gated and move with
   `bump_versions.py`, by hand.
 * **It DOES resolve `extends`** - measured 2026-09-09 on 44.71.0, against the
   older claim in this repo's own docs. The shared preset and every
@@ -112,7 +114,8 @@ Every repo here carries a `.github/renovate.json` that extends the shared preset
 at this repository's [`default.json`](../default.json). That preset exists for one
 line — enabling the `git-submodules` manager, which Renovate **disables by
 default**, and which is why no gitlink in this family has ever been watched by
-anything.
+anything. Since 2026-10-01 it also carries the CMake managers
+([CMake dependencies](#cmake-dependencies)).
 
 None of it runs on GitHub. **The Renovate GitHub App is installed on none of
 these repositories, and it is not going to be** — owner decision, 2026-09-09:
@@ -190,6 +193,7 @@ it is only ever confirmed on a line that was already located.**
 | `cargo` | a key in `[dependencies]` / `[dev-dependencies]` / `[build-dependencies]` — optionally under `[workspace.…]` or `[target.<cfg>.…]`, optionally one segment deeper for one crate (`[dependencies.serde]`) | the bare string, or the inline table's `version` |
 | `npm` | the dep's key inside a **top-level** dependencies object of `package.json` | the version string |
 | `custom.regex` / `regex` | the `KEY=` line under a `# renovate: … depName=<dep>` hint (blank lines and one `# noforward` may sit between) | the value after `=` |
+| `custom.regex` / `regex` over `CMakeLists.txt` / `*.cmake` | a match of one of the shared preset's own CMake `matchStrings` whose `depName` is the dep ([CMake dependencies](#cmake-dependencies)) | the `currentValue` that match captured |
 
 The three "what counts" columns that read oddly are the ones that were wrong.
 A `uses:` is not a step's just because the line spells `uses:` — a `with:` input
@@ -1868,6 +1872,117 @@ write, the file-scoped refusal and the unreadable-hint refusal; it deliberately
 does NOT cover which keys belong in the allowlist (that is the policy above)
 nor any `*_SHA256` refresh.
 
+## CMake dependencies
+
+Renovate has no CMake manager, and until 2026-10-01 the shared preset had no
+`customManagers` at all. So no `FetchContent_Declare` in the family was seen by
+anything, except where a consumer wrote its own regex manager (AccelerANTgine and
+BeschleunigerBallett did, for their `third_party/CMakeLists.txt`). Since CON46 the
+preset in [`default.json`](../default.json) carries two regex managers over every
+`CMakeLists.txt` and `*.cmake`, and every consumer inherits them through its
+`extends` line.
+
+### The forms the preset reads
+
+| Form | Example | Reported as |
+|---|---|---|
+| GitHub URL, then the tag | `GIT_REPOSITORY https://github.com/microsoft/GSL` then `GIT_TAG "v4.2.1"` | `github-tags`, `microsoft/GSL`, `v4.2.1` |
+| Tag archive | `URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip` (or `.tar.gz`) | `github-tags`, `google/googletest`, `v1.17.0` |
+| Annotation, then `GIT_TAG` | `# renovate: datasource=github-tags depName=abseil/abseil-cpp versioning=loose` then `GIT_TAG 20260526.0` | what the annotation names |
+| Annotation, then `set()` | the same hint, then `set(ABSL_TAG 20260526.0)` | what the annotation names |
+| Annotation, then a quoted value | `# renovate: datasource=crate depName=cxxbridge-cmd versioning=semver` then `"1.0.191"` | what the annotation names |
+
+The URL forms take `depName` from the URL (`.git` dropped; `git@github.com:` works
+too).
+
+**Only a dotted value is a version in the URL forms.** `GIT_TAG master`,
+`GIT_TAG main`, a commit SHA and `${VAR}` are skipped. A branch is not
+reproducible and a SHA has no order to follow, so reporting either would propose
+a bogus update. A commit archive (`archive/<sha>.zip`) is skipped for the same
+reason. Pin such a dependency to a tag first.
+
+### The annotation convention
+
+One line, exactly this shape, directly above the line that carries the value:
+
+```cmake
+# renovate: datasource=<ds> depName=<dep> [extractVersion=<re>] [versioning=<v>]
+```
+
+- The keys are single-space separated and in this order, as in `versions.env`.
+- The value line comes **next**. A blank line or another comment in between
+  breaks the match, and the pin is silent again.
+- The value line is `GIT_TAG <v>`, `set(<NAME> <v>` or a quoted `"<v>"` alone on
+  its line (the multi-line `set()` case). `<v>` may be quoted in the first two.
+- Use it when a URL form cannot read the pin: an indirection through `set()`, a
+  non-GitHub host, a crate, or a comment block between `GIT_REPOSITORY` and
+  `GIT_TAG`.
+
+### One row per pin
+
+Renovate's regex manager does **not** de-duplicate. Every `matchString` match is a
+row (`handleAny` in Renovate 44.82.0), and two custom managers over the same file
+both report it. Two rows for one pin make `--apply` refuse the pin as ambiguous.
+
+So the forms are built to exclude each other. The URL form allows only whitespace
+between the URL and `GIT_TAG`. A comment there, which an annotation is, hands the
+pin to the annotated form. For the same reason a consumer must **drop its own
+CMake regex manager** once the preset reads that file. Otherwise every pin it
+covers is reported twice.
+
+### Not covered
+
+- `GIT_TAG` that does not directly follow `GIT_REPOSITORY` (another argument
+  between).
+- `CPMAddPackage`, and any host other than GitHub, unless annotated.
+- `archive/<tag>.zip` without `refs/tags/`. Use the `refs/tags/` URL, which names
+  a tag without ambiguity.
+
+### Naming the manager
+
+Custom managers are never auto-detected. Name them:
+
+```bash
+third_party/ANTfrastructure/linux/scripts/renovate-local.sh --managers custom.regex .
+```
+
+Add `custom.regex` to an explicit `--managers` list the same way.
+
+### What `--apply` writes, and what it refuses
+
+- **Where.** The locator runs the preset's own `matchStrings`
+  (`renovate_locator.find_cmake`). It places exactly the value Renovate read, and
+  never a second copy of the regexes that could drift. It reads `default.json`
+  from the hub checkout it runs from, while Renovate resolves the preset from the
+  hub's default branch. If the two differ, a row the locator cannot place is
+  refused, not guessed.
+- **What it checks.** The audit does not trust those regexes. It reads the file
+  with a CMake tokenizer of its own
+  ([`renovate_cmake.py`](../linux/scripts/renovate_cmake.py)): commands,
+  arguments, quoted and bracket arguments, comments, and the line each starts on.
+  It finds the declarations from that token stream and requires the edit to move
+  exactly the reported one. A match inside a comment is no declaration, so it is
+  refused.
+- **The syntax follows the file.** The report names the manager `regex` for both
+  `versions.env` and CMake. `renovate_locator.syntax()` picks the reader by file
+  name, so one report can carry both.
+- **A tag archive behind `URL_HASH` or `URL_MD5` is refused**, rc 2, nothing
+  written. The hash describes the old archive, and nothing here downloads the new
+  one to recompute it. Move the URL and its hash together, by hand.
+- **No lockfile.** CMake has none, so nothing runs after the rewrite.
+
+Measured on 2026-10-01 with Renovate 44.82.0's own regex manager and its RE2
+engine: the real AccelerANTgine file reports abseil, GSL and cxxbridge-cmd once
+each, BeschleunigerBallett's reports abseil and GSL, and the googletest commit
+archive, both `GIT_TAG master` and the vendored KTX `GIT_TAG main` report
+nothing. `renovate-config-validator --strict` accepts the preset. The CMake reader
+read all 671 tracked CMake files of the fleet's checkouts without a refusal.
+
+[`test-renovate-cmake.sh`](../linux/scripts/tests/test-renovate-cmake.sh) holds
+the detection of every form and every skip, the RE2 restriction (no lookaround,
+no backreference), each `--apply` form, the `URL_HASH` refusal, the commented
+match, a mixed `versions.env` + CMake report, and a wrong-line plan put back.
+
 ## Where the moving parts live
 
 | Thing | Path |
@@ -1879,6 +1994,7 @@ nor any `*_SHA256` refresh.
 | Report parsing, packageRules, the plan and the write | [`linux/scripts/renovate_planner.py`](../linux/scripts/renovate_planner.py) |
 | Which line declares a dependency | [`linux/scripts/renovate_locator.py`](../linux/scripts/renovate_locator.py) |
 | What the file MEANS, before and after the edit | [`linux/scripts/renovate_audit.py`](../linux/scripts/renovate_audit.py) |
+| CMake read by its own grammar, for that audit | [`linux/scripts/renovate_cmake.py`](../linux/scripts/renovate_cmake.py) |
 | How every renovate script says things: a fatal, a line, a refusal listing | [`linux/scripts/renovate-say.sh`](../linux/scripts/renovate-say.sh) |
 | The consumer wrapper, copied and edited | [`shared/linux/templates/renovate-local.sh`](../shared/linux/templates/renovate-local.sh) |
 | The world the suites run in | [`linux/scripts/tests/renovate-fixtures.sh`](../linux/scripts/tests/renovate-fixtures.sh) |
@@ -1887,6 +2003,7 @@ nor any `*_SHA256` refresh.
 | The fleet: order, duplicates, and one repo failing | [`linux/scripts/tests/test-renovate-fleet.sh`](../linux/scripts/tests/test-renovate-fleet.sh) |
 | Every `# renovate:` line is matched by the regex that reads it | [`linux/scripts/tests/test-renovate-annotations.sh`](../linux/scripts/tests/test-renovate-annotations.sh) |
 | The annotated-env write and its refusals | [`linux/scripts/tests/test-renovate-env.sh`](../linux/scripts/tests/test-renovate-env.sh) |
+| The preset's CMake forms: detection, the skips, the write and its refusals | [`linux/scripts/tests/test-renovate-cmake.sh`](../linux/scripts/tests/test-renovate-cmake.sh) |
 | The suite that lets the locator be wrong and checks the result | [`linux/scripts/tests/test-renovate-audit.sh`](../linux/scripts/tests/test-renovate-audit.sh) |
 | The suite for how a run ENDS: exit codes and signals | [`linux/scripts/tests/test-renovate-exit.sh`](../linux/scripts/tests/test-renovate-exit.sh) |
 | Version pins | [`linux/scripts/01-core/versions.env`](../linux/scripts/01-core/versions.env) |

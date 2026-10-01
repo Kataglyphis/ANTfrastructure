@@ -37,5 +37,32 @@
       "addLabels": ["submodules"],
       "commitMessageTopic": "submodule {{depName}}"
     }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": [
+        "CMake dependencies named by a GitHub URL: GIT_REPOSITORY followed by GIT_TAG, or a tag archive URL. Renovate has no CMake manager. See docs/dependency-updates.md#cmake-dependencies",
+        "Only a dotted value is a version: a branch (master) or a commit SHA is skipped, and a comment between the URL and GIT_TAG leaves the pin to the annotated form below, so no pin is reported twice."
+      ],
+      "managerFilePatterns": ["/(^|/)CMakeLists\\.txt$/", "/\\.cmake$/"],
+      "matchStrings": [
+        "\\bGIT_REPOSITORY\\s+\"?(?:https://github\\.com/|git@github\\.com:)(?<depName>[\\w.-]+/[\\w.-]+?)(?:\\.git)?\"?\\s+GIT_TAG\\s+\"?(?<currentValue>[\\w+-]+(?:\\.[\\w+-]+)+)\"?[\\s)]",
+        "\\bURL\\s+\"?https://github\\.com/(?<depName>[\\w.-]+/[\\w.-]+)/archive/refs/tags/(?<currentValue>[\\w.+-]+?)\\.(?:zip|tar\\.gz)\"?[\\s)]"
+      ],
+      "datasourceTemplate": "github-tags"
+    },
+    {
+      "customType": "regex",
+      "description": [
+        "CMake pins too irregular for the URL forms: a `# renovate: datasource=<ds> depName=<dep> [extractVersion=<re>] [versioning=<v>]` line, and on the very next line `GIT_TAG <v>`, `set(<NAME> <v>` or a quoted \"<v>\". See docs/dependency-updates.md#cmake-dependencies"
+      ],
+      "managerFilePatterns": ["/(^|/)CMakeLists\\.txt$/", "/\\.cmake$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z.-]+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?(?: versioning=(?<versioning>\\S+))?[ \\t]*\\r?\\n[ \\t]*GIT_TAG\\s+\"?(?<currentValue>[\\w.+-]+)\"?[\\s)]",
+        "# renovate: datasource=(?<datasource>[a-z.-]+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?(?: versioning=(?<versioning>\\S+))?[ \\t]*\\r?\\n[ \\t]*[Ss][Ee][Tt]\\s*\\(\\s*[\\w.+-]+\\s+\"?(?<currentValue>[\\w.+-]+)\"?[\\s)]",
+        "# renovate: datasource=(?<datasource>[a-z.-]+) depName=(?<depName>\\S+)(?: extractVersion=(?<extractVersion>\\S+))?(?: versioning=(?<versioning>\\S+))?[ \\t]*\\r?\\n[ \\t]*\"(?<currentValue>[\\w.+-]+)\"[\\s)]"
+      ]
+    }
   ]
 }
