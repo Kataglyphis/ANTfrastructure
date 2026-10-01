@@ -57,8 +57,10 @@ try {
     # Invoke-BuildGate, not Invoke-BuildOptional: Optional records a failure and carries on, so nothing would gate.
     $runAnalyser = {
         param([string]$Name, [string[]]$Argv, [string[]]$Targets)
-        Invoke-BuildGate -Context $script:BuildContext -Name $Name -Script {
-            Invoke-BuildExternal -Context $script:BuildContext -File "uv" `
+        # A local, not $script: -- inside GetNewClosure's module $script:BuildContext is $null, which failed all six gates.
+        $context = $script:BuildContext
+        Invoke-BuildGate -Context $context -Name $Name -Script {
+            Invoke-BuildExternal -Context $context -File "uv" `
                 -Parameters (@("run", "--active") + $Argv + $Targets) | Out-Null
         }.GetNewClosure()
     }

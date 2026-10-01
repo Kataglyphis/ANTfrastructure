@@ -70,6 +70,8 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
 2. **Packages.**
    - `uv export --locked --extra <extras>`, then install into the runtime.
    - The app wheel goes in with `--no-deps`; the compiled wheel wins over the pure one.
+     On Windows it must carry the runtime's ABI tag (`cp314`, or `abi3`). A `cp314t` wheel
+     alone is refused, not swapped for the pure one (`Select-PythonAppWheel`).
    - The PyPI `onnxruntime` is swapped for the chain wheel. See
      [`onnxruntime-single-source.md`](onnxruntime-single-source.md).
 3. **Chain OpenCV** (Windows, `"chain_opencv": true`). The next section explains it.

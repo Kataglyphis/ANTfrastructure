@@ -29,12 +29,13 @@ $null = New-Item -ItemType Directory -Force -Path $WorkDir
 if (Test-Path -LiteralPath $bundle) { Remove-Item -LiteralPath $bundle -Recurse -Force }
 $null = New-Item -ItemType Directory -Force -Path $bundle
 
-# The compiled wheel when there is one: the bundle ships binaries, not source.
+# The compiled wheel for the runtime's ABI when there is one: the bundle ships binaries, not source.
 $wheels = @(Get-ChildItem -LiteralPath (Resolve-PythonAppPath $RepoRoot $WheelDir) -Filter '*.whl' -File |
     Where-Object { (($_.Name -split '-')[0] -replace '[-_.]+', '_').ToLowerInvariant() -eq ($app['distribution'] -replace '[-_.]+', '_').ToLowerInvariant() })
-$appWheel = @($wheels | Where-Object { $_.Name -match '-win_amd64\.whl$' }) + @($wheels | Where-Object { $_.Name -match '-none-any\.whl$' }) | Select-Object -First 1
-if (-not $appWheel) { throw "No $($app['distribution']) wheel in $WheelDir; build it first (Invoke-CiPackaging.ps1)" }
-Write-Host "App wheel: $($appWheel.Name)"
+if ($wheels.Count -eq 0) { throw "No $($app['distribution']) wheel in $WheelDir; build it first (Invoke-CiPackaging.ps1)" }
+$abiTag = Get-PythonAbiTag -Python (Join-Path $PythonBuild 'python.exe')
+$appWheel = Select-PythonAppWheel -Wheels $wheels -AbiTag $abiTag
+Write-Host "App wheel: $($appWheel.Name) (runtime ABI $abiTag)"
 
 if (-not $OrtWheelDir) { $OrtWheelDir = @($env:ORT_CHAIN_WHEEL_DIR, $env:PYTHON_WHEELS, 'C:\runtime\wheels') | Where-Object { $_ } | Select-Object -First 1 }
 $ortWheel = @(Get-ChildItem -LiteralPath $OrtWheelDir -Filter 'onnxruntime-*.whl' -File)

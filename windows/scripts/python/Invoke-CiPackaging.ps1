@@ -25,6 +25,8 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot -RepoRoot $RepoRoot
 
 $script:BuildContext = New-CiSession -RepoRoot $repoRoot -WithUvDelegates
+# uv build picks its own interpreter, not the venv's: a plain 3.14 built OrchestrANT's wheel as cp314t.
+$buildArgs = @('build', '--python', (Get-UvPythonRequest -Version $PythonVersion))
 
 Write-CiLog "Using Python version: $PythonVersion"
 
@@ -36,7 +38,7 @@ try {
 
         try {
             Sync-UvProjectDependencies -NoBuildIsolationPackageWxPython
-            Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @("build") | Out-Null
+            Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters $buildArgs | Out-Null
         } finally {
             Remove-UvProjectEnvironment -EnvPath $envPath -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning
         }
@@ -51,7 +53,7 @@ try {
 
         try {
             Sync-UvProjectDependencies
-            Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @("build") | Out-Null
+            Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters $buildArgs | Out-Null
         } finally {
             Remove-UvProjectEnvironment -EnvPath $envPath -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning
         }
