@@ -340,9 +340,13 @@ is the same file an x64 lane uses with `target-arch: amd64`:
      self-contained, since the runner has no checkout. A consumer's build copies it and a
      `tests.json` into the test directory. Each entry names one binary and how to count it:
      `gtest` from googletest's `[  PASSED  ]`/`[  FAILED  ]`/`[  SKIPPED ]` summary, `cargo`
-     from libtest's `test result:` lines, `exitcode` as one test. A failing test is counted,
-     not thrown, so the line always prints. A missing binary or an unreadable summary is an
-     error.
+     from libtest's `test result:` lines, `pytest` from pytest's final `== N passed … ==` line
+     (errors count as failures, xfails as skips), `exitcode` as one test. A failing test is
+     counted, not thrown, so the line always prints. A missing binary or an unreadable summary
+     is an error.
+   - **A test tree with no binaries** sets `test-arch-gate-min-inspected: 0`. That fits a Python
+     suite that the product's own `python.exe` runs. The gate still refuses any non-arm64 PE file
+     in it, but needs none, and runs no import walk, since its DLLs live in the product tree.
    - A lane is renamed `Windows arm64 · cross build + test` only once its tests gate.
 
 Three inputs serve the x64 lanes that moved onto the same file (the family's next sharing step,

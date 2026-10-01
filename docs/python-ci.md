@@ -279,8 +279,9 @@ ORT leaves the store empty.
 **A leg on another interpreter.** Inside our images an ORT project's legs run on the image
 interpreter. Two remedies work on both lanes: drop the other legs (`test-python-versions`,
 or the consumer's `$PythonVersions`), or list them in `EXPERIMENTAL_PYTHON_VERSIONS`, so a
-failed sync warns instead of failing the matrix. The reusable workflows pass no env into
-the container, so the consumer's `scripts/linux/ci_tests.sh` wrapper must export it.
+failed sync warns instead of failing the matrix. The reusable workflow passes only
+`PYTEST_PATHS` and `FREE_THREADED_SYNC_EXTRAS` into the container (§ What the test leg runs),
+so the consumer's `scripts/linux/ci_tests.sh` wrapper must export it.
 `UV_SYNC_EXTRAS` is NOT a remedy: every sync of the run reads it, so leaving ORT out of
 one leg leaves it out of all of them. The hub defaults are the image interpreter (owner
 decision 2026-09-23; the images carry CPython 3.14 only): `ci_tests.sh` `PY_VERSIONS='3.14'`
@@ -324,6 +325,35 @@ put PyPI's opencv back. It is a no-op outside the image and in a venv without Op
 bundle's variant of the same copy:
 [`python-app-bundles.md` § Windows: the image's OpenCV](python-app-bundles.md#windows-the-images-opencv-not-pypis).
 Test: `windows/scripts/tests/Uv.ChainOpenCv.Tests.ps1`.
+
+## What the test leg runs
+
+**The project's own `testpaths`.** `ci_tests.sh` passes no path to pytest unless
+`PYTEST_PATHS` (the `test-paths` input, comma-separated) names some, so pytest reads the
+consumer's `testpaths`. It used to hard-code `tests/unit`. When WebDavClient gained its
+arm64 and Windows lanes (2025-10-20) every lane narrowed to that directory, and its six
+WebDAV client tests and the integration test ran on no lane until 2026-10-01. Windows
+drivers live in the consumers (`scripts/windows/Build-Windows.ps1`) and must not
+hard-code a subdirectory either.
+
+**A free-threaded leg that gates.** `3.14t` sits in `EXPERIMENTAL_PYTHON_VERSIONS` by
+default, because `--all-extras` pulls in wheels that only exist for the GIL build
+(onnxruntime-genai-cuda, ai-edge-litert, atheris, bcrypt 4). Measured 2026-10-01, that leg
+synced nothing and ran no test on any lane of OrchestrANT or WebDavClient, while every job
+stayed green. The `free-threaded-extras` input (`FREE_THREADED_SYNC_EXTRAS`) fixes that:
+
+- **Set:** a leg whose version ends in `t` syncs only those extras (`test`, say) plus the
+  core dependencies, and gates like any other leg.
+- **Empty:** the leg stays experimental. A failed venv, sync or test run then prints a
+  `::warning title=Python <v> not tested::` annotation, so the run's summary shows it.
+- **ORT:** a core set without ORT never meets the chain ORT's ABI check below (Trap 3). A
+  test that needs an extra the leg does not install must skip, with
+  `pytest.importorskip`.
+
+Tests: `linux/scripts/tests/test-python-ci-defaults.sh`, mutations
+`python.ci-tests-runs-the-configured-testpaths`,
+`python.ci-tests-free-threaded-leg-syncs-its-own-extras` and
+`python.ci-tests-experimental-sync-failure-is-annotated`.
 
 ## Free-threaded and GIL legs in one container
 

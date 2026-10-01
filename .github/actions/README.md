@@ -76,7 +76,8 @@ It stops after the pull on purpose: what follows differs per lane. Since
 one); a lane with more steps than that calls the actions itself
 (BeschleunigerBallett's and OmniAccelerANT's `windows-x64.yml`). For an arm64 cross lane,
 `test-artifact-dir` and `test-command` (CON43) carry staged tests to the `windows-11-arm`
-run job, arch-gated like the product. The lane must print one
+run job, arch-gated like the product (`test-arch-gate-min-inspected: 0` for a pure-Python test
+tree). The lane must print one
 `TESTS: passed=<n> failed=<n> skipped=<n>` line, which `windows/scripts/build/Invoke-StagedTests.ps1`
 writes. See
 [`docs/windows-cross-builds.md` § Consumer cross lanes](../../docs/windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml).

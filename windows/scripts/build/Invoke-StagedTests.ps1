@@ -9,8 +9,9 @@
 .DESCRIPTION
     Self-contained on purpose: the arm64 runner has no checkout, so a consumer's build copies this script and its
     tests.json into the test-artifact-dir. Each entry is { "exe": "<path relative to the manifest>", "args": [...],
-    "kind": "gtest" | "cargo" | "exitcode", "skip_pattern": "<regex>" }. gtest and cargo are counted from their own
-    summaries; an exitcode entry is one test. skip_pattern (optional) names the line a test prints when it skips
+    "kind": "gtest" | "cargo" | "pytest" | "exitcode", "skip_pattern": "<regex>" }. gtest, cargo and pytest are
+    counted from their own summaries (a pytest exe is the product's python.exe with "-m pytest" in args); an
+    exitcode entry is one test. skip_pattern (optional) names the line a test prints when it skips
     itself, which its framework counts as passed (a wgpu test without an adapter): each match moves one test from
     passed to skipped. A failing test is counted, not thrown, so the verdict line always prints; a missing binary
     or a summary that cannot be read is an error.
@@ -49,8 +50,16 @@ function Get-StagedTestCount {
                 Add-StagedCount $tally -Passed $g[1].Value -Failed $g[2].Value -Skipped $g[3].Value
             }
         }
+        'pytest' {
+            # The final "== 928 passed, 31 skipped in 9.1s ==" line; errors count as failures, xfails as skips.
+            $hit = @($Lines | Select-String -Pattern '^=+ .*\b(passed|failed|skipped|errors?|no tests ran)\b.* in [\d.]+s') | Select-Object -Last 1
+            if (-not $hit) { throw "no pytest summary ('== N passed ... in Ns ==') in its output" }
+            $n = @{}
+            foreach ($m in [regex]::Matches($hit.Line, '(\d+) (\w+)')) { $n[$m.Groups[2].Value] = [int]$m.Groups[1].Value }
+            Add-StagedCount $tally -Passed ($n['passed'] + $n['xpassed']) -Failed ($n['failed'] + $n['error'] + $n['errors']) -Skipped ($n['skipped'] + $n['xfailed'])
+        }
         'exitcode' { Add-StagedCount $tally -Passed ([int]($ExitCode -eq 0)) -Failed ([int]($ExitCode -ne 0)) }
-        default { throw "unknown test kind '$Kind' (gtest, cargo, exitcode)" }
+        default { throw "unknown test kind '$Kind' (gtest, cargo, pytest, exitcode)" }
     }
     # A crash after a clean summary, or a gtest exit 1 with no FAILED line, still counts as one failure.
     if ($ExitCode -ne 0 -and $tally.Failed -eq 0) { $tally.Failed = 1 }

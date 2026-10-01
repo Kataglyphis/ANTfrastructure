@@ -106,6 +106,15 @@ on:
         required: false
         type: string
         default: ''
+      test-arch-gate-min-inspected:
+        description: >-
+          arm64 only: the arch gate's -MinInspected floor for test-artifact-dir. 0 is for a
+          test tree with no binaries of its own (a Python suite run by the product's
+          interpreter): any PE file in it must still be arm64, but none is required and no
+          import walk runs, since its DLLs come from the product tree.
+        required: false
+        type: number
+        default: 1
       timeout-minutes:
         description: Time limit of the build job.
         required: false
@@ -286,7 +295,7 @@ jobs:
             -ImportWalk
 
       - name: Arch gate (arm64 test tree)
-        if: ${{ inputs.target-arch == 'arm64' && inputs.test-artifact-dir != '' }}
+        if: ${{ inputs.target-arch == 'arm64' && inputs.test-artifact-dir != '' && inputs.test-arch-gate-min-inspected > 0 }}
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
         with:
           target-arch: ${{ inputs.target-arch }}
@@ -297,8 +306,23 @@ jobs:
             -Arch
             arm64
             -MinInspected
-            1
+            ${{ inputs.test-arch-gate-min-inspected }}
             -ImportWalk
+
+      - name: Arch gate (arm64 test tree without binaries)
+        if: ${{ inputs.target-arch == 'arm64' && inputs.test-artifact-dir != '' && inputs.test-arch-gate-min-inspected == 0 }}
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
+        with:
+          target-arch: ${{ inputs.target-arch }}
+          file: C:\ws\third_party\ANTfrastructure\windows\scripts\build\Test-TargetArch.ps1
+          file-args: |
+            -Path
+            C:\ws\${{ inputs.test-artifact-dir }}
+            -Arch
+            arm64
+            -MinInspected
+            0
+            -AllowEmptyTree
 
       - name: Upload the product
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
