@@ -48,14 +48,15 @@ try {
     Invoke-BuildStep -Context $script:BuildContext -StepName "Packaging (Windows binaries)" -Script {
         Write-CiLog "=== Packaging (Windows binaries) ==="
         $env:CYTHONIZE = "True"
-        $pythonExe = "$(& uv python find $pythonRequest)".Trim()
-        if ($LASTEXITCODE -ne 0 -or -not $pythonExe) { throw "uv python find $pythonRequest failed (exit $LASTEXITCODE)" }
-        $pythonDir = Split-Path -Parent $pythonExe
-        # The image's CPython is an in-tree build: python3XY.lib sits beside python.exe, where setuptools never looks (LNK1104).
-        if (Get-ChildItem -LiteralPath $pythonDir -Filter 'python3*.lib' -File) { $env:LIB = "$pythonDir;$env:LIB" }
 
         $envPath = Join-Path $repoRoot ".venv-packaging-binaries"
         New-UvProjectEnvironment -Workspace $repoRoot -PythonVersion $PythonVersion -EnvName ".venv-packaging-binaries" -CommandRunner $script:UvCommandRunner -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning | Out-Null
+        # The venv's base interpreter, which the venv step installs when the host lacks it.
+        $homeLine = @(Get-Content -LiteralPath (Join-Path $envPath 'pyvenv.cfg') | Where-Object { $_ -match '^home\s*=' })
+        if ($homeLine.Count -ne 1) { throw "$envPath\pyvenv.cfg names no single home interpreter" }
+        $pythonDir = ($homeLine[0] -replace '^home\s*=\s*', '').Trim()
+        # The image's CPython is an in-tree build: python3XY.lib sits beside python.exe, where setuptools never looks (LNK1104).
+        if (Get-ChildItem -LiteralPath $pythonDir -Filter 'python3*.lib' -File) { $env:LIB = "$pythonDir;$env:LIB" }
 
         try {
             Sync-UvProjectDependencies

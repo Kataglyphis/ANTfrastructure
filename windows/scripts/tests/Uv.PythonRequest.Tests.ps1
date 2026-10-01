@@ -17,3 +17,33 @@ Describe 'Get-UvPythonRequest' {
         }
     }
 }
+
+Describe 'New-UvProjectEnvironment' {
+
+    # The uv calls New-UvProjectEnvironment makes for -Version when the finder answers -Found.
+    function script:Get-UvCalls {
+        param([Parameter(Mandatory)][string]$Version, [bool]$Found)
+        $state = @{ Asked = 0; Calls = @() }
+        $runner = { param($exe, $argv) $state.Calls += "$argv" }.GetNewClosure()
+        $finder = { param($request) $state.Asked++; return $Found }.GetNewClosure()
+        Invoke-InTestDir { param($d)
+            $null = New-UvProjectEnvironment -Workspace $d -PythonVersion $Version -EnvName '.venv' -CommandRunner $runner -PythonFinder $finder
+        }
+        $env:UV_PROJECT_ENVIRONMENT = $null
+        return [pscustomobject]$state
+    }
+
+    It 'installs a version uv cannot find before asking for its GIL build, since uv downloads nothing for +gil' {
+        $r = Get-UvCalls -Version '3.12' -Found $false
+        Assert-Equal 2 $r.Calls.Count 'install, then venv'
+        Assert-Equal 'python install 3.12' $r.Calls[0] 'the bare version, which uv can download'
+        Assert-Match '^venv --python 3\.12\+gil --clear ' $r.Calls[1] 'then the GIL request'
+    }
+
+    It 'installs nothing when uv finds the interpreter, and never asks for a free-threaded request' {
+        $found = Get-UvCalls -Version '3.14' -Found $true
+        Assert-Equal 1 $found.Calls.Count 'the venv alone'
+        $ft = Get-UvCalls -Version '3.14t' -Found $false
+        Assert-Equal "0|venv --python 3.14t" "$($ft.Asked)|$(($ft.Calls[0] -split ' --clear')[0])" 'no find, no install, the request unchanged'
+    }
+}

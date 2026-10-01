@@ -7,6 +7,21 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - Windows uv venvs install a missing version before asking for its GIL build
+
+- **Fixed a regression from 88e27ab9.** A version the host lacked stopped the venv:
+  `New-UvProjectEnvironment` asks for `X.Y+gil`, and uv downloads nothing for that request.
+  - OmniAccelerANT's CMake format gate, which wants 3.12, failed with `No interpreter found
+    for Python 3.12+gil` on its first run with hub 709d09f3.
+  - The function now runs `uv python install X.Y` first when `uv python find` comes back
+    empty, as Linux's `uv_ensure_python_available` does.
+  - Measured in `:winamd64`: 3.12 is installed and its venv is GIL. 3.14 keeps the image's
+    `C:\temp\cpython`.
+  - Test: `windows/scripts/tests/Uv.PythonRequest.Tests.ps1`.
+- `Invoke-CiPackaging.ps1` reads the binaries venv's base interpreter from its `pyvenv.cfg`,
+  after that venv exists, instead of asking `uv python find` before it. The `LIB` fix then
+  holds for a version the venv step had to install.
+
 ## 2026-10-01 - Python app packages: MSIX, Linux aarch64, and one chain ORT per Windows bundle
 
 - **MSIX.** `New-PythonAppPackage.ps1` builds it by default, next to the zip and MSI.
