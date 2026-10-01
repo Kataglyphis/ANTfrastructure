@@ -49,6 +49,17 @@ Describe 'Invoke-StagedTests.ps1' {
         }
     }
 
+    It 'moves self-skipped tests from passed to skipped by skip_pattern, never below zero' {
+        Invoke-InTestDir { param($d)
+            $lines = 'SKIP: no GPU adapter available in this environment', 'SKIP: no GPU adapter available in this environment', 'test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out'
+            $null = Invoke-FakeSuite -Dir $d -Tests @(New-FakeTest 'renderer' 'cargo' 0 @($lines))
+            $entries = @(Get-Content -LiteralPath (Join-Path $d 'tests.json') -Raw | ConvertFrom-Json)
+            $entries[0] | Add-Member -NotePropertyName skip_pattern -NotePropertyValue '^SKIP: no GPU adapter'
+            ConvertTo-Json -InputObject $entries | Set-Content -LiteralPath (Join-Path $d 'tests.json') -Encoding utf8
+            Assert-Equal 'TESTS: passed=3 failed=0 skipped=3' (@(& $script:StagedTests -Manifest (Join-Path $d 'tests.json') 6>$null) | Select-Object -Last 1) 'two self-skips plus the ignored one'
+        }
+    }
+
     It 'leaves no failing exit code behind, so the lane reads its verdict from the line' {
         Invoke-InTestDir { param($d)
             $null = Invoke-FakeSuite -Dir $d -Tests @(New-FakeTest 'red_test' 'gtest' 1 '[  PASSED  ] 1 test.', '[  FAILED  ] 1 test, listed below:')
