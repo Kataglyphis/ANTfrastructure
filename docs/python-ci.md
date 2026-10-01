@@ -350,6 +350,13 @@ ignores the venv, so `Invoke-CiPackaging.ps1` passes it the same `--python X.Y+g
 Without that flag, OrchestrANT's only Windows binary wheel was `cp314-cp314t`
 (2026-10-01). The app bundle's GIL runtime could not install it.
 
+The GIL interpreter `uv build` then finds is the image's in-tree build
+(`C:\temp\cpython\PCbuild\amd64`). Its `python314.lib` sits beside `python.exe`, not in a
+`libs\` directory, which is the only place setuptools looks: the Cython link failed with
+`LNK1104: python314.lib`. The free-threaded download had hidden this, because it is a regular
+install. The binaries step therefore puts the interpreter's directory on `LIB` whenever a
+`python3*.lib` sits there.
+
 ## Which Linux image
 
 **`:latest`, on every architecture.** It is a multi-arch index —

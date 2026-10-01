@@ -26,7 +26,8 @@ $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('Windo
 
 $script:BuildContext = New-CiSession -RepoRoot $repoRoot -WithUvDelegates
 # uv build picks its own interpreter, not the venv's: a plain 3.14 built OrchestrANT's wheel as cp314t.
-$buildArgs = @('build', '--python', (Get-UvPythonRequest -Version $PythonVersion))
+$pythonRequest = Get-UvPythonRequest -Version $PythonVersion
+$buildArgs = @('build', '--python', $pythonRequest)
 
 Write-CiLog "Using Python version: $PythonVersion"
 
@@ -47,6 +48,11 @@ try {
     Invoke-BuildStep -Context $script:BuildContext -StepName "Packaging (Windows binaries)" -Script {
         Write-CiLog "=== Packaging (Windows binaries) ==="
         $env:CYTHONIZE = "True"
+        $pythonExe = "$(& uv python find $pythonRequest)".Trim()
+        if ($LASTEXITCODE -ne 0 -or -not $pythonExe) { throw "uv python find $pythonRequest failed (exit $LASTEXITCODE)" }
+        $pythonDir = Split-Path -Parent $pythonExe
+        # The image's CPython is an in-tree build: python3XY.lib sits beside python.exe, where setuptools never looks (LNK1104).
+        if (Get-ChildItem -LiteralPath $pythonDir -Filter 'python3*.lib' -File) { $env:LIB = "$pythonDir;$env:LIB" }
 
         $envPath = Join-Path $repoRoot ".venv-packaging-binaries"
         New-UvProjectEnvironment -Workspace $repoRoot -PythonVersion $PythonVersion -EnvName ".venv-packaging-binaries" -CommandRunner $script:UvCommandRunner -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning | Out-Null

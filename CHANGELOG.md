@@ -20,6 +20,10 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   interpreter and ignores the venv's `+gil` one, so `Invoke-CiPackaging.ps1` passes it
   `--python X.Y+gil` too. See [`docs/python-ci.md`](docs/python-ci.md) § *Free-threaded and GIL
   legs in one container*.
+- **The GIL build then could not link (`LNK1104: python314.lib`).** The image's CPython is an
+  in-tree build, and its import library sits beside `python.exe`, where setuptools never looks.
+  The binaries step puts that directory on `LIB`. Proven in `:winamd64`: OrchestrANT builds
+  `orchestrant-0.0.28-cp314-cp314-win_amd64.whl`.
 - **The bundle builder picks the wheel by the runtime's ABI.** It used the first `win_amd64`
   wheel, so the GIL runtime tried to install that `cp314t` wheel. `Select-PythonAppWheel` takes
   `cp314` or `abi3`, and falls back to the pure wheel only when there is no binary at all. A
