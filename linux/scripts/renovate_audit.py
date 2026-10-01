@@ -10,6 +10,7 @@ import json
 import re
 import tomllib
 
+import renovate_cmake
 import renovate_locator
 
 # start/end: the version's half-open span in leaf; why: "" or the reason a readable declaration may not move.
@@ -28,6 +29,7 @@ FORMATS = {
     "pip-compile": "requirements",
     "regex": "env",
     "custom.regex": "env",
+    renovate_locator.CMAKE: "cmake",
 }
 
 # YAML aliases can expand a document exponentially; hitting this refuses, never truncates.
@@ -205,7 +207,8 @@ def hash_pinned(opts):
 
 
 PARSERS = {"yaml": _parse_yaml, "toml": tomllib.loads, "json": _parse_json,
-           "requirements": parse_requirements, "env": _parse_env}
+           "requirements": parse_requirements, "env": _parse_env,
+           "cmake": renovate_cmake.parse}
 
 
 def parse(manager, text):
@@ -432,6 +435,11 @@ def decl_requirements(struct, dep):
     return out
 
 
+def decl_cmake(struct, dep):
+    """Every declaration of dep the preset's CMake forms read, found in CMake's token stream."""
+    return [Decl(*found) for found in renovate_cmake.declarations(struct, dep)]
+
+
 DECLARERS = {
     "github-actions": decl_actions,
     "pub": decl_pub,
@@ -443,6 +451,7 @@ DECLARERS = {
     "pip-compile": decl_requirements,
     "regex": decl_annotated,
     "custom.regex": decl_annotated,
+    renovate_locator.CMAKE: decl_cmake,
 }
 
 

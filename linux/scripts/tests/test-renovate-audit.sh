@@ -27,13 +27,6 @@ for site in found:
 PY
 }
 
-# _apply_plan <root> <plan.json>: the apply half over a hand-written plan, the honest way to make the locator wrong.
-_apply_plan() {
-  OUT="$(cd "${SCRIPTS_DIR}" && "${PY_ABS}" renovate_planner.py edit "$1" "$2" 2>&1)"
-  RC=$?
-  return 0
-}
-
 # _parser_refuses <repo> <report> <manager> <reason>: refused for that reason with rc 2; see docs/dependency-updates.md#what-a-caller-branches-on
 _parser_refuses() {
   _run "$1" "$2" --apply --managers "$3"
@@ -289,7 +282,7 @@ printf '[{"file":"package.json","line":3,"old":"    \\"left-pad\\": \\"1.1.0\\""
 BROKEN="${WORK}/broken-auditor"
 mkdir -p "${BROKEN}"
 cp "${SCRIPTS_DIR}/renovate_planner.py" "${SCRIPTS_DIR}/renovate_locator.py" \
-   "${SCRIPTS_DIR}/renovate_audit.py" "${BROKEN}/"
+   "${SCRIPTS_DIR}/renovate_audit.py" "${SCRIPTS_DIR}/renovate_cmake.py" "${BROKEN}/"
 cat >> "${BROKEN}/renovate_audit.py" <<'PY'
 
 

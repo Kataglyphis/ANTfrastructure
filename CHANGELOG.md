@@ -7,6 +7,29 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - Renovate reads and bumps CMake dependencies (CON46, hub part)
+
+- **The shared preset (`default.json`) gains two regex `customManagers`** over every
+  `CMakeLists.txt` and `*.cmake`. Every consumer inherits them through `extends`.
+  - `GIT_REPOSITORY <GitHub URL>` then `GIT_TAG <tag>`, and a tag archive
+    (`.../archive/refs/tags/<tag>.zip|.tar.gz`), both as `github-tags`.
+  - A `# renovate: datasource=… depName=…` line directly above `GIT_TAG <v>`,
+    `set(<NAME> <v>` or a quoted `"<v>"`.
+  - Only a dotted value is a version: `master`, `main`, a SHA, `${VAR}` and a commit
+    archive are skipped. The forms exclude each other, because Renovate's regex manager
+    does not de-duplicate rows.
+  - Measured with Renovate 44.82.0 and RE2 on AccelerANTgine's and BeschleunigerBallett's
+    real files: each pin once, every floating ref skipped. `--strict` validation passes.
+- **`renovate-local.sh --apply` rewrites those pins.** The locator runs the preset's own
+  `matchStrings`; the audit reads the file with a new CMake tokenizer
+  (`linux/scripts/renovate_cmake.py`) and refuses a tag archive behind `URL_HASH`/`URL_MD5`
+  and a match inside a comment. `renovate_locator.syntax()` picks the reader per file, so one
+  `regex` report can carry `versions.env` and CMake.
+- Docs: [`docs/dependency-updates.md`](docs/dependency-updates.md) § CMake dependencies.
+  Test: `linux/scripts/tests/test-renovate-cmake.sh`; nine `renovate-cmake.*` mutations.
+- Left for the consumers (BACKLOG CON46): pin corrosion, move googletest to a tag archive,
+  drop the two repo-level CMake managers, then the fleet report run.
+
 ## 2026-10-01 - WiX 7 (OSMF EULA accepted) and arm64 tests on windows-11-arm (CON43, hub part)
 
 - **WiX 4.0.6 → 7.0.0, with the owner's acceptance of the wix7 OSMF EULA (2026-10-01).**

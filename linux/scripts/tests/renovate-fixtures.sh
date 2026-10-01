@@ -209,6 +209,14 @@ _run() {
 # A prefix assignment on a function call reaches every frame below and ends with the call.
 _run_stubbed() { STUB_PATH="${STUBS}:${BARE_PATH}" _run "$@"; }
 
+# _apply_plan <root> <plan.json>: the apply half over a hand-written plan, the honest way to make the locator wrong.
+# shellcheck disable=SC2034  # OUT and RC are read by the suites that source this
+_apply_plan() {
+  OUT="$(cd "${TESTS_DIR}/.." && "${PY_ABS}" renovate_planner.py edit "$1" "$2" 2>&1)"
+  RC=$?
+  return 0
+}
+
 _line() { sed -n "$2p" "$1"; }
 
 # One reader per manifest kind: <repo> <line> -> that line.

@@ -6,6 +6,9 @@
 See docs/dependency-updates.md#how-one-value-gets-rewritten
 """
 import collections
+import fnmatch
+import json
+import os
 import re
 
 # start/end: the value's half-open span, so a rewrite touches nothing else on the line.
@@ -467,6 +470,59 @@ def find_annotated_env(lines, dep, _dep_type):
     return out
 
 
+# custom.regex over CMake: not a Renovate manager name, so no report row can claim it by itself.
+CMAKE = "regex:cmake"
+_CMAKE_FILE = re.compile(r"(^|/)CMakeLists\.txt$|\.cmake$")
+PRESET = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir,
+                      "default.json")
+_CMAKE_PATTERNS = []
+
+
+def syntax(manager, path):
+    """The syntax a report row's file is written in: the regex manager over a CMake file reads CMake."""
+    if manager in ("regex", "custom.regex") and _CMAKE_FILE.search(path.replace("\\", "/")):
+        return CMAKE
+    return manager
+
+
+def renovate_pattern(text):
+    """A Renovate managerFilePatterns entry: /regex/ as written, anything else a glob."""
+    if len(text) > 1 and text.startswith("/") and text.endswith("/"):
+        return re.compile(text[1:-1])
+    return re.compile(fnmatch.translate(text))
+
+
+def cmake_patterns():
+    """The preset's CMake matchStrings, compiled once; Python spells a named group (?P<x>...)."""
+    if _CMAKE_PATTERNS:
+        return _CMAKE_PATTERNS
+    with open(PRESET, encoding="utf-8") as fh:
+        managers = json.load(fh).get("customManagers") or []
+    for manager in managers:
+        if not any(renovate_pattern(p).search("CMakeLists.txt")
+                   for p in manager.get("managerFilePatterns") or []):
+            continue
+        for text in manager.get("matchStrings") or []:
+            rx = re.compile(re.sub(r"\(\?<(?=[A-Za-z_])", "(?P<", text), re.ASCII)
+            if {"depName", "currentValue"} <= set(rx.groupindex):
+                _CMAKE_PATTERNS.append(rx)
+    return _CMAKE_PATTERNS
+
+
+def find_cmake(lines, dep, _dep_type):
+    """Every value a preset CMake matchString captures for this depName: the locator places what Renovate read."""
+    text = "\n".join(lines)
+    out = []
+    for rx in cmake_patterns():
+        for match in rx.finditer(text):
+            if match.group("depName") != dep:
+                continue
+            start = match.start("currentValue")
+            col = start - (text.rfind("\n", 0, start) + 1)
+            out.append(_site(text.count("\n", 0, start), col, match.group("currentValue")))
+    return out
+
+
 FINDERS = {
     "github-actions": find_actions,
     "pub": find_pub,
@@ -478,6 +534,7 @@ FINDERS = {
     "npm": find_npm,
     "regex": find_annotated_env,
     "custom.regex": find_annotated_env,
+    CMAKE: find_cmake,
 }
 
 

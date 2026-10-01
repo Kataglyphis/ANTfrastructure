@@ -11433,5 +11433,77 @@
     "replace": "",
     "test": "bash linux/scripts/tests/test-no-libunwind.sh",
     "why": "an uncalled check guards nothing"
+  },
+  {
+    "id": "renovate-cmake.git-tag-form",
+    "target": "default.json",
+    "find": "(?:\\\\.git)?\\\"?\\\\s+GIT_TAG\\\\s+",
+    "replace": "(?:\\\\.git)?\\\"?\\\\s+GIT_TAGX\\\\s+",
+    "test": "bash linux/scripts/tests/test-renovate-cmake.sh",
+    "why": "GIT_REPOSITORY + GIT_TAG is how GSL and corrosion are declared without a hint; a pattern that no longer matches leaves them silent, which is where every CMake pin in the family sat before CON46"
+  },
+  {
+    "id": "renovate-cmake.floating-ref-skipped",
+    "target": "default.json",
+    "find": "(?<currentValue>[\\\\w+-]+(?:\\\\.[\\\\w+-]+)+)",
+    "replace": "(?<currentValue>[\\\\w.+-]+)",
+    "test": "bash linux/scripts/tests/test-renovate-cmake.sh",
+    "why": "only a dotted value is a version: without that rule `GIT_TAG master` and a 40-hex SHA are reported as versions, and Renovate proposes moving a branch name to a release tag"
+  },
+  {
+    "id": "renovate-cmake.one-row-per-pin",
+    "target": "default.json",
+    "find": "(?:\\\\.git)?\\\"?\\\\s+GIT_TAG\\\\s+",
+    "replace": "(?:\\\\.git)?\\\"?(?:\\\\s|#[^\\\\n]*)+GIT_TAG\\\\s+",
+    "test": "bash linux/scripts/tests/test-renovate-cmake.sh",
+    "why": "a URL form that reads through comment lines also reads AccelerANTgine's annotated abseil and GSL, so each is reported twice and --apply refuses both as ambiguous"
+  },
+  {
+    "id": "renovate-cmake.tag-archive-form",
+    "target": "default.json",
+    "find": "/archive/refs/tags/(?<currentValue>",
+    "replace": "/archive/refs/tagz/(?<currentValue>",
+    "test": "bash linux/scripts/tests/test-renovate-cmake.sh",
+    "why": "the tag archive is the form googletest moves to; without it the dependency in four files is invisible again"
+  },
+  {
+    "id": "renovate-cmake.annotated-git-tag",
+    "target": "default.json",
+    "find": "[ \\\\t]*GIT_TAG\\\\s+\\\"?(?<currentValue>[\\\\w.+-]+)",
+    "replace": "[ \\\\t]*GIT_TAGX\\\\s+\\\"?(?<currentValue>[\\\\w.+-]+)",
+    "test": "bash linux/scripts/tests/test-renovate-cmake.sh",
+    "why": "a hint directly above GIT_TAG is how a pin with a comment block between URL and tag stays visible (AccelerANTgine's abseil)"
+  },
+  {
+    "id": "renovate-cmake.annotated-set",
+    "target": "default.json",
+    "find": "[Ss][Ee][Tt]\\\\s*\\\\(",
+    "replace": "[Ss][Ee][Tt]X\\\\s*\\\\(",
+    "test": "bash linux/scripts/tests/test-renovate-cmake.sh",
+    "why": "set(ABSL_TAG ...) under its hint is BeschleunigerBallett's abseil pin; GIT_TAG ${ABSL_TAG} names no version, so the set() is the only place it can be read"
+  },
+  {
+    "id": "renovate-cmake.annotated-quoted",
+    "target": "default.json",
+    "find": "[ \\\\t]*\\\"(?<currentValue>",
+    "replace": "[ \\\\t]*\\\"X(?<currentValue>",
+    "test": "bash linux/scripts/tests/test-renovate-cmake.sh",
+    "why": "a quoted value on the line under its hint is how a multi-line set() pins cxxbridge-cmd; unmatched, it drops out of every report"
+  },
+  {
+    "id": "renovate-cmake.locator-reads-cmake",
+    "target": "linux/scripts/renovate_locator.py",
+    "find": "        return CMAKE\n    return manager",
+    "replace": "        return manager\n    return manager",
+    "test": "bash linux/scripts/tests/test-renovate-cmake.sh",
+    "why": "the regex manager over a CMake file must be read as CMake; dispatched by manager name alone it goes to the versions.env reader, which finds no KEY= line and refuses every CMake update"
+  },
+  {
+    "id": "renovate-cmake.url-hash-refused",
+    "target": "linux/scripts/renovate_cmake.py",
+    "find": "match.start(2), match.end(2), _hashed(args))]",
+    "replace": "match.start(2), match.end(2), \"\")]",
+    "test": "bash linux/scripts/tests/test-renovate-cmake.sh",
+    "why": "a tag archive behind a URL_HASH moved alone leaves the hash of the OLD archive, so the next configure fails its download check; the edit must be refused, not written"
   }
 ]
