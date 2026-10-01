@@ -345,6 +345,11 @@ Windows has the same trap and the same cure. `New-UvProjectEnvironment` asks uv 
 no wheel for one of its locked packages (2026-09-30). Test:
 `windows/scripts/tests/Uv.PythonRequest.Tests.ps1`.
 
+`uv build` is a second door into the same trap. It discovers its own interpreter and
+ignores the venv, so `Invoke-CiPackaging.ps1` passes it the same `--python X.Y+gil`.
+Without that flag, OrchestrANT's only Windows binary wheel was `cp314-cp314t`
+(2026-10-01). The app bundle's GIL runtime could not install it.
+
 ## Which Linux image
 
 **`:latest`, on every architecture.** It is a multi-arch index —

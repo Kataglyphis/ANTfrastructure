@@ -7,6 +7,24 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - Windows Python lanes: static analysis runs at all, and wheels are built for the GIL
+
+OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub owned two of them.
+
+- **`Invoke-CiStaticAnalysis.ps1` failed all six gates with `Cannot bind argument to parameter
+  'Context' because it is null`.** Each gate's script block went through `GetNewClosure()`, and
+  inside a closure's dynamic module `$script:BuildContext` is `$null`. This was in place since
+  2026-09-12; earlier failures in the same lane had hidden it. The context is now bound to a
+  local before the closure.
+- **`uv build` built the Windows wheel free-threaded (`cp314-cp314t`).** It finds its own
+  interpreter and ignores the venv's `+gil` one, so `Invoke-CiPackaging.ps1` passes it
+  `--python X.Y+gil` too. See [`docs/python-ci.md`](docs/python-ci.md) § *Free-threaded and GIL
+  legs in one container*.
+- **The bundle builder picks the wheel by the runtime's ABI.** It used the first `win_amd64`
+  wheel, so the GIL runtime tried to install that `cp314t` wheel. `Select-PythonAppWheel` takes
+  `cp314` or `abi3`, and falls back to the pure wheel only when there is no binary at all. A
+  binary for another ABI alone is an error. Test: `windows/scripts/tests/PythonApp.Wheel.Tests.ps1`.
+
 ## 2026-10-01 - DeepStream's GPU gate passes; four defects it found are fixed (CON42)
 
 - **The GPU gate passed** on the build host's RTX 2080 (sm_75, driver 595.58.03, CDI through
@@ -32,6 +50,7 @@
   § B2c): the Secure Boot key, the CDI spec in `~/.config/cdi` plus `cdi_spec_dirs`, and
   regenerating it after every driver update.
 - **Still open for CON42:** the owner-approved nvidia chain run with `ENABLE_DEEPSTREAM=true`.
+
 ## 2026-10-01 - Python app bundles become tar.gz, deb, AppImage, zip and MSI, each started once
 
 - **Packagers.** `linux/scripts/06-packaging/python-app-package.sh` (tar.gz, deb, AppImage) and

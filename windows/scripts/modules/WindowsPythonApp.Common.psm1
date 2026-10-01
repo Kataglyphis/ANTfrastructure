@@ -71,6 +71,37 @@ function New-PythonAppRuntime {
     return $runtimePython
 }
 
+function Get-PythonAbiTag {
+    <#
+    .SYNOPSIS
+        The ABI tag -Python's binary wheels carry: cp314 for a GIL build, cp314t for a free-threaded one.
+    #>
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$Python)
+    $tag = & $Python -c "import sys, sysconfig; print('cp%d%d%s' % (sys.version_info[0], sys.version_info[1], 't' if sysconfig.get_config_var('Py_GIL_DISABLED') else ''))"
+    if ($LASTEXITCODE -ne 0 -or -not $tag) { throw "$Python could not report its ABI tag (exit $LASTEXITCODE)" }
+    return "$tag".Trim()
+}
+
+function Select-PythonAppWheel {
+    <#
+    .SYNOPSIS
+        The app's win_amd64 wheel for -AbiTag (or abi3), else its pure wheel; binaries for another ABI alone are an error, not a fallback.
+    #>
+    [OutputType([IO.FileInfo])]
+    param(
+        [Parameter(Mandatory)][IO.FileInfo[]]$Wheels,
+        [Parameter(Mandatory)][string]$AbiTag
+    )
+    $binary = @($Wheels | Where-Object { $_.Name -match '-win_amd64\.whl$' })
+    $match = @($binary | Where-Object { $_.Name -match "-($([regex]::Escape($AbiTag))|abi3)-win_amd64\.whl$" })
+    if ($match.Count -gt 0) { return $match[0] }
+    if ($binary.Count -gt 0) { throw "No $AbiTag wheel, only $(($binary | ForEach-Object Name) -join ', '); build it with the bundle's interpreter (uv build --python X.Y+gil)" }
+    $pure = @($Wheels | Where-Object { $_.Name -match '-none-any\.whl$' })
+    if ($pure.Count -gt 0) { return $pure[0] }
+    throw "No win_amd64 or none-any wheel among $(($Wheels | ForEach-Object Name) -join ', ')"
+}
+
 # Throws with -What when uv fails, so no step can forget $LASTEXITCODE.
 function Invoke-AppUv {
     param([Parameter(Mandatory)][string]$What, [Parameter(Mandatory)][string[]]$Arguments)
@@ -432,5 +463,5 @@ $($files.ToString().TrimEnd())
     return $Destination
 }
 
-Export-ModuleMember -Function Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, Install-PythonAppPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
+Export-ModuleMember -Function Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
     New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-PythonAppWxs
