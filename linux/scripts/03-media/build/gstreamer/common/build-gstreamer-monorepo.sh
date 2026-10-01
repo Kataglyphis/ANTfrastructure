@@ -199,6 +199,8 @@ _gst_monorepo_meson_base_flags() {
     "-Drtsp_server=enabled"
     "-Dpython=${python_feature}"
     "-Dintrospection=enabled"
+    # libunwind ahead of libgcc_s turns an exception through std::call_once into a segfault: docs/failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind
+    "-Dgstreamer:libunwind=disabled"
   )
 
   [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || MESON_FLAGS+=("-Dgst-plugins-rs:webrtcbin2=disabled")

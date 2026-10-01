@@ -131,6 +131,44 @@ t_assert_eq "" "$(_gst 'libnvdsgst_infer.so libgstreamer-1.0.so.0 /opt/gstreamer
   "GLib is the distro's by design; GStreamer from the prefix"
 t_assert_contains "$(_gst 'libgstnvvideoconvert.so libgstvideo-1.0.so.0 /usr/lib/x86_64-linux-gnu/libgstvideo-1.0.so.0\n')" "SECOND-GSTREAMER libgstnvvideoconvert.so"
 
+t_case "an engine build finds TensorRT 10's builder resources, which it dlopen()s by file name"
+_TRT="${_T}/opt/tensorrt-10.16.1.11/lib"; _SYS="${_T}/syslib"
+mkdir -p "${_TRT}" "${_SYS}"
+for r in sm75 sm86 ptx; do : > "${_TRT}/libnvinfer_builder_resource_${r}.so.10.16.1"; done
+ln -s libnvinfer_builder_resource_sm75.so.10.16.1 "${_TRT}/do_not_link_against_nvinfer_builder_resource_sm75"
+_link() { _ds 'ds_link_trt_builder_resources' DS_OPT="${_T}/opt" DS_SYSLIB_DIR="$1"; }
+t_assert_contains "$(_link "${_SYS}")" "linked 3 TensorRT 10.16.1.11 builder resources"
+t_assert_eq "${_TRT}/libnvinfer_builder_resource_sm75.so.10.16.1" "$(readlink "${_SYS}/libnvinfer_builder_resource_sm75.so.10.16.1")" \
+  "the 2080's sm_75 resource: without it nvinfer stopped with 'Unable to load library' (2026-10-01)"
+t_assert_eq "absent" "$([ -e "${_SYS}/do_not_link_against_nvinfer_builder_resource_sm75" ] && echo present || echo absent)" \
+  "only the names TensorRT dlopen()s, not the SONAME links ldconfig made"
+_vtrt() { DS_ROOT="${_T}/none" DS_TRT_PREFIX="${_T}/opt/tensorrt-10.16.1.11" DS_SYSLIB_DIR="$1" bash -c 'source "$1"; dsv_check_trt_builder_resources; echo "fail=${dsv_fail}"' _ "${DSV}"; }
+t_assert_contains "$(_vtrt "${_SYS}")" "fail=0"
+t_assert_contains "$(_vtrt "${_T}/syslib-empty")" "builder resources an engine build cannot dlopen"
+t_assert_contains "$(_vtrt "${_T}/syslib-empty")" "fail=1"
+mkdir -p "${_T}/opt-empty/tensorrt-10.16.1.11/lib"
+t_assert_fails env DS_OPT="${_T}/opt-empty" DS_SYSLIB_DIR="${_SYS}" bash -c 'source "$1"; source "$2"; load_versions_env "$3"; ds_link_trt_builder_resources' _ \
+  "${DS}" "${TESTS_DIR}/../01-core/load-versions-env.sh" "${ENVF}"
+
+t_case "nvv4l2decoder reaches NVDEC only through NVIDIA's plugin in the distro libv4l2's dir"
+_DSR="${_T}/opt/deepstream-9.1"; mkdir -p "${_DSR}/lib/libv4l/plugins"; : > "${_DSR}/lib/libv4l/plugins/libcuvidv4l2_plugin.so"
+_V4L="${_T}/v4l-plugins"
+_ds 'ds_link_v4l2_plugin' DS_OPT="${_T}/opt" DS_V4L2_PLUGIN_DIR="${_V4L}" >/dev/null
+t_assert_eq "${_DSR}/lib/libv4l/plugins/libcuvidv4l2_plugin.so" "$(readlink "${_V4L}/libcuvidv4l2_plugin.so")" \
+  "without it the decoder opened /dev/nvidia0 as a plain V4L2 node: 'It isn't a v4l2 driver' (2026-10-01)"
+t_assert_fails env DS_OPT="${_T}/opt-empty" DS_V4L2_PLUGIN_DIR="${_V4L}" bash -c 'source "$1"; source "$2"; load_versions_env "$3"; ds_link_v4l2_plugin' _ \
+  "${DS}" "${TESTS_DIR}/../01-core/load-versions-env.sh" "${ENVF}"
+_vv4l() { DS_ROOT="${_DSR}" DS_TRT_PREFIX="" DS_V4L2_PLUGIN_DIR="$1" bash -c 'source "$1"; dsv_check_v4l2_plugin; echo "fail=${dsv_fail}"' _ "${DSV}"; }
+t_assert_contains "$(DSV_WIRED=1 _vv4l "${_V4L}")" "fail=0"
+t_assert_contains "$(DSV_WIRED=1 _vv4l "${_T}/v4l-empty")" "nvv4l2decoder cannot reach NVDEC"
+t_assert_eq "fail=0" "$(DSV_WIRED=0 _vv4l "${_T}/v4l-empty")" "the build stage wires no plugin dir, so only the package checks it"
+
+t_case "the image selects the new nvstreammux; the legacy one fails on GStreamer >= 1.28"
+PKGF="${TESTS_DIR}/../../Dockerfile.package"
+t_assert_contains "$(cat "${PKGF}")" 'ARG DS_NEW_MUX=${ENABLE_DEEPSTREAM/false/}'
+t_assert_contains "$(cat "${PKGF}")" 'ENV USE_NEW_NVSTREAMMUX=${DS_NEW_MUX/true/yes}' \
+  "NVIDIA's prebuilt legacy mux reads GstMapInfo.data after gst_buffer_unmap(), which 1.28 clears"
+
 t_case "the gates are wired into both images"
 MEDIA="${TESTS_DIR}/../../Dockerfile.media"; PKG="${TESTS_DIR}/../../Dockerfile.package"
 t_assert_contains "$(cat "${MEDIA}")" 'deepstream.sh build' "the media stage builds it"
@@ -140,5 +178,10 @@ t_assert_contains "$(cat "${PKG}")" 'deepstream.sh stage-runtime' "the package w
 t_assert_contains "$(cat "${PKG}")" 'deepstream.sh assert-absent' "and proves its absence otherwise"
 t_assert_contains "$(t_fn_src "${DS}" ds_build)" 'deepstream-verify.sh' "the build ends in the gates"
 t_assert_contains "$(t_fn_src "${DS}" ds_stage_runtime)" 'DSV_WIRED=1' "the package checks the image's own plugin path"
+t_assert_contains "$(t_fn_src "${DS}" ds_stage_runtime)" 'ds_link_v4l2_plugin' "the package links the NVDEC plugin"
+t_assert_contains "$(t_fn_src "${DS}" ds_stage_runtime)" 'ds_link_trt_builder_resources' "the package links the builder resources"
+t_assert_contains "$(t_fn_src "${DS}" ds_build)" 'ds_link_trt_builder_resources' "and so does the build, whose gate checks them"
+t_assert_contains "$(t_fn_src "${DSV}" dsv_main)" 'dsv_check_v4l2_plugin' "the plugin link is a gate"
+t_assert_contains "$(t_fn_src "${DSV}" dsv_main)" 'dsv_check_trt_builder_resources' "the builder-resource links are a gate"
 
 t_summary

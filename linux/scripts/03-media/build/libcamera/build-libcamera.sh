@@ -139,6 +139,8 @@ MESON_SETUP_ARGS=(
   -Dgstreamer=enabled
   -Dpycamera=enabled
   -Ddocumentation=disabled
+  # libunwind ahead of libgcc_s turns an exception through std::call_once into a segfault: docs/failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind
+  -Dlibunwind=disabled
 )
 
 # qcam requires native Qt6 which is not available for foreign architectures.

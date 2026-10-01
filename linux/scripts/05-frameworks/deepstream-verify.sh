@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DeepStream gates without a GPU (closure, one GStreamer, no libv4l2 hijack, registration); not covered: inference, NVDEC, engine builds.
+# DeepStream gates without a GPU (closure, one GStreamer, no libv4l2 hijack, the dlopen links, registration); a GPU run proves the rest.
 set -uo pipefail
 
 DS_ROOT="${DS_ROOT:-/opt/nvidia/deepstream/deepstream-9.1}"
@@ -104,6 +104,44 @@ dsv_check_no_v4l2_hijack() {
   dsv_ok "libv4l2.so.0 stays the distro's"
 }
 
+# The distro's default library dir: dlopen() searches it even for names ld.so.cache does not hold.
+dsv_syslib_dir() { printf '%s' "${DS_SYSLIB_DIR:-/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)}"; }
+dsv_v4l2_plugin_dir() { printf '%s' "${DS_V4L2_PLUGIN_DIR:-$(dsv_syslib_dir)/libv4l/plugins}"; }
+
+# dsv_trt_builder_resources <trt prefix>: the files libnvinfer.so.10 dlopen()s by name during an engine build.
+dsv_trt_builder_resources() {
+  local f
+  for f in "$1"/lib/libnvinfer_builder_resource_*.so.*; do [ -f "${f}" ] && printf '%s\n' "${f}"; done
+  return 0
+}
+
+# Without a default-dir link per builder resource, no engine builds.
+dsv_check_trt_builder_resources() {
+  [ -n "${DS_TRT_PREFIX}" ] || return 0
+  local f n=0 bad="" dir
+  dir="$(dsv_syslib_dir)"
+  while IFS= read -r f; do
+    n=$((n + 1))
+    [ "$(readlink -f "${dir}/${f##*/}" 2>/dev/null)" = "$(readlink -f "${f}")" ] || bad+=" ${f##*/}"
+  done < <(dsv_trt_builder_resources "${DS_TRT_PREFIX}")
+  if [ "${n}" = 0 ]; then dsv_bad "no TensorRT builder resources in ${DS_TRT_PREFIX}/lib"
+  elif [ -n "${bad}" ]; then dsv_bad "builder resources an engine build cannot dlopen (no link in ${dir}):${bad}"
+  else dsv_ok "${n} TensorRT builder resources resolve by file name from ${dir}"; fi
+}
+
+# DSV_WIRED=1 only: without the plugin in the distro libv4l2's dir, nvv4l2decoder opens /dev/nvidia0 as a plain V4L2 node and fails.
+dsv_check_v4l2_plugin() {
+  [ "${DSV_WIRED:-0}" = 1 ] || return 0
+  local link want
+  link="$(dsv_v4l2_plugin_dir)/libcuvidv4l2_plugin.so"
+  want="${DS_ROOT}/lib/libv4l/plugins/libcuvidv4l2_plugin.so"
+  if [ -f "${want}" ] && [ "$(readlink -f "${link}" 2>/dev/null)" = "$(readlink -f "${want}")" ]; then
+    dsv_ok "libv4l2 loads NVIDIA's NVDEC plugin (${link})"
+  else
+    dsv_bad "${link} does not resolve to ${want}; nvv4l2decoder cannot reach NVDEC"
+  fi
+}
+
 dsv_non_plugins() {
   local f
   for f in "$1"/*.so; do
@@ -160,6 +198,8 @@ dsv_main() {
   dsv_check_closure
   dsv_check_one_gstreamer
   dsv_check_no_v4l2_hijack
+  dsv_check_v4l2_plugin
+  dsv_check_trt_builder_resources
   dsv_check_elements
   [ "${dsv_fail}" = 0 ] || { echo "DeepStream gates FAILED"; return 1; }
   echo "DeepStream gates passed"

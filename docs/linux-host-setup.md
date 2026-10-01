@@ -221,6 +221,41 @@ still ran correctly, but a kernel that exists only as SASS for other
 architectures will fail. The libraries this repo builds (ORT, OpenCV, TVM)
 carry native `sm_87` code.
 
+### B2c. A GPU container on an x86 desktop, with rootless nerdctl
+
+Set up 2026-10-01 on the build host: an RTX 2080, driver 595.58.03 (`nvidia-driver-open`,
+DKMS), Secure Boot on, `nvidia-container-toolkit` 1.20.1, nerdctl 2.4.0. The DeepStream GPU
+gate ran this way ([`linux-accelerator-images.md` § The GPU run](linux-accelerator-images.md#the-gpu-run-2026-10-01)).
+
+1. **Secure Boot: enroll the DKMS key before anything else.** Until then the module never
+   loads: the kernel logs `Loading of module with unavailable key is rejected` at every boot
+   and `nvidia-smi` finds no driver. As root, `mokutil --import
+   /var/lib/shim-signed/mok/MOK.der`, reboot, and enroll it in MOK Manager.
+2. **The NVIDIA Container Toolkit**, from NVIDIA's apt repository; Ubuntu does not package it.
+3. **Generate the CDI spec**: `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`.
+4. **Hand it to rootless nerdctl.** `/etc/cdi` is not visible to rootless nerdctl, so copy the
+   spec into the user's own directory and name that directory in nerdctl's config:
+
+   ```bash
+   mkdir -p ~/.config/cdi && cp /etc/cdi/nvidia.yaml ~/.config/cdi/
+   # ~/.config/nerdctl/nerdctl.toml
+   cdi_spec_dirs = ["/home/<user>/.config/cdi", "/etc/cdi", "/var/run/cdi"]
+   ```
+
+5. **Regenerate and copy again after every driver update.** The spec lists the driver's
+   library files by version, so an old spec mounts files that no longer exist.
+
+Verify:
+
+```bash
+nerdctl run --rm --device nvidia.com/gpu=all \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-amd64 nvidia-smi
+```
+
+No `--runtime` or group annotation is needed here, unlike on the Jetson (B2b): the desktop
+device nodes are world-accessible, and the image's runtime user (uid 1001) ran a DeepStream
+pipeline on the GPU as well.
+
 ### B3. Cap container log growth
 
 A long build or a chatty service will fill the disk with JSON logs. Merge these

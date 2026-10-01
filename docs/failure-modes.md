@@ -56,6 +56,10 @@ Two neighbours, so you land on the right page:
 - [apt `gpgv` exits 111 after a `COPY --link` into `/tmp`](#apt-gpgv-exits-111-after-a-copy---link-into-tmp)
 - [nvcc rejects the image's GCC 16](#nvcc-rejects-the-images-gcc-16)
 - [A CUDA compile is `Killed` though average memory looked fine](#a-cuda-compile-is-killed-though-average-memory-looked-fine)
+- [An exception through std::call_once segfaults in libunwind](#an-exception-through-stdcall_once-segfaults-in-libunwind)
+- [DeepStream: `nvstreammux` stops the pipeline with `reason error (-5)` and no message](#deepstream-nvstreammux-stops-the-pipeline-with-reason-error--5-and-no-message)
+- [DeepStream: `Unable to load library: libnvinfer_builder_resource_sm75.so.10.16.1`](#deepstream-unable-to-load-library-libnvinfer_builder_resource_sm75so10161)
+- [DeepStream: `nvv4l2decoder`: `/dev/nvidia0` "isn't a v4l2 driver"](#deepstream-nvv4l2decoder-devnvidia0-isnt-a-v4l2-driver)
 - [A no-push wrapper build cannot find its own android image](#a-no-push-wrapper-build-cannot-find-its-own-android-image)
 - [The torch RUN idles for minutes before `uv venv`](#the-torch-run-idles-for-minutes-before-uv-venv)
 - [`RUNTIME_WHEELS_SOURCE=export` stops a runtime lane](#runtime_wheels_sourceexport-stops-a-runtime-lane)
@@ -957,6 +961,62 @@ cannot reopen the 2026-08-27 path, where the guess pulled a distro
 **Cause.** Heavy CUDA translation units are staggered, so the average RSS hides the peak.
 
 **Fix.** `CUDA_MB_PER_CICC` (default 3500) sizes the GPU job count against the peak. Raise it before adding swap.
+
+### An exception through std::call_once segfaults in libunwind
+
+**Symptom.** A process dies with SIGSEGV where a library should have reported an error. The
+backtrace runs `pthread_once` → `_Unwind_Resume` (GCC's `libgcc_s`) → `__gcc_personality_v0`
+→ `__libunwind_Unwind_GetLanguageSpecificData` (`libunwind.so.8`) → address 0. Seen
+2026-10-01 in `nvinfer`, whose TensorRT engine build threw inside `std::call_once`.
+
+**Cause.** Two unwinders in one process. `libunwind.so.8` exports the `_Unwind_*` symbols
+too, and it was ahead of `libgcc_s.so.1` in the lookup scope: `libgstreamer-1.0` and
+`libcamera-base` both link it for their backtrace support. glibc's `pthread_once` cleanup
+resumes the exception through `libgcc_s` directly, whose personality routine then calls
+libunwind's getter with a `libgcc_s` context. Measured with a ten-line `std::call_once` that
+throws and catches: it crashes when `libunwind.so.8` is loaded first (also when
+`libcamera-base` is `dlopen()`ed `RTLD_LOCAL` first), and passes otherwise. A C host such as
+`gst-launch-1.0` or Python always loads `libgstreamer` before any C++ library.
+
+**Fix.** GStreamer core and libcamera build without libunwind
+(`-Dgstreamer:libunwind=disabled`, libcamera's `-Dlibunwind=disabled`); their backtraces
+fall back to glibc's `backtrace()`. Measured with GStreamer 1.29.2 core rebuilt that way:
+the same `nvinfer` failure reports TensorRT's error and an element error instead of a
+segfault. `tests/test-no-libunwind.sh` pins both flags. Do not install `libunwind-dev` to
+"get better backtraces" back.
+
+### DeepStream: `nvstreammux` stops the pipeline with `reason error (-5)` and no message
+
+**Symptom.** Any pipeline through `nvstreammux` fails at preroll; the only error is
+`h264parse0: Internal data stream error … streaming stopped, reason error (-5)`.
+
+**Cause.** The legacy mux, NVIDIA's prebuilt default, reads `GstMapInfo.data` after
+`gst_buffer_unmap()`, and GStreamer ≥ 1.28 clears it on unmap.
+
+**Fix.** `USE_NEW_NVSTREAMMUX=yes`, which the image sets with DeepStream:
+[`linux-accelerator-images.md` § nvstreammux: the new one only](linux-accelerator-images.md#nvstreammux-the-new-one-only).
+
+### DeepStream: `Unable to load library: libnvinfer_builder_resource_sm75.so.10.16.1`
+
+**Symptom.** `nvinfer` cannot build an engine: `IBuilder::buildSerializedNetwork: Error Code 6:
+API Usage Error (Unable to load library: libnvinfer_builder_resource_sm75.so.10.16.1 …)`.
+
+**Cause.** TensorRT 10 `dlopen()`s its builder resources by file name, and `ld.so.cache`
+holds them only under their `do_not_link_against_*` SONAME.
+
+**Fix.** The links `deepstream.sh` puts into `/usr/lib/<triplet>/`:
+[`linux-accelerator-images.md` § TensorRT builder resources, by file name](linux-accelerator-images.md#tensorrt-builder-resources-by-file-name).
+
+### DeepStream: `nvv4l2decoder`: `/dev/nvidia0` "isn't a v4l2 driver"
+
+**Symptom.** `Error getting capabilities for device '/dev/nvidia0': It isn't a v4l2 driver`,
+then `Failed to open decoder`.
+
+**Cause.** The distro `libv4l2` did not load NVIDIA's NVDEC plugin, which it looks for only in
+its own plugin directory.
+
+**Fix.** The plugin link `deepstream.sh stage-runtime` makes:
+[`linux-accelerator-images.md` § NVDEC through the distro libv4l2](linux-accelerator-images.md#nvdec-through-the-distro-libv4l2).
 
 ### A no-push wrapper build cannot find its own android image
 
