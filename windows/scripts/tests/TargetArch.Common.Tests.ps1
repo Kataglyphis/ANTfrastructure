@@ -97,6 +97,11 @@ Describe 'Per-arch fact mapping' {
         Assert-Equal 'win-arm64' (Get-PythonPlatformName -Arch 'arm64')
     }
 
+    It 'maps the package arch that file names, wix -arch and the AppxManifest share' {
+        Assert-Equal 'x64'   (Get-WindowsPackageArch -Arch 'amd64')
+        Assert-Equal 'arm64' (Get-WindowsPackageArch -Arch 'arm64')
+    }
+
     It 'maps the NuGet runtime identifiers' {
         Assert-Equal 'win-x64'   (Get-WindowsRuntimeIdentifier -Arch 'amd64')
         Assert-Equal 'win-arm64' (Get-WindowsRuntimeIdentifier -Arch 'arm64')
@@ -129,7 +134,7 @@ Describe 'Per-arch fact mapping' {
     It 'every accessor throws for an unsupported arch' {
         foreach ($fn in @('Get-ClangTargetTriple', 'Get-PeMachineType', 'Get-VcpkgTriplet',
                 'Get-VulkanLibDirName', 'Get-PythonWheelTag', 'Get-CpythonBuildPlatform',
-                'Get-WindowsRuntimeIdentifier', 'Get-WindowsTargetTagSuffix')) {
+                'Get-WindowsRuntimeIdentifier', 'Get-WindowsTargetTagSuffix', 'Get-WindowsPackageArch')) {
             Assert-Throws -Body { & $fn -Arch 'sparc' } -Message "accessor $fn accepted a bogus arch"
         }
     }

@@ -18,6 +18,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsScripts.Shared.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsMsix.Common.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
 
 $app = Get-PythonAppConfig -Path (Resolve-PythonAppPath $RepoRoot $Config)
@@ -25,11 +26,19 @@ $Bundle = (Resolve-Path -LiteralPath (Resolve-PythonAppPath $RepoRoot $Bundle)).
 $manifest = Get-Content -LiteralPath (Join-Path $Bundle 'bundle.json') -Raw | ConvertFrom-Json -AsHashtable
 # The wheel name's second field is its version: orchestrant-0.0.28-py3-none-any.whl.
 $version = ($manifest['wheel'] -split '-')[1]
-$stem = "$($app['id'])-$version-windows-x64"
+# A bundle from before bundle.json named its arch is amd64.
+$arch = Get-WindowsTargetArch -Arch $(if ($manifest.ContainsKey('arch')) { $manifest['arch'] } else { 'amd64' })
+$packageArch = Get-WindowsPackageArch -Arch $arch
+$stem = "$($app['id'])-$version-windows-$packageArch"
 $OutDir = if ($OutDir) { Resolve-PythonAppPath $RepoRoot $OutDir } else { Split-Path $Bundle -Parent }
-if (-not $WorkDir) { $WorkDir = Join-Path ([IO.Path]::GetTempPath()) "python-app-package-$($app['id'])" }
+if (-not $WorkDir) { $WorkDir = Join-Path ([IO.Path]::GetTempPath()) "python-app-package-$($app['id'])-$arch" }
 $null = New-Item -ItemType Directory -Force -Path $OutDir, $WorkDir
 $test = -not $SkipTest
+if ($test -and (Test-WindowsCrossTarget -Arch $arch)) {
+    # Nothing here runs an arm64 binary; the device starts the bundle (New-PythonAppBundle.ps1's deferred self-test).
+    Write-Warning "A $arch bundle cannot start on this host: the packages are built and not started"
+    $test = $false
+}
 # A real install or a trusted root changes the machine, so only a container's throwaway system gets either.
 $throwaway = (Test-Elevated) -and [bool](Get-Service -Name cexecsvc -ErrorAction SilentlyContinue)
 Write-Host "$($app['name']) $version from $Bundle"
@@ -87,7 +96,7 @@ function Invoke-MsiPackage {
     $icon = ConvertTo-PythonAppIcon -PngPath (Get-AppIconPng "the MSI's shortcut") -Destination (Join-Path $WorkDir 'app.ico')
     $wxs = New-PythonAppWxs -Bundle $Bundle -App $app -Version $version -IconPath $icon -Destination (Join-Path $WorkDir "$($app['id']).wxs")
     $msi = Join-Path $OutDir "$stem.msi"
-    & wix build -arch x64 -pdbtype none -o $msi $wxs
+    & wix build -arch $packageArch -pdbtype none -o $msi $wxs
     if ($LASTEXITCODE -ne 0) { throw "wix build failed (exit $LASTEXITCODE)" }
     Write-Created $msi
     if (-not $test) { return }
@@ -130,7 +139,7 @@ function Invoke-MsixAppPackage {
         Copy-Item -LiteralPath $png -Destination (Join-Path $assets "$logo.png")
     }
     $publisher = "CN=$($app['publisher'])"
-    $manifest = New-PythonAppAppxManifest -App $app -Version $version -Publisher $publisher -Destination (Join-Path $work 'AppxManifest.xml')
+    $manifest = New-PythonAppAppxManifest -App $app -Version $version -Publisher $publisher -Destination (Join-Path $work 'AppxManifest.xml') -Arch $packageArch
     # A mapping file packs the bundle where it lies, instead of staging a second 0.5 GB copy.
     $root = $Bundle.TrimEnd('\').Length + 1
     $map = @('[Files]', "`"$manifest`" `"AppxManifest.xml`"") +

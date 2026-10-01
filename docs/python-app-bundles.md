@@ -179,9 +179,9 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
 | `<id>-<version>-linux-<x86_64\|aarch64>.tar.gz` | `python-app-package.sh` | unpacked, then `bin/<script>` |
 | `<id>_<version>_<amd64\|arm64>.deb` | `python-app-package.sh` | as root: installed with `dpkg -i`, started as `/usr/bin/<script>`, removed again, and `/opt/<id>` must then be gone. Without root (CI's uid 1001), the payload is unpacked with `dpkg-deb -x` instead |
 | `<id>-<version>-<x86_64\|aarch64>.AppImage` | `python-app-package.sh` | `APPIMAGE_EXTRACT_AND_RUN=1` (no FUSE in a container), started under a script's name |
-| `<id>-<version>-windows-x64.zip` | `New-PythonAppPackage.ps1` | unpacked, then `<script>.exe` |
-| `<id>-<version>-windows-x64.msi` | `New-PythonAppPackage.ps1` | inside an elevated Windows container only: installed, the installed `<script>.exe` started, the system `PATH` checked, removed again, and the install folder must then be gone. Anywhere else (a developer's machine), an administrative unpack (`msiexec /a`) proves the payload without touching the machine |
-| `<id>-<version>-windows-x64.msix` + `…-test-signing.cer` | `New-PythonAppPackage.ps1` | unpacked with `makeappx unpack`, then `<script>.exe`. Inside an elevated Windows container, the `.cer` is also trusted for a moment, `signtool verify /pa` must pass, and the root is removed again. Server Core cannot install an MSIX at all |
+| `<id>-<version>-windows-<x64\|arm64>.zip` | `New-PythonAppPackage.ps1` | unpacked, then `<script>.exe`; an arm64 package on its device (below) |
+| `<id>-<version>-windows-<x64\|arm64>.msi` | `New-PythonAppPackage.ps1` | inside an elevated Windows container only: installed, the installed `<script>.exe` started, the system `PATH` checked, removed again, and the install folder must then be gone. Anywhere else (a developer's machine), an administrative unpack (`msiexec /a`) proves the payload without touching the machine |
+| `<id>-<version>-windows-<x64\|arm64>.msix` + `…-test-signing.cer` | `New-PythonAppPackage.ps1` | unpacked with `makeappx unpack`, then `<script>.exe`. Inside an elevated Windows container, the `.cer` is also trusted for a moment, `signtool verify /pa` must pass, and the root is removed again. Server Core cannot install an MSIX at all |
 
 - **deb:** the bundle goes to `/opt/<id>`, with one `/usr/bin` symlink per script; the
   launchers resolve themselves with `readlink -f`. There is also a desktop file for
@@ -231,6 +231,34 @@ distributions means building the chain ORT against an older glibc, not changing 
 (232 MB) and the deb (190 MB, the same `Depends`) each started once. The AppImage cannot be
 proven under `qemu-user`, which cannot load the static-PIE `appimagetool`. CI's arm64 lane
 runs on a real `ubuntu-26.04-arm` runner, where it builds and starts it.
+
+**Windows arm64 builds the same three packages, cross, in `:winarm64`.** `Invoke-CiPackaging.ps1
+-TargetArch arm64` (empty takes the image's `WINDOWS_TARGET_ARCH`) writes the bundle and the
+packages to `dist\windows-arm64`:
+
+- **The wheel:** the pure one. The Cython step compiles for the host, so it is skipped, and no
+  host venv is synced either, since the bundle never runs the host's dependencies.
+- **The runtime:** the image's target CPython (`C:\runtime\python`), laid out by the host
+  interpreter of the same source tree with `PC\layout --arch arm64`.
+- **The packages:** `uv pip install --target` with `--python-platform aarch64-pc-windows-msvc`,
+  from the host. A dependency with no wheel at all (`antlr4-python3-runtime`) is built by the
+  host, so a compiled one would carry x64 binaries; the arch gate refuses those.
+- **Excluded from the lock export:** the PyPI ONNX Runtime and OpenCV. PyPI has no win_arm64
+  `opencv-python`, so the image's own cv2 (`C:\runtime\python\Lib\site-packages\cv2`) stands in.
+- **The launchers:** compiled with `/clang:--target=aarch64-pc-windows-msvc`.
+- **The self-test:** nothing on the amd64 host runs an arm64 binary, so the builder copies
+  `Test-PythonAppSelfTest.ps1` next to the bundle. The lane's `windows-11-arm` job then starts
+  the bundle and the unpacked zip with it (OrchestrANT's `windows-arm64-cross.yml`). The
+  packagers build and sign without starting anything.
+
+Measured in `:winarm64` on 2026-10-01 for OrchestrANT 0.0.29:
+
+- The arch gate passed over 191 PE files, and G6 passed.
+- The packages are three times the x64 ones: zip 902 MB, MSI 793 MB, MSIX 924 MB.
+- The size is the image's arm64 OpenCV, a CUDA build: `cv2.pyd` imports the `opencv_cuda*`
+  modules, which bring cuFFT, cuBLASLt and NPP, more than 1 GB unpacked. The chain ORT wheel
+  adds `onnxruntime_providers_cuda.dll` (192 MB).
+- `:winarm64` drops the NVIDIA stack by owner decision (2026-10-01; it belongs in `:winarm64-nvidia`), which removes all of it (hub BACKLOG CON48).
 
 ## Not yet
 

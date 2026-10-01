@@ -7,11 +7,11 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonAp
 
 # Leaves exactly -Names as wheels in -Dir and returns the name Select-PythonAppWheel picks from them.
 function script:Get-PickedWheel {
-    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string[]]$Names, [Parameter(Mandatory)][string]$AbiTag)
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string[]]$Names, [Parameter(Mandatory)][string]$AbiTag, [string]$PlatformTag = 'win_amd64')
     Get-ChildItem -LiteralPath $Dir -Filter '*.whl' -File | Remove-Item
     foreach ($n in $Names) { Set-Content -LiteralPath (Join-Path $Dir $n) -Value 'wheel' -Encoding ASCII }
     $wheels = @(Get-ChildItem -LiteralPath $Dir -Filter '*.whl' -File | Sort-Object Name)
-    return (Select-PythonAppWheel -Wheels $wheels -AbiTag $AbiTag).Name
+    return (Select-PythonAppWheel -Wheels $wheels -AbiTag $AbiTag -PlatformTag $PlatformTag).Name
 }
 
 Describe 'Select-PythonAppWheel' {
@@ -28,6 +28,16 @@ Describe 'Select-PythonAppWheel' {
             foreach ($c in $cases) {
                 Assert-Equal $c[1] (Get-PickedWheel -Dir $d -Names $c[2] -AbiTag $c[0]) "$($c[0]) from $($c[2] -join ', ')"
             }
+        }
+    }
+
+    It 'takes the win_arm64 binary for an arm64 bundle, and the pure wheel when only win_amd64 binaries exist' {
+        Invoke-InTestDir { param($d)
+            $x64 = 'app-1.0-cp314-cp314-win_amd64.whl'
+            $arm = 'app-1.0-cp314-cp314-win_arm64.whl'
+            $pure = 'app-1.0-py3-none-any.whl'
+            Assert-Equal $arm (Get-PickedWheel -Dir $d -Names $x64, $arm, $pure -AbiTag 'cp314' -PlatformTag 'win_arm64') 'the arm64 binary'
+            Assert-Equal $pure (Get-PickedWheel -Dir $d -Names $x64, $pure -AbiTag 'cp314' -PlatformTag 'win_arm64') 'the pure wheel, never the x64 binary'
         }
     }
 
