@@ -444,6 +444,44 @@ check_flutter() {
   echo ""
 }
 
+# CHROME_EXECUTABLE renders a page, offline, as the image user; riscv64 has no upstream build. docs/consumer-image-contract.md#chrome-for-web-tests
+check_chrome_for_testing() {
+  local image_tag="$1"
+  local target_arch="$2"
+  local pin out exe flags=""
+  echo "--- Functional: Chrome for Testing (CHROME_EXECUTABLE) ---"
+  pin="$(_rt_versions_env_pin CHROME_FOR_TESTING_VERSION)"
+  # qemu-user kills Chrome's zygote; natively these flags hang it instead (measured on amd64).
+  [ "${target_arch}" = "$(smoke_host_arch)" ] || flags="--no-zygote --in-process-gpu --disable-gpu"
+  out="$(_rt_run --network none -e "CHROME_SMOKE_FLAGS=${flags}" bash -lc 'printf "EXE %s\n" "${CHROME_EXECUTABLE:-unset}"
+[ -x "${CHROME_EXECUTABLE:-/nonexistent}" ] || { echo "NO_CHROME"; exit 0; }
+"${CHROME_EXECUTABLE}" --version 2>/dev/null | sed "s/[[:space:]]*$//; s/^/VERSION /"
+cd /tmp && timeout 180 "${CHROME_EXECUTABLE}" --headless=new --no-sandbox ${CHROME_SMOKE_FLAGS:-} \
+  --dump-dom "data:text/html,<p>chrome-smoke-ok</p>" 2>/dev/null | grep -o chrome-smoke-ok | sed "s/^/DOM /"
+[ -d /opt/flutter/bin/cache/flutter_web_sdk ] && echo "WEB_SDK yes"' 2>/dev/null)" || true
+  exe="$(printf '%s\n' "${out}" | sed -n 's/^EXE //p' | head -1)"
+  if [ "${exe}" != /opt/chrome-for-testing/chrome ]; then
+    fail "CHROME_EXECUTABLE is '${exe:-unreadable}' in the ${target_arch} image, not /opt/chrome-for-testing/chrome"
+  elif [ "${target_arch}" = riscv64 ]; then
+    if printf '%s\n' "${out}" | grep -q '^NO_CHROME$'; then
+      pass "Chrome honestly absent on riscv64 (Google ships no riscv64 build)"
+    else
+      fail "a Chrome is installed on riscv64, where Google ships none: $(printf '%s\n' "${out}" | sed -n 's/^VERSION //p')"
+    fi
+  elif printf '%s\n' "${out}" | grep -q '^NO_CHROME$'; then
+    fail "CHROME_EXECUTABLE names no executable in the ${target_arch} image: flutter test --platform chrome cannot start"
+  elif ! printf '%s\n' "${out}" | grep -qxF "VERSION Google Chrome for Testing ${pin:-?}"; then
+    fail "Chrome is not CHROME_FOR_TESTING_VERSION=${pin:-?} on ${target_arch}: $(printf '%s\n' "${out}" | sed -n 's/^VERSION //p' | head -1)"
+  elif ! printf '%s\n' "${out}" | grep -q '^DOM chrome-smoke-ok$'; then
+    fail "headless Chrome rendered no page on ${target_arch} (a missing library, or the sandbox flags)"
+  elif ! printf '%s\n' "${out}" | grep -q '^WEB_SDK yes$'; then
+    fail "flutter's web SDK is not precached on ${target_arch}: every flutter test --platform chrome downloads it first"
+  else
+    pass "Chrome for Testing ${pin} renders headless offline, and flutter's web SDK is precached (${target_arch})"
+  fi
+  echo ""
+}
+
 # Runs rustc for its host triple; the ADV/HAVE table only SKIPs an unreadable one. docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
 check_rust_toolchain() {
   local image_tag="$1"
@@ -2448,6 +2486,7 @@ main() {
     check_iree_native "${image_tag}" "${target_arch}"
     check_ffmpeg "${image_tag}" "${target_arch}"
     check_flutter "${image_tag}" "${target_arch}"
+    check_chrome_for_testing "${image_tag}" "${target_arch}"
     check_rust_toolchain "${image_tag}" "${target_arch}"
     check_consumer_contract "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"

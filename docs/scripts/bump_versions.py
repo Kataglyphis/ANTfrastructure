@@ -357,6 +357,20 @@ def spec_nuget(cur):
     return v, extras
 
 
+
+def spec_chrome_for_testing(cur):
+    idx = http_json("https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json")
+    v = idx["channels"]["Stable"]["version"]
+    extras = {}
+    if v != cur and WRITE_MODE:
+        for platform, key in (("linux64", "CHROME_FOR_TESTING_LINUX64_SHA256"),
+                              ("linux-arm64", "CHROME_FOR_TESTING_LINUX_ARM64_SHA256")):
+            extras[key] = sha256_of_url(
+                f"https://storage.googleapis.com/chrome-for-testing-public/{v}/{platform}/chrome-{platform}.zip"
+            )
+    return v, extras
+
+
 def spec_uv(cur):
     tag = gh_latest("astral-sh/uv")
     v = tag.lstrip("v")
@@ -726,6 +740,7 @@ SAFE: list[tuple[str, Callable, str]] = [
     ("ACTIONLINT_VERSION", spec_actionlint, "none (host-side lint bootstrap)"),
     ("SHELLCHECK_VERSION", spec_shellcheck, "none (host-side lint bootstrap; linux+windows)"),
     ("FLUTTER_VERSION", spec_flutter, "linux sdk flutter layer"),
+    ("CHROME_FOR_TESTING_VERSION", spec_chrome_for_testing, "linux package stage (web tests)"),
     ("WIX_VERSION", spec_wix, "windows base scoop layer"),
     ("WIX_UI_EXT_VERSION", spec_wix_ui, "windows base scoop layer"),
     ("PYTHON_VERSION", spec_python, "linux+windows toolchain CPython builds (same-minor only)"),

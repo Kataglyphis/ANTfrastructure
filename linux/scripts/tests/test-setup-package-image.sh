@@ -128,7 +128,8 @@ _flutter() {
     : > "${tmp}/opt/flutter/bin/cache/dart-sdk/bin/dart"
     : > "${tmp}/opt/flutter/packages/flutter_tools/.dart_tool/package_config.json"
     : > "${tmp}/opt/flutter/packages/flutter/lib/material.dart"
-    printf '#!/bin/sh\nprintf "%%s\\n" "${FLUTTER_OUT}"; exit "${FLUTTER_RC}"\n' > "${tmp}/opt/flutter/bin/flutter"
+    # precache: FLUTTER_PRECACHE=fail|empty|ok (default ok writes the web SDK dir).
+    printf '#!/bin/sh\ncase "$*" in *precache*)\n  echo "PRECACHE $*"\n  case "${FLUTTER_PRECACHE:-ok}" in fail) echo "precache: download failed"; exit 1;; empty) exit 0;; esac\n  mkdir -p "%s/opt/flutter/bin/cache/flutter_web_sdk"; exit 0;; esac\nprintf "%%s\\n" "${FLUTTER_OUT}"; exit "${FLUTTER_RC}"\n' "${tmp}" > "${tmp}/opt/flutter/bin/flutter"
     chmod +x "${tmp}/opt/flutter/bin/flutter"
   fi
   PATH="${tmp}/bin:${PATH}" FLUTTER_RC="${flutter_rc}" FLUTTER_OUT="${flutter_out}" RUNTIME_UID="${uid}" bash -c '
@@ -170,6 +171,17 @@ t_assert_contains "${_out}" "/.git/FETCH_HEAD" "and the git internals the root-r
 t_assert_contains "${_out}" "/opt/flutter owned by uid ${_UID_FOREIGN}" "the shared handover names the tree it took over"
 t_assert_contains "${_out}" "OK: Flutter bootstrapped for arm64" "and the stage says so"
 t_assert_contains "${_out}" "rc=0" "success"
+
+t_case "the web SDK is precached during the bootstrap, and a precache that fails or leaves none fails the stage"
+_out="$(FLUTTER_PRECACHE=fail _flutter yes 0 "Flutter 3.47.1 • channel stable" "${_UID_FOREIGN}")"
+t_assert_contains "${_out}" "PRECACHE --suppress-analytics precache --web" "else every flutter test --platform chrome downloads ~240 MB first"
+t_assert_contains "${_out}" "precache: download failed" "flutter's own output is the diagnosis"
+t_assert_contains "${_out}" "ERROR: flutter precache --web failed on arm64"
+t_assert_contains "${_out}" "rc=1"
+t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c '^chown')" "no handover of a half-filled cache"
+_out="$(FLUTTER_PRECACHE=empty _flutter yes 0 "Flutter 3.47.1 • channel stable" "${_UID_FOREIGN}")"
+t_assert_contains "${_out}" "left no flutter_web_sdk on arm64"
+t_assert_contains "${_out}" "rc=1"
 
 t_case "the flutter bootstrap delegates the handover instead of copying the idiom"
 t_assert_contains "${_fn_src}" "hand_root_created_paths_to_runtime_user /opt/flutter" \

@@ -146,3 +146,6 @@ mutation-family:tvm-llvm
 # The riscv64 consumer lanes' sysroot export, cross env and index lookup: library and
 # host scripts no slug owns. Proof: linux/scripts/tests/test-riscv64-cross.sh.
 mutation-family:riscv64-cross
+# Chrome for Testing as the image's CHROME_EXECUTABLE (CON50): package-stage installer and
+# runtime smoke no slug owns. Proof: linux/scripts/tests/test-chrome-for-testing.sh.
+mutation-family:chrome

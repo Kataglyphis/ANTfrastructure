@@ -128,6 +128,8 @@ select_dev_packages() {
     # What consumer lanes installed per run: lavapipe, perf (26.04's linux-perf), libprofiler, jq, Xvfb.
     append_available_packages _sdp_out mesa-vulkan-drivers linux-perf \
         libgoogle-perftools-dev jq xvfb
+    # The one Chrome for Testing dependency (its deb.deps) the image does not already carry.
+    append_available_packages _sdp_out fonts-liberation
 
     # Never libgstreamer*-dev (ours is source-built, the distro one purged) or libgtk-4-dev (breaks cross builds).
 
@@ -428,6 +430,14 @@ bootstrap_flutter_sdk() {
     fi
     printf '%s\n' "${out}" | grep -m1 -E '^Flutter [0-9]'
     assert_elf_arch /opt/flutter/bin/cache/dart-sdk/bin/dart "${arch}"
+    # The web SDK and Material fonts, else every `flutter test --platform chrome` downloads ~240 MB first.
+    if ! out="$(PATH="/opt/flutter/bin:${PATH}" flutter --suppress-analytics precache --web \
+                  --no-android --no-ios --no-linux --no-windows --no-macos --no-fuchsia 2>&1)"; then
+        printf '%s\n' "${out}" | tail -20 >&2
+        echo "ERROR: flutter precache --web failed on ${arch}" >&2
+        return 1
+    fi
+    [ -d /opt/flutter/bin/cache/flutter_web_sdk ] || { echo "ERROR: flutter precache --web left no flutter_web_sdk on ${arch}" >&2; return 1; }
     hand_root_created_paths_to_runtime_user /opt/flutter
     echo "OK: Flutter bootstrapped for ${arch}"
 }
@@ -467,6 +477,65 @@ install_web_lane_toolchain() {
         fi
         wlt_install_from_source "${name}" "${version}" || return 1
     done
+}
+
+# Chrome for Testing's platform for this machine; empty where Google ships none (riscv64).
+_chrome_for_testing_platform() {
+    case "$1" in
+        x86_64)  printf 'linux64' ;;
+        aarch64) printf 'linux-arm64' ;;
+    esac
+}
+
+# For `flutter test --platform chrome` (CHROME_EXECUTABLE). See docs/consumer-image-contract.md § Chrome for web tests
+install_chrome_for_testing() {
+    local prefix="${CHROME_FOR_TESTING_PREFIX:-/opt/chrome-for-testing}"
+    local env_file="${VERSIONS_ENV:-/opt/scripts/core/versions.env}"
+    local machine platform key version sha dir got
+
+    machine="$(uname -m)"
+    platform="$(_chrome_for_testing_platform "${machine}")"
+    if [ -z "${platform}" ]; then
+        echo "NOTE: no Chrome for Testing build for ${machine}; CHROME_EXECUTABLE names nothing on this arch"
+        return 0
+    fi
+    key="CHROME_FOR_TESTING_$(printf '%s' "${platform}" | tr 'a-z-' 'A-Z_')_SHA256"
+    version="${CHROME_FOR_TESTING_VERSION:-$(sed -n 's/^CHROME_FOR_TESTING_VERSION=//p' "${env_file}" 2>/dev/null | head -1)}"
+    sha="${!key:-$(sed -n "s/^${key}=//p" "${env_file}" 2>/dev/null | head -1)}"
+    if [ -z "${version}" ] || [ -z "${sha}" ]; then
+        echo "ERROR: CHROME_FOR_TESTING_VERSION or ${key} is not pinned in ${env_file}" >&2
+        return 1
+    fi
+    if ! declare -F download_verified_file >/dev/null 2>&1; then
+        # shellcheck disable=SC1091
+        source /opt/scripts/core/downloads.sh || return 1
+    fi
+
+    dir="$(mktemp -d)" || return 1
+    if ! download_verified_file \
+           "https://storage.googleapis.com/chrome-for-testing-public/${version}/${platform}/chrome-${platform}.zip" \
+           "${sha}" "${dir}/chrome.zip"; then
+        echo "ERROR: Chrome for Testing ${version} (${platform}) did not download or verify" >&2
+        rm -rf "${dir}"; return 1
+    fi
+    unzip -q "${dir}/chrome.zip" -d "${dir}" || { echo "ERROR: chrome-${platform}.zip would not unpack" >&2; rm -rf "${dir}"; return 1; }
+    rm -rf "${prefix}"
+    mv "${dir}/chrome-${platform}" "${prefix}"
+    rm -rf "${dir}"
+    chmod -R go+rX "${prefix}"
+
+    if ldd "${prefix}/chrome" 2>&1 | grep -q 'not found'; then
+        ldd "${prefix}/chrome" | grep 'not found' >&2
+        echo "ERROR: Chrome for Testing ${version} misses shared libraries on ${machine}" >&2
+        return 1
+    fi
+    # It prints the version with a trailing space.
+    got="$("${prefix}/chrome" --version 2>&1 | sed 's/[[:space:]]*$//' || true)"
+    if [ "${got}" != "Google Chrome for Testing ${version}" ]; then
+        echo "ERROR: ${prefix}/chrome reports '${got}', not Chrome for Testing ${version}" >&2
+        return 1
+    fi
+    echo "OK: ${got} installed at ${prefix} (${platform})"
 }
 
 # Upstream's release asset for this machine, or empty when there is none (riscv64).
@@ -568,6 +637,7 @@ main() {
     ensure_native_rust_toolchain
     wire_cargo_symlinks
     install_web_lane_toolchain
+    install_chrome_for_testing
     hand_root_created_paths_to_runtime_user "${RUSTUP_HOME:?}" "${CARGO_HOME:?}"
     create_runtime_venv "${python_mm}"
 

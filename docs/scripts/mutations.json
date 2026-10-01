@@ -11585,5 +11585,125 @@
     "replace": "",
     "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
     "why": "matching on the OS alone takes whichever linux manifest comes first, and an amd64 sysroot under a riscv64 compiler fails only at link time"
+  },
+  {
+    "id": "chrome.package-env",
+    "target": "linux/Dockerfile.package",
+    "find": "ENV CHROME_EXECUTABLE=/opt/chrome-for-testing/chrome\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "flutter test --platform chrome finds no browser without CHROME_EXECUTABLE"
+  },
+  {
+    "id": "chrome.installed",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    install_chrome_for_testing\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "an uncalled installer ships no browser"
+  },
+  {
+    "id": "chrome.web-precache",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "flutter --suppress-analytics precache --web",
+    "replace": "flutter --suppress-analytics precache --no-web",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "every web test run downloads ~240 MB of web SDK first"
+  },
+  {
+    "id": "chrome.pin-required",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    if [ -z \"${version}\" ] || [ -z \"${sha}\" ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "an unpinned SHA means unverified bytes in the image"
+  },
+  {
+    "id": "chrome.platform-arm64",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "        aarch64) printf 'linux-arm64' ;;\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "arm64 would ship no browser while its ENV names one"
+  },
+  {
+    "id": "chrome.ldd-gate",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    if ldd \"${prefix}/chrome\" 2>&1 | grep -q 'not found'; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "a browser missing a library fails only in the consumer's run"
+  },
+  {
+    "id": "chrome.version-gate",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    if [ \"${got}\" != \"Google Chrome for Testing ${version}\" ]; then",
+    "replace": "    if false; then",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "a zip that is not the pinned build must not ship"
+  },
+  {
+    "id": "chrome.smoke-called",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "    check_chrome_for_testing \"${image_tag}\" \"${target_arch}\"\n",
+    "replace": "",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "an uncalled check guards nothing"
+  },
+  {
+    "id": "chrome.smoke-riscv64",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "      fail \"a Chrome is installed on riscv64, where Google ships none",
+    "replace": "      pass \"a Chrome is installed on riscv64, where Google ships none",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "riscv64 has no upstream build to be pinned against"
+  },
+  {
+    "id": "chrome.smoke-version",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif ! printf '%s\\n' \"${out}\" | grep -qxF \"VERSION Google Chrome for Testing ${pin:-?}\"; then",
+    "replace": "  elif false; then",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "a Chrome off the pin is not the verified bytes"
+  },
+  {
+    "id": "chrome.smoke-dom",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif ! printf '%s\\n' \"${out}\" | grep -q '^DOM chrome-smoke-ok$'; then",
+    "replace": "  elif false; then",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "a Chrome that prints its version can still render nothing"
+  },
+  {
+    "id": "chrome.smoke-web-sdk",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  elif ! printf '%s\\n' \"${out}\" | grep -q '^WEB_SDK yes$'; then",
+    "replace": "  elif false; then",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "the web SDK precache is half of what web tests need"
+  },
+  {
+    "id": "chrome.version-trim",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    got=\"$(\"${prefix}/chrome\" --version 2>&1 | sed 's/[[:space:]]*$//' || true)\"",
+    "replace": "    got=\"$(\"${prefix}/chrome\" --version 2>&1 || true)\"",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "the real binary prints a trailing space; an exact compare without the trim fails every image build"
+  },
+  {
+    "id": "chrome.smoke-emulated-only",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  [ \"${target_arch}\" = \"$(smoke_host_arch)\" ] || flags=\"--no-zygote --in-process-gpu --disable-gpu\"",
+    "replace": "  flags=\"--no-zygote --in-process-gpu --disable-gpu\"",
+    "test": "bash linux/scripts/tests/test-chrome-for-testing.sh",
+    "why": "natively the qemu-user flags hang Chrome, so the amd64 smoke would time out"
+  },
+  {
+    "id": "chrome.web-sdk-gate",
+    "target": "linux/scripts/06-packaging/setup-package-image.sh",
+    "find": "    [ -d /opt/flutter/bin/cache/flutter_web_sdk ] || {",
+    "replace": "    true || {",
+    "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+    "why": "a precache that exits 0 without the web SDK ships the download to every consumer run"
   }
 ]

@@ -99,6 +99,14 @@
       "transformTemplates": [
         "{ \"releases\": $map($lookup($, \"nuget.exe\")[stage = \"ReleasedAndBlessed\"], function($t) { { \"version\": $t.version } }) }"
       ]
+    },
+    "chrome-for-testing": {
+      "description": "Chrome for Testing's last-known-good index: the Stable channel's version, which Google publishes linux64 and linux-arm64 zips for. Its two SHA256s in versions.env move with it, so the key keeps the approval rule.",
+      "defaultRegistryUrlTemplate": "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json",
+      "format": "json",
+      "transformTemplates": [
+        "{ \"releases\": [ { \"version\": $.channels.Stable.version } ] }"
+      ]
     }
   }
 }

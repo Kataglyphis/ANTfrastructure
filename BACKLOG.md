@@ -75,10 +75,35 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          `free-threaded-extras` (`docs/python-ci.md` § What the test leg runs).
       2. `container-ci-windows.yml` takes a binary-free test tree and `Invoke-StagedTests.ps1`
          reads pytest, for OrchestrANT's arm64 suite. (Done 2026-10-01.)
-      3. Chromium in `:latest` (`linux/Dockerfile.package`) for `flutter test --platform chrome`.
-      4. An Android emulator and arm64-v8a system image for OmniAccelerANT's APK. arm64
-         runners have no KVM, so it runs as an x64 image with ARM translation or on another
-         runner. Measure before choosing.
+      3. Chrome in `:latest` for `flutter test --platform chrome`: **in the source
+         (2026-10-01)**, Chrome for Testing as `CHROME_EXECUTABLE` on amd64 and arm64 plus
+         the precached web SDK (`docs/consumer-image-contract.md` § Chrome for web tests).
+         riscv64 has none upstream. Ships with the next `:latest` chain; then the runtime
+         smoke's `check_chrome_for_testing` must pass in the published children, and a
+         consumer's first `flutter test --platform chrome` on an arm64 runner proves real
+         arm64 (only qemu-user was measured).
+      4. An Android emulator for OmniAccelerANT's arm64-v8a APK. **Measured 2026-10-01**,
+         in a rootless container FROM `:latest-amd64` with `--device /dev/kvm` on this host:
+         - `emulator` 37.2.12 (863 MB) and `system-images;android-35;google_apis;x86_64`
+           r09 (3.5 GB), installed by the image's `sdkmanager` into a writable SDK root
+           (`/opt/android-sdk` is read-only). The image does not need to carry them.
+         - `-no-window -gpu swiftshader_indirect` boots in 32 s. The ABI list is
+           `x86_64,arm64-v8a`, through `libndk_translation.so`.
+         - CI's `app-release.apk` (run 36917222157), installed with `adb install --abi
+           arm64-v8a`, starts. Impeller runs, and the Stream page's Test Pattern plays
+           through the native GStreamer plugin (`KataglyphisGStreamer: play
+           set_state(PLAYING): SUCCESS`).
+         - **`--abi arm64-v8a` is required.** The APK also carries `x86_64` and
+           `armeabi-v7a` libs, but `libkataglyphis_native_inference.so` exists for
+           arm64-v8a only. A plain install on an x86_64 device picks x86_64 and loses the
+           plugin (OmniAccelerANT's half).
+
+         Plan: the emulator stays out of the image (4.4 GB, and it needs KVM). A hub script
+         installs pinned `emulator` + system-image revisions into a cache volume, boots
+         headless, installs with `--abi arm64-v8a` and gates on a launch plus logcat
+         markers. It runs in the x64 Android lane with `--device /dev/kvm`, which GitHub's
+         x64 runners expose. Not proven yet: that the hosted runner's KVM reaches a
+         `run-in-linux-container` container.
       5. A software Vulkan ICD for Windows x64 and arm64 (Mesa lavapipe; WARP/Dozen lacks ray
          tracing). Ship it in the image or as a pinned, SHA-checked download; the consumers
          run the goldens with it.

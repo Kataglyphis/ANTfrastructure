@@ -7,6 +7,24 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-01 - Chrome for Testing in `:latest` for `flutter test --platform chrome` (CON50)
+
+- **`CHROME_EXECUTABLE=/opt/chrome-for-testing/chrome`** on every arch. The package stage's
+  `install_chrome_for_testing` installs Google's Chrome for Testing
+  (`CHROME_FOR_TESTING_VERSION` 154.0.8037.92, a SHA256 per platform) on amd64 and arm64.
+  riscv64 has no upstream build, from Google or Debian, so the path names nothing there.
+  Ubuntu 26.04's `chromium` is a snap stub. `fonts-liberation` joins the dev packages.
+- **`bootstrap_flutter_sdk` precaches the web SDK.** Every `flutter test --platform chrome`
+  downloaded it, the Material fonts and the engine artifacts first (~240 MB).
+- Measured in the `:latest` amd64 child: `flutter test --platform chrome` passes a plain
+  and a widget test headless; Flutter adds `--no-sandbox` itself. arm64 Chrome renders
+  under qemu-user only with `--no-zygote --in-process-gpu --disable-gpu`, which the new
+  runtime smoke `check_chrome_for_testing` passes.
+- Renovate: the `chrome-for-testing` custom datasource. `bump_versions.py`:
+  `spec_chrome_for_testing` re-hashes both zips.
+- Suite `test-chrome-for-testing.sh`, fifteen mutations in the `chrome` family. Page:
+  `docs/consumer-image-contract.md` § Chrome for web tests.
+
 ## 2026-10-01 - riscv64 consumer lanes: cross-build on amd64, test under QEMU (CON48)
 
 - **Owner decision:** a consumer's riscv64 lane builds on the amd64 runner and runs only

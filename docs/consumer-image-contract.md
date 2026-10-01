@@ -228,6 +228,43 @@ trade is deliberate: a consumer that has to build its own tools is slow, a consu
 that cannot build the image at all is worse. What it does fail on — a bad knob, or
 a binary that claims to be good and is not — is in the next section.
 
+### Chrome for web tests
+
+`flutter test --platform chrome` needs a browser, and Ubuntu 26.04's `chromium` is a
+snap stub that cannot run in a container. The package stage installs **Chrome for
+Testing** instead, Google's pinned and unauto-updating build, and advertises it:
+
+| | amd64 | arm64 | riscv64 |
+| --- | --- | --- | --- |
+| `CHROME_EXECUTABLE` | `/opt/chrome-for-testing/chrome` | the same | the same path, which does **not exist** |
+| source | `chrome-linux64.zip` | `chrome-linux-arm64.zip` | none: Google publishes no riscv64 build, and Debian builds `chromium` for amd64, arm64, i386 and ppc64el only (checked 2026-10-01) |
+| pin | `CHROME_FOR_TESTING_VERSION` + `CHROME_FOR_TESTING_LINUX64_SHA256` | `+ CHROME_FOR_TESTING_LINUX_ARM64_SHA256` | — |
+
+`install_chrome_for_testing` (`setup-package-image.sh`) downloads the zip through
+`download_verified_file`, refuses an unpinned SHA, a library `ldd` cannot resolve,
+and a `--version` that is not the pin. Every library in its `deb.deps` is already in
+the image except `fonts-liberation`, which the dev package list adds.
+`bootstrap_flutter_sdk` also runs `flutter precache --web`: without it every
+consumer run downloaded the web SDK, Material fonts and engine artifacts first
+(~240 MB, measured 2026-10-01).
+
+**The sandbox.** Chrome's sandbox needs unprivileged user namespaces, which a
+container does not grant (`No usable sandbox!`). Flutter's test runner passes
+`--no-sandbox` itself, so `flutter test --platform chrome` works as is (measured
+2026-10-01 in the `:latest` amd64 child: 2 tests, one a widget test, 40 s cold). Any
+other caller passes `--no-sandbox` too.
+
+**Under QEMU.** Real arm64 hardware runs Chrome normally. Emulated with qemu-user,
+its zygote dies (`uncaught target signal 5`, then `GPU process isn't usable`), and
+only `--no-zygote --in-process-gpu --disable-gpu` renders a page. The runtime smoke's
+`check_chrome_for_testing` passes those flags because the build host's arm64 smoke
+is emulated; a consumer lane on an arm64 runner needs none of them.
+
+Renovate reads the version through the `chrome-for-testing` custom datasource (the
+Stable channel of Google's last-known-good index), and `bump_versions.py`'s
+`spec_chrome_for_testing` re-hashes both zips when it moves. **The two SHA256s bump
+with the version.**
+
 ### Building the web-lane tools from source
 
 riscv64 has no upstream binary, so its package stage used to compile both tools
@@ -373,6 +410,7 @@ lane runs on the next `:latest`.
 | lavapipe on arm64/riscv64 (CON44) | 4-lane subgroups: a draw that builds an acceleration structure SEGVs; BeschleunigerBallett exports `LP_NATIVE_VECTOR_WIDTH=256` itself | the image sets `LP_NATIVE_VECTOR_WIDTH=256` on every arch, and the smoke fails a lavapipe whose `subgroupSize` is not 8 ([why](failure-modes.md#lavapipe-segfaults-building-an-acceleration-structure-on-arm64)) |
 | A C host that loads GStreamer or libcamera first | `libunwind.so.8` from `libgstreamer-1.0`/`libcamera-base` turns a C++ exception through `std::call_once` into a SIGSEGV | both build without libunwind ([why](failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind)) |
 | `gst-inspect-1.0 -b` on amd64 (CON47) | lists `libgstvalidatessim.so` | lists nothing; the SSIM plugin still works under `gst-validate-1.0` ([why](failure-modes.md#the-core-registry-blacklists-libgstvalidatessimso)) |
+| `flutter test --platform chrome` (CON50) | no browser in the image (Ubuntu's `chromium` is a snap stub), and every run downloads the web SDK first | `CHROME_EXECUTABLE` names Chrome for Testing on amd64 and arm64, and the web SDK is precached ([details](#chrome-for-web-tests)); riscv64 has no upstream Chrome |
 
 ## The Android SDK roots are advertised
 

@@ -139,6 +139,8 @@ ENV LP_NATIVE_VECTOR_WIDTH=256
 # The smoke compares these with the binaries: docs/consumer-image-contract.md#the-web-lane-toolchain
 ENV WASM_PACK_VERSION=${WASM_PACK_VERSION}
 ENV FLUTTER_RUST_BRIDGE_VERSION=${FLUTTER_RUST_BRIDGE_VERSION}
+# Chrome for Testing for `flutter test --platform chrome`; riscv64 has none: docs/consumer-image-contract.md#chrome-for-web-tests
+ENV CHROME_EXECUTABLE=/opt/chrome-for-testing/chrome
 # Advertised as ENV (ARG never reaches the image config) for consumers and the advertised-vs-actual smoke.
 ARG UBUNTU_VERSION=26.04
 ARG CMAKE_VERSION=4.4.3
