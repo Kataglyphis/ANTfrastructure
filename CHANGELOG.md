@@ -9,8 +9,6 @@
 
 ## 2026-10-01 - The torch stage installs the chain wheels once, and proves them (CON52)
 
-## 2026-10-01 - The torch stage installs the chain wheels once, and proves them (CON52)
-
 - **The detour is gone.** The 2026-10-01 chain installed `ai-edge-litert` and
   `onnxruntime-genai` from `/opt/wheels` before `uv sync`, which removed them again (an
   exact sync drops what `--no-install-package` excludes), and `reconcile_local_wheels`
