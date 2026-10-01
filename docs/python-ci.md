@@ -345,6 +345,14 @@ Windows has the same trap and the same cure. `New-UvProjectEnvironment` asks uv 
 no wheel for one of its locked packages (2026-09-30). Test:
 `windows/scripts/tests/Uv.PythonRequest.Tests.ps1`.
 
+**uv downloads nothing for a `+gil` request**, so a version the host lacks is installed first.
+OmniAccelerANT's 3.12 venv (its CMake format gate) stopped with `No interpreter found for
+Python 3.12+gil in managed installations, search path, or registry` (2026-10-01). Like Linux's
+`uv_ensure_python_available`, `New-UvProjectEnvironment` now asks `uv python find` first. When
+nothing is found it runs `uv python install X.Y`, which installs the GIL build, and then
+creates the `+gil` venv. Measured in `:winamd64`: 3.12 is installed and its venv is a GIL
+3.12.14. 3.14 still takes the image's own `C:\temp\cpython`, with no download.
+
 `uv build` is a second door into the same trap. It discovers its own interpreter and
 ignores the venv, so `Invoke-CiPackaging.ps1` passes it the same `--python X.Y+gil`.
 Without that flag, OrchestrANT's only Windows binary wheel was `cp314-cp314t`

@@ -109,7 +109,9 @@ function New-UvProjectEnvironment {
         [string]$EnvName,
         [scriptblock]$CommandRunner,
         [scriptblock]$LogInfo,
-        [scriptblock]$LogWarning
+        [scriptblock]$LogWarning,
+        # Test seam: whether uv already finds an interpreter for a request.
+        [scriptblock]$PythonFinder = { param($request) & uv python find $request *> $null; return $LASTEXITCODE -eq 0 }
     )
 
     if ([System.IO.Path]::IsPathRooted($EnvName)) {
@@ -132,6 +134,10 @@ function New-UvProjectEnvironment {
     }
 
     $request = Get-UvPythonRequest -Version $PythonVersion
+    # uv downloads nothing for a +gil request (OmniAccelerANT's 3.12, 2026-10-01); a bare install fetches the GIL build.
+    if ($request -ne $PythonVersion -and -not (& $PythonFinder $request)) {
+        Invoke-UvCommand -Arguments @('python', 'install', $PythonVersion) -CommandRunner $CommandRunner -LogInfo $LogInfo
+    }
     Invoke-UvCommand -Arguments @('venv', '--python', $request, '--clear', $envPath) -CommandRunner $CommandRunner -LogInfo $null
 
     $env:UV_PROJECT_ENVIRONMENT = $envPath
