@@ -24,8 +24,8 @@ on:
         required: false
         type: string
         default: ''
-      cache-key:
-        description: compiler-cache-restore's lane id, e.g. `riscv64-cargo`.
+      cache-lane:
+        description: compiler-cache-restore's lane id, e.g. `riscv64-cargo` (not `cache-key`: gitleaks reads a literal `*-key:` as a credential).
         required: true
         type: string
       cache-mounts:
@@ -71,7 +71,7 @@ jobs:
         id: cc
         uses: Kataglyphis/ANTfrastructure/.github/actions/compiler-cache-restore@develop
         with:
-          key: ${{ inputs.cache-key }}
+          key: ${{ inputs.cache-lane }}
           mounts: ${{ inputs.cache-mounts }}
           env: ${{ inputs.cache-env }}
 
@@ -85,4 +85,4 @@ jobs:
         if: always() && steps.cc.outputs.path != ''
         uses: Kataglyphis/ANTfrastructure/.github/actions/compiler-cache-save@develop
         with:
-          key: ${{ inputs.cache-key }}
+          key: ${{ inputs.cache-lane }}
