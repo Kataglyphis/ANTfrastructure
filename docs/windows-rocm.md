@@ -955,9 +955,10 @@ Apache-2.0 (rocThrust; LLVM with the LLVM exception). The HIP runtime (`amdhip64
 `hiprtc*`) and the OpenCL runtime (`OpenCL.dll`, `amdocl64.dll`) ship **without** a
 licence file, and the Windows HIP runtime links AMD's prebuilt PAL. The PyTorch wheels
 and the llama.cpp HIP zip carry copies of the same runtime; the Vulkan zip carries none.
-Whether that runtime may ship in a **public** image is an owner decision to take before
-`:winamd64-rocm` is pushed; `docs/deps/deps.json` records it as
-`LicenseRef-Proprietary-EULA` until then.
+**The owner cleared that question: `:winamd64-rocm` was published on 2026-09-28** (image
+built at ad08bc30), with the runtime shipped as TheRock delivers it. `docs/deps/deps.json`
+keeps `LicenseRef-Proprietary-EULA` for the runtime: the id describes the licence, not the
+permission.
 
 The Vulkan loader is LunarG's signed build of the Khronos Vulkan-Loader, Apache-2.0 with
 MIT parts; its `VulkanRT-License.txt` ships in `C:\vulkan-loader`. The DXC pair beside the
