@@ -7,6 +7,16 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-02 - CON34: the HIP/<cmath> overlay installs with TheRock, and MIGraphX drops its copy
+
+- `Dockerfile.rocm` now installs `windows/scripts/hip/` with TheRock: the headers into
+  `C:\runtime\opt\hip-msvc-cmath`, both `*.cfg` beside TheRock's `clang.exe` - instead of the
+  end of `Dockerfile.rocm-llama`. The move re-keys the rocm chain, which the next rebuild pays
+  anyway.
+- MIGraphX no longer passes its own `-isystem` overlay: `Write-HipMsvcCmathOverlay`,
+  `Get-MigraphxCmakeArgs -HipMathOverlay` and the parity test are gone. The next rocm build
+  proves MIGraphX compiles with the configs active (never measured before).
+
 ## 2026-10-02 - CON31's `:winamd64-rocm` record: the redistribution question is closed
 
 - The Redistribution section of `docs/windows-rocm.md` still said the public push "is an

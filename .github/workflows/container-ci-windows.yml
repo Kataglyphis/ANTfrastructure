@@ -412,8 +412,7 @@ jobs:
           if ($failed -gt 0) { throw "$failed arm64 test(s) failed" }
           if ($passed -lt 1) { throw 'no arm64 test passed; a run with nothing tested is not a test verdict' }
 
-      # The results exist only in the runner's working dir without this; the -tests artifact
-      # is uploaded from the build job, before the device generates anything.
+      # Without this the device's results stay in the runner's working dir; the -tests artifact is the build job's.
       - name: Upload the test results
         if: ${{ inputs.test-command != '' && inputs.test-results-path != '' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

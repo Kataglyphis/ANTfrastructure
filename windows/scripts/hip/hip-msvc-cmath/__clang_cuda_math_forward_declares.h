@@ -1,4 +1,4 @@
-// Written by Write-HipMsvcCmathOverlay: MSVC's <cmath> owns these six.
+// MSVC's <cmath> owns these six as constexpr; the wrapper renames them around the untouched original.
 #pragma push_macro("isgreater")
 #undef isgreater
 #define isgreater __hip_msvc_owned_isgreater

@@ -160,41 +160,12 @@ Describe 'WindowsMigraphx.Common: facts read from fetched trees' {
     }
 }
 
-Describe 'WindowsMigraphx.Common: HIP math overlay for MSVC 14.51 <cmath>' {
-    It 'renames the six comparisons MSVC owns around an #include_next of each untouched original' {
-        Invoke-InTestDir { param($dir)
-            $overlay = Write-HipMsvcCmathOverlay -WorkDir $dir
-            Assert-Equal (Join-Path $dir 'hip-msvc-cmath-overlay') $overlay 'overlay dir under the work dir'
-            foreach ($header in '__clang_cuda_math_forward_declares.h', '__clang_hip_cmath.h') {
-                $text = Get-Content -Raw -LiteralPath (Join-Path $overlay $header)
-                Assert-True ($text.Contains("#include_next <$header>")) "$header includes the original"
-                foreach ($n in 'isgreater', 'isgreaterequal', 'isless', 'islessequal', 'islessgreater', 'isunordered') {
-                    $order = "(?s)push_macro\(`"$n`"\).*#define $n __hip_msvc_owned_$n.*#include_next.*pop_macro\(`"$n`"\)"
-                    Assert-Match $order $text "$header renames $n before the original and restores it after"
-                }
-                Assert-False ($text -match '\bisnan\b|\bisinf\b|\bisfinite\b') "$header leaves the one-argument classifiers to HIP"
-            }
-        }
-    }
-}
-
 Describe 'the image''s HIP/MSVC <cmath> overlay (windows/scripts/hip)' {
     $hipDir = Join-Path $script:MgxRepo 'windows\scripts\hip'
 
-    It 'ships exactly the headers Write-HipMsvcCmathOverlay writes, line for line' {
-        Invoke-InTestDir { param($dir)
-            $generated = Write-HipMsvcCmathOverlay -WorkDir $dir
-            $shipped = Join-Path $hipDir 'hip-msvc-cmath'
-            $names = @(Get-ChildItem -LiteralPath $generated -File | ForEach-Object Name | Sort-Object)
-            Assert-Equal ($names -join ',') (@(Get-ChildItem -LiteralPath $shipped -File | ForEach-Object Name | Sort-Object) -join ',') 'the same two headers'
-            foreach ($n in $names) {
-                Assert-Equal ([System.IO.File]::ReadAllLines((Join-Path $generated $n)) -join "`n") ([System.IO.File]::ReadAllLines((Join-Path $shipped $n)) -join "`n") $n
-            }
-        }
-    }
 
     It 'installs it with configs beside TheRock''s clang that name the very directory it lands in' {
-        $joined = ([System.IO.File]::ReadAllText((Join-Path $script:MgxRepo 'windows\Dockerfile.rocm-llama'))) -replace '`\r?\n', ' '
+        $joined = ([System.IO.File]::ReadAllText((Join-Path $script:MgxRepo 'windows\Dockerfile.rocm'))) -replace '`\r?\n', ' '
         $dest = [regex]::Match($joined, '(?m)^COPY windows\\scripts\\hip\\hip-msvc-cmath (C:\\\S+)').Groups[1].Value
         Assert-True ([bool]$dest) 'the overlay is COPYed into the image'
         Assert-Match ([regex]::Escape('COPY windows\scripts\hip\clang.cfg windows\scripts\hip\clang++.cfg C:\TheRock\build\lib\llvm\bin\')) $joined 'both configs sit beside clang.exe'
@@ -202,6 +173,11 @@ Describe 'the image''s HIP/MSVC <cmath> overlay (windows/scripts/hip)' {
             $options = @([System.IO.File]::ReadAllLines((Join-Path $hipDir $cfg)) | Where-Object { $_ -and -not $_.StartsWith('#') })
             Assert-Equal "-isystem $($dest -replace '\\', '/')" ($options -join '|') "$cfg carries one option, the install dir"
         }
+    }
+
+    It 'no longer installs it from Dockerfile.rocm-llama (the move to the sdk slot, CON34)' {
+        $llama = [System.IO.File]::ReadAllText((Join-Path $script:MgxRepo 'windows\Dockerfile.rocm-llama'))
+        Assert-False ($llama -match 'windows\\scripts\\hip') 'the llama stage must not carry the overlay COPYs'
     }
 }
 
@@ -455,7 +431,7 @@ Describe 'Build-MigraphxFromSource.ps1' {
             New-Item -ItemType Directory -Force -Path $bin | Out-Null
             foreach ($t in 'llvm-ar', 'llvm-ranlib', 'llvm-objcopy', 'clang-offload-bundler', 'llvm-readobj') { Set-Content -LiteralPath (Join-Path $bin "$t.exe") -Value 'x' }
             $a = @(Get-MigraphxCmakeArgs -RocmRoot $dir -DepsPrefix 'C:\w\deps' -GpuTargets 'gfx1200;gfx1201' -Python 'C:\py\python.exe' `
-                -NlohmannJsonDir 'C:\w\deps\share\cmake\nlohmann_json' -HipMathOverlay 'C:\w\hip-msvc-cmath-overlay')
+                -NlohmannJsonDir 'C:\w\deps\share\cmake\nlohmann_json')
             $joined = $a -join ' '
             foreach ($want in '-DMIGRAPHX_ENABLE_GPU=ON', '-DMIGRAPHX_ENABLE_MLIR=OFF', '-DMIGRAPHX_USE_COMPOSABLEKERNEL=OFF',
                 '-DMIGRAPHX_ENABLE_PYTHON=OFF', '-DMIGRAPHX_ENABLE_TENSORFLOW=OFF', '-DBUILD_DEV=OFF', '-DGPU_TARGETS:STRING=gfx1200;gfx1201',
@@ -467,7 +443,6 @@ Describe 'Build-MigraphxFromSource.ps1' {
             Assert-True ($a -contains "-DCLANG_OFFLOAD_BUNDLER:FILEPATH=$rocm/lib/llvm/bin/clang-offload-bundler.exe") 'AMD bundler for the offload-arch check'
             Assert-True ($a -contains "-DCMAKE_PREFIX_PATH:STRING=C:/w/deps;$rocm") 'deps first, then TheRock'
             Assert-True ($a -contains '-Dnlohmann_json_DIR:PATH=C:/w/deps/share/cmake/nlohmann_json') 'the natvis shim over TheRock''s nlohmann/json'
-            Assert-True ($a -contains '-DCMAKE_CXX_FLAGS:STRING=-isystem C:/w/hip-msvc-cmath-overlay') 'the HIP math overlay precedes clang''s resource dir'
             Assert-False ($joined -match 'CMAKE_(C|CXX)_COMPILER=') 'compilers are passed to Invoke-CmakeConfigure, not here'
         }
     }

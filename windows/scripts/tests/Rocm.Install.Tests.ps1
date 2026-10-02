@@ -268,9 +268,8 @@ Describe 'Dockerfile.rocm: PATH and pins' {
     }
 
     It 'never puts AMD''s LLVM on PATH (lib\llvm\bin holds its own clang-cl.exe)' {
-        # Instructions only: the header comment names lib\llvm\bin on purpose.
-        $code = ($df -split "`r?`n" | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
-        Assert-False ($code -match '(?i)llvm\\bin') 'lib\llvm\bin must not appear in any Dockerfile.rocm instruction'
+        # The hip configs land in lib\llvm\bin by design; the PATH value must still not name it.
+        Assert-False ($pathValue -match '(?i)llvm\\bin') 'the PATH value must not name lib\llvm\bin'
     }
 
     It 'fails closed on the SHA256: the script refuses an empty or malformed pin' {
