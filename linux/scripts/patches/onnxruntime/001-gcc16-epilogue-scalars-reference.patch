@@ -1,0 +1,11 @@
+--- a/onnxruntime/contrib_ops/cuda/llm/moe_gemm/launchers/moe_gemm_tma_ws_launcher.inl
++++ b/onnxruntime/contrib_ops/cuda/llm/moe_gemm/launchers/moe_gemm_tma_ws_launcher.inl
+@@ -532,7 +532,7 @@
+             auto const mainloop_params = make_mainloop_params();                                                                                                                                                                                  \
+                                                                                                                                                                                                                                                   \
+             using EpilogueArguments = typename CollectiveEpilogue::Arguments;                                                                                                                                                                     \
+-            using EpilogueScalars = decltype(EpilogueArguments{}.thread);                                                                                                                                                                         \
++            using EpilogueScalars = std::remove_reference_t<decltype(EpilogueArguments{}.thread)>;                                                                                                                                                                         \
+             auto make_epilogue_scalars = [&]()                                                                                                                                                                                                    \
+             {                                                                                                                                                                                                                                     \
+                 if constexpr (IsBlackwell)                                                                                                                                                                                                        \
