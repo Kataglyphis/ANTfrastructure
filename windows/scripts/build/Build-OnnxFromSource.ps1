@@ -603,7 +603,8 @@ $dmlArg = '-Donnxruntime_USE_DML=ON'
 if ($onnxCross) { Write-Host 'ONNX: DirectML EP ON for the cross lane too (backlog #113 - the redist DOES ship bin/arm64-win/DirectML.lib; the old failure was an upper-case path, not a missing package)' }
 # QNN EP: opt-in by staging the login-gated QAIRT zip in windows\qnn-sdk\; no zip, no EP.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
-$qnnArgs = if ($qnnSdk) { $qnnSdk.CmakeArgs } else { @() }
+$qnnArgs = @()
+if ($qnnSdk) { $qnnArgs = $qnnSdk.CmakeArgs }
 if ($qnnSdk) { Write-Host "ONNX: QNN EP ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121" }
 else { Write-Host 'ONNX: QNN EP off -- no SDK zip staged in windows\qnn-sdk (opt-in; see windows\qnn-sdk\README.md, backlog #121)' }
 # KleidiAI in MLAS, arm64 only: only build.py enables it upstream; see the KleidiAI note in docs/windows-cross-builds.md.
@@ -614,8 +615,9 @@ if ($onnxCross) {
     $kleidiArgs = @('-Donnxruntime_USE_KLEIDIAI=ON', "-DFETCHCONTENT_SOURCE_DIR_KLEIDIAI=$($kleidiSrc.SourceDir -replace '\\', '/')")
 }
 # ThinLTO via ORT's own IPO (versions.env ORT_ENABLE_LTO is Linux's knob); never with CUDA, whose nvcc host is cl.
-$ltoArgs = if ($cudaUsable) { @() } else { @('-Donnxruntime_ENABLE_LTO=ON') + @(Get-LlvmArchiverCmakeArg) }
-Write-Host "ONNX: ThinLTO $(if ($ltoArgs.Count) { 'ON' } else { 'OFF (CUDA lane)' })"
+$ltoArgs = @()
+if (-not $cudaUsable) { $ltoArgs = @('-Donnxruntime_ENABLE_LTO=ON') + @(Get-LlvmArchiverCmakeArg) }
+Write-Host "ONNX: ThinLTO $(if ($cudaUsable) { 'OFF (CUDA lane)' } else { 'ON' })"
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
     $dmlArg, '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
