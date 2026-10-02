@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly Raspberry Pi fleet update (ansible)
+# Runs the update playbook from linux/ansible; ansible itself lives in
+# ~/venvs/ansible (pip install, see ../README.md).
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/ANTfrastructure/linux/ansible
+ExecStart=%h/venvs/ansible/bin/ansible-playbook playbooks/update.yml
+# PrivateTmp would break nothing here, but ansible's ssh needs a writable
+# HOME for its control sockets — keep the user session environment.

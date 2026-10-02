@@ -7,6 +7,72 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-03 — the Ansible fleet-update lane goes live
+
+* `playbooks/update.yml` (apt safe-upgrade + autoremove per Pi, reboot only
+  when required) runs **Sundays 04:30 Berlin** via a user systemd timer
+  (`systemd/`, installed by `playbooks/schedule.yml`, armed 2026-10-03).
+  Proven with a real run on pi-1: `ok=14 failed=0` — fully current.
+* The host's nerdctl-full bundle was upgraded **2.3.5 → 2.4.1** (containerd
+  v2.4.1, buildkit v0.33.1) via `install-nerdctl-full.sh --include-rootful`:
+  checksum-verified download, both containerd lanes stopped and restarted
+  together, rollback backup in `~/.cache/nerdctl-full-backup`. The install
+  warnings ("stale v0.31.2", "user buildkit.service won't start") were both
+  an orphaned pre-upgrade daemon holding the user socket — this host has no
+  user buildkit unit (rootless containerd for HA + rootful buildkit is its
+  topology); reaped, all services verified on the new binaries.
+* **Beyond apt**, per gitignored `host_vars` flags (pi-1 carries all three):
+  the HA/glances containers update weekly (`compose pull` +
+  `--force-recreate` — REQUIRED under nerdctl, which keeps a running
+  container on its old image), a report-only nerdctl drift check (the
+  upgrade stays deliberate behind `NERDCTL_INSTALL_CONFIRM=1`), and the
+  ansible venv upgrades itself LAST so a broken release cannot take down
+  the run that installs it.
+* **Bootloader EEPROM is now covered too** (Pi 4/5; pi-2 is pre-Pi4 with no
+  EEPROM): the playbook queries `rpi-eeprom-update` (exit 1 = update
+  available — wording pinned from the tool source, not guessed), stages it
+  with `-a` and makes it a reboot trigger. Without this, a bootloader-only
+  apt update could sit unflashed indefinitely: the boot-time
+  `rpi-eeprom-update.service` stages at reboot, but nothing guarantees a
+  reboot happens. Branch logic mutation-tested (fires on rc 1, silent on
+  rc 0 and missing register); both Pis ran green with the lane in place.
+  The container-recreate tasks now carry an honest note: they report
+  `changed` every run because `--force-recreate` (required under nerdctl)
+  bounces the stack by design.
+* Two traps are encoded in the playbook rather than left for the next
+  session: the control node reboots LAST and DELAYED (`shutdown -r +2` — an
+  inline reboot kills the running playbook mid-report, so inventory order is
+  load-bearing, pi-1 last); and kernel staleness is compared within the
+  running kernel's FLAVOR — this host runs `v8-16k+` while `v8-rt+` sorts
+  last in `/lib/modules`, so a naive comparison would reboot-loop the Pi
+  every Sunday. Debian carries no `/var/run/reboot-required` marker by
+  default; the marker check stays for Ubuntu-family hosts.
+* The second fleet Pi is discovered and staged (old-gen Pi MAC, Debian 13):
+  deploy key generated, `known_hosts` pinned, inventory slot `pi-2`. Its
+  address and login live in gitignored `host_vars/` — no LAN topology in the
+  repo. It awaits the owner's one-time `ssh-copy-id` (done 2026-10-03, both
+  Pis then ran the update playbook green).
+* `serial: 1` in the update playbook: never two Pis down at once — pi-1
+  carries Home Assistant.
+
+
+## 2026-10-02 — Ansible lands on pi-1, via pip on the host
+
+* **Installed per the official installation guide**: the `ansible` community
+  package 14.4.0 (core 2.21.4) into `~/venvs/ansible` (Python 3.13.5) — the
+  venv + pip path the docs prescribe, which is also the only one Ubuntu
+  26.04's PEP 668 externally-managed Python permits. Proven with the ping
+  playbook: `pi-1` answers over the local connection. Playbooks,
+  inventory, `ansible.cfg` and `ssh_config` live in `linux/ansible/`, whose
+  README documents the install, the upgrade path and the host facts.
+* The first draft ran Ansible in a container next to Home Assistant; dropped
+  by owner directive. Two findings worth keeping from that attempt: the
+  official EE images (`ghcr.io/ansible-community/community-ee-*`) are
+  amd64-only, so they were never an option on this aarch64 Pi; and
+  `nerdctl compose run` hardcodes `--tty`, which dies with
+  "provided file is not a console" outside an interactive shell.
+
+
 ## 2026-10-02 - the Python lane grows a riscv64 row: the riscv64 image under QEMU
 
 - `python-ci-linux.yml` takes `arches: riscv64`: the row registers QEMU's binfmt
@@ -28,6 +94,7 @@
   no riscv64 build). Consumer: OrchestrANT's `linux-riscv64.yml`, renamed
   `Linux riscv64 · build + test`.
 
+
 ## 2026-10-02 - CON34: the HIP/<cmath> overlay installs with TheRock, and MIGraphX drops its copy
 
 - `Dockerfile.rocm` now installs `windows/scripts/hip/` with TheRock: the headers into
@@ -38,6 +105,7 @@
   `Get-MigraphxCmakeArgs -HipMathOverlay` and the parity test are gone. The next rocm build
   proves MIGraphX compiles with the configs active (never measured before).
 
+
 ## 2026-10-02 - CON31's `:winamd64-rocm` record: the redistribution question is closed
 
 - The Redistribution section of `docs/windows-rocm.md` still said the public push "is an
@@ -45,6 +113,7 @@
   published on 2026-09-28. The record now states the decision and keeps
   `LicenseRef-Proprietary-EULA` for the runtime in `docs/deps/deps.json` (the id describes
   the licence, not the permission).
+
 
 ## 2026-10-02 - clang-tidy skips the files the build never compiled
 
@@ -55,6 +124,7 @@
   (`'kompute/Algorithm.hpp' file not found`, run 36979869674). Skipped files are
   named in the build log.
 - Regression: `windows/scripts/tests/WindowsClang.Common.Tests.ps1`.
+
 
 ## 2026-10-01 - The torch stage installs the chain wheels once, and proves them (CON52)
 
@@ -118,6 +188,7 @@
 - Suite `test-prune-safe.sh`, a `test-disk-guard.sh` case, seven `prune-safe`/`disk-guard`
   mutations (`mutation-family:prune-safe` declared).
 
+
 ## 2026-10-01 - A browser and an Android emulator in `:latest` (CON50 items 3 and 4)
 
 - **Chrome for Testing on amd64 and arm64.** Google's Stable build and its chromedriver, a
@@ -139,6 +210,7 @@
   and holds the emulator's.
 - Tests: `test-chrome-and-emulator.sh` (new), `test-runtime-image-gates.sh` (+8 cases), 11
   `chrome-emulator.*` mutations.
+
 
 ## 2026-10-01 - A runner-native pytest job on windows-11-arm (CON50 item 6)
 
@@ -166,6 +238,8 @@
   no SHA check, a free-threaded leg ignoring its extras, and a bare `--python`. A real run
   on an x64 host against WebDavClient, with legs `3.14t 3.14`, gave the 3.14 leg a GIL 3.14.7:
   10 passed.
+
+
 ## 2026-10-01 - riscv64 consumer lanes: cross-build on amd64, test under QEMU (CON48)
 
 - **Owner decision:** a consumer's riscv64 lane builds on the amd64 runner and runs only
@@ -184,6 +258,7 @@
   and one container step. Consumers: OxidANT, AccelerANTgine, BeschleunigerBallett;
   OmniAccelerANT waits for Flutter in the riscv64 image.
 - Suite `test-riscv64-cross.sh`, seven mutations in the `riscv64-cross` family.
+
 
 ## 2026-10-01 - Python lanes run the whole suite, `3.14t` can gate, and arm64 runs pytest (CON50)
 
@@ -205,6 +280,7 @@
   `StagedTests.Tests.ps1` (pytest).
 - BACKLOG CON50 holds the cross-consumer audit and the owner's decisions.
 
+
 ## 2026-10-01 - `:winarm64` rebuilt without NVIDIA; the arm64 lanes run tests
 
 - **`:winarm64` is published again, at hub 59a4bca3.** The image of 2026-09-22 predated
@@ -224,6 +300,7 @@
   OmniAccelerANT run their tests on `windows-11-arm`, and each lane is now "Windows arm64 ·
   cross build + test".
 
+
 ## 2026-10-01 - `Invoke-InLinuxContainerBuild` hands bash LF-only lines
 
 - **What went wrong.** A caller builds its container command in a here-string, and a here-string
@@ -231,6 +308,7 @@
   CRLF, so bash received `set -e<CR>` and stopped at once: `set: -: invalid option`.
 - **The fix.** `WindowsBuildSweep.Common`'s `Invoke-InLinuxContainerBuild` turns CRLF into LF
   before `bash -c`. Pester: `WindowsBuildSweep.Common.Tests.ps1`.
+
 
 ## 2026-10-01 - Python app bundles and their packages for Windows arm64
 
@@ -256,6 +334,7 @@
   image's host CPython that predates the version-string fix, are BACKLOG CON49.
 - Pester: `PythonApp.Cross.Tests.ps1`, plus arm64 cases in the wheel, MSIX and target-arch suites.
 
+
 ## 2026-10-01 - A staged test can report its own skip; OrchestrANT's permissions census is at 0
 
 - **`Invoke-StagedTests.ps1` reads an optional `skip_pattern` per `tests.json` entry.**
@@ -266,6 +345,7 @@
 - **`workflow-conventions.allow` drops `CENSUS | OrchestrANT | permissions | 2`.**
   OrchestrANT's lane files now set `permissions: contents: read` at the top, so the count
   is 0 and the row has nothing left to freeze.
+
 
 ## 2026-10-01 - Renovate reads and bumps CMake dependencies (CON46, hub part)
 
@@ -289,6 +369,7 @@
   Test: `linux/scripts/tests/test-renovate-cmake.sh`; nine `renovate-cmake.*` mutations.
 - Left for the consumers (BACKLOG CON46): pin corrosion, move googletest to a tag archive,
   drop the two repo-level CMake managers, then the fleet report run.
+
 
 ## 2026-10-01 - WiX 7 (OSMF EULA accepted) and arm64 tests on windows-11-arm (CON43, hub part)
 
@@ -315,6 +396,7 @@
     lanes. Test: `windows/scripts/tests/StagedTests.Tests.ps1`.
   - The consumers follow one at a time (CON43).
 
+
 ## 2026-10-01 - Windows uv venvs install a missing version before asking for its GIL build
 
 - **Fixed a regression from 88e27ab9.** A version the host lacked stopped the venv:
@@ -329,6 +411,7 @@
 - `Invoke-CiPackaging.ps1` reads the binaries venv's base interpreter from its `pyvenv.cfg`,
   after that venv exists, instead of asking `uv python find` before it. The `LIB` fix then
   holds for a version the venv step had to install.
+
 
 ## 2026-10-01 - Python app packages: MSIX, Linux aarch64, and one chain ORT per Windows bundle
 
@@ -357,6 +440,7 @@
     the import walk pass.
   - The bundle went from 561 to 550 MB.
 
+
 ## 2026-10-01 - lavapipe gets 8-lane subgroups, the SSIM validate plugin stops blacklisting itself, libunwind is gone from the media closure
 
 For the `:latest` rebuild the owner approved on 2026-10-01. None of it is in a published image yet.
@@ -381,6 +465,7 @@ For the `:latest` rebuild the owner approved on 2026-10-01. None of it is in a p
 - Tests: `test-lavapipe-vector-width.sh`, `test-gst-validate-ssim.sh`, `test-no-libunwind.sh`
   (extended); 18 mutation entries.
 
+
 ## 2026-10-01 - Windows Python lanes: static analysis runs at all, and wheels are built for the GIL
 
 OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub owned two of them.
@@ -402,6 +487,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   wheel, so the GIL runtime tried to install that `cp314t` wheel. `Select-PythonAppWheel` takes
   `cp314` or `abi3`, and falls back to the pure wheel only when there is no binary at all. A
   binary for another ABI alone is an error. Test: `windows/scripts/tests/PythonApp.Wheel.Tests.ps1`.
+
 
 ## 2026-10-01 - DeepStream's GPU gate passes; four defects it found are fixed (CON42)
 
@@ -428,6 +514,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   § B2c): the Secure Boot key, the CDI spec in `~/.config/cdi` plus `cdi_spec_dirs`, and
   regenerating it after every driver update.
 - **Still open for CON42:** the owner-approved nvidia chain run with `ENABLE_DEEPSTREAM=true`.
+
 
 ## 2026-10-01 - Python app bundles become tar.gz, deb, AppImage, zip and MSI, each started once
 
@@ -458,6 +545,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
 - Tests: `linux/scripts/tests/test-python-app-selftest.sh`,
   `windows/scripts/tests/PythonApp.Msi.Tests.ps1`.
 
+
 ## 2026-10-01 - Python apps ship as relocatable bundles; Windows venvs get the image's OpenCV
 
 - **Bundle builders.** A Python consumer can now turn its app into one folder: its own
@@ -487,6 +575,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   `Get-UvPythonRequest`'s `X.Y+gil`, the twin of Linux's `uv_python_request`. A plain `3.14`
   took a free-threaded download in OrchestrANT's Windows CI.
 
+
 ## 2026-10-01 - DeepStream may be published: the owner's licence decision (CON42)
 
 - **The owner allowed publishing NVIDIA's DeepStream runtime in `:latest-nvidia`.** The
@@ -500,6 +589,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   key is not enrolled) and an owner-approved nvidia variant chain run.
 - **CON47:** `libgstvalidatessim.so` fails to load in the published `:latest`, found by the
   spike; tracked to be measured and fixed.
+
 
 ## 2026-10-01 - DeepStream for the nvidia variant (CON42): spike measured, source in, off by default
 
@@ -541,6 +631,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
 - **Not done.** No GPU run (this host's NVIDIA driver is not loaded) and no variant chain
   run: `BACKLOG.md` CON42.
 
+
 ## 2026-09-30 - GStreamer: a meson inherited without its launcher is reinstalled
 
 - **What went wrong.** The default `:winamd64` merge stopped in `Build-GstreamerFromSource.ps1`
@@ -555,6 +646,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
 - **Proven with a scratch venv.** With the launcher removed, pip reports "already satisfied" and
   writes nothing. The forced reinstall restores it: `meson.exe --version` prints 1.12.1.
 
+
 ## 2026-09-30 - OpenCV: gapi's fluid SSE4.1 kernels build under clang-cl
 
 - **What went wrong.** The first BuildKit run of the default (CPU + DirectML) `:winamd64` stopped in
@@ -566,6 +658,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   takes that branch only for real MSVC (`&& !defined(__clang__)`). clang-cl then uses the portable
   `_mm_setr_epi64` branch. It is the only file in contrib's gapi that names the intrinsic.
   `git apply --check` is clean against the 5.0.0 tag (755e5067).
+
 
 ## 2026-09-30 - Windows base: both OpenSSL installers come from the LAN preseed
 
@@ -586,6 +679,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   `BuildDriver.RangeDownload.Tests.ps1` holds the range split to exact, gapless coverage; an
   off-by-one overlap fails it.
 
+
 ## 2026-09-30 - Windows base: aarch64 OpenSSL follows scoop's manifest instead of a pin
 
 - **What went wrong.** `Install-ScoopTools.ps1` fetched a literal `Win64ARMOpenSSL-4_0_2.exe`.
@@ -599,6 +693,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   the live bucket: 4.0.3, `Win64ARMOpenSSL-4_0_3.exe`, `afc17720…`.
 - **Not proven in a container yet.** It takes effect with the next base build.
   `docs/windows-cross-builds.md` § *aarch64 OpenSSL is a base prerequisite too* records the rule.
+
 
 ## 2026-09-30 - SBOM: the amd64 and arm64 scans get swap
 
@@ -614,6 +709,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   from 30 to 60 minutes, because paging doubles the scan time. `docs/sbom.md` § *Generating
   them* records the budget.
 
+
 ## 2026-09-30 - python-ci-linux: a pull request no longer publishes the docs
 
 - **What went wrong.** The *Sync files to domain* step ran on every event. On a Dependabot pull
@@ -622,6 +718,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   would have replaced the live site.
 - **The fix.** The step also needs `github.event_name == 'push'`, the gate `build-docs.yml`
   already had. A push to a caller's branches publishes as before.
+
 
 ## 2026-09-30 - Windows: the source-built CPython reports win-amd64 in a venv again
 
@@ -641,6 +738,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   - uv resolves `onnxruntime-genai-cuda` 0.15.2.
 - **Takes effect** with the next image build.
 
+
 ## 2026-09-30 - GHCR prune: the keep-set gate counts digests, not tag names
 
 - **What went wrong.** `ghcr-prune-package.sh` refused on 2026-09-27 with "keep-set smaller than tag
@@ -651,6 +749,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
 - **Test:** `linux/scripts/tests/test-ghcr-prune-keepset.sh`. With the old gate put back, it fails
   with the 2026-09-27 message.
 - **Docs:** [`linux-host-setup.md`](docs/linux-host-setup.md).
+
 
 ## 2026-09-30 - One-line comments, only the why, in every language
 
@@ -680,6 +779,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
 - **Cost.** Every edited Dockerfile and baked script re-keys its layer, so the next Linux and
   Windows image builds run cold from the first edited step.
 
+
 ## 2026-09-30 - CON38-CON40, and the code-dupes gate green again
 
 - **CON39: clang-tidy selects the image's GCC.** Clang reads `<triple>-<driver>.cfg` from the
@@ -701,6 +801,7 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
   (`Get-ModuleImportClosure`), and `Torch.Rocm.Tests.ps1` one refusal assertion. The rest are
   recorded with a measured reason, six shrunk budgets written down and two stale rows dropped.
   The builder edit re-keys the Windows rocm `torch-rocm-wheels` stage.
+
 
 ## 2026-09-30 - The arm64 and riscv64 Vulkan loaders carry X11, XCB and Wayland (CON41)
 
@@ -726,6 +827,41 @@ OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub 
 - **Docs:** [`vulkan-foreign-arch-sdk.md` § The loader carries the window systems](docs/vulkan-foreign-arch-sdk.md#the-loader-carries-the-window-systems).
   The change ships with the next `:latest`. The rebuild starts at the sdk stage.
 
+
+## 2026-09-30 — Home Assistant configuration pass
+
+* **Grid statistics corruption found**: the bitshake smartmeter emitted
+  `-1.4e13 kWh` twice in 24 h; `total_increasing` turned each glitch into a
+  multi-trillion-kWh jump in the grid import/export `sum`. New trigger-based
+  template sensors `sensor.netzbezug` / `sensor.netzeinspeisung` reject
+  non-positive, decreasing or >1000 kWh-jump readings (guard simulated against
+  the logged glitch values). The energy dashboard now uses them; the grid
+  statistics (hourly and 5-minute, back to 2026-09-02) were recomputed from the
+  per-hour meter states, skipping implausible values, and copied onto the new
+  sensors — daily import now reads 10–22 kWh instead of ~10¹² kWh. Verified that
+  post-restart 5-minute stats continue the repaired sum without a jump. DB
+  backup: `~/ha-pre-statsrepair-20260930/`.
+* **Backups**: deleted the two pre-password manual archives (Oct 2025, May 2026)
+  that held `secrets.yaml` and `.storage` unencrypted; only encrypted automatic
+  backups remain.
+* **Registry cleanup** (HA stopped, files backed up to
+  `~/ha-pre-registrycleanup-20260930/`): removed the 15 orphaned `automation.*`
+  entity-registry entries left behind when the automations were dropped, their
+  4 `exposed_entities` rows, and the 5 stale `automation.*` repair records
+  (already dismissed, non-persistent). The dismissed `sun`
+  `deprecated_sun_solar_rising` record stays so it cannot resurface.
+* **Recorder**: also excludes P110 voltage/current and day/month counters and
+  two phone sensors (~49% of last week's state rows); verified after restart
+  that the excluded entities stop being written and energy-dashboard sensors
+  are untouched.
+* **Logger**: silenced the `habluetooth.manager` / `aiodhcpwatcher` permission
+  errors that a rootless container always hits.
+* **Dead shell commands removed**: `turn_on_rechenkiste`, the three F@H
+  commands and `send_mail` had no caller since the automations were dropped,
+  and could not run anyway (`wakeonlan`/`mail` are not in the image, no SSH
+  private key). `turn_off_rechenkiste` stays but needs its key restored.
+
+
 ## 2026-09-29 - Windows ROCm torch source build: first rocm build green, after three fixes
 
 `-Variant rocm -Stages torch,final` on the 2026-09-28 rocm parent is green: `BUILD_RC=0`, smoke gate 215
@@ -747,6 +883,7 @@ Measured: torch 4051 s cold, 1719 s with sccache warm; torchvision 228 s; the wh
 Also: `failure-modes.md` gains the containerd snapshot sweep that stalled every new RUN for 50 minutes on the
 same evening (about 440 GB deleted, nothing wrong), and a driver comment now points at `windows-rocm.md`.
 
+
 ## 2026-09-29 - compiler caches save on the default branch only
 
 - **`compiler-cache-save`'s `enabled: auto` now saves on pushes to the default branch only**, and
@@ -757,6 +894,7 @@ same evening (about 440 GB deleted, nothing wrong), and a driver comment now poi
   the default branch's entry, which GitHub lets any branch read.
 - **Docs:** [`build-cache-tiers.md`](docs/build-cache-tiers.md#keeping-the-compiler-cache-across-ci-runs)
   and the actions README.
+
 
 ## 2026-09-29 - compiler caches keep one entry per key
 
@@ -782,6 +920,7 @@ same evening (about 440 GB deleted, nothing wrong), and a driver comment now poi
   declares `contents: read` at the top and `actions: write` on the four cache writers, which
   takes the census from 11 to 0.
 
+
 ## 2026-09-29 - `-DisableSccache` beats the preset; the sccache-on-modules docs are corrected
 
 - **`Invoke-CmakeConfigureAndBuild -DisableSccache` now disables sccache.** It only cleared environment
@@ -795,6 +934,7 @@ same evening (about 440 GB deleted, nothing wrong), and a driver comment now poi
   BeschleunigerBallett and AccelerANTgine). Rewritten from measurement:
   [`windows-container-build-performance.md` § sccache on a C++23 modules build](docs/windows-container-build-performance.md#sccache-on-a-c23-modules-build),
   with the one-liners in `windows-builds.md` and `windows-build-resources.md`.
+
 
 ## 2026-09-29 - Windows ROCm: torch 2.14.0 / torchvision 0.29.0 built from source against ROCm 10.0
 
@@ -828,6 +968,7 @@ refused the pair as soon as the torch stage tracked the app's `develop`.
   `rocm-sdk-devel` wheel has no public precedent:
   [`windows-rocm.md` § PyTorch on the rocm lane](docs/windows-rocm.md#pytorch-on-the-rocm-lane-torch-stage).
 
+
 ## 2026-09-29 - The torch stage builds OrchestrANT's `develop`, at the commit it points to
 
 Owner decision: the images take the app from its `develop` branch, and a fix the build
@@ -856,6 +997,7 @@ is now `develop` and names what to track.
 - Tests: `test-app-ref.sh` (resolution, precedence, failure, the commit fetch, both entry
   points wired) and `BuildDriver.AppRef.Tests.ps1`.
   [`linux-cross-builds.md`](docs/linux-cross-builds.md#the-app-the-wrapper-builds).
+
 
 ## 2026-09-29 - Linux lanes can keep their compiler cache across runs
 
@@ -941,6 +1083,7 @@ Then, the same day, the owner took the four follow-ups:
   `versions.env` and travel as media-core build args. The arm64 cross lane has none yet: it needs
   GStreamer's meson cross file and aarch64 asm shim reproduced first.
 
+
 ## 2026-09-27 - `:winamd64` is CPU + DirectML; the CUDA build is `:winamd64-nvidia`
 
 The owner decided that Windows follows the variant rule in `AGENTS.md` § Image and tag
@@ -950,6 +1093,7 @@ and a `winamd64-nvidia` final image, or `winarm64-nvidia` for the cross bundle, 
 `-Gpu`. Until now the nvidia build wrote the default tags, so the `:winamd64` published on
 2026-09-22 carries CUDA until that tag is republished. No consumer needs CUDA from the
 Windows image, so the switch needs no consumer commit (BACKLOG CON12).
+
 
 ## 2026-09-26 - The image backlog, swept: fixed in source, decided, or the owner's
 
@@ -999,6 +1143,7 @@ changed since each published image), so none of this adds a re-key.
   bootstrap LLVM, which the image lacks. It links the LLVM the image ships now, and the venv
   smoke fails a TVM that cannot compile (CON35).
 
+
 ## 2026-09-26 - The reusable Windows lane takes a caller's secrets
 
 BeschleunigerBallett's x64 lane could not become a thin caller of `container-ci-windows.yml`:
@@ -1011,6 +1156,16 @@ no secret but `GHCR_PAT`.
   enters a command line, a step output or the job environment. A line that is not `KEY=value`
   is refused without being echoed.
 - `windows-cross-builds.md` § Consumer cross lanes and the adoption guide describe it.
+
+
+## 2026-09-25 — Home Assistant 2026.9.1 → 2026.9.3
+
+* Upgraded the live container. glances was already current (4.5.6).
+* README § Updating: `up -d` alone does NOT pick up a pulled image under
+  nerdctl compose; the documented command now carries `--force-recreate`, and
+  warns that the "orphaned" container reported for a single-service `up` is
+  the other live service, not debris.
+
 
 ## 2026-09-25 - One Windows module stages and proves a consumer's ONNX Runtime
 
@@ -1039,6 +1194,7 @@ exe with the chain's", and the proof of a shipped tree. It is
   § The shared Windows glue documents it; the consumers drop their copies when their
   hub pins move.
 
+
 ## 2026-09-25 - The arm64/riscv64 native GCC has multiarch (CON8)
 
 BeschleunigerBallett's arm64 GNU presets could not find X11, while its Clang preset
@@ -1059,6 +1215,7 @@ native, and `build-gcc.sh` configures every `--target` build with
   multiarch has the measurements.
 - In source only: it ships with libsanitizer in the next Linux `:latest` (CON11).
 
+
 ## 2026-09-25 - MSIX `-Sign` takes the signing root from the caller
 
 `Invoke-MsixPackage -Sign` looked for the signing `.pfx` in the staging directory's
@@ -1074,6 +1231,7 @@ repository root, and OxidANT never signed.
   "repository root" whatever it had been handed.
 - `WindowsMsix.Common.Tests.ps1` pins both halves, and each new case fails against
   the old code. Its packer cases now share one makeappx stub and one resolver mock.
+
 
 ## 2026-09-25 - x64 lanes move onto the reusable Windows lane: `version-file`, `host-command`
 
@@ -1095,6 +1253,7 @@ OxidANT first. Two things an x64 lane did by hand had no input.
   describe both.
 
 `lint-workflows.sh` is clean.
+
 
 ## 2026-09-25 - x64 packages carry the same DLL closure as arm64
 
@@ -1120,6 +1279,7 @@ Tests:
 - `test-cmake-windows-arch.sh` 8 pass. Two new `cmake-arch.*` mutations (the
   install rule, the `*.dll` filter) bite.
 
+
 ## 2026-09-25 - The three consumer cross lanes are green; arm64 binaries ran
 
 OxidANT, AccelerANTgine and BeschleunigerBallett each gained
@@ -1134,6 +1294,7 @@ arm64 hardware, though only as far as loading.
 - `windows-cross-builds.md` § Consumer cross lanes records the three runs.
   It also records how BeschleunigerBallett's run job borrows the Khronos Vulkan
   loader, pinned by hash, on the GPU-less runner.
+
 
 ## 2026-09-25 - A CMake consumer's cross build names its target
 
@@ -1167,6 +1328,7 @@ Tests:
 - `CrossBundle.Common.Tests.ps1` 7 pass. Dropping the host shortcut, reading
   the x64 Vulkan `Lib` or ignoring `-Corrosion` each fails it.
 
+
 ## 2026-09-25 - A cross lane's product carries its DLL closure
 
 The arm64 run job needs a folder that runs on a clean device. The CRT, ONNX
@@ -1191,6 +1353,7 @@ Tests: `CrossBundle.Common.Tests.ps1` 3 pass. Dropping the transitive enqueue,
 the delay-load table, the first-directory rule or the machine check each fails
 it. The census suite still passes 25 with its builders moved. The dupes
 allowlist moves the builders' two rows to `TestHarness.psm1` unchanged.
+
 
 ## 2026-09-25 - The Windows arm64 cross lanes get a hub lane; the gate knows the bundle
 
@@ -1241,6 +1404,7 @@ All 13 mutations on the gate and on `ci-image-ref.sh` bite, three of them new.
 held equal. `ContainerImage.CiRef.Tests.ps1` now does: all three refs against
 versions.env, arm64 refused without `-Windows`, and a missing arm64 key throws.
 Breaking the arm64 key lookup fails it.
+
 
 ## 2026-09-25 - An APISIX gateway in front of the GenieX lanes (P1: the lab only)
 
@@ -1301,6 +1465,7 @@ mappings (`- { arch: x64, runs_on: ubuntu-26.04 }`), which the YAML subset that
 and the *actionlint + CI image refs* gate of `run-lint-gates.sh`. The rows are
 block mappings now, and the matrix GitHub reads is unchanged.
 
+
 ## 2026-09-25 - HIP compiles in the rocm image: TheRock's clang loads the `<cmath>` overlay
 
 With torch through (entry below), the rocm chain built `bk-winamd64-rocm` and the
@@ -1337,6 +1502,7 @@ rebuilt image the probe reads both configs back, and `hipcc`, `clang -x hip` and
 `amdclang++ -x hip` all compile as the image ships them. `--no-default-config` still
 fails with the same 20 errors, so the overlay stays.
 
+
 ## 2026-09-25 - The torch ROCm wheels download straight into the cache, with no rename
 
 With MIGraphX, the EP and llama.cpp through, the torch stage built and verified the
@@ -1358,6 +1524,7 @@ offline reuse, tampered copy re-fetched, mismatch leaves nothing). A new one fai
 if a rename comes back, and was mutation-checked by re-adding one.
 `Torch.Rocm.Tests.ps1`: 57 pass.
 
+
 ## 2026-09-25 - The EP stage's G2 gate no longer finds its own source's `.tar`
 
 With the seeds extracting (entry below), `migraphx-ep.dll` configured, built in
@@ -1372,6 +1539,7 @@ The finding was the only one.
 unpacked it. The gate is unchanged. The pinned EP tarball, checked on the host,
 now unpacks with no `.tar` left and no file matching G2's archive rule.
 `Rocm.Migraphx.Tests.ps1`: 58 pass.
+
 
 ## 2026-09-25 - The ORT AMDGPU EP's flatbuffers seed extracts despite 7-Zip's link refusals
 
@@ -1395,6 +1563,7 @@ media layer; fold it in at the next deliberate media rebuild. Checked on the hos
 against the zip, a `.tar.gz`, a `.tar.xz` and a truncated zip (which still throws).
 `Rocm.Migraphx.Tests.ps1`: 57 pass.
 
+
 ## 2026-09-25 - MIGraphX links with MLIR off: upstream's stubs, backported
 
 With HIP compiling (entry below), the build reached `migraphx_gpu.dll` and stopped
@@ -1415,6 +1584,7 @@ That is a commit, and `git clone --branch` takes only names, so a 40-hex ref
 clones through `--revision` (git 2.49 or later). A `-PatchRoot` holding a single
 patch no longer dies on `.Count`. The whole catalogue passes, 20 of 20.
 `Rocm.Migraphx.Tests.ps1` covers placement, the patch and the mount: 54 pass.
+
 
 ## 2026-09-25 - MIGraphX's HIP code compiles against MSVC 14.51's `<cmath>`
 
@@ -1440,6 +1610,7 @@ TheRock file is copied or edited. The flag is inert for non-HIP sources, which
 never include these headers. `Rocm.Migraphx.Tests.ps1` covers the overlay;
 51 cases pass.
 
+
 ## 2026-09-25 - MIGraphX takes TheRock's nlohmann_json through a natvis shim
 
 With its own rocm-cmake (entry below), MIGraphX got past
@@ -1458,6 +1629,7 @@ the only missing source.
 `nlohmann_json_DIR` points at the shim. Headers, version and the staged licence
 notice all stay TheRock's. `Rocm.Migraphx.Tests.ps1` covers the shim's content,
 its refusal when TheRock lacks the package, and the new configure argument.
+
 
 ## 2026-09-25 - MIGraphX builds with its own rocm-cmake pin
 
@@ -1485,6 +1657,7 @@ while this change re-keys only the MIGraphX stage. It also makes a MIGraphX bump
 carry its own rocm-cmake. `Rocm.Migraphx.Tests.ps1` covers the parse, both
 refusals, the parameter guard, and where phase 2 stages it.
 `docs/windows-rocm.md` § Supply chain records the exception.
+
 
 ## 2026-09-25 - `BACKLOG.md`: every known image gap, measured
 
@@ -1517,6 +1690,7 @@ the chain build, byte for byte. `BACKLOG.md` lists all eleven so nobody files th
 again. `docs/riscv64-rva23-baseline.md`'s pointer for the
 TVM/IREE RVV codegen item now names CON24, and `docs/INDEX.md` lists the file.
 
+
 ## 2026-09-25 - The fleet calls this hub at `@develop`, not `@main`
 
 Owner directive. Work lands on `develop`. `main` is a release branch that has
@@ -1540,6 +1714,7 @@ runs until the next publish.
   version of its own. `python-ci.md` notes that OrchestrANT and WebDavClient no
   longer wait for `main` before splitting their `amd64-arm64` workflow.
 
+
 ## 2026-09-24 - Backlog: four image gaps the consumer lanes hit (CON7–CON10)
 
 `docs/refactoring-backlog.md` gains two arm64 GCC gaps and two Windows LLVM gaps. Each
@@ -1548,6 +1723,7 @@ arm64 GCC) is fixed in source by e2de5852 and waits only for a published image. 
 (arm64 GCC configures cannot find libX11) comes with a hypothesis and the check that
 decides it. CON9 (`clang_rt.profile`) and CON10 (clang-tidy) are the two components
 the patched Windows LLVM does not build. No code changed.
+
 
 ## 2026-09-24 - ONNX Runtime GenAI is configured without its own tests (`ENABLE_TESTS=OFF`)
 
@@ -1563,6 +1739,7 @@ it. Nothing in the chain runs GenAI's tests, so `Build-OnnxGenaiFromSource.ps1` 
 lanes' build time. `SourceBuild.GenaiOrt.Tests.ps1` pins the flag, and its case fails with
 the flag removed.
 
+
 ## 2026-09-24 - `lib/compiler-llvm-tools.sh`: the LLVM tools of the compiler that built a tree
 
 BeschleunigerBallett's coverage lane failed with `error: no profile can be merged`: its
@@ -1575,6 +1752,7 @@ needing them, both functions move up unchanged into `linux/scripts/lib/compiler-
 and a different `clang++` first on PATH): 6 assertions. Three new mutations bite, family
 `compiler-llvm-tools`. `docs/shared-script-libraries.md` lists the library and describes it.
 The consumers switch to it with their next hub pin.
+
 
 ## 2026-09-24 - makedef hands llvm-nm its object list as @file: xargs died in the rocm lane's environment
 
@@ -1598,6 +1776,7 @@ host with Git for Windows' shell: past ~33 KB of environment, the xargs version 
 passes at all three. `test-ffmpeg-makedef.sh` asserts one llvm-nm run with one `@file`
 argument and no object on its command line (19/19). The new
 `ffmpeg-makedef.objects-by-response-file` mutation, which puts xargs back, bites.
+
 
 ## 2026-09-24 - FFmpeg's makedef refuses an empty export list and runs the compiler's own llvm-nm
 
@@ -1631,6 +1810,7 @@ objects from clang 23.1.0 and its llvm-nm, in the Linux image, `makedef` exporte
 pinned yet: the next rocm run either links with the compiler's own `llvm-nm`, or stops at
 `makedef` with that tool's own error.
 
+
 ## 2026-09-24 - The WebDAV client installs from its commit archive, not through git
 
 BeschleunigerBallett's Windows lane (run 36020442781) died before its build, inside the
@@ -1653,6 +1833,7 @@ archive install of the pinned commit into a fresh venv imports `WebDavClient`, w
 moves with the next change to that file, because any byte changed there rebuilds the
 Windows chain from `Dockerfile.base`'s `COPY versions.env` onward.
 
+
 ## 2026-09-24 - The pre-commit hook checks the derived doc numbers when their inputs move
 
 7482747c added two consumer-inventory mutations and left `docs/code-quality-tooling.md`
@@ -1668,6 +1849,7 @@ and the skip case (42 assertions), and three new mutations bite:
 `pre-commit.doc-numbers-aborts`, `pre-commit.doc-numbers-trigger-names-the-manifest` and
 `pre-commit.doc-numbers-only-when-an-input-moves`. The manifest now holds 1337 entries.
 
+
 ## 2026-09-24 - `Invoke-WithAsanOptions -Options ''` adds nothing instead of refusing to bind
 
 `Invoke-WithRuntimePath` takes an optional `[string]$AsanOptions` and hands it to
@@ -1681,6 +1863,7 @@ argument to parameter 'Options' because it is an empty string`. `-Options` now t
 caller had it: nothing prepended, not even a separator. `Testing.Asan.Tests.ps1` has both
 shapes; both cases fail against the old module with that same message.
 
+
 ## 2026-09-24 - The consumer inventory counts a consumer's own modules as its own
 
 `verify_consumer_inventory.py` failed its first run after the fleet renames (36019965353):
@@ -1693,6 +1876,7 @@ module whose name starts with `Windows`. The gate assumed every `Windows*` name 
 `test-consumer-inventory.sh` covers both. Two new mutations,
 `consumer-inventory.own-module-is-not-dangling` and `consumer-inventory.fixture-psm1-is-not-own`,
 bite. Against the live fleet: CONSUMER INVENTORY OK, 0 dangling.
+
 
 ## 2026-09-24 - Workflow names follow the fleet convention; `arches` for the Python Linux lane
 
@@ -1761,6 +1945,7 @@ to `2e861fc`, its own rename (`docs.yml`, `linux-x64.yml`).
 - **What re-keys:** nothing. No `versions.env`, `01-core`, Dockerfile or other
   image-closure file changed.
 
+
 ## 2026-09-24 - Hailo: review fixes
 
 A review of the entry below found a check that could be skipped, an old-path guarantee
@@ -1821,6 +2006,7 @@ stricter; `upstream` warns as it always did.
   `/opt/venv`, with a stub wheel, a truncated wheel and no wheel under both values, each
   with the exit code above. **Not verified:** a full `build-hailort.sh` run with these
   changes, and everything the entry below lists.
+
 
 ## 2026-09-24 - Hailo: the nested protobuf build is cached, pyhailort is a real module, the old build one switch away
 
@@ -1908,6 +2094,7 @@ old build one switch away.
   arm64 lane), the BuildKit `RUN` itself, the Jetson and the X100. The commands for the
   build host are in the doc.
 
+
 ## 2026-09-24 - The wrapper's wheelhouse: review fixes
 
 A review of the entry below found that `RUNTIME_WHEELS_SOURCE=export` cannot run on
@@ -1969,6 +2156,7 @@ changed: `image` and `export` do what they did.
   run showing `export` naming the registry digest; in the local `:latest-cross` image,
   the touched suites green. **Not verified:** no BuildKit ran, so neither the refusal
   against a real `nerdctl save` layout nor the chain-driven A/B has run.
+
 
 ## 2026-09-24 - The wrapper's wheelhouse: `RUNTIME_WHEELS_SOURCE=image|export`, image the default
 
@@ -2034,6 +2222,7 @@ pick: [`linux-cross-builds.md` § The wrapper's wheelhouse](docs/linux-cross-bui
   check against real `nerdctl save` output, and whether `export` removes the wait at
   all are for the host A/B in the recipe above.
 
+
 ## 2026-09-24 - A mutation-gate timeout on a Windows host is a verdict, not a crash
 
 - **`verify_mutations.py`**: `_run_test` killed a timed-out test's tree with `os.killpg`,
@@ -2057,49 +2246,6 @@ pick: [`linux-cross-builds.md` § The wrapper's wheelhouse](docs/linux-cross-bui
   a Windows host (`the floor skips 0 of 3 output paths`), which failed the commit hook
   whenever it sampled a doc-links entry there. That suite also needs a one-word
   `PREFLIGHT_PYTHON` (it quotes the value) and `PYTHONUTF8=1` on such a host.
-
-
-## 2026-09-23 - The preflight timeout was a regression from 57bec177: fix11 is fast again, the mutation gate is sharded, and four hidden reds are fixed
-
-**This was our regression.** On `a7ccc896` the Ubuntu 26.04 `preflight` job was killed
-at its 45-minute timeout inside the mutation gate. `57bec177` had made fix11 run one awk
-pass over its corpus per rule (~50 per gate run), and `test-critical-fixes.sh` ran the
-whole gate once or twice per knocked-out row: the suite went from 4.4 s to 45-59 s on the
-runner, and its 68 mutation entries each re-ran it (43% of the gate's serial cost). The
-killed job printed nothing the gate had found, because the report was buffered.
-
-- **fix11 judges its corpus in one awk pass.** The checks queue rules (`_f11_deny`,
-  `_f11_require`, `_f11_pair`, `_f11_count`); `_f11_judge` answers them all, rules outside
-  and lines inside, so gawk compiles each regex once. `_f11_env_writes` gives each of its
-  seven forms its own `match()` site (gawk recompiled one shared site seven times per line:
-  22 s of the runner's 32 s real-tree run). A pass that returns fewer verdicts than rules
-  is a FAIL. Real tree, CI-parity container: gawk 10.1 s → 0.7 s.
-- **`test-critical-fixes.sh`** builds the fixture once, `cp -a`s it per row, and runs only
-  the knocked-out fix, extracted with `t_fn_src`; a case proves the extraction prints
-  exactly what the gate prints, and the fix11 Cargo case still runs the real gate, so a
-  FAIL is proven to reach its exit code (`critical-fixes.summary-reaches-exit`).
-  52.5-64 s → 6.5-8.2 s (gawk, CI-parity container, paired runs). All 75 entries bite.
-  The gate's serial cost, one lab session: 11469 s → 6633 s.
-- **The mutation gate is its own CI job, in four shards.** `preflight` runs with
-  `PREFLIGHT_SKIP=mutations`; the `mutations` job (matrix `shard: [0, 1, 2, 3]`, 30 min,
-  same setup steps) runs `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/4`, which
-  preflight passes on as the new `verify_mutations.py --shard K/N` (`entries[K::N]`).
-  Locally, `make preflight` still runs every entry.
-- **`verify_mutations.py` streams.** Each verdict is printed, flushed and tagged `[j/J]`
-  as its entry completes; a closing line names the failures in manifest order.
-- **Four reds the timeout hid**, all from `e785e82d`/`57bec177`:
-  `test-version-snapshot.sh` counted 11 `Build-*FromSource.ps1` subjects (13 since the
-  MIGraphX and AMD GPU EP scripts); `cross-build-verification.md` cited the hook's
-  staged-shell block as `:101-118` (now `:102-119`); `pre-commit.doc-span-fast-slugs` was
-  stale; and `test-smoke-arch-parity.sh`'s sandbox lacked `check-ort-provenance.sh`, which
-  `smoke-runtime-image.sh` now sources (39 assertions read empty). The 20 entries of the
-  first two suites had been vacuous.
-
-Docs: [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded),
-[`onnxruntime-single-source.md` § How G4 runs](docs/onnxruntime-single-source.md#how-g4-runs-one-judging-pass).
-Unverified until CI runs: the per-shard wall time on the runner (projected at about 10-16 of
-its 30 minutes, slice 1 up to 4 more, scaled from `41a07927`'s measured CI gate time) and the
-gawk real-tree time there.
 
 
 ## 2026-09-24 - ORT census: an ORT under another name is found by the entry point it defines
@@ -2197,6 +2343,157 @@ combination reached it. How to pick a path:
   entry. `legacy`'s command is the one the 2026-09-22 riscv64 chain ran, but no
   chain has reached it through the switch.
 
+
+## 2026-09-24 - ORT census: a consumer that names the chain directory is not an ORT build
+
+**Fixes G6 failing OmniAccelerANT's Linux lane** (run 35928030957, x64 and arm64):
+`UNPROVEN /lib/liboxidant.so -- an ORT-named binary with no source fingerprint`. The
+bundle was correct: it held the chain ORT, byte for byte. The census got the file
+wrong. Details and measurements:
+[`docs/onnxruntime-single-source.md` § What "the chain ORT" is](docs/onnxruntime-single-source.md#what-the-chain-ort-is).
+
+- **Cause 1: a directory string counted as a fingerprint.** OxidANT's loader keeps
+  `/opt/onnxruntime/onnxruntime/core/` as a string to check the ORT it loads. The
+  census treated any file holding `onnxruntime/core/` as an ORT build. Now a
+  fingerprint is a whole source-file path ending in NUL (`.cc`, `.cpp`, `.cxx`, `.c`,
+  `.h`, `.hpp`, `.inc`, `.cu`, `.cuh`), the shape `__FILE__` leaves. Changed in
+  `ort_census_probe.py` (`MARK`) and in the Windows twin
+  (`WindowsOrtProvenance.Common.psm1`, `$script:OrtPathMarker`), where `oxidant.dll`
+  would have been `STALE`. `liboxidant.so` is now an importer, and G6 checks that it
+  resolves to the chain ORT, which it used to skip. Every fingerprint of the chain ORT
+  1.29 (592), its dnnl EP (23) and the Android build (545) still matches.
+- **Cause 2: a relative root printed as "no fingerprint".** rustc packs string
+  literals with no NUL between them, so the text before the directory became a
+  relative root (`''`), which `emit()` prints as `-`. The probe now prints it as `.`,
+  and `check-ort-provenance.sh` reads `.` as relative. A lone relative root is
+  `FOREIGN` (relative), as on Windows, not `UNPROVEN`.
+- **The same false positive hit G1 on FFmpeg.** FFmpeg compiles its configure line
+  into every lib and tool, and the chain's passes
+  `-I/usr/local/lib/onnxruntime-cpu/include/onnxruntime/core/session`
+  (`ffmpeg-dnn-backends.sh`). The old rule made every FFmpeg ELF an ORT build with
+  no fingerprint. Whole-image census of a local `:latest-cross` (e8eb8a42), old vs new
+  probe: `UNPROVEN` 14 → 1 (10 FFmpeg ELFs and 3 scratch `liboxidant.so` copies gone).
+  `libavfilter` is now the registered `ffmpeg` consumer it is, graded by RES and
+  STAMP, and the other nine are not ORT at all. The runtime smoke's census
+  (SHIPPED-TRUTH E) would have reported the same ten on the next image.
+- **Stricter, on purpose:** a reference file whose roots are all relative is now
+  `FOREIGN`, where `-` passed before. It matches Windows. e8eb8a42 has no such
+  reference: its two unfingerprinted ones (`libonnxruntime_providers_shared.so`, the
+  Android `libonnxruntime4j_jni.so`) still print `-` and pass as before. The CI image
+  (ec4bb68b) was not available here to check.
+- **Tests:** `test-ort-census.sh` 110 → 122 assertions (the fingerprint shape, a
+  rustc-packed consumer passing beside the chain ORT, then failing with no ORT or a
+  one-byte-off one, a relative-only ORT). 6 new mutation entries (`ort-census.probe-*`,
+  `ort-census.relative-dot`), each verified. `Smoke.OrtCensus.Tests.ps1` 24 → 26.
+- **Reproduced in a local `:latest-cross` (e8eb8a42)** with the REAL `liboxidant.so`
+  built from OxidANT f018bec with the lane's features, inside the 2026-09-17 release
+  bundle, through OmniAccelerANT's own packer and bundle checks. Hub a7ccc896 gives
+  CI's line and `bundle closure: 1 failure(s) across 42 ELF file(s)`; this change
+  gives `ORT census PASS`. Five mutations of that bundle (ORT removed, one byte off,
+  foreign, no `$ORIGIN`, a renamed re-rooted ORT) each still fail.
+- **Consumers pick it up with a hub pin bump, and their Windows ORT test fixtures
+  need one edit.** OxidANT's loader does not change: the consumer rule is "name the
+  chain directory, never embed a whole ORT source path". The rule is in `AGENTS.md`
+  § Linux Build Rules and in the section 25 bullet of
+  `docs/windows-build-invariants.md`. But a fixture that fakes an ORT as
+  `"$chainSrc OrtGetApiBase"` has no fingerprint under the new rule. At this commit,
+  OmniAccelerANT's `OrtRunner.Tests.ps1` fails 2 of 6, and OxidANT's
+  `OrtPayload.Tests.ps1` and AccelerANTgine's `OrtBundle.Tests.ps1` fail one case
+  each (`UNPROVEN` where `STALE` is expected). Ending the fake path with a NUL
+  (`` "$chainSrc`0OrtGetApiBase" ``) fixes all three and passes at either hub:
+  [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md#what-the-chain-ort-is).
+  (Corrected on 2026-09-24. This bullet first said nothing in the consumers changes.)
+
+
+## 2026-09-24 - Review follow-ups to the sccache-endpoint fix
+
+Six review findings on the entry below, each verified before it was applied.
+
+- **A parent the run did not build is graded before a stage inherits it.** `FROM` copies the
+  parent image's config ENV (the merge Dockerfile's comment said it does not; corrected). With
+  the merge `built` stage's own ENV gone, a `bk-windows-toolchain` from before the fix passed
+  its endpoint straight through to the published image, and only the final gate, hours later,
+  would have seen it. `Invoke-BkStage` now solves `Dockerfile.publish-gate` on every
+  `BASE_IMAGE` the run neither built nor graded, before the stage; a stale parent fails in
+  seconds and the error says to rebuild it. The fresh toolchain is graded right after its
+  solve. All three sites go through `Invoke-BkPublishGate`. **A run started before this commit
+  has no gate: restart the chain with `toolchain` in `-Stages` from a fresh driver process;
+  never resume it.** [`windows-build-resources.md` § An image this run did not build](docs/windows-build-resources.md#an-image-this-run-did-not-build).
+- **The Windows gate's default path is tested.** The gate's RUN passes no `-Scopes`, and no
+  test did either. Now a uniquely named leaking Process variable must make a bare
+  `Assert-ImageEnvPublishable` throw, the Process/Machine/User list is pinned from the AST, and
+  an in-suite mutant for each proves it bites.
+- **The Linux image-env gate has no switch.** Check 6 of `verify-shipped-wrapper.sh` sat
+  inside the `RUNTIME_IMAGE_SMOKE=1` block and never ran on `--manifest-only`/`--repair`. It is
+  now `_manifest_image_env_gate`, the first step of `create_manifest`, on every path that
+  creates an index; check 6 is gone. The `make` help and four `image-env.manifest-*`
+  mutations (replacing the two `image-env.wrapper-*`) follow.
+- **The consumer probe tries every address at once.** `Test-TcpEndpointReachable` now
+  resolves within the budget and connects to every address in parallel. Before, an IPv4-only
+  listener behind `http://localhost:<port>` was removed after 2049 ms, because Windows refuses
+  `::1` only after ~2 s; now it is kept in 37 ms. New cases: that one, a 200 ms bound against
+  a closed port, and an unresolvable name, with an in-suite mutant per case.
+- **The build host keeps its remote tier.** Consumer builds on the build host reached WebDAV
+  only through the leaked ENV and would have lost it silently. `Invoke-ContainerBuild` now
+  forwards this host's `SCCACHE_WEBDAV_ENDPOINT` and `SCCACHE_MULTILEVEL_CHAIN` into the
+  container at run time (`Add-HostSccacheRemoteEnv`) unless `-CacheEnv` sets them (`''` opts
+  out). A `docker run` by hand still passes `-e` itself:
+  [`windows-build-resources.md` § The build host's remote tier, at run time](docs/windows-build-resources.md#the-build-hosts-remote-tier-at-run-time).
+- **Two things this host needed to commit it through the hook.** `verify_doc_links.py`'s git-free
+  floor compared `str(path)` with POSIX entries, so on Windows it ignored nothing and
+  `test-doc-links.sh` failed at baseline; it now matches the POSIX spelling (a no-op on Linux).
+  And `build-cross-chain.sh`'s `_CHAIN_RUNTIME_GATES` does not name the new Linux gate yet:
+  staging that file samples `test-chain-lifecycle.sh`, whose symlink cases fail on a Windows
+  host, so that one-line edit is for a Linux host.
+- **Re-key set: nothing beyond the entry below.** The driver, the tests and the Linux host
+  scripts are in no image closure, the merge Dockerfile edit is a comment (no LLB change), and
+  the two edited modules are copied only by the final `windows/Dockerfile`, which re-keys
+  anyway. Base, the sdk slot and the toolchain are untouched. Linux: nothing re-keys.
+
+
+## 2026-09-23 - The preflight timeout was a regression from 57bec177: fix11 is fast again, the mutation gate is sharded, and four hidden reds are fixed
+
+**This was our regression.** On `a7ccc896` the Ubuntu 26.04 `preflight` job was killed
+at its 45-minute timeout inside the mutation gate. `57bec177` had made fix11 run one awk
+pass over its corpus per rule (~50 per gate run), and `test-critical-fixes.sh` ran the
+whole gate once or twice per knocked-out row: the suite went from 4.4 s to 45-59 s on the
+runner, and its 68 mutation entries each re-ran it (43% of the gate's serial cost). The
+killed job printed nothing the gate had found, because the report was buffered.
+
+- **fix11 judges its corpus in one awk pass.** The checks queue rules (`_f11_deny`,
+  `_f11_require`, `_f11_pair`, `_f11_count`); `_f11_judge` answers them all, rules outside
+  and lines inside, so gawk compiles each regex once. `_f11_env_writes` gives each of its
+  seven forms its own `match()` site (gawk recompiled one shared site seven times per line:
+  22 s of the runner's 32 s real-tree run). A pass that returns fewer verdicts than rules
+  is a FAIL. Real tree, CI-parity container: gawk 10.1 s → 0.7 s.
+- **`test-critical-fixes.sh`** builds the fixture once, `cp -a`s it per row, and runs only
+  the knocked-out fix, extracted with `t_fn_src`; a case proves the extraction prints
+  exactly what the gate prints, and the fix11 Cargo case still runs the real gate, so a
+  FAIL is proven to reach its exit code (`critical-fixes.summary-reaches-exit`).
+  52.5-64 s → 6.5-8.2 s (gawk, CI-parity container, paired runs). All 75 entries bite.
+  The gate's serial cost, one lab session: 11469 s → 6633 s.
+- **The mutation gate is its own CI job, in four shards.** `preflight` runs with
+  `PREFLIGHT_SKIP=mutations`; the `mutations` job (matrix `shard: [0, 1, 2, 3]`, 30 min,
+  same setup steps) runs `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/4`, which
+  preflight passes on as the new `verify_mutations.py --shard K/N` (`entries[K::N]`).
+  Locally, `make preflight` still runs every entry.
+- **`verify_mutations.py` streams.** Each verdict is printed, flushed and tagged `[j/J]`
+  as its entry completes; a closing line names the failures in manifest order.
+- **Four reds the timeout hid**, all from `e785e82d`/`57bec177`:
+  `test-version-snapshot.sh` counted 11 `Build-*FromSource.ps1` subjects (13 since the
+  MIGraphX and AMD GPU EP scripts); `cross-build-verification.md` cited the hook's
+  staged-shell block as `:101-118` (now `:102-119`); `pre-commit.doc-span-fast-slugs` was
+  stale; and `test-smoke-arch-parity.sh`'s sandbox lacked `check-ort-provenance.sh`, which
+  `smoke-runtime-image.sh` now sources (39 assertions read empty). The 20 entries of the
+  first two suites had been vacuous.
+
+Docs: [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded),
+[`onnxruntime-single-source.md` § How G4 runs](docs/onnxruntime-single-source.md#how-g4-runs-one-judging-pass).
+Unverified until CI runs: the per-shard wall time on the runner (projected at about 10-16 of
+its 30 minutes, slice 1 up to 4 more, scaled from `41a07927`'s measured CI gate time) and the
+gawk real-tree time there.
+
+
 ## 2026-09-23 - riscv64 web-lane tools: cross-built in android, cached, native one switch away
 
 riscv64's package stage compiled `wasm-pack` and `flutter_rust_bridge_codegen` under
@@ -2255,6 +2552,7 @@ with its challenge's corrections. How to pick a path:
   `android-sdk`; the design's probe ran the cross build in the amd64 runtime image
   with apt cross binutils. What to watch for on the first run is in
   `docs/build-watch-list.md`.
+
 
 ## 2026-09-23 - The arm64 and riscv64 GCC ship libsanitizer
 
@@ -2330,111 +2628,6 @@ includes that header. amd64 was not affected. Mechanism, gates and cost:
   gfortran, and a target `libasan` for the amd64 image's plain cross compilers.
 
 
-## 2026-09-24 - ORT census: a consumer that names the chain directory is not an ORT build
-
-**Fixes G6 failing OmniAccelerANT's Linux lane** (run 35928030957, x64 and arm64):
-`UNPROVEN /lib/liboxidant.so -- an ORT-named binary with no source fingerprint`. The
-bundle was correct: it held the chain ORT, byte for byte. The census got the file
-wrong. Details and measurements:
-[`docs/onnxruntime-single-source.md` § What "the chain ORT" is](docs/onnxruntime-single-source.md#what-the-chain-ort-is).
-
-- **Cause 1: a directory string counted as a fingerprint.** OxidANT's loader keeps
-  `/opt/onnxruntime/onnxruntime/core/` as a string to check the ORT it loads. The
-  census treated any file holding `onnxruntime/core/` as an ORT build. Now a
-  fingerprint is a whole source-file path ending in NUL (`.cc`, `.cpp`, `.cxx`, `.c`,
-  `.h`, `.hpp`, `.inc`, `.cu`, `.cuh`), the shape `__FILE__` leaves. Changed in
-  `ort_census_probe.py` (`MARK`) and in the Windows twin
-  (`WindowsOrtProvenance.Common.psm1`, `$script:OrtPathMarker`), where `oxidant.dll`
-  would have been `STALE`. `liboxidant.so` is now an importer, and G6 checks that it
-  resolves to the chain ORT, which it used to skip. Every fingerprint of the chain ORT
-  1.29 (592), its dnnl EP (23) and the Android build (545) still matches.
-- **Cause 2: a relative root printed as "no fingerprint".** rustc packs string
-  literals with no NUL between them, so the text before the directory became a
-  relative root (`''`), which `emit()` prints as `-`. The probe now prints it as `.`,
-  and `check-ort-provenance.sh` reads `.` as relative. A lone relative root is
-  `FOREIGN` (relative), as on Windows, not `UNPROVEN`.
-- **The same false positive hit G1 on FFmpeg.** FFmpeg compiles its configure line
-  into every lib and tool, and the chain's passes
-  `-I/usr/local/lib/onnxruntime-cpu/include/onnxruntime/core/session`
-  (`ffmpeg-dnn-backends.sh`). The old rule made every FFmpeg ELF an ORT build with
-  no fingerprint. Whole-image census of a local `:latest-cross` (e8eb8a42), old vs new
-  probe: `UNPROVEN` 14 → 1 (10 FFmpeg ELFs and 3 scratch `liboxidant.so` copies gone).
-  `libavfilter` is now the registered `ffmpeg` consumer it is, graded by RES and
-  STAMP, and the other nine are not ORT at all. The runtime smoke's census
-  (SHIPPED-TRUTH E) would have reported the same ten on the next image.
-- **Stricter, on purpose:** a reference file whose roots are all relative is now
-  `FOREIGN`, where `-` passed before. It matches Windows. e8eb8a42 has no such
-  reference: its two unfingerprinted ones (`libonnxruntime_providers_shared.so`, the
-  Android `libonnxruntime4j_jni.so`) still print `-` and pass as before. The CI image
-  (ec4bb68b) was not available here to check.
-- **Tests:** `test-ort-census.sh` 110 → 122 assertions (the fingerprint shape, a
-  rustc-packed consumer passing beside the chain ORT, then failing with no ORT or a
-  one-byte-off one, a relative-only ORT). 6 new mutation entries (`ort-census.probe-*`,
-  `ort-census.relative-dot`), each verified. `Smoke.OrtCensus.Tests.ps1` 24 → 26.
-- **Reproduced in a local `:latest-cross` (e8eb8a42)** with the REAL `liboxidant.so`
-  built from OxidANT f018bec with the lane's features, inside the 2026-09-17 release
-  bundle, through OmniAccelerANT's own packer and bundle checks. Hub a7ccc896 gives
-  CI's line and `bundle closure: 1 failure(s) across 42 ELF file(s)`; this change
-  gives `ORT census PASS`. Five mutations of that bundle (ORT removed, one byte off,
-  foreign, no `$ORIGIN`, a renamed re-rooted ORT) each still fail.
-- **Consumers pick it up with a hub pin bump, and their Windows ORT test fixtures
-  need one edit.** OxidANT's loader does not change: the consumer rule is "name the
-  chain directory, never embed a whole ORT source path". The rule is in `AGENTS.md`
-  § Linux Build Rules and in the section 25 bullet of
-  `docs/windows-build-invariants.md`. But a fixture that fakes an ORT as
-  `"$chainSrc OrtGetApiBase"` has no fingerprint under the new rule. At this commit,
-  OmniAccelerANT's `OrtRunner.Tests.ps1` fails 2 of 6, and OxidANT's
-  `OrtPayload.Tests.ps1` and AccelerANTgine's `OrtBundle.Tests.ps1` fail one case
-  each (`UNPROVEN` where `STALE` is expected). Ending the fake path with a NUL
-  (`` "$chainSrc`0OrtGetApiBase" ``) fixes all three and passes at either hub:
-  [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md#what-the-chain-ort-is).
-  (Corrected on 2026-09-24. This bullet first said nothing in the consumers changes.)
-
-## 2026-09-24 - Review follow-ups to the sccache-endpoint fix
-
-Six review findings on the entry below, each verified before it was applied.
-
-- **A parent the run did not build is graded before a stage inherits it.** `FROM` copies the
-  parent image's config ENV (the merge Dockerfile's comment said it does not; corrected). With
-  the merge `built` stage's own ENV gone, a `bk-windows-toolchain` from before the fix passed
-  its endpoint straight through to the published image, and only the final gate, hours later,
-  would have seen it. `Invoke-BkStage` now solves `Dockerfile.publish-gate` on every
-  `BASE_IMAGE` the run neither built nor graded, before the stage; a stale parent fails in
-  seconds and the error says to rebuild it. The fresh toolchain is graded right after its
-  solve. All three sites go through `Invoke-BkPublishGate`. **A run started before this commit
-  has no gate: restart the chain with `toolchain` in `-Stages` from a fresh driver process;
-  never resume it.** [`windows-build-resources.md` § An image this run did not build](docs/windows-build-resources.md#an-image-this-run-did-not-build).
-- **The Windows gate's default path is tested.** The gate's RUN passes no `-Scopes`, and no
-  test did either. Now a uniquely named leaking Process variable must make a bare
-  `Assert-ImageEnvPublishable` throw, the Process/Machine/User list is pinned from the AST, and
-  an in-suite mutant for each proves it bites.
-- **The Linux image-env gate has no switch.** Check 6 of `verify-shipped-wrapper.sh` sat
-  inside the `RUNTIME_IMAGE_SMOKE=1` block and never ran on `--manifest-only`/`--repair`. It is
-  now `_manifest_image_env_gate`, the first step of `create_manifest`, on every path that
-  creates an index; check 6 is gone. The `make` help and four `image-env.manifest-*`
-  mutations (replacing the two `image-env.wrapper-*`) follow.
-- **The consumer probe tries every address at once.** `Test-TcpEndpointReachable` now
-  resolves within the budget and connects to every address in parallel. Before, an IPv4-only
-  listener behind `http://localhost:<port>` was removed after 2049 ms, because Windows refuses
-  `::1` only after ~2 s; now it is kept in 37 ms. New cases: that one, a 200 ms bound against
-  a closed port, and an unresolvable name, with an in-suite mutant per case.
-- **The build host keeps its remote tier.** Consumer builds on the build host reached WebDAV
-  only through the leaked ENV and would have lost it silently. `Invoke-ContainerBuild` now
-  forwards this host's `SCCACHE_WEBDAV_ENDPOINT` and `SCCACHE_MULTILEVEL_CHAIN` into the
-  container at run time (`Add-HostSccacheRemoteEnv`) unless `-CacheEnv` sets them (`''` opts
-  out). A `docker run` by hand still passes `-e` itself:
-  [`windows-build-resources.md` § The build host's remote tier, at run time](docs/windows-build-resources.md#the-build-hosts-remote-tier-at-run-time).
-- **Two things this host needed to commit it through the hook.** `verify_doc_links.py`'s git-free
-  floor compared `str(path)` with POSIX entries, so on Windows it ignored nothing and
-  `test-doc-links.sh` failed at baseline; it now matches the POSIX spelling (a no-op on Linux).
-  And `build-cross-chain.sh`'s `_CHAIN_RUNTIME_GATES` does not name the new Linux gate yet:
-  staging that file samples `test-chain-lifecycle.sh`, whose symlink cases fail on a Windows
-  host, so that one-line edit is for a Linux host.
-- **Re-key set: nothing beyond the entry below.** The driver, the tests and the Linux host
-  scripts are in no image closure, the merge Dockerfile edit is a comment (no LLB change), and
-  the two edited modules are copied only by the final `windows/Dockerfile`, which re-keys
-  anyway. Base, the sdk slot and the toolchain are untouched. Linux: nothing re-keys.
-
 ## 2026-09-23 - The published image no longer carries the build host's sccache endpoint
 
 **What broke.** `:winamd64` (digest `3137eebe…`, built 2026-09-22 from hub `0d85b8c1`)
@@ -2496,6 +2689,7 @@ why, because `$null = Invoke-ContainerBuild` discarded the build's stdout. Accou
   `windows-build-resources.md`, `build-cache-tiers.md`, `windows-builds.md`,
   `windows-build-invariants.md` (49 rules now), `failure-modes.md`, `code-quality-tooling.md`,
   the #164 archive entry, backlog #177 and `AGENTS.md` § Push And Publish Rules.
+
 
 ## 2026-09-23 - Windows Scripts CI is green again: an unmounted CUDA root reads as absent, and the Hailo patches are checked
 
@@ -2607,6 +2801,7 @@ Rules.
   clang-cl; Dawn under clang-cl; a Linux package depending on `libonnxruntime1.x`; a G2
   false positive on a real record path.
 
+
 ## 2026-09-23 - Windows rocm lane: remaining AMD GPU paths
 
 **The rocm lane fills its AMD GPU gaps: OpenCL, Vulkan, FFmpeg Vulkan, llama.cpp Vulkan,
@@ -2648,6 +2843,7 @@ gfx1200 and LiteRT, and the TVM ROCm spike builds again.** All of it is gated on
   initialising in a GPU-less Server Core (every OpenCV T-API check now loads it); the
   AMDGPU minimal LLVM's time and memory; FFmpeg's Vulkan sources under clang-cl. Windows
   Defender flags `llama-gguf-split.exe` as `Wacatac.B!ml` on this host.
+
 
 ## 2026-09-23 - Windows `-Variant rocm`: the ROCm layer moves into the sdk slot, and media turns on AMD GPU features
 
@@ -2709,6 +2905,7 @@ evidence: [`docs/windows-rocm.md`](docs/windows-rocm.md).
 - **Nothing here has been seen running on a GPU yet**; see the open points in
   `docs/windows-rocm.md`.
 
+
 ## 2026-09-23 - CUDA_ARCHITECTURES: Hopper (90) retired too
 
 Same day, same owner, one entry lighter: `86;87;89;120`. 90 (H100/H200) joins
@@ -2756,6 +2953,7 @@ How to turn an arch on or off, with the four rules and the cost, is now in
 `AGENTS.md` § GPU architecture coverage; the user-facing card list is in
 README.md § Which GPUs `:latest-nvidia` runs on.
 
+
 ## 2026-09-22 - hcsshim fork rebased: `Install-NewHost` builds `5e9df53c` and re-pins a reused work dir; `Invoke-WithEnv` really removes
 
 **`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` is rebased onto upstream
@@ -2793,6 +2991,7 @@ microsoft/hcsshim#2855 follows it. The patch is unchanged: same patch-id, and no
   - `windows-build-lanes.md` and `failure-modes.md` name the new binary.
   - The `hcsshim-teardown-timeout/README.md` status header now records the rebase.
 
+
 ## 2026-09-22 - Windows `-Variant rocm`: the driver builds `:winamd64-rocm`
 
 **`Build-Buildkit.ps1 -Variant rocm` builds the ROCm image.** It runs the default chain
@@ -2813,6 +3012,7 @@ existing default media.
 - Torch stays CPU until OrchestrANT has a Windows ROCm extra.
 - The nvidia and default runs are unchanged: same tags, same push behaviour.
 - Tests: `Driver.Variant.Tests.ps1` (8) and `Rocm.Install.Tests.ps1` (17).
+
 
 ## 2026-09-22 - Hooks on a Windows host: pre-push clears git's environment, the shellcheck ratchet grades again
 
@@ -2848,6 +3048,7 @@ no-ops on Linux. Mutation `shellcheck-warnings.bash-from-path` bites the new
 Windows, where it runs fake `shellcheck` scripts through native Python; at HEAD, 51 of
 its 68 assertions failed there.
 
+
 ## 2026-09-22 - Windows ROCm layer: `windows/Dockerfile.rocm` + `Install-Rocm.ps1` (not wired yet)
 
 **ROCm on Windows now has a build path.** It uses AMD's documented Windows tar
@@ -2874,6 +3075,7 @@ that `setup-rocm-repo.sh` installs on Linux. The driver does not build it yet.
   (each required file removed in turn must fail it) and the PATH rules.
 - Why, the measured hashes and sizes, and the licence inventory:
   [`docs/windows-builds.md` § ROCm layer](docs/windows-builds.md#rocm-layer-dockerfilerocm).
+
 
 ## 2026-09-22 - ROCm ASAN is optional and OFF; the plan for the first `:latest-rocm` run
 
@@ -2907,6 +3109,7 @@ self-check (`amd-smi`, not the deprecated `rocm-smi`), AMD's CDI container
 toolkit, and a Renovate comment that watches a git tag instead of the apt
 package.
 
+
 ## 2026-09-22 - `:latest-cross` is retired, not deprecated
 
 The alias lived for one day. The owner decided against a deprecation window, so
@@ -2936,6 +3139,7 @@ not a disaster (`docs/linux-host-setup.md` § B8).
 
 `test-tag-naming.sh` keeps a regression guard: no tag function may compose the
 old name again. Dated history keeps it, because the tag really was called that.
+
 
 ## 2026-09-22 - GPU variant chains: `CROSS_VARIANT=nvidia|rocm` builds `:latest-nvidia` / `:latest-rocm`
 
@@ -3127,6 +3331,7 @@ documented in `docs/hailo-support.md` § Phase 3:
 Not yet: TAPPAS (Linux-only), the pyhailort wheel, the GStreamer `hailonet`
 element on Windows, and device execution.
 
+
 ## 2026-09-20 - Windows-on-ARM64 CUDA/cuDNN: the cross lane is wired (#176)
 
 The arm64 lane built its **CUDA stack for the first time**, on the x64 host, with no
@@ -3158,6 +3363,7 @@ arch gate **1047/0**, and every CUDA artefact 0xAA64.
   run-probe became a link + PE-machine assert (`Assert-NativeLinkRun -CrossLinkOnly`),
   because an aarch64 DLL cannot execute on the x64 host.
 
+
 ## 2026-09-20 - the GPU lane's smoke stops demanding an EULA payload nobody staged
 
 The `-Gpu` amd64 chain built green through `final` -- CUDA EP, cuDNN, OpenCV
@@ -3177,6 +3383,7 @@ asserts were the defect:
   silently-disabled EP still reds.
 - Pester coverage for the decision (unset, missing, empty, one entry); the
   Windows suite is green at 864/864.
+
 
 ## 2026-09-20 — the torchvision pair fix, and the Hailo variant
 
@@ -3282,6 +3489,7 @@ CMake die), the missing `mkdir -p` that made the HailoRT download fail with
 curl error 23, and pyhailort's `requires-python <3.14` metadata (relaxed before
 the wheel build, import-tested after).
 
+
 ## 2026-09-19 - the Windows dual-lane rebuild: two build-killers fixed, CUDA on the network installer
 
 The first rebuild of the 2026-09-17/18 wave ran **green on BOTH Windows lanes** —
@@ -3304,6 +3512,7 @@ Also landed the same day: the ghcr credential helper (`credsStore: wincred`)
 was replaced by a direct auth entry so `-PushRef` can publish; CUDA 13.4.2's
 renamed installer and the sccache 0.18 zip were proven by the runs; the sccache
 CUDA canary is still owed before `cuda_llm` is re-wrapped.
+
 
 ## 2026-09-18 - the dependency wave, and sccache 0.18 retires its source build
 
@@ -3399,6 +3608,7 @@ e7ce3600…`. Fixed to the peeled commit
 `test-native-build-host.sh`, which had locked the wrong hash. The 22.1.8 and
 23.1.0 rows above it were correct peeled commits, so only the 23.1.1 row was
 mis-copied from `git ls-remote`'s first (tag-object) line.
+
 
 ## 2026-09-17 — the F4 extraction wave, CON1-CON6, and the Windows defect batch
 
@@ -3506,6 +3716,7 @@ Windows Python and report every frozen row twice, while the same runs are green
 under WSL/Linux. No page owns that trap yet; the 2026-09-17 archive carries the
 measurement.
 
+
 ## 2026-09-16 — four hub defects the family pass isolated
 
 Each was measured in a consumer and fixed here, where the code lives.
@@ -3563,6 +3774,7 @@ image's root-owned system venv; the fixed form resolves to the run's own
 without the extra pytest lives in. This unblocks the deletion of WebDavClient's
 two local wrappers, which carry notes saying exactly that.
 
+
 ## 2026-09-16 (later) — ten mutation entries the batch rotted, re-pointed
 
 The Ubuntu lane's preflight was red on the mutation gate for a SECOND reason,
@@ -3590,6 +3802,7 @@ A stale entry is not a cosmetic failure: it is a guarantee nobody is testing,
 and the gate says so by name rather than skipping it. All ten were re-pointed at
 the code they are meant to neuter and all ten bite again; the staleness pass is
 clean over the whole 841-entry manifest.
+
 
 ## 2026-09-15 (later) — the four red lanes: one this batch caused, three it did not
 
@@ -3641,6 +3854,7 @@ layer: `unable to populate layer cache ... disk quota exceeded`. `registry:`
 streams rather than pulling into a daemon, but syft still caches layers under
 `TMPDIR`, and a cross image does not fit on the runner's root volume. The cache
 moves to `/mnt`. Nothing about what is scanned changes.
+
 
 ## 2026-09-15 — the audit's second hub batch: the owner's decisions, executed
 
@@ -3843,6 +4057,7 @@ retired as stale, seven added, two doc-dupes rule/mechanism pairs budgeted,
 `renovate-fleet.sh` frozen at 814 lines with the not-a-split argument, six
 comment-size headers frozen, and three new operator knobs registered.
 
+
 ## 2026-09-14 — family audit: the hub's side of the fixes
 
 A cross-repo audit of all nine consumers against this hub (reuse, duplication,
@@ -3911,6 +4126,27 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   (`llm-stack-serving.yml`, the pins/selftest/inventory workflows) corrected;
   the consumer-inventory examples say `/c/GitHub`; a broken link in
   `shared/linux/templates/README.md` fixed.
+
+
+## 2026-09-13 — Home Assistant energy dashboard + recorder pass
+
+* **Solar forecast fixed on the dashboard**: both Forecast.Solar planes are now
+  attached to `config_entry_solar_forecast`, not just the 2.5 kWp one — the
+  10 kWp plane was missing from the forecast graph. The planes themselves
+  (10 kWp / 2.5 kWp) were already correct after the v3 subentry migration; both
+  still carry the 25°/180° orientation defaults.
+* **Six individual devices on the energy dashboard** — four NOUS A1T
+  (Wohnzimmer links, Büro links, Silas, Waschmaschine) and the two P110s that
+  expose a lifetime counter (Anrichte, Wohnzimmer rechts), each with its live
+  `stat_rate`. The "Stromzähler von Jones" P110 has no lifetime entity, so it
+  is absent.
+* **Recorder slimmed**: `configuration.yaml` excludes the instantaneous Tasmota
+  plug telemetry (apparent/reactive power, current, voltage, factor) — measured
+  ~320k of 552k state rows over 10 days. `power` and the kWh totals stay,
+  because the dashboard uses them.
+* README: the backups section claimed "unencrypted"; the backup password was
+  set 2026-09-13 05:41, so new automatic backups are encrypted while every
+  archive already in `config/backups/` is not.
 
 
 ## 2026-09-12 (night) — Home Assistant hardening pass
@@ -4090,6 +4326,7 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   `*_SHA256` keys that predate this change (verified on HEAD); recorded here so
   the next sweep can classify them rather than rediscover them.
 
+
 ## 2026-09-11 (evening) — 68 -> 89: vendor JSON, PyPI twins and digests
 
 * **Twenty-one more keys.** Three custom datasources (`custom.cuda` with an
@@ -4111,6 +4348,7 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   artifact-gated and dated pins —
   [`docs/dependency-updates.md`](docs/dependency-updates.md#what-is-still-not-annotated-and-why).
 
+
 ## 2026-09-11 (later) — the local apply half can write versions.env
 
 * **`custom.regex` becomes a writable manager for the self-contained keys.**
@@ -4130,6 +4368,7 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   [`test-renovate-env.sh`](linux/scripts/tests/test-renovate-env.sh) covers the
   write, the refusal and the unreadable hint; all six Renovate suites stay
   green (201/87/105/98/15/11 assertions).
+
 
 ## 2026-09-11 — versions.env is 68 keys visible to Renovate, not 18
 
@@ -4154,6 +4393,7 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   `NODE_VERSION` within its major (`allowedVersions <27`) and
   `PYTHON_VERSION` within its minor (`<3.15`) — what `bump_versions.py` classes
   same-major/same-minor in SAFE.
+
 
 ## 2026-09-10 — the foreign Vulkan prefixes are two files from amd64
 
@@ -4180,6 +4420,7 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   current one, with zero `unavailable on <arch>` lines.
 * **EX1 closed too**, and the residual AS1 neighbours are latent (every cross
   stage builds on `linux/amd64`).
+
 
 ## 2026-09-09 (later) — all three arches ship 52 Vulkan binaries
 
@@ -4215,6 +4456,7 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
 * **Still open, both small:** VK6 (13 shared libraries the foreign arches do not
   get, caused by our own `ENABLE_OPT=OFF` / `SPIRV_CROSS_SHARED` flags) and VK7
   (11 DXC files they ship that the vendor prunes).
+
 
 ## 2026-09-09 — riscv64 reaches 20/20, and the apt pockets have to agree
 
@@ -4258,6 +4500,7 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   of the full pin, `lint-secrets.sh`'s gitleaks invocation was repaired, and
   `bench_coding.py`'s `RLIMIT_NPROC` counts tasks rather than processes.
 
+
 ## 2026-09-08 — the container stack installs rootless, with no sudo
 
 * **`install-nerdctl-full.sh` grew a rootless prefix mode.** It always installed
@@ -4293,4 +4536,5 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   `rootlesskit`, `runc` and `containerd-rootless.sh`, because `/usr/local` already
   held the same nerdctl-full 2.3.5 bundle. Not a version change — a relocation.
   Documented as [`linux-host-setup.md` § B3c](docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo).
+
 
