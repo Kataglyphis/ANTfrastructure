@@ -63,8 +63,12 @@ rmdir repaired || true
 info "Final wheels in dist/:"
 ls -la dist || true
 
-# packaging/app.json opts a consumer in: the app bundle, then its packages, each started once (docs/python-app-bundles.md § Packages).
+# packaging/app.json opts the consumer in; its packages need the AppImage tooling amd64/arm64 ships, so riscv64 ships wheels only (docs/python-app-bundles.md § Packages).
 if [ -f packaging/app.json ]; then
-  bash "$SCRIPT_DIR/../../06-packaging/python-app-bundle.sh" --wheel-dir dist --out-dir build/app-bundle
-  bash "$SCRIPT_DIR/../../06-packaging/python-app-package.sh" --bundle build/app-bundle --out-dir dist/packages
+  if [ "$(uname -m)" = "riscv64" ]; then
+    warn "packaging/app.json present: the tar/deb/AppImage packages are amd64/arm64, so riscv64 ships wheels only"
+  else
+    bash "$SCRIPT_DIR/../../06-packaging/python-app-bundle.sh" --wheel-dir dist --out-dir build/app-bundle
+    bash "$SCRIPT_DIR/../../06-packaging/python-app-package.sh" --bundle build/app-bundle --out-dir dist/packages
+  fi
 fi

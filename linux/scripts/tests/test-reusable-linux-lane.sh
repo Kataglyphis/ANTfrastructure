@@ -77,10 +77,14 @@ t_case "the step was found and is not empty"
 t_assert_ok test -s "${STEP}"
 t_assert_contains "$(cat "${STEP}")" 'GITHUB_OUTPUT'
 
+# _input_meta <name>: an input's `type|required|default` triple, via the conventions loader.
+_input_meta() {
+  _q "'|'.join(str(V.value(inputs.get('$1', ({}, 0))[0], k)) for k in ('type', 'required', 'default'))"
+}
+
 t_case "arches is an optional string whose default is today's two rows"
 # Every caller that predates the input must keep both rows.
-t_assert_eq "string|false|x64 arm64" \
-  "$(_q "'|'.join(str(V.value(inputs.get('arches', ({}, 0))[0], k)) for k in ('type', 'required', 'default'))")"
+t_assert_eq "string|false|x64 arm64" "$(_input_meta arches)"
 
 t_case "the DEFAULT yields exactly the rows the static matrix held, in order"
 # A changed row silently renames the caller's jobs (matrix.arch) and artifacts (matrix.runs_on).
@@ -140,5 +144,28 @@ t_assert_eq "ubuntu-26.04" "$(_q "V.value(plan,'runs-on')")"
 t_case "the input reaches the step through env, never spliced into the script"
 t_assert_eq '${{ inputs.arches }}' "$(_q "V.value(V.value(V.value(plan,'steps')[0],'env'),'ARCHES')")"
 t_assert_eq "" "$(grep -F -e '${{' "${STEP}")" "an expression in the script body is a shell injection"
+
+t_case "package-emulated is an optional boolean, off by default"
+t_assert_eq "boolean|false|false" "$(_input_meta package-emulated)"
+
+# The build job's step conditions, as one name|if line per step.
+STEPS="${_work}/conditions"
+# shellcheck disable=SC2086
+${_PY} - "${ROOT}/linux/scripts" "${LANE}" "${STEPS}" <<'PY' 2>&1
+import sys, pathlib
+sys.path.insert(0, sys.argv[1])
+import verify_workflow_conventions as V
+lane = V.load_yaml(pathlib.Path(sys.argv[2]))
+build = V.value(V.value(lane, 'jobs'), 'build')
+with open(sys.argv[3], 'w', encoding='utf-8') as fh:
+    for step in (V.value(build, 'steps') or []):
+        fh.write(f"{V.value(step, 'name')}|{str(V.value(step, 'if') or '-')}\n")
+PY
+
+t_case "the riscv64 packaging arm is the input, and every step downstream of it"
+t_assert_contains "$(grep -F 'Packaging application|' "${STEPS}")" "inputs.package-emulated" "the packaging row may run on riscv64"
+for step_name in "Fix permissions for dist directory" "Verify dist directory" "Upload packages (source/binary only)"; do
+  t_assert_contains "$(grep -F "${step_name}|" "${STEPS}")" "inputs.package-emulated" "${step_name} must follow the packaging row"
+done
 
 t_summary

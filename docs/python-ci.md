@@ -87,11 +87,18 @@ tests only. The row registers QEMU's binfmt handler through
 `setup-riscv64-cross` with `sysroot: false` (the sysroot serves cross builds,
 and a Python lane has nothing to cross-compile), runs every container step with
 `--platform linux/riscv64`, and carries its own `timeout: 180` in the plan's
-matrix. Static analysis, packaging and the docs build stay `x64`'s: those steps
-carry `if: matrix.arch != 'riscv64'`. Pass `test-extras` (comma list) so every
-leg syncs only those extras - a riscv64 leg wants `test`, because the full set
-builds wheels from source under emulation. See
+matrix. The docs build stays `x64`'s, and static analysis stays off the row with
+it: both steps carry `if: matrix.arch != 'riscv64'`. Pass `test-extras` (comma
+list) so every leg syncs only those extras - a riscv64 leg wants `test`,
+because the full set builds wheels from source under emulation. See
 [`riscv64-cross-test-lanes.md`](riscv64-cross-test-lanes.md).
+
+Packaging the riscv64 row is **opt-in** through `package-emulated: true`: an
+arch-specific wheel (a Cython build) otherwise exists for every arch but this
+one. The wheels build under QEMU like any other step; the app packages of a
+`packaging/app.json` app do not follow - they need the AppImage tooling the
+image ships for amd64/arm64 only, so `ci_packaging.sh` warns and ships wheels
+only there.
 
 ## The static-analysis knobs, and the bandit trap between them
 

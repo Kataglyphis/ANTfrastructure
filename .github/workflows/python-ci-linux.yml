@@ -56,6 +56,16 @@ on:
         required: false
         type: string
         default: ''
+      package-emulated:
+        description: >-
+          Run the packaging step on the emulated riscv64 row as well. Set true
+          for an app whose wheel is arch-specific (a Cython build): the wheels
+          build under QEMU. The app packages of a packaging/app.json app stay
+          amd64-arm64 - the image's AppImage tooling has no riscv64 build, so
+          ci_packaging.sh ships wheels only there.
+        required: false
+        type: boolean
+        default: false
       static-analysis-python-version:
         description: Interpreter for ci_static_analysis.sh. Empty keeps the driver's default.
         required: false
@@ -90,7 +100,8 @@ on:
           caller ran before this input existed. A caller split per arch
           (linux-x64.yml, linux-arm64.yml, linux-riscv64.yml) passes one;
           riscv64 runs the riscv64 image under QEMU on an amd64 runner and
-          tests only. An unknown, repeated or empty entry fails the plan job
+          tests only; pass package-emulated to also build the wheels. An
+          unknown, repeated or empty entry fails the plan job
           rather than running fewer rows than were asked for.
         required: false
         type: string
@@ -234,9 +245,9 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ${{ inputs.docs-artifact-path }}
 
-      # The riscv64 row tests only; the wheel it would build is the x64 row's. See docs/riscv64-cross-test-lanes.md.
+      # Packaging on the riscv64 row is opt-in: it builds the wheels, and the app packages stay amd64-arm64.
       - name: Packaging application
-        if: matrix.arch != 'riscv64'
+        if: matrix.arch != 'riscv64' || inputs.package-emulated
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
@@ -246,21 +257,21 @@ jobs:
             '${{ inputs.packaging-python-version }}'"
 
       - name: Fix permissions for dist directory
-        if: matrix.arch != 'riscv64'
+        if: matrix.arch != 'riscv64' || inputs.package-emulated
         run: |
           sudo chown -R "$USER:$USER" "${{ github.workspace }}/dist"
           sudo chmod -R 755 "${{ github.workspace }}/dist"
           ls -la "${{ github.workspace }}/dist/"
 
       - name: Verify dist directory
-        if: matrix.arch != 'riscv64'
+        if: matrix.arch != 'riscv64' || inputs.package-emulated
         run: |
           echo "Checking for wheel files:"
           ls -la "${{ github.workspace }}/dist/"
           find "${{ github.workspace }}/dist/" -name "*.whl"
 
       - name: Upload packages (source/binary only)
-        if: ${{ always() && matrix.arch != 'riscv64' }}
+        if: ${{ always() && (matrix.arch != 'riscv64' || inputs.package-emulated) }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: packages-linux-${{ matrix.arch }}-source-and-binary
