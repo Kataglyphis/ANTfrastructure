@@ -6,6 +6,14 @@ It is NOT containerised: the owner directive (2026-10-02) is pip on the host,
 and a container runner was evaluated and dropped. The playbooks, inventory and
 SSH config for this machine's fleet live here.
 
+## The fleet
+
+| Host | What it is | Connection |
+| --- | --- | --- |
+| `pi-1` | Raspberry Pi 5 (control node, Home Assistant) | local |
+| `pi-2` | older Raspberry Pi, Debian 13 | SSH |
+| `mintberrycrunch` | riscv64 SoC, Ubuntu 26.04 | SSH |
+
 ## What is installed (2026-10-02)
 
 | Item | Value |
@@ -69,8 +77,8 @@ from this directory is required — `ansible.cfg`, `ssh_config` and the
 
 | Playbook | What it does |
 | --- | --- |
-| `playbooks/update.yml` | per Pi: apt safe-upgrade + autoremove, then (host_vars flags) container-stack update, nerdctl drift report, venv upgrade; reboot only when required |
-| `playbooks/bootstrap-fleet.yml` | one-time per new Pi: passwordless sudo for the ansible user |
+| `playbooks/update.yml` | per host: apt safe-upgrade + autoremove, then (host_vars flags) container-stack update, nerdctl drift report, venv upgrade; reboot only when required |
+| `playbooks/bootstrap-fleet.yml` | one-time per new host: passwordless sudo for the ansible user |
 | `playbooks/schedule.yml` | installs the weekly systemd timer on pi-1 |
 | `playbooks/ping.yml` | lane proof — reach every inventorized host |
 
@@ -83,17 +91,18 @@ from this directory is required — `ansible.cfg`, `ssh_config` and the
 | `report_nerdctl_upstream` | report-only: installed nerdctl vs latest GitHub release. The upgrade itself stays deliberate — `NERDCTL_INSTALL_CONFIRM=1 linux/host-config/install-nerdctl-full.sh` (it stops both containerd lanes and bounces every container) |
 | `manage_ansible_venv` | `pip install -U ansible` into `~/venvs/ansible`, runs LAST so a broken release cannot take down the run that installs it |
 
-**Adding a new Pi** (the `pi-2` slot is filled this way):
+**Adding a new host** (the `pi-2` and `mintberrycrunch` slots were filled
+this way; any apt-based Linux works, not only Pis):
 
 ```bash
 cd linux/ansible
-# 1. inventory: add the host key below pi-2, values in gitignored host_vars:
-cp inventory/host_vars/pi-2.yml.example inventory/host_vars/pi-3.yml  # fill in
+# 1. inventory: add the host key, values in gitignored host_vars:
+cp inventory/host_vars/pi-2.yml.example inventory/host_vars/<name>.yml  # fill in
 # 2. hand out the key:
 ssh-copy-id -i .ssh/id_ed25519.pub <user>@<address>
 ssh-keyscan -t ed25519 <address> >> .ssh/known_hosts
 # 2. grant unattended sudo (once, with the become password):
-~/venvs/ansible/bin/ansible-playbook playbooks/bootstrap-fleet.yml --limit pi-2 -K
+~/venvs/ansible/bin/ansible-playbook playbooks/bootstrap-fleet.yml --limit <name> -K
 # 3. prove it:
 ~/venvs/ansible/bin/ansible-playbook playbooks/ping.yml
 ```
@@ -101,9 +110,8 @@ ssh-keyscan -t ed25519 <address> >> .ssh/known_hosts
 **The schedule**: `systemd/ansible-update.{service,timer}` are user units on
 pi-1 (linger is enabled — the rootless containerd stack requires it).
 They fire **Sundays 04:30 Europe/Berlin + 30 min jitter**, `Persistent=true`
-so a Pi that was off catches up on boot. `playbooks/schedule.yml` installs
-and arms them; the timer currently runs only the `pis` group, so the update
-lane starts the moment `pi-2` is bootstrapped. Logs: `journalctl --user -u
+so a host that was off catches up on boot. `playbooks/schedule.yml` installs
+and arms them. Logs: `journalctl --user -u
 ansible-update.service`. To move the checkout, re-run `schedule.yml` after —
 the units hardcode `%h/ANTfrastructure/linux/ansible`.
 
@@ -111,16 +119,17 @@ the units hardcode `%h/ANTfrastructure/linux/ansible`.
 
 - **pi-1 reboots LAST and DELAYED** (`shutdown -r +2`). It is the
   control node: an inline reboot would kill the running playbook mid-report.
-  Inventory order is load-bearing for this — keep pi-1 last in `pis`.
+  Inventory order is load-bearing for this — keep pi-1 last in `fleet`.
 - **The kernel-staleness check compares within the running kernel's FLAVOR.**
   This host runs `v8-16k+` while `ls -1v /lib/modules | tail -1` answers
   `v8-rt+` — a naive cross-flavor comparison would report "stale" forever
-  and reboot-loop the Pi every Sunday. Debian has no
-  `/var/run/reboot-required` marker by default either; the marker check
-  stays for Ubuntu-family hosts.
+  and reboot-loop the Pi every Sunday. Debian Pis have no
+  `/var/run/reboot-required` marker; Ubuntu hosts (mintberrycrunch) DO write
+  it, and it is the primary reboot signal there — Ubuntu kernel packages
+  change the ABI suffix, which the flavor match alone would miss.
 
 Remote hosts reboot inline (`ansible.builtin.reboot` + wait); `serial: 1`
-means never two Pis down at once — pi-1 carries Home Assistant.
+means never two hosts down at once — pi-1 carries Home Assistant.
 
 ## Layout
 

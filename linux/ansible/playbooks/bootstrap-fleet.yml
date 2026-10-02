@@ -1,7 +1,7 @@
 ---
 # One-time per new Pi — passwordless sudo for unattended runs; run it once with -K.
 - name: Bootstrap sudo for unattended runs
-  hosts: pis
+  hosts: fleet
   become: true
   gather_facts: false
   tasks:

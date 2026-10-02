@@ -1,7 +1,7 @@
 ---
 # serial + order: pi-1 is the control node — it must go LAST and never reboot inline.
-- name: Keep the Raspberry Pis up to date
-  hosts: pis
+- name: Keep the fleet up to date
+  hosts: fleet
   become: true
   serial: 1
   tasks:
