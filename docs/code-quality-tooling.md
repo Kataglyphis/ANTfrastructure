@@ -120,7 +120,10 @@ Needs `compile_commands.json`. Two traps that cost real time:
    `modernize-use-trailing-return-type` and friends fire on real code.
 
 The clean alternative is to let the build run clang-tidy, where paths are
-consistent by construction.
+consistent by construction. `Invoke-ClangTidyFixStep` also skips any source
+file with no compile command in the database: an option-gated subdirectory is
+not compiled, so tidy cannot parse its files and would fail the step on their
+first include.
 
 ### Suggested cadence
 

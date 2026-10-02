@@ -7,6 +7,16 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-02 - clang-tidy skips the files the build never compiled
+
+- `Invoke-ClangTidyFixStep` now reads the compile database and tidies only the files
+  it names. An option-gated subdirectory (`KATAGLYPHIS_BUILD_KOMPUTE_PLAYGROUND=OFF`
+  in BeschleunigerBallett) is not compiled, so its files have no compile command;
+  tidy ran them with defaults and failed the step on the first include
+  (`'kompute/Algorithm.hpp' file not found`, run 36979869674). Skipped files are
+  named in the build log.
+- Regression: `windows/scripts/tests/WindowsClang.Common.Tests.ps1`.
+
 ## 2026-10-01 - The torch stage installs the chain wheels once, and proves them (CON52)
 
 - **The detour is gone.** The 2026-10-01 chain installed `ai-edge-litert` and

@@ -80,6 +80,17 @@ function Invoke-ClangTidyFixStep {
   }
   $tidyFiles = $filteredFiles
 
+  # A file the build never compiled has no compile command; tidy would fail it as an unparsable TU.
+  $compiledFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($entry in @(Get-Content -LiteralPath $compileDb -Raw | ConvertFrom-Json)) {
+    if ($entry.file) { $null = $compiledFiles.Add([System.IO.Path]::GetFullPath($entry.file)) }
+  }
+  $unbuilt = @($tidyFiles | Where-Object { -not $compiledFiles.Contains([System.IO.Path]::GetFullPath($_)) })
+  if ($unbuilt.Count -gt 0) {
+    Write-BuildLog -Context $Context -Message "Skipping clang-tidy for $($unbuilt.Count) file(s) under $SourceSubdirectory with no compile command (not part of the build)"
+  }
+  $tidyFiles = @($tidyFiles | Where-Object { $compiledFiles.Contains([System.IO.Path]::GetFullPath($_)) })
+
   if ($tidyFiles.Count -eq 0) {
     Write-BuildLog -Context $Context -Message "No C/C++ source files found under $SourceSubdirectory for clang-tidy."
     return
