@@ -7,9 +7,10 @@ The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
 **State 2026-10-01.** Published: `:latest` (2026-09-30, hub 9e9d9828; amd64 `502a5e9d…`,
-arm64 `4446422d…`, riscv64 `d5e4db6b…`), `:winamd64` and `:winamd64-nvidia` (2026-09-27, hub
-a33a460b), `:winamd64-rocm` (2026-09-28), `:latest-rocm` (2026-09-28, hub 1754a1dd), `:winarm64`
-(2026-10-01, hub 59a4bca3, without NVIDIA; `:winarm64-nvidia` is not rebuilt yet).
+arm64 `4446422d…`, riscv64 `d5e4db6b…`), `:winamd64` (2026-09-30, hub 18b08cc4,
+`676980e3…`), `:winamd64-nvidia` (2026-09-27, hub a33a460b), `:winamd64-rocm` (2026-09-28,
+hub ad08bc30), `:latest-rocm` (2026-09-28, hub 1754a1dd), `:winarm64` (2026-10-01, hub
+59a4bca3, without NVIDIA; no `:winarm64-nvidia` tag exists).
 `:latest-nvidia` is not published. Every Linux image gap up to CON41 shipped and was checked
 in the published children (git history). Decisions and gaps checked closed live in
 [`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
@@ -27,23 +28,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
-- [ ] **CON45 — Follow-ups of the `:winamd64` published 2026-09-27** [M, ★★]. CON12 shipped:
-      `:winamd64` (15:44) and `:winamd64-nvidia` (16:33) were built at a33a460b, which carries
-      every fix CON9, CON10, CON25, CON28 and CON29 were blocked on (checked by git ancestry
-      2026-09-30: a93d5144, 57bec177, 738d07e3, d8c31072). No Windows host has checked them in the
-      published image yet, and the consumers still carry the workarounds (checked 2026-09-30):
-      - Prove in the published image on a Windows host: `clang_rt.profile-x86_64.lib` and a
-        clang-cl coverage run (CON9); `C:\llvm-patched\bin\clang-tidy.exe` reads a clang-cl
-        C++23 BMI (CON10); `vulkan-1.dll` from `C:\vulkan-loader` on PATH (CON25); LiteRT
-        Python in the app venv and `gstgdkpixbuf.dll` (CON28); no `VOLUME C:\workspace`
-        (CON29); no LAN sccache endpoint in the ENV; one DirectML G-API session.
-      - BeschleunigerBallett: `myproject_ENABLE_COVERAGE` in `x64-ClangCL-Windows-Base` is still
-        OFF (CON9), and `-SkipTidy` is still passed by `Build-Windows-Container.ps1` and
-        `Invoke-WindowsLane.ps1` (CON10).
-      - AccelerANTgine: `Build-Windows.ps1` still sets the module-file skip
-        (`ModuleImportPattern`); set `'(?!)'` so clang-tidy reads every `Src/` TU (CON10).
-      - Consumers: drop `Clear-UnreachableSccacheEndpoint` from the hub path once no published
-        image carries the endpoint (it was the first CON12 problem).
 - [ ] **CON50 — Every test on every arch lane** [L, ★★★]. Owner goal 2026-10-01. A read-only
       audit of the six consumers that day (latest green develop runs) found Linux arm64 at
       parity with Linux x64 everywhere. The gaps are the Windows lanes, suites that run on no
@@ -92,8 +76,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          run the goldens with it.
       6. A native `windows-11-arm` Python job in `python-ci-windows.yml` for WebDavClient:
          `arm64-tests` and `Invoke-PythonTestLegs.ps1`. (Done 2026-10-01.) WebDavClient
-         marks py-spy and line_profiler off ARM64 (1f9bb5f), and turns the job on with its
-         next pin bump.
+         keeps py-spy and line_profiler off ARM64 (1f9bb5f) and runs the job since f7ed5d8
+         (`windows-arm64.yml`, hub 625b3653).
 
 ## Open — Linux image (all arches)
 
