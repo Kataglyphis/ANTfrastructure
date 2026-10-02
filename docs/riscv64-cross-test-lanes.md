@@ -154,6 +154,7 @@ Ubuntu 26.04's `qemu-user` 10.2.1 runs them too. `riscv64_cross_env` sets
 | OxidANT | `linux-riscv64.yml` | `cargo test --workspace`: 358 tests (local 2 min 52 s) | GPU rendering (skips without an adapter; `RISCV64_GPU_TESTS=1`) |
 | AccelerANTgine | `linux-riscv64.yml` | Debug ctest (commit, compile, FuzzTest unit mode) + `first_fuzz_test` | sanitizers, coverage, TSan build, perf |
 | BeschleunigerBallett | `linux-riscv64.yml` | Debug ctest | `Integration`, `GoldenRender` (GPU), sanitizers, coverage |
+| OrchestrANT | `linux-riscv64.yml` | pytest through `python-ci-linux.yml`'s `arches: riscv64` row (the riscv64 image under QEMU, `test` extra): 139 min on 2026-10-02 | static analysis, packaging, docs, the `3.14t` leg |
 | OmniAccelerANT | none | — | waits for Flutter in the riscv64 image |
 
 **Not covered.** A riscv64 *product* build (packages, AppImage) — these lanes test, they do
