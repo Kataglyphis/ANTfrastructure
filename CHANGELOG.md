@@ -18,6 +18,13 @@
   builds wheels from source under emulation.
 - Artifacts are named per arch (`test-reports-<arch>`, `packages-linux-<arch>-...`),
   so the riscv64 row cannot collide with `x64`'s uploads.
+- **Follow-up (owner request same day): packaging on the row is opt-in through
+  `package-emulated`.** A Cythonized app's wheel is arch-specific - without it
+  the riscv64 wheel existed for no arch but this one. The wheels build under
+  QEMU with the row; the app packages of a `packaging/app.json` app stay
+  amd64-arm64 (`ci_packaging.sh` warns there: the image's AppImage tooling has
+  no riscv64 build). Consumer: OrchestrANT's `linux-riscv64.yml`, renamed
+  `Linux riscv64 · build + test`.
 
 ## 2026-10-02 - CON34: the HIP/<cmath> overlay installs with TheRock, and MIGraphX drops its copy
 
