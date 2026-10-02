@@ -1,0 +1,19 @@
+---
+# One-time per new Pi: grants the ansible user passwordless sudo, matching
+# pi-1's existing policy, so the scheduled timer can run unattended.
+# Run ONCE with the become password, e.g.:
+#   ~/venvs/ansible/bin/ansible-playbook playbooks/bootstrap-fleet.yml \
+#     --limit pi-2 -K
+- name: Bootstrap sudo for unattended runs
+  hosts: pis
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Passwordless sudo drop-in for the ansible user
+      ansible.builtin.copy:
+        content: "{{ ansible_user | default(lookup('env', 'USER')) }} ALL=(ALL) NOPASSWD: ALL\n"
+        dest: /etc/sudoers.d/010-ansible
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "visudo -cf %s"

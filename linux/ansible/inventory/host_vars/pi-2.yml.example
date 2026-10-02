@@ -1,0 +1,14 @@
+---
+# Template for inventory/host_vars/<host>.yml — the REAL file is gitignored
+# (network topology and per-host decisions stay off the remote).
+#
+# Remote Pi (address + login):
+ansible_host: <address>
+ansible_user: <user>
+#
+# Control-node flags (what the weekly update does BEYOND apt) — any of these
+# can also be set on a remote Pi:
+# managed_compose_projects:   # nerdctl compose pull + force-recreate
+#   - linux/homeassistant/compose.yaml
+# manage_ansible_venv: true   # pip install --upgrade ansible (runs late)
+# report_nerdctl_upstream: true  # report-only toolchain drift check

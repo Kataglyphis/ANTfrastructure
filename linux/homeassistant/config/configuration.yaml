@@ -8,6 +8,30 @@ scene: !include scenes.yaml
 
 recorder:
   commit_interval: 30
+  # Drops high-rate telemetry nothing charts; the kWh totals and power sensors
+  # the energy dashboard uses stay. See linux/homeassistant/README.md.
+  exclude:
+    entity_globs:
+      - sensor.tasmota_energy_apparentpower*
+      - sensor.tasmota_energy_current*
+      - sensor.tasmota_energy_factor*
+      - sensor.tasmota_energy_reactivepower*
+      - sensor.tasmota_energy_voltage*
+      # TP-Link P110: voltage/current, and day/month counters derivable from total
+      - sensor.*_voltage
+      - sensor.*_current
+      - sensor.*_today_s_consumption
+      - sensor.*_this_month_s_consumption
+    entities:
+      - sensor.oneplus9_beacon_monitor
+      - sensor.oneplus9_app_memory
+
+logger:
+  default: warning
+  logs:
+    # Rootless container: no BlueZ management and no raw DHCP sniffing, by design.
+    habluetooth.manager: critical
+    aiodhcpwatcher: critical
 
 homeassistant:
   customize:
@@ -22,6 +46,36 @@ homeassistant:
       state_class: total_increasing
       device_class: energy
 
+# The bitshake reader occasionally emits garbage like -1.4e13 kWh, which the
+# recorder books as a meter reset and corrupts the grid statistics. These
+# copies only accept a plausible, non-decreasing reading.
+template:
+  - trigger:
+      - trigger: state
+        entity_id: sensor.bitshake_smartmeterreader_e320_e_in
+        not_to: [unknown, unavailable]
+    sensor:
+      - name: Netzbezug
+        unique_id: grid_import_filtered
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        state: &meter_guard >
+          {% set new = trigger.to_state.state | float(-1) %}
+          {% set old = this.state | float(0) %}
+          {{ new if 0 < new < 1000000 and new >= old and (old == 0 or new - old < 1000) else this.state }}
+  - trigger:
+      - trigger: state
+        entity_id: sensor.bitshake_smartmeterreader_e320_e_out
+        not_to: [unknown, unavailable]
+    sensor:
+      - name: Netzeinspeisung
+        unique_id: grid_export_filtered
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        state: *meter_guard
+
 switch:
   - platform: wake_on_lan
     name: "rechenkiste"
@@ -30,9 +84,4 @@ switch:
       action: shell_command.turn_off_rechenkiste
 
 shell_command:
-  turn_on_rechenkiste: !secret cmd_turn_on_rechenkiste
   turn_off_rechenkiste: !secret cmd_turn_off_rechenkiste
-  restart_fah: !secret cmd_restart_fah
-  start_fah: !secret cmd_start_fah
-  stop_fah: !secret cmd_stop_fah
-  send_mail: !secret cmd_send_mail

@@ -1,0 +1,5 @@
+.ssh/
+vault.key
+.ansible-retry/
+*.retry
+inventory/host_vars/*.yml

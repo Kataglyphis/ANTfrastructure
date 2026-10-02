@@ -250,8 +250,10 @@ lab's docs next to the tools that implement it.
 
 Besides the build images and the shared CI surface, this repository carries the
 owner's **personal operations stacks**: Home Assistant under
-[`linux/homeassistant/`](linux/homeassistant/README.md) and Nextcloud AIO under
-[`linux/nextcloud-aio/`](linux/nextcloud-aio/README.md). They are not build
+[`linux/homeassistant/`](linux/homeassistant/README.md), Nextcloud AIO under
+[`linux/nextcloud-aio/`](linux/nextcloud-aio/README.md), and the Ansible
+install on the host (pip in a venv, per the official docs) under
+[`linux/ansible/`](linux/ansible/README.md). They are not build
 infrastructure and they are not here by accident — one owner, one host, one
 place to keep the compose files, the `.env.example` contracts and the runbooks
 that go with them. Anything in this repository that claims it is build
