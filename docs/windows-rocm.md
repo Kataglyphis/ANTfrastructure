@@ -341,12 +341,11 @@ needs the overlay. On the rebuilt image (2026-09-25) the smoke gate's kernel com
 `hipcc`, `clang -x hip` and `amdclang++ -x hip` as shipped. `--no-default-config` still fails
 with the same 20 errors, so the overlay stays.
 
-The files belong in `Dockerfile.rocm`, which installs TheRock. They are installed at the end of
-`Dockerfile.rocm-llama` instead, the first rocm stage that every rocm build has after the media
-stages, because an edit to `Dockerfile.rocm` re-keys the whole chain. They move at the next full
-rocm rebuild (`BACKLOG.md` CON34). MIGraphX builds before that stage, so it passes the same
-headers through its own `-isystem` (`Write-HipMsvcCmathOverlay`). A parity test in
-`Rocm.Migraphx.Tests.ps1` holds the two copies equal line for line.
+The files are installed by `Dockerfile.rocm` with TheRock (CON34, 2026-10-02): the headers into
+`C:\runtime\opt\hip-msvc-cmath`, both `*.cfg` beside TheRock's `clang.exe`. They used to sit at
+the end of `Dockerfile.rocm-llama`, and MIGraphX passed the same headers through its own
+`-isystem` (`Write-HipMsvcCmathOverlay`); that overlay and the parity test that held the two
+copies equal are gone. The first rocm rebuild proves MIGraphX compiles with the configs active.
 
 ## ONNX Runtime WebGPU EP (rocm lane, spike)
 

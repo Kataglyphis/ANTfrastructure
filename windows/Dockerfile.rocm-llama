@@ -43,6 +43,3 @@ RUN --mount=type=bind,source=windows/scripts/build/Install-LlamaCpp.ps1,target=C
     $findings = @(& 'C:\bkmnt\LlamaCpp.ps1' -Backend vulkan); `
     if ($findings.Count -gt 0) { throw ('llama.cpp Vulkan check failed: ' + ($findings -join ' | ')) }
 
-# Last so the llama RUNs stay cached; see docs/windows-rocm.md § HIP compiles against MSVC 14.51.
-COPY windows\scripts\hip\hip-msvc-cmath C:\runtime\opt\hip-msvc-cmath
-COPY windows\scripts\hip\clang.cfg windows\scripts\hip\clang++.cfg C:\TheRock\build\lib\llvm\bin\
