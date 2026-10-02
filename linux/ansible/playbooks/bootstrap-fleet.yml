@@ -1,0 +1,15 @@
+---
+# One-time per new Pi — passwordless sudo for unattended runs; run it once with -K.
+- name: Bootstrap sudo for unattended runs
+  hosts: pis
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Passwordless sudo drop-in for the ansible user
+      ansible.builtin.copy:
+        content: "{{ ansible_user | default(lookup('env', 'USER')) }} ALL=(ALL) NOPASSWD: ALL\n"
+        dest: /etc/sudoers.d/010-ansible
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "visudo -cf %s"

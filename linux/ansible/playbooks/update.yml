@@ -1,0 +1,138 @@
+---
+# serial + order: pi-1 is the control node — it must go LAST and never reboot inline.
+- name: Keep the Raspberry Pis up to date
+  hosts: pis
+  become: true
+  serial: 1
+  tasks:
+    - name: Refresh the apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Apply available updates
+      ansible.builtin.apt:
+        upgrade: safe            # --with-new-pkgs: new deps yes, removals never
+
+    - name: Remove packages that are no longer needed
+      ansible.builtin.apt:
+        autoremove: true
+
+    - name: "Does the OS request a reboot (Ubuntu-style marker)?"
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: update_reboot_marker
+
+    - name: "Is the running kernel older than the newest of its own flavor? (cross-flavor compares reboot-loop — details in ../README.md)"
+      ansible.builtin.shell: |
+        set -o pipefail
+        running="$(uname -r)"
+        run_ver="${running%%[-+]*}"
+        flavor="${running#"$run_ver"}"
+        latest="$(ls -1v /lib/modules \
+          | awk -v suf="$flavor" 'index($0, suf) == length($0) - length(suf) + 1' \
+          | tail -1)"
+        if [ -n "$latest" ] && [ "$running" != "$latest" ]; then
+          echo "stale: running $running, newest $latest"
+        fi
+      args:
+        executable: /bin/bash
+      register: update_kernel_check
+      changed_when: false
+      failed_when: false
+
+    - name: "EEPROM query (exit 1 = update available; pre-Pi4 hosts have no EEPROM)"
+      ansible.builtin.command: rpi-eeprom-update
+      register: update_eeprom_check
+      changed_when: false
+      failed_when: false
+
+    - name: Stage a pending EEPROM update (bootrom flashes it during reboot)
+      ansible.builtin.command: rpi-eeprom-update -a
+      when: update_eeprom_check.rc | default(0) == 1
+
+    - name: Set the reboot verdict
+      ansible.builtin.set_fact:
+        update_needs_reboot: "{{ update_reboot_marker.stat.exists
+          or 'stale:' in (update_kernel_check.stdout | default(''))
+          or update_eeprom_check.rc | default(0) == 1 }}"
+
+    # Beyond apt, never as root (nerdctl is rootless): containers, toolchain report, the venv.
+
+    - name: Update the container stacks
+      when: managed_compose_projects | default([]) | length > 0
+      become: false
+      block:
+        - name: Pull new images
+          ansible.builtin.command:
+            cmd: nerdctl compose -f "{{ item }}" pull
+            chdir: "{{ playbook_dir }}/../../.."
+          loop: "{{ managed_compose_projects }}"
+          register: update_compose_pull
+          # nerdctl prints progress; a plain rc!=0 is the failure signal.
+          changed_when: true
+
+        - name: Recreate the containers on the new images
+          # force-recreate is REQUIRED under nerdctl: it keeps a running container on its old image.
+          ansible.builtin.command:
+            cmd: nerdctl compose -f "{{ item }}" up -d --force-recreate
+            chdir: "{{ playbook_dir }}/../../.."
+          loop: "{{ managed_compose_projects }}"
+          register: update_compose_up
+          changed_when: true
+
+    - name: Installed nerdctl version
+      ansible.builtin.command:
+        cmd: nerdctl --version
+      become: false
+      when: report_nerdctl_upstream | default(false)
+      register: update_nerdctl_installed
+      changed_when: false
+
+    - name: Latest upstream nerdctl release
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/containerd/nerdctl/releases/latest
+        headers:
+          Accept: application/vnd.github+json
+      become: false
+      when: report_nerdctl_upstream | default(false)
+      register: update_nerdctl_latest
+      # Report-only: a GitHub hiccup must not fail the update run.
+      failed_when: false
+
+    - name: Normalize the toolchain versions for the report
+      ansible.builtin.set_fact:
+        update_nerdctl_installed_ver: "{{ (update_nerdctl_installed.stdout | default('nerdctl version 0'))
+          | regex_replace('.*version ', '') }}"
+        update_nerdctl_latest_ver: "{{ (update_nerdctl_latest.json.tag_name | default('v0'))
+          | regex_replace('^v', '') }}"
+
+    - name: Toolchain drift report (the upgrade itself stays deliberate —
+        NERDCTL_INSTALL_CONFIRM=1 install-nerdctl-full.sh)
+      ansible.builtin.debug:
+        msg: >-
+          TOOLCHAIN: installed nerdctl {{ update_nerdctl_installed_ver }},
+          upstream {{ update_nerdctl_latest_ver }}
+          {{ '— UPDATE AVAILABLE' if update_nerdctl_installed_ver != update_nerdctl_latest_ver
+             else '— current' }}
+      when: report_nerdctl_upstream | default(false)
+
+    - name: Upgrade the ansible venv itself (last — a broken release must not kill the installing run)
+      # lookup runs CONTROLLER-side: facts were gathered under become, so their HOME is /root.
+      ansible.builtin.pip:
+        executable: "{{ lookup('env', 'HOME') }}/venvs/ansible/bin/pip"
+        name: ansible
+        state: latest
+      become: false
+      when: manage_ansible_venv | default(false)
+
+    # ---- reboots -----------------------------------------------------------
+
+    - name: Reboot now and wait (remote hosts only)
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+      when: update_needs_reboot and ansible_connection != 'local'
+
+    - name: Schedule a delayed reboot (control node; inline would kill the run)
+      ansible.builtin.command: /usr/sbin/shutdown -r +2
+      when: update_needs_reboot and ansible_connection == 'local'

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# ci_packaging.sh's per-arch arm: a packaging/app.json app's packages are amd64/arm64;
-# the emulated riscv64 row ships wheels only. See docs/python-ci.md#riscv64-the-image-itself-runs-under-qemu.
+# ci_packaging.sh's per-arch arm — the emulated riscv64 row ships wheels only. See docs/python-ci.md#riscv64-the-image-itself-runs-under-qemu.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

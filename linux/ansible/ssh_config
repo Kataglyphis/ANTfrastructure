@@ -1,0 +1,7 @@
+# Deploy key + known_hosts live in ./.ssh (gitignored). Relative paths —
+# SSH resolves them from the directory ansible runs in.
+Host *
+  IdentitiesOnly yes
+  IdentityFile .ssh/id_ed25519
+  UserKnownHostsFile .ssh/known_hosts
+  StrictHostKeyChecking yes
