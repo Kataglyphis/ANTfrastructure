@@ -1,0 +1,31 @@
+---
+# Installs the weekly timer on the control node (pi-1). The units live
+# in systemd/ and run as USER units — linger must be enabled (it already is
+# on pi-1, the rootless containerd stack needs it).
+- name: Schedule the weekly fleet update
+  hosts: pi-1
+  gather_facts: false
+  vars:
+    update_user_home: "{{ lookup('env', 'HOME') }}"
+  tasks:
+    - name: Install the service + timer units
+      ansible.builtin.copy:
+        src: "../systemd/{{ item }}"
+        dest: "{{ update_user_home }}/.config/systemd/user/{{ item }}"
+        mode: "0644"
+      loop:
+        - ansible-update.service
+        - ansible-update.timer
+      register: update_units
+
+    - name: Reload the user systemd manager
+      ansible.builtin.systemd_service:
+        scope: user
+        daemon_reload: true
+
+    - name: Enable and start the timer
+      ansible.builtin.systemd_service:
+        scope: user
+        name: ansible-update.timer
+        enabled: true
+        state: started

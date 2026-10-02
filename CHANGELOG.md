@@ -7,6 +7,114 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-03 — the Ansible fleet-update lane goes live
+
+* `playbooks/update.yml` (apt safe-upgrade + autoremove per Pi, reboot only
+  when required) runs **Sundays 04:30 Berlin** via a user systemd timer
+  (`systemd/`, installed by `playbooks/schedule.yml`, armed 2026-10-03).
+  Proven with a real run on pi-1: `ok=14 failed=0` — fully current.
+* The host's nerdctl-full bundle was upgraded **2.3.5 → 2.4.1** (containerd
+  v2.4.1, buildkit v0.33.1) via `install-nerdctl-full.sh --include-rootful`:
+  checksum-verified download, both containerd lanes stopped and restarted
+  together, rollback backup in `~/.cache/nerdctl-full-backup`. The install
+  warnings ("stale v0.31.2", "user buildkit.service won't start") were both
+  an orphaned pre-upgrade daemon holding the user socket — this host has no
+  user buildkit unit (rootless containerd for HA + rootful buildkit is its
+  topology); reaped, all services verified on the new binaries.
+* **Beyond apt**, per gitignored `host_vars` flags (pi-1 carries all three):
+  the HA/glances containers update weekly (`compose pull` +
+  `--force-recreate` — REQUIRED under nerdctl, which keeps a running
+  container on its old image), a report-only nerdctl drift check (the
+  upgrade stays deliberate behind `NERDCTL_INSTALL_CONFIRM=1`), and the
+  ansible venv upgrades itself LAST so a broken release cannot take down
+  the run that installs it.
+* **Bootloader EEPROM is now covered too** (Pi 4/5; pi-2 is pre-Pi4 with no
+  EEPROM): the playbook queries `rpi-eeprom-update` (exit 1 = update
+  available — wording pinned from the tool source, not guessed), stages it
+  with `-a` and makes it a reboot trigger. Without this, a bootloader-only
+  apt update could sit unflashed indefinitely: the boot-time
+  `rpi-eeprom-update.service` stages at reboot, but nothing guarantees a
+  reboot happens. Branch logic mutation-tested (fires on rc 1, silent on
+  rc 0 and missing register); both Pis ran green with the lane in place.
+  The container-recreate tasks now carry an honest note: they report
+  `changed` every run because `--force-recreate` (required under nerdctl)
+  bounces the stack by design.
+* Two traps are encoded in the playbook rather than left for the next
+  session: the control node reboots LAST and DELAYED (`shutdown -r +2` — an
+  inline reboot kills the running playbook mid-report, so inventory order is
+  load-bearing, pi-1 last); and kernel staleness is compared within the
+  running kernel's FLAVOR — this host runs `v8-16k+` while `v8-rt+` sorts
+  last in `/lib/modules`, so a naive comparison would reboot-loop the Pi
+  every Sunday. Debian carries no `/var/run/reboot-required` marker by
+  default; the marker check stays for Ubuntu-family hosts.
+* The second fleet Pi is discovered and staged (old-gen Pi MAC, Debian 13):
+  deploy key generated, `known_hosts` pinned, inventory slot `pi-2`. Its
+  address and login live in gitignored `host_vars/` — no LAN topology in the
+  repo. It awaits the owner's one-time `ssh-copy-id` (done 2026-10-03, both
+  Pis then ran the update playbook green).
+* `serial: 1` in the update playbook: never two Pis down at once — pi-1
+  carries Home Assistant.
+
+
+## 2026-10-02 — Ansible lands on pi-1, via pip on the host
+
+* **Installed per the official installation guide**: the `ansible` community
+  package 14.4.0 (core 2.21.4) into `~/venvs/ansible` (Python 3.13.5) — the
+  venv + pip path the docs prescribe, which is also the only one Ubuntu
+  26.04's PEP 668 externally-managed Python permits. Proven with the ping
+  playbook: `pi-1` answers over the local connection. Playbooks,
+  inventory, `ansible.cfg` and `ssh_config` live in `linux/ansible/`, whose
+  README documents the install, the upgrade path and the host facts.
+* The first draft ran Ansible in a container next to Home Assistant; dropped
+  by owner directive. Two findings worth keeping from that attempt: the
+  official EE images (`ghcr.io/ansible-community/community-ee-*`) are
+  amd64-only, so they were never an option on this aarch64 Pi; and
+  `nerdctl compose run` hardcodes `--tty`, which dies with
+  "provided file is not a console" outside an interactive shell.
+
+## 2026-09-30 — Home Assistant configuration pass
+
+* **Grid statistics corruption found**: the bitshake smartmeter emitted
+  `-1.4e13 kWh` twice in 24 h; `total_increasing` turned each glitch into a
+  multi-trillion-kWh jump in the grid import/export `sum`. New trigger-based
+  template sensors `sensor.netzbezug` / `sensor.netzeinspeisung` reject
+  non-positive, decreasing or >1000 kWh-jump readings (guard simulated against
+  the logged glitch values). The energy dashboard now uses them; the grid
+  statistics (hourly and 5-minute, back to 2026-09-02) were recomputed from the
+  per-hour meter states, skipping implausible values, and copied onto the new
+  sensors — daily import now reads 10–22 kWh instead of ~10¹² kWh. Verified that
+  post-restart 5-minute stats continue the repaired sum without a jump. DB
+  backup: `~/ha-pre-statsrepair-20260930/`.
+* **Backups**: deleted the two pre-password manual archives (Oct 2025, May 2026)
+  that held `secrets.yaml` and `.storage` unencrypted; only encrypted automatic
+  backups remain.
+* **Registry cleanup** (HA stopped, files backed up to
+  `~/ha-pre-registrycleanup-20260930/`): removed the 15 orphaned `automation.*`
+  entity-registry entries left behind when the automations were dropped, their
+  4 `exposed_entities` rows, and the 5 stale `automation.*` repair records
+  (already dismissed, non-persistent). The dismissed `sun`
+  `deprecated_sun_solar_rising` record stays so it cannot resurface.
+* **Recorder**: also excludes P110 voltage/current and day/month counters and
+  two phone sensors (~49% of last week's state rows); verified after restart
+  that the excluded entities stop being written and energy-dashboard sensors
+  are untouched.
+* **Logger**: silenced the `habluetooth.manager` / `aiodhcpwatcher` permission
+  errors that a rootless container always hits.
+* **Dead shell commands removed**: `turn_on_rechenkiste`, the three F@H
+  commands and `send_mail` had no caller since the automations were dropped,
+  and could not run anyway (`wakeonlan`/`mail` are not in the image, no SSH
+  private key). `turn_off_rechenkiste` stays but needs its key restored.
+
+
+## 2026-09-25 — Home Assistant 2026.9.1 → 2026.9.3
+
+* Upgraded the live container. glances was already current (4.5.6).
+* README § Updating: `up -d` alone does NOT pick up a pulled image under
+  nerdctl compose; the documented command now carries `--force-recreate`, and
+  warns that the "orphaned" container reported for a single-service `up` is
+  the other live service, not debris.
+
+
 ## 2026-09-16 — four hub defects the family pass isolated
 
 Each was measured in a consumer and fixed here, where the code lives.
@@ -412,6 +520,25 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   (`llm-stack-serving.yml`, the pins/selftest/inventory workflows) corrected;
   the consumer-inventory examples say `/c/GitHub`; a broken link in
   `shared/linux/templates/README.md` fixed.
+## 2026-09-13 — Home Assistant energy dashboard + recorder pass
+
+* **Solar forecast fixed on the dashboard**: both Forecast.Solar planes are now
+  attached to `config_entry_solar_forecast`, not just the 2.5 kWp one — the
+  10 kWp plane was missing from the forecast graph. The planes themselves
+  (10 kWp / 2.5 kWp) were already correct after the v3 subentry migration; both
+  still carry the 25°/180° orientation defaults.
+* **Six individual devices on the energy dashboard** — four NOUS A1T
+  (Wohnzimmer links, Büro links, Silas, Waschmaschine) and the two P110s that
+  expose a lifetime counter (Anrichte, Wohnzimmer rechts), each with its live
+  `stat_rate`. The "Stromzähler von Jones" P110 has no lifetime entity, so it
+  is absent.
+* **Recorder slimmed**: `configuration.yaml` excludes the instantaneous Tasmota
+  plug telemetry (apparent/reactive power, current, voltage, factor) — measured
+  ~320k of 552k state rows over 10 days. `power` and the kWh totals stay,
+  because the dashboard uses them.
+* README: the backups section claimed "unencrypted"; the backup password was
+  set 2026-09-13 05:41, so new automatic backups are encrypted while every
+  archive already in `config/backups/` is not.
 
 
 ## 2026-09-12 (night) — Home Assistant hardening pass

@@ -422,7 +422,7 @@ and `ls` answers faster than a stale number.
 | `linux/llm-stack/` | The Ollama + Open WebUI serving stack. [README](linux/llm-stack/README.md) |
 | `linux/webserver/` | The slim nginx image and the reusable Flutter-web helpers. [README](linux/webserver/README.md) |
 | `linux/host-config/` | Host configuration as code: `buildkitd.toml`, the systemd drop-in, the apply/verify pair, the ghcr tools, and this repo's OWN git hooks (not the consumer ones). [Host setup](docs/linux-host-setup.md) |
-| `linux/homeassistant/`, `linux/nextcloud-aio/` | The owner's personal operations stacks, deliberately carried here (README.md § Home-lab stacks). [HA](linux/homeassistant/README.md) · [Nextcloud](linux/nextcloud-aio/README.md) |
+| `linux/homeassistant/`, `linux/nextcloud-aio/`, `linux/ansible/` | The owner's personal operations stacks, deliberately carried here (README.md § Home-lab stacks). [HA](linux/homeassistant/README.md) · [Nextcloud](linux/nextcloud-aio/README.md) · [Ansible](linux/ansible/README.md) |
 | `linux/vulkan/`, `linux/qnn-sdk/`, `linux/nvidia-local-debs/` | Staged SDK inputs. The QNN and NVIDIA trees are gitignored except their READMEs — login-gated, EULA-bound, never committed. |
 | `windows/scripts/` | The Windows lane, grouped into `build/`, `host/`, `diagnostics/`, with `modules/*.psm1` as the reusable surface and `tests/` as its Pester suites. [Windows builds](docs/windows-builds.md) |
 | `windows/upstream/` | Prepared upstream submissions, one directory per submission. NOT build inputs, and NOT to be posted without the owner saying so. [README](windows/upstream/README.md) |
