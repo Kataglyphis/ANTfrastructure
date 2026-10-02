@@ -37,6 +37,32 @@ otherwise. The consumer notes are theirs to update; do not re-open these here.
 - **No patchelf.** `/usr/bin/patchelf` 0.18.0 is present (WebDavClient's lane
   `apt-get`).
 
+## Checked 2026-10-01 and closed — CON45's claims hold in the published `:winamd64`
+
+The `:winamd64` published 2026-09-30 (`676980e3…`, hub 18b08cc4) was checked in
+throwaway process-isolated containers on the owner's host, with the RX 9070 XT
+passed in. Every claim the backlog listed holds:
+
+- `clang_rt.profile-x86_64.lib` is there, and a clang-cl coverage build runs to
+  an `llvm-cov` report (CON9).
+- `C:\llvm-patched\bin\clang-tidy.exe` (LLVM 23.1.1) reads the BMI of a
+  CMake + Ninja `FILE_SET CXX_MODULES` project built with clang-cl (CON10).
+- `vulkan-1.dll` resolves first from `C:\vulkan-loader` (CON25).
+- `gstgdkpixbuf.dll` registers and `ai-edge-litert` 2.1.6 imports in the app
+  venv (CON28).
+- The image config has no volume (CON29), and no published Windows tag
+  (`:winamd64`, `-nvidia`, `-rocm`, `:winarm64`) names a remote sccache
+  endpoint.
+- An ORT session (`DmlExecutionProvider`) and an OpenCV G-API ONNX session with
+  `cv2.gapi.onnx.ep.DirectML(0)` both run.
+
+The consumer workarounds are gone: BeschleunigerBallett's coverage is ON again
+and neither container script passes `-SkipTidy` (31ae0c51); AccelerANTgine's
+clang-tidy step sets `ModuleImportPattern` to `'(?!)'` (cab49ae).
+`Clear-UnreachableSccacheEndpoint` stays: it is a no-op without an endpoint and
+still guards a host whose own environment names an unreachable one.
+`:winamd64-rocm` still bakes `VOLUME C:\workspace` until its next build (CON34).
+
 ## Deliberate — not gaps
 
 These are recorded so nobody files them as gaps:
