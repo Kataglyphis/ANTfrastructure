@@ -7,6 +7,14 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-02 - CON31's `:winamd64-rocm` record: the redistribution question is closed
+
+- The Redistribution section of `docs/windows-rocm.md` still said the public push "is an
+  owner decision to take before `:winamd64-rocm` is pushed" - stale since the tag was
+  published on 2026-09-28. The record now states the decision and keeps
+  `LicenseRef-Proprietary-EULA` for the runtime in `docs/deps/deps.json` (the id describes
+  the licence, not the permission).
+
 ## 2026-10-02 - clang-tidy skips the files the build never compiled
 
 - `Invoke-ClangTidyFixStep` now reads the compile database and tidies only the files
