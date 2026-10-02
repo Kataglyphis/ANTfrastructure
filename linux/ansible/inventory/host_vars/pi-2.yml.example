@@ -2,7 +2,7 @@
 # Template for inventory/host_vars/<host>.yml — the REAL file is gitignored
 # (network topology and per-host decisions stay off the remote).
 #
-# Remote Pi (address + login):
+# Remote host (address + login):
 ansible_host: <address>
 ansible_user: <user>
 #
