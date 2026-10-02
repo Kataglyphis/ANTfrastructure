@@ -12,7 +12,9 @@
 - `python-ci-linux.yml` takes `arches: riscv64`: the row registers QEMU's binfmt
   handler (`setup-riscv64-cross` with `sysroot: false`), runs the riscv64 image
   under QEMU on an amd64 runner, and tests only - static analysis, packaging and
-  the docs build stay `x64`'s. The row carries its own 180-minute budget.
+  the docs build stay `x64`'s. The row carries its own 240-minute budget -
+  the first packaging run hit the original 180 and was cancelled mid-way
+  through the wheel build.
 - New input `test-extras`, backed by `ci_tests.sh`'s `SYNC_EXTRAS`: every leg
   syncs only those extras. A riscv64 leg needs it because the full extra set
   builds wheels from source under emulation.

@@ -146,7 +146,7 @@ jobs:
             case "${arch}" in
               x64) row='{"runs_on":"ubuntu-26.04","arch":"x64","platform":"linux/amd64"}' ;;
               arm64) row='{"runs_on":"ubuntu-26.04-arm","arch":"arm64","platform":"linux/arm64"}' ;;
-              riscv64) row='{"runs_on":"ubuntu-26.04","arch":"riscv64","platform":"linux/riscv64","timeout":180}' ;;
+              riscv64) row='{"runs_on":"ubuntu-26.04","arch":"riscv64","platform":"linux/riscv64","timeout":240}' ;;
               *) echo "::error::arches: unknown arch '${arch}' (known: x64 arm64 riscv64)"; exit 1 ;;
             esac
             case "${seen}" in
