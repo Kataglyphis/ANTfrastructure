@@ -7659,6 +7659,14 @@
     "why": "with all extras the free-threaded leg needs wheels that only exist for the GIL build, so its sync fails and it tests nothing"
   },
   {
+    "id": "python.ci-tests-sync-extras-every-leg",
+    "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+    "find": "  if [ -n \"$SYNC_EXTRAS\" ]; then\n",
+    "replace": "  if false; then\n",
+    "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+    "why": "a riscv64 row must not sync all extras: the full set builds wheels from source under QEMU and the row would never finish, so the gate must bite"
+  },
+  {
     "id": "python.ci-tests-experimental-sync-failure-is-annotated",
     "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
     "find": "      echo \"::warning title=Python ${V} not tested::its dependencies did not sync, so no test ran on it (experimental leg)\"\n",
@@ -7917,7 +7925,7 @@
   {
     "id": "linux-lane.unknown-arch-fails",
     "target": ".github/workflows/python-ci-linux.yml",
-    "find": "              *) echo \"::error::arches: unknown arch '${arch}' (known: x64 arm64)\"; exit 1 ;;",
+    "find": "              *) echo \"::error::arches: unknown arch '${arch}' (known: x64 arm64 riscv64)\"; exit 1 ;;",
     "replace": "              *) continue ;;",
     "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
     "why": "a typo like `x64 arn64` would run one row instead of two and report green"

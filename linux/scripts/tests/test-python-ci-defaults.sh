@@ -84,6 +84,12 @@ export FAIL_TEST_LEG="${IMAGE_PY}t"
 t_assert_fails _driver ci_tests pkg "${IMAGE_PY} ${IMAGE_PY}t"
 unset FREE_THREADED_SYNC_EXTRAS FAIL_TEST_LEG
 
+t_case "SYNC_EXTRAS makes every leg sync only those extras, GIL legs included"
+export SYNC_EXTRAS=test
+t_assert_ok _driver ci_tests pkg "${IMAGE_PY}"
+t_assert_contains "$(cat "${REC}")" "sync ${IMAGE_PY} extras=test"
+unset SYNC_EXTRAS
+
 t_case "without it the free-threaded leg stays experimental, and a failed sync leaves a warning annotation"
 export FAIL_SYNC_LEG="${IMAGE_PY}t"
 t_assert_ok _driver ci_tests pkg "${IMAGE_PY} ${IMAGE_PY}t"

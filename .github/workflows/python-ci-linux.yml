@@ -48,6 +48,14 @@ on:
         required: false
         type: string
         default: ''
+      test-extras:
+        description: >-
+          Comma-separated extras EVERY leg syncs instead of all of them - the
+          riscv64 row cannot build the full set under QEMU. Empty syncs all
+          extras, as before.
+        required: false
+        type: string
+        default: ''
       static-analysis-python-version:
         description: Interpreter for ci_static_analysis.sh. Empty keeps the driver's default.
         required: false
@@ -77,10 +85,12 @@ on:
         default: ./docs/build/html/
       arches:
         description: >-
-          The arch rows to run, space-separated, from "x64" and "arm64". The
-          default runs both, which is what every caller ran before this input
-          existed. A caller split per arch (linux-x64.yml, linux-arm64.yml)
-          passes one. An unknown, repeated or empty entry fails the plan job
+          The arch rows to run, space-separated, from "x64", "arm64" and
+          "riscv64". The default runs the two native rows, which is what every
+          caller ran before this input existed. A caller split per arch
+          (linux-x64.yml, linux-arm64.yml, linux-riscv64.yml) passes one;
+          riscv64 runs the riscv64 image under QEMU on an amd64 runner and
+          tests only. An unknown, repeated or empty entry fails the plan job
           rather than running fewer rows than were asked for.
         required: false
         type: string
@@ -125,7 +135,8 @@ jobs:
             case "${arch}" in
               x64) row='{"runs_on":"ubuntu-26.04","arch":"x64","platform":"linux/amd64"}' ;;
               arm64) row='{"runs_on":"ubuntu-26.04-arm","arch":"arm64","platform":"linux/arm64"}' ;;
-              *) echo "::error::arches: unknown arch '${arch}' (known: x64 arm64)"; exit 1 ;;
+              riscv64) row='{"runs_on":"ubuntu-26.04","arch":"riscv64","platform":"linux/riscv64","timeout":180}' ;;
+              *) echo "::error::arches: unknown arch '${arch}' (known: x64 arm64 riscv64)"; exit 1 ;;
             esac
             case "${seen}" in
               *" ${arch} "*) echo "::error::arches: '${arch}' is listed twice"; exit 1 ;;
@@ -134,7 +145,7 @@ jobs:
             rows="${rows:+${rows},}${row}"
           done
           if [ -z "${rows}" ]; then
-            echo "::error::arches is empty: name at least one of x64 arm64"
+            echo "::error::arches is empty: name at least one of x64 arm64 riscv64"
             exit 1
           fi
           printf 'matrix={"include":[%s]}\n' "${rows}" >> "${GITHUB_OUTPUT}"
@@ -152,7 +163,8 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
 
     runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 60
+    # riscv64 runs under QEMU and carries its own, longer budget.
+    timeout-minutes: ${{ matrix.timeout || 60 }}
 
     steps:
       # The shared prologue keeps the pull retry count and timeout in one place for every repo.
@@ -165,7 +177,15 @@ jobs:
           fetch-depth: '1'
           submodules: recursive
 
+      # The riscv64 rows run the riscv64 image under QEMU; every other row is native.
+      - name: Register QEMU binfmt (riscv64)
+        if: matrix.arch == 'riscv64'
+        uses: Kataglyphis/ANTfrastructure/.github/actions/setup-riscv64-cross@develop
+        with:
+          sysroot: 'false'
+
       - name: Python static analysis
+        if: matrix.arch != 'riscv64'
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
@@ -182,6 +202,7 @@ jobs:
             --platform ${{ matrix.platform }}
             -e PYTEST_PATHS=${{ inputs.test-paths }}
             -e FREE_THREADED_SYNC_EXTRAS=${{ inputs.free-threaded-extras }}
+            -e SYNC_EXTRAS=${{ inputs.test-extras }}
           script: >-
             bash -lc "bash scripts/linux/ci_tests.sh
             '${{ inputs.package-name }}' '${{ inputs.test-python-versions }}'"
@@ -190,7 +211,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: test-reports-${{ matrix.runs_on }}
+          name: test-reports-${{ matrix.arch }}
           path: docs/test_results/
 
       - name: Build Docs
@@ -213,7 +234,9 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ${{ inputs.docs-artifact-path }}
 
+      # The riscv64 row tests only; the wheel it would build is the x64 row's. See docs/riscv64-cross-test-lanes.md.
       - name: Packaging application
+        if: matrix.arch != 'riscv64'
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
@@ -223,21 +246,23 @@ jobs:
             '${{ inputs.packaging-python-version }}'"
 
       - name: Fix permissions for dist directory
+        if: matrix.arch != 'riscv64'
         run: |
           sudo chown -R "$USER:$USER" "${{ github.workspace }}/dist"
           sudo chmod -R 755 "${{ github.workspace }}/dist"
           ls -la "${{ github.workspace }}/dist/"
 
       - name: Verify dist directory
+        if: matrix.arch != 'riscv64'
         run: |
           echo "Checking for wheel files:"
           ls -la "${{ github.workspace }}/dist/"
           find "${{ github.workspace }}/dist/" -name "*.whl"
 
       - name: Upload packages (source/binary only)
-        if: always()
+        if: ${{ always() && matrix.arch != 'riscv64' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: packages-linux-${{ matrix.runs_on }}-source-and-binary
+          name: packages-linux-${{ matrix.arch }}-source-and-binary
           path: ${{ github.workspace }}/dist/
           if-no-files-found: error

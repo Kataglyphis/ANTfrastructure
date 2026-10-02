@@ -36,6 +36,10 @@ cargo test --workspace --locked --target riscv64gc-unknown-linux-gnu   # or:
 cmake --preset <one whose toolchainFile is $env{RISCV64_CMAKE_TOOLCHAIN_FILE}> && cmake --build ... && ctest
 ```
 
+A **Python** consumer skips the sysroot and the script: `python-ci-linux.yml`'s
+`arches: riscv64` row runs the riscv64 image under QEMU on an amd64 runner, tests
+only (`docs/python-ci.md` § riscv64).
+
 Nothing names `qemu`: binfmt runs riscv64 binaries directly, so `cargo test`, `ctest`, a
 test that spawns another riscv64 binary (`assert_cmd`) and CMake's `try_run` all work
 unchanged. The toolchain's `CMAKE_CROSSCOMPILING_EMULATOR` is `/usr/bin/env` for that

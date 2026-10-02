@@ -26,6 +26,12 @@ inputs:
       model runs the image's RVV glibc; rv64 and rva22u64 raise SIGILL.
     required: false
     default: 'tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0'
+  sysroot:
+    description: >-
+      Build the sysroot and emit docker-args. 'false' registers binfmt only,
+      for a lane that runs the riscv64 image itself under QEMU.
+    required: false
+    default: 'true'
 
 outputs:
   docker-args:
@@ -51,6 +57,7 @@ runs:
         grep -q -e '^flags: .*F' "${entry}" || { echo "::error::${entry} lacks the F flag"; exit 1; }
 
     - name: Build the riscv64 sysroot
+      if: inputs.sysroot == 'true'
       id: sysroot
       shell: bash
       env:

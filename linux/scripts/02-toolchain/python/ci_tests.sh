@@ -15,6 +15,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "  log file defaults to \$CI_TESTS_LOG_FILE or 'docs/test_results/ci_tests-<timestamp>.log'"
   echo "  \$PYTEST_PATHS (comma list) narrows pytest; empty runs the project's configured testpaths"
   echo "  \$FREE_THREADED_SYNC_EXTRAS (comma list) makes a free-threaded leg sync only those extras and gate"
+  echo "  \$SYNC_EXTRAS (comma list) makes every leg sync only those extras and gate"
   exit 0
 fi
 
@@ -27,6 +28,8 @@ PY_VERSIONS="${2:-${PY_VERSIONS:-3.14}}"
 PYTEST_PATHS="${PYTEST_PATHS:-}"
 # Set, a free-threaded leg syncs only these extras and gates like any other; unset, it stays experimental.
 FREE_THREADED_SYNC_EXTRAS="${FREE_THREADED_SYNC_EXTRAS:-}"
+# Set, every leg syncs only these extras (a riscv64 row cannot build the full extra set under QEMU).
+SYNC_EXTRAS="${SYNC_EXTRAS:-}"
 
 LOG_FILE="${CI_TESTS_LOG_FILE:-$WORKSPACE_ROOT/docs/test_results/ci_tests-$(timestamp).log}"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -50,7 +53,10 @@ for V in $PY_VERSIONS; do
   # A free-threaded leg with its own extras is a real leg; its sync can no longer fail on GIL-only wheels.
   leg_extras=""
   experimental=0
-  if [[ "$V" == *t ]] && [ -n "$FREE_THREADED_SYNC_EXTRAS" ]; then
+  if [ -n "$SYNC_EXTRAS" ]; then
+    leg_extras="$SYNC_EXTRAS"
+    info "[stable] Running Python $V with extras '${leg_extras}' only"
+  elif [[ "$V" == *t ]] && [ -n "$FREE_THREADED_SYNC_EXTRAS" ]; then
     leg_extras="$FREE_THREADED_SYNC_EXTRAS"
     info "[stable] Running Python $V with extras '${leg_extras}' only"
   elif is_experimental_python "$V"; then
