@@ -336,6 +336,11 @@ is the same file an x64 lane uses with `target-arch: amd64`:
    - **The verdict is a printed line,** `TESTS: passed=<n> failed=<n> skipped=<n>`. The job
      fails without it, on any failure, and when nothing passed, so an empty run cannot read
      as green. The counts go to the job summary.
+   - **A `test-results-path` upload takes the reports out.** Without it the results a
+     device generates (coverage, junit, html, md) exist only in the job log: the `-tests`
+     artifact is uploaded from the build job, before the device runs. One relative path or
+     glob against the test working directory, uploaded as `<artifact-name>-test-results`
+     (OrchestrANT's arm64 pytest is the first consumer).
    - **`windows/scripts/build/Invoke-StagedTests.ps1` prints that line.** It is
      self-contained, since the runner has no checkout. A consumer's build copies it and a
      `tests.json` into the test directory. Each entry names one binary and how to count it:
