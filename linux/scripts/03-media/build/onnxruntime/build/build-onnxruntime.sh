@@ -49,10 +49,7 @@ done
 parse_common_args "${FORWARDED_ARGS[@]}"
 
 run_gpu_build_step() {
-  # GCC 16 cannot construct from an expression list when the decltype'd
-  # EpilogueScalars is a reference type (moe_gemm_tma_ws_launcher.inl:82) — the
-  # 2026-10-01 nvidia chain's first sm120 build died on it. The patch ports
-  # upstream's own post-v1.30.0 fix; idempotent, and identical on the HIP side.
+  # GCC 16 cannot construct the decltype'd reference EpilogueScalars (moe_gemm_tma_ws_launcher.inl:82); ports upstream's post-v1.30.0 fix.
   if [ -f "/opt/scripts/patches/onnxruntime/001-gcc16-epilogue-scalars-reference.patch" ]; then
     bash /opt/scripts/core/apply-patch.sh \
       /opt/scripts/patches/onnxruntime/001-gcc16-epilogue-scalars-reference.patch \
