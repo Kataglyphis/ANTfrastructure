@@ -7,6 +7,18 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-02 - the Python lane grows a riscv64 row: the riscv64 image under QEMU
+
+- `python-ci-linux.yml` takes `arches: riscv64`: the row registers QEMU's binfmt
+  handler (`setup-riscv64-cross` with `sysroot: false`), runs the riscv64 image
+  under QEMU on an amd64 runner, and tests only - static analysis, packaging and
+  the docs build stay `x64`'s. The row carries its own 180-minute budget.
+- New input `test-extras`, backed by `ci_tests.sh`'s `SYNC_EXTRAS`: every leg
+  syncs only those extras. A riscv64 leg needs it because the full extra set
+  builds wheels from source under emulation.
+- Artifacts are named per arch (`test-reports-<arch>`, `packages-linux-<arch>-...`),
+  so the riscv64 row cannot collide with `x64`'s uploads.
+
 ## 2026-10-02 - CON34: the HIP/<cmath> overlay installs with TheRock, and MIGraphX drops its copy
 
 - `Dockerfile.rocm` now installs `windows/scripts/hip/` with TheRock: the headers into

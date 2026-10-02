@@ -78,7 +78,20 @@ runs that step and holds the labels to the same rule.
 **Consumers follow hub `develop`.** The fleet calls this lane at `@develop`
 (since 2026-09-25), so the input reached the consumers at once. WebDavClient
 split its `ubuntu-26.04-amd64-arm64.yml` into `linux-x64.yml` and
-`linux-arm64.yml` the same day; OrchestrANT's split is still open.
+`linux-arm64.yml` the same day; OrchestrANT's split followed.
+
+### riscv64: the image itself runs under QEMU
+
+`arches: riscv64` runs on an amd64 runner with the riscv64 image under QEMU,
+tests only. The row registers QEMU's binfmt handler through
+`setup-riscv64-cross` with `sysroot: false` (the sysroot serves cross builds,
+and a Python lane has nothing to cross-compile), runs every container step with
+`--platform linux/riscv64`, and carries its own `timeout: 180` in the plan's
+matrix. Static analysis, packaging and the docs build stay `x64`'s: those steps
+carry `if: matrix.arch != 'riscv64'`. Pass `test-extras` (comma list) so every
+leg syncs only those extras - a riscv64 leg wants `test`, because the full set
+builds wheels from source under emulation. See
+[`riscv64-cross-test-lanes.md`](riscv64-cross-test-lanes.md).
 
 ## The static-analysis knobs, and the bandit trap between them
 
