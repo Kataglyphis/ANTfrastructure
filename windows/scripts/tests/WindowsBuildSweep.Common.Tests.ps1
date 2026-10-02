@@ -91,8 +91,7 @@ Describe 'WindowsBuildSweep.Common' {
   }
 
   Context 'Invoke-InLinuxContainerBuild' {
-    # A fake engine that records its arguments; runs like Invoke-WithFakeUv above. The fake engine
-    # command is resolved by the tested code in a child scope, so only the global scope survives it.
+    # A fake engine that records its arguments, resolved by the tested code in a child scope; only the global scope survives it.
     function script:Invoke-WithFakeEngine {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'the fake engine runs in a child scope the tested code resolves; only the global scope survives it')]
         param([Parameter(Mandatory)][scriptblock]$Body)
