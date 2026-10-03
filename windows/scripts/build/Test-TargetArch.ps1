@@ -34,8 +34,8 @@ param(
     [switch]$IncludeArchives,
     # Resolves every import against bundle, API sets and System32 (never the CRT on cross): the 0xC0000135 class.
     [switch]$ImportWalk,
-    # Regex of driver- or toolkit-provided imports; reported, never counted.
-    [string]$ImportAllowlist = '^(nvcuda|nvml|nvapi64|cudart64_[0-9]+|cublas|cublasLt|cudnn|nvinfer|nvonnxparser|nvrtc|cufft|curand|cusparse|cusolver|nvjitlink|nvcomp|vulkan-1|opengl32|d3d12core|QnnHtp|QnnCpu|QnnSystem)[A-Za-z0-9_-]*\.dll$',
+    # Regex of driver-, toolkit- or device-interpreter-provided imports; reported, never counted (python313.dll: the cp313 torch stack's interpreter).
+    [string]$ImportAllowlist = '^(nvcuda|nvml|nvapi64|cudart64_[0-9]+|cublas|cublasLt|cudnn|nvinfer|nvonnxparser|nvrtc|cufft|curand|cusparse|cusolver|nvjitlink|nvcomp|vulkan-1|opengl32|d3d12core|QnnHtp|QnnCpu|QnnSystem)[A-Za-z0-9_-]*\.dll$|^python313\.dll$',
     # DLLs every client SKU ships but Server Core lacks, plus Qualcomm's FastRPC drivers; reported as device OS, never counted.
     [string]$ClientOsPattern = '^(dsound|mf|mfplat|mfreadwrite|mfcore|winspool)\.(dll|drv)$|^lib(cds|ads)prpc\.dll$',
     # The tree ships without the image behind it (a relocatable app bundle): the walk gates as on a cross lane.

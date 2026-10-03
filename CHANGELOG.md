@@ -7,6 +7,15 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-03 — the arm64 bundle carries the VS runtimes its payloads link
+
+- `Copy-Arm64VsRuntime.ps1` (was `Copy-Arm64AsanRuntime.ps1`) also stages the aarch64
+  `vcomp140.dll` from the VS redist: the cp313 torch stack's `torch_cpu.dll` imports the
+  MSVC OpenMP runtime, and the arch gate wants a CRT inside the bundle on a cross lane.
+- `Test-TargetArch.ps1` counts `python313.dll` as an external: the cp313 wheels target a
+  device-provided 3.13 interpreter, which the bundle does not ship.
+- The device gate checks both runtimes; a suite case pins the allowance.
+
 ## 2026-10-03 — compound extras markers stop reaching pip in the arm64 bundle
 
 - `Copy-TargetPythonDeps.ps1` dropped only extras whose marker began right after the `;`;
