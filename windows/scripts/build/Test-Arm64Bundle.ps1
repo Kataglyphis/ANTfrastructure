@@ -71,9 +71,10 @@ if ($ZipPath -and -not (Test-Path (Join-Path $BundleRoot 'python\python.exe'))) 
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('arm64bundle-' + [guid]::NewGuid().ToString('N'))
     Expand-Archive -Path $ZipPath -DestinationPath $tmp -Force
     New-Item -ItemType Directory -Force -Path $BundleRoot | Out-Null
+    # Contents, never the directory: Move-Item onto an existing directory nests it one level deep.
     $children = @(Get-ChildItem $tmp)
-    if ($children.Count -eq 1 -and $children[0].PSIsContainer) { Move-Item $children[0].FullName $BundleRoot -Force }
-    else { Move-Item (Join-Path $tmp '*') $BundleRoot -Force }
+    $source = if ($children.Count -eq 1 -and $children[0].PSIsContainer) { $children[0].FullName } else { $tmp }
+    Move-Item (Join-Path $source '*') $BundleRoot -Force
     Remove-Item $tmp -Recurse -Force
 }
 
