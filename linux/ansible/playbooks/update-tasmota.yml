@@ -1,0 +1,81 @@
+---
+# The version gate is OURS — the native Upgrade 1 re-flashes even at the same version.
+- name: Update the stock Tasmota plugs (only when the release differs)
+  hosts: pi-1
+  gather_facts: false
+  vars:
+    tasmota_ota_url: http://ota.tasmota.com/tasmota/release/tasmota.bin.gz
+    tasmota_release_page: http://ota.tasmota.com/tasmota/release/
+  tasks:
+    - name: Resolve the current upstream release version
+      ansible.builtin.uri:
+        url: "{{ tasmota_release_page }}"
+        return_content: true
+      register: tasmota_release_html
+      failed_when: tasmota_release_html.status != 200
+
+    - name: Extract the release version from the page title
+      ansible.builtin.set_fact:
+        tasmota_release_ver: "{{ (tasmota_release_html.content | regex_search('Tasmota firmware ([0-9.]+)', '\\1') | first) | default('') }}"
+
+    - name: Query every device before touching it
+      ansible.builtin.uri:
+        url: "http://{{ item }}/cm?cmnd=Status%202"
+        return_content: true
+      loop: "{{ stock_tasmota_devices | default([]) }}"
+      register: tasmota_before
+
+    - name: The gate per device — flash only when the versions differ
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.item }}: {{ item.json.StatusFWR.Version | default('?') }}
+          vs release {{ tasmota_release_ver | default('?') }} —
+          {{ 'UPDATE' if tasmota_release_ver not in (item.json.StatusFWR.Version | default('x')) else 'current, no flash' }}
+      loop: "{{ tasmota_before.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Flash the devices that are behind (OTA via the official channel)
+      ansible.builtin.command:
+        cmd: >-
+          curl -s --max-time 10 "http://{{ item.0 }}/cm?cmnd=Upgrade%201" &&
+          sleep 100
+      loop: "{{ stock_tasmota_devices | default([]) | zip(tasmota_before.results) | list }}"
+      when: tasmota_release_ver not in (item.1.json.StatusFWR.Version | default('x'))
+      loop_control:
+        label: "{{ item.0 }}"
+      register: tasmota_flash
+      changed_when: true
+      failed_when: false
+      # The device reboots mid-response; rc!=0 here is expected, the poll below decides.
+
+    - name: Wait until every flashed device answers again
+      ansible.builtin.command:
+        cmd: |
+          for i in $(seq 1 30); do
+            v=$(curl -s --max-time 5 "http://{{ item.0 }}/cm?cmnd=Status%202" | grep -o '"Version":"[^"]*"' | head -1 || true)
+            [ -n "$v" ] && { echo "$v"; exit 0; }
+            sleep 10
+          done
+          echo "TIMEOUT: {{ item.0 }} never came back" >&2
+          exit 1
+      loop: "{{ stock_tasmota_devices | default([]) | zip(tasmota_before.results) | list }}"
+      when: tasmota_release_ver not in (item.1.json.StatusFWR.Version | default('x'))
+      loop_control:
+        label: "{{ item.0 }}"
+      register: tasmota_wait
+      changed_when: false
+      failed_when: false
+
+    - name: Query every device after the run
+      ansible.builtin.uri:
+        url: "http://{{ item }}/cm?cmnd=Status%206"
+        return_content: true
+      loop: "{{ stock_tasmota_devices | default([]) }}"
+      register: tasmota_mqtt
+
+    - name: Assert every device still has its MQTT broker
+      ansible.builtin.assert:
+        that: "{{ tasmota_mqtt.results | map(attribute='json') | map(attribute='StatusMQT') | map(attribute='MqttHost') | select('match', '^$') | list | length == 0 }}"
+        fail_msg: >-
+          A Tasmota device lost its MQTT host after the update — its HA entities are dead.

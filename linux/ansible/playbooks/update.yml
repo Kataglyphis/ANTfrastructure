@@ -117,20 +117,36 @@
              else '— current' }}
       when: report_nerdctl_upstream | default(false)
 
-    - name: Report the stock Tasmota devices (separate playbook, same lane)
+    - name: Update the stock Tasmota plugs (separate playbook, same lane)
       ansible.builtin.command:
-        cmd: "{{ lookup('env', 'HOME') }}/venvs/ansible/bin/ansible-playbook report-tasmota.yml"
-        chdir: "{{ playbook_dir }}"
-      when: report_tasmota | default(false)
-      register: tasmota_report_run
+        cmd: "{{ lookup('env', 'HOME') }}/venvs/ansible/bin/ansible-playbook playbooks/update-tasmota.yml"
+        chdir: "{{ playbook_dir }}/.."
+      when: update_tasmota | default(false)
+      register: tasmota_update_run
       changed_when: false
-      failed_when: false
-      # Report lane: its own playbook asserts MQTT health and prints per-device verdicts.
+
+    - name: Tasmota update lane failed — surface it (the run stays green for the Pis)
+      ansible.builtin.debug:
+        msg: "{{ tasmota_update_run.stdout_lines[-6:] | default([]) }}"
+      when: update_tasmota | default(false) and tasmota_update_run.rc | default(0) != 0
+
+    - name: Update the bitShake SmartMeterReader (only if the manifest differs)
+      ansible.builtin.command:
+        cmd: "{{ lookup('env', 'HOME') }}/venvs/ansible/bin/ansible-playbook playbooks/update-bitshake.yml"
+        chdir: "{{ playbook_dir }}/.."
+      when: update_bitshake | default(false)
+      register: bitshake_update_run
+      changed_when: false
+
+    - name: bitShake update lane failed — surface it (the run stays green for the Pis)
+      ansible.builtin.debug:
+        msg: "{{ bitshake_update_run.stdout_lines[-6:] | default([]) }}"
+      when: update_bitshake | default(false) and bitshake_update_run.rc | default(0) != 0
 
     - name: Update the Windows hosts (separate playbook, same lane)
       ansible.builtin.command:
-        cmd: "{{ lookup('env', 'HOME') }}/venvs/ansible/bin/ansible-playbook update-windows.yml"
-        chdir: "{{ playbook_dir }}"
+        cmd: "{{ lookup('env', 'HOME') }}/venvs/ansible/bin/ansible-playbook playbooks/update-windows.yml"
+        chdir: "{{ playbook_dir }}/.."
       when: manage_windows_updates | default(false)
       register: windows_update_run
       changed_when: false
