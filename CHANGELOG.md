@@ -113,6 +113,16 @@
   "provided file is not a console" outside an interactive shell.
 
 
+## 2026-10-03 - the arm64 bundle gets its device gate, and passes it
+
+- New `windows/scripts/build/Test-Arm64Bundle.ps1`: runs the shipped bundle's tools and Python
+  on an arm64 device (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT
+  providers, cv2), every step exit-code-checked, with a passing floor so a device that ran
+  nothing cannot look green. `Smoke.Arm64Bundle.Tests.ps1` pins the floor logic.
+- First device run 2026-10-03 on a Snapdragon X against the published `:winarm64`: nine of nine
+  steps pass - HailoRT-CLI 5.4.0, GStreamer 1.29.2, Python 3.14.7 with numpy 2.5.3,
+  onnxruntime 1.30.0 (DirectML + CPU) and cv2 5.0.0. CON30's "loads only" no longer holds.
+
 ## 2026-10-02 - the Python lane grows a riscv64 row: the riscv64 image under QEMU
 
 - `python-ci-linux.yml` takes `arches: riscv64`: the row registers QEMU's binfmt
