@@ -267,13 +267,14 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, and the cp313 torch stack is in the wheel store |
+| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, and the cp313 torch stack is in the wheel store |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
 cannot look green. The first device run (2026-10-03, Snapdragon X, the published `:winarm64` of
 that day) passed all eleven steps — the bundle executes, not just loads. The consumer apps' cross
-lanes' run jobs still prove only that the parts their products import load
+lanes run the same gate per push when their workflow sets `bundle-artifact-name`: the build job
+packs the image's `C:\runtime` and the arm64 job extracts and runs it
 ([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)).
 
 `Test-TargetArch.ps1` is the Windows twin of the Linux lane's ELF check in
@@ -358,6 +359,10 @@ is the same file an x64 lane uses with `target-arch: amd64`:
      suite that the product's own `python.exe` runs. The gate still refuses any non-arm64 PE file
      in it, but needs none, and runs no import walk, since its DLLs live in the product tree.
    - A lane is renamed `Windows arm64 · cross build + test` only once its tests gate.
+7. With a `bundle-artifact-name` (2026-10-03), the build job also packs the image's own runtime
+   bundle (`C:\runtime`, ~290 MB zipped, by `windows/scripts/build/Export-Arm64Bundle.ps1`) and
+   uploads it beside `Test-Arm64Bundle.ps1`. A third job on `windows-11-arm` extracts the zip and
+   runs the gate, so the bundle's executability is proven by the same push that builds the product.
 
 Three inputs serve the x64 lanes that moved onto the same file (the family's next sharing step,
 2026-09-25: OxidANT's `windows-x64.yml` first, then AccelerANTgine's, and BeschleunigerBallett's on 2026-09-26):

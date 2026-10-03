@@ -180,10 +180,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         HailoRT-CLI 5.4.0, GStreamer 1.29.2 (`gst-inspect` + a videotestsrc->fakesink
         pipeline), `iree-run-module`, and the bundle's own Python 3.14.7 importing
         numpy 2.5.3, onnxruntime 1.30.0 (DmlExecutionProvider + CPUExecutionProvider),
-        av 18.1.0 and cv2 5.0.0 - the wheels installed offline from its store. Still
-        unproven on a device: an inference, a camera/plugin pipeline, and the consumer
-        run jobs' apps (those jobs loaded the bundle's DLLs only; runs 36136967538,
-        36142875090, 36142882316).
+        av 18.1.0 and cv2 5.0.0 - the wheels installed offline from its store.
+      - The gate runs per push since 2026-10-03: a cross lane that sets `bundle-artifact-name`
+        packs `C:\runtime` in the build job and the `windows-11-arm` job runs
+        `Test-Arm64Bundle.ps1` over it ([`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) - Verification).
+      - Still unproven on a device: an inference, a camera/plugin pipeline, and the
+        consumer run jobs' apps (those jobs loaded the bundle's DLLs only; runs
+        36136967538, 36142875090, 36142882316).
 - [b] **CON31 — Variants that are not published** [L, ★]. Blocked on owner decisions.
       - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open

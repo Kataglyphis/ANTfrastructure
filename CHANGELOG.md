@@ -7,6 +7,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-03 — a cross lane gates the arm64 bundle on a device per push
+
+- `container-ci-windows.yml` gains `bundle-artifact-name`: the build job packs the image's own
+  runtime bundle (`windows/scripts/build/Export-Arm64Bundle.ps1`, ~290 MB zipped) beside
+  `Test-Arm64Bundle.ps1`, and a `windows-11-arm` job extracts the zip and runs the gate. The
+  bundle's device half was a manual run until now; the floor stays the gate's own default, so a
+  device that ran nothing cannot look green.
+- The bundle travels as `C:\runtime` (~0.63 GB, 9k files), not the 15 GB image: the export runs in
+  the same container the build already pulled.
+
+
 ## 2026-10-03 — the clang-cl ASan runtime follows the target arch
 
 - `cmake/Sanitizers.cmake` picks the ASan link dir and lib names from `CMAKE_SYSTEM_PROCESSOR`:
