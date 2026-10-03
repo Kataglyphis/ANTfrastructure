@@ -7,6 +7,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-03 — the emulated riscv64 packaging leg stops syncing all extras
+
+- `ci_packaging.sh` honours the lane's `SYNC_EXTRAS` input (mapped to `UV_SYNC_EXTRAS`),
+  and the riscv64 row's test and packaging steps share
+  `UV_CACHE_DIR=/workspace/.uv-cache`. Without both, the first OrchestrANT packaging
+  run resolved 306 packages (all extras, opencv-python and torchvision from git among
+  them) and was killed at the 300-minute budget.
+- The riscv64 row's ceiling moves 300 -> 360: it covers a cold cache, where the packaging
+  leg re-pays the test leg's measured 151-minute source builds beside its 169-minute
+  test leg.
+
 ## 2026-10-03 — the Ansible fleet-update lane goes live
 
 * **summy-server (Windows 11 ARM Pro) joined the fleet**: managed over

@@ -11889,5 +11889,29 @@
   "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
   "why": "the app packages would run under QEMU and die at the AppImage arch mapping mid-way through the packaging step, far from the arch check that caused it"
+ },
+ {
+  "id": "linux-lane.riscv64-packaging-syncs-the-limited-extras",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "find": "            -e SYNC_EXTRAS=${{ matrix.arch == 'riscv64' && inputs.test-extras || '' }}\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+  "why": "the emulated packaging leg would silently sync all extras again and time out"
+ },
+ {
+  "id": "linux-lane.riscv64-steps-share-the-uv-cache",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "find": "            -e SYNC_EXTRAS=${{ inputs.test-extras }}\n            ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e UV_CACHE_DIR=/workspace/.uv-cache' || '' }}\n",
+  "replace": "            -e SYNC_EXTRAS=${{ inputs.test-extras }}\n",
+  "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+  "why": "the packaging leg would rebuild the test leg's source builds from a cold cache"
+ },
+ {
+  "id": "linux-lane.packaging-honours-sync-extras",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "if [ -n \"${SYNC_EXTRAS:-}\" ]; then\n  export UV_SYNC_EXTRAS=\"${SYNC_EXTRAS}\"\nfi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "the packaging sync would ignore the lane's extras limit and build the full set under emulation"
  }
 ]
