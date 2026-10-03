@@ -267,12 +267,12 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device | the bundle's tools and Python **execute**: HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers |
+| `Test-Arm64Bundle.ps1` | an arm64 device | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers) and the shipped aarch64 ASan runtime is a real ARM64 PE |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
 cannot look green. The first device run (2026-10-03, Snapdragon X, the published `:winarm64` of
-that day) passed all nine steps — the bundle executes, not just loads. The consumer apps' cross
+that day) passed all ten steps — the bundle executes, not just loads. The consumer apps' cross
 lanes' run jobs still prove only that the parts their products import load
 ([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)).
 
@@ -299,7 +299,7 @@ windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 `
     -HostToolPattern 'protoc\.exe|flatc\.exe|\\_deps\\'
 
 # on an arm64 device, from a bundle zip: nine steps, floor nine
-windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 9
+windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 10
 ```
 
 Free native validation is available: this repo is public, so GitHub's `windows-11-arm` runners

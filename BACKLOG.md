@@ -159,8 +159,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
-      - No aarch64 ASan runtime (re-checked 2026-10-03: the LLVM package still has none;
-        the smoke gate skips its probe for that reason).
+      - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
+        toolset carries clang_rt.asan_dynamic-aarch64.dll (+ the dbg twin), the merge
+        stage stages both into C:\runtime\bin, the arch gate machine-checks them and
+        Test-Arm64Bundle.ps1 asserts the runtime on the device.
       - The CUDA payload now also stages nvrtc and cupti (13.4.92, SHA-pinned, 2026-10-03)
         for consumers that compile kernels at run time or profile; nvtx is header-only on
         windows-arm64, so there is nothing to stage for it. The payload still needs an

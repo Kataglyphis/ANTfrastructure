@@ -128,6 +128,12 @@
   windows-arm64. Forwarded in Build-Buildkit.ps1, ARGs in Dockerfile.nvidia, and the
   staging script asserts both.
 
+- The arm64 bundle ships Microsoft's aarch64 ASan runtime (clang_rt.asan_dynamic-aarch64.dll
+  + the dbg twin) from VS 2026's toolset: staged in the merge stage, machine-checked by the
+  arch gate, asserted by Test-Arm64Bundle.ps1 on the device. The smoke probe still skips on
+  the x64 host, now for the real reason - it must execute an aarch64 exe.
+
+
 
 ## 2026-10-02 - the Python lane grows a riscv64 row: the riscv64 image under QEMU
 

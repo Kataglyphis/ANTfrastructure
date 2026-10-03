@@ -997,9 +997,9 @@ if ($smokeCross) {
 
 Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 
-# ASAN must report the intentional overflow; the cross lane skips, as LLVM ships no aarch64-windows ASAN runtime.
+# ASAN must report the intentional overflow; the cross lane cannot execute the probe, and its bundle ships VS's aarch64 runtime for the device instead.
 if ($smokeCross) {
-    Skip-Test 'ASAN probe skipped on the cross lane (no aarch64-windows ASAN runtime in the LLVM package; the probe must execute the instrumented exe)'
+    Skip-Test 'ASAN probe skipped on the cross lane (the probe must execute the instrumented exe; the bundle ships VS''s aarch64 ASan runtime for the device - Test-Arm64Bundle.ps1 asserts it)'
 } else {
 Assert-Test -Name "AddressSanitizer compile + runtime works (clang-cl /fsanitize=address)" -Condition {
     $d = Join-Path $env:TEMP 'kataglyphis-smoke-asan'
