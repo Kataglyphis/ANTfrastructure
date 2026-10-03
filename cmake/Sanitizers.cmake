@@ -164,8 +164,9 @@ function(
             target_link_libraries(
               ${project_name} INTERFACE "$<$<CONFIG:Debug>:clang_rt.asan_dynamic-${_ASAN_LIB_SUFFIX}>"
                                         "$<$<CONFIG:Debug>:clang_rt.asan_dynamic_runtime_thunk-${_ASAN_LIB_SUFFIX}>")
-            target_link_options(${project_name} INTERFACE
-                                "$<$<CONFIG:Debug>:/WHOLEARCHIVE:clang_rt.asan_dynamic_runtime_thunk-${_ASAN_LIB_SUFFIX}.lib>")
+            target_link_options(
+              ${project_name} INTERFACE
+              "$<$<CONFIG:Debug>:/WHOLEARCHIVE:clang_rt.asan_dynamic_runtime_thunk-${_ASAN_LIB_SUFFIX}.lib>")
           else()
             message(WARNING "clang-cl ASan runtime libraries not found in ${_ASAN_LINK_DIR}")
           endif()
