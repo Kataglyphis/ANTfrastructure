@@ -133,6 +133,14 @@
   arch gate, asserted by Test-Arm64Bundle.ps1 on the device. The smoke probe still skips on
   the x64 host, now for the real reason - it must execute an aarch64 exe.
 
+- The arm64 bundle's wheel store gains the cp313 win-arm64 torch stack (torch
+  2.14.0+cpu, torchvision 0.29.1a0+cpu, pillow, MarkupSafe and the pure-python
+  first-touch deps), SHA-pinned from pytorch.org/PyPI. Upstream builds no cp314
+  win-arm64 wheel (stable, test and nightly checked), so the bundle's own 3.14
+  interpreter cannot install them - they serve a device that brings its own
+  cp313 interpreter.
+
+
 
 
 ## 2026-10-02 - the Python lane grows a riscv64 row: the riscv64 image under QEMU
