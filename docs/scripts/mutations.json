@@ -11885,10 +11885,26 @@
  {
   "id": "python.packaging.riscv64-ships-wheels-only",
   "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
-  "find": "  if [ \"$(uname -m)\" = \"riscv64\" ]; then",
+  "find": "  if [ \"$(uname -m)\" = \"riscv64\" ] || [ \"${CROSS_TARGET}\" = \"riscv64\" ]; then",
   "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
   "why": "the app packages would run under QEMU and die at the AppImage arch mapping mid-way through the packaging step, far from the arch check that caused it"
+ },
+ {
+  "id": "python.packaging.cross-mode-sets-the-target-tag",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "  export _PYTHON_HOST_PLATFORM=\"${plat_tag}\"",
+  "replace": "  export _PYTHON_HOST_PLATFORM=\"linux_x86_64\"",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "a host-tagged wheel installs on the target and never imports; the cross knobs are what tag it"
+ },
+ {
+  "id": "linux-lane.riscv64-packaging-crosses",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "find": "            ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e PACKAGING_CROSS_TARGET=riscv64' || '' }}\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+  "why": "without the cross target the riscv64 wheel is built on the emulated image again, where a Cython unit hung four hours"
  },
  {
   "id": "linux-lane.riscv64-packaging-syncs-the-limited-extras",

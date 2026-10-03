@@ -7,6 +7,19 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-03 — the riscv64 wheel is cross-built on the native row
+
+- `ci_packaging.sh` gains cross mode (`PACKAGING_CROSS_TARGET=riscv64`): the wheel
+  is built on the amd64 row under the five setuptools knobs
+  (`CC`/`LDSHARED` = the riscv64 cross wrapper, `CFLAGS` with the staged target
+  Python's include dir, `SETUPTOOLS_EXT_SUFFIX`, `_PYTHON_HOST_PLATFORM`), and the
+  app-package skip now follows the target, not the host's `uname -m`.
+- `python-ci-linux.yml`'s riscv64 row builds the sysroot (`sysroot: true`) and runs
+  the packaging step on `linux/amd64` with it mounted; the test step stays on the
+  emulated riscv64 image. The emulated compile hung four hours on one Cython unit
+  (run 37127505865) and could not fit the 360-minute job.
+
+
 ## 2026-10-03 — a cross lane gates the arm64 bundle on a device per push
 
 - `container-ci-windows.yml` gains `bundle-artifact-name`: the build job packs the image's own
