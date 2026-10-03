@@ -9,6 +9,17 @@
 
 ## 2026-10-03 — the Ansible fleet-update lane goes live
 
+* **The bitShake update is now a playbook** (`update-bitshake.yml`, on-demand
+  — deliberately never scheduled): manifest fetch with the browser-gate
+  header bypass, firmware download + magic-byte validation (the manifest
+  sha256 is stale), upload through the device's own forms, a version-wait
+  with timeout, SMR app install with retry (a first refusal after a flash
+  is transient), and a final loud gate on firmware version, meter data and
+  MQTT. Proven idempotent against the live, already-updated device
+  (`ok=10 changed=0`, plan "firmware current, SMR app installed"). The
+  manual procedure and the traps it encodes stay owned by the Home
+  Assistant README.
+
 * `playbooks/update.yml` (apt safe-upgrade + autoremove per Pi, reboot only
   when required) runs **Sundays 04:30 Berlin** via a user systemd timer
   (`systemd/`, installed by `playbooks/schedule.yml`, armed 2026-10-03).
