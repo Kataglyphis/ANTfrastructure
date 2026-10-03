@@ -475,6 +475,6 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw "the bundle gate must run on arm64, not $env:PROCESSOR_ARCHITECTURE" }
-          $root = Join-Path $env:RUNNER_TEMP 'arm64bundle'
-          & ./Test-Arm64Bundle.ps1 -ZipPath ./bundle.zip -BundleRoot $root
+          # C:\runtime, the bundle's baked root: BUNDLE-ENV.ps1 and cv2's config.py carry absolute paths into it.
+          & ./Test-Arm64Bundle.ps1 -ZipPath ./bundle.zip
           if ($LASTEXITCODE) { throw "the bundle gate exited $LASTEXITCODE" }
