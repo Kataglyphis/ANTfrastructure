@@ -169,7 +169,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         would not fix it).
       - Absent by construction: the TVM/IREE compilers, LiteRT-LM, the torch
         stage, Flutter, classic TensorRT, TAPPAS.
-      - The bundle EXECUTES on hardware since 2026-10-03 (Snapdragon X, summy-server):
+      - The bundle EXECUTES on hardware since 2026-10-03 (Snapdragon X, summy-server; the
+        gate is `windows/scripts/build/Test-Arm64Bundle.ps1`, nine steps, floor nine):
         HailoRT-CLI 5.4.0, GStreamer 1.29.2 (`gst-inspect` + a videotestsrc->fakesink
         pipeline), `iree-run-module`, and the bundle's own Python 3.14.7 importing
         numpy 2.5.3, onnxruntime 1.30.0 (DmlExecutionProvider + CPUExecutionProvider),
