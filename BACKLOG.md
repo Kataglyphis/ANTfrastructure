@@ -175,8 +175,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
         the device as shipped.
-      - `:winamd64-rocm`: published 2026-09-28 (built at ad08bc30); record the redistribution
-        decision that allowed it in `docs/windows-rocm.md` § Redistribution.
+      - `:winamd64-rocm`: published (first 2026-09-28 at ad08bc30, again 2026-10-03 at
+        1d910553); the redistribution decision is recorded in `docs/windows-rocm.md`
+        § Redistribution.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
 - [ ] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
