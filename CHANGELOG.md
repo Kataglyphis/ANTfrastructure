@@ -7,6 +7,14 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-03 — compound extras markers stop reaching pip in the arm64 bundle
+
+- `Copy-TargetPythonDeps.ps1` dropped only extras whose marker began right after the `;`;
+  setuptools declares them compounded (`(python_version < '3.14') and extra == 'test-full'`),
+  so the first arm64 rebuild with the torch stack sent marker'd requirements to
+  `pip download`, where cmd.exe stripped their double quotes and pip rejected the marker.
+  The filter now looks anywhere in the marker, and surviving markers go out single-quoted.
+
 ## 2026-10-03 — the emulated riscv64 packaging leg stops syncing all extras
 
 - `ci_packaging.sh` honours the lane's `SYNC_EXTRAS` input (mapped to `UV_SYNC_EXTRAS`),

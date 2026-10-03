@@ -52,6 +52,10 @@ function Get-RequirementName([string]$Requirement) {
     if (-not $m.Success) { return $null }
     return ($m.Groups[1].Value -replace '[-_.]+', '-').ToLowerInvariant()
 }
+function ConvertTo-CmdSafeRequirement([string]$Requirement) {
+    # PEP 508 markers may quote strings with double quotes; cmd.exe strips those, so pass the equivalent single-quoted form.
+    return ($Requirement -replace '"', "'")
+}
 function Get-WheelRequirements([string]$WheelPath) {
     $zip = [System.IO.Compression.ZipFile]::OpenRead($WheelPath)
     try {
@@ -65,7 +69,7 @@ function Get-WheelRequirements([string]$WheelPath) {
         if ($line -eq '') { break }   # headers end at the first blank line (the description follows)
         if ($line -match '^Requires-Dist:\s*(.+)$') {
             $r = $Matches[1].Trim()
-            if ($r -match ';\s*extra\s*==') { continue }   # optional extras are not first-touch deps
+            if ($r -match ';\s*.*\bextra\s*==') { continue }   # optional extras are not first-touch deps, however the marker is compounded
             $reqs += $r
         }
     }
@@ -94,6 +98,7 @@ if ($MinFirstTouchRequirements -gt 0 -and $requirements.Count -lt $MinFirstTouch
 $bundled = @{}
 foreach ($w in $ourWheels) { $bundled[(Get-WheelDistName $w.Name)] = $w.Name }
 $external = @($requirements | Where-Object { $n = Get-RequirementName $_; -not ($n -and $bundled.ContainsKey($n)) })
+$external = @($external | ForEach-Object { ConvertTo-CmdSafeRequirement $_ })
 $inBundle = @($requirements | Where-Object { $n = Get-RequirementName $_; $n -and $bundled.ContainsKey($n) })
 if ($inBundle.Count -gt 0) { Write-Host "Target python deps: $($inBundle.Count) requirement(s) satisfied by the bundle's own wheels, not downloaded: $($inBundle -join ' | ')" }
 if ($external.Count -gt 0) {
