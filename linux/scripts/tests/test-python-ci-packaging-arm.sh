@@ -20,7 +20,7 @@ uv_venv_ensure() { :; }
 uv_venv_activate() { :; }
 uv_venv_deactivate() { :; }
 uv_venv_remove() { :; }
-uv_sync_project() { :; }
+uv_sync_project() { printf 'sync extras=%s\n' "${UV_SYNC_EXTRAS:-}" >> "${CALLS}"; }
 CI_COMMON
 
 printf '{ "name": "FixtureApp" }\n' > "${WS}/packaging/app.json"
@@ -49,6 +49,16 @@ t_case "the arm's riscv64 verdict: wheels only, no package invocation"
 t_assert_ok _run riscv64
 t_assert_eq "0" "$(_calls)" "riscv64 must not build the app packages"
 t_assert_contains "$(cat "${OUT}")" "riscv64 ships wheels only" "the skip names its why"
+
+t_case "SYNC_EXTRAS reaches every sync, so the emulated row never builds all extras"
+export SYNC_EXTRAS=test
+t_assert_ok _run riscv64
+unset SYNC_EXTRAS
+t_assert_eq "2" "$(grep -c 'sync extras=test' "${CALLS}")" "both syncs see the limited set"
+
+t_case "without SYNC_EXTRAS the syncs keep uv_sync_project's own default"
+t_assert_ok _run riscv64
+t_assert_eq "2" "$(grep -c 'sync extras=$' "${CALLS}")" "an empty input must not limit the sync"
 
 t_case "the arm's amd64 verdict: the app packages run as before"
 t_assert_ok _run x86_64

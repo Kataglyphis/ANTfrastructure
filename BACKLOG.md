@@ -6,11 +6,12 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-01.** Published: `:latest` (2026-09-30, hub 9e9d9828; amd64 `502a5e9d…`,
-arm64 `4446422d…`, riscv64 `d5e4db6b…`), `:winamd64` (2026-09-30, hub 18b08cc4,
-`676980e3…`), `:winamd64-nvidia` (2026-09-27, hub a33a460b), `:winamd64-rocm` (2026-09-28,
-hub ad08bc30), `:latest-rocm` (2026-09-28, hub 1754a1dd), `:winarm64` (2026-10-01, hub
-59a4bca3, without NVIDIA; no `:winarm64-nvidia` tag exists).
+**State 2026-10-03.** Published: `:latest` (2026-09-30, hub 9e9d9828; amd64 `502a5e9d…`,
+arm64 `4446422d…`, riscv64 `d5e4db6b…`), `:winamd64` (2026-10-02, hub 4cc6b21d,
+`67b4b552…`), `:winamd64-nvidia` (2026-10-02, hub 8d565715, `a9e67332…`),
+`:winamd64-rocm` (2026-10-03, hub 1d910553, `493e80f1…`), `:winarm64` (2026-10-03, hub
+1d910553, `eb0cf789…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-rocm`
+(2026-09-28, hub 1754a1dd).
 `:latest-nvidia` is not published. Every Linux image gap up to CON41 shipped and was checked
 in the published children (git history). Decisions and gaps checked closed live in
 [`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
@@ -148,7 +149,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 ## Open — Windows `:winamd64`
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
-      under clang-cl** [S, ★]. Blocked upstream (checked 2026-09-26): microsoft/STL#6294
+      under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294
       is open, its fix #6298 awaits review, and neither 14.52 nor 14.53 Preview carries it.
       The toolset is VS 18's stable channel, not a pin that could move.
       BeschleunigerBallett's `find_if` stands (a2793e6c). Never set
@@ -158,24 +159,38 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
-      - No aarch64 ASan runtime.
-      - The CUDA payload lacks nvrtc, nvtx and cupti.
-      - No LiteRT QNN dispatch (#155: five upstream defects).
+      - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
+        toolset carries clang_rt.asan_dynamic-aarch64.dll (+ the dbg twin), the merge
+        stage stages both into C:\runtime\bin, the arch gate machine-checks them and
+        Test-Arm64Bundle.ps1 asserts the runtime on the device.
+      - The CUDA payload now also stages nvrtc and cupti (13.4.92, SHA-pinned, 2026-10-03)
+        for consumers that compile kernels at run time or profile; nvtx is header-only on
+        windows-arm64, so there is nothing to stage for it. The payload still needs an
+        arm64 CUDA device to prove it runs.
+      - No LiteRT QNN dispatch (#155: five upstream defects, documented 2026-08-31 at the
+        pinned v2.2.0; upstream main still fetches QAIRT unhashed, so a pin bump alone
+        would not fix it).
       - Absent by construction: the TVM/IREE compilers, LiteRT-LM, the torch
-        stage, Flutter, classic TensorRT, TAPPAS.
-      - Its binaries now run on real arm64 hardware, but only as far as loading.
-        The consumer cross lanes' run jobs on `windows-11-arm` (2026-09-25; runs
-        36136967538, 36142875090, 36142882316) load the bundle's VC++ runtime and
-        GLib/GStreamer, and AccelerANTgine's also loads its chain ONNX Runtime (a
-        static import). Nothing runs an inference, a GStreamer pipeline or a
-        plugin, and the bundle's own tools and Python never execute
-        (`docs/windows-cross-builds.md` § Consumer cross lanes).
+        stage (its cp313 win-arm64 wheel stack - torch 2.14.0+cpu, torchvision,
+        the first-touch deps - ships in the wheel store since 2026-10-03, SHA-
+        pinned; upstream builds no cp314 wheel the bundle's own interpreter
+        could use), Flutter, classic TensorRT, TAPPAS.
+      - The bundle EXECUTES on hardware since 2026-10-03 (Snapdragon X, summy-server; the
+        gate is `windows/scripts/build/Test-Arm64Bundle.ps1`, nine steps, floor nine):
+        HailoRT-CLI 5.4.0, GStreamer 1.29.2 (`gst-inspect` + a videotestsrc->fakesink
+        pipeline), `iree-run-module`, and the bundle's own Python 3.14.7 importing
+        numpy 2.5.3, onnxruntime 1.30.0 (DmlExecutionProvider + CPUExecutionProvider),
+        av 18.1.0 and cv2 5.0.0 - the wheels installed offline from its store. Still
+        unproven on a device: an inference, a camera/plugin pipeline, and the consumer
+        run jobs' apps (those jobs loaded the bundle's DLLs only; runs 36136967538,
+        36142875090, 36142882316).
 - [b] **CON31 — Variants that are not published** [L, ★]. Blocked on owner decisions.
       - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
         the device as shipped.
-      - `:winamd64-rocm`: published 2026-09-28 (built at ad08bc30); record the redistribution
-        decision that allowed it in `docs/windows-rocm.md` § Redistribution.
+      - `:winamd64-rocm`: published (first 2026-09-28 at ad08bc30, again 2026-10-03 at
+        1d910553); the redistribution decision is recorded in `docs/windows-rocm.md`
+        § Redistribution.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
 - [ ] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
@@ -232,21 +247,3 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         `USE_NEW_NVSTREAMMUX`) and OmniAccelerANT's `nvinfer` path, after a published image exists.
       - Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only). The v9.1.0 release
         also hosts 9.1.1 assets for NVIDIA's `develop` branch; the pin stays on 9.1.0.
-- [b] **CON34 — The rocm image's HIP/MSVC `<cmath>` overlay is installed by the llama
-      stage, not by `Dockerfile.rocm`** [S, ★]. Blocked on the next rocm build (owner):
-      it re-keys from base anyway since `versions.env` changed, so the move adds no rebuild
-      then, and only that build proves it (MIGraphX has never compiled with the config files
-      active). The 2026-09-26 scope adds one step: `Rocm.Install.Tests.ps1`'s check that no
-      `llvm\bin` appears in `Dockerfile.rocm` must narrow to the PATH value. MSVC 14.51's `constexpr` `isgreater`
-      and its five siblings broke every HIP compile in the image. `windows/scripts/hip/`
-      fixes that with config files beside TheRock's clang (`docs/windows-rocm.md`
-      § HIP compiles against MSVC 14.51, 2026-09-25). They sit at the end of
-      `Dockerfile.rocm-llama` only because an edit to `Dockerfile.rocm` re-keys the
-      whole chain. At the next full rocm rebuild:
-      - install them with TheRock in `Dockerfile.rocm`;
-      - drop MIGraphX's own `-isystem` overlay (`Write-HipMsvcCmathOverlay`), since
-        TheRock's `clang++` then loads the config itself;
-      - drop the parity test that holds the two copies equal.
-
-      Retire the overlay itself when `Test-HipMsvcCmath.ps1` reports that the
-      `--no-default-config` compile passes too.

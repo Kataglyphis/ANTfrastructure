@@ -86,7 +86,7 @@ split its `ubuntu-26.04-amd64-arm64.yml` into `linux-x64.yml` and
 tests only. The row registers QEMU's binfmt handler through
 `setup-riscv64-cross` with `sysroot: false` (the sysroot serves cross builds,
 and a Python lane has nothing to cross-compile), runs every container step with
-`--platform linux/riscv64`, and carries its own `timeout: 240` in the plan's
+`--platform linux/riscv64`, and carries its own `timeout: 360` in the plan's
 matrix - the first opt-in packaging run hit the old 180-minute budget (the
 measured 139-min test leg plus the emulated wheel build would not fit). The docs
 build stays `x64`'s, and static analysis stays off the row with
@@ -101,6 +101,15 @@ one. The wheels build under QEMU like any other step; the app packages of a
 `packaging/app.json` app do not follow - they need the AppImage tooling the
 image ships for amd64/arm64 only, so `ci_packaging.sh` warns and ships wheels
 only there.
+
+The emulated packaging leg needs two things the native rows do not. It syncs
+`SYNC_EXTRAS` (the caller's `test-extras`) instead of all extras, and it shares
+`UV_CACHE_DIR=/workspace/.uv-cache` with the test leg, so it reuses the wheels
+that leg prepared - every container step starts cold otherwise. Measured
+2026-10-03: without both, the leg resolved 306 packages (opencv-python and
+torchvision from git among them) and was killed at the 300-minute budget;
+with both it reuses the test leg's 74 prepared packages, and 360 covers the
+cold case (a 151-minute rebuild beside the 169-minute test leg).
 
 ## The static-analysis knobs, and the bandit trap between them
 

@@ -30,26 +30,47 @@ print(eval(sys.argv[3]))
 PY
 }
 
-# The loader keeps block scalars opaque, so the step's `run:` text is cut by indentation.
+# Block scalars stay opaque in the loader, so all three cuts live here: the plan step's run body, the container steps' extra-args and every step's if.
 STEP="${_work}/plan-step.sh"
+EXTRA="${_work}/extra-args"
+STEPS="${_work}/conditions"
 # shellcheck disable=SC2086
-${_PY} - "${ROOT}/linux/scripts" "${LANE}" "${STEP}" <<'PY'
+${_PY} - "${ROOT}/linux/scripts" "${LANE}" "${STEP}" "${EXTRA}" "${STEPS}" <<'PY'
 import sys, pathlib, textwrap
 sys.path.insert(0, sys.argv[1])
 import verify_workflow_conventions as V
 path = pathlib.Path(sys.argv[2])
 lane = V.load_yaml(path)
-steps = V.value(V.value(V.value(lane, 'jobs'), 'plan'), 'steps')
-step = next(s for s in steps if V.value(s, 'id') == 'rows')
 lines = path.read_text(encoding='utf-8').splitlines()
-at = V.line_of(step, 'run') - 1
-key_indent = len(lines[at]) - len(lines[at].lstrip())
-body = []
-for line in lines[at + 1:]:
-    if line.strip() and len(line) - len(line.lstrip()) <= key_indent:
-        break
-    body.append(line)
-pathlib.Path(sys.argv[3]).write_text(textwrap.dedent('\n'.join(body)).strip() + '\n', encoding='utf-8')
+
+def cut(at):
+    # The block scalar whose key sits on line `at`, cut by indentation.
+    key_indent = len(lines[at]) - len(lines[at].lstrip())
+    body = []
+    for line in lines[at + 1:]:
+        if line.strip() and len(line) - len(line.lstrip()) <= key_indent:
+            break
+        body.append(line)
+    return body
+
+plan = next(s for s in V.value(V.value(V.value(lane, 'jobs'), 'plan'), 'steps') if V.value(s, 'id') == 'rows')
+pathlib.Path(sys.argv[3]).write_text(textwrap.dedent('\n'.join(cut(V.line_of(plan, 'run') - 1))).strip() + '\n', encoding='utf-8')
+
+build = V.value(V.value(lane, 'jobs'), 'build')
+with open(sys.argv[4], 'w', encoding='utf-8') as extra, open(sys.argv[5], 'w', encoding='utf-8') as conds:
+    for step in (V.value(build, 'steps') or []):
+        name = V.value(step, 'name')
+        conds.write(f"{name}|{str(V.value(step, 'if') or '-')}\n")
+        if name not in ('Run Python tests', 'Packaging application'):
+            continue
+        with_at = V.line_of(step, 'with') - 1
+        with_indent = len(lines[with_at]) - len(lines[with_at].lstrip())
+        j = with_at + 1
+        while j < len(lines) and (not lines[j].strip() or len(lines[j]) - len(lines[j].lstrip()) > with_indent):
+            if lines[j].strip().startswith('extra-args:'):
+                break
+            j += 1
+        extra.write(f"{name}|{' '.join(x.strip() for x in cut(j))}\n")
 PY
 
 # _plan <arches>: run the step under `bash -e`, as the runner does, with a fresh GITHUB_OUTPUT.
@@ -148,19 +169,16 @@ t_assert_eq "" "$(grep -F -e '${{' "${STEP}")" "an expression in the script body
 t_case "package-emulated is an optional boolean, off by default"
 t_assert_eq "boolean|false|false" "$(_input_meta package-emulated)"
 
-# The build job's step conditions, as one name|if line per step.
-STEPS="${_work}/conditions"
-# shellcheck disable=SC2086
-${_PY} - "${ROOT}/linux/scripts" "${LANE}" "${STEPS}" <<'PY' 2>&1
-import sys, pathlib
-sys.path.insert(0, sys.argv[1])
-import verify_workflow_conventions as V
-lane = V.load_yaml(pathlib.Path(sys.argv[2]))
-build = V.value(V.value(lane, 'jobs'), 'build')
-with open(sys.argv[3], 'w', encoding='utf-8') as fh:
-    for step in (V.value(build, 'steps') or []):
-        fh.write(f"{V.value(step, 'name')}|{str(V.value(step, 'if') or '-')}\n")
-PY
+t_case "the emulated packaging leg syncs the caller's extras, never all of them"
+t_assert_contains "$(grep -F 'Packaging application|' "${EXTRA}")" "-e SYNC_EXTRAS=\${{ matrix.arch == 'riscv64' && inputs.test-extras || '' }}" "the packaging sync needs the same limit as the test legs"
+
+t_case "the emulated test and packaging legs share one uv cache"
+for step_name in "Run Python tests" "Packaging application"; do
+  t_assert_contains "$(grep -F "${step_name}|" "${EXTRA}")" "-e UV_CACHE_DIR=/workspace/.uv-cache" "${step_name} must read the cache the other one fills"
+done
+
+t_case "the riscv64 row's ceiling covers a cold-cache packaging leg"
+t_assert_contains "$(_matrix riscv64)" '"timeout":360' "measured: 169-min test leg + a 151-min cold rebuild"
 
 t_case "the riscv64 packaging arm is the input, and every step downstream of it"
 t_assert_contains "$(grep -F 'Packaging application|' "${STEPS}")" "inputs.package-emulated" "the packaging row may run on riscv64"
