@@ -47,18 +47,34 @@ foreach ($n in $asanNames) {
     if (Test-Path (Join-Path $asanDir $n)) { Copy-Item (Join-Path $asanDir $n) $destDir -Force; $staged += $n }
 }
 
-# torch's DLLs import the MSVC OpenMP runtime; a clean device has no redist, so it ships from the VS redist tree.
+# torch's DLLs import the MSVC OpenMP runtime; a clean device has no redist, so it ships from wherever the VS tree keeps the aarch64 copy.
 $vcomp = $null
+$searched = @()
 foreach ($toolsRoot in $toolsRoots) {
     $redist = Join-Path (Split-Path (Split-Path $toolsRoot -Parent) -Parent) 'Redist\MSVC'
+    $searched += $redist
     if (Test-Path $redist) {
         $vcomp = Get-ChildItem $redist -Recurse -Filter 'vcomp140.dll' -File -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -match '\\arm64\\' } | Select-Object -First 1
     }
     if ($vcomp) { break }
+    foreach ($hostDir in @('bin\HostArm64\arm64', 'bin\Hostx64\arm64')) {
+        $candidate = Join-Path $toolsRoot $hostDir
+        $searched += $candidate
+        if (Test-Path (Join-Path $candidate 'vcomp140.dll')) { $vcomp = Get-Item (Join-Path $candidate 'vcomp140.dll'); break }
+    }
+    if ($vcomp) { break }
+    # Last resort: the whole VS root, filtered to an arm64 path (the redist layout moved between VS versions).
+    $vsRoot = Split-Path (Split-Path (Split-Path (Split-Path $toolsRoot -Parent) -Parent) -Parent) -Parent
+    $searched += $vsRoot
+    if (Test-Path $vsRoot) {
+        $vcomp = Get-ChildItem $vsRoot -Recurse -Filter 'vcomp140.dll' -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'arm64' } | Select-Object -First 1
+    }
+    if ($vcomp) { break }
 }
 if (-not $vcomp) {
-    throw 'no aarch64 vcomp140.dll in the VS redist tree - torch_cpu.dll imports it and a clean device has no redist (Test-TargetArch would fail on the unresolved CRT import)'
+    throw "no aarch64 vcomp140.dll under the VS trees (searched: $($searched -join '; ')) - torch_cpu.dll imports it and a clean device has no redist"
 }
 Copy-Item $vcomp.FullName $destDir -Force
 $staged += $vcomp.Name
