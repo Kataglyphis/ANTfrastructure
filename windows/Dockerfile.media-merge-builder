@@ -173,6 +173,11 @@ RUN --mount=type=bind,source=windows/scripts/build/Copy-TargetPythonDeps.ps1,tar
         -MinBundleWheels ([int]$env:DEPS_MIN_BUNDLE_WHEELS) `
         -MinFirstTouchRequirements ([int]$env:DEPS_MIN_FIRST_TOUCH_REQS)
 
+# The cross bundle carries Microsoft's aarch64 ASan runtime; the arch gate below machine-checks it.
+RUN --mount=type=bind,source=windows/scripts/build/Copy-Arm64AsanRuntime.ps1,target=C:\bkmnt\Copy-Arm64AsanRuntime.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\Copy-Arm64AsanRuntime.ps1' -ScriptDir 'C:\bkmnt'
+
 # Arch gate: on a cross lane the PE machine type is the only correctness signal; the floor fails a run that inspected nothing.
 ARG ARCH_GATE_MIN_INSPECTED=10
 ARG ARCH_GATE_HOST_TOOLS="protoc\.exe|flatc\.exe|\\_deps\\|\\distlib\\[tw](32|64)[^\\]*\.exe|\\setuptools\\(cli|gui)[^\\]*\.exe"

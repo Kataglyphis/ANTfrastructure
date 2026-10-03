@@ -18,13 +18,13 @@
 .PARAMETER AllowEmptyRun
     Permits -MinPassed 0, for probing a partial tree.
 .EXAMPLE
-    .\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 9
+    .\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 10
 #>
 [CmdletBinding()]
 param(
     [string]$BundleRoot = 'C:\runtime',
     [string]$ZipPath = '',
-    [int]$MinPassed = 9,
+    [int]$MinPassed = 10,
     [switch]$AllowEmptyRun
 )
 
@@ -93,6 +93,15 @@ Invoke-BundleStep 'python imports + ORT providers' {
     & $py -c "import sys, numpy, onnxruntime, av; print('PY', sys.version.split()[0], '| numpy', numpy.__version__, '| ort', onnxruntime.__version__, '| av', av.__version__); print('providers:', onnxruntime.get_available_providers()); assert 'CPUExecutionProvider' in onnxruntime.get_available_providers()"
 } $results
 Invoke-BundleStep 'cv2 import' { & $py -c "import cv2; print('cv2', cv2.__version__)" } $results
+Invoke-BundleStep 'asan runtime present (aarch64)' {
+    $dll = Join-Path $BundleRoot 'bin\clang_rt.asan_dynamic-aarch64.dll'
+    if (-not (Test-Path $dll)) { throw "missing $dll" }
+    $bytes = [IO.File]::ReadAllBytes($dll)
+    $peOff = [BitConverter]::ToInt32($bytes, 0x3C)
+    if ($bytes[$peOff] -ne 0x50 -or $bytes[$peOff + 1] -ne 0x45) { throw 'not a PE file' }
+    $machine = [BitConverter]::ToUInt16($bytes, $peOff + 4)
+    if ($machine -ne 0xAA64) { throw ('machine 0x{0:X4}, expected 0xAA64' -f $machine) }
+} $results
 
 $verdict = Get-BundleVerdict -Results $results -MinPassed $MinPassed -AllowEmptyRun:$AllowEmptyRun
 Write-Host "`n==== SUMMARY ===="
