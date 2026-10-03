@@ -171,7 +171,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         pinned v2.2.0; upstream main still fetches QAIRT unhashed, so a pin bump alone
         would not fix it).
       - Absent by construction: the TVM/IREE compilers, LiteRT-LM, the torch
-        stage, Flutter, classic TensorRT, TAPPAS.
+        stage (its cp313 win-arm64 wheel stack - torch 2.14.0+cpu, torchvision,
+        the first-touch deps - ships in the wheel store since 2026-10-03, SHA-
+        pinned; upstream builds no cp314 wheel the bundle's own interpreter
+        could use), Flutter, classic TensorRT, TAPPAS.
       - The bundle EXECUTES on hardware since 2026-10-03 (Snapdragon X, summy-server; the
         gate is `windows/scripts/build/Test-Arm64Bundle.ps1`, nine steps, floor nine):
         HailoRT-CLI 5.4.0, GStreamer 1.29.2 (`gst-inspect` + a videotestsrc->fakesink

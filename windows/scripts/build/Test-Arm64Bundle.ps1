@@ -18,13 +18,13 @@
 .PARAMETER AllowEmptyRun
     Permits -MinPassed 0, for probing a partial tree.
 .EXAMPLE
-    .\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 10
+    .\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 11
 #>
 [CmdletBinding()]
 param(
     [string]$BundleRoot = 'C:\runtime',
     [string]$ZipPath = '',
-    [int]$MinPassed = 10,
+    [int]$MinPassed = 11,
     [switch]$AllowEmptyRun
 )
 
@@ -93,6 +93,12 @@ Invoke-BundleStep 'python imports + ORT providers' {
     & $py -c "import sys, numpy, onnxruntime, av; print('PY', sys.version.split()[0], '| numpy', numpy.__version__, '| ort', onnxruntime.__version__, '| av', av.__version__); print('providers:', onnxruntime.get_available_providers()); assert 'CPUExecutionProvider' in onnxruntime.get_available_providers()"
 } $results
 Invoke-BundleStep 'cv2 import' { & $py -c "import cv2; print('cv2', cv2.__version__)" } $results
+Invoke-BundleStep 'torch win-arm64 wheel stack present (cp313)' {
+    $torch = @(Get-ChildItem (Join-Path $BundleRoot 'wheels') -Filter 'torch-*-cp313-cp313-win_arm64.whl' -File)
+    $deps = @(Get-ChildItem (Join-Path $BundleRoot 'wheels') -Filter '*.whl' -File).Count
+    if ($torch.Count -lt 1) { throw 'no torch cp313 win_arm64 wheel in the store' }
+    if ($deps -lt 17) { throw "wheel store holds $deps wheel(s), expected at least 17 (6 runtime + 11 torch-stack)" }
+} $results
 Invoke-BundleStep 'asan runtime present (aarch64)' {
     $dll = Join-Path $BundleRoot 'bin\clang_rt.asan_dynamic-aarch64.dll'
     if (-not (Test-Path $dll)) { throw "missing $dll" }

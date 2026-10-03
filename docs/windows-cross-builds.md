@@ -267,12 +267,12 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers) and the shipped aarch64 ASan runtime is a real ARM64 PE |
+| `Test-Arm64Bundle.ps1` | an arm64 device | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan runtime is a real ARM64 PE, and the cp313 torch stack is in the wheel store |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
 cannot look green. The first device run (2026-10-03, Snapdragon X, the published `:winarm64` of
-that day) passed all ten steps — the bundle executes, not just loads. The consumer apps' cross
+that day) passed all eleven steps — the bundle executes, not just loads. The consumer apps' cross
 lanes' run jobs still prove only that the parts their products import load
 ([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)).
 
@@ -299,7 +299,7 @@ windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 `
     -HostToolPattern 'protoc\.exe|flatc\.exe|\\_deps\\'
 
 # on an arm64 device, from a bundle zip: nine steps, floor nine
-windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 10
+windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 11
 ```
 
 Free native validation is available: this repo is public, so GitHub's `windows-11-arm` runners
@@ -1248,7 +1248,7 @@ Components with no arm64 story, and what stands in their place.
 
 ### PyTorch / the torch app stage
 
-**Still dropped — but "structurally impossible", recorded here until 2026-08-24, overstated two things.** `download.pytorch.org` *does* publish `win_arm64` `+cpu` wheels, and `uv` can cross-**resolve** into a directory without executing the target interpreter (`uv sync` proper does run it). The binding constraint is this repo's own cp314 pin: upstream built no `win_arm64` wheel for Python 3.14 at `PYTORCH_VERSION=v2.13.0`, the pin when this was checked (the pin is v2.14.0 since 2026-09-20; not re-checked). The stage stays dropped; only the reasons changed.
+**Still dropped — the binding constraint is the cp314 pin, re-checked 2026-10-03.** `download.pytorch.org` publishes `win_arm64` `+cpu` wheels for cp311-cp313 (torch 2.14.0+cpu matches `PYTORCH_VERSION`; nightly is at 2.15.0.dev) and none for cp314 on any channel (stable, test, nightly). `uv sync` proper must execute the target interpreter, so the stage stays dropped. What ships instead: the merge stage stages the cp313 stack (torch, torchvision, pillow, MarkupSafe and the pure-python first-touch deps) into the bundle's wheel store, SHA-pinned, for a device that brings its own cp313 interpreter.
 
 Everything in that table is a **product gap to document, not an engineering problem to route
 around**. Where a coverage floor can encode it (CUDA sections in the smoke floors), encode it, so
