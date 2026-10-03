@@ -18,6 +18,59 @@ if [ -n "${SYNC_EXTRAS:-}" ]; then
   export UV_SYNC_EXTRAS="${SYNC_EXTRAS}"
 fi
 
+# Cross mode (PACKAGING_CROSS_TARGET): build the target's wheel on the native host; docs/linux-cross-builds.md - Cross Python wheels.
+CROSS_TARGET="${PACKAGING_CROSS_TARGET:-}"
+
+packaging_cross_env() {
+  local target="$1" cross_env="" riscv_cross="" python_root="" mm=""
+
+  if [ "${target}" != "riscv64" ]; then
+    err "PACKAGING_CROSS_TARGET=${target} is not supported; only riscv64 has a staged target Python"
+    return 1
+  fi
+
+  for candidate in "/opt/scripts/core/cross-env.sh" "$SCRIPT_DIR/../../01-core/cross-env.sh"; do
+    [ -f "${candidate}" ] && { cross_env="${candidate}"; break; }
+  done
+  for candidate in "/opt/scripts/lib/riscv64-cross.sh" "$SCRIPT_DIR/../../lib/riscv64-cross.sh"; do
+    [ -f "${candidate}" ] && { riscv_cross="${candidate}"; break; }
+  done
+  if [ -z "${cross_env}" ] || [ -z "${riscv_cross}" ]; then
+    err "cross mode needs cross-env.sh and riscv64-cross.sh beside the scripts or under /opt/scripts"
+    return 1
+  fi
+
+  # shellcheck disable=SC1090
+  source "${cross_env}"
+  # shellcheck disable=SC1090
+  source "${riscv_cross}"
+  riscv64_cross_env || return 1
+
+  python_root="$(cross_target_python_root "${target}")" || {
+    err "no staged ${target} Python under ${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${target}"
+    return 1
+  }
+  mm="$(printf '%s' "${PYTHON_VERSION}" | tr -d '.')"
+
+  # The same values arch_linux_platform_tag_for/cross_target_python_include_dir resolve in the image.
+  local plat_tag="linux_${target}"
+  if command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
+    plat_tag="$(arch_linux_platform_tag_for "${target}" || printf '%s' "linux_${target}")"
+  fi
+
+  export CC="${RISCV64_CROSS_BIN}/riscv64-linux-gnu-clang"
+  export LDSHARED="${CC} -shared"
+  export _PYTHON_HOST_PLATFORM="${plat_tag}"
+  export SETUPTOOLS_EXT_SUFFIX=".cpython-${mm}-riscv64-linux-gnu.so"
+  # CFLAGS REPLACES the sysconfig flags, so the target headers win over the host's and -O2 survives.
+  export CFLAGS="-O2 -I${python_root}/include/python${PYTHON_VERSION}"
+  info "cross packaging for ${target}: ${CC}, target Python ${python_root}, platform ${plat_tag}"
+}
+
+if [ -n "${CROSS_TARGET}" ]; then
+  packaging_cross_env "${CROSS_TARGET}"
+fi
+
 if command -v patchelf >/dev/null 2>&1; then
   info "patchelf already installed"
 else
@@ -70,7 +123,7 @@ ls -la dist || true
 
 # packaging/app.json opts the consumer in; its packages need the AppImage tooling amd64/arm64 ships, so riscv64 ships wheels only (docs/python-app-bundles.md § Packages).
 if [ -f packaging/app.json ]; then
-  if [ "$(uname -m)" = "riscv64" ]; then
+  if [ "$(uname -m)" = "riscv64" ] || [ "${CROSS_TARGET}" = "riscv64" ]; then
     warn "packaging/app.json present: the tar/deb/AppImage packages are amd64/arm64, so riscv64 ships wheels only"
   else
     bash "$SCRIPT_DIR/../../06-packaging/python-app-bundle.sh" --wheel-dir dist --out-dir build/app-bundle

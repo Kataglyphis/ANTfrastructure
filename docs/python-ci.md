@@ -97,19 +97,23 @@ because the full set builds wheels from source under emulation. See
 
 Packaging the riscv64 row is **opt-in** through `package-emulated: true`: an
 arch-specific wheel (a Cython build) otherwise exists for every arch but this
-one. The wheels build under QEMU like any other step; the app packages of a
-`packaging/app.json` app do not follow - they need the AppImage tooling the
-image ships for amd64/arm64 only, so `ci_packaging.sh` warns and ships wheels
-only there.
+one. The wheel is **cross-built on the amd64 row** (`PACKAGING_CROSS_TARGET=riscv64`,
+`--platform linux/amd64`, the riscv64 sysroot and the staged target Python under
+`/opt/python-cross/riscv64`), under the five setuptools knobs
+[`linux-cross-builds.md` § Cross Python wheels](linux-cross-builds.md#cross-python-wheels-setuptools-knobs)
+pins: `CC`/`LDSHARED` are the riscv64 cross wrapper, `CFLAGS` carries the target
+include dir, `SETUPTOOLS_EXT_SUFFIX` the target SOABI suffix and
+`_PYTHON_HOST_PLATFORM` the target tag. The emulated row only tests: its compile
+hung four hours on one Cython unit (run 37127505865) and could not fit the
+360-minute job. The app packages of a `packaging/app.json` app do not follow -
+they need the AppImage tooling the image ships for amd64/arm64 only, so
+`ci_packaging.sh` warns and ships wheels only there.
 
-The emulated packaging leg needs two things the native rows do not. It syncs
-`SYNC_EXTRAS` (the caller's `test-extras`) instead of all extras, and it shares
-`UV_CACHE_DIR=/workspace/.uv-cache` with the test leg, so it reuses the wheels
-that leg prepared - every container step starts cold otherwise. Measured
-2026-10-03: without both, the leg resolved 306 packages (opencv-python and
-torchvision from git among them) and was killed at the 300-minute budget;
-with both it reuses the test leg's 74 prepared packages, and 360 covers the
-cold case (a 151-minute rebuild beside the 169-minute test leg).
+The packaging leg still syncs `SYNC_EXTRAS` (the caller's `test-extras`) instead
+of all extras, and it shares `UV_CACHE_DIR=/workspace/.uv-cache` so its build
+tools come from the cache the other rows warm. Measured 2026-10-03, with the
+emulated predecessor: without both, the leg resolved 306 packages (opencv-python
+and torchvision from git among them) and was killed at the 300-minute budget.
 
 ## The static-analysis knobs, and the bandit trap between them
 

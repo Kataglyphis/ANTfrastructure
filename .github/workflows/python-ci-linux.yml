@@ -188,12 +188,13 @@ jobs:
           fetch-depth: '1'
           submodules: recursive
 
-      # The riscv64 rows run the riscv64 image under QEMU; every other row is native.
+      # The riscv64 test row runs the riscv64 image under QEMU; the packaging step crosses on the native row, so it needs the sysroot.
       - name: Register QEMU binfmt (riscv64)
         if: matrix.arch == 'riscv64'
+        id: riscv64-cross
         uses: Kataglyphis/ANTfrastructure/.github/actions/setup-riscv64-cross@develop
         with:
-          sysroot: 'false'
+          sysroot: ${{ inputs.package-emulated }}
 
       - name: Python static analysis
         if: matrix.arch != 'riscv64'
@@ -246,15 +247,17 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ${{ inputs.docs-artifact-path }}
 
-      # Packaging on the riscv64 row is opt-in: it builds the wheels, and the app packages stay amd64-arm64.
+      # Packaging on the riscv64 row is opt-in: the wheels are CROSS-built on this amd64 row (the emulated compile hung), and the app packages stay amd64-arm64.
       - name: Packaging application
         if: matrix.arch != 'riscv64' || inputs.package-emulated
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
           extra-args: >-
-            --platform ${{ matrix.platform }}
+            --platform ${{ matrix.arch == 'riscv64' && 'linux/amd64' || matrix.platform }}
+            ${{ matrix.arch == 'riscv64' && inputs.package-emulated && steps.riscv64-cross.outputs.docker-args || '' }}
             ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e UV_CACHE_DIR=/workspace/.uv-cache' || '' }}
+            ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e PACKAGING_CROSS_TARGET=riscv64' || '' }}
             -e SYNC_EXTRAS=${{ matrix.arch == 'riscv64' && inputs.test-extras || '' }}
           script: >-
             bash -lc "bash scripts/linux/ci_packaging.sh

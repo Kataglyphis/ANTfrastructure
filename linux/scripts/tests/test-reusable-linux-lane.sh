@@ -180,6 +180,12 @@ done
 t_case "the riscv64 row's ceiling covers a cold-cache packaging leg"
 t_assert_contains "$(_matrix riscv64)" '"timeout":360' "measured: 169-min test leg + a 151-min cold rebuild"
 
+t_case "the riscv64 packaging leg crosses on the amd64 row"
+t_assert_contains "$(grep -F 'Packaging application|' "${EXTRA}")" "--platform \${{ matrix.arch == 'riscv64' && 'linux/amd64' || matrix.platform }}" "the wheel must be built on the native row, not under QEMU"
+t_assert_contains "$(grep -F 'Packaging application|' "${EXTRA}")" "-e PACKAGING_CROSS_TARGET=riscv64" "the cross target must reach ci_packaging.sh"
+t_assert_contains "$(grep -F 'Packaging application|' "${EXTRA}")" "steps.riscv64-cross.outputs.docker-args" "the sysroot mount and RISCV64_SYSROOT come from the cross setup"
+t_assert_contains "$(cat "${LANE}")" "sysroot: \${{ inputs.package-emulated }}" "the sysroot is built only when the packaging leg is asked for"
+
 t_case "the riscv64 packaging arm is the input, and every step downstream of it"
 t_assert_contains "$(grep -F 'Packaging application|' "${STEPS}")" "inputs.package-emulated" "the packaging row may run on riscv64"
 for step_name in "Fix permissions for dist directory" "Verify dist directory" "Upload packages (source/binary only)"; do
