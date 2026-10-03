@@ -11,8 +11,9 @@ SSH config for this machine's fleet live here.
 | Host | What it is | Connection |
 | --- | --- | --- |
 | `pi-1` | Raspberry Pi 5 (control node, Home Assistant) | local |
-| `pi-2` | older Raspberry Pi, Debian 13 | SSH |
-| `mintberrycrunch` | riscv64 SoC, Ubuntu 26.04 | SSH |
+| `pi-2` | Raspberry Pi 3, Debian 13 | SSH |
+| `tabblscatcam` | Raspberry Pi 5 (cat cam), Debian 13 | SSH |
+| `mintberrycrunch` | SpacemiT K3 (riscv-class SBC), Ubuntu 26.04 | SSH |
 | `summy-server` | Windows 11 ARM Pro | SSH + PowerShell (`ansible.windows`) |
 
 ## What is installed (2026-10-02)

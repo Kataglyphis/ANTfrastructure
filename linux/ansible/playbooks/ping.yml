@@ -1,7 +1,15 @@
 ---
-- name: Prove the runner lane — reach every inventoried host
-  hosts: all
+# One ping per connection type: the builtin module cannot run on Windows hosts.
+- name: Prove the lane — every Linux host
+  hosts: fleet
   gather_facts: false
   tasks:
     - name: Ping
       ansible.builtin.ping:
+
+- name: Prove the lane — the Windows host
+  hosts: windows
+  gather_facts: false
+  tasks:
+    - name: Ping
+      ansible.windows.win_ping:
