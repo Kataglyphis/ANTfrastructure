@@ -161,9 +161,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       decisions.
       - No aarch64 ASan runtime (re-checked 2026-10-03: the LLVM package still has none;
         the smoke gate skips its probe for that reason).
-      - The CUDA payload stages ORT's link closure only - nvrtc, nvtx and cupti are not in
-        it. All three DO exist for windows-arm64 in the CUDA 13.4.2 redist (checked
-        2026-10-03); add them when a consumer needs runtime compilation or profiling.
+      - The CUDA payload now also stages nvrtc and cupti (13.4.92, SHA-pinned, 2026-10-03)
+        for consumers that compile kernels at run time or profile; nvtx is header-only on
+        windows-arm64, so there is nothing to stage for it. The payload still needs an
+        arm64 CUDA device to prove it runs.
       - No LiteRT QNN dispatch (#155: five upstream defects, documented 2026-08-31 at the
         pinned v2.2.0; upstream main still fetches QAIRT unhashed, so a pin bump alone
         would not fix it).
