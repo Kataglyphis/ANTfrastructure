@@ -94,6 +94,43 @@ and six individual devices: four NOUS A1T (Wohnzimmer links, Büro links, Silas,
 Waschmaschine) and two P110 (Anrichte, Wohnzimmer rechts). The "Stromzähler von
 Jones" P110 exposes no lifetime counter, so it is not listed.
 
+## The bitShake SmartMeterReader (firmware updates)
+
+The meter reader (`tasmota_D69598`, ESP32-C3) carries bitShake's custom
+Tasmota build — **never flash stock Tasmota on it** (the SML meter-reading
+support is compiled in; bitShake's docs forbid foreign firmware, and a
+GitHub user who tried lost meter reading entirely).
+
+The vendor's update flow is browser-mediated and its server 403s plain
+fetches — but it answers any client that sends the cache-bypass header set
+the OTA web app uses (`X-Cache-Control: no-cache` + `Pragma`/`Expires`).
+That makes the whole update scriptable (done 2026-10-03, 14.1.0 → 15.3.0
+bitShake + SMR app):
+
+```bash
+H=(-H 'Cache-Control: no-cache' -H 'Pragma: no-cache' -H 'Expires: 0' -H 'X-Cache-Control: no-cache')
+# 1. the manifest names the current files
+curl -s "${H[@]}" https://smr-ota.bitshake.de/ota/prod/manifest.json
+# 2. firmware: download the versioned URL, then POST to the device's
+#    Firmware Upgrade form (safeboot flashes it, ~2 min)
+curl -s "${H[@]}" -o fw.bin <manifest tasmota.url>
+curl -F "u2=@fw.bin" "http://<device>/u2?fsz=$(stat -c%s fw.bin)"
+# 3. SMR app files -> filesystem, then restart
+for f in bitshake.tapp bitshake.ui; do
+  curl -s "${H[@]}" -o "$f" "<manifest files[].url>"
+  curl -F "ufsu=@$f" "http://<device>/ufsu?fsz=$(stat -c%s $f)"
+done
+curl -s "http://<device>/cm?cmnd=Restart 1"
+```
+
+Traps: the OtaUrl the old firmware carried (`smr-ota…/32/fw.bin`) is dead —
+pasting it strands the device in safeboot (it downloads a 403 page and
+waits; recover by uploading the .bin through safeboot's own form). The
+manifest's sha256 is stale — verify the image is an ESP32-C3 ESP-IDF binary
+instead. A `ufsu` "Nicht genug Speicherplatz" right after flashing is
+transient; retry. With the SMR app installed (step 3), future updates are
+one click in the device's web UI — `bitShake SMR öffnen` → `Update`.
+
 ## Backups
 
 Automatic backups run daily into `config/backups/`, retention 3 copies. The
