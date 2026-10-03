@@ -1,0 +1,61 @@
+---
+# Report-only — the flash stays deliberate, same rule as nerdctl/bitShake.
+- name: Report the stock Tasmota devices against the current release
+  hosts: pi-1
+  gather_facts: false
+  vars:
+    tasmota_ota_url: http://ota.tasmota.com/tasmota/release/tasmota.bin.gz
+  tasks:
+    - name: Query every stock Tasmota device
+      ansible.builtin.uri:
+        url: "http://{{ item }}/cm?cmnd=Status%202"
+        return_content: true
+      loop: "{{ stock_tasmota_devices | default([]) }}"
+      register: tasmota_status
+
+    - name: Resolve the current upstream release version
+      ansible.builtin.uri:
+        url: "{{ tasmota_ota_url }}"
+        method: HEAD
+        follow_redirects: none
+      register: tasmota_upstream
+      failed_when: false
+
+    - name: Extract upstream release date (Last-Modified)
+      ansible.builtin.set_fact:
+        tasmota_upstream_date: "{{ tasmota_upstream.last_modified | default('unreachable') }}"
+
+    - name: Per-device report
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.item }}: {{ item.json.StatusFWR.Version | default('?') }}
+          ({{ item.json.StatusFWR.BuildDateTime | default('?') }}) —
+          {{ 'ON the official release' if '15.6.0' in (item.json.StatusFWR.Version | default(''))
+             else 'NOT current: check the web UI upgrade page' }}
+      loop: "{{ tasmota_status.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: tasmota_status is defined
+
+    - name: MQTT health of each device (an unconfigured broker silently kills its HA entities)
+      ansible.builtin.uri:
+        url: "http://{{ item }}/cm?cmnd=Status%206"
+        return_content: true
+      loop: "{{ stock_tasmota_devices | default([]) }}"
+      register: tasmota_mqtt
+
+    - name: MQTT verdict
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.item }}: MQTT host {{ item.json.StatusMQT.MqttHost | default('?') }},
+          {{ 'publishing' if (item.json.StatusMQT.MqttCount | default(0)) | int > 1 else 'STALE — broker or publish check needed' }}
+      loop: "{{ tasmota_mqtt.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Fail loudly if any device lost its broker (the .128 lesson)
+      ansible.builtin.assert:
+        that: "{{ tasmota_mqtt.results | map(attribute='json') | map(attribute='StatusMQT') | map(attribute='MqttHost') | select('match', '^$') | list | length == 0 }}"
+        fail_msg: >-
+          A Tasmota device has no MQTT host configured — its HA entities are dead.
+          Fix: curl "http://<device>/cm?cmnd=MqttHost {{ ha_mqtt_host | default('<broker>') }}"
