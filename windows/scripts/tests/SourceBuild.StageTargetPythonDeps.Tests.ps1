@@ -7,7 +7,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
 
     BeforeAll {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Copy-TargetPythonDeps.ps1' `
-                -FunctionName 'Get-WheelDistName', 'Get-RequirementName', 'Get-WheelRequirements')
+                -FunctionName 'Get-WheelDistName', 'Get-RequirementName', 'Get-WheelRequirements', 'ConvertTo-CmdSafeRequirement')
 
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('stagedeps-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Force -Path $script:tmp | Out-Null
@@ -69,20 +69,27 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
 
     It 'Get-WheelRequirements reads Requires-Dist lines from a wheel METADATA' {
         $p = Join-Path $script:tmp 'test-1.0.0-py3-none-any.whl'
-        & $script:NewWheel -Path $p -Name 'test' -RequiresDist @('numpy>=1.21', 'packaging', 'typing_extensions>=4.5')
+        & $script:NewWheel -Path $p -Name 'test' -RequiresDist @('numpy>=1.21', 'packaging', 'typing_extensions>=4.5', 'my-extra==1.0')
         $reqs = @(Get-WheelRequirements $p)
-        Assert-Equal 3 $reqs.Count 'three requirements'
+        Assert-Equal 4 $reqs.Count 'four requirements'
         Assert-True ($reqs -contains 'numpy>=1.21') 'numpy present'
         Assert-True ($reqs -contains 'packaging') 'packaging present'
         Assert-True ($reqs -contains 'typing_extensions>=4.5') 'typing_extensions present'
+        Assert-True ($reqs -contains 'my-extra==1.0') 'a name containing "extra" is not a marker'
     }
 
     It 'Get-WheelRequirements drops extras (extra == markers) — optional deps are not first-touch' {
         $p = Join-Path $script:tmp 'extras-1.0.0-py3-none-any.whl'
-        & $script:NewWheel -Path $p -Name 'extras' -RequiresDist @('numpy>=1.21', 'torch ; extra == "gpu"', 'pytest ; extra == "dev"')
+        & $script:NewWheel -Path $p -Name 'extras' -RequiresDist @('numpy>=1.21', 'torch ; extra == "gpu"', 'pytest ; extra == "dev"',
+                "backports-zstd; (python_version < '3.14') and extra == 'test-full'", 'pytest-perf; sys_platform != "cygwin" and extra == "test"')
         $reqs = @(Get-WheelRequirements $p)
-        Assert-Equal 1 $reqs.Count 'only the non-extra requirement'
+        Assert-Equal 1 $reqs.Count 'only the non-extra requirement, however the marker is compounded'
         Assert-Equal 'numpy>=1.21' $reqs[0] 'numpy is the first-touch dep'
+    }
+
+    It 'ConvertTo-CmdSafeRequirement single-quotes markers so cmd.exe keeps them' {
+        Assert-Equal "pytest-perf; sys_platform != 'cygwin' and extra == 'test'" (ConvertTo-CmdSafeRequirement 'pytest-perf; sys_platform != "cygwin" and extra == "test"') 'double quotes become single'
+        Assert-Equal 'numpy>=1.21' (ConvertTo-CmdSafeRequirement 'numpy>=1.21') 'a plain requirement is untouched'
     }
 
     It 'Get-WheelRequirements stops at the first blank line (description is not parsed)' {
