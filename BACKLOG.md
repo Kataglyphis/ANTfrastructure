@@ -159,9 +159,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
-      - No aarch64 ASan runtime.
-      - The CUDA payload lacks nvrtc, nvtx and cupti.
-      - No LiteRT QNN dispatch (#155: five upstream defects).
+      - No aarch64 ASan runtime (re-checked 2026-10-03: the LLVM package still has none;
+        the smoke gate skips its probe for that reason).
+      - The CUDA payload stages ORT's link closure only - nvrtc, nvtx and cupti are not in
+        it. All three DO exist for windows-arm64 in the CUDA 13.4.2 redist (checked
+        2026-10-03); add them when a consumer needs runtime compilation or profiling.
+      - No LiteRT QNN dispatch (#155: five upstream defects, documented 2026-08-31 at the
+        pinned v2.2.0; upstream main still fetches QAIRT unhashed, so a pin bump alone
+        would not fix it).
       - Absent by construction: the TVM/IREE compilers, LiteRT-LM, the torch
         stage, Flutter, classic TensorRT, TAPPAS.
       - Its binaries now run on real arm64 hardware, but only as far as loading.
