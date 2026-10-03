@@ -169,13 +169,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         would not fix it).
       - Absent by construction: the TVM/IREE compilers, LiteRT-LM, the torch
         stage, Flutter, classic TensorRT, TAPPAS.
-      - Its binaries now run on real arm64 hardware, but only as far as loading.
-        The consumer cross lanes' run jobs on `windows-11-arm` (2026-09-25; runs
-        36136967538, 36142875090, 36142882316) load the bundle's VC++ runtime and
-        GLib/GStreamer, and AccelerANTgine's also loads its chain ONNX Runtime (a
-        static import). Nothing runs an inference, a GStreamer pipeline or a
-        plugin, and the bundle's own tools and Python never execute
-        (`docs/windows-cross-builds.md` § Consumer cross lanes).
+      - The bundle EXECUTES on hardware since 2026-10-03 (Snapdragon X, summy-server):
+        HailoRT-CLI 5.4.0, GStreamer 1.29.2 (`gst-inspect` + a videotestsrc->fakesink
+        pipeline), `iree-run-module`, and the bundle's own Python 3.14.7 importing
+        numpy 2.5.3, onnxruntime 1.30.0 (DmlExecutionProvider + CPUExecutionProvider),
+        av 18.1.0 and cv2 5.0.0 - the wheels installed offline from its store. Still
+        unproven on a device: an inference, a camera/plugin pipeline, and the consumer
+        run jobs' apps (those jobs loaded the bundle's DLLs only; runs 36136967538,
+        36142875090, 36142882316).
 - [b] **CON31 — Variants that are not published** [L, ★]. Blocked on owner decisions.
       - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
