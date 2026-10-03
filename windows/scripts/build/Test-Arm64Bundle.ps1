@@ -110,14 +110,16 @@ Invoke-BundleStep 'torch win-arm64 wheel stack present (cp313)' {
     $missing = @($expected | Where-Object { @(Get-ChildItem (Join-Path $BundleRoot 'wheels') -Filter $_ -File).Count -lt 1 })
     if ($missing.Count -gt 0) { throw "wheel store misses $($missing.Count) torch-stack wheel(s): $($missing -join ', ')" }
 } $results
-Invoke-BundleStep 'asan runtime present (aarch64)' {
-    $dll = Join-Path $BundleRoot 'bin\clang_rt.asan_dynamic-aarch64.dll'
-    if (-not (Test-Path $dll)) { throw "missing $dll" }
-    $bytes = [IO.File]::ReadAllBytes($dll)
-    $peOff = [BitConverter]::ToInt32($bytes, 0x3C)
-    if ($bytes[$peOff] -ne 0x50 -or $bytes[$peOff + 1] -ne 0x45) { throw 'not a PE file' }
-    $machine = [BitConverter]::ToUInt16($bytes, $peOff + 4)
-    if ($machine -ne 0xAA64) { throw ('machine 0x{0:X4}, expected 0xAA64' -f $machine) }
+Invoke-BundleStep 'VS runtimes present (aarch64: ASan + OpenMP)' {
+    foreach ($name in 'clang_rt.asan_dynamic-aarch64.dll', 'vcomp140.dll') {
+        $dll = Join-Path $BundleRoot "bin\$name"
+        if (-not (Test-Path $dll)) { throw "missing $dll" }
+        $bytes = [IO.File]::ReadAllBytes($dll)
+        $peOff = [BitConverter]::ToInt32($bytes, 0x3C)
+        if ($bytes[$peOff] -ne 0x50 -or $bytes[$peOff + 1] -ne 0x45) { throw "$name is not a PE file" }
+        $machine = [BitConverter]::ToUInt16($bytes, $peOff + 4)
+        if ($machine -ne 0xAA64) { throw ('{0}: machine 0x{1:X4}, expected 0xAA64' -f $name, $machine) }
+    }
 } $results
 
 $verdict = Get-BundleVerdict -Results $results -MinPassed $MinPassed -AllowEmptyRun:$AllowEmptyRun

@@ -254,4 +254,10 @@ Describe 'verify-target-arch: device-OS import allowances (#121 QNN)' {
         Assert-True ($scriptText.Contains('lib(cds|ads)prpc\.dll')) 'libcdsprpc/libadsprpc must be client-OS allowed (QAIRT HTP stubs import them; they ship in every Windows-on-Snapdragon OS image)'
         Assert-True ($scriptText.Contains('FastRPC')) 'the comment must say why'
     }
+
+    It 'allowlists the cp313 torch stack''s interpreter as an external (python313.dll)' {
+        $scriptText = Get-Content -Raw (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\build\Test-TargetArch.ps1')
+        Assert-True ($scriptText.Contains('python313\.dll')) 'the cp313 wheels import python313.dll; the bundle ships python314 and the device provides the 3.13 interpreter'
+        Assert-True ($scriptText.Contains('cp313')) 'the comment must say why'
+    }
 }
