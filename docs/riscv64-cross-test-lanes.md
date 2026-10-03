@@ -38,7 +38,8 @@ cmake --preset <one whose toolchainFile is $env{RISCV64_CMAKE_TOOLCHAIN_FILE}> &
 
 A **Python** consumer skips the sysroot and the script: `python-ci-linux.yml`'s
 `arches: riscv64` row runs the riscv64 image under QEMU on an amd64 runner, tests
-only (`docs/python-ci.md` § riscv64).
+only unless `package-emulated: true` adds the arch-specific wheel
+(`docs/python-ci.md` § riscv64).
 
 Nothing names `qemu`: binfmt runs riscv64 binaries directly, so `cargo test`, `ctest`, a
 test that spawns another riscv64 binary (`assert_cmd`) and CMake's `try_run` all work
@@ -154,7 +155,7 @@ Ubuntu 26.04's `qemu-user` 10.2.1 runs them too. `riscv64_cross_env` sets
 | OxidANT | `linux-riscv64.yml` | `cargo test --workspace`: 358 tests (local 2 min 52 s) | GPU rendering (skips without an adapter; `RISCV64_GPU_TESTS=1`) |
 | AccelerANTgine | `linux-riscv64.yml` | Debug ctest (commit, compile, FuzzTest unit mode) + `first_fuzz_test` | sanitizers, coverage, TSan build, perf |
 | BeschleunigerBallett | `linux-riscv64.yml` | Debug ctest | `Integration`, `GoldenRender` (GPU), sanitizers, coverage |
-| OrchestrANT | `linux-riscv64.yml` | pytest through `python-ci-linux.yml`'s `arches: riscv64` row (the riscv64 image under QEMU, `test` extra): 139 min on 2026-10-02 | static analysis, packaging, docs, the `3.14t` leg |
+| OrchestrANT | `linux-riscv64.yml` | pytest + the arch-specific Cython wheel through `python-ci-linux.yml`'s `arches: riscv64` row with `package-emulated` (the riscv64 image under QEMU, `test` extra): 139 min tests-only on 2026-10-02, the 300-minute budget since 2026-10-03 | static analysis, docs, the `3.14t` leg, the amd64-arm64 app packages |
 | OmniAccelerANT | none | — | waits for Flutter in the riscv64 image |
 
 **Not covered.** A riscv64 *product* build (packages, AppImage) — these lanes test, they do
