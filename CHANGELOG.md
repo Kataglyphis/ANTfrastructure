@@ -9,6 +9,17 @@
 
 ## 2026-10-03 — the Ansible fleet-update lane goes live
 
+* **The cat cam joined as the third Pi**: `tabblscatcam` (Raspberry Pi 5,
+  Debian 13) — found via mDNS, bootstrapped via `setup-fleet-host.sh tabblscatcam` (values
+  from gitignored host_vars, like every host). Its FIRST run was real:
+  apt updates applied, a pending bootloader EEPROM update staged, and the
+  inline reboot+wait flashed it — `BOOTLOADER: up to date` after, second
+  run idempotent. This closes the discovery question: the fleet is three
+  Pis (pi-1, pi-2, tabblscatcam), one SpacemiT SBC and one Windows host.
+  `ping.yml` learned a second play: the builtin ping cannot run on Windows,
+  so the lane proof splits `fleet` (ping) from `windows` (win_ping) —
+  summy-server had been failing the lane proof since it joined.
+
 * **The microcontroller updates are now REAL, gated, and in the Sunday run**
   (owner directive): `update_tasmota.yml` flashes the stock plugs ONLY when
   the official release version differs from the installed one — the
