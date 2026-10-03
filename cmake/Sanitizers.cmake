@@ -125,19 +125,25 @@ function(
           INTERFACE "$<$<CONFIG:Debug>:_DISABLE_VECTOR_ANNOTATION>" "$<$<CONFIG:Debug>:_DISABLE_STRING_ANNOTATION>"
                     "$<$<CONFIG:Debug>:_DISABLE_OPTIONAL_ANNOTATION>")
 
-        # Prefer Microsoft's ASan runtime; LLVM's aborts full apps at startup: docs/windows-clang-cl-sanitizers.md
+        # Microsoft's ASan runtime per target arch (lib/x64 + -x86_64, lib/arm64 + -aarch64); LLVM's aborts full apps: docs/windows-clang-cl-sanitizers.md
+        set(_ASAN_LIB_DIR_NAME "x64")
+        set(_ASAN_LIB_SUFFIX "x86_64")
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|arm64|aarch64)$")
+          set(_ASAN_LIB_DIR_NAME "arm64")
+          set(_ASAN_LIB_SUFFIX "aarch64")
+        endif()
         set(_ASAN_LINK_DIR "")
         if(DEFINED ENV{VCToolsInstallDir})
           file(TO_CMAKE_PATH "$ENV{VCToolsInstallDir}" _VCTOOLS)
-          if(EXISTS "${_VCTOOLS}/lib/x64/clang_rt.asan_dynamic_runtime_thunk-x86_64.lib")
-            set(_ASAN_LINK_DIR "${_VCTOOLS}/lib/x64")
+          if(EXISTS "${_VCTOOLS}/lib/${_ASAN_LIB_DIR_NAME}/clang_rt.asan_dynamic_runtime_thunk-${_ASAN_LIB_SUFFIX}.lib")
+            set(_ASAN_LINK_DIR "${_VCTOOLS}/lib/${_ASAN_LIB_DIR_NAME}")
           endif()
         endif()
         if(NOT _ASAN_LINK_DIR)
           file(GLOB _MSVC_ASAN_LIB_DIRS
-               "C:/Program Files*/Microsoft Visual Studio/*/BuildTools/VC/Tools/MSVC/*/lib/x64")
+               "C:/Program Files*/Microsoft Visual Studio/*/BuildTools/VC/Tools/MSVC/*/lib/${_ASAN_LIB_DIR_NAME}")
           foreach(_d ${_MSVC_ASAN_LIB_DIRS})
-            if(EXISTS "${_d}/clang_rt.asan_dynamic_runtime_thunk-x86_64.lib")
+            if(EXISTS "${_d}/clang_rt.asan_dynamic_runtime_thunk-${_ASAN_LIB_SUFFIX}.lib")
               set(_ASAN_LINK_DIR "${_d}")
             endif()
           endforeach()
@@ -150,16 +156,16 @@ function(
         endif()
 
         if(_ASAN_LINK_DIR)
-          set(_ASAN_DYNAMIC_LIB "${_ASAN_LINK_DIR}/clang_rt.asan_dynamic-x86_64.lib")
-          set(_ASAN_THUNK_LIB "${_ASAN_LINK_DIR}/clang_rt.asan_dynamic_runtime_thunk-x86_64.lib")
+          set(_ASAN_DYNAMIC_LIB "${_ASAN_LINK_DIR}/clang_rt.asan_dynamic-${_ASAN_LIB_SUFFIX}.lib")
+          set(_ASAN_THUNK_LIB "${_ASAN_LINK_DIR}/clang_rt.asan_dynamic_runtime_thunk-${_ASAN_LIB_SUFFIX}.lib")
           if(EXISTS "${_ASAN_DYNAMIC_LIB}" AND EXISTS "${_ASAN_THUNK_LIB}")
             message(STATUS "clang-cl ASan runtime link dir: ${_ASAN_LINK_DIR}")
             target_link_directories(${project_name} INTERFACE "${_ASAN_LINK_DIR}")
             target_link_libraries(
-              ${project_name} INTERFACE "$<$<CONFIG:Debug>:clang_rt.asan_dynamic-x86_64>"
-                                        "$<$<CONFIG:Debug>:clang_rt.asan_dynamic_runtime_thunk-x86_64>")
+              ${project_name} INTERFACE "$<$<CONFIG:Debug>:clang_rt.asan_dynamic-${_ASAN_LIB_SUFFIX}>"
+                                        "$<$<CONFIG:Debug>:clang_rt.asan_dynamic_runtime_thunk-${_ASAN_LIB_SUFFIX}>")
             target_link_options(${project_name} INTERFACE
-                                "$<$<CONFIG:Debug>:/WHOLEARCHIVE:clang_rt.asan_dynamic_runtime_thunk-x86_64.lib>")
+                                "$<$<CONFIG:Debug>:/WHOLEARCHIVE:clang_rt.asan_dynamic_runtime_thunk-${_ASAN_LIB_SUFFIX}.lib>")
           else()
             message(WARNING "clang-cl ASan runtime libraries not found in ${_ASAN_LINK_DIR}")
           endif()
