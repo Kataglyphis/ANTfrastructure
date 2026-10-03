@@ -7,6 +7,15 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-03 — the clang-cl ASan runtime follows the target arch
+
+- `cmake/Sanitizers.cmake` picks the ASan link dir and lib names from `CMAKE_SYSTEM_PROCESSOR`:
+  MSVC keeps x64 in `lib/x64` with `-x86_64` libs and arm64 in `lib/arm64` with `-aarch64`,
+  so an arm64 cross build links Microsoft's runtime instead of LLVM's, whose aarch64 runtime
+  the image does not carry. Native x64 configures unchanged.
+- `Copy-Arm64VsRuntime.ps1` gains `-Flat`: stage beside a staged test tree's exes instead of
+  its `bin\`, which an arm64 ASan suite needs on the runner.
+
 ## 2026-10-03 — the arm64 bundle carries the VS runtimes its payloads link
 
 - `Copy-Arm64VsRuntime.ps1` (was `Copy-Arm64AsanRuntime.ps1`) also stages the aarch64
