@@ -86,7 +86,7 @@ split its `ubuntu-26.04-amd64-arm64.yml` into `linux-x64.yml` and
 tests only. The row registers QEMU's binfmt handler through
 `setup-riscv64-cross` with `sysroot: false` (the sysroot serves cross builds,
 and a Python lane has nothing to cross-compile), runs every container step with
-`--platform linux/riscv64`, and carries its own `timeout: 240` in the plan's
+`--platform linux/riscv64`, and carries its own `timeout: 300` in the plan's
 matrix - the first opt-in packaging run hit the old 180-minute budget (the
 measured 139-min test leg plus the emulated wheel build would not fit). The docs
 build stays `x64`'s, and static analysis stays off the row with
