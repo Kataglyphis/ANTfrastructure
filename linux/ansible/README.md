@@ -78,6 +78,7 @@ from this directory is required — `ansible.cfg`, `ssh_config` and the
 | Playbook | What it does |
 | --- | --- |
 | `playbooks/update.yml` | per host: apt safe-upgrade + autoremove, then (host_vars flags) container-stack update, nerdctl drift report, venv upgrade; reboot only when required |
+| `playbooks/update-bitshake.yml` | on-demand: the bitShake SmartMeterReader firmware + SMR app (HTTP-driven, never scheduled — a failed flash kills the energy data). Procedure + traps: [HA README § bitShake](../homeassistant/README.md#the-bitshake-smartmeterreader-firmware-updates) |
 | `playbooks/bootstrap-fleet.yml` | one-time per new host: passwordless sudo for the ansible user |
 | `playbooks/schedule.yml` | installs the weekly systemd timer on pi-1 |
 | `playbooks/ping.yml` | lane proof — reach every inventorized host |

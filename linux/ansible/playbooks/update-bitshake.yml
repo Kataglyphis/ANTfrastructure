@@ -1,0 +1,158 @@
+---
+# Deliberate, never scheduled: a failed flash takes the energy data offline (README § bitShake).
+- name: Update the bitShake SmartMeterReader (firmware + SMR app)
+  hosts: pi-1
+  gather_facts: false
+  vars:
+    bitshake_ota_headers:
+      Cache-Control: no-cache
+      Pragma: no-cache
+      Expires: "0"
+      X-Cache-Control: no-cache
+  tasks:
+    - name: Fetch the bitShake OTA manifest (the header set is the browser-gate bypass)
+      ansible.builtin.uri:
+        url: https://smr-ota.bitshake.de/ota/prod/manifest.json
+        headers: "{{ bitshake_ota_headers }}"
+        return_content: true
+      register: bitshake_manifest
+
+    - name: Read the release from the manifest
+      ansible.builtin.set_fact:
+        bitshake_release: "{{ bitshake_manifest.json | dict2items | first }}"
+
+    - name: Query the device firmware version
+      ansible.builtin.uri:
+        url: "{{ bitshake_device_url }}/cm?cmnd=Status%202"
+        return_content: true
+      register: bitshake_status
+
+    - name: Query the device filesystem (is the SMR app installed?)
+      ansible.builtin.uri:
+        url: "{{ bitshake_device_url }}/ufsd?download=/"
+        return_content: true
+      register: bitshake_fs
+
+    - name: Derive the plan
+      ansible.builtin.set_fact:
+        bitshake_fw_current: "{{ bitshake_status.json.StatusFWR.Version }}"
+        bitshake_fw_version: "{{ bitshake_release.value.tasmota.version }}"
+        bitshake_fw_url: "{{ bitshake_release.value.tasmota.url }}"
+        bitshake_app_files: "{{ bitshake_release.value.files }}"
+        bitshake_fw_needed: "{{ bitshake_release.value.tasmota.version not in bitshake_status.json.StatusFWR.Version }}"
+        bitshake_app_needed: "{{ 'bitshake.tapp' not in bitshake_fs.content }}"
+
+    - name: The plan
+      ansible.builtin.debug:
+        msg: >-
+          device {{ bitshake_fw_current }} vs manifest {{ bitshake_fw_version }}
+          (bitShake SW {{ bitshake_release.key }});
+          firmware {{ 'UPDATE' if bitshake_fw_needed else 'current' }},
+          SMR app {{ 'INSTALL' if bitshake_app_needed else 'installed' }}
+
+    - name: Download the firmware image
+      ansible.builtin.get_url:
+        url: "{{ bitshake_fw_url }}"
+        dest: /tmp/bitshake-fw.bin
+        headers: "{{ bitshake_ota_headers }}"
+        mode: "0644"
+      when: bitshake_fw_needed or bitshake_app_needed
+
+    - name: Validate the image magic byte 0xE9 (the manifest sha256 is stale — see HA README)
+      ansible.builtin.command:
+        cmd: head -c 1 /tmp/bitshake-fw.bin | od -An -tx1
+      when: bitshake_fw_needed
+      register: bitshake_magic
+      changed_when: false
+      failed_when: "'e9' not in bitshake_magic.stdout"
+
+    - name: Upload the firmware through the device's upgrade form
+      ansible.builtin.command:
+        cmd: >-
+          curl -s -F "u2=@/tmp/bitshake-fw.bin"
+          "{{ bitshake_device_url }}/u2?fsz={{ lookup('pipe', 'stat -c%s /tmp/bitshake-fw.bin') }}"
+      when: bitshake_fw_needed
+      register: bitshake_fw_upload
+      changed_when: true
+      failed_when: "'fehlgeschlagen' in bitshake_fw_upload.stdout"
+
+    - name: Wait for safeboot to flash and the new firmware to boot
+      ansible.builtin.command:
+        cmd: |
+          for i in $(seq 1 40); do
+            v="$(curl -s --max-time 5 '{{ bitshake_device_url }}/cm?cmnd=Status%202' | grep -o '"Version":"[^"]*"' | head -1)"
+            case "$v" in *{{ bitshake_fw_version }}*) echo "$v"; exit 0;; esac
+            sleep 15
+          done
+          echo "TIMEOUT: device never booted {{ bitshake_fw_version }}" >&2
+          exit 1
+      when: bitshake_fw_needed
+      register: bitshake_fw_boot
+      changed_when: false
+
+    - name: Download the SMR app files
+      ansible.builtin.get_url:
+        url: "{{ item.url }}"
+        dest: "/tmp/{{ item.name }}"
+        headers: "{{ bitshake_ota_headers }}"
+        mode: "0644"
+      loop: "{{ bitshake_app_files }}"
+      when: bitshake_app_needed
+
+    - name: Install the SMR app files (a first refusal after a flash is transient — retry)
+      ansible.builtin.command:
+        cmd: >-
+          curl -s -F "ufsu=@/tmp/{{ item.name }}"
+          "{{ bitshake_device_url }}/ufsu?fsz={{ lookup('pipe', 'stat -c%s /tmp/' ~ item.name) }}"
+      loop: "{{ bitshake_app_files }}"
+      when: bitshake_app_needed
+      register: bitshake_app_upload
+      changed_when: true
+      retries: 3
+      delay: 20
+      until: "'fehlgeschlagen' not in bitshake_app_upload.stdout"
+
+    - name: Restart the device to activate the SMR app
+      ansible.builtin.uri:
+        url: "{{ bitshake_device_url }}/cm?cmnd=Restart%201"
+      when: bitshake_app_needed
+
+    - name: Settle after the restart
+      ansible.builtin.wait_for:
+        host: "{{ bitshake_device_url | urlsplit('hostname') }}"
+        port: 80
+        delay: 30
+        timeout: 180
+      when: bitshake_app_needed
+
+    - name: Final gate — firmware version, meter data, MQTT
+      block:
+        - name: Re-query the device
+          ansible.builtin.uri:
+            url: "{{ bitshake_device_url }}/cm?cmnd=Status%202"
+            return_content: true
+          register: bitshake_final_fw
+
+        - name: Re-query the meter data
+          ansible.builtin.uri:
+            url: "{{ bitshake_device_url }}/cm?cmnd=Status%2010"
+            return_content: true
+          register: bitshake_final_sns
+
+        - name: Re-query MQTT
+          ansible.builtin.uri:
+            url: "{{ bitshake_device_url }}/cm?cmnd=Status%206"
+            return_content: true
+          register: bitshake_final_mqtt
+
+        - name: Assert the device is healthy (fail loudly — it feeds the energy dashboard)
+          ansible.builtin.assert:
+            that:
+              - bitshake_fw_version in bitshake_final_fw.json.StatusFWR.Version
+              - "'E320' in bitshake_final_sns.json.StatusSNS | string"
+              - bitshake_final_mqtt.json.StatusMQT.MqttHost | default('') | length > 0
+            fail_msg: >-
+              device unhealthy after the update:
+              fw={{ bitshake_final_fw.json.StatusFWR.Version | default('?') }},
+              meter={{ bitshake_final_sns.json.StatusSNS | default({}) | string | truncate(60) }},
+              mqtt={{ bitshake_final_mqtt.json.StatusMQT.MqttHost | default('none') }}
