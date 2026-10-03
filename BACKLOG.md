@@ -6,11 +6,12 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-01.** Published: `:latest` (2026-09-30, hub 9e9d9828; amd64 `502a5e9d…`,
-arm64 `4446422d…`, riscv64 `d5e4db6b…`), `:winamd64` (2026-09-30, hub 18b08cc4,
-`676980e3…`), `:winamd64-nvidia` (2026-09-27, hub a33a460b), `:winamd64-rocm` (2026-09-28,
-hub ad08bc30), `:latest-rocm` (2026-09-28, hub 1754a1dd), `:winarm64` (2026-10-01, hub
-59a4bca3, without NVIDIA; no `:winarm64-nvidia` tag exists).
+**State 2026-10-03.** Published: `:latest` (2026-09-30, hub 9e9d9828; amd64 `502a5e9d…`,
+arm64 `4446422d…`, riscv64 `d5e4db6b…`), `:winamd64` (2026-10-02, hub 4cc6b21d,
+`67b4b552…`), `:winamd64-nvidia` (2026-10-02, hub 8d565715, `a9e67332…`),
+`:winamd64-rocm` (2026-10-03, hub 1d910553, `493e80f1…`), `:winarm64` (2026-10-03, hub
+1d910553, `eb0cf789…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-rocm`
+(2026-09-28, hub 1754a1dd).
 `:latest-nvidia` is not published. Every Linux image gap up to CON41 shipped and was checked
 in the published children (git history). Decisions and gaps checked closed live in
 [`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
@@ -148,7 +149,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 ## Open — Windows `:winamd64`
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
-      under clang-cl** [S, ★]. Blocked upstream (checked 2026-09-26): microsoft/STL#6294
+      under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294
       is open, its fix #6298 awaits review, and neither 14.52 nor 14.53 Preview carries it.
       The toolset is VS 18's stable channel, not a pin that could move.
       BeschleunigerBallett's `find_if` stands (a2793e6c). Never set
@@ -232,21 +233,3 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         `USE_NEW_NVSTREAMMUX`) and OmniAccelerANT's `nvinfer` path, after a published image exists.
       - Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only). The v9.1.0 release
         also hosts 9.1.1 assets for NVIDIA's `develop` branch; the pin stays on 9.1.0.
-- [b] **CON34 — The rocm image's HIP/MSVC `<cmath>` overlay is installed by the llama
-      stage, not by `Dockerfile.rocm`** [S, ★]. Blocked on the next rocm build (owner):
-      it re-keys from base anyway since `versions.env` changed, so the move adds no rebuild
-      then, and only that build proves it (MIGraphX has never compiled with the config files
-      active). The 2026-09-26 scope adds one step: `Rocm.Install.Tests.ps1`'s check that no
-      `llvm\bin` appears in `Dockerfile.rocm` must narrow to the PATH value. MSVC 14.51's `constexpr` `isgreater`
-      and its five siblings broke every HIP compile in the image. `windows/scripts/hip/`
-      fixes that with config files beside TheRock's clang (`docs/windows-rocm.md`
-      § HIP compiles against MSVC 14.51, 2026-09-25). They sit at the end of
-      `Dockerfile.rocm-llama` only because an edit to `Dockerfile.rocm` re-keys the
-      whole chain. At the next full rocm rebuild:
-      - install them with TheRock in `Dockerfile.rocm`;
-      - drop MIGraphX's own `-isystem` overlay (`Write-HipMsvcCmathOverlay`), since
-        TheRock's `clang++` then loads the config itself;
-      - drop the parity test that holds the two copies equal.
-
-      Retire the overlay itself when `Test-HipMsvcCmath.ps1` reports that the
-      `--no-default-config` compile passes too.
