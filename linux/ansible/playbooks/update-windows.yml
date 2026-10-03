@@ -87,6 +87,17 @@
       ansible.builtin.debug:
         msg: "{{ (win_winget.stdout | default('skipped')) | truncate(500) }}"
 
+    - name: scoop update * (per-user packages; pure PowerShell, runs fine over SSH)
+      ansible.windows.win_shell: |
+        scoop update * 2>&1 | Out-String -Width 200
+      register: win_scoop
+      changed_when: "'Latest versions' not in (win_scoop.stdout | default(''))"
+      failed_when: false
+
+    - name: scoop lane result
+      ansible.builtin.debug:
+        msg: "{{ (win_scoop.stdout | default('skipped')) | trim | truncate(300) }}"
+
     - name: Is a reboot pending?
       ansible.windows.win_shell: |
         $pending = @(
