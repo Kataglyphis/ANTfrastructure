@@ -7,6 +7,8 @@
 
 param(
     [string]$InstallDir = 'C:\runtime',
+    # Stage beside the given directory's files instead of its bin\: a staged test tree runs its exes from its root.
+    [switch]$Flat,
     [string]$ScriptDir = ''
 )
 
@@ -25,7 +27,7 @@ if ($arch -eq 'amd64') {
 }
 
 $toolsRoots = @(Get-MsvcToolsRoots -AllowMissing)
-$destDir = Join-Path $InstallDir 'bin'
+$destDir = if ($Flat) { $InstallDir } else { Join-Path $InstallDir 'bin' }
 New-Item -ItemType Directory -Force -Path $destDir | Out-Null
 $staged = @()
 

@@ -439,9 +439,12 @@ installs the VC++ runtime without `vcruntime140_1.dll`: the arm64 redist folder 
 file as ARM64EC, an x64-machine PE that only x64 and ARM64EC code imports, and the arch gate
 refuses it (measured in AccelerANTgine's first cross build).
 
-A cross lane builds its Release configuration only. Debug links an ASan runtime the bundle
-has no aarch64 copy of (`BACKLOG.md` CON30), and anything that runs a test, a benchmark or
-a PGO training pass cannot run on the amd64 host. That is what the run job is for.
+A cross lane builds Release, Profile and - since 2026-10-03 - the Debug (ASan) configuration:
+VS 2026's toolset carries the aarch64 runtime DLL and `lib/arm64` the import libs, and
+`Sanitizers.cmake` picks dir and lib names from `CMAKE_SYSTEM_PROCESSOR`. The Debug suite is a
+`/MDd` build, so the run job supplies the debug CRT and `ucrtbased.dll` from its own VS and
+Windows SDK - neither is redistributable. Anything that runs a test, a benchmark or a PGO
+training pass cannot run on the amd64 host: that is what the run job is for.
 
 ## Sequencing: rebuild base twice, on purpose
 
