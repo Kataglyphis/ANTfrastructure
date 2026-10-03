@@ -1,0 +1,64 @@
+---
+# Reboot only when pending — its own play so the Linux serial/reboot logic never sees Windows.
+- name: Keep summy-server (Windows 11 ARM) up to date
+  hosts: windows
+  gather_facts: false
+  tasks:
+    - name: Is the PSWindowsUpdate module installed?
+      ansible.windows.win_shell: |
+        if (Get-Module -ListAvailable -Name PSWindowsUpdate) { 'present' } else { 'absent' }
+      register: pswu_check
+      changed_when: false
+
+    - name: Install PSWindowsUpdate (per-user, from PowerShell Gallery)
+      ansible.windows.win_shell: |
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction SilentlyContinue | Out-Null
+        Install-Module PSWindowsUpdate -Scope CurrentUser -Force -Confirm:$false
+      when: "'absent' in pswu_check.stdout"
+      register: pswu_install
+      changed_when: "'absent' in pswu_check.stdout"
+
+    - name: What updates are available?
+      ansible.windows.win_shell: |
+        Import-Module PSWindowsUpdate
+        $u = Get-WindowsUpdate
+        if ($u) { ($u | ForEach-Object { "$($_.KB) $($_.Title)" }) -join "`n" } else { 'NONE' }
+      register: win_updates_list
+      changed_when: false
+
+    - name: Install all available updates (no reboot yet)
+      ansible.windows.win_shell: |
+        Import-Module PSWindowsUpdate
+        Install-WindowsUpdate -AcceptAll -IgnoreReboot -Verbose *>&1 | Out-String
+      when: win_updates_list.stdout.strip() != 'NONE'
+      register: win_updates_install
+      failed_when: false
+      changed_when: "'NONE' not in win_updates_list.stdout.strip()"
+
+    - name: Update run result (what remains)
+      ansible.windows.win_shell: |
+        Import-Module PSWindowsUpdate
+        $u = Get-WindowsUpdate
+        if ($u) { ($u | ForEach-Object { "$($_.KB) $($_.Title)" }) -join "`n" } else { 'NONE pending' }
+      register: win_updates_after
+      changed_when: false
+
+    - name: Show the remaining updates
+      ansible.builtin.debug:
+        msg: "{{ win_updates_after.stdout | trim | truncate(400) }}"
+
+    - name: Is a reboot pending?
+      ansible.windows.win_shell: |
+        $pending = @(
+          Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired',
+          Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
+        ) -contains $true
+        if ($pending) { 'yes' } else { 'no' }
+      register: win_reboot_check
+      changed_when: false
+
+    - name: Reboot and wait (summy-server is not the control node — inline is fine)
+      ansible.windows.win_reboot:
+        reboot_timeout: 1800
+      when: "'yes' in win_reboot_check.stdout"

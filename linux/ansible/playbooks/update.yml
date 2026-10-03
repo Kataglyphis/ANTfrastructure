@@ -119,13 +119,26 @@
 
     - name: Report the stock Tasmota devices (separate playbook, same lane)
       ansible.builtin.command:
-        cmd: "{{ lookup('env', 'HOME') }}/venvs/ansible/bin/ansible-playbook playbooks/report-tasmota.yml"
+        cmd: "{{ lookup('env', 'HOME') }}/venvs/ansible/bin/ansible-playbook report-tasmota.yml"
         chdir: "{{ playbook_dir }}"
       when: report_tasmota | default(false)
       register: tasmota_report_run
       changed_when: false
       failed_when: false
       # Report lane: its own playbook asserts MQTT health and prints per-device verdicts.
+
+    - name: Update the Windows hosts (separate playbook, same lane)
+      ansible.builtin.command:
+        cmd: "{{ lookup('env', 'HOME') }}/venvs/ansible/bin/ansible-playbook update-windows.yml"
+        chdir: "{{ playbook_dir }}"
+      when: manage_windows_updates | default(false)
+      register: windows_update_run
+      changed_when: false
+
+    - name: Windows update lane failed — surface it (the run stays green for the Pis)
+      ansible.builtin.debug:
+        msg: "{{ windows_update_run.stdout_lines[-8:] }}"
+      when: manage_windows_updates | default(false) and windows_update_run.rc != 0
 
     - name: Upgrade the ansible venv itself (last — a broken release must not kill the installing run)
       # lookup runs CONTROLLER-side: facts were gathered under become, so their HOME is /root.

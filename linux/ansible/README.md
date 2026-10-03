@@ -13,6 +13,7 @@ SSH config for this machine's fleet live here.
 | `pi-1` | Raspberry Pi 5 (control node, Home Assistant) | local |
 | `pi-2` | older Raspberry Pi, Debian 13 | SSH |
 | `mintberrycrunch` | riscv64 SoC, Ubuntu 26.04 | SSH |
+| `summy-server` | Windows 11 ARM Pro | SSH + PowerShell (`ansible.windows`) |
 
 ## What is installed (2026-10-02)
 
@@ -79,6 +80,7 @@ from this directory is required — `ansible.cfg`, `ssh_config` and the
 | --- | --- |
 | `playbooks/update.yml` | per host: apt safe-upgrade + autoremove, then (host_vars flags) container-stack update, nerdctl drift report, Tasmota device report, venv upgrade; reboot only when required |
 | `playbooks/report-tasmota.yml` | report-only: stock Tasmota plugs vs the official release + MQTT health (an unset broker silently kills their HA entities — the `.128` lesson) |
+| `playbooks/update-windows.yml` | summy-server: Windows Update via PSWindowsUpdate (`-AcceptAll -IgnoreReboot`), reboot inline only when pending |
 | `playbooks/update-bitshake.yml` | on-demand: the bitShake SmartMeterReader firmware + SMR app (HTTP-driven, never scheduled — a failed flash kills the energy data). Procedure + traps: [HA README § bitShake](../homeassistant/README.md#the-bitshake-smartmeterreader-firmware-updates) |
 | `playbooks/bootstrap-fleet.yml` | one-time per new host: passwordless sudo for the ansible user |
 | `playbooks/schedule.yml` | installs the weekly systemd timer on pi-1 |
@@ -92,6 +94,7 @@ from this directory is required — `ansible.cfg`, `ssh_config` and the
 | `managed_compose_projects` | `nerdctl compose pull` + `up -d --force-recreate` per file — updates the HA/glances containers (force-recreate is REQUIRED under nerdctl; the stack bounces weekly) |
 | `report_nerdctl_upstream` | report-only: installed nerdctl vs latest GitHub release. The upgrade itself stays deliberate — `NERDCTL_INSTALL_CONFIRM=1 linux/host-config/install-nerdctl-full.sh` (it stops both containerd lanes and bounces every container) |
 | `report_tasmota` | report-only: the stock Tasmota ESP8266 plugs (addresses in `stock_tasmota_devices`) vs the official release, plus an MQTT-health assertion — a plug that lost its broker host silently stops feeding HA (found and fixed on one device, 2026-10-03) |
+| `manage_windows_updates` | runs `update-windows.yml` on the `windows` group — Windows Update over OpenSSH via PSWindowsUpdate; a failing Windows run is surfaced but does not fail the Pi lane |
 | `manage_ansible_venv` | `pip install -U ansible` into `~/venvs/ansible`, runs LAST so a broken release cannot take down the run that installs it |
 
 **Adding a new host** (the `pi-2` and `mintberrycrunch` slots were filled
