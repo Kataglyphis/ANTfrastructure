@@ -48,6 +48,45 @@
       ansible.builtin.debug:
         msg: "{{ win_updates_after.stdout | trim | truncate(400) }}"
 
+    - name: Trigger the Microsoft Store update scan (headless-capable, covers all Store apps)
+      ansible.windows.win_shell: |
+        $obj = Get-CimInstance -Namespace 'Root\cimv2\mdm\dmmap' -ClassName 'MDM_EnterpriseModernAppManagement_AppManagement01' -ErrorAction SilentlyContinue
+        if ($obj) { (Invoke-CimMethod -InputObject $obj -MethodName UpdateScanMethod).ReturnValue } else { 'mdm-bridge-unavailable' }
+      register: win_store_scan
+      changed_when: win_store_scan.stdout | trim in ('0', 'mdm-bridge-unavailable')
+      failed_when: false
+
+    - name: Ship the winget runner script (machine-wide path — no user profile in it)
+      ansible.windows.win_shell: New-Item -Path C:\ProgramData\ansible -ItemType Directory -Force | Out-Null
+    - name: Copy the winget runner script
+      ansible.windows.win_copy:
+        src: ../scripts/winget-upgrade-ansible.ps1
+        dest: C:/ProgramData/ansible/winget-upgrade-ansible.ps1
+
+    - name: winget upgrade --all (SYSTEM task; winget cannot run over SSH)
+      ansible.windows.win_shell: |
+        $log = 'C:\Windows\Temp\winget-ansible.log'
+        Remove-Item $log -ErrorAction SilentlyContinue
+        $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\ansible\winget-upgrade-ansible.ps1'
+        Register-ScheduledTask -TaskName 'ansible-winget-upgrade' -Action $act -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
+        $t0 = Get-Date
+        Start-ScheduledTask -TaskName 'ansible-winget-upgrade'
+        # 267009 = still running; wait for THIS start to finish (10 min cap)
+        for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep 10
+            $info = Get-ScheduledTaskInfo -TaskName 'ansible-winget-upgrade'
+            if ($info.LastRunTime -ge $t0 -and $info.LastTaskResult -ne 267009) { break }
+        }
+        "task result: $($info.LastTaskResult) (ran at $($info.LastRunTime))"
+        if (Test-Path $log) { Get-Content $log | Select-Object -Last 25 | Out-String } else { 'log missing' }
+      register: win_winget
+      changed_when: "'Successfully installed' in (win_winget.stdout | default(''))"
+      failed_when: win_winget.rc | default(0) | int == 2
+
+    - name: winget lane result
+      ansible.builtin.debug:
+        msg: "{{ (win_winget.stdout | default('skipped')) | truncate(500) }}"
+
     - name: Is a reboot pending?
       ansible.windows.win_shell: |
         $pending = @(
