@@ -9,6 +9,17 @@
 
 ## 2026-10-03 — the Ansible fleet-update lane goes live
 
+* **The stock Tasmota ESP8266 plugs joined the report lane** (`report-tasmota.yml`,
+  wired into the weekly run via the `report_tasmota` host_vars flag): version
+  against the official release plus an MQTT-health assertion. That assertion
+  exists because one plug (`.128`, a NOUS A1T) was found with NO broker
+  configured — registered in HA but silently dead. Root cause + fix: its
+  `MqttHost` was empty; set via one HTTP command, live-verified by watching
+  its `tele/…/SENSOR` messages arrive on the broker. All three plugs sit on
+  the current official release (15.6.0, 2026-08-25) and on the ungated
+  public OTA channel — unlike the bitShake device, they can self-update,
+  and the flash stays deliberate either way.
+
 * **The bitShake update is now a playbook** (`update-bitshake.yml`, on-demand
   — deliberately never scheduled): manifest fetch with the browser-gate
   header bypass, firmware download + magic-byte validation (the manifest
