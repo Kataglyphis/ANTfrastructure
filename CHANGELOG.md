@@ -7,6 +7,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-03 — the emulated riscv64 packaging leg stops syncing all extras
+
+- `ci_packaging.sh` honours the lane's `SYNC_EXTRAS` input (mapped to `UV_SYNC_EXTRAS`),
+  and the riscv64 row's test and packaging steps share
+  `UV_CACHE_DIR=/workspace/.uv-cache`. Without both, the first OrchestrANT packaging
+  run resolved 306 packages (all extras, opencv-python and torchvision from git among
+  them) and was killed at the 300-minute budget.
+- The riscv64 row's ceiling moves 300 -> 360: it covers a cold cache, where the packaging
+  leg re-pays the test leg's measured 151-minute source builds beside its 169-minute
+  test leg.
+
 ## 2026-10-03 — the Ansible fleet-update lane goes live
 
 * **The cat cam joined as the third Pi**: `tabblscatcam` (Raspberry Pi 5,
@@ -141,12 +152,42 @@
   "provided file is not a console" outside an interactive shell.
 
 
+## 2026-10-03 - the arm64 bundle gets its device gate, and passes it
+
+- New `windows/scripts/build/Test-Arm64Bundle.ps1`: runs the shipped bundle's tools and Python
+  on an arm64 device (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT
+  providers, cv2), every step exit-code-checked, with a passing floor so a device that ran
+  nothing cannot look green. `Smoke.Arm64Bundle.Tests.ps1` pins the floor logic.
+- First device run 2026-10-03 on a Snapdragon X against the published `:winarm64`: nine of nine
+  steps pass - HailoRT-CLI 5.4.0, GStreamer 1.29.2, Python 3.14.7 with numpy 2.5.3,
+  onnxruntime 1.30.0 (DirectML + CPU) and cv2 5.0.0. CON30's "loads only" no longer holds.
+
+- The arm64 CUDA payload gains nvrtc and cupti (13.4.92, SHA-pinned from the redist) for
+  consumers that compile kernels at run time or profile; nvtx is header-only on
+  windows-arm64. Forwarded in Build-Buildkit.ps1, ARGs in Dockerfile.nvidia, and the
+  staging script asserts both.
+
+- The arm64 bundle ships Microsoft's aarch64 ASan runtime (clang_rt.asan_dynamic-aarch64.dll
+  + the dbg twin) from VS 2026's toolset: staged in the merge stage, machine-checked by the
+  arch gate, asserted by Test-Arm64Bundle.ps1 on the device. The smoke probe still skips on
+  the x64 host, now for the real reason - it must execute an aarch64 exe.
+
+- The arm64 bundle's wheel store gains the cp313 win-arm64 torch stack (torch
+  2.14.0+cpu, torchvision 0.29.1a0+cpu, pillow, MarkupSafe and the pure-python
+  first-touch deps), SHA-pinned from pytorch.org/PyPI. Upstream builds no cp314
+  win-arm64 wheel (stable, test and nightly checked), so the bundle's own 3.14
+  interpreter cannot install them - they serve a device that brings its own
+  cp313 interpreter.
+
+
+
+
 ## 2026-10-02 - the Python lane grows a riscv64 row: the riscv64 image under QEMU
 
 - `python-ci-linux.yml` takes `arches: riscv64`: the row registers QEMU's binfmt
   handler (`setup-riscv64-cross` with `sysroot: false`), runs the riscv64 image
   under QEMU on an amd64 runner, and tests only - static analysis, packaging and
-  the docs build stay `x64`'s. The row carries its own 240-minute budget -
+  the docs build stay `x64`'s. The row carries its own 300-minute budget -
   the first packaging run hit the original 180 and was cancelled mid-way
   through the wheel build.
 - New input `test-extras`, backed by `ci_tests.sh`'s `SYNC_EXTRAS`: every leg

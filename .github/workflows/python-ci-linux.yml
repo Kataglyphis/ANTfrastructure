@@ -146,7 +146,7 @@ jobs:
             case "${arch}" in
               x64) row='{"runs_on":"ubuntu-26.04","arch":"x64","platform":"linux/amd64"}' ;;
               arm64) row='{"runs_on":"ubuntu-26.04-arm","arch":"arm64","platform":"linux/arm64"}' ;;
-              riscv64) row='{"runs_on":"ubuntu-26.04","arch":"riscv64","platform":"linux/riscv64","timeout":240}' ;;
+              riscv64) row='{"runs_on":"ubuntu-26.04","arch":"riscv64","platform":"linux/riscv64","timeout":360}' ;;
               *) echo "::error::arches: unknown arch '${arch}' (known: x64 arm64 riscv64)"; exit 1 ;;
             esac
             case "${seen}" in
@@ -214,6 +214,7 @@ jobs:
             -e PYTEST_PATHS=${{ inputs.test-paths }}
             -e FREE_THREADED_SYNC_EXTRAS=${{ inputs.free-threaded-extras }}
             -e SYNC_EXTRAS=${{ inputs.test-extras }}
+            ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e UV_CACHE_DIR=/workspace/.uv-cache' || '' }}
           script: >-
             bash -lc "bash scripts/linux/ci_tests.sh
             '${{ inputs.package-name }}' '${{ inputs.test-python-versions }}'"
@@ -251,7 +252,10 @@ jobs:
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
-          extra-args: --platform ${{ matrix.platform }}
+          extra-args: >-
+            --platform ${{ matrix.platform }}
+            ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e UV_CACHE_DIR=/workspace/.uv-cache' || '' }}
+            -e SYNC_EXTRAS=${{ matrix.arch == 'riscv64' && inputs.test-extras || '' }}
           script: >-
             bash -lc "bash scripts/linux/ci_packaging.sh
             '${{ inputs.packaging-python-version }}'"

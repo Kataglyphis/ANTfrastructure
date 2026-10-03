@@ -162,6 +162,12 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Build-OpencvGstreamerPlugin.ps1' -InstallDir 'C:\runtime'
 
+# The cp313 win-arm64 torch stack for the wheel store; before the manifest so its wheel list counts them.
+RUN --mount=type=bind,source=windows/scripts/build/Copy-Arm64TorchWheels.ps1,target=C:\bkmnt\Copy-Arm64TorchWheels.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\Copy-Arm64TorchWheels.ps1' -ScriptDir 'C:\bkmnt'
+
 # The bundle describes itself (BUNDLE-ENV, BUNDLE-README); text files, invisible to the arch gate.
 RUN --mount=type=bind,source=windows/scripts/build/Write-BundleManifest.ps1,target=C:\bkmnt\Write-BundleManifest.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
@@ -172,6 +178,11 @@ RUN --mount=type=bind,source=windows/scripts/build/Copy-TargetPythonDeps.ps1,tar
     & 'C:\bkmnt\Copy-TargetPythonDeps.ps1' -ScriptDir 'C:\bkmnt' `
         -MinBundleWheels ([int]$env:DEPS_MIN_BUNDLE_WHEELS) `
         -MinFirstTouchRequirements ([int]$env:DEPS_MIN_FIRST_TOUCH_REQS)
+
+# The cross bundle carries Microsoft's aarch64 ASan runtime; the arch gate below machine-checks it.
+RUN --mount=type=bind,source=windows/scripts/build/Copy-Arm64AsanRuntime.ps1,target=C:\bkmnt\Copy-Arm64AsanRuntime.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\Copy-Arm64AsanRuntime.ps1' -ScriptDir 'C:\bkmnt'
 
 # Arch gate: on a cross lane the PE machine type is the only correctness signal; the floor fails a run that inspected nothing.
 ARG ARCH_GATE_MIN_INSPECTED=10

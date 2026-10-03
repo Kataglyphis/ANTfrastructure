@@ -37,7 +37,7 @@ $TargetArch = Resolve-ContainerImageValue -Value $TargetArch -EnvironmentVariabl
     Stages the Windows-arm64 CUDA payload into an existing CUDA root.
 .DESCRIPTION
     arm64 ships only per-component redists, staged into the x64 root's lib\arm64 and bin\arm64, where nvcc and CMake look.
-    The set is the ORT CUDA EP's link closure plus its runtime dlopens; see docs/windows-cross-builds.md.
+    The set is the ORT CUDA EP's link closure plus its runtime dlopens, and nvrtc/cupti for consumers that compile kernels at run time or profile; see docs/windows-cross-builds.md.
 #>
 function Install-CudaWindowsArm64Redist {
     param(
@@ -52,7 +52,9 @@ function Install-CudaWindowsArm64Redist {
         @{ Key = 'NVJITLINK'; Component = 'libnvjitlink' },
         @{ Key = 'NPP'; Component = 'libnpp' },
         @{ Key = 'CUSOLVER'; Component = 'libcusolver' },
-        @{ Key = 'CUSPARSE'; Component = 'libcusparse' }
+        @{ Key = 'CUSPARSE'; Component = 'libcusparse' },
+        @{ Key = 'NVRTC'; Component = 'cuda_nvrtc' },
+        @{ Key = 'CUPTI'; Component = 'cuda_cupti' }
     )
     foreach ($c in $components) {
         $verKey = "CUDA_WINDOWS_ARM64_$($c.Key)_VERSION"
@@ -78,7 +80,7 @@ function Install-CudaWindowsArm64Redist {
         Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
     }
     # A silently empty copy would otherwise surface hours later as an ORT link error.
-    foreach ($must in @('lib\arm64\cudart.lib', 'lib\arm64\cudadevrt.lib', 'lib\arm64\cublas.lib', 'lib\arm64\cublasLt.lib', 'lib\arm64\curand.lib', 'lib\arm64\nppial.lib')) {
+    foreach ($must in @('lib\arm64\cudart.lib', 'lib\arm64\cudadevrt.lib', 'lib\arm64\cublas.lib', 'lib\arm64\cublasLt.lib', 'lib\arm64\curand.lib', 'lib\arm64\nppial.lib', 'lib\arm64\nvrtc.lib', 'lib\arm64\cupti.lib')) {
         if (-not (Test-Path (Join-Path $CudaRoot $must))) {
             throw ("arm64 CUDA payload incomplete: {0} missing under {1}" -f $must, $CudaRoot)
         }

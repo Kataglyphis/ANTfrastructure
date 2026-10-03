@@ -267,12 +267,14 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
+| `Test-Arm64Bundle.ps1` | an arm64 device | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan runtime is a real ARM64 PE, and the cp313 torch stack is in the wheel store |
 
-This repo's own lane has no native execution gate: a `windows-11-arm` CI job would be the only
-proof the artifacts actually **run**, so treat every arm64 output of the bundle as unvalidated
-— see the prose below. The consumer apps' cross lanes do have one
-([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)), and it has so far
-proved that the parts of the bundle their products import load on arm64 hardware, nothing more.
+This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
+every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
+cannot look green. The first device run (2026-10-03, Snapdragon X, the published `:winarm64` of
+that day) passed all eleven steps — the bundle executes, not just loads. The consumer apps' cross
+lanes' run jobs still prove only that the parts their products import load
+([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)).
 
 `Test-TargetArch.ps1` is the Windows twin of the Linux lane's ELF check in
 `validate-media-runtime.sh`. Three design points, each learned from a gate that could not fail:
@@ -295,6 +297,9 @@ windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 -MinInspe
 # permit genuinely host-arch build tools that never ship to the target
 windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 `
     -HostToolPattern 'protoc\.exe|flatc\.exe|\\_deps\\'
+
+# on an arm64 device, from a bundle zip: nine steps, floor nine
+windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 11
 ```
 
 Free native validation is available: this repo is public, so GitHub's `windows-11-arm` runners
@@ -1222,7 +1227,7 @@ Components with no arm64 story, and what stands in their place.
 **WIRED — phase 1 landed 2026-09-20 (#176).** The toolkit and the ORT CUDA EP now build for Windows arm64 on this x64 host; only the *runtime* half needs an arm64 device. What changed, and what it replaced, in order:
 
 - Two earlier reasons recorded here were wrong. (1) The blanket "no Windows-on-ARM support" claim was retracted 2026-08-24, and the 421 MB cuDNN figure was never re-fetched: the cuDNN 9.25.0.15 windows-arm64 archive existed at that pin (ranged GET: HTTP 200, **~90 MB** re-measured 2026-08-28 — see backlog #122, CLOSED), `lib/arm64` inside. (2) "CUDA has no `windows-arm64` redist or installer" was true on 2026-08-28 and is **false at 13.4.2**: NVIDIA ships `cuda_13.4.2_windows_arm64_network.exe` / `cuda_13.4.2_windows_arm64.exe` and per-component `windows-arm64` redist archives, and its Windows-on-Arm Porting Guide documents x64→ARM64 cross-compilation (`vcvarsall x64_arm64` + `nvcc --use-local-env`, `%CUDA_PATH%\lib\arm64`).
-- **The payload**: `Install-Cuda.ps1 -TargetArch arm64` installs the x64 toolkit as before (headers + nvcc, the host tools) and stages the arm64 redist components (`cuda_cudart`, `libcublas`, `libcufft`, `libcurand`, `libnvjitlink`) into the same root as `lib\arm64` / `bin\arm64`; cuDNN comes from `cudnn-windows-arm64-<pin>_cuda13.4-archive.zip`. All SHA-pinned in `versions.env` from `redistrib_13.4.2.json` / `redistrib_9.26.0.json`. `Dockerfile.nvidia` takes `WINDOWS_TARGET_ARCH` and appends `bin\arm64` AFTER the x64 dirs (cudart64_13.dll exists under both arches).
+- **The payload**: `Install-Cuda.ps1 -TargetArch arm64` installs the x64 toolkit as before (headers + nvcc, the host tools) and stages the arm64 redist components (`cuda_cudart`, `libcublas`, `libcufft`, `libcurand`, `libnvjitlink`) into the same root as `lib\arm64` / `bin\arm64`; cuDNN comes from `cudnn-windows-arm64-<pin>_cuda13.4-archive.zip`. All SHA-pinned in `versions.env` from `redistrib_13.4.2.json` / `redistrib_9.26.0.json`. `Dockerfile.nvidia` takes `WINDOWS_TARGET_ARCH` and appends `bin\arm64` AFTER the x64 dirs (cudart64_13.dll exists under both arches). Since 2026-10-03 the payload also carries `cuda_nvrtc` and `cuda_cupti` (13.4.92, SHA-pinned) for consumers that compile kernels at run time or profile; `cuda_nvtx`'s windows-arm64 archive is header-only, so there is nothing to stage for it.
 - **The build**: `Get-NvccCudaCmakeArgs` drives `Hostx64\arm64\cl.exe` + `--use-local-env` on the cross lane, and `Get-CudnnLibraryDir` picks `lib\arm64`. `Build-OnnxFromSource.ps1` enables `USE_CUDA` on cross only when `Test-CudaWindowsArm64Payload` finds `lib\arm64\cudart.lib` + `cudadevrt.lib` — a positive payload signal, never a host GPU probe. Result (2026-09-20, `bk-20260920-031232`): `onnxruntime_providers_cuda.dll` **0xAA64** in the `win_arm64` wheel, 2065-object ORT build, arch gate 1011/0.
 - **Phase 2 landed the same day: OpenCV, GenAI and TVM build their CUDA paths for arm64 too.** OpenCV's CUDA modules link NPP/cusolver/cusparse, so the arm64 payload gained `libnpp`, `libcusolver` and `libcusparse`; its one x86 intrinsic (`_mm_popcnt_u64` in cudafilters' `wavelet_matrix_2d.cuh`) is patched to a software popcount (`patches/opencv_contrib/002-arm64-cudafilters-popcount.patch`, probe-proven in `out/probe-arm64-popcount`). GenAI produces `onnxruntime-genai-cuda.dll` **0xAA64**. TVM's legacy `FindCUDA` hardcodes `lib\x64` on WIN32, so the cross branch names `CUDA_CUDART_LIBRARY`/`CUDA_CUBLAS_LIBRARY`/`CUDA_CUDA_LIBRARY` (`lib\arm64`), `CUDA_HOST_COMPILER` (the Hostx64\arm64 cl) and `CUDA_NVCC_FLAGS=--use-local-env`. Result (2026-09-20, `bk-20260920-203631`): smoke **120/0/15**, arch gate **1047/0**, OpenCV's `opencv_cuda*500.dll` installed under `lib\opencv5\arm64\vc18\bin`.
 - **Still OFF**: classic TensorRT (x64-only; TensorRT-RTX is the arm64 successor and is not wired). DirectML stays ON beside CUDA, as on amd64.
@@ -1243,7 +1248,7 @@ Components with no arm64 story, and what stands in their place.
 
 ### PyTorch / the torch app stage
 
-**Still dropped — but "structurally impossible", recorded here until 2026-08-24, overstated two things.** `download.pytorch.org` *does* publish `win_arm64` `+cpu` wheels, and `uv` can cross-**resolve** into a directory without executing the target interpreter (`uv sync` proper does run it). The binding constraint is this repo's own cp314 pin: upstream built no `win_arm64` wheel for Python 3.14 at `PYTORCH_VERSION=v2.13.0`, the pin when this was checked (the pin is v2.14.0 since 2026-09-20; not re-checked). The stage stays dropped; only the reasons changed.
+**Still dropped — the binding constraint is the cp314 pin, re-checked 2026-10-03.** `download.pytorch.org` publishes `win_arm64` `+cpu` wheels for cp311-cp313 (torch 2.14.0+cpu matches `PYTORCH_VERSION`; nightly is at 2.15.0.dev) and none for cp314 on any channel (stable, test, nightly). `uv sync` proper must execute the target interpreter, so the stage stays dropped. What ships instead: the merge stage stages the cp313 stack (torch, torchvision, pillow, MarkupSafe and the pure-python first-touch deps) into the bundle's wheel store, SHA-pinned, for a device that brings its own cp313 interpreter.
 
 Everything in that table is a **product gap to document, not an engineering problem to route
 around**. Where a coverage floor can encode it (CUDA sections in the smoke floors), encode it, so

@@ -13,6 +13,11 @@ info "Using Python version: $PYTHON_VERSION"
 
 prepare_ci_workspace --cd
 
+# The lane's SYNC_EXTRAS input limits the syncs here too: --all-extras cannot build under emulation (docs/python-ci.md#riscv64-the-image-itself-runs-under-qemu).
+if [ -n "${SYNC_EXTRAS:-}" ]; then
+  export UV_SYNC_EXTRAS="${SYNC_EXTRAS}"
+fi
+
 if command -v patchelf >/dev/null 2>&1; then
   info "patchelf already installed"
 else
