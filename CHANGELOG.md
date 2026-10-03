@@ -123,6 +123,12 @@
   steps pass - HailoRT-CLI 5.4.0, GStreamer 1.29.2, Python 3.14.7 with numpy 2.5.3,
   onnxruntime 1.30.0 (DirectML + CPU) and cv2 5.0.0. CON30's "loads only" no longer holds.
 
+- The arm64 CUDA payload gains nvrtc and cupti (13.4.92, SHA-pinned from the redist) for
+  consumers that compile kernels at run time or profile; nvtx is header-only on
+  windows-arm64. Forwarded in Build-Buildkit.ps1, ARGs in Dockerfile.nvidia, and the
+  staging script asserts both.
+
+
 ## 2026-10-02 - the Python lane grows a riscv64 row: the riscv64 image under QEMU
 
 - `python-ci-linux.yml` takes `arches: riscv64`: the row registers QEMU's binfmt
