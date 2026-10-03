@@ -94,10 +94,21 @@ Invoke-BundleStep 'python imports + ORT providers' {
 } $results
 Invoke-BundleStep 'cv2 import' { & $py -c "import cv2; print('cv2', cv2.__version__)" } $results
 Invoke-BundleStep 'torch win-arm64 wheel stack present (cp313)' {
-    $torch = @(Get-ChildItem (Join-Path $BundleRoot 'wheels') -Filter 'torch-*-cp313-cp313-win_arm64.whl' -File)
-    $deps = @(Get-ChildItem (Join-Path $BundleRoot 'wheels') -Filter '*.whl' -File).Count
-    if ($torch.Count -lt 1) { throw 'no torch cp313 win_arm64 wheel in the store' }
-    if ($deps -lt 17) { throw "wheel store holds $deps wheel(s), expected at least 17 (6 runtime + 11 torch-stack)" }
+    $expected = @(
+        'torch-*-cp313-cp313-win_arm64.whl'
+        'torchvision-*-cp313-cp313-win_arm64.whl'
+        'markupsafe-*-cp313-cp313-win_arm64.whl'
+        'pillow-*-cp313-cp313-win_arm64.whl'
+        'filelock-*.whl'
+        'setuptools-*.whl'
+        'sympy-*.whl'
+        'mpmath-*.whl'
+        'networkx-*.whl'
+        'jinja2-*.whl'
+        'fsspec-*.whl'
+    )
+    $missing = @($expected | Where-Object { @(Get-ChildItem (Join-Path $BundleRoot 'wheels') -Filter $_ -File).Count -lt 1 })
+    if ($missing.Count -gt 0) { throw "wheel store misses $($missing.Count) torch-stack wheel(s): $($missing -join ', ')" }
 } $results
 Invoke-BundleStep 'asan runtime present (aarch64)' {
     $dll = Join-Path $BundleRoot 'bin\clang_rt.asan_dynamic-aarch64.dll'
