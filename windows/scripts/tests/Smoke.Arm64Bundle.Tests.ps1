@@ -6,7 +6,7 @@
 Describe 'Test-Arm64Bundle: the floor decides the verdict' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -FunctionName 'Get-BundleVerdict')
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -FunctionName 'Get-BundleVerdict', 'Invoke-BundleStep')
         $script:ok = [pscustomobject]@{ Name = 'a'; Ok = $true; Detail = '' }
         $script:bad = [pscustomobject]@{ Name = 'b'; Ok = $false; Detail = 'exit 1' }
     }
@@ -37,5 +37,12 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
     It 'permits an empty run only explicitly' {
         $v = Get-BundleVerdict -Results @() -MinPassed 0 -AllowEmptyRun
         Assert-True $v.Ok 'an explicitly allowed empty run passes'
+    }
+
+    It 'records a step into an EMPTY result list — the first call binds, not throws' {
+        $results = [System.Collections.Generic.List[object]]::new()
+        Invoke-BundleStep 'probe' { } $results
+        Assert-Equal 1 $results.Count 'the empty list must bind and receive the step'
+        Assert-True $results[0].Ok 'a quiet body is a pass'
     }
 }

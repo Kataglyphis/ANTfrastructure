@@ -52,7 +52,7 @@ function Invoke-BundleStep {
     param(
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][scriptblock]$Body,
-        [Parameter(Mandatory)][System.Collections.Generic.List[object]]$Results
+        [Parameter(Mandatory)][AllowEmptyCollection()][System.Collections.Generic.List[object]]$Results
     )
     Write-Host "`n== $Name"
     $global:LASTEXITCODE = 0
