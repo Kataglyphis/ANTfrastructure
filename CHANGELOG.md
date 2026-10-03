@@ -9,6 +9,23 @@
 
 ## 2026-10-03 — the Ansible fleet-update lane goes live
 
+* **The microcontroller updates are now REAL, gated, and in the Sunday run**
+  (owner directive): `update_tasmota.yml` flashes the stock plugs ONLY when
+  the official release version differs from the installed one — the
+  comparison is OURS, because the native `Upgrade 1` was probed live and
+  re-flashes even at the same version; after a flash it waits for the
+  reboot and asserts MQTT health. `update-bitshake.yml` joined the weekly
+  run behind the same kind of version gate (it flashes only when the
+  manifest differs, with the magic-byte check and the post-flash health
+  gate). The nerdctl toolchain stays REPORT-ONLY by design — it is build
+  infrastructure and its upgrade is deliberately confirmed by hand.
+  **A real bug found while proving this**: the nested playbook calls ran
+  from `playbooks/` where no `ansible.cfg` lives — the inventory never
+  resolved, every nested lane silently matched zero hosts and exited 0.
+  The Sunday run had been green while doing nothing for the Tasmota,
+  bitShake and Windows lanes. Fixed (run from `linux/ansible/`) and
+  proven by fresh execution: the winget log carries the run's timestamp.
+
 * **summy-server (Windows 11 ARM Pro) joined the fleet**: managed over
   OpenSSH with `ansible_shell_type: powershell` — WinRM stays closed. Three
   one-time traps, all encoded in `scripts/setup-openssh-ansible.ps1` (run
