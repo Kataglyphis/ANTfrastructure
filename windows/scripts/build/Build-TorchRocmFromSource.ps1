@@ -204,8 +204,9 @@ function Install-TorchRocmBuiltWheel {
         [Parameter(Mandatory)][string]$LogPrefix, [Parameter(Mandatory)][string]$ImportCode)
     $wheel = Join-Path $SourceDir "dist\$(Get-TorchRocmWheelName -Distribution $Distribution -BuildVersion $BuildVersion -PythonTag $PythonTag)"
     if (-not (Test-Path -LiteralPath $wheel -PathType Leaf)) { throw "$Distribution build left no $wheel" }
-    Invoke-TorchRocmLogged -CommandLine "uv pip install --python ""$Python"" --no-deps ""$wheel""" -WorkingDir $WorkDir -LogName "$LogPrefix-install.log"
-    Invoke-TorchRocmLogged -CommandLine """$Python"" -c ""$ImportCode""" -WorkingDir $WorkDir -LogName "$LogPrefix-import.log"
+    # Out-Null: the streamed build output belongs to the console; this function returns the wheel path alone.
+    Invoke-TorchRocmLogged -CommandLine "uv pip install --python ""$Python"" --no-deps ""$wheel""" -WorkingDir $WorkDir -LogName "$LogPrefix-install.log" | Out-Null
+    Invoke-TorchRocmLogged -CommandLine """$Python"" -c ""$ImportCode""" -WorkingDir $WorkDir -LogName "$LogPrefix-import.log" | Out-Null
     return $wheel
 }
 

@@ -58,7 +58,8 @@ Describe 'Build-TorchRocmFromSource: the steps both RUNs share' {
     It 'installs and imports the exact wheel the build left, and refuses a build that left none' {
         Invoke-InTestDir { param($dir)
             $script:Logged = [System.Collections.Generic.List[string]]::new()
-            function Invoke-TorchRocmLogged { param($CommandLine, $WorkingDir, $LogName) $script:Logged.Add("$LogName :: $CommandLine") }
+            # Leaks a line like the real streamer does: the function under test must swallow it, not return it.
+            function Invoke-TorchRocmLogged { param($CommandLine, $WorkingDir, $LogName) $script:Logged.Add("$LogName :: $CommandLine"); Write-Output 'Using Python 3.14.7 environment at: C:\x' }
             $name = 'torchvision-0.29.0+rocm10.0.0-cp314-cp314-win_amd64.whl'
             $arg = @{ Python = 'py'; SourceDir = $dir; Distribution = 'torchvision'; BuildVersion = '0.29.0+rocm10.0.0'; PythonTag = 'cp314'; WorkDir = $dir; LogPrefix = 'tv'; ImportCode = 'import torchvision' }
             Assert-Throws { Install-TorchRocmBuiltWheel @arg } 'no wheel' -MessagePattern 'torchvision build left no'
