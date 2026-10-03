@@ -9,8 +9,26 @@
 
 ## 2026-10-03 — the Ansible fleet-update lane goes live
 
-* **The stock Tasmota ESP8266 plugs joined the report lane** (`report-tasmota.yml`,
-  wired into the weekly run via the `report_tasmota` host_vars flag): version
+* **summy-server (Windows 11 ARM Pro) joined the fleet**: managed over
+  OpenSSH with `ansible_shell_type: powershell` — WinRM stays closed. Three
+  one-time traps, all encoded in `scripts/setup-openssh-ansible.ps1` (run
+  once via SSH): the deploy key must go into
+  `C:\ProgramData\ssh\administrators_authorized_keys` for an administrator
+  account (user `authorized_keys` is ignored), the ACL must be set with
+  SIDs not account names (a German-locale Windows does not resolve
+  `Administrators`), and OpenSSH's `DefaultShell` must be PowerShell (the
+  cmd default breaks ansible module result deserialization — symptom:
+  `No start of json char found`). `update-windows.yml` installs
+  PSWindowsUpdate from the gallery, applies all updates with
+  `-AcceptAll -IgnoreReboot`, reports what remains (Defender signature
+  updates are perpetual — new definitions release daily), and reboots
+  inline only when the registry says pending. Wired into the weekly run
+  via `manage_windows_updates`; a failing Windows lane is surfaced without
+  failing the Pi lane. Also fixed in the same pass: both nested playbooks
+  (tasmota report, windows update) had doubled `playbooks/playbooks/`
+  paths — the tasmota one was silently masked by `failed_when: false`.
+* **The stock Tasmota ESP8266 plugs joined the report lane**
+  (`report-tasmota.yml`, wired into the weekly run via the `report_tasmota` host_vars flag): version
   against the official release plus an MQTT-health assertion. That assertion
   exists because one plug (`.128`, a NOUS A1T) was found with NO broker
   configured — registered in HA but silently dead. Root cause + fix: its
