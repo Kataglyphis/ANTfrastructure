@@ -1186,7 +1186,11 @@ container-reuse pattern so consumers do not each reinvent it:
 
 - `Invoke-ContainerBuild` - the entry point: runs a consumer's build command in
   the image over the tar pipe (default) or a bind mount (`-UseBindMount`) and
-  returns a result object. `Resolve-ContainerBuildCommand`, `Get-ContainerEnvArgs` and
+  returns a result object. `-InboundItems` (default `.`) selects the top-level
+  entries to stream, so a root directory can be dropped without a pattern that
+  bsdtar would also match at every depth
+  (`windows-container-build-performance.md` § Transport A).
+  `Resolve-ContainerBuildCommand`, `Get-ContainerEnvArgs` and
   `Get-SccacheContainerEnv` are its exported helpers.
 - `Get-ReusableBuildContainer` - reuse/start/recreate a named build container,
   recreating it when the image ID changes. Returns whether an existing

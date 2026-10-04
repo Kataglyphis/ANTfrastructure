@@ -146,7 +146,7 @@ Describe 'WindowsContainerBuild.Reuse: Invoke-ContainerBuild contract' {
         $p = (Get-Command Invoke-ContainerBuild).Parameters
         foreach ($name in @('DockerExe', 'Image', 'ContainerName', 'RepoRoot', 'BuildCommand',
                 'WorkspacePath', 'IncrementalDirs', 'IncrementalExclude', 'OutputDirs', 'VerifyDirs',
-                'InboundExclude', 'OutboundExclude', 'KeepDirs', 'CacheEnv', 'IsolationArgs',
+                'InboundExclude', 'InboundItems', 'OutboundExclude', 'KeepDirs', 'CacheEnv', 'IsolationArgs',
                 'EntrypointPath', 'ProbeFile', 'WaitTimeoutMinutes', 'UseBindMount', 'FreshContainer')) {
             Assert-True $p.ContainsKey($name) "missing parameter -$name"
         }
@@ -157,6 +157,11 @@ Describe 'WindowsContainerBuild.Reuse: Invoke-ContainerBuild contract' {
         Assert-Equal 'System.String' $ws.ParameterType.FullName
         Assert-Match 'C:\\ws' ((Get-Command Invoke-ContainerBuild).Definition -split "`n" |
             Where-Object { $_ -match '\$WorkspacePath\s*=' } | Select-Object -First 1)
+    }
+
+    It 'streams the inbound item list through to the transfer' {
+        Assert-Match '-Items \$InboundItems' ((Get-Command Invoke-ContainerBuild).Definition -split "`n" |
+            Where-Object { $_ -match '-Items \$InboundItems' } | Select-Object -First 1)
     }
 
     It 'requires the parameters that have no sensible default' {
