@@ -68,7 +68,8 @@ packaging_cross_env() {
 
   export CC="${RISCV64_CROSS_BIN}/riscv64-linux-gnu-clang"
   export LDSHARED="${CC} -shared"
-  export _PYTHON_HOST_PLATFORM="${plat_tag}"
+  # NOT _PYTHON_HOST_PLATFORM: uv reads it while inspecting the interpreter and refuses "Unknown operating system: linux_riscv64".
+  export PYTHON_HOST_PLATFORM_TARGET="${plat_tag}"
   export SETUPTOOLS_EXT_SUFFIX=".cpython-${mm}-riscv64-linux-gnu.so"
   # CFLAGS REPLACES the sysconfig flags, so the target headers win over the host's and -O2 survives.
   export CFLAGS="-O2 ${include_flag}"
@@ -78,6 +79,18 @@ packaging_cross_env() {
 if [ -n "${CROSS_TARGET}" ]; then
   packaging_cross_env "${CROSS_TARGET}"
 fi
+
+# Cross wheels go through pip: uv refuses the target platform tag at both venv and build time, so only the
+# build command may see _PYTHON_HOST_PLATFORM (setuptools reads it); the sdist needs no platform at all.
+package_build() {
+  local venv="$1"
+  if [ -n "${CROSS_TARGET}" ]; then
+    uv build --sdist
+    _PYTHON_HOST_PLATFORM="${PYTHON_HOST_PLATFORM_TARGET}" "${venv}/bin/python" -m pip wheel . --no-deps -w dist
+  else
+    uv build
+  fi
+}
 
 if command -v patchelf >/dev/null 2>&1; then
   info "patchelf already installed"
@@ -95,7 +108,7 @@ uv_venv_ensure "$VENV_SOURCES" "$PYTHON_VERSION" "source packaging venv"
 
 uv_sync_project --no-wxpython
 
-uv build
+package_build "$VENV_SOURCES"
 
 export CYTHONIZE="True"
 
@@ -104,7 +117,7 @@ uv_venv_ensure "$VENV_BINARIES" "$PYTHON_VERSION" "binary packaging venv"
 
 uv_sync_project --no-wxpython
 
-uv build
+package_build "$VENV_BINARIES"
 
 mkdir -p dist repaired
 shopt -s nullglob

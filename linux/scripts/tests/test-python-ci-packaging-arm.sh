@@ -40,6 +40,12 @@ printf '#!/usr/bin/env bash\ncase "$*" in show*) exit 2 ;; *) : ;; esac\n' > "${
 printf '#!/usr/bin/env bash\nprintf "uv CC=%%s SUFFIX=%%s PLAT=%%s CFLAGS=%%s\\n" "${CC:-}" "${SETUPTOOLS_EXT_SUFFIX:-}" "${_PYTHON_HOST_PLATFORM:-}" "${CFLAGS:-}" >> "${CALLS}"\n: \n' > "${BIN}/uv"
 printf '#!/usr/bin/env bash\n: \n' > "${BIN}/patchelf"
 chmod +x "${BIN}/uname" "${BIN}/apt-get" "${BIN}/auditwheel" "${BIN}/uv" "${BIN}/patchelf"
+# The cross path's wheel builder: the venv's python, with _PYTHON_HOST_PLATFORM set only on that command.
+for venv in .venv_packaging_sources .venv_packaging_binaries; do
+  mkdir -p "${WS}/${venv}/bin"
+  printf '#!/usr/bin/env bash\nprintf "wheel CC=%%s SUFFIX=%%s PLAT=%%s CFLAGS=%%s\\n" "${CC:-}" "${SETUPTOOLS_EXT_SUFFIX:-}" "${_PYTHON_HOST_PLATFORM:-}" "${CFLAGS:-}" >> "${CALLS}"\n: \n' > "${WS}/${venv}/bin/python"
+  chmod +x "${WS}/${venv}/bin/python"
+done
 
 # The consumers the arm drives: absent on riscv64, called on amd64.
 printf '#!/usr/bin/env bash\nprintf "bundle %%s\\n" "$*" >> "${CALLS}"\n' > "${TREE}/06-packaging/python-app-bundle.sh"
@@ -96,9 +102,12 @@ t_case "cross mode sets the five setuptools knobs on both builds"
 t_assert_ok _run_cross
 t_assert_contains "$(cat "${CALLS}")" "CC=${BIN}/riscv64-linux-gnu-clang" "CC is the cross wrapper"
 t_assert_contains "$(cat "${CALLS}")" "SUFFIX=.cpython-314-riscv64-linux-gnu.so" "the target SOABI suffix"
-t_assert_contains "$(cat "${CALLS}")" "PLAT=linux_riscv64" "the target platform tag"
 t_assert_contains "$(cat "${CALLS}")" "CFLAGS=-O2 -I${PYROOT}/include/python3.14" "the staged target Python's headers"
-t_assert_eq "2" "$(grep -c 'SUFFIX=.cpython-314-riscv64-linux-gnu.so' "${CALLS}")" "both builds carry the knobs"
+t_assert_eq "2" "$(grep -c '^wheel .*PLAT=linux_riscv64' "${CALLS}")" "both wheels carry the target platform tag"
+
+t_case "cross mode never shows uv the target platform tag (uv refuses it at venv and build time)"
+t_assert_eq "2" "$(grep -c '^uv .*PLAT= CFLAGS=' "${CALLS}")" "both sdists build with no platform in uv's environment"
+t_assert_eq "0" "$(grep -c '^uv .*PLAT=linux_riscv64' "${CALLS}")" "uv must never see the tag"
 
 t_case "without a staged target Python the sysroot's headers carry the build"
 t_assert_ok _run_cross --no-py
