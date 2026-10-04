@@ -46,10 +46,18 @@ packaging_cross_env() {
   source "${riscv_cross}"
   riscv64_cross_env || return 1
 
-  python_root="$(cross_target_python_root "${target}")" || {
-    err "no staged ${target} Python under ${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${target}"
-    return 1
-  }
+  python_root="$(cross_target_python_root "${target}" 2>/dev/null || true)"
+  local include_flag=""
+  if [ -n "${python_root}" ]; then
+    include_flag="-I${python_root}/include/python${PYTHON_VERSION}"
+  else
+    # No staged cross Python in this image: the sysroot carries the target's headers, and the cross wrapper roots absolute -I paths into it.
+    [ -d "${RISCV64_SYSROOT}/usr/include/python${PYTHON_VERSION}" ] || {
+      err "no staged ${target} Python and no ${RISCV64_SYSROOT}/usr/include/python${PYTHON_VERSION} in the sysroot"
+      return 1
+    }
+    include_flag="-I/usr/include/python${PYTHON_VERSION}"
+  fi
   mm="$(printf '%s' "${PYTHON_VERSION}" | tr -d '.')"
 
   # The same values arch_linux_platform_tag_for/cross_target_python_include_dir resolve in the image.
@@ -63,8 +71,8 @@ packaging_cross_env() {
   export _PYTHON_HOST_PLATFORM="${plat_tag}"
   export SETUPTOOLS_EXT_SUFFIX=".cpython-${mm}-riscv64-linux-gnu.so"
   # CFLAGS REPLACES the sysconfig flags, so the target headers win over the host's and -O2 survives.
-  export CFLAGS="-O2 -I${python_root}/include/python${PYTHON_VERSION}"
-  info "cross packaging for ${target}: ${CC}, target Python ${python_root}, platform ${plat_tag}"
+  export CFLAGS="-O2 ${include_flag}"
+  info "cross packaging for ${target}: ${CC}, include ${include_flag}, platform ${plat_tag}"
 }
 
 if [ -n "${CROSS_TARGET}" ]; then

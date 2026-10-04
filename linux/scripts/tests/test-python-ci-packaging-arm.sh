@@ -7,7 +7,8 @@ SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
 WS="${_work}/ws"; TREE="${_work}/tree"; CALLS="${_work}/calls"; OUT="${_work}/out"; BIN="${_work}/bin"; PYROOT="${_work}/pyroot"
-mkdir -p "${TREE}/01-core" "${TREE}/02-toolchain/python" "${TREE}/06-packaging" "${TREE}/lib" "${WS}/packaging" "${BIN}" "${PYROOT}"
+SYSROOT_DIR="${_work}/sysroot"
+mkdir -p "${TREE}/01-core" "${TREE}/02-toolchain/python" "${TREE}/06-packaging" "${TREE}/lib" "${WS}/packaging" "${BIN}" "${PYROOT}" "${SYSROOT_DIR}/usr/include/python3.14"
 
 cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${TREE}/01-core/"
 cp "${SCRIPTS}/02-toolchain/python/ci_packaging.sh" "${TREE}/02-toolchain/python/"
@@ -36,7 +37,7 @@ printf '{ "name": "FixtureApp" }\n' > "${WS}/packaging/app.json"
 printf '#!/usr/bin/env bash\ncase "$1" in -m) printf "%%s\\n" "${FAKE_ARCH}";; *) : ;; esac\n' > "${BIN}/uname"
 printf '#!/usr/bin/env bash\n: \n' > "${BIN}/apt-get"
 printf '#!/usr/bin/env bash\ncase "$*" in show*) exit 2 ;; *) : ;; esac\n' > "${BIN}/auditwheel"
-printf '#!/usr/bin/env bash\nprintf "uv CC=%%s SUFFIX=%%s PLAT=%%s\\n" "${CC:-}" "${SETUPTOOLS_EXT_SUFFIX:-}" "${_PYTHON_HOST_PLATFORM:-}" >> "${CALLS}"\n: \n' > "${BIN}/uv"
+printf '#!/usr/bin/env bash\nprintf "uv CC=%%s SUFFIX=%%s PLAT=%%s CFLAGS=%%s\\n" "${CC:-}" "${SETUPTOOLS_EXT_SUFFIX:-}" "${_PYTHON_HOST_PLATFORM:-}" "${CFLAGS:-}" >> "${CALLS}"\n: \n' > "${BIN}/uv"
 printf '#!/usr/bin/env bash\n: \n' > "${BIN}/patchelf"
 chmod +x "${BIN}/uname" "${BIN}/apt-get" "${BIN}/auditwheel" "${BIN}/uv" "${BIN}/patchelf"
 
@@ -51,13 +52,19 @@ _run() {
   FAKE_ARCH="$1" CALLS="${CALLS}" FIXTURE_WS="${WS}" \
     PATH="${BIN}:${PATH}" bash "${TREE}/02-toolchain/python/ci_packaging.sh" 3.14 > "${OUT}" 2>&1
 }
-# _run_cross [--no-py]: the same driver as the native packaging step runs it, cross target set.
+# _run_cross [--no-py] [--bare-sysroot]: the driver as the native packaging step runs it, cross target set.
 _run_cross() {
-  local no_py=""
-  [ "${1:-}" = "--no-py" ] && no_py=1
+  local no_py="" sysroot="${SYSROOT_DIR}"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-py) no_py=1 ;;
+      --bare-sysroot) sysroot="${_work}/bare-sysroot" ;;
+    esac
+    shift
+  done
   : > "${CALLS}"
   FAKE_ARCH=x86_64 CALLS="${CALLS}" FIXTURE_WS="${WS}" FIXTURE_PY_ROOT="${PYROOT}" FIXTURE_CROSS_BIN="${BIN}" \
-    FIXTURE_NO_PY="${no_py}" PACKAGING_CROSS_TARGET=riscv64 \
+    FIXTURE_NO_PY="${no_py}" PACKAGING_CROSS_TARGET=riscv64 RISCV64_SYSROOT="${sysroot}" \
     PATH="${BIN}:${PATH}" bash "${TREE}/02-toolchain/python/ci_packaging.sh" 3.14 > "${OUT}" 2>&1
 }
 _calls() { grep -oE '^(bundle|package) ' "${CALLS}" 2>/dev/null | wc -l; }
@@ -90,7 +97,12 @@ t_assert_ok _run_cross
 t_assert_contains "$(cat "${CALLS}")" "CC=${BIN}/riscv64-linux-gnu-clang" "CC is the cross wrapper"
 t_assert_contains "$(cat "${CALLS}")" "SUFFIX=.cpython-314-riscv64-linux-gnu.so" "the target SOABI suffix"
 t_assert_contains "$(cat "${CALLS}")" "PLAT=linux_riscv64" "the target platform tag"
+t_assert_contains "$(cat "${CALLS}")" "CFLAGS=-O2 -I${PYROOT}/include/python3.14" "the staged target Python's headers"
 t_assert_eq "2" "$(grep -c 'SUFFIX=.cpython-314-riscv64-linux-gnu.so' "${CALLS}")" "both builds carry the knobs"
+
+t_case "without a staged target Python the sysroot's headers carry the build"
+t_assert_ok _run_cross --no-py
+t_assert_contains "$(cat "${CALLS}")" "CFLAGS=-O2 -I/usr/include/python3.14" "the sysroot-relative include the cross wrapper roots"
 
 t_case "cross riscv64 ships wheels only even though uname is amd64"
 t_assert_eq "0" "$(_calls)" "the cross target decides the verdict, not the host arch"
@@ -100,11 +112,11 @@ t_case "a native run leaves the cross knobs unset"
 t_assert_ok _run x86_64
 t_assert_contains "$(cat "${CALLS}")" "SUFFIX= PLAT=" "no cross knobs on the native path"
 
-t_case "cross mode fails loudly without a staged target Python"
-if _run_cross --no-py; then
+t_case "cross mode fails loudly without a staged target Python and without sysroot headers"
+if _run_cross --no-py --bare-sysroot; then
   t_assert_eq "0" "1" "a missing target Python must fail the run"
 else
-  t_assert_contains "$(cat "${OUT}")" "no staged riscv64 Python" "the failure names the staging root"
+  t_assert_contains "$(cat "${OUT}")" "no staged riscv64 Python and no" "the failure names both places it looked"
 fi
 
 t_case "the arm's LOGFILE order matches the driver's lines"
