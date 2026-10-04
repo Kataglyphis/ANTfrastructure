@@ -168,6 +168,14 @@ RUN --mount=type=bind,source=windows/scripts/build/Copy-Arm64TorchWheels.ps1,tar
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Copy-Arm64TorchWheels.ps1' -ScriptDir 'C:\bkmnt'
 
+# Mesa's lavapipe: the CPU Vulkan ICD the goldens run on (CON50); before the manifest so BUNDLE-ENV/README name it.
+RUN --mount=type=bind,source=windows/scripts/host/Install-Lavapipe.ps1,target=C:\bkmnt\Install-Lavapipe.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\Install-Lavapipe.ps1' -ScriptDir 'C:\bkmnt'
+# Mesa 26.2's BVH sort needs 8-lane subgroups; arm64's native 128 bits give 4 and SEGV (CON44).
+ENV LP_NATIVE_VECTOR_WIDTH=256
+
 # The bundle describes itself (BUNDLE-ENV, BUNDLE-README); text files, invisible to the arch gate.
 RUN --mount=type=bind,source=windows/scripts/build/Write-BundleManifest.ps1,target=C:\bkmnt\Write-BundleManifest.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `

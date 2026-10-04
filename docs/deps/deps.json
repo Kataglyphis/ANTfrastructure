@@ -831,11 +831,18 @@
               "spdx": "MIT AND BSD-3-Clause AND Apache-2.0 AND LicenseRef-Proprietary-EULA"
             },
             {
-              "name": "Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\\vulkan-loader, on PATH in the default and nvidia images)",
+              "name": "Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\\vulkan-loader, on PATH in the default and nvidia images; the arm64 bundle's copy and licence in C:\\runtime\\lavapipe)",
               "var": "VULKAN_VERSION",
               "url": "https://vulkan.lunarg.com/",
               "license": "Apache 2.0 (Khronos Vulkan-Loader) with MIT components (cJSON, Dave Gamble; joseph werle); VulkanRT-License.txt ships in C:\\vulkan-loader",
               "spdx": "Apache-2.0 AND MIT"
+            },
+            {
+              "name": "Mesa lavapipe (the CPU Vulkan ICD: lvp_icd.x86_64/aarch64.json + vulkan_lvp.dll in C:\\runtime\\lavapipe; mmozeiko/build-mesa, SHA256-pinned)",
+              "var": "LAVAPIPE_VERSION",
+              "url": "https://github.com/mmozeiko/build-mesa",
+              "license": "MIT (Mesa 3D; the 7z carries no licence text, so this release repository and mesa3d.org are the pointer)",
+              "spdx": "MIT"
             },
             {
               "name": "PyTorch + TorchVision for ROCm (built from upstream source against TheRock's ROCm 10.0.0 SDK, kernels for gfx1201 and gfx1200, on AMD's rocm[libraries] runtime; rocm variant only)",

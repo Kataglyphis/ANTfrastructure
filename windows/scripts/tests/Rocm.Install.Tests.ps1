@@ -645,6 +645,6 @@ Describe 'Dockerfile.rocm and the final stage: the Vulkan loader layers' {
         Assert-Match "-InstallDir 'C:\\vulkan-loader' -SystemDir ''" $run 'no System32 copy'
         Assert-Match "WINDOWS_TARGET_ARCH -eq 'amd64'" $run 'amd64 only: the pinned zip is x64'
         Assert-Match '-not \$env:VULKAN_LOADER_DIR' $run 'the rocm variant keeps its own'
-        Assert-Match '(?m)^ENV PATH=\$PATH;C:\\vulkan-loader\s*$' $finalDf 'appended after the inherited PATH'
+        Assert-Match '(?m)^ENV PATH=\$PATH;C:\\vulkan-loader;C:\\runtime\\lavapipe\s*$' $finalDf 'appended after the inherited PATH'
     }
 }

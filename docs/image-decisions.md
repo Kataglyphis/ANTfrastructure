@@ -105,8 +105,10 @@ These are recorded so nobody files them as gaps:
 - No OpenGL in the Windows image (owner decision 2026-09-26, CON25): Server Core has no
   `opengl32.dll`, and the only software one, Mesa's llvmpipe, exists as unsigned
   third-party builds (pal1000/mesa-dist-win). wgpu-linked binaries run on the host, as
-  OxidANT's renderer tests do. A lavapipe device would also need an HKLM ICD
-  registration, because the loader ignores `VK_DRIVER_FILES` in an elevated process.
+  OxidANT's renderer tests do. (Vulkan is the exception since 2026-10-04, CON50: Mesa's
+  lavapipe — mmozeiko/build-mesa's unsigned build — ships in `C:\runtime\lavapipe` with
+  an HKLM ICD registration, because the loader ignores `VK_DRIVER_FILES` in an elevated
+  process, and `LP_NATIVE_VECTOR_WIDTH=256`.)
 - No slim `:winamd64-toolchain` tag (owner decision 2026-09-28, CON26). `:winamd64`'s
   ~54 GB of layers exhaust a stock `windows-2025` runner's `C:` (`hcsshim::ImportLayer …
   not enough space on the disk (0x70)`, BeschleunigerBallett, 2026-07-21); the

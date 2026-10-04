@@ -18,13 +18,13 @@
 .PARAMETER AllowEmptyRun
     Permits -MinPassed 0, for probing a partial tree.
 .EXAMPLE
-    .\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 11
+    .\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 12
 #>
 [CmdletBinding()]
 param(
     [string]$BundleRoot = 'C:\runtime',
     [string]$ZipPath = '',
-    [int]$MinPassed = 11,
+    [int]$MinPassed = 12,
     [switch]$AllowEmptyRun
 )
 
@@ -121,6 +121,23 @@ Invoke-BundleStep 'VS runtimes present (aarch64: ASan + OpenMP)' {
         $machine = [BitConverter]::ToUInt16($bytes, $peOff + 4)
         if ($machine -ne 0xAA64) { throw ('{0}: machine 0x{1:X4}, expected 0xAA64' -f $name, $machine) }
     }
+} $results
+
+Invoke-BundleStep 'vulkaninfo lists llvmpipe (lavapipe ICD + loader run)' {
+    $lavapipe = Join-Path $BundleRoot 'lavapipe'
+    $icd = Join-Path $lavapipe 'lvp_icd.aarch64.json'
+    if (-not (Test-Path $icd)) { throw "missing $icd" }
+    $env:VK_DRIVER_FILES = $icd
+    $env:VK_LOADER_DRIVERS_SELECT = '*lvp_icd*'
+    $env:LP_NATIVE_VECTOR_WIDTH = '256'
+    # The loader ignores VK_DRIVER_FILES in an elevated process; HKLM is what it reads then.
+    if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        $key = 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers'
+        if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }
+        New-ItemProperty -LiteralPath $key -Name $icd -Value 0 -PropertyType DWord -Force | Out-Null
+    }
+    $summary = @(& (Join-Path $lavapipe 'vulkaninfo.exe') --summary 2>&1 | ForEach-Object { "$_" })
+    if (-not ($summary -match 'llvmpipe')) { throw 'vulkaninfo lists no llvmpipe device; the ICD registration did not take' }
 } $results
 
 $verdict = Get-BundleVerdict -Results $results -MinPassed $MinPassed -AllowEmptyRun:$AllowEmptyRun
