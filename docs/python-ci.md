@@ -107,7 +107,10 @@ include dir, `SETUPTOOLS_EXT_SUFFIX` the target SOABI suffix and
 `python -m pip wheel` command alone, because uv reads it while inspecting the
 interpreter and refuses the riscv64 tag at `uv venv` and `uv build` alike
 (`Unknown operating system: linux_riscv64`); the sdist stays on `uv build --sdist`.
-The emulated row only tests: its compile
+The wheel link also pins its emulation (`LDSHARED` carries `-Wl,-m,elf64lriscv`):
+clang 22 dropped the target when it drove lld through `--gcc-toolchain` on the
+runner and lld then refused the riscv64 crt objects as `elf64-x86-64` (run
+37196119524). The emulated row only tests: its compile
 hung four hours on one Cython unit (run 37127505865) and could not fit the
 360-minute job. The app packages of a `packaging/app.json` app do not follow -
 they need the AppImage tooling the image ships for amd64/arm64 only, so

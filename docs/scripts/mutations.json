@@ -11899,6 +11899,14 @@
   "why": "a host-tagged wheel installs on the target and never imports; the build command is what turns this value into the tag"
  },
  {
+  "id": "python.packaging.cross-mode-pins-the-emulation",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "  export LDSHARED=\"${CC} -shared -Wl,-m,elf64lriscv\"",
+  "replace": "  export LDSHARED=\"${CC} -shared\"",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "without the emulation the wheel link can drive lld as x86-64 and die on the riscv64 crt objects (run 37196119524)"
+ },
+ {
   "id": "linux-lane.riscv64-packaging-crosses",
   "target": ".github/workflows/python-ci-linux.yml",
   "find": "            ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e PACKAGING_CROSS_TARGET=riscv64' || '' }}\n",
