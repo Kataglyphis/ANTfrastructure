@@ -2,7 +2,7 @@
 # Install-Lavapipe: the URL builders, the arch->pin mapping and the loader-zip layout; no downloads.
 
 Describe 'Install-Lavapipe: the mmozeiko release asset' {
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Lavapipe.ps1' -FunctionName 'Get-LavapipeWindowsUrl')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsContainerImage.Common.psm1' -FunctionName 'Get-LavapipeWindowsUrl')
 
     It 'builds the arch-suffixed asset URL' {
         Assert-Equal 'https://github.com/mmozeiko/build-mesa/releases/download/26.2.3/mesa-lavapipe-x64-26.2.3.7z' `
@@ -19,7 +19,7 @@ Describe 'Install-Lavapipe: the mmozeiko release asset' {
 }
 
 Describe 'Install-Lavapipe: the LunarG loader zip' {
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Lavapipe.ps1' -FunctionName 'Get-VulkanRuntimeComponentsUrl')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsContainerImage.Common.psm1' -FunctionName 'Get-VulkanRuntimeComponentsUrl')
 
     It 'builds the x64 URL under windows/ and the arm64 one under warm/' {
         Assert-Equal 'https://sdk.lunarg.com/sdk/download/1.4.357.0/windows/VulkanRT-X64-1.4.357.0-Components.zip' `
@@ -36,7 +36,7 @@ Describe 'Install-Lavapipe: the LunarG loader zip' {
 }
 
 Describe 'Install-Lavapipe: the versions.env pin names' {
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Lavapipe.ps1' -FunctionName 'Get-LavapipePinName')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsContainerImage.Common.psm1' -FunctionName 'Get-LavapipePinName')
 
     It 'maps each arch and kind to its versions.env key' {
         Assert-Equal 'LAVAPIPE_WINDOWS_X64_SHA256' (Get-LavapipePinName -Arch 'amd64' -Kind 'mesa') 'amd64 mesa pin'

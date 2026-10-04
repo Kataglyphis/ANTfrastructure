@@ -228,6 +228,104 @@ function Expand-VulkanRuntimeComponents {
     } finally { $zip.Dispose() }
 }
 
+<#
+.SYNOPSIS
+    The mmozeiko/build-mesa release asset for an arch.
+#>
+function Get-LavapipeWindowsUrl {
+    param([AllowEmptyString()][string]$Version, [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch)
+    if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+        throw "Get-LavapipeWindowsUrl: LAVAPIPE_VERSION must be an x.y.z release like 26.2.3; got '$Version'"
+    }
+    $suffix = if ($Arch -eq 'amd64') { 'x64' } else { 'arm64' }
+    return "https://github.com/mmozeiko/build-mesa/releases/download/$Version/mesa-lavapipe-$suffix-$Version.7z"
+}
+
+<#
+.SYNOPSIS
+    LunarG's Runtime Components zip for an arch: x64 under `windows`, arm64 under `warm`.
+#>
+function Get-VulkanRuntimeComponentsUrl {
+    param([AllowEmptyString()][string]$Version, [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch)
+    if ($Version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+        throw "Get-VulkanRuntimeComponentsUrl: VULKAN_VERSION must be a four-part LunarG SDK version like 1.4.357.0; got '$Version'"
+    }
+    if ($Arch -eq 'amd64') { return "https://sdk.lunarg.com/sdk/download/$Version/windows/VulkanRT-X64-$Version-Components.zip" }
+    return "https://sdk.lunarg.com/sdk/download/$Version/warm/VulkanRT-ARM64-$Version-Components.zip"
+}
+
+<#
+.SYNOPSIS
+    The versions.env key holding a download's SHA256 for an arch.
+#>
+function Get-LavapipePinName {
+    param([Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch, [Parameter(Mandatory)][ValidateSet('mesa', 'loader')][string]$Kind)
+    if ($Kind -eq 'mesa') {
+        # X64, not AMD64: the pin follows the release asset's spelling (mesa-lavapipe-x64-...).
+        $suffix = if ($Arch -eq 'amd64') { 'X64' } else { 'ARM64' }
+        return "LAVAPIPE_WINDOWS_${suffix}_SHA256"
+    }
+    if ($Arch -eq 'amd64') { return 'VULKAN_RT_WINDOWS_ZIP_SHA256' }
+    return 'VULKAN_RT_WINDOWS_ARM64_ZIP_SHA256'
+}
+
+<#
+.SYNOPSIS
+    Validates the lavapipe and loader pins and derives their URLs, ICD name and bin prefix for an arch.
+#>
+function Resolve-LavapipeAssets {
+    param(
+        [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$MesaVersion,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$VulkanVersion,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$MesaSha256,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$LoaderSha256
+    )
+    foreach ($value in @($MesaVersion, $VulkanVersion, $MesaSha256, $LoaderSha256)) {
+        if ([string]::IsNullOrWhiteSpace($value)) { throw 'Resolve-LavapipeAssets: a pin is unset -- versions.env was not loaded' }
+    }
+    if ($MesaSha256 -notmatch '^[0-9a-fA-F]{64}$' -or $LoaderSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw 'Resolve-LavapipeAssets: the SHA256 pins must be 64 hex (see versions.env)'
+    }
+    return @{
+        MesaUrl   = Get-LavapipeWindowsUrl -Version $MesaVersion -Arch $Arch
+        LoaderUrl = Get-VulkanRuntimeComponentsUrl -Version $VulkanVersion -Arch $Arch
+        IcdName   = if ($Arch -eq 'amd64') { 'lvp_icd.x86_64.json' } else { 'lvp_icd.aarch64.json' }
+        BinPrefix = if ($Arch -eq 'amd64') { 'x64/' } else { '' }
+    }
+}
+
+<#
+.SYNOPSIS
+    Unpacks a lavapipe 7z with the 7-Zip on PATH or in Program Files.
+#>
+function Expand-LavapipeArchive {
+    param([Parameter(Mandatory)][string]$ArchivePath, [Parameter(Mandatory)][string]$Destination)
+    $sevenZip = @((Get-Command 7z -ErrorAction SilentlyContinue | ForEach-Object Source), "$env:ProgramFiles\7-Zip\7z.exe") |
+        Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+    if (-not $sevenZip) { throw 'Expand-LavapipeArchive: 7-Zip is needed to unpack lavapipe, and neither 7z on PATH nor Program Files\7-Zip has it' }
+    & $sevenZip x -y "-o$Destination" $ArchivePath | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Expand-LavapipeArchive: 7-Zip exited $LASTEXITCODE unpacking $ArchivePath" }
+}
+
+<#
+.SYNOPSIS
+    Reads the four lavapipe pins through a caller-supplied lookup (env vars in the image, versions.env on a host).
+#>
+function Get-LavapipePinValues {
+    param(
+        [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch,
+        [Parameter(Mandatory)][scriptblock]$Lookup
+    )
+    $read = { param([string]$name) "$(& $Lookup $name)".Trim() }
+    return @{
+        MesaVersion   = & $read 'LAVAPIPE_VERSION'
+        VulkanVersion = & $read 'VULKAN_VERSION'
+        MesaSha256    = & $read (Get-LavapipePinName -Arch $Arch -Kind 'mesa')
+        LoaderSha256  = & $read (Get-LavapipePinName -Arch $Arch -Kind 'loader')
+    }
+}
+
 Export-ModuleMember -Function @(
     'Resolve-ContainerImageValue',
     'Resolve-VsBuildToolsRoot',
@@ -237,6 +335,12 @@ Export-ModuleMember -Function @(
     'Assert-ContainerCommandAvailable',
     'Get-CiImageReference',
     'Expand-VulkanRuntimeComponents',
+    'Get-LavapipeWindowsUrl',
+    'Get-VulkanRuntimeComponentsUrl',
+    'Get-LavapipePinName',
+    'Resolve-LavapipeAssets',
+    'Expand-LavapipeArchive',
+    'Get-LavapipePinValues',
     # Re-exported from WindowsScripts.Shared, so one Import-Module suffices.
     'Resolve-DirectoryPath',
     'New-Timestamp',
