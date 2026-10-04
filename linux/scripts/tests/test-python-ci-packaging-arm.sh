@@ -43,7 +43,7 @@ chmod +x "${BIN}/uname" "${BIN}/apt-get" "${BIN}/auditwheel" "${BIN}/uv" "${BIN}
 # The cross path's wheel builder: the venv's python, with _PYTHON_HOST_PLATFORM set only on that command.
 for venv in .venv_packaging_sources .venv_packaging_binaries; do
   mkdir -p "${WS}/${venv}/bin"
-  printf '#!/usr/bin/env bash\nprintf "wheel CC=%%s SUFFIX=%%s PLAT=%%s CFLAGS=%%s\\n" "${CC:-}" "${SETUPTOOLS_EXT_SUFFIX:-}" "${_PYTHON_HOST_PLATFORM:-}" "${CFLAGS:-}" >> "${CALLS}"\n: \n' > "${WS}/${venv}/bin/python"
+  printf '#!/usr/bin/env bash\nprintf "wheel CC=%%s SUFFIX=%%s PLAT=%%s CFLAGS=%%s LDSHARED=%%s\\n" "${CC:-}" "${SETUPTOOLS_EXT_SUFFIX:-}" "${_PYTHON_HOST_PLATFORM:-}" "${CFLAGS:-}" "${LDSHARED:-}" >> "${CALLS}"\n: \n' > "${WS}/${venv}/bin/python"
   chmod +x "${WS}/${venv}/bin/python"
 done
 
@@ -104,6 +104,7 @@ t_assert_contains "$(cat "${CALLS}")" "CC=${BIN}/riscv64-linux-gnu-clang" "CC is
 t_assert_contains "$(cat "${CALLS}")" "SUFFIX=.cpython-314-riscv64-linux-gnu.so" "the target SOABI suffix"
 t_assert_contains "$(cat "${CALLS}")" "CFLAGS=-O2 -I${PYROOT}/include/python3.14" "the staged target Python's headers"
 t_assert_eq "2" "$(grep -c '^wheel .*PLAT=linux_riscv64' "${CALLS}")" "both wheels carry the target platform tag"
+t_assert_eq "2" "$(grep -c '^wheel .*LDSHARED=.*-Wl,-m,elf64lriscv' "${CALLS}")" "both wheels pin the riscv64 linker emulation"
 
 t_case "cross mode never shows uv the target platform tag (uv refuses it at venv and build time)"
 t_assert_eq "2" "$(grep -c '^uv .*PLAT= CFLAGS=' "${CALLS}")" "both sdists build with no platform in uv's environment"

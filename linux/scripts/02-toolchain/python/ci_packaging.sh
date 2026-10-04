@@ -67,7 +67,8 @@ packaging_cross_env() {
   fi
 
   export CC="${RISCV64_CROSS_BIN}/riscv64-linux-gnu-clang"
-  export LDSHARED="${CC} -shared"
+  # The wheel link names the emulation: clang 22 dropped the target driving lld through --gcc-toolchain (run 37196119524).
+  export LDSHARED="${CC} -shared -Wl,-m,elf64lriscv"
   # NOT _PYTHON_HOST_PLATFORM: uv reads it while inspecting the interpreter and refuses "Unknown operating system: linux_riscv64".
   export PYTHON_HOST_PLATFORM_TARGET="${plat_tag}"
   export SETUPTOOLS_EXT_SUFFIX=".cpython-${mm}-riscv64-linux-gnu.so"
