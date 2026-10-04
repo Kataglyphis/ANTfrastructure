@@ -24,10 +24,11 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-foreach ($m in 'WindowsScripts.Shared', 'WindowsTargetArch.Common', 'WindowsContainerImage.Common') {
-    $modulePath = Join-Path $scriptAssetRoot "modules\$m.psm1"
-    if ((Test-Path $modulePath) -and -not (Get-Module -Name $m)) { Import-Module $modulePath }
-}
+$containerModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
+if (-not (Test-Path $containerModulePath)) { throw "Required module not found: $containerModulePath" }
+Import-Module $containerModulePath -Force
+$targetArchModulePath = Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1'
+if ((Test-Path $targetArchModulePath) -and -not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchModulePath }
 
 # Import-Versions fills the process env from versions.env unless a build-arg already set it.
 if ($ScriptDir) { & (Join-Path $ScriptDir 'Import-Versions.ps1') }
