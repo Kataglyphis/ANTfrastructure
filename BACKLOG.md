@@ -79,7 +79,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          `C:\runtime\lavapipe`, the merge stage sets `LP_NATIVE_VECTOR_WIDTH=256`, the amd64
          image registers the ICD in HKLM, the bundle manifest and the gate's twelfth step
          carry the device half. `:winamd64` was republished the same day - the smoke's
-       `vulkaninfo --summary` lists the llvmpipe device; the `:winarm64` bundle rebuild is in flight.)
+       `vulkaninfo --summary` lists the llvmpipe device; the `:winarm64` bundle is published and its device gate passed 12/12 on the Snapdragon X (Windows 11 ARM64).)
       6. A native `windows-11-arm` Python job in `python-ci-windows.yml` for WebDavClient:
          `arm64-tests` and `Invoke-PythonTestLegs.ps1`. (Done 2026-10-01.) WebDavClient
          keeps py-spy and line_profiler off ARM64 (1f9bb5f) and runs the job since f7ed5d8

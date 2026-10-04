@@ -29,7 +29,7 @@
   llvmpipe, and `Test-Arm64Bundle.ps1` gains the device step (floor 11 to 12).
   - `:winamd64` was republished on 2026-10-04 (digest `65c0dc1f`): the smoke's
     `vulkaninfo --summary` lists the llvmpipe device and the lavapipe step passes;
-    the `:winarm64` bundle rebuild is in flight.
+    the `:winarm64` bundle is published and its device gate passed 12/12 on the Snapdragon X.
 
 
 ## 2026-10-04 — a root directory survives the tar-pipe exclude

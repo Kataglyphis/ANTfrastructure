@@ -538,7 +538,7 @@ bundle cannot register it while it is packed, so the device needs the one-time
 HKLM registration the bundle README names; `Test-Arm64Bundle.ps1` runs
 `vulkaninfo --summary` and fails a device without the llvmpipe device.
 `:winamd64` carries the device since the 2026-10-04 republish (the smoke lists
-llvmpipe); the `:winarm64` bundle rebuild is in flight.
+llvmpipe); the `:winarm64` bundle is published and its device gate lists llvmpipe (12/12 on the Snapdragon X).
 
 ## The ort crate links the chain ONNX Runtime
 
