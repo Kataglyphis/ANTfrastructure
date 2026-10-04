@@ -11893,10 +11893,10 @@
  {
   "id": "python.packaging.cross-mode-sets-the-target-tag",
   "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
-  "find": "  export _PYTHON_HOST_PLATFORM=\"${plat_tag}\"",
-  "replace": "  export _PYTHON_HOST_PLATFORM=\"linux_x86_64\"",
+  "find": "  export PYTHON_HOST_PLATFORM_TARGET=\"${plat_tag}\"",
+  "replace": "  export PYTHON_HOST_PLATFORM_TARGET=\"linux_x86_64\"",
   "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
-  "why": "a host-tagged wheel installs on the target and never imports; the cross knobs are what tag it"
+  "why": "a host-tagged wheel installs on the target and never imports; the build command is what turns this value into the tag"
  },
  {
   "id": "linux-lane.riscv64-packaging-crosses",

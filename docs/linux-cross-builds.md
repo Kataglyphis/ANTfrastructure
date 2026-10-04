@@ -1450,7 +1450,7 @@ reproduce here — [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md).
 | `LDSHARED` | Explicit `<cross-gcc> -shared`. Without it the link command is derived from the **host** interpreter's sysconfig. |
 | `CFLAGS` | **Replaces** (does not append to) the sysconfig CFLAGS, and lands *before* the extension's own `-I` dirs — which is what makes the TARGET Python headers win over the host ones `build_ext` always appends. Must carry `-O2` itself, since the sysconfig optimisation flags are replaced with it. |
 | `SETUPTOOLS_EXT_SUFFIX` | The target SOABI suffix. Without it extensions are named `.cpython-<mm>-x86_64-linux-gnu.so`, which the target interpreter never even considers at import time (`importlib` `EXTENSION_SUFFIXES`) — the wheel installs and the `import` dies. `runtime/verify-wheels.sh` asserts the suffix. |
-| `_PYTHON_HOST_PLATFORM` | Makes `get_platform()`, and hence the wheel platform tag, the target one — so the wheel is born correctly tagged and `runtime/repair-wheels.sh`'s blanket retag is only a safety net. |
+| `_PYTHON_HOST_PLATFORM` | Makes `get_platform()`, and hence the wheel platform tag, the target one — so the wheel is born correctly tagged and `runtime/repair-wheels.sh`'s blanket retag is only a safety net. **`uv` must never see it**: uv inspects the interpreter through `sysconfig.get_platform()` and refuses `Unknown operating system: linux_riscv64` at both `uv venv` and `uv build`, so the cross path builds the wheel with the venv's `python -m pip wheel` and sets the variable on that command alone (the sdist stays on `uv build --sdist`). |
 
 ## Runtime lane helper commands
 

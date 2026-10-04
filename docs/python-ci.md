@@ -103,7 +103,11 @@ one. The wheel is **cross-built on the amd64 row** (`PACKAGING_CROSS_TARGET=risc
 [`linux-cross-builds.md` § Cross Python wheels](linux-cross-builds.md#cross-python-wheels-setuptools-knobs)
 pins: `CC`/`LDSHARED` are the riscv64 cross wrapper, `CFLAGS` carries the target
 include dir, `SETUPTOOLS_EXT_SUFFIX` the target SOABI suffix and
-`_PYTHON_HOST_PLATFORM` the target tag. The emulated row only tests: its compile
+`_PYTHON_HOST_PLATFORM` the target tag — the last one on the wheel's
+`python -m pip wheel` command alone, because uv reads it while inspecting the
+interpreter and refuses the riscv64 tag at `uv venv` and `uv build` alike
+(`Unknown operating system: linux_riscv64`); the sdist stays on `uv build --sdist`.
+The emulated row only tests: its compile
 hung four hours on one Cython unit (run 37127505865) and could not fit the
 360-minute job. The app packages of a `packaging/app.json` app do not follow -
 they need the AppImage tooling the image ships for amd64/arm64 only, so

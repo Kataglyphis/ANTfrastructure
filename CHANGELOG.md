@@ -7,6 +7,16 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-04 — the riscv64 cross wheel builds through pip, not uv
+
+- `ci_packaging.sh`'s cross mode no longer exports `_PYTHON_HOST_PLATFORM`: uv reads it while
+  inspecting the interpreter and refuses `Unknown operating system: linux_riscv64` at both
+  `uv venv` and `uv build`, which killed OrchestrANT's packaging step one second in. The target
+  tag travels as `PYTHON_HOST_PLATFORM_TARGET` and is set only on the wheel's
+  `python -m pip wheel` command; the sdist stays on `uv build --sdist`.
+- The arm suite pins both halves: the wheel commands carry the tag, uv's environment never does.
+
+
 ## 2026-10-04 — lavapipe ships in the Windows image and the arm64 bundle
 
 - `Install-Lavapipe.ps1` stages Mesa's lavapipe (mmozeiko/build-mesa, SHA256-pinned;
