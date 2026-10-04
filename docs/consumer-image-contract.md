@@ -537,6 +537,8 @@ process is elevated, and the loader ignores `VK_DRIVER_FILES` there. The arm64
 bundle cannot register it while it is packed, so the device needs the one-time
 HKLM registration the bundle README names; `Test-Arm64Bundle.ps1` runs
 `vulkaninfo --summary` and fails a device without the llvmpipe device.
+`:winamd64` carries the device since the 2026-10-04 republish (the smoke lists
+llvmpipe); the `:winarm64` bundle rebuild is in flight.
 
 ## The ort crate links the chain ONNX Runtime
 

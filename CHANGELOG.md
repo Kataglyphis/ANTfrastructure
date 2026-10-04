@@ -27,6 +27,9 @@
   name the ICD and `LP_NATIVE_VECTOR_WIDTH=256` (Mesa 26.2's BVH sort needs 8-lane
   subgroups, CON44); the image smoke runs `vulkaninfo --summary` and fails without
   llvmpipe, and `Test-Arm64Bundle.ps1` gains the device step (floor 11 to 12).
+  - `:winamd64` was republished on 2026-10-04 (digest `65c0dc1f`): the smoke's
+    `vulkaninfo --summary` lists the llvmpipe device and the lavapipe step passes;
+    the `:winarm64` bundle rebuild is in flight.
 
 
 ## 2026-10-04 — a root directory survives the tar-pipe exclude
