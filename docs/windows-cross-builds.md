@@ -263,7 +263,7 @@ Optional AArch64 features belong only on dispatched kernels.
 The image and the bundle carry Mesa's lavapipe; what ships and why:
 [`consumer-image-contract.md` § The Windows image ships lavapipe](consumer-image-contract.md#the-windows-image-ships-lavapipe)
 (CON50). For this lane, `Test-Arm64Bundle.ps1`'s device step (floor 12) is the gate that
-proves the bundle's device, and `:winamd64` carries it since the 2026-10-04 republish.
+proves the bundle's device, and `:winamd64` carries it since the 2026-10-04 republish; `:winarm64` followed the same day and its device gate passed 12/12.
 
 ## Verification
 
