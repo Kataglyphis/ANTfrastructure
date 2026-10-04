@@ -47,7 +47,8 @@ Describe 'Install-Lavapipe: the versions.env pin names' {
 }
 
 Describe 'Install-Lavapipe: the loader-zip layout' {
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Lavapipe.ps1' -FunctionName 'Expand-VulkanRuntimeComponents')
+    # The extraction has ONE owner: the shared image module Install-Lavapipe and Install-VulkanLoader both call.
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsContainerImage.Common.psm1' -FunctionName 'Expand-VulkanRuntimeComponents')
 
     function New-FakeLoaderZip {
         # The real zips: x64 nests its binaries under x64\ beside an x86\ pair, arm64 keeps them at the root.
@@ -78,36 +79,29 @@ Describe 'Install-Lavapipe: the loader-zip layout' {
         } finally { $zip.Dispose() }
     }
 
-    It 'flattens the x64 zip without taking the x86 pair' {
+    It 'extracts the arch pair flat, never the other arch' {
         Invoke-InTestDir { param($dir)
-            $zip = Join-Path $dir 'rt.zip'
-            New-FakeLoaderZip -Path $zip -Arch 'amd64'
-            $out = Join-Path $dir 'out'
-            Expand-VulkanRuntimeComponents -ZipPath $zip -Destination $out -Arch 'amd64'
-            Assert-True (Test-Path (Join-Path $out 'vulkan-1.dll')) 'loader extracted'
-            Assert-Equal 'from VulkanRT-X64-1.4.357.0-Components/x64/vulkan-1.dll' (Get-Content (Join-Path $out 'vulkan-1.dll') -Raw) 'the x64 entry won, never x86'
-            Assert-True (Test-Path (Join-Path $out 'vulkaninfo.exe')) 'vulkaninfo extracted'
-            Assert-True (Test-Path (Join-Path $out 'VulkanRT-License.txt')) 'licence extracted'
+            foreach ($case in @(
+                    @{ Arch = 'amd64'; Prefix = 'x64/'; Expect = 'from VulkanRT-X64-1.4.357.0-Components/x64/vulkan-1.dll' },
+                    @{ Arch = 'arm64'; Prefix = ''; Expect = 'from VulkanRT-ARM64-1.4.357.0-Components/vulkan-1.dll' })) {
+                $zip = Join-Path $dir "$($case.Arch).zip"
+                New-FakeLoaderZip -Path $zip -Arch $case.Arch
+                $out = Join-Path $dir "out-$($case.Arch)"
+                Expand-VulkanRuntimeComponents -ZipPath $zip -Destination $out -BinPrefix $case.Prefix -BinNames @('vulkan-1.dll', 'vulkaninfo.exe')
+                Assert-Equal $case.Expect (Get-Content (Join-Path $out 'vulkan-1.dll') -Raw) "the $($case.Arch) loader won, never the other arch"
+                Assert-True (Test-Path (Join-Path $out 'vulkaninfo.exe')) "$($case.Arch) vulkaninfo extracted"
+                Assert-True (Test-Path (Join-Path $out 'VulkanRT-License.txt')) "$($case.Arch) licence extracted"
+            }
         }
     }
 
-    It 'takes the arm64 zip flat at the component root' {
-        Invoke-InTestDir { param($dir)
-            $zip = Join-Path $dir 'rt.zip'
-            New-FakeLoaderZip -Path $zip -Arch 'arm64'
-            $out = Join-Path $dir 'out'
-            Expand-VulkanRuntimeComponents -ZipPath $zip -Destination $out -Arch 'arm64'
-            Assert-Equal 'from VulkanRT-ARM64-1.4.357.0-Components/vulkan-1.dll' (Get-Content (Join-Path $out 'vulkan-1.dll') -Raw) 'the root entry extracted'
-        }
-    }
-
-    It 'fails loudly when a wanted entry is absent or ambiguous' {
+    It 'fails loudly when a wanted entry is absent' {
         Invoke-InTestDir { param($dir)
             $zip = Join-Path $dir 'empty.zip'
             Add-Type -AssemblyName System.IO.Compression.FileSystem
             $z = [System.IO.Compression.ZipFile]::Open($zip, 'Create')
             try { $e = $z.CreateEntry('unrelated.txt'); $s = $e.Open(); $s.Dispose() } finally { $z.Dispose() }
-            Assert-Throws { Expand-VulkanRuntimeComponents -ZipPath $zip -Destination (Join-Path $dir 'out') -Arch 'arm64' } `
+            Assert-Throws { Expand-VulkanRuntimeComponents -ZipPath $zip -Destination (Join-Path $dir 'out') } `
                 'no matching entry' -MessagePattern 'expected exactly 1'
         }
     }

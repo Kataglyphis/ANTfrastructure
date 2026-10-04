@@ -192,6 +192,42 @@ function Get-CiImageReference {
     return ('{0}:{1}' -f $versions['IMAGE_REGISTRY_PREFIX'], $versions[$tagKey])
 }
 
+<#
+.SYNOPSIS
+    Extracts named files from LunarG's Runtime Components zip, flat, under a per-arch prefix.
+.DESCRIPTION
+    The x64 zip nests its binaries under x64\ beside an x86\ pair; the arm64 one keeps them at the
+    component root. Each wanted name must match exactly one entry, or the caller gets a throw.
+#>
+function Expand-VulkanRuntimeComponents {
+    param(
+        [Parameter(Mandatory)][string]$ZipPath,
+        [Parameter(Mandatory)][string]$Destination,
+        # '' for the arm64 zip's component root; 'x64/' for the x64 zip's nested pair (never x86/).
+        [AllowEmptyString()][string]$BinPrefix = '',
+        [string[]]$BinNames = @('vulkan-1.dll')
+    )
+    $wanted = [ordered]@{}
+    foreach ($name in $BinNames) { $wanted[$name] = ('(^|/)' + $BinPrefix + [regex]::Escape($name) + '$') }
+    # The licence sits at the component root on both arches, never under the bin prefix.
+    $wanted['VulkanRT-License.txt'] = '(^|/)VulkanRT-License\.txt$'
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $plan = @(foreach ($name in $wanted.Keys) {
+                $hits = @($zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -match $wanted[$name] })
+                if ($hits.Count -ne 1) {
+                    throw "Expand-VulkanRuntimeComponents: $ZipPath holds $($hits.Count) entries matching $($wanted[$name]), expected exactly 1"
+                }
+                @{ Entry = $hits[0]; Name = $name }
+            })
+        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+        foreach ($p in $plan) {
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($p.Entry, (Join-Path $Destination $p.Name), $true)
+        }
+    } finally { $zip.Dispose() }
+}
+
 Export-ModuleMember -Function @(
     'Resolve-ContainerImageValue',
     'Resolve-VsBuildToolsRoot',
@@ -200,6 +236,7 @@ Export-ModuleMember -Function @(
     'Sync-ContainerProcessPath',
     'Assert-ContainerCommandAvailable',
     'Get-CiImageReference',
+    'Expand-VulkanRuntimeComponents',
     # Re-exported from WindowsScripts.Shared, so one Import-Module suffices.
     'Resolve-DirectoryPath',
     'New-Timestamp',

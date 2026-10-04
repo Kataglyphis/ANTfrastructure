@@ -434,8 +434,10 @@ Describe 'rocm-checks\GpuLoaders: the loader probe grading' {
 
 Describe 'Install-VulkanLoader: LunarG''s pinned loader zip' {
     $script:VkInstall = 'windows\scripts\host\Install-VulkanLoader.ps1'
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:VkInstall -FunctionName 'Get-VulkanRuntimeZipUrl', 'Expand-VulkanLoaderZip',
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:VkInstall -FunctionName 'Get-VulkanRuntimeZipUrl',
         'Get-PeFileVersionNumber', 'Install-VulkanLoaderSystemCopy', 'Install-VulkanLoader')
+    # The zip extraction has ONE owner: the shared image module this script and Install-Lavapipe both call.
+    Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsContainerImage.Common.psm1') -Force -DisableNameChecking
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     # A zip with LunarG's layout; -Entry maps zip paths to the file whose bytes they carry.
     function New-VulkanFixtureZip([string]$Root, [hashtable]$Entry) {
@@ -467,15 +469,15 @@ Describe 'Install-VulkanLoader: LunarG''s pinned loader zip' {
             $zip = New-VulkanFixtureZip -Root (Join-Path $dir 'ok') -Entry @{ "$top\x64\vulkan-1.dll" = $x64; "$top\x86\vulkan-1.dll" = $x86
                 "$top\x64\vulkaninfo.exe" = $x86; "$top\VulkanRT-License.txt" = $lic }
             $out = Join-Path $dir 'out'
-            Expand-VulkanLoaderZip -ZipPath $zip -Destination $out
+            Expand-VulkanRuntimeComponents -ZipPath $zip -Destination $out -BinPrefix 'x64/'
             Assert-Equal 'vulkan-1.dll,VulkanRT-License.txt' ((Get-ChildItem -LiteralPath $out -File | Sort-Object Name).Name -join ',') 'two files, flat'
             Assert-Equal 'x64 loader' (Get-Content -Raw (Join-Path $out 'vulkan-1.dll')).Trim() 'the x64 loader, not the x86 one'
             $none = New-VulkanFixtureZip -Root (Join-Path $dir 'none') -Entry @{ "$top\x86\vulkan-1.dll" = $x86; "$top\VulkanRT-License.txt" = $lic }
-            Assert-Throws { Expand-VulkanLoaderZip -ZipPath $none -Destination (Join-Path $dir 'o2') } 'no x64' -MessagePattern 'holds 0 entries matching .+x64/vulkan-1'
+            Assert-Throws { Expand-VulkanRuntimeComponents -ZipPath $none -Destination (Join-Path $dir 'o2') -BinPrefix 'x64/' } 'no x64' -MessagePattern 'holds 0 entries matching .+x64/vulkan-1'
             $two = New-VulkanFixtureZip -Root (Join-Path $dir 'two') -Entry @{ 'a\x64\vulkan-1.dll' = $x64; 'b\x64\vulkan-1.dll' = $x64; 'VulkanRT-License.txt' = $lic }
-            Assert-Throws { Expand-VulkanLoaderZip -ZipPath $two -Destination (Join-Path $dir 'o3') } 'two x64' -MessagePattern 'holds 2 entries'
+            Assert-Throws { Expand-VulkanRuntimeComponents -ZipPath $two -Destination (Join-Path $dir 'o3') -BinPrefix 'x64/' } 'two x64' -MessagePattern 'holds 2 entries'
             $nolic = New-VulkanFixtureZip -Root (Join-Path $dir 'nolic') -Entry @{ "$top\x64\vulkan-1.dll" = $x64 }
-            Assert-Throws { Expand-VulkanLoaderZip -ZipPath $nolic -Destination (Join-Path $dir 'o4') } 'no licence' -MessagePattern 'holds 0 entries matching .+License'
+            Assert-Throws { Expand-VulkanRuntimeComponents -ZipPath $nolic -Destination (Join-Path $dir 'o4') -BinPrefix 'x64/' } 'no licence' -MessagePattern 'holds 0 entries matching .+License'
         }
     }
 

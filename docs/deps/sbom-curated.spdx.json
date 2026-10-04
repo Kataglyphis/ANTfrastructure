@@ -1105,8 +1105,8 @@
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, eula-review"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-fe666ae8",
-      "name": "Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\\vulkan-loader, on PATH in the default and nvidia images)",
+      "SPDXID": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-c2f065fc",
+      "name": "Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\\vulkan-loader, on PATH in the default and nvidia images; the arm64 bundle's copy and licence in C:\\runtime\\lavapipe)",
       "versionInfo": "1.4.357.0",
       "downloadLocation": "https://vulkan.lunarg.com/",
       "filesAnalyzed": false,
@@ -1116,6 +1116,19 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Windows Image / GPU Layer",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Mesa-lavapipe-the-CPU-Vulkan-ICD-lvp-icd.x86-6-b4888d1b",
+      "name": "Mesa lavapipe (the CPU Vulkan ICD: lvp_icd.x86_64/aarch64.json + vulkan_lvp.dll in C:\\runtime\\lavapipe; mmozeiko/build-mesa, SHA256-pinned)",
+      "versionInfo": "26.2.3",
+      "downloadLocation": "https://github.com/mmozeiko/build-mesa",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-built-from-upstre-b06a673e",
@@ -2356,7 +2369,12 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-fe666ae8"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-c2f065fc"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Mesa-lavapipe-the-CPU-Vulkan-ICD-lvp-icd.x86-6-b4888d1b"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

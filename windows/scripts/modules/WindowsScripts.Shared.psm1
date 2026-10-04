@@ -404,6 +404,8 @@ function Get-VisualStudioInstallPath {
         if ($vsPaths.Count -gt 0) { break }
         if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
     }
+    # A probe that found nothing is not the caller's failure: GitHub's pwsh shell exits the step with a stale $LASTEXITCODE.
+    $global:LASTEXITCODE = 0
     if ($vsPaths.Count -eq 0) {
         # Memoized per process, so a dead vswhere globs and warns once instead of per caller.
         if (-not (Test-Path 'Variable:script:VsFilesystemFallbackCache')) {
