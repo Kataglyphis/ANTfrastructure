@@ -80,8 +80,7 @@ if [ -n "${CROSS_TARGET}" ]; then
   packaging_cross_env "${CROSS_TARGET}"
 fi
 
-# Cross wheels go through pip: uv refuses the target platform tag at both venv and build time, so only the
-# build command may see _PYTHON_HOST_PLATFORM (setuptools reads it); the sdist needs no platform at all.
+# Cross wheels go through pip: uv refuses the target platform tag, so only the build command may see _PYTHON_HOST_PLATFORM.
 package_build() {
   local venv="$1"
   if [ -n "${CROSS_TARGET}" ]; then
