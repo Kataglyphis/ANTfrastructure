@@ -70,6 +70,13 @@ docker exec $c tar -cf - --exclude "*/CMakeFiles" --exclude "*.obj" -C C:\ws bui
 Requirements: none. Caveats: the deletion hazard (safety rail 2 below), and
 `tar` aborting a whole transfer on one over-long path (see Gotchas).
 
+**`--exclude` matches at every depth.** A pattern that names a root directory
+(`build`) also drops every directory of that name anywhere in the tree —
+including `third_party/ANTinfrastructure/windows/scripts/build`, which consumers
+need. No pattern form anchors: `./build`, `[.]/build` and `build/` all behave
+the same. A caller that must drop such a root directory passes `-InboundItems`
+(the top-level entries to stream, computed by omitting it) instead of a pattern.
+
 ### Transport B — bind mount (Dev Drive needs setup)
 
 A Dev Drive refuses bind mounts by default — the minifilter cannot attach

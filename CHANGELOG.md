@@ -7,6 +7,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-04 — a root directory survives the tar-pipe exclude
+
+- `Invoke-ContainerBuild` gains `-InboundItems` (default `.`): the top-level
+  entries to stream. `--exclude` matches at every depth, so a pattern naming a
+  root directory (`build`) also dropped
+  `third_party/ANTinfrastructure/windows/scripts/build`, and no pattern form
+  anchors; a caller omits the root directory from the item list instead.
+- The module's contract suite pins the parameter and its forwarding; the
+  performance page records the matching rule.
+
+
 ## 2026-10-03 — the riscv64 wheel is cross-built on the native row
 
 - `ci_packaging.sh` gains cross mode (`PACKAGING_CROSS_TARGET=riscv64`): the wheel

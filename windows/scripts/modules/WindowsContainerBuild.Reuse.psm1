@@ -627,6 +627,8 @@ function Invoke-ContainerBuild {
         [string[]]$OutputDirs = @(),
         [string[]]$VerifyDirs = @(),
         [string[]]$InboundExclude = @(),
+        # bsdtar excludes match at every depth; omit a root dir here instead of excluding its name.
+        [string[]]$InboundItems = @('.'),
         [string[]]$OutboundExclude = @(),
         [string[]]$KeepDirs = @('logs'),
         [System.Collections.IDictionary]$CacheEnv = @{},
@@ -735,7 +737,7 @@ function Invoke-ContainerBuild {
         }
 
         $sourcesIn = Copy-IntoBuildContainer -DockerExe $DockerExe -Container $container `
-            -SourceRoot $RepoRoot -TargetPath $WorkspacePath -Exclude $InboundExclude
+            -SourceRoot $RepoRoot -TargetPath $WorkspacePath -Items $InboundItems -Exclude $InboundExclude
         if (-not $sourcesIn) { throw 'Source transfer failed.' }
 
         # Streamed in rather than mounted as a volume, which CMake cannot configure inside.
