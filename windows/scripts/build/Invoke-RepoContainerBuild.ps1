@@ -11,6 +11,7 @@
     lists - and this script keeps the plumbing: the module imports, the image ref from versions.env, the docker
     resolution, the sccache environment and the Invoke-ContainerBuild call. Every consumer's driver shrank to
     its spec, and the plumbing cannot drift between them.
+    -WhatIf prints the assembled in-container command without starting a container.
     See docs/windows-container-build-performance.md.
 .PARAMETER RepoRoot
     The consumer's repository root, which the container bind-mounts or streams.
@@ -22,7 +23,7 @@
     The top-level entries the transfer streams; keep a root directory out of this list rather than excluding
     it by pattern, because --exclude matches at every depth.
 #>
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory)][string]$RepoRoot,
     [Parameter(Mandatory)][string]$ContainerName,
@@ -63,6 +64,9 @@ $docker = Resolve-DockerExe -Override $DockerExe
 Write-Host "Using docker: $docker"
 Write-Host "Image: $Image"
 
+# C:\ws, not the image-baked C:\workspace: mounting over an image directory fails at CreateComputeSystem on host/image OS-build skew.
+$workspacePath = 'C:\ws'
+
 $envMap = Get-SccacheContainerEnv
 foreach ($key in $CacheEnv.Keys) { $envMap[$key] = $CacheEnv[$key] }
 
@@ -72,6 +76,7 @@ $build = @{
     ContainerName      = $ContainerName
     RepoRoot           = $RepoRoot
     BuildCommand       = $BuildCommand
+    WorkspacePath      = $workspacePath
     IsolationArgs      = (Get-ContainerIsolationArgs -Isolation $Isolation -CpuCount $CpuCount -MemoryGb $MemoryGb)
     CacheEnv           = $envMap
     KeepDirs           = $KeepDirs
@@ -85,4 +90,10 @@ $build = @{
     UseBindMount       = $UseBindMount.IsPresent
     FreshContainer     = $FreshContainer.IsPresent
 }
-$null = Invoke-ContainerBuild @build
+if ($PSCmdlet.ShouldProcess("$Image (container '$ContainerName')", 'Invoke-ContainerBuild')) {
+    $null = Invoke-ContainerBuild @build
+} else {
+    # -WhatIf: show the exact in-container command the spec assembles to.
+    $argv = Resolve-ContainerBuildCommand -BuildCommand $BuildCommand -WorkspacePath $workspacePath
+    Write-Host ("Would run in {0}: {1}" -f $workspacePath, ($argv -join ' '))
+}
