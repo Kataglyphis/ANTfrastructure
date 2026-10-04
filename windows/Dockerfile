@@ -27,7 +27,8 @@ ENV ORT_LIB_LOCATION=$ONNX_ROOT\lib `
 ARG VULKAN_VERSION=1.4.357.0
 ARG VULKAN_RT_WINDOWS_ZIP_SHA256=a14672efed15aafc7f5a16572d35cd3a3416eadf670aeee3cdf50ee32d5fbf83
 COPY windows\scripts\host\Install-VulkanLoader.ps1 C:\temp\scripts\
-RUN if ($env:WINDOWS_TARGET_ARCH -eq 'amd64' -and -not $env:VULKAN_LOADER_DIR) { & 'C:\temp\scripts\Install-VulkanLoader.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\vulkan-loader' -SystemDir '' }
+RUN --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Common.psm1,target=C:\temp\scripts\modules\WindowsContainerImage.Common.psm1 `
+    if ($env:WINDOWS_TARGET_ARCH -eq 'amd64' -and -not $env:VULKAN_LOADER_DIR) { & 'C:\temp\scripts\Install-VulkanLoader.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\vulkan-loader' -SystemDir '' }
 # lavapipe's loader and vulkaninfo live beside its ICD; the ICD itself is registered in HKLM at install time.
 ENV PATH=$PATH;C:\vulkan-loader;C:\runtime\lavapipe
 

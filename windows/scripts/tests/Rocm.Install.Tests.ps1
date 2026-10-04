@@ -581,7 +581,7 @@ Describe 'Dockerfile.rocm and the final stage: the Vulkan loader layers' {
 
     It 'declares the loader pins after the ROCm RUN (a Vulkan bump keeps the tarball layer) with versions.env defaults' {
         $rocmRun = $df.IndexOf("RUN & 'C:\temp\scripts\Install-Rocm.ps1'")
-        $vkRun = $df.IndexOf("RUN & 'C:\temp\scripts\Install-VulkanLoader.ps1'")
+        $vkRun = $df.IndexOf("& 'C:\temp\scripts\Install-VulkanLoader.ps1'")
         Assert-True ($rocmRun -ge 0 -and $vkRun -gt $rocmRun) 'the loader RUN follows the ROCm RUN'
         foreach ($k in 'VULKAN_VERSION', 'VULKAN_RT_WINDOWS_ZIP_SHA256') {
             $m = [regex]::Match($df, "(?m)^ARG $k=(\S+)\s*$")
@@ -592,7 +592,7 @@ Describe 'Dockerfile.rocm and the final stage: the Vulkan loader layers' {
     }
 
     It 'names the pinned copy''s directory in VULKAN_LOADER_DIR and keeps it off PATH: the loaded copy is System32''s' {
-        $dir = [regex]::Match($df, "Install-VulkanLoader\.ps1' -TempDir \`$env:TEMP_DIR -InstallDir '([^']+)'(.*)").Groups
+        $dir = [regex]::Match(($df -replace '`\r?\n', ' '), "Install-VulkanLoader\.ps1' -TempDir \`$env:TEMP_DIR -InstallDir '([^']+)'(.*)").Groups
         Assert-Equal 'C:\vulkan-loader' $dir[1].Value 'install dir'
         Assert-Equal '' $dir[2].Value.Trim() 'no -SystemDir override: the script''s default is the real System32'
         Assert-Match ('(?m)^\s+VULKAN_LOADER_DIR="' + [regex]::Escape($dir[1].Value) + '" `') $df 'VULKAN_LOADER_DIR'
@@ -643,7 +643,7 @@ Describe 'Dockerfile.rocm and the final stage: the Vulkan loader layers' {
     }
 
     It 'the final stage installs without a System32 copy, amd64 only, not over the rocm variant''s, and appends PATH' {
-        $run = [regex]::Match($finalDf, "(?m)^RUN .*Install-VulkanLoader\.ps1.*$").Value
+        $run = [regex]::Match(($finalDf -replace '`\r?\n', ' '), "(?m)^RUN .*Install-VulkanLoader\.ps1.*$").Value
         Assert-Match "-InstallDir 'C:\\vulkan-loader' -SystemDir ''" $run 'no System32 copy'
         Assert-Match "WINDOWS_TARGET_ARCH -eq 'amd64'" $run 'amd64 only: the pinned zip is x64'
         Assert-Match '-not \$env:VULKAN_LOADER_DIR' $run 'the rocm variant keeps its own'

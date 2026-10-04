@@ -10,13 +10,15 @@ Describe 'BuildKit module closure' {
         $script:repoRoot  = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
         $script:moduleDir = Join-Path $script:repoRoot 'windows\scripts\modules'
         $script:buildDir  = Join-Path $script:repoRoot 'windows\scripts\build'
+        $script:hostDir   = Join-Path $script:repoRoot 'windows\scripts\host'
 
         # Every `modules\<Name>.psm1` reference; bare names are matched separately so foreach lists count.
         function script:Get-ReferencedModules {
             param([string]$Path)
             $t = [System.IO.File]::ReadAllText($Path)
             $names = @([regex]::Matches($t, '(?i)modules[\\/]([A-Za-z0-9._]+)\.psm1') | ForEach-Object { $_.Groups[1].Value })
-            $names += @([regex]::Matches($t, "(?i)'(Windows[A-Za-z0-9._]+)\.psm1'") | ForEach-Object { $_.Groups[1].Value })
+            # The bare-name idiom (`foreach ($m in 'WindowsX.Y', 'WindowsZ.W')`) names no path; the dot keeps env vars like 'WindowsSdkDir' out.
+            $names += @([regex]::Matches($t, "(?i)'(Windows[A-Za-z0-9._]*?\.[A-Za-z0-9]+?)(?:\.psm1)?'") | ForEach-Object { $_.Groups[1].Value })
             @($names | Sort-Object -Unique)
         }
 
@@ -31,7 +33,7 @@ Describe 'BuildKit module closure' {
                     Line          = $line
                     FromStages    = @([regex]::Matches($line, 'from=([A-Za-z0-9_.-]+),source=[^,]*bkmods') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
                     SingleModules = @([regex]::Matches($line, 'source=windows/scripts/modules/([A-Za-z0-9._]+)\.psm1') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-                    Scripts       = @([regex]::Matches($line, 'source=windows/scripts/build/([A-Za-z0-9._-]+)\.ps1') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+                    Scripts       = @([regex]::Matches($line, 'source=windows/scripts/(?:build|host)/([A-Za-z0-9._-]+)\.ps1') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
                 }
             }
             $runs
@@ -84,8 +86,9 @@ Describe 'BuildKit module closure' {
                 $available = @($available | Sort-Object -Unique)
                 if (-not $available) { continue }   # a RUN that mounts no modules at all
                 foreach ($s in $run.Scripts) {
-                    $sp = Join-Path $script:buildDir "$s.ps1"
-                    if (-not (Test-Path $sp)) { continue }
+                    $sp = @((Join-Path $script:buildDir "$s.ps1"), (Join-Path $script:hostDir "$s.ps1")) |
+                        Where-Object { Test-Path $_ } | Select-Object -First 1
+                    if (-not $sp) { continue }
                     $needed = Get-ModuleImportClosure -Seed (Get-ReferencedModules -Path $sp) -ModuleDir $script:moduleDir
                     $missing = @($needed | Where-Object { $_ -notin $available })
                     if ($missing) { $bad += "$(Split-Path $df -Leaf) / $s.ps1 -> missing [$($missing -join ', ')]; mounted [$($available -join ', ')]" }
