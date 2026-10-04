@@ -52,33 +52,6 @@ function Get-VulkanRuntimeZipUrl {
 
 <#
 .SYNOPSIS
-    Extracts x64\vulkan-1.dll and VulkanRT-License.txt from the zip, flat into Destination.
-#>
-function Expand-VulkanLoaderZip {
-    param(
-        [Parameter(Mandatory)][string]$ZipPath,
-        [Parameter(Mandatory)][string]$Destination
-    )
-    $wanted = [ordered]@{ 'vulkan-1.dll' = '(^|/)x64/vulkan-1\.dll$'; 'VulkanRT-License.txt' = '(^|/)VulkanRT-License\.txt$' }
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
-    try {
-        $plan = @(foreach ($name in $wanted.Keys) {
-                $hits = @($zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -match $wanted[$name] })
-                if ($hits.Count -ne 1) {
-                    throw "Install-VulkanLoader: $ZipPath holds $($hits.Count) entries matching $($wanted[$name]), expected exactly 1"
-                }
-                @{ Entry = $hits[0]; Name = $name }
-            })
-        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-        foreach ($p in $plan) {
-            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($p.Entry, (Join-Path $Destination $p.Name), $true)
-        }
-    } finally { $zip.Dispose() }
-}
-
-<#
-.SYNOPSIS
     The numeric file version of a PE (major.minor.build.private), '' when it carries none.
 #>
 function Get-PeFileVersionNumber {
@@ -136,7 +109,7 @@ function Install-VulkanLoader {
     Write-Host "Downloading the Vulkan loader ${VulkanVersion}: $url"
     Invoke-DownloadWithRetry -Url $url -DestinationPath $zipPath -Description "Vulkan Runtime Components $VulkanVersion" `
         -ExpectSignature 'PK' -ExpectedSha256 $ZipSha256
-    Expand-VulkanLoaderZip -ZipPath $zipPath -Destination $InstallDir
+    Expand-VulkanRuntimeComponents -ZipPath $zipPath -Destination $InstallDir -BinPrefix 'x64/'
     Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
 
     $loader = Join-Path $InstallDir 'vulkan-1.dll'

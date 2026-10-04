@@ -24,7 +24,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-foreach ($m in 'WindowsScripts.Shared', 'WindowsTargetArch.Common') {
+foreach ($m in 'WindowsScripts.Shared', 'WindowsTargetArch.Common', 'WindowsContainerImage.Common') {
     $modulePath = Join-Path $scriptAssetRoot "modules\$m.psm1"
     if ((Test-Path $modulePath) -and -not (Get-Module -Name $m)) { Import-Module $modulePath }
 }
@@ -75,48 +75,12 @@ function Get-LavapipePinName {
 
 <#
 .SYNOPSIS
-    Extracts vulkan-1.dll, vulkaninfo.exe and the licence flat into Destination.
-.DESCRIPTION
-    The x64 zip nests its binaries under x64\, the arm64 one keeps them at the component root; the
-    x86\ pair must never match, so the pattern is arch-specific.
-#>
-function Expand-VulkanRuntimeComponents {
-    param(
-        [Parameter(Mandatory)][string]$ZipPath,
-        [Parameter(Mandatory)][string]$Destination,
-        [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch
-    )
-    $binPrefix = if ($Arch -eq 'amd64') { 'x64/' } else { '' }
-    $wanted = [ordered]@{
-        'vulkan-1.dll'         = ('(^|/)' + $binPrefix + 'vulkan-1\.dll$')
-        'vulkaninfo.exe'       = ('(^|/)' + $binPrefix + 'vulkaninfo\.exe$')
-        'VulkanRT-License.txt' = '(^|/)VulkanRT-License\.txt$'
-    }
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
-    try {
-        $plan = @(foreach ($name in $wanted.Keys) {
-                $hits = @($zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -match $wanted[$name] })
-                if ($hits.Count -ne 1) {
-                    throw "Expand-VulkanRuntimeComponents: $ZipPath holds $($hits.Count) entries matching $($wanted[$name]), expected exactly 1"
-                }
-                @{ Entry = $hits[0]; Name = $name }
-            })
-        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-        foreach ($p in $plan) {
-            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($p.Entry, (Join-Path $Destination $p.Name), $true)
-        }
-    } finally { $zip.Dispose() }
-}
-
-<#
-.SYNOPSIS
     Registers an ICD under HKLM\SOFTWARE\Khronos\Vulkan\Drivers.
 #>
 function Register-LavapipeIcd {
     param([Parameter(Mandatory)][string]$IcdPath)
     $key = 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers'
-    if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }
+    New-Item -Path $key -Force | Out-Null
     New-ItemProperty -LiteralPath $key -Name $IcdPath -Value 0 -PropertyType DWord -Force | Out-Null
 }
 
@@ -151,7 +115,8 @@ if ($LASTEXITCODE -ne 0) { throw "Install-Lavapipe: 7-Zip exited $LASTEXITCODE u
 
 Write-Host "Downloading the Vulkan loader ${vulkanVersion}: $loaderUrl"
 Invoke-DownloadWithRetry -Url $loaderUrl -DestinationPath $loaderZip -Description "Vulkan Runtime Components $vulkanVersion" -ExpectSignature PK -ExpectedSha256 $loaderSha
-Expand-VulkanRuntimeComponents -ZipPath $loaderZip -Destination $InstallDir -Arch $arch
+$binPrefix = if ($arch -eq 'amd64') { 'x64/' } else { '' }
+Expand-VulkanRuntimeComponents -ZipPath $loaderZip -Destination $InstallDir -BinPrefix $binPrefix -BinNames @('vulkan-1.dll', 'vulkaninfo.exe')
 
 Remove-Item -LiteralPath $mesaArchive, $loaderZip -Force -ErrorAction SilentlyContinue
 
