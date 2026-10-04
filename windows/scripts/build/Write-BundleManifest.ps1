@@ -32,7 +32,8 @@ $cross = Test-WindowsCrossTarget -Arch $arch
 
 # 1. DLL homes: the merge RUN's ENV that exists, named as the GStreamer probe and the final PATH name them
 $envNames = @('FFMPEG_BIN', 'OPENCV_BIN', 'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'LITERT_BIN', 'LITERT_LM_ROOT', 'GSTREAMER_BIN',
-              'GST_PLUGIN_PATH', 'GST_PLUGIN_SYSTEM_PATH', 'TVM_ROOT', 'IREE_ROOT', 'IREE_BIN', 'PYTHON_WHEELS', 'VULKAN_SDK')
+              'GST_PLUGIN_PATH', 'GST_PLUGIN_SYSTEM_PATH', 'TVM_ROOT', 'IREE_ROOT', 'IREE_BIN', 'PYTHON_WHEELS', 'VULKAN_SDK',
+              'LP_NATIVE_VECTOR_WIDTH')
 $envRows = @()
 foreach ($n in $envNames) {
     $v = [Environment]::GetEnvironmentVariable($n, 'Process')
@@ -42,7 +43,7 @@ foreach ($n in $envNames) {
 }
 $bundleBin = Join-Path $InstallDir 'bin'
 $dllHomes = @($bundleBin) + @($envRows | Where-Object { $_.Exists -and $_.Name -match '_BIN$' } | ForEach-Object { $_.Value })
-foreach ($extra in @((Join-Path $InstallDir "lib\opencv5\$($info.OpenCvArchDir)\vc18\bin"), (Join-Path $InstallDir 'lib\onnxruntime-source\bin'), (Join-Path $InstallDir 'lib\onnxruntime-genai-source\bin'))) {
+foreach ($extra in @((Join-Path $InstallDir "lib\opencv5\$($info.OpenCvArchDir)\vc18\bin"), (Join-Path $InstallDir 'lib\onnxruntime-source\bin'), (Join-Path $InstallDir 'lib\onnxruntime-genai-source\bin'), (Join-Path $InstallDir 'lavapipe'))) {
     if ((Test-Path $extra) -and ($dllHomes -notcontains $extra)) { $dllHomes += $extra }
 }
 $dllHomes = @($dllHomes | Select-Object -Unique)
@@ -142,6 +143,23 @@ if ($cross) {
     $md.Add('```')
     $md.Add('')
     $md.Add('Without it GIO loads no TLS/proxy modules (gioopenssl); plain pipelines are unaffected.')
+}
+$md.Add('')
+$md.Add('## Vulkan on lavapipe')
+$md.Add('')
+$md.Add("The CPU Vulkan device (Mesa's lavapipe) sits in ``$InstallDir\lavapipe`` with its own loader and ``vulkaninfo.exe``; ``LP_NATIVE_VECTOR_WIDTH=256`` is set because Mesa 26.2's BVH sort needs 8-lane subgroups.")
+$md.Add('')
+$md.Add('```')
+$md.Add("$InstallDir\lavapipe\vulkaninfo.exe --summary")
+$md.Add('```')
+if ($cross) {
+    $md.Add('')
+    $md.Add('**One-time step on the device:** copying the tree does not register the ICD, and the loader ignores `VK_DRIVER_FILES` in an elevated process. From an elevated shell, where BUNDLE-ENV has been called:')
+    $md.Add('')
+    $md.Add('```')
+    $md.Add("New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Force | Out-Null")
+    $md.Add("New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Name `"$InstallDir\lavapipe\lvp_icd.aarch64.json`" -Value 0 -PropertyType DWord -Force")
+    $md.Add('```')
 }
 $md.Add('')
 $md.Add('## Absent on this lane, by construction')

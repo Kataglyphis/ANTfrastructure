@@ -28,7 +28,8 @@ ARG VULKAN_VERSION=1.4.357.0
 ARG VULKAN_RT_WINDOWS_ZIP_SHA256=a14672efed15aafc7f5a16572d35cd3a3416eadf670aeee3cdf50ee32d5fbf83
 COPY windows\scripts\host\Install-VulkanLoader.ps1 C:\temp\scripts\
 RUN if ($env:WINDOWS_TARGET_ARCH -eq 'amd64' -and -not $env:VULKAN_LOADER_DIR) { & 'C:\temp\scripts\Install-VulkanLoader.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\vulkan-loader' -SystemDir '' }
-ENV PATH=$PATH;C:\vulkan-loader
+# lavapipe's loader and vulkaninfo live beside its ICD; the ICD itself is registered in HKLM at install time.
+ENV PATH=$PATH;C:\vulkan-loader;C:\runtime\lavapipe
 
 # One COPY (the chain runs near the 125-layer cap), in the last stage so script edits never invalidate earlier layers.
 COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\entrypoint.cmd linux\scripts\03-media\runtime\ort-venv-census.py C:\temp\scripts\

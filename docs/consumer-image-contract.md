@@ -525,6 +525,19 @@ are installed. A slow consumer beats an image that cannot be built, so only a
 defect fails the stage; riscv64's from-source leg is
 [above](#building-the-web-lane-tools-from-source).
 
+## The Windows image ships lavapipe
+
+The Windows amd64 image and the arm64 bundle carry Mesa's lavapipe — a CPU Vulkan
+device, the only software one that also runs the ray-tracing goldens — with the
+target arch's Khronos loader and `vulkaninfo.exe`, all SHA256-pinned, in
+`C:\runtime\lavapipe` (CON50). The image sets `LP_NATIVE_VECTOR_WIDTH=256`,
+because Mesa 26.2's BVH sort needs 8-lane subgroups and arm64's native 128 bits
+give 4. The amd64 image registers the ICD in HKLM at build time — a container
+process is elevated, and the loader ignores `VK_DRIVER_FILES` there. The arm64
+bundle cannot register it while it is packed, so the device needs the one-time
+HKLM registration the bundle README names; `Test-Arm64Bundle.ps1` runs
+`vulkaninfo --summary` and fails a device without the llvmpipe device.
+
 ## The ort crate links the chain ONNX Runtime
 
 Both published images set the environment of the Rust `ort` / `ort-sys` crates,

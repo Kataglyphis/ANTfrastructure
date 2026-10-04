@@ -267,12 +267,13 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, and the cp313 torch stack is in the wheel store |
+| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, and `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe) |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
 cannot look green. The first device run (2026-10-03, Snapdragon X, the published `:winarm64` of
-that day) passed all eleven steps — the bundle executes, not just loads. The consumer apps' cross
+that day) passed all eleven steps; the lavapipe step (2026-10-04, CON50) made it twelve — the bundle
+executes, not just loads. The consumer apps' cross
 lanes run the same gate per push when their workflow sets `bundle-artifact-name`: the build job
 packs the image's `C:\runtime` and the arm64 job extracts and runs it
 ([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)).
@@ -299,8 +300,8 @@ windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 -MinInspe
 windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 `
     -HostToolPattern 'protoc\.exe|flatc\.exe|\\_deps\\'
 
-# on an arm64 device, from a bundle zip: nine steps, floor nine
-windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 11
+# on an arm64 device, from a bundle zip: twelve steps, floor twelve
+windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 12
 ```
 
 Free native validation is available: this repo is public, so GitHub's `windows-11-arm` runners

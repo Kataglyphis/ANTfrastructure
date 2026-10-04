@@ -456,6 +456,29 @@ Assert-Test -Name 'glslc compiles a shader to SPIR-V' -Condition {
     return $ok
 } -FailMessage 'glslc failed to compile a trivial shader to SPIR-V'
 
+# The lavapipe ICD makes vulkaninfo runnable headless; the amd64 image registers it in HKLM at install time.
+$lavapipeDir = 'C:\runtime\lavapipe'
+Assert-Test -Name 'lavapipe ICD + driver + loader staged (C:\runtime\lavapipe)' -Condition {
+    $icd = if ((Get-WindowsTargetArch) -eq 'amd64') { 'lvp_icd.x86_64.json' } else { 'lvp_icd.aarch64.json' }
+    (Test-Path (Join-Path $lavapipeDir $icd)) -and
+    (Test-Path (Join-Path $lavapipeDir 'vulkan_lvp.dll')) -and
+    (Test-Path (Join-Path $lavapipeDir 'vulkan-1.dll'))
+} -FailMessage "the lavapipe ICD, driver and loader must all be staged in $lavapipeDir (Install-Lavapipe.ps1)"
+Assert-EnvVarSet -Name 'LP_NATIVE_VECTOR_WIDTH'
+
+if ($smokeCross) {
+    # The aarch64 payload cannot execute on the x64 host; its PE machine is the provable half here.
+    Assert-Test -Name 'lavapipe payload is aarch64 (PE machine 0xAA64)' -Condition {
+        (Get-PeFileMachine -Path (Join-Path $lavapipeDir 'vulkan_lvp.dll')) -eq 0xAA64 -and
+        (Get-PeFileMachine -Path (Join-Path $lavapipeDir 'vulkan-1.dll')) -eq 0xAA64
+    } -FailMessage "the staged lavapipe driver and loader must be aarch64 PEs for the bundle's target"
+} else {
+    Assert-Test -Name 'vulkaninfo lists the lavapipe device (llvmpipe)' -Condition {
+        $summary = @(& (Join-Path $lavapipeDir 'vulkaninfo.exe') --summary 2>&1 | ForEach-Object { "$_" })
+        return ($summary -match 'llvmpipe')
+    } -FailMessage 'vulkaninfo --summary lists no llvmpipe device; the HKLM ICD registration or the loader is missing'
+}
+
 Write-TestHeader '7. CUDA Toolkit + cuDNN'
 # Gate on CUDA_ROOT, not just -SkipCudaTests: a CPU-only image legitimately has no nvcc/cuDNN.
 if ($script:gpuNvidia) {

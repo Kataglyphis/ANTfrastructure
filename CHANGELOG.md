@@ -7,6 +7,18 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-04 — lavapipe ships in the Windows image and the arm64 bundle
+
+- `Install-Lavapipe.ps1` stages Mesa's lavapipe (mmozeiko/build-mesa, SHA256-pinned;
+  the only arm64 Windows build) and LunarG's Runtime Components loader for the target
+  arch into `C:\runtime\lavapipe`, registers the ICD in HKLM on amd64 (the loader
+  ignores `VK_DRIVER_FILES` in an elevated process) and verifies the PE machines.
+- The media merge stage runs it before the bundle manifest, so `BUNDLE-ENV`/`README`
+  name the ICD and `LP_NATIVE_VECTOR_WIDTH=256` (Mesa 26.2's BVH sort needs 8-lane
+  subgroups, CON44); the image smoke runs `vulkaninfo --summary` and fails without
+  llvmpipe, and `Test-Arm64Bundle.ps1` gains the device step (floor 11 to 12).
+
+
 ## 2026-10-04 — a root directory survives the tar-pipe exclude
 
 - `Invoke-ContainerBuild` gains `-InboundItems` (default `.`): the top-level
