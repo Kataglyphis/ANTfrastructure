@@ -94,24 +94,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          keeps py-spy and line_profiler off ARM64 (1f9bb5f) and runs the job since f7ed5d8
          (`windows-arm64.yml`, hub 625b3653).
 
-- [ ] **CON55 — The hub pieces OxidANT waits on** [M, ★★]. Not an image gap. Seven rows in
-      OxidANT's BACKLOG (§ Waiting on ANTfrastructure) were `[b]` there only because the
-      other half is a hub change. Five landed on 2026-10-05 and OxidANT deleted its copies:
-      the `_cargo_wrapper.sh` safe.directory guard (`CARGO_SAFE_DIRECTORY`, every driver
-      sources the wrapper), `Get-ANTfrastructurePin` in `WindowsScripts.Shared.psm1`, the
-      unused `windows/scripts/rust/Build-Windows.ps1` deleted (owner decision), the MSIX
-      trust steps in `windows/scripts/certificates/README.md`, and
-      `scripts/windows/container/` in `docs/adopting-in-a-new-project.md` § 8. Two remain:
-      - An MSI function for an app that does not build through CPack: `-WxsFile -LicenseFile
-        -ProductName -Manufacturer -ExeSource -Version -OutFile`, plus `-Arch` and the payload
-        DLL list. OxidANT would be its only caller. The nearest model is the script-local
-        `Invoke-MsiPackage` in `windows/scripts/python/New-PythonAppPackage.ps1`.
-      - The functions in OxidANT's AGENTS.md § 2 inventory are listed upstream (§ 2/8 of
-        `docs/adopting-in-a-new-project.md` or `docs/INDEX.md`), so that table can become a
-        link.
-
-      Done when OxidANT has turned both into deletions and moved its pin.
-
 - [ ] **CON56 — ripgrep in the images** [S, ★★]. Owner rule 2026-10-05: search with `rg`
       in every repo of the family (`AGENTS.md` § *Searching the tree*). In source the same
       day: `setup-package-image.sh` adds `ripgrep` beside jq/Xvfb (and `rg` to the presence

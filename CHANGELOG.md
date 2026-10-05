@@ -7,6 +7,34 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — an MSI function and the helper list; CON55 closes
+
+- **`Invoke-MsiPackage`** in `WindowsMsix.Common` builds one MSI from a project's own
+  `.wxs` with `wix build`. Every moving value is a preprocessor variable: `Version`,
+  `ExeSource`, `LicenseRtf`, `ProductName`, `Manufacturer`, plus `PayloadFiles=1` with a
+  generated fragment. It names a missing input before it runs anything, and fails when
+  wix reports success without writing the file. Two helpers come with it:
+  - `Resolve-WixExe` looks at `-OverridePath`, then `$env:WIX`, then `PATH`.
+  - `New-WixPayloadFragment` writes one component per file, in `PayloadFiles` under
+    `APPLICATIONFOLDER`, with a `Subdirectory` only where one is given.
+- `Invoke-MsixPackage` and `Invoke-MsiPackage` share one private runner,
+  `Invoke-PackagerTool`: clear the output, run the tool, fail when no file appears.
+  `Resolve-WixExe` reads `$env:WIX` and hands the rest to `Resolve-WindowsSdkToolPath`.
+- `New-PythonAppPackage.ps1` renames its script-local `Invoke-MsiPackage` to
+  `Invoke-MsiAppPackage`, beside `Invoke-MsixAppPackage`, so it no longer shadows the
+  module function of the same name.
+- **Proof:** eight Pester cases in `WindowsMsix.Common.Tests.ps1`. A real WiX 7 build in
+  `:winamd64` of OxidANT's `main.wxs` gave a 172 KB MSI. `msiexec /a` unpacked it with
+  `a&b.dll` beside the exe and a plugin under `lib\gstreamer-1.0\`.
+- **"Reach for these before writing a helper"**, in `adopting-in-a-new-project.md` § 8:
+  the table of hub functions each consumer once rewrote, moved from OxidANT's
+  `AGENTS.md`. All 22 were checked against their modules' exports. One row was wrong:
+  `ConvertTo-XmlEscapedText` is internal, and the exported name is
+  `ConvertTo-XmlSafeText`.
+- `docs/INDEX.md` points at the list, and § 7 says when to call `Invoke-MsiPackage`.
+- OxidANT turns both into deletions and moves its pin, which closes CON55.
+
+
 ## 2026-10-05 — the script suites skip on a Windows host, loudly (CON61)
 
 - **`t_skip_unless <what> <cmd…>`**: a suite that needs what Git Bash lacks exits 77

@@ -92,7 +92,7 @@ function Invoke-Msiexec([string[]]$Arguments, [string]$Log) {
     if ($p.ExitCode -ne 0) { throw "msiexec $($Arguments -join ' ') exited $($p.ExitCode); see $Log" }
 }
 
-function Invoke-MsiPackage {
+function Invoke-MsiAppPackage {
     $icon = ConvertTo-PythonAppIcon -PngPath (Get-AppIconPng "the MSI's shortcut") -Destination (Join-Path $WorkDir 'app.ico')
     $wxs = New-PythonAppWxs -Bundle $Bundle -App $app -Version $version -IconPath $icon -Destination (Join-Path $WorkDir "$($app['id']).wxs")
     $msi = Join-Path $OutDir "$stem.msi"
@@ -178,7 +178,7 @@ foreach ($format in @($Formats -split ',' | ForEach-Object { $_.Trim() } | Where
     Write-Host "== $format"
     switch ($format) {
         'zip' { Invoke-ZipPackage }
-        'msi' { Invoke-MsiPackage }
+        'msi' { Invoke-MsiAppPackage }
         'msix' { Invoke-MsixAppPackage }
         default { throw "Unknown format '$format' (zip, msi, msix)" }
     }
