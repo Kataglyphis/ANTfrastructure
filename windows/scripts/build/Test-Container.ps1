@@ -885,6 +885,15 @@ if (Test-Path $requiredGstModule) {
             "It provides $($plugin.Provides). $($plugin.Why). " +
             "Needs pkg-config: $($plugin.NeedsPc -join ', ') at GStreamer build time.")
     }
+    # Signals, DTLS, SRTP and H.264 in one pipeline pair: a zeroed libffi and OpenSSL 4's BIO EOF each passed every check above.
+    Assert-Test -Name 'WebRTC loopback: webrtcsink -> webrtcsrc decodes 60 frames over DTLS-SRTP' -Condition {
+        $r = Invoke-GstWebRtcLoopback -Frames 60 -TimeoutSeconds 90 -LogDir (Join-Path $env:TEMP 'smoke-webrtc')
+        if ($r.ExitCode -ne 0) {
+            throw ("webrtcsrc did not decode 60 frames from webrtcsink (consumer exit $($r.ExitCode)$(if ($r.TimedOut) { ', timed out' })): " +
+                (@($r.Detail | Select-Object -Last 8) -join ' | '))
+        }
+        $true
+    } -FailMessage 'the WebRTC loopback did not pass'
 } else {
     Skip-Test "mandatory gst-plugin assertions (WindowsGstPlugins.Common.psm1 not found at $requiredGstModule -- image predates the contract)"
 }
@@ -1704,7 +1713,7 @@ $sectionFloors = @{
     '4' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 };    '5' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }; '6' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }
     # '7' counts a real -ExpectGpu run; Arm64 stays 0, as the cross CPU lane skips the section.
     '7' = @{ Gpu = 13; Cpu = 0; Arm64 = 0 };  '8' = @{ Gpu = 11; Cpu = 8; Arm64 = 0 };  '9' = @{ Gpu = 9; Cpu = 6; Arm64 = 0 }
-    '10' = @{ Gpu = 7; Cpu = 4; Arm64 = 0 };  '11' = @{ Gpu = 12; Cpu = 12; Arm64 = 0 }; '12' = @{ Gpu = 9; Cpu = 9; Arm64 = 0 }
+    '10' = @{ Gpu = 7; Cpu = 4; Arm64 = 0 };  '11' = @{ Gpu = 20; Cpu = 20; Arm64 = 0 }; '12' = @{ Gpu = 9; Cpu = 9; Arm64 = 0 }
     '13' = @{ Gpu = 6; Cpu = 6; Arm64 = 0 }
     # '14' arm64 is 2: the run-assert becomes a PE-machine assert 1:1, but ASAN is a SKIP there.
     '14' = @{ Gpu = 3; Cpu = 3; Arm64 = 2 };  '15' = @{ Gpu = 2; Cpu = 2; Arm64 = 2 };  '16' = @{ Gpu = 1; Cpu = 1; Arm64 = 1 }

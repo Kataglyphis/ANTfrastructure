@@ -588,6 +588,116 @@ directory so an OpenCV module-list change cannot rot into a link error.
 > around (`docs/windows-refactor-backlog.md` #128), and on amd64 the same day
 > (run 7: `gst-inspect` loads `webrtcbin` and `nicesrc`/`nicesink`, smoke
 > 222/0/0).
+> **Thirteen entries since 2026-10-05 (CON28):** WebRTC needs more than
+> `webrtcbin` and `nice`, and every one of these is loaded by element name at run
+> time, so only a load probe sees one missing: `dtls`, `srtp`, `sctp`,
+> `rtpmanager` and `openh264` (meson entries, passed as `=enabled`), plus
+> `rswebrtc` (`webrtcsink`/`webrtcsrc`) and `rsrtp` (`rtpgccbwe`), two
+> gst-plugins-rs crates with `Detection = 'cargo'`. The gate finds each DLL by
+> its exact name, `gst<name>.dll`: the `gst*<name>*.dll` wildcard it used before
+> would hand `gstrswebrtc.dll` to the `webrtc` entry. The smoke test's section 11
+> ends with a WebRTC loopback, the one assertion that would have caught the two
+> defects below.
+
+### libffi's type exports
+
+**Symptom.** WebRTC on Windows did nothing: `webrtcbin`'s `create-offer`,
+`get-stats` and `create-data-channel` never replied, not even with the
+`closed` error a bare `webrtcbin` in NULL state must send. Every GObject signal
+with arguments or a return value lost its C class handler, while signals with
+none still worked. `ffi_prep_cif` in the image's `ffi-7.dll` returned
+`FFI_BAD_TYPEDEF`, and the DLL's exported `ffi_type_*` descriptors were all
+zero: `ffi_type_sint32 size=0 align=0 type=0`.
+
+**Cause.** The libffi meson port (`LIBFFI_MESON_VERSION` 3.2.9999.4, and .5
+alike) defines `FFI_EXTERN` as a bare `__declspec(dllexport)` when it builds the
+DLL. Every libffi file that includes `ffi.h` therefore holds a tentative
+definition of each of the twelve types, and only `types.c` holds the real,
+initialized ones. MSVC's `cl` turns tentative definitions into COMMON symbols
+and the real definition wins. clang-cl defaults to `-fno-common`, so each file
+emits a strong zero definition in `.bss`. The link then has six definitions of
+every type, and the 60 `duplicate symbol: ffi_type_*` errors were hidden by the
+`/FORCE:MULTIPLE` this lane added in June for exactly those duplicates. lld-link
+kept the first copy, `prep_cif.c.obj`'s zeros. The image's own build log carried
+the 60 warnings; they were the only lld-link diagnostics in the whole x64 build.
+
+**Fix.** `-fcommon` is in the C arguments of both lanes, and in the native
+file's `c_args` for the cross lane's build machine, which links its own
+`ffi-7.dll` as a default target. `/FORCE:MULTIPLE` is gone, so a duplicate
+symbol fails the link again. After install, `Assert-LibffiTypeExport`
+(`WindowsMeson.Common.psm1`) reads the shipped `ffi-7.dll` statically and fails
+the build unless `ffi_type_sint32`, `_pointer` and `_void` are 4/4/10, 8/8/14
+and 1/1/0. Being a static read, it is also the only libffi proof the cross lane
+has. An upstream-style source patch (an `FFI_API`/`FFI_EXTERN` split as in
+libffi 3.3, with `types.c` exporting its own definitions) gives the same DLL,
+measured; `-fcommon` won because it is one token and matches what `cl` does.
+
+### DTLS with OpenSSL 4
+
+**Symptom.** With libffi fixed, signalling, the offer, the answer and ICE all
+completed, then both peers died at the first DTLS step:
+`dtlsconnection ... ssl error: ...:error:0A000126:SSL routines::unexpected eof
+while reading:ssl\record\rec_layer_d1.c:254` and `GstDtlsEnc ... Fatal SSL
+error`.
+
+**Cause.** gstdtls links OpenSSL 4 (`libssl-4-x64.dll`). OpenSSL 4.0.0's
+`bread_conv` (openssl/openssl#29290) treats a 0-byte read from an old-style
+`BIO_meth_set_read` callback as end of file. GStreamer 1.29.2's
+`bio_method_read` returns 0 to mean "no datagram yet". OpenSSL 3.x surfaced
+that as a `SSL_ERROR_SYSCALL` the plugin ignores; 4.0 makes it fatal.
+
+**Fix.** Upstream GStreamer commit 17d22abe89 (MR !11897) makes the empty read
+`BIO_set_retry_read (bio); return -1;`. It is 277 commits past the 1.29.2 tag,
+so `Build-GstreamerFromSource.ps1` carries it through `Edit-SourceFile`. The
+build fails when the hunk neither applies nor is already upstream, and logs a
+retirement note when upstream carries it. **Retire the patch once
+`GSTREAMER_VERSION` moves past 1.29.2** to a release that contains the commit.
+The OpenSSL DLLs gstdtls imports are staged into `<prefix>\bin` on both lanes;
+on amd64 they used to load only when scoop's `openssl\current\bin` happened to
+be on `PATH`, which the image's `PATH` does not carry.
+
+### gst-plugins-rs on Windows
+
+`webrtcsink`, `webrtcsrc` and the signalling server live in gst-plugins-rs, not
+in the meson monorepo build. Phase `8b` of `Build-GstreamerFromSource.ps1`
+builds them the way the Linux lane does: a shallow clone of
+`github.com/GStreamer/gst-plugins-rs` at `gstreamer-$GSTREAMER_VERSION`, then a
+plain `cargo build --release --locked -p gst-plugin-webrtc -p gst-plugin-rtp`
+against the prefix's own `.pc` files. The cdylibs are the plugin DLLs, so no
+`cargo-c` is involved. `Get-GstRustCargoPlan` (`WindowsGstPlugins.Common.psm1`)
+derives the packages from the contract's `CargoPackage` fields and, on the cross
+lane, adds `--target aarch64-pc-windows-msvc`, `PKG_CONFIG_ALLOW_CROSS=1`,
+`lld-link` as the target linker and `clang-cl --target=…` for the C that `ring`
+compiles.
+
+- **Default features**, as on Linux: `janus`, `whip`, `web_server`, `whep`,
+  `pixelstreaming`. TLS is rustls with `ring`; no AWS or LiveKit SDK, so no
+  aws-lc and no OpenSSL in the crate graph.
+- **`--locked`**, because upstream's `Cargo.lock` pins every crate and the two
+  git dependencies (gstreamer-rs on gitlab.freedesktop.org, gtk-rs-core on
+  GitHub) to commits.
+- **gstreamer-rs comes from its GitHub mirror.** gitlab.freedesktop.org served
+  the gstreamer-rs clone at 10-15 KiB/s on 2026-10-05, from the host and from
+  the container alike, and cargo was still on it when the run was stopped after
+  20 minutes.
+  `Get-GstRustSourceMirrorConfig` reads the lock's `gitlab.freedesktop.org/gstreamer/*`
+  sources and writes a cargo `[source]` replacement onto
+  `github.com/GStreamer/<repo>`, the official mirror with the same commits; the
+  script passes it as `cargo build --config <file>`. `--locked` still holds,
+  because a replaced source keeps the lock's commit, so a mirror that lacks the
+  commit fails the build rather than resolving another one. Measured: the whole
+  fetch and build took 3 min 7 s.
+- **Network.** The merge RUN already fetches the GStreamer tarball, the wraps
+  and rust-std, and the toolchain stage runs `cargo install` from crates.io, so
+  cargo fetches at build time like everything else here; nothing is vendored.
+  TLS verification stays on for this clone and for cargo: the
+  `GIT_SSL_NO_VERIFY` the script sets for meson's wrap fetches is lifted for the
+  step. (The `-Dgst-devtools:dots-viewer=disabled` comment's "fetch fails
+  offline" is not about this RUN's network: at 1.29.2 the option is spelled
+  `dots_viewer`.)
+- **Layer hygiene.** The checkout, the target tree and only the cargo
+  `registry`/`git` caches this run created are removed in phase 10, so nothing
+  is whited out of a lower layer.
 
 ### Toolchain pins and the provenance manifest
 
@@ -729,8 +839,8 @@ Three things about the gate are load-bearing:
   rebuilding the whole image — the friction that let this script go unrun for a
   month. It adds no layer, so the gate never alters the artifact it verifies.
 - **Coverage floors, not just "0 failures".** `-MinPassed` / `-MaxSkipped`
-  (driver: `-SmokeMinPassed` / `-SmokeMaxSkipped`, defaults 170 / 3; the GPU
-  lane raises the effective floor to 190 unless overridden) make
+  (driver: `-SmokeMinPassed` / `-SmokeMaxSkipped`, defaults 178 / 3; the GPU
+  lane raises the effective floor to 198 unless overridden) make
   "nothing ran" a distinct failure, **exit 3 = INSUFFICIENT COVERAGE**.
   These defaults describe the **amd64** lane and must not be re-tuned to
   accommodate arm64: that lane has its OWN floor column and driver defaults
@@ -957,7 +1067,7 @@ MSYS2 `make` with `--toolchain=msvc`; `--enable-libonnxruntime` links against th
 
 #### `Build-GstreamerFromSource.ps1`
 
-Meson+clang-cl with wrap pre-extraction; loads `versions.env` via `Import-Versions.ps1`
+Meson+clang-cl with wrap pre-extraction; loads `versions.env` via `Import-Versions.ps1`. Pins meson to `PY_MESON_VERSION`, carries the DTLS fix for OpenSSL 4, stages the OpenSSL runtime into `<prefix>\bin` on both lanes, builds `rswebrtc`/`rsrtp` from gst-plugins-rs in phase `8b`, and checks the shipped `ffi-7.dll` with `Assert-LibffiTypeExport` before the plugin gate (§ libffi's type exports, § DTLS with OpenSSL 4, § gst-plugins-rs on Windows)
 
 #### `Import-Versions.ps1`
 
@@ -1115,7 +1225,7 @@ Smoke-test assertion harness, extracted 2026-08-08: counters plus `Initialize-Sm
 
 #### `WindowsGstPlugins.Common.psm1`
 
-The mandatory GStreamer plugin CONTRACT (see § Mandatory GStreamer plugins and AGENTS.md § Windows Build Invariants): `Get-RequiredGstPlugin` (libav/opencv/onnx/webrtc/nice/tflite with per-plugin detection mechanism and rationale), `Write-PkgConfigFile`, `Get-LibraryLinkName`, `Assert-PkgConfigModule` (presence AND `-MinimumVersion` floors — `pkg-config --exists` alone passes on a `.pc` whose version field is empty). Merge-stage only, deliberately NOT in `WindowsScripts.Shared.psm1`: that one is in all three media branches' compile closure and this set changes often
+The mandatory GStreamer plugin CONTRACT (see § Mandatory GStreamer plugins and AGENTS.md § Windows Build Invariants): `Get-RequiredGstPlugin` (libav/opencv/onnx/webrtc/nice/tflite, WebRTC's dtls/srtp/sctp/rtpmanager/openh264 and the gst-plugins-rs rswebrtc/rsrtp, with per-plugin detection mechanism and rationale), `Get-GstRustCargoPlan` (the cargo build of the `cargo` entries), `Invoke-GstWebRtcLoopback` (the smoke test's webrtcsink to webrtcsrc run), `Write-PkgConfigFile`, `Get-LibraryLinkName`, `Assert-PkgConfigModule` (presence AND `-MinimumVersion` floors — `pkg-config --exists` alone passes on a `.pc` whose version field is empty). Merge-stage only, deliberately NOT in `WindowsScripts.Shared.psm1`: that one is in all three media branches' compile closure and this set changes often
 
 ### Drivers and entry points
 

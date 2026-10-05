@@ -7,6 +7,45 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — WebRTC works on Windows: libffi, DTLS and the Rust plugins
+
+- **libffi exported zeroed type descriptors on both Windows lanes.** Its meson port
+  declares the twelve `ffi_type_*` as bare `dllexport` tentative definitions, which
+  clang-cl's `-fno-common` turned into six strong definitions each; `/FORCE:MULTIPLE`
+  hid the 60 duplicate-symbol errors and lld-link kept `prep_cif.c.obj`'s zeros. Every
+  GObject signal with arguments then skipped its C handler, so `webrtcbin` never
+  answered `create-offer`. `-fcommon` joins the C arguments (and the cross lane's
+  native file), `/FORCE:MULTIPLE` is gone, and `Assert-LibffiTypeExport`
+  (`WindowsMeson.Common.psm1`) reads the shipped `ffi-7.dll` before the plugin gate.
+- **DTLS with OpenSSL 4.** `Build-GstreamerFromSource.ps1` carries upstream GStreamer
+  17d22abe89 (an empty BIO read signals retry, not EOF) until `GSTREAMER_VERSION`
+  moves past 1.29.2, and fails when the hunk neither applies nor is upstream. The
+  OpenSSL DLLs gstdtls imports are staged into `<prefix>\bin` on amd64 too.
+- **gst-plugins-rs `rswebrtc` and `rsrtp`** are built in a new phase `8b`, as on
+  Linux: `gstreamer-$GSTREAMER_VERSION`, plain `cargo build --release --locked`
+  (`Get-GstRustCargoPlan`), `--target aarch64-pc-windows-msvc` on the cross lane.
+  gstreamer-rs is fetched from its GitHub mirror through a cargo source replacement
+  (`Get-GstRustSourceMirrorConfig`, `--config`): gitlab.freedesktop.org served it at
+  10-15 KiB/s, and a run stopped after 20 minutes was still cloning.
+- **The plugin contract has thirteen entries** (CON28): `dtls`, `srtp`, `sctp`,
+  `rtpmanager`, `openh264`, `rswebrtc`, `rsrtp` joined, on both lanes. The gate finds
+  each DLL by its exact name, and smoke section 11 ends with a WebRTC loopback
+  (`Invoke-GstWebRtcLoopback`, 60 decoded frames over DTLS-SRTP).
+- **Smoke floors move by the eight new assertions:** section 11 to 20, the driver's
+  defaults to 178 (CPU) and 198 (GPU), inside `Smoke.FloorCalibration.Tests.ps1`'s bounds.
+- **meson is pinned to `PY_MESON_VERSION`.** `pip install meson` floated to 1.12.1
+  under build-subproject patches written against 1.12.0.
+- Docs: `windows-builds.md` (§ libffi's type exports, § DTLS with OpenSSL 4,
+  § gst-plugins-rs on Windows), `windows-cross-builds.md`, `failure-modes.md`,
+  `image-decisions.md` (CON28), `windows-build-invariants.md`, `windows-host-setup.md`,
+  `overview.md`, the licence list.
+- Tests: `SourceBuild.GstreamerWebRtc.Tests.ps1` (20 cases, synthetic PEs for the
+  libffi guard) and the contract suite at thirteen entries. `code-dupes.allow`
+  follows the measurement: 15 new idiom pairs, 20 budgets lowered, 2 stale rows gone.
+- Measured on amd64 in a `:winamd64` container: no lld-link diagnostic in the whole
+  build, `ffi_call` returns 42 where the old DLL's `ffi_prep_cif` failed, all thirteen
+  plugins load, and the loopback decodes 60 frames in 2.1 s. arm64 is unproven (CON63).
+
 ## 2026-10-05 — an MSI function and the helper list; CON55 closes
 
 - **`Invoke-MsiPackage`** in `WindowsMsix.Common` builds one MSI from a project's own

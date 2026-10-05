@@ -80,6 +80,71 @@ function Get-RequiredGstPlugin {
             Why         = 'LiteRT is built from source into this image; without this plugin nothing in a GStreamer pipeline can use it'
             # Required on the cross lane too: a cross merge that fails to build it must go red.
             UnavailableOn = @{}
+        },
+        # webrtcbin loads these by element name at run time, so only a load probe sees one missing.
+        [pscustomobject]@{
+            Name      = 'dtls'
+            Provides  = 'dtlsenc / dtlsdec / dtlssrtpenc / dtlssrtpdec — the DTLS-SRTP transport of every WebRTC session'
+            Detection = 'meson'
+            NeedsPc   = @()
+            MesonOption = 'gst-plugins-bad:dtls'
+            Why       = 'webrtcbin builds its transport from these elements, and the plugin imports the OpenSSL DLLs, which must ship beside it'
+            UnavailableOn = @{}
+        },
+        [pscustomobject]@{
+            Name      = 'srtp'
+            Provides  = 'srtpenc / srtpdec — SRTP for every WebRTC media packet (libsrtp2)'
+            Detection = 'meson'
+            NeedsPc   = @()
+            MesonOption = 'gst-plugins-bad:srtp'
+            Why       = 'dtlssrtpenc and dtlssrtpdec wrap these; without them a session negotiates and then moves no media'
+            UnavailableOn = @{}
+        },
+        [pscustomobject]@{
+            Name      = 'sctp'
+            Provides  = 'sctpenc / sctpdec — the SCTP association behind WebRTC data channels (internal usrsctp)'
+            Detection = 'meson'
+            NeedsPc   = @()
+            MesonOption = 'gst-plugins-bad:sctp'
+            Why       = 'webrtcbin needs it for create-data-channel and for any peer that offers an application m-line'
+            UnavailableOn = @{}
+        },
+        [pscustomobject]@{
+            Name      = 'rtpmanager'
+            Provides  = 'rtpbin / rtpjitterbuffer / rtprtxsend — the RTP session machinery inside webrtcbin'
+            Detection = 'meson'
+            NeedsPc   = @()
+            MesonOption = 'gst-plugins-good:rtpmanager'
+            Why       = 'webrtcbin creates an rtpbin for its sessions and cannot start without one'
+            UnavailableOn = @{}
+        },
+        [pscustomobject]@{
+            Name      = 'openh264'
+            Provides  = 'openh264enc / openh264dec — H.264 under a BSD licence; this build ships no x264'
+            Detection = 'meson'
+            NeedsPc   = @()
+            MesonOption = 'gst-plugins-bad:openh264'
+            Why       = 'the only H.264 encoder Server Core can run here, so the WebRTC video path depends on it'
+            UnavailableOn = @{}
+        },
+        # gst-plugins-rs crates, built by cargo after meson installs the C plugins they link.
+        [pscustomobject]@{
+            Name      = 'rswebrtc'
+            Provides  = 'webrtcsink / webrtcsrc and their signalling server (gst-plugins-rs net/webrtc)'
+            Detection = 'cargo'
+            NeedsPc   = @()
+            CargoPackage = 'gst-plugin-webrtc'
+            Why       = 'the WebRTC producer and consumer elements consumers stream with; webrtcbin alone needs an application around it'
+            UnavailableOn = @{}
+        },
+        [pscustomobject]@{
+            Name      = 'rsrtp'
+            Provides  = 'rtpgccbwe and the Rust RTP payloaders (gst-plugins-rs net/rtp)'
+            Detection = 'cargo'
+            NeedsPc   = @()
+            CargoPackage = 'gst-plugin-rtp'
+            Why       = 'webrtcsink congestion control defaults to rtpgccbwe and runs uncontrolled without it'
+            UnavailableOn = @{}
         }
     )
 
@@ -193,5 +258,128 @@ function Assert-PkgConfigModule {
     $global:LASTEXITCODE = 0
 }
 
+function Get-GstRustCargoPlan {
+    # The cargo build of the contract's cargo plugins, the environment it needs and the DLLs it leaves; see docs/windows-builds.md § gst-plugins-rs on Windows.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Plugin,
+        [Parameter(Mandatory)][string]$TargetDir,
+        [Parameter(Mandatory)][string]$PkgConfigDir,
+        [string]$Arch = '',
+        [int]$Jobs = 0
+    )
+    $cargoPlugins = @($Plugin | Where-Object { $_.Detection -eq 'cargo' })
+    if ($cargoPlugins.Count -eq 0) { throw 'Get-GstRustCargoPlan: no contract entry has Detection cargo, so there is nothing to build' }
+    $gstArch = Get-WindowsTargetArch -Arch $Arch
+    # --locked: upstream's Cargo.lock pins every crate and git dependency, and a re-resolve would ship crates nobody tested.
+    $cargoArgs = @('build', '--release', '--locked', '--target-dir', $TargetDir)
+    foreach ($p in $cargoPlugins) { $cargoArgs += @('-p', $p.CargoPackage) }
+    if ($Jobs -gt 0) { $cargoArgs += @('--jobs', "$Jobs") }
+    $cargoEnv = [ordered]@{ PKG_CONFIG_PATH = $PkgConfigDir }
+    $outDir = Join-Path $TargetDir 'release'
+    if (Test-WindowsCrossTarget -Arch $gstArch) {
+        $triple = Get-RustTargetTriple -Arch $gstArch
+        $cargoArgs += @('--target', $triple)
+        $outDir = Join-Path $TargetDir "$triple\release"
+        $tripleVar = $triple -replace '-', '_'
+        # pkg-config-rs refuses a cross target without this, and PKG_CONFIG_PATH already names only the target's .pc files.
+        $cargoEnv['PKG_CONFIG_ALLOW_CROSS'] = '1'
+        $cargoEnv["CARGO_TARGET_$($tripleVar.ToUpperInvariant())_LINKER"] = 'lld-link'
+        # ring compiles C and assembly for the target; only clang has the aarch64-windows assembler it needs.
+        $cargoEnv["CC_$tripleVar"] = 'clang-cl'
+        $cargoEnv["CFLAGS_$tripleVar"] = "--target=$(Get-ClangTargetTriple -Arch $gstArch)"
+        $cargoEnv["AR_$tripleVar"] = 'llvm-lib'
+    }
+    $dlls = @($cargoPlugins | ForEach-Object {
+        [pscustomobject]@{ Name = $_.Name; File = "gst$($_.Name).dll"; Path = Join-Path $outDir "gst$($_.Name).dll" }
+    })
+    return [pscustomobject]@{ Args = $cargoArgs; Env = $cargoEnv; OutDir = $outDir; Dlls = $dlls }
+}
+
+function Get-GstRustSourceMirrorConfig {
+    # Cargo source replacement sending each locked gitlab.freedesktop.org git source to GStreamer's GitHub mirror; see docs/windows-builds.md § gst-plugins-rs on Windows.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$CargoLock)
+    $specs = [ordered]@{}
+    foreach ($m in [regex]::Matches($CargoLock, 'source = "git\+(https://gitlab\.freedesktop\.org/gstreamer/([A-Za-z0-9._-]+?))(?:\.git)?\?(branch|tag|rev)=([^#"]+)#')) {
+        $specs["$($m.Groups[1].Value)|$($m.Groups[3].Value)|$($m.Groups[4].Value)"] = $m
+    }
+    $toml = foreach ($m in $specs.Values) {
+        $label = ("$($m.Groups[2].Value)-$($m.Groups[3].Value)-$($m.Groups[4].Value)" -replace '[^A-Za-z0-9-]', '-').ToLowerInvariant()
+        $kind = $m.Groups[3].Value
+        $value = $m.Groups[4].Value
+        "[source.gitlab-$label]"
+        "git = `"$($m.Groups[1].Value)`""
+        "$kind = `"$value`""
+        "replace-with = `"github-$label`""
+        ''
+        "[source.github-$label]"
+        "git = `"https://github.com/GStreamer/$($m.Groups[2].Value)`""
+        "$kind = `"$value`""
+        ''
+    }
+    return (@($toml) -join "`n")
+}
+
+function Invoke-GstWebRtcLoopback {
+    # webrtcsink to webrtcsrc over the built-in signalling server on loopback; passes only when the consumer decodes -Frames frames and exits 0.
+    [CmdletBinding()]
+    param(
+        [string]$GstLaunch = 'gst-launch-1.0',
+        [int]$Frames = 60,
+        [int]$TimeoutSeconds = 90,
+        [string]$LogDir = $env:TEMP
+    )
+    $exe = (Get-Command $GstLaunch -ErrorAction Stop).Source
+    $probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $probe.Start()
+    $port = ([System.Net.IPEndPoint]$probe.LocalEndpoint).Port
+    $probe.Stop()
+    $producerArgs = 'videotestsrc is-live=true ! video/x-raw,format=I420,width=320,height=240,framerate=30/1 ! ' +
+        "webrtcsink run-signalling-server=true signalling-server-host=127.0.0.1 signalling-server-port=$port video-caps=video/x-h264 meta=meta,name=smoke"
+    # The capsfilter makes webrtcsrc depayload and decode; without it fakesink takes the RTP packets as they arrive.
+    $consumerArgs = "-e webrtcsrc signaller::uri=ws://127.0.0.1:$port connect-to-first-producer=true ! video/x-raw ! queue ! identity eos-after=$Frames ! fakesink"
+    New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+    $logs = @{}
+    foreach ($n in 'producer-out', 'producer-err', 'consumer-out', 'consumer-err') { $logs[$n] = Join-Path $LogDir "webrtc-loopback-$port-$n.log" }
+    $producer = $null
+    $consumer = $null
+    $result = [pscustomobject]@{ ExitCode = -1; TimedOut = $false; Port = $port; Detail = @() }
+    try {
+        $producer = Start-Process -FilePath $exe -ArgumentList $producerArgs -PassThru -NoNewWindow `
+            -RedirectStandardOutput $logs['producer-out'] -RedirectStandardError $logs['producer-err']
+        # Read once now: a Process started this way reports no ExitCode unless its handle was taken before it exited.
+        $null = $producer.Handle
+        $deadline = [DateTime]::UtcNow.AddSeconds(20)
+        $listening = $false
+        while (-not $listening -and -not $producer.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+            $client = [System.Net.Sockets.TcpClient]::new()
+            try { $listening = $client.ConnectAsync('127.0.0.1', $port).Wait(500) -and $client.Connected } catch { $listening = $false } finally { $client.Dispose() }
+            if (-not $listening) { Start-Sleep -Milliseconds 250 }
+        }
+        if (-not $listening) {
+            $result.Detail = @("the producer's signalling server never listened on 127.0.0.1:$port (producer exited: $($producer.HasExited))")
+            return $result
+        }
+        $consumer = Start-Process -FilePath $exe -ArgumentList $consumerArgs -PassThru -NoNewWindow `
+            -RedirectStandardOutput $logs['consumer-out'] -RedirectStandardError $logs['consumer-err']
+        $null = $consumer.Handle
+        if ($consumer.WaitForExit($TimeoutSeconds * 1000)) {
+            $consumer.WaitForExit()
+            $result.ExitCode = $consumer.ExitCode
+        } else {
+            $result.TimedOut = $true
+        }
+    } finally {
+        foreach ($p in @($consumer, $producer)) {
+            if ($p -and -not $p.HasExited) { try { $p.Kill($true) } catch { Write-Verbose "loopback: kill failed: $($_.Exception.Message)" } }
+        }
+        foreach ($n in 'consumer-err', 'consumer-out', 'producer-err') {
+            if (Test-Path $logs[$n]) { $result.Detail += @(Get-Content $logs[$n] -Tail 6 | ForEach-Object { "${n}: $_" }) }
+        }
+    }
+    return $result
+}
+
 Export-ModuleMember -Function Get-RequiredGstPlugin, Write-PkgConfigFile,
-    Get-LibraryLinkName, Assert-PkgConfigModule
+    Get-LibraryLinkName, Assert-PkgConfigModule, Get-GstRustCargoPlan, Get-GstRustSourceMirrorConfig, Invoke-GstWebRtcLoopback

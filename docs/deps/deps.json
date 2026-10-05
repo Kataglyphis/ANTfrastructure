@@ -884,7 +884,7 @@
                 "patches": [
                   "windows/scripts/patches/gstreamer/001-ges-commit-rename.patch"
                 ],
-                "note": "The Windows build patches a GES symbol rename."
+                "note": "The Windows build patches a GES symbol rename, and carries upstream GStreamer commit 17d22abe89 in gst-plugins-bad's ext/dtls/gstdtlsconnection.c (an empty BIO read signals retry, not EOF) until GSTREAMER_VERSION moves past 1.29.2."
               }
             },
             {
@@ -900,6 +900,27 @@
                 "ref": "pinned by the GStreamer release's wrap files",
                 "note": "x264 is GPL, so its presence is what makes this subproject set copyleft."
               }
+            },
+            {
+              "name": "GStreamer Rust plugins rswebrtc and rsrtp (gst-plugins-rs net/webrtc, net/rtp)",
+              "var": "GSTREAMER_VERSION",
+              "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
+              "license": "MPL-2.0",
+              "spdx": "MPL-2.0",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
+                "ref_var": "GSTREAMER_VERSION",
+                "note": "Built unmodified from the gstreamer-<version> tag (GitHub mirror) by Build-GstreamerFromSource.ps1 phase 8b, with upstream's Cargo.lock (--locked)."
+              }
+            },
+            {
+              "name": "Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, \u2026)",
+              "var": null,
+              "version_fixed": "pinned by gst-plugins-rs's Cargo.lock at the GStreamer tag",
+              "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
+              "license": "MIT / Apache 2.0 / ISC / BSD / Unicode-3.0 / CDLA-Permissive-2.0 (per crate, 337 crates on 2026-10-05)",
+              "spdx": "MIT AND Apache-2.0 AND ISC AND BSD-3-Clause AND BSD-2-Clause AND Unicode-3.0 AND CDLA-Permissive-2.0"
             },
             {
               "name": "ONNX Runtime",

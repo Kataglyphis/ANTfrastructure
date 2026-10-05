@@ -106,6 +106,13 @@ function Get-GstRocmMesonArgs {
         '-Dgst-plugins-bad:d3d11=enabled', '-Dgst-plugins-bad:d3d12=enabled')
 }
 
+# Upstream 17d22abe89's bio_method_read hunk: OpenSSL 4 takes a 0-byte read as EOF, so an empty BIO must signal retry.
+function ConvertTo-GstDtlsRetryRead {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+    return [regex]::Replace($Text, 'GST_LOG_OBJECT \(self, "BIO: EOF"\);(\r?\n)([ \t]*)return 0;',
+        'GST_LOG_OBJECT (self, "BIO: no data available, retry later");$1$2BIO_set_retry_read (bio);$1$2return -1;', 1)
+}
+
 # `enabled` makes a lost gdkpixbuf plugin fail setup; cross has no build-machine glib-compile-resources. docs/windows-cross-builds.md
 function Get-GstGdkPixbufMesonArgs {
     param([switch]$Cross)
@@ -213,9 +220,12 @@ try {
     log "Using Python: $pyExe"
     Install-CpythonPip -Python $py
 
-    log 'Installing Meson via pip...'
+    # Pinned: the build-subproject fixes below match meson's source by regex, and a floating meson moves under them.
+    $mesonPin = [string]$env:PY_MESON_VERSION
+    if ([string]::IsNullOrWhiteSpace($mesonPin)) { throw 'PY_MESON_VERSION is not set (versions.env not loaded?) -- refusing an unpinned meson' }
+    log "Installing Meson $mesonPin via pip..."
     $pipLog = Join-Path $resolvedLogDir 'pip-install.log'
-    & cmd.exe /c """$pyExe"" -m pip install meson > ""$pipLog"" 2>&1"
+    & cmd.exe /c """$pyExe"" -m pip install meson==$mesonPin > ""$pipLog"" 2>&1"
     $pipExit = $LASTEXITCODE
     Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
     # Fail here, not later as a misleading 'meson.exe not found'.
@@ -235,7 +245,7 @@ try {
     # The merge copies media-core's site-packages without their Scripts dir: pip finds meson installed and writes no meson.exe.
     if (-not $pythonScripts) {
         log 'meson is installed but meson.exe is missing; reinstalling it to regenerate the launcher...'
-        & cmd.exe /c """$pyExe"" -m pip install --force-reinstall --no-deps meson >> ""$pipLog"" 2>&1"
+        & cmd.exe /c """$pyExe"" -m pip install --force-reinstall --no-deps meson==$mesonPin >> ""$pipLog"" 2>&1"
         if ($LASTEXITCODE -ne 0) { throw "pip reinstall of meson failed (exit $LASTEXITCODE) -- see $pipLog" }
         $pythonScripts = & $findMesonScripts
     }
@@ -517,7 +527,8 @@ int _isatty(int);
     # meson links through the compiler driver, which defaults to the host triple, so link args need --target too.
     $gstTargetArch = $script:GstTargetArch   # resolved once at the top of this script
     $gstCrossArg = if ($script:GstCross) { "--target=$(Get-ClangTargetTriple -Arch $gstTargetArch)" } else { '' }
-    $linkArgElems = ((@('/FORCE:MULTIPLE', $gstCrossArg, $rtFullPath) + $guidLibs) |
+    # Never /FORCE:MULTIPLE: it once let libffi link a zeroed type table; see docs/windows-builds.md § libffi's type exports.
+    $linkArgElems = ((@($gstCrossArg, $rtFullPath) + $guidLibs) |
         Where-Object { $_ } | ForEach-Object { "'$_'" }) -join ','
     log "Link args: [$linkArgElems]"
 
@@ -530,6 +541,17 @@ int _isatty(int);
             param($mfContent)
             [regex]::Replace($mfContent, "if runtimeobject_lib\.found\(\)(\s*\r?\n)", "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`$1", 1)
         })
+
+    # Upstream 17d22abe89, until GSTREAMER_VERSION moves past 1.29.2: see docs/windows-builds.md § DTLS with OpenSSL 4.
+    $dtlsConn = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\ext\dtls\gstdtlsconnection.c'
+    $dtlsPatched = Edit-SourceFile -Path $dtlsConn -Require -Marker ([regex]::Escape('BIO: no data available, retry later')) `
+        -Description 'gstdtlsconnection.c: an empty BIO read signals retry, not EOF (upstream 17d22abe89)' `
+        -Transform { param($dtlsContent) ConvertTo-GstDtlsRetryRead -Text $dtlsContent }
+    if (-not [System.IO.File]::ReadAllText($dtlsConn).Contains('BIO: no data available, retry later')) {
+        throw ("gstdtlsconnection.c: the OpenSSL 4 BIO fix (upstream 17d22abe89) neither applied nor is upstream. Without it " +
+            "every DTLS handshake fails with 'unexpected eof while reading', so WebRTC carries no media. Re-check $dtlsConn.")
+    }
+    if (-not $dtlsPatched) { log 'gstdtlsconnection.c already carries upstream 17d22abe89; retire the DTLS patch.' }
 
     # c++11 pins become c++17: VS 18's MSVC STL uses C++14 constructs that clang-cl rejects in C++11 mode.
     $cppStdPatched = 0
@@ -882,6 +904,7 @@ endian = 'little'
         }
         $buildLibDirs = $buildLinkArgList
         $buildLinkArgs = (($buildLinkArgList | ForEach-Object { "'" + $_ + "'" }) -join ', ')
+        # The build machine links its own ffi-7.dll (a default target) from the same ffi.h, so it needs -fcommon too.
         $nativeFile = Join-Path $resolvedLogDir 'meson-native-amd64.ini'
         Set-Content -Path $nativeFile -Encoding ASCII -Value @"
 [binaries]
@@ -897,6 +920,7 @@ ml64 = '$buildMl64'
 $(if ($rustc) { "rust = ['$($rustc -replace '\\', '/')']" } else { '' })
 
 [built-in options]
+c_args = ['-fcommon']
 c_link_args = [$buildLinkArgs]
 cpp_link_args = [$buildLinkArgs]
 "@
@@ -932,8 +956,8 @@ cpp_link_args = [$buildLinkArgs]
         '-Dges=enabled',
         '-Drtsp_server=enabled',
         '-Dtools=enabled',
-        # tflite's has_header probe uses the C compiler for C++ sources; -Wno-undef: graphene tests __GNUC__ under -Werror.
-        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef$(if ($gstCrossArg) { " $gstCrossArg" })",
+        # tflite's has_header probe uses the C compiler for C++ sources; -Wno-undef: graphene tests __GNUC__ under -Werror; -fcommon: see docs/windows-builds.md § libffi's type exports.
+        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef -fcommon$(if ($gstCrossArg) { " $gstCrossArg" })",
         "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types$(if ($gstCrossArg) { " $gstCrossArg" })",
         # mediafoundation (mfvideosrc) is what the Rust capture path uses; it needs the GUID libs above.
         '-Dgst-plugins-bad:mediafoundation=enabled',
@@ -1123,28 +1147,27 @@ cpp_link_args = [$buildLinkArgs]
     if ($LASTEXITCODE -ne 0) { throw 'meson install failed' }
     log 'Installation complete.'
 
-    # Stage the target OpenSSL DLLs: nothing else installs them, and a bundle on a clean device has no image PATH.
-    if ($script:GstCross) {
-        $sslRuntimeRoot = 'C:\opt\openssl-arm64'
-        $sslDlls = @(Get-ChildItem -Path $sslRuntimeRoot -Recurse -File -Include 'libcrypto-*.dll', 'libssl-*.dll' -ErrorAction SilentlyContinue)
-        if ($sslDlls.Count -eq 0) {
-            throw "OpenSSL runtime DLLs (libcrypto-*/libssl-*) not found under $sslRuntimeRoot -- the hls/dtls/aes plugins and gio's TLS module would import a DLL the bundle does not carry (#127)"
-        }
-        # One copy per name, preferring \bin, so log and bundle agree.
-        $sslByName = @{}
-        foreach ($dll in ($sslDlls | Sort-Object { if ($_.DirectoryName -match '\\bin$') { 0 } else { 1 } }, FullName)) {
-            if (-not $sslByName.ContainsKey($dll.Name.ToLowerInvariant())) { $sslByName[$dll.Name.ToLowerInvariant()] = $dll }
-        }
-        $sslWant = Get-PeMachineType -Arch $script:GstTargetArch
-        $sslBinDir = Join-Path $resolvedInstallDir 'bin'
-        New-Item -Path $sslBinDir -ItemType Directory -Force | Out-Null
-        foreach ($dll in @($sslByName.Values | Sort-Object Name)) {
-            $m = Get-PeFileMachine -Path $dll.FullName
-            if ($m -ne $sslWant) { throw ('OpenSSL runtime {0} is machine 0x{1:X4}, expected 0x{2:X4} -- refusing to stage a wrong-arch DLL into the bundle' -f $dll.FullName, $m, $sslWant) }
-            Copy-Item -Path $dll.FullName -Destination (Join-Path $sslBinDir $dll.Name) -Force
-        }
-        log ("OpenSSL ($($script:GstTargetArch)): staged {0} runtime DLL(s) into {1} ({2} candidate file(s) in the package): {3}" -f $sslByName.Count, $sslBinDir, $sslDlls.Count, (@($sslByName.Values | Sort-Object Name | ForEach-Object { "$($_.Name) <- $($_.DirectoryName)" }) -join '; '))
+    # Stage the target OpenSSL DLLs on both lanes: nothing else installs them, and neither a bundle nor the image's PATH carries them.
+    $sslRuntimeRoot = if ($script:GstCross) { 'C:\opt\openssl-arm64' } else { [string]$env:OPENSSL_ROOT_DIR }
+    if ([string]::IsNullOrWhiteSpace($sslRuntimeRoot)) { throw 'OPENSSL_ROOT_DIR is unset, so the OpenSSL runtime gstdtls.dll imports cannot be staged beside it' }
+    $sslDlls = @(Get-ChildItem -Path $sslRuntimeRoot -Recurse -File -Include 'libcrypto-*.dll', 'libssl-*.dll' -ErrorAction SilentlyContinue)
+    if ($sslDlls.Count -eq 0) {
+        throw "OpenSSL runtime DLLs (libcrypto-*/libssl-*) not found under $sslRuntimeRoot -- the hls/dtls/aes plugins and gio's TLS module would import a DLL the bundle does not carry (#127)"
     }
+    # One copy per name, preferring \bin, so log and bundle agree.
+    $sslByName = @{}
+    foreach ($dll in ($sslDlls | Sort-Object { if ($_.DirectoryName -match '\\bin$') { 0 } else { 1 } }, FullName)) {
+        if (-not $sslByName.ContainsKey($dll.Name.ToLowerInvariant())) { $sslByName[$dll.Name.ToLowerInvariant()] = $dll }
+    }
+    $sslWant = Get-PeMachineType -Arch $script:GstTargetArch
+    $sslBinDir = Join-Path $resolvedInstallDir 'bin'
+    New-Item -Path $sslBinDir -ItemType Directory -Force | Out-Null
+    foreach ($dll in @($sslByName.Values | Sort-Object Name)) {
+        $m = Get-PeFileMachine -Path $dll.FullName
+        if ($m -ne $sslWant) { throw ('OpenSSL runtime {0} is machine 0x{1:X4}, expected 0x{2:X4} -- refusing to stage a wrong-arch DLL into the bundle' -f $dll.FullName, $m, $sslWant) }
+        Copy-Item -Path $dll.FullName -Destination (Join-Path $sslBinDir $dll.Name) -Force
+    }
+    log ("OpenSSL ($($script:GstTargetArch)): staged {0} runtime DLL(s) into {1} ({2} candidate file(s) in the package): {3}" -f $sslByName.Count, $sslBinDir, $sslDlls.Count, (@($sslByName.Values | Sort-Object Name | ForEach-Object { "$($_.Name) <- $($_.DirectoryName)" }) -join '; '))
 
     if ($gpuEnv.HasRocm) {
         $rocmMissing = @(Get-GstRocmMissingArtifact -InstallDir $resolvedInstallDir)
@@ -1154,6 +1177,62 @@ cpp_link_args = [$buildLinkArgs]
     # The gate scans plugins the way the image loads them, so it gets TheRock's bin back (last, as in the image).
     Restore-GstRocmPath -Scrub $rocmScrub
 
+    Switch-BuildPhase '8b. gst-plugins-rs (cargo)'
+    # The tag and plain cargo build the Linux lane uses; see docs/windows-builds.md § gst-plugins-rs on Windows.
+    $rsSrcDir = Join-Path $resolvedSrcDir 'gst-plugins-rs'
+    $rsPluginDir = Join-Path $resolvedInstallDir 'lib\gstreamer-1.0'
+    $rsPlan = Get-GstRustCargoPlan -Plugin $requiredPlugins -Arch $script:GstTargetArch -Jobs $gstJobs `
+        -TargetDir (Join-Path $resolvedBuildDir 'gst-plugins-rs-target') -PkgConfigDir (Join-Path $resolvedInstallDir 'lib\pkgconfig')
+    $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE '.cargo' }
+    # Only caches this run creates, so the cleanup never whites out a lower layer's bytes.
+    $rsCargoScratch = @(@('registry', 'git') | ForEach-Object { Join-Path $cargoHome $_ } | Where-Object { -not (Test-Path $_) })
+    # TLS stays verified for this fetch and cargo's: the no-verify above exists for meson's wrap fetches alone.
+    $rsEnv = [ordered]@{ GIT_SSL_NO_VERIFY = $null }
+    foreach ($k in $rsPlan.Env.Keys) { $rsEnv[$k] = $rsPlan.Env[$k] }
+    $rsSaved = @{}
+    foreach ($k in $rsEnv.Keys) {
+        $rsSaved[$k] = [Environment]::GetEnvironmentVariable($k)
+        if ($null -eq $rsEnv[$k]) { Remove-Item "Env:\$k" -ErrorAction SilentlyContinue } else { [Environment]::SetEnvironmentVariable($k, $rsEnv[$k]) }
+    }
+    try {
+        [void](Invoke-GitClone -RepoUrl 'https://github.com/GStreamer/gst-plugins-rs.git' -Tag "gstreamer-$GstVersion" -SourceDir $rsSrcDir)
+        $rsSources = Join-Path $resolvedBuildDir 'gst-plugins-rs-sources.toml'
+        New-Item -ItemType Directory -Force -Path $resolvedBuildDir | Out-Null
+        Set-Content -Path $rsSources -Encoding ASCII -Value (Get-GstRustSourceMirrorConfig -CargoLock ([System.IO.File]::ReadAllText((Join-Path $rsSrcDir 'Cargo.lock'))))
+        $rsArgs = @($rsPlan.Args) + @('--config', $rsSources)
+        log "cargo $($rsArgs -join ' ')  (env: $(@($rsPlan.Env.Keys | ForEach-Object { "$_=$($rsPlan.Env[$_])" }) -join ' '))"
+        Get-Content $rsSources | ForEach-Object { if ($_) { log "  sources| $_" } }
+        Push-Location $rsSrcDir
+        try {
+            $global:LASTEXITCODE = 0
+            & cargo @rsArgs 2>&1 | ForEach-Object { if ($_) { log "  cargo| $_" } }
+            $cargoExit = $LASTEXITCODE
+        } finally { Pop-Location }
+    } finally {
+        # A $null restore must remove: see docs/windows-build-invariants.md § Four more pwsh traps (d).
+        foreach ($k in $rsSaved.Keys) {
+            if ($null -eq $rsSaved[$k]) { Remove-Item "Env:\$k" -ErrorAction SilentlyContinue } else { [Environment]::SetEnvironmentVariable($k, $rsSaved[$k]) }
+        }
+    }
+    $rsMissing = @()
+    if ($cargoExit -ne 0) {
+        $rsMissing += "cargo exited $cargoExit"
+    } else {
+        $rsWant = Get-PeMachineType -Arch $script:GstTargetArch
+        foreach ($dll in $rsPlan.Dlls) {
+            if (-not (Test-Path $dll.Path)) { $rsMissing += "$($dll.File) not built at $($dll.Path)"; continue }
+            $rsMachine = Get-PeFileMachine -Path $dll.Path
+            if ($rsMachine -ne $rsWant) { $rsMissing += ('{0} is machine 0x{1:X4}, expected 0x{2:X4}' -f $dll.File, $rsMachine, $rsWant); continue }
+            Copy-Item -Path $dll.Path -Destination (Join-Path $rsPluginDir $dll.File) -Force
+            log "gst-plugins-rs: installed $($dll.File) ($([math]::Round((Get-Item $dll.Path).Length / 1MB, 1)) MB) into $rsPluginDir"
+        }
+    }
+    if ($rsMissing.Count -gt 0) {
+        $rsWhy = "gst-plugins-rs ($(@($rsPlan.Dlls | ForEach-Object { $_.Name }) -join ', ')): $($rsMissing -join '; ')"
+        if ($SkipPluginGate) { log "WARNING: $rsWhy -- -SkipPluginGate was passed, so the image is NOT shippable" }
+        else { throw "$rsWhy. These are mandatory contract plugins; the cargo output above names the failing crate." }
+    }
+
     Switch-BuildPhase '9. verify (plugin + pc gates)'
     $gstLaunch = Join-Path $resolvedInstallDir 'bin\gst-launch-1.0.exe'
     if (Test-Path $gstLaunch) {
@@ -1162,6 +1241,11 @@ cpp_link_args = [$buildLinkArgs]
         log "WARNING: gst-launch-1.0.exe not found at expected path: $gstLaunch"
         log 'Build may have completed but binaries may be elsewhere. Check logs.'
     }
+
+    # A static read, so it holds on the cross lane too, where nothing that uses libffi can run.
+    $ffiDll = @(Get-ChildItem -Path (Join-Path $resolvedInstallDir 'bin') -Filter 'ffi-*.dll' -File -ErrorAction SilentlyContinue)
+    if ($ffiDll.Count -ne 1) { throw "expected exactly one ffi-*.dll in $resolvedInstallDir\bin (gobject imports it), found $($ffiDll.Count)" }
+    log (Assert-LibffiTypeExport -Path $ffiDll[0].FullName)
 
     # Mandatory plugin gate, fatal: `enabled` proves configure found a dependency, gst-inspect that the plugin loads.
     $gstInspect = Join-Path $resolvedInstallDir 'bin\gst-inspect-1.0.exe'
@@ -1205,7 +1289,8 @@ cpp_link_args = [$buildLinkArgs]
     # Cross cannot run gst-inspect, so check statically: dependency tree walk and export marker (machine: Test-TargetArch.ps1).
     if ($script:GstCross) {
         foreach ($plugin in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch)) {
-            $pluginDll = Get-ChildItem -Path $gstPluginDir -Filter "gst*$($plugin.Name)*.dll" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            # The exact file name: a gst*webrtc*.dll wildcard also matches gstrswebrtc.dll and gstwebrtcdsp.dll.
+            $pluginDll = Get-Item -LiteralPath (Join-Path $gstPluginDir "gst$($plugin.Name).dll") -ErrorAction SilentlyContinue
             if (-not $pluginDll) {
                 log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' produced NO DLL in $gstPluginDir — $($plugin.Why)"
                 $missingPlugins += $plugin
@@ -1243,7 +1328,7 @@ cpp_link_args = [$buildLinkArgs]
             log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' present ($($plugin.Provides))"
         } else {
             log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' MISSING — $($plugin.Why)"
-            $pluginDll = Get-ChildItem -Path $gstPluginDir -Filter "gst*$($plugin.Name)*.dll" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            $pluginDll = Get-Item -LiteralPath (Join-Path $gstPluginDir "gst$($plugin.Name).dll") -ErrorAction SilentlyContinue
             if ($pluginDll) {
                 log "    load-probing $($pluginDll.Name) directly:"
                 & $gstInspect $pluginDll.FullName 2>&1 |
@@ -1256,7 +1341,7 @@ cpp_link_args = [$buildLinkArgs]
                     else { log '      (all non-API-set deps resolve; failure may be a delay-load or DllMain init error)' }
                 }
             } else {
-                log "    (no gst*$($plugin.Name)*.dll found in $gstPluginDir)"
+                log "    (no gst$($plugin.Name).dll in $gstPluginDir)"
             }
             $missingPlugins += $plugin
         }
@@ -1289,7 +1374,7 @@ cpp_link_args = [$buildLinkArgs]
     Switch-BuildPhase '10. cleanup'
     if (-not $KeepBuildArtifacts.IsPresent -and $env:KEEP_BUILD_ARTIFACTS -ne '1') {
         log 'Cleaning up source and build directories...'
-        Remove-SourceBuildTree -Path @($gstSrcDir, $resolvedBuildDir)
+        Remove-SourceBuildTree -Path (@($gstSrcDir, $resolvedBuildDir, $rsSrcDir) + $rsCargoScratch)
     }
 
     # Not chain-run, so dump the sccache counters here; they die with the container otherwise.

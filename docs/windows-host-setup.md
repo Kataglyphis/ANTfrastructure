@@ -829,7 +829,7 @@ solving. Single-stage iteration: `-Stages toolchain` etc.
 
 The chain already ran this suite: the driver's smoke gate runs it after every
 `final` stage (amd64 since 2026-08-14), and `-Gpu` passes `-ExpectGpu` itself
-and raises the floor to 190 passed. Run it by hand only to re-check an
+and raises the floor to 198 passed. Run it by hand only to re-check an
 existing image. Without `-ExpectGpu`, a broken CUDA env is silently SKIPPED
 instead of failed ([`windows-builds.md`](windows-builds.md) § Smoke Testing).
 Two routes:

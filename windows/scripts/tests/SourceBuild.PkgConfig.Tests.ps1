@@ -3,10 +3,10 @@
 
 Describe 'Get-RequiredGstPlugin (the contract)' {
 
-    It 'names the six integrations the media stack is built around' {
+    It 'names the integrations the media stack is built around, WebRTC''s run-time set included' {
         $names = @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
-        Assert-Equal 6 $names.Count 'the required set is libav, opencv, onnx, tflite, webrtc, nice'
-        foreach ($expected in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice') {
+        Assert-Equal 13 $names.Count 'the six media integrations plus dtls, srtp, sctp, rtpmanager, openh264, rswebrtc, rsrtp'
+        foreach ($expected in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice', 'dtls', 'srtp', 'sctp', 'rtpmanager', 'openh264', 'rswebrtc', 'rsrtp') {
             Assert-True ($names -contains $expected) "'$expected' must be mandatory"
         }
     }
@@ -24,6 +24,16 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
         Assert-Equal 'gst-plugins-bad:webrtc' $byName['webrtc'].MesonOption 'the option the build passes as =enabled'
         Assert-Equal 'meson' $byName['nice'].Detection 'nice is the libnice subproject gstreamer plugin'
         Assert-Equal 'libnice:gstreamer' $byName['nice'].MesonOption 'the option the build passes as =enabled'
+        foreach ($m in @(@('dtls', 'gst-plugins-bad:dtls'), @('srtp', 'gst-plugins-bad:srtp'), @('sctp', 'gst-plugins-bad:sctp'),
+                @('rtpmanager', 'gst-plugins-good:rtpmanager'), @('openh264', 'gst-plugins-bad:openh264'))) {
+            Assert-Equal 'meson' $byName[$m[0]].Detection "$($m[0]) is a meson feature, passed as =enabled"
+            Assert-Equal $m[1] $byName[$m[0]].MesonOption "$($m[0]) maps to the option upstream's meson.options declares"
+        }
+        # cargo entries are built by the gst-plugins-rs step after meson, never by a meson option.
+        Assert-Equal 'cargo' $byName['rswebrtc'].Detection 'rswebrtc comes from gst-plugins-rs'
+        Assert-Equal 'gst-plugin-webrtc' $byName['rswebrtc'].CargoPackage 'the crate that builds gstrswebrtc.dll'
+        Assert-Equal 'cargo' $byName['rsrtp'].Detection 'rsrtp comes from gst-plugins-rs'
+        Assert-Equal 'gst-plugin-rtp' $byName['rsrtp'].CargoPackage 'the crate that builds gstrsrtp.dll'
     }
 
     It 'pins the tflite probe details upstream actually uses' {
@@ -47,18 +57,19 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
             # Entry shapes differ per Detection kind and StrictMode throws on a missing member, hence the presence guards.
             $hasHeaderProbe = [bool]$p.PSObject.Properties['NeedsHeader'] -and [bool]$p.NeedsHeader -and [bool]$p.PSObject.Properties['NeedsLib'] -and $p.NeedsLib.Count -gt 0
             $hasMesonOption = ($p.Detection -eq 'meson') -and [bool]$p.PSObject.Properties['MesonOption'] -and [bool]$p.MesonOption
-            $checkable = ($p.NeedsPc.Count -gt 0) -or $hasHeaderProbe -or $hasMesonOption
-            Assert-True $checkable "$($p.Name) must declare pkg-config modules, a header+library probe, or a meson option"
+            $hasCargoPackage = ($p.Detection -eq 'cargo') -and [bool]$p.PSObject.Properties['CargoPackage'] -and [bool]$p.CargoPackage
+            $checkable = ($p.NeedsPc.Count -gt 0) -or $hasHeaderProbe -or $hasMesonOption -or $hasCargoPackage
+            Assert-True $checkable "$($p.Name) must declare pkg-config modules, a header+library probe, a meson option or a cargo package"
         }
     }
 
-    It 'is arch-aware and, since #115/#128, demands the SAME six entries on both lanes' {
+    It 'is arch-aware and, since #115/#128, demands the SAME entries on both lanes' {
         # UnavailableOn stays tested while its key set is empty, so a plugin re-dropped on arm64 fails here first.
         $amd = @(Get-RequiredGstPlugin -Arch 'amd64' | ForEach-Object { $_.Name })
         $arm = @(Get-RequiredGstPlugin -Arch 'arm64' | ForEach-Object { $_.Name })
-        Assert-Equal 6 $amd.Count 'amd64 keeps the full contract'
-        Assert-Equal 6 $arm.Count 'arm64 demands the full contract (tflite since #115, webrtc/nice since #128)'
-        foreach ($n in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice') {
+        Assert-Equal 13 $amd.Count 'amd64 keeps the full contract'
+        Assert-Equal 13 $arm.Count 'arm64 demands the full contract (tflite since #115, webrtc/nice since #128, the WebRTC run-time set since CON28)'
+        foreach ($n in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice', 'dtls', 'srtp', 'sctp', 'rtpmanager', 'openh264', 'rswebrtc', 'rsrtp') {
             Assert-True ($arm -contains $n) "'$n' must be mandatory on arm64"
         }
         # With WINDOWS_TARGET_ARCH unset the bare call must equal the amd64 view.

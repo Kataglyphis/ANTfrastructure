@@ -140,6 +140,8 @@ Two neighbours, so you land on the right page:
 - [RV1-FREETYPE: riscv64 OpenCV freetype/harfbuzz](#rv1-freetype-riscv64-opencv-freetypeharfbuzz)
 - [A half-fetched dependency that every retry inherits](#a-half-fetched-dependency-that-every-retry-inherits)
 - [RVV changed what the optimizer can prove](#rvv-changed-what-the-optimizer-can-prove)
+- [`webrtcbin`'s action signals never reply; `ffi_prep_cif` returns `FFI_BAD_TYPEDEF`](#webrtcbins-action-signals-never-reply-ffi_prep_cif-returns-ffi_bad_typedef)
+- [`dtlsconnection ... unexpected eof while reading` at the first DTLS step](#dtlsconnection--unexpected-eof-while-reading-at-the-first-dtls-step)
 
 
 ---
@@ -2096,3 +2098,28 @@ warnings as errors elsewhere.
 
 Expect more of this shape as the vector baseline lands. Waive per component,
 never tree-wide, and record why here.
+
+### `webrtcbin`'s action signals never reply; `ffi_prep_cif` returns `FFI_BAD_TYPEDEF`
+
+`create-offer`, `get-stats` and `create-data-channel` on `webrtcbin` do nothing,
+not even the `closed` error a `webrtcbin` in NULL state must answer with. Signals
+without arguments still work. GLib's generic marshaller runs every signal with
+arguments through libffi, and `ffi-7.dll` exported its `ffi_type_*` descriptors
+as zeros: `ffi_type_sint32 size=0 align=0 type=0`, so `ffi_prep_cif` failed and
+`g_cclosure_marshal_generic` returned without calling the handler. The build log
+shows the cause as 60 `lld-link: warning: duplicate symbol: ffi_type_*` lines at
+`Linking target subprojects/libffi/src/ffi-7.dll`, a warning only because of
+`/FORCE:MULTIPLE`. Mechanism and fix:
+[`windows-builds.md` § libffi's type exports](windows-builds.md#libffis-type-exports).
+`Assert-LibffiTypeExport` now fails the build on it.
+
+### `dtlsconnection ... unexpected eof while reading` at the first DTLS step
+
+Signalling and ICE complete, then both peers fail with `ssl error:
+...:error:0A000126:SSL routines::unexpected eof while reading:ssl\record\rec_layer_d1.c:254`
+from `gst_dtls_enc_change_state`, and the consumer reports `Connection state
+failed`. OpenSSL 4.0 takes the empty read GStreamer 1.29.2's DTLS BIO returns as
+end of file:
+[`windows-builds.md` § DTLS with OpenSSL 4](windows-builds.md#dtls-with-openssl-4).
+If it comes back after a `GSTREAMER_VERSION` bump, check that the build log still
+says the patch applied or that upstream carries it.

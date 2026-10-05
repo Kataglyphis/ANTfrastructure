@@ -54,6 +54,8 @@ OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "BSD-3-Clause": (KEEP_NOTICE, INCLUDE_TEXT),
     "BSD-3-Clause-Clear": (KEEP_NOTICE, INCLUDE_TEXT),
     "ISC": (KEEP_NOTICE, INCLUDE_TEXT),
+    "Unicode-3.0": (KEEP_NOTICE, INCLUDE_TEXT),
+    "CDLA-Permissive-2.0": (KEEP_NOTICE, INCLUDE_TEXT),
     "Zlib": (KEEP_NOTICE, INCLUDE_TEXT),
     "curl": (KEEP_NOTICE, INCLUDE_TEXT),
     "Unlicense": (),
