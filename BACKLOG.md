@@ -160,6 +160,23 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       BeschleunigerBallett's `find_if` stands (a2793e6c). Never set
       `_USE_STD_VECTOR_ALGORITHMS=0` image-wide: it turns every vectorized algorithm off.
       Close when a production toolset ships #6298.
+- [b] **CON54 — Let the litert-lm CMake superbuild consume the already-built LiteRT
+      install** [M, ★★]. The hub flow builds LiteRT (bazel, `LITERT_VERSION=v2.2.0` =
+      145c7523, 2026-08-06) and then litert-lm's superbuild builds LiteRT a SECOND time
+      from `litert.cmake`'s `GIT_TAG main` — two different copies in one product, both
+      floating (v0.17.1's WORKSPACE pins 9fe5be45, 2026-08-27, 3 weeks NEWER than the
+      prebuilt). The harness already sends `CMAKE_PREFIX_PATH=C:\runtime\lib\litert`
+      but the lane has no consumer for it: the top-level orchestrator is LANGUAGES NONE,
+      and litert.cmake defines litert_external unconditionally (its "already installed"
+      message prints on every path; the only skip fallback sits behind a FATAL_ERROR
+      else-branch). Upstream-PR-shaped feature: a `LITERTLM_LITERT_PROVIDER=installed`
+      (or honored prefix) that keys the aggregate/target-map/include-paths at the
+      installed tree instead of the EP build dir. Side value: it removes the litert EP
+      from the graph — the chunk where google-ai-edge/LiteRT#tensor/examples
+      (gemma3's find_package(Protobuf REQUIRED)) fires, and the largest slice of the
+      superbuild's wall time. The direct-consumption build is also the sharpest
+      API-skew probe: if v2.2.0 lacks what litert-lm's sources use, the compile fails
+      with the missing member visible. Repro: litertlm-harness runs 1-19, Oct 4 2026.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
