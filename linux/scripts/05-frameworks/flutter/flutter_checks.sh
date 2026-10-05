@@ -4,8 +4,9 @@ set -euo pipefail
 # Dart/Flutter equivalent of 02-toolchain/rust/cargo_fmt_clippy.sh + cargo_test.sh.
 # Docs: docs/code-quality-tooling.md#dart-file-enumeration
 #
-# Usage: flutter_checks.sh [--strict <bool>] [--extra-package <dir>]...
+# Usage: flutter_checks.sh [--strict <bool>] [--extra-package <dir>]... [--test-platform <vm|chrome>]
 #   --strict false  reports failures and continues (default: true)
+#   --test-platform chrome  tests in the image's Chrome; the VM where none ships (riscv64)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../01-core/logging.sh"
@@ -14,14 +15,20 @@ source "$SCRIPT_DIR/../../lib/code-quality.sh"   # code_quality_find_tracked_fil
 
 STRICT="true"
 EXTRA_PACKAGES=()
+TEST_PLATFORM="vm"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --strict) STRICT="${2:?--strict needs a value}"; shift 2 ;;
     --extra-package) EXTRA_PACKAGES+=("${2:?--extra-package needs a dir}"); shift 2 ;;
+    --test-platform) TEST_PLATFORM="${2:?--test-platform needs vm or chrome}"; shift 2 ;;
     *) err "flutter_checks.sh: unknown argument: $1"; exit 2 ;;
   esac
 done
+case "${TEST_PLATFORM}" in
+  vm|chrome) ;;
+  *) err "flutter_checks.sh: --test-platform must be vm or chrome, not '${TEST_PLATFORM}'" ;;
+esac
 
 _run() {
   if is_truthy "$STRICT"; then
@@ -148,6 +155,14 @@ info "Analyzing..."
 _run dart analyze
 
 info "Running tests..."
-_run flutter test
+# The image sets CHROME_EXECUTABLE where it ships Chrome; without it the VM keeps the gate from running nothing.
+if [ "${TEST_PLATFORM}" = chrome ] && [ -n "${CHROME_EXECUTABLE:-}" ]; then
+  _run flutter test --platform chrome
+else
+  if [ "${TEST_PLATFORM}" = chrome ]; then
+    warn "flutter_checks: no CHROME_EXECUTABLE on $(uname -m); running the tests on the VM instead."
+  fi
+  _run flutter test
+fi
 
 info "Flutter checks completed."

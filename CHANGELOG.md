@@ -7,6 +7,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — the Dart gate can test in Chrome
+
+- `flutter_checks.sh --test-platform chrome` runs `flutter test --platform chrome` where the
+  image sets `CHROME_EXECUTABLE`, and the VM where it does not (riscv64), so a lane never
+  passes on zero tests. The default stays `vm`; an unknown platform is refused.
+- `test-flutter-checks-platform.sh` drives the gate with stub `flutter`/`dart` over a tracked
+  fixture: four cases, and dropping either branch reds one of them.
+- OmniAccelerANT's web lane is the first caller (`docs/consumer-image-contract.md` § Browser
+  tests run in Chrome for Testing).
+
+
 ## 2026-10-05 — a CodeQL-traced Windows build runs without sccache
 
 - `Invoke-BuildCodeQL`'s `database create` hung for hours at near-zero CPU. The image's sccache

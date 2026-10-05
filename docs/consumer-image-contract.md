@@ -647,6 +647,10 @@ else
 fi
 ```
 
+A lane that runs the hub's Dart gate gets this by passing `--test-platform chrome` to
+`05-frameworks/flutter/flutter_checks.sh` (since 2026-10-05). Where the variable is empty it
+runs the tests on the VM instead, so the gate never passes on zero tests.
+
 A test file that reads the checkout with `dart:io` cannot run in a browser. Mark it
 `@TestOn('vm')` (or one test `testOn: 'vm'`), and the browser leg skips it while the VM
 leg still runs it. Measured on OmniAccelerANT (2026-10-01, the proof image below): 37
