@@ -821,7 +821,10 @@ function Initialize-BuildCacheEnvironment {
     
     # Process-wide, so later CMake/configure steps pick sccache up without caller wiring.
     $sccacheCmd = Get-Command 'sccache' -ErrorAction SilentlyContinue
-    if ($sccacheCmd) {
+    # Set by Invoke-BuildCodeQL: a build under its tracer must call compilers directly.
+    if ($sccacheCmd -and $env:KATAGLYPHIS_NO_SCCACHE) {
+        Write-BuildLog -Context $Context -Message "sccache found but KATAGLYPHIS_NO_SCCACHE is set: compilers run unwrapped."
+    } elseif ($sccacheCmd) {
         $sccacheExe = $sccacheCmd.Source
         Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $sccacheExe. Enabling compiler cache."
         Enable-SccacheCompilerWrapper -SccacheExe $sccacheExe

@@ -134,6 +134,7 @@ Two neighbours, so you land on the right page:
 - [`atlbase.h` not found when building LLVM in the container](#atlbaseh-not-found-when-building-llvm-in-the-container)
 - [A build script dies with `The term ... is not recognized`, in the container only](#a-build-script-dies-with-the-term--is-not-recognized-in-the-container-only)
 - [A consumer's CMake says clang-cl "is not able to compile a simple test program"](#a-consumers-cmake-says-clang-cl-is-not-able-to-compile-a-simple-test-program)
+- [CodeQL `database create` hangs for hours at near-zero CPU](#codeql-database-create-hangs-for-hours-at-near-zero-cpu)
 - [A Windows chain stops in seconds at `[bk:publish-gate:bk-windows-…]`](#a-windows-chain-stops-in-seconds-at-bkpublish-gatebk-windows-)
 - [A declaration that masks its command's exit status](#a-declaration-that-masks-its-commands-exit-status)
 - [RV1-FREETYPE: riscv64 OpenCV freetype/harfbuzz](#rv1-freetype-riscv64-opencv-freetypeharfbuzz)
@@ -1933,6 +1934,26 @@ launchers (`Clear-UnreachableSccacheEndpoint`, one WARN), so bumping the hub pin
 old image. Images built from that hub no longer carry the variable, and three gates refuse one
 that does: [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
 By hand on an old hub: clear `SCCACHE_WEBDAV_ENDPOINT` in the container before the build.
+
+### CodeQL `database create` hangs for hours at near-zero CPU
+
+**Symptom.** A Windows `-CodeQL` run (`Invoke-BuildCodeQL`) sits in `database create` for hours
+with seconds of CPU. Since 2026-10-05 the phase watchdog kills it and names the phase
+(`CodeQL database create did not finish within … min`). Inside the container, a `cargo metadata`
+started by CodeQL's Rust extractor, or a traced build step, waits beside an `sccache.exe` that
+has no arguments.
+
+**Cause.** The image sets `SCCACHE_IDLE_TIMEOUT=0`, so sccache's server never exits. A client
+started under the CodeQL tracer spawns the server, the server keeps the client's output pipe
+open, and the caller waits for an end-of-file that never comes. Killing the server releases one
+call, and the next call starts a new server and blocks again (OmniAccelerANT, 2026-10-05). A
+cache hit would also hide the compile from the extractor.
+
+**Fix.** Since 2026-10-05 `Invoke-BuildCodeQL` turns sccache off for the traced build:
+`Disable-SccacheForTrace` clears `RUSTC_WRAPPER`, `CC_WRAPPER`, `CXX_WRAPPER` and both CMake
+launcher variables and sets `KATAGLYPHIS_NO_SCCACHE=1`, which `Initialize-BuildCacheEnvironment`
+and `Get-SccacheStatsText` honour. A consumer that wires sccache itself must honour the marker
+too, including a preset's `COMPILER_CACHE=sccache` (pass `-DCOMPILER_CACHE=`).
 
 ### A Windows chain stops in seconds at `[bk:publish-gate:bk-windows-…]`
 
