@@ -70,6 +70,27 @@ function Get-CodeQLDatabaseCreateArgs {
     return $createArgs
 }
 
+function Invoke-CodeQLProcess {
+    param(
+        [Parameter(Mandatory)][string]$CodeQLExe,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [Parameter(Mandatory)][string]$Phase,
+        [Parameter(Mandatory)][int]$TimeoutMinutes
+    )
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $CodeQLExe
+    foreach ($argument in $Arguments) { $psi.ArgumentList.Add($argument) }
+    $psi.UseShellExecute = $false
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    if (-not $proc.WaitForExit($TimeoutMinutes * 60 * 1000)) {
+        # The extractor leaves children behind; kill the tree, not just the parent.
+        & taskkill /PID $proc.Id /T /F 2>$null | Out-Null
+        throw "CodeQL $Phase did not finish within $TimeoutMinutes min and was killed; raise CODEQL_TIMEOUT_MINUTES and watch the log."
+    }
+    return $proc.ExitCode
+}
+
 function Invoke-BuildCodeQL {
     param(
         [Parameter(Mandatory)]
@@ -89,6 +110,12 @@ function Invoke-BuildCodeQL {
 
     $cleanCodeQLDb = Get-ForwardSwitchValue -ForwardParameters $ForwardParameters -Name 'CleanCodeQLDb'
     $codeQLDownload = Get-ForwardSwitchValue -ForwardParameters $ForwardParameters -Name 'CodeQLDownload'
+    # Every phase is bounded: a hung extractor once burned a whole night with 8 s of CPU.
+    $timeoutMinutes = 180
+    if ($env:CODEQL_TIMEOUT_MINUTES) {
+        $parsed = 0
+        if ([int]::TryParse($env:CODEQL_TIMEOUT_MINUTES, [ref]$parsed) -and $parsed -gt 0) { $timeoutMinutes = $parsed }
+    }
 
     Write-BuildLog -Context $Context -Message "CodeQL cleanup enabled: $cleanCodeQLDb"
     Write-BuildLog -Context $Context -Message "CodeQL download enabled: $codeQLDownload"
@@ -166,9 +193,9 @@ function Invoke-BuildCodeQL {
 
         $scope = if ($CodeScanningConfig) { $CodeScanningConfig } else { 'none, the analysis is unscoped' }
         Write-BuildLog -Context $Context -Message "Creating database cluster with languages: $($Languages -join ', '); code-scanning config: $scope"
-        & $codeQLExe @createArgs
+        $createExit = Invoke-CodeQLProcess -CodeQLExe $codeQLExe -Arguments $createArgs -Phase 'database create' -TimeoutMinutes $timeoutMinutes
 
-        if ($LASTEXITCODE -ne 0) {
+        if ($createExit -ne 0) {
             throw 'CodeQL Database Cluster creation failed'
         }
     } else {
@@ -203,9 +230,9 @@ function Invoke-BuildCodeQL {
             $analyzeArgs += '--download'
         }
 
-        & $codeQLExe @analyzeArgs
+        $analyzeExit = Invoke-CodeQLProcess -CodeQLExe $codeQLExe -Arguments $analyzeArgs -Phase "analyze $lang" -TimeoutMinutes $timeoutMinutes
 
-        if ($LASTEXITCODE -ne 0) {
+        if ($analyzeExit -ne 0) {
             Write-BuildLogWarning -Context $Context -Message "Analysis with query suite failed for $lang, trying with query pack..."
             $fallbackQueryPack = "codeql/$lang-queries"
             $fallbackArgs = @(
@@ -219,8 +246,8 @@ function Invoke-BuildCodeQL {
                 $fallbackArgs += '--download'
             }
 
-            & $codeQLExe @fallbackArgs
-            if ($LASTEXITCODE -ne 0) {
+            $fallbackExit = Invoke-CodeQLProcess -CodeQLExe $codeQLExe -Arguments $fallbackArgs -Phase "analyze $lang (pack)" -TimeoutMinutes $timeoutMinutes
+            if ($fallbackExit -ne 0) {
                 Write-BuildLogError -Context $Context -Message "Analysis failed for $lang even with basic query pack"
                 $failedLanguages += $lang
                 continue
@@ -241,6 +268,7 @@ function Invoke-BuildCodeQL {
 
 Export-ModuleMember -Function @(
     'Get-CodeQLDatabaseCreateArgs',
+    'Invoke-CodeQLProcess',
     'Invoke-BuildCodeQL'
 )
 
