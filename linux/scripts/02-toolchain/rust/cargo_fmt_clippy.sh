@@ -3,8 +3,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../01-core/logging.sh
-source "$SCRIPT_DIR/../../01-core/logging.sh"
+# Logging, the CARGO_HOME and toolchain guards, safe.directory and the opt-in linker, one copy for every driver.
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/_cargo_wrapper.sh"
 
 # Probe through cargo, never rustup: the images bake the components in and ship no rustup.
 _ensure_component() {

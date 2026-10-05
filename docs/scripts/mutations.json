@@ -12065,5 +12065,29 @@
   "replace": "|| rc=1",
   "test": "bash linux/scripts/tests/test-download-verified-install.sh",
   "why": "on Windows the winner's running .exe refuses the loser's rename; the pinned bytes are already in place, so that is a success"
+ },
+ {
+  "id": "rust.cargo-safe-directory-added",
+  "target": "linux/scripts/02-toolchain/rust/_cargo_wrapper.sh",
+  "find": "  git config --global --add safe.directory \"${_cargo_safe_dir}\" || true",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-cargo-wrapper.sh",
+  "why": "uid 1001 does not own the bind-mounted checkout; without the entry git refuses it as dubious ownership and a build that shells out to git fails"
+ },
+ {
+  "id": "rust.cargo-safe-directory-opt-out",
+  "target": "linux/scripts/02-toolchain/rust/_cargo_wrapper.sh",
+  "find": "if [ -n \"${_cargo_safe_dir}\" ] \\\n",
+  "replace": "if true \\\n",
+  "test": "bash linux/scripts/tests/test-cargo-wrapper.sh",
+  "why": "an empty CARGO_SAFE_DIRECTORY is the documented opt-out, as CMAKE_BUILD_SAFE_DIRECTORY's is; ignoring it adds an empty safe.directory entry"
+ },
+ {
+  "id": "rust.cargo-safe-directory-once",
+  "target": "linux/scripts/02-toolchain/rust/_cargo_wrapper.sh",
+  "find": "   && ! git config --global --get-all safe.directory 2>/dev/null | grep -qxF -- \"${_cargo_safe_dir}\"; then",
+  "replace": "   ; then",
+  "test": "bash linux/scripts/tests/test-cargo-wrapper.sh",
+  "why": "every driver run would append another copy to the global gitconfig"
  }
 ]

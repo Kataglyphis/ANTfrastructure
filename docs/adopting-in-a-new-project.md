@@ -507,7 +507,9 @@ lane** (BeschleunigerBallett, OmniAccelerANT, OrchestrANT, AccelerANTgine,
 OxidANT, WebDavClient; normalised 2026-08-11, WebDavClient checked 2026-09-25):
 lowercase `scripts/`, with `scripts/windows/`, `scripts/linux/` and — where the
 agentic loop is wired up — `scripts/agentic-loop/`, plus `scripts/windows/modules/`
-for a repo with project-specific modules. jotrockenmitlocken, a Linux-only
+for a repo with project-specific modules and `scripts/windows/container/` for
+scripts that run inside the Windows image rather than on the host (OxidANT's
+`Invoke-StevedoreBuild` callees). jotrockenmitlocken, a Linux-only
 Flutter repo, keeps a flat `scripts/`, with the bootstrap at `scripts/lib/` and
 that path declared in `.antfrastructure-shared.manifest`. ANThology has no hub
 submodule and no bootstrap: its `scripts/lib/find-hub.sh` looks for a hub

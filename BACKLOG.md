@@ -95,32 +95,22 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          (`windows-arm64.yml`, hub 625b3653).
 
 - [ ] **CON55 — The hub pieces OxidANT waits on** [M, ★★]. Not an image gap. Seven rows in
-      OxidANT's BACKLOG (§ Waiting on ANTfrastructure) are `[b]` there only because the other
-      half is a hub change, and nothing here tracked them until 2026-10-05. Each was
-      re-checked at hub 62487181 and is still undone:
-      - `_cargo_wrapper.sh` gets the safe.directory guard that `lib/cmake-build.sh` has,
-        behind a `CARGO_SAFE_DIRECTORY` knob (default `/workspace`), and the other
-        `cargo_*.sh` drivers source it.
-      - `Get-ANTfrastructurePin` moves from `windows/scripts/rust/Build-Windows.ps1` into
-        `WindowsScripts.Shared.psm1`, so OxidANT can delete its `Resolve-CargoToolPin`.
-      - **Owner decision:** `windows/scripts/rust/Build-Windows.ps1` has no consumer. Either
-        make it callable (`-Features`, `-Package`/`-Bin`, no rustup or scoop calls) or
-        delete it and record OxidANT as the owner of the Windows Rust build. Decide it with
-        the row above.
+      OxidANT's BACKLOG (§ Waiting on ANTfrastructure) were `[b]` there only because the
+      other half is a hub change. Five landed on 2026-10-05 and OxidANT deleted its copies:
+      the `_cargo_wrapper.sh` safe.directory guard (`CARGO_SAFE_DIRECTORY`, every driver
+      sources the wrapper), `Get-ANTfrastructurePin` in `WindowsScripts.Shared.psm1`, the
+      unused `windows/scripts/rust/Build-Windows.ps1` deleted (owner decision), the MSIX
+      trust steps in `windows/scripts/certificates/README.md`, and
+      `scripts/windows/container/` in `docs/adopting-in-a-new-project.md` § 8. Two remain:
       - An MSI function for an app that does not build through CPack: `-WxsFile -LicenseFile
         -ProductName -Manufacturer -ExeSource -Version -OutFile`, plus `-Arch` and the payload
         DLL list. OxidANT would be its only caller. The nearest model is the script-local
         `Invoke-MsiPackage` in `windows/scripts/python/New-PythonAppPackage.ps1`.
-      - `windows/scripts/certificates/README.md` covers `TrustedPeople` only. The MSIX trust
-        steps (`LocalMachine\Root` as well, `0x800B0109`, `Get-AppxLog`) move there from
-        OxidANT's README.
-      - `docs/adopting-in-a-new-project.md` § 8 names `scripts/windows/container/` as the
-        place for scripts that run inside the Windows image.
       - The functions in OxidANT's AGENTS.md § 2 inventory are listed upstream (§ 2/8 of
         `docs/adopting-in-a-new-project.md` or `docs/INDEX.md`), so that table can become a
         link.
 
-      Done when OxidANT has turned each row into a deletion and moved its pin.
+      Done when OxidANT has turned both into deletions and moved its pin.
 
 - [ ] **CON56 — ripgrep in the images** [S, ★★]. Owner rule 2026-10-05: search with `rg`
       in every repo of the family (`AGENTS.md` § *Searching the tree*). In source the same
@@ -234,17 +224,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Windows `:winamd64`
 
-- [ ] **CON60 — pin Windows Rust to `RUST_VERSION`, or keep it floating** [S, ★★].
-      Needs the owner's call. `Install-RustToolchain.ps1` installs `stable` at chain
-      time, and `docs/windows-builds.md` § *Rust toolchain* calls that deliberate,
-      without saying why. The `:winamd64` of 2026-10-04 happens to carry 1.98.1, the
-      Linux pin. The next Windows chain moves to 1.99.x, and Windows and Linux then
-      build `oxidant` with different compilers. The toolchain is also named
-      `stable-x86_64-pc-windows-msvc`, so a `rustup update` inside the image moves it
-      silently. OmniAccelerANT's Cargokit builds with whatever rustup resolves since
-      2026-10-05, so pinning here pins the app too. If pinned: install `RUST_VERSION` by
-      version as `install-rust.sh` does, and make `Test-Container.ps1`'s Rust assert
-      the value rather than a well-formed one.
+- [ ] **CON60 — Windows Rust pinned to `RUST_VERSION`** [S, ★★]. Owner decision
+      2026-10-05: pin it, as Linux does. `Install-RustToolchain.ps1` installed `stable` at
+      chain time, so Windows and Linux would have built `oxidant` with different
+      compilers after the next Windows chain. In source the same day:
+      `Install-RustToolchain.ps1` mirrors `channel-rust-<RUST_VERSION>.toml` and installs
+      `flutter_rust_bridge_codegen` at `FLUTTER_RUST_BRIDGE_VERSION`, and `Dockerfile.base`
+      declares both `ARG`s above the Rust layer. `Test-Container.ps1` asserts both values.
+      Proven in a throwaway `:winamd64` container: `1.98.1-x86_64-pc-windows-msvc` became
+      the default, with codegen 2.13.0. Done when a published `:winamd64` passes those
+      asserts.
 
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs

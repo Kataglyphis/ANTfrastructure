@@ -2,7 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../01-core/logging.sh"
+# Logging, the CARGO_HOME and toolchain guards, safe.directory and the opt-in linker, one copy for every driver.
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/_cargo_wrapper.sh"
 
 # Extract crate name from Cargo.toml and format for rustdoc directory (replace dashes with underscores)
 if [ ! -f "Cargo.toml" ]; then

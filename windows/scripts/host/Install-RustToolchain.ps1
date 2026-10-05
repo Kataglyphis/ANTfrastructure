@@ -15,7 +15,7 @@ if (-not (Test-Path $modulePath)) {
 }
 Import-Module $modulePath -Force
 
-# rustup with an unpinned stable default, never toolchain-less; see docs/windows-builds.md § Rust toolchain (rustup WITH a default toolchain — never toolchain-less rustup).
+# rustup with the pinned RUST_VERSION as its default, never toolchain-less; see docs/windows-builds.md § Rust toolchain (rustup WITH a default toolchain — never toolchain-less rustup).
 
 # Short native steps under EAP=Continue, since rustup and cargo write progress to stderr; long ones use the heartbeat wrapper.
 function Invoke-NativeRustStep {
@@ -78,7 +78,12 @@ function Invoke-RustProcessWithHeartbeat {
     Remove-Item $outLog, $errLog -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host 'Installing Rust via rustup (stable default toolchain; single provider)...'
+# Linux pins the same value (install-rust.sh), so both platforms build oxidant with one rustc.
+$rustVersion = [string]$env:RUST_VERSION
+if ([string]::IsNullOrWhiteSpace($rustVersion)) {
+    throw 'RUST_VERSION is not set (versions.env not loaded?) — refusing an unpinned Rust.'
+}
+Write-Host "Installing Rust $rustVersion via rustup (pinned default toolchain; single provider)..."
 $rustupInit = Join-Path $env:TEMP 'rustup-init.exe'
 Invoke-DownloadWithRetry -Url 'https://win.rustup.rs/x86_64' -DestinationPath $rustupInit `
     -Description 'rustup-init' -ExpectSignature MZ
@@ -88,9 +93,10 @@ $targetTriple = 'x86_64-pc-windows-msvc'
 $mirrorRoot = Join-Path $env:TEMP 'rustup-dist'
 $distDir = Join-Path $mirrorRoot 'dist'
 New-Item -Path $distDir -ItemType Directory -Force | Out-Null
-$manifestPath = Join-Path $distDir 'channel-rust-stable.toml'
-Invoke-DownloadWithRetry -Url 'https://static.rust-lang.org/dist/channel-rust-stable.toml' `
-    -DestinationPath $manifestPath -Description 'rust stable channel manifest'
+$manifestName = "channel-rust-$rustVersion.toml"
+$manifestPath = Join-Path $distDir $manifestName
+Invoke-DownloadWithRetry -Url "https://static.rust-lang.org/dist/$manifestName" `
+    -DestinationPath $manifestPath -Description "rust $rustVersion channel manifest"
 
 $manifest = Get-Content -Path $manifestPath -Raw
 $componentUrls = @([regex]::Matches($manifest, 'xz_url\s*=\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value } |
@@ -110,7 +116,7 @@ $mirrorUrl = 'file:///' + ($mirrorRoot -replace '\\', '/')
 $manifest = $manifest -replace 'https://static\.rust-lang\.org', $mirrorUrl
 Set-Content -Path $manifestPath -Value $manifest -Encoding ASCII -NoNewline
 $manifestHash = (Get-FileHash -Path $manifestPath -Algorithm SHA256).Hash.ToLower()
-Set-Content -Path "$manifestPath.sha256" -Value "$manifestHash  channel-rust-stable.toml" -Encoding ASCII
+Set-Content -Path "$manifestPath.sha256" -Value "$manifestHash  $manifestName" -Encoding ASCII
 
 $env:RUSTUP_DIST_SERVER = $mirrorUrl
 # Single-threaded unpack: thread-pool contention in a small container is the deadlock class guarded against.
@@ -120,7 +126,7 @@ $env:RUSTUP_IO_THREADS = '1'
 try {
     # rustfmt and clippy now: once the mirror is gone the cached manifest's file:// URLs make a later component add fail.
     Invoke-RustProcessWithHeartbeat -Description 'rustup-init' -FilePath $rustupInit `
-        -ArgumentList @('-y', '--no-modify-path', '--default-toolchain', 'stable', '--profile', 'minimal',
+        -ArgumentList @('-y', '--no-modify-path', '--default-toolchain', $rustVersion, '--profile', 'minimal',
                         '-c', 'rustfmt', '-c', 'clippy') `
         -TimeoutSec 900
 } finally {
@@ -143,7 +149,7 @@ Assert-ContainerCommandAvailable -Name 'cargo' | Out-Null
 Assert-ContainerCommandAvailable -Name 'rustc' | Out-Null
 
 # Idempotent re-assert, in case rustup-init's tail stalls before setting the default.
-Invoke-NativeRustStep -Description 'rustup default stable' -Command { rustup default stable }
+Invoke-NativeRustStep -Description "rustup default $rustVersion" -Command { rustup default $rustVersion }
 Invoke-NativeRustStep -Description 'cargo --version' -Command { cargo --version }
 Invoke-NativeRustStep -Description 'rustc --version' -Command { rustc --version }
 
@@ -155,11 +161,15 @@ Invoke-NativeRustStep -Description 'cargo clippy --version' -Command { cargo cli
 Invoke-NativeRustStep -Description 'rustup show active-toolchain' -Command { rustup show active-toolchain }
 Invoke-NativeRustStep -Description 'rustup which cargo' -Command { rustup which cargo }
 
-# Baked, or every fresh consumer container pays minutes to cargo-install it.
-Write-Host 'Baking flutter_rust_bridge_codegen (cargo install)...'
+# Baked, or every fresh consumer container pays minutes to cargo-install it; pinned, since bindings must match the runtime's frb.
+$frbVersion = [string]$env:FLUTTER_RUST_BRIDGE_VERSION
+if ([string]::IsNullOrWhiteSpace($frbVersion)) {
+    throw 'FLUTTER_RUST_BRIDGE_VERSION is not set (versions.env not loaded?) — refusing a floating codegen.'
+}
+Write-Host "Baking flutter_rust_bridge_codegen $frbVersion (cargo install)..."
 Invoke-RustProcessWithHeartbeat -Description 'cargo-install-frb-codegen' `
     -FilePath (Join-Path $cargoBin 'cargo.exe') `
-    -ArgumentList @('install', 'flutter_rust_bridge_codegen', '--locked') `
+    -ArgumentList @('install', 'flutter_rust_bridge_codegen', '--locked', '--version', $frbVersion) `
     -TimeoutSec 2400
 Invoke-NativeRustStep -Description 'flutter_rust_bridge_codegen --version' -Command {
     flutter_rust_bridge_codegen --version

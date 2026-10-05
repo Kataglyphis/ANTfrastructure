@@ -785,7 +785,10 @@ live 2026-08-21: OxidANT's container scripts import it —
 Invoke-StevedoreBuild + rust-build/test-all — vendored into
 BeschleunigerBallett and OmniAccelerANT) plus `scripts/rust/` and
 `scripts/python/` are the shared build framework other Kataglyphis repos
-consume (this repo IS the upstream). Repo-internal reference audits will
+consume (this repo IS the upstream). One exception, by owner decision
+2026-10-05: `scripts/rust/Build-Windows.ps1` had no consumer and is gone.
+OxidANT owns its Windows Rust build, and the script's one shared piece,
+`Get-ANTfrastructurePin`, lives in `WindowsScripts.Shared.psm1`. Repo-internal reference audits will
 flag them as dead — they are library surface. Keep them lint-clean; do not
 rename exported functions without checking external consumers. Their
 build-cache cost is zero **only while every mount stays per-file** (§ A
@@ -819,7 +822,7 @@ question, not these modules'
 
 ### Rust: rustup WITH a default toolchain is the sole provider
 
-**Rust: rustup WITH a default toolchain is the sole provider — never a toolchain-less rustup, never a second provider (no scoop rust).** Polarity INVERTED by the Flutter-Cargokit fix: Cargokit (flutter_rust_bridge-style plugins) hard-requires rustup and aborts with "rustup not found in PATH." otherwise, so `Install-RustToolchain.ps1` runs `rustup-init -y --default-toolchain stable --profile minimal` and `Install-ScoopTools.ps1` installs NO rust. `CARGO_BIN` (= `...\.cargo\bin`, the rustup proxy dir) sits ahead of scoop's shims on PATH **by design**. The failure the old "never rustup" rule guarded against was narrower than the rule: a **toolchain-less** rustup (`--default-toolchain none`) drops proxy shims that resolve no toolchain ("no default toolchain configured"); installed WITH a default they resolve correctly. Do not re-add `scoop install main/rust` alongside — one provider only. Details: `docs/windows-builds.md` § Rust toolchain.
+**Rust: rustup WITH a default toolchain is the sole provider — never a toolchain-less rustup, never a second provider (no scoop rust).** Polarity INVERTED by the Flutter-Cargokit fix: Cargokit (flutter_rust_bridge-style plugins) hard-requires rustup and aborts with "rustup not found in PATH." otherwise, so `Install-RustToolchain.ps1` runs `rustup-init -y --default-toolchain <RUST_VERSION> --profile minimal` (pinned since 2026-10-05) and `Install-ScoopTools.ps1` installs NO rust. `CARGO_BIN` (= `...\.cargo\bin`, the rustup proxy dir) sits ahead of scoop's shims on PATH **by design**. The failure the old "never rustup" rule guarded against was narrower than the rule: a **toolchain-less** rustup (`--default-toolchain none`) drops proxy shims that resolve no toolchain ("no default toolchain configured"); installed WITH a default they resolve correctly. Do not re-add `scoop install main/rust` alongside — one provider only. Details: `docs/windows-builds.md` § Rust toolchain.
 
 ### `versions.env` is the single source of truth
 

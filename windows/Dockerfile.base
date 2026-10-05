@@ -89,6 +89,8 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
 ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$SCOOP_GLOBAL_SHIMS;$WIN_BASE_PATH
 
 # The expensive rust layer comes first in the tail, so edits to the cheap scripts below never re-pay it.
+ARG RUST_VERSION=1.98.1
+ARG FLUTTER_RUST_BRIDGE_VERSION=2.13.0
 ARG SCCACHE_WINDOWS_ZIP_SHA256=8965c74d5e8a225244f741e18ad2f3f504f48228dc1bac948fc22761a348363d
 COPY windows\scripts\host\Install-RustToolchain.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\Install-RustToolchain.ps1'

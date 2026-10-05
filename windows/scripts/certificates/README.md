@@ -14,13 +14,25 @@ directory that holds the `.pfx` — normally the repository root, where `*.pfx`
 is gitignored. It signs with the first `*.pfx` there (non-recursive) and reads
 the password from `MSIX_PFX_PASSWORD` (`MSIX_CERT_PASSWORD` as the fallback).
 
-## Import certificate
+## Trust it, then install a test-signed package
 
-Adjust password and certificate location accordingly. Later it can be imported
-like this.
+A self-signed certificate must be trusted machine-wide before `Add-AppxPackage`
+accepts a package it signed. That means **both** `LocalMachine\Root` and
+`LocalMachine\TrustedPeople`, from an **elevated** PowerShell:
 
 ```pwsh
-$pfxPath = "C:\path\to\your\MSIX_Cert.pfx"
-$password = ConvertTo-SecureString -String "YOUR_PW" -Force -AsPlainText
-Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation "Cert:\LocalMachine\TrustedPeople" -Password $password
+$pfxPath = 'MSIX_Cert.pfx'   # the .pfx GenerateCertificateMSIX.ps1 wrote
+$password = ConvertTo-SecureString -String '<PFX_PASSWORD>' -Force -AsPlainText
+Import-PfxCertificate -FilePath $pfxPath -Password $password -CertStoreLocation 'Cert:\LocalMachine\Root'
+Import-PfxCertificate -FilePath $pfxPath -Password $password -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople'
+
+Add-AppxPackage -Path '<package>.msix'
 ```
+
+When the install fails:
+
+- `0x800B0109`: the certificate chain is not trusted. `TrustedPeople` alone is not
+  enough; import into `Root` as well, as above.
+- `Import-PfxCertificate: Access denied`: the shell is not elevated.
+- `Get-AppxLog -ActivityID <ACTIVITY_ID>` prints the detail behind the last deploy
+  failure; the ID is in the `Add-AppxPackage` error.
