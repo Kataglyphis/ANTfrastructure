@@ -45,7 +45,7 @@ PY
 }
 
 # The eighth sub-check reads a consumer checkout, built here from two files rather than a real sibling.
-_PIN="$(sed -n 's/^RUFF_VERSION=//p' "${REPO}/linux/scripts/01-core/versions.env")"
+_PIN="$(sed -n 's/^RUFF_VERSION=//p' "${REPO}/linux/scripts/01-core/tool-pins.env")"
 
 # _consumer <ruff version> [pyproject body] [pre-commit body] -> root
 _consumer() {

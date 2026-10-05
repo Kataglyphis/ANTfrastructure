@@ -32,13 +32,13 @@ actionlint_ensure() {
 
   # shellcheck source=01-core/load-versions-env.sh
   source "${CORE_DIR}/load-versions-env.sh"
-  load_versions_env "${CORE_DIR}/versions.env"
-  [ -n "${ACTIONLINT_VERSION:-}" ] || err "ACTIONLINT_VERSION is not set (versions.env not found?)."
+  load_versions_env "${CORE_DIR}/tool-pins.env"
+  [ -n "${ACTIONLINT_VERSION:-}" ] || err "ACTIONLINT_VERSION is not set (tool-pins.env not found?)."
 
   local asset expected_sha cache_root bin_name
   read -r asset expected_sha < <(actionlint_asset_and_sha) \
     || err "Unsupported platform for actionlint bootstrap ($(uname -s)/$(uname -m)); install actionlint on PATH instead."
-  [ -n "${expected_sha}" ] || err "No pinned actionlint SHA256 for ${asset}; add one to versions.env."
+  [ -n "${expected_sha}" ] || err "No pinned actionlint SHA256 for ${asset}; add one to tool-pins.env."
 
   cache_root="${ACTIONLINT_CACHE_DIR:-${TMPDIR:-/tmp}}/actionlint-${ACTIONLINT_VERSION}"
   bin_name="actionlint"; case "${asset}" in *windows*) bin_name="actionlint.exe" ;; esac

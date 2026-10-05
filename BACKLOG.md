@@ -129,25 +129,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       published `:latest` lists it under `rustup target list --installed` on all three
       arches.
 
-- [ ] **CON59 — lint and dev-tool pins out of the base closure** [M, ★★★].
-      `Dockerfile.base` bind-mounts `01-core/versions.env` file by file, so bumping any
-      pin in it re-keys the compiler image. That rebuilds sdk/media/android, hours of
-      work, including for pins no image build reads. Those are the host-side tools:
-      shellcheck, gitleaks, hadolint, actionlint, mold, binaryen, ruff, syft and the
-      Renovate Node/CLI pair. A Renovate bump of hadolint thus costs the same as a GCC
-      bump. Move them to `01-core/tool-pins.env`, which no Dockerfile mounts. Readers
-      found 2026-10-05, about 30 files:
-      - The pins' readers: `lint-{shell,secrets,dockerfiles,workflows,python}.sh`,
-        `lib/{wasm-opt,linker-select}.sh`, `renovate-local.sh`,
-        `scan-image-sbom.sh` and `WindowsWasmOpt.Common.psm1`.
-      - The bookkeeping: `.github/renovate.json`, whose `matchFileNames` and regex
-        manager name `versions.env`, plus `bump_versions.py`, `consumer_pins.py` and
-        the version-forwarding, version-snapshot and env-knob gates. The env-knob
-        gate must count the new file as an owner.
-      - About ten test suites.
-      Done when a hadolint bump leaves the compiler image's digest unchanged.
-
-
 - [ ] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
       (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
       it in (an `install_mold_pinned` beside `install_sccache_pinned`, apt's 2.40.4 cannot link

@@ -30,16 +30,16 @@ cd "${REPO_ROOT}" || err "cannot enter the hub checkout: ${REPO_ROOT}"
 
 CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
-# Pin: versions.env is the single source of truth
+# Pin: tool-pins.env is the single source of truth
 gitleaks_load_pin() {
   # shellcheck source=01-core/load-versions-env.sh
   source "${CORE_DIR}/load-versions-env.sh" \
     || err "load-versions-env.sh not available; cannot resolve the gitleaks pin"
-  load_versions_env "${CORE_DIR}/versions.env"
-  # Tests read the pin from versions.env; this file carries no literal to grep.
+  load_versions_env "${CORE_DIR}/tool-pins.env"
+  # Tests read the pin from tool-pins.env; this file carries no literal to grep.
   GITLEAKS_PIN="${GITLEAKS_VERSION:-}"
   [ -n "${GITLEAKS_PIN}" ] \
-    || err "GITLEAKS_VERSION is not set (${CORE_DIR}/versions.env not found?)."
+    || err "GITLEAKS_VERSION is not set (${CORE_DIR}/tool-pins.env not found?)."
 }
 
 # Prints "<asset name> <expected sha256>"; nonzero on an unsupported arch.
@@ -71,7 +71,7 @@ else
   read -r _asset _sha < <(gitleaks_asset_and_sha) \
     || err "no gitleaks on PATH and no pinned asset for $(uname -m) — install gitleaks"
   [ -n "${_sha}" ] \
-    || err "No pinned gitleaks SHA256 for ${_asset}; add one to ${CORE_DIR}/versions.env."
+    || err "No pinned gitleaks SHA256 for ${_asset}; add one to ${CORE_DIR}/tool-pins.env."
   _cache="${XDG_CACHE_HOME:-${HOME}/.cache}/kataglyphis-lint/gitleaks-${GITLEAKS_PIN}"
   _bin="gitleaks"; case "${_asset}" in *.zip) _bin="gitleaks.exe" ;; esac
   GITLEAKS="${_cache}/${_bin}"

@@ -4,7 +4,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 LIB="$(cd "${TESTS_DIR}/.." && pwd)/lib/linker-select.sh"
-VERSIONS="$(cd "${TESTS_DIR}/.." && pwd)/01-core/versions.env"
+VERSIONS="$(cd "${TESTS_DIR}/.." && pwd)/01-core/tool-pins.env"
 
 _WORK="$(mktemp -d)"
 trap 'rm -rf "${_WORK}"' EXIT
@@ -105,7 +105,7 @@ if PATH="${SYS}" command -v ld.mold >/dev/null 2>&1; then
   exit $?
 fi
 
-t_case "mold absent: the versions.env pin is fetched once, then reused from the cache"
+t_case "mold absent: the tool-pins.env pin is fetched once, then reused from the cache"
 pin_ver="$(sed -n 's/^MOLD_LINUX_VERSION=//p' "${VERSIONS}")"
 pin_sha="$(sed -n 's/^MOLD_LINUX_X86_64_SHA256=//p' "${VERSIONS}")"
 rm -f "${_WORK}/download.log"
@@ -115,7 +115,7 @@ t_assert_eq "${pin_sha}" "$(cat "${_WORK}/download.log")"
 _sel - "${P}" KATAGLYPHIS_LINKER=mold LINKER_SELECT_CACHE_DIR="${_WORK}/cache" >/dev/null
 t_assert_eq "1" "$(wc -l < "${_WORK}/download.log" | tr -d ' ')" "the second run reuses the cache"
 
-t_case "the environment's pin wins over versions.env"
+t_case "the environment's pin wins over tool-pins.env"
 rm -f "${_WORK}/download.log"
 t_assert_eq "0|-fuse-ld=mold|cc|-C link-arg=-fuse-ld=mold|${_WORK}/cache2/mold-9.9.9-aarch64-linux/bin/ld.mold" \
   "$(_sel show "${P}" KATAGLYPHIS_LINKER=mold LINKER_SELECT_CACHE_DIR="${_WORK}/cache2" \

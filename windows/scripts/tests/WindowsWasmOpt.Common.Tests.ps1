@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# The pin comes from versions.env, the single source shared with linux/scripts/lib/wasm-opt.sh.
+# The pin comes from tool-pins.env, the single source shared with linux/scripts/lib/wasm-opt.sh.
 
 Describe 'WindowsWasmOpt.Common' {
   BeforeAll {
@@ -43,7 +43,7 @@ Describe 'WindowsWasmOpt.Common' {
       $threw | Should -Be $true
     }
 
-    It 'reads the repository versions.env by default (single source of truth)' {
+    It 'reads the repository tool-pins.env by default (single source of truth)' {
       $pin = Get-BinaryenPin -Platform 'linux'
       $pin.Version | Should -Match '^version_\d+$'
       $pin.Sha256 | Should -Match '^[0-9a-f]{64}$'

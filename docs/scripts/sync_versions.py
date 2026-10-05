@@ -106,18 +106,22 @@ def parse_versions_env() -> dict[str, str]:
     if not versions_path.exists():
         raise ValueError(f"Canonical versions file not found: {versions_path}")
     result: dict[str, str] = {}
-    for line in versions_path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
+    # tool-pins.env holds the host-tool pins no image build reads (CON59); the two never share a key.
+    for path in (versions_path, versions_path.with_name("tool-pins.env")):
+        if not path.exists():
             continue
-        if "=" not in stripped:
-            continue
-        key, _, value = stripped.partition("=")
-        key = key.strip()
-        value = value.strip()
-        if not key or not value:
-            continue
-        result[key] = value
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if "=" not in stripped:
+                continue
+            key, _, value = stripped.partition("=")
+            key = key.strip()
+            value = value.strip()
+            if not key or not value:
+                continue
+            result[key] = value
     return result
 
 

@@ -94,7 +94,7 @@ python3 docs/scripts/generate_sbom.py --write     # -> docs/deps/sbom-curated.sp
 python3 docs/scripts/generate_sbom.py --check     # gated in preflight as slug `sbom`
 
 # Scanner half — reads straight from the registry, no daemon, no local
-# build. ONE driver: it bootstraps syft at versions.env's SYFT_VERSION (a syft
+# build. ONE driver: it bootstraps syft at tool-pins.env's SYFT_VERSION (a syft
 # on PATH is used only when it IS that version, and any other one — from PATH
 # or from a stale bootstrap cache — is refused rather than silently used),
 # scans, refuses a scan that catalogued under 50 packages, then runs the

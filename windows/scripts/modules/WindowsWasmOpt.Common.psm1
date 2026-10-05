@@ -3,7 +3,7 @@
 
 #requires -Version 7.0
 
-# The Windows twin of linux/scripts/lib/wasm-opt.sh; the binaryen pin lives only in versions.env.
+# The Windows twin of linux/scripts/lib/wasm-opt.sh; the binaryen pin lives only in tool-pins.env.
 
 Set-StrictMode -Version Latest
 
@@ -28,10 +28,10 @@ function Get-WasmOptFeatureFlag {
 
 # Shared with linux/scripts/lib/wasm-opt.sh, so the pin exists once.
 function Get-WasmOptVersionsEnvPath {
-    return (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')
+    return (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\tool-pins.env')
 }
 
-# Environment overrides win over versions.env, the same precedence as the bash side's load_versions_env.
+# Environment overrides win over tool-pins.env, the same precedence as the bash side's load_versions_env.
 function Get-BinaryenPin {
     param(
         [string]$VersionsEnvPath,

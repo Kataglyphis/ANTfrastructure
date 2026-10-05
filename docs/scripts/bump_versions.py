@@ -195,42 +195,49 @@ def nvidia_redist_latest(product: str) -> str:
 
 
 # versions.env access
+def pin_files() -> list[Path]:
+    """versions.env, then tool-pins.env beside it (CON59: host-tool pins no image build reads)."""
+    return [p for p in (VERSIONS_ENV, VERSIONS_ENV.with_name("tool-pins.env")) if p.exists()]
+
+
 def read_env() -> dict[str, str]:
     vals = {}
-    for line in VERSIONS_ENV.read_text(encoding="utf-8").splitlines():
-        m = re.match(r"^([A-Z][A-Z0-9_]*)=(.*)$", line)
-        if m:
-            vals[m.group(1)] = m.group(2).strip().strip('"')
+    for path in pin_files():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            m = re.match(r"^([A-Z][A-Z0-9_]*)=(.*)$", line)
+            if m:
+                vals[m.group(1)] = m.group(2).strip().strip('"')
     return vals
 
 
 def read_holds() -> set[str]:
     """Keys whose contiguous leading comment block holds 'bump:hold', which blocks every automated write."""
     holds: set[str] = set()
-    block_held = False
     # A blank line between marker and KEY= silently disarms a hold, so fail on any marker that never attaches.
-    pending_marker_lines: list[int] = []
-    orphaned: list[int] = []
-    for lineno, line in enumerate(VERSIONS_ENV.read_text(encoding="utf-8").splitlines(), 1):
-        if line.lstrip().startswith("#"):
-            if "bump:hold" in line:
-                block_held = True
-                pending_marker_lines.append(lineno)
-            continue
-        m = re.match(r"^([A-Z][A-Z0-9_]*)=", line)
-        if m and block_held:
-            holds.add(m.group(1))
-            pending_marker_lines.clear()
-        elif pending_marker_lines:
-            # A blank or stray line ended the block before any key.
-            orphaned.extend(pending_marker_lines)
-            pending_marker_lines.clear()
+    orphaned: list[tuple[str, int]] = []
+    for path in pin_files():
         block_held = False
-    orphaned.extend(pending_marker_lines)  # marker at EOF with no key
+        pending_marker_lines: list[int] = []
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                if "bump:hold" in line:
+                    block_held = True
+                    pending_marker_lines.append(lineno)
+                continue
+            m = re.match(r"^([A-Z][A-Z0-9_]*)=", line)
+            if m and block_held:
+                holds.add(m.group(1))
+                pending_marker_lines.clear()
+            elif pending_marker_lines:
+                # A blank or stray line ended the block before any key.
+                orphaned.extend((path.name, ln) for ln in pending_marker_lines)
+                pending_marker_lines.clear()
+            block_held = False
+        orphaned.extend((path.name, ln) for ln in pending_marker_lines)  # marker at EOF with no key
     if orphaned:
-        for ln in orphaned:
+        for name, ln in orphaned:
             print(
-                f"ERROR: versions.env:{ln}: 'bump:hold' marker is NOT attached "
+                f"ERROR: {name}:{ln}: 'bump:hold' marker is NOT attached "
                 "to any KEY= line (a blank/stray line broke the comment block) "
                 "— the hold is silently DISARMED. Re-join the comment block.",
                 file=sys.stderr,
@@ -292,18 +299,19 @@ def spec_litert_lm(cur):
 def renovate_owned() -> set[str]:
     """Keys under a `# renovate:` hint, whose detection Renovate owns and the coverage audit counts as classified."""
     out: set[str] = set()
-    lines = VERSIONS_ENV.read_text(encoding="utf-8").splitlines()
-    for i, line in enumerate(lines):
-        if not line.startswith("# renovate:"):
-            continue
-        j = i + 1
-        while j < len(lines) and not lines[j].strip():
-            j += 1
-        if j < len(lines) and lines[j].strip() == "# noforward":
-            j += 1
-        m = re.match(r"([A-Z0-9_]+)=", lines[j]) if j < len(lines) else None
-        if m:
-            out.add(m.group(1))
+    for path in pin_files():
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(lines):
+            if not line.startswith("# renovate:"):
+                continue
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            if j < len(lines) and lines[j].strip() == "# noforward":
+                j += 1
+            m = re.match(r"([A-Z0-9_]+)=", lines[j]) if j < len(lines) else None
+            if m:
+                out.add(m.group(1))
     return out
 
 
@@ -311,16 +319,20 @@ def write_env_values(updates: dict[str, str]) -> list[str]:
     """Rewrite KEY=value lines in place, byte for byte otherwise; held keys are dropped as a last defense."""
     for held in read_holds() & set(updates):
         updates.pop(held)
-    text = VERSIONS_ENV.read_text(encoding="utf-8", newline="")
     changed = []
-    for key, value in updates.items():
-        new_text, n = re.subn(
-            rf"^({re.escape(key)})=.*$", rf"\g<1>={value}", text, count=1, flags=re.M
-        )
-        if n and new_text != text:
-            changed.append(key)
-            text = new_text
-    VERSIONS_ENV.write_text(text, encoding="utf-8", newline="")
+    # Each key is rewritten in the file that holds it.
+    for path in pin_files():
+        text = path.read_text(encoding="utf-8", newline="")
+        before = text
+        for key, value in updates.items():
+            new_text, n = re.subn(
+                rf"^({re.escape(key)})=.*$", rf"\g<1>={value}", text, count=1, flags=re.M
+            )
+            if n and new_text != text:
+                changed.append(key)
+                text = new_text
+        if text != before:
+            path.write_text(text, encoding="utf-8", newline="")
     return changed
 
 
@@ -1008,7 +1020,8 @@ def _write_phase(updates, lookup_failures):
             return 1
         return 0
     changed = write_env_values(updates)
-    print(f"\nWrote {len(changed)} key(s) to {VERSIONS_ENV.relative_to(REPO_ROOT)}.")
+    names = ", ".join(str(p.relative_to(REPO_ROOT)) for p in pin_files())
+    print(f"\nWrote {len(changed)} key(s) to {names}.")
     print("Finish the ritual:")
     print("  python docs/scripts/sync_versions.py --write")
     print("  bash linux/scripts/01-core/verify-arg-consistency.sh")

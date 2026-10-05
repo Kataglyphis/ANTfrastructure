@@ -404,7 +404,8 @@ The three most often regressed by someone who skipped that page:
 - **Every BK chain ends with a mandatory smoke gate** — `-SkipSmokeGate` is for
   chain iteration only, never for "it passed locally".
 - **`versions.env` is the single source of truth** — never hardcode a version
-  in a script or Dockerfile.
+  in a script or Dockerfile. Host-tool pins no image build reads live in
+  `tool-pins.env` beside it (§ Version Bumping).
 
 ### TensorRT Setup (Optional)
 
@@ -1103,6 +1104,12 @@ that was a host mount).
 - **`linux/scripts/01-core/versions.env` is the single source of every version
   in this repository.** A literal anywhere else is a second source that will
   disagree; the ARG-consistency and advertised-key gates exist because it did.
+- **Host-tool pins go in `01-core/tool-pins.env` instead** (CON59, 2026-10-05):
+  shellcheck, gitleaks, hadolint, actionlint, mold, binaryen, ruff, syft, Renovate.
+  `Dockerfile.base` bind-mounts `versions.env`, so any edit to it rebuilds the
+  compiler image, even for a lint tool. A pin that no image build reads goes in
+  `tool-pins.env`; one an image reads stays in `versions.env`. Renovate,
+  `bump_versions.py` and `sync_versions.py` read both files.
 - **Never hand-edit a derived file.** `python docs/scripts/sync_versions.py
   --write` propagates a pin into the docs, the deps table, the Dockerfile ARGs
   and the PowerShell defaults; `--check` is a preflight gate, so a hand edit is
