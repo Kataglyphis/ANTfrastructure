@@ -6,14 +6,15 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-03.** Published: `:latest` (2026-09-30, hub 9e9d9828; amd64 `502a5e9d…`,
-arm64 `4446422d…`, riscv64 `d5e4db6b…`), `:winamd64` (2026-10-02, hub 4cc6b21d,
-`67b4b552…`), `:winamd64-nvidia` (2026-10-02, hub 8d565715, `a9e67332…`),
-`:winamd64-rocm` (2026-10-03, hub 1d910553, `493e80f1…`), `:winarm64` (2026-10-03, hub
-1d910553, `eb0cf789…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-rocm`
-(2026-09-28, hub 1754a1dd).
-`:latest-nvidia` is not published. Every Linux image gap up to CON41 shipped and was checked
-in the published children (git history). Decisions and gaps checked closed live in
+**State 2026-10-05**, read from the registry (hub = the image's `revision` label, digest =
+the per-arch manifest). Published: `:latest` (2026-10-03, hub b4d5fdd5; amd64 `686fdf4e…`,
+arm64 `26957741…`, riscv64 `67887737…`), `:winamd64` (2026-10-04, hub 9ecb2503,
+`65c0dc1f…`), `:winamd64-nvidia` (2026-10-02, hub 7a5a2a33, `a9e67332…`),
+`:winamd64-rocm` (2026-10-03, hub 1d910553, `493e80f1…`), `:winarm64` (2026-10-04, hub
+80647a9a, `97bbcd35…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-nvidia`
+(2026-10-02, hub b4d5fdd5, amd64 `95c3a343…`, built without DeepStream) and `:latest-rocm`
+(2026-10-02, hub b4d5fdd5, amd64 `bdfcb731…`). Every Linux image gap up to CON41 shipped
+and was checked in the published children (git history). Decisions and gaps checked closed live in
 [`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
 here is a date's measurement.**
 
@@ -34,13 +35,19 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       parity with Linux x64 everywhere. The gaps are the Windows lanes, suites that run on no
       lane, and one narrowing:
       - **OxidANT:** Windows x64/arm64 run 167 tests to Linux's 358. The renderer integration
-        tests, `kataglyphis_inference` and `kataglyphis_telemetry` are missing.
+        tests, `kataglyphis_inference` and `kataglyphis_telemetry` are missing. (Closed
+        2026-10-01, OxidANT fe14359: every Linux and Windows lane runs the same 360 tests. Its
+        arm64 parallel WARP crash is in its BACKLOG.)
       - **BeschleunigerBallett:** no GPU suites (40) or perf suite on Windows. Windows arm64 is
         Release-only.
       - **AccelerANTgine:** its suites were placeholders, so 0% of `Src/` is covered on every
         arch.
       - **OmniAccelerANT:** the plugin's Dart tests and gtest and the integration test run
         nowhere. The web lane never tests in a browser, and Android only on the x64 VM.
+        (Closed apart from the browser: the plugin suites run on every lane since 2026-10-01
+        (530ad8f), the integration test under Xvfb on Linux and through `flutter drive` on
+        Windows x64 and arm64 since 2026-10-04/05 (80e5329, 8015371). The Chrome run is open
+        in its BACKLOG.)
       - **OrchestrANT:** Windows arm64 runs none of the 959 pytest tests. The benchmark lab
         suites run on Linux x64 only.
       - **WebDavClient:** `tests/unit` holds 3 dummy tests, and the 6 WebDAV tests ran nowhere.
@@ -62,16 +69,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       2. `container-ci-windows.yml` takes a binary-free test tree and `Invoke-StagedTests.ps1`
          reads pytest, for OrchestrANT's arm64 suite. (Done 2026-10-01.)
       3. Chromium in `:latest` (`linux/Dockerfile.package`) for `flutter test --platform chrome`.
-         **In source 2026-10-01, not yet published:** Chrome for Testing + chromedriver on amd64
-         and arm64 (none exists for riscv64), `CHROME_EXECUTABLE` set. Proven on a throwaway
+         **Published in the `:latest` of 2026-10-03** (hub b4d5fdd5; its config sets
+         `CHROME_EXECUTABLE`): Chrome for Testing + chromedriver on amd64 and arm64 (none
+         exists for riscv64). Proven on a throwaway
          image FROM `:latest`: OmniAccelerANT runs 37 tests in Chrome; two files need
          `@TestOn('vm')` (`docs/consumer-image-contract.md` § Browser tests).
       4. An Android emulator and arm64-v8a system image for OmniAccelerANT's APK. arm64
          runners have no KVM, so it runs as an x64 image with ARM translation or on another
-         runner. Measure before choosing. **Measured and in source 2026-10-01, not yet
-         published:** an x86_64 API 35 `google_apis` image on amd64 (API 30's translator
-         SIGILLs on the APK); booted in 25 s with KVM and ran the arm64-v8a release APK. The
-         consumer lane needs an x64 runner with `/dev/kvm` passed in.
+         runner. Measure before choosing. **Measured 2026-10-01, published in the `:latest` of
+         2026-10-03** (its history runs `install-android-emulator.sh`): an x86_64 API 35
+         `google_apis` image on amd64 (API 30's translator SIGILLs on the APK); booted in 25 s
+         with KVM and ran the arm64-v8a release APK. The consumer lane needs an x64 runner
+         with `/dev/kvm` passed in.
       5. A software Vulkan ICD for Windows x64 and arm64 (Mesa lavapipe; WARP/Dozen lacks ray
          tracing). Ship it in the image or as a pinned, SHA-checked download; the consumers
          run the goldens with it. (Done 2026-10-04, CON50: `Install-Lavapipe.ps1` stages the
@@ -84,6 +93,34 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          `arm64-tests` and `Invoke-PythonTestLegs.ps1`. (Done 2026-10-01.) WebDavClient
          keeps py-spy and line_profiler off ARM64 (1f9bb5f) and runs the job since f7ed5d8
          (`windows-arm64.yml`, hub 625b3653).
+
+- [ ] **CON55 — The hub pieces OxidANT waits on** [M, ★★]. Not an image gap. Seven rows in
+      OxidANT's BACKLOG (§ Waiting on ANTfrastructure) are `[b]` there only because the other
+      half is a hub change, and nothing here tracked them until 2026-10-05. Each was
+      re-checked at hub 62487181 and is still undone:
+      - `_cargo_wrapper.sh` gets the safe.directory guard that `lib/cmake-build.sh` has,
+        behind a `CARGO_SAFE_DIRECTORY` knob (default `/workspace`), and the other
+        `cargo_*.sh` drivers source it.
+      - `Get-ANTfrastructurePin` moves from `windows/scripts/rust/Build-Windows.ps1` into
+        `WindowsScripts.Shared.psm1`, so OxidANT can delete its `Resolve-CargoToolPin`.
+      - **Owner decision:** `windows/scripts/rust/Build-Windows.ps1` has no consumer. Either
+        make it callable (`-Features`, `-Package`/`-Bin`, no rustup or scoop calls) or
+        delete it and record OxidANT as the owner of the Windows Rust build. Decide it with
+        the row above.
+      - An MSI function for an app that does not build through CPack: `-WxsFile -LicenseFile
+        -ProductName -Manufacturer -ExeSource -Version -OutFile`, plus `-Arch` and the payload
+        DLL list. OxidANT would be its only caller. The nearest model is the script-local
+        `Invoke-MsiPackage` in `windows/scripts/python/New-PythonAppPackage.ps1`.
+      - `windows/scripts/certificates/README.md` covers `TrustedPeople` only. The MSIX trust
+        steps (`LocalMachine\Root` as well, `0x800B0109`, `Get-AppxLog`) move there from
+        OxidANT's README.
+      - `docs/adopting-in-a-new-project.md` § 8 names `scripts/windows/container/` as the
+        place for scripts that run inside the Windows image.
+      - The functions in OxidANT's AGENTS.md § 2 inventory are listed upstream (§ 2/8 of
+        `docs/adopting-in-a-new-project.md` or `docs/INDEX.md`), so that table can become a
+        link.
+
+      Done when OxidANT has turned each row into a deletion and moved its pin.
 
 ## Open — Linux image (all arches)
 
@@ -104,7 +141,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `:latest-nvidia` gets it from the chain run CON42 is waiting on. `:latest-rocm`
       (2026-09-28, hub 1754a1dd) still links `libunwind.so.8` and lacks CON44's `ENV` and
       CON47's patch. Done when a `CROSS_VARIANT=rocm` chain publishes and its runtime smoke
-      shows the three new checks green.
+      shows the three new checks green. A rocm chain republished it on 2026-10-02 (hub
+      b4d5fdd5, amd64 `bdfcb731…`) and its config carries CON44's `ENV`; that chain's smoke
+      verdicts for libunwind and CON47 are not checked yet.
 
 - [ ] **CON52 — The torch stage installs the chain wheels once and proves them** [M, ★★].
       Measured in the 2026-10-01 `:latest` chain (amd64 and arm64): torch and torchvision come
@@ -210,7 +249,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         consumer run jobs' apps (those jobs loaded the bundle's DLLs only; runs
         36136967538, 36142875090, 36142882316).
 - [b] **CON31 — Variants that are not published** [L, ★]. Blocked on owner decisions.
-      - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route.
+      - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route. Published
+        for amd64 since 2026-10-02 (hub b4d5fdd5); whether that payload has `libnvinfer` is
+        unchecked.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
         the device as shipped.
       - `:winamd64-rocm`: published (first 2026-09-28 at ad08bc30, again 2026-10-03 at
@@ -223,9 +264,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       the source, off by default (`ENABLE_DEEPSTREAM=false`). One thing left:
       1. **An nvidia variant chain run** with `ENABLE_DEEPSTREAM=true`, owner-approved. Started
          2026-10-01 21:34 (amd64, from `gpu`, hub 629afe5d); done when `:latest-nvidia` is
-         published with `check_deepstream` green. Until then everything below was proven in
-         throwaway containers FROM the published
-         `:latest` amd64 child plus the variant's CUDA install. It is also the first build of
+         published with `check_deepstream` green. The `:latest-nvidia` published 2026-10-02
+         (hub b4d5fdd5, amd64 `95c3a343…`) is not that run: its build args carry an empty
+         `ENABLE_DEEPSTREAM` and its `USE_NEW_NVSTREAMMUX` is empty. Until then everything
+         below was proven in throwaway containers FROM the published `:latest` amd64 child
+         plus the variant's CUDA install. It is also the first build of
          the GPU run's three fixes in a chain. GStreamer and libcamera without libunwind are in
          every variant by owner decision (2026-10-01, "everywhere"): the `:latest` published
          2026-10-01 proves it in all three children (no shared object under `/opt` or
