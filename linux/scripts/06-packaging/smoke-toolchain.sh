@@ -137,6 +137,15 @@ check_rust() {
       fail "Rust target ${rust_target} not installed"
     fi
   done
+  # install-rust.sh adds it for Android lanes, whatever the image's arch.
+  printf 'pub fn f(x:i32)->i32{x*2}\n' > "${_rs_tmp}/a.rs"
+  if rustup target list --installed 2>/dev/null | grep -qx 'aarch64-linux-android' \
+     && rustc --target aarch64-linux-android --crate-type=lib --emit=obj \
+          "${_rs_tmp}/a.rs" -o "${_rs_tmp}/a.o" 2>/dev/null; then
+    pass "Rust target aarch64-linux-android installed and usable (emit-obj OK)"
+  else
+    fail "Rust target aarch64-linux-android missing or unusable: every Android build would download it"
+  fi
   rm -rf "${_rs_tmp}"
   echo ""
 }

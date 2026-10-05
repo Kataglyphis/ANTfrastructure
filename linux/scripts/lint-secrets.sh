@@ -44,6 +44,12 @@ gitleaks_load_pin() {
 
 # Prints "<asset name> <expected sha256>"; nonzero on an unsupported arch.
 gitleaks_asset_and_sha() {
+  # Git Bash reports x86_64 too, and the Linux binary then dies with "Exec format error".
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      printf 'gitleaks_%s_windows_x64.zip %s\n' "${GITLEAKS_PIN}" "${GITLEAKS_WINDOWS_X64_SHA256:-}"
+      return 0 ;;
+  esac
   case "$(uname -m)" in
     x86_64|amd64)
       printf 'gitleaks_%s_linux_x64.tar.gz %s\n' \
@@ -67,17 +73,16 @@ else
   [ -n "${_sha}" ] \
     || err "No pinned gitleaks SHA256 for ${_asset}; add one to ${CORE_DIR}/versions.env."
   _cache="${XDG_CACHE_HOME:-${HOME}/.cache}/kataglyphis-lint/gitleaks-${GITLEAKS_PIN}"
-  GITLEAKS="${_cache}/gitleaks"
+  _bin="gitleaks"; case "${_asset}" in *.zip) _bin="gitleaks.exe" ;; esac
+  GITLEAKS="${_cache}/${_bin}"
   if [ ! -x "${GITLEAKS}" ]; then
-    mkdir -p "${_cache}"
-    _url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_PIN}/${_asset}"
     echo "bootstrapping gitleaks ${GITLEAKS_PIN} (pinned, SHA-verified) ..."
-    curl -fsSL --retry 3 -o "${_cache}/${_asset}" "${_url}" || err "gitleaks download failed"
-    echo "${_sha}  ${_cache}/${_asset}" | sha256sum -c - >/dev/null 2>&1 \
-      || err "gitleaks tarball SHA256 mismatch (expected ${_sha})"
-    tar -xzf "${_cache}/${_asset}" -C "${_cache}" gitleaks || err "gitleaks extract failed"
-    rm -f "${_cache}/${_asset}"
-    [ -x "${GITLEAKS}" ] || err "gitleaks binary missing after extract"
+    # shellcheck source=01-core/downloads.sh
+    source "${CORE_DIR}/downloads.sh" || err "downloads.sh not available for verified gitleaks fetch"
+    # Parallel mutation jobs share this cache; a half-extracted binary once failed a clean scan.
+    download_verified_install "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_PIN}/${_asset}" \
+      "${_sha}" "${GITLEAKS}" "${_bin}" \
+      || err "gitleaks install failed (download, SHA256 ${_sha} or extract)"
   fi
 fi
 

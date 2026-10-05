@@ -29,6 +29,16 @@ _PY="${PREFLIGHT_PYTHON}"
 _root="$(git rev-parse --show-toplevel)"
 cd "${_root}"
 
+# The push scope is what the remote lacks; origin/main lags develop by hundreds of entries.
+_base="origin/main"
+if [ ! -t 0 ]; then
+  while read -r _lref _lsha _rref _rsha; do
+    case "${_rsha:-}" in
+      *[!0]*) if git cat-file -e "${_rsha}^{commit}" 2>/dev/null; then _base="${_rsha}"; break; fi ;;
+    esac
+  done
+fi
+
 echo "pre-push: mutation staleness over the whole manifest…"
 # shellcheck disable=SC2086
 ${_PY} docs/scripts/verify_mutations.py --stale-check || {
@@ -36,9 +46,9 @@ ${_PY} docs/scripts/verify_mutations.py --stale-check || {
   exit 1
 }
 
-echo "pre-push: mutation gate over everything since origin/main…"
+echo "pre-push: mutation gate over everything since ${_base}…"
 # shellcheck disable=SC2086
-${_PY} docs/scripts/verify_mutations.py --changed --jobs "${PREPUSH_MUTATION_JOBS:-4}" || {
+${_PY} docs/scripts/verify_mutations.py --changed --base "${_base}" --jobs "${PREPUSH_MUTATION_JOBS:-4}" || {
   echo "pre-push: a recorded mutation SURVIVED — a test here cannot fail" >&2
   exit 1
 }

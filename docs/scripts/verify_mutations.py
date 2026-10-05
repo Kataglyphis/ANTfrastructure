@@ -92,10 +92,10 @@ def load(path):
     return data
 
 
-def changed_files():
-    """Union of files committed since origin/main, staged, and edited in the tree."""
+def changed_files(base="origin/main"):
+    """Union of files committed since base, staged, and edited in the tree."""
     touched = set()
-    for cmd in (["git", "diff", "--name-only", "origin/main...HEAD"],
+    for cmd in (["git", "diff", "--name-only", base + "...HEAD"],
                 ["git", "diff", "--cached", "--name-only"],
                 ["git", "diff", "--name-only"]):
         out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
@@ -338,7 +338,7 @@ def select(args):
     """The entries this invocation proves: --only, then --changed, then --shard."""
     entries = select_only(load(args.manifest), args.only, args.manifest)
     if args.changed:
-        touched = changed_files()
+        touched = changed_files(args.base)
         # By target or by test: a commit that only weakens a test touches no target.
         entries = [e for e in entries
                    if e["target"] in touched or any(t in e["test"] for t in touched)]
@@ -354,6 +354,9 @@ def main():
     ap.add_argument("--only", action="append", help="run just this mutation id (repeatable)")
     ap.add_argument("--changed", action="store_true",
                     help="only entries whose target appears in the current diff")
+    ap.add_argument("--base", default="origin/main",
+                    help="with --changed: the commits counted are those since this ref"
+                         " (default: %(default)s; the pre-push hook passes the remote's tip)")
     ap.add_argument("--in-place", action="store_true",
                     help="mutate --root itself instead of a throwaway copy (fixtures only)")
     ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,

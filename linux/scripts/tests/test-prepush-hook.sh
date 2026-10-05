@@ -15,6 +15,7 @@ mkdir -p "${_root}/docs/scripts" "${_work}/bin"
 
 cat > "${_work}/bin/git" <<'STUB'
 #!/usr/bin/env bash
+[[ "$*" == *"cat-file -e 1111"* ]] && exit 1
 case "$*" in *"rev-parse --show-toplevel"*) printf '%s\n' "${HOOK_TEST_ROOT}" ;; esac
 STUB
 chmod +x "${_work}/bin/git"
@@ -66,6 +67,21 @@ rm -f "${_ARGV}"
 PATH="${_work}/bin:${PATH}" HOOK_TEST_ROOT="${_root}" HOOK_TEST_ARGV="${_ARGV}" \
   HOOK_TEST_STALE_RC=0 HOOK_TEST_GATE_RC=0 PREPUSH_MUTATION_JOBS=1 bash "${HOOK}" >/dev/null 2>&1
 t_assert_contains "$(_call 2)" "--jobs 1"
+
+t_case "the gate counts from the remote's tip that git hands the hook, not from origin/main"
+_zero=0000000000000000000000000000000000000000
+_push() {  # <remote sha>: one pushed ref on stdin, as git writes it
+  rm -f "${_ARGV}"
+  printf 'refs/heads/develop abc123 refs/heads/develop %s\n' "$1" | PATH="${_work}/bin:${PATH}" \
+    HOOK_TEST_ROOT="${_root}" HOOK_TEST_ARGV="${_ARGV}" HOOK_TEST_STALE_RC=0 HOOK_TEST_GATE_RC=0 \
+    bash "${HOOK}" >/dev/null 2>&1
+}
+_push 740b9eba
+t_assert_contains "$(_call 2)" "--base 740b9eba" "develop is what the push updates; main lags it by hundreds of entries"
+_push "${_zero}"
+t_assert_contains "$(_call 2)" "--base origin/main" "a new remote ref has no tip to count from"
+_push 1111aaaa
+t_assert_contains "$(_call 2)" "--base origin/main" "a tip this clone has not fetched would make the diff fail and select nothing"
 
 t_case "git's hook environment never reaches a gate"
 # See docs/failure-modes.md#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense

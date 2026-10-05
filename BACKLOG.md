@@ -130,6 +130,34 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON58 — the Android Rust target in the image** [S, ★★]. Cargokit builds an
+      Android app's Rust for `aarch64-linux-android`. `:latest` carried std for
+      aarch64/riscv64/wasm32/x86_64 only, so OmniAccelerANT's Android lane added the
+      target on every run (about 4 s, measured 2026-10-05, and a network dependency).
+      In source the same day: `install-rust.sh` adds it to the pinned toolchain, and
+      `smoke-toolchain.sh` fails an image where it does not emit an object. Done when a
+      published `:latest` lists it under `rustup target list --installed` on all three
+      arches.
+
+- [ ] **CON59 — lint and dev-tool pins out of the base closure** [M, ★★★].
+      `Dockerfile.base` bind-mounts `01-core/versions.env` file by file, so bumping any
+      pin in it re-keys the compiler image. That rebuilds sdk/media/android, hours of
+      work, including for pins no image build reads. Those are the host-side tools:
+      shellcheck, gitleaks, hadolint, actionlint, mold, binaryen, ruff, syft and the
+      Renovate Node/CLI pair. A Renovate bump of hadolint thus costs the same as a GCC
+      bump. Move them to `01-core/tool-pins.env`, which no Dockerfile mounts. Readers
+      found 2026-10-05, about 30 files:
+      - The pins' readers: `lint-{shell,secrets,dockerfiles,workflows,python}.sh`,
+        `lib/{wasm-opt,linker-select}.sh`, `renovate-local.sh`,
+        `scan-image-sbom.sh` and `WindowsWasmOpt.Common.psm1`.
+      - The bookkeeping: `.github/renovate.json`, whose `matchFileNames` and regex
+        manager name `versions.env`, plus `bump_versions.py`, `consumer_pins.py` and
+        the version-forwarding, version-snapshot and env-knob gates. The env-knob
+        gate must count the new file as an owner.
+      - About ten test suites.
+      Done when a hadolint bump leaves the compiler image's digest unchanged.
+
+
 - [ ] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
       (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
       it in (an `install_mold_pinned` beside `install_sccache_pinned`, apt's 2.40.4 cannot link
@@ -205,6 +233,19 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         `CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT`, which `lib/cmake-build.sh` now puts back on the link too.
 
 ## Open — Windows `:winamd64`
+
+- [ ] **CON60 — pin Windows Rust to `RUST_VERSION`, or keep it floating** [S, ★★].
+      Needs the owner's call. `Install-RustToolchain.ps1` installs `stable` at chain
+      time, and `docs/windows-builds.md` § *Rust toolchain* calls that deliberate,
+      without saying why. The `:winamd64` of 2026-10-04 happens to carry 1.98.1, the
+      Linux pin. The next Windows chain moves to 1.99.x, and Windows and Linux then
+      build `oxidant` with different compilers. The toolchain is also named
+      `stable-x86_64-pc-windows-msvc`, so a `rustup update` inside the image moves it
+      silently. OmniAccelerANT's Cargokit builds with whatever rustup resolves since
+      2026-10-05, so pinning here pins the app too. If pinned: install `RUST_VERSION` by
+      version as `install-rust.sh` does, and make `Test-Container.ps1`'s Rust assert
+      the value rather than a well-formed one.
+
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294
@@ -329,3 +370,27 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         `USE_NEW_NVSTREAMMUX`) and OmniAccelerANT's `nvinfer` path, after a published image exists.
       - Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only). The v9.1.0 release
         also hosts 9.1.1 assets for NVIDIA's `develop` branch; the pin stays on 9.1.0.
+
+## Open — hub tooling and the dev host
+
+- [ ] **CON61 — the script suites on a Windows host: skip what cannot run, loudly** [M, ★].
+      Under Git Bash about 45 of 169 `linux/scripts/tests/` suites fail on this host,
+      for host reasons and never for the code (measured 2026-10-05):
+      - no `jq` (`test-agentic-loop.sh`, the `test-renovate-*` family);
+      - `ln -s` copies instead of linking (`test-vulkan-env-active-link.sh`,
+        `test-setup-package-image.sh`);
+      - ELF tools and fixtures (`test-arch-mapping.sh`, `test-llvm-target-prefix.sh`).
+      A full `preflight.sh` here is therefore red on a green tree, which is why hub
+      pushes go through WSL or the Linux image. Give each such suite a
+      `t_skip_unless <tool|posix-symlinks>` guard that prints `SKIP [reason]` and counts
+      as neither pass nor fail, as `_posix_host` does in `test-mutation-gate.sh`.
+      Done when a Windows run of `script-tests` is green or names a skip reason per
+      suite.
+
+- [b] **CON62 — WSL containers (`wslc`) as the local Linux engine** [M, ★★]. Blocked
+      upstream. Evaluated 2026-10-05 against WSL 3.0.1
+      (`docs/rancher-desktop-linux-containers.md` § *WSL containers*): faster bind
+      mounts and no credential trap, but no `--privileged`, `--platform` or `--device`,
+      which the lanes pass. Re-evaluate when microsoft/WSL#41545 (privileged/cap-add)
+      and #41123 (multi-platform) land. The Dart-only loop (`Invoke-DartChecks.ps1`)
+      could pilot it sooner, behind an `-Engine wslc` switch.

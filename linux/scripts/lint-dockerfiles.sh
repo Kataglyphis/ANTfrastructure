@@ -149,13 +149,11 @@ hadolint_ensure() {
   if [ ! -x "${HADOLINT_BIN}" ]; then
     # shellcheck source=01-core/downloads.sh
     source "${CORE_DIR}/downloads.sh" || err "downloads.sh not available for verified hadolint fetch"
-    mkdir -p "${cache_root}" || err "Cannot create hadolint cache directory ${cache_root}"
-    download_verified_file \
+    # The release asset is the binary itself, so there is no archive member to name.
+    download_verified_install \
       "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${asset}" \
-      "${expected_sha}" \
-      "${HADOLINT_BIN}" \
-      || err "Verified download of ${asset} failed (checksum mismatch or network error)."
-    chmod +x "${HADOLINT_BIN}"
+      "${expected_sha}" "${HADOLINT_BIN}" \
+      || err "Verified install of ${asset} failed (checksum mismatch or network error)."
   fi
 }
 
