@@ -2922,8 +2922,8 @@
  {
   "id": "python-lint.versions-env-is-data",
   "target": "linux/scripts/lint-python.sh",
-  "find": ". \"${_core}/load-versions-env.sh\" && load_versions_env \"${_core}/versions.env\"",
-  "replace": ". \"${_core}/versions.env\"",
+  "find": ". \"${_core}/load-versions-env.sh\" && load_versions_env \"${_core}/tool-pins.env\"",
+  "replace": ". \"${_core}/tool-pins.env\"",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
   "why": "versions.env is inert data with shell metacharacters in it: sourcing runs CUDA_ARCHITECTURES' arch numbers as commands, three errors on stderr every hook run"
  },
@@ -3930,7 +3930,7 @@
  {
   "id": "workflow-lint.version-pin-required",
   "target": "linux/scripts/lint-workflows.sh",
-  "find": "  [ -n \"${ACTIONLINT_VERSION:-}\" ] || err \"ACTIONLINT_VERSION is not set (versions.env not found?).\"",
+  "find": "  [ -n \"${ACTIONLINT_VERSION:-}\" ] || err \"ACTIONLINT_VERSION is not set (tool-pins.env not found?).\"",
   "replace": "  :",
   "test": "bash linux/scripts/tests/test-workflow-lint.sh",
   "why": "without the pin the bootstrap builds a URL for version '', and a lint verdict nobody can reproduce is not a gate"
@@ -3938,7 +3938,7 @@
  {
   "id": "workflow-lint.sha-pin-required",
   "target": "linux/scripts/lint-workflows.sh",
-  "find": "  [ -n \"${expected_sha}\" ] || err \"No pinned actionlint SHA256 for ${asset}; add one to versions.env.\"",
+  "find": "  [ -n \"${expected_sha}\" ] || err \"No pinned actionlint SHA256 for ${asset}; add one to tool-pins.env.\"",
   "replace": "  :",
   "test": "bash linux/scripts/tests/test-workflow-lint.sh",
   "why": "downloading a release nobody checksummed is how a lint gate starts running a binary the repo never chose"
@@ -4410,16 +4410,16 @@
  {
   "id": "env-knobs.arch-flags-are-owners",
   "target": "linux/scripts/lint-env-knobs.sh",
-  "find": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
-  "replace": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\")",
+  "find": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}/01-core/tool-pins.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
+  "replace": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}/01-core/tool-pins.env\")",
   "test": "bash linux/scripts/tests/test-env-knobs.sh",
   "why": "media_load_arch_flags sources arch-flags-<arch>.env, so its keys own their knobs; without them the MEDIA_SKIP_* knobs read as unowned again"
  },
  {
   "id": "env-knobs.runtime-paths-owns-nothing",
   "target": "linux/scripts/lint-env-knobs.sh",
-  "find": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
-  "replace": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env \"${SCRIPTS}\"/04-runtime/*.env)",
+  "find": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}/01-core/tool-pins.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
+  "replace": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}/01-core/tool-pins.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env \"${SCRIPTS}\"/04-runtime/*.env)",
   "test": "bash linux/scripts/tests/test-env-knobs.sh",
   "why": "runtime-paths.env is reference data for verify-runtime-paths.sh and no stage sources it; counting it would invent an owner for every path knob"
  },
@@ -11981,8 +11981,8 @@
  {
   "id": "linker-select.env-pin-wins",
   "target": "linux/scripts/lib/linker-select.sh",
-  "find": "  pins=\"$(source \"${_LINKER_SELECT_CORE_DIR}/load-versions-env.sh\" \\\n    && load_versions_env \"${_LINKER_SELECT_CORE_DIR}/versions.env\" && env | grep '^MOLD_LINUX_')\" || return 0",
-  "replace": "  pins=\"$(grep '^MOLD_LINUX_' \"${_LINKER_SELECT_CORE_DIR}/versions.env\")\" || return 0",
+  "find": "  pins=\"$(source \"${_LINKER_SELECT_CORE_DIR}/load-versions-env.sh\" \\\n    && load_versions_env \"${_LINKER_SELECT_CORE_DIR}/tool-pins.env\" && env | grep '^MOLD_LINUX_')\" || return 0",
+  "replace": "  pins=\"$(grep '^MOLD_LINUX_' \"${_LINKER_SELECT_CORE_DIR}/tool-pins.env\")\" || return 0",
   "test": "bash linux/scripts/tests/test-linker-select.sh",
   "why": "an operator testing a newer mold sets MOLD_LINUX_VERSION and its SHA; versions.env overwriting them would fetch the old release under the new name"
  },
@@ -12089,5 +12089,13 @@
   "replace": "   ; then",
   "test": "bash linux/scripts/tests/test-cargo-wrapper.sh",
   "why": "every driver run would append another copy to the global gitconfig"
+ },
+ {
+  "id": "env-knobs.tool-pins-are-owners",
+  "target": "linux/scripts/lint-env-knobs.sh",
+  "find": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}/01-core/tool-pins.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
+  "replace": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
+  "test": "bash linux/scripts/tests/test-env-knobs.sh",
+  "why": "the host-tool pins moved to tool-pins.env (CON59); without it as an owner every lint-tool knob reads as unowned and KNOB_GATE fails a correct tree"
  }
 ]

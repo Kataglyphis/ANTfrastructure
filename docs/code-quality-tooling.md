@@ -337,7 +337,7 @@ subjects are built with `printf`, not written as literal lines: a real
 so that is the one proven: an undefined name and a syntax error each exit 1. The
 **advisory tier** (the full default ruleset) must report and still exit 0 — an
 unused import prints `ADVISORY:` and passes. The fixture writes `RUFF_VERSION`
-from `01-core/versions.env` into its own `versions.env`, so when no ruff is on
+from `01-core/tool-pins.env` into its own `tool-pins.env`, so when no ruff is on
 PATH it bootstraps the same pinned `uvx ruff@<pin>` the repo does (a ruff already
 on PATH is preferred by the gate and the fixture alike).
 
@@ -512,7 +512,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1511 entries** over **130 distinct test commands**; both digits are
+manifest holds **1512 entries** over **130 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1852,7 +1852,8 @@ the gate's own `shutil.which` lookup is gone.
 
 **Version pinning, and why CI stopped installing shellcheck.**
 `shellcheck_ensure` used to take any `shellcheck` on `PATH`. CI apt-installed
-0.9.0 on noble while the baseline was frozen with the `versions.env` pin
+0.9.0 on noble while the baseline was frozen with the pin (then in `versions.env`,
+in `tool-pins.env` since CON59)
 `SHELLCHECK_VERSION=v0.11.0`, so CI would have gone red on counts that are
 correct locally. It now accepts a `PATH` copy **only** when its reported version
 equals the pin, and otherwise falls through to the bootstrap it already had — the
@@ -2236,7 +2237,7 @@ and the gate is the authority for it, not this page.
 `linux/scripts/tests/test-env-knobs.sh` each copy their gate into
 a throwaway tree — the gates derive their root from their own path — and parse
 the measured overlap rather than hardcoding it, so the fixtures cannot rot.
-19 entries (`code-dupes.*`) and 29 (`env-knobs.*`) in
+19 entries (`code-dupes.*`) and 30 (`env-knobs.*`) in
 `docs/scripts/mutations.json` neuter one guarantee each and are proven to make
 those suites fail: the shrink and stale detections and their
 exit codes, the pre-threshold count, the stale wording, the duplicate-row exit,

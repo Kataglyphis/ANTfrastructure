@@ -406,7 +406,7 @@ itself, after it has set `CC`.
   falls back silently; this switch exists to measure, and a fallback would make the
   measurement lie.
 - **mold comes from PATH, else the pinned release.** No image ships it yet.
-  `linker_select_ensure_mold` downloads the `MOLD_LINUX_*` pin in `versions.env`
+  `linker_select_ensure_mold` downloads the `MOLD_LINUX_*` pin in `tool-pins.env`
   (SHA256 per arch: x86_64, aarch64, riscv64) into a version-keyed cache
   (`LINKER_SELECT_CACHE_DIR`, default `$TMPDIR`). An unpinned architecture fails.
 

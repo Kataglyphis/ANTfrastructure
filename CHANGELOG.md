@@ -7,6 +7,28 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — host-tool pins leave the image's build inputs (CON59)
+
+- **`01-core/tool-pins.env`** now holds the 30 pins no image build reads: shellcheck,
+  gitleaks, hadolint, actionlint, mold, binaryen, ruff, syft, Renovate's Node and CLI.
+  `Dockerfile.base` bind-mounts `versions.env`, so any edit to it re-keyed the compiler
+  image, and a hadolint bump cost as much as a GCC bump. A bump here rebuilds nothing.
+- **Readers:**
+  - `lint-shell`, `lint-secrets`, `lint-dockerfiles`, `lint-workflows`, `lint-python`,
+    `lib/wasm-opt.sh`, `lib/linker-select.sh` and `WindowsWasmOpt.Common` now read
+    `tool-pins.env`.
+  - `scan-image-sbom.sh` reads both files: the image tag stays in `versions.env`.
+  - `renovate-local.sh` parses `tool-pins.env`; it used to `source` `versions.env`.
+- **Bookkeeping reads both files:**
+  - Renovate's two package rules and both custom managers.
+  - `bump_versions.py`, which writes each key back to the file that holds it.
+  - `sync_versions.py`'s pin table, which the consumer-pins check uses.
+  - The env-knob gate counts `tool-pins.env` as an owner.
+- Tests: `test-renovate-annotations.sh` reads both files and asserts that every custom
+  manager matches both; `test-env-knobs.sh` gains a `tool-pins.env` owner case; eight
+  suites read or fake their pin in the new file. Six mutations re-pointed, one added.
+
+
 ## 2026-10-05 — Windows Rust pinned; five of OxidANT's waiting rows land (CON60, CON55)
 
 - **Windows Rust is pinned to `RUST_VERSION`** (owner decision). `Install-RustToolchain.ps1`

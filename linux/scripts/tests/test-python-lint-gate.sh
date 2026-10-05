@@ -4,7 +4,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 S="$(cd "${TESTS_DIR}/.." && pwd)"
-PIN="$(sed -n 's/^RUFF_VERSION=//p' "${S}/01-core/versions.env")"
+PIN="$(sed -n 's/^RUFF_VERSION=//p' "${S}/01-core/tool-pins.env")"
 
 if ! command -v ruff >/dev/null 2>&1 && ! command -v uvx >/dev/null 2>&1; then
   t_case "ruff or uvx is on PATH (the gate bootstraps from one, and so does this suite)"
@@ -23,7 +23,7 @@ _mkroot() {
   cp "${S}/01-core/load-versions-env.sh" "${S}/01-core/lint-root.sh" \
      "${S}/01-core/python-probe.sh" \
      "${d}/linux/scripts/01-core/"
-  printf 'RUFF_VERSION=%s\n' "${PIN}" > "${d}/linux/scripts/01-core/versions.env"
+  printf 'RUFF_VERSION=%s\n' "${PIN}" > "${d}/linux/scripts/01-core/tool-pins.env"
   printf '%s\n' "${d}"
 }
 
@@ -68,14 +68,14 @@ _targets() {
   _run "${d}"
 }
 
-t_case "the pin the fixture carries is the one versions.env holds"
+t_case "the pin the fixture carries is the one tool-pins.env holds"
 t_assert_ok test -n "${PIN}"
 
-t_case "reading the pin makes no noise: versions.env is data, and is never sourced"
-# `source versions.env` would run 86, 89 and 90 from CUDA_ARCHITECTURES as commands.
+t_case "reading the pin makes no noise: tool-pins.env is data, and is never sourced"
+# `source tool-pins.env` would run 86, 89 and 90 from CUDA_ARCHITECTURES as commands.
 _d="$(_mkroot)"
 printf 'CUDA_ARCHITECTURES=80;86;89;90\nRUFF_VERSION=%s\n' "${PIN}" \
-  > "${_d}/linux/scripts/01-core/versions.env"
+  > "${_d}/linux/scripts/01-core/tool-pins.env"
 printf 'print("ok")\n' > "${_d}/docs/scripts/subject.py"
 t_assert_eq "" "$(bash "${_d}/linux/scripts/lint-python.sh" 2>&1 >/dev/null)" \
   "a gate that runs in every hook must not print shell errors from its own pin lookup"

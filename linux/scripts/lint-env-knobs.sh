@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPTS="${REPO_ROOT}/linux/scripts"
 ALLOW="${SCRIPTS}/lint-env-knobs.allow"
 # Only .env files a stage sources declare keys; runtime-paths.env is reference data.
-ENV_OWNER_FILES=("${SCRIPTS}/01-core/versions.env" "${SCRIPTS}"/03-media/core/arch-flags-*.env)
+ENV_OWNER_FILES=("${SCRIPTS}/01-core/versions.env" "${SCRIPTS}/01-core/tool-pins.env" "${SCRIPTS}"/03-media/core/arch-flags-*.env)
 
 echo "=== env-knob registry gate (A1; unowned advisory unless KNOB_GATE=1, stale always fails) ==="
 

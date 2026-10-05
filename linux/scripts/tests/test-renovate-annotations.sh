@@ -6,18 +6,20 @@ source "${TESTS_DIR}/test-harness.sh"
 HUB="$(cd "${TESTS_DIR}/../../.." && pwd)"
 PY="${PREFLIGHT_PYTHON:-python3}"
 
+# versions.env holds the image pins, tool-pins.env the host-tool pins (CON59); Renovate must read both.
 ENV_FILE="${HUB}/linux/scripts/01-core/versions.env"
+TOOL_FILE="${HUB}/linux/scripts/01-core/tool-pins.env"
 CFG_FILE="${HUB}/.github/renovate.json"
 
 # _probe <count|rows>: Python reads the JavaScript regex out of the JSON, since a re-typed copy tests the copy.
 _probe() {
-  "${PY}" - "${CFG_FILE}" "${ENV_FILE}" "$1" <<'PY'
+  "${PY}" - "${CFG_FILE}" "$1" "${ENV_FILE}" "${TOOL_FILE}" <<'PY'
 import json
 import re
 import sys
 
 cfg = json.load(open(sys.argv[1], encoding="utf-8"))
-body = open(sys.argv[2], encoding="utf-8").read()
+body = "\n".join(open(f, encoding="utf-8").read() for f in sys.argv[3:])
 pats = [m for cm in cfg.get("customManagers", []) for m in cm["matchStrings"]]
 # Python spells a named group (?P<x>...); JavaScript (?<x>...). The rest of the
 # syntax these patterns use is common to both, so the translation is this one
@@ -27,7 +29,7 @@ for pat in pats:
     for m in re.finditer(pat.replace("(?<", "(?P<"), body):
         found.append("%s=%s" % (m.group("depName"), m.group("currentValue")))
 written = len(re.findall(r"^# renovate: ", body, re.M))
-if sys.argv[3] == "count":
+if sys.argv[2] == "count":
     print("%d %d" % (written, len(found)))
 else:
     print("\n".join(found))
@@ -37,7 +39,7 @@ PY
 COUNTS="$(_probe count)"
 ROWS="$(_probe rows)"
 
-t_case "every annotation written in versions.env is matched by the regex"
+t_case "every annotation written in versions.env and tool-pins.env is matched by the regex"
 t_assert_eq "${COUNTS% *}" "${COUNTS#* }" \
   "annotations written vs annotations the customManager regex matches"
 t_assert_fails test "${COUNTS% *}" = "0"
@@ -65,7 +67,22 @@ if grep -q "versioning=" "${ENV_FILE}"; then
 fi
 
 t_case "and the value the regex reads is the value the key carries"
-t_assert_contains "${ROWS}" "ruff=$(sed -n 's/^RUFF_VERSION=//p' "${ENV_FILE}")" \
+t_assert_contains "${ROWS}" "ruff=$(sed -n 's/^RUFF_VERSION=//p' "${TOOL_FILE}")" \
   "a regex that matches but reads the wrong value is worse than no match"
+
+t_case "every custom manager reads both pin files"
+# A file outside managerFilePatterns is invisible to Renovate however well it is annotated.
+for _f in "${ENV_FILE}" "${TOOL_FILE}"; do
+  t_assert_eq "ok" "$("${PY}" - "${CFG_FILE}" "${_f#"${HUB}/"}" <<'PY'
+import json
+import re
+import sys
+
+cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+pats = [p.strip("/") for cm in cfg.get("customManagers", []) for p in cm["managerFilePatterns"]]
+print("ok" if pats and all(re.search(p, sys.argv[2]) for p in pats) else "missed by " + " ".join(pats))
+PY
+)" "${_f##*/} must match every customManagers managerFilePatterns entry"
+done
 
 t_summary

@@ -3,7 +3,7 @@
 # frontend lint). No image is ever built here; this is safe for CI and hooks.
 #
 # hadolint is bootstrapped on demand: PATH copy is used when present, otherwise
-# the pinned release (HADOLINT_VERSION / HADOLINT_*_SHA256 in versions.env) is
+# the pinned release (HADOLINT_VERSION / HADOLINT_*_SHA256 in tool-pins.env) is
 # downloaded once into a version-keyed cache dir and SHA256-verified — the same
 # pattern as linux/scripts/lib/wasm-opt.sh for binaryen.
 #
@@ -24,7 +24,7 @@
 # document, for the same reason: a submodule checkout puts this script INSIDE
 # the consumer, where the default root resolves to ANTfrastructure and the gate
 # grades the wrong tree while reporting green over one nobody looked at. The
-# hadolint bootstrap, its cache and versions.env always come from THIS repo.
+# hadolint bootstrap, its cache and tool-pins.env always come from THIS repo.
 #
 # Under a root the file set is `git ls-files`, not the hub's fixed glob list: a
 # vendored submodule (this very repo, at third_party/ANTfrastructure) is a GITLINK
@@ -106,7 +106,7 @@ python3 linux/scripts/verify_image_env.py --dockerfile "${DOCKERFILES[@]}" || FA
 hadolint_load_pin() {
   # shellcheck source=01-core/load-versions-env.sh
   source "${CORE_DIR}/load-versions-env.sh"
-  load_versions_env "${CORE_DIR}/versions.env"
+  load_versions_env "${CORE_DIR}/tool-pins.env"
 }
 
 hadolint_asset_and_sha() {
@@ -135,12 +135,12 @@ hadolint_ensure() {
   fi
 
   hadolint_load_pin
-  [ -n "${HADOLINT_VERSION:-}" ] || err "HADOLINT_VERSION is not set (versions.env not found?)."
+  [ -n "${HADOLINT_VERSION:-}" ] || err "HADOLINT_VERSION is not set (tool-pins.env not found?)."
 
   local asset expected_sha cache_root bin_name
   read -r asset expected_sha < <(hadolint_asset_and_sha) \
     || err "Unsupported platform for hadolint bootstrap ($(uname -s)/$(uname -m)); install hadolint on PATH instead."
-  [ -n "${expected_sha}" ] || err "No pinned hadolint SHA256 for ${asset}; add one to versions.env."
+  [ -n "${expected_sha}" ] || err "No pinned hadolint SHA256 for ${asset}; add one to tool-pins.env."
 
   cache_root="${HADOLINT_CACHE_DIR:-${TMPDIR:-/tmp}}/hadolint-${HADOLINT_VERSION}"
   bin_name="hadolint"; case "${asset}" in *.exe) bin_name="hadolint.exe" ;; esac

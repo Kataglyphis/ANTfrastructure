@@ -8,16 +8,17 @@ cd "${REPO_ROOT}"
 
 CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
-# The tag comes from versions.env, so a scan targets exactly the image CI runs.
+# The tag comes from versions.env, so a scan targets exactly the image CI runs; the syft pin from tool-pins.env.
 # shellcheck source=01-core/load-versions-env.sh
 source "${CORE_DIR}/load-versions-env.sh"
 load_versions_env "${CORE_DIR}/versions.env"
+load_versions_env "${CORE_DIR}/tool-pins.env"
 
 PLATFORM="${1:?platform required, e.g. linux/amd64}"
 IMAGE="${2:-${IMAGE_REGISTRY_PREFIX}:${CI_IMAGE_LINUX_TAG}}"
 
 # `:?`, not `:-`: an empty version makes install.sh fetch the latest, unpinned scanner.
-: "${SYFT_VERSION:?SYFT_VERSION is not set (versions.env not found, or the key was removed from it)}"
+: "${SYFT_VERSION:?SYFT_VERSION is not set (tool-pins.env not found, or the key was removed from it)}"
 SYFT_BIN_DIR="${SYFT_BIN_DIR:-${TMPDIR:-/tmp}}/syft-${SYFT_VERSION}"
 # Upstream tags carry the leading v; `syft --version` reports the bare number.
 SYFT_WANT="${SYFT_VERSION#v}"
@@ -33,10 +34,10 @@ if command -v syft >/dev/null 2>&1; then
   _path_syft="$(command -v syft)"
   _path_version="$(syft_version_of "${_path_syft}")"
   if [ "${_path_version}" = "${SYFT_WANT}" ]; then
-    echo "== syft on PATH is ${_path_syft} (${_path_version}) — matches versions.env SYFT_VERSION =="
+    echo "== syft on PATH is ${_path_syft} (${_path_version}) — matches tool-pins.env SYFT_VERSION =="
     SYFT="${_path_syft}"
   else
-    echo "== syft on PATH is ${_path_syft} (${_path_version:-version unreadable}), versions.env pins ${SYFT_WANT} — ignoring it =="
+    echo "== syft on PATH is ${_path_syft} (${_path_version:-version unreadable}), tool-pins.env pins ${SYFT_WANT} — ignoring it =="
   fi
 fi
 
@@ -52,7 +53,7 @@ fi
 # Check the bootstrap too: install.sh or a stale SYFT_BIN_DIR could yield another version.
 SYFT_ACTUAL="$(syft_version_of "${SYFT}")"
 if [ "${SYFT_ACTUAL}" != "${SYFT_WANT}" ]; then
-  echo "${SYFT} reports '${SYFT_ACTUAL:-nothing}', versions.env pins SYFT_VERSION=${SYFT_VERSION}." >&2
+  echo "${SYFT} reports '${SYFT_ACTUAL:-nothing}', tool-pins.env pins SYFT_VERSION=${SYFT_VERSION}." >&2
   echo "Refusing to publish an SBOM measured with a scanner that is not the pinned one." >&2
   exit 1
 fi

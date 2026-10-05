@@ -7,13 +7,13 @@ cd "${REPO_ROOT}" || exit 1
 
 # Safe loader, never source; `:?` not `:-`, since a fallback is a second pin. docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
 _core="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/01-core"
-if [ ! -f "${_core}/versions.env" ] || [ ! -f "${_core}/load-versions-env.sh" ]; then
-  printf 'ERROR: %s\n' "01-core/versions.env or 01-core/load-versions-env.sh is missing beside ${_core} -- the ruff pin has nowhere to come from." >&2
+if [ ! -f "${_core}/tool-pins.env" ] || [ ! -f "${_core}/load-versions-env.sh" ]; then
+  printf 'ERROR: %s\n' "01-core/tool-pins.env or 01-core/load-versions-env.sh is missing beside ${_core} -- the ruff pin has nowhere to come from." >&2
   exit 1
 fi
 # shellcheck source=01-core/load-versions-env.sh
-. "${_core}/load-versions-env.sh" && load_versions_env "${_core}/versions.env"
-: "${RUFF_VERSION:?RUFF_VERSION is not set (01-core/versions.env parsed, but the key is gone from it)}"
+. "${_core}/load-versions-env.sh" && load_versions_env "${_core}/tool-pins.env"
+: "${RUFF_VERSION:?RUFF_VERSION is not set (01-core/tool-pins.env parsed, but the key is gone from it)}"
 RUFF_PIN="${RUFF_VERSION}"
 GATE_SELECT="E9,F63,F7,F82"
 

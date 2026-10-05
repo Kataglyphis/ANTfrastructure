@@ -10,12 +10,12 @@ source "${_LINKER_SELECT_LIB_DIR}/log-bootstrap.sh"
 # shellcheck source=../01-core/downloads.sh
 source "${_LINKER_SELECT_CORE_DIR}/downloads.sh"
 
-# A subshell, so only the MOLD_LINUX_* pins leave versions.env; the environment still wins over the file.
+# A subshell, so only the MOLD_LINUX_* pins leave tool-pins.env; the environment still wins over the file.
 _linker_select_load_mold_pin() {
   local pins line
   # shellcheck source=../01-core/load-versions-env.sh
   pins="$(source "${_LINKER_SELECT_CORE_DIR}/load-versions-env.sh" \
-    && load_versions_env "${_LINKER_SELECT_CORE_DIR}/versions.env" && env | grep '^MOLD_LINUX_')" || return 0
+    && load_versions_env "${_LINKER_SELECT_CORE_DIR}/tool-pins.env" && env | grep '^MOLD_LINUX_')" || return 0
   while IFS= read -r line; do
     if [[ -n "${line}" ]]; then export "${line%%=*}=${line#*=}"; fi
   done <<< "${pins}"
@@ -47,7 +47,7 @@ linker_select_ensure_mold() {
     *) warn "No pinned mold release for $(uname -m)."; return 1 ;;
   esac
   if [[ -z "${version}" || -z "${sha}" ]]; then
-    warn "No pinned mold version or SHA256 for ${arch} (MOLD_LINUX_* in versions.env)."
+    warn "No pinned mold version or SHA256 for ${arch} (MOLD_LINUX_* in tool-pins.env)."
     return 1
   fi
 

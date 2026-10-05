@@ -5,7 +5,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SCRIPTS="${TESTS_DIR}/.."
 GATE="${SCRIPTS}/lint-workflows.sh"
-PIN="$(sed -n 's/^ACTIONLINT_VERSION=//p' "${SCRIPTS}/01-core/versions.env")"
+PIN="$(sed -n 's/^ACTIONLINT_VERSION=//p' "${SCRIPTS}/01-core/tool-pins.env")"
 
 CONV="${SCRIPTS}/verify_workflow_conventions.py"
 HUB_ALLOW="${SCRIPTS}/workflow-conventions.allow"
@@ -74,21 +74,21 @@ t_case "the actionlint it runs is the pinned version"
 t_assert_contains "$(t_out bash "${GATE}" "${clean}")" "actionlint (${PIN})" \
   "a lint verdict nobody can reproduce is not a gate"
 
-# Bootstrap refusals: an unpinned binary must never run (copies at the real depth read their own versions.env)
+# Bootstrap refusals: an unpinned binary must never run (copies at the real depth read their own tool-pins.env)
 
 # _stage <fixture root> <path under linux/scripts/> [mode]: same relative path, since the gate reads its pin from beside itself.
 _stage() {
   install -D -m "${3:-0644}" "${SCRIPTS}/$2" "$1/linux/scripts/$2"
 }
 
-_pin_tree() {  # <versions.env body>
+_pin_tree() {  # <tool-pins.env body>
   local d; d="$(mktemp -d "${_work}/pin.XXXXXX")"
   _stage "${d}" lint-workflows.sh 0755
   _stage "${d}" 01-core/load-versions-env.sh
   _stage "${d}" 01-core/downloads.sh
   # The gate sources the interpreter probe before its Python half.
   _stage "${d}" 01-core/python-probe.sh
-  printf '%s\n' "$1" > "${d}/linux/scripts/01-core/versions.env"
+  printf '%s\n' "$1" > "${d}/linux/scripts/01-core/tool-pins.env"
   mkdir -p "${d}/.github/workflows"
   git -C "${d}" init -q
   git -C "${d}" remote add origin "https://github.com/Kataglyphis/OxidANT.git"
@@ -129,7 +129,9 @@ t_assert_contains "$(t_out bash "${GATE}" "${clean}")" "shellcheck for run: bloc
 
 # _sc_tree <lint-shell.sh body>: swaps only the shellcheck accessor, so a refusal is about shellcheck alone.
 _sc_tree() {  # <lint-shell.sh body>
-  local d; d="$(_pin_tree "$(cat "${SCRIPTS}/01-core/versions.env")")"
+  local d; d="$(_pin_tree "$(cat "${SCRIPTS}/01-core/tool-pins.env")")"
+  # The CI-image-ref half reads its tags from versions.env, the actionlint pin from tool-pins.env.
+  install -D -m 0644 "${SCRIPTS}/01-core/versions.env" "${d}/linux/scripts/01-core/versions.env"
   install -D -m 0644 "${SCRIPTS}/verify_ci_image_refs.py" \
     "${d}/linux/scripts/verify_ci_image_refs.py"
   # verify_ci_image_refs.py imports gate_scope.py; without it the fixture yields a traceback.

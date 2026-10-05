@@ -69,8 +69,8 @@ t_assert_eq "0" "$(t_rc bash "${GATE}" "${clean}")" "the leaky sibling directory
 t_assert_eq "0" "$(t_out bash "${GATE}" "${clean}" | grep -c -F -e "$(basename "${leaky}")")"
 
 t_case "the pinned gitleaks version is the one it reports running"
-# The gate holds no pin literal, so read versions.env; an empty pin would match any "gitleaks " banner.
-_versions_env="${TESTS_DIR}/../01-core/versions.env"
+# The gate holds no pin literal, so read tool-pins.env; an empty pin would match any "gitleaks " banner.
+_versions_env="${TESTS_DIR}/../01-core/tool-pins.env"
 _pin="$(sed -n 's/^GITLEAKS_VERSION=//p' "${_versions_env}")"
 t_assert_ok test -n "${_pin}"
 t_assert_contains "$(t_out bash "${GATE}" "${clean}")" "gitleaks ${_pin}" \

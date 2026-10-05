@@ -8,12 +8,12 @@
   "packageRules": [
     {
       "description": "versions.env keys are notification-only by DEFAULT: most bumps are coupled to a paired *_SHA256/*_COMMIT in the same file or to a source patch, so they keep the human ritual (AGENTS.md § Version Bumping). Matched by FILE, not by manager id, so it holds for the local CLI's report (manager 'regex') and the platform's ('custom.regex') alike.",
-      "matchFileNames": ["linux/scripts/01-core/versions.env"],
+      "matchFileNames": ["linux/scripts/01-core/versions.env", "linux/scripts/01-core/tool-pins.env"],
       "dependencyDashboardApproval": true
     },
     {
       "description": "Self-contained keys the local CLI may apply: the version moves alone (no paired value in versions.env goes stale) and the tool or package installs at run time. Everything else keeps the approval rule above.",
-      "matchFileNames": ["linux/scripts/01-core/versions.env"],
+      "matchFileNames": ["linux/scripts/01-core/versions.env", "linux/scripts/01-core/tool-pins.env"],
       "matchDepNames": [
         "cargo-audit", "cargo-deny", "cargo-tarpaulin",
         "meson", "ninja", "Cython", "pybind11", "setuptools", "wheel",
@@ -59,8 +59,8 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "versions.env keys annotated with a renovate hint comment: # renovate: datasource=<ds> depName=<name> [extractVersion=...]",
-      "managerFilePatterns": ["/^linux/scripts/01-core/versions\\.env$/"],
+      "description": "versions.env and tool-pins.env keys annotated with a renovate hint comment: # renovate: datasource=<ds> depName=<name> [extractVersion=...]",
+      "managerFilePatterns": ["/^linux/scripts/01-core/(versions|tool-pins)\\.env$/"],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-.]+) depName=(?<depName>[^\\s]+)(?: extractVersion=(?<extractVersion>[^\\s]+))?(?: versioning=(?<versioning>[^\\s]+))?\\s*(?:\\n# noforward)?\\n[A-Z0-9_]+=(?<currentValue>[^\\s#]+)"
       ],
@@ -69,7 +69,7 @@
     {
       "customType": "regex",
       "description": "Digest pins: the hint carries the tag, the KEY= line under it the sha256. The docker datasource then reports when that tag's digest moves.",
-      "managerFilePatterns": ["/^linux/scripts/01-core/versions\\.env$/"],
+      "managerFilePatterns": ["/^linux/scripts/01-core/(versions|tool-pins)\\.env$/"],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-.]+) depName=(?<depName>\\S+) tag=(?<currentValue>\\S+)(?:\\n# noforward)?\\n[A-Z0-9_]+=(?<currentDigest>sha256:[0-9a-f]{64})"
       ]

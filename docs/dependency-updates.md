@@ -1085,8 +1085,9 @@ GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and
 ## Pins, and why Node is one of them
 
 `RENOVATE_NODE_VERSION` and `RENOVATE_VERSION` live in
-[`linux/scripts/01-core/versions.env`](../linux/scripts/01-core/versions.env),
-like every other tool this repo bootstraps on demand. Both are marked
+[`linux/scripts/01-core/tool-pins.env`](../linux/scripts/01-core/tool-pins.env),
+like every other tool this repo bootstraps on demand (in `versions.env` until CON59
+moved the host-tool pins out of the image build's inputs, 2026-10-05). Both are marked
 `# noforward` — no image installs them.
 
 Node is pinned because Renovate 44 declares `"node": "^24.11.0"` and dies on
@@ -1710,7 +1711,8 @@ writes nothing anywhere.
 ## The source of truth has to be visible too
 
 `RUFF_VERSION` in
-[`versions.env`](../linux/scripts/01-core/versions.env) is the family's one pin
+[`tool-pins.env`](../linux/scripts/01-core/tool-pins.env) (`versions.env` until
+2026-10-05) is the family's one pin
 for ruff. It carried **no `# renovate:` annotation**, so Renovate could not see
 it — while the consumer copies that are *required to match it* were perfectly
 visible. Renovate reported `ruff ==0.16.4 -> ==0.16.6` against OrchestrANT's

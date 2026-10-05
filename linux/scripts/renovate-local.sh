@@ -31,16 +31,19 @@ EXIT_CODE=0
 
 HUB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck source=01-core/versions.env disable=SC1091
-. "${HUB_ROOT}/linux/scripts/01-core/versions.env" 2>/dev/null \
-  || err "cannot read the version pins at linux/scripts/01-core/versions.env"
+# Parsed, never sourced: the Node and Renovate pins sit in tool-pins.env, which no image build reads.
+# shellcheck source=01-core/load-versions-env.sh disable=SC1091
+. "${HUB_ROOT}/linux/scripts/01-core/load-versions-env.sh" 2>/dev/null \
+  && [ -f "${HUB_ROOT}/linux/scripts/01-core/tool-pins.env" ] \
+  && load_versions_env "${HUB_ROOT}/linux/scripts/01-core/tool-pins.env" \
+  || err "cannot read the version pins at linux/scripts/01-core/tool-pins.env"
 
 # shellcheck source=01-core/platform.sh disable=SC1091
 . "${HUB_ROOT}/linux/scripts/01-core/platform.sh" 2>/dev/null \
   || err "cannot load 01-core/platform.sh (needed for arch_normalize)"
 
-: "${RENOVATE_NODE_VERSION:?RENOVATE_NODE_VERSION missing from versions.env}"
-: "${RENOVATE_VERSION:?RENOVATE_VERSION missing from versions.env}"
+: "${RENOVATE_NODE_VERSION:?RENOVATE_NODE_VERSION missing from tool-pins.env}"
+: "${RENOVATE_VERSION:?RENOVATE_VERSION missing from tool-pins.env}"
 
 MODE=report
 MANAGERS=""            # empty means: detect from the tree (see detect_managers)

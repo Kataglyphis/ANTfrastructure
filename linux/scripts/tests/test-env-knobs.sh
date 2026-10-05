@@ -32,6 +32,13 @@ t_assert_eq "0" "$(_rc 1)"
 t_assert_contains "$(_knobs)" "stale allow rows: 0"
 t_assert_contains "$(_knobs)" "OK: every consumed knob has an owner"
 
+t_case "tool-pins.env owns its keys: the host-tool pins moved there from versions.env (CON59)"
+printf 'TOOL_PIN_KNOB=1\n' > "${_work}/linux/scripts/01-core/tool-pins.env"
+_consume PINNED_KNOB DOCKER_KNOB OP_KNOB TOOL_PIN_KNOB > "${SUBJECT}"
+printf '# operator switch\nOP_KNOB\n' > "${ALLOW}"
+t_assert_eq "0" "$(_rc 1)" "a lint-tool pin is owned by the file it lives in"
+rm -f "${_work}/linux/scripts/01-core/tool-pins.env"
+
 t_case "a per-arch media flag file owns its knobs: media_load_arch_flags sources it"
 _consume PINNED_KNOB DOCKER_KNOB OP_KNOB ARCH_FLAG_KNOB > "${SUBJECT}"
 printf '# operator switch\nOP_KNOB\n' > "${ALLOW}"

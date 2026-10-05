@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sourced (no shell options): a pinned, SHA-verified binaryen, since distro packages lag; pin shared with PowerShell via versions.env.
+# Sourced (no shell options): a pinned, SHA-verified binaryen, since distro packages lag; pin shared with PowerShell via tool-pins.env.
 
 [ -n "${_WASM_OPT_SH_LOADED:-}" ] && return 0
 _WASM_OPT_SH_LOADED=1
@@ -20,9 +20,9 @@ WASM_OPT_FEATURE_FLAGS=(
   --enable-multivalue
 )
 
-# The environment wins, which is how a caller pins another release without editing versions.env.
+# The environment wins, which is how a caller pins another release without editing tool-pins.env.
 wasm_opt_load_pin() {
-  local versions_file="${1:-${_WASM_OPT_CORE_DIR}/versions.env}"
+  local versions_file="${1:-${_WASM_OPT_CORE_DIR}/tool-pins.env}"
 
   if [[ -f "${_WASM_OPT_CORE_DIR}/load-versions-env.sh" ]]; then
     # shellcheck source=../01-core/load-versions-env.sh
@@ -31,7 +31,7 @@ wasm_opt_load_pin() {
     return 0
   fi
 
-  # Read only the keys we need: versions.env is inert data and must never be sourced.
+  # Read only the keys we need: tool-pins.env is inert data and must never be sourced.
   local line name
   [[ -f "${versions_file}" ]] || return 0
   while IFS= read -r line || [[ -n "${line}" ]]; do
@@ -75,12 +75,12 @@ wasm_opt_ensure() {
   fi
 
   wasm_opt_load_pin
-  [[ -n "${BINARYEN_VERSION:-}" ]] || err "BINARYEN_VERSION is not set (versions.env not found?)."
+  [[ -n "${BINARYEN_VERSION:-}" ]] || err "BINARYEN_VERSION is not set (tool-pins.env not found?)."
 
   local asset expected_sha cache_root install_dir
   asset="$(wasm_opt_asset_name)" || return 1
   expected_sha="$(wasm_opt_expected_sha)"
-  [[ -n "${expected_sha}" ]] || err "No pinned binaryen SHA256 for ${asset}; add one to versions.env."
+  [[ -n "${expected_sha}" ]] || err "No pinned binaryen SHA256 for ${asset}; add one to tool-pins.env."
 
   cache_root="${WASM_OPT_CACHE_DIR:-${TMPDIR:-/tmp}}"
   install_dir="${cache_root}/binaryen-${BINARYEN_VERSION}"
