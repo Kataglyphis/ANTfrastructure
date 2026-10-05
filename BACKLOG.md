@@ -166,6 +166,15 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - BeschleunigerBallett drops its own export in `run-ctest.sh` (2ac0e785).
       - Retire the `ENV` once the image's Mesa has upstream ebcfbe60 (2026-08-22), which
         deletes that sort.
+      - **Its cost on arm64, seen 2026-10-05:** at 256 bits, llvmpipe's LLVM 21.1.8 on
+        AArch64 sometimes fails instruction selection and aborts the process. The error is
+        `LLVM ERROR: Cannot select: v4f32 = bitcast … extract_subvector … In function:
+        fs_variant_partial`. That reds OxidANT's arm64 renderer tests intermittently:
+        `forward_ambient` in run 37354297722, `headless` in run 37005853556. 9117d46 passed
+        on the same image three hours before the first of those, and no amd64 run has
+        shown it. Until ebcfbe60 lands, check that the
+        crash is gone before calling a red arm64 renderer test a regression. A narrower
+        `ENV` (only the BVH build needs the 8-lane subgroup) would also avoid it.
 
 - [ ] **CON51 — `:latest-rocm` rebuilt with the 2026-10-01 media fixes** [M, ★★]. Owner
       decision 2026-10-01: GStreamer and libcamera without libunwind "everywhere". `:latest`
