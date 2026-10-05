@@ -363,7 +363,12 @@ is the same file an x64 lane uses with `target-arch: amd64`:
      from libtest's `test result:` lines, `pytest` from pytest's final `== N passed … ==` line
      (errors count as failures, xfails as skips), `exitcode` as one test. A failing test is
      counted, not thrown, so the line always prints. A missing binary or an unreadable summary
-     is an error.
+     is an error. For a binary that died before its summary, that error carries the exit code
+     with its NTSTATUS name, e.g. `exit -1073741819 (0xC0000005 STATUS_ACCESS_VIOLATION)`.
+     When the runner's event log has a Windows Error Reporting record for that binary, the
+     faulting module, offset and exception code come with it, read from the record's data,
+     not its localized message. OxidANT's arm64 WARP crash (run 36889467167) left only
+     `running 39 tests` before this.
    - **A test tree with no binaries** sets `test-arch-gate-min-inspected: 0`. That fits a Python
      suite that the product's own `python.exe` runs. The gate still refuses any non-arm64 PE file
      in it, but needs none, and runs no import walk, since its DLLs live in the product tree.

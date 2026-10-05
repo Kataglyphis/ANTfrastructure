@@ -7,6 +7,20 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — a crashed staged test names its exit code
+
+- **`Invoke-StagedTests.ps1`**: a binary that dies before its summary used to stop the run
+  with "no libtest 'test result:' line" and nothing else. OxidANT's arm64 WARP crash
+  (run 36889467167) left only `running 39 tests`. The error now carries the exit code
+  with its NTSTATUS name, e.g. `exit -1073741819 (0xC0000005 STATUS_ACCESS_VIOLATION)`.
+  It adds the faulting module, offset and exception code when Windows Error Reporting
+  logged an event 1000 for that binary since it started. That is best effort, and read from
+  the event's data, not its message, which is localized. Each binary's `-> passed …` line names its exit
+  code the same way. One new case in `StagedTests.Tests.ps1` proves both halves.
+- CON50's OmniAccelerANT row: Chrome is closed (814da16, both Dart suites in Chrome since
+  2026-10-05). The APK on an emulator is what stays open.
+
+
 ## 2026-10-06 — Windows-host follow-ups: the mutation gate skips too; the suites pass in the image
 
 - **`verify_mutations.py` on a Git Bash host:**

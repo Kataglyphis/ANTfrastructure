@@ -44,10 +44,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         arch.
       - **OmniAccelerANT:** the plugin's Dart tests and gtest and the integration test run
         nowhere. The web lane never tests in a browser, and Android only on the x64 VM.
-        (Closed apart from the browser: the plugin suites run on every lane since 2026-10-01
-        (530ad8f), the integration test under Xvfb on Linux and through `flutter drive` on
-        Windows x64 and arm64 since 2026-10-04/05 (80e5329, 8015371). The Chrome run is open
-        in its BACKLOG.)
+        (Closed apart from the emulator: the plugin suites run on every lane since 2026-10-01
+        (530ad8f), and the integration test under Xvfb on Linux and through `flutter drive` on
+        Windows x64 and arm64 since 2026-10-04/05 (80e5329, 8015371). The web lane runs both
+        Dart suites in Chrome since 2026-10-05 (814da16, 33 + 4 tests). The APK still runs on no
+        emulator; item 4 below put one in the image.)
       - **OrchestrANT:** Windows arm64 runs none of the 959 pytest tests. The benchmark lab
         suites run on Linux x64 only.
       - **WebDavClient:** `tests/unit` holds 3 dummy tests, and the 6 WebDAV tests ran nowhere.

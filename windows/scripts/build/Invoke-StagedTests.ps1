@@ -18,12 +18,50 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Manifest = (Join-Path $PSScriptRoot 'tests.json')
+    [string]$Manifest = (Join-Path $PSScriptRoot 'tests.json'),
+    # Test seam: WER event 1000 records since a time; the real reader needs a Windows event log.
+    [scriptblock]$CrashEventReader = {
+        param([datetime]$Since)
+        Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = $Since } -ErrorAction Stop
+    }
 )
 
 $ErrorActionPreference = 'Stop'
 # A failing test exits non-zero by design; it is counted below rather than raised here.
 $PSNativeCommandUseErrorActionPreference = $false
+
+# NTSTATUS names for what a crashed test binary exits with; a bare negative decimal names nothing.
+$script:CrashNames = @{
+    0xC0000005 = 'STATUS_ACCESS_VIOLATION'; 0xC0000409 = 'STATUS_STACK_BUFFER_OVERRUN (a fail-fast abort)'
+    0xC00000FD = 'STATUS_STACK_OVERFLOW'; 0xC0000374 = 'STATUS_HEAP_CORRUPTION'
+    0xC000001D = 'STATUS_ILLEGAL_INSTRUCTION'; 0xC0000135 = 'STATUS_DLL_NOT_FOUND'
+    0xC0000139 = 'STATUS_ENTRYPOINT_NOT_FOUND'; 0xC0000142 = 'STATUS_DLL_INIT_FAILED'
+    0xC0000094 = 'STATUS_INTEGER_DIVIDE_BY_ZERO'; 0xC000013A = 'STATUS_CONTROL_C_EXIT'
+    0x80000003 = 'STATUS_BREAKPOINT'
+}
+
+# "<decimal> (0x<hex> <NTSTATUS name>)": the form a crash is looked up by.
+function Format-StagedExitCode([int]$Code) {
+    $hex = '0x{0:X8}' -f $Code
+    if ($script:CrashNames.ContainsKey($Code)) { return "$Code ($hex $($script:CrashNames[$Code]))" }
+    return "$Code ($hex)"
+}
+
+# Windows Error Reporting's event 1000 for a binary that crashed since -Since, which names the faulting module; best effort.
+function Get-StagedCrashReport([string]$ExeName, [datetime]$Since) {
+    try {
+        $events = @(& $CrashEventReader $Since)
+    } catch {
+        return $null
+    }
+    foreach ($werEvent in $events) {
+        # Properties, not Message, which is localized: [0] application, [3] module, [6] exception code, [7] offset.
+        $data = @($werEvent.Properties | ForEach-Object { "$($_.Value)" })
+        if ($data.Count -lt 8 -or $data[0] -ne $ExeName) { continue }
+        return "WER: faulting module $($data[3]) at offset 0x$($data[7]), exception 0x$($data[6])"
+    }
+    return $null
+}
 
 # Adds -Passed/-Failed/-Skipped to the running -Into tally.
 function Add-StagedCount([hashtable]$Into, [int]$Passed, [int]$Failed, [int]$Skipped) {
@@ -75,6 +113,7 @@ foreach ($entry in $entries) {
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "staged test missing: $exe" }
     $testArgs = @(if ($entry.PSObject.Properties['args']) { $entry.args })
     Write-Host "== $($entry.exe) $($testArgs -join ' ')"
+    $started = Get-Date
     # Each binary runs from its own directory, where its DLLs were staged.
     Push-Location (Split-Path -Parent $exe)
     try {
@@ -84,12 +123,18 @@ foreach ($entry in $entries) {
         Pop-Location
     }
     $lines | ForEach-Object { Write-Host $_ }
-    $counts = Get-StagedTestCount -Kind $entry.kind -Lines $lines -ExitCode $code
+    try {
+        $counts = Get-StagedTestCount -Kind $entry.kind -Lines $lines -ExitCode $code
+    } catch {
+        # A binary that died before its summary: the exit code and WER are all that name the crash.
+        $crash = if ($code -lt 0) { Get-StagedCrashReport -ExeName (Split-Path -Leaf $exe) -Since $started }
+        throw "$($entry.exe): $($_.Exception.Message); exit $(Format-StagedExitCode $code)$(if ($crash) { "; $crash" })"
+    }
     if ($entry.PSObject.Properties['skip_pattern']) {
         $selfSkipped = [Math]::Min(@($lines | Select-String -Pattern $entry.skip_pattern).Count, $counts.Passed)
         $counts.Passed -= $selfSkipped; $counts.Skipped += $selfSkipped
     }
-    Write-Host "   -> passed $($counts.Passed), failed $($counts.Failed), skipped $($counts.Skipped) (exit $code)"
+    Write-Host "   -> passed $($counts.Passed), failed $($counts.Failed), skipped $($counts.Skipped) (exit $(Format-StagedExitCode $code))"
     Add-StagedCount $total -Passed $counts.Passed -Failed $counts.Failed -Skipped $counts.Skipped
 }
 Write-Output "TESTS: passed=$($total.Passed) failed=$($total.Failed) skipped=$($total.Skipped)"

@@ -12,14 +12,16 @@ function script:New-FakeTest([string]$Name, [string]$Kind, [int]$Exit, [string[]
 
 # Writes the fake binaries plus tests.json, and returns the verdict line Invoke-StagedTests.ps1 prints.
 function script:Invoke-FakeSuite {
-    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][object[]]$Tests)
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][object[]]$Tests, [scriptblock]$CrashEventReader)
     $entries = foreach ($t in $Tests) {
         $body = @('@echo off') + @($t.Lines | ForEach-Object { "echo $_" }) + "exit /b $($t.Exit)"
         Set-Content -LiteralPath (Join-Path $Dir "$($t.Name).cmd") -Value $body -Encoding ascii
         @{ exe = "$($t.Name).cmd"; kind = $t.Kind }
     }
     ConvertTo-Json -InputObject @($entries) | Set-Content -LiteralPath (Join-Path $Dir 'tests.json') -Encoding utf8
-    return @(& $script:StagedTests -Manifest (Join-Path $Dir 'tests.json') 6>$null) | Select-Object -Last 1
+    $seam = @{}
+    if ($CrashEventReader) { $seam.CrashEventReader = $CrashEventReader }
+    return @(& $script:StagedTests -Manifest (Join-Path $Dir 'tests.json') @seam 6>$null) | Select-Object -Last 1
 }
 
 Describe 'Invoke-StagedTests.ps1' {
@@ -49,6 +51,21 @@ Describe 'Invoke-StagedTests.ps1' {
             Assert-Throws { Invoke-FakeSuite -Dir $d -Tests @(New-FakeTest 'mute' 'gtest' 0 'nothing here') } -MessagePattern 'no googletest summary'
             Set-Content -LiteralPath (Join-Path $d 'tests.json') -Value '[{"exe":"gone.exe","kind":"exitcode"}]' -Encoding utf8
             Assert-Throws { & $script:StagedTests -Manifest (Join-Path $d 'tests.json') 6>$null } -MessagePattern 'staged test missing'
+        }
+    }
+
+    # The arm64 WARP run (36889467167) died after "running 39 tests" and its log named nothing.
+    It 'names a binary that dies before its summary: its NTSTATUS, and the faulting module WER logged' {
+        Invoke-InTestDir { param($d)
+            $crash = { param($Reader, $Code) Invoke-FakeSuite -Dir $d -CrashEventReader $Reader -Tests @(New-FakeTest 'headless' 'cargo' $Code 'running 39 tests') }
+            Assert-Throws { & $crash { param($Since) throw 'no event log here' } -1073741819 } `
+                -MessagePattern "headless\.cmd: no libtest 'test result:' line in its output; exit -1073741819 \(0xC0000005 STATUS_ACCESS_VIOLATION\)$"
+            # Event 1000's data in its own order; its Message is localized, so the script never reads it.
+            $record = { param($App, $Module) [pscustomobject]@{ Properties = @($App, '1.0', 'aad2c1f4', $Module, '10.0', 'aad2c1f4', 'c0000409', '00000000000012ab' |
+                        ForEach-Object { [pscustomobject]@{ Value = $_ } }) } }
+            $wer = { param($Since) & $record 'other.exe' 'wrong.dll'; & $record 'HEADLESS.cmd' 'd3d12warp.dll' }.GetNewClosure()
+            Assert-Throws { & $crash $wer -1073740791 } `
+                -MessagePattern '0xC0000409 STATUS_STACK_BUFFER_OVERRUN \(a fail-fast abort\)\); WER: faulting module d3d12warp\.dll at offset 0x00000000000012ab, exception 0xc0000409$'
         }
     }
 
