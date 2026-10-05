@@ -196,6 +196,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …) | per wrap files | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ / GPL (x264) / BSD (openh264) |
+| GStreamer Rust plugins rswebrtc and rsrtp (gst-plugins-rs net/webrtc, net/rtp) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
+| Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, …) | pinned by gst-plugins-rs's Cargo.lock at the GStreamer tag | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MIT / Apache 2.0 / ISC / BSD / Unicode-3.0 / CDLA-Permissive-2.0 (per crate, 337 crates on 2026-10-05) |
 | ONNX Runtime | v1.30.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.15.2 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
@@ -478,6 +480,13 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 - **Revision:** pinned by the GStreamer release's wrap files
 - x264 is GPL, so its presence is what makes this subproject set copyleft.
 
+### GStreamer Rust plugins rswebrtc and rsrtp (gst-plugins-rs net/webrtc, net/rtp) — Windows Image
+
+- **Licence:** MPL-2.0
+- **Source:** <https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs>
+- **Revision:** 1.29.2
+- Built unmodified from the gstreamer-<version> tag (GitHub mirror) by Build-GstreamerFromSource.ps1 phase 8b, with upstream's Cargo.lock (--locked).
+
 ### FFmpeg — Windows Image
 
 - **Licence:** GPL-3.0-or-later
@@ -554,7 +563,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 This project patches the following upstreams before redistributing them. Both the Apache-2.0 and the GPL families require that modification be stated.
 
-- **GStreamer — Windows Image** — The Windows build patches a GES symbol rename. Patches: `windows/scripts/patches/gstreamer/001-ges-commit-rename.patch`.
+- **GStreamer — Windows Image** — The Windows build patches a GES symbol rename, and carries upstream GStreamer commit 17d22abe89 in gst-plugins-bad's ext/dtls/gstdtlsconnection.c (an empty BIO read signals retry, not EOF) until GSTREAMER_VERSION moves past 1.29.2. Patches: `windows/scripts/patches/gstreamer/001-ges-commit-rename.patch`.
 - **FFmpeg — Windows Image** — The Windows build patches configure to allow MSYS2 builds. Patches: `windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch`.
 
 Each patch is in this repository at the path shown, and travels with the corresponding source above.

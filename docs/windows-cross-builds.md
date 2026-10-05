@@ -21,7 +21,8 @@ produce, and which gates keep it honest.
 >
 > Same media and inference surface: GStreamer with
 > an identical plugin set (200 linked plugin DLLs, all six contract plugins incl. `webrtc`/`nice`,
-> plus `gst-ptp-helper`), ONNX Runtime + GenAI with DirectML, OpenCV 5 (NEON dispatch:
+> plus `gst-ptp-helper`; the seven entries CON28 added on 2026-10-05 are unproven here until
+> CON63, § WebRTC on the cross lane), ONNX Runtime + GenAI with DirectML, OpenCV 5 (NEON dispatch:
 > `NEON_DOTPROD NEON_FP16 NEON_BF16`), FFmpeg with NEON asm + PyAV, LiteRT with the `tflite`
 > plugin, and the TVM/IREE **runtimes together with their python packages** — 6 wheels, the same
 > count as amd64.
@@ -1073,6 +1074,34 @@ every Windows-on-Snapdragon image, never in the SDK zip and never on the
 Server Core reference host — so `Test-TargetArch.ps1`'s `ClientOsPattern`
 now allows them, and the arch gate reports the QNN payload as inspected PE +
 resolved imports instead of 63 phantom unresolved edges.
+
+## WebRTC on the cross lane (CON28, 2026-10-05)
+
+The plugin contract is the same thirteen entries on both lanes, so the arm64 bundle
+needs `dtls`, `srtp`, `sctp`, `rtpmanager`, `openh264`, `rswebrtc` and `rsrtp` as
+well. The cross gate proves each statically, as before: the DLL by its exact name
+`gst<name>.dll`, its dependency tree, and the `gst_plugin_<name>_get_desc` export,
+which the gst-plugins-rs DLLs carry too (`gst_plugin_rswebrtc_get_desc`, checked
+on the amd64 build). The two Windows WebRTC defects and their fixes reach this lane
+like this:
+
+- **libffi** has the same zeroed type table on aarch64: `aarch64/ffi.c` and the
+  four common files include the same `ffi.h`. `-fcommon` arrives through the same
+  `-Dc_args` string, and `/FORCE:MULTIPLE` is gone from the host link args here
+  too. The build machine's libffi needs it separately: meson puts
+  `build.subprojects/libffi/src/ffi-7.dll` into the default `all` target and links
+  it with the native file's linker (measured 2026-10-05 with a minimal cross
+  configure of the libffi port in a `:winamd64` container), and the native file
+  never had `/FORCE:MULTIPLE`, so it now carries `c_args = ['-fcommon']`.
+  `Assert-LibffiTypeExport` reads the aarch64 `ffi-7.dll` statically; `size_t` is
+  8 bytes on both lanes, so the expected descriptors are the same.
+- **DTLS** is arch-neutral C, so the 17d22abe89 hunk applies unchanged, and the
+  aarch64 OpenSSL staging below was already in place.
+- **gst-plugins-rs** cross-builds with `--target aarch64-pc-windows-msvc`,
+  `PKG_CONFIG_ALLOW_CROSS=1` against the target prefix's `.pc` files, `lld-link`
+  as the target linker, and `clang-cl --target=aarch64-pc-windows-msvc` with
+  `llvm-lib` for the C and assembly that `ring` compiles. Build scripts and proc
+  macros stay host binaries, linked by rustc's own MSVC lookup.
 
 ## aarch64 OpenSSL is a base prerequisite too
 

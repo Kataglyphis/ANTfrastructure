@@ -234,6 +234,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       with the missing member visible. Repro: litertlm-harness runs 1-19, Oct 4 2026.
 ## Open — the Windows arm64 bundle and unpublished variants
 
+- [ ] **CON63 — prove the WebRTC contract on the next arm64 chain** [S, ★★]. The
+      2026-10-05 Windows WebRTC fixes (`docs/windows-builds.md` § libffi's type exports,
+      § DTLS with OpenSSL 4, § gst-plugins-rs on Windows) were built and run on amd64
+      only. On the cross lane four things have never run: the gst-plugins-rs cross build
+      for `aarch64-pc-windows-msvc` (`Get-GstRustCargoPlan`'s target env), the host link
+      without `/FORCE:MULTIPLE`, the native file's `c_args = ['-fcommon']` for the
+      build machine's `ffi-7.dll`, and `Assert-LibffiTypeExport` on an aarch64 DLL. The
+      first arm64 merge either passes them or names the failing crate or symbol. Then
+      run the WebRTC loopback on the Snapdragon device through `Test-Arm64Bundle.ps1`,
+      which has no WebRTC step yet.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC

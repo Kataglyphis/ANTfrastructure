@@ -234,6 +234,77 @@ function Invoke-GstWrapProvisioning {
     return [string[]]$failures.ToArray()
 }
 
+function Read-PeExportData {
+    # The first $Count bytes behind a named export, as the loader maps them: a .bss tail reads as zeros, as it does at run time.
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Name,
+        [int]$Count = 16
+    )
+    $img = [System.IO.File]::ReadAllBytes($Path)
+    $u16 = { param($o) [BitConverter]::ToUInt16($img, $o) }
+    $u32 = { param($o) [BitConverter]::ToUInt32($img, $o) }
+    if ($img.Length -lt 0x40 -or (& $u16 0) -ne 0x5A4D) { throw "Read-PeExportData: $Path is not a PE image (no MZ header)" }
+    $nt = [int](& $u32 0x3C)
+    if ($nt + 24 -gt $img.Length -or (& $u32 $nt) -ne 0x4550) { throw "Read-PeExportData: $Path has no PE signature" }
+    $sectionCount = & $u16 ($nt + 6)
+    $opt = $nt + 24
+    $exportDirRva = & $u32 ($opt + $(if ((& $u16 $opt) -eq 0x20B) { 112 } else { 96 }))
+    $firstSection = $opt + (& $u16 ($nt + 20))
+    $sections = @(for ($i = 0; $i -lt $sectionCount; $i++) {
+        $h = $firstSection + 40 * $i
+        @{ Va = & $u32 ($h + 12); VirtualSize = & $u32 ($h + 8); RawSize = & $u32 ($h + 16); RawPtr = & $u32 ($h + 20) }
+    })
+    $toFile = {
+        param([uint32]$rva)
+        foreach ($s in $sections) {
+            if ($rva -ge $s.Va -and $rva -lt $s.Va + [Math]::Max($s.VirtualSize, $s.RawSize)) {
+                $delta = $rva - $s.Va
+                return [pscustomobject]@{ Offset = [long]($s.RawPtr + $delta); Raw = ($delta -lt $s.RawSize) }
+            }
+        }
+        throw "Read-PeExportData: RVA 0x$($rva.ToString('X')) of $Path lies in no section"
+    }
+    if ($exportDirRva -eq 0) { throw "Read-PeExportData: $Path exports nothing" }
+    $dir = (& $toFile $exportDirRva).Offset
+    $names = (& $toFile (& $u32 ($dir + 32))).Offset
+    $ordinals = (& $toFile (& $u32 ($dir + 36))).Offset
+    $functions = (& $toFile (& $u32 ($dir + 28))).Offset
+    for ($i = 0; $i -lt (& $u32 ($dir + 24)); $i++) {
+        $at = (& $toFile (& $u32 ($names + 4 * $i))).Offset
+        $end = $at
+        while ($img[$end] -ne 0) { $end++ }
+        if ([System.Text.Encoding]::ASCII.GetString($img, $at, $end - $at) -cne $Name) { continue }
+        $target = & $toFile (& $u32 ($functions + 4 * (& $u16 ($ordinals + 2 * $i))))
+        $data = [byte[]]::new($Count)
+        if ($target.Raw) { [Array]::Copy($img, $target.Offset, $data, 0, [Math]::Min($Count, $img.Length - $target.Offset)) }
+        return ,$data
+    }
+    throw "Read-PeExportData: $Path does not export $Name"
+}
+
+function Assert-LibffiTypeExport {
+    # Fails a libffi whose exported ffi_type descriptors are not the ones types.c defines; see docs/windows-builds.md § libffi's type exports.
+    param([Parameter(Mandatory)][string]$Path)
+    # size_t size, then unsigned short alignment and type; size_t is 8 bytes on both Windows lanes.
+    $expected = [ordered]@{ ffi_type_sint32 = @(4, 4, 10); ffi_type_pointer = @(8, 8, 14); ffi_type_void = @(1, 1, 0) }
+    $bad = @()
+    foreach ($name in $expected.Keys) {
+        $raw = Read-PeExportData -Path $Path -Name $name -Count 12
+        $got = @([BitConverter]::ToUInt64($raw, 0), [BitConverter]::ToUInt16($raw, 8), [BitConverter]::ToUInt16($raw, 10))
+        $want = $expected[$name]
+        if ($got[0] -ne $want[0] -or $got[1] -ne $want[1] -or $got[2] -ne $want[2]) {
+            $bad += "$name is size=$($got[0]) align=$($got[1]) type=$($got[2]), types.c defines size=$($want[0]) align=$($want[1]) type=$($want[2])"
+        }
+    }
+    if ($bad.Count -gt 0) {
+        throw ("libffi $Path exports broken type descriptors: $($bad -join '; '). Every GObject signal with arguments then " +
+            'fails ffi_prep_cif and its C handler never runs. The usual cause is a duplicate-symbol link that kept a ' +
+            "tentative definition's zeros; see docs/windows-builds.md § libffi's type exports.")
+    }
+    return "libffi type exports OK in ${Path}: sint32 4/4/10, pointer 8/8/14, void 1/1/0"
+}
+
 Export-ModuleMember -Function Invoke-MesonBuildSubprojectPatch, Select-MesonLogExcerpt,
     Get-MesonSetupFailureClass, Invoke-WrapDownload, Expand-SubprojectArchive,
-    Invoke-GstWrapProvisioning
+    Invoke-GstWrapProvisioning, Read-PeExportData, Assert-LibffiTypeExport

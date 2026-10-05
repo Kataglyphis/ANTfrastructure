@@ -1167,7 +1167,7 @@
       "licenseConcluded": "LGPL-2.0-or-later",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Windows Image / Media Layer",
-      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gstreamer at 1.29.2 | Patched in this repository: windows/scripts/patches/gstreamer/001-ges-commit-rename.patch | MODIFIED before redistribution: The Windows build patches a GES symbol rename."
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gstreamer at 1.29.2 | Patched in this repository: windows/scripts/patches/gstreamer/001-ges-commit-rename.patch | MODIFIED before redistribution: The Windows build patches a GES symbol rename, and carries upstream GStreamer commit 17d22abe89 in gst-plugins-bad's ext/dtls/gstdtlsconnection.c (an empty BIO read signals retry, not EOF) until GSTREAMER_VERSION moves past 1.29.2."
     },
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-GStreamer-meson-subprojects-glib-orc-libnice-x-217f040b",
@@ -1181,6 +1181,32 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Windows Image / Media Layer",
       "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink, state-changes, same-licence | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gstreamer/-/tree/main/subprojects at pinned by the GStreamer release's wrap files"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-GStreamer-Rust-plugins-rswebrtc-and-rsrtp-gst--50a200a2",
+      "name": "GStreamer Rust plugins rswebrtc and rsrtp (gst-plugins-rs net/webrtc, net/rtp)",
+      "versionInfo": "1.29.2",
+      "downloadLocation": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MPL-2.0",
+      "licenseConcluded": "MPL-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs at 1.29.2"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Rust-crates-linked-into-gstrswebrtc.dll-and-gs-d4b1b679",
+      "name": "Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, …)",
+      "versionInfo": "pinned by gst-plugins-rs's Cargo.lock at the GStreamer tag",
+      "downloadLocation": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT AND Apache-2.0 AND ISC AND BSD-3-Clause AND BSD-2-Clause AND Unicode-3.0 AND CDLA-Permissive-2.0",
+      "licenseConcluded": "MIT AND Apache-2.0 AND ISC AND BSD-3-Clause AND BSD-2-Clause AND Unicode-3.0 AND CDLA-Permissive-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-ONNX-Runtime-bf008cdb",
@@ -2395,6 +2421,16 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Windows-Image-GStreamer-meson-subprojects-glib-orc-libnice-x-217f040b"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-GStreamer-Rust-plugins-rswebrtc-and-rsrtp-gst--50a200a2"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Rust-crates-linked-into-gstrswebrtc.dll-and-gs-d4b1b679"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

@@ -115,7 +115,11 @@ These are recorded so nobody files them as gaps:
   `set-docker-data-root` action, which moves the data root to `D:`, stays the answer for
   every lane. CON12 takes 7.1 GB off the image regardless.
 - Windows (CON28): no TAPPAS (upstream supports Ubuntu, Raspberry Pi OS and Yocto only); no
-  `cargo-cbuild` (no Windows consumer builds a Rust GStreamer plugin); opus SIMD off on
+  `cargo-cbuild`, although a Windows consumer now uses Rust GStreamer plugins (2026-10-05):
+  OmniAccelerANT's WebRTC stream needs gst-plugins-rs's `webrtcsink`/`webrtcsrc` there too, so the image builds
+  `rswebrtc` and `rsrtp` itself, with a plain `cargo build` whose cdylibs are the plugin DLLs; cargo-c
+  makes C-ABI libraries and `.pc` files, which neither plugin needs
+  ([`windows-builds.md` § gst-plugins-rs on Windows](windows-builds.md#gst-plugins-rs-on-windows)); opus SIMD off on
   both lanes, performance only (arm64's RTCD passes `-mfpu=neon` and `__emit`, which
   clang-cl rejects, and opus's meson gives clang-cl no per-file SSE4.1/AVX2 flags); no
   Windows pyhailort wheel or `hailonet` (no Windows consumer and no Hailo device); no

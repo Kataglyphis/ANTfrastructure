@@ -56,7 +56,7 @@ param(
     # For iterating on the chain only: it does not make an unverified image safe to ship.
     [switch]$SkipSmokeGate,
     # Coverage floors: raise with the measured baseline, lower only explicitly.
-    [int]$SmokeMinPassed = 170,
+    [int]$SmokeMinPassed = 178,
     [int]$SmokeMaxSkipped = 3,
     # Substring of a stage label, e.g. opencv; -NoCache overrides it.
     [string[]]$NoCacheStage = @(),
@@ -827,10 +827,10 @@ if ($Stages -contains 'final') {
     } elseif ($TargetArch -ne 'amd64') {
         Write-Host '[bk:smoke-gate] skipped (-SkipSmokeGate). NB the arm64 payload is statically verified only.' -ForegroundColor Yellow
     } elseif (-not $SkipSmokeGate) {
-        # The CPU floor would let the GPU lane lose 60 assertions; 190 is the GPU column's sum, and an explicit value wins.
+        # The CPU floor would let the GPU lane lose 60 assertions; 198 sits just under the GPU column's sum, and an explicit value wins.
         $effectiveMinPassed = $SmokeMinPassed
         if ($isNvidia -and -not $PSBoundParameters.ContainsKey('SmokeMinPassed')) {
-            $effectiveMinPassed = 190
+            $effectiveMinPassed = 198
             Write-Host "smoke gate: GPU lane floor $effectiveMinPassed (CPU default is $SmokeMinPassed)"
         }
         # EXPECT_ROCM_SPIKES on rocm only; @{} elsewhere, so the cpu/nvidia gate args are unchanged.
