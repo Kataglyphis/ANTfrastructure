@@ -91,6 +91,61 @@ function Invoke-CodeQLProcess {
     return $proc.ExitCode
 }
 
+# The block-list `paths-ignore:` entries of a code-scanning config; comments and quotes stripped.
+function Get-CodeScanningPathsIgnore {
+    param([Parameter(Mandatory)][string]$ConfigPath)
+
+    # The list ends at the next column-0 key; a column-0 comment does not end it.
+    if ((Get-Content -LiteralPath $ConfigPath -Raw) -notmatch '(?ms)^paths-ignore:[^\n]*\n(.*?)(?=^[^\s#]|\z)') {
+        return , [string[]]@()
+    }
+    $entries = foreach ($m in [regex]::Matches($Matches[1], '(?m)^[ \t]+-[ \t]+(.+?)[ \t]*(?:#.*)?\r?$')) {
+        $m.Groups[1].Value.Trim('"', "'")
+    }
+    return , [string[]]@($entries)
+}
+
+# CodeQL's path semantics: a plain path covers itself and everything below it, * one segment, ** any depth.
+function Test-CodeScanningPathIgnored {
+    param([Parameter(Mandatory)][string]$Uri, [string[]]$Patterns = @())
+
+    foreach ($pattern in $Patterns) {
+        $p = $pattern.TrimEnd('/')
+        if ($p -notmatch '[*?]') {
+            if ($Uri -eq $p -or $Uri.StartsWith("$p/")) { return $true }
+            continue
+        }
+        $rx = '^' + (([regex]::Escape($p) -replace '\\\*\\\*', '.*') -replace '\\\*', '[^/]*' -replace '\\\?', '[^/]') + '(/.*)?$'
+        if ($Uri -match $rx) { return $true }
+    }
+    return $false
+}
+
+# `database analyze` applies paths-ignore to traced C++ not at all, so the results are filtered here; returns the count dropped.
+function Remove-SarifIgnoredResult {
+    param(
+        [Parameter(Mandatory)][string]$SarifPath,
+        [string[]]$IgnoredPaths
+    )
+
+    if (-not $IgnoredPaths) { return 0 }
+    $sarif = Get-Content -LiteralPath $SarifPath -Raw | ConvertFrom-Json -Depth 100
+    $dropped = 0
+    foreach ($run in @($sarif.runs)) {
+        if ($null -eq $run.PSObject.Properties['results']) { continue }
+        $kept = @($run.results | Where-Object {
+                $uri = "$($_.locations[0].physicalLocation.artifactLocation.uri)"
+                -not ($uri -and (Test-CodeScanningPathIgnored -Uri $uri -Patterns $IgnoredPaths))
+            })
+        $dropped += @($run.results).Count - $kept.Count
+        $run.results = $kept
+    }
+    if ($dropped -gt 0) {
+        $sarif | ConvertTo-Json -Depth 100 -Compress | Set-Content -LiteralPath $SarifPath -Encoding utf8NoBOM
+    }
+    return $dropped
+}
+
 # The image's sccache server never exits (SCCACHE_IDLE_TIMEOUT=0) and keeps its client's pipe, so a traced build never ends.
 function Disable-SccacheForTrace {
     $env:KATAGLYPHIS_NO_SCCACHE = '1'
@@ -266,6 +321,10 @@ function Invoke-BuildCodeQL {
         }
 
         Write-BuildLogSuccess -Context $Context -Message "Analysis completed for $lang. Results saved to: $sarifOutput"
+        if ($CodeScanningConfig) {
+            $dropped = Remove-SarifIgnoredResult -SarifPath $sarifOutput -IgnoredPaths (Get-CodeScanningPathsIgnore -ConfigPath $CodeScanningConfig)
+            Write-BuildLog -Context $Context -Message "$lang`: dropped $dropped result(s) under the config's paths-ignore."
+        }
     }
 
     if (@($failedLanguages).Count -gt 0) {
@@ -279,6 +338,9 @@ function Invoke-BuildCodeQL {
 
 Export-ModuleMember -Function @(
     'Disable-SccacheForTrace',
+    'Get-CodeScanningPathsIgnore',
+    'Test-CodeScanningPathIgnored',
+    'Remove-SarifIgnoredResult',
     'Get-CodeQLDatabaseCreateArgs',
     'Invoke-CodeQLProcess',
     'Invoke-BuildCodeQL'

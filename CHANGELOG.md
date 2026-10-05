@@ -7,6 +7,19 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — Windows CodeQL results honour the config's paths-ignore
+
+- `database analyze` applied `paths-ignore` to traced C++ not at all: OmniAccelerANT's first
+  complete scan reported 39 of its 63 cpp results, all four high-severity ones among them,
+  from the ignored `third_party/AccelerANTgine/third_party`. `Invoke-BuildCodeQL` now drops
+  results under the config's `paths-ignore` from each SARIF after the analysis and logs the
+  count (`Remove-SarifIgnoredResult`). On that scan's SARIF it drops exactly those 39.
+- CodeQL's path semantics: a plain path covers its subtree, `*` one segment, `**` any depth.
+  No unfiltered copy is kept, since an uploader that globs `*.sarif` would send both.
+- `CodeQL.SarifFilter.Tests.ps1`: four tests; a prefix match without the `/`, a lost `**` and
+  a filter that is not written back each red one.
+
+
 ## 2026-10-05 — the Dart gate can test in Chrome
 
 - `flutter_checks.sh --test-platform chrome` runs `flutter test --platform chrome` where the
