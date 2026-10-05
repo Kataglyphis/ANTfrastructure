@@ -14,6 +14,11 @@ source "$_CARGO_WRAPPER_DIR/_cargo_home_guard.sh"
 # shellcheck source=/dev/null
 source "$_CARGO_WRAPPER_DIR/_rust_toolchain_guard.sh"
 
+# Opt-in (KATAGLYPHIS_LINKER); a value that cannot link stops here, under set -e.
+# shellcheck source=/dev/null
+source "$_CARGO_WRAPPER_DIR/../../lib/linker-select.sh"
+linker_select_env
+
 # cargo_step <start-msg> <done-msg> -- <command...>; the -- lets messages contain spaces.
 cargo_step() {
   local start_msg="$1" done_msg="$2"

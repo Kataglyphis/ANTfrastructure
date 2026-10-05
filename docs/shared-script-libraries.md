@@ -69,8 +69,9 @@ linux/scripts/lib/       consumer-facing bash libraries: agentic-loop.sh +
                          cmake-build.sh, code-quality.sh, coverage.sh,
                          compiler-llvm-tools.sh (a build tree's own LLVM
                          tools, first on PATH), dartdoc-build.sh (+
-                         dartdoc-guides.py), log-bootstrap.sh (the logging
-                         block the others source), slang-compile.sh,
+                         dartdoc-guides.py), linker-select.sh (opt-in
+                         KATAGLYPHIS_LINKER=lld|mold), log-bootstrap.sh (the
+                         logging block the others source), slang-compile.sh,
                          wasm-opt.sh, ctest-run.sh (ctest runner),
                          docs-build.sh (Sphinx build helper),
                          rust-toolchain.sh — the last three had NO doc entry
@@ -379,6 +380,57 @@ It came up from AccelerANTgine's `ci-common.sh` once BeschleunigerBallett's cove
 lane hit the same "no profile can be merged" (2026-09-24).
 `linux/scripts/tests/test-compiler-llvm-tools.sh` pins it with two fake LLVM
 installs.
+
+## `linker-select.sh` — an opt-in linker
+
+`KATAGLYPHIS_LINKER=default|lld|mold` picks the linker for one build. Unset, or
+`default`, changes nothing: clang keeps GNU ld 2.46 and x64 Rust keeps rustc's
+own rust-lld. `linker_select_env` applies it, and `cmake_build_prepare_env` and the
+`cargo_test`/`cargo_bench`/`cargo_debug` wrappers call it. A Flutter lane calls it
+itself, after it has set `CC`.
+
+- **C/C++:** it appends `-fuse-ld=<x>` to `LDFLAGS`. CMake folds that into every
+  `CMAKE_*_LINKER_FLAGS`, but only at the first configure, so a reused build tree
+  keeps its old linker. For mold under clang it also passes
+  `-Wl,-plugin,<clang prefix>/lib/LLVMgold.so`. Without it mold stops on LTO bitcode
+  archive members ("the -plugin option was not provided"). GCC's collect2 passes its
+  own plugin.
+- **Rust:** for the host triple only, it sets `CARGO_TARGET_<HOST>_LINKER=$CC` and
+  appends `-C link-arg=-fuse-ld=<x>` to `CARGO_TARGET_<HOST>_RUSTFLAGS`. wasm32 and
+  the Android targets keep their own linkers. Changing the value recompiles every
+  crate, and sccache misses with it.
+- **Loud, never a fallback.** An unknown value returns 2. Three things return 1:
+  a set `RUSTFLAGS` or `CARGO_ENCODED_RUSTFLAGS` (cargo would take either over the
+  per-target flags without a word), a driver that cannot link a one-line probe with
+  `-fuse-ld=<x>`, and a mold that cannot be had. `USE_LLD` in `compiler-cache.sh`
+  falls back silently; this switch exists to measure, and a fallback would make the
+  measurement lie.
+- **mold comes from PATH, else the pinned release.** No image ships it yet.
+  `linker_select_ensure_mold` downloads the `MOLD_LINUX_*` pin in `versions.env`
+  (SHA256 per arch: x86_64, aarch64, riscv64) into a version-keyed cache
+  (`LINKER_SELECT_CACHE_DIR`, default `$TMPDIR`). An unpinned architecture fails.
+
+**Which one to pick.** Measured 2026-10-05 in `:latest` on 32 cores, across OxidANT,
+AccelerANTgine and the OmniAccelerANT Flutter app:
+
+| Build | GNU ld | lld 23 | mold 3.0.0 |
+| --- | --- | --- | --- |
+| AccelerANTgine Debug (ASan, UBSan), relink all 5 binaries | 1.70 s | 0.35 s | 0.56 s |
+| AccelerANTgine release, `libAccelerANTgine.so` (ThinLTO) | 0.97 s | 0.85 s | 0.82 s |
+| `flutter build linux --release`, full / touch one TU | 49.3 / 3.9 s | 47.6 / 3.8 s | 49.5 / 4.3 s |
+| Rust dev link, `liboxidant.so` (rust-lld default: 0.22 s) | 0.87 s | 0.14 s | 0.33 s |
+
+Linking is about 2% of these builds, so `lld` is the useful value. It is already
+in the image, and it is the one real gain on Debug relinks. mold 3.0.0 links
+correctly, with the same exported symbols and passing tests, but is never faster
+than lld here. mold 2.x (Ubuntu's 2.40.4, the last C++ release 2.42.1) does not
+link AccelerANTgine. It stops on its non-PIC spdlog (`R_X86_64_PC32 … recompile
+with -fPIC`). With spdlog made PIC it exports 619 extra symbols, and two Debug
+suites abort on an ASan odr-violation. That is why the pin is 3.x and why no apt
+package is used.
+
+`linux/scripts/tests/test-linker-select.sh` pins it with stub drivers and a stubbed
+download.
 
 ## `riscv64-cross.sh` — cross-build for riscv64, test under QEMU
 

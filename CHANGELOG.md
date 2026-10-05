@@ -7,6 +7,24 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — an opt-in linker: `KATAGLYPHIS_LINKER=lld|mold`
+
+- `lib/linker-select.sh`: `linker_select_env` appends `-fuse-ld=<x>` to `LDFLAGS` (plus
+  clang's LLVMgold.so for mold) and links the host Rust target through `$CC` with the same
+  linker. Unset changes nothing. `cmake_build_prepare_env` and the cargo test/bench/debug
+  wrappers call it.
+- Fails, never falls back: 2 on an unknown value, 1 on a set `RUSTFLAGS`, a failing probe
+  link or an unobtainable mold. mold comes from PATH, else the pinned, SHA-checked 3.0.0
+  release (`MOLD_LINUX_*` in `versions.env`, noforward).
+- Measured first: lld matches or beats mold on every family build, and mold 2.x cannot link
+  AccelerANTgine. The table and the reasons are in `docs/shared-script-libraries.md`
+  § *linker-select.sh*. CON57 holds baking mold into the image.
+- `test-linker-select.sh`: 22 assertions, and nine mutations that each red it.
+- WSL 3's `wslc` was evaluated beside it, against Rancher Desktop. It has faster bind
+  mounts and a fixed credential pull. It has no `--privileged`, `--platform` or `--device`,
+  so no lane moves (`docs/rancher-desktop-linux-containers.md` § *WSL containers*).
+
+
 ## 2026-10-05 — ripgrep is the family's search tool
 
 - Owner rule: search with `rg`, not `grep -r` or `findstr`, in every repo of the family

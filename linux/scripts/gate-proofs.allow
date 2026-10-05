@@ -151,3 +151,5 @@ mutation-family:riscv64-cross
 mutation-family:chrome-emulator
 # The host prune tool (linux/host-config/prune-safe.sh), which no slug owns. Proof: linux/scripts/tests/test-prune-safe.sh.
 mutation-family:prune-safe
+# The opt-in linker (lib/linker-select.sh) and its cmake-build.sh call site; proof: linux/scripts/tests/test-linker-select.sh.
+mutation-family:linker-select

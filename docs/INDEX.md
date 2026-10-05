@@ -137,7 +137,7 @@ The two halves of one topic often split:
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |
 | **Upgrading dependencies** — Renovate as a local CLI, and why `--apply` refuses some submodules | [`dependency-updates.md`](dependency-updates.md) |
 | Compiling a Slang shader tree to SPIR-V and WGSL | [`slang-shader-compilation.md`](slang-shader-compilation.md) |
-| The sourceable cores in `linux/scripts/lib/` — cmake-build, ctest-run, docs-build, app-packaging, compiler-llvm-tools and the rest — and the consumer entry points beside them (`run-lint-gates.sh`, `run-in-ci-image.sh`, `ci-image-ref.sh`) | [`shared-script-libraries.md`](shared-script-libraries.md) |
+| The sourceable cores in `linux/scripts/lib/` — cmake-build, ctest-run, docs-build, app-packaging, compiler-llvm-tools, linker-select (`KATAGLYPHIS_LINKER`, lld or mold) and the rest — and the consumer entry points beside them (`run-lint-gates.sh`, `run-in-ci-image.sh`, `ci-image-ref.sh`) | [`shared-script-libraries.md`](shared-script-libraries.md) |
 | Job counts, per-job memory, why a build got OOM-killed | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md) |
 | Watching resource use during a build | [`build-resource-monitoring.md`](build-resource-monitoring.md) |
 | **Giving a build a credential** without baking it into a layer | [`build-secrets.md`](build-secrets.md) |

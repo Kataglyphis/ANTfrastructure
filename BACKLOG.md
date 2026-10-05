@@ -130,6 +130,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
+      (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
+      it in (an `install_mold_pinned` beside `install_sccache_pinned`, apt's 2.40.4 cannot link
+      AccelerANTgine) is open on two conditions. 3.x must have had a point release: 3.0.0 is
+      the Rust rewrite, published the day the switch landed. And some build must link
+      faster with it than with lld: none measured did (`docs/shared-script-libraries.md`
+      § *linker-select.sh*). BeschleunigerBallett is the one family build not yet measured.
+
 - [ ] **CON44 — `LP_NATIVE_VECTOR_WIDTH=256` in the image** [S, ★★]. Mesa 26.0.8's lavapipe
       compiles its BVH radix sort for 8-lane subgroups, but llvmpipe's subgroup is its vector
       width / 32: 4 lanes on arm64 NEON and riscv64, where every acceleration-structure build
