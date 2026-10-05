@@ -372,17 +372,19 @@ Assert-Test -Name 'rustup which cargo resolves' -Condition {
     $LASTEXITCODE -eq 0
 } -FailMessage 'rustup which cargo failed (proxy shims resolve no real toolchain?)'
 
-# Baked so Flutter+Rust consumers skip a cold `cargo install` per container.
-Assert-Test -Name 'flutter_rust_bridge_codegen available' -Condition {
-    & flutter_rust_bridge_codegen --version 2>&1 | Out-Null
-    $LASTEXITCODE -eq 0
-} -FailMessage 'flutter_rust_bridge_codegen missing or broken (bake step in Install-RustToolchain.ps1 failed?)'
+# Baked so Flutter+Rust consumers skip a cold `cargo install` per container; pinned, as the bindings must match the runtime.
+Assert-Test -Name 'flutter_rust_bridge_codegen at FLUTTER_RUST_BRIDGE_VERSION' -Condition {
+    $pin = [string]$env:FLUTTER_RUST_BRIDGE_VERSION
+    $ver = & flutter_rust_bridge_codegen --version 2>&1
+    return ($LASTEXITCODE -eq 0) -and $pin -and ("$ver" -match "\b$([regex]::Escape($pin))\b")
+} -FailMessage "flutter_rust_bridge_codegen missing, or not at FLUTTER_RUST_BRIDGE_VERSION '$env:FLUTTER_RUST_BRIDGE_VERSION'"
 
-# Well-formed only: Rust is deliberately unpinned on Windows (RUST_VERSION pins Linux).
-Assert-Test -Name 'Rust version (well-formed)' -Condition {
+# Pinned like Linux since 2026-10-05 (CON60); an unset pin fails rather than passing vacuously.
+Assert-Test -Name 'Rust at RUST_VERSION' -Condition {
+    $pin = [string]$env:RUST_VERSION
     $ver = & rustc --version 2>&1
-    return $ver -match '\d+\.\d+\.\d+'
-} -FailMessage "rustc --version did not report a well-formed version"
+    return $pin -and ("$ver" -match "^rustc $([regex]::Escape($pin)) ")
+} -FailMessage "rustc is not at RUST_VERSION '$env:RUST_VERSION'"
 
 # Proves the toolchain compiles, links through the MSVC linker and runs, not just that rustc exists.
 Assert-Test -Name 'rustc compiles + links + runs a program' -Condition {

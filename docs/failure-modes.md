@@ -1604,7 +1604,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** A **toolchain-less** rustup (proxy shims in `CARGO_BIN` that resolve no toolchain) — e.g. `rustup-init --default-toolchain none`, or an image from before the Cargokit fix
 
-**Fix.** rustup WITH a stable default toolchain IS the sole provider (`Install-RustToolchain.ps1`); `CARGO_BIN` on the rustup path is by design. Fix with `rustup default stable`; never add a second provider (no scoop rust) ([`windows-build-invariants.md`](windows-build-invariants.md#rust-rustup-with-a-default-toolchain-is-the-sole-provider)).
+**Fix.** rustup WITH a default toolchain (`RUST_VERSION`, pinned since 2026-10-05) IS the sole provider (`Install-RustToolchain.ps1`); `CARGO_BIN` on the rustup path is by design. Fix with `rustup default $env:RUST_VERSION`; never add a second provider (no scoop rust) ([`windows-build-invariants.md`](windows-build-invariants.md#rust-rustup-with-a-default-toolchain-is-the-sole-provider)).
 
 ### A GitLab download "succeeds" with HTTP 200 but is a few KB
 

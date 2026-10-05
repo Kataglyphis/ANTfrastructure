@@ -643,9 +643,9 @@ asserts it exists and records a resolved clang-cl (SKIP on older images).
 ### Rust toolchain (rustup WITH a default toolchain — never toolchain-less rustup)
 
 Rust is provisioned **exclusively via rustup** (`Install-RustToolchain.ps1` runs
-`rustup-init.exe -y --default-toolchain stable --profile minimal`), and
-`flutter_rust_bridge_codegen` is baked alongside so Flutter+Rust consumers skip a
-minutes-long cold `cargo install` per fresh container.
+`rustup-init.exe -y --default-toolchain <RUST_VERSION> --profile minimal`), and
+`flutter_rust_bridge_codegen` at `FLUTTER_RUST_BRIDGE_VERSION` is baked alongside so
+Flutter+Rust consumers skip a minutes-long cold `cargo install` per fresh container.
 
 rustup is **required**, not merely tolerated: Flutter's **Cargokit** (the build
 glue used by `flutter_rust_bridge`-style plugins, e.g. `rust_builder/cargokit` in
@@ -663,11 +663,16 @@ default toolchain** resolves fine — and because `Dockerfile.base` points
 ahead of scoop's shim dir on `PATH`, the proxies winning is now the *correct*
 outcome. Keep exactly one Rust provider: no `scoop install main/rust` alongside.
 
-Rust is DELIBERATELY unpinned on this lane (`stable` at build time;
-versions.env's `RUST_VERSION` pins only the Linux lane). The smoke test asserts a
-well-formed rustc version, the Cargokit probe shape (`rustup show
-active-toolchain`, `rustup which cargo`), `flutter_rust_bridge_codegen
---version`, and a compile/link/run probe — never the versions.env value.
+Rust is **pinned to `RUST_VERSION`, as on Linux** (owner decision 2026-10-05,
+CON60). Until then this lane installed `stable` at build time, which made Windows and
+Linux build `oxidant` with different compilers after every Windows chain. It also named
+the toolchain `stable-x86_64-pc-windows-msvc`, so a `rustup update` would move it
+silently. The mirror fetches `channel-rust-<RUST_VERSION>.toml`, and the toolchain is
+named `<RUST_VERSION>-x86_64-pc-windows-msvc`. OmniAccelerANT's Cargokit builds with
+whatever rustup resolves since 2026-10-05, so this pin is the app's too.
+`Dockerfile.base` declares `RUST_VERSION` and `FLUTTER_RUST_BRIDGE_VERSION` right above
+the Rust layer. The smoke test asserts both values, the Cargokit probe shape
+(`rustup show active-toolchain`, `rustup which cargo`) and a compile/link/run probe.
 
 ## Running the Image
 

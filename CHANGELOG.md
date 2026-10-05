@@ -7,6 +7,26 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — Windows Rust pinned; five of OxidANT's waiting rows land (CON60, CON55)
+
+- **Windows Rust is pinned to `RUST_VERSION`** (owner decision). `Install-RustToolchain.ps1`
+  mirrors `channel-rust-<RUST_VERSION>.toml` instead of `channel-rust-stable.toml`, and
+  bakes `flutter_rust_bridge_codegen` at `FLUTTER_RUST_BRIDGE_VERSION` instead of the newest
+  release. `Dockerfile.base` declares both `ARG`s above the Rust layer, and
+  `Test-Container.ps1` asserts the values rather than a well-formed version. Ran in a
+  throwaway `:winamd64` container: `1.98.1-x86_64-pc-windows-msvc`, codegen 2.13.0.
+- **`_cargo_wrapper.sh` adds the `safe.directory` guard** (`CARGO_SAFE_DIRECTORY`, default
+  `/workspace`, empty opts out, never added twice). Every `cargo_*.sh` driver now sources the
+  wrapper, so release, doc, coverage, security and fmt/clippy also get the CARGO_HOME and
+  toolchain guards. `test-cargo-wrapper.sh`: 12 assertions, three mutations.
+- **`Get-ANTfrastructurePin` moves to `WindowsScripts.Shared.psm1`**, with a
+  `-VersionsEnvPath` for tests, and `windows/scripts/rust/Build-Windows.ps1` is deleted
+  (owner decision: no consumer; OxidANT owns its Windows Rust build).
+- The MSIX trust steps (`Root` as well as `TrustedPeople`, `0x800B0109`, `Get-AppxLog`) move
+  into `windows/scripts/certificates/README.md`. `docs/adopting-in-a-new-project.md` § 8
+  names `scripts/windows/container/`.
+
+
 ## 2026-10-05 — the push gate counts from develop; lint tools install in one rename
 
 - **pre-push** grades the mutations a push actually adds. git hands the hook each

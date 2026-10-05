@@ -2,12 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../01-core/logging.sh"
-# cargo install writes under CARGO_HOME, which is root-owned in the runtime image.
+# Logging, the CARGO_HOME and toolchain guards, safe.directory and the opt-in linker, one copy for every driver.
 # shellcheck source=/dev/null
-source "$SCRIPT_DIR/_cargo_home_guard.sh"
-# shellcheck source=/dev/null
-source "$SCRIPT_DIR/_rust_toolchain_guard.sh"
+source "$SCRIPT_DIR/_cargo_wrapper.sh"
 # Pins come via the safe loader, never `source`: versions.env values may hold shell metacharacters.
 # shellcheck source=../../01-core/load-versions-env.sh
 source "$SCRIPT_DIR/../../01-core/load-versions-env.sh"

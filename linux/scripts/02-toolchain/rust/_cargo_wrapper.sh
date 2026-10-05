@@ -6,13 +6,20 @@ _CARGO_WRAPPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$_CARGO_WRAPPER_DIR/../../01-core/logging.sh"
 
-# Writable-CARGO_HOME guard, shared with cargo_security_checks.sh.
+# Writable-CARGO_HOME guard: cargo install and every build write under it.
 # shellcheck source=/dev/null
 source "$_CARGO_WRAPPER_DIR/_cargo_home_guard.sh"
 
 # The images also carry Ubuntu's Rust debs, which would otherwise mix into the pinned toolchain.
 # shellcheck source=/dev/null
 source "$_CARGO_WRAPPER_DIR/_rust_toolchain_guard.sh"
+
+# Uid 1001 does not own a bind-mounted checkout, so git refuses it as dubious ownership; an empty value opts out, as in lib/cmake-build.sh.
+_cargo_safe_dir="${CARGO_SAFE_DIRECTORY-/workspace}"
+if [ -n "${_cargo_safe_dir}" ] \
+   && ! git config --global --get-all safe.directory 2>/dev/null | grep -qxF -- "${_cargo_safe_dir}"; then
+  git config --global --add safe.directory "${_cargo_safe_dir}" || true
+fi
 
 # Opt-in (KATAGLYPHIS_LINKER); a value that cannot link stops here, under set -e.
 # shellcheck source=/dev/null

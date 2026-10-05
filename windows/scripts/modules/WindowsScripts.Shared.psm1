@@ -225,6 +225,30 @@ function Assert-FileSha256 {
 
 <#
 .SYNOPSIS
+    A pin from the environment, else from this hub's versions.env; throws rather than let the newest release win.
+.PARAMETER Name
+    The versions.env key, e.g. CARGO_AUDIT_VERSION.
+.PARAMETER VersionsEnvPath
+    Defaults to the versions.env beside this module in the hub checkout.
+#>
+function Get-ANTfrastructurePin {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        # modules -> scripts -> windows -> the hub root.
+        [string]$VersionsEnvPath = (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')
+    )
+    $fromEnv = [Environment]::GetEnvironmentVariable($Name)
+    if (-not [string]::IsNullOrWhiteSpace($fromEnv)) { return $fromEnv }
+    if (Test-Path $VersionsEnvPath) {
+        $pins = ConvertFrom-VersionsEnv -Path $VersionsEnvPath
+        if ($pins.Contains($Name) -and -not [string]::IsNullOrWhiteSpace($pins[$Name])) { return $pins[$Name] }
+    }
+    throw ("$Name is not set and could not be read from $VersionsEnvPath. " +
+           'It pins a tool whose verdict decides a gate; unpinned, the newest release would.')
+}
+
+<#
+.SYNOPSIS
     Parses a versions.env file into an ordered key/value dictionary.
 .DESCRIPTION
     Skips blanks and #-comments, splits on the first '=', trims and unquotes; parsed, never sourced.
@@ -656,6 +680,8 @@ Export-ModuleMember -Function @(
     'Invoke-DownloadWithRetry',
     'Assert-FileSha256',
     'ConvertFrom-VersionsEnv',
+    # OxidANT's Build-Windows.ps1 pins cargo-audit and cargo-deny with it (CON55).
+    'Get-ANTfrastructurePin',
     'Expand-ArchiveSubdirectory',
     'Test-SccacheRemoteConfigured',
     'Get-SccacheStatsText',

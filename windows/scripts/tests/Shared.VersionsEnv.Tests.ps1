@@ -64,6 +64,46 @@ Describe 'ConvertFrom-VersionsEnv' {
     }
 }
 
+Describe 'Get-ANTfrastructurePin' {
+
+    It 'takes the environment first, so an image build-arg beats a stale file' {
+        Invoke-InTestDir { param($dir)
+            $f = Join-Path $dir 'versions.env'
+            Set-Content -Path $f -Value 'WBT_TOOL_VERSION=1.0.0' -Encoding ASCII
+            Invoke-WithEnv -Vars @{ WBT_TOOL_VERSION = '2.0.0' } -Body {
+                Assert-Equal '2.0.0' (Get-ANTfrastructurePin -Name 'WBT_TOOL_VERSION' -VersionsEnvPath $f)
+            }
+        }
+    }
+
+    It 'falls back to versions.env when the environment does not set it' {
+        Invoke-InTestDir { param($dir)
+            $f = Join-Path $dir 'versions.env'
+            Set-Content -Path $f -Value 'WBT_TOOL_VERSION=1.0.0' -Encoding ASCII
+            Invoke-WithEnv -Vars @{ WBT_TOOL_VERSION = $null } -Body {
+                Assert-Equal '1.0.0' (Get-ANTfrastructurePin -Name 'WBT_TOOL_VERSION' -VersionsEnvPath $f)
+            }
+        }
+    }
+
+    It 'throws on a key nowhere to be found, rather than letting the newest release win' {
+        Invoke-InTestDir { param($dir)
+            $f = Join-Path $dir 'versions.env'
+            Set-Content -Path $f -Value 'OTHER=1' -Encoding ASCII
+            Invoke-WithEnv -Vars @{ WBT_TOOL_VERSION = $null } -Body {
+                Assert-Throws -Body { Get-ANTfrastructurePin -Name 'WBT_TOOL_VERSION' -VersionsEnvPath $f } `
+                    -MessagePattern 'WBT_TOOL_VERSION is not set'
+            }
+        }
+    }
+
+    It "defaults to the hub's own versions.env" {
+        Invoke-WithEnv -Vars @{ CARGO_AUDIT_VERSION = $null } -Body {
+            Assert-True ((Get-ANTfrastructurePin -Name 'CARGO_AUDIT_VERSION') -match '^\d+\.\d+') 'a version from the real file'
+        }
+    }
+}
+
 Describe 'Save-PythonWheel' {
 
     It 'returns exactly the staged path for a single wheel (callers MUST @()-wrap: unwrap made [0] the first CHAR -> pip installed PyPI package "c")' {
