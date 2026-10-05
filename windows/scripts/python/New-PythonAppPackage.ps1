@@ -96,7 +96,9 @@ function Invoke-MsiAppPackage {
     $icon = ConvertTo-PythonAppIcon -PngPath (Get-AppIconPng "the MSI's shortcut") -Destination (Join-Path $WorkDir 'app.ico')
     $wxs = New-PythonAppWxs -Bundle $Bundle -App $app -Version $version -IconPath $icon -Destination (Join-Path $WorkDir "$($app['id']).wxs")
     $msi = Join-Path $OutDir "$stem.msi"
-    & wix build -arch $packageArch -pdbtype none -o $msi $wxs
+    $wix = Resolve-WixExe -OverridePath ''
+    if (-not $wix) { throw 'wix.exe not found under $env:WIX or on PATH; the Windows image installs it' }
+    & $wix build -arch $packageArch -pdbtype none -o $msi $wxs
     if ($LASTEXITCODE -ne 0) { throw "wix build failed (exit $LASTEXITCODE)" }
     Write-Created $msi
     if (-not $test) { return }

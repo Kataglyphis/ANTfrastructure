@@ -160,6 +160,38 @@
   "why": "a mutation recorded as biting while its suite was ALREADY red proves nothing; each distinct test must pass unmutated first"
  },
  {
+  "id": "mutations.host-skip-only-on-git-bash",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "HOST_MAY_SKIP = os.name == \"nt\" or sys.platform.startswith((\"cygwin\", \"msys\"))",
+  "replace": "HOST_MAY_SKIP = True",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "on Linux, where CI grades every mutation, an exit 77 or a waived case must stay a failure; a skip there would shrink CI without a red line"
+ },
+ {
+  "id": "mutations.host-skip-reads-77",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    if rc == 77 and HOST_MAY_SKIP:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "on Git Bash a suite that cannot run says so with exit 77; reading that as a vacuous bite makes every Windows pre-push red for the host, not the code"
+ },
+ {
+  "id": "mutations.host-skipped-survivor-is-a-skip",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        elif HOST_MAY_SKIP and now_skips:",
+  "replace": "        elif False:",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a survivor in a suite that skipped or waived a case on this host proves nothing there (the case that would catch it never ran); calling it SURVIVED on Git Bash is a false alarm Linux would not raise"
+ },
+ {
+  "id": "mutations.skip-verdict-is-honest",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    if rc == 0 and report.skipped:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a run with skips must not close on 'every recorded mutation is caught' -- that line is what a reader trusts, and here it would be untrue"
+ },
+ {
   "id": "wheels.no-deps",
   "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
   "find": "  uv pip install --no-deps --force-reinstall \"${_ow[@]}\"",
@@ -3882,10 +3914,18 @@
  {
   "id": "runtime-paths.canonical-paths-expanded",
   "target": "linux/scripts/04-runtime/verify-runtime-paths.sh",
-  "find": "    | while IFS= read -r line; do envsubst <<<\"$line\"; done \\",
+  "find": "    | while IFS= read -r line; do _envsubst \"$line\"; done \\",
   "replace": "    | while IFS= read -r line; do printf '%s\\n' \"$line\"; done \\",
   "test": "bash linux/scripts/tests/test-runtime-paths.sh",
   "why": "a canonical path holding ${GCC_VERSION} would never match a Dockerfile that spells the version out"
+ },
+ {
+  "id": "runtime-paths.needs-no-envsubst",
+  "target": "linux/scripts/04-runtime/verify-runtime-paths.sh",
+  "find": "    | while IFS= read -r line; do _envsubst \"$line\"; done \\",
+  "replace": "    | while IFS= read -r line; do envsubst <<<\"$line\"; done \\",
+  "test": "bash linux/scripts/tests/test-runtime-paths.sh",
+  "why": "the image ships no envsubst; leaning on it again turns the canonical list empty there, and the gate passes having compared nothing"
  },
  {
   "id": "workflow-lint.findings-fail",

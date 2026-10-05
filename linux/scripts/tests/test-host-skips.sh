@@ -102,6 +102,14 @@ out="$(_run linux run-tests.sh)"
 t_assert_eq "1" "${out%%|*}"
 t_assert_contains "${out}" "1 suite(s) failed: test-lacks.sh"
 
+t_case "a red Git Bash run still lists what it skipped"
+_suite test-fails.sh 't_assert_ok false'
+out="$(_run gitbash run-tests.sh)"
+t_assert_eq "1" "${out%%|*}"
+t_assert_contains "${out}" "skipped on this host: test-lacks.sh"
+t_assert_contains "${out}" "1 suite(s) failed: test-fails.sh"
+rm -f "${_WORK}/tests/test-fails.sh"
+
 t_case "and a stray exit 77 on Linux is a failure too, not a quiet skip"
 printf '#!/usr/bin/env bash\nexit 77\n' > "${_WORK}/tests/test-lacks.sh"
 out="$(_run linux run-tests.sh)"

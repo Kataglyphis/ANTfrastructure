@@ -95,7 +95,8 @@ t_assert_contains "${_out}" "--index-url https://download.pytorch.org/whl/rocm7.
   "a ROCm torch comes from the PINNED line, whatever index the app extra names"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'whl/cpu')" \
   "and never falls through to the CPU index"
-_out="$(PYTORCH_EXTRA=pytorch-rocm10 _enforce; echo "rc=$?")"
+# Unset, not inherited: the image exports PYTORCH_ROCM_INDEX.
+_out="$(unset PYTORCH_ROCM_INDEX; PYTORCH_EXTRA=pytorch-rocm10 _enforce; echo "rc=$?")"
 t_assert_contains "${_out}" "PYTORCH_ROCM_INDEX unset" "an unset pin fails loudly instead of guessing"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'uv pip install')" "and installs NOTHING (no quiet CPU fallback)"
 t_assert_contains "${_out}" "rc=1" "with a failing exit status"

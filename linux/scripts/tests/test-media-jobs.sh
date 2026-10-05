@@ -20,7 +20,8 @@ _CAP_STUB='compute_jobs_with_mem_cap() { printf "CAP %s\n" "$2"; }'
 _run_common()      { _jobs "${_common_src}"   "${_CAP_STUB}" "${1:-}"; }
 _run_common_bare() { _jobs "${_common_src}"   ""             "${1:-}"; }
 # The on-demand copy reads an absolute container path, so its cap branch is asserted on the source.
-_run_preamble()    { _jobs "${_preamble_src}" ""             "${1:-}"; }
+_preamble_run_src="${_preamble_src//\/opt\/scripts\/core\//\/nonexistent\/scripts-core\/}"
+_run_preamble()    { _jobs "${_preamble_run_src}" ""         "${1:-}"; }  # that path points nowhere: the image holds the real helper
 
 t_case "the default cap is 2000 MB in BOTH definitions"
 t_assert_eq "CAP 2000" "$(_run_common)"

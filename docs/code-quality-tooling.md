@@ -512,10 +512,22 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1520 entries** over **131 distinct test commands**; both digits are
+manifest holds **1525 entries** over **131 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
+
+**On a Git Bash host a skip is a skip, not a vacuous bite** (2026-10-05). A suite that
+cannot run there exits 77 with its `SKIP` line (`t_skip_unless`,
+[`cross-build-verification.md` § *The `linux/scripts/tests` suites*](cross-build-verification.md#the-linuxscriptstests-suites)).
+The gate reports such an entry as `skip`, with that line, and does not fail it. A
+survivor is a `skip` too, never `SURVIVED`, when its suite skipped or waived any case on
+this host (a `SKIP` line from `t_needs` or an older `_posix_host`, or a waived count):
+the case that would catch it may never have run. The closing line
+then counts the skips instead of claiming every mutation was caught. On Linux, where CI
+grades, exit 77 stays a vacuous bite and nothing is ever waived.
+`test-mutation-gate.sh` proves both sides there, running the gate once as itself and
+once with `sys.platform` set to `msys`.
 
 **The gate never edits the tree it is given.** Until 2026-09-03 `apply_and_run()`
 wrote the mutated text straight into `--root` (default: this repo) and restored it
@@ -736,7 +748,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 41 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 45 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of

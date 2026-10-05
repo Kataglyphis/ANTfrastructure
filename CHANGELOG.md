@@ -7,6 +7,41 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — Windows-host follow-ups: the mutation gate skips too; the suites pass in the image
+
+- **`verify_mutations.py` on a Git Bash host:**
+  - A test that exits 77 is a `skip`, reported with its `SKIP` line. It used to read
+    as a vacuous bite, so a Windows pre-push went red for the host, not the code.
+  - A survivor is a `skip` too, never `SURVIVED`, when its suite skipped or waived a case
+    on this host: the case that would catch it may never have run. The commit hook
+    showed the need; four `mutations.*` entries survived there in `_posix_host` cases.
+  - The closing line then counts the skips.
+  - On Linux nothing changes: exit 77 is a vacuous bite, and nothing is waived.
+  - `test-mutation-gate.sh` proves both sides by running the gate as itself and with
+    `sys.platform` set to `msys`. Four mutations cover it.
+- **`run-tests.sh`** lists its skips before the verdict, so a red Git Bash run still
+  says what it never ran.
+- **Eight suites failed inside `:latest` on a green tree.** Each test assumed a bare
+  CI runner. They pass in the image now:
+  - `compiler-cache-launcher`, `media-jobs`, `vulkan-host-sdk-prune` and
+    `python-ci-packaging-arm` run copies of their scripts. The copies now point
+    `/opt/scripts` at a path that does not exist; the image's real copy used to win
+    over the fixture.
+  - `compiler-cache` drops every directory holding an `sccache` from `PATH` for its
+    "absent" fixture.
+  - `cuda-runtime-payload` unsets `PYTORCH_ROCM_INDEX`, which the image exports.
+  - `smoke-arch-parity` runs its stubbed pythons with `-S`. The image's venv has
+    onnxruntime, and its site-packages start-up imports collided with the stubs.
+  - **`verify-runtime-paths.sh` was vacuous wherever `envsubst` was missing**, the
+    image included. Both lists it compares came out empty, so it passed having checked
+    nothing. A bash `_envsubst` now does the same expansion (`${NAME}` and `$NAME`,
+    exported variables only, byte-identical on every form tried). A test with a broken
+    `envsubst` first on `PATH` holds it, and `runtime-paths.needs-no-envsubst` proves
+    that test can fail.
+- `New-PythonAppPackage.ps1` finds wix through `Resolve-WixExe` (`$env:WIX`, then
+  `PATH`) instead of a bare `wix`.
+
+
 ## 2026-10-05 — WebRTC works on Windows: libffi, DTLS and the Rust plugins
 
 - **libffi exported zeroed type descriptors on both Windows lanes.** Its meson port
@@ -45,6 +80,7 @@
 - Measured on amd64 in a `:winamd64` container: no lld-link diagnostic in the whole
   build, `ffi_call` returns 42 where the old DLL's `ffi_prep_cif` failed, all thirteen
   plugins load, and the loopback decodes 60 frames in 2.1 s. arm64 is unproven (CON63).
+
 
 ## 2026-10-05 — an MSI function and the helper list; CON55 closes
 
@@ -495,8 +531,6 @@
   win-arm64 wheel (stable, test and nightly checked), so the bundle's own 3.14
   interpreter cannot install them - they serve a device that brings its own
   cp313 interpreter.
-
-
 
 
 ## 2026-10-02 - the Python lane grows a riscv64 row: the riscv64 image under QEMU
@@ -4962,5 +4996,4 @@ half of its mechanical fixes here; the consumer halves are one commit per repo.
   `rootlesskit`, `runc` and `containerd-rootless.sh`, because `/usr/local` already
   held the same nerdctl-full 2.3.5 bundle. Not a version change — a relocation.
   Documented as [`linux-host-setup.md` § B3c](docs/linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo).
-
 

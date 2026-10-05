@@ -173,7 +173,8 @@ t_assert_eq "1" "${_rc}" "a bad result must exit 1, not pass"
 t_assert_contains "${_out}" "ONNX-EP FAIL"
 
 t_case "no onnxruntime -> exit 3 (skip), never a crash or a false pass"
-_out="$(PYTHONPATH="/nonexistent" python3 "${_ONNX_PY}" 2>&1)"; _rc=$?
+# -S: no site-packages, so a python that HAS onnxruntime (the image's venv) cannot find it either.
+_out="$(PYTHONPATH="/nonexistent" python3 -S "${_ONNX_PY}" 2>&1)"; _rc=$?
 t_assert_eq "3" "${_rc}" "the skip path must be a clean 3: ${_out}"
 t_assert_contains "${_out}" "ONNX-EP SKIP"
 
@@ -367,9 +368,10 @@ for _m in torch torchvision onnxruntime numpy contourpy onnxruntime_genai; do
 done
 printf 'import os\n__version__ = os.environ["STUB_PIL"]\n' > "${_STV}/stubs/PIL/__init__.py"
 printf 'import os\n__version__ = os.environ["STUB_AI_EDGE_LITERT"]\n' > "${_STV}/stubs/ai_edge_litert/__init__.py"
+# -S: only the stubs, never a real site-packages whose start-up imports collide with them (the image's venv).
 cat > "${_STV}/venv/bin/python" <<EOF
 #!/bin/sh
-exec env PYTHONPATH="${_STV}/stubs" python3 "\$@"
+exec env PYTHONPATH="${_STV}/stubs" python3 -S "\$@"
 EOF
 chmod +x "${_STV}/venv/bin/python"
 cat > "${_STV}/versions.env" <<'ENVEOF'
