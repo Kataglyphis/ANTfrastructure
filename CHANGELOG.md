@@ -7,6 +7,24 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — a CodeQL-traced Windows build runs without sccache
+
+- `Invoke-BuildCodeQL`'s `database create` hung for hours at near-zero CPU. The image's sccache
+  server never exits (`SCCACHE_IDLE_TIMEOUT=0`), and one started under the CodeQL tracer keeps
+  its client's output pipe, so the Rust extractor's `cargo metadata` waited forever. Killing the
+  server freed one call, and the next started a new server and blocked again (OmniAccelerANT).
+- `Disable-SccacheForTrace` clears `RUSTC_WRAPPER`, `CC_WRAPPER`, `CXX_WRAPPER` and both CMake
+  launcher variables and sets `KATAGLYPHIS_NO_SCCACHE=1` before `database create`.
+  `Initialize-BuildCacheEnvironment` leaves the launchers off under the marker, and
+  `Get-SccacheStatsText` returns nothing, since asking for stats starts a server. A cache hit
+  would also have hidden the compile from the extractor.
+- `CodeQL.SccacheOff.Tests.ps1`, four tests; removing each guard reds its own test.
+- Proven on OmniAccelerANT's scoped scan on the 2026-10-04 `:winamd64`: from a cold tree,
+  `database create` and both analyses finished in 27 min (63 cpp and 10 rust results), with no
+  sccache process left. `docs/failure-modes.md` § *CodeQL `database create` hangs for hours at
+  near-zero CPU*.
+
+
 ## 2026-10-04 — the riscv64 cross wheel builds through pip, not uv
 
 - `ci_packaging.sh`'s cross mode no longer exports `_PYTHON_HOST_PLATFORM`: uv reads it while

@@ -312,6 +312,8 @@ function Get-SccacheStatsText {
     )
 
     if ($RequireRemote -and -not (Test-SccacheRemoteConfigured)) { return $null }
+    # Asking would start a server, and under Invoke-BuildCodeQL's tracer that server never lets the trace end.
+    if ($env:KATAGLYPHIS_NO_SCCACHE) { return $null }
 
     $sccacheCmd = Get-Command 'sccache.exe' -ErrorAction SilentlyContinue
     if (-not $sccacheCmd) { $sccacheCmd = Get-Command 'sccache' -ErrorAction SilentlyContinue }

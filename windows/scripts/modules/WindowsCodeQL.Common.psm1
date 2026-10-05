@@ -91,6 +91,14 @@ function Invoke-CodeQLProcess {
     return $proc.ExitCode
 }
 
+# The image's sccache server never exits (SCCACHE_IDLE_TIMEOUT=0) and keeps its client's pipe, so a traced build never ends.
+function Disable-SccacheForTrace {
+    $env:KATAGLYPHIS_NO_SCCACHE = '1'
+    foreach ($name in @('RUSTC_WRAPPER', 'CC_WRAPPER', 'CXX_WRAPPER', 'CMAKE_C_COMPILER_LAUNCHER', 'CMAKE_CXX_COMPILER_LAUNCHER')) {
+        Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-BuildCodeQL {
     param(
         [Parameter(Mandatory)]
@@ -187,6 +195,9 @@ function Invoke-BuildCodeQL {
     }
 
     if ($shouldCreateDbCluster) {
+        # A cache hit would also hide the compile from the extractor.
+        Disable-SccacheForTrace
+        Write-BuildLog -Context $Context -Message 'sccache is off for the traced build (KATAGLYPHIS_NO_SCCACHE=1, wrappers and launchers cleared).'
         $createArgs = Get-CodeQLDatabaseCreateArgs -DbClusterDir $dbClusterDir -Languages $Languages `
             -InnerCommand $innerCommand -SourceRoot $Workspace `
             -CodeScanningConfig $CodeScanningConfig -Overwrite:$cleanCodeQLDb
@@ -267,6 +278,7 @@ function Invoke-BuildCodeQL {
 }
 
 Export-ModuleMember -Function @(
+    'Disable-SccacheForTrace',
     'Get-CodeQLDatabaseCreateArgs',
     'Invoke-CodeQLProcess',
     'Invoke-BuildCodeQL'
