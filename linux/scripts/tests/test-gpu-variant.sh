@@ -123,6 +123,7 @@ t_assert_contains "$(_lock)" "claimed=yes own=yes" "a stale pidfile is taken ove
 rm -rf "${_LK}"
 
 t_case "the rocm payload reaches the runtime in TheRock's layout, every absolute link re-made relative"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 PAY="${TESTS_DIR}/../06-packaging/copy-media-payloads.sh"
 _FNS=""
 for _fn in _dest copy_path _src_resolve copy_rocm_payload; do _FNS+="$(t_fn_src "${PAY}" "${_fn}")"$'\n'; done

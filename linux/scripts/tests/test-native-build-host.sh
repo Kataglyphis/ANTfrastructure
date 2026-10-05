@@ -224,6 +224,7 @@ sed -n '/^llvm_cross_populate_tool_wrapper_dir()/,/^}/p' "${_LLVM_SH}" > "${_FN_
 . "${_FN_SRC}"
 
 t_case "the tool wrapper dir survives an unset AS/LD/AR (target == build host)"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _WD="$(mktemp -d)"
 ( set -u
   unset AS LD AR NM RANLIB STRIP OBJCOPY
@@ -237,6 +238,7 @@ t_assert_eq "$(command -v as)" "$(readlink "${_WD}/as")" \
 rm -rf "${_WD}"
 
 t_case "an exported tool var still wins over PATH"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _FAKE="$(mktemp -d)"; : > "${_FAKE}/fake-as"; chmod +x "${_FAKE}/fake-as"
 _WD2="$(mktemp -d)"
 ( set -u

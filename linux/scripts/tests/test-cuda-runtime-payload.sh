@@ -34,6 +34,7 @@ _run() {  # <ENABLE_NVIDIA> <src> <dst>
 }
 
 t_case "ENABLE_NVIDIA=true carries the toolkit, cuDNN, NCCL and their headers"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _SRC="$(mktemp -d)"; _DST="$(mktemp -d)"
 _mk_artifact "${_SRC}"
 _run true "${_SRC}" "${_DST}" >/dev/null; t_assert_eq 0 $? "a complete artifact copies cleanly"

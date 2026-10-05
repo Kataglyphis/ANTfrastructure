@@ -311,6 +311,7 @@ _scan() {
 _SCAN_OUT="$(_scan "${_HT1_FIX}/native" "${_HT1_FIX}/builder" "${_HT1_FIX}/empty" "${_HT1_FIX}/gone")"
 
 t_case "the scanner reads the ELF machine of what a tree actually ships"
+t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
 t_assert_contains "${_SCAN_OUT}" "TREE ${_HT1_FIX}/native AArch64 2" "two aarch64 objects"
 t_assert_contains "${_SCAN_OUT}" "TREE ${_HT1_FIX}/builder X86-64 1" "the builder-arch tree names its machine"
 t_assert_contains "${_SCAN_OUT}" "TREENOELF ${_HT1_FIX}/empty" "a per-arch empty tree is not a machine"
@@ -324,12 +325,14 @@ _verdicts() {
 }
 
 t_case "a builder-arch tree in a foreign image is BAD, not a note"
+t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
 t_assert_contains "$(_verdicts "${_SCAN_OUT}" AArch64)" "BAD ${_HT1_FIX}/builder X86-64 1" \
   "the 2 GB x86_64 rustup shipped in every arm64 image for months"
 t_assert_contains "$(_verdicts "${_SCAN_OUT}" AArch64)" "OK ${_HT1_FIX}/native AArch64 2" \
   "a target-arch tree must still pass"
 
 t_case "the same trees on the builder's own arch flip the verdict"
+t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
 t_assert_contains "$(_verdicts "${_SCAN_OUT}" X86-64)" "BAD ${_HT1_FIX}/native AArch64" \
   "the machine is compared against THIS image's arch, not against x86_64"
 
@@ -337,6 +340,7 @@ t_case "a scan that found no tree at all is a vacuous pass, not a pass"
 t_assert_contains "$(_verdicts "TREESCAN_DONE" AArch64)" "NONE" "nothing asserted must be reportable"
 
 t_case "a cross toolchain's target payload is not a defect, but its own binaries still are"
+t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
 # Cross toolchains' target dirs hold foreign ELF by design; the exemption must not reach a builder-arch rustc.
 _XT="$(mktemp -d)"
 mkdir -p "${_XT}/rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu"/{bin,lib/rustlib/aarch64-unknown-linux-gnu/lib}
@@ -357,6 +361,7 @@ done
 rm -rf "${_XT}"
 
 t_case "a huge tree cannot crowd the shipped binaries out of the scan"
+t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
 # Two rustup toolchains: the first one's rust-src sorts ahead of the second one's bin/ and would starve it.
 _HT1_BIG="$(mktemp -d)"
 mkdir -p "${_HT1_BIG}/tree/toolchains/a-stable/lib/src" "${_HT1_BIG}/tree/toolchains/b-nightly/bin"

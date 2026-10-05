@@ -5,7 +5,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 PRUNE_SAFE="${TESTS_DIR}/../../host-config/prune-safe.sh"
 
-command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not installed"; t_summary; exit 0; }
+t_skip_unless "jq" command -v jq
 
 _ps="$(mktemp -d)"
 trap 'rm -rf "${_ps}"' EXIT

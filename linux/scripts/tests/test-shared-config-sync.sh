@@ -65,7 +65,8 @@ t_case "line endings alone are not drift (the same content with CRLF passes)"
 # The canonical file is LF, so the fixture must add the CRs or the case proves nothing.
 _d="$(_consumer)"
 sed -i 's/$/\r/' "${_d}/.clang-format"
-t_assert_ok grep -q -e $'\r' "${_d}/.clang-format"
+# Counted, not grepped: Git Bash's grep drops a line's CR before it matches.
+t_assert_ok test "$(($(tr -cd '\r' < "${_d}/.clang-format" | wc -c)))" -gt 0
 _check "${_d}"
 t_assert_eq "0" "${rc}" \
   "line endings are normalised on both sides before comparing; output was: ${OUT}"

@@ -5,8 +5,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 LIB="${TESTS_DIR}/../lib/agentic-loop.sh"
 
-t_case "jq is on PATH — agentic-loop's config readers are one jq pass"
-t_assert_ok command -v jq
+t_skip_unless "jq, of which agentic-loop's config readers are one pass" command -v jq
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT

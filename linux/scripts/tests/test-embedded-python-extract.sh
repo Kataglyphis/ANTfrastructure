@@ -58,6 +58,7 @@ t_assert_eq "0" "$(find "${_work}/out" -name '*.py' 2>/dev/null | wc -l)" \
   "linting a fragment alone reports bogus undefined names"
 
 t_case "the real tree yields extractable blocks, and the lint gate consumes them"
+t_needs "a POSIX python3 (Windows caps its command line at 32 KiB)" t_posix_python
 _extract_fresh $(find "${TESTS_DIR}/.." -name '*.sh' -type f)
 _n="$(find "${_work}/out" -name '*.py' | wc -l)"
 t_assert_ok test "${_n}" -ge 5

@@ -6,6 +6,7 @@ source "${TESTS_DIR}/test-harness.sh"
 SUBJECT="${TESTS_DIR}/../02-toolchain/packaging-deps.sh"
 
 t_case "the downloaded tool is made readable, not merely executable"
+t_needs "chmod mode bits (Git Bash derives them from the file)" t_posix_modes
 # mktemp creates 0600; `chmod +x` on that yields 0711, which travels through mv.
 _tmp="$(mktemp)"; chmod 0600 "${_tmp}"
 chmod +x "${_tmp}"

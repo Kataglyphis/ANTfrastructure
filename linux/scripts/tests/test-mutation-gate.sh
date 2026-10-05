@@ -344,12 +344,14 @@ _symlink_fixture() {
 }
 
 t_case "the copy keeps a symlink AS a symlink instead of dereferencing it"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _symlink_fixture subject.sh inside
 t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
 t_assert_eq "symlink" "$(cat "${_tmp}/kind")" \
   "dereferencing pulls whatever the link points at -- a host binary, a device -- into a copy made once per commit"
 
 t_case "a link that RESOLVES outside the tree is not copied into the workspace at all"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _symlink_fixture subject.sh outside
 t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
 t_assert_eq "absent" "$(cat "${_tmp}/kind")" \
@@ -359,6 +361,7 @@ t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside-witness")" \
 t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside.txt")"
 
 t_case "a symlink is refused as a mutation target, so no write goes through it"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _symlink_fixture link inside
 _out="$(_iso_run 2>&1)"
 t_assert_contains "${_out}" "target is a symlink" \
@@ -366,6 +369,7 @@ t_assert_contains "${_out}" "target is a symlink" \
 t_assert_eq "1" "$(_iso_rc)" "a mutation that cannot be applied safely must fail the gate, not be skipped"
 
 t_case "a DANGLING symlink is still refused as a symlink, not reported as missing"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 # os.path.exists() follows the link, so a dangling one would read as a stale entry.
 _symlink_fixture link dangling
 _out="$(_iso_run 2>&1)"

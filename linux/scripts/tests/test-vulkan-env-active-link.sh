@@ -29,6 +29,7 @@ _env() {
 }
 
 t_case "vulkan_env_source leaves every variable on the link"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _out="$(_env 'vulkan_env_source "'"${ROOT}"'" keep-libs 1')"
 t_assert_contains "${_out}" "VULKAN_SDK=${ROOT}/active" "VULKAN_SDK is the link"
 t_assert_contains "${_out}" "VK_ADD_LAYER_PATH=${ROOT}/active/share/vulkan/explicit_layer.d" "the layer dir follows the link"
@@ -37,6 +38,7 @@ t_assert_contains "${_out}" "LD_LIBRARY_PATH=${ROOT}/active/lib/VulkanLoader/lib
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c '1.4.357.0/x86_64')" "no variable keeps the arch dir"
 
 t_case "the rewrite does not duplicate a PATH entry the image ENV already has"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _out="$(_env 'vulkan_env_source "'"${ROOT}"'" keep-libs 1')"
 t_assert_contains "${_out}" "PATH=${ROOT}/active/bin:/usr/bin:/bin" "one link entry, order kept"
 
@@ -46,6 +48,7 @@ t_assert_contains "${_out}" "VULKAN_SDK=${ROOT}/1.4.357.0/aarch64" "another arch
 t_assert_contains "${_out}" "VK_ADD_LAYER_PATH=${ROOT}/1.4.357.0/aarch64/x" "nothing is rewritten"
 
 t_case "an explicit setup script goes back to the link too"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _out="$(_env 'vulkan_env_source_script "'"${ROOT}"'/1.4.357.0/setup-env.sh"')"
 t_assert_contains "${_out}" "VULKAN_SDK=${ROOT}/active" "vulkan_env_source_script ends on the link"
 
@@ -57,6 +60,7 @@ _lib() {
 }
 
 t_case "cmake-build.sh and ctest-run.sh source --vulkan-setup-script onto the link"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 t_assert_contains "$(_lib cmake-build.sh cmake_build_prepare_env)" "VULKAN_SDK=${ROOT}/active" \
   "cmake_build_prepare_env must not re-pin the arch dir the entrypoint left"
 t_assert_contains "$(_lib ctest-run.sh ctest_run_prepare_env)" "VULKAN_SDK=${ROOT}/active" \

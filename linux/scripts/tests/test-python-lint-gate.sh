@@ -121,6 +121,7 @@ t_assert_contains "${_out}" "python gate pass failed"
 t_assert_contains "${_out}" "rc=1"
 
 t_case "the heredoc finding names the shell file and the line the reader must open"
+t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
 _out="$(_targets 'print("ok")' 'print(nope_in_heredoc)')"
 t_assert_contains "${_out}" "linux/scripts/probe.sh:3:" \
   "probe__2.py:1: is two numbers the reader has to add up by hand: opener line 2 plus body line 1"
@@ -135,6 +136,7 @@ t_assert_contains "${_out}" "python gate pass failed"
 t_assert_contains "${_out}" "rc=1"
 
 t_case "the git-hook finding names the hook file and the line the reader must open"
+t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
 _out="$(_targets 'print("ok")' 'print("ok")' 'print(nope_in_hook)')"
 t_assert_contains "${_out}" "linux/host-config/git-hooks/pre-commit:4:" \
   "a hook has no .sh suffix and no line of its own in the extracted name -- opener 3 plus body 1"

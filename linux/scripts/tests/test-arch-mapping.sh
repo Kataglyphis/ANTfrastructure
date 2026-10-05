@@ -109,11 +109,13 @@ t_assert_ok bash -c "set -euo pipefail; source '${TESTS_DIR}/../01-core/platform
   PATH='${_elf_stub_dir}:${PATH}' elf_needed_sonames '${_elf_stub_dir}/does-not-exist'"
 
 t_case "elf_unresolved_needed: extra lib dirs resolve, system paths resolve libc, rest is reported"
+t_needs "a Linux libc on the system library paths" test "$(uname -s)" = Linux
 t_assert_eq "libkataglyphis-test-missing.so.9" \
   "$(PATH="${_elf_stub_dir}:${PATH}" elf_unresolved_needed "${_elf_fixture}" "${_elf_sdk_libdir}")" \
   "with the sdk libdir passed, only the nowhere-resolvable soname must remain"
 
 t_case "elf_unresolved_needed without extra lib dirs reports both test sonames"
+t_needs "a Linux libc on the system library paths" test "$(uname -s)" = Linux
 t_assert_eq "libkataglyphis-test-sdk.so.1
 libkataglyphis-test-missing.so.9" \
   "$(PATH="${_elf_stub_dir}:${PATH}" elf_unresolved_needed "${_elf_fixture}")"
