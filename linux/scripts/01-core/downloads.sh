@@ -105,6 +105,28 @@ download_verified_cached() {
   return 0
 }
 
+# download_verified_install <url> <sha256> <dest> [archive member]: <dest> appears by one rename, so a parallel caller never runs half a binary.
+download_verified_install() {
+  local url="$1" sha="$2" dest="$3" member="${4:-}" dir stage got rc=0
+  dir="$(dirname "${dest}")"
+  mkdir -p "${dir}" && stage="$(mktemp -d "${dir}/.stage.XXXXXX")" || return 1
+  got="${stage}/${url##*/}"
+  download_verified_file "${url}" "${sha}" "${got}" || rc=1
+  if [ "${rc}" -eq 0 ] && [ -n "${member}" ]; then
+    case "${url}" in
+      *.zip) unzip -oq "${got}" "${member}" -d "${stage}" ;;
+      *) tar -xf "${got}" -C "${stage}" "${member}" ;;
+    esac || { printf 'Extracting %s from %s failed\n' "${member}" "${url##*/}" >&2; rc=1; }
+    got="${stage}/${member}"
+  fi
+  # A parallel caller may have won the rename; on Windows its running .exe then refuses ours.
+  if [ "${rc}" -eq 0 ]; then
+    { chmod +x "${got}" && mv -f "${got}" "${dest}" 2>/dev/null; } || [ -x "${dest}" ] || rc=1
+  fi
+  rm -rf "${stage}"
+  return "${rc}"
+}
+
 clone_or_update_repo() {
   local repo_url="$1"
   local dest_dir="$2"

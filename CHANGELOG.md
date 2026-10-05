@@ -7,6 +7,32 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — the push gate counts from develop; lint tools install in one rename
+
+- **pre-push** grades the mutations a push actually adds. git hands the hook each
+  pushed ref's remote tip, which becomes `verify_mutations.py --changed --base <tip>`.
+  `origin/main` stays the fallback for a new remote ref or an unfetched tip. Counting
+  from `origin/main`, which lags `develop` by hundreds of entries, ran every hub push
+  for 25 minutes and more, and ended it in `--no-verify`.
+- **`download_verified_install`** (`01-core/downloads.sh`) downloads, verifies and
+  unpacks in a stage beside the destination, then moves the binary into place in one
+  rename. shellcheck, gitleaks, hadolint and actionlint use it. They used to write
+  straight into the shared cache, where a parallel mutation job could run half a
+  gitleaks: a clean scan failed in hub CI run 37329252097.
+- **gitleaks runs on a Windows host.** `lint-secrets.sh` chose its asset by `uname -m`
+  alone, so Git Bash fetched the Linux binary and every consumer's lint gates died with
+  `Exec format error`. A `GITLEAKS_WINDOWS_X64_SHA256` pin (GitHub's digest, matching the
+  release checksums) and an OS check now install `gitleaks.exe`.
+- **The image adds `aarch64-linux-android`** to the pinned Rust toolchain
+  (`install-rust.sh`), and `smoke-toolchain.sh` checks it (CON58). OmniAccelerANT's
+  Cargokit builds with that toolchain now, and its Android lane was adding the target
+  on every run.
+- Backlog: CON59 (tool pins out of the base closure), CON60 (Windows Rust pin, the
+  owner's call), CON61 (host-only suite skips), CON62 (WSL containers, blocked upstream).
+- Tests: three new cases in `test-prepush-hook.sh`, one in `test-mutation-gate.sh`,
+  and `test-download-verified-install.sh` (15 assertions). Seven mutations, each caught.
+
+
 ## 2026-10-05 — an opt-in linker: `KATAGLYPHIS_LINKER=lld|mold`
 
 - `lib/linker-select.sh`: `linker_select_env` appends `-fuse-ld=<x>` to `LDFLAGS` (plus

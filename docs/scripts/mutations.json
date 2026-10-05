@@ -3698,8 +3698,8 @@
  {
   "id": "mutations.push-stale-check-aborts",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since origin/main\u2026\"",
-  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since origin/main\u2026\"",
+  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since ${_base}\u2026\"",
+  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since ${_base}\u2026\"",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "a rotted manifest entry must STOP the push; printing and pushing anyway is the state this hook was written to end"
  },
@@ -3714,8 +3714,8 @@
  {
   "id": "mutations.push-runs-the-gate",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "${_PY} docs/scripts/verify_mutations.py --changed --jobs",
-  "replace": "true --changed --jobs",
+  "find": "${_PY} docs/scripts/verify_mutations.py --changed --base",
+  "replace": "true --changed --base",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "staleness alone never asks whether a test can fail; without this call the push hook proves only that the edits still apply"
  },
@@ -12009,5 +12009,61 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-linker-select.sh",
   "why": "cmake_build_prepare_env is where every cmake-build.sh consumer gets the switch; dropped, KATAGLYPHIS_LINKER=mold builds with the default linker and says nothing"
+ },
+ {
+  "id": "mutations.push-base-is-remote-tip",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "      *[!0]*) if git cat-file -e \"${_rsha}^{commit}\" 2>/dev/null; then _base=\"${_rsha}\"; break; fi ;;",
+  "replace": "      *[!0]*) break ;;",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "develop is what a push updates and main lags it by hundreds of entries; counting from origin/main made every hub push a 25-minute gate that ended in --no-verify"
+ },
+ {
+  "id": "mutations.push-unfetched-tip-falls-back",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "if git cat-file -e \"${_rsha}^{commit}\" 2>/dev/null; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "a remote tip this clone never fetched makes git diff fail, and changed_files then silently selects nothing"
+ },
+ {
+  "id": "mutations.push-passes-base",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "--changed --base \"${_base}\" --jobs",
+  "replace": "--changed --jobs",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "the base is computed for the gate; dropping the flag falls back to origin/main without a word"
+ },
+ {
+  "id": "mutations.changed-uses-base",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "[\"git\", \"diff\", \"--name-only\", base + \"...HEAD\"]",
+  "replace": "[\"git\", \"diff\", \"--name-only\", \"origin/main...HEAD\"]",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "--base is the pre-push hook's push scope; ignoring it re-grades everything since main"
+ },
+ {
+  "id": "downloads.install-stages-first",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "  got=\"${stage}/${url##*/}\"",
+  "replace": "  got=\"${dest}\"",
+  "test": "bash linux/scripts/tests/test-download-verified-install.sh",
+  "why": "a parallel lint job saw a half-written gitleaks at the final path and failed a clean scan (hub CI run 37329252097); the bytes must land in the stage"
+ },
+ {
+  "id": "downloads.install-removes-stage",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "  rm -rf \"${stage}\"\n  return \"${rc}\"",
+  "replace": "  return \"${rc}\"",
+  "test": "bash linux/scripts/tests/test-download-verified-install.sh",
+  "why": "every install leaves a stage behind in the shared cache otherwise, failed ones included"
+ },
+ {
+  "id": "downloads.install-lost-race-ok",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "|| [ -x \"${dest}\" ] || rc=1",
+  "replace": "|| rc=1",
+  "test": "bash linux/scripts/tests/test-download-verified-install.sh",
+  "why": "on Windows the winner's running .exe refuses the loser's rename; the pinned bytes are already in place, so that is a success"
  }
 ]

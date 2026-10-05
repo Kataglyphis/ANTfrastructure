@@ -512,7 +512,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1501 entries** over **128 distinct test commands**; both digits are
+manifest holds **1508 entries** over **129 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -583,7 +583,7 @@ nothing (the common commit) copies nothing at all.
 | flag | use |
 | --- | --- |
 | *(none)* | every entry — CI, or before a release |
-| `--changed` | only entries whose target — or a file their `test` command names — is committed since `origin/main`, staged, or edited. The pre-push hook's mode (CI runs every entry, sharded); the commit hook no longer uses it (see the cost budget below — those are push semantics, and a hook re-paid them once per commit). Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
+| `--changed` | only entries whose target — or a file their `test` command names — is committed since `--base` (default `origin/main`), staged, or edited. The pre-push hook's mode (CI runs every entry, sharded); the commit hook no longer uses it (see the cost budget below — those are push semantics, and a hook re-paid them once per commit). Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
 | `--only <id>` | one entry, while writing it |
 | `--root <dir>` | which tree to copy and check. It is copied too — pointing the gate at a mirror is a second belt, not the isolation mechanism |
 | `--jobs <n>` | how many mutations to prove at once, one mirror each (default `min(8, cpu_count)`, capped at the entry count). Every mutation is still applied, run and restored alone, inside its own shard's copy |
@@ -736,7 +736,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 37 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 41 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -803,7 +803,12 @@ exact false green the gate exists to find.
 - `--stale-check` over the WHOLE manifest — the only thing in the repo, outside
   CI, that reads every entry;
 - `--changed` for real, whose existing semantics (entries whose target or test
-  file is committed since `origin/main`, staged or edited) are push semantics.
+  file is committed since the base, staged or edited) are push semantics. The base
+  is the tip git hands the hook for the ref being pushed, so the gate grades what the
+  remote lacks. It falls back to `origin/main` for a new remote ref, or a tip this
+  clone has not fetched. Until 2026-10-05 the base was always `origin/main`. `main`
+  deploys live and lags `develop` by hundreds of entries, so every hub push graded a
+  backlog it did not add, ran for 25 minutes and more, and ended in `--no-verify`.
 
 `PREPUSH_MUTATION_JOBS` (default **4**, not the gate's 8) is the escape hatch for
 the memory the mirrors hold: one ~200 MB copy of the tree per job, on a host where
@@ -1679,7 +1684,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 535 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 536 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -1854,6 +1859,13 @@ equals the pin, and otherwise falls through to the bootstrap it already had — 
 pinned release, downloaded once into a version-keyed cache and SHA256-verified.
 The `Install shellcheck` step in `.github/workflows/linux-x64.yml` is therefore
 removed: the gate brings its own, verified.
+
+**One rename, since 2026-10-05.** shellcheck, gitleaks, hadolint and actionlint
+install through `download_verified_install` (`01-core/downloads.sh`). It downloads,
+verifies and unpacks in a stage beside the cache, then moves the binary into place
+in one rename. Before that, each tool wrote straight into its version-keyed cache.
+Parallel mutation jobs share that cache, so one job could run the binary another
+was still writing, and a clean secret scan failed (hub CI run 37329252097).
 
 **The commit hook is inside the scope (2026-09-04).** `lint-shell.sh` admitted
 extension-less shebang scripts for EXPLICITLY passed paths only, so

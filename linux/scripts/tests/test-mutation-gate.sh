@@ -135,6 +135,12 @@ t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "bites" 
 printf '#!/usr/bin/env bash\nprintf "somewhere/else.sh\\n"\n' > "${_work}/bin/git"
 t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "nothing selected" \
   "a target outside the diff must be skipped, not run"
+# --base moves where the committed range starts; the pre-push hook passes the remote's tip.
+printf '#!/usr/bin/env bash\ncase "$*" in *"tip123...HEAD"*) printf "subject.sh\\n" ;; esac\n' > "${_work}/bin/git"
+t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed --base tip123)" "bites" \
+  "the commits since the named base must be the ones selected"
+t_assert_contains "$(PATH="${_work}/bin:${PATH}" t_out _iso --changed)" "nothing selected" \
+  "without --base the diff is still origin/main's"
 fi
 
 t_case "--changed also selects by the TEST an entry runs, not only by target"

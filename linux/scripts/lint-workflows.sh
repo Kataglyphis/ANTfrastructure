@@ -35,7 +35,7 @@ actionlint_ensure() {
   load_versions_env "${CORE_DIR}/versions.env"
   [ -n "${ACTIONLINT_VERSION:-}" ] || err "ACTIONLINT_VERSION is not set (versions.env not found?)."
 
-  local asset expected_sha cache_root archive bin_name
+  local asset expected_sha cache_root bin_name
   read -r asset expected_sha < <(actionlint_asset_and_sha) \
     || err "Unsupported platform for actionlint bootstrap ($(uname -s)/$(uname -m)); install actionlint on PATH instead."
   [ -n "${expected_sha}" ] || err "No pinned actionlint SHA256 for ${asset}; add one to versions.env."
@@ -47,19 +47,10 @@ actionlint_ensure() {
   if [ ! -x "${ACTIONLINT_BIN}" ]; then
     # shellcheck source=01-core/downloads.sh
     source "${CORE_DIR}/downloads.sh" || err "downloads.sh not available for verified actionlint fetch"
-    mkdir -p "${cache_root}" || err "Cannot create actionlint cache directory ${cache_root}"
-    archive="${cache_root}/${asset}"
-    download_verified_file \
+    download_verified_install \
       "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${asset}" \
-      "${expected_sha}" \
-      "${archive}" \
-      || err "Verified download of ${asset} failed (checksum mismatch or network error)."
-    case "${asset}" in
-      *.tar.gz) tar -xzf "${archive}" -C "${cache_root}" "${bin_name}" || err "Extraction of ${asset} failed." ;;
-      *.zip)    unzip -oq "${archive}" "${bin_name}" -d "${cache_root}" || err "Extraction of ${asset} failed." ;;
-    esac
-    rm -f "${archive}"
-    chmod +x "${ACTIONLINT_BIN}"
+      "${expected_sha}" "${ACTIONLINT_BIN}" "${bin_name}" \
+      || err "Verified install of ${asset} failed (checksum mismatch, network or extraction error)."
   fi
 }
 

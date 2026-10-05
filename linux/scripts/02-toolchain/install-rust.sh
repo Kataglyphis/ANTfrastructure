@@ -66,6 +66,9 @@ rustup component add rustfmt
 # Required: consumer lanes check wasm32 on stable, and the runtime has no rustup to add it.
 rustup target add wasm32-unknown-unknown
 
+# Required: Cargokit builds an Android app's Rust for it, and adding it per build needs the network.
+rustup target add aarch64-linux-android
+
 # Pinned nightly (a bare "nightly" floats to today's build).
 : "${RUST_NIGHTLY_TOOLCHAIN:=nightly-2026-06-28}"
 nightly_toolchain="${RUST_NIGHTLY_TOOLCHAIN}-${host_rust_target}"

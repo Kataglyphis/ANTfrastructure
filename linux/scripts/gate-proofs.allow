@@ -153,3 +153,5 @@ mutation-family:chrome-emulator
 mutation-family:prune-safe
 # The opt-in linker (lib/linker-select.sh) and its cmake-build.sh call site; proof: linux/scripts/tests/test-linker-select.sh.
 mutation-family:linker-select
+# The SHA-verified tool installs in 01-core/downloads.sh; proof: linux/scripts/tests/test-download-verified-install.sh.
+mutation-family:downloads

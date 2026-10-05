@@ -53,7 +53,7 @@ shellcheck_ensure() {
   load_versions_env "${CORE_DIR}/versions.env"
   [ -n "${SHELLCHECK_VERSION:-}" ] || err "SHELLCHECK_VERSION is not set (versions.env not found?)."
 
-  local asset expected_sha cache_root archive bin_name path_bin
+  local asset expected_sha cache_root member bin_name path_bin
   path_bin="$(command -v shellcheck || true)"
   if [ -n "${path_bin}" ] \
      && [ "$("${path_bin}" --version 2>/dev/null | sed -n 's/^version: //p')" = "${SHELLCHECK_VERSION#v}" ]; then
@@ -72,20 +72,12 @@ shellcheck_ensure() {
   if [ ! -x "${SHELLCHECK_BIN}" ]; then
     # shellcheck source=01-core/downloads.sh
     source "${CORE_DIR}/downloads.sh" || err "downloads.sh not available for verified shellcheck fetch"
-    mkdir -p "${cache_root}" || err "Cannot create shellcheck cache directory ${cache_root}"
-    archive="${cache_root}/${asset}"
-    download_verified_file \
+    member="${bin_name}"
+    case "${asset}" in *.tar.xz) member="shellcheck-${SHELLCHECK_VERSION}/${bin_name}" ;; esac
+    download_verified_install \
       "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/${asset}" \
-      "${expected_sha}" \
-      "${archive}" \
-      || err "Verified download of ${asset} failed (checksum mismatch or network error)."
-    case "${asset}" in
-      *.tar.xz) tar -xJf "${archive}" -C "${cache_root}" --strip-components=1 \
-                  "shellcheck-${SHELLCHECK_VERSION}/${bin_name}" || err "Extraction of ${asset} failed." ;;
-      *.zip)    unzip -oq "${archive}" "${bin_name}" -d "${cache_root}" || err "Extraction of ${asset} failed." ;;
-    esac
-    rm -f "${archive}"
-    chmod +x "${SHELLCHECK_BIN}"
+      "${expected_sha}" "${SHELLCHECK_BIN}" "${member}" \
+      || err "Verified install of ${asset} failed (checksum mismatch, network or extraction error)."
   fi
 }
 
