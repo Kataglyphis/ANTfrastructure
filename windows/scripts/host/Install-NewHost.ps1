@@ -175,6 +175,17 @@ function Invoke-StepGcPolicy {
 }
 
 # ── Step 3: patched runhcs shim (build if needed, then deploy) ─────────────────
+
+# A Stevedore/containerd update replaces the binary and leaves the record, so only a hash match proves the patch is live.
+function Test-RecordedShimLive {
+    param([Parameter(Mandatory)][string]$RecordPath, [Parameter(Mandatory)][string]$ShimExe)
+    if (-not (Test-Path -LiteralPath $RecordPath) -or -not (Test-Path -LiteralPath $ShimExe)) { return $false }
+    try { $record = Get-Content -Raw -LiteralPath $RecordPath | ConvertFrom-Json } catch { return $false }
+    if (-not $record.sha256) { return $false }
+    $live = (Get-FileHash -Algorithm SHA256 -LiteralPath $ShimExe).Hash
+    return ($live -eq ([string]$record.sha256).ToUpperInvariant())
+}
+
 function Invoke-StepShim {
     if ($SkipShim) { Write-Step 'shim       : skipped (-SkipShim)'; return }
 
@@ -186,9 +197,12 @@ function Invoke-StepShim {
         try { $null = Get-Content -Raw $json | ConvertFrom-Json } catch { $recorded = $false }
     }
 
-    if ($installedSize -gt 0 -and $recorded) {
-        Write-Step 'shim       : recorded patched shim already installed (hash gate active) - skipping'
+    if (Test-RecordedShimLive -RecordPath $json -ShimExe $shimExe) {
+        Write-Step 'shim       : the live shim is the recorded patched one (SHA256 match) - skipping'
         return
+    }
+    if ($installedSize -gt 0 -and $recorded) {
+        Write-Step 'shim       : the live shim is NOT the recorded one (a Stevedore/containerd update replaced it) - redeploying' 'Yellow'
     }
     if ($installedSize -gt 0 -and $installedSize -ne 23279616 -and -not $recorded) {
         Write-Step ('shim       : installed binary ({0:N0} B) is NOT stock but no recorded hash - deploy once to record it' -f $installedSize) 'Yellow'

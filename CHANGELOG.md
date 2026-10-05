@@ -7,6 +7,22 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — `Install-NewHost.ps1` redeploys a shim an update replaced
+
+- **The record no longer stands in for the patch.** `Invoke-StepShim` skipped whenever
+  `C:\ProgramData\kataglyphis\shim-patch.json` existed. A Stevedore/containerd update
+  overwrites the shim and leaves that file, so a host repaired with Install-NewHost
+  stayed on the stock shim, the one `Assert-ShimPatch` refuses. The skip now needs the
+  live shim's SHA256 to equal the record's (`Test-RecordedShimLive`). A mismatch is
+  logged and redeployed.
+- Seen on 2026-10-06. Stevedore's 2026-09-21 update had wiped four things on this host:
+  - the patched shim, replaced by the stock one at 25 975 296 B;
+  - buildkitd's step-log environment;
+  - buildkitd's `--config`;
+  - containerd's teardown variable.
+- Tests: `NewHost.ShimRecord.Tests.ps1`, 4 cases: a match, a shim the update replaced,
+  a lowercase hash, and a missing, unreadable or hash-less record.
+
 ## 2026-10-06 — a crashed staged test names its exit code
 
 - **`Invoke-StagedTests.ps1`**: a binary that dies before its summary used to stop the run
