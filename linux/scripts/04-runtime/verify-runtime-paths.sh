@@ -23,7 +23,18 @@ if [ "${_infra_fail}" -ne 0 ]; then
   exit 1
 fi
 
-# versions.env values let envsubst expand the ${VAR} references below.
+# _envsubst <text>: envsubst's ${NAME}/$NAME from the exported env, in bash; with no envsubst (the image) the gate compared nothing.
+_envsubst() {
+  local s="$1" out="" name
+  while [[ "${s}" =~ \$(\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*)) ]]; do
+    name="${BASH_REMATCH[2]:-${BASH_REMATCH[3]}}"
+    out+="${s%%"${BASH_REMATCH[0]}"*}$(printenv "${name}" || true)"
+    s="${s#*"${BASH_REMATCH[0]}"}"
+  done
+  printf '%s\n' "${out}${s}"
+}
+
+# versions.env values let _envsubst expand the ${VAR} references below.
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/load-versions-env.sh"
 load_versions_env "${VERSIONS_ENV}"
@@ -36,7 +47,7 @@ canonical_paths="$(
     | grep -vE '^(GCC_PREFIX|OPENCV_PREFIX|GSTREAMER_PREFIX|FFMPEG_PREFIX|LIBCAMERA_PREFIX|VULKAN_SDK)=' \
     | cut -d= -f2- \
     | grep '^/' \
-    | while IFS= read -r line; do envsubst <<<"$line"; done \
+    | while IFS= read -r line; do _envsubst "$line"; done \
     | LC_ALL=C sort -u
 )"
 
@@ -56,8 +67,8 @@ for df in "${DOCKERFILES[@]}"; do
   df_env_text="$(
     awk '/^ENV /{flag=1} flag{print; if(!/\\$/){flag=0}}' "$df_path" | tr -d '\\'
   )"
-  # envsubst reads the versions.env values sourced above.
-  df_env_expanded="$(envsubst <<<"$df_env_text")"
+  # _envsubst reads the versions.env values sourced above.
+  df_env_expanded="$(_envsubst "$df_env_text")"
   df_env_values="$(echo "$df_env_expanded" | grep -oP '/[A-Za-z0-9/._-]+' | LC_ALL=C sort -u)"
 
   for path in $canonical_paths; do

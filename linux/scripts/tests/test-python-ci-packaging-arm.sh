@@ -11,7 +11,9 @@ SYSROOT_DIR="${_work}/sysroot"
 mkdir -p "${TREE}/01-core" "${TREE}/02-toolchain/python" "${TREE}/06-packaging" "${TREE}/lib" "${WS}/packaging" "${BIN}" "${PYROOT}" "${SYSROOT_DIR}/usr/include/python3.14"
 
 cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${TREE}/01-core/"
-cp "${SCRIPTS}/02-toolchain/python/ci_packaging.sh" "${TREE}/02-toolchain/python/"
+# The image's /opt/scripts copies would win over this tree's stubs, so the copy looks nowhere there.
+sed "s#/opt/scripts/#${_work}/no-opt-scripts/#g" "${SCRIPTS}/02-toolchain/python/ci_packaging.sh" \
+  > "${TREE}/02-toolchain/python/ci_packaging.sh"
 # The real ci-common gets its workspace glue stubbed, as test-python-ci-defaults does.
 cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/python_uv.sh"

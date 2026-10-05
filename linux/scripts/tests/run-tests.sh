@@ -30,12 +30,13 @@ for suite in "${TESTS_DIR}"/test-*.sh; do
   fi
 done
 
+# Listed before the verdict, so a red run still says how much it never ran.
+for suite in "${SKIPPED[@]}"; do
+  printf '\nskipped on this host: %s (its SKIP line above names what the host lacks)' "${suite}"
+done
 if [ "${#FAILED[@]}" -gt 0 ]; then
   printf '\n%d suite(s) failed: %s\n' "${#FAILED[@]}" "${FAILED[*]}" >&2
   exit 1
 fi
-for suite in "${SKIPPED[@]}"; do
-  printf '\nskipped on this host: %s (its SKIP line above names what the host lacks)' "${suite}"
-done
 # The aggregate makes a coverage collapse visible ("24 suites, 3 assertions" reads as the alarm it is).
 printf '\nAll linux script test suites passed (%d suites, %d assertions).\n' "$((SUITES - ${#SKIPPED[@]}))" "${TOTAL_ASSERTS}"

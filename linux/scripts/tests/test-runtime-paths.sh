@@ -70,6 +70,15 @@ _out="$(t_out _gate "${fix}")"
 t_assert_contains "${_out}" "WARN: linux/Dockerfile.media missing canonical path: /opt/ffmpeg/bin"
 t_assert_eq "0" "$(t_rc _gate "${fix}")" "the advisory half must never become an exit code"
 
+t_case "the gate needs no envsubst: a broken one first on PATH still yields the WARN"
+# The image ships no envsubst; with it the gate compared two empty lists and passed.
+_nobin="$(mktemp -d)"
+printf '#!/bin/sh\nexit 127\n' > "${_nobin}/envsubst"
+chmod +x "${_nobin}/envsubst"
+_out="$(PATH="${_nobin}:${PATH}" t_out _gate "${fix}")"
+t_assert_contains "${_out}" "WARN: linux/Dockerfile.media missing canonical path: /opt/ffmpeg/bin"
+rm -rf "${_nobin}"
+
 t_case "a canonical path outside /opt and /usr/local does not even WARN"
 fix="$(_tree)"
 printf 'PATH_ELSEWHERE=/srv/nowhere/bin\n' >> "${fix}/linux/scripts/04-runtime/runtime-paths.env"

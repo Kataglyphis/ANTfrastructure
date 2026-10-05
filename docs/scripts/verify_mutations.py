@@ -8,6 +8,7 @@ import argparse
 import concurrent.futures
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -23,6 +24,14 @@ COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/
 _IGNORED_CACHE = {}
 _IGNORED_LOCK = threading.Lock()
 DEFAULT_JOBS = min(8, os.cpu_count() or 1)
+# Git Bash may skip a suite (exit 77) or waive a case it cannot host; Linux, where CI runs, never may.
+HOST_MAY_SKIP = os.name == "nt" or sys.platform.startswith(("cygwin", "msys"))
+_HOST_SKIP = re.compile(r"^ *(?:SKIP \[|\d+ failed assertion\(s\) waived)", re.M)
+
+
+def host_skips(output):
+    """SKIP lines and waiver counts in a run's output: the cases this host could not grade."""
+    return len(_HOST_SKIP.findall(output))
 
 
 def _git_ignored(src):
@@ -126,10 +135,13 @@ def _run_test(cmd, root, timeout):
 
 
 def passes(cmd, root, timeout):
-    """Run one test command unmutated; returns (ok, why), why naming the failure shape. A timeout is not a pass."""
+    """Run one test command unmutated; returns (ok, why), ok None for a host skip. A timeout is not a pass."""
     rc, timed_out, output = _run_test(cmd, root, timeout)
     if timed_out:
         return False, "timed out after %ss (a timeout is not a pass)" % timeout
+    if rc == 77 and HOST_MAY_SKIP:
+        skip = [l.strip() for l in output.splitlines() if "SKIP [" in l][:1]
+        return None, (skip or ["the suite exited 77"])[0]
     if rc != 0:
         tail = [l for l in output.strip().splitlines() if l.strip()][-3:]
         return False, "exited rc=%s; output tail: %s" % (rc, " | ".join(tail) or "<empty>")
@@ -158,6 +170,7 @@ class Report:
 
     def __init__(self):
         self.failed = set()
+        self.skipped = set()
         self._lock = threading.Lock()
         self._cur = threading.local()
 
@@ -168,6 +181,10 @@ class Report:
         self._cur.key = key
 
     def out(self, text):
+        self._write(sys.stdout, text)
+
+    def skip(self, text):
+        self.skipped.add(self._cur.key)
         self._write(sys.stdout, text)
 
     def err(self, text):
@@ -223,11 +240,11 @@ def run_stale(entries, root):
 
 
 def apply_and_run(entry, root):
-    """Mutate, run the test, restore. Returns (applied, test_failed, detail)."""
+    """Mutate, run the test, restore. Returns (applied, test_failed, detail, host_skips)."""
     target = os.path.join(root, entry["target"])
     original, mutated, why = applicable(entry, root)
     if mutated is None:
-        return False, False, why
+        return False, False, why, 0
 
     backup = tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8")
     backup.write(original)
@@ -235,10 +252,10 @@ def apply_and_run(entry, root):
     try:
         with open(target, "w", encoding="utf-8") as fh:
             fh.write(mutated)
-        rc, timed_out, _ = _run_test(entry["test"], root, entry.get("timeout", 300))
+        rc, timed_out, output = _run_test(entry["test"], root, entry.get("timeout", 300))
         if timed_out:
-            return True, True, "test timed out (counts as failing)"
-        return True, rc != 0, "exit %d" % rc
+            return True, True, "test timed out (counts as failing)", 0
+        return True, rc != 0, "exit %d" % rc, host_skips(output)
     finally:
         shutil.copyfile(backup.name, target)
         os.unlink(backup.name)
@@ -255,6 +272,9 @@ def run_entries(args, entries, report, baselines=None):
     for e in entries:
         report.entry(e["id"])
         base_ok, base_why = baseline_ok(e, args.root, baselines)
+        if base_ok is None:
+            report.skip("  skip    %-34s %s\n" % (e["id"], base_why))
+            continue
         if not base_ok:
             rc = 1
             report.err(
@@ -262,12 +282,15 @@ def run_entries(args, entries, report, baselines=None):
                 "      test:   %s\n"
                 "      why:    %s\n" % (e["id"], e["test"], base_why))
             continue
-        applied, failed, detail = apply_and_run(e, args.root)
+        applied, failed, detail, now_skips = apply_and_run(e, args.root)
         if not applied:
             rc = 1
             report.err("FAIL: %s -- %s (%s)\n" % (e["id"], detail, e["target"]))
         elif failed:
             report.out("  bites   %-34s %s\n" % (e["id"], e["why"]))
+        elif HOST_MAY_SKIP and now_skips:
+            report.skip("  skip    %-34s survived where this host skips %d case(s) of its suite; Linux grades it\n"
+                        % (e["id"], now_skips))
         else:
             rc = 1
             report.err(
@@ -394,7 +417,10 @@ def main():
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
     report.summary(entries)
-    if rc == 0:
+    if rc == 0 and report.skipped:
+        say("OK: every mutation this host can run is caught; %d skipped here (listed above), Linux proves them"
+            % len(report.skipped))
+    elif rc == 0:
         say("OK: every recorded mutation is caught by its tests")
     return rc
 

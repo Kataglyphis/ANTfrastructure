@@ -6,12 +6,21 @@ source "${TESTS_DIR}/test-harness.sh"
 
 CCSH="${TESTS_DIR}/../01-core/compiler-cache.sh"
 
+# _path_without <tool>: PATH minus every dir holding that executable; the image ships a real sccache.
+_path_without() {
+  local d out=""
+  while IFS= read -r d; do
+    [ -x "${d}/$1" ] || out="${out:+${out}:}${d}"
+  done < <(printf '%s\n' "${PATH//:/$'\n'}")
+  printf '%s' "${out}"
+}
+
 # _mk_fakes <sccache: ok|dead|absent> <ccache: present|absent>: stub binaries first on PATH.
 _mk_fakes() {
   _fake_bin="${TMPDIR:-/tmp}/cc-test-bin.$$"
   rm -rf "${_fake_bin}"; mkdir -p "${_fake_bin}"
   case "${1:-ok}" in
-    absent) ;;
+    absent) PATH="$(_path_without sccache)" ;;
     dead)   printf '#!/bin/sh\ncase "$1" in --version) echo "sccache 0.17.0";; --start-server) exit 0;; --show-stats) exit 1;; esac\n' > "${_fake_bin}/sccache" ;;
     ok)     printf '#!/bin/sh\ncase "$1" in --version) echo "sccache 0.17.0";; --start-server) exit 0;; --show-stats) echo "Compile requests 1" >&2; exit 0;; esac\n' > "${_fake_bin}/sccache" ;;
   esac

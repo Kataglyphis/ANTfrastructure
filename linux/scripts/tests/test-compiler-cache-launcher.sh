@@ -10,7 +10,9 @@ _load_launcher() {
   mkdir -p "${_COMMON_SH_DIR}"
   # shellcheck disable=SC1090
   source "${TESTS_DIR}/../01-core/logging.sh"
-  eval "$(sed -n '/^compiler_cache_launcher() {/,/^}/p' "${TESTS_DIR}/../01-core/common.sh")"
+  # The image path follows [dir]: inside the image /opt/scripts/core holds a real launcher.
+  eval "$(sed -n '/^compiler_cache_launcher() {/,/^}/p' "${TESTS_DIR}/../01-core/common.sh" \
+    | sed "s#/opt/scripts/core#${_COMMON_SH_DIR}#g")"
 }
 
 # ── the leak that actually happened ──────────────────────────────────────────

@@ -90,7 +90,8 @@ t_assert_contains "$(bash "${PRUNE}" not-an-arch "${ROOT}" 2>&1 || true)" \
 
 t_case "no arch mapper reachable is a hard error, never a default"
 _ISOLATED="$(mktemp -d)"
-cp "${PRUNE}" "${_ISOLATED}/prune.sh"
+# The image path too: inside the image /opt/scripts/core holds a real platform.sh.
+sed "s#/opt/scripts/core#${_ISOLATED}/absent#g" "${PRUNE}" > "${_ISOLATED}/prune.sh"
 t_assert_fails bash "${_ISOLATED}/prune.sh" arm64 "${ROOT}"
 t_assert_contains "$(bash "${_ISOLATED}/prune.sh" arm64 "${ROOT}" 2>&1 || true)" \
   "found no platform.sh defining arch_uname_name_for"

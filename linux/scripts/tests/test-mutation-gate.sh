@@ -77,6 +77,46 @@ case "${_out}" in
   *)       t_assert_ok true ;;
 esac
 
+# The same gate believing it runs under Git Bash, so the host-skip arms are proven on Linux too.
+_gate_as_gitbash() {
+  TMPDIR="${_tmp}" "${PY}" -c 'import runpy, sys; sys.platform = "msys"; sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name="__main__")' \
+    "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --in-place
+}
+
+t_case "on Git Bash a suite that exits 77 is a listed skip, and the run stays green"
+_fixture "GUARD=on" "GUARD=off" no
+printf 'echo "  SKIP [t.sh] this host lacks the frobnicator"; exit 77\n' > "${_work}/t.sh"
+_out="$(t_out _gate_as_gitbash)"
+t_assert_contains "${_out}" "skip    probe"
+t_assert_contains "${_out}" "this host lacks the frobnicator" "the skip must say what the host lacks"
+t_assert_contains "${_out}" "1 skipped here" "the verdict must not claim every mutation was proven"
+t_assert_eq "0" "$(t_rc _gate_as_gitbash)"
+
+t_case "on Linux the same exit 77 is a vacuous bite and fails the gate"
+t_needs "a POSIX python3 (the gate reads a Windows one as a Git Bash host)" t_posix_python
+t_assert_contains "$(_run 2>&1)" "baseline test already fails unmutated"
+t_assert_eq "1" "$(_rc)"
+
+t_case "on Git Bash a mutation only a waived case catches is a skip, never SURVIVED"
+_fixture "GUARD=on" "GUARD=off" no
+printf 'grep -q "GUARD=on" "%s/subject.sh" || echo "  1 failed assertion(s) waived: x"\necho "  1 assertion(s) passed"\n' \
+  "${_work}" > "${_work}/t.sh"
+_out="$(t_out _gate_as_gitbash)"
+t_assert_contains "${_out}" "survived where this host skips 1 case(s) of its suite"
+t_assert_eq "0" "$(t_rc _gate_as_gitbash)"
+
+t_case "on Git Bash a survivor in a suite that SKIPs a case here is a skip too"
+# The _posix_host shape: the case never runs, so mutated and baseline runs look alike.
+_fixture "GUARD=on" "GUARD=off" no
+printf 'echo "  SKIP [probe case] needs a POSIX host for process groups"\necho "  1 assertion(s) passed"\n' > "${_work}/t.sh"
+t_assert_contains "$(t_out _gate_as_gitbash)" "survived where this host skips 1 case(s) of its suite"
+t_assert_eq "0" "$(t_rc _gate_as_gitbash)"
+
+t_case "on Linux a SKIP line or a waiver changes nothing: the same mutation SURVIVED"
+t_needs "a POSIX python3 (the gate reads a Windows one as a Git Bash host)" t_posix_python
+t_assert_contains "$(_run 2>&1)" "SURVIVED"
+t_assert_eq "1" "$(_rc)"
+
 t_case "--in-place restores the target afterwards, whatever the verdict"
 _fixture "GUARD=on" "GUARD=off" yes
 _run >/dev/null 2>&1
