@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_skip_unless "a POSIX python3 whose venv has bin/python" t_posix_python
 SUBJECT="${TESTS_DIR}/../03-media/runtime/assemble-torch-app.sh"
 _PY="${PREFLIGHT_PYTHON:-python3}"
 

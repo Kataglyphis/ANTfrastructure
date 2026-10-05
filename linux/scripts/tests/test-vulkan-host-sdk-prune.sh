@@ -57,6 +57,7 @@ t_assert_ok test -e "${ROOT}/1.4.357.0/x86_64/lib/libvulkan.so.1"
 t_assert_contains "${_out}" "WARNING keeping" "a silent prune here would ship an image with no loader at all"
 
 t_case "the setup-vulkan-symlinks fallback shape is not mistaken for a cross build"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 # The package stage's aarch64 -> x86_64 fallback link; pruning x86_64 would delete what it points at.
 _fixture aarch64 symlink
 _out="$(_run arm64)"

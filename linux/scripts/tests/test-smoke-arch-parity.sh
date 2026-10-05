@@ -529,6 +529,7 @@ t_assert_eq "DECLINED" \
   "$(_sc 'BUILD_MODE=cross TARGET_ARCH=amd64 BUILDARCH=x86_64 smoke_cross_presence_gate ffmpeg /opt/ffmpeg/bin/ffmpeg || echo DECLINED')"
 
 t_case "smoke_elf_machine_of agrees with the canonical arch map on a real binary"
+t_needs "an ELF bash for readelf to read (Git Bash's is a PE)" t_is_elf "$(command -v bash)"
 if command -v readelf >/dev/null 2>&1; then
   _self_bin="$(command -v bash)"
   t_assert_contains "$(_sc "smoke_elf_machine_of '${_self_bin}'")" \

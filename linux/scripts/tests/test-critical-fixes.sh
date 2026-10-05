@@ -512,6 +512,7 @@ t_assert_eq "0" "$(t_rc _img "${_root}")"
 t_assert_contains "$(t_out _img "${_root}")" "SKIP: no LiteRT headers that include absl/"
 
 t_case "fix3 — a dangling lib-dynload symlink fails, a resolving one does not"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _root="$(mktemp -d "${_work}/img.XXXXXX")"
 _dyn="${_root}/opt/python-cross/riscv64/usr/local/lib/python3.14/lib-dynload"
 mkdir -p "${_dyn}"

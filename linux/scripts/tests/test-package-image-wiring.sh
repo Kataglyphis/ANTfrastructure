@@ -39,6 +39,7 @@ for _a in fuzzer fuzzer_interceptors asan ubsan_standalone; do : > "${_rt}/lib/$
 _wire() { GCC_PREFIX="${_w}/gcc" bash -c "${_fns}"$'\n'"$1" 2>&1; }
 
 t_case "the cfg pair lands beside the real driver and in every directory that links to it"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _out="$(_wire "write_clang_gcc_toolchain_cfg '${_w}/usr/bin/clang' '${_w}/usr/bin' '${_w}/usr/local/bin'")"
 for _d in llvm/bin usr/bin usr/local/bin; do
   for _drv in clang clang++; do
@@ -56,6 +57,7 @@ t_case "a GCC_PREFIX without a GCC is refused"
 t_assert_eq "1" "$(GCC_PREFIX="${_w}/usr" bash -c "${_fns}"$'\n'"write_clang_gcc_toolchain_cfg '${_w}/usr/bin/clang' >/dev/null 2>&1; echo \$?")"
 
 t_case "every runtime atheris names gets its lib/linux name, from either per-target spelling"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _out="$(_wire "link_compiler_rt_legacy_names '${_w}/usr/bin/clang'")"
 for _a in fuzzer fuzzer_no_main fuzzer_interceptors asan ubsan_standalone; do
   t_assert_ok test -f "${_rt}/lib/linux/libclang_rt.${_a}-x86_64.a"

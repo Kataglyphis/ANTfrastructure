@@ -324,7 +324,8 @@ def collect():
             if not fname.endswith(".sh"):
                 continue
             path = os.path.join(dirpath, fname)
-            rel = os.path.relpath(path, REPO_ROOT)
+            # POSIX separators on every host: rows, allowlist keys and the table match compare them as text.
+            rel = os.path.relpath(path, REPO_ROOT).replace(os.sep, "/")
             file_reqs, arrays, refs = scan_file(path, rel)
             files += 1
             call_sites += len({(r.line, r.path) for r in file_reqs})

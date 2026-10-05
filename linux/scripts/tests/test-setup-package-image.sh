@@ -217,6 +217,7 @@ t_assert_eq "openjdk-21-jdk-headless" \
   "the pin lives in versions.env, next to the android keys"
 
 t_case "JAVA_HOME is anchored to a symlink, so a JDK bump does not silently break the ENV"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _anchor="$(t_fn_src "${SUBJECT}" anchor_java_home)"
 _tmp="$(mktemp -d)"; mkdir -p "${_tmp}/jvm/java-21-openjdk-riscv64/bin" "${_tmp}/bin"
 : > "${_tmp}/jvm/java-21-openjdk-riscv64/bin/javac"; chmod +x "${_tmp}/jvm/java-21-openjdk-riscv64/bin/javac"

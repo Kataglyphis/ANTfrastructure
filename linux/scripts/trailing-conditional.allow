@@ -28,6 +28,9 @@ linux/scripts/03-media/build/onnxruntime/build/lib/common.sh	is_amd64_arch
 linux/scripts/03-media/runtime/verify-media-artifacts.sh	probe_lib
 linux/scripts/06-packaging/smoke-common.sh	smoke_is_elf
 linux/scripts/build-cross-chain.sh	stage_enabled
+linux/scripts/tests/test-harness.sh	_t_links
+linux/scripts/tests/test-harness.sh	_t_modes
+linux/scripts/tests/test-harness.sh	t_is_elf
 
 # Verdict functions: the trailing test IS the verdict, and a caller that wants the
 # "nothing happened" arm spells it out. smoke_test_ffmpeg fails the build when a

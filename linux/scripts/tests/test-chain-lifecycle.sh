@@ -52,6 +52,7 @@ t_assert_eq "/custom/tmp/kata-cross-chain.pid" \
 
 # O1: TERM a root's subtree: its leaf dies, and the root's parent (this test) is never targeted
 t_case "chain_terminate_descendants TERMs the descendant subtree"
+t_needs "pgrep (procps)" command -v pgrep
 bash -c 'sleep 30 & echo $! > "'"${workdir}"'/leaf.pid"; wait' &
 root=$!
 # Give the child time to spawn its leaf and record the pid.
@@ -144,6 +145,7 @@ t_assert_ok test -d "${LOG_DIR}"
 t_assert_eq "${workdir}/fresh/out/build-logs" "${LOG_DIR}" "a writable dir must be kept"
 
 t_case "an uncreatable log dir disables logging instead of failing the run"
+t_needs "chmod mode bits (Git Bash derives them from the file)" t_posix_modes
 mkdir -p "${workdir}/ro"
 if [ "$(id -u)" != "0" ] && chmod 500 "${workdir}/ro" 2>/dev/null; then
   LOG_DIR="${workdir}/ro/logs"
@@ -245,6 +247,7 @@ t_assert_ok    test -d "${LOG_DIR}/archive/1847483"
 t_assert_ok    test -d "${LOG_DIR}/archive/20260102-000000-h2"
 
 t_case "retention skips a symlinked run dir instead of following it"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 # Named to sort oldest, so a follow-the-link bug would delete it and its target first.
 LOG_DIR="${workdir}/ret-c"
 _mk_archive "${LOG_DIR}" 20260101-000000-c1 20260102-000000-c2

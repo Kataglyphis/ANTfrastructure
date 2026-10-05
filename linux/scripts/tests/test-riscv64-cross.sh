@@ -15,6 +15,7 @@ _tmp="$(mktemp -d)"
 trap 'rm -rf "${_tmp}"' EXIT
 
 t_case "absolute symlinks become relative and still name the same file"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _root="${_tmp}/sysroot"
 mkdir -p "${_root}/usr/lib/riscv64-linux-gnu" "${_root}/etc/alternatives"
 : > "${_root}/usr/lib/riscv64-linux-gnu/libblas.so.3"

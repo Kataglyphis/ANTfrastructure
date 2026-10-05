@@ -225,6 +225,7 @@ _conv_hub() {
 _conv_at() { "${_PY}" "$1/linux/scripts/verify_workflow_conventions.py" "$2"; }
 
 t_case "the conventions half runs as part of lint-workflows.sh, not beside it"
+t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
 # The wiring is the point: a gate nobody calls asserts nothing.
 t_assert_contains "$(t_out bash "${GATE}" "${clean}")" "workflow conventions under ${clean}" \
   "the shell gate must name the tree it handed to the conventions half"

@@ -91,7 +91,7 @@ if command -v cc >/dev/null 2>&1 && command -v nm >/dev/null 2>&1; then
   t_assert_eq "" "$(bash -c 'set -o pipefail; source "$1"; dsv_non_plugins "$2"' _ "${DSV}" "${_T}/gp2")" \
     "libgstnvvideo4linux2.so was moved out of gst-plugins/ this way on 2026-10-01"
 else
-  t_assert_eq "cc and nm" "missing" "this case needs a C compiler and nm"
+  t_needs "a C compiler and nm" false
 fi
 
 t_case "apt may not bring in a distro GStreamer"
@@ -132,6 +132,7 @@ t_assert_eq "" "$(_gst 'libnvdsgst_infer.so libgstreamer-1.0.so.0 /opt/gstreamer
 t_assert_contains "$(_gst 'libgstnvvideoconvert.so libgstvideo-1.0.so.0 /usr/lib/x86_64-linux-gnu/libgstvideo-1.0.so.0\n')" "SECOND-GSTREAMER libgstnvvideoconvert.so"
 
 t_case "an engine build finds TensorRT 10's builder resources, which it dlopen()s by file name"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _TRT="${_T}/opt/tensorrt-10.16.1.11/lib"; _SYS="${_T}/syslib"
 mkdir -p "${_TRT}" "${_SYS}"
 for r in sm75 sm86 ptx; do : > "${_TRT}/libnvinfer_builder_resource_${r}.so.10.16.1"; done
@@ -151,6 +152,7 @@ t_assert_fails env DS_OPT="${_T}/opt-empty" DS_SYSLIB_DIR="${_SYS}" bash -c 'sou
   "${DS}" "${TESTS_DIR}/../01-core/load-versions-env.sh" "${ENVF}"
 
 t_case "nvv4l2decoder reaches NVDEC only through NVIDIA's plugin in the distro libv4l2's dir"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _DSR="${_T}/opt/deepstream-9.1"; mkdir -p "${_DSR}/lib/libv4l/plugins"; : > "${_DSR}/lib/libv4l/plugins/libcuvidv4l2_plugin.so"
 _V4L="${_T}/v4l-plugins"
 _ds 'ds_link_v4l2_plugin' DS_OPT="${_T}/opt" DS_V4L2_PLUGIN_DIR="${_V4L}" >/dev/null

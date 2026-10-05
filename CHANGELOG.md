@@ -7,6 +7,34 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — the script suites skip on a Windows host, loudly (CON61)
+
+- **`t_skip_unless <what> <cmd…>`**: a suite that needs what Git Bash lacks exits 77
+  there with `SKIP [suite] this host lacks <what>`. `run-tests.sh` lists it as skipped
+  and leaves it out of the suite count. On Linux the same line fails the suite, and so
+  does a stray exit 77, so CI cannot shrink without a red line.
+- **`t_needs <what> <cmd…>`** sits right after a `t_case`: on Git Bash it waives that one
+  case's failures, and `t_summary` prints how many it waived. 24 suites use it, so the
+  cases the host can run still run.
+- **Probes:** `t_posix_symlinks`, `t_posix_modes`, `t_posix_python`, `t_is_elf`.
+- **Guards:** 39 suites failed on a Git Bash host on a green tree. Eleven skip whole,
+  through five guards:
+  - `jq`: `test-agentic-loop.sh` and `test-prune-safe.sh`. The latter skipped by hand
+    before, and then failed for running zero assertions.
+  - Real symlinks: the seven `test-renovate-*`, through `renovate-fixtures.sh`.
+  - A POSIX venv: `test-chain-wheels-installed.sh`.
+  - `shellcheck`: `test-shellcheck-warnings.sh`.
+- **Fixed instead of skipped:**
+  - `verify_package_names.py` and `verify_stdout_returns.py` printed `linux\scripts\…`
+    on Windows. The first also never matched its CPython table there.
+  - `test-shared-config-sync.sh` counts its CRs; Git Bash's grep strips them first.
+  - `test-harness-guards.sh` probes the harness file, not `/etc/passwd`.
+- On Git Bash, `run-tests.sh` defaults `PYTHONUTF8=1`. Without it, Windows' python wrote
+  its code page into the pipe, and every em dash a suite compared turned to `�`.
+- **Proof:** `test-host-skips.sh` (26 assertions) and eight mutations (`gate-fixture.*`,
+  `script-tests.skip-only-on-git-bash`).
+
+
 ## 2026-10-05 — host-tool pins leave the image's build inputs (CON59)
 
 - **`01-core/tool-pins.env`** now holds the 30 pins no image build reads: shellcheck,

@@ -37,6 +37,7 @@ t_assert_contains "$(_lvp arm64 $'WIDTH 256\nNO_LVP')" "FAILURES=1" "no ICD"
 t_assert_contains "$(_lvp arm64 'WIDTH 256')" "FAILURES=1" "vulkaninfo printed nothing"
 
 t_case "the image-env gate accepts the variable: it names nothing outside the container"
+t_needs "a POSIX python3 that opens /dev/fd" t_posix_python
 t_assert_ok python3 "${TESTS_DIR}/../verify_image_env.py" --env-file <(echo LP_NATIVE_VECTOR_WIDTH=256) --label probe
 
 t_summary

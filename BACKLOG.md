@@ -352,20 +352,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — hub tooling and the dev host
 
-- [ ] **CON61 — the script suites on a Windows host: skip what cannot run, loudly** [M, ★].
-      Under Git Bash about 45 of 169 `linux/scripts/tests/` suites fail on this host,
-      for host reasons and never for the code (measured 2026-10-05):
-      - no `jq` (`test-agentic-loop.sh`, the `test-renovate-*` family);
-      - `ln -s` copies instead of linking (`test-vulkan-env-active-link.sh`,
-        `test-setup-package-image.sh`);
-      - ELF tools and fixtures (`test-arch-mapping.sh`, `test-llvm-target-prefix.sh`).
-      A full `preflight.sh` here is therefore red on a green tree, which is why hub
-      pushes go through WSL or the Linux image. Give each such suite a
-      `t_skip_unless <tool|posix-symlinks>` guard that prints `SKIP [reason]` and counts
-      as neither pass nor fail, as `_posix_host` does in `test-mutation-gate.sh`.
-      Done when a Windows run of `script-tests` is green or names a skip reason per
-      suite.
-
 - [b] **CON62 — WSL containers (`wslc`) as the local Linux engine** [M, ★★]. Blocked
       upstream. Evaluated 2026-10-05 against WSL 3.0.1
       (`docs/rancher-desktop-linux-containers.md` § *WSL containers*): faster bind

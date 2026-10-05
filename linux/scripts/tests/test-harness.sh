@@ -7,7 +7,9 @@ _T_RUN=0
 _T_FAILED=0
 _T_CASE=""
 
-t_case() { _T_CASE="$1"; }
+_T_WAIVED=0
+_T_WAIVED_CASE=""
+t_case() { _T_CASE="$1"; _T_WAIVED_CASE=""; }
 
 # A mistyped t_* counts as a failure; the handler runs in a separate environment, so it records on disk.
 _T_UNKNOWN_MARK="${TMPDIR:-/tmp}/.t-harness-unknown.$$"
@@ -25,11 +27,75 @@ command_not_found_handle() {
 }
 
 _t_fail() {
+  if [ -n "${_T_WAIVED_CASE}" ]; then
+    _T_RUN=$((_T_RUN - 1))
+    _T_WAIVED=$((_T_WAIVED + 1))
+    return 0
+  fi
   _T_FAILED=$((_T_FAILED + 1))
   printf '  \033[0;31mFAIL\033[0m [%s] %s\n' "${_T_CASE:-?}" "$1" >&2
 }
 
 _t_pass() { :; }
+
+# Only a Git Bash host may skip; on Linux, where CI runs, a missing prerequisite is a failure.
+_t_may_skip() {
+  case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) return 0 ;; esac
+  return 1
+}
+
+# _t_host_verdict <label> <what> <command...>: 0 present; 1 Git Bash lacks it (SKIP printed); 2 a host that must have it lacks it.
+_t_host_verdict() {
+  local label="$1" what="$2"
+  shift 2
+  "$@" >/dev/null 2>&1 && return 0
+  _t_may_skip || return 2
+  printf '  SKIP [%s] this host lacks %s\n' "${label}" "${what}"
+  return 1
+}
+
+# t_skip_unless <what> <command...>: Git Bash may skip a suite it cannot host (exit 77, listed by run-tests.sh); elsewhere it fails.
+t_skip_unless() {
+  local rc=0
+  _t_host_verdict "$(basename "$0")" "$@" || rc=$?
+  [ "${rc}" -ne 1 ] || exit 77
+  [ "${rc}" -eq 2 ] || return 0
+  printf '  \033[0;31mFAIL\033[0m [%s] prerequisite missing: %s\n' "$(basename "$0")" "$1" >&2
+  exit 1
+}
+
+# t_needs <what> <command...>, right after t_case: Git Bash waives that case's failures (SKIP, counted in t_summary); elsewhere it fails.
+t_needs() {
+  local rc=0
+  _t_host_verdict "${_T_CASE:-?}" "$@" || rc=$?
+  [ "${rc}" -ne 1 ] || _T_WAIVED_CASE="${_T_CASE}"
+  [ "${rc}" -eq 2 ] || return 0
+  _T_RUN=$((_T_RUN + 1))
+  _t_fail "prerequisite missing: $1"
+}
+
+# _t_probe_file <test...>: one throwaway file a/ in a fresh dir, the test run with it as $1 and $2 = its dir.
+_t_probe_file() {
+  local d rc=1
+  d="$(mktemp -d)" || return 1
+  if : > "${d}/a" && "$@" "${d}/a" "${d}"; then rc=0; fi
+  rm -r -f -- "${d}"
+  return "${rc}"
+}
+
+# t_posix_symlinks: true when ln -s makes a link; Git Bash copies the file instead.
+t_posix_symlinks() { _t_probe_file _t_links; }
+_t_links() { ln -s a "$2/b" 2>/dev/null && [ -L "$2/b" ]; }
+
+# t_posix_modes: true when chmod sets the bits it is given; Git Bash derives them from the file's name and content.
+t_posix_modes() { _t_probe_file _t_modes; }
+_t_modes() { chmod 711 "$1" && [ "$(stat -c %a "$1" 2>/dev/null)" = 711 ]; }
+
+# t_posix_python: true when python3 is a POSIX one; Windows' python sees drive-letter paths, not the shell's /tmp or /dev/fd.
+t_posix_python() { python3 -c 'import os, sys; sys.exit(os.sep != "/")'; }
+
+# t_is_elf <file>: true when the file starts with the ELF magic; Git Bash's own binaries are PE.
+t_is_elf() { [ "$(head -c 4 "$1" 2>/dev/null | tail -c 3)" = ELF ]; }
 
 # t_fake_elf <path> <e_machine>: a 64-byte ELF header, all any gate here reads of a binary.
 t_fake_elf() {
@@ -192,6 +258,7 @@ t_summary() {
     printf '  SUITE RAN ZERO ASSERTIONS — treating as failure\n' >&2
     exit 1
   fi
+  [ "${_T_WAIVED}" -eq 0 ] || printf '  %d failed assertion(s) waived: their cases name what this host lacks\n' "${_T_WAIVED}"
   printf '  %d assertion(s) passed\n' "${_T_RUN}"
   exit 0
 }

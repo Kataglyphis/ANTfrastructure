@@ -11,11 +11,7 @@ source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/gate-tree.sh"
 : "${SKIP_REAL_TREE:=}"
 
-if ! command -v shellcheck >/dev/null 2>&1; then
-  t_case "shellcheck is on PATH (the gate needs it, and so does this suite)"
-  t_assert_ok command -v shellcheck
-  t_summary
-fi
+t_skip_unless "shellcheck on PATH (the gate needs it, and so does this suite)" command -v shellcheck
 SC_BIN="$(command -v shellcheck)"
 
 # _fixture <name>:<shape>...; a `sourcer`'s directive names linux/scripts/lib.sh, so name its `sourced` sibling `lib`.

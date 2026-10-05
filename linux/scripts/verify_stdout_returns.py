@@ -71,7 +71,7 @@ def main() -> int:
                 continue
             for lineno, line in enumerate(body.splitlines(), 1):
                 if STDOUT_LOGGERS.match(line) and ">&2" not in line:
-                    findings.append((p.relative_to(root), name, line.strip()[:88]))
+                    findings.append((p.relative_to(root).as_posix(), name, line.strip()[:88]))
 
     if not findings:
         print(f"stdout-return gate OK: {len(consumed)} substituted function name(s), "

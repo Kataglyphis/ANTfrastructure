@@ -6536,6 +6536,70 @@
   "why": "only test/[ report a usage error as rc 2; treating every rc 2 as a misuse rewrites a real failure into a harness complaint"
  },
  {
+  "id": "gate-fixture.host-skip-only-on-git-bash",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "  case \"$(uname -s)\" in MINGW* | MSYS* | CYGWIN*) return 0 ;; esac",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-host-skips.sh",
+  "why": "a skip on Linux would shrink CI's coverage without a red line; only a Git Bash host may waive a prerequisite (CON61)"
+ },
+ {
+  "id": "gate-fixture.host-skip-exits-77",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "  [ \"${rc}\" -ne 1 ] || exit 77",
+  "replace": "  [ \"${rc}\" -ne 1 ] || exit 0",
+  "test": "bash linux/scripts/tests/test-host-skips.sh",
+  "why": "exit 0 reads as a suite that ran and passed; 77 is what lets run-tests.sh list the suite as skipped instead"
+ },
+ {
+  "id": "gate-fixture.host-waiver-ends-with-its-case",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "t_case() { _T_CASE=\"$1\"; _T_WAIVED_CASE=\"\"; }",
+  "replace": "t_case() { _T_CASE=\"$1\"; }",
+  "test": "bash linux/scripts/tests/test-host-skips.sh",
+  "why": "a waiver that outlives its t_case silences every later case in the suite, the ones the host can run included"
+ },
+ {
+  "id": "gate-fixture.host-waiver-is-counted",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "    _T_WAIVED=$((_T_WAIVED + 1))\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-host-skips.sh",
+  "why": "t_summary must say how many failures it waived, or a waived suite reads exactly like a passing one"
+ },
+ {
+  "id": "gate-fixture.symlink-probe-reads-a-link",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "[ -L \"$2/b\" ]",
+  "replace": "[ -e \"$2/b\" ]",
+  "test": "bash linux/scripts/tests/test-host-skips.sh",
+  "why": "Git Bash's ln -s leaves a copy that exists; only -L tells the copy from a link"
+ },
+ {
+  "id": "gate-fixture.mode-probe-reads-the-bits",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "[ \"$(stat -c %a \"$1\" 2>/dev/null)\" = 711 ]",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-host-skips.sh",
+  "why": "chmod exits 0 on Git Bash without setting the bits; the probe must read them back"
+ },
+ {
+  "id": "gate-fixture.elf-probe-reads-the-magic",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "| tail -c 3)\" = ELF ]; }",
+  "replace": "| tail -c 3)\" != x ]; }",
+  "test": "bash linux/scripts/tests/test-host-skips.sh",
+  "why": "a PE bash handed to readelf yields an empty machine; the probe must reject anything without the ELF magic"
+ },
+ {
+  "id": "script-tests.skip-only-on-git-bash",
+  "target": "linux/scripts/tests/run-tests.sh",
+  "find": "MINGW* | MSYS* | CYGWIN*) SKIP_OK=1 ;; *) SKIP_OK=0 ;;",
+  "replace": "*) SKIP_OK=1 ;;",
+  "test": "bash linux/scripts/tests/test-host-skips.sh",
+  "why": "on Linux a stray exit 77 must fail the run; accepting it there lets any suite opt out of CI by exiting 77"
+ },
+ {
   "id": "cross-build.regcache-drop-after-two",
   "target": "linux/scripts/01-core/cross-stage-build.sh",
   "find": "  [ \"${_cbrc_fails}\" -ge 2 ] || return 0",

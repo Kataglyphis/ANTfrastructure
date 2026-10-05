@@ -5,6 +5,7 @@ _RENOVATE_FIXTURES_SH_LOADED=1
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_skip_unless "real symlinks (the bare PATH links host tools; Git Bash copies them, and a copied MSYS tool does not run)" t_posix_symlinks
 SCRIPT="${TESTS_DIR}/../renovate-local.sh"
 
 WORK="$(mktemp -d)"

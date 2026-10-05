@@ -99,6 +99,19 @@ to label the assertions that follow, `t_assert_eq <expected> <actual> [msg]`,
 non-zero when an assertion failed **and when the suite ran none at all** — a
 gutted suite must not read as a pass.
 
+**A Git Bash host may skip what it cannot host; Linux may not** (CON61,
+2026-10-05). Some suites need what Git Bash lacks: real symlinks, mode bits, a
+POSIX `python3`, `jq`. Such a suite says so with `t_skip_unless <what> <cmd…>`
+after sourcing the harness. On Git Bash that prints `SKIP [suite] this host
+lacks <what>` and exits 77, and `run-tests.sh` lists the suite as skipped. On
+Linux the same line fails the suite, so CI never runs less than it claims. When
+only one case needs it, `t_needs <what> <cmd…>` right after its `t_case` waives
+that case's failures, and `t_summary` prints how many it waived. The probes are
+`t_posix_symlinks`, `t_posix_modes`, `t_posix_python` and `t_is_elf`.
+`test-host-skips.sh` holds both verdicts to that split. A Windows-only failure
+in the code under test is a bug, not a skip. Two gates printed `linux\scripts\…`
+there, and they print POSIX paths now.
+
 **Scripts that end in `main "$@"` cannot be sourced.** Several subjects are
 executables, not libraries. The idiom is to cut the region under test out with
 `awk` and `eval` it: `test-vulkan-target-decomposition.sh` extracts each

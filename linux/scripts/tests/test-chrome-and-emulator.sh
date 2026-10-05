@@ -108,6 +108,7 @@ _cft_run() {
 }
 
 t_case "an amd64 install verifies both zips, writes a --no-sandbox wrapper and renders headless"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _cft_fixture linux64
 _cft_env > "${_W}/cft.env"
 _OUT="$(_cft_run amd64)"

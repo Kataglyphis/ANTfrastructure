@@ -197,6 +197,7 @@ t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "og.Config() failed at the BINDING layer"
 
 t_case "tier 4: GENAI_MODEL_DIR pointing at a non-directory -> FAIL rc=1"
+t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
 _run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
      GENAI_MODEL_DIR=/nonexistent-genai-model \
      STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so"

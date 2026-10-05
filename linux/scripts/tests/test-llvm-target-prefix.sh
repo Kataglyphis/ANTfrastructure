@@ -165,6 +165,7 @@ _mk_apt_fixture() {
 }
 
 t_case "the copied prefix is the thing that breaks -- the original resolves"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _mk_apt_fixture
 t_assert_eq "0" "$(find "${_T}/root" -xtype l | wc -l)" "every link resolves where the tree was installed"
 t_assert_eq "12" "$(find "${_P}" -xtype l | wc -l)" "cp -a to another depth breaks every one of them"
@@ -174,6 +175,7 @@ _repair "${_P}" "${_T}/root" >/dev/null
 t_assert_eq "0" "$(find "${_P}" -xtype l | wc -l)"
 
 t_case "the three libclang dev links are re-pointed INSIDE the prefix"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 t_assert_eq "libclang-23.so.23" "$(readlink "${_P}/lib/libclang.so")" \
   "an absolute or outward target is exactly the defect; clang.cindex opens this name"
 t_assert_eq "libclang-23.so.23" "$(readlink "${_P}/lib/libclang-23.so")"
@@ -195,12 +197,14 @@ t_assert_eq "0" "$(find "${_P}/lib" -name libLLVM.so.23.1 -xtype l | wc -l)" \
 t_assert_eq "real liblldb-23.so.1" "$(cat "${_P}/lib/liblldb-23.so.1")"
 
 t_case "a deep link is re-pointed with a path that resolves from ITS OWN dir"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _NAT="${_P}/lib/python3.14/site-packages/lldb/native/_lldb.cpython-314.so"
 t_assert_eq "../../../../liblldb-23.so.1" "$(readlink "${_NAT}")" \
   "a bare basename would dangle four levels down; an absolute /opt path would dangle after the COPY"
 t_assert_ok test -f "${_NAT}"
 
 t_case "a dev entry naming a package the prefix does not carry is DROPPED"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 t_assert_eq "" "$(find "${_P}/lib" -maxdepth 1 -name 'libc++*' -printf '%f\n')" \
   "libc++.a/.modules.json/.so name libc++-23-dev and libc++1 -- materialising them puts a second libc++ ahead of the base image's on the loader path"
 t_assert_ok test -f "${_T}/multiarch/libc++.a"
@@ -230,6 +234,7 @@ t_assert_fails test -e "${_P}/lib/libGONE.so"
 rm -rf "${_T}"
 
 t_case "a dangling link the repair CANNOT reach fails the sdk stage"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 # The one path past the loop: a materialised directory bringing a broken link of its own.
 _mk_apt_fixture
 ln -s ../../nowhere "${_T}/include/llvm-23/llvm/stale.h"

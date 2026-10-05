@@ -149,6 +149,7 @@ rm -rf "${_r}"
 
 _SYM_PRE='trap '"'"'printf "LIBRARY_PATH=%s\n" "${LIBRARY_PATH:-}"'"'"' EXIT'
 t_case "symlink: cross seeds every gcc search dir Meson's -print-file-name reaches"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _r="$(mktemp -d)"
 mkdir -p "${_r}/usr/local/lib" "${_r}/opt/gcc-16/aarch64-linux-gnu/lib64" \
          "${_r}/opt/gcc-16/lib/gcc/riscv64-linux-gnu/16.1.0"
