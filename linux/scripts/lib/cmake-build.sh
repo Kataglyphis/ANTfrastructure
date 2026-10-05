@@ -9,6 +9,8 @@ _CMAKE_BUILD_CORE_DIR="${_CMAKE_BUILD_LIB_DIR}/../01-core"
 source "${_CMAKE_BUILD_LIB_DIR}/log-bootstrap.sh"
 # shellcheck source=../01-core/vulkan-env.sh
 source "${_CMAKE_BUILD_CORE_DIR}/vulkan-env.sh"
+# shellcheck source=./linker-select.sh
+source "${_CMAKE_BUILD_LIB_DIR}/linker-select.sh"
 
 cmake_build_usage() {
   cat <<EOF
@@ -168,6 +170,9 @@ cmake_build_prepare_env() {
       echo "${cache_var} not writable in this image; using ${fallback}"
     fi
   done
+
+  # Opt-in (KATAGLYPHIS_LINKER); unset leaves the image's linker in charge.
+  linker_select_env
 }
 
 # The project's get_build_jobs wins, then parallelism.sh, then a plain core count.
@@ -265,6 +270,6 @@ cmake_build_run() {
 # Full pipeline: parse args, prepare the environment, configure and build.
 cmake_build_main() {
   cmake_build_parse_args "$@"
-  cmake_build_prepare_env
+  cmake_build_prepare_env || return $?
   cmake_build_run
 }

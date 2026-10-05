@@ -11937,5 +11937,77 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
   "why": "the packaging sync would ignore the lane's extras limit and build the full set under emulation"
+ },
+ {
+  "id": "linker-select.unknown-value-refused",
+  "target": "linux/scripts/lib/linker-select.sh",
+  "find": "    *) warn \"KATAGLYPHIS_LINKER must be default, lld or mold, not '${want}'\"; return 2 ;;",
+  "replace": "    *) return 0 ;;",
+  "test": "bash linux/scripts/tests/test-linker-select.sh",
+  "why": "a typo such as KATAGLYPHIS_LINKER=gold must stop the build; read as default, the run measures the image's linker under the name the operator asked for"
+ },
+ {
+  "id": "linker-select.applied-once",
+  "target": "linux/scripts/lib/linker-select.sh",
+  "find": "  [[ \"${_LINKER_SELECT_APPLIED:-}\" == \"${want}\" ]] && return 0",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-linker-select.sh",
+  "why": "cmake_build_prepare_env is documented safe to call twice and a lane's child script inherits LDFLAGS; without the marker each call appends -fuse-ld again"
+ },
+ {
+  "id": "linker-select.rustflags-refused",
+  "target": "linux/scripts/lib/linker-select.sh",
+  "find": "  if [[ -n \"${RUSTFLAGS:-}\" || -n \"${CARGO_ENCODED_RUSTFLAGS:-}\" ]]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-linker-select.sh",
+  "why": "cargo takes RUSTFLAGS over CARGO_TARGET_<host>_RUSTFLAGS without a word, so the Rust half would link with the old linker while the log claims the new one"
+ },
+ {
+  "id": "linker-select.probe-gates-export",
+  "target": "linux/scripts/lib/linker-select.sh",
+  "find": "  if ! printf 'int main(void) { return 0; }\\n' | \"${cc}\" -x c - -fuse-ld=\"${want}\" -o \"${probe_dir}/probe\" >/dev/null 2>&1; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-linker-select.sh",
+  "why": "the probe is what turns a missing ld.<x> into a failure at the start; without it the build dies at its first link, an hour in"
+ },
+ {
+  "id": "linker-select.clang-plugin-for-mold",
+  "target": "linux/scripts/lib/linker-select.sh",
+  "find": "  if [[ \"${want}\" == mold ]] && plugin=\"$(_linker_select_clang_plugin)\"; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-linker-select.sh",
+  "why": "mold reads clang's LTO bitcode only through LLVMgold.so; the plugin library links AccelerANTgine's bitcode archives and stops with 'the -plugin option was not provided' without it"
+ },
+ {
+  "id": "linker-select.env-pin-wins",
+  "target": "linux/scripts/lib/linker-select.sh",
+  "find": "  pins=\"$(source \"${_LINKER_SELECT_CORE_DIR}/load-versions-env.sh\" \\\n    && load_versions_env \"${_LINKER_SELECT_CORE_DIR}/versions.env\" && env | grep '^MOLD_LINUX_')\" || return 0",
+  "replace": "  pins=\"$(grep '^MOLD_LINUX_' \"${_LINKER_SELECT_CORE_DIR}/versions.env\")\" || return 0",
+  "test": "bash linux/scripts/tests/test-linker-select.sh",
+  "why": "an operator testing a newer mold sets MOLD_LINUX_VERSION and its SHA; versions.env overwriting them would fetch the old release under the new name"
+ },
+ {
+  "id": "linker-select.unpinned-arch-fails",
+  "target": "linux/scripts/lib/linker-select.sh",
+  "find": "    *) warn \"No pinned mold release for $(uname -m).\"; return 1 ;;",
+  "replace": "    *) arch=x86_64; sha=\"${MOLD_LINUX_X86_64_SHA256:-}\" ;;",
+  "test": "bash linux/scripts/tests/test-linker-select.sh",
+  "why": "an architecture with no pinned release must fail rather than fetch another architecture's binary"
+ },
+ {
+  "id": "linker-select.cache-reused",
+  "target": "linux/scripts/lib/linker-select.sh",
+  "find": "  if [[ ! -x \"${cache_root}/${asset}/bin/ld.mold\" ]]; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-linker-select.sh",
+  "why": "the version-keyed cache is what makes a second lane step free; refetching on every call puts a GitHub download in each build"
+ },
+ {
+  "id": "linker-select.cmake-build-wired",
+  "target": "linux/scripts/lib/cmake-build.sh",
+  "find": "  # Opt-in (KATAGLYPHIS_LINKER); unset leaves the image's linker in charge.\n  linker_select_env\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-linker-select.sh",
+  "why": "cmake_build_prepare_env is where every cmake-build.sh consumer gets the switch; dropped, KATAGLYPHIS_LINKER=mold builds with the default linker and says nothing"
  }
 ]

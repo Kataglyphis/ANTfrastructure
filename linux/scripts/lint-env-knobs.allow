@@ -464,3 +464,11 @@ TAPPAS_PREFIX
 # for a CROSS build (sbsa-linux), empty on a native one. Not an operator switch:
 # the stage derives it from TARGET_ARCH. docs/linux-accelerator-images.md
 CUDA_CROSS_TARGET_DIR
+# lib/linker-select.sh (2026-10-05): KATAGLYPHIS_LINKER is the operator's opt-in
+# linker (default|lld|mold), never set in-repo so the default build stays the
+# image's; LINKER_SELECT_CACHE_DIR relocates the pinned mold download.
+# CARGO_ENCODED_RUSTFLAGS is cargo's own, read only to refuse a run it would
+# silently override.
+CARGO_ENCODED_RUSTFLAGS
+KATAGLYPHIS_LINKER
+LINKER_SELECT_CACHE_DIR

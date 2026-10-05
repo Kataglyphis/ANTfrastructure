@@ -199,6 +199,37 @@ $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdc
   ever observable there.
 - Verifying a fix before pushing, rather than after.
 
+## WSL containers (`wslc`) are not a replacement yet
+
+Evaluated 2026-10-05 against WSL 3.0.1, whose `wslc.exe` went GA on 2026-09-29.
+Each session is its own utility VM running dockerd 25.0.3, it needs no admin, and
+it leaves Stevedore's Windows containers alone. **Keep Rancher Desktop for every
+lane.** wslc rejects `--privileged`, `--platform` and `--device`, and those are
+what the lanes pass:
+- `--privileged`: the native and web lanes (microsoft/WSL#41545).
+- `--platform`: both local drivers, on every run (#41123).
+- `--device`: cameras and `/dev/dri` (#40988).
+
+Its arm64 emulation does not survive between containers either: binfmt
+registered through its inner docker is gone at the next run.
+
+| Pain point here | wslc |
+| --- | --- |
+| Pulls through the Windows shim fail on `docker-credential-undefined` | fixed: credentials go to Windows Credential Manager |
+| [`-v name:/path` is a bind](#-v-namepath-is-a-bind-under-windows-nerdctl) | fixed: a real named volume, still root-owned, so the chown step stays |
+| [An empty mount](#an-empty-mount-is-not-a-missing-drive) | probably fixed: each bind source gets its own virtiofs share (untested, no D:) |
+| uid 1001 cannot `chmod`/`touch -d` host-made files | the same, so the named-volume rule stays |
+| arm64 under QEMU | worse: no `--platform`, binfmt does not persist |
+
+Bind mounts are 2–5x faster than Rancher's 9p: 2000 small writes take 1.7 s
+instead of 4.3–4.9 s, `stat` is 4.8x faster, and sequential reads run at
+~900 MiB/s against ~240 MiB/s. A bind mount is still 25–30x slower than
+container-local disk on both engines. The one shape it can run today is the
+Dart-only loop (no `--privileged`, and `--platform` can be dropped on an x64
+host). Check again when #41545 and #41123 land. Until then the family image
+would be a second ~30 GB copy on `C:` (`session.storagePath` in
+`%LOCALAPPDATA%\wslc\settings.yaml` moves it).
+
 ## Persisting the cargo cache
 
 The `:latest` image runs as uid 1001. Its `/usr/local/cargo` belongs to that uid
