@@ -436,6 +436,13 @@ it finds in that directory (not recursively; the family keeps it there,
 gitignored) and `MSIX_PFX_PASSWORD`. Since 2026-09-25 `-Sign` without
 `-SigningRoot` throws before anything is staged.
 
+An MSI built from the project's own `.wxs` goes through `Invoke-MsiPackage`
+(`WindowsMsix.Common`, since 2026-10-05). It runs `wix build` with `Version`, `ExeSource`,
+`LicenseRtf`, `ProductName` and `Manufacturer` as preprocessor variables. With
+`-PayloadFiles` it also writes a fragment for `<ComponentGroupRef Id='PayloadFiles'/>`,
+one component per file. OxidANT is the first caller; a CMake repo builds its MSI
+through CPack's WiX generator instead.
+
 What a package carries is the consumer's to stage, with two hub helpers. The
 DLL closure of a product comes from `Copy-PeImportClosure`
 (`WindowsCrossBundle.Common`, [`windows-cross-builds.md`](windows-cross-builds.md)).
@@ -531,6 +538,44 @@ preference. Match the repo you are in.
 `set -euo pipefail` applies to **entry points**, not to sourced libraries — a
 file-scope `set -e` in a library leaks into whoever sources it. This repo's own
 libraries follow the same rule (`AGENTS.md` § Development Rules).
+
+### Reach for these before writing a helper
+
+Every row was first written locally in a consumer and later found here, usually
+in a better form and twice with a bug the local copy did not have. The list
+moved here from OxidANT's `AGENTS.md` on 2026-10-05 (CON55), so each consumer
+links one list instead of keeping its own.
+
+| Need | Use | Defined in | Not |
+| --- | --- | --- | --- |
+| `docker.exe` discovery (Stevedore) | `Resolve-DockerExe` | [`WindowsContainerBuild.Reuse.psm1`](../windows/scripts/modules/WindowsContainerBuild.Reuse.psm1) | a hand-rolled candidate list |
+| `--isolation process` and friends | `Get-ContainerIsolationArgs` | same file | inline flags |
+| Container teardown | `Remove-BuildContainerSafe` | same file | `docker rm -f`, which misses the wcifs teardown lock |
+| Bind-mount probe, artifact delivery | `Test-ContainerBindMount`, `Test-BuildArtifactsDelivered` | same file | assuming a green build delivered something |
+| Stage, manifest, pack and sign one MSIX | `Invoke-MsixPackage` | [`WindowsMsix.Common.psm1`](../windows/scripts/modules/WindowsMsix.Common.psm1) | a local makeappx/assets/tokens/pack sequence |
+| The version to stamp a package with | `Get-PackageVersion` | same file | reading `VERSION.txt` inline, with a different fallback per step |
+| SDK tools (makeappx, signtool) | `Resolve-WindowsSdkToolPath` | same file | `Get-ChildItem -Recurse` over the Kits tree |
+| Manifest tokens, XML escaping, placeholder PNGs | `Expand-XmlTemplateTokens`, `ConvertTo-XmlSafeText`, `New-TransparentPng` | same file | `-replace`, or a local redefinition |
+| Config access | `Get-OrDefault`, `Get-ConfigValue` | [`WindowsConfig.Common.psm1`](../windows/scripts/modules/WindowsConfig.Common.psm1) | copies |
+| Build logging and steps | `New-BuildContext`, `Invoke-BuildStep`, `Invoke-BuildExternal`, `Write-BuildLog*` | [`WindowsBuild.Common.psm1`](../windows/scripts/modules/WindowsBuild.Common.psm1) | ad-hoc `Write-Host` wrappers |
+| Tool guards, workspace paths, a hub pin from `versions.env` | `Assert-Command`, `Resolve-WorkspacePath`, `Get-ANTfrastructurePin` | [`WindowsScripts.Shared.psm1`](../windows/scripts/modules/WindowsScripts.Shared.psm1) | a second implementation, or a `versions.env` regex |
+| Logging inside a container | `Start-ContainerLog`, `Write-ContainerLog`, `Invoke-ContainerLoggedCommand` | [`WindowsContainerLog.Common.psm1`](../windows/scripts/modules/WindowsContainerLog.Common.psm1) | a `Say`/`Run-Logged` pair per script |
+| CI version stamping (bash) | `version_util.sh --github-env`, `--resolve-ci`, `--normalize` | [`version_util.sh`](../linux/scripts/02-toolchain/rust/version_util.sh) | re-reading `VERSION.txt` yourself |
+| In-container cargo steps | `cargo_debug.sh`, `cargo_release.sh`, `cargo_test.sh`, `cargo_coverage.sh`, `cargo_fmt_clippy.sh` (`CARGO_CLIPPY_ARGS`), … | [`02-toolchain/rust/`](../linux/scripts/02-toolchain/rust/) | inline cargo invocations |
+| Linux packaging (tar, deb, AppImage, Flatpak) | `package_archive.sh` | [`package_archive.sh`](../linux/scripts/06-packaging/package_archive.sh) | bespoke packaging |
+| CI job plumbing | `prepare-linux-ci-host`, `run-in-linux-container`, `run-in-windows-container`, `clone-into-short-path`, `cleanup-disk-space`, `assert-docker-disk-space` | [`.github/actions/`](../.github/actions/README.md) | hand-written `docker run` blocks |
+| Linting workflows locally | `lint-workflows.sh <root>` (pinned, SHA-verified actionlint) | [`lint-workflows.sh`](../linux/scripts/lint-workflows.sh) | bootstrapping your own |
+| The agentic loop | config and runner templates | [`shared/agentic-loop/templates/`](../shared/agentic-loop/templates/README.md) | writing one from scratch |
+| Bash helpers: logging, retry, SHA-checked downloads, parallelism | `logging.sh`, `downloads.sh`, `parallelism.sh`, … | [`linux/scripts/01-core/`](../linux/scripts/01-core/) | new implementations |
+
+Two caveats:
+
+- **A module's own imports are private to it.** `WindowsBuild.Common` importing
+  `WindowsScripts.Shared` does not re-export it to you. Import each module you
+  call into directly, or the first run of that code path stops with "command not
+  found".
+- **Change the hub, not a local copy.** The same owner may edit this repo, but
+  every consumer reads it: change it here, push, then move the consumer's pin.
 
 ### The rest of the naming rules, in one place
 

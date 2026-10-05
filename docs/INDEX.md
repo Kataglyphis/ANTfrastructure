@@ -162,6 +162,7 @@ The two halves of one topic often split:
 |---|---|
 | The five shell-safety bug classes (all found live) | [`../AGENTS.md`](../AGENTS.md) § *Shell safety conventions* |
 | Reusable PowerShell modules | `windows/scripts/modules/` — resolved via the consumer's `Resolve-BuildModule.ps1` |
+| Which hub function to call before writing your own helper: container, MSIX/MSI, config, build-step, logging, cargo, packaging, CI | [`adopting-in-a-new-project.md` § *Reach for these before writing a helper*](adopting-in-a-new-project.md#reach-for-these-before-writing-a-helper) |
 | Reusable bash libraries | `linux/scripts/lib/` and `linux/scripts/01-core/` |
 | Generic Python CI drivers | `linux/scripts/02-toolchain/python/ci_*.sh` |
 | CI composite actions | [`../.github/actions/README.md`](../.github/actions/README.md) |

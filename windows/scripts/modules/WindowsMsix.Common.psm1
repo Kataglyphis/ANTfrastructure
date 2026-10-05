@@ -147,6 +147,29 @@ function Get-PackageVersion {
   return ($parts[0..($Components - 1)] -join '.')
 }
 
+# Runs one packager into a cleared -OutputPath; makeappx and wix can both exit 0 and write nothing.
+function Invoke-PackagerTool {
+  param(
+    [Parameter(Mandatory)] [pscustomobject]$Context,
+    [Parameter(Mandatory)] [string]$File,
+    [Parameter(Mandatory)] [string[]]$Parameters,
+    [Parameter(Mandatory)] [string]$OutputPath,
+    [scriptblock]$InvokerScriptBlock
+  )
+
+  $outDir = Split-Path -Parent $OutputPath
+  if ($outDir) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
+  if (Test-Path -LiteralPath $OutputPath) { Remove-Item -LiteralPath $OutputPath -Force }
+  if ($InvokerScriptBlock) {
+    & $InvokerScriptBlock $File $Parameters | Out-Null
+  } else {
+    Invoke-BuildExternal -Context $Context -File $File -Parameters $Parameters | Out-Null
+  }
+  if (-not (Test-Path -LiteralPath $OutputPath)) {
+    throw "$([System.IO.Path]::GetFileNameWithoutExtension($File)) reported success but produced no package at $OutputPath"
+  }
+}
+
 function Invoke-MsixPackage {
   <#
     .SYNOPSIS
@@ -224,27 +247,117 @@ function Invoke-MsixPackage {
   $manifest = Expand-XmlTemplateTokens -Template (Get-Content -LiteralPath $ManifestTemplatePath -Raw) -TokenMap $TokenMap
   Set-Content -Path (Join-Path $StagingDir 'AppxManifest.xml') -Value $manifest -Encoding utf8
 
-  $outDir = Split-Path -Parent $OutputPath
-  if ($outDir) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
-  if (Test-Path -LiteralPath $OutputPath) { Remove-Item -LiteralPath $OutputPath -Force }
-
   $packArgs = @('pack', '/d', $StagingDir, '/p', $OutputPath, '/o')
-  if ($InvokerScriptBlock) {
-    & $InvokerScriptBlock $makeappx $packArgs | Out-Null
-  } else {
-    Invoke-BuildExternal -Context $Context -File $makeappx -Parameters $packArgs | Out-Null
-  }
-
-  # makeappx can report success and produce no file.
-  if (-not (Test-Path -LiteralPath $OutputPath)) {
-    throw "makeappx reported success but produced no package at $OutputPath"
-  }
+  Invoke-PackagerTool -Context $Context -File $makeappx -Parameters $packArgs -OutputPath $OutputPath -InvokerScriptBlock $InvokerScriptBlock
 
   if ($Sign) {
     Invoke-MsixSign -Context $Context -WorkspacePath $SigningRoot -MsixOutPath $OutputPath
   }
 
   return $OutputPath
+}
+
+function Resolve-WixExe {
+  <#
+    .SYNOPSIS
+      wix.exe (WiX v4 or later): -OverridePath, then $env:WIX, then PATH; $null when none has it.
+  #>
+  param(
+    [AllowNull()]
+    [string]$OverridePath
+  )
+
+  # $env:WIX is where the WiX installer and the image put it; only an explicit path outranks it.
+  if ([string]::IsNullOrWhiteSpace($OverridePath) -and -not [string]::IsNullOrWhiteSpace($env:WIX)) {
+    $candidate = Join-Path $env:WIX 'wix.exe'
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+  }
+  return Resolve-WindowsSdkToolPath -ToolName 'wix.exe' -OverridePath $OverridePath
+}
+
+function New-WixPayloadFragment {
+  <#
+    .SYNOPSIS
+      Write a WiX fragment with one component per file, in ComponentGroup PayloadFiles under APPLICATIONFOLDER.
+    .PARAMETER PayloadFiles
+      Objects with Source and Subdirectory; an empty Subdirectory installs beside the exe.
+  #>
+  param(
+    [Parameter(Mandatory)] [object[]]$PayloadFiles,
+    [Parameter(Mandatory)] [string]$Path,
+    [ValidateSet('x64', 'arm64', 'x86')] [string]$Arch = 'x64'
+  )
+
+  $bitness = if ($Arch -eq 'x86') { 'always32' } else { 'always64' }
+  $components = for ($i = 0; $i -lt $PayloadFiles.Count; $i++) {
+    $src = [System.Security.SecurityElement]::Escape([string]$PayloadFiles[$i].Source)
+    $dir = [string]$PayloadFiles[$i].Subdirectory
+    $sub = if ($dir) { " Subdirectory='$([System.Security.SecurityElement]::Escape($dir))'" } else { '' }
+    "      <Component Id='payload$i' Bitness='$bitness'$sub><File Id='payloadFile$i' Source='$src' KeyPath='yes'/></Component>"
+  }
+  $parent = Split-Path -Parent $Path
+  if ($parent) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+  @(
+    "<Wix xmlns='http://wixtoolset.org/schemas/v4/wxs'><Fragment>"
+    "    <ComponentGroup Id='PayloadFiles' Directory='APPLICATIONFOLDER'>"
+    $components
+    '    </ComponentGroup>'
+    '</Fragment></Wix>'
+  ) | Set-Content -LiteralPath $Path -Encoding utf8
+  return $Path
+}
+
+function Invoke-MsiPackage {
+  <#
+    .SYNOPSIS
+      Build one MSI from the project's own .wxs with wix build; the output's existence is asserted.
+    .DESCRIPTION
+      The .wxs takes every moving value as a preprocessor variable: Version, ExeSource, LicenseRtf,
+      ProductName and Manufacturer, plus PayloadFiles=1 when -PayloadFiles is given.
+    .PARAMETER PayloadFiles
+      Objects with Source and Subdirectory, written to -FragmentPath by New-WixPayloadFragment.
+  #>
+  param(
+    [Parameter(Mandatory)] [pscustomobject]$Context,
+    [Parameter(Mandatory)] [string]$WxsFile,
+    [Parameter(Mandatory)] [string]$LicenseFile,
+    [Parameter(Mandatory)] [string]$ProductName,
+    [Parameter(Mandatory)] [string]$Manufacturer,
+    [Parameter(Mandatory)] [string]$ExeSource,
+    [Parameter(Mandatory)] [string]$Version,
+    [Parameter(Mandatory)] [string]$OutFile,
+    [Parameter(Mandatory)] [ValidateSet('x64', 'arm64', 'x86')] [string]$Arch,
+    [object[]]$PayloadFiles = @(),
+    [string]$FragmentPath = '',
+    [string[]]$Extensions = @('WixToolset.UI.wixext'),
+    [string]$WixPath = '',
+    # Test seam, as in Invoke-MsixPackage: real builds need WiX.
+    [scriptblock]$InvokerScriptBlock
+  )
+
+  $inputs = [ordered]@{ 'the .wxs' = $WxsFile; 'the license' = $LicenseFile; 'the exe' = $ExeSource }
+  foreach ($name in $inputs.Keys) {
+    if (-not (Test-Path -LiteralPath $inputs[$name] -PathType Leaf)) { throw "MSI input not found, ${name}: $($inputs[$name])" }
+  }
+  if ($PayloadFiles.Count -gt 0 -and [string]::IsNullOrWhiteSpace($FragmentPath)) {
+    throw '-PayloadFiles needs -FragmentPath: where to write the generated component fragment.'
+  }
+  $wix = Resolve-WixExe -OverridePath $WixPath
+  if (-not $wix) {
+    throw "wix.exe (WiX v4 or later) not found under `$env:WIX ('$env:WIX') or on PATH; the Windows image installs it (Install-ScoopTools.ps1)."
+  }
+
+  $wixArgs = @('build', '-arch', $Arch)
+  foreach ($ext in $Extensions) { $wixArgs += @('-ext', $ext) }
+  $wixArgs += @(
+    '-d', "Version=$Version", '-d', "ExeSource=$ExeSource", '-d', "LicenseRtf=$LicenseFile",
+    '-d', "ProductName=$ProductName", '-d', "Manufacturer=$Manufacturer", '-out', $OutFile, $WxsFile)
+  if ($PayloadFiles.Count -gt 0) {
+    $wixArgs += @('-d', 'PayloadFiles=1', (New-WixPayloadFragment -PayloadFiles $PayloadFiles -Path $FragmentPath -Arch $Arch))
+  }
+
+  Invoke-PackagerTool -Context $Context -File $wix -Parameters $wixArgs -OutputPath $OutFile -InvokerScriptBlock $InvokerScriptBlock
+  return $OutFile
 }
 
 # Approved-verb wrappers to improve discoverability while preserving existing function names.
@@ -254,4 +367,4 @@ function ConvertTo-XmlSafeText { param($Text) return ConvertTo-XmlEscapedText -V
 
 function New-TransparentImage { param($Path,$Width,$Height) return New-TransparentPng -Path $Path -Width $Width -Height $Height }
 
-Export-ModuleMember -Function Resolve-WindowsSdkToolPath, Expand-XmlTemplateTokens, New-TransparentPng, Get-WindowsSdkToolPath, ConvertTo-XmlSafeText, New-TransparentImage, Get-PackageVersion, Invoke-MsixPackage
+Export-ModuleMember -Function Resolve-WindowsSdkToolPath, Expand-XmlTemplateTokens, New-TransparentPng, Get-WindowsSdkToolPath, ConvertTo-XmlSafeText, New-TransparentImage, Get-PackageVersion, Invoke-MsixPackage, Resolve-WixExe, New-WixPayloadFragment, Invoke-MsiPackage
