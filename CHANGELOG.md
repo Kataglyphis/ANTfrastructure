@@ -7,6 +7,14 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-05 — ripgrep is the family's search tool
+
+- Owner rule: search with `rg`, not `grep -r` or `findstr`, in every repo of the family
+  (`AGENTS.md` § *Searching the tree: ripgrep (`rg`)*); the consumer template links it.
+- The images get it with their next chain (CON56): `ripgrep` in `setup-package-image.sh`
+  with `rg` in its presence check, `main/ripgrep` among the floating scoop tools.
+
+
 ## 2026-10-05 — Windows CodeQL results honour the config's paths-ignore
 
 - `database analyze` applied `paths-ignore` to traced C++ not at all: OmniAccelerANT's first
