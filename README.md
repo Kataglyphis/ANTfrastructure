@@ -29,6 +29,11 @@ Pull an image and start working, or build the chain yourself — both are below.
 
 ## Quick Start 🏁
 
+Search a checkout with [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`): it skips
+ignored trees and binaries. Install it with `winget install --id BurntSushi.ripgrep.MSVC -e
+--scope user` on Windows or `apt install ripgrep` on Linux; the images carry it from their
+next chain ([`AGENTS.md`](AGENTS.md) § *Searching the tree*).
+
 ### Linux 🐧
 
 ```bash

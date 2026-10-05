@@ -125,9 +125,9 @@ select_dev_packages() {
         "libclang-rt-${_pkg_llvm_major}-dev" "libfuzzer-${_pkg_llvm_major}-dev"
     append_available_packages _sdp_out clang-22 lld-22 llvm-22 llvm-22-dev \
         libclang-rt-22-dev libfuzzer-22-dev cargo-c
-    # What consumer lanes installed per run: lavapipe, perf (26.04's linux-perf), libprofiler, jq, Xvfb.
+    # What consumer lanes installed per run: lavapipe, perf (26.04's linux-perf), libprofiler, jq, Xvfb; ripgrep for searches.
     append_available_packages _sdp_out mesa-vulkan-drivers linux-perf \
-        libgoogle-perftools-dev jq xvfb
+        libgoogle-perftools-dev jq xvfb ripgrep
 
     # Never libgstreamer*-dev (ours is source-built, the distro one purged) or libgtk-4-dev (breaks cross builds).
 
@@ -360,10 +360,10 @@ verify_consumer_dev_surface() {
 
     # CON19/CON20: optional per arch (append_available_packages), so a warning, not a gate.
     local tool absent=()
-    for tool in perf jq Xvfb; do command -v "${tool}" >/dev/null 2>&1 || absent+=("${tool}"); done
+    for tool in perf jq Xvfb rg; do command -v "${tool}" >/dev/null 2>&1 || absent+=("${tool}"); done
     compgen -G '/usr/share/vulkan/icd.d/lvp_icd*.json' >/dev/null || absent+=("the lavapipe ICD")
     if [ "${#absent[@]}" -eq 0 ]; then
-        echo "OK: perf, jq, Xvfb and lavapipe (a CPU Vulkan device) are present"
+        echo "OK: perf, jq, Xvfb, rg and lavapipe (a CPU Vulkan device) are present"
     else
         echo "WARN: absent on this arch: ${absent[*]}"
     fi

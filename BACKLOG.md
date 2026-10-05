@@ -122,6 +122,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
       Done when OxidANT has turned each row into a deletion and moved its pin.
 
+- [ ] **CON56 — ripgrep in the images** [S, ★★]. Owner rule 2026-10-05: search with `rg`
+      in every repo of the family (`AGENTS.md` § *Searching the tree*). In source the same
+      day: `setup-package-image.sh` adds `ripgrep` beside jq/Xvfb (and `rg` to the presence
+      check), and `Install-ScoopTools.ps1` adds `main/ripgrep` to the floating tools. Done
+      when a published `:latest` (all three arches) and `:winamd64` answer `rg --version`.
+
 ## Open — Linux image (all arches)
 
 - [ ] **CON44 — `LP_NATIVE_VECTOR_WIDTH=256` in the image** [S, ★★]. Mesa 26.0.8's lavapipe

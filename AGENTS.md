@@ -268,6 +268,20 @@ which jobs are still gated:
 [`github-cli-pipeline-monitoring.md`](docs/github-cli-pipeline-monitoring.md)
 and [`ci-build-triggers.md`](docs/ci-build-triggers.md).
 
+### Searching the tree: ripgrep (`rg`)
+
+**Owner rule for every repo of the family (2026-10-05).** Search with `rg`, not
+`grep -r` or `findstr`. It honours `.gitignore`, so it skips the `build/`, `.dart_tool/`
+and vendored-SDK trees that `grep -r` walks, and it skips binaries.
+
+- Install: Windows `winget install --id BurntSushi.ripgrep.MSVC -e --scope user`
+  (no admin), Linux `apt install ripgrep`. The `:latest` and `:winamd64` images carry it
+  from their next chain (`BACKLOG.md` CON56).
+- `rg -n PATTERN`, `rg -l PATTERN`, `rg --files -g '*.ps1'`; add `-uu` when the ignored
+  trees are what you are looking for.
+- A script that may run where `rg` is absent (a CI runner, an older image) keeps `grep`,
+  or checks `command -v rg` first.
+
 ### Where does knowledge belong? (docs, not just code)
 
 A fix that only exists in code is a fix the next reader re-derives. Write the

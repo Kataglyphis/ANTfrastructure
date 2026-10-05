@@ -379,7 +379,7 @@ if ($sslManifest) {
 }
 
 # Floating: tools the build only invokes; pin one the moment it links into shipped binaries. One call each keeps the retry.
-foreach ($floatingPkg in @('nano', 'cppcheck', 'extras/nsis', 'main/uv', 'main/nuget', 'extras/zlib', 'main/openssl', 'main/pkg-config')) {
+foreach ($floatingPkg in @('nano', 'cppcheck', 'extras/nsis', 'main/uv', 'main/nuget', 'extras/zlib', 'main/openssl', 'main/pkg-config', 'main/ripgrep')) {
     Install-ScoopPackage -Package $floatingPkg
 }
 
