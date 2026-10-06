@@ -470,7 +470,7 @@ check_rust_toolchain() {
 }
 
 # Consumer contract. See docs/consumer-image-contract.md#the-contract
-_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools"
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python"
 
 # Staged-or-every-run-pays rows. See docs/consumer-image-contract.md#what-the-image-stages-so-a-run-does-not
 _consumer_present_verdict() {
@@ -499,6 +499,7 @@ _consumer_contract_symptom() {
     chrome)        printf '%s' 'flutter doctor reports "Cannot find Chrome executable at google-chrome" and "flutter test --platform chrome" has no browser, so the web lane tests nothing in one' ;;
     android-emulator) printf '%s' 'an Android lane has no device to install on: adb reports "no devices/emulators found" and every on-device test is skipped' ;;
     cargo-qa-tools) printf '%s' 'every OxidANT security and coverage step cargo-installs cargo-audit, cargo-deny and cargo-tarpaulin from crates.io first, minutes of compiles per run' ;;
+    free-threaded-python) printf '%s' 'every 3.14t leg has uv download a free-threaded CPython first, its patch version unpinned' ;;
     *)             printf '%s' 'no symptom recorded for this row' ;;
   esac
 }
@@ -626,6 +627,12 @@ case "${_qa}" in
   *)        printf 'FACT cargo-qa-tools no\n' ;;
 esac
 printf 'FACT cargo-qa-tools-versions %s\n' "${_qa# }"
+_ft="$(compgen -c | grep -E '^python3\.[0-9]+t$' | sort -u | head -1)"
+if [ -n "${_ft}" ]; then
+  printf 'FACT free-threaded-python %s\n' "$("${_ft}" -c 'import sys; print(sys.version.split()[0], "gil=" + str(sys._is_gil_enabled()))' 2>/dev/null)"
+else
+  printf 'FACT free-threaded-python none\n'
+fi
 printf 'ENV chrome-executable %s\n' "${CHROME_EXECUTABLE:-}"
 if [ -n "${CHROME_EXECUTABLE:-}" ] && [ -x "${CHROME_EXECUTABLE}" ]; then
   printf 'FACT chrome yes\n'
@@ -851,6 +858,19 @@ _consumer_cargo_qa_verdict() {
   fi
 }
 
+# CON66's interpreter: PYTHON_VERSION, and the GIL really off. docs/consumer-image-contract.md#the-free-threaded-python
+_consumer_free_threaded_verdict() {
+  local row="$1" want="$3" have
+  have="$(_consumer_contract_fact "$2" FACT free-threaded-python)"
+  if [ -z "${have}" ]; then
+    printf 'NOFACT %s no FACT free-threaded-python line' "${row}"
+  elif [ "${have}" = "${want} gil=False" ]; then
+    printf 'OK %s CPython %s without the GIL' "${row}" "${want}"
+  else
+    printf 'BAD %s python3.*t reports %s, expected %s gil=False' "${row}" "${have}" "${want}"
+  fi
+}
+
 # <row> <probe> <pin>; a rendered page proves V8 and the renderer, not only that the binary exists.
 _consumer_chrome_verdict() {
   local row="$1" p="$2" want="$3" have drv
@@ -925,6 +945,8 @@ _consumer_contract_verdicts() {
         cargo-qa-tools)
                        line="$(_consumer_cargo_qa_verdict "${row}" "${probe}" \
                                  "cargo-audit=$(_rt_versions_env_pin CARGO_AUDIT_VERSION) cargo-deny=$(_rt_versions_env_pin CARGO_DENY_VERSION) cargo-tarpaulin=$(_rt_versions_env_pin CARGO_TARPAULIN_VERSION)")" ;;
+        free-threaded-python)
+                       line="$(_consumer_free_threaded_verdict "${row}" "${probe}" "$(_rt_versions_env_pin PYTHON_VERSION)")" ;;
         flatpak-runtimes|appimage-runtime|web-lane-tools)
                        line="$(_consumer_present_verdict "${row}" \
                                  "$(_consumer_contract_fact "${probe}" FACT "${row}")")" ;;

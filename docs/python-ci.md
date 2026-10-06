@@ -427,6 +427,11 @@ by name instead of failing on a missing file. Test: `windows/scripts/tests/Pytho
 
 ## Free-threaded and GIL legs in one container
 
+Since CON66 the image ships the free-threaded interpreter itself, at
+`/usr/local/bin/python3.14t` and outside uv's store, so a `3.14t` leg downloads nothing
+([`consumer-image-contract.md` § The free-threaded Python](consumer-image-contract.md#the-free-threaded-python)).
+On an older image the leg still downloads one, and the rest of this section applies.
+
 uv 0.12 lets a plain `3.14` request take a free-threaded build: once a `3.14t` leg has
 downloaded `3.14.7+freethreaded` into uv's managed store, a later `uv venv --python 3.14`
 in the same container picks it over the image's GIL `3.14.4` (WebDavClient, 2026-09-29,

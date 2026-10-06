@@ -487,6 +487,27 @@ install_cargo_qa_tools() {
     done
 }
 
+# The free-threaded twin of PYTHON_VERSION for the 3.14t legs (CON66). See docs/consumer-image-contract.md § The free-threaded Python
+install_free_threaded_python() {
+    local version root=/opt/python-freethreaded exe mm report
+
+    version="$(_versions_env_value PYTHON_VERSION)"
+    [ -n "${version}" ] || { echo "ERROR: no PYTHON_VERSION in versions.env" >&2; return 1; }
+    mm="${version%.*}"
+    # uv checks the download against the SHA256 its pinned release embeds; outside uv's store, so a plain 3.14 never picks it.
+    UV_PYTHON_INSTALL_DIR="${root}" uv python install --no-bin "${version}t" \
+        || { echo "ERROR: uv could not install CPython ${version}t" >&2; return 1; }
+    exe="$(UV_PYTHON_INSTALL_DIR="${root}" uv python find --managed-python "${version}t")" \
+        || { echo "ERROR: CPython ${version}t is not under ${root}" >&2; return 1; }
+    ln -sf "${exe}" "/usr/local/bin/python${mm}t"
+    report="$("${exe}" -c 'import sys; print(sys.version.split()[0], sys._is_gil_enabled())' 2>&1)"
+    if [ "${report}" != "${version} False" ]; then
+        echo "ERROR: python${mm}t reports '${report}', expected '${version} False'" >&2
+        return 1
+    fi
+    echo "OK: free-threaded CPython ${version} at /usr/local/bin/python${mm}t"
+}
+
 # A versions.env value from the environment or the image's copy; the cargo QA pins are read, not forwarded.
 _versions_env_value() {
     local key="$1"
@@ -609,6 +630,7 @@ main() {
     wire_cargo_symlinks
     install_web_lane_toolchain
     install_cargo_qa_tools
+    install_free_threaded_python
     hand_root_created_paths_to_runtime_user "${RUSTUP_HOME:?}" "${CARGO_HOME:?}"
     create_runtime_venv "${python_mm}"
 

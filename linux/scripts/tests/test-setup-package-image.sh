@@ -491,6 +491,49 @@ t_assert_contains "${_out}" "ERROR: cargo-audit 0.22.2 did not install from its 
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'CARGO install' || true)" "no source fallback"
 t_assert_contains "${_out}" "EXIT 1"
 
+# install_free_threaded_python (CON66); see docs/consumer-image-contract.md#the-free-threaded-python
+_ftp="$(t_fn_src "${SUBJECT}" install_free_threaded_python)" || exit 1
+
+# _ftp_run <what the interpreter reports> [VAR=VALUE...]: uv and ln are stubs; prints the run.
+_ftp_run() {
+  local home kv report="$1"; shift
+  home="$(mktemp -d)"
+  (
+    set -uo pipefail
+    eval "${_web}"
+    eval "${_ftp}"
+    export VERSIONS_ENV="${home}/versions.env" FTP_REPORT="${report}" FTP_HOME="${home}"
+    printf 'PYTHON_VERSION=3.14.7\n' > "${VERSIONS_ENV}"
+    unset PYTHON_VERSION
+    for kv in "$@"; do export "${kv?}"; done
+    uv() {
+      printf 'UV %s INSTALL_DIR=%s\n' "$*" "${UV_PYTHON_INSTALL_DIR:-}" >&2
+      case "$1 $2" in
+        "python install") [ "${FAKE_UV_RC:-0}" = 0 ] || return 1
+                          printf '#!/bin/sh\necho "%s"\n' "${FTP_REPORT}" > "${FTP_HOME}/python3.14t"; chmod +x "${FTP_HOME}/python3.14t" ;;
+        "python find")    printf '%s\n' "${FTP_HOME}/python3.14t" ;;
+      esac
+    }
+    ln() { printf 'LN %s\n' "$*"; }
+    install_free_threaded_python
+    printf 'EXIT %s\n' "$?"
+  ) 2>&1
+  rm -rf "${home}"
+}
+
+t_case "CON66: the free-threaded twin of PYTHON_VERSION, outside uv's own store, on PATH as python3.14t"
+_out="$(_ftp_run '3.14.7 False')"
+t_assert_contains "${_out}" "UV python install --no-bin 3.14.7t INSTALL_DIR=/opt/python-freethreaded"
+t_assert_contains "${_out}" "/usr/local/bin/python3.14t" "the link the 3.14t legs find on PATH"
+t_assert_contains "${_out}" "OK: free-threaded CPython 3.14.7"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "CON66: a GIL build, another patch, a failed download or no pin stops the stage (mutation)"
+t_assert_contains "$(_ftp_run '3.14.7 True')" "ERROR: python3.14t reports '3.14.7 True', expected '3.14.7 False'"
+t_assert_contains "$(_ftp_run '3.14.4 False')" "EXIT 1"
+t_assert_contains "$(FAKE_UV_RC=1 _ftp_run '3.14.7 False')" "ERROR: uv could not install CPython 3.14.7t"
+t_assert_contains "$(_ftp_run '3.14.7 False' VERSIONS_ENV=/nonexistent)" "ERROR: no PYTHON_VERSION in versions.env"
+
 t_case "no rustup or cargo under CARGO_HOME skips the whole step"
 _out="$( bash -c '
   set -uo pipefail
