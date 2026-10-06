@@ -7,6 +7,19 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-07 — The Windows clang-format check can gate
+
+- **`Invoke-ClangFormatCheck` only ever reported.** BeschleunigerBallett swept its sources to zero
+  deviations with clang-format 23.1.1 (d59d210f) and re-counted them in its own `Build-Windows.ps1`
+  to fail the build.
+- **Two switches, the default unchanged:**
+  - `-FailOnDeviation` throws on any deviating file, and on a missing clang-format instead of
+    skipping.
+  - `-ExpectedVersion` refuses a clang-format of another release (CON71).
+- **The report no longer names BB's backlog entry.** `WindowsFormatting.ClangFormatCheck.Tests.ps1`
+  covers both switches and the default.
+
+
 ## 2026-10-07 — A consumer's CMake sccache goes through the guarded launcher
 
 - **`Cache.cmake` handed CMake the bare `sccache`.** When its server died, every compile of
