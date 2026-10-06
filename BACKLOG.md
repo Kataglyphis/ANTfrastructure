@@ -118,6 +118,20 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON65 — cargo-audit, cargo-deny and cargo-tarpaulin in the image** [M, ★★]. Owner rule
+      2026-10-06: what a lane needs goes into the image. The pins exist (`CARGO_AUDIT_VERSION`,
+      `CARGO_DENY_VERSION`, `CARGO_TARPAULIN_VERSION`), but nothing in the image installs them, so
+      `cargo_security_checks.sh` and `cargo_coverage.sh` `cargo install` all three from crates.io
+      in every OxidANT run, arm64 included. Install them the way `setup-package-image.sh`
+      installs the web-lane tools (SHA-pinned upstream binaries, a source build where there are
+      none), give the smoke table their `HAVE` rows, and let both scripts skip the install when
+      the pinned version is already on `PATH`.
+- [ ] **CON66 — a pinned free-threaded Python in the image** [S, ★★]. Every `3.14t` leg
+      (OrchestrANT, WebDavClient) has uv download a free-threaded interpreter per run, its patch
+      version unpinned (`docs/python-ci.md` § Free-threaded). Ship the `t` build of
+      `PYTHON_VERSION` beside the GIL one and have `python_uv.sh` find it, so the leg downloads
+      nothing.
+
 - [ ] **CON58 — the Android Rust target in the image** [S, ★★]. Cargokit builds an
       Android app's Rust for `aarch64-linux-android`. `:latest` carried std for
       aarch64/riscv64/wasm32/x86_64 only, so OmniAccelerANT's Android lane added the
@@ -144,7 +158,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       proves it in all three children (`check_lavapipe_subgroup`: 8 lanes on amd64, arm64 and
       riscv64), and BeschleunigerBallett's `run-ctest.sh` no longer exports its own. Open:
       - Retire the `ENV` once the image's Mesa has upstream ebcfbe60 (2026-08-22), which
-        deletes that sort.
+        deletes that sort. **No Mesa release carries it yet** (checked 2026-10-06 against the
+        tags: 26.2.4, the newest, lacks it), so it arrives with 26.3, and in the image only
+        when Ubuntu's `mesa-vulkan-drivers` moves to it. Sooner means a source-built lavapipe
+        with ebcfbe60 cherry-picked, an owner decision.
       - **Its cost on arm64, seen 2026-10-05:** at 256 bits, llvmpipe's LLVM 21.1.8 on
         AArch64 sometimes fails instruction selection and aborts the process. The error is
         `LLVM ERROR: Cannot select: v4f32 = bitcast … extract_subvector … In function:
@@ -247,6 +264,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       § The Vulkan validation layer). `Test-Arm64Bundle.ps1` loads it when the bundle carries it.
       Done when a published `:winarm64` passes that step; then raise the gate's floor to 13 and
       fail a bundle without the layer, and point BeschleunigerBallett's arm64 `-StageTests` at it.
+- [ ] **CON67 — the test runner's wheels in the `:winarm64` wheel store** [S, ★]. OrchestrANT's
+      `Stage-Arm64Tests.ps1` installs pytest and six plugins (cov, benchmark, md, md-report, html,
+      requests) for win_arm64 from PyPI at cross-build time, versions unpinned. The bundle's
+      wheel store, which the device installs from offline, does not carry them. Pin them in
+      `versions.env` with their SHA256s, as the torch stack is, and stage them with it.
 
 - [ ] **CON63 — prove the WebRTC contract on the next arm64 chain** [S, ★★]. The
       2026-10-05 Windows WebRTC fixes (`docs/windows-builds.md` § libffi's type exports,
