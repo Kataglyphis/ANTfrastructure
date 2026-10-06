@@ -7,6 +7,22 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — the Windows merge stage's lavapipe step reads the version it logs
+
+- **`Install-Lavapipe.ps1` threw on its own log line.** cc1846c2 moved the pins into
+  `$pinValues`, and `Write-Host "Downloading the Vulkan loader ${vulkanVersion}: …"`
+  kept the old local, which strict mode turns into *"The variable '$vulkanVersion'
+  cannot be retrieved because it has not been set"*.
+  - The first chain to reach the step, a local `:winamd64` rebuild on 2026-10-06, stopped
+    there.
+  - That was after the media merge's GStreamer had passed every WebRTC check.
+- **Three other strings printed the hashtable.** `"lavapipe $pinValues.MesaVersion"`
+  expands `$pinValues` and keeps `.MesaVersion` literally, so the log read
+  `System.Collections.Hashtable.MesaVersion`. All four now use `$(…)`.
+- **A regression test.** `Lavapipe.Install.Tests.ps1` parses the script and fails when it
+  reads a variable that is neither a parameter, assigned, a loop variable nor automatic.
+  It fails on the old script, naming `vulkanVersion`.
+
 ## 2026-10-06 — `Install-NewHost.ps1` redeploys a shim an update replaced
 
 - **The record no longer stands in for the patch.** `Invoke-StepShim` skipped whenever

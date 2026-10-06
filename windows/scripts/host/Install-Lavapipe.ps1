@@ -56,12 +56,12 @@ $loaderUrl = $assets.LoaderUrl
 $mesaArchive = Join-Path $TempDir ([IO.Path]::GetFileName($mesaUrl))
 $loaderZip = Join-Path $TempDir ([IO.Path]::GetFileName($loaderUrl))
 
-Write-Host "Downloading lavapipe $pinValues.MesaVersion ($arch): $mesaUrl"
-Invoke-DownloadWithRetry -Url $mesaUrl -DestinationPath $mesaArchive -Description "lavapipe $pinValues.MesaVersion" -ExpectedSha256 $pinValues.MesaSha256
+Write-Host "Downloading lavapipe $($pinValues.MesaVersion) ($arch): $mesaUrl"
+Invoke-DownloadWithRetry -Url $mesaUrl -DestinationPath $mesaArchive -Description "lavapipe $($pinValues.MesaVersion)" -ExpectedSha256 $pinValues.MesaSha256
 Expand-LavapipeArchive -ArchivePath $mesaArchive -Destination $InstallDir
 
-Write-Host "Downloading the Vulkan loader ${vulkanVersion}: $loaderUrl"
-Invoke-DownloadWithRetry -Url $loaderUrl -DestinationPath $loaderZip -Description "Vulkan Runtime Components $pinValues.VulkanVersion" -ExpectSignature PK -ExpectedSha256 $pinValues.LoaderSha256
+Write-Host "Downloading the Vulkan loader $($pinValues.VulkanVersion): $loaderUrl"
+Invoke-DownloadWithRetry -Url $loaderUrl -DestinationPath $loaderZip -Description "Vulkan Runtime Components $($pinValues.VulkanVersion)" -ExpectSignature PK -ExpectedSha256 $pinValues.LoaderSha256
 $binPrefix = $assets.BinPrefix
 Expand-VulkanRuntimeComponents -ZipPath $loaderZip -Destination $InstallDir -BinPrefix $binPrefix -BinNames @('vulkan-1.dll', 'vulkaninfo.exe')
 
