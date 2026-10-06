@@ -12377,5 +12377,13 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-llvm-cross-stanza.sh",
   "why": "FileCheck, yaml2obj and llvm-tblgen ship only with LLVM_INSTALL_UTILS (CON71)"
+ },
+ {
+  "id": "sccache.cmake-guarded-launcher",
+  "target": "cmake/Cache.cmake",
+  "find": "        set(_myproject_launcher \"${_myproject_guarded}\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-cache-launcher.sh",
+  "why": "a bare sccache launcher fails every compile once its server is gone (BeschleunigerBallett run 37509585546)"
  }
 ]

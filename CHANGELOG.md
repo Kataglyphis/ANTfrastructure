@@ -7,6 +7,18 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-07 — A consumer's CMake sccache goes through the guarded launcher
+
+- **`Cache.cmake` handed CMake the bare `sccache`.** When its server died, every compile of
+  the job failed (BeschleunigerBallett run 37509585546, `Connection refused`), and BB patched
+  around it in its own `ProjectOptions.cmake` (05c7a338).
+- **`myproject_enable_cache` now sets the hub's `sccache-launcher.sh` off Windows**, which
+  retries once and then compiles directly. ccache and Windows keep their binary.
+- `test-cmake-cache-launcher.sh` covers sccache, ccache and no cache, and the new mutation
+  `sccache.cmake-guarded-launcher` bites. BB's override becomes a no-op once its hub pin
+  includes this.
+
+
 ## 2026-10-06 — Every LLVM tool is the pinned release (CON71, in source)
 
 - **Owner decision: no LLVM tool may come from another version**, clang-format included.
