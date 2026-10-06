@@ -177,6 +177,14 @@ RUN --mount=type=bind,source=windows/scripts/host/Install-Lavapipe.ps1,target=C:
 # Mesa 26.2's BVH sort needs 8-lane subgroups; arm64's native 128 bits give 4 and SEGV (CON44).
 ENV LP_NATIVE_VECTOR_WIDTH=256
 
+# The validation layer in C:\runtime\vulkan-layers on both arches; no SDK the container can install has an arm64 one (CON64).
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/build/Build-VulkanValidationLayers.ps1,target=C:\bkmnt\Build-VulkanValidationLayers.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\Build-VulkanValidationLayers.ps1' -ScriptDir 'C:\bkmnt'
+
 # The bundle describes itself (BUNDLE-ENV, BUNDLE-README); text files, invisible to the arch gate.
 RUN --mount=type=bind,source=windows/scripts/build/Write-BundleManifest.ps1,target=C:\bkmnt\Write-BundleManifest.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `

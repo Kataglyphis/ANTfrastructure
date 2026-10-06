@@ -266,6 +266,27 @@ The image and the bundle carry Mesa's lavapipe; what ships and why:
 (CON50). For this lane, `Test-Arm64Bundle.ps1`'s device step (floor 12) is the gate that
 proves the bundle's device, and `:winamd64` carries it since the 2026-10-04 republish; `:winarm64` followed the same day and its device gate passed 12/12.
 
+## The Vulkan validation layer
+
+The merge stage stages `VkLayer_khronos_validation.dll` and its JSON in `C:\runtime\vulkan-layers`
+on both arches (CON64), so a consumer validates its GPU tests from one path:
+
+- **amd64** copies the layer from the image's Vulkan SDK (`$env:VULKAN_SDK\Bin`, `VULKAN_VERSION`).
+- **arm64** builds it, because no SDK the container can install has one. The x64 SDK's
+  `Bin-ARM64` carries the crash-diagnostic and gfxreconstruct layers but not this one, and
+  LunarG's ARM64 SDK installer is itself an ARM64 executable. `Build-VulkanValidationLayers.ps1`
+  clones Khronos Vulkan-ValidationLayers at `vulkan-sdk-<VULKAN_VERSION>`, builds the
+  dependencies its `scripts\known_good.json` pins (Vulkan-Headers, Vulkan-Utility-Libraries,
+  SPIRV-Headers, SPIRV-Tools, mimalloc; tests-only repos skipped), then the layer, all through
+  `Invoke-CmakeConfigure` with the arm64 cross args.
+
+The tag pins the whole set, as Linux's `vulkan.sh` does. Copying the JSON beside the DLL is what
+the manifest's `.\VkLayer_khronos_validation.dll` needs. An elevated loader ignores
+`VK_ADD_LAYER_PATH`, so a consumer registers the JSON under
+`HKLM\SOFTWARE\Khronos\Vulkan\ExplicitLayers` for its run (the bundle README shows the command).
+`Test-Arm64Bundle.ps1` forces the layer into a `vulkaninfo` instance, which loads the DLL; a bundle
+published before the layer joined it is named in the log and not counted.
+
 ## Verification
 
 With nothing runnable on the build host, verification is layered:
@@ -275,7 +296,7 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, and `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe) |
+| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), and, in a bundle that carries it, the validation layer loads |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing

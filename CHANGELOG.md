@@ -7,6 +7,20 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — The Vulkan validation layer in `C:\runtime\vulkan-layers` (CON64)
+
+- **arm64 had no layer to stage.** The image's Vulkan SDK 1.4.357.0 ships `VkLayer_khronos_validation`
+  as x64 only (`Bin-ARM64` lacks it), and LunarG's ARM64 SDK installer is an ARM64 executable the
+  amd64 container cannot run. BeschleunigerBallett's Windows arm64 GPU suites therefore ran
+  unvalidated.
+- **The merge stage now stages it on both arches.** `Build-VulkanValidationLayers.ps1` copies the
+  SDK's layer on amd64 and, on arm64, builds Khronos Vulkan-ValidationLayers at
+  `vulkan-sdk-<VULKAN_VERSION>` with the dependency commits its `known_good.json` pins.
+  `Build.VulkanValidationLayers.Tests.ps1` covers the dependency plan and the manifest check.
+- **The device gate loads it.** `Test-Arm64Bundle.ps1` forces the layer into a `vulkaninfo`
+  instance when the bundle carries it; an older bundle is named and not counted, so the floor stays
+  12 until `:winarm64` is republished. The bundle README says how to register it.
+
 ## 2026-10-06 — WiX's firewall extension ships in `:winamd64`'s final stage
 
 - **Consumers' MSIs can declare `fw:FirewallException` now.** `windows/Dockerfile` runs

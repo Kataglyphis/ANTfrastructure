@@ -238,6 +238,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       with the missing member visible. Repro: litertlm-harness runs 1-19, Oct 4 2026.
 ## Open — the Windows arm64 bundle and unpublished variants
 
+- [ ] **CON64 — the Vulkan validation layer in `C:\runtime\vulkan-layers`** [S, ★★]. Owner rule
+      2026-10-06: what a lane needs goes into the image, not into a CI step. BeschleunigerBallett's
+      Windows arm64 GPU suites ran unvalidated, because the image's SDK has an x64 layer only and
+      LunarG's ARM64 SDK installer runs only on ARM64. In source the same day: the merge stage
+      builds the layer for arm64 from Khronos sources at `vulkan-sdk-<VULKAN_VERSION>` and copies
+      the SDK's for amd64 (`Build-VulkanValidationLayers.ps1`, `docs/windows-cross-builds.md`
+      § The Vulkan validation layer). `Test-Arm64Bundle.ps1` loads it when the bundle carries it.
+      Done when a published `:winarm64` passes that step; then raise the gate's floor to 13 and
+      fail a bundle without the layer, and point BeschleunigerBallett's arm64 `-StageTests` at it.
+
 - [ ] **CON63 — prove the WebRTC contract on the next arm64 chain** [S, ★★]. The
       2026-10-05 Windows WebRTC fixes (`docs/windows-builds.md` § libffi's type exports,
       § DTLS with OpenSSL 4, § gst-plugins-rs on Windows) were built and run on amd64
