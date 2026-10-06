@@ -253,7 +253,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       superbuild's wall time. The direct-consumption build is also the sharpest
       API-skew probe: if v2.2.0 lacks what litert-lm's sources use, the compile fails
       with the missing member visible. Repro: litertlm-harness runs 1-19, Oct 4 2026.
-- [ ] **CON65 — The smoke gate's WebRTC loopback failed once in a buildkit RUN** [S, ★★].
+- [ ] **CON68 — The smoke gate's WebRTC loopback failed once in a buildkit RUN** [S, ★★].
       In the 2026-10-06 `-Stages final` republish from b3cf4c76, the consumer stopped about
       2 s in with `Signalling error: send failed because receiver is gone`
       (webrtcsrc `imp.rs:1736`) and exited 1. Every other check passed (229 passed,
