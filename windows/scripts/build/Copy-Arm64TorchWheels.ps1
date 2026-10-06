@@ -3,7 +3,7 @@
 
 #requires -Version 7.0
 
-# The cp313 win-arm64 torch stack ships in the wheel store: upstream builds no cp314 wheel, so it cannot enter the bundle's own venv (docs/windows-cross-builds.md).
+# Two pinned win-arm64 stacks go into the wheel store: cp313 torch, which has no cp314 wheel upstream, and the cp314 pytest stack (docs/windows-cross-builds.md).
 
 param(
     [string]$WheelDir = 'C:\runtime\wheels',
@@ -28,32 +28,76 @@ if (-not (Test-WindowsCrossTarget)) {
 # Import-Versions fills the process env from versions.env unless a build-arg already set it.
 & (Join-Path $ScriptDir 'Import-Versions.ps1')
 
-# $true = the wheel carries native members and must pass the target-arch check; the rest are universal py3 wheels.
-$wheels = [ordered]@{
-    TORCH       = $true
-    TORCHVISION = $true
-    MARKUPSAFE  = $true
-    PILLOW      = $true
-    FILELOCK    = $false
-    SETUPTOOLS  = $false
-    SYMPY       = $false
-    MPMATH      = $false
-    NETWORKX    = $false
-    JINJA2      = $false
-    FSSPEC      = $false
+# Each stack's prefix names its versions.env keys; its table maps a wheel key to whether it is native.
+function Get-Arm64WheelStack {
+    # $true = the wheel carries native members and must pass the target-arch check; the rest are universal py3 wheels.
+    $torch = [ordered]@{
+        TORCH       = $true
+        TORCHVISION = $true
+        MARKUPSAFE  = $true
+        PILLOW      = $true
+        FILELOCK    = $false
+        SETUPTOOLS  = $false
+        SYMPY       = $false
+        MPMATH      = $false
+        NETWORKX    = $false
+        JINJA2      = $false
+        FSSPEC      = $false
+    }
+    # The cp314 pytest stack the bundle's own interpreter runs a consumer's suite with (CON67); it shares jinja2 and setuptools with the torch stack.
+    [ordered]@{
+        TORCH_WINDOWS_ARM64  = $torch
+        PYTEST_WINDOWS_ARM64 = [ordered]@{
+            CERTIFI            = $false
+            CHARDET            = $false
+            CHARSET_NORMALIZER = $true
+            COLORAMA           = $false
+            COVERAGE           = $true
+            DATAPROPERTY       = $false
+            IDNA               = $false
+            INICONFIG          = $false
+            MARKUPSAFE         = $true
+            MBSTRDECODER       = $false
+            PACKAGING          = $false
+            PATHVALIDATE       = $false
+            PLUGGY             = $false
+            PY_CPUINFO         = $false
+            PYGMENTS           = $false
+            PYTABLEWRITER      = $false
+            PYTEST             = $false
+            PYTEST_BENCHMARK   = $false
+            PYTEST_COV         = $false
+            PYTEST_HTML        = $false
+            PYTEST_MD          = $false
+            PYTEST_MD_REPORT   = $false
+            PYTEST_METADATA    = $false
+            PYTHON_DATEUTIL    = $false
+            PYTZ               = $false
+            REQUESTS           = $false
+            SIX                = $false
+            TABLEDATA          = $false
+            TCOLORPY           = $false
+            TYPEPY             = $false
+            URLLIB3            = $false
+        }
+    }
 }
 
+$stacks = Get-Arm64WheelStack
 New-Item -ItemType Directory -Force -Path $WheelDir | Out-Null
-$count = 0
-foreach ($name in $wheels.Keys) {
-    $key = "TORCH_WINDOWS_ARM64_${name}"
-    $url = "$([Environment]::GetEnvironmentVariable("${key}_URL"))".Trim()
-    $sha = "$([Environment]::GetEnvironmentVariable("${key}_SHA256"))".Trim()
-    if (-not $url) { throw "${key}_URL is not set -- the win-arm64 torch stack cannot be pinned" }
-    if ($sha -notmatch '^[0-9a-f]{64}$') { throw "${key}_SHA256 must be a 64-hex SHA256, got '$sha'" }
-    $file = Join-Path $WheelDir ([uri]::UnescapeDataString(([uri]$url).Segments[-1]))
-    Invoke-DownloadWithRetry -Url $url -DestinationPath $file -Description "win-arm64 $name wheel" -ExpectedSha256 $sha
-    if ($wheels[$name]) { Assert-WheelTargetArch -WheelPath $file }
-    $count++
+foreach ($prefix in $stacks.Keys) {
+    $wheels = $stacks[$prefix]
+    $count = 0
+    foreach ($name in $wheels.Keys) {
+        $key = "${prefix}_${name}"
+        $url = "$([Environment]::GetEnvironmentVariable("${key}_URL"))".Trim()
+        $sha = "$([Environment]::GetEnvironmentVariable("${key}_SHA256"))".Trim()
+        if (-not $url) { throw "${key}_URL is not set -- the ${prefix} wheel stack cannot be pinned" }
+        if ($sha -notmatch '^[0-9a-f]{64}$') { throw "${key}_SHA256 must be a 64-hex SHA256, got '$sha'" }
+        $file = Join-Path $WheelDir ([uri]::UnescapeDataString(([uri]$url).Segments[-1]))
+        Invoke-DownloadWithRetry -Url $url -DestinationPath $file -Description "win-arm64 $name wheel" -ExpectedSha256 $sha
+        if ($wheels[$name]) { Assert-WheelTargetArch -WheelPath $file }
+        $count++
+    }
+    Write-Host "Arm64 ${prefix} wheels: staged $count wheel(s) into $WheelDir"
 }
-Write-Host "Arm64 torch wheels: staged $count wheel(s) into $WheelDir"

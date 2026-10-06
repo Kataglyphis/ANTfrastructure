@@ -296,7 +296,7 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), and, in a bundle that carries it, the validation layer loads |
+| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, in a bundle that carries it the cp314 pytest stack installs offline from it, `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), and, in a bundle that carries it, the validation layer loads |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
@@ -767,6 +767,23 @@ setuptools' `x86_arm64` vcvars spec (`build_ext --plat-name win-arm64` selects i
 PyAV-shaped hole in the clang-cl rule, on both lanes; and the `-CrossStage` staging path is the cross
 lane's replacement for `Install-StagedPythonWheel`/`Test-PythonImport`, which stay mandatory on amd64
 (the same switch takes that native path there).
+
+### A consumer's test runner, pinned (CON67, 2026-10-06)
+
+The wheel store also carries the cp314 pytest stack a consumer runs its suite with on the
+device. That is pytest 9.1.1, pytest-cov 7.1.0, pytest-benchmark 5.2.3, pytest-html 4.2.0,
+pytest-md 0.2.0, pytest-md-report 0.8.0 and requests 2.34.2, with their dependency closure:
+the versions OrchestrANT's lock runs on x64. Before, OrchestrANT's `Stage-Arm64Tests.ps1`
+fetched them from PyPI at cross-build time, unpinned.
+
+- `Copy-Arm64TorchWheels.ps1` downloads each wheel against its
+  `PYTEST_WINDOWS_ARM64_*_SHA256` pin in `versions.env`.
+- The three native ones (charset-normalizer, coverage, MarkupSafe) also pass
+  `Assert-WheelTargetArch`.
+- jinja2 and setuptools are the torch stack's files, so the stack has no pins of its own
+  for them.
+- `Test-Arm64Bundle.ps1` installs the stack offline into the bundle's interpreter and imports
+  it, in a bundle that carries it.
 
 ## Cross machinery the LiteRT branch added
 
