@@ -321,6 +321,19 @@ function Get-GstRustSourceMirrorConfig {
     return (@($toml) -join "`n")
 }
 
+function Get-GstLoopbackTeardownError {
+    # The frames arrived and only webrtcsrc's signaller failed while the pipeline tore down after EOS (BACKLOG CON68); empty for any other failure.
+    param([string]$ConsumerOut, [string]$ConsumerErr, [int]$Frames, [int]$FrameRate = 30)
+    if ($ConsumerOut -notmatch 'Got EOS from element "pipeline0"' -or $ConsumerErr -notmatch 'send failed because receiver is gone') { return @() }
+    $elementErrors = @($ConsumerErr -split "`r?`n" | Where-Object { $_ -match '^ERROR: from element' })
+    if (@($elementErrors | Where-Object { $_ -notmatch 'GstWebRTCSrc:webrtcsrc0' }).Count -gt 0) { return @() }
+    # Nine fractional digits, two more than TimeSpan parses; frames flowing for less than Frames/FrameRate means EOS came early.
+    if ($ConsumerOut -notmatch 'Execution ended after (\d+):(\d\d):(\d\d)\.(\d+)') { return @() }
+    $seconds = [int]$Matches[1] * 3600 + [int]$Matches[2] * 60 + [int]$Matches[3] + [double]"0.$($Matches[4])"
+    if ($seconds -lt 0.9 * $Frames / $FrameRate) { return @() }
+    return @($elementErrors + @($ConsumerErr -split "`r?`n" | Where-Object { $_ -match 'receiver is gone' }))
+}
+
 function Invoke-GstWebRtcLoopback {
     # webrtcsink to webrtcsrc over the built-in signalling server on loopback; passes only when the consumer decodes -Frames frames and exits 0.
     [CmdletBinding()]
@@ -344,7 +357,7 @@ function Invoke-GstWebRtcLoopback {
     foreach ($n in 'producer-out', 'producer-err', 'consumer-out', 'consumer-err') { $logs[$n] = Join-Path $LogDir "webrtc-loopback-$port-$n.log" }
     $producer = $null
     $consumer = $null
-    $result = [pscustomobject]@{ ExitCode = -1; TimedOut = $false; Port = $port; Detail = @() }
+    $result = [pscustomobject]@{ ExitCode = -1; TimedOut = $false; Port = $port; Detail = @(); TeardownError = @() }
     try {
         $producer = Start-Process -FilePath $exe -ArgumentList $producerArgs -PassThru -NoNewWindow `
             -RedirectStandardOutput $logs['producer-out'] -RedirectStandardError $logs['producer-err']
@@ -378,8 +391,17 @@ function Invoke-GstWebRtcLoopback {
             if (Test-Path $logs[$n]) { $result.Detail += @(Get-Content $logs[$n] -Tail 6 | ForEach-Object { "${n}: $_" }) }
         }
     }
+    if ($result.ExitCode -ne 0 -and -not $result.TimedOut -and (Test-Path $logs['consumer-out']) -and (Test-Path $logs['consumer-err'])) {
+        $teardown = @(Get-GstLoopbackTeardownError -ConsumerOut (Get-Content -Raw $logs['consumer-out']) `
+                -ConsumerErr (Get-Content -Raw $logs['consumer-err']) -Frames $Frames)
+        if ($teardown.Count -gt 0) {
+            $result.TeardownError = $teardown
+            $result.ExitCode = 0
+        }
+    }
     return $result
 }
 
 Export-ModuleMember -Function Get-RequiredGstPlugin, Write-PkgConfigFile,
-    Get-LibraryLinkName, Assert-PkgConfigModule, Get-GstRustCargoPlan, Get-GstRustSourceMirrorConfig, Invoke-GstWebRtcLoopback
+    Get-LibraryLinkName, Assert-PkgConfigModule, Get-GstRustCargoPlan, Get-GstRustSourceMirrorConfig, Invoke-GstWebRtcLoopback,
+    Get-GstLoopbackTeardownError

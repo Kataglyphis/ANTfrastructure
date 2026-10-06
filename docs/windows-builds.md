@@ -597,7 +597,11 @@ directory so an OpenCV module-list change cannot rot into a link error.
 > its exact name, `gst<name>.dll`: the `gst*<name>*.dll` wildcard it used before
 > would hand `gstrswebrtc.dll` to the `webrtc` entry. The smoke test's section 11
 > ends with a WebRTC loopback, the one assertion that would have caught the two
-> defects below.
+> defects below. The loopback passes a consumer that exits 1 only in one case: it
+> reached EOS after the frames had flowed for `Frames/30` s, and its only error is
+> webrtcsrc's own signaller failing in teardown (`send failed because receiver is
+> gone`). That race hit 1 run in 30 idle and 5 in 25 under load. The smoke test
+> prints it as a `[WARN]` (`Get-GstLoopbackTeardownError`, CON68).
 
 ### libffi's type exports
 

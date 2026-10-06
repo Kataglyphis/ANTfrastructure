@@ -895,6 +895,9 @@ if (Test-Path $requiredGstModule) {
             throw ("webrtcsrc did not decode 60 frames from webrtcsink (consumer exit $($r.ExitCode)$(if ($r.TimedOut) { ', timed out' })): " +
                 (@($r.Detail | Select-Object -Last 8) -join ' | '))
         }
+        if (@($r.TeardownError).Count -gt 0) {
+            Write-Host "  [WARN] the frames arrived, then webrtcsrc's signaller failed in teardown (BACKLOG CON68): $(@($r.TeardownError) -join ' | ')" -ForegroundColor Yellow
+        }
         $true
     } -FailMessage 'the WebRTC loopback did not pass'
 } else {
