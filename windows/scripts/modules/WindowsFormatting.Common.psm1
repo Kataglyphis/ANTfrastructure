@@ -209,12 +209,15 @@ function Invoke-ClangFormatStep {
 .SYNOPSIS
   Reports how many sources deviate from .clang-format WITHOUT rewriting them.
 .DESCRIPTION
-  Deliberately not failing: with a large known backlog a failing gate would be switched off; make it fail near zero.
+  Report-only by default, for a project with a large known backlog. -FailOnDeviation makes it a gate once the
+  backlog is zero, and -ExpectedVersion refuses a clang-format of any other LLVM release (BACKLOG CON71).
 #>
 function Invoke-ClangFormatCheck {
   param(
     [Parameter(Mandatory)]$Context,
-    [Parameter(Mandatory)][string]$WorkspacePath
+    [Parameter(Mandatory)][string]$WorkspacePath,
+    [switch]$FailOnDeviation,
+    [string]$ExpectedVersion = ''
   )
 
   $clangFormat = Get-Command 'clang-format' -ErrorAction SilentlyContinue
@@ -225,11 +228,19 @@ function Invoke-ClangFormatCheck {
     )
     $clangFormatSource = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $clangFormatSource) {
+      if ($FailOnDeviation) { throw 'clang-format not found; the format gate cannot run.' }
       Write-BuildLog -Context $Context -Message 'clang-format not found; skipping format check.'
       return
     }
   } else {
     $clangFormatSource = $clangFormat.Source
+  }
+
+  if ($ExpectedVersion) {
+    $version = (& $clangFormatSource --version 2>&1) -join ' '
+    if ($version -notmatch ('clang-format version {0}([^0-9.]|$)' -f [regex]::Escape($ExpectedVersion))) {
+      throw "$clangFormatSource reports '$version', not clang-format $ExpectedVersion"
+    }
   }
 
   $cppFiles = @(Get-ProjectCppFiles -WorkspacePath $WorkspacePath)
@@ -249,13 +260,14 @@ function Invoke-ClangFormatCheck {
 
   Write-BuildLog -Context $Context -Message ("clang-format: {0} of {1} files deviate from .clang-format." -f $deviating.Count, $cppFiles.Count)
   if ($deviating.Count -gt 0) {
-    Write-BuildLog -Context $Context -Message 'Not a build failure by design - see BACKLOG.md "Decide on the formatting sweep".'
     foreach ($f in ($deviating | Select-Object -First 20)) {
       Write-BuildLog -Context $Context -Message ("  deviates: {0}" -f $f)
     }
     if ($deviating.Count -gt 20) {
       Write-BuildLog -Context $Context -Message ("  ... and {0} more" -f ($deviating.Count - 20))
     }
+    if ($FailOnDeviation) { throw "$($deviating.Count) of $($cppFiles.Count) file(s) deviate from .clang-format" }
+    Write-BuildLog -Context $Context -Message 'Report-only; -FailOnDeviation makes this a gate.'
   }
 }
 
