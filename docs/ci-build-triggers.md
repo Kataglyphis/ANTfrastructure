@@ -24,10 +24,6 @@ commit-message token on a platform lane:
   leaves out does not start at all; it does not report `skipped`.
 - **Push only.** jotrockenmitlocken's `web.yml` builds and deploys on a push, not
   on a PR.
-- **One opt-in job.** OxidANT's `linux-x64.yml` carries a feature check
-  (`feature-matrix`) that runs only with `[build-features]` in the HEAD commit
-  message, or on `workflow_dispatch`. It is not a platform lane, and its
-  `skipped` does not skip the workflow around it.
 
 ## This repository's lanes
 

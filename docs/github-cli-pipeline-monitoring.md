@@ -107,8 +107,8 @@ gh run list --limit 5 --json conclusion,name,headBranch,displayTitle --jq '.[] |
 ```
 
 A run reporting `skipped` is not a pass. The platform lanes carry no `if:` since
-2026-09-24, but some jobs still do (OxidANT's `[build-features]` feature check, a
-reusable workflow's input-gated jobs), and a gated-off job reports `skipped`,
+2026-09-24, but some jobs still do (a reusable workflow's input-gated jobs), and
+a gated-off job reports `skipped`,
 which is easy to read as success at a glance
 ([`ci-build-triggers.md`](ci-build-triggers.md)).
 
@@ -138,9 +138,8 @@ Three things that will otherwise cost you an hour:
   `error` mostly returns the runner's apt-get cleanup echoes. Ask which STEP
   failed first (command above), then grep the log for `SUMMARY:` (sanitizers)
   or `[  FAILED  ]` (GoogleTest).
-- **`skipped` is not a pass.** A gated job (OxidANT's feature check wants
-  `[build-features]` in the commit message) reports `skipped`, which reads as
-  success at a glance.
+- **`skipped` is not a pass.** A gated job (a reusable workflow's input-gated
+  jobs) reports `skipped`, which reads as success at a glance.
 
 Green local tests do not imply green CI: the Linux lane runs ASan/UBSan fuzzing
 that the Windows dev box does not, so some bugs are only ever observable there.
