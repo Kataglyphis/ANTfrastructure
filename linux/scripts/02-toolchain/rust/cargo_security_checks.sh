@@ -28,12 +28,11 @@ run_step() {
 
 info "Security checks started"
 
-# One crate per cargo install: --version applies to every crate named on the line.
 run_step "Install cargo-audit ${CARGO_AUDIT_VERSION}" \
-   cargo install --locked --version "${CARGO_AUDIT_VERSION}" cargo-audit
+   cargo_install_pinned cargo-audit "${CARGO_AUDIT_VERSION}"
 
 run_step "Install cargo-deny ${CARGO_DENY_VERSION}" \
-   cargo install --locked --version "${CARGO_DENY_VERSION}" cargo-deny
+   cargo_install_pinned cargo-deny "${CARGO_DENY_VERSION}"
 
 run_step "Run vulnerability audit (cargo audit)" \
    bash -c 'cargo audit "$@"' --

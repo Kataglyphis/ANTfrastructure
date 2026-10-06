@@ -3474,8 +3474,8 @@
  {
   "id": "probe.jdk-row-asserted",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
-  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
+  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools\"",
+  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "dropping the row ships an Android SDK with no JDK again: Gradle stops the whole lane and the gate says nothing"
  },
@@ -3514,16 +3514,16 @@
  {
   "id": "probe.appimagetool-row-asserted",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
-  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
+  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools\"",
+  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "dropping the row lets an unreadable appimagetool ship again and the gate says nothing"
  },
  {
   "id": "probe.flatpak-row-asserted",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
-  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools ort-crate-env chrome android-emulator\"",
+  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools\"",
+  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "dropping the row from the list is how a contract stops being asserted without anything looking broken: the gate still passes, and the seven missing runtimes cost every consumer run ~1.9 GB again"
  },
@@ -5970,8 +5970,8 @@
  {
   "id": "probe.ort-crate-env-row",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": " web-lane-tools ort-crate-env chrome android-emulator\"",
-  "replace": " web-lane-tools chrome android-emulator\"",
+  "find": " web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools\"",
+  "replace": " web-lane-tools chrome android-emulator cargo-qa-tools\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "G3 on the shipped Linux image: the row is the assertion"
  },
@@ -12257,6 +12257,38 @@
   "replace": "if true \\\n",
   "test": "bash linux/scripts/tests/test-cargo-wrapper.sh",
   "why": "an empty CARGO_SAFE_DIRECTORY is the documented opt-out, as CMAKE_BUILD_SAFE_DIRECTORY's is; ignoring it adds an empty safe.directory entry"
+ },
+ {
+  "id": "rust.cargo-install-pinned-skips",
+  "target": "linux/scripts/02-toolchain/rust/_cargo_wrapper.sh",
+  "find": "  if [ \"${have}\" = \"${version}\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-cargo-wrapper.sh",
+  "why": "the image ships cargo-audit, cargo-deny and cargo-tarpaulin at their pins (CON65); rebuilding them anyway costs every OxidANT run minutes of crates.io compiles"
+ },
+ {
+  "id": "rust.cargo-install-pinned-locked",
+  "target": "linux/scripts/02-toolchain/rust/_cargo_wrapper.sh",
+  "find": "  cargo install --locked --version \"${version}\" \"${crate}\"",
+  "replace": "  cargo install --version \"${version}\" \"${crate}\"",
+  "test": "bash linux/scripts/tests/test-cargo-wrapper.sh",
+  "why": "--version alone still resolves the crate's dependencies afresh, so a bare-host build would not be the pinned tool"
+ },
+ {
+  "id": "rust.cargo-qa-tools-fatal",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "            || { echo \"ERROR: ${name} ${version} did not install from its pinned release binary\" >&2; return 1; }",
+  "replace": "            || true",
+  "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+  "why": "an image that silently lacks a cargo QA tool sends every OxidANT run back to cargo-installing it; the stage must stop instead (CON65)"
+ },
+ {
+  "id": "rust.cargo-qa-tools-audit-glibc",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "\"${version}\" \"${target/aarch64-unknown-linux-musl/aarch64-unknown-linux-gnu}\" \"${version}\" ;;",
+  "replace": "\"${version}\" \"${target}\" \"${version}\" ;;",
+  "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+  "why": "rustsec publishes no aarch64 musl cargo-audit; the musl URL 404s and the arm64 package stage stops"
  },
  {
   "id": "rust.cargo-safe-directory-once",

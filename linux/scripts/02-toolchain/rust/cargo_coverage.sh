@@ -12,9 +12,7 @@ source "$SCRIPT_DIR/../../01-core/load-versions-env.sh"
 load_versions_env "$SCRIPT_DIR/../../01-core/versions.env"
 [ -n "${CARGO_TARPAULIN_VERSION:-}" ] || err "CARGO_TARPAULIN_VERSION is not set (versions.env not found?)."
 
-info "Installing cargo-tarpaulin ${CARGO_TARPAULIN_VERSION}..."
-# --locked too: --version alone still resolves the crate's dependencies afresh.
-cargo install --locked --version "${CARGO_TARPAULIN_VERSION}" cargo-tarpaulin
+cargo_install_pinned cargo-tarpaulin "${CARGO_TARPAULIN_VERSION}"
 
 info "Running coverage with tarpaulin..."
 # Forward any arguments (for example: --features <feature>) to cargo-tarpaulin

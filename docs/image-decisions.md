@@ -95,10 +95,12 @@ These are recorded so nobody files them as gaps:
   TVM has no host-CPU default on any arch: name the baseline or `riscv/spacemit-k3`, and
   compile IREE for riscv64 elsewhere with explicit `--iree-llvmcpu-*` flags
   (`docs/riscv64-rva23-baseline.md`, CON24).
-- `cargo-audit` and `cargo-deny` stay lane-installed at their `versions.env` pins. Shipping
-  them takes per-arch release pins (riscv64 has no release binary), and a lane's
-  `cargo install` of a binary cargo did not install then fails, so both lanes' install
-  steps would change with it (CON20).
+- `cargo-audit` and `cargo-deny` stayed lane-installed at their `versions.env` pins until
+  CON65 (owner rule 2026-10-06: what a lane needs goes into the image). Both reasons were
+  met, not waived: the image takes per-arch release pins and skips riscv64, which has no
+  release binary and no lane that runs them, and the hub's `cargo_install_pinned` keeps a
+  lane from `cargo install`ing over a binary cargo did not install
+  ([`consumer-image-contract.md` § The cargo QA tools](consumer-image-contract.md#the-cargo-qa-tools); CON20, CON65).
 - No `pwsh` in the Linux image: Microsoft ships no riscv64 build, feature parity allows no
   third exemption, and OmniAccelerANT's Pester suite tests Windows modules on the Windows
   runner (CON20).

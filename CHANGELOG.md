@@ -7,6 +7,24 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — cargo-audit, cargo-deny and cargo-tarpaulin ship in `:latest` (CON65)
+
+- **Every OxidANT run built them from crates.io.** `cargo_security_checks.sh` and
+  `cargo_coverage.sh` ran `cargo install` for all three on every run; no image carried them.
+- **The package stage installs them now, on amd64 and arm64.** `install_cargo_qa_tools`
+  downloads each upstream release binary and verifies it against a new
+  `CARGO_*_LINUX_{X86_64,AARCH64}_SHA256` pin; cargo-audit's aarch64 build is a glibc one.
+  A missing pin or a failed download stops the stage. riscv64 ships none: no upstream
+  binary, and its lanes cross-build on amd64.
+- **The smoke gate checks them.** A `cargo-qa-tools` consumer-contract row compares each
+  binary's reported version with its pin, exempt on riscv64 and re-checked by its own fact.
+- **The scripts skip a tool the image already has.** `cargo_install_pinned` in
+  `_cargo_wrapper.sh` builds one only when the pinned version is not on `PATH`. A plain
+  `cargo install` would fail on a binary cargo did not install, so consumers need this hub
+  commit before the image publishes.
+- Renovate no longer auto-applies their bumps: each version now moves with two SHA pins.
+  `docs/image-decisions.md` records why CON20's "stay lane-installed" no longer holds.
+
 ## 2026-10-06 — The WebRTC loopback no longer fails a run whose frames arrived (CON68 closes)
 
 - **What the failures were.** Classified across 25 loopbacks under load, every failure looked

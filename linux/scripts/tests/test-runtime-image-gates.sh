@@ -824,11 +824,12 @@ t_assert_contains "$(_jdkv "ENV java-home /x")" "NOFACT jdk" "a probe that emitt
 _CC_TR_PARTS="${_CC_PARTS}
 $(_extract _rt_versions_env_pin)
 $(_extract _consumer_chrome_verdict)
-$(_extract _consumer_emulator_verdict)"
+$(_extract _consumer_emulator_verdict)
+$(_extract _consumer_cargo_qa_verdict)"
 # _cc_tr <probe> <arch> <row>
 _cc_tr() {
   CC_PROBE="$1" CHROME_FOR_TESTING_VERSION=154.0.8037.92 ANDROID_EMULATOR_VERSION=37.2.12 ANDROID_EMULATOR_API=35 \
-    ANDROID_EMULATOR_SYSIMG_REVISION=9 bash -c '
+    ANDROID_EMULATOR_SYSIMG_REVISION=9 CARGO_AUDIT_VERSION=0.22.2 CARGO_DENY_VERSION=0.20.2 CARGO_TARPAULIN_VERSION=0.37.2 bash -c '
     '"${_CC_TR_PARTS}"'
     _CONSUMER_CONTRACT_ROWS="$2"
     _consumer_contract_verdicts "$1" "${CC_PROBE}"' _ "$2" "$3" 2>&1
@@ -889,12 +890,36 @@ for _a in arm64 riscv64; do
   t_assert_contains "$(_cc_tr "${_CC_EMU}" "${_a}" android-emulator)" "STALE android-emulator FACT android-emulator says it IS present on ${_a}"
 done
 
+_CC_QA='FACT cargo-qa-tools yes
+FACT cargo-qa-tools-versions cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2'
+
+t_case "CON65: the three cargo QA tools at their pins hold the row on amd64 and arm64"
+for _a in amd64 arm64; do
+  t_assert_contains "$(_cc_tr "${_CC_QA}" "${_a}" cargo-qa-tools)" \
+    "OK cargo-qa-tools cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2" "${_a}"
+done
+
+t_case "CON65: a tool off its pin or missing is BAD, and no fact proves nothing (mutation)"
+_qa_bad() { _cc_tr "$(_cc_edit "${_CC_QA}" "$1")" arm64 cargo-qa-tools; }
+_t_edit_table _qa_bad <<'ROWS'
+s/cargo-deny=0.20.2/cargo-deny=0.19.0/	BAD cargo-qa-tools the image has cargo-audit=0.22.2 cargo-deny=0.19.0
+s/cargo-tarpaulin=0.37.2/cargo-tarpaulin=/	BAD cargo-qa-tools the image has cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=
+/^FACT cargo-qa-tools /d	NOFACT cargo-qa-tools no FACT cargo-qa-tools line
+ROWS
+
+t_case "CON65: riscv64 is exempt from the cargo QA row, and the arm rots the day one appears"
+t_assert_contains "$(_cc_tr 'FACT cargo-qa-tools no' riscv64 cargo-qa-tools)" "EXEMPT cargo-qa-tools"
+t_assert_contains "$(_cc_tr "${_CC_QA}" riscv64 cargo-qa-tools)" "STALE cargo-qa-tools FACT cargo-qa-tools says it IS present on riscv64"
+
 t_case "CON50: the probe emits every fact the two rows read, as a real run of it"
 _TR_TMP="$(mktemp -d)"
 mkdir -p "${_TR_TMP}/bin" "${_TR_TMP}/sdk/emulator" "${_TR_TMP}/sdk/system-images/android-35/google_apis/x86_64"
 printf '#!/bin/sh\ncase "$*" in *--version*) echo "Google Chrome for Testing 154.0.8037.92 " ;; *--dump-dom*) echo "<body>kg-42</body>" ;; esac\n' \
   > "${_TR_TMP}/bin/chrome"
 printf '#!/bin/sh\necho "ChromeDriver 154.0.8037.92 (x)"\n' > "${_TR_TMP}/bin/chromedriver"
+printf '#!/bin/sh\necho "cargo-audit 0.22.2"\n' > "${_TR_TMP}/bin/cargo-audit"
+printf '#!/bin/sh\necho "cargo-deny 0.20.2"\n' > "${_TR_TMP}/bin/cargo-deny"
+printf '#!/bin/sh\necho "tarpaulin 0.37.2"\n' > "${_TR_TMP}/bin/cargo-tarpaulin"
 printf '#!/bin/sh\necho "Android emulator version 37.2.12.0 (build_id 16428233)"\n' > "${_TR_TMP}/sdk/emulator/emulator"
 : > "${_TR_TMP}/bin/android-avd.sh"
 chmod +x "${_TR_TMP}"/bin/* "${_TR_TMP}/sdk/emulator/emulator"
@@ -905,7 +930,8 @@ _TR_RAW="$(PATH="${_TR_TMP}/bin:${PATH}" CHROME_EXECUTABLE="${_TR_TMP}/bin/chrom
   bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)"
 for _f in "FACT chrome yes" "FACT chrome-version 154.0.8037.92" "FACT chromedriver-version 154.0.8037.92" \
           "FACT chrome-headless yes" "FACT android-emulator yes" "FACT android-emulator-version 37.2.12" \
-          "FACT android-emulator-runs yes" "FACT android-system-image android-35;google_apis;x86_64;r9" "FACT android-avd yes"; do
+          "FACT android-emulator-runs yes" "FACT android-system-image android-35;google_apis;x86_64;r9" "FACT android-avd yes" \
+          "FACT cargo-qa-tools yes" "FACT cargo-qa-tools-versions cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2"; do
   t_assert_contains "${_TR_RAW}" "${_f}" "the probe reads it from the image"
 done
 t_assert_contains "$(CHROME_EXECUTABLE='' ANDROID_HOME="${_TR_TMP}/none" \
