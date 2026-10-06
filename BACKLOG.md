@@ -186,16 +186,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         export 128 on aarch64. Four of about twenty OxidANT arm64 runs since 2026-10-05 had
         died on it, one as a SIGSEGV in `forward_ambient` rather than an `LLVM ERROR`.
 
-- [ ] **CON51 — `:latest-rocm` rebuilt with the 2026-10-01 media fixes** [M, ★★]. Owner
-      decision 2026-10-01: GStreamer and libcamera without libunwind "everywhere". `:latest`
-      carries it since 2026-10-01 (all three children pass the libunwind smoke), and
-      `:latest-nvidia` gets it from the chain run CON42 is waiting on. `:latest-rocm`
-      (2026-09-28, hub 1754a1dd) still links `libunwind.so.8` and lacks CON44's `ENV` and
-      CON47's patch. Done when a `CROSS_VARIANT=rocm` chain publishes and its runtime smoke
-      shows the three new checks green. A rocm chain republished it on 2026-10-02 (hub
-      b4d5fdd5, amd64 `bdfcb731…`) and its config carries CON44's `ENV`; that chain's smoke
-      verdicts for libunwind and CON47 are not checked yet.
-
 - [ ] **CON52 — The torch stage installs the chain wheels once and proves them** [M, ★★].
       Measured in the 2026-10-01 `:latest` chain (amd64 and arm64): torch and torchvision come
       straight from OrchestrANT's lock (`torch pins satisfied`); `ai-edge-litert` and
@@ -351,7 +341,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          the GPU run's three fixes in a chain. GStreamer and libcamera without libunwind are in
          every variant by owner decision (2026-10-01, "everywhere"): the `:latest` published
          2026-10-01 proves it in all three children (no shared object under `/opt` or
-         `/usr/local` needs `libunwind.so.8`); `:latest-rocm` gets it with CON51.
+         `/usr/local` needs `libunwind.so.8`), and so does the `:latest-rocm` of 2026-10-02
+         (CON51, closed).
 
       Measured 2026-10-01 (DeepStream v9.1.0, commit 581889df; runtime
       `deepstream-binaries-x86_9.1.0_amd64.deb`; GStreamer 1.29.2; CUDA 13.4.2; GCC 16.2):

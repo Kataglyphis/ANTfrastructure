@@ -7,6 +7,22 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — The published `:latest-rocm` passes the three media checks (CON51 closes)
+
+- **What was open.** The rocm chain of 2026-10-02 (hub b4d5fdd5) republished
+  `:latest-rocm`, amd64 manifest `bdfcb731…`. Nobody had read its runtime smoke verdicts
+  for the 2026-10-01 media fixes.
+- **Measured instead, on the published image.** Pulled on 2026-10-06, created
+  2026-10-02 20:50. The three checks ran as `smoke-runtime-image.sh` runs them:
+  - `check_no_libunwind_closure`: none of 1487 shared objects under `/opt` and
+    `/usr/local` needs `libunwind.so.8`;
+  - `check_lavapipe_subgroup`: `LP_NATIVE_VECTOR_WIDTH=256`, and lavapipe reports
+    `subgroupSize 8` (CON44);
+  - `_gst_check_blacklist`: the GStreamer registry blacklists nothing, and
+    gst-validate's SSIM override writes 3 frames (CON47).
+- **Every variant now has GStreamer and libcamera without libunwind** except
+  `:latest-nvidia`, which gets them from the chain run CON42 waits on.
+
 ## 2026-10-06 — A consumer's pytest stack ships in the `:winarm64` wheel store (CON67)
 
 - **OrchestrANT's arm64 lane fetched its test runner from PyPI**, unpinned, at cross-build
