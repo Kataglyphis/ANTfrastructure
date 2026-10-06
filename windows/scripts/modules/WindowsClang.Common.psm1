@@ -42,6 +42,10 @@ function Invoke-ClangTidyFixStep {
       Workspace-relative directory to analyse and --header-filter on (default 'Src').
   .PARAMETER Checks
       Extra clang-tidy arguments, empty by default: a forced --checks crashed some clang-tidy versions.
+  .PARAMETER ModuleImportPattern
+      Files matching it are skipped. The image's clang-tidy reads the build's BMIs (CON10), so '(?!)' tidies them too.
+  .PARAMETER ThrottleLimit
+      clang-tidy processes at once, one file each; -Fix stays serial, as two files' fixes can rewrite one header.
   #>
   param(
     [Parameter(Mandatory)]
@@ -54,6 +58,8 @@ function Invoke-ClangTidyFixStep {
     [string[]]$Checks = @(),
     [string]$ModuleImportPattern = '(?m)^\s*import\s+kataglyphis',
     [string[]]$Extension = @('.cpp', '.cc', '.cxx'),
+    [ValidateRange(1, 256)]
+    [int]$ThrottleLimit = [Environment]::ProcessorCount,
     [switch]$Fix
   )
 
@@ -101,9 +107,30 @@ function Invoke-ClangTidyFixStep {
   $baseParams += "--header-filter=$([regex]::Escape($srcDir)).*"
   if ($Fix) { $baseParams += '--fix' }
 
-  foreach ($tidyFile in $tidyFiles) {
-    Invoke-BuildExternal -Context $Context -File $clangTidyCommand.Source -Parameters @($baseParams + $tidyFile) | Out-Null
+  if ($Fix -or $ThrottleLimit -eq 1 -or $tidyFiles.Count -eq 1) {
+    foreach ($tidyFile in $tidyFiles) {
+      Invoke-BuildExternal -Context $Context -File $clangTidyCommand.Source -Parameters @($baseParams + $tidyFile) | Out-Null
+    }
+    return
   }
+
+  # Each file's output is logged whole and in file order; every failure is named, not just the first.
+  $tidyExe = $clangTidyCommand.Source
+  $results = @($tidyFiles | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
+      $tidyParams = @($using:baseParams) + $_
+      $output = @(& $using:tidyExe @tidyParams 2>&1 | ForEach-Object { "$_" })
+      [pscustomobject]@{ File = $_; ExitCode = $LASTEXITCODE; Output = $output }
+    })
+  $failed = [System.Collections.Generic.List[string]]::new()
+  foreach ($tidyFile in $tidyFiles) {
+    $result = @($results | Where-Object File -EQ $tidyFile)[0]
+    Write-BuildLog -Context $Context -Message "CMD: $tidyExe $($baseParams -join ' ') $tidyFile"
+    foreach ($line in $result.Output) {
+      if (-not [string]::IsNullOrWhiteSpace($line)) { Write-BuildLog -Context $Context -Message $line }
+    }
+    if ($result.ExitCode -ne 0) { $failed.Add("$tidyFile (exit $($result.ExitCode))") }
+  }
+  if ($failed.Count -gt 0) { throw "clang-tidy failed on $($failed.Count) file(s): $($failed -join '; ')" }
 }
 
 Export-ModuleMember -Function @(
