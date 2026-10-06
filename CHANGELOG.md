@@ -7,6 +7,19 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — A consumer's pytest stack ships in the `:winarm64` wheel store (CON67)
+
+- **OrchestrANT's arm64 lane fetched its test runner from PyPI**, unpinned, at cross-build
+  time: pytest and six plugins for win_arm64.
+- **The merge stage stages them now.** `versions.env` pins 31 cp314 wheels by URL and SHA256
+  (`PYTEST_WINDOWS_ARM64_*`). They are pytest 9.1.1, pytest-cov 7.1.0, pytest-benchmark 5.2.3,
+  pytest-html 4.2.0, pytest-md 0.2.0, pytest-md-report 0.8.0 and requests 2.34.2, with their
+  closure. `Copy-Arm64TorchWheels.ps1` stages them beside the torch stack and checks the
+  three native ones' target arch. Every SHA256 equals PyPI's.
+- **`Test-Arm64Bundle.ps1` proves them on the device**: an offline install into the bundle's
+  interpreter, then an import, in a bundle that carries them.
+
+
 ## 2026-10-06 — The free-threaded Python ships in `:latest` (CON66)
 
 - **Every `3.14t` leg downloaded its interpreter.** OrchestrANT's and WebDavClient's

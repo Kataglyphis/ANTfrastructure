@@ -275,10 +275,17 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       Done when a published `:winarm64` passes that step; then raise the gate's floor to 13 and
       fail a bundle without the layer, and point BeschleunigerBallett's arm64 `-StageTests` at it.
 - [ ] **CON67 — the test runner's wheels in the `:winarm64` wheel store** [S, ★]. OrchestrANT's
-      `Stage-Arm64Tests.ps1` installs pytest and six plugins (cov, benchmark, md, md-report, html,
-      requests) for win_arm64 from PyPI at cross-build time, versions unpinned. The bundle's
-      wheel store, which the device installs from offline, does not carry them. Pin them in
-      `versions.env` with their SHA256s, as the torch stack is, and stage them with it.
+      `Stage-Arm64Tests.ps1` installed pytest and six plugins (cov, benchmark, md, md-report,
+      html, requests) for win_arm64 from PyPI at cross-build time, versions unpinned. In source
+      2026-10-06:
+      - `versions.env` pins the 31 cp314 wheels by URL and SHA256 (`PYTEST_WINDOWS_ARM64_*`),
+        the versions OrchestrANT's lock runs on x64; jinja2 and setuptools are the torch stack's.
+      - `Copy-Arm64TorchWheels.ps1` stages them beside the torch stack, and the three native
+        ones pass `Assert-WheelTargetArch`.
+      - `Test-Arm64Bundle.ps1` installs them offline and imports them, in a bundle that has them.
+      - Docs: `docs/windows-cross-builds.md` § A consumer's test runner, pinned.
+      Done when a published `:winarm64` passes that step on the device and OrchestrANT's
+      `Stage-Arm64Tests.ps1` installs from the wheel store instead of PyPI.
 
 - [ ] **CON63 — prove the WebRTC contract on the next arm64 chain** [S, ★★]. The
       2026-10-05 Windows WebRTC fixes (`docs/windows-builds.md` § libffi's type exports,
