@@ -20,21 +20,44 @@ drop_redundant_distro_gtk4() {
     echo "OK: dropped the distro GTK 4 and GStreamer runtime; ${ours} is the GTK 4"
 }
 
-# Tools that read clang's output come from its own LLVM; clang-format and llvm-config stay the distro's on purpose.
-LLVM_TARGET_TOOLS="clang-tidy run-clang-tidy clang-apply-replacements clangd clang-scan-deps
-    llvm-profdata llvm-cov llvm-symbolizer llvm-nm llvm-objdump llvm-objcopy llvm-strip
-    llvm-readelf llvm-readobj llvm-dwarfdump llvm-addr2line llvm-cxxfilt llvm-size llvm-strings
-    ld.lld lld"
+# Unversioned names under <usr_bin> that resolve into a distro LLVM; a -NN name asks for one by name, rust-* are the distro rustc's.
+llvm_distro_unversioned_names() {
+    local usr_bin="${1:-/usr/bin}" f
+    for f in "${usr_bin}"/*; do
+        [ -L "${f}" ] || continue
+        case "$(readlink -f "${f}")" in */lib/llvm-[0-9]*/bin/*) ;; *) continue ;; esac
+        case "${f##*/}" in *-[0-9] | *-[0-9][0-9] | *-[0-9]*.py | rust-*) continue ;; esac
+        printf '%s\n' "${f##*/}"
+    done
+}
 
-wire_clang_llvm_tools() {
-    local dir tool n=0
-    dir="$(dirname "$(readlink -f /usr/bin/clang)")"
-    for tool in ${LLVM_TARGET_TOOLS}; do
-        [ -x "${dir}/${tool}" ] || { echo "WARN: ${dir} has no ${tool}; PATH keeps the distro's"; continue; }
-        ln -sfn "${dir}/${tool}" "/usr/local/bin/${tool}"
+# Every unversioned LLVM tool name is the pinned LLVM's (owner 2026-10-06); dpkg-divert keeps an apt run from undoing it.
+wire_pinned_llvm_tools() {
+    local clang="${1:-/usr/bin/clang}" usr_bin="${2:-/usr/bin}" local_bin="${3:-/usr/local/bin}"
+    local stash="${4:-/usr/lib/distro-llvm-names}" dir tool name n=0 kept=0
+    local -a gone=()
+    dir="$(dirname "$(readlink -f "${clang}")")"
+    mkdir -p "${stash}"
+    for tool in "${dir}"/*; do
+        name="${tool##*/}"
+        [ -f "${tool}" ] && [ -x "${tool}" ] || continue
+        case "${name}" in *.cfg | clang-[0-9]*) continue ;; esac
+        [ "$(readlink -f "${usr_bin}/${name}" 2>/dev/null)" = "$(readlink -f "${tool}")" ] && continue
+        ln -sfn "${tool}" "${local_bin}/${name}"
         n=$((n + 1))
     done
-    echo "OK: ${n} LLVM tools on PATH from ${dir}, clang's own"
+    while IFS= read -r name; do
+        tool="${usr_bin}/${name}"
+        dpkg-divert --local --rename --divert "${stash}/${name}" --add "${tool}" >/dev/null
+        if [ -x "${dir}/${name}" ]; then
+            ln -sfn "${dir}/${name}" "${tool}"
+            kept=$((kept + 1))
+        else
+            gone+=("${name}")
+        fi
+    done < <(llvm_distro_unversioned_names "${usr_bin}")
+    echo "OK: ${n} pinned LLVM tools linked into ${local_bin}; ${kept} distro name(s) in ${usr_bin} now point into ${dir}"
+    [ "${#gone[@]}" -eq 0 ] || echo "OK: ${#gone[@]} name(s) the pinned LLVM lacks left ${usr_bin}, their -NN alias stays: ${gone[*]}"
 }
 
 # A bare clang selects ${GCC_PREFIX} via <native-triple>-<driver>.cfg beside the path it was reached through (docs/linux-cross-builds.md#clang-cross-wrappers).

@@ -177,8 +177,15 @@ _llvm_cross_superset_cmake_args() {
 
   _ss_args=(
     -DLLVM_BINUTILS_INCDIR=/usr/include
-    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld"
+    # lldb too: every LLVM tool the image names is this release's (BACKLOG CON71).
+    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld;lldb"
     -DLLVM_ENABLE_RUNTIMES="compiler-rt"
+    # The target's Python, Lua, libedit and curses are not in the cross sysroot; lldb runs without them.
+    -DLLDB_ENABLE_PYTHON=OFF
+    -DLLDB_ENABLE_LUA=OFF
+    -DLLDB_ENABLE_LIBEDIT=OFF
+    -DLLDB_ENABLE_CURSES=OFF
+    -DLLDB_ENABLE_LZMA=OFF
     -DCOMPILER_RT_BUILD_SANITIZERS=ON
     -DCOMPILER_RT_BUILD_BUILTINS=ON
     -DCOMPILER_RT_BUILD_XRAY=OFF
@@ -299,8 +306,9 @@ _llvm_cross_cmake_configure() {
     -DLLVM_INCLUDE_TOOLS=ON \
     -DLLVM_BUILD_TOOLS=ON \
     -DLLVM_TOOL_LLVM_SHLIB_BUILD=ON \
-    -DLLVM_INCLUDE_UTILS=OFF \
-    -DLLVM_BUILD_UTILS=OFF \
+    -DLLVM_INCLUDE_UTILS=ON \
+    -DLLVM_BUILD_UTILS=ON \
+    -DLLVM_INSTALL_UTILS=ON \
     -DLLVM_INCLUDE_TESTS=OFF \
     -DLLVM_INCLUDE_BENCHMARKS=OFF \
     -DLLVM_INCLUDE_EXAMPLES=OFF \
@@ -411,7 +419,7 @@ _build_llvm_cross_core() {
   _state[native_tool_dir]="$(llvm_host_native_tool_dir)" || die "Host LLVM native tools not found"
 
   rm -rf "${_state[llvm_prefix]}" "${_state[clang_prefix]}" "${_state[build_dir]}" "${_state[wrapper_dir]}" ${_state[native_wrapper_dir]:+"${_state[native_wrapper_dir]}"}
-  log "Building LLVM ${_state[release]} for ${_state[target_label]} (${_state[triplet]}) — single unified superset build (clang;clang-tools-extra;lld) installed to ${_state[llvm_prefix]} + ${_state[clang_prefix]} — this will take a while"
+  log "Building LLVM ${_state[release]} for ${_state[target_label]} (${_state[triplet]}) — single unified superset build (clang;clang-tools-extra;lld;lldb) installed to ${_state[llvm_prefix]} + ${_state[clang_prefix]} — this will take a while"
 
   _llvm_cross_setup_and_build _state
 

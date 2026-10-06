@@ -12321,5 +12321,61 @@
   "replace": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
   "test": "bash linux/scripts/tests/test-env-knobs.sh",
   "why": "the host-tool pins moved to tool-pins.env (CON59); without it as an owner every lint-tool knob reads as unowned and KNOB_GATE fails a correct tree"
+ },
+ {
+  "id": "packaging.pinned-llvm-usr-bin-names",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "            ln -sfn \"${dir}/${name}\" \"${tool}\"\n",
+  "replace": "            :\n",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "a diverted /usr/bin name must point into the pinned LLVM, or clang-format & co. vanish instead of moving to 23 (CON71)"
+ },
+ {
+  "id": "packaging.pinned-llvm-keeps-nn-aliases",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "        case \"${f##*/}\" in *-[0-9] | *-[0-9][0-9] | *-[0-9]*.py | rust-*) continue ;; esac\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "clang-tidy-21 and rustc's rust-* names ask for that LLVM by name; diverting them breaks explicit callers (CON71)"
+ },
+ {
+  "id": "packaging.pinned-llvm-stash-off-path",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "--divert \"${stash}/${name}\"",
+  "replace": "--divert \"${tool}.distro-llvm\"",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "a diverted original left in /usr/bin is still a distro LLVM on PATH (CON71)"
+ },
+ {
+  "id": "packaging.llvm-tool-version-against-pin",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "    if [ -n \"${want}\" ] && [ \"${ver}\" = \"${want}\" ]; then\n      echo \"SMOKE OK: ${tool} ${ver} == LLVM_RELEASE\"",
+  "replace": "    if [ -n \"${ver}\" ]; then\n      echo \"SMOKE OK: ${tool} ${ver} == LLVM_RELEASE\"",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "the smoke grades every LLVM tool against LLVM_RELEASE, not merely that it runs (CON71)"
+ },
+ {
+  "id": "packaging.llvm-tool-distro-name",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "    validate_fail \"llvm-tool-distro\" \"${usr_bin}/${name} is $(readlink -f \"${usr_bin}/${name}\"), a distro LLVM under an unversioned name\"\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "a distro LLVM under an unversioned /usr/bin name is what CON71 removes; the smoke must catch one coming back"
+ },
+ {
+  "id": "llvm-target.cross-builds-lldb",
+  "target": "linux/scripts/02-toolchain/llvm-cross.sh",
+  "find": "-DLLVM_ENABLE_PROJECTS=\"clang;clang-tools-extra;lld;lldb\"",
+  "replace": "-DLLVM_ENABLE_PROJECTS=\"clang;clang-tools-extra;lld\"",
+  "test": "bash linux/scripts/tests/test-llvm-cross-stanza.sh",
+  "why": "without lldb in the pinned build the image's lldb would have to be the distro's (CON71)"
+ },
+ {
+  "id": "llvm-target.cross-installs-utils",
+  "target": "linux/scripts/02-toolchain/llvm-cross.sh",
+  "find": "    -DLLVM_INSTALL_UTILS=ON \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-llvm-cross-stanza.sh",
+  "why": "FileCheck, yaml2obj and llvm-tblgen ship only with LLVM_INSTALL_UTILS (CON71)"
  }
 ]

@@ -114,6 +114,8 @@ $cmakeArgs = @(
     '-DLLVM_INCLUDE_TESTS=OFF',
     '-DLLVM_INCLUDE_BENCHMARKS=OFF',
     '-DLLVM_INCLUDE_EXAMPLES=OFF',
+    # FileCheck, not and yaml2obj from this release, not IREE's (BACKLOG CON71).
+    '-DLLVM_INSTALL_UTILS=ON',
     '-DLLVM_ENABLE_PDB=OFF',
     # DIA needs ATL, absent from the container's Build Tools, and only symbolises PDBs.
     '-DLLVM_ENABLE_DIA_SDK=OFF',
@@ -159,7 +161,7 @@ if ($banner -notmatch [regex]::Escape($LlvmVersion)) {
 Install-TargetCompilerRt -Prefix $InstallPrefix -Version $LlvmVersion
 
 # What consumers take from this build must exist, and the 7 GB source and build tree must not ship.
-$consumed = @('bin\clang-tidy.exe', 'bin\clang-apply-replacements.exe',
+$consumed = @('bin\clang-tidy.exe', 'bin\clang-apply-replacements.exe', 'bin\FileCheck.exe',
     "lib\clang\$($LlvmVersion.Split('.')[0])\lib\windows\clang_rt.profile-x86_64.lib")
 $absent = $consumed.Where({ -not [IO.File]::Exists((Join-Path $InstallPrefix $_)) })
 if ($absent) { throw "The patched LLVM in $InstallPrefix lacks $($absent -join ', ')." }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The package stage's clang wiring on a fake LLVM tree: the toolchain cfg pair, atheris' legacy compiler-rt names and its probe.
+# The package stage's clang wiring on a fake LLVM tree: the pinned tool names, the toolchain cfg pair, atheris' legacy compiler-rt names.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -111,5 +111,97 @@ _out="$(PATH="${_w}/stub:${PATH}" GCC_PREFIX="${_w}/gcc" bash -c '
 t_assert_contains "${_out}" "SMOKE OK: bare clang++ selects ${_w}/gcc/"
 t_assert_contains "${_out}" "SMOKE OK: clang-tidy via /usr/bin/clang selects ${_w}/gcc/"
 t_assert_contains "${_out}" "FAIL [clang-gcc-toolchain]: clang-tidy via /usr/bin/clang++ selects '/usr/bin/../lib/gcc/x86_64-linux-gnu/16'"
+
+# --- every unversioned LLVM name is the pinned release's (CON71) ---------------
+_namesrc="$(t_fn_src "${WIRING}" llvm_distro_unversioned_names)" || exit 1
+_pinsrc="${_namesrc}"$'\n'"$(t_fn_src "${WIRING}" wire_pinned_llvm_tools)" || exit 1
+_versrc="${_namesrc}"$'\n'"$(t_fn_src "${VALIDATE}" _smoke_llvm_tool_versions)" || exit 1
+_p="${_w}/pin"
+mkdir -p "${_p}/target/bin" "${_p}/usr/lib/llvm-21/bin" "${_p}/usr/bin" "${_p}/usr/local/bin"
+for _t in clang-23 clang-tidy clang-format lldb FileCheck; do
+  printf '#!/bin/sh\necho "%s version 23.1.1"\n' "${_t}" > "${_p}/target/bin/${_t}"
+done
+for _t in clang-tidy clang-format bugpoint; do
+  printf '#!/bin/sh\necho "%s version 21.1.8"\n' "${_t}" > "${_p}/usr/lib/llvm-21/bin/${_t}"
+done
+chmod +x "${_p}"/target/bin/* "${_p}"/usr/lib/llvm-21/bin/*
+: > "${_p}/target/bin/x86_64-unknown-linux-gnu-clang.cfg"
+ln -s clang-23 "${_p}/target/bin/clang"
+ln -s ../../target/bin/clang "${_p}/usr/bin/clang"
+for _t in clang-tidy clang-format bugpoint; do ln -s "../lib/llvm-21/bin/${_t}" "${_p}/usr/bin/${_t}"; done
+ln -s ../lib/llvm-21/bin/clang-tidy "${_p}/usr/bin/clang-tidy-21"
+ln -s ../lib/llvm-21/bin/clang-format "${_p}/usr/bin/rust-clang"
+
+# dpkg-divert stubbed as the rename it performs; the log is what got diverted.
+_pin() {
+  P="${_p}" bash -c '
+    dpkg-divert() {
+      local div="" add=""
+      while [ $# -gt 0 ]; do
+        case "$1" in --divert) div="$2"; shift 2 ;; --add) add="$2"; shift 2 ;; *) shift ;; esac
+      done
+      mv "${add}" "${div}" && echo "${add##*/}" >> "${P}/diverted"
+    }
+    '"${_pinsrc}"'
+    wire_pinned_llvm_tools "${P}/usr/bin/clang" "${P}/usr/bin" "${P}/usr/local/bin" "${P}/stash"' 2>&1
+}
+
+t_case "every distro name the pinned LLVM also has points into it, in /usr/bin itself"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
+_out="$(_pin)"
+for _t in clang-tidy clang-format; do
+  t_assert_eq "${_p}/target/bin/${_t}" "$(readlink -f "${_p}/usr/bin/${_t}")" "/usr/bin/${_t}"
+done
+t_assert_eq "bugpoint clang-format clang-tidy" "$(sort "${_p}/diverted" | paste -sd' ' -)" \
+  "exactly the three unversioned distro names are diverted"
+
+t_case "a name the pinned LLVM lacks leaves PATH; -NN aliases and rustc's own stay"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
+t_assert_fails test -e "${_p}/usr/bin/bugpoint"
+t_assert_ok test -L "${_p}/stash/bugpoint"
+_left=""
+for _f in "${_p}/usr/bin"/*; do
+  case "${_f##*/}" in clang | clang-tidy | clang-format | *-21 | rust-clang) ;; *) _left+="${_f##*/} " ;; esac
+done
+t_assert_eq "" "${_left}" "the diverted originals sit outside PATH"
+t_assert_contains "${_out}" "1 name(s) the pinned LLVM lacks left ${_p}/usr/bin, their -NN alias stays: bugpoint"
+t_assert_eq "${_p}/usr/lib/llvm-21/bin/clang-tidy" "$(readlink -f "${_p}/usr/bin/clang-tidy-21")"
+t_assert_eq "${_p}/usr/lib/llvm-21/bin/clang-format" "$(readlink -f "${_p}/usr/bin/rust-clang")"
+
+t_case "/usr/local/bin gets every pinned tool /usr/bin does not already resolve to, and no cfg or clang-NN"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
+t_assert_eq "${_p}/target/bin/lldb" "$(readlink -f "${_p}/usr/local/bin/lldb")"
+t_assert_eq "${_p}/target/bin/FileCheck" "$(readlink -f "${_p}/usr/local/bin/FileCheck")"
+for _t in clang clang-23 x86_64-unknown-linux-gnu-clang.cfg; do
+  t_assert_fails test -e "${_p}/usr/local/bin/${_t}"
+done
+
+# _vers <LLVM_RELEASE>: the smoke over the fake tree, PATH as the image orders it.
+_vers() {
+  PATH="${_p}/usr/local/bin:${_p}/usr/bin:${PATH}" _VCS_SMOKE_LLVM_VER="$1" P="${_p}" bash -c '
+    validate_fail() { echo "FAIL [$1]: $2"; }
+    _SMOKE_LLVM_TOOLS="clang-tidy clang-format lldb FileCheck"
+    '"${_versrc}"'
+    _smoke_llvm_tool_versions "${P}/usr/bin"' 2>&1
+}
+
+t_case "the smoke passes the wired tree against LLVM_RELEASE, tool by tool"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
+_out="$(_vers 23.1.1)"
+for _t in clang-tidy clang-format lldb FileCheck; do
+  t_assert_contains "${_out}" "SMOKE OK: ${_t} 23.1.1 == LLVM_RELEASE"
+done
+t_assert_fails grep -q FAIL <<< "${_out}"
+
+t_case "the smoke grades against the pin, not against whatever clang reports"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
+t_assert_contains "$(_vers 23.1.2)" "FAIL [llvm-tool-version]: clang-tidy 23.1.1 is not LLVM_RELEASE 23.1.2"
+
+t_case "the smoke fails a distro LLVM under an unversioned name, and only that"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
+ln -s ../lib/llvm-21/bin/clang-tidy "${_p}/usr/bin/llvm-cov"
+_out="$(_vers 23.1.1)"
+t_assert_contains "${_out}" "FAIL [llvm-tool-distro]: ${_p}/usr/bin/llvm-cov is ${_p}/usr/lib/llvm-21/bin/clang-tidy"
+t_assert_eq "1" "$(grep -c 'FAIL \[llvm-tool-distro\]' <<< "${_out}")" "clang-tidy-21 and rust-clang are not failures"
 
 t_summary

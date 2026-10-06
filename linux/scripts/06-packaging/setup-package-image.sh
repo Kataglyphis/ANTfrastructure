@@ -623,7 +623,7 @@ main() {
     pin_clang_alternatives
     wire_python_symlinks "${python_mm}"
     preserve_custom_gcc "${GCC_VERSION}"
-    wire_clang_llvm_tools
+    wire_pinned_llvm_tools
     write_clang_gcc_toolchain_cfg
     link_compiler_rt_legacy_names
     ensure_native_rust_toolchain
