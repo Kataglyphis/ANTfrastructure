@@ -7,6 +7,18 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — `Invoke-ClangTidyFixStep`'s parallel default is bounded by memory
+
+- **The core count alone ran out of memory.** BeschleunigerBallett's Windows x64 lane, with
+  the module skip lifted, ran four clang-tidy processes on a 4-vCPU, 16 GB runner, and
+  `App.cpp` died with `LLVM ERROR: out of memory` (run 37466488394).
+- **Measured per file, peak working set in the `:winamd64` container:** module TUs up to
+  10.4 GB (`VulkanRenderer.cpp`), 9.6 (`App.cpp`), 7.1 (`DeferredRasterizer.cpp`). The
+  non-module TUs stay at 0.2-1.4 GB, apart from one at 5.3.
+- **`-ThrottleLimit` 0 (the default) now means the core count capped at one process per
+  6 GB of RAM**: two on a 16 GB runner, ten on a 61 GB, 32-core host. An explicit value
+  still wins.
+
 ## 2026-10-06 — `Invoke-ClangTidyFixStep` tidies in parallel, and module TUs on request
 
 - **One process per file, `-ThrottleLimit` at a time** (default: the core count). Each file's
