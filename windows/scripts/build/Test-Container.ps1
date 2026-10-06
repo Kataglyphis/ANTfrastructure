@@ -411,6 +411,9 @@ Assert-Test -Name "Flutter works" -Condition {
 } -FailMessage "Flutter --version failed"
 
 Assert-FileExists -Path 'C:\WiX\wix.exe' -Description 'WiX toolset'
+Assert-Test -Name 'WiX firewall extension' -Condition {
+    (& 'C:\WiX\wix.exe' extension list --global 2>&1 | Out-String) -match 'WixToolset\.Firewall\.wixext'
+} -FailMessage 'WixToolset.Firewall.wixext is not installed globally (windows/Dockerfile installs it)'
 foreach ($tool in 'sccache', 'cppcheck', '7z', 'uv', 'nano') {
     Assert-CommandExists $tool
 }

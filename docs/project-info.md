@@ -43,7 +43,7 @@ Stage chain (each `FROM` the previous stage's local tag, `docker.io/local/katagl
 | 4 | `windows/Dockerfile.media-merge-builder` (+ per-branch `windows/Dockerfile.media-builder`) | `bk-windows-media` | AI/media stack: ONNX Runtime (`ONNXRUNTIME_VERSION`), ONNX GenAI (`ONNXRUNTIME_GENAI_VERSION`), FFmpeg (`FFMPEG_VERSION`; `--enable-libonnxruntime`, DNN filters ship with the backend, no separate `--enable-dnn`), OpenCV 5.x, HailoRT, LiteRT (`LITERT_VERSION`), LiteRT-LM (`LITERT_LM_VERSION`), TVM (`TVM_REF`), IREE, GStreamer (`GSTREAMER_VERSION`) — all source-built with clang-cl in dependency order; the generator per component is in `docs/windows-builds.md` § Component Build Matrix |
 | 4a | `windows/Dockerfile.rocm-migraphx`, then `windows/Dockerfile.rocm-llama` | `bk-windows-media-migraphx-rocm`, `bk-windows-media-llama-rocm` | rocm variant only: MIGraphX with the ONNX Runtime plugin EP, then llama.cpp (HIP and Vulkan) |
 | 5 | `windows/Dockerfile.torch` | `bk-windows-torch` | The OrchestrANT app environment at `APP_REF` |
-| 6 | `windows/Dockerfile` | `bk-winamd64` (`-PushRef` publishes it as `:winamd64`) | Final developer image (VsDevCmd entrypoint, HEALTHCHECK, smoke-test script) |
+| 6 | `windows/Dockerfile` | `bk-winamd64` (`-PushRef` publishes it as `:winamd64`) | Final developer image (VsDevCmd entrypoint, HEALTHCHECK, smoke-test script; the Vulkan loader and WiX's firewall extension, `WIX_FIREWALL_EXT_VERSION`, so a bump of either rebuilds only this stage) |
 
 Container validation uses `windows/scripts/build/Test-Container.ps1` (25 numbered sections; its assertion harness lives in `windows/scripts/modules/WindowsSmokeTest.Common.psm1`) and the Docker `HEALTHCHECK` defined in `windows/scripts/build/Test-Health.ps1`.
 

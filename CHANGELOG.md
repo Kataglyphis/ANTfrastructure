@@ -7,12 +7,30 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — WiX's firewall extension ships in `:winamd64`'s final stage
+
+- **Consumers' MSIs can declare `fw:FirewallException` now.** `windows/Dockerfile` runs
+  `wix extension add --global WixToolset.Firewall.wixext/$WIX_FIREWALL_EXT_VERSION`.
+  - The pin is new in `versions.env` (7.0.0).
+  - Renovate's WiX 7 lock and `bump_versions.py`'s same-major rule cover it, like the
+    UI extension.
+- **It lands in the final stage, not in base beside the UI extension.** A change to base
+  rebuilds the whole chain; the final stage rebuilds in minutes, as it did for the Vulkan
+  loader (CON25). `Build-Buildkit.ps1` passes the pin with the final stage's other args.
+- **The smoke gate asserts it** in section 4 (`WiX firewall extension`).
+- **A process-isolated container has no Windows Firewall.** `MpsSvc` and `BFE` are disabled
+  in the image, so an exception installs there only with `IgnoreFailure='yes'`.
+  OmniAccelerANT's cat cam MSI carries one, LAN-only and bound to its exe, and its install
+  test passed 14 of 14 in the image with it.
+
 ## 2026-10-06 — `:winamd64` republished: WebRTC works, Rust is pinned, ripgrep ships (CON60 closes)
 
 - **What the image is.** A local BuildKit chain from hub f4c0e2be, on a host whose
   Stevedore had first been repaired (Phase R: the patched runhcs shim, buildkitd's
   step-log env and `--config`, containerd's teardown variable). It was pushed with
-  `Build-Buildkit.ps1 -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`.
+  `Build-Buildkit.ps1 -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`:
+  manifest `sha256:5dbc0291`, replacing 2026-10-04's `sha256:65c0dc1f`. OmniAccelerANT's
+  Windows lane passed all 26 steps on it before the push finished.
 - **What its smoke gate passed: 229 assertions, 1 skipped.**
   - The WebRTC loopback (`webrtcsink -> webrtcsrc` decoding 60 frames over DTLS-SRTP).
   - The lavapipe checks.
