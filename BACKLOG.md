@@ -51,9 +51,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - `cargo_security_checks.sh` and `cargo_coverage.sh` build a tool only when the pinned
         version is not on `PATH` (`cargo_install_pinned`).
       - Docs: `docs/consumer-image-contract.md` § The cargo QA tools.
-      **Order matters:** OxidANT's hub pin must reach this commit before a `:latest` with the
-      tools publishes, because the old scripts' `cargo install` fails on a binary cargo did not
-      install. Done when a published `:latest` passes the row on amd64 and arm64.
+      **Order matters, and it holds:** OxidANT's hub pin had to reach this commit before a
+      `:latest` with the tools publishes, because the old scripts' `cargo install` fails on a
+      binary cargo did not install. OxidANT pins cef76510 since 5381dc1a (2026-10-06). Done
+      when a published `:latest` passes the row on amd64 and arm64.
 - [ ] **CON66 — a pinned free-threaded Python in the image** [S, ★★]. Every `3.14t` leg
       (OrchestrANT, WebDavClient) had uv download a free-threaded interpreter per run, its patch
       version unpinned. In source 2026-10-06: the package stage installs the `t` build of
