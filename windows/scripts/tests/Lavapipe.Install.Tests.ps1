@@ -106,3 +106,24 @@ Describe 'Install-Lavapipe: the loader-zip layout' {
         }
     }
 }
+
+Describe 'Install-Lavapipe: the script reads no variable it never sets' {
+    # Under strict mode a stale name throws at that line: cc1846c2 left ${vulkanVersion} behind and the merge stage died there.
+    It 'reads only parameters, assigned and loop variables, and automatic ones' {
+        $path = Join-Path (Get-RepoRoot) 'windows\scripts\host\Install-Lavapipe.ps1'
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
+        $find = { param($type) $ast.FindAll({ param($n) $n -is $type }.GetNewClosure(), $true) }
+        $set = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($p in (& $find ([System.Management.Automation.Language.ParameterAst]))) { [void]$set.Add($p.Name.VariablePath.UserPath) }
+        foreach ($f in (& $find ([System.Management.Automation.Language.ForEachStatementAst]))) { [void]$set.Add($f.Variable.VariablePath.UserPath) }
+        foreach ($a in (& $find ([System.Management.Automation.Language.AssignmentStatementAst]))) {
+            foreach ($v in $a.Left.FindAll({ param($n) $n -is [System.Management.Automation.Language.VariableExpressionAst] }, $true)) { [void]$set.Add($v.VariablePath.UserPath) }
+        }
+        $automatic = 'true', 'false', 'null', '_', 'PSItem', 'args', 'input', 'LASTEXITCODE', 'PSScriptRoot', 'PSCommandPath', 'MyInvocation', 'Matches', 'ErrorActionPreference', 'ProgressPreference', 'PSBoundParameters'
+        $unset = @(& $find ([System.Management.Automation.Language.VariableExpressionAst]) |
+            Where-Object { -not ($_.VariablePath.IsDriveQualified -or $_.VariablePath.IsScript -or $_.VariablePath.IsGlobal) } |
+            ForEach-Object { $_.VariablePath.UserPath } |
+            Where-Object { -not $set.Contains($_) -and $_ -notin $automatic } | Sort-Object -Unique)
+        Assert-Equal '' ($unset -join ', ') 'variables read but never set'
+    }
+}
