@@ -336,6 +336,59 @@ flatpak/flatpak-builder/ostree/cmake, including the two cases the exit code
 cannot see: a non-zero `flatpak-builder` whose app **is** committed still ships,
 and a zero exit with an empty repo fails.
 
+## `06-packaging/package_archive.sh` — one binary, four formats
+
+One release binary, a tar always, and by `--package-types` a deb, an AppImage and
+a flatpak. The types are comma- or space-separated, in any case. Its consumer is
+OxidANT's Linux lane. Until 2026-10-06 it wrote the tar and stopped: its
+`create_deb()` was deleted on 2026-08-08 as unreachable, and `--flatpak-manifest`,
+`--desktop-file` and `--appdata-file` were checked for existence and then never
+read.
+
+After the tar it stages the binary alone, under its package name, in
+`${KATAGLYPHIS_PACKAGING_WORKDIR:-/tmp/packaging-work}/bundle`. It hands that tree to
+the three bundle packagers above, the ones a Flutter lane calls, through seven
+knobs. Unset, each keeps the Flutter default, so a Flutter lane packs what it did
+before:
+
+| Knob | Flutter default | `package_archive.sh` sets |
+| --- | --- | --- |
+| `APP_PACKAGING_BUNDLE_DIR` | `build/linux/<arch>/release/bundle` | the staged tree |
+| `APP_PACKAGING_VERSION` | `pubspec.yaml`'s `version:` | `--version`, minus a tag's leading `v` |
+| `APP_PACKAGING_DESKTOP_FILE` | a generated entry | `--desktop-file` |
+| `APP_PACKAGING_ICON_FILE` | `web/icons/Icon-512.png`, then the fallbacks | `--icon-file` |
+| `APP_PACKAGING_OUT_DIR` | `out` | `--archive-dir` |
+| `APP_PACKAGING_DEB_DEPENDS` | `libc6, libstdc++6, libgtk-3-0` | `libc6, libgcc-s1`, unless the caller set it |
+| `APP_PACKAGING_APP_ID` | `<APP_PACKAGING_APP_ID_PREFIX>.<package>` | `--app-id`, when given |
+
+Three details each format depends on:
+
+- **The desktop entry is the project's own.** `app_packaging_adapt_desktop_file` keeps
+  every line but `Exec` and `Icon`, and sets those two right after `[Desktop Entry]` for
+  the format: the package name for the deb and the flatpak, `AppRun` for the AppImage.
+- **The icon goes where its real size says.** `app_packaging_icon_size` reads `WxH` from
+  the PNG header, so a 128×128 logo lands in `hicolor/128x128/apps`. A file that is no
+  PNG falls back to `512x512`, the directory every icon used to go to.
+- **The flatpak copies `lib/` and `data/` only when they exist.** A Flutter bundle has
+  both, a single binary has neither.
+
+`--flatpak-manifest` and `--appdata-file` now stop the run with an error that says
+why, instead of being accepted and ignored. The flatpak manifest is generated from
+the staged bundle. An unknown package type stops the run before anything is built,
+and the three bundle formats need `--arch`.
+
+`tests/test-package-archive.sh` pins the wiring against stubbed packagers. It also
+packs one real deb through the real library and checks its contents, Depends and
+desktop entry. Measured 2026-10-06 in `:latest`, OxidANT's release `kataglyphis_cli`
+(1.9 MB; it links `libc`, `libm` and `libgcc_s`) gave:
+
+- a tar of 885 KB;
+- a deb of 732 KB, whose binary runs;
+- an AppImage of 1.7 MB, which runs with `APPIMAGE_EXTRACT_AND_RUN=1`;
+- a flatpak of 684 KB, which `flatpak install --system --bundle` installs and
+  `flatpak run --command=oxidant` runs, with its desktop entry and 128×128 icon
+  exported.
+
 ## `ctest-run.sh` — run a CMake project's test suite in a container
 
 The twin of `cmake-build.sh` for the test phase, and **deliberately a separate

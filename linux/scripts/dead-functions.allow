@@ -51,9 +51,8 @@ linux/scripts/tests/test-harness.sh	command_not_found_handle
 # app_packaging_setup_dependencies_for_container left this list on 2026-09-17:
 # tests/test-app-packaging-flatpak.sh now names both (a t_fn_src extraction and
 # the CON2 case), which is a corpus link even though production still has none.
+# The deb and AppImage packagers left it on 2026-10-06: 06-packaging/package_archive.sh calls them.
 linux/scripts/lib/app-packaging.sh	app_packaging_package_android_apk_outputs_tar
-linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_appimage
-linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_deb
 linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_tar
 linux/scripts/lib/app-packaging.sh	app_packaging_run_command_with_runtime
 linux/scripts/05-frameworks/flutter/flutter-pin.sh	flutter_resolve_pin
