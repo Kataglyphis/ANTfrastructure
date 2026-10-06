@@ -7,6 +7,31 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — The WebRTC loopback no longer fails a run whose frames arrived (CON68 closes)
+
+- **What the failures were.** Classified across 25 loopbacks under load, every failure looked
+  the same:
+  - the consumer reached EOS after 2.15 s, the same as the passing runs, so its 60 frames
+    at 30/s had arrived;
+  - its only error was webrtcsrc's own signaller in teardown, `send failed because
+    receiver is gone` from `imp.rs:1736`;
+  - gst-launch then exited 1.
+- **How often.** 1 run in 30 idle and 5 in 25 under load. The race is upstream, in
+  gst-plugins-rs, not in the image's WebRTC.
+- **Two fixes were measured first and dropped.**
+  - Waiting for the producer's registration did not help: it is listed 28 ms after the
+    port listens.
+  - One retry still failed 3 times in 30 under load.
+- **`Get-GstLoopbackTeardownError`** passes a consumer that exits 1 only when all of
+  these hold:
+  - it reached EOS;
+  - its frames flowed for at least `Frames/30` s;
+  - every element error is `webrtcsrc0`'s, and the signaller's is that teardown message.
+- **The smoke test prints such a pass as a `[WARN]`**, so the rate stays visible.
+- **Tests.** Five harness tests, built from a real failing run's logs, cover the pass and
+  the four ways it must still fail. 25 loopbacks under load had no failures, and 6 of them
+  passed with the error named.
+
 ## 2026-10-06 — The Vulkan validation layer in `C:\runtime\vulkan-layers` (CON64)
 
 - **arm64 had no layer to stage.** The image's Vulkan SDK 1.4.357.0 ships `VkLayer_khronos_validation`

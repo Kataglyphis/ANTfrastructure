@@ -198,3 +198,51 @@ Describe 'Build-GstreamerFromSource.ps1: the WebRTC wiring stays in place' {
         Assert-Match 'Join-Path \$gstPluginDir "gst\$\(\$plugin\.Name\)\.dll"' $text
     }
 }
+
+# A failing smoke-gate consumer's logs, verbatim: EOS after 60 frames at 30/s, then the signaller's teardown error.
+$script:teardownOut = @'
+Setting pipeline to PAUSED ...
+Pipeline is live and does not need PREROLL ...
+Setting pipeline to PLAYING ...
+Redistribute latency...
+Got EOS from element "pipeline0".
+EOS received - stopping pipeline...
+Execution ended after 0:00:02.169112200
+Setting pipeline to NULL ...
+Freeing pipeline ...
+'@
+$script:teardownErr = @'
+ERROR: from element /GstPipeline:pipeline0/GstWebRTCSrc:webrtcsrc0: GStreamer encountered a general stream error.
+Additional debug info:
+net\webrtc\src\webrtcsrc\imp.rs(1736): gstrswebrtc::webrtcsrc::imp::BaseWebRTCSrc::connect_signaller::{{closure}}::{{closure}} (): /GstPipeline:pipeline0/GstWebRTCSrc:webrtcsrc0:
+Signalling error: Error: send failed because receiver is gone
+'@
+
+Describe 'Get-GstLoopbackTeardownError (BACKLOG CON68: the frames arrived, the exit code says 1)' {
+
+    It 'names the teardown error when EOS came after the frames and webrtcsrc failed alone' {
+        $lines = @(Get-GstLoopbackTeardownError -ConsumerOut $script:teardownOut -ConsumerErr $script:teardownErr -Frames 60)
+        Assert-True ($lines.Count -gt 0) 'the smoke gate passes this run and shows the lines'
+        Assert-Match 'receiver is gone' ($lines -join ' ')
+    }
+
+    It 'leaves a run without EOS failed: the signaller died before the frames' {
+        $out = $script:teardownOut -replace '(?m)^(Got EOS|EOS received).*\r?\n', ''
+        Assert-Equal 0 @(Get-GstLoopbackTeardownError -ConsumerOut $out -ConsumerErr $script:teardownErr -Frames 60).Count
+    }
+
+    It 'leaves a run failed when another element errored too' {
+        $err = $script:teardownErr + "`nERROR: from element /GstPipeline:pipeline0/GstDtlsDec:dtlsdec0: handshake failed"
+        Assert-Equal 0 @(Get-GstLoopbackTeardownError -ConsumerOut $script:teardownOut -ConsumerErr $err -Frames 60).Count
+    }
+
+    It 'leaves a run failed whose EOS came before 60 frames could flow at 30/s' {
+        $out = $script:teardownOut -replace '0:00:02\.169112200', '0:00:00.400000000'
+        Assert-Equal 0 @(Get-GstLoopbackTeardownError -ConsumerOut $out -ConsumerErr $script:teardownErr -Frames 60).Count
+    }
+
+    It 'leaves any other signalling error failed' {
+        $err = $script:teardownErr -replace 'send failed because receiver is gone', 'Connection refused'
+        Assert-Equal 0 @(Get-GstLoopbackTeardownError -ConsumerOut $script:teardownOut -ConsumerErr $err -Frames 60).Count
+    }
+}
