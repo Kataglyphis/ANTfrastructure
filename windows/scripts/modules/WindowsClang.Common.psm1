@@ -43,9 +43,11 @@ function Invoke-ClangTidyFixStep {
   .PARAMETER Checks
       Extra clang-tidy arguments, empty by default: a forced --checks crashed some clang-tidy versions.
   .PARAMETER ModuleImportPattern
-      Files matching it are skipped. The image's clang-tidy reads the build's BMIs (CON10), so '(?!)' tidies them too.
+      Files matching it are skipped. The image's clang-tidy reads the build's BMIs (CON10), so '(?!)' tidies them too,
+      at up to ~10 GB per file (docs/code-quality-tooling.md).
   .PARAMETER ThrottleLimit
-      clang-tidy processes at once, one file each; -Fix stays serial, as two files' fixes can rewrite one header.
+      clang-tidy processes at once, one file each; 0 picks the core count, capped at one per 6 GB of RAM. -Fix stays
+      serial, as two files' fixes can rewrite one header.
   #>
   param(
     [Parameter(Mandatory)]
@@ -58,10 +60,16 @@ function Invoke-ClangTidyFixStep {
     [string[]]$Checks = @(),
     [string]$ModuleImportPattern = '(?m)^\s*import\s+kataglyphis',
     [string[]]$Extension = @('.cpp', '.cc', '.cxx'),
-    [ValidateRange(1, 256)]
-    [int]$ThrottleLimit = [Environment]::ProcessorCount,
+    [ValidateRange(0, 256)]
+    [int]$ThrottleLimit = 0,
     [switch]$Fix
   )
+
+  if ($ThrottleLimit -eq 0) {
+    # Cores alone ran four tidies on a 16 GB runner, and one died out of memory; a TU can peak near 10 GB.
+    $memoryGb = (Get-CimInstance -ClassName Win32_ComputerSystem).TotalPhysicalMemory / 1GB
+    $ThrottleLimit = [Math]::Max(1, [Math]::Min([Environment]::ProcessorCount, [int][Math]::Floor($memoryGb / 6)))
+  }
 
   $clangTidyCommand = Get-Command 'clang-tidy' -ErrorAction SilentlyContinue
   if (-not $clangTidyCommand) {
