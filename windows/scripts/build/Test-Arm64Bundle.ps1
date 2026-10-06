@@ -80,12 +80,6 @@ function Assert-VulkanInfoSummary {
     if (-not ($summary -match $Expect)) { throw "vulkaninfo --summary names no '$Expect' (registered $Manifest under $Kind)" }
 }
 
-function Install-FromWheelStore {
-    # --no-index: the device has no index, so a wheel the store lacks fails here rather than at the consumer's first import.
-    param([Parameter(Mandatory)][string[]]$Package)
-    & $py -m pip install --quiet --disable-pip-version-check --no-index --find-links (Join-Path $BundleRoot 'wheels') @Package
-}
-
 if ($MyInvocation.InvocationName -eq '.') { return }
 
 if ($ZipPath -and -not (Test-Path (Join-Path $BundleRoot 'python\python.exe'))) {
@@ -111,7 +105,7 @@ Invoke-BundleStep 'gst-inspect-1.0 --version' { & (Join-Path $BundleRoot 'bin\gs
 Invoke-BundleStep 'gst-launch pipeline (videotestsrc -> fakesink)' { & (Join-Path $BundleRoot 'bin\gst-launch-1.0.exe') -q videotestsrc num-buffers=1 '!' fakesink } $results
 Invoke-BundleStep 'iree-run-module --help' { & (Join-Path $BundleRoot 'iree\bin\iree-run-module.exe') --help | Out-Null } $results
 Invoke-BundleStep 'python ensurepip' { & $py -m ensurepip | Out-Null } $results
-Invoke-BundleStep 'pip install from the wheel store (offline)' { Install-FromWheelStore 'onnxruntime', 'onnxruntime-genai-directml', 'av' } $results
+Invoke-BundleStep 'pip install from the wheel store (offline)' { & $py -m pip install --quiet --disable-pip-version-check --no-index --find-links (Join-Path $BundleRoot 'wheels') onnxruntime onnxruntime-genai-directml av } $results
 Invoke-BundleStep 'python imports + ORT providers' {
     & $py -c "import sys, numpy, onnxruntime, av; print('PY', sys.version.split()[0], '| numpy', numpy.__version__, '| ort', onnxruntime.__version__, '| av', av.__version__); print('providers:', onnxruntime.get_available_providers()); assert 'CPUExecutionProvider' in onnxruntime.get_available_providers()"
 } $results
@@ -158,7 +152,7 @@ Invoke-BundleStep 'vulkaninfo lists llvmpipe (lavapipe ICD + loader run)' {
 $pytestWheel = @(Get-ChildItem (Join-Path $BundleRoot 'wheels') -Filter 'pytest-*-py3-none-any.whl' -File -ErrorAction SilentlyContinue)
 if ($pytestWheel.Count -gt 0) {
     Invoke-BundleStep 'pytest stack from the wheel store (offline, cp314)' {
-        Install-FromWheelStore 'pytest', 'pytest-cov', 'pytest-benchmark', 'pytest-html', 'pytest-md', 'pytest-md-report', 'requests'
+        & $py -m pip install --quiet --disable-pip-version-check --no-index --find-links (Join-Path $BundleRoot 'wheels') pytest pytest-cov pytest-benchmark pytest-html pytest-md pytest-md-report requests
         if ($LASTEXITCODE -ne 0) { throw "pip could not install the pytest stack offline (exit $LASTEXITCODE)" }
         & $py -c "import pytest, pytest_cov, pytest_benchmark, pytest_html, pytest_md_report, requests, coverage; print('pytest', pytest.__version__, '| coverage', coverage.__version__)"
     } $results
