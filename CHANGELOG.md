@@ -7,6 +7,16 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — `riscv64_cross_env` stops overriding the Vulkan variables (CON48)
+
+- **The image no longer needs it.** The entrypoint used to leave `VULKAN_SDK` and
+  `VK_ADD_LAYER_PATH` on `/opt/vulkan/<version>/x86_64`, which a riscv64 process under
+  QEMU cannot use, so `riscv64_cross_env` re-pointed both at `/opt/vulkan/active`.
+- **Checked in the `:latest` of 2026-10-03, amd64.** After the entrypoint, `VULKAN_SDK`,
+  `VK_ADD_LAYER_PATH`, `PATH`, `LD_LIBRARY_PATH` and `PKG_CONFIG_PATH` all name
+  `/opt/vulkan/active`. The two `export`s are gone. On an older image the riscv64 lane
+  fails as `docs/riscv64-cross-test-lanes.md` describes.
+
 ## 2026-10-06 — the Windows merge stage's lavapipe step reads the version it logs
 
 - **`Install-Lavapipe.ps1` threw on its own log line.** cc1846c2 moved the pins into

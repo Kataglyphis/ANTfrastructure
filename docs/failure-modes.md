@@ -1091,8 +1091,9 @@ under the link's target back to `<root>/active`, without duplicates; `vulkan_env
 the entrypoint call it (CON48). Native runs are unchanged, since the link resolves to the same
 dir. The runtime smoke's boot probe fails an image that still prints a `/opt/vulkan/<version>/`
 component (`vkarch=`), and requires `VK_ADD_LAYER_PATH` (`vkadd=yes`) as its proof that the
-entrypoint sourced `setup-env.sh`. Until a consumer's lane runs on an image with it,
-`riscv64_cross_env` sets `VULKAN_SDK` and `VK_ADD_LAYER_PATH` to the link itself.
+entrypoint sourced `setup-env.sh`. The `:latest` of 2026-10-03 carries the fix: after its
+entrypoint every Vulkan variable names `/opt/vulkan/active` (checked 2026-10-06), so
+`riscv64_cross_env` no longer sets `VULKAN_SDK` and `VK_ADD_LAYER_PATH` itself.
 
 ### The core registry blacklists `libgstvalidatessim.so`
 

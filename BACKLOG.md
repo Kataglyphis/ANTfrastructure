@@ -185,15 +185,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       OxidANT (pilot), AccelerANTgine, BeschleunigerBallett, all green (2026-10-01); OxidANT's
       GPU suites run weekly (measured on GitHub: 358 passed, test step 43.5 min).
       **OmniAccelerANT waits** until the riscv64 image carries Flutter. Open:
-      - **The Vulkan variables: fixed in source (2026-10-01), ships with the next chain.** The
-        entrypoint (via LunarG's `setup-env.sh`, not the login shell) pinned `VULKAN_SDK`,
-        `VK_ADD_LAYER_PATH` and four more to `/opt/vulkan/<version>/<arch>`; it now leaves them
-        on `/opt/vulkan/active`, and the boot smoke fails an image that does not
-        (`docs/failure-modes.md`). Then: check `vkarch=neutral` in the published children, and
-        drop the two `export`s in `linux/scripts/lib/riscv64-cross.sh` (`riscv64_cross_env`),
-        the only override. No consumer repo overrides them itself (checked OxidANT,
-        AccelerANTgine, BeschleunigerBallett on 2026-10-01); BeschleunigerBallett sets
-        `CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT`, which `lib/cmake-build.sh` now puts back on the link too.
+      - **The Vulkan variables: done 2026-10-06.** The `:latest` of 2026-10-03 leaves
+        `VULKAN_SDK`, `VK_ADD_LAYER_PATH` and the four path lists on `/opt/vulkan/active`
+        after its entrypoint, so `riscv64_cross_env` dropped its two `export`s, the only
+        override. BeschleunigerBallett's `CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT` stays on
+        the link through `lib/cmake-build.sh`.
 
 ## Open — Windows `:winamd64`
 
