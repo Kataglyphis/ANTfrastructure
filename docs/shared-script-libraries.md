@@ -464,7 +464,7 @@ itself, after it has set `CC`.
   (`LINKER_SELECT_CACHE_DIR`, default `$TMPDIR`). An unpinned architecture fails.
 
 **Which one to pick.** Measured 2026-10-05 in `:latest` on 32 cores, across OxidANT,
-AccelerANTgine and the OmniAccelerANT Flutter app:
+AccelerANTgine and the OmniAccelerANT Flutter app, and BeschleunigerBallett on 2026-10-06:
 
 | Build | GNU ld | lld 23 | mold 3.0.0 |
 | --- | --- | --- | --- |
@@ -472,6 +472,7 @@ AccelerANTgine and the OmniAccelerANT Flutter app:
 | AccelerANTgine release, `libAccelerANTgine.so` (ThinLTO) | 0.97 s | 0.85 s | 0.82 s |
 | `flutter build linux --release`, full / touch one TU | 49.3 / 3.9 s | 47.6 / 3.8 s | 49.5 / 4.3 s |
 | Rust dev link, `liboxidant.so` (rust-lld default: 0.22 s) | 0.87 s | 0.14 s | 0.33 s |
+| BeschleunigerBallett `linux-debug-clang` (ASan, UBSan, coverage), relink `commitTestSuite` (110 MB) | 1.55 s | 0.20 s | 0.32 s |
 
 Linking is about 2% of these builds, so `lld` is the useful value. It is already
 in the image, and it is the one real gain on Debug relinks. mold 3.0.0 links
