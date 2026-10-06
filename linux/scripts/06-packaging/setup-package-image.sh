@@ -469,6 +469,34 @@ install_web_lane_toolchain() {
     done
 }
 
+# cargo-audit, cargo-deny and cargo-tarpaulin at their pins (CON65). See docs/consumer-image-contract.md § The cargo QA tools
+install_cargo_qa_tools() {
+    local name version
+
+    case "$(uname -m)" in
+        x86_64|aarch64) ;;
+        *) echo "NOTE: no upstream cargo-audit/cargo-deny/cargo-tarpaulin binary for $(uname -m); not shipping them"; return 0 ;;
+    esac
+    for name in cargo-audit:CARGO_AUDIT_VERSION cargo-deny:CARGO_DENY_VERSION cargo-tarpaulin:CARGO_TARPAULIN_VERSION; do
+        version="$(_versions_env_value "${name#*:}")"
+        name="${name%%:*}"
+        [ -n "${version}" ] || { echo "ERROR: no ${name} version in versions.env" >&2; return 1; }
+        # No source fallback: a missing release binary would otherwise cost hundreds of crates under QEMU.
+        install_web_lane_prebuilt "${name}" "${version}" \
+            || { echo "ERROR: ${name} ${version} did not install from its pinned release binary" >&2; return 1; }
+    done
+}
+
+# A versions.env value from the environment or the image's copy; the cargo QA pins are read, not forwarded.
+_versions_env_value() {
+    local key="$1"
+    if [ -n "${!key:-}" ]; then
+        printf '%s' "${!key}"
+        return 0
+    fi
+    sed -n "s/^${key}=//p" "${VERSIONS_ENV:-/opt/scripts/core/versions.env}" 2>/dev/null | head -1
+}
+
 # Upstream's release asset for this machine, or empty when there is none (riscv64).
 _web_lane_asset_url() {
     local name="$1" version="$2" target="$3"
@@ -480,6 +508,16 @@ _web_lane_asset_url() {
         flutter_rust_bridge_codegen)
             printf 'https://github.com/fzyzcjy/flutter_rust_bridge/releases/download/v%s/flutter_rust_bridge_codegen-%s-v%s.tgz' \
                 "${version}" "${target}" "${version}" ;;
+        cargo-audit)
+            # Its aarch64 build is glibc, not musl.
+            printf 'https://github.com/rustsec/rustsec/releases/download/cargo-audit%%2Fv%s/cargo-audit-%s-v%s.tgz' \
+                "${version}" "${target/aarch64-unknown-linux-musl/aarch64-unknown-linux-gnu}" "${version}" ;;
+        cargo-deny)
+            printf 'https://github.com/EmbarkStudios/cargo-deny/releases/download/%s/cargo-deny-%s-%s.tar.gz' \
+                "${version}" "${version}" "${target}" ;;
+        cargo-tarpaulin)
+            printf 'https://github.com/xd009642/tarpaulin/releases/download/%s/cargo-tarpaulin-%s.tar.gz' \
+                "${version}" "${target}" ;;
     esac
 }
 
@@ -492,13 +530,15 @@ _web_lane_asset_sha() {
         wasm-pack:aarch64)                   key=WASM_PACK_LINUX_AARCH64_SHA256 ;;
         flutter_rust_bridge_codegen:x86_64)  key=FLUTTER_RUST_BRIDGE_LINUX_X86_64_SHA256 ;;
         flutter_rust_bridge_codegen:aarch64) key=FLUTTER_RUST_BRIDGE_LINUX_AARCH64_SHA256 ;;
+        cargo-audit:x86_64)                  key=CARGO_AUDIT_LINUX_X86_64_SHA256 ;;
+        cargo-audit:aarch64)                 key=CARGO_AUDIT_LINUX_AARCH64_SHA256 ;;
+        cargo-deny:x86_64)                   key=CARGO_DENY_LINUX_X86_64_SHA256 ;;
+        cargo-deny:aarch64)                  key=CARGO_DENY_LINUX_AARCH64_SHA256 ;;
+        cargo-tarpaulin:x86_64)              key=CARGO_TARPAULIN_LINUX_X86_64_SHA256 ;;
+        cargo-tarpaulin:aarch64)             key=CARGO_TARPAULIN_LINUX_AARCH64_SHA256 ;;
         *) return 0 ;;
     esac
-    if [ -n "${!key:-}" ]; then
-        printf '%s' "${!key}"
-        return 0
-    fi
-    sed -n "s/^${key}=//p" "${VERSIONS_ENV:-/opt/scripts/core/versions.env}" 2>/dev/null | head -1
+    _versions_env_value "${key}"
 }
 
 # A verified download instead of ~200 crates under QEMU; non-zero means build from source.
@@ -568,6 +608,7 @@ main() {
     ensure_native_rust_toolchain
     wire_cargo_symlinks
     install_web_lane_toolchain
+    install_cargo_qa_tools
     hand_root_created_paths_to_runtime_user "${RUSTUP_HOME:?}" "${CARGO_HOME:?}"
     create_runtime_venv "${python_mm}"
 

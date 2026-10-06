@@ -26,6 +26,19 @@ fi
 source "$_CARGO_WRAPPER_DIR/../../lib/linker-select.sh"
 linker_select_env
 
+# cargo_install_pinned <crate> <version> [binary]; the image ships these pinned (CON65), so only a bare host builds one.
+cargo_install_pinned() {
+  local crate="$1" version="$2" bin="${3:-$1}" have
+  have="$("${bin}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+  if [ "${have}" = "${version}" ]; then
+    info "${crate} ${version} is already on PATH; not building it"
+    return 0
+  fi
+  info "Installing ${crate} ${version}${have:+ (found ${have})}"
+  # --locked too: --version alone still resolves the crate's dependencies afresh.
+  cargo install --locked --version "${version}" "${crate}"
+}
+
 # cargo_step <start-msg> <done-msg> -- <command...>; the -- lets messages contain spaces.
 cargo_step() {
   local start_msg="$1" done_msg="$2"

@@ -119,13 +119,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 ## Open — Linux image (all arches)
 
 - [ ] **CON65 — cargo-audit, cargo-deny and cargo-tarpaulin in the image** [M, ★★]. Owner rule
-      2026-10-06: what a lane needs goes into the image. The pins exist (`CARGO_AUDIT_VERSION`,
-      `CARGO_DENY_VERSION`, `CARGO_TARPAULIN_VERSION`), but nothing in the image installs them, so
-      `cargo_security_checks.sh` and `cargo_coverage.sh` `cargo install` all three from crates.io
-      in every OxidANT run, arm64 included. Install them the way `setup-package-image.sh`
-      installs the web-lane tools (SHA-pinned upstream binaries, a source build where there are
-      none), give the smoke table their `HAVE` rows, and let both scripts skip the install when
-      the pinned version is already on `PATH`.
+      2026-10-06: what a lane needs goes into the image. Every OxidANT run `cargo install`ed all
+      three from crates.io. In source the same day:
+      - The package stage installs them on amd64 and arm64 from their upstream release binaries,
+        SHA-pinned in `versions.env` beside the versions (`install_cargo_qa_tools`).
+      - riscv64 ships none: no upstream binary, and its lanes cross-build on amd64.
+      - The smoke table's `cargo-qa-tools` row compares each binary's version with its pin.
+      - `cargo_security_checks.sh` and `cargo_coverage.sh` build a tool only when the pinned
+        version is not on `PATH` (`cargo_install_pinned`).
+      - Docs: `docs/consumer-image-contract.md` § The cargo QA tools.
+      **Order matters:** OxidANT's hub pin must reach this commit before a `:latest` with the
+      tools publishes, because the old scripts' `cargo install` fails on a binary cargo did not
+      install. Done when a published `:latest` passes the row on amd64 and arm64.
 - [ ] **CON66 — a pinned free-threaded Python in the image** [S, ★★]. Every `3.14t` leg
       (OrchestrANT, WebDavClient) has uv download a free-threaded interpreter per run, its patch
       version unpinned (`docs/python-ci.md` § Free-threaded). Ship the `t` build of

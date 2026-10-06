@@ -470,7 +470,7 @@ check_rust_toolchain() {
 }
 
 # Consumer contract. See docs/consumer-image-contract.md#the-contract
-_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator"
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools"
 
 # Staged-or-every-run-pays rows. See docs/consumer-image-contract.md#what-the-image-stages-so-a-run-does-not
 _consumer_present_verdict() {
@@ -498,6 +498,7 @@ _consumer_contract_symptom() {
     ort-crate-env) printf '%s' 'an ort-sys build (OxidANT'"'"'s onnxruntime feature) statically links pyke'"'"'s ORT 1.28.0 from pyke'"'"'s CDN instead of the chain ORT, and ort load-dynamic opens whichever libonnxruntime.so the loader finds first' ;;
     chrome)        printf '%s' 'flutter doctor reports "Cannot find Chrome executable at google-chrome" and "flutter test --platform chrome" has no browser, so the web lane tests nothing in one' ;;
     android-emulator) printf '%s' 'an Android lane has no device to install on: adb reports "no devices/emulators found" and every on-device test is skipped' ;;
+    cargo-qa-tools) printf '%s' 'every OxidANT security and coverage step cargo-installs cargo-audit, cargo-deny and cargo-tarpaulin from crates.io first, minutes of compiles per run' ;;
     *)             printf '%s' 'no symptom recorded for this row' ;;
   esac
 }
@@ -516,6 +517,8 @@ _consumer_contract_exempt() {
     riscv64:chrome) return 0 ;;
     # Google ships the Linux emulator for x86_64 hosts only, and it needs KVM.
     arm64:android-emulator|riscv64:android-emulator) return 0 ;;
+    # None of the three publishes a riscv64 binary, and the riscv64 lanes cross-build on amd64.
+    riscv64:cargo-qa-tools) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -524,7 +527,7 @@ _consumer_contract_exempt() {
 _consumer_exempt_fact() {
   case "$1" in
     appimagetool) printf '%s' 'appimagetool-readable' ;;
-    chrome|android-emulator) printf '%s' "$1" ;;
+    chrome|android-emulator|cargo-qa-tools) printf '%s' "$1" ;;
     *)            printf '%s' 'flutter-sdk' ;;
   esac
 }
@@ -614,6 +617,15 @@ PROBE
 # CON50's browser and emulator, run as the image user: docs/consumer-image-contract.md#browser-tests-run-in-chrome-for-testing
 _consumer_test_runtimes_probe() {
   cat <<'PROBE'
+_qa=""
+for _t in cargo-audit cargo-deny cargo-tarpaulin; do
+  _qa="${_qa} ${_t}=$("${_t}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+done
+case "${_qa}" in
+  *=[0-9]*) printf 'FACT cargo-qa-tools yes\n' ;;
+  *)        printf 'FACT cargo-qa-tools no\n' ;;
+esac
+printf 'FACT cargo-qa-tools-versions %s\n' "${_qa# }"
 printf 'ENV chrome-executable %s\n' "${CHROME_EXECUTABLE:-}"
 if [ -n "${CHROME_EXECUTABLE:-}" ] && [ -x "${CHROME_EXECUTABLE}" ]; then
   printf 'FACT chrome yes\n'
@@ -824,6 +836,21 @@ _consumer_ort_env_verdict() {
   fi
 }
 
+# CON65's three tools at their pins: docs/consumer-image-contract.md#the-cargo-qa-tools
+_consumer_cargo_qa_verdict() {
+  local row="$1" p="$2" pins="$3" have
+  case "$(_consumer_contract_fact "${p}" FACT cargo-qa-tools)" in
+    yes|no) ;;
+    *) printf 'NOFACT %s no FACT cargo-qa-tools line' "${row}"; return 0 ;;
+  esac
+  have="$(_consumer_contract_fact "${p}" FACT cargo-qa-tools-versions)"
+  if [ "${have}" = "${pins}" ]; then
+    printf 'OK %s %s' "${row}" "${have}"
+  else
+    printf 'BAD %s the image has %s, the pins are %s' "${row}" "${have:-nothing}" "${pins}"
+  fi
+}
+
 # <row> <probe> <pin>; a rendered page proves V8 and the renderer, not only that the binary exists.
 _consumer_chrome_verdict() {
   local row="$1" p="$2" want="$3" have drv
@@ -895,6 +922,9 @@ _consumer_contract_verdicts() {
         android-emulator)
                        line="$(_consumer_emulator_verdict "${row}" "${probe}" "$(_rt_versions_env_pin ANDROID_EMULATOR_VERSION)" \
                                  "android-$(_rt_versions_env_pin ANDROID_EMULATOR_API);google_apis;x86_64;r$(_rt_versions_env_pin ANDROID_EMULATOR_SYSIMG_REVISION)")" ;;
+        cargo-qa-tools)
+                       line="$(_consumer_cargo_qa_verdict "${row}" "${probe}" \
+                                 "cargo-audit=$(_rt_versions_env_pin CARGO_AUDIT_VERSION) cargo-deny=$(_rt_versions_env_pin CARGO_DENY_VERSION) cargo-tarpaulin=$(_rt_versions_env_pin CARGO_TARPAULIN_VERSION)")" ;;
         flatpak-runtimes|appimage-runtime|web-lane-tools)
                        line="$(_consumer_present_verdict "${row}" \
                                  "$(_consumer_contract_fact "${probe}" FACT "${row}")")" ;;

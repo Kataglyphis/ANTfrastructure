@@ -128,8 +128,8 @@ so the table cannot rot in place. Each arm is re-checked by **its own** probe
 fact, named by `_consumer_exempt_fact`; `yes` is `STALE` and names the arm for
 deletion, a missing fact is `NOFACT` and never a grant.
 
-Seven arms. The first two were measured on the image shipped 2026-09-05 rather
-than argued from the build graph, the last three on the CON50 proof images of 2026-10-01:
+Eight arms. The first two were measured on the image shipped 2026-09-05 rather
+than argued from the build graph, the next three on the CON50 proof images of 2026-10-01:
 
 | arm | rot fact | what the image reports |
 |---|---|---|
@@ -140,6 +140,7 @@ than argued from the build graph, the last three on the CON50 proof images of 20
 | `riscv64:chrome` | `chrome` | `CHROME_EXECUTABLE` is empty: Chrome for Testing publishes `linux64` and `linux-arm64` only |
 | `arm64:android-emulator` | `android-emulator` | no `$ANDROID_HOME/emulator`: Google publishes the Linux emulator for x86_64 hosts only |
 | `riscv64:android-emulator` | `android-emulator` | as on arm64 |
+| `riscv64:cargo-qa-tools` | `cargo-qa-tools` | none of the three tools: none publishes a riscv64 binary, and the riscv64 lanes cross-build on amd64 ([below](#the-cargo-qa-tools)) |
 
 **Open gap (2026-09-25):** the `flatpak-runtimes` and `appimage-runtime` arms are re-checked by `flutter-sdk`,
 another row's fact, because `_consumer_exempt_fact` maps every row but
@@ -470,17 +471,20 @@ cmake -DOpenCV_DIR="${OPENCV_ANDROID_JNI_DIR}" ...
 
 ## What the image stages so a run does not
 
-Three of the contract rows are not about permissions at all. They ask whether a
+Four of the contract rows are not about permissions at all. They ask whether a
 thing is *present*, because the alternative is that every consumer run fetches or
-rebuilds it. Measured in one consumer's build on 2026-09-05, before the fix:
+rebuilds it. Measured in one consumer's build on 2026-09-05, before the fix (the
+fourth row since 2026-10-06):
 
 | Row | Absent means |
 | --- | --- |
 | `flatpak-runtimes` | `flatpak list --runtime` returns **0 refs**; seven `org.freedesktop` refs, ~1.9 GB, re-downloaded per run per arch |
 | `appimage-runtime` | `appimagetool` refetches `runtime-<arch>` from GitHub, so packaging hangs on GitHub being reachable |
 | `web-lane-tools` | `wasm-pack` (258 crates) and `flutter_rust_bridge_codegen` (174) are `cargo install`ed from source in every run |
+| `cargo-qa-tools` | `cargo-audit`, `cargo-deny` and `cargo-tarpaulin` are `cargo install`ed from crates.io before every OxidANT security and coverage step |
 
-They share one verdict function; the cost of each is written down once, in
+The first three share one verdict function; `cargo-qa-tools` has its own, because it
+compares versions. The cost of each is written down once, in
 `_consumer_contract_symptom`, which is also what the failure message prints.
 
 ### The Flatpak runtimes ship with the image
@@ -524,6 +528,27 @@ and compared against what the binaries report, which is also the proof that they
 are installed. A slow consumer beats an image that cannot be built, so only a
 defect fails the stage; riscv64's from-source leg is
 [above](#building-the-web-lane-tools-from-source).
+
+### The cargo QA tools
+
+The package stage installs `cargo-audit`, `cargo-deny` and `cargo-tarpaulin` at
+`CARGO_AUDIT_VERSION`, `CARGO_DENY_VERSION` and `CARGO_TARPAULIN_VERSION` on amd64 and
+arm64 (CON65). Each is its upstream release binary, verified against a
+`CARGO_*_LINUX_{X86_64,AARCH64}_SHA256` pin; `cargo-audit`'s aarch64 build is a glibc
+one, the rest are musl. A missing pin or a failed download stops the stage: there is
+no source fallback, which would cost hundreds of crates per tool under QEMU.
+
+- The pins are read from `versions.env` inside the stage, not forwarded as
+  build-args, so they are not advertised ENV. The `cargo-qa-tools` contract row
+  compares what each binary reports with the pins instead.
+- **riscv64 ships none of them.** None publishes a riscv64 binary, and no riscv64
+  lane runs them: those lanes cross-build on the amd64 image. The row is exempt
+  there and fails as `STALE` if one ever appears.
+- `cargo_security_checks.sh` and `cargo_coverage.sh` call `cargo_install_pinned`
+  (`_cargo_wrapper.sh`). It uses the binary already on `PATH` when it reports the pin,
+  and `cargo install`s it otherwise. A plain `cargo install` would fail on these:
+  `binary already exists`, since cargo did not install them. **So a consumer's hub pin
+  must include this before it builds on an image that ships them.**
 
 ## The Windows image ships lavapipe
 

@@ -249,6 +249,8 @@ _web="${_web}
 $(t_fn_src "${SUBJECT}" _web_lane_asset_url)" || exit 1
 _web="${_web}
 $(t_fn_src "${SUBJECT}" _web_lane_asset_sha)" || exit 1
+_web="${_web}
+$(t_fn_src "${SUBJECT}" _versions_env_value)" || exit 1
 # The from-source leg is the real web-lane-tools.sh, driven through the shared fixtures.
 _web="${_web}
 source $(printf '%q' "${TESTS_DIR}/../01-core/platform.sh")
@@ -264,7 +266,10 @@ _web_sandbox() {
   export TARGET_ARCH CARGO_HOME VERSIONS_ENV=/nonexistent
   unset WEB_LANE_TOOLS_SOURCE WEB_LANE_TOOLS_CACHE WEB_LANE_TOOLS_CROSS_ARCHES \
     WASM_PACK_LINUX_X86_64_SHA256 WASM_PACK_LINUX_AARCH64_SHA256 \
-    FLUTTER_RUST_BRIDGE_LINUX_X86_64_SHA256 FLUTTER_RUST_BRIDGE_LINUX_AARCH64_SHA256
+    FLUTTER_RUST_BRIDGE_LINUX_X86_64_SHA256 FLUTTER_RUST_BRIDGE_LINUX_AARCH64_SHA256 \
+    CARGO_AUDIT_VERSION CARGO_DENY_VERSION CARGO_TARPAULIN_VERSION \
+    CARGO_AUDIT_LINUX_X86_64_SHA256 CARGO_AUDIT_LINUX_AARCH64_SHA256 CARGO_DENY_LINUX_X86_64_SHA256 \
+    CARGO_DENY_LINUX_AARCH64_SHA256 CARGO_TARPAULIN_LINUX_X86_64_SHA256 CARGO_TARPAULIN_LINUX_AARCH64_SHA256
 }
 
 # uname and the verified download are the function's only ways to the network.
@@ -275,8 +280,11 @@ download_verified_file() {
   [ "${FAKE_DL_RC:-0}" = "0" ] || return "${FAKE_DL_RC}"
   _d="$(mktemp -d)"
   case "$1" in
-    *wasm-pack*) _b=wasm-pack; mkdir -p "${_d}/pkg/inner" ;;
-    *)           _b=flutter_rust_bridge_codegen; mkdir -p "${_d}/pkg" ;;
+    *wasm-pack*)   _b=wasm-pack; mkdir -p "${_d}/pkg/inner" ;;
+    *cargo-audit*) _b=cargo-audit; mkdir -p "${_d}/pkg/inner" ;;
+    *cargo-deny*)  _b=cargo-deny; mkdir -p "${_d}/pkg/inner" ;;
+    *tarpaulin*)   _b=cargo-tarpaulin; mkdir -p "${_d}/pkg" ;;
+    *)             _b=flutter_rust_bridge_codegen; mkdir -p "${_d}/pkg" ;;
   esac
   _p="$(find "${_d}/pkg" -type d | tail -1)"
   printf "#!/bin/sh\n" > "${_p}/${_b}"
@@ -414,6 +422,74 @@ _out="$( _web_env_run VERSIONS_ENV=/nonexistent )"
 t_assert_contains "${_out}" "WARN: no SHA256 pinned for wasm-pack/x86_64-unknown-linux-musl"
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c '^DL ')" "nothing may be fetched without a pin"
 t_assert_contains "${_out}" "CARGO install --locked wasm-pack"
+
+# install_cargo_qa_tools (CON65); see docs/consumer-image-contract.md#the-cargo-qa-tools
+_qa="$(t_fn_src "${SUBJECT}" install_cargo_qa_tools)" || exit 1
+
+# _qa_run [VAR=VALUE...]: the healthy pins in a versions.env, then the overrides; prints the run and what landed.
+_qa_run() {
+  local home ve kv
+  home="$(mktemp -d)"
+  ve="${home}/versions.env"
+  cat > "${ve}" <<'VE'
+CARGO_AUDIT_VERSION=0.22.2
+CARGO_DENY_VERSION=0.20.2
+CARGO_TARPAULIN_VERSION=0.37.2
+CARGO_AUDIT_LINUX_X86_64_SHA256=a1
+CARGO_AUDIT_LINUX_AARCH64_SHA256=a2
+CARGO_DENY_LINUX_X86_64_SHA256=d1
+CARGO_DENY_LINUX_AARCH64_SHA256=d2
+CARGO_TARPAULIN_LINUX_X86_64_SHA256=t1
+CARGO_TARPAULIN_LINUX_AARCH64_SHA256=t2
+VE
+  (
+    set -uo pipefail
+    eval "${_WEB_STUBS}"
+    eval "${_web}"
+    eval "${_qa}"
+    _web_sandbox "${home}"
+    export VERSIONS_ENV="${ve}"
+    for kv in "$@"; do export "${kv?}"; done
+    install_cargo_qa_tools
+    printf 'EXIT %s\n' "$?"
+    for kv in cargo-audit cargo-deny cargo-tarpaulin; do [ -x "${CARGO_HOME}/bin/${kv}" ] && printf 'LANDED %s\n' "${kv}"; done
+  ) 2>&1
+  rm -rf "${home}"
+}
+
+t_case "CON65: x86_64 installs all three from their pinned release binaries"
+_out="$(_qa_run)"
+t_assert_contains "${_out}" "DL https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv0.22.2/cargo-audit-x86_64-unknown-linux-musl-v0.22.2.tgz a1"
+t_assert_contains "${_out}" "DL https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz d1"
+t_assert_contains "${_out}" "DL https://github.com/xd009642/tarpaulin/releases/download/0.37.2/cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz t1"
+for _b in cargo-audit cargo-deny cargo-tarpaulin; do t_assert_contains "${_out}" "LANDED ${_b}"; done
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "CON65: aarch64 reads its own pins, and cargo-audit's aarch64 build is the glibc one"
+_out="$( FAKE_MACHINE=aarch64 _qa_run )"
+t_assert_contains "${_out}" "cargo-audit-aarch64-unknown-linux-gnu-v0.22.2.tgz a2" "upstream publishes no aarch64 musl cargo-audit"
+t_assert_contains "${_out}" "cargo-deny-0.20.2-aarch64-unknown-linux-musl.tar.gz d2"
+t_assert_contains "${_out}" "cargo-tarpaulin-aarch64-unknown-linux-musl.tar.gz t2"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "CON65: riscv64 has no upstream binary and ships none, without a QEMU source build"
+_out="$( FAKE_MACHINE=riscv64 _qa_run )"
+t_assert_contains "${_out}" "NOTE: no upstream cargo-audit/cargo-deny/cargo-tarpaulin binary for riscv64"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e '^DL ' -e 'CARGO install' || true)" "nothing fetched or built"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "CON65: a missing pin, a missing hash or a failed download stops the stage (mutation)"
+_out="$( _qa_run VERSIONS_ENV=/nonexistent )"
+t_assert_contains "${_out}" "ERROR: no cargo-audit version in versions.env"
+t_assert_contains "${_out}" "EXIT 1"
+_out="$( _qa_run VERSIONS_ENV=/nonexistent CARGO_AUDIT_VERSION=0.22.2 )"
+t_assert_contains "${_out}" "ERROR: cargo-audit 0.22.2 did not install from its pinned release binary"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c '^DL ' || true)" "nothing may be fetched without a pin"
+t_assert_contains "${_out}" "EXIT 1"
+_out="$( FAKE_DL_RC=1 _qa_run )"
+t_assert_contains "${_out}" "ERROR: cargo-audit 0.22.2 did not install from its pinned release binary"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'CARGO install' || true)" "no source fallback"
+t_assert_contains "${_out}" "EXIT 1"
 
 t_case "no rustup or cargo under CARGO_HOME skips the whole step"
 _out="$( bash -c '
