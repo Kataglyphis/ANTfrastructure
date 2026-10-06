@@ -110,10 +110,11 @@ Ubuntu 26.04's `qemu-user` 10.2.1 runs them too. `riscv64_cross_env` sets
   absolute `open()` look in the sysroot first. The amd64 image's `LD_LIBRARY_PATH`,
   `GST_PLUGIN_PATH` and `ORT_DYLIB_PATH` name `/opt/gstreamer/lib/multiarch`,
   `/usr/local/lib/onnxruntime-cpu` and the like, so a riscv64 process reading them lands on
-  riscv64 files. Two variables are arch-specific and `riscv64_cross_env` overrides them. The
-  entrypoint sourcing LunarG's `setup-env.sh` pins them, not the image ENV; from the next
-  `:latest` it leaves them on `/opt/vulkan/active` (CON48,
-  [why](failure-modes.md#vulkan-env-names-an-arch-specific-sdk-dir)), and the override becomes a no-op:
+  riscv64 files. Two variables were arch-specific until the `:latest` of 2026-10-03: the
+  entrypoint sourcing LunarG's `setup-env.sh` pinned them, not the image ENV (CON48,
+  [why](failure-modes.md#vulkan-env-names-an-arch-specific-sdk-dir)). It now leaves them on
+  `/opt/vulkan/active`, so `riscv64_cross_env` no longer overrides them. An older image
+  fails like this:
   - `VK_ADD_LAYER_PATH` names `/opt/vulkan/1.4.357.0/x86_64/...`. A riscv64 loader then
     fails `libVkLayer_khronos_validation.so`, instance creation fails, and wgpu falls back
     to GL: `headless adapter 'llvmpipe' is the OpenGL backend` — Vulkan looked absent.
