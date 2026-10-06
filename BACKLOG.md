@@ -132,10 +132,15 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       tools publishes, because the old scripts' `cargo install` fails on a binary cargo did not
       install. Done when a published `:latest` passes the row on amd64 and arm64.
 - [ ] **CON66 — a pinned free-threaded Python in the image** [S, ★★]. Every `3.14t` leg
-      (OrchestrANT, WebDavClient) has uv download a free-threaded interpreter per run, its patch
-      version unpinned (`docs/python-ci.md` § Free-threaded). Ship the `t` build of
-      `PYTHON_VERSION` beside the GIL one and have `python_uv.sh` find it, so the leg downloads
-      nothing.
+      (OrchestrANT, WebDavClient) had uv download a free-threaded interpreter per run, its patch
+      version unpinned. In source 2026-10-06: the package stage installs the `t` build of
+      `PYTHON_VERSION` from uv's checksummed python-build-standalone into
+      `/opt/python-freethreaded`, outside uv's store, with `/usr/local/bin/python3.14t` linked
+      to it, on all three arches. The `free-threaded-python` smoke row checks the version and
+      that the GIL is off (`docs/consumer-image-contract.md` § The free-threaded Python).
+      Proven in a `:latest` container the same day: the leg's `uv venv --python 3.14t` used it
+      with `UV_PYTHON_DOWNLOADS=never`, and a plain `3.14` still took the GIL build. Done when a
+      published `:latest` passes the row.
 
 - [ ] **CON58 — the Android Rust target in the image** [S, ★★]. Cargokit builds an
       Android app's Rust for `aarch64-linux-android`. `:latest` carried std for
@@ -385,6 +390,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — hub tooling and the dev host
 
+- [b] **CON69 — 23 hub files declare Apache-2.0 under the hub's MIT `LICENSE`** [S, ★]. Owner
+      decision needed (2026-10-06). The hub has carried an MIT `LICENSE` since 709756eb
+      (2026-08-02), but 23 files outside `third_party/` still say
+      `SPDX-License-Identifier: Apache-2.0`, most of them under `windows/scripts/`
+      (`rg -l 'SPDX-License-Identifier: Apache-2.0' --glob '!third_party/**'`). Moved here from
+      BeschleunigerBallett's closed LICENSE row. Either relicense the 23 to MIT (one header line
+      each), or record why they stay Apache-2.0 in `docs/third-party-licenses.md`.
 - [b] **CON62 — WSL containers (`wslc`) as the local Linux engine** [M, ★★]. Blocked
       upstream. Evaluated 2026-10-05 against WSL 3.0.1
       (`docs/rancher-desktop-linux-containers.md` § *WSL containers*): faster bind

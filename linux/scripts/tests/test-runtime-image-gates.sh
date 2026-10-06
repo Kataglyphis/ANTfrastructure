@@ -825,11 +825,12 @@ _CC_TR_PARTS="${_CC_PARTS}
 $(_extract _rt_versions_env_pin)
 $(_extract _consumer_chrome_verdict)
 $(_extract _consumer_emulator_verdict)
-$(_extract _consumer_cargo_qa_verdict)"
+$(_extract _consumer_cargo_qa_verdict)
+$(_extract _consumer_free_threaded_verdict)"
 # _cc_tr <probe> <arch> <row>
 _cc_tr() {
   CC_PROBE="$1" CHROME_FOR_TESTING_VERSION=154.0.8037.92 ANDROID_EMULATOR_VERSION=37.2.12 ANDROID_EMULATOR_API=35 \
-    ANDROID_EMULATOR_SYSIMG_REVISION=9 CARGO_AUDIT_VERSION=0.22.2 CARGO_DENY_VERSION=0.20.2 CARGO_TARPAULIN_VERSION=0.37.2 bash -c '
+    ANDROID_EMULATOR_SYSIMG_REVISION=9 CARGO_AUDIT_VERSION=0.22.2 CARGO_DENY_VERSION=0.20.2 CARGO_TARPAULIN_VERSION=0.37.2 PYTHON_VERSION=3.14.7 bash -c '
     '"${_CC_TR_PARTS}"'
     _CONSUMER_CONTRACT_ROWS="$2"
     _consumer_contract_verdicts "$1" "${CC_PROBE}"' _ "$2" "$3" 2>&1
@@ -911,6 +912,19 @@ t_case "CON65: riscv64 is exempt from the cargo QA row, and the arm rots the day
 t_assert_contains "$(_cc_tr 'FACT cargo-qa-tools no' riscv64 cargo-qa-tools)" "EXEMPT cargo-qa-tools"
 t_assert_contains "$(_cc_tr "${_CC_QA}" riscv64 cargo-qa-tools)" "STALE cargo-qa-tools FACT cargo-qa-tools says it IS present on riscv64"
 
+t_case "CON66: the free-threaded interpreter at PYTHON_VERSION holds the row on every arch"
+for _a in amd64 arm64 riscv64; do
+  t_assert_contains "$(_cc_tr 'FACT free-threaded-python 3.14.7 gil=False' "${_a}" free-threaded-python)" \
+    "OK free-threaded-python CPython 3.14.7 without the GIL" "${_a}"
+done
+
+t_case "CON66: a GIL build, another patch or no interpreter is BAD, and no fact proves nothing (mutation)"
+_ft_bad() { _cc_tr "FACT free-threaded-python $1" amd64 free-threaded-python; }
+t_assert_contains "$(_ft_bad '3.14.7 gil=True')" "BAD free-threaded-python python3.*t reports 3.14.7 gil=True"
+t_assert_contains "$(_ft_bad '3.14.4 gil=False')" "BAD free-threaded-python python3.*t reports 3.14.4 gil=False"
+t_assert_contains "$(_ft_bad 'none')" "BAD free-threaded-python python3.*t reports none"
+t_assert_contains "$(_cc_tr 'FACT other yes' amd64 free-threaded-python)" "NOFACT free-threaded-python"
+
 t_case "CON50: the probe emits every fact the two rows read, as a real run of it"
 _TR_TMP="$(mktemp -d)"
 mkdir -p "${_TR_TMP}/bin" "${_TR_TMP}/sdk/emulator" "${_TR_TMP}/sdk/system-images/android-35/google_apis/x86_64"
@@ -920,6 +934,7 @@ printf '#!/bin/sh\necho "ChromeDriver 154.0.8037.92 (x)"\n' > "${_TR_TMP}/bin/ch
 printf '#!/bin/sh\necho "cargo-audit 0.22.2"\n' > "${_TR_TMP}/bin/cargo-audit"
 printf '#!/bin/sh\necho "cargo-deny 0.20.2"\n' > "${_TR_TMP}/bin/cargo-deny"
 printf '#!/bin/sh\necho "tarpaulin 0.37.2"\n' > "${_TR_TMP}/bin/cargo-tarpaulin"
+printf '#!/bin/sh\necho "3.14.7 gil=False"\n' > "${_TR_TMP}/bin/python3.14t"
 printf '#!/bin/sh\necho "Android emulator version 37.2.12.0 (build_id 16428233)"\n' > "${_TR_TMP}/sdk/emulator/emulator"
 : > "${_TR_TMP}/bin/android-avd.sh"
 chmod +x "${_TR_TMP}"/bin/* "${_TR_TMP}/sdk/emulator/emulator"
@@ -931,7 +946,8 @@ _TR_RAW="$(PATH="${_TR_TMP}/bin:${PATH}" CHROME_EXECUTABLE="${_TR_TMP}/bin/chrom
 for _f in "FACT chrome yes" "FACT chrome-version 154.0.8037.92" "FACT chromedriver-version 154.0.8037.92" \
           "FACT chrome-headless yes" "FACT android-emulator yes" "FACT android-emulator-version 37.2.12" \
           "FACT android-emulator-runs yes" "FACT android-system-image android-35;google_apis;x86_64;r9" "FACT android-avd yes" \
-          "FACT cargo-qa-tools yes" "FACT cargo-qa-tools-versions cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2"; do
+          "FACT cargo-qa-tools yes" "FACT cargo-qa-tools-versions cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2" \
+          "FACT free-threaded-python 3.14.7 gil=False"; do
   t_assert_contains "${_TR_RAW}" "${_f}" "the probe reads it from the image"
 done
 t_assert_contains "$(CHROME_EXECUTABLE='' ANDROID_HOME="${_TR_TMP}/none" \

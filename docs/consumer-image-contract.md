@@ -471,10 +471,10 @@ cmake -DOpenCV_DIR="${OPENCV_ANDROID_JNI_DIR}" ...
 
 ## What the image stages so a run does not
 
-Four of the contract rows are not about permissions at all. They ask whether a
+Five of the contract rows are not about permissions at all. They ask whether a
 thing is *present*, because the alternative is that every consumer run fetches or
 rebuilds it. Measured in one consumer's build on 2026-09-05, before the fix (the
-fourth row since 2026-10-06):
+last two rows since 2026-10-06):
 
 | Row | Absent means |
 | --- | --- |
@@ -482,9 +482,10 @@ fourth row since 2026-10-06):
 | `appimage-runtime` | `appimagetool` refetches `runtime-<arch>` from GitHub, so packaging hangs on GitHub being reachable |
 | `web-lane-tools` | `wasm-pack` (258 crates) and `flutter_rust_bridge_codegen` (174) are `cargo install`ed from source in every run |
 | `cargo-qa-tools` | `cargo-audit`, `cargo-deny` and `cargo-tarpaulin` are `cargo install`ed from crates.io before every OxidANT security and coverage step |
+| `free-threaded-python` | every `3.14t` leg has uv download a free-threaded CPython first, its patch version unpinned |
 
-The first three share one verdict function; `cargo-qa-tools` has its own, because it
-compares versions. The cost of each is written down once, in
+The first three share one verdict function; `cargo-qa-tools` and `free-threaded-python`
+have their own, because they compare versions. The cost of each is written down once, in
 `_consumer_contract_symptom`, which is also what the failure message prints.
 
 ### The Flatpak runtimes ship with the image
@@ -549,6 +550,23 @@ no source fallback, which would cost hundreds of crates per tool under QEMU.
   and `cargo install`s it otherwise. A plain `cargo install` would fail on these:
   `binary already exists`, since cargo did not install them. **So a consumer's hub pin
   must include this before it builds on an image that ships them.**
+
+### The free-threaded Python
+
+The package stage installs the free-threaded twin of `PYTHON_VERSION`
+(`3.14.7t` today) on every arch, riscv64 included (CON66), so a `3.14t` leg downloads
+no interpreter.
+
+- **It is uv's python-build-standalone build.** `uv python install` checks it against
+  the SHA256 its pinned release (`UV_VERSION`) embeds. A second source build of CPython
+  would belong in the toolchain stage and rebuild every stage after it.
+- **It lives in `/opt/python-freethreaded`, outside uv's own store**, with
+  `/usr/local/bin/python3.14t` linked to it. A `3.14t` request finds it on `PATH`. A
+  plain `3.14` request never takes it, which an install into uv's managed store would
+  allow ([`python-ci.md` § Free-threaded and GIL legs](python-ci.md#free-threaded-and-gil-legs-in-one-container)).
+- The stage stops when the interpreter does not report `PYTHON_VERSION` with the GIL
+  off, and the `free-threaded-python` contract row checks the same on the shipped
+  image.
 
 ## The Windows image ships lavapipe
 

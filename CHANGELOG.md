@@ -7,6 +7,20 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — The free-threaded Python ships in `:latest` (CON66)
+
+- **Every `3.14t` leg downloaded its interpreter.** OrchestrANT's and WebDavClient's
+  free-threaded legs had uv fetch a `3.14.Nt`, its patch unpinned, on every run.
+- **The package stage installs it now, on all three arches.** `install_free_threaded_python`
+  runs `uv python install <PYTHON_VERSION>t` into `/opt/python-freethreaded`, outside uv's
+  store, and links `/usr/local/bin/python3.14t`. uv checks the download against the SHA256
+  its pinned release embeds. The stage stops unless the interpreter reports
+  `PYTHON_VERSION` with the GIL off.
+- **The smoke gate checks it** in a `free-threaded-python` contract row, with no exemption.
+- Proven in a `:latest` container: `uv venv --python 3.14t` used it with
+  `UV_PYTHON_DOWNLOADS=never`, and a plain `3.14` request still took the GIL build.
+
+
 ## 2026-10-06 — cargo-audit, cargo-deny and cargo-tarpaulin ship in `:latest` (CON65)
 
 - **Every OxidANT run built them from crates.io.** `cargo_security_checks.sh` and
