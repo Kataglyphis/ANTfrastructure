@@ -112,6 +112,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       day: `setup-package-image.sh` adds `ripgrep` beside jq/Xvfb (and `rg` to the presence
       check), and `Install-ScoopTools.ps1` adds `main/ripgrep` to the floating tools. Done
       when a published `:latest` (all three arches) and `:winamd64` answer `rg --version`.
+      **The Windows half is done:** the `:winamd64` published 2026-10-06, built from hub
+      f4c0e2be, answers `ripgrep 15.2.0`. **The Linux half is open:** the published `:latest`
+      (`sha256:6ceffedc`) still has no `rg` on amd64 or arm64, and waits on a Linux rebuild.
 
 ## Open — Linux image (all arches)
 
@@ -208,18 +211,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         the link through `lib/cmake-build.sh`.
 
 ## Open — Windows `:winamd64`
-
-- [ ] **CON60 — Windows Rust pinned to `RUST_VERSION`** [S, ★★]. Owner decision
-      2026-10-05: pin it, as Linux does. `Install-RustToolchain.ps1` installed `stable` at
-      chain time, so Windows and Linux would have built `oxidant` with different
-      compilers after the next Windows chain. In source the same day:
-      `Install-RustToolchain.ps1` mirrors `channel-rust-<RUST_VERSION>.toml` and installs
-      `flutter_rust_bridge_codegen` at `FLUTTER_RUST_BRIDGE_VERSION`, and `Dockerfile.base`
-      declares both `ARG`s above the Rust layer. `Test-Container.ps1` asserts both values.
-      Proven in a throwaway `:winamd64` container: `1.98.1-x86_64-pc-windows-msvc` became
-      the default, with codegen 2.13.0. Done when a published `:winamd64` passes those
-      asserts.
-
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294

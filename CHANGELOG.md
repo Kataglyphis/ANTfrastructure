@@ -7,6 +7,27 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — `:winamd64` republished: WebRTC works, Rust is pinned, ripgrep ships (CON60 closes)
+
+- **What the image is.** A local BuildKit chain from hub f4c0e2be, on a host whose
+  Stevedore had first been repaired (Phase R: the patched runhcs shim, buildkitd's
+  step-log env and `--config`, containerd's teardown variable). It was pushed with
+  `Build-Buildkit.ps1 -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`.
+- **What its smoke gate passed: 229 assertions, 1 skipped.**
+  - The WebRTC loopback (`webrtcsink -> webrtcsrc` decoding 60 frames over DTLS-SRTP).
+  - The lavapipe checks.
+  - `Rust at RUST_VERSION` and `flutter_rust_bridge_codegen at FLUTTER_RUST_BRIDGE_VERSION`.
+- **In its GStreamer:**
+  - all 13 contract plugins;
+  - `rswebrtc` and `rsrtp`;
+  - `libffi type exports OK`;
+  - the DTLS fix 17d22abe89.
+- **CON60 closes:** a published `:winamd64` passes the Rust-pin asserts.
+- **CON56 is half done:** the image answers `ripgrep 15.2.0`, but the published Linux
+  `:latest` does not yet.
+- **OmniAccelerANT's cat cam builds and installs on this image.** Its MSI passed 13 of
+  13 install checks in it, including a `webrtcsrc` viewer decoding 60 frames.
+
 ## 2026-10-06 — `Invoke-ClangTidyFixStep`'s parallel default is bounded by memory
 
 - **The core count alone ran out of memory.** BeschleunigerBallett's Windows x64 lane, with
