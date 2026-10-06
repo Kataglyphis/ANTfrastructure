@@ -35,6 +35,20 @@ if ($expectedLlvm -and $clangBanner -notmatch [regex]::Escape($expectedLlvm)) {
         're-run windows/scripts/tests/Test-PatchesApplyClean.ps1 after a deliberate bump.')
 }
 
+# Every LLVM tool a build reaches is that same release, not only clang-cl (owner 2026-10-06, BACKLOG CON71).
+if ($expectedLlvm) {
+    foreach ($tool in 'clang', 'clang-tidy', 'clang-format', 'clangd', 'clang-scan-deps', 'lld-link', 'llvm-ar',
+        'llvm-nm', 'llvm-objdump', 'llvm-profdata', 'llvm-cov', 'llvm-symbolizer') {
+        $toolCmd = Get-Command $tool -ErrorAction SilentlyContinue
+        if (-not $toolCmd) { throw "$tool is not on PATH; every LLVM tool must be LLVM_WINDOWS_VERSION $expectedLlvm" }
+        $toolBanner = ((& $toolCmd.Source --version 2>&1 | Out-String) -replace '\s+', ' ').Trim()
+        if ($toolBanner -notmatch "(?<![\d.])$([regex]::Escape($expectedLlvm))(?![\d.])") {
+            throw "$tool version mismatch: expected $expectedLlvm (versions.env LLVM_WINDOWS_VERSION), got '$toolBanner' from $($toolCmd.Source)"
+        }
+        Write-Host "$tool OK: $expectedLlvm ($($toolCmd.Source))"
+    }
+}
+
 # ninja and nasm shape what ships; an sccache older than v0.16.0 silently ignores SCCACHE_MULTILEVEL_CHAIN.
 foreach ($pinned in @(
         @{ Tool = 'ninja';   Args = @('--version'); EnvVar = 'NINJA_WINDOWS_VERSION' },

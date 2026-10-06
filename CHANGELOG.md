@@ -7,6 +7,32 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — Every LLVM tool is the pinned release (CON71, in source)
+
+- **Owner decision: no LLVM tool may come from another version**, clang-format included.
+  It reverses CON15, which kept `clang-format` and `llvm-config` at LLVM 21.
+- **Linux, measured on the published `:latest`:** 86 unversioned `/usr/bin` LLVM names were
+  Ubuntu's LLVM 21, among them `clang-format`, `/usr/bin/clang-tidy`, `clang-cl` and `llvm-config`.
+- **The package stage diverts every one of them.** `wire_pinned_llvm_tools` points each name the
+  pinned LLVM has into `/usr/local/llvm-target/bin` and moves the rest off `PATH`. The `-NN` names
+  stay LLVM 21 for explicit callers.
+- **The toolchain stage builds lldb and installs the LLVM utilities**, so `lldb`, `FileCheck`,
+  `yaml2obj` and `llvm-tblgen` are 23.1.1 too. This rebuilds LLVM on all three arches.
+- **The compiler smoke grades 26 tools against `LLVM_RELEASE`**, no longer against clang's own
+  version, and fails any distro LLVM left under an unversioned name.
+- **Windows:** IREE's `clang`, `llvm-link` and `FileCheck` and the MSVC `llvm-symbolizer`
+  (all 23.0.0git) came first on `PATH`.
+  - The entrypoint now puts `C:\llvm-patched\bin` first.
+  - The patched LLVM installs its utilities, so `FileCheck` comes from it.
+  - `Test-Toolchain.ps1` and `Test-Container.ps1` check every LLVM tool against the pin.
+- **Proven before the chain:**
+  - The wiring on a throwaway `:latest`: 86 names moved, a reinstall kept them, clang++ still links.
+  - An LLVM 23.1.1 configure with the new flags installs all 13 missing names.
+  - The new entrypoint on `:winamd64`: 20 of 21 tools pass, and only IREE's `FileCheck` waits for
+    the rebuild.
+  - Seven new mutations, all caught.
+
+
 ## 2026-10-06 — The chain wheels are proven once in every `:latest` child (CON52 closed)
 
 - **The fix shipped with the `:latest` of 2026-10-03.** Its three children come from one chain

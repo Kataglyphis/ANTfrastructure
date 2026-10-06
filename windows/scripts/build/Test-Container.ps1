@@ -296,6 +296,17 @@ if ($env:LLVM_WINDOWS_VERSION -and $clangVer -and ("$clangVer" -notmatch [regex]
         'unexpected for a fresh base build (Test-Toolchain.ps1 would have failed it).')
 }
 
+# Every LLVM tool PATH reaches is clang-cl's release; IREE's bin and VsDevCmd's MSVC dir carry their own (BACKLOG CON71).
+$clangRelease = [regex]::Match("$clangVer", '\d+\.\d+\.\d+').Value
+foreach ($tool in 'clang', 'clang++', 'clang-cpp', 'clang-tidy', 'clang-format', 'clangd', 'clang-scan-deps', 'ld.lld',
+    'llvm-ar', 'llvm-nm', 'llvm-objdump', 'llvm-objcopy', 'llvm-profdata', 'llvm-cov', 'llvm-symbolizer', 'llvm-link',
+    'llvm-config', 'opt', 'llc', 'lldb', 'FileCheck') {
+    $toolCmd = Get-Command $tool -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    $toolRelease = if ($toolCmd) { [regex]::Match(((& $toolCmd.Source --version 2>&1) | Out-String), '\d+\.\d+\.\d+(git)?').Value } else { 'MISSING' }
+    Assert-Test -Name "$tool is clang-cl's LLVM $clangRelease" -Condition { $clangRelease -and $toolRelease -eq $clangRelease } `
+        -FailMessage "$tool resolves to $(if ($toolCmd) { $toolCmd.Source } else { 'nothing' }), LLVM '$toolRelease'"
+}
+
 # Skipped, not failed, when absent: the manifest is additive and published images may predate it.
 $manifestPath = 'C:\toolchain-manifest.json'
 if (-not (Test-Path $manifestPath)) {

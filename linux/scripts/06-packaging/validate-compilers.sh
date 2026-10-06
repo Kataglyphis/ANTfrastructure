@@ -603,18 +603,27 @@ _smoke_gcc_selection() {
   esac
 }
 
-# The LLVM tools on PATH are clang's own version (wire_clang_llvm_tools, BACKLOG CON15).
+# The ones with a --version; lldb and the utilities are built into the pinned LLVM for this (BACKLOG CON71).
+_SMOKE_LLVM_TOOLS="clang clang++ clang-cl clang-cpp clang-tidy clang-apply-replacements clang-format clangd
+  clang-scan-deps llvm-config llvm-profdata llvm-cov llvm-symbolizer llvm-ar llvm-nm llvm-objdump llvm-objcopy
+  llvm-readelf ld.lld opt llc lldb FileCheck yaml2obj llvm-tblgen"
+
+# Every LLVM tool a consumer names unversioned is LLVM_RELEASE's (wire_pinned_llvm_tools, BACKLOG CON71).
 _smoke_llvm_tool_versions() {
-  local want tool ver
-  want="$(clang --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-  for tool in clang-tidy llvm-profdata llvm-cov llvm-symbolizer ld.lld; do
-    ver="$("${tool}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  local want="${_VCS_SMOKE_LLVM_VER:-${LLVM_RELEASE:-}}" usr_bin="${1:-/usr/bin}" tool ver name
+  for tool in ${_SMOKE_LLVM_TOOLS}; do
+    ver="$("${tool}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
     if [ -n "${want}" ] && [ "${ver}" = "${want}" ]; then
-      echo "SMOKE OK: ${tool} ${ver} == clang"
+      echo "SMOKE OK: ${tool} ${ver} == LLVM_RELEASE"
     else
-      validate_fail "llvm-tool-version" "${tool} ${ver:-MISSING} is not clang's ${want:-MISSING}"
+      validate_fail "llvm-tool-version" "${tool} ${ver:-MISSING} is not LLVM_RELEASE ${want:-MISSING}"
     fi
   done
+  # The package stage ships the wiring beside this script; one predicate decides what the wiring diverts and what fails here.
+  declare -F llvm_distro_unversioned_names >/dev/null || source "${_vcs_script_dir}/package-image-wiring.sh"
+  while IFS= read -r name; do
+    validate_fail "llvm-tool-distro" "${usr_bin}/${name} is $(readlink -f "${usr_bin}/${name}"), a distro LLVM under an unversioned name"
+  done < <(llvm_distro_unversioned_names "${usr_bin}")
 }
 
 # clang ships libFuzzer (llvm-cross.sh, BACKLOG CON17): a fuzz target links and runs.

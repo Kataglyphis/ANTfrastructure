@@ -20,6 +20,8 @@ call "%VSDEVCMD%" -arch=%VSDEVCMD_ARCH% -host_arch=amd64 >nul
 rem Fail loudly if the VS env did not load -- otherwise every downstream build fails
 rem confusingly with missing cl/link/msbuild instead of one clear message.
 if errorlevel 1 (echo [entrypoint] ERROR: VsDevCmd.bat failed with errorlevel %errorlevel% & exit /b 1)
+rem The pinned LLVM wins every tool name: VsDevCmd's MSVC dir and IREE's bin carry their own (BACKLOG CON71).
+if exist "C:\llvm-patched\bin\clang-cl.exe" set "PATH=C:\llvm-patched\bin;%PATH%"
 rem clang-cl /fsanitize=address runtime: clang_rt.asan_dynamic-x86_64.dll lives in
 rem LLVM's VERSIONED lib\clang\<N>\lib\windows dir, which the baked PATH cannot
 rem carry (the version floats with scoop's llvm). Resolve it dynamically so

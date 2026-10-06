@@ -66,6 +66,38 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       with `UV_PYTHON_DOWNLOADS=never`, and a plain `3.14` still took the GIL build. Done when a
       published `:latest` passes the row.
 
+- [ ] **CON71 — every LLVM tool is the pinned release, on Linux and Windows** [M, ★★]. Owner
+      decision 2026-10-06, reversing CON15's "clang-format and llvm-config stay 21". Measured on
+      the published images the same day:
+      - `:latest` (amd64 and arm64): 86 unversioned `/usr/bin` LLVM names were LLVM 21, among
+        them `clang-format`, `clang-tidy`, `clang-cl`, `llvm-config`, `llvm-cov` and `ld.lld`. Only
+        `PATH`'s `/usr/local/bin` links reached 23.1.1.
+      - `:winamd64`: IREE's `clang`, `llvm-link` and `FileCheck` (23.0.0git) and the MSVC
+        `llvm-symbolizer` (23.0.0git) came first on `PATH`.
+
+      In source the same day:
+      - `wire_pinned_llvm_tools` diverts every unversioned distro LLVM name to the pinned tree or
+        off `PATH`.
+      - `llvm-cross.sh` builds lldb and installs the utilities, so lldb, `FileCheck`,
+        `yaml2obj` and `llvm-tblgen` exist at 23.1.1. This rebuilds the toolchain stage on all
+        three arches.
+      - `validate-compilers.sh smoke` grades 26 tools against `LLVM_RELEASE` and fails any
+        distro name under an unversioned `/usr/bin` name.
+      - Windows: the entrypoint puts `C:\llvm-patched\bin` first, `Build-LlvmFromSource.ps1`
+        installs the utilities, and `Test-Container.ps1` checks 21 tools against clang-cl.
+
+      Proven before the chain:
+      - The wiring on a throwaway `:latest`: every existing tool reports 23.1.1, and a reinstall
+        of the distro packages keeps the wiring.
+      - A configure of llvm-project 23.1.1 with the new flags installs all 13 missing names.
+      - On `:winamd64`, the new entrypoint leaves only IREE's `FileCheck` off the pin.
+
+      Done when a published `:latest` and `:winamd64` pass both gates. Then:
+      - AccelerANTgine switches `scan-build-21` to `scan-build`;
+      - each consumer re-runs its formatter under clang-format 23 and commits the result.
+      Measured the same day: AccelerANTgine's 38 C++ files drift in 25 under clang-format 21 and
+      26 under 23, the native plugin's 26 files in 25 under both. Neither gates C++ formatting, so
+      the switch reds nothing there; BeschleunigerBallett's sweep already uses 23.
 - [ ] **CON58 — the Android Rust target in the image** [S, ★★]. Cargokit builds an
       Android app's Rust for `aarch64-linux-android`. `:latest` carried std for
       aarch64/riscv64/wasm32/x86_64 only, so OmniAccelerANT's Android lane added the

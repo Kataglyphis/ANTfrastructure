@@ -89,10 +89,15 @@ t_case "superset args keep the projects/runtimes shape (NOT the core-only one)"
 _ss=()
 _llvm_cross_superset_cmake_args _ss /w/host-gcc /w/host-g++ sccache /opt/native
 _ss_joined="${_ss[*]}"
-t_assert_contains "${_ss_joined}" "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra;lld"
+t_assert_contains "${_ss_joined}" "-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra;lld;lldb "
 t_assert_contains "${_ss_joined}" "-DLLVM_ENABLE_RUNTIMES=compiler-rt"
 t_assert_contains "${_ss_joined}" "-DLLVM_USE_HOST_TOOLS=ON"
 t_assert_contains "${_ss_joined}" "-DCLANG_TABLEGEN=/opt/native/clang-tblgen"
+
+t_case "lldb builds with nothing the cross sysroot lacks (CON71)"
+for _off in PYTHON LUA LIBEDIT CURSES LZMA; do
+  t_assert_contains "${_ss_joined}" "-DLLDB_ENABLE_${_off}=OFF"
+done
 
 t_case "the NESTED native sub-build gets the host wrappers AND the launcher"
 t_assert_contains "${_ss_joined}" \
@@ -147,6 +152,9 @@ t_assert_contains "${_CMAKE_ARGV}" "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -DC
 t_assert_contains "${_CMAKE_ARGV}" "-DLLVM_HOST_TRIPLE=aarch64-unknown-linux-gnu -DLLVM_DEFAULT_TARGET_TRIPLE=aarch64-unknown-linux-gnu"
 t_assert_contains "${_CMAKE_ARGV}" "-DLLVM_NATIVE_TOOL_DIR=/opt/native -DLLVM_TABLEGEN=/opt/native/llvm-tblgen"
 t_assert_contains "${_CMAKE_ARGV}" "-DCMAKE_INSTALL_PREFIX=/opt/llvm-target-arm64"
+
+t_case "the utilities (FileCheck, yaml2obj, llvm-tblgen) are built and installed with the release (CON71)"
+t_assert_contains "${_CMAKE_ARGV}" "-DLLVM_INCLUDE_UTILS=ON -DLLVM_BUILD_UTILS=ON -DLLVM_INSTALL_UTILS=ON"
 
 # --- build + install ---------------------------------------------------------
 _CMAKE_CALLS=()

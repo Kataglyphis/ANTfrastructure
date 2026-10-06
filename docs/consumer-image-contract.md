@@ -432,7 +432,7 @@ retires a workaround a consumer carries today; drop it once your lane runs on th
 | What | Before | After |
 | --- | --- | --- |
 | A bare `clang`/`clang++` | selects the distro GCC 16, so linking a library the image's GCC built fails (`std::format` symbols, `GLIBCXX_3.4.36`) | `<native-triple>-clang{,++}.cfg` beside the compiler select `${GCC_PREFIX}`; a `--target` build loads neither |
-| `clang-tidy`, `llvm-profdata`, `llvm-cov`, `llvm-symbolizer`, `ld.lld`, … on `PATH` | LLVM 21, which cannot read what LLVM 23 wrote | clang's own, linked into `/usr/local/bin`. `clang-format` and `llvm-config` stay 21 on purpose |
+| `clang-tidy`, `llvm-profdata`, `llvm-cov`, `llvm-symbolizer`, `ld.lld`, … on `PATH` | LLVM 21, which cannot read what LLVM 23 wrote | clang's own, linked into `/usr/local/bin`. `clang-format` and `llvm-config` stayed 21 until CON71 moved every LLVM tool to the pin (§ Every LLVM tool is the pinned release) |
 | `-fsanitize=fuzzer` with the image's clang | no libFuzzer runtime | built with compiler-rt (without a private libc++) |
 | `VIRTUAL_ENV`, `UV_PYTHON` | point at the root-owned `/opt/venv`, over an activated venv | empty in the ENV and unset by the entrypoint; `/opt/venv/bin` stays first on `PATH` |
 | A Vulkan device | none (`nvidia_icd.json` only) | lavapipe, a CPU device (`mesa-vulkan-drivers`) |
@@ -468,6 +468,41 @@ the Android tree instead, to be passed explicitly:
 ```bash
 cmake -DOpenCV_DIR="${OPENCV_ANDROID_JNI_DIR}" ...
 ```
+
+## Every LLVM tool is the pinned release
+
+Owner decision 2026-10-06 (BACKLOG CON71): every LLVM tool a lane can name is the pinned LLVM,
+`LLVM_RELEASE` on Linux and `LLVM_WINDOWS_VERSION` on Windows (23.1.1 today). That includes
+`clang-format` and `llvm-config`, which stayed LLVM 21 on Linux until then (CON15).
+
+**Linux.** Ubuntu's packages put about a hundred unversioned LLVM names in `/usr/bin`, all LLVM 21.
+The package stage's `wire_pinned_llvm_tools` diverts each of them with `dpkg-divert`:
+- a name the pinned LLVM has points into `/usr/local/llvm-target/bin`;
+- a name it lacks leaves `PATH`. The originals sit in `/usr/lib/distro-llvm-names`.
+- `bugpoint` is the only permanent gap: LLVM 23 removed it.
+- The `-NN` names (`clang-tidy-21`, `scan-build-21`, ...) still reach LLVM 21. They ask for it by
+  name. The distro rustc's `rust-*` links are left alone too.
+
+An `apt-get install` of a distro LLVM package later does not undo the diversion. The pinned
+build carries lldb (without Python, Lua, libedit or curses scripting) and the LLVM utilities
+(`FileCheck`, `not`, `yaml2obj`, `llvm-tblgen`), so no name falls back to 21.
+`validate-compilers.sh smoke` checks two things and fails the image on either:
+- 26 tools report `LLVM_RELEASE`, lldb and `FileCheck` included;
+- no unversioned `/usr/bin` name resolves into a distro LLVM.
+
+**Windows.** `C:\llvm-patched\bin` is first on `PATH` once the entrypoint has run, ahead of
+VsDevCmd's MSVC directory (its `llvm-symbolizer` is a 23.0.0git fork) and `C:\runtime\iree\bin`
+(IREE's own `clang`, `llvm-link` and `FileCheck`, 23.0.0git). The patched LLVM installs the utilities,
+so `FileCheck` is the pinned one too. `clangd` and `lldb` come from scoop's official 23.1.1 release.
+`Test-Toolchain.ps1` checks the base stage's tools against `LLVM_WINDOWS_VERSION`, and
+`Test-Container.ps1` checks 21 tools in the finished image against clang-cl's release.
+
+**What it changes for a consumer:**
+- **A Linux format gate now grades with clang-format 23, as Windows always did.** Files formatted
+  with 21 can come back changed. Re-run the formatter once and commit the result.
+- **`llvm-config` names an LLVM built for the image's own arch only** (CON35). A build that wants
+  another backend from it needs its own LLVM.
+- **`scan-build-21` is still LLVM 21's analyzer.** Call `scan-build` for the pinned one.
 
 ## What the image stages so a run does not
 
