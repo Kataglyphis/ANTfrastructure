@@ -1144,6 +1144,15 @@ A real compiler error must pass through untouched (the compiler is never
 re-run), and a clean compile passes through. `test-sccache-launcher.sh` pins
 every case.
 
+**A consumer's own CMake gets it too (2026-10-07).** `cmake/Cache.cmake`'s
+`myproject_enable_cache` used to set both compiler launchers to the bare
+`sccache` it found. BeschleunigerBallett run 37509585546 then failed every
+compile of one job with `Connection to server timed out ... Connection refused`.
+Off Windows, with `COMPILER_CACHE=sccache`, it now sets the guarded launcher
+beside it in the hub (`linux/scripts/01-core/sccache-launcher.sh`), which runs
+sccache from `PATH`. ccache and Windows keep their bare binary, and
+`test-cmake-cache-launcher.sh` pins all three.
+
 ### What was measured about the ENOENT class
 
 From the 2026-09-01 run, 3062 bypasses:

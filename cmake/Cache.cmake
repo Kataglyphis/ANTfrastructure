@@ -56,11 +56,21 @@ function(myproject_enable_cache)
       message(STATUS "${COMPILER_CACHE} found at ${CACHE_BINARY_${COMPILER_CACHE}}. Enabling compiler cache.")
 
       # 6. Hook into C/C++ compiler launches
+      set(_myproject_launcher "${CACHE_BINARY_${COMPILER_CACHE}}")
+      # A dead sccache server fails every compile; the guarded launcher compiles directly then.
+      get_filename_component(_myproject_guarded "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../linux/scripts/01-core/sccache-launcher.sh"
+                             ABSOLUTE)
+      if("${COMPILER_CACHE}" STREQUAL "sccache"
+         AND NOT WIN32
+         AND EXISTS "${_myproject_guarded}")
+        set(_myproject_launcher "${_myproject_guarded}")
+        message(STATUS "sccache runs through the guarded launcher ${_myproject_guarded}.")
+      endif()
       set(CMAKE_C_COMPILER_LAUNCHER
-          "${CACHE_BINARY_${COMPILER_CACHE}}"
+          "${_myproject_launcher}"
           CACHE STRING "C compiler cache launcher" FORCE)
       set(CMAKE_CXX_COMPILER_LAUNCHER
-          "${CACHE_BINARY_${COMPILER_CACHE}}"
+          "${_myproject_launcher}"
           CACHE STRING "CXX compiler cache launcher" FORCE)
 
       # 7. MSVC: Embedded PDBs for cache consistency
