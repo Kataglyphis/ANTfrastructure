@@ -36,6 +36,10 @@
   in the image, so an exception installs there only with `IgnoreFailure='yes'`.
   OmniAccelerANT's cat cam MSI carries one, LAN-only and bound to its exe, and its install
   test passed 14 of 14 in the image with it.
+- **Published the same day as `sha256:ea8c3c6e`**, with `Build-Buildkit.ps1 -Stages final
+  -PushRef …`. Only the final stage was rebuilt, and the push took 5 s. The first attempt's
+  smoke gate stopped on one WebRTC loopback failure, filed as CON65. The retry's gate had
+  no failures.
 
 ## 2026-10-06 — `:winamd64` republished: WebRTC works, Rust is pinned, ripgrep ships (CON60 closes)
 

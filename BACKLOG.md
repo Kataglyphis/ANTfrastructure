@@ -253,6 +253,20 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       superbuild's wall time. The direct-consumption build is also the sharpest
       API-skew probe: if v2.2.0 lacks what litert-lm's sources use, the compile fails
       with the missing member visible. Repro: litertlm-harness runs 1-19, Oct 4 2026.
+- [ ] **CON65 — The smoke gate's WebRTC loopback failed once in a buildkit RUN** [S, ★★].
+      In the 2026-10-06 `-Stages final` republish from b3cf4c76, the consumer stopped about
+      2 s in with `Signalling error: send failed because receiver is gone`
+      (webrtcsrc `imp.rs:1736`) and exited 1. Every other check passed (229 passed,
+      1 skipped), so the gate held the push back.
+      - The same GStreamer passed that check in the 17:38 gate the same day, and in the
+        retry that published `sha256:ea8c3c6e`.
+      - It also passed `Invoke-GstWebRtcLoopback` 5 of 5 in a `docker run`, about 3 s each.
+      - The consumer may connect before the producer has registered with the signalling
+        server, which would fit `connect-to-first-producer=true`.
+      - The run's logs died with the RUN, since they go to `$env:TEMP\smoke-webrtc`.
+      Done when the helper waits for the producer's registration rather than just the
+      listening port, or one retry names the race, and the gate's failure message keeps
+      the producer's stderr.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON64 — the Vulkan validation layer in `C:\runtime\vulkan-layers`** [S, ★★]. Owner rule
