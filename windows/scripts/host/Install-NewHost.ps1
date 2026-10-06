@@ -181,9 +181,11 @@ function Test-RecordedShimLive {
     param([Parameter(Mandatory)][string]$RecordPath, [Parameter(Mandatory)][string]$ShimExe)
     if (-not (Test-Path -LiteralPath $RecordPath) -or -not (Test-Path -LiteralPath $ShimExe)) { return $false }
     try { $record = Get-Content -Raw -LiteralPath $RecordPath | ConvertFrom-Json } catch { return $false }
-    if (-not $record.sha256) { return $false }
+    # Under Set-StrictMode a missing property throws, so the record is asked for its sha256 rather than read.
+    $recorded = if ($null -ne $record) { $record.PSObject.Properties['sha256'] } else { $null }
+    if ($null -eq $recorded -or -not $recorded.Value) { return $false }
     $live = (Get-FileHash -Algorithm SHA256 -LiteralPath $ShimExe).Hash
-    return ($live -eq ([string]$record.sha256).ToUpperInvariant())
+    return ($live -eq ([string]$recorded.Value).ToUpperInvariant())
 }
 
 function Invoke-StepShim {
