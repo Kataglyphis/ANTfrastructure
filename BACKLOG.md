@@ -55,9 +55,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         on item 4's emulator since 2026-10-06 (83f4596: `check-apk-on-emulator.sh`, KVM opened
         by a udev rule on the runner, green in CI).)
       - **OrchestrANT:** Windows arm64 runs none of the 959 pytest tests. The benchmark lab
-        suites run on Linux x64 only.
+        suites run on Linux x64 only. (Arm64 closed: `windows-arm64-cross.yml` stages the
+        suite and runs it under the bundle's arm64 python via `Invoke-StagedTests.ps1`, item 2.
+        `tests/unit/benchmark` runs on every lane through `testpaths = ["tests"]`. Still
+        x64-only: `benchmarks/tests`, in path-filtered `benchmarks.yml`. Its `tests` package
+        name clashes with `tests/`, which is why `pyproject.toml` keeps it out of `testpaths`.)
       - **WebDavClient:** `tests/unit` holds 3 dummy tests, and the 6 WebDAV tests ran nowhere.
-        There is no Windows arm64 lane.
+        There is no Windows arm64 lane. (Closed 2026-10-06. The six mock-server tests run on
+        every lane since 2026-10-01 (§ What the test leg runs), and Windows arm64 since
+        f7ed5d8 (item 6). a9ef2cf adds eight unit tests of the client itself with requests
+        stubbed: path helpers, PROPFIND parsing, the non-207 error.)
       - **Both Python repos:** `3.14t` ran 0 tests.
 
       Owner decisions the same day:
