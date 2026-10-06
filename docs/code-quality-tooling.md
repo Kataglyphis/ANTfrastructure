@@ -230,10 +230,10 @@ these were "fixed" during the extraction.
 | # | Axis | Linux | Windows |
 |---|---|---|---|
 | 1 | Source roots | clang-format **and** clang-tidy walk `Src` and `Test` | `Get-ProjectCppFiles` walks the whole workspace for clang-format, but clang-tidy is filtered to `Src` only, so `Test` is never tidied |
-| 2 | C++20 module TUs | every `.c/.cc/.cpp/.cxx` goes to clang-tidy | files matching `^import\s+kataglyphis` are skipped |
+| 2 | C++20 module TUs | every `.c/.cc/.cpp/.cxx` goes to clang-tidy | files matching `^import\s+kataglyphis` are skipped by default; `-ModuleImportPattern '(?!)'` tidies them too, since the image's clang-tidy reads the build's BMIs (CON10; BeschleunigerBallett's 32 module TUs all exit 0, 2026-10-06) |
 | 3 | `--header-filter` | not passed, so clang-tidy's default applies (headers matching the main file's stem) | `--header-filter=<escaped Src dir>.*`, to suppress third_party noise |
 | 4 | `--checks` | a checks argument is passed (the consumer disables one check that crashes its clang-tidy) | `$Checks` defaults to an **empty** array; an imposed `--checks=-misc-include-cleaner` used to crash some versions |
-| 5 | Invocation shape | one invocation with the whole file list — fast, but one crash loses the run | per file in a loop — slower, isolates failures, logs per-file skips |
+| 5 | Invocation shape | one invocation with the whole file list — fast, but one crash loses the run | one process per file, `-ThrottleLimit` (default: the core count) at a time, each file's output logged whole and every failure named; `-Fix` stays serial, as two files' fixes can rewrite one header. BeschleunigerBallett's 43 `Src` TUs: 112 s on 32 cores, against about 900 s one at a time |
 | 6 | Missing `compile_commands.json` | hard error, telling the user to configure CMake first | regenerates via `ninja -C <build> -t compdb` when possible, throws only if not |
 | 7 | File enumeration | `find` with `-not -path` exclusions | `git ls-files` with a `Get-ChildItem` fallback, because its container receives sources by tar-pipe and has no `.git`; also excludes `_deps`, `vcpkg_installed`, `.venv`, `site-packages` |
 

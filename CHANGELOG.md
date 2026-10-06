@@ -7,6 +7,18 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — `Invoke-ClangTidyFixStep` tidies in parallel, and module TUs on request
+
+- **One process per file, `-ThrottleLimit` at a time** (default: the core count). Each file's
+  output is logged whole and in file order, and the step names every file that failed, not
+  just the first. `-Fix` stays serial: two files' fixes can rewrite the same header.
+- **Module TUs are tidyable.** The image's clang-tidy reads the build's BMIs (CON10), so a
+  consumer passing `-ModuleImportPattern '(?!)'` tidies its `import`ing TUs too; the default
+  still skips them. Measured 2026-10-06 in BeschleunigerBallett's clang-cl Debug container
+  build: its 32 module TUs all exit 0 (797 s one at a time), and the step over all 43 `Src`
+  TUs takes 112 s on 32 cores.
+- `WindowsClang.Common.Tests.ps1` covers both paths with a fake clang-tidy.
+
 ## 2026-10-06 — `riscv64_cross_env` stops overriding the Vulkan variables (CON48)
 
 - **The image no longer needs it.** The entrypoint used to leave `VULKAN_SDK` and
