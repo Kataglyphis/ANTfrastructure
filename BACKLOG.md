@@ -126,8 +126,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       SEGVs (BeschleunigerBallett run 36746313937; detail in `docs/failure-modes.md`). The
       image sets `ENV LP_NATIVE_VECTOR_WIDTH=256`, and the `:latest` published 2026-10-01
       proves it in all three children (`check_lavapipe_subgroup`: 8 lanes on amd64, arm64 and
-      riscv64). Open:
-      - BeschleunigerBallett drops its own export in `run-ctest.sh` (2ac0e785).
+      riscv64), and BeschleunigerBallett's `run-ctest.sh` no longer exports its own. Open:
       - Retire the `ENV` once the image's Mesa has upstream ebcfbe60 (2026-08-22), which
         deletes that sort.
       - **Its cost on arm64, seen 2026-10-05:** at 256 bits, llvmpipe's LLVM 21.1.8 on
