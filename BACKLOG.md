@@ -39,16 +39,21 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         2026-10-01, OxidANT fe14359: every Linux and Windows lane runs the same 360 tests. Its
         arm64 parallel WARP crash is in its BACKLOG.)
       - **BeschleunigerBallett:** no GPU suites (40) or perf suite on Windows. Windows arm64 is
-        Release-only.
+        Release-only. (Closed apart from validation: both Windows lanes run the GPU suites on
+        lavapipe since 2026-10-04 (item 5) and the perf suite, x64 from `clangcl-profile`. The
+        Windows GPU suites run in Release, without validation layers; that row is in its BACKLOG.)
       - **AccelerANTgine:** its suites were placeholders, so 0% of `Src/` is covered on every
-        arch.
+        arch. (Closed 2026-10-01, AccelerANTgine 1c8b44b: 96 + 7 tests and 8 FuzzTest
+        properties that call the library, on every lane; `Src/` line coverage 74.6% under
+        llvm-cov.)
       - **OmniAccelerANT:** the plugin's Dart tests and gtest and the integration test run
         nowhere. The web lane never tests in a browser, and Android only on the x64 VM.
         (Closed apart from the emulator: the plugin suites run on every lane since 2026-10-01
         (530ad8f), and the integration test under Xvfb on Linux and through `flutter drive` on
         Windows x64 and arm64 since 2026-10-04/05 (80e5329, 8015371). The web lane runs both
-        Dart suites in Chrome since 2026-10-05 (814da16, 33 + 4 tests). The APK still runs on no
-        emulator; item 4 below put one in the image.)
+        Dart suites in Chrome since 2026-10-05 (814da16, 33 + 4 tests). The release APK runs 20 s
+        on item 4's emulator since 2026-10-06 (83f4596: `check-apk-on-emulator.sh`, KVM opened
+        by a udev rule on the runner, green in CI).)
       - **OrchestrANT:** Windows arm64 runs none of the 959 pytest tests. The benchmark lab
         suites run on Linux x64 only.
       - **WebDavClient:** `tests/unit` holds 3 dummy tests, and the 6 WebDAV tests ran nowhere.
@@ -138,7 +143,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         on the same image three hours before the first of those, and no amd64 run has
         shown it. Until ebcfbe60 lands, check that the
         crash is gone before calling a red arm64 renderer test a regression. A narrower
-        `ENV` (only the BVH build needs the 8-lane subgroup) would also avoid it.
+        `ENV` (only the BVH build needs the 8-lane subgroup) would also avoid it. The consumers
+        that build no BVH narrow it themselves since 2026-10-06: OxidANT's
+        `ci-container-steps.sh` (c8637e5) and BeschleunigerBallett's `run-cargo-tests.sh`
+        export 128 on aarch64. Four of about twenty OxidANT arm64 runs since 2026-10-05 had
+        died on it, one as a SIGSEGV in `forward_ambient` rather than an `LLVM ERROR`.
 
 - [ ] **CON51 — `:latest-rocm` rebuilt with the 2026-10-01 media fixes** [M, ★★]. Owner
       decision 2026-10-01: GStreamer and libcamera without libunwind "everywhere". `:latest`
