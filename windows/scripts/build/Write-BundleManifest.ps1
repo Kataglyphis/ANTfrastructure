@@ -161,6 +161,18 @@ if ($cross) {
     $md.Add("New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Name `"$InstallDir\lavapipe\lvp_icd.aarch64.json`" -Value 0 -PropertyType DWord -Force")
     $md.Add('```')
 }
+$validationJson = Join-Path $InstallDir 'vulkan-layers\VkLayer_khronos_validation.json'
+if (Test-Path -LiteralPath $validationJson) {
+    $md.Add('')
+    $md.Add('## The Vulkan validation layer')
+    $md.Add('')
+    $md.Add("``VkLayer_khronos_validation`` for this arch sits in ``$InstallDir\vulkan-layers``, at the image's Vulkan SDK version. The loader ignores ``VK_ADD_LAYER_PATH`` in an elevated process, so register it there instead:")
+    $md.Add('')
+    $md.Add('```')
+    $md.Add("New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\ExplicitLayers' -Force | Out-Null")
+    $md.Add("New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\ExplicitLayers' -Name `"$validationJson`" -Value 0 -PropertyType DWord -Force")
+    $md.Add('```')
+}
 $md.Add('')
 $md.Add('## Absent on this lane, by construction')
 $md.Add('')

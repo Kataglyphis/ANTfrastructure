@@ -64,6 +64,22 @@ function Invoke-BundleStep {
     $Results.Add([pscustomobject]@{ Name = $Name; Ok = $ok; Detail = $detail })
 }
 
+function Assert-VulkanInfoSummary {
+    # The loader ignores VK_DRIVER_FILES and VK_ADD_LAYER_PATH in an elevated process; HKLM is what it reads then.
+    param(
+        [Parameter(Mandatory)][ValidateSet('Drivers', 'ExplicitLayers')][string]$Kind,
+        [Parameter(Mandatory)][string]$Manifest,
+        [Parameter(Mandatory)][string]$Expect
+    )
+    if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        $key = "HKLM:\SOFTWARE\Khronos\Vulkan\$Kind"
+        if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }
+        New-ItemProperty -LiteralPath $key -Name $Manifest -Value 0 -PropertyType DWord -Force | Out-Null
+    }
+    $summary = @(& (Join-Path $BundleRoot 'lavapipe\vulkaninfo.exe') --summary 2>&1 | ForEach-Object { "$_" })
+    if (-not ($summary -match $Expect)) { throw "vulkaninfo --summary names no '$Expect' (registered $Manifest under $Kind)" }
+}
+
 if ($MyInvocation.InvocationName -eq '.') { return }
 
 if ($ZipPath -and -not (Test-Path (Join-Path $BundleRoot 'python\python.exe'))) {
@@ -130,15 +146,22 @@ Invoke-BundleStep 'vulkaninfo lists llvmpipe (lavapipe ICD + loader run)' {
     $env:VK_DRIVER_FILES = $icd
     $env:VK_LOADER_DRIVERS_SELECT = '*lvp_icd*'
     $env:LP_NATIVE_VECTOR_WIDTH = '256'
-    # The loader ignores VK_DRIVER_FILES in an elevated process; HKLM is what it reads then.
-    if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        $key = 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers'
-        if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }
-        New-ItemProperty -LiteralPath $key -Name $icd -Value 0 -PropertyType DWord -Force | Out-Null
-    }
-    $summary = @(& (Join-Path $lavapipe 'vulkaninfo.exe') --summary 2>&1 | ForEach-Object { "$_" })
-    if (-not ($summary -match 'llvmpipe')) { throw 'vulkaninfo lists no llvmpipe device; the ICD registration did not take' }
+    Assert-VulkanInfoSummary -Kind Drivers -Manifest $icd -Expect 'llvmpipe'
 } $results
+
+$layerJson = Join-Path $BundleRoot 'vulkan-layers\VkLayer_khronos_validation.json'
+if (Test-Path -LiteralPath $layerJson) {
+    Invoke-BundleStep 'vulkaninfo loads the validation layer' {
+        # Forcing the layer makes vkCreateInstance load the DLL; listing it alone would only read the JSON.
+        $env:VK_INSTANCE_LAYERS = 'VK_LAYER_KHRONOS_validation'
+        $env:VK_ADD_LAYER_PATH = Split-Path $layerJson
+        try { Assert-VulkanInfoSummary -Kind ExplicitLayers -Manifest $layerJson -Expect 'VK_LAYER_KHRONOS_validation' }
+        finally { Remove-Item Env:VK_INSTANCE_LAYERS, Env:VK_ADD_LAYER_PATH -ErrorAction SilentlyContinue }
+    } $results
+} else {
+    # A bundle published before the layer joined it (BACKLOG CON64): named, not counted.
+    Write-Host "`n== validation layer: NOT IN THIS BUNDLE ($layerJson); the floor stays 12 until :winarm64 carries it"
+}
 
 $verdict = Get-BundleVerdict -Results $results -MinPassed $MinPassed -AllowEmptyRun:$AllowEmptyRun
 Write-Host "`n==== SUMMARY ===="
