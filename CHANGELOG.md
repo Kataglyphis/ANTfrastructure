@@ -23,6 +23,32 @@
 - Tests: `NewHost.ShimRecord.Tests.ps1`, 4 cases: a match, a shim the update replaced,
   a lowercase hash, and a missing, unreadable or hash-less record.
 
+## 2026-10-06 — `package_archive.sh` builds the deb, AppImage and flatpak it always claimed
+
+- **One release binary, four formats.** `06-packaging/package_archive.sh` wrote the tar and
+  stopped: `create_deb()` went on 2026-08-08, and `--flatpak-manifest`, `--desktop-file`
+  and `--appdata-file` were checked and never read. Two docs pages still listed
+  "tar/deb/AppImage/Flatpak". It now stages the binary as a bundle and hands it to the
+  bundle packagers the Flutter lanes use, by `--package-types`.
+- **`app-packaging.sh` takes the bundle from its caller.** Seven knobs carry it:
+  `APP_PACKAGING_BUNDLE_DIR`, `_VERSION`, `_DESKTOP_FILE`, `_ICON_FILE`, `_OUT_DIR`,
+  `_DEB_DEPENDS` and `_APP_ID`. Each keeps the Flutter default when unset.
+  - The project's desktop entry is used with `Exec`/`Icon` set per format
+    (`app_packaging_adapt_desktop_file`).
+  - An icon goes in the hicolor directory of its real size, read from the PNG header
+    (`app_packaging_icon_size`); a non-PNG falls back to the old `512x512`.
+  - The flatpak copies `lib/` and `data/` only when they exist.
+- **Errors where it used to be silent:** an unknown package type stops the run before
+  anything is built; `--flatpak-manifest` and `--appdata-file` say they were removed (the
+  manifest is generated); the three bundle formats need `--arch`. Their two env rows left
+  `lint-env-knobs.allow`.
+- **Proof:** `test-package-archive.sh` (stubbed packagers, plus one real deb through the real
+  library) and nine `packaging.*` mutations. In `:latest`, OxidANT's release CLI gave all
+  four, and each ran: the deb's binary, the AppImage, and the flatpak via
+  `flatpak run --command=oxidant` with its desktop entry and 128×128 icon exported.
+  OmniAccelerANT's Flutter packages are unchanged: its icon is a real 512×512.
+
+
 ## 2026-10-06 — a crashed staged test names its exit code
 
 - **`Invoke-StagedTests.ps1`**: a binary that dies before its summary used to stop the run

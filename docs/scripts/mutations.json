@@ -7899,6 +7899,78 @@
   "why": "a missing runtime surfaces as a flatpak-builder manifest error much later, naming nothing the caller can act on"
  },
  {
+  "id": "packaging.archive-unknown-type-fails",
+  "target": "linux/scripts/06-packaging/package_archive.sh",
+  "find": "        *) err \"unknown package type '$format' (tar, deb, appimage, flatpak)\"; exit 1 ;;",
+  "replace": "        *) ;;",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "an unknown format used to be skipped without a word, so a typo in PACKAGE_TYPES shipped a lane with one artifact fewer and a green run"
+ },
+ {
+  "id": "packaging.archive-removed-flags-fail",
+  "target": "linux/scripts/06-packaging/package_archive.sh",
+  "find": "            err \"$1 was removed: the flatpak manifest is generated from the staged bundle (docs/shared-script-libraries.md)\"\n            exit 1 ;;",
+  "replace": "            shift ;;",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "--flatpak-manifest and --appdata-file were accepted and never read for two months; taking them silently again hides that the project's files are ignored"
+ },
+ {
+  "id": "packaging.archive-stages-the-binary",
+  "target": "linux/scripts/06-packaging/package_archive.sh",
+  "find": "    install -m 0755 \"$SourceBinary\" \"$Stage/$Binary\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "the staged bundle is the only thing the deb, AppImage and flatpak pack; without the binary in it they package an empty directory"
+ },
+ {
+  "id": "packaging.archive-strips-tag-v",
+  "target": "linux/scripts/06-packaging/package_archive.sh",
+  "find": "    PackageVersion=\"${Version#v}\"",
+  "replace": "    PackageVersion=\"${Version}\"",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "dpkg-deb refuses a version that does not start with a digit, and a release tag is v2.3.4"
+ },
+ {
+  "id": "packaging.archive-rust-deb-depends",
+  "target": "linux/scripts/06-packaging/package_archive.sh",
+  "find": "\"${APP_PACKAGING_DEB_DEPENDS:-libc6, libgcc-s1}\"",
+  "replace": "\"${APP_PACKAGING_DEB_DEPENDS:-libc6, libstdc++6, libgtk-3-0}\"",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "the Flutter default makes apt pull GTK for a CLI that links only libc, libm and libgcc_s"
+ },
+ {
+  "id": "packaging.bundle-dir-knob",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "  echo \"${APP_PACKAGING_BUNDLE_DIR:-build/linux/${matrix_arch}/release/bundle}\"",
+  "replace": "  echo \"build/linux/${matrix_arch}/release/bundle\"",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "without the knob every packager reads Flutter's bundle path, which a cargo project does not have"
+ },
+ {
+  "id": "packaging.icon-size-reads-header",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "    printf '%sx%s' \"$w\" \"$h\"",
+  "replace": "    printf '512x512'",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "a 128x128 logo filed under hicolor/512x512 is the wrong-size icon flatpak export and desktop shells scale or reject"
+ },
+ {
+  "id": "packaging.desktop-file-from-project",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "    app_packaging_adapt_desktop_file \"$APP_PACKAGING_DESKTOP_FILE\" \"$file_path\" \"$exec_name\" \"$icon_name\"\n    return\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "--desktop-file was checked and never read; the project's Name, Terminal and Categories must reach the package"
+ },
+ {
+  "id": "packaging.out-dir-knob",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "  out_dir=\"${APP_PACKAGING_OUT_DIR:-out}\"",
+  "replace": "  out_dir=\"out\"",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "package_archive.sh's artifacts go to --archive-dir, which its lane uploads; a hard-coded out/ is a directory nobody uploads"
+ },
+ {
   "id": "bind-mount.chown-is-selective",
   "target": "linux/scripts/01-core/bind-mount-ownership.sh",
   "find": "  if printf '%s\\0' \"${wrong[@]}\" | xargs -0 --no-run-if-empty chown -h \"${owner_uid}:${owner_gid}\"; then",

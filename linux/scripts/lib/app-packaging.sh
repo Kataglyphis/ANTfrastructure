@@ -202,7 +202,8 @@ app_packaging_sanitize_package_name() {
 
 app_packaging_detect_bundle_dir() {
   local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
-  echo "build/linux/${matrix_arch}/release/bundle"
+  # A non-Flutter app hands its staged tree in here (06-packaging/package_archive.sh does).
+  echo "${APP_PACKAGING_BUNDLE_DIR:-build/linux/${matrix_arch}/release/bundle}"
 }
 
 app_packaging_detect_bundle_binary() {
@@ -319,6 +320,17 @@ app_packaging_resolve_appimagetool() {
   echo "appimagetool"
 }
 
+# <png>: "WxH" from the IHDR header, the hicolor dir an icon belongs in; 512x512 when it is no PNG.
+app_packaging_icon_size() {
+  local png="${1:-}" w h
+  if [[ -f "$png" ]] && [[ "$(head -c 8 "$png" | od -An -tx1 | tr -d ' \n')" == "89504e470d0a1a0a" ]]; then
+    read -r w h < <(od -An -tu4 --endian=big -j16 -N8 "$png")
+    printf '%sx%s' "$w" "$h"
+    return 0
+  fi
+  printf '512x512'
+}
+
 # Flutter's Icon-512.png wins: flatpak-builder demands a real 512x512 icon.
 app_packaging_detect_icon_file() {
   local candidate
@@ -335,6 +347,18 @@ app_packaging_detect_icon_file() {
   echo ""
 }
 
+# <src> <dest> <exec> <icon>: the project's .desktop with Exec and Icon set for one package format.
+app_packaging_adapt_desktop_file() {
+  local src="${1:?desktop source required}" dest="${2:?desktop path required}"
+  local exec_name="${3:?exec name required}" icon_name="${4:?icon name required}"
+  [[ -f "$src" ]] || { echo "Error: desktop file not found: $src" >&2; return 1; }
+  awk -v exec_name="$exec_name" -v icon_name="$icon_name" '
+    /^Exec=/ || /^Icon=/ { next }
+    { print }
+    /^\[Desktop Entry\]/ { print "Exec=" exec_name; print "Icon=" icon_name }
+  ' "$src" > "$dest"
+}
+
 app_packaging_create_desktop_file() {
   local file_path="${1:?desktop file path required}"
   local app_id="${2:?app id required}"
@@ -342,6 +366,10 @@ app_packaging_create_desktop_file() {
   local exec_name="${4:?exec name required}"
   local icon_name="${5:?icon name required}"
 
+  if [[ -n "${APP_PACKAGING_DESKTOP_FILE:-}" ]]; then
+    app_packaging_adapt_desktop_file "$APP_PACKAGING_DESKTOP_FILE" "$file_path" "$exec_name" "$icon_name"
+    return
+  fi
   cat > "$file_path" <<EOF
 [Desktop Entry]
 Type=Application
@@ -362,18 +390,20 @@ app_packaging_resolve_bundle_facts() {
   local matrix_arch="${1:?matrix_arch is required}" app_name="${2:?app_name is required}"
 
   bundle_dir="$(app_packaging_detect_bundle_dir "$matrix_arch")"
-  version="$(app_packaging_get_pubspec_version)"
+  version="${APP_PACKAGING_VERSION:-$(app_packaging_get_pubspec_version)}"
   package_name="$(app_packaging_sanitize_package_name "$app_name")"
-  app_id="${APP_PACKAGING_APP_ID_PREFIX:-org.example}.${package_name}"
+  app_id="${APP_PACKAGING_APP_ID:-${APP_PACKAGING_APP_ID_PREFIX:-org.example}.${package_name}}"
   binary_name="$(app_packaging_detect_bundle_binary "$bundle_dir")"
-  icon_file="$(app_packaging_detect_icon_file)"
+  icon_file="${APP_PACKAGING_ICON_FILE:-$(app_packaging_detect_icon_file)}"
+  out_dir="${APP_PACKAGING_OUT_DIR:-out}"
+  mkdir -p "$out_dir"
 }
 
 app_packaging_package_linux_bundle_deb() {
   local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
   local app_name="${2:?app_name is required}"
 
-  local bundle_dir version package_name arch deb_root binary_name app_id icon_file icon_name output_name
+  local bundle_dir version package_name arch deb_root binary_name app_id icon_file icon_name output_name out_dir
   app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
   arch="$(app_packaging_map_arch_to_deb "$matrix_arch")"
   icon_name="$package_name"
@@ -391,7 +421,7 @@ app_packaging_package_linux_bundle_deb() {
   mkdir -p "$deb_root/opt/$package_name"
   mkdir -p "$deb_root/usr/bin"
   mkdir -p "$deb_root/usr/share/applications"
-  mkdir -p "$deb_root/usr/share/icons/hicolor/512x512/apps"
+  mkdir -p "$deb_root/usr/share/icons/hicolor/$(app_packaging_icon_size "$icon_file")/apps"
 
   cp -a "$bundle_dir/." "$deb_root/opt/$package_name/"
 
@@ -410,7 +440,7 @@ EOF
     "$icon_name"
 
   if [[ -n "$icon_file" ]]; then
-    cp "$icon_file" "$deb_root/usr/share/icons/hicolor/512x512/apps/${package_name}.png"
+    cp "$icon_file" "$deb_root/usr/share/icons/hicolor/$(app_packaging_icon_size "$icon_file")/apps/${package_name}.png"
   fi
 
   cat > "$deb_root/DEBIAN/control" <<EOF
@@ -420,24 +450,24 @@ Section: utils
 Priority: optional
 Architecture: ${arch}
 Maintainer: ${APP_PACKAGING_MAINTAINER:-Unknown <dev@localhost>}
-Depends: libc6, libstdc++6, libgtk-3-0
+Depends: ${APP_PACKAGING_DEB_DEPENDS:-libc6, libstdc++6, libgtk-3-0}
 Description: ${app_name}
  ${APP_PACKAGING_DESCRIPTION:-${app_name} desktop application.}
 EOF
 
   chmod 0755 "$deb_root/DEBIAN"
-  if ! dpkg-deb --build "$deb_root" "out/${output_name}"; then
-    echo "Error: dpkg-deb failed for out/${output_name}" >&2
+  if ! dpkg-deb --build "$deb_root" "${out_dir}/${output_name}"; then
+    echo "Error: dpkg-deb failed for ${out_dir}/${output_name}" >&2
     return 1
   fi
-  app_packaging_assert_artifact "out/${output_name}"
+  app_packaging_assert_artifact "${out_dir}/${output_name}"
 }
 
 app_packaging_package_linux_bundle_appimage() {
   local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
   local app_name="${2:?app_name is required}"
 
-  local bundle_dir version package_name arch binary_name app_id icon_file icon_name appdir output_name appimagetool_cmd
+  local bundle_dir version package_name arch binary_name app_id icon_file icon_name appdir output_name appimagetool_cmd out_dir
   app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
   arch="$(app_packaging_map_arch_to_appimage "$matrix_arch")"
   icon_name="$package_name"
@@ -474,11 +504,11 @@ EOF
   fi
 
   if ! APPIMAGE_EXTRACT_AND_RUN=1 NO_APPSTREAM=1 ARCH="$arch" \
-      "$appimagetool_cmd" "$appdir" "out/${output_name}"; then
-    echo "Error: appimagetool failed for out/${output_name}" >&2
+      "$appimagetool_cmd" "$appdir" "${out_dir}/${output_name}"; then
+    echo "Error: appimagetool failed for ${out_dir}/${output_name}" >&2
     return 1
   fi
-  app_packaging_assert_artifact "out/${output_name}"
+  app_packaging_assert_artifact "${out_dir}/${output_name}"
 }
 
 # KATAGLYPHIS_FLATPAK_FINISH_ARGS is appended, never replacing the four that keep network/wayland/dri.
@@ -503,7 +533,7 @@ app_packaging_package_linux_bundle_flatpak() {
   local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
   local app_name="${2:?app_name is required}"
 
-  local bundle_dir version package_name app_id binary_name icon_file manifest_dir manifest_file repo_dir build_dir output_name flatpak_arch
+  local bundle_dir version package_name app_id binary_name icon_file manifest_dir manifest_file repo_dir build_dir output_name flatpak_arch out_dir
   app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
   # Everything flatpak touches needs fchmod, so stage container-native; only the bundle goes to out/.
   local flatpak_work="${KATAGLYPHIS_FLATPAK_WORKDIR:-/tmp/flatpak-work}"
@@ -512,7 +542,7 @@ app_packaging_package_linux_bundle_flatpak() {
   repo_dir="${flatpak_work}/repo"
   build_dir="${flatpak_work}/build-dir"
   mkdir -p "$flatpak_work"
-  output_name="out/${package_name}-${version}.flatpak"
+  output_name="${out_dir}/${package_name}-${version}.flatpak"
   flatpak_arch="$(app_packaging_map_arch_to_flatpak "$matrix_arch")"
 
   app_packaging_require_flatpak_tools || return 1
@@ -548,10 +578,10 @@ modules:
     build-commands:
       - mkdir -p /app/bin /app/lib /app/data
       - install -Dm755 ${binary_name} /app/bin/${package_name}
-      - cp -a lib/. /app/lib/
-      - cp -a data/. /app/data/
+      - if [ -d lib ]; then cp -a lib/. /app/lib/; fi
+      - if [ -d data ]; then cp -a data/. /app/data/; fi
       - install -Dm644 ${app_id}.desktop /app/share/applications/${app_id}.desktop
-      - install -Dm644 ${app_id}.png /app/share/icons/hicolor/512x512/apps/${app_id}.png
+      - install -Dm644 ${app_id}.png /app/share/icons/hicolor/$(app_packaging_icon_size "$icon_file")/apps/${app_id}.png
     sources:
       - type: dir
         path: files
