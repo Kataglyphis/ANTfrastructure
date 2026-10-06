@@ -118,7 +118,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       AccelerANTgine) is open on two conditions. 3.x must have had a point release: 3.0.0 is
       the Rust rewrite, published the day the switch landed. And some build must link
       faster with it than with lld: none measured did (`docs/shared-script-libraries.md`
-      § *linker-select.sh*). BeschleunigerBallett is the one family build not yet measured.
+      § *linker-select.sh*), BeschleunigerBallett included (2026-10-06: 0.32 s against
+      lld's 0.20 s for its `commitTestSuite` Debug relink).
 
 - [ ] **CON44 — `LP_NATIVE_VECTOR_WIDTH=256` in the image** [S, ★★]. Mesa 26.0.8's lavapipe
       compiles its BVH radix sort for 8-lane subgroups, but llvmpipe's subgroup is its vector
