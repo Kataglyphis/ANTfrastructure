@@ -30,83 +30,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
-- [ ] **CON50 — Every test on every arch lane** [L, ★★★]. Owner goal 2026-10-01. A read-only
-      audit of the six consumers that day (latest green develop runs) found Linux arm64 at
-      parity with Linux x64 everywhere. The gaps are the Windows lanes, suites that run on no
-      lane, and one narrowing:
-      - **OxidANT:** Windows x64/arm64 run 167 tests to Linux's 358. The renderer integration
-        tests, `kataglyphis_inference` and `kataglyphis_telemetry` are missing. (Closed
-        2026-10-01, OxidANT fe14359: every Linux and Windows lane runs the same 360 tests. Its
-        arm64 parallel WARP crash is in its BACKLOG.)
-      - **BeschleunigerBallett:** no GPU suites (40) or perf suite on Windows. Windows arm64 is
-        Release-only. (Closed apart from validation: both Windows lanes run the GPU suites on
-        lavapipe since 2026-10-04 (item 5) and the perf suite, x64 from `clangcl-profile`. The
-        Windows GPU suites run in Release, without validation layers; that row is in its BACKLOG.)
-      - **AccelerANTgine:** its suites were placeholders, so 0% of `Src/` is covered on every
-        arch. (Closed 2026-10-01, AccelerANTgine 1c8b44b: 96 + 7 tests and 8 FuzzTest
-        properties that call the library, on every lane; `Src/` line coverage 74.6% under
-        llvm-cov.)
-      - **OmniAccelerANT:** the plugin's Dart tests and gtest and the integration test run
-        nowhere. The web lane never tests in a browser, and Android only on the x64 VM.
-        (Closed apart from the emulator: the plugin suites run on every lane since 2026-10-01
-        (530ad8f), and the integration test under Xvfb on Linux and through `flutter drive` on
-        Windows x64 and arm64 since 2026-10-04/05 (80e5329, 8015371). The web lane runs both
-        Dart suites in Chrome since 2026-10-05 (814da16, 33 + 4 tests). The release APK runs 20 s
-        on item 4's emulator since 2026-10-06 (83f4596: `check-apk-on-emulator.sh`, KVM opened
-        by a udev rule on the runner, green in CI).)
-      - **OrchestrANT:** Windows arm64 runs none of the 959 pytest tests. The benchmark lab
-        suites run on Linux x64 only. (Arm64 closed: `windows-arm64-cross.yml` stages the
-        suite and runs it under the bundle's arm64 python via `Invoke-StagedTests.ps1`, item 2.
-        `tests/unit/benchmark` runs on every lane through `testpaths = ["tests"]`. Still
-        x64-only: `benchmarks/tests`, in path-filtered `benchmarks.yml`. Its `tests` package
-        name clashes with `tests/`, which is why `pyproject.toml` keeps it out of `testpaths`.)
-      - **WebDavClient:** `tests/unit` holds 3 dummy tests, and the 6 WebDAV tests ran nowhere.
-        There is no Windows arm64 lane. (Closed 2026-10-06. The six mock-server tests run on
-        every lane since 2026-10-01 (§ What the test leg runs), and Windows arm64 since
-        f7ed5d8 (item 6). a9ef2cf adds eight unit tests of the client itself with requests
-        stubbed: path helpers, PROPFIND parsing, the non-207 error.)
-      - **Both Python repos:** `3.14t` ran 0 tests.
-
-      Owner decisions the same day:
-      - `3.14t` becomes a real leg.
-      - The Windows GPU tests run now: OxidANT's wgpu suites on the runner host and on
-        windows-11-arm, and BeschleunigerBallett's Vulkan goldens on a software rasterizer.
-      - AccelerANTgine gets real tests.
-      - Web tests run in Chromium, and Android tests on an emulator.
-
-      The consumer work runs in each repo, tracked in its own BACKLOG.
-      **Here:**
-      1. Python lanes run the project's `testpaths` and gate a `3.14t` leg through
-         `free-threaded-extras` (`docs/python-ci.md` § What the test leg runs). (Done
-         2026-10-01.)
-      2. `container-ci-windows.yml` takes a binary-free test tree and `Invoke-StagedTests.ps1`
-         reads pytest, for OrchestrANT's arm64 suite. (Done 2026-10-01.)
-      3. Chromium in `:latest` (`linux/Dockerfile.package`) for `flutter test --platform chrome`.
-         **Published in the `:latest` of 2026-10-03** (hub b4d5fdd5; its config sets
-         `CHROME_EXECUTABLE`): Chrome for Testing + chromedriver on amd64 and arm64 (none
-         exists for riscv64). Proven on a throwaway
-         image FROM `:latest`: OmniAccelerANT runs 37 tests in Chrome; two files need
-         `@TestOn('vm')` (`docs/consumer-image-contract.md` § Browser tests).
-      4. An Android emulator and arm64-v8a system image for OmniAccelerANT's APK. arm64
-         runners have no KVM, so it runs as an x64 image with ARM translation or on another
-         runner. Measure before choosing. **Measured 2026-10-01, published in the `:latest` of
-         2026-10-03** (its history runs `install-android-emulator.sh`): an x86_64 API 35
-         `google_apis` image on amd64 (API 30's translator SIGILLs on the APK); booted in 25 s
-         with KVM and ran the arm64-v8a release APK. The consumer lane needs an x64 runner
-         with `/dev/kvm` passed in.
-      5. A software Vulkan ICD for Windows x64 and arm64 (Mesa lavapipe; WARP/Dozen lacks ray
-         tracing). Ship it in the image or as a pinned, SHA-checked download; the consumers
-         run the goldens with it. (Done 2026-10-04, CON50: `Install-Lavapipe.ps1` stages the
-         SHA-pinned mmozeiko/build-mesa driver plus LunarG's arch loader into
-         `C:\runtime\lavapipe`, the merge stage sets `LP_NATIVE_VECTOR_WIDTH=256`, the amd64
-         image registers the ICD in HKLM, the bundle manifest and the gate's twelfth step
-         carry the device half. `:winamd64` was republished the same day - the smoke's
-       `vulkaninfo --summary` lists the llvmpipe device; the `:winarm64` bundle is published and its device gate passed 12/12 on the Snapdragon X (Windows 11 ARM64).)
-      6. A native `windows-11-arm` Python job in `python-ci-windows.yml` for WebDavClient:
-         `arm64-tests` and `Invoke-PythonTestLegs.ps1`. (Done 2026-10-01.) WebDavClient
-         keeps py-spy and line_profiler off ARM64 (1f9bb5f) and runs the job since f7ed5d8
-         (`windows-arm64.yml`, hub 625b3653).
-
 - [ ] **CON56 — ripgrep in the images** [S, ★★]. Owner rule 2026-10-05: search with `rg`
       in every repo of the family (`AGENTS.md` § *Searching the tree*). In source the same
       day: `setup-package-image.sh` adds `ripgrep` beside jq/Xvfb (and `rg` to the presence
@@ -263,7 +186,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       the SDK's for amd64 (`Build-VulkanValidationLayers.ps1`, `docs/windows-cross-builds.md`
       § The Vulkan validation layer). `Test-Arm64Bundle.ps1` loads it when the bundle carries it.
       Done when a published `:winarm64` passes that step; then raise the gate's floor to 13 and
-      fail a bundle without the layer, and point BeschleunigerBallett's arm64 `-StageTests` at it.
+      fail a bundle without the layer. BeschleunigerBallett's `-StageTests` already stages it
+      from there on both arches (BB 17aa94ff) and warns until the bundle carries it.
 - [ ] **CON67 — the test runner's wheels in the `:winarm64` wheel store** [S, ★]. OrchestrANT's
       `Stage-Arm64Tests.ps1` installed pytest and six plugins (cov, benchmark, md, md-report,
       html, requests) for win_arm64 from PyPI at cross-build time, versions unpinned. In source

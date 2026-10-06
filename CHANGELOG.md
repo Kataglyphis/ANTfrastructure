@@ -7,6 +7,18 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — Every test runs on every arch lane (CON50 closed)
+
+- **The owner goal of 2026-10-01 is met in all six consumers.** The last open parts closed
+  this week:
+  - OmniAccelerANT's release APK runs on the emulator in CI (83f4596).
+  - OrchestrANT's `benchmarks/tests` joined `testpaths` and runs on every lane (7e0d47c,
+    green on 80a587f).
+  - WebDavClient's client has real unit tests (a9ef2cf).
+- **What is left belongs to CON64:** BeschleunigerBallett's Windows arm64 GPU suites validate
+  once a published `:winarm64` carries the validation layer. The row moved there.
+
+
 ## 2026-10-06 — The published `:latest-rocm` passes the three media checks (CON51 closes)
 
 - **What was open.** The rocm chain of 2026-10-02 (hub b4d5fdd5) republished
