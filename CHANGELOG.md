@@ -7,6 +7,26 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-06 — The chain wheels are proven once in every `:latest` child (CON52 closed)
+
+- **The fix shipped with the `:latest` of 2026-10-03.** Its three children come from one chain
+  run (`20261002-211215-63e1803b`, hub b4d5fdd5), which carries 9ff5e2a3:
+  `reconcile_local_wheels` is the one install point, and `assert_chain_wheels_installed` fails
+  the torch stage, under `set -Eeuo pipefail`, when a staged wheel is not the venv's.
+- **Read back from the published venvs on 2026-10-06.** In amd64 and arm64 (under QEMU), every
+  chain wheel is installed from its `/opt/wheels` file: `ai-edge-litert`, `onnxruntime-genai`,
+  `iree-base-runtime`, `av`, `libcamera`, TVM and the arch's ORT. torch and torchvision come
+  from the lock. The riscv64 child was published from the same run.
+
+## 2026-10-06 — riscv64 consumer lanes are in place; Flutter is a new row (CON48 closed)
+
+- **The hub half and three consumers have been green since 2026-10-01:** `setup-riscv64-cross`,
+  `container-ci-riscv64.yml`, `lib/riscv64-cross.sh` and the CMake toolchain, used by OxidANT,
+  AccelerANTgine and BeschleunigerBallett. The Vulkan-variable override went 2026-10-06.
+- **OmniAccelerANT's lane needs a riscv64 Flutter engine, which upstream does not publish**
+  (flutter/flutter#99963). That is CON70, blocked on an owner decision.
+
+
 ## 2026-10-06 — Every test runs on every arch lane (CON50 closed)
 
 - **The owner goal of 2026-10-01 is met in all six consumers.** The last open parts closed
