@@ -109,20 +109,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         export 128 on aarch64. Four of about twenty OxidANT arm64 runs since 2026-10-05 had
         died on it, one as a SIGSEGV in `forward_ambient` rather than an `LLVM ERROR`.
 
-- [ ] **CON52 — The torch stage installs the chain wheels once and proves them** [M, ★★].
-      Measured in the 2026-10-01 `:latest` chain (amd64 and arm64): torch and torchvision come
-      straight from OrchestrANT's lock (`torch pins satisfied`); `ai-edge-litert` and
-      `onnxruntime-genai` were installed before `uv sync`, removed by it and installed again.
-      **Fixed in source (2026-10-01):** `reconcile_local_wheels` is the one install point, and
-      `assert_chain_wheels_installed` (`CHAIN-WHEEL FAIL`) proves every staged wheel is the
-      venv's. Proven in a container FROM the published `:latest` amd64 child with that chain's
-      `/opt/wheels` and OrchestrANT 7daaa3e6: no uninstall in the sync, each wheel installed
-      once, `CHAIN-WHEEL PASS` + `ORT-CENSUS PASS`; a PyPI `onnxruntime-genai` 0.15.2 in place
-      of the chain's fails the gate. OrchestrANT's lock stays on PyPI: routing a package to
-      `/opt/wheels` makes `uv lock` fail off the image (`docs/linux-cross-builds.md` § The
-      chain wheels and the app's lock). Ships with the next chain; done when its torch stage
-      logs `CHAIN-WHEEL PASS` on amd64, arm64 and riscv64.
-
 - [ ] **CON53 — BuildKit cache housekeeping on the build host** [S, ★]. Both causes found and
       fixed in the source on 2026-10-01 (CHANGELOG; `docs/build-cache-tiers.md` § 3.2.1,
       `docs/linux-host-setup.md` § B7): `--keep-storage` bounds the whole store, so the keep
@@ -134,21 +120,17 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux arm64 and riscv64
 
-- [ ] **CON48 — riscv64 consumer lanes: cross-build on amd64, test under QEMU** [M, ★★].
-      Owner decision 2026-10-01: a consumer's riscv64 lane cross-compiles on the amd64 runner
-      and runs only the tests under QEMU user-mode; a fully emulated build (20-30x slower)
-      would pass GitHub's 6 h limit for the C++ repos. The hub half is the
-      `setup-riscv64-cross` action, the reusable `container-ci-riscv64.yml`,
-      `lib/riscv64-cross.sh` and the CMake toolchain
-      ([`docs/riscv64-cross-test-lanes.md`](docs/riscv64-cross-test-lanes.md)). Consumers:
-      OxidANT (pilot), AccelerANTgine, BeschleunigerBallett, all green (2026-10-01); OxidANT's
-      GPU suites run weekly (measured on GitHub: 358 passed, test step 43.5 min).
-      **OmniAccelerANT waits** until the riscv64 image carries Flutter. Open:
-      - **The Vulkan variables: done 2026-10-06.** The `:latest` of 2026-10-03 leaves
-        `VULKAN_SDK`, `VK_ADD_LAYER_PATH` and the four path lists on `/opt/vulkan/active`
-        after its entrypoint, so `riscv64_cross_env` dropped its two `export`s, the only
-        override. BeschleunigerBallett's `CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT` stays on
-        the link through `lib/cmake-build.sh`.
+- [b] **CON70 — a riscv64 Flutter engine, for OmniAccelerANT's riscv64 lane** [L, ★]. CON48's
+      riscv64 consumer lanes (OxidANT, AccelerANTgine, BeschleunigerBallett) cross-build on
+      amd64 and test under QEMU since 2026-10-01. OmniAccelerANT has none, because no image
+      carries a riscv64 Flutter. Checked 2026-10-06:
+      - Flutter publishes no `linux-riscv64` engine or tool artifacts; flutter/flutter#99963
+        is open.
+      - Community builds exist: meta-flutter's Yocto recipes (riscv64 engine, `gen_snapshot`,
+        a newer LLVM than Flutter's stable one) and KDAB's industrialflutter port.
+      Either way is an owner decision: an engine built from source in the image (our own pin,
+      hours of chain time per Flutter bump) or a third-party engine binary. Until then
+      OmniAccelerANT's riscv64 coverage is OxidANT's and AccelerANTgine's own lanes.
 
 ## Open — Windows `:winamd64`
 
