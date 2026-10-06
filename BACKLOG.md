@@ -362,5 +362,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       (`docs/rancher-desktop-linux-containers.md` § *WSL containers*): faster bind
       mounts and no credential trap, but no `--privileged`, `--platform` or `--device`,
       which the lanes pass. Re-evaluate when microsoft/WSL#41545 (privileged/cap-add)
-      and #41123 (multi-platform) land. The Dart-only loop (`Invoke-DartChecks.ps1`)
-      could pilot it sooner, behind an `-Engine wslc` switch.
+      and #41123 (multi-platform) land. The Dart-only pilot is in: OmniAccelerANT
+      7775b51, `Invoke-DartChecks.ps1 -Engine wslc`, analyze 146 s against nerdctl's
+      371 s, format + test 23 s against 32 s (2026-10-06).

@@ -226,9 +226,17 @@ instead of 4.3–4.9 s, `stat` is 4.8x faster, and sequential reads run at
 ~900 MiB/s against ~240 MiB/s. A bind mount is still 25–30x slower than
 container-local disk on both engines. The one shape it can run today is the
 Dart-only loop (no `--privileged`, and `--platform` can be dropped on an x64
-host). Check again when #41545 and #41123 land. Until then the family image
-would be a second ~30 GB copy on `C:` (`session.storagePath` in
-`%LOCALAPPDATA%\wslc\settings.yaml` moves it).
+host). OmniAccelerANT's `Invoke-DartChecks.ps1 -Engine wslc` pilots exactly that
+(2026-10-06). Warm, on the same checkout and image:
+
+| Dart-only step | wslc | Rancher nerdctl |
+| --- | --- | --- |
+| `dart format` + `flutter test` | 23 s | 32 s |
+| `flutter analyze` (whole workspace) | 146 s | 371 s |
+
+The first wslc run took 554 s, most of it the pull. Check again when #41545 and
+#41123 land. Until then the family image is a second ~30 GB copy on `C:`
+(`session.storagePath` in `%LOCALAPPDATA%\wslc\settings.yaml` moves it).
 
 ## Persisting the cargo cache
 
