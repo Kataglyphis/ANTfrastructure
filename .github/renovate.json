@@ -43,9 +43,9 @@
       "allowedVersions": "<3.15.0"
     },
     {
-      "description": "WIX_VERSION / WIX_UI_EXT_VERSION stay on WiX 7: the owner accepted the wix7 OSMF EULA (2026-10-01), and a new major is a new licence decision; bump_versions.py same-major-locks them too.",
+      "description": "WIX_VERSION / WIX_UI_EXT_VERSION / WIX_FIREWALL_EXT_VERSION stay on WiX 7: the owner accepted the wix7 OSMF EULA (2026-10-01), and a new major is a new licence decision; bump_versions.py same-major-locks them too.",
       "matchManagers": ["custom.regex"],
-      "matchDepNames": ["wix", "WixToolset.UI.wixext"],
+      "matchDepNames": ["wix", "WixToolset.UI.wixext", "WixToolset.Firewall.wixext"],
       "allowedVersions": "<8.0.0"
     },
     {

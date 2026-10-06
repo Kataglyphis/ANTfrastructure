@@ -32,6 +32,11 @@ RUN --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Commo
 # lavapipe's loader and vulkaninfo live beside its ICD; the ICD itself is registered in HKLM at install time.
 ENV PATH=$PATH;C:\vulkan-loader;C:\runtime\lavapipe
 
+# Consumers' MSIs declare their firewall exceptions with it; base keeps the UI extension, this stage keeps a bump cheap.
+ARG WIX_FIREWALL_EXT_VERSION=7.0.0
+RUN & 'C:\WiX\wix.exe' extension add --global "WixToolset.Firewall.wixext/$env:WIX_FIREWALL_EXT_VERSION"; `
+    if ($LASTEXITCODE -ne 0) { throw "wix extension add WixToolset.Firewall.wixext/$env:WIX_FIREWALL_EXT_VERSION failed ($LASTEXITCODE)" }
+
 # One COPY (the chain runs near the 125-layer cap), in the last stage so script edits never invalidate earlier layers.
 COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\entrypoint.cmd linux\scripts\03-media\runtime\ort-venv-census.py C:\temp\scripts\
 # Downstream Invoke-Ci* and rust build scripts import the modules from this path.

@@ -799,11 +799,12 @@ if ($Stages -contains 'torch') {
 if ($Stages -contains 'final') {
     # arm64 has no torch stage, so its final image builds on the merged media.
     $finalBase = if ($TargetArch -eq 'amd64') { $torchTag } else { Get-BkTag 'windows-media' }
-    # The Vulkan loader's pins: the final stage installs it on PATH (BACKLOG CON25).
+    # The Vulkan loader's pins (BACKLOG CON25) and the WiX firewall extension's: the final stage installs both.
     $finalArgs = $stampArgs + @{
         BASE_IMAGE                   = $finalBase
         VULKAN_VERSION               = Get-Ver 'VULKAN_VERSION'
         VULKAN_RT_WINDOWS_ZIP_SHA256 = Get-Ver 'VULKAN_RT_WINDOWS_ZIP_SHA256'
+        WIX_FIREWALL_EXT_VERSION     = Get-Ver 'WIX_FIREWALL_EXT_VERSION'
     } + $archArgs
     # The default label 'Dockerfile' would let -NoCacheStage final match only the re-exports.
     Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final' -Tag (Get-BkTag $script:FinalTagName) -BuildArgs $finalArgs

@@ -575,6 +575,10 @@ def spec_wix_ui(cur):
     return _nuget_pkg_latest("WixToolset.UI.wixext", same_major_as=cur), {}
 
 
+def spec_wix_firewall(cur):
+    return _nuget_pkg_latest("WixToolset.Firewall.wixext", same_major_as=cur), {}
+
+
 def spec_python(cur):
     minor = ".".join(cur.split(".")[:2])  # stay on the pinned minor (3.14.x)
     tag = gh_latest("python/cpython", pattern=rf"^v{re.escape(minor)}\.\d+$")
@@ -759,6 +763,7 @@ SAFE: list[tuple[str, Callable, str]] = [
     ("FLUTTER_VERSION", spec_flutter, "linux sdk flutter layer"),
     ("WIX_VERSION", spec_wix, "windows base scoop layer"),
     ("WIX_UI_EXT_VERSION", spec_wix_ui, "windows base scoop layer"),
+    ("WIX_FIREWALL_EXT_VERSION", spec_wix_firewall, "windows final stage"),
     ("PYTHON_VERSION", spec_python, "linux+windows toolchain CPython builds (same-minor only)"),
     ("VULKAN_VERSION", spec_vulkan, "linux base/sdk + windows scoop layer + windows rocm sdk loader"),
     ("GSTREAMER_VERSION", spec_gstreamer, "linux media gstreamer stage (+ android universal)"),
