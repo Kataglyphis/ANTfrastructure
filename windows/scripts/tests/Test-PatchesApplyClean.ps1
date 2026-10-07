@@ -46,7 +46,7 @@ $defaultRefs = @{
     GSTREAMER   = '1.29.2'
     LLVM        = 'llvmorg-23.1.0'
     HAILORT     = 'v5.4.0'
-    MIGRAPHX    = 'becdb3da862f2297041b746b90bc6130e2b1d1f7'
+    MIGRAPHX    = '95672916ed289d4be9d230a9be732e1bbad97e8c'
 }
 if (Test-Path $versionsFile) {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force

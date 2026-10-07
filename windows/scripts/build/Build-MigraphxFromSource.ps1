@@ -92,7 +92,7 @@ function Get-MigraphxCmakeArgs {
         "-DGPU_TARGETS:STRING=$GpuTargets"
         '-DMIGRAPHX_ENABLE_GPU=ON', '-DMIGRAPHX_ENABLE_CPU=OFF', '-DMIGRAPHX_ENABLE_FPGA=OFF'
         '-DMIGRAPHX_ENABLE_PYTHON=OFF', '-DMIGRAPHX_ENABLE_TENSORFLOW=OFF', '-DMIGRAPHX_ENABLE_ONNX=ON'
-        # rocMLIR is not in TheRock 10.0; upstream's Windows CI builds it from source instead.
+        # TheRock's Windows tarball ships no rocMLIR; upstream's Windows CI builds it from source instead.
         '-DMIGRAPHX_ENABLE_MLIR=OFF', '-DMIGRAPHX_USE_COMPOSABLEKERNEL=OFF'
         '-DMIGRAPHX_USE_MIOPEN=ON', '-DMIGRAPHX_USE_ROCBLAS=ON', '-DMIGRAPHX_USE_HIPBLASLT=ON'
         '-DMIGRAPHX_USE_AMDMLSS=OFF', '-DMIGRAPHX_USE_EIGEN=OFF'
@@ -142,10 +142,6 @@ try {
     $sourceRoot = Save-PinnedSource -Source $source -WorkDir $WorkDir
     $treeVersion = Get-MigraphxTreeFact -Fact MigraphxVersion -CMakeText ([System.IO.File]::ReadAllText((Join-Path $sourceRoot 'CMakeLists.txt')))
     if ($treeVersion -ne $migraphxVersion) { throw "MIGRAPHX_WINDOWS_COMMIT is MIGraphX $treeVersion, but MIGRAPHX_VERSION is $migraphxVersion" }
-    # Upstream 5a80dc91ba's MLIR-off stubs; git-init first so the patch goes through git apply.
-    Initialize-ExtractedGitRepo -Path $sourceRoot
-    Invoke-SourcePatch -PatchFile (Join-Path $scriptAssetRoot 'patches\migraphx\001-mlir-off-stubs.patch') -SourceDir $sourceRoot `
-        -Description 'MIGraphX: MLIR-off stubs (backport of 5a80dc91ba)' -IgnoreWhitespace
 
     Switch-BuildPhase '2. host deps (clang-cl)'
     $depsPrefix = Join-Path $WorkDir 'deps'
@@ -173,11 +169,9 @@ try {
     $jsonDir = Write-NlohmannJsonConfigShim -RocmRoot $rocmRoot -DepsPrefix $depsPrefix
     $migraphxArgs = Get-MigraphxCmakeArgs -RocmRoot $rocmRoot -DepsPrefix $depsPrefix -GpuTargets $gpuTargets -Python $python `
         -NlohmannJsonDir $jsonDir
-    # -AllowRocmPrefix: this build needs find_package(hip/miopen/rocblas/hipblaslt/hiprtc) from TheRock.
-    Invoke-CmakeConfigure -SourceDir $sourceRoot -BuildDir $buildDir -InstallPrefix $InstallDir -BuildType $BuildType `
-        -CCompiler (Get-RocmLlvmToolPath -RocmRoot $rocmRoot -Tool 'clang') `
-        -CxxCompiler (Get-RocmLlvmToolPath -RocmRoot $rocmRoot -Tool 'clang++') `
-        -Linker '' -Archiver '' -ExtraArgs $migraphxArgs -AllowRocmPrefix
+    # This build needs find_package(hip/miopen/rocblas/hipblaslt/hiprtc) from TheRock.
+    Invoke-RocmClangConfigure -SourceDir $sourceRoot -BuildDir $buildDir -InstallPrefix $InstallDir -RocmRoot $rocmRoot -BuildType $BuildType `
+        -ExtraArgs $migraphxArgs
 
     Switch-BuildPhase '4. MIGraphX build + install'
     Invoke-NinjaBuildWithRetry -BuildDir $buildDir -Install -InstallConfig $BuildType -RetryJobs 2
@@ -188,9 +182,7 @@ try {
     Switch-BuildPhase '5. verify'
     $gap = @(Get-MigraphxInstallGap -InstallDir $InstallDir) + @(Get-MigraphxLicenseGap -InstallDir $InstallDir -Set MigraphxDeps)
     if ($gap.Count -gt 0) { throw "MIGraphX install is missing: $($gap -join ', ')" }
-    $gpuDll = Join-Path $InstallDir 'bin\migraphx_gpu.dll'
-    $machine = Get-PeFileMachine -Path $gpuDll
-    if ($machine -ne (Get-PeMachineType -Arch 'amd64')) { throw ('migraphx_gpu.dll PE machine 0x{0:X4} is not amd64' -f $machine) }
+    Assert-RocmBuiltPe -Path (Join-Path $InstallDir 'bin\migraphx_gpu.dll')
     Complete-CurrentBuildPhase
 } catch {
     Complete-CurrentBuildPhase -ErrorRecord $_

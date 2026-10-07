@@ -575,7 +575,7 @@ nerdctl build -t local/kataglyphis:torch-amd64 -f linux/Dockerfile.torch .
 > the registry on 2026-09-22.
 
 > **Requirements:**
-> - Host driver compatible with ROCm 10.0 (see the [compatibility matrix](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)).
+> - Host driver compatible with ROCm 10.1 (see the [compatibility matrix](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)).
 > - `--device=/dev/kfd --device=/dev/dri` passed to `docker run`.
 
 The ROCm variant chain inserts `Dockerfile.amd` as its `gpu` stage **after** the shared `:cross-sdk-amd64` and before media; the later stages run with `ENABLE_AMD=true`.
@@ -584,7 +584,7 @@ The ROCm variant chain inserts `Dockerfile.amd` as its `gpu` stage **after** the
 
 | File | Purpose |
 | --- | --- |
-| `linux/Dockerfile.amd` | Installs ROCm 10.0 + MIGraphX 2.17 from AMD TheRock repo (HIP, MIOpen, RCCL, rocBLAS, rocFFT, MIGraphX) |
+| `linux/Dockerfile.amd` | Installs ROCm 10.1 + MIGraphX 2.18 from AMD TheRock repo (HIP, MIOpen, RCCL, rocBLAS, rocFFT, MIGraphX) |
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with MIGraphX EP when `ENABLE_AMD=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the AMD media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
@@ -599,7 +599,7 @@ The ROCm variant chain inserts `Dockerfile.amd` as its `gpu` stage **after** the
   carries the ROCm release ([below](#the-rocm-release-is-in-every-package-name)).
   `MIGRAPHX_VERSION` moves together with `ROCM_VERSION`.
 - MIGraphX packages come from a separate repo path (`/rocm/migraphx/packages/ubuntu2604/`) on the same `stable.repo.amd.com` host. The toolchain image pins the AMD repo to provide only ROCm/MIGraphX packages via an apt pin on Origin "AMD ROCm".
-- The ONNX Runtime MIGraphX Execution Provider replaces the older ROCm EP. The build script passes `--use_migraphx --migraphx_home /opt/rocm` instead of `--use_rocm`.
+- The ONNX Runtime MIGraphX Execution Provider replaces the older ROCm EP. The build script passes `--use_migraphx --migraphx_home <MIGraphX's prefix>` (`/opt/rocm/extras-10` on 10.1, [below](#where-rocm-101-puts-migraphx)) instead of `--use_rocm`.
 - The build produces an `onnxruntime-migraphx` Python wheel (instead of `onnxruntime-rocm`).
 - The media stage strips all external apt sources from the SDK base image and configures clean resolute-only sources to prevent cross-distro package conflicts. 01-core modules are bind-mounted into build stages so `media_common_init()` can locate cross-build helpers.
 
@@ -659,7 +659,53 @@ builds them from `ROCM_VERSION` and `MIGRAPHX_VERSION`:
 
 Measured with `apt-get install -s` on 2026-10-07: the 10.0 list selects 251
 packages, 249 named `…10.0` plus the two MIGraphX ones (`2.17.0+rocm10.0.0`).
-With ASAN it is 281, again all 10.0.
+With ASAN it is 281, again all 10.0. The 10.1 list, the pin since that day,
+selects 264: 262 named `…10.1` (all `10.1.0-3`) plus `amdrocm10-migraphx` and
+`amdrocm10-migraphx-dev` at `2.18.0-1`. With ASAN it is 298, again all 10.1. The
+real install is 7.0 GB of downloads and 21.7 GB on disk, and the release check
+passes on it.
+
+### Where ROCm 10.1 puts MIGraphX
+
+Measured on 2026-10-07: the 10.1 list installed in `:latest`, and the 10.0
+packages' file lists (`dpkg-deb -c`):
+
+| What | ROCm 10.0 (`amdrocm-migraphx` 2.17.0) | ROCm 10.1 (`amdrocm10-migraphx` 2.18.0) |
+| --- | --- | --- |
+| MIGraphX headers, `migraphx-config.cmake`, `libmigraphx_c.so.3` | `/opt/rocm/{include,lib/cmake/migraphx,lib}` | `/opt/rocm/extras-10/{include,lib/cmake/migraphx,lib}` |
+| The other MIGraphX libraries, behind `libmigraphx_c`'s RUNPATH | `/opt/rocm/lib/migraphx/lib` | `/opt/rocm/extras-10/lib/migraphx/lib` |
+| `migraphx-driver` | `/opt/rocm/bin` | `/opt/rocm/extras-10/bin`, on no `PATH` |
+| `/opt/rocm/lib` | MIGraphX's directory, with no HIP in it | the `rocm-lib` alternative, `core-10.1/lib` |
+
+In 10.1, `/opt/rocm/{core,bin,include,lib}` are all alternatives links into
+`core-10.1`, beside a new `core-10` link. `core-10.1` carries HIP 7.16.26385 and
+AMD clang 24.
+
+Three places followed MIGraphX out of `/opt/rocm/lib`:
+
+- **`setup-rocm-repo.sh`** writes the directory holding `libmigraphx_c` into
+  `/etc/ld.so.conf.d/rocm.conf`, beside `/opt/rocm/lib`. It finds `migraphx.hpp`
+  anywhere under `/opt/rocm`, and fails unless `ldconfig -p` lists
+  `libmigraphx_c`. The first 10.1 install stopped at `migraphx.hpp not found`.
+- **`30-build-native-amd.sh`** passes ORT MIGraphX's own prefix as
+  `--migraphx_home`. It is the directory above `lib/cmake/migraphx`, found under
+  `MIGRAPHX_HOME`, which stays the ROCm root for the HIP probe. ORT's
+  `find_package(migraphx REQUIRED PATHS /opt/rocm)` does not reach `extras-10`.
+  A CMake probe that copies ORT v1.30.0's lookup failed with `/opt/rocm`. With
+  `/opt/rocm/extras-10` it found MIGraphX 2.18.0 and the external-data API, and
+  linked and ran without a GPU. The script itself then built ORT v1.30.0 against
+  the install in a throwaway `:latest` container. It made an
+  `onnxruntime_migraphx-1.30.0` cp314 wheel that lists
+  `MIGraphXExecutionProvider`. With no GPU, a session loads the EP and stops at
+  `HIP failure 100: no ROCm-capable device`, then falls back to CPU.
+- **`publish_rocm_ld_path`** adds the same directory to the runtime image's
+  `000-rocm.conf`, because `libonnxruntime_providers_migraphx.so` needs
+  `libmigraphx_c.so.3`.
+
+TheRock's LLVM is clang 24 now. `Dockerfile.package` borrows libFuzzer only from
+a same-major `clang/23` copy, so a rocm image no longer finds one to borrow.
+That changes nothing while the image's own LLVM 23 ships libFuzzer, which
+`:latest` does.
 
 ## ROCm: what the first `:latest-rocm` run must carry (planned, 2026-09-22)
 
@@ -694,6 +740,12 @@ They exist for ROCm 10.0 / Ubuntu 26.04, in a parallel repo path
    `/usr/bin/hipcc` can silently resolve into `/opt/rocm/core-asan-10.0`. The
    outcome is a coin flip between rebuilds, not a deterministic last-wins.
 
+ROCm 10.1 (the same `Packages.gz`, 2026-10-07) is far smaller but not otherwise
+different. It has 94 ASAN packages and 47.0 GiB for the full set, and
+`amdrocm-llvm-dev-asan10.1` is 2.0 GiB. Counted the same way, 10.0 has 91
+packages and 134.8 GiB. The gfx-specific packages are still gfx942 and gfx950
+only.
+
 **Decided and implemented (owner, 2026-09-22): optional, and OFF.** A >100 GiB
 image is not acceptable as the default, so `ENABLE_ROCM_ASAN` (`Dockerfile.amd`,
 default `false`) gates the whole thing:
@@ -710,15 +762,30 @@ default `false`) gates the whole thing:
   installed it by hand.
 - Runtime stays the consumer's business and is never baked: `HSA_XNACK=1` and
   `LD_LIBRARY_PATH`/`LD_PRELOAD` into the ASAN prefix, documented in the run
-  recipe. The ASAN directories never enter `/etc/ld.so.conf.d/`.
+  recipe. The ASAN directories never enter `/etc/ld.so.conf.d/`:
+  `publish_rocm_ld_path` prunes `core-asan-*`, whose `lib` holds a
+  `libamdhip64` of its own.
 
 The **tarball** install the owner's URL selects (`i=tar`) stays the better shape
 if the alternatives dance ever misbehaves: it unpacks to a prefix we choose and
 registers no alternatives at all. The apt route is what is wired, because it
 keeps the signed-repo supply chain we already pin.
 
-**Untested until someone flips it.** Nothing in this path has run: the knob is
-off, and the ASAN packages only do anything on gfx942/gfx950 hardware.
+**The install half ran once, in a throwaway container (10.1, 2026-10-07).** No
+image build has run it. `setup-rocm-repo.sh` ran with `ENABLE_ROCM_ASAN=true`
+over the installed 10.1 list and exited 0:
+
+- It added 34 ASAN packages, a 6.2 GB download and 29 GB in
+  `/opt/rocm/core-asan-10.1`.
+- No alternative points into `core-asan` afterwards, and
+  `/opt/rocm/{core,lib,bin}` and `hipcc` resolve into `core-10.1`.
+- The release check passed over all 298 packages.
+
+That run also showed that `publish_rocm_ld_path` would have put
+`core-asan-10.1/lib` on the loader path.
+
+The ASAN libraries only do anything on gfx942/gfx950 hardware, which no lane
+has.
 
 ### The non-ASAN work the same sweep turned up
 

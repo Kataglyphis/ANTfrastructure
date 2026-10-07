@@ -765,15 +765,17 @@ if ($Stages -contains 'migraphx') {
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm-migraphx' -Target 'built' -Tag $migraphxTag -BuildArgs $migraphxArgs
 }
 if ($Stages -contains 'llama') {
-    # -NoRocmSpikes skips migraphx, so llama then builds straight on the merged media.
+    # -NoRocmSpikes skips migraphx, so llama then builds straight on the merged media; ggml-hip compiles here, hence $sccache.
     $llamaArgs = @{
         BASE_IMAGE           = $(if ($NoRocmSpikes) { Get-BkTag 'windows-media' } else { $migraphxTag })
+        ROCM_WINDOWS_GFX_FAMILY = Get-Ver 'ROCM_WINDOWS_GFX_FAMILY'
         LLAMA_CPP_HIP_BUILD  = Get-Ver 'LLAMA_CPP_HIP_BUILD'
-        LLAMA_CPP_HIP_ASSET  = Get-Ver 'LLAMA_CPP_HIP_ASSET'
-        LLAMA_CPP_HIP_SHA256 = Get-Ver 'LLAMA_CPP_HIP_SHA256'
+        LLAMA_CPP_HIP_COMMIT = Get-Ver 'LLAMA_CPP_HIP_COMMIT'
+        LLAMA_CPP_HIP_SOURCE_SHA256 = Get-Ver 'LLAMA_CPP_HIP_SOURCE_SHA256'
+        LLAMA_CPP_CPU_SHA256 = Get-Ver 'LLAMA_CPP_CPU_SHA256'
         LLAMA_CPP_HIP_LICENSE_SHA256 = Get-Ver 'LLAMA_CPP_HIP_LICENSE_SHA256'
         LLAMA_CPP_VULKAN_SHA256 = Get-Ver 'LLAMA_CPP_VULKAN_SHA256'
-    }
+    } + $sccache
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm-llama' -Target 'built' -Tag $llamaTag -BuildArgs $llamaArgs
 }
 # Get-BkTag carries the lane: bk-windows-torch, or bk-windows-torch-rocm on the rocm lane.

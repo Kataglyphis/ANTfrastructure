@@ -587,7 +587,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-ROCm-812b560b",
       "name": "ROCm",
-      "versionInfo": "10.0",
+      "versionInfo": "10.1",
       "downloadLocation": "https://rocm.docs.amd.com/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -600,7 +600,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-MIGraphX-34c80120",
       "name": "MIGraphX",
-      "versionInfo": "2.17.0",
+      "versionInfo": "2.18.0",
       "downloadLocation": "https://github.com/ROCm/AMDMIGraphX",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1094,7 +1094,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-AMD-ROCm-for-Windows-TheRock-tarball-C-TheRock-f2cf0040",
       "name": "AMD ROCm for Windows (TheRock tarball, C:\\TheRock\\build; rocm variant only)",
-      "versionInfo": "10.0.0",
+      "versionInfo": "10.1.0",
       "downloadLocation": "https://github.com/ROCm/TheRock",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1131,9 +1131,9 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-built-from-upstre-b06a673e",
-      "name": "PyTorch + TorchVision for ROCm (built from upstream source against TheRock's ROCm 10.0.0 SDK, kernels for gfx1201 and gfx1200, on AMD's rocm[libraries] runtime; rocm variant only)",
-      "versionInfo": "torch 2.14.1+rocm10.0.0 and torchvision 0.29.1+rocm10.0.0 from the v2.14.1 / v0.29.1 tags (commits pinned as TORCH_ROCM_WINDOWS_*_COMMIT), with AMD's rocm-sdk runtime and device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*)",
+      "SPDXID": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-built-from-upstre-0fda120b",
+      "name": "PyTorch + TorchVision for ROCm (built from upstream source against TheRock's ROCm 10.1.0 SDK, kernels for gfx1201 and gfx1200, on AMD's rocm[libraries] runtime; rocm variant only)",
+      "versionInfo": "torch 2.14.1+rocm10.1.0 and torchvision 0.29.1+rocm10.1.0 from the v2.14.1 / v0.29.1 tags (commits pinned as TORCH_ROCM_WINDOWS_*_COMMIT), with AMD's rocm-sdk runtime and device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*)",
       "downloadLocation": "https://github.com/pytorch/pytorch",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1391,9 +1391,9 @@
       "licenseComments": "Obligations: keep-notice, include-text, eula-review"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-ROCm-relea-de02b048",
-      "name": "llama.cpp (official prebuilt Windows ROCm release: ggml-hip.dll, llama-server.exe and the other tools)",
-      "versionInfo": "11460",
+      "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-HIP-ggml-hip.dll-built-from-the-pinn-eeb95eb7",
+      "name": "llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip)",
+      "versionInfo": "11472",
       "downloadLocation": "https://github.com/ggml-org/llama.cpp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1406,7 +1406,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-Vulkan-rel-968cbee2",
       "name": "llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools)",
-      "versionInfo": "11460",
+      "versionInfo": "11472",
       "downloadLocation": "https://github.com/ggml-org/llama.cpp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1417,8 +1417,8 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-LLVM-OpenMP-runtime-libomp.dll-bundled-in-both-913642f0",
-      "name": "LLVM OpenMP runtime (libomp.dll, bundled in both llama.cpp zips)",
+      "SPDXID": "SPDXRef-Package-Windows-Image-LLVM-OpenMP-runtime-libomp.dll-bundled-in-both-bad5b0b4",
+      "name": "LLVM OpenMP runtime (libomp.dll, bundled in both llama.cpp zips: CPU and Vulkan)",
       "versionInfo": "as bundled in the pinned llama.cpp zips (sha256-pinned; the two copies are byte-identical)",
       "downloadLocation": "https://github.com/llvm/llvm-project/tree/main/openmp",
       "filesAnalyzed": false,
@@ -1430,22 +1430,9 @@
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-AMD-HIP-runtime-copies-beside-llama-server-amd-80f7a29b",
-      "name": "AMD HIP runtime copies beside llama-server (amdhip64_7.dll, amd_comgr.dll, rocm_kpack.dll)",
-      "versionInfo": "10.0.0",
-      "downloadLocation": "https://github.com/ROCm/TheRock",
-      "filesAnalyzed": false,
-      "supplier": "NOASSERTION",
-      "licenseDeclared": "MIT AND Apache-2.0 WITH LLVM-exception",
-      "licenseConcluded": "MIT AND Apache-2.0 WITH LLVM-exception",
-      "copyrightText": "NOASSERTION",
-      "comment": "Image section: Windows Image / llama.cpp HIP and Vulkan (rocm variant only)",
-      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
-    },
-    {
       "SPDXID": "SPDXRef-Package-Windows-Image-AMD-MIGraphX-source-built-against-TheRock-C-ru-5600a1c7",
       "name": "AMD MIGraphX (source-built against TheRock, C:\\runtime\\lib\\migraphx)",
-      "versionInfo": "2.17.0",
+      "versionInfo": "2.18.0",
       "downloadLocation": "https://github.com/ROCm/AMDMIGraphX",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -2405,7 +2392,7 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-built-from-upstre-b06a673e"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-built-from-upstre-0fda120b"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
@@ -2505,7 +2492,7 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-ROCm-relea-de02b048"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-llama.cpp-HIP-ggml-hip.dll-built-from-the-pinn-eeb95eb7"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
@@ -2515,12 +2502,7 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LLVM-OpenMP-runtime-libomp.dll-bundled-in-both-913642f0"
-    },
-    {
-      "spdxElementId": "SPDXRef-DOCUMENT",
-      "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-AMD-HIP-runtime-copies-beside-llama-server-amd-80f7a29b"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LLVM-OpenMP-runtime-libomp.dll-bundled-in-both-bad5b0b4"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

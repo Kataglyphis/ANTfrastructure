@@ -5,21 +5,21 @@
 
 <#
 .SYNOPSIS
-    Installs one of llama.cpp's official Windows releases on the rocm lane: the ROCm/HIP or the Vulkan build.
+    Installs llama.cpp on the rocm lane: the HIP build (source-built ggml-hip.dll + the CPU zip) or the Vulkan zip.
 .DESCRIPTION
-    Both zips are the one pinned build (LLAMA_CPP_HIP_BUILD), each SHA256-pinned, plus that tag's LICENSE; each
-    gets its own directory, never on PATH. rocm-checks\LlamaCpp.ps1 grades them; docs/windows-builds.md § ROCm layer.
+    Both use the one pinned build (LLAMA_CPP_HIP_BUILD): a SHA256-pinned upstream zip plus that tag's LICENSE, each in
+    its own directory, never on PATH. HIP adds the ggml-hip.dll Build-LlamaCppHipFromSource.ps1 left in -BuiltDir.
+    rocm-checks\LlamaCpp.ps1 grades them; docs/windows-rocm.md § llama.cpp HIP and Vulkan.
 #>
 param(
     [ValidateSet('hip', 'vulkan')][string]$Backend,
     [string]$TempDir = 'C:\temp',
     [string]$Build = '',
-    # hip only: the Vulkan asset name follows from the build.
-    [string]$Asset = '',
     [string]$Sha256 = '',
     [string]$LicenseSha256 = '',
-    [string]$RocmRelease = '',
-    [string]$InstallDir = ''
+    [string]$InstallDir = '',
+    # hip only: Build-LlamaCppHipFromSource.ps1's -OutputDir.
+    [string]$BuiltDir = 'C:\temp\llama-cpp-hip-built'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,7 +35,7 @@ foreach ($name in 'modules\WindowsContainerImage.Common.psm1', 'modules\WindowsS
 
 <#
 .SYNOPSIS
-    What differs per backend: pin env names, asset name, the zip's required and forbidden files, manifest, home.
+    What differs per backend: pin env names, asset name, the zip's required and forbidden files, built files, manifest, home.
 #>
 function Get-LlamaCppBackendSpec {
     param([Parameter(Mandatory)][ValidateSet('hip', 'vulkan')][string]$Backend)
@@ -43,11 +43,11 @@ function Get-LlamaCppBackendSpec {
     if ($Backend -eq 'hip') {
         return @{
             Label = 'HIP'; Home = 'C:\runtime\opt\llama.cpp-hip'; Manifest = 'llama-cpp-hip-manifest.json'
-            Env = [ordered]@{ Build = 'LLAMA_CPP_HIP_BUILD'; Asset = 'LLAMA_CPP_HIP_ASSET'; Sha256 = 'LLAMA_CPP_HIP_SHA256'; LicenseSha256 = 'LLAMA_CPP_HIP_LICENSE_SHA256' }
-            AssetPattern = '^llama-b(?<build>\d+)-bin-win-rocm-(?<rocm>\d+\.\d+)-x64\.zip$'; AssetFormat = ''
-            Required = @('ggml-hip.dll') + $common + @('amdhip64_7.dll', 'amd_comgr.dll', 'rocm_kpack.dll')
-            # The HIP runtime the zip may (and must) carry; rocm-checks\LlamaCpp.ps1 proves the copies identical.
-            RocmShared = '^(amdhip64_\d+|amd_comgr(_\d+)?|rocm_kpack)\.dll$'; Forbidden = @{}
+            # The tools and CPU backends are upstream's CPU zip, as its own ROCm zip merges them; one build pin, one LICENSE pin.
+            Env = [ordered]@{ Build = 'LLAMA_CPP_HIP_BUILD'; Sha256 = 'LLAMA_CPP_CPU_SHA256'; LicenseSha256 = 'LLAMA_CPP_HIP_LICENSE_SHA256' }
+            AssetPattern = '^llama-b(?<build>\d+)-bin-win-cpu-x64\.zip$'; AssetFormat = 'llama-b{0}-bin-win-cpu-x64.zip'
+            Required = @($common) + 'llama-cli.exe'; Built = @('ggml-hip.dll'); BuildRecord = 'llama-cpp-hip-build.json'
+            Forbidden = @{ 'ggml-hip.dll' = 'ggml-hip.dll is built from source here, never taken prebuilt' }
             RocmNeeds = @('amdhip64_7.dll', 'hipblas.dll', 'rocblas.dll')
         }
     }
@@ -56,8 +56,8 @@ function Get-LlamaCppBackendSpec {
         # Same tag as HIP: its build number and LICENSE pin are the HIP keys, so the build stays one pin.
         Env = [ordered]@{ Build = 'LLAMA_CPP_HIP_BUILD'; Sha256 = 'LLAMA_CPP_VULKAN_SHA256'; LicenseSha256 = 'LLAMA_CPP_HIP_LICENSE_SHA256' }
         AssetPattern = '^llama-b(?<build>\d+)-bin-win-vulkan-x64\.zip$'; AssetFormat = 'llama-b{0}-bin-win-vulkan-x64.zip'
-        Required = @('ggml-vulkan.dll') + $common
-        RocmShared = '(?!)'; Forbidden = @{ 'vulkan-1.dll' = 'the Vulkan loader must come from the image, not a private copy' }
+        Required = @('ggml-vulkan.dll') + $common; Built = @(); BuildRecord = ''
+        Forbidden = @{ 'vulkan-1.dll' = 'the Vulkan loader must come from the image, not a private copy' }
         RocmNeeds = @()
     }
 }
@@ -83,34 +83,17 @@ function Assert-LlamaCppLane {
 
 <#
 .SYNOPSIS
-    Builds the release asset URL, refusing a pin whose parts disagree with each other or (HIP) with ROCm.
+    The release asset's name and URL for the pinned build.
 #>
-function Get-LlamaCppAssetUrl {
+function Get-LlamaCppAsset {
     param(
         [Parameter(Mandatory)][hashtable]$Spec,
-        [Parameter(Mandatory)][AllowEmptyString()][string]$Build,
-        [Parameter(Mandatory)][AllowEmptyString()][string]$Asset,
-        [AllowEmptyString()][string]$RocmRelease = ''
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Build
     )
-    if ($Build -notmatch '^\d+$') { throw "Install-LlamaCpp: LLAMA_CPP_HIP_BUILD must be a build number like 11115; got '$Build'" }
-    $assetMatch = [regex]::Match($Asset, $Spec.AssetPattern)
-    if (-not $assetMatch.Success) {
-        throw "Install-LlamaCpp: $($Spec.Label) asset '$Asset' does not match $($Spec.AssetPattern)"
-    }
-    if ($assetMatch.Groups['build'].Value -ne $Build) {
-        throw "Install-LlamaCpp: the $($Spec.Label) asset names build $($assetMatch.Groups['build'].Value) but LLAMA_CPP_HIP_BUILD is $Build -- bump them together"
-    }
-    if ($assetMatch.Groups['rocm'].Success) {
-        $releaseMatch = [regex]::Match($RocmRelease, '^(?<mm>\d+\.\d+)\.\d+$')
-        if (-not $releaseMatch.Success) {
-            throw "Install-LlamaCpp: ROCM_WINDOWS_RELEASE must be a full release like 10.0.0; got '$RocmRelease'"
-        }
-        if ($assetMatch.Groups['rocm'].Value -ne $releaseMatch.Groups['mm'].Value) {
-            throw ("Install-LlamaCpp: the asset is built for ROCm $($assetMatch.Groups['rocm'].Value) but the image carries ROCm " +
-                "$RocmRelease -- pin a llama.cpp build for $($releaseMatch.Groups['mm'].Value)")
-        }
-    }
-    return "https://github.com/ggml-org/llama.cpp/releases/download/b$Build/$Asset"
+    if ($Build -notmatch '^\d+$') { throw "Install-LlamaCpp: LLAMA_CPP_HIP_BUILD must be a build number like 11472; got '$Build'" }
+    $asset = $Spec.AssetFormat -f $Build
+    if ($asset -notmatch $Spec.AssetPattern) { throw "Install-LlamaCpp: $($Spec.Label) asset '$asset' does not match $($Spec.AssetPattern)" }
+    return [pscustomobject]@{ Name = $asset; Url = "https://github.com/ggml-org/llama.cpp/releases/download/b$Build/$asset" }
 }
 
 <#
@@ -128,15 +111,38 @@ function Assert-LlamaCppZipEntry {
     if ($nested.Count -gt 0) { $problems += "not flat (upstream's layout changed): $($nested[0])" }
     foreach ($r in $Spec.Required) { if ($EntryName -notcontains $r) { $problems += "missing $r" } }
     foreach ($f in @($Spec.Forbidden.Keys)) { if ($EntryName -contains $f) { $problems += "carries ${f}: $($Spec.Forbidden[$f])" } }
-    # An exe-dir copy wins the loader search, so anything else of ROCm's here would replace TheRock's.
-    $shadow = @($EntryName | Where-Object { $RocmBinDllName -contains $_ -and $_ -notmatch $Spec.RocmShared })
+    # An exe-dir copy wins the loader search, so any ROCm name here would replace TheRock's.
+    $shadow = @($EntryName | Where-Object { $RocmBinDllName -contains $_ })
     if ($shadow.Count -gt 0) { $problems += "would shadow ROCm's own $($shadow -join ', ')" }
     if ($problems.Count -gt 0) { throw ("Install-LlamaCpp: refusing the $($Spec.Label) zip:`n  " + ($problems -join "`n  ")) }
 }
 
 <#
 .SYNOPSIS
-    Records every extracted file's size and SHA256, so the smoke check can prove the shipped bytes.
+    The source build's record, refused unless it was built from this build pin against this ROCm release.
+#>
+function Get-LlamaCppBuiltRecord {
+    param(
+        [Parameter(Mandatory)][hashtable]$Spec,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$BuiltDir,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Build,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$RocmRelease
+    )
+    $missing = @(@($Spec.Built) + $Spec.BuildRecord | Where-Object { -not $BuiltDir -or -not [System.IO.File]::Exists((Join-Path $BuiltDir $_)) })
+    if ($missing.Count -gt 0) {
+        throw "Install-LlamaCpp: '$BuiltDir' lacks $($missing -join ', ') -- run Build-LlamaCppHipFromSource.ps1 first"
+    }
+    $record = Get-Content -LiteralPath (Join-Path $BuiltDir $Spec.BuildRecord) -Raw | ConvertFrom-Json
+    if ("$($record.build)" -ne $Build) { throw "Install-LlamaCpp: ggml-hip.dll was built from b$($record.build), but LLAMA_CPP_HIP_BUILD is $Build" }
+    if ("$($record.rocm_release)" -ne $RocmRelease) {
+        throw "Install-LlamaCpp: ggml-hip.dll was built against ROCm '$($record.rocm_release)', but the image carries '$RocmRelease'"
+    }
+    return $record
+}
+
+<#
+.SYNOPSIS
+    Records every installed file's size and SHA256, so the smoke check can prove the shipped bytes.
 #>
 function Write-LlamaCppManifest {
     param(
@@ -144,13 +150,17 @@ function Write-LlamaCppManifest {
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Build,
         [Parameter(Mandatory)][string]$Asset,
-        [Parameter(Mandatory)][string]$Sha256
+        [Parameter(Mandatory)][string]$Sha256,
+        # HIP: the source build's record (commit, source SHA256, GPU targets, ROCm release).
+        $Built = $null
     )
     $files = @(Get-ChildItem -LiteralPath $Dir -File -Recurse | Sort-Object FullName | ForEach-Object {
         $rel = [System.IO.Path]::GetRelativePath($Dir, $_.FullName)
         [ordered]@{ name = $rel; length = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
     })
-    $manifest = [ordered]@{ build = $Build; asset = $Asset; sha256 = $Sha256.ToLowerInvariant(); files = $files }
+    $manifest = [ordered]@{ build = $Build; asset = $Asset; sha256 = $Sha256.ToLowerInvariant() }
+    if ($null -ne $Built) { $manifest['built'] = $Built }
+    $manifest['files'] = $files
     $path = Join-Path $Dir $Name
     [System.IO.File]::WriteAllText($path, ($manifest | ConvertTo-Json -Depth 4))
     return $path
@@ -158,29 +168,26 @@ function Write-LlamaCppManifest {
 
 <#
 .SYNOPSIS
-    The install: lane, pins, both downloads verified, the zip vetted before extraction, the manifest last.
+    The install: lane, pins, the built DLL's record, both downloads verified, the zip vetted before extraction, the manifest last.
 #>
 function Install-LlamaCpp {
     param(
         [Parameter(Mandatory)][ValidateSet('hip', 'vulkan')][string]$Backend,
         [Parameter(Mandatory)][string]$TempDir,
         [AllowEmptyString()][string]$Build = '',
-        [AllowEmptyString()][string]$Asset = '',
         [AllowEmptyString()][string]$Sha256 = '',
         [AllowEmptyString()][string]$LicenseSha256 = '',
-        [AllowEmptyString()][string]$RocmRelease = '',
-        [AllowEmptyString()][string]$InstallDir = ''
+        [AllowEmptyString()][string]$InstallDir = '',
+        [AllowEmptyString()][string]$BuiltDir = ''
     )
     $spec = Get-LlamaCppBackendSpec -Backend $Backend
-    $pins = @{ Build = $Build; Asset = $Asset; Sha256 = $Sha256; LicenseSha256 = $LicenseSha256 }
+    $pins = @{ Build = $Build; Sha256 = $Sha256; LicenseSha256 = $LicenseSha256 }
     foreach ($k in @($spec.Env.Keys)) { $pins[$k] = Resolve-ContainerImageValue -Value $pins[$k] -EnvironmentVariable $spec.Env[$k] }
-    if ($spec.AssetFormat -and -not $pins.Asset) { $pins.Asset = $spec.AssetFormat -f $pins.Build }
-    $Build, $Asset, $Sha256, $LicenseSha256 = $pins.Build, $pins.Asset, $pins.Sha256, $pins.LicenseSha256
-    $RocmRelease = Resolve-ContainerImageValue -Value $RocmRelease -EnvironmentVariable 'ROCM_WINDOWS_RELEASE'
+    $Build, $Sha256, $LicenseSha256 = $pins.Build, $pins.Sha256, $pins.LicenseSha256
     if (-not $InstallDir) { $InstallDir = $spec.Home }
 
     $rocmBin = Assert-LlamaCppLane -GpuEnvironment (Get-GpuEnvironment) -Spec $spec
-    $url = Get-LlamaCppAssetUrl -Spec $spec -Build $Build -Asset $Asset -RocmRelease $RocmRelease
+    $asset = Get-LlamaCppAsset -Spec $spec -Build $Build
     # The digests are the only integrity check a prebuilt has, so an empty one fails closed.
     foreach ($pin in @{ $spec.Env['Sha256'] = $Sha256 }, @{ $spec.Env['LicenseSha256'] = $LicenseSha256 }) {
         $key = @($pin.Keys)[0]
@@ -189,11 +196,15 @@ function Install-LlamaCpp {
     if ((Test-Path -LiteralPath $InstallDir) -and @(Get-ChildItem -LiteralPath $InstallDir -Force).Count -gt 0) {
         throw "Install-LlamaCpp: $InstallDir already has content; refusing to mix two llama.cpp builds"
     }
+    $record = $null
+    if ($spec.Built.Count -gt 0) {
+        $record = Get-LlamaCppBuiltRecord -Spec $spec -BuiltDir $BuiltDir -Build $Build -RocmRelease "$env:ROCM_WINDOWS_RELEASE"
+    }
 
     $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
-    $zip = Join-Path $TempDir $Asset
-    Write-Host "Downloading llama.cpp b$Build ($($spec.Label)): $url"
-    Invoke-DownloadWithRetry -Url $url -DestinationPath $zip -Description "llama.cpp b$Build Windows $($spec.Label) zip" -ExpectSignature 'PK' -ExpectedSha256 $Sha256
+    $zip = Join-Path $TempDir $asset.Name
+    Write-Host "Downloading llama.cpp b$Build ($($spec.Label)): $($asset.Url)"
+    Invoke-DownloadWithRetry -Url $asset.Url -DestinationPath $zip -Description "llama.cpp b$Build $($asset.Name)" -ExpectSignature 'PK' -ExpectedSha256 $Sha256
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
@@ -208,14 +219,15 @@ function Install-LlamaCpp {
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
     Write-Host "Extracting $($entries.Count) files into $InstallDir ..."
     [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $InstallDir)
+    foreach ($f in $spec.Built) { Copy-Item -LiteralPath (Join-Path $BuiltDir $f) -Destination $InstallDir }
     $licenseDir = New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'licenses\llama.cpp')
     Move-Item -LiteralPath $license -Destination (Join-Path $licenseDir.FullName 'LICENSE')
     Remove-Item -LiteralPath $zip -Force
-    $manifestPath = Write-LlamaCppManifest -Dir $InstallDir -Name $spec.Manifest -Build $Build -Asset $Asset -Sha256 $Sha256
+    $manifestPath = Write-LlamaCppManifest -Dir $InstallDir -Name $spec.Manifest -Build $Build -Asset $asset.Name -Sha256 $Sha256 -Built $record
     Clear-PendingFileHandle
     Write-Host "llama.cpp b$Build ($($spec.Label)) installed at $InstallDir; manifest $manifestPath"
 }
 
-Install-LlamaCpp -Backend $Backend -TempDir $TempDir -Build $Build -Asset $Asset -Sha256 $Sha256 -LicenseSha256 $LicenseSha256 `
-    -RocmRelease $RocmRelease -InstallDir $InstallDir
+Install-LlamaCpp -Backend $Backend -TempDir $TempDir -Build $Build -Sha256 $Sha256 -LicenseSha256 $LicenseSha256 -InstallDir $InstallDir `
+    -BuiltDir $BuiltDir
 exit 0

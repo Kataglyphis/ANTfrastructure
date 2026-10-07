@@ -7,9 +7,9 @@ ARG BASE_IMAGE=local/kataglyphis:windows-base
 FROM ${BASE_IMAGE}
 
 # Values: versions.env (self-measured SHA256 — AMD publishes none).
-ARG ROCM_WINDOWS_RELEASE=10.0.0
+ARG ROCM_WINDOWS_RELEASE=10.1.0
 ARG ROCM_WINDOWS_GFX_FAMILY=gfx120X-all
-ARG ROCM_WINDOWS_TARBALL_SHA256=75da73c483cbc0456d9008f2079b333f4f9d3b7744705378ff8007e502ca38c5
+ARG ROCM_WINDOWS_TARBALL_SHA256=e8d5acd522aa106d685485707e5085d491ead7d0d84a79ef74dc5995941403b2
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 

@@ -6,6 +6,43 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — ROCm 10.1 (TheRock `therock-10.1`), MIGraphX 2.18.0 and llama.cpp b11472 (CON73)
+
+- **Owner decision: TheRock 10.1, MIGraphX 2.18.0 and the newest llama.cpp, all three.** Renovate has reported
+  TheRock 10.1 since its annotation reads `versioning=loose`; the bump was made by hand, since every pin carries a
+  paired value. `MIGRAPHX_VERSION` is shared by both lanes.
+- **Linux (`:latest-rocm`).** `ROCM_VERSION=10.1`, `MIGRAPHX_VERSION=2.18.0`. The list resolves to 262 packages at
+  `10.1.0-3` plus `amdrocm10-migraphx{,-dev}` `2.18.0-1` (298 with ASAN, all 10.1). `PYTORCH_ROCM_INDEX` stays
+  `rocm7.14`: `rocm7.14.1`, `7.15`, `7.16`, `8.0`, `10`, `10.0` and `10.1` answer 403.
+  - **MIGraphX left `/opt/rocm/lib`.** 10.1 installs it under `/opt/rocm/extras-10/`; the first 10.1 install
+    stopped at `migraphx.hpp not found`. `setup-rocm-repo.sh` writes `libmigraphx_c`'s directory into
+    `rocm.conf`, finds `migraphx.hpp` anywhere under `/opt/rocm` and fails unless `ldconfig -p` lists
+    `libmigraphx_c`; `30-build-native-amd.sh` hands ORT MIGraphX's own prefix as `--migraphx_home` (ORT's
+    `find_package(migraphx PATHS /opt/rocm)` misses `extras-10`) and drops the dead `2.14.0` default;
+    `publish_rocm_ld_path` publishes the same directory and no longer publishes `core-asan-*`.
+  - Proved in `:latest`: the real 10.1 install (7.0 GB, 21.7 GB on disk) and the ASAN branch pass the script and
+    its release check, and the script built ORT v1.30.0 with the MIGraphX EP, whose provider loads GPU-less.
+    `test-rocm-packages.sh` 22 → 36 assertions, 10 mutations.
+- **Windows (`:winamd64-rocm`).** `ROCM_WINDOWS_RELEASE` 10.0.0 → 10.1.0: the gfx120X-all tarball
+  (2,244,477,973 B) and the `rocm` sdist, `rocm-sdk-core`, `rocm-sdk-libraries` and the gfx1201/gfx1200 device
+  wheels, every SHA256 self-measured by full download. 10.1.0 names hiprtc `hiprtc0716.dll`; every check derives
+  the name.
+  - **MIGraphX 2.18.0** is the head of `release/rocm-rel-10.1` (`95672916`; no `rocm-10.1` tag yet). It carries
+    upstream 5a80dc91ba, so `001-mlir-off-stubs.patch` is gone. It built to the end in 58 min in a `:winamd64`
+    container (`prefuse_ops.cpp` alone about 50 min on one core), and the ORT AMDGPU EP built against it.
+  - **llama.cpp b11460 → b11472, with `ggml-hip.dll` built here.** Upstream still ships only `win-rocm-10.0` zips.
+    `Build-LlamaCppHipFromSource.ps1` builds upstream's `windows-rocm` recipe from the tag's source archive with
+    TheRock's AMD clang for gfx1200/gfx1201, with nothing that downloads at build time (3 min 27 s cold).
+    `Install-LlamaCpp.ps1 -Backend hip` puts it beside the tag's `win-cpu-x64` zip (`llama-server`/`llama-cli`
+    and the CPU backends, SHA-pinned as `LLAMA_CPP_CPU_SHA256`), as upstream's own ROCm zip merges them: a full
+    source build would fetch the server's web UI and BoringSSL unpinned. No ROCm DLL sits beside it; the
+    directory is 178 MB, down from about 1.24 GB. The Vulkan build stays upstream's zip at the same tag.
+  - `rocm-checks\LlamaCpp.ps1` checks that no ROCm DLL sits beside llama-server, walks ggml-hip's imports into
+    ROCm's bin and runs `llama-cli --list-devices`. `WindowsMigraphx.Common` gains `Invoke-RocmClangConfigure`
+    and `Assert-RocmBuiltPe`. TheRock 10.1's clang compiles HIP against MSVC 14.51 without the `hip-msvc-cmath`
+    overlay, which stays until an image build proves it can go (CON78).
+- What only the published images prove is BACKLOG CON78.
+
 ## 2026-10-07 — The arm64 bundle carries a free-threaded CPython too (CON74, half 1)
 
 - **`:winarm64`'s `C:\runtime` gains `python-freethreaded`** beside the GIL target interpreter.

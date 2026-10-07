@@ -12683,6 +12683,78 @@
   "why": "a versionless amdrocm-asan follows the suite's newest ROCm too"
  },
  {
+  "id": "rocm-stack.migraphx-lib-on-loader-path",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "{ echo /opt/rocm/lib; find /opt/rocm -name 'libmigraphx_c.so*' -printf '%h\\n' 2>/dev/null; } | LC_ALL=C sort -u > /etc/ld.so.conf.d/rocm.conf",
+  "replace": "echo /opt/rocm/lib > /etc/ld.so.conf.d/rocm.conf",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "since 10.1 /opt/rocm/lib is core's and MIGraphX sits in extras-10/lib, which nothing else puts on the loader path"
+ },
+ {
+  "id": "rocm-stack.migraphx-loader-gate",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "  *) echo \"libmigraphx_c is on no loader path (/etc/ld.so.conf.d/rocm.conf)\"; exit 1 ;;",
+  "replace": "  *) ;;",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "an image whose loader cannot find libmigraphx_c builds green and fails at the first MIGraphX session"
+ },
+ {
+  "id": "rocm-stack.migraphx-header-anywhere",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "find /opt/rocm -path '*/include/migraphx/migraphx.hpp'",
+  "replace": "find /opt/rocm/core -path '*/include/migraphx/migraphx.hpp'",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "the 10.1 headers are in extras-10/include; a fixed path failed the first 10.1 install (2026-10-07)"
+ },
+ {
+  "id": "rocm-stack.ort-migraphx-prefix",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh",
+  "find": "_migraphx_prefix=\"${_migraphx_config_dir%/lib/cmake/migraphx}\"",
+  "replace": "_migraphx_prefix=\"${MIGRAPHX_HOME}\"",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "find_package(migraphx PATHS /opt/rocm) does not reach extras-10/lib/cmake/migraphx"
+ },
+ {
+  "id": "rocm-stack.ort-migraphx-home-passed",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh",
+  "find": "--migraphx_home \"${_migraphx_prefix}\"",
+  "replace": "--migraphx_home \"${MIGRAPHX_HOME}\"",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "ORT's configure stops at find_package(migraphx) when handed the ROCm root"
+ },
+ {
+  "id": "rocm-stack.ort-migraphx-required",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh",
+  "find": "if [ ! -f \"${_migraphx_config_dir}/migraphx-config.cmake\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "a missing MIGraphX must fail before ORT's configure, not hand it an empty prefix"
+ },
+ {
+  "id": "rocm-stack.ort-migraphx-missing-root-reports",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh",
+  "find": "-path '*/lib/cmake/migraphx' -type d 2>/dev/null | sort | tail -1 || true)\"",
+  "replace": "-path '*/lib/cmake/migraphx' -type d 2>/dev/null | sort | tail -1)\"",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "under pipefail a failed find ends the build without a word, before the MIGraphX error can print"
+ },
+ {
+  "id": "rocm-stack.runtime-migraphx-ld-path",
+  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "find": "\\( -name 'libamdhip64.so*' -o -name 'libmigraphx_c.so*' \\) -printf",
+  "replace": "\\( -name 'libamdhip64.so*' \\) -printf",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "the runtime image's MIGraphX EP needs libmigraphx_c.so.3, which sits outside every HIP dir since 10.1"
+ },
+ {
+  "id": "rocm-stack.runtime-asan-off-loader-path",
+  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "find": "find /opt/rocm -path '/opt/rocm/core-asan-*' -prune -o \\(",
+  "replace": "find /opt/rocm \\(",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "core-asan-10.1/lib holds libamdhip64 too; over a real 10.1 ASAN install the find listed it (2026-10-07)"
+ },
+ {
   "id": "renovate.skipped-deps-are-listed",
   "target": "linux/scripts/renovate-local.sh",
   "find": "    note \"${n} update(s) available (manager(s): ${MANAGERS})\"\n  fi\n  report_skipped\n}",

@@ -44,12 +44,12 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
 ARG ROCM_WINDOWS_GFX_FAMILY=gfx120X-all
 ARG PYTORCH_VERSION=v2.14.1
 ARG TORCH_ROCM_WINDOWS_PYTORCH_COMMIT=5c4886908584029761b579af026dcfb627c84070
-ARG TORCH_ROCM_WINDOWS_ROCM_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm/rocm-10.0.0.tar.gz
-ARG TORCH_ROCM_WINDOWS_ROCM_SHA256=65b5982249612a310135f5e061b9f28909e8ad718a1ddb3f1abba92298b7216b
-ARG TORCH_ROCM_WINDOWS_SDK_CORE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-core/rocm_sdk_core-10.0.0-py3-none-win_amd64.whl
-ARG TORCH_ROCM_WINDOWS_SDK_CORE_SHA256=066195cb0f7df02e6009facb17652dd992d13fae44d87652e5ab928d5b4f0851
-ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-libraries/rocm_sdk_libraries-10.0.0-py3-none-win_amd64.whl
-ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_SHA256=bfc7a1bd3b6050fb4d36d8ac2eea80d3afd70c5604a29142463d6cb890fc73bf
+ARG TORCH_ROCM_WINDOWS_ROCM_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm/rocm-10.1.0.tar.gz
+ARG TORCH_ROCM_WINDOWS_ROCM_SHA256=e6616e62ebd1324031681e6e59349d46ee4f143a8d8f4f901a91c35c993041fc
+ARG TORCH_ROCM_WINDOWS_SDK_CORE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-core/rocm_sdk_core-10.1.0-py3-none-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_SDK_CORE_SHA256=b12f1c4cde14ed1cd8864006d17586c6b1e6a4e4695b9597cfe04ed7715e952f
+ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-libraries/rocm_sdk_libraries-10.1.0-py3-none-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_SHA256=0c34bafbb4aa626cc710d8b130bb314f591194c3d79eeb5892b755ea0be06159
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-TorchRocmFromSource.ps1,target=C:\bkmnt\Build-TorchRocmFromSource.ps1 `
@@ -84,16 +84,16 @@ FROM app AS rocm-0
 
 FROM app AS rocm-1
 # SHA256s are self-measured: AMD publishes none.
-ARG TORCH_ROCM_WINDOWS_ROCM_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm/rocm-10.0.0.tar.gz
-ARG TORCH_ROCM_WINDOWS_ROCM_SHA256=65b5982249612a310135f5e061b9f28909e8ad718a1ddb3f1abba92298b7216b
-ARG TORCH_ROCM_WINDOWS_SDK_CORE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-core/rocm_sdk_core-10.0.0-py3-none-win_amd64.whl
-ARG TORCH_ROCM_WINDOWS_SDK_CORE_SHA256=066195cb0f7df02e6009facb17652dd992d13fae44d87652e5ab928d5b4f0851
-ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-libraries/rocm_sdk_libraries-10.0.0-py3-none-win_amd64.whl
-ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_SHA256=bfc7a1bd3b6050fb4d36d8ac2eea80d3afd70c5604a29142463d6cb890fc73bf
-ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1201/rocm_sdk_device_gfx1201-10.0.0-py3-none-win_amd64.whl
-ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_SHA256=c6e4c5a0da941230bed975765e644597570081c9a41654d5a052c277167f4576
-ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1200/rocm_sdk_device_gfx1200-10.0.0-py3-none-win_amd64.whl
-ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_SHA256=f33226078932ee2200f5595c521895edf5d7abf3170975d8c6f72a2a3949f516
+ARG TORCH_ROCM_WINDOWS_ROCM_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm/rocm-10.1.0.tar.gz
+ARG TORCH_ROCM_WINDOWS_ROCM_SHA256=e6616e62ebd1324031681e6e59349d46ee4f143a8d8f4f901a91c35c993041fc
+ARG TORCH_ROCM_WINDOWS_SDK_CORE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-core/rocm_sdk_core-10.1.0-py3-none-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_SDK_CORE_SHA256=b12f1c4cde14ed1cd8864006d17586c6b1e6a4e4695b9597cfe04ed7715e952f
+ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-libraries/rocm_sdk_libraries-10.1.0-py3-none-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_SHA256=0c34bafbb4aa626cc710d8b130bb314f591194c3d79eeb5892b755ea0be06159
+ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1201/rocm_sdk_device_gfx1201-10.1.0-py3-none-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_SHA256=56085e8f865b6b96c230fe8d1731074103553d0d958a31be13907d01e558fd0e
+ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1200/rocm_sdk_device_gfx1200-10.1.0-py3-none-win_amd64.whl
+ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_SHA256=8b670bee24ca4fc6c13c1eb58e9c6c39929913107ce00a8661c4db9d3e39d9fa
 # The venv's ai-edge-litert (PyPI, published SHA256), installed --no-deps in the same offline step.
 ARG TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_URL=https://files.pythonhosted.org/packages/3c/33/1e7b4ac36d983aa6153b10f1e8686d7f6ff47bda1216d6d8f047a19f3cc6/ai_edge_litert-2.2.0-cp314-cp314-win_amd64.whl
 ARG TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_SHA256=4e5e35da364495fdf0abefd6ef32d299133619df4cbab757941b0462066e93bc

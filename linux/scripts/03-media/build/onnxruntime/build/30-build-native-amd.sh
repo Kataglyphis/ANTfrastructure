@@ -11,13 +11,16 @@ parse_common_args "$@"
 detect_jobs
 
 MIGRAPHX_HOME="${MIGRAPHX_HOME:-/opt/rocm}"
-MIGRAPHX_VERSION="${MIGRAPHX_VERSION:-2.14.0}"
 NATIVE_GPU_OUTPUT_DIR="${NATIVE_GPU_OUTPUT_DIR:-/usr/local/lib/onnxruntime-gpu}"
 NATIVE_GPU_BUILD_DIR="${NATIVE_GPU_BUILD_DIR:-${ORT_SRC_DIR}/build_native_gpu_migraphx}"
 
-if ! command -v hipcc >/dev/null 2>&1 && [ ! -d "${MIGRAPHX_HOME}/include/migraphx" ]; then
-  err "MIGraphX not found. Install the AMD toolchain layer first or set MIGRAPHX_HOME."
+# MIGRAPHX_HOME is the ROCm root; since 10.1 MIGraphX has its own prefix (extras-<major>/), which ORT's find_package must be given.
+_migraphx_config_dir="$(find "${MIGRAPHX_HOME}" -maxdepth 5 -path '*/lib/cmake/migraphx' -type d 2>/dev/null | sort | tail -1 || true)"
+if [ ! -f "${_migraphx_config_dir}/migraphx-config.cmake" ]; then
+  err "MIGraphX not found: no lib/cmake/migraphx/migraphx-config.cmake under ${MIGRAPHX_HOME}. Install the AMD toolchain layer first or set MIGRAPHX_HOME."
 fi
+_migraphx_prefix="${_migraphx_config_dir%/lib/cmake/migraphx}"
+info "MIGraphX prefix: ${_migraphx_prefix}"
 
 if command -v setup_linux_cross_env >/dev/null 2>&1; then
   setup_linux_cross_env
@@ -86,7 +89,7 @@ fi
 
 BUILD_ARGS+=(
   --use_migraphx
-  --migraphx_home "${MIGRAPHX_HOME}"
+  --migraphx_home "${_migraphx_prefix}"
 )
 
 # ORT defaults telemetry on, and its vendored sqlite fails GCC 16's -Werror=stringop-overflow.
@@ -109,7 +112,7 @@ append_onnx_lld_build_args BUILD_ARGS
 append_onnx_ccache_build_args BUILD_ARGS
 
 export PATH="${MIGRAPHX_HOME}/bin:${PATH}"
-export LD_LIBRARY_PATH="${MIGRAPHX_HOME}/lib:${MIGRAPHX_HOME}/lib64:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="${_migraphx_prefix}/lib:${MIGRAPHX_HOME}/lib:${MIGRAPHX_HOME}/lib64:${LD_LIBRARY_PATH:-}"
 
 if ! "${BUILD_SH}" "${BUILD_ARGS[@]}"; then
   if cross_build_is_active; then

@@ -76,6 +76,18 @@ Describe 'WindowsMigraphx.Common: AMD LLVM tool paths' {
     }
 }
 
+Describe 'WindowsMigraphx.Common: a HIP build''s PE is amd64 (MIGraphX, ggml-hip)' {
+    It 'accepts an amd64 PE and names a missing file or another machine' {
+        Invoke-InTestDir { param($dir)
+            New-TestPeFile -Path (Join-Path $dir 'ggml-hip.dll') -Machine 0x8664
+            Assert-RocmBuiltPe -Path (Join-Path $dir 'ggml-hip.dll')
+            New-TestPeFile -Path (Join-Path $dir 'migraphx_gpu.dll') -Machine 0xAA64
+            Assert-Throws { Assert-RocmBuiltPe -Path (Join-Path $dir 'migraphx_gpu.dll') } 'arm64' -MessagePattern 'migraphx_gpu\.dll PE machine 0xAA64 is not amd64'
+            Assert-Throws { Assert-RocmBuiltPe -Path (Join-Path $dir 'none.dll') } 'missing' -MessagePattern 'the build produced no .*none\.dll'
+        }
+    }
+}
+
 Describe 'WindowsMigraphx.Common: pinned sources' {
     $sha = 'A' * 64
     It 'builds the URL from the env pin and lower-cases the SHA' {
@@ -214,30 +226,6 @@ Describe 'Build-MigraphxFromSource.ps1: rocm-cmake' {
         Assert-True ($fetch -gt 0 -and $fetch -lt $configure) 'rocm-cmake is staged in phase 2, before the MIGraphX configure'
         Assert-True ($text -match 'Get-MigraphxRocmCmakeCommit -RequirementsText') 'the commit comes from MIGraphX''s requirements.txt'
         Assert-True ($text -match '-InstallPrefix \$depsPrefix') 'it installs into the deps prefix, which precedes TheRock on CMAKE_PREFIX_PATH'
-    }
-}
-
-Describe 'Build-MigraphxFromSource.ps1: MLIR-off stubs backport' {
-    It 'git-inits the fetched tree and patches it before anything builds' {
-        $text = Get-Content -Raw -LiteralPath (Join-Path $script:MgxRepo $script:MgxScript)
-        $order = '(?s)\$sourceRoot = Save-PinnedSource .*Initialize-ExtractedGitRepo -Path \$sourceRoot.*' +
-            'Invoke-SourcePatch -PatchFile \(Join-Path \$scriptAssetRoot ''patches\\migraphx\\001-mlir-off-stubs\.patch''\) -SourceDir \$sourceRoot.*2\. host deps'
-        Assert-Match $order $text 'saved, git-inited for git apply, patched, then the deps'
-    }
-
-    It 'adds the four definitions MLIR=OFF leaves undefined to mlir.cpp, and removes nothing' {
-        $patch = [System.IO.File]::ReadAllText((Join-Path $script:MgxRepo 'windows\scripts\patches\migraphx\001-mlir-off-stubs.patch'))
-        Assert-Equal 'src/targets/gpu/mlir.cpp' (@([regex]::Matches($patch, '(?m)^\+\+\+ b/(\S+)') | ForEach-Object { $_.Groups[1].Value }) -join ',') 'target'
-        foreach ($fn in 'is_module_fusible', 'adjust_param_shapes', 'dump_mlir_to_file', 'dump_mlir_to_mxr') {
-            Assert-Match "(?m)^\+\S.*\b$fn\(" $patch "defines $fn"
-        }
-        Assert-False ($patch -match '(?m)^-(?!--)') 'a backport of added stubs deletes no line'
-        Assert-False ($patch.Contains("`r")) 'LF, as git apply reads the tarball''s LF source'
-    }
-
-    It 'Dockerfile.rocm-migraphx mounts the patch directory where the script resolves it' {
-        $joined = ([System.IO.File]::ReadAllText($script:MgxDockerfile)) -replace '`\r?\n', ' '
-        Assert-Match ([regex]::Escape('source=windows/scripts/patches/migraphx,target=C:\bkmnt\patches\migraphx')) $joined 'patch mount'
     }
 }
 
@@ -585,12 +573,13 @@ Describe 'Dockerfile.rocm-migraphx' {
 
 Describe 'cpu and nvidia inputs are untouched by the spike' {
     It 'no other Windows Dockerfile names the spike''s scripts, module or pins' {
-        # Only Dockerfile.torch's rocm-1-only torch-rocm-wheels stage may borrow the module (Torch.Rocm.Tests.ps1).
+        # Only rocm-only stages may borrow the module: Dockerfile.torch's torch-rocm-wheels (Torch.Rocm.Tests.ps1) and the llama stage's ggml-hip build.
         $hits = @(Get-ChildItem -Path (Join-Path $script:MgxRepo 'windows') -Filter 'Dockerfile*' -File |
             Where-Object { $_.Name -ne 'Dockerfile.rocm-migraphx' } |
             Where-Object {
                 $text = [System.IO.File]::ReadAllText($_.FullName)
                 if ($_.Name -eq 'Dockerfile.torch') { $text = [regex]::Replace($text, '(?s)FROM \$\{BASE_IMAGE\} AS torch-rocm-wheels.*?(?=\r?\nFROM )', '') }
+                if ($_.Name -eq 'Dockerfile.rocm-llama') { $text = $text -replace 'WindowsMigraphx\.Common', '' }
                 $text -match 'Build-MigraphxFromSource|Build-OrtAmdgpuEpFromSource|WindowsMigraphx\.Common|MIGRAPHX_WINDOWS_|ORT_AMDGPU_EP_'
             } |
             ForEach-Object Name)

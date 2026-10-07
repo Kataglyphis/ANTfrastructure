@@ -8,8 +8,9 @@ $script:TorchRocmCheck = 'windows\scripts\build\rocm-checks\Torch.ps1'
 # Everything the pinned-set functions call, lifted together.
 $script:TorchRocmSetFunction = @('Get-TorchRocmPinMap', 'Get-TorchRocmExtraPinMap', 'ConvertFrom-TorchRocmFileName',
     'Get-TorchRocmPinnedFile', 'Get-TorchRocmGpuTarget', 'Get-TorchRocmWheelSet', 'Get-TorchRocmExtraWheel', 'Get-TorchRocmBuiltWheel')
-# The torch-rocm-wheels stage's two wheels as this versions.env builds them.
-$script:TorchRocmBuiltName = @('torch-2.14.0+rocm10.0.0-cp314-cp314-win_amd64.whl', 'torchvision-0.29.0+rocm10.0.0-cp314-cp314-win_amd64.whl')
+# The torch-rocm-wheels stage's two wheels as this versions.env builds them: their local version is the ROCm release.
+$script:TorchRocmRelease = (ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'))['ROCM_WINDOWS_RELEASE']
+$script:TorchRocmBuiltName = @("torch-2.14.0+rocm$($script:TorchRocmRelease)-cp314-cp314-win_amd64.whl", "torchvision-0.29.0+rocm$($script:TorchRocmRelease)-cp314-cp314-win_amd64.whl")
 
 # A WheelDir holding $Name (default: the two built wheels) as small fake files.
 function New-TorchRocmBuiltWheelDir {
@@ -219,13 +220,17 @@ Describe 'Install-TorchRocm: pinned set (versions.env)' {
     }
 
     It 'coupling: a ROCM_WINDOWS_RELEASE bump without re-pinning the wheels throws' {
+        # Derived from the pins, so the case survives every release bump: the next patch release is the drift.
         $pins = Get-TorchRocmTestPin
-        Assert-Throws { Get-TorchRocmWheelSet -Pins $pins -Release '10.1.0' } 'release drift' -MessagePattern 'ROCM_WINDOWS_RELEASE=10\.1\.0'
-        $pins['TORCH_ROCM_WINDOWS_SDK_CORE_URL'] = $pins['TORCH_ROCM_WINDOWS_SDK_CORE_URL'] -replace '10\.0\.0', '10.0.1'
-        Assert-Throws { Get-TorchRocmWheelSet -Pins $pins -Release '10.0.0' } 'one file drifted' -MessagePattern 'SDK_CORE_URL'
+        $release = $pins['ROCM_WINDOWS_RELEASE']
+        $parts = $release -split '\.'
+        $next = '{0}.{1}.{2}' -f $parts[0], $parts[1], ([int]$parts[2] + 1)
+        Assert-Throws { Get-TorchRocmWheelSet -Pins $pins -Release $next } 'release drift' -MessagePattern ('ROCM_WINDOWS_RELEASE=' + [regex]::Escape($next))
+        $pins['TORCH_ROCM_WINDOWS_SDK_CORE_URL'] = $pins['TORCH_ROCM_WINDOWS_SDK_CORE_URL'] -replace [regex]::Escape($release), $next
+        Assert-Throws { Get-TorchRocmWheelSet -Pins $pins -Release $release } 'one file drifted' -MessagePattern 'SDK_CORE_URL'
         $pins = Get-TorchRocmTestPin
-        $pins['TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL'] = $pins['TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL'] -replace '10\.0\.0', '10.0.1'
-        Assert-Throws { Get-TorchRocmWheelSet -Pins $pins -Release '10.0.0' } 'the second GPU drifted' -MessagePattern 'SDK_DEVICE_GFX1200_URL'
+        $pins['TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL'] = $pins['TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL'] -replace [regex]::Escape($release), $next
+        Assert-Throws { Get-TorchRocmWheelSet -Pins $pins -Release $release } 'the second GPU drifted' -MessagePattern 'SDK_DEVICE_GFX1200_URL'
     }
 
     It 'refuses a bad release, a bad SHA256, a URL off AMD''s repo, swapped keys and a non-Windows wheel' {
@@ -237,17 +242,17 @@ Describe 'Install-TorchRocm: pinned set (versions.env)' {
                 @{ Key = 'TORCH_ROCM_WINDOWS_SDK_CORE_SHA256'; Value = ''; P = 'SDK_CORE_SHA256' }
                 @{ Key = 'TORCH_ROCM_WINDOWS_SDK_CORE_SHA256'; Value = 'abc'; P = 'SDK_CORE_SHA256' }
                 @{ Key = 'TORCH_ROCM_WINDOWS_ROCM_URL'; Value = ''; P = 'ROCM_URL' }
-                @{ Key = 'TORCH_ROCM_WINDOWS_ROCM_URL'; Value = 'https://pypi.org/packages/rocm-10.0.0.tar.gz'; P = 'stable\.repo\.amd\.com' }
-                @{ Key = 'TORCH_ROCM_WINDOWS_SDK_CORE_URL'; Value = "http://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-core/rocm_sdk_core-10.0.0-py3-none-win_amd64.whl"; P = 'stable\.repo\.amd\.com' }
-                @{ Key = 'TORCH_ROCM_WINDOWS_SDK_CORE_URL'; Value = "$core/rocm-sdk-libraries/rocm_sdk_libraries-10.0.0-py3-none-win_amd64.whl"; P = 'expected rocm-sdk-core' }
-                @{ Key = 'TORCH_ROCM_WINDOWS_SDK_DEVICE_URL'; Value = "$core/rocm-sdk-device-gfx1201/rocm_sdk_device_gfx1201-10.0.0-py3-none-manylinux_2_28_x86_64.whl"; P = 'win_amd64' }
-                @{ Key = 'TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL'; Value = "$core/rocm-sdk-device-gfx1201/rocm_sdk_device_gfx1201-10.0.0-py3-none-win_amd64.whl"; P = 'SDK_DEVICE_GFX1200_URL names rocm-sdk-device-gfx1201, expected rocm-sdk-device-gfx1200' })
+                @{ Key = 'TORCH_ROCM_WINDOWS_ROCM_URL'; Value = "https://pypi.org/packages/rocm-$($script:TorchRocmRelease).tar.gz"; P = 'stable\.repo\.amd\.com' }
+                @{ Key = 'TORCH_ROCM_WINDOWS_SDK_CORE_URL'; Value = "http://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-core/rocm_sdk_core-$($script:TorchRocmRelease)-py3-none-win_amd64.whl"; P = 'stable\.repo\.amd\.com' }
+                @{ Key = 'TORCH_ROCM_WINDOWS_SDK_CORE_URL'; Value = "$core/rocm-sdk-libraries/rocm_sdk_libraries-$($script:TorchRocmRelease)-py3-none-win_amd64.whl"; P = 'expected rocm-sdk-core' }
+                @{ Key = 'TORCH_ROCM_WINDOWS_SDK_DEVICE_URL'; Value = "$core/rocm-sdk-device-gfx1201/rocm_sdk_device_gfx1201-$($script:TorchRocmRelease)-py3-none-manylinux_2_28_x86_64.whl"; P = 'win_amd64' }
+                @{ Key = 'TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL'; Value = "$core/rocm-sdk-device-gfx1201/rocm_sdk_device_gfx1201-$($script:TorchRocmRelease)-py3-none-win_amd64.whl"; P = 'SDK_DEVICE_GFX1200_URL names rocm-sdk-device-gfx1201, expected rocm-sdk-device-gfx1200' })
     }
 
     It 'one GPU pinned twice, a device pin with no SDK_DEVICE pin, and no device pin at all are refused' {
         $pins = Get-TorchRocmTestPin
         $pins['TORCH_ROCM_WINDOWS_SDK_DEVICE_URL'] = $pins['TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL']
-        Assert-Throws { Get-TorchRocmWheelSet -Pins $pins -Release '10.0.0' } 'gfx1200 twice' -MessagePattern 'pins gfx1200 a second time'
+        Assert-Throws { Get-TorchRocmWheelSet -Pins $pins -Release $pins['ROCM_WINDOWS_RELEASE'] } 'gfx1200 twice' -MessagePattern 'pins gfx1200 a second time'
         $set = Get-TorchRocmTestSet
         $byName = [ordered]@{}
         foreach ($w in $set.Wheels) { $byName[$w.Name] = $w }
@@ -265,9 +270,9 @@ Describe 'Install-TorchRocm: the source-built wheels (torch-rocm-wheels stage)' 
     It 'reads exactly the torch and torchvision wheels, with their own SHA256 and path' {
         Invoke-InTestDir { param($dir)
             $wd = New-TorchRocmBuiltWheelDir -Dir $dir
-            $built = @(Get-TorchRocmBuiltWheel -WheelDir $wd -Release '10.0.0')
+            $built = @(Get-TorchRocmBuiltWheel -WheelDir $wd -Release $script:TorchRocmRelease)
             Assert-Equal 'torch,torchvision' (($built | ForEach-Object Distribution) -join ',') 'torch first, then torchvision'
-            Assert-Equal '2.14.0+rocm10.0.0,0.29.0+rocm10.0.0' (($built | ForEach-Object Version) -join ',') 'versions'
+            Assert-Equal "2.14.0+rocm$($script:TorchRocmRelease),0.29.0+rocm$($script:TorchRocmRelease)" (($built | ForEach-Object Version) -join ',') 'versions'
             foreach ($w in $built) {
                 Assert-Equal (Get-FileHash -Algorithm SHA256 -LiteralPath $w.LocalPath).Hash.ToLowerInvariant() $w.Sha256 "$($w.FileName) hash"
                 Assert-True (Test-Path -LiteralPath $w.LocalPath -PathType Leaf) "$($w.FileName) path"
@@ -277,16 +282,16 @@ Describe 'Install-TorchRocm: the source-built wheels (torch-rocm-wheels stage)' 
 
     It 'refuses a missing directory, a stray file, a second torch, another platform, another ROCm and a missing torchvision' {
         Invoke-InTestDir { param($dir)
-            Assert-Throws { Get-TorchRocmBuiltWheel -WheelDir (Join-Path $dir 'none') -Release '10.0.0' } 'no dir' -MessagePattern 'no source-built wheels'
+            Assert-Throws { Get-TorchRocmBuiltWheel -WheelDir (Join-Path $dir 'none') -Release $script:TorchRocmRelease } 'no dir' -MessagePattern 'no source-built wheels'
             $i = 0
             foreach ($c in @(
                     @{ N = $script:TorchRocmBuiltName + 'numpy-2.3.0-cp314-cp314-win_amd64.whl'; P = 'only the torch and torchvision wheels' }
-                    @{ N = $script:TorchRocmBuiltName + 'torch-2.14.0+rocm10.0.0-cp313-cp313-win_amd64.whl'; P = 'two torch wheels' }
-                    @{ N = @('torch-2.14.0+rocm10.0.0-cp314-cp314-linux_x86_64.whl', $script:TorchRocmBuiltName[1]); P = 'linux_x86_64 wheel' }
-                    @{ N = @('torch-2.14.0+rocm10.1.0-cp314-cp314-win_amd64.whl', $script:TorchRocmBuiltName[1]); P = "not a '\+rocm10\.0\.0' build" }
+                    @{ N = $script:TorchRocmBuiltName + "torch-2.14.0+rocm$($script:TorchRocmRelease)-cp313-cp313-win_amd64.whl"; P = 'two torch wheels' }
+                    @{ N = @("torch-2.14.0+rocm$($script:TorchRocmRelease)-cp314-cp314-linux_x86_64.whl", $script:TorchRocmBuiltName[1]); P = 'linux_x86_64 wheel' }
+                    @{ N = @('torch-2.14.0+rocm9.9.9-cp314-cp314-win_amd64.whl', $script:TorchRocmBuiltName[1]); P = "not a '\+rocm$([regex]::Escape($script:TorchRocmRelease))' build" }
                     @{ N = @($script:TorchRocmBuiltName[0]); P = 'has no torchvision wheel' })) {
                 $wd = New-TorchRocmBuiltWheelDir -Dir (Join-Path $dir "case$i") -Name $c.N
-                Assert-Throws { Get-TorchRocmBuiltWheel -WheelDir $wd -Release '10.0.0' } "case $i" -MessagePattern $c.P
+                Assert-Throws { Get-TorchRocmBuiltWheel -WheelDir $wd -Release $script:TorchRocmRelease } "case $i" -MessagePattern $c.P
                 $i++
             }
         }

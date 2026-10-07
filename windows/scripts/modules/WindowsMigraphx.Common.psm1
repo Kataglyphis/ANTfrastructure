@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# rocm-lane helpers for the MIGraphX and ORT EP builds: see docs/windows-rocm.md § MIGraphX and the ORT plugin EP
+# rocm-lane helpers for the MIGraphX, ORT EP and llama.cpp ggml-hip builds: see docs/windows-rocm.md § MIGraphX and the ORT plugin EP
 
 Set-StrictMode -Version Latest
 
@@ -92,6 +92,39 @@ function Get-RocmLlvmToolPath {
     $path = Join-Path $RocmRoot "lib\llvm\bin\$Tool.exe"
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "AMD LLVM tool $Tool.exe not found at $path (TheRock layout moved?)" }
     return ($path -replace '\\', '/')
+}
+
+function Invoke-RocmClangConfigure {
+    <#
+    .SYNOPSIS
+        Invoke-CmakeConfigure for a HIP build: TheRock's clang/clang++ by absolute path, and TheRock visible to find_package.
+    .DESCRIPTION
+        clang-cl has no AMDGPU backend, so device code needs AMD's driver; MIGraphX and ggml-hip configure through here.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$BuildDir,
+        [Parameter(Mandatory)][string]$InstallPrefix,
+        [Parameter(Mandatory)][string]$RocmRoot,
+        [string]$BuildType = 'Release',
+        [string[]]$ExtraArgs = @()
+    )
+    # Linker and archiver stay that driver's own; -AllowRocmPrefix lifts the rocm-lane prefix isolation.
+    Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $BuildDir -InstallPrefix $InstallPrefix -BuildType $BuildType `
+        -CCompiler (Get-RocmLlvmToolPath -RocmRoot $RocmRoot -Tool 'clang') `
+        -CxxCompiler (Get-RocmLlvmToolPath -RocmRoot $RocmRoot -Tool 'clang++') `
+        -Linker '' -Archiver '' -ExtraArgs $ExtraArgs -AllowRocmPrefix
+}
+
+function Assert-RocmBuiltPe {
+    <#
+    .SYNOPSIS
+        Throws unless a HIP build produced the PE and it is amd64, the only arch TheRock ships for Windows.
+    #>
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not [System.IO.File]::Exists($Path)) { throw "the build produced no $Path" }
+    $machine = Get-PeFileMachine -Path $Path
+    if ($machine -ne (Get-PeMachineType -Arch 'amd64')) { throw ('{0} PE machine 0x{1:X4} is not amd64' -f [System.IO.Path]::GetFileName($Path), $machine) }
 }
 
 function Resolve-PinnedSource {
@@ -525,7 +558,7 @@ function Save-MigraphxLicense {
 }
 
 Export-ModuleMember -Function Assert-MigraphxRocmLane, Get-MigraphxGpuTargetList, Get-MigraphxHipRuntimeFile,
-    Initialize-MigraphxBuild, Get-RocmLlvmToolPath, Resolve-PinnedSource, Get-SevenZipSkippedLink, Expand-PinnedArchive,
+    Initialize-MigraphxBuild, Get-RocmLlvmToolPath, Invoke-RocmClangConfigure, Assert-RocmBuiltPe, Resolve-PinnedSource, Get-SevenZipSkippedLink, Expand-PinnedArchive,
     Save-PinnedSource, Get-FetchContentUrlMap,
     Assert-FetchContentSeeded, Get-FetchContentSeedArg, Get-MigraphxTreeFact, Get-MigraphxRocmCmakeCommit, Save-GitCommitSource,
     Write-NlohmannJsonConfigShim,

@@ -63,36 +63,26 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
       Done when a windows-11-arm `3.14t` leg passes with `UV_PYTHON_DOWNLOADS=never` and the
       device smoke reports `sys._is_gil_enabled() == False` for the bundle's `python3.14t.exe`.
-- [b] **CON73 — ROCm 10.0 → 10.1 (TheRock `therock-10.1`, 2026-10-05)** [M, ★★]. Renovate
-      reports it since its annotation reads `versioning=loose` (2026-10-07). Blocked upstream:
-      - **No llama.cpp build ships a `win-rocm-10.1` zip.** All builds through b11461 ship
-        `rocm-10.0`, and llama.cpp's `release.yml` still sets `ROCM_VERSION: "10.0.0"`.
-        `Install-LlamaCpp.ps1` refuses a 10.0 asset on a 10.1 image, and
-        `rocm-checks\LlamaCpp.ps1` requires its HIP DLLs byte-identical to the image's.
-      - **MIGraphX 2.18.0 has no `rocm-10.1` tag yet.** Only the branch
-        `release/rocm-rel-10.1` exists (`95672916`, 2026-09-29). On Linux the 10.1 package is
-        renamed `amdrocm10-migraphx`. `Build-MigraphxFromSource.ps1` needs the commit's tree
-        version to equal `MIGRAPHX_VERSION`. The branch already contains 5a80dc91ba, so
-        `001-mlir-off-stubs.patch` goes with the bump.
-      - **Owner decision:** wait for both (one bump), or Linux now with a separate
-        `MIGRAPHX_WINDOWS_VERSION`.
-      - **The Windows values are measured** (2026-10-07: full download, `sha256sum`, byte
-        count equal to Content-Length). `PYTORCH_ROCM_INDEX` stays `rocm7.14`, because
-        `rocm7.15`, `rocm10` and `rocm10.1` all answer 403.
-
-        | Key | Value |
-        | --- | --- |
-        | `ROCM_WINDOWS_TARBALL_SHA256` (10.1.0, 2,244,477,973 B) | `e8d5acd522aa106d685485707e5085d491ead7d0d84a79ef74dc5995941403b2` |
-        | rocm-10.1.0.tar.gz (27,536 B) | `e6616e62ebd1324031681e6e59349d46ee4f143a8d8f4f901a91c35c993041fc` |
-        | rocm_sdk_core-10.1.0 (776,978,384 B) | `b12f1c4cde14ed1cd8864006d17586c6b1e6a4e4695b9597cfe04ed7715e952f` |
-        | rocm_sdk_libraries-10.1.0 (118,645,973 B) | `0c34bafbb4aa626cc710d8b130bb314f591194c3d79eeb5892b755ea0be06159` |
-        | rocm_sdk_device_gfx1201-10.1.0 (314,133,708 B) | `56085e8f865b6b96c230fe8d1731074103553d0d958a31be13907d01e558fd0e` |
-        | rocm_sdk_device_gfx1200-10.1.0 (378,463,821 B) | `8b670bee24ca4fc6c13c1eb58e9c6c39929913107ce00a8661c4db9d3e39d9fa` |
-      - **Files that move with it:**
-        - ARG defaults: `linux/Dockerfile.amd`, `windows/Dockerfile.{rocm,torch,rocm-llama,rocm-migraphx}`.
-        - `Torch.Rocm.Tests.ps1:223-228` hard-codes `10.0.0` and `10.1.0`; derive the release from `$pins`.
-        - `docs/deps/deps.json`, `sbom-curated.spdx.json`, `third-party-licenses.md`, the web
-          licence pages, `docs/windows-rocm.md`.
+- [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
+      (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.
+      **Linux**, a rocm chain run (`CROSS_VARIANT=rocm`):
+      1. `Dockerfile.amd` as a gpu stage over `:cross-sdk-amd64`, and the media stage's ORT gpu step under the
+         chain's toolchain and caches (`verify-media-artifacts.sh onnxruntime-gpu`).
+      2. The runtime copy: `copy_rocm_payload` carrying `/opt/rocm/extras-10` and remaking the `core-10` and
+         `rocm-*` alternatives links; `publish_rocm_ld_path` writing `extras-10/lib`; the ORT G6 census.
+      3. The wrapper smoke: `torch.version.hip` with the rocm7.14 wheels over a 10.1 system tree, and
+         `MIGraphXExecutionProvider` listed. Then the image size (21.7 GB of ROCm before the runtime copy).
+      **Windows**, a `Build-Buildkit.ps1 -Variant rocm` run:
+      4. The whole rocm chain on the 10.1 sdk layer, then `Test-RocmImage.ps1` with every rocm-check clean;
+         MIGraphX 2.18.0 and the EP inside BuildKit (`prefuse_ops.cpp` is the stage's critical path).
+      5. torch v2.14.1 / torchvision v0.29.1 against the 10.1 SDK, and rocm-1 installing the 10.1.0 wheels:
+         `rocm-checks\Torch.ps1` reports `+rocm10.1.0` and HIP 7.16.
+      6. The llama stage in BuildKit (`ggml-hip` through the WebDAV sccache, the `llamamods` closure, cleanup,
+         `LlamaCpp.ps1` at the smoke gate). Then drop the `hip-msvc-cmath` overlay if 4–6 build without it.
+      **Both, on a real GPU (RX 9070 XT, gfx1201):** a MIGraphX EP session, torch HIP, and a small model on
+      ggml-hip against its CPU result. With no bundled runtime a bare Windows host's loader takes Adrenalin's
+      System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
+      re-bundle TheRock's three runtime DLLs and the byte-identity check that went with them.
 
 - [ ] **CON56 — ripgrep in the images** [S, ★★]. Owner rule 2026-10-05: search with `rg`
       in every repo of the family (`AGENTS.md` § *Searching the tree*). In source the same

@@ -24,11 +24,11 @@ belongs on the bare host.
 | TVM | OpenCL runtime; ROCm codegen + runtime as a **spike** (`TVM_ROCM=1`), on a minimal LLVM of its own that carries AMDGPU | OpenCL, ROCm/HIP | spike: yes |
 | LiteRT-LM | GPU backend (WebGPU over Dawn on D3D12) | D3D12 | no |
 | ONNX Runtime | CPU + DirectML, plus the in-tree WebGPU EP as a **spike** (`ORT_WEBGPU=1`). ORT >= 1.23 has no ROCm EP | DirectML, WebGPU (Dawn on D3D12) | no |
-| PyTorch | torch 2.14.1+rocm10.0.0, torchvision 0.29.1+rocm10.0.0, built from source here for gfx1201 and gfx1200 | ROCm/HIP (AMD's runtime wheels) | no |
+| PyTorch | torch 2.14.1+rocm10.1.0, torchvision 0.29.1+rocm10.1.0, built from source here for gfx1201 and gfx1200 | ROCm/HIP (AMD's runtime wheels) | no |
 | App venv LiteRT | `ai-edge-litert` 2.2.0 with its WebGPU accelerator | WebGPU (Dawn on D3D12) | no |
-| llama.cpp HIP | official Windows ROCm build b11460 (`ggml-hip`), `C:\runtime\opt\llama.cpp-hip` | ROCm/HIP | hipBLAS/rocBLAS |
+| llama.cpp HIP | `ggml-hip` built from source at b11472 against the image's TheRock (gfx1200, gfx1201), with the same tag's official CPU tools, `C:\runtime\opt\llama.cpp-hip` | ROCm/HIP | yes: TheRock's clang, HIP runtime, hipBLAS/rocBLAS |
 | llama.cpp Vulkan | the same build's official Windows Vulkan zip (`ggml-vulkan`), `C:\runtime\opt\llama.cpp-vulkan` | Vulkan (the sdk layer's loader) | no |
-| MIGraphX + ORT plugin EP | MIGraphX 2.17.0 from source, `migraphx-ep.dll` as a **spike** | ROCm/HIP | yes |
+| MIGraphX + ORT plugin EP | MIGraphX 2.18.0 from source, `migraphx-ep.dll` as a **spike** | ROCm/HIP | yes |
 
 `-NoRocmSpikes` drops the three spikes: the migraphx stage, `TVM_ROCM` and `ORT_WEBGPU`.
 
@@ -197,11 +197,11 @@ therefore self-measured and pinned, and the script refuses an empty or malformed
 
 | Family | Covers | Bytes | SHA256 |
 | --- | --- | --- | --- |
-| `gfx120X-all` (pinned) | RDNA4, incl. RX 9070 XT (gfx1201) | 2,282,922,923 | `75da73c483cbc0456d9008f2079b333f4f9d3b7744705378ff8007e502ca38c5` |
-| `multiarch` | every supported GPU | 4,796,456,804 | `ebe454fe9ad663655177462187a4c86c72fd0537638f6cbea34660ddebf40056` |
+| `gfx120X-all` (pinned, 10.1.0, 2026-10-07) | RDNA4, incl. RX 9070 XT (gfx1201) | 2,244,477,973 | `e8d5acd522aa106d685485707e5085d491ead7d0d84a79ef74dc5995941403b2` |
+| `multiarch` (10.0.0, not re-measured for 10.1.0) | every supported GPU | 4,796,456,804 | `ebe454fe9ad663655177462187a4c86c72fd0537638f6cbea34660ddebf40056` |
 
-**Disk.** The `gfx120X-all` tree unpacks to **9.56 GB** in 10,544 files. At its peak the sdk
-stage holds the 2.28 GB tarball, the tree and its layer export at once, so `Get-StageDiskFloorGb`
+**Disk.** The 10.1.0 `gfx120X-all` tree unpacks to **9.65 GB** in 11,575 files (10.0.0: 9.56 GB, 10,544). At its peak the sdk
+stage holds the 2.24 GB tarball, the tree and its layer export at once, so `Get-StageDiskFloorGb`
 gives `Dockerfile.rocm` a 45 GB floor (the default is 40). That figure is calculated, not
 measured.
 
@@ -341,6 +341,10 @@ needs the overlay. On the rebuilt image (2026-09-25) the smoke gate's kernel com
 `hipcc`, `clang -x hip` and `amdclang++ -x hip` as shipped. `--no-default-config` still fails
 with the same 20 errors, so the overlay stays.
 
+On TheRock 10.1.0 (AMD clang 24.0.0git, MSVC 14.51.36231) the probe's kernel compiles with
+`--no-default-config` too (2026-10-07, in a `:winamd64` container with the tarball installed).
+The overlay is kept until an image build proves MIGraphX, ggml-hip and torch compile without it.
+
 The files are installed by `Dockerfile.rocm` with TheRock (CON34, 2026-10-02): the headers into
 `C:\runtime\opt\hip-msvc-cmath`, both `*.cfg` beside TheRock's `clang.exe`. They used to sit at
 the end of `Dockerfile.rocm-llama`, and MIGraphX passed the same headers through its own
@@ -458,7 +462,7 @@ GStreamer 1.29.2 builds its AMD paths on **every** lane already. Meson `auto` ne
 | Isolation | Entries under the ROCm root are dropped from `PATH`, `PKG_CONFIG_PATH`, `PKG_CONFIG_LIBDIR`, `CMAKE_{PREFIX,INCLUDE,LIBRARY,PROGRAM}_PATH`, `INCLUDE` and `LIB`. This lasts from the pkg-config pre-flight through install. `PATH` gets TheRock's `bin` back, appended last, before the phase-9 plugin gate. | Meson does not configure through `Invoke-CmakeConfigure`. Its cmake dependency probe turns `C:\TheRock\build\bin` on `PATH` into the prefix `C:\TheRock\build`, which exposes `lib/cmake/{flatbuffers,llvm,clang,hip*,...}` and `share/cmake/nlohmann_json`. TheRock's `.pc` files (`flatbuffers.pc`, `nlohmann_json.pc`, `rocm_sysdeps` `zlib.pc`/`libzstd.pc`) are reachable through `PKG_CONFIG_PATH`. |
 | Proof | After meson setup, `build.ninja` and `meson-info/intro-dependencies.json` are scanned for the ROCm root in backslash, forward-slash and JSON-escaped spelling. A hit or a missing file throws. | A scrub nobody checks is an assumption. |
 
-**HIP is loaded at run time, not linked.** `gst-libs/gst/hip` compiles against in-tree stubs. At 1.29.2 the loader opens the first `HIP_PATH\bin\amdhip64_*.dll`, then `amdhip64_7.dll` by name. It opens hiprtc as `HIP_PATH\bin\hiprtc<MM><mm>.dll`, which is `hiprtc0715.dll` for TheRock 10.0.0 (HIP 7.15). GLib opens both with `LoadLibraryW` by full path. So `amdhip64_7.dll`'s own imports, `rocm_kpack.dll` and `amd_comgr.dll`, resolve only through `PATH` or System32, never through `HIP_PATH\bin`. **TheRock's `bin` has to stay on the image `PATH`.** Measured against the real 10.0.0 gfx120X-all DLLs: amdhip64 exports all 37 names the loader resolves, including `hipGLGetDevices`/`hipGraphicsGLRegisterBuffer`, and hiprtc exports all 7.
+**HIP is loaded at run time, not linked.** `gst-libs/gst/hip` compiles against in-tree stubs. At 1.29.2 the loader opens the first `HIP_PATH\bin\amdhip64_*.dll`, then `amdhip64_7.dll` by name. It opens hiprtc as `HIP_PATH\bin\hiprtc<MM><mm>.dll`, which is `hiprtc0716.dll` for TheRock 10.1.0 (HIP 7.16; `hiprtc0715.dll` on 10.0.0). GLib opens both with `LoadLibraryW` by full path. So `amdhip64_7.dll`'s own imports, `rocm_kpack.dll` and `amd_comgr.dll`, resolve only through `PATH` or System32, never through `HIP_PATH\bin`. **TheRock's `bin` has to stay on the image `PATH`.** Measured against the real 10.0.0 gfx120X-all DLLs, and again against 10.1.0's on 2026-10-07 (`Get-GstHipRuntimeFinding`, no finding): amdhip64 exports all 37 names the loader resolves, including `hipGLGetDevices`/`hipGraphicsGLRegisterBuffer`, and hiprtc exports all 7.
 
 **Not enabled: `hip-amd-precompile`.** At 1.29.2, `sys/hip/meson.build` looks only for `hipcc.bin`, and TheRock ships `hipcc.exe`. Upstream fixed this after the tag (`4cdf9d9796`, MR 12331). The hiprtc JIT path already covers the converter kernels, so revisit at the next GStreamer bump.
 
@@ -709,7 +713,7 @@ On cpu and nvidia, the Bazel command stays `build //runtime/engine:litert_lm_mai
 
 ## PyTorch on the rocm lane (torch stage)
 
-The rocm image's app venv (`C:\opt\OrchestrANT\.venv`) runs **PyTorch built from source in this repository** (owner decision 2026-09-29). It has torch 2.14.1+rocm10.0.0 and torchvision 0.29.1+rocm10.0.0 (cp314, win_amd64), built from the upstream `v2.14.1` / `v0.29.1` tags that `PYTORCH_VERSION` / `TORCHVISION_VERSION` name. They are compiled against this image's ROCm 10.0 SDK (`C:\TheRock\build`) for both GPUs of the pinned gfx120X-all family: gfx1201 (RX 9070 series) and gfx1200 (RX 9060 series). They load ROCm the way AMD's wheels do, from AMD's `rocm[libraries]` 10.0.0 runtime and a device wheel per GPU. The venv also gets `ai-edge-litert` (§ The LiteRT extra, below). The cpu and nvidia images are unchanged.
+The rocm image's app venv (`C:\opt\OrchestrANT\.venv`) runs **PyTorch built from source in this repository** (owner decision 2026-09-29). It has torch 2.14.1+rocm10.1.0 and torchvision 0.29.1+rocm10.1.0 (cp314, win_amd64), built from the upstream `v2.14.1` / `v0.29.1` tags that `PYTORCH_VERSION` / `TORCHVISION_VERSION` name. They are compiled against this image's ROCm 10.1 SDK (`C:\TheRock\build`) for both GPUs of the pinned gfx120X-all family: gfx1201 (RX 9070 series) and gfx1200 (RX 9060 series). They load ROCm the way AMD's wheels do, from AMD's `rocm[libraries]` 10.1.0 runtime and a device wheel per GPU. The venv also gets `ai-edge-litert` (§ The LiteRT extra, below). The cpu and nvidia images are unchanged.
 
 Why here and not AMD's: AMD's Windows wheels for ROCm 10.0 stop at torch 2.13.0, and the app locks 2.14.1. torch 2.14 exists for ROCm 7.14 (pytorch.org, Linux only) and for ROCm 10.1 release candidates (`rc.repo.amd.com`), but not for 10.0.
 
@@ -735,7 +739,7 @@ WebGPU for ONNX Runtime comes from the chain ORT itself ([§ ONNX Runtime WebGPU
   - `ROCM_HOME`/`ROCM_PATH` are the SDK root and `CMAKE_PREFIX_PATH` is its `lib\cmake`.
   - TheRock's `clang-cl` is CC/CXX, plus `HIP_CLANG_PATH`.
   - `PYTORCH_ROCM_ARCH` comes from `ROCM_WINDOWS_GFX_FAMILY`, and OpenBLAS from the SDK's `lib\host-math`.
-  - `PYTORCH_BUILD_VERSION=2.14.1+rocm10.0.0` and `PYTORCH_EXTRA_INSTALL_REQUIREMENTS=rocm[libraries]==<release>`.
+  - `PYTORCH_BUILD_VERSION=2.14.1+rocm<release>` (`+rocm10.1.0` today) and `PYTORCH_EXTRA_INSTALL_REQUIREMENTS=rocm[libraries]==<release>`.
   - `MAX_JOBS` allows 5 GB per job, and sccache wraps the host C/C++ when it is configured.
 - **Then** `python -m build --wheel --no-isolation`, an install into the build venv, and an `import torch` that prints the HIP version and the compiled arch list. The torch wheel is staged in `C:\torch-rocm-wheels`, and the torch tree is removed. The build venv, with torch installed, stays for the next RUN.
 - **The torchvision RUN** dot-sources the torch builder for its helpers and builds in that venv. It does not use `Start-MigraphxBuildSession`, which would reset the work dir. It adds pillow, because `import torchvision` imports PIL and torch's build requirements do not bring it. Then `setup.py bdist_wheel` (`FORCE_CUDA=1` on the GPU-less host) and an import that requires its C++ ops. `C:\torch-rocm-wheels` must then hold exactly the two wheels. Every step logs in full to the persistent `C:\sccache-logs` (`torch-rocm-*.log`, `torchvision-rocm-*.log`).
@@ -744,7 +748,7 @@ WebGPU for ONNX Runtime comes from the chain ORT itself ([§ ONNX Runtime WebGPU
   - **`torch.distributed`** (gloo/libuv).
   - **Image IO in torchvision** (PNG, JPEG, WEBP). AMD's wheels lack it too.
 - **The SDK tree is AMD's tarball**, not the `rocm-sdk-devel` wheel TheRock's scripts expand. The tarball holds every devel path at the same place and has no symlinks, so the symlink-privilege expansion bug (TheRock#7807) does not apply. No public precedent for building against the tarball was found. It builds: see the next bullet.
-- **Measured 2026-09-29** (`-Variant rocm -Stages torch,final` on the 2026-09-28 rocm parent):
+- **Measured 2026-09-29, on TheRock 10.0.0** (`-Variant rocm -Stages torch,final` on the 2026-09-28 rocm parent; the 10.1.0 build is unmeasured until the next rocm image):
   - The torch phase took 4051 s cold and 1719 s with the WebDAV sccache warm from the cold run. 2796 ninja steps, `MAX_JOBS=7`.
   - The torchvision RUN took 228 s.
   - The import printed `2.14.0+rocm10.0.0`, HIP `7.15.26333`, ROCm `10.0.0`, archs `gfx1200 gfx1201`.
@@ -762,6 +766,7 @@ WebGPU for ONNX Runtime comes from the chain ORT itself ([§ ONNX Runtime WebGPU
 - **Offline install.** Pinned files are cached by hash on the torch stage's uv cache mount (`C:\uvcache\torch-rocm\<sha256>\<file>`) and re-hashed before reuse. Each is downloaded to its cache path directly, never as a `.part` renamed into place. On the mount that rename failed with `Could not find a part of the path` for the first wheel with a 68-character name, after two shorter ones had moved fine (2026-09-25). That is the create-then-rename class of [windows-build-lanes.md § Run-side wcifs symptoms](windows-build-lanes.md#run-side-wcifs-symptoms-process-isolation). A partial file is never used: a failed download deletes what it wrote, and every reuse re-hashes. The install is `uv pip install --force-reinstall --no-deps --no-index --no-build-isolation --require-hashes`. No index is contacted and nothing is resolved. The `rocm` sdist builds on the venv's setuptools (83.0.0 from the app lock).
 - **The no-GPU trap.** The `rocm` sdist's `setup.py` calls `offload-arch` to choose a GPU family. The build container has no GPU (TheRock's `offload-arch.exe` sits in `lib\llvm\bin`, which stays off PATH). The installer sets `ROCM_SDK_TARGET_FAMILY` to the first pinned GPU, gfx1201. That variable takes exactly one GPU, but it only fills the sdist's generic `device` extra, and `--no-deps` never reads it; the pinned per-GPU wheels stand in for AMD's per-GPU extras. `ROCM_BOOTSTRAP_DISABLE_DETECTION=1` is set too. The source build sets the same two for its build venv.
 - **Dependency confusion.** PyPI has an unrelated `rocm` 0.1.0. Pinning by URL + hash rules it out.
+- **The 10.1.0 index** adds `rocm-bootstrap` and `rocm-sdk-devel` packages. The 10.1.0 `rocm` sdist requires neither: against 10.0.0 it only renumbers its pins, drops the Linux `rocm_smi64` and adds the Linux `rpp` library entry (diffed 2026-10-07). TheRock's `therock-10.1` Windows preload list equals `Get-TorchRocmInitSource`'s, and `hiprtc0*.dll` matches the new `hiprtc0716.dll`.
 
 **Smoke.** `windows/scripts/build/rocm-checks/Torch.ps1` runs under `Test-RocmImage.ps1` (`EXPECT_ROCM=1`) and at the end of the install. It imports torch/torchvision/rocm_sdk without a GPU and asserts:
 
@@ -788,12 +793,12 @@ It never calls `torch.cuda`, and `torch.cuda.is_available()` is False in the con
 
 - GPU compute is not proven by the image. The bare-host check (torch matmul on the GPU vs CPU, above) still applies. The upstream TheRock#8379, open, reports zeros from torch on RX 9070 XT with ROCm 7.14.
 - There is no Windows triton wheel, so GPU `torch.compile`/inductor is unavailable.
-- AMD's runtime wheels carry their own ROCm 10.0.0 (`_rocm_sdk_core`/`_rocm_sdk_libraries` in the venv, about 4 GB installed). It is the same release as `C:\TheRock\build`, which the source build compiled against, but it is a second copy.
+- AMD's runtime wheels carry their own ROCm 10.1.0 (`_rocm_sdk_core`/`_rocm_sdk_libraries` in the venv, about 4 GB installed). It is the same release as `C:\TheRock\build`, which the source build compiled against, but it is a second copy.
 - No flash or memory-efficient SDPA (AOTriton is off), and no `torch.distributed`: § The source build says why.
 - The `torch-rocm-wheels` torch RUN is a one-hour compile (about 30 min with a warm sccache) whenever torch, the SDK or the torch builder moves. A torchvision move re-runs only its own RUN, and an app move neither.
 - The CPU torch installed by `uv sync` stays as dead bytes in the `app` layer, about 0.5 GB. That is the cost of leaving the cpu/nvidia stage untouched.
 - The rocm lane runs the app verify twice (CPU torch, then ROCm torch), about 1–2 minutes extra.
-- gfx1200 adds about 430 MB of downloads (the rocm-sdk device wheel alone is 377,648,520 B) and about 0.7 GB installed.
+- gfx1200 adds about 430 MB of downloads (the 10.1.0 rocm-sdk device wheel alone is 378,463,821 B) and about 0.7 GB installed.
 - `whl-next` is AMD's only Windows channel. A withdrawn file fails the download loudly; a cached copy keeps working.
 
 **Evidence for AMD's 2.13 wheels** (2026-09-23, Windows 11 host, CPython 3.14.7, uv 0.12.7; the runtime and device wheels are still these, torch and torchvision are now built here):
@@ -809,69 +814,78 @@ Tests: `windows/scripts/tests/Torch.Rocm.Tests.ps1` and, for the source build's 
 
 ## llama.cpp HIP and Vulkan (`Dockerfile.rocm-llama`, rocm lane only)
 
-The stage installs two official builds of the same llama.cpp release, each in its own
-directory: the HIP build here, and the Vulkan build in
+The stage installs two builds of the same llama.cpp tag, each in its own directory: the HIP
+build here, built against this image's ROCm, and upstream's prebuilt Vulkan build in
 [§ The Vulkan build](#the-vulkan-build-cruntimeoptllamacpp-vulkan).
 
-**What it adds.** The rocm image carries llama.cpp's official Windows ROCm/HIP release. The pinned build is b11460, asset `llama-b11460-bin-win-rocm-10.0-x64.zip`. It lives in `C:\runtime\opt\llama.cpp-hip`, which `LLAMA_CPP_HIP_HOME` names. It contains:
-- `llama-server.exe`, `llama.exe` and the other tools;
-- the CPU `ggml-cpu-*.dll` variants;
-- `ggml-hip.dll`, 973 MB, with device code for 20 GPUs from gfx1010 to gfx1201.
+**What it adds.** The rocm image carries llama.cpp b11472 with a HIP backend built here, in `C:\runtime\opt\llama.cpp-hip`, which `LLAMA_CPP_HIP_HOME` names. It contains:
+- `ggml-hip.dll`, about 129 MB, built from the tag's source (`LLAMA_CPP_HIP_COMMIT`, archive `LLAMA_CPP_HIP_SOURCE_SHA256`) with TheRock's AMD clang, for gfx1200 and gfx1201;
+- `llama-server.exe`, `llama-cli.exe`, `llama.exe` and the other tools, and the CPU `ggml-cpu-*.dll` variants: the tag's official `llama-b<build>-bin-win-cpu-x64.zip` (`LLAMA_CPP_CPU_SHA256`).
 
-Upstream builds this zip against the same TheRock 10.0.0 release the rocm sdk installs (release.yml `windows-rocm` job, pip `rocm[libraries,devel]==10.0.0`). Nothing is compiled here, so AMD's clang is not involved.
+That is how upstream composes its own `win-rocm` zip: release.yml's `windows-rocm` job builds only `--target ggml-hip`, and the release's merge step adds the `windows-cpu` zip's tools. Two things differ:
+- **No bundled HIP runtime.** Upstream ships `amdhip64_7.dll`, `rocm_kpack.dll` and `amd_comgr.dll` beside the exes (llama.cpp#26929). Here nothing of ROCm's sits in the directory: `ggml-hip.dll` loads the image's TheRock runtime, hipBLAS and rocBLAS from `C:\TheRock\build\bin`, last on PATH.
+- **Two GPUs, not twenty.** `GPU_TARGETS` comes from `ROCM_WINDOWS_GFX_FAMILY` (`gfx120X-all` = gfx1200;gfx1201), the GPUs the tarball's rocBLAS and hipBLASLt have kernels for. Upstream's DLL carries 20 targets and weighs 973 MB.
 
-**Where it sits.** base → sdk (rocm) → toolchain → media → [migraphx] → **llama** → torch → final. The stage is `Dockerfile.rocm-llama`, target `built`; its five `LLAMA_CPP_*` pins are forwarded by `Build-Buildkit.ps1`. `-NoRocmSpikes` builds it directly on the merged media.
+**Why from source (owner decision 2026-10-07).** Upstream still builds against TheRock 10.0.0 (release.yml `windows-rocm`, `ROCM_VERSION: "10.0.0"`, at b11472), and every build ships only a `win-rocm-10.0` zip. Its `ggml-hip.dll` and bundled runtime cannot serve a 10.1 image.
 
-**How it is installed** (`windows/scripts/build/Install-LlamaCpp.ps1 -Backend hip`). One installer serves both builds; a backend table (`Get-LlamaCppBackendSpec`) holds what differs. For HIP it fails closed:
+**Where it sits.** base → sdk (rocm) → toolchain → media → [migraphx] → **llama** → torch → final. The stage is `Dockerfile.rocm-llama`, target `built`; `Build-Buildkit.ps1` forwards its `LLAMA_CPP_*` pins, `ROCM_WINDOWS_GFX_FAMILY` and the sccache endpoint. `-NoRocmSpikes` builds it directly on the merged media.
+
+**How it is built** (`windows/scripts/build/Build-LlamaCppHipFromSource.ps1`):
+- Rocm lane and amd64 only (`Initialize-MigraphxBuild`), and the pins must be well-formed before anything is fetched: a build number and a 40-hex lower-case commit.
+- The archive of `LLAMA_CPP_HIP_COMMIT` is verified against `LLAMA_CPP_HIP_SOURCE_SHA256` (`Resolve-PinnedSource`/`Save-PinnedSource`, the MIGraphX helpers).
+- Upstream's recipe: `-DGGML_HIP=ON -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF -DGGML_CPU=OFF`, C and C++ by TheRock's `clang.exe`/`clang++.exe` passed by absolute path. On Windows ggml compiles HIP as C++ through `hip::device`, so the whole tree uses AMD's clang; clang-cl has no AMDGPU backend. HIP compiles against MSVC 14.51 through the image's `hip-msvc-cmath` overlay ([§ HIP compiles against MSVC 14.51](#hip-compiles-against-msvc-1451)).
+- Nothing downloads at build time: the tools, the server's prebuilt UI (fetched unpinned from a Hugging Face bucket) and BoringSSL are switched off, and `FETCHCONTENT_FULLY_DISCONNECTED` is set. `LLAMA_BUILD_NUMBER`/`_COMMIT` come from the pin, because the tarball has no git history.
+- Only the `ggml-hip` target is built. Its PE machine must be amd64, and the pins it was built from go to `llama-cpp-hip-build.json` next to it.
+
+**How it is installed** (`windows/scripts/build/Install-LlamaCpp.ps1 -Backend hip -BuiltDir <the build's output>`). One installer serves both builds; a backend table (`Get-LlamaCppBackendSpec`) holds what differs. For HIP it fails closed:
 - It runs only when `Get-GpuEnvironment` reports `HasRocm`, and only when ROCm's bin has `amdhip64_7.dll`, `hipblas.dll` and `rocblas.dll`.
-- The asset's build number must equal `LLAMA_CPP_HIP_BUILD`, and its `rocm-X.Y` must equal `ROCM_WINDOWS_RELEASE`'s major.minor.
-- The zip is verified against `LLAMA_CPP_HIP_SHA256`.
-- The zip must be flat, must hold the load-bearing files, and may shadow no ROCm DLL except the HIP runtime.
+- The build record must name `LLAMA_CPP_HIP_BUILD` and the image's `ROCM_WINDOWS_RELEASE`.
+- The CPU zip is verified against `LLAMA_CPP_CPU_SHA256`. It must be flat, hold the load-bearing files (`llama-server.exe`, `llama-cli.exe`, `ggml-base.dll`, `ggml.dll`, `llama.dll`), and carry neither a `ggml-hip.dll` nor any DLL name ROCm's bin has.
+- The tag's LICENSE is verified against `LLAMA_CPP_HIP_LICENSE_SHA256`.
 
-The script then writes `llama-cpp-hip-manifest.json` (size and SHA256 of every file). The same RUN then runs `rocm-checks\LlamaCpp.ps1 -Backend hip`, so a bad pin fails this stage.
-
-**Which DLLs load from where.**
-- **HIP runtime, from the llama directory.** `amdhip64_7.dll`, `rocm_kpack.dll` and `amd_comgr.dll` sit next to the exes. This is upstream's workaround: the Adrenalin driver's System32 `amdhip64_7.dll` otherwise wins the loader search (llama.cpp#26929).
-- **Math libraries, from ROCm's bin.** hipBLAS, rocBLAS, hipBLASLt and their kernel directories load from `C:\TheRock\build\bin`, which is last on PATH.
-- **Never on PATH.** The llama directory stays off PATH, because its HIP runtime would otherwise shadow ROCm's for every process.
-
-Measured 2026-09-23:
-- The three bundled DLLs are the same bytes as TheRock 10.0.0 gfx120X-all's (amdhip64_7 SHA256 `546fb3d6…`, rocm_kpack `97b59ca4…`, amd_comgr same size and CRC32).
-- ggml-hip.dll imports 10 hipBLAS and 50 HIP functions, and TheRock's DLLs export all of them.
-
-So one HIP runtime serves the whole process, and there is no version skew.
+It writes `llama-cpp-hip-manifest.json` last: size and SHA256 of every file, and the source build's record. The same RUN then runs `rocm-checks\LlamaCpp.ps1 -Backend hip`, so a bad pin or a broken build fails this stage.
 
 **What the smoke check proves** (`windows/scripts/build/rocm-checks/LlamaCpp.ps1`). Run with no arguments, as the smoke gate runs it, it grades both builds. For HIP it runs with no GPU:
-- the shipped bytes equal the pinned zip's;
+- the shipped bytes equal the manifest's;
 - the directory is not on PATH;
-- the HIP runtime is ROCm's own bytes;
-- every static import of ggml-hip.dll resolves, transitively, to the right directory and exports what is imported;
+- nothing of ROCm's sits next to llama-server;
+- every static import of `ggml-hip.dll` resolves, transitively, a ROCm one to ROCm's bin, and exports what is imported;
+- a child pwsh loads `ggml-hip.dll` and resolves `ggml_backend_init`, with `ggml-base.dll` from the llama directory and every ROCm DLL it imports from ROCm's bin;
+- `llama-cli --list-devices` loads ggml-hip and asks the HIP runtime for devices. In a container that answers `ggml_cuda_init: failed to initialize ROCm: no ROCm-capable device is detected` and exits 0; on a GPU host it lists the devices. Any other outcome, or no such line at all, is a finding;
 - ggml-hip has device code for every GPU that ROCm's rocBLAS has kernels for;
 - `llama-server --version` reports the pinned build.
 
-`--version` loads no ggml backend, because the argument parser exits before `ggml_backend_load_all()`. It therefore needs neither a GPU nor HIP.
+Measured 2026-10-07 in a `:winamd64` container with TheRock 10.1.0 installed by `Install-Rocm.ps1`, the hub clone mounted:
+- `Build-LlamaCppHipFromSource.ps1` built `ggml-hip.dll` (128,678,400 B) cold in 3 min 27 s, 177 s of it ninja at `-j14`, beside a MIGraphX build. The log is 19 MB; without `-Wno-ignored-attributes` it was 160 MB.
+- `Install-LlamaCpp.ps1 -Backend hip` installed it, and `LlamaCpp.ps1` (each backend, then both as the smoke gate runs it) reported no finding.
+- `ggml-hip.dll` imports `ggml-base.dll`, `hipblas.dll` and `amdhip64_7.dll`; its device code is gfx1200 and gfx1201.
+- `llama-server --version`: `version: 0.6.0-dev (build 11472, commit d0b490f25)`, `built with Clang 20.1.8`, which is the CPU zip's frontend.
+- `llama-cli --list-devices` exits 0 in 0.2 s with `ggml_cuda_init: failed to initialize ROCm: no ROCm-capable device is detected` and `Available devices: (none)`.
 
 **Limits.**
 - **Nothing proves a kernel runs.** Microsoft accelerates only DirectX inside Windows containers, and GPU passthrough on this host is blocked by the 26100/26200 build skew (see [windows-build-resources.md](windows-build-resources.md)).
-- **RDNA4 only.** The gfx120X-all tarball ships rocBLAS/hipBLASLt kernels only for gfx1200 and gfx1201. On any other AMD GPU (for example a gfx1036 iGPU), the hipBLAS paths fail at runtime even though ggml-hip has device code for it.
-- **Driver floor unknown.** The minimum Adrenalin driver for TheRock 10.0.0's HIP 7.15 runtime is not known.
-- **Size.** About +1.24 GB and +1 layer. About 138 MB of that is the bundled runtime duplicating ROCm's own copy.
-- **Pinning.** Upstream publishes several builds a day, all flagged prerelease. Renovate reports new builds (approval-gated). `python docs/scripts/bump_versions.py --write-all` moves the build to the newest one that publishes both a win-rocm and a win-vulkan zip, together with the ROCm asset name and both SHA256s. The stable release v0.4.1 names build b10964, which also has a win-rocm-10.0 zip.
+- **RDNA4 only.** `ggml-hip.dll` carries device code for gfx1200 and gfx1201 alone, the GPUs the gfx120X-all tarball's rocBLAS/hipBLASLt serve. Any other AMD GPU (for example a gfx1036 iGPU) takes the Vulkan build.
+- **On a bare host the driver's runtime wins.** With no bundled copy, the loader takes Adrenalin's System32 `amdhip64_7.dll` before TheRock's on PATH (llama.cpp#26929). The image has no System32 copy. Whether a given driver's runtime serves TheRock 10.1's hipBLAS is unproven.
+- **Driver floor unknown.** The minimum Adrenalin driver for TheRock 10.1.0's HIP 7.16 runtime is not known.
+- **The frontend is upstream's binary.** The tools and CPU backends are the pinned CPU zip, built by upstream with VS's clang; only `ggml-hip.dll` is compiled here. A full source build would lose the server's web UI and HTTPS, which upstream fetches unpinned at build time.
+- **Size.** 178 MB in 54 files and +1 layer, down from about 1.24 GB with upstream's zip.
+- **Pinning.** Upstream publishes several builds a day, all flagged prerelease. Renovate reports new builds (approval-gated). `python docs/scripts/bump_versions.py --write-all` moves the build to the newest one that publishes both a win-cpu and a win-vulkan zip, with the tag's commit, the source archive's SHA256, both zips' digests and the LICENSE.
 
 **Evidence.**
-- https://github.com/ggml-org/llama.cpp/releases/tag/b11115
-- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11115/.github/workflows/release.yml (`windows-rocm` job, lines 978-1136)
-- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11115/.github/actions/windows-setup-rocm/action.yml
+- https://github.com/ggml-org/llama.cpp/releases/tag/b11472
+- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11472/.github/workflows/release.yml (`windows-cpu` job, lines 886-950; `windows-rocm` job, lines 954-1110)
+- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11472/ggml/src/ggml-hip/CMakeLists.txt (`CXX_IS_HIPCC` on WIN32)
+- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11472/tools/ui/CMakeLists.txt (the prebuilt UI download)
 - https://raw.githubusercontent.com/ggml-org/llama.cpp/b11115/common/arg.cpp (`--version` handler) and tools/server/server.cpp (`llama_server` start-up order)
 - https://github.com/ggml-org/llama.cpp/issues/26929
 
 ### The Vulkan build (`C:\runtime\opt\llama.cpp-vulkan`)
 
-**What it adds.** llama.cpp's official Windows Vulkan zip of the same build, b11460: asset `llama-b11460-bin-win-vulkan-x64.zip`, 33,377,748 B. It lives in its own directory, which `LLAMA_CPP_VULKAN_HOME` names, and it is never on PATH. It is the vendor-neutral path to an AMD GPU, and the only one for GPUs the gfx120X-all rocBLAS has no kernels for, such as the gfx1036 iGPU.
+**What it adds.** llama.cpp's official Windows Vulkan zip of the same build, b11472: asset `llama-b11472-bin-win-vulkan-x64.zip`, 33,378,833 B. It lives in its own directory, which `LLAMA_CPP_VULKAN_HOME` names, and it is never on PATH. It is the vendor-neutral path to an AMD GPU, and the only one for GPUs the gfx120X-all rocBLAS has no kernels for, such as the gfx1036 iGPU.
 - Upstream builds only `ggml-vulkan.dll` (`-DGGML_VULKAN=ON -DGGML_CPU=OFF -DGGML_BACKEND_DL=ON`, Vulkan SDK 1.4.357.0) and then adds the windows-cpu zip's tools.
-- Measured 2026-09-23: all 51 files the Vulkan zip shares with the HIP zip are byte-identical (CRC32 and size). The zips differ only in `ggml-vulkan.dll` against `ggml-hip.dll` plus the three HIP runtime DLLs.
+- Measured 2026-10-07 at b11472: the Vulkan zip is the CPU zip's 51 files, byte-identical (CRC32 and size), plus `ggml-vulkan.dll`. The HIP directory ships the same 51 beside its own `ggml-hip.dll`.
 
-**Pins.** Only `LLAMA_CPP_VULKAN_SHA256` is new. The build stays one pin, `LLAMA_CPP_HIP_BUILD`, the asset name follows from it, and the LICENSE pin is the HIP build's, because it is the same tag's LICENSE. The ARG is declared after the HIP RUN, so a Vulkan bump keeps the 256 MB HIP layer cached.
+**Pins.** Only `LLAMA_CPP_VULKAN_SHA256` is Vulkan's own. The build stays one pin, `LLAMA_CPP_HIP_BUILD`, the asset name follows from it, and the LICENSE pin is the HIP build's, because it is the same tag's LICENSE. The ARG is declared after the HIP RUN, so a Vulkan-only change keeps the HIP layer and its ggml-hip compile cached.
 
 **How it is installed:** `Install-LlamaCpp.ps1 -Backend vulkan`, in its own RUN, which then runs `rocm-checks\LlamaCpp.ps1 -Backend vulkan`. It fails closed: rocm lane only; the zip verified against its SHA256 and flat; `ggml-vulkan.dll`, `ggml-base.dll`, `ggml.dll`, `llama.dll` and `llama-server.exe` present; no bundled `vulkan-1.dll` (the loader comes from the image) and no ROCm DLL; the LICENSE fetched at the tag; `llama-cpp-vulkan-manifest.json` written last.
 
@@ -886,12 +900,12 @@ So one HIP runtime serves the whole process, and there is no version skew.
 
 It never calls `ggml_backend_init`, because that creates a VkInstance. `--list-devices` is no probe: release builds load backends silently, and `ggml_backend_vk_reg` returns NULL on any Vulkan error, so a missing loader and a missing GPU both print "(none)".
 
-**Why a separate directory.** Each directory is one upstream zip, verified file by file. `ggml-vulkan.dll` beside `ggml-hip.dll` would load, but `ggml_backend_load_all` loads HIP first and llama.cpp then skips a second device with the same `device_id`, so on the RX 9070 XT Vulkan would only add the iGPU. ggml also searches the current directory for backends, so do not run one build with the other's directory as CWD.
+**Why a separate directory.** Each directory is verified file by file against its own manifest. `ggml-vulkan.dll` beside `ggml-hip.dll` would load, but `ggml_backend_load_all` loads HIP first and llama.cpp then skips a second device with the same `device_id`, so on the RX 9070 XT Vulkan would only add the iGPU. ggml also searches the current directory for backends, so do not run one build with the other's directory as CWD.
 
 **Limits.**
 - No GPU in the container: `ggml-vulkan` registers no device there. On the bare host it uses Adrenalin's Vulkan ICD. Nothing proves a kernel runs.
-- Size: about +91 MB and +1 layer.
-- **Windows Defender** flagged `llama-gguf-split.exe` (byte-identical in both zips) as `Trojan:Win32/Wacatac.B!ml`, an ML heuristic, on this host on 2026-09-23, and quarantined it. The check then reports it missing. The build stores are excluded by `Sync-DefenderExclusions.ps1`; a bare-host export of either llama directory meets the same detection. Whether it is a false positive is unverified.
+- Size: about +95 MB and +1 layer.
+- **Windows Defender** flagged `llama-gguf-split.exe` (byte-identical in every zip of a build) as `Trojan:Win32/Wacatac.B!ml`, an ML heuristic, on this host on 2026-09-23, and quarantined it. The check then reports it missing. The build stores are excluded by `Sync-DefenderExclusions.ps1`; a bare-host export of either llama directory meets the same detection. Whether it is a false positive is unverified.
 - ggml-vulkan compiles in Khronos Vulkan-Headers code, and the zip ships no Khronos licence text. Whether that creates a notice obligation is unverified.
 
 **Evidence** (at b11115): the release's asset digest; `release.yml` 1137-1224 and 1876-1884; `ggml/src/ggml-backend-reg.cpp` 480-600; `ggml/src/ggml-vulkan/ggml-vulkan.cpp` 4959-4973 and 15853-15873; `src/llama.cpp` 222-256.
@@ -904,7 +918,7 @@ What it produces:
 
 | Path | Contents |
 |---|---|
-| `C:\runtime\lib\migraphx` (`MIGRAPHX_ROOT`) | AMD MIGraphX 2.17.0 (tag `rocm-10.0`, pinned by commit) built from source: `bin\migraphx*.dll`, `migraphx-driver.exe`, `migraphx-hiprtc-driver.exe`, `lib\cmake\migraphx`, headers |
+| `C:\runtime\lib\migraphx` (`MIGRAPHX_ROOT`) | AMD MIGraphX 2.18.0 (the head of `release/rocm-rel-10.1`, pinned by commit; no `rocm-10.1` tag yet) built from source: `bin\migraphx*.dll`, `migraphx-driver.exe`, `migraphx-hiprtc-driver.exe`, `lib\cmake\migraphx`, headers |
 | `C:\runtime\lib\onnxruntime-ep-amdgpu` (`ORT_AMDGPU_EP_ROOT`) | AMD's out-of-tree ONNX Runtime plugin EP `migraphx-ep.dll` ([onnxruntime/onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu), commit on `gpuep-releases/gpuep-rel-2611`), built against the image's ORT 1.30.0, with its MIGraphX closure and TheRock's `amdhip64_7`/`amd_comgr`/`hiprtc*` beside it |
 
 The MIGraphX stage leaves ORT and GenAI untouched. On this lane they are built with the cpu lane's feature flags, DirectML included, on the rocm sdk layer and with the rocm-lane `CMAKE_IGNORE_PREFIX_PATH`. ORT also carries the WebGPU spike, which is on whenever this stage builds ([§ ONNX Runtime WebGPU EP](#onnx-runtime-webgpu-ep-rocm-lane-spike)). Nobody has compared their bytes with the cpu image's. The EP is built against that chain ORT and is loaded at run time with `onnxruntime.register_execution_provider_library(<name>, r"C:\runtime\lib\onnxruntime-ep-amdgpu\migraphx-ep.dll")`.
@@ -913,11 +927,12 @@ How it is built (`Build-MigraphxFromSource.ps1`, `Build-OrtAmdgpuEpFromSource.ps
 
 - **Two compilers, on purpose.** MIGraphX has HIP device code, and the hub's clang-cl has no AMDGPU backend. MIGraphX therefore compiles with TheRock's `lib\llvm\bin\clang++.exe`, passed by absolute path; `lib\llvm\bin` never goes on PATH. Its host-only deps (abseil 20250512.0, protobuf v30.0, msgpack-c cpp-3.3.0, SQLite 3.50.4) build with clang-cl, as upstream's Windows CI does. The EP is host-only C++ and builds with clang-cl.
 - **Targets are explicit.** `GPU_TARGETS` comes from `ROCM_WINDOWS_GFX_FAMILY` (`gfx120X-all` = `gfx1200;gfx1201`), never from a host probe.
-- **Configuration no upstream CI builds.** rocMLIR is not in the TheRock tarball, so `MIGRAPHX_ENABLE_MLIR=OFF`. That costs the rocMLIR fusions (performance, not correctness). Also used: `BUILD_DEV=OFF` (hiprtc JIT), composable_kernel off, CMake 4.4.3, TheRock 10.0. Upstream's only Windows CI is build-only: gfx942, `BUILD_DEV=On`, ROCm 7.13.
+- **Configuration no upstream CI builds.** rocMLIR is not in the TheRock tarball, so `MIGRAPHX_ENABLE_MLIR=OFF`. That costs the rocMLIR fusions (performance, not correctness). Also used: `BUILD_DEV=OFF` (hiprtc JIT), composable_kernel off, CMake 4.4.3, TheRock 10.1. Upstream's only Windows CI is build-only: gfx942, `BUILD_DEV=On`, ROCm 7.13.
 - **CRT.** MIGraphX and its deps are `/MD`. The EP is `/MT`, as upstream forces it; it talks to ORT and MIGraphX only through C APIs.
-- **Supply chain.** Every archive is SHA256-pinned in `versions.env` (`MIGRAPHX_WINDOWS_*`, `ORT_AMDGPU_EP_*`). The EP declares 8 FetchContent URLs (11 with DirectML) with no `URL_HASH`. Each one is pre-seeded through `FETCHCONTENT_SOURCE_DIR_*` from a verified archive, and so is the abseil that protobuf v34.1 fetches. The build refuses when the pinned commit declares a URL no pin rebuilds byte-for-byte, and `FETCHCONTENT_FULLY_DISCONNECTED` with CMP0170 turns any other fetch into a configure error. rocm-cmake is the one dependency with no archive pin. MIGraphX `rocm-10.0` calls `rocm_add_version_resource` (rocm-cmake 33541cd51f), and TheRock's rocm-cmake predates it by four commits: `Unknown CMake command`, 2026-09-25. So phase 2 reads the commit that MIGraphX's own `requirements.txt` pins, from the SHA256-pinned MIGraphX tree (`Get-MigraphxRocmCmakeCommit`, 40-hex only). It fetches exactly that commit with git, which verifies every object against the id (`Save-GitCommitSource`), and installs it into the deps prefix, which precedes TheRock on `CMAKE_PREFIX_PATH`. A MIGraphX bump carries its own rocm-cmake, with nothing to re-derive in `versions.env`. nlohmann_json stays TheRock's, through a two-file package shim in the deps prefix (`Write-NlohmannJsonConfigShim`). TheRock's copy was installed by an MSVC-style build, so its exported target lists `<prefix>/nlohmann_json.natvis` as an interface source, and TheRock's dist does not ship that file (`Cannot find source file`, 2026-09-25). The shim includes TheRock's config and clears that property. HIP sources also compile with `-isystem` pointing at a two-header overlay (`Write-HipMsvcCmathOverlay`). Under clang, MSVC 14.51's `<cmath>` defines `isgreater`, `isgreaterequal`, `isless`, `islessequal`, `islessgreater` and `isunordered` as `constexpr` builtin wrappers, which HIP makes `__host__ __device__`. clang's `__clang_cuda_math_forward_declares.h` and `__clang_hip_cmath.h` then cannot declare their `__device__` versions (114 errors, 2026-09-25). Each overlay header renames those six names, `#include_next`s the untouched original and restores them, so device code uses MSVC's versions. `-Xclang -fno-cuda-host-device-constexpr` fixes these errors but breaks device code, because `std::integral_constant`'s conversion becomes host-only. A VS 2022 toolset was declined in favour of the image's own toolchain. The one source patch, `patches\migraphx\001-mlir-off-stubs.patch`, backports upstream 5a80dc91ba: at `rocm-10.0` an MLIR-off build leaves `is_module_fusible`, `adjust_param_shapes`, `dump_mlir_to_file` and `dump_mlir_to_mxr` undefined, and `migraphx_gpu.dll` fails to link (2026-09-25). `Test-PatchesApplyClean.ps1` checks it against `MIGRAPHX_WINDOWS_COMMIT` itself, so a bump past the fix fails there first. Every pinned archive is extracted by `Expand-PinnedArchive`, which skips the symlinks that 7-Zip 25+ refuses as dangerous: any link whose target climbs with `..`, even one that stays inside the tree. The flatbuffers seed carries nine (Java test dirs, `ts/package.json`), and no CMake file reads them. Any other 7-Zip error still fails the stage (2026-09-25). It also deletes the intermediate `.tar` of a `.tar.gz`. The EP's own source leaves `onnxruntime-ep-amdgpu.tar`, which is an ONNX Runtime archive by G2's name rule, so the EP's verify phase refused it.
+- **Supply chain.** Every archive is SHA256-pinned in `versions.env` (`MIGRAPHX_WINDOWS_*`, `ORT_AMDGPU_EP_*`). The EP declares 8 FetchContent URLs (11 with DirectML) with no `URL_HASH`. Each one is pre-seeded through `FETCHCONTENT_SOURCE_DIR_*` from a verified archive, and so is the abseil that protobuf v34.1 fetches. The build refuses when the pinned commit declares a URL no pin rebuilds byte-for-byte, and `FETCHCONTENT_FULLY_DISCONNECTED` with CMP0170 turns any other fetch into a configure error. rocm-cmake is the one dependency with no archive pin. MIGraphX `rocm-10.0` calls `rocm_add_version_resource` (rocm-cmake 33541cd51f), and TheRock's rocm-cmake predates it by four commits: `Unknown CMake command`, 2026-09-25. So phase 2 reads the commit that MIGraphX's own `requirements.txt` pins, from the SHA256-pinned MIGraphX tree (`Get-MigraphxRocmCmakeCommit`, 40-hex only). It fetches exactly that commit with git, which verifies every object against the id (`Save-GitCommitSource`), and installs it into the deps prefix, which precedes TheRock on `CMAKE_PREFIX_PATH`. A MIGraphX bump carries its own rocm-cmake, with nothing to re-derive in `versions.env`. nlohmann_json stays TheRock's, through a two-file package shim in the deps prefix (`Write-NlohmannJsonConfigShim`). TheRock's copy was installed by an MSVC-style build, so its exported target lists `<prefix>/nlohmann_json.natvis` as an interface source, and TheRock's dist does not ship that file (`Cannot find source file`, 2026-09-25). The shim includes TheRock's config and clears that property. HIP sources also compile with `-isystem` pointing at a two-header overlay (`Write-HipMsvcCmathOverlay`). Under clang, MSVC 14.51's `<cmath>` defines `isgreater`, `isgreaterequal`, `isless`, `islessequal`, `islessgreater` and `isunordered` as `constexpr` builtin wrappers, which HIP makes `__host__ __device__`. clang's `__clang_cuda_math_forward_declares.h` and `__clang_hip_cmath.h` then cannot declare their `__device__` versions (114 errors, 2026-09-25). Each overlay header renames those six names, `#include_next`s the untouched original and restores them, so device code uses MSVC's versions. `-Xclang -fno-cuda-host-device-constexpr` fixes these errors but breaks device code, because `std::integral_constant`'s conversion becomes host-only. A VS 2022 toolset was declined in favour of the image's own toolchain. MIGraphX builds unpatched since 2.18.0: the pin carries upstream 5a80dc91ba. At `rocm-10.0` an MLIR-off build left `is_module_fusible`, `adjust_param_shapes`, `dump_mlir_to_file` and `dump_mlir_to_mxr` undefined, and `migraphx_gpu.dll` failed to link (2026-09-25); `patches\migraphx\001-mlir-off-stubs.patch` backported the fix until 2026-10-07. Every pinned archive is extracted by `Expand-PinnedArchive`, which skips the symlinks that 7-Zip 25+ refuses as dangerous: any link whose target climbs with `..`, even one that stays inside the tree. The flatbuffers seed carries nine (Java test dirs, `ts/package.json`), and no CMake file reads them. Any other 7-Zip error still fails the stage (2026-09-25). It also deletes the intermediate `.tar` of a `.tar.gz`. The EP's own source leaves `onnxruntime-ep-amdgpu.tar`, which is an ONNX Runtime archive by G2's name rule, so the EP's verify phase refused it.
 - **Isolation.** The deps configure with the rocm-lane `CMAKE_IGNORE_PREFIX_PATH`. MIGraphX and the EP pass `-AllowRocmPrefix`, because they need hip, MIOpen, rocBLAS, hipBLASLt and hiprtc from TheRock.
 - **Chain ORT only.** The EP build ends in the ORT build gate (`Assert-ChainOrtOnly -Consumer amdgpu-ep`, phase 5), which reads its configure log, `CMakeCache.txt` and `build.ninja` and writes the stamp the image census requires ([`onnxruntime-single-source.md`](onnxruntime-single-source.md)).
+- **Measured 2026-10-07, 2.18.0 on TheRock 10.1.0**, in a `:winamd64` container with the tarball installed by `Install-Rocm.ps1`: the build ran in 58 min (host deps 128.5 s, configure 76 s, build and install 3260 s), and `migraphx_gpu.dll` linked unpatched with MLIR off. `src/targets/gpu/prefuse_ops.cpp`, a host-only file unchanged since `rocm-10.0`, took about 50 min of that on one core at `-O3` with AMD clang 24.0.0git, so it is the stage's critical path. At `-O0` it still ran past 11 min, so the cost is in the front end, not the optimizer. The EP then built against it in 7 min 19 s, and `rocm-checks\MIGraphX.ps1` found nothing: `migraphx-ep.dll` loads GPU-less and exports `CreateEpFactories`.
 
 Smoke (`windows/scripts/build/rocm-checks/MIGraphX.ps1`, GPU-less) checks:
 
@@ -938,12 +953,12 @@ Limits:
 
 Evidence:
 
-- [AMDMIGraphX rocm-10.0 CMakeLists/requirements/windows.yaml](https://github.com/ROCm/AMDMIGraphX/tree/rocm-10.0)
+- [AMDMIGraphX CMakeLists/requirements/windows.yaml at the pinned 2.18.0 commit](https://github.com/ROCm/AMDMIGraphX/tree/95672916ed289d4be9d230a9be732e1bbad97e8c); its `requirements.txt` differs from `rocm-10.0`'s only in the rocMLIR line, which an MLIR-off build never reads
 - [onnxruntime-ep-amdgpu src/CMakeLists.txt@99ab5cb](https://github.com/onnxruntime/onnxruntime-ep-amdgpu/blob/99ab5cb43caa421e0b19870fa4ce9323117e5e56/src/CMakeLists.txt)
 - [src/migraphx/CMakeLists.txt (/DELAYLOAD, POST_BUILD closure)](https://github.com/onnxruntime/onnxruntime-ep-amdgpu/blob/99ab5cb43caa421e0b19870fa4ce9323117e5e56/src/migraphx/CMakeLists.txt)
 - [src/shared/CMakeLists.txt (HIP DLL list without amd_comgr.dll)](https://github.com/onnxruntime/onnxruntime-ep-amdgpu/blob/99ab5cb43caa421e0b19870fa4ce9323117e5e56/src/shared/CMakeLists.txt)
 - [ORT v1.30.0 CMake package install](https://github.com/microsoft/onnxruntime/blob/v1.30.0/cmake/CMakeLists.txt)
-- [TheRock ml-libs MIOPEN_USE_MLIR=OFF](https://github.com/ROCm/TheRock/blob/therock-10.0/ml-libs/CMakeLists.txt)
+- [TheRock ml-libs MIOPEN_USE_MLIR=OFF](https://github.com/ROCm/TheRock/blob/therock-10.1/ml-libs/CMakeLists.txt)
 - [AMDMIGraphX#4252](https://github.com/ROCm/AMDMIGraphX/issues/4252)
 
 ## Redistribution
@@ -953,7 +968,8 @@ hipBLASLt, MIOpen, rocFFT, rocRAND, rocSPARSE, hipcc, ...), BSD (rocSOLVER, hipC
 Apache-2.0 (rocThrust; LLVM with the LLVM exception). The HIP runtime (`amdhip64_7.dll`,
 `hiprtc*`) and the OpenCL runtime (`OpenCL.dll`, `amdocl64.dll`) ship **without** a
 licence file, and the Windows HIP runtime links AMD's prebuilt PAL. The PyTorch wheels
-and the llama.cpp HIP zip carry copies of the same runtime; the Vulkan zip carries none.
+carry copies of the same runtime; neither llama.cpp directory carries one (since b11472 the
+HIP build loads the image's).
 **The owner cleared that question: `:winamd64-rocm` was published on 2026-09-28** (image
 built at ad08bc30), with the runtime shipped as TheRock delivers it. `docs/deps/deps.json`
 keeps `LicenseRef-Proprietary-EULA` for the runtime: the id describes the licence, not the
@@ -974,7 +990,7 @@ text of its own.
   RX 9070 XT. Compare every GPU path against its CPU result on the bare host.
 - **The spikes build, but none has run.** By 2026-09-25 all three built in the image and
   passed their GPU-less smoke checks: MIGraphX with `MLIR=OFF`, `BUILD_DEV=OFF`, gfx120X and
-  TheRock 10 (a configuration no upstream CI builds, with one backported patch), TVM's ROCm
+  TheRock 10 (a configuration no upstream CI builds; one backported patch until 2.18.0), TVM's ROCm
   runtime on its minimal LLVM with AMDGPU, and Dawn and Tint under the image's clang-cl.
   No GPU has executed any of them.
 - **The 2026-09-23 additions have run in a container.** By 2026-09-25 the OpenCL ICD

@@ -1,45 +1,70 @@
 # escape=`
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# rocm lane only: prebuilt llama.cpp HIP and Vulkan; see docs/windows-rocm.md § llama.cpp HIP and Vulkan (`Dockerfile.rocm-llama`, rocm lane only).
+# rocm lane only: llama.cpp's HIP backend built from source, the prebuilt Vulkan zip; see docs/windows-rocm.md § llama.cpp HIP and Vulkan (`Dockerfile.rocm-llama`, rocm lane only).
 
 ARG BASE_IMAGE=docker.io/local/kataglyphis:bk-windows-media-migraphx-rocm
 
-FROM ${BASE_IMAGE} AS built
+# The scripts' module closure, mounted as one directory (the buildmods pattern of the media lane).
+FROM ${BASE_IMAGE} AS llamamods
+COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
+     windows\scripts\modules\WindowsScripts.Shared.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
+     windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
+     windows\scripts\modules\WindowsNative.Common.psm1 `
+     windows\scripts\modules\WindowsTargetArch.Common.psm1 `
+     windows\scripts\modules\WindowsMigraphx.Common.psm1 `
+     windows\scripts\modules\WindowsContainerImage.Common.psm1 `
+     C:\bkmods\
 
-# Values: versions.env (the driver forwards them; bump all five LLAMA_CPP_* together).
-ARG LLAMA_CPP_HIP_BUILD=11460
-ARG LLAMA_CPP_HIP_ASSET=llama-b11460-bin-win-rocm-10.0-x64.zip
-ARG LLAMA_CPP_HIP_SHA256=5fce7888f87b51214a515290944c3466e8f1d1d7abb1a03e61f13b082f77ed58
-ARG LLAMA_CPP_HIP_LICENSE_SHA256=94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d
+FROM ${BASE_IMAGE} AS built
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
-# No PATH entry: its amdhip64_7.dll would shadow ROCm's for every process.
-ENV LLAMA_CPP_HIP_HOME="C:\runtime\opt\llama.cpp-hip" `
-    LLAMA_CPP_HIP_BUILD="${LLAMA_CPP_HIP_BUILD}"
+# Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
+ARG SCCACHE_WEBDAV_ENDPOINT
+ARG SCCACHE_LOG="warn"
+ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_DIR="C:\sccache\v2"
+ARG SCCACHE_FORCE_LOCAL
+ENV SCCACHE_DIR="${SCCACHE_DIR}" `
+    SCCACHE_CACHE_SIZE="15G" `
+    SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
+    SCCACHE_LOG="${SCCACHE_LOG}" `
+    SCCACHE_IDLE_TIMEOUT="0"
 
-# The check runs here so a broken pin fails this stage, not the smoke gate two stages later.
-RUN --mount=type=bind,source=windows/scripts/build/Install-LlamaCpp.ps1,target=C:\bkmnt\Install-LlamaCpp.ps1 `
+# No PATH entry: their ggml*.dll, llama.dll and libomp.dll would shadow every other copy of those names.
+ENV LLAMA_CPP_HIP_HOME="C:\runtime\opt\llama.cpp-hip"
+
+# Values: versions.env (the driver forwards them; bump every LLAMA_CPP_* together). ARG only, like the migraphx stage.
+ARG ROCM_WINDOWS_GFX_FAMILY=gfx120X-all
+ARG LLAMA_CPP_HIP_BUILD=11472
+ARG LLAMA_CPP_HIP_COMMIT=d0b490f25edec147b4dcd69cce31c7d1099dff1d
+ARG LLAMA_CPP_HIP_SOURCE_SHA256=4e3bfa01fa9439074db79d938f3b71e4852d3bb0b57a0f4a299a9edde9e11d63
+ARG LLAMA_CPP_CPU_SHA256=57491129bfb28f21b61748b10f7652c95604ca772b0340ff6e931a383f7d3717
+ARG LLAMA_CPP_HIP_LICENSE_SHA256=94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d
+ENV LLAMA_CPP_HIP_BUILD="${LLAMA_CPP_HIP_BUILD}"
+
+# ggml-hip.dll from source, then the tag's CPU zip beside it; the check runs here so a broken pin fails this stage.
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/build/Build-LlamaCppHipFromSource.ps1,target=C:\bkmnt\Build-LlamaCppHipFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Install-LlamaCpp.ps1,target=C:\bkmnt\Install-LlamaCpp.ps1 `
     --mount=type=bind,source=windows/scripts/build/rocm-checks/LlamaCpp.ps1,target=C:\bkmnt\LlamaCpp.ps1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Common.psm1,target=C:\bkmnt\modules\WindowsContainerImage.Common.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
-    & 'C:\bkmnt\Install-LlamaCpp.ps1' -Backend hip -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_HIP_HOME; `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
+    --mount=type=bind,from=llamamods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\Build-LlamaCppHipFromSource.ps1' -OutputDir 'C:\temp\llama-cpp-hip-built' -WorkDir 'C:\temp\llama-cpp-hip-work'; `
+    & 'C:\bkmnt\Install-LlamaCpp.ps1' -Backend hip -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_HIP_HOME -BuiltDir 'C:\temp\llama-cpp-hip-built'; `
+    Remove-Item -LiteralPath 'C:\temp\llama-cpp-hip-built' -Recurse -Force; `
     $findings = @(& 'C:\bkmnt\LlamaCpp.ps1' -Backend hip); `
     if ($findings.Count -gt 0) { throw ('llama.cpp HIP check failed: ' + ($findings -join ' | ')) }
 
 # Declared after the HIP RUN, so a Vulkan pin moves only this layer.
-ARG LLAMA_CPP_VULKAN_SHA256=49a902ecea67e9fbdc79600865a93c814b1d128e3bc0b59692d69f512d0f4ae5
+ARG LLAMA_CPP_VULKAN_SHA256=906d5405ef5f7a37e838a04701c27fc3c41d72aae7adbbeef4acc323a89a473d
 ENV LLAMA_CPP_VULKAN_HOME="C:\runtime\opt\llama.cpp-vulkan"
 RUN --mount=type=bind,source=windows/scripts/build/Install-LlamaCpp.ps1,target=C:\bkmnt\Install-LlamaCpp.ps1 `
     --mount=type=bind,source=windows/scripts/build/rocm-checks/LlamaCpp.ps1,target=C:\bkmnt\LlamaCpp.ps1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Common.psm1,target=C:\bkmnt\modules\WindowsContainerImage.Common.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
-    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
+    --mount=type=bind,from=llamamods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Install-LlamaCpp.ps1' -Backend vulkan -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_VULKAN_HOME; `
     $findings = @(& 'C:\bkmnt\LlamaCpp.ps1' -Backend vulkan); `
     if ($findings.Count -gt 0) { throw ('llama.cpp Vulkan check failed: ' + ($findings -join ' | ')) }
-
