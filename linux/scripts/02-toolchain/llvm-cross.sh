@@ -55,6 +55,7 @@ _llvm_cross_resolve_dirs() {
   _r[source_dir]="${_r[source_root]}/llvm-project-${_r[release]}"
   _r[build_dir]="${_r[build_root]}/${_r[build_dir_suffix]}"
   _r[wrapper_dir]="${_r[build_root]}/${_r[wrapper_dir_suffix]}"
+  _r[zlib_include]="${_r[build_root]}/${triplet}-zlib-include"
   _r[jobs]="$(compute_jobs_with_mem_cap "${LLVM_CROSS_JOBS:-}" "${LLVM_CROSS_MB_PER_JOB:-3500}")"
   return 0
 }
@@ -256,6 +257,17 @@ llvm_cross_clang_triple() {
   esac
 }
 
+# lldb's SymbolFileCTF includes zlib.h without linking ZLIB::ZLIB, and the cross GCC never searches /usr/include.
+llvm_cross_stage_zlib_headers() {
+  local dir="$1" sysroot="${2:-/}" h
+  rm -rf "${dir}"
+  [ -f "${sysroot%/}/usr/include/zlib.h" ] || return 0
+  mkdir -p "${dir}"
+  for h in zlib.h zconf.h; do
+    cp -p "${sysroot%/}/usr/include/${h}" "${dir}/${h}"
+  done
+}
+
 _llvm_cross_cmake_configure() {
   local -n _cfg="$1"
   local clang_triple="$2"
@@ -270,6 +282,10 @@ _llvm_cross_cmake_configure() {
   local -A _tc=()
   _llvm_cross_resolve_configure_toolchain _tc \
     "${_cfg[target_label]:-}" "${_cfg[triplet]:-}"
+
+  # Only zlib's two headers live there, so nothing of the host's /usr/include can shadow the target's.
+  local flags_init="-B${wrapper_dir}"
+  [ -f "${_cfg[zlib_include]:-}/zlib.h" ] && flags_init+=" -isystem ${_cfg[zlib_include]}"
 
   cmake -G Ninja \
     "${_cfg_launcher_args[@]}" \
@@ -288,9 +304,9 @@ _llvm_cross_cmake_configure() {
     -DCMAKE_OBJCOPY="${_tc[objcopy]}" \
     -DCMAKE_STRIP="${_tc[strip]}" \
     "${_cfg_linker_args[@]}" \
-    -DCMAKE_C_FLAGS_INIT="-B${wrapper_dir}" \
-    -DCMAKE_CXX_FLAGS_INIT="-B${wrapper_dir}" \
-    -DCMAKE_ASM_FLAGS_INIT="-B${wrapper_dir}" \
+    -DCMAKE_C_FLAGS_INIT="${flags_init}" \
+    -DCMAKE_CXX_FLAGS_INIT="${flags_init}" \
+    -DCMAKE_ASM_FLAGS_INIT="${flags_init}" \
     -DCMAKE_LIBRARY_ARCHITECTURE="${_tc[triplet]}" \
     -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
@@ -353,6 +369,7 @@ _llvm_cross_setup_and_build() {
     export SCCACHE_DIR="/var/cache/sccache"
     setup_linux_cross_env
     llvm_cross_populate_tool_wrapper_dir "${wrapper_dir}"
+    llvm_cross_stage_zlib_headers "${_r[zlib_include]}" "${CMAKE_SYSROOT:-/}"
 
     # Without host wrappers and CLANG_TABLEGEN the native support lib is silently left unbuilt.
     build_cc="$(make_host_compiler_wrapper "${native_wrapper_dir}/host-gcc" "${build_cc_real}" "${host_path}")"
