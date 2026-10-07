@@ -24,9 +24,9 @@ belongs on the bare host.
 | TVM | OpenCL runtime; ROCm codegen + runtime as a **spike** (`TVM_ROCM=1`), on a minimal LLVM of its own that carries AMDGPU | OpenCL, ROCm/HIP | spike: yes |
 | LiteRT-LM | GPU backend (WebGPU over Dawn on D3D12) | D3D12 | no |
 | ONNX Runtime | CPU + DirectML, plus the in-tree WebGPU EP as a **spike** (`ORT_WEBGPU=1`). ORT >= 1.23 has no ROCm EP | DirectML, WebGPU (Dawn on D3D12) | no |
-| PyTorch | torch 2.14.0+rocm10.0.0, torchvision 0.29.0+rocm10.0.0, built from source here for gfx1201 and gfx1200 | ROCm/HIP (AMD's runtime wheels) | no |
+| PyTorch | torch 2.14.1+rocm10.0.0, torchvision 0.29.1+rocm10.0.0, built from source here for gfx1201 and gfx1200 | ROCm/HIP (AMD's runtime wheels) | no |
 | App venv LiteRT | `ai-edge-litert` 2.2.0 with its WebGPU accelerator | WebGPU (Dawn on D3D12) | no |
-| llama.cpp HIP | official Windows ROCm build b11115 (`ggml-hip`), `C:\runtime\opt\llama.cpp-hip` | ROCm/HIP | hipBLAS/rocBLAS |
+| llama.cpp HIP | official Windows ROCm build b11460 (`ggml-hip`), `C:\runtime\opt\llama.cpp-hip` | ROCm/HIP | hipBLAS/rocBLAS |
 | llama.cpp Vulkan | the same build's official Windows Vulkan zip (`ggml-vulkan`), `C:\runtime\opt\llama.cpp-vulkan` | Vulkan (the sdk layer's loader) | no |
 | MIGraphX + ORT plugin EP | MIGraphX 2.17.0 from source, `migraphx-ep.dll` as a **spike** | ROCm/HIP | yes |
 
@@ -709,9 +709,9 @@ On cpu and nvidia, the Bazel command stays `build //runtime/engine:litert_lm_mai
 
 ## PyTorch on the rocm lane (torch stage)
 
-The rocm image's app venv (`C:\opt\OrchestrANT\.venv`) runs **PyTorch built from source in this repository** (owner decision 2026-09-29). It has torch 2.14.0+rocm10.0.0 and torchvision 0.29.0+rocm10.0.0 (cp314, win_amd64), built from the upstream `v2.14.0` / `v0.29.0` tags that `PYTORCH_VERSION` / `TORCHVISION_VERSION` name. They are compiled against this image's ROCm 10.0 SDK (`C:\TheRock\build`) for both GPUs of the pinned gfx120X-all family: gfx1201 (RX 9070 series) and gfx1200 (RX 9060 series). They load ROCm the way AMD's wheels do, from AMD's `rocm[libraries]` 10.0.0 runtime and a device wheel per GPU. The venv also gets `ai-edge-litert` (§ The LiteRT extra, below). The cpu and nvidia images are unchanged.
+The rocm image's app venv (`C:\opt\OrchestrANT\.venv`) runs **PyTorch built from source in this repository** (owner decision 2026-09-29). It has torch 2.14.1+rocm10.0.0 and torchvision 0.29.1+rocm10.0.0 (cp314, win_amd64), built from the upstream `v2.14.1` / `v0.29.1` tags that `PYTORCH_VERSION` / `TORCHVISION_VERSION` name. They are compiled against this image's ROCm 10.0 SDK (`C:\TheRock\build`) for both GPUs of the pinned gfx120X-all family: gfx1201 (RX 9070 series) and gfx1200 (RX 9060 series). They load ROCm the way AMD's wheels do, from AMD's `rocm[libraries]` 10.0.0 runtime and a device wheel per GPU. The venv also gets `ai-edge-litert` (§ The LiteRT extra, below). The cpu and nvidia images are unchanged.
 
-Why here and not AMD's: AMD's Windows wheels for ROCm 10.0 stop at torch 2.13.0, and the app locks 2.14.0. torch 2.14 exists for ROCm 7.14 (pytorch.org, Linux only) and for ROCm 10.1 release candidates (`rc.repo.amd.com`), but not for 10.0.
+Why here and not AMD's: AMD's Windows wheels for ROCm 10.0 stop at torch 2.13.0, and the app locks 2.14.1. torch 2.14 exists for ROCm 7.14 (pytorch.org, Linux only) and for ROCm 10.1 release candidates (`rc.repo.amd.com`), but not for 10.0.
 
 WebGPU for ONNX Runtime comes from the chain ORT itself ([§ ONNX Runtime WebGPU EP](#onnx-runtime-webgpu-ep-rocm-lane-spike)). The PyPI plugin `onnxruntime-ep-webgpu` that this venv carried for part of 2026-09-23 is gone, with its `TORCH_ROCM_WINDOWS_ORT_EP_WEBGPU_*` pins: it was ORT code not built by this chain.
 
@@ -735,7 +735,7 @@ WebGPU for ONNX Runtime comes from the chain ORT itself ([§ ONNX Runtime WebGPU
   - `ROCM_HOME`/`ROCM_PATH` are the SDK root and `CMAKE_PREFIX_PATH` is its `lib\cmake`.
   - TheRock's `clang-cl` is CC/CXX, plus `HIP_CLANG_PATH`.
   - `PYTORCH_ROCM_ARCH` comes from `ROCM_WINDOWS_GFX_FAMILY`, and OpenBLAS from the SDK's `lib\host-math`.
-  - `PYTORCH_BUILD_VERSION=2.14.0+rocm10.0.0` and `PYTORCH_EXTRA_INSTALL_REQUIREMENTS=rocm[libraries]==<release>`.
+  - `PYTORCH_BUILD_VERSION=2.14.1+rocm10.0.0` and `PYTORCH_EXTRA_INSTALL_REQUIREMENTS=rocm[libraries]==<release>`.
   - `MAX_JOBS` allows 5 GB per job, and sccache wraps the host C/C++ when it is configured.
 - **Then** `python -m build --wheel --no-isolation`, an install into the build venv, and an `import torch` that prints the HIP version and the compiled arch list. The torch wheel is staged in `C:\torch-rocm-wheels`, and the torch tree is removed. The build venv, with torch installed, stays for the next RUN.
 - **The torchvision RUN** dot-sources the torch builder for its helpers and builds in that venv. It does not use `Start-MigraphxBuildSession`, which would reset the work dir. It adds pillow, because `import torchvision` imports PIL and torch's build requirements do not bring it. Then `setup.py bdist_wheel` (`FORCE_CUDA=1` on the GPU-less host) and an import that requires its C++ ops. `C:\torch-rocm-wheels` must then hold exactly the two wheels. Every step logs in full to the persistent `C:\sccache-logs` (`torch-rocm-*.log`, `torchvision-rocm-*.log`).
@@ -813,7 +813,7 @@ The stage installs two official builds of the same llama.cpp release, each in it
 directory: the HIP build here, and the Vulkan build in
 [§ The Vulkan build](#the-vulkan-build-cruntimeoptllamacpp-vulkan).
 
-**What it adds.** The rocm image carries llama.cpp's official Windows ROCm/HIP release. The pinned build is b11115, asset `llama-b11115-bin-win-rocm-10.0-x64.zip`. It lives in `C:\runtime\opt\llama.cpp-hip`, which `LLAMA_CPP_HIP_HOME` names. It contains:
+**What it adds.** The rocm image carries llama.cpp's official Windows ROCm/HIP release. The pinned build is b11460, asset `llama-b11460-bin-win-rocm-10.0-x64.zip`. It lives in `C:\runtime\opt\llama.cpp-hip`, which `LLAMA_CPP_HIP_HOME` names. It contains:
 - `llama-server.exe`, `llama.exe` and the other tools;
 - the CPU `ggml-cpu-*.dll` variants;
 - `ggml-hip.dll`, 973 MB, with device code for 20 GPUs from gfx1010 to gfx1201.
@@ -867,7 +867,7 @@ So one HIP runtime serves the whole process, and there is no version skew.
 
 ### The Vulkan build (`C:\runtime\opt\llama.cpp-vulkan`)
 
-**What it adds.** llama.cpp's official Windows Vulkan zip of the same build, b11115: asset `llama-b11115-bin-win-vulkan-x64.zip`, 31,973,078 B. It lives in its own directory, which `LLAMA_CPP_VULKAN_HOME` names, and it is never on PATH. It is the vendor-neutral path to an AMD GPU, and the only one for GPUs the gfx120X-all rocBLAS has no kernels for, such as the gfx1036 iGPU.
+**What it adds.** llama.cpp's official Windows Vulkan zip of the same build, b11460: asset `llama-b11460-bin-win-vulkan-x64.zip`, 33,377,748 B. It lives in its own directory, which `LLAMA_CPP_VULKAN_HOME` names, and it is never on PATH. It is the vendor-neutral path to an AMD GPU, and the only one for GPUs the gfx120X-all rocBLAS has no kernels for, such as the gfx1036 iGPU.
 - Upstream builds only `ggml-vulkan.dll` (`-DGGML_VULKAN=ON -DGGML_CPU=OFF -DGGML_BACKEND_DL=ON`, Vulkan SDK 1.4.357.0) and then adds the windows-cpu zip's tools.
 - Measured 2026-09-23: all 51 files the Vulkan zip shares with the HIP zip are byte-identical (CRC32 and size). The zips differ only in `ggml-vulkan.dll` against `ggml-hip.dll` plus the three HIP runtime DLLs.
 

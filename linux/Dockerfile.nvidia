@@ -7,7 +7,7 @@ FROM ${BASE_IMAGE}
 
 # Pins come from versions.env and are shared with windows/Dockerfile.nvidia.
 ARG CUDA_VERSION=13.4.2
-ARG CUDNN_VERSION=9.26.0.51
+ARG CUDNN_VERSION=9.27.0.42
 ARG TENSORRT_VERSION=11.3.0.99
 # false = CUDA + cuDNN without TensorRT (Jetson); gates both the install and the strict verify.
 ARG ENABLE_TENSORRT=true

@@ -483,7 +483,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-cuDNN-5abf555b",
       "name": "cuDNN",
-      "versionInfo": "9.26.0.51",
+      "versionInfo": "9.27.0.42",
       "downloadLocation": "https://developer.nvidia.com/cudnn",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -704,7 +704,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-PyTorch-dd6999e0",
       "name": "PyTorch",
-      "versionInfo": "v2.14.0",
+      "versionInfo": "v2.14.1",
       "downloadLocation": "https://pytorch.org/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -717,7 +717,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-TorchVision-f7194265",
       "name": "TorchVision",
-      "versionInfo": "v0.29.0",
+      "versionInfo": "v0.29.1",
       "downloadLocation": "https://github.com/pytorch/vision",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -730,7 +730,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Flutter-SDK-36007425",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.4",
+      "versionInfo": "3.47.6",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -808,7 +808,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Ollama-229f7e80",
       "name": "Ollama",
-      "versionInfo": "0.34.2",
+      "versionInfo": "0.40.0",
       "downloadLocation": "https://github.com/ollama/ollama",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1042,7 +1042,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Flutter-SDK-0ac793ed",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.4",
+      "versionInfo": "3.47.6",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1068,7 +1068,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-cuDNN-e1729940",
       "name": "cuDNN",
-      "versionInfo": "9.26.0.51",
+      "versionInfo": "9.27.0.42",
       "downloadLocation": "https://developer.nvidia.com/cudnn",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1133,7 +1133,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-PyTorch-TorchVision-for-ROCm-built-from-upstre-b06a673e",
       "name": "PyTorch + TorchVision for ROCm (built from upstream source against TheRock's ROCm 10.0.0 SDK, kernels for gfx1201 and gfx1200, on AMD's rocm[libraries] runtime; rocm variant only)",
-      "versionInfo": "torch 2.14.0+rocm10.0.0 and torchvision 0.29.0+rocm10.0.0 from the v2.14.0 / v0.29.0 tags (commits pinned as TORCH_ROCM_WINDOWS_*_COMMIT), with AMD's rocm-sdk runtime and device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*)",
+      "versionInfo": "torch 2.14.1+rocm10.0.0 and torchvision 0.29.1+rocm10.0.0 from the v2.14.1 / v0.29.1 tags (commits pinned as TORCH_ROCM_WINDOWS_*_COMMIT), with AMD's rocm-sdk runtime and device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*)",
       "downloadLocation": "https://github.com/pytorch/pytorch",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1393,7 +1393,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-ROCm-relea-de02b048",
       "name": "llama.cpp (official prebuilt Windows ROCm release: ggml-hip.dll, llama-server.exe and the other tools)",
-      "versionInfo": "11115",
+      "versionInfo": "11460",
       "downloadLocation": "https://github.com/ggml-org/llama.cpp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1406,7 +1406,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-Vulkan-rel-968cbee2",
       "name": "llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools)",
-      "versionInfo": "11115",
+      "versionInfo": "11460",
       "downloadLocation": "https://github.com/ggml-org/llama.cpp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
