@@ -6,10 +6,9 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-05**, read from the registry (hub = the image's `revision` label, digest =
+**State 2026-10-07**, read from the registry (hub = the image's `revision` label, digest =
 the per-arch manifest). Published: `:latest` (2026-10-03, hub b4d5fdd5; amd64 `686fdf4e…`,
-arm64 `26957741…`, riscv64 `67887737…`), `:winamd64` (2026-10-04, hub 9ecb2503,
-`65c0dc1f…`), `:winamd64-nvidia` (2026-10-02, hub 7a5a2a33, `a9e67332…`),
+arm64 `26957741…`, riscv64 `67887737…`), `:winamd64` (2026-10-06, hub b3cf4c76), `:winamd64-nvidia` (2026-10-02, hub 7a5a2a33, `a9e67332…`),
 `:winamd64-rocm` (2026-10-03, hub 1d910553, `493e80f1…`), `:winarm64` (2026-10-04, hub
 80647a9a, `97bbcd35…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-nvidia`
 (2026-10-02, hub b4d5fdd5, amd64 `95c3a343…`, built without DeepStream) and `:latest-rocm`
@@ -66,11 +65,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
       and Windows amd64 are in source since 2026-10-07 (CHANGELOG). Open:
       1. **Prove in full image builds**: Linux — the nvidia and rocm ORT twins (one call each), the IREE
-         compiler twin, FT-STORE green on `:latest` amd64 (and arm64 on a native arm64 chain), the ORT census
+         compiler twin at v3.12.0 (proved locally on v3.11.0's tree, 2026-10-07), FT-STORE green on `:latest` amd64 (and arm64 on a native arm64 chain), the ORT census
          taking the twin, `PYTHON_WHEELS_CP314T` in FT-STORE, and a 3.14t venv reconciled onto the real ORT twin
-         (`uv_reconcile_chain_ort`, proved locally only with stand-in twins). Windows — the IREE v3.12.0 clang-cl fixes (genrule `python3`, `__udivti3`) and the
-         `iree-base-compiler` twin; smoke section 20's exact set then has all five twins. Both were proved
-         locally only up to the runtime-only IREE tree.
+         (`uv_reconcile_chain_ort`, proved locally only with stand-in twins). Windows — a `:winamd64` image build carrying all five twins, so smoke section 20 checks its
+         exact set; the IREE v3.12.0 clang-cl fixes and the `iree-base-compiler` twin are proved locally on the
+         full compiler tree since 2026-10-07. Optional: keep the GIL interpreter in IREE's VM ISA genrule for
+         the Windows twin, as `Set-OrtNinjaCommandPython` does for ORT (56 of its 137 edges go away).
       1b. **Linux cross twins** (arm64 cross, riscv64, including riscv64 torch/torchvision/numpy, which need
          rows in `03-media/free-threaded-twins.txt`): `ft_soabi_gate` takes the target EXT_SUFFIX from `/opt/python-cross-ft/<arch>`, and the
          proof runs on the target (QEMU) or in the package stage.
@@ -85,11 +85,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       5. **Upstream**: IREE's bare-`python3` genrule (`runtime/src/iree/vm/bytecode/isa/CMakeLists.txt`) and its
          Windows `cpython-NNt` SOABI detection (`CMakeLists.txt:782-791`); onnxruntime-genai's
          `PYBIND11_MODULE` (`src/python/python.cpp:468`) plus a thread-safety audit of its global log callback.
-- [ ] **CON81 — IREE configures twice before its GIL build, or its wheels differ** [S, ★]. On Linux its
-      first configure leaves `IREE_HAVE_LIBBACKTRACE` unset and the second sets it, so the cp314t twin pass
-      recompiles 464 of 723 runtime objects and the twin carries libbacktrace where the GIL wheel does not; a
-      settled tree rebuilds 21. Windows already settles (`Invoke-CmakeConfigure -Settle`). Settling Linux
-      changes the GIL wheel, so it is the owner's call.
 - [ ] **CON80 — prove the in-place site-packages merge in the next Windows chain run** [S, ★]. The cause
       (a COPY over a lower layer's file stores it lowercased) and the fix landed 2026-10-07 (CHANGELOG): the
       fan-in merges in one RUN, refuses mixed versions and lost RECORD spelling. Proved in a replay only.
@@ -97,6 +92,29 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       check. Until then, images built before the fix take `pip uninstall -y cython` and
       `pip install cython==3.3.0` in two separate RUNs (verified on bk-windows-media); a one-layer
       `--force-reinstall` leaves `cython\` and still fails.
+
+- [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) The report cannot say how far behind a
+      maintained lock is: add the tool's own dry-run count per lock. (2) Yarn is NOT CARRIED (no family repo has a
+      yarn.lock today). (3) `actions-selftest.yml` never runs `clone-into-short-path` on a pull_request merge ref; the fix
+      is proved by a local reproduction only. (4) Consumers to follow: jotrockenmitlocken (sqlite3 3.7.0 in its lock and
+      a refreshed `web/sqlite3.wasm`), ANThology (lock maintenance), OmniAccelerANT's `environment: flutter: '>=3.41.6'`
+      floor (its lock now needs 3.47.0), and optionally OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule
+      into the preset. (5) OmniAccelerANT's lock maintenance (go_router 18.0.2, sqlite3 3.7.0 and the wasm) waits
+      locally for its hub gitlink to move past this commit, which waits for the published images (CON72).
+
+- [ ] **CON83 — the riscv64 Python lane: seed its sync, and test the cross wheel** [M, ★★]. Found while fixing
+      OrchestrANT's riscv64 lane (2026-10-07): its emulated `uv sync` of the `test` extra builds numpy, matplotlib,
+      contourpy, pillow, line-profiler, psutil and pyyaml from source, 108 min of the runner's 6 h (numpy alone 107 min),
+      because no cp314 riscv64 wheel exists for them. The image already builds OrchestrANT develop: ship a riscv64 uv
+      cache (or wheel store) seeded from its lock that `ci_tests.sh` copies into `UV_CACHE_DIR` (a warm cache synced in
+      1 min locally). And install plus smoke-test the cross-built riscv64 wheel on the emulated row; today it is never
+      installed. The riscv64 image also lacks shellcheck and hadolint (their rows report SKIPPED).
+      OrchestrANT-side, owner calls from the same analysis: import `matplotlib.pyplot` lazily in
+      `orchestrant/__init__` (31-37 s per subprocess under QEMU; `bench_agent.py --list` takes 41.9 s
+      against a 60 s timeout, but the change touches Cython-built modules and tests that patch
+      `plotting.plt`); hermetic grading (`PYTEST_DISABLE_PLUGIN_AUTOLOAD`) in bench_agent's own
+      grading runs, which changes product behaviour; and re-measuring the process ceiling per launch
+      on a busy shared box (about 0.37 s per launch under QEMU).
 
 - [ ] **CON82 — prove the 2026-10-07 pin bumps in the images** [M, ★★]. Linux base/sdk on Vulkan SDK 1.4.363.0, with
       the arm64/riscv64 foreign SDK reaching 24/24 without the retired slang patch and the runtime smoke advertising
@@ -140,15 +158,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 - [ ] **CON72 — the 2026-10-07 Renovate bumps reach a published image** [L, ★★]. In source on
       2026-10-07 (CHANGELOG): LLVM 23.1.3, Rust 1.99.0, CPython 3.14.8, CMake 4.4.4, uv 0.12.23,
       TVM v0.27.0, IREE v3.12.0, GenAI v0.17.0, LiteRT-LM 0.18.0 (protoc 36.1), PyAV 19.0.1,
-      torch 2.14.1/torchvision 0.29.1, llama.cpp b11460, Ollama 0.40.0, Flutter 3.47.6, cuDNN
+      torch 2.14.1/torchvision 0.29.1, llama.cpp b11460 (since b11476, CON82), Ollama 0.40.0, Flutter 3.47.6, cuDNN
       9.27.0.42 and the tool pins. Every hash was checked, and the patches were applied to the new
       sources. What only a chain can prove:
       - **TVM v0.27.0** is 141 commits past the proven `994e0216`, built by GCC 16 and clang-cl
         23.1.3. Its tvm-ffi bump changes how the arm64 and riscv64 ffi wheels find Python.
       - **IREE v3.12.0** bundles LLVM 24.0.0git, and the cross builds (arm64 clang-cl, riscv64)
-        meet a new async proactor, the local-task executor and new tools. **OrchestrANT's lock
-        must move iree-base-compiler/runtime to 3.12.0 first**: a 3.12 runtime does not load a 3.11
-        VMFB, so arm64's `check_iree_native` would fail.
+        meet a new async proactor, the local-task executor and new tools. OrchestrANT's lock carries
+        iree-base-compiler/runtime 3.12.0 since c33edb3 (a 3.12 runtime does not load a 3.11 VMFB).
       - **GenAI v0.17.0** is a 487-file refactor, on GCC 16, clang-cl and nvcc. On Windows,
         configure needs `nuget.exe` on the media-core `PATH`, DirectML/D3D12/DXC restore unhashed
         from nuget.org, and `D3D12Core.dll` must land beside the DLL.
@@ -173,6 +190,17 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       found for request: cpython-3.14.8-linux-x86_64-gnu`). uv 0.12.23 in the next `:latest`
       serves it. Lesson: a consumer's pin bump that moves `PYTHON_VERSION` or `UV_VERSION` waits
       for the image.
+
+      **Once the images are published, every consumer moves its hub gitlink**, and these wait on it:
+      - **OmniAccelerANT**: its local lock-maintenance commits (go_router 18.0.2, sqlite3 3.7.0 with
+        `web/sqlite3.wasm`; CON84) go with the bump, and `check-rust-toolchain.sh` then grades rustc 1.99.0.
+      - **OrchestrANT**: the riscv64 packaging fix (sysroot libc, 2026-10-07) arrives with it. Its cp314t
+        wheel needs the image's `3.14t` (CON66); `free-threaded-wheel: off` (CON77) is the interim switch
+        should the pin have to move first.
+      - **BeschleunigerBallett**: drop its local sccache override and its format counter, which the
+        hub's guarded launcher and the pinned clang-format replace.
+      - **AccelerANTgine**: `scan-build-21` → `scan-build` (CON71 wires the pinned LLVM's tools).
+      - **OxidANT, WebDavClient, DocumANTation, ANThology**: the gitlink only.
 
 ## Open — Linux image (all arches)
 

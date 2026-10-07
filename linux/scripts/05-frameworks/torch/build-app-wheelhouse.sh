@@ -734,6 +734,14 @@ _iree_patch_setup_py_abi3() {
     done
 }
 
+# <log> <cmake args>...: configures twice, because IREE links iree::base before the libbacktrace subdirectory caches its target.
+_iree_configure_settled() {
+    local log="$1"
+    shift
+    cmake "$@" > "${log}" 2>&1 || return 1
+    cmake "$@" >> "${log}" 2>&1
+}
+
 # See docs/iree-two-stage-build.md § Stage 1 — the native amd64 host tools
 _iree_build_host_stage() {
     # See docs/iree-two-stage-build.md § The host tools stage 2 needs from IREE_HOST_BIN_DIR
@@ -831,7 +839,7 @@ _iree_build_target_cross() {
       [Oo][Nn]|1|[Tt][Rr][Uu][Ee]) iree_wheel_projects=(compiler runtime) ;;
       *)                           iree_wheel_projects=(runtime) ;;
     esac
-    if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
+    if ! _iree_configure_settled "${target_build}.cfg.log" -G Ninja -S "${src_dir}" -B "${target_build}" \
             -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
             "${cmake_args[@]}" \
             "${ccache_cmake_args[@]}" \
@@ -846,7 +854,7 @@ _iree_build_target_cross() {
             -DIREE_ENABLE_WERROR_FLAG=OFF \
             -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
             -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
-            -DCMAKE_BUILD_TYPE=Release > "${target_build}.cfg.log" 2>&1; then
+            -DCMAKE_BUILD_TYPE=Release; then
         warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"
         echo "----- IREE target configure: last 80 log lines -----"
         tail -n 80 "${target_build}.cfg.log" 2>/dev/null
@@ -868,7 +876,7 @@ _iree_build_target_native() {
     for native_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${native_cc}" ] && break; done
     for native_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${native_cxx}" ] && break; done
     rm -rf "${target_build}"
-    if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
+    if ! _iree_configure_settled "${target_build}.cfg.log" -G Ninja -S "${src_dir}" -B "${target_build}" \
             "${ccache_cmake_args[@]}" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER="${native_cc}" \
@@ -883,7 +891,7 @@ _iree_build_target_native() {
             -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
             -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
             -DPython_EXECUTABLE="${BUILD_PYTHON}" \
-            -DPython3_EXECUTABLE="${BUILD_PYTHON}" > "${target_build}.cfg.log" 2>&1; then
+            -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
         warn "IREE native configure failed"
         echo "----- IREE native configure: last 80 log lines -----"
         tail -n 80 "${target_build}.cfg.log" 2>/dev/null

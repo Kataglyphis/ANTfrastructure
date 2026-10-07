@@ -115,7 +115,10 @@ at this repository's [`default.json`](../default.json). That preset exists for o
 line — enabling the `git-submodules` manager, which Renovate **disables by
 default**, and which is why no gitlink in this family has ever been watched by
 anything. Since 2026-10-01 it also carries the CMake managers
-([CMake dependencies](#cmake-dependencies)).
+([CMake dependencies](#cmake-dependencies)). Since 2026-10-07 it also turns on
+[lock file maintenance](#lock-file-maintenance), and it reads a pubspec's
+`environment: flutter:` floor with npm versioning, which every Flutter consumer
+needs.
 
 None of it runs on GitHub. **The Renovate GitHub App is installed on none of
 these repositories, and it is not going to be** — owner decision, 2026-09-09:
@@ -824,6 +827,10 @@ exists beside the manifest is the one that does.
 `pip_requirements`, `pre-commit` and `github-actions` have no lockfile, and are
 applied with no tool on `PATH` at all.
 
+These commands refresh a lock for the edit that made it stale and move nothing
+else. Moving every other entry to its newest in-range release is a separate job,
+[lock file maintenance](#lock-file-maintenance), with its own commands.
+
 ### A workspace member's lock is at the root
 
 The same bug class, on the other axis: there the *name* was resolved from a
@@ -904,6 +911,95 @@ re-resolves the whole workspace: an earlier job carried
 `@2.12.0` then matched nothing. So a failed versioned spec is retried as the
 bare name, which is unambiguous by then — the retry exists for that measured
 case, not as a general fallback.
+
+## Lock file maintenance
+
+**Owner rule 2026-10-07 ("bleeding edge"): every lockfile moves to the newest
+release its manifest allows**, not only the entries an edit touches. The shared
+preset ([`default.json`](../default.json)) turns Renovate's
+`lockFileMaintenance` on. Before that, this drift showed up in no report. On
+2026-10-07 WebDavClient's `uv.lock` was 41 packages behind, DocumANTation's 19
+and OmniAccelerANT's `pubspec.lock` 17, while every manager called those repos up
+to date. Each of those releases fell inside the manifest's range, so no manifest
+line was behind.
+
+### Renovate builds it locally, and never says so
+
+Measured on 44.140.0 against DocumANTation before its lock maintenance, with
+`lockFileMaintenance` enabled:
+
+- **Renovate does create the update.** The lookup phase's `flattenUpdates` adds
+  one lockFileMaintenance update per package file whose manager supports it,
+  whatever the schedule. The debug log said `2 flattened updates found`, one per
+  `pyproject.toml`.
+- **It never reaches the report.** `--platform=local` forces `dryRun=lookup`,
+  which skips the branch phase, where the lock tool would run and the schedule
+  would be read. It also skips the finalize step that fills the report's
+  `branches`. The report carries `packageFiles[].deps[].updates` and nothing
+  else: `branches` was empty, there were no dependency updates, and
+  `lockFileMaintenance` appeared nowhere in it.
+
+So the preset alone changes nothing a local run shows. `renovate-local.sh`
+carries the rest itself.
+
+### What `renovate-local.sh` does with it
+
+- **It reads the setting from the resolved config**, the same `--print-config`
+  record the planner reads, layered as Renovate layers it. The top-level
+  `lockFileMaintenance.enabled` comes first, then the manager's own block, then
+  the last matching `packageRules` entry that sets `enabled`
+  (`renovate_planner.py lockmaint`). A repo opts out with
+  `"lockFileMaintenance": {"enabled": false}`.
+- **It finds each lock the way an edit's lock job does.** For every cargo, npm,
+  pep621 or pub package file, `lock_target` looks beside the manifest, then at a
+  declared workspace root. Each lock is listed once, because workspace members
+  share one root lock.
+- **The report** gets a `LOCK FILE MAINTENANCE` section that names each lock and
+  the command `--apply` will run. It cannot say how far behind a lock is: only
+  the lock tool knows that, and the report half runs no tool.
+- **`--apply --dry-run`** lists `<lock> via <command> (lock file maintenance)`
+  with the other locks it would refresh.
+- **`--apply`** adds one maintenance job per lock after the edits' lock jobs. A
+  lock that an edit also touches is refreshed for the edit first and upgraded
+  last. The jobs go through the same steps as any lock job:
+  - a missing tool refuses before anything is written;
+  - the lock is copied aside first, and a failing tool puts everything back;
+  - the lock must still parse when read back;
+  - the collateral guard watches the rest of the tree.
+
+The commands are Renovate's own lockFileMaintenance commands, taken from its
+manager artifacts:
+
+| Tool | Command |
+|---|---|
+| uv | `uv lock --upgrade` |
+| poetry | `poetry update --lock` |
+| pdm | `pdm update --no-sync --update-eager` |
+| cargo | `cargo update`, the whole workspace (an edit runs `-p <dep>`) |
+| dart / flutter | `dart pub upgrade` / `flutter pub upgrade` |
+| npm | `npm update --package-lock-only --ignore-scripts` |
+| pnpm | `pnpm update --lockfile-only` |
+| yarn | none here: listed as `NOT CARRIED`, and the run exits 2 |
+
+Three limits:
+
+- **npm differs from Renovate.** Renovate deletes `package-lock.json` and
+  regenerates it. `npm update --package-lock-only` moves every entry within its
+  range and deletes nothing.
+- **A maintained lock never crosses a manifest constraint.** `pub upgrade`
+  without `--major-versions`, and `uv lock --upgrade`, stay inside the declared
+  ranges. A new major still comes from a manifest edit that Renovate reports.
+- **The schedule does nothing locally.** Nothing reads it under `dryRun=lookup`.
+  The preset says `at any time`, which is what the local CLI does anyway.
+  Renovate's default, `before 4am on monday`, would only hold back a bot that is
+  not installed.
+
+The proof is [`test-renovate-lockmaint.sh`](../linux/scripts/tests/test-renovate-lockmaint.sh)
+(M1 to M10) and an end-to-end run on 2026-10-07. `renovate-local.sh` ran with real
+Renovate 44.140.0 over DocumANTation at 4b20d3f, with maintenance on. The report and
+`--dry-run` listed `uv.lock  uv lock --upgrade`, and `--apply` ran it and moved 19
+packages. The result was the same 45-package lock that `uv lock --upgrade` run by
+hand produced.
 
 ## Why `--apply` refuses some submodules
 
@@ -2044,6 +2140,7 @@ match, a mixed `versions.env` + CMake report, and a wrong-line plan put back.
 | The world the suites run in | [`linux/scripts/tests/renovate-fixtures.sh`](../linux/scripts/tests/renovate-fixtures.sh) |
 | The suite that holds every refusal to its word | [`linux/scripts/tests/test-renovate-local.sh`](../linux/scripts/tests/test-renovate-local.sh) |
 | What an ecosystem tool did BESIDE the manifest | [`linux/scripts/tests/test-renovate-collateral.sh`](../linux/scripts/tests/test-renovate-collateral.sh) |
+| Lock file maintenance: the report section, the upgrade commands, the opt-out | [`linux/scripts/tests/test-renovate-lockmaint.sh`](../linux/scripts/tests/test-renovate-lockmaint.sh) |
 | The fleet: order, duplicates, and one repo failing | [`linux/scripts/tests/test-renovate-fleet.sh`](../linux/scripts/tests/test-renovate-fleet.sh) |
 | Every `# renovate:` line is matched by the regex that reads it | [`linux/scripts/tests/test-renovate-annotations.sh`](../linux/scripts/tests/test-renovate-annotations.sh) |
 | The annotated-env write and its refusals | [`linux/scripts/tests/test-renovate-env.sh`](../linux/scripts/tests/test-renovate-env.sh) |

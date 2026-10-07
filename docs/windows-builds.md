@@ -397,7 +397,24 @@ with the image's copy of the helper in `C:\temp\scripts`. Tests: `SourceBuild.Fr
   compile lines carried `Py_GIL_DISABLED=1`, and the proof loaded one module with the GIL off.
 - **PyAV 19.0.1** on the image's FFmpeg: 50 modules proved; **apache-tvm-ffi** at `daf594da`: one module, 100 s.
 - **IREE v3.12.0**, a runtime-only tree (`IREE_BUILD_COMPILER=OFF`): GIL pass 59 s, twin 20 s over 68 ninja edges, one
-  module proved. The compiler twin, which needs the in-tree LLVM, was not built locally; the same function builds it.
+  module proved.
+- **IREE v3.12.0 with the compiler** and its in-tree LLVM, `Build-IreeFromSource.ps1` unchanged (`-j20` beside a Linux
+  IREE build; 166 s for both CPython builds):
+  - The GIL pass configured twice in 114 s and built 8696 ninja edges in 23 min 9 s. The install, the native gate and
+    both `cp312-abi3` wheels took 48 s more.
+  - The twin pass took 94 s: configure 53 s, ninja 21 s over 137 edges, then both wheels packed and proved. 80 of those
+    edges reach Python: `nanobind-ft-mlir.dll`, MLIR's and IREE's bindings, the 14 `.cp314t-win_amd64.pyd` modules.
+  - The other 56 follow the VM ISA genrule. Its command names `Python3_EXECUTABLE`, so it re-runs for the venv and
+    relinks `IREECompiler.dll` and the tools. They differ from the GIL wheel's only in the COFF `TimeDateStamp`.
+  - `prove` loaded all 13 compiled modules of `iree-base-compiler`, the MLIR nanobind ones included, and the one of
+    `iree-base-runtime` with the GIL off.
+  - In a 3.14t venv with the wheels' `Requires-Dist` (`numpy`, `ml_dtypes`, `sympy`), `iree.compiler` and
+    `iree.runtime` import with the GIL off. `compile_str` plus `local-task` ran in eight threads at once, and the
+    twins' `iree-compile` and `iree-run-module` gave `abs(-5) = 5`. The GIL wheels pass the same gate on the GIL
+    interpreter.
+  - The twin's configure logs `CMake IGNORED` for `IREE_ENABLE_PYTHON_STABLE_ABI` and the Python hints, yet all of
+    them take effect. Upstream declares the ABI switch only while it is unset, so the untyped `-D` stays
+    `UNINITIALIZED`; the cache holds it `OFF`, and the twin has no abi3 module.
 - **A module that declares nothing about the GIL is refused**: a one-function `setup.py` extension failed with
   `the GIL was re-enabled, first by gilmod._c`, and nothing reached the store.
 - **The ORT census over both stores** was clean with both wheels as references. With the GIL wheel alone, as before

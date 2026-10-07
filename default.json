@@ -16,6 +16,15 @@
     ],
     "enabled": true
   },
+  "lockFileMaintenance": {
+    "description": [
+      "Owner rule 2026-10-07 (bleeding edge): every lockfile moves to the newest release its manifest allows, not only the entries a manifest edit touches. Without this, an in-range release never appears in any report: WebDavClient's uv.lock sat 41 packages behind, DocumANTation's 19 and OmniAccelerANT's pubspec.lock 17 while every manager said up to date.",
+      "Under --platform=local Renovate builds this update but never reports it, so renovate-local.sh carries it itself: its report lists each maintained lock, and --apply runs the lock tool's upgrade command. See docs/dependency-updates.md#lock-file-maintenance",
+      "`at any time`: the local CLI runs on demand and never reads a schedule, and Renovate's own default (before 4am on monday) would only hold back a bot that is not installed."
+    ],
+    "enabled": true,
+    "schedule": ["at any time"]
+  },
   "packageRules": [
     {
       "description": "GitHub Actions pin bumps are low-risk; group them into one PR instead of one per action.",
@@ -36,6 +45,15 @@
       "matchManagers": ["git-submodules"],
       "addLabels": ["submodules"],
       "commitMessageTopic": "submodule {{depName}}"
+    },
+    {
+      "description": [
+        "A pubspec's `environment: flutter:` floor (`>=3.41.6`) is a range, but the flutter-version datasource defaults to exact semver, so Renovate skipped every such floor as invalid-value and never looked it up (NOT CHECKED in OmniAccelerANT's 2026-10-07 report). npm versioning reads the range the way pub does.",
+        "Moved here from OmniAccelerANT's own config on 2026-10-07, so every Flutter consumer (ANThology, jotrockenmitlocken) gets it."
+      ],
+      "matchManagers": ["pub"],
+      "matchDatasources": ["flutter-version"],
+      "versioning": "npm"
     }
   ],
   "customManagers": [
