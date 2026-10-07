@@ -40,13 +40,15 @@ _lock_report "${PEP_REPORT}" pep621 pyproject.toml
 PEP_TOML='[project]\nname = "fixture"\ndependencies = [\n  "ruff==0.9.0",\n]\n'
 M1="$(_plant_all m1 pyproject.toml "${PEP_TOML}" uv.lock '# placeholder\n')"
 
-t_case "(M1) report: a maintained lock is listed with its upgrade command, and nothing runs"
+t_case "(M1) report: a maintained lock is listed with its upgrade command, and only its dry run runs"
 _maint "${MAINT_CFG}" "${M1}" "${PEP_REPORT}" --managers pep621
 t_assert_eq "0" "${RC}" "a report exits 0"
 t_assert_contains "${OUT}" "LOCK FILE MAINTENANCE" "the report has the section"
 t_assert_contains "${OUT}" "uv.lock                            uv lock --upgrade" \
   "naming the lock and the exact command --apply would run"
-t_assert_eq "" "${ARGV}" "the report half runs no lock tool"
+t_assert_eq "uv | lock --upgrade --dry-run | m1" "${ARGV}" "the report half runs the dry run, never the upgrade"
+t_assert_contains "${OUT}" "behind: unknown -- 'uv lock --upgrade --dry-run' printed no summary read here" \
+  "a stub's empty output is not read as zero"
 
 t_case "(M2) --apply refreshes a lock that no reported update touches"
 _maint "${MAINT_CFG}" "${M1}" "${PEP_REPORT}" --apply --managers pep621
@@ -115,5 +117,86 @@ STUB_PATH="${M10_STUBS}:${BARE_PATH}" RUN_CONFIG="${MAINT_CFG}" \
   _run "${M10}" "${PEP_REPORT}" --apply --managers pep621
 t_assert_eq "1" "${RC}" "the run must FAIL"
 t_assert_eq "# lock-before" "$(cat "${M10}/uv.lock")" "the lock is back at its bytes"
+
+# _dry_stubs <name> <tool> <rc> <output, printf -b> -> a PATH dir whose <tool> logs argv, prints that, exits <rc>.
+_dry_stubs() {
+  local d="${WORK}/dry-$1"
+  mkdir -p "${d}"
+  printf '%b' "$4" > "${d}/out.txt"
+  printf '#!/usr/bin/env bash\nprintf "%%s | %%s | %%s\\n" "$(basename "$0")" "$*" "${PWD##*/}" >> "%s"\ncat "%s" >&2\nexit %s\n' \
+    "${ARGV_LOG}" "${d}/out.txt" "$3" > "${d}/$2"
+  chmod +x "${d}/$2"
+  printf '%s' "${d}"
+}
+
+# _dry <stubs> <repo> <report> <args...>: a report run with only that stub ahead of the bare PATH.
+_dry() {
+  local stubs="$1"
+  shift
+  : > "${ARGV_LOG}"
+  STUB_PATH="${stubs}:${BARE_PATH}" RUN_CONFIG="${MAINT_CFG}" _run "$@"
+  ARGV="$(cat "${ARGV_LOG}")"
+}
+
+# The outputs below are verbatim from the real tools, 2026-10-08: uv 0.9.18, cargo 1.96.0, Dart 3.13.3.
+UV_DRY='Using CPython 3.14.2\nResolved 3 packages in 56ms\nRemove idna v3.4\nUpdate ruff v0.9.0 -> v0.16.10\nAdd six v1.17.0\n'
+CARGO_DRY='    Updating crates.io index\n     Locking 3 packages to latest compatible versions\n    Updating itoa v1.0.1 -> v1.0.18\n      Adding quote v1.0.47\n    Updating serde v1.0.100 -> v1.0.229\nwarning: not updating lockfile due to dry run\n'
+DART_DRY='Resolving dependencies...\nDownloading packages...\n> meta 1.19.0 (was 1.9.0)\n> path 1.9.1 (was 1.8.0)\nWould change 2 dependencies.\n'
+
+t_case "(M11) report: a uv lock gets uv's own dry-run count, and the lock is not written"
+M11="$(_plant_all m11 pyproject.toml "${PEP_TOML}" uv.lock '# lock-before\n')"
+_dry "$(_dry_stubs m11 uv 0 "${UV_DRY}")" "${M11}" "${PEP_REPORT}" --managers pep621
+t_assert_eq "0" "${RC}" "a report exits 0"
+t_assert_contains "${OUT}" "uv lock --upgrade  (3 entries would move)" "Remove, Update and Add each count"
+t_assert_eq "uv | lock --upgrade --dry-run | m11" "${ARGV}" "the dry run, once, in the lock's directory"
+t_assert_eq "# lock-before" "$(cat "${M11}/uv.lock")" "the lock keeps its bytes"
+
+t_case "(M12) report: cargo's dry run counts changed entries, not its index line"
+M12="$(_cargo_repo m12)"
+M12_REPORT="${WORK}/m12.json"
+_lock_report "${M12_REPORT}" cargo Cargo.toml
+_dry "$(_dry_stubs m12 cargo 0 "${CARGO_DRY}")" "${M12}" "${M12_REPORT}" --managers cargo
+t_assert_contains "${OUT}" "cargo update  (3 entries would move)" "two updates and one add"
+t_assert_eq "cargo | update --dry-run | m12" "${ARGV}" "cargo update --dry-run ran"
+
+t_case "(M13) report: dart's own summary line is the count, and one is singular"
+M13="$(_plant_all m13 pubspec.yaml 'name: fixture\ndependencies:\n  path: ^1.8.0\n' pubspec.lock '# placeholder\n')"
+M13_REPORT="${WORK}/m13.json"
+_lock_report "${M13_REPORT}" pub pubspec.yaml
+_dry "$(_dry_stubs m13 dart 0 "${DART_DRY}")" "${M13}" "${M13_REPORT}" --managers pub
+t_assert_contains "${OUT}" "dart pub upgrade  (2 entries would move)" "Would change 2 dependencies."
+t_assert_eq "dart | pub upgrade --dry-run | m13" "${ARGV}" "dart pub upgrade --dry-run ran"
+_dry "$(_dry_stubs m13-one dart 0 'Would change 1 dependency.\n')" "${M13}" "${M13_REPORT}" --managers pub
+t_assert_contains "${OUT}" "dart pub upgrade  (1 entry would move)" "Would change 1 dependency."
+_dry "$(_dry_stubs m13-zero dart 0 'No dependencies would change.\n')" "${M13}" "${M13_REPORT}" --managers pub
+t_assert_contains "${OUT}" "dart pub upgrade  (0 entries would move)" "an up-to-date lock says 0"
+
+t_case "(M14) report: npm has no dry run that diffs the lock, so it says unknown and runs nothing"
+M14="$(_plant_all m14 package.json '{"name": "fixture"}\n' package-lock.json '{}\n')"
+M14_REPORT="${WORK}/m14.json"
+_lock_report "${M14_REPORT}" npm package.json
+_dry "$(_dry_stubs m14 npm 0 'up to date\n')" "${M14}" "${M14_REPORT}" --managers npm
+t_assert_contains "${OUT}" "(behind: unknown -- npm has no dry run that diffs the lock)" "never a guessed 0"
+t_assert_eq "0:" "${RC}:${ARGV}" "and npm is not run at all"
+
+t_case "(M15) report: a missing tool, a failing dry run and an unreadable one each say unknown"
+_dry "${BARE_PATH}" "${M11}" "${PEP_REPORT}" --managers pep621
+t_assert_eq "0" "${RC}" "a missing tool does not fail a report"
+t_assert_contains "${OUT}" "(behind: unknown -- 'uv' is not on this PATH)" "the missing tool is named"
+_dry "$(_dry_stubs m15-fail uv 2 "${UV_DRY}")" "${M11}" "${PEP_REPORT}" --managers pep621
+t_assert_contains "${OUT}" "(behind: unknown -- 'uv lock --upgrade --dry-run' failed (exit 2))" \
+  "a failed dry run is not counted, whatever it printed"
+_dry "$(_dry_stubs m15-junk uv 0 'error: no network\n')" "${M11}" "${PEP_REPORT}" --managers pep621
+t_assert_contains "${OUT}" "printed no summary read here" "output without the tool's summary is not zero"
+
+t_case "(M16) report: a dry run that writes the lock is put back and not believed"
+M16_STUBS="${WORK}/dry-m16"
+mkdir -p "${M16_STUBS}"
+printf '#!/usr/bin/env bash\nprintf "written\\n" > uv.lock\nprintf "Resolved 1 package in 1ms\\n"\n' > "${M16_STUBS}/uv"
+chmod +x "${M16_STUBS}/uv"
+_dry "${M16_STUBS}" "${M11}" "${PEP_REPORT}" --managers pep621
+t_assert_contains "${OUT}" "wrote the lock, now put back" "the report says so"
+t_assert_eq "# lock-before" "$(cat "${M11}/uv.lock")" "and the lock is back at its bytes"
+t_assert_ok git -C "${M11}" diff --quiet HEAD -- uv.lock
 
 t_summary

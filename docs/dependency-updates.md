@@ -954,9 +954,9 @@ carries the rest itself.
   pep621 or pub package file, `lock_target` looks beside the manifest, then at a
   declared workspace root. Each lock is listed once, because workspace members
   share one root lock.
-- **The report** gets a `LOCK FILE MAINTENANCE` section that names each lock and
-  the command `--apply` will run. It cannot say how far behind a lock is: only
-  the lock tool knows that, and the report half runs no tool.
+- **The report** gets a `LOCK FILE MAINTENANCE` section that names each lock,
+  the command `--apply` will run, and how far behind the lock is, counted by the
+  tool's own dry run ([below](#how-far-behind-a-maintained-lock-is)).
 - **`--apply --dry-run`** lists `<lock> via <command> (lock file maintenance)`
   with the other locks it would refresh.
 - **`--apply`** adds one maintenance job per lock after the edits' lock jobs. A
@@ -994,8 +994,44 @@ Three limits:
   Renovate's default, `before 4am on monday`, would only hold back a bot that is
   not installed.
 
+### How far behind a maintained lock is
+
+Only the lock tool knows, so the report asks it. In report mode, and only there,
+each row ends with the count from the tool's own dry run, run in the lock's
+directory:
+
+```text
+  uv.lock                            uv lock --upgrade  (41 entries would move)
+  Cargo.lock                         cargo update  (8 entries would move)
+  web/package-lock.json              npm update --package-lock-only --ignore-scripts  (behind: unknown -- npm has no dry run that diffs the lock)
+```
+
+Each command and its output were measured on 2026-10-08 against a lock held back on
+purpose:
+
+| Tool | Dry run | What is counted |
+|---|---|---|
+| cargo 1.96.0 | `cargo update --dry-run` | `Updating`/`Adding`/`Removing`/`Downgrading <crate> v…` lines, only after `not updating lockfile due to dry run` |
+| uv 0.9.18 | `uv lock --upgrade --dry-run` | `Update`/`Add`/`Remove <pkg> v…` lines, only after `Resolved N packages` |
+| dart / flutter (Dart 3.13.3) | `dart pub upgrade --dry-run` / `flutter pub upgrade --dry-run` | its own `Would change N dependencies.`; `No dependencies would change.` is 0 |
+| npm 9.2.0 | none | `npm update --package-lock-only --dry-run` said `up to date` while the real run moved `debug` 4.1.0 to 4.4.3; `npm outdated` reads `node_modules`, not the lock |
+| poetry 2.5.1 | none | `poetry update --lock --dry-run` prints no changes; without `--lock` it diffs the virtualenv |
+| pdm 2.29.2 | none | `pdm update --dry-run` lists what it would install into the environment, not the lock change |
+| pnpm | none | not measured: no dry run is known for `pnpm update` |
+
+**A count the report cannot stand behind is `unknown`, never 0.** That covers a tool
+with no lock dry run (the last four rows), a tool missing from `PATH`, a dry run
+that exits non-zero, and output without the tool's summary line. None of them fails
+the report.
+
+**No lock is written.** Each dry run leaves the lock alone, measured byte for byte
+above. The report checks anyway: it hashes the lock before and after, and a lock that
+changed is put back and its row says `unknown`. cargo and pub still fetch their
+registry indexes, as the report's Renovate lookup does. `--apply`, and
+`--apply --dry-run`, run no count: the upgrade itself moves the lock.
+
 The proof is [`test-renovate-lockmaint.sh`](../linux/scripts/tests/test-renovate-lockmaint.sh)
-(M1 to M10) and an end-to-end run on 2026-10-07. `renovate-local.sh` ran with real
+(M1 to M16, the dry-run outputs replayed verbatim by stubs) and an end-to-end run on 2026-10-07. `renovate-local.sh` ran with real
 Renovate 44.140.0 over DocumANTation at 4b20d3f, with maintenance on. The report and
 `--dry-run` listed `uv.lock  uv lock --upgrade`, and `--apply` ran it and moved 19
 packages. The result was the same 45-package lock that `uv lock --upgrade` run by
@@ -2140,7 +2176,7 @@ match, a mixed `versions.env` + CMake report, and a wrong-line plan put back.
 | The world the suites run in | [`linux/scripts/tests/renovate-fixtures.sh`](../linux/scripts/tests/renovate-fixtures.sh) |
 | The suite that holds every refusal to its word | [`linux/scripts/tests/test-renovate-local.sh`](../linux/scripts/tests/test-renovate-local.sh) |
 | What an ecosystem tool did BESIDE the manifest | [`linux/scripts/tests/test-renovate-collateral.sh`](../linux/scripts/tests/test-renovate-collateral.sh) |
-| Lock file maintenance: the report section, the upgrade commands, the opt-out | [`linux/scripts/tests/test-renovate-lockmaint.sh`](../linux/scripts/tests/test-renovate-lockmaint.sh) |
+| Lock file maintenance: the report section, the dry-run counts, the upgrade commands, the opt-out | [`linux/scripts/tests/test-renovate-lockmaint.sh`](../linux/scripts/tests/test-renovate-lockmaint.sh) |
 | The fleet: order, duplicates, and one repo failing | [`linux/scripts/tests/test-renovate-fleet.sh`](../linux/scripts/tests/test-renovate-fleet.sh) |
 | Every `# renovate:` line is matched by the regex that reads it | [`linux/scripts/tests/test-renovate-annotations.sh`](../linux/scripts/tests/test-renovate-annotations.sh) |
 | The annotated-env write and its refusals | [`linux/scripts/tests/test-renovate-env.sh`](../linux/scripts/tests/test-renovate-env.sh) |
