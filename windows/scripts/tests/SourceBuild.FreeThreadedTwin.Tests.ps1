@@ -182,17 +182,20 @@ Describe 'Free-threaded twin wiring' {
         Assert-Match 'IREE_ENABLE_PYTHON_STABLE_ABI=OFF' (Get-TwinWiringText 'windows\scripts\build\Build-IreeFromSource.ps1') 'IREE turns abi3 off'
     }
 
-    It 'the media stages mount the module and the helper, the merge names and COPYs the store, the image bakes the helper (mutation)' {
+    It 'the media stages mount the module, the helper and the twin table, the merge names and COPYs the store, the image bakes both files (mutation)' {
         $media = Get-TwinWiringText 'windows\Dockerfile.media-builder'
         $mount = 'source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=C:\bkmnt\free-threaded-wheel.py'
         Assert-Equal 3 ([regex]::Matches($media, [regex]::Escape($mount))).Count 'ONNX, FFmpeg and media-tvm RUNs'
+        $table = 'source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\bkmnt\free-threaded-twins.txt'
+        Assert-Equal 3 ([regex]::Matches($media, [regex]::Escape($table))).Count 'the twin table in the same three RUNs, one level above modules\'
         Assert-Match 'WindowsPythonWheel\.Common\.psm1 `\s+C:\\bkmods\\' $media 'media buildmods carries the module'
         $merge = Get-TwinWiringText 'windows\Dockerfile.media-merge-builder'
         Assert-Match 'PYTHON_WHEELS_CP314T="C:\\runtime\\wheels-cp314t"' $merge 'the image ENV'
         Assert-Match 'COPY --from=media-tvm C:\\runtime\\wheels-cp314t C:\\runtime\\wheels-cp314t' $merge 'the media-tvm fan-in'
         Assert-Match 'New-Item -Path \(Get-FreeThreadedWheelStore\)' (Get-TwinWiringText 'windows\scripts\build\Build-MediaTvmAll.ps1') 'media-tvm creates it on every lane'
-        Assert-Match 'free-threaded-wheel\.py C:\\temp\\scripts\\' (Get-TwinWiringText 'windows\Dockerfile') 'the final image bakes the helper'
+        Assert-Match 'free-threaded-wheel\.py linux\\scripts\\03-media\\free-threaded-twins\.txt C:\\temp\\scripts\\' (Get-TwinWiringText 'windows\Dockerfile') 'the final image bakes the helper and the table'
         $smoke = Get-TwinWiringText 'windows\scripts\build\Test-Container.ps1'
+        Assert-Match 'Get-FreeThreadedTwinTable -Path \$ftTable' $smoke 'section 20 reads the image''s own table, as the gate mounts windows/scripts alone'
         Assert-Match "'PYTHON_WHEELS', 'PYTHON_WHEELS_CP314T'" $smoke 'section 19 checks the pointer'
         Assert-Match 'Invoke-FreeThreadedWheelVenvProof' $smoke 'section 20 proves every twin again'
     }

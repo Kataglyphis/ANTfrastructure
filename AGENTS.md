@@ -891,10 +891,12 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` ย
 
 - **A native media wheel whose own code declares free-threading ships a proved `cp314t`
   twin, in `/opt/wheels-cp314t` and never in `/opt/wheels`** (owner request 2026-10-07).
-  `ft_wheel_table` in `03-media/free-threaded-wheels.sh` decides, row by row against a
-  `versions.env` pin, so a bump re-reads the evidence; a wheel the table does not classify
-  fails a native media build. `verify-wheels.sh` is ABI-exact on both stores. Never install a
-  twin into a GIL venv, and keep the library mounted per file, outside `01-core` and `runtime/`:
+  `03-media/free-threaded-twins.txt` decides, row by row against a `versions.env` pin, so a
+  bump re-reads the evidence; it is the one table both lanes read (`ft_wheel_table`, Windows'
+  `Get-FreeThreadedTwinTable`), so never copy a row into either reader. A wheel the table does
+  not classify fails a native media build. `verify-wheels.sh` is ABI-exact on both stores. Never
+  install a twin into a GIL venv, and keep the library and its table mounted per file, outside
+  `01-core` and `runtime/`:
   [`consumer-image-contract.md` ยง The free-threaded wheels](docs/consumer-image-contract.md#the-free-threaded-wheels).
 
 ## Dockerfile.media BuildKit Strategy

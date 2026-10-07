@@ -1097,7 +1097,7 @@ function Get-FreeThreadedTwinPlan {
     #>
     param([Parameter(Mandatory)][string]$Distribution)
     $row = Get-FreeThreadedTwinRow -Distribution $Distribution
-    if (-not $row) { throw "free-threaded: $Distribution is not in Get-FreeThreadedTwinTable (WindowsPythonWheel.Common.psm1)" }
+    if (-not $row) { throw "free-threaded: $Distribution is not in Get-FreeThreadedTwinTable (linux/scripts/03-media/free-threaded-twins.txt)" }
     $abi = Get-FreeThreadedAbiTag
     $skip = { param([string]$Why) [pscustomobject]@{ Build = $false; Reason = "free-threaded: no $abi twin of ${Distribution}: $Why" } }
     if ($row.Verdict -cne 'twin') { return & $skip "$($row.Verdict), $($row.Evidence)" }

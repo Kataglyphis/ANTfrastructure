@@ -4,21 +4,16 @@
 # Mounted per file, never under core/ or runtime/, so an edit re-keys only the RUNs that build or store a twin.
 _FTW_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# dist|twin, gil or none|the versions.env pin the evidence was read at|the evidence; a moved pin fails test-free-threaded-wheels.sh until re-read.
+# The one twin table, which Windows' Get-FreeThreadedTwinTable reads too; every RUN that sources this file mounts it beside it.
+_FTW_TABLE="${_FTW_HERE}/free-threaded-twins.txt"
+
+# dist|twin, gil or none|pin|evidence, one row per line; rc 1 when the table is missing, so no lookup reads as unclassified.
 ft_wheel_table() {
-  cat <<'FTW'
-onnxruntime|twin|ONNXRUNTIME_VERSION=v1.30.0|onnxruntime/python/onnxruntime_pybind_module.cc: PYBIND11_MODULE(onnxruntime_pybind11_state, m, py::mod_gil_not_used()), on pybind11 v3.0.2
-av|twin|PYAV_VERSION=19.0.1|setup.py: compiler directive "freethreading_compatible": True
-apache-tvm-ffi|twin|TVM_REF=v0.27.0|3rdparty/tvm-ffi daf594da, python/tvm_ffi/cython/core.pyx: # cython: freethreading_compatible = True
-iree-base-runtime|twin|IREE_VERSION=v3.12.0|runtime/bindings/python/CMakeLists.txt: nanobind_add_module(... FREE_THREADED ...)
-iree-base-compiler|twin|IREE_VERSION=v3.12.0|third_party/llvm-project 6cce5bca, mlir/cmake/modules/AddMLIRPython.cmake: nanobind_add_module(... FREE_THREADED ...)
-apache-tvm|none|TVM_REF=v0.27.0|pyproject.toml: wheel.py-api = "py3", no CPython extension, so its one py3 wheel installs on 3.14t
-onnxruntime-genai|gil|ONNXRUNTIME_GENAI_VERSION=v0.17.0|pybind11 2.13.6 and no py::mod_gil_not_used()
-ai-edge-litert|gil|LITERT_VERSION=v2.2.0|nine PYBIND11_MODULEs, none passes py::mod_gil_not_used()
-hailort|gil|HAILORT_VERSION=5.4.0|pyhailort's module declares no free-threading support
-libcamera|gil|LIBCAMERA_VERSION=v0.7.2|pycamera declares no free-threading support, and it ships in the tree, not as a wheel
-opencv|gil|OPENCV_VERSION=5.0.0|cv2 declares no free-threading support, and it ships in the tree, not as a wheel
-FTW
+  if [ ! -f "${_FTW_TABLE}" ]; then
+    printf 'free-threaded: the twin table %s is missing; mount linux/scripts/03-media/free-threaded-twins.txt beside free-threaded-wheels.sh\n' "${_FTW_TABLE}" >&2
+    return 1
+  fi
+  sed -e '/^#/d' -e '/^[[:space:]]*$/d' "${_FTW_TABLE}"
 }
 
 # <name>: the PEP 503 form, which is how the table spells every distribution.
@@ -28,27 +23,33 @@ _ft_norm() {
   printf '%s\n' "${n//./-}"
 }
 
-# <dist>: its table row (an ORT flavour reads as onnxruntime, a GenAI flavour as onnxruntime-genai); rc 1 for none.
+# <dist>: its table row (an ORT flavour reads as onnxruntime, a GenAI flavour as onnxruntime-genai); rc 1 for none, 2 without a table.
 ft_wheel_row() {
-  local want dist rest
+  local want dist rest table
   want="$(_ft_norm "$1")"
   case "${want}" in
     onnxruntime-genai*) want=onnxruntime-genai ;;
     onnxruntime-*) want=onnxruntime ;;
   esac
+  table="$(ft_wheel_table)" || return 2
   while IFS='|' read -r dist rest; do
     if [ "${dist}" = "${want}" ]; then
       printf '%s|%s\n' "${dist}" "${rest}"
       return 0
     fi
-  done < <(ft_wheel_table)
+  done <<< "${table}"
   return 1
 }
 
-# <dist>: twin, gil, none, or unknown for a distribution the table does not know.
+# <dist>: twin, gil, none, or unknown for a distribution the table does not know; rc 2 and no verdict without a table.
 ft_wheel_verdict() {
-  local row
-  row="$(ft_wheel_row "$1")" || { printf 'unknown\n'; return 0; }
+  local row rc=0
+  row="$(ft_wheel_row "$1")" || rc=$?
+  case "${rc}" in
+    0) ;;
+    1) printf 'unknown\n'; return 0 ;;
+    *) return "${rc}" ;;
+  esac
   row="${row#*|}"
   printf '%s\n' "${row%%|*}"
 }
@@ -70,8 +71,12 @@ ft_python_resolve() {
 
 # <dist>: 0 when this build makes the distribution's cp314t twin, else 1 with its one-line reason; 2 for a dist the table lacks.
 ft_twin_wanted() {
-  local dist="$1" row
-  row="$(ft_wheel_row "${dist}")" || { printf 'free-threaded: %s is not in ft_wheel_table (linux/scripts/03-media/free-threaded-wheels.sh)\n' "${dist}" >&2; return 2; }
+  local dist="$1" row rc=0
+  row="$(ft_wheel_row "${dist}")" || rc=$?
+  if [ "${rc}" -eq 1 ]; then
+    printf 'free-threaded: %s is not in ft_wheel_table (linux/scripts/03-media/free-threaded-twins.txt)\n' "${dist}" >&2
+  fi
+  [ "${rc}" -eq 0 ] || return 2
   case "${row}" in
     *"|twin|"*) ;;
     *) printf 'free-threaded: no cp314t twin of %s (%s): %s\n' "${dist}" "$(ft_wheel_verdict "${dist}")" "${row##*|}"; return 1 ;;

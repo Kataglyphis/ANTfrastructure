@@ -315,12 +315,16 @@ Every wheel the `:winamd64` media stages build gets a `cp314-cp314t` twin beside
 when the package's own code declares free-threading (owner request 2026-10-07). The twins are built with the
 interpreter of [§ The free-threaded CPython](#the-free-threaded-cpython), on the image's VS 2026 and clang-cl.
 
-- **The list is data.** `Get-FreeThreadedTwinTable` in `WindowsPythonWheel.Common.psm1` gives each distribution one
-  verdict, the `versions.env` pin its evidence was read at, and that evidence. `PythonWheel.FreeThreadedTwin.Tests.ps1`
-  fails when a pin moves, so a bump re-reads the evidence.
+- **The list is data, shared with Linux.** `Get-FreeThreadedTwinTable` reads `linux/scripts/03-media/free-threaded-twins.txt`,
+  the file Linux's `ft_wheel_table` reads, so the two lanes hold one verdict per distribution. Each row also names the
+  `versions.env` pin its evidence was read at, and that evidence. `PythonWheel.FreeThreadedTwin.Tests.ps1` fails when a
+  pin moves, so a bump re-reads the evidence.
   - **twin**: `onnxruntime`, `av`, `apache-tvm-ffi`, `iree-base-runtime` and `iree-base-compiler`.
   - **none**: `apache-tvm` (a `py3` wheel with no extension, which a 3.14t venv installs as it is) and `torchvision`.
-  - **gil**: `onnxruntime-genai`, `ai-edge-litert`, `hailort` and `opencv`, whose modules re-enable the GIL.
+  - **gil**: `onnxruntime-genai`, `ai-edge-litert`, `hailort`, `libcamera` and `opencv`, whose modules re-enable the GIL.
+  - **Where the file is.** The three twin RUNs of `Dockerfile.media-builder` mount it at `C:\bkmnt\free-threaded-twins.txt`,
+    one level above `modules\` as the helper is, and the final image bakes it into `C:\temp\scripts`, where section 20
+    reads it. A missing table throws; it never reads as an empty list.
 - **The store is separate.** The twins go to `C:\runtime\wheels-cp314t` (`PYTHON_WHEELS_CP314T`), never into
   `PYTHON_WHEELS`, and `Save-PythonWheel` refuses a `cp3XYt` wheel there. A 3.14t venv can be given both stores:
   pip and uv take only `cp314t` and `py3-none` wheels on that interpreter. `Sync-UvChainOnnxRuntime` reads the twins'

@@ -10,9 +10,13 @@ FIX="${TESTS_DIR}/chain-ort-fixtures.py"
 _PY="${PREFLIGHT_PYTHON:-python3}"
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
+# <dir>: a venv without pip there, and its interpreter's path (bin/ on POSIX, Scripts/ on Windows).
+_new_venv() {
+  "${_PY}" -m venv --without-pip "$1" >/dev/null 2>&1 || { echo "FAIL: ${_PY} -m venv $1 failed" >&2; return 1; }
+  if [ -x "$1/bin/python" ]; then printf '%s\n' "$1/bin/python"; else printf '%s\n' "$1/Scripts/python.exe"; fi
+}
 VENV="${_work}/venv"
-"${_PY}" -m venv --without-pip "${VENV}" >/dev/null 2>&1 || { echo "FAIL: ${_PY} -m venv failed" >&2; exit 1; }
-VPY="${VENV}/bin/python"; [ -x "${VPY}" ] || VPY="${VENV}/Scripts/python.exe"
+VPY="$(_new_venv "${VENV}")" || exit 1
 SITE="$("${VPY}" "${FIX}" site)"
 STORE="${_work}/store"; FEED="${_work}/feed"; LOG="${_work}/uv.log"
 mkdir -p "${_work}/bin" "${_work}/proj"
@@ -34,10 +38,10 @@ _pypi_venv() {
 # The census the image runs, against the venv: rc 0 = every ORT dist is a chain wheel.
 _census_ok() { "${VPY}" -I "${CENSUS}" --check --store "${STORE}" >/dev/null 2>&1; }
 
-# uv_reconcile_chain_ort in its own bash, the way a lane sources python_uv.sh; the env prefix is the fixture.
+# uv_reconcile_chain_ort [venv] in its own bash, the way a lane sources python_uv.sh; the env prefix is the fixture.
 _reconcile() {
   local body
-  body="$(printf 'set -uo pipefail\nsource %q\nrc=0; uv_reconcile_chain_ort %q || rc=$?\n' "${UV_SH}" "${VENV}")"
+  body="$(printf 'set -uo pipefail\nsource %q\nrc=0; uv_reconcile_chain_ort %q || rc=$?\n' "${UV_SH}" "${1:-${VENV}}")"
   body+=$'\nprintf "rc=%s NO_SYNC=%s\\n" "${rc}" "${UV_NO_SYNC-<unset>}"'
   PATH="${_work}/bin:${PATH}" STUB_UV_LOG="${LOG}" bash -c "${body}" 2>&1
 }
@@ -148,6 +152,74 @@ t_assert_eq "${_img}/${_cen}" \
   "$(bash -c 'source "$1"; printf %s "${_UV_ORT_CENSUS}"' _ "${_img}/${_core}/python_uv.sh")"
 t_assert_eq "03-media/runtime/ort-venv-census.py" "$(bash -c 'source "$1"; printf %s "${_UV_ORT_CENSUS##*/scripts/}"' _ "${UV_SH}")" \
   "a checkout uses its own copy"
+
+# A free-threaded stand-in: a .pth makes it report Py_GIL_DISABLED, so the venv's ABI probe reads cp3XYt (a base sitecustomize would shadow ours).
+FTVENV="${_work}/ftvenv"; TWINS="${_work}/twins"
+FTPY="$(_new_venv "${FTVENV}")" || exit 1
+FTSITE="$("${FTPY}" "${FIX}" site)"
+# <dir>: every wheel there retagged cp3XY-cp3XYt, as the twin store holds them.
+_twin_tags() {
+  local f
+  for f in "$1"/*.whl; do mv "${f}" "$(printf '%s' "${f}" | sed -E 's/-(cp[0-9]+)-cp[0-9]+-/-\1-\1t-/')"; done
+}
+# The image after a 3.14t leg's uv sync: PyPI ORT in the venv, the dnnl flavour in the GIL store, two ORT flavours and PyAV among the twins.
+_ft_venv() {
+  "${VPY}" "${FIX}" reset "${FTSITE}" "${STORE}" "${TWINS}"
+  : > "${LOG}"
+  printf 'import sysconfig; sysconfig.get_config_var = (lambda g: lambda n: 1 if n == "Py_GIL_DISABLED" else g(n))(sysconfig.get_config_var)\n' \
+    > "${FTSITE}/ft-standin.pth"
+  "${VPY}" "${FIX}" pypi "${FTSITE}" onnxruntime 1.27.0 onnxruntime "pypi core"
+  "${VPY}" "${FIX}" wheel "${STORE}" onnxruntime-dnnl 1.30.0 onnxruntime "chain dnnl"
+  "${VPY}" "${FIX}" wheel "${STORE}" onnxruntime-genai 0.15.2 onnxruntime_genai "chain genai"
+  "${VPY}" "${FIX}" wheel "${TWINS}" onnxruntime-dnnl 1.30.0 onnxruntime "twin dnnl"
+  "${VPY}" "${FIX}" wheel "${TWINS}" onnxruntime-gpu 1.30.0 onnxruntime "twin gpu"
+  "${VPY}" "${FIX}" wheel "${TWINS}" av 19.0.1 av "twin av"
+  _twin_tags "${TWINS}"
+}
+
+t_case "a free-threaded venv takes the twin of the GIL store's ORT flavour from PYTHON_WHEELS_CP314T, proven against the twins"
+_ft_venv
+_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T="${TWINS}" _reconcile "${FTVENV}")"
+t_assert_contains "${_out}" "rc=0 NO_SYNC=1"
+t_assert_contains "${_out}" "is free-threaded, so it takes the twins in ${TWINS}"
+t_assert_contains "$(grep -e 'pip install' "${LOG}")" "/twins/onnxruntime_dnnl-1.30.0-" "the installed flavour's twin"
+t_assert_eq "" "$(grep -e 'pip install' "${LOG}" | grep -e 'onnxruntime_gpu' -e '/twins/av-' -e '/store/' || true)" \
+  "not the other flavour's twin, not PyAV, nothing of the GIL store"
+t_assert_ok "${FTPY}" -I "${CENSUS}" --check --store "${TWINS}"
+t_assert_contains "${_out}" "ORT-CENSUS PASS"
+
+t_case "a GIL venv keeps the GIL store while the twins are advertised"
+_pypi_venv
+"${VPY}" "${FIX}" reset "${TWINS}"
+"${VPY}" "${FIX}" wheel "${TWINS}" onnxruntime 1.30.0 onnxruntime "twin core"
+_twin_tags "${TWINS}"
+_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T="${TWINS}" _reconcile)"
+t_assert_contains "${_out}" "rc=0 NO_SYNC=1"
+t_assert_eq "" "$(grep -e '/twins/' "${LOG}" || true)" "a cp3XY venv never takes a twin"
+t_assert_ok _census_ok
+
+t_case "a free-threaded venv without advertised twins still fails on the ABI, before the venv is touched"
+_ft_venv
+_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T='' _reconcile "${FTVENV}")"
+t_assert_contains "${_out}" "rc=1 NO_SYNC=<unset>"
+t_assert_contains "${_out}" "t venv, and the chain wheels are built for the image interpreter"
+t_assert_eq "" "$(grep -e 'pip ' "${LOG}" || true)"
+
+t_case "twins without the installed flavour's twin fail before the venv is touched, naming both stores"
+_ft_venv
+rm -f "${TWINS}"/onnxruntime_dnnl-*.whl
+_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T="${TWINS}" _reconcile "${FTVENV}")"
+t_assert_contains "${_out}" "rc=1 NO_SYNC=<unset>"
+t_assert_contains "${_out}" "the store ${TWINS} holds no onnxruntime wheel for onnxruntime"
+t_assert_contains "${_out}" "twin store of this free-threaded venv, and holds no twin of an ORT flavour in ${STORE}"
+t_assert_eq "" "$(grep -e 'pip ' "${LOG}" || true)" "a second core wheel is never the fallback"
+
+t_case "the image advertises the twins under Windows' name, after their late COPY, so no venv layer re-keys"
+_line() { grep -n -e "$1" "${_torch_df}" | cut -d: -f1 | tail -n 1; }
+t_assert_ok test -n "$(_line '^ENV PYTHON_WHEELS_CP314T=/opt/wheels-cp314t$')"
+t_assert_ok test "$(_line '^ENV PYTHON_WHEELS_CP314T=')" -gt "$(_line '^COPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t$')"
+t_assert_contains "$(cat "${TESTS_DIR}/../../../windows/scripts/modules/WindowsUv.Common.psm1")" "GetEnvironmentVariable('PYTHON_WHEELS_CP314T')" \
+  "the variable Windows' Select-UvChainOrtWheelStore reads"
 
 # _sync [venv pinned via _CURRENT_VENV_PATH, as uv_venv_create leaves it]; empty uses UV_PROJECT_ENVIRONMENT.
 _sync() {

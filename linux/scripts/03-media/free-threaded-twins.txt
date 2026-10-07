@@ -1,0 +1,15 @@
+# The cp314t twin verdicts both lanes read: ft_wheel_table (free-threaded-wheels.sh) and Get-FreeThreadedTwinTable (WindowsPythonWheel.Common.psm1).
+# dist|twin, gil or none|the versions.env pin the evidence was read at|the evidence; a moved pin fails both lanes' tests until it is re-read.
+# Mounted per file beside its readers, never under 01-core/ or runtime/, so an edit re-keys only the RUNs that build or store a twin.
+onnxruntime|twin|ONNXRUNTIME_VERSION=v1.30.0|onnxruntime/python/onnxruntime_pybind_module.cc: PYBIND11_MODULE(onnxruntime_pybind11_state, m, py::mod_gil_not_used()) under Py_GIL_DISABLED, on pybind11 v3.0.2
+av|twin|PYAV_VERSION=19.0.1|setup.py: compiler directive "freethreading_compatible": True
+apache-tvm-ffi|twin|TVM_REF=v0.27.0|3rdparty/tvm-ffi daf594da, python/tvm_ffi/cython/core.pyx: # cython: freethreading_compatible = True (cython>=3.2.8)
+iree-base-runtime|twin|IREE_VERSION=v3.12.0|runtime/bindings/python/CMakeLists.txt: nanobind_add_module(... FREE_THREADED ...)
+iree-base-compiler|twin|IREE_VERSION=v3.12.0|third_party/llvm-project 6cce5bca, mlir/cmake/modules/AddMLIRPython.cmake: nanobind_add_module(... FREE_THREADED ...)
+apache-tvm|none|TVM_REF=v0.27.0|pyproject.toml: wheel.py-api = "py3", no CPython extension, so its one py3 wheel installs on 3.14t
+torchvision|none|TORCHVISION_VERSION=v0.29.1|no CPython extension module of its own
+onnxruntime-genai|gil|ONNXRUNTIME_GENAI_VERSION=v0.17.0|pybind11 2.13.6 and no py::mod_gil_not_used()
+ai-edge-litert|gil|LITERT_VERSION=v2.2.0|nine PYBIND11_MODULEs, none passes py::mod_gil_not_used(); no Windows python package anyway
+hailort|gil|HAILORT_VERSION=5.4.0|pyhailort's module declares no free-threading support
+libcamera|gil|LIBCAMERA_VERSION=v0.7.2|pycamera declares no free-threading support, and it ships in the tree, not as a wheel
+opencv|gil|OPENCV_VERSION=5.0.0|cv2 declares no free-threading support, and it ships in the tree, not as a wheel

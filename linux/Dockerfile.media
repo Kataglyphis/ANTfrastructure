@@ -189,6 +189,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh,target=/opt/scripts/03-media/build/onnxruntime/build/30-build-native.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/lib,target=/opt/scripts/03-media/build/onnxruntime/build/lib,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
@@ -208,6 +209,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
@@ -359,6 +361,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scri
     --mount=type=bind,source=linux/scripts/05-frameworks/tvm-python.sh,target=/opt/scripts/05-frameworks/tvm-python.sh,readonly \
     --mount=type=bind,source=linux/scripts/05-frameworks/tvm-llvm-compat.sh,target=/opt/scripts/05-frameworks/tvm-llvm-compat.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
@@ -440,6 +443,7 @@ ARG IREE_VERSION=v3.12.0
 # No cargo mount: build-app-wheelhouse.sh never runs cargo, and an inert mount reads as coverage.
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/torchvision,target=/opt/scripts/patches/torchvision,readonly \
@@ -567,6 +571,7 @@ ENV PYAV_VERSION=${PYAV_VERSION}
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/pyav,target=/opt/scripts/03-media/build/pyav,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
@@ -827,6 +832,7 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packagin
 
 RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \

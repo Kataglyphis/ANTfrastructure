@@ -5,12 +5,20 @@
 
 Set-StrictMode -Version Latest
 
-# ci_packaging.sh runs the same helper, so the declaration and the proof exist once; image mounts put it one level above modules\.
-$script:FreeThreadedHelper = @(
-    [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\linux\scripts\02-toolchain\python\free-threaded-wheel.py')),
-    [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\free-threaded-wheel.py'))
-) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-if (-not $script:FreeThreadedHelper) { $script:FreeThreadedHelper = Join-Path $PSScriptRoot '..\..\..\linux\scripts\02-toolchain\python\free-threaded-wheel.py' }
+# A file the Linux lane reads too: the checkout's copy, else the one image mounts put one level above modules\; with neither, the checkout path so the error names it.
+function Resolve-SharedLinuxScriptFile {
+    param([Parameter(Mandatory)][string]$RepoPath)
+    $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\..\..\$RepoPath"))
+    foreach ($candidate in @($repo, [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\$(Split-Path $RepoPath -Leaf)")))) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+    return $repo
+}
+
+# ci_packaging.sh runs the same helper, so the declaration and the proof exist once.
+$script:FreeThreadedHelper = Resolve-SharedLinuxScriptFile -RepoPath 'linux\scripts\02-toolchain\python\free-threaded-wheel.py'
+# ft_wheel_table reads the same twin table, so the two lanes hold one verdict per distribution.
+$script:FreeThreadedTwinTable = Resolve-SharedLinuxScriptFile -RepoPath 'linux\scripts\03-media\free-threaded-twins.txt'
 
 function Resolve-FreeThreadedWheelMode {
     <#
@@ -170,23 +178,18 @@ function Get-FreeThreadedTwinTable {
     .SYNOPSIS
         The image's wheels and whether each gets a cp3XYt twin (twin), stays GIL-only (gil) or needs none (none).
     .DESCRIPTION
-        Pin is the versions.env key=value the evidence was read at; PythonWheel.FreeThreadedTwin.Tests.ps1 fails when it moves.
+        The rows of linux/scripts/03-media/free-threaded-twins.txt, which the Linux lane's ft_wheel_table reads too. Pin is the
+        versions.env key=value the evidence was read at; PythonWheel.FreeThreadedTwin.Tests.ps1 fails when it moves.
         See docs/windows-builds.md#the-free-threaded-wheels
+    .PARAMETER Path
+        The table file; empty takes the checkout's copy, else the one an image mounts or bakes one level above modules\.
     #>
-    $rows = @(
-        'onnxruntime|twin|ONNXRUNTIME_VERSION=v1.30.0|onnxruntime/python/onnxruntime_pybind_module.cc: PYBIND11_MODULE(onnxruntime_pybind11_state, m, py::mod_gil_not_used()) under Py_GIL_DISABLED, on pybind11 v3.0.2'
-        'av|twin|PYAV_VERSION=19.0.1|setup.py: compiler directive "freethreading_compatible": True'
-        'apache-tvm-ffi|twin|TVM_REF=v0.27.0|3rdparty/tvm-ffi daf594da, python/tvm_ffi/cython/core.pyx: # cython: freethreading_compatible = True (cython>=3.2.8)'
-        'iree-base-runtime|twin|IREE_VERSION=v3.12.0|runtime/bindings/python/CMakeLists.txt: nanobind_add_module(... FREE_THREADED ...)'
-        'iree-base-compiler|twin|IREE_VERSION=v3.12.0|third_party/llvm-project, mlir/cmake/modules/AddMLIRPython.cmake: nanobind_add_module(... FREE_THREADED ...)'
-        'apache-tvm|none|TVM_REF=v0.27.0|pyproject.toml: wheel.py-api = "py3", no CPython extension, so its one py3 wheel installs on 3.14t'
-        'torchvision|none|TORCHVISION_VERSION=v0.29.1|no CPython extension module of its own'
-        'onnxruntime-genai|gil|ONNXRUNTIME_GENAI_VERSION=v0.17.0|pybind11 2.13.6 and no py::mod_gil_not_used()'
-        'ai-edge-litert|gil|LITERT_VERSION=v2.2.0|nine PYBIND11_MODULEs, none passes py::mod_gil_not_used(); no Windows python package anyway'
-        'hailort|gil|HAILORT_VERSION=5.4.0|pyhailort''s module declares no free-threading support'
-        'opencv|gil|OPENCV_VERSION=5.0.0|cv2 declares no free-threading support, and it ships in the tree, not as a wheel'
-    )
-    foreach ($row in $rows) {
+    param([string]$Path = '')
+    if (-not $Path) { $Path = $script:FreeThreadedTwinTable }
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "free-threaded: the twin table $Path is missing; mount or copy linux/scripts/03-media/free-threaded-twins.txt one level above modules\"
+    }
+    foreach ($row in @(Get-Content -LiteralPath $Path | Where-Object { $_ -notmatch '^\s*(#|$)' })) {
         $dist, $verdict, $pin, $evidence = $row -split '\|', 4
         [pscustomobject]@{ Distribution = $dist; Verdict = $verdict; Pin = $pin; Evidence = $evidence }
     }
