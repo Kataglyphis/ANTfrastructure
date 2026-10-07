@@ -155,3 +155,5 @@ mutation-family:prune-safe
 mutation-family:linker-select
 # The SHA-verified tool installs in 01-core/downloads.sh; proof: linux/scripts/tests/test-download-verified-install.sh.
 mutation-family:downloads
+# The ROCm release in every name 01-core/setup-rocm-repo.sh installs, and its one-release check; proof: linux/scripts/tests/test-rocm-packages.sh.
+mutation-family:rocm-stack

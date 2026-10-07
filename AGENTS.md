@@ -495,7 +495,7 @@ every ONNX Runtime and OpenCV CUDA kernel compiles four times — the single
 biggest lever on GPU build time. `CUDA_ARCHITECTURES=120` alone cuts the CUDA
 compile to roughly a fifth for a local iteration.
 
-**ROCm has the same question, unanswered.** `amdrocm-core-dev` pulls all 25 gfx
+**ROCm has the same question, unanswered.** `amdrocm-core-dev10.0` pulls all 25 gfx
 targets (~19.6 GiB) because nothing selects. Per-gfx metapackages are the
 largest single size win on that side:
 [`linux-accelerator-images.md` § ROCm](docs/linux-accelerator-images.md).

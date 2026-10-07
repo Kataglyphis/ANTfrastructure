@@ -595,8 +595,9 @@ The ROCm variant chain inserts `Dockerfile.amd` as its `gpu` stage **after** the
   `linux/scripts/01-core/setup-rocm-repo.sh` adds the TheRock apt repos in deb822
   `.sources` format (`stable.repo.amd.com`), with core ROCm and MIGraphX as
   separate repo stanzas sharing the same GPG key and Origin ("AMD ROCm").
-  Package names use the `amdrocm-*` prefix. `MIGRAPHX_VERSION` moves together
-  with `ROCM_VERSION`.
+  Package names use the `amdrocm-*` prefix, and every name the script installs
+  carries the ROCm release ([below](#the-rocm-release-is-in-every-package-name)).
+  `MIGRAPHX_VERSION` moves together with `ROCM_VERSION`.
 - MIGraphX packages come from a separate repo path (`/rocm/migraphx/packages/ubuntu2604/`) on the same `stable.repo.amd.com` host. The toolchain image pins the AMD repo to provide only ROCm/MIGraphX packages via an apt pin on Origin "AMD ROCm".
 - The ONNX Runtime MIGraphX Execution Provider replaces the older ROCm EP. The build script passes `--use_migraphx --migraphx_home /opt/rocm` instead of `--use_rocm`.
 - The build produces an `onnxruntime-migraphx` Python wheel (instead of `onnxruntime-rocm`).
@@ -627,6 +628,38 @@ deps, so `triton-rocm` moves with it) only acts if the two drift. The extra was
 ```bash
 sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-rocm
 ```
+
+### The ROCm release is in every package name
+
+AMD's `stable` suite is rolling: ROCm 10.1 joined it on 2026-09-30, beside 10.0.
+A versionless metapackage such as `amdrocm-core-dev` depends on the newest
+release's package (`amdrocm-core-dev10.1`), so `ROCM_VERSION=10.0` did not pin
+the install. `amdrocm-migraphx` 2.17.0 still needs the 10.0 libraries, so one
+install got both trees: 262 packages of 10.1 and 73 of 10.0 (`apt-get install
+-s`, 2026-10-07).
+
+`setup-rocm-repo.sh` therefore installs versioned names only. `rocm_packages`
+builds them from `ROCM_VERSION` and `MIGRAPHX_VERSION`:
+
+| Package | ROCm 10.0 | ROCm 10.1 and later 10.x |
+| --- | --- | --- |
+| core, runtime, blas, dnn, hipblas-common, fft, rccl, sparse, solver | `amdrocm-<name>-dev10.0` | `amdrocm-<name>-dev10.1` |
+| MIGraphX and its `-dev` | `amdrocm-migraphx=<MIGRAPHX_VERSION>+rocm10.0.*` | `amdrocm10-migraphx=<MIGRAPHX_VERSION>-*` |
+| ASAN (`ENABLE_ROCM_ASAN=true`) | `amdrocm-asan10.0` | `amdrocm-asan10.1` |
+
+- Any other release stops the script before its first download:
+  `no MIGraphX package name known for ROCm <release>`. Add the release's
+  MIGraphX name to `rocm_packages` first.
+- A `MIGRAPHX_VERSION` that the release does not ship stops `apt-get install`:
+  `Version '2.18.0+rocm10.0.*' for 'amdrocm-migraphx' was not found`.
+- After the last install, every installed `amdrocm*` package whose name carries a
+  release must carry `ROCM_VERSION`. Otherwise the build stops and lists them.
+- `test-rocm-packages.sh` fails when `versions.env` names a release that
+  `rocm_packages` does not know, so a ROCm bump cannot skip this table.
+
+Measured with `apt-get install -s` on 2026-10-07: the 10.0 list selects 251
+packages, 249 named `…10.0` plus the two MIGraphX ones (`2.17.0+rocm10.0.0`).
+With ASAN it is 281, again all 10.0.
 
 ## ROCm: what the first `:latest-rocm` run must carry (planned, 2026-09-22)
 
@@ -691,9 +724,9 @@ off, and the ASAN packages only do anything on gfx942/gfx950 hardware.
 
 | # | Change | Why |
 | --- | --- | --- |
-| 1 | Install per-gfx metapackages instead of the all-architecture ones | `amdrocm-core-dev` pulls all 25 gfx targets (19.6 GiB). The single largest size win: ~18.4 GiB → 9-13 GiB. |
+| 1 | Install per-gfx metapackages instead of the all-architecture ones | `amdrocm-core-dev10.0` pulls all 25 gfx targets (19.6 GiB). The single largest size win: ~18.4 GiB → 9-13 GiB. |
 | 2 | `ROCM_PATH`, `HIP_PATH` and `/opt/rocm/bin` on `PATH` in the shipped image | The wrapper has none of them today; every consumer recipe starts by setting them. |
-| 3 | Assert the installed ROCm and MIGraphX versions at the end of `Dockerfile.amd` | `stable` is a ROLLING suite and our package names carry no version, so the pin in `versions.env` is a label, not a constraint. A drifted repo must fail the build, not the run. |
+| 3 | Assert the installed ROCm and MIGraphX versions at the end of `Dockerfile.amd` | **Done 2026-10-07**, in `setup-rocm-repo.sh`: every name carries the release, MIGraphX is pinned through apt, and a package of another release fails the build ([§ The ROCm release is in every package name](#the-rocm-release-is-in-every-package-name)). |
 | 4 | Write the RESOLVED path into `/etc/ld.so.conf.d/000-rocm.conf` | It currently writes the literal `/opt/rocm/lib`, which re-resolves through alternatives in a derived image. |
 | 5 | `/dev/kfd` access for uid 1001, documented with numeric host GIDs (or the udev rule), plus `--device /dev/kfd --device /dev/dri --group-add`, `--ipc=host`, `--shm-size` | Our documented run line is incomplete; the image runs non-root and cannot open the device as shipped. |
 | 6 | Do NOT add `--security-opt seccomp=unconfined` to the documented run command, and never bake `HSA_OVERRIDE_GFX_VERSION` | Both are cargo-cult carried from old ROCm guides; the first weakens every consumer's sandbox, the second silently lies about the GPU. |
