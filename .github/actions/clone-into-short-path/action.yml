@@ -87,6 +87,10 @@ runs:
 
         rm -rf "${TARGET}"
         git clone "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "${TARGET}"
+        # A pull_request's github.sha is the merge commit under refs/pull/<n>/merge, which a clone never fetches.
+        if ! git -C "${TARGET}" cat-file -e "${REF}^{commit}" 2>/dev/null; then
+          git -C "${TARGET}" fetch --no-tags origin "${REF}"
+        fi
         git -C "${TARGET}" checkout --force "${REF}"
         if [ "${WANT_SUBMODULES}" = "true" ]; then
           git -C "${TARGET}" submodule update --init --recursive

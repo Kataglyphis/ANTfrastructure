@@ -12787,6 +12787,38 @@
   "why": "npm reports the tarball's sha512 integrity as newDigest on every update; preferring it wrote 'sha512-...' over RENOVATE_VERSION's 44.140.0"
  },
  {
+  "id": "renovate.lock-maintenance-is-applied",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "  LOCK_JOBS+=(${MAINT_JOBS[@]+\"${MAINT_JOBS[@]}\"})",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "the report listed the maintained lock and --apply then said 'nothing to apply': the drift lockFileMaintenance exists for stayed, behind a green run"
+ },
+ {
+  "id": "renovate.lock-maintenance-upgrades",
+  "target": "linux/scripts/renovate-locks.sh",
+  "find": "    uv)           printf '%s\\n' uv lock --upgrade ;;",
+  "replace": "    uv)           printf '%s\\n' uv lock ;;",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "a plain `uv lock` keeps every locked version that still satisfies the manifest, so a maintenance run moved nothing: WebDavClient's uv.lock sat 41 packages behind that way"
+ },
+ {
+  "id": "renovate.lock-maintenance-is-opt-in",
+  "target": "linux/scripts/renovate_planner.py",
+  "find": "    on = isinstance(top, dict) and top.get(\"enabled\") is True",
+  "replace": "    on = True",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "Renovate ships lockFileMaintenance off; reading it as on would rewrite every lock of a repo whose config never asked for it"
+ },
+ {
+  "id": "renovate.lock-maintenance-once-per-lock",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "  rl_has \"$4\" ${MAINT_SEEN[@]+\"${MAINT_SEEN[@]}\"} && return 0",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "every workspace member reports its own package file but shares the root lock; without the dedup a cargo workspace ran cargo update once per member"
+ },
+ {
   "id": "renovate.annotated-values-parse",
   "target": "linux/scripts/01-core/versions.env",
   "find": "extractVersion=^therock-(?<version>.*)$ versioning=loose\n",

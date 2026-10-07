@@ -1692,7 +1692,7 @@
     {
       "SPDXID": "SPDXRef-Package-Documentation-Image-Pandoc-127df2cb",
       "name": "Pandoc",
-      "versionInfo": "3.11",
+      "versionInfo": "3.12",
       "downloadLocation": "https://github.com/jgm/pandoc",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1700,7 +1700,7 @@
       "licenseConcluded": "GPL-2.0-or-later",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Documentation Image / Document Toolchain (third_party/DocumANTation/Dockerfile)",
-      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://github.com/jgm/pandoc at 3.11"
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://github.com/jgm/pandoc at 3.12"
     },
     {
       "SPDXID": "SPDXRef-Package-Documentation-Image-TeX-Live-texlive-full-543e12e7",
