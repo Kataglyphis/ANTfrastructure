@@ -98,6 +98,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `pip install cython==3.3.0` in two separate RUNs (verified on bk-windows-media); a one-layer
       `--force-reinstall` leaves `cython\` and still fails.
 
+- [ ] **CON83 — the riscv64 Python lane: seed its sync, and test the cross wheel** [M, ★★]. Found while fixing
+      OrchestrANT's riscv64 lane (2026-10-07): its emulated `uv sync` of the `test` extra builds numpy, matplotlib,
+      contourpy, pillow, line-profiler, psutil and pyyaml from source, 108 min of the runner's 6 h (numpy alone 107 min),
+      because no cp314 riscv64 wheel exists for them. The image already builds OrchestrANT develop: ship a riscv64 uv
+      cache (or wheel store) seeded from its lock that `ci_tests.sh` copies into `UV_CACHE_DIR` (a warm cache synced in
+      1 min locally). And install plus smoke-test the cross-built riscv64 wheel on the emulated row; today it is never
+      installed. The riscv64 image also lacks shellcheck and hadolint (their rows report SKIPPED).
+
 - [ ] **CON82 — prove the 2026-10-07 pin bumps in the images** [M, ★★]. Linux base/sdk on Vulkan SDK 1.4.363.0, with
       the arm64/riscv64 foreign SDK reaching 24/24 without the retired slang patch and the runtime smoke advertising
       1.4.363.0; the package stage with Chrome for Testing 155, Node 26.11.0 and the seven 26.08 flatpak refs on amd64

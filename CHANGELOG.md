@@ -6,6 +6,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — riscv64: the cross wheel link takes the sysroot's libc
+
+- **fix(riscv64):** `ci_packaging.sh`'s cross mode puts `-L<sysroot>/lib/riscv64-linux-gnu
+  -L<sysroot>/usr/lib/riscv64-linux-gnu` first in `LDSHARED` and drops the `-Wl,-m,elf64lriscv` pin. setuptools
+  appends the host interpreter's LIBDIR, `-lc` then found the host `libc.so`, and its `OUTPUT_FORMAT(elf64-x86-64)`
+  made lld refuse every riscv64 object (OrchestrANT runs 37196119524, 37329297990; its riscv64 packaging had failed
+  since 2026-10-04). Reproduced and fixed in `:latest` with the riscv64 sysroot: the wheel builds (64 compiled modules),
+  and a compiled module imports under QEMU and returns bit-identical floats to the pure-Python source.
+
 ## 2026-10-07 — Windows arm64: cp314t twins of the chain wheels on the cross lane (CON79 item 2)
 
 - **The arm64 cross lane builds the `win_arm64` twins `:winamd64` builds**: `onnxruntime`, `av`, `apache-tvm-ffi` and
