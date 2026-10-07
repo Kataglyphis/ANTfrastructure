@@ -394,7 +394,7 @@ plan_lock_maintenance() {
 
 # The for_each_lock callback: one job per lock, since workspace members share the root lock.
 maint_plan_one() {
-  local cmd
+  local cmd behind=""
   rl_has "$4" ${MAINT_SEEN[@]+"${MAINT_SEEN[@]}"} && return 0
   MAINT_SEEN+=("$4")
   cmd="$(maint_argv "$1" | tr '\n' ' ')"
@@ -403,7 +403,11 @@ maint_plan_one() {
     return 0
   fi
   MAINT_JOBS+=("${LOCK_JOB_NOW}")
-  MAINT_ROWS+=("$(printf '%-34s %s' "$4" "${cmd% }")")
+  # Report only: --apply runs the upgrade itself, and a dry run there would only slow it.
+  if [ "${MODE}" = report ]; then
+    behind="  ($(maint_behind "$1" "${TARGET}/$3" "${4##*/}"))"
+  fi
+  MAINT_ROWS+=("$(printf '%-34s %s%s' "$4" "${cmd% }" "${behind}")")
 }
 
 report_lock_maintenance() {
@@ -411,8 +415,9 @@ report_lock_maintenance() {
   if [ "${#MAINT_ROWS[@]}" -gt 0 ]; then
     note ""
     note "LOCK FILE MAINTENANCE - on in the resolved config. Renovate never reports"
-    note "it here, so no row above shows how far these locks are behind; --apply"
-    note "moves every entry to the newest release its manifest allows:"
+    note "it here, so no row above shows how far these locks are behind; the count"
+    note "is each tool's own dry run, which writes no lock. --apply moves every"
+    note "entry to the newest release its manifest allows:"
     printf '  %s\n' "${MAINT_ROWS[@]}"
   fi
   note_listing "NOT CARRIED - under lock file maintenance, but with no command here:" \

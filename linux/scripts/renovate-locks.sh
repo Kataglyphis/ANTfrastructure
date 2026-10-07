@@ -142,6 +142,63 @@ maint_argv() {
   esac
 }
 
+# The dry run of maint_argv that diffs the LOCK; rc 1 = none. See docs/dependency-updates.md#how-far-behind-a-maintained-lock-is
+maint_dry_argv() {
+  case "$1" in
+    cargo)        printf '%s\n' cargo update --dry-run ;;
+    dart|flutter) printf '%s\n' "$1" pub upgrade --dry-run ;;
+    uv)           printf '%s\n' uv lock --upgrade --dry-run ;;
+    *)            return 1 ;;
+  esac
+}
+
+# Stdin: that dry run's output. Stdout: the entries it would move, or nothing when the output is not the tool's own summary.
+maint_dry_count() {
+  local out
+  out="$(cat)"
+  case "$1" in
+    cargo) grep -q 'not updating lockfile due to dry run' <<<"${out}" || return 0
+           grep -cE '^ *(Updating|Adding|Removing|Downgrading) [^ ]+ v[0-9]' <<<"${out}" ;;
+    uv)    grep -qE '^Resolved [0-9]+ package' <<<"${out}" || return 0
+           grep -cE '^(Update|Add|Remove) [^ ]+ v[0-9]' <<<"${out}" ;;
+    dart|flutter)
+           sed -nE 's/^Would change ([0-9]+) dependenc.*/\1/p; s/^No dependencies would change.*/0/p' <<<"${out}" | head -n 1 ;;
+  esac
+  return 0
+}
+
+# One report cell: how far behind the lock at <dir>/<lock> is. The lock is compared after, and put back if the tool wrote it.
+maint_behind() {
+  local tool="$1" dir="$2" lock="$3" keep before n out rc
+  local -a argv=()
+  mapfile -t argv < <(maint_dry_argv "${tool}")
+  if [ "${#argv[@]}" -eq 0 ]; then
+    printf 'behind: unknown -- %s has no dry run that diffs the lock' "${tool}"; return 0
+  fi
+  if ! command -v "${tool}" >/dev/null 2>&1; then
+    printf "behind: unknown -- '%s' is not on this PATH" "${tool}"; return 0
+  fi
+  keep="$(mktemp)" || { printf 'behind: unknown -- mktemp failed'; return 0; }
+  cp -p "${dir}/${lock}" "${keep}"
+  # git, not cmp: git is the one tool every host of this script has.
+  before="$(git hash-object "${dir}/${lock}")"
+  out="$(cd "${dir}" && "${argv[@]}" </dev/null 2>&1)"
+  rc=$?
+  if [ "$(git hash-object "${dir}/${lock}")" != "${before}" ]; then
+    cp -p "${keep}" "${dir}/${lock}"; rm -f "${keep}"
+    printf "behind: unknown -- '%s' wrote the lock, now put back" "${argv[*]}"; return 0
+  fi
+  rm -f "${keep}"
+  if [ "${rc}" -ne 0 ]; then
+    printf "behind: unknown -- '%s' failed (exit %s)" "${argv[*]}" "${rc}"; return 0
+  fi
+  n="$(maint_dry_count "${tool}" <<<"${out}")"
+  if [ -z "${n}" ]; then
+    printf "behind: unknown -- '%s' printed no summary read here" "${argv[*]}"; return 0
+  fi
+  printf '%s entr%s would move' "${n}" "$([ "${n}" = 1 ] && printf y || printf ies)"
+}
+
 # Run in the lockfile's directory (npm in a member dir writes a second lock); an unknown tool is an error.
 run_lock_tool() {
   local tool="$1" dir="$2" dep="$3" cur="$4"

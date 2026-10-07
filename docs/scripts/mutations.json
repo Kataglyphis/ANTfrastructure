@@ -12819,6 +12819,30 @@
   "why": "every workspace member reports its own package file but shares the root lock; without the dedup a cargo workspace ran cargo update once per member"
  },
  {
+  "id": "renovate.lock-maintenance-dry-run-puts-the-lock-back",
+  "target": "linux/scripts/renovate-locks.sh",
+  "find": "    cp -p \"${keep}\" \"${dir}/${lock}\"; rm -f \"${keep}\"\n",
+  "replace": "    rm -f \"${keep}\"\n",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "the report half promises it writes no lock; a dry run that writes one anyway must be undone, or a report leaves a moved lock in the tree"
+ },
+ {
+  "id": "renovate.lock-maintenance-dry-run-needs-its-summary",
+  "target": "linux/scripts/renovate-locks.sh",
+  "find": "    uv)    grep -qE '^Resolved [0-9]+ package' <<<\"${out}\" || return 0\n",
+  "replace": "    uv)\n",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "counting change lines in output that is not uv's resolver summary reads an error, or a stub's silence, as '0 entries would move': an up-to-date claim nobody measured"
+ },
+ {
+  "id": "renovate.lock-maintenance-dry-run-failure-is-unknown",
+  "target": "linux/scripts/renovate-locks.sh",
+  "find": "  if [ \"${rc}\" -ne 0 ]; then\n    printf \"behind: unknown",
+  "replace": "  if false; then\n    printf \"behind: unknown",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "a dry run that failed half way may have printed some change lines; counting them reports a partial number as the whole drift"
+ },
+ {
   "id": "renovate.annotated-values-parse",
   "target": "linux/scripts/01-core/versions.env",
   "find": "extractVersion=^therock-(?<version>.*)$ versioning=loose\n",

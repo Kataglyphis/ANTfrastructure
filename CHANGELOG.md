@@ -6,6 +6,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — the lock maintenance report says how far behind each lock is (CON84 1)
+
+- **Each `LOCK FILE MAINTENANCE` row ends with the tool's own dry-run count** (`maint_behind` in
+  `renovate-locks.sh`), in report mode only: `uv.lock  uv lock --upgrade  (3 entries would move)`. Counted from
+  `cargo update --dry-run`, `uv lock --upgrade --dry-run` and `dart`/`flutter pub upgrade --dry-run`, each output
+  measured against a held-back lock (cargo 1.96.0, uv 0.9.18, Dart 3.13.3 in `:latest`), none of which wrote it.
+- **Anything else is `behind: unknown -- <why>`, never 0**: npm 9.2.0, poetry 2.5.1 and pdm 2.29.2 have no dry run
+  that diffs the lock (measured; npm's said `up to date` over a lock its real run moved), pnpm has none known, and a
+  missing tool, a failing dry run or output without the tool's summary line say so too. The lock is hashed before
+  and after; one that changed is put back. `--apply` runs no count.
+- `test-renovate-lockmaint.sh` 25 -> 45 assertions (M11-M16, verbatim tool outputs replayed by stubs; 15 fail
+  without the change), 3 new mutations; docs/dependency-updates.md#how-far-behind-a-maintained-lock-is.
+
 ## 2026-10-08 — prune-safe.sh survives a store with no layer records; CON53 closed
 
 - **`_disk_guard_du_json` reads buildctl's `null` as `[]`** (`01-core/disk-guard.sh`). `buildctl du --filter
