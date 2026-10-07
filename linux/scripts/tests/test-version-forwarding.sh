@@ -96,7 +96,7 @@ _fwd_live() {
 t_case "the live tree advertises what riscv64 actually contains"
 t_assert_eq "4.4.2"   "$(_fwd_live riscv64 CMAKE_VERSION)" "Kitware publishes no riscv64 archive; cmake comes from apt"
 t_assert_eq "22.22.1" "$(_fwd_live riscv64 NODE_VERSION)"  "Node.js publishes no riscv64 tarball; node comes from apt"
-t_assert_eq "4.4.3"   "$(_fwd_live amd64 CMAKE_VERSION)"   "amd64 keeps the Kitware pin"
+t_assert_eq "4.4.4"   "$(_fwd_live amd64 CMAKE_VERSION)"   "amd64 keeps the Kitware pin"
 
 t_case "a forwarded key that merely ends in _<ARCH> is not an override"
 # The override lookup skips names that are forwarded keys themselves.
