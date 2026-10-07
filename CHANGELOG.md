@@ -7,6 +7,48 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-07 — The Renovate bumps of 2026-10-07: every patch and feature release (CON72)
+
+- **Owner choice: bump everything Renovate reported that is a patch or feature release.** The
+  report was `custom.regex` plus the default managers over the hub. Every pin was moved by hand with
+  its paired SHA256, commit or source change. Each SHA256 comes from a full download and was
+  checked against a second source: GitHub's asset digest, the publisher's sums file, python.org,
+  NVIDIA's redist manifest, `releases_linux.json` or the PyTorch index.
+- **Toolchain.** LLVM 23.1.3 on both lanes (`LLVM_COMMIT` 0d261d1c), Rust 1.99.0, CPython 3.14.8,
+  CMake 4.4.4, uv 0.12.23 (and its installer pin).
+  - Both AArch64 size patches still apply to 23.1.3, and the patched file passes
+    `Build-LlvmFromSource.ps1`'s assertions.
+  - uv 0.12.23 offers `3.14.8t` for linux x86_64/aarch64/riscv64 and windows x64/arm64 (CON66).
+  - **The CPython clang patch is gone.** 3.14.8's `PC/pyconfig.h` names clang by
+    major.minor.patch itself; `Build-ToolchainAll.ps1` still refuses a `sys.version` without
+    `AMD64`.
+  - Consumers that gate rustc's stamp (OmniAccelerANT `check-rust-toolchain.sh`) follow once they
+    move their hub pin after the image is published.
+- **Media.** TVM v0.27.0, IREE v3.12.0, onnxruntime-genai v0.17.0, LiteRT-LM 0.18.0, PyAV 19.0.1,
+  OpenVINO 2026.4.1, ComputeLibrary v53.3.1, libpng 1.6.59, AMF headers v1.5.3.
+  - **`TVM_COMMIT` is now the v0.27.0 tag's commit, and must never be emptied.** apache/tvm also
+    has a branch `v0.27.0`, and `clone --branch` takes the branch.
+  - **GenAI is 0.17.0, not Renovate's 0.17.1**, which is on PyPI but has no GitHub tag. Its
+    `D3D12Core.dll` now comes from a NuGet restore into `__nuget`; the Windows sidecar filter
+    matches it.
+  - **protoc is 36.1 and Python protobuf 7.36.1, not Renovate's 36.2.** Both stay slaved to
+    LiteRT-LM 0.18.0's `LITERTLM_PROTOBUF_TAG`, which `bump_versions.py` can now read.
+  - **LiteRT-LM 0.18's GPU DLLs import `webgpu_dawn.dll`.** The rocm lane stages and pins that
+    file instead of `libwebgpu_dawn.dll`.
+- **Apps.** torch 2.14.1 and torchvision 0.29.1 (with the rocm source commits and the win-arm64
+  wheel), llama.cpp b11460, Ollama 0.40.0, Flutter 3.47.6, cuDNN 9.27.0.42.
+  - llama.cpp b11461 had a tag and no release yet; b11460 is the newest build with both zips.
+- **Tools.** ruff 0.16.10, syft v1.54.1, Renovate 44.140.0, meson 1.12.1, scikit-build-core
+  1.1.1, setuptools-scm 10.3.4, cargo-tarpaulin 0.37.5, Git for Windows 2.56.0, lavapipe 26.2.4,
+  the `ubuntu:26.04` digest, `docker/dockerfile` 1.27.1.
+  - **APISIX 3.19.0** for the llm-stack gateway: the gateway e2e passed 79 of 79 on it (and on
+    3.18.0 before), so `geniex_hook.lua` is proven on 3.19.0.
+- **Consumers follow before the next chain.** OrchestrANT pins ruff 0.16.10, torch 2.14.1 and
+  torchvision 0.29.1, and onnxruntime-genai(-cuda) 0.17.0; the hub's consumer-pins gate is red in
+  its lint lane until it does. Its `uv.lock` also needs iree-base-compiler 3.12.0, because a 3.12
+  runtime does not load a 3.11 VMFB.
+- What only a chain can prove is BACKLOG CON72.
+
 ## 2026-10-07 — `git-sync-branches.sh` moves third-party submodules by default
 
 - **Owner decision: the newest commits everywhere, not just in the family's repos.** Every
