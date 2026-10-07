@@ -7541,8 +7541,8 @@
  {
   "id": "renovate.dry-run-predicts-the-write",
   "target": "linux/scripts/renovate_planner.py",
-  "find": "        predict(_verify(load(sys.argv[3]), sys.argv[2]))",
-  "replace": "        _verify(load(sys.argv[3]), sys.argv[2])",
+  "find": "    \"verify\": lambda a: predict(_verify(load(a[1]), a[0])),",
+  "replace": "    \"verify\": lambda a: _verify(load(a[1]), a[0]),",
   "test": "bash linux/scripts/tests/test-renovate-audit.sh",
   "why": "without the prediction --dry-run printed a clean plan at rc 0 for a write --apply then refused, while claiming to show the exact writes it would make"
  },
@@ -12505,5 +12505,37 @@
   "replace": "amdrocm-asan",
   "test": "bash linux/scripts/tests/test-rocm-packages.sh",
   "why": "a versionless amdrocm-asan follows the suite's newest ROCm too"
+ },
+ {
+  "id": "renovate.skipped-deps-are-listed",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "    note \"${n} update(s) available (manager(s): ${MANAGERS})\"\n  fi\n  report_skipped\n}",
+  "replace": "    note \"${n} update(s) available (manager(s): ${MANAGERS})\"\n  fi\n}",
+  "test": "bash linux/scripts/tests/test-renovate-local.sh",
+  "why": "a skipped dependency is never behind, so without the NOT CHECKED list ROCM_VERSION=10.0 under semver read as up to date and TheRock 10.1 went unreported"
+ },
+ {
+  "id": "renovate.by-design-skips-are-counted-not-listed",
+  "target": "linux/scripts/renovate_planner.py",
+  "find": "        if why in BY_DESIGN:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-renovate-local.sh",
+  "why": "every path dependency in the NOT CHECKED list would bury the one invalid value that actually hides a pin"
+ },
+ {
+  "id": "renovate.value-pin-ignores-npm-integrity",
+  "target": "linux/scripts/renovate_planner.py",
+  "find": "            \"newDigest\": (up.get(\"newDigest\") or \"\") if dep.get(\"currentDigest\") else \"\",",
+  "replace": "            \"newDigest\": up.get(\"newDigest\") or \"\",",
+  "test": "bash linux/scripts/tests/test-renovate-local.sh",
+  "why": "npm reports the tarball's sha512 integrity as newDigest on every update; preferring it wrote 'sha512-...' over RENOVATE_VERSION's 44.140.0"
+ },
+ {
+  "id": "renovate.annotated-values-parse",
+  "target": "linux/scripts/01-core/versions.env",
+  "find": "extractVersion=^therock-(?<version>.*)$ versioning=loose\n",
+  "replace": "extractVersion=^therock-(?<version>.*)$\n",
+  "test": "bash linux/scripts/tests/test-renovate-annotations.sh",
+  "why": "ROCM_VERSION=10.0 is not semver, so without versioning=loose Renovate skips it as invalid-value and TheRock 10.1 is never reported"
  }
 ]
