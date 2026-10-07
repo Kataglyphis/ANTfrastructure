@@ -20,7 +20,7 @@ fi
 case "${CROSS_GPU_VARIANT}" in
   nvidia) ENABLE_NVIDIA=true; ENABLE_AMD=false; : "${ENABLE_TENSORRT:=false}"
           # DeepStream ships in every amd64 nvidia build at full size (owner 2026-10-07); ENABLE_DEEPSTREAM=false opts a run out.
-          [ "${CROSS_BUILD_PLATFORM:-linux/amd64}" != "linux/amd64" ] || : "${ENABLE_DEEPSTREAM:=true}"
+          case "$(cross_build_platform)" in */amd64) : "${ENABLE_DEEPSTREAM:=true}" ;; esac
           export CROSS_VARIANT=nvidia ENABLE_NVIDIA ENABLE_AMD ENABLE_TENSORRT
           [ -z "${ENABLE_DEEPSTREAM:-}" ] || export ENABLE_DEEPSTREAM ;;
   rocm)   ENABLE_AMD=true; ENABLE_NVIDIA=false
