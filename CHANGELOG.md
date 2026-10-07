@@ -6,6 +6,29 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — IREE: every Linux target tree settles before its GIL build; the compiler twin proved on both lanes (CON81, CON79 1)
+
+- **Every Linux IREE target tree configures twice before it builds** (`_iree_configure_settled`, native and cross;
+  owner approval 2026-10-07). IREE adds `runtime/`, whose `iree::base` links `${IREE_LIBBACKTRACE_TARGET}`, before
+  `build_tools/third_party/libbacktrace` caches it (v3.12.0 lines 1199/1236, v3.11.0 1149/1186), so only a second
+  configure puts `IREE_HAVE_LIBBACKTRACE=1` on the compile lines that see `iree::base` (1187 of 6700 on the amd64
+  compiler tree). The twin's reconfigure used to be that second configure and recompiled them all. An aarch64 cross
+  configure moves 377 of 474 lines the same way, so the cross target trees settle too; the host stage configures once.
+- **The GIL wheels' bytes do not change** (correcting CON81's premise): release builds run `IREE_STATUS_MODE` 2, which
+  compiles the stack-trace path out. The settled build's 28 native files are byte-identical to `:latest`'s.
+- **Linux, proved in `:latest` amd64** through `build-app-wheelhouse.sh` with the full in-tree LLVM, cold, `-j16`, on
+  **IREE v3.11.0** (the published image's ENV `IREE_VERSION` won over the tree's v3.12.0 pin in that local run):
+  configure 55 s (17 s of it the settle), build 2334 s; twin pass 25 s, **58 objects, all Python bindings** (an
+  unsettled tree changed 1272 compile lines). `prove` loaded 14 compiler modules and the runtime module with the GIL
+  off; in a 3.14t venv MLIR parsed in-process, a VMFB compiled and ran on `local-task` from 8 threads, and the twins'
+  `iree-compile`/`iree-run-module` ran. `libIREECompiler.so` and the ten runtime tools are byte-identical between the
+  GIL wheels and the twins. Tests: `test-iree-wheelhouse-stages.sh` 66 -> 76, 3 mutations.
+- **Windows, proved in `:winamd64` on IREE v3.12.0 (2b05c5db)**, `Build-IreeFromSource.ps1` unchanged, compiler and
+  in-tree LLVM: both clang-cl fixes held on the full tree; GIL pass 8696 edges in 23 min at `-j20`; twin pass 94 s, 137
+  edges (80 reach Python; 56 follow the VM ISA genrule, which re-runs for the venv's Python and relinks
+  `IREECompiler.dll` and the tools, differing only in the COFF `TimeDateStamp`). `prove` loaded all 13 compiler modules
+  and the runtime module with the GIL off; `compile_str` plus `local-task` ran in eight threads at once.
+
 ## 2026-10-07 — Lock file maintenance in the preset; sqlite3.wasm 3.7.0; pandoc 3.12; PR merge refs on Windows
 
 - **Every lockfile moves to the newest release its manifest allows** (owner rule 2026-10-07). `default.json` sets

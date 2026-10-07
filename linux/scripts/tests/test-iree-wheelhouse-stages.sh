@@ -31,6 +31,10 @@ printf '%s\n' "$*" >> "${STUB_CMAKE_LOG}"
 if [ -n "${STUB_CMAKE_FAIL:-}" ] && printf '%s' "$*" | grep -qE -e "${STUB_CMAKE_FAIL}"; then
   exit 7
 fi
+# STUB_CMAKE_FAIL_AGAIN=1 fails a call whose argv was seen before, i.e. the settling second configure.
+if [ -n "${STUB_CMAKE_FAIL_AGAIN:-}" ] && [ "$(grep -cxF -e "$*" "${STUB_CMAKE_LOG}")" -ge 2 ]; then
+  exit 7
+fi
 mode=configure; build_dir=""; prefix=""; want_install=0
 prev=""
 for a in "$@"; do
@@ -142,6 +146,8 @@ ft_twin_store_built() {
 BUILD_PYTHON="${TMP}/bin/fakepython"
 MAX_JOBS=2
 IREE_REF="v3.11.0"
+STUB_CMAKE_FAIL=""
+STUB_CMAKE_FAIL_AGAIN=""
 
 # Fresh sandbox per invocation; returns build_iree_wheels' status in RC.
 RC=0
@@ -155,7 +161,7 @@ _run() {
   STUB_PY_LOG="${TMP}/py.log"; : > "${STUB_PY_LOG}"
   STUB_HOST_INSTALL="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-host/install"
   STUB_RETAG_LOG=""
-  export STUB_CMAKE_LOG STUB_HOST_INSTALL STUB_CMAKE_FAIL STUB_PY_LOG
+  export STUB_CMAKE_LOG STUB_HOST_INSTALL STUB_CMAKE_FAIL STUB_CMAKE_FAIL_AGAIN STUB_PY_LOG
   unset CCACHE_MAXSIZE SCCACHE_CACHE_SIZE _PYTHON_SYSCONFIGDATA_NAME
   RC=0
   build_iree_wheels >/dev/null 2>"${TMP}/err.log" || RC=$?
@@ -164,6 +170,11 @@ _wheels() { ( shopt -s nullglob; set -- "${APP_WHEELHOUSE_DIR}"/*.whl; printf '%
 _ft_wheels() { find "${APP_WHEELHOUSE_FT_DIR}" -name '*.whl' -printf '%f\n' 2>/dev/null | LC_ALL=C sort | tr '\n' ' '; }
 # Number of `pip wheel` invocations, i.e. whether _iree_package_wheels ran at all.
 _pkg_calls() { printf '%s\n' "$(wc -l < "${TMP}/py.log" 2>/dev/null || echo 0)"; }
+# The cmake calls on one build tree, in order: configure (-G), build (--build) or reconfigure (the twin's).
+_tree_calls() {
+  awk -v t="/$1 " 'index($0, t) { print ($1 == "--build" ? "build" : ($1 == "-G" ? "configure" : "reconfigure")) }' \
+    "${TMP}/cmake.log" | tr '\n' ' '
+}
 
 # ── native lane ──────────────────────────────────────────────────────────────
 STUB_CROSS=0
@@ -196,6 +207,11 @@ t_assert_contains "${_cmake_log}" "-S ${TMP}/work/iree -B ${TMP}/work/iree-build
   "the GIL pass's tree, reconfigured onto the free-threaded venv"
 t_assert_contains "${_cmake_log}" "--build ${TMP}/work/iree-build-target -- -j2" "and rebuilt there"
 
+t_case "the target tree configures twice before the GIL build, so the GIL wheel and its twin share one settled configuration"
+t_assert_eq "configure configure build reconfigure build " "$(_tree_calls iree-build-target)" "native target tree calls"
+t_assert_eq "1" "$(grep -e '^-G Ninja -S [^ ]* -B [^ ]*/iree-build-target ' "${TMP}/cmake.log" | sort -u | wc -l | tr -d ' ')" \
+  "the second configure repeats the first"
+
 t_case "packaging retags with the wheel_platform from the prereq stage"
 t_assert_contains "${STUB_RETAG_LOG}" "iree_base_runtime:linux_riscv64" "retag runtime"
 t_assert_contains "${STUB_RETAG_LOG}" "iree_base_compiler:linux_riscv64" "retag compiler"
@@ -226,6 +242,10 @@ esac
 t_assert_contains "${_cmake_log}" "-DIREE_HOST_BIN_DIR=${TMP}/work/iree-build-host/install/bin" "target uses host tools"
 t_assert_contains "${_cmake_log}" "-DCMAKE_TOOLCHAIN_FILE=${TMP}/toolchain.cmake" "toolchain file"
 t_assert_contains "${_cmake_log}" "-DLLVM_HOST_TRIPLE=riscv64-linux-gnu" "target triple pin"
+
+t_case "the cross target tree is settled the same way; the host stage, which ships nothing, configures once"
+t_assert_eq "configure configure build " "$(_tree_calls iree-build-target)" "cross target tree calls"
+t_assert_eq "configure build " "$(_tree_calls iree-build-host)" "host tree calls"
 
 t_case "cmake_args reach the target configure, and carry NO QNN flag"
 t_assert_contains "${_cmake_log}" "-DSTUB_COMMON_CROSS=1" "append_common_cross_cmake_args lost"
@@ -322,6 +342,20 @@ t_assert_eq "0" "${RC}" "a build the table gives no twin succeeds"
 t_assert_eq "" "$(_ft_wheels)" "with no twin"
 
 STUB_CMAKE_FAIL=""
+
+t_case "a failed settling configure fails build_iree_wheels before anything is packaged, on both lanes"
+STUB_CMAKE_FAIL_AGAIN=1
+_run
+t_assert_eq "1" "${RC}" "native: a failed second configure must return 1"
+t_assert_eq "0" "$(_pkg_calls)" "native: packaging must not run"
+t_assert_contains "$(cat "${TMP}/err.log")" "IREE native configure failed"
+STUB_CROSS=1
+_run
+t_assert_eq "1" "${RC}" "cross: a failed second configure must return 1"
+t_assert_eq "0" "$(_pkg_calls)" "cross: packaging must not run"
+t_assert_contains "$(cat "${TMP}/err.log")" "IREE riscv64 runtime configure failed"
+STUB_CMAKE_FAIL_AGAIN=""
+STUB_CROSS=0
 
 t_case "a failed lane does not abort the caller"
 _run

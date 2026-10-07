@@ -65,11 +65,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
       and Windows amd64 are in source since 2026-10-07 (CHANGELOG). Open:
       1. **Prove in full image builds**: Linux — the nvidia and rocm ORT twins (one call each), the IREE
-         compiler twin, FT-STORE green on `:latest` amd64 (and arm64 on a native arm64 chain), the ORT census
+         compiler twin at v3.12.0 (proved locally on v3.11.0's tree, 2026-10-07), FT-STORE green on `:latest` amd64 (and arm64 on a native arm64 chain), the ORT census
          taking the twin, `PYTHON_WHEELS_CP314T` in FT-STORE, and a 3.14t venv reconciled onto the real ORT twin
-         (`uv_reconcile_chain_ort`, proved locally only with stand-in twins). Windows — the IREE v3.12.0 clang-cl fixes (genrule `python3`, `__udivti3`) and the
-         `iree-base-compiler` twin; smoke section 20's exact set then has all five twins. Both were proved
-         locally only up to the runtime-only IREE tree.
+         (`uv_reconcile_chain_ort`, proved locally only with stand-in twins). Windows — a `:winamd64` image build carrying all five twins, so smoke section 20 checks its
+         exact set; the IREE v3.12.0 clang-cl fixes and the `iree-base-compiler` twin are proved locally on the
+         full compiler tree since 2026-10-07. Optional: keep the GIL interpreter in IREE's VM ISA genrule for
+         the Windows twin, as `Set-OrtNinjaCommandPython` does for ORT (56 of its 137 edges go away).
       1b. **Linux cross twins** (arm64 cross, riscv64, including riscv64 torch/torchvision/numpy, which need
          rows in `03-media/free-threaded-twins.txt`): `ft_soabi_gate` takes the target EXT_SUFFIX from `/opt/python-cross-ft/<arch>`, and the
          proof runs on the target (QEMU) or in the package stage.
@@ -84,11 +85,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       5. **Upstream**: IREE's bare-`python3` genrule (`runtime/src/iree/vm/bytecode/isa/CMakeLists.txt`) and its
          Windows `cpython-NNt` SOABI detection (`CMakeLists.txt:782-791`); onnxruntime-genai's
          `PYBIND11_MODULE` (`src/python/python.cpp:468`) plus a thread-safety audit of its global log callback.
-- [ ] **CON81 — IREE configures twice before its GIL build, or its wheels differ** [S, ★]. On Linux its
-      first configure leaves `IREE_HAVE_LIBBACKTRACE` unset and the second sets it, so the cp314t twin pass
-      recompiles 464 of 723 runtime objects and the twin carries libbacktrace where the GIL wheel does not; a
-      settled tree rebuilds 21. Windows already settles (`Invoke-CmakeConfigure -Settle`). Settling Linux
-      changes the GIL wheel, so it is the owner's call.
 - [ ] **CON80 — prove the in-place site-packages merge in the next Windows chain run** [S, ★]. The cause
       (a COPY over a lower layer's file stores it lowercased) and the fix landed 2026-10-07 (CHANGELOG): the
       fan-in merges in one RUN, refuses mixed versions and lost RECORD spelling. Proved in a replay only.
