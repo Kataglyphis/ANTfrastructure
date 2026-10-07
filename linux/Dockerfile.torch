@@ -29,8 +29,8 @@ ARG APP_REF=develop
 ARG ONNX_PACKAGE=onnxruntime
 ARG PYTORCH_EXTRA="pytorch-cpu"
 # The pins the runtime smoke asserts; they override a lagging app lock (riscv64 keeps its <KEY>_RISCV64 pair).
-ARG PYTORCH_VERSION=v2.14.0
-ARG TORCHVISION_VERSION=v0.29.0
+ARG PYTORCH_VERSION=v2.14.1
+ARG TORCHVISION_VERSION=v0.29.1
 ARG PYTORCH_ROCM_INDEX=rocm7.14
 ENV VENV=/opt/venv \
     TORCH_APP_MODE=${TORCH_APP_MODE} \

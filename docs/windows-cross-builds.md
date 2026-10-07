@@ -1336,7 +1336,7 @@ Components with no arm64 story, and what stands in their place.
 
 ### PyTorch / the torch app stage
 
-**Still dropped — the binding constraint is the cp314 pin, re-checked 2026-10-03.** `download.pytorch.org` publishes `win_arm64` `+cpu` wheels for cp311-cp313 (torch 2.14.0+cpu matches `PYTORCH_VERSION`; nightly is at 2.15.0.dev) and none for cp314 on any channel (stable, test, nightly). `uv sync` proper must execute the target interpreter, so the stage stays dropped. What ships instead: the merge stage stages the cp313 stack (torch, torchvision, pillow, MarkupSafe and the pure-python first-touch deps) into the bundle's wheel store, SHA-pinned, for a device that brings its own cp313 interpreter.
+**Still dropped — the binding constraint is the cp314 pin, re-checked 2026-10-03.** `download.pytorch.org` publishes `win_arm64` `+cpu` wheels for cp311-cp313 (torch 2.14.1+cpu matches `PYTORCH_VERSION`; nightly is at 2.15.0.dev) and none for cp314 on any channel (stable, test, nightly). `uv sync` proper must execute the target interpreter, so the stage stays dropped. What ships instead: the merge stage stages the cp313 stack (torch, torchvision, pillow, MarkupSafe and the pure-python first-touch deps) into the bundle's wheel store, SHA-pinned, for a device that brings its own cp313 interpreter.
 
 Everything in that table is a **product gap to document, not an engineering problem to route
 around**. Where a coverage floor can encode it (CUDA sections in the smoke floors), encode it, so

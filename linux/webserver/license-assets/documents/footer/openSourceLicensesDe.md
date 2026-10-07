@@ -76,7 +76,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | CUDA Toolkit | 13.4.2 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
-| cuDNN | 9.26.0.51 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
+| cuDNN | 9.27.0.42 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 | TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
 ### Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only) (`Dockerfile.media`)
@@ -113,9 +113,9 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| PyTorch | v2.14.0 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
-| TorchVision | v0.29.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
-| Flutter SDK | 3.47.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| PyTorch | v2.14.1 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
+| TorchVision | v0.29.1 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
+| Flutter SDK | 3.47.6 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Test runtimes (`Dockerfile.package`)
 
@@ -136,7 +136,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Ollama | 0.34.2 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
+| Ollama | 0.40.0 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
 
 ### Build Tooling (build-time only, not in runtime images)
 
@@ -175,19 +175,19 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
-| Flutter SDK | 3.47.4 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.6 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### GPU Layer
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | CUDA | 13.4.2 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
-| cuDNN | 9.26.0.51 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
+| cuDNN | 9.27.0.42 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 | TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 | AMD ROCm for Windows (TheRock tarball, C:\TheRock\build; rocm variant only) | 10.0.0 | [github.com/ROCm/TheRock](https://github.com/ROCm/TheRock) | per component: MIT (rocBLAS, hipBLASLt, MIOpen, rocFFT, rocRAND, rocSPARSE, hipcc, ...), BSD (rocSOLVER, hipCUB), Apache-2.0 (rocThrust, LLVM WITH LLVM-exception); the notices in share\doc ship with the tree. The HIP and OpenCL runtime DLLs carry no licence file and link AMD's prebuilt PAL: redistribution in a PUBLIC image is an owner decision |
 | Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\vulkan-loader, on PATH in the default and nvidia images; the arm64 bundle's copy and licence in C:\runtime\lavapipe) | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 (Khronos Vulkan-Loader) with MIT components (cJSON, Dave Gamble; joseph werle); VulkanRT-License.txt ships in C:\vulkan-loader |
 | Mesa lavapipe (the CPU Vulkan ICD: lvp_icd.x86_64/aarch64.json + vulkan_lvp.dll in C:\runtime\lavapipe; mmozeiko/build-mesa, SHA256-pinned) | 26.2.4 | [github.com/mmozeiko/build-mesa](https://github.com/mmozeiko/build-mesa) | MIT (Mesa 3D; the 7z carries no licence text, so this release repository and mesa3d.org are the pointer) |
-| PyTorch + TorchVision for ROCm (built from upstream source against TheRock's ROCm 10.0.0 SDK, kernels for gfx1201 and gfx1200, on AMD's rocm[libraries] runtime; rocm variant only) | torch 2.14.0+rocm10.0.0 and torchvision 0.29.0+rocm10.0.0 from the v2.14.0 / v0.29.0 tags (commits pinned as TORCH_ROCM_WINDOWS_*_COMMIT), with AMD's rocm-sdk runtime and device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*) | [github.com/pytorch/pytorch](https://github.com/pytorch/pytorch) | BSD 3-Clause (PyTorch, TorchVision); the bundled ROCm runtime as above (MIT/BSD/Apache-2.0 plus the HIP runtime without a licence file) |
+| PyTorch + TorchVision for ROCm (built from upstream source against TheRock's ROCm 10.0.0 SDK, kernels for gfx1201 and gfx1200, on AMD's rocm[libraries] runtime; rocm variant only) | torch 2.14.1+rocm10.0.0 and torchvision 0.29.1+rocm10.0.0 from the v2.14.1 / v0.29.1 tags (commits pinned as TORCH_ROCM_WINDOWS_*_COMMIT), with AMD's rocm-sdk runtime and device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*) | [github.com/pytorch/pytorch](https://github.com/pytorch/pytorch) | BSD 3-Clause (PyTorch, TorchVision); the bundled ROCm runtime as above (MIT/BSD/Apache-2.0 plus the HIP runtime without a licence file) |
 | LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv: the pinned 2.2.0 on the rocm variant, the app lock's 2.1.6 on the default and nvidia images) | 2.2.0 (cp314 win_amd64; URL + SHA256 pinned as TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*) | [github.com/google-ai-edge/LiteRT](https://github.com/google-ai-edge/LiteRT) | Apache 2.0 (the wheel's METADATA; the wheel carries no licence or NOTICE text). libLiteRtWebGpuAccelerator.dll is a closed Google binary: LiteRT's Apache-2.0 wrapper around ML Drift, which LiteRT's WORKSPACE declares with no public URL; it imports only system DLLs, so Dawn/Tint (BSD 3-Clause) are linked in statically |
 
 ### Media Layer
@@ -227,8 +227,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| llama.cpp (official prebuilt Windows ROCm release: ggml-hip.dll, llama-server.exe and the other tools) | 11115 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
-| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 11115 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
+| llama.cpp (official prebuilt Windows ROCm release: ggml-hip.dll, llama-server.exe and the other tools) | 11460 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
+| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 11460 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
 | LLVM OpenMP runtime (libomp.dll, bundled in both llama.cpp zips) | as bundled in the pinned llama.cpp zips (sha256-pinned; the two copies are byte-identical) | [github.com/llvm/llvm-project/tree/main/openmp](https://github.com/llvm/llvm-project/tree/main/openmp) | Apache 2.0 with LLVM Exceptions (older code also under the legacy NCSA/MIT terms); LICENSE-LLVM-OpenMP ships beside each copy, in C:\runtime\opt\llama.cpp-hip and C:\runtime\opt\llama.cpp-vulkan |
 | AMD HIP runtime copies beside llama-server (amdhip64_7.dll, amd_comgr.dll, rocm_kpack.dll) | 10.0.0 | [github.com/ROCm/TheRock](https://github.com/ROCm/TheRock) | MIT (HIP runtime, ROCm/clr; rocm_kpack, ROCm/rocm-kpack) + Apache 2.0 with LLVM Exceptions (amd_comgr, ROCm/llvm-project); byte-identical to the ROCm layer's own copies, which the rocm-check enforces |
 
