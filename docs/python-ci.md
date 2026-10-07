@@ -521,7 +521,9 @@ Without the classifier the drivers build exactly what they built before, and log
 
 **The override** is `PYTHON_FREE_THREADED_WHEEL` (on Windows also `-FreeThreadedWheel`):
 `auto`, the default, follows the classifier, `on` builds without it, and `off` skips it.
-Any other value fails the run.
+Any other value fails the run. A caller sets it with the `free-threaded-wheel` input of
+`python-ci-linux.yml` (passed to the packaging container) and of `python-ci-windows.yml`
+(passed to the build container, where `Invoke-CiPackaging.ps1` reads it).
 
 **Cross lanes skip it.** The riscv64 cross build (`PACKAGING_CROSS_TARGET`) and the Windows
 arm64 cross lane have no free-threaded target interpreter. They log `free-threaded wheel
