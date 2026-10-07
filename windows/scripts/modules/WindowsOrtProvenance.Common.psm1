@@ -280,13 +280,33 @@ function Find-OrtSitePackage {
 }
 
 function Get-OrtChainWheel {
-    # The chain ORT wheel(s) in a wheel store; normalised names, so onnxruntime_gpu matches too. GenAI never does.
-    param([AllowEmptyString()][string]$WheelDir, [AllowEmptyString()][string]$OrtVersion = '')
+    # The chain ORT wheel(s) of one ABI in a wheel store: cp3XY for -Abi gil, cp3XYt for free-threaded. GenAI never matches.
+    param(
+        [AllowEmptyString()][string]$WheelDir,
+        [AllowEmptyString()][string]$OrtVersion = '',
+        [ValidateSet('gil', 'free-threaded')][string]$Abi = 'gil'
+    )
     if (-not $WheelDir -or -not (Test-Path -LiteralPath $WheelDir -PathType Container)) { return @() }
     $ver = if ($OrtVersion) { [regex]::Escape($OrtVersion.TrimStart('v')) } else { '[^-]+' }
-    $pattern = "^onnxruntime(?:[_-](?!genai)[a-z0-9]+)?-$ver-.*\.whl$"
+    $abiTag = if ($Abi -eq 'free-threaded') { '(cp\d+)-\1t' } else { '(cp\d+)-\1' }
+    # Normalised names, so onnxruntime_gpu matches too; an optional build tag starts with a digit.
+    $pattern = "^onnxruntime(?:[_-](?!genai)[a-z0-9]+)?-$ver(?:-\d[^-]*)?-$abiTag-[^-]+\.whl$"
     return @(Get-ChildItem -LiteralPath $WheelDir -Filter '*.whl' -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -match $pattern } | ForEach-Object FullName)
+}
+
+function Get-OrtChainWheelStore {
+    # The GIL store (PYTHON_WHEELS) and the free-threaded twins' (PYTHON_WHEELS_CP314T), with the image's defaults.
+    param([switch]$FreeThreaded)
+    if ($FreeThreaded) { return $(if ($env:PYTHON_WHEELS_CP314T) { $env:PYTHON_WHEELS_CP314T } else { 'C:\runtime\wheels-cp314t' }) }
+    return $(if ($env:PYTHON_WHEELS) { $env:PYTHON_WHEELS } else { 'C:\runtime\wheels' })
+}
+
+function Get-OrtChainReferenceWheel {
+    # Both chain ORT wheels of one build: the GIL store's cp3XY wheel and the free-threaded store's cp3XYt twin.
+    param([AllowEmptyString()][string]$OrtVersion = '')
+    return @(Get-OrtChainWheel -WheelDir (Get-OrtChainWheelStore) -OrtVersion $OrtVersion) +
+        @(Get-OrtChainWheel -WheelDir (Get-OrtChainWheelStore -FreeThreaded) -OrtVersion $OrtVersion -Abi 'free-threaded')
 }
 
 function Test-OrtUnderRoot {
@@ -582,17 +602,19 @@ function Invoke-OrtImageCensus {
     Assert-OrtCensusDependency
     if (-not $Arch) { $Arch = Get-WindowsTargetArch }
     $prefix = Get-OrtChainPrefix
-    $wheelDir = if ($env:PYTHON_WHEELS) { $env:PYTHON_WHEELS } else { 'C:\runtime\wheels' }
+    $wheelDir = Get-OrtChainWheelStore
+    $ftWheelDir = Get-OrtChainWheelStore -FreeThreaded
     $winDir = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
     $drive = [System.IO.Path]::GetPathRoot($winDir)
     # The Windows dir is scanned by ORT name only; Windows ML's API DLL carries the ORT ABI under another name.
     $inboxFile = @(if (-not $CrossTarget) { foreach ($d in 'System32', 'SysWOW64') { "$winDir\$d\onnxruntime.dll"; "$winDir\$d\Windows.AI.MachineLearning.dll" } })
-    return Invoke-OrtCensus -ContentRoot @('C:\runtime', 'C:\temp\cpython', 'C:\opt', 'C:\Users') -NameRoot @($drive) `
+    # The free-threaded install's site-packages is empty by contract; its content scan proves that for ORT.
+    return Invoke-OrtCensus -ContentRoot @('C:\runtime', 'C:\temp\cpython', 'C:\python-freethreaded', 'C:\opt', 'C:\Users') -NameRoot @($drive) `
         -ExtraFile $inboxFile `
         -ExcludeRoot @(if ($CrossTarget) { $winDir }) `
-        -ReferenceDir @("$prefix\bin", "$prefix\lib") -ReferenceWheel @(Get-OrtChainWheel -WheelDir $wheelDir -OrtVersion $OrtVersion) `
+        -ReferenceDir @("$prefix\bin", "$prefix\lib") -ReferenceWheel @(Get-OrtChainReferenceWheel -OrtVersion $OrtVersion) `
         -CoreLib "$prefix\bin\onnxruntime.dll" -Verdict @{
-            AllowedHome = @($prefix, $wheelDir); Contract = (Get-OrtConsumerContract); RequireStamp = [bool]$RequireStamp
+            AllowedHome = @($prefix, $wheelDir, $ftWheelDir); Contract = (Get-OrtConsumerContract); RequireStamp = [bool]$RequireStamp
             SearchPath = @("$env:PATH" -split ';' | Where-Object { $_ }); Exemption = $Exemption; Arch = $Arch
             System32 = $(if ($CrossTarget) { '' } else { Join-Path $winDir 'System32' })
             InboxRoot = @(if (-not $CrossTarget) { $winDir })
@@ -615,7 +637,7 @@ function Test-OrtProvenanceTree {
     if ($ReferenceDir.Count -eq 0 -and $ReferenceWheel.Count -eq 0) {
         $prefix = Get-OrtChainPrefix
         $ReferenceDir = @("$prefix\bin", "$prefix\lib")
-        $ReferenceWheel = @(Get-OrtChainWheel -WheelDir $(if ($env:PYTHON_WHEELS) { $env:PYTHON_WHEELS } else { 'C:\runtime\wheels' }))
+        $ReferenceWheel = @(Get-OrtChainReferenceWheel)
     }
     $census = Invoke-OrtCensus -ContentRoot @($Root) -ReferenceDir $ReferenceDir -ReferenceWheel $ReferenceWheel -TreeAppDir `
         -Verdict @{ ChainRoot = $ChainRoot; AssumeSystemOrt = $true; Exemption = $Exemption; Arch = (Get-WindowsTargetArch) }
@@ -627,6 +649,6 @@ function Test-OrtProvenanceTree {
 Export-ModuleMember -Function @(
     'Get-OrtChainSourceRoot', 'Get-OrtChainPrefix', 'Get-OrtConsumerContract', 'Get-OrtStampPath', 'Test-OrtInstanceName',
     'Get-OrtSourceRoot', 'Get-OrtBinaryFact', 'Get-OrtArchiveFact', 'Get-OrtTreeFact', 'Get-OrtSitePackageOwner',
-    'Get-OrtChainWheel', 'Test-OrtStampCurrent', 'Get-OrtCensusFinding', 'Invoke-OrtCensus', 'Write-OrtCensusReport',
+    'Get-OrtChainWheel', 'Get-OrtChainWheelStore', 'Get-OrtChainReferenceWheel', 'Test-OrtStampCurrent', 'Get-OrtCensusFinding', 'Invoke-OrtCensus', 'Write-OrtCensusReport',
     'Invoke-OrtImageCensus', 'Test-OrtProvenanceTree'
 )

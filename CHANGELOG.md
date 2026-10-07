@@ -6,6 +6,35 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — Windows: cp314t twins of the chain wheels that declare free-threading
+
+- **Owner request 2026-10-07: every chain wheel twice, `cp314t` only where the code declares it.** Checked in
+  upstream source at the pinned tags: onnxruntime (`py::mod_gil_not_used()`), PyAV (`freethreading_compatible`),
+  apache-tvm-ffi (`# cython: freethreading_compatible = True`) and IREE runtime and compiler (nanobind
+  `FREE_THREADED`) get a twin; apache-tvm (a py3 wheel) and torchvision carry no CPython module; onnxruntime-genai,
+  LiteRT, pyhailort, libcamera and cv2 declare nothing and stay GIL-only. The verdicts live in
+  `Get-FreeThreadedTwinTable` with the pin each was read at, and a pin bump fails a test until the evidence is
+  re-read.
+- **`:winamd64` builds them beside the unchanged cp314 ones**, in `C:\runtime\wheels-cp314t`
+  (`PYTHON_WHEELS_CP314T`). Each twin is built in a uv venv on `C:\python-freethreaded` with the GIL pass's tool
+  versions, tag-checked (`cp3XY-cp3XYt`, `win_amd64`, every `.pyd`), installed alone into a fresh venv and proved
+  with `free-threaded-wheel.py prove` before it is stored. `Save-PythonWheel` refuses a cp3XYt wheel in the GIL
+  store, nothing installs into `C:\python-freethreaded`, and smoke section 20 checks the store's exact set.
+  - **ORT** re-configures the GIL build tree for the venv's Python and rebuilds only `onnxruntime_pybind11_state`;
+    the twin's DLLs must be byte-identical to the GIL wheel's, and the ORT census takes both wheels as chain
+    references (`Get-OrtChainWheel -Abi`). A 3.14t venv's chain-ORT reconcile reads the twin store.
+  - **IREE** forces abi3 off (upstream only knows a `cpython-NNt` SOABI), clears nanobind's cached GIL suffix,
+    and drops the GIL pass's leftover `_runtime.pyd` before the twin packs.
+  - Measured in `:winamd64`: ORT twin pass 60 s, PyAV 43 s, tvm-ffi 34 s, IREE runtime 20 s; each proved with
+    the GIL off. A module without the declaration was refused. The clang-built 3.14t reports `win-amd64`, so no
+    platform-tag shim is needed.
+- **`Invoke-CmakeConfigure -Settle`.** CMake 4.4's Ninja generator writes `\` paths on a tree's first configure
+  and `/` after, so every re-configure recompiled all 1474 ORT edges; the GIL pass now configures twice when a
+  twin follows.
+- **IREE v3.12.0 on clang-cl.** Its VM ISA genrules ran a bare `python3`, which no Windows image has; they run
+  `Python3_EXECUTABLE`. Its profile statistics sink needs `__udivti3`, so every IREE link gets
+  `clang_rt.builtins-<arch>.lib`. Both broke the pinned build regardless of the twin.
+
 ## 2026-10-07 — ROCm 10.1 (TheRock `therock-10.1`), MIGraphX 2.18.0 and llama.cpp b11472 (CON73)
 
 - **Owner decision: TheRock 10.1, MIGraphX 2.18.0 and the newest llama.cpp, all three.** Renovate has reported

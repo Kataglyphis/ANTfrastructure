@@ -63,6 +63,75 @@ function Assert-IreeRocmDeviceBitcodePin {
     }
 }
 
+# v3.12.0's profile statistics sink divides 128-bit integers (__udivti3), which lld-link finds only in compiler-rt's builtins.
+function Get-IreeCompilerRtCmakeArgs {
+    param([Parameter(Mandatory)][string]$Arch)
+    $clang = Get-Command 'clang-cl' -ErrorAction SilentlyContinue
+    if (-not $clang) { throw 'IREE: clang-cl is not on PATH, so there are no compiler-rt builtins to link' }
+    $want = (Get-ClangTargetTriple -Arch $Arch) -replace '-.*$', ''
+    $lib = @(Get-ChildItem -Path (Join-Path (Split-Path (Split-Path $clang.Source)) 'lib\clang') -Recurse -Filter "clang_rt.builtins-$want.lib" -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($lib.Count -eq 0) { throw "IREE: no clang_rt.builtins-$want.lib beside $($clang.Source); the runtime tools would fail to link on __udivti3" }
+    $path = $lib[0].FullName -replace '\\', '/'
+    return @("-DCMAKE_EXE_LINKER_FLAGS=$path", "-DCMAKE_SHARED_LINKER_FLAGS=$path", "-DCMAKE_MODULE_LINKER_FLAGS=$path")
+}
+
+# CleanEggInfo deletes the egg-info its own build just made on Windows paths; a configure rewrites setup.py, so every pass re-applies this.
+function Edit-IreeCleanEggInfo {
+    param([Parameter(Mandatory)][string]$BuildDir)
+    foreach ($setupPy in @((Join-Path $BuildDir 'compiler\setup.py'), (Join-Path $BuildDir 'runtime\setup.py'))) {
+        if (Test-Path $setupPy) {
+            $content = [System.IO.File]::ReadAllText($setupPy)
+            $patched = $content -replace 'shutil\.rmtree\(d, ignore_errors=True\)', 'print(f"kataglyphis: keeping fresh egg-info {d}")'
+            if ($patched -ne $content) {
+                [System.IO.File]::WriteAllText($setupPy, $patched)
+                Write-Host "Neutralized CleanEggInfo rmtree in $setupPy"
+            }
+        }
+    }
+}
+
+# The configure args for the cp3XYt twins: the GIL pass's, Python pointed at the free-threaded venv, and no abi3, which 3.14t cannot load.
+function Get-IreeFreeThreadedCmakeArgs {
+    param([Parameter(Mandatory)][string[]]$CmakeExtra, [Parameter(Mandatory)][hashtable]$Python, [Parameter(Mandatory)][string]$NumPyIncludeDir)
+    # Upstream turns abi3 on unless SOABI starts cpython-NNt, which Windows' cp314t-win_amd64 never does (CMakeLists.txt:782-791).
+    $abi3Off = @('-DIREE_ENABLE_PYTHON_STABLE_ABI=OFF', '-DMLIR_ENABLE_PYTHON_STABLE_ABI=OFF')
+    # nanobind caches the GIL pass's .cp314-win_amd64.pyd suffix, which 3.14t never imports; -U makes it ask the venv again.
+    return @($CmakeExtra | Where-Object { $_ -notlike '-DPython3_EXECUTABLE=*' }) +
+        @(Get-PythonCMakeHintArgs -Python $Python -Prefix @('Python3', 'Python') -ForwardSlash -NumPyIncludeDir $NumPyIncludeDir) +
+        $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')
+}
+
+# The cp3XYt twins of the IREE wheels from the GIL tree, reconfigured, rebuilt where Python reaches and packed per package.
+function Invoke-IreeFreeThreadedTwin {
+    param(
+        [Parameter(Mandatory)][hashtable]$GilPython,
+        [Parameter(Mandatory)][object[]]$Package,
+        [Parameter(Mandatory)][string[]]$CmakeExtra,
+        [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$BuildDir,
+        [Parameter(Mandatory)][string]$InstallDir,
+        [string]$VenvDir = 'C:\temp\ft-venv-iree'
+    )
+    $ftPy = New-FreeThreadedBuildPython -GilPython $GilPython -VenvDir $VenvDir -Package pip, wheel, setuptools, numpy
+    $numpyInc = (Invoke-ShieldedNative -Label 'numpy include probe (free-threaded)' -CommandLine """$($ftPy.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
+    $ftArgs = Get-IreeFreeThreadedCmakeArgs -CmakeExtra $CmakeExtra -Python $ftPy -NumPyIncludeDir $numpyInc
+    Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $BuildDir -InstallPrefix $InstallDir -ExtraArgs $ftArgs | Out-Null
+    [void](Assert-NinjaFreeThreadedDefine -BuildDir $BuildDir -Label 'IREE')
+    # The GIL pass's abi3 modules (bare _runtime.pyd) are no output now; left in place, the twin would pack them (measured 2026-10-07).
+    [void](Invoke-ShieldedNative -Label 'ninja -t cleandead (GIL-only outputs)' -CommandLine "ninja -C ""$BuildDir"" -t cleandead")
+    # No -Install: the shipped C:\runtime\iree stays the GIL pass's.
+    Invoke-NinjaBuildWithRetry -BuildDir $BuildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile (Get-PersistentBuildLogPath -Name 'iree-build-ft.log' -FallbackDir $BuildDir)
+    Edit-IreeCleanEggInfo -BuildDir $BuildDir
+    foreach ($pkg in $Package) {
+        # setup.py stages its install under build\ beside it; the GIL pass's copy holds the same stale modules.
+        Remove-Item -LiteralPath (Join-Path $BuildDir "$($pkg.Dir)\build") -Recurse -Force -ErrorAction SilentlyContinue
+        $out = Join-Path $SourceDir "dist-$($pkg.Dir)-ft"
+        [void](Invoke-PythonWheelBuild -Python $ftPy -WorkingDir (Join-Path $BuildDir $pkg.Dir) -DistDir $out `
+                -Arguments "-m pip wheel . --no-deps --no-build-isolation -w ""$out""" -ModuleName $pkg.Module -FreeThreaded -Distribution $pkg.Dist)
+    }
+    Remove-Item -LiteralPath $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 $IreeVersion = Get-SourceBuildVersion -Value $IreeVersion -EnvironmentVariables @('IREE_VERSION') -DefaultValue 'v3.12.0'
@@ -112,6 +181,14 @@ if (Test-Path $ireeI8mm) {
             -Replacement 'void$1iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm(' `
             -AssertGone 'ALWAYS_INLINE inline void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
             -Description 'IREE ukernel: s8s4s32 1x8x16 i8mm tile is used by address -- plain external definition (C99 inline emitted no symbol)')
+}
+
+# v3.12.0's VM ISA genrules run a bare `python3`, which no Windows image has (measured 2026-10-07); the configured Python runs them.
+$ireeIsa = Join-Path $SourceDir 'runtime\src\iree\vm\bytecode\isa\CMakeLists.txt'
+if (Test-Path $ireeIsa) {
+    [void](Invoke-InlineRegexPatch -Path $ireeIsa -SkipIfMatch 'Python3_EXECUTABLE' -Pattern '"python3 \$\(rootpath' `
+            -Replacement '"$${Python3_EXECUTABLE} $$(rootpath' -AssertGone '"python3 ' `
+            -Description 'IREE VM ISA genrules: the configured Python3_EXECUTABLE, not a bare python3')
 }
 
 # Also copies pyconfig.h into Include\, where FindPython looks; in-tree CPython keeps it in PC\.
@@ -180,6 +257,7 @@ if ($ireeCross) {
         '-DIREE_BUILD_PYTHON_BINDINGS=OFF', '-DLLVM_ENABLE_DIA_SDK=OFF'
     )
     $hostArgs += Get-LlvmArchiverCmakeArg
+    $hostArgs += Get-IreeCompilerRtCmakeArgs -Arch (Get-WindowsHostArch)
     # The host tools include the x86_64 ELF trampoline.
     $hostArgs += "-DIREE_MASM_COMPILER=$ireeMasm"
     # The helper also swaps in the host's LIB/LIBPATH, or the first try-compile links the arm64 CRT.
@@ -217,6 +295,15 @@ if ($pythonBindings -eq 'ON' -and $ireeCross) {
     $cmakeExtra += "-DPython3_EXECUTABLE=$($py.Exe -replace '\\', '/')"
 }
 $cmakeExtra += Get-LlvmArchiverCmakeArg
+$cmakeExtra += Get-IreeCompilerRtCmakeArgs -Arch (Get-WindowsTargetArch)
+# The cp3XYt twins re-configure this tree after the GIL wheels, so the GIL configure settles first (-Settle).
+$ireeTwins = @(if ($pythonBindings -eq 'ON' -and -not $ireeCross) {
+        foreach ($pkg in @(@{ Dir = 'compiler'; Dist = 'iree-base-compiler'; Module = 'iree.compiler' }, @{ Dir = 'runtime'; Dist = 'iree-base-runtime'; Module = 'iree.runtime' })) {
+            $plan = Get-FreeThreadedTwinPlan -Distribution $pkg.Dist
+            Write-Host $plan.Reason
+            if ($plan.Build) { $pkg }
+        }
+    })
 # No QNN flags: IREE has no QNN backend; the QAIRT runtime staged below serves ORT's QNN EP.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
 # Unused on cross, where the ARM64 branch never reaches the trampoline command.
@@ -225,7 +312,7 @@ if ($ireeHostBinDir) { $cmakeExtra += "-DIREE_HOST_BIN_DIR=$($ireeHostBinDir -re
 $cmakeExtra += $ireeRocmArgs
 
 # Phase B (the only phase on amd64): the target configure.
-Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $ireeInstallDir -ExtraArgs $cmakeExtra | Out-Null
+Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $ireeInstallDir -ExtraArgs $cmakeExtra -Settle:($ireeTwins.Count -gt 0) | Out-Null
 
 if ($ireeCross) {
     # clang-cl counts as MSVC, so upstream drops each arm_64 kernel's -march; add it per TU in build.ninja, with a floor.
@@ -309,17 +396,7 @@ Remove-Item $mlirPath, $vmfbPath -Force -ErrorAction SilentlyContinue
 
 # Wheels from the build tree's synthesized packages; --no-build-isolation reuses the ninja objects instead of rebuilding LLVM.
 if ($pythonBindings -eq 'ON') {
-    # CleanEggInfo deletes the egg-info its own build just made on Windows paths; this tree is always fresh.
-    foreach ($setupPy in @((Join-Path $buildDir 'compiler\setup.py'), (Join-Path $buildDir 'runtime\setup.py'))) {
-        if (Test-Path $setupPy) {
-            $content = [System.IO.File]::ReadAllText($setupPy)
-            $patched = $content -replace 'shutil\.rmtree\(d, ignore_errors=True\)', 'print(f"kataglyphis: keeping fresh egg-info {d}")'
-            if ($patched -ne $content) {
-                [System.IO.File]::WriteAllText($setupPy, $patched)
-                Write-Host "Neutralized CleanEggInfo rmtree in $setupPy"
-            }
-        }
-    }
+    Edit-IreeCleanEggInfo -BuildDir $buildDir
     if ($ireeCross) {
         # Cross: only the runtime wheel, built and staged by -CrossStage (win_arm64 tag, PE check), never imported.
         $pkgDir = Join-Path $buildDir 'runtime'
@@ -371,6 +448,11 @@ print("iree python rocm gate OK: hip driver + gfx1201 code object")
     [void](Invoke-ShieldedNative -Label 'IREE python end-to-end gate' -CommandLine """$($py.Exe)"" ""$pyGate""")
     Remove-Item $pyGate -Force -ErrorAction SilentlyContinue
     }
+}
+
+# After every GIL gate, since the twins rebuild this tree's python modules in place.
+if ($ireeTwins.Count -gt 0) {
+    Invoke-IreeFreeThreadedTwin -GilPython $py -Package $ireeTwins -CmakeExtra $cmakeExtra -SourceDir $SourceDir -BuildDir $buildDir -InstallDir $ireeInstallDir
 }
 
 Remove-SourceBuildTree -Path $SourceDir

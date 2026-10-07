@@ -278,6 +278,55 @@ Describe 'ORT census: verdicts (image mode)' {
         }
     }
 
+    It 'twins: the cp3XYt ORT wheel in its own store is a second chain reference; each store reads its own ABI only (mutation)' {
+        Invoke-InTestDir { param($dir)
+            $chain = New-OrtTestImage -Dir $dir
+            New-OrtTestPe -Path "$dir\tmp\ft.pyd" -Text @($script:ChainSrc, 'free-threaded pybind module')
+            $ftStore = Join-Path $dir 'runtime\wheels-cp314t'
+            New-OrtTestWheel -Path "$ftStore\onnxruntime-1.30.0-cp314-cp314t-win_amd64.whl" -Member @{
+                'onnxruntime/capi/onnxruntime_pybind11_state.pyd' = "$dir\tmp\ft.pyd"; 'onnxruntime/capi/onnxruntime.dll' = "$chain\bin\onnxruntime.dll"
+            }
+            $gilRef = @(Get-OrtChainWheel -WheelDir "$dir\runtime\wheels" -OrtVersion 'v1.30.0')
+            $ftRef = @(Get-OrtChainWheel -WheelDir $ftStore -OrtVersion 'v1.30.0' -Abi 'free-threaded')
+            Assert-Equal 'onnxruntime-1.30.0-cp314-cp314t-win_amd64.whl' (($ftRef | ForEach-Object { Split-Path $_ -Leaf }) -join ',') 'the twin'
+            Assert-Equal 0 @(Get-OrtChainWheel -WheelDir $ftStore -OrtVersion 'v1.30.0').Count 'a GIL reading of the twins'' store finds nothing'
+            $homes = @($chain, "$dir\runtime\wheels", $ftStore)
+            $ok = Invoke-OrtTestCensus -Dir $dir -Set @{ ReferenceWheel = @($gilRef + $ftRef); AllowedHome = $homes }
+            Assert-Equal '' ((Get-OrtTestFatal $ok | ForEach-Object { "$($_.Verdict) $($_.Path)" }) -join ',') 'both wheels referenced, both stores homes'
+            $stale = Get-OrtTestFatal (Invoke-OrtTestCensus -Dir $dir -Set @{ AllowedHome = $homes }) 'STALE'
+            Assert-Match 'cp314t-win_amd64\.whl!onnxruntime/capi/onnxruntime_pybind11_state\.pyd$' ($stale.Path -join ',') 'without the twin reference its chain-rooted pyd is STALE'
+            $elsewhere = Get-OrtTestFatal (Invoke-OrtTestCensus -Dir $dir -Set @{ ReferenceWheel = @($gilRef + $ftRef) }) 'ELSEWHERE'
+            Assert-Match 'wheels-cp314t\\onnxruntime-1\.30\.0-cp314-cp314t' ($elsewhere.Path -join ',') 'the twins'' store must be a home'
+            # A twin misplaced in the GIL store is no GIL reference, and abi3 never is.
+            foreach ($n in 'onnxruntime-1.30.0-cp314-cp314t-win_amd64.whl', 'onnxruntime-1.30.0-cp312-abi3-win_amd64.whl', 'onnxruntime-1.30.0-1-cp314-cp314-win_amd64.whl') {
+                Set-Content -LiteralPath "$dir\runtime\wheels\$n" 'x' -Encoding ASCII
+            }
+            $w = @(Get-OrtChainWheel -WheelDir "$dir\runtime\wheels" -OrtVersion 'v1.30.0' | ForEach-Object { Split-Path $_ -Leaf } | Sort-Object)
+            Assert-Equal 'onnxruntime-1.30.0-1-cp314-cp314-win_amd64.whl,onnxruntime-1.30.0-cp314-cp314-win_amd64.whl' ($w -join ',') 'cp3XY only, a build tag allowed'
+        }
+    }
+
+    It 'twins: the image census and G6 read both stores, from their ENV or the image defaults' {
+        Invoke-InTestDir { param($dir)
+            foreach ($n in 'gil\onnxruntime-1.30.0-cp314-cp314-win_amd64.whl', 'ft\onnxruntime-1.30.0-cp314-cp314t-win_amd64.whl', 'ft\onnxruntime_genai-0.17.0-cp314-cp314t-win_amd64.whl') {
+                $null = New-Item -ItemType Directory -Force -Path (Split-Path "$dir\$n" -Parent)
+                Set-Content -LiteralPath "$dir\$n" 'x' -Encoding ASCII
+            }
+            Invoke-WithEnv @{ PYTHON_WHEELS = "$dir\gil"; PYTHON_WHEELS_CP314T = "$dir\ft" } {
+                $refs = @(Get-OrtChainReferenceWheel -OrtVersion 'v1.30.0' | ForEach-Object { Split-Path $_ -Leaf })
+                Assert-Equal 'onnxruntime-1.30.0-cp314-cp314-win_amd64.whl,onnxruntime-1.30.0-cp314-cp314t-win_amd64.whl' ($refs -join ',') 'one wheel per store'
+            }
+            Invoke-WithEnv @{ PYTHON_WHEELS = $null; PYTHON_WHEELS_CP314T = $null } {
+                Assert-Equal 'C:\runtime\wheels|C:\runtime\wheels-cp314t' "$(Get-OrtChainWheelStore)|$(Get-OrtChainWheelStore -FreeThreaded)" 'the image defaults'
+            }
+        }
+        $census = (Get-Command Invoke-OrtImageCensus).ScriptBlock.ToString()
+        Assert-Match 'Get-OrtChainReferenceWheel' $census 'the image census references both wheels'
+        Assert-Match '\$ftWheelDir\)' $census 'and keeps the twins'' store a home'
+        Assert-Match "'C:\\python-freethreaded'" $census 'and scans the free-threaded install'
+        Assert-Match 'Get-OrtChainReferenceWheel' (Get-Command Test-OrtProvenanceTree).ScriptBlock.ToString() 'G6 defaults to both'
+    }
+
     It 'exemptions waive one path, and fail when stale, malformed or foreign-arch (mutation)' {
         Invoke-InTestDir { param($dir)
             $null = New-OrtTestImage -Dir $dir
@@ -463,7 +512,7 @@ Describe 'ORT census: wiring' {
         $src = [regex]::Match($onnx, '\[string\]\$SourceDir\s*=\s*''([^'']+)''').Groups[1].Value
         Assert-Equal $src ((Get-OrtChainSourceRoot) -join ',') 'fingerprint root = build dir'
         $mod = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProvenance.Common.psm1'))
-        Assert-Match "-ContentRoot @\('C:\\runtime', 'C:\\temp\\cpython', 'C:\\opt', 'C:\\Users'\) -NameRoot @\(\`$drive\)" $mod 'content roots + a whole-drive name scan'
+        Assert-Match "-ContentRoot @\('C:\\runtime', 'C:\\temp\\cpython', 'C:\\python-freethreaded', 'C:\\opt', 'C:\\Users'\) -NameRoot @\(\`$drive\)" $mod 'content roots + a whole-drive name scan'
         Assert-Match "System32 = \`$\(if \(\`$CrossTarget\) \{ '' \} else \{ Join-Path \`$winDir 'System32' \}\)" $mod 'System32 modeled on amd64'
         Assert-Match "-ExcludeRoot @\(if \(\`$CrossTarget\) \{ \`$winDir \}\)" $mod 'the Windows dir skipped only on the cross lane'
     }

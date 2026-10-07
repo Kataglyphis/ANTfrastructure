@@ -450,6 +450,16 @@ function Assert-UvChainOrtAbiFit {
     }
 }
 
+# A free-threaded venv takes the image's cp3XYt twins (PYTHON_WHEELS_CP314T), the same chain build; docs/windows-builds.md#the-free-threaded-wheels
+function Select-UvChainOrtWheelStore {
+    param([string]$WheelStore, [string]$Python, [scriptblock]$Runner)
+    $twins = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS_CP314T')
+    if (-not $twins -or -not (Test-Path -LiteralPath $twins -PathType Container)) { return $WheelStore }
+    $probe = & $Runner $Python @('-I', '-c', $script:ChainOrtAbiCode)
+    if ($probe.ExitCode -eq 0 -and "$(@($probe.Output) | Select-Object -Last 1)".Trim() -match '^cp\d+t$') { return $twins }
+    return $WheelStore
+}
+
 # With no ORT distribution to purge, nothing may import as ORT either (an unowned copy, a dist without a Name).
 function Assert-UvChainOrtNoUnownedImport {
     param([string]$VenvPath, [string]$Python, [string]$WheelStore, [string]$CensusPath, [scriptblock]$Runner)
@@ -502,6 +512,7 @@ function Sync-UvChainOnnxRuntime {
         if ($LogInfo) { & $LogInfo $why } else { Write-Verbose $why }
         return
     }
+    if ($inImage) { $WheelStore = Select-UvChainOrtWheelStore -WheelStore $WheelStore -Python $python -Runner $run }
 
     $listed = & $run $python @('-I', $CensusPath, '--purge-list')
     if ($listed.ExitCode -ne 0) {

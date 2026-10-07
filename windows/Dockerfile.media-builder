@@ -41,6 +41,7 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
+     windows\scripts\modules\WindowsPythonWheel.Common.psm1 `
      C:\bkmods\
 
 # TVM-private closure, so a TVM edit never re-keys ONNX; mount it from media-tvm-built only (ModuleClosure tests enforce it).
@@ -113,6 +114,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-OnnxFromSource.ps1,target=C:\bkmnt\Build-OnnxFromSource.ps1 `
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=C:\bkmnt\free-threaded-wheel.py `
     --mount=type=bind,source=windows/scripts/build/Build-TargetCpython.ps1,target=C:\bkmnt\Build-TargetCpython.ps1 `
     --mount=type=bind,source=windows/scripts/build/cpython-Directory.Build.props,target=C:\bkmnt\cpython-Directory.Build.props `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
@@ -159,6 +161,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-FfmpegFromSource.ps1,target=C:\bkmnt\Build-FfmpegFromSource.ps1 `
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=C:\bkmnt\free-threaded-wheel.py `
     --mount=type=bind,source=windows/scripts/build/Build-FfmpegCodecs.ps1,target=C:\bkmnt\Build-FfmpegCodecs.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
@@ -288,6 +291,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/cpython-Directory.Build.props,target=C:\bkmnt\cpython-Directory.Build.props `
     --mount=type=bind,source=windows/scripts/build/Build-TvmFromSource.ps1,target=C:\bkmnt\Build-TvmFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-IreeFromSource.ps1,target=C:\bkmnt\Build-IreeFromSource.ps1 `
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=C:\bkmnt\free-threaded-wheel.py `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=tvmmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `

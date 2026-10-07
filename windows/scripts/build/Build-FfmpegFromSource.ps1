@@ -828,6 +828,9 @@ $pyavBuildCmd = if ($ffCross) {
 }
 # -CrossStage stages and PE-checks on cross, installs and imports natively; --plat-name is already in the command.
 Invoke-PythonWheelBuild -Python $py -WorkingDir $pyavDir -Arguments $pyavBuildCmd -ModuleName 'av' -NoDeps -CrossStage | Out-Null
+# The cp3XYt twin; build\ holds the GIL pass's objects and modules, so it compiles every extension afresh.
+[void](Invoke-FreeThreadedTwinWheel -GilPython $py -Distribution 'av' -ModuleName 'av' -WorkingDir $pyavDir -Package cython, setuptools, wheel `
+        -Arguments "setup.py --ffmpeg-dir=""$prefix"" bdist_wheel" -CleanPath (Join-Path $pyavDir 'build'))
 Complete-CurrentBuildPhase
 Write-BuildPhaseSummary -Label 'ffmpeg'
 Complete-SourceBuild -Banner '=== PyAV wheel build completed ===' -SourceDir $pyavSrcRoot  # cleanup + banner + exit 0 (see module help)

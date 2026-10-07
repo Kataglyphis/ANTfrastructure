@@ -5,8 +5,12 @@
 
 Set-StrictMode -Version Latest
 
-# ci_packaging.sh runs the same helper, so the declaration and the proof exist once.
-$script:FreeThreadedHelper = Join-Path $PSScriptRoot '..\..\..\linux\scripts\02-toolchain\python\free-threaded-wheel.py'
+# ci_packaging.sh runs the same helper, so the declaration and the proof exist once; image mounts put it one level above modules\.
+$script:FreeThreadedHelper = @(
+    [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\linux\scripts\02-toolchain\python\free-threaded-wheel.py')),
+    [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\free-threaded-wheel.py'))
+) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+if (-not $script:FreeThreadedHelper) { $script:FreeThreadedHelper = Join-Path $PSScriptRoot '..\..\..\linux\scripts\02-toolchain\python\free-threaded-wheel.py' }
 
 function Resolve-FreeThreadedWheelMode {
     <#
@@ -37,9 +41,15 @@ function Get-PythonWheelAbiTag {
     #>
     [OutputType([string])]
     param([Parameter(Mandatory)][string]$Name)
+    return (Split-PythonWheelName -Name $Name)[-2]
+}
+
+# A wheel file name's dash-separated fields, the last three being its python, ABI and platform tags; throws for any other name.
+function Split-PythonWheelName {
+    param([Parameter(Mandatory)][string]$Name)
     $parts = [IO.Path]::GetFileNameWithoutExtension($Name).Split('-')
     if (-not $Name.EndsWith('.whl') -or $parts.Count -lt 5) { throw "$Name is not a wheel file name" }
-    return $parts[-2]
+    return $parts
 }
 
 function Find-UvPython {
@@ -54,10 +64,11 @@ function Find-UvPython {
     return "$($found[-1])".Trim()
 }
 
-# Runs the shared helper with -Python and returns its exit code and its output as one string.
+# Runs the shared helper (-Helper, else this checkout's or image's copy) with -Python; returns its exit code and output.
 function Invoke-FreeThreadedHelper {
-    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string[]]$Arguments)
-    $text = @(& $Python -I $script:FreeThreadedHelper @Arguments 2>&1 | ForEach-Object { "$_" }) -join "`n"
+    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string[]]$Arguments, [string]$Helper = '')
+    if (-not $Helper) { $Helper = $script:FreeThreadedHelper }
+    $text = @(& $Python -I $Helper @Arguments 2>&1 | ForEach-Object { "$_" }) -join "`n"
     return [pscustomobject]@{ Code = $LASTEXITCODE; Text = $text.Trim() }
 }
 
@@ -113,11 +124,147 @@ function Invoke-FreeThreadedWheelProof {
         Loads every compiled module of -Distribution in -Python's venv and returns the verdict; throws unless the GIL stays off.
     #>
     [OutputType([string])]
-    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Distribution)
-    $verdict = Invoke-FreeThreadedHelper -Python $Python -Arguments @('prove', $Distribution)
+    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Distribution, [string]$Helper = '')
+    $verdict = Invoke-FreeThreadedHelper -Python $Python -Arguments @('prove', $Distribution) -Helper $Helper
     if ($verdict.Code -ne 0) { throw "free-threaded proof failed for ${Distribution}: $($verdict.Text)" }
     return $verdict.Text
 }
 
+function Invoke-FreeThreadedWheelVenvProof {
+    <#
+    .SYNOPSIS
+        Installs -Wheel alone, offline, into a fresh uv venv of -Interpreter and proves -Distribution there; returns the verdict.
+    .DESCRIPTION
+        The venv's sitecustomize registers -DllDirectory and the wheel's own DLL directories, which the package's __init__
+        would load before the compiled modules the proof creates bare. The venv is removed either way.
+    #>
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][string]$Interpreter,
+        [Parameter(Mandatory)][string]$Wheel,
+        [Parameter(Mandatory)][string]$Distribution,
+        [string[]]$DllDirectory = @(),
+        [string]$Helper = '',
+        [string]$VenvDir = (Join-Path ([IO.Path]::GetTempPath()) "ft-proof-$([guid]::NewGuid().ToString('N').Substring(0, 8))")
+    )
+    try {
+        & uv venv --clear --no-cache --quiet --python $Interpreter $VenvDir 2>&1 | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "free-threaded proof: uv venv --python $Interpreter failed (exit $LASTEXITCODE)" }
+        $python = Join-Path $VenvDir 'Scripts\python.exe'
+        & uv pip install --no-cache --quiet --no-deps --no-index --python $python $Wheel 2>&1 | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "free-threaded proof: $([IO.Path]::GetFileName($Wheel)) does not install into a fresh $Interpreter venv" }
+        $site = Join-Path $VenvDir 'Lib\site-packages'
+        $own = @(Get-ChildItem -LiteralPath $site -Recurse -Filter '*.dll' -File | ForEach-Object DirectoryName | Sort-Object -Unique)
+        $dirs = @(@($DllDirectory) + $own | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) })
+        $shim = @('# Written by Invoke-FreeThreadedWheelVenvProof for this proof venv only.', 'import os', 'for _d in (') +
+            @($dirs | ForEach-Object { "    r'$_'," }) + @('):', '    os.add_dll_directory(_d)')
+        Set-Content -LiteralPath (Join-Path $site 'sitecustomize.py') -Encoding ascii -Value $shim
+        return Invoke-FreeThreadedWheelProof -Python $python -Distribution $Distribution -Helper $Helper
+    } finally {
+        Remove-Item -LiteralPath $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-FreeThreadedTwinTable {
+    <#
+    .SYNOPSIS
+        The image's wheels and whether each gets a cp3XYt twin (twin), stays GIL-only (gil) or needs none (none).
+    .DESCRIPTION
+        Pin is the versions.env key=value the evidence was read at; PythonWheel.FreeThreadedTwin.Tests.ps1 fails when it moves.
+        See docs/windows-builds.md#the-free-threaded-wheels
+    #>
+    $rows = @(
+        'onnxruntime|twin|ONNXRUNTIME_VERSION=v1.30.0|onnxruntime/python/onnxruntime_pybind_module.cc: PYBIND11_MODULE(onnxruntime_pybind11_state, m, py::mod_gil_not_used()) under Py_GIL_DISABLED, on pybind11 v3.0.2'
+        'av|twin|PYAV_VERSION=19.0.1|setup.py: compiler directive "freethreading_compatible": True'
+        'apache-tvm-ffi|twin|TVM_REF=v0.27.0|3rdparty/tvm-ffi daf594da, python/tvm_ffi/cython/core.pyx: # cython: freethreading_compatible = True (cython>=3.2.8)'
+        'iree-base-runtime|twin|IREE_VERSION=v3.12.0|runtime/bindings/python/CMakeLists.txt: nanobind_add_module(... FREE_THREADED ...)'
+        'iree-base-compiler|twin|IREE_VERSION=v3.12.0|third_party/llvm-project, mlir/cmake/modules/AddMLIRPython.cmake: nanobind_add_module(... FREE_THREADED ...)'
+        'apache-tvm|none|TVM_REF=v0.27.0|pyproject.toml: wheel.py-api = "py3", no CPython extension, so its one py3 wheel installs on 3.14t'
+        'torchvision|none|TORCHVISION_VERSION=v0.29.1|no CPython extension module of its own'
+        'onnxruntime-genai|gil|ONNXRUNTIME_GENAI_VERSION=v0.17.0|pybind11 2.13.6 and no py::mod_gil_not_used()'
+        'ai-edge-litert|gil|LITERT_VERSION=v2.2.0|nine PYBIND11_MODULEs, none passes py::mod_gil_not_used(); no Windows python package anyway'
+        'hailort|gil|HAILORT_VERSION=5.4.0|pyhailort''s module declares no free-threading support'
+        'opencv|gil|OPENCV_VERSION=5.0.0|cv2 declares no free-threading support, and it ships in the tree, not as a wheel'
+    )
+    foreach ($row in $rows) {
+        $dist, $verdict, $pin, $evidence = $row -split '\|', 4
+        [pscustomobject]@{ Distribution = $dist; Verdict = $verdict; Pin = $pin; Evidence = $evidence }
+    }
+}
+
+function ConvertTo-PythonDistributionName {
+    # PEP 503's normal form, which is how the twin table spells every distribution.
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$Name)
+    return ($Name -replace '[-_.]+', '-').ToLowerInvariant()
+}
+
+function Get-FreeThreadedTwinRow {
+    <#
+    .SYNOPSIS
+        The twin table's row for -Distribution (an ORT flavour reads as onnxruntime, a GenAI one as onnxruntime-genai); $null for none.
+    #>
+    param([Parameter(Mandatory)][string]$Distribution)
+    $want = ConvertTo-PythonDistributionName -Name $Distribution
+    if ($want -like 'onnxruntime-genai*') { $want = 'onnxruntime-genai' } elseif ($want -like 'onnxruntime-*') { $want = 'onnxruntime' }
+    return Get-FreeThreadedTwinTable | Where-Object Distribution -ceq $want | Select-Object -First 1
+}
+
+function Get-FreeThreadedWheelFinding {
+    <#
+    .SYNOPSIS
+        Why -Path is no cp3XYt wheel for -PlatformTag: its name tags, and every version-tagged .pyd inside; none = it passes.
+    .DESCRIPTION
+        An untagged .pyd passes here because CPython loads it on either ABI; the proof decides about those.
+    #>
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$PlatformTag)
+    $name = [IO.Path]::GetFileName($Path)
+    try { $py, $abi, $plat = (Split-PythonWheelName -Name $name)[-3..-1] } catch { return $_.Exception.Message }
+    if ($py -notmatch '^cp\d+$' -or $abi -cne "${py}t") { "$name is tagged $py-$abi, not a cp3XY-cp3XYt pair" }
+    if ($plat -cne $PlatformTag) { "$name is a $plat wheel, not $PlatformTag" }
+    $suffix = ".$abi-$PlatformTag.pyd"
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        foreach ($entry in $zip.Entries) {
+            $base = $entry.Name
+            $tagged = $base -match '\.(abi3|cp\d+t?-[a-z0-9_]+)\.pyd$'
+            if ($tagged -and -not $base.EndsWith($suffix)) { "$($entry.FullName) is not a $suffix module" }
+        }
+    } finally { $zip.Dispose() }
+}
+
+function Get-WheelMemberDifference {
+    <#
+    .SYNOPSIS
+        The native members (-Include) of -Candidate whose bytes differ from, or are missing in, -Reference; none = one build.
+    #>
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$Reference, [Parameter(Mandatory)][string]$Candidate, [string[]]$Include = @('*.dll'))
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $digest = {
+        param([string]$Wheel)
+        $map = @{}
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($Wheel)
+        try {
+            foreach ($e in @($zip.Entries | Where-Object { $n = $_.Name; @($Include | Where-Object { $n -like $_ }).Count -gt 0 })) {
+                $s = $e.Open()
+                try { $map[$e.FullName] = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($s)) } finally { $s.Dispose() }
+            }
+        } finally { $zip.Dispose() }
+        return $map
+    }
+    $ref = & $digest $Reference
+    $cand = & $digest $Candidate
+    if ($cand.Count -eq 0) { return "$([IO.Path]::GetFileName($Candidate)) has no member matching $($Include -join ', ')" }
+    foreach ($member in ($cand.Keys | Sort-Object)) {
+        if (-not $ref.ContainsKey($member)) { "$member is not in $([IO.Path]::GetFileName($Reference))" }
+        elseif ($ref[$member] -cne $cand[$member]) { "$member differs from the one in $([IO.Path]::GetFileName($Reference))" }
+    }
+}
+
 Export-ModuleMember -Function Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PythonWheelAbiTag, Find-UvPython,
-    Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof
+    Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof,
+    Invoke-FreeThreadedWheelVenvProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,
+    Get-WheelMemberDifference

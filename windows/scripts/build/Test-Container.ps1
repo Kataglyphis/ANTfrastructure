@@ -1277,7 +1277,7 @@ $envPointerNames = @(
     # The merge image declares these for consumers; this check is their only reader.
     'FFMPEG_ROOT', 'FFMPEG_BIN', 'FFMPEG_LIB', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN', 'PYTHON_FREETHREADED_BIN', 'TEMP_DIR',
     'TVM_ROOT', 'TVM_LIBRARY_PATH', 'LITERT_ROOT', 'LITERT_INCLUDE', 'LITERT_LIB', 'LITERT_BIN',
-    'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_BIN', 'PYTHON_WHEELS',
+    'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_BIN', 'PYTHON_WHEELS', 'PYTHON_WHEELS_CP314T',
     'IREE_ROOT', 'IREE_BIN',
     # Section 24 asserts these too; this check makes them an image-wide contract.
     'HAILO_ROOT', 'HAILO_BIN',
@@ -1493,6 +1493,40 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         -Code "import numpy as np, iree.compiler.tools as t, iree.runtime as rt; vm = t.compile_str('$script:ireeGateMlir', target_backends=['llvm-cpu']); m = rt.load_vm_flatbuffer(vm, driver='local-task'); print('py-iree', float(m.abs(np.asarray(-5.0, dtype=np.float32)).to_host()))" `
         -ExpectMatch @('py-iree 5\.0') `
         -FailMessage "iree.compiler/iree.runtime end-to-end failed (wheels, bundled iree-compile, or runtime driver broken)"
+
+    # The cp314t twins: their own store, the twin table's set, each proved again here; docs/windows-builds.md#the-free-threaded-wheels
+    $ftStore = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS_CP314T')
+    if ($ftStore -and (Test-Path $ftStore)) {
+        Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsPythonWheel.Common.psm1') -Force -DisableNameChecking
+        $ftWheels = @(Get-ChildItem -Path $ftStore -Filter '*.whl' -File)
+        $ftTwins = @(Get-FreeThreadedTwinTable | Where-Object Verdict -ceq 'twin' | ForEach-Object Distribution | Sort-Object)
+        $ftHeld = @($ftWheels | ForEach-Object { ConvertTo-PythonDistributionName -Name ($_.Name -split '-')[0] } | Sort-Object)
+        Assert-Test -Name "cp314t store holds one wheel per twin: $($ftTwins -join ', ')" -Condition { ($ftHeld -join ',') -ceq ($ftTwins -join ',') }.GetNewClosure() `
+            -FailMessage "$ftStore holds [$($ftHeld -join ', ')], the twin table names [$($ftTwins -join ', ')]"
+        $ftTagFindings = @($ftWheels | ForEach-Object { Get-FreeThreadedWheelFinding -Path $_.FullName -PlatformTag (Get-PythonWheelTag) })
+        Assert-Test -Name "every cp314t-store wheel is cp3XY-cp3XYt $(Get-PythonWheelTag), no GIL or abi3 module inside" -Condition { $ftTagFindings.Count -eq 0 }.GetNewClosure() `
+            -FailMessage ($ftTagFindings -join '; ')
+        $ftLeaked = @(Get-ChildItem -Path $wheelStore -Filter '*.whl' -File | Where-Object { $_.Name -match '-cp\d+-cp\d+t-' } | ForEach-Object Name)
+        Assert-Test -Name 'no free-threaded wheel in the GIL store (PYTHON_WHEELS)' -Condition { $ftLeaked.Count -eq 0 }.GetNewClosure() `
+            -FailMessage "$($ftLeaked -join ', ') in $wheelStore, where every GIL install would see it"
+        $ftSite = @(Get-ChildItem -LiteralPath (Join-Path (Split-Path $ftExe -Parent) 'Lib\site-packages') -Force -ErrorAction SilentlyContinue | Where-Object Name -ne 'README.txt' | ForEach-Object Name)
+        Assert-Test -Name 'the free-threaded interpreter''s site-packages stays empty (twins install into venvs)' -Condition { $ftSite.Count -eq 0 }.GetNewClosure() `
+            -FailMessage "it holds $($ftSite -join ', ')"
+        # The image's own copy of the helper; this script may run from a mount that lacks it.
+        $ftHelper = @((Join-Path $scriptAssetRoot 'free-threaded-wheel.py'), 'C:\temp\scripts\free-threaded-wheel.py') | Where-Object { Test-Path $_ } | Select-Object -First 1
+        $ftDllHomes = @($env:PATH -split ';' | Where-Object { $_ -like 'C:\runtime\*' })
+        foreach ($ftWheel in $ftWheels) {
+            $ftDist = ConvertTo-PythonDistributionName -Name ($ftWheel.Name -split '-')[0]
+            $ftProof = ''
+            try {
+                if (-not $ftHelper) { throw 'free-threaded-wheel.py is in neither the script mount nor C:\temp\scripts' }
+                $ftProof = Invoke-FreeThreadedWheelVenvProof -Interpreter $ftExe -Wheel $ftWheel.FullName -Distribution $ftDist -DllDirectory $ftDllHomes -Helper $ftHelper
+            } catch { $ftProof = "FAILED: $($_.Exception.Message)" }
+            Assert-Test -Name "cp314t twin $ftDist keeps the GIL off under $ftExe" -Condition { $ftProof -notlike 'FAILED:*' }.GetNewClosure() -FailMessage $ftProof
+        }
+    } else {
+        Skip-Test 'cp314t twins (PYTHON_WHEELS_CP314T unset or missing -- image predates the free-threaded wheels)'
+    }
 
 } else {
     Skip-Test 'Python bindings (PYTHON_WHEELS unset or missing -- image predates the wheel feature)'

@@ -309,6 +309,97 @@ Windows `3.14t` leg had uv download a python-build-standalone interpreter.
   - Only `windows-11-arm` can run the ARM64 tree. `Test-Arm64Bundle.ps1` does that in a bundle that has one, and
     fails unless the GIL is off.
 
+#### The free-threaded wheels
+
+Every wheel the `:winamd64` media stages build gets a `cp314-cp314t` twin beside its unchanged `cp314` wheel, but only
+when the package's own code declares free-threading (owner request 2026-10-07). The twins are built with the
+interpreter of [§ The free-threaded CPython](#the-free-threaded-cpython), on the image's VS 2026 and clang-cl.
+
+- **The list is data.** `Get-FreeThreadedTwinTable` in `WindowsPythonWheel.Common.psm1` gives each distribution one
+  verdict, the `versions.env` pin its evidence was read at, and that evidence. `PythonWheel.FreeThreadedTwin.Tests.ps1`
+  fails when a pin moves, so a bump re-reads the evidence.
+  - **twin**: `onnxruntime`, `av`, `apache-tvm-ffi`, `iree-base-runtime` and `iree-base-compiler`.
+  - **none**: `apache-tvm` (a `py3` wheel with no extension, which a 3.14t venv installs as it is) and `torchvision`.
+  - **gil**: `onnxruntime-genai`, `ai-edge-litert`, `hailort` and `opencv`, whose modules re-enable the GIL.
+- **The store is separate.** The twins go to `C:\runtime\wheels-cp314t` (`PYTHON_WHEELS_CP314T`), never into
+  `PYTHON_WHEELS`, and `Save-PythonWheel` refuses a `cp3XYt` wheel there. A 3.14t venv can be given both stores:
+  pip and uv take only `cp314t` and `py3-none` wheels on that interpreter. `Sync-UvChainOnnxRuntime` reads the twins'
+  store for a `cp3XYt` venv ([`python-ci.md` § Free-threaded and GIL legs](python-ci.md#free-threaded-and-gil-legs-in-one-container)).
+- **Nothing installs into `C:\python-freethreaded`.** Its `site-packages` stays empty, as the interpreter's contract
+  says, and a consumer installs the twins into a venv. The GIL interpreter is unchanged.
+- **One path per twin.** Each build script asks `Get-FreeThreadedTwinPlan`, which skips a non-twin row and the cross
+  lanes with a log line, and throws when a twin is due but the image has no free-threaded install.
+  - `New-FreeThreadedBuildPython` makes a uv venv of `C:\python-freethreaded` holding the GIL build interpreter's
+    versions of the build tools.
+  - `Invoke-PythonWheelBuild -FreeThreaded` builds with it, and `Save-FreeThreadedWheel` stores the one `cp3XYt`
+    wheel. It first checks the tags (`Get-FreeThreadedWheelFinding`: the name, `win_amd64`, every tagged `.pyd`).
+  - Then `Invoke-FreeThreadedWheelVenvProof` installs the wheel alone, offline, into a fresh venv and runs
+    `linux/scripts/02-toolchain/python/free-threaded-wheel.py prove`, the same helper the Linux lane runs. The proof
+    venv's `sitecustomize.py` registers the image's DLL homes (`Get-PythonDllHome`, the same list as the image's own
+    shim) and the wheel's own DLL directories, which the package's `__init__` would load first.
+- **`Py_GIL_DISABLED` is the build's job.** 3.14's `pyconfig.h` leaves it undefined on Windows. setuptools defines it;
+  CMake 4.4's FindPython adds it to `Python::Module` when the interpreter it runs is free-threaded. ONNX Runtime only
+  logs it, so `Assert-NinjaFreeThreadedDefine` checks `build.ninja` before the ORT and IREE twins compile.
+- **No `win32` tag.** The clang-built 3.14t keeps the `AMD64` marker in `sys.version`, so `sysconfig`, setuptools and
+  `packaging` all report `win-amd64` without the GIL tree's platform shim (measured 2026-10-07). The tag check still
+  refuses any other platform.
+
+How each twin is built:
+
+- **A re-configured tree must settle first.** CMake 4.4's Ninja generator writes `\` paths into `build.ninja` on a
+  tree's first configure and `/` on every later one. A twin that re-configures the GIL tree therefore changed every
+  command line, and ninja recompiled all 1474 ORT edges. `Invoke-CmakeConfigure -Settle` configures the GIL pass twice
+  when a twin will follow, so both passes compile with one spelling.
+- **ONNX Runtime** re-configures the GIL tree with the venv's Python and rebuilds only `onnxruntime_pybind11_state`.
+  - `Update-OrtNinjaFile` re-applies the `build.ninja` edits a configure discards.
+  - `Set-OrtNinjaCommandPython` keeps the GIL interpreter in the custom commands, so `gen_def.py` does not re-run and
+    relink `onnxruntime.dll`.
+  - `Get-WheelMemberDifference` then requires every DLL in the twin to be byte-identical to the GIL wheel's, so both
+    wheels are one build. Without the two steps above it failed on `onnxruntime.dll` and
+    `onnxruntime_providers_shared.dll`.
+- **PyAV** runs the same sdist's `setup.py --ffmpeg-dir` with the venv, in a fresh `build\`
+  (`Invoke-FreeThreadedTwinWheel`).
+- **apache-tvm-ffi** is packed from TVM's vendored `3rdparty/tvm-ffi` with `pip wheel` in its own scikit-build
+  directory, by the same function. Its GIL side still installs in place, so the twin is the only tvm-ffi wheel the
+  image ships.
+- **IREE** re-configures its tree for the venv (`Get-IreeFreeThreadedCmakeArgs`); the shipped `C:\runtime\iree` stays
+  the GIL pass's.
+  - `IREE_ENABLE_PYTHON_STABLE_ABI=OFF` and `MLIR_ENABLE_PYTHON_STABLE_ABI=OFF`: upstream turns abi3 on unless `SOABI`
+    starts `cpython-NNt` (`CMakeLists.txt:782-791`), Windows' is `cp314t-win_amd64`, and 3.14t loads no abi3 module.
+  - `-UNB_SUFFIX -UNB_SUFFIX_S`: nanobind caches the GIL pass's `.cp314-win_amd64.pyd`, which 3.14t never imports.
+  - `ninja -t cleandead` and a fresh `build\` beside each `setup.py`: the GIL pass's bare abi3 `_runtime.pyd` is no
+    output any more, and left in place it went into the twin, where it failed to load (`python3.dll`).
+
+**The ORT census takes the twin as a chain artifact.** `Get-OrtChainWheel -Abi gil|free-threaded` matches only its own
+store's ABI, and `Get-OrtChainReferenceWheel` gives the image census and `Test-OrtProvenanceTree` both wheels as
+references. The image census also keeps the twins' store a home and scans `C:\python-freethreaded`
+([`onnxruntime-single-source.md`](onnxruntime-single-source.md)).
+
+**Checked in the image.** Section 20 of `Test-Container.ps1` requires one wheel per twin in the store, each with the
+right tags, no `cp3XYt` wheel in `PYTHON_WHEELS` and an empty free-threaded `site-packages`. It proves every twin again
+with the image's copy of the helper in `C:\temp\scripts`. Tests: `SourceBuild.FreeThreadedTwin.Tests.ps1`,
+`PythonWheel.FreeThreadedTwin.Tests.ps1` and the twin cases of `Smoke.OrtCensus.Tests.ps1`.
+
+**Measured in `:winamd64` on 2026-10-07**, the published image of 2026-10-04 with a `C:\python-freethreaded` built by
+`Build-ToolchainAll.ps1` from v3.14.8 (213 s for both CPython builds):
+
+- **ONNX Runtime v1.30.0**: the GIL build's ninja took 425-614 s on a shared host, the twin pass 59.6 s. Fourteen
+  compile lines carried `Py_GIL_DISABLED=1`, and the proof loaded one module with the GIL off.
+- **PyAV 19.0.1** on the image's FFmpeg: 50 modules proved; **apache-tvm-ffi** at `daf594da`: one module, 100 s.
+- **IREE v3.12.0**, a runtime-only tree (`IREE_BUILD_COMPILER=OFF`): GIL pass 59 s, twin 20 s over 68 ninja edges, one
+  module proved. The compiler twin, which needs the in-tree LLVM, was not built locally; the same function builds it.
+- **A module that declares nothing about the GIL is refused**: a one-function `setup.py` extension failed with
+  `the GIL was re-enabled, first by gilmod._c`, and nothing reached the store.
+- **The ORT census over both stores** was clean with both wheels as references. With the GIL wheel alone, as before
+  this change, the twin's `onnxruntime_pybind11_state.pyd` read as `STALE`.
+- **IREE v3.12.0 needed two fixes on clang-cl, twin or not**: its VM ISA genrules run a bare `python3`, which no Windows
+  image has, so `Build-IreeFromSource.ps1` points them at `Python3_EXECUTABLE`. Its profile statistics sink divides
+  128-bit integers, so every IREE link gets compiler-rt's `clang_rt.builtins-<arch>.lib` (`Get-IreeCompilerRtCmakeArgs`).
+
+**Not yet:** the arm64 cross twins, which need the venv's `EXT_SUFFIX` pinned to `.cp314t-win_arm64.pyd`
+(`Get-TargetBuildPython -FreeThreaded` already returns the host interpreter and the target tree's `python314t.lib`),
+and the ROCm lane's torch twin.
+
 #### ONNX Runtime (pin: `ONNXRUNTIME_VERSION`)
 
 **both lanes** (on `-TargetArch arm64` TensorRT is OFF, CUDA is ON only when the image carries the arm64 CUDA payload (`-Gpu`, #176, 2026-09-20), the Python bindings are ON since #120 step 2, and DirectML is **ON** as of backlog #113 — see [`windows-cross-builds.md`](windows-cross-builds.md)): DirectML EP **enabled** (`USE_DML=ON`) via the 3-part clang-cl source patch `003-dml-clangcl-compat.patch` (§ Source Patch Policy; the EOL/context-tolerant inline regex patcher `Invoke-OnnxDmlClangClPatch` in `Build-OnnxFromSource.ps1` remains as the drift fallback): DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`. CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA provider at `CUDA_VERSION`, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). **AVX-512/AMX: per-TU only** — global flags OFF (they crashed protoc AND ort's own DLL init at runtime on AVX2 hosts); the build script appends them (`Get-WindowsTargetKernelSimdFlags -Arch` — the old `Get-WindowsX86Avx512Flags` compat shim was deleted 2026-08-26; the amd64 TU pattern was extended 2026-08-24 after under-matching broke the lane, tagged-count floor raised 4→8) to MLAS's runtime-dispatched arch TUs in build.ninja post-configure and logs the tagged count (see AGENTS.md § Windows Build Invariants — don't "simplify" in either direction). 1.28's `ScopedResource<INVALID_HANDLE_VALUE,...>` template arg (rejected by clang-cl) is bridged by an inline post-configure dep patch. Needs ~4 GB RAM/job — media-core runs with `--memory ${MediaMemoryGb}g`.

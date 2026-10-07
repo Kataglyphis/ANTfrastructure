@@ -460,6 +460,14 @@ ships `C:\python-freethreaded\python3.14t.exe`, source-built beside the GIL buil
 `UV_PYTHON_DOWNLOADS=never`. An older image still has uv download one, and so does the arm64
 runner-native job above, which runs without an image.
 
+**The chain's own twins.** The same `:winamd64` ships `cp314-cp314t` builds of the chain wheels
+whose code declares free-threading (ONNX Runtime, PyAV, apache-tvm-ffi and the two IREE
+packages) in `PYTHON_WHEELS_CP314T` (`C:\runtime\wheels-cp314t`), apart from the GIL store
+([`windows-builds.md` § The free-threaded wheels](windows-builds.md#the-free-threaded-wheels)).
+`Sync-UvChainOnnxRuntime` reads that store for a venv whose ABI tag is `cp3XYt`, so a Windows
+`3.14t` leg of an ORT project gets the chain ORT like its GIL legs. Without the store it fails
+on the ABI as before.
+
 **uv downloads nothing for a `+gil` request**, so a version the host lacks is installed first.
 OmniAccelerANT's 3.12 venv (its CMake format gate) stopped with `No interpreter found for
 Python 3.12+gil in managed installations, search path, or registry` (2026-10-01). Like Linux's
