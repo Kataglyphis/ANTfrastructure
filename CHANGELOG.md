@@ -6,6 +6,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — Linux: proved cp314t twins of the media wheels whose code declares free-threading
+
+- **Every wheel the media stage builds natively for a package whose own code declares free-threading also ships
+  as a proved `cp314t` twin**, in `/opt/wheels-cp314t` (owner request 2026-10-07). The GIL wheels are built as
+  before. One table decides, `ft_wheel_table` in `03-media/free-threaded-wheels.sh`, each row read at a
+  `versions.env` pin that a test re-checks; it holds the same verdicts as Windows' `Get-FreeThreadedTwinTable`.
+  - Each build reruns in its warm tree on a 3.14t venv pinned to the GIL build venv's executors; `ft_soabi_gate`
+    and `free-threaded-wheel.py prove` run before a twin is stored, and `free-threaded-store.sh` proves the store
+    again after the repair.
+  - `verify-wheels.sh` is ABI-exact on both stores, the ORT twin has its own `ort-provenance-cp314t.sha256`, and a
+    native build fails on a missing or stray twin or an unclassified wheel. Cross builds build no twin (CON79).
+  - `:latest` ships the store; the runtime smoke's FT-STORE gate proves each twin on `python3.14t` and wants
+    exactly `/opt/venv`'s twin families on a native arch.
+- **`free-threaded-wheel.py` counts a bare `.so` as a module only when it exports `PyInit_<name>`**, so ORT's
+  `libonnxruntime_providers_shared.so` no longer fails the proof.
+- Proved in `:latest` amd64: ORT CPU, PyAV, tvm-ffi and the IREE runtime twins, twin passes 97 s / 28 s / 29 s /
+  130 s cold (11-40 s warm for ORT); in a 3.14t venv numpy, onnxruntime, av, tvm_ffi and iree.runtime import
+  with the GIL off. Tests: `test-free-threaded-wheels.sh`, `test-free-threaded-store.sh`, 33 mutations.
+
 ## 2026-10-07 — Windows: cp314t twins of the chain wheels that declare free-threading
 
 - **Owner request 2026-10-07: every chain wheel twice, `cp314t` only where the code declares it.** Checked in

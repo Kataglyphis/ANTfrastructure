@@ -174,3 +174,6 @@ if [ "${#libs_found[@]}" -eq 0 ]; then
 fi
 echo "ONNX Runtime native build verified:"
 ls -la "${lib_dir}"
+
+# Last, so every GIL output above is final before the tree is reconfigured.
+onnx_build_free_threaded_wheel "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}" BUILD_ARGS

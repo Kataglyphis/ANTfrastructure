@@ -889,6 +889,14 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` ย
     [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md); the Windows
     rule: [`windows-build-invariants.md`](docs/windows-build-invariants.md#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23).
 
+- **A native media wheel whose own code declares free-threading ships a proved `cp314t`
+  twin, in `/opt/wheels-cp314t` and never in `/opt/wheels`** (owner request 2026-10-07).
+  `ft_wheel_table` in `03-media/free-threaded-wheels.sh` decides, row by row against a
+  `versions.env` pin, so a bump re-reads the evidence; a wheel the table does not classify
+  fails a native media build. `verify-wheels.sh` is ABI-exact on both stores. Never install a
+  twin into a GIL venv, and keep the library mounted per file, outside `01-core` and `runtime/`:
+  [`consumer-image-contract.md` ยง The free-threaded wheels](docs/consumer-image-contract.md#the-free-threaded-wheels).
+
 ## Dockerfile.media BuildKit Strategy
 
 The media stage fans out into parallel branches and merges them, so a change

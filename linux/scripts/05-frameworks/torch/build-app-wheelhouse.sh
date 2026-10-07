@@ -30,6 +30,14 @@ for _qnnmod in \
 done
 unset _qnnmod
 
+# The cp314t twin helpers sit two levels up in the repo and in the RUN's per-file mount alike; a missing one fails the twin pass.
+_ftw="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../03-media/free-threaded-wheels.sh"
+if [ -f "${_ftw}" ]; then
+    # shellcheck source=../../03-media/free-threaded-wheels.sh
+    source "${_ftw}"
+fi
+unset _ftw
+
 # versions.env directly: the media app-wheelhouse stage runs this outside the orchestrator.
 for _lvf in \
     "/opt/scripts/core/load-versions-env.sh" \
@@ -53,6 +61,7 @@ done
 unset _evf
 
 : "${APP_WHEELHOUSE_DIR:=/opt/app-wheels}"
+: "${APP_WHEELHOUSE_FT_DIR:=/opt/app-wheels-cp314t}"
 : "${APP_WHEELHOUSE_BUILD_ROOT:=/tmp/app-wheelhouse}"
 : "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.13.0}}"
 : "${PYTORCH_VERSION:=${PYTORCH_REF#v}}"
@@ -117,8 +126,8 @@ wheel_platform_tag() {
 }
 
 prepare_workspace() {
-    rm -rf "${APP_WHEELHOUSE_BUILD_ROOT}" "${APP_WHEELHOUSE_DIR}"
-    mkdir -p "${APP_WHEELHOUSE_BUILD_ROOT}" "${APP_WHEELHOUSE_DIR}"
+    rm -rf "${APP_WHEELHOUSE_BUILD_ROOT}" "${APP_WHEELHOUSE_DIR}" "${APP_WHEELHOUSE_FT_DIR}"
+    mkdir -p "${APP_WHEELHOUSE_BUILD_ROOT}" "${APP_WHEELHOUSE_DIR}" "${APP_WHEELHOUSE_FT_DIR}"
 }
 
 install_build_dependencies() {
@@ -890,7 +899,7 @@ _iree_build_target_native() {
     fi
 }
 
-# Empty iree_wheel_projects means both; called last, so its status is build_iree_wheels'.
+# Empty iree_wheel_projects means both, and the cp314t pass after it reads the list this sets.
 _iree_package_wheels() {
     rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
     local _proj _pkg
@@ -918,6 +927,42 @@ _iree_package_wheels() {
     fi
     cp -a "${wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
     log "Built IREE wheels: $(cd "${dist_dir}" && echo iree_base_*-*.whl)"
+}
+
+# The wheels again on a cp314t venv in the warm target tree, so only the nanobind modules rebuild.
+_iree_package_free_threaded_wheels() {
+    local venv="${APP_WHEELHOUSE_BUILD_ROOT}/iree-ft-venv" ft_dist="${APP_WHEELHOUSE_BUILD_ROOT}/dist-iree-cp314t"
+    local _proj t0
+    declare -F ft_twin_start >/dev/null || { warn "IREE: free-threaded-wheels.sh is not mounted; its RUN needs the per-file mount"; return 1; }
+    ft_twin_start iree-base-runtime "${venv}" "${BUILD_PYTHON}" pip setuptools wheel numpy || { [ $? -eq 1 ] && return 0; return 1; }
+    t0="$(date +%s)"
+    _iree_free_threaded_rebuild "${venv}/bin/python" || return 1
+    log "IREE: the free-threaded rebuild took $(( $(date +%s) - t0 ))s in the warm ${target_build}"
+    rm -rf "${ft_dist}"
+    for _proj in "${iree_wheel_projects[@]}"; do
+        ft_twin_wanted "iree-base-${_proj}" || return 1
+        # setup.py installs into the build/ beside it, where the GIL pass's modules would ride into the cp314t wheel.
+        rm -rf "${target_build:?}/${_proj}/build"
+        if ! "${venv}/bin/python" -m pip wheel "${target_build}/${_proj}" -w "${ft_dist}/${_proj}" --no-deps --no-build-isolation \
+                > "${target_build}.${_proj}-ft-wheel.log" 2>&1; then
+            warn "IREE ${_proj} cp314t wheel packaging failed"
+            tail -n 60 "${target_build}.${_proj}-ft-wheel.log" 2>/dev/null
+            return 1
+        fi
+        retag_directory_wheels "${ft_dist}/${_proj}" "iree_base_${_proj}" "${wheel_platform}" "${venv}/bin/python"
+        ft_twin_store_built "${ft_dist}/${_proj}" "${APP_WHEELHOUSE_FT_DIR}" || return 1
+    done
+}
+
+# <free-threaded python>: reconfigure the target tree onto it and rebuild; what does not see Python stays built.
+_iree_free_threaded_rebuild() {
+    if ! cmake -S "${src_dir}" -B "${target_build}" -DPython_EXECUTABLE="$1" -DPython3_EXECUTABLE="$1" \
+            > "${target_build}.ft-cfg.log" 2>&1 \
+       || ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.ft.log" 2>&1; then
+        warn "IREE free-threaded rebuild failed"
+        tail -n 80 "${target_build}.ft-cfg.log" "${target_build}.ft.log" 2>/dev/null
+        return 1
+    fi
 }
 
 build_iree_wheels() {
@@ -955,7 +1000,8 @@ build_iree_wheels() {
         _iree_build_target_native || return 1
     fi
 
-    _iree_package_wheels
+    _iree_package_wheels || return 1
+    _iree_package_free_threaded_wheels
 }
 
 main() {

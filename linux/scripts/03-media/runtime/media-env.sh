@@ -11,6 +11,8 @@ set -a
 
 # The one wheelhouse the runtime wheel scripts share.
 : "${WHEELS_DIR:=/opt/wheels}"
+# Its cp314t twins, a store of their own: docs/consumer-image-contract.md#the-free-threaded-wheels
+: "${FT_WHEELS_DIR:=/opt/wheels-cp314t}"
 
 PATH="${GSTREAMER_PREFIX}/bin:${OPENCV_PREFIX}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:${PATH}"
 PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig"

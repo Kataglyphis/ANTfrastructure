@@ -521,8 +521,12 @@ with `linux/scripts/02-toolchain/python/free-threaded-wheel.py declares`. When i
    its dependencies, and `free-threaded-wheel.py prove` loads every compiled module the
    distribution owns. It creates each module without running its body: that is where CPython
    decides about the GIL, and a missing optional dependency then cannot fail or fake the
-   verdict. The step fails when `sys._is_gil_enabled()` is true afterwards, and names each
+   verdict. A bare `.so` or `.pyd` counts as a module only when it exports `PyInit_<name>`,
+   so a library the wheel bundles beside its modules is not loaded as one. The step fails when `sys._is_gil_enabled()` is true afterwards, and names each
    module whose `RuntimeWarning` re-enabled it.
+
+The image's own wheels get the same twin and the same proof in the media stage, decided by
+a table rather than a classifier ([`consumer-image-contract.md` § The free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)).
 
 Without the classifier the drivers build exactly what they built before, and log one line:
 `free-threaded wheel skipped: the project does not declare support (...)`.

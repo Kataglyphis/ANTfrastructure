@@ -241,12 +241,13 @@ collect_wheels_from_tree() {
   mkdir -p "${output_dir}/wheels"
 
   local _wheels_found=0
+  # A cp3XYt twin is never a GIL wheel; onnx_build_free_threaded_wheel stores its own.
   while read -r wheel_path; do
     _wheels_found=1
     info "Copying ${wheel_label}: ${wheel_path}"
     cp "${wheel_path}" "${output_dir}/wheels/"
     ls -lh "${output_dir}/wheels/$(basename "${wheel_path}")"
-  done < <(find "${search_root}" -name "*.whl" -type f 2>/dev/null || true)
+  done < <(find "${search_root}" -name "*.whl" ! -name "*-cp3[0-9]*t-*.whl" -type f 2>/dev/null || true)
   [ "${_wheels_found}" -eq 1 ] || info "No wheels found in ${search_root}"
 }
 
@@ -393,6 +394,25 @@ finalize_onnx_native_output() {
   copy_onnx_libraries_to_output "${build_dir}" "${build_config}" "${output_dir}"
   ensure_onnxruntime_symlink "${output_dir}"
   symlink_output_libraries_into_usr_local "${output_dir}"
+}
+
+# <build_dir> <config> <output_dir> <build-args array name>: build.sh again on a cp314t venv in the warm tree, so only what sees Python rebuilds.
+onnx_build_free_threaded_wheel() {
+  local build_dir="$1" config="$2" output_dir="$3" ftpy="${TMPDIR:-/tmp}/onnxruntime-ft-venv/bin/python" started
+  local -n _oft_args="$4"
+  # The repo path is also the RUN's per-file mount: lib/ sits four levels below 03-media in both.
+  # shellcheck source=../../../../free-threaded-wheels.sh
+  source "${_ONNX_LIB_DIR}/../../../../free-threaded-wheels.sh" || err "ONNX Runtime: free-threaded-wheels.sh is not mounted; its RUN needs the per-file mount"
+  ft_twin_start onnxruntime "${ftpy%/bin/python}" "$(host_python_bin)" numpy packaging setuptools wheel \
+    || { [ $? -eq 1 ] && return 0; err "ONNX Runtime: the cp314t twin cannot be built (see above)"; }
+  started="${SECONDS}"
+  (
+    export PATH="${ftpy%/python}:${PATH}" Python_EXECUTABLE="${ftpy}" Python3_EXECUTABLE="${ftpy}" PYTHON_EXECUTABLE="${ftpy}"
+    "${ORT_SRC_DIR}/build.sh" "${_oft_args[@]}" --cmake_extra_defines "Python_EXECUTABLE=${ftpy}"
+  ) || err "ONNX Runtime: the free-threaded pass over ${build_dir} failed"
+  info "ONNX Runtime: ${build_dir} rebuilt for ${ftpy} in $(( SECONDS - started ))s"
+  ft_twin_store_built "${build_dir}/${config}/dist" "${output_dir}/wheels-cp314t" || err "ONNX Runtime: no proved cp314t twin (see above)"
+  rm -rf "${ftpy%/bin/python}"
 }
 
 # report_onnx_build_output <headline> <output_dir>: advisory only, since a stage may never fill its wheels dir.

@@ -72,6 +72,14 @@ t_assert_eq "" "$(_v "$(_base; _fact BIN "${CHAIN_SHA}" '/usr/local/lib/onnxrunt
 t_assert_eq "" "$(_v "$(_base | grep -v -e '^ALLOW'; _fact BIN "${CHAIN_SHA}" /opt/opencv5/lib/libonnxruntime.so.1.30.0 - name; _done)")" \
   "no ALLOW line (tree mode) = no ELSEWHERE arm"
 
+t_case "the cp314t twin store: an ORT twin's chain member is at home there, another bytes are not"
+t_assert_eq "" "$(_v "$(_base; _fact BIN "${CHAIN_SHA}" '/opt/wheels-cp314t/onnxruntime_dnnl-1.30.0-cp314-cp314t-linux_x86_64.whl!onnxruntime/capi/libonnxruntime.so.1.30.0' /opt/onnxruntime name; _done)")" \
+  "a twin's chain member in the twin store"
+t_assert_contains "$(_v "$(_base; _fact BIN "${FOREIGN_SHA}" '/opt/wheels-cp314t/onnxruntime_dnnl-1.30.0-cp314-cp314t-linux_x86_64.whl!onnxruntime/capi/onnxruntime_pybind11_state.so' /opt/onnxruntime name; _done)")" \
+  "STALE	/opt/wheels-cp314t/onnxruntime_dnnl-1.30.0-cp314-cp314t-linux_x86_64.whl!onnxruntime/capi/onnxruntime_pybind11_state.so" "a twin member no cp314t manifest row names"
+t_assert_contains "$(_v "$(_base; _fact BIN "${CHAIN_SHA}" '/opt/wheels-cp314t/other-1-cp314-cp314t-linux_x86_64.whl!libonnxruntime.so.1.30.0' /opt/onnxruntime name; _done)")" \
+  "ELSEWHERE	/opt/wheels-cp314t/other-1-cp314-cp314t-linux_x86_64.whl!libonnxruntime.so.1.30.0" "only an ORT twin may carry ORT there"
+
 t_case "UNREGISTERED: an ORT user outside the contract; tree mode and chain artefacts are exempt"
 t_assert_contains "$(_v "$(_base; _fact USE /opt/app/libmystery.so - OrtGetApiBase - "${FOREIGN_SHA}"; _done)")" \
   "UNREGISTERED	/opt/app/libmystery.so" "unregistered"
@@ -347,6 +355,8 @@ ONNXRUNTIME_VERSION='' t_assert_fails _wm "${_work}/pfx0" /nonexistent
 t_assert_ok test ! -e "${_work}/pfx0/ort-provenance.sha256"
 t_assert_contains "${_ORT_CENSUS_MANIFESTS}" "/usr/local/lib/onnxruntime-cpu/ort-provenance.sha256" "the census reads the cpu manifest"
 t_assert_contains "${_ORT_CENSUS_MANIFESTS}" "/usr/local/lib/onnxruntime-gpu/ort-provenance.sha256" "and the gpu one"
+t_assert_contains "${_ORT_CENSUS_MANIFESTS}" "/usr/local/lib/onnxruntime-cpu/ort-provenance-cp314t.sha256" "and the twins' cpu one"
+t_assert_contains "${_ORT_CENSUS_MANIFESTS}" "/usr/local/lib/onnxruntime-gpu/ort-provenance-cp314t.sha256" "and the twins' gpu one"
 _coll="${TESTS_DIR}/../03-media/runtime/collect-artifacts.sh"
 _l_cpu="$(grep -n -x -e 'write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu' "${_coll}" | cut -d: -f1 || true)"
 _l_gpu="$(grep -n -x -e 'write_ort_wheel_manifest /usr/local/lib/onnxruntime-gpu' "${_coll}" | cut -d: -f1 || true)"
@@ -421,7 +431,7 @@ _seq="$(grep -E -e '^ *(ort_manifest_rows (check|follow) |strip_cross_wheels$|ex
 t_assert_eq 'ort_manifest_rows check|strip_cross_wheels|ort_manifest_rows follow|exit 0|rmdir|ort_manifest_rows follow|' "${_seq}" \
   "proved before the strip, followed after it on the cross and the native path"
 t_assert_contains "$(cat "${_rwf}")" '_ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance.sha256)'
-t_assert_ok bash -c 'for m in $1; do case "${m}" in /usr/local/lib/onnxruntime-*/ort-provenance.sha256) ;; *) exit 1 ;; esac; done' _ \
+t_assert_ok bash -c 'for m in $1; do case "${m}" in /usr/local/lib/onnxruntime-*/ort-provenance.sha256 | /usr/local/lib/onnxruntime-*/ort-provenance-cp314t.sha256) ;; *) exit 1 ;; esac; done' _ \
   "${_ORT_CENSUS_MANIFESTS}"
 _l_rep="$(grep -n -e 'runtime/repair-wheels.sh &&' "${TESTS_DIR}/../../Dockerfile.media" | cut -d: -f1 || true)"
 _l_ver="$(grep -n -e 'runtime/verify-wheels.sh &&' "${TESTS_DIR}/../../Dockerfile.media" | cut -d: -f1 || true)"

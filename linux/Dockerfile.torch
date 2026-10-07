@@ -9,6 +9,7 @@ FROM ${WHEELS_IMAGE} AS wheels-source
 # RUNTIME_WHEELS_SOURCE=export: docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries
 FROM scratch AS wheels-export
 COPY --link --from=wheels-source /opt/wheels /opt/wheels
+COPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t
 FROM ${BASE_IMAGE} AS torch
 
 SHELL ["bash", "-lc"]
@@ -160,6 +161,9 @@ RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -l -u ${RUNTIME_UID} -s /bin
     mkdir -p ${WORKDIR} && chown -R kataglyphis:kataglyphis ${WORKDIR}; \
     rm -f /usr/local/bin/sudo /usr/bin/sudo /usr/bin/sudoedit /usr/local/bin/sudoedit; \
     find / -xdev -perm -4000 -name 'sudo*' -type f -delete 2>/dev/null || true
+
+# Late, so a new twin re-keys no venv or Hailo layer; no GIL path reads them: docs/consumer-image-contract.md#the-free-threaded-wheels
+COPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t
 
 # /opt/venv is root-owned; no .pyc writes also keeps the image runnable --read-only.
 ENV PYTHONDONTWRITEBYTECODE=1

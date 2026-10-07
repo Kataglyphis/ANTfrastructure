@@ -180,23 +180,36 @@ t_case "prove: a GIL interpreter cannot prove anything"
 t_assert_eq "2" "$(t_rc python3 -I "${HELPER}" prove pip)"
 t_assert_contains "$(python3 -I "${HELPER}" prove pip 2>&1)" "is not a free-threaded interpreter"
 
-t_case "prove: every compiled module the distribution owns, a compiled __init__ under its package's name"
-t_assert_eq "app app.core app.sub" "$(python3 -I - "${HELPER}" <<'PY'
+# _modules <site root> <file>...: the helper's module list for a fake distribution whose files sit under that root.
+_modules() {
+  python3 -I - "${HELPER}" "$@" <<'PY'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("ftw", sys.argv[1])
 ftw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ftw)
 class Rec(str):
     def locate(self):
-        return "/site/" + self
+        return sys.argv[2] + "/" + self
 class Dist:
-    files = [Rec(f) for f in ("app/__init__.cpython-314t-x86_64-linux-gnu.so", "app/core.cpython-314t-x86_64-linux-gnu.so",
-                              "app/sub/__init__.abi3.so", "app/core.py", "../../bin/app.so")]
+    files = [Rec(f) for f in sys.argv[3:]]
 ftw.importlib.metadata.distribution = lambda name: Dist()
 ftw.importlib.machinery.EXTENSION_SUFFIXES = [".cpython-314t-x86_64-linux-gnu.so", ".abi3.so", ".so"]
 print(" ".join(name for name, _ in ftw.extension_modules("app")))
 PY
-)" "a script outside site-packages and the .py sources are not modules to load"
+}
+
+t_case "prove: every compiled module the distribution owns, a compiled __init__ under its package's name"
+t_assert_eq "app app.core app.sub" "$(_modules /site app/__init__.cpython-314t-x86_64-linux-gnu.so app/core.cpython-314t-x86_64-linux-gnu.so \
+  app/sub/__init__.abi3.so app/core.py ../../bin/app.so)" "a script outside site-packages and the .py sources are not modules to load"
+
+t_case "prove: a bare .so is a module only when it exports PyInit_<name>, so a bundled library is never loaded as one"
+mkdir -p "${_work}/site/ort/capi"
+printf 'x\0PyInit_onnxruntime_pybind11_state\0y' > "${_work}/site/ort/capi/onnxruntime_pybind11_state.so"
+printf 'x\0OrtGetApiBase\0PyInit_libonnxruntime_providers_shared_x\0' > "${_work}/site/ort/capi/libonnxruntime_providers_shared.so"
+printf 'x\0PyInit_capi\0' > "${_work}/site/ort/capi/__init__.so"
+t_assert_eq "ort.capi ort.capi.onnxruntime_pybind11_state" \
+  "$(_modules "${_work}/site" ort/capi/onnxruntime_pybind11_state.so ort/capi/libonnxruntime_providers_shared.so ort/capi/__init__.so)" \
+  "a symbol that merely begins with the library's name does not count either"
 
 t_case "the bundle takes the wheel built for its runtime's ABI, never the free-threaded twin"
 eval "$(t_fn_src "${SCRIPTS}/06-packaging/python-app-bundle.sh" select_app_wheel)" || exit 1

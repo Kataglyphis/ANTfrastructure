@@ -59,6 +59,8 @@ run_nerdctl_build() {
     if [ "${EXPORT_WHEELS:-2}" != 0 ]; then
       printf a > "${dest}/opt/wheels/torch-2.9.0-cp314-cp314-linux_aarch64.whl"
       printf bb > "${dest}/opt/wheels/onnxruntime-1.30.0-cp314-cp314-linux_aarch64.whl"
+      mkdir -p "${dest}/opt/wheels-cp314t"
+      printf ccc > "${dest}/opt/wheels-cp314t/onnxruntime-1.30.0-cp314-cp314t-linux_aarch64.whl"
     fi
     return "${EXPORT_RC:-0}"
   fi
@@ -210,6 +212,7 @@ t_assert_eq "TRAP runtime_wheels_cleanup,BUILD-BEGIN export," "$(_events)" "and 
 t_case "the wrapper re-checks the seal: a changed, added or unsealed wheelhouse fails, with no fallback"
 for _hook in 'printf x >> "${RUNTIME_WHEELS_EXPORT_ROOT}/arm64/opt/wheels/torch-2.9.0-cp314-cp314-linux_aarch64.whl"' \
              ': > "${RUNTIME_WHEELS_EXPORT_ROOT}/arm64/opt/wheels/stray-0-py3-none-any.whl"' \
+             'printf x >> "${RUNTIME_WHEELS_EXPORT_ROOT}/arm64/opt/wheels-cp314t/onnxruntime-1.30.0-cp314-cp314t-linux_aarch64.whl"' \
              'rm -f "${RUNTIME_WHEELS_EXPORT_ROOT}/arm64.sha256"' \
              'rm -rf "${RUNTIME_WHEELS_EXPORT_ROOT}/arm64"'; do
   _fresh
@@ -249,6 +252,9 @@ _df="$(cat "${TORCH}")"
 t_assert_eq 1 "$(grep -c '^FROM ${WHEELS_IMAGE} AS wheels-source$' "${TORCH}")" "the image both modes read is one FROM"
 t_assert_eq "COPY --link --from=wheels-source /opt/wheels /opt/wheels" \
   "$(grep -A1 '^FROM scratch AS wheels-export$' "${TORCH}" | sed -n 2p)" "wheels-export copies exactly that stage's /opt/wheels"
+t_assert_eq "COPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t" \
+  "$(grep -A2 '^FROM scratch AS wheels-export$' "${TORCH}" | sed -n 3p)" "and its cp314t twins, which the wrapper ships"
+t_assert_eq 2 "$(grep -c -x -F 'COPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t' "${TORCH}")" "exported, and copied into the image"
 t_assert_eq "FROM torch AS final" "$(grep '^FROM ' "${TORCH}" | tail -1)" "wheels-export is not the wrapper's default target"
 t_assert_contains "$(grep -A2 -F 'from=wheels-source,source=/opt/wheels,target=/opt/wheels,rw' "${TORCH}" | sed -n 3p)" \
   'echo "[torch-run] start epoch=$(date -u +%s) arch=${TARGETARCH}"' "the torch RUN's first statement stamps its start"

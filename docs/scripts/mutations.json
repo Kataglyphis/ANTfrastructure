@@ -10837,7 +10837,7 @@
  {
   "id": "wheels-source.wrapper-reverify",
   "target": "linux/scripts/lib-runtime-wheels.sh",
-  "find": "  if [ ! -s \"${dir}.sha256\" ] || ! _runtime_wheels_manifest \"${dir}/opt/wheels\" 2>/dev/null | cmp -s - \"${dir}.sha256\"; then",
+  "find": "  if [ ! -s \"${dir}.sha256\" ] || ! _runtime_wheels_manifest \"${dir}/opt\" 2>/dev/null | cmp -s - \"${dir}.sha256\"; then",
   "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
   "why": "a wheelhouse changed, added to or unsealed between export and wrapper must not be mounted"
@@ -12785,5 +12785,269 @@
   "replace": "extractVersion=^therock-(?<version>.*)$\n",
   "test": "bash linux/scripts/tests/test-renovate-annotations.sh",
   "why": "ROCM_VERSION=10.0 is not semver, so without versioning=loose Renovate skips it as invalid-value and TheRock 10.1 is never reported"
+ },
+ {
+  "id": "wheels.ft-verify-gil-abi-exact",
+  "target": "linux/scripts/03-media/runtime/verify-wheels.sh",
+  "find": "  if [ \"${abi}\" = \"${PY_ABI}\" ]; then\n    [ \"${pyt}\" = \"${PY_TAG}\" ]\n    return\n  fi\n",
+  "replace": "  if [ \"${abi%t}\" = \"${PY_ABI}\" ] || [ \"${abi}\" = \"${PY_ABI}\" ]; then\n    return 0\n  fi\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "a cp314t twin dropped into /opt/wheels would pass the GIL verify and reach the GIL venv's install"
+ },
+ {
+  "id": "wheels.ft-verify-threading-abi-fatal",
+  "target": "linux/scripts/03-media/runtime/verify-wheels.sh",
+  "find": "    print((\"ABI \" if m.group(1) != want_t else \"ARCH \") + n)\n",
+  "replace": "    print(\"ARCH \" + n)\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "a GIL-named wheel carrying a free-threaded module would pass as an advisory arch mismatch and fail at import"
+ },
+ {
+  "id": "wheels.ft-verify-twin-store-strict",
+  "target": "linux/scripts/03-media/runtime/verify-wheels.sh",
+  "find": "_soabi_strict=\"${WHEEL_SOABI_STRICT:-${FREE_THREADED}}\"",
+  "replace": "_soabi_strict=\"${WHEEL_SOABI_STRICT:-0}\"",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "a twin of another arch would be a warning, though a native twin can only be this arch's"
+ },
+ {
+  "id": "wheels.ft-verify-no-abi3-twin",
+  "target": "linux/scripts/03-media/runtime/verify-wheels.sh",
+  "find": "    if free and b.endswith(\".abi3.so\"):\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "an abi3 module would pass into the twin store, and 3.14t loads no stable-ABI module"
+ },
+ {
+  "id": "wheels.ft-collect-own-store",
+  "target": "linux/scripts/03-media/runtime/collect-artifacts.sh",
+  "find": "  collect_component_wheels \"${ft_source_dir}\" \"${FT_WHEELS_DIR}\"\n",
+  "replace": "  collect_component_wheels \"${ft_source_dir}\"\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "the twins would be collected into /opt/wheels, where the GIL venv installs them"
+ },
+ {
+  "id": "wheels.ft-ort-manifest-own",
+  "target": "linux/scripts/03-media/runtime/collect-artifacts.sh",
+  "find": "write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu \"\" wheels-cp314t ort-provenance-cp314t.sha256\n",
+  "replace": "write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu \"\" wheels-cp314t ort-provenance.sha256\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "the twin's rows would overwrite the GIL manifest, and the GIL repair would then find no chain wheel"
+ },
+ {
+  "id": "wheels.ft-repair-own-manifest",
+  "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+  "find": "  _ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance-cp314t.sha256)\n",
+  "replace": "  _ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance.sha256)\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "the twin store's repair would check the GIL manifest, whose wheels are not there, and stop the media stage"
+ },
+ {
+  "id": "wheels.ft-store-proved-again",
+  "target": "linux/Dockerfile.media",
+  "find": "    bash /opt/scripts/03-media/runtime/free-threaded-store.sh && \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "the repaired twins would ship unproved, with no record for the runtime smoke"
+ },
+ {
+  "id": "wheels.ft-collect-tree-skips-twins",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "! -name \"*-cp3[0-9]*t-*.whl\" ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a cp314t wheel left in an ORT build tree would be collected as a GIL wheel"
+ },
+ {
+  "id": "wheels.ft-gate-name",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "bad = [] if parts[-3:-1] == [tag, tag + \"t\"] else",
+  "replace": "bad = [] if True else",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a GIL-named wheel would be stored as a twin"
+ },
+ {
+  "id": "wheels.ft-gate-gil-module",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "and base.endswith(\".so\") and not base.endswith(want)):",
+  "replace": "and base.endswith(\".so\") and False):",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a cp314t-named wheel holding GIL or foreign-arch modules would be stored"
+ },
+ {
+  "id": "wheels.ft-proof-before-store",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "  ft_prove_wheel \"${wheel}\" \"${dist}\" || return 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a twin whose modules re-enable the GIL would be stored unproved"
+ },
+ {
+  "id": "wheels.ft-cross-skips",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "  if declare -F cross_build_is_active >/dev/null 2>&1 && cross_build_is_active; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a cross build would build its twins with the host's interpreter and stamp them with the host SOABI"
+ },
+ {
+  "id": "wheels.ft-venv-mirrors-gil",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "      printf 'free-threaded: the GIL build venv %s has no %s, so its twin has no version to match\\n' \"${gil}\" \"${pkg}\" >&2\n      return 1\n",
+  "replace": "      reqs+=(\"${pkg}\"); continue\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a build executor missing from the GIL venv would float to PyPI's latest in the twin's"
+ },
+ {
+  "id": "wheels.ft-table-pin-recheck",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "av|twin|PYAV_VERSION=19.0.1|",
+  "replace": "av|twin|PYAV_VERSION=19.0.0|",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a pin bump would keep a verdict read at another release"
+ },
+ {
+  "id": "wheels.ft-store-set-missing",
+  "target": "linux/scripts/03-media/runtime/free-threaded-store.sh",
+  "find": "    echo \"ERROR: ${d} ships a GIL wheel in ${WHEELS_DIR} and its table verdict is twin, but ${FT_WHEELS_DIR} has no cp314t twin of it\" >&2\n    bad=1\n",
+  "replace": "    echo \"ERROR: ${d} ships a GIL wheel in ${WHEELS_DIR} and its table verdict is twin, but ${FT_WHEELS_DIR} has no cp314t twin of it\" >&2\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "a native media stage could ship without a twin it owes"
+ },
+ {
+  "id": "wheels.ft-store-unclassified",
+  "target": "linux/scripts/03-media/runtime/free-threaded-store.sh",
+  "find": "    if [ \"$1\" = native ] && [ \"$(ft_wheel_verdict \"${d}\")\" = unknown ]; then\n",
+  "replace": "    if false; then\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "a new wheel would ship natively without anyone reading its free-threading support"
+ },
+ {
+  "id": "wheels.ft-store-cross-empty",
+  "target": "linux/scripts/03-media/runtime/free-threaded-store.sh",
+  "find": "  [ \"$1\" = native ] || want=\"\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "a cross build's store could hold twins built with the host interpreter"
+ },
+ {
+  "id": "probe.ft-store-proved",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "    if printf '%s\\n' \"${probe}\" | grep -q -e \"^FTS PROVED ${w%%-*} \"; then\n",
+  "replace": "    if true; then\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "a shipped twin that re-enables the GIL on python3.14t would pass the smoke"
+ },
+ {
+  "id": "probe.ft-store-families-exact",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "  if [ \"${fam_want}\" = \"${fam_have}\" ]; then\n",
+  "replace": "  if true; then\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "a store with a twin whose GIL package left /opt/venv would pass"
+ },
+ {
+  "id": "probe.ft-store-cross-empty",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "      if [ -n \"${have}\" ]; then echo \"BAD a cross-built store holds wheels",
+  "replace": "      if false; then echo \"BAD a cross-built store holds wheels",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "a cross-built arch could ship host-SOABI twins"
+ },
+ {
+  "id": "probe.ft-store-wired",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "    check_free_threaded_wheels \"${image_tag}\" \"${target_arch}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "the shipped store would never be graded"
+ },
+ {
+  "id": "ort-census.ft-store-ort-only",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "    /opt/wheels-cp314t/onnxruntime*.whl!*) return 0 ;;\n",
+  "replace": "    /opt/wheels-cp314t/*.whl!*) return 0 ;;\n",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "any twin in the store could carry a chain ORT copy unnoticed"
+ },
+ {
+  "id": "ort-census.ft-manifests-read",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": " /usr/local/lib/onnxruntime-cpu/ort-provenance-cp314t.sha256 /usr/local/lib/onnxruntime-gpu/ort-provenance-cp314t.sha256\"",
+  "replace": "\"",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "G1 would call the shipped ORT twin's pybind module STALE"
+ },
+ {
+  "id": "python.free-threaded-helper.bare-so-needs-pyinit",
+  "target": "linux/scripts/02-toolchain/python/free-threaded-wheel.py",
+  "find": "            if suffix in BARE_SUFFIXES and not exports_init(str(item.locate()), name):\n                continue\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "a library bundled beside the modules, such as ORT's providers_shared, would be loaded as one and fail the proof"
+ },
+ {
+  "id": "python.free-threaded-helper.pyinit-whole-name",
+  "target": "linux/scripts/02-toolchain/python/free-threaded-wheel.py",
+  "find": ".rsplit(\".\", 1)[-1].encode() + b\"\\0\"",
+  "replace": ".rsplit(\".\", 1)[-1].encode()",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "a library whose symbols merely begin with PyInit_<its name> would count as a module"
+ },
+ {
+  "id": "wheels-source.ft-sealed",
+  "target": "linux/scripts/lib-runtime-wheels.sh",
+  "find": "  _runtime_wheels_manifest \"${dir}/opt\" > \"${dir}.sha256\" || return 1\n",
+  "replace": "  _runtime_wheels_manifest \"${dir}/opt/wheels\" > \"${dir}.sha256\" || return 1\n",
+  "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+  "why": "a twin changed after the export would reach the wrapper"
+ },
+ {
+  "id": "wheels-source.ft-context-exports-twins",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "tar -xpf - -C \"$2\" opt/wheels opt/wheels-cp314t",
+  "replace": "tar -xpf - -C \"$2\" opt/wheels",
+  "test": "bash linux/scripts/tests/test-runtime-wheels-context.sh",
+  "why": "a --no-push wrapper build would find no /opt/wheels-cp314t to copy and fail"
+ },
+ {
+  "id": "wheels-source.ft-wrapper-ships-store",
+  "target": "linux/Dockerfile.torch",
+  "find": "# Late, so a new twin re-keys no venv or Hailo layer; no GIL path reads them: docs/consumer-image-contract.md#the-free-threaded-wheels\nCOPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
+  "why": ":latest would ship no twin at all"
+ },
+ {
+  "id": "wheels.iree-ft-pass-called",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    _iree_package_wheels || return 1\n    _iree_package_free_threaded_wheels\n",
+  "replace": "    _iree_package_wheels || return 1\n",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "IREE would ship no cp314t twin"
+ },
+ {
+  "id": "wheels.iree-ft-proof-fails-build",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "        ft_twin_store_built \"${ft_dist}/${_proj}\" \"${APP_WHEELHOUSE_FT_DIR}\" || return 1\n",
+  "replace": "        ft_twin_store_built \"${ft_dist}/${_proj}\" \"${APP_WHEELHOUSE_FT_DIR}\" || true\n",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "an unproved IREE twin would go missing without failing the required IREE build"
+ },
+ {
+  "id": "wheels.ft-twin-leaves-tree",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "  ft_store_twin \"${wheel}\" \"$2\" || return 1\n  rm -f \"${wheel}\"\n",
+  "replace": "  ft_store_twin \"${wheel}\" \"$2\" || return 1\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a stored twin left in an ORT build tree is one GIL collection away from /opt/wheels"
+ },
+ {
+  "id": "wheels.ft-twin-start-skips",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "  if [ \"${rc}\" -ne 0 ]; then\n    return \"${rc}\"\n  fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a GIL-only or unknown package would get a twin build venv and a twin pass"
  }
 ]

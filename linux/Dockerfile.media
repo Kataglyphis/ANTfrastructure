@@ -188,9 +188,12 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,target=/opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh,target=/opt/scripts/03-media/build/onnxruntime/build/30-build-native.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/lib,target=/opt/scripts/03-media/build/onnxruntime/build/lib,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu
@@ -204,6 +207,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/patches/onnxruntime,target=/opt/scripts/patches/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -353,15 +358,18 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scri
     --mount=type=bind,source=linux/scripts/05-frameworks/tvm-config.sh,target=/opt/scripts/05-frameworks/tvm-config.sh,readonly \
     --mount=type=bind,source=linux/scripts/05-frameworks/tvm-python.sh,target=/opt/scripts/05-frameworks/tvm-python.sh,readonly \
     --mount=type=bind,source=linux/scripts/05-frameworks/tvm-llvm-compat.sh,target=/opt/scripts/05-frameworks/tvm-llvm-compat.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-tvm \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-tvm \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    mkdir -p /opt/tvm/wheels /opt/tvm/lib; \
+    mkdir -p /opt/tvm/wheels /opt/tvm/wheels-cp314t /opt/tvm/lib; \
     # Best-effort: a failure ships without TVM; EXP_TVM=<ver> in the smoke is what makes it mandatory.
     echo "TVM build: target=${TARGET_ARCH:-amd64} BUILD_MODE=${BUILD_MODE:-native}"; \
     if bash /opt/scripts/05-frameworks/tvm.sh --ref "${TVM_REF}" --prefix /opt/tvm --workdir /tmp/tvm-src; then \
@@ -369,7 +377,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scri
         [ -d /opt/tvm/lib64 ] && cp -a /opt/tvm/lib64/. /opt/tvm/lib/ 2>/dev/null || true; \
     else \
         echo "WARNING: TVM build failed for target=${TARGET_ARCH:-?}; shipping media image without TVM python (non-fatal)"; \
-        rm -f /opt/tvm/wheels/*.whl 2>/dev/null || true; \
+        rm -f /opt/tvm/wheels/*.whl /opt/tvm/wheels-cp314t/*.whl 2>/dev/null || true; \
     fi
 
 # OpenCV stage
@@ -431,6 +439,8 @@ ARG IREE_VERSION=v3.12.0
 
 # No cargo mount: build-app-wheelhouse.sh never runs cargo, and an inert mount reads as coverage.
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/torchvision,target=/opt/scripts/patches/torchvision,readonly \
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
@@ -445,7 +455,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
     case "${TARGET_ARCH:-amd64}" in \
       amd64|arm64|riscv64) ;; \
       *) echo "Skipping app-wheelhouse (unsupported arch ${TARGET_ARCH})"; \
-         mkdir -p /opt/app-wheels; \
+         mkdir -p /opt/app-wheels /opt/app-wheels-cp314t; \
          exit 0 ;; \
     esac; \
     if ! command -v uv >/dev/null 2>&1; then \
@@ -454,6 +464,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
     fi; \
     export PYTORCH_VERSION="${PYTORCH_VERSION}" TORCHVISION_VERSION="${TORCHVISION_VERSION}" IREE_VERSION="${IREE_VERSION}"; \
     bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh; \
+    mkdir -p /opt/app-wheels-cp314t; \
     if [ ! -d /opt/app-wheels ] || [ -z "$(ls -A /opt/app-wheels 2>/dev/null)" ]; then \
         mkdir -p /opt/app-wheels; \
         touch /opt/app-wheels/.placeholder; \
@@ -555,6 +566,8 @@ ENV PYAV_VERSION=${PYAV_VERSION}
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/pyav,target=/opt/scripts/03-media/build/pyav,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -790,11 +803,15 @@ COPY --link --from=litert /usr/local/lib/litert-web /usr/local/lib/litert-web
 COPY --link --from=litert /usr/local/lib/litert-lm-web /usr/local/lib/litert-lm-web
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-web /usr/local/lib/onnxruntime-web
 COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
+# The cp314t twins travel beside the GIL wheels into a store of their own: docs/consumer-image-contract.md#the-free-threaded-wheels
+COPY --link --from=app-wheelhouse /opt/app-wheels-cp314t /opt/app-wheels-cp314t
 # Dir-to-dir COPYs tolerate the empty (skipped or failed) TVM build.
 COPY --link --from=tvm /opt/tvm/wheels /opt/tvm-wheels
+COPY --link --from=tvm /opt/tvm/wheels-cp314t /opt/tvm-wheels-cp314t
 COPY --link --from=tvm /opt/tvm/lib/ /usr/local/lib/
 # collect-artifacts.sh keeps wheels already in /opt/wheels, so PyAV joins the normal repair/verify path.
 COPY --link --from=pyav /opt/pyav/wheels /opt/wheels
+COPY --link --from=pyav /opt/pyav/wheels-cp314t /opt/wheels-cp314t
 # Must follow the media-inputs tree: the pass-2 OpenCV replaces pass 1.
 COPY --link --from=opencv-gst ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
@@ -809,6 +826,8 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packagi
 COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh
 
 RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
+    --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
@@ -822,6 +841,9 @@ RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/
     bash /opt/scripts/03-media/runtime/configure-runtime.sh && \
     bash /opt/scripts/03-media/runtime/repair-wheels.sh && \
     bash /opt/scripts/03-media/runtime/verify-wheels.sh && \
+    bash /opt/scripts/03-media/runtime/repair-wheels.sh --free-threaded && \
+    bash /opt/scripts/03-media/runtime/verify-wheels.sh --free-threaded && \
+    bash /opt/scripts/03-media/runtime/free-threaded-store.sh && \
     { uv pip install --no-deps /opt/wheels/*.whl || { [ "${TARGET_ARCH:-amd64}" != "amd64" ] || { echo "ERROR: uv pip install of collected wheels failed on amd64 — native wheels must install" >&2; exit 1; }; echo "WARNING: uv pip install of collected wheels failed (tolerated for cross-arch ${TARGET_ARCH} wheels)" >&2; }; } && \
     bash /opt/scripts/03-media/runtime/validate-media-runtime.sh && \
     PYTHONPATH="$(echo /opt/opencv5/lib/python*/site-packages 2>/dev/null):${PYTHONPATH:-}" \

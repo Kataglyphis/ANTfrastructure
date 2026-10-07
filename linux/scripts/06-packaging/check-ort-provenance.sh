@@ -22,7 +22,7 @@ ort_census_contract() {
 
 # The chain ORT of a Linux image: its prefixes and the wheel manifest collect-artifacts.sh writes.
 _ORT_CENSUS_REFS="/usr/local/lib/onnxruntime-cpu /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-web /opt/android/onnxruntime"
-_ORT_CENSUS_MANIFESTS="/usr/local/lib/onnxruntime-cpu/ort-provenance.sha256 /usr/local/lib/onnxruntime-gpu/ort-provenance.sha256"
+_ORT_CENSUS_MANIFESTS="/usr/local/lib/onnxruntime-cpu/ort-provenance.sha256 /usr/local/lib/onnxruntime-gpu/ort-provenance.sha256 /usr/local/lib/onnxruntime-cpu/ort-provenance-cp314t.sha256 /usr/local/lib/onnxruntime-gpu/ort-provenance-cp314t.sha256"
 _ORT_CENSUS_CORES="/usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1 /usr/local/lib/onnxruntime-gpu/lib/libonnxruntime.so.1"
 # Reviewed image exceptions, '<arch>:<path>:<reason>' (check_ort_census); one that stops matching fails.
 _ORT_CENSUS_IMAGE_EXEMPT=()
@@ -122,6 +122,8 @@ _ort_bin_verdict() {  # <sha> <path> <roots> [name|fp|def]
     */site-packages/onnxruntime/capi/* | */dist-packages/onnxruntime/capi/*) return 0 ;;
     # stage_chain_ort_wheels byte-checks every wheel in this store; a non-wheel ORT here still fails.
     /opt/onnxruntime-wheels/*.whl!*) return 0 ;;
+    # repair-wheels.sh --free-threaded proves every twin in this store against the cp314t manifest.
+    /opt/wheels-cp314t/onnxruntime*.whl!*) return 0 ;;
   esac
   _ort_under "${2%%!*}" "${_ORTC_ALLOW[@]}" || printf 'ELSEWHERE\t%s\ta chain ORT copy outside the chain prefixes and */site-packages/onnxruntime/capi\n' "$2"
   return 0

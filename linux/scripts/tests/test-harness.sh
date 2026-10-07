@@ -97,6 +97,17 @@ t_posix_python() { python3 -c 'import os, sys; sys.exit(os.sep != "/")'; }
 # t_is_elf <file>: true when the file starts with the ELF magic; Git Bash's own binaries are PE.
 t_is_elf() { [ "$(head -c 4 "$1" 2>/dev/null | tail -c 3)" = ELF ]; }
 
+# t_zip <archive> <member>...: a zip of empty members, the wheel fixture the wheel gates read by name and member list.
+t_zip() {
+  mkdir -p "$(dirname "$1")"
+  python3 - "$@" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w") as z:
+    for member in sys.argv[2:]:
+        z.writestr(member, b"")
+PY
+}
+
 # t_fake_elf <path> <e_machine>: a 64-byte ELF header, all any gate here reads of a binary.
 t_fake_elf() {
   python3 -c 'import sys
