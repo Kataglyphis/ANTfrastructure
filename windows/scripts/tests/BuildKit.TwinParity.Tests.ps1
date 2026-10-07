@@ -43,7 +43,7 @@ BeforeAll {
     # Each media-core stage declares exactly its component's keys, so one bump never re-runs the ONNX build.
     $script:coreComponentKeys = @{
         'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION')
-        'media-core-built-ffmpeg' = @('FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF',
+        'media-core-built-ffmpeg' = @('FFMPEG_VERSION', 'PYAV_VERSION', 'PY_CYTHON_VERSION', 'NV_CODEC_HEADERS_REF',
                                       'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
                                       'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT',
                                       'X265_VERSION', 'X265_SHA256')
@@ -131,7 +131,7 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
         # A forwarded key no stage declares is silently dropped, so the union is checked against the driver's own map.
         $table = @{}
         foreach ($k in @('ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_VERSION',
-                         'FFMPEG_VERSION', 'PYAV_VERSION', 'QNN_SDK_ZIP_SHA256',
+                         'FFMPEG_VERSION', 'PYAV_VERSION', 'PY_CYTHON_VERSION', 'QNN_SDK_ZIP_SHA256',
                          'NV_CODEC_HEADERS_REF', 'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
                          'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT', 'X265_VERSION', 'X265_SHA256',
                          'CUDA_ARCHITECTURES', 'PYTHON_VERSION')) { $table[$k] = 'fixture' }

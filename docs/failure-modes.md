@@ -96,6 +96,7 @@ Two neighbours, so you land on the right page:
 - [Finalize dies `unknown stream ID 9` on a Windows Update `.msu`](#finalize-dies-unknown-stream-id-9-on-a-windows-update-msu)
 - [`exporting layers` prints nothing for 20+ minutes](#exporting-layers-prints-nothing-for-20-minutes)
 - [A stage fails instantly with `exit code: 1` and zero container output](#a-stage-fails-instantly-with-exit-code-1-and-zero-container-output)
+- [A Python module imports nowhere though its distribution is installed](#a-python-module-imports-nowhere-though-its-distribution-is-installed)
 
 **Windows: container networking**
 
@@ -1484,6 +1485,14 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 **Cause.** **Two solves racing on the same freshly-invalidated ancestor stage.** Measured 2026-08-07: a second `Build-Buildkit.ps1` was started while the main chain ran, right after a change to the `common` stage invalidated it for BOTH. Each solve tried to build the same new snapshot chain; one died before its process ever started, hence no output. NOT a script bug — a probe running the identical mounts, module import and `Initialize-SourceBuildScript` against the same base passed cleanly.
 
 **Fix.** Do not run a second solve that shares an ancestor stage you just invalidated. `-ConcurrentAux` is safe because its two branches sit on an ALREADY-BUILT common ancestor. Wait for the running chain, then start the second build. If you must parallelise, first build the shared ancestor once on its own.
+
+### A Python module imports nowhere though its distribution is installed
+
+**Symptom.** In the `:winamd64` and `:winarm64` images of 2026-10-04, `C:\temp\cpython\PCbuild\amd64\python.exe -c "import Cython"` fails with `ModuleNotFoundError: No module named 'Cython.Shadow'`, while `pip list` shows Cython 3.3.0. `Cython\` holds `shadow.py`, `utils.py` and `stringiotree.py` where `cython-3.3.0.dist-info\record` names `Shadow.py`, `Utils.py` and `StringIOTree.py`. A `pip install --force-reinstall cython` in a container then leaves a lowercase `cython\` directory, and the import still fails.
+
+**Cause.** **A Windows container layer that replaces a file a lower layer holds stores the name lowercased** ([invariant](windows-build-invariants.md#a-layer-that-replaces-a-lower-layers-file-stores-its-name-lowercased)), and the media fan-in replaced thousands. It COPYed media-core's whole site-packages and then media-tvm's. Both branches install the same Cython, numpy, pip, setuptools, wheel and packaging into the toolchain's CPython, so the second COPY lowercased every file of those six distributions, 451 RECORD entries, and the first COPY the toolchain's `README.txt`. Distributions only one branch carries (av, onnxruntime, tvm, iree) kept their names, and so did meson, which `built` installs later. Measured 2026-10-07 on the local stage images: `bk-windows-media-core` and `bk-windows-media-tvm` each import `Cython.Shadow`, and `bk-windows-media` is the first image that cannot. NTFS opens either spelling, so pip, `importlib.metadata` and every DLL load still work. CPython's import compares the directory listing exactly, and Cython is the one distribution of the six with CamelCase module files. The force-reinstall hits the same trap: pip moves the old `Cython\` away and creates it again in the same layer.
+
+**Fix.** Since 2026-10-07 the fan-in merges both trees in one `RUN` from bind mounts, never by `COPY` (`Merge-SitePackageTree` in `WindowsSitePackages.Common.psm1`). robocopy overwrites in place, so names survive. The merge stops when the branches carry one distribution at two versions, or when any RECORD entry is spelled otherwise on disk afterwards. Both branches install `cython==PY_CYTHON_VERSION`. The smoke gate's section 2 imports `Cython.Shadow` and runs the same RECORD check over the base interpreter. In an image built before the fix, `pip uninstall -y cython` in one `RUN` and `pip install cython==3.3.0` in the next restores it: a delete and a create in different layers keep the name. A venv never had the fault, since its files are new.
 
 ---
 

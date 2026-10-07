@@ -38,6 +38,8 @@ function New-WbtFakeMediaVersionTable {
         LITERT_LM_DXC_ZIP_SHA256            = 'lmdxc-18'
         # The rocm lane's IREE device-bitcode pin (media-tvm only, never the merge).
         IREE_ROCM_DEVICE_BC_SHA256          = 'ireebc-19'
+        # The one Cython both branches install into the host CPython (CON80).
+        PY_CYTHON_VERSION                   = 'cy-26'
     }
     foreach ($k in $script:WbtCodecPins.Keys) { $table[$k] = $script:WbtCodecPins[$k] }
     return $table
@@ -56,6 +58,7 @@ Describe 'Get-MediaBranchVersionArg' {
                     OPENCV_VERSION            = 'cv-3'
                     FFMPEG_VERSION            = 'ff-4'
                     PYAV_VERSION              = 'av-5'
+                    PY_CYTHON_VERSION         = 'cy-26'
                     NV_CODEC_HEADERS_REF      = 'nv-6'
                     CUDA_ARCHITECTURES        = '89-fake'
                     PYTHON_VERSION            = 'py-12'
@@ -83,6 +86,8 @@ Describe 'Get-MediaBranchVersionArg' {
                     # Mounts windows/qnn-sdk, so it needs the same integrity pin as the others.
                     QNN_SDK_ZIP_SHA256 = 'qnnsha-13'
                     IREE_ROCM_DEVICE_BC_SHA256 = 'ireebc-19'
+                    # The same pin as media-core: the fan-in refuses two Cython versions.
+                    PY_CYTHON_VERSION = 'cy-26'
                 }
             }
         )
@@ -133,6 +138,7 @@ Describe 'Get-MediaMergeVersionArg' {
         Assert-False ($merge.Contains('CUDA_ARCHITECTURES')) 'CUDA_ARCHITECTURES is excluded from the merge env'
         Assert-False ($merge.Contains('AMF_HEADERS_VERSION')) 'AMF_HEADERS_VERSION is excluded from the merge env'
         Assert-False ($merge.Contains('AMF_HEADERS_SHA256')) 'AMF_HEADERS_SHA256 is excluded from the merge env'
+        Assert-False ($merge.Contains('PY_CYTHON_VERSION')) 'PY_CYTHON_VERSION is a branch pin; the merge installs no Cython'
         foreach ($k in $script:WbtCodecPins.Keys) {
             Assert-False ($merge.Contains($k)) "$k is excluded from the merge env"
         }

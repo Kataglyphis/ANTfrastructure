@@ -103,8 +103,6 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 COPY --from=media-core C:\runtime C:\runtime
 # The CUDA-built libs link cudnn/cudart, which live outside C:\runtime; without this they fail to load with Win32 126.
 COPY --from=cuda-runtime-stage C:\cuda-rt C:\runtime\cuda-runtime\bin
-# Host CPython bindings; the cross lane's aarch64 ones live in C:\runtime\python and C:\runtime\wheels.
-COPY --from=media-core C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
 COPY --from=media-litert C:\runtime\lib\litert C:\runtime\lib\litert
 COPY --from=media-litert C:\runtime\lib\litert-lm C:\runtime\lib\litert-lm
 COPY --from=media-tvm C:\runtime\lib\tvm C:\runtime\lib\tvm
@@ -114,8 +112,12 @@ COPY --from=media-tvm C:\runtime\iree C:\runtime\iree
 COPY --from=media-tvm C:\runtime\wheels C:\runtime\wheels
 # The cp314t twins' store, apart so no GIL install sees one; media-tvm creates it on every lane (docs/windows-builds.md#the-free-threaded-wheels).
 COPY --from=media-tvm C:\runtime\wheels-cp314t C:\runtime\wheels-cp314t
-# Makes `import tvm` work in this image's CPython.
-COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
+# Host CPython bindings merged in place: a COPY over a lower layer's file stores it lowercased, which hid Cython.Shadow (CON80).
+RUN --mount=type=bind,from=media-core,source=/temp/cpython/Lib/site-packages,target=C:\bkmnt\site-packages\media-core `
+    --mount=type=bind,from=media-tvm,source=/temp/cpython/Lib/site-packages,target=C:\bkmnt\site-packages\media-tvm `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSitePackages.Common.psm1,target=C:\bkmnt\modules\WindowsSitePackages.Common.psm1 `
+    Import-Module 'C:\bkmnt\modules\WindowsSitePackages.Common.psm1'; `
+    Merge-SitePackageTree -Source 'C:\bkmnt\site-packages\media-core', 'C:\bkmnt\site-packages\media-tvm' -Destination 'C:\temp\cpython\Lib\site-packages'
 
 # PKG_CONFIG_PATH lets GStreamer auto-detect FFmpeg (gst-libav) and OpenCV.
 ENV PATH=C:\runtime\cuda-runtime\bin;$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\bin;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\bin;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$HAILO_BIN;$PATH `

@@ -6,6 +6,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — Windows: the media fan-in merges site-packages in place (CON80)
+
+- **`import Cython` failed in `:winamd64` and `:winarm64` (2026-10-04): `Cython\shadow.py`, while its RECORD
+  names `Shadow.py`.** A Windows container layer that replaces a file a lower layer holds stores the new name
+  lowercased, and BuildKit's `COPY` replaces every file it overwrites. The fan-in COPYed media-core's and then
+  media-tvm's site-packages; both carry Cython, numpy, pip, setuptools, wheel and packaging, so the second COPY
+  lowercased all 451 of their RECORD entries. NTFS opens either spelling, CPython's import does not, and Cython
+  is the one with CamelCase modules (docs/windows-build-invariants.md, docs/failure-modes.md).
+- **The two COPYs are one `RUN`**: both branch trees bind-mounted, merged by `Merge-SitePackageTree`
+  (`WindowsSitePackages.Common.psm1`) with robocopy, which overwrites in place. It refuses a distribution at
+  two versions and any RECORD entry spelled otherwise on disk afterwards.
+- **Both branches install `cython==PY_CYTHON_VERSION`**, forwarded as a build-arg to `media-core-built-ffmpeg`
+  and `media-tvm-env`.
+- **Smoke section 2** imports `Cython.Shadow` at the pin and checks every base-interpreter RECORD against the
+  disk, case-sensitively; section floor 6 -> 8.
+- Proved by a replay of the fan-in on the local stage images: 451 mismatches and the ModuleNotFoundError before,
+  0 over 31 distributions and a working import after (9.9 s). Tests: `SitePackages.Merge.Tests.ps1` (10).
+
 ## 2026-10-07 — Linux: proved cp314t twins of the media wheels whose code declares free-threading
 
 - **Every wheel the media stage builds natively for a package whose own code declares free-threading also ships
