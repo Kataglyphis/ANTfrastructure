@@ -54,7 +54,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Node.js-2c735d35",
       "name": "Node.js",
-      "versionInfo": "26.9.0",
+      "versionInfo": "26.11.0",
       "downloadLocation": "https://nodejs.org/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -80,7 +80,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Vulkan-SDK-8a2ee2bf",
       "name": "Vulkan SDK",
-      "versionInfo": "1.4.357.0",
+      "versionInfo": "1.4.363.0",
       "downloadLocation": "https://vulkan.lunarg.com/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -275,7 +275,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-VVdeC-VVC-H.266-decoder-2ba0edbd",
       "name": "VVdeC (VVC/H.266 decoder)",
-      "versionInfo": "v3.2.0",
+      "versionInfo": "v3.2.1",
       "downloadLocation": "https://github.com/fraunhoferhhi/vvdec",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -743,7 +743,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Chrome-for-Testing-amd64-arm64-cbacc559",
       "name": "Chrome for Testing (amd64, arm64)",
-      "versionInfo": "154.0.8037.92",
+      "versionInfo": "155.0.8059.39",
       "downloadLocation": "https://googlechromelabs.github.io/chrome-for-testing/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -756,7 +756,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-chromedriver-amd64-arm64-25d99c2d",
       "name": "chromedriver (amd64, arm64)",
-      "versionInfo": "154.0.8037.92",
+      "versionInfo": "155.0.8059.39",
       "downloadLocation": "https://googlechromelabs.github.io/chrome-for-testing/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1003,7 +1003,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Vulkan-SDK-adb42f39",
       "name": "Vulkan SDK",
-      "versionInfo": "1.4.357.0",
+      "versionInfo": "1.4.363.0",
       "downloadLocation": "https://vulkan.lunarg.com/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1107,7 +1107,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Khronos-Vulkan-loader-LunarG-VulkanRT-Componen-c2f065fc",
       "name": "Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\\vulkan-loader, on PATH in the default and nvidia images; the arm64 bundle's copy and licence in C:\\runtime\\lavapipe)",
-      "versionInfo": "1.4.357.0",
+      "versionInfo": "1.4.363.0",
       "downloadLocation": "https://vulkan.lunarg.com/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1315,7 +1315,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Vulkan-SDK-headers-glslc-FFmpeg---enable-vulka-3990d53f",
       "name": "Vulkan SDK headers + glslc (FFmpeg --enable-vulkan; rocm variant only)",
-      "versionInfo": "1.4.357.0",
+      "versionInfo": "1.4.363.0",
       "downloadLocation": "https://vulkan.lunarg.com/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1393,7 +1393,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-HIP-ggml-hip.dll-built-from-the-pinn-eeb95eb7",
       "name": "llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip)",
-      "versionInfo": "11472",
+      "versionInfo": "11476",
       "downloadLocation": "https://github.com/ggml-org/llama.cpp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1406,7 +1406,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-Vulkan-rel-968cbee2",
       "name": "llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools)",
-      "versionInfo": "11472",
+      "versionInfo": "11476",
       "downloadLocation": "https://github.com/ggml-org/llama.cpp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",

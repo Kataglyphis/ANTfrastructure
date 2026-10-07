@@ -358,6 +358,8 @@ for m in ("ok", "other", "boom"):
     mode["sums"] = m
     print(m, bv.spec_vulkan("1.4.357.0")[1]["VULKAN_RT_WINDOWS_ZIP_SHA256"])
 print("sums-url", [u for u in fetched if "/sdk/sha/" in u][0])
+print("arm64-sums-url", [u for u in fetched if "/sdk/sha/" in u and "ARM64" in u][0])
+print("arm64-key", sorted(bv.spec_vulkan("1.4.357.0")[1]))
 PY
 )"
 t_assert_contains "${_out}" "report ('1.4.400.0', {})" "a report run downloads and hashes nothing"
@@ -366,6 +368,9 @@ t_assert_contains "${_out}" "other $(printf 'f%.0s' {1..64})" "a digest file tha
 t_assert_contains "${_out}" "boom $(printf 'f%.0s' {1..64})" "an unreachable digest file falls back to hashing the zip"
 t_assert_contains "${_out}" "sums-url https://sdk.lunarg.com/sdk/sha/1.4.400.0/windows/VulkanRT-X64-1.4.400.0-Components.zip.txt" \
   "the digest comes from LunarG's sha endpoint for exactly that file"
+t_assert_contains "${_out}" "arm64-sums-url https://sdk.lunarg.com/sdk/sha/1.4.400.0/warm/VulkanRT-ARM64-1.4.400.0-Components.zip.txt" \
+  "the arm64 zip's digest comes from its warm/ path, not windows/"
+t_assert_contains "${_out}" "'VULKAN_RT_WINDOWS_ARM64_ZIP_SHA256'" "the arm64 loader zip's SHA moves with VULKAN_VERSION too"
 
 t_case "spec_ort_webgpu_dxc: DXC's latest release, its one dxc_<date>.zip, and that zip's SHA move together (offline)"
 _out="$(_bv_offline <<'PY'

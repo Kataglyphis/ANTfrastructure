@@ -25,8 +25,8 @@ $dav1dVersion = Get-SourceBuildVersion -EnvironmentVariables @('DAV1D_VERSION') 
 $dav1dSha256 = Get-SourceBuildVersion -EnvironmentVariables @('DAV1D_SHA256') -DefaultValue '8d407dd5fe7986413c937b14e67f36aebd06e1fa5cfec679d10e548476f2d5f8'
 $x264Branch = Get-SourceBuildVersion -EnvironmentVariables @('X264_MESON_BRANCH') -DefaultValue '164.3108-meson'
 $x264Commit = Get-SourceBuildVersion -EnvironmentVariables @('X264_MESON_COMMIT') -DefaultValue 'ecc833a37945073a779b42b1a9f20c4454a62fbb'
-$x265Version = Get-SourceBuildVersion -EnvironmentVariables @('X265_VERSION') -DefaultValue '4.1'
-$x265Sha256 = Get-SourceBuildVersion -EnvironmentVariables @('X265_SHA256') -DefaultValue 'a31699c6a89806b74b0151e5e6a7df65de4b49050482fe5ebf8a4379d7af8f29'
+$x265Version = Get-SourceBuildVersion -EnvironmentVariables @('X265_VERSION') -DefaultValue '4.2'
+$x265Sha256 = Get-SourceBuildVersion -EnvironmentVariables @('X265_SHA256') -DefaultValue '40b1ea0453e0309f0eba934e0ddf533f8f6295966679e8894e8f1c1c8d5e1210'
 
 Reset-SourceBuildDirectory -Path $WorkDir
 Reset-SourceBuildDirectory -Path $Prefix
@@ -110,15 +110,10 @@ Copy-CodecStaticLib -From 'libx264.a' -PcName 'x264.pc'
 # ── x265: HEVC encode (CMake; x86 asm through nasm) ───────────────────────────
 $x265Root = Get-CodecTarball -Name "x265 $x265Version" -Sha256 $x265Sha256 `
     -Url "https://bitbucket.org/multicoreware/x265_git/downloads/x265_$x265Version.tar.gz"
-# x265 4.1 sets CMP0025/CMP0054 to OLD, which CMake 4 refuses; a bump that rewrites those lines fails here loudly.
+# CMake 4 refuses a policy set OLD. 4.1 set CMP0025/CMP0054 OLD and was patched here; 4.2 dropped both lines.
 $x265Cml = Join-Path $x265Root 'source\CMakeLists.txt'
-$x265Text = [System.IO.File]::ReadAllText($x265Cml)
-foreach ($policy in 'CMP0025', 'CMP0054') {
-    $old = "cmake_policy(SET $policy OLD)"
-    if (-not $x265Text.Contains($old)) { throw "x265 $x265Version CMakeLists.txt no longer says '$old': re-check the CMake 4 policy patch" }
-    $x265Text = $x265Text.Replace($old, "cmake_policy(SET $policy NEW)")
-}
-[System.IO.File]::WriteAllText($x265Cml, $x265Text)
+$x265Old = @(Select-String -LiteralPath $x265Cml -Pattern 'cmake_policy\s*\(\s*SET\s+CMP\d+\s+OLD\s*\)' | ForEach-Object { $_.Line.Trim() })
+if ($x265Old.Count -gt 0) { throw "x265 $x265Version CMakeLists.txt sets a policy OLD, which CMake 4 refuses: $($x265Old -join '; ')" }
 $x265Build = Join-Path $WorkDir 'x265-build'
 Invoke-CmakeConfigure -SourceDir (Join-Path $x265Root 'source') -BuildDir $x265Build -InstallPrefix $Prefix -Generator 'Ninja' `
     -ExtraArgs (@('-DENABLE_SHARED=OFF', '-DENABLE_CLI=OFF', '-DENABLE_ASSEMBLY=ON', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',

@@ -4,9 +4,9 @@ description: "Shared install deps logic used by consumer-repo workflow jobs"
 inputs:
   vulkan-version:
     # A composite action cannot read versions.env, so nothing updates this literal after a VULKAN_VERSION bump.
-    description: 'Vulkan SDK version (e.g. 1.4.357.0); pass explicitly to avoid relying on this default'
+    description: 'Vulkan SDK version (e.g. 1.4.363.0); pass explicitly to avoid relying on this default'
     required: false
-    default: '1.4.357.0'
+    default: '1.4.363.0'
   require-rust:
     description: >-
       If "true" (default), fail when no rustc is available after setup.

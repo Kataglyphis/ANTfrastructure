@@ -180,11 +180,22 @@ were left to each consumer run. All seven are installed now:
 | `org.freedesktop.Platform.Locale//<ver>` | `FLATPAK_RUNTIME_VERSION` |
 | `org.freedesktop.Sdk.Locale//<ver>` | `FLATPAK_RUNTIME_VERSION` |
 | `org.freedesktop.Platform.GL.default//<ver>` | `FLATPAK_RUNTIME_VERSION` |
-| `org.freedesktop.Platform.GL.default//<ver>extra` | `FLATPAK_RUNTIME_VERSION` |
-| `org.freedesktop.Platform.openh264//<ver>` | `FLATPAK_OPENH264_VERSION` |
+| `org.freedesktop.Platform.GL.default//<ver>-extra` | `FLATPAK_RUNTIME_VERSION` |
+| `org.freedesktop.Platform.codecs-extra//<ver>-extra` | `FLATPAK_RUNTIME_VERSION` |
 
 `GL.default` appears twice on purpose: the base branch and its `extra` sibling are
 two separate refs, and a build that resolves one still fetches the other.
+
+The runtime is **26.08** since 2026-10-07. freedesktop-sdk 25.08 changed two names,
+both read from flathub's own listing and `Platform//26.08`'s metadata that day:
+the extra branches are spelled `<ver>-extra` (24.08 said `24.08extra`), and the
+`openh264` extension is gone. `Platform//26.08` declares `codecs-extra//<ver>-extra`
+instead, which ships FFmpeg, x264 (with its GStreamer plugin), x265 and libde265 and
+no openh264, so `FLATPAK_OPENH264_VERSION` went with it. A consumer flatpak that
+loaded the runtime's openh264 must bring its own H.264 codec or use x264.
+`flatpak install Platform//26.08` pulls `GL.default` (both branches), `Locale` and
+`codecs-extra` as related refs; the seven-ref list names them so that a failure
+says which one.
 
 `INSTALL_FLATPAK_RUNTIMES` defaults to **true** since 2026-09-05. Flathub builds
 these for `x86_64` and `aarch64` only, so on any other architecture the install is a

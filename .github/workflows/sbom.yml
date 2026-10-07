@@ -68,7 +68,7 @@ jobs:
         run: bash linux/scripts/scan-image-sbom.sh "${{ matrix.platform }}" "${{ inputs.image }}"
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-${{ strategy.job-index }}
           path: out/sbom/
@@ -95,7 +95,7 @@ jobs:
         run: python3 docs/scripts/generate_sbom.py --check
 
       - name: Upload curated SBOM
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-curated
           path: docs/deps/sbom-curated.spdx.json

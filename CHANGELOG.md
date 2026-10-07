@@ -6,6 +6,26 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — Pins: Renovate's hub report (Vulkan SDK 1.4.363.0, flatpak 26.08, llama.cpp b11476, Node 26.11.0, …)
+
+- **Owner rule (2026-10-07): every update Renovate reports is taken, majors and runtime branches included.**
+- **Vulkan SDK 1.4.357.0 → 1.4.363.0** (LunarG's latest on linux, windows and warm alike). `VULKAN_SDK_SHA256`,
+  `VULKAN_RT_WINDOWS_ZIP_SHA256` and `VULKAN_RT_WINDOWS_ARM64_ZIP_SHA256` re-measured by full download, each equal to
+  LunarG's `sdk/sha/` digest; every Dockerfile ARG and install-deps' default follow. The SDK's slang carries PR #12305,
+  so the riscv64 slang patch, its `_vulkan_patch_component` arm and its `Dockerfile.sdk` COPY are retired.
+  `spec_vulkan` now refreshes the warm/ ARM64 loader zip too.
+- **Flatpak runtime 24.08 → 26.08.** Since 25.08 the GL sibling branch is `<ver>-extra` and the codecs ride
+  `codecs-extra//<ver>-extra` (FFmpeg, x264, x265, libde265); the openh264 ref and `FLATPAK_OPENH264_VERSION` are gone
+  (2.6.0 was never on flathub, so the old install had been failing with only a warning). `packaging-deps.sh` installed
+  7/7 refs in `:latest`; Platform//26.08 carries glibc 2.44, and a minimal flatpak-builder build ran on it.
+- **llama.cpp b11472 → b11476** with the whole `LLAMA_CPP_*` set (commit, source archive, CPU and Vulkan zips at
+  GitHub's digests). **Node 26.9.0 → 26.11.0**, **x265 4.1 → 4.2** (`Build-FfmpegCodecs.ps1` now refuses any OLD CMake
+  policy; 4.2 dropped the two it patched), **vvdec v3.2.1**, **binaryen version_133**, **Chrome for Testing
+  155.0.8059.39**, **Renovate 44.144.1** (engines.node still `^24.11.0`), **upload-artifact v7.0.2 /
+  download-artifact v8.0.2**. Every SHA256 by full download, checked against a second source; Node, pandoc, wasm-opt,
+  Chrome for Testing and the SDK tools ran from the measured bytes in `:latest`.
+- Held: protobuf 36.2 (slaved to LiteRT-LM 0.18.0's v36.1, still its newest release).
+
 ## 2026-10-07 — One cp314t twin table for both lanes; Linux 3.14t venvs take the chain ORT twin (CON79 4, 1c)
 
 - **The twin verdicts live in one file both lanes read**, `linux/scripts/03-media/free-threaded-twins.txt`

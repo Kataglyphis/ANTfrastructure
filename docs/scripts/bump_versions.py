@@ -615,23 +615,25 @@ def spec_vulkan(cur):
             f" -- pinning the oldest ({v}), since VULKAN_VERSION feeds both lanes"
         )
     extras = {}
-    # LunarG publishes no linux digest, so stream-hash the tarball.
+    # Stream-hash the tarball; LunarG's sdk/sha/<v>/linux/<tarball>.txt is the second source to compare by hand.
     if v != cur and WRITE_MODE:
         url = f"https://sdk.lunarg.com/sdk/download/{v}/linux/vulkansdk-linux-x86_64-{v}.tar.xz"
         extras["VULKAN_SDK_SHA256"] = sha256_of_url(url)
         extras["VULKAN_RT_WINDOWS_ZIP_SHA256"] = vulkan_rt_windows_zip_sha256(v)
+        extras["VULKAN_RT_WINDOWS_ARM64_ZIP_SHA256"] = vulkan_rt_windows_zip_sha256(v, arch="ARM64")
     return v, extras
 
 
-def vulkan_rt_windows_zip_sha256(v):
-    """The rocm lane's Windows loader zip (Dockerfile.rocm): LunarG's published digest, else a stream-hash."""
-    name = f"VulkanRT-X64-{v}-Components.zip"
+def vulkan_rt_windows_zip_sha256(v, arch="X64"):
+    """A Windows loader zip (x64 under windows/, ARM64 under warm/): LunarG's published digest, else a stream-hash."""
+    platform = "windows" if arch == "X64" else "warm"
+    name = f"VulkanRT-{arch}-{v}-Components.zip"
     try:
-        text = http_text(f"https://sdk.lunarg.com/sdk/sha/{v}/windows/{name}.txt")
+        text = http_text(f"https://sdk.lunarg.com/sdk/sha/{v}/{platform}/{name}.txt")
     except Exception:  # noqa: BLE001 — fall back to hashing the zip itself
         text = ""
     m = re.search(rf"^([0-9a-fA-F]{{64}})\s+{re.escape(name)}\s*$", text, re.M)
-    return m.group(1).lower() if m else sha256_of_url(f"https://sdk.lunarg.com/sdk/download/{v}/windows/{name}")
+    return m.group(1).lower() if m else sha256_of_url(f"https://sdk.lunarg.com/sdk/download/{v}/{platform}/{name}")
 
 
 def spec_abseil(cur):
@@ -824,7 +826,7 @@ MANUAL = [
     "JRE_VERSION", "LIBFFI_MESON_VERSION",
     # Deliberate pins and non-versions
     "PY_SETUPTOOLS_LT82_VERSION",  # deliberate <82 compat pin — pairs with PY_SETUPTOOLS_VERSION
-    "FLATPAK_RUNTIME_VERSION",     # freedesktop runtime BRANCH (24.08), not a package version
+    "FLATPAK_RUNTIME_VERSION",     # freedesktop runtime BRANCH (26.08), not a package version
     # No feed at all: per-arch overrides, a version embedded in a patch, the SQLITE3_WASM tag-shape exception.
     "CMAKE_VERSION_RISCV64", "NODE_VERSION_RISCV64",
     "CMAKE_POLICY_VERSION_MINIMUM",
