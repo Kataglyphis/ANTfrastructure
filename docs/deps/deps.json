@@ -1015,7 +1015,7 @@
               "spdx": "Apache-2.0 AND BSD-3-Clause"
             },
             {
-              "name": "Dawn WebGPU (prebuilt libwebgpu_dawn.dll)",
+              "name": "Dawn WebGPU (prebuilt webgpu_dawn.dll)",
               "var": null,
               "version_fixed": "as prebuilt in LiteRT-LM (sha256-pinned)",
               "url": "https://dawn.googlesource.com/dawn",

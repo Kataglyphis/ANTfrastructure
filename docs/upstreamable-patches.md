@@ -173,7 +173,7 @@ and check the files for any *other* removed member the pair did not cover.
 
 `linux/scripts/patches/onnxruntime-genai/001-riscv64-target-platform.patch` ·
 applied by `03-media/build/onnxruntime/build/60-build-genai.sh` ·
-applies to **v0.15.2**.
+applies to **v0.17.0**.
 
 Two lines in `cmake/target_platform.cmake`: add a
 `CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*"` arm that sets
@@ -542,7 +542,7 @@ unconditionally. Happy to send a patch for either part.
 ## 14. torchvision: `setup.py` cannot be pointed at a staged torch
 
 `linux/scripts/patches/torchvision/001-torch-staging-paths.patch` ·
-applied by `05-frameworks/torch/build-app-wheelhouse.sh` · applies to **v0.29.0**.
+applied by `05-frameworks/torch/build-app-wheelhouse.sh` · applies to **v0.29.1**.
 
 Adds a `TORCHVISION_TORCH_STAGING` environment variable that, when set,
 monkey-patches `torch.utils.cpp_extension.include_paths` and `library_paths` to

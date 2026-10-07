@@ -3,7 +3,7 @@
 
 # Safety-net defaults; the orchestrator passes versions.env values via append_version_build_args.
 ARG ONNXRUNTIME_VERSION="v1.30.0"
-ARG ONNXRUNTIME_GENAI_VERSION="v0.15.2"
+ARG ONNXRUNTIME_GENAI_VERSION="v0.17.0"
 ARG LITERT_VERSION="v2.2.0"
 ARG OPENCV_VERSION="5.0.0"
 ARG GSTREAMER_VERSION="1.29.2"
@@ -338,7 +338,7 @@ RUN --mount=type=tmpfs,target=/tmp \
 # TVM stage: best-effort on every arch; both wheels are needed, see docs/linux-cross-builds.md#tvm-cross-wheels-what-must-not-be-simplified-away
 FROM base AS tvm
 
-ARG TVM_REF=v0.26.0
+ARG TVM_REF=v0.27.0
 # tvm.sh reads versions.env itself; this ARG only lets an explicit --build-arg land too.
 ARG TVM_COMMIT=
 # Re-declared: Dockerfile.sdk bakes 0 into ENV, and without an ARG the GPU lane could not pass 1.
@@ -427,7 +427,7 @@ ARG TARGET_ARCH
 # Without these ARGs the source build ignores versions.env and riscv64 cannot follow a pin bump.
 ARG PYTORCH_VERSION=v2.14.0
 ARG TORCHVISION_VERSION=v0.29.0
-ARG IREE_VERSION=v3.11.0
+ARG IREE_VERSION=v3.12.0
 
 # No cargo mount: build-app-wheelhouse.sh never runs cargo, and an inert mount reads as coverage.
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
@@ -549,7 +549,7 @@ RUN --mount=type=tmpfs,target=/tmp \
 FROM ffmpeg AS pyav
 # Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
-ARG PYAV_VERSION=18.1.0
+ARG PYAV_VERSION=19.0.1
 
 ENV PYAV_VERSION=${PYAV_VERSION}
 

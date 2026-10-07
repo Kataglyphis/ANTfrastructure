@@ -200,7 +200,7 @@ Describe 'Build-IreeFromSource: device-bitcode pin' {
     It 'pins the same hash in versions.env, the media-tvm ARG and the driver map, and never in the merge' {
         $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
         Assert-Match '^[0-9a-f]{64}$' $v['IREE_ROCM_DEVICE_BC_SHA256'] 'versions.env pin'
-        if ($v['IREE_VERSION'] -eq 'v3.11.0') { Assert-Equal $script:DeviceBcSha $v['IREE_ROCM_DEVICE_BC_SHA256'] 'the v3.11.0 CMake pin' }
+        if ($v['IREE_VERSION'] -eq 'v3.12.0') { Assert-Equal $script:DeviceBcSha $v['IREE_ROCM_DEVICE_BC_SHA256'] 'the v3.12.0 CMake pin' }
         $df = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\Dockerfile.media-builder')
         $envStage = [regex]::Match($df, '(?s)FROM common AS media-tvm-env\r?\n(.+?)\r?\nFROM ').Groups[1].Value
         Assert-Match "(?m)^ARG IREE_ROCM_DEVICE_BC_SHA256=$($v['IREE_ROCM_DEVICE_BC_SHA256'])\s*$" $envStage 'ARG in media-tvm-env'

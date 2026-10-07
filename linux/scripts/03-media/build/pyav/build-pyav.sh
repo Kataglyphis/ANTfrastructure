@@ -70,7 +70,7 @@ pyav_preflight() {
 pyav_install_build_requirements() {
     if command -v uv >/dev/null 2>&1; then
         UV_PYTHON="${BUILD_PYTHON}" uv pip install --quiet \
-            "setuptools>=77" "cython>=3.1.0,<4" wheel \
+            "setuptools>=78" "cython>=3.3.0,<4" wheel \
             || warn "could not refresh PyAV build requirements; using whatever the base stage installed"
     fi
     "${BUILD_PYTHON}" -c 'import setuptools, Cython, wheel' >/dev/null 2>&1 \

@@ -805,7 +805,7 @@ if ([Environment]::GetEnvironmentVariable('FFMPEG_SOURCE_BUILD', 'Process') -ne 
     Write-Warning 'FFmpeg came from the prebuilt fallback (no headers/import libs) -- skipping the PyAV wheel build.'
     return
 }
-$pyavVersion = Get-SourceBuildVersion -EnvironmentVariables @('PYAV_VERSION') -DefaultValue '18.1.0'
+$pyavVersion = Get-SourceBuildVersion -EnvironmentVariables @('PYAV_VERSION') -DefaultValue '19.0.1'
 Write-Host "=== PyAV $pyavVersion wheel build (against $prefix) ==="
 $py = Get-SourceBuildPython
 Install-CpythonPip -Python $py

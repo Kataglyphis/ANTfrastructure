@@ -23,7 +23,7 @@ function Get-LiteRtLmGpuExport {
     return [ordered]@{
         'libLiteRtWebGpuAccelerator.dll' = 'LiteRtAcceleratorImpl'
         'libLiteRtTopKWebGpuSampler.dll' = 'LiteRtTopKWebGpuSampler_Create'
-        'libwebgpu_dawn.dll'             = 'wgpuCreateInstance'
+        'webgpu_dawn.dll'                = 'wgpuCreateInstance'
         'dxcompiler.dll'                 = 'DxcCreateInstance'
         'dxil.dll'                       = 'DxcCreateInstance'
     }

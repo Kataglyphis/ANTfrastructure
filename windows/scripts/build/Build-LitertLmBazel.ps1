@@ -17,7 +17,7 @@ Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
 if ([string]::IsNullOrWhiteSpace($LitertLmVersion)) {
-    $LitertLmVersion = if ($env:LITERT_LM_VERSION) { $env:LITERT_LM_VERSION } else { '0.17.1' }
+    $LitertLmVersion = if ($env:LITERT_LM_VERSION) { $env:LITERT_LM_VERSION } else { '0.18.0' }
 }
 $tag = if ($LitertLmVersion -match '^v') { $LitertLmVersion } else { "v$LitertLmVersion" }
 
@@ -104,7 +104,7 @@ function Get-LitertLmGpuPayload {
     return @(
         @{ Source = Join-Path $PrebuiltDir 'libLiteRtWebGpuAccelerator.dll'; Dir = 'bin'; PinKey = 'LITERT_LM_WEBGPU_ACCELERATOR_SHA256' }
         @{ Source = Join-Path $PrebuiltDir 'libLiteRtTopKWebGpuSampler.dll'; Dir = 'bin'; PinKey = 'LITERT_LM_WEBGPU_SAMPLER_SHA256' }
-        @{ Source = Join-Path $PrebuiltDir 'libwebgpu_dawn.dll'; Dir = 'bin'; PinKey = 'LITERT_LM_WEBGPU_DAWN_SHA256' }
+        @{ Source = Join-Path $PrebuiltDir 'webgpu_dawn.dll'; Dir = 'bin'; PinKey = 'LITERT_LM_WEBGPU_DAWN_SHA256' }
         @{ Source = Join-Path $DxcDir 'bin\x64\dxcompiler.dll'; Dir = 'bin'; PinKey = '' }
         @{ Source = Join-Path $DxcDir 'bin\x64\dxil.dll'; Dir = 'bin'; PinKey = '' }
         @{ Source = Join-Path $DxcDir 'LICENSE-MS.txt'; Dir = $dxcLicenses; PinKey = '' }

@@ -179,7 +179,7 @@ fi
 # riscv64 OpenCV's vendored libpng fails its RVV probe; a PIC static one links into imgcodecs with no extra runtime .so.
 if is_cross && [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
     _png_triplet="$(cross_target_triplet 2>/dev/null || true)"
-    _png_ver="${LIBPNG_VERSION:-1.6.58}"
+    _png_ver="${LIBPNG_VERSION:-1.6.59}"
     if [ -n "${_png_triplet}" ]; then
         # git+ leads: curl to codeload/sourceforge fails inside the buildkit RUN where git clone works.
         cross_compile_cmake_lib_from_source libpng \

@@ -26,7 +26,7 @@ $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $
 $genaiTargetArch = Get-WindowsTargetArch
 $genaiCross      = Test-WindowsCrossTarget -Arch $genaiTargetArch
 
-$OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.15.2' -StripVPrefix
+$OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.17.0' -StripVPrefix
 
 Write-Host "=== ONNX Runtime GenAI source build (v$OnnxGenAiVersion, Ninja+clang-cl) ==="
 Write-Host "SourceDir: $SourceDir"
@@ -356,9 +356,9 @@ if ($genaiHdrs.Count -eq 0 -or $genaiDlls.Count -eq 0 -or $genaiLibs.Count -eq 0
 # genai loads D3D12Core.dll from its own dir; an unpinned -Recurse finds arm64's first and breaks DML on x64.
 $d3d12ArchDir = (Get-WindowsRuntimeIdentifier) -replace '^win-', ''
 Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
-    -SidecarFilter { $_.FullName -match '_deps' -and $_.Directory.Name -eq $d3d12ArchDir } `
+    -SidecarFilter { $_.FullName -match '\\(_deps|__nuget)\\' -and $_.Directory.Name -eq $d3d12ArchDir } `
     -Destination (Join-Path $genaiInstallDir 'lib') `
-    -Reason 'the DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 FetchContent'
+    -Reason 'the DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 NuGet restore'
 
 # Python wheel from what BUILD_WHEEL=ON assembled, before Remove-SourceBuildTree
 $genaiWheelDir = Join-Path $genaiBuildDir 'wheel'

@@ -340,7 +340,7 @@ patch_tvm_findllvm_dylib_fallback() {
   log "Patched TVM FindLLVM.cmake: link imported LLVM dylib target when components resolve empty"
 }
 
-# No LLVM 23 patch here: versions.env's TVM_COMMIT pins an upstream commit that carries the guards.
+# No LLVM 23 patch here: versions.env's TVM_COMMIT pins v0.27.0, which carries the guards.
 
 main() {
   # Option locals (populated by parse_tvm_args).
