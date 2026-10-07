@@ -368,6 +368,19 @@ Assert-PythonSnippet -Name "Python stdlib extension modules import (ssl/sqlite3/
     -ExpectMatch @('stdlib-ok') `
     -FailMessage "one or more stdlib extension modules failed to import (dep missing at CPython build time?)"
 
+# The 3.14t legs' interpreter, built beside the GIL one; see docs/windows-builds.md § The free-threaded CPython.
+$ftBin = [Environment]::GetEnvironmentVariable('PYTHON_FREETHREADED_BIN')
+$ftExe = Join-Path ($ftBin ?? 'C:\python-freethreaded') "python${pyMajorMinor}t.exe"
+$ftVersion = if ($pyExpected) { $pyExpected } else { $pyMajorMinor }
+Assert-PythonSnippet -Python $ftExe -Name "free-threaded Python $ftVersion runs with the GIL off ($ftExe)" `
+    -Code "import sys, sysconfig, ssl, sqlite3, ctypes; print('ft', sys.version.split()[0], sys._is_gil_enabled(), sysconfig.get_config_var('Py_GIL_DISABLED'))" `
+    -ExpectMatch @("ft $([regex]::Escape($ftVersion))\S* False 1") `
+    -FailMessage "$ftExe is missing, is not $ftVersion, or has the GIL on -- a 3.14t leg would download or test a GIL build"
+Assert-Test -Name "uv finds ${pyMajorMinor}t there and ${pyMajorMinor}+gil in $cpythonDir, downloads off" -Condition {
+    $resolved = foreach ($request in "${pyMajorMinor}t", "${pyMajorMinor}+gil") { "$(& uv python find --no-python-downloads $request 2>&1)|$LASTEXITCODE" }
+    ($resolved -join ';') -ieq "$ftExe|0;$cpythonDir\PCbuild\amd64\python.exe|0"
+} -FailMessage "uv python find resolved a free-threaded or GIL request elsewhere (PYTHON_FREETHREADED_BIN off PATH, or a python.exe in it?)"
+
 Write-TestHeader '3. Rust Toolchain'
 Assert-CommandExists 'cargo'
 Assert-CommandExists 'rustc'
@@ -1262,7 +1275,7 @@ $envPointerNames = @(
     'GIT_CMD', 'GIT_BIN', 'GIT_USRBIN',
     'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB', 'OPENCV_INCLUDE',
     # The merge image declares these for consumers; this check is their only reader.
-    'FFMPEG_ROOT', 'FFMPEG_BIN', 'FFMPEG_LIB', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN', 'TEMP_DIR',
+    'FFMPEG_ROOT', 'FFMPEG_BIN', 'FFMPEG_LIB', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN', 'PYTHON_FREETHREADED_BIN', 'TEMP_DIR',
     'TVM_ROOT', 'TVM_LIBRARY_PATH', 'LITERT_ROOT', 'LITERT_INCLUDE', 'LITERT_LIB', 'LITERT_BIN',
     'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_BIN', 'PYTHON_WHEELS',
     'IREE_ROOT', 'IREE_BIN',
@@ -1288,7 +1301,7 @@ foreach ($envPointer in $envPointerNames) {
 }
 
 # A pointer that exists proves the target is there, not that it is on PATH.
-$pathMembers = @('ONNX_ROOT', 'OPENCV_BIN', 'FFMPEG_BIN', 'GSTREAMER_BIN', 'LITERT_BIN', 'LITERT_LIB', 'TVM_LIBRARY_PATH', 'IREE_BIN', 'PYTHON_BUILD_BIN')
+$pathMembers = @('ONNX_ROOT', 'OPENCV_BIN', 'FFMPEG_BIN', 'GSTREAMER_BIN', 'LITERT_BIN', 'LITERT_LIB', 'TVM_LIBRARY_PATH', 'IREE_BIN', 'PYTHON_BUILD_BIN', 'PYTHON_FREETHREADED_BIN')
 $pathEntries = @($env:PATH -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
 foreach ($pm in $pathMembers) {
     $pmVal = [Environment]::GetEnvironmentVariable($pm)

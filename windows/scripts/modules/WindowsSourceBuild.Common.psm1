@@ -379,17 +379,177 @@ function Copy-CpythonPyConfigHeader {
     }
 }
 
+function Select-CpythonImportLib {
+    # The GIL and free-threaded builds each link only their own pythonXY[t].lib; python3[t].lib is the stable-ABI stub.
+    param(
+        [Parameter(Mandatory)][string]$LibDir,
+        [switch]$FreeThreaded
+    )
+    $pattern = if ($FreeThreaded) { '^python3\d+t\.lib$' } else { '^python3\d+\.lib$' }
+    return Get-ChildItem -LiteralPath $LibDir -Filter 'python3*.lib' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match $pattern } | Sort-Object Name | Select-Object -First 1
+}
+
+function Get-CpythonFreeThreadedRoot {
+    # The image's free-threaded install; PYTHON_FREETHREADED_BIN is the Dockerfile.toolchain-builder ENV that puts it on PATH.
+    if ($env:PYTHON_FREETHREADED_BIN) { return $env:PYTHON_FREETHREADED_BIN }
+    return 'C:\python-freethreaded'
+}
+
+function Get-CpythonFreeThreadedExeName {
+    # PC\layout names the free-threaded entry point python<X.Y>t.exe and ships no python.exe beside it.
+    param([string]$Version = $env:PYTHON_VERSION)
+    if ([string]::IsNullOrWhiteSpace($Version)) { $Version = '3.14' }
+    return 'python{0}t.exe' -f ((@($Version -split '\.') | Select-Object -First 2) -join '.')
+}
+
+function Get-CpythonFreeThreadedBuildDir {
+    # Py_OutDir of the free-threaded build without -Arch; with it, the directory PCbuild writes that arch's binaries to.
+    param(
+        [Parameter(Mandatory)][string]$SourceDir,
+        [string]$Arch = ''
+    )
+    $root = Join-Path $SourceDir 'PCbuild\freethreaded'
+    if ([string]::IsNullOrWhiteSpace($Arch)) { return $root }
+    return Join-Path $root (Get-CpythonOutputDir -Arch $Arch)
+}
+
+function Get-CpythonPcbuildArguments {
+    <#
+    .SYNOPSIS
+        PCbuild\build.bat's arguments, MSBuild properties last; -FreeThreaded adds --disable-gil and its own output and object trees.
+    .DESCRIPTION
+        The free-threaded binaries land outside PCbuild\<arch>, so the GIL tree on PATH never carries a python3.14t.exe whose
+        site-packages it would share.
+    #>
+    [OutputType([string[]])]
+    param(
+        [Parameter(Mandatory)][string]$SourceDir,
+        [string]$Platform = 'x64',
+        [switch]$FreeThreaded,
+        [string[]]$ExtraArguments = @()
+    )
+    $argv = @('-e', '-p', $Platform, '-c', 'Release')
+    if ($FreeThreaded) {
+        # Quoted, or cmd splits /p:Name=Value at the '='; no trailing backslash, which would escape the closing quote.
+        $argv += @('--disable-gil',
+            ('"/p:Py_OutDir={0}"' -f (Get-CpythonFreeThreadedBuildDir -SourceDir $SourceDir)),
+            ('"/p:Py_IntDir={0}"' -f (Join-Path $SourceDir 'PCbuild\obj\freethreaded')))
+    }
+    return @($argv + $ExtraArguments)
+}
+
+function Invoke-CpythonPcbuild {
+    # Through cmd, which keeps the quoted /p: arguments whole; logs the build's wall time.
+    param(
+        [Parameter(Mandatory)][string]$SourceDir,
+        [string]$Platform = 'x64',
+        [switch]$FreeThreaded,
+        [string[]]$ExtraArguments = @()
+    )
+    $buildArgs = Get-CpythonPcbuildArguments -SourceDir $SourceDir -Platform $Platform -FreeThreaded:$FreeThreaded -ExtraArguments $ExtraArguments
+    $kind = if ($FreeThreaded) { 'free-threaded' } else { 'GIL' }
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    & cmd /c "cd /d $SourceDir && PCbuild\build.bat $($buildArgs -join ' ')" | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "CPython build.bat ($kind, -p $Platform) failed (exit $LASTEXITCODE)" }
+    Write-Host ('{0} CPython build (-p {1}): {2:N0}s' -f $kind, $Platform, $clock.Elapsed.TotalSeconds)
+}
+
+function Install-CpythonFreeThreadedLayout {
+    <#
+    .SYNOPSIS
+        Lays the free-threaded build of -SourceDir out as an install at -Destination with CPython's own PC\layout.
+    .DESCRIPTION
+        Its own prefix, so the GIL tree's later site-packages (pip, cp314 wheels, the platform shim) never reaches the
+        free-threaded interpreter. -LayoutPython runs PC\layout, which refuses a source tree of another version than its own.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$Destination,
+        [Parameter(Mandatory)][string]$LayoutPython,
+        [string]$Arch = 'amd64'
+    )
+    $buildDir = Get-CpythonFreeThreadedBuildDir -SourceDir $SourceDir -Arch $Arch
+    $layout = Join-Path $SourceDir 'PC\layout'
+    foreach ($required in @($LayoutPython, (Join-Path $layout 'main.py'), $buildDir)) {
+        if (-not (Test-Path -LiteralPath $required)) { throw "Free-threaded CPython layout: $required is missing" }
+    }
+    # PC\layout copies Lib as it finds it, so a package here would be a GIL-built one inside the free-threaded install.
+    $installed = @(Get-ChildItem -LiteralPath (Join-Path $SourceDir 'Lib\site-packages') -Force -ErrorAction SilentlyContinue |
+            Where-Object Name -ne 'README.txt' | ForEach-Object Name)
+    if ($installed.Count -gt 0) {
+        throw "Free-threaded CPython layout: $SourceDir\Lib\site-packages already holds $($installed -join ', '); lay out before the GIL tree gets packages"
+    }
+    if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
+    & $LayoutPython $layout --source $SourceDir --build $buildDir --temp (Join-Path $SourceDir 'PCbuild\obj\layout-freethreaded') `
+        --copy $Destination --include-freethreaded --include-dev --include-venv --include-stable | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Free-threaded CPython layout: PC\layout exited $LASTEXITCODE" }
+    if (Test-Path -LiteralPath (Join-Path $Destination 'python.exe')) {
+        throw "Free-threaded CPython layout: $Destination\python.exe exists, so a GIL request could resolve to the free-threaded build"
+    }
+    if (-not (Select-CpythonImportLib -LibDir (Join-Path $Destination 'libs') -FreeThreaded)) {
+        throw "Free-threaded CPython layout: no python3XYt.lib in $Destination\libs, so no extension could link against it"
+    }
+    return $Destination
+}
+
+function Assert-CpythonInterpreter {
+    <#
+    .SYNOPSIS
+        Throws unless -Exe starts, imports its stdlib extensions, keeps the -ArchMarker and has the GIL state -FreeThreaded names.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Exe,
+        [switch]$FreeThreaded,
+        [string]$ExpectedVersion = '',
+        [string]$ArchMarker = 'AMD64'
+    )
+    if (-not (Test-Path -LiteralPath $Exe)) { throw "CPython interpreter missing: $Exe" }
+    $kind = if ($FreeThreaded) { 'free-threaded' } else { 'GIL' }
+    # -I keeps PYTHON_GIL and user site-packages out of the answer; single quotes only inside the code.
+    $code = 'import sys, sysconfig, ssl, sqlite3, zlib, ctypes, bz2, lzma, hashlib, socket; ' +
+        "print(sys.version.split()[0], sys._is_gil_enabled(), sysconfig.get_config_var('Py_GIL_DISABLED'), '$ArchMarker' in sys.version)"
+    $out = @(& $Exe -I -c $code 2>&1 | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    if ($LASTEXITCODE -ne 0) { throw "$Exe failed to start or to import its stdlib extensions (exit $LASTEXITCODE): $($out -join ' | ')" }
+    $fields = @("$($out | Select-Object -Last 1)" -split '\s+')
+    if ($fields.Count -ne 4) { throw "$Exe printed '$($out -join ' | ')', not its version, GIL state, Py_GIL_DISABLED and arch marker" }
+    if ($ExpectedVersion -and $fields[0] -ne $ExpectedVersion) { throw "$Exe is CPython $($fields[0]), not the pinned $ExpectedVersion" }
+    # sys._is_gil_enabled() and Py_GIL_DISABLED, as printed.
+    $gilState = $fields[1..2] -join ' '
+    if ($gilState -ne $(if ($FreeThreaded) { 'False 1' } else { 'True 0' })) {
+        throw "$Exe is not a $kind build: sys._is_gil_enabled() and Py_GIL_DISABLED print '$gilState'"
+    }
+    # sysconfig.get_platform() reads the architecture out of sys.version; without it uv and pip resolve win32 wheels.
+    if ($fields[3] -ne 'True') { throw "$Exe's sys.version lost '$ArchMarker': $($out -join ' | ')" }
+    Write-Host "CPython $($fields[0]) ($kind) verified: $Exe"
+}
+
 function Get-SourceBuildPython {
     # Host-pinned because callers execute .Exe; target link inputs come from Get-TargetBuildPython.
     param(
-        [string]$CpythonDir = ''
+        [string]$CpythonDir = '',
+        # The free-threaded install instead of the in-tree GIL build.
+        [switch]$FreeThreaded,
+        [string]$FreeThreadedRoot = ''
     )
+    if ($FreeThreaded) {
+        if ([string]::IsNullOrWhiteSpace($FreeThreadedRoot)) { $FreeThreadedRoot = Get-CpythonFreeThreadedRoot }
+        $ftLibDir = Join-Path $FreeThreadedRoot 'libs'
+        $ftLib = Select-CpythonImportLib -LibDir $ftLibDir -FreeThreaded
+        return @{
+            Exe     = Join-Path $FreeThreadedRoot (Get-CpythonFreeThreadedExeName)
+            Include = Join-Path $FreeThreadedRoot 'include'
+            LibDir  = $ftLibDir
+            Lib     = if ($ftLib) { $ftLib.FullName } else { Join-Path $ftLibDir 'python3t.lib' }
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
     $hostOutDir = Get-CpythonOutputDir -Arch (Get-WindowsHostArch)
     $exe = Join-Path $CpythonDir "PCbuild\$hostOutDir\python.exe"
     $include = Join-Path $CpythonDir 'Include'
     $libDir = Join-Path $CpythonDir "PCbuild\$hostOutDir"
-    $lib = if (Test-Path (Join-Path $libDir 'python314.lib')) { Join-Path $libDir 'python314.lib' } else { Join-Path $libDir 'python3.lib' }
+    $gilLib = Select-CpythonImportLib -LibDir $libDir
+    $lib = if ($gilLib) { $gilLib.FullName } else { Join-Path $libDir 'python3.lib' }
     return @{ Exe = $exe; Include = $include; LibDir = $libDir; Lib = $lib }
 }
 
@@ -405,8 +565,7 @@ function Get-TargetBuildPython {
                   Available = (Test-Path $hostPy.Lib) }
     }
     $tgtOutDir = Join-Path $CpythonDir "PCbuild\$(Get-CpythonOutputDir)"
-    $tgtLib = Get-ChildItem -Path $tgtOutDir -Filter 'python3*.lib' -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '^python3\d+\.lib$' } | Select-Object -First 1
+    $tgtLib = Select-CpythonImportLib -LibDir $tgtOutDir
     return @{
         Exe       = $hostPy.Exe
         Include   = $hostPy.Include
@@ -1750,6 +1909,14 @@ Export-ModuleMember -Function @(
     'Enter-VsDevCmdEnvironment',
     'Get-MsvcToolsRoot',
     'Copy-CpythonPyConfigHeader',
+    'Select-CpythonImportLib',
+    'Get-CpythonFreeThreadedRoot',
+    'Get-CpythonFreeThreadedExeName',
+    'Get-CpythonFreeThreadedBuildDir',
+    'Get-CpythonPcbuildArguments',
+    'Invoke-CpythonPcbuild',
+    'Install-CpythonFreeThreadedLayout',
+    'Assert-CpythonInterpreter',
     'Get-SourceBuildPython',
     'Get-TargetBuildPython',
     'Write-PythonDllDirectoryShim',

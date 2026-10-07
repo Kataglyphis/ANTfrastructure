@@ -30,6 +30,25 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
+- [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
+      [M, ★]. Since 2026-10-07 `:winamd64` builds `python3.14t.exe` beside the GIL build
+      (`C:\python-freethreaded`, windows-builds.md § *The free-threaded CPython*). The arm64
+      bundle carries only the GIL target interpreter (`C:\runtime\python`,
+      `Build-TargetCpython.ps1`). Two halves:
+      1. `Build-TargetCpython.ps1` runs `Invoke-CpythonPcbuild -Platform ARM64 -FreeThreaded
+         -ExtraArguments '"/p:PreferredToolArchitecture=x64"'` after the GIL build and stages
+         `PCbuild\freethreaded\arm64` into `C:\runtime\python-freethreaded`. Its staging block
+         (PE-machine gate, host-arch CRT replacement, the vcruntime140_1 drop, headers, Lib, empty
+         site-packages, DLL-directory shim, ensurepip check) becomes one function both trees
+         call, with `Select-CpythonImportLib -FreeThreaded`. Write-BundleManifest and the merge
+         gate then cover the new directory.
+      2. python-ci-windows.yml's arm64 job runs on the bare runner, without an image, so
+         `Invoke-PythonTestLegs.ps1 -InstallUv` still has uv download a python-build-standalone
+         3.14t. The job must take its interpreter from the bundle, or from a published
+         free-threaded artifact, before half 1 removes any download.
+
+      Done when a windows-11-arm `3.14t` leg passes with `UV_PYTHON_DOWNLOADS=never` and the
+      device smoke reports `sys._is_gil_enabled() == False` for the bundle's `python3.14t.exe`.
 - [b] **CON73 — ROCm 10.0 → 10.1 (TheRock `therock-10.1`, 2026-10-05)** [M, ★★]. Renovate
       reports it since its annotation reads `versioning=loose` (2026-10-07). Blocked upstream:
       - **No llama.cpp build ships a `win-rocm-10.1` zip.** All builds through b11461 ship

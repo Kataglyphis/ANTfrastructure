@@ -147,7 +147,7 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 
 - `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake, VS Build Tools 18, LLVM/Clang, Rust, Flutter, WiX 7; every version from `versions.env`).
 - The **sdk slot**: on the GPU lane `windows/Dockerfile.nvidia` layers CUDA + cuDNN + TensorRT (`CUDA_VERSION`, `CUDNN_VERSION`, `TENSORRT_VERSION`) on top of the base image and is tagged `windows-sdk`; on `-Variant rocm` `windows/Dockerfile.rocm` takes the slot (§ ROCm layer). On the CPU lane the base image is re-exported as `windows-sdk` through a one-line `FROM` stage (containerd has no unprivileged `tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/Build-Buildkit.ps1` handles this through `-Gpu` / `-Variant`.
-- The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `Build-ToolchainAll.ps1`, and by default the patched clang/LLVM on top (`patched-llvm` target, `BUILD_PATCHED_LLVM=1`; `-StockLlvm` opts out). The former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix.
+- The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `Build-ToolchainAll.ps1`, twice from one checkout: the GIL build and its free-threaded twin (§ [The free-threaded CPython](#the-free-threaded-cpython)). It then builds the patched clang/LLVM on top by default (`patched-llvm` target, `BUILD_PATCHED_LLVM=1`; `-StockLlvm` opts out). The former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix.
 - The **media stage fans out into three branch images** by `windows/Build-Buildkit.ps1`, built **sequentially** by default (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism; `-ConcurrentAux` builds litert and tvm side by side after it). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per stage via `--target`; then the stage fans in:
   - **media-core** (one `media-core-built-*` target and tag per library, in this order; each runs `Build-MediaCoreAll.ps1` for its one library, except HailoRT, whose script is called directly) — ONNX Runtime (source build, pin `ONNXRUNTIME_VERSION`; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch, the WebGPU EP on the rocm spike) → FFmpeg (pinned release tag `FFMPEG_VERSION`; MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, built against the chain ONNX Runtime through a header shim, no configure-time download; after FFmpeg so its videoio links ours, #94) → HailoRT (`Build-HailortFromSource.ps1`, pin `HAILORT_VERSION`) → ONNX GenAI (CMake+clang-cl, bypassing `build.py`; built against the chain ONNX Runtime through an `ORT_HOME` shim, never the NuGet ORT its `cmake/ortlib.cmake` would download; `USE_DML=ON` + `USE_CUDA=ON`, telemetry off).
   - **media-litert** (`--target media-litert-built` + `Build-LitertAll.ps1`) — LiteRT (pin `LITERT_VERSION`; CMake+Ninja; also builds the TFLite C-API lib `tensorflowlite_c`) → LiteRT-LM (pin `LITERT_LM_VERSION`; independent of ONNX; built via **Bazel** with `Build-LitertLmBazel.ps1` → `litert_lm_main.exe`. The former CMake export-bridge path (`Build-LitertLmFromSource.ps1`) is a frozen fallback, see § Source Patch Policy #7).
@@ -240,7 +240,7 @@ The **authoritative per-library build reference** for the Windows lane (AGENTS.m
 
 | Component | Generator | Compiler | Notes |
 |---|---|---|---|
-| CPython 3.14 | `PCbuild\build.bat` | ClangCL (v145→ClangCL via Directory.Build.props) | Requires VS ClangCL toolset |
+| CPython 3.14 | `PCbuild\build.bat` | ClangCL (v145→ClangCL via Directory.Build.props) | Requires VS ClangCL toolset; built GIL and free-threaded, [details](#the-free-threaded-cpython) |
 | ONNX Runtime (pin: `ONNXRUNTIME_VERSION`) | Ninja | clang-cl, lld-link | [details](#onnx-runtime-pin-onnxruntime_version) |
 | ONNX GenAI (pin: `ONNXRUNTIME_GENAI_VERSION`) | CMake (Ninja) | clang-cl, lld-link | [details](#onnx-genai-pin-onnxruntime_genai_version) |
 | OpenCV 5.x | Ninja | clang-cl, lld-link | [details](#opencv-5x) |
@@ -255,6 +255,38 @@ The **authoritative per-library build reference** for the Windows lane (AGENTS.m
 ### Per-component notes
 
 The components whose notes do not fit a table cell. Each is linkable, so another page can point at exactly one of them.
+
+#### The free-threaded CPython
+
+The toolchain stage builds `PYTHON_VERSION` twice from the one checkout, both with `PCbuild\build.bat` and the ClangCL
+toolset: the GIL build in place, then the same command plus `--disable-gil` (owner request 2026-10-07). Before that, every
+Windows `3.14t` leg had uv download a python-build-standalone interpreter.
+
+- **Its own trees and prefix.** The free-threaded build writes to `PCbuild\freethreaded\amd64` and
+  `PCbuild\obj\freethreaded` (`Get-CpythonPcbuildArguments -FreeThreaded`). CPython's own `PC\layout
+  --include-freethreaded --include-dev --include-venv --include-stable` then installs it into `C:\python-freethreaded`
+  (`PYTHON_FREETHREADED_BIN`), 36 MB. That holds `python3.14t.exe`, `python314t.dll`, `DLLs\*.cp314t-win_amd64.pyd`,
+  `Lib`, `include` and `libs\python314t.lib`. Its `site-packages` starts empty, so the GIL tree's pip, cp314 wheels
+  and `sitecustomize.py` never reach it.
+- **PATH order picks the build.** `PYTHON_FREETHREADED_BIN` comes last on `PATH` and holds no `python.exe`. A bare
+  `python`, a `3.14` and a `3.14+gil` request stay on `C:\temp\cpython\PCbuild\amd64\python.exe`, and only a `3.14t`
+  request finds `python3.14t.exe`.
+- **Measured in `:winamd64` on 2026-10-07**, with `Build-ToolchainAll.ps1 -SourceDir` on a fresh v3.14.8 checkout and
+  `UV_PYTHON_DOWNLOADS=never`:
+  - The GIL build took 120-207 s with the externals download, the free-threaded one 104-124 s (two runs, 32 CPUs).
+  - `uv python find 3.14t`, `uv venv --python 3.14t` and `New-UvProjectEnvironment -PythonVersion 3.14t` all took
+    `C:\python-freethreaded\python3.14t.exe`, and uv's managed store stayed empty without the variable too.
+  - `uv build --python 3.14t` built a `cp314-cp314t-win_amd64` wheel, and `3.14+gil` a `cp314-cp314` one.
+- **Import libraries.** `Select-CpythonImportLib` gives a GIL caller `python314.lib` and a `-FreeThreaded` one
+  `python314t.lib`, never the other. `Get-SourceBuildPython -FreeThreaded` returns the install's exe, `include` and
+  `libs`. 3.14's `PC\pyconfig.h` does not define `Py_GIL_DISABLED` itself, so an extension built against the install
+  must pass `Py_GIL_DISABLED=1`. setuptools does that; a hand-written CMake or clang-cl build must too. A clang-cl
+  extension built that way imported with the GIL still off.
+- **Checked twice.** `Build-ToolchainAll.ps1` stops unless both interpreters report `PYTHON_VERSION`, the `AMD64`
+  marker and their GIL state after the scrub (`Assert-CpythonInterpreter`). Section 2 of the smoke test checks the
+  free-threaded one again and uv's resolution with downloads off. Tests: `SourceBuild.FreeThreadedCpython.Tests.ps1`.
+- **The arm64 bundle has no free-threaded interpreter yet.** `Build-TargetCpython.ps1` builds the GIL target
+  interpreter only.
 
 #### ONNX Runtime (pin: `ONNXRUNTIME_VERSION`)
 

@@ -121,16 +121,18 @@ function Initialize-SmokeScratch {
 function Assert-PythonSnippet {
     <#
     .SYNOPSIS
-        Run `python -c $Code`; require exit 0 and every -ExpectMatch regex in the combined output.
+        Run `<-Python> -c $Code`; require exit 0 and every -ExpectMatch regex in the combined output.
     #>
     param(
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Code,
         [Parameter(Mandatory)][string[]]$ExpectMatch,
-        [Parameter(Mandatory)][string]$FailMessage
+        [Parameter(Mandatory)][string]$FailMessage,
+        # The free-threaded twin is reached by path, not as `python`.
+        [string]$Python = 'python'
     )
     Assert-Test -Name $Name -FailMessage $FailMessage -Condition {
-        $out = & python -c $Code 2>&1 | Out-String
+        $out = & $Python -c $Code 2>&1 | Out-String
         if ($LASTEXITCODE -ne 0) { return $false }
         foreach ($m in $ExpectMatch) { if ($out -notmatch $m) { return $false } }
         return $true

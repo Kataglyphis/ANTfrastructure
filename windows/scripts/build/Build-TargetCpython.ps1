@@ -62,8 +62,7 @@ if ($LASTEXITCODE -ne 0) { throw "Target CPython build.bat -p $cpyBuildPlatform 
 
 Switch-BuildPhase '4. verify + stage into the bundle'
 $tgtExe = Join-Path $cpyOutDir 'python.exe'
-$tgtLib = Get-ChildItem -Path $cpyOutDir -Filter 'python3*.lib' -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -match '^python3\d+\.lib$' } | Select-Object -First 1
+$tgtLib = Select-CpythonImportLib -LibDir $cpyOutDir
 if (-not (Test-Path $tgtExe)) { throw "Target CPython: $tgtExe was not produced" }
 if (-not $tgtLib) { throw "Target CPython: no python3XY.lib import library in $cpyOutDir" }
 # Checked here, not only at the merge gate, so a wrong-arch interpreter fails naming the defect.

@@ -6,6 +6,30 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — The Windows image builds its free-threaded CPython from source
+
+- **`:winamd64` carries `PYTHON_VERSION` twice, both source-built with the image's VS 2026 / MSVC
+  14.51 and the ClangCL toolset** (owner request 2026-10-07). Until now every Windows `3.14t` leg
+  had uv download a python-build-standalone interpreter.
+  - `Build-ToolchainAll.ps1` builds the GIL tree as before, then the same checkout with
+    `PCbuild\build.bat --disable-gil` into its own trees (`PCbuild\freethreaded`,
+    `PCbuild\obj\freethreaded`).
+  - CPython's own `PC\layout --include-freethreaded --include-dev --include-venv --include-stable`
+    installs it into `C:\python-freethreaded` (`PYTHON_FREETHREADED_BIN`, 36 MB). It sits last on
+    `PATH`, has no `python.exe` and starts with an empty `site-packages`.
+  - uv resolves `3.14t` to `C:\python-freethreaded\python3.14t.exe` with
+    `UV_PYTHON_DOWNLOADS=never`. `3.14`, `3.14+gil` and a bare `python` stay on
+    `C:\temp\cpython\PCbuild\amd64\python.exe`. Measured in `:winamd64` on a fresh v3.14.8
+    checkout: GIL build 120-207 s, free-threaded 104-124 s (32 CPUs). `uv build --python 3.14t`
+    built a `cp314-cp314t-win_amd64` wheel.
+  - The stage stops unless both interpreters report the pin, the `AMD64` marker and their GIL
+    state (`Assert-CpythonInterpreter`). Smoke section 2 checks the free-threaded one and uv's
+    resolution again.
+  - `Select-CpythonImportLib` owns the import-library pick: `python314.lib` for GIL callers,
+    `python314t.lib` with `-FreeThreaded`. `Get-SourceBuildPython -FreeThreaded` is new.
+  - A toolchain-stage change: every stage after it rebuilds once. The arm64 bundle has no
+    free-threaded interpreter yet (BACKLOG CON74).
+
 ## 2026-10-07 — `:latest-rocm` installs one ROCm tree again: every package name carries `ROCM_VERSION`
 
 - **The bug.** `setup-rocm-repo.sh` installed versionless metapackages (`amdrocm-core-dev`,
