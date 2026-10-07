@@ -159,6 +159,68 @@ function Get-TvmRocmFeatureMarker {
     )
 }
 
+# Cross apache-tvm-ffi: a standalone tvm-ffi build's Cython core, linked against -Python's import lib, beside tvm_ffi\ with its DLLs; the packed wheel's path.
+function New-TvmFfiCrossWheel {
+    param(
+        [Parameter(Mandatory)][hashtable]$Python,
+        [Parameter(Mandatory)][string]$TvmFfiSrc,
+        [Parameter(Mandatory)][string]$BuildDir,
+        [Parameter(Mandatory)][string]$StageDir,
+        [Parameter(Mandatory)][string]$OutDir,
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$PackExe,
+        [string[]]$RequiresDist = @(),
+        [string]$AbiTag = 'cp314',
+        [string]$BuildType = 'Release',
+        [string]$Summary = ''
+    )
+    # The Cython module exists only with tvm-ffi as root; the wheel ships the tvm_ffi.dll core.pyd linked against.
+    $ffiPyArgs = @(
+        "-DCMAKE_BUILD_TYPE=$BuildType"
+        # An explicit CMAKE_CXX_FLAGS replaces CMake's MSVC init flags, /EHsc included.
+        "-DCMAKE_CXX_FLAGS:STRING=/EHsc -Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags)"
+        '-DTVM_FFI_BUILD_PYTHON_MODULE=ON'
+        '-DTVM_FFI_BUILD_TESTS=OFF'
+    ) + @(Get-PythonCMakeHintArgs -Python $Python -Prefix 'Python' -ForwardSlash) + @(Get-LlvmArchiverCmakeArg)
+    Invoke-CmakeConfigure -SourceDir $TvmFfiSrc -BuildDir $BuildDir -InstallPrefix (Join-Path $BuildDir 'install') -ExtraArgs $ffiPyArgs | Out-Null
+    if ($Python['FreeThreaded']) { [void](Assert-NinjaFreeThreadedDefine -BuildDir $BuildDir -Label 'apache-tvm-ffi') }
+    $logName = "tvm-ffi-python-build$(if ($Python['FreeThreaded']) { "-$AbiTag" }).log"
+    # To the host: the packed wheel's path is this function's only output.
+    Invoke-NinjaBuildWithRetry -BuildDir $BuildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile (Get-PersistentBuildLogPath -Name $logName -FallbackDir $BuildDir) -Targets @('tvm_ffi_cython') | Out-Host
+    $corePyd = @(Get-ChildItem -Path $BuildDir -Recurse -Filter 'core*.pyd' -File)
+    if ($corePyd.Count -ne 1) { throw "TVM cross: expected exactly one tvm_ffi core*.pyd under $BuildDir, found $($corePyd.Count): $(($corePyd | ForEach-Object Name) -join ', ')" }
+    $wantExt = Get-PythonWheelTag
+    # FindPython has no SOABI on Windows, so a bare core.pyd is valid; only a host-tagged name is wrong.
+    if ($corePyd[0].Name -match '\.cp\d+t?-win_(amd64|arm64)\.pyd$' -and $corePyd[0].Name -notmatch [regex]::Escape($wantExt)) { throw "TVM cross: tvm_ffi core module is named $($corePyd[0].Name) -- a HOST EXT_SUFFIX tag, the target interpreter would never import it (expected '$wantExt' or a bare core.pyd)" }
+    # tvm_ffi_testing.dll too: core.pyd imports it, and upstream's wheel ships it.
+    $tvmFfiLibs = @(Get-ChildItem -Path $BuildDir -Recurse -File | Where-Object { $_.Name -in 'tvm_ffi.dll', 'tvm_ffi.lib', 'tvm_ffi_testing.dll' } | Group-Object Name | ForEach-Object { $_.Group | Select-Object -First 1 })
+    foreach ($must in 'tvm_ffi.dll', 'tvm_ffi_testing.dll') {
+        if (-not ($tvmFfiLibs | Where-Object { $_.Name -eq $must })) { throw "TVM cross: $must not produced by the standalone tvm-ffi build under $BuildDir" }
+    }
+    [void](Assert-DirectoryTargetArch -Path $corePyd[0].DirectoryName -Include @('core*.pyd') -MinCount 1 -Context 'tvm_ffi core module')
+    if (Test-Path $StageDir) { Remove-Item -Path $StageDir -Recurse -Force }
+    New-Item -Path (Join-Path $StageDir 'tvm_ffi\lib') -ItemType Directory -Force | Out-Null
+    Copy-Item -Path (Join-Path $TvmFfiSrc 'python\tvm_ffi\*') -Destination (Join-Path $StageDir 'tvm_ffi') -Recurse -Force
+    Copy-Item -Path $corePyd[0].FullName -Destination (Join-Path $StageDir 'tvm_ffi') -Force
+    foreach ($l in $tvmFfiLibs) { Copy-Item -Path $l.FullName -Destination (Join-Path $StageDir 'tvm_ffi\lib') -Force }
+    foreach ($inc in @(@{ Src = 'include'; Dest = 'include' }, @{ Src = '3rdparty\dlpack\include'; Dest = '3rdparty\dlpack\include' })) {
+        $srcDir = Join-Path $TvmFfiSrc $inc.Src
+        if (Test-Path $srcDir) {
+            $dst = Join-Path $StageDir "tvm_ffi\$($inc.Dest)"
+            New-Item -Path $dst -ItemType Directory -Force | Out-Null
+            Copy-Item -Path (Join-Path $srcDir '*') -Destination $dst -Recurse -Force
+        }
+    }
+    [void](Write-AssembledWheelDistInfo -Name 'apache-tvm-ffi' -Version $Version -PackageRoot $StageDir -AbiTag $AbiTag -PlatformTag $wantExt `
+        -RequiresDist $RequiresDist -RequiresPython '>=3.9' -Summary $Summary)
+    New-Item -Path $OutDir -ItemType Directory -Force | Out-Null
+    $before = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.whl' -File | ForEach-Object FullName)
+    [void](Invoke-ShieldedNative -Label "wheel pack $(Split-Path $StageDir -Leaf)" -CommandLine """$PackExe"" -m wheel pack ""$StageDir"" --dest-dir ""$OutDir""")
+    $packed = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.whl' -File | Where-Object { $_.FullName -notin $before })
+    if ($packed.Count -ne 1) { throw "TVM cross: wheel pack left $($packed.Count) new wheel(s) in $OutDir, not one" }
+    return $packed[0].FullName
+}
+
 # TVM_COMMIT wins over TVM_REF: a branch shadows the tag; see versions.env § TVM_COMMIT.
 $TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_COMMIT', 'TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.27.0'
 
@@ -401,71 +463,46 @@ if ($tvmCross) {
         # Assembled in the layout each package's libinfo expects: core.pyd beside tvm_ffi\, DLLs under <pkg>\lib.
         Switch-BuildPhase '5b. runtime python wheels (cross, assembled)'
         $tvmFfiSrc = Join-Path $SourceDir '3rdparty\tvm-ffi'
-        # The Cython module exists only with tvm-ffi as root; the wheel ships the tvm_ffi.dll core.pyd linked against.
-        $ffiPyBuild = Join-Path $buildDir 'tvm-ffi-py'
-        $ffiPyArgs = @(
-            "-DCMAKE_BUILD_TYPE=$BuildType"
-            # An explicit CMAKE_CXX_FLAGS replaces CMake's MSVC init flags, /EHsc included.
-            "-DCMAKE_CXX_FLAGS:STRING=/EHsc -Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags)"
-            '-DTVM_FFI_BUILD_PYTHON_MODULE=ON'
-            '-DTVM_FFI_BUILD_TESTS=OFF'
-        ) + @(Get-PythonCMakeHintArgs -Python $tvmTargetPy -Prefix 'Python' -ForwardSlash) + @(Get-LlvmArchiverCmakeArg)
-        Invoke-CmakeConfigure -SourceDir $tvmFfiSrc -BuildDir $ffiPyBuild -InstallPrefix (Join-Path $ffiPyBuild 'install') -ExtraArgs $ffiPyArgs | Out-Null
-        Invoke-NinjaBuildWithRetry -BuildDir $ffiPyBuild -RetryJobs 1 -MemGBPerJob 2 -LogFile (Get-PersistentBuildLogPath -Name 'tvm-ffi-python-build.log' -FallbackDir $ffiPyBuild) -Targets @('tvm_ffi_cython')
-        $corePyd = @(Get-ChildItem -Path $ffiPyBuild -Recurse -Filter 'core*.pyd' -File)
-        if ($corePyd.Count -ne 1) { throw "TVM cross: expected exactly one tvm_ffi core*.pyd under $ffiPyBuild, found $($corePyd.Count): $(($corePyd | ForEach-Object Name) -join ', ')" }
-        $wantExt = Get-PythonWheelTag
-        # FindPython has no SOABI on Windows, so a bare core.pyd is valid; only a host-tagged name is wrong.
-        if ($corePyd[0].Name -match '\.cp\d+-win_(amd64|arm64)\.pyd$' -and $corePyd[0].Name -notmatch [regex]::Escape($wantExt)) { throw "TVM cross: tvm_ffi core module is named $($corePyd[0].Name) -- a HOST EXT_SUFFIX tag, the target interpreter would never import it (expected '$wantExt' or a bare core.pyd)" }
-        # tvm_ffi_testing.dll too: core.pyd imports it, and upstream's wheel ships it.
-        $tvmFfiLibs = @(Get-ChildItem -Path $ffiPyBuild -Recurse -File | Where-Object { $_.Name -in 'tvm_ffi.dll', 'tvm_ffi.lib', 'tvm_ffi_testing.dll' } | Group-Object Name | ForEach-Object { $_.Group | Select-Object -First 1 })
-        foreach ($must in 'tvm_ffi.dll', 'tvm_ffi_testing.dll') {
-            if (-not ($tvmFfiLibs | Where-Object { $_.Name -eq $must })) { throw "TVM cross: $must not produced by the standalone tvm-ffi build under $ffiPyBuild" }
-        }
-        [void](Assert-DirectoryTargetArch -Path $corePyd[0].DirectoryName -Include @('core*.pyd') -MinCount 1 -Context 'tvm_ffi core module')
         $describe = & git -C $tvmFfiSrc describe --tags --abbrev=0 --match 'v*' 2>&1 | Out-String
         $global:LASTEXITCODE = 0
         $tvmPyproject = [System.IO.File]::ReadAllText((Join-Path $SourceDir 'pyproject.toml'))
         $ffiPyproject = [System.IO.File]::ReadAllText((Join-Path $tvmFfiSrc 'pyproject.toml'))
         $ffiVersion = Get-VendoredTvmFfiVersion -DescribeOutput $describe -TvmPyprojectText $tvmPyproject
+        $ffiDeps = Get-PyprojectDependencies -PyprojectText $ffiPyproject
         $tvmPyVersion = ($TvmVersion -replace '^v', '')
+        $wantExt = Get-PythonWheelTag
         $stage = Join-Path $buildDir 'py-stage'
         if (Test-Path $stage) { Remove-Item -Path $stage -Recurse -Force }
-        # apache-tvm-ffi
-        $ffiRoot = Join-Path $stage 'ffi'
-        New-Item -Path (Join-Path $ffiRoot 'tvm_ffi\lib') -ItemType Directory -Force | Out-Null
-        Copy-Item -Path (Join-Path $tvmFfiSrc 'python\tvm_ffi\*') -Destination (Join-Path $ffiRoot 'tvm_ffi') -Recurse -Force
-        Copy-Item -Path $corePyd[0].FullName -Destination (Join-Path $ffiRoot 'tvm_ffi') -Force
-        foreach ($l in $tvmFfiLibs) { Copy-Item -Path $l.FullName -Destination (Join-Path $ffiRoot 'tvm_ffi\lib') -Force }
-        foreach ($inc in @(@{ Src = 'include'; Dest = 'include' }, @{ Src = '3rdparty\dlpack\include'; Dest = '3rdparty\dlpack\include' })) {
-            $srcDir = Join-Path $tvmFfiSrc $inc.Src
-            if (Test-Path $srcDir) {
-                $dst = Join-Path $ffiRoot "tvm_ffi\$($inc.Dest)"
-                New-Item -Path $dst -ItemType Directory -Force | Out-Null
-                Copy-Item -Path (Join-Path $srcDir '*') -Destination $dst -Recurse -Force
-            }
-        }
-        [void](Write-AssembledWheelDistInfo -Name 'apache-tvm-ffi' -Version $ffiVersion -PackageRoot $ffiRoot -PlatformTag $wantExt `
-            -RequiresDist (Get-PyprojectDependencies -PyprojectText $ffiPyproject) -RequiresPython '>=3.9' `
-            -Summary "tvm-ffi runtime for $wantExt, assembled from the tvm-ffi submodule TVM $TvmVersion vendors (Kataglyphis cross build)")
-        # apache-tvm (runtime-only)
+        $wheelOut = Join-Path $stage 'dist'
+        $ffiSummary = "tvm-ffi runtime for $wantExt, assembled from the tvm-ffi submodule TVM $TvmVersion vendors (Kataglyphis cross build)"
+        [void](New-TvmFfiCrossWheel -Python $tvmTargetPy -TvmFfiSrc $tvmFfiSrc -BuildDir (Join-Path $buildDir 'tvm-ffi-py') -StageDir (Join-Path $stage 'ffi') `
+                -OutDir $wheelOut -Version $ffiVersion -PackExe $py.Exe -RequiresDist $ffiDeps -BuildType $BuildType -Summary $ffiSummary)
+        # apache-tvm (runtime-only): no CPython module of its own, so py3-none like upstream's wheel.py-api, which a 3.14t venv installs too.
         $tvmRoot = Join-Path $stage 'tvm'
         New-Item -Path (Join-Path $tvmRoot 'tvm\lib') -ItemType Directory -Force | Out-Null
         Copy-Item -Path (Join-Path $SourceDir 'python\tvm\*') -Destination (Join-Path $tvmRoot 'tvm') -Recurse -Force
         [System.IO.File]::WriteAllText((Join-Path $tvmRoot 'tvm\_version.py'), "__version__ = `"$tvmPyVersion`"`n__version_tuple__ = ($($tvmPyVersion -replace '\.', ', '))`n")
         Copy-Item -Path (Join-Path $tvmLibOut 'tvm_runtime.dll') -Destination (Join-Path $tvmRoot 'tvm\lib') -Force
-        [void](Write-AssembledWheelDistInfo -Name 'apache-tvm' -Version $tvmPyVersion -PackageRoot $tvmRoot -PlatformTag $wantExt `
+        [void](Write-AssembledWheelDistInfo -Name 'apache-tvm' -Version $tvmPyVersion -PackageRoot $tvmRoot -PythonTag 'py3' -AbiTag 'none' -PlatformTag $wantExt `
             -RequiresDist (Get-PyprojectDependencies -PyprojectText $tvmPyproject) -RequiresPython '>=3.10' `
             -Summary "Apache TVM $TvmVersion RUNTIME-ONLY python package for $wantExt (no tvm_compiler; Kataglyphis cross build)")
-        $wheelOut = Join-Path $stage 'dist'
-        New-Item -Path $wheelOut -ItemType Directory -Force | Out-Null
-        foreach ($root in @($ffiRoot, $tvmRoot)) {
-            [void](Invoke-ShieldedNative -Label "wheel pack $(Split-Path $root -Leaf)" -CommandLine """$($py.Exe)"" -m wheel pack ""$root"" --dest-dir ""$wheelOut""")
-        }
+        [void](Invoke-ShieldedNative -Label 'wheel pack tvm' -CommandLine """$($py.Exe)"" -m wheel pack ""$tvmRoot"" --dest-dir ""$wheelOut""")
         $stagedWheels = @(Save-PythonWheel -SourceDir $wheelOut -WheelDir $wheelStore -Required)
         if ($stagedWheels.Count -ne 2) { throw "TVM cross: expected 2 assembled wheels staged into $wheelStore, got $($stagedWheels.Count)" }
         foreach ($w in $stagedWheels) { Assert-WheelTargetArch -WheelPath $w }
         Write-Host "TVM cross: staged $($stagedWheels.Count) runtime python wheel(s) for $wantExt into ${wheelStore}: $(($stagedWheels | ForEach-Object { Split-Path $_ -Leaf }) -join ', ')"
+        # The cp3XYt twin: the same assembly from its own tvm-ffi tree, built by a free-threaded venv against the target's python3XYt.lib.
+        $ffiPlan = Get-FreeThreadedTwinPlan -Distribution 'apache-tvm-ffi'
+        Write-Host $ffiPlan.Reason
+        if ($ffiPlan.Build) {
+            $ftAbi = Get-FreeThreadedAbiTag
+            $ftVenv = 'C:\temp\ft-venv-tvm-ffi'
+            $ftPy = New-FreeThreadedBuildPython -GilPython $py -VenvDir $ftVenv -Package cython, wheel
+            $twin = New-TvmFfiCrossWheel -Python $ftPy -TvmFfiSrc $tvmFfiSrc -BuildDir (Join-Path $buildDir "tvm-ffi-py-$ftAbi") -StageDir (Join-Path $stage "ffi-$ftAbi") `
+                -OutDir (Join-Path $stage "dist-$ftAbi") -Version $ffiVersion -PackExe $py.Exe -RequiresDist $ffiDeps -AbiTag $ftAbi -BuildType $BuildType -Summary $ffiSummary
+            [void](Save-FreeThreadedWheel -Wheel $twin -Distribution 'apache-tvm-ffi')
+            Remove-Item -LiteralPath $ftVenv -Recurse -Force -ErrorAction SilentlyContinue
+        }
         # Close the phase opened above, or the next script's first phase inherits it.
         Complete-CurrentBuildPhase
     }

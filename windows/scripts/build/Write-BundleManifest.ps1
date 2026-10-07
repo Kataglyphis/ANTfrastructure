@@ -32,8 +32,8 @@ $cross = Test-WindowsCrossTarget -Arch $arch
 
 # 1. DLL homes: the merge RUN's ENV that exists, named as the GStreamer probe and the final PATH name them
 $envNames = @('FFMPEG_BIN', 'OPENCV_BIN', 'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'LITERT_BIN', 'LITERT_LM_ROOT', 'GSTREAMER_BIN',
-              'GST_PLUGIN_PATH', 'GST_PLUGIN_SYSTEM_PATH', 'TVM_ROOT', 'IREE_ROOT', 'IREE_BIN', 'PYTHON_WHEELS', 'VULKAN_SDK',
-              'LP_NATIVE_VECTOR_WIDTH')
+              'GST_PLUGIN_PATH', 'GST_PLUGIN_SYSTEM_PATH', 'TVM_ROOT', 'IREE_ROOT', 'IREE_BIN', 'PYTHON_WHEELS', 'PYTHON_WHEELS_CP314T',
+              'VULKAN_SDK', 'LP_NATIVE_VECTOR_WIDTH')
 $envRows = @()
 foreach ($n in $envNames) {
     $v = [Environment]::GetEnvironmentVariable($n, 'Process')
@@ -57,6 +57,14 @@ $ftExeName = Get-CpythonFreeThreadedExeName
 $ftPythonExe = if (Test-Path (Join-Path $ftPythonRoot $ftExeName)) { Join-Path $ftPythonRoot $ftExeName } else { '' }
 $wheelDir = Join-Path $InstallDir 'wheels'
 $wheels = @(if (Test-Path $wheelDir) { Get-ChildItem -Path $wheelDir -Filter '*.whl' -File | ForEach-Object { $_.Name } })
+# The cp3XYt twins' own store; see docs/windows-builds.md#the-free-threaded-wheels.
+$ftWheelDir = Join-Path $InstallDir 'wheels-cp314t'
+$ftWheels = @(if (Test-Path $ftWheelDir) { Get-ChildItem -Path $ftWheelDir -Filter '*.whl' -File | ForEach-Object { $_.Name } })
+if ($cross) {
+    # Smoke section 20 cannot run a cross bundle, so the store is checked here: every twin-verdict GIL wheel has its twin.
+    $ftFindings = @(Get-FreeThreadedStoreFinding -Store $ftWheelDir -GilStore $wheelDir -PlatformTag $info.PythonWheelTag)
+    if ($ftFindings.Count -gt 0) { throw "write-bundle-manifest: the cp3XYt store does not mirror the GIL store:`n  $($ftFindings -join "`n  ")" }
+}
 
 # 3. What is absent by construction on this lane, in the branches' own words
 $absent = @(Get-ChildItem -Path $InstallDir -Recurse -File -Include 'ABSENT-ON-*.txt', 'COMPILER-ABSENT-*.txt' -ErrorAction SilentlyContinue |
@@ -135,10 +143,14 @@ if ($pythonRoot) {
 }
 if ($ftPythonExe) {
     $ftRequest = $ftExeName -replace '^python' -replace '\.exe$'
-    $md.Add("- Free-threaded interpreter: ``$ftPythonExe`` (``--disable-gil``, source-built for this target). It is last on ``PATH`` and has no ``python.exe``, so only a ``$ftRequest`` request finds it (``uv venv --python $ftRequest`` with ``UV_PYTHON_DOWNLOADS=never``). Its site-packages starts empty; the wheel store holds no free-threaded wheels.")
+    $md.Add("- Free-threaded interpreter: ``$ftPythonExe`` (``--disable-gil``, source-built for this target). It is last on ``PATH`` and has no ``python.exe``, so only a ``$ftRequest`` request finds it (``uv venv --python $ftRequest`` with ``UV_PYTHON_DOWNLOADS=never``). Its site-packages starts empty; its wheels are the store below, never the GIL one.")
 }
 $md.Add("- Wheel store: ``$wheelDir`` -- $($wheels.Count) wheel(s):")
 foreach ($w in $wheels) { $md.Add("  - ``$w``") }
+if ($ftWheels.Count -gt 0) {
+    $md.Add("- Free-threaded wheel store: ``$ftWheelDir`` -- the ``cp3XYt`` twins of the wheels whose code declares free-threading, $($ftWheels.Count) wheel(s). Install one into a venv of the free-threaded interpreter with ``pip install --no-index --no-deps``; their dependencies have no ``cp3XYt`` wheels in this bundle:")
+    foreach ($w in $ftWheels) { $md.Add("  - ``$w``") }
+}
 $md.Add('')
 $md.Add('Install from the store only, never from PyPI on top of it -- the store carries the bundle''s own `onnxruntime` (CPU+DirectML), which a PyPI resolve would shadow:')
 $md.Add('')
@@ -213,5 +225,5 @@ $mdPath  = Join-Path $InstallDir 'BUNDLE-README.md'
 [IO.File]::WriteAllText($psPath,  (($ps  -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
 [IO.File]::WriteAllText($mdPath,  (($md  -join "`n")   + "`n"),   (New-Object System.Text.UTF8Encoding($false)))
 
-Write-Host ("Bundle manifest ({0}): {1} DLL home(s), python={2}, free-threaded={9}, {3} wheel(s), {4} absent marker(s), plugins [{5}] -> {6}, {7}, {8}" -f $arch, $dllHomes.Count, $(if ($pythonRoot) { $pythonRoot } else { 'image CPython' }), $wheels.Count, $absent.Count, ($plugins -join ' '), $cmdPath, $psPath, $mdPath, $(if ($ftPythonExe) { $ftPythonExe } else { 'none' }))
+Write-Host ("Bundle manifest ({0}): {1} DLL home(s), python={2}, free-threaded={9}, {3} wheel(s) + {10} cp3XYt twin(s), {4} absent marker(s), plugins [{5}] -> {6}, {7}, {8}" -f $arch, $dllHomes.Count, $(if ($pythonRoot) { $pythonRoot } else { 'image CPython' }), $wheels.Count, $absent.Count, ($plugins -join ' '), $cmdPath, $psPath, $mdPath, $(if ($ftPythonExe) { $ftPythonExe } else { 'none' }), $ftWheels.Count)
 exit 0

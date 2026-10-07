@@ -34,9 +34,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       and the Windows arm64 cross lane skip `cp314t` with a logged reason. riscv64 needs 3.14t
       target headers in the sysroot (CON66 stages them at `/opt/python-cross-ft/riscv64`), the
       `.cpython-314t-riscv64-linux-gnu.so` suffix and a 3.14t host pip. Windows arm64 builds no
-      Cython wheel at all; its target interpreter exists since CON74 half 1, but
-      `Get-TargetBuildPython` has no `-FreeThreaded` and `Get-FreeThreadedWheelPlan` still skips
-      every `-CrossArch`. Done when both ship a wheel proved on
+      Cython wheel at all; its target interpreter exists since CON74 half 1, and
+      `New-FreeThreadedBuildPython` pins a cross venv's `EXT_SUFFIX` since CON79 item 2; the Linux riscv64
+      cross half is what remains. Done when both ship a wheel proved on
       the target.
 - [ ] **CON76 — a real cp314t proof in the hub suite** [S, ★]. Once `:latest` ships `3.14t` on
       every arch (CON66), `test-python-free-threaded-wheel.sh` builds two tiny C extensions (one
@@ -74,8 +74,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       1b. **Linux cross twins** (arm64 cross, riscv64, including riscv64 torch/torchvision/numpy, which need
          rows in `03-media/free-threaded-twins.txt`): `ft_soabi_gate` takes the target EXT_SUFFIX from `/opt/python-cross-ft/<arch>`, and the
          proof runs on the target (QEMU) or in the package stage.
-      2. **arm64 cross twins** (Windows): the venv's `EXT_SUFFIX` pinned to `.cp314t-win_arm64.pyd` plus
-         `--plat-name`; `Get-TargetBuildPython -FreeThreaded` and the target interpreter (CON74) exist.
+      2. **arm64 cross twins (Windows): the device proof.** In source since 2026-10-07 (CHANGELOG), proved
+         statically in `:winarm64`. Left: republish `:winarm64`, then read the first `bundle-gate` job's step
+         `free-threaded wheels: every cp314t twin loads with the GIL off`. Also left: cp314t `win_arm64` wheels
+         for the twins' dependencies (numpy and ORT's requirements, `Copy-TargetPythonDeps.ps1`), without which
+         a consumer installs a twin `--no-deps`.
       3. **The ROCm torch twin** (`Build-TorchRocmFromSource.ps1`; `Dockerfile.torch` already mounts the module,
          and must mount `linux/scripts/03-media/free-threaded-twins.txt` at `C:\bkmnt\free-threaded-twins.txt`
          once it asks `Get-FreeThreadedTwinPlan`).

@@ -6,9 +6,7 @@
 
 param(
     [string]$SourceDir = 'C:\temp\cpython',
-    [string]$InstallDir = '',
-    # media-tvm's C:\runtime\python* never reaches the merge, and TVM links only PCbuild\<arch>.
-    [switch]$SkipFreeThreaded
+    [string]$InstallDir = ''
 )
 
 Set-StrictMode -Version Latest
@@ -69,21 +67,17 @@ $gil = Install-CpythonTargetTree -BuildDir $cpyOutDir -SourceDir $SourceDir -Des
     -RedistDir $redistDir -BundleBin (Join-Path $InstallDir 'bin') -ShimWrittenBy 'Build-TargetCpython.ps1 (TARGET interpreter, #125)'
 $summary = "GIL tree $($gil.Files) files"
 
-if ($SkipFreeThreaded) {
-    Write-Host 'Target CPython: -SkipFreeThreaded, so this branch builds no free-threaded tree'
-} else {
-    # After the GIL tree is staged, so nothing this build writes into the source tree can reach it.
-    Switch-BuildPhase '5. PCbuild -p ARM64 --disable-gil (ClangCL)'
-    Invoke-CpythonPcbuild -SourceDir $SourceDir -Platform $cpyBuildPlatform -FreeThreaded -ExtraArguments $hostToolArgs
+# After the GIL tree is staged, so nothing this build writes into the source tree can reach it.
+Switch-BuildPhase '5. PCbuild -p ARM64 --disable-gil (ClangCL)'
+Invoke-CpythonPcbuild -SourceDir $SourceDir -Platform $cpyBuildPlatform -FreeThreaded -ExtraArguments $hostToolArgs
 
-    Switch-BuildPhase '6. verify + stage the free-threaded tree'
-    # Its own prefix, like the image's C:\python-freethreaded: no python.exe and an empty site-packages; see docs/windows-builds.md § The free-threaded CPython.
-    $ft = Install-CpythonTargetTree -BuildDir (Get-CpythonFreeThreadedBuildDir -SourceDir $SourceDir -Arch $tgtArch) -SourceDir $SourceDir `
-        -Destination (Join-Path $InstallDir 'python-freethreaded') -Arch $tgtArch -FreeThreaded -RedistDir $redistDir
-    $summary += ", free-threaded tree $($ft.Files) files ($(Split-Path $ft.Exe -Leaf))"
-    # Unlike PCbuild\arm64, nothing links against the free-threaded build output later.
-    Remove-Item (Get-CpythonFreeThreadedBuildDir -SourceDir $SourceDir) -Recurse -Force -ErrorAction SilentlyContinue
-}
+Switch-BuildPhase '6. verify + stage the free-threaded tree'
+# Its own prefix, like the image's C:\python-freethreaded: no python.exe and an empty site-packages; see docs/windows-builds.md § The free-threaded CPython.
+$ft = Install-CpythonTargetTree -BuildDir (Get-CpythonFreeThreadedBuildDir -SourceDir $SourceDir -Arch $tgtArch) -SourceDir $SourceDir `
+    -Destination (Join-Path $InstallDir 'python-freethreaded') -Arch $tgtArch -FreeThreaded -RedistDir $redistDir
+$summary += ", free-threaded tree $($ft.Files) files ($(Split-Path $ft.Exe -Leaf))"
+# The twins link the staged tree's libs\python3XYt.lib (Get-TargetBuildPython -FreeThreaded), never this build output.
+Remove-Item (Get-CpythonFreeThreadedBuildDir -SourceDir $SourceDir) -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "Target CPython: $summary"
 
 Switch-BuildPhase '7. scrub'

@@ -191,8 +191,9 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Build-VulkanValidationLayers.ps1' -ScriptDir 'C:\bkmnt'
 
-# The bundle describes itself (BUNDLE-ENV, BUNDLE-README); text files, invisible to the arch gate.
+# The bundle describes itself (BUNDLE-ENV, BUNDLE-README); text files, invisible to the arch gate. On cross it checks the cp3XYt store against the twin table.
 RUN --mount=type=bind,source=windows/scripts/build/Write-BundleManifest.ps1,target=C:\bkmnt\Write-BundleManifest.ps1 `
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\bkmnt\free-threaded-twins.txt `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Write-BundleManifest.ps1' -ScriptDir 'C:\bkmnt'
 # Before the arch gate, so the staged target-tag deps are machine-checked and import-walked too.

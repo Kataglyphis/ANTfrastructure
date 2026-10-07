@@ -77,6 +77,44 @@ function Invoke-ShippedBundleStep {
     Write-Host "`n== ${Name}: NOT IN THIS BUNDLE ($Shipped); the floor stays 12 until :winarm64 carries it"
 }
 
+function Invoke-TwinDeviceProof {
+    # Each cp3XYt twin alone, offline, in a fresh venv of -Interpreter: free-threaded-wheel.py prove, the build lanes' own proof.
+    param(
+        [Parameter(Mandatory)][string]$Interpreter,
+        [Parameter(Mandatory)][string]$Store,
+        [Parameter(Mandatory)][string]$Helper,
+        # The bundle's DLL homes; a venv's modules never search PATH, so its sitecustomize registers these and the wheel's own.
+        [string[]]$DllDirectory = @()
+    )
+    if (-not (Test-Path -LiteralPath $Helper -PathType Leaf)) { throw "no $Helper to prove the twins with (Export-Arm64Bundle.ps1 puts it beside this script)" }
+    # Exit codes are read below, so a failing proof keeps the helper's verdict instead of throwing it away.
+    $PSNativeCommandUseErrorActionPreference = $false
+    $wheels = @(Get-ChildItem -LiteralPath $Store -Filter '*.whl' -File)
+    if ($wheels.Count -eq 0) { throw "no wheel in $Store" }
+    $failures = foreach ($whl in $wheels) {
+        $venv = Join-Path ([IO.Path]::GetTempPath()) ('ft-twin-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        try {
+            & $Interpreter -I -m venv $venv
+            if ($LASTEXITCODE) { throw "venv exited $LASTEXITCODE" }
+            $venvPy = Join-Path $venv 'Scripts\python.exe'
+            & $venvPy -I -m pip install --quiet --disable-pip-version-check --no-index --no-deps $whl.FullName
+            if ($LASTEXITCODE) { throw "pip install exited $LASTEXITCODE" }
+            $site = Join-Path $venv 'Lib\site-packages'
+            $dirs = @($DllDirectory) + @(Get-ChildItem -LiteralPath $site -Recurse -Filter '*.dll' -File | ForEach-Object DirectoryName | Sort-Object -Unique)
+            Set-Content -LiteralPath (Join-Path $site 'sitecustomize.py') -Encoding ascii -Value (
+                @('import os') + @($dirs | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { "os.add_dll_directory(r'$_')" }))
+            $verdict = @(& $venvPy -I $Helper prove $whl.Name.Split('-')[0] 2>&1 | ForEach-Object { "$_" }) -join ' | '
+            Write-Host "   $($whl.Name): $verdict"
+            if ($LASTEXITCODE) { "$($whl.Name): $verdict" }
+        } catch {
+            "$($whl.Name): $($_.Exception.Message)"
+        } finally {
+            Remove-Item -LiteralPath $venv -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    if (@($failures).Count -gt 0) { throw "$(@($failures).Count) of $($wheels.Count) twin(s) failed: $($failures -join '; ')" }
+}
+
 function Assert-VulkanInfoSummary {
     # The loader ignores VK_DRIVER_FILES and VK_ADD_LAYER_PATH in an elevated process; HKLM is what it reads then.
     param(
@@ -129,6 +167,12 @@ Invoke-ShippedBundleStep 'free-threaded interpreter: GIL off, stdlib extensions 
     $exe = @(Resolve-Path -Path $ftPython)[0].Path
     # -I keeps PYTHON_GIL out: it could re-enable the GIL and hide a build that never disabled it.
     & $exe -I -c "import sys, sysconfig, ssl, sqlite3, zlib, ctypes, bz2, lzma, hashlib, socket; g = sys._is_gil_enabled(); d = sysconfig.get_config_var('Py_GIL_DISABLED'); print('PY', sys.version.split()[0], '| sys._is_gil_enabled()', g, '| Py_GIL_DISABLED', d); assert not g and d == 1 and 'ARM64' in sys.version, sys.version"
+} $results
+# BACKLOG CON79 added the twins; the cross build could check only their tags, imports and PE machine.
+Invoke-ShippedBundleStep 'free-threaded wheels: every cp314t twin loads with the GIL off' (Join-Path $BundleRoot 'wheels-cp314t\*.whl') {
+    $homes = @($env:PATH -split ';' | Where-Object { $_ -and $_.StartsWith($BundleRoot, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -Unique)
+    Invoke-TwinDeviceProof -Interpreter (@(Resolve-Path -Path $ftPython)[0].Path) -Store (Join-Path $BundleRoot 'wheels-cp314t') `
+        -Helper (Join-Path $PSScriptRoot 'free-threaded-wheel.py') -DllDirectory $homes
 } $results
 Invoke-BundleStep 'torch win-arm64 wheel stack present (cp313)' {
     $expected = @(
