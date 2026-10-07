@@ -42,6 +42,36 @@ declares for the submodule. Commit the resulting pointer change together with th
 consuming change, and push ANTfrastructure `develop` **first** — CI resolves
 composite actions at `@develop`.
 
+### Putting every checkout on its branch
+
+`git submodule update` leaves each submodule on a detached HEAD at its recorded
+commit. To work on the latest tip of every repo instead, run this from the
+superproject:
+
+```bash
+bash third_party/ANTfrastructure/linux/scripts/git-sync-branches.sh --dry-run   # the plan
+bash third_party/ANTfrastructure/linux/scripts/git-sync-branches.sh             # do it
+```
+
+It checks out the superproject's default branch, then walks every submodule,
+parents before children, and checks out the `branch =` that `.gitmodules`
+declares for it, or the remote's default branch when none is declared. It only
+fast-forwards: a submodule with uncommitted changes is skipped (`SKIP`), and a
+local branch that has diverged from its remote fails the run (`FAIL`) while the
+rest still syncs.
+
+- **Only the superproject's own submodules move.** A submodule whose remote sits
+  under another owner than the superproject's (`github.com/Kataglyphis` vs
+  `github.com/nlohmann`) stays at its recorded commit (`PIN`): a third-party
+  `branch =` names an upstream development head, not a release. `--all` moves
+  those too.
+- **It moves working trees, never gitlinks.** It ends by listing every submodule
+  that is no longer at its recorded commit. The next `git submodule update`, or a
+  git GUI that runs one, puts them back. To keep them, commit the gitlinks in each
+  parent, innermost repo first, through the pin bump above.
+- A submodule that a newer parent commit **adds** is not initialised; run
+  `git submodule update --init <path>` for it.
+
 ### Resolving a submodule conflict on merge
 
 Merges that touch the pin from both sides leave `third_party/` paths unmerged,

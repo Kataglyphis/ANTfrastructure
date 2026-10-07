@@ -1086,6 +1086,10 @@ in [`dependency-updates.md`](docs/dependency-updates.md).
   submodule that declares no `branch =` it does not skip — it walks the pin to
   the remote's DEFAULT branch. `--apply` passes explicit paths, takes only
   submodules that declare a branch, and never uses `--recursive`.
+- **`linux/scripts/git-sync-branches.sh` is not that command.** It puts working
+  trees on their branch tip for local work, fast-forward only, moves only the
+  superproject owner's submodules, and commits no gitlink:
+  [`adopting-in-a-new-project.md` § Putting every checkout on its branch](docs/adopting-in-a-new-project.md#putting-every-checkout-on-its-branch).
 
 What `--platform=local` cannot do, why `--enabled-managers` is not enough, which
 git must run the apply half, and what a stale lockfile does:

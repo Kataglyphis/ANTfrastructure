@@ -7,6 +7,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-07 — `git-sync-branches.sh`: every checkout on its branch tip
+
+- **New entry point `linux/scripts/git-sync-branches.sh`.** It checks out the superproject's
+  default branch and, recursively, each submodule's `branch =` (or its remote's default),
+  fast-forward only. OmniAccelerANT needed it after a pull left its submodules detached.
+- **Only the superproject owner's submodules move.** Third-party ones stay at their recorded
+  commit unless `--all` is passed. Dirty trees are skipped, and a diverged branch fails the run.
+- **It commits no gitlink**, so it is not the forbidden bare `git submodule update --remote`.
+  It lists what drifted from the recorded commits.
+- `test-git-sync-branches.sh` runs it against bare-repo fixtures under two owners.
+
 ## 2026-10-07 — DeepStream is in every amd64 nvidia build (CON42)
 
 - **Owner decision: DeepStream ships with every `:latest-nvidia` build, at full size.**
