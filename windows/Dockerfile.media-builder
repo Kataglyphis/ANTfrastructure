@@ -79,11 +79,14 @@ ARG TVM_COMMIT=4d0ac168c78c1e20bf05a6ec5926760bb1c52b05
 ARG IREE_VERSION=v3.12.0
 # rocm lane: IREE's rocm target fetches ocml/ockl bitcode; Build-IreeFromSource.ps1 asserts upstream pins this hash.
 ARG IREE_ROCM_DEVICE_BC_SHA256=336362416c68fdd8bb80328f65ca7ebaa0c119ea19c95df6df30c832a4df39b9
+# media-core-built-ffmpeg declares the same pin: the fan-in refuses a Python distribution at two versions.
+ARG PY_CYTHON_VERSION=3.3.0
 
 ENV TVM_REF="${TVM_REF}" `
     TVM_COMMIT="${TVM_COMMIT}" `
     IREE_VERSION="${IREE_VERSION}" `
-    IREE_ROCM_DEVICE_BC_SHA256="${IREE_ROCM_DEVICE_BC_SHA256}"
+    IREE_ROCM_DEVICE_BC_SHA256="${IREE_ROCM_DEVICE_BC_SHA256}" `
+    PY_CYTHON_VERSION="${PY_CYTHON_VERSION}"
 
 # Each compile stage declares only its own version keys; ENV so CUDA_ARCHITECTURES/PYTHON_VERSION reach the downstream stages.
 FROM common AS media-core-built-onnx
@@ -131,6 +134,8 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # FFmpeg's keys live here, so a bump never re-runs the ONNX stage.
 ARG FFMPEG_VERSION=n9.0.2
 ARG PYAV_VERSION=19.0.1
+# media-tvm-env declares the same pin: the fan-in refuses a Python distribution at two versions.
+ARG PY_CYTHON_VERSION=3.3.0
 ARG NV_CODEC_HEADERS_REF=n13.1.15.0
 # AMF headers: every lane carries the pin, only the rocm lane fetches them (GPU_TYPE=rocm).
 ARG AMF_HEADERS_VERSION=v1.5.3
@@ -144,6 +149,7 @@ ARG X265_VERSION=4.1
 ARG X265_SHA256=a31699c6a89806b74b0151e5e6a7df65de4b49050482fe5ebf8a4379d7af8f29
 ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `
     PYAV_VERSION="${PYAV_VERSION}" `
+    PY_CYTHON_VERSION="${PY_CYTHON_VERSION}" `
     NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
     AMF_HEADERS_VERSION="${AMF_HEADERS_VERSION}" `
     AMF_HEADERS_SHA256="${AMF_HEADERS_SHA256}" `

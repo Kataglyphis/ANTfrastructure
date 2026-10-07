@@ -810,7 +810,10 @@ Write-Host "=== PyAV $pyavVersion wheel build (against $prefix) ==="
 $py = Get-SourceBuildPython
 Install-CpythonPip -Python $py
 Initialize-PythonPlatformTag | Out-Null
-Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'cython', 'setuptools', 'wheel')
+# One Cython in both media branches: the fan-in refuses a distribution at two versions.
+$cythonPin = [string]$env:PY_CYTHON_VERSION
+if ([string]::IsNullOrWhiteSpace($cythonPin)) { throw 'PY_CYTHON_VERSION is not set (build-arg missing?) -- refusing an unpinned cython' }
+Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', "cython==$cythonPin", 'setuptools', 'wheel')
 $pyavSrcRoot = 'C:\temp\pyav-src'
 New-Item -Path $pyavSrcRoot -ItemType Directory -Force | Out-Null
 Invoke-CpythonPip -Python $py -Arguments @('download', "av==$pyavVersion", '--no-binary', ':all:', '--no-deps', '--no-build-isolation', '-d', $pyavSrcRoot)

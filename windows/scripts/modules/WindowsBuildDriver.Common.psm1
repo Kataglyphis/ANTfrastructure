@@ -88,6 +88,8 @@ function Get-MediaBranchVersionArg {
                 OPENCV_VERSION            = Get-VersionTableValue $VersionTable 'OPENCV_VERSION'
                 FFMPEG_VERSION            = Get-VersionTableValue $VersionTable 'FFMPEG_VERSION'
                 PYAV_VERSION              = Get-VersionTableValue $VersionTable 'PYAV_VERSION'
+                # PyAV's Cython; media-tvm installs the same one, as the fan-in refuses two versions.
+                PY_CYTHON_VERSION         = Get-VersionTableValue $VersionTable 'PY_CYTHON_VERSION'
                 # Hand-staged QAIRT SDK zip pin; empty by default (no zip = QNN EP off).
                 QNN_SDK_ZIP_SHA256        = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
                 NV_CODEC_HEADERS_REF      = Get-VersionTableValue $VersionTable 'NV_CODEC_HEADERS_REF'
@@ -127,6 +129,8 @@ function Get-MediaBranchVersionArg {
             return @{
                 TVM_REF      = Get-VersionTableValue $VersionTable 'TVM_REF'
                 IREE_VERSION = Get-VersionTableValue $VersionTable 'IREE_VERSION'
+                # tvm-ffi's Cython; media-core installs the same one, as the fan-in refuses two versions.
+                PY_CYTHON_VERSION = Get-VersionTableValue $VersionTable 'PY_CYTHON_VERSION'
                 # This branch mounts windows/qnn-sdk too; without the pin the SDK is extracted unverified.
                 QNN_SDK_ZIP_SHA256 = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
                 # rocm lane: IREE's device-bitcode download pin (Build-IreeFromSource.ps1); unused on cpu/nvidia.
@@ -153,6 +157,7 @@ function Get-MediaMergeVersionArg {
         'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT',
         'X265_VERSION', 'X265_SHA256',        # media-core: FFmpeg's static software codecs
         'PYTHON_VERSION', 'OPENCV_VERSION',   # media-core: OpenCV bindings target
+        'PY_CYTHON_VERSION',                  # media-core + media-tvm: the Cython both branches install
         'QNN_SDK_ZIP_SHA256',                 # QAIRT zip pin (#121/#154): every stage that mounts windows/qnn-sdk
         'PROTOC_VERSION', 'JRE_VERSION',      # media-litert: litert-lm toolchain pins
         # media-litert: the rocm lane's LiteRT-LM GPU payload pins, checked in-branch only.

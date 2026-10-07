@@ -381,6 +381,23 @@ Assert-Test -Name "uv finds ${pyMajorMinor}t there and ${pyMajorMinor}+gil in $c
     ($resolved -join ';') -ieq "$ftExe|0;$cpythonDir\PCbuild\amd64\python.exe|0"
 } -FailMessage "uv python find resolved a free-threaded or GIL request elsewhere (PYTHON_FREETHREADED_BIN off PATH, or a python.exe in it?)"
 
+# Both media branches install it; their fan-in once shipped Cython\shadow.py, which hides Cython.Shadow (CON80).
+$cythonPin = Get-ExpectedVersion 'PY_CYTHON_VERSION' ''
+$cythonWant = if ($cythonPin) { "cython $([regex]::Escape($cythonPin))\s" } else { 'cython \S+\s' }
+Assert-PythonSnippet -Python "$cpythonDir\PCbuild\amd64\python.exe" -Name "Cython $cythonPin imports in $cpythonDir (Cython.Shadow, Cython.Compiler.Main)" `
+    -Code "import Cython, Cython.Shadow, Cython.Compiler.Main; print('cython', Cython.__version__)" `
+    -ExpectMatch @($cythonWant) `
+    -FailMessage "Cython is missing, unimportable or not PY_CYTHON_VERSION '$cythonPin' -- see docs/failure-modes.md § A Python module imports nowhere though its distribution is installed"
+# NTFS opens any spelling, CPython's import only the one RECORD names: a lowercased file is a module that imports nowhere.
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsSitePackages.Common.psm1') -Force -DisableNameChecking
+$baseSitePackages = Join-Path $cpythonDir 'Lib\site-packages'
+$baseSiteDists = @(if (Test-Path $baseSitePackages) { Get-DistInfoVersion -SitePackages $baseSitePackages })
+$baseSiteCase = @(if ($baseSiteDists.Count -gt 0) { Find-RecordCaseMismatch -SitePackages $baseSitePackages | Format-RecordCaseMismatch })
+Assert-Test -Name "every RECORD in $baseSitePackages spells its files as on disk ($($baseSiteDists.Count) distributions)" -Condition {
+    $baseSiteDists.Count -gt 0 -and $baseSiteCase.Count -eq 0
+} -FailMessage ("no distribution found, or files spelled otherwise than their RECORD (a COPY or reinstall over a lower layer lowercases them): " +
+    $(if ($baseSiteCase.Count) { $baseSiteCase -join '; ' } else { 'no dist-info at all' }))
+
 Write-TestHeader '3. Rust Toolchain'
 Assert-CommandExists 'cargo'
 Assert-CommandExists 'rustc'
@@ -1773,7 +1790,7 @@ if ($summary.Aborted) {
 }
 # Per-section floors, measured per lane and changed deliberately; a payload section skipped on cross stays 0.
 $sectionFloors = @{
-    '1' = @{ Gpu = 13; Cpu = 13; Arm64 = 13 }; '2' = @{ Gpu = 6; Cpu = 6; Arm64 = 6 }; '3' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 }
+    '1' = @{ Gpu = 13; Cpu = 13; Arm64 = 13 }; '2' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 }; '3' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 }
     '4' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 };    '5' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }; '6' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }
     # '7' counts a real -ExpectGpu run; Arm64 stays 0, as the cross CPU lane skips the section.
     '7' = @{ Gpu = 13; Cpu = 0; Arm64 = 0 };  '8' = @{ Gpu = 11; Cpu = 8; Arm64 = 0 };  '9' = @{ Gpu = 9; Cpu = 6; Arm64 = 0 }

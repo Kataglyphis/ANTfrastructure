@@ -63,6 +63,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [A committed layer can never be shrunk later](#a-committed-layer-can-never-be-shrunk-later)
 - [Preserve committed line endings when editing a COPY'd `.psm1`/`.ps1`](#preserve-committed-line-endings-when-editing-a-copyd-psm1ps1)
 - [Windows images have a hard 125-layer cap](#windows-images-have-a-hard-125-layer-cap)
+- [A layer that replaces a lower layer's file stores its name lowercased](#a-layer-that-replaces-a-lower-layers-file-stores-its-name-lowercased)
 - [`docker commit` inherits the container's `Cmd`](#docker-commit-inherits-the-containers-cmd)
 
 **Lanes, isolation and CPU**
@@ -559,6 +560,16 @@ fans in.
 ### Windows images have a hard 125-layer cap
 
 **Windows images have a HARD 125-layer cap — it binds any image LOADED INTO DOCKER, whichever builder produced it.** The final stage died with `max depth exceeded` on 2026-08-03 because the merge Dockerfile carried ~28 separate `ENV` lines, one layer apiece, under the since-deleted classic builder. BuildKit keeps metadata in the image config, so a BK solve spends layers only on `RUN`/`COPY`/`ADD` — but `-FinalTar` hands the result to `docker load`, which enforces the ceiling again. Rule: in every windows Dockerfile, consolidate ENV/metadata into single instructions (see `Dockerfile.media-merge-builder`'s one big ENV, layers 114→86). When adding stages/instructions, check headroom: `docker inspect <tag> --format '{{len .RootFS.Layers}}'` chain-wide; the final image currently sits at **~75 layers** (settled 2026-08-28 by counting the inherited chain's RUN+COPY+ADD+ENV instructions: base 16 + nvidia 3 + toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, plus 20 ENV layers and ~12 from the servercore base = ~75). The earlier "~108/125" figure was the pre-ENV-consolidation count — the merge-builder's 28 ENV lines → 5 blocks alone removed ~23 layers.
+
+### A layer that replaces a lower layer's file stores its name lowercased
+
+**A Windows container layer that deletes or moves away a file or directory a lower layer holds, then creates the same name again, stores the new entry lowercased.** Measured 2026-10-07 in buildctl solves on servercore ltsc2025 (BuildKit v0.33.0, containerd v2.4): `Diff.py` came back as `diff.py`, and a moved-away `DirUp` as `dirup`. An in-place overwrite keeps the name. So do a rename, a delete and recreate of a file the same layer created, and a delete and a create in two different layers. BuildKit's `COPY` replaces every file it overwrites, so a `COPY` lowercases each file that already exists at its destination. Directories it merges into keep their names.
+
+NTFS opens either spelling, so nothing notices, until CPython's import, which compares the directory listing exactly. The fan-in's two site-packages COPYs shipped `Cython\shadow.py`, and `import Cython` failed in the published image ([failure mode](failure-modes.md#a-python-module-imports-nowhere-though-its-distribution-is-installed)). Rules:
+
+- **Never fan two trees that share files into one path with `COPY`.** Merge them in one `RUN` from bind mounts with an in-place copy, as the media fan-in does with `Merge-SitePackageTree`.
+- **Install a Python distribution once, in the layer that needs it.** A `pip install --force-reinstall`, or an upgrade over a lower layer's install, moves the old package away and creates it again, so its top-level names come back lowercased.
+- **The RECORD check is the gate.** `Find-RecordCaseMismatch` runs at the end of the merge and in the smoke gate's section 2 over the base interpreter.
 
 ### `docker commit` inherits the container's `Cmd`
 

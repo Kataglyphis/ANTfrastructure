@@ -88,10 +88,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       recompiles 464 of 723 runtime objects and the twin carries libbacktrace where the GIL wheel does not; a
       settled tree rebuilds 21. Windows already settles (`Invoke-CmakeConfigure -Settle`). Settling Linux
       changes the GIL wheel, so it is the owner's call.
-- [ ] **CON80 — the published `:winamd64` base Cython is unimportable** [S, ★]. `C:\temp\cpython`'s Cython 3.3.0
-      has `Cython\shadow.py` while its RECORD names `Shadow.py`, so `import Cython` fails (found 2026-10-07; a
-      force-reinstall produced a lowercase `cython\` directory). Suspect the media-core/media-tvm `site-packages`
-      COPY fan-in. Find the cause and gate `import Cython` in the smoke test.
+- [ ] **CON80 — prove the in-place site-packages merge in the next Windows chain run** [S, ★]. The cause
+      (a COPY over a lower layer's file stores it lowercased) and the fix landed 2026-10-07 (CHANGELOG): the
+      fan-in merges in one RUN, refuses mixed versions and lost RECORD spelling. Proved in a replay only.
+      Rebuild `:winamd64` and `:winarm64`: smoke section 2 must pass `import Cython.Shadow` and the RECORD
+      check. Until then, images built before the fix take `pip uninstall -y cython` and
+      `pip install cython==3.3.0` in two separate RUNs (verified on bk-windows-media); a one-layer
+      `--force-reinstall` leaves `cython\` and still fails.
 
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
       (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.
