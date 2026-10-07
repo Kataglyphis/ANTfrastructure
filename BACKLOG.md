@@ -39,6 +39,36 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       f4c0e2be, answers `ripgrep 15.2.0`. **The Linux half is open:** the published `:latest`
       (`sha256:6ceffedc`) still has no `rg` on amd64 or arm64, and waits on a Linux rebuild.
 
+- [ ] **CON72 — the 2026-10-07 Renovate bumps reach a published image** [L, ★★]. In source on
+      2026-10-07 (CHANGELOG): LLVM 23.1.3, Rust 1.99.0, CPython 3.14.8, CMake 4.4.4, uv 0.12.23,
+      TVM v0.27.0, IREE v3.12.0, GenAI v0.17.0, LiteRT-LM 0.18.0 (protoc 36.1), PyAV 19.0.1,
+      torch 2.14.1/torchvision 0.29.1, llama.cpp b11460, Ollama 0.40.0, Flutter 3.47.6, cuDNN
+      9.27.0.42 and the tool pins. Every hash was checked, and the patches were applied to the new
+      sources. What only a chain can prove:
+      - **TVM v0.27.0** is 141 commits past the proven `994e0216`, built by GCC 16 and clang-cl
+        23.1.3. Its tvm-ffi bump changes how the arm64 and riscv64 ffi wheels find Python.
+      - **IREE v3.12.0** bundles LLVM 24.0.0git, and the cross builds (arm64 clang-cl, riscv64)
+        meet a new async proactor, the local-task executor and new tools. **OrchestrANT's lock
+        must move iree-base-compiler/runtime to 3.12.0 first**: a 3.12 runtime does not load a 3.11
+        VMFB, so arm64's `check_iree_native` would fail.
+      - **GenAI v0.17.0** is a 487-file refactor, on GCC 16, clang-cl and nvcc. On Windows,
+        configure needs `nuget.exe` on the media-core `PATH`, DirectML/D3D12/DXC restore unhashed
+        from nuget.org, and `D3D12Core.dll` must land beside the DLL.
+      - **LiteRT-LM 0.18.0** (Windows, Bazel) adds WORKSPACE repos (rules_go, gazelle, rules_android
+        0.7.0, whose toolchain names `@androidsdk`) and moves LiteRT to `26895c9f` under MSVC. The
+        rocm GPU path now loads `webgpu_dawn.dll`, which only the rocm check's load probe proves.
+      - **LLVM 23.1.3** rebuilds both toolchains, and the Windows patched LLVM.
+      - **PyAV 19.0.1** against FFmpeg n9.0.2, with Cython ≥ 3.3.
+      - **torch 2.14.1**: the riscv64 source build and the Windows rocm source build at the new
+        commits. OrchestrANT's lock (APP_REF=develop) must carry the same pair, or the torch
+        stage's pin check stops.
+
+      Found during the bump, older than it: `Build-TvmFromSource.ps1`'s cross path versions the
+      win-arm64 `apache_tvm` wheel with `TVM_COMMIT`'s hash, which is not PEP 440 and makes
+      `tvm\_version.py` invalid Python. It has been live since `TVM_COMMIT` reached Windows
+      (2026-08-28); no arm64 gate imports tvm. Done when a published `:latest` (all arches),
+      `:winamd64` and `:winarm64` built from this hub pass their smokes.
+
 ## Open — Linux image (all arches)
 
 - [ ] **CON65 — cargo-audit, cargo-deny and cargo-tarpaulin in the image** [M, ★★]. Owner rule
