@@ -30,6 +30,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
+- [ ] **CON75 — the free-threaded wheel on the cross lanes** [M, ★]. The riscv64 cross build
+      and the Windows arm64 cross lane skip `cp314t` with a logged reason. riscv64 needs 3.14t
+      target headers in the sysroot (CON66 stages them at `/opt/python-cross-ft/riscv64`), the
+      `.cpython-314t-riscv64-linux-gnu.so` suffix and a 3.14t host pip. Windows arm64 builds no
+      Cython wheel at all (CON74 brings its interpreter). Done when both ship a wheel proved on
+      the target.
+- [ ] **CON76 — a real cp314t proof in the hub suite** [S, ★]. Once `:latest` ships `3.14t` on
+      every arch (CON66), `test-python-free-threaded-wheel.sh` builds two tiny C extensions (one
+      declaring free-threading support, one not) and runs `prove` for real instead of a stubbed
+      interpreter.
+- [ ] **CON77 — a workflow input for `PYTHON_FREE_THREADED_WHEEL`** [S, ★]. Today a consumer
+      can switch the free-threaded wheel off in CI only by dropping its classifier.
 - [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
       [M, ★]. Since 2026-10-07 `:winamd64` builds `python3.14t.exe` beside the GIL build
       (`C:\python-freethreaded`, windows-builds.md § *The free-threaded CPython*). The arm64

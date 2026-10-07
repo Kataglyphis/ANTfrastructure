@@ -349,6 +349,9 @@ PACKAGING_DEPS_SKIP_APT_INSTALL
 # 1 makes probe-sccache.sh exit non-zero when any compiler probe failed
 # (02-toolchain/probe-sccache.sh, default 0 = report only).
 PROBE_STRICT
+# on builds the free-threaded wheel without the Free Threading classifier, off skips it
+# (02-toolchain/python/ci_packaging.sh, default auto = follow the classifier).
+PYTHON_FREE_THREADED_WHEEL
 # 0 disables the CPU/RAM/disk sampler both orchestrators start
 # (lib-orchestrator.sh, default 1).
 RESOURCE_MONITOR

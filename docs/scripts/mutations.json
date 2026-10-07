@@ -12115,6 +12115,118 @@
   "why": "the packaging sync would ignore the lane's extras limit and build the full set under emulation"
  },
  {
+  "id": "python.packaging.gil-build-asks-for-gil",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "    uv build --python \"$(uv_python_request \"${PYTHON_VERSION}\")\"\n",
+  "replace": "    uv build\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "uv build ignores the venv, so the image's python3.14t becomes a candidate for the GIL wheel, which then ships cp314t only, as on Windows on 2026-10-01"
+ },
+ {
+  "id": "python.packaging.free-threaded-mode-is-validated",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "  *) err \"PYTHON_FREE_THREADED_WHEEL must be auto, on or off, not '${FT_MODE}'\" ;;\n",
+  "replace": "  *) ;;\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "a typo such as PYTHON_FREE_THREADED_WHEEL=no would read as auto and build the wheel its operator meant to switch off"
+ },
+ {
+  "id": "python.packaging.free-threaded-off-skips",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "  if [ \"${FT_MODE}\" = off ]; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "off would be ignored for a declared project, so the escape hatch for an image without python3.14t would not open"
+ },
+ {
+  "id": "python.packaging.free-threaded-undeclared-skips",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "    auto:1) info \"free-threaded wheel skipped: the project does not declare support (${verdict})\"; return 1 ;;\n",
+  "replace": "    auto:1) ;;\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "every project would ship a cp314t wheel, including those whose code was never tested free-threaded"
+ },
+ {
+  "id": "python.packaging.free-threaded-never-downloads",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "  FT_PYTHON=\"$(uv python find \"${FT_VERSION}\" 2>/dev/null)\" ||\n",
+  "replace": "  FT_PYTHON=\"$(uv python install \"${FT_VERSION}\" >/dev/null 2>&1; uv python find \"${FT_VERSION}\" 2>/dev/null)\" ||\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "a lane would fetch its interpreter at run time, so an image that lost python3.14t would still go green on a download"
+ },
+ {
+  "id": "python.packaging.free-threaded-wheel-is-cp3xyt",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "    *) err \"the free-threaded build produced ${name}, not a ${FT_ABI} wheel\" ;;\n",
+  "replace": "    *) mv \"${wheels[0]}\" dist/; FT_WHEEL=\"${name}\" ;;\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "a twin built on a GIL interpreter would overwrite the GIL wheel of the same name and ship no free-threaded one"
+ },
+ {
+  "id": "python.packaging.free-threaded-wheel-is-proved",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "if [ -n \"${FT_WHEEL}\" ]; then\n  prove_free_threaded_wheel\nfi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "the cp314t wheel would ship unproved, and a Cython module without freethreading_compatible re-enables the GIL on every import"
+ },
+ {
+  "id": "python.packaging.auditwheel-from-the-packaging-venv",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "[ -n \"${AUDITWHEEL}\" ] || [ ! -x \"${VENV_BINARIES}/bin/auditwheel\" ] || AUDITWHEEL=\"${VENV_BINARIES}/bin/auditwheel\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "the project's own auditwheel goes unused again, and every Cython wheel ships as linux_<arch>"
+ },
+ {
+  "id": "python.free-threaded-helper.official-classifier",
+  "target": "linux/scripts/02-toolchain/python/free-threaded-wheel.py",
+  "find": "CLASSIFIER = \"Programming Language :: Python :: Free Threading\"\n",
+  "replace": "CLASSIFIER = \"Programming Language :: Python :: 3.14t\"\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "the unofficial 3.14t classifier, which PyPI refuses, would opt a project in and the official one would not"
+ },
+ {
+  "id": "python.free-threaded-helper.classifier-family-not-prefix",
+  "target": "linux/scripts/02-toolchain/python/free-threaded-wheel.py",
+  "find": "hits = [c for c in classifiers if c == CLASSIFIER or c.startswith(CLASSIFIER + \" :: \")]\n",
+  "replace": "hits = [c for c in classifiers if c.startswith(CLASSIFIER)]\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "any classifier that merely begins with the family's text would opt a project in"
+ },
+ {
+  "id": "python.free-threaded-helper.package-init-loads-as-the-package",
+  "target": "linux/scripts/02-toolchain/python/free-threaded-wheel.py",
+  "find": "            found.append((name.removesuffix(\".__init__\"), str(item.locate())))\n",
+  "replace": "            found.append((name, str(item.locate())))\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "a compiled pkg/__init__ exports PyInit_pkg, so loading it as pkg.__init__ fails the proof of every Cython wheel with a package"
+ },
+ {
+  "id": "python.free-threaded-helper.only-site-packages-files",
+  "target": "linux/scripts/02-toolchain/python/free-threaded-wheel.py",
+  "find": "        if suffix and not rel.startswith(\"../\"):\n",
+  "replace": "        if suffix:\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "a file a wheel installs outside site-packages would be loaded as a module of the package"
+ },
+ {
+  "id": "python.app-bundle.wheel-fits-the-runtime-abi",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "      *) others+=\" ${name}\" ;;\n",
+  "replace": "      *) printf '%s\\n' \"${wheel}\"; return 0 ;;\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "the GIL runtime would install whichever binary sorts first, the cp314t twin included, and no GIL interpreter imports that"
+ },
+ {
+  "id": "python.app-bundle.foreign-abi-is-no-fallback",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "      none) [ -n \"${others}\" ] || { printf '%s\\n' \"${wheel}\"; return 0; } ;;\n",
+  "replace": "      none) printf '%s\\n' \"${wheel}\"; return 0 ;;\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "a bundle would quietly ship the pure wheel while the binary for its ABI was never built"
+ },
+ {
   "id": "linker-select.unknown-value-refused",
   "target": "linux/scripts/lib/linker-select.sh",
   "find": "    *) warn \"KATAGLYPHIS_LINKER must be default, lld or mold, not '${want}'\"; return 2 ;;",

@@ -6,6 +6,32 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — A proved free-threaded wheel beside the GIL one
+
+- **A project that declares free-threading ships a `cp314t` wheel too** (owner request
+  2026-10-07: two wheels, the free-threaded one only where the project supports it).
+  `ci_packaging.sh` and `Invoke-CiPackaging.ps1` read `pyproject.toml`'s official `Programming
+  Language :: Python :: Free Threading` classifier (any level) through the shared
+  `free-threaded-wheel.py`.
+  - The `CYTHONIZE=True` build runs again on the image's 3.14t, found by `uv python find` and never
+    downloaded, and must leave one `cp314t` wheel (auditwheel-repaired on Linux).
+  - A fresh 3.14t venv installs the shipped wheel and loads every compiled module; the step fails
+    when the GIL is back on, naming the first module that turned it on.
+  - The sdist and the pure wheel are built once. Undeclared projects build what they built before,
+    plus one log line. `PYTHON_FREE_THREADED_WHEEL=auto|on|off` (Windows also
+    `-FreeThreadedWheel`) overrides; the riscv64 and Windows arm64 cross lanes skip it with a
+    reason (CON75). New module `WindowsPythonWheel.Common.psm1`.
+  - **A consumer moves its hub pin only once its images resolve `3.14t`** (`:latest` amd64/arm64,
+    `:winamd64`): a declared project's packaging step fails without one, by design.
+- **The Linux GIL build asks uv for `3.14+gil`**, as Windows does: `uv build` ignores the venv.
+- **auditwheel runs on Linux at last.** It is PATH's, else the binary packaging venv's; PATH never
+  had one, so every Cython wheel shipped as `linux_<arch>` under a log line calling it pure.
+- **`python-app-bundle.sh` picks the wheel by its runtime's ABI**, like `Select-PythonAppWheel`.
+- Proved on OrchestrANT (64 compiled modules, manylinux2014/manylinux_2_17 and win_amd64) and
+  WebDavClient (3 modules) in `:latest` and `:winamd64`, with a uv-fetched 3.14.7t standing in for
+  the images' own until they ship it. Tests: `test-python-free-threaded-wheel.sh`,
+  `PythonWheel.FreeThreaded.Tests.ps1`, 14 mutations.
+
 ## 2026-10-07 — The free-threaded CPython is built from source, on every arch (CON66)
 
 - **Owner decision: `3.14.8t` comes from the toolchain stage, not uv's python-build-standalone
