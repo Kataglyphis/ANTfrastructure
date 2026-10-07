@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — the cross lldb finds zlib.h (CON71's compiler stage)
+
+- **The arm64 compiler stage failed at `SymbolFileCTF.cpp:42: fatal error: zlib.h: No such file or directory`**
+  (chain run 20261007-221241, 3092 s into the LLVM 23.1.3 build). CON71 added lldb to the cross superset; its CTF plugin
+  includes `zlib.h` under `LLVM_ENABLE_ZLIB` but links no `ZLIB::ZLIB`, so it never gets `/usr/include`, and the cross
+  GCC (`/opt/gcc-16.2.0/bin/aarch64-linux-gnu-g++ --sysroot=/`) does not search it. LLVM's own zlib users get the dir
+  from the imported target, which is why only lldb broke, and only off the build arch.
+- **Fix** (`02-toolchain/llvm-cross.sh`): `llvm_cross_stage_zlib_headers` copies the sysroot's `zlib.h` and `zconf.h`
+  (Multi-Arch: same) into `<build_root>/<triplet>-zlib-include`, and the C/CXX/ASM flag inits add it as `-isystem`. A
+  dir holding only those two keeps the host's glibc headers out of the target's search path, which
+  `-isystem /usr/include` would not. `test-llvm-cross-stanza.sh` 61 -> 65.
 ## 2026-10-08 — the lock maintenance report says how far behind each lock is (CON84 1)
 
 - **Each `LOCK FILE MAINTENANCE` row ends with the tool's own dry-run count** (`maint_behind` in

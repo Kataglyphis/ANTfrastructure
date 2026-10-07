@@ -156,6 +156,26 @@ t_assert_contains "${_CMAKE_ARGV}" "-DCMAKE_INSTALL_PREFIX=/opt/llvm-target-arm6
 t_case "the utilities (FileCheck, yaml2obj, llvm-tblgen) are built and installed with the release (CON71)"
 t_assert_contains "${_CMAKE_ARGV}" "-DLLVM_INCLUDE_UTILS=ON -DLLVM_BUILD_UTILS=ON -DLLVM_INSTALL_UTILS=ON"
 
+t_case "without staged zlib headers the flag inits stay -B<wrapper_dir> alone"
+t_assert_contains "${_CMAKE_ARGV}" "-DCMAKE_CXX_FLAGS_INIT=-B/build/aarch64-linux-gnu-tool-bin -DCMAKE_ASM_FLAGS_INIT"
+
+t_case "lldb's CTF plugin finds zlib.h: the staged dir holds only zlib's two headers and reaches every flag init"
+mkdir -p "${_FIX}/sysroot/usr/include"
+printf 'z\n' > "${_FIX}/sysroot/usr/include/zlib.h"
+printf 'c\n' > "${_FIX}/sysroot/usr/include/zconf.h"
+printf 's\n' > "${_FIX}/sysroot/usr/include/stdio.h"
+llvm_cross_stage_zlib_headers "${_FIX}/zinc" "${_FIX}/sysroot/"
+t_assert_eq "zconf.h zlib.h" "$(cd "${_FIX}/zinc" && echo *)" "a host header beside them would shadow the target's"
+_cfg_state[zlib_include]="${_FIX}/zinc"
+_llvm_cross_cmake_configure _cfg_state aarch64-unknown-linux-gnu \
+  _cfg_launcher _cfg_linker _cfg_superset
+for _l in C CXX ASM; do
+  t_assert_contains "${_CMAKE_ARGV}" "-DCMAKE_${_l}_FLAGS_INIT=-B/build/aarch64-linux-gnu-tool-bin -isystem ${_FIX}/zinc"
+done
+unset '_cfg_state[zlib_include]'
+llvm_cross_stage_zlib_headers "${_FIX}/zinc" "${_FIX}/empty"
+t_assert_eq "absent" "$([ -e "${_FIX}/zinc" ] && echo present || echo absent)" "no zlib in the sysroot leaves no stale dir behind"
+
 # --- build + install ---------------------------------------------------------
 _CMAKE_CALLS=()
 cmake() { _CMAKE_CALLS+=("$*"); }
