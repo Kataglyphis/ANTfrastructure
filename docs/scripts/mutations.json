@@ -13075,6 +13075,30 @@
   "why": "an unproved IREE twin would go missing without failing the required IREE build"
  },
  {
+  "id": "wheels.iree-configure-settled",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    cmake \"$@\" > \"${log}\" 2>&1 || return 1\n    cmake \"$@\" >> \"${log}\" 2>&1\n",
+  "replace": "    cmake \"$@\" > \"${log}\" 2>&1\n",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "the GIL tree would build unsettled, and the cp314t twin's reconfigure would recompile 1187 more objects, 757 of them compiler sources, and relink libIREECompiler.so"
+ },
+ {
+  "id": "wheels.iree-native-configure-settled",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    if ! _iree_configure_settled \"${target_build}.cfg.log\" -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            \"${ccache_cmake_args[@]}\" \\\n",
+  "replace": "    if ! cmake -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            \"${ccache_cmake_args[@]}\" \\\n",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "the native GIL wheels would come from an unsettled tree, which the twin's reconfigure then changes on 1187 non-Python compile lines"
+ },
+ {
+  "id": "wheels.iree-cross-configure-settled",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    if ! _iree_configure_settled \"${target_build}.cfg.log\" -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            -DCMAKE_TOOLCHAIN_FILE=",
+  "replace": "    if ! cmake -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            -DCMAKE_TOOLCHAIN_FILE=",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "the arm64 and riscv64 target trees would build unsettled, so a later reconfigure would recompile most of their runtime objects"
+ },
+ {
   "id": "wheels.ft-twin-leaves-tree",
   "target": "linux/scripts/03-media/free-threaded-wheels.sh",
   "find": "  ft_store_twin \"${wheel}\" \"$2\" || return 1\n  rm -f \"${wheel}\"\n",

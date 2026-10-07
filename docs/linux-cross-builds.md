@@ -1140,6 +1140,25 @@ target needs no host `iree-tblgen`; there the host stage tries `OFF` first and
 escalates to `ON` only when a required tool is missing.
 [`iree-two-stage-build.md`](iree-two-stage-build.md) has the reasoning.
 
+**Every target tree configures twice before it builds** (`_iree_configure_settled`, CON81,
+2026-10-07), the native one and the cross one alike. IREE v3.12.0's top-level
+`CMakeLists.txt` adds `runtime/` (line 1199), where `iree::base` links
+`${IREE_LIBBACKTRACE_TARGET}`, before `build_tools/third_party/libbacktrace` (line 1236)
+caches that variable. So only a second configure gives every object that sees `iree::base`
+`IREE_HAVE_LIBBACKTRACE=1`: 1187 of the amd64 compiler tree's 6700 compile lines, 757 of
+them compiler sources. Any later reconfigure, such as the cp314t twin's, would otherwise
+recompile all of them and relink `libIREECompiler.so`. The order is IREE's, not the
+toolchain's: an aarch64 cross configure of the runtime moves 377 of its 474 compile lines the
+same way, so the arm64 and riscv64 target trees settle too.
+- **The bytes do not change.** Release builds run `IREE_STATUS_MODE` 2, which compiles the
+  stack-trace path out, so neither configure links libbacktrace code. A settled amd64 build's
+  28 native files are byte-identical to those of `:latest`, which was built before the settle.
+  That build was v3.11.0 (the published image's ENV `IREE_VERSION` wins over the tree's pin in a
+  local run), which has the same order at lines 1149/1186.
+- **What it buys** is a twin pass that recompiles only what sees Python
+  ([consumer-image-contract.md § The free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)).
+- **The host stage configures once.** It ships nothing and is never reconfigured.
+
 Build home: `linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh`
 (`build_iree_wheels`), which stages host tools + target runtime and is smoked
 both natively and via the Python import path. The riscv64 builder iterates on
