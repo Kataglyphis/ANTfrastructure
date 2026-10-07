@@ -14,6 +14,7 @@ cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${TREE}/01
 # The image's /opt/scripts copies would win over this tree's stubs, so the copy looks nowhere there.
 sed "s#/opt/scripts/#${_work}/no-opt-scripts/#g" "${SCRIPTS}/02-toolchain/python/ci_packaging.sh" \
   > "${TREE}/02-toolchain/python/ci_packaging.sh"
+cp "${SCRIPTS}/02-toolchain/python/free-threaded-wheel.py" "${TREE}/02-toolchain/python/"
 # The real ci-common gets its workspace glue stubbed, as test-python-ci-defaults does.
 cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/python_uv.sh"
@@ -119,6 +120,9 @@ t_assert_contains "$(cat "${CALLS}")" "CFLAGS=-O2 -I/usr/include/python3.14" "th
 t_case "cross riscv64 ships wheels only even though uname is amd64"
 t_assert_eq "0" "$(_calls)" "the cross target decides the verdict, not the host arch"
 t_assert_contains "$(cat "${OUT}")" "riscv64 ships wheels only" "the skip names its why"
+
+t_case "cross mode skips the free-threaded wheel and says why"
+t_assert_contains "$(cat "${OUT}")" "free-threaded wheel skipped: the riscv64 cross build has no free-threaded target interpreter"
 
 t_case "a native run leaves the cross knobs unset"
 t_assert_ok _run x86_64

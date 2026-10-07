@@ -17,6 +17,7 @@ share their whole CI surface with this repository:
 | Chain ORT reconcile | `uv_reconcile_chain_ort` in `python_uv.sh`, `Sync-UvChainOnnxRuntime` in `windows/scripts/modules/WindowsUv.Common.psm1`; both run the ORT census `linux/scripts/03-media/runtime/ort-venv-census.py` (the Windows image's module copy runs the one `windows/Dockerfile` puts in `C:\temp\scripts\`) |
 | Chain OpenCV (Windows) | `Sync-UvChainOpenCv` in `WindowsUv.Common.psm1`, over `Copy-ChainOpenCvPackage` in `WindowsPythonApp.Common.psm1` |
 | App bundles (zip/MSI/deb/… inputs) | [`python-app-bundles.md`](python-app-bundles.md) |
+| Free-threaded wheel (declared, proved) | `linux/scripts/02-toolchain/python/free-threaded-wheel.py`, run by both packaging drivers (§ Two wheels: GIL and free-threaded) |
 
 A consumer's workflow is configuration, not steps. Its `scripts/linux/ci_*.sh`
 are wrappers that `antfrastructure_exec` into the drivers above — see
@@ -468,8 +469,8 @@ creates the `+gil` venv. Measured in `:winamd64`: 3.12 is installed and its venv
 3.12.14. 3.14 still takes the image's own `C:\temp\cpython`, with no download.
 
 `uv build` is a second door into the same trap. It discovers its own interpreter and
-ignores the venv, so `Invoke-CiPackaging.ps1` passes it the same `--python X.Y+gil`.
-Without that flag, OrchestrANT's only Windows binary wheel was `cp314-cp314t`
+ignores the venv, so `Invoke-CiPackaging.ps1` and `ci_packaging.sh` pass it the same
+`--python X.Y+gil`. Without that flag, OrchestrANT's only Windows binary wheel was `cp314-cp314t`
 (2026-10-01). The app bundle's GIL runtime could not install it.
 
 The GIL interpreter `uv build` then finds is the image's in-tree build
@@ -478,6 +479,65 @@ The GIL interpreter `uv build` then finds is the image's in-tree build
 `LNK1104: python314.lib`. The free-threaded download had hidden this, because it is a regular
 install. The binaries step therefore puts the interpreter's directory on `LIB` whenever a
 `python3*.lib` sits there.
+
+## Two wheels: GIL and free-threaded
+
+A project that declares free-threading support ships two binary wheels: `cp314-cp314` for
+the GIL interpreter and `cp314-cp314t` for the free-threaded one. The sdist and the pure
+`py3-none-any` wheel are built once, because they serve both.
+
+**Opting in** is the official trove classifier, in `pyproject.toml`'s `[project]` table:
+
+```toml
+classifiers = ["Programming Language :: Python :: Free Threading :: 2 - Beta"]
+```
+
+Any level counts (`1 - Unstable`, `2 - Beta`, `3 - Stable`, `4 - Resilient`), and so does
+the bare `Programming Language :: Python :: Free Threading`. `Programming Language :: Python
+:: 3.14t` is no classifier: PyPI refuses an upload that names it, and the drivers ignore it.
+The Cython build must declare the same, with `freethreading_compatible=True` in
+`cythonize(compiler_directives=...)` (Cython 3.1+). Without it, every compiled module
+re-enables the GIL when it loads, and the proof below fails.
+
+**What the drivers do.** `ci_packaging.sh` and `Invoke-CiPackaging.ps1` read the classifier
+with `linux/scripts/02-toolchain/python/free-threaded-wheel.py declares`. When it is there:
+
+1. **The build.** After the GIL Cython wheel, the same `CYTHONIZE=True` build runs on the
+   free-threaded twin of the packaging version (`3.14` gives `3.14t`). The interpreter is
+   the image's, found by `uv python find` and never downloaded
+   ([`consumer-image-contract.md` § The free-threaded Python](consumer-image-contract.md#the-free-threaded-python)).
+   Without one the step fails and says so.
+2. **The tag.** The build must leave one `cp314t` wheel. On Linux it is auditwheel-repaired
+   like the GIL wheel. A pure result is logged and dropped.
+3. **The proof.** A fresh venv of the same interpreter installs the shipped wheel without
+   its dependencies, and `free-threaded-wheel.py prove` loads every compiled module the
+   distribution owns. It creates each module without running its body: that is where CPython
+   decides about the GIL, and a missing optional dependency then cannot fail or fake the
+   verdict. The step fails when `sys._is_gil_enabled()` is true afterwards, and names each
+   module whose `RuntimeWarning` re-enabled it.
+
+Without the classifier the drivers build exactly what they built before, and log one line:
+`free-threaded wheel skipped: the project does not declare support (...)`.
+
+**The override** is `PYTHON_FREE_THREADED_WHEEL` (on Windows also `-FreeThreadedWheel`):
+`auto`, the default, follows the classifier, `on` builds without it, and `off` skips it.
+Any other value fails the run.
+
+**Cross lanes skip it.** The riscv64 cross build (`PACKAGING_CROSS_TARGET`) and the Windows
+arm64 cross lane have no free-threaded target interpreter. They log `free-threaded wheel
+skipped: the <arch> cross build has no free-threaded target interpreter`.
+
+**The app bundles pick by their runtime's ABI.** `python-app-bundle.sh` and
+`Select-PythonAppWheel` take the `cp314` wheel for their GIL runtime. A binary built for
+another ABI alone is an error, not a fallback to the pure wheel.
+
+**auditwheel on Linux** is PATH's, else the binary packaging venv's (OrchestrANT's
+`packaging` extra installs it there). Until 2026-10-07 only PATH counted, and it never has
+one, so every Cython wheel shipped as `linux_<arch>` under a log line calling it pure. With
+no auditwheel anywhere, a platform wheel ships unrepaired, with a warning.
+
+Tests: `linux/scripts/tests/test-python-free-threaded-wheel.sh` and
+`windows/scripts/tests/PythonWheel.FreeThreaded.Tests.ps1`.
 
 ## Which Linux image
 

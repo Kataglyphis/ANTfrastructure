@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the sdist and wheels, auditwheel-repairing platform wheels, then any packaging/app.json app; PYTHON_VERSION (arg 1) defaults to 3.14.
+# Builds the sdist and wheels (GIL, plus free-threaded when declared), auditwheel-repairing platform wheels, then any packaging/app.json app; PYTHON_VERSION (arg 1) defaults to 3.14.
 
 set -euo pipefail
 
@@ -88,8 +88,76 @@ package_build() {
     uv build --sdist
     _PYTHON_HOST_PLATFORM="${PYTHON_HOST_PLATFORM_TARGET}" "${venv}/bin/python" -m pip wheel . --no-deps -w dist
   else
-    uv build
+    # uv build ignores the venv; +gil, as a plain request may take the image's python3.14t.
+    uv build --python "$(uv_python_request "${PYTHON_VERSION}")"
   fi
+}
+
+# See docs/python-ci.md#two-wheels-gil-and-free-threaded
+FT_HELPER="$SCRIPT_DIR/free-threaded-wheel.py"
+FT_MODE="${PYTHON_FREE_THREADED_WHEEL:-auto}"
+FT_VERSION="$(printf '%s' "${PYTHON_VERSION%t}" | cut -d. -f1,2)t"
+FT_ABI="cp$(printf '%s' "${FT_VERSION%t}" | tr -d .)t"
+FT_PYTHON=""
+FT_WHEEL=""
+case "${FT_MODE}" in
+  auto|on|off) ;;
+  *) err "PYTHON_FREE_THREADED_WHEEL must be auto, on or off, not '${FT_MODE}'" ;;
+esac
+
+# 0 when this run builds the free-threaded wheel; every skip logs its reason.
+free_threaded_wheel_wanted() {
+  local verdict rc=0
+  if [ -n "${CROSS_TARGET}" ]; then
+    info "free-threaded wheel skipped: the ${CROSS_TARGET} cross build has no free-threaded target interpreter"
+    return 1
+  fi
+  if [ "${FT_MODE}" = off ]; then
+    info "free-threaded wheel skipped: PYTHON_FREE_THREADED_WHEEL=off"
+    return 1
+  fi
+  verdict="$(python3 -I "${FT_HELPER}" declares pyproject.toml 2>&1)" || rc=$?
+  case "${FT_MODE}:${rc}" in
+    *:0) info "free-threaded wheel: the project declares '${verdict}'" ;;
+    on:1) info "free-threaded wheel: PYTHON_FREE_THREADED_WHEEL=on, although ${verdict}" ;;
+    auto:1) info "free-threaded wheel skipped: the project does not declare support (${verdict})"; return 1 ;;
+    *) err "cannot tell whether the project declares free-threading support: ${verdict}" ;;
+  esac
+}
+
+# The binary build again on the image's free-threaded interpreter, which is found, never downloaded.
+build_free_threaded_wheel() {
+  local out="$WORKSPACE_ROOT/build/free-threaded-dist" name abi
+  local -a wheels=()
+  FT_PYTHON="$(uv python find "${FT_VERSION}" 2>/dev/null)" ||
+    err "no ${FT_VERSION} interpreter for the free-threaded wheel (the image ships python${FT_VERSION}); PYTHON_FREE_THREADED_WHEEL=off skips it"
+  info "free-threaded wheel: building with ${FT_PYTHON}"
+  rm -rf "${out}"
+  uv build --python "${FT_PYTHON}" --out-dir "${out}" || err "the free-threaded build failed"
+  wheels=("${out}"/*.whl)
+  [ "${#wheels[@]}" -eq 1 ] || err "the free-threaded build left ${#wheels[@]} wheels in ${out}, not one"
+  name="${wheels[0]##*/}"
+  abi="${name%-*}"
+  abi="${abi##*-}"
+  case "${abi}" in
+    "${FT_ABI}") mv "${wheels[0]}" dist/; FT_WHEEL="${name}" ;;
+    none) info "free-threaded wheel: the build is pure (${name}), and the py3-none-any wheel already serves ${FT_VERSION}" ;;
+    *) err "the free-threaded build produced ${name}, not a ${FT_ABI} wheel" ;;
+  esac
+  rm -rf "${out}"
+}
+
+# A fresh venv of the free-threaded interpreter takes the shipped wheel, and its modules must leave the GIL off.
+prove_free_threaded_wheel() {
+  local venv="$WORKSPACE_ROOT/.venv_packaging_free_threaded" verdict
+  local -a wheels=(dist/*-"${FT_ABI}"-*.whl)
+  [ "${#wheels[@]}" -eq 1 ] || err "expected one ${FT_ABI} wheel in dist/ after the repair, found ${#wheels[@]}"
+  uv venv --python "${FT_PYTHON}" --clear "${venv}" || err "cannot create the proof venv ${venv}"
+  uv pip install --python "${venv}/bin/python" --no-deps "${wheels[0]}" || err "${wheels[0]} does not install into ${venv}"
+  verdict="$("${venv}/bin/python" -I "${FT_HELPER}" prove "${FT_WHEEL%%-*}" 2>&1)" ||
+    err "free-threaded proof failed for ${wheels[0]##*/}: ${verdict}"
+  info "free-threaded proof: ${verdict}"
+  rm -rf "${venv}"
 }
 
 if command -v patchelf >/dev/null 2>&1; then
@@ -121,17 +189,32 @@ package_build "$VENV_BINARIES"
 
 mkdir -p dist repaired
 shopt -s nullglob
+
+if free_threaded_wheel_wanted; then
+  build_free_threaded_wheel
+fi
+
 info "Found wheels:"
 ls -la dist || true
 
+# The packaging venv's auditwheel counts too: the fresh venv is never activated, so PATH alone found none.
+AUDITWHEEL="$(command -v auditwheel || true)"
+[ -n "${AUDITWHEEL}" ] || [ ! -x "${VENV_BINARIES}/bin/auditwheel" ] || AUDITWHEEL="${VENV_BINARIES}/bin/auditwheel"
+
 for whl in dist/*.whl; do
   info "Inspecting wheel: $whl"
-  if auditwheel show "$whl" >/dev/null 2>&1; then
-    info "  Platform wheel detected -> repairing: $whl"
-    auditwheel repair "$whl" -w repaired/ || { err "auditwheel failed on $whl"; exit 1; }
-  else
-    info "  Pure/Python wheel detected -> copying unchanged: $whl"
+  if [[ "${whl}" == *-none-any.whl ]]; then
+    info "  Pure wheel -> copying unchanged: $whl"
     cp "$whl" repaired/
+  elif [ -n "${CROSS_TARGET}" ]; then
+    info "  ${CROSS_TARGET} cross wheel -> copying unrepaired, as auditwheel would graft host libraries: $whl"
+    cp "$whl" repaired/
+  elif [ -z "${AUDITWHEEL}" ]; then
+    warn "  Platform wheel, but no auditwheel on PATH or in ${VENV_BINARIES} -> shipping it unrepaired: $whl"
+    cp "$whl" repaired/
+  else
+    info "  Platform wheel -> repairing with ${AUDITWHEEL}: $whl"
+    "${AUDITWHEEL}" repair "$whl" -w repaired/ || err "auditwheel failed on $whl"
   fi
 done
 
@@ -141,6 +224,10 @@ rmdir repaired || true
 
 info "Final wheels in dist/:"
 ls -la dist || true
+
+if [ -n "${FT_WHEEL}" ]; then
+  prove_free_threaded_wheel
+fi
 
 # packaging/app.json opts the consumer in; its packages need the AppImage tooling amd64/arm64 ships, so riscv64 ships wheels only (docs/python-app-bundles.md § Packages).
 if [ -f packaging/app.json ]; then

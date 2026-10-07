@@ -57,19 +57,30 @@ RUNTIME="${BUNDLE}/runtime"
 rm -rf "${BUNDLE}"
 mkdir -p "${BUNDLE}/bin"
 
-dist_key="$(printf '%s' "${DISTRIBUTION}" | tr '[:upper:]-.' '[:lower:]__')"
-app_wheel=""
-for pattern in "*-manylinux*_${ARCH}.whl" "*-linux_${ARCH}.whl" "*-none-any.whl"; do
-  for wheel in "${WHEEL_DIR}"/${pattern}; do
+# select_app_wheel <dir> <dist key> <arch> <abi>: the binary wheel for the runtime's ABI (or abi3), else the pure one; another ABI's binaries alone are an error.
+select_app_wheel() {
+  local dir="$1" key="$2" arch="$3" abi="$4" wheel name tag others=""
+  for wheel in "${dir}"/*-manylinux*_"${arch}".whl "${dir}"/*-linux_"${arch}".whl "${dir}"/*-none-any.whl; do
     [ -f "${wheel}" ] || continue
-    name="$(basename "${wheel}")"
-    [ "$(printf '%s' "${name%%-*}" | tr '[:upper:]-.' '[:lower:]__')" = "${dist_key}" ] || continue
-    app_wheel="${wheel}"
-    break 2
+    name="${wheel##*/}"
+    [ "$(printf '%s' "${name%%-*}" | tr '[:upper:]-.' '[:lower:]__')" = "${key}" ] || continue
+    tag="${name%-*}"
+    tag="${tag##*-}"
+    case "${tag}" in
+      "${abi}"|abi3) printf '%s\n' "${wheel}"; return 0 ;;
+      none) [ -n "${others}" ] || { printf '%s\n' "${wheel}"; return 0; } ;;
+      *) others+=" ${name}" ;;
+    esac
   done
-done
-[ -n "${app_wheel}" ] || err "no ${DISTRIBUTION} wheel in ${WHEEL_DIR}; build it first (ci_packaging.sh)"
-info "app wheel: $(basename "${app_wheel}")"
+  if [ -n "${others}" ]; then
+    printf 'no %s wheel in %s, only%s; build one with the runtime interpreter (ci_packaging.sh)\n' "${abi}" "${dir}" "${others}"
+  else
+    printf 'no %s wheel in %s; build it first (ci_packaging.sh)\n' "${key}" "${dir}"
+  fi
+  return 1
+}
+
+dist_key="$(printf '%s' "${DISTRIBUTION}" | tr '[:upper:]-.' '[:lower:]__')"
 
 ort_wheel=""
 for wheel in "${ORT_WHEEL_DIR}"/onnxruntime*.whl; do
@@ -88,6 +99,10 @@ python_home="$(find "${WORK_DIR}/python" -mindepth 1 -maxdepth 1 -type d -name "
 cp -a "${python_home}" "${RUNTIME}"
 PY="${RUNTIME}/bin/python3"
 "${PY}" -c 'import sys; print(sys.version)'
+# The runtime decides: ci_packaging.sh ships a cp314t twin beside the cp314 wheel, and only one of them installs here.
+abi="$("${PY}" -I -c 'import sys, sysconfig; print("cp%d%d%s" % (*sys.version_info[:2], "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""))')"
+app_wheel="$(select_app_wheel "${WHEEL_DIR}" "${dist_key}" "${ARCH}" "${abi}")" || err "${app_wheel}"
+info "app wheel for the ${abi} runtime: $(basename "${app_wheel}")"
 
 info "== packages from uv.lock (${EXTRAS[*]}), the app wheel, then the chain ORT"
 extra_args=()
