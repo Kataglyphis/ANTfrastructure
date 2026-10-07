@@ -87,7 +87,9 @@ t_assert_eq "9.9.9" "$(CMAKE_VERSION=9.9.9 CMAKE_VERSION_RISCV64=1.1.1 _fwd '' C
 
 # The real versions.env through the chain's loader, in a subshell so the fixtures stay isolated.
 _fwd_live() {
-  bash -c 'source "$0/01-core/artifact-common.sh" >/dev/null 2>&1
+  # Unset first: inside an image its ENV (CMAKE_VERSION=<the image's pin>) would win over the tree's versions.env.
+  bash -c 'while IFS="=" read -r _k _; do case "${_k}" in [A-Z]*) unset "${_k}" ;; esac; done < "$0/01-core/versions.env"
+           source "$0/01-core/artifact-common.sh" >/dev/null 2>&1
            source "$0/01-core/version-forwarding.sh"
            _a=(); append_version_build_args _a "$1"
            printf "%s\n" "${_a[@]}" | sed -n "s/^$2=//p" | head -1' "${TESTS_DIR}/.." "$1" "$2"
