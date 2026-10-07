@@ -60,11 +60,13 @@ fast-forwards: a submodule with uncommitted changes is skipped (`SKIP`), and a
 local branch that has diverged from its remote fails the run (`FAIL`) while the
 rest still syncs.
 
-- **Only the superproject's own submodules move.** A submodule whose remote sits
-  under another owner than the superproject's (`github.com/Kataglyphis` vs
-  `github.com/nlohmann`) stays at its recorded commit (`PIN`): a third-party
-  `branch =` names an upstream development head, not a release. `--all` moves
-  those too.
+- **Every submodule moves, third-party ones included** (owner decision
+  2026-10-07). To hold a third-party library at a release, declare that release
+  branch as its `branch =`. `--owned-only` leaves every submodule hosted under
+  another owner than the superproject's (`github.com/nlohmann` vs
+  `github.com/Kataglyphis`) at its recorded commit (`PIN`).
+- **A submodule inside a third-party submodule cannot be recorded** by any repo
+  you own, so after a run it stays listed as moved until that upstream bumps it.
 - **It moves working trees, never gitlinks.** It ends by listing every submodule
   that is no longer at its recorded commit. The next `git submodule update`, or a
   git GUI that runs one, puts them back. To keep them, commit the gitlinks in each
