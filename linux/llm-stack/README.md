@@ -91,7 +91,7 @@ this file, only the NAME of the environment variable holding it.
 
 ## Gateway
 
-APISIX 3.18.0 in front of the GenieX lanes: one keyed endpoint on
+APISIX 3.19.0 in front of the GenieX lanes: one keyed endpoint on
 `127.0.0.1:9080`, model aliases instead of lane ports, and the GenieX rules the
 lab measured applied on the way through. **Phase P1: the lab only.** Lanes are
 started by hand, nothing listens beyond localhost, and Open WebUI is not wired
@@ -197,12 +197,12 @@ default_reserve)`; `bytes_per_token` wants calibrating from lab reports.
 | R11 | The lab through the gateway | `lab-*` registry entries (`probe: false`), static `/v1/models`, `/gateway/info` | `test_gateway_info_*` |
 | R12 | Generated, pinned, validated config | Renderer, digest pin, throwaway validation, sha-checked reload | `test_validation_*`, `test_reload_*`, `test_gateway_render.py` |
 
-### The hook: four patches of APISIX 3.18.0 internals
+### The hook: four patches of APISIX 3.19.0 internals
 
 `geniex_hook.lua` is loaded through `apisix.lua_module_hook` and patches each
 worker before APISIX's own worker init. It fails loudly (a `moved` error, which
 validation refuses) when a patched internal is gone, and warns when APISIX is
-not 3.18.0.
+not 3.19.0.
 
 1. **Timeout cap.** `ai-proxy(-multi)` caps `timeout` at 600000 ms in its
    schema; the hook raises it to 1800000. Without it every route with a GGUF

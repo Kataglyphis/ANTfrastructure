@@ -1,4 +1,4 @@
--- geniex_hook: four patches of APISIX 3.18.0 internals for the GenieX lanes.
+-- geniex_hook: four patches of APISIX 3.19.0 internals for the GenieX lanes.
 -- What each does, and the e2e test that re-proves it: linux/llm-stack/README.md § Gateway.
 local apisix = require("apisix")
 local ngx = ngx
@@ -6,7 +6,7 @@ local type = type
 local error = error
 local ipairs = ipairs
 
-local PROVEN_ON = "3.18.0"
+local PROVEN_ON = "3.19.0"
 local MAX_TIMEOUT_MS = 1800000
 
 local _M = {version = 0.1}
