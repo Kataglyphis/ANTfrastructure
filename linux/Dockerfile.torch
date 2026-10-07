@@ -164,6 +164,8 @@ RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -l -u ${RUNTIME_UID} -s /bin
 
 # Late, so a new twin re-keys no venv or Hailo layer; no GIL path reads them: docs/consumer-image-contract.md#the-free-threaded-wheels
 COPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t
+# Windows' name for its twin store; uv_reconcile_chain_ort takes a cp3XYt venv's ORT from it, and here it re-keys no venv layer.
+ENV PYTHON_WHEELS_CP314T=/opt/wheels-cp314t
 
 # /opt/venv is root-owned; no .pyc writes also keeps the image runnable --read-only.
 ENV PYTHONDONTWRITEBYTECODE=1

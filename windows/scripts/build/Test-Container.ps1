@@ -1516,7 +1516,11 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     if ($ftStore -and (Test-Path $ftStore)) {
         Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsPythonWheel.Common.psm1') -Force -DisableNameChecking
         $ftWheels = @(Get-ChildItem -Path $ftStore -Filter '*.whl' -File)
-        $ftTwins = @(Get-FreeThreadedTwinTable | Where-Object Verdict -ceq 'twin' | ForEach-Object Distribution | Sort-Object)
+        # The image's own copy of the twin table, as for the helper below: the gate mounts windows/scripts alone.
+        $ftTable = @((Join-Path $scriptAssetRoot 'free-threaded-twins.txt'), 'C:\temp\scripts\free-threaded-twins.txt') | Where-Object { Test-Path $_ } | Select-Object -First 1
+        Assert-Test -Name 'the twin table is baked beside the helper (free-threaded-twins.txt)' -Condition { [bool]$ftTable }.GetNewClosure() `
+            -FailMessage 'free-threaded-twins.txt is in neither the script mount nor C:\temp\scripts'
+        $ftTwins = @(if ($ftTable) { Get-FreeThreadedTwinTable -Path $ftTable | Where-Object Verdict -ceq 'twin' | ForEach-Object Distribution | Sort-Object })
         $ftHeld = @($ftWheels | ForEach-Object { ConvertTo-PythonDistributionName -Name ($_.Name -split '-')[0] } | Sort-Object)
         Assert-Test -Name "cp314t store holds one wheel per twin: $($ftTwins -join ', ')" -Condition { ($ftHeld -join ',') -ceq ($ftTwins -join ',') }.GetNewClosure() `
             -FailMessage "$ftStore holds [$($ftHeld -join ', ')], the twin table names [$($ftTwins -join ', ')]"

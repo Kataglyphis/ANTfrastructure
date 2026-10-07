@@ -375,11 +375,13 @@ _uv_chain_ort_names() {
 
 # Moves the venv's ORT onto the chain wheels. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
 uv_reconcile_chain_ort() {
-  local venv="$1" store="${ORT_CHAIN_WHEEL_DIR:-}" py names
+  local venv="$1" store="${ORT_CHAIN_WHEEL_DIR:-}" gil py names
   local -a drop=() wheels=()
   py="${venv}/bin/python"
   [ -x "${py}" ] || py="${venv}/Scripts/python.exe"
   _uv_chain_ort_preflight "${store}" "${py}" || return 1
+  gil="${store}"
+  store="$(_uv_chain_ort_store "${store}" "${py}" "${venv}")"
   if ! names="$(_uv_chain_ort_names "${py}")"; then
     [ -z "${store}" ] || { printf 'ERROR: chain ORT: cannot list %s: %s\n' "${venv}" "${names}" >&2; return 1; }
     warn "chain ORT: ${venv} not inspected; ONNX Runtime provenance unchecked (${names})"
@@ -390,9 +392,9 @@ uv_reconcile_chain_ort() {
     _uv_chain_ort_notice "${venv}" "${py}" "${store}" "${drop[@]}"
     return
   fi
-  mapfile -t wheels < <(compgen -G "${store}/onnxruntime[-_]*.whl" || true)
+  mapfile -t wheels < <(_uv_chain_ort_wheels "${store}" "${gil}")
   if [ "${#wheels[@]}" -eq 0 ]; then
-    printf 'ERROR: chain ORT: the store %s holds no onnxruntime wheel for %s\n' "${store}" "${drop[*]}" >&2
+    _uv_chain_ort_no_wheel "${store}" "${gil}" "${drop[*]}"
     return 1
   fi
   _uv_chain_ort_abi_fits "${venv}" "${py}" "${wheels[@]}" || return 1
@@ -415,15 +417,52 @@ _uv_chain_ort_preflight() {
   return 0
 }
 
+# <store> <py> <venv>: a cp3XYt venv inside our images takes the twins (PYTHON_WHEELS_CP314T), the same chain build, as Windows' Select-UvChainOrtWheelStore does.
+_uv_chain_ort_store() {
+  local twins="${PYTHON_WHEELS_CP314T:-}"
+  if [ -n "$1" ] && [ -n "${twins}" ] && [ -d "${twins}" ]; then
+    case "$(_uv_chain_ort_abi "$2" 2>/dev/null)" in
+      cp*t) info "chain ORT: $3 is free-threaded, so it takes the twins in ${twins}" >&2; printf '%s\n' "${twins}"; return 0 ;;
+    esac
+  fi
+  printf '%s\n' "$1"
+}
+
+# <store> <GIL store> <dists>: why no store wheel can replace the venv's ORT.
+_uv_chain_ort_no_wheel() {
+  printf 'ERROR: chain ORT: the store %s holds no onnxruntime wheel for %s\n' "$1" "$3" >&2
+  [ "$1" = "$2" ] || printf '  It is the twin store of this free-threaded venv, and holds no twin of an ORT flavour in %s.\n' "$2" >&2
+}
+
+# <store> <GIL store>: the store's ORT wheels; of the twins only the flavours the GIL store holds, since one venv takes one core.
+_uv_chain_ort_wheels() {
+  local w d
+  for w in "$1"/onnxruntime[-_]*.whl; do
+    [ -f "${w}" ] || continue
+    d="${w##*/}"
+    if [ "$1" = "$2" ] || compgen -G "$2/${d%%-*}-*.whl" >/dev/null; then printf '%s\n' "${w}"; fi
+  done
+}
+
+# The wheel ABI tag of interpreter $1 (cp313, cp314t); rc 1 with its output.
+_uv_chain_ort_abi() {
+  local abi
+  abi="$("$1" -I -c 'import sys, sysconfig; print("cp%d%d%s" % (*sys.version_info[:2], "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""))' 2>&1)" || {
+    printf '%s\n' "${abi}"
+    return 1
+  }
+  abi="${abi//$'\r'/}"
+  printf '%s\n' "${abi##*$'\n'}"
+}
+
 # Every store wheel must fit this venv's ABI tag (cp313, cp314t) before uv touches anything.
 _uv_chain_ort_abi_fits() {
   local venv="$1" py="$2" abi w tag bad=""
   shift 2
-  abi="$("${py}" -I -c 'import sys, sysconfig; print("cp%d%d%s" % (*sys.version_info[:2], "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""))' 2>&1)" || {
+  abi="$(_uv_chain_ort_abi "${py}")" || {
     printf 'ERROR: chain ORT: cannot read the ABI tag of %s: %s\n' "${py}" "${abi}" >&2
     return 1
   }
-  abi="${abi//$'\r'/}"; abi="${abi##*$'\n'}"
   for w in "$@"; do
     tag="${w##*/}"; tag="${tag%.whl}"; tag="${tag%-*}"; tag="${tag##*-}"
     case "${tag}" in "${abi}"|abi3|none) ;; *) bad+=" ${w##*/}" ;; esac

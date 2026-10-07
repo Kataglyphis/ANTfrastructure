@@ -5,6 +5,8 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 LIB="${SCRIPTS}/03-media/free-threaded-wheels.sh"
+TABLE="${SCRIPTS}/03-media/free-threaded-twins.txt"
+WINMOD="${SCRIPTS}/../../windows/scripts/modules/WindowsPythonWheel.Common.psm1"
 VERSIONS="${SCRIPTS}/01-core/versions.env"
 MEDIA="${SCRIPTS}/../Dockerfile.media"
 ORT_BUILD="${SCRIPTS}/03-media/build/onnxruntime/build"
@@ -23,6 +25,23 @@ while IFS='|' read -r _dist _verdict _pin _evidence; do
     "${_dist} was read at ${_pin}; re-read its free-threading support at the new pin and update its row"
   t_assert_ok test -n "${_evidence}"
 done < <(ft_wheel_table)
+
+t_case "one table for both lanes: ft_wheel_table is the shared file's rows, and neither reader keeps a copy"
+t_assert_eq "$(sed -e '/^#/d' -e '/^[[:space:]]*$/d' "${TABLE}")" "$(ft_wheel_table)" "the shared file, row for row"
+t_assert_ok test "$(ft_wheel_table | wc -l)" -ge 10
+t_assert_eq "${TABLE}" "${_FTW_TABLE}" "the library reads the file beside it"
+t_assert_contains "$(cat "${WINMOD}")" "03-media\\free-threaded-twins.txt" "Get-FreeThreadedTwinTable reads the same file"
+t_assert_eq 0 "$(cat "${LIB}" "${WINMOD}" | grep -c -E '[a-z0-9-]+\|(twin|gil|none)\|[A-Z0-9_]+=')" "no row literal left in either reader"
+
+t_case "a missing table is an error naming the file, never an unknown verdict"
+mkdir -p "${_work}/notable"; cp "${LIB}" "${_work}/notable/"
+_nt() { bash -c 'source "$1"; shift; "$@"' _ "${_work}/notable/free-threaded-wheels.sh" "$@"; }
+t_assert_eq 1 "$(t_rc _nt ft_wheel_table)"
+t_assert_contains "$(_nt ft_wheel_table 2>&1)" "the twin table ${_work}/notable/free-threaded-twins.txt is missing"
+t_assert_eq 2 "$(t_rc _nt ft_wheel_verdict av)" "no table is no verdict"
+t_assert_eq "" "$(_nt ft_wheel_verdict av 2>/dev/null)" "and prints none, so no caller reads unknown"
+t_assert_eq 2 "$(t_rc _nt ft_twin_wanted av)"
+t_assert_eq "" "$(_nt ft_twin_wanted av 2>&1 | grep -e 'is not in ft_wheel_table' || true)" "the missing table is not reported as an unclassified package"
 
 t_case "the twins are exactly the five packages whose own code declares free-threading"
 t_assert_eq "apache-tvm-ffi av iree-base-compiler iree-base-runtime onnxruntime" \
@@ -165,6 +184,8 @@ t_assert_eq "onnxruntime-1.30.0-cp314-cp314-linux_x86_64.whl" "$(ls "${_work}/ou
 t_case "wiring: every RUN that builds or stores a twin mounts the library and the helper, each per file"
 t_assert_eq 6 "$(grep -c -e '--mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly' "${MEDIA}")" "ORT cpu, ORT gpu, TVM, app-wheelhouse, PyAV, final"
 t_assert_eq 6 "$(grep -c -e '--mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly' "${MEDIA}")"
+t_assert_eq 6 "$(grep -c -e '--mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly' "${MEDIA}")" \
+  "the twin table beside the library in each of them"
 t_assert_eq "" "$(compgen -G "${SCRIPTS}/03-media/core/*free-threaded*"; compgen -G "${SCRIPTS}/01-core/*free-threaded*")" "never under core/, which re-keys every media RUN"
 
 t_case "wiring: each build asks the table for its own package and stores into the dir the final stage collects"

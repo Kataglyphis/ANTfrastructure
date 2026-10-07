@@ -38,8 +38,8 @@ RUN & 'C:\WiX\wix.exe' extension add --global "WixToolset.Firewall.wixext/$env:W
     if ($LASTEXITCODE -ne 0) { throw "wix extension add WixToolset.Firewall.wixext/$env:WIX_FIREWALL_EXT_VERSION failed ($LASTEXITCODE)" }
 
 # One COPY (the chain runs near the 125-layer cap), in the last stage so script edits never invalidate earlier layers.
-COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\entrypoint.cmd linux\scripts\03-media\runtime\ort-venv-census.py linux\scripts\02-toolchain\python\free-threaded-wheel.py C:\temp\scripts\
-# Downstream Invoke-Ci* and rust build scripts import the modules from this path; WindowsPythonWheel.Common finds the helper one level up.
+COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\entrypoint.cmd linux\scripts\03-media\runtime\ort-venv-census.py linux\scripts\02-toolchain\python\free-threaded-wheel.py linux\scripts\03-media\free-threaded-twins.txt C:\temp\scripts\
+# Downstream Invoke-Ci* and rust build scripts import the modules from this path; WindowsPythonWheel.Common finds the helper and the twin table one level up.
 COPY windows\scripts\modules C:\temp\scripts\modules
 
 # No WORKDIR/VOLUME: binding over an image-held dir fails at hcs::CreateComputeSystem across OS builds.

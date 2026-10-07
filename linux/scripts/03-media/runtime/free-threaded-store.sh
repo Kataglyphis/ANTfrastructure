@@ -13,6 +13,7 @@ for _f in /opt/scripts/core/cross-env.sh /opt/scripts/03-media/free-threaded-whe
 done
 unset _f
 declare -F ft_wheel_verdict >/dev/null || { echo "ERROR: free-threaded-wheels.sh is not mounted into this RUN" >&2; exit 1; }
+ft_wheel_table >/dev/null || exit 1
 
 FT_STORE_RECORD="${FT_WHEELS_DIR}/free-threaded-store.txt"
 

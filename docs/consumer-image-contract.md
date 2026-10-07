@@ -642,10 +642,12 @@ Every wheel the media stage builds natively for a package whose own code declare
 free-threading support also ships as a proved `cp314t` twin, in a store of its own:
 `/opt/wheels-cp314t` (owner request 2026-10-07). The GIL wheels are built exactly as before.
 
-- **Which packages.** One table decides, `ft_wheel_table` in
-  `linux/scripts/03-media/free-threaded-wheels.sh`. Each row names the `versions.env` pin its
-  evidence was read at, and `test-free-threaded-wheels.sh` fails when that pin moves, so a bump
-  re-reads the evidence.
+- **Which packages.** One table decides, `linux/scripts/03-media/free-threaded-twins.txt`, and
+  both lanes read that file: `ft_wheel_table` here, `Get-FreeThreadedTwinTable` on Windows, so
+  their verdicts cannot differ. Each row names the `versions.env` pin its evidence was read at,
+  and `test-free-threaded-wheels.sh` fails when that pin moves, so a bump re-reads the evidence.
+  The media RUNs that build or store a twin mount it beside `free-threaded-wheels.sh`, and a
+  missing table stops them rather than reading every package as unclassified.
 
   | Package | Verdict | Evidence, at the pinned tag |
   | --- | --- | --- |
@@ -655,6 +657,7 @@ free-threading support also ships as a proved `cp314t` twin, in a store of its o
   | `iree-base-runtime` | twin | `nanobind_add_module(... FREE_THREADED ...)` |
   | `iree-base-compiler` | twin | MLIR's `nanobind_add_module(... FREE_THREADED ...)` |
   | `apache-tvm` | none needed | `wheel.py-api = "py3"`: its one `py3` wheel installs on `3.14t` |
+  | `torchvision` | none needed | no CPython extension module of its own |
   | `onnxruntime-genai`, `ai-edge-litert`, `hailort` | GIL only | no free-threading marker |
   | libcamera's pycamera, OpenCV's `cv2` | GIL only | no marker, and they ship in the tree, not as wheels |
 
@@ -693,8 +696,12 @@ free-threading support also ships as a proved `cp314t` twin, in a store of its o
 - **What ships.** `Dockerfile.torch` copies `/opt/wheels-cp314t` into `:latest`, late, so a
   new twin re-keys no venv layer, and the export delivery seals it with `/opt/wheels`. Nothing
   installs a twin: a `3.14t` venv takes them with `uv pip install /opt/wheels-cp314t/<wheel>`.
+  The image names the store in `PYTHON_WHEELS_CP314T`, Windows' variable for its own, and
+  `uv_reconcile_chain_ort` gives a `3.14t` venv's ONNX Runtime from it
+  ([`python-ci.md` § Trap 3](python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi)).
 - **How the shipped image proves it.** The runtime smoke's `FT-STORE` gate
-  (`06-packaging/check-free-threaded-wheels.sh`) wants the store and its record on every arch.
+  (`06-packaging/check-free-threaded-wheels.sh`) wants the store, its record and that variable
+  on every arch.
   On a native arch the store holds exactly the twin families of `/opt/venv`, the installed ORT
   flavour's own twin included, and each twin loads every compiled module on
   `/usr/local/bin/python3.14t` with the GIL off. A cross-built arch must hold none.
@@ -774,7 +781,8 @@ run at the next image build.
   `setup-torch-venv.sh stage_chain_ort_wheels` proves the venv against it at build
   time. The census that proof runs ships at
   `/opt/scripts/03-media/final/ort-venv-census.py`; its command line and output
-  lines are a contract that `python_uv.sh` and `setup-torch-venv.sh` read.
+  lines are a contract that `python_uv.sh` and `setup-torch-venv.sh` read. The `cp314t`
+  twins of those flavours sit in `/opt/wheels-cp314t` (`PYTHON_WHEELS_CP314T`).
 - **Windows:** the same wheels sit in `C:\runtime\wheels` (`PYTHON_WHEELS`). The
   census ships at `C:\temp\scripts\ort-venv-census.py`, beside the module copy whose
   `Sync-UvChainOnnxRuntime` runs it; `Build-TorchApp.ps1` embeds its own copy.

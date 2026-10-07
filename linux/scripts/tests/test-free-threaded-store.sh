@@ -101,6 +101,8 @@ mkdir -p "${_work}/tree/03-media/runtime"
 cp "${RT}/media-env.sh" "${_work}/tree/03-media/runtime/"
 cp "${SCRIPTS}/03-media/free-threaded-wheels.sh" "${_work}/tree/03-media/"
 sed '$d' "${RT}/free-threaded-store.sh" > "${_work}/tree/03-media/runtime/free-threaded-store.sh"
+cp -r "${_work}/tree" "${_work}/notable"
+cp "${SCRIPTS}/03-media/free-threaded-twins.txt" "${_work}/tree/03-media/"
 _store() {
   local mode="$1"; shift
   env WHEELS_DIR="${_work}/s-gil" FT_WHEELS_DIR="${_work}/s-ft" TARGET_ARCH=amd64 STORE_MODE="${mode}" \
@@ -142,9 +144,24 @@ t_assert_contains "${_rec}" "skip onnxruntime-genai gil (ONNXRUNTIME_GENAI_VERSI
 t_assert_contains "${_rec}" "skip apache-tvm none (TVM_REF="
 t_assert_eq 0 "$(grep -c '^skip onnxruntime ' "${_work}/s-ft/free-threaded-store.txt")" "a twin package is no skip"
 
+t_case "the store stops when the twin table is not beside the library, instead of recording no verdicts"
+_out="$(env WHEELS_DIR="${_work}/s-gil" FT_WHEELS_DIR="${_work}/s-ft" bash -c 'source "$1"; echo SOURCED' _ "${_work}/notable/03-media/runtime/free-threaded-store.sh" 2>&1)"; _rc=$?
+t_assert_eq 1 "${_rc}" "${_out}"
+t_assert_contains "${_out}" "free-threaded-twins.txt is missing"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e SOURCED || true)"
+
+t_case "the smoke: without the twin table beside the library every verdict is one BAD line"
+mkdir -p "${_work}/smoke-notable/06-packaging" "${_work}/smoke-notable/03-media"
+cp "${SCRIPTS}/06-packaging/check-free-threaded-wheels.sh" "${_work}/smoke-notable/06-packaging/"
+cp "${SCRIPTS}/03-media/free-threaded-wheels.sh" "${_work}/smoke-notable/03-media/"
+_out="$(bash -c 'source "$1"; ft_store_verdict "FTS ENV /opt/wheels-cp314t
+FTS DONE"' _ "${_work}/smoke-notable/06-packaging/check-free-threaded-wheels.sh" 2>&1)"
+t_assert_eq "BAD the twin table is not at ${_work}/smoke-notable/06-packaging/../03-media/free-threaded-twins.txt" "${_out}"
+
 # shellcheck source=../06-packaging/check-free-threaded-wheels.sh
 source "${SCRIPTS}/06-packaging/check-free-threaded-wheels.sh"
-_P_NATIVE='FTS RECORD mode=native
+_P_NATIVE='FTS ENV /opt/wheels-cp314t
+FTS RECORD mode=native
 FTS GIL onnxruntime_dnnl
 FTS GIL av
 FTS GIL apache_tvm
@@ -201,6 +218,15 @@ FTS DONE')" "has no free-threaded-store.txt"
 t_assert_contains "$(_bad 'FTS RECORD mode=native')" "the in-image probe never finished"
 t_assert_contains "$(_bad 'FTS RECORD mode=sideways
 FTS DONE')" "records mode 'sideways'"
+
+t_case "the smoke: the image names the store in PYTHON_WHEELS_CP314T, the uv reconcile's pointer, on every arch"
+t_assert_contains "$(ft_store_verdict "${_P_NATIVE}")" "OK PYTHON_WHEELS_CP314T names /opt/wheels-cp314t"
+for _env in '<unset>' /opt/wheels '/opt/wheels-cp314t/'; do
+  t_assert_contains "$(_bad "${_P_NATIVE/FTS ENV \/opt\/wheels-cp314t/FTS ENV ${_env}}")" "PYTHON_WHEELS_CP314T is '${_env}', not /opt/wheels-cp314t" "${_env}"
+done
+t_assert_contains "$(_bad 'FTS RECORD mode=cross
+FTS DONE')" "PYTHON_WHEELS_CP314T is '<no probe line>'"
+t_assert_contains "$(ft_store_probe_script)" "printf 'FTS ENV %s\\n' \"\${PYTHON_WHEELS_CP314T:-<unset>}\""
 
 t_case "the smoke: its probe is valid bash, and main() runs the gate on every arch"
 t_assert_ok bash -n <(ft_store_probe_script)

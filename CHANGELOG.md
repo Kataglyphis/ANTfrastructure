@@ -6,6 +6,29 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — One cp314t twin table for both lanes; Linux 3.14t venvs take the chain ORT twin (CON79 4, 1c)
+
+- **The twin verdicts live in one file both lanes read**, `linux/scripts/03-media/free-threaded-twins.txt`
+  (`dist|verdict|PIN=value|evidence`, `#` comments). Linux's `ft_wheel_table` and Windows' `Get-FreeThreadedTwinTable`
+  both parse it, so their verdicts cannot drift. They had: `torchvision` (none) was only on Windows, `libcamera` (gil) only
+  on Linux, and four evidence texts were worded apart. The file holds the union, 12 rows, with the fuller evidence.
+  - Linux mounts it per file beside `free-threaded-wheels.sh` in the six RUNs that build or store a twin. Windows mounts
+    it at `C:\bkmnt\free-threaded-twins.txt` in the three twin RUNs of `Dockerfile.media-builder`, and the final stage's
+    one COPY bakes it into `C:\temp\scripts`, where Test-Container section 20 reads it. No other RUN re-keys on it.
+  - A missing table stops a run instead of reading as unclassified, on both lanes and in the smoke.
+  - Tests: both lanes keep their pin re-check, and each asserts its parse equals the file row for row and that neither
+    reader holds a row literal. 7 mutations; the Pester guards were proved by hand (7 edits, all bite).
+- **A `cp3XYt` venv inside `:latest` takes the chain ORT twin (CON79 1c).** `Dockerfile.torch` names `/opt/wheels-cp314t`
+  in `PYTHON_WHEELS_CP314T`, Windows' variable, after the store's late COPY. `uv_reconcile_chain_ort` reads it for a
+  `cp3XYt` venv and proves the venv against the twin store, taking only the twins of the flavours `ORT_CHAIN_WHEEL_DIR`
+  holds (a GPU image's twin store carries two ORT flavours). Without the variable the leg is refused on the ABI as before,
+  and the FT-STORE gate wants it on every arch.
+  - Proved in the published `:latest` amd64 with a 3.14.8t built by `build_python.sh`: a 3.14t venv holding PyPI's cp314t
+    onnxruntime 1.30.0, refused by the previous `python_uv.sh`, was reconciled onto `onnxruntime_dnnl-1.30.0-cp314-cp314t`
+    (census PASS, GIL off). The twins were pure-Python stand-ins; a real cp314t ORT twin needs the GIL ORT build tree.
+    A GIL venv with the variable set still took the image's real chain wheels. Tests: `test-uv-chain-ort.sh`,
+    `test-free-threaded-store.sh`; 5 mutations.
+
 ## 2026-10-07 — Windows: the media fan-in merges site-packages in place (CON80)
 
 - **`import Cython` failed in `:winamd64` and `:winarm64` (2026-10-04): `Cython\shadow.py`, while its RECORD

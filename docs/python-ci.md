@@ -300,7 +300,11 @@ reconciling the venv it synced:
 4. **The ABI check comes first.** The chain wheels are built for the image interpreter
    (cp314 today), and uv installs a path wheel of another ABI tag without complaint.
    So before the venv is touched, each store ORT wheel's tag must fit the venv's own
-   (`abi3` and `none` fit any), or the sync fails naming the misfits.
+   (`abi3` and `none` fit any), or the sync fails naming the misfits. A `cp3XYt` venv is
+   given the image's twins instead, when `PYTHON_WHEELS_CP314T` names their store (both
+   lanes, § Free-threaded and GIL legs). On Linux it takes only the twins of the flavours
+   `ORT_CHAIN_WHEEL_DIR` holds, since a GPU image's twin store carries two ORT flavours and a
+   venv given both has two cores.
 5. **The replacement:** `uv pip uninstall` every listed distribution, then
    `uv pip install --no-index --no-deps --force-reinstall` every `onnxruntime[-_]*.whl`
    in the store. Then two proofs, and **either one failing fails the sync**:
@@ -467,6 +471,12 @@ packages) in `PYTHON_WHEELS_CP314T` (`C:\runtime\wheels-cp314t`), apart from the
 `Sync-UvChainOnnxRuntime` reads that store for a venv whose ABI tag is `cp3XYt`, so a Windows
 `3.14t` leg of an ORT project gets the chain ORT like its GIL legs. Without the store it fails
 on the ABI as before.
+
+Linux does the same since 2026-10-07. `:latest` names its twin store, `/opt/wheels-cp314t`, in
+the same variable, and `uv_reconcile_chain_ort` reads it for a `cp3XYt` venv
+([`consumer-image-contract.md` § The free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)).
+An image without the variable still refuses the leg on the ABI, and the runtime smoke's
+`FT-STORE` gate fails it. Test: `linux/scripts/tests/test-uv-chain-ort.sh`.
 
 **uv downloads nothing for a `+gil` request**, so a version the host lacks is installed first.
 OmniAccelerANT's 3.12 venv (its CMake format gate) stopped with `No interpreter found for

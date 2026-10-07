@@ -118,6 +118,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-OnnxFromSource.ps1,target=C:\bkmnt\Build-OnnxFromSource.ps1 `
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=C:\bkmnt\free-threaded-wheel.py `
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\bkmnt\free-threaded-twins.txt `
     --mount=type=bind,source=windows/scripts/build/Build-TargetCpython.ps1,target=C:\bkmnt\Build-TargetCpython.ps1 `
     --mount=type=bind,source=windows/scripts/build/cpython-Directory.Build.props,target=C:\bkmnt\cpython-Directory.Build.props `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
@@ -168,6 +169,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-FfmpegFromSource.ps1,target=C:\bkmnt\Build-FfmpegFromSource.ps1 `
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=C:\bkmnt\free-threaded-wheel.py `
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\bkmnt\free-threaded-twins.txt `
     --mount=type=bind,source=windows/scripts/build/Build-FfmpegCodecs.ps1,target=C:\bkmnt\Build-FfmpegCodecs.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
@@ -298,6 +300,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-TvmFromSource.ps1,target=C:\bkmnt\Build-TvmFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-IreeFromSource.ps1,target=C:\bkmnt\Build-IreeFromSource.ps1 `
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=C:\bkmnt\free-threaded-wheel.py `
+    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\bkmnt\free-threaded-twins.txt `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=tvmmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `

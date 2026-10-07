@@ -67,19 +67,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       and Windows amd64 are in source since 2026-10-07 (CHANGELOG). Open:
       1. **Prove in full image builds**: Linux — the nvidia and rocm ORT twins (one call each), the IREE
          compiler twin, FT-STORE green on `:latest` amd64 (and arm64 on a native arm64 chain), the ORT census
-         taking the twin. Windows — the IREE v3.12.0 clang-cl fixes (genrule `python3`, `__udivti3`) and the
+         taking the twin, `PYTHON_WHEELS_CP314T` in FT-STORE, and a 3.14t venv reconciled onto the real ORT twin
+         (`uv_reconcile_chain_ort`, proved locally only with stand-in twins). Windows — the IREE v3.12.0 clang-cl fixes (genrule `python3`, `__udivti3`) and the
          `iree-base-compiler` twin; smoke section 20's exact set then has all five twins. Both were proved
          locally only up to the runtime-only IREE tree.
       1b. **Linux cross twins** (arm64 cross, riscv64, including riscv64 torch/torchvision/numpy, which need
-         table rows): `ft_soabi_gate` takes the target EXT_SUFFIX from `/opt/python-cross-ft/<arch>`, and the
+         rows in `03-media/free-threaded-twins.txt`): `ft_soabi_gate` takes the target EXT_SUFFIX from `/opt/python-cross-ft/<arch>`, and the
          proof runs on the target (QEMU) or in the package stage.
-      1c. **Reconcile cp314t venvs onto the ORT twin on Linux**: `uv_reconcile_chain_ort` still refuses a
-         cp314t venv inside our images; point it at `/opt/wheels-cp314t` (Windows already does).
       2. **arm64 cross twins** (Windows): the venv's `EXT_SUFFIX` pinned to `.cp314t-win_arm64.pyd` plus
          `--plat-name`; `Get-TargetBuildPython -FreeThreaded` and the target interpreter (CON74) exist.
-      3. **The ROCm torch twin** (`Build-TorchRocmFromSource.ps1`; `Dockerfile.torch` already mounts the module).
-      4. **One twin table for both lanes**: Linux's table and Windows' `Get-FreeThreadedTwinTable` repeat the
-         same evidence; move it to one data file both read.
+      3. **The ROCm torch twin** (`Build-TorchRocmFromSource.ps1`; `Dockerfile.torch` already mounts the module,
+         and must mount `linux/scripts/03-media/free-threaded-twins.txt` at `C:\bkmnt\free-threaded-twins.txt`
+         once it asks `Get-FreeThreadedTwinPlan`).
       5. **Upstream**: IREE's bare-`python3` genrule (`runtime/src/iree/vm/bytecode/isa/CMakeLists.txt`) and its
          Windows `cpython-NNt` SOABI detection (`CMakeLists.txt:782-791`); onnxruntime-genai's
          `PYBIND11_MODULE` (`src/python/python.cpp:468`) plus a thread-safety audit of its global log callback.

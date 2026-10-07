@@ -42,6 +42,28 @@ Describe 'Get-FreeThreadedTwinTable' {
         }
     }
 
+    It 'is the one table file the Linux lane reads, row for row, and the module carries no copy of it (mutation)' {
+        $file = [IO.Path]::GetFullPath((Join-Path (Get-RepoRoot) 'linux\scripts\03-media\free-threaded-twins.txt'))
+        Assert-Equal $file (& (Get-Module WindowsPythonWheel.Common) { $script:FreeThreadedTwinTable }) 'the checkout resolves the shared file'
+        $raw = @(Get-Content -LiteralPath $file | Where-Object { $_ -notmatch '^\s*(#|$)' })
+        $parsed = @(Get-FreeThreadedTwinTable | ForEach-Object { "$($_.Distribution)|$($_.Verdict)|$($_.Pin)|$($_.Evidence)" })
+        Assert-True ($raw.Count -ge 10) "the file has $($raw.Count) rows"
+        Assert-Equal ($raw -join "`n") ($parsed -join "`n") 'every row read whole, in file order'
+        $module = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1'))
+        Assert-False ($module -match '[a-z0-9-]+\|(twin|gil|none)\|[A-Z0-9_]+=') 'no row literal left in WindowsPythonWheel.Common.psm1'
+    }
+
+    It 'reads the copy one level above modules\ in an image, and a missing table throws rather than classifying nothing (mutation)' {
+        Invoke-InTestDir { param($d)
+            $null = New-Item -ItemType Directory -Force -Path "$d\bkmnt\modules"
+            Copy-Item (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1') "$d\bkmnt\modules\"
+            Set-Content -LiteralPath "$d\bkmnt\free-threaded-twins.txt" -Value @('# stand-in', 'pkg|twin|PKG_VERSION=1|stand-in evidence')
+            $probe = "Import-Module '$d\bkmnt\modules\WindowsPythonWheel.Common.psm1'; (Get-FreeThreadedTwinTable | ForEach-Object Distribution) -join ','"
+            Assert-Equal 'pkg' "$(& pwsh -NoProfile -NonInteractive -Command $probe)".Trim() 'a flat image mount'
+            Assert-Throws { Get-FreeThreadedTwinTable -Path "$d\absent.txt" } -MessagePattern 'the twin table .*absent\.txt is missing'
+        }
+    }
+
     It 'finds a row by any spelling, ORT and GenAI flavours included; an unknown distribution has none' {
         Assert-Equal 'onnxruntime' (Get-FreeThreadedTwinRow -Distribution 'onnxruntime_directml').Distribution 'an ORT flavour'
         Assert-Equal 'onnxruntime-genai' (Get-FreeThreadedTwinRow -Distribution 'onnxruntime_genai_directml').Distribution 'a GenAI flavour'

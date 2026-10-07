@@ -8,17 +8,19 @@ _FTS_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ft_store_table() {
   declare -F ft_wheel_row >/dev/null && return 0
   if [ ! -f "${_FTS_HERE}/../03-media/free-threaded-wheels.sh" ]; then
-    echo "BAD the twin table is not at ${_FTS_HERE}/../03-media/free-threaded-wheels.sh"
+    echo "BAD the twin library is not at ${_FTS_HERE}/../03-media/free-threaded-wheels.sh"
     return 1
   fi
   # shellcheck source=../03-media/free-threaded-wheels.sh
   source "${_FTS_HERE}/../03-media/free-threaded-wheels.sh"
+  ft_wheel_table >/dev/null 2>&1 || { echo "BAD the twin table is not at ${_FTS_HERE}/../03-media/free-threaded-twins.txt"; return 1; }
 }
 
 # The in-image probe: the store's record, its wheels, /opt/venv's distributions, and one 3.14t proof per wheel.
 ft_store_probe_script() {
   cat <<'PROBE'
 set -uo pipefail
+printf 'FTS ENV %s\n' "${PYTHON_WHEELS_CP314T:-<unset>}"
 store=/opt/wheels-cp314t
 helper=/opt/scripts/toolchain/python/free-threaded-wheel.py
 [ -d "${store}" ] || { echo "FTS NOSTORE"; echo "FTS DONE"; exit 0; }
@@ -51,6 +53,7 @@ ft_store_verdict() {
   local probe="$1" mode have
   _ft_store_table || return 0
   case "${probe}" in *"FTS DONE"*) ;; *) echo "BAD the in-image probe never finished"; return 0 ;; esac
+  _ft_store_env_verdict "${probe}"
   case "${probe}" in *"FTS NOSTORE"*) echo "BAD /opt/wheels-cp314t is missing; every arch ships the store, empty on a cross build"; return 0 ;; esac
   case "${probe}" in *"FTS NORECORD"*) echo "BAD /opt/wheels-cp314t has no free-threaded-store.txt, so nothing says how its arch was built"; return 0 ;; esac
   mode="$(printf '%s\n' "${probe}" | sed -n 's/^FTS RECORD mode=//p' | head -n 1)"
@@ -63,6 +66,17 @@ ft_store_verdict() {
     *) echo "BAD the store records mode '${mode}', not native or cross"; return 0 ;;
   esac
   _ft_store_verdict_native "${probe}" "${have}"
+}
+
+# <probe>: the image advertises the store as Windows does, since uv_reconcile_chain_ort finds a 3.14t venv's ORT twin only through it.
+_ft_store_env_verdict() {
+  local env
+  env="$(printf '%s\n' "$1" | sed -n 's/^FTS ENV //p' | head -n 1)"
+  if [ "${env}" = /opt/wheels-cp314t ]; then
+    echo "OK PYTHON_WHEELS_CP314T names /opt/wheels-cp314t for the chain-ORT reconcile"
+  else
+    echo "BAD PYTHON_WHEELS_CP314T is '${env:-<no probe line>}', not /opt/wheels-cp314t, so a 3.14t venv's chain-ORT reconcile cannot find the ORT twin"
+  fi
 }
 
 # <probe> <wheels>: the families match /opt/venv's twin packages exactly, each installed flavour has its own twin, and every twin is proved.

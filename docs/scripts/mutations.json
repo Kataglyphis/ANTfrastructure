@@ -12900,11 +12900,11 @@
  },
  {
   "id": "wheels.ft-table-pin-recheck",
-  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "target": "linux/scripts/03-media/free-threaded-twins.txt",
   "find": "av|twin|PYAV_VERSION=19.0.1|",
   "replace": "av|twin|PYAV_VERSION=19.0.0|",
   "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
-  "why": "a pin bump would keep a verdict read at another release"
+  "why": "a pin bump would keep a verdict read at another release, on both lanes, which read this one file"
  },
  {
   "id": "wheels.ft-store-set-missing",
@@ -13049,5 +13049,93 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
   "why": "a GIL-only or unknown package would get a twin build venv and a twin pass"
+ },
+ {
+  "id": "wheels.ft-table-missing-fails",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "  if [ ! -f \"${_FTW_TABLE}\" ]; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a RUN without the table mount must name the missing file, not fail inside sed"
+ },
+ {
+  "id": "wheels.ft-table-missing-no-verdict",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "    *) return \"${rc}\" ;;\n  esac\n  row=\"${row#*|}\"\n",
+  "replace": "    *) printf 'unknown\\n'; return 0 ;;\n  esac\n  row=\"${row#*|}\"\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a missing table read as unknown would let a cross store record no verdicts and pass"
+ },
+ {
+  "id": "wheels.ft-table-one-source",
+  "target": "windows/scripts/modules/WindowsPythonWheel.Common.psm1",
+  "find": "function Get-FreeThreadedTwinTable {\n",
+  "replace": "# 'onnxruntime|twin|ONNXRUNTIME_VERSION=v1.30.0|an inline copy'\nfunction Get-FreeThreadedTwinTable {\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a second copy of a row in either reader is how the two lanes drifted apart before the shared file"
+ },
+ {
+  "id": "wheels.ft-table-mounted",
+  "target": "linux/Dockerfile.media",
+  "find": "RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \\\n    --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \\\n",
+  "replace": "RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \\\n    --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \\\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "the final RUN would source the library without its table and stop the store proof"
+ },
+ {
+  "id": "wheels.ft-store-needs-table",
+  "target": "linux/scripts/03-media/runtime/free-threaded-store.sh",
+  "find": "ft_wheel_table >/dev/null || exit 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "a cross build without the table would write a record with no verdicts and pass"
+ },
+ {
+  "id": "probe.ft-store-table-missing",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "  ft_wheel_table >/dev/null 2>&1 || { echo \"BAD the twin table is not at ${_FTS_HERE}/../03-media/free-threaded-twins.txt\"; return 1; }\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "the smoke would grade every twin against an empty table instead of naming the missing file"
+ },
+ {
+  "id": "probe.ft-store-env",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "  if [ \"${env}\" = /opt/wheels-cp314t ]; then\n",
+  "replace": "  if true; then\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "an image without PYTHON_WHEELS_CP314T leaves every 3.14t venv refused by the chain-ORT reconcile"
+ },
+ {
+  "id": "uv-chain-ort.ft-twin-store",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "      cp*t) info \"chain ORT: $3 is free-threaded, so it takes the twins in ${twins}\" >&2; printf '%s\\n' \"${twins}\"; return 0 ;;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+  "why": "a 3.14t leg inside our images would be refused on the ABI although the image ships the ORT twin"
+ },
+ {
+  "id": "uv-chain-ort.ft-gil-venv-keeps-gil-store",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "    case \"$(_uv_chain_ort_abi \"$2\" 2>/dev/null)\" in\n",
+  "replace": "    case cp314t in\n",
+  "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+  "why": "a GIL venv given the twin store would get a cp3XYt wheel it cannot load"
+ },
+ {
+  "id": "uv-chain-ort.ft-installed-flavour-only",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "    if [ \"$1\" = \"$2\" ] || compgen -G \"$2/${d%%-*}-*.whl\" >/dev/null; then printf '%s\\n' \"${w}\"; fi\n",
+  "replace": "    printf '%s\\n' \"${w}\"\n",
+  "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+  "why": "a GPU image's twin store holds two ORT flavours, and a venv given both has two cores"
+ },
+ {
+  "id": "uv-chain-ort.ft-torch-env",
+  "target": "linux/Dockerfile.torch",
+  "find": "ENV PYTHON_WHEELS_CP314T=/opt/wheels-cp314t\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+  "why": "without the advertisement the reconcile never finds the twins the image ships"
  }
 ]
