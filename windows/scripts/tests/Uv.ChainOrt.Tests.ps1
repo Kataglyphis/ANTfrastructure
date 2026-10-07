@@ -153,6 +153,20 @@ Describe 'WindowsUv.Common: Sync-UvChainOnnxRuntime, and Sync-UvProjectDependenc
         }
     }
 
+    It 'a free-threaded venv takes the image''s cp3XYt twin store, and without one fails on the ABI as before (mutation)' {
+        Use-ChainOrtFixture { param($f, $d)
+            $twins = New-Item -ItemType Directory -Force -Path (Join-Path $d 'wheels-cp314t')
+            Set-Content -LiteralPath (Join-Path $twins 'onnxruntime-1.30.0-cp314-cp314t-win_amd64.whl') 'x' -Encoding ASCII
+            $r = Invoke-WithEnv @{ PYTHON_WHEELS_CP314T = $twins.FullName } { Invoke-ChainOrtCase -Fixture $f -Store $f.Store -Abi 'cp314t' -Listed @('ORT-CENSUS PURGE onnxruntime') }
+            Assert-Equal '' $r.Error 'the twin fits'
+            Assert-Match '[\\/]wheels-cp314t[\\/]onnxruntime-1\.30\.0-cp314-cp314t-win_amd64\.whl$' $r.Uv[1] 'the twin, nothing from the GIL store'
+            $gil = Invoke-WithEnv @{ PYTHON_WHEELS_CP314T = $twins.FullName } { Invoke-ChainOrtCase -Fixture $f -Store $f.Store }
+            Assert-Match '[\\/]store[\\/]onnxruntime-1\.30\.0-cp314-cp314-win_amd64\.whl' $gil.Uv[1] 'a GIL venv keeps the GIL store'
+            $none = Invoke-WithEnv @{ PYTHON_WHEELS_CP314T = $null } { Invoke-ChainOrtCase -Fixture $f -Store $f.Store -Abi 'cp314t' }
+            Assert-Match 'is a cp314t venv, and the chain wheels are built for the image interpreter' $none.Error 'no twins: the old verdict'
+        }
+    }
+
     # Each check failing alone: census and import run after uv's 2 calls, the ABI and ownership checks before any.
     foreach ($failure in @(
             @{ Name = 'the census still finds a non-chain dist after uv ran'; Case = @{ CheckExit = 1 }; Uv = 2; Want = 'still carries a non-chain ONNX Runtime:\n.*onnxruntime-directml 1\.24\.4' },

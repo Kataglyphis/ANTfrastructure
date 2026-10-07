@@ -438,6 +438,94 @@ function Get-OrtWebGpuFeatureMarker {
     return $lines
 }
 
+# The post-configure build.ninja edits; CMake rewrites the file on every configure, so the twin's reconfigure runs them again.
+function Update-OrtNinjaFile {
+    param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$SourceDir, [bool]$Cross)
+    # Strip MSVC-only flags from build.ninja
+    Update-NinjaFile -NinjaFile "$BuildDir\build.ninja" -StripPatterns @(
+        # [ \t]*, not \s*, which eats a line ending and merges the next ninja statement.
+        '--compiler-options /experimental:external[ \t]*',
+        '(?<=\s)/experimental:external(?=\s)',
+        '(?<=\s)-WX(?=\s)',
+        '/arch:\S+',
+        '(?<!-Xcompiler\s)/bigobj',
+        '--threads \d+'
+    )
+
+    # Per-TU SIMD for MLAS kernels, as global flags crash AVX2-only hosts; see docs/windows-cross-builds.md § SIMD: the failure that hides inside a green build.
+    $targetArch    = Get-WindowsTargetArch
+    $mlasArchFlags = Get-WindowsTargetKernelSimdFlags -Arch $targetArch
+    $mlasTuPattern = Get-MlasKernelTuPattern -Arch $targetArch
+    # On cross, every MLAS source including fp16_common.h joins the pattern, since guessed names missed some.
+    if ($Cross) {
+        $mlasLibDir = Join-Path $SourceDir 'onnxruntime\core\mlas\lib'
+        $fp16Consumers = @(
+            Get-ChildItem $mlasLibDir -Recurse -Filter '*.cpp' -File -ErrorAction SilentlyContinue |
+                Where-Object { (Get-Content -LiteralPath $_.FullName -Raw -ErrorAction SilentlyContinue) -match 'fp16_common\.h' } |
+                ForEach-Object { [regex]::Escape($_.Name) }
+        )
+        if ($fp16Consumers.Count -gt 0) {
+            $mlasTuPattern = '(' + $mlasTuPattern + ')|(' + ($fp16Consumers -join '|') + ')'
+            Write-Host "MLAS: $($fp16Consumers.Count) source(s) include fp16_common.h - unioned into the per-TU flag pattern"
+        } else {
+            Write-Warning "MLAS: no source under $mlasLibDir includes fp16_common.h - the tree layout changed; falling back to the name pattern alone"
+        }
+    }
+    $mlasTuMinimum = Get-MlasKernelTuMinimum -Arch $targetArch
+    # Marks a FLAGS line already tagged, so a re-run does not append twice; 'avx512' is x86-only.
+    $mlasTaggedMarker = if ($targetArch -eq 'amd64') { 'avx512' } else { 'dotprod' }
+
+    # The floor is the guard: a pattern matching nothing succeeds and silently strips the kernels' SIMD.
+    [void](Add-NinjaPerTuFlags -NinjaFile "$BuildDir\build.ninja" -Label "MLAS $targetArch kernel (pattern: $mlasTuPattern)" -Floor $mlasTuMinimum -AlreadyTaggedPattern $mlasTaggedMarker -Select {
+        param($line)
+        if ($line -match 'onnxruntime_mlas\.dir' -and $line -match $mlasTuPattern) { $mlasArchFlags } else { '' }
+    }.GetNewClosure())
+}
+
+# Custom commands (gen_def.py & co.) keep -To, so the twin relinks no onnxruntime.dll for a changed interpreter path; returns the count.
+function Set-OrtNinjaCommandPython {
+    param([Parameter(Mandatory)][string]$NinjaFile, [Parameter(Mandatory)][string]$From, [Parameter(Mandatory)][string]$To)
+    $count = [ref]0
+    $text = [regex]::Replace([IO.File]::ReadAllText($NinjaFile), '(?m)^  COMMAND = .*$', {
+            param($m) if ($m.Value.Contains($From)) { $count.Value++ }; $m.Value.Replace($From, $To) })
+    [IO.File]::WriteAllText($NinjaFile, $text)
+    return $count.Value
+}
+
+# The cp3XYt twin: the GIL tree reconfigured for the free-threaded interpreter, then only its pybind module rebuilt and packed.
+function Invoke-OrtFreeThreadedTwin {
+    param(
+        [Parameter(Mandatory)][hashtable]$GilPython,
+        [Parameter(Mandatory)][string]$GilWheel,
+        [Parameter(Mandatory)][string[]]$CmakeArgs,
+        [Parameter(Mandatory)][string]$CmakeSrc,
+        [Parameter(Mandatory)][string]$BuildDir,
+        [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$InstallPrefix,
+        [string]$VenvDir = 'C:\temp\ft-venv-onnx'
+    )
+    $ftPy = New-FreeThreadedBuildPython -GilPython $GilPython -VenvDir $VenvDir -Package numpy, setuptools, wheel, packaging
+    $numpyInc = (Invoke-ShieldedNative -Label 'numpy include probe (free-threaded)' -CommandLine """$($ftPy.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
+    $ftArgs = @($CmakeArgs) + @('-Donnxruntime_ENABLE_PYTHON=ON') + @(Get-PythonCMakeHintArgs -Python $ftPy -Prefix 'Python' -NumPyIncludeDir $numpyInc)
+    Invoke-CmakeConfigure -SourceDir $CmakeSrc -BuildDir $BuildDir -InstallPrefix $InstallPrefix -ExtraArgs $ftArgs |
+        Tee-Object -FilePath (Get-PersistentBuildLogPath -Name 'onnxruntime-configure-ft.log' -FallbackDir $BuildDir) | Out-Host
+    Update-OrtNinjaFile -BuildDir $BuildDir -SourceDir $SourceDir -Cross $false
+    $kept = Set-OrtNinjaCommandPython -NinjaFile (Join-Path $BuildDir 'build.ninja') -From $ftPy.Exe -To $GilPython.Exe
+    Write-Host "free-threaded onnxruntime: $kept custom command(s) keep $($GilPython.Exe)"
+    [void](Assert-NinjaFreeThreadedDefine -BuildDir $BuildDir -Label 'onnxruntime')
+    # The target alone: the core libraries and provider DLLs the GIL wheel packed stay the GIL pass's bytes.
+    Invoke-NinjaBuildWithRetry -BuildDir $BuildDir -RetryJobs 2 -MemGBPerJob 2 -Targets @('onnxruntime_pybind11_state') `
+        -LogFile (Get-PersistentBuildLogPath -Name 'onnx-ninja-ft.log' -FallbackDir $BuildDir)
+    $twin = Invoke-PythonWheelBuild -Python $ftPy -WorkingDir $BuildDir -Arguments """$SourceDir\setup.py"" bdist_wheel" `
+        -ModuleName 'onnxruntime' -FreeThreaded -Distribution 'onnxruntime'
+    # One build, two wheels: every DLL the twin packs is byte-identical to the GIL wheel's; only the .pyd may differ.
+    $drift = @(Get-WheelMemberDifference -Reference $GilWheel -Candidate $twin -Include @('*.dll'))
+    if ($drift.Count -gt 0) { throw "free-threaded onnxruntime: $(Split-Path $twin -Leaf) is not the GIL wheel's build:`n  $($drift -join "`n  ")" }
+    Write-Host "free-threaded onnxruntime: $(Split-Path $twin -Leaf) packs the GIL wheel's DLLs byte for byte"
+    Remove-Item -LiteralPath $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
+    return $twin
+}
+
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 $OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.30.0' -StripVPrefix
@@ -638,7 +726,10 @@ if ($webgpuPlan.WebGpu) {
 Switch-BuildPhase '3. cmake configure'
 # Tee'd, so the log shows which assembler configure found.
 $ortCfgLog = Get-PersistentBuildLogPath -Name 'onnxruntime-configure.log' -FallbackDir $buildDir
-Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs 2>&1 |
+$ftPlan = Get-FreeThreadedTwinPlan -Distribution 'onnxruntime'
+Write-Host $ftPlan.Reason
+# -Settle when the twin will re-configure this tree, so both passes compile with the same command lines.
+Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs -Settle:$ftPlan.Build 2>&1 |
     Tee-Object -FilePath $ortCfgLog
 if (-not $onnxCross) {
     # Anything but ml64 is toolchain drift worth stopping on now.
@@ -730,45 +821,7 @@ if ($cudaUsable) {
     # CUTLASS cute/array_subbyte: suppressed via -Wno-invalid-specialization above
 }
 
-# Strip MSVC-only flags from build.ninja
-Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
-    # [ \t]*, not \s*, which eats a line ending and merges the next ninja statement.
-    '--compiler-options /experimental:external[ \t]*',
-    '(?<=\s)/experimental:external(?=\s)',
-    '(?<=\s)-WX(?=\s)',
-    '/arch:\S+',
-    '(?<!-Xcompiler\s)/bigobj',
-    '--threads \d+'
-)
-
-# Per-TU SIMD for MLAS kernels, as global flags crash AVX2-only hosts; see docs/windows-cross-builds.md § SIMD: the failure that hides inside a green build.
-$targetArch    = Get-WindowsTargetArch
-$mlasArchFlags = Get-WindowsTargetKernelSimdFlags -Arch $targetArch
-$mlasTuPattern = Get-MlasKernelTuPattern -Arch $targetArch
-# On cross, every MLAS source including fp16_common.h joins the pattern, since guessed names missed some.
-if ($onnxCross) {
-    $mlasLibDir = Join-Path $SourceDir 'onnxruntime\core\mlas\lib'
-    $fp16Consumers = @(
-        Get-ChildItem $mlasLibDir -Recurse -Filter '*.cpp' -File -ErrorAction SilentlyContinue |
-            Where-Object { (Get-Content -LiteralPath $_.FullName -Raw -ErrorAction SilentlyContinue) -match 'fp16_common\.h' } |
-            ForEach-Object { [regex]::Escape($_.Name) }
-    )
-    if ($fp16Consumers.Count -gt 0) {
-        $mlasTuPattern = '(' + $mlasTuPattern + ')|(' + ($fp16Consumers -join '|') + ')'
-        Write-Host "MLAS: $($fp16Consumers.Count) source(s) include fp16_common.h - unioned into the per-TU flag pattern"
-    } else {
-        Write-Warning "MLAS: no source under $mlasLibDir includes fp16_common.h - the tree layout changed; falling back to the name pattern alone"
-    }
-}
-$mlasTuMinimum = Get-MlasKernelTuMinimum -Arch $targetArch
-# Marks a FLAGS line already tagged, so a re-run does not append twice; 'avx512' is x86-only.
-$mlasTaggedMarker = if ($targetArch -eq 'amd64') { 'avx512' } else { 'dotprod' }
-
-# The floor is the guard: a pattern matching nothing succeeds and silently strips the kernels' SIMD.
-[void](Add-NinjaPerTuFlags -NinjaFile "$buildDir\build.ninja" -Label "MLAS $targetArch kernel (pattern: $mlasTuPattern)" -Floor $mlasTuMinimum -AlreadyTaggedPattern $mlasTaggedMarker -Select {
-    param($line)
-    if ($line -match 'onnxruntime_mlas\.dir' -and $line -match $mlasTuPattern) { $mlasArchFlags } else { '' }
-})
+Update-OrtNinjaFile -BuildDir $buildDir -SourceDir $SourceDir -Cross $onnxCross
 
 # The ninja log lives on the persistent sccache mount, which outlives a failed solve.
 $ninjaLog = Get-PersistentBuildLogPath -Name 'onnx-ninja.log' -FallbackDir $buildDir
@@ -799,13 +852,20 @@ if ($onnxCross -and -not $tpy.Available) {
 } else {
     # -CrossStage stages the target wheel unimported; the native lane installs and import-asserts it.
     Write-Host 'Building onnxruntime python wheel...'
-    Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
-        -Arguments """$SourceDir\setup.py"" bdist_wheel" `
-        -ModuleName 'onnxruntime' -CrossStage | Out-Null
+    # The staged path comes last, after setup.py's and pip's output.
+    $gilWheel = @(Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
+            -Arguments """$SourceDir\setup.py"" bdist_wheel" `
+            -ModuleName 'onnxruntime' -CrossStage)[-1]
 }
 if ($webgpuPlan.WebGpu) {
     $wheelFindings = @(Get-OrtWebGpuWheelFinding -Report (Get-OrtWebGpuWheelReport -Python $py.Exe) -DllSha256 $webgpuDllSha)
     if ($wheelFindings.Count -gt 0) { throw "WebGPU EP wheel check:`n  $($wheelFindings -join "`n  ")" }
+}
+# After the WebGPU check, which reads the GIL wheel's capi\ the twin's rebuild would overwrite.
+if ($ftPlan.Build) {
+    Switch-BuildPhase '7. free-threaded twin (cp3XYt wheel)'
+    [void](Invoke-OrtFreeThreadedTwin -GilPython $py -GilWheel $gilWheel -CmakeArgs @($cmakeArgs | Where-Object { $_ -notin $pythonArgs }) `
+            -CmakeSrc $cmakeSrc -BuildDir $buildDir -SourceDir $SourceDir -InstallPrefix $ortInstallDir)
 }
 if ($webgpuPlan.OnLane) {
     $marker = Get-OrtWebGpuFeatureMarker -Plan $webgpuPlan -Pin $(if ($webgpu) { $webgpu.Pin }) -DllSha256 $webgpuDllSha

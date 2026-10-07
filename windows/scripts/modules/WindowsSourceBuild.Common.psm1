@@ -13,8 +13,11 @@ $patchesPath = Join-Path $PSScriptRoot 'WindowsSourceBuild.Patches.psm1'
 $cudaPath    = Join-Path $PSScriptRoot 'WindowsSourceBuild.Cuda.psm1'
 $nativePath  = Join-Path $PSScriptRoot 'WindowsNative.Common.psm1'
 $targetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
+# Optional like the two above: only the cp3XYt twin functions need it, and they throw by name without it.
+$pythonWheelPath = Join-Path $PSScriptRoot 'WindowsPythonWheel.Common.psm1'
 if ((Test-Path $patchesPath) -and -not (Get-Module -Name 'WindowsSourceBuild.Patches')) { Import-Module $patchesPath }
 if ((Test-Path $cudaPath) -and -not (Get-Module -Name 'WindowsSourceBuild.Cuda')) { Import-Module $cudaPath }
+if ((Test-Path $pythonWheelPath) -and -not (Get-Module -Name 'WindowsPythonWheel.Common')) { Import-Module $pythonWheelPath }
 # Re-exported: every COPY list that carries this module must carry WindowsNative.Common.psm1 too.
 if (Test-Path $nativePath) {
     if (-not (Get-Module -Name 'WindowsNative.Common')) { Import-Module $nativePath }
@@ -196,7 +199,9 @@ function Invoke-CmakeConfigure {
         [string]$TargetArch = '',
         # A HIP consumer (find_package(hip) from TheRock) opts out of the rocm-lane prefix isolation.
         [switch]$AllowRocmPrefix,
-        [switch]$SkipOnFailure
+        [switch]$SkipOnFailure,
+        # Configures twice: CMake 4.4's Ninja generator writes `\` paths on a tree's first configure and `/` on every later one.
+        [switch]$Settle
     )
 
     New-Item -Path $BuildDir -ItemType Directory -Force | Out-Null
@@ -252,6 +257,11 @@ function Invoke-CmakeConfigure {
 
     Write-Host "CMake configure: $($cmakeArgs -join ' ')"
     & cmake @cmakeArgs
+    # A tree re-configured later (a cp3XYt twin) would otherwise recompile everything for the changed spelling (measured 2026-10-07).
+    if ($LASTEXITCODE -eq 0 -and $Settle) {
+        Write-Host 'CMake configure again (-Settle): a re-configure keeps these command lines'
+        & cmake @cmakeArgs
+    }
     if ($LASTEXITCODE -ne 0) {
         if ($SkipOnFailure) {
             Write-Warning "CMake configuration failed - skipped"
@@ -675,8 +685,24 @@ function Get-SourceBuildPython {
 function Get-TargetBuildPython {
     # Callers must honour .Available: -ResumeFrom can skip Build-TargetCpython.ps1.
     param(
-        [string]$CpythonDir = ''
+        [string]$CpythonDir = '',
+        # The host's free-threaded install runs, the target's python3XYt.lib links; no twin builds on cross yet (docs/windows-builds.md#the-free-threaded-wheels).
+        [switch]$FreeThreaded,
+        [string]$TargetFreeThreadedRoot = 'C:\runtime\python-freethreaded'
     )
+    if ($FreeThreaded) {
+        $ftPy = Get-SourceBuildPython -FreeThreaded
+        if (-not (Test-WindowsCrossTarget)) {
+            return @{ Exe = $ftPy.Exe; Include = $ftPy.Include; LibDir = $ftPy.LibDir; Lib = $ftPy.Lib; Available = (Test-Path $ftPy.Lib) }
+        }
+        $tgtLibDir = Join-Path $TargetFreeThreadedRoot 'libs'
+        $tgtFtLib = Select-CpythonImportLib -LibDir $tgtLibDir -FreeThreaded
+        return @{
+            Exe = $ftPy.Exe; Include = $ftPy.Include; LibDir = $tgtLibDir
+            Lib = if ($tgtFtLib) { $tgtFtLib.FullName } else { Join-Path $tgtLibDir 'python3t.lib' }
+            Available = [bool]$tgtFtLib
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
     $hostPy = Get-SourceBuildPython -CpythonDir $CpythonDir
     if (-not (Test-WindowsCrossTarget)) {
@@ -979,8 +1005,18 @@ function Invoke-PythonWheelBuild {
         # A cross wheel cannot be imported here, so its PE members are machine-checked instead.
         [switch]$StageOnly,
         # Cross lane: implies -StageOnly and adds `--plat-name`; a no-op on the native lane.
-        [switch]$CrossStage
+        [switch]$CrossStage,
+        # -Python is New-FreeThreadedBuildPython's: the one cp3XYt wheel is gated, proved and stored apart, never installed.
+        [switch]$FreeThreaded,
+        [string]$Distribution = ''
     )
+    if ($FreeThreaded) {
+        if (-not ($Python -is [hashtable] -and $Python['FreeThreaded'])) { throw "python wheel ($ModuleName) -FreeThreaded needs New-FreeThreadedBuildPython's interpreter, not $($Python.Exe)" }
+        if (-not $Distribution) { throw "python wheel ($ModuleName) -FreeThreaded needs -Distribution, the name the proof looks up" }
+        if (-not $DistDir) { $DistDir = Join-Path $WorkingDir 'dist' }
+        # One wheel or none: a GIL wheel left in the dist dir would be ambiguous.
+        if (Test-Path -LiteralPath $DistDir) { Get-ChildItem -LiteralPath $DistDir -Filter '*.whl' -File | Remove-Item -Force }
+    }
     if ($CrossStage -and (Test-WindowsCrossTarget)) {
         $StageOnly = $true
         if ($Arguments -match '\bbdist_wheel\b' -and $Arguments -notmatch '--plat-name') { $Arguments = "$Arguments --plat-name $(Get-PythonWheelTag)" }
@@ -989,9 +1025,15 @@ function Invoke-PythonWheelBuild {
     if (-not $DistDir) { $DistDir = Join-Path $WorkingDir 'dist' }
     Push-Location $WorkingDir
     try {
-        cmd.exe /c """$($Python.Exe)"" $Arguments 2>&1"
+        # The twin's build log goes to the host, so the stored wheel's path is all a -FreeThreaded call returns.
+        cmd.exe /c """$($Python.Exe)"" $Arguments 2>&1" | ForEach-Object { if ($FreeThreaded) { Write-Host $_ } else { $_ } }
         if ($LASTEXITCODE -ne 0) { throw "python wheel build failed (exit $LASTEXITCODE): $Arguments" }
     } finally { Pop-Location }
+    if ($FreeThreaded) {
+        $twin = Select-FreeThreadedWheel -Wheels @(Get-ChildItem -LiteralPath $DistDir -Filter '*.whl' -File -ErrorAction SilentlyContinue) -AbiTag (Get-FreeThreadedAbiTag)
+        if (-not $twin) { throw "free-threaded: the $Distribution build left a pure wheel, so there is no cp3XYt twin to store" }
+        return Save-FreeThreadedWheel -Wheel $twin.FullName -Distribution $Distribution
+    }
     if ($StageOnly) {
         $staged = @(Save-PythonWheel -SourceDir $DistDir -Required)
         foreach ($w in $staged) { Assert-WheelTargetArch -WheelPath $w }
@@ -1030,6 +1072,136 @@ function Assert-WheelTargetArch {
         $names = @($pe | ForEach-Object { $_.FullName.Substring($tmp.Length).TrimStart('\', '/') } | Sort-Object)
         Write-Host ('Wheel arch check OK: {0} -- {1} native member(s), all 0x{2:X4}: {3}' -f $name, $pe.Count, $wantMachine, (($names | Select-Object -First 60) -join ', ') + $(if ($names.Count -gt 60) { ", ... (+$($names.Count - 60))" } else { '' }))
     } finally { Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+function Get-FreeThreadedWheelStore {
+    # The cp3XYt twins' own store (image ENV PYTHON_WHEELS_CP314T), apart from PYTHON_WHEELS so no GIL install resolves one.
+    [OutputType([string])]
+    param()
+    if ($env:PYTHON_WHEELS_CP314T) { return $env:PYTHON_WHEELS_CP314T }
+    return 'C:\runtime\wheels-cp314t'
+}
+
+function Get-FreeThreadedAbiTag {
+    # PYTHON_VERSION's free-threaded wheel ABI tag, 3.14 when unset, as Get-CpythonFreeThreadedExeName assumes.
+    [OutputType([string])]
+    param([string]$Version = $env:PYTHON_VERSION)
+    if ([string]::IsNullOrWhiteSpace($Version)) { $Version = '3.14' }
+    return (Get-FreeThreadedTarget -PythonVersion $Version).AbiTag
+}
+
+function Get-FreeThreadedTwinPlan {
+    <#
+    .SYNOPSIS
+        Whether this build makes -Distribution's cp3XYt twin and the one log line why; throws for an unlisted distribution or a missing interpreter.
+    #>
+    param([Parameter(Mandatory)][string]$Distribution)
+    $row = Get-FreeThreadedTwinRow -Distribution $Distribution
+    if (-not $row) { throw "free-threaded: $Distribution is not in Get-FreeThreadedTwinTable (WindowsPythonWheel.Common.psm1)" }
+    $abi = Get-FreeThreadedAbiTag
+    $skip = { param([string]$Why) [pscustomobject]@{ Build = $false; Reason = "free-threaded: no $abi twin of ${Distribution}: $Why" } }
+    if ($row.Verdict -cne 'twin') { return & $skip "$($row.Verdict), $($row.Evidence)" }
+    if (Test-WindowsCrossTarget) { return & $skip "the $(Get-WindowsTargetArch) cross build makes none yet (docs/windows-builds.md#the-free-threaded-wheels)" }
+    $ft = Get-SourceBuildPython -FreeThreaded
+    foreach ($need in @($ft.Exe, $ft.Lib)) {
+        if (-not (Test-Path -LiteralPath $need)) { throw "free-threaded: $Distribution needs a $abi twin, and this image has no $need to build it with" }
+    }
+    return [pscustomobject]@{ Build = $true; Reason = "free-threaded: building the $abi twin of $Distribution ($($row.Evidence))" }
+}
+
+function Assert-NinjaFreeThreadedDefine {
+    # 3.14's PC\pyconfig.h leaves Py_GIL_DISABLED undefined: compile lines without it build a GIL module. Returns the line count.
+    [OutputType([int])]
+    param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$Label)
+    $ninja = Join-Path $BuildDir 'build.ninja'
+    $hits = @(Select-String -LiteralPath $ninja -Pattern '(^|\s)[-/]DPy_GIL_DISABLED=1(\s|$)')
+    if ($hits.Count -eq 0) { throw "free-threaded ${Label}: no line of $ninja defines Py_GIL_DISABLED=1, so its modules would build against the GIL ABI" }
+    Write-Host "free-threaded ${Label}: Py_GIL_DISABLED=1 on $($hits.Count) build.ninja line(s)"
+    return $hits.Count
+}
+
+function New-FreeThreadedBuildPython {
+    <#
+    .SYNOPSIS
+        A uv venv of the free-threaded install holding -Package at -GilPython's versions; Get-SourceBuildPython's shape plus FreeThreaded and Venv.
+    .DESCRIPTION
+        'name==version' passes as given. Exe is the venv's; Include, LibDir and Lib are the install's, so CMake and setuptools link python3XYt.lib.
+    #>
+    param(
+        [Parameter(Mandatory)][hashtable]$GilPython,
+        [Parameter(Mandatory)][string]$VenvDir,
+        [string[]]$Package = @()
+    )
+    $ft = Get-SourceBuildPython -FreeThreaded
+    $requirements = @(foreach ($p in $Package) {
+            if ($p -match '[=<>!~]') { $p; continue }
+            $ver = "$(& $GilPython.Exe -I -c 'import importlib.metadata as m, sys; print(m.version(sys.argv[1]))' $p 2>$null)".Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $ver) { throw "free-threaded: the GIL build interpreter $($GilPython.Exe) has no $p, so its twin has no version to match" }
+            "$p==$ver"
+        })
+    [void](Invoke-ShieldedNative -Label 'uv venv (free-threaded build)' -CommandLine "uv venv --clear --no-cache --quiet --python ""$($ft.Exe)"" ""$VenvDir""")
+    $exe = Join-Path $VenvDir 'Scripts\python.exe'
+    if ($requirements.Count -gt 0) {
+        [void](Invoke-ShieldedNative -Label 'uv pip install (free-threaded build)' -CommandLine "uv pip install --no-cache --quiet --python ""$exe"" $($requirements -join ' ')")
+    }
+    Write-Host "free-threaded: build venv $VenvDir on $($ft.Exe) with $(if ($requirements.Count) { $requirements -join ' ' } else { 'no packages' })"
+    return @{ Exe = $exe; Include = $ft.Include; LibDir = $ft.LibDir; Lib = $ft.Lib; FreeThreaded = $true; Venv = $VenvDir }
+}
+
+function Invoke-FreeThreadedTwinWheel {
+    <#
+    .SYNOPSIS
+        A setup.py or pip-wheel twin: when the plan says so, -Arguments run by a build venv of -Package in -WorkingDir; the stored path, else $null.
+    .PARAMETER CleanPath
+        Build leftovers of the GIL pass to remove first, such as setup.py's build\.
+    #>
+    param(
+        [Parameter(Mandatory)][hashtable]$GilPython,
+        [Parameter(Mandatory)][string]$Distribution,
+        [Parameter(Mandatory)][string]$ModuleName,
+        [Parameter(Mandatory)][string]$WorkingDir,
+        [Parameter(Mandatory)][string]$Arguments,
+        [string[]]$Package = @(),
+        [string]$DistDir = '',
+        [string[]]$CleanPath = @()
+    )
+    $plan = Get-FreeThreadedTwinPlan -Distribution $Distribution
+    Write-Host $plan.Reason
+    if (-not $plan.Build) { return $null }
+    $venv = Join-Path ([IO.Path]::GetTempPath()) "ft-venv-$Distribution"
+    try {
+        $ftPy = New-FreeThreadedBuildPython -GilPython $GilPython -VenvDir $venv -Package $Package
+        foreach ($stale in $CleanPath) { Remove-Item -LiteralPath $stale -Recurse -Force -ErrorAction SilentlyContinue }
+        return Invoke-PythonWheelBuild -Python $ftPy -WorkingDir $WorkingDir -DistDir $DistDir -Arguments $Arguments `
+            -ModuleName $ModuleName -FreeThreaded -Distribution $Distribution
+    } finally {
+        Remove-Item -LiteralPath $venv -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Save-FreeThreadedWheel {
+    <#
+    .SYNOPSIS
+        Gates -Wheel's cp3XYt tags, proves it alone in a fresh free-threaded venv, then copies it to -Store; returns the stored path.
+    .DESCRIPTION
+        Nothing unproved is stored; Invoke-FreeThreadedWheelVenvProof registers the image's DLL homes for the proof.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Wheel,
+        [Parameter(Mandatory)][string]$Distribution,
+        [string]$Store = (Get-FreeThreadedWheelStore),
+        [string]$Helper = ''
+    )
+    $name = Split-Path $Wheel -Leaf
+    $findings = @(Get-FreeThreadedWheelFinding -Path $Wheel -PlatformTag (Get-PythonWheelTag))
+    if ($findings.Count -gt 0) { throw "free-threaded: $name fails the cp3XYt tag gate:`n  $($findings -join "`n  ")" }
+    $verdict = Invoke-FreeThreadedWheelVenvProof -Interpreter (Get-SourceBuildPython -FreeThreaded).Exe -Wheel $Wheel -Distribution $Distribution `
+        -DllDirectory (Get-PythonDllHome -OpenCvArchDir (Get-OpenCvArchDir)) -Helper $Helper
+    Write-Host "free-threaded: ${name}: $verdict"
+    New-Item -Path $Store -ItemType Directory -Force | Out-Null
+    Copy-Item -LiteralPath $Wheel -Destination $Store -Force
+    Write-Host "free-threaded: stored $name in $Store"
+    return (Join-Path $Store $name)
 }
 
 function Complete-SourceBuild {
@@ -1528,6 +1700,21 @@ function Initialize-PythonPlatformTag {
 .PARAMETER CrossExtTag
     When set, pins sysconfig EXT_SUFFIX to this wheel tag (host interpreter on a cross lane only).
 #>
+function Get-PythonDllHome {
+    # The bundle's native DLL homes, which Python >= 3.8 never finds on PATH; the shim and the cp3XYt proof register them.
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)][string]$OpenCvArchDir)
+    return @(
+        "C:\runtime\lib\opencv5\$OpenCvArchDir\vc18\bin",
+        'C:\runtime\lib\onnxruntime-source\bin',
+        'C:\runtime\lib\onnxruntime-source\lib',
+        'C:\runtime\lib\onnxruntime-genai-source\lib',
+        'C:\runtime\lib\tvm\lib',
+        'C:\runtime\ffmpeg\bin',
+        'C:\runtime\bin'
+    )
+}
+
 function Write-PythonDllDirectoryShim {
     param(
         [Parameter(Mandatory)][string]$SitePackages,
@@ -1538,6 +1725,7 @@ function Write-PythonDllDirectoryShim {
     )
     New-Item -Path $SitePackages -ItemType Directory -Force | Out-Null
     $shim = Join-Path $SitePackages 'sitecustomize.py'
+    $homes = @(Get-PythonDllHome -OpenCvArchDir $OpenCvArchDir | ForEach-Object { "        r'$_'," }) -join [Environment]::NewLine
     Set-Content -Path $shim -Encoding ASCII -Value @"
 # Written by $WrittenBy.
 # 1) HOST build interpreter only (empty name = nothing happens): clang-built
@@ -1580,13 +1768,7 @@ if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
             if _n.startswith('TensorRT-'):
                 _dirs.append(os.path.join(_trt, _n, 'lib'))
     _dirs += [
-        r'C:\runtime\lib\opencv5\$OpenCvArchDir\vc18\bin',
-        r'C:\runtime\lib\onnxruntime-source\bin',
-        r'C:\runtime\lib\onnxruntime-source\lib',
-        r'C:\runtime\lib\onnxruntime-genai-source\lib',
-        r'C:\runtime\lib\tvm\lib',
-        r'C:\runtime\ffmpeg\bin',
-        r'C:\runtime\bin',
+$homes
     ]
     for _d in _dirs:
         if os.path.isdir(_d):
@@ -1647,6 +1829,9 @@ function Save-PythonWheel {
         Write-Warning "no wheel matching '$Filter' under $SourceDir -- skipping"
         return @()
     }
+    # A cp3XYt wheel here would reach every GIL install of the store; Save-FreeThreadedWheel stores the twins apart.
+    $twins = @($wheels | Where-Object { $_.Name -match '-cp\d+-cp\d+t-[^-]+\.whl$' })
+    if ($twins.Count -gt 0) { throw "Save-PythonWheel: $($twins.Name -join ', ') is free-threaded and never goes into $WheelDir; Save-FreeThreadedWheel stores it in $(Get-FreeThreadedWheelStore)" }
     foreach ($w in $wheels) {
         Copy-Item $w.FullName -Destination $WheelDir -Force
         Write-Host "Staged wheel: $($w.Name) -> $WheelDir"
@@ -2039,6 +2224,7 @@ Export-ModuleMember -Function @(
     'Install-CpythonTargetTree',
     'Get-SourceBuildPython',
     'Get-TargetBuildPython',
+    'Get-PythonDllHome',
     'Write-PythonDllDirectoryShim',
     'Invoke-WithHostArchLibraryEnvironment',
     'Add-NinjaPerTuFlags',
@@ -2086,6 +2272,15 @@ Export-ModuleMember -Function @(
     'Initialize-PythonPlatformTag',
     'Install-StagedPythonWheel',
     'Invoke-PythonWheelBuild',
+    'Get-FreeThreadedWheelStore',
+    'Get-FreeThreadedAbiTag',
+    'Get-FreeThreadedTwinPlan',
+    'Assert-NinjaFreeThreadedDefine',
+    'New-FreeThreadedBuildPython',
+    'Invoke-FreeThreadedTwinWheel',
+    'Save-FreeThreadedWheel',
+    # Re-exported from WindowsPythonWheel.Common for the build scripts' same-build check.
+    'Get-WheelMemberDifference',
     'Test-PythonImport',
     'Remove-SourceBuildTree',
     'Complete-SourceBuild',

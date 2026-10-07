@@ -533,6 +533,11 @@ if ($pythonModule -eq 'ON') {
     Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'typing_extensions')
     Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', 'ml_dtypes', 'cloudpickle', 'psutil') -Optional
     Test-PythonImport -Python $py -ModuleName 'tvm'
+    # The GIL tvm_ffi installs in place, its twin is a wheel; its own scikit-build tree, as the GIL one caches that interpreter.
+    $ffiFtDist = Join-Path $SourceDir 'dist-tvm-ffi-ft'
+    [void](Invoke-FreeThreadedTwinWheel -GilPython $py -Distribution 'apache-tvm-ffi' -ModuleName 'tvm_ffi' -WorkingDir $tvmFfiSrc -DistDir $ffiFtDist `
+            -Package pip, scikit-build-core, setuptools-scm, cython, wheel `
+            -Arguments "-m pip wheel . --no-deps --no-build-isolation -w ""$ffiFtDist"" --config-settings=build-dir=build-$(Get-FreeThreadedAbiTag)")
 }
 
 if ($tvmRocmPlan.OnLane) {

@@ -33,6 +33,7 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsGstPlugins.Common.psm1 `
      windows\scripts\modules\WindowsMeson.Common.psm1 `
      windows\scripts\modules\WindowsRustToolchain.Common.psm1 `
+     windows\scripts\modules\WindowsPythonWheel.Common.psm1 `
      C:\bkmods\
 
 # No script COPYs in the fan-in: mounting keeps these layers out of every script's cache key.
@@ -93,7 +94,8 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     HAILORT_VERSION="${HAILORT_VERSION}" `
     HAILO_ROOT="C:\runtime\hailo" `
     HAILO_BIN="C:\runtime\hailo\bin" `
-    PYTHON_WHEELS="C:\runtime\wheels"
+    PYTHON_WHEELS="C:\runtime\wheels" `
+    PYTHON_WHEELS_CP314T="C:\runtime\wheels-cp314t"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
@@ -110,6 +112,8 @@ COPY --from=media-tvm C:\runtime\lib\tvm C:\runtime\lib\tvm
 COPY --from=media-tvm C:\runtime\iree C:\runtime\iree
 # tvm/iree wheels merge over media-core's; the filenames are distinct.
 COPY --from=media-tvm C:\runtime\wheels C:\runtime\wheels
+# The cp314t twins' store, apart so no GIL install sees one; media-tvm creates it on every lane (docs/windows-builds.md#the-free-threaded-wheels).
+COPY --from=media-tvm C:\runtime\wheels-cp314t C:\runtime\wheels-cp314t
 # Makes `import tvm` work in this image's CPython.
 COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
 

@@ -13,6 +13,7 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
+     windows\scripts\modules\WindowsPythonWheel.Common.psm1 `
      windows\scripts\modules\WindowsMigraphx.Common.psm1 `
      windows\scripts\modules\WindowsContainerImage.Common.psm1 `
      C:\bkmods\

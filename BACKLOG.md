@@ -63,6 +63,24 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
       Done when a windows-11-arm `3.14t` leg passes with `UV_PYTHON_DOWNLOADS=never` and the
       device smoke reports `sys._is_gil_enabled() == False` for the bundle's `python3.14t.exe`.
+- [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [M, ★★]. Windows amd64
+      is in source since 2026-10-07 (CHANGELOG); the Linux native half follows. Open:
+      1. **Prove in a full `:winamd64` build**: the IREE v3.12.0 clang-cl fixes (genrule `python3`,
+         `__udivti3`) and the `iree-base-compiler` twin (MLIR nanobind modules) were proved only on a local
+         runtime-only tree; smoke section 20's exact set then has all five twins.
+      2. **arm64 cross twins** (Windows): the venv's `EXT_SUFFIX` pinned to `.cp314t-win_arm64.pyd` plus
+         `--plat-name`; `Get-TargetBuildPython -FreeThreaded` and the target interpreter (CON74) exist.
+      3. **The ROCm torch twin** (`Build-TorchRocmFromSource.ps1`; `Dockerfile.torch` already mounts the module).
+      4. **One twin table for both lanes**: Linux's table and Windows' `Get-FreeThreadedTwinTable` repeat the
+         same evidence; move it to one data file both read.
+      5. **Upstream**: IREE's bare-`python3` genrule (`runtime/src/iree/vm/bytecode/isa/CMakeLists.txt`) and its
+         Windows `cpython-NNt` SOABI detection (`CMakeLists.txt:782-791`); onnxruntime-genai's
+         `PYBIND11_MODULE` (`src/python/python.cpp:468`) plus a thread-safety audit of its global log callback.
+- [ ] **CON80 — the published `:winamd64` base Cython is unimportable** [S, ★]. `C:\temp\cpython`'s Cython 3.3.0
+      has `Cython\shadow.py` while its RECORD names `Shadow.py`, so `import Cython` fails (found 2026-10-07; a
+      force-reinstall produced a lowercase `cython\` directory). Suspect the media-core/media-tvm `site-packages`
+      COPY fan-in. Find the cause and gate `import Cython` in the smoke test.
+
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
       (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.
       **Linux**, a rocm chain run (`CROSS_VARIANT=rocm`):
