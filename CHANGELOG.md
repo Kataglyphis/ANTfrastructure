@@ -6,6 +6,35 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — `:latest-rocm` installs one ROCm tree again: every package name carries `ROCM_VERSION`
+
+- **The bug.** `setup-rocm-repo.sh` installed versionless metapackages (`amdrocm-core-dev`,
+  `-runtime-dev`, `-blas-dev`, `-dnn-dev`, `-hipblas-common-dev`, `-fft-dev`, `-rccl-dev`,
+  `-sparse-dev`, `-solver-dev`). AMD's `stable` suite is rolling and gained ROCm 10.1 on
+  2026-09-30, so each one resolved to `10.1.0-3` while `versions.env` pins `ROCM_VERSION=10.0`.
+  `amdrocm-migraphx` 2.17.0+rocm10.0.0 still pulls the 10.0 libraries, so the image carried two
+  trees: `apt-get install -s` selected 262 packages of 10.1 and 73 of 10.0.
+- **The fix.** `rocm_packages` builds the list from `ROCM_VERSION` and `MIGRAPHX_VERSION`.
+  - The nine libraries are `amdrocm-<name>-dev10.0`.
+  - MIGraphX is pinned through apt: `amdrocm-migraphx{,-dev}=<ver>+rocm10.0.*` for 10.0, and
+    `amdrocm10-migraphx{,-dev}=<ver>-*` from 10.1, where AMD renamed it.
+  - The ASAN package stays `amdrocm-asan${ROCM_VERSION}`.
+  - An unknown release, or a `ROCM_VERSION` that is not `X.Y`, fails before the first download.
+  - `Dockerfile.amd` now passes `MIGRAPHX_VERSION` to the script.
+- **New hard gate.** After the last install, any installed `amdrocm*` package whose name carries a
+  release other than `ROCM_VERSION` fails the build and is listed.
+- **Proof.** `apt-get install -s` against the live repo in `:latest`, through the script's own repo
+  setup.
+  - The 10.0 list selects 251 packages: 249 named `…10.0` and the two MIGraphX ones at
+    `2.17.0+rocm10.0.0`.
+  - With ASAN it selects 281, again all 10.0.
+  - A real install of `amdrocm-hipblas-common-dev10.0` passes the check, and adding its 10.1 twin
+    fails it.
+- **Tests.** New `test-rocm-packages.sh` (22 assertions) and 13 `rocm-stack.*` mutations, all
+  biting. The family is declared in `gate-proofs.allow`.
+- **Docs.** `linux-accelerator-images.md` § *The ROCm release is in every package name*; row 3 of
+  the ROCm sweep table (assert the installed versions) is done.
+
 ## 2026-10-07 — Renovate names the pins it skips, and eight skipped pins are readable again
 
 - **Eight annotated pins were invisible to every report.** The custom manager reads

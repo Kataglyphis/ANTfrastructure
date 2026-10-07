@@ -1080,7 +1080,7 @@ below the VS layer unless they are consumed above it. Same trap for modules:
 editing any of them re-pays the VS Build Tools layer, so batch such edits
 deliberately.
 
-GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` in `linux/scripts/01-core/versions.env` matches a supported Ubuntu codename (the ARG is declared in `Dockerfile.nvidia` and `Dockerfile.media`; `Dockerfile.amd` hardcodes its ROCm repo paths) (default `resolute`/26.04). ROCm 10.0 uses AMD's TheRock distribution (`stable.repo.amd.com`) with deb822 `.sources` format; MIGraphX is in a separate repo path under `/rocm/migraphx/packages/ubuntu2604/`. Package names are `amdrocm-*` prefixed.
+GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` in `linux/scripts/01-core/versions.env` matches a supported Ubuntu codename (the ARG is declared in `Dockerfile.nvidia` and `Dockerfile.media`; `Dockerfile.amd` hardcodes its ROCm repo paths) (default `resolute`/26.04). ROCm 10.0 uses AMD's TheRock distribution (`stable.repo.amd.com`) with deb822 `.sources` format; MIGraphX is in a separate repo path under `/rocm/migraphx/packages/ubuntu2604/`. Package names are `amdrocm-*` prefixed and carry the release (`amdrocm-core-dev10.0`), so a ROCm bump moves `ROCM_VERSION` and `MIGRAPHX_VERSION` together, and a release `rocm_packages` in `setup-rocm-repo.sh` does not know needs its MIGraphX name added there first ([`linux-accelerator-images.md`](linux-accelerator-images.md#the-rocm-release-is-in-every-package-name)).
 
 ## Pins, and why Node is one of them
 

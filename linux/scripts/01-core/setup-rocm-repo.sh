@@ -13,6 +13,36 @@ fi
 _SETUP_ROCM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "${_SETUP_ROCM_DIR}/use-fast-ubuntu-mirror.sh"
 
+# The pinned release's apt arguments: the suite is rolling, and a versionless amdrocm-* name follows its newest ROCm.
+rocm_packages() {
+  local _p _mgx _ver
+  case "$1" in
+    # MIGraphX was renamed with 10.1; before that only its version names the ROCm it was built for.
+    10.0) _mgx="amdrocm-migraphx" _ver="$2+rocm$1.*" ;;
+    10.*) _mgx="amdrocm${1%%.*}-migraphx" _ver="$2-*" ;;
+    *) echo "ERROR: no MIGraphX package name known for ROCm $1; add it to rocm_packages" >&2; return 1 ;;
+  esac
+  for _p in core-dev runtime-dev blas-dev dnn-dev hipblas-common-dev fft-dev rccl-dev sparse-dev solver-dev; do
+    printf 'amdrocm-%s%s\n' "${_p}" "$1"
+  done
+  printf '%s\n' "${_mgx}=${_ver}" "${_mgx}-dev=${_ver}"
+}
+
+# Reads dpkg-query "<status> <package>" lines and prints each installed package naming a ROCm release other than $1.
+rocm_foreign_releases() {
+  awk -v rel="$1" '$1 == "installed" && match($2, /[0-9]+\.[0-9]+/) && substr($2, RSTART, RLENGTH) != rel { print $2 }'
+}
+
+_rocm_ver="${ROCM_VERSION:-$(sed -n 's/^ROCM_VERSION=//p' "${_SETUP_ROCM_DIR}/versions.env")}"
+_migraphx_ver="${MIGRAPHX_VERSION:-$(sed -n 's/^MIGRAPHX_VERSION=//p' "${_SETUP_ROCM_DIR}/versions.env")}"
+if ! [[ "${_rocm_ver}" =~ ^[0-9]+\.[0-9]+$ ]] || [ -z "${_migraphx_ver}" ]; then
+  echo "ERROR: need ROCM_VERSION as X.Y and a MIGRAPHX_VERSION (env or versions.env), got '${_rocm_ver}' and '${_migraphx_ver}'" >&2
+  exit 1
+fi
+# Resolved before any download, so an unknown release fails here and not after the repo setup.
+_rocm_list="$(rocm_packages "${_rocm_ver}" "${_migraphx_ver}")"
+mapfile -t _rocm_pkgs <<< "${_rocm_list}"
+
 apt-get update && apt-get install -y --no-install-recommends wget gpg curl ca-certificates
 mkdir -p /etc/apt/keyrings
 # Verified fetch: this key signs every ROCm/MIGraphX package.
@@ -73,23 +103,10 @@ echo 'Package: amdrocm*' >> /etc/apt/preferences.d/rocm-pin
 echo 'Pin: release o=AMD ROCm' >> /etc/apt/preferences.d/rocm-pin
 echo 'Pin-Priority: 1001' >> /etc/apt/preferences.d/rocm-pin
 apt-get update
-# Versionless amdrocm-* metapackages resolve to the repo's ROCm version.
-apt-get install -y --no-install-recommends \
-    amdrocm-core-dev \
-    amdrocm-runtime-dev \
-    amdrocm-blas-dev \
-    amdrocm-dnn-dev \
-    amdrocm-hipblas-common-dev \
-    amdrocm-fft-dev \
-    amdrocm-rccl-dev \
-    amdrocm-sparse-dev \
-    amdrocm-solver-dev \
-    amdrocm-migraphx \
-    amdrocm-migraphx-dev
+apt-get install -y --no-install-recommends "${_rocm_pkgs[@]}"
 # ASAN debs claim the same alternatives at the same priority, so re-point any they won, then assert.
 if [ "${ENABLE_ROCM_ASAN:-false}" = "true" ]; then
-  _rocm_asan_ver="${ROCM_VERSION:-$(sed -n 's/^ROCM_VERSION=//p' "${_SETUP_ROCM_DIR}/versions.env")}"
-  apt-get install -y --no-install-recommends "amdrocm-asan${_rocm_asan_ver}"
+  apt-get install -y --no-install-recommends "amdrocm-asan${_rocm_ver}"
   while read -r _alt_name _alt_status _alt_path; do
     case "${_alt_path}" in
       */core-asan-*) update-alternatives --set "${_alt_name}" "${_alt_path//\/core-asan-/\/core-}" >/dev/null 2>&1 || true ;;
@@ -105,6 +122,15 @@ if [ "${ENABLE_ROCM_ASAN:-false}" = "true" ]; then
   done
   echo "rocm-asan: installed beside the normal tree; the normal one still owns /opt/rocm/{core,lib,bin} and hipcc"
 fi
+
+# One versionless dependency is enough to install a second ROCm tree beside the pinned one.
+_rocm_foreign="$(dpkg-query -W -f '${db:Status-Status} ${Package}\n' 'amdrocm*' | rocm_foreign_releases "${_rocm_ver}")"
+if [ -n "${_rocm_foreign}" ]; then
+  echo "ERROR: ROCm ${_rocm_ver} is pinned, but these installed packages belong to another release:" >&2
+  echo "${_rocm_foreign}" >&2
+  exit 1
+fi
+echo "rocm: every installed amdrocm package belongs to ROCm ${_rocm_ver}"
 
 # Keep the apt lists (a shared cache mount, not in the layer); only the repo sources go.
 rm -f /etc/apt/sources.list.d/rocm.sources /etc/apt/preferences.d/rocm-pin

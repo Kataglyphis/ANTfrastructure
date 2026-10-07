@@ -12401,5 +12401,109 @@
   "replace": ": \"${ENABLE_DEEPSTREAM:=true}\"",
   "test": "bash linux/scripts/tests/test-gpu-variant.sh",
   "why": "an arm64 nvidia build defaulting to DeepStream would die in deepstream.sh, which refuses arm64 (phase 7)"
+ },
+ {
+  "id": "rocm-stack.versioned-names",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "    printf 'amdrocm-%s%s\\n' \"${_p}\" \"$1\"",
+  "replace": "    printf 'amdrocm-%s\\n' \"${_p}\"",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "a versionless amdrocm-* name follows the rolling suite's newest ROCm (10.1 since 2026-09-30), not ROCM_VERSION"
+ },
+ {
+  "id": "rocm-stack.migraphx-10.0-build-pinned",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "_ver=\"$2+rocm$1.*\"",
+  "replace": "_ver=\"$2*\"",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "an unqualified MIGraphX version could take a build for another ROCm"
+ },
+ {
+  "id": "rocm-stack.migraphx-renamed-with-10.1",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "10.*) _mgx=\"amdrocm${1%%.*}-migraphx\"",
+  "replace": "10.*) _mgx=\"amdrocm-migraphx\"",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "from 10.1 amdrocm-migraphx is the old 10.0 build and pulls the 10.0 libraries"
+ },
+ {
+  "id": "rocm-stack.migraphx-version-pinned",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "printf '%s\\n' \"${_mgx}=${_ver}\" \"${_mgx}-dev=${_ver}\"",
+  "replace": "printf '%s\\n' \"${_mgx}\" \"${_mgx}-dev\"",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "an unpinned MIGraphX takes whatever build the rolling suite offers"
+ },
+ {
+  "id": "rocm-stack.unknown-release-fails",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "add it to rocm_packages\" >&2; return 1 ;;",
+  "replace": "add it to rocm_packages\" >&2 ;;",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "an unknown release must stop the build before any download, not install a list with no MIGraphX name"
+ },
+ {
+  "id": "rocm-stack.malformed-release-refused",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "if ! [[ \"${_rocm_ver}\" =~ ^[0-9]+\\.[0-9]+$ ]] || [ -z \"${_migraphx_ver}\" ]; then",
+  "replace": "if [ -z \"${_migraphx_ver}\" ]; then",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "a ROCM_VERSION that is not X.Y names packages that do not exist"
+ },
+ {
+  "id": "rocm-stack.migraphx-version-required",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "if ! [[ \"${_rocm_ver}\" =~ ^[0-9]+\\.[0-9]+$ ]] || [ -z \"${_migraphx_ver}\" ]; then",
+  "replace": "if ! [[ \"${_rocm_ver}\" =~ ^[0-9]+\\.[0-9]+$ ]]; then",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "a missing MIGRAPHX_VERSION reaches apt as amdrocm-migraphx=+rocm10.0.*"
+ },
+ {
+  "id": "rocm-stack.foreign-release-detected",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "&& substr($2, RSTART, RLENGTH) != rel { print $2 }",
+  "replace": "&& 0 { print $2 }",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "a second ROCm tree beside the pinned one must be reported"
+ },
+ {
+  "id": "rocm-stack.whole-release-token",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "match($2, /[0-9]+\\.[0-9]+/)",
+  "replace": "match($2, /[0-9]+\\.[0-9]/)",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "a 10.10 package must not read as 10.1"
+ },
+ {
+  "id": "rocm-stack.only-installed-counts",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "'$1 == \"installed\" && match(",
+  "replace": "'match(",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "a removed package's leftover config is no second tree"
+ },
+ {
+  "id": "rocm-stack.second-tree-fails-build",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "  echo \"${_rocm_foreign}\" >&2\n  exit 1",
+  "replace": "  echo \"${_rocm_foreign}\" >&2\n  :",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "the check must fail the build, not just print"
+ },
+ {
+  "id": "rocm-stack.install-uses-versioned-list",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "apt-get install -y --no-install-recommends \"${_rocm_pkgs[@]}\"",
+  "replace": "apt-get install -y --no-install-recommends amdrocm-core-dev amdrocm-migraphx amdrocm-migraphx-dev",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "the install must take rocm_packages' list, not versionless names"
+ },
+ {
+  "id": "rocm-stack.asan-versioned",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "\"amdrocm-asan${_rocm_ver}\"",
+  "replace": "amdrocm-asan",
+  "test": "bash linux/scripts/tests/test-rocm-packages.sh",
+  "why": "a versionless amdrocm-asan follows the suite's newest ROCm too"
  }
 ]
