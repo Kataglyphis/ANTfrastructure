@@ -98,6 +98,14 @@
       "transformTemplates": [
         "{ \"releases\": $map($lookup($, \"nuget.exe\")[stage = \"ReleasedAndBlessed\"], function($t) { { \"version\": $t.version } }) }"
       ]
+    },
+    "chrome-for-testing": {
+      "description": "Chrome for Testing's last-known-good versions: the Stable channel only, the build install-chrome-for-testing.sh pins (its zips' SHA256 move with it).",
+      "defaultRegistryUrlTemplate": "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json",
+      "format": "json",
+      "transformTemplates": [
+        "{ \"releases\": [ { \"version\": channels.Stable.version } ] }"
+      ]
     }
   }
 }
