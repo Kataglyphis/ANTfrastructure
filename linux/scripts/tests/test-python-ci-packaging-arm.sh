@@ -107,7 +107,8 @@ t_assert_contains "$(cat "${CALLS}")" "CC=${BIN}/riscv64-linux-gnu-clang" "CC is
 t_assert_contains "$(cat "${CALLS}")" "SUFFIX=.cpython-314-riscv64-linux-gnu.so" "the target SOABI suffix"
 t_assert_contains "$(cat "${CALLS}")" "CFLAGS=-O2 -I${PYROOT}/include/python3.14" "the staged target Python's headers"
 t_assert_eq "2" "$(grep -c '^wheel .*PLAT=linux_riscv64' "${CALLS}")" "both wheels carry the target platform tag"
-t_assert_eq "2" "$(grep -c '^wheel .*LDSHARED=.*-Wl,-m,elf64lriscv' "${CALLS}")" "both wheels pin the riscv64 linker emulation"
+t_assert_eq "2" "$(grep -cF -- "-shared -L${SYSROOT_DIR}/lib/riscv64-linux-gnu -L${SYSROOT_DIR}/usr/lib/riscv64-linux-gnu" "${CALLS}")" \
+  "both wheel links search the sysroot's libc before the host LIBDIR setuptools appends"
 
 t_case "cross mode never shows uv the target platform tag (uv refuses it at venv and build time)"
 t_assert_eq "2" "$(grep -c '^uv .*PLAT= CFLAGS=' "${CALLS}")" "both sdists build with no platform in uv's environment"

@@ -681,13 +681,24 @@ free-threading support also ships as a proved `cp314t` twin, in a store of its o
   | ONNX Runtime CPU (GIL pass: 760 s at `-j11`) | 97 s | 11-40 s | 539 of 3206 objects, every target whose compile line carries the Python and NumPy include dirs; of the wheel's four libraries only `onnxruntime_pybind11_state.so` differs |
   | PyAV | 28 s | 14 s | all 50 extensions, re-Cythonized because the fresh venv's Cython includes are newer: all of PyAV sees Python |
   | apache-tvm-ffi | 29 s | | all 34 steps: scikit-build-core's reconfigure rebuilds the small C++ core too |
-  | IREE runtime | 130 s at `-j4` | 18-24 s | 464 of 723 objects (below) |
-  | IREE compiler | not measured yet | | the MLIR modules at least |
+  | IREE compiler and runtime (GIL pass: 55 s configure, 2334 s build at `-j16`) | 25 s | | 58 of 5452 objects, the bindings alone (below) |
 
-  IREE's first configure leaves `IREE_HAVE_LIBBACKTRACE` unset and a second one sets it, so
-  the twin pass's reconfigure changes every runtime compile line, and the twin carries
-  libbacktrace where the GIL wheel does not. On a settled tree a Python switch rebuilds the
-  21 binding objects alone (measured).
+  The IREE row is from a cold compiler cache, the full in-tree LLVM, and a settled GIL tree.
+  The runtime-only tree, before the settle, took 130 s at `-j4` and recompiled 464 of its 723
+  objects.
+  - **Why the GIL tree configures twice.** IREE's first configure leaves `IREE_HAVE_LIBBACKTRACE`
+    unset and a second one sets it
+    ([linux-cross-builds.md § IREE](linux-cross-builds.md#iree-linux-lane)). On an unsettled
+    compiler tree the twin's reconfigure would change 1272 compile lines, 757 of them compiler
+    sources, and relink the 339 MB `libIREECompiler.so`. The GIL pass therefore configures twice
+    (17 s more), and the twin's reconfigure (11 s) then changes only what sees Python.
+  - **What the twin pass rebuilds.** 27 IREE compiler binding objects, 20 runtime binding
+    objects and 11 MLIR Python objects. It then relinks nanobind's free-threaded libraries,
+    `libMLIRPythonSupport-mlir.so` and the 15 modules.
+  - **What differs from the GIL wheels.** The extension modules, `libMLIRPythonSupport-mlir.so`,
+    and nanobind's library (`libnanobind-mlir.so` in the GIL wheel, `libnanobind-ft-mlir.so` in
+    the twin), plus `WHEEL` and `RECORD`. Everything else is byte-identical, including
+    `libIREECompiler.so` and the ten runtime tools.
 
 - **How a twin is proved.** Before it is stored, `ft_soabi_gate` wants a `cp3XY-cp3XYt` name
   and the free-threaded SOABI on every version-tagged module, and a fresh `3.14t` venv takes
@@ -718,8 +729,12 @@ free-threading support also ships as a proved `cp314t` twin, in a store of its o
   `/usr/local/bin/python3.14t` with the GIL off. A cross-built arch must hold none.
 - **Not covered yet.** The cross arches build no twin: arm64 when it is cross-built, which
   `:latest` is today, and riscv64. Neither does Windows. The GPU ORT flavours call the same
-  pass, and the IREE compiler builds its twin as the runtime does; both are unproven until a
-  chain runs them.
+  pass and are unproven until a chain runs them. The IREE compiler twin was proved locally in
+  `:latest` amd64 on 2026-10-07, but not yet in a chain:
+  - `prove` loaded its 14 compiled modules with the GIL off.
+  - A 3.14t venv parsed MLIR in-process, compiled an `add` function to a VMFB and ran it on
+    `local-task` from 8 threads.
+  - `iree-compile` and `iree-run-module` ran from the twins.
 
 ## The Windows image ships lavapipe
 
