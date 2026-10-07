@@ -6,6 +6,33 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — The arm64 bundle carries a free-threaded CPython too (CON74, half 1)
+
+- **`:winarm64`'s `C:\runtime` gains `python-freethreaded`** beside the GIL target interpreter.
+  Media-core's `Build-TargetCpython.ps1` builds the target checkout twice with the image's VS 2026
+  ClangCL toolset (`Invoke-CpythonPcbuild -Platform ARM64`, then `-FreeThreaded`, both with
+  `/p:PreferredToolArchitecture=x64`) and stages each tree right after its own build.
+  - **One staging function, `Install-CpythonTargetTree`**, is the old block: the PE-machine gate,
+    the host-arch CRT replacement, the `vcruntime140_1` drop, headers, `Lib`, an empty
+    `site-packages`, the CRT beside the exe and the ensurepip check. On the same build output the
+    GIL tree and `C:\runtime\bin` are byte-identical to the old code's.
+  - **The free-threaded tree** holds `python3.14t.exe` and `libs\python314t.lib`, no `python.exe`,
+    no DLL-directory shim, and `venvlaunchert.exe`/`venvwlaunchert.exe` in `Lib\venv\scripts\nt`:
+    without them `uv venv` refuses a tree with no `python.exe` to copy.
+  - **media-tvm passes `-SkipFreeThreaded`**, since the merge takes only media-core's trees.
+  - **`BUNDLE-ENV`** sets `KATA_PYTHON_FREETHREADED` and appends the tree last to `PATH`.
+- **The merge gate's import walk threw on the second of two same-named wheels.** Both trees ship
+  ensurepip's `pip-26.2.1` wheel; `Test-TargetArch.ps1` now extracts each into its own directory.
+- **`Test-Arm64Bundle.ps1` runs `python3.14t.exe -I`** in a bundle that has it and fails unless the
+  GIL is off, `Py_GIL_DISABLED` is 1 and `sys.version` says `ARM64`. The steps a bundle may lack
+  share `Invoke-ShippedBundleStep`.
+- Measured in `:winamd64` on a fresh v3.14.8 checkout (32 CPUs): ARM64 GIL build 65-96 s,
+  free-threaded 67-79 s. The free-threaded tree has 2793 files and 82.5 MB, and all 61 of its PE
+  files are `0xAA64`. The merge gate over both trees inspected 131 binaries and walked 157, with 0
+  unresolved. The same function on an x64 free-threaded build gave a tree that uv took with
+  `UV_PYTHON_DOWNLOADS=never`, and its venv ran with the GIL off. Only `windows-11-arm` can run the
+  ARM64 tree. A media-stage change: `:winarm64` rebuilds from media-core on.
+
 ## 2026-10-07 — A proved free-threaded wheel beside the GIL one
 
 - **A project that declares free-threading ships a `cp314t` wheel too** (owner request

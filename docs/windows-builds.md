@@ -285,8 +285,30 @@ Windows `3.14t` leg had uv download a python-build-standalone interpreter.
 - **Checked twice.** `Build-ToolchainAll.ps1` stops unless both interpreters report `PYTHON_VERSION`, the `AMD64`
   marker and their GIL state after the scrub (`Assert-CpythonInterpreter`). Section 2 of the smoke test checks the
   free-threaded one again and uv's resolution with downloads off. Tests: `SourceBuild.FreeThreadedCpython.Tests.ps1`.
-- **The arm64 bundle has no free-threaded interpreter yet.** `Build-TargetCpython.ps1` builds the GIL target
-  interpreter only.
+- **The arm64 bundle carries one too.** In media-core, `Build-TargetCpython.ps1` builds the target interpreter twice
+  (`Invoke-CpythonPcbuild -Platform ARM64`, `-FreeThreaded`, both with `/p:PreferredToolArchitecture=x64`). Each tree is
+  staged right after its own build by one function, `Install-CpythonTargetTree` (tests:
+  `SourceBuild.TargetCpythonTree.Tests.ps1`):
+  - **`C:\runtime\python`** gets the GIL build, unchanged.
+  - **`C:\runtime\python-freethreaded`** gets the free-threaded one: `python3.14t.exe`, `libs\python314t.lib`, no
+    `python.exe`, an empty `site-packages` without the DLL-directory shim, and `venvlaunchert.exe` and
+    `venvwlaunchert.exe` in `Lib\venv\scripts\nt`, where `PC\layout --include-venv` puts them. With no
+    `python.exe` to copy, `uv venv` refuses the tree without them: "Could not find a suitable Python
+    executable".
+  - **`BUNDLE-ENV`** sets `KATA_PYTHON_FREETHREADED` and appends the tree last to `PATH`.
+  - **media-tvm passes `-SkipFreeThreaded`**, since the merge takes only media-core's trees.
+- **Measured in `:winamd64` on 2026-10-07** on a fresh v3.14.8 checkout:
+  - The ARM64 GIL build took 65-96 s with the externals fetch, the free-threaded one 67 s.
+  - The GIL tree was byte-identical to the old staging code's, run on the same build output (2792 files plus 9 in
+    `bin`).
+  - The free-threaded tree has 2793 files and 82.5 MB, and every one of its 61 PE files is `0xAA64`.
+  - The merge stage's arch gate passed with `-ImportWalk` over both trees. It extracts each tree's ensurepip
+    `pip-*.whl` into its own directory: the second copy of the same name had made it throw before.
+  - The same function, run on an x64 free-threaded build of that checkout, gave a tree that ran on the host.
+    `uv venv --python 3.14t` with `UV_PYTHON_DOWNLOADS=never` took it, and its venv reported
+    `sys._is_gil_enabled()` False.
+  - Only `windows-11-arm` can run the ARM64 tree. `Test-Arm64Bundle.ps1` does that in a bundle that has one, and
+    fails unless the GIL is off.
 
 #### ONNX Runtime (pin: `ONNXRUNTIME_VERSION`)
 

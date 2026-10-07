@@ -51,6 +51,10 @@ $dllHomes = @($dllHomes | Select-Object -Unique)
 # 2. Python: the target interpreter on a cross lane, the image's host CPython on the native lane
 $targetPython = Join-Path $InstallDir 'python'
 $pythonRoot = if (Test-Path (Join-Path $targetPython 'python.exe')) { $targetPython } else { '' }
+# Build-TargetCpython.ps1's free-threaded twin: last on PATH and without a python.exe, so only a 3.14t request finds it.
+$ftPythonRoot = Join-Path $InstallDir 'python-freethreaded'
+$ftExeName = Get-CpythonFreeThreadedExeName
+$ftPythonExe = if (Test-Path (Join-Path $ftPythonRoot $ftExeName)) { Join-Path $ftPythonRoot $ftExeName } else { '' }
 $wheelDir = Join-Path $InstallDir 'wheels'
 $wheels = @(if (Test-Path $wheelDir) { Get-ChildItem -Path $wheelDir -Filter '*.whl' -File | ForEach-Object { $_.Name } })
 
@@ -76,6 +80,10 @@ if ($pythonRoot) {
     $cmd.Add("set ""KATA_PYTHON=$pythonRoot\python.exe""")
     $cmd.Add("set ""PATH=$pythonRoot;%PATH%""")
 }
+if ($ftPythonExe) {
+    $cmd.Add("set ""KATA_PYTHON_FREETHREADED=$ftPythonExe""")
+    $cmd.Add("set ""PATH=%PATH%;$ftPythonRoot""")
+}
 $cmd.Add("set ""KATA_WHEELS=$wheelDir""")
 
 # BUNDLE-ENV.ps1
@@ -89,6 +97,10 @@ $ps.Add("`$env:PATH = '$($dllHomes -join ';');' + `$env:PATH")
 if ($pythonRoot) {
     $ps.Add("`$env:KATA_PYTHON = '$pythonRoot\python.exe'")
     $ps.Add("`$env:PATH = '$pythonRoot;' + `$env:PATH")
+}
+if ($ftPythonExe) {
+    $ps.Add("`$env:KATA_PYTHON_FREETHREADED = '$ftPythonExe'")
+    $ps.Add("`$env:PATH = `$env:PATH + ';$ftPythonRoot'")
 }
 $ps.Add("`$env:KATA_WHEELS = '$wheelDir'")
 
@@ -120,6 +132,10 @@ if ($pythonRoot) {
     $md.Add('- pip is not installed but its wheel ships with the stdlib: `python -m ensurepip` (offline).')
 } else {
     $md.Add('- Interpreter: the image''s CPython (`python` on PATH); the bundle wheels are already installed into it.')
+}
+if ($ftPythonExe) {
+    $ftRequest = $ftExeName -replace '^python' -replace '\.exe$'
+    $md.Add("- Free-threaded interpreter: ``$ftPythonExe`` (``--disable-gil``, source-built for this target). It is last on ``PATH`` and has no ``python.exe``, so only a ``$ftRequest`` request finds it (``uv venv --python $ftRequest`` with ``UV_PYTHON_DOWNLOADS=never``). Its site-packages starts empty; the wheel store holds no free-threaded wheels.")
 }
 $md.Add("- Wheel store: ``$wheelDir`` -- $($wheels.Count) wheel(s):")
 foreach ($w in $wheels) { $md.Add("  - ``$w``") }
@@ -197,5 +213,5 @@ $mdPath  = Join-Path $InstallDir 'BUNDLE-README.md'
 [IO.File]::WriteAllText($psPath,  (($ps  -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
 [IO.File]::WriteAllText($mdPath,  (($md  -join "`n")   + "`n"),   (New-Object System.Text.UTF8Encoding($false)))
 
-Write-Host ("Bundle manifest ({0}): {1} DLL home(s), python={2}, {3} wheel(s), {4} absent marker(s), plugins [{5}] -> {6}, {7}, {8}" -f $arch, $dllHomes.Count, $(if ($pythonRoot) { $pythonRoot } else { 'image CPython' }), $wheels.Count, $absent.Count, ($plugins -join ' '), $cmdPath, $psPath, $mdPath)
+Write-Host ("Bundle manifest ({0}): {1} DLL home(s), python={2}, free-threaded={9}, {3} wheel(s), {4} absent marker(s), plugins [{5}] -> {6}, {7}, {8}" -f $arch, $dllHomes.Count, $(if ($pythonRoot) { $pythonRoot } else { 'image CPython' }), $wheels.Count, $absent.Count, ($plugins -join ' '), $cmdPath, $psPath, $mdPath, $(if ($ftPythonExe) { $ftPythonExe } else { 'none' }))
 exit 0

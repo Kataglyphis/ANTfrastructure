@@ -261,3 +261,25 @@ Describe 'verify-target-arch: device-OS import allowances (#121 QNN)' {
         Assert-True ($scriptText.Contains('cp313')) 'the comment must say why'
     }
 }
+
+Describe 'verify-target-arch: the import walk opens every wheel' {
+
+    It 'walks two same-named wheels, as the GIL and the free-threaded tree each ship ensurepip''s pip' {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        Invoke-InTestDir { param($d)
+            $rt = Join-Path $d 'runtime'
+            New-OrtTestPe -Path (Join-Path $rt 'python\python314.dll') -Machine 0xAA64 -Import 'kernel32.dll'
+            foreach ($tree in 'python', 'python-freethreaded') {
+                $src = Join-Path $d "wheel-$tree"
+                New-OrtTestPe -Path (Join-Path $src 'pip\_vendor\distlib\t64-arm.exe') -Machine 0xAA64 -Import 'kernel32.dll'
+                $whl = Join-Path $rt "$tree\Lib\ensurepip\_bundled\pip-26.2.1-py3-none-any.whl"
+                New-Item -ItemType Directory -Force -Path (Split-Path $whl) | Out-Null
+                [IO.Compression.ZipFile]::CreateFromDirectory($src, $whl)
+            }
+            # A child process: the gate re-imports its arch module with -Force.
+            $out = @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-TargetArch.ps1') -Path $rt -Arch arm64 -MinInspected 1 -ImportWalk 2>&1)
+            Assert-Equal 0 $LASTEXITCODE "the gate failed: $($out -join ' | ')"
+            Assert-Match 'import walk: 3 file\(s\) walked, 0 unresolved' ($out -join "`n") 'the DLL and the launcher of each wheel'
+        }
+    }
+}

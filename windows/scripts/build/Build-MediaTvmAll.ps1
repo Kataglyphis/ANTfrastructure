@@ -25,8 +25,10 @@ Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -F
 
 # Two independent LLVM-heavy compilers, run one at a time so the memory-per-job model holds.
 $stages = @(
-    # Target CPython again: this branch starts from the media-core fan-in, which lacks it; a no-op on amd64.
-    @{ Name = 'Target CPython'; Script = 'Build-TargetCpython.ps1'; SourceDir = 'C:\temp\cpython' }
+    # Target CPython again, GIL only: this branch starts from the media-core fan-in, which lacks it, and TVM and IREE link only PCbuild\<arch>.
+    @{ Name = 'Target CPython'; Invoke = { param($sd, $id)
+            & (Join-Path $sd 'Build-TargetCpython.ps1') -SourceDir 'C:\temp\cpython' -InstallDir $id -SkipFreeThreaded
+        } }
     @{ Name = 'TVM';  Script = 'Build-TvmFromSource.ps1';  SourceDir = 'C:\temp\tvm-src' }
     @{ Name = 'IREE'; Script = 'Build-IreeFromSource.ps1'; SourceDir = 'C:\temp\iree-src' }
 )
