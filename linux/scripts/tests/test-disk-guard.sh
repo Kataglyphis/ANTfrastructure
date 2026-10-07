@@ -281,6 +281,11 @@ _bk_reset() {
 }
 _bk_prunes() { grep -c -e '^prune ' "${BUILDCTL_LOG}" 2>/dev/null || true; }
 
+t_case "du_json turns buildctl's null (no matching record) into an empty array"
+_bk_reset
+t_assert_eq "[]" "$(BUILDCTL_DU_JSON=null _disk_guard_du_json --filter type==regular)" "null must read as no records, or every jq .[] dies under set -e"
+t_assert_eq "0" "$(BUILDCTL_DU_JSON=null _disk_guard_du_json | jq length)" "an empty store counts zero records"
+
 t_case "the trim runs FIRST — a fallback that fires while disk is ample is a bug"
 _bk_reset
 _disk_guard_free_gb() { echo 100; }

@@ -6,6 +6,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — prune-safe.sh survives a store with no layer records; CON53 closed
+
+- **`_disk_guard_du_json` reads buildctl's `null` as `[]`** (`01-core/disk-guard.sh`). `buildctl du --filter
+  type==regular --format '{{json .}}'` prints `null`, not `[]`, when no record matches, and the old empty-only fallback
+  passed it on: `prune-safe.sh`'s in-use count died in jq (`Cannot iterate over null`) before it pruned anything, on a
+  store that held only cache mounts. `test-disk-guard.sh` 121 -> 123, failing without the fix.
+- **CON53 closed.** Measured 2026-10-08 on the dev host with no chain running: 130 `exec.cachemount` records
+  (275 GB), every cache id with exactly one record. The 52 GB of surplus records the item listed is gone, so there is
+  nothing left for `PRUNE_DUP_CACHEMOUNTS=1` to remove.
+
 ## 2026-10-07 — IREE: every Linux target tree settles before its GIL build; the compiler twin proved on both lanes (CON81, CON79 1)
 
 - **Every Linux IREE target tree configures twice before it builds** (`_iree_configure_settled`, native and cross;

@@ -310,15 +310,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         export 128 on aarch64. Four of about twenty OxidANT arm64 runs since 2026-10-05 had
         died on it, one as a SIGSEGV in `forward_ambient` rather than an `LLVM ERROR`.
 
-- [ ] **CON53 — BuildKit cache housekeeping on the build host** [S, ★]. Both causes found and
-      fixed in the source on 2026-10-01 (CHANGELOG; `docs/build-cache-tiers.md` § 3.2.1,
-      `docs/linux-host-setup.md` § B7): `--keep-storage` bounds the whole store, so the keep
-      value now adds the cache mounts; and BuildKit's non-blocking `sharing=shared` lookup
-      makes a second record when the first is locked mid-release, which `prune-safe.sh` now
-      lists. Left: remove the 52 GB of surplus records (six ids; `/uv-cache-riscv64` 25.9 GB)
-      with `PRUNE_DUP_CACHEMOUNTS=1 linux/host-config/prune-safe.sh` once no chain holds the
-      store; it refuses while one does.
-
 ## Open — Linux arm64 and riscv64
 
 - [b] **CON70 — a riscv64 Flutter engine, for OmniAccelerANT's riscv64 lane** [L, ★]. CON48's
