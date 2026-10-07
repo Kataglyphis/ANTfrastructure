@@ -144,7 +144,7 @@ The two halves of one topic often split:
 | Finding the real error in a large build log | [`build-resource-monitoring.md`](build-resource-monitoring.md#mining-a-build-log-for-the-actual-failure) |
 | Capping CPU so a build leaves the host usable | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md#capping-cpu-so-the-host-stays-usable) |
 | Building on an SBC or small VM: swap, zram, forcing `-j1` | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md#the-other-end-building-on-a-memory-constrained-host) |
-| **Every checkout on its branch tip** — the superproject and its own submodules, recursively, fast-forward only (`git-sync-branches.sh`) | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#putting-every-checkout-on-its-branch) |
+| **Every checkout on its branch tip** — the superproject and every submodule, recursively, fast-forward only (`git-sync-branches.sh`) | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#putting-every-checkout-on-its-branch) |
 | **Submodule conflicts on merge**, bumping the pin, shallow fetches | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#submodule-maintenance) |
 | Broken submodule checkout, `core.longpaths`, `git clean -fdx`, ssh-agent on Windows | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#recovering-a-broken-submodule-checkout) |
 | Which CI lanes run when — every platform lane on every push and PR since 2026-09-24; what is still path-filtered or gated | [`ci-build-triggers.md`](ci-build-triggers.md) |

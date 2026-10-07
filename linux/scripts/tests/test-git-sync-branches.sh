@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# git-sync-branches.sh moves owned checkouts to their branch tip, fast-forward only, and leaves foreign submodules pinned.
+# git-sync-branches.sh moves every checkout to its branch tip, fast-forward only; --owned-only leaves foreign submodules pinned.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -50,12 +50,12 @@ _fixture() {
 _tip() { git -C "$1" rev-parse "origin/$2"; }
 _head() { git -C "$1" rev-parse HEAD; }
 
-t_case "owned checkouts reach their branch tip; a foreign submodule stays pinned and is named"
+t_case "--owned-only: owned checkouts reach their branch tip; a foreign submodule stays pinned and is named"
 d="$(_fixture)"
 pin="$(_head "${d}/vendor")"
 git -C "${d}" fetch -q
 git -C "${d}" reset -q --hard HEAD~1
-out="$(t_out bash "${SYNC}" --repo "${d}")"
+out="$(t_out bash "${SYNC}" --repo "${d}" --owned-only)"
 t_assert_eq "$(_tip "${d}" develop)" "$(_head "${d}")" "superproject at origin/develop"
 t_assert_eq develop "$(git -C "${d}/lib" rev-parse --abbrev-ref HEAD)" "owned submodule on its declared branch"
 t_assert_eq "$(_tip "${d}/lib" develop)" "$(_head "${d}/lib")" "owned submodule at its tip"
@@ -63,9 +63,9 @@ t_assert_eq "${pin}" "$(_head "${d}/vendor")" "foreign submodule untouched"
 t_assert_contains "${out}" "PIN   vendor" "the pinned one is reported"
 t_assert_contains "${out}" "lib" "the moved gitlink is listed as drift"
 
-t_case "--all moves the foreign submodule to its remote's default branch"
+t_case "by default the foreign submodule moves too, to its remote's default branch"
 d="$(_fixture)"
-t_assert_eq 0 "$(t_rc bash "${SYNC}" --repo "${d}" --all)" "exit code"
+t_assert_eq 0 "$(t_rc bash "${SYNC}" --repo "${d}")" "exit code"
 t_assert_eq trunk "$(git -C "${d}/vendor" rev-parse --abbrev-ref HEAD)" "remote default used without branch ="
 t_assert_eq "$(_tip "${d}/vendor" trunk)" "$(_head "${d}/vendor")" "at its tip"
 

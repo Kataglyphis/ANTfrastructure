@@ -7,6 +7,14 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-07 — `git-sync-branches.sh` moves third-party submodules by default
+
+- **Owner decision: the newest commits everywhere, not just in the family's repos.** Every
+  submodule now goes to the tip of its `branch =`. A library held at a release declares that
+  release branch, as AccelerANTgine does for FUZZTEST.
+- **`--owned-only` replaces `--all`** and keeps the earlier behaviour: submodules under another
+  owner stay at their recorded commit.
+
 ## 2026-10-07 — `git-sync-branches.sh`: every checkout on its branch tip
 
 - **New entry point `linux/scripts/git-sync-branches.sh`.** It checks out the superproject's

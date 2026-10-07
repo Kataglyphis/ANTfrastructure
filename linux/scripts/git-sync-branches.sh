@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Put a checkout and its owned submodules on their branch, fast-forwarded. See docs/adopting-in-a-new-project.md#putting-every-checkout-on-its-branch
+# Put a checkout and all its submodules on their branch, fast-forwarded. See docs/adopting-in-a-new-project.md#putting-every-checkout-on-its-branch
 set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: git-sync-branches.sh [--repo DIR] [--all] [--dry-run]
+Usage: git-sync-branches.sh [--repo DIR] [--owned-only] [--dry-run]
 
 Checks out the superproject's default branch and, recursively, each submodule's
 branch (.gitmodules `branch =`, else the remote's default), fast-forward only.
 Working trees only: no gitlink is committed.
 
   --repo DIR   the superproject (default: the current directory)
-  --all        also move submodules hosted outside the superproject's owner
+  --owned-only leave submodules hosted outside the superproject's owner at their recorded commit
   --dry-run    print the plan, change nothing
 EOF
 }
@@ -70,7 +70,7 @@ sync_one() {
 # shellcheck disable=SC2154
 sync_submodule() {
   local branch
-  if [ "${GSB_ALL}" != 1 ] && [ "$(url_owner "$(git remote get-url origin)")" != "${GSB_OWNER}" ]; then
+  if [ "${GSB_OWNED_ONLY}" = 1 ] && [ "$(url_owner "$(git remote get-url origin)")" != "${GSB_OWNER}" ]; then
     printf 'PIN   %s: not under %s, left at its recorded commit\n' "${displaypath}" "${GSB_OWNER}"
     return 0
   fi
@@ -80,10 +80,10 @@ sync_submodule() {
 }
 
 parse_args() {
-  GSB_REPO=. GSB_ALL=0 GSB_DRY=0
+  GSB_REPO=. GSB_OWNED_ONLY=0 GSB_DRY=0
   while [ $# -gt 0 ]; do
     case "$1" in
-      --all) GSB_ALL=1 ;;
+      --owned-only) GSB_OWNED_ONLY=1 ;;
       --dry-run) GSB_DRY=1 ;;
       --repo) GSB_REPO="${2:?--repo needs a directory}"; shift ;;
       -h|--help) usage; exit 0 ;;
@@ -100,7 +100,7 @@ main() {
   cd "${GSB_REPO}"
   GSB_OWNER="$(url_owner "$(git remote get-url origin)")"
   GSB_FAILS="$(mktemp)"
-  export GSB_ALL GSB_DRY GSB_OWNER GSB_FAILS
+  export GSB_OWNED_ONLY GSB_DRY GSB_OWNER GSB_FAILS
   sync_one . ""
   git submodule foreach --quiet --recursive "bash '${self}' --submodule"
   drift="$(git submodule status --recursive | sed -n 's/^+[0-9a-f]* \([^ ]*\).*/\1/p')"
