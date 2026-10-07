@@ -296,7 +296,7 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, in a bundle that carries it the cp314 pytest stack installs offline from it, `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), and, in a bundle that carries it, the validation layer loads |
+| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, in a bundle that carries it the cp314 pytest stack installs offline from it, in a bundle that carries it `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), and, in a bundle that carries it, the validation layer loads |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
@@ -718,6 +718,10 @@ exactly that file, under a tightly-guarded rule rather than a pattern that could
 
 **What this deliberately did not include at first: the consumers.** They followed the same
 evening as step 2.
+
+**A free-threaded twin since 2026-10-07 (CON74).** The same stage builds the checkout again with
+`--disable-gil` and stages it into `C:\runtime\python-freethreaded` through the same staging
+function: [`windows-builds.md` § The free-threaded CPython](windows-builds.md#the-free-threaded-cpython).
 
 ## The Python consumers are built for the target (#120 step 2)
 

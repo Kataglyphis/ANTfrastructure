@@ -220,9 +220,12 @@ if ($ImportWalk) {
     # A wheel's native members are what pip installs on the device.
     $wheelTmp = Join-Path ([System.IO.Path]::GetTempPath()) ('archgate-wheels-' + [guid]::NewGuid().ToString('N'))
     Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $wheelCount = 0
     foreach ($root in $Path) {
         foreach ($whl in @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.whl' -File -ErrorAction SilentlyContinue)) {
-            $dest = Join-Path $wheelTmp ([IO.Path]::GetFileNameWithoutExtension($whl.Name))
+            # Numbered: each CPython tree's ensurepip ships the same pip wheel, and a second extract into one directory throws.
+            $wheelCount++
+            $dest = Join-Path $wheelTmp ('{0}-{1}' -f $wheelCount, [IO.Path]::GetFileNameWithoutExtension($whl.Name))
             [System.IO.Compression.ZipFile]::ExtractToDirectory($whl.FullName, $dest)
             foreach ($m in @(Get-ChildItem -Path $dest -Recurse -File -Include '*.dll', '*.pyd', '*.exe')) { $walkFiles.Add($m.FullName) }
         }

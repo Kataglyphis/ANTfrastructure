@@ -103,6 +103,24 @@ Describe 'write-bundle-manifest: bundle self-description' {
         [Environment]::SetEnvironmentVariable('FFMPEG_BIN', $null, 'Process')
     }
 
+    It 'names the free-threaded interpreter last on PATH, and only when the bundle carries it' {
+        [Environment]::SetEnvironmentVariable('WINDOWS_TARGET_ARCH', 'arm64', 'Process')
+        $ft = Join-Path $script:runtime 'python-freethreaded'
+        Invoke-WithEnv @{ PYTHON_VERSION = '3.14.8' } {
+            & $script:scriptPath -InstallDir $script:runtime 2>&1 | Out-Null
+            Assert-False ((Get-Content (Join-Path $script:runtime 'BUNDLE-ENV.cmd') -Raw) -match 'FREETHREADED') 'no tree, no variable'
+            New-Item -ItemType Directory -Force -Path $ft | Out-Null
+            Set-Content (Join-Path $ft 'python3.14t.exe') 'fake'
+            & $script:scriptPath -InstallDir $script:runtime 2>&1 | Out-Null
+        }
+        $cmd = Get-Content (Join-Path $script:runtime 'BUNDLE-ENV.cmd') -Raw
+        Assert-Match ([regex]::Escape("set ""KATA_PYTHON_FREETHREADED=$ft\python3.14t.exe""")) $cmd 'the interpreter'
+        Assert-Match ([regex]::Escape("set ""PATH=%PATH%;$ft""")) $cmd 'appended, so every python.exe request resolves first'
+        Assert-Match ([regex]::Escape("`$env:PATH = `$env:PATH + ';$ft'")) (Get-Content (Join-Path $script:runtime 'BUNDLE-ENV.ps1') -Raw) 'the same in pwsh'
+        Assert-Match 'only a `3\.14t` request finds it' (Get-Content (Join-Path $script:runtime 'BUNDLE-README.md') -Raw) 'the README says how to reach it'
+        Remove-Item $ft -Recurse -Force
+    }
+
     It 'throws when the install directory does not exist' {
         [Environment]::SetEnvironmentVariable('WINDOWS_TARGET_ARCH', 'amd64', 'Process')
         $missing = Join-Path $script:tmp 'does-not-exist'

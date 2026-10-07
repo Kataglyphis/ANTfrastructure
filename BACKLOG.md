@@ -34,28 +34,32 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       and the Windows arm64 cross lane skip `cp314t` with a logged reason. riscv64 needs 3.14t
       target headers in the sysroot (CON66 stages them at `/opt/python-cross-ft/riscv64`), the
       `.cpython-314t-riscv64-linux-gnu.so` suffix and a 3.14t host pip. Windows arm64 builds no
-      Cython wheel at all (CON74 brings its interpreter). Done when both ship a wheel proved on
+      Cython wheel at all; its target interpreter exists since CON74 half 1, but
+      `Get-TargetBuildPython` has no `-FreeThreaded` and `Get-FreeThreadedWheelPlan` still skips
+      every `-CrossArch`. Done when both ship a wheel proved on
       the target.
 - [ ] **CON76 — a real cp314t proof in the hub suite** [S, ★]. Once `:latest` ships `3.14t` on
       every arch (CON66), `test-python-free-threaded-wheel.sh` builds two tiny C extensions (one
       declaring free-threading support, one not) and runs `prove` for real instead of a stubbed
       interpreter.
 - [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
-      [M, ★]. Since 2026-10-07 `:winamd64` builds `python3.14t.exe` beside the GIL build
-      (`C:\python-freethreaded`, windows-builds.md § *The free-threaded CPython*). The arm64
-      bundle carries only the GIL target interpreter (`C:\runtime\python`,
-      `Build-TargetCpython.ps1`). Two halves:
-      1. `Build-TargetCpython.ps1` runs `Invoke-CpythonPcbuild -Platform ARM64 -FreeThreaded
-         -ExtraArguments '"/p:PreferredToolArchitecture=x64"'` after the GIL build and stages
-         `PCbuild\freethreaded\arm64` into `C:\runtime\python-freethreaded`. Its staging block
-         (PE-machine gate, host-arch CRT replacement, the vcruntime140_1 drop, headers, Lib, empty
-         site-packages, DLL-directory shim, ensurepip check) becomes one function both trees
-         call, with `Select-CpythonImportLib -FreeThreaded`. Write-BundleManifest and the merge
-         gate then cover the new directory.
-      2. python-ci-windows.yml's arm64 job runs on the bare runner, without an image, so
-         `Invoke-PythonTestLegs.ps1 -InstallUv` still has uv download a python-build-standalone
-         3.14t. The job must take its interpreter from the bundle, or from a published
-         free-threaded artifact, before half 1 removes any download.
+      [M, ★]. Half 1 is in the scripts since 2026-10-07 (CHANGELOG): media-core's
+      `Build-TargetCpython.ps1` stages the `--disable-gil` ARM64 build into
+      `C:\runtime\python-freethreaded` (`python3.14t.exe`, `libs\python314t.lib`, the venv
+      launchers, no `python.exe`), `BUNDLE-ENV` appends it last to `PATH`, and
+      `Test-Arm64Bundle.ps1` runs it on a device when the bundle carries it. Left:
+      1. **Republish `:winarm64`.** The published one (2026-10-04, hub 80647a9a) has no tree. Then
+         read the first `bundle-gate` job of a cross lane with `bundle-artifact-name` for the step
+         `free-threaded interpreter: GIL off, stdlib extensions import`.
+      2. **[b] python-ci-windows.yml's arm64 job — owner decision.** It runs on the bare runner,
+         and `Invoke-PythonTestLegs.ps1 -InstallUv` lets uv download a python-build-standalone
+         3.14t. No image runs on `windows-11-arm`, so the tree has to arrive as an artifact:
+         either a `windows-2025` job pulls `:winarm64` and uploads only
+         `C:\runtime\python-freethreaded` (82.5 MB), as `container-ci-windows.yml`'s bundle export
+         does for the whole tree, or the image publish pushes that directory as its own SHA-pinned
+         artifact. Then the arm64 job extracts it, appends it to `PATH`, sets
+         `UV_PYTHON_DOWNLOADS=never` and checks that `uv python find 3.14t` resolves inside it;
+         only then is the download dropped. The job's GIL legs download too (separate decision).
 
       Done when a windows-11-arm `3.14t` leg passes with `UV_PYTHON_DOWNLOADS=never` and the
       device smoke reports `sys._is_gil_enabled() == False` for the bundle's `python3.14t.exe`.

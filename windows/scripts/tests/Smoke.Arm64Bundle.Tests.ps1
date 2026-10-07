@@ -6,7 +6,7 @@
 Describe 'Test-Arm64Bundle: the floor decides the verdict' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -FunctionName 'Get-BundleVerdict', 'Invoke-BundleStep')
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -FunctionName 'Get-BundleVerdict', 'Invoke-BundleStep', 'Invoke-ShippedBundleStep')
         $script:ok = [pscustomobject]@{ Name = 'a'; Ok = $true; Detail = '' }
         $script:bad = [pscustomobject]@{ Name = 'b'; Ok = $false; Detail = 'exit 1' }
     }
@@ -44,5 +44,21 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
         Invoke-BundleStep 'probe' { } $results
         Assert-Equal 1 $results.Count 'the empty list must bind and receive the step'
         Assert-True $results[0].Ok 'a quiet body is a pass'
+    }
+
+    It 'counts a component''s step only in a bundle that ships it, and names its absence otherwise' {
+        Invoke-InTestDir { param($d)
+            New-Item -ItemType File -Force (Join-Path $d 'python-freethreaded\python3.14t.exe') | Out-Null
+            $results = [System.Collections.Generic.List[object]]::new()
+            Invoke-ShippedBundleStep 'shipped' (Join-Path $d 'python-freethreaded\python3.*t.exe') { } $results
+            Invoke-ShippedBundleStep 'not shipped' (Join-Path $d 'wheels\pytest-*-py3-none-any.whl') { throw 'must not run' } $results
+            Assert-Equal 'shipped' (($results | ForEach-Object Name) -join ',') 'the absent component is neither run nor counted'
+        }
+    }
+
+    It 'runs the free-threaded interpreter isolated, and fails it unless the GIL is off on ARM64' {
+        $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-Arm64Bundle.ps1'))
+        Assert-Match "Join-Path \`$BundleRoot 'python-freethreaded\\python3\.\*t\.exe'" $text 'found by pattern, not by a pinned version'
+        Assert-Match "& \`$exe -I -c `".*assert not g and d == 1 and 'ARM64' in sys\.version" $text 'sys._is_gil_enabled(), Py_GIL_DISABLED and the arch marker'
     }
 }
