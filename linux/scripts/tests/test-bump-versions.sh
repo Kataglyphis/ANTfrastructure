@@ -262,13 +262,12 @@ t_assert_contains "${_protoc}" "0.17=35.1" "a two-part GIT_TAG is protoc's own v
 t_assert_contains "${_protoc}" "0.14=31.1" "a three-part runtime tag maps to protoc MINOR.PATCH"
 t_assert_contains "${_protoc}" "none=None" "an unreadable pin is None, never a guess"
 
-t_case "spec_llama_cpp_hip: newest bNNNN with a win-rocm-<ROCm X.Y> AND a win-vulkan zip wins, both SHAs move, none = raise"
+t_case "spec_llama_cpp_hip: newest bNNNN with a win-cpu AND a win-vulkan zip wins; source pin, both SHAs and LICENSE move; none = raise"
 _fx="$(_fixture llama <<'ENV'
-ROCM_WINDOWS_RELEASE=10.0.0
 LLAMA_CPP_HIP_BUILD=100
 ENV
 )"
-# Upstream faked: b103 has no Vulkan zip, b102's ROCm zip is for another ROCm, v0.4.1 is the other tag family.
+# Upstream faked: b103 has no Vulkan zip, b102 no CPU zip, v0.4.1 is the other tag family.
 _out="$(python3 - "${REPO}" "${_fx}" <<'PY'
 import os, sys
 from pathlib import Path
@@ -276,12 +275,14 @@ sys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))
 import bump_versions as bv
 bv.VERSIONS_ENV = Path(sys.argv[2])
 bv.ls_remote_tags = lambda repo: ["b99", "b100", "b101", "b102", "b103", "v0.4.1"]
+bv.ls_remote_tag_commit = lambda repo, tag: {"b101": "c" * 40}[tag]
 bv.artifact_exists = lambda url: url.rsplit("/", 1)[1] in (
-    "llama-b100-bin-win-rocm-10.0-x64.zip", "llama-b101-bin-win-rocm-10.0-x64.zip", "llama-b102-bin-win-rocm-7.14-x64.zip",
-    "llama-b103-bin-win-rocm-10.0-x64.zip", "llama-b100-bin-win-vulkan-x64.zip", "llama-b101-bin-win-vulkan-x64.zip",
-    "llama-b102-bin-win-vulkan-x64.zip")
+    "llama-b100-bin-win-cpu-x64.zip", "llama-b101-bin-win-cpu-x64.zip", "llama-b103-bin-win-cpu-x64.zip",
+    "llama-b100-bin-win-vulkan-x64.zip", "llama-b101-bin-win-vulkan-x64.zip", "llama-b102-bin-win-vulkan-x64.zip")
 bv.asset_sha256 = lambda repo, tag, asset, sums=(): ("a" if "-vulkan-" in asset else "f") * 64
-bv.sha256_of_url = lambda url: "e" * 64 if url == "https://raw.githubusercontent.com/ggml-org/llama.cpp/b101/LICENSE" else url
+bv.sha256_of_url = lambda url: {
+    "https://raw.githubusercontent.com/ggml-org/llama.cpp/b101/LICENSE": "e" * 64,
+    f"https://github.com/ggml-org/llama.cpp/archive/{'c' * 40}.tar.gz": "d" * 64}.get(url, url)
 bv.WRITE_MODE = True
 print("bump", bv.spec_llama_cpp_hip("100"))
 print("same", bv.spec_llama_cpp_hip("101"))
@@ -292,14 +293,18 @@ except RuntimeError as e:
     print("raised", e)
 PY
 )"
-t_assert_contains "${_out}" "bump ('101', {'LLAMA_CPP_HIP_ASSET': 'llama-b101-bin-win-rocm-10.0-x64.zip', 'LLAMA_CPP_HIP_SHA256': 'ffffffff" \
-  "the newest build with zips for THIS ROCm and Vulkan wins (not b103 without Vulkan, not b102's rocm-7.14), asset and SHA along"
+t_assert_contains "${_out}" "bump ('101', {'LLAMA_CPP_HIP_COMMIT': 'cccccccc" \
+  "the newest build with both zips wins (not b103 without Vulkan, not b102 without CPU), and its tag's commit is pinned"
+t_assert_contains "${_out}" "'LLAMA_CPP_HIP_SOURCE_SHA256': 'dddddddd" \
+  "the source pin is the archive of THAT commit, re-hashed, never the tag name"
+t_assert_contains "${_out}" "'LLAMA_CPP_CPU_SHA256': 'ffffffff" \
+  "the CPU zip pin is its own asset's digest, moved with the one build pin"
 t_assert_contains "${_out}" "'LLAMA_CPP_VULKAN_SHA256': 'aaaaaaaa" \
   "the Vulkan pin is its own asset's digest, moved with the one build pin"
 t_assert_contains "${_out}" "'LLAMA_CPP_HIP_LICENSE_SHA256': 'eeeeeeee" \
   "the LICENSE pin is re-hashed at the NEW build's tag (b101), never left at the old one"
 t_assert_contains "${_out}" "same ('101', {})" "an up-to-date build drags no extras"
-t_assert_contains "${_out}" "raised none of the newest 30 ggml-org/llama.cpp builds publishes both a win-rocm-10.0 and a win-vulkan-x64 zip" \
+t_assert_contains "${_out}" "raised none of the newest 30 ggml-org/llama.cpp builds publishes both a win-cpu-x64 and a win-vulkan-x64 zip" \
   "no matching pair of zips is a lookup failure, never a silent 'up to date'"
 
 t_case "spec_amf_headers: only vX.Y.Z tags count, and the header asset's SHA moves with the tag (offline)"

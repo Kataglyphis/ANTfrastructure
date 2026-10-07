@@ -7,8 +7,9 @@
 .SYNOPSIS
     rocm-check for llama.cpp's HIP and Vulkan builds: pinned bytes and licence, off PATH, linkable, runnable.
 .DESCRIPTION
-    One finding per defect; none is a pass. GPU-less: no Vulkan instance or HIP device is ever created,
-    and no kernel runs. Also run per backend by windows/Dockerfile.rocm-llama. docs/windows-builds.md § ROCm layer.
+    One finding per defect; none is a pass. GPU-less: no Vulkan instance or HIP device is ever created, HIP is only
+    asked for its device count, and no kernel runs. Also run per backend by windows/Dockerfile.rocm-llama.
+    docs/windows-rocm.md § llama.cpp HIP and Vulkan.
 #>
 param(
     # The smoke gate grades both; each Dockerfile.rocm-llama RUN grades the build it just installed.
@@ -174,16 +175,14 @@ function Test-SameDirectory {
 
 <#
 .SYNOPSIS
-    Walks ggml-hip.dll's static imports through the loader order into ROCm: each must resolve, come
-    from where it belongs (or a byte-identical copy), and export every name imported from it.
+    Walks ggml-hip.dll's static imports through the loader order into ROCm: each must resolve, a ROCm one
+    from ROCm's bin (or a byte-identical copy), and export every name imported from it.
 #>
 function Get-LlamaCppHipLinkFinding {
     param(
         [Parameter(Mandatory)][string]$Dir,
         [Parameter(Mandatory)][string]$RocmBin,
-        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$SearchDir,
-        # The HIP runtime that must load from $Dir; matches Install-LlamaCppHip.ps1's.
-        [string]$RuntimePattern = '^(amdhip64_\d+|amd_comgr(_\d+)?|rocm_kpack)\.dll$'
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$SearchDir
     )
     $findings = [System.Collections.Generic.List[string]]::new()
     # Every PE read once; a file is walked when its table is first read.
@@ -199,9 +198,8 @@ function Get-LlamaCppHipLinkFinding {
             $hit = Resolve-LoaderDll -Name $dll -SearchDir $SearchDir
             if (-not $hit) { $findings.Add("$leaf imports $dll, which nothing on the loader path provides"); continue }
             if ([System.IO.File]::Exists((Join-Path $RocmBin $dll))) {
-                $wantDir = if ($dll -match $RuntimePattern) { $Dir } else { $RocmBin }
-                $want = Join-Path $wantDir $dll
-                if (-not (Test-SameDirectory -Left (Split-Path $hit -Parent) -Right $wantDir) -and
+                $want = Join-Path $RocmBin $dll
+                if (-not (Test-SameDirectory -Left (Split-Path $hit -Parent) -Right $RocmBin) -and
                     (-not [System.IO.File]::Exists($want) -or (Get-FileHash -LiteralPath $hit).Hash -ne (Get-FileHash -LiteralPath $want).Hash)) {
                     $findings.Add("$leaf loads $dll from $hit, not $want")
                 }
@@ -247,17 +245,18 @@ function Get-LlamaCppCheckSpec {
     param([Parameter(Mandatory)][ValidateSet('hip', 'vulkan')][string]$Backend)
     # The zips carry no llama.cpp licence text; MIT requires it beside the binaries.
     $license = 'licenses\llama.cpp\LICENSE'
+    $reason = 'its libomp.dll, ggml*.dll and llama.dll would shadow every other copy of those names'
     if ($Backend -eq 'hip') {
-        return @{ HomeVar = 'LLAMA_CPP_HIP_HOME'; Manifest = 'llama-cpp-hip-manifest.json'; Required = @('ggml-hip.dll', 'llama-server.exe', $license)
-            PathReason = "its HIP runtime would shadow ROCm's for every process" }
+        return @{ HomeVar = 'LLAMA_CPP_HIP_HOME'; Manifest = 'llama-cpp-hip-manifest.json'; Required = @('ggml-hip.dll', 'llama-server.exe', 'llama-cli.exe', $license)
+            PathReason = $reason }
     }
     return @{ HomeVar = 'LLAMA_CPP_VULKAN_HOME'; Manifest = 'llama-cpp-vulkan-manifest.json'; Required = @('ggml-vulkan.dll', 'llama-server.exe', $license)
-        PathReason = 'its libomp.dll, ggml*.dll and llama.dll would shadow every other copy of those names' }
+        PathReason = $reason }
 }
 
 <#
 .SYNOPSIS
-    The shipped files are exactly the pinned zip's plus llama.cpp's LICENSE, as Install-LlamaCpp.ps1 recorded them.
+    The shipped files are exactly what Install-LlamaCpp.ps1 recorded: the pinned zip, HIP's built DLL and llama.cpp's LICENSE.
 #>
 function Get-LlamaCppManifestFinding {
     param(
@@ -286,32 +285,22 @@ function Get-LlamaCppManifestFinding {
         if (-not $listed.Contains($r)) { $findings += "the manifest lists no $r" }
     }
     $extra = @(Get-ChildItem -LiteralPath $Dir -File | Where-Object { $_.Name -ne $ManifestName -and -not $listed.Contains($_.Name) })
-    foreach ($file in $extra) { $findings += "$($file.Name) did not come from the pinned zip" }
+    foreach ($file in $extra) { $findings += "$($file.Name) is not in the manifest: it came from neither the pinned zip nor the build" }
     return $findings
 }
 
 <#
 .SYNOPSIS
-    The HIP runtime next to llama-server must be ROCm's own bytes, and nothing else of ROCm's may sit there.
+    Nothing of ROCm's may sit next to llama-server: ggml-hip links the image's HIP runtime, never a bundled copy.
 #>
-function Get-HipRuntimeIdentityFinding {
+function Get-LlamaCppRocmShadowFinding {
     param(
         [Parameter(Mandatory)][string]$Dir,
-        [Parameter(Mandatory)][string]$RocmBin,
-        [string]$RuntimePattern = '^(amdhip64_\d+|amd_comgr(_\d+)?|rocm_kpack)\.dll$'
+        [Parameter(Mandatory)][string]$RocmBin
     )
-    $shared = @(Get-ChildItem -LiteralPath $Dir -Filter '*.dll' -File | Where-Object { [System.IO.File]::Exists((Join-Path $RocmBin $_.Name)) })
-    $findings = @()
-    if (@($shared | Where-Object { $_.Name -match $RuntimePattern }).Count -eq 0) {
-        $findings += "no HIP runtime DLL next to llama-server: a host driver's System32 amdhip64 would win"
+    foreach ($dll in @(Get-ChildItem -LiteralPath $Dir -Filter '*.dll' -File | Where-Object { [System.IO.File]::Exists((Join-Path $RocmBin $_.Name)) })) {
+        "$($dll.Name) next to llama-server shadows ROCm's own copy: ggml-hip must load the image's HIP runtime and libraries"
     }
-    foreach ($dll in $shared) {
-        if ($dll.Name -notmatch $RuntimePattern) { $findings += "$($dll.Name) next to llama-server shadows ROCm's own copy"; continue }
-        if ((Get-FileHash -LiteralPath $dll.FullName).Hash -ne (Get-FileHash -LiteralPath (Join-Path $RocmBin $dll.Name)).Hash) {
-            $findings += "$($dll.Name) next to llama-server is not ROCm's: hipBLAS/rocBLAS would run on a HIP runtime they were not built with"
-        }
-    }
-    return $findings
 }
 
 <#
@@ -367,22 +356,34 @@ function Invoke-LlamaCppProcess {
 
 <#
 .SYNOPSIS
-    Runs llama-server --version (no backend loads before it exits) and checks it reports the pinned build.
+    One GPU-less run of a llama.cpp tool: a finding when it is missing, hangs, exits non-zero or prints the wrong answer.
+.DESCRIPTION
+    version: llama-server --version reports the pinned build; no backend loads before it exits.
+    devices: llama-cli --list-devices loads ggml-hip and gets an answer from the HIP runtime, its devices or none. A
+    container has no GPU, so HIP reports none; that line still proves the frontend loaded ggml-hip.dll and
+    hipGetDeviceCount ran on the image's runtime. ggml-cuda.cu's ggml_cuda_init names GGML_CUDA_NAME, "ROCm" in a HIP build.
 #>
-function Get-LlamaServerVersionFinding {
+function Get-LlamaCppRunFinding {
     param(
         [Parameter(Mandatory)][string]$Exe,
-        [Parameter(Mandatory)][AllowEmptyString()][string]$Build,
-        [string]$Arguments = '--version',
+        [Parameter(Mandatory)][ValidateSet('version', 'devices')][string]$Run,
+        [AllowEmptyString()][string]$Build = '',
         [int]$TimeoutSeconds = 120
     )
+    $arguments, $want, $meaning = switch ($Run) {
+        'version' { '--version', "\(build $([regex]::Escape($Build)),", "does not report build $Build" }
+        'devices' {
+            '--list-devices', 'ggml_cuda_init: (found \d+ ROCm devices|failed to initialize ROCm: no ROCm-capable device is detected)',
+            'did not initialise ggml-hip on the HIP runtime'
+        }
+    }
+    $call = "$([System.IO.Path]::GetFileName($Exe)) $arguments"
     if (-not [System.IO.File]::Exists($Exe)) { return "$Exe is missing" }
-    $name = [System.IO.Path]::GetFileName($Exe)
-    $run = Invoke-LlamaCppProcess -FilePath $Exe -ArgumentList $Arguments -TimeoutSeconds $TimeoutSeconds
-    if ($null -eq $run.ExitCode) { return "$name $Arguments did not exit within $TimeoutSeconds s" }
-    Write-Host "  $name ${Arguments}: $($run.Text)"
-    if ($run.ExitCode -ne 0) { return ('{0} {1} exited {2} (0x{2:X8}): {3}' -f $name, $Arguments, $run.ExitCode, $run.Text) }
-    if ($run.Text -notmatch "\(build $([regex]::Escape($Build)),") { return "$name $Arguments does not report build ${Build}: $($run.Text)" }
+    $result = Invoke-LlamaCppProcess -FilePath $Exe -ArgumentList $arguments -TimeoutSeconds $TimeoutSeconds
+    if ($null -eq $result.ExitCode) { return "$call did not exit within $TimeoutSeconds s" }
+    Write-Host "  ${call}: $($result.Text -replace '\s*\r?\n\s*', ' | ')"
+    if ($result.ExitCode -ne 0) { return ('{0} exited {1} (0x{1:X8}): {2}' -f $call, $result.ExitCode, $result.Text) }
+    if ($result.Text -notmatch $want) { return "$call ${meaning}: $($result.Text)" }
 }
 
 <#
@@ -407,11 +408,11 @@ function Get-LlamaCppVulkanLoaderFinding {
 
 <#
 .SYNOPSIS
-    The child's body: load ggml-vulkan.dll, report where its imports came from and the loader's API version.
+    The child's body: load a ggml backend DLL, report where the named modules came from; Vulkan also the loader's API.
 .DESCRIPTION
-    vkEnumerateInstanceVersion is answered by the Vulkan loader itself: no instance, driver or GPU is involved.
+    No backend is initialised. vkEnumerateInstanceVersion is answered by the Vulkan loader itself: no instance, driver or GPU.
 #>
-function Get-LlamaCppVulkanProbeScript {
+function Get-LlamaCppProbeScript {
     return @'
 $ErrorActionPreference = 'Stop'
 try {
@@ -419,7 +420,8 @@ try {
     $null = [System.Runtime.InteropServices.NativeLibrary]::GetExport($h, 'ggml_backend_init')
     $loaded = @{}
     foreach ($m in [System.Diagnostics.Process]::GetCurrentProcess().Modules) { $loaded[$m.ModuleName.ToLowerInvariant()] = $m.FileName }
-    foreach ($n in 'ggml-base.dll', 'vulkan-1.dll') { "module $n=$($loaded[$n])" }
+    foreach ($n in $env:LLAMA_CPP_PROBE_MODULES -split ',') { "module $n=$($loaded[$n])" }
+    if ($env:LLAMA_CPP_PROBE_VULKAN -ne '1') { exit 0 }
     Add-Type -TypeDefinition 'public delegate int LlamaCppVkEnumerateInstanceVersion(out uint apiVersion);'
     $vk = [System.Runtime.InteropServices.NativeLibrary]::Load($loaded['vulkan-1.dll'])
     $fn = [System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer(
@@ -434,7 +436,27 @@ exit 0
 
 <#
 .SYNOPSIS
-    Grades the probe's report: ggml-base from the llama dir, vulkan-1 from where the loader order says, API >= 1.2.
+    Grades the probe's module lines: each named module must have loaded from the file given for it.
+#>
+function Get-LlamaCppProbeModuleFinding {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory)][string]$Dll,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Expected
+    )
+    foreach ($name in $Expected.Keys) {
+        $m = [regex]::Match($Text, "(?m)^module $([regex]::Escape($name))=(.*?)\s*$")
+        $got = if ($m.Success) { $m.Groups[1].Value } else { '' }
+        if (-not $got -or -not [string]::Equals([System.IO.Path]::GetFullPath($got), [System.IO.Path]::GetFullPath($Expected[$name]),
+                [System.StringComparison]::OrdinalIgnoreCase)) {
+            "$Dll took $name from '$got', not $($Expected[$name])"
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Grades the Vulkan probe's report: ggml-base from the llama dir, vulkan-1 from where the loader order says, API >= 1.2.
 #>
 function Get-LlamaCppVulkanProbeFinding {
     param(
@@ -444,14 +466,8 @@ function Get-LlamaCppVulkanProbeFinding {
         # ggml_vk_instance_init refuses an instance below 1.2 (ggml-vulkan.cpp@b11115:4969-4973).
         [version]$MinimumApi = '1.2'
     )
-    $got = @{}
-    foreach ($m in [regex]::Matches($Text, '(?m)^(module [\w.-]+|vkEnumerateInstanceVersion)=(.*?)\s*$')) { $got[$m.Groups[1].Value] = $m.Groups[2].Value }
-    $same = { param($a, $b) $a -and [string]::Equals([System.IO.Path]::GetFullPath($a), [System.IO.Path]::GetFullPath($b), [System.StringComparison]::OrdinalIgnoreCase) }
-    $base = "$($got['module ggml-base.dll'])"
-    if (-not (& $same $base (Join-Path $Dir 'ggml-base.dll'))) { "ggml-vulkan.dll took ggml-base.dll from '$base', not $Dir" }
-    $vk = "$($got['module vulkan-1.dll'])"
-    if (-not (& $same $vk $Loader)) { "ggml-vulkan.dll took vulkan-1.dll from '$vk', not the $Loader the loader order names" }
-    $answer = [regex]::Match("$($got['vkEnumerateInstanceVersion'])", '^(-?\d+),(\d+)$')
+    Get-LlamaCppProbeModuleFinding -Text $Text -Dll 'ggml-vulkan.dll' -Expected ([ordered]@{ 'ggml-base.dll' = (Join-Path $Dir 'ggml-base.dll'); 'vulkan-1.dll' = $Loader })
+    $answer = [regex]::Match($Text, '(?m)^vkEnumerateInstanceVersion=(-?\d+),(\d+)\s*$')
     if (-not $answer.Success) { return "the probe reported no vkEnumerateInstanceVersion result: $Text" }
     $raw = [uint32]$answer.Groups[2].Value
     $api = [version]::new(($raw -shr 22) -band 0x7F, ($raw -shr 12) -band 0x3FF, $raw -band 0xFFF)
@@ -462,15 +478,53 @@ function Get-LlamaCppVulkanProbeFinding {
 
 <#
 .SYNOPSIS
-    Loads ggml-vulkan.dll in a child pwsh (a crash stays there) with this process's PATH, then grades the report.
+    Loads a backend DLL in a child pwsh (a crash stays there) with this process's PATH; .Finding is set when it did not load.
+#>
+function Invoke-LlamaCppLoadProbe {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string[]]$Module,
+        [switch]$Vulkan,
+        [int]$TimeoutSeconds = 120
+    )
+    $run = Invoke-LlamaCppProcess -FilePath (Get-Process -Id $PID).Path -ArgumentList '-NoProfile', '-NonInteractive', '-Command', (Get-LlamaCppProbeScript) `
+        -Environment @{ LLAMA_CPP_PROBE_DLL = $Path; LLAMA_CPP_PROBE_MODULES = ($Module -join ','); LLAMA_CPP_PROBE_VULKAN = $(if ($Vulkan) { '1' } else { '0' }) } `
+        -TimeoutSeconds $TimeoutSeconds
+    $leaf = [System.IO.Path]::GetFileName($Path)
+    $finding = if ($null -eq $run.ExitCode) { "loading $leaf did not finish within $TimeoutSeconds s" }
+    elseif ($run.ExitCode -ne 0) { "$leaf does not load from $([System.IO.Path]::GetDirectoryName($Path)): $($run.Text)" }
+    else { $null }
+    return [pscustomobject]@{ Finding = $finding; Text = "$($run.Text)" }
+}
+
+<#
+.SYNOPSIS
+    Loads ggml-vulkan.dll in a child pwsh, then grades the report.
 #>
 function Get-LlamaCppVulkanLoadFinding {
     param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string]$Loader, [int]$TimeoutSeconds = 120)
-    $run = Invoke-LlamaCppProcess -FilePath (Get-Process -Id $PID).Path -ArgumentList '-NoProfile', '-NonInteractive', '-Command', (Get-LlamaCppVulkanProbeScript) `
-        -Environment @{ LLAMA_CPP_PROBE_DLL = (Join-Path $Dir 'ggml-vulkan.dll') } -TimeoutSeconds $TimeoutSeconds
-    if ($null -eq $run.ExitCode) { return "loading ggml-vulkan.dll did not finish within $TimeoutSeconds s" }
-    if ($run.ExitCode -ne 0) { return "ggml-vulkan.dll does not load from ${Dir}: $($run.Text)" }
-    Get-LlamaCppVulkanProbeFinding -Text $run.Text -Dir $Dir -Loader $Loader
+    $probe = Invoke-LlamaCppLoadProbe -Path (Join-Path $Dir 'ggml-vulkan.dll') -Module 'ggml-base.dll', 'vulkan-1.dll' -Vulkan -TimeoutSeconds $TimeoutSeconds
+    if ($probe.Finding) { return $probe.Finding }
+    Get-LlamaCppVulkanProbeFinding -Text $probe.Text -Dir $Dir -Loader $Loader
+}
+
+<#
+.SYNOPSIS
+    Loads ggml-hip.dll in a child pwsh: ggml-base must come from the llama dir, each ROCm DLL it imports from ROCm's bin.
+.DESCRIPTION
+    Loading starts no HIP device: ggml_backend_init is resolved, never called.
+#>
+function Get-LlamaCppHipLoadFinding {
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string]$RocmBin, [int]$TimeoutSeconds = 120)
+    $dll = Join-Path $Dir 'ggml-hip.dll'
+    $expected = [ordered]@{ 'ggml-base.dll' = (Join-Path $Dir 'ggml-base.dll') }
+    foreach ($name in @((Get-PeSymbolTable -Path $dll).Imports.Keys)) {
+        if ([System.IO.File]::Exists((Join-Path $RocmBin $name))) { $expected[$name.ToLowerInvariant()] = Join-Path $RocmBin $name }
+    }
+    $probe = Invoke-LlamaCppLoadProbe -Path $dll -Module @($expected.Keys) -TimeoutSeconds $TimeoutSeconds
+    if ($probe.Finding) { return $probe.Finding }
+    Write-Host "  ggml-hip.dll loaded; graded: $(@($expected.Keys) -join ', ')"
+    Get-LlamaCppProbeModuleFinding -Text $probe.Text -Dll 'ggml-hip.dll' -Expected $expected
 }
 
 <#
@@ -484,16 +538,22 @@ function Get-LlamaCppSearchDir {
 
 <#
 .SYNOPSIS
-    The HIP build beyond the shared checks: its bundled runtime, the import walk into ROCm, the device code.
+    The HIP build beyond the shared checks: no ROCm copy beside it, the import walk into ROCm, the load, the device code.
 #>
 function Get-LlamaCppHipFinding {
     param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string]$RocmBin)
-    Get-HipRuntimeIdentityFinding -Dir $Dir -RocmBin $RocmBin
+    Get-LlamaCppRocmShadowFinding -Dir $Dir -RocmBin $RocmBin
     $ggmlHip = Join-Path $Dir 'ggml-hip.dll'
     if (-not [System.IO.File]::Exists($ggmlHip)) { return }
     $searchDir = Get-LlamaCppSearchDir -Dir $Dir -WindowsDir $env:SystemRoot -PathValue "$env:PATH"
-    try { Get-LlamaCppHipLinkFinding -Dir $Dir -RocmBin $RocmBin -SearchDir $searchDir }
-    catch { "ggml-hip.dll's import walk failed: $($_.Exception.Message)" }
+    $walk = @(try { Get-LlamaCppHipLinkFinding -Dir $Dir -RocmBin $RocmBin -SearchDir $searchDir }
+        catch { "ggml-hip.dll's import walk failed: $($_.Exception.Message)" })
+    $walk
+    # A load is only worth grading once every import resolves to the right file.
+    if ($walk.Count -eq 0) {
+        Get-LlamaCppHipLoadFinding -Dir $Dir -RocmBin $RocmBin
+        Get-LlamaCppRunFinding -Exe (Join-Path $Dir 'llama-cli.exe') -Run devices
+    }
     try {
         $targets = @(Get-HipOffloadTarget -Path $ggmlHip)
         Write-Host "  ggml-hip.dll device code: $($targets -join ', ')"
@@ -533,5 +593,5 @@ foreach ($b in @(if ($Backend -eq 'all') { 'hip', 'vulkan' } else { $Backend }))
     Get-LlamaCppManifestFinding -Dir $dir -Build $build -ManifestName $spec.Manifest -Required $spec.Required
     Get-LlamaCppPathFinding -Dir $dir -PathValue "$env:PATH" -Reason $spec.PathReason
     if ($b -eq 'hip') { Get-LlamaCppHipFinding -Dir $dir -RocmBin (Join-Path $rocmRoot 'bin') } else { Get-LlamaCppVulkanFinding -Dir $dir }
-    Get-LlamaServerVersionFinding -Exe (Join-Path $dir 'llama-server.exe') -Build $build
+    Get-LlamaCppRunFinding -Exe (Join-Path $dir 'llama-server.exe') -Run version -Build $build
 }

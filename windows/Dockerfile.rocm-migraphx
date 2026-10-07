@@ -34,9 +34,9 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
 
 # ARG only: an ENV would bake build pins into every downstream image.
 ARG ROCM_WINDOWS_GFX_FAMILY=gfx120X-all
-ARG MIGRAPHX_VERSION=2.17.0
-ARG MIGRAPHX_WINDOWS_COMMIT=becdb3da862f2297041b746b90bc6130e2b1d1f7
-ARG MIGRAPHX_WINDOWS_SOURCE_SHA256=52038e4cd6eadc88e8f66c51b255263c2c58a84f90aeb7c76c322880864bf8b4
+ARG MIGRAPHX_VERSION=2.18.0
+ARG MIGRAPHX_WINDOWS_COMMIT=95672916ed289d4be9d230a9be732e1bbad97e8c
+ARG MIGRAPHX_WINDOWS_SOURCE_SHA256=74bc4a0679a72db2e4ae4ad914139e1d7f433cc35a30d23af4c4e32a67c17491
 ARG MIGRAPHX_WINDOWS_ABSEIL_VERSION=20250512.0
 ARG MIGRAPHX_WINDOWS_ABSEIL_SHA256=7262daa7c1711406248c10f41026d685e88223bc92817d16fb93c19adb57f669
 ARG MIGRAPHX_WINDOWS_PROTOBUF_VERSION=30.0
@@ -50,7 +50,6 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MigraphxFromSource.ps1,target=C:\bkmnt\Build-MigraphxFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
-    --mount=type=bind,source=windows/scripts/patches/migraphx,target=C:\bkmnt\patches\migraphx `
     --mount=type=bind,from=migraphxmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Build-MigraphxFromSource.ps1' -InstallDir 'C:\runtime\lib\migraphx' -WorkDir 'C:\temp\migraphx-work'
 

@@ -178,9 +178,9 @@ publish_cuda_ld_path() {
 publish_rocm_ld_path() {
   local lib
   : > /etc/ld.so.conf.d/000-rocm.conf
-  # Every dir holding libamdhip64: /opt/rocm/lib is MIGraphX's real dir and lacks it.
+  # Dirs holding libamdhip64 or libmigraphx_c (extras-<major>/lib since 10.1), never core-asan-*: ASAN consumers preload it by hand.
   {
-    find /opt/rocm -name 'libamdhip64.so*' -printf '%h\n' 2>/dev/null || true
+    find /opt/rocm -path '/opt/rocm/core-asan-*' -prune -o \( -name 'libamdhip64.so*' -o -name 'libmigraphx_c.so*' \) -printf '%h\n' 2>/dev/null || true
     printf '%s\n' /opt/rocm/lib /opt/rocm/lib64
   } | LC_ALL=C sort -u | while IFS= read -r lib; do
     # if, not `[ ] && printf`: a false last iteration would fail the while under set -e.

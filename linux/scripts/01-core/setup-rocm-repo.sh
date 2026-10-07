@@ -140,12 +140,17 @@ rm -f /etc/apt/sources.list.d/rocm.sources /etc/apt/preferences.d/rocm-pin
 [ -d /opt/rocm/core/include ] && [ ! -e /opt/rocm/include ] && ln -s core/include /opt/rocm/include
 [ -d /opt/rocm/core/lib ] && [ ! -e /opt/rocm/lib ] && ln -s core/lib /opt/rocm/lib
 
-echo "/opt/rocm/lib" > /etc/ld.so.conf.d/rocm.conf
+# MIGraphX left /opt/rocm/lib with 10.1 (extras-<major>/lib), so its own directory goes on the loader path too.
+{ echo /opt/rocm/lib; find /opt/rocm -name 'libmigraphx_c.so*' -printf '%h\n' 2>/dev/null; } | LC_ALL=C sort -u > /etc/ld.so.conf.d/rocm.conf
 ldconfig
 test -x /opt/rocm/bin/hipcc || command -v hipcc >/dev/null 2>&1 || { echo "hipcc not found"; exit 1; }
-test -f /opt/rocm/include/migraphx/migraphx.hpp \
-  || test -f /opt/rocm/core/include/migraphx/migraphx.hpp \
+[ -n "$(find /opt/rocm -path '*/include/migraphx/migraphx.hpp' -print -quit 2>/dev/null)" ] \
   || { echo "migraphx.hpp not found"; exit 1; }
+# A case, not `ldconfig -p | grep -q`: grep's early exit would SIGPIPE ldconfig under pipefail.
+case "$(ldconfig -p)" in
+  *libmigraphx_c.so.*) ;;
+  *) echo "libmigraphx_c is on no loader path (/etc/ld.so.conf.d/rocm.conf)"; exit 1 ;;
+esac
 # Math libs sit in per-GFX subdirs, so check the files rather than ldconfig's flat view.
 find /opt/rocm -name 'librocblas*' -o -name 'librccl*' -o -name 'librocfft*' -o -name 'librocsparse*' 2>/dev/null | head -1 | grep -q . \
   || { echo "ROCm math libs not found under /opt/rocm"; exit 1; }

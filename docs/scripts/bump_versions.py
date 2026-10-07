@@ -704,26 +704,26 @@ def spec_cudnn(cur):
 
 
 def spec_llama_cpp_hip(cur):
-    """Newest llama.cpp bNNNN publishing both the win-rocm-<major.minor> and win-vulkan-x64 zips, which share one pin."""
-    rocm = ".".join(read_env()["ROCM_WINDOWS_RELEASE"].split(".")[:2])
+    """Newest llama.cpp bNNNN publishing both the win-cpu-x64 and win-vulkan-x64 zips; ggml-hip builds from that tag's source."""
     tags = sorted((t for t in ls_remote_tags("ggml-org/llama.cpp") if re.fullmatch(r"b\d+", t)),
                   key=_vkey, reverse=True)
     for tag in tags[:30]:
-        asset = f"llama-{tag}-bin-win-rocm-{rocm}-x64.zip"
+        cpu = f"llama-{tag}-bin-win-cpu-x64.zip"
         vulkan = f"llama-{tag}-bin-win-vulkan-x64.zip"
         base = f"https://github.com/ggml-org/llama.cpp/releases/download/{tag}"
-        if not (artifact_exists(f"{base}/{asset}") and artifact_exists(f"{base}/{vulkan}")):
+        if not (artifact_exists(f"{base}/{cpu}") and artifact_exists(f"{base}/{vulkan}")):
             continue
         v = tag[1:]
         extras = {}
         if v != cur and WRITE_MODE:
-            extras["LLAMA_CPP_HIP_ASSET"] = asset
-            extras["LLAMA_CPP_HIP_SHA256"] = asset_sha256("ggml-org/llama.cpp", tag, asset)
+            commit = extras["LLAMA_CPP_HIP_COMMIT"] = ls_remote_tag_commit("ggml-org/llama.cpp", tag)
+            extras["LLAMA_CPP_HIP_SOURCE_SHA256"] = sha256_of_url(f"https://github.com/ggml-org/llama.cpp/archive/{commit}.tar.gz")
+            extras["LLAMA_CPP_CPU_SHA256"] = asset_sha256("ggml-org/llama.cpp", tag, cpu)
             extras["LLAMA_CPP_VULKAN_SHA256"] = asset_sha256("ggml-org/llama.cpp", tag, vulkan)
             extras["LLAMA_CPP_HIP_LICENSE_SHA256"] = sha256_of_url(
                 f"https://raw.githubusercontent.com/ggml-org/llama.cpp/{tag}/LICENSE")
         return v, extras
-    raise RuntimeError(f"none of the newest 30 ggml-org/llama.cpp builds publishes both a win-rocm-{rocm} and a win-vulkan-x64 zip")
+    raise RuntimeError("none of the newest 30 ggml-org/llama.cpp builds publishes both a win-cpu-x64 and a win-vulkan-x64 zip")
 
 
 def spec_ort_webgpu_dxc(cur):
@@ -796,7 +796,7 @@ REPORT: list[tuple[str, Callable]] = [
     ("APPIMAGETOOL_VERSION", spec_appimagetool),
     # Windows rocm lane's FFmpeg AMF headers; the header asset's SHA moves with the tag.
     ("AMF_HEADERS_VERSION", spec_amf_headers),
-    # Windows rocm lane's llama.cpp ROCm + Vulkan zips; the asset name and both SHAs move with the build.
+    # Windows rocm lane's llama.cpp: ggml-hip's source pin, the CPU + Vulkan zips' SHAs and the LICENSE move with the build.
     ("LLAMA_CPP_HIP_BUILD", spec_llama_cpp_hip),
     # Windows rocm lane's WebGPU ORT runtime: DXC's zip; the dated asset name and its SHA move with the tag.
     ("ORT_WEBGPU_WINDOWS_DXC_VERSION", spec_ort_webgpu_dxc),
