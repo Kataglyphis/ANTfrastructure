@@ -339,6 +339,33 @@ run_report() {
     note ""
     note "${n} update(s) available (manager(s): ${MANAGERS})"
   fi
+  report_skipped
+}
+
+# A skipped dep is never "behind", so without this list an unreadable pin (ROCm's 10.0 under semver) reads as up to date.
+report_skipped() {
+  local kind mgr file dep cur why k=0 design=""
+  SKIP_TSV="$(mktemp)" || err "mktemp failed"
+  rl_py skipped "${REPORT_JSON}" > "${SKIP_TSV}" \
+    || err "could not read the skipped dependencies out of ${REPORT_JSON} (above)"
+  while IFS=$'\t' read -r kind mgr file dep cur why; do
+    case "${kind}" in
+      SKIP)
+        if [ "${k}" -eq 0 ]; then
+          note ""
+          note "NOT CHECKED - Renovate skipped these, so no update to them is ever reported:"
+          printf '%-16s %-34s %-14s %s\n' 'MANAGER' 'DEPENDENCY' 'CURRENT' 'REASON'
+        fi
+        printf '%-16s %-34s %-14s %s  (%s)\n' "${mgr}" "${dep}" "${cur}" "${why}" "${file}"
+        k=$((k + 1)) ;;
+      DESIGN) design="${design:+${design}, }${mgr} ${file}" ;;
+    esac
+  done < "${SKIP_TSV}"
+  if [ "${k}" -gt 0 ]; then
+    note "${k} dependency(ies) not checked: fix the annotation or the value (docs/dependency-updates.md#a-skipped-pin-is-not-up-to-date)"
+  fi
+  if [ -n "${design}" ]; then note "skipped by design (nothing to look up): ${design}"; fi
+  return 0
 }
 
 # Apply: gitlinks move with git, other ecosystems by one line rewrite; neither half may half-run.
@@ -361,7 +388,7 @@ submodule_paths() {
 APPLY_PATHS=(); APPLY_REFUSED=(); APPLY_UNMATCHED=()
 APPLY_DIRTY=(); APPLY_EOL=()
 GIT_BIN=git; GIT_TARGET=""
-PLAN_TSV=""; PLAN_JSON=""; MGR_TSV=""; ROWS_TSV=""
+PLAN_TSV=""; PLAN_JSON=""; MGR_TSV=""; ROWS_TSV=""; SKIP_TSV=""
 PLAN_SUBMODULES=(); PLAN_EDITS=(); PLAN_REFUSE=(); PLAN_SKIP=(); PLAN_DONE=()
 EDIT_FILES=(); EDIT_LINES=0
 
@@ -572,7 +599,7 @@ trap 'on_signal PIPE 141' PIPE
 cleanup() {
   local f
   # Every mktemp of this run; never PLANNER/LOCATOR or an injected report/config, which are not ours.
-  for f in "${PLAN_TSV}" "${PLAN_JSON}" "${MGR_TSV}" "${ROWS_TSV}" \
+  for f in "${PLAN_TSV}" "${PLAN_JSON}" "${MGR_TSV}" "${ROWS_TSV}" "${SKIP_TSV}" \
            "${TREE_BEFORE}" "${TREE_BEFORE_PATHS}" "${TREE_BEFORE_HASH}" \
            "${TREE_BEFORE_IGNORED}"; do
     if [ -n "${f}" ]; then rm -f "${f}"; fi

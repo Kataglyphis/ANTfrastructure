@@ -290,6 +290,38 @@ t_assert_contains "${OUT}" "pub  <- pubspec.yaml" "pub detected from the tree"
 t_assert_contains "${OUT}" "pip_requirements  <- requirements.txt" "pip detected too"
 t_assert_contains "${OUT}" "1 update(s) available" "the report table renders"
 
+t_case "an update carrying npm's integrity hash moves the VERSION of a value pin"
+NI="$(_plant ni pubspec.yaml 'name: fixture\ndependencies:\n  http: 1.1.0\n')"
+NI_REPORT="${WORK}/integrity.json"
+printf '%s\n' '{"repositories":{"local":{"packageFiles":{"pub":[{"packageFile":"pubspec.yaml","deps":[' \
+  '{"depName":"http","currentValue":"1.1.0","updates":[{"newValue":"1.6.0","newDigest":"sha512-prNFzAbc"}]}]}]}}}}' \
+  > "${NI_REPORT}"
+_run "${NI}" "${NI_REPORT}"
+t_assert_contains "${OUT}" "1.6.0" "the report shows the new version"
+t_assert_fails grep -q -e 'sha512-' <<<"${OUT}"
+_run "${NI}" "${NI_REPORT}" --apply --managers pub
+t_assert_eq "0" "${RC}" "the apply succeeds"
+t_assert_eq "  http: 1.6.0" "$(_pub "${NI}" 3)" "the version is written, not the hash"
+
+t_case "the report names every dependency Renovate skipped, and counts the by-design ones"
+SK="$(_plant sk pubspec.yaml 'name: fixture\ndependencies:\n  http: 1.1.0\n')"
+SK_REPORT="${WORK}/skipped.json"
+printf '%s\n' '{"repositories":{"local":{"packageFiles":{"regex":[{"packageFile":"versions.env","deps":[' \
+  '{"depName":"ROCm/TheRock","currentValue":"10.0","skipReason":"invalid-value"},' \
+  '{"depName":"gone/away","currentValue":"1.0.0","warnings":[{"topic":"gone/away","message":"Failed to look up github-tags package gone/away"}]},' \
+  '{"depName":"local-crate","skipReason":"path-dependency"},' \
+  '{"depName":"http","currentValue":"1.1.0","updates":[{"newValue":"1.6.0"}]}]}]}}}}' > "${SK_REPORT}"
+_run "${SK}" "${SK_REPORT}"
+t_assert_eq "0" "${RC}" "a skipped dependency informs; the report still succeeds"
+t_assert_contains "${OUT}" "1 update(s) available" "the update table still renders"
+t_assert_contains "${OUT}" "NOT CHECKED" "skipped dependencies get their own list"
+t_assert_contains "${OUT}" "invalid-value" "an invalid value is listed with its reason"
+t_assert_contains "${OUT}" "ROCm/TheRock" "and with its name"
+t_assert_contains "${OUT}" "lookup-failed: Failed to look up" "a failed lookup is listed too"
+t_assert_contains "${OUT}" "2 dependency(ies) not checked" "both are counted"
+t_assert_contains "${OUT}" "skipped by design (nothing to look up): path-dependency 1" \
+  "a path dependency is counted, not listed"
+
 # A refusal in the repo's own Renovate config still wins
 t_case "dependencyDashboardApproval sends an update to a human, unwritten"
 Q="$(_plant q pubspec.yaml 'name: fixture\ndependencies:\n  http: 1.1.0\n')"
