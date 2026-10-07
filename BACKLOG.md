@@ -40,8 +40,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       every arch (CON66), `test-python-free-threaded-wheel.sh` builds two tiny C extensions (one
       declaring free-threading support, one not) and runs `prove` for real instead of a stubbed
       interpreter.
-- [ ] **CON77 — a workflow input for `PYTHON_FREE_THREADED_WHEEL`** [S, ★]. Today a consumer
-      can switch the free-threaded wheel off in CI only by dropping its classifier.
 - [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
       [M, ★]. Since 2026-10-07 `:winamd64` builds `python3.14t.exe` beside the GIL build
       (`C:\python-freethreaded`, windows-builds.md § *The free-threaded CPython*). The arm64

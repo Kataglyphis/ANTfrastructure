@@ -81,6 +81,14 @@ on:
         required: false
         type: string
         default: ''
+      free-threaded-wheel:
+        description: >-
+          PYTHON_FREE_THREADED_WHEEL for ci_packaging.sh - auto builds the proved
+          cp314t wheel when pyproject.toml declares the Free Threading classifier,
+          on forces it, off skips it. Anything else fails the packaging step.
+        required: false
+        type: string
+        default: auto
       deploy-docs:
         description: >-
           Whether to FTP-sync the built docs on a push. Set false to build docs without
@@ -259,6 +267,7 @@ jobs:
             ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e UV_CACHE_DIR=/workspace/.uv-cache' || '' }}
             ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e PACKAGING_CROSS_TARGET=riscv64' || '' }}
             -e SYNC_EXTRAS=${{ matrix.arch == 'riscv64' && inputs.test-extras || '' }}
+            -e PYTHON_FREE_THREADED_WHEEL=${{ inputs.free-threaded-wheel }}
           script: >-
             bash -lc "bash scripts/linux/ci_packaging.sh
             '${{ inputs.packaging-python-version }}'"

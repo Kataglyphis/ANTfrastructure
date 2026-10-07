@@ -24,6 +24,9 @@
   - **A consumer moves its hub pin only once its images resolve `3.14t`** (`:latest` amd64/arm64,
     `:winamd64`): a declared project's packaging step fails without one, by design.
 - **The Linux GIL build asks uv for `3.14+gil`**, as Windows does: `uv build` ignores the venv.
+- **`free-threaded-wheel` input** (CON77): `python-ci-linux.yml` and `python-ci-windows.yml` pass
+  `auto`/`on`/`off` to the drivers as `PYTHON_FREE_THREADED_WHEEL`, so a caller can switch the
+  wheel off without dropping its classifier.
 - **auditwheel runs on Linux at last.** It is PATH's, else the binary packaging venv's; PATH never
   had one, so every Cython wheel shipped as `linux_<arch>` under a log line calling it pure.
 - **`python-app-bundle.sh` picks the wheel by its runtime's ABI**, like `Select-PythonAppWheel`.

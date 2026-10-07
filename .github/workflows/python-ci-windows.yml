@@ -142,6 +142,13 @@ on:
         required: false
         type: string
         default: ''
+      free-threaded-wheel:
+        description: >-
+          PYTHON_FREE_THREADED_WHEEL inside the build container, read by
+          Invoke-CiPackaging.ps1 - auto, on or off, as in python-ci-linux.yml.
+        required: false
+        type: string
+        default: auto
       test-paths:
         description: Paths the arm64 job hands pytest. Empty runs the project's own testpaths, as in python-ci-linux.yml.
         required: false
@@ -200,6 +207,10 @@ jobs:
           mount-source: ${{ github.workspace }}
           mount-target: ${{ inputs.mount-target }}
           file: ${{ inputs.build-script }}
+          # One argument per line: the action builds an argv array, so -e and its value are two lines.
+          extra-args: |
+            -e
+            PYTHON_FREE_THREADED_WHEEL=${{ inputs.free-threaded-wheel }}
 
       # always(): a failed build is exactly when the logs are worth having.
       - name: Upload files, logs & Zip
