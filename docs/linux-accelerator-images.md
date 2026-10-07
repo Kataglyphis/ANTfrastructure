@@ -230,10 +230,13 @@ USB-camera object detection at 30 fps with 13 ms GPU inference.
 
 ## DeepStream (nvidia variant)
 
-> **Off by default, and never in `:latest` or `:latest-rocm`.** `ENABLE_DEEPSTREAM=true`
-> builds it, and only an nvidia chain accepts that. amd64 only. The owner allowed publishing
-> it on 2026-10-01 (§ [Licence](#licence-the-owner-decision)). Tracked as CON42 in
-> [`BACKLOG.md`](../BACKLOG.md).
+> **On in every amd64 nvidia build, and never in `:latest` or `:latest-rocm`.** Since
+> 2026-10-07 an nvidia chain on an amd64 build platform sets `ENABLE_DEEPSTREAM=true` itself
+> (`stage-defs.sh`), and `ENABLE_DEEPSTREAM=false` opts one run out. An arm64 nvidia build gets
+> no default, because DeepStream has no route there yet. A default or rocm chain refuses the
+> flag. The owner allowed publishing it on 2026-10-01 (§ [Licence](#licence-the-owner-decision))
+> and chose the full TensorRT 10 builder resources on 2026-10-07, so the image keeps every GPU
+> generation, the RTX 2080's sm_75 included. Tracked as CON42 in [`BACKLOG.md`](../BACKLOG.md).
 
 [NVIDIA DeepStream](https://github.com/NVIDIA/DeepStream) 9.1 is two things. Its
 GStreamer plugins, utilities and apps are Apache-2.0 source. Its runtime (`nvvideoconvert`,
@@ -243,7 +246,7 @@ the `.deb` and builds the source against the image's own GStreamer 1.29.2, not a
 Ubuntu 24.04 GStreamer 1.24 that NVIDIA targets.
 
 ```bash
-CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true bash linux/scripts/build-cross-chain.sh \
+CROSS_VARIANT=nvidia bash linux/scripts/build-cross-chain.sh \
   --target-arches amd64 --parallel-archs --log-dir ./out/build-logs/nvidia
 ```
 

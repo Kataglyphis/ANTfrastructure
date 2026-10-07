@@ -19,7 +19,10 @@ fi
 # Set ENABLE_* here for every entry point, so no -<variant> tag gets CPU args; TensorRT is off (no libnvinfer shipped).
 case "${CROSS_GPU_VARIANT}" in
   nvidia) ENABLE_NVIDIA=true; ENABLE_AMD=false; : "${ENABLE_TENSORRT:=false}"
-          export CROSS_VARIANT=nvidia ENABLE_NVIDIA ENABLE_AMD ENABLE_TENSORRT ;;
+          # DeepStream ships in every amd64 nvidia build at full size (owner 2026-10-07); ENABLE_DEEPSTREAM=false opts a run out.
+          [ "${CROSS_BUILD_PLATFORM:-linux/amd64}" != "linux/amd64" ] || : "${ENABLE_DEEPSTREAM:=true}"
+          export CROSS_VARIANT=nvidia ENABLE_NVIDIA ENABLE_AMD ENABLE_TENSORRT
+          [ -z "${ENABLE_DEEPSTREAM:-}" ] || export ENABLE_DEEPSTREAM ;;
   rocm)   ENABLE_AMD=true; ENABLE_NVIDIA=false
           export CROSS_VARIANT=rocm ENABLE_NVIDIA ENABLE_AMD ;;
 esac

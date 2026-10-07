@@ -7,7 +7,7 @@ CORE="${TESTS_DIR}/../01-core"
 
 # Run <snippet> with the real modules sourced under the given environment.
 _graph() {
-  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM "$@" bash -c '
+  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u CROSS_BUILD_PLATFORM "$@" bash -c '
     set -u
     source "'"${CORE}"'/platform.sh"; source "'"${CORE}"'/build-helpers.sh"
     source "'"${CORE}"'/tag-naming.sh"; source "'"${CORE}"'/stage-defs.sh" || exit 3
@@ -81,6 +81,15 @@ t_assert_contains "$(_args media CROSS_VARIANT=nvidia)" "ENABLE_NVIDIA=true" \
 t_assert_contains "$(_args gpu CROSS_VARIANT=nvidia)" "ENABLE_TENSORRT=false" "TensorRT is off by default"
 t_assert_contains "$(_args media CROSS_VARIANT=rocm)" "ENABLE_AMD=true"
 t_assert_eq "" "$(_args media | grep -o 'ENABLE_[A-Z]*=')" "the default media stage forwards no accelerator toggle"
+
+t_case "DeepStream is on in every amd64 nvidia build unless a run opts out (owner 2026-10-07)"
+t_assert_contains "$(_args media CROSS_VARIANT=nvidia)" "ENABLE_DEEPSTREAM=true" "no ask needed"
+t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a; printf "%s " "${a[@]}"' _graph CROSS_VARIANT=nvidia)" \
+  "ENABLE_DEEPSTREAM=true" "the package stage gets the default too"
+t_assert_contains "$(_args media CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=false)" "ENABLE_DEEPSTREAM=false" "an explicit false wins"
+t_assert_eq "" "$(_args media CROSS_VARIANT=nvidia CROSS_BUILD_PLATFORM=linux/arm64 | grep -o 'ENABLE_DEEPSTREAM=[a-z]*')" \
+  "an arm64 (Jetson) nvidia build has no DeepStream route, so it gets no default"
+t_assert_eq "" "$(_args media CROSS_VARIANT=rocm | grep -o 'ENABLE_DEEPSTREAM=[a-z]*')" "rocm never does"
 
 t_case "DeepStream: only an nvidia chain may ask for it, and the ask reaches media and the runtime lane"
 t_assert_contains "$(SNIPPET='echo reached' _graph ENABLE_DEEPSTREAM=true)" "ENABLE_DEEPSTREAM=true needs the nvidia variant" \

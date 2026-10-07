@@ -7,6 +7,21 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-10-07 — DeepStream is in every amd64 nvidia build (CON42)
+
+- **Owner decision: DeepStream ships with every `:latest-nvidia` build, at full size.**
+  TensorRT 10's builder resources for every GPU generation stay (2.6 GB), so the RTX 2080's
+  sm_75 keeps working.
+- **`stage-defs.sh` now defaults `ENABLE_DEEPSTREAM=true` for an nvidia chain on an amd64
+  build platform**, the way it defaults `ENABLE_TENSORRT=false`. Until now every run had to ask.
+  - `ENABLE_DEEPSTREAM=false` opts a run out.
+  - An arm64 (Jetson) nvidia build gets no default, because `deepstream.sh` refuses arm64
+    (phase 7).
+  - A default or rocm chain still refuses the flag.
+- `test-gpu-variant.sh` covers the default, the opt-out, arm64 and rocm. Two new mutations
+  bite.
+
+
 ## 2026-10-07 — The Windows clang-format check can gate
 
 - **`Invoke-ClangFormatCheck` only ever reported.** BeschleunigerBallett swept its sources to zero

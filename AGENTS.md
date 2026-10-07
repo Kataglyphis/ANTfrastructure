@@ -848,8 +848,9 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` Â
   the code in `03-media/build/hailo/`, outside `01-core`, so a change there re-keys only
   the wrapper's Hailo RUN:
   [`hailo-support.md`](docs/hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches).
-- **DeepStream is nvidia-variant only and off by default** (`ENABLE_DEEPSTREAM`, CON42). A
-  default or rocm chain refuses it. The owner allowed publishing it (2026-10-01); the package
+- **DeepStream is nvidia-variant only, and on in every amd64 nvidia build** (`ENABLE_DEEPSTREAM`,
+  CON42; owner 2026-10-07, at full size). `ENABLE_DEEPSTREAM=false` opts one run out, an arm64
+  nvidia build gets no default (no route, phase 7), and a default or rocm chain refuses it. The owner allowed publishing it (2026-10-01); the package
   stage ships its runtime `.so` files without the static archives. Never put
   `/opt/nvidia/deepstream/deepstream-*/lib` on `ld.so.conf`: its `libnvv4l2.so` carries the
   SONAME `libv4l2.so.0`. Its TensorRT is a private 10.x beside the variant's 11.x, and no

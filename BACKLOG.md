@@ -270,8 +270,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
 - [ ] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
       (phases 1–3) done 2026-10-01, the GPU gate passed the same day; phases 4 and 6 are in
-      the source, off by default (`ENABLE_DEEPSTREAM=false`). One thing left:
-      1. **An nvidia variant chain run** with `ENABLE_DEEPSTREAM=true`, owner-approved. Started
+      the source. **Owner decision 2026-10-07: DeepStream is in every amd64 nvidia build, at
+      full size** (TensorRT 10's builder resources for every GPU generation stay, so the RTX
+      2080's sm_75 keeps working). `stage-defs.sh` defaults `ENABLE_DEEPSTREAM=true` for an
+      amd64 nvidia chain; `=false` opts a run out. One thing left:
+      1. **The next nvidia variant chain run**, which now builds it without being asked. Started
          2026-10-01 21:34 (amd64, from `gpu`, hub 629afe5d); done when `:latest-nvidia` is
          published with `check_deepstream` green. The `:latest-nvidia` published 2026-10-02
          (hub b4d5fdd5, amd64 `95c3a343…`) is not that run: its build args carry an empty
@@ -317,8 +320,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - Other prebuilt NVIDIA plugins may read `GstMapInfo` after unmap like the legacy mux.
         The GPU run exercised `nvvideoconvert`, `nvv4l2decoder`, `nvmultistreamtiler` and the
         tracker; `deepstream_bins`, `dewarper`, `of`, `segvisual` and the rest were not run.
-      - Size: TensorRT 10 alone is 2.6 GB (builder resources for every GPU generation).
-        Trimming them to `CUDA_ARCHITECTURES` would drop the 2080's sm_75: an owner call.
+      - Size: TensorRT 10 alone is 2.6 GB (builder resources for every GPU generation). Kept
+        whole by owner decision (2026-10-07).
       - **Phase 7 (arm64)**: out of scope until CON31 has an arm64 CUDA route. The Jetson
         runtime `.deb` is pinned (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it.
       - **Phase 8**: `consumer-image-contract.md` names (`DEEPSTREAM_ROOT`, the plugin link,
