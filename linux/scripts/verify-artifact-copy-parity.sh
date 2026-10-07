@@ -27,6 +27,8 @@ _NL=$'\n'
 # Documented intentional src != dst relocations, one "SRC DST" pair per entry.
 ALLOWED_RELOCATIONS=(
   "/opt/llvm-target /usr/local/llvm-target"
+  # Escaped: the pair is the COPY line's text, ${...} included.
+  "/opt/python-cross-ft/\${TARGET_ARCH:-\${TARGETARCH}}/opt/python-freethreaded /opt/python-freethreaded"
 )
 
 # "SRC DST" per single-line `COPY --from=artifact-source` in the package-image stage, flags anywhere.

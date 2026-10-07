@@ -489,18 +489,20 @@ install_cargo_qa_tools() {
 
 # The free-threaded twin of PYTHON_VERSION for the 3.14t legs (CON66). See docs/consumer-image-contract.md § The free-threaded Python
 install_free_threaded_python() {
-    local version root=/opt/python-freethreaded exe mm report
+    local root="${1:-/opt/python-freethreaded}" version exe mm report
 
     version="$(_versions_env_value PYTHON_VERSION)"
     [ -n "${version}" ] || { echo "ERROR: no PYTHON_VERSION in versions.env" >&2; return 1; }
     mm="${version%.*}"
-    # uv checks the download against the SHA256 its pinned release embeds; outside uv's store, so a plain 3.14 never picks it.
-    UV_PYTHON_INSTALL_DIR="${root}" uv python install --no-bin "${version}t" \
-        || { echo "ERROR: uv could not install CPython ${version}t" >&2; return 1; }
-    exe="$(UV_PYTHON_INSTALL_DIR="${root}" uv python find --managed-python "${version}t")" \
-        || { echo "ERROR: CPython ${version}t is not under ${root}" >&2; return 1; }
+    exe="${root}/bin/python${mm}t"
+    # Dockerfile.package COPYs the toolchain's source build here; nothing downloads one in its place.
+    if [ ! -x "${exe}" ]; then
+        echo "ERROR: no ${exe}: the artifact's toolchain stage did not build the free-threaded CPython (build_python.sh)" >&2
+        return 1
+    fi
     ln -sf "${exe}" "/usr/local/bin/python${mm}t"
-    report="$("${exe}" -c 'import sys; print(sys.version.split()[0], sys._is_gil_enabled())' 2>&1)"
+    # The modules the image smoke imports: a tree without one stops here, not in a consumer's leg.
+    report="$("${exe}" -c 'import ssl, sqlite3, ctypes, zlib, lzma, bz2, sys; print(sys.version.split()[0], sys._is_gil_enabled())' 2>&1)" || true
     if [ "${report}" != "${version} False" ]; then
         echo "ERROR: python${mm}t reports '${report}', expected '${version} False'" >&2
         return 1

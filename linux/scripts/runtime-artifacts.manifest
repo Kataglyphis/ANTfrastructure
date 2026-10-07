@@ -25,3 +25,4 @@ ${GSTREAMER_PREFIX} | GStreamer + the source-built plugins
 /usr/local/rustup | Rust toolchain (rustup home)
 /usr/local/cargo | Rust cargo home + cargo-installed bins
 /opt/llvm-target | LLVM target libs (relocated to /usr/local/llvm-target)
+/opt/python-cross-ft/${TARGET_ARCH:-${TARGETARCH}}/opt/python-freethreaded | the target arch's free-threaded CPython (relocated to /opt/python-freethreaded) — added 2026-10-07

@@ -3,6 +3,10 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 : "${PYTHON_LTO:=1}"
+# PGO on the native builds; PYTHON_PGO=0 is an iteration escape hatch, never the image's setting.
+: "${PYTHON_PGO:=1}"
+# gil is /usr/local; freethreaded is its --disable-gil twin in /opt/python-freethreaded. docs/consumer-image-contract.md#the-free-threaded-python
+: "${PYTHON_VARIANTS:=gil,freethreaded}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -34,10 +38,14 @@ PYTHON_MAJOR_MINOR="${PYTHON_MAJOR_MINOR:-$(version_major_minor "${PYTHON_VERSIO
 PYTHON_TARBALL="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-$$.tgz"
 PYTHON_SOURCE_DIR="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}"
 PYTHON_CROSS_STAGE_ROOT="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}"
+PYTHON_FT_PREFIX="${PYTHON_FT_PREFIX:-/opt/python-freethreaded}"
+PYTHON_FT_CROSS_STAGE_ROOT="${PYTHON_FT_CROSS_STAGE_ROOT:-/opt/python-cross-ft}"
+PYTHON_FT_SOURCE_PARENT="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-ft-src"
 
 cleanup() {
   rm -rf \
     "${PYTHON_SOURCE_DIR}" \
+    "${PYTHON_FT_SOURCE_PARENT}" \
     "${PYTHON_TARBALL}" \
     "${TMPDIR:-/tmp}"/Python-"${PYTHON_VERSION}"-cross-* \
     "${TMPDIR:-/tmp}"/python-config-site-*
@@ -45,16 +53,44 @@ cleanup() {
 
 trap cleanup EXIT
 
+# Sets the PY_* globals every build and staging helper reads; the gil values are the ones they hard-coded before.
+python_variant_select() {
+  case "$1" in
+    gil)
+      PY_VARIANT=gil
+      PY_LDVERSION="${PYTHON_MAJOR_MINOR}"
+      PY_PREFIX=/usr/local
+      PY_STAGE_ROOT="${PYTHON_CROSS_STAGE_ROOT}"
+      PY_SOURCE_DIR="${PYTHON_SOURCE_DIR}"
+      PY_CONFIGURE_EXTRA=()
+      ;;
+    freethreaded)
+      PY_VARIANT=freethreaded
+      PY_LDVERSION="${PYTHON_MAJOR_MINOR}t"
+      PY_PREFIX="${PYTHON_FT_PREFIX}"
+      PY_STAGE_ROOT="${PYTHON_FT_CROSS_STAGE_ROOT}"
+      PY_SOURCE_DIR="${PYTHON_FT_SOURCE_PARENT}/Python-${PYTHON_VERSION}"
+      # _NODIST keeps the rpath out of sysconfig's LDFLAGS, so a cp314t wheel built against it inherits none.
+      PY_CONFIGURE_EXTRA=( --disable-gil "LDFLAGS_NODIST=-Wl,-rpath,${PYTHON_FT_PREFIX}/lib" )
+      # The tree ships in the image, where its fat-LTO libpython3.14t.a (155-435 MB per arch) links nothing.
+      PY_CONFIGURE_EXTRA+=( --without-static-libpython )
+      ;;
+    *)
+      err "Unknown CPython variant '$1' in PYTHON_VARIANTS (gil, freethreaded)"
+      ;;
+  esac
+}
+
 python_cross_stage_root_for_arch() {
   local target_arch="$1"
 
-  printf '%s' "${PYTHON_CROSS_STAGE_ROOT}/$(arch_normalize "${target_arch}")"
+  printf '%s' "${PY_STAGE_ROOT}/$(arch_normalize "${target_arch}")"
 }
 
 python_cross_stage_prefix_for_arch() {
   local target_arch="$1"
 
-  printf '%s' "$(python_cross_stage_root_for_arch "${target_arch}")/usr/local"
+  printf '%s' "$(python_cross_stage_root_for_arch "${target_arch}")${PY_PREFIX}"
 }
 
 for _pc_fix in \
@@ -71,39 +107,44 @@ python_stage_finalize() {
   local stage_root="$2"
   local python_mm="$3"
   local target_triplet="$4"
-  local pkgconfig_dir="${stage_root}/usr/local/lib/pkgconfig"
+  local prefix="${stage_root}${PY_PREFIX}"
+  local pkgconfig_dir="${prefix}/lib/pkgconfig"
 
-  mkdir -p "${stage_root}/usr/local/include/${target_triplet}/python${python_mm}"
-  if [ -f "${stage_root}/usr/local/include/python${python_mm}/pyconfig.h" ]; then
+  mkdir -p "${prefix}/include/${target_triplet}/python${python_mm}"
+  if [ -f "${prefix}/include/python${python_mm}/pyconfig.h" ]; then
     cp -a \
-      "${stage_root}/usr/local/include/python${python_mm}/pyconfig.h" \
-      "${stage_root}/usr/local/include/${target_triplet}/python${python_mm}/pyconfig.h"
-  fi
-
-  if [ -x "${stage_root}/usr/local/bin/python${python_mm}" ]; then
-    ln -sfn "python${python_mm}" "${stage_root}/usr/local/bin/python3"
-    ln -sfn "python${python_mm}" "${stage_root}/usr/local/bin/python"
-  fi
-
-  if [ -x "${stage_root}/usr/local/bin/python${python_mm}-config" ]; then
-    ln -sfn "python${python_mm}-config" "${stage_root}/usr/local/bin/python3-config"
+      "${prefix}/include/python${python_mm}/pyconfig.h" \
+      "${prefix}/include/${target_triplet}/python${python_mm}/pyconfig.h"
   fi
 
   mkdir -p "${pkgconfig_dir}"
-  fix_python_pc_file "${pkgconfig_dir}/python-${python_mm}.pc"
-  fix_python_pc_file "${pkgconfig_dir}/python-${python_mm}-embed.pc"
-  if [ -f "${pkgconfig_dir}/python-${python_mm}.pc" ]; then
-    ln -sfn "python-${python_mm}.pc" "${pkgconfig_dir}/python3.pc"
-  fi
-  if [ -f "${pkgconfig_dir}/python-${python_mm}-embed.pc" ]; then
-    ln -sfn "python-${python_mm}-embed.pc" "${pkgconfig_dir}/python3-embed.pc"
+  fix_python_pc_file "${pkgconfig_dir}/python-${python_mm}.pc" "${PY_PREFIX}"
+  fix_python_pc_file "${pkgconfig_dir}/python-${python_mm}-embed.pc" "${PY_PREFIX}"
+
+  # Unversioned names mean the GIL build; the free-threaded tree answers only to its t names.
+  if [ "${PY_VARIANT}" = gil ]; then
+    if [ -x "${prefix}/bin/python${python_mm}" ]; then
+      ln -sfn "python${python_mm}" "${prefix}/bin/python3"
+      ln -sfn "python${python_mm}" "${prefix}/bin/python"
+    fi
+
+    if [ -x "${prefix}/bin/python${python_mm}-config" ]; then
+      ln -sfn "python${python_mm}-config" "${prefix}/bin/python3-config"
+    fi
+
+    if [ -f "${pkgconfig_dir}/python-${python_mm}.pc" ]; then
+      ln -sfn "python-${python_mm}.pc" "${pkgconfig_dir}/python3.pc"
+    fi
+    if [ -f "${pkgconfig_dir}/python-${python_mm}-embed.pc" ]; then
+      ln -sfn "python-${python_mm}-embed.pc" "${pkgconfig_dir}/python3-embed.pc"
+    fi
   fi
 
   info "Target Python ${python_mm} staged for ${target_arch}:"
   info "  prefix: $(python_cross_stage_prefix_for_arch "${target_arch}")"
-  info "  include: ${stage_root}/usr/local/include/python${python_mm}"
-  info "  arch include: ${stage_root}/usr/local/include/${target_triplet}/python${python_mm}"
-  info "  libdir: ${stage_root}/usr/local/lib"
+  info "  include: ${prefix}/include/python${python_mm}"
+  info "  arch include: ${prefix}/include/${target_triplet}/python${python_mm}"
+  info "  libdir: ${prefix}/lib"
   info "  pkg-config: ${pkgconfig_dir}"
 }
 
@@ -117,6 +158,15 @@ stage_host_python_payload() {
   target_triplet="$(arch_deb_multiarch_triplet_for "${target_arch}")"
 
   rm -rf "${stage_root}"
+  # Its prefix holds nothing but this Python, so it stages whole, as hardlinks that cost the layer nothing.
+  if [ "${PY_VARIANT}" = freethreaded ]; then
+    mkdir -p "${stage_root}${PY_PREFIX}"
+    cp -al "${PY_PREFIX}/." "${stage_root}${PY_PREFIX}/"
+    # The cross trees are built with --disable-test-modules; the shipped build-arch tree matches them.
+    rm -rf "${stage_root}${PY_PREFIX}/lib/python${PY_LDVERSION}/test"
+    python_stage_finalize "${target_arch}" "${stage_root}" "${PY_LDVERSION}" "${target_triplet}"
+    return 0
+  fi
   mkdir -p "${stage_root}/usr/local/bin" "${stage_root}/usr/local/lib" "${stage_root}/usr/local/include"
 
   cp -a "/usr/local/bin/python${python_mm}" "${stage_root}/usr/local/bin/"
@@ -222,11 +272,14 @@ _python_cross_configure() {
   export CPPFLAGS="${CPPFLAGS:-} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
   export LDFLAGS="-L/usr/lib/${target_triplet} ${LDFLAGS:-}"
   export LIBRARY_PATH="/usr/lib/${target_triplet}:${LIBRARY_PATH:-}"
+  # The free-threaded tree ships as the image's runtime interpreter, so it keeps _ctypes.
+  local ffi_header_line='ac_cv_header_ffi_h=no'
+  [ "${PY_VARIANT}" = gil ] || ffi_header_line=''
   cat > "${config_site}" <<EOF
 ac_cv_buggy_getaddrinfo=no
 ac_cv_file__dev_ptmx=yes
 ac_cv_file__dev_ptc=no
-ac_cv_header_ffi_h=no
+${ffi_header_line}
 ac_cv_header_bzlib_h=yes
 ac_cv_lib_bz2_BZ2_bzlibVersion=yes
 ac_cv_header_uuid_uuid_h=yes
@@ -253,11 +306,12 @@ EOF
       "${source_dir}/configure" \
         --build="${build_triplet}" \
         --host="${target_triplet}" \
-        --prefix=/usr/local \
+        --prefix="${PY_PREFIX}" \
         --with-build-python="${build_python_bin}" \
         --with-pkg-config=yes \
         --enable-shared \
         "${_lto_args[@]}" \
+        "${PY_CONFIGURE_EXTRA[@]}" \
         --without-ensurepip \
         --disable-test-modules
   )
@@ -284,7 +338,7 @@ _python_cross_install_staging() {
   local python_mm="$3"
   local source_dir="$4"
 
-  # Copy from the build tree, not make altinstall: the target binary cannot run here without QEMU.
+  # A copy of the build tree; make altinstall runs no target binary either, as the free-threaded twin's staging shows.
 
   mkdir -p "${stage_root}/usr/local/bin" "${stage_root}/usr/local/lib" "${stage_root}/usr/local/include"
 
@@ -336,8 +390,18 @@ _python_cross_fixup_libdynload() {
     err "dangling extension symlinks remain in ${dynload_dir} after staging"
   fi
 
+  _python_dynload_audit "${dynload_dir}"
+}
+
+_python_dynload_audit() {
+  local dynload_dir="$1"
+
   # make -k can skip a failed extension silently; these have no external deps and must always build.
   local -a _critical_exts=(_struct math cmath _csv _json _pickle _socket)
+  # What the image smoke imports from the shipped free-threaded interpreter must exist on every arch.
+  if [ "${PY_VARIANT}" = freethreaded ]; then
+    _critical_exts+=(_ssl _hashlib _sqlite3 zlib _bz2 _lzma _ctypes)
+  fi
   local _ext _missing=()
   for _ext in "${_critical_exts[@]}"; do
     if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
@@ -350,7 +414,7 @@ _python_cross_fixup_libdynload() {
     err "target Python is missing critical C extensions (make -k may have silently failed)"
   fi
 
-  # Warn-only, as the fatal assert is on the apt install; _ctypes is off on purpose (ac_cv_header_ffi_h=no).
+  # Warn-only, as the fatal assert is on the apt install; the GIL tree's _ctypes is off on purpose (ac_cv_header_ffi_h=no).
   while IFS= read -r _ext; do
     [ -n "${_ext}" ] || continue
     if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
@@ -381,18 +445,38 @@ _python_cross_stage_into_compiler() {
   python_stage_finalize "${target_arch}" "${stage_root}" "${python_mm}" "${target_triplet}"
 }
 
+# A real install into the stage, unlike the GIL tree's copy: this tree ships, so it needs its bytecode and config dir.
+_python_cross_altinstall_staging() {
+  local cross_build_dir="$1"
+  local stage_root="$2"
+  local target_arch="$3"
+  local target_triplet="$4"
+
+  make -C "${cross_build_dir}" altinstall DESTDIR="${stage_root}"
+  if [ ! -x "${stage_root}${PY_PREFIX}/bin/python${PY_LDVERSION}" ] || \
+     [ ! -f "${stage_root}${PY_PREFIX}/lib/libpython${PY_LDVERSION}.so.1.0" ]; then
+    err "make altinstall staged no python${PY_LDVERSION} or libpython${PY_LDVERSION}.so.1.0 for ${target_arch}"
+  fi
+  _python_dynload_audit "${stage_root}${PY_PREFIX}/lib/python${PY_LDVERSION}/lib-dynload"
+  python_stage_finalize "${target_arch}" "${stage_root}" "${PY_LDVERSION}" "${target_triplet}"
+}
+
 build_cross_target_python_payload() {
   local source_dir="$1"
   local target_arch="$2"
-  local python_mm="${PYTHON_MAJOR_MINOR}"
+  local python_mm="${PY_LDVERSION}"
   local target_triplet build_triplet build_python_bin build_python_libdir
   local cross_build_dir config_site stage_root
 
   target_triplet="$(arch_deb_multiarch_triplet_for "${target_arch}")"
   build_triplet="$(build_deb_multiarch_triplet)"
-  build_python_bin="/usr/local/bin/python${python_mm}"
-  build_python_libdir="/usr/local/lib"
-  cross_build_dir="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-cross-${target_triplet}-$$"
+  # The target's own variant: it freezes the stdlib modules the target embeds.
+  build_python_bin="${PY_PREFIX}/bin/python${python_mm}"
+  build_python_libdir="${PY_PREFIX}/lib"
+  # The GIL build dir keeps its old name, which its debug info records.
+  local dir_tag="ft-"
+  if [ "${PY_VARIANT}" = gil ]; then dir_tag=""; fi
+  cross_build_dir="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-cross-${dir_tag}${target_triplet}-$$"
   config_site="${TMPDIR:-/tmp}/python-config-site-${target_triplet}-$$"
   stage_root="$(python_cross_stage_root_for_arch "${target_arch}")"
 
@@ -403,6 +487,12 @@ build_cross_target_python_payload() {
 
   _python_cross_build \
     "${cross_build_dir}" "${target_arch}" "${python_mm}"
+
+  if [ "${PY_VARIANT}" = freethreaded ]; then
+    _python_cross_altinstall_staging \
+      "${cross_build_dir}" "${stage_root}" "${target_arch}" "${target_triplet}"
+    return 0
+  fi
 
   _python_cross_install_staging \
     "${cross_build_dir}" "${stage_root}" "${python_mm}" "${source_dir}"
@@ -421,7 +511,14 @@ stage_requested_cross_python_payloads() {
   local build_arch=""
   local target_arch=""
 
+  build_arch="$(build_arch_oci 2>/dev/null || arch_oci)"
   if [ "${BUILD_MODE:-native}" != "cross" ]; then
+    # Dockerfile.package COPYs the free-threaded tree from here in either mode, so native stages its own arch.
+    if [ "${PY_VARIANT}" = freethreaded ]; then
+      rm -rf "${PY_STAGE_ROOT}"
+      mkdir -p "${PY_STAGE_ROOT}"
+      ( stage_host_python_payload "${build_arch}" )
+    fi
     return 0
   fi
 
@@ -431,10 +528,9 @@ stage_requested_cross_python_payloads() {
   normalized_targets="$(arch_list_csv_normalize "${raw_targets}")" || {
     err "Unsupported cross target list for Python staging: ${raw_targets}"
   }
-  build_arch="$(build_arch_oci 2>/dev/null || arch_oci)"
 
-  rm -rf "${PYTHON_CROSS_STAGE_ROOT}"
-  mkdir -p "${PYTHON_CROSS_STAGE_ROOT}"
+  rm -rf "${PY_STAGE_ROOT}"
+  mkdir -p "${PY_STAGE_ROOT}"
 
   # IFS=',' read: under this script's IFS=$'\n\t' a ${x//,/ } expansion would not split.
   local -a _staging_targets=()
@@ -445,13 +541,41 @@ stage_requested_cross_python_payloads() {
       if [ "${target_arch}" = "${build_arch}" ]; then
         stage_host_python_payload "${target_arch}"
       else
-        build_cross_target_python_payload "${PYTHON_SOURCE_DIR}" "${target_arch}"
+        build_cross_target_python_payload "${PY_SOURCE_DIR}" "${target_arch}"
       fi
     )
   done
 }
 
-info "Building Python ${PYTHON_VERSION} from source..."
+# The selected variant for the build arch, from its own extraction of the verified tarball.
+python_build_native_variant() {
+  local -a _pgo_args=() _lto_args=()
+
+  mkdir -p "${PY_SOURCE_DIR%/*}"
+  tar -xf "${PYTHON_TARBALL}" -C "${PY_SOURCE_DIR%/*}"
+  cd "${PY_SOURCE_DIR}"
+  # Native gets PGO plus LTO, with the same PYTHON_LTO=0 escape hatch.
+  [ "${PYTHON_PGO}" = "1" ] && _pgo_args=( --enable-optimizations )
+  [ "${PYTHON_LTO}" = "1" ] && _lto_args=( --with-lto )
+  ./configure --enable-shared "${_pgo_args[@]}" "${_lto_args[@]}" "${PY_CONFIGURE_EXTRA[@]}" --prefix="${PY_PREFIX}"
+  make -j"$(compute_jobs_with_mem_cap "" 2500)"
+  make altinstall
+
+  if [ "${PY_VARIANT}" = freethreaded ]; then
+    # The contract path; its prefix stays off PATH, so python3 and pip3 remain the GIL build's.
+    ln -sf "${PY_PREFIX}/bin/python${PY_LDVERSION}" "/usr/local/bin/python${PY_LDVERSION}"
+    return 0
+  fi
+
+  ln -sf "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" /usr/local/bin/python3
+  ln -sf "/usr/local/bin/pip${PYTHON_MAJOR_MINOR}" /usr/local/bin/pip3
+
+  # "00-" is load-bearing: the first conf dir wins a duplicate soname, and the distro ships its own libpython.
+  echo "/usr/local/lib" > "/etc/ld.so.conf.d/00-python-${PYTHON_VERSION}.conf"
+  ldconfig
+}
+
+info "Building Python ${PYTHON_VERSION} from source (${PYTHON_VARIANTS})..."
 
 if [ "${BUILD_MODE:-native}" = "cross" ]; then
   info "Cross mode detected; building host Python ${PYTHON_VERSION} for shared build tooling"
@@ -465,24 +589,17 @@ else
   echo "       Bump PYTHON_TGZ_SHA256 in versions.env together with PYTHON_VERSION." >&2
   exit 1
 fi
-tar -xf "${PYTHON_TARBALL}" -C "${TMPDIR:-/tmp}"
 
-cd "${PYTHON_SOURCE_DIR}"
-# Native gets PGO plus LTO, with the same PYTHON_LTO=0 escape hatch.
-_lto_args=()
-[ "${PYTHON_LTO}" = "1" ] && _lto_args=( --with-lto )
-./configure --enable-shared --enable-optimizations "${_lto_args[@]}" --prefix=/usr/local
-make -j"$(compute_jobs_with_mem_cap "" 2500)"
-make altinstall
-
-ln -sf "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" /usr/local/bin/python3
-ln -sf "/usr/local/bin/pip${PYTHON_MAJOR_MINOR}" /usr/local/bin/pip3
-
-# "00-" is load-bearing: the first conf dir wins a duplicate soname, and the distro ships its own libpython.
-echo "/usr/local/lib" > "/etc/ld.so.conf.d/00-python-${PYTHON_VERSION}.conf"
-ldconfig
-
-stage_requested_cross_python_payloads
+# IFS=',' read, as for the cross target list; each variant is a native build plus its cross stages.
+IFS=',' read -r -a _python_variants <<< "${PYTHON_VARIANTS}"
+for _python_variant in "${_python_variants[@]}"; do
+  python_variant_select "${_python_variant}"
+  python_build_native_variant
+  stage_requested_cross_python_payloads
+  cd /
+  # The next variant extracts and builds its own trees, so the /tmp tmpfs holds one variant's at a time.
+  rm -rf "${PY_SOURCE_DIR}" "${TMPDIR:-/tmp}"/Python-"${PYTHON_VERSION}"-cross-*
+done
 
 # Clean up
 cd /

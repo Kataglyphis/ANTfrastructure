@@ -494,7 +494,7 @@ t_assert_contains "${_out}" "EXIT 1"
 # install_free_threaded_python (CON66); see docs/consumer-image-contract.md#the-free-threaded-python
 _ftp="$(t_fn_src "${SUBJECT}" install_free_threaded_python)" || exit 1
 
-# _ftp_run <what the interpreter reports> [VAR=VALUE...]: uv and ln are stubs; prints the run.
+# _ftp_run <what the interpreter reports, or "absent"> [VAR=VALUE...]: the COPY'd tree is a stub under a temp root, uv and ln are stubs; prints the run.
 _ftp_run() {
   local home kv report="$1"; shift
   home="$(mktemp -d)"
@@ -502,36 +502,42 @@ _ftp_run() {
     set -uo pipefail
     eval "${_web}"
     eval "${_ftp}"
-    export VERSIONS_ENV="${home}/versions.env" FTP_REPORT="${report}" FTP_HOME="${home}"
+    export VERSIONS_ENV="${home}/versions.env"
     printf 'PYTHON_VERSION=3.14.7\n' > "${VERSIONS_ENV}"
     unset PYTHON_VERSION
     for kv in "$@"; do export "${kv?}"; done
-    uv() {
-      printf 'UV %s INSTALL_DIR=%s\n' "$*" "${UV_PYTHON_INSTALL_DIR:-}" >&2
-      case "$1 $2" in
-        "python install") [ "${FAKE_UV_RC:-0}" = 0 ] || return 1
-                          printf '#!/bin/sh\necho "%s"\n' "${FTP_REPORT}" > "${FTP_HOME}/python3.14t"; chmod +x "${FTP_HOME}/python3.14t" ;;
-        "python find")    printf '%s\n' "${FTP_HOME}/python3.14t" ;;
-      esac
-    }
+    if [ "${report}" != absent ]; then
+      mkdir -p "${home}/ft/bin"
+      # The stub records what it was asked to import, so the case can tell the stdlib is checked.
+      printf '#!/bin/sh\nprintf "%%s\\n" "$2" > "%s/asked"\necho "%s"\n' "${home}" "${report}" > "${home}/ft/bin/python3.14t"
+      chmod +x "${home}/ft/bin/python3.14t"
+    fi
+    uv() { printf 'UV %s\n' "$*"; }
     ln() { printf 'LN %s\n' "$*"; }
-    install_free_threaded_python
+    install_free_threaded_python "${home}/ft"
     printf 'EXIT %s\n' "$?"
+    printf 'ASKED %s\n' "$(cat "${home}/asked" 2>/dev/null)"
   ) 2>&1
   rm -rf "${home}"
 }
 
-t_case "CON66: the free-threaded twin of PYTHON_VERSION, outside uv's own store, on PATH as python3.14t"
+t_case "CON66: the toolchain's free-threaded build, COPY'd in, is on PATH as python3.14t and nothing is downloaded"
 _out="$(_ftp_run '3.14.7 False')"
-t_assert_contains "${_out}" "UV python install --no-bin 3.14.7t INSTALL_DIR=/opt/python-freethreaded"
-t_assert_contains "${_out}" "/usr/local/bin/python3.14t" "the link the 3.14t legs find on PATH"
+t_assert_contains "${_out}" "/ft/bin/python3.14t /usr/local/bin/python3.14t" "the link the 3.14t legs find on PATH"
 t_assert_contains "${_out}" "OK: free-threaded CPython 3.14.7"
 t_assert_contains "${_out}" "EXIT 0"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c '^UV ' || true)" "uv installs no interpreter any more"
+t_assert_contains "${_out}" "import ssl, sqlite3, ctypes, zlib, lzma, bz2, sys" "the stdlib the smoke imports is checked at build time"
 
-t_case "CON66: a GIL build, another patch, a failed download or no pin stops the stage (mutation)"
+t_case "CON66: a missing tree, a GIL build, another patch or no pin stops the stage (mutation)"
+_out="$(_ftp_run absent)"
+t_assert_contains "${_out}" "/ft/bin/python3.14t: the artifact's toolchain stage did not build the free-threaded CPython"
+t_assert_contains "${_out}" "EXIT 1"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e '^UV ' -e '^LN ' || true)" "no download and no dangling link in its place"
 t_assert_contains "$(_ftp_run '3.14.7 True')" "ERROR: python3.14t reports '3.14.7 True', expected '3.14.7 False'"
 t_assert_contains "$(_ftp_run '3.14.4 False')" "EXIT 1"
-t_assert_contains "$(FAKE_UV_RC=1 _ftp_run '3.14.7 False')" "ERROR: uv could not install CPython 3.14.7t"
+t_assert_contains "$(_ftp_run "ModuleNotFoundError: No module named '_ctypes'")" \
+  "ERROR: python3.14t reports 'ModuleNotFoundError: No module named '_ctypes'', expected '3.14.7 False'"
 t_assert_contains "$(_ftp_run '3.14.7 False' VERSIONS_ENV=/nonexistent)" "ERROR: no PYTHON_VERSION in versions.env"
 
 t_case "no rustup or cargo under CARGO_HOME skips the whole step"

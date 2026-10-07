@@ -6,6 +6,37 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — The free-threaded CPython is built from source, on every arch (CON66)
+
+- **Owner decision: `3.14.8t` comes from the toolchain stage, not uv's python-build-standalone
+  download.** `build_python.sh` builds `PYTHON_VARIANTS` (`gil,freethreaded`) in turn from the one
+  SHA256-verified tarball, and `/usr/local/bin/python3.14t` stays the contract path.
+  - The GIL build is unchanged. Against the old script, its staged cross trees list the same 9600
+    paths at the same sizes, and every file but `libpython` (its build date) is byte-identical.
+  - The twin is `--disable-gil --without-static-libpython` in `/opt/python-freethreaded`: PGO and
+    LTO natively, LTO alone per cross arch. Its rpath goes in through `LDFLAGS_NODIST`, so a
+    `cp314t` wheel built against it inherits none.
+  - Each arch's tree is staged at `/opt/python-cross-ft/<arch>/opt/python-freethreaded`. The build
+    arch's is hardlinks and is staged in native mode too, so `Dockerfile.package` takes the target
+    arch's with one COPY (`runtime-artifacts.manifest`, `ALLOWED_RELOCATIONS`).
+  - A cross tree is a `make altinstall` (bytecode, `python3.14t-config`) and keeps `_ctypes`, which
+    the GIL cross trees build without. `_python_dynload_audit` makes `_ssl`, `_hashlib`,
+    `_sqlite3`, `zlib`, `_bz2`, `_lzma` and `_ctypes` fatal there.
+  - `install_free_threaded_python` links and checks the COPY'd tree and refuses a missing one;
+    nothing downloads.
+- **Gates.**
+  - `smoke-toolchain.sh` runs the twin and checks every staged arch.
+  - The `free-threaded-python` row also wants `sysconfig`'s prefix `/opt/python-freethreaded` and
+    the stdlib imports, so a python-build-standalone tree fails it.
+  - The tree-arch gate scans `/opt/python-freethreaded`.
+  - New suite `test-build-python-variants.sh`; eight new mutations.
+- **Measured in `:latest` on 32 cores.** The image's flags (cross amd64/arm64/riscv64) took 624 s:
+  6.5 min native (4.7 of them the PGO profile run) and under 2 min per cross arch. Shipped trees:
+  138 MB amd64, 120 MB arm64, 233 MB riscv64.
+  - Each tree, installed by the new package-stage code, reports `3.14.8 False` and passes the row;
+    arm64 and riscv64 ran under QEMU.
+  - uv 0.12.17 finds it for `3.14t` and not for `3.14+gil`.
+
 ## 2026-10-07 — The Windows image builds its free-threaded CPython from source
 
 - **`:winamd64` carries `PYTHON_VERSION` twice, both source-built with the image's VS 2026 / MSVC

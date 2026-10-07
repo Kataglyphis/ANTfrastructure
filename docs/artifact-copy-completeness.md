@@ -216,12 +216,15 @@ image sees it — and it reads bytes, not behaviour:
   `Dockerfile.package`'s own `ARG VAR=default`. A token that resolves from
   neither **fails**; it would otherwise scan nothing and say nothing.
 * The manifest carries the COPY **source** path, so `_rt_tree_probe_path` maps it
-  to where the gate looks in the image. **One** arm now: the documented relocation
-  (`/opt/llvm-target` → `/usr/local/llvm-target`, listed in
-  `verify-artifact-copy-parity.sh`'s `ALLOWED_RELOCATIONS` — the suite fails if the
-  two owners of that fact stop agreeing). The second arm, `/opt/vulkan` →
-  `/opt/vulkan/active`, is **gone**: it existed to look past a builder-arch SDK that
-  no longer ships. See [below](#the-vulkan-tree-ships-only-what-the-image-runs).
+  to where the gate looks in the image. **Two** arms, both documented relocations
+  listed in `verify-artifact-copy-parity.sh`'s `ALLOWED_RELOCATIONS` (the suite fails
+  if the two owners of that fact stop agreeing): `/opt/llvm-target` →
+  `/usr/local/llvm-target`, and the target arch's free-threaded CPython,
+  `/opt/python-cross-ft/${TARGET_ARCH:-${TARGETARCH}}/opt/python-freethreaded` →
+  `/opt/python-freethreaded` (2026-10-07). The relocation is applied before the
+  unresolved-token check, because the resolver cannot expand a `${VAR:-...}`. The
+  old `/opt/vulkan` → `/opt/vulkan/active` arm is **gone**: it existed to look past a
+  builder-arch SDK that no longer ships. See [below](#the-vulkan-tree-ships-only-what-the-image-runs).
 * One in-image scanner reads the ELF header of every object under those trees and
   aggregates `(tree, machine) → count`. Header reads in a single process, never a
   `readelf` exec per file, which under QEMU would cost minutes; the walk is sorted

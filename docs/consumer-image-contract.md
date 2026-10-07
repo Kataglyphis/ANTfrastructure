@@ -520,7 +520,8 @@ last two rows since 2026-10-06):
 | `free-threaded-python` | every `3.14t` leg has uv download a free-threaded CPython first, its patch version unpinned |
 
 The first three share one verdict function; `cargo-qa-tools` and `free-threaded-python`
-have their own, because they compare versions. The cost of each is written down once, in
+have their own, because they compare versions (and `free-threaded-python` also where the
+interpreter came from). The cost of each is written down once, in
 `_consumer_contract_symptom`, which is also what the failure message prints.
 
 ### The Flatpak runtimes ship with the image
@@ -588,20 +589,51 @@ no source fallback, which would cost hundreds of crates per tool under QEMU.
 
 ### The free-threaded Python
 
-The package stage installs the free-threaded twin of `PYTHON_VERSION`
-(`3.14.8t` today) on every arch, riscv64 included (CON66), so a `3.14t` leg downloads
-no interpreter.
+The image ships the free-threaded twin of `PYTHON_VERSION` (`3.14.8t` today) on every
+arch, riscv64 included (CON66), so a `3.14t` leg downloads no interpreter.
 
-- **It is uv's python-build-standalone build.** `uv python install` checks it against
-  the SHA256 its pinned release (`UV_VERSION`) embeds. A second source build of CPython
-  would belong in the toolchain stage and rebuild every stage after it.
-- **It lives in `/opt/python-freethreaded`, outside uv's own store**, with
-  `/usr/local/bin/python3.14t` linked to it. A `3.14t` request finds it on `PATH`. A
-  plain `3.14` request never takes it, which an install into uv's managed store would
-  allow ([`python-ci.md` § Free-threaded and GIL legs](python-ci.md#free-threaded-and-gil-legs-in-one-container)).
-- The stage stops when the interpreter does not report `PYTHON_VERSION` with the GIL
-  off, and the `free-threaded-python` contract row checks the same on the shipped
-  image.
+- **It is built from source in the toolchain stage**, from the same SHA256-pinned
+  tarball as the GIL build (owner decision 2026-10-07). Until then the package stage
+  installed uv's python-build-standalone download. `build_python.sh` builds each of its
+  `PYTHON_VARIANTS` (`gil,freethreaded`) in turn. The second one is `--disable-gil`,
+  with PGO and LTO on the build arch and LTO alone for each cross arch, where PGO would
+  have to run the foreign interpreter. The cost lands in the toolchain stage, and every
+  stage after it rebuilds when the pass changes. Measured on a 32-core host on
+  2026-10-07: 6.5 minutes natively, 4.7 of them the PGO profile run, and under 2 minutes
+  per cross arch. The shipped trees are 138 MB (amd64), 120 MB (arm64) and 233 MB
+  (riscv64).
+- **It lives in `/opt/python-freethreaded`**, with `/usr/local/bin/python3.14t` linked
+  to it, so it never shadows the GIL `/usr/local`: `python3`, `pip3` and `python3.pc`
+  stay the GIL build's. A `3.14t` request finds it on `PATH`. A plain `3.14` request
+  never takes it ([`python-ci.md` § Free-threaded and GIL legs](python-ci.md#free-threaded-and-gil-legs-in-one-container)).
+  The binary finds `libpython3.14t.so` through its own RUNPATH, set with `LDFLAGS_NODIST`
+  so that it stays out of sysconfig: a `cp314t` wheel built against it inherits none.
+- **Every artifact stages one tree per arch**, at
+  `/opt/python-cross-ft/<arch>/opt/python-freethreaded`, the build arch's included and in
+  either build mode, so `Dockerfile.package` takes the target arch's with one COPY.
+  - A cross arch's tree is a real `make altinstall`, with its bytecode, `python3.14t-config`
+    and config dir. The GIL cross trees are copies of the build tree.
+  - It keeps `_ctypes`, which the GIL cross trees build without (`ac_cv_header_ffi_h=no`),
+    because it ships as the runtime interpreter.
+  - No tree carries the static `libpython3.14t.a` (`--without-static-libpython`): its fat
+    LTO objects were 155 MB on amd64 and 435 MB on riscv64, and nothing links them.
+  - No staged tree carries the test suite. The cross trees are built `--disable-test-modules`,
+    and the build arch's stage drops `lib/python3.14t/test` to match.
+  - `pip` is in the build arch's tree only; the cross builds run `--without-ensurepip`.
+- **The build stages keep it too**, for a later `cp314t` wheel build: toolchain, media and
+  android carry the build arch's interpreter at `/opt/python-freethreaded` and
+  `/usr/local/bin/python3.14t`, and each `CROSS_TARGETS` arch's tree under
+  `/opt/python-cross-ft/`. No stage builds a `cp314t` wheel yet.
+- **Each stage checks it.**
+  - `build_python.sh` fails a cross tree without `_ssl`, `_hashlib`, `_sqlite3`, `zlib`,
+    `_bz2`, `_lzma` or `_ctypes`.
+  - `smoke-toolchain.sh` runs the twin and checks every staged arch's tree.
+  - The package stage stops when the COPY'd interpreter is missing, does not report
+    `PYTHON_VERSION` with the GIL off, or cannot import ssl, sqlite3, ctypes, zlib, lzma
+    and bz2.
+  - The `free-threaded-python` contract row checks the same on the shipped image, and
+    that `sysconfig`'s prefix is `/opt/python-freethreaded`, which tells the source build
+    from a python-build-standalone one.
 
 ## The Windows image ships lavapipe
 

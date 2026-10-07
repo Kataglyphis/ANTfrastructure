@@ -428,7 +428,9 @@ by name instead of failing on a missing file. Test: `windows/scripts/tests/Pytho
 ## Free-threaded and GIL legs in one container
 
 Since CON66 the image ships the free-threaded interpreter itself, at
-`/usr/local/bin/python3.14t` and outside uv's store, so a `3.14t` leg downloads nothing
+`/usr/local/bin/python3.14t` and outside uv's store, so a `3.14t` leg downloads nothing.
+Since 2026-10-07 it is the toolchain stage's `--disable-gil` source build of
+`PYTHON_VERSION`, no longer uv's python-build-standalone download
 ([`consumer-image-contract.md` § The free-threaded Python](consumer-image-contract.md#the-free-threaded-python)).
 On an older image the leg still downloads one, and the rest of this section applies.
 

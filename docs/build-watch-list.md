@@ -200,8 +200,9 @@ nerdctl run --rm --platform linux/<arch> -v <repo>:/repo:ro --entrypoint bash \
   `_curses`, `_uuid`, `_decimal`). Information on `optional` rows — but any of them on
   **amd64** is a genuine finding. `readline` is a `required` row in
   `01-core/cpython-dev-packages.sh` now, so its WARN is a finding on every arch.
-  `_ctypes` warns on the cross arches by design (`build_python.sh` sets
-  `ac_cv_header_ffi_h=no`).
+  `_ctypes` warns on the GIL cross arches by design (`build_python.sh` sets
+  `ac_cv_header_ffi_h=no` there). The free-threaded cross trees build it, and a
+  missing one fails their audit.
 * `slang` and `vulkancapsviewer` failing to cross-configure was expected until
   2026-09-07 and is **not** any more — both have a route now, so either one failing
   is a finding, not noise.

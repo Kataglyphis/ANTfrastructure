@@ -234,6 +234,28 @@ assert hashlib.sha256(b'x').hexdigest().startswith('2d711642')
   echo ""
 }
 
+# The --disable-gil twin: Dockerfile.package COPYs each arch's staged tree, the build arch's included. docs/consumer-image-contract.md#the-free-threaded-python
+check_free_threaded_python() {
+  local target_arches="$1" ft="/usr/local/bin/python${PYTHON_MAJOR_MINOR}t" report arch root
+
+  echo "--- Free-threaded Python ---"
+  report="$("${ft}" -c 'import ssl, sqlite3, ctypes, lzma, bz2, zlib, sys, sysconfig; print(sys.version.split()[0], sys._is_gil_enabled(), sysconfig.get_config_var("Py_GIL_DISABLED"))' 2>&1 | tail -1)" || true
+  if [ "${report}" = "${PYTHON_VERSION} False 1" ]; then
+    pass "python${PYTHON_MAJOR_MINOR}t ${PYTHON_VERSION} runs without the GIL, ssl/sqlite3/ctypes/lzma/bz2/zlib OK"
+  else
+    fail "python${PYTHON_MAJOR_MINOR}t reports '${report:-MISSING}', expected '${PYTHON_VERSION} False 1'"
+  fi
+  for arch in $(smoke_arch_words "${target_arches}"); do
+    root="/opt/python-cross-ft/${arch}/opt/python-freethreaded"
+    if [ -x "${root}/bin/python${PYTHON_MAJOR_MINOR}t" ] && [ -f "${root}/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR}t.pc" ]; then
+      pass "free-threaded Python ${PYTHON_MAJOR_MINOR}t staged for ${arch}"
+    else
+      fail "free-threaded Python ${PYTHON_MAJOR_MINOR}t not staged for ${arch} (expected ${root}/bin/python${PYTHON_MAJOR_MINOR}t and its python-${PYTHON_MAJOR_MINOR}t.pc)"
+    fi
+  done
+  echo ""
+}
+
 run_cross_targets() {
   local target_arches="$1"
   local host_arch="$2"
@@ -257,6 +279,7 @@ main() {
   check_rust "${target_arches}"
   check_node
   check_python "${target_arches}"
+  check_free_threaded_python "${target_arches}"
   run_cross_targets "${target_arches}" "${host_arch}"
 
   smoke_summary

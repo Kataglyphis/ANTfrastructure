@@ -12301,10 +12301,74 @@
  {
   "id": "probe.free-threaded-python-gil-off",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "  elif [ \"${have}\" = \"${want} gil=False\" ]; then",
-  "replace": "  elif [ -n \"${have}\" ]; then",
+  "find": "  elif [ \"${have}\" != \"${want} gil=False\" ]; then",
+  "replace": "  elif false; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "the row must prove the shipped interpreter is PYTHON_VERSION with the GIL off, not merely present"
+ },
+ {
+  "id": "python.free-threaded-disable-gil",
+  "target": "linux/scripts/02-toolchain/python/build_python.sh",
+  "find": "      PY_CONFIGURE_EXTRA=( --disable-gil \"LDFLAGS_NODIST=-Wl,-rpath,${PYTHON_FT_PREFIX}/lib\" )",
+  "replace": "      PY_CONFIGURE_EXTRA=( \"LDFLAGS_NODIST=-Wl,-rpath,${PYTHON_FT_PREFIX}/lib\" )",
+  "test": "bash linux/scripts/tests/test-build-python-variants.sh",
+  "why": "without --disable-gil the second pass builds a GIL CPython under the twin's prefix, and every 3.14t leg tests nothing free-threaded"
+ },
+ {
+  "id": "python.free-threaded-audit-ships-its-stdlib",
+  "target": "linux/scripts/02-toolchain/python/build_python.sh",
+  "find": "    _critical_exts+=(_ssl _hashlib _sqlite3 zlib _bz2 _lzma _ctypes)",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-build-python-variants.sh",
+  "why": "the cross-built free-threaded tree ships as the arm64/riscv64 runtime interpreter; a _ctypes or _ssl that make -k skipped must stop the toolchain stage, not a consumer's leg"
+ },
+ {
+  "id": "python.free-threaded-stage-keeps-gil-names",
+  "target": "linux/scripts/02-toolchain/python/build_python.sh",
+  "find": "  if [ \"${PY_VARIANT}\" = gil ]; then\n    if [ -x \"${prefix}/bin/python${python_mm}\" ]; then",
+  "replace": "  if true; then\n    if [ -x \"${prefix}/bin/python${python_mm}\" ]; then",
+  "test": "bash linux/scripts/tests/test-build-python-variants.sh",
+  "why": "python3 and python3.pc mean the GIL build; a free-threaded stage that claims them hands every pkg-config python3 consumer the t ABI"
+ },
+ {
+  "id": "python.free-threaded-native-stages-build-arch",
+  "target": "linux/scripts/02-toolchain/python/build_python.sh",
+  "find": "    if [ \"${PY_VARIANT}\" = freethreaded ]; then\n      rm -rf \"${PY_STAGE_ROOT}\"",
+  "replace": "    if false; then\n      rm -rf \"${PY_STAGE_ROOT}\"",
+  "test": "bash linux/scripts/tests/test-build-python-variants.sh",
+  "why": "Dockerfile.package COPYs /opt/python-cross-ft/<arch> in both build modes; a native artifact that stages nothing fails that COPY"
+ },
+ {
+  "id": "python.free-threaded-package-needs-the-tree",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "    if [ ! -x \"${exe}\" ]; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+  "why": "a missing toolchain tree must stop the package stage by name, never leave a dangling python3.14t link for a 3.14t leg to find"
+ },
+ {
+  "id": "probe.free-threaded-python-source-build",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "  elif [ \"${build}\" != \"prefix=/opt/python-freethreaded Py_GIL_DISABLED=1\" ]; then",
+  "replace": "  elif false; then",
+  "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+  "why": "only the sysconfig prefix tells the toolchain's source build from uv's python-build-standalone download it replaced, and the import line is what proves ctypes and ssl on every arch"
+ },
+ {
+  "id": "probe.tree-arch-free-threaded-relocation",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "    /opt/python-cross-ft/*/opt/python-freethreaded) printf '%s' /opt/python-freethreaded ;;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+  "why": "the manifest names the per-arch COPY source with a ${TARGET_ARCH:-...} the resolver cannot expand; without the relocation the tree-arch gate fails as UNRESOLVED or scans a path that is not in the image"
+ },
+ {
+  "id": "python.free-threaded-toolchain-smoke-needs-pc",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "    if [ -x \"${root}/bin/python${PYTHON_MAJOR_MINOR}t\" ] && [ -f \"${root}/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR}t.pc\" ]; then",
+  "replace": "    if [ -x \"${root}/bin/python${PYTHON_MAJOR_MINOR}t\" ]; then",
+  "test": "bash linux/scripts/tests/test-build-python-variants.sh",
+  "why": "a staged tree without its python-3.14t.pc is the half-staged shape a cp314t wheel build against it fails on"
  },
  {
   "id": "rust.cargo-safe-directory-once",
