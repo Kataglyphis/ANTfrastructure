@@ -200,6 +200,23 @@ function New-OrtTestPe {
     [System.IO.File]::WriteAllBytes($Path, [byte[]]($h + $raw + [byte[]]::new([Math]::Max(0, 2048 - $h.Length - $raw.Length))))
 }
 
+# A wheel at -Path from -Member: each value is a file's text, or @{ Machine; Import } for a synthetic PE (New-OrtTestPe).
+function New-TestWheel {
+    param([Parameter(Mandatory)][string]$Path, [hashtable]$Member = @{})
+    $tree = "$Path.tree"
+    $null = New-Item -ItemType Directory -Force -Path $tree, (Split-Path $Path -Parent)
+    foreach ($m in $Member.GetEnumerator()) {
+        $file = Join-Path $tree $m.Key
+        if ($m.Value -is [hashtable]) { New-OrtTestPe -Path $file -Machine $m.Value.Machine -Import @($m.Value.Import); continue }
+        $null = New-Item -ItemType Directory -Force -Path (Split-Path $file -Parent)
+        [IO.File]::WriteAllText($file, $m.Value)
+    }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::CreateFromDirectory($tree, $Path)
+    Remove-Item -LiteralPath $tree -Recurse -Force
+    return $Path
+}
+
 function Get-TestResult { return $script:Results }
 
 # Anchored on this module's location, so it does not depend on how the calling suite was loaded.
@@ -302,4 +319,4 @@ function Invoke-WithFunctionModule {
 
 Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, `
     Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
-    Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe
+    Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel

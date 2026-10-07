@@ -65,7 +65,7 @@ Describe 'Install-CpythonTargetTree' {
         }
     }
 
-    It 'stages the free-threaded tree with its own exe, python314t.lib and venv launchers, an empty site-packages and no bundle bin' {
+    It 'stages the free-threaded tree with its own exe, python314t.lib, python3t.lib and venv launchers, an empty site-packages and no bundle bin' {
         Invoke-InTestDir { param($d)
             $b = New-TargetBuild -Dir $d -FreeThreaded
             $root = Join-Path $d 'runtime\python-freethreaded'
@@ -74,7 +74,7 @@ Describe 'Install-CpythonTargetTree' {
             }
             $want = Join-Sorted @('DLLs\_ssl.cp314t-win_arm64.pyd', 'DLLs\libcrypto-3-arm64.dll', 'DLLs\vcruntime140.dll', 'include\cpython\object.h',
                 'include\Python.h', 'include\pyconfig.h', 'Lib\ensurepip\_bundled\pip-25.3-py3-none-any.whl', 'Lib\os.py',
-                'Lib\venv\scripts\nt\venvlaunchert.exe', 'Lib\venv\scripts\nt\venvwlaunchert.exe', 'libs\python314t.lib', 'msvcp140.dll',
+                'Lib\venv\scripts\nt\venvlaunchert.exe', 'Lib\venv\scripts\nt\venvwlaunchert.exe', 'libs\python314t.lib', 'libs\python3t.lib', 'msvcp140.dll',
                 'python3.14t.exe', 'python314t.dll', 'python3t.dll', 'pythonw3.14t.exe', 'vcruntime140.dll')
             Assert-Equal $want (Get-TreeFiles $root) 'no python.exe, no GIL import lib, no shim; the launchers where uv venv looks'
             Assert-True (Test-Path (Join-Path $root 'Lib\site-packages') -PathType Container) 'site-packages exists, empty'
@@ -87,6 +87,7 @@ Describe 'Install-CpythonTargetTree' {
         @{ Why = 'a host-arch interpreter'; Exe = 0x8664; Pattern = 'python\.exe machine is 0x8664, expected 0xAA64' }
         @{ Why = 'a free-threaded build of another minor version'; Ft = $true; Version = '3.15.0'; Pattern = 'python3\.15t\.exe was not produced' }
         @{ Why = 'a free-threaded build without python314t.lib'; Ft = $true; Drop = 'build\python314t.lib'; Pattern = 'no python3XYt\.lib import library' }
+        @{ Why = 'a free-threaded build without the stable-ABI python3t.lib IREE''s twin needs'; Ft = $true; Drop = 'build\python3t.lib'; Pattern = 'no python3t\.lib stable-ABI import library' }
         @{ Why = 'a host-arch DLL the redist cannot replace'; HostCrt = $true; Drop = 'redist\msvcp140.dll'; Pattern = 'msvcp140\.dll is machine 0x8664, expected 0xAA64, and no arm64 redist replacement' }
         @{ Why = 'a free-threaded build with a python.exe'; Ft = $true; Add = 'build\python.exe'; Pattern = 'GIL request could resolve to the free-threaded build' }
         @{ Why = 'a free-threaded build without its venv launcher'; Ft = $true; Drop = 'build\venvwlaunchert.exe'; Pattern = 'venvwlaunchert\.exe was not produced' }
@@ -129,8 +130,9 @@ Describe 'the arm64 media chains stage the free-threaded tree once' {
         Assert-Match ([regex]::Escape("`$hostToolArgs = @('`"/p:PreferredToolArchitecture=x64`"')")) $script:target 'the GIL build''s old argument, for both builds'
     }
 
-    It 'media-core stages both trees for the merge, and media-tvm, whose trees the merge drops, the GIL one only' {
+    It 'both chains stage both trees: media-core for the merge, media-tvm for the TVM and IREE cross twins to link (mutation)' {
         Assert-Match "Script = 'Build-TargetCpython\.ps1';\s+SourceDir = 'C:\\temp\\cpython' \}" $script:core 'media-core runs the script plainly'
-        Assert-Match "Build-TargetCpython\.ps1'\) -SourceDir 'C:\\temp\\cpython' -InstallDir \`$id -SkipFreeThreaded" $script:tvm
+        Assert-Match "Script = 'Build-TargetCpython\.ps1';\s+SourceDir = 'C:\\temp\\cpython' \}" $script:tvm 'media-tvm runs it plainly too'
+        Assert-False ($script:target -match 'SkipFreeThreaded') 'no switch turns the free-threaded tree off'
     }
 }

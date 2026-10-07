@@ -282,4 +282,28 @@ Describe 'verify-target-arch: the import walk opens every wheel' {
             Assert-Match 'import walk: 3 file\(s\) walked, 0 unresolved' ($out -join "`n") 'the DLL and the launcher of each wheel'
         }
     }
+
+    It 'machine-checks every wheel member, and a cp3XYt wheel''s modules may import only python3XYt.dll (mutation)' {
+        Invoke-InTestDir { param($d)
+            $rt = Join-Path $d 'runtime'
+            # Both runtimes ship in the bundle, so the walk resolves either; only the ABI check tells them apart.
+            foreach ($dll in 'python\python314.dll', 'python-freethreaded\python314t.dll') { New-OrtTestPe -Path (Join-Path $rt $dll) -Machine 0xAA64 -Import 'kernel32.dll' }
+            $whl = Join-Path $rt 'wheels-cp314t\av-1.0-cp314-cp314t-win_arm64.whl'
+            $pack = { param([hashtable]$Member) Remove-Item -LiteralPath $whl -ErrorAction SilentlyContinue; [void](New-TestWheel -Path $whl -Member $Member) }
+            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-TargetArch.ps1') -Path $rt -Arch arm64 -MinInspected 1 -ImportWalk 2>&1) -join "`n" }
+            & $pack @{ 'av\_core.cp314t-win_arm64.pyd' = @{ Machine = 0xAA64; Import = 'python314t.dll' }; 'av\avutil.dll' = @{ Machine = 0xAA64; Import = 'kernel32.dll' } }
+            $out = & $gate
+            Assert-Equal 0 $LASTEXITCODE "a clean twin passes: $out"
+            Assert-Match 'cp3XYt wheels: 1 wheel\(s\), 1 module\(s\) import their free-threaded runtime, 0 finding\(s\)' $out 'counted'
+            & $pack @{ 'av\_core.cp314t-win_arm64.pyd' = @{ Machine = 0x8664; Import = 'python314t.dll' } }
+            $out = & $gate
+            Assert-True ($LASTEXITCODE -ne 0) 'an x64 member fails the arch gate'
+            Assert-Match 'av-1\.0-cp314-cp314t-win_arm64\.whl!av\\_core\.cp314t-win_arm64\.pyd  is 0x8664 \(AMD64\)' $out 'the member is named inside its wheel'
+            & $pack @{ 'av\_core.pyd' = @{ Machine = 0xAA64; Import = 'python314.dll' } }
+            $out = & $gate
+            Assert-True ($LASTEXITCODE -ne 0) 'a GIL module in a cp3XYt wheel fails'
+            Assert-Match 'FREE-THREADED ABI: .*av\\_core\.pyd imports python314\.dll, not python314t\.dll' $out 'the GIL runtime'
+            Assert-Match 'FREE-THREADED ABI: .*av-1\.0-cp314-cp314t-win_arm64\.whl has no module importing its free-threaded runtime' $out 'and none imports its own'
+        }
+    }
 }

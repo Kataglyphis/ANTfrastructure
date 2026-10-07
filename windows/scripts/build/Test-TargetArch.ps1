@@ -32,7 +32,7 @@ param(
     [int]$MinInspected = 1,
     [string]$HostToolPattern = '',
     [switch]$IncludeArchives,
-    # Resolves every import against bundle, API sets and System32 (never the CRT on cross): the 0xC0000135 class.
+    # Resolves every import against bundle, API sets and System32 (never the CRT on cross): the 0xC0000135 class; extracts and machine-checks every wheel too.
     [switch]$ImportWalk,
     # Regex of driver-, toolkit- or device-interpreter-provided imports; reported, never counted (python313.dll: the cp313 torch stack's interpreter).
     [string]$ImportAllowlist = '^(nvcuda|nvml|nvapi64|cudart64_[0-9]+|cublas|cublasLt|cudnn|nvinfer|nvonnxparser|nvrtc|cufft|curand|cusparse|cusolver|nvjitlink|nvcomp|vulkan-1|opengl32|d3d12core|QnnHtp|QnnCpu|QnnSystem)[A-Za-z0-9_-]*\.dll$|^python313\.dll$',
@@ -168,6 +168,18 @@ function Get-ArchiveMachine {
     return $null
 }
 
+# One tree file or wheel member, reported as -Label: a host tool is skipped, no PE/COFF is unreadable; $true once inspected.
+function Add-MachineVerdict {
+    param([Parameter(Mandatory)][string]$LiteralPath, [Parameter(Mandatory)][string]$Label, [switch]$Archive)
+    if ($HostToolPattern -and $LiteralPath -match $HostToolPattern) { $script:skippedHostTools += $Label; return $false }
+    $machine = if ($Archive) { Get-ArchiveMachine -LiteralPath $LiteralPath } else { Get-CoffMachine -LiteralPath $LiteralPath }
+    if ($null -eq $machine) { $script:unreadable += $Label; return $false }
+    $script:inspected++
+    $ok = if ($acceptedMachines.ContainsKey($expected)) { $acceptedMachines[$expected] -contains $machine } else { $machine -eq $expected }
+    if (-not $ok) { $script:violations += [pscustomobject]@{ Path = $Label; Machine = $machine } }
+    return $true
+}
+
 # A .pyd is a DLL too; skipping it would also hide it from -MinInspected.
 $extensions = @('.dll', '.exe', '.pyd')
 if ($IncludeArchives) { $extensions += '.lib' }
@@ -186,26 +198,8 @@ foreach ($root in $Path) {
     Get-ChildItem -LiteralPath $root -Recurse -File -ErrorAction SilentlyContinue |
         Where-Object { $extensions -contains $_.Extension.ToLowerInvariant() } |
         ForEach-Object {
-            $file = $_
-            if ($HostToolPattern -and $file.FullName -match $HostToolPattern) {
-                $skippedHostTools += $file.FullName
-                return
-            }
-            $machine = if ($file.Extension -ieq '.lib') {
-                Get-ArchiveMachine -LiteralPath $file.FullName
-            } else {
-                Get-CoffMachine -LiteralPath $file.FullName
-            }
-            if ($null -eq $machine) {
-                $unreadable += $file.FullName
-                return
-            }
-            $inspected++
-            $ok = if ($acceptedMachines.ContainsKey($expected)) { $acceptedMachines[$expected] -contains $machine } else { $machine -eq $expected }
-            if (-not $ok) {
-                $violations += [pscustomobject]@{ Path = $file.FullName; Machine = $machine }
-            }
-            if ($file.Extension -ine '.lib') { $script:peFiles += $file.FullName }
+            $isLib = $_.Extension -ieq '.lib'
+            if ((Add-MachineVerdict -LiteralPath $_.FullName -Label $_.FullName -Archive:$isLib) -and -not $isLib) { $script:peFiles += $_.FullName }
         }
 }
 
@@ -217,17 +211,27 @@ $importClientOs = @()
 if ($ImportWalk) {
     $walkFiles = [System.Collections.Generic.List[string]]::new()
     foreach ($f in $script:peFiles) { $walkFiles.Add($f) }
-    # A wheel's native members are what pip installs on the device.
+    # A wheel's native members are what pip installs on the device, so they are machine-checked like the tree.
     $wheelTmp = Join-Path ([System.IO.Path]::GetTempPath()) ('archgate-wheels-' + [guid]::NewGuid().ToString('N'))
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $wheelCount = 0
+    # A cp3XYt wheel's modules may import only its python3XYt.dll; the bundle ships the GIL runtime too, so the walk resolves either.
+    $ftModuleRuntime = @{}
+    $ftWheelHits = [ordered]@{}
     foreach ($root in $Path) {
         foreach ($whl in @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.whl' -File -ErrorAction SilentlyContinue)) {
             # Numbered: each CPython tree's ensurepip ships the same pip wheel, and a second extract into one directory throws.
             $wheelCount++
             $dest = Join-Path $wheelTmp ('{0}-{1}' -f $wheelCount, [IO.Path]::GetFileNameWithoutExtension($whl.Name))
             [System.IO.Compression.ZipFile]::ExtractToDirectory($whl.FullName, $dest)
-            foreach ($m in @(Get-ChildItem -Path $dest -Recurse -File -Include '*.dll', '*.pyd', '*.exe')) { $walkFiles.Add($m.FullName) }
+            $ftRuntime = if ($whl.BaseName -match '-cp(\d+)-cp\1t-[^-]+$') { "python$($Matches[1])t.dll" } else { '' }
+            if ($ftRuntime) { $ftWheelHits[$whl.FullName] = 0 }
+            foreach ($m in @(Get-ChildItem -Path $dest -Recurse -File -Include '*.dll', '*.pyd', '*.exe')) {
+                $walkFiles.Add($m.FullName)
+                $member = '{0}!{1}' -f $whl.FullName, $m.FullName.Substring($dest.Length + 1)
+                if ($ftRuntime -and $m.Extension -ieq '.pyd') { $ftModuleRuntime[$m.FullName] = @($ftRuntime, $whl.FullName, $member) }
+                [void](Add-MachineVerdict -LiteralPath $m.FullName -Label $member)
+            }
         }
     }
     # Names only: consumers register the bundle's DLL homes, so the loader just needs the name somewhere there.
@@ -238,9 +242,16 @@ if ($ImportWalk) {
     # A cross device or a standalone bundle has no image PATH behind it.
     $standsAlone = (Test-WindowsCrossTarget -Arch $targetArch) -or $Standalone
     $crtPattern = '^(vcruntime|msvcp|concrt|vcomp|vccorlib|vcamp|msvcr|mfc)[0-9]'
+    $ftAbiFindings = @()
     foreach ($f in $walkFiles) {
         $imports = try { Get-PeImportNames -Path $f -IncludeDelayLoad } catch { $unreadable += $f; continue }
         $importWalked++
+        if ($ftModuleRuntime.ContainsKey($f)) {
+            $want, $owner, $member = $ftModuleRuntime[$f]
+            $runtimes = @($imports | Where-Object { $_ -match '^python\d+t?(_d)?\.dll$' })
+            if ($runtimes -contains $want) { $ftWheelHits[$owner]++ }
+            foreach ($other in @($runtimes | Where-Object { $_ -ne $want })) { $ftAbiFindings += "$member imports $other, not $want" }
+        }
         foreach ($imp in $imports) {
             $n = $imp.ToLowerInvariant()
             if ($n -match '^(api|ext)-ms-') { continue }
@@ -253,6 +264,7 @@ if ($ImportWalk) {
         }
     }
     Remove-Item -Path $wheelTmp -Recurse -Force -ErrorAction SilentlyContinue
+    foreach ($w in @($ftWheelHits.Keys | Where-Object { $ftWheelHits[$_] -eq 0 })) { $ftAbiFindings += "$w has no module importing its free-threaded runtime" }
 }
 
 Write-Host ''
@@ -276,6 +288,8 @@ if ($ImportWalk) {
         }
         if ($importUnresolved.Count -gt 40) { Write-Host ("    ... {0} more edge(s), all in the by-name summary above" -f ($importUnresolved.Count - 40)) }
     }
+    Write-Host ("  cp3XYt wheels: {0} wheel(s), {1} module(s) import their free-threaded runtime, {2} finding(s)" -f $ftWheelHits.Count, (@($ftWheelHits.Values) | Measure-Object -Sum).Sum, $ftAbiFindings.Count)
+    foreach ($e in $ftAbiFindings) { Write-Host "    FREE-THREADED ABI: $e" -ForegroundColor Red }
 }
 
 if ($skippedHostTools.Count -gt 0) {
@@ -296,6 +310,10 @@ if ($ImportWalk -and $importUnresolved.Count -gt 0) {
     }
     # The native lane ships the image, whose PATH supplies these; the walk gates only where the bundle stands alone.
     Write-Host ("  import walk: {0} edge(s) unresolved against the roots on the native lane -- informational, the image PATH supplies them (hard gate on cross lanes only)" -f $importUnresolved.Count) -ForegroundColor Yellow
+}
+# Every lane: a GIL module in a cp3XYt wheel installs fine and fails or re-enables the GIL on import.
+if ($ImportWalk -and $ftAbiFindings.Count -gt 0) {
+    throw "target-arch verification FAILED for $targetArch`: $($ftAbiFindings.Count) free-threaded wheel finding(s) -- see the FREE-THREADED ABI lines above"
 }
 if ($ImportWalk -and $MinInspected -gt 0 -and $importWalked -lt $MinInspected) {
     throw "target-arch verification FAILED: the import walk covered only $importWalked file(s), below the -MinInspected floor of $MinInspected"

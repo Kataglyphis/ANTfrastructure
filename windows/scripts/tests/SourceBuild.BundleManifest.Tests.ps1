@@ -18,6 +18,12 @@ Describe 'write-bundle-manifest: bundle self-description' {
         foreach ($n in 'FFMPEG_BIN', 'OPENCV_BIN', 'ONNX_ROOT', 'GSTREAMER_BIN', 'VULKAN_SDK') {
             $script:savedEnv[$n] = [Environment]::GetEnvironmentVariable($n, 'Process')
         }
+        # An empty wheel at -Path: the cp3XYt store's check opens each twin, never a GIL wheel.
+        $script:NewTwin = { param([string]$Path)
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            New-Item -ItemType Directory -Force -Path (Split-Path $Path) | Out-Null
+            [IO.Compression.ZipFile]::Open($Path, 'Create').Dispose()
+        }
     }
 
     AfterAll {
@@ -78,15 +84,21 @@ Describe 'write-bundle-manifest: bundle self-description' {
         Remove-Item (Join-Path $script:runtime 'BUNDLE-README.md') -Force -ErrorAction SilentlyContinue
         Remove-Item (Join-Path $script:runtime 'BUNDLE-ENV.cmd') -Force -ErrorAction SilentlyContinue
         Remove-Item (Join-Path $script:runtime 'BUNDLE-ENV.ps1') -Force -ErrorAction SilentlyContinue
+        # A cross bundle's GIL wheels of twin-verdict packages need their cp3XYt twins, or the manifest refuses it.
+        $ft = Join-Path $script:runtime 'wheels-cp314t'
+        foreach ($n in 'onnxruntime-1.22.0', 'av-18.1.0') { & $script:NewTwin (Join-Path $ft "$n-cp314-cp314t-win_arm64.whl") }
 
-        & $script:scriptPath -InstallDir $script:runtime 2>&1 | Out-Null
+        Invoke-WithEnv @{ PYTHON_WHEELS_CP314T = $ft } { & $script:scriptPath -InstallDir $script:runtime 2>&1 | Out-Null }
 
         $md = Get-Content (Join-Path $script:runtime 'BUNDLE-README.md') -Raw
         Assert-True ($md -match 'cross-compiled artifact bundle') 'arm64 README carries the cross caveat'
         Assert-True ($md -match 'arm64') 'README names arm64'
+        Assert-Match 'Free-threaded wheel store: .*2 wheel\(s\)' $md 'the README lists the twins'' store'
+        Assert-Match 'av-18\.1\.0-cp314-cp314t-win_arm64\.whl' $md 'and each twin'
 
         $cmd = Get-Content (Join-Path $script:runtime 'BUNDLE-ENV.cmd') -Raw
         Assert-True ($cmd -match 'KATA_BUNDLE_ARCH=arm64') 'arm64 BUNDLE-ENV.cmd arch'
+        Assert-Match ([regex]::Escape("set ""PYTHON_WHEELS_CP314T=$ft""")) $cmd 'the twins'' store, apart from the GIL one'
     }
 
     It 'registers existing *_BIN env vars as DLL homes' {
@@ -140,5 +152,21 @@ Describe 'write-bundle-manifest: bundle self-description' {
         $md = Get-Content (Join-Path $script:runtime 'BUNDLE-README.md') -Raw
         Assert-True ($md -match 'ABSENT-ON-ARM64') 'README lists the absent marker'
         Assert-True ($md -match 'TVM compiler') 'README carries the marker reason'
+    }
+
+    It 'refuses a cross bundle whose twins do not mirror its GIL wheels, and lets a native one through (mutation)' {
+        Invoke-InTestDir { param($rt)
+            foreach ($gil in 'av-19.0.1-cp314-cp314-win_arm64', 'apache_tvm-0.27.0-py3-none-win_arm64') { & $script:NewTwin "$rt\wheels\$gil.whl" }
+            & $script:NewTwin "$rt\wheels-cp314t\numpy-2.5.3-cp314-cp314t-win_arm64.whl"
+            $write = { param([string]$Arch) Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = $Arch } { & $script:scriptPath -InstallDir $rt 2>&1 | Out-Null } }
+            Assert-Throws { & $write 'arm64' } -MessagePattern '(?s)cp3XYt store does not mirror the GIL store:(?=.*av-19\.0\.1-cp314-cp314-win_arm64\.whl has no cp3XYt twin)(?=.*numpy-2\.5\.3-cp314-cp314t-win_arm64\.whl is in)'
+            Assert-False (Test-Path "$rt\BUNDLE-README.md") 'nothing written for a refused bundle'
+            & $write 'amd64'
+            Assert-True (Test-Path "$rt\BUNDLE-README.md") 'smoke section 20 owns the native store'
+            Remove-Item "$rt\wheels-cp314t\numpy-2.5.3-cp314-cp314t-win_arm64.whl"
+            & $script:NewTwin "$rt\wheels-cp314t\av-19.0.1-cp314-cp314t-win_arm64.whl"
+            & $write 'arm64'
+            Assert-Match 'av-19\.0\.1-cp314-cp314t-win_arm64\.whl' (Get-Content "$rt\BUNDLE-README.md" -Raw) 'the mirrored store passes'
+        }
     }
 }

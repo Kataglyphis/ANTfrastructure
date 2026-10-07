@@ -470,7 +470,8 @@ packages) in `PYTHON_WHEELS_CP314T` (`C:\runtime\wheels-cp314t`), apart from the
 ([`windows-builds.md` § The free-threaded wheels](windows-builds.md#the-free-threaded-wheels)).
 `Sync-UvChainOnnxRuntime` reads that store for a venv whose ABI tag is `cp3XYt`, so a Windows
 `3.14t` leg of an ORT project gets the chain ORT like its GIL legs. Without the store it fails
-on the ABI as before.
+on the ABI as before. The arm64 bundle carries the same store with `win_arm64` twins, minus the
+IREE compiler ([`windows-builds.md` § The arm64 cross twins](windows-builds.md#the-arm64-cross-twins)).
 
 Linux does the same since 2026-10-07. `:latest` names its twin store, `/opt/wheels-cp314t`, in
 the same variable, and `uv_reconcile_chain_ort` reads it for a `cp3XYt` venv

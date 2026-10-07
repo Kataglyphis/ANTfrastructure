@@ -96,9 +96,34 @@ function Get-IreeFreeThreadedCmakeArgs {
     # Upstream turns abi3 on unless SOABI starts cpython-NNt, which Windows' cp314t-win_amd64 never does (CMakeLists.txt:782-791).
     $abi3Off = @('-DIREE_ENABLE_PYTHON_STABLE_ABI=OFF', '-DMLIR_ENABLE_PYTHON_STABLE_ABI=OFF')
     # nanobind caches the GIL pass's .cp314-win_amd64.pyd suffix, which 3.14t never imports; -U makes it ask the venv again.
-    return @($CmakeExtra | Where-Object { $_ -notlike '-DPython3_EXECUTABLE=*' }) +
+    return @($CmakeExtra | Where-Object { $_ -notmatch '^-DPython3?_(EXECUTABLE|INCLUDE_DIR|LIBRARY|NumPy_INCLUDE_DIR)=' }) +
         @(Get-PythonCMakeHintArgs -Python $Python -Prefix @('Python3', 'Python') -ForwardSlash -NumPyIncludeDir $NumPyIncludeDir) +
         $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')
+}
+
+# Cross only: clang-cl counts as MSVC, so upstream drops each arm_64 ukernel's -march; every configure needs them back per TU, with a floor.
+function Update-IreeCrossNinjaFile {
+    param([Parameter(Mandatory)][string]$BuildDir)
+    $ireeUkFeatureMap = [ordered]@{
+        'mmt4d_arm_64_fullfp16' = 'fp16'
+        'mmt4d_arm_64_fp16fml'  = 'fp16fml'
+        'mmt4d_arm_64_bf16'     = 'bf16'
+        'mmt4d_arm_64_dotprod'  = 'dotprod'
+        'mmt4d_arm_64_i8mm'     = 'i8mm'
+    }
+    # -Dasm=__asm__ restores the GNU asm keyword MS compat turns off; a pattern matching nothing would pass silently.
+    $ireeNinja = Join-Path $BuildDir 'build.ninja'
+    $isArm64Uk = { param($line) $line -match 'ukernel[\\/]arch[\\/]arm_64[\\/]' -and $line -match '\.c\.obj' }
+    [void](Add-NinjaPerTuFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel (asm keyword)' -Floor 10 -AlreadyTaggedPattern '-Dasm=__asm__' -Select {
+        param($line) if (& $isArm64Uk $line) { '-Dasm=__asm__' } else { '' }
+    }.GetNewClosure())
+    [void](Add-NinjaPerTuFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel feature' -Floor 5 -AlreadyTaggedPattern 'armv8\.2-a' -Select {
+        param($line)
+        if (& $isArm64Uk $line) {
+            foreach ($tok in $ireeUkFeatureMap.Keys) { if ($line -match "$tok\.c\.obj") { return "/clang:-march=armv8.2-a+$($ireeUkFeatureMap[$tok])" } }
+        }
+        return ''
+    }.GetNewClosure())
 }
 
 # The cp3XYt twins of the IREE wheels from the GIL tree, reconfigured, rebuilt where Python reaches and packed per package.
@@ -110,12 +135,15 @@ function Invoke-IreeFreeThreadedTwin {
         [Parameter(Mandatory)][string]$SourceDir,
         [Parameter(Mandatory)][string]$BuildDir,
         [Parameter(Mandatory)][string]$InstallDir,
+        # Runtime-only for the target: the per-TU ukernel flags come back after the configure, and setup.py packs for --plat-name.
+        [switch]$Cross,
         [string]$VenvDir = 'C:\temp\ft-venv-iree'
     )
     $ftPy = New-FreeThreadedBuildPython -GilPython $GilPython -VenvDir $VenvDir -Package pip, wheel, setuptools, numpy
     $numpyInc = (Invoke-ShieldedNative -Label 'numpy include probe (free-threaded)' -CommandLine """$($ftPy.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
     $ftArgs = Get-IreeFreeThreadedCmakeArgs -CmakeExtra $CmakeExtra -Python $ftPy -NumPyIncludeDir $numpyInc
     Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $BuildDir -InstallPrefix $InstallDir -ExtraArgs $ftArgs | Out-Null
+    if ($Cross) { Update-IreeCrossNinjaFile -BuildDir $BuildDir }
     [void](Assert-NinjaFreeThreadedDefine -BuildDir $BuildDir -Label 'IREE')
     # The GIL pass's abi3 modules (bare _runtime.pyd) are no output now; left in place, the twin would pack them (measured 2026-10-07).
     [void](Invoke-ShieldedNative -Label 'ninja -t cleandead (GIL-only outputs)' -CommandLine "ninja -C ""$BuildDir"" -t cleandead")
@@ -126,8 +154,10 @@ function Invoke-IreeFreeThreadedTwin {
         # setup.py stages its install under build\ beside it; the GIL pass's copy holds the same stale modules.
         Remove-Item -LiteralPath (Join-Path $BuildDir "$($pkg.Dir)\build") -Recurse -Force -ErrorAction SilentlyContinue
         $out = Join-Path $SourceDir "dist-$($pkg.Dir)-ft"
+        # pip wheel takes no --plat-name, so a cross twin packs as its GIL wheel does.
+        $packArgs = if ($Cross) { "setup.py bdist_wheel -d ""$out""" } else { "-m pip wheel . --no-deps --no-build-isolation -w ""$out""" }
         [void](Invoke-PythonWheelBuild -Python $ftPy -WorkingDir (Join-Path $BuildDir $pkg.Dir) -DistDir $out `
-                -Arguments "-m pip wheel . --no-deps --no-build-isolation -w ""$out""" -ModuleName $pkg.Module -FreeThreaded -Distribution $pkg.Dist)
+                -Arguments $packArgs -ModuleName $pkg.Module -FreeThreaded -Distribution $pkg.Dist)
     }
     Remove-Item -LiteralPath $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -297,8 +327,10 @@ if ($pythonBindings -eq 'ON' -and $ireeCross) {
 $cmakeExtra += Get-LlvmArchiverCmakeArg
 $cmakeExtra += Get-IreeCompilerRtCmakeArgs -Arch (Get-WindowsTargetArch)
 # The cp3XYt twins re-configure this tree after the GIL wheels, so the GIL configure settles first (-Settle).
-$ireeTwins = @(if ($pythonBindings -eq 'ON' -and -not $ireeCross) {
+$ireeTwins = @(if ($pythonBindings -eq 'ON') {
         foreach ($pkg in @(@{ Dir = 'compiler'; Dist = 'iree-base-compiler'; Module = 'iree.compiler' }, @{ Dir = 'runtime'; Dist = 'iree-base-runtime'; Module = 'iree.runtime' })) {
+            # Cross builds no compiler, so it has no compiler wheel to pair.
+            if ($ireeCross -and $pkg.Dir -eq 'compiler') { continue }
             $plan = Get-FreeThreadedTwinPlan -Distribution $pkg.Dist
             Write-Host $plan.Reason
             if ($plan.Build) { $pkg }
@@ -314,29 +346,8 @@ $cmakeExtra += $ireeRocmArgs
 # Phase B (the only phase on amd64): the target configure.
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $ireeInstallDir -ExtraArgs $cmakeExtra -Settle:($ireeTwins.Count -gt 0) | Out-Null
 
-if ($ireeCross) {
-    # clang-cl counts as MSVC, so upstream drops each arm_64 kernel's -march; add it per TU in build.ninja, with a floor.
-    $ireeUkFeatureMap = [ordered]@{
-        'mmt4d_arm_64_fullfp16' = 'fp16'
-        'mmt4d_arm_64_fp16fml'  = 'fp16fml'
-        'mmt4d_arm_64_bf16'     = 'bf16'
-        'mmt4d_arm_64_dotprod'  = 'dotprod'
-        'mmt4d_arm_64_i8mm'     = 'i8mm'
-    }
-    # -Dasm=__asm__ restores the GNU asm keyword MS compat turns off; a pattern matching nothing would pass silently.
-    $ireeNinja = Join-Path $buildDir 'build.ninja'
-    $isArm64Uk = { param($line) $line -match 'ukernel[\\/]arch[\\/]arm_64[\\/]' -and $line -match '\.c\.obj' }
-    [void](Add-NinjaPerTuFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel (asm keyword)' -Floor 10 -AlreadyTaggedPattern '-Dasm=__asm__' -Select {
-        param($line) if (& $isArm64Uk $line) { '-Dasm=__asm__' } else { '' }
-    })
-    [void](Add-NinjaPerTuFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel feature' -Floor 5 -AlreadyTaggedPattern 'armv8\.2-a' -Select {
-        param($line)
-        if (& $isArm64Uk $line) {
-            foreach ($tok in $ireeUkFeatureMap.Keys) { if ($line -match "$tok\.c\.obj") { return "/clang:-march=armv8.2-a+$($ireeUkFeatureMap[$tok])" } }
-        }
-        return ''
-    })
-}
+# Cross: the arm_64 ukernels' per-TU flags, which every configure of this tree drops again.
+if ($ireeCross) { Update-IreeCrossNinjaFile -BuildDir $buildDir }
 
 Write-Host 'Building IREE (LLVM in-tree -- this may take 60-120 minutes)...'
 # A persistent log: otherwise it dies with the failed solve, leaving a 50-line tail.
@@ -452,7 +463,7 @@ print("iree python rocm gate OK: hip driver + gfx1201 code object")
 
 # After every GIL gate, since the twins rebuild this tree's python modules in place.
 if ($ireeTwins.Count -gt 0) {
-    Invoke-IreeFreeThreadedTwin -GilPython $py -Package $ireeTwins -CmakeExtra $cmakeExtra -SourceDir $SourceDir -BuildDir $buildDir -InstallDir $ireeInstallDir
+    Invoke-IreeFreeThreadedTwin -GilPython $py -Package $ireeTwins -CmakeExtra $cmakeExtra -SourceDir $SourceDir -BuildDir $buildDir -InstallDir $ireeInstallDir -Cross:$ireeCross
 }
 
 Remove-SourceBuildTree -Path $SourceDir

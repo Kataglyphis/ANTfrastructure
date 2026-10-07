@@ -502,6 +502,8 @@ function Invoke-OrtFreeThreadedTwin {
         [Parameter(Mandatory)][string]$BuildDir,
         [Parameter(Mandatory)][string]$SourceDir,
         [Parameter(Mandatory)][string]$InstallPrefix,
+        # The GIL pass's per-TU MLAS flags differ on cross; other flags would recompile MLAS and relink onnxruntime.dll.
+        [bool]$Cross = $false,
         [string]$VenvDir = 'C:\temp\ft-venv-onnx'
     )
     $ftPy = New-FreeThreadedBuildPython -GilPython $GilPython -VenvDir $VenvDir -Package numpy, setuptools, wheel, packaging
@@ -509,7 +511,7 @@ function Invoke-OrtFreeThreadedTwin {
     $ftArgs = @($CmakeArgs) + @('-Donnxruntime_ENABLE_PYTHON=ON') + @(Get-PythonCMakeHintArgs -Python $ftPy -Prefix 'Python' -NumPyIncludeDir $numpyInc)
     Invoke-CmakeConfigure -SourceDir $CmakeSrc -BuildDir $BuildDir -InstallPrefix $InstallPrefix -ExtraArgs $ftArgs |
         Tee-Object -FilePath (Get-PersistentBuildLogPath -Name 'onnxruntime-configure-ft.log' -FallbackDir $BuildDir) | Out-Host
-    Update-OrtNinjaFile -BuildDir $BuildDir -SourceDir $SourceDir -Cross $false
+    Update-OrtNinjaFile -BuildDir $BuildDir -SourceDir $SourceDir -Cross $Cross
     $kept = Set-OrtNinjaCommandPython -NinjaFile (Join-Path $BuildDir 'build.ninja') -From $ftPy.Exe -To $GilPython.Exe
     Write-Host "free-threaded onnxruntime: $kept custom command(s) keep $($GilPython.Exe)"
     [void](Assert-NinjaFreeThreadedDefine -BuildDir $BuildDir -Label 'onnxruntime')
@@ -865,7 +867,7 @@ if ($webgpuPlan.WebGpu) {
 if ($ftPlan.Build) {
     Switch-BuildPhase '7. free-threaded twin (cp3XYt wheel)'
     [void](Invoke-OrtFreeThreadedTwin -GilPython $py -GilWheel $gilWheel -CmakeArgs @($cmakeArgs | Where-Object { $_ -notin $pythonArgs }) `
-            -CmakeSrc $cmakeSrc -BuildDir $buildDir -SourceDir $SourceDir -InstallPrefix $ortInstallDir)
+            -CmakeSrc $cmakeSrc -BuildDir $buildDir -SourceDir $SourceDir -InstallPrefix $ortInstallDir -Cross $onnxCross)
 }
 if ($webgpuPlan.OnLane) {
     $marker = Get-OrtWebGpuFeatureMarker -Plan $webgpuPlan -Pin $(if ($webgpu) { $webgpu.Pin }) -DllSha256 $webgpuDllSha

@@ -29,6 +29,8 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
         & $exportScript -BundleRoot $real -OutDir $out
         Assert-True (Test-Path (Join-Path $out 'bundle.zip')) 'the zip exists'
         Assert-True (Test-Path (Join-Path $out 'Test-Arm64Bundle.ps1')) 'the gate script travels with it'
+        $helper = Join-Path (Get-RepoRoot) 'linux\scripts\02-toolchain\python\free-threaded-wheel.py'
+        Assert-Equal (Get-FileHash $helper).Hash (Get-FileHash (Join-Path $out 'free-threaded-wheel.py')).Hash 'and the helper the gate proves the cp3XYt twins with'
     }
 
     It 'the zip expands to the bundle markers' {

@@ -6,6 +6,29 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — Windows arm64: cp314t twins of the chain wheels on the cross lane (CON79 item 2)
+
+- **The arm64 cross lane builds the `win_arm64` twins `:winamd64` builds**: `onnxruntime`, `av`, `apache-tvm-ffi` and
+  `iree-base-runtime` (no compiler on this lane), in `C:\runtime\wheels-cp314t`. The host's x64 3.14t runs each build;
+  the target tree's `python314t.lib` (CON74) is what each module links.
+  - `New-FreeThreadedBuildPython` links `Get-TargetBuildPython -FreeThreaded` and pins the cross venv's `EXT_SUFFIX` to
+    `.cp314t-win_arm64.pyd`; `Invoke-PythonWheelBuild -FreeThreaded` adds `--plat-name`.
+  - PyAV links with `build_ext -L <target libs>` (setuptools' host `libs\` came first and failed `LNK2001
+    __imp_PyModuleDef_Init`). ORT re-applies its cross MLAS flags after the twin's re-configure, IREE its ukernel flags
+    (`Update-IreeCrossNinjaFile`). `New-TvmFfiCrossWheel` assembles both tvm-ffi wheels; `apache-tvm`'s cross wheel is
+    `py3-none-win_arm64` now, as upstream builds it.
+  - media-tvm builds the free-threaded target tree too, and that tree stages `python3t.lib`: IREE's FindPython requires
+    `Development.SABIModule`.
+- **Static gates on the build host, the proof on the device.** A cross twin is stored after its tags, a new import gate
+  (`Get-FreeThreadedWheelImportFinding`, on amd64 too) and its PE machine. At the merge, `Write-BundleManifest.ps1`
+  refuses a cross store that does not mirror the GIL store, and `Test-TargetArch.ps1 -ImportWalk` machine-checks every
+  wheel's members and fails a `cp3XYt` module that imports a GIL runtime. `Test-Arm64Bundle.ps1` proves each twin in a
+  `python3.14t -m venv` with the `free-threaded-wheel.py` that `Export-Arm64Bundle.ps1` now ships beside it.
+- Proved in `:winarm64` (an x64 3.14t and the ARM64 trees from this checkout): twin passes 107 s PyAV, 72 s tvm-ffi, 90 s
+  ORT (DLLs byte-identical to the GIL wheel's), 36 s IREE runtime; every member `0xAA64`, every module importing
+  `python314t.dll`; manifest check and arch gate (1275 inspected, 0 violations) green. Only `windows-11-arm` can load
+  the twins (CON79).
+
 ## 2026-10-07 — Pins: Renovate's hub report (Vulkan SDK 1.4.363.0, flatpak 26.08, llama.cpp b11476, Node 26.11.0, …)
 
 - **Owner rule (2026-10-07): every update Renovate reports is taken, majors and runtime branches included.**
