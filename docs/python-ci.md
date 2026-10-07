@@ -450,6 +450,13 @@ Windows has the same trap and the same cure. `New-UvProjectEnvironment` asks uv 
 no wheel for one of its locked packages (2026-09-30). Test:
 `windows/scripts/tests/Uv.PythonRequest.Tests.ps1`.
 
+A Windows `3.14t` leg gets the image's interpreter too. A `:winamd64` built after 2026-10-07
+ships `C:\python-freethreaded\python3.14t.exe`, source-built beside the GIL build and last on
+`PATH` ([`windows-builds.md` § The free-threaded CPython](windows-builds.md#the-free-threaded-cpython)).
+`uv venv --python 3.14t` and `uv build --python 3.14t` resolve to it with
+`UV_PYTHON_DOWNLOADS=never`. An older image still has uv download one, and so does the arm64
+runner-native job above, which runs without an image.
+
 **uv downloads nothing for a `+gil` request**, so a version the host lacks is installed first.
 OmniAccelerANT's 3.12 venv (its CMake format gate) stopped with `No interpreter found for
 Python 3.12+gil in managed installations, search path, or registry` (2026-10-01). Like Linux's

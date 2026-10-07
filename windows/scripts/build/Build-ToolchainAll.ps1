@@ -6,11 +6,15 @@
 # The host CPython compile of Dockerfile.toolchain-builder's `built` stage; see docs/windows-build-lanes.md § Build isolation and CPU parallelism.
 
 [CmdletBinding()]
-param()
+param(
+    # The image takes both defaults; another checkout and install root prove the build without touching the baked ones.
+    [string]$SourceDir = 'C:\temp\cpython',
+    [string]$FreeThreadedRoot = ''
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-$src = 'C:\temp\cpython'
+$src = $SourceDir
 
 Write-Host "==> Building CPython from source at $src (NUMBER_OF_PROCESSORS=$env:NUMBER_OF_PROCESSORS)"
 if (-not (Test-Path $src)) { throw "CPython source tree missing at $src (builder image did not clone it)" }
@@ -60,26 +64,24 @@ if (-not (Test-Path $nugetExe)) {
 $env:NUGET_URL = $nugetUrl
 
 # -p x64 on every lane: this is the build interpreter, the toolchain image is shared, and Build-TargetCpython.ps1 builds the target one.
-& cmd /c "cd /d $src && PCbuild\build.bat -e -p x64 -c Release"
-if ($LASTEXITCODE -ne 0) { throw "CPython build.bat failed (exit $LASTEXITCODE)" }
+Invoke-CpythonPcbuild -SourceDir $src
+$pyExe = "$src\PCbuild\amd64\python.exe"
+if (-not (Test-Path $pyExe)) { throw 'Python build failed - interpreter not found' }
 
-# The external DLLs are already copied into PCbuild\amd64.
-foreach ($d in @("$src\PCbuild\obj", "$src\externals", "$src\.git")) {
+# The 3.14t legs' interpreter, from the same checkout while its externals are still here; see docs/windows-builds.md § The free-threaded CPython.
+Invoke-CpythonPcbuild -SourceDir $src -FreeThreaded
+if (-not $FreeThreadedRoot) { $FreeThreadedRoot = Get-CpythonFreeThreadedRoot }
+Install-CpythonFreeThreadedLayout -SourceDir $src -Destination $FreeThreadedRoot -LayoutPython $pyExe
+
+# The external DLLs are already copied into PCbuild\amd64 and the free-threaded install.
+foreach ($d in @("$src\PCbuild\obj", "$src\externals", "$src\.git", (Get-CpythonFreeThreadedBuildDir -SourceDir $src))) {
     if (Test-Path $d) { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-# Verify the built interpreter.
-$pyExe = "$src\PCbuild\amd64\python.exe"
-if (-not (Test-Path $pyExe)) { $pyExe = "$src\PCbuild\amd64\python_d.exe" }
-if (-not (Test-Path $pyExe)) { throw 'Python build failed - interpreter not found' }
-# Test-Path alone passes a clang-built python.exe that dies at startup.
-$pyVersionLine = & $pyExe --version 2>&1 | Select-Object -First 1
-if ($LASTEXITCODE -ne 0) { throw "source-built python failed to run (exit $LASTEXITCODE)" }
-Write-Host "Python version: $pyVersionLine"
-# sysconfig.get_platform() reads the architecture out of sys.version; without it uv and pip resolve win32 wheels.
-$pyArchTag = & $pyExe -c "import sys; print('AMD64' in sys.version)"
-if ($pyArchTag -ne 'True') { throw "source-built python's sys.version lost '64 bit (AMD64)': $(& $pyExe -c 'import sys; print(sys.version)')" }
-Write-Host "Python built at: $pyExe"
+# After the scrub, so both interpreters are proven without the trees it removed.
+Assert-CpythonInterpreter -Exe $pyExe -ExpectedVersion $env:PYTHON_VERSION
+Assert-CpythonInterpreter -Exe (Join-Path $FreeThreadedRoot (Get-CpythonFreeThreadedExeName)) -FreeThreaded -ExpectedVersion $env:PYTHON_VERSION
+Write-Host "Python built at: $pyExe; free-threaded at: $FreeThreadedRoot"
 
 # Explicit success -- see Complete-SourceBuild in WindowsSourceBuild.Common.psm1 for why.
 exit 0

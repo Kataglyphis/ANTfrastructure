@@ -19,7 +19,9 @@ RUN if (-not (Test-Path 'C:\temp\cpython')) { git clone --branch v$env:PYTHON_VE
 COPY windows/scripts/build/cpython-Directory.Build.props C:\temp\cpython\PCbuild\Directory.Build.props
 # Downstream media builds find the built CPython via PATH.
 ENV PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64"
-ENV PATH=$PYTHON_BUILD_BIN;$PATH
+# The free-threaded twin has no python.exe, so last on PATH it answers only a 3.14t request; docs/windows-builds.md § The free-threaded CPython.
+ENV PYTHON_FREETHREADED_BIN="C:\python-freethreaded"
+ENV PATH=$PYTHON_BUILD_BIN;$PATH;$PYTHON_FREETHREADED_BIN
 
 # Inputs are bind mounts, so an edit to them never invalidates this stage's ancestry.
 FROM builder AS built
