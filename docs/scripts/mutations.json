@@ -12389,7 +12389,7 @@
  {
   "id": "stage-graph.deepstream-default-on",
   "target": "linux/scripts/01-core/stage-defs.sh",
-  "find": "          [ \"${CROSS_BUILD_PLATFORM:-linux/amd64}\" != \"linux/amd64\" ] || : \"${ENABLE_DEEPSTREAM:=true}\"\n",
+  "find": "          case \"$(cross_build_platform)\" in */amd64) : \"${ENABLE_DEEPSTREAM:=true}\" ;; esac\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-gpu-variant.sh",
   "why": "every amd64 nvidia build carries DeepStream without being asked (owner 2026-10-07)"
@@ -12397,7 +12397,7 @@
  {
   "id": "stage-graph.deepstream-default-amd64-only",
   "target": "linux/scripts/01-core/stage-defs.sh",
-  "find": "[ \"${CROSS_BUILD_PLATFORM:-linux/amd64}\" != \"linux/amd64\" ] || : \"${ENABLE_DEEPSTREAM:=true}\"",
+  "find": "case \"$(cross_build_platform)\" in */amd64) : \"${ENABLE_DEEPSTREAM:=true}\" ;; esac",
   "replace": ": \"${ENABLE_DEEPSTREAM:=true}\"",
   "test": "bash linux/scripts/tests/test-gpu-variant.sh",
   "why": "an arm64 nvidia build defaulting to DeepStream would die in deepstream.sh, which refuses arm64 (phase 7)"
