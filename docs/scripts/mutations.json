@@ -12083,12 +12083,12 @@
   "why": "a host-tagged wheel installs on the target and never imports; the build command is what turns this value into the tag"
  },
  {
-  "id": "python.packaging.cross-mode-pins-the-emulation",
+  "id": "python.packaging.cross-link-takes-the-sysroot-libc",
   "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
-  "find": "  export LDSHARED=\"${CC} -shared -Wl,-m,elf64lriscv\"",
+  "find": "  export LDSHARED=\"${CC} -shared -L${RISCV64_SYSROOT}/lib/riscv64-linux-gnu -L${RISCV64_SYSROOT}/usr/lib/riscv64-linux-gnu\"",
   "replace": "  export LDSHARED=\"${CC} -shared\"",
   "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
-  "why": "without the emulation the wheel link can drive lld as x86-64 and die on the riscv64 crt objects (run 37196119524)"
+  "why": "without the sysroot's lib dirs first, -lc finds the host LIBDIR's libc.so, whose OUTPUT_FORMAT(elf64-x86-64) makes lld refuse every riscv64 object (runs 37196119524, 37329297990)"
  },
  {
   "id": "linux-lane.riscv64-packaging-crosses",
