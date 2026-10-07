@@ -41,8 +41,8 @@ RUN & 'C:\temp\scripts\Install-Vs.ps1' -TempDir $env:TEMP_DIR
 
 # Pins are ARGs declared right above their consumer: every RUN after an ARG keys its cache on it, and a Linux-only versions.env edit must not re-pay these layers.
 ARG VULKAN_VERSION=1.4.357.0
-ARG CMAKE_VERSION=4.4.3
-ARG LLVM_WINDOWS_VERSION=23.1.1
+ARG CMAKE_VERSION=4.4.4
+ARG LLVM_WINDOWS_VERSION=23.1.3
 ARG NINJA_WINDOWS_VERSION=1.13.2
 ARG NASM_WINDOWS_VERSION=3.02
 # Pinned for a feature gate (below v0.16.0 the multilevel chain is silently ignored); see docs/windows-build-resources.md § Persistent compile cache (sccache).
@@ -89,7 +89,7 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
 ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$SCOOP_GLOBAL_SHIMS;$WIN_BASE_PATH
 
 # The expensive rust layer comes first in the tail, so edits to the cheap scripts below never re-pay it.
-ARG RUST_VERSION=1.98.1
+ARG RUST_VERSION=1.99.0
 ARG FLUTTER_RUST_BRIDGE_VERSION=2.13.0
 ARG SCCACHE_WINDOWS_ZIP_SHA256=8965c74d5e8a225244f741e18ad2f3f504f48228dc1bac948fc22761a348363d
 COPY windows\scripts\host\Install-RustToolchain.ps1 C:\temp\scripts\

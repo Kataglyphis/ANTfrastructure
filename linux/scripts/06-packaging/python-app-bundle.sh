@@ -10,7 +10,7 @@ REPO_ROOT="${PWD}"
 CONFIG="packaging/app.json"
 WHEEL_DIR="dist"
 OUT_DIR=""
-PYTHON_VERSION="3.14.7"
+PYTHON_VERSION="3.14.8"
 ORT_WHEEL_DIR="${ORT_CHAIN_WHEEL_DIR:-/opt/onnxruntime-wheels}"
 WORK_DIR=""
 

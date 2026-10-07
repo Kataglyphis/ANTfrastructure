@@ -894,7 +894,7 @@ nerdctl build --platform linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=cross \
   --build-arg GCC_VERSION=16.2.0 \
-  --build-arg LLVM_RELEASE=23.1.1 \
+  --build-arg LLVM_RELEASE=23.1.3 \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/ \

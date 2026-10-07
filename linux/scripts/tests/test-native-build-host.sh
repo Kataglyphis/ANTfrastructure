@@ -131,9 +131,9 @@ t_case "the pin is set, peeled, and matches LLVM_RELEASE's tag"
 # Read, not sourced: sourcing versions.env under this suite's `set -u` can trip on its references.
 _VERS="${_CORE}/versions.env"
 _vers_val() { sed -n "s/^$1=//p" "${_VERS}" | head -1; }
-t_assert_eq "23.1.1" "$(_vers_val LLVM_RELEASE)"
-t_assert_eq "6dfe1677ab8dffbc6ec13d53a1e0215d75147689" "$(_vers_val LLVM_COMMIT)" \
-  "refs/tags/llvmorg-23.1.1^{} — the PEELED sha, per the convention above the key"
+t_assert_eq "23.1.3" "$(_vers_val LLVM_RELEASE)"
+t_assert_eq "0d261d1ca552c95a8f007e061c787ac7132fbcbc" "$(_vers_val LLVM_COMMIT)" \
+  "refs/tags/llvmorg-23.1.3^{} — the PEELED sha, per the convention above the key"
 t_assert_eq "40" "$(printf '%s' "$(_vers_val LLVM_COMMIT)" | wc -c | tr -d ' ')"
 
 t_case "llvm_assert_commit_pin fails on a mismatch and is quiet when unset"

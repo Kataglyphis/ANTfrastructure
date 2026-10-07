@@ -83,7 +83,6 @@ Every inline substitution in a build script carries a `# Inline patch (kept inli
 |---|---|---|---|
 | FFmpeg | `001-allow-msys-builds.patch` | `configure` | Replace `die` with `echo` for MSYS2 build env |
 | GStreamer | `001-ges-commit-rename.patch` | `subprojects/gst-editing-services/ges/ges-validate.c` | `#define _commit ges__commit` to dodge `-FIio.h` macro collision |
-| CPython | `001-short-clang-compiler-id.patch` | `PC/pyconfig.h` | `[Clang 22.1.3]` instead of VS clang's full version text, so `sys.version` keeps `64 bit (AMD64)` and venvs report `win-amd64`, not `win32` |
 | ONNX Runtime | `001-softmax-clangcl-keywords.patch` | `core/providers/cuda/math/softmax.cc` | Change the one real ISO-646 `or` → `\|\|` on the dispatch `if` (clang-cl in MS-compat mode treats `or` as an identifier); comments left as upstream |
 | ONNX Runtime | `002-disable-cuda-pch.patch` | `cmake/onnxruntime_providers_cuda.cmake` | Disable CUDA EP `target_precompile_headers` (CUDA 13.x CCCL broken with clang-cl) |
 | ONNX Runtime | `003-dml-clangcl-compat.patch` | DirectML EP (5 files under `core/providers/dml/`) | [details](#003-dml-clangcl-compatpatch) |
