@@ -127,6 +127,10 @@
   the new list showed over the unfixed tree. Each annotation now names `loose`, `pep440` or a
   `regex:`. `UBUNTU_VERSION` was read, and now names `ubuntu` so only an LTS counts as stable.
 - **Newly visible:** binaryen 133, Vulkan SDK 1.4.363.0, pandoc 3.12 and TheRock 10.1.
+- **Five independent pins had no annotation at all**, and four of them hid a release: x265 4.2 (bitbucket-tags), the
+  freedesktop runtime 25.08/26.08 for the flatpak (gitlab-tags), Chrome for Testing 155.0.8059.39
+  (a new `custom.chrome-for-testing` datasource, Stable channel), plus HailoRT and TAPPAS (current
+  at 5.4.0). The pins still left unannotated, and why, are in docs/dependency-updates.md.
 - **A value pin no longer moves to npm's integrity hash.** npm reports `newDigest` (the
   tarball's `sha512-…`) on every update, and the planner preferred it over `newValue`, so the
   report showed Renovate 44.142.1 as `sha512-prNFz`. An apply would have written that into

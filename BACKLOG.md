@@ -131,6 +131,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       (2026-08-28); no arm64 gate imports tvm. Done when a published `:latest` (all arches),
       `:winamd64` and `:winarm64` built from this hub pass their smokes.
 
+      **OrchestrANT's Linux x64 and arm64 lanes are red until then** (c33edb3, run
+      37597200372): its hub pin carries `PYTHON_VERSION=3.14.8`, and `python-app-bundle.sh`
+      asks the published image's uv 0.12.17 for a 3.14.8 runtime it does not know (`No download
+      found for request: cpython-3.14.8-linux-x86_64-gnu`). uv 0.12.23 in the next `:latest`
+      serves it. Lesson: a consumer's pin bump that moves `PYTHON_VERSION` or `UV_VERSION` waits
+      for the image.
+
 ## Open — Linux image (all arches)
 
 - [ ] **CON65 — cargo-audit, cargo-deny and cargo-tarpaulin in the image** [M, ★★]. Owner rule

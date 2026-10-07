@@ -1133,7 +1133,15 @@ Two guards keep it that way:
 
 A pin with no annotation at all is a different gap: Renovate never sees it. Most
 of those are slaved to an annotated key (a SHA256, a commit, a URL, MIGraphX to
-ROCm), and their bump rides on that key's.
+ROCm), and their bump rides on that key's. Five were not, and were annotated on
+2026-10-07, each hiding a release that day: `X265_VERSION` (bitbucket-tags, 4.2),
+`FLATPAK_RUNTIME_VERSION` (gitlab-tags on freedesktop-sdk, 25.08 and 26.08),
+`CHROME_FOR_TESTING_VERSION` (the `custom.chrome-for-testing` datasource, Stable
+only), `HAILORT_VERSION` and `TAPPAS_VERSION`. Still deliberately unannotated:
+`DAV1D_VERSION` and the x264 pins (they follow GStreamer's wraps),
+`SQLITE3_WASM_VERSION` (it follows the consumers' `sqlite3` Dart package),
+`TENSORFLOW_C_VERSION` (2.18.1 is the last C tarball), and the Android SDK pins,
+for which no datasource reads Google's repository XML.
 
 ## Scoping, and a trap worth knowing
 
