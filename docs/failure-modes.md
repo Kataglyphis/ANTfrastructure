@@ -1639,7 +1639,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** TVM 0.26's `codegen_llvm.cc` uses `llvm::Intrinsic::matchIntrinsicSignature` / `MatchIntrinsicTypes_*` which were removed or renamed in LLVM 23.1.0. The forced `LLVM_WINDOWS_VERSION` bump from 22.1.8 to 23.1.0 (scoop reshaped the artifact, #135) broke the TVM compiler's LLVM API surface. The `llvm_module.cc` `LLJITBuilderState::ObjectLinkingLayerCreator` conversion also fails (API change).
 
-**Fix.** Fixed (#134; rebuilt green 2026-09-02): `TVM_COMMIT` in `versions.env` pins TVM to upstream `main` (`994e0216`), which carries the `TVM_LLVM_VERSION >= 230` guards, and `Build-TvmFromSource.ps1` prefers it over `TVM_REF`. Drop it back to empty only once a TVM release ships those guards. The arm64 lane needs no fix — it builds runtime-only and never compiles `codegen_llvm.cc`.
+**Fix.** Fixed (#134; rebuilt green 2026-09-02): `TVM_COMMIT` in `versions.env` pins TVM to upstream `main` (`994e0216`), which carries the `TVM_LLVM_VERSION >= 230` guards, and `Build-TvmFromSource.ps1` prefers it over `TVM_REF`. TVM v0.27.0 ships those guards (#20189), and `TVM_COMMIT` now pins that tag's commit; it stays set, because a branch named `v0.27.0` shadows the tag ([`linux-cross-builds.md`](linux-cross-builds.md#tvm-is-pinned-by-commit-not-by-tag)). The arm64 lane needs no fix — it builds runtime-only and never compiles `codegen_llvm.cc`.
 
 ### `lld-link: error: undefined symbol` for template instantiations after a green compile
 

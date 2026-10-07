@@ -665,7 +665,7 @@ Evidence: the research JSON (component "Apache TVM + IREE"). Pinned sources are 
 **What it enables.** On `-Variant rocm`, `C:\runtime\lib\litert-lm\bin` also carries LiteRT-LM's Windows GPU runtime, so `litert_lm_main.exe --backend=gpu` can run:
 - `libLiteRtWebGpuAccelerator.dll` (LiteRT's WebGPU accelerator; a closed-source prebuilt from the Apache-2.0 LiteRT-LM repo);
 - `libLiteRtTopKWebGpuSampler.dll`;
-- `libwebgpu_dawn.dll` (Dawn, which runs on Direct3D 12);
+- `webgpu_dawn.dll` (Dawn, which runs on Direct3D 12);
 - DXC's `dxcompiler.dll` and `dxil.dll`.
 
 DXC's licence texts go to `C:\runtime\lib\litert-lm\licenses\directx-shader-compiler\`.

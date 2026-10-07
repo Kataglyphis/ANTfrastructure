@@ -256,18 +256,25 @@ def derive_protoc_from_litert_lm(litert_lm_version: str) -> str | None:
         text = http_text(url)
     except Exception:  # noqa: BLE001 — advisory only, never abort the sweep
         return None
-    m = re.search(r"GIT_TAG\s+v?(\d+)\.(\d+)\.(\d+)", text)
+    return protoc_from_protobuf_cmake(text)
+
+
+def protoc_from_protobuf_cmake(text: str) -> str | None:
+    """protoc for a protobuf.cmake: LITERTLM_PROTOBUF_TAG "v36.1" (0.18+) or GIT_TAG v35.1 is protoc itself; a 3-part runtime tag v6.31.1 maps to 31.1."""
+    m = (re.search(r'LITERTLM_PROTOBUF_TAG\s+"v?(\d+)\.(\d+)(?:\.(\d+))?"', text)
+         or re.search(r"GIT_TAG\s+v?(\d+)\.(\d+)(?:\.(\d+))?\b", text))
     if not m:
         return None
-    # protobuf runtime MAJOR.MINOR.PATCH -> protoc release is MINOR.PATCH
-    return f"{m.group(2)}.{m.group(3)}"
+    if m.group(3):
+        return f"{m.group(2)}.{m.group(3)}"
+    return f"{m.group(1)}.{m.group(2)}"
 
 
 # The Windows rocm lane's LiteRT-LM GPU payload (Build-LitertLmBazel.ps1): key -> DLL.
 _LITERT_LM_GPU_DLL_PINS = (
     ("LITERT_LM_WEBGPU_ACCELERATOR_SHA256", "libLiteRtWebGpuAccelerator.dll"),
     ("LITERT_LM_WEBGPU_SAMPLER_SHA256", "libLiteRtTopKWebGpuSampler.dll"),
-    ("LITERT_LM_WEBGPU_DAWN_SHA256", "libwebgpu_dawn.dll"),
+    ("LITERT_LM_WEBGPU_DAWN_SHA256", "webgpu_dawn.dll"),
 )
 
 

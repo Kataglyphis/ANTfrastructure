@@ -159,8 +159,8 @@ function Get-TvmRocmFeatureMarker {
     )
 }
 
-# TVM_COMMIT wins over TVM_REF: no TVM release compiles against LLVM 23.1; see versions.env § TVM_COMMIT.
-$TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_COMMIT', 'TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.26.0'
+# TVM_COMMIT wins over TVM_REF: a branch shadows the tag; see versions.env § TVM_COMMIT.
+$TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_COMMIT', 'TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.27.0'
 
 Write-Host "=== TVM source build ($TvmVersion, Ninja+clang-cl) ==="
 
@@ -499,7 +499,7 @@ if ($pythonModule -eq 'ON') {
     # A commit hash is not PEP 440, so the pretend version falls back to TVM_REF's tag.
     $scmVersion = $TvmVersion
     if ($scmVersion -match '^[0-9a-f]{7,40}$') {
-        $tagFallback = Get-SourceBuildVersion -EnvironmentVariables @('TVM_REF') -DefaultValue 'v0.26.0'
+        $tagFallback = Get-SourceBuildVersion -EnvironmentVariables @('TVM_REF') -DefaultValue 'v0.27.0'
         $scmVersion = $tagFallback
     }
     $env:SETUPTOOLS_SCM_PRETEND_VERSION = ($scmVersion -replace '^v', '')

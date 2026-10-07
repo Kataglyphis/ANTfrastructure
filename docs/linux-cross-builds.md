@@ -978,8 +978,15 @@ and asserts the shipped `/opt/ffmpeg` lib set matches the versions.env toggles
 
 ### TVM is pinned by COMMIT, not by tag
 
-`TVM_REF=v0.26.0` is not what the build clones. `TVM_COMMIT` in `versions.env`
-wins over the tag (`tvm.sh`'s `${TVM_COMMIT:-$ref}`) and is currently set,
+`TVM_REF` names the release and `TVM_COMMIT` in `versions.env` is what the build
+clones: it wins over the tag (`tvm.sh`'s `${TVM_COMMIT:-$ref}`, Windows'
+`Get-SourceBuildVersion` order). Since v0.27.0 (2026-10-07) it is the tag's own peeled
+commit, and it must **never be emptied**: apache/tvm also carries a **branch** named
+`v0.27.0` (the 0.27.0.post1 commit `7b5acb32`), and `git clone --branch v0.27.0`
+takes the branch, so an empty pin builds a commit the tag does not name and that can
+move. Check for a same-named branch (`git ls-remote` `refs/heads/<tag>`) at every bump.
+
+The history: until v0.27.0 the pin was upstream `main` (`994e0216`, #20189),
 because **TVM v0.26.0 does not compile against LLVM 23** (`LLVM_RELEASE`) — LLVM 23
 dropped `TargetOptions::{NoInfsFPMath,NoNaNsFPMath}`, renamed
 `SubtargetSubTypeKV::Key`/`SubtargetFeatureKV::Key` to `key()`, and changed
@@ -988,8 +995,8 @@ escaped it at first only because it linked the *distro* `llvm-config-21`;
 `tvm-detect.sh` now picks the `LLVM_RELEASE` major on every arch and asserts it,
 so the commit pin matters on amd64 too.
 
-Upstream `main` carries `TVM_LLVM_VERSION >= 230` guards for all of it and no
-tagged release does, so the commit is pinned rather than the port reproduced. A
+Upstream `main` carried `TVM_LLVM_VERSION >= 230` guards for all of it and no
+tagged release did before v0.27.0, so the commit was pinned rather than the port reproduced. A
 hand-written patch was tried first and removed: measured on a real arm64 build
 it fixed four of five sites in one of the three files while logging success.
 
@@ -1002,7 +1009,8 @@ Two things follow, both proven on 2026-08-27:
   update only fired when the checkout MOVED `HEAD`. Pinning the default-branch
   HEAD moves nothing, so CMake died on an empty `3rdparty/tvm-ffi`. Fixed.
 
-Drop `TVM_COMMIT` back to empty the moment a TVM release ships the guards.
+v0.27.0 ships the guards (`994e0216` is its ancestor), so the pin moved to the tag's
+commit `4d0ac168` rather than back to empty, for the branch reason above.
 
 ### TVM cross wheels: what must not be simplified away
 
@@ -1098,7 +1106,7 @@ untested while the dead knob had a suite of its own.
 
 ### IREE (Linux lane)
 
-IREE (`IREE_VERSION` in versions.env, currently v3.11.0) ships 3-arch in the
+IREE (`IREE_VERSION` in versions.env, currently v3.12.0) ships 3-arch in the
 media image since 2026-07-14, with a deliberately split strategy per arch.
 
 No arch installs an upstream wheel: PyPI ships `iree-base-{compiler,runtime}`

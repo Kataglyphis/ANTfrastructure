@@ -65,7 +65,7 @@ function Assert-IreeRocmDeviceBitcodePin {
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-$IreeVersion = Get-SourceBuildVersion -Value $IreeVersion -EnvironmentVariables @('IREE_VERSION') -DefaultValue 'v3.11.0'
+$IreeVersion = Get-SourceBuildVersion -Value $IreeVersion -EnvironmentVariables @('IREE_VERSION') -DefaultValue 'v3.12.0'
 
 Write-Host "=== IREE source build ($IreeVersion, Ninja+clang-cl) ==="
 

@@ -92,7 +92,7 @@ RUN set -euo pipefail; \
     [ -n "$(ls -A /opt/vulkan 2>/dev/null)" ] || { echo "ERROR: /opt/vulkan is empty after Vulkan SDK install" >&2; exit 1; }
 
 # TVM pins only: no build here, but this ENV is what media's tvm stage reads.
-ARG TVM_REF=v0.26.0
+ARG TVM_REF=v0.27.0
 ARG TVM_BUILD_TYPE=${BUILD_TYPE}
 ARG TVM_USE_VULKAN=1
 # Off by default: the GPU layers build separately (Dockerfile.nvidia / Dockerfile.amd).

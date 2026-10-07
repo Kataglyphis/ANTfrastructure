@@ -35,14 +35,14 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Apache TVM | v0.26.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
+| Apache TVM | v0.27.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
 
 ### Media Layer (`Dockerfile.media`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | ONNX Runtime | v1.30.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
-| ONNX Runtime GenAI | v0.15.2 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
+| ONNX Runtime GenAI | v0.17.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
@@ -52,14 +52,14 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | FFmpeg codec libraries (x264, x265, libvpx, aom, dav1d, SVT-AV1, opus, LAME, vorbis, libass, twolame) | Ubuntu apt | [ffmpeg.org/legal.html](https://ffmpeg.org/legal.html) | GPL / LGPL / various |
 | VVdeC (VVC/H.266 decoder) | v3.2.0 | [github.com/fraunhoferhhi/vvdec](https://github.com/fraunhoferhhi/vvdec) | BSD-3-Clause-Clear |
 | ArmNN (arm64) | v26.07 | [github.com/ARM-software/armnn](https://github.com/ARM-software/armnn) | MIT |
-| Arm Compute Library (arm64) | v53.3.0 | [github.com/ARM-software/ComputeLibrary](https://github.com/ARM-software/ComputeLibrary) | MIT |
+| Arm Compute Library (arm64) | v53.3.1 | [github.com/ARM-software/ComputeLibrary](https://github.com/ARM-software/ComputeLibrary) | MIT |
 | libcamera | v0.7.2 | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
 | Abseil | 20260817.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
 | FreeType | 2.14.3 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |
 | nv-codec-headers | n13.1.15.0 | [git.videolan.org/git/ffmpeg/nv-codec-headers.git](https://git.videolan.org/git/ffmpeg/nv-codec-headers.git) | MIT |
 | GObject-Introspection | 1.86.0 | [gitlab.gnome.org/GNOME/gobject-introspection](https://gitlab.gnome.org/GNOME/gobject-introspection) | LGPLv2+ |
-| IREE | v3.11.0 | [iree.dev](https://iree.dev/) | Apache 2.0 with LLVM Exception |
-| PyAV | 18.1.0 | [github.com/PyAV-Org/PyAV](https://github.com/PyAV-Org/PyAV) | BSD 3-Clause |
+| IREE | v3.12.0 | [iree.dev](https://iree.dev/) | Apache 2.0 with LLVM Exception |
+| PyAV | 19.0.1 | [github.com/PyAV-Org/PyAV](https://github.com/PyAV-Org/PyAV) | BSD 3-Clause |
 
 ### Android Layer (`Dockerfile.android`)
 
@@ -199,21 +199,21 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | GStreamer Rust plugins rswebrtc and rsrtp (gst-plugins-rs net/webrtc, net/rtp) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
 | Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, …) | pinned by gst-plugins-rs's Cargo.lock at the GStreamer tag | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MIT / Apache 2.0 / ISC / BSD / Unicode-3.0 / CDLA-Permissive-2.0 (per crate, 337 crates on 2026-10-05) |
 | ONNX Runtime | v1.30.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
-| ONNX Runtime GenAI | v0.15.2 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
+| ONNX Runtime GenAI | v0.17.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | FFmpeg | n9.0.2 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
 | LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
-| LiteRT-LM | 0.17.1 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
-| Apache TVM | v0.26.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
-| AMD AMF SDK headers (FFmpeg --enable-amf; rocm variant only) | v1.5.2 | [github.com/GPUOpen-LibrariesAndSDKs/AMF](https://github.com/GPUOpen-LibrariesAndSDKs/AMF) | MIT |
+| LiteRT-LM | 0.18.0 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
+| Apache TVM | v0.27.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
+| AMD AMF SDK headers (FFmpeg --enable-amf; rocm variant only) | v1.5.3 | [github.com/GPUOpen-LibrariesAndSDKs/AMF](https://github.com/GPUOpen-LibrariesAndSDKs/AMF) | MIT |
 | Vulkan SDK headers + glslc (FFmpeg --enable-vulkan; rocm variant only) | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache-2.0 OR MIT (Vulkan-Headers; no election recorded, so both are listed) and MIT (SPIRV-Headers); glslc is build-time only |
 
 ### LiteRT-LM GPU Backend (rocm variant only)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| LiteRT-LM WebGPU accelerator + TopK sampler (prebuilt libLiteRtWebGpuAccelerator.dll, libLiteRtTopKWebGpuSampler.dll) | 0.17.1 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 (the LiteRT-LM repository's licence; closed-source Google binaries, no source published) + BSD 3-Clause (statically linked protobuf) |
-| Dawn WebGPU (prebuilt libwebgpu_dawn.dll) | as prebuilt in LiteRT-LM (sha256-pinned) | [dawn.googlesource.com/dawn](https://dawn.googlesource.com/dawn) | BSD 3-Clause (Dawn/Tint) + Apache 2.0 (statically linked abseil, SPIRV-Tools) |
+| LiteRT-LM WebGPU accelerator + TopK sampler (prebuilt libLiteRtWebGpuAccelerator.dll, libLiteRtTopKWebGpuSampler.dll) | 0.18.0 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 (the LiteRT-LM repository's licence; closed-source Google binaries, no source published) + BSD 3-Clause (statically linked protobuf) |
+| Dawn WebGPU (prebuilt webgpu_dawn.dll) | as prebuilt in LiteRT-LM (sha256-pinned) | [dawn.googlesource.com/dawn](https://dawn.googlesource.com/dawn) | BSD 3-Clause (Dawn/Tint) + Apache 2.0 (statically linked abseil, SPIRV-Tools) |
 | DirectX Shader Compiler (dxcompiler.dll, dxil.dll) | per LiteRT-LM WORKSPACE (sha256-pinned) | [github.com/microsoft/DirectXShaderCompiler](https://github.com/microsoft/DirectXShaderCompiler) | NCSA (LLVM; the package's ReleaseNotes apply it to every file but d3d12shader.h, which is MIT and not shipped) + Microsoft Software License Terms (LICENSE-MS.txt is in the zip without naming the files it covers, so it is read as applying until reviewed); all three texts ship in C:\runtime\lib\litert-lm\licenses |
 
 ### ONNX Runtime WebGPU EP (rocm variant only)

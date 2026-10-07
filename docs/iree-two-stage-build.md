@@ -41,8 +41,8 @@ IREE_CLANG_BINARY / IREE_LLVM_LINK_BINARY resolve to the target build's own
 bundled-LLVM targets ($<TARGET_FILE:clang>, $<TARGET_FILE:llvm-link>,
 build_tools/cmake/iree_llvm.cmake:83-85), never to IREE_HOST_BIN_DIR.
 
-With the target on COMPILER=ON, a full grep of IREE v3.11.0 shows exactly TWO
-places that read a file out of ${IREE_HOST_BIN_DIR}:
+With the target on COMPILER=ON, a full grep of IREE v3.12.0 shows exactly TWO
+places outside tests that read a file out of ${IREE_HOST_BIN_DIR}:
 build_tools/cmake/iree_c_embed_data.cmake:97-98   iree-c-embed-data
 build_tools/cmake/flatbuffer_c_library.cmake:90-91 iree-flatcc-cli
 Both are tiny host codegen utilities with ZERO LLVM dependency (a single .cc,
@@ -53,7 +53,8 @@ build_tools/cmake/build_riscv.sh likewise runs `--target install` with
 -DIREE_BUILD_COMPILER=OFF, so the COMPILER=OFF install path is the supported
 one. Everything else that touches IREE_HOST_BIN_DIR is either the gated
 iree_import_binary branch above or tests/samples (BUILD_TESTS=OFF,
-BUILD_SAMPLES=OFF).
+BUILD_SAMPLES=OFF); v3.12.0's iree_vmasm_module.cmake reads iree-as-module only
+for runtime/src/iree/vm/test, which returns early with BUILD_TESTS=OFF.
 
 Guarded, not assumed: after the install we require both tools to exist.
 

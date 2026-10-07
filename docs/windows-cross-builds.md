@@ -797,7 +797,7 @@ target, with a per-call `-TargetArch host` override at the choke point) — beca
 and schema compiler must come from the same flatbuffers version. `protoc` is the 21.9 GitHub
 release zip (since pinned as `LITERT_TFLITE_PROTOC_VERSION` in `versions.env`), its version derived from the
 **vendored** protobuf commit (`90b73ac3` = C++ runtime 3.21.9) — **not** the LM lane's
-`PROTOC_VERSION` (31.1 then, 35.1 today), whose generated code includes
+`PROTOC_VERSION` (31.1 then, 36.1 today), whose generated code includes
 `google/protobuf/runtime_version.h`, a header 3.21.9 does not ship. The vendored runtime picks
 the protoc family; nothing else may.
 

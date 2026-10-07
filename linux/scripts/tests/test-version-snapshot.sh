@@ -129,9 +129,9 @@ t_case "6/8 check_script_defaults — a -DefaultValue drifting from versions.env
 t_assert_eq "15" "$(find "${REPO}/windows/scripts" -name 'Build-*FromSource.ps1' | wc -l)" \
   "the fifteen gate subjects the fixed glob must find (Build-TorchRocmFromSource.ps1 and Build-TorchvisionRocmFromSource.ps1 joined 2026-09-29)"
 _red "Windows build-script -DefaultValue pins are stale:" \
-  windows/scripts/build/Build-TvmFromSource.ps1 "s|-DefaultValue 'v0.26.0'|-DefaultValue 'v0.0.0'|"
+  windows/scripts/build/Build-TvmFromSource.ps1 "s|-DefaultValue 'v0.27.0'|-DefaultValue 'v0.0.0'|"
 t_assert_contains "$(cat "${REPO}/windows/scripts/build/Build-TvmFromSource.ps1")" \
-  "-DefaultValue 'v0.26.0'" \
+  "-DefaultValue 'v0.27.0'" \
   "the commit override must leave the TAG fallback alone, not rewrite it to the hash"
 
 t_case "7/8 check_doc_literals — a /opt/gcc-<version> literal in prose"

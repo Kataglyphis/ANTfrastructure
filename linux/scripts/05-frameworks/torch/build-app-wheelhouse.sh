@@ -58,7 +58,7 @@ unset _evf
 : "${PYTORCH_VERSION:=${PYTORCH_REF#v}}"
 : "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.28.0}}"
 # The fallback only matters without versions.env.
-: "${IREE_REF:=${IREE_VERSION:-v3.11.0}}"
+: "${IREE_REF:=${IREE_VERSION:-v3.12.0}}"
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
 : "${DEFAULT_PYPI_INDEX_URL:=https://pypi.org/simple}"
 

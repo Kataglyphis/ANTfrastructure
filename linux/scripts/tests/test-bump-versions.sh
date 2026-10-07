@@ -229,7 +229,7 @@ files["WORKSPACE"] = ('http_archive(\n    name = "directx_shader_compiler",\n'
                       f'    sha256 = "{"D" * 64}",\n    url = "https://x/dxc.zip",\n)\n')
 for k, v in sorted(bv.litert_lm_gpu_pins(files.__getitem__).items()):
     print(f"{k}={v}")
-files["prebuilt/windows_x86_64/libwebgpu_dawn.dll"] = "a real DLL, not a git-LFS pointer"
+files["prebuilt/windows_x86_64/webgpu_dawn.dll"] = "a real DLL, not a git-LFS pointer"
 try:
     bv.litert_lm_gpu_pins(files.__getitem__)
     print("NO-RAISE")
@@ -240,8 +240,27 @@ PY
 _a64="$(printf 'a%.0s' {1..64})"; _d64="$(printf 'd%.0s' {1..64})"
 t_assert_contains "${_pins}" "LITERT_LM_WEBGPU_ACCELERATOR_SHA256=${_a64}" "the accelerator pin is its pointer's oid"
 t_assert_contains "${_pins}" "LITERT_LM_DXC_ZIP_SHA256=${_d64}" "the DXC pin is WORKSPACE's sha256, lower-cased"
-t_assert_contains "${_pins}" "RAISED no git-LFS pointer for prebuilt/windows_x86_64/libwebgpu_dawn.dll" \
+t_assert_contains "${_pins}" "RAISED no git-LFS pointer for prebuilt/windows_x86_64/webgpu_dawn.dll" \
   "a file that is not an LFS pointer must fail loudly, never pin a guess"
+
+t_case "protoc_from_protobuf_cmake: the slaved PROTOC_VERSION reads all three protobuf.cmake shapes (offline)"
+_protoc="$(python3 - "${REPO}" <<'PY'
+import os, sys
+sys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))
+import bump_versions as bv
+for label, text in (
+    ("0.18", 'set(LITERTLM_PROTOBUF_TAG "v36.1" CACHE STRING "Protobuf git tag")\n    GIT_TAG\n      ${LITERTLM_PROTOBUF_TAG}\n'),
+    ("0.17", "    GIT_REPOSITORY\n      https://github.com/protocolbuffers/protobuf\n    GIT_TAG\n      v35.1\n"),
+    ("0.14", "    GIT_TAG v6.31.1\n"),
+    ("none", "    GIT_TAG ${SOMETHING_ELSE}\n"),
+):
+    print(f"{label}={bv.protoc_from_protobuf_cmake(text)}")
+PY
+)"
+t_assert_contains "${_protoc}" "0.18=36.1" "LiteRT-LM 0.18's cache variable names protoc's own version"
+t_assert_contains "${_protoc}" "0.17=35.1" "a two-part GIT_TAG is protoc's own version"
+t_assert_contains "${_protoc}" "0.14=31.1" "a three-part runtime tag maps to protoc MINOR.PATCH"
+t_assert_contains "${_protoc}" "none=None" "an unreadable pin is None, never a guess"
 
 t_case "spec_llama_cpp_hip: newest bNNNN with a win-rocm-<ROCm X.Y> AND a win-vulkan zip wins, both SHAs move, none = raise"
 _fx="$(_fixture llama <<'ENV'
