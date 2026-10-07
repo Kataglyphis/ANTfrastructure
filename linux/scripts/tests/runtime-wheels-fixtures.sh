@@ -44,8 +44,8 @@ STUB
 rw_rootfs() {
   local dir
   dir="$(mktemp -d)"
-  mkdir -p "${dir}/opt/wheels" "${dir}/usr/lib"
-  touch "${dir}/opt/wheels/x.whl" "${dir}/usr/lib/big.so"
+  mkdir -p "${dir}/opt/wheels" "${dir}/opt/wheels-cp314t" "${dir}/usr/lib"
+  touch "${dir}/opt/wheels/x.whl" "${dir}/opt/wheels-cp314t/x-1-cp314-cp314t-linux_x86_64.whl" "${dir}/usr/lib/big.so"
   printf '%s' "${dir}"
 }
 

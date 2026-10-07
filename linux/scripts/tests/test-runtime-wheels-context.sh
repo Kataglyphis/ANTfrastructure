@@ -36,6 +36,8 @@ t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -F 'oci-layout://')" \
   "never as a second oci-layout context (nerdctl gives them all one store id)"
 t_assert_eq yes "$([ -f "${WORK}/wheels-arm64/opt/wheels/x.whl" ] && echo yes)" \
   "the directory holds /opt/wheels at the path the torch RUN bind-mounts"
+t_assert_eq yes "$([ -f "${WORK}/wheels-arm64/opt/wheels-cp314t/x-1-cp314-cp314t-linux_x86_64.whl" ] && echo yes)" \
+  "and the cp314t twins the wrapper copies into the image"
 t_assert_eq "" "$(compgen -G "${WORK}/wheels-arm64/usr")" "and nothing else of the 30 GB rootfs"
 t_assert_contains "$(cat "${NLOG}")" "rm -f cid42" "the helper container is removed"
 

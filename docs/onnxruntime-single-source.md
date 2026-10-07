@@ -23,7 +23,7 @@ for Windows and `AGENTS.md` § Linux Build Rules for Linux.
 |---|---|---|
 | Built by | `windows/scripts/build/Build-OnnxFromSource.ps1` | `linux/scripts/03-media/build/onnxruntime/` |
 | Installed at | `C:\runtime\lib\onnxruntime-source` (`ONNX_ROOT`): `bin\onnxruntime.dll`, `lib\onnxruntime.lib`, flat headers in `include\onnxruntime\` | `/usr/local/lib/onnxruntime-cpu` on every variant, plus `/usr/local/lib/onnxruntime-gpu` on the GPU variants |
-| Python wheel | `C:\runtime\wheels` (`PYTHON_WHEELS`) | `/opt/wheels` at build time; the installed flavour is kept in `/opt/onnxruntime-wheels` (`ORT_CHAIN_WHEEL_DIR`) |
+| Python wheel | `C:\runtime\wheels` (`PYTHON_WHEELS`) | `/opt/wheels` at build time; the installed flavour is kept in `/opt/onnxruntime-wheels` (`ORT_CHAIN_WHEEL_DIR`). Its `cp314t` twin, built natively from the same tree, ships in `/opt/wheels-cp314t` ([`consumer-image-contract.md` § The free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)) |
 | Source root compiled into it | `C:\temp\onnx-src` | `/opt/onnxruntime` (`/opt/onnxruntime-android` for Android) |
 
 The last row is the fingerprint every guard uses. ORT compiles its source paths
@@ -276,7 +276,10 @@ at the rewritten wheel of the same name, platform tag aside, afterwards
 (`follow`). A wheel under the chain wheel's name with other bytes, or a second
 wheel of that name, platform tag aside, before or after the rewrite, stops the
 media stage: the retag would rename such a twin onto the chain wheel. A wheel
-the manifest never listed never enters it.
+the manifest never listed never enters it. The `cp314t` twins have their own manifest,
+`<prefix>/ort-provenance-cp314t.sha256`, which `repair-wheels.sh --free-threaded` proves and
+follows against `/opt/wheels-cp314t` the same way. G1 reads both, and accepts a chain member
+of an ORT twin in that store.
 
 **Placement is a cache rule.** Both G2 files import or source nothing, and each
 is mounted per file into exactly its consumer RUNs: `C:\bkmnt\ortmods\` on

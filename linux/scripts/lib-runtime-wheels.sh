@@ -137,7 +137,8 @@ _runtime_wheels_seal() {
       "${dir}" "${ref:-the Dockerfile.torch default}" >&2
     return 1
   fi
-  _runtime_wheels_manifest "${dir}/opt/wheels" > "${dir}.sha256" || return 1
+  # Both stores, so a twin edited after the export fails the wrapper as a GIL wheel does.
+  _runtime_wheels_manifest "${dir}/opt" > "${dir}.sha256" || return 1
   log "[wheels] ${arch}: $(runtime_wheels_digest_line "${dir}/opt/wheels") (exported from ${ref:-the Dockerfile.torch default})"
 }
 
@@ -145,7 +146,7 @@ _runtime_wheels_seal() {
 runtime_wheels_wrapper_args() {
   local -n _rwwa_out=$1
   local arch="$2" dir="${RUNTIME_WHEELS_EXPORT_ROOT}/$2"
-  if [ ! -s "${dir}.sha256" ] || ! _runtime_wheels_manifest "${dir}/opt/wheels" 2>/dev/null | cmp -s - "${dir}.sha256"; then
+  if [ ! -s "${dir}.sha256" ] || ! _runtime_wheels_manifest "${dir}/opt" 2>/dev/null | cmp -s - "${dir}.sha256"; then
     printf '[ERROR] RUNTIME_WHEELS_SOURCE=export: the wheelhouse staged for %s at %s is missing or changed since its export; rerun, or use RUNTIME_WHEELS_SOURCE=image\n' \
       "${arch}" "${dir}" >&2
     return 1

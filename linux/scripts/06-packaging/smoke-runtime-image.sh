@@ -6,6 +6,7 @@ set -euo pipefail
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/smoke-common.sh"
 source "${_SCRIPT_DIR}/check-ort-provenance.sh"
+source "${_SCRIPT_DIR}/check-free-threaded-wheels.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
@@ -2631,6 +2632,7 @@ main() {
     check_riscv64_isa "${image_tag}" "${target_arch}"
     check_soname_precedence "${image_tag}" "${target_arch}"
     check_ort_census "${image_tag}" "${target_arch}"
+    check_free_threaded_wheels "${image_tag}" "${target_arch}"
     check_gstreamer_plugin_health "${image_tag}" "${target_arch}"
     check_gst_validate_ssim "${image_tag}" "${target_arch}"
     check_no_libunwind_closure "${image_tag}" "${target_arch}"

@@ -19,6 +19,7 @@ case "${1:-}" in
     echo "  PYAV_VERSION     PyAV release tag without the leading v (required)"
     echo "  FFMPEG_PREFIX    FFmpeg install prefix (default: /opt/ffmpeg)"
     echo "  PYAV_WHEELS_DIR  Wheel output dir (default: /opt/pyav/wheels)"
+    echo "  PYAV_FT_WHEELS_DIR  cp314t twin output dir (default: /opt/pyav/wheels-cp314t)"
     echo "  USE_CCACHE       Compile through ccache when available (default: true)"
     exit 0
     ;;
@@ -27,6 +28,7 @@ esac
 # No PYAV_VERSION default on purpose: Dockerfile.media and versions.env (via media_common_init) set it.
 : "${FFMPEG_PREFIX:=/opt/ffmpeg}"
 : "${PYAV_WHEELS_DIR:=/opt/pyav/wheels}"
+: "${PYAV_FT_WHEELS_DIR:=/opt/pyav/wheels-cp314t}"
 : "${PYAV_SRC:=${TMPDIR:-/tmp}/pyav-$$}"
 
 BUILD_PYTHON=""
@@ -123,7 +125,9 @@ pyav_link_flags() {
     printf '%s' "${flags}"
 }
 
+# [python] [wheel dir]: the GIL build by default; rc 1 on a failed setup.py, which the caller decides about.
 pyav_build_wheel() {
+    local python="${1:-${BUILD_PYTHON}}" wheel_dir="${2:-${PYAV_WHEELS_DIR}}"
     local cc ldshared cflags ldflags ext_suffix="" plat_tag=""
     local -a plat_args=()
 
@@ -163,10 +167,10 @@ pyav_build_wheel() {
             export SETUPTOOLS_EXT_SUFFIX="${ext_suffix}"
             export _PYTHON_HOST_PLATFORM="${plat_tag}"
         fi
-        "${BUILD_PYTHON}" setup.py "--ffmpeg-dir=${FFMPEG_PREFIX}" \
+        "${python}" setup.py "--ffmpeg-dir=${FFMPEG_PREFIX}" \
             build_ext -j "${NPROC}" \
-            bdist_wheel "${plat_args[@]}" -d "${PYAV_WHEELS_DIR}"
-    ) || pyav_skip "setup.py bdist_wheel failed (see the log above)"
+            bdist_wheel "${plat_args[@]}" -d "${wheel_dir}"
+    )
 }
 
 # Report the RESULT (the extension actually inside the wheel), never just the intent.
@@ -186,6 +190,20 @@ PY
     done
 }
 
+# The same tree again on a cp314t venv; every PyAV extension sees Python, so all of them recompile.
+pyav_build_free_threaded_wheel() {
+    local ftvenv="${TMPDIR:-/tmp}/pyav-ft-venv" ftdist="${TMPDIR:-/tmp}/pyav-ft-dist" t0
+    # shellcheck source=../../free-threaded-wheels.sh
+    source "${SCRIPT_DIR}/../../free-threaded-wheels.sh" || err "PyAV: free-threaded-wheels.sh is not mounted; its RUN needs the per-file mount"
+    ft_twin_start av "${ftvenv}" "${BUILD_PYTHON}" setuptools cython wheel \
+        || { [ $? -eq 1 ] && return 0; err "PyAV: the cp314t twin cannot be built (see above)"; }
+    t0="$(date +%s)"
+    pyav_build_wheel "${ftvenv}/bin/python" "${ftdist}" || err "PyAV: the free-threaded setup.py bdist_wheel failed (see the log above)"
+    info "PyAV: cp314t extensions built in $(( $(date +%s) - t0 ))s"
+    ft_twin_store_built "${ftdist}" "${PYAV_FT_WHEELS_DIR}" || err "PyAV: no proved cp314t twin (see above)"
+    rm -rf "${ftvenv}" "${ftdist}"
+}
+
 cleanup() {
     rm -rf "${PYAV_SRC}"
 }
@@ -194,13 +212,14 @@ main() {
     # EXIT trap, not a tail call: pyav_skip exits from several depths.
     trap cleanup EXIT
     # Unconditional: Dockerfile.media's `COPY --from=pyav` needs the dir even on skip.
-    mkdir -p "${PYAV_WHEELS_DIR}"
+    mkdir -p "${PYAV_WHEELS_DIR}" "${PYAV_FT_WHEELS_DIR}"
     info "build-pyav: version=${PYAV_VERSION} ffmpeg=${FFMPEG_PREFIX} out=${PYAV_WHEELS_DIR}"
     pyav_preflight
     pyav_install_build_requirements
     pyav_fetch
-    pyav_build_wheel
+    pyav_build_wheel || pyav_skip "setup.py bdist_wheel failed (see the log above)"
     pyav_report
+    pyav_build_free_threaded_wheel
 }
 
 main "$@"

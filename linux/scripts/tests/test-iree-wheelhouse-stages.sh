@@ -89,11 +89,14 @@ for a in "$@"; do
   case "${prev}" in wheel) proj="${a}" ;; -w) dist="${a}" ;; esac
   prev="${a}"
 done
+abi=cp314
+case "$0" in *-cp314t) abi=cp314t ;; esac
 [ -n "${dist}" ] && mkdir -p "${dist}" && \
-  : > "${dist}/iree_base_$(basename "${proj}")-3.11.0-cp314-cp314-linux_riscv64.whl"
+  : > "${dist}/iree_base_$(basename "${proj}")-3.11.0-cp314-${abi}-linux_riscv64.whl"
 exit 0
 EOS
 chmod +x "${TMP}/bin/"*
+cp "${TMP}/bin/fakepython" "${TMP}/bin/fakepython-cp314t"
 PATH="${TMP}/bin:${PATH}"
 export PATH
 cp "${TMP}/bin/git" "${TMP}/bin/ninja" "${TMP}/nocmake/" 2>/dev/null || true
@@ -118,6 +121,23 @@ resolve_target_python_sysconfig_export() {
     "_sysconfigdata__linux_riscv64-linux-gnu" "${TMP}/sysconfig"
 }
 retag_directory_wheels() { STUB_RETAG_LOG="${STUB_RETAG_LOG}|$2:$3"; return 0; }
+# The cp314t twin helpers, honouring the real library's cross skip; the venv's python is fakepython making cp314t wheels.
+STUB_FT=1
+ft_twin_wanted() {
+  if [ "${STUB_FT}" = 1 ] && ! cross_build_is_active; then return 0; fi
+  return 1
+}
+ft_twin_start() {
+  ft_twin_wanted "$1" || return 1
+  mkdir -p "$2/bin"
+  printf '#!/usr/bin/env bash\nexec %q "$@"\n' "${TMP}/bin/fakepython-cp314t" > "$2/bin/python"
+  chmod +x "$2/bin/python"
+}
+ft_twin_store_built() {
+  [ -z "${STUB_STORE_FAIL:-}" ] || return 1
+  mkdir -p "$2"
+  cp "$1"/*-cp314t-*.whl "$2/"
+}
 
 BUILD_PYTHON="${TMP}/bin/fakepython"
 MAX_JOBS=2
@@ -128,7 +148,8 @@ RC=0
 _run() {
   APP_WHEELHOUSE_BUILD_ROOT="${TMP}/work"
   APP_WHEELHOUSE_DIR="${TMP}/wheels"
-  rm -rf "${APP_WHEELHOUSE_BUILD_ROOT}" "${APP_WHEELHOUSE_DIR}"
+  APP_WHEELHOUSE_FT_DIR="${TMP}/ft-wheels"
+  rm -rf "${APP_WHEELHOUSE_BUILD_ROOT}" "${APP_WHEELHOUSE_DIR}" "${APP_WHEELHOUSE_FT_DIR}"
   mkdir -p "${APP_WHEELHOUSE_BUILD_ROOT}" "${APP_WHEELHOUSE_DIR}"
   STUB_CMAKE_LOG="${TMP}/cmake.log"; : > "${STUB_CMAKE_LOG}"
   STUB_PY_LOG="${TMP}/py.log"; : > "${STUB_PY_LOG}"
@@ -140,6 +161,7 @@ _run() {
   build_iree_wheels >/dev/null 2>"${TMP}/err.log" || RC=$?
 }
 _wheels() { ( shopt -s nullglob; set -- "${APP_WHEELHOUSE_DIR}"/*.whl; printf '%s\n' "$#" ); }
+_ft_wheels() { find "${APP_WHEELHOUSE_FT_DIR}" -name '*.whl' -printf '%f\n' 2>/dev/null | LC_ALL=C sort | tr '\n' ' '; }
 # Number of `pip wheel` invocations, i.e. whether _iree_package_wheels ran at all.
 _pkg_calls() { printf '%s\n' "$(wc -l < "${TMP}/py.log" 2>/dev/null || echo 0)"; }
 
@@ -166,6 +188,13 @@ t_assert_eq "ccache" "${_iree_launcher:-}" "_iree_launcher must stay non-local"
 t_case "abi3 setup.py patch is applied to the fetched tree"
 t_assert_contains "$(cat "${TMP}/work/iree/runtime/setup.py")" "False and " "runtime setup.py not patched"
 t_assert_contains "$(cat "${TMP}/work/iree/compiler/setup.py")" "False and " "compiler setup.py not patched"
+
+t_case "the native lane builds both cp314t twins in the warm target tree, beside the unchanged GIL wheels"
+t_assert_eq "iree_base_compiler-3.11.0-cp314-cp314t-linux_riscv64.whl iree_base_runtime-3.11.0-cp314-cp314t-linux_riscv64.whl " "$(_ft_wheels)"
+t_assert_eq "0" "$(compgen -G "${APP_WHEELHOUSE_DIR}/*-cp314t-*" | wc -l | tr -d ' ')" "no twin in the GIL wheelhouse"
+t_assert_contains "${_cmake_log}" "-S ${TMP}/work/iree -B ${TMP}/work/iree-build-target -DPython_EXECUTABLE=${TMP}/work/iree-ft-venv/bin/python -DPython3_EXECUTABLE=${TMP}/work/iree-ft-venv/bin/python" \
+  "the GIL pass's tree, reconfigured onto the free-threaded venv"
+t_assert_contains "${_cmake_log}" "--build ${TMP}/work/iree-build-target -- -j2" "and rebuilt there"
 
 t_case "packaging retags with the wheel_platform from the prereq stage"
 t_assert_contains "${STUB_RETAG_LOG}" "iree_base_runtime:linux_riscv64" "retag runtime"
@@ -211,6 +240,10 @@ t_case "cross target is runtime-only, and that reaches the packaging step"
 t_assert_eq "1" "$(_wheels)" "cross must ship exactly the runtime wheel"
 t_assert_contains "${STUB_RETAG_LOG}" "iree_base_runtime:linux_riscv64" "retag runtime"
 t_assert_eq "" "${STUB_RETAG_LOG##*iree_base_runtime:linux_riscv64}" "compiler wheel must not be packaged on cross"
+
+t_case "a cross lane builds no twin yet"
+t_assert_eq "" "$(_ft_wheels)"
+t_assert_eq "0" "$(grep -c -e 'iree-ft-venv' "${TMP}/cmake.log")" "no free-threaded reconfigure"
 
 t_case "target python sysconfig export survives into the wheel-packing step"
 t_assert_eq "_sysconfigdata__linux_riscv64-linux-gnu" "${_PYTHON_SYSCONFIGDATA_NAME:-}" "sysconfig export lost"
@@ -274,6 +307,19 @@ t_assert_eq "1" "${RC}" "_iree_build_target_native failure must return 1"
 t_assert_eq "0" "$(_wheels)" "no wheels when the native target build fails"
 t_assert_eq "0" "$(_pkg_calls)" "packaging must not run after _iree_build_target_native fails"
 _no_packaging_diag
+
+t_case "a twin that fails its rebuild or its proof fails build_iree_wheels"
+STUB_CMAKE_FAIL='-DPython_EXECUTABLE=[^ ]*iree-ft-venv'
+_run
+t_assert_eq "1" "${RC}" "a failed free-threaded reconfigure must return 1"
+t_assert_contains "$(cat "${TMP}/err.log")" "IREE free-threaded rebuild failed"
+STUB_CMAKE_FAIL=""
+STUB_STORE_FAIL=1 _run
+t_assert_eq "1" "${RC}" "an unproved twin must return 1"
+t_assert_eq "" "$(_ft_wheels)" "and nothing is stored"
+STUB_FT=0 _run
+t_assert_eq "0" "${RC}" "a build the table gives no twin succeeds"
+t_assert_eq "" "$(_ft_wheels)" "with no twin"
 
 STUB_CMAKE_FAIL=""
 

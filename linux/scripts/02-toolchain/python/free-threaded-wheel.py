@@ -19,6 +19,8 @@ from pathlib import Path
 
 CLASSIFIER = "Programming Language :: Python :: Free Threading"
 GIL_WARNING = re.compile(r"enabled to load module '([^']+)'")
+# Suffixes that carry no interpreter tag, which a plain shared library has too (ORT's libonnxruntime_providers_shared.so).
+BARE_SUFFIXES = (".so", ".pyd")
 
 
 def declares(pyproject: str) -> int:
@@ -47,6 +49,15 @@ def declares(pyproject: str) -> int:
     return 1
 
 
+def exports_init(path: str, name: str) -> bool:
+    """Whether a bare .so/.pyd defines PyInit_<its module name>; a library a wheel bundles beside its modules does not."""
+    symbol = b"PyInit_" + name.removesuffix(".__init__").rsplit(".", 1)[-1].encode() + b"\0"
+    try:
+        return symbol in Path(path).read_bytes()
+    except OSError:
+        return True
+
+
 def extension_modules(dist: str) -> list[tuple[str, str]]:
     """(dotted name, file) of every compiled module the installed distribution owns."""
     suffixes = sorted(importlib.machinery.EXTENSION_SUFFIXES, key=len, reverse=True)
@@ -56,6 +67,8 @@ def extension_modules(dist: str) -> list[tuple[str, str]]:
         suffix = next((s for s in suffixes if rel.endswith(s)), None)
         if suffix and not rel.startswith("../"):
             name = rel[: -len(suffix)].replace("/", ".")
+            if suffix in BARE_SUFFIXES and not exports_init(str(item.locate()), name):
+                continue
             # A compiled pkg/__init__ exports PyInit_pkg: it loads under the package's name.
             found.append((name.removesuffix(".__init__"), str(item.locate())))
     return sorted(found)

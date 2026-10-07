@@ -186,3 +186,6 @@ copy_onnx_headers_to_output "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIV
 finalize_onnx_native_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
 
 report_onnx_build_output "GPU build complete" "${NATIVE_GPU_OUTPUT_DIR}"
+
+# Last, so every GIL output above is final before the tree is reconfigured.
+onnx_build_free_threaded_wheel "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" BUILD_ARGS

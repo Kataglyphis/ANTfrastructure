@@ -620,10 +620,11 @@ arch, riscv64 included (CON66), so a `3.14t` leg downloads no interpreter.
   - No staged tree carries the test suite. The cross trees are built `--disable-test-modules`,
     and the build arch's stage drops `lib/python3.14t/test` to match.
   - `pip` is in the build arch's tree only; the cross builds run `--without-ensurepip`.
-- **The build stages keep it too**, for a later `cp314t` wheel build: toolchain, media and
+- **The build stages keep it too**, for the `cp314t` wheel builds: toolchain, media and
   android carry the build arch's interpreter at `/opt/python-freethreaded` and
   `/usr/local/bin/python3.14t`, and each `CROSS_TARGETS` arch's tree under
-  `/opt/python-cross-ft/`. No stage builds a `cp314t` wheel yet.
+  `/opt/python-cross-ft/`. The media stage builds its twins with it
+  ([§ The free-threaded wheels](#the-free-threaded-wheels)).
 - **Each stage checks it.**
   - `build_python.sh` fails a cross tree without `_ssl`, `_hashlib`, `_sqlite3`, `zlib`,
     `_bz2`, `_lzma` or `_ctypes`.
@@ -634,6 +635,73 @@ arch, riscv64 included (CON66), so a `3.14t` leg downloads no interpreter.
   - The `free-threaded-python` contract row checks the same on the shipped image, and
     that `sysconfig`'s prefix is `/opt/python-freethreaded`, which tells the source build
     from a python-build-standalone one.
+
+### The free-threaded wheels
+
+Every wheel the media stage builds natively for a package whose own code declares
+free-threading support also ships as a proved `cp314t` twin, in a store of its own:
+`/opt/wheels-cp314t` (owner request 2026-10-07). The GIL wheels are built exactly as before.
+
+- **Which packages.** One table decides, `ft_wheel_table` in
+  `linux/scripts/03-media/free-threaded-wheels.sh`. Each row names the `versions.env` pin its
+  evidence was read at, and `test-free-threaded-wheels.sh` fails when that pin moves, so a bump
+  re-reads the evidence.
+
+  | Package | Verdict | Evidence, at the pinned tag |
+  | --- | --- | --- |
+  | `onnxruntime` (every flavour) | twin | `PYBIND11_MODULE(..., py::mod_gil_not_used())`, pybind11 v3.0.2 |
+  | `av` (PyAV) | twin | `setup.py`: `"freethreading_compatible": True` |
+  | `apache-tvm-ffi` | twin | `core.pyx`: `# cython: freethreading_compatible = True` |
+  | `iree-base-runtime` | twin | `nanobind_add_module(... FREE_THREADED ...)` |
+  | `iree-base-compiler` | twin | MLIR's `nanobind_add_module(... FREE_THREADED ...)` |
+  | `apache-tvm` | none needed | `wheel.py-api = "py3"`: its one `py3` wheel installs on `3.14t` |
+  | `onnxruntime-genai`, `ai-edge-litert`, `hailort` | GIL only | no free-threading marker |
+  | libcamera's pycamera, OpenCV's `cv2` | GIL only | no marker, and they ship in the tree, not as wheels |
+
+- **How a twin is built.** Each build runs a second pass on a `3.14t` venv whose build
+  executors are pinned to the GIL build venv's own versions, in the GIL pass's tree, so
+  only what sees Python rebuilds. Measured in `:latest` on 32 cores (2026-10-07):
+
+  | Package | Twin pass, cold compiler cache | Warm | What the twin pass rebuilds |
+  | --- | --- | --- | --- |
+  | ONNX Runtime CPU (GIL pass: 760 s at `-j11`) | 97 s | 11-40 s | 539 of 3206 objects, every target whose compile line carries the Python and NumPy include dirs; of the wheel's four libraries only `onnxruntime_pybind11_state.so` differs |
+  | PyAV | 28 s | 14 s | all 50 extensions, re-Cythonized because the fresh venv's Cython includes are newer: all of PyAV sees Python |
+  | apache-tvm-ffi | 29 s | | all 34 steps: scikit-build-core's reconfigure rebuilds the small C++ core too |
+  | IREE runtime | 130 s at `-j4` | 18-24 s | 464 of 723 objects (below) |
+  | IREE compiler | not measured yet | | the MLIR modules at least |
+
+  IREE's first configure leaves `IREE_HAVE_LIBBACKTRACE` unset and a second one sets it, so
+  the twin pass's reconfigure changes every runtime compile line, and the twin carries
+  libbacktrace where the GIL wheel does not. On a settled tree a Python switch rebuilds the
+  21 binding objects alone (measured).
+
+- **How a twin is proved.** Before it is stored, `ft_soabi_gate` wants a `cp3XY-cp3XYt` name
+  and the free-threaded SOABI on every version-tagged module, and a fresh `3.14t` venv takes
+  the wheel alone, where `free-threaded-wheel.py prove` loads every compiled module and fails
+  when the GIL comes back on. A bare `.so` counts as a module only when it exports
+  `PyInit_<name>`, so ORT's bundled `libonnxruntime_providers_shared.so` is not loaded as one.
+  A twin that fails any of it fails its RUN; inside TVM's best-effort build that withdraws
+  TVM, as any failure there does.
+- **How the stores stay apart.** `collect-artifacts.sh` moves the twins into `FT_WHEELS_DIR`
+  only, and the ORT twin gets its own manifest, `ort-provenance-cp314t.sha256`.
+  `verify-wheels.sh` is ABI-exact on both stores: a `cp314t` wheel or module in `/opt/wheels`
+  fails it, and so does anything but `cp314-cp314t` in the twin store. The final RUN then
+  repairs and verifies the twins with `--free-threaded`, and `free-threaded-store.sh` proves
+  them again on the repaired bytes. A native build fails there when the store is not exactly
+  one twin per GIL wheel whose verdict is twin, or when a GIL wheel has no row. It writes `free-threaded-store.txt`: the build mode, each twin, and one line per
+  package without one, with its reason.
+- **What ships.** `Dockerfile.torch` copies `/opt/wheels-cp314t` into `:latest`, late, so a
+  new twin re-keys no venv layer, and the export delivery seals it with `/opt/wheels`. Nothing
+  installs a twin: a `3.14t` venv takes them with `uv pip install /opt/wheels-cp314t/<wheel>`.
+- **How the shipped image proves it.** The runtime smoke's `FT-STORE` gate
+  (`06-packaging/check-free-threaded-wheels.sh`) wants the store and its record on every arch.
+  On a native arch the store holds exactly the twin families of `/opt/venv`, the installed ORT
+  flavour's own twin included, and each twin loads every compiled module on
+  `/usr/local/bin/python3.14t` with the GIL off. A cross-built arch must hold none.
+- **Not covered yet.** The cross arches build no twin: arm64 when it is cross-built, which
+  `:latest` is today, and riscv64. Neither does Windows. The GPU ORT flavours call the same
+  pass, and the IREE compiler builds its twin as the runtime does; both are unproven until a
+  chain runs them.
 
 ## The Windows image ships lavapipe
 
