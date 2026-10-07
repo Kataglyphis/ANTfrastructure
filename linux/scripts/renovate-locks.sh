@@ -5,8 +5,14 @@
 [ -n "${_RENOVATE_LOCKS_SH_LOADED:-}" ] && return 0
 _RENOVATE_LOCKS_SH_LOADED=1
 
-# LOCK_JOBS: one "<manager>|<file>|<dep>|<declared>" per manifest an EDIT touches.
+# LOCK_JOBS: one "<manager>|<file>|<dep>|<declared>" per manifest an EDIT touches, or per maintained lock.
 LOCK_JOBS=(); LOCK_MISSING=(); LOCK_PLANNED=(); LOCK_DONE=()
+
+# The dep of a lock file maintenance job: every entry moves (renovate_planner.py LOCK_ALL).
+LOCK_ALL='*'
+
+# The job for_each_lock is on, for a callback that must keep it (renovate-local.sh maint_plan_one).
+LOCK_JOB_NOW=""
 LOCK_AMBIGUOUS=(); LOCK_FAILED=""
 BACKUP_DIR=""; BACKUP_PATHS=(); RESTORE_FAILED=()
 
@@ -122,10 +128,31 @@ run_cargo_lock() {
   ( cd "${dir}" && cargo update -p "${dep}" )
 }
 
+# Renovate's own lockFileMaintenance command per tool (its manager artifacts), one argv word per line; rc 1 = none known.
+maint_argv() {
+  case "$1" in
+    cargo)        printf '%s\n' cargo update ;;
+    dart|flutter) printf '%s\n' "$1" pub upgrade ;;
+    uv)           printf '%s\n' uv lock --upgrade ;;
+    poetry)       printf '%s\n' poetry update --lock ;;
+    pdm)          printf '%s\n' pdm update --no-sync --update-eager ;;
+    npm)          printf '%s\n' npm update --package-lock-only --ignore-scripts ;;
+    pnpm)         printf '%s\n' pnpm update --lockfile-only ;;
+    *)            return 1 ;;
+  esac
+}
+
 # Run in the lockfile's directory (npm in a member dir writes a second lock); an unknown tool is an error.
 run_lock_tool() {
   local tool="$1" dir="$2" dep="$3" cur="$4"
   local -a argv=()
+  if [ "${dep}" = "${LOCK_ALL}" ]; then
+    # A failure here is LOCK_FAILED, so the undo runs; plan_lock_maintenance keeps unknown tools out anyway.
+    mapfile -t argv < <(maint_argv "${tool}")
+    [ "${#argv[@]}" -gt 0 ] || return 1
+    ( cd "${dir}" && "${argv[@]}" )
+    return $?
+  fi
   case "${tool}" in
     cargo)        run_cargo_lock "${dir}" "${dep}" "${cur}"; return $? ;;
     dart|flutter) argv=("${tool}" pub get) ;;
@@ -156,18 +183,26 @@ for_each_lock() {
       continue
     fi
     IFS=' ' read -r lock tool dir <<<"${found}"
+    # shellcheck disable=SC2034  # read by the callback, renovate-local.sh maint_plan_one
+    LOCK_JOB_NOW="${job}"
     "${fn}" "${tool}" "${dep}" "${dir}" "$(lock_label "${dir}" "${lock}")" "${cur}"
   done
 }
 
-# The four consumers of that walk. Args: <tool> <dep> <dir> <label> <value>.
+# The consumers of that walk. Args: <tool> <dep> <dir> <label> <value>.
 lock_missing_one() {
   if ! command -v "$1" >/dev/null 2>&1; then
     LOCK_MISSING+=("$4 needs '$1', which is not on this PATH")
   fi
 }
 
-lock_planned_one() { LOCK_PLANNED+=("$4 via $1"); }
+lock_planned_one() {
+  if [ "$2" = "${LOCK_ALL}" ]; then
+    LOCK_PLANNED+=("$4 via $(maint_argv "$1" | tr '\n' ' ')(lock file maintenance)")
+  else
+    LOCK_PLANNED+=("$4 via $1")
+  fi
+}
 
 # Records a failure instead of exiting: the manifests are written, so undo_run must restore the whole set.
 lock_refresh_one() {
@@ -247,7 +282,7 @@ assert_locks_sane() {
 refresh_locks() {
   [ "${#LOCK_JOBS[@]}" -gt 0 ] || return 0
   note ""
-  note "refreshing the lockfile(s) the edits made stale:"
+  note "refreshing the lockfile(s) the edits made stale, and any under lock file maintenance:"
   LOCK_DONE=()
   LOCK_FAILED=""
   for_each_lock lock_refresh_one

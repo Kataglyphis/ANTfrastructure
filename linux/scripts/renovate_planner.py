@@ -10,6 +10,7 @@ Subcommands (argv[1]); every line of output is tab-separated:
   managers <config.json> <ls-files.txt>          manager, default-enabled, file
   rows     <report.json>                         manager, file, dep, cur, new
   skipped  <report.json>                         SKIP manager, file, dep, cur, reason | DESIGN reason, count
+  lockmaint <report> <config>                    manager, file: manifests whose lock lockFileMaintenance refreshes
   plan     <report> <config> <root> <plan.json>  the plan (+ the JSON edits)
   verify   <root> <plan.json>                    the pre-flight and predicted audit, writing nothing
   edit     <root> <plan.json>                    write, then audit the file or put it back
@@ -221,6 +222,38 @@ def refusal(row, rules):
         if unknown:
             out += " [unevaluated: %s; refused conservatively]" % ",".join(unknown)
     return out
+
+
+# The managers renovate-locks.sh owns a lock tool for; Renovate supports maintenance for more.
+LOCK_MANAGERS = ("cargo", "npm", "pep621", "pub")
+# The dep column of a maintenance lock job (renovate-locks.sh LOCK_ALL): every entry, not one.
+LOCK_ALL = "*"
+
+
+def _maint_on(cfg, mgr, path):
+    """Renovate's own layering: the top-level switch, the manager's block, then the last matching packageRule."""
+    top = cfg.get("lockFileMaintenance")
+    on = isinstance(top, dict) and top.get("enabled") is True
+    sub = (cfg.get(mgr) or {}).get("lockFileMaintenance") if isinstance(cfg.get(mgr), dict) else None
+    if isinstance(sub, dict) and "enabled" in sub:
+        on = sub["enabled"] is True
+    row = {"manager": mgr, "file": path, "updateType": "lockFileMaintenance"}
+    for rule in cfg.get("packageRules") or []:
+        if isinstance(rule, dict) and "enabled" in rule and rule_hit(rule, row)[0]:
+            on = rule["enabled"] is True
+    return on
+
+
+def lock_maintenance(report, cfg):
+    """(manager, packageFile) per manifest whose lock is under lockFileMaintenance; the report never says so itself."""
+    for repo in (report.get("repositories") or {}).values():
+        for mgr, files in sorted((repo.get("packageFiles") or {}).items()):
+            if mgr not in LOCK_MANAGERS:
+                continue
+            for f in files:
+                path = f.get("packageFile") or ""
+                if path and _maint_on(cfg, mgr, path):
+                    yield mgr, path
 
 
 def _clean(text):
@@ -508,6 +541,10 @@ def lock_readable(root, rel, dep):
         sys.exit("  %s: it does not read as %s: %s: %s"
                  % (rel, kind, type(exc).__name__,
                     " ".join(str(exc).split())[:200]))
+    if dep == LOCK_ALL:
+        print("  %s: parses as %s (lock file maintenance: any entry may have moved)"
+              % (rel, kind))
+        return
     said = "names" if dep and dep in text else "does NOT name"
     print("  %s: parses as %s, and %s %r" % (rel, kind, said, dep))
 
@@ -535,12 +572,18 @@ def _print_skipped(path):
         print("DESIGN\t%s\t%d" % (why, n))
 
 
+def _print_lockmaint(report, cfg):
+    for mgr, path in lock_maintenance(load_report(report), load_obj(cfg)):
+        print("%s\t%s" % (mgr, path))
+
+
 # A table, not an if-chain: every mode is one entry, so a new one adds no branch to main.
 MODES = {
     "config": lambda a: _print_config(a[0]),
     "managers": lambda a: managers(load_obj(a[0]), a[1]),
     "rows": lambda a: _print_rows(a[0]),
     "skipped": lambda a: _print_skipped(a[0]),
+    "lockmaint": lambda a: _print_lockmaint(a[0], a[1]),
     "plan": lambda a: plan(load_report(a[0]), load_obj(a[1]), a[2], a[3]),
     "verify": lambda a: predict(_verify(load(a[1]), a[0])),
     "edit": lambda a: apply_edits(a[0], a[1]),

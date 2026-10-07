@@ -12083,12 +12083,12 @@
   "why": "a host-tagged wheel installs on the target and never imports; the build command is what turns this value into the tag"
  },
  {
-  "id": "python.packaging.cross-mode-pins-the-emulation",
+  "id": "python.packaging.cross-link-takes-the-sysroot-libc",
   "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
-  "find": "  export LDSHARED=\"${CC} -shared -Wl,-m,elf64lriscv\"",
+  "find": "  export LDSHARED=\"${CC} -shared -L${RISCV64_SYSROOT}/lib/riscv64-linux-gnu -L${RISCV64_SYSROOT}/usr/lib/riscv64-linux-gnu\"",
   "replace": "  export LDSHARED=\"${CC} -shared\"",
   "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
-  "why": "without the emulation the wheel link can drive lld as x86-64 and die on the riscv64 crt objects (run 37196119524)"
+  "why": "without the sysroot's lib dirs first, -lc finds the host LIBDIR's libc.so, whose OUTPUT_FORMAT(elf64-x86-64) makes lld refuse every riscv64 object (runs 37196119524, 37329297990)"
  },
  {
   "id": "linux-lane.riscv64-packaging-crosses",
@@ -12787,6 +12787,38 @@
   "why": "npm reports the tarball's sha512 integrity as newDigest on every update; preferring it wrote 'sha512-...' over RENOVATE_VERSION's 44.140.0"
  },
  {
+  "id": "renovate.lock-maintenance-is-applied",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "  LOCK_JOBS+=(${MAINT_JOBS[@]+\"${MAINT_JOBS[@]}\"})",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "the report listed the maintained lock and --apply then said 'nothing to apply': the drift lockFileMaintenance exists for stayed, behind a green run"
+ },
+ {
+  "id": "renovate.lock-maintenance-upgrades",
+  "target": "linux/scripts/renovate-locks.sh",
+  "find": "    uv)           printf '%s\\n' uv lock --upgrade ;;",
+  "replace": "    uv)           printf '%s\\n' uv lock ;;",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "a plain `uv lock` keeps every locked version that still satisfies the manifest, so a maintenance run moved nothing: WebDavClient's uv.lock sat 41 packages behind that way"
+ },
+ {
+  "id": "renovate.lock-maintenance-is-opt-in",
+  "target": "linux/scripts/renovate_planner.py",
+  "find": "    on = isinstance(top, dict) and top.get(\"enabled\") is True",
+  "replace": "    on = True",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "Renovate ships lockFileMaintenance off; reading it as on would rewrite every lock of a repo whose config never asked for it"
+ },
+ {
+  "id": "renovate.lock-maintenance-once-per-lock",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "  rl_has \"$4\" ${MAINT_SEEN[@]+\"${MAINT_SEEN[@]}\"} && return 0",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "every workspace member reports its own package file but shares the root lock; without the dedup a cargo workspace ran cargo update once per member"
+ },
+ {
   "id": "renovate.annotated-values-parse",
   "target": "linux/scripts/01-core/versions.env",
   "find": "extractVersion=^therock-(?<version>.*)$ versioning=loose\n",
@@ -13041,6 +13073,30 @@
   "replace": "        ft_twin_store_built \"${ft_dist}/${_proj}\" \"${APP_WHEELHOUSE_FT_DIR}\" || true\n",
   "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
   "why": "an unproved IREE twin would go missing without failing the required IREE build"
+ },
+ {
+  "id": "wheels.iree-configure-settled",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    cmake \"$@\" > \"${log}\" 2>&1 || return 1\n    cmake \"$@\" >> \"${log}\" 2>&1\n",
+  "replace": "    cmake \"$@\" > \"${log}\" 2>&1\n",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "the GIL tree would build unsettled, and the cp314t twin's reconfigure would recompile 1187 more objects, 757 of them compiler sources, and relink libIREECompiler.so"
+ },
+ {
+  "id": "wheels.iree-native-configure-settled",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    if ! _iree_configure_settled \"${target_build}.cfg.log\" -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            \"${ccache_cmake_args[@]}\" \\\n",
+  "replace": "    if ! cmake -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            \"${ccache_cmake_args[@]}\" \\\n",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "the native GIL wheels would come from an unsettled tree, which the twin's reconfigure then changes on 1187 non-Python compile lines"
+ },
+ {
+  "id": "wheels.iree-cross-configure-settled",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    if ! _iree_configure_settled \"${target_build}.cfg.log\" -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            -DCMAKE_TOOLCHAIN_FILE=",
+  "replace": "    if ! cmake -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            -DCMAKE_TOOLCHAIN_FILE=",
+  "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
+  "why": "the arm64 and riscv64 target trees would build unsettled, so a later reconfigure would recompile most of their runtime objects"
  },
  {
   "id": "wheels.ft-twin-leaves-tree",
