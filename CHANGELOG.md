@@ -6,6 +6,30 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — Renovate names the pins it skips, and eight skipped pins are readable again
+
+- **Eight annotated pins were invisible to every report.** The custom manager reads
+  `versions.env` and `tool-pins.env` with `semver` unless an annotation names a scheme. A
+  value semver cannot parse is skipped as `invalid-value`, and a skipped dependency is never
+  behind. So `ROCM_VERSION=10.0` hid TheRock 10.1 (released 2026-10-05) from the 2026-10-07
+  bumps. The other seven were `VULKAN_VERSION`, `ABSEIL_VERSION`, `NASM_WINDOWS_VERSION`,
+  `PANDOC_VERSION`, `PY_PATCHELF_VERSION`, `PY_PACKAGING_VERSION` and `BINARYEN_VERSION`, as
+  the new list showed over the unfixed tree. Each annotation now names `loose`, `pep440` or a
+  `regex:`. `UBUNTU_VERSION` was read, and now names `ubuntu` so only an LTS counts as stable.
+- **Newly visible:** binaryen 133, Vulkan SDK 1.4.363.0, pandoc 3.12 and TheRock 10.1.
+- **A value pin no longer moves to npm's integrity hash.** npm reports `newDigest` (the
+  tarball's `sha512-…`) on every update, and the planner preferred it over `newValue`, so the
+  report showed Renovate 44.142.1 as `sha512-prNFz`. An apply would have written that into
+  `RENOVATE_VERSION`, had the approval rule not refused it. Only a digest pin moves by digest.
+- **`renovate-local.sh` ends its report with a NOT CHECKED list.** It names every dependency
+  Renovate skipped or failed to look up, with the reason and the file. By-design skips (path
+  dependencies, `disabled`, `unspecified-version`, …) are counted on one line. The planner's
+  new `skipped` mode reads them, and `test-renovate-local.sh` covers both kinds.
+- **`test-renovate-annotations.sh` parses every annotated value with its scheme**, so a value
+  Renovate would skip fails before any run. It catches the old `ROCM_VERSION` line.
+- Renovate keeps updating itself: `RENOVATE_VERSION` and `RENOVATE_NODE_VERSION` are annotated
+  like every other pin (docs/dependency-updates.md § *A skipped pin is not up to date*).
+
 
 ## 2026-10-07 — The Renovate bumps of 2026-10-07: every patch and feature release (CON72)
 

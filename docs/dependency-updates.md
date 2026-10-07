@@ -1102,6 +1102,39 @@ per version under `${XDG_CACHE_HOME:-~/.cache}/kataglyphis` (override with
 Renovate itself is installed into a user-owned npm prefix — no sudo, nothing
 global.
 
+Renovate updates itself the same way: both keys are annotated (`datasource=npm
+depName=renovate`, `datasource=node-version depName=node`), so a report names a newer
+Renovate like any other pin. Their bump is a hand bump, because the Node tarball's SHA256
+moves with it.
+
+## A skipped pin is not up to date
+
+Renovate looks up a dependency only when its current value parses under the
+versioning it is read with. A value that does not parse is **skipped**
+(`skipReason: invalid-value`), and a skipped dependency is never behind, so it
+used to drop out of the report without a word. The custom manager reads
+`versions.env` with `semver` unless the annotation names a `versioning=`, and
+semver needs three numbers. Until 2026-10-07 that hid eight pins, measured with
+the list below over that day's tree: `ROCM_VERSION=10.0` (so TheRock 10.1 went
+unreported), `VULKAN_VERSION=1.4.357.0`, `ABSEIL_VERSION=20260817.0`,
+`NASM_WINDOWS_VERSION=3.02`, `PANDOC_VERSION=3.11`, `PY_PATCHELF_VERSION=0.19.1.0`,
+`PY_PACKAGING_VERSION=26.3` and `BINARYEN_VERSION=version_132`. Each annotation now
+names its scheme (`loose`, `pep440` or a `regex:`). `UBUNTU_VERSION` was read, but
+now names `ubuntu`, so only an LTS release counts as stable.
+
+Two guards keep it that way:
+
+- The report ends with a **NOT CHECKED** list: every dependency Renovate skipped,
+  or whose lookup failed, with the reason and the file. Skips that mean "nothing
+  to look up" (`path-dependency`, `disabled`, `unspecified-version`, …) are only
+  counted, on one `skipped by design` line.
+- `test-renovate-annotations.sh` parses every annotated value with the scheme its
+  annotation names and fails on one that does not parse, before any run.
+
+A pin with no annotation at all is a different gap: Renovate never sees it. Most
+of those are slaved to an annotated key (a SHA256, a commit, a URL, MIGraphX to
+ROCm), and their bump rides on that key's.
+
 ## Scoping, and a trap worth knowing
 
 The script now **detects** its managers: every manager whose own

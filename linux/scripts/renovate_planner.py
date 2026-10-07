@@ -9,6 +9,7 @@ Subcommands (argv[1]); every line of output is tab-separated:
   config   <ndjson-log>                          the --print-config record
   managers <config.json> <ls-files.txt>          manager, default-enabled, file
   rows     <report.json>                         manager, file, dep, cur, new
+  skipped  <report.json>                         SKIP manager, file, dep, cur, reason | DESIGN reason, count
   plan     <report> <config> <root> <plan.json>  the plan (+ the JSON edits)
   verify   <root> <plan.json>                    the pre-flight and predicted audit, writing nothing
   edit     <root> <plan.json>                    write, then audit the file or put it back
@@ -118,15 +119,52 @@ def managers(cfg, listing):
             print("%s\t%s\t%s" % (name, off, hit))
 
 
-def rows(report):
-    """One dict per pending update; only a dep's first update, the rest being other bucket levels."""
+def _deps(report):
+    """(manager, packageFile entry, dep) for every dependency the report carries."""
     for repo in (report.get("repositories") or {}).values():
         for mgr, files in (repo.get("packageFiles") or {}).items():
             for f in files:
                 for dep in f.get("deps") or []:
-                    for up in dep.get("updates") or []:
-                        yield _row(mgr, f, dep, up)
-                        break
+                    yield mgr, f, dep
+
+
+def rows(report):
+    """One dict per pending update; only a dep's first update, the rest being other bucket levels."""
+    for mgr, f, dep in _deps(report):
+        for up in dep.get("updates") or []:
+            yield _row(mgr, f, dep, up)
+            break
+
+
+# Skip reasons that mean "nothing to look up" by construction; any other reason hides a pin from every report.
+BY_DESIGN = {"disabled", "ignored", "package-rules", "path-dependency", "local-dependency",
+             "local", "file-dependency", "internal-package", "unspecified-version",
+             "unversioned-reference", "git-dependency", "inherited-dependency",
+             "contains-variable"}
+
+
+def _skip_reason(dep):
+    """Why Renovate never compared this dep's value; "" when it did."""
+    if dep.get("skipReason"):
+        return dep["skipReason"]
+    if dep.get("updates"):
+        return ""
+    warns = [w.get("message") or w.get("topic") or "" for w in dep.get("warnings") or []]
+    return "lookup-failed: " + warns[0] if warns else ""
+
+
+def skipped(report):
+    """(listed rows, by-design counts): deps Renovate never looked up, or whose lookup failed."""
+    listed, design = [], collections.Counter()
+    for mgr, f, dep in _deps(report):
+        why = _skip_reason(dep)
+        if why in BY_DESIGN:
+            design[why] += 1
+        elif why:
+            listed.append((mgr, f.get("packageFile") or DASH,
+                           dep.get("depName") or dep.get("packageName") or "?",
+                           dep.get("currentValue") or DASH, _clean(why)))
+    return listed, design
 
 
 def _row(mgr, f, dep, up):
@@ -138,7 +176,8 @@ def _row(mgr, f, dep, up):
             "cur": dep.get("currentValue") or "",
             "new": up.get("newValue") or "",
             "curDigest": dep.get("currentDigest") or "",
-            "newDigest": up.get("newDigest") or "",
+            # npm reports the new tarball's integrity hash on every update; only a digest pin moves by digest.
+            "newDigest": (up.get("newDigest") or "") if dep.get("currentDigest") else "",
             "updateType": up.get("updateType") or ""}
 
 
@@ -473,31 +512,46 @@ def lock_readable(root, rel, dep):
     print("  %s: parses as %s, and %s %r" % (rel, kind, said, dep))
 
 
+def _print_config(log):
+    cfg = resolved_config(log)
+    if cfg is None:
+        sys.exit("no --print-config record in %s" % log)
+    json.dump(cfg, sys.stdout)
+
+
+def _print_rows(path):
+    for row in rows(load_report(path)):
+        print("%s\t%s\t%s\t%s\t%s" % (
+            row["manager"], row["file"], row["dep"],
+            (row["curDigest"] or row["cur"])[:12],
+            (row["newDigest"] or row["new"])[:12]))
+
+
+def _print_skipped(path):
+    listed, design = skipped(load_report(path))
+    for row in listed:
+        print("SKIP\t%s\t%s\t%s\t%s\t%s" % row)
+    for why, n in sorted(design.items()):
+        print("DESIGN\t%s\t%d" % (why, n))
+
+
+# A table, not an if-chain: every mode is one entry, so a new one adds no branch to main.
+MODES = {
+    "config": lambda a: _print_config(a[0]),
+    "managers": lambda a: managers(load_obj(a[0]), a[1]),
+    "rows": lambda a: _print_rows(a[0]),
+    "skipped": lambda a: _print_skipped(a[0]),
+    "plan": lambda a: plan(load_report(a[0]), load_obj(a[1]), a[2], a[3]),
+    "verify": lambda a: predict(_verify(load(a[1]), a[0])),
+    "edit": lambda a: apply_edits(a[0], a[1]),
+    "lockcheck": lambda a: lock_readable(a[0], a[1], a[2]),
+}
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
-    if mode == "config":
-        cfg = resolved_config(sys.argv[2])
-        if cfg is None:
-            sys.exit("no --print-config record in %s" % sys.argv[2])
-        json.dump(cfg, sys.stdout)
-    elif mode == "managers":
-        managers(load_obj(sys.argv[2]), sys.argv[3])
-    elif mode == "rows":
-        for row in rows(load_report(sys.argv[2])):
-            print("%s\t%s\t%s\t%s\t%s" % (
-                row["manager"], row["file"], row["dep"],
-                (row["curDigest"] or row["cur"])[:12],
-                (row["newDigest"] or row["new"])[:12]))
-    elif mode == "plan":
-        plan(load_report(sys.argv[2]), load_obj(sys.argv[3]), sys.argv[4], sys.argv[5])
-    elif mode == "verify":
-        predict(_verify(load(sys.argv[3]), sys.argv[2]))
-    elif mode == "edit":
-        apply_edits(sys.argv[2], sys.argv[3])
-    elif mode == "lockcheck":
-        lock_readable(sys.argv[2], sys.argv[3], sys.argv[4])
-    else:
+    if mode not in MODES:
         sys.exit("unknown planner mode %r" % mode)
-
+    MODES[mode](sys.argv[2:])
 
 main()

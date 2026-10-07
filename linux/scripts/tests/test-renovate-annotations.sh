@@ -11,7 +11,7 @@ ENV_FILE="${HUB}/linux/scripts/01-core/versions.env"
 TOOL_FILE="${HUB}/linux/scripts/01-core/tool-pins.env"
 CFG_FILE="${HUB}/.github/renovate.json"
 
-# _probe <count|rows>: Python reads the JavaScript regex out of the JSON, since a re-typed copy tests the copy.
+# _probe <count|rows|unreadable>: Python reads the JavaScript regex out of the JSON, since a re-typed copy tests the copy.
 _probe() {
   "${PY}" - "${CFG_FILE}" "$1" "${ENV_FILE}" "${TOOL_FILE}" <<'PY'
 import json
@@ -24,13 +24,34 @@ pats = [m for cm in cfg.get("customManagers", []) for m in cm["matchStrings"]]
 # Python spells a named group (?P<x>...); JavaScript (?<x>...). The rest of the
 # syntax these patterns use is common to both, so the translation is this one
 # substitution and nothing else is rewritten.
-found = []
+# Renovate's own grammars, narrowed to the shapes these files use: an unknown scheme fails rather than passes.
+SHAPES = {"semver": r"v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?",
+          "loose": r"v?\d+(?:\.\d+)*(?:[-.+]?[0-9A-Za-z.-]+)?",
+          "pep440": r"\d+(?:\.\d+)*(?:(?:a|b|rc)\d+)?(?:\.post\d+)?(?:\.dev\d+)?",
+          "ubuntu": r"\d\d\.\d\d(?:\.\d+)?"}
+
+
+def readable(groups):
+    """Whether Renovate can parse the value with the scheme the annotation names (semver when none)."""
+    scheme, value = groups.get("versioning") or "semver", groups["currentValue"]
+    if scheme.startswith("regex:"):
+        return re.fullmatch(scheme[6:].replace("(?<", "(?P<"), value) is not None
+    return scheme in SHAPES and re.fullmatch(SHAPES[scheme], value) is not None
+
+
+found, unreadable = [], []
 for pat in pats:
     for m in re.finditer(pat.replace("(?<", "(?P<"), body):
         found.append("%s=%s" % (m.group("depName"), m.group("currentValue")))
+        groups = m.groupdict()
+        if not groups.get("currentDigest") and not readable(groups):
+            unreadable.append("%s=%s (versioning %s)" % (
+                groups["depName"], groups["currentValue"], groups.get("versioning") or "semver"))
 written = len(re.findall(r"^# renovate: ", body, re.M))
 if sys.argv[2] == "count":
     print("%d %d" % (written, len(found)))
+elif sys.argv[2] == "unreadable":
+    print("\n".join(unreadable))
 else:
     print("\n".join(found))
 PY
@@ -84,5 +105,10 @@ print("ok" if pats and all(re.search(p, sys.argv[2]) for p in pats) else "missed
 PY
 )" "${_f##*/} must match every customManagers managerFilePatterns entry"
 done
+
+t_case "every annotated value is valid under the versioning Renovate reads it with"
+# An invalid value is skipped, never reported as behind: ROCM_VERSION=10.0 under semver hid TheRock 10.1.
+UNREADABLE="$(_probe unreadable)"
+t_assert_eq "" "${UNREADABLE}" "values Renovate would skip as invalid; add versioning= to their annotation"
 
 t_summary
