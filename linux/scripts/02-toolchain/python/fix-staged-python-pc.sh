@@ -2,12 +2,14 @@
 set -euo pipefail
 # fix-staged-python-pc.sh — can be sourced (provides fix_python_pc_file) or executed directly.
 
+# fix_python_pc_file <pc> [install prefix]: the free-threaded tree is installed under /opt/python-freethreaded.
 fix_python_pc_file() {
   local pc_file="$1"
+  local install_prefix="${2:-/usr/local}"
   [ -f "${pc_file}" ] || return 0
 
   sed -i \
-    -e 's|^prefix=/usr/local$|prefix=${pcfiledir}/../..|' \
+    -e "s|^prefix=${install_prefix}\$|prefix=\${pcfiledir}/../..|" \
     -e 's|^libdir=\${exec_prefix}/lib$|libdir=${prefix}/lib|' \
     "${pc_file}"
 }

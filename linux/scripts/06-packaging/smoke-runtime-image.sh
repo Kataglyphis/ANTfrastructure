@@ -630,6 +630,7 @@ printf 'FACT cargo-qa-tools-versions %s\n' "${_qa# }"
 _ft="$(compgen -c | grep -E '^python3\.[0-9]+t$' | sort -u | head -1)"
 if [ -n "${_ft}" ]; then
   printf 'FACT free-threaded-python %s\n' "$("${_ft}" -c 'import sys; print(sys.version.split()[0], "gil=" + str(sys._is_gil_enabled()))' 2>/dev/null)"
+  printf 'FACT free-threaded-python-build %s\n' "$("${_ft}" -c 'import sysconfig, ssl, sqlite3, ctypes, zlib, lzma, bz2; print("prefix=" + str(sysconfig.get_config_var("prefix")), "Py_GIL_DISABLED=" + str(sysconfig.get_config_var("Py_GIL_DISABLED")))' 2>&1 | tail -1)"
 else
   printf 'FACT free-threaded-python none\n'
 fi
@@ -858,16 +859,20 @@ _consumer_cargo_qa_verdict() {
   fi
 }
 
-# CON66's interpreter: PYTHON_VERSION, and the GIL really off. docs/consumer-image-contract.md#the-free-threaded-python
+# CON66's interpreter: PYTHON_VERSION, the GIL really off, and the toolchain's source build. docs/consumer-image-contract.md#the-free-threaded-python
 _consumer_free_threaded_verdict() {
-  local row="$1" want="$3" have
+  local row="$1" want="$3" have build
   have="$(_consumer_contract_fact "$2" FACT free-threaded-python)"
+  build="$(_consumer_contract_fact "$2" FACT free-threaded-python-build)"
   if [ -z "${have}" ]; then
     printf 'NOFACT %s no FACT free-threaded-python line' "${row}"
-  elif [ "${have}" = "${want} gil=False" ]; then
-    printf 'OK %s CPython %s without the GIL' "${row}" "${want}"
-  else
+  elif [ "${have}" != "${want} gil=False" ]; then
     printf 'BAD %s python3.*t reports %s, expected %s gil=False' "${row}" "${have}" "${want}"
+  # A python-build-standalone tree reports its own prefix; a missing stdlib module leaves its ImportError here.
+  elif [ "${build}" != "prefix=/opt/python-freethreaded Py_GIL_DISABLED=1" ]; then
+    printf 'BAD %s python3.*t is not the source build in /opt/python-freethreaded with its stdlib: %s' "${row}" "${build:-no FACT free-threaded-python-build line}"
+  else
+    printf 'OK %s CPython %s without the GIL, built from source in /opt/python-freethreaded' "${row}" "${want}"
   fi
 }
 
@@ -1101,6 +1106,8 @@ _rt_tree_arch_exempt() {
 _rt_tree_probe_path() {
   case "$1" in
     /opt/llvm-target) printf '%s' /usr/local/llvm-target ;;
+    # Whatever arch the source path names, the tree lands in one place.
+    /opt/python-cross-ft/*/opt/python-freethreaded) printf '%s' /opt/python-freethreaded ;;
     *)                printf '%s' "$1" ;;
   esac
 }
@@ -1122,9 +1129,11 @@ _rt_manifest_trees() {
       [ -n "${val}" ] || break
       path="${path//\$\{${var}\}/${val}}"
     done
+    # Relocated first: a relocation may drop a ${VAR:-...} the loop above cannot resolve.
+    path="$(_rt_tree_probe_path "${path}")"
     case "${path}" in
       *'${'*) printf 'UNRESOLVED %s\n' "${path}" ;;
-      *)      _rt_tree_probe_path "${path}"; printf '\n' ;;
+      *)      printf '%s\n' "${path}" ;;
     esac
   done < "${manifest}"
 }

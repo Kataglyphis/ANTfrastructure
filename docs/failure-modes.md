@@ -532,12 +532,16 @@ a second list:
 | --- | --- | --- |
 | `package-lists.sh base_image_os_packages` | `cpython_ext_dev_packages` | the HOST closure installs the same set |
 | `build_python.sh _python_cross_stage_target_dev_pkgs` | `cpython_ext_dev_packages` + `cpython_ext_dev_packages_required` | one atomic apt install, then a per-package `dpkg-query`; a missing REQUIRED package is **fatal** |
-| `build_python.sh _python_cross_fixup_libdynload` | `cpython_ext_modules` | audits the staged `lib-dynload`; a missing `.so` **warns**, on every row |
+| `build_python.sh _python_dynload_audit` | `cpython_ext_modules` | audits each staged `lib-dynload`; a missing `.so` **warns**, on every row |
 
 The class column therefore governs the *package*, not the `.so`. The audit is
 warn-only on purpose: promoting the required rows to fatal there flips all three
 arches at once and only a cross rebuild can price that, so the decision stays
-open rather than being smuggled in with a refactor. Until 2026-09-05 the audit
+open rather than being smuggled in with a refactor. The free-threaded trees are the
+exception: they ship as the image's runtime interpreter, so a missing `_ssl`,
+`_hashlib`, `_sqlite3`, `zlib`, `_bz2`, `_lzma` or `_ctypes` is fatal there
+([`consumer-image-contract.md` § The free-threaded Python](consumer-image-contract.md#the-free-threaded-python)).
+Until 2026-09-05 the audit
 carried its own hand-written array instead — seven modules that had never gained
 `readline` after LOG23 added it to the table, which is the same desync in
 miniature.

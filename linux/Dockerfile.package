@@ -67,6 +67,9 @@ ARG OPENCV_OUTPUT_DIR
 ARG GSTREAMER_PREFIX
 ARG GCC_VERSION
 ARG RUNTIME_UID
+# Name the free-threaded CPython tree the COPY below takes from the artifact.
+ARG TARGET_ARCH
+ARG TARGETARCH
 # Both gate copy-media-payloads.sh's GPU copies; without ENABLE_AMD the rocm image ships without ROCm.
 ARG ENABLE_NVIDIA
 ARG ENABLE_AMD
@@ -92,6 +95,8 @@ COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
 COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
 COPY --link --from=artifact-source /opt/android /opt/android
 COPY --link --from=artifact-source /opt/gcc-${GCC_VERSION} /opt/gcc-${GCC_VERSION}
+# The toolchain's --disable-gil build for this arch; a native artifact stages its own arch there too. docs/consumer-image-contract.md#the-free-threaded-python
+COPY --link --from=artifact-source /opt/python-cross-ft/${TARGET_ARCH:-${TARGETARCH}}/opt/python-freethreaded /opt/python-freethreaded
 
 # The pinned Rust toolchain lives outside /opt; --chown here is free. docs/artifact-copy-completeness.md#the-rust-toolchain-must-be-writable-by-the-runtime-user
 COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/local/rustup /usr/local/rustup

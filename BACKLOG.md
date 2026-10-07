@@ -137,14 +137,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       when a published `:latest` passes the row on amd64 and arm64.
 - [ ] **CON66 — a pinned free-threaded Python in the image** [S, ★★]. Every `3.14t` leg
       (OrchestrANT, WebDavClient) had uv download a free-threaded interpreter per run, its patch
-      version unpinned. In source 2026-10-06: the package stage installs the `t` build of
-      `PYTHON_VERSION` from uv's checksummed python-build-standalone into
-      `/opt/python-freethreaded`, outside uv's store, with `/usr/local/bin/python3.14t` linked
-      to it, on all three arches. The `free-threaded-python` smoke row checks the version and
-      that the GIL is off (`docs/consumer-image-contract.md` § The free-threaded Python).
-      Proven in a `:latest` container the same day: the leg's `uv venv --python 3.14t` used it
-      with `UV_PYTHON_DOWNLOADS=never`, and a plain `3.14` still took the GIL build. Done when a
-      published `:latest` passes the row.
+      version unpinned. Since 2026-10-07 (owner decision) the toolchain stage builds it from the
+      `PYTHON_VERSION` tarball (`build_python.sh`, `PYTHON_VARIANTS=gil,freethreaded`), natively
+      and per cross arch, and the package stage COPYs
+      `/opt/python-cross-ft/<arch>/opt/python-freethreaded` to `/opt/python-freethreaded`
+      (`docs/consumer-image-contract.md` § The free-threaded Python). Proven in `:latest`
+      containers: every arch's tree passes the row. Open, only a published chain proves it:
+      - the toolchain → media → android → package chain builds in cross AND native mode, with
+        BuildKit expanding `${TARGET_ARCH:-${TARGETARCH}}` in the COPY;
+      - the toolchain stage's added time on the CI runners (estimate 25-40 min on 4 cores);
+      - a native arm64 toolchain build (PGO on arm64);
+      - a published `:latest` passes `free-threaded-python` (prefix check included) on amd64,
+        arm64 and riscv64, and the consumers' `3.14t` legs stay green on it.
 
 - [ ] **CON71 — every LLVM tool is the pinned release, on Linux and Windows** [M, ★★]. Owner
       decision 2026-10-06, reversing CON15's "clang-format and llvm-config stay 21". Measured on

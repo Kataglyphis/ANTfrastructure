@@ -912,18 +912,30 @@ t_case "CON65: riscv64 is exempt from the cargo QA row, and the arm rots the day
 t_assert_contains "$(_cc_tr 'FACT cargo-qa-tools no' riscv64 cargo-qa-tools)" "EXEMPT cargo-qa-tools"
 t_assert_contains "$(_cc_tr "${_CC_QA}" riscv64 cargo-qa-tools)" "STALE cargo-qa-tools FACT cargo-qa-tools says it IS present on riscv64"
 
-t_case "CON66: the free-threaded interpreter at PYTHON_VERSION holds the row on every arch"
+_FT_SRC='FACT free-threaded-python-build prefix=/opt/python-freethreaded Py_GIL_DISABLED=1'
+t_case "CON66: the toolchain's free-threaded source build at PYTHON_VERSION holds the row on every arch"
 for _a in amd64 arm64 riscv64; do
-  t_assert_contains "$(_cc_tr 'FACT free-threaded-python 3.14.7 gil=False' "${_a}" free-threaded-python)" \
-    "OK free-threaded-python CPython 3.14.7 without the GIL" "${_a}"
+  t_assert_contains "$(_cc_tr "FACT free-threaded-python 3.14.7 gil=False
+${_FT_SRC}" "${_a}" free-threaded-python)" \
+    "OK free-threaded-python CPython 3.14.7 without the GIL, built from source in /opt/python-freethreaded" "${_a}"
 done
 
 t_case "CON66: a GIL build, another patch or no interpreter is BAD, and no fact proves nothing (mutation)"
-_ft_bad() { _cc_tr "FACT free-threaded-python $1" amd64 free-threaded-python; }
+_ft_bad() { _cc_tr "FACT free-threaded-python $1
+${_FT_SRC}" amd64 free-threaded-python; }
 t_assert_contains "$(_ft_bad '3.14.7 gil=True')" "BAD free-threaded-python python3.*t reports 3.14.7 gil=True"
 t_assert_contains "$(_ft_bad '3.14.4 gil=False')" "BAD free-threaded-python python3.*t reports 3.14.4 gil=False"
 t_assert_contains "$(_ft_bad 'none')" "BAD free-threaded-python python3.*t reports none"
 t_assert_contains "$(_cc_tr 'FACT other yes' amd64 free-threaded-python)" "NOFACT free-threaded-python"
+
+t_case "CON66: uv's python-build-standalone tree, a missing stdlib module or no build fact is BAD (mutation)"
+_ft_src_bad() { _cc_tr "FACT free-threaded-python 3.14.7 gil=False${1:+
+FACT free-threaded-python-build $1}" amd64 free-threaded-python; }
+t_assert_contains "$(_ft_src_bad 'prefix=/opt/python-freethreaded/cpython-3.14.7+freethreaded-linux-x86_64-gnu Py_GIL_DISABLED=1')" \
+  "BAD free-threaded-python python3.*t is not the source build in /opt/python-freethreaded with its stdlib: prefix=/opt/python-freethreaded/cpython-3.14.7"
+t_assert_contains "$(_ft_src_bad "ModuleNotFoundError: No module named '_ctypes'")" \
+  "with its stdlib: ModuleNotFoundError: No module named '_ctypes'"
+t_assert_contains "$(_ft_src_bad '')" "with its stdlib: no FACT free-threaded-python-build line"
 
 t_case "CON50: the probe emits every fact the two rows read, as a real run of it"
 _TR_TMP="$(mktemp -d)"
@@ -934,7 +946,8 @@ printf '#!/bin/sh\necho "ChromeDriver 154.0.8037.92 (x)"\n' > "${_TR_TMP}/bin/ch
 printf '#!/bin/sh\necho "cargo-audit 0.22.2"\n' > "${_TR_TMP}/bin/cargo-audit"
 printf '#!/bin/sh\necho "cargo-deny 0.20.2"\n' > "${_TR_TMP}/bin/cargo-deny"
 printf '#!/bin/sh\necho "tarpaulin 0.37.2"\n' > "${_TR_TMP}/bin/cargo-tarpaulin"
-printf '#!/bin/sh\necho "3.14.7 gil=False"\n' > "${_TR_TMP}/bin/python3.14t"
+printf '#!/bin/sh\ncase "$2" in *sysconfig*) echo "prefix=/opt/python-freethreaded Py_GIL_DISABLED=1" ;; *) echo "3.14.7 gil=False" ;; esac\n' \
+  > "${_TR_TMP}/bin/python3.14t"
 printf '#!/bin/sh\necho "Android emulator version 37.2.12.0 (build_id 16428233)"\n' > "${_TR_TMP}/sdk/emulator/emulator"
 : > "${_TR_TMP}/bin/android-avd.sh"
 chmod +x "${_TR_TMP}"/bin/* "${_TR_TMP}/sdk/emulator/emulator"
@@ -947,7 +960,7 @@ for _f in "FACT chrome yes" "FACT chrome-version 154.0.8037.92" "FACT chromedriv
           "FACT chrome-headless yes" "FACT android-emulator yes" "FACT android-emulator-version 37.2.12" \
           "FACT android-emulator-runs yes" "FACT android-system-image android-35;google_apis;x86_64;r9" "FACT android-avd yes" \
           "FACT cargo-qa-tools yes" "FACT cargo-qa-tools-versions cargo-audit=0.22.2 cargo-deny=0.20.2 cargo-tarpaulin=0.37.2" \
-          "FACT free-threaded-python 3.14.7 gil=False"; do
+          "FACT free-threaded-python 3.14.7 gil=False" "${_FT_SRC}"; do
   t_assert_contains "${_TR_RAW}" "${_f}" "the probe reads it from the image"
 done
 t_assert_contains "$(CHROME_EXECUTABLE='' ANDROID_HOME="${_TR_TMP}/none" \
