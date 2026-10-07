@@ -18,9 +18,9 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
 | CMake | 4.4.4 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Node.js | 26.9.0 | [nodejs.org](https://nodejs.org/) | MIT |
+| Node.js | 26.11.0 | [nodejs.org](https://nodejs.org/) | MIT |
 | uv | 0.12.23 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
-| Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
+| Vulkan SDK | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
 
@@ -50,7 +50,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | librice / rice-proto (webrtcbin2) | v0.4.3 | [github.com/ystreet/librice](https://github.com/ystreet/librice) | Apache 2.0 |
 | FFmpeg | n9.0.2 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
 | FFmpeg codec libraries (x264, x265, libvpx, aom, dav1d, SVT-AV1, opus, LAME, vorbis, libass, twolame) | Ubuntu apt | [ffmpeg.org/legal.html](https://ffmpeg.org/legal.html) | GPL / LGPL / various |
-| VVdeC (VVC/H.266 decoder) | v3.2.0 | [github.com/fraunhoferhhi/vvdec](https://github.com/fraunhoferhhi/vvdec) | BSD-3-Clause-Clear |
+| VVdeC (VVC/H.266 decoder) | v3.2.1 | [github.com/fraunhoferhhi/vvdec](https://github.com/fraunhoferhhi/vvdec) | BSD-3-Clause-Clear |
 | ArmNN (arm64) | v26.07 | [github.com/ARM-software/armnn](https://github.com/ARM-software/armnn) | MIT |
 | Arm Compute Library (arm64) | v53.3.1 | [github.com/ARM-software/ComputeLibrary](https://github.com/ARM-software/ComputeLibrary) | MIT |
 | libcamera | v0.7.2 | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
@@ -121,8 +121,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Chrome for Testing (amd64, arm64) | 154.0.8037.92 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | Google Chrome Terms of Service (the zip's ABOUT names chrome://terms); Chromium's notices at chrome://credits |
-| chromedriver (amd64, arm64) | 154.0.8037.92 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | BSD 3-Clause (LICENSE.chromedriver and THIRD_PARTY_NOTICES.chromedriver in the zip) |
+| Chrome for Testing (amd64, arm64) | 155.0.8059.39 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | Google Chrome Terms of Service (the zip's ABOUT names chrome://terms); Chromium's notices at chrome://credits |
+| chromedriver (amd64, arm64) | 155.0.8059.39 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | BSD 3-Clause (LICENSE.chromedriver and THIRD_PARTY_NOTICES.chromedriver in the zip) |
 | Android Emulator (amd64) | 37.2.12 | [developer.android.com/studio/run/emulator](https://developer.android.com/studio/run/emulator) | Android SDK License; Apache 2.0 (LICENSE), a QEMU derivative (GPLv2), per-component NOTICE.csv |
 | Android 15 (API 35) system image, Google APIs x86_64 (amd64) | 9 | [developer.android.com/studio/run/managing-avds](https://developer.android.com/studio/run/managing-avds) | Android SDK License; AOSP components under their own licences (NOTICE.txt in the image), the kernel GPLv2 |
 
@@ -172,7 +172,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Python (source-built, ClangCL) | 3.14.8 | [python.org](https://python.org/) | PSF License |
 | CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal) | bundled with Python | [github.com/python/cpython-source-deps](https://github.com/python/cpython-source-deps) | various (Apache 2.0, MIT, PD, …) |
 | CMake | 4.4.4 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
+| Vulkan SDK | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
 | Flutter SDK | 3.47.6 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
@@ -185,7 +185,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | cuDNN | 9.27.0.42 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 | TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 | AMD ROCm for Windows (TheRock tarball, C:\TheRock\build; rocm variant only) | 10.1.0 | [github.com/ROCm/TheRock](https://github.com/ROCm/TheRock) | per component: MIT (rocBLAS, hipBLASLt, MIOpen, rocFFT, rocRAND, rocSPARSE, hipcc, ...), BSD (rocSOLVER, hipCUB), Apache-2.0 (rocThrust, LLVM WITH LLVM-exception); the notices in share\doc ship with the tree. The HIP and OpenCL runtime DLLs carry no licence file and link AMD's prebuilt PAL: redistribution in a PUBLIC image is an owner decision |
-| Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\vulkan-loader, on PATH in the default and nvidia images; the arm64 bundle's copy and licence in C:\runtime\lavapipe) | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 (Khronos Vulkan-Loader) with MIT components (cJSON, Dave Gamble; joseph werle); VulkanRT-License.txt ships in C:\vulkan-loader |
+| Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\vulkan-loader, on PATH in the default and nvidia images; the arm64 bundle's copy and licence in C:\runtime\lavapipe) | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 (Khronos Vulkan-Loader) with MIT components (cJSON, Dave Gamble; joseph werle); VulkanRT-License.txt ships in C:\vulkan-loader |
 | Mesa lavapipe (the CPU Vulkan ICD: lvp_icd.x86_64/aarch64.json + vulkan_lvp.dll in C:\runtime\lavapipe; mmozeiko/build-mesa, SHA256-pinned) | 26.2.4 | [github.com/mmozeiko/build-mesa](https://github.com/mmozeiko/build-mesa) | MIT (Mesa 3D; the 7z carries no licence text, so this release repository and mesa3d.org are the pointer) |
 | PyTorch + TorchVision for ROCm (built from upstream source against TheRock's ROCm 10.1.0 SDK, kernels for gfx1201 and gfx1200, on AMD's rocm[libraries] runtime; rocm variant only) | torch 2.14.1+rocm10.1.0 and torchvision 0.29.1+rocm10.1.0 from the v2.14.1 / v0.29.1 tags (commits pinned as TORCH_ROCM_WINDOWS_*_COMMIT), with AMD's rocm-sdk runtime and device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*) | [github.com/pytorch/pytorch](https://github.com/pytorch/pytorch) | BSD 3-Clause (PyTorch, TorchVision); the bundled ROCm runtime as above (MIT/BSD/Apache-2.0 plus the HIP runtime without a licence file) |
 | LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv: the pinned 2.2.0 on the rocm variant, the app lock's 2.1.6 on the default and nvidia images) | 2.2.0 (cp314 win_amd64; URL + SHA256 pinned as TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*) | [github.com/google-ai-edge/LiteRT](https://github.com/google-ai-edge/LiteRT) | Apache 2.0 (the wheel's METADATA; the wheel carries no licence or NOTICE text). libLiteRtWebGpuAccelerator.dll is a closed Google binary: LiteRT's Apache-2.0 wrapper around ML Drift, which LiteRT's WORKSPACE declares with no public URL; it imports only system DLLs, so Dawn/Tint (BSD 3-Clause) are linked in statically |
@@ -206,7 +206,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | LiteRT-LM | 0.18.0 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
 | Apache TVM | v0.27.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
 | AMD AMF SDK headers (FFmpeg --enable-amf; rocm variant only) | v1.5.3 | [github.com/GPUOpen-LibrariesAndSDKs/AMF](https://github.com/GPUOpen-LibrariesAndSDKs/AMF) | MIT |
-| Vulkan SDK headers + glslc (FFmpeg --enable-vulkan; rocm variant only) | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache-2.0 OR MIT (Vulkan-Headers; no election recorded, so both are listed) and MIT (SPIRV-Headers); glslc is build-time only |
+| Vulkan SDK headers + glslc (FFmpeg --enable-vulkan; rocm variant only) | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache-2.0 OR MIT (Vulkan-Headers; no election recorded, so both are listed) and MIT (SPIRV-Headers); glslc is build-time only |
 
 ### LiteRT-LM GPU Backend (rocm variant only)
 
@@ -227,8 +227,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip) | 11472 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
-| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 11472 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
+| llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip) | 11476 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
+| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 11476 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
 | LLVM OpenMP runtime (libomp.dll, bundled in both llama.cpp zips: CPU and Vulkan) | as bundled in the pinned llama.cpp zips (sha256-pinned; the two copies are byte-identical) | [github.com/llvm/llvm-project/tree/main/openmp](https://github.com/llvm/llvm-project/tree/main/openmp) | Apache 2.0 with LLVM Exceptions (older code also under the legacy NCSA/MIT terms); LICENSE-LLVM-OpenMP ships beside each copy, in C:\runtime\opt\llama.cpp-hip and C:\runtime\opt\llama.cpp-vulkan |
 
 ### MIGraphX + ORT plugin EP (rocm variant only)

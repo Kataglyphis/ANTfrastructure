@@ -256,19 +256,20 @@ ensure_appimagetool_if_supported() {
 
 # GL.default twice: its extra branch is a separate ref. docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
 _flatpak_refs() {
-    local version="$1" openh264="$2"
+    local version="$1"
 
+    # Since 25.08 the extra branches are <ver>-extra, and the codecs ride codecs-extra; no openh264 extension is left.
     printf '%s\n' \
         "org.freedesktop.Platform//${version}" \
         "org.freedesktop.Sdk//${version}" \
         "org.freedesktop.Platform.Locale//${version}" \
         "org.freedesktop.Sdk.Locale//${version}" \
         "org.freedesktop.Platform.GL.default//${version}" \
-        "org.freedesktop.Platform.GL.default//${version}extra" \
-        "org.freedesktop.Platform.openh264//${openh264}"
+        "org.freedesktop.Platform.GL.default//${version}-extra" \
+        "org.freedesktop.Platform.codecs-extra//${version}-extra"
 }
 
-# Tells an unpublished branch from a failed payload fetch (openh264 is extra-data fetched from Cisco).
+# Tells an unpublished branch from a failed payload fetch.
 _flatpak_diagnose_ref() {
     local ref="$1" name branches
     name="${ref%%//*}"
@@ -298,8 +299,7 @@ install_flatpak_runtime() {
             ;;
     esac
 
-    local runtime_version="${FLATPAK_RUNTIME_VERSION:-24.08}"
-    local openh264_version="${FLATPAK_OPENH264_VERSION:-2.5.1}"
+    local runtime_version="${FLATPAK_RUNTIME_VERSION:-26.08}"
 
     info "Adding Flathub repository (if not present)"
     if ! flatpak remote-list | grep -q flathub; then
@@ -317,7 +317,7 @@ install_flatpak_runtime() {
                  warn "${ref} did not install; consumers will fetch it per run"
                  failed=$((failed + 1)); }
     done <<EOF
-$(_flatpak_refs "${runtime_version}" "${openh264_version}")
+$(_flatpak_refs "${runtime_version}")
 EOF
 
     info "Flatpak runtime installation complete ($((total - failed))/${total} refs)"

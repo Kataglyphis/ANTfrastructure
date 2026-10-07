@@ -687,16 +687,13 @@ _vulkan_target_dynamic_args() {
 
 # See docs/vulkan-foreign-arch-sdk.md § Upstream patches: recheck on every SDK bump
 _vulkan_patch_component() {
-  local label="$1" src="$2" patch
+  local label="$1" src="$2" patch=""
   [ -n "${src}" ] && [ -d "${src}" ] || return 0
-  case "${label}" in
-    slang) patch="slang/001-riscv64-arch-detection.patch" ;;
-    *) return 0 ;;
-  esac
+  # None carried since SDK 1.4.363.0, whose slang has PR #12305; a patch adds a case "${label}" arm setting patch.
+  [ -n "${patch}" ] || return 0
   local dir="/opt/scripts/patches"
   [ -f "${dir}/${patch}" ] || { log "${label}: no ${patch} at ${dir}; skipping"; return 0; }
-  bash "/opt/scripts/core/apply-patch.sh" "${dir}/${patch}" "${src}" \
-    "${label}: derive pointer size and endianness from the compiler (upstream PR #12305)"
+  bash "/opt/scripts/core/apply-patch.sh" "${dir}/${patch}" "${src}" "${label}: ${patch}"
 }
 
 # See docs/vulkan-foreign-arch-sdk.md

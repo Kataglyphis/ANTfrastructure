@@ -1094,7 +1094,7 @@ moved the host-tool pins out of the image build's inputs, 2026-10-05). Both are 
 Node is pinned because Renovate 44 declares `"node": "^24.11.0"` and dies on
 Node 22 with `TypeError: RegExp.escape is not a function`, an error that names
 nothing relevant. It is deliberately **not** the canonical `NODE_VERSION`, which is
-26.9.0 for the images: Renovate declares `engines.node "^24.11.0"`, major 24 only,
+26.11.0 for the images: Renovate declares `engines.node "^24.11.0"`, major 24 only,
 so one name cannot serve both. A node already on `PATH` is used only when its major
 **matches** the pin rather than merely exceeding it;
 otherwise the pinned tarball is downloaded once, **SHA256-verified**, and cached

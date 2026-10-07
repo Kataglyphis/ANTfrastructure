@@ -26,7 +26,7 @@ belongs on the bare host.
 | ONNX Runtime | CPU + DirectML, plus the in-tree WebGPU EP as a **spike** (`ORT_WEBGPU=1`). ORT >= 1.23 has no ROCm EP | DirectML, WebGPU (Dawn on D3D12) | no |
 | PyTorch | torch 2.14.1+rocm10.1.0, torchvision 0.29.1+rocm10.1.0, built from source here for gfx1201 and gfx1200 | ROCm/HIP (AMD's runtime wheels) | no |
 | App venv LiteRT | `ai-edge-litert` 2.2.0 with its WebGPU accelerator | WebGPU (Dawn on D3D12) | no |
-| llama.cpp HIP | `ggml-hip` built from source at b11472 against the image's TheRock (gfx1200, gfx1201), with the same tag's official CPU tools, `C:\runtime\opt\llama.cpp-hip` | ROCm/HIP | yes: TheRock's clang, HIP runtime, hipBLAS/rocBLAS |
+| llama.cpp HIP | `ggml-hip` built from source at b11476 against the image's TheRock (gfx1200, gfx1201), with the same tag's official CPU tools, `C:\runtime\opt\llama.cpp-hip` | ROCm/HIP | yes: TheRock's clang, HIP runtime, hipBLAS/rocBLAS |
 | llama.cpp Vulkan | the same build's official Windows Vulkan zip (`ggml-vulkan`), `C:\runtime\opt\llama.cpp-vulkan` | Vulkan (the sdk layer's loader) | no |
 | MIGraphX + ORT plugin EP | MIGraphX 2.18.0 from source, `migraphx-ep.dll` as a **spike** | ROCm/HIP | yes |
 
@@ -536,7 +536,7 @@ The cpu and nvidia lanes are configured exactly as before.
 
 ### Vulkan (rocm lane only, since 2026-09-23)
 
-**What it enables.** `--enable-vulkan`, built against the base image's Vulkan SDK (`VULKAN_VERSION`, headers at `VK_HEADER_VERSION` 357):
+**What it enables.** `--enable-vulkan`, built against the base image's Vulkan SDK (`VULKAN_VERSION`, headers at `VK_HEADER_VERSION` 363 since 2026-10-07; the list below was measured at 357):
 - the `vulkan` hwdevice, with `hwupload`/`hwmap`/`hwdownload` to and from it;
 - Vulkan Video decode hwaccels `av1`, `h264`, `hevc`, `vp9`, and compute-shader decode hwaccels `apv`, `dpx`, `ffv1`, `prores`, `prores_raw`;
 - encoders `h264_vulkan`, `hevc_vulkan`, `av1_vulkan` (Vulkan Video) and `ffv1_vulkan`, `prores_ks_vulkan` (compute);
@@ -818,7 +818,7 @@ The stage installs two builds of the same llama.cpp tag, each in its own directo
 build here, built against this image's ROCm, and upstream's prebuilt Vulkan build in
 [§ The Vulkan build](#the-vulkan-build-cruntimeoptllamacpp-vulkan).
 
-**What it adds.** The rocm image carries llama.cpp b11472 with a HIP backend built here, in `C:\runtime\opt\llama.cpp-hip`, which `LLAMA_CPP_HIP_HOME` names. It contains:
+**What it adds.** The rocm image carries llama.cpp b11476 with a HIP backend built here, in `C:\runtime\opt\llama.cpp-hip`, which `LLAMA_CPP_HIP_HOME` names. It contains:
 - `ggml-hip.dll`, about 129 MB, built from the tag's source (`LLAMA_CPP_HIP_COMMIT`, archive `LLAMA_CPP_HIP_SOURCE_SHA256`) with TheRock's AMD clang, for gfx1200 and gfx1201;
 - `llama-server.exe`, `llama-cli.exe`, `llama.exe` and the other tools, and the CPU `ggml-cpu-*.dll` variants: the tag's official `llama-b<build>-bin-win-cpu-x64.zip` (`LLAMA_CPP_CPU_SHA256`).
 
@@ -826,7 +826,7 @@ That is how upstream composes its own `win-rocm` zip: release.yml's `windows-roc
 - **No bundled HIP runtime.** Upstream ships `amdhip64_7.dll`, `rocm_kpack.dll` and `amd_comgr.dll` beside the exes (llama.cpp#26929). Here nothing of ROCm's sits in the directory: `ggml-hip.dll` loads the image's TheRock runtime, hipBLAS and rocBLAS from `C:\TheRock\build\bin`, last on PATH.
 - **Two GPUs, not twenty.** `GPU_TARGETS` comes from `ROCM_WINDOWS_GFX_FAMILY` (`gfx120X-all` = gfx1200;gfx1201), the GPUs the tarball's rocBLAS and hipBLASLt have kernels for. Upstream's DLL carries 20 targets and weighs 973 MB.
 
-**Why from source (owner decision 2026-10-07).** Upstream still builds against TheRock 10.0.0 (release.yml `windows-rocm`, `ROCM_VERSION: "10.0.0"`, at b11472), and every build ships only a `win-rocm-10.0` zip. Its `ggml-hip.dll` and bundled runtime cannot serve a 10.1 image.
+**Why from source (owner decision 2026-10-07).** Upstream still builds against TheRock 10.0.0 (release.yml `windows-rocm`, `ROCM_VERSION: "10.0.0"`, at b11472 and still at b11476), and every build ships only a `win-rocm-10.0` zip. Its `ggml-hip.dll` and bundled runtime cannot serve a 10.1 image.
 
 **Where it sits.** base → sdk (rocm) → toolchain → media → [migraphx] → **llama** → torch → final. The stage is `Dockerfile.rocm-llama`, target `built`; `Build-Buildkit.ps1` forwards its `LLAMA_CPP_*` pins, `ROCM_WINDOWS_GFX_FAMILY` and the sccache endpoint. `-NoRocmSpikes` builds it directly on the merged media.
 
@@ -855,7 +855,7 @@ It writes `llama-cpp-hip-manifest.json` last: size and SHA256 of every file, and
 - ggml-hip has device code for every GPU that ROCm's rocBLAS has kernels for;
 - `llama-server --version` reports the pinned build.
 
-Measured 2026-10-07 in a `:winamd64` container with TheRock 10.1.0 installed by `Install-Rocm.ps1`, the hub clone mounted:
+Measured 2026-10-07 at b11472 in a `:winamd64` container with TheRock 10.1.0 installed by `Install-Rocm.ps1`, the hub clone mounted:
 - `Build-LlamaCppHipFromSource.ps1` built `ggml-hip.dll` (128,678,400 B) cold in 3 min 27 s, 177 s of it ninja at `-j14`, beside a MIGraphX build. The log is 19 MB; without `-Wno-ignored-attributes` it was 160 MB.
 - `Install-LlamaCpp.ps1 -Backend hip` installed it, and `LlamaCpp.ps1` (each backend, then both as the smoke gate runs it) reported no finding.
 - `ggml-hip.dll` imports `ggml-base.dll`, `hipblas.dll` and `amdhip64_7.dll`; its device code is gfx1200 and gfx1201.
@@ -872,18 +872,18 @@ Measured 2026-10-07 in a `:winamd64` container with TheRock 10.1.0 installed by 
 - **Pinning.** Upstream publishes several builds a day, all flagged prerelease. Renovate reports new builds (approval-gated). `python docs/scripts/bump_versions.py --write-all` moves the build to the newest one that publishes both a win-cpu and a win-vulkan zip, with the tag's commit, the source archive's SHA256, both zips' digests and the LICENSE.
 
 **Evidence.**
-- https://github.com/ggml-org/llama.cpp/releases/tag/b11472
-- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11472/.github/workflows/release.yml (`windows-cpu` job, lines 886-950; `windows-rocm` job, lines 954-1110)
-- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11472/ggml/src/ggml-hip/CMakeLists.txt (`CXX_IS_HIPCC` on WIN32)
-- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11472/tools/ui/CMakeLists.txt (the prebuilt UI download)
+- https://github.com/ggml-org/llama.cpp/releases/tag/b11476
+- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11476/.github/workflows/release.yml (`windows-cpu` job, lines 886-950; `windows-rocm` job, lines 954-1110)
+- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11476/ggml/src/ggml-hip/CMakeLists.txt (`CXX_IS_HIPCC` on WIN32)
+- https://raw.githubusercontent.com/ggml-org/llama.cpp/b11476/tools/ui/CMakeLists.txt (the prebuilt UI download)
 - https://raw.githubusercontent.com/ggml-org/llama.cpp/b11115/common/arg.cpp (`--version` handler) and tools/server/server.cpp (`llama_server` start-up order)
 - https://github.com/ggml-org/llama.cpp/issues/26929
 
 ### The Vulkan build (`C:\runtime\opt\llama.cpp-vulkan`)
 
-**What it adds.** llama.cpp's official Windows Vulkan zip of the same build, b11472: asset `llama-b11472-bin-win-vulkan-x64.zip`, 33,378,833 B. It lives in its own directory, which `LLAMA_CPP_VULKAN_HOME` names, and it is never on PATH. It is the vendor-neutral path to an AMD GPU, and the only one for GPUs the gfx120X-all rocBLAS has no kernels for, such as the gfx1036 iGPU.
+**What it adds.** llama.cpp's official Windows Vulkan zip of the same build, b11476: asset `llama-b11476-bin-win-vulkan-x64.zip`, 33,380,424 B. It lives in its own directory, which `LLAMA_CPP_VULKAN_HOME` names, and it is never on PATH. It is the vendor-neutral path to an AMD GPU, and the only one for GPUs the gfx120X-all rocBLAS has no kernels for, such as the gfx1036 iGPU.
 - Upstream builds only `ggml-vulkan.dll` (`-DGGML_VULKAN=ON -DGGML_CPU=OFF -DGGML_BACKEND_DL=ON`, Vulkan SDK 1.4.357.0) and then adds the windows-cpu zip's tools.
-- Measured 2026-10-07 at b11472: the Vulkan zip is the CPU zip's 51 files, byte-identical (CRC32 and size), plus `ggml-vulkan.dll`. The HIP directory ships the same 51 beside its own `ggml-hip.dll`.
+- Measured 2026-10-07 at b11472, and again at b11476: the Vulkan zip is the CPU zip's 51 files, byte-identical (CRC32 and size), plus `ggml-vulkan.dll`. The HIP directory ships the same 51 beside its own `ggml-hip.dll`.
 
 **Pins.** Only `LLAMA_CPP_VULKAN_SHA256` is Vulkan's own. The build stays one pin, `LLAMA_CPP_HIP_BUILD`, the asset name follows from it, and the LICENSE pin is the HIP build's, because it is the same tag's LICENSE. The ARG is declared after the HIP RUN, so a Vulkan-only change keeps the HIP layer and its ggml-hip compile cached.
 

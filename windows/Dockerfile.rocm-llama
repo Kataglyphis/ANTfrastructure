@@ -39,10 +39,10 @@ ENV LLAMA_CPP_HIP_HOME="C:\runtime\opt\llama.cpp-hip"
 
 # Values: versions.env (the driver forwards them; bump every LLAMA_CPP_* together). ARG only, like the migraphx stage.
 ARG ROCM_WINDOWS_GFX_FAMILY=gfx120X-all
-ARG LLAMA_CPP_HIP_BUILD=11472
-ARG LLAMA_CPP_HIP_COMMIT=d0b490f25edec147b4dcd69cce31c7d1099dff1d
-ARG LLAMA_CPP_HIP_SOURCE_SHA256=4e3bfa01fa9439074db79d938f3b71e4852d3bb0b57a0f4a299a9edde9e11d63
-ARG LLAMA_CPP_CPU_SHA256=57491129bfb28f21b61748b10f7652c95604ca772b0340ff6e931a383f7d3717
+ARG LLAMA_CPP_HIP_BUILD=11476
+ARG LLAMA_CPP_HIP_COMMIT=988190680d5a89fce97de3c20df2c2813731fd61
+ARG LLAMA_CPP_HIP_SOURCE_SHA256=f6a3888e662b7ad9e6a892588c83cc67f18781b884a209ccae1fc30b7510cac0
+ARG LLAMA_CPP_CPU_SHA256=a23e548c6b3525c38bcfeceaff919786ae06741857043cb670279b70100e5483
 ARG LLAMA_CPP_HIP_LICENSE_SHA256=94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d
 ENV LLAMA_CPP_HIP_BUILD="${LLAMA_CPP_HIP_BUILD}"
 
@@ -61,7 +61,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     if ($findings.Count -gt 0) { throw ('llama.cpp HIP check failed: ' + ($findings -join ' | ')) }
 
 # Declared after the HIP RUN, so a Vulkan pin moves only this layer.
-ARG LLAMA_CPP_VULKAN_SHA256=906d5405ef5f7a37e838a04701c27fc3c41d72aae7adbbeef4acc323a89a473d
+ARG LLAMA_CPP_VULKAN_SHA256=5c71e7b749697da4a8d46e9ee55486845cbba27c9dfbecb4007f31ba6610d523
 ENV LLAMA_CPP_VULKAN_HOME="C:\runtime\opt\llama.cpp-vulkan"
 RUN --mount=type=bind,source=windows/scripts/build/Install-LlamaCpp.ps1,target=C:\bkmnt\Install-LlamaCpp.ps1 `
     --mount=type=bind,source=windows/scripts/build/rocm-checks/LlamaCpp.ps1,target=C:\bkmnt\LlamaCpp.ps1 `

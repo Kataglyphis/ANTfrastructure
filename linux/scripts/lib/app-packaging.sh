@@ -12,7 +12,7 @@ source "${_APP_PACKAGING_DIR}/../01-core/platform.sh"   # arch_normalize, arch_u
 # shellcheck source=../01-core/common.sh
 source "${_APP_PACKAGING_DIR}/../01-core/common.sh"     # run_priv (+ versions.env)
 
-: "${FLATPAK_RUNTIME_VERSION:=24.08}"
+: "${FLATPAK_RUNTIME_VERSION:=26.08}"
 
 # run_priv, plus a `sudo -n true` probe the runtime image needs.
 app_packaging_run_privileged_cmd() {

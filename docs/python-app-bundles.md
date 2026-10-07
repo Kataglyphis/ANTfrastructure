@@ -266,6 +266,7 @@ Measured in `:winarm64` on 2026-10-01 for OrchestrANT 0.0.29:
 
 - **An MSIX install test.** Server Core cannot install an MSIX, so the package is proven
   unpacked and by its signature; an install needs a client Windows host.
-- **flatpak.** The bundle needs glibc 2.43 (above), and org.freedesktop.Platform 24.08 ships
-  an older one, so it does not fit that runtime as built.
+- **flatpak.** The bundle needs glibc 2.43 (above). org.freedesktop.Platform 24.08 shipped an
+  older one; 26.08, the image's runtime since 2026-10-07, ships glibc 2.44 (`ldd --version` in
+  it), so that blocker is gone. No flatpak of a bundle has been built yet.
 - **Size.** OrchestrANT's core dependencies pull in Cython and matplotlib at runtime.

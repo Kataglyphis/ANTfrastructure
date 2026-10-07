@@ -94,16 +94,18 @@ t_assert_contains "${_src}" 'command -v appimagetool 2>/dev/null)" || return 0' 
 # See docs/consumer-image-contract.md#the-flatpak-runtimes-ship-with-the-image
 
 t_case "all seven refs a Flatpak build resolves are installed, not just two"
-_refs="$( eval "$(t_fn_src "${SUBJECT}" _flatpak_refs)"; _flatpak_refs 24.08 2.5.1 )"
+_refs="$( eval "$(t_fn_src "${SUBJECT}" _flatpak_refs)"; _flatpak_refs 26.08 )"
 t_assert_eq "7" "$(printf '%s\n' "${_refs}" | grep -c .)" \
   "five of the seven used to be left to every consumer run -- ~1.9 GB per build"
 t_assert_eq "2" "$(printf '%s\n' "${_refs}" | grep -c 'GL\.default')" \
   "the base branch and its 'extra' sibling are SEPARATE refs; resolving one still fetches the other"
-t_assert_contains "${_refs}" "org.freedesktop.Platform.GL.default//24.08extra" \
-  "the extra sibling is a branch suffix, not its own version"
-t_assert_contains "${_refs}" "org.freedesktop.Platform.openh264//2.5.1" \
-  "openh264 is pinned by FLATPAK_OPENH264_VERSION, not by the runtime version"
-t_assert_eq "0" "$(printf '%s\n' "${_refs}" | grep -c '//$\|//extra')" \
+t_assert_contains "${_refs}" "org.freedesktop.Platform.GL.default//26.08-extra" \
+  "since 25.08 the extra sibling's branch is <ver>-extra; 24.08's <ver>extra does not exist there"
+t_assert_contains "${_refs}" "org.freedesktop.Platform.codecs-extra//26.08-extra" \
+  "codecs-extra (FFmpeg, x264, x265) is 26.08's codec extension, on the runtime's -extra branch"
+t_assert_eq "0" "$(printf '%s\n' "${_refs}" | grep -c 'openh264')" \
+  "Platform//26.08 declares no openh264 extension point, so an openh264 ref is dead weight"
+t_assert_eq "0" "$(printf '%s\n' "${_refs}" | grep -c '//$\|//-extra')" \
   "an unset version must not produce a ref with an empty branch"
 
 t_case "the runtimes are ON by default: the shipped image had zero refs"

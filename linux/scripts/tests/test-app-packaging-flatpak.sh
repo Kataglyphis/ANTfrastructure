@@ -173,9 +173,9 @@ t_case "setup_dependencies: a missing ref is still installed per-user"
 _setup_deps
 t_assert_eq "0" "${rc}" "output was: ${OUT}"
 t_assert_contains "$(cat "${LOG}")" \
-  "--user install -y --arch=x86_64 flathub org.freedesktop.Platform/x86_64/24.08"
+  "--user install -y --arch=x86_64 flathub org.freedesktop.Platform/x86_64/26.08"
 t_assert_contains "$(cat "${LOG}")" \
-  "--user install -y --arch=x86_64 flathub org.freedesktop.Sdk/x86_64/24.08"
+  "--user install -y --arch=x86_64 flathub org.freedesktop.Sdk/x86_64/26.08"
 
 t_case "setup_dependencies: a known remote in EITHER scope skips remote-add"
 _setup_deps STUB_SYSTEM_REMOTE=0
@@ -213,10 +213,10 @@ t_assert_contains "$(t_fn_src "${LIB}" app_packaging_package_linux_bundle_flatpa
 # ── app_packaging_ensure_flatpak_runtime ─────────────────────────────────────
 
 t_case "ensure_flatpak_runtime: installs runtime AND sdk when neither is present"
-_call -- app_packaging_ensure_flatpak_runtime "" org.freedesktop.Platform org.freedesktop.Sdk 24.08
+_call -- app_packaging_ensure_flatpak_runtime "" org.freedesktop.Platform org.freedesktop.Sdk 26.08
 t_assert_eq "0" "${rc}" "output was: ${OUT}"
-t_assert_contains "$(cat "${LOG}")" "--user install -y --noninteractive flathub org.freedesktop.Platform/x86_64/24.08"
-t_assert_contains "$(cat "${LOG}")" "--user install -y --noninteractive flathub org.freedesktop.Sdk/x86_64/24.08"
+t_assert_contains "$(cat "${LOG}")" "--user install -y --noninteractive flathub org.freedesktop.Platform/x86_64/26.08"
+t_assert_contains "$(cat "${LOG}")" "--user install -y --noninteractive flathub org.freedesktop.Sdk/x86_64/26.08"
 
 t_case "ensure_flatpak_runtime: a ref that is already there is NOT reinstalled"
 # A user install of a ref present system-wide is a second 1-2 GB copy, not a no-op.
@@ -260,7 +260,7 @@ t_assert_contains "$(cat "${LOG}")" "org.freedesktop.Platform/aarch64/"
 t_case "ensure_flatpak_runtime: the runtime version defaults to the hub pin"
 # FLATPAK_RUNTIME_VERSION is a versions.env pin; a literal would drift from it silently.
 _call -- app_packaging_ensure_flatpak_runtime
-t_assert_contains "$(cat "${LOG}")" "org.freedesktop.Platform/x86_64/${FLATPAK_RUNTIME_VERSION:-24.08}"
+t_assert_contains "$(cat "${LOG}")" "org.freedesktop.Platform/x86_64/${FLATPAK_RUNTIME_VERSION:-26.08}"
 
 # ── app_packaging_package_cmake_install_flatpak ──────────────────────────────
 
@@ -296,11 +296,11 @@ t_assert_contains "$(cat "${LOG}")" "${APP_ID} stable"
 
 t_case "package_cmake_install_flatpak: the manifest names the app, runtime, sdk and command"
 _call -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v1.2.3" \
-  org.freedesktop.Platform org.freedesktop.Sdk 24.08
+  org.freedesktop.Platform org.freedesktop.Sdk 26.08
 _manifest="${FLATPAK_WORK}/cmake-install/${APP_ID}.json"
 t_assert_ok test -f "${_manifest}"
 t_assert_contains "$(cat "${_manifest}")" "\"app-id\": \"${APP_ID}\""
-t_assert_contains "$(cat "${_manifest}")" "\"runtime-version\": \"24.08\""
+t_assert_contains "$(cat "${_manifest}")" "\"runtime-version\": \"26.08\""
 t_assert_contains "$(cat "${_manifest}")" "\"command\": \"${PROJECT}\""
 t_assert_contains "$(cat "${_manifest}")" "\"path\": \"${FLATPAK_WORK}/cmake-install/source/app\""
 

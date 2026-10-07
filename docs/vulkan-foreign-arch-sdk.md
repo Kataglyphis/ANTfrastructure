@@ -347,21 +347,24 @@ Check this table whenever `VULKAN_VERSION` moves in `versions.env`.
 
 | patch | upstream | droppable when |
 | --- | --- | --- |
-| `slang/001-riscv64-arch-detection.patch` | [shader-slang/slang#12305](https://github.com/shader-slang/slang/pull/12305), merged 2026-08-01 | the SDK's slang ref is ≥ `v2026.16` (2026-08-20 is the first release carrying it) |
-
-**How to check it in one command**, once the new source is on disk:
-
-```bash
-grep -e '__BYTE_ORDER__' <sdk>/source/slang/include/slang.h && echo "PR #12305 is in -- drop the patch"
-```
+| *(none since SDK 1.4.363.0)* | | |
 
 `apply-patch.sh` fails loudly rather than silently skipping if a patch stops
 applying, so a bump that makes one obsolete announces itself. Delete the patch
-file, its `case` arm in `_vulkan_patch_component`, and this row together.
+file, its `case` arm in `_vulkan_patch_component`, its `COPY` in
+`linux/Dockerfile.sdk`, and its row here together.
 
-### Why the slang one exists
+### The slang patch, retired with SDK 1.4.363.0
 
-SDK 1.4.357.0 pins slang to `vulkan-sdk-1.4.357` = commit `84792eb15`
+`slang/001-riscv64-arch-detection.patch` backported
+[shader-slang/slang#12305](https://github.com/shader-slang/slang/pull/12305)
+(merged 2026-08-01, first released in `v2026.16`). SDK 1.4.363.0's `./vulkansdk`
+clones slang at `vulkan-sdk-1.4.363`, whose `include/slang.h` derives the byte
+order from `__BYTE_ORDER__`, the pointer size from `__SIZEOF_POINTER__`, and
+static-asserts it against `sizeof(void*)` (read 2026-10-07). That is the check
+this section used to name, so the patch, its arm and its `COPY` went with the bump.
+
+What it fixed, for the record: SDK 1.4.357.0 pinned slang to `vulkan-sdk-1.4.357` = commit `84792eb15`
 (2026-07-11), three weeks before the fix merged. At that revision `include/slang.h`
 derives pointer size and byte order from a hand-maintained architecture whitelist
 with no `__riscv` arm, and riscv64 therefore hits **two** defects at once —
@@ -430,7 +433,7 @@ What slang does is unrelated and unchanged: it fetches a prebuilt x86_64
 VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d
 ```
 
-and SDK 1.4.357 has no `etc/` under any arch prefix at all: the explicit layers
+and SDK 1.4.357 (and 1.4.363) has no `etc/` under any arch prefix at all: the explicit layers
 install to `<arch>/share/vulkan/explicit_layer.d`. Both now name that path.
 
 Two things about it are worth knowing before treating the variable as live. The

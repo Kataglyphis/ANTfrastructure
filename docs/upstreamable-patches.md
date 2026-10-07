@@ -57,7 +57,7 @@ the branch you intend to target before filing.
 | 14 | [torchvision: staged torch paths](#14-torchvision-setuppy-cannot-be-pointed-at-a-staged-torch) | torchvision | **B/C** | ★ |
 | 15 | [cerbero: drop the `m4` recipe](#15-cerbero-dropping-the-m4-build-tool-dependency) | cerbero | **C** | — |
 | 16 | [libyuv: RVV rows are clang-gated](#16-libyuv-the-rvv-rows-are-clang-gated) | libyuv | **✔** | ★★★ |
-| 21 | [slang: riscv64 pointer size and byte order](#21-slang-riscv64-pointer-size-and-byte-order) | slang (Vulkan SDK) | **✔** | ★★ |
+| 21 | [~~slang: riscv64 pointer size and byte order~~](#21-slang-riscv64-pointer-size-and-byte-order) | slang (Vulkan SDK) | **✔** (retired) | ★★ |
 
 Sorted by how ready each one is, not by number. Eight are ready to write today;
 the rest need the rework named in their entry.
@@ -764,9 +764,10 @@ build.
 
 ## 21. slang: riscv64 pointer size and byte order
 
-`linux/scripts/patches/slang/001-riscv64-arch-detection.patch` ·
-applied by `02-toolchain/vulkan.sh` (`_vulkan_patch_component`) · applies to the
-slang the pinned `VULKAN_VERSION` SDK carries.
+**Retired 2026-10-07.** `VULKAN_VERSION` 1.4.363.0 pins slang at `vulkan-sdk-1.4.363`,
+which carries the fix, so `linux/scripts/patches/slang/001-riscv64-arch-detection.patch`
+and its arm in `_vulkan_patch_component` (`02-toolchain/vulkan.sh`) were deleted
+with that bump. Kept for the record:
 
 **Upstream has already fixed this — do not open a PR.** `slang.h` derives
 `SLANG_PTR_IS_64` and the byte order from a processor list that has no riscv64,

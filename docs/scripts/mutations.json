@@ -6274,18 +6274,26 @@
  {
   "id": "packaging.flatpak-gl-extra-sibling",
   "target": "linux/scripts/02-toolchain/packaging-deps.sh",
-  "find": "        \"org.freedesktop.Platform.GL.default//${version}extra\" \\",
+  "find": "        \"org.freedesktop.Platform.GL.default//${version}-extra\" \\",
   "replace": "",
   "test": "bash linux/scripts/tests/test-packaging-deps.sh",
   "why": "the `extra` sibling is a SEPARATE ref on the same branch, not a variant of the base one -- resolving GL.default still fetches it, so dropping the row just moves that download back into the consumer's run"
  },
  {
-  "id": "packaging.flatpak-openh264-own-version",
+  "id": "packaging.flatpak-codecs-extra-branch",
   "target": "linux/scripts/02-toolchain/packaging-deps.sh",
-  "find": "        \"org.freedesktop.Platform.openh264//${openh264}\"",
-  "replace": "        \"org.freedesktop.Platform.openh264//${version}\"",
+  "find": "        \"org.freedesktop.Platform.codecs-extra//${version}-extra\"",
+  "replace": "        \"org.freedesktop.Platform.codecs-extra//${version}\"",
   "test": "bash linux/scripts/tests/test-packaging-deps.sh",
-  "why": "openh264 is branched on its own version, not the runtime's; pinning it to ${version} names a ref that does not exist and the install 404s"
+  "why": "codecs-extra (the runtime's FFmpeg, x264 and x265 since 25.08) is published only on the runtime's <ver>-extra branch; ${version} alone names a ref flathub does not have and the install 404s"
+ },
+ {
+  "id": "packaging.flatpak-gl-extra-hyphen",
+  "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+  "find": "        \"org.freedesktop.Platform.GL.default//${version}-extra\" \\",
+  "replace": "        \"org.freedesktop.Platform.GL.default//${version}extra\" \\",
+  "test": "bash linux/scripts/tests/test-packaging-deps.sh",
+  "why": "24.08 spelled the GL sibling <ver>extra; 25.08 and 26.08 publish only <ver>-extra, so the old spelling 404s on every image build"
  },
  {
   "id": "env-knob-default.flatpak-runtimes-on",

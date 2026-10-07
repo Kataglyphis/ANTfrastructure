@@ -24,8 +24,8 @@ ENV ORT_LIB_LOCATION=$ONNX_ROOT\lib `
     ORT_DYLIB_PATH=$ONNX_ROOT\bin\onnxruntime.dll
 
 # Server Core has no Vulkan loader; rocm already installed one and the zip is x64 only, so both skip.
-ARG VULKAN_VERSION=1.4.357.0
-ARG VULKAN_RT_WINDOWS_ZIP_SHA256=a14672efed15aafc7f5a16572d35cd3a3416eadf670aeee3cdf50ee32d5fbf83
+ARG VULKAN_VERSION=1.4.363.0
+ARG VULKAN_RT_WINDOWS_ZIP_SHA256=a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42d897c8ab32695769a
 COPY windows\scripts\host\Install-VulkanLoader.ps1 C:\temp\scripts\
 RUN --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Common.psm1,target=C:\temp\scripts\modules\WindowsContainerImage.Common.psm1 `
     if ($env:WINDOWS_TARGET_ARCH -eq 'amd64' -and -not $env:VULKAN_LOADER_DIR) { & 'C:\temp\scripts\Install-VulkanLoader.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\vulkan-loader' -SystemDir '' }
