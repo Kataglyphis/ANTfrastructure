@@ -107,16 +107,17 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       published `:latest` lists it under `rustup target list --installed` on all three
       arches.
 
-- [ ] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
+- [b] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
       (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
       it in (an `install_mold_pinned` beside `install_sccache_pinned`, apt's 2.40.4 cannot link
       AccelerANTgine) is open on two conditions. 3.x must have had a point release: 3.0.0 is
       the Rust rewrite, published the day the switch landed. And some build must link
       faster with it than with lld: none measured did (`docs/shared-script-libraries.md`
       § *linker-select.sh*), BeschleunigerBallett included (2026-10-06: 0.32 s against
-      lld's 0.20 s for its `commitTestSuite` Debug relink).
+      lld's 0.20 s for its `commitTestSuite` Debug relink). Re-checked 2026-10-07: rui314/mold's
+      newest release is still v3.0.0 (2026-10-05).
 
-- [ ] **CON44 — `LP_NATIVE_VECTOR_WIDTH=256` in the image** [S, ★★]. Mesa 26.0.8's lavapipe
+- [b] **CON44 — `LP_NATIVE_VECTOR_WIDTH=256` in the image** [S, ★★]. Mesa 26.0.8's lavapipe
       compiles its BVH radix sort for 8-lane subgroups, but llvmpipe's subgroup is its vector
       width / 32: 4 lanes on arm64 NEON and riscv64, where every acceleration-structure build
       SEGVs (BeschleunigerBallett run 36746313937; detail in `docs/failure-modes.md`). The
@@ -124,7 +125,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       proves it in all three children (`check_lavapipe_subgroup`: 8 lanes on amd64, arm64 and
       riscv64), and BeschleunigerBallett's `run-ctest.sh` no longer exports its own. Open:
       - Retire the `ENV` once the image's Mesa has upstream ebcfbe60 (2026-08-22), which
-        deletes that sort. **No Mesa release carries it yet** (checked 2026-10-06 against the
+        deletes that sort. **No Mesa release carries it yet** (checked 2026-10-07 against the
         tags: 26.2.4, the newest, lacks it), so it arrives with 26.3, and in the image only
         when Ubuntu's `mesa-vulkan-drivers` moves to it. Sooner means a source-built lavapipe
         with ebcfbe60 cherry-picked, an owner decision.
