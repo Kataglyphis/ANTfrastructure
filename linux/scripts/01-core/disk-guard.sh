@@ -177,7 +177,11 @@ _disk_guard_keep_gb() {
 
 # The store as JSON, exact bytes (du's text rounds); "$@" are du filters. Empty when the store is unreachable.
 _disk_guard_du_json() {
-  _disk_guard_buildctl du "$@" --format '{{json .}}' 2>/dev/null || true
+  local j
+  j="$(_disk_guard_buildctl du "$@" --format '{{json .}}' 2>/dev/null || true)"
+  # buildctl prints null, not [], when a filter matches no record.
+  [ "${j}" = "null" ] && j="[]"
+  printf '%s' "${j}"
 }
 
 # MB of records a type==regular prune never frees; --keep-storage counts them (it bounds the WHOLE store). Empty when unknown.
