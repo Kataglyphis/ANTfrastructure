@@ -66,9 +66,9 @@ _tvm_wheel_setup() {
       "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" \
       "wheel==${PY_WHEEL_VERSION:-0.48.0}" \
       build \
-      "scikit-build-core==${PY_SCIKIT_BUILD_CORE_VERSION:-1.0.3}" \
+      "scikit-build-core==${PY_SCIKIT_BUILD_CORE_VERSION:-1.1.1}" \
       "cython==${PY_CYTHON_VERSION:-3.2.9}" \
-      "setuptools-scm==${PY_SETUPTOOLS_SCM_VERSION:-10.2.1}" \
+      "setuptools-scm==${PY_SETUPTOOLS_SCM_VERSION:-10.3.4}" \
       "mlc-z3-static==${PY_MLC_Z3_STATIC_VERSION:-4.16.0}"
     uv pip install -U numpy cloudpickle decorator psutil scipy attrs
 

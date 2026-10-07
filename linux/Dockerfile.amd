@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.27.0
+# syntax=docker/dockerfile:1.27.1
 
 # Optional AMD GPU (ROCm + MIGraphX) layer: :sdk -> :toolchain-amd -> :media-amd -> :android-amd -> :amd
 

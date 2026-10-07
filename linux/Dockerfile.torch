@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.27.0
+# syntax=docker/dockerfile:1.27.1
 
 # Keyed on TARGETARCH so a plain `docker build` uses its own platform's package image.
 ARG TARGETARCH

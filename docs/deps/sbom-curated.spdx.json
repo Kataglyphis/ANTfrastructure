@@ -1120,7 +1120,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Mesa-lavapipe-the-CPU-Vulkan-ICD-lvp-icd.x86-6-b4888d1b",
       "name": "Mesa lavapipe (the CPU Vulkan ICD: lvp_icd.x86_64/aarch64.json + vulkan_lvp.dll in C:\\runtime\\lavapipe; mmozeiko/build-mesa, SHA256-pinned)",
-      "versionInfo": "26.2.3",
+      "versionInfo": "26.2.4",
       "downloadLocation": "https://github.com/mmozeiko/build-mesa",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",

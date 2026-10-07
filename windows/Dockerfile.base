@@ -48,8 +48,8 @@ ARG NASM_WINDOWS_VERSION=3.02
 # Pinned for a feature gate (below v0.16.0 the multilevel chain is silently ignored); see docs/windows-build-resources.md § Persistent compile cache (sccache).
 ARG SCCACHE_WINDOWS_VERSION=0.18.0
 # Defaults mirror versions.env; the drivers pass the live values.
-ARG GIT_VERSION=2.55.0
-ARG GIT_WINDOWS_INSTALLER_SHA256=0c66e4a5875da5a74f9754386de7555ba301503b03bbdcdbafa69dc6464e548d
+ARG GIT_VERSION=2.56.0
+ARG GIT_WINDOWS_INSTALLER_SHA256=bfe94e7b419b16eee9fecbd1253a98e3d4f49ba8f029630549052278ffe286a6
 ARG GIT_INSTALLER_URL=""
 ARG SCOOP_INSTALLER_SHA256=94f983b190438311e006b957db7c8422709e0ba62a6c2ac04e278164108f2512
 ARG WIX_VERSION=7.0.0

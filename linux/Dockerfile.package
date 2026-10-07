@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.27.0
+# syntax=docker/dockerfile:1.27.1
 # ARG defaults are safety nets for manual builds; build-runtime-manifest.sh passes versions.env values.
 
 # Keyed on TARGETARCH so a plain `docker build` uses its own platform's base, not the amd64-only cross tag.

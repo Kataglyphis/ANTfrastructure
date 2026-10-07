@@ -128,7 +128,7 @@ $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
 #region 1. Git (pinned installer)
 # Derived from GIT_VERSION so the pin cannot drift in a default; .windows.1 covers normal releases.
-$gitVer = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_VERSION' -DefaultValue '2.55.0'
+$gitVer = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_VERSION' -DefaultValue '2.56.0'
 $GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -EnvironmentVariable 'GIT_INSTALLER_URL' `
     -DefaultValue "https://github.com/git-for-windows/git/releases/download/v$gitVer.windows.1/Git-$gitVer-64-bit.exe"
 
