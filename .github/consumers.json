@@ -84,6 +84,14 @@
       "self": false,
       "confirmed": true,
       "note": "Python. Calls the python-ci-linux.yml / python-ci-windows.yml reusable workflows (verified 2026-09-14 against a clone; still under the pre-rename name Kataglyphis-ContainerHub at ExternalLib/, which is its own migration item). kataglyphis_webdavclient is imported by windows/scripts/certificates/download_webdav_files.py and by jotrockenmitlocken's scripts/download_markdown_files.py, so the hub is also a consumer of it."
+    },
+    {
+      "name": "DocumANTation",
+      "clone_url": "https://github.com/Kataglyphis/DocumANTation.git",
+      "ref": "develop",
+      "self": false,
+      "confirmed": true,
+      "note": "The Sphinx brand theme and md2pdf, vendored BY the hub at third_party/DocumANTation. It has no ANTfrastructure submodule and calls no hub action; its pins are written by the hub's docs/scripts/sync_versions.py. Declared on 2026-10-07 because verify_workflow_conventions.py refuses a repository consumers.json does not name, so the family lint could not grade its two workflows."
     }
   ],
   "unconfirmed": [],

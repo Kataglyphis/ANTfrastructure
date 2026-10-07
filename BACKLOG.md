@@ -98,6 +98,15 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `pip install cython==3.3.0` in two separate RUNs (verified on bk-windows-media); a one-layer
       `--force-reinstall` leaves `cython\` and still fails.
 
+- [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) The report cannot say how far behind a
+      maintained lock is: add the tool's own dry-run count per lock. (2) Yarn is NOT CARRIED (no family repo has a
+      yarn.lock today). (3) `actions-selftest.yml` never runs `clone-into-short-path` on a pull_request merge ref; the fix
+      is proved by a local reproduction only. (4) Consumers to follow: jotrockenmitlocken (sqlite3 3.7.0 in its lock and
+      a refreshed `web/sqlite3.wasm`), ANThology (lock maintenance), OmniAccelerANT's `environment: flutter: '>=3.41.6'`
+      floor (its lock now needs 3.47.0), and optionally OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule
+      into the preset. (5) OmniAccelerANT's lock maintenance (go_router 18.0.2, sqlite3 3.7.0 and the wasm) waits
+      locally for its hub gitlink to move past this commit, which waits for the published images (CON72).
+
 - [ ] **CON83 — the riscv64 Python lane: seed its sync, and test the cross wheel** [M, ★★]. Found while fixing
       OrchestrANT's riscv64 lane (2026-10-07): its emulated `uv sync` of the `test` extra builds numpy, matplotlib,
       contourpy, pillow, line-profiler, psutil and pyyaml from source, 108 min of the runner's 6 h (numpy alone 107 min),

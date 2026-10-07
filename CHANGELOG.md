@@ -6,6 +6,29 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-07 — Lock file maintenance in the preset; sqlite3.wasm 3.7.0; pandoc 3.12; PR merge refs on Windows
+
+- **Every lockfile moves to the newest release its manifest allows** (owner rule 2026-10-07). `default.json` sets
+  `lockFileMaintenance` (enabled, schedule "at any time"). Before it, WebDavClient's uv.lock sat 41 packages behind,
+  DocumANTation's 19 and OmniAccelerANT's pubspec.lock 17, while every manager reported them up to date.
+- **Under `--platform=local` Renovate builds the update and never reports it** (44.140.0: `dryRun=lookup` skips the
+  branch phase, the report's `branches` stays empty), so `renovate-local.sh` carries it: `renovate_planner.py lockmaint`
+  reads the resolved config, the report lists each maintained lock once with its command, and `--apply` runs Renovate's
+  own command per lock (uv lock --upgrade, cargo update, pub upgrade, poetry, pdm, npm, pnpm) through the existing
+  pre-flight, copies, undo, read-back and collateral guard; yarn is NOT CARRIED (exit 2). Tests:
+  `test-renovate-lockmaint.sh` (M1-M10), 4 mutations; docs/dependency-updates.md#lock-file-maintenance. End to end with
+  real Renovate over DocumANTation: `--apply` moved 19 packages, the same lock a hand-run `uv lock --upgrade` wrote.
+- **The preset reads pubspec `environment: flutter:` floors with npm versioning**, moved from OmniAccelerANT's config.
+- **`SQLITE3_WASM_VERSION` 3.3.1 -> 3.7.0** (SHA256 by full download = GitHub's asset digest), with OmniAccelerANT's
+  sqlite3 package; jotrockenmitlocken (locks 3.6.0) must follow.
+- **pandoc 3.11 -> 3.12** (`PANDOC_SHA256_AMD64/ARM64` at GitHub's digests; `pandoc --version` ran from the measured
+  bytes), with DocumANTation's Dockerfile ARGs (gitlink 7c89684 -> ce1498b, which also carries its lock maintenance,
+  the ruff 0.16.10 pin and its lint fixes).
+- **`clone-into-short-path` fetches a pull request's merge commit.** A clone lacks `refs/pull/<n>/merge`, so every PR's
+  Windows container jobs died `fatal: unable to read tree` in "Prepare Windows container host" (OmniAccelerANT #45, which
+  looked like a go_router failure). It now fetches the ref by SHA when the clone lacks it, as actions/checkout does.
+- **DocumANTation is declared in `.github/consumers.json`**, so workflow-lint grades it.
+
 ## 2026-10-07 — riscv64: the cross wheel link takes the sysroot's libc
 
 - **fix(riscv64):** `ci_packaging.sh`'s cross mode puts `-L<sysroot>/lib/riscv64-linux-gnu
