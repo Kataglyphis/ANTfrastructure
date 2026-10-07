@@ -1048,7 +1048,7 @@ ONE pin table in `Get-LlvmSourceSha256`
 `Build-TvmFromSource.ps1` (the #47 mini-LLVM heal) read. It THROWS on a version
 with no pin — deliberately, unpinned downloads are forbidden. A bump can also
 invalidate `windows/scripts/patches/llvm/*.patch`, which are written against
-23.1.0's `AArch64InstrInfo.cpp` (they still apply to 23.1.1);
+23.1.0's `AArch64InstrInfo.cpp` (they still apply to 23.1.3);
 `Invoke-SourcePatch` stops loudly on one that no longer applies.
 
 ONNX Runtime bump note (2026-09-23): three things follow `ONNXRUNTIME_VERSION`.

@@ -17,9 +17,9 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
-| CMake | 4.4.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
+| CMake | 4.4.4 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Node.js | 26.9.0 | [nodejs.org](https://nodejs.org/) | MIT |
-| uv | 0.12.17 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.12.23 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
@@ -27,8 +27,8 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | GCC (host + cross) | 16.2.0 | [gcc.gnu.org](https://gcc.gnu.org/) | GPLv3+ with GCC Runtime Library Exception |
-| LLVM / Clang | 23.1.1 | [llvm.org](https://llvm.org/) | Apache 2.0 with LLVM Exceptions |
-| Python | 3.14.7 | [python.org](https://python.org/) | PSF License |
+| LLVM / Clang | 23.1.3 | [llvm.org](https://llvm.org/) | Apache 2.0 with LLVM Exceptions |
+| Python | 3.14.8 | [python.org](https://python.org/) | PSF License |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 
 ### SDK Layer (`Dockerfile.sdk`)
@@ -169,9 +169,9 @@ its own license terms.
 | --- | --- | --- | --- |
 | Windows Server Core | 2025 | [www.microsoft.com](https://www.microsoft.com/) | Microsoft EULA |
 | Visual Studio Build Tools | 18 | [visualstudio.microsoft.com](https://visualstudio.microsoft.com/) | Microsoft EULA |
-| Python (source-built, ClangCL) | 3.14.7 | [python.org](https://python.org/) | PSF License |
+| Python (source-built, ClangCL) | 3.14.8 | [python.org](https://python.org/) | PSF License |
 | CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal) | bundled with Python | [github.com/python/cpython-source-deps](https://github.com/python/cpython-source-deps) | various (Apache 2.0, MIT, PD, …) |
-| CMake | 4.4.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
+| CMake | 4.4.4 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
@@ -280,7 +280,7 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Python | Ubuntu apt (python3-full) | [python.org](https://python.org/) | PSF License |
-| uv | 0.12.17 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.12.23 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Pygments | pinned by uv.lock | [pygments.org](https://pygments.org/) | BSD 2-Clause |
 
 ### Base Utilities (`third_party/DocumANTation/Dockerfile`)

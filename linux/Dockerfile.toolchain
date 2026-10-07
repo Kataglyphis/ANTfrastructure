@@ -7,7 +7,7 @@ SHELL ["bash", "-lc"]
 
 # Heavy RUNs bind-mount only their entrypoint's source closure: mount content is in the cache key.
 
-ARG LLVM_RELEASE=23.1.1
+ARG LLVM_RELEASE=23.1.3
 ARG GCC_VERSION=16.2.0
 ARG TARGETARCH
 ARG TARGETPLATFORM
@@ -17,9 +17,9 @@ ARG BUILD_MODE=native
 # Divides usable RAM so --parallel-archs builds don't collectively overcommit the host.
 ARG BUILD_MEM_DIVISOR=1
 ARG CROSS_TARGETS=amd64,arm64,riscv64
-ARG PYTHON_VERSION=3.14.7
+ARG PYTHON_VERSION=3.14.8
 # Must reach the Python RUN, or build_python.sh downloads CPython unverified.
-ARG PYTHON_TGZ_SHA256=62859805f6fdf25e2bcbf3fa3217801e1996887ca33e6a2af80674bdfa2dbe07
+ARG PYTHON_TGZ_SHA256=a65b20a728f169f4e66ae143f40b1bd3d33c38d770251663f627c9767b79b210
 ARG GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE=0
 ARG GCC_HOST_BOOTSTRAP=0
 # Opt-in concurrent per-target GCC builds; stage-defs.sh forwards it from the host env.
@@ -147,7 +147,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
 # Rust: host toolchain plus the cross target stdlibs
-ARG RUST_VERSION=1.98.1
+ARG RUST_VERSION=1.99.0
 ARG CARGO_C_VERSION=0.10.25
 ARG RUST_NIGHTLY_TOOLCHAIN=nightly-2026-06-28
 # versions.env is mounted for RUSTUP_INIT_SHA256, a noforward key that never arrives as a build arg.

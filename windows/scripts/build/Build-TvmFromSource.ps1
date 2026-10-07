@@ -235,7 +235,7 @@ $llvmConfig = $tvmLlvm.LlvmConfig
 if ($tvmCross) {
     Write-Host 'TVM cross: RUNTIME-ONLY build (USE_LLVM=OFF, no tvm_compiler; runtime python wheels decided below, #133) -- backlog #116; see docs/windows-cross-builds.md'
 } elseif ($tvmLlvm.BuildMinimal) {
-    $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.1'
+    $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.3'
     $llvmDevRoot = 'C:\temp\llvm-dev'
     # Before the fetch: this banner is the context an unpinned-version throw from Get-LlvmSourceTarball would lack.
     Write-Host "TVM: $($tvmLlvm.Why) - building a minimal LLVM $llvmDevVersion from source (backlog #47)"
