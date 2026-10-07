@@ -2,7 +2,7 @@
 services:
   apisix:
     # The only place the image is pinned; render_apisix.py --print-image reads it.
-    image: docker.io/apache/apisix:3.18.0-debian@sha256:84e6b5e787e9f889ebff88161cb9a16599bafcffa236c6b54c7f779a0655940d
+    image: docker.io/apache/apisix:3.19.0-debian@sha256:9a7e45dc943fbf10ec916d1232bae4cda9302ae28a4696cfb83c2da01d261141
     # The lanes listen on the host's 127.0.0.1; config.yaml binds every listener there itself.
     network_mode: host
     environment:
