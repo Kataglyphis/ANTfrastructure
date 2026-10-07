@@ -311,6 +311,7 @@ run_renovate() {
 
 # The resolved config, `extends` expanded: the shared preset is what enables git-submodules.
 resolve_repo_config() {
+  [ -n "${REPO_CFG}" ] && return 0
   REPO_CFG="${INJECTED_CONFIG}"
   [ -n "${REPO_CFG}" ] && return 0
   [ -s "${RUN_LOG}" ] || err "no Renovate log to read the resolved config from"
@@ -366,6 +367,56 @@ report_skipped() {
   fi
   if [ -n "${design}" ]; then note "skipped by design (nothing to look up): ${design}"; fi
   return 0
+}
+
+# Renovate builds lockFileMaintenance and never reports it under --platform=local. See docs/dependency-updates.md#lock-file-maintenance
+MAINT_TSV=""; MAINT_JOBS=(); MAINT_ROWS=(); MAINT_SKIP=(); MAINT_SEEN=()
+plan_lock_maintenance() {
+  local mgr file amb
+  local -a saved=(${LOCK_JOBS[@]+"${LOCK_JOBS[@]}"})
+  # An injected report without a config (the offline report) has no setting to read.
+  [ -n "${INJECTED_CONFIG}" ] || [ -s "${RUN_LOG}" ] || return 0
+  resolve_repo_config
+  MAINT_TSV="$(mktemp)" || err "mktemp failed"
+  rl_py lockmaint "${REPORT_JSON}" "${REPO_CFG}" > "${MAINT_TSV}" \
+    || err "could not read lockFileMaintenance out of the resolved config (above)"
+  # The same walk as every lock job, over candidate jobs; run_apply appends the kept ones.
+  LOCK_JOBS=()
+  while IFS=$'\t' read -r mgr file; do
+    if [ -n "${file}" ]; then LOCK_JOBS+=("${mgr}|${file}|${LOCK_ALL}|${LOCK_ALL}"); fi
+  done < "${MAINT_TSV}"
+  for_each_lock maint_plan_one
+  for amb in ${LOCK_AMBIGUOUS[@]+"${LOCK_AMBIGUOUS[@]}"}; do
+    MAINT_SKIP+=("${amb}, so which tool owns it is not knowable")
+  done
+  LOCK_JOBS=(${saved[@]+"${saved[@]}"})
+}
+
+# The for_each_lock callback: one job per lock, since workspace members share the root lock.
+maint_plan_one() {
+  local cmd
+  rl_has "$4" ${MAINT_SEEN[@]+"${MAINT_SEEN[@]}"} && return 0
+  MAINT_SEEN+=("$4")
+  cmd="$(maint_argv "$1" | tr '\n' ' ')"
+  if [ -z "${cmd}" ]; then
+    MAINT_SKIP+=("$4  ($1: no lock file maintenance command known here; refresh it by hand)")
+    return 0
+  fi
+  MAINT_JOBS+=("${LOCK_JOB_NOW}")
+  MAINT_ROWS+=("$(printf '%-34s %s' "$4" "${cmd% }")")
+}
+
+report_lock_maintenance() {
+  plan_lock_maintenance
+  if [ "${#MAINT_ROWS[@]}" -gt 0 ]; then
+    note ""
+    note "LOCK FILE MAINTENANCE - on in the resolved config. Renovate never reports"
+    note "it here, so no row above shows how far these locks are behind; --apply"
+    note "moves every entry to the newest release its manifest allows:"
+    printf '  %s\n' "${MAINT_ROWS[@]}"
+  fi
+  note_listing "NOT CARRIED - under lock file maintenance, but with no command here:" \
+    -- ${MAINT_SKIP[@]+"${MAINT_SKIP[@]}"} || true
 }
 
 # Apply: gitlinks move with git, other ecosystems by one line rewrite; neither half may half-run.
@@ -522,11 +573,13 @@ apply_submodules() {
 
 # Every target was copied aside first, so a failing lock tool puts all back. See docs/dependency-updates.md#all-of-it-or-none-of-it
 apply_files() {
-  [ "${EDIT_LINES}" -gt 0 ] || return 0
-  note ""
-  note "rewriting one value on ${EDIT_LINES} line(s) across ${#EDIT_FILES[@]} file(s):"
-  if ! rl_py edit "${TARGET}" "${PLAN_JSON}"; then
-    undo_run "the planned edits were not written"
+  [ "${#LOCK_JOBS[@]}" -gt 0 ] || [ "${EDIT_LINES}" -gt 0 ] || return 0
+  if [ "${EDIT_LINES}" -gt 0 ]; then
+    note ""
+    note "rewriting one value on ${EDIT_LINES} line(s) across ${#EDIT_FILES[@]} file(s):"
+    if ! rl_py edit "${TARGET}" "${PLAN_JSON}"; then
+      undo_run "the planned edits were not written"
+    fi
   fi
   # Lock tools may rewrite the manifest, so hash the audited bytes now and re-check after them.
   manifest_record_shas ${EDIT_FILES[@]+"${EDIT_FILES[@]}"}
@@ -542,7 +595,7 @@ apply_files() {
 report_refusals() {
   local n
   n=$(( ${#PLAN_REFUSE[@]} + ${#PLAN_SKIP[@]} \
-        + ${#APPLY_REFUSED[@]} + ${#APPLY_UNMATCHED[@]} ))
+        + ${#APPLY_REFUSED[@]} + ${#APPLY_UNMATCHED[@]} + ${#MAINT_SKIP[@]} ))
   [ "${n}" -gt 0 ] || return 0
   EXIT_CODE="${EXIT_REFUSED}"
   note ""
@@ -554,10 +607,12 @@ report_refusals() {
 
 run_apply() {
   build_plan
+  # After the edits' jobs, so a maintained lock is refreshed last and ends at the newest it allows.
+  LOCK_JOBS+=(${MAINT_JOBS[@]+"${MAINT_JOBS[@]}"})
   select_apply_targets
   print_plan_notes
 
-  if [ "${#APPLY_PATHS[@]}" -eq 0 ] && [ "${EDIT_LINES}" -eq 0 ]; then
+  if [ "${#APPLY_PATHS[@]}" -eq 0 ] && [ "${#LOCK_JOBS[@]}" -eq 0 ] && [ "${EDIT_LINES}" -eq 0 ]; then
     note ""
     note "nothing to apply"
     report_refusals
@@ -599,7 +654,7 @@ trap 'on_signal PIPE 141' PIPE
 cleanup() {
   local f
   # Every mktemp of this run; never PLANNER/LOCATOR or an injected report/config, which are not ours.
-  for f in "${PLAN_TSV}" "${PLAN_JSON}" "${MGR_TSV}" "${ROWS_TSV}" "${SKIP_TSV}" \
+  for f in "${PLAN_TSV}" "${PLAN_JSON}" "${MGR_TSV}" "${ROWS_TSV}" "${SKIP_TSV}" "${MAINT_TSV}" \
            "${TREE_BEFORE}" "${TREE_BEFORE_PATHS}" "${TREE_BEFORE_HASH}" \
            "${TREE_BEFORE_IGNORED}"; do
     if [ -n "${f}" ]; then rm -f "${f}"; fi
@@ -617,8 +672,8 @@ assert_no_wreckage
 detect_managers
 run_renovate
 case "${MODE}" in
-  report) run_report ;;
-  apply)  run_report; run_apply ;;
+  report) run_report; report_lock_maintenance ;;
+  apply)  run_report; report_lock_maintenance; run_apply ;;
   *)      err "unreachable mode ${MODE}" ;;
 esac
 # Explicit: the status of that case's last command is no contract.

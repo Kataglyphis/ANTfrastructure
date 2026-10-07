@@ -108,10 +108,15 @@ include dir, `SETUPTOOLS_EXT_SUFFIX` the target SOABI suffix and
 `python -m pip wheel` command alone, because uv reads it while inspecting the
 interpreter and refuses the riscv64 tag at `uv venv` and `uv build` alike
 (`Unknown operating system: linux_riscv64`); the sdist stays on `uv build --sdist`.
-The wheel link also pins its emulation (`LDSHARED` carries `-Wl,-m,elf64lriscv`):
-clang 22 dropped the target when it drove lld through `--gcc-toolchain` on the
-runner and lld then refused the riscv64 crt objects as `elf64-x86-64` (run
-37196119524). The emulated row only tests: its compile
+The wheel link searches the sysroot's libraries first (`LDSHARED` carries
+`-L<sysroot>/lib/riscv64-linux-gnu -L<sysroot>/usr/lib/riscv64-linux-gnu`).
+setuptools appends the host interpreter's `LIBDIR` (`/usr/lib/x86_64-linux-gnu`)
+to every extension link, so the driver's `-lc` found the host `libc.so`. That
+linker script's `OUTPUT_FORMAT(elf64-x86-64)` overrides lld's emulation, and lld
+refused every riscv64 object "as incompatible with elf64-x86-64" (runs
+37196119524 and 37329297990, reproduced 2026-10-07). It was not a dropped
+target, as first read: the `-Wl,-m,elf64lriscv` pin that answered that reading
+failed the same way, and the link succeeds without it. The emulated row only tests: its compile
 hung four hours on one Cython unit (run 37127505865) and could not fit the
 360-minute job. The app packages of a `packaging/app.json` app do not follow -
 they need the AppImage tooling the image ships for amd64/arm64 only, so
