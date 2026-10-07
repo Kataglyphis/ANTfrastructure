@@ -37,7 +37,7 @@ theoretical. From a real scan of `:latest-cross` (today's `:latest`;
 > pinned. The script now **refuses** a syft that is not the pinned version, from
 > PATH or from a stale bootstrap cache, which is what makes a re-run reproducible
 > at all. The pin itself has moved on: `v1.51.1` by 2026-09-12, `v1.52.0` since
-> 2026-09-18. Until someone re-measures under the pin — it needs the published
+> 2026-09-18, `v1.54.1` since 2026-10-07. Until someone re-measures under the pin — it needs the published
 > image and a network — read the numbers below as **dated evidence for the SHAPE
 > of the two halves** (thousands of packages, most carrying no declared licence,
 > every copyleft component reported as the distro copy or not at all) rather

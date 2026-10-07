@@ -1,7 +1,7 @@
-# syntax=docker/dockerfile:1.27.0
+# syntax=docker/dockerfile:1.27.1
 # Builds standalone, so these defaults are load-bearing; sync_versions.py keeps them equal to versions.env.
 ARG UBUNTU_VERSION=26.04
-ARG UBUNTU_DIGEST=sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+ARG UBUNTU_DIGEST=sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7
 FROM ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST} AS base
 
 # No version ARG: scripts/download-ollama.sh fetches the tarball outside the build and owns the version.

@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.27.0
+# syntax=docker/dockerfile:1.27.1
 # Media libraries layer; cache-id keying: docs/build-cache-tiers.md#13-cache-mount-ids-and-source-checkouts
 
 # Safety-net defaults; the orchestrator passes versions.env values via append_version_build_args.

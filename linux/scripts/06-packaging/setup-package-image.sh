@@ -324,7 +324,7 @@ create_runtime_venv() {
         uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" "cmake==${PY_CMAKE_VERSION:-4.4.2}" "packaging==${PY_PACKAGING_VERSION:-26.3}"
     else
         # numpy only here: riscv64 takes apt's python3-numpy.
-        uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" "numpy==${PY_NUMPY_VERSION:-2.5.2}" "meson==${PY_MESON_VERSION:-1.12.0}" "ninja==${PY_NINJA_VERSION:-1.13.0}" "cmake==${PY_CMAKE_VERSION:-4.4.2}" "packaging==${PY_PACKAGING_VERSION:-26.3}"
+        uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" "numpy==${PY_NUMPY_VERSION:-2.5.2}" "meson==${PY_MESON_VERSION:-1.12.1}" "ninja==${PY_NINJA_VERSION:-1.13.0}" "cmake==${PY_CMAKE_VERSION:-4.4.2}" "packaging==${PY_PACKAGING_VERSION:-26.3}"
     fi
 }
 
