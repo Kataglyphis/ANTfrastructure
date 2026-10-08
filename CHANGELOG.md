@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — OpenCV's libwebpdemux2 survives the package stage's GTK 4 drop
+
+- **The wrapper smoke's media check failed on gst's `opencv` plugin** (chain run 20261008-132402, amd64), with the
+  compiler smoke now clean. A full `ldd` sweep of the package image found `libwebpdemux.so.2` missing for 13 OpenCV
+  libraries and the plugin: it arrived only as a GTK 4 dependency, and `drop_redundant_distro_gtk4`'s purge left it to
+  the autoremove.
+- **Fix**: the native list in `03-media/runtime/install-deps.sh`, which the package stage runs as `final/install-deps.sh`,
+  now names `libwebpdemux2` beside `libavif16` and `libhdf5-310`, so it is installed as manual. Proved in the package
+  image: the autoremove keeps it, `gst-inspect-1.0 opencv` loads, and the whole `wrapper-smoke` RUN
+  (`validate-compilers.sh smoke`, `smoke-media.sh`, `smoke-torch-venv.sh`, `smoke-cross-all-arches.sh amd64`) passes.
+
 ## 2026-10-08 — the Vulkan SDK's DXC llvm-tblgen no longer shadows the pinned one (CON71)
 
 - **The runtime stage's compiler smoke failed one row** (chain run 20261008-113607, amd64):
