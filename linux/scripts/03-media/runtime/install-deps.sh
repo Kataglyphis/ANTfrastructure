@@ -67,10 +67,10 @@ else
     target_packages=(libgtk-4-1 libjson-glib-1.0-0 "${target_packages[@]}")
 fi
 
-# FFmpeg's codec libs (the cp314t store loads PyAV against them) and OpenCV's avif/hdf5 (gst's opencv plugin), as the package stage installs; cross loads none here.
+# FFmpeg's codec libs (the cp314t store loads PyAV against them) and OpenCV's avif/hdf5/webpdemux (gst's opencv plugin); explicit, so dropping GTK 4 cannot autoremove them.
 ffmpeg_manifest="${FFMPEG_PREFIX:-/opt/ffmpeg}/runtime-apt-packages.txt"
 if ! cross_build_is_active; then
-    target_packages+=(libavif16 libhdf5-310)
+    target_packages+=(libavif16 libhdf5-310 libwebpdemux2)
     if [ -s "${ffmpeg_manifest}" ]; then
         mapfile -t ffmpeg_runtime_packages < <(sed '/^[[:space:]]*$/d' "${ffmpeg_manifest}")
         target_packages+=("${ffmpeg_runtime_packages[@]}")
