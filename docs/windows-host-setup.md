@@ -856,8 +856,13 @@ higher count is growth, not a regression.
 
 ```pwsh
 & "$env:ProgramFiles\Stevedore\bin\docker.exe" login ghcr.io      # once, same shell
-.\windows\Build-Buildkit.ps1 -Gpu -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+.\windows\Build-Buildkit.ps1 -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+.\windows\Build-Buildkit.ps1 -Variant nvidia -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64-nvidia
+.\windows\Build-Buildkit.ps1 -Variant rocm -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64-rocm
 ```
+
+Each variant pushes only to its own tag (`-Gpu` is `-Variant nvidia`); a variant run that
+names another lane's tag stops before it builds.
 
 ---
 
