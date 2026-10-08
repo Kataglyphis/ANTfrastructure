@@ -146,6 +146,24 @@ _pin() {
     wire_pinned_llvm_tools "${P}/usr/bin/clang" "${P}/usr/bin" "${P}/usr/local/bin" "${P}/stash"' 2>&1
 }
 
+t_case "a Vulkan SDK name that shadows the pinned LLVM is renamed; the SDK's own tools stay (CON71)"
+_vk="${_w}/vk"
+mkdir -p "${_vk}/1.4.363.0/x86_64/bin"
+for _t in FileCheck glslangValidator dxc; do printf '#!/bin/sh\n' > "${_vk}/1.4.363.0/x86_64/bin/${_t}"; done
+chmod +x "${_vk}/1.4.363.0/x86_64/bin"/*
+: > "${_vk}/1.4.363.0/x86_64/bin/lldb"
+ln -s 1.4.363.0/x86_64 "${_vk}/active"
+_unsrc="$(t_fn_src "${WIRING}" unshadow_pinned_llvm_tools)" || exit 1
+_out="$(bash -c "${_unsrc}"'
+  unshadow_pinned_llvm_tools "$1" "$2"' _ "${_p}/target/bin" "${_vk}/active/bin" 2>&1)"
+t_assert_contains "${_out}" "1 Vulkan SDK name(s) that shadowed the pinned LLVM renamed to vulkan-sdk-<name>: FileCheck"
+t_assert_fails test -e "${_vk}/active/bin/FileCheck"
+t_assert_ok test -x "${_vk}/active/bin/vulkan-sdk-FileCheck"
+for _t in glslangValidator dxc lldb; do t_assert_ok test -e "${_vk}/active/bin/${_t}"; done
+_out="$(bash -c "${_unsrc}"'
+  unshadow_pinned_llvm_tools "$1" "$2"' _ "${_p}/target/bin" "${_w}/no-vulkan/bin" 2>&1)"
+t_assert_contains "${_out}" "no Vulkan SDK bin at ${_w}/no-vulkan/bin"
+
 t_case "every distro name the pinned LLVM also has points into it, in /usr/bin itself"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _out="$(_pin)"
