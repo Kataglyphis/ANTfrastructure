@@ -6,6 +6,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — the media stage installs FFmpeg's runtime manifest before the cp314t store proves PyAV (CON79)
+
+- **Second failure of the same run, one RUN later** (chain run 20261008-085555, after the `pyav` fix proved and stored
+  the twin): `free-threaded-store.sh` re-proves every twin in the final media RUN, and `av` could not load
+  `libopencore-amrwb.so.0`. `emit_runtime_apt_manifest` records FFmpeg's apt runtime libs in
+  `/opt/ffmpeg/runtime-apt-packages.txt`, but only the package stage (`setup-torch-venv.sh`) installed them.
+- **Fix** (`03-media/runtime/install-deps.sh`): a native build adds the manifest to the final-stage packages. The
+  package stage installs the same list, so the shipped image is unchanged; cross builds prove no twin there and keep
+  their package set.
+
 ## 2026-10-08 — Windows FFmpeg links x265 4.2 again: its .pc gains advapi32
 
 - **The x265 4.1 → 4.2 bump of 2026-10-07 broke `:winamd64`'s FFmpeg configure**: `ERROR: x265 not found using

@@ -67,6 +67,12 @@ else
     target_packages=(libgtk-4-1 libjson-glib-1.0-0 "${target_packages[@]}")
 fi
 
+# FFmpeg's own codec libs (libopencore-amrwb0, ...), which the cp314t store's proof loads PyAV against; cross proves nothing here.
+ffmpeg_manifest="${FFMPEG_PREFIX:-/opt/ffmpeg}/runtime-apt-packages.txt"
+if ! cross_build_is_active && [ -s "${ffmpeg_manifest}" ]; then
+    mapfile -t ffmpeg_runtime_packages < <(sed '/^[[:space:]]*$/d' "${ffmpeg_manifest}")
+    target_packages+=("${ffmpeg_runtime_packages[@]}")
+fi
 # Host packages on purpose: the image is a host-runnable cross-dev container, and :<target> installs conflict.
 DEBIAN_FRONTEND=noninteractive install_host_packages "${target_packages[@]}" || true
 apt-get autoremove --purge -y
