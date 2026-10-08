@@ -34,6 +34,21 @@ vulkan_host_prefix_prunable() {
   return 0
 }
 
+# Vulkan-Profiles packs vkprofiles with PyInstaller, which bundles the BUILDER's Python even in a cross build; such a tool cannot run here.
+_prune_host_built_tools() {
+  local bin_dir="$1" target_arch="$2" want f machine
+  [ -d "${bin_dir}" ] || return 0
+  want="$(arch_elf_machine_grep_for "${target_arch}")" || return 0
+  for f in "${bin_dir}"/*; do
+    [ -f "${f}" ] && [ ! -L "${f}" ] || continue
+    machine="$(elf_machine_name "${f}" || true)"
+    [ -n "${machine}" ] || continue
+    case "${machine}" in *"${want}"*) continue ;; esac
+    echo "vulkan-prune: removing ${f} (${machine}, built for the builder; ${target_arch} cannot run it)"
+    rm -f "${f}"
+  done
+}
+
 _prune_version_dir() {
   local version_dir="$1" arch_dir="$2" target_arch="$3"
 
@@ -41,6 +56,7 @@ _prune_version_dir() {
     echo "vulkan-prune: removing ${version_dir}/source (SDK build tree, no consumer past the SDK stage)"
     rm -rf "${version_dir:?}/source"
   fi
+  [ "${arch_dir}" = "${HOST_PREFIX}" ] || _prune_host_built_tools "${version_dir}/${arch_dir}/bin" "${target_arch}"
   if vulkan_host_prefix_prunable "${version_dir}" "${arch_dir}"; then
     echo "vulkan-prune: removing ${version_dir}/${HOST_PREFIX} (builder-arch SDK; ${target_arch} runs ${arch_dir}/lib/libvulkan.so.1)"
     rm -rf "${version_dir:?}/${HOST_PREFIX}"

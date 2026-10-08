@@ -6,6 +6,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — the arm64/riscv64 images drop the Vulkan SDK's builder-arch vkprofiles (CON82)
+
+- **The runtime-image smoke failed one row on arm64** (chain run 20261008-141457; amd64 0 failures):
+  `tree-arch: /opt/vulkan ships 1 X86-64 object(s) in the arm64 image, e.g. /opt/vulkan/1.4.363.0/aarch64/bin/vkprofiles`.
+  Vulkan-Profiles at `vulkan-sdk-1.4.363.0` builds its new `vkprofiles` unconditionally with PyInstaller
+  (`add_pyinstaller_target`, no option), which bundles the BUILDER's Python, so a cross build installs an x86-64
+  executable into the target prefix. Earlier SDKs had no such tool, so no foreign-arch image loses one it had.
+- **Fix** (`06-packaging/prune-vulkan-host-sdk.sh`, `_prune_host_built_tools`): before the `/opt/vulkan` COPY, an ELF in a
+  foreign target prefix's `bin/` whose machine is not the target's is removed and logged. Libraries are not touched, so a
+  wrong-arch library still fails the smoke. Run against the real `cross-android-arm64` artifact: it removes exactly
+  `aarch64/bin/vkprofiles`, and no foreign ELF is left among the prefix's 52 tools. `test-vulkan-host-sdk-prune.sh`
+  36 -> 41, two failing without the fix.
+
 ## 2026-10-08 — OpenCV's libwebpdemux2 survives the package stage's GTK 4 drop
 
 - **The wrapper smoke's media check failed on gst's `opencv` plugin** (chain run 20261008-132402, amd64), with the
