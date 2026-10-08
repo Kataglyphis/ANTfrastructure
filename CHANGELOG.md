@@ -6,6 +6,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — the media smoke's FFmpeg registry checks survive SIGPIPE; OpenCV's avif/hdf5 in the media stage
+
+- **Third failure of the media stage, now in its smoke** (chain run 20261008-100008): with FFmpeg's runtime manifest
+  installed (previous entry), ffmpeg runs in the media sandbox, so `smoke-media.sh` stopped deferring its FFmpeg and
+  GStreamer checks there and failed 8 of them.
+- **Seven were false.** `ffmpeg -encoders | grep -q x265` under `pipefail`: grep exits at the match, ffmpeg dies of
+  SIGPIPE, and the pipeline reads as "not registered". Measured in the stage's image: `rc=141 PIPESTATUS=141 0`, while
+  the captured 222-line list carries libx265, libdav1d, libsvtav1, libvpx, libopus, `drawtext` and `scale_vulkan`.
+  FFmpeg 9.0.2's longer lists make the race likely; the package-stage smoke runs the same lines. The registry, buildconf
+  and filter lists are now captured once and searched.
+- **One was real.** gst's `opencv` plugin did not load: `libavif.so.16 => not found`. A full `ldd` sweep of `/opt/opencv5`,
+  `/opt/gstreamer`, `/opt/ffmpeg` and `/usr/local/lib` in that image found two distro libs missing, `libavif16` (12 OpenCV
+  libraries and the plugin) and `libhdf5-310` (`opencv_hdf`); the native media stage now installs both, as the package
+  stage already does.
+
 ## 2026-10-08 — the media stage installs FFmpeg's runtime manifest before the cp314t store proves PyAV (CON79)
 
 - **Second failure of the same run, one RUN later** (chain run 20261008-085555, after the `pyav` fix proved and stored
