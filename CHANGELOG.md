@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — Android LiteRT takes Samsung's LiteCore headers from a pinned, hashed download
+
+- **The android stage failed in LiteRT v2.2.0's Samsung plugin** (chain run 20261008-103605): `ai_litecore_manager.h:20:
+  fatal error: 'graph_wrapper_api.h' file not found`. LiteRT's default `LITECORE_HEADERS_URL`
+  (`…/download-file/1.1.0/ai-litecore-ubuntu2404-v1.1.0.tar.gz`) now answers HTTP 404 with a JSON body, and its
+  `file(DOWNLOAD)` checks neither status nor hash, so the Samsung NPU plugin was configured against an empty tree. The
+  pin did not move (v2.2.0 since 2026-08-18); the vendor's URL did. Upstream main already drops the `1.1.0/` segment.
+- **Fix** (`litert/android/build-android.sh`): the script fetches that new URL itself, checks sha256
+  `7d79a04d…a07b2` (21.4 MB, measured 2026-10-08), and hands `exynos-ai-litecore-v1.1.0/include` to
+  `LITECORE_HEADERS_DIR`, so upstream downloads nothing. Samsung dispatch keeps building, as it did before the 404.
+
 ## 2026-10-08 — the media smoke's FFmpeg registry checks survive SIGPIPE; OpenCV's avif/hdf5 in the media stage
 
 - **Third failure of the media stage, now in its smoke** (chain run 20261008-100008): with FFmpeg's runtime manifest
