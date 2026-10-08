@@ -1,8 +1,8 @@
 diff --git a/hailort/libhailort/include/hailo/quantization.hpp b/hailort/libhailort/include/hailo/quantization.hpp
-index 0000000..0000000 100644
+index 0d1c47b..b4b8759 100644
 --- a/hailort/libhailort/include/hailo/quantization.hpp
 +++ b/hailort/libhailort/include/hailo/quantization.hpp
-@@ -37,7 +37,12 @@
+@@ -37,7 +37,12 @@ namespace net_flow
  
  inline float bankers_round(float x)
  {

@@ -7,8 +7,9 @@
     Check that every static .patch under windows/scripts/patches/ still applies to its pinned upstream.
 
 .DESCRIPTION
-    Sparse-clones each pinned upstream and runs the build's own `git apply --check -p1 --ignore-whitespace`.
-    Needs network and git; run it before a version bump. See windows/scripts/patches/README.md.
+    Sparse-clones each pinned upstream and runs the build's own `git apply --check -p1 --ignore-whitespace`,
+    then GNU patch's dry run, which is what Invoke-SourcePatch uses on a tarball (non-git) source.
+    Needs network, git and patch.exe; run it before a version bump. See windows/scripts/patches/README.md.
 
 .PARAMETER PatchRoot
     Root of the patch tree (default: windows/scripts/patches).
@@ -92,6 +93,20 @@ function Get-PatchTargetPaths {
     return $paths
 }
 
+# The image's patch.exe is Git for Windows' GNU patch; Strawberry Perl's patch 2.5.9 (first on the dev host's PATH) asserts on every patch.
+function Resolve-GnuPatchExe {
+    $git = Get-Command git.exe -ErrorAction SilentlyContinue
+    $candidates = @(
+        if ($git) { Join-Path (Split-Path (Split-Path $git.Source -Parent) -Parent) 'usr\bin\patch.exe' }
+        Get-Command patch.exe -All -ErrorAction SilentlyContinue | ForEach-Object Source
+    ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+    foreach ($c in $candidates) {
+        if ("$(& $c --version 2>&1 | Select-Object -First 1)" -match '^GNU patch ') { return $c }
+    }
+    throw "no GNU patch.exe found (tried: $($candidates -join ', ')): Invoke-SourcePatch applies tarball patches with it, so this gate must too."
+}
+$patchExe = Resolve-GnuPatchExe
+
 # @(): a -PatchRoot holding one patch yields a scalar, and StrictMode refuses .Count on it.
 $patches = @(Get-ChildItem -Path $PatchRoot -Recurse -Filter '*.patch' | Sort-Object FullName)
 if (-not $patches) { Write-Host 'No .patch files found.'; return }
@@ -121,7 +136,8 @@ try {
             Write-Host "  clone $repoKey @ $($spec.Ref) (sparse)..." -ForegroundColor DarkGray
             # --branch takes names only; a 40-hex commit pin (MIGraphX) needs --revision (git >= 2.49).
             $refArgs = @(if ($spec.Ref -match '^[0-9a-f]{40}$') { "--revision=$($spec.Ref)" } else { '--branch', $spec.Ref })
-            & git clone --depth 1 @refArgs --filter=blob:none --sparse $spec.Url $clone 2>&1 | Out-Null
+            # LF like the build's tarball and container checkouts; a host's autocrlf=true would red every GNU patch check.
+            & git clone --config core.autocrlf=false --depth 1 @refArgs --filter=blob:none --sparse $spec.Url $clone 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = 'FAIL (clone)' })
                 continue
@@ -143,12 +159,20 @@ try {
         }
         # The exact flags Invoke-SourcePatch uses. Capture stderr so a real mismatch is explained.
         $applyOut = & git -C $clone apply --check -p1 --ignore-whitespace $p.FullName 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = 'OK' })
-        } else {
+        if ($LASTEXITCODE -ne 0) {
             $reason = ($applyOut | Where-Object { $_ -match 'error:' } | Select-Object -First 1)
             if (-not $reason) { $reason = ($applyOut | Select-Object -First 1) }
             $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = "FAIL ($reason)" })
+            continue
+        }
+        # --force never prompts; GNU patch reads `index 0000000..` as a new file and anchors short trailing context at EOF.
+        $gnuOut = & $patchExe -p1 --dry-run --force -d $clone -i $p.FullName 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = 'OK' })
+        } else {
+            $reason = ($gnuOut | Where-Object { $_ -match 'FAILED|exists|malformed|reversed|can.t find' } | Select-Object -First 1)
+            if (-not $reason) { $reason = ($gnuOut | Select-Object -First 1) }
+            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = "FAIL (GNU patch: $reason)" })
         }
     }
 }

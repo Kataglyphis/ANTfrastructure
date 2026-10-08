@@ -352,15 +352,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       superbuild's wall time. The direct-consumption build is also the sharpest
       API-skew probe: if v2.2.0 lacks what litert-lm's sources use, the compile fails
       with the missing member visible. Repro: litertlm-harness runs 1-19, Oct 4 2026.
-- [ ] **CON85 — HailoRT's four `.patch` files never apply; every build runs the inline
-      fallbacks** [S, ★]. In every `media-core-built-hailo` log since 2026-10-04 (and in the
-      2026-10-08 build) `windows/scripts/patches/hailo/001`–`004` report `does not apply
-      cleanly` against HailoRT 5.4.0, then the `Invoke-SourcePatchWithFallback` rewrite patches
-      the same sites and the stage goes green. The fallback is load-bearing and fails the
-      build when it misses, so nothing ships unpatched. But the `.patch` files are dead
-      text, and each build logs four `ERROR:` lines that read like a failure. Regenerate
-      the four against the 5.4.0 tarball (`Test-PatchesApplyClean.ps1` should then pass
-      them), or retire them and keep the fallbacks as the only mechanism.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON64 — the Vulkan validation layer in `C:\runtime\vulkan-layers`** [S, ★★]. Owner rule

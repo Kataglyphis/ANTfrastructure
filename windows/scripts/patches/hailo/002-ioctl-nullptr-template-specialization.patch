@@ -1,8 +1,9 @@
 diff --git a/hailort/libhailort/src/vdma/driver/os/windows/driver_os_specific.cpp b/hailort/libhailort/src/vdma/driver/os/windows/driver_os_specific.cpp
-index 0000000..0000000 100644
+index 69d4298..3d3d5c4 100644
 --- a/hailort/libhailort/src/vdma/driver/os/windows/driver_os_specific.cpp
 +++ b/hailort/libhailort/src/vdma/driver/os/windows/driver_os_specific.cpp
-@@ -310,11 +310,13 @@
+@@ -309,12 +309,14 @@ COMPATIBLE_PARAM_CAST(hailo_write_action_list_params, WriteActionListParams)
+ COMPATIBLE_PARAM_CAST(hailo_vdma_cancel_prepared_transfer_params, DescListResetParams)
  
  // Special handle for nullptr_t. This case occurs when there is no parameters passed.
 +template<>
