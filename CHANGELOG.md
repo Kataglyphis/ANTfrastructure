@@ -6,6 +6,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — the PyAV cp314t proof sees the chain ORT (CON79)
+
+- **The amd64 media stage failed at `PyAV: no proved cp314t twin`** (chain run 20261007-233233): every module of
+  `av-19.0.1-cp314-cp314t-linux_x86_64.whl` failed to load with `libonnxruntime.so.1: cannot open shared object file`.
+  `libavfilter` needs the chain ORT and carries no RUNPATH; the `ffmpeg` stage bind-mounts ORT for its build RUN only,
+  so the `pyav` stage built FROM it has none. The GIL wheel is never loaded there, which is why only the twin's proof
+  (CON79, which imports every compiled module) found it.
+- **Fix** (`Dockerfile.media`, the `pyav` RUN): the same read-only bind of `onnxruntime-cpu` from the `onnxruntime`
+  stage, with its `lib` first on `LD_LIBRARY_PATH`, which is how `media-inputs` and the image load it.
+
 ## 2026-10-08 — the cross lldb finds zlib.h (CON71's compiler stage)
 
 - **The arm64 compiler stage failed at `SymbolFileCTF.cpp:42: fatal error: zlib.h: No such file or directory`**

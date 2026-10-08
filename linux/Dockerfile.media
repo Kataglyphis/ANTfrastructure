@@ -573,11 +573,14 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
+    --mount=type=bind,from=onnxruntime,source=/usr/local/lib/onnxruntime-cpu,target=/usr/local/lib/onnxruntime-cpu,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
+    # libavfilter needs the chain ORT, which media-inputs puts on LD_LIBRARY_PATH; the cp314t proof loads every module.
+    export LD_LIBRARY_PATH="/usr/local/lib/onnxruntime-cpu/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"; \
     bash /opt/scripts/03-media/build/pyav/build-pyav.sh
 
 # Media inputs stage: aggregates the library outputs
