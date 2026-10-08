@@ -142,4 +142,25 @@ _fixture aarch64 none
 _run arm64 arm64 >/dev/null
 t_assert_eq yes "$([ -d "${ROOT}/1.4.357.0/x86_64" ] && echo yes)" "no loader for the target, no drop"
 
+t_case "a builder-arch ELF in the target prefix's bin goes (PyInstaller's vkprofiles); target ELFs and scripts stay"
+_fixture aarch64
+mkdir -p "${ROOT}/1.4.357.0/aarch64/bin"
+cp /bin/true "${ROOT}/1.4.357.0/aarch64/bin/vkprofiles"
+cp /bin/true "${ROOT}/1.4.357.0/aarch64/bin/vulkaninfo"
+# e_machine at offset 18: 0xB7 is EM_AARCH64, so readelf reads a target binary without one existing here.
+printf '\xb7\x00' | dd of="${ROOT}/1.4.357.0/aarch64/bin/vulkaninfo" bs=1 seek=18 conv=notrunc status=none
+printf '#!/bin/sh\n' > "${ROOT}/1.4.357.0/aarch64/bin/setup-tool.sh"
+_out="$(_run arm64)"
+t_assert_fails test -e "${ROOT}/1.4.357.0/aarch64/bin/vkprofiles"
+t_assert_contains "${_out}" "removing ${ROOT}/1.4.357.0/aarch64/bin/vkprofiles (Advanced Micro Devices X86-64, built for the builder; arm64 cannot run it)"
+t_assert_ok test -e "${ROOT}/1.4.357.0/aarch64/bin/vulkaninfo"
+t_assert_ok test -e "${ROOT}/1.4.357.0/aarch64/bin/setup-tool.sh"
+
+t_case "the builder's own prefix keeps its tools when it is the target's"
+_fixture
+mkdir -p "${ROOT}/1.4.357.0/x86_64/bin"
+cp /bin/true "${ROOT}/1.4.357.0/x86_64/bin/vkprofiles"
+_run amd64 >/dev/null
+t_assert_ok test -e "${ROOT}/1.4.357.0/x86_64/bin/vkprofiles"
+
 t_summary
