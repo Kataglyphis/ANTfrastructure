@@ -376,7 +376,7 @@ if [ -x "${_ffmpeg_bin}" ]; then
         fail "ffmpeg H.264 decode failed"
       fi
     elif [ "${ffmpeg_ver}" != "?" ] \
-         && "${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null | grep -q libx264; then
+         && grep -q libx264 <<<"$("${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null || true)"; then
       # ffmpeg executes AND advertises libx264 — a failed encode is real.
       fail "ffmpeg H.264 encode FAILED (binary executes and libx264 encoder is advertised)"
     else
@@ -385,11 +385,14 @@ if [ -x "${_ffmpeg_bin}" ]; then
     # build-ffmpeg.sh probe-gates every --enable-*, and a missed probe drops the codec silently.
     if [ "${ffmpeg_ver}" != "?" ]; then
       _ff_bc="$("${_ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null || true)"
+      # Captured once: under pipefail `ffmpeg -encoders | grep -q` reads ffmpeg's SIGPIPE as "not registered".
+      _ff_codecs="$("${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null || true)
+$("${_ffmpeg_bin}" -hide_banner -decoders 2>/dev/null || true)"
+      _ff_filters="$("${_ffmpeg_bin}" -hide_banner -filters 2>/dev/null || true)"
       for _c in libx265 libdav1d libsvtav1 libvpx libopus libvvdec; do
         case "${_ff_bc}" in
           *"--enable-${_c}"*)
-            if "${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null | grep -q "${_c#lib}" \
-               || "${_ffmpeg_bin}" -hide_banner -decoders 2>/dev/null | grep -q "${_c#lib}"; then
+            if grep -q "${_c#lib}" <<<"${_ff_codecs}"; then
               pass "ffmpeg ${_c}: enabled in buildconf and registered"
             else
               fail "ffmpeg buildconf claims --enable-${_c} but no matching codec registered"
@@ -410,13 +413,13 @@ if [ -x "${_ffmpeg_bin}" ]; then
         rm -rf "${_ff_tmp}"
       done
       # drawtext needs three probe-gated libraries; assert the filter is registered, not the buildconf.
-      if "${_ffmpeg_bin}" -hide_banner -filters 2>/dev/null | grep -q "drawtext"; then
+      if grep -q "drawtext" <<<"${_ff_filters}"; then
         pass "ffmpeg drawtext filter registered"
       else
         fail "ffmpeg drawtext filter NOT registered (libfreetype/libharfbuzz/libfontconfig probe may have missed)"
       fi
       # The *_vulkan filters also need glslangValidator at build time.
-      if "${_ffmpeg_bin}" -hide_banner -filters 2>/dev/null | grep -q "scale_vulkan"; then
+      if grep -q "scale_vulkan" <<<"${_ff_filters}"; then
         pass "ffmpeg scale_vulkan filter registered"
       else
         fail "ffmpeg scale_vulkan filter NOT registered (glslangValidator may have been missing at build time)"
