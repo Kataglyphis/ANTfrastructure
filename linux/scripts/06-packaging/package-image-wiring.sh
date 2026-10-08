@@ -60,6 +60,21 @@ wire_pinned_llvm_tools() {
     [ "${#gone[@]}" -eq 0 ] || echo "OK: ${#gone[@]} name(s) the pinned LLVM lacks left ${usr_bin}, their -NN alias stays: ${gone[*]}"
 }
 
+# PATH puts /opt/vulkan/active/bin first, and the SDK ships DXC's LLVM 3.7 llvm-tblgen; a clashing name moves to vulkan-sdk-<name> (BACKLOG CON71).
+unshadow_pinned_llvm_tools() {
+    local pinned="${1:-}" vk f
+    local -a moved=()
+    [ -n "${pinned}" ] || pinned="$(dirname "$(readlink -f /usr/bin/clang)")"
+    vk="$(readlink -f "${2:-/opt/vulkan/active/bin}" 2>/dev/null || true)"
+    [ -n "${vk}" ] && [ -d "${vk}" ] || { echo "OK: no Vulkan SDK bin at ${2:-/opt/vulkan/active/bin}; nothing can shadow ${pinned}"; return 0; }
+    while IFS= read -r f; do
+        [ -x "${pinned}/${f##*/}" ] || continue
+        mv "${f}" "${vk}/vulkan-sdk-${f##*/}"
+        moved+=("${f##*/}")
+    done < <(find "${vk}" -maxdepth 1 -type f -perm -u+x | LC_ALL=C sort)
+    echo "OK: ${#moved[@]} Vulkan SDK name(s) that shadowed the pinned LLVM renamed to vulkan-sdk-<name>: ${moved[*]:-none}"
+}
+
 # A bare clang selects ${GCC_PREFIX} via <native-triple>-<driver>.cfg beside the path it was reached through (docs/linux-cross-builds.md#clang-cross-wrappers).
 write_clang_gcc_toolchain_cfg() {
     local link="${1:-/usr/bin/clang}" real dir triple drv d

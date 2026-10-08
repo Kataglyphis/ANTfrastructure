@@ -6,6 +6,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — the Vulkan SDK's DXC llvm-tblgen no longer shadows the pinned one (CON71)
+
+- **The runtime stage's compiler smoke failed one row** (chain run 20261008-113607, amd64):
+  `llvm-tblgen MISSING is not LLVM_RELEASE 23.1.3`, while the other 25 tools passed. The pinned `llvm-tblgen` was built,
+  installed, wired into `/usr/bin` and `/usr/local/bin`, and runs. But the image's `PATH` starts with
+  `/opt/vulkan/active/bin`, and the Vulkan SDK ships DXC's `llvm-tblgen` (its LLVM 3.7 fork), which answers `--version`
+  with `Unknown command line argument`. A consumer typing `llvm-tblgen` got that fork. A sweep of every PATH dir ahead of
+  `/usr/local/bin` in the package image found no other clash.
+- **Fix** (`06-packaging/package-image-wiring.sh`, `unshadow_pinned_llvm_tools`, called after `wire_pinned_llvm_tools`): a
+  Vulkan SDK executable whose name the pinned LLVM also has moves to `vulkan-sdk-<name>`. Proved in the package image:
+  `llvm-tblgen` then resolves to `/usr/local/bin` and reports 23.1.3, and the compiler smoke passes.
+  `test-package-image-wiring.sh` 46 -> 53.
+
 ## 2026-10-08 — Android LiteRT takes Samsung's LiteCore headers from a pinned, hashed download
 
 - **The android stage failed in LiteRT v2.2.0's Samsung plugin** (chain run 20261008-103605): `ai_litecore_manager.h:20:
