@@ -48,6 +48,18 @@ function Copy-CodecStaticLib([string]$From, [string]$PcName) {
     Write-Host "FFmpeg codecs: $From -> $libName (from $PcName)"
 }
 
+# A static lib's system imports its .pc omits; FFmpeg's link test needs them on Libs: (msvc maps -l<name> to <name>.lib).
+function Add-CodecPcSystemLib([string]$Pc, [string[]]$Name) {
+    $lines = @(Get-Content -LiteralPath $Pc)
+    $at = @(for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^Libs:') { $i } })
+    if ($at.Count -ne 1) { throw "$Pc has $($at.Count) Libs: line(s), expected exactly one" }
+    foreach ($n in $Name) {
+        if ($lines[$at[0]] -notmatch "(?:^|\s)-l$([regex]::Escape($n))(?:\s|$)") { $lines[$at[0]] += " -l$n" }
+    }
+    [System.IO.File]::WriteAllLines($Pc, [string[]]$lines)
+    Write-Host "FFmpeg codecs: $(Split-Path $Pc -Leaf) Libs: $($lines[$at[0]])"
+}
+
 # This runs before GStreamer's stage, which is where meson normally arrives.
 function Initialize-CodecMeson {
     if (Get-Command meson -ErrorAction SilentlyContinue) { return }
@@ -121,6 +133,8 @@ Invoke-CmakeConfigure -SourceDir (Join-Path $x265Root 'source') -BuildDir $x265B
         '-DSTATIC_LINK_CRT=ON') + @(Get-LlvmArchiverCmakeArg)) | Out-Host
 Invoke-NinjaBuildWithRetry -BuildDir $x265Build -Install -InstallConfig 'Release' | Out-Host
 Copy-CodecStaticLib -From 'x265-static.lib' -PcName 'x265.pc'
+# 4.2's threadpool.cpp reads the CPU frequency from the registry (RegOpenKeyExA), and x265.pc does not say so.
+Add-CodecPcSystemLib -Pc (Join-Path $libDir 'pkgconfig\x265.pc') -Name 'advapi32'
 
 # Each .pc was read by Copy-CodecStaticLib above, which throws on a missing one.
 $pkgConfigDir = Join-Path $libDir 'pkgconfig'

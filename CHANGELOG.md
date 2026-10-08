@@ -6,6 +6,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-08 — Windows FFmpeg links x265 4.2 again: its .pc gains advapi32
+
+- **The x265 4.1 → 4.2 bump of 2026-10-07 broke `:winamd64`'s FFmpeg configure**: `ERROR: x265 not found using
+  pkg-config`. config.log shows the cause: 4.2's `threadpool.cpp` reads the CPU frequency from the registry
+  (`RegOpenKeyExA`, `RegQueryValueExA`, `RegCloseKey`), so the static `x265.lib` needs `advapi32.lib`, and the
+  `x265.pc` that x265 generates does not list it. `Build-FfmpegCodecs.ps1` now appends `-ladvapi32` to that `Libs:`
+  line (`Add-CodecPcSystemLib`, once, whole-name match), which FFmpeg's msvc filter turns into `advapi32.lib`.
+  `SourceBuild.FfmpegCodecs.Tests.ps1` covers it.
+
 ## 2026-10-08 — the PyAV cp314t proof sees the chain ORT (CON79)
 
 - **The amd64 media stage failed at `PyAV: no proved cp314t twin`** (chain run 20261007-233233): every module of
@@ -27,6 +36,7 @@
   (Multi-Arch: same) into `<build_root>/<triplet>-zlib-include`, and the C/CXX/ASM flag inits add it as `-isystem`. A
   dir holding only those two keeps the host's glibc headers out of the target's search path, which
   `-isystem /usr/include` would not. `test-llvm-cross-stanza.sh` 61 -> 65.
+
 ## 2026-10-08 — the lock maintenance report says how far behind each lock is (CON84 1)
 
 - **Each `LOCK FILE MAINTENANCE` row ends with the tool's own dry-run count** (`maint_behind` in
