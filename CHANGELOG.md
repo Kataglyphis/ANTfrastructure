@@ -17,6 +17,25 @@
   `test-version-forwarding.sh` now asserts the riscv64 forward equals `PY_CMAKE_VERSION`, so a wheel bump alone fails it
   (proved by moving the wheel pin to 4.4.5). Only riscv64's forwarded value changes; amd64 and arm64 keep their cache.
 
+## 2026-10-08 — HailoRT's `.patch` files apply again, and the patch gate runs GNU patch too (CON85)
+
+- **The four `windows/scripts/patches/hailo/*.patch` had never applied in a build.** HailoRT comes from a
+  tarball, which is no git repo, so `Invoke-SourcePatch` applies its patches with GNU patch (Git for Windows'
+  `usr\bin\patch.exe` in the image). All four carried a hand-written `index 0000000..0000000` line, which GNU
+  patch reads as a new file (`which already exists!`); 003 also had 6 lines of leading context against 1
+  trailing, which GNU patch anchors at end of file. Every build since at least 2026-10-04 logged four
+  `ERROR: … does not apply cleanly` and went green on the inline fallbacks. `git apply` forgives both, and
+  that is all `Test-PatchesApplyClean.ps1` ran.
+- **Fix:** the four regenerated with `git diff` against the SHA-pinned 5.4.0 tarball. The changes are the
+  same; the index lines are real and the context is git's 3/3. GNU patch 2.7.6 and `git apply` both take
+  them, forward and reverse, on a fresh non-git extract.
+- **Gate:** `Test-PatchesApplyClean.ps1` now also dry-runs GNU patch (`--force`, never prompting) on each
+  clone, cloned with `core.autocrlf=false` so the tree is LF like the tarball. It takes Git for Windows'
+  GNU patch, not the first `patch.exe` on `PATH`: Strawberry Perl's patch 2.5.9, first on the dev host's
+  `PATH`, asserts on every patch. The old four FAIL there and the new four pass; all 20 patches pass both
+  checks at their pinned refs. `windows/scripts/patches/README.md` says how to write a patch GNU patch takes.
+
+
 ## 2026-10-08 — the arm64/riscv64 images drop the Vulkan SDK's builder-arch vkprofiles (CON82)
 
 - **The runtime-image smoke failed one row on arm64** (chain run 20261008-141457; amd64 0 failures):
@@ -89,6 +108,7 @@
 - **Fix** (`03-media/runtime/install-deps.sh`): a native build adds the manifest to the final-stage packages. The
   package stage installs the same list, so the shipped image is unchanged; cross builds prove no twin there and keep
   their package set.
+
 
 ## 2026-10-08 — Windows FFmpeg links x265 4.2 again: its .pc gains advapi32
 

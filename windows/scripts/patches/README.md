@@ -76,14 +76,22 @@ These are documented here so a reviewer knows the omission is intentional, not a
 | MSVC STL `yvals_core.h` `_EMIT_STL_ERROR` no-op | `Build-OnnxGenaiFromSource.ps1` | Patches an **installed MSVC toolset header**, not an upstream repo — version-specific, floats with the toolchain. Wrapping the one `_EMIT_STL_ERROR` define in `#ifdef __clang__` no-ops **every** STL error code (STL1009/1010/1011) under clang-cl, so no per-header (e.g. `<experimental/coroutine>`) patch is needed. Guarded by a loud drift-assertion that fails fast if a future toolset changes the macro's format. |
 | ~30 LiteRT-LM CMake/source edits | `Build-LitertLmFromSource.ps1` | Target **ExternalProject-fetched trees** (protobuf / sentencepiece / tflite / re2 / tokenizers) and LiteRT-LM's own `*_patcher.cmake` hooks; the tags float and the anchors move between releases. Applied via `Edit-SourceFile` / `Invoke-InlineRegexPatch` / `Add-FileBlockOnce`, each guarded + warn-on-miss. |
 
-To regenerate a `.patch` against its pinned tag: shallow-clone the upstream at the version above,
-apply the edit, `git diff`, and verify with `git apply --check -p1 --ignore-whitespace`.
+To regenerate a `.patch` against its pinned tag: shallow-clone the upstream at the version above
+with `core.autocrlf=false`, apply the edit, and write the patch with `git diff`. Do not hand-edit
+the result. A placeholder `index 0000000..0000000` line makes GNU patch treat the target as a new
+file ("which already exists!"), and a hunk with less trailing than leading context is anchored at
+end of file. `git apply` forgives both, which is how the four HailoRT patches stayed dead until
+2026-10-08. Tarball sources are not git repos, so `Invoke-SourcePatch` applies their patches with
+GNU patch (Git for Windows' `usr\bin\patch.exe` in the image).
 
 ## Verifying the patches still apply (before a version bump)
 
 `windows/scripts/tests/Test-PatchesApplyClean.ps1` automates the whole-catalogue check: for every
 `.patch` above it parses the `+++ b/<path>` headers, blobless-sparse-clones the pinned upstream, and
-runs the exact `git apply --check -p1 --ignore-whitespace` the build uses — no container rebuild. Run
+runs the exact `git apply --check -p1 --ignore-whitespace` the build uses on a git source, then GNU
+patch's `--dry-run` it uses on a tarball — no container rebuild. It takes Git for Windows' GNU patch,
+not the first `patch.exe` on `PATH`: Strawberry Perl's patch 2.5.9, first on the dev host's
+`PATH`, asserts on every patch (`Assertation failed!`). Run
 it after bumping a version in `versions.env`; any `FAIL` means that patch must be regenerated against
 the new tree.
 

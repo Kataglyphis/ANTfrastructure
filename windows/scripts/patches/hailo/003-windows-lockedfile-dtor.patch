@@ -1,11 +1,8 @@
 diff --git a/hailort/common/os/windows/filesystem.cpp b/hailort/common/os/windows/filesystem.cpp
-index 0000000..0000000 100644
+index cbacdc7..1770055 100644
 --- a/hailort/common/os/windows/filesystem.cpp
 +++ b/hailort/common/os/windows/filesystem.cpp
-@@ -22,7 +22,16 @@
- {}
- 
- TempFile::~TempFile()
+@@ -25,6 +25,15 @@ TempFile::~TempFile()
  {
  }
  
@@ -19,3 +16,5 @@ index 0000000..0000000 100644
 +}
 +
  std::string TempFile::path() const
+ {
+     return m_file_path;
