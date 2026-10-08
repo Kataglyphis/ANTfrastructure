@@ -6,9 +6,9 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-07**, read from the registry (hub = the image's `revision` label, digest =
+**State 2026-10-08**, read from the registry (hub = the image's `revision` label, digest =
 the per-arch manifest). Published: `:latest` (2026-10-03, hub b4d5fdd5; amd64 `686fdf4e…`,
-arm64 `26957741…`, riscv64 `67887737…`), `:winamd64` (2026-10-06, hub b3cf4c76), `:winamd64-nvidia` (2026-10-02, hub 7a5a2a33, `a9e67332…`),
+arm64 `26957741…`, riscv64 `67887737…`), `:winamd64` (2026-10-08, hub 5dfeb42d, `e96203a8…`), `:winamd64-nvidia` (2026-10-02, hub 7a5a2a33, `a9e67332…`),
 `:winamd64-rocm` (2026-10-03, hub 1d910553, `493e80f1…`), `:winarm64` (2026-10-04, hub
 80647a9a, `97bbcd35…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-nvidia`
 (2026-10-02, hub b4d5fdd5, amd64 `95c3a343…`, built without DeepStream) and `:latest-rocm`
@@ -182,7 +182,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       win-arm64 `apache_tvm` wheel with `TVM_COMMIT`'s hash, which is not PEP 440 and makes
       `tvm\_version.py` invalid Python. It has been live since `TVM_COMMIT` reached Windows
       (2026-08-28); no arm64 gate imports tvm. Done when a published `:latest` (all arches),
-      `:winamd64` and `:winarm64` built from this hub pass their smokes.
+      `:winamd64` and `:winarm64` built from this hub pass their smokes. `:winamd64` has:
+      published 2026-10-08 from hub 5dfeb42d (`e96203a8…`), smoke gate 268 assertions passed,
+      1 skipped. That chain also needed x265 4.2's `advapi32` (98db1797).
 
       **OrchestrANT's Linux x64 and arm64 lanes are red until then** (c33edb3, run
       37597200372): its hub pin carries `PYTHON_VERSION=3.14.8`, and `python-app-bundle.sh`
