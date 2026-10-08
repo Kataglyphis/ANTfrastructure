@@ -22,7 +22,7 @@ INSTALL_DIR="${LITERT_ROOT_ANDROID:-/opt/android/litert}"
 : "${CMAKE_POLICY_VERSION_MINIMUM:=3.5}"
 
 apt-get update && apt-get install -y --no-install-recommends \
-    g++ git cmake ninja-build python3 python3-pip
+    g++ git cmake ninja-build python3 python3-pip curl ca-certificates
 
 android_clone_shallow "https://github.com/google-ai-edge/LiteRT.git" "${LITERT_VERSION}" litert-android
 
@@ -35,6 +35,19 @@ HOST_CC="$(resolve_host_compiler c)"
 HOST_CXX="$(resolve_host_compiler cxx)"
 
 mkdir -p litert/build-android && cd litert/build-android
+
+# v2.2.0's default LiteCore URL went 404 (upstream main dropped its 1.1.0/ path segment), and file(DOWNLOAD) checks neither status nor hash.
+litecore_url="https://soc-developer.semiconductor.samsung.com/api/v1/resource/download-file/ai-litecore-ubuntu2404-v1.1.0.tar.gz"
+litecore_sha256="7d79a04db47227b8585bdf9abb0a7b52f2ec497d8a64ecc3e66ef502e41a07b2"
+litecore_root="${PWD}/_litecore"
+mkdir -p "${litecore_root}"
+curl -fsSL --retry 3 -o "${litecore_root}/litecore.tar.gz" "${litecore_url}"
+printf '%s  %s\n' "${litecore_sha256}" "${litecore_root}/litecore.tar.gz" | sha256sum -c - \
+  || { echo "FATAL: Samsung AI LiteCore headers do not match the pinned sha256 (${litecore_url})" >&2; exit 1; }
+tar -xzf "${litecore_root}/litecore.tar.gz" -C "${litecore_root}"
+litecore_include="${litecore_root}/exynos-ai-litecore-v1.1.0/include"
+[ -f "${litecore_include}/graph_wrapper_api.h" ] \
+  || { echo "FATAL: ${litecore_include}/graph_wrapper_api.h missing from the LiteCore archive" >&2; exit 1; }
 
 # FetchContent downloads can truncate mid-transfer, so a failed configure retries from wiped state.
 configure_litert_android() {
@@ -55,6 +68,7 @@ configure_litert_android() {
     -DRUY_BUILD_TESTING=OFF \
     -DLITERT_HOST_C_COMPILER="${HOST_CC}" \
     -DLITERT_HOST_CXX_COMPILER="${HOST_CXX}" \
+    -DLITECORE_HEADERS_DIR="${litecore_include}" \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
     ..
 }
