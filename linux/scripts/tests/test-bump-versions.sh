@@ -403,4 +403,121 @@ t_assert_contains "${_out}" "asked https://api.github.com/repos/microsoft/Direct
 t_assert_contains "${_out}" "refused: DXC v1.9.2609: expected one dxc_<date>.zip asset, found []" "no zip is a lookup failure"
 t_assert_contains "${_out}" "found ['dxc_2026_09_01.zip', 'dxc_2026_09_02.zip']" "two zips are ambiguous, never a guess"
 
+t_case "--audit-sha-pairs: a SHA beside a hand-moved *_URL passes; beside a renovate-moved *_URL it fails"
+_fx="$(_fixture audit_url <<'ENV'
+FOO_WHEEL_URL=https://files.example/foo-1.0-py3-none-any.whl
+FOO_WHEEL_SHA256=aaaa
+# renovate: datasource=github-releases depName=bar/bar
+BAR_URL=https://example/bar-1.0.tar.gz
+BAR_SHA256=bbbb
+ENV
+)"
+_out="$(_bv empty "${_fx}" --audit-sha-pairs)"
+t_assert_eq "1" "$(_rc_of "${_out}")" "a URL Renovate can move is a version mover, so its SHA needs a spec"
+t_assert_contains "${_out}" "  BAR_SHA256" "the renovate-moved pair is named"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e FOO_WHEEL_SHA256 || true)" \
+  "a pin whose only version is a hand-edited URL beside it is not flagged"
+
+# _audit_src <fixture> <source text> -- the audit with this file's text standing in for bump_versions.py.
+_audit_src() {
+  local src="${_WORK}/audit_src.py"
+  printf '%s\n' "$2" > "${src}"
+  _bv_offline <<PY
+from pathlib import Path
+bv.VERSIONS_ENV = Path("$1")
+bv.__file__ = "${src}"
+print("rc", bv.audit_sha_pairs())
+PY
+}
+
+t_case "--audit-sha-pairs: only a quoted key in the source counts as specced, never a comment naming it"
+_fx="$(_fixture audit_src <<'ENV'
+QUOTED_SHA256=aaaa
+COMMENTED_SHA256=bbbb
+ENV
+)"
+_out="$(_audit_src "${_fx}" '# COMMENTED_SHA256 is refreshed somewhere
+PINS = {"QUOTED_SHA256": "x"}')"
+t_assert_contains "${_out}" "  COMMENTED_SHA256" "a comment is not a refresh spec"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e '  QUOTED_SHA256' || true)" "a quoted key is"
+t_assert_contains "${_out}" "rc 1" "and the audit fails"
+
+t_case "--audit-sha-pairs on the REAL versions.env + tool-pins.env: rc 0, and one new unspecced SHA key turns it red"
+_real="$(_bv_offline <<'PY'
+print("rc", bv.audit_sha_pairs())
+PY
+)"
+t_assert_contains "${_real}" "rc 0" "every committed SHA pin is specced, held, exempt or URL-paired"
+mkdir -p "${_WORK}/real"
+cp "${REPO}/linux/scripts/01-core/versions.env" "${REPO}/linux/scripts/01-core/tool-pins.env" "${_WORK}/real/"
+printf 'NEWTOOL_LINUX_X86_64_SHA256=%064d\n' 0 >> "${_WORK}/real/tool-pins.env"
+_mut="$(_bv_offline <<PY
+from pathlib import Path
+bv.VERSIONS_ENV = Path("${_WORK}/real/versions.env")
+print("rc", bv.audit_sha_pairs())
+PY
+)"
+t_assert_contains "${_mut}" "rc 1" "a SHA key added with no spec, hold or exemption fails the audit"
+t_assert_eq "1" "$(printf '%s\n' "${_mut}" | grep -c -e '^  [A-Z]' || true)" "and it is the only key named"
+t_assert_contains "${_mut}" "  NEWTOOL_LINUX_X86_64_SHA256" "the new key itself"
+
+t_case "spec_shellcheck --write refreshes all three shellcheck assets, the aarch64 tarball included (offline)"
+_out="$(_bv_offline <<'PY'
+bv.gh_latest = lambda repo, pattern=None: "v0.12.0"
+bv.asset_sha256 = lambda repo, tag, asset, sums=(): asset
+bv.WRITE_MODE = True
+for k, v in sorted(bv.spec_shellcheck("v0.11.0")[1].items()):
+    print(k, v)
+PY
+)"
+t_assert_contains "${_out}" "SHELLCHECK_LINUX_AARCH64_SHA256 shellcheck-v0.12.0.linux.aarch64.tar.xz" \
+  "the arm64-host asset moves with the version"
+t_assert_contains "${_out}" "SHELLCHECK_LINUX_X86_64_SHA256 shellcheck-v0.12.0.linux.x86_64.tar.xz" "so does x86_64"
+t_assert_contains "${_out}" "SHELLCHECK_WINDOWS_SHA256 shellcheck-v0.12.0.zip" "and the Windows zip"
+
+t_case "the manifest-derived pins: CUDA arm64 redists, cuDNN arm64, TensorRT debs, a GStreamer wrap, HailoRT's protobuf (offline)"
+_out="$(_bv_offline <<'PY'
+manifest = {c: {"windows-arm64": {"relative_path": f"{c}/windows-arm64/{c}-windows-arm64-1.2.{i}-archive.zip",
+                                  "sha256": f"{i:064d}"}}
+            for i, (_, _, c) in enumerate(bv._CUDA_WINDOWS_ARM64_COMPONENTS)}
+pins = bv.cuda_windows_arm64_pins(manifest)
+print("cuda", len(pins), pins["CUDA_WINDOWS_ARM64_CUBLAS_VERSION"], pins["CUDA_WINDOWS_ARM64_CUPTI_SHA256"][-2:])
+del manifest["libnpp"]["windows-arm64"]
+try:
+    bv.cuda_windows_arm64_pins(manifest)
+except RuntimeError as e:
+    print("refused:", e)
+cudnn = {"cudnn": {"windows-arm64": {"cuda12": {"sha256": "12" * 32}, "cuda13": {"sha256": "13" * 32}}}}
+print("cudnn", bv.cudnn_windows_arm64_sha256(cudnn, "cuda13")[:4])
+stanzas = [{"Package": p, "Version": v, "SHA256": f"{p}@{v}"} for p in
+           ("libnvinfer10", "libnvinfer-plugin10", "libnvonnxparsers10", "libnvinfer-headers-dev",
+            "libnvinfer-headers-plugin-dev", "libnvonnxparsers-dev")
+           for v in ("10.16.1.11-1+cuda12.9", "10.16.1.11-1+cuda13.2")]
+print("trt", bv.deepstream_trt_pins(stanzas, "10.16.1.11", "13.2")["DEEPSTREAM_TRT_LIBNVINFER10_SHA256"])
+bv.http_text = lambda url: ("[wrap-file]\ndirectory=dav1d-1.5.2\nsource_hash = " + "AB" * 32 + "\n"
+                            if url.endswith("/1.30.0/subprojects/dav1d.wrap") else
+                            "GIT_TAG         f0dc78d7e6e331b8c6bb2d5283e06aa26883ca7c # v21.12\n")
+print("wrap", bv.gstreamer_wrap_pin("1.30.0", "dav1d")[0], bv.gstreamer_wrap_pin("1.30.0", "dav1d")[1][:4])
+print("protobuf", bv.hailo_protobuf_version("5.4.0"))
+PY
+)"
+t_assert_contains "${_out}" "cuda 20 1.2.1 09" "each arm64 component's version comes from its archive path, its SHA from the manifest"
+t_assert_contains "${_out}" "refused: CUDA redist manifest has no windows-arm64 libnpp" "a missing component is a lookup failure"
+t_assert_contains "${_out}" "cudnn 1313" "the arm64 cuDNN zip is the entry for CUDA_VERSION's major"
+t_assert_contains "${_out}" "trt libnvinfer10@10.16.1.11-1+cuda13.2" "the TensorRT deb is the one built for the pinned CUDA"
+t_assert_contains "${_out}" "wrap 1.5.2 abab" "dav1d's version and hash come from GStreamer's wrap at its tag, lower-cased"
+t_assert_contains "${_out}" "protobuf 21.12" "HailoRT's protobuf is the version its FetchContent GIT_TAG names"
+
+t_case "spec_deepstream: the newest tag whose OWN release carries the runtime deb wins (v9.1.0.x tags have none) (offline)"
+_out="$(_bv_offline <<'PY'
+bv.ls_remote_tags = lambda repo: ["v9.0.2", "v9.1.0", "v9.1.0.1", "v9.1.0.2"]
+probed = []
+bv.artifact_exists = lambda url: probed.append(url.rsplit("/", 2)[1]) or "/v9.1.0/" in url
+bv.WRITE_MODE = False
+print("picked", bv.spec_deepstream("9.0.2"), probed)
+PY
+)"
+t_assert_contains "${_out}" "picked ('9.1.0', {}) ['v9.1.0.2', 'v9.1.0.1', 'v9.1.0']" \
+  "release-less tags are skipped newest-first, never pinned"
+
 t_summary

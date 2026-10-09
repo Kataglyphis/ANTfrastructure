@@ -123,8 +123,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       Open: Windows base (scoop vulkan 1.4.363.0 and the arm64 component), the rocm loader zip, arm64
       Vulkan-ValidationLayers at vulkan-sdk-1.4.363.0, the rocm FFmpeg against VK_HEADER_VERSION 363, the
       media x265 4.2 build and the rocm llama stage's ggml-hip from b11476; then OmniAccelerANT's flatpak and
-      catcam lanes on runtime 26.08 once its hub gitlink moves. Also `bump_versions.py --audit-sha-pairs`
-      fails since before this bump: about 100 SHA keys have no refresh spec (`X265_SHA256` among them).
+      catcam lanes on runtime 26.08 once its hub gitlink moves.
 
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
       (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.

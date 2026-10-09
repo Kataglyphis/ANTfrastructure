@@ -1150,6 +1150,14 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
 
 **Automated sweep: `python3 docs/scripts/bump_versions.py`** (report), `--write` (safe tier), `--write-all` (report tier + paired checksum extras — extras MUST be applied together with the version, see the CUDA-hash incident note in the script). Three tiers: SAFE / REPORT / MANUAL, plus a self-audit for unclassified keys — a key counts as classified when it is in a tier, carries a `# renovate:` annotation, or matches the non-version filter.
 
+**`--audit-sha-pairs`** guards the pairs themselves, offline. Every `*_SHA256`/`*_SHA512` key in either pin file must be one of four things, or the audit fails and names it:
+- **Specced**: quoted in the script, as a spec's extra or a MANUAL row. A comment naming the key does not count.
+- **Held**: under `bump:hold`.
+- **Exempt**: listed in `SHA_PAIR_EXEMPT` with a reason, for a login-gated or EULA-gated zip, an always-latest installer, or a SHA slaved to a MANUAL pin.
+- **URL-paired**: beside a `<name>_URL` key that is its version, as the wheel pins are. Nothing automated moves that URL, so the hand edit moves both. A Renovate-annotated URL does not qualify.
+
+`test-bump-versions.sh` runs the audit against the real pin files, so preflight's `script-tests` catches a new SHA pin that has none of the four.
+
 **`bump:hold` marker:** a comment line containing `bump:hold <reason>` directly above a `KEY=` in versions.env blocks every `bump_versions.py` write for that key (reported as `HELD`); Renovate's `--apply` does not read the marker and is kept off a held key only by `.github/renovate.json`'s approval rule. Use it for pins that are **slaved to another project's internals**, not independent software — e.g. `PROTOC_VERSION`/`PROTOBUF_VERSION` must match LiteRT-LM's internal `protobuf.cmake` pin (auto-bumping protoc to latest shipped gencode its runtime `#error`s on, 2026-08-03). Re-derive held keys manually when their master pin moves.
 
 `common.sh` loads `versions.env` at load time through `load_versions_env` (`01-core/load-versions-env.sh`: parsed line by line and exported, never `source`d; a value already set in the environment wins), and `artifact-common.sh` gets it by sourcing `common.sh`. Per-Dockerfile ARG defaults are safety nets and should match.
