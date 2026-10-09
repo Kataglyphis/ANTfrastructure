@@ -12947,12 +12947,12 @@
   "why": "a twin whose modules re-enable the GIL would be stored unproved"
  },
  {
-  "id": "wheels.ft-cross-skips",
+  "id": "wheels.ft-cross-target",
   "target": "linux/scripts/03-media/free-threaded-wheels.sh",
-  "find": "  if declare -F cross_build_is_active >/dev/null 2>&1 && cross_build_is_active; then\n",
-  "replace": "  if false; then\n",
+  "find": "  if _ft_cross; then\n    ft_target_resolve || {",
+  "replace": "  if false; then\n    ft_target_resolve || {",
   "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
-  "why": "a cross build would build its twins with the host's interpreter and stamp them with the host SOABI"
+  "why": "a cross build would build its twins against the host 3.14t alone, stamped with the host SOABI, and never fail for a missing target tree"
  },
  {
   "id": "wheels.ft-venv-mirrors-gil",
@@ -12981,18 +12981,18 @@
  {
   "id": "wheels.ft-store-unclassified",
   "target": "linux/scripts/03-media/runtime/free-threaded-store.sh",
-  "find": "    if [ \"$1\" = native ] && [ \"$(ft_wheel_verdict \"${d}\")\" = unknown ]; then\n",
+  "find": "    if [ \"$(ft_wheel_verdict \"${d}\")\" = unknown ]; then\n",
   "replace": "    if false; then\n",
   "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
-  "why": "a new wheel would ship natively without anyone reading its free-threading support"
+  "why": "a new wheel would ship, natively or cross, without anyone reading its free-threading support"
  },
  {
-  "id": "wheels.ft-store-cross-empty",
-  "target": "linux/scripts/03-media/runtime/free-threaded-store.sh",
-  "find": "  [ \"$1\" = native ] || want=\"\"\n",
-  "replace": "",
-  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
-  "why": "a cross build's store could hold twins built with the host interpreter"
+  "id": "wheels.ft-knob-off",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "    twin:*) knob=\"${verdict#twin:}\"; [ \"${!knob:-0}\" = 1 ] ;;\n",
+  "replace": "    twin:*) return 0 ;;\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "FT_TORCH_TWIN=0 would still demand the riscv64 torch twin, so the escape hatch could never turn it off"
  },
  {
   "id": "probe.ft-store-proved",
@@ -13011,12 +13011,36 @@
   "why": "a store with a twin whose GIL package left /opt/venv would pass"
  },
  {
-  "id": "probe.ft-store-cross-empty",
+  "id": "probe.ft-store-wants-record",
   "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
-  "find": "      if [ -n \"${have}\" ]; then echo \"BAD a cross-built store holds wheels",
-  "replace": "      if false; then echo \"BAD a cross-built store holds wheels",
+  "find": "    twin | twin:*) printf '%s\\n' \"$1\" | grep -q -x -e \"FTS RECORD want $(ft_wheel_row \"$2\" | cut -d'|' -f1)\" ;;\n",
+  "replace": "    twin | twin:*) return 0 ;;\n",
   "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
-  "why": "a cross-built arch could ship host-SOABI twins"
+  "why": "an index-installed package (amd64's PyPI torch, arm64's PyPI IREE compiler) would demand a twin no chain builds"
+ },
+ {
+  "id": "wheels.ft-cross-gate-target-suffix",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "  if [ -z \"${want}\" ] && _ft_cross; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a cross twin would be gated against the host 3.14t's suffix, which no riscv64 module carries"
+ },
+ {
+  "id": "wheels.ft-gate-platform-machine",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "if not all(p.endswith(\"_\" + machine) for p in parts[-1].split(\".\")):\n",
+  "replace": "if False:\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a riscv64 twin tagged linux_x86_64 would pass the gate and install on the wrong arch"
+ },
+ {
+  "id": "wheels.ft-cross-proof-on-target",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "  if _ft_cross; then\n    ft_prove_wheel_on_target",
+  "replace": "  if false; then\n    ft_prove_wheel_on_target",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a cross twin would be \"proved\" by the host 3.14t, which cannot load a riscv64 module, instead of the target one under qemu-user"
  },
  {
   "id": "probe.ft-store-wired",

@@ -54,18 +54,23 @@ ft_store_verdict() {
   _ft_store_table || return 0
   case "${probe}" in *"FTS DONE"*) ;; *) echo "BAD the in-image probe never finished"; return 0 ;; esac
   _ft_store_env_verdict "${probe}"
-  case "${probe}" in *"FTS NOSTORE"*) echo "BAD /opt/wheels-cp314t is missing; every arch ships the store, empty on a cross build"; return 0 ;; esac
+  case "${probe}" in *"FTS NOSTORE"*) echo "BAD /opt/wheels-cp314t is missing; every arch ships the store"; return 0 ;; esac
   case "${probe}" in *"FTS NORECORD"*) echo "BAD /opt/wheels-cp314t has no free-threaded-store.txt, so nothing says how its arch was built"; return 0 ;; esac
   mode="$(printf '%s\n' "${probe}" | sed -n 's/^FTS RECORD mode=//p' | head -n 1)"
   have="$(printf '%s\n' "${probe}" | sed -n 's/^FTS WHEEL //p')"
   case "${mode}" in
-    cross)
-      if [ -n "${have}" ]; then echo "BAD a cross-built store holds wheels: ${have//$'\n'/ }"; else echo "OK cross-built arch: no twins yet, as recorded"; fi
-      return 0 ;;
-    native) ;;
+    native | cross) echo "OK the store records a ${mode} build; its twins are held to the table as on any arch" ;;
     *) echo "BAD the store records mode '${mode}', not native or cross"; return 0 ;;
   esac
   _ft_store_verdict_native "${probe}" "${have}"
+}
+
+# <probe> <dist>: 0 when its verdict is twin or twin:<KNOB> and the record wants its family, i.e. the chain shipped the GIL wheel.
+_ft_store_wants() {
+  case "$(ft_wheel_verdict "$2")" in
+    twin | twin:*) printf '%s\n' "$1" | grep -q -x -e "FTS RECORD want $(ft_wheel_row "$2" | cut -d'|' -f1)" ;;
+    *) return 1 ;;
+  esac
 }
 
 # <probe>: the image advertises the store as Windows does, since uv_reconcile_chain_ort finds a 3.14t venv's ORT twin only through it.
@@ -79,20 +84,23 @@ _ft_store_env_verdict() {
   fi
 }
 
-# <probe> <wheels>: the families match /opt/venv's twin packages exactly, each installed flavour has its own twin, and every twin is proved.
+# <probe> <wheels>: the families match /opt/venv's twin packages exactly, each installed flavour has its own twin, and every twin is proved; native and cross alike.
 _ft_store_verdict_native() {
   local probe="$1" have="$2" gil d w fam_want="" fam_have=""
   gil="$(printf '%s\n' "${probe}" | sed -n 's/^FTS GIL //p')"
   case "${probe}" in *"FTS NOINSTALL"*) echo "BAD $(printf '%s\n' "${probe}" | sed -n 's/^FTS NOINSTALL //p' | head -n 1)" ;; esac
   for d in ${gil}; do
-    [ "$(ft_wheel_verdict "${d}")" = twin ] || continue
+    if ! _ft_store_wants "${probe}" "${d}"; then
+      case "$(ft_wheel_verdict "${d}")" in twin*) echo "OK ${d} declares free-threading, but the record wants no twin of it: no chain wheel of it shipped here, or its knob is off" ;; esac
+      continue
+    fi
     fam_want+="$(ft_wheel_row "${d}" | cut -d'|' -f1)"$'\n'
     printf '%s\n' "${have}" | grep -q -i -e "^${d//[-_.]/[-_.]}-[^-]*-cp3[0-9]*-cp3[0-9]*t-" \
       || echo "BAD /opt/venv carries ${d}, whose verdict is twin, and the store has no cp314t twin of it"
   done
   for w in ${have}; do
     case "${w}" in *-cp3[0-9]*-cp3[0-9]*t-*.whl) ;; *) echo "BAD ${w} is not a cp3XY-cp3XYt wheel" ;; esac
-    [ "$(ft_wheel_verdict "${w%%-*}")" = twin ] || echo "BAD ${w} is no twin the table allows (verdict $(ft_wheel_verdict "${w%%-*}"))"
+    _ft_store_wants "${probe}" "${w%%-*}" || echo "BAD ${w} is no twin the table allows here (verdict $(ft_wheel_verdict "${w%%-*}"))"
     fam_have+="$(ft_wheel_row "${w%%-*}" | cut -d'|' -f1)"$'\n'
     if printf '%s\n' "${probe}" | grep -q -e "^FTS PROVED ${w%%-*} "; then
       echo "OK ${w}: $(printf '%s\n' "${probe}" | sed -n "s/^FTS PROVED ${w%%-*} //p" | head -n 1)"

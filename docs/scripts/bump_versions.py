@@ -1515,7 +1515,7 @@ def unclassified_keys(env: dict[str, str]) -> list[str]:
         r"(SHA256|^ORT_|_ENABLE_|^USE_|^FAST_UBUNTU|^IMAGE_REGISTRY_PREFIX$"
         r"|^CROSS_DEFAULT_ARCHES$|^VENV_PATH$|_OUTPUT_DIR$|^GSTREAMER_PREFIX$"
         r"|_COMMIT$|_ASSET$|^CUDA_ARCHITECTURES$|^WINDOWS_TARGET_ARCH(ES)?$"
-        r"|^CI_IMAGE_|^ANDROID_TARGET_ABI$|^GENAI_ALLOW_RISCV64$|^JDK_PACKAGE$"
+        r"|^CI_IMAGE_|^ANDROID_TARGET_ABI$|^GENAI_ALLOW_RISCV64$|^FT_TORCH_TWIN$|^JDK_PACKAGE$"
         r"|^ROCM_WINDOWS_GFX_FAMILY$"  # a GPU target set, like CUDA_ARCHITECTURES
         r"|^APP_REF$)"  # a tracked branch, resolved to a commit per run
     )

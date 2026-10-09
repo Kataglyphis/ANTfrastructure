@@ -1,10 +1,12 @@
 # The cp314t twin verdicts both lanes read: ft_wheel_table (free-threaded-wheels.sh) and Get-FreeThreadedTwinTable (WindowsPythonWheel.Common.psm1).
-# dist|twin, gil or none|the versions.env pin the evidence was read at|the evidence; a moved pin fails both lanes' tests until it is re-read.
+# dist|twin, twin:<KNOB> (a twin only while that versions.env knob is 1), gil or none|the versions.env pin the evidence was read at|the evidence; a moved pin fails both lanes' tests until it is re-read.
 # Mounted per file beside its readers, never under 01-core/ or runtime/, so an edit re-keys only the RUNs that build or store a twin.
 onnxruntime|twin|ONNXRUNTIME_VERSION=v1.30.0|onnxruntime/python/onnxruntime_pybind_module.cc: PYBIND11_MODULE(onnxruntime_pybind11_state, m, py::mod_gil_not_used()) under Py_GIL_DISABLED, on pybind11 v3.0.2
 av|twin|PYAV_VERSION=19.0.1|setup.py: compiler directive "freethreading_compatible": True
 apache-tvm-ffi|twin|TVM_REF=v0.27.0|3rdparty/tvm-ffi daf594da, python/tvm_ffi/cython/core.pyx: # cython: freethreading_compatible = True (cython>=3.2.8)
 iree-base-runtime|twin|IREE_VERSION=v3.12.0|runtime/bindings/python/CMakeLists.txt: nanobind_add_module(... FREE_THREADED ...)
+torch|twin:FT_TORCH_TWIN|PYTORCH_VERSION=v2.14.1|torch/csrc/Module.cpp: PyUnstable_Module_SetGIL(module, Py_MOD_GIL_NOT_USED) under Py_GIL_DISABLED; the chain builds torch on riscv64 only
+numpy|twin:FT_TORCH_TWIN|PY_NUMPY_VERSION=2.5.3|numpy/_core/src/multiarray/multiarraymodule.c: {Py_mod_gil, Py_MOD_GIL_NOT_USED}; no chain build ships a numpy wheel yet, so this row only classifies one
 iree-base-compiler|twin|IREE_VERSION=v3.12.0|third_party/llvm-project 6cce5bca, mlir/cmake/modules/AddMLIRPython.cmake: nanobind_add_module(... FREE_THREADED ...)
 apache-tvm|none|TVM_REF=v0.27.0|pyproject.toml: wheel.py-api = "py3", no CPython extension, so its one py3 wheel installs on 3.14t
 torchvision|none|TORCHVISION_VERSION=v0.29.1|no CPython extension module of its own

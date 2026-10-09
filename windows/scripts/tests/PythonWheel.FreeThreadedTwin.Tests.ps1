@@ -11,7 +11,8 @@ Describe 'Get-FreeThreadedTwinTable' {
         $twins = @(Get-FreeThreadedTwinTable | Where-Object Verdict -ceq 'twin' | ForEach-Object Distribution | Sort-Object)
         Assert-Equal 'apache-tvm-ffi,av,iree-base-compiler,iree-base-runtime,onnxruntime' ($twins -join ',') 'the cp314t store''s exact set'
         foreach ($row in (Get-FreeThreadedTwinTable)) {
-            Assert-True ($row.Verdict -cin @('twin', 'gil', 'none')) "$($row.Distribution): verdict '$($row.Verdict)'"
+            # twin:<KNOB> is a Linux build switch (torch, numpy); this lane builds no twin of such a row.
+            Assert-True (($row.Verdict -cin @('twin', 'gil', 'none')) -or ($row.Verdict -cmatch '^twin:[A-Z0-9_]+$')) "$($row.Distribution): verdict '$($row.Verdict)'"
             Assert-Match '^[A-Z0-9_]+=\S+$' $row.Pin "$($row.Distribution): pin"
             Assert-True ($row.Evidence.Length -gt 20) "$($row.Distribution): evidence"
             Assert-Equal $row.Distribution (ConvertTo-PythonDistributionName -Name $row.Distribution) "$($row.Distribution) is PEP 503 normal"
@@ -35,7 +36,7 @@ Describe 'Get-FreeThreadedTwinTable' {
         Assert-True ($raw.Count -ge 10) "the file has $($raw.Count) rows"
         Assert-Equal ($raw -join "`n") ($parsed -join "`n") 'every row read whole, in file order'
         $module = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1'))
-        Assert-False ($module -match '[a-z0-9-]+\|(twin|gil|none)\|[A-Z0-9_]+=') 'no row literal left in WindowsPythonWheel.Common.psm1'
+        Assert-False ($module -match '[a-z0-9-]+\|(twin|twin:[A-Z0-9_]+|gil|none)\|[A-Z0-9_]+=') 'no row literal left in WindowsPythonWheel.Common.psm1'
     }
 
     It 'reads the copy one level above modules\ in an image, and a missing table throws rather than classifying nothing (mutation)' {
@@ -54,7 +55,7 @@ Describe 'Get-FreeThreadedTwinTable' {
         Assert-Equal 'onnxruntime-genai' (Get-FreeThreadedTwinRow -Distribution 'onnxruntime_genai_directml').Distribution 'a GenAI flavour'
         Assert-Equal 'twin' (Get-FreeThreadedTwinRow -Distribution 'Apache_TVM.FFI').Verdict 'case, dots and underscores'
         Assert-Equal 'none' (Get-FreeThreadedTwinRow -Distribution 'apache-tvm').Verdict 'the py3 TVM wheel'
-        Assert-Null (Get-FreeThreadedTwinRow -Distribution 'numpy') 'not an image wheel'
+        Assert-Null (Get-FreeThreadedTwinRow -Distribution 'pillow') 'not an image wheel'
     }
 }
 

@@ -142,12 +142,17 @@ pyav_build_wheel() {
 
     if cross_build_is_active; then
         local py_mm py_inc py_arch_inc
-        py_mm="$(cross_target_python_major_minor)" || pyav_skip "cannot resolve the target Python version"
-        py_inc="$(cross_target_python_include_dir)" || pyav_skip "cannot resolve the target Python include dir"
-        py_arch_inc="$(cross_target_python_arch_include_dir 2>/dev/null || printf '%s' "${py_inc}")"
+        if [ -n "${PYAV_TARGET_INCLUDE:-}" ]; then
+            # The cp314t twin: the target's 3.14t headers and suffix, from ft_target_resolve.
+            py_inc="${PYAV_TARGET_INCLUDE}" py_arch_inc="${PYAV_TARGET_INCLUDE}" ext_suffix="${PYAV_TARGET_EXT_SUFFIX:?}"
+        else
+            py_mm="$(cross_target_python_major_minor)" || pyav_skip "cannot resolve the target Python version"
+            py_inc="$(cross_target_python_include_dir)" || pyav_skip "cannot resolve the target Python include dir"
+            py_arch_inc="$(cross_target_python_arch_include_dir 2>/dev/null || printf '%s' "${py_inc}")"
+            ext_suffix=".cpython-${py_mm//./}-${CROSS_TARGET_TRIPLET}.so"
+        fi
         # -I first: the TARGET Python headers win over the host ones build_ext appends.
         cflags="-I${py_arch_inc} -I${py_inc} --sysroot=/ ${cflags}"
-        ext_suffix=".cpython-${py_mm//./}-${CROSS_TARGET_TRIPLET}.so"
         plat_tag="$(cross_wheel_platform_tag)" || pyav_skip "cannot resolve the target wheel platform tag"
         plat_args=(--plat-name "${plat_tag}")
         info "PyAV cross: triplet=${CROSS_TARGET_TRIPLET} ext_suffix=${ext_suffix} plat=${plat_tag}"
@@ -198,7 +203,9 @@ pyav_build_free_threaded_wheel() {
     ft_twin_start av "${ftvenv}" "${BUILD_PYTHON}" setuptools cython wheel \
         || { [ $? -eq 1 ] && return 0; err "PyAV: the cp314t twin cannot be built (see above)"; }
     t0="$(date +%s)"
-    pyav_build_wheel "${ftvenv}/bin/python" "${ftdist}" || err "PyAV: the free-threaded setup.py bdist_wheel failed (see the log above)"
+    # Empty on a native build; a cross one compiles against the target's 3.14t tree.
+    PYAV_TARGET_INCLUDE="${FT_TARGET_INCLUDE:-}" PYAV_TARGET_EXT_SUFFIX="${FT_TARGET_EXT_SUFFIX:-}" \
+        pyav_build_wheel "${ftvenv}/bin/python" "${ftdist}" || err "PyAV: the free-threaded setup.py bdist_wheel failed (see the log above)"
     info "PyAV: cp314t extensions built in $(( $(date +%s) - t0 ))s"
     ft_twin_store_built "${ftdist}" "${PYAV_FT_WHEELS_DIR}" || err "PyAV: no proved cp314t twin (see above)"
     rm -rf "${ftvenv}" "${ftdist}"
