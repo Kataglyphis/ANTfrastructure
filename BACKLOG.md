@@ -95,8 +95,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `--force-reinstall` leaves `cython\` and still fails.
 
 - [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
-      yarn.lock today). (2) `actions-selftest.yml` never runs `clone-into-short-path` on a pull_request merge ref; the fix
-      is proved by a local reproduction only. (3) Consumers to follow: jotrockenmitlocken (sqlite3 3.7.0 in its lock and
+      yarn.lock today). (3) Consumers to follow: jotrockenmitlocken (sqlite3 3.7.0 in its lock and
       a refreshed `web/sqlite3.wasm`), ANThology (lock maintenance), OmniAccelerANT's `environment: flutter: '>=3.41.6'`
       floor (its lock now needs 3.47.0), and optionally OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule
       into the preset. (4) OmniAccelerANT's lock maintenance (go_router 18.0.2, sqlite3 3.7.0 and the wasm) waits
