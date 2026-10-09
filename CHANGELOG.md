@@ -6,6 +6,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — WEBDAVCLIENT_REF to WebDavClient's develop head
+
+- `4f3f116d` -> `050dfb2c` (23 commits: lock maintenance, the free-threading declaration, a manylinux packaging extra,
+  unit tests). `webdav-download.sh` installs the client from the commit's archive: the new archive installs into a 3.14
+  venv, and every call `download-webdav-files.py` makes keeps its signature; `webdavclient.py`'s diff is comments only.
+  `bump_versions.py --check` had reported it NEWER AVAILABLE since c40dc4bb.
+
 ## 2026-10-09 — CON84 item 3: jotrockenmitlocken on sqlite3 3.7.0; ANThology has no lock to maintain
 
 - **jotrockenmitlocken** 93083c3: `sqlite3 ^3.7.0`, lock 3.6.0 -> 3.7.0 (nothing else moved), and `web/sqlite3.wasm`
