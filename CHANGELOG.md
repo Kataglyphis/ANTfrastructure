@@ -6,6 +6,34 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — CON82: `bump_versions.py --audit-sha-pairs` passes; 49 SHA pins gained refresh specs
+
+- **What failed:** 93 `*_SHA256` keys had no refresh spec, hold or exemption, so Renovate or a hand bump could move
+  their version while the SHA stayed put. `SHELLCHECK_LINUX_AARCH64_SHA256` was the plain bug: `spec_shellcheck`
+  refreshed the other two shellcheck assets but not this one.
+- **49 specced**, each from the URL its consumer script downloads:
+  - SAFE tier: cargo-audit/deny/tarpaulin, wasm-pack, gitleaks, mold, Renovate's Node (same major) and lavapipe.
+  - REPORT tier: flutter_rust_bridge, sqlite3.wasm, x265, DeepStream and its TensorRT debs, HailoRT, TAPPAS,
+    libzmq, cppzmq and the Windows ROCm tarball.
+  - Slaved derivations: dav1d from GStreamer's `dav1d.wrap` and HailoRT's protobuf from its `protobuf.cmake`.
+  - Extras: `spec_cuda` refreshes the ten Windows-arm64 CUDA redists from the same manifest, and `spec_cudnn`
+    refreshes the arm64 cuDNN zip.
+- **44 not specced:** 42 wheel SHAs sit beside the `*_URL` that is their version. No tool moves that URL, so the
+  audit accepts such a pair unless the URL is Renovate-annotated. Two more were added to the new `SHA_PAIR_EXEMPT`
+  with reasons: `QNN_SDK_LINUX_ZIP_SHA256` (login-gated) and `LLVM_WINDOWS_AARCH64_RT_SHA256` (slaved to MANUAL
+  `LLVM_WINDOWS_VERSION`).
+- **The audit is stricter:** only a quoted key counts as specced, so a comment naming a key no longer covers it.
+- **Verified:** every new spec's pins were recomputed at the current versions and compared with the pin files. All
+  64 values matched (the refactored `NODE_*` pair included). 24 were hashed from fresh downloads, the rest read from
+  sums files, NVIDIA's manifests, the CUDA apt index, GitHub's asset digests and GStreamer's wrap. The ROCm tarball (~2.2 GB) was only probed. `--check` finished with
+  0 lookup failures.
+- **Two lookup fixes:** the GitHub token now goes only to GitHub hosts, because Bitbucket answers a foreign bearer
+  with 400. `artifact_exists` sends a one-byte GET instead of HEAD, because a token-authenticated GitHub release
+  redirect answers HEAD with 401. That had made `spec_llama_cpp_hip` fail under `GITHUB_TOKEN`.
+- **Tests:** `test-bump-versions.sh` now runs the audit on the real pin files and checks that one added key fails
+  it. It also covers URL pairing, comment-only keys and the new parsers (70 -> 90 assertions). 13 of them fail
+  against the old script.
+
 ## 2026-10-09 — CON76: the free-threaded proof runs for real in the hub suite
 
 - **`test-python-free-threaded-wheel.sh` runs `prove` on a real 3.14t** (CON76). It compiles two C extensions

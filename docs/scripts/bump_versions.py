@@ -28,10 +28,14 @@ WRITE_MODE = False
 
 
 # HTTP helpers
-def _headers(extra: dict | None = None) -> dict:
+_GITHUB_HOSTS = {"github.com", "api.github.com", "raw.githubusercontent.com"}
+
+
+def _headers(url: str, extra: dict | None = None) -> dict:
     h = dict(UA)
     tok = os.environ.get("GITHUB_TOKEN")
-    if tok:
+    # GitHub's token goes to GitHub only; Bitbucket answers a foreign bearer with 400.
+    if tok and urllib.parse.urlsplit(url).hostname in _GITHUB_HOSTS:
         h["Authorization"] = f"Bearer {tok}"
     if extra:
         h.update(extra)
@@ -39,17 +43,17 @@ def _headers(extra: dict | None = None) -> dict:
 
 
 def http_json(url: str):
-    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers()), timeout=60) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers(url)), timeout=60) as r:
         return json.load(r)
 
 
 def http_text(url: str) -> str:
-    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers()), timeout=60) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers(url)), timeout=60) as r:
         return r.read().decode("utf-8", errors="replace")
 
 
 def http_bytes(url: str) -> bytes:
-    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers()), timeout=60) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers(url)), timeout=60) as r:
         return r.read()
 
 
@@ -57,7 +61,7 @@ def http_header(url: str, header: str, accept: str, auth: str | None = None) -> 
     extra = {"Accept": accept}
     if auth:
         extra["Authorization"] = auth
-    req = urllib.request.Request(url, headers=_headers(extra), method="HEAD")
+    req = urllib.request.Request(url, headers=_headers(url, extra), method="HEAD")
     with urllib.request.urlopen(req, timeout=60) as r:
         return r.headers.get(header, "")
 
@@ -70,7 +74,7 @@ def sha256_of_gz_stream(url: str) -> str:
     """Hash a .tar.gz's decompressed stream, which outlives GitHub's gzip stability pledge; pairs with download_verified_file()'s "stream" mode."""
     import gzip
     h = hashlib.sha256()
-    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers()), timeout=600) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers(url)), timeout=600) as r:
         with gzip.GzipFile(fileobj=r) as gz:
             for chunk in iter(lambda: gz.read(1 << 20), b""):
                 h.update(chunk)
@@ -81,7 +85,7 @@ def sha256_of_url(url: str) -> str:
     """Stream-download and hash (for artifacts without a published digest)."""
     h = hashlib.sha256()
     n = 0
-    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers()), timeout=600) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers(url)), timeout=600) as r:
         for chunk in iter(lambda: r.read(1 << 20), b""):
             h.update(chunk)
             n += len(chunk)
@@ -92,9 +96,10 @@ def sha256_of_url(url: str) -> str:
 
 
 def artifact_exists(url: str) -> bool:
-    """HEAD-probe an artifact URL (BT2: report artifacts, not just git tags)."""
+    """Probe an artifact URL with a one-byte GET (BT2: report artifacts, not just git tags)."""
     try:
-        req = urllib.request.Request(url, headers=_headers(), method="HEAD")
+        # Not HEAD: the CDN behind an authenticated GitHub release download answers HEAD with 401.
+        req = urllib.request.Request(url, headers=_headers(url, {"Range": "bytes=0-0"}))
         with urllib.request.urlopen(req, timeout=30) as r:
             return 200 <= r.status < 300
     except Exception:
@@ -391,21 +396,36 @@ def spec_uv(cur):
     return v, extras
 
 
-def spec_node(cur):
+def node_pins(v, keys) -> dict[str, str]:
+    """The linux-x64/linux-arm64 tarball digests from nodejs.org's SHASUMS256.txt, as {key: sha256}."""
+    sums = http_text(f"https://nodejs.org/dist/v{v}/SHASUMS256.txt")
+    pins = {}
+    for env_key, plat in zip(keys, ("linux-x64", "linux-arm64")):
+        asset = f"node-v{v}-{plat}.tar.xz"
+        m = re.search(rf"^([0-9a-f]{{64}})\s+{re.escape(asset)}$", sums, re.M)
+        if not m:
+            raise RuntimeError(f"node {v}: SHASUMS256.txt lists no {asset}")
+        pins[env_key] = m.group(1)
+    return pins
+
+
+def _same_major_node(cur):
     major = cur.split(".")[0]
     idx = http_json("https://nodejs.org/dist/index.json")
-    v = next(e["version"].lstrip("v") for e in idx if e["version"].lstrip("v").split(".")[0] == major)
-    extras = {}
-    if v != cur and WRITE_MODE:
-        sums = http_text(f"https://nodejs.org/dist/v{v}/SHASUMS256.txt")
-        for env_key, asset in [
-            ("NODE_AMD64_SHA256", f"node-v{v}-linux-x64.tar.xz"),
-            ("NODE_ARM64_SHA256", f"node-v{v}-linux-arm64.tar.xz"),
-        ]:
-            m = re.search(rf"^([0-9a-f]{{64}})\s+{re.escape(asset)}$", sums, re.M)
-            if m:
-                extras[env_key] = m.group(1)
+    return next(e["version"].lstrip("v") for e in idx if e["version"].lstrip("v").split(".")[0] == major)
+
+
+def spec_node(cur):
+    v = _same_major_node(cur)
+    extras = node_pins(v, ("NODE_AMD64_SHA256", "NODE_ARM64_SHA256")) if v != cur and WRITE_MODE else {}
     return v, extras
+
+
+def spec_renovate_node(cur):
+    """Renovate's own Node: same major only, since Renovate declares engines.node for one major (tool-pins.env)."""
+    v = _same_major_node(cur)
+    keys = ("RENOVATE_NODE_LINUX_X64_SHA256", "RENOVATE_NODE_LINUX_ARM64_SHA256")
+    return v, (node_pins(v, keys) if v != cur and WRITE_MODE else {})
 
 
 def spec_cmake(cur):
@@ -484,6 +504,7 @@ def spec_shellcheck(cur):
     if v != cur and WRITE_MODE:
         for env_key, asset in [
             ("SHELLCHECK_LINUX_X86_64_SHA256", f"shellcheck-{v}.linux.x86_64.tar.xz"),
+            ("SHELLCHECK_LINUX_AARCH64_SHA256", f"shellcheck-{v}.linux.aarch64.tar.xz"),
             ("SHELLCHECK_WINDOWS_SHA256", f"shellcheck-{v}.zip"),
         ]:
             extras[env_key] = asset_sha256("koalaman/shellcheck", v, asset)
@@ -673,6 +694,36 @@ def spec_windows_digest(cur):
     return mcr_manifest_digest("windows/servercore", f"ltsc{env['WINDOWS_LTSC']}"), {}
 
 
+# Install-Cuda.ps1's windows-arm64 redist set: key infix -> manifest component.
+_CUDA_WINDOWS_ARM64_COMPONENTS = (
+    ("CUDA_WINDOWS_ARM64_CUDART_VERSION", "CUDA_WINDOWS_ARM64_CUDART_SHA256", "cuda_cudart"),
+    ("CUDA_WINDOWS_ARM64_CUBLAS_VERSION", "CUDA_WINDOWS_ARM64_CUBLAS_SHA256", "libcublas"),
+    ("CUDA_WINDOWS_ARM64_CUFFT_VERSION", "CUDA_WINDOWS_ARM64_CUFFT_SHA256", "libcufft"),
+    ("CUDA_WINDOWS_ARM64_CURAND_VERSION", "CUDA_WINDOWS_ARM64_CURAND_SHA256", "libcurand"),
+    ("CUDA_WINDOWS_ARM64_NVJITLINK_VERSION", "CUDA_WINDOWS_ARM64_NVJITLINK_SHA256", "libnvjitlink"),
+    ("CUDA_WINDOWS_ARM64_NPP_VERSION", "CUDA_WINDOWS_ARM64_NPP_SHA256", "libnpp"),
+    ("CUDA_WINDOWS_ARM64_CUSOLVER_VERSION", "CUDA_WINDOWS_ARM64_CUSOLVER_SHA256", "libcusolver"),
+    ("CUDA_WINDOWS_ARM64_CUSPARSE_VERSION", "CUDA_WINDOWS_ARM64_CUSPARSE_SHA256", "libcusparse"),
+    ("CUDA_WINDOWS_ARM64_NVRTC_VERSION", "CUDA_WINDOWS_ARM64_NVRTC_SHA256", "cuda_nvrtc"),
+    ("CUDA_WINDOWS_ARM64_CUPTI_VERSION", "CUDA_WINDOWS_ARM64_CUPTI_SHA256", "cuda_cupti"),
+)
+
+
+def cuda_windows_arm64_pins(manifest) -> dict[str, str]:
+    """Each arm64 component's version and sha256 from a parsed redistrib_<CUDA_VERSION>.json."""
+    pins = {}
+    for ver_key, sha_key, comp in _CUDA_WINDOWS_ARM64_COMPONENTS:
+        entry = manifest.get(comp, {}).get("windows-arm64")
+        if not entry:
+            raise RuntimeError(f"CUDA redist manifest has no windows-arm64 {comp}")
+        m = re.search(rf"{re.escape(comp)}-windows-arm64-(\d+(?:\.\d+)+)-archive\.zip$", entry["relative_path"])
+        if not m:
+            raise RuntimeError(f"unexpected windows-arm64 {comp} path {entry['relative_path']}")
+        pins[ver_key] = m.group(1)
+        pins[sha_key] = entry["sha256"]
+    return pins
+
+
 def spec_cuda(cur):
     """CUDA from the redist index; a changed version re-downloads the ~4 GB Windows installer (13.4+ name) for its hash."""
     v = nvidia_redist_latest("cuda")
@@ -681,6 +732,8 @@ def spec_cuda(cur):
         extras["CUDA_INSTALLER_SHA256"] = sha256_of_url(
             f"https://developer.download.nvidia.com/compute/cuda/{v}/local_installers/cuda_{v}_windows_x86_64.exe"
         )
+        extras.update(cuda_windows_arm64_pins(
+            http_json(f"https://developer.download.nvidia.com/compute/cuda/redist/redistrib_{v}.json")))
     return v, extras
 
 
@@ -702,7 +755,16 @@ def spec_cudnn(cur):
     extras = {}
     if full_version != cur and WRITE_MODE and entry.get("sha256"):
         extras["CUDNN_ZIP_SHA256"] = entry["sha256"]
+        extras["CUDNN_WINDOWS_ARM64_ZIP_SHA256"] = cudnn_windows_arm64_sha256(manifest, cuda_major)
     return full_version, extras
+
+
+def cudnn_windows_arm64_sha256(manifest, cuda_major) -> str:
+    """The windows-arm64 cuDNN zip's sha256 for one CUDA major, from a parsed cuDNN redist manifest."""
+    entry = manifest.get("cudnn", {}).get("windows-arm64", {}).get(cuda_major)
+    if not entry or not entry.get("sha256"):
+        raise RuntimeError(f"cuDNN manifest has no windows-arm64 {cuda_major} zip")
+    return entry["sha256"]
 
 
 def spec_llama_cpp_hip(cur):
@@ -742,6 +804,302 @@ def spec_ort_webgpu_dxc(cur):
     return tag, extras
 
 
+def gh_asset_digest(repo: str, tag: str, asset: str) -> str:
+    """GitHub's own sha256 for a release asset, sparing a GB-sized download; hashes the asset when the API has none."""
+    try:
+        rel = http_json(f"https://api.github.com/repos/{repo}/releases/tags/{tag}")
+        for a in rel.get("assets", []):
+            if a.get("name") == asset and str(a.get("digest", "")).startswith("sha256:"):
+                return a["digest"].split(":", 1)[1].lower()
+    except Exception:  # noqa: BLE001 — fall back to hashing the asset itself
+        pass
+    return asset_sha256(repo, tag, asset)
+
+
+def _asset_pins(repo, tag, pairs, sums=()) -> dict[str, str]:
+    return {key: asset_sha256(repo, tag, asset, sums=sums) for key, asset in pairs}
+
+
+def cargo_qa_pins(tool: str, v: str) -> dict[str, str]:
+    """The prebuilt cargo QA binaries setup-package-image.sh installs (its _web_lane_asset_url), as {key: sha256}."""
+    if tool == "cargo-audit":
+        # Its aarch64 build is glibc, not musl.
+        return _asset_pins("rustsec/rustsec", f"cargo-audit%2Fv{v}", [
+            ("CARGO_AUDIT_LINUX_X86_64_SHA256", f"cargo-audit-x86_64-unknown-linux-musl-v{v}.tgz"),
+            ("CARGO_AUDIT_LINUX_AARCH64_SHA256", f"cargo-audit-aarch64-unknown-linux-gnu-v{v}.tgz"),
+        ])
+    if tool == "cargo-deny":
+        return _asset_pins("EmbarkStudios/cargo-deny", v, [
+            ("CARGO_DENY_LINUX_X86_64_SHA256", f"cargo-deny-{v}-x86_64-unknown-linux-musl.tar.gz"),
+            ("CARGO_DENY_LINUX_AARCH64_SHA256", f"cargo-deny-{v}-aarch64-unknown-linux-musl.tar.gz"),
+        ])
+    if tool == "cargo-tarpaulin":
+        return _asset_pins("xd009642/tarpaulin", v, [
+            ("CARGO_TARPAULIN_LINUX_X86_64_SHA256", "cargo-tarpaulin-x86_64-unknown-linux-musl.tar.gz"),
+            ("CARGO_TARPAULIN_LINUX_AARCH64_SHA256", "cargo-tarpaulin-aarch64-unknown-linux-musl.tar.gz"),
+        ])
+    raise ValueError(tool)
+
+
+def spec_cargo_audit(cur):
+    # rustsec/rustsec is a monorepo, so only the cargo-audit/v* tags are cargo-audit releases.
+    v = gh_latest("rustsec/rustsec", pattern=r"^cargo-audit/v\d+\.\d+\.\d+$").split("/v", 1)[1]
+    return v, (cargo_qa_pins("cargo-audit", v) if v != cur and WRITE_MODE else {})
+
+
+def spec_cargo_deny(cur):
+    v = gh_latest("EmbarkStudios/cargo-deny")
+    return v, (cargo_qa_pins("cargo-deny", v) if v != cur and WRITE_MODE else {})
+
+
+def spec_cargo_tarpaulin(cur):
+    v = gh_latest("xd009642/tarpaulin")
+    return v, (cargo_qa_pins("cargo-tarpaulin", v) if v != cur and WRITE_MODE else {})
+
+
+def web_lane_pins(tool: str, v: str) -> dict[str, str]:
+    """wasm-pack's and flutter_rust_bridge_codegen's linux-musl release binaries, as {key: sha256}."""
+    if tool == "wasm-pack":
+        return _asset_pins("rustwasm/wasm-pack", f"v{v}", [
+            ("WASM_PACK_LINUX_X86_64_SHA256", f"wasm-pack-v{v}-x86_64-unknown-linux-musl.tar.gz"),
+            ("WASM_PACK_LINUX_AARCH64_SHA256", f"wasm-pack-v{v}-aarch64-unknown-linux-musl.tar.gz"),
+        ])
+    if tool == "flutter_rust_bridge_codegen":
+        return _asset_pins("fzyzcjy/flutter_rust_bridge", f"v{v}", [
+            ("FLUTTER_RUST_BRIDGE_LINUX_X86_64_SHA256",
+             f"flutter_rust_bridge_codegen-x86_64-unknown-linux-musl-v{v}.tgz"),
+            ("FLUTTER_RUST_BRIDGE_LINUX_AARCH64_SHA256",
+             f"flutter_rust_bridge_codegen-aarch64-unknown-linux-musl-v{v}.tgz"),
+        ])
+    raise ValueError(tool)
+
+
+def spec_wasm_pack(cur):
+    v = gh_latest("rustwasm/wasm-pack").lstrip("v")
+    return v, (web_lane_pins("wasm-pack", v) if v != cur and WRITE_MODE else {})
+
+
+def spec_flutter_rust_bridge(cur):
+    """Report tier: consumers pin the flutter_rust_bridge crate to this exact version, so the codegen moves with them."""
+    v = gh_latest("fzyzcjy/flutter_rust_bridge").lstrip("v")
+    return v, (web_lane_pins("flutter_rust_bridge_codegen", v) if v != cur and WRITE_MODE else {})
+
+
+def gitleaks_pins(v: str) -> dict[str, str]:
+    return _asset_pins("gitleaks/gitleaks", f"v{v}", [
+        ("GITLEAKS_LINUX_X64_SHA256", f"gitleaks_{v}_linux_x64.tar.gz"),
+        ("GITLEAKS_LINUX_ARM64_SHA256", f"gitleaks_{v}_linux_arm64.tar.gz"),
+        ("GITLEAKS_WINDOWS_X64_SHA256", f"gitleaks_{v}_windows_x64.zip"),
+    ], sums=(f"gitleaks_{v}_checksums.txt",))
+
+
+def spec_gitleaks(cur):
+    v = gh_latest("gitleaks/gitleaks").lstrip("v")
+    return v, (gitleaks_pins(v) if v != cur and WRITE_MODE else {})
+
+
+def mold_pins(v: str) -> dict[str, str]:
+    return _asset_pins("rui314/mold", f"v{v}", [
+        ("MOLD_LINUX_X86_64_SHA256", f"mold-{v}-x86_64-linux.tar.gz"),
+        ("MOLD_LINUX_AARCH64_SHA256", f"mold-{v}-aarch64-linux.tar.gz"),
+        ("MOLD_LINUX_RISCV64_SHA256", f"mold-{v}-riscv64-linux.tar.gz"),
+    ])
+
+
+def spec_mold(cur):
+    v = gh_latest("rui314/mold").lstrip("v")
+    return v, (mold_pins(v) if v != cur and WRITE_MODE else {})
+
+
+def lavapipe_pins(v: str) -> dict[str, str]:
+    return _asset_pins("mmozeiko/build-mesa", v, [
+        ("LAVAPIPE_WINDOWS_X64_SHA256", f"mesa-lavapipe-x64-{v}.7z"),
+        ("LAVAPIPE_WINDOWS_ARM64_SHA256", f"mesa-lavapipe-arm64-{v}.7z"),
+    ])
+
+
+def spec_lavapipe(cur):
+    v = gh_latest("mmozeiko/build-mesa")
+    return v, (lavapipe_pins(v) if v != cur and WRITE_MODE else {})
+
+
+def sqlite3_wasm_pin(v: str) -> dict[str, str]:
+    return {"SQLITE3_WASM_SHA256": asset_sha256("simolus3/sqlite3.dart", f"sqlite3-{v}", "sqlite3.wasm")}
+
+
+def spec_sqlite3_wasm(cur):
+    """Report tier: the wasm must match the sqlite3 Dart package a consumer locks; sqlite3.dart tags it sqlite3-<v>."""
+    v = gh_latest("simolus3/sqlite3.dart", pattern=r"^sqlite3-\d+\.\d+\.\d+$").removeprefix("sqlite3-")
+    return v, (sqlite3_wasm_pin(v) if v != cur and WRITE_MODE else {})
+
+
+def x265_pin(v: str) -> dict[str, str]:
+    return {"X265_SHA256": sha256_of_url(f"https://bitbucket.org/multicoreware/x265_git/downloads/x265_{v}.tar.gz")}
+
+
+def spec_x265(cur):
+    """The newest x265_<v>.tar.gz in Bitbucket's downloads, the tarball Build-FfmpegCodecs.ps1 fetches; tags alone are not releases."""
+    data = http_json("https://api.bitbucket.org/2.0/repositories/multicoreware/x265_git/downloads?pagelen=100")
+    found = [m.group(1) for d in data.get("values", [])
+             if (m := re.fullmatch(r"x265_(\d+(?:\.\d+)+)\.tar\.gz", d.get("name", "")))]
+    if not found:
+        raise RuntimeError("Bitbucket lists no x265_<version>.tar.gz download")
+    v = max(found, key=_vkey)
+    return v, (x265_pin(v) if v != cur and WRITE_MODE else {})
+
+
+def gstreamer_wrap_pin(gst_version: str, wrap: str) -> tuple[str, str]:
+    """(version, source_hash) of a GStreamer subprojects/<wrap>.wrap at a GStreamer tag."""
+    text = http_text(f"https://gitlab.freedesktop.org/gstreamer/gstreamer/-/raw/{gst_version}/subprojects/{wrap}.wrap")
+    d = re.search(r"^directory\s*=\s*\S+?-(\d+(?:\.\d+)+)\s*$", text, re.M)
+    h = re.search(r"^source_hash\s*=\s*([0-9a-fA-F]{64})\s*$", text, re.M)
+    if not (d and h):
+        raise RuntimeError(f"GStreamer {gst_version}: {wrap}.wrap has no versioned directory or source_hash")
+    return d.group(1), h.group(1).lower()
+
+
+def spec_dav1d(cur):
+    """Slaved to GSTREAMER_VERSION: the Windows codec build uses exactly the dav1d tarball GStreamer's wrap pins."""
+    v, sha = gstreamer_wrap_pin(read_env()["GSTREAMER_VERSION"], "dav1d")
+    return v, ({"DAV1D_SHA256": sha} if v != cur and WRITE_MODE else {})
+
+
+def deepstream_pins(v: str) -> dict[str, str]:
+    """DEEPSTREAM_VERSION's tag commit and both runtime debs' GitHub digests."""
+    repo, tag = "NVIDIA/DeepStream", f"v{v}"
+    return {
+        "DEEPSTREAM_COMMIT": ls_remote_tag_commit(repo, tag),
+        "DEEPSTREAM_BINARIES_AMD64_SHA256": gh_asset_digest(repo, tag, f"deepstream-binaries-x86_{v}_amd64.deb"),
+        "DEEPSTREAM_BINARIES_ARM64_SHA256": gh_asset_digest(repo, tag, f"deepstream-binaries-aarch64_{v}_arm64.deb"),
+    }
+
+
+def spec_deepstream(cur):
+    """The newest tag whose own release carries deepstream.sh's runtime deb; v9.1.0.x tags have no release at all."""
+    tags = sorted((t for t in ls_remote_tags("NVIDIA/DeepStream") if re.fullmatch(r"v\d+(?:\.\d+)+", t)),
+                  key=_vkey, reverse=True)
+    base = "https://github.com/NVIDIA/DeepStream/releases/download"
+    for tag in tags[:10]:
+        v = tag[1:]
+        if artifact_exists(f"{base}/{tag}/deepstream-binaries-x86_{v}_amd64.deb"):
+            return v, (deepstream_pins(v) if v != cur and WRITE_MODE else {})
+    raise RuntimeError("none of the newest 10 NVIDIA/DeepStream tags publishes deepstream-binaries-x86_<v>_amd64.deb")
+
+
+# deepstream.sh's ds_trt_debs: key -> apt package.
+_DEEPSTREAM_TRT_DEBS = (
+    ("DEEPSTREAM_TRT_LIBNVINFER10_SHA256", "libnvinfer10"),
+    ("DEEPSTREAM_TRT_LIBNVINFER_PLUGIN10_SHA256", "libnvinfer-plugin10"),
+    ("DEEPSTREAM_TRT_LIBNVONNXPARSERS10_SHA256", "libnvonnxparsers10"),
+    ("DEEPSTREAM_TRT_LIBNVINFER_HEADERS_DEV_SHA256", "libnvinfer-headers-dev"),
+    ("DEEPSTREAM_TRT_LIBNVINFER_HEADERS_PLUGIN_DEV_SHA256", "libnvinfer-headers-plugin-dev"),
+    ("DEEPSTREAM_TRT_LIBNVONNXPARSERS_DEV_SHA256", "libnvonnxparsers-dev"),
+)
+
+
+def nvidia_apt_packages(repo: str) -> list[dict[str, str]]:
+    """The stanzas of NVIDIA's CUDA apt repo Packages index for x86_64."""
+    raw = gzip.decompress(http_bytes(
+        f"https://developer.download.nvidia.com/compute/cuda/repos/{repo}/x86_64/Packages.gz")).decode("utf-8")
+    return [dict(re.findall(r"^([A-Za-z0-9-]+): (.*)$", block, re.M)) for block in raw.split("\n\n")]
+
+
+def deepstream_trt_pins(stanzas, trt_version: str, cuda: str) -> dict[str, str]:
+    """Each TensorRT 10 deb's sha256 at <trt_version>-1+cuda<cuda>, from parsed Packages stanzas."""
+    want = f"{trt_version}-1+cuda{cuda}"
+    pins = {}
+    for key, pkg in _DEEPSTREAM_TRT_DEBS:
+        hit = next((s for s in stanzas if s.get("Package") == pkg and s.get("Version") == want), None)
+        if not hit or "SHA256" not in hit:
+            raise RuntimeError(f"Packages index has no {pkg} {want}")
+        pins[key] = hit["SHA256"].lower()
+    return pins
+
+
+def spec_deepstream_trt(cur):
+    """The newest TensorRT 10 (DeepStream links libnvinfer.so.10) the repo builds for DEEPSTREAM_TENSORRT_CUDA."""
+    env = read_env()
+    cuda = env["DEEPSTREAM_TENSORRT_CUDA"]
+    stanzas = nvidia_apt_packages(env["DEEPSTREAM_TENSORRT_REPO"])
+    found = [m.group(1) for s in stanzas if s.get("Package") == "libnvinfer10"
+             if (m := re.fullmatch(rf"(10\.[\d.]+)-1\+cuda{re.escape(cuda)}", s.get("Version", "")))]
+    if not found:
+        raise RuntimeError(f"no libnvinfer10 10.x for cuda{cuda} in {env['DEEPSTREAM_TENSORRT_REPO']}")
+    v = max(found, key=_vkey)
+    return v, (deepstream_trt_pins(stanzas, v, cuda) if v != cur and WRITE_MODE else {})
+
+
+def gh_archive_sha256(repo: str, tag: str) -> str:
+    return sha256_of_url(f"https://github.com/{repo}/archive/refs/tags/{tag}.tar.gz")
+
+
+def spec_hailort(cur):
+    v = gh_latest("hailo-ai/hailort").lstrip("v")
+    extras = {}
+    if v != cur and WRITE_MODE:
+        extras["HAILORT_COMMIT"] = ls_remote_tag_commit("hailo-ai/hailort", f"v{v}")
+        extras["HAILORT_SOURCE_SHA256"] = gh_archive_sha256("hailo-ai/hailort", f"v{v}")
+    return v, extras
+
+
+def hailo_protobuf_version(hailort_version: str) -> str:
+    """The protobuf HailoRT's cmake/external/protobuf.cmake fetches at a tag, from its GIT_TAG's '# vX.Y' comment."""
+    text = http_text(f"https://raw.githubusercontent.com/hailo-ai/hailort/v{hailort_version}"
+                     "/hailort/cmake/external/protobuf.cmake")
+    m = re.search(r"GIT_TAG\s+[0-9a-f]{40}\s*#\s*v(\d+(?:\.\d+)+)", text)
+    if not m:
+        raise RuntimeError(f"HailoRT v{hailort_version}: protobuf.cmake names no '# vX.Y' GIT_TAG")
+    return m.group(1)
+
+
+def spec_hailo_protobuf(cur):
+    """Slaved to HAILORT_VERSION: build-hailort.sh stages the protobuf HailoRT's own FetchContent pins."""
+    v = hailo_protobuf_version(read_env()["HAILORT_VERSION"])
+    extras = {}
+    if v != cur and WRITE_MODE:
+        extras["HAILO_PROTOBUF_SHA256"] = gh_archive_sha256("protocolbuffers/protobuf", f"v{v}")
+    return v, extras
+
+
+def spec_tappas(cur):
+    v = gh_latest("hailo-ai/tappas").lstrip("v")
+    return v, ({"TAPPAS_SOURCE_SHA256": gh_archive_sha256("hailo-ai/tappas", f"v{v}")} if v != cur and WRITE_MODE else {})
+
+
+def spec_hailo_libzmq(cur):
+    v = gh_latest("zeromq/libzmq").lstrip("v")
+    extras = {}
+    if v != cur and WRITE_MODE:
+        extras["HAILO_LIBZMQ_SHA256"] = asset_sha256("zeromq/libzmq", f"v{v}", f"zeromq-{v}.tar.gz")
+    return v, extras
+
+
+def spec_hailo_cppzmq(cur):
+    v = gh_latest("zeromq/cppzmq").lstrip("v")
+    return v, ({"HAILO_CPPZMQ_SHA256": gh_archive_sha256("zeromq/cppzmq", f"v{v}")} if v != cur and WRITE_MODE else {})
+
+
+_ROCM_TARBALL_BASE = "https://stable.repo.amd.com/rocm/core/tarball"
+
+
+def rocm_windows_tarball_url(family: str, release: str) -> str:
+    return f"{_ROCM_TARBALL_BASE}/therock-dist-windows-{family}-{release}.tar.gz"
+
+
+def spec_rocm_windows(cur):
+    """TheRock's newest Windows tarball for ROCM_WINDOWS_GFX_FAMILY; AMD publishes no checksum, so a bump hashes ~2.2 GB."""
+    family = read_env()["ROCM_WINDOWS_GFX_FAMILY"]
+    html = http_text(f"{_ROCM_TARBALL_BASE}/")
+    found = re.findall(rf"therock-dist-windows-{re.escape(family)}-(\d+\.\d+\.\d+)\.tar\.gz", html)
+    if not found:
+        raise RuntimeError(f"AMD's tarball index lists no therock-dist-windows-{family}-<release>.tar.gz")
+    v = max(found, key=_vkey)
+    extras = {}
+    if v != cur and WRITE_MODE:
+        extras["ROCM_WINDOWS_TARBALL_SHA256"] = sha256_of_url(rocm_windows_tarball_url(family, v))
+    return v, extras
+
+
 # Report-only latest lookups (high-risk stack pins)
 def _r(repo, strip_v=True, pattern=None, prefix=""):
     def fn(cur):
@@ -769,6 +1127,14 @@ SAFE: list[tuple[str, Callable, str]] = [
     ("HADOLINT_VERSION", spec_hadolint, "none (host-side lint bootstrap)"),
     ("ACTIONLINT_VERSION", spec_actionlint, "none (host-side lint bootstrap)"),
     ("SHELLCHECK_VERSION", spec_shellcheck, "none (host-side lint bootstrap; linux+windows)"),
+    ("GITLEAKS_VERSION", spec_gitleaks, "none (host-side secret-scan bootstrap; linux+windows)"),
+    ("MOLD_LINUX_VERSION", spec_mold, "none (opt-in linker, fetched on demand)"),
+    ("RENOVATE_NODE_VERSION", spec_renovate_node, "none (renovate-local.sh bootstrap; same-major only)"),
+    ("CARGO_AUDIT_VERSION", spec_cargo_audit, "linux package image cargo QA layer"),
+    ("CARGO_DENY_VERSION", spec_cargo_deny, "linux package image cargo QA layer"),
+    ("CARGO_TARPAULIN_VERSION", spec_cargo_tarpaulin, "linux package image cargo QA layer"),
+    ("WASM_PACK_VERSION", spec_wasm_pack, "linux package image web-lane layer"),
+    ("LAVAPIPE_VERSION", spec_lavapipe, "windows lavapipe ICD (amd64 + arm64)"),
     ("FLUTTER_VERSION", spec_flutter, "linux sdk flutter layer"),
     ("WIX_VERSION", spec_wix, "windows base scoop layer"),
     ("WIX_UI_EXT_VERSION", spec_wix_ui, "windows base scoop layer"),
@@ -802,6 +1168,20 @@ REPORT: list[tuple[str, Callable]] = [
     ("LLAMA_CPP_HIP_BUILD", spec_llama_cpp_hip),
     # Windows rocm lane's WebGPU ORT runtime: DXC's zip; the dated asset name and its SHA move with the tag.
     ("ORT_WEBGPU_WINDOWS_DXC_VERSION", spec_ort_webgpu_dxc),
+    # Consumer-coupled: a consumer locks the frb crate and the sqlite3 Dart package to these.
+    ("FLUTTER_RUST_BRIDGE_VERSION", spec_flutter_rust_bridge),
+    ("SQLITE3_WASM_VERSION", spec_sqlite3_wasm),
+    # Source builds whose tarball SHA moves with the version.
+    ("X265_VERSION", spec_x265),
+    ("DAV1D_VERSION", spec_dav1d),
+    ("DEEPSTREAM_VERSION", spec_deepstream),
+    ("DEEPSTREAM_TENSORRT_VERSION", spec_deepstream_trt),
+    ("HAILORT_VERSION", spec_hailort),
+    ("HAILO_PROTOBUF_VERSION", spec_hailo_protobuf),
+    ("TAPPAS_VERSION", spec_tappas),
+    ("HAILO_LIBZMQ_VERSION", spec_hailo_libzmq),
+    ("HAILO_CPPZMQ_VERSION", spec_hailo_cppzmq),
+    ("ROCM_WINDOWS_RELEASE", spec_rocm_windows),
 ]
 
 
@@ -827,13 +1207,12 @@ MANUAL = [
     # Deliberate pins and non-versions
     "PY_SETUPTOOLS_LT82_VERSION",  # deliberate <82 compat pin — pairs with PY_SETUPTOOLS_VERSION
     "FLATPAK_RUNTIME_VERSION",     # freedesktop runtime BRANCH (26.08), not a package version
-    # No feed at all: per-arch overrides, a version embedded in a patch, the SQLITE3_WASM tag-shape exception.
+    # No feed at all: per-arch overrides, a version embedded in a patch.
     "CMAKE_VERSION_RISCV64", "NODE_VERSION_RISCV64",
     "CMAKE_POLICY_VERSION_MINIMUM",
     "ANDROID_AGP_VERSION", "ANDROID_GRADLE_VERSION",
     # A bump must re-prove an arm64 app boot under the image's ndk_translation (CON50).
     "ANDROID_EMULATOR_VERSION", "ANDROID_EMULATOR_BUILD", "ANDROID_EMULATOR_API", "ANDROID_EMULATOR_SYSIMG_REVISION",
-    "SQLITE3_WASM_VERSION",
     # Windows-lane pins: bumped via the Windows backlog, not this tool
     "LLVM_WINDOWS_VERSION", "NASM_WINDOWS_VERSION",
     "NINJA_WINDOWS_VERSION", "SCCACHE_WINDOWS_VERSION",
@@ -852,43 +1231,65 @@ MANUAL = [
 ]
 
 
+# SHA pins no spec refreshes, each for a stated reason; a *_URL-paired pin needs no entry (url_paired_sha_keys).
+SHA_PAIR_EXEMPT = {
+    # EULA-gated manual download, deliberately empty.
+    "TENSORRT_ZIP_SHA256",
+    # Login-gated Qualcomm SDK zips, staged by hand per lane.
+    "QNN_SDK_ZIP_SHA256", "QNN_SDK_LINUX_ZIP_SHA256",
+    # Always-latest bootstrap installers: the hash is re-reviewed by hand on each deliberate update.
+    "RUSTUP_INIT_SHA256",   # sh.rustup.rs
+    "UV_INSTALL_SH_SHA256",  # astral.sh/uv/install.sh
+    "SCOOP_INSTALLER_SHA256",  # get.scoop.sh
+    # Paired with the MANUAL ANDROID_SDK_VERSION; recipe and sha1 cross-check beside the key.
+    "ANDROID_CMDLINE_TOOLS_SHA256",
+    # Paired with the MANUAL ANDROID_EMULATOR_* pins; sha1 cross-check beside the keys.
+    "ANDROID_EMULATOR_SHA256", "ANDROID_EMULATOR_SYSIMG_SHA256",
+    # Slaved to the MANUAL LLVM_WINDOWS_VERSION (source tarball, aarch64 release archive), bumped together.
+    "LLVM_WINDOWS_SRC_SHA256", "LLVM_WINDOWS_AARCH64_RT_SHA256",
+    # Slaved to MIGRAPHX_WINDOWS_COMMIT / ORT_AMDGPU_EP_COMMIT, re-measured by hand.
+    "MIGRAPHX_WINDOWS_SOURCE_SHA256", "MIGRAPHX_WINDOWS_ABSEIL_SHA256", "MIGRAPHX_WINDOWS_PROTOBUF_SHA256",
+    "MIGRAPHX_WINDOWS_MSGPACK_SHA256", "MIGRAPHX_WINDOWS_SQLITE_SHA256",
+    "ORT_AMDGPU_EP_SOURCE_SHA256", "ORT_AMDGPU_EP_FMT_SHA256", "ORT_AMDGPU_EP_GSL_SHA256",
+    "ORT_AMDGPU_EP_JSON_SHA256", "ORT_AMDGPU_EP_ZLIB_SHA256", "ORT_AMDGPU_EP_PROTOBUF_SHA256",
+    "ORT_AMDGPU_EP_ABSEIL_SHA256", "ORT_AMDGPU_EP_ONNX_SHA256", "ORT_AMDGPU_EP_FLATBUFFERS_SHA256",
+    "ORT_AMDGPU_EP_RANGE_V3_SHA256",
+}
+
+
+def url_paired_sha_keys(env: dict[str, str]) -> set[str]:
+    """SHA keys whose sibling <name>_URL is their version: no tool moves that URL, so the hand edit moves both."""
+    automated = renovate_owned() | {k for k, _, _ in SAFE} | {k for k, _ in REPORT}
+    out = set()
+    for key in env:
+        for suffix in ("_SHA256", "_SHA512"):
+            url_key = key.removesuffix(suffix) + "_URL"
+            if key.endswith(suffix) and url_key in env and url_key not in automated:
+                out.add(key)
+    return out
+
+
 def audit_sha_pairs() -> int:
-    """Fail when a *_SHA256/*_SHA512 key is not named in this source (a spec refreshes it), held, or allowlisted."""
+    """Fail when a *_SHA256/*_SHA512 key is neither quoted in this source (a spec or MANUAL names it), held, exempt nor URL-paired."""
     env = read_env()
     holds = read_holds()
-    allow = {
-        # EULA-gated manual download, deliberately empty.
-        "TENSORRT_ZIP_SHA256",
-        # Login-gated Qualcomm SDK zip, staged by hand.
-        "QNN_SDK_ZIP_SHA256",
-        # Always-latest bootstrap installers: the hash is re-reviewed by hand on each deliberate update.
-        "RUSTUP_INIT_SHA256",   # sh.rustup.rs
-        "UV_INSTALL_SH_SHA256",  # astral.sh/uv/install.sh
-        "SCOOP_INSTALLER_SHA256",  # get.scoop.sh
-        # Paired with the MANUAL ANDROID_SDK_VERSION; recipe and sha1 cross-check beside the key.
-        "ANDROID_CMDLINE_TOOLS_SHA256",
-        # Paired with the MANUAL ANDROID_EMULATOR_* pins; sha1 cross-check beside the keys.
-        "ANDROID_EMULATOR_SHA256", "ANDROID_EMULATOR_SYSIMG_SHA256",
-        # Slaved to the MANUAL LLVM_WINDOWS_VERSION, bumped together.
-        "LLVM_WINDOWS_SRC_SHA256",
-        # Slaved to MIGRAPHX_WINDOWS_COMMIT / ORT_AMDGPU_EP_COMMIT, re-measured by hand.
-        "MIGRAPHX_WINDOWS_SOURCE_SHA256", "MIGRAPHX_WINDOWS_ABSEIL_SHA256", "MIGRAPHX_WINDOWS_PROTOBUF_SHA256",
-        "MIGRAPHX_WINDOWS_MSGPACK_SHA256", "MIGRAPHX_WINDOWS_SQLITE_SHA256",
-        "ORT_AMDGPU_EP_SOURCE_SHA256", "ORT_AMDGPU_EP_FMT_SHA256", "ORT_AMDGPU_EP_GSL_SHA256",
-        "ORT_AMDGPU_EP_JSON_SHA256", "ORT_AMDGPU_EP_ZLIB_SHA256", "ORT_AMDGPU_EP_PROTOBUF_SHA256",
-        "ORT_AMDGPU_EP_ABSEIL_SHA256", "ORT_AMDGPU_EP_ONNX_SHA256", "ORT_AMDGPU_EP_FLATBUFFERS_SHA256",
-        "ORT_AMDGPU_EP_RANGE_V3_SHA256",
-    }
+    url_paired = url_paired_sha_keys(env)
     src = Path(__file__).read_text(encoding="utf-8")
+    counts = {"specced": 0, "held": 0, "exempt": 0, "url-paired": 0}
     stray: list[str] = []
     for key in sorted(env):
         if not (key.endswith("_SHA256") or key.endswith("_SHA512")):
             continue
-        if key in allow or key in holds:
-            continue
-        if key in src:
-            continue  # a bump spec refreshes it
-        stray.append(key)
+        if key in SHA_PAIR_EXEMPT:
+            counts["exempt"] += 1
+        elif key in holds:
+            counts["held"] += 1
+        elif key in url_paired:
+            counts["url-paired"] += 1
+        elif f'"{key}"' in src:
+            counts["specced"] += 1  # a string literal, so a comment naming the key does not count
+        else:
+            stray.append(key)
     if stray:
         print("SHA pins with NO refresh spec, NO bump:hold, NO allowlist entry")
         print("(their version key can bump while the SHA silently freezes):")
@@ -898,6 +1299,7 @@ def audit_sha_pairs() -> int:
         print("allowlist it here WITH a justification.")
         return 1
     print("sha-pair audit: every *_SHA256/*_SHA512 key is refresh-covered, held, or allowlisted.")
+    print("  " + ", ".join(f"{n} {label}" for label, n in counts.items()))
     return 0
 
 
