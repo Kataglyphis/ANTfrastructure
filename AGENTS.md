@@ -889,6 +889,15 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` ย
     [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md); the Windows
     rule: [`windows-build-invariants.md`](docs/windows-build-invariants.md#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23).
 
+- **riscv64's Python lane gets a uv cache seed, not a wheel store** (CON83). `/opt/uv-cache-seed`
+  (`PYTHON_UV_CACHE_SEED`) is a uv cache of the wheels the app lock's `test` extra builds from
+  source, which `ci_tests.sh` copies into its own cache. A locked `uv sync` takes a built sdist
+  from the cache only, so never turn it into a `--find-links` store, and never prove it with
+  `--no-build`, which refuses every sdist, cached or not. The torch stage also installs shellcheck
+  and hadolint at their `tool-pins.env` pins on every arch; riscv64's hadolint is a source build in
+  its own stage:
+  [`consumer-image-contract.md` ยง The riscv64 uv cache seed](docs/consumer-image-contract.md#the-riscv64-uv-cache-seed).
+
 - **A native media wheel whose own code declares free-threading ships a proved `cp314t`
   twin, in `/opt/wheels-cp314t` and never in `/opt/wheels`** (owner request 2026-10-07).
   `03-media/free-threaded-twins.txt` decides, row by row against a `versions.env` pin, so a
@@ -1122,8 +1131,9 @@ that was a host mount).
 - **Host-tool pins go in `01-core/tool-pins.env` instead** (CON59, 2026-10-05):
   shellcheck, gitleaks, hadolint, actionlint, mold, binaryen, ruff, syft, Renovate.
   `Dockerfile.base` bind-mounts `versions.env`, so any edit to it rebuilds the
-  compiler image, even for a lint tool. A pin that no image build reads goes in
-  `tool-pins.env`; one an image reads stays in `versions.env`. Renovate,
+  compiler image, even for a lint tool. A pin that no early stage (base through
+  android) reads goes in `tool-pins.env`; one such a stage reads stays in `versions.env`.
+  The torch stage reads shellcheck's and hadolint's from `tool-pins.env` (CON83). Renovate,
   `bump_versions.py` and `sync_versions.py` read both files.
 - **Never hand-edit a derived file.** `python docs/scripts/sync_versions.py
   --write` propagates a pin into the docs, the deps table, the Dockerfile ARGs

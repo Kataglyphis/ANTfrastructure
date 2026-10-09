@@ -122,6 +122,25 @@ hung four hours on one Cython unit (run 37127505865) and could not fit the
 they need the AppImage tooling the image ships for amd64/arm64 only, so
 `ci_packaging.sh` warns and ships wheels only there.
 
+**The test leg starts from the image's uv cache seed.** `ci_tests.sh` copies
+`PYTHON_UV_CACHE_SEED` into uv's cache before its first sync, so the wheels the
+app lock's `test` extra would build under QEMU (numpy, matplotlib, contourpy,
+pillow, line-profiler, psutil, pyyaml: 108 min on 2026-10-07) are already built
+([`consumer-image-contract.md` § The riscv64 uv cache seed](consumer-image-contract.md#the-riscv64-uv-cache-seed)).
+It covers the lock of the OrchestrANT commit the image was built from; a package
+the consumer's lock moved since builds as before.
+
+**The cross wheel is installed where it runs.** After packaging, the row runs
+`ci-wheel-smoke.sh` in the riscv64 image under QEMU (CON83). It takes the one
+`cp314` riscv64 wheel from `dist/`, installs it into a fresh venv over the lock's
+core dependencies (`uv sync --locked --no-dev --no-install-project`, from the
+same seed), imports the package outside the checkout and loads every compiled
+module the wheel owns without running its body, since a module may import an
+optional extra the core install lacks (`wheel-smoke.py`). A wheel built for the
+wrong arch, linked against a missing symbol or shadowed by the source tree fails
+the row. The step needs a hub pin that ships the script; a host step before it
+fails the row with that message when the pin is older.
+
 The packaging leg still syncs `SYNC_EXTRAS` (the caller's `test-extras`) instead
 of all extras, and it shares `UV_CACHE_DIR=/workspace/.uv-cache` so its build
 tools come from the cache the other rows warm. Measured 2026-10-03, with the

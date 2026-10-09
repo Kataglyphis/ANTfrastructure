@@ -13249,5 +13249,93 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
   "why": "without the advertisement the reconcile never finds the twins the image ships"
+ },
+ {
+  "id": "uv-cache-seed.proof-detects-a-build",
+  "target": "linux/scripts/06-packaging/uv-cache-seed.sh",
+  "find": "  if grep -qE '^[[:space:]]*(Building|Built) ' \"${tmp}/proof.log\" || ! cmp -s \"${tmp}/before.txt\" \"${tmp}/after.txt\"; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
+  "why": "a seed that does not cover the lock would ship as proved, and the riscv64 lane would build numpy again"
+ },
+ {
+  "id": "uv-cache-seed.stale-versions-dropped",
+  "target": "linux/scripts/06-packaging/uv-cache-seed.sh",
+  "find": "    grep -qxF -e \"${name} ${version}\" <<<\"${keep}\" || rm -rf \"${dir}\"",
+  "replace": "    grep -qxF -e \"${name} ${version}\" <<<\"${keep}\" || true",
+  "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
+  "why": "the persistent work cache keeps every version it ever built, and the seed would grow with each lock bump"
+ },
+ {
+  "id": "uv-cache-seed.verify-wants-every-listed-wheel",
+  "target": "linux/scripts/06-packaging/uv-cache-seed.sh",
+  "find": "  [ -z \"${misses}\" ] || die",
+  "replace": "  true || die",
+  "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
+  "why": "a record naming wheels the cache lacks would read as a seeded image"
+ },
+ {
+  "id": "uv-cache-seed.restore-only-its-arch",
+  "target": "linux/scripts/02-toolchain/python/ci-common.sh",
+  "find": "  if ! grep -qxF \"arch $(uname -m)\" \"${record}\"; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
+  "why": "another arch's built wheels would be copied into the consumer's cache"
+ },
+ {
+  "id": "uv-cache-seed.row-riscv64-must-be-seeded",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "      *) printf 'BAD %s the riscv64 seed does not verify: %s' \"${row}\" \"${have}\" ;;",
+  "replace": "      *) printf 'OK %s %s' \"${row}\" \"${have}\" ;;",
+  "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
+  "why": "a riscv64 image without its seed would pass the contract"
+ },
+ {
+  "id": "lint-tools.row-compares-the-pins",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "    printf 'BAD %s the image has %s, the pins are %s' \"${row}\" \"${have}\" \"${want}\"",
+  "replace": "    printf 'OK %s %s' \"${row}\" \"${have}\"",
+  "test": "bash linux/scripts/tests/test-lint-tools.sh",
+  "why": "an image whose shellcheck or hadolint is missing or off its pin would pass the contract"
+ },
+ {
+  "id": "lint-tools.install-checks-the-version",
+  "target": "linux/scripts/06-packaging/install-lint-tools.sh",
+  "find": "[ \"${have}\" = \"${SHELLCHECK_VERSION#v}\" ] || die",
+  "replace": "true || die",
+  "test": "bash linux/scripts/tests/test-lint-tools.sh",
+  "why": "a shellcheck that is not the pinned one would ship"
+ },
+ {
+  "id": "lint-tools.riscv64-needs-the-source-build",
+  "target": "linux/scripts/06-packaging/install-lint-tools.sh",
+  "find": "  die \"hadolint publishes no ${arch} binary; pass the source build as HADOLINT_BIN\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-lint-tools.sh",
+  "why": "a riscv64 image would ship without hadolint and only the contract row would notice"
+ },
+ {
+  "id": "wheel-smoke.import-from-the-venv",
+  "target": "linux/scripts/02-toolchain/python/wheel-smoke.py",
+  "find": "        if not inside(where, prefix):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-wheel-smoke.sh",
+  "why": "the source tree beside the checkout would satisfy the import, and the wheel would never be graded"
+ },
+ {
+  "id": "wheel-smoke.compiled-modules-load",
+  "target": "linux/scripts/02-toolchain/python/wheel-smoke.py",
+  "find": "    failures += ftw.load_all(modules)[1]",
+  "replace": "    ftw.load_all(modules)",
+  "test": "bash linux/scripts/tests/test-wheel-smoke.sh",
+  "why": "a compiled module built for the wrong arch would pass whenever the package body does not import it"
+ },
+ {
+  "id": "wheel-smoke.exactly-one-wheel",
+  "target": "linux/scripts/02-toolchain/python/ci-wheel-smoke.sh",
+  "find": "[ \"${#wheels[@]}\" -eq 1 ] \\",
+  "replace": "[ \"${#wheels[@]}\" -ge 0 ] \\",
+  "test": "bash linux/scripts/tests/test-wheel-smoke.sh",
+  "why": "a dist/ without the riscv64 wheel, or with two, would smoke whichever came first"
  }
 ]

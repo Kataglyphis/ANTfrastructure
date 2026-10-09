@@ -517,10 +517,10 @@ so `FileCheck` is the pinned one too. `clangd` and `lldb` come from scoop's offi
 
 ## What the image stages so a run does not
 
-Five of the contract rows are not about permissions at all. They ask whether a
+Seven of the contract rows are not about permissions at all. They ask whether a
 thing is *present*, because the alternative is that every consumer run fetches or
 rebuilds it. Measured in one consumer's build on 2026-09-05, before the fix (the
-last two rows since 2026-10-06):
+`cargo-qa-tools` and `free-threaded-python` rows since 2026-10-06, the last two since 2026-10-09):
 
 | Row | Absent means |
 | --- | --- |
@@ -529,6 +529,8 @@ last two rows since 2026-10-06):
 | `web-lane-tools` | `wasm-pack` (258 crates) and `flutter_rust_bridge_codegen` (174) are `cargo install`ed from source in every run |
 | `cargo-qa-tools` | `cargo-audit`, `cargo-deny` and `cargo-tarpaulin` are `cargo install`ed from crates.io before every OxidANT security and coverage step |
 | `free-threaded-python` | every `3.14t` leg has uv download a free-threaded CPython first, its patch version unpinned |
+| `lint-tools` | `shellcheck` and `hadolint` are not on `PATH`, so OrchestrANT's coding bench grades every bash and Dockerfile answer with `[shellcheck SKIPPED: not on PATH]` |
+| `uv-cache-seed` | the riscv64 Python lane's `uv sync` of the `test` extra builds numpy, matplotlib, contourpy, pillow, line-profiler, psutil and pyyaml under QEMU: 108 min of a 6 h job |
 
 The first three share one verdict function; `cargo-qa-tools` and `free-threaded-python`
 have their own, because they compare versions (and `free-threaded-python` also where the
@@ -597,6 +599,77 @@ no source fallback, which would cost hundreds of crates per tool under QEMU.
   and `cargo install`s it otherwise. A plain `cargo install` would fail on these:
   `binary already exists`, since cargo did not install them. **So a consumer's hub pin
   must include this before it builds on an image that ships them.**
+
+### shellcheck and hadolint
+
+The torch stage puts both on `PATH` in `/usr/local/bin` on every arch (CON83), at the
+`SHELLCHECK_VERSION` and `HADOLINT_VERSION` pins in `tool-pins.env`, the same pins the
+hub's lint gates bootstrap. `install-lint-tools.sh` takes each release binary through
+`download_verified_install` against its per-arch SHA256, and fails the stage when a tool
+does not report its pin.
+
+- **shellcheck** publishes a riscv64 build, pinned as `SHELLCHECK_LINUX_RISCV64_SHA256`.
+  `lint-shell.sh` bootstraps the same asset on a riscv64 host.
+- **hadolint publishes none for riscv64.** The `hadolint-build` stage of
+  `Dockerfile.torch` builds it from the release tag's source (`HADOLINT_SOURCE_SHA256`)
+  with Ubuntu's GHC 9.10.3, the compiler its cabal file is tested with. The tag's
+  `cabal.project` carries upstream's `allow-newer: time`; the Hackage release alone
+  does not resolve. `HADOLINT_HACKAGE_INDEX_STATE` pins every dependency to the index
+  of the bump day. The stage starts from the pinned Ubuntu, not the package image, so
+  an app or chain change never re-keys it; on amd64 and arm64 it is an empty `/out`.
+  `build-hadolint.sh` fails a binary that does not report the pin or does not flag a
+  Dockerfile it must flag, and caches it in the cabal cache mount keyed by those three
+  pins, so a chain rebuilds it only when one of them moves. The build is long: measured
+  2026-10-09 under QEMU on the 32-core host, 18221 s for about 105 packages, after 469 s
+  of apt and 138 s of `cabal update`. BuildKit runs it in parallel with the torch stage; the lint-tool install in the final stage waits for it. The
+  binary links libgmp, libffi and libnuma, which the riscv64 image carries.
+- The pins live in `tool-pins.env`, not `versions.env`: only the torch stage reads them,
+  so a lint-tool bump rebuilds the torch stage, never the compiler.
+
+The `lint-tools` contract row compares what both binaries report with the pins, on
+every arch.
+
+### The riscv64 uv cache seed
+
+PyPI has no cp314 riscv64 wheel for numpy, matplotlib, contourpy, pillow, line-profiler,
+psutil or pyyaml. OrchestrANT's riscv64 lane therefore built all of them under QEMU in
+every run's `uv sync --extra test`: 108 min of a 6 h job, numpy alone 107 min
+(2026-10-07). The image ships the result instead (CON83).
+
+- **The contract is a uv cache, not a wheel store.** `PYTHON_UV_CACHE_SEED`
+  (`/opt/uv-cache-seed`) is a uv cache directory holding only the wheels uv built from
+  source for the app lock's `test` extra. A `--find-links` store does not work here:
+  `uv sync --locked` installs what the lock names, by URL and hash, and a local wheel is
+  neither. uv looks a built sdist up in its cache by that same source, so a cache entry
+  is what a locked sync can use. `uv sync --no-build` cannot use one either: it refuses
+  every sdist, cached or not (measured 2026-10-09).
+- **Consumers copy it, they do not point at it.** uv writes its cache, and the seed is
+  root-owned. `ci_tests.sh` and `ci-wheel-smoke.sh` call `uv_cache_seed_restore`
+  (`02-toolchain/python/ci-common.sh`), which copies the seed into `uv cache dir` when
+  its record says `seeded yes` for this arch; anything else is a log line, never an
+  error. Another consumer runs the same copy: `cp -R "$PYTHON_UV_CACHE_SEED/." "$(uv cache dir)/"`.
+- **How it is built.** `06-packaging/uv-cache-seed.sh build`, in the torch stage's last
+  layers, fetches the app at `APP_REF` (the shipped tree has no `.git`, and its riscv64
+  `pyproject.toml` is edited), and runs ci_tests' own sync, `uv sync --locked --dev
+  --extra test`, without the project. The `uv-seed-<arch>` cache mount keeps the builds
+  between chains. The seed is a copy of that cache after `uv cache prune --ci`, which
+  drops every download and unpacked sdist and keeps the built wheels, and after removing
+  every version the sync did not install.
+- **How it is proved.** At build, a fresh copy syncs the same lock into a fresh venv,
+  and the stage fails when uv prints a `Built` line or adds a wheel under `sdists-v*/`.
+  `seed-record.txt` names the arch, the app commit, the extras, uv and Python, every
+  built wheel, and the proof. `uv-cache-seed.sh verify` checks that record and that
+  every listed wheel is in the cache; the `uv-cache-seed` contract row runs it. On
+  riscv64 it wants `seeded for riscv64`, elsewhere a `not seeded` record.
+- **What it costs.** Measured 2026-10-09 in `:latest`'s riscv64 child under QEMU on the
+  32-core build host, for OrchestrANT 3bdf80a7: 3172 s cold, building 8 wheels (the 7 above
+  and the pure-Python sdist `antlr4-python3-runtime`), and 89 s warm, sync, copy and proof
+  included. The seed is 21 MB; the work cache 671 MB. A chain pays the cold build once, then
+  only for a package whose locked version moved.
+- **What it does not cover.** Only the `test` extra of the app the image builds
+  (OrchestrANT). Another consumer's lock hits the seed only where it resolves the same
+  versions from PyPI. A uv bump re-keys the cache layout, and the next chain rebuilds
+  the seed with it; a consumer on an older image keeps a seed its newer uv may not read.
 
 ### The free-threaded Python
 

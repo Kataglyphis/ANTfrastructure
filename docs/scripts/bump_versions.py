@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
@@ -505,6 +506,7 @@ def spec_shellcheck(cur):
         for env_key, asset in [
             ("SHELLCHECK_LINUX_X86_64_SHA256", f"shellcheck-{v}.linux.x86_64.tar.xz"),
             ("SHELLCHECK_LINUX_AARCH64_SHA256", f"shellcheck-{v}.linux.aarch64.tar.xz"),
+            ("SHELLCHECK_LINUX_RISCV64_SHA256", f"shellcheck-{v}.linux.riscv64.tar.xz"),
             ("SHELLCHECK_WINDOWS_SHA256", f"shellcheck-{v}.zip"),
         ]:
             extras[env_key] = asset_sha256("koalaman/shellcheck", v, asset)
@@ -536,6 +538,10 @@ def spec_hadolint(cur):
             ("HADOLINT_WINDOWS_X86_64_SHA256", "hadolint-windows-x86_64.exe"),
         ]:
             extras[env_key] = asset_sha256("hadolint/hadolint", v, asset, sums=("checksums.sha256",))
+        # riscv64 has no release binary: the tag's source and a Hackage index-state of the bump day build it.
+        extras["HADOLINT_SOURCE_SHA256"] = sha256_of_url(
+            f"https://github.com/hadolint/hadolint/archive/refs/tags/{v}.tar.gz")
+        extras["HADOLINT_HACKAGE_INDEX_STATE"] = time.strftime("%Y-%m-%dT00:00:00Z", time.gmtime())
     return v, extras
 
 
@@ -1192,9 +1198,9 @@ SAFE: list[tuple[str, Callable, str]] = [
     ("PANDOC_VERSION", spec_pandoc, "documentation image only"),
     ("BINARYEN_VERSION", spec_binaryen, "none (host-side bootstrap)"),
     ("CHROME_FOR_TESTING_VERSION", spec_chrome_for_testing, "linux package chrome layer (amd64, arm64)"),
-    ("HADOLINT_VERSION", spec_hadolint, "none (host-side lint bootstrap)"),
+    ("HADOLINT_VERSION", spec_hadolint, "torch stage (every arch; riscv64 source build) + host-side lint bootstrap"),
     ("ACTIONLINT_VERSION", spec_actionlint, "none (host-side lint bootstrap)"),
-    ("SHELLCHECK_VERSION", spec_shellcheck, "none (host-side lint bootstrap; linux+windows)"),
+    ("SHELLCHECK_VERSION", spec_shellcheck, "torch stage (every arch) + host-side lint bootstrap; linux+windows"),
     ("GITLEAKS_VERSION", spec_gitleaks, "none (host-side secret-scan bootstrap; linux+windows)"),
     ("MOLD_LINUX_VERSION", spec_mold, "none (opt-in linker, fetched on demand)"),
     ("RENOVATE_NODE_VERSION", spec_renovate_node, "none (renovate-local.sh bootstrap; same-major only)"),
@@ -1517,7 +1523,8 @@ def unclassified_keys(env: dict[str, str]) -> list[str]:
         r"|_COMMIT$|_ASSET$|^CUDA_ARCHITECTURES$|^WINDOWS_TARGET_ARCH(ES)?$"
         r"|^CI_IMAGE_|^ANDROID_TARGET_ABI$|^GENAI_ALLOW_RISCV64$|^FT_TORCH_TWIN$|^JDK_PACKAGE$"
         r"|^ROCM_WINDOWS_GFX_FAMILY$"  # a GPU target set, like CUDA_ARCHITECTURES
-        r"|^APP_REF$)"  # a tracked branch, resolved to a commit per run
+        r"|^APP_REF$"  # a tracked branch, resolved to a commit per run
+        r"|^HADOLINT_HACKAGE_INDEX_STATE$)"  # a snapshot date spec_hadolint writes with HADOLINT_VERSION
     )
     return sorted(k for k in env if k not in covered and not nonversion.search(k))
 

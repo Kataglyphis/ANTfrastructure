@@ -23,6 +23,7 @@ uv_venv_ensure() { echo "interpreter $2" >> "${REC}"; printf -v "$4" 1; }
 uv_run() { echo "run $*" >> "${REC}"; ! { [ "$1" = pytest ] && [ -n "${FAIL_TEST_LEG:-}" ] && [ "${FAIL_TEST_LEG}" = "${_LEG:-}" ]; }; }
 uv_sync_project() { echo "sync ${_LEG:-} extras=${UV_SYNC_EXTRAS:-}" >> "${REC}"; [ -z "${FAIL_SYNC_LEG:-}" ] || [ "${FAIL_SYNC_LEG}" != "${_LEG:-}" ]; }
 uv_venv_activate() { :; }; uv_venv_deactivate() { :; }; uv_venv_remove() { :; }
+uv_cache_seed_restore() { echo "seed restore" >> "${REC}"; }
 CI_COMMON
 
 # _driver <ci_tests|ci_build_docs> [positionals...]: a caller that sets no version knob, as the reusable lane.

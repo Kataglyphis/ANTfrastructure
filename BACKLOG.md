@@ -132,12 +132,27 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       gitlink moves past 77690147 (with the CON72 consumer moves).
 
 - [ ] **CON83 — the riscv64 Python lane: seed its sync, and test the cross wheel** [M, ★★]. Found while fixing
-      OrchestrANT's riscv64 lane (2026-10-07): its emulated `uv sync` of the `test` extra builds numpy, matplotlib,
-      contourpy, pillow, line-profiler, psutil and pyyaml from source, 108 min of the runner's 6 h (numpy alone 107 min),
-      because no cp314 riscv64 wheel exists for them. The image already builds OrchestrANT develop: ship a riscv64 uv
-      cache (or wheel store) seeded from its lock that `ci_tests.sh` copies into `UV_CACHE_DIR` (a warm cache synced in
-      1 min locally). And install plus smoke-test the cross-built riscv64 wheel on the emulated row; today it is never
-      installed. The riscv64 image also lacks shellcheck and hadolint (their rows report SKIPPED).
+      OrchestrANT's riscv64 lane (2026-10-07): its emulated `uv sync` of the `test` extra built numpy, matplotlib,
+      contourpy, pillow, line-profiler, psutil and pyyaml from source, 108 min of the runner's 6 h; the cross-built
+      riscv64 wheel was never installed; shellcheck and hadolint were missing (their bench rows report SKIPPED).
+      **In source since 2026-10-09** (CHANGELOG): the riscv64 uv cache seed (`/opt/uv-cache-seed`,
+      `PYTHON_UV_CACHE_SEED`, restored by `ci_tests.sh`), `ci-wheel-smoke.sh` on the packaged riscv64 row, and
+      shellcheck plus hadolint on every arch (riscv64's hadolint built from source in the `hadolint-build` stage).
+      Proved without a chain: the seed builder on OrchestrANT 3bdf80a7 in `:latest`'s riscv64 child (8 wheels, 21 MB,
+      3172 s cold, 89 s warm, proof passed), a seeded consumer sync and the wheel smoke under QEMU,and
+      riscv64's hadolint built from source (5.1 h under QEMU) and installed with shellcheck in `:latest`'s riscv64
+      child by `install-lint-tools.sh`.
+      **Left, for the chain and then the lane:**
+      - The chain's first riscv64 wrapper build pays the hadolint build (~5 h under QEMU, in parallel with the torch
+        stage; the final stage waits for whichever ends last); later chains reuse the binary cached by its pins (`build-hadolint: reused`).
+      - The chain: the riscv64 torch stage logs `[uv-cache-seed] seeded for riscv64: N wheel(s), proved` and the
+        contract rows `OK uv-cache-seed` (riscv64: `N wheel(s), proved`; amd64/arm64: `not seeded on <arch>`) and
+        `OK lint-tools shellcheck=0.11.0 hadolint=2.15.1` on all three arches.
+      - OrchestrANT's hub pin must move past the CON83 commit, or its riscv64 row fails at the wheel smoke's pin
+        check. Then its riscv64 run must show `uv cache seeded from /opt/uv-cache-seed` and no `Building numpy` in
+        the test leg, `wheel smoke passed`, and the bench rows without `[shellcheck SKIPPED` / `[hadolint SKIPPED`.
+      - The seed covers the lock of the commit the image was built from; a version OrchestrANT moves later builds as
+        before until the next chain.
       OrchestrANT-side, owner calls from the same analysis: import `matplotlib.pyplot` lazily in
       `orchestrant/__init__` (31-37 s per subprocess under QEMU; `bench_agent.py --list` takes 41.9 s
       against a 60 s timeout, but the change touches Cython-built modules and tests that patch

@@ -45,6 +45,9 @@ git config --global --add safe.directory "$WORKSPACE_ROOT" || true
 
 mkdir -p "$WORKSPACE_ROOT/docs/test_results"
 
+# On riscv64 the image's seed holds what the lock builds from source under QEMU (108 min of the sync).
+uv_cache_seed_restore
+
 TEST_EXIT=0
 
 read -r -a test_paths <<< "${PYTEST_PATHS//,/ }"
