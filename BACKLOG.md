@@ -352,6 +352,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       superbuild's wall time. The direct-consumption build is also the sharpest
       API-skew probe: if v2.2.0 lacks what litert-lm's sources use, the compile fails
       with the missing member visible. Repro: litertlm-harness runs 1-19, Oct 4 2026.
+- [ ] **CON86 — find why a bind of a branch image opens none of its files** [M, ★]. Since
+      2026-10-09 the media fan-in binds `media-core-view` and `media-tvm-view`, which add one
+      empty `RUN` layer over each branch image ([failure mode](docs/failure-modes.md#a-bind-mount-of-a-branch-image-lists-its-files-but-opens-none)).
+      A `RUN --mount=type=bind,from=<media-tvm image>` lists the image's site-packages, but
+      `cython.py` "does not exist" there. A view stage reads it, and so does a RUN on the image.
+      The fault survived a no-cache rebuild of media-tvm and a restart of containerd and
+      buildkitd. Find the cause, then drop the two views when a bind of the image reads again.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON64 — the Vulkan validation layer in `C:\runtime\vulkan-layers`** [S, ★★]. Owner rule
