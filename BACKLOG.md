@@ -358,7 +358,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       A `RUN --mount=type=bind,from=<media-tvm image>` lists the image's site-packages, but
       `cython.py` "does not exist" there. A view stage reads it, and so does a RUN on the image.
       The fault survived a no-cache rebuild of media-tvm and a restart of containerd and
-      buildkitd. Find the cause, then drop the two views when a bind of the image reads again.
+      buildkitd. The RX 9070 XT was disabled throughout, so the RDNA4 lock is ruled out. The
+      first activation of the MIGraphX stage's fresh `migraphxmods` COPY layer failed with the
+      same 0x20, and there the driver's retry read it. Defender's exclusions were not checked
+      (admin only). Find the cause, then drop the two views when a bind of the image reads again.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON64 — the Vulkan validation layer in `C:\runtime\vulkan-layers`** [S, ★★]. Owner rule
