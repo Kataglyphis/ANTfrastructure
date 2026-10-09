@@ -54,6 +54,11 @@ ft_wheel_verdict() {
   printf '%s\n' "${row%%|*}"
 }
 
+# The host 3.14t must not see a GIL cross build's target sysconfig, which build-app-wheelhouse.sh exports for its own wheels.
+_ft_host() {
+  env -u _PYTHON_SYSCONFIGDATA_NAME -u _PYTHON_HOST_PLATFORM -u PYTHONPATH "$@"
+}
+
 # The free-threaded interpreter of this image into FT_PYTHON; rc 1 says why on stderr.
 ft_python_resolve() {
   local prefix="${PYTHON_FT_PREFIX:-/opt/python-freethreaded}" py
@@ -62,7 +67,7 @@ ft_python_resolve() {
     printf 'no free-threaded interpreter under %s/bin\n' "${prefix}" >&2
     return 1
   fi
-  if [ "$("${py}" -I -c 'import sysconfig; print(sysconfig.get_config_var("Py_GIL_DISABLED"))' 2>/dev/null)" != 1 ]; then
+  if [ "$(_ft_host "${py}" -I -c 'import sysconfig; print(sysconfig.get_config_var("Py_GIL_DISABLED"))' 2>/dev/null)" != 1 ]; then
     printf '%s is not a --disable-gil build\n' "${py}" >&2
     return 1
   fi
@@ -168,16 +173,16 @@ ft_build_venv() {
     case "${pkg}" in
       *==*) reqs+=("${pkg}"); continue ;;
     esac
-    ver="$("${gil}" -I -c 'import importlib.metadata as m, sys; print(m.version(sys.argv[1]))' "${pkg}" 2>/dev/null || true)"
+    ver="$(_ft_host "${gil}" -I -c 'import importlib.metadata as m, sys; print(m.version(sys.argv[1]))' "${pkg}" 2>/dev/null || true)"
     if [ -z "${ver}" ]; then
       printf 'free-threaded: the GIL build venv %s has no %s, so its twin has no version to match\n' "${gil}" "${pkg}" >&2
       return 1
     fi
     reqs+=("${pkg}==${ver}")
   done
-  uv venv --clear --quiet --python "${FT_PYTHON:?ft_python_resolve first}" "${venv}" || return 1
+  _ft_host uv venv --clear --quiet --python "${FT_PYTHON:?ft_python_resolve first}" "${venv}" || return 1
   if [ "${#reqs[@]}" -gt 0 ]; then
-    uv pip install --quiet --python "${venv}/bin/python" "${reqs[@]}" || return 1
+    _ft_host uv pip install --quiet --python "${venv}/bin/python" "${reqs[@]}" || return 1
   fi
   printf 'free-threaded: build venv %s on %s with' "${venv}" "${FT_PYTHON}"
   printf ' %s' "${reqs[@]}" ''

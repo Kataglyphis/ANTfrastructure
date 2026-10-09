@@ -127,6 +127,11 @@ t_assert_eq "" "$(bash -c 'source "$1"; ft_target_env' _ "${LIB}")"
 mkdir -p "${_work}/gilpy/bin"
 printf '#!/usr/bin/env bash\necho 0\n' > "${_work}/gilpy/bin/python3.14t"; chmod +x "${_work}/gilpy/bin/python3.14t"
 t_assert_contains "$(PYTHON_FT_PREFIX="${_work}/gilpy" ft_python_resolve 2>&1)" "is not a --disable-gil build"
+mkdir -p "${_work}/ftenv/bin"
+printf '#!/usr/bin/env bash\nif [ -n "${_PYTHON_SYSCONFIGDATA_NAME:-}${PYTHONPATH:-}" ]; then echo 0; else echo 1; fi\n' > "${_work}/ftenv/bin/python3.14t"
+chmod +x "${_work}/ftenv/bin/python3.14t"
+t_assert_ok env _PYTHON_SYSCONFIGDATA_NAME=_sysconfigdata__linux_aarch64-linux-gnu PYTHONPATH=/x _PYTHON_HOST_PLATFORM=linux_aarch64 \
+  bash -c 'source "$1"; PYTHON_FT_PREFIX="$2" ft_python_resolve' _ "${LIB}" "${_work}/ftenv"
 
 # _whl <name> <member>...: a wheel holding empty members.
 _whl() { t_zip "${_work}/$1" "${@:2}"; }
