@@ -9,7 +9,7 @@ The CON1–CON6 prefix history is in
 **State 2026-10-09**, read from the registry (hub = the image's `revision` label, digest =
 the per-arch manifest). Published: `:latest` (2026-10-09, hub 655a2c4e, index `af7252a0…`;
 amd64 `ba3115f1…`, arm64 `15a905c6…`, riscv64 `81db10eb…`), `:winamd64` (2026-10-08, hub 5dfeb42d, `e96203a8…`), `:winamd64-nvidia` (2026-10-02, hub 7a5a2a33, `a9e67332…`),
-`:winamd64-rocm` (2026-10-03, hub 1d910553, `493e80f1…`), `:winarm64` (2026-10-04, hub
+`:winamd64-rocm` (2026-10-09, hub aa7a8086, `32c7cc51…`), `:winarm64` (2026-10-04, hub
 80647a9a, `97bbcd35…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-nvidia`
 (2026-10-02, hub b4d5fdd5, amd64 `95c3a343…`, built without DeepStream) and `:latest-rocm`
 (2026-10-02, hub b4d5fdd5, amd64 `bdfcb731…`). Every Linux image gap up to CON41 shipped
@@ -172,6 +172,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          `rocm-checks\Torch.ps1` reports `+rocm10.1.0` and HIP 7.16.
       6. The llama stage in BuildKit (`ggml-hip` through the WebDAV sccache, the `llamamods` closure, cleanup,
          `LlamaCpp.ps1` at the smoke gate). Then drop the `hip-msvc-cmath` overlay if 4–6 build without it.
+
+      Windows 4–6 are proved: the `:winamd64-rocm` published 2026-10-09 (hub aa7a8086, `32c7cc51…`)
+      built MIGraphX 2.18.0, the EP and `ggml-hip` in BuildKit. Its smoke gate passed 265 assertions, 1
+      skipped, with eleven rocm-checks and `torch 2.14.1+rocm10.1.0`, HIP 7.16.26385. Still open there:
+      a build without the `hip-msvc-cmath` overlay.
       **Both, on a real GPU (RX 9070 XT, gfx1201):** a MIGraphX EP session, torch HIP, and a small model on
       ggml-hip against its CPU result. With no bundled runtime a bare Windows host's loader takes Adrenalin's
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
@@ -445,7 +450,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
         the device as shipped.
       - `:winamd64-rocm`: published (first 2026-09-28 at ad08bc30, again 2026-10-03 at
-        1d910553); the redistribution decision is recorded in `docs/windows-rocm.md`
+        1d910553, with TheRock 10.1 on 2026-10-09 at aa7a8086); the redistribution decision is recorded in `docs/windows-rocm.md`
         § Redistribution.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
