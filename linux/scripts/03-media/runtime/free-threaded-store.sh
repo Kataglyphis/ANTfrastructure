@@ -58,6 +58,26 @@ ft_store_check_set() {
   return "${bad}"
 }
 
+# A cross stage has no target FFmpeg closure, so a twin that fails here only on missing libraries is proved by the target image's FT-STORE.
+_ft_store_prove() {
+  local w="$1" dist="$2" out
+  if ! _ft_cross; then
+    ft_prove_wheel "${w}" "${dist}"
+    return
+  fi
+  if out="$(ft_prove_wheel "${w}" "${dist}" 2>&1)"; then
+    printf '%s\n' "${out}"
+    return 0
+  fi
+  if grep -q 'ERROR: ' <<<"${out}" && ! grep 'ERROR: ' <<<"${out}" | grep -vq 'cannot open shared object file'; then
+    printf 'free-threaded: %s: load proof deferred to the target image FT-STORE; this cross stage lacks: %s\n' "${w##*/}" \
+      "$(grep -oE '[^ :]+\.so[.0-9]*: cannot open shared object file' <<<"${out}" | cut -d: -f1 | sort -u | tr '\n' ' ')"
+    return 0
+  fi
+  printf '%s\n' "${out}" >&2
+  return 1
+}
+
 # Every stored wheel is gated and proved again: the repair may have rewritten its bytes.
 ft_store_prove_all() {
   local w name
@@ -65,7 +85,7 @@ ft_store_prove_all() {
     [ -f "${w}" ] || continue
     name="${w##*/}"
     ft_soabi_gate "${w}" || return 1
-    ft_prove_wheel "${w}" "${name%%-*}" || return 1
+    _ft_store_prove "${w}" "${name%%-*}" || return 1
   done
 }
 

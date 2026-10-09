@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-10 — a cross stage's store defers a twin that only lacks target libraries to the target image (CON79 1b)
+
+- **Run 20261009-224520** proved all four arm64 twins at build time (tvm-ffi, ORT, PyAV with 50 modules, IREE runtime),
+  then the final media RUN's store re-proof failed PyAV: `cannot load av._core: libgme.so.0: cannot open shared object
+  file`. A cross media stage installs host packages only (`:<target>` installs conflict there), so FFmpeg's target codec
+  libs are absent; the twin's earlier proof ran in the `pyav` stage, which has them.
+- **Fix** (`free-threaded-store.sh`, `_ft_store_prove`): in a cross build, a re-proof whose every `ERROR:` is a missing
+  shared object is logged as deferred, naming the libraries; the runtime image smoke's FT-STORE proves the twin on the
+  target, where the closure is installed. A GIL re-enable, a bad symbol or a wrong arch still fails; native builds are
+  unchanged. `test-free-threaded-store.sh` 86 -> 90, two failing without the fix.
+
 ## 2026-10-10 — the IREE cross twin's reconfigure moves both FindPython spellings (CON79 1b)
 
 - **Run 20261009-215702** proved arm64's tvm-ffi and ORT twins (the libstdc++ fix held:
