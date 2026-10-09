@@ -6,6 +6,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — CON76: the free-threaded proof runs for real in the hub suite
+
+- **`test-python-free-threaded-wheel.sh` runs `prove` on a real 3.14t** (CON76). It compiles two C extensions
+  against `/opt/python-freethreaded/bin/python3.14t` (or `FT_PYTHON`) into a fresh venv, each installed as a
+  distribution: `ftfix_free` declares `Py_mod_gil = Py_MOD_GIL_NOT_USED`, `ftfix_gil` does not. The first must prove
+  (`1 compiled module(s) of ftfix_free loaded on free-threaded 3.14.8; the GIL stayed disabled`, rc 0), the second
+  must fail (`ERROR: the GIL was re-enabled, first by ftfix_gil; …`, rc 1). The stubbed cases are unchanged.
+- **Where:** in the published `:latest` (hub 655a2c4e) on amd64, and on arm64 and riscv64 under QEMU: 58 -> 66
+  assertions on all three. A host without a free-threaded interpreter, CI's included, prints a `SKIP [<case>]`
+  line and stays at 58.
+- **Mutation-checked:** ignoring the GIL verdict, a GIL-warning regex that no longer matches, and a `load_all` that
+  never creates the module each turned the suite red in the image (2, 1 and 2 failures); every stubbed case passed
+  all three.
+
 ## 2026-10-09 — `:latest` published from hub 655a2c4e; CON56/58/65 closed, CON66/71/72/79/82 Linux halves proven
 
 - **Published** `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`, index
