@@ -1150,6 +1150,14 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
 
 **Automated sweep: `python3 docs/scripts/bump_versions.py`** (report), `--write` (safe tier), `--write-all` (report tier + paired checksum extras — extras MUST be applied together with the version, see the CUDA-hash incident note in the script). Three tiers: SAFE / REPORT / MANUAL, plus a self-audit for unclassified keys — a key counts as classified when it is in a tier, carries a `# renovate:` annotation, or matches the non-version filter.
 
+**`--audit-unclassified`** is that self-audit as a gate, offline (since 2026-10-09). Every key in either pin file must be one of these, or the audit fails and names it:
+- **Tiered**: a SAFE or REPORT spec, or a MANUAL row (one comment line of reason per group).
+- **Derived**: a version a spec writes as an extra of its owner key, read from the table that spec walks (`derived_keys()`): the ten `CUDA_WINDOWS_ARM64_*_VERSION` from `CUDA_VERSION`'s redist manifest, and the three DeepStream open-source deps from `DEEPSTREAM_VERSION`'s `install_opensource_deps.sh`.
+- **A wheel-store URL**: a `*_URL` under a `WHEEL_URL_GROUPS` prefix with its `*_SHA256` beside it. Each group states why it is hand-moved.
+- **Renovate-annotated**, or **non-version** (the filter: SHAs, commits, switches, target sets, the tracked `APP_REF` branch).
+
+`test-bump-versions.sh` runs it against the real pin files, so preflight's `script-tests` fails on a new key nobody classified.
+
 **`--audit-sha-pairs`** guards the pairs themselves, offline. Every `*_SHA256`/`*_SHA512` key in either pin file must be one of four things, or the audit fails and names it:
 - **Specced**: quoted in the script, as a spec's extra or a MANUAL row. A comment naming the key does not count.
 - **Held**: under `bump:hold`.
