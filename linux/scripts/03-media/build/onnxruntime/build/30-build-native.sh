@@ -46,6 +46,7 @@ ensure_onnx_output_tree "${NATIVE_CPU_OUTPUT_DIR}"
 BUILD_ARGS=()
 append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
 BUILD_ARGS+=(--use_xnnpack)
+append_onnx_rocm_isolation_args BUILD_ARGS
 # ORT defaults telemetry on, and its vendored sqlite fails GCC 16's -Werror, which --compile_no_warning_as_error cannot reach.
 BUILD_ARGS+=(--no_telemetry)
 

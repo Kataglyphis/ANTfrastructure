@@ -93,4 +93,22 @@ t_assert_contains "$(_gargs true)" "--use_trt_rtx" "TensorRT lanes keep TRT-RTX"
 t_assert_contains "$(grep -A4 'ONNX Runtime GenAI GPU build' "${_GENAI}")" '"${_genai_gpu_args[@]}"' \
   "the build call uses the selection"
 
+# ROCm 10.1's /opt/rocm prefix serves flatbuffers 25, which ort.fbs.h rejects (rocm chain 20261009-131840).
+t_case "every native ORT build keeps ORT's pinned flatbuffers"
+_base="$(t_fn_src "${COMMON}" append_onnx_native_base_build_args)" || exit 1
+_bargs="$(bash -c "${_base}"$'\nA=()\nappend_onnx_native_base_build_args A /b Release 4\nprintf "%s\\n" "${A[@]}"')"
+t_assert_contains "${_bargs}" "CMAKE_DISABLE_FIND_PACKAGE_flatbuffers=TRUE" \
+  "a found flatbuffers other than ORT's 23.x breaks every flatbuffers TU"
+
+t_case "the CPU build hides a ROCm root from CMake, and only when one exists"
+_iso="$(t_fn_src "${COMMON}" append_onnx_rocm_isolation_args)" || exit 1
+_isoargs() { ROCM_HOME="$1" bash -c "${_iso}"$'\nA=()\nappend_onnx_rocm_isolation_args A\nprintf "%s" "${A[*]}"'; }
+mkdir -p "${_work}/rocm"
+t_assert_eq "--cmake_extra_defines CMAKE_IGNORE_PREFIX_PATH=${_work}/rocm" "$(_isoargs "${_work}/rocm")" \
+  "the rocm lane's CPU ORT must not take nlohmann_json or flatbuffers from ROCm"
+t_assert_eq "" "$(_isoargs "${_work}/no-rocm")" "no ROCm root, no argument"
+t_assert_ok grep -q "^append_onnx_rocm_isolation_args BUILD_ARGS" "${ORT}/30-build-native.sh"
+t_assert_eq "0" "$(grep -c "append_onnx_rocm_isolation_args" "${ORT}/30-build-native-amd.sh" || true)" \
+  "the MIGraphX build needs ROCm and must not hide it"
+
 t_summary

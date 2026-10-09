@@ -159,6 +159,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
       (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.
       **Linux**, a rocm chain run (`CROSS_VARIANT=rocm`):
+      0. *2026-10-09, run `20261009-131840`:* the media stage's ORT **CPU** step died on `ort.fbs.h`'s
+         `(25 == 23)`. ROCm 10.1's hipDNN flatbuffers 25 config (`/opt/rocm/lib/cmake/flatbuffers`) is
+         reachable through `/opt/rocm/bin` on `PATH`. Fixed in source (CHANGELOG 2026-10-09):
+         `CMAKE_DISABLE_FIND_PACKAGE_flatbuffers` in every native ORT build, `CMAKE_IGNORE_PREFIX_PATH=/opt/rocm`
+         in the CPU one. Proved in that run's gpu-stage image: the CPU `libonnxruntime.so` and
+         `libonnxruntime_providers_migraphx.so` both build; the next chain run must take the media stage past it.
       1. `Dockerfile.amd` as a gpu stage over `:cross-sdk-amd64`, and the media stage's ORT gpu step under the
          chain's toolchain and caches (`verify-media-artifacts.sh onnxruntime-gpu`).
       2. The runtime copy: `copy_rocm_payload` carrying `/opt/rocm/extras-10` and remaking the `core-10` and

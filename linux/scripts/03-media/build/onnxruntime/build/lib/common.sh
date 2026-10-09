@@ -380,7 +380,19 @@ append_onnx_native_base_build_args() {
     --allow_running_as_root
     --use_mimalloc
     --use_lock_free_queue
+    # ort.fbs.h asserts flatbuffers 23; ROCm 10.1 puts its 25 on CMake's PATH-derived /opt/rocm prefix, so only the pinned fetch may serve it.
+    --cmake_extra_defines CMAKE_DISABLE_FIND_PACKAGE_flatbuffers=TRUE
   )
+}
+
+# append_onnx_rocm_isolation_args <array>: hide a ROCm root from a non-ROCm ORT build. See docs/linux-accelerator-images.md#where-rocm-101-puts-migraphx
+append_onnx_rocm_isolation_args() {
+  # shellcheck disable=SC2178
+  local -n rocm_iso_ref="$1"
+  local root="${ROCM_HOME:-/opt/rocm}"
+  [ -d "${root}" ] || return 0
+  # /opt/rocm/bin on PATH makes /opt/rocm a CMake search prefix; since 10.1 it serves flatbuffers and nlohmann_json.
+  rocm_iso_ref+=(--cmake_extra_defines "CMAKE_IGNORE_PREFIX_PATH=${root}")
 }
 
 # finalize_onnx_native_output <build_dir> <config> <output_dir> <src_dir>: the install tail every native build shares.

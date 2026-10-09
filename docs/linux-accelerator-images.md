@@ -702,6 +702,24 @@ Three places followed MIGraphX out of `/opt/rocm/lib`:
   `000-rocm.conf`, because `libonnxruntime_providers_migraphx.so` needs
   `libmigraphx_c.so.3`.
 
+The 10.1 layout also reached the **CPU** ORT build, which never asks for ROCm.
+`/opt/rocm/lib` is now the merged `core-10.1/lib`, so `/opt/rocm/lib/cmake` holds
+the `amdrocm-dnn-dev10.1` (hipDNN) package's flatbuffers 25 config, and
+`/opt/rocm/share/cmake` an nlohmann_json one. `/opt/rocm/bin` is on `PATH`, and
+CMake searches the parent of every `PATH` entry, so ORT's `FIND_PACKAGE_ARGS`
+took both and put `-I/opt/rocm/include` on `onnxruntime_flatbuffers`.
+`ort.fbs.h` then stopped at `FLATBUFFERS_VERSION_MAJOR == 23` with `25 == 23`
+(rocm chain `20261009-131840`, media stage). Two arguments keep ROCm out:
+
+- **`append_onnx_native_base_build_args`** passes
+  `CMAKE_DISABLE_FIND_PACKAGE_flatbuffers=TRUE` to every native ORT build, so
+  only ORT's pinned 23.5.26 fetch serves flatbuffers. The MIGraphX build had
+  carried that define on its own since 2026-09-27.
+- **`append_onnx_rocm_isolation_args`** gives the CPU build
+  `CMAKE_IGNORE_PREFIX_PATH=${ROCM_HOME:-/opt/rocm}` when that root exists,
+  the Linux twin of the Windows rocm lane's isolation argument. Its configure
+  then names `/opt/rocm` in no `flags.make`. The MIGraphX build does not call it.
+
 TheRock's LLVM is clang 24 now. `Dockerfile.package` borrows libFuzzer only from
 a same-major `clang/23` copy, so a rocm image no longer finds one to borrow.
 That changes nothing while the image's own LLVM 23 ships libFuzzer, which

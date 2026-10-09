@@ -6,6 +6,28 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — the CPU ORT build no longer takes ROCm 10.1's flatbuffers 25 (CON78)
+
+The rocm chain `20261009-131840` stopped in the media stage's ORT **CPU** step:
+`ort.fbs.h:11: static assertion failed: Non-compatible flatbuffers version included`, `(25 == 23)`, in
+`flatbuffers_utils.cc` and `lora/adapter_format_utils.h`.
+
+- **Cause.** The gpu stage's only flatbuffers is `/opt/rocm/core-10.1/include/flatbuffers` (25.x), from
+  `amdrocm-dnn-dev10.1` (hipDNN). In 10.1 `/opt/rocm/lib` is the merged `core-10.1/lib`, so its CMake config
+  sits at `/opt/rocm/lib/cmake/flatbuffers`. `/opt/rocm/bin` is on `PATH`, and CMake searches each `PATH`
+  entry's parent, so ORT's `FIND_PACKAGE_ARGS` took it (`flatbuffers_DIR=/opt/rocm/lib/cmake/flatbuffers`,
+  and `nlohmann_json_DIR=/opt/rocm/share/cmake/nlohmann_json` beside it). `-I/opt/rocm/include` reached
+  `onnxruntime_flatbuffers` with no pinned flatbuffers include at all. Reproduced by configuring the CPU step
+  in the run's gpu-stage image (`sha256:fb44a2d5…`).
+- **Fix.** `append_onnx_native_base_build_args` passes `CMAKE_DISABLE_FIND_PACKAGE_flatbuffers=TRUE` to
+  every native ORT build; the MIGraphX build's own copy of that define goes. The new
+  `append_onnx_rocm_isolation_args` gives the CPU build `CMAKE_IGNORE_PREFIX_PATH=${ROCM_HOME:-/opt/rocm}`
+  when the root exists, so no ROCm package reaches it. Rerun in the same image: no `flags.make` names
+  `/opt/rocm`, nlohmann_json and flatbuffers are fetched, and `cmake --build . --target onnxruntime_flatbuffers`
+  builds; so do the whole CPU `onnxruntime` target and, through `--step gpu`, `onnxruntime_providers_migraphx`
+  against `/opt/rocm/extras-10`. `test-onnx-build-summary.sh` runs both helpers (red before, green after).
+  Docs: `docs/linux-accelerator-images.md` § *Where ROCm 10.1 puts MIGraphX*.
+
 ## 2026-10-09 — WEBDAVCLIENT_REF to WebDavClient's develop head
 
 - `4f3f116d` -> `050dfb2c` (23 commits: lock maintenance, the free-threading declaration, a manylinux packaging extra,
