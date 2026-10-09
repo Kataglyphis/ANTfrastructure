@@ -399,6 +399,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       first activation of the MIGraphX stage's fresh `migraphxmods` COPY layer failed with the
       same 0x20, and there the driver's retry read it. Defender's exclusions were not checked
       (admin only). Find the cause, then drop the two views when a bind of the image reads again.
+- [ ] **CON87 — a Linux-only `versions.env` edit rebuilds the whole Windows chain** [M, ★★].
+      `Dockerfile.base` COPYs all of `linux/scripts/01-core/versions.env` into its tail
+      (`Import-Versions.ps1`), so any key changes base's digest and re-keys every stage above it;
+      the toolchain stage also bind-mounts the file into its RUNs. On 2026-10-09 the riscv64-only,
+      `noforward` `CMAKE_VERSION_RISCV64` 4.4.2 → 4.4.4 (655a2c4e) turned the `:winamd64-rocm`
+      publish from a cache hit into a 4:45 h rebuild, and the rebuilt toolchain cost sccache its hits
+      (TVM took 60 min against 25 min the night before). Bake only the keys the Windows scripts read,
+      as a filtered file or as ARGs, and prove that a Linux-key edit then leaves the chain cached.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON64 — the Vulkan validation layer in `C:\runtime\vulkan-layers`** [S, ★★]. Owner rule
