@@ -996,9 +996,10 @@ _iree_package_free_threaded_wheels() {
 _iree_free_threaded_rebuild() {
     local -a py_args=("-DPython_EXECUTABLE=$1" "-DPython3_EXECUTABLE=$1")
     if [ -n "${FT_TARGET_INCLUDE:-}" ]; then
-        # The cross configure pinned the target GIL headers and libpython; the twin takes the target 3.14t's, and its sysconfig for the SOABI.
-        py_args+=("-DPython3_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPYTHON_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPython3_INCLUDE_DIRS=${FT_TARGET_INCLUDE}"
-                  "-DPython3_LIBRARY=${FT_TARGET_LIBRARY}" "-DPYTHON_LIBRARY=${FT_TARGET_LIBRARY}")
+        # The GIL configure cached the target GIL headers for both FindPython spellings; the twin moves both and drops their results.
+        py_args+=("-U" "_Python*" "-U" "Python_NumPy*" "-U" "Python3_NumPy*"
+                  "-DPython_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPython3_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPYTHON_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPython3_INCLUDE_DIRS=${FT_TARGET_INCLUDE}"
+                  "-DPython_LIBRARY=${FT_TARGET_LIBRARY}" "-DPython3_LIBRARY=${FT_TARGET_LIBRARY}" "-DPYTHON_LIBRARY=${FT_TARGET_LIBRARY}")
         eval "$(ft_target_env)"
     fi
     if ! cmake -S "${src_dir}" -B "${target_build}" "${py_args[@]}" \

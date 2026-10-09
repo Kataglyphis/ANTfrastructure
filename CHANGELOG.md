@@ -6,6 +6,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-10 — the IREE cross twin's reconfigure moves both FindPython spellings (CON79 1b)
+
+- **Run 20261009-215702** proved arm64's tvm-ffi and ORT twins (the libstdc++ fix held:
+  `onnxruntime_webgpu-…-cp314t-linux_aarch64.whl: 1 compiled module(s) … the GIL stayed disabled (on arm64 under
+  qemu-aarch64)`), then IREE's twin reconfigure failed: `Could NOT find Python (missing: Development.Module
+  Development.SABIModule NumPy)` at IREE's `CMakeLists.txt:780`. The GIL cross configure's toolchain file caches
+  `Python_INCLUDE_DIR`/`Python_LIBRARY` at the target GIL headers; the twin moved only the `Python3_*` spellings, so
+  `find_package(Python)` met GIL headers beside a 3.14t interpreter.
+- **Fix** (`_iree_free_threaded_rebuild`): it also passes `Python_INCLUDE_DIR`/`Python_LIBRARY` and drops the cached
+  FindPython results (`-U _Python* -U Python_NumPy* -U Python3_NumPy*`). Reproduced in `cross-sdk-arm64` with a minimal
+  project configured the GIL way and reconfigured both ways: the old arguments fail with that message, the new ones find
+  `/opt/python-cross-ft/arm64/.../include/python3.14t`. `test-iree-wheelhouse-stages.sh` 76 -> 80, three failing without
+  the fix.
+
 ## 2026-10-09 — the host 3.14t helpers drop a GIL cross build's target sysconfig (CON79 1b)
 
 - **The next cross run** (20261009-211609) proved arm64's tvm-ffi twin, then stopped at IREE: `/opt/python-freethreaded/
