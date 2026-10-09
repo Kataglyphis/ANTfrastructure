@@ -62,10 +62,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       and Windows amd64 are in source since 2026-10-07 (CHANGELOG). Open:
       1. **Prove in full image builds**: Linux — FT-STORE is green on the published `:latest` amd64
          (2026-10-09, hub 655a2c4e) with the cp314t twins of av 19.0.1, iree_base_compiler/runtime 3.12.0
-         and apache_tvm_ffi 0.1.14.post0 loaded with the GIL off. Open: the nvidia and rocm ORT twins (one
-         call each), FT-STORE on arm64 (a native arm64 chain), the ORT census
-         taking the twin, `PYTHON_WHEELS_CP314T` in FT-STORE, and a 3.14t venv reconciled onto the real ORT twin
-         (`uv_reconcile_chain_ort`, proved locally only with stand-in twins). Windows — a `:winamd64` image build carrying all five twins, so smoke section 20 checks its
+         and apache_tvm_ffi 0.1.14.post0 loaded with the GIL off. Also proved on that image (index
+         sha256:af7252a0, 2026-10-09): the `onnxruntime_dnnl` 1.30.0 cp314t twin is in the store and FT-STORE;
+         `PYTHON_WHEELS_CP314T=/opt/wheels-cp314t` passes FT-STORE (chain run 20261009-022859); the ORT census
+         grades the twin's four members against `ort-provenance-cp314t.sha256` with chain roots and passes; and a
+         3.14t venv holding PyPI onnxruntime 1.31.0 is reconciled by `uv_reconcile_chain_ort` onto the twin
+         (venv census PASS, `import onnxruntime` with the GIL off, 8 threads run one session). Open: the nvidia
+         and rocm ORT twins (one call each), FT-STORE on arm64 (a native arm64 chain). Windows — a `:winamd64` image build carrying all five twins, so smoke section 20 checks its
          exact set; the IREE v3.12.0 clang-cl fixes and the `iree-base-compiler` twin are proved locally on the
          full compiler tree since 2026-10-07. Optional: keep the GIL interpreter in IREE's VM ISA genrule for
          the Windows twin, as `Set-OrtNinjaCommandPython` does for ORT (56 of its 137 edges go away).
