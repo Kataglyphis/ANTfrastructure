@@ -62,12 +62,11 @@ _hip_config_dir="$(find "${MIGRAPHX_HOME}" -maxdepth 5 -path '*/lib/cmake/hip' -
 if [ -n "${_hip_config_dir}" ] && [ -f "${_hip_config_dir}/hip-config.cmake" ]; then
   # MIGraphX's config dependencies (MIOpen, rocBLAS, hipBLASLt) are only findable through that same prefix.
   _rocm_cmake_root="$(dirname "${_hip_config_dir}")"
-  # That prefix also exposes ROCm's flatbuffers 25, which ORT's headers reject; only disabling the find keeps the pinned copy.
+  # That prefix also exposes ROCm's flatbuffers 25; append_onnx_native_base_build_args disables that find for every native build.
   info "Pinning hip_DIR=${_hip_config_dir} + CMAKE_PREFIX_PATH=${_rocm_cmake_root}"
   BUILD_ARGS+=(
     --cmake_extra_defines "hip_DIR=${_hip_config_dir}"
     --cmake_extra_defines "CMAKE_PREFIX_PATH=${_rocm_cmake_root}"
-    --cmake_extra_defines "CMAKE_DISABLE_FIND_PACKAGE_flatbuffers=TRUE"
   )
 else
   warn "No hip-config.cmake under ${MIGRAPHX_HOME}; letting CMake search its defaults"
