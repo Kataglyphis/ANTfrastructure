@@ -12,6 +12,12 @@ FROM ${CORE_IMAGE} AS media-core
 FROM ${LITERT_IMAGE} AS media-litert
 FROM ${TVM_IMAGE} AS media-tvm
 
+# The merge binds these, not the images: a bind of media-tvm's own top layer listed its files but opened none (2026-10-09).
+FROM ${CORE_IMAGE} AS media-core-view
+RUN cmd /c exit 0
+FROM ${TVM_IMAGE} AS media-tvm-view
+RUN cmd /c exit 0
+
 # A script, not a COPY, flattens the spaced, nested CUDA/cuDNN DLL dirs; on BASE_IMAGE so media-core rebuilds never re-run it.
 FROM ${BASE_IMAGE} AS cuda-runtime-stage
 # Redeclared (ARGs do not cross FROM): the script picks bin\ or bin\arm64 by lane.
@@ -113,8 +119,8 @@ COPY --from=media-tvm C:\runtime\wheels C:\runtime\wheels
 # The cp314t twins' store, apart so no GIL install sees one; media-tvm creates it on every lane (docs/windows-builds.md#the-free-threaded-wheels).
 COPY --from=media-tvm C:\runtime\wheels-cp314t C:\runtime\wheels-cp314t
 # Host CPython bindings merged in place: a COPY over a lower layer's file stores it lowercased, which hid Cython.Shadow (CON80).
-RUN --mount=type=bind,from=media-core,source=/temp/cpython/Lib/site-packages,target=C:\bkmnt\site-packages\media-core `
-    --mount=type=bind,from=media-tvm,source=/temp/cpython/Lib/site-packages,target=C:\bkmnt\site-packages\media-tvm `
+RUN --mount=type=bind,from=media-core-view,source=/temp/cpython/Lib/site-packages,target=C:\bkmnt\site-packages\media-core `
+    --mount=type=bind,from=media-tvm-view,source=/temp/cpython/Lib/site-packages,target=C:\bkmnt\site-packages\media-tvm `
     --mount=type=bind,source=windows/scripts/modules/WindowsSitePackages.Common.psm1,target=C:\bkmnt\modules\WindowsSitePackages.Common.psm1 `
     Import-Module 'C:\bkmnt\modules\WindowsSitePackages.Common.psm1'; `
     Merge-SitePackageTree -Source 'C:\bkmnt\site-packages\media-core', 'C:\bkmnt\site-packages\media-tvm' -Destination 'C:\temp\cpython\Lib\site-packages'

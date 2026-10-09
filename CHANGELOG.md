@@ -6,6 +6,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — the media fan-in binds view stages, not the branch images
+
+- **The rocm chain stopped at the site-packages merge three times on 2026-10-09.** robocopy reported
+  `ERROR 3 … cannot find the path specified` for every entry of the bind-mounted `media-tvm` tree, after a first
+  attempt failed with `hcsshim::ActivateLayer … (0x20)`. buildctl probes showed the RUN listed the image's 49 entries
+  but could open none. The same files open in a RUN on the image and through a stage with one empty `RUN` layer on
+  top. A `-NoCacheStage media-tvm` rebuild and a restart of containerd and buildkitd did not change it. The same merge
+  passed three times on 2026-10-07/08. The cause is not established (`docs/failure-modes.md`).
+- **Fix:** `Dockerfile.media-merge-builder` adds `media-core-view` and `media-tvm-view` (`RUN cmd /c exit 0` over each
+  branch image), and the merge `RUN` binds those. The `COPY --from=` steps still read the images. The next rocm solve
+  merged both trees: 31 distributions, every RECORD entry spelled as on disk.
+
 ## 2026-10-09 — riscv64 advertises the cmake it runs: the venv's pip wheel
 
 - **The riscv64 runtime-image smoke failed one row** (chain run 20261008-200606; amd64 and arm64 clean): `the riscv64
@@ -16,6 +28,7 @@
 - **Fix** (`01-core/versions.env`): `CMAKE_VERSION_RISCV64=4.4.4`, the comment names the wheel, and
   `test-version-forwarding.sh` now asserts the riscv64 forward equals `PY_CMAKE_VERSION`, so a wheel bump alone fails it
   (proved by moving the wheel pin to 4.4.5). Only riscv64's forwarded value changes; amd64 and arm64 keep their cache.
+
 
 ## 2026-10-08 — HailoRT's `.patch` files apply again, and the patch gate runs GNU patch too (CON85)
 

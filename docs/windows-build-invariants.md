@@ -567,7 +567,7 @@ fans in.
 
 NTFS opens either spelling, so nothing notices, until CPython's import, which compares the directory listing exactly. The fan-in's two site-packages COPYs shipped `Cython\shadow.py`, and `import Cython` failed in the published image ([failure mode](failure-modes.md#a-python-module-imports-nowhere-though-its-distribution-is-installed)). Rules:
 
-- **Never fan two trees that share files into one path with `COPY`.** Merge them in one `RUN` from bind mounts with an in-place copy, as the media fan-in does with `Merge-SitePackageTree`.
+- **Never fan two trees that share files into one path with `COPY`.** Merge them in one `RUN` from bind mounts with an in-place copy, as the media fan-in does with `Merge-SitePackageTree`. Bind a stage with one `RUN` layer over the branch image, not the image itself ([failure mode](failure-modes.md#a-bind-mount-of-a-branch-image-lists-its-files-but-opens-none)).
 - **Install a Python distribution once, in the layer that needs it.** A `pip install --force-reinstall`, or an upgrade over a lower layer's install, moves the old package away and creates it again, so its top-level names come back lowercased.
 - **The RECORD check is the gate.** `Find-RecordCaseMismatch` runs at the end of the merge and in the smoke gate's section 2 over the base interpreter.
 

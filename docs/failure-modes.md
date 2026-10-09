@@ -1494,6 +1494,14 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Fix.** Since 2026-10-07 the fan-in merges both trees in one `RUN` from bind mounts, never by `COPY` (`Merge-SitePackageTree` in `WindowsSitePackages.Common.psm1`). robocopy overwrites in place, so names survive. The merge stops when the branches carry one distribution at two versions, or when any RECORD entry is spelled otherwise on disk afterwards. Both branches install `cython==PY_CYTHON_VERSION`. The smoke gate's section 2 imports `Cython.Shadow` and runs the same RECORD check over the base interpreter. In an image built before the fix, `pip uninstall -y cython` in one `RUN` and `pip install cython==3.3.0` in the next restores it: a delete and a create in different layers keep the name. A venv never had the fault, since its files are new.
 
+### A bind mount of a branch image lists its files but opens none
+
+**Symptom.** The media fan-in's site-packages merge fails with robocopy `ERROR 3 (0x00000003) … The system cannot find the path specified` for every entry of `C:\bkmnt\site-packages\media-tvm`, files and directories alike, while the `media-core` tree beside it merges. The first attempt after the branch image was unpacked may fail earlier, with `failed to activate layer …: hcsshim::ActivateLayer failed in Win32: The process cannot access the file because it is being used by another process. (0x20)`, and the driver's retry then reaches the robocopy failure.
+
+**Cause.** **Not established.** A RUN that bind-mounts the media-tvm *image* sees its listing (49 entries) but cannot open `cython.py`. Mounted alone or beside media-core, the result is the same. The same files open in a RUN on that image, and through a bind of a stage that adds one empty `RUN` layer on top. Measured 2026-10-09 with buildctl probes, after a drastic `buildctl prune` and a full chain rebuild. It held across a `-NoCacheStage media-tvm` rebuild (a new top layer) and a restart of containerd and buildkitd. The same merge had passed in three solves on 2026-10-07/08.
+
+**Fix.** The merge binds `media-core-view` and `media-tvm-view`, two stages that add `RUN cmd /c exit 0` on top of each branch image (`Dockerfile.media-merge-builder`). The `COPY --from=` steps keep reading the images themselves, which works. The view layer never reaches the image, since only the merged files are kept.
+
 ---
 
 ## Windows: container networking
