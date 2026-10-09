@@ -20,7 +20,7 @@ source "${LIB}"
 t_case "every table row is well formed, and its pin is versions.env's: a bump re-reads the evidence"
 while IFS='|' read -r _dist _verdict _pin _evidence; do
   t_assert_eq "${_dist}" "$(_ft_norm "${_dist}")" "${_dist} is spelled in PEP 503 form"
-  case "${_verdict}" in twin | gil | none) t_assert_eq 1 1 ;; *) t_assert_eq "twin, gil or none" "${_verdict}" "${_dist}'s verdict" ;; esac
+  case "${_verdict}" in twin | gil | none) t_assert_eq 1 1 ;; twin:*) t_assert_eq 1 "$(grep -c -x -e "${_verdict#twin:}=[01]" "${VERSIONS}")" "${_dist}'s knob is a 0/1 versions.env key" ;; *) t_assert_eq "twin, twin:<KNOB>, gil or none" "${_verdict}" "${_dist}'s verdict" ;; esac
   t_assert_eq "${_pin#*=}" "$(sed -n "s/^${_pin%%=*}=//p" "${VERSIONS}" | head -n 1)" \
     "${_dist} was read at ${_pin}; re-read its free-threading support at the new pin and update its row"
   t_assert_ok test -n "${_evidence}"
@@ -31,7 +31,7 @@ t_assert_eq "$(sed -e '/^#/d' -e '/^[[:space:]]*$/d' "${TABLE}")" "$(ft_wheel_ta
 t_assert_ok test "$(ft_wheel_table | wc -l)" -ge 10
 t_assert_eq "${TABLE}" "${_FTW_TABLE}" "the library reads the file beside it"
 t_assert_contains "$(cat "${WINMOD}")" "03-media\\free-threaded-twins.txt" "Get-FreeThreadedTwinTable reads the same file"
-t_assert_eq 0 "$(cat "${LIB}" "${WINMOD}" | grep -c -E '[a-z0-9-]+\|(twin|gil|none)\|[A-Z0-9_]+=')" "no row literal left in either reader"
+t_assert_eq 0 "$(cat "${LIB}" "${WINMOD}" | grep -c -E '[a-z0-9-]+\|(twin|twin:[A-Z0-9_]+|gil|none)\|[A-Z0-9_]+=')" "no row literal left in either reader"
 
 t_case "a missing table is an error naming the file, never an unknown verdict"
 mkdir -p "${_work}/notable"; cp "${LIB}" "${_work}/notable/"
@@ -55,19 +55,75 @@ for _w in onnxruntime_genai onnxruntime_genai_cuda ai_edge_litert hailort; do
   t_assert_eq gil "$(ft_wheel_verdict "${_w}")" "${_w}"
 done
 t_assert_eq none "$(ft_wheel_verdict apache_tvm)"
-t_assert_eq unknown "$(ft_wheel_verdict torch)" "a wheel nobody classified"
+t_assert_eq unknown "$(ft_wheel_verdict pillow)" "a wheel nobody classified"
+
+t_case "the knob rows: torch and numpy declare free-threading, and the riscv64 torch twin follows FT_TORCH_TWIN"
+t_assert_eq "twin:FT_TORCH_TWIN" "$(ft_wheel_verdict torch)"
+t_assert_eq "twin:FT_TORCH_TWIN" "$(ft_wheel_verdict numpy)"
+t_assert_eq 1 "$(grep -c -x -e 'FT_TORCH_TWIN=1' "${VERSIONS}")" "on by default: the twin pass reuses the warm tree (BACKLOG CON79 1b)"
+t_assert_eq 2 "$(grep -c -x -e 'ARG FT_TORCH_TWIN=1' "${MEDIA}")" "app-wheelhouse builds it, the final RUN's store expects it"
+t_assert_eq 0 "$(FT_TORCH_TWIN=1 t_rc ft_twin_expected torch)"
+t_assert_eq 1 "$(FT_TORCH_TWIN=0 t_rc ft_twin_expected torch)"
+t_assert_eq 1 "$(unset FT_TORCH_TWIN; t_rc ft_twin_expected torch)" "an unset knob is off"
+t_assert_eq 0 "$(t_rc ft_twin_expected av)"
+t_assert_eq 1 "$(t_rc ft_twin_expected apache-tvm)"
+t_assert_eq 1 "$(FT_TORCH_TWIN=0 t_rc ft_twin_wanted torch)"
+t_assert_contains "$(FT_TORCH_TWIN=0 ft_twin_wanted torch)" "no cp314t twin of torch: the FT_TORCH_TWIN knob is off"
 
 t_case "ft_twin_wanted: GIL-only and py3 packages say why in one line, an unknown one is an error"
 t_assert_eq 1 "$(t_rc ft_twin_wanted onnxruntime-genai)"
 t_assert_contains "$(ft_twin_wanted onnxruntime-genai)" "no cp314t twin of onnxruntime-genai (gil): pybind11 2.13.6"
 t_assert_contains "$(ft_twin_wanted apache-tvm)" "no cp314t twin of apache-tvm (none): pyproject.toml: wheel.py-api"
-t_assert_eq 2 "$(t_rc ft_twin_wanted torch)"
-t_assert_contains "$(ft_twin_wanted torch 2>&1)" "torch is not in ft_wheel_table"
+t_assert_eq 2 "$(t_rc ft_twin_wanted pillow)"
+t_assert_contains "$(ft_twin_wanted pillow 2>&1)" "pillow is not in ft_wheel_table"
 
-t_case "ft_twin_wanted: a cross build makes no twin yet; a native one without the interpreter is an error"
-t_assert_eq 1 "$(cross_build_is_active() { return 0; }; t_rc ft_twin_wanted av)"
-t_assert_contains "$(cross_build_is_active() { return 0; }; ft_twin_wanted av)" "in a cross build yet"
+t_case "ft_twin_wanted: a native build without the interpreter is an error"
 t_assert_eq 2 "$(cross_build_is_active() { return 1; }; PYTHON_FT_PREFIX="${_work}/none" t_rc ft_twin_wanted av)"
+# A cross target's staged 3.14t tree (CON66's /opt/python-cross-ft/<arch>), with its sysconfigdata and headers.
+_tgt() {
+  local root="$1" arch="$2" suffix="$3"
+  mkdir -p "${root}/bin" "${root}/include/python3.14t" "${root}/lib/python3.14t"
+  : > "${root}/bin/python3.14t"; chmod +x "${root}/bin/python3.14t"; : > "${root}/include/python3.14t/Python.h"
+  printf 'build_time_vars = {"EXT_SUFFIX": "%s", "Py_GIL_DISABLED": 1}\n' "${suffix}" > "${root}/lib/python3.14t/_sysconfigdata_t_linux_${arch}-linux-gnu.py"
+}
+_tgt "${_work}/rv/riscv64/opt/python-freethreaded" riscv64 .cpython-314t-riscv64-linux-gnu.so
+_tgt "${_work}/rvbad/riscv64/opt/python-freethreaded" riscv64 .cpython-314-riscv64-linux-gnu.so
+# <stage root> <snippet> [args]: the snippet in a riscv64 cross build of the library whose host 3.14t is python3.
+_x() {
+  local root="$1"; shift
+  env FT_PYTHON=python3 PYTHON_FT_PREFIX=/opt/python-freethreaded PYTHON_FT_CROSS_STAGE_ROOT="${root}" TMPDIR="${_work}" \
+    bash -c 'source "$1"; shift; cross_build_is_active() { return 0; }; cross_target_arch() { echo "${XARCH:-riscv64}"; }
+             ft_python_resolve() { FT_PYTHON=python3; }; cross_target_qemu_runner() { echo "${QEMU:-}"; }
+             snippet="$1"; shift; eval "${snippet} \"\$@\""' _ "${LIB}" "$@"
+}
+
+t_case "cross: ft_target_resolve reads the target 3.14t's EXT_SUFFIX, headers, libpython and platform from its staged tree"
+_out="$(_x "${_work}/rv" 'ft_target_resolve && printf "%s\n" "${FT_TARGET_EXT_SUFFIX}" "${FT_TARGET_INCLUDE}" "${FT_TARGET_LIBRARY}" "${FT_TARGET_PLATFORM_TAG}" "${FT_TARGET_SYSCONFIG_NAME}"' 2>&1)"
+t_assert_eq ".cpython-314t-riscv64-linux-gnu.so
+${_work}/rv/riscv64/opt/python-freethreaded/include/python3.14t
+${_work}/rv/riscv64/opt/python-freethreaded/lib/libpython3.14t.so
+linux_riscv64
+_sysconfigdata_t_linux_riscv64-linux-gnu" "${_out}"
+_tgt "${_work}/a64/arm64/opt/python-freethreaded" aarch64 .cpython-314t-aarch64-linux-gnu.so
+t_assert_eq ".cpython-314t-aarch64-linux-gnu.so linux_aarch64" "$(XARCH=arm64 _x "${_work}/a64" 'ft_target_resolve && echo "${FT_TARGET_EXT_SUFFIX} ${FT_TARGET_PLATFORM_TAG}"')" "the arm64 cross lane reads its own tree"
+t_assert_contains "$(XARCH=arm64 _x "${_work}/rv" ft_target_resolve 2>&1)" "the arm64 3.14t tree ${_work}/rv/arm64/opt/python-freethreaded has no bin/python3.*t" "never another arch's tree"
+t_assert_fails _x "${_work}/rvbad" ft_target_resolve
+t_assert_contains "$(_x "${_work}/rvbad" ft_target_resolve 2>&1)" "not a free-threaded riscv64 one"
+t_assert_contains "$(_x "${_work}/none" ft_target_resolve 2>&1)" "has no bin/python3.*t or _sysconfigdata_t_*.py"
+
+t_case "cross: ft_twin_wanted builds the twin against the target tree; without one it is an error, not a skip"
+t_assert_eq 0 "$(_x "${_work}/rv" 'ft_twin_wanted av >/dev/null; echo $?')"
+t_assert_contains "$(_x "${_work}/rv" ft_twin_wanted av)" "building the cp314t twin of av for riscv64 (.cpython-314t-riscv64-linux-gnu.so"
+t_assert_eq 2 "$(_x "${_work}/none" 'ft_twin_wanted av >/dev/null 2>&1; echo $?')"
+t_assert_contains "$(_x "${_work}/none" ft_twin_wanted av 2>&1)" "this cross build has no target 3.14t tree to build it against"
+t_assert_eq 1 "$(_x "${_work}/rv" 'ft_twin_wanted onnxruntime-genai >/dev/null; echo $?')" "a GIL-only package stays a skip"
+
+t_case "cross: ft_target_env hands a wheel build the target's sysconfig and platform; native gets nothing"
+_out="$(_x "${_work}/rv" 'ft_target_resolve; ft_target_env')"
+t_assert_contains "${_out}" "_PYTHON_SYSCONFIGDATA_NAME=_sysconfigdata_t_linux_riscv64-linux-gnu _PYTHON_HOST_PLATFORM=linux_riscv64"
+t_assert_contains "${_out}" "PYTHONPATH=${_work}/ft-target-sysconfig-riscv64"
+t_assert_ok test -f "${_work}/ft-target-sysconfig-riscv64/_sysconfigdata_t_linux_riscv64-linux-gnu.py"
+t_assert_eq "" "$(bash -c 'source "$1"; ft_target_env' _ "${LIB}")"
 mkdir -p "${_work}/gilpy/bin"
 printf '#!/usr/bin/env bash\necho 0\n' > "${_work}/gilpy/bin/python3.14t"; chmod +x "${_work}/gilpy/bin/python3.14t"
 t_assert_contains "$(PYTHON_FT_PREFIX="${_work}/gilpy" ft_python_resolve 2>&1)" "is not a --disable-gil build"
@@ -92,6 +148,18 @@ t_assert_fails _gate abi3mod-1-cp314-cp314t-linux_x86_64.whl
 _whl arm-1-cp314-cp314t-linux_x86_64.whl av/codec/codec.cpython-314t-aarch64-linux-gnu.so
 t_assert_fails _gate arm-1-cp314-cp314t-linux_x86_64.whl
 t_assert_fails env FT_PYTHON=python3 bash -c 'source "$1"; ft_soabi_gate "$2" .cpython-314-x86_64-linux-gnu.so' _ "${LIB}" "${_work}/av-19.0.1-cp314-cp314t-linux_x86_64.whl"
+
+t_case "the SOABI gate: the platform tag must name the suffix's machine; a cross build gates against the target's suffix"
+_whl rvx-1-cp314-cp314t-linux_x86_64.whl m/x.cpython-314t-riscv64-linux-gnu.so
+_whl rv-1-cp314-cp314t-linux_riscv64.whl m/x.cpython-314t-riscv64-linux-gnu.so
+_whl hostso-1-cp314-cp314t-linux_riscv64.whl "m/x${_SUF}"
+t_assert_fails env FT_PYTHON=python3 bash -c 'source "$1"; ft_soabi_gate "$2" .cpython-314t-riscv64-linux-gnu.so' _ "${LIB}" "${_work}/rvx-1-cp314-cp314t-linux_x86_64.whl"
+t_assert_contains "$(FT_PYTHON=python3 bash -c 'source "$1"; ft_soabi_gate "$2" .cpython-314t-riscv64-linux-gnu.so' _ "${LIB}" "${_work}/rvx-1-cp314-cp314t-linux_x86_64.whl" 2>&1)" "the platform tag is linux_x86_64, not one for riscv64"
+t_assert_ok _x "${_work}/rv" ft_soabi_gate "${_work}/rv-1-cp314-cp314t-linux_riscv64.whl"
+t_assert_fails _x "${_work}/rv" ft_soabi_gate "${_work}/hostso-1-cp314-cp314t-linux_riscv64.whl"
+t_assert_contains "$(_x "${_work}/rv" ft_soabi_gate "${_work}/hostso-1-cp314-cp314t-linux_riscv64.whl" 2>&1)" "m/x${_SUF} is not .cpython-314t-riscv64-linux-gnu.so"
+_whl many-1-cp314-cp314t-manylinux_2_28_riscv64.whl m/x.cpython-314t-riscv64-linux-gnu.so
+t_assert_ok _x "${_work}/rv" ft_soabi_gate "${_work}/many-1-cp314-cp314t-manylinux_2_28_riscv64.whl"
 
 # A uv that logs, makes venvs whose python prints the helper's verdict, and installs nothing.
 mkdir -p "${_work}/bin"
@@ -147,10 +215,40 @@ t_assert_contains "${_out}" "is not proved: ERROR: the GIL was re-enabled, first
 t_assert_fails _store "${_work}/av-19.0.1-cp314-cp314-linux_x86_64.whl" "${_work}/store2"
 t_assert_eq "" "$(compgen -G "${_work}/store2/*.whl")" "nothing reached the store"
 
+t_case "cross: the proof unpacks the twin and runs the target 3.14t under qemu-user, with the target's libraries first"
+mkdir -p "${_work}/sysroot/lib"; : > "${_work}/sysroot/lib/ld-linux-riscv64-lp64d.so.1"
+cat > "${_work}/qemu-riscv64" <<'QEMU'
+#!/usr/bin/env bash
+printf 'qemu %s\n' "$*" >> "${CALLS}"
+while [ "${1#-}" != "$1" ]; do shift 2; done
+# The target python, -I -c <bootstrap>, then the unpacked site dir, the helper, prove, the dist.
+site="$5"
+[ -f "${site}/m/x.cpython-314t-riscv64-linux-gnu.so" ] && [ -d "${site}/rv-1.dist-info" ] && [ -f "${site}/m/data.txt" ] || { echo "the wheel was not unpacked whole"; exit 3; }
+echo "${QEMU_SAYS:-1 compiled module(s) of rv loaded on free-threaded 3.14.8; the GIL stayed disabled}"
+exit "${QEMU_RC:-0}"
+QEMU
+chmod +x "${_work}/qemu-riscv64"
+_whl rvp-1-cp314-cp314t-linux_riscv64.whl m/x.cpython-314t-riscv64-linux-gnu.so rv-1.dist-info/METADATA rv-1.data/purelib/m/data.txt
+_qx() { _x "${_work}/rv" ft_prove_wheel "$@"; }
+export QEMU="${_work}/qemu-riscv64"
+: > "${CALLS}"
+_out="$(FT_QEMU_SYSROOT="${_work}/sysroot" LD_LIBRARY_PATH=/opt/ffmpeg/lib _qx "${_work}/rvp-1-cp314-cp314t-linux_riscv64.whl" rv 2>&1)"; _rc=$?
+t_assert_eq 0 "${_rc}" "${_out}"
+t_assert_contains "${_out}" "free-threaded: rvp-1-cp314-cp314t-linux_riscv64.whl: 1 compiled module(s) of rv loaded on free-threaded 3.14.8; the GIL stayed disabled (on riscv64 under qemu-riscv64)"
+t_assert_contains "$(cat "${CALLS}")" "qemu -L ${_work}/sysroot -E LD_LIBRARY_PATH=${_work}/rv/riscv64/opt/python-freethreaded/lib:"
+t_assert_contains "$(cat "${CALLS}")" ":/opt/ffmpeg/lib -U PYTHONPATH -U PYTHONHOME ${_work}/rv/riscv64/opt/python-freethreaded/bin/python3.14t -I -c"
+t_assert_contains "$(cat "${CALLS}")" "free-threaded-wheel.py prove rv"
+t_assert_eq "" "$(compgen -G "${_work}/ft-prove.*")" "the unpacked site is gone"
+_out="$(QEMU_RC=1 QEMU_SAYS="ERROR: the GIL was re-enabled, first by m.x" FT_QEMU_SYSROOT="${_work}/sysroot" _qx "${_work}/rvp-1-cp314-cp314t-linux_riscv64.whl" rv 2>&1)"; _rc=$?
+t_assert_eq 1 "${_rc}"
+t_assert_contains "${_out}" "is not proved: ERROR: the GIL was re-enabled, first by m.x (on riscv64 under qemu-riscv64)"
+t_assert_contains "$(FT_QEMU_SYSROOT="${_work}/nosysroot" _qx "${_work}/rvp-1-cp314-cp314t-linux_riscv64.whl" rv 2>&1)" "no ld-linux-riscv64-lp64d.so.1"
+t_assert_contains "$(QEMU='' FT_QEMU_SYSROOT="${_work}/sysroot" _qx "${_work}/rvp-1-cp314-cp314t-linux_riscv64.whl" rv 2>&1)" "no qemu-user for riscv64"
+
 t_case "ft_twin_start: 0 with a venv for a twin, 1 for a package without one, 2 for an error"
 _start() { PATH="${_work}/bin:${PATH}" PYTHON_FT_PREFIX="${_work}/gilpy" bash -c 'source "$1"; shift; ft_twin_start "$@"' _ "${LIB}" "$@"; }
 t_assert_eq 1 "$(t_rc _start onnxruntime-genai "${_work}/v2" "${_work}/gil-python" cython)"
-t_assert_eq 2 "$(t_rc _start torch "${_work}/v2" "${_work}/gil-python" cython)"
+t_assert_eq 2 "$(t_rc _start pillow "${_work}/v2" "${_work}/gil-python" cython)"
 t_assert_eq 2 "$(t_rc _start av "${_work}/v2" "${_work}/gil-python" cython)" "a native build whose 3.14t is a GIL build"
 mkdir -p "${_work}/ftpy/bin"; cp "${_work}/python3.14t" "${_work}/ftpy/bin/python3.14t"
 printf '#!/usr/bin/env bash\ncase "$*" in *Py_GIL_DISABLED*) echo 1; exit 0 ;; esac\nexec %q "$@"\n' "${_work}/python3.14t" > "${_work}/ftpy/bin/python3.14t"

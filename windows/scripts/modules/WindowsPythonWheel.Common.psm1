@@ -176,7 +176,7 @@ function Invoke-FreeThreadedWheelVenvProof {
 function Get-FreeThreadedTwinTable {
     <#
     .SYNOPSIS
-        The image's wheels and whether each gets a cp3XYt twin (twin), stays GIL-only (gil) or needs none (none).
+        The image's wheels and whether each gets a cp3XYt twin (twin), stays GIL-only (gil) or needs none (none); twin:<KNOB> is a Linux-only switch, no twin here.
     .DESCRIPTION
         The rows of linux/scripts/03-media/free-threaded-twins.txt, which the Linux lane's ft_wheel_table reads too. Pin is the
         versions.env key=value the evidence was read at; PythonWheel.FreeThreadedTwin.Tests.ps1 fails when it moves.

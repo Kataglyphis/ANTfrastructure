@@ -27,11 +27,11 @@ _ft_store_dists() {
   done | LC_ALL=C sort -u
 }
 
-# The GIL wheels whose table verdict is twin: exactly the set the store must hold on a native build.
+# The GIL wheels the table expects a twin of (twin, or twin:<KNOB> with the knob on): exactly the set the store must hold, native or cross.
 _ft_store_expected() {
   local d
   while IFS= read -r d; do
-    if [ "$(ft_wheel_verdict "${d}")" = twin ]; then printf '%s\n' "${d}"; fi
+    if ft_twin_expected "${d}"; then printf '%s\n' "${d}"; fi
   done < <(_ft_store_dists "${WHEELS_DIR}")
 }
 
@@ -40,10 +40,9 @@ ft_store_check_set() {
   local want have bad=0 d
   want="$(_ft_store_expected)"
   have="$(_ft_store_dists "${FT_WHEELS_DIR}")"
-  [ "$1" = native ] || want=""
-  # A new wheel is classified before it ships natively: the table is the only place its verdict is read.
+  # A new wheel is classified before it ships: the table is the only place its verdict is read.
   for d in $(_ft_store_dists "${WHEELS_DIR}"); do
-    if [ "$1" = native ] && [ "$(ft_wheel_verdict "${d}")" = unknown ]; then
+    if [ "$(ft_wheel_verdict "${d}")" = unknown ]; then
       echo "ERROR: ${WHEELS_DIR} ships ${d}, which ft_wheel_table does not classify; read its free-threading support and add its row" >&2
       bad=1
     fi
@@ -72,15 +71,23 @@ ft_store_prove_all() {
 
 # <mode>: the record, then one line per table row this build makes no twin of, with its reason.
 ft_store_write_record() {
-  local dist verdict pin evidence w
+  local dist verdict pin evidence w knob
   {
     printf 'mode=%s\n' "$1"
     printf 'arch=%s\n' "${TARGET_ARCH:-${TARGETARCH:-unknown}}"
     for w in "${FT_WHEELS_DIR}"/*.whl; do
       if [ -f "${w}" ]; then printf 'twin %s\n' "${w##*/}"; fi
     done
+    # The smoke wants a twin only of a family this line names: the chain shipped its GIL wheel, not an index.
+    while IFS= read -r dist; do
+      printf 'want %s\n' "$(ft_wheel_row "${dist}" | cut -d'|' -f1)"
+    done < <(_ft_store_expected) | LC_ALL=C sort -u
     while IFS='|' read -r dist verdict pin evidence; do
-      if [ "${verdict}" != twin ]; then printf 'skip %s %s (%s): %s\n' "${dist}" "${verdict}" "${pin}" "${evidence}"; fi
+      case "${verdict}" in
+        twin) ;;
+        twin:*) knob="${verdict#twin:}"; [ "${!knob:-0}" = 1 ] || printf 'skip %s %s=0 (%s): %s\n' "${dist}" "${knob}" "${pin}" "${evidence}" ;;
+        *) printf 'skip %s %s (%s): %s\n' "${dist}" "${verdict}" "${pin}" "${evidence}" ;;
+      esac
     done < <(ft_wheel_table)
   } > "${FT_STORE_RECORD}"
 }

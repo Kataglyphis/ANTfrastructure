@@ -13,6 +13,61 @@
   venv, and every call `download-webdav-files.py` makes keeps its signature; `webdavclient.py`'s diff is comments only.
   `bump_versions.py --check` had reported it NEWER AVAILABLE since c40dc4bb.
 
+## 2026-10-09 — the cp314t twins on the Linux cross lanes: arm64 cross and riscv64 (CON75 Linux half, CON79 1b)
+
+In source; the chain must prove them. `:latest` of 2026-10-09 ran `FT-STORE` with `cross-built arch:
+no twins yet, as recorded` on arm64 and riscv64. Those arches now build the native table's twins, and
+the smoke holds them to it.
+
+- **Build** (`03-media/free-threaded-wheels.sh`). `ft_twin_wanted` no longer skips a cross build.
+  `ft_target_resolve` reads the target's `3.14t` from `/opt/python-cross-ft/<arch>`: the
+  interpreter, headers, `libpython3.14t.so`, the `EXT_SUFFIX` from its `_sysconfigdata_t_*.py`
+  (read, not run) and the platform tag. A missing tree fails the twin. `ft_target_env` gives a
+  wheel build the target's sysconfig and platform, which the host `3.14t` then reports.
+  - PyAV compiles against the target headers with the target suffix.
+  - tvm-ffi reruns in the cross pass's build dir.
+  - IREE reconfigures its runtime-only tree with the target `3.14t` include dir and library.
+  - ORT passes `Python_INCLUDE_DIR` and retags the twin.
+  - The riscv64 torch reruns its warm tree (below).
+- **Gate.** `ft_soabi_gate` takes the target suffix in a cross build. It now also fails a platform
+  tag for another machine, such as a riscv64 module in a `linux_x86_64` wheel.
+- **Proof on the target.** `ft_prove_wheel_on_target` unpacks the twin, `.data` included, and runs
+  `free-threaded-wheel.py prove` with the target's own `3.14t` under qemu-user. `-L` names the root
+  holding the target's loader, and the target tree's `lib` leads `LD_LIBRARY_PATH`.
+  `free-threaded-store.sh` proves the repaired store the same way, and the runtime smoke proves it
+  again in the target image.
+- **Store and smoke.**
+  - A cross store is held to the table like a native one, and a cross GIL wheel without a row now
+    fails too.
+  - The record names each expected family (`want <family>`).
+  - `FT-STORE` wants exactly those twins, so PyPI's torch (amd64, arm64) and PyPI's IREE compiler
+    (cross arches) get an `OK` line rather than a demand.
+- **torch and numpy rows.** The new `twin:<KNOB>` verdict is a twin only while that `versions.env`
+  key is 1.
+  - `torch` (`Module.cpp`: `PyUnstable_Module_SetGIL(module, Py_MOD_GIL_NOT_USED)`, v2.14.1) and
+    `numpy` (`{Py_mod_gil, Py_MOD_GIL_NOT_USED}`, 2.5.3) are `twin:FT_TORCH_TWIN`.
+  - `FT_TORCH_TWIN=1` is in `versions.env` and in both `Dockerfile.media` ARGs.
+  - The riscv64 torch twin reruns the persistent scikit-build tree with the target `3.14t` on the
+    command line. Only `torch_python`/`_C` see Python, so an estimated 10-20 min on the 1121 s GIL
+    torch build. That is not the doubling that would have put it behind an off knob.
+  - No chain build ships numpy, so nothing expects its twin.
+  - Windows reads a knob row as no twin, and its table test accepts the form.
+- **Proved without a chain**, in the published riscv64 `:latest` (sha256:af7252a0), under QEMU from
+  an amd64 build container with the hub's library:
+  - A minimal C module: `ftprobe-1.0-cp314-cp314t-linux_riscv64.whl: 1 compiled module(s) of
+    ftprobe loaded on free-threaded 3.14.8; the GIL stayed disabled (on riscv64 under
+    qemu-riscv64)`. Its control without `Py_mod_gil` was refused: `the GIL was re-enabled, first
+    by gilprobe._m`.
+  - PyAV 19.0.1, cross-built in 47 s against the image's riscv64 FFmpeg, gated
+    `.cpython-314t-riscv64-linux-gnu.so`. `FT-STORE`'s probe and verdict in the riscv64 image gave
+    `OK av-19.0.1-cp314-cp314t-linux_riscv64.whl: 50 compiled module(s) of av loaded on
+    free-threaded 3.14.8; the GIL stayed disabled`.
+- **Tests.** `test-free-threaded-wheels.sh` (186 assertions) and `test-free-threaded-store.sh` (86)
+  fail 34 and 15 assertions on the old library. There are seven new or rewritten mutations: the
+  target resolve, the target-suffix gate, the platform machine, the proof on the target, the knob,
+  the record's `want` lines and the unclassified cross wheel. `FT_TORCH_TWIN` is in
+  `bump_versions.py`'s non-version filter.
+
 ## 2026-10-09 — CON84 item 3: jotrockenmitlocken on sqlite3 3.7.0; ANThology has no lock to maintain
 
 - **jotrockenmitlocken** 93083c3: `sqlite3 ^3.7.0`, lock 3.6.0 -> 3.7.0 (nothing else moved), and `web/sqlite3.wasm`

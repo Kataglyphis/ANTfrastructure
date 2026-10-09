@@ -126,13 +126,25 @@ t_assert_contains "$(_store native ft_store_check_set native 2>&1)" "av ships a 
 _stores "${_GIL}" "${_FT} onnxruntime_genai-0.17.0-cp314-cp314t-linux_x86_64.whl"
 t_assert_contains "$(_store native ft_store_check_set native 2>&1)" "holds onnxruntime_genai, which is no twin of a GIL wheel this native build ships"
 
-t_case "the store: a native build refuses a GIL wheel the table never classified; a cross build holds no twin"
-_stores "${_GIL} torch-2.14.1-cp314-cp314-linux_x86_64.whl" "${_FT}"
-t_assert_contains "$(_store native ft_store_check_set native 2>&1)" "ships torch, which ft_wheel_table does not classify"
-_stores "${_GIL} torch-2.14.1-cp314-cp314-linux_x86_64.whl" ""
-t_assert_ok _store cross ft_store_check_set cross
-_stores "${_GIL}" "${_FT}"
-t_assert_fails _store cross ft_store_check_set cross
+t_case "the store: native or cross, a GIL wheel the table never classified is refused"
+for _m in native cross; do
+  _stores "${_GIL} pillow-12.0.0-cp314-cp314-linux_x86_64.whl" "${_FT}"
+  t_assert_contains "$(_store "${_m}" ft_store_check_set "${_m}" 2>&1)" "ships pillow, which ft_wheel_table does not classify" "${_m}"
+done
+
+t_case "the store: a cross build holds the same twins as a native one (CON75, CON79 1b)"
+_k() { FT_TORCH_TWIN="$1" "${@:2}"; }
+_RV_GIL="av-19.0.1-cp314-cp314-linux_riscv64.whl apache_tvm_ffi-0.1.14-cp314-cp314-linux_riscv64.whl iree_base_runtime-3.12.0-cp314-cp314-linux_riscv64.whl onnxruntime-1.30.0-cp314-cp314-linux_riscv64.whl onnxruntime_genai-0.17.0-cp314-cp314-linux_riscv64.whl torch-2.14.1-cp314-cp314-linux_riscv64.whl torchvision-0.29.1-cp314-cp314-linux_riscv64.whl"
+_RV_FT="av-19.0.1-cp314-cp314t-linux_riscv64.whl apache_tvm_ffi-0.1.14-cp314-cp314t-linux_riscv64.whl iree_base_runtime-3.12.0-cp314-cp314t-linux_riscv64.whl onnxruntime-1.30.0-cp314-cp314t-linux_riscv64.whl"
+_stores "${_RV_GIL}" "${_RV_FT} torch-2.14.1-cp314-cp314t-linux_riscv64.whl"
+t_assert_ok _k 1 _store cross ft_store_check_set cross
+_stores "${_RV_GIL}" "${_RV_FT}"
+t_assert_contains "$(FT_TORCH_TWIN=1 _store cross ft_store_check_set cross 2>&1)" "torch ships a GIL wheel in ${_work}/s-gil and its table verdict is twin, but ${_work}/s-ft has no cp314t twin of it"
+t_assert_ok _k 0 _store cross ft_store_check_set cross
+_stores "${_RV_GIL}" "$(printf '%s\n' ${_RV_FT} | grep -v '^av-')"
+t_assert_contains "$(FT_TORCH_TWIN=0 _store cross ft_store_check_set cross 2>&1)" "av ships a GIL wheel in ${_work}/s-gil and its table verdict is twin, but ${_work}/s-ft has no cp314t twin of it"
+_stores "${_RV_GIL}" ""
+t_assert_fails _k 0 _store cross ft_store_check_set cross
 
 t_case "the store's record: the mode, every twin, and one reasoned line per package without one"
 _stores "${_GIL}" "${_FT}"
@@ -143,6 +155,22 @@ t_assert_contains "${_rec}" "twin av-19.0.1-cp314-cp314t-linux_x86_64.whl"
 t_assert_contains "${_rec}" "skip onnxruntime-genai gil (ONNXRUNTIME_GENAI_VERSION="
 t_assert_contains "${_rec}" "skip apache-tvm none (TVM_REF="
 t_assert_eq 0 "$(grep -c '^skip onnxruntime ' "${_work}/s-ft/free-threaded-store.txt")" "a twin package is no skip"
+
+t_case "the store's record: a want line per twin family it holds; a knob row's is there while its knob is 1, a skip line while it is 0"
+_stores "${_RV_GIL}" "${_RV_FT} torch-2.14.1-cp314-cp314t-linux_riscv64.whl"
+FT_TORCH_TWIN=1 _store cross ft_store_write_record cross >/dev/null
+_rec="$(cat "${_work}/s-ft/free-threaded-store.txt")"
+t_assert_contains "${_rec}" "mode=cross"
+t_assert_contains "${_rec}" "twin torch-2.14.1-cp314-cp314t-linux_riscv64.whl"
+t_assert_eq "want apache-tvm-ffi
+want av
+want iree-base-runtime
+want onnxruntime
+want torch" "$(grep '^want ' "${_work}/s-ft/free-threaded-store.txt")" "one line per family the chain shipped a GIL wheel of"
+t_assert_eq 0 "$(grep -c -e '^skip torch ' -e '^want numpy' "${_work}/s-ft/free-threaded-store.txt")" "numpy ships no GIL wheel, so nothing wants its twin"
+FT_TORCH_TWIN=0 _store cross ft_store_write_record cross >/dev/null
+t_assert_contains "$(cat "${_work}/s-ft/free-threaded-store.txt")" "skip torch FT_TORCH_TWIN=0 (PYTORCH_VERSION="
+t_assert_eq 0 "$(grep -c '^want torch' "${_work}/s-ft/free-threaded-store.txt")"
 
 t_case "the store stops when the twin table is not beside the library, instead of recording no verdicts"
 _out="$(env WHEELS_DIR="${_work}/s-gil" FT_WHEELS_DIR="${_work}/s-ft" bash -c 'source "$1"; echo SOURCED' _ "${_work}/notable/03-media/runtime/free-threaded-store.sh" 2>&1)"; _rc=$?
@@ -162,6 +190,11 @@ t_assert_eq "BAD the twin table is not at ${_work}/smoke-notable/06-packaging/..
 source "${SCRIPTS}/06-packaging/check-free-threaded-wheels.sh"
 _P_NATIVE='FTS ENV /opt/wheels-cp314t
 FTS RECORD mode=native
+FTS RECORD want apache-tvm-ffi
+FTS RECORD want av
+FTS RECORD want iree-base-compiler
+FTS RECORD want iree-base-runtime
+FTS RECORD want onnxruntime
 FTS GIL onnxruntime_dnnl
 FTS GIL av
 FTS GIL apache_tvm
@@ -204,13 +237,50 @@ FTS PROVED onnxruntime_gpu 1 compiled module(s)
 FTS DONE}"
 t_assert_eq "" "$(_bad "${_gpu}")"
 
-t_case "the smoke: a cross-built arch holds an empty store; a missing store, record or probe end is red"
-t_assert_contains "$(ft_store_verdict 'FTS RECORD mode=cross
+_P_RV='FTS ENV /opt/wheels-cp314t
+FTS RECORD mode=cross
+FTS RECORD arch=riscv64
+FTS RECORD want apache-tvm-ffi
+FTS RECORD want av
+FTS RECORD want iree-base-runtime
+FTS RECORD want onnxruntime
+FTS RECORD want torch
+FTS GIL iree_base_compiler
 FTS GIL av
-FTS DONE')" "OK cross-built arch: no twins yet, as recorded"
-t_assert_contains "$(_bad 'FTS RECORD mode=cross
-FTS WHEEL av-19.0.1-cp314-cp314t-linux_aarch64.whl
-FTS DONE')" "a cross-built store holds wheels"
+FTS GIL apache_tvm_ffi
+FTS GIL iree_base_runtime
+FTS GIL onnxruntime
+FTS GIL torch
+FTS GIL torchvision
+FTS GIL numpy
+FTS WHEEL av-19.0.1-cp314-cp314t-linux_riscv64.whl
+FTS PROVED av 50 compiled module(s) of av loaded
+FTS WHEEL apache_tvm_ffi-0.1.14-cp314-cp314t-linux_riscv64.whl
+FTS PROVED apache_tvm_ffi 1 compiled module(s) of apache_tvm_ffi loaded
+FTS WHEEL iree_base_runtime-3.12.0-cp314-cp314t-linux_riscv64.whl
+FTS PROVED iree_base_runtime 1 compiled module(s) of iree_base_runtime loaded
+FTS WHEEL onnxruntime-1.30.0-cp314-cp314t-linux_riscv64.whl
+FTS PROVED onnxruntime 1 compiled module(s) of onnxruntime loaded
+FTS WHEEL torch-2.14.1-cp314-cp314t-linux_riscv64.whl
+FTS PROVED torch 9 compiled module(s) of torch loaded
+FTS DONE'
+
+t_case "the smoke: a cross-built arch is held to the table like a native one, its knob twins by the record"
+t_assert_eq "" "$(_bad "${_P_RV}")"
+t_assert_contains "$(ft_store_verdict "${_P_RV}")" "OK the store records a cross build; its twins are held to the table as on any arch"
+t_assert_contains "$(ft_store_verdict "${_P_RV}")" "OK the store holds exactly the twin families of /opt/venv: apache-tvm-ffi av iree-base-runtime onnxruntime torch"
+t_assert_contains "$(_bad 'FTS ENV /opt/wheels-cp314t
+FTS RECORD mode=cross
+FTS RECORD want av
+FTS GIL av
+FTS DONE')" "/opt/venv carries av, whose verdict is twin, and the store has no cp314t twin of it"
+t_assert_contains "$(ft_store_verdict "${_P_RV}")" "OK iree_base_compiler declares free-threading, but the record wants no twin of it" "PyPI's compiler on a cross arch, whose chain builds the runtime only"
+t_assert_contains "$(_bad "$(printf '%s\n' "${_P_RV}" | grep -v -e '^FTS WHEEL torch-' -e '^FTS PROVED torch ')")" "/opt/venv carries torch, whose verdict is twin, and the store has no cp314t twin of it"
+_nowant="$(printf '%s\n' "${_P_RV}" | grep -v -e '^FTS RECORD want torch$')"
+t_assert_contains "$(_bad "${_nowant}")" "torch-2.14.1-cp314-cp314t-linux_riscv64.whl is no twin the table allows here (verdict twin:FT_TORCH_TWIN)"
+t_assert_eq "" "$(_bad "$(printf '%s\n' "${_nowant}" | grep -v -e '^FTS WHEEL torch-' -e '^FTS PROVED torch ')")" "knob off: PyPI's torch in /opt/venv wants no twin, as on amd64"
+
+t_case "the smoke: a missing store, record or probe end is red"
 t_assert_contains "$(_bad 'FTS NOSTORE
 FTS DONE')" "/opt/wheels-cp314t is missing"
 t_assert_contains "$(_bad 'FTS NORECORD

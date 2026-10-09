@@ -29,14 +29,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
-- [ ] **CON75 — the free-threaded wheel on the cross lanes** [M, ★]. The riscv64 cross build
-      and the Windows arm64 cross lane skip `cp314t` with a logged reason. riscv64 needs 3.14t
-      target headers in the sysroot (CON66 stages them at `/opt/python-cross-ft/riscv64`), the
-      `.cpython-314t-riscv64-linux-gnu.so` suffix and a 3.14t host pip. Windows arm64 builds no
-      Cython wheel at all; its target interpreter exists since CON74 half 1, and
-      `New-FreeThreadedBuildPython` pins a cross venv's `EXT_SUFFIX` since CON79 item 2; the Linux riscv64
-      cross half is what remains. Done when both ship a wheel proved on
-      the target.
+- [ ] **CON75 — the free-threaded wheel on the cross lanes** [M, ★]. The Windows arm64 cross lane
+      skips `cp314t` with a logged reason: it builds no Cython wheel at all. Its target interpreter
+      exists since CON74 half 1, and `New-FreeThreadedBuildPython` pins a cross venv's `EXT_SUFFIX`
+      since CON79 item 2. **Linux half in source since 2026-10-09 (CHANGELOG), with CON79 1b.**
+      The cross twins build on the host `3.14t` against `/opt/python-cross-ft/<arch>`, are gated on
+      the target suffix and are proved by the target `3.14t` under qemu-user. Proved without a chain:
+      PyAV 19.0.1's riscv64 twin loaded its 50 modules with the GIL off under QEMU. Open: a published
+      `:latest` whose riscv64 media log shows `free-threaded: building the cp314t twin of av for
+      riscv64` and `(on riscv64 under qemu-riscv64)` for each twin, and whose smoke passes `FT-STORE:
+      the store records a cross build`. Done when both lanes ship a wheel proved on the target.
 - [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
       [M, ★]. Half 1 is in the scripts since 2026-10-07 (CHANGELOG): media-core's
       `Build-TargetCpython.ps1` stages the `--disable-gil` ARM64 build into
@@ -72,9 +74,34 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          exact set; the IREE v3.12.0 clang-cl fixes and the `iree-base-compiler` twin are proved locally on the
          full compiler tree since 2026-10-07. Optional: keep the GIL interpreter in IREE's VM ISA genrule for
          the Windows twin, as `Set-OrtNinjaCommandPython` does for ORT (56 of its 137 edges go away).
-      1b. **Linux cross twins** (arm64 cross, riscv64, including riscv64 torch/torchvision/numpy, which need
-         rows in `03-media/free-threaded-twins.txt`): `ft_soabi_gate` takes the target EXT_SUFFIX from `/opt/python-cross-ft/<arch>`, and the
-         proof runs on the target (QEMU) or in the package stage.
+      1b. **Linux cross twins: in source since 2026-10-09 (CHANGELOG); the chain must prove them.**
+         The arm64 cross and riscv64 builds make the same twins as native: av, apache-tvm-ffi,
+         iree-base-runtime (cross builds no IREE compiler) and their ORT flavour. On riscv64 they also
+         make torch, through the new `torch|twin:FT_TORCH_TWIN` row. `ft_target_resolve` reads the target
+         `EXT_SUFFIX` from `/opt/python-cross-ft/<arch>`, and `ft_soabi_gate` gates against it, platform tag
+         included. `ft_prove_wheel_on_target` proves each twin with the target `3.14t` under qemu-user, at
+         build time and again on the repaired store. The runtime smoke then proves it in the target image,
+         as on amd64. `free-threaded-store.sh` holds a cross store to the table, and its record names each
+         expected family (`want <family>`). `FT-STORE` checks exactly those, so PyPI's torch (amd64/arm64)
+         and PyPI's IREE compiler (cross arches) want no twin.
+         - **Proved without a chain** in the published `:latest` (riscv64, sha256:af7252a0):
+           - PyAV 19.0.1's twin, cross-built against that image's FFmpeg and `3.14t` tree, gated
+             `.cpython-314t-riscv64-linux-gnu.so`. `FT-STORE`'s probe and verdict, run in the riscv64
+             image, loaded all 50 modules with the GIL off.
+           - A minimal C module went through `ft_store_twin` under qemu-riscv64, and its `Py_mod_gil`-less
+             control was refused.
+         - **The torch twin is on** (`FT_TORCH_TWIN=1`). The owner's rule puts it behind a knob that
+           defaults off only if it roughly doubles the stage, and it does not. The chain log of
+           2026-10-08 built the riscv64 torch in 1121 s of a 5056 s app-wheelhouse RUN. The twin pass reuses torch's persistent `build/` tree, and torch adds the
+           Python include dirs per target, not globally (`cmake/Dependencies.cmake` at v2.14.1), so it
+           rebuilds `torch_python` and `_C` only: an estimated 10-20 min, about +20 %. `FT_TORCH_TWIN=0`
+           turns it off, and the store then records `skip torch FT_TORCH_TWIN=0`.
+         - **numpy** has a row (`twin:FT_TORCH_TWIN`) but no chain build, so nothing expects its twin. A
+           riscv64 `cp314t` numpy for consumers is CON83's wheel-store question. torchvision stays `none`.
+         - Left: the chain. Each cross arch's `FT-STORE` must list its twins as `PASS` and end on `the store
+           holds exactly the twin families of /opt/venv` (arm64: apache-tvm-ffi av iree-base-runtime
+           onnxruntime; riscv64: the same plus torch). The IREE and torch cross reconfigures, the ORT
+           cross pass and tvm-ffi's cross rebuild are unproved until then.
       2. **arm64 cross twins (Windows): the device proof.** In source since 2026-10-07 (CHANGELOG), proved
          statically in `:winarm64`. Left: republish `:winarm64`, then read the first `bundle-gate` job's step
          `free-threaded wheels: every cp314t twin loads with the GIL off`. Also left: cp314t `win_arm64` wheels

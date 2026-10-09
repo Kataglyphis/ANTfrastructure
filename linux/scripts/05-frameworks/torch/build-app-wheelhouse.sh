@@ -229,8 +229,9 @@ EOF
     fi
     # Without these pytorch silently turns BUILD_PYTHON off and the link fails on -ltorch_python.
     local py_inc py_lib
-    py_inc="$(cross_target_python_include_dir 2>/dev/null || true)"
-    py_lib="$(cross_target_python_library 2>/dev/null || true)"
+    # CROSS_PYTHON_*: the cp314t twin's target 3.14t; else the target GIL Python.
+    py_inc="${CROSS_PYTHON_INCLUDE_DIR:-$(cross_target_python_include_dir 2>/dev/null || true)}"
+    py_lib="${CROSS_PYTHON_LIBRARY:-$(cross_target_python_library 2>/dev/null || true)}"
     if [ -n "${py_inc}" ] && [ -d "${py_inc}" ] && [ -n "${py_lib}" ] && [ -f "${py_lib}" ]; then
         cat >> "${path}" <<EOF
 set(Python_INCLUDE_DIR "${py_inc}" CACHE PATH "target Python include dir")
@@ -359,10 +360,12 @@ _torch_ensure_c_extension() {
         return 0
     fi
 
-    # cmake links the ABI-mangled name; a literal torch/_C.so never appears.
+    # cmake links the ABI-mangled name; a literal torch/_C.so never appears. The wheel's own ABI, as the cp314t twin's tree holds both.
     build_torch_dir="${APP_WHEELHOUSE_BUILD_ROOT}/pytorch/torch"
+    pyabi="$(basename "${wheel_path}" | sed -nE 's/.*-cp[0-9]+-cp([0-9]+t?)-.*/\1/p')"
+    [ -n "${pyabi}" ] || pyabi="314"
     shopt -s nullglob
-    local -a built_c_exts=("${build_torch_dir}"/_C.cpython-*.so)
+    local -a built_c_exts=("${build_torch_dir}"/_C.cpython-"${pyabi}"-*.so)
     shopt -u nullglob
     # nullglob cannot drop a metacharacter-free word, so test the plain name.
     [ ! -f "${build_torch_dir}/_C.so" ] || built_c_exts+=("${build_torch_dir}/_C.so")
@@ -376,8 +379,6 @@ _torch_ensure_c_extension() {
     dest_name="$(basename "${built_c_ext}")"
     if [ "${dest_name}" = "_C.so" ]; then
         triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
-        pyabi="$(basename "${wheel_path}" | sed -nE 's/.*-cp([0-9]+)-cp[0-9]+-.*/\1/p')"
-        [ -n "${pyabi}" ] || pyabi="314"
         suffix="cpython-${pyabi}-${triplet}.so"
         dest_name="_C.${suffix}"
     fi
@@ -536,7 +537,36 @@ build_torch_wheel() {
         return 1
     fi
 
-    _collect_torch_wheel
+    _collect_torch_wheel || return 1
+    _torch_build_free_threaded_wheel
+}
+
+# The torch twin, gated by FT_TORCH_TWIN through its table row: the warm tree again on a cp314t venv, so only what sees Python rebuilds.
+_torch_build_free_threaded_wheel() {
+    local venv="${APP_WHEELHOUSE_BUILD_ROOT}/torch-ft-venv" t0
+    declare -F ft_twin_start >/dev/null || { warn "torch: free-threaded-wheels.sh is not mounted; its RUN needs the per-file mount"; return 1; }
+    ft_twin_start torch "${venv}" "${BUILD_PYTHON}" pip setuptools wheel numpy packaging pyyaml typing-extensions six \
+        || { [ $? -eq 1 ] && return 0; return 1; }
+    t0="$(date +%s)"
+    local BUILD_PYTHON="${venv}/bin/python" dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-torch-cp314t"
+    local python_sysconfig_export cmake_args_string="${cmake_args_string}"
+    python_sysconfig_export="$(ft_target_env)"
+    # On the command line: the toolchain file's CACHE sets cannot move the GIL pass's cached Python.
+    cmake_args_string+=" $(shell_quote_args "-DPython_EXECUTABLE=${BUILD_PYTHON}" "-DPython3_EXECUTABLE=${BUILD_PYTHON}" \
+        "-DPython_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPython3_INCLUDE_DIR=${FT_TARGET_INCLUDE}" \
+        "-DPython_LIBRARY=${FT_TARGET_LIBRARY}" "-DPython3_LIBRARY=${FT_TARGET_LIBRARY}")"
+    rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
+    # The GIL pass's module would otherwise ride into the twin, as IREE's did.
+    rm -f "${src_dir}"/torch/_C.cpython-*.so
+    if ! CROSS_PYTHON_INCLUDE_DIR="${FT_TARGET_INCLUDE}" CROSS_PYTHON_LIBRARY="${FT_TARGET_LIBRARY}" _torch_run_setup_py; then
+        warn "torch: the cp314t pass over ${src_dir} failed"
+        return 1
+    fi
+    log "torch: the cp314t pass took $(( $(date +%s) - t0 ))s in the warm tree"
+    _torch_ensure_c_extension "${dist_dir}" || return 1
+    retag_directory_wheels "${dist_dir}" torch "${wheel_platform}" "${BUILD_PYTHON}"
+    ft_twin_store_built "${dist_dir}" "${APP_WHEELHOUSE_FT_DIR}" || return 1
+    rm -rf "${venv}" "${dist_dir}"
 }
 
 install_host_torch_for_vision() {
@@ -964,7 +994,14 @@ _iree_package_free_threaded_wheels() {
 
 # <free-threaded python>: reconfigure the target tree onto it and rebuild; what does not see Python stays built.
 _iree_free_threaded_rebuild() {
-    if ! cmake -S "${src_dir}" -B "${target_build}" -DPython_EXECUTABLE="$1" -DPython3_EXECUTABLE="$1" \
+    local -a py_args=("-DPython_EXECUTABLE=$1" "-DPython3_EXECUTABLE=$1")
+    if [ -n "${FT_TARGET_INCLUDE:-}" ]; then
+        # The cross configure pinned the target GIL headers and libpython; the twin takes the target 3.14t's, and its sysconfig for the SOABI.
+        py_args+=("-DPython3_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPYTHON_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPython3_INCLUDE_DIRS=${FT_TARGET_INCLUDE}"
+                  "-DPython3_LIBRARY=${FT_TARGET_LIBRARY}" "-DPYTHON_LIBRARY=${FT_TARGET_LIBRARY}")
+        eval "$(ft_target_env)"
+    fi
+    if ! cmake -S "${src_dir}" -B "${target_build}" "${py_args[@]}" \
             > "${target_build}.ft-cfg.log" 2>&1 \
        || ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.ft.log" 2>&1; then
         warn "IREE free-threaded rebuild failed"

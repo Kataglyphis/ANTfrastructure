@@ -146,9 +146,9 @@ _tvm_stage_ffi_wheel() {
     return 0
 }
 
-# tvm-ffi again on a cp314t venv in the GIL pass's build dir, so only its Cython core recompiles; apache-tvm is py3 and needs none.
+# [mode]: tvm-ffi again on a cp314t venv in the GIL pass's build dir, so only its Cython core recompiles; apache-tvm is py3 and needs none.
 _tvm_stage_ffi_wheel_free_threaded() {
-    local ft_venv="${tvm_dir}/.venv-cp314t" ft_out="${tvm_dir}/dist-cp314t" ft_log="${tvm_dir}/tvm-ffi-wheel-build-cp314t.log" since
+    local mode="${1:-native}" ft_venv="${tvm_dir}/.venv-cp314t" ft_out="${tvm_dir}/dist-cp314t" ft_log="${tvm_dir}/tvm-ffi-wheel-build-cp314t.log" since
     compgen -G "${TVM_WHEEL_DIR}/apache_tvm_ffi-*.whl" >/dev/null || return 0
     # shellcheck source=../03-media/free-threaded-wheels.sh
     source "${SCRIPT_DIR}/../03-media/free-threaded-wheels.sh" || die "TVM: free-threaded-wheels.sh is not mounted; its RUN needs the per-file mount"
@@ -156,10 +156,14 @@ _tvm_stage_ffi_wheel_free_threaded() {
       || { [ $? -eq 1 ] && return 0; die "TVM: the apache-tvm-ffi cp314t twin cannot be built (see above)"; }
     since="${SECONDS}"
     (
-      venv_python="${ft_venv}/bin/python" TVM_WHEEL_DIR="${ft_out}"
-      _tvm_run_wheel_build "ffi-native" "${ft_log}" "${tvm_dir}/3rdparty/tvm-ffi"
+      # A cross twin takes the target 3.14t's sysconfig, as the GIL pass takes the target GIL one.
+      venv_python="${ft_venv}/bin/python" TVM_WHEEL_DIR="${ft_out}" tvm_wheel_sysconfig_export="$(ft_target_env)"
+      _tvm_run_wheel_build "ffi-${mode}" "${ft_log}" "${tvm_dir}/3rdparty/tvm-ffi"
     ) || die "TVM: the free-threaded apache-tvm-ffi build failed (${ft_log})"
-    log "TVM: build-wheel-ffi-native rebuilt for cp314t in $(( SECONDS - since ))s"
+    log "TVM: build-wheel-ffi-${mode} rebuilt for cp314t in $(( SECONDS - since ))s"
+    if [ -n "${FT_TARGET_PLATFORM_TAG:-}" ]; then
+      retag_directory_wheels "${ft_out}" apache_tvm_ffi "${FT_TARGET_PLATFORM_TAG}" "${ft_venv}/bin/python"
+    fi
     ft_twin_store_built "${ft_out}" "${prefix}/wheels-cp314t" || die "TVM: no proved apache-tvm-ffi cp314t twin (see above)"
     rm -rf "${ft_venv}" "${ft_out}"
 }
@@ -274,6 +278,8 @@ _tvm_build_wheel_cross() {
     retag_directory_wheels "${TVM_WHEEL_DIR}" "*" "${wheel_platform}" "$venv_python"
     # The retag fixed only the file names; judge the final contents last.
     _tvm_reject_wrong_soabi_wheels
+    # Only over a GIL ffi wheel that survived the SOABI check; the twin is gated and proved on its own.
+    _tvm_stage_ffi_wheel_free_threaded "cross-${wheel_platform}"
 }
 
 # Builds the wheel, then installs tvm-ffi and it (or the source tree) into the build venv.
