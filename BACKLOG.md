@@ -95,12 +95,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `--force-reinstall` leaves `cython\` and still fails.
 
 - [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
-      yarn.lock today). (3) Consumers to follow: jotrockenmitlocken (sqlite3 3.7.0 in its lock and
-      a refreshed `web/sqlite3.wasm`), ANThology (lock maintenance), OmniAccelerANT's `environment: flutter: '>=3.41.6'`
+      yarn.lock today). (3) Consumers to follow: OmniAccelerANT's `environment: flutter: '>=3.41.6'`
       floor (its lock now needs 3.47.0), and optionally OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule
       into the preset. (4) OmniAccelerANT's lock maintenance (go_router 18.0.2, sqlite3 3.7.0 and the wasm) waits
       locally for its hub gitlink to move past this commit, which waits for the published images (CON72). (5) npm,
       poetry, pdm and pnpm locks report `behind: unknown`: none has a dry run that diffs the lock (measured 2026-10-08).
+      (6) jotrockenmitlocken carries sqlite3 3.7.0 and the 3.7.0 `web/sqlite3.wasm` since 93083c3 (2026-10-09), but its
+      own hub pin (ef7ddb9d) still sets `setup-sqlite3-wasm.sh` to 3.3.1, so a manual run fetches the old asset until that
+      gitlink moves past 77690147 (with the CON72 consumer moves).
 
 - [ ] **CON83 — the riscv64 Python lane: seed its sync, and test the cross wheel** [M, ★★]. Found while fixing
       OrchestrANT's riscv64 lane (2026-10-07): its emulated `uv sync` of the `test` extra builds numpy, matplotlib,

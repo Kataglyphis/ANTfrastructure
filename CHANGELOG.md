@@ -6,6 +6,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — CON84 item 3: jotrockenmitlocken on sqlite3 3.7.0; ANThology has no lock to maintain
+
+- **jotrockenmitlocken** 93083c3: `sqlite3 ^3.7.0`, lock 3.6.0 -> 3.7.0 (nothing else moved), and `web/sqlite3.wasm`
+  replaced (it was still 3.3.1) by the 3.7.0 asset, sha256 `fbcd2e82…` = `SQLITE3_WASM_SHA256`. Dart gate in `:latest`:
+  122 tests; CI runs 37933329919 (web build + deploy) and 37933328272 (CodeQL) green.
+- **ANThology** is a library: `pubspec.lock` is gitignored, and Renovate reported nothing behind, so there is no commit.
+  A fresh `flutter pub upgrade` resolves sqlite3 3.7.0 and go_router 18.0.2 within its constraints; its gate passes (42
+  tests).
+
 ## 2026-10-09 — clone-into-short-path proved on a pull_request merge ref in CI (CON84 item 2)
 
 - **Why the selftest never hit it:** `actions-selftest.yml` had the `pull_request` trigger, but the hub had never had a
