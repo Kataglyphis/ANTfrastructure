@@ -3474,8 +3474,8 @@
  {
   "id": "probe.jdk-row-asserted",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python\"",
-  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python\"",
+  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
+  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "dropping the row ships an Android SDK with no JDK again: Gradle stops the whole lane and the gate says nothing"
  },
@@ -3514,16 +3514,16 @@
  {
   "id": "probe.appimagetool-row-asserted",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python\"",
-  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python\"",
+  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
+  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "dropping the row lets an unreadable appimagetool ship again and the gate says nothing"
  },
  {
   "id": "probe.flatpak-row-asserted",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python\"",
-  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python\"",
+  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
+  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "dropping the row from the list is how a contract stops being asserted without anything looking broken: the gate still passes, and the seven missing runtimes cost every consumer run ~1.9 GB again"
  },
@@ -5970,8 +5970,8 @@
  {
   "id": "probe.ort-crate-env-row",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": " web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python\"",
-  "replace": " web-lane-tools chrome android-emulator cargo-qa-tools free-threaded-python\"",
+  "find": " web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
+  "replace": " web-lane-tools chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "G3 on the shipped Linux image: the row is the assertion"
  },
