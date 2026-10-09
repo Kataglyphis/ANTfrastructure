@@ -6,6 +6,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — `:latest` published from hub 655a2c4e; CON56/58/65 closed, CON66/71/72/79/82 Linux halves proven
+
+- **Published** `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`, index
+  `sha256:af7252a01f7e5099e54265337fea42c94cc6cf79a0dea1ab9fde0aaa2853af58`: amd64 `sha256:ba3115f1…`, arm64
+  `sha256:15a905c6…`, riscv64 `sha256:81db10eb…`, each labelled revision 655a2c4e. Runtime stage from chain run
+  20261009-022859-db31d92c; earlier stages from runs 20261007-221241, 20261007-233233, 20261008-103605 and
+  20261008-113607. All three wrapper smokes passed, the runtime-image smoke had 0 failures on every arch.
+- **Closed:** CON56 (`rg` 15.1.0), CON58 (`aarch64-linux-android` installed) and CON65 (`cargo-qa-tools` row on
+  amd64 and arm64), all three arches where they apply. **Linux halves proven** (BACKLOG): CON66 (python3.14t 3.14.8,
+  GIL off), CON71 (26 LLVM tools at 23.1.3), CON72 (the 2026-10-07 pins), CON79 (FT-STORE on amd64 with the av,
+  IREE and tvm-ffi twins) and CON82 (Vulkan 1.4.363.0, Chrome for Testing 155, Node 26.11.0, the 26.08 flatpak
+  refs, vvdec 3.2.1).
+- **The chain needed** c0fb66be, df0736cd, 815cfebe, 537b60f2, 6c11da0c, 02801990, d5b6d9db, f3b9ebb4 and 655a2c4e,
+  each with its own entry above or below.
+
 ## 2026-10-09 — the media fan-in binds view stages, not the branch images
 
 - **The rocm chain stopped at the site-packages merge three times on 2026-10-09.** robocopy reported

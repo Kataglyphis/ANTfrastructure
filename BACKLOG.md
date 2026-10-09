@@ -6,9 +6,9 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-08**, read from the registry (hub = the image's `revision` label, digest =
-the per-arch manifest). Published: `:latest` (2026-10-03, hub b4d5fdd5; amd64 `686fdf4e…`,
-arm64 `26957741…`, riscv64 `67887737…`), `:winamd64` (2026-10-08, hub 5dfeb42d, `e96203a8…`), `:winamd64-nvidia` (2026-10-02, hub 7a5a2a33, `a9e67332…`),
+**State 2026-10-09**, read from the registry (hub = the image's `revision` label, digest =
+the per-arch manifest). Published: `:latest` (2026-10-09, hub 655a2c4e, index `af7252a0…`;
+amd64 `ba3115f1…`, arm64 `15a905c6…`, riscv64 `81db10eb…`), `:winamd64` (2026-10-08, hub 5dfeb42d, `e96203a8…`), `:winamd64-nvidia` (2026-10-02, hub 7a5a2a33, `a9e67332…`),
 `:winamd64-rocm` (2026-10-03, hub 1d910553, `493e80f1…`), `:winarm64` (2026-10-04, hub
 80647a9a, `97bbcd35…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-nvidia`
 (2026-10-02, hub b4d5fdd5, amd64 `95c3a343…`, built without DeepStream) and `:latest-rocm`
@@ -64,8 +64,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       device smoke reports `sys._is_gil_enabled() == False` for the bundle's `python3.14t.exe`.
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
       and Windows amd64 are in source since 2026-10-07 (CHANGELOG). Open:
-      1. **Prove in full image builds**: Linux — the nvidia and rocm ORT twins (one call each), the IREE
-         compiler twin at v3.12.0 (proved locally on v3.11.0's tree, 2026-10-07), FT-STORE green on `:latest` amd64 (and arm64 on a native arm64 chain), the ORT census
+      1. **Prove in full image builds**: Linux — FT-STORE is green on the published `:latest` amd64
+         (2026-10-09, hub 655a2c4e) with the cp314t twins of av 19.0.1, iree_base_compiler/runtime 3.12.0
+         and apache_tvm_ffi 0.1.14.post0 loaded with the GIL off. Open: the nvidia and rocm ORT twins (one
+         call each), FT-STORE on arm64 (a native arm64 chain), the ORT census
          taking the twin, `PYTHON_WHEELS_CP314T` in FT-STORE, and a 3.14t venv reconciled onto the real ORT twin
          (`uv_reconcile_chain_ort`, proved locally only with stand-in twins). Windows — a `:winamd64` image build carrying all five twins, so smoke section 20 checks its
          exact set; the IREE v3.12.0 clang-cl fixes and the `iree-base-compiler` twin are proved locally on the
@@ -116,14 +118,17 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       grading runs, which changes product behaviour; and re-measuring the process ceiling per launch
       on a busy shared box (about 0.37 s per launch under QEMU).
 
-- [ ] **CON82 — prove the 2026-10-07 pin bumps in the images** [M, ★★]. Linux base/sdk on Vulkan SDK 1.4.363.0, with
-      the arm64/riscv64 foreign SDK reaching 24/24 without the retired slang patch and the runtime smoke advertising
-      1.4.363.0; the package stage with Chrome for Testing 155, Node 26.11.0 and the seven 26.08 flatpak refs on amd64
-      and arm64; Windows base (scoop vulkan 1.4.363.0 and the arm64 component), the rocm loader zip, arm64
-      Vulkan-ValidationLayers at vulkan-sdk-1.4.363.0, the rocm FFmpeg against VK_HEADER_VERSION 363, the media x265 4.2
-      build and the rocm llama stage's ggml-hip from b11476; Linux media vvdec v3.2.1; then OmniAccelerANT's flatpak and
-      catcam lanes on runtime 26.08 once its hub gitlink moves. Also `bump_versions.py --audit-sha-pairs` fails since
-      before this bump: about 100 SHA keys have no refresh spec (`X265_SHA256` among them).
+- [ ] **CON82 — prove the 2026-10-07 pin bumps in the images** [M, ★★]. **The Linux items are proven**
+      in the `:latest` published 2026-10-09 (hub 655a2c4e): the Vulkan 1.4.363.0 loader on all three arches,
+      the foreign SDK at 24/24 components on arm64 and riscv64 without the retired slang patch, the runtime
+      smoke advertising 1.4.363.0, Chrome for Testing 155.0.8059.39 rendering headless, Node 26.11.0, the
+      26.08 flatpak refs on amd64 and arm64, and vvdec 3.2.1 (`libvvdec.pc` and `libvvdec.so.3.2.1` on all
+      three). The foreign SDK also needed vkprofiles' PyInstaller step skipped on foreign arches (f3b9ebb4).
+      Open: Windows base (scoop vulkan 1.4.363.0 and the arm64 component), the rocm loader zip, arm64
+      Vulkan-ValidationLayers at vulkan-sdk-1.4.363.0, the rocm FFmpeg against VK_HEADER_VERSION 363, the
+      media x265 4.2 build and the rocm llama stage's ggml-hip from b11476; then OmniAccelerANT's flatpak and
+      catcam lanes on runtime 26.08 once its hub gitlink moves. Also `bump_versions.py --audit-sha-pairs`
+      fails since before this bump: about 100 SHA keys have no refresh spec (`X265_SHA256` among them).
 
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
       (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.
@@ -145,15 +150,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       ggml-hip against its CPU result. With no bundled runtime a bare Windows host's loader takes Adrenalin's
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
       re-bundle TheRock's three runtime DLLs and the byte-identity check that went with them.
-
-- [ ] **CON56 — ripgrep in the images** [S, ★★]. Owner rule 2026-10-05: search with `rg`
-      in every repo of the family (`AGENTS.md` § *Searching the tree*). In source the same
-      day: `setup-package-image.sh` adds `ripgrep` beside jq/Xvfb (and `rg` to the presence
-      check), and `Install-ScoopTools.ps1` adds `main/ripgrep` to the floating tools. Done
-      when a published `:latest` (all three arches) and `:winamd64` answer `rg --version`.
-      **The Windows half is done:** the `:winamd64` published 2026-10-06, built from hub
-      f4c0e2be, answers `ripgrep 15.2.0`. **The Linux half is open:** the published `:latest`
-      (`sha256:6ceffedc`) still has no `rg` on amd64 or arm64, and waits on a Linux rebuild.
 
 - [ ] **CON72 — the 2026-10-07 Renovate bumps reach a published image** [L, ★★]. In source on
       2026-10-07 (CHANGELOG): LLVM 23.1.3, Rust 1.99.0, CPython 3.14.8, CMake 4.4.4, uv 0.12.23,
@@ -182,16 +178,22 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       win-arm64 `apache_tvm` wheel with `TVM_COMMIT`'s hash, which is not PEP 440 and makes
       `tvm\_version.py` invalid Python. It has been live since `TVM_COMMIT` reached Windows
       (2026-08-28); no arm64 gate imports tvm. Done when a published `:latest` (all arches),
-      `:winamd64` and `:winarm64` built from this hub pass their smokes. `:winamd64` has:
-      published 2026-10-08 from hub 5dfeb42d (`e96203a8…`), smoke gate 268 assertions passed,
-      1 skipped. That chain also needed x265 4.2's `advapi32` (98db1797).
+      `:winamd64` and `:winarm64` built from this hub pass their smokes. Done so far:
+      - `:winamd64`: published 2026-10-08 from hub 5dfeb42d (`e96203a8…`), smoke gate 268 assertions
+        passed, 1 skipped. That chain also needed x265 4.2's `advapi32` (98db1797).
+      - `:latest`: published 2026-10-09 from hub 655a2c4e, all three wrapper smokes and runtime smokes
+        clean. Proven in it: LLVM 23.1.3, Rust 1.99.0, CPython 3.14.8, CMake 4.4.4 and uv 0.12.23 (all
+        three arches), Flutter 3.47.6 (amd64, arm64), the IREE v3.12.0 and PyAV 19.0.1 cp314t twins
+        (FT-STORE, amd64), Node 26.11.0 and Chrome for Testing 155. The chain's fixes are in the
+        CHANGELOG of 2026-10-08/09.
+      Open: a `:winarm64` built from this hub and passing its bundle gate.
 
-      **OrchestrANT's Linux x64 and arm64 lanes are red until then** (c33edb3, run
+      **OrchestrANT's Linux x64 and arm64 lanes were red on the old `:latest`** (c33edb3, run
       37597200372): its hub pin carries `PYTHON_VERSION=3.14.8`, and `python-app-bundle.sh`
-      asks the published image's uv 0.12.17 for a 3.14.8 runtime it does not know (`No download
-      found for request: cpython-3.14.8-linux-x86_64-gnu`). uv 0.12.23 in the next `:latest`
-      serves it. Lesson: a consumer's pin bump that moves `PYTHON_VERSION` or `UV_VERSION` waits
-      for the image.
+      asked that image's uv 0.12.17 for a 3.14.8 runtime it did not know (`No download
+      found for request: cpython-3.14.8-linux-x86_64-gnu`). The 2026-10-09 `:latest` carries uv
+      0.12.23, which serves it, so those lanes should pass on a rerun; not verified. Lesson: a
+      consumer's pin bump that moves `PYTHON_VERSION` or `UV_VERSION` waits for the image.
 
       **Once the images are published, every consumer moves its hub gitlink**, and these wait on it:
       - **OmniAccelerANT**: its local lock-maintenance commits (go_router 18.0.2, sqlite3 3.7.0 with
@@ -206,34 +208,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux image (all arches)
 
-- [ ] **CON65 — cargo-audit, cargo-deny and cargo-tarpaulin in the image** [M, ★★]. Owner rule
-      2026-10-06: what a lane needs goes into the image. Every OxidANT run `cargo install`ed all
-      three from crates.io. In source the same day:
-      - The package stage installs them on amd64 and arm64 from their upstream release binaries,
-        SHA-pinned in `versions.env` beside the versions (`install_cargo_qa_tools`).
-      - riscv64 ships none: no upstream binary, and its lanes cross-build on amd64.
-      - The smoke table's `cargo-qa-tools` row compares each binary's version with its pin.
-      - `cargo_security_checks.sh` and `cargo_coverage.sh` build a tool only when the pinned
-        version is not on `PATH` (`cargo_install_pinned`).
-      - Docs: `docs/consumer-image-contract.md` § The cargo QA tools.
-      **Order matters, and it holds:** OxidANT's hub pin had to reach this commit before a
-      `:latest` with the tools publishes, because the old scripts' `cargo install` fails on a
-      binary cargo did not install. OxidANT pins cef76510 since 5381dc1a (2026-10-06). Done
-      when a published `:latest` passes the row on amd64 and arm64.
-- [ ] **CON66 — a pinned free-threaded Python in the image** [S, ★★]. Every `3.14t` leg
-      (OrchestrANT, WebDavClient) had uv download a free-threaded interpreter per run, its patch
-      version unpinned. Since 2026-10-07 (owner decision) the toolchain stage builds it from the
-      `PYTHON_VERSION` tarball (`build_python.sh`, `PYTHON_VARIANTS=gil,freethreaded`), natively
-      and per cross arch, and the package stage COPYs
-      `/opt/python-cross-ft/<arch>/opt/python-freethreaded` to `/opt/python-freethreaded`
-      (`docs/consumer-image-contract.md` § The free-threaded Python). Proven in `:latest`
-      containers: every arch's tree passes the row. Open, only a published chain proves it:
-      - the toolchain → media → android → package chain builds in cross AND native mode, with
-        BuildKit expanding `${TARGET_ARCH:-${TARGETARCH}}` in the COPY;
-      - the toolchain stage's added time on the CI runners (estimate 25-40 min on 4 cores);
-      - a native arm64 toolchain build (PGO on arm64);
-      - a published `:latest` passes `free-threaded-python` (prefix check included) on amd64,
-        arm64 and riscv64, and the consumers' `3.14t` legs stay green on it.
+- [ ] **CON66 — the consumers' `3.14t` legs on the image's free-threaded Python** [S, ★★]. The image
+      half is proven: the `:latest` published 2026-10-09 (hub 655a2c4e) carries
+      `/opt/python-freethreaded` with python3.14t 3.14.8 and `sys._is_gil_enabled() == False` on amd64,
+      arm64 and riscv64, and passes the `free-threaded-python` row, prefix check included
+      (`docs/consumer-image-contract.md` § The free-threaded Python). Open:
+      - OrchestrANT's and WebDavClient's `3.14t` legs pass on it with `UV_PYTHON_DOWNLOADS=never`, once
+        their hub gitlinks move (CON72). Not run yet.
+      - The toolchain stage's added time on a CI runner (estimate 25-40 min on 4 cores); a local chain
+        time is not that number.
+      - A native arm64 toolchain build (PGO on arm64).
 
 - [ ] **CON71 — every LLVM tool is the pinned release, on Linux and Windows** [M, ★★]. Owner
       decision 2026-10-06, reversing CON15's "clang-format and llvm-config stay 21". Measured on
@@ -261,20 +245,15 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - A configure of llvm-project 23.1.1 with the new flags installs all 13 missing names.
       - On `:winamd64`, the new entrypoint leaves only IREE's `FileCheck` off the pin.
 
-      Done when a published `:latest` and `:winamd64` pass both gates. Then:
+      **The Linux half is done:** the `:latest` published 2026-10-09 (hub 655a2c4e) reports
+      `clang-format`, `clang-tidy`, `llvm-tblgen`, `FileCheck`, `lldb` and `ld.lld` at 23.1.3 on all three
+      arches, and `validate-compilers.sh smoke` passes all 26 tools (`llvm-tblgen` after 02801990).
+      Open: a published `:winamd64` passing `Test-Container.ps1`'s 21-tool check. Then:
       - AccelerANTgine switches `scan-build-21` to `scan-build`;
       - each consumer re-runs its formatter under clang-format 23 and commits the result.
       Measured the same day: AccelerANTgine's 38 C++ files drift in 25 under clang-format 21 and
       26 under 23, the native plugin's 26 files in 25 under both. Neither gates C++ formatting, so
       the switch reds nothing there; BeschleunigerBallett's sweep already uses 23.
-- [ ] **CON58 — the Android Rust target in the image** [S, ★★]. Cargokit builds an
-      Android app's Rust for `aarch64-linux-android`. `:latest` carried std for
-      aarch64/riscv64/wasm32/x86_64 only, so OmniAccelerANT's Android lane added the
-      target on every run (about 4 s, measured 2026-10-05, and a network dependency).
-      In source the same day: `install-rust.sh` adds it to the pinned toolchain, and
-      `smoke-toolchain.sh` fails an image where it does not emit an object. Done when a
-      published `:latest` lists it under `rustup target list --installed` on all three
-      arches.
 
 - [b] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
       (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
