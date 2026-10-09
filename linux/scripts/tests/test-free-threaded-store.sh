@@ -146,6 +146,18 @@ t_assert_contains "$(FT_TORCH_TWIN=0 _store cross ft_store_check_set cross 2>&1)
 _stores "${_RV_GIL}" ""
 t_assert_fails _k 0 _store cross ft_store_check_set cross
 
+t_case "the store's re-proof: a cross stage defers a twin missing only target libraries; any other failure and native stay red"
+_stores "" "av-19.0.1-cp314-cp314t-linux_aarch64.whl"
+_SO_MISS="free-threaded: av-19.0.1-cp314-cp314t-linux_aarch64.whl is not proved: ERROR: cannot load av._core: libgme.so.0: cannot open shared object file: No such file or directory
+ERROR: cannot load av.frame: libgme.so.0: cannot open shared object file: No such file or directory"
+_SO_GIL="free-threaded: av-19.0.1-cp314-cp314t-linux_aarch64.whl is not proved: ERROR: cannot load av._core: libgme.so.0: cannot open shared object file: No such file or directory
+ERROR: the GIL was re-enabled, first by av.frame"
+_prove() { PROVE_OUT="$2" _store "$1" eval 'ft_soabi_gate() { :; }; ft_prove_wheel() { printf "%s\n" "${PROVE_OUT}" >&2; return 1; }; ft_store_prove_all'; }
+t_assert_ok _prove cross "${_SO_MISS}"
+t_assert_contains "$(_prove cross "${_SO_MISS}" 2>&1)" "av-19.0.1-cp314-cp314t-linux_aarch64.whl: load proof deferred to the target image FT-STORE; this cross stage lacks: libgme.so.0"
+t_assert_fails _prove cross "${_SO_GIL}"
+t_assert_fails _prove native "${_SO_MISS}"
+
 t_case "the store's record: the mode, every twin, and one reasoned line per package without one"
 _stores "${_GIL}" "${_FT}"
 _store native ft_store_write_record native >/dev/null
