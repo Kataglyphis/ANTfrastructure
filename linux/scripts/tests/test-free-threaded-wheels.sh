@@ -237,6 +237,13 @@ t_assert_eq 0 "${_rc}" "${_out}"
 t_assert_contains "${_out}" "free-threaded: rvp-1-cp314-cp314t-linux_riscv64.whl: 1 compiled module(s) of rv loaded on free-threaded 3.14.8; the GIL stayed disabled (on riscv64 under qemu-riscv64)"
 t_assert_contains "$(cat "${CALLS}")" "qemu -L ${_work}/sysroot -E LD_LIBRARY_PATH=${_work}/rv/riscv64/opt/python-freethreaded/lib:"
 t_assert_contains "$(cat "${CALLS}")" ":/opt/ffmpeg/lib -U PYTHONPATH -U PYTHONHOME ${_work}/rv/riscv64/opt/python-freethreaded/bin/python3.14t -I -c"
+mkdir -p "${_work}/gcc16/riscv64-linux-gnu/lib" "${_work}/xbin"; : > "${_work}/gcc16/riscv64-linux-gnu/lib/libstdc++.so.6"
+printf '#!/usr/bin/env bash\necho "%s/gcc16/lib/gcc/riscv64-linux-gnu/16.2.0/../../../../riscv64-linux-gnu/lib/libstdc++.so.6"\n' "${_work}" > "${_work}/xbin/riscv64-linux-gnu-g++"
+chmod +x "${_work}/xbin/riscv64-linux-gnu-g++"; mkdir -p "${_work}/gcc16/lib/gcc/riscv64-linux-gnu/16.2.0"
+: > "${CALLS}"
+PATH="${_work}/xbin:${PATH}" FT_QEMU_SYSROOT="${_work}/sysroot" _qx "${_work}/rvp-1-cp314-cp314t-linux_riscv64.whl" rv >/dev/null 2>&1
+t_assert_contains "$(cat "${CALLS}")" "LD_LIBRARY_PATH=${_work}/rv/riscv64/opt/python-freethreaded/lib:${_work}/gcc16/riscv64-linux-gnu/lib:${_work}/sysroot/lib/riscv64-linux-gnu:" \
+  "the cross GCC's target libstdc++ comes before the sysroot's older one (an ORT twin needs GLIBCXX_3.4.36)"
 t_assert_contains "$(cat "${CALLS}")" "free-threaded-wheel.py prove rv"
 t_assert_eq "" "$(compgen -G "${_work}/ft-prove.*")" "the unpacked site is gone"
 _out="$(QEMU_RC=1 QEMU_SAYS="ERROR: the GIL was re-enabled, first by m.x" FT_QEMU_SYSROOT="${_work}/sysroot" _qx "${_work}/rvp-1-cp314-cp314t-linux_riscv64.whl" rv 2>&1)"; _rc=$?
