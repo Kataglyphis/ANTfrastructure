@@ -188,7 +188,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       37597200372): its hub pin carries `PYTHON_VERSION=3.14.8`, and `python-app-bundle.sh`
       asked that image's uv 0.12.17 for a 3.14.8 runtime it did not know (`No download
       found for request: cpython-3.14.8-linux-x86_64-gnu`). The 2026-10-09 `:latest` carries uv
-      0.12.23, which serves it, so those lanes should pass on a rerun; not verified. Lesson: a
+      0.12.23, which serves it. Rerun 2026-10-09 on that image (digest `af7252a0`): run 37672555194
+      (x64) and 37672555211 (arm64) passed; the app bundle downloaded `cpython-3.14.8-linux-x86_64-gnu`.
+      The riscv64 lane (37672555206) was not waited for. Lesson: a
       consumer's pin bump that moves `PYTHON_VERSION` or `UV_VERSION` waits for the image.
 
       **Once the images are published, every consumer moves its hub gitlink**, and these wait on it:
@@ -209,8 +211,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `/opt/python-freethreaded` with python3.14t 3.14.8 and `sys._is_gil_enabled() == False` on amd64,
       arm64 and riscv64, and passes the `free-threaded-python` row, prefix check included
       (`docs/consumer-image-contract.md` § The free-threaded Python). Open:
-      - OrchestrANT's and WebDavClient's `3.14t` legs pass on it with `UV_PYTHON_DOWNLOADS=never`, once
-        their hub gitlinks move (CON72). Not run yet.
+      - **Seen on 2026-10-09, without a pin move:** reruns on that image (digest `af7252a0`) of
+        OrchestrANT x64/arm64 (runs 37672555194, 37672555211) and WebDavClient x64/arm64 (37675558500,
+        37675558605) passed, and each `3.14t` leg resolved `CPython 3.14.8+freethreaded` at
+        `/usr/local/bin/python3.14t` instead of downloading one. riscv64 not checked.
+      - Left: those legs set `UV_PYTHON_DOWNLOADS=never`, so a missing interpreter fails instead of
+        downloading, once their hub gitlinks move (CON72).
       - The toolchain stage's added time on a CI runner (estimate 25-40 min on 4 cores); a local chain
         time is not that number.
       - A native arm64 toolchain build (PGO on arm64).
