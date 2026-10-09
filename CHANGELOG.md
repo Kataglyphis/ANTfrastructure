@@ -6,6 +6,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — clone-into-short-path proved on a pull_request merge ref in CI (CON84 item 2)
+
+- **Why the selftest never hit it:** `actions-selftest.yml` had the `pull_request` trigger, but the hub had never had a
+  PR, so every run was a `push` or `schedule`, where the SHA is already in the clone. The action also failed for a ref
+  NAME such as `refs/pull/<n>/merge`: the fetch fills only `FETCH_HEAD`, so the checkout of the name found nothing.
+- **Fix** (05ea8a26): the action checks out `FETCH_HEAD` after fetching a ref name and reports a `fetched` output; the
+  selftest asserts `fetched` per event and, on a PR, clones `refs/pull/<n>/merge` by name and checks it is a two-parent
+  merge whose second parent is the PR head.
+- **Proved:** draft PR #3 (closed unmerged, branch deleted), run 37931553972: `refs/pull/3/merge is not in the clone;
+  fetching it from origin`, `Checked out refs/pull/3/merge at 6d90b8fe… (fetched=true)`, `merge ref checked out at
+  6d90b8fe… (base 05ea8a26…, PR head b4f86936…)`, every job green.
+
 ## 2026-10-09 — `bump_versions.py --audit-unclassified`: all 441 pin-file keys classified, 62 were not
 
 - **What failed:** `--check`'s self-audit listed 62 keys in no class. It only printed them, so nothing went red.
