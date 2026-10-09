@@ -96,7 +96,9 @@ _fwd_live() {
 }
 
 t_case "the live tree advertises what riscv64 actually contains"
-t_assert_eq "4.4.2"   "$(_fwd_live riscv64 CMAKE_VERSION)" "Kitware publishes no riscv64 archive; cmake comes from apt"
+_py_cmake="$(sed -n 's/^PY_CMAKE_VERSION=//p' "${TESTS_DIR}/../01-core/versions.env")"
+t_assert_eq "${_py_cmake}" "$(_fwd_live riscv64 CMAKE_VERSION)" \
+  "riscv64's cmake on PATH is the venv's pip wheel at PY_CMAKE_VERSION; bump CMAKE_VERSION_RISCV64 with it"
 t_assert_eq "22.22.1" "$(_fwd_live riscv64 NODE_VERSION)"  "Node.js publishes no riscv64 tarball; node comes from apt"
 t_assert_eq "4.4.4"   "$(_fwd_live amd64 CMAKE_VERSION)"   "amd64 keeps the Kitware pin"
 

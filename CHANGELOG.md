@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — riscv64 advertises the cmake it runs: the venv's pip wheel
+
+- **The riscv64 runtime-image smoke failed one row** (chain run 20261008-200606; amd64 and arm64 clean): `the riscv64
+  image ADVERTISES CMAKE_VERSION=4.4.2 but actually has 4.4.4`. In that image `cmake` on PATH is
+  `/opt/python/.venv/bin/cmake`, the runtime venv's pip wheel at `PY_CMAKE_VERSION` (4.4.4 since the 2026-10-07 Renovate
+  bump); apt's `/usr/bin/cmake` behind it is 4.2.3. `CMAKE_VERSION_RISCV64=4.4.2` was right only while the wheel was 4.4.2,
+  and its comment credited the Ubuntu archive.
+- **Fix** (`01-core/versions.env`): `CMAKE_VERSION_RISCV64=4.4.4`, the comment names the wheel, and
+  `test-version-forwarding.sh` now asserts the riscv64 forward equals `PY_CMAKE_VERSION`, so a wheel bump alone fails it
+  (proved by moving the wheel pin to 4.4.5). Only riscv64's forwarded value changes; amd64 and arm64 keep their cache.
+
 ## 2026-10-08 — the arm64/riscv64 images drop the Vulkan SDK's builder-arch vkprofiles (CON82)
 
 - **The runtime-image smoke failed one row on arm64** (chain run 20261008-141457; amd64 0 failures):
