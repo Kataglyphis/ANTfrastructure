@@ -180,6 +180,36 @@ t_case "prove: a GIL interpreter cannot prove anything"
 t_assert_eq "2" "$(t_rc python3 -I "${HELPER}" prove pip)"
 t_assert_contains "$(python3 -I "${HELPER}" prove pip 2>&1)" "is not a free-threaded interpreter"
 
+FT_PY="${FT_PYTHON:-/opt/python-freethreaded/bin/python3.14t}"
+# _ft_ext <venv> <name> <slot>: a C extension built against the venv's 3.14t headers, installed as distribution <name>.
+_ft_ext() {
+  local venv="$1" name="$2" slot="$3" paths dist
+  mapfile -t paths < <("${venv}/bin/python" -I -c 'import sysconfig as s; print(s.get_paths()["purelib"]); print(s.get_paths()["include"]); print(s.get_config_var("EXT_SUFFIX"))')
+  printf '#include <Python.h>\nstatic PyModuleDef_Slot slots[] = {%s{0, NULL}};\nstatic struct PyModuleDef def = {PyModuleDef_HEAD_INIT, "%s", NULL, 0, NULL, slots};\nPyMODINIT_FUNC PyInit_%s(void) { return PyModuleDef_Init(&def); }\n' \
+    "${slot}" "${name}" "${name}" > "${_work}/${name}.c"
+  cc -shared -fPIC -I"${paths[1]}" -o "${paths[0]}/${name}${paths[2]}" "${_work}/${name}.c" || return 1
+  dist="${paths[0]}/${name}-1.0.dist-info"
+  mkdir -p "${dist}"
+  printf 'Metadata-Version: 2.1\nName: %s\nVersion: 1.0\n' "${name}" > "${dist}/METADATA"
+  printf '%s,,\n%s-1.0.dist-info/METADATA,,\n%s-1.0.dist-info/RECORD,,\n' "${name}${paths[2]}" "${name}" "${name}" > "${dist}/RECORD"
+}
+_ft_prove() { env -u PYTHON_GIL "${_work}/ftvenv/bin/python" -I "${HELPER}" prove "$1" 2>&1; }
+
+t_case "prove, for real: a C extension declaring Py_MOD_GIL_NOT_USED keeps the GIL off; one without the slot re-enables it"
+if "${FT_PY}" -c 'import sysconfig, sys; sys.exit(not sysconfig.get_config_var("Py_GIL_DISABLED"))' 2>/dev/null; then
+  t_assert_ok "${FT_PY}" -m venv --without-pip "${_work}/ftvenv"
+  t_assert_ok _ft_ext "${_work}/ftvenv" ftfix_free "{Py_mod_gil, Py_MOD_GIL_NOT_USED}, "
+  t_assert_ok _ft_ext "${_work}/ftvenv" ftfix_gil ""
+  t_assert_eq "0" "$(t_rc _ft_prove ftfix_free)" "the declaring extension proves"
+  t_assert_contains "$(_ft_prove ftfix_free)" "1 compiled module(s) of ftfix_free loaded on free-threaded 3.14"
+  t_assert_contains "$(_ft_prove ftfix_free)" "the GIL stayed disabled"
+  t_assert_eq "1" "$(t_rc _ft_prove ftfix_gil)" "the undeclared extension fails the proof"
+  t_assert_contains "$(_ft_prove ftfix_gil)" "ERROR: the GIL was re-enabled, first by ftfix_gil; Cython needs freethreading_compatible=True"
+else
+  # CI's host has no 3.14t; the image's /opt/python-freethreaded does (FT_PYTHON names another).
+  printf '  SKIP [%s] no free-threaded interpreter at %s\n' "${_T_CASE}" "${FT_PY}"
+fi
+
 # _modules <site root> <file>...: the helper's module list for a fake distribution whose files sit under that root.
 _modules() {
   python3 -I - "${HELPER}" "$@" <<'PY'

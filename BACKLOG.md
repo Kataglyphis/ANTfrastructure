@@ -37,10 +37,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `New-FreeThreadedBuildPython` pins a cross venv's `EXT_SUFFIX` since CON79 item 2; the Linux riscv64
       cross half is what remains. Done when both ship a wheel proved on
       the target.
-- [ ] **CON76 — a real cp314t proof in the hub suite** [S, ★]. Once `:latest` ships `3.14t` on
-      every arch (CON66), `test-python-free-threaded-wheel.sh` builds two tiny C extensions (one
-      declaring free-threading support, one not) and runs `prove` for real instead of a stubbed
-      interpreter.
 - [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
       [M, ★]. Half 1 is in the scripts since 2026-10-07 (CHANGELOG): media-core's
       `Build-TargetCpython.ps1` stages the `--disable-gil` ARM64 build into

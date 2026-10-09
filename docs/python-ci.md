@@ -568,6 +568,9 @@ no auditwheel anywhere, a platform wheel ships unrepaired, with a warning.
 
 Tests: `linux/scripts/tests/test-python-free-threaded-wheel.sh` and
 `windows/scripts/tests/PythonWheel.FreeThreaded.Tests.ps1`.
+Inside `:latest` the Linux suite also runs `prove` for real: it compiles two C
+extensions against `/opt/python-freethreaded` (or `FT_PYTHON`), one declaring
+`Py_MOD_GIL_NOT_USED` and one not. A host without a free-threaded interpreter logs a SKIP line for that case.
 
 ## Which Linux image
 
