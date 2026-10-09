@@ -6,9 +6,9 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-09**, read from the registry (hub = the image's `revision` label, digest =
+**State 2026-10-10**, read from the registry (hub = the image's `revision` label, digest =
 the per-arch manifest). Published: `:latest` (2026-10-09, hub 655a2c4e, index `af7252a0…`;
-amd64 `ba3115f1…`, arm64 `15a905c6…`, riscv64 `81db10eb…`), `:winamd64` (2026-10-08, hub 5dfeb42d, `e96203a8…`), `:winamd64-nvidia` (2026-10-02, hub 7a5a2a33, `a9e67332…`),
+amd64 `ba3115f1…`, arm64 `15a905c6…`, riscv64 `81db10eb…`), `:winamd64` (2026-10-08, hub 5dfeb42d, `e96203a8…`), `:winamd64-nvidia` (2026-10-10, hub 93708b28, `75bbe6f6…`),
 `:winamd64-rocm` (2026-10-09, hub aa7a8086, `32c7cc51…`), `:winarm64` (2026-10-04, hub
 80647a9a, `97bbcd35…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-nvidia`
 (2026-10-02, hub b4d5fdd5, amd64 `95c3a343…`, built without DeepStream) and `:latest-rocm`
