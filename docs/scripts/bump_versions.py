@@ -964,13 +964,81 @@ def spec_dav1d(cur):
     return v, ({"DAV1D_SHA256": sha} if v != cur and WRITE_MODE else {})
 
 
+def spec_x264_meson(cur):
+    """Slaved to GSTREAMER_VERSION: x264.wrap names a meson-ports branch, and its head commit pins it."""
+    text = http_text(
+        f"https://gitlab.freedesktop.org/gstreamer/gstreamer/-/raw/{read_env()['GSTREAMER_VERSION']}/subprojects/x264.wrap")
+    url = re.search(r"^url\s*=\s*(\S+)\s*$", text, re.M)
+    rev = re.search(r"^revision\s*=\s*(\S+)\s*$", text, re.M)
+    if not (url and rev):
+        raise RuntimeError("GStreamer's x264.wrap names no url or revision")
+    extras = {}
+    if rev.group(1) != cur and WRITE_MODE:
+        extras["X264_MESON_COMMIT"] = ls_remote_branch_commit(url.group(1), rev.group(1))
+    return rev.group(1), extras
+
+
+def ls_remote_branch_commit(url: str, branch: str) -> str:
+    """Head commit of one branch of any git remote."""
+    out = subprocess.run(["git", "ls-remote", url, f"refs/heads/{branch}"],
+                         capture_output=True, text=True, timeout=120, check=False)
+    m = re.match(r"([0-9a-f]{40})\t", out.stdout)
+    if out.returncode or not m:
+        raise RuntimeError(f"git ls-remote found no branch {branch} on {url}: {out.stderr.strip()[:200]}")
+    return m.group(1)
+
+
+def spec_webdavclient(cur):
+    """The owner's WebDavClient has no releases; report its default branch's head against the pinned commit."""
+    out = subprocess.run(["git", "ls-remote", "https://github.com/Kataglyphis/WebDavClient.git", "HEAD"],
+                         capture_output=True, text=True, timeout=120, check=False)
+    m = re.match(r"([0-9a-f]{40})\tHEAD", out.stdout)
+    if out.returncode or not m:
+        raise RuntimeError(f"git ls-remote HEAD failed for Kataglyphis/WebDavClient: {out.stderr.strip()[:200]}")
+    return m.group(1), {}
+
+
+def spec_pytorch_rocm_index(cur):
+    """The newest download.pytorch.org rocmX.Y line carrying a cp314 x86_64 torch at PYTORCH_VERSION."""
+    torch = read_env()["PYTORCH_VERSION"].lstrip("v")
+    html = http_text("https://download.pytorch.org/whl/torch/")
+    found = set(re.findall(
+        rf"torch-{re.escape(torch)}(?:\+|%2B)(rocm\d+(?:\.\d+)+)-cp314-cp314-manylinux[\w.]*_x86_64\.whl", html))
+    if not found:
+        raise RuntimeError(f"download.pytorch.org lists no rocm cp314 x86_64 wheel of torch {torch}")
+    return max(found, key=_vkey), {}
+
+
+# install_opensource_deps.sh's nvds_rest_server dependencies: version key, commit key, GitHub repo.
+_DEEPSTREAM_OSS_DEPS = (
+    ("DEEPSTREAM_CIVETWEB_VERSION", "DEEPSTREAM_CIVETWEB_COMMIT", "civetweb/civetweb"),
+    ("DEEPSTREAM_PROMETHEUS_CPP_VERSION", "DEEPSTREAM_PROMETHEUS_CPP_COMMIT", "jupp0r/prometheus-cpp"),
+    ("DEEPSTREAM_OPENTELEMETRY_CPP_VERSION", "DEEPSTREAM_OPENTELEMETRY_CPP_COMMIT", "open-telemetry/opentelemetry-cpp"),
+)
+
+
+def deepstream_oss_pins(script: str, tag_commit=None) -> dict[str, str]:
+    """Each dependency's tag (the script's `git clone --branch`) and that tag's commit."""
+    tag_commit = tag_commit or ls_remote_tag_commit
+    pins = {}
+    for ver_key, commit_key, repo in _DEEPSTREAM_OSS_DEPS:
+        m = re.search(rf"--branch\s+(\S+)\s*\\?\s*https://github\.com/{re.escape(repo)}\.git", script)
+        if not m:
+            raise RuntimeError(f"install_opensource_deps.sh clones no {repo} at a --branch")
+        pins[ver_key] = m.group(1)
+        pins[commit_key] = tag_commit(repo, m.group(1))
+    return pins
+
+
 def deepstream_pins(v: str) -> dict[str, str]:
-    """DEEPSTREAM_VERSION's tag commit and both runtime debs' GitHub digests."""
+    """DEEPSTREAM_VERSION's tag commit, both runtime debs' GitHub digests and its open-source deps' tags."""
     repo, tag = "NVIDIA/DeepStream", f"v{v}"
     return {
         "DEEPSTREAM_COMMIT": ls_remote_tag_commit(repo, tag),
         "DEEPSTREAM_BINARIES_AMD64_SHA256": gh_asset_digest(repo, tag, f"deepstream-binaries-x86_{v}_amd64.deb"),
         "DEEPSTREAM_BINARIES_ARM64_SHA256": gh_asset_digest(repo, tag, f"deepstream-binaries-aarch64_{v}_arm64.deb"),
+        **deepstream_oss_pins(http_text(
+            f"https://raw.githubusercontent.com/{repo}/{tag}/scripts/install_opensource_deps.sh")),
     }
 
 
@@ -1174,6 +1242,9 @@ REPORT: list[tuple[str, Callable]] = [
     # Source builds whose tarball SHA moves with the version.
     ("X265_VERSION", spec_x265),
     ("DAV1D_VERSION", spec_dav1d),
+    ("X264_MESON_BRANCH", spec_x264_meson),
+    ("PYTORCH_ROCM_INDEX", spec_pytorch_rocm_index),
+    ("WEBDAVCLIENT_REF", spec_webdavclient),
     ("DEEPSTREAM_VERSION", spec_deepstream),
     ("DEEPSTREAM_TENSORRT_VERSION", spec_deepstream_trt),
     ("HAILORT_VERSION", spec_hailort),
@@ -1228,7 +1299,28 @@ MANUAL = [
     "TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL", "TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_SHA256",
     # The rocm venv's PyPI extra: URL + PyPI's own digest, re-derived by hand (recipe in versions.env).
     "TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_URL", "TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_SHA256",
+    # The CUDA line and apt repo NVIDIA builds TensorRT 10 for; spec_deepstream_trt reads them, nothing publishes a successor.
+    "DEEPSTREAM_TENSORRT_CUDA", "DEEPSTREAM_TENSORRT_REPO",
 ]
+
+
+# Hand-pinned wheel stores: each <prefix>*_URL with a *_SHA256 beside it is that wheel's version, moved with the SHA.
+WHEEL_URL_GROUPS = {
+    "PYTEST_WINDOWS_ARM64_": "cp314 win_arm64 pytest closure at the versions OrchestrANT's x64 lock runs (CON67)",
+    "TORCH_WINDOWS_ARM64_": "cp313 win_arm64 torch stack; torch/torchvision follow PYTORCH_VERSION/TORCHVISION_VERSION",
+}
+
+
+def wheel_url_keys(env: dict[str, str]) -> set[str]:
+    return {k for k in env if k.endswith("_URL") and k.startswith(tuple(WHEEL_URL_GROUPS))
+            and k.removesuffix("_URL") + "_SHA256" in env}
+
+
+def derived_keys() -> dict[str, str]:
+    """Version keys a spec writes as extras of its owning key, read from the tables those specs walk."""
+    out = {ver: "CUDA_VERSION" for ver, _, _ in _CUDA_WINDOWS_ARM64_COMPONENTS}
+    out.update({ver: "DEEPSTREAM_VERSION" for ver, _, _ in _DEEPSTREAM_OSS_DEPS})
+    return out
 
 
 # SHA pins no spec refreshes, each for a stated reason; a *_URL-paired pin needs no entry (url_paired_sha_keys).
@@ -1321,6 +1413,10 @@ def _parse_args():
              "allowlisted. Catches the scattered-pair hazard: a NEW version+SHA "
              "pair added OUTSIDE this script's refresh registry gets its version "
              "bumped while the far-away SHA silently freezes (backlog F6).")
+    ap.add_argument(
+        "--audit-unclassified", action="store_true",
+        help="Offline: fail when a pin-file key is in no tier, derivation, wheel group, "
+             "renovate annotation or the non-version filter (the --check self-audit, as a gate).")
     return ap.parse_args()
 
 
@@ -1405,22 +1501,46 @@ def _print_manual(env):
     print("\n-- manual (no reliable programmatic source / deliberate pins) --")
     for key in MANUAL:
         print(f"{key:32} {env.get(key, ''):22} {'-':22} check vendor release notes")
+    wheels = wheel_url_keys(env)
+    for prefix, why in WHEEL_URL_GROUPS.items():
+        n = sum(k.startswith(prefix) for k in wheels)
+        print(f"{prefix + '*_URL':32} {f'{n} wheels':22} {'-':22} {why}")
 
 
-def _print_unclassified(env):
-    # Every versions.env key must sit in a tier or match the non-version filter.
-    covered = ({k for k, _, _ in SAFE} | {k for k, _ in REPORT} | set(MANUAL) | renovate_owned())
+def unclassified_keys(env: dict[str, str]) -> list[str]:
+    """Keys in no tier, derivation, wheel group, renovate annotation or the non-version filter."""
+    covered = ({k for k, _, _ in SAFE} | {k for k, _ in REPORT} | set(MANUAL) | renovate_owned()
+               | set(derived_keys()) | wheel_url_keys(env))
     nonversion = re.compile(
         r"(SHA256|^ORT_|_ENABLE_|^USE_|^FAST_UBUNTU|^IMAGE_REGISTRY_PREFIX$"
         r"|^CROSS_DEFAULT_ARCHES$|^VENV_PATH$|_OUTPUT_DIR$|^GSTREAMER_PREFIX$"
         r"|_COMMIT$|_ASSET$|^CUDA_ARCHITECTURES$|^WINDOWS_TARGET_ARCH(ES)?$"
-        r"|^CI_IMAGE_|^ANDROID_TARGET_ABI$|^GENAI_ALLOW_RISCV64$|^JDK_PACKAGE$)"
+        r"|^CI_IMAGE_|^ANDROID_TARGET_ABI$|^GENAI_ALLOW_RISCV64$|^JDK_PACKAGE$"
+        r"|^ROCM_WINDOWS_GFX_FAMILY$"  # a GPU target set, like CUDA_ARCHITECTURES
+        r"|^APP_REF$)"  # a tracked branch, resolved to a commit per run
     )
-    unclassified = sorted(k for k in env if k not in covered and not nonversion.search(k))
+    return sorted(k for k in env if k not in covered and not nonversion.search(k))
+
+
+def _print_unclassified(env):
+    unclassified = unclassified_keys(env)
     if unclassified:
         print("\n-- UNCLASSIFIED versions.env keys (add to SAFE/REPORT/MANUAL or the non-version filter) --")
         for k in unclassified:
             print(f"{k:32} {env.get(k, ''):22}")
+
+
+def audit_unclassified() -> int:
+    """Fail, offline, when a pin-file key is in no class; --check only prints the same list."""
+    env = read_env()
+    stray = unclassified_keys(env)
+    if stray:
+        print(f"UNCLASSIFIED versions.env keys ({len(stray)}): no tier, derivation, wheel group, renovate line or non-version match")
+        for key in stray:
+            print(f"  {key}")
+        return 1
+    print(f"unclassified audit: all {len(env)} pin-file keys are classified.")
+    return 0
 
 
 def _write_phase(updates, lookup_failures):
@@ -1460,6 +1580,8 @@ def main() -> int:
     args = _parse_args()
     if args.audit_sha_pairs:
         return audit_sha_pairs()
+    if args.audit_unclassified:
+        return audit_unclassified()
     if args.write_all:
         args.write = True
     global WRITE_MODE

@@ -6,6 +6,32 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — `bump_versions.py --audit-unclassified`: all 441 pin-file keys classified, 62 were not
+
+- **What failed:** `--check`'s self-audit listed 62 keys in no class. It only printed them, so nothing went red.
+  `--audit-unclassified` now runs the same check offline and exits 1, and `test-bump-versions.sh` runs it on
+  the real pin files. Before the fix it named all 62 keys (rc 1). A key added with no class still turns it red.
+- **13 derived:** a spec writes these as extras of an owner key, and `derived_keys()` reads them from that spec's
+  own table:
+  - ten `CUDA_WINDOWS_ARM64_*_VERSION` from `spec_cuda`'s redist manifest;
+  - `DEEPSTREAM_{CIVETWEB,PROMETHEUS_CPP,OPENTELEMETRY_CPP}_VERSION` and their commits. `deepstream_pins` now reads
+    these from upstream's `install_opensource_deps.sh` at the DeepStream tag.
+- **3 REPORT specs:**
+  - `X264_MESON_BRANCH`: the `x264.wrap` revision at `GSTREAMER_VERSION`. A bump re-pins `X264_MESON_COMMIT` to the
+    head of that branch.
+  - `PYTORCH_ROCM_INDEX`: the newest `rocmX.Y` line on download.pytorch.org with a cp314 x86_64 torch at
+    `PYTORCH_VERSION`.
+  - `WEBDAVCLIENT_REF`: the head of WebDavClient's default branch.
+- **42 wheel URLs** are in the new `WHEEL_URL_GROUPS`: 31 `PYTEST_WINDOWS_ARM64_*` and 11 `TORCH_WINDOWS_ARM64_*`.
+  Each group gives one reason. A `*_URL` qualifies only with its `*_SHA256` beside it.
+- **2 MANUAL:** `DEEPSTREAM_TENSORRT_{CUDA,REPO}`, the CUDA line and apt repo that NVIDIA builds TensorRT 10 for.
+- **2 non-version:** `ROCM_WINDOWS_GFX_FAMILY` is a GPU target set, like `CUDA_ARCHITECTURES`. `APP_REF` is a
+  tracked branch.
+- **Verified against upstream:** all 13 derived values and the x264 commit match their sources at the pinned
+  versions. All 42 wheel SHAs match PyPI's or download.pytorch.org's published digest. The full `--check` had 0
+  lookup failures. One finding: WebDavClient's default branch is at `050dfb2c`, ahead of the pinned `4f3f116d`. It is
+  reported as NEWER AVAILABLE and was not bumped. No pinned value changed.
+
 ## 2026-10-09 — CON79: the Linux ORT twin proved in the published `:latest` amd64
 
 - **Image:** `:latest` index sha256:af7252a0 (hub 655a2c4e). `/opt/wheels-cp314t` holds

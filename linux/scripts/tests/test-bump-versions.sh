@@ -442,24 +442,71 @@ t_assert_contains "${_out}" "  COMMENTED_SHA256" "a comment is not a refresh spe
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e '  QUOTED_SHA256' || true)" "a quoted key is"
 t_assert_contains "${_out}" "rc 1" "and the audit fails"
 
-t_case "--audit-sha-pairs on the REAL versions.env + tool-pins.env: rc 0, and one new unspecced SHA key turns it red"
-_real="$(_bv_offline <<'PY'
-print("rc", bv.audit_sha_pairs())
-PY
-)"
-t_assert_contains "${_real}" "rc 0" "every committed SHA pin is specced, held, exempt or URL-paired"
-mkdir -p "${_WORK}/real"
-cp "${REPO}/linux/scripts/01-core/versions.env" "${REPO}/linux/scripts/01-core/tool-pins.env" "${_WORK}/real/"
-printf 'NEWTOOL_LINUX_X86_64_SHA256=%064d\n' 0 >> "${_WORK}/real/tool-pins.env"
-_mut="$(_bv_offline <<PY
+# _audit_pins <audit> [<pin file> <line>]... -- one offline audit on a copy of the real pin files, lines appended.
+_audit_pins() {
+  local audit="$1" dir
+  dir="$(mktemp -d "${_WORK}/pins.XXXXXX")"
+  shift
+  cp "${REPO}/linux/scripts/01-core/versions.env" "${REPO}/linux/scripts/01-core/tool-pins.env" "${dir}/"
+  while (( $# >= 2 )); do printf '%s\n' "$2" >> "${dir}/$1"; shift 2; done
+  _bv_offline <<PY
 from pathlib import Path
-bv.VERSIONS_ENV = Path("${_WORK}/real/versions.env")
-print("rc", bv.audit_sha_pairs())
+bv.VERSIONS_ENV = Path("${dir}/versions.env")
+print("rc", bv.${audit}())
 PY
-)"
+}
+
+t_case "--audit-sha-pairs on the REAL versions.env + tool-pins.env: rc 0, and one new unspecced SHA key turns it red"
+t_assert_contains "$(_audit_pins audit_sha_pairs)" "rc 0" "every committed SHA pin is specced, held, exempt or URL-paired"
+_mut="$(_audit_pins audit_sha_pairs tool-pins.env "NEWTOOL_LINUX_X86_64_SHA256=$(printf '%064d' 0)")"
 t_assert_contains "${_mut}" "rc 1" "a SHA key added with no spec, hold or exemption fails the audit"
 t_assert_eq "1" "$(printf '%s\n' "${_mut}" | grep -c -e '^  [A-Z]' || true)" "and it is the only key named"
 t_assert_contains "${_mut}" "  NEWTOOL_LINUX_X86_64_SHA256" "the new key itself"
+
+t_case "--audit-unclassified on the REAL pin files: rc 0, and one new untiered version key turns it red"
+_real="$(_audit_pins audit_unclassified)"
+t_assert_contains "${_real}" "rc 0" "every committed key is tiered, derived, manual, Renovate-annotated or non-version"
+t_assert_eq "0" "$(printf '%s\n' "${_real}" | grep -c -e UNCLASSIFIED || true)" "and none is listed as unclassified"
+_mut="$(_audit_pins audit_unclassified versions.env NEWTOOL_VERSION=1.0.0 versions.env PYTEST_WINDOWS_ARM64_NOSHA_URL=https://x/y.whl)"
+t_assert_contains "${_mut}" "rc 1" "a version key added with no tier fails the audit"
+t_assert_contains "${_mut}" "NEWTOOL_VERSION" "the new key is named"
+t_assert_contains "${_mut}" "PYTEST_WINDOWS_ARM64_NOSHA_URL" "a wheel-store *_URL with no *_SHA256 beside it is not a wheel pin"
+t_assert_eq "2" "$(printf '%s\n' "${_mut}" | grep -c -e '^  [A-Z]' || true)" "and only those two are named"
+
+t_case "the derived and slaved specs: DeepStream's OSS deps, x264's meson branch, the ROCm torch line (offline)"
+_out="$(_bv_offline <<'PY'
+script = ("git clone --depth 1 --branch v1.23.0 \\\n      https://github.com/open-telemetry/opentelemetry-cpp.git \"$D\"\n"
+          "git clone --depth 1 --branch v1.16 \\\n      https://github.com/civetweb/civetweb.git \"$D\"\n"
+          "git clone --depth 1 --branch v1.2.4 \\\n      https://github.com/jupp0r/prometheus-cpp.git \"$D\"\n")
+pins = bv.deepstream_oss_pins(script, lambda repo, tag: f"{repo}@{tag}")
+print("oss", pins["DEEPSTREAM_CIVETWEB_VERSION"], pins["DEEPSTREAM_OPENTELEMETRY_CPP_COMMIT"])
+try:
+    bv.deepstream_oss_pins(script.replace("civetweb/civetweb", "elsewhere/civetweb"), lambda r, t: "x")
+except RuntimeError as e:
+    print("refused:", e)
+print("derived", sorted(set(bv.derived_keys().values())), len(bv.derived_keys()))
+bv.read_env = lambda: {"GSTREAMER_VERSION": "1.30.0", "PYTORCH_VERSION": "v2.14.1"}
+bv.http_text = lambda url: {
+    "https://gitlab.freedesktop.org/gstreamer/gstreamer/-/raw/1.30.0/subprojects/x264.wrap":
+        "[wrap-git]\nurl = https://gitlab.example/x264.git\nrevision = 165.0-meson\n",
+    "https://download.pytorch.org/whl/torch/":
+        "torch-2.14.1+rocm7.2-cp314-cp314-manylinux_2_28_x86_64.whl torch-2.14.1%2Brocm7.14-cp314-cp314-manylinux_2_28_x86_64.whl "
+        "torch-2.14.1+rocm7.20-cp313-cp313-manylinux_2_28_x86_64.whl torch-2.15.0+rocm8.0-cp314-cp314-manylinux_2_28_x86_64.whl"}[url]
+bv.ls_remote_branch_commit = lambda url, branch: f"{url}#{branch}"
+bv.WRITE_MODE = True
+print("x264", bv.spec_x264_meson("164.3108-meson"), bv.spec_x264_meson("165.0-meson"))
+print("rocm", bv.spec_pytorch_rocm_index("rocm7.2"))
+PY
+)"
+t_assert_contains "${_out}" "oss v1.16 open-telemetry/opentelemetry-cpp@v1.23.0" \
+  "each dep's tag is the script's --branch, and its commit is that tag's in that repo"
+t_assert_contains "${_out}" "refused: install_opensource_deps.sh clones no civetweb/civetweb at a --branch" \
+  "a dependency the script no longer clones is a lookup failure, never a stale pin"
+t_assert_contains "${_out}" "derived ['CUDA_VERSION', 'DEEPSTREAM_VERSION'] 13" "the derived keys come from the specs' own tables"
+t_assert_contains "${_out}" "x264 ('165.0-meson', {'X264_MESON_COMMIT': 'https://gitlab.example/x264.git#165.0-meson'}) ('165.0-meson', {})" \
+  "the branch is the wrap's revision at GSTREAMER_VERSION, and a new one re-pins its head commit"
+t_assert_contains "${_out}" "rocm ('rocm7.14', {})" \
+  "the newest rocm line by number (7.14 over 7.2) for cp314 at PYTORCH_VERSION, not a cp313 or a newer torch's line"
 
 t_case "spec_shellcheck --write refreshes all three shellcheck assets, the aarch64 tarball included (offline)"
 _out="$(_bv_offline <<'PY'
