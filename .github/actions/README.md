@@ -133,7 +133,10 @@ passes 260 characters, which `core.longpaths` does not reliably bypass for
 child clones. Also rewrites `git@github.com:` submodule URLs to token HTTPS,
 since a hosted runner has no SSH key. Inputs: `token` (required), `target`,
 `repository`, `ref`, `submodules`, `exclude-submodules` (submodule names to skip
-with everything beneath them, one per line).
+with everything beneath them, one per line). A `ref` the plain clone lacks (a
+pull_request's merge commit, or `refs/pull/<n>/merge` by name) is fetched from
+origin first; output `fetched` says whether that happened, and the self-test
+asserts it on every pull_request touching the action.
 
 ### `run-pester-suite`
 Installs a PINNED Pester and runs a suite, printing Describe/Name plus the

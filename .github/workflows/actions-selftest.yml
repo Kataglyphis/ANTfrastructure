@@ -113,6 +113,7 @@ jobs:
 
       # Full clone first: exclusions go into the runner-wide global git config and would prune it too.
       - name: clone-into-short-path (full tree)
+        id: full
         uses: ./.github/actions/clone-into-short-path
         with:
           target: ${{ runner.temp }}/clone-full
@@ -137,6 +138,54 @@ jobs:
             echo "::error::submodules: 'true' left third_party/DocumANTation empty"
             exit 1
           fi
+
+      # On a pull_request github.sha is the merge commit, which only refs/pull/<n>/merge carries: the fetch path must fire.
+      - name: The fetch path fired exactly when the event needs it
+        env:
+          EVENT: ${{ github.event_name }}
+          FETCHED: ${{ steps.full.outputs.fetched }}
+        run: |
+          set -euo pipefail
+          want=false
+          [ "${EVENT}" != pull_request ] || want=true
+          if [ "${FETCHED}" != "${want}" ]; then
+            echo "::error::clone-into-short-path reported fetched='${FETCHED}' on a ${EVENT} event (expected '${want}')"
+            exit 1
+          fi
+          echo "event=${EVENT} fetched=${FETCHED}"
+
+      # The merge ref by NAME, as a consumer passing refs/pull/<n>/merge would: it lands only in FETCH_HEAD.
+      - name: clone-into-short-path (refs/pull/<n>/merge by name)
+        id: mergeref
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/clone-into-short-path
+        with:
+          target: ${{ runner.temp }}/clone-mergeref
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          token: ${{ github.token }}
+          submodules: 'false'
+
+      - name: The named merge ref is the PR head merged onto its base
+        if: github.event_name == 'pull_request'
+        env:
+          FETCHED: ${{ steps.mergeref.outputs.fetched }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          root='${{ runner.temp }}/clone-mergeref'
+          [ "${FETCHED}" = true ] || { echo "::error::refs/pull/<n>/merge was not fetched (fetched='${FETCHED}')"; exit 1; }
+          # The ref can move with its base after the event, so grade its shape, not github.sha.
+          parents="$(git -C "${root}" rev-list --parents -n 1 HEAD)"
+          read -r merge p1 p2 extra <<< "${parents}"
+          if [ -z "${p2:-}" ] || [ -n "${extra:-}" ]; then
+            echo "::error::HEAD ${merge} is not a two-parent merge commit: ${parents}"
+            exit 1
+          fi
+          if [ "${p2}" != "${HEAD_SHA}" ]; then
+            echo "::error::merge ${merge}'s second parent is ${p2}, the PR head is ${HEAD_SHA}"
+            exit 1
+          fi
+          echo "merge ref checked out at ${merge} (base ${p1}, PR head ${p2})"
 
       - name: clone-into-short-path (submodule excluded)
         uses: ./.github/actions/clone-into-short-path
@@ -328,6 +377,7 @@ jobs:
 
       # D:\ws is outside GITHUB_WORKSPACE, which is where the SARIF probe below must still look.
       - name: clone-into-short-path
+        id: shortclone
         uses: ./.github/actions/clone-into-short-path
         with:
           target: /d/ws
@@ -342,6 +392,11 @@ jobs:
           if (-not (Test-Path 'D:\ws\.git')) { throw 'clone-into-short-path produced no clone at D:\ws' }
           $sha = (git -C 'D:\ws' rev-parse HEAD).Trim()
           if ($sha -ne '${{ github.sha }}') { throw "D:\ws is at $sha, the ref input asked for ${{ github.sha }}" }
+          # A pull_request's merge commit is not in a plain clone: the fetch path must have fired (OmniAccelerANT #45).
+          $want = if ('${{ github.event_name }}' -eq 'pull_request') { 'true' } else { 'false' }
+          if ('${{ steps.shortclone.outputs.fetched }}' -ne $want) {
+              throw "clone-into-short-path reported fetched='${{ steps.shortclone.outputs.fetched }}' on ${{ github.event_name }} (expected '$want')"
+          }
           if (-not (Get-ChildItem 'D:\ws\third_party\DocumANTation' -Force)) {
               throw "submodules: 'true' left third_party\DocumANTation empty in the short-path clone"
           }

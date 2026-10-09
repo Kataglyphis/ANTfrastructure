@@ -25,7 +25,10 @@ inputs:
     required: false
     default: ''
   ref:
-    description: 'Commit/ref to check out. Defaults to the triggering SHA.'
+    description: >-
+      Commit/ref to check out. Defaults to the triggering SHA. A SHA or ref the
+      clone lacks (a pull_request's merge commit, refs/pull/<n>/merge) is fetched
+      from origin first.
     required: false
     default: ''
   token:
@@ -58,10 +61,18 @@ inputs:
     required: false
     default: ''
 
+outputs:
+  fetched:
+    description: >-
+      'true' when the ref was not in the plain clone and had to be fetched from
+      origin (the pull_request merge-ref path), else 'false'.
+    value: ${{ steps.clone.outputs.fetched }}
+
 runs:
   using: 'composite'
   steps:
-    - shell: bash
+    - id: clone
+      shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
         TARGET: ${{ inputs.target }}
@@ -88,10 +99,20 @@ runs:
         rm -rf "${TARGET}"
         git clone "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "${TARGET}"
         # A pull_request's github.sha is the merge commit under refs/pull/<n>/merge, which a clone never fetches.
+        fetched=false
+        checkout_ref="${REF}"
         if ! git -C "${TARGET}" cat-file -e "${REF}^{commit}" 2>/dev/null; then
+          echo "${REF} is not in the clone; fetching it from origin"
           git -C "${TARGET}" fetch --no-tags origin "${REF}"
+          fetched=true
+          # A fetched ref NAME (refs/pull/<n>/merge) lands only in FETCH_HEAD, never as a local ref.
+          if ! git -C "${TARGET}" cat-file -e "${REF}^{commit}" 2>/dev/null; then
+            checkout_ref="$(git -C "${TARGET}" rev-parse FETCH_HEAD)"
+          fi
         fi
-        git -C "${TARGET}" checkout --force "${REF}"
+        git -C "${TARGET}" checkout --force "${checkout_ref}"
+        echo "Checked out ${REF} at $(git -C "${TARGET}" rev-parse HEAD) (fetched=${fetched})"
+        echo "fetched=${fetched}" >> "${GITHUB_OUTPUT}"
         if [ "${WANT_SUBMODULES}" = "true" ]; then
           git -C "${TARGET}" submodule update --init --recursive
         fi
