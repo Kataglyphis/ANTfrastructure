@@ -6,6 +6,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — the cross cp314t proof loads the twin against the cross GCC's own libstdc++ (CON79 1b)
+
+- **The first chain with cross twins** (run 20261009-202203) stopped at arm64's ORT step:
+  `onnxruntime_webgpu-1.30.0-cp314-cp314t-linux_aarch64.whl is not proved: ... /lib/aarch64-linux-gnu/libstdc++.so.6:
+  version GLIBCXX_3.4.36 not found`. The twin is built by the cross GCC 16, whose target libstdc++ carries 3.4.36; the
+  qemu proof's `LD_LIBRARY_PATH` named only the 3.14t prefix and the sysroot, whose distro libstdc++ is older. The shipped
+  image puts GCC 16's runtime on the loader path, so only the build-time proof was wrong.
+- **Fix** (`free-threaded-wheels.sh`, `_ft_target_cxx_runtime_dir`): the proof asks `<triplet>-g++ -print-file-name=
+  libstdc++.so.6` and puts that directory right after the 3.14t prefix. In the sdk image it resolves to
+  `/opt/gcc-16.2.0/aarch64-linux-gnu/lib64` (AArch64, has GLIBCXX_3.4.36) and `/opt/gcc-16.2.0/riscv64-linux-gnu/lib`.
+  `test-free-threaded-wheels.sh` 186 -> 187, failing without the fix.
+
 ## 2026-10-09 — the riscv64 wheel smoke warns, not fails, on a consumer pin older than CON83
 
 - `python-ci-linux.yml` resolves at `@develop`, so eda97a90's pin check ("missing ci-wheel-smoke.sh") would have turned

@@ -291,9 +291,18 @@ _ft_qemu_sysroot() {
   return 1
 }
 
+# The cross GCC's own target libstdc++ (GCC 16, GLIBCXX_3.4.36); the sysroot's distro copy is older than what a twin links.
+_ft_target_cxx_runtime_dir() {
+  local triplet="$1" lib
+  command -v "${triplet}-g++" >/dev/null 2>&1 || return 0
+  lib="$("${triplet}-g++" -print-file-name=libstdc++.so.6 2>/dev/null || true)"
+  case "${lib}" in /*) [ -e "${lib}" ] && dirname "$(readlink -f "${lib}")" ;; esac
+  return 0
+}
+
 # <wheel> <dist> <helper>: the cross twin unpacked beside the target's own 3.14t, which loads every compiled module under qemu-user.
 ft_prove_wheel_on_target() {
-  local wheel="$1" dist="$2" helper="$3" qemu sysroot site out rc=0 d triplet
+  local wheel="$1" dist="$2" helper="$3" qemu sysroot site out rc=0 d triplet cxxrt
   [ -n "${FT_TARGET_PYTHON:-}" ] || ft_target_resolve || return 1
   qemu="$(cross_target_qemu_runner 2>/dev/null || true)"
   [ -n "${qemu}" ] || { printf 'free-threaded: %s cannot be proved: no qemu-user for %s\n' "${wheel##*/}" "${FT_TARGET_ARCH}" >&2; return 1; }
@@ -313,7 +322,8 @@ for data in site.glob("*.data"):
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 item.replace(dest)
 ' "${wheel}" "${site}" 2>&1)"; then
-    d="${FT_TARGET_PREFIX}/lib:${sysroot%/}/lib/${triplet}:${sysroot%/}/usr/lib/${triplet}:${sysroot%/}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+    cxxrt="$(_ft_target_cxx_runtime_dir "${triplet}")"
+    d="${FT_TARGET_PREFIX}/lib:${cxxrt:+${cxxrt}:}${sysroot%/}/lib/${triplet}:${sysroot%/}/usr/lib/${triplet}:${sysroot%/}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
     out="$(cd / && "${qemu}" -L "${sysroot}" -E "LD_LIBRARY_PATH=${d}" -U PYTHONPATH -U PYTHONHOME \
       "${FT_TARGET_PYTHON}" -I -c 'import runpy, sys; sys.path.insert(0, sys.argv[1]); sys.argv = sys.argv[2:]; runpy.run_path(sys.argv[0], run_name="__main__")' \
       "${site}" "${helper}" prove "${dist}" 2>&1)" || rc=$?
