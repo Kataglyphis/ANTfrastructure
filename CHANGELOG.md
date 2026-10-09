@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — the host 3.14t helpers drop a GIL cross build's target sysconfig (CON79 1b)
+
+- **The next cross run** (20261009-211609) proved arm64's tvm-ffi twin, then stopped at IREE: `/opt/python-freethreaded/
+  bin/python3.14t is not a --disable-gil build`. `build-app-wheelhouse.sh` evals the target GIL Python's sysconfig export
+  (`_PYTHON_SYSCONFIGDATA_NAME`, `PYTHONPATH`) for its IREE cross wheels and leaves it set; `ft_python_resolve`, the GIL
+  version lookups and `uv venv`/`uv pip install` then ran the host 3.14t against the target GIL sysconfig, which `-I` does
+  not drop. The riscv64 torch twin would have met it the same way.
+- **Fix** (`free-threaded-wheels.sh`, `_ft_host`): those host steps run without `_PYTHON_SYSCONFIGDATA_NAME`,
+  `_PYTHON_HOST_PLATFORM` and `PYTHONPATH`; the twin builds keep setting the target 3.14t's own through `ft_target_env`.
+  `test-free-threaded-wheels.sh` 187 -> 188, failing without the fix.
+
 ## 2026-10-09 — the cross cp314t proof loads the twin against the cross GCC's own libstdc++ (CON79 1b)
 
 - **The first chain with cross twins** (run 20261009-202203) stopped at arm64's ORT step:
