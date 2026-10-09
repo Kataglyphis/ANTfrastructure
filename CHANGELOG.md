@@ -6,6 +6,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — the riscv64 wheel smoke warns, not fails, on a consumer pin older than CON83
+
+- `python-ci-linux.yml` resolves at `@develop`, so eda97a90's pin check ("missing ci-wheel-smoke.sh") would have turned
+  OrchestrANT's riscv64 row red on its next run, before its own hub gitlink could move. The check now writes
+  `present=false` and a `::warning`, and the smoke step runs only when `present == 'true'`. `test-wheel-smoke.sh`
+  asserts the gated step.
+
 ## 2026-10-09 — the riscv64 Python lane: a uv cache seed, the cross wheel installed, shellcheck and hadolint (CON83)
 
 In source; the chain must prove it in the image. OrchestrANT's riscv64 lane spent 108 min of its 6 h job building

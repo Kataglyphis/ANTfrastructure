@@ -286,18 +286,21 @@ jobs:
           ls -la "${{ github.workspace }}/dist/"
           find "${{ github.workspace }}/dist/" -name "*.whl"
 
-      # The cross wheel is built on amd64; this proves it installs and loads where it is meant to run.
+      # Proves the amd64-built cross wheel loads on riscv64; warns, not fails, until the consumer's pin passes CON83.
       - name: Check the riscv64 wheel smoke is in the hub pin
+        id: wheel-smoke
         if: matrix.arch == 'riscv64' && inputs.package-emulated
         run: |
           smoke='third_party/ANTfrastructure/linux/scripts/02-toolchain/python/ci-wheel-smoke.sh'
-          if [ ! -f "${smoke}" ]; then
-            echo "::error title=riscv64 wheel smoke::missing ${smoke} - package-emulated needs an ANTfrastructure pin that ships it (CON83)."
-            exit 1
+          if [ -f "${smoke}" ]; then
+            echo "present=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::warning title=riscv64 wheel smoke::skipped: ${smoke} is not in this ANTfrastructure pin; it runs once the pin moves past CON83."
+            echo "present=false" >> "${GITHUB_OUTPUT}"
           fi
 
       - name: Install and load the riscv64 wheel (QEMU)
-        if: matrix.arch == 'riscv64' && inputs.package-emulated
+        if: matrix.arch == 'riscv64' && inputs.package-emulated && steps.wheel-smoke.outputs.present == 'true'
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}

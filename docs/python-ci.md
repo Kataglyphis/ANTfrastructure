@@ -139,7 +139,8 @@ module the wheel owns without running its body, since a module may import an
 optional extra the core install lacks (`wheel-smoke.py`). A wheel built for the
 wrong arch, linked against a missing symbol or shadowed by the source tree fails
 the row. The step needs a hub pin that ships the script; a host step before it
-fails the row with that message when the pin is older.
+skips it with a warning when the pin is older, so a consumer's lane stays green until its
+own gitlink moves.
 
 The packaging leg still syncs `SYNC_EXTRAS` (the caller's `test-extras`) instead
 of all extras, and it shares `UV_CACHE_DIR=/workspace/.uv-cache` so its build

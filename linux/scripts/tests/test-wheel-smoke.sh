@@ -79,10 +79,11 @@ t_assert_contains "$(_pick)" "expected one cp314 ${_arch} wheel in dist/, found 
 : > "${_work}/ws/dist/pkg-1.0-cp314-cp314-manylinux_2_39_${_arch}.whl"
 t_assert_contains "$(_pick)" "expected one cp314 ${_arch} wheel in dist/, found 2"
 
-t_case "the lane runs the smoke on the riscv64 row it packages, from the hub pin, and fails loudly without it"
+t_case "the lane runs the smoke on the riscv64 row it packages, from the hub pin, and warns instead of failing without it"
 _wf="$(cat "${WORKFLOW}")"
 t_assert_contains "${_wf}" "bash third_party/ANTfrastructure/linux/scripts/02-toolchain/python/ci-wheel-smoke.sh"
-t_assert_contains "${_wf}" "package-emulated needs an ANTfrastructure pin that ships it (CON83)"
+t_assert_contains "${_wf}" "it runs once the pin moves past CON83"
+t_assert_contains "${_wf}" "if: matrix.arch == 'riscv64' && inputs.package-emulated && steps.wheel-smoke.outputs.present == 'true'"
 t_assert_eq 2 "$(grep -c "if: matrix.arch == 'riscv64' && inputs.package-emulated" "${WORKFLOW}")" "the pin check and the smoke, on the packaged riscv64 row only"
 
 t_summary
