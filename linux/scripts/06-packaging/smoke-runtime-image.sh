@@ -471,7 +471,7 @@ check_rust_toolchain() {
 }
 
 # Consumer contract. See docs/consumer-image-contract.md#the-contract
-_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python"
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed"
 
 # Staged-or-every-run-pays rows. See docs/consumer-image-contract.md#what-the-image-stages-so-a-run-does-not
 _consumer_present_verdict() {
@@ -501,6 +501,8 @@ _consumer_contract_symptom() {
     android-emulator) printf '%s' 'an Android lane has no device to install on: adb reports "no devices/emulators found" and every on-device test is skipped' ;;
     cargo-qa-tools) printf '%s' 'every OxidANT security and coverage step cargo-installs cargo-audit, cargo-deny and cargo-tarpaulin from crates.io first, minutes of compiles per run' ;;
     free-threaded-python) printf '%s' 'every 3.14t leg has uv download a free-threaded CPython first, its patch version unpinned' ;;
+    lint-tools)    printf '%s' 'OrchestrANT'"'"'s coding bench reports "[shellcheck SKIPPED: not on PATH]" and "[hadolint SKIPPED: not on PATH]" on every row, so no bash or Dockerfile answer is linted' ;;
+    uv-cache-seed) printf '%s' 'the riscv64 Python lane'"'"'s uv sync of the test extra builds numpy, matplotlib, contourpy, pillow, line-profiler, psutil and pyyaml under QEMU: 108 min of a 6 h job' ;;
     *)             printf '%s' 'no symptom recorded for this row' ;;
   esac
 }
@@ -669,6 +671,10 @@ if [ -x "${_emu}/emulator" ]; then
 else
   printf 'FACT android-emulator no\n'
 fi
+printf 'FACT lint-tools shellcheck=%s hadolint=%s\n' "$(shellcheck --version 2>/dev/null | sed -n 's/^version: //p')" \
+  "$(hadolint --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+printf 'ENV uv-cache-seed %s\n' "${PYTHON_UV_CACHE_SEED:-}"
+printf 'FACT uv-cache-seed %s\n' "$(bash /opt/scripts/packaging/uv-cache-seed.sh verify "${PYTHON_UV_CACHE_SEED:-/nonexistent}" 2>&1 | tail -1)"
 PROBE
 }
 
@@ -877,6 +883,51 @@ _consumer_free_threaded_verdict() {
   fi
 }
 
+# A tool-pins.env pin, for the rows whose tools the torch stage installs from it (CON83).
+_rt_tool_pin() {
+  local _key="$1" _val="${!1:-}" _pins
+  if [ -z "${_val}" ]; then
+    _pins="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/tool-pins.env"
+    [ -f "${_pins}" ] && _val="$(grep -E "^${_key}=" "${_pins}" | head -1 | cut -d= -f2 || true)"
+  fi
+  printf '%s' "${_val}"
+}
+
+# CON83's lint tools on PATH at their pins: docs/consumer-image-contract.md#shellcheck-and-hadolint
+_consumer_lint_tools_verdict() {
+  local row="$1" want="$3" have
+  have="$(_consumer_contract_fact "$2" FACT lint-tools)"
+  if [ -z "${have}" ]; then
+    printf 'NOFACT %s no FACT lint-tools line' "${row}"
+  elif [ "${have}" != "${want}" ]; then
+    printf 'BAD %s the image has %s, the pins are %s' "${row}" "${have}" "${want}"
+  else
+    printf 'OK %s %s' "${row}" "${have}"
+  fi
+}
+
+# CON83's seed, read through its own verify: docs/consumer-image-contract.md#the-riscv64-uv-cache-seed
+_consumer_uv_seed_verdict() {
+  local row="$1" arch="$3" env have
+  env="$(_consumer_contract_fact "$2" ENV uv-cache-seed)"
+  have="$(_consumer_contract_fact "$2" FACT uv-cache-seed)"
+  if [ -z "${have}" ]; then
+    printf 'NOFACT %s no FACT uv-cache-seed line' "${row}"
+  elif [ "${env}" != /opt/uv-cache-seed ]; then
+    printf 'BAD %s PYTHON_UV_CACHE_SEED is "%s", not /opt/uv-cache-seed' "${row}" "${env}"
+  elif [ "${arch}" = riscv64 ]; then
+    case "${have}" in
+      "[uv-cache-seed] seeded for riscv64: "*", proved") printf 'OK %s %s' "${row}" "${have#*seeded for riscv64: }" ;;
+      *) printf 'BAD %s the riscv64 seed does not verify: %s' "${row}" "${have}" ;;
+    esac
+  else
+    case "${have}" in
+      "[uv-cache-seed] not seeded: "*) printf 'OK %s not seeded on %s, by its record' "${row}" "${arch}" ;;
+      *) printf 'BAD %s the %s record is not a "not seeded" one: %s' "${row}" "${arch}" "${have}" ;;
+    esac
+  fi
+}
+
 # <row> <probe> <pin>; a rendered page proves V8 and the renderer, not only that the binary exists.
 _consumer_chrome_verdict() {
   local row="$1" p="$2" want="$3" have drv
@@ -931,7 +982,7 @@ _consumer_emulator_verdict() {
 
 # Pure verdicts from probe text, so every failure path is testable. docs/consumer-image-contract.md#how-the-gate-proves-it
 _consumer_contract_verdicts() {
-  local arch="$1" probe="$2" row fact line asserted=0
+  local arch="$1" probe="$2" row fact line asserted=0 _sc _hl
   for row in ${_CONSUMER_CONTRACT_ROWS}; do
     if _consumer_contract_exempt "${arch}" "${row}"; then
       fact="$(_consumer_exempt_fact "${row}")"
@@ -953,6 +1004,9 @@ _consumer_contract_verdicts() {
                                  "cargo-audit=$(_rt_versions_env_pin CARGO_AUDIT_VERSION) cargo-deny=$(_rt_versions_env_pin CARGO_DENY_VERSION) cargo-tarpaulin=$(_rt_versions_env_pin CARGO_TARPAULIN_VERSION)")" ;;
         free-threaded-python)
                        line="$(_consumer_free_threaded_verdict "${row}" "${probe}" "$(_rt_versions_env_pin PYTHON_VERSION)")" ;;
+        lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"
+                       line="$(_consumer_lint_tools_verdict "${row}" "${probe}" "shellcheck=${_sc#v} hadolint=${_hl#v}")" ;;
+        uv-cache-seed) line="$(_consumer_uv_seed_verdict "${row}" "${probe}" "${arch}")" ;;
         flatpak-runtimes|appimage-runtime|web-lane-tools)
                        line="$(_consumer_present_verdict "${row}" \
                                  "$(_consumer_contract_fact "${probe}" FACT "${row}")")" ;;

@@ -40,6 +40,8 @@ shellcheck_asset_and_sha() {
     Linux/aarch64|Linux/arm64)
       # Without this arm no lint gate could run on a native ARM build host.
       printf 'shellcheck-%s.linux.aarch64.tar.xz %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_LINUX_AARCH64_SHA256:-}" ;;
+    Linux/riscv64)
+      printf 'shellcheck-%s.linux.riscv64.tar.xz %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_LINUX_RISCV64_SHA256:-}" ;;
     MINGW*/x86_64|MSYS*/x86_64|CYGWIN*/x86_64)
       # The plain .zip release asset is the Windows binary (shellcheck.exe).
       printf 'shellcheck-%s.zip %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_WINDOWS_SHA256:-}" ;;

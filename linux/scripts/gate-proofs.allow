@@ -38,6 +38,9 @@ mutation-family:cross-build
 mutation-family:version-forwarding
 mutation-family:dead-code
 mutation-family:delete-guard
+mutation-family:lint-tools
+mutation-family:uv-cache-seed
+mutation-family:wheel-smoke
 mutation-family:disk-guard
 mutation-family:doc-numbers
 mutation-family:env-knob-default

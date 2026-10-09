@@ -6,6 +6,46 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — the riscv64 Python lane: a uv cache seed, the cross wheel installed, shellcheck and hadolint (CON83)
+
+In source; the chain must prove it in the image. OrchestrANT's riscv64 lane spent 108 min of its 6 h job building
+numpy, matplotlib, contourpy, pillow, line-profiler, psutil and pyyaml under QEMU, never installed the riscv64 wheel it
+cross-builds, and graded its coding bench without shellcheck or hadolint.
+
+- **A uv cache seed, not a wheel store** (`06-packaging/uv-cache-seed.sh`, `PYTHON_UV_CACHE_SEED=/opt/uv-cache-seed`).
+  A locked `uv sync` installs what the lock names by URL and hash, so a `--find-links` wheel is never used; uv finds a
+  built sdist in its cache by that same source. The torch stage fetches the app at `APP_REF`, syncs `--locked --dev
+  --extra test` without the project through the `uv-seed-<arch>` cache mount, and keeps a `uv cache prune --ci` copy
+  holding only the versions the sync installed. riscv64 only; the other arches get a `seeded no` record.
+- **Proved at build:** a fresh copy syncs the same lock into a fresh venv and must build nothing (no `Built` line, no new
+  wheel under `sdists-v*/`). `uv sync --no-build` cannot be the proof: it refused pyyaml with a cached build present
+  (`can't be installed because it is marked as --no-build but has no binary distribution`, uv 0.12.23).
+- **Measured in `:latest`'s riscv64 child under QEMU** (index `af7252a0…`, 32-core host), OrchestrANT 3bdf80a7: cold
+  3172 s, 8 wheels (the 7 above plus the pure-Python sdist antlr4-python3-runtime), seed 21 MB; warm 89 s; the proof
+  passed and `verify` read `seeded for riscv64: 8 wheel(s), proved`.
+- **Consumers copy it.** `ci_tests.sh` and the new `ci-wheel-smoke.sh` call `uv_cache_seed_restore` (`ci-common.sh`),
+  which copies a seed of the running arch into `uv cache dir`. Probe, as uid 1001 in the riscv64 image: a lock with
+  pyyaml and psutil synced with no build from the seed; without it, `Building psutil`, `Building pyyaml`.
+- **The cross wheel is installed where it runs.** `python-ci-linux.yml`'s riscv64 row with `package-emulated` runs
+  `ci-wheel-smoke.sh` in the riscv64 image after packaging: the one `cp314` riscv64 wheel from `dist/`, over the lock's
+  core deps, `import <package>` outside the checkout and every compiled module loaded (`wheel-smoke.py`). A host step
+  fails the row first when the consumer's hub pin lacks the script. Probe in the riscv64 image: a C-extension wheel
+  passed (`import smokeapp and 1 compiled module(s) of smokeapp load on riscv64`), and the same wheel with an x86_64
+  `.so` failed it.
+- **shellcheck and hadolint in the image, every arch** (the published amd64 child had neither on `PATH` either; the same install ran there green) (`install-lint-tools.sh`, the `tool-pins.env` pins, SHA-verified,
+  each binary run on input it must flag). shellcheck has a riscv64 release (`SHELLCHECK_LINUX_RISCV64_SHA256`, also
+  `lint-shell.sh`'s riscv64 arm). hadolint has none: `Dockerfile.torch`'s `hadolint-build` stage builds the release
+  tag's source (`HADOLINT_SOURCE_SHA256`) with Ubuntu's GHC 9.10.3 at `HADOLINT_HACKAGE_INDEX_STATE`, and caches the
+  binary by those pins. The Hackage release alone does not resolve (`time` against language-docker 16); the tag's
+  `cabal.project` carries upstream's `allow-newer: time`. Measured in `ubuntu:26.04` riscv64
+  under QEMU: apt 469 s, `cabal update` 138 s, the build 18221 s (5.1 h, ~105 packages), and the binary reports
+  `Haskell Dockerfile Linter 2.15.1` and flags DL3008/DL3015. It needs libgmp, libffi and libnuma, which `:latest`'s
+  riscv64 child has: `install-lint-tools.sh` installed it there beside the SHA-verified riscv64 shellcheck and both
+  passed their checks.
+- **Gates:** the `lint-tools` and `uv-cache-seed` contract rows; `test-uv-cache-seed.sh`, `test-wheel-smoke.sh` and
+  `test-lint-tools.sh`, 11 mutations (all bite). `bump_versions.py` refreshes the new SHA pins with their versions.
+- **Left for the chain:** see BACKLOG CON83.
+
 ## 2026-10-09 — the CPU ORT build no longer takes ROCm 10.1's flatbuffers 25 (CON78)
 
 The rocm chain `20261009-131840` stopped in the media stage's ORT **CPU** step:

@@ -45,3 +45,28 @@ uv_venv_ensure() {
     printf -v "$existed_outvar" '%s' "$existed"
   fi
 }
+
+# Copies the image's uv cache seed (PYTHON_UV_CACHE_SEED) into uv's cache. docs/consumer-image-contract.md#the-riscv64-uv-cache-seed
+uv_cache_seed_restore() {
+  local seed="${PYTHON_UV_CACHE_SEED:-}" record cache
+  [ -n "${seed}" ] || return 0
+  record="${seed}/seed-record.txt"
+  if [ ! -f "${record}" ]; then
+    warn "PYTHON_UV_CACHE_SEED=${seed} holds no seed-record.txt; nothing seeded"
+    return 0
+  fi
+  if ! grep -qxF 'seeded yes' "${record}"; then
+    info "uv cache seed: $(sed -n 's/^seeded no: //p' "${record}")"
+    return 0
+  fi
+  if ! grep -qxF "arch $(uname -m)" "${record}"; then
+    warn "uv cache seed ${seed} is $(sed -n 's/^arch //p' "${record}")'s, not $(uname -m)'s; not used"
+    return 0
+  fi
+  cache="$(uv cache dir 2>/dev/null)" || { warn "uv cache dir failed; the seed is not used"; return 0; }
+  mkdir -p "${cache}"
+  # -R copies uv's relative archive symlinks as links; a seed entry may replace one of the same name.
+  cp -R "${seed}/." "${cache}/" \
+    || { warn "copying the uv cache seed into ${cache} failed; uv builds what it lacks"; return 0; }
+  info "uv cache seeded from ${seed} into ${cache}: $(grep -c '^built ' "${record}") wheel(s) built from source for app $(sed -n 's/^app //p' "${record}")"
+}

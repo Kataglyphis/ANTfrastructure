@@ -5,11 +5,27 @@ ARG TARGETARCH
 ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-package-${TARGETARCH}"
 # Bind-mounted into the one RUN that reads it, so a missing /opt/wheels fails the build loudly.
 ARG WHEELS_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${TARGETARCH}
+# hadolint's riscv64 build stage starts from the chain's pinned Ubuntu, so the app never re-keys it.
+ARG UBUNTU_VERSION=26.04
+ARG UBUNTU_DIGEST=sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7
 FROM ${WHEELS_IMAGE} AS wheels-source
 # RUNTIME_WHEELS_SOURCE=export: docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries
 FROM scratch AS wheels-export
 COPY --link --from=wheels-source /opt/wheels /opt/wheels
 COPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t
+# hadolint publishes no riscv64 binary; elsewhere this stage is an empty /out. docs/consumer-image-contract.md#shellcheck-and-hadolint
+FROM ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST} AS hadolint-build
+ARG TARGETARCH
+RUN --mount=type=bind,source=linux/scripts/01-core/tool-pins.env,target=/tmp/pins/tool-pins.env \
+    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/pins/load-versions-env.sh \
+    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/pins/downloads.sh \
+    --mount=type=bind,source=linux/scripts/06-packaging/build-hadolint.sh,target=/tmp/build-hadolint.sh \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-hadolint-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-hadolint-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/cabal,id=cabal-cache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.local/state/cabal,id=cabal-store-${TARGETARCH} \
+    bash /tmp/build-hadolint.sh /out /tmp/pins
+
 FROM ${BASE_IMAGE} AS torch
 
 SHELL ["bash", "-lc"]
@@ -154,6 +170,27 @@ RUN --mount=type=cache,target=/var/cache/hailo-build,id=hailo-build-${TARGETARCH
         fi; \
     fi
 ENV HAILO_PREFIX=${HAILO_PREFIX}
+
+# shellcheck and hadolint at their tool-pins.env pins, on every arch. docs/consumer-image-contract.md#shellcheck-and-hadolint
+COPY --chmod=755 linux/scripts/06-packaging/install-lint-tools.sh /opt/scripts/packaging/install-lint-tools.sh
+RUN --mount=type=bind,from=hadolint-build,source=/out,target=/tmp/hadolint-build \
+    set -euo pipefail; \
+    if [ -x /tmp/hadolint-build/hadolint ]; then \
+        bash /opt/scripts/packaging/install-lint-tools.sh /usr/local/bin /tmp/hadolint-build/hadolint; \
+    else \
+        bash /opt/scripts/packaging/install-lint-tools.sh; \
+    fi
+
+# The wheels the app lock's test extra builds from source under QEMU, as a uv cache. docs/consumer-image-contract.md#the-riscv64-uv-cache-seed
+ARG TARGETARCH
+COPY --chmod=755 linux/scripts/06-packaging/uv-cache-seed.sh /opt/scripts/packaging/uv-cache-seed.sh
+RUN --mount=type=cache,target=/var/cache/uv-seed,id=uv-seed-${TARGETARCH} \
+    set -euo pipefail; \
+    export UV_HTTP_TIMEOUT=1200; \
+    bash /opt/scripts/packaging/uv-cache-seed.sh build --app-url https://github.com/Kataglyphis/OrchestrANT.git \
+      --app-ref "${APP_REF}" --extras test --work-cache /var/cache/uv-seed --out /opt/uv-cache-seed; \
+    bash /opt/scripts/packaging/uv-cache-seed.sh verify /opt/uv-cache-seed
+ENV PYTHON_UV_CACHE_SEED=/opt/uv-cache-seed
 
 # WORKDIR is created root-owned, so chown it; drop the sudo shim and the real setuid sudo, pure attack surface at uid 1001.
 RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -l -u ${RUNTIME_UID} -s /bin/bash kataglyphis; \
