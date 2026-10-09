@@ -361,4 +361,17 @@ t_case "a failed lane does not abort the caller"
 _run
 t_assert_eq "0" "${RC}" "the run after a failure must still succeed"
 
+t_case "cross twin: the 3.14t reconfigure moves both FindPython spellings and drops their cached results"
+ft_target_env() { :; }
+_ftlog="${TMP}/ft-cmake.log"; : > "${_ftlog}"
+( export PATH="${TMP}/bin:${PATH}" STUB_CMAKE_LOG="${_ftlog}"
+  src_dir="${TMP}/src" target_build="${TMP}/ftb" MAX_JOBS=2 \
+  FT_TARGET_INCLUDE=/x/ft/include/python3.14t FT_TARGET_LIBRARY=/x/ft/lib/libpython3.14t.so \
+  _iree_free_threaded_rebuild /venv/bin/python ) >/dev/null 2>&1
+_cfg="$(head -1 "${_ftlog}")"
+t_assert_contains "${_cfg}" "-U _Python* -U Python_NumPy* -U Python3_NumPy*" "a GIL configure's cached FindPython results must go"
+t_assert_contains "${_cfg}" "-DPython_INCLUDE_DIR=/x/ft/include/python3.14t" "find_package(Python) reads Python_*, not Python3_*"
+t_assert_contains "${_cfg}" "-DPython_LIBRARY=/x/ft/lib/libpython3.14t.so"
+t_assert_contains "${_cfg}" "-DPython3_INCLUDE_DIR=/x/ft/include/python3.14t"
+
 t_summary
