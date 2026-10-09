@@ -6,6 +6,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-09 — CON79: the Linux ORT twin proved in the published `:latest` amd64
+
+- **Image:** `:latest` index sha256:af7252a0 (hub 655a2c4e). `/opt/wheels-cp314t` holds
+  `onnxruntime_dnnl-1.30.0-cp314-cp314t`, and FT-STORE passed it plus `PYTHON_WHEELS_CP314T` in chain run 20261009-022859.
+- **ORT census:** `check-ort-provenance.sh --image` passes in a fresh container. It reads the twin's four `.so`
+  members as `BIN` rows rooted at `/opt/onnxruntime` and matches them to `ort-provenance-cp314t.sha256`.
+- **Reconcile:** a `python3.14t` venv got PyPI onnxruntime 1.31.0, and `uv_reconcile_chain_ort` (the image's
+  `python_uv.sh`) replaced it with the twin. The venv census passed. `import onnxruntime` kept the GIL off, and the
+  loaded `onnxruntime_pybind11_state.so` and `libonnxruntime_providers_shared.so` match the manifest. Eight threads
+  ran one `InferenceSession` with the GIL off.
+- **Not a defect:** the twin's `libonnxruntime.so.1.30.0` differs from `/usr/local/lib/onnxruntime-cpu/lib`'s, and so
+  does the GIL wheel's. The wheels' own manifests are the reference. The pybind module links ORT statically.
+
 ## 2026-10-09 — CON82: `bump_versions.py --audit-sha-pairs` passes; 49 SHA pins gained refresh specs
 
 - **What failed:** 93 `*_SHA256` keys had no refresh spec, hold or exemption, so Renovate or a hand bump could move
