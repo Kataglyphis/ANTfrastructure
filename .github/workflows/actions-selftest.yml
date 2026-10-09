@@ -1,4 +1,5 @@
 # What a green run does and does not prove: see .github/actions/README.md § Testing these actions
+# probe: exercise clone-into-short-path on a merge ref (CON84 item 2); this PR is closed unmerged
 
 name: Composite actions · self-test
 
