@@ -32,13 +32,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 - [ ] **CON75 — the free-threaded wheel on the cross lanes** [M, ★]. The Windows arm64 cross lane
       skips `cp314t` with a logged reason: it builds no Cython wheel at all. Its target interpreter
       exists since CON74 half 1, and `New-FreeThreadedBuildPython` pins a cross venv's `EXT_SUFFIX`
-      since CON79 item 2. **Linux half in source since 2026-10-09 (CHANGELOG), with CON79 1b.**
-      The cross twins build on the host `3.14t` against `/opt/python-cross-ft/<arch>`, are gated on
-      the target suffix and are proved by the target `3.14t` under qemu-user. Proved without a chain:
-      PyAV 19.0.1's riscv64 twin loaded its 50 modules with the GIL off under QEMU. Open: a published
-      `:latest` whose riscv64 media log shows `free-threaded: building the cp314t twin of av for
-      riscv64` and `(on riscv64 under qemu-riscv64)` for each twin, and whose smoke passes `FT-STORE:
-      the store records a cross build`. Done when both lanes ship a wheel proved on the target.
+      since CON79 item 2. **The Linux half is done** (`:latest` of 2026-10-10, index sha256:30dea85c, hub 381431d1): each
+      cross arch's `FT-STORE` passes `the store records a cross build` and loads every twin with the GIL off.
+      Left: the Windows arm64 half. Done when it ships a wheel proved on the target.
 - [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
       [M, ★]. Half 1 is in the scripts since 2026-10-07 (CHANGELOG): media-core's
       `Build-TargetCpython.ps1` stages the `--disable-gil` ARM64 build into
@@ -70,11 +66,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          grades the twin's four members against `ort-provenance-cp314t.sha256` with chain roots and passes; and a
          3.14t venv holding PyPI onnxruntime 1.31.0 is reconciled by `uv_reconcile_chain_ort` onto the twin
          (venv census PASS, `import onnxruntime` with the GIL off, 8 threads run one session). Open: the nvidia
-         and rocm ORT twins (one call each), FT-STORE on arm64 (a native arm64 chain). Windows — a `:winamd64` image build carrying all five twins, so smoke section 20 checks its
+         and rocm ORT twins (one call each), FT-STORE on arm64 is green since the cross `:latest` of 2026-10-10 (1b). Windows — a `:winamd64` image build carrying all five twins, so smoke section 20 checks its
          exact set; the IREE v3.12.0 clang-cl fixes and the `iree-base-compiler` twin are proved locally on the
          full compiler tree since 2026-10-07. Optional: keep the GIL interpreter in IREE's VM ISA genrule for
          the Windows twin, as `Set-OrtNinjaCommandPython` does for ORT (56 of its 137 edges go away).
-      1b. **Linux cross twins: in source since 2026-10-09 (CHANGELOG); the chain must prove them.**
+      1b. **Linux cross twins: proved in the published `:latest` of 2026-10-10 (index sha256:30dea85c), all but torch.**
          The arm64 cross and riscv64 builds make the same twins as native: av, apache-tvm-ffi,
          iree-base-runtime (cross builds no IREE compiler) and their ORT flavour. On riscv64 they also
          make torch, through the new `torch|twin:FT_TORCH_TWIN` row. `ft_target_resolve` reads the target
@@ -108,10 +104,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
            - The chain's `FT-STORE` on riscv64 is still to read.
          - **numpy** has a row (`twin:FT_TORCH_TWIN`) but no chain build, so nothing expects its twin. A
            riscv64 `cp314t` numpy for consumers is CON83's wheel-store question. torchvision stays `none`.
-         - Left: the chain. Each cross arch's `FT-STORE` must list its twins as `PASS` and end on `the store
-           holds exactly the twin families of /opt/venv` (arm64: apache-tvm-ffi av iree-base-runtime
-           onnxruntime; riscv64: the same plus torch). The IREE and torch cross reconfigures, the ORT
-           cross pass and tvm-ffi's cross rebuild are unproved until then.
+         - **Proved by the chain** (runs 20261010-002002 and 20261010-010337, hub 381431d1): arm64 and riscv64
+           `FT-STORE` pass apache-tvm-ffi, av (50 modules), iree-base-runtime and onnxruntime_webgpu with the GIL off and
+           end on `the store holds exactly the twin families of /opt/venv: apache-tvm-ffi av iree-base-runtime onnxruntime`.
+           That run had `FT_TORCH_TWIN=0`, so its riscv64 store records torch as skipped.
+         - Left: the next `:latest` chain with the fixed torch twin (9e3b7cba). riscv64's `FT-STORE` must add the torch
+           twin as `PASS` and the family list must end on `onnxruntime torch`.
       2. **arm64 cross twins (Windows): the device proof.** In source since 2026-10-07 (CHANGELOG), proved
          statically in `:winarm64`. Left: republish `:winarm64`, then read the first `bundle-gate` job's step
          `free-threaded wheels: every cp314t twin loads with the GIL off`. Also left: cp314t `win_arm64` wheels
@@ -152,12 +150,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       3172 s cold, 89 s warm, proof passed), a seeded consumer sync and the wheel smoke under QEMU,and
       riscv64's hadolint built from source (5.1 h under QEMU) and installed with shellcheck in `:latest`'s riscv64
       child by `install-lint-tools.sh`.
-      **Left, for the chain and then the lane:**
-      - The chain's first riscv64 wrapper build pays the hadolint build (~5 h under QEMU, in parallel with the torch
-        stage; the final stage waits for whichever ends last); later chains reuse the binary cached by its pins (`build-hadolint: reused`).
-      - The chain: the riscv64 torch stage logs `[uv-cache-seed] seeded for riscv64: N wheel(s), proved` and the
-        contract rows `OK uv-cache-seed` (riscv64: `N wheel(s), proved`; amd64/arm64: `not seeded on <arch>`) and
-        `OK lint-tools shellcheck=0.11.0 hadolint=2.15.1` on all three arches.
+      **The chain half is done** (`:latest` of 2026-10-10, index sha256:30dea85c): the riscv64 wrapper built hadolint
+      2.15.1 from source (wrapper step 18394 s, about 4 h of it the hadolint build) and logged `[uv-cache-seed] seeded
+      for riscv64: 8 wheel(s), proved`; the contract rows read `OK uv-cache-seed 8 wheel(s), proved` (riscv64), `not
+      seeded on amd64/arm64, by its record`, and `OK lint-tools shellcheck=0.11.0 hadolint=2.15.1` on all three.
+      **Left, the lane:**
       - OrchestrANT's hub pin must move past the CON83 commit, or its riscv64 row fails at the wheel smoke's pin
         check. Then its riscv64 run must show `uv cache seeded from /opt/uv-cache-seed` and no `Building numpy` in
         the test leg, `wheel smoke passed`, and the bench rows without `[shellcheck SKIPPED` / `[hadolint SKIPPED`.
