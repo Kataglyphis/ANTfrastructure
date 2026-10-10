@@ -50,12 +50,17 @@ dsv_closure_verdict() {
   return 0
 }
 
-# "<file under DS_ROOT> <soname> <path|NOTFOUND>" for every ELF, as the loader alone sees it: no LD_LIBRARY_PATH.
+# dsv_ldd_rows <elf> <label>: "<label> <soname> <path|NOTFOUND>", as the loader alone sees it: no LD_LIBRARY_PATH.
+dsv_ldd_rows() {
+  env -u LD_LIBRARY_PATH ldd "$1" 2>/dev/null | awk -v f="$2" \
+    '$2=="=>" && $3=="not" {print f, $1, "NOTFOUND"; next} $2=="=>" && $3 ~ /^\// {print f, $1, $3}'
+}
+
+# "<file under DS_ROOT> <soname> <path|NOTFOUND>" for every ELF.
 dsv_ldd_table() {
   local f
   while IFS= read -r f; do
-    env -u LD_LIBRARY_PATH ldd "${f}" 2>/dev/null | awk -v f="${f#"${DS_ROOT}"/}" \
-      '$2=="=>" && $3=="not" {print f, $1, "NOTFOUND"; next} $2=="=>" && $3 ~ /^\// {print f, $1, $3}'
+    dsv_ldd_rows "${f}" "${f#"${DS_ROOT}"/}"
   done < <(find "$@" -name '*.so*' -type f | LC_ALL=C sort)
 }
 
@@ -92,6 +97,15 @@ dsv_check_one_gstreamer() {
   provides="$(find "${DS_ROOT}" -name 'libgst*-1.0.so*' -o -name 'libgstreamer-1.0.so*' | head -5)"
   [ -z "${provides}" ] || verdict+=$'\n'"DeepStream tree ships a GStreamer core library: ${provides}"
   if [ -n "${verdict//[[:space:]]/}" ]; then printf '    %s\n' "${verdict}"; dsv_bad "one GStreamer (${GSTREAMER_PREFIX})"; else dsv_ok "every plugin resolves GStreamer from ${GSTREAMER_PREFIX}"; fi
+}
+
+# The registration gate judges nothing unless gst-inspect-1.0 itself loads the prefix's core: a distro 1.28 core refuses every 1.29 plugin.
+dsv_check_gst_core() {
+  local tool verdict
+  tool="$(command -v gst-inspect-1.0 || true)"
+  [ -n "${tool}" ] || { dsv_bad "no gst-inspect-1.0 on PATH"; return 0; }
+  verdict="$(dsv_ldd_rows "${tool}" "${tool}" | dsv_gst_origin_verdict)"
+  if [ -n "${verdict}" ]; then printf '    %s\n' "${verdict}"; dsv_bad "gst-inspect-1.0 loads a GStreamer core outside ${GSTREAMER_PREFIX}"; else dsv_ok "gst-inspect-1.0 loads the core from ${GSTREAMER_PREFIX}"; fi
 }
 
 # libnvv4l2.so carries SONAME libv4l2.so.0: with its dir in ld.so.conf, ldconfig would hand it to every V4L2 user.
@@ -197,6 +211,7 @@ dsv_main() {
   dsv_check_plugin_dir
   dsv_check_closure
   dsv_check_one_gstreamer
+  dsv_check_gst_core
   dsv_check_no_v4l2_hijack
   dsv_check_v4l2_plugin
   dsv_check_trt_builder_resources

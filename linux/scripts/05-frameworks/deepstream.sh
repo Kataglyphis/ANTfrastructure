@@ -231,12 +231,27 @@ ds_component_compiler() {
   esac
 }
 
-# The media build stages export no PKG_CONFIG_PATH for /opt/gstreamer; the components' Makefiles ask pkg-config for gstreamer-1.0.
-ds_gst_pkgconfig_path() {
+# The libdir that carries gstreamer-1.0.pc, as configure-runtime.sh resolves it for the final image.
+ds_gst_libdir() {
   local pc
   pc="$(find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -name gstreamer-1.0.pc -type f 2>/dev/null | head -1 || true)"
   [ -n "${pc}" ] || ds_die "no gstreamer-1.0.pc under ${GSTREAMER_PREFIX:-/opt/gstreamer}/lib"
-  printf '%s%s' "$(dirname "${pc}")" "${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+  dirname "$(dirname "${pc}")"
+}
+
+# The media build stages export no PKG_CONFIG_PATH for /opt/gstreamer; the components' Makefiles ask pkg-config for gstreamer-1.0.
+ds_gst_pkgconfig_path() {
+  local libdir
+  libdir="$(ds_gst_libdir)" || exit 1
+  printf '%s/pkgconfig%s' "${libdir}" "${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+}
+
+# The build stage has no 000-gstreamer.conf and does have the distro core packagekit pulls in, so ld.so picked 1.28 and it refused every 1.29 plugin.
+ds_write_gst_ldconf() {
+  local libdir
+  libdir="$(ds_gst_libdir)" || exit 1
+  printf '%s\n%s/lib\n' "${libdir}" "${GSTREAMER_PREFIX:-/opt/gstreamer}" > "${DS_LDCONF_DIR:-/etc/ld.so.conf.d}/000-gstreamer.conf"
+  ldconfig
 }
 
 # nvstreammux is a static archive gst-nvmultistream2 links, so it is built but not installed, as in build.sh.
@@ -337,6 +352,7 @@ ds_build() {
   ds_build_components "${tmp}/src" "${tmp}/logs"
   ds_fix_layout "$(ds_root)"
   rm -rf "${tmp}"
+  ds_write_gst_ldconf
   ds_write_trt_ldconf
   ds_link_trt_builder_resources
   DS_ROOT="$(ds_root)" DS_TRT_PREFIX="$(ds_trt_prefix)" bash "${DS_SCRIPT_DIR}/deepstream-verify.sh"

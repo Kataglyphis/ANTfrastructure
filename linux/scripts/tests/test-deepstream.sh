@@ -53,6 +53,28 @@ t_assert_eq "${_T}/gst/lib/x86_64-linux-gnu/pkgconfig:/a" "$(_ds ds_gst_pkgconfi
 t_assert_contains "$(_ds ds_gst_pkgconfig_path GSTREAMER_PREFIX="${_T}/nogst")" "no gstreamer-1.0.pc under ${_T}/nogst/lib"
 t_assert_eq "1" "$(grep -c 'PKG_CONFIG_PATH="$(ds_gst_pkgconfig_path)"' "${DS}")" "ds_build_components sets it before its first pkg-config"
 
+t_case "the build stage's loader ranks /opt/gstreamer first, as the final image's 000-gstreamer.conf does"
+mkdir -p "${_T}/ldconf"
+_ds 'ldconfig() { :; }; ds_write_gst_ldconf' GSTREAMER_PREFIX="${_T}/gst" DS_LDCONF_DIR="${_T}/ldconf" >/dev/null
+t_assert_eq "${_T}/gst/lib/x86_64-linux-gnu"$'\n'"${_T}/gst/lib" "$(cat "${_T}/ldconf/000-gstreamer.conf" 2>/dev/null)" \
+  "without it ld.so took packagekit's distro 1.28 core, which refused nvinfer and five more 1.29 plugins (2026-10-10)"
+t_assert_fails env GSTREAMER_PREFIX="${_T}/nogst" DS_LDCONF_DIR="${_T}/ldconf" bash -c 'source "$1"; ldconfig() { :; }; ds_write_gst_ldconf' _ "${DS}"
+_BUILD="$(t_fn_src "${DS}" ds_build)"
+t_assert_contains "${_BUILD}" 'ds_write_gst_ldconf' "ds_build writes it"
+t_assert_eq "1" "$(printf '%s\n' "${_BUILD}" | awk '/ds_write_gst_ldconf/{g=NR} /deepstream-verify.sh/{v=NR} END{print (g && v && g<v) ? 1 : 0}')" "before the gates run"
+
+t_case "the registration gate refuses a gst-inspect-1.0 that loads another GStreamer core"
+mkdir -p "${_T}/bin-distro" "${_T}/bin-prefix"
+for b in distro prefix; do printf '#!/bin/sh\n' > "${_T}/bin-${b}/gst-inspect-1.0"; done
+printf '#!/bin/sh\necho "\tlibgstreamer-1.0.so.0 => /usr/lib/x86_64-linux-gnu/libgstreamer-1.0.so.0 (0x1)"\n' > "${_T}/bin-distro/ldd"
+printf '#!/bin/sh\necho "\tlibgstreamer-1.0.so.0 => /opt/gstreamer/lib/x86_64-linux-gnu/libgstreamer-1.0.so.0 (0x1)"\n' > "${_T}/bin-prefix/ldd"
+chmod +x "${_T}"/bin-*/*
+_core() { PATH="${_T}/bin-$1:${PATH}" GSTREAMER_PREFIX=/opt/gstreamer bash -c 'source "$1"; dsv_check_gst_core; echo "fail=${dsv_fail}"' _ "${DSV}"; }
+t_assert_contains "$(_core distro)" "gst-inspect-1.0 loads a GStreamer core outside /opt/gstreamer"
+t_assert_contains "$(_core distro)" "fail=1"
+t_assert_contains "$(_core prefix)" "fail=0"
+t_assert_contains "$(t_fn_src "${DSV}" dsv_main)" 'dsv_check_gst_core' "the core check is a gate"
+
 t_case "the component list: build.sh's order, minus the documented exclusions"
 _S="${_T}/src"
 for d in src/gst-utils/gstnvcustomhelper src/gst-utils/gst-nvdssr src/gst-utils/gstnvdscustomhelper src/utils/nvds_rest_server \

@@ -6,6 +6,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-10 — DeepStream's build-stage gates load /opt/gstreamer's core, as the final image does (CON42)
+
+- With the components building, run 20261010-193517 stopped in `deepstream-verify.sh`: `one GStreamer` (every plugin's
+  `libgst*` resolved to `/usr/lib/x86_64-linux-gnu`), `soname closure` (`libgstrtspserver-1.0.so.0` not found) and six
+  of nine elements not registering (`nvinfer`, `nvstreammux`, `nvtracker`, `nvdsosd`, `nvstreamdemux`, `nvurisrcbin`).
+- Cause, reproduced with `--target deepstream`: the `gstreamer` stage carries a distro GStreamer 1.28 core (the
+  toolchain's `software-properties-common` -> `packagekit` -> `libgstreamer1.0-0`; the gstreamer stage's
+  `gir1.2-gstreamer-1.0` and `libgtk-4-dev` add base, GL and extra) and no `000-gstreamer.conf`. `ld.so` handed even
+  `/opt/gstreamer/bin/gst-inspect-1.0` the 1.28 core, and `GST_DEBUG=2` shows it refusing each component built against
+  1.29: `has incompatible version (plugin: 1.29, gst: 1.28), not loading`. NVIDIA's prebuilt plugins registered,
+  which is why three elements passed. The final image purges the distro packages and writes the conf, so the
+  2026-10-01 spike never saw this.
+- `ds_build` now writes the same `000-gstreamer.conf` that `configure-runtime.sh` writes (`ds_write_gst_ldconf`) before
+  its gates. The stage's `/etc` stays in the stage: the image copies only `/opt/nvidia` from it.
+- A new gate, `dsv_check_gst_core`, fails when `gst-inspect-1.0` itself loads a core outside `/opt/gstreamer`, so a
+  registration verdict can no longer be made against another GStreamer. The local stage build passes every gate
+  (48 components, 9/9 elements). `test-deepstream.sh` covers the conf, its order in `ds_build` and the new gate.
+
 ## 2026-10-10 — DeepStream's components find /opt/gstreamer through pkg-config in the media build stage (CON42)
 
 - The first nvidia chain with DeepStream on by default (run 20261010-125556) stopped in `Dockerfile.media`'s `deepstream`
