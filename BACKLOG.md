@@ -433,6 +433,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       Done when a published `:winarm64` passes that step; then raise the gate's floor to 13 and
       fail a bundle without the layer. BeschleunigerBallett's `-StageTests` already stages it
       from there on both arches (BB 17aa94ff) and warns until the bundle carries it.
+      2026-10-10: the published `:winarm64` (`ba6bfaae…`) carries `VkLayer_khronos_validation.dll`,
+      built from source without sccache (28833e74). Open: the device step and the floor.
 - [ ] **CON67 — the test runner's wheels in the `:winarm64` wheel store** [S, ★]. OrchestrANT's
       `Stage-Arm64Tests.ps1` installed pytest and six plugins (cov, benchmark, md, md-report,
       html, requests) for win_arm64 from PyPI at cross-build time, versions unpinned. In source
@@ -445,6 +447,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - Docs: `docs/windows-cross-builds.md` § A consumer's test runner, pinned.
       Done when a published `:winarm64` passes that step on the device and OrchestrANT's
       `Stage-Arm64Tests.ps1` installs from the wheel store instead of PyPI.
+      2026-10-10: the published `:winarm64` (`ba6bfaae…`) carries the pinned wheels, pytest 9.1.1
+      among them; its marker-aware deps gate passed (28833e74). Open: the device step and
+      OrchestrANT's switch.
 
 - [ ] **CON63 — prove the WebRTC contract on the next arm64 chain** [S, ★★]. The
       2026-10-05 Windows WebRTC fixes (`docs/windows-builds.md` § libffi's type exports,
@@ -456,6 +461,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       first arm64 merge either passes them or names the failing crate or symbol. Then
       run the WebRTC loopback on the Snapdragon device through `Test-Arm64Bundle.ps1`,
       which has no WebRTC step yet.
+      2026-10-10: the `:winarm64` merge passed the cross half. gst-plugins-rs built for
+      `aarch64-pc-windows-msvc`, and the aarch64 `ffi-7.dll` passed the libffi type-export
+      check. Open: the loopback on the device, and that `Test-Arm64Bundle.ps1` step.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
