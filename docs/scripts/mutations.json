@@ -12995,6 +12995,30 @@
   "why": "FT_TORCH_TWIN=0 would still demand the riscv64 torch twin, so the escape hatch could never turn it off"
  },
  {
+  "id": "wheels.torch-ft-args-afresh",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    local -a cmake_args=()\n    python_sysconfig_export=\"$(ft_target_env)\"\n",
+  "replace": "    local -a cmake_args=()\n    python_sysconfig_export=\"$(ft_target_env)\"\n    local CROSS_PYTHON_INCLUDE_DIR=\"\" CROSS_PYTHON_LIBRARY=\"\"\n",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "the torch twin would compile against the target GIL headers again and ship the GIL libtorch_python.so under a cp314t name, which segfaults in dlopen"
+ },
+ {
+  "id": "wheels.ft-proof-says-why",
+  "target": "linux/scripts/03-media/free-threaded-wheels.sh",
+  "find": "\"${3:-the proof printed nothing}\" \"$(_ft_exit_status \"$2\")\" \"${dying}\"",
+  "replace": "\"${3:-}\" \"\" \"\"",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "a twin that kills the target interpreter would fail its proof with an empty reason again, as the riscv64 torch twin did"
+ },
+ {
+  "id": "wheels.ft-proof-encloses-package",
+  "target": "linux/scripts/02-toolchain/python/free-threaded-wheel.py",
+  "find": "                enclose(name)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "torch._C's init would import an unimportable torch, and no torch twin could ever be proved"
+ },
+ {
   "id": "probe.ft-store-proved",
   "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
   "find": "    if printf '%s\\n' \"${probe}\" | grep -q -e \"^FTS PROVED ${w%%-*} \"; then\n",

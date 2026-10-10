@@ -252,7 +252,7 @@ _ft_helper() {
 
 # <wheel> <dist>: a fresh venv of the free-threaded interpreter takes the wheel alone, and loading every compiled module leaves the GIL off.
 ft_prove_wheel() {
-  local wheel="$1" dist="$2" helper venv out rc=0
+  local wheel="$1" dist="$2" helper venv out dying rc=0
   helper="$(_ft_helper)" || return 1
   if _ft_cross; then
     ft_prove_wheel_on_target "${wheel}" "${dist}" "${helper}"
@@ -261,22 +261,35 @@ ft_prove_wheel() {
   venv="$(mktemp -d "${TMPDIR:-/tmp}/ft-prove.XXXXXX")"
   if uv venv --clear --quiet --python "${FT_PYTHON:?ft_python_resolve first}" "${venv}" \
      && uv pip install --quiet --python "${venv}/bin/python" --no-deps "${wheel}"; then
-    out="$(cd / && "${venv}/bin/python" -I "${helper}" prove "${dist}" 2>&1)" || rc=$?
+    out="$(cd / && FT_PROVE_TRACE="${venv}/prove-trace" "${venv}/bin/python" -I "${helper}" prove "${dist}" 2>&1)" || rc=$?
   else
     out="${wheel##*/} does not install into a fresh ${FT_PYTHON} venv"
     rc=1
   fi
+  dying="$(cat "${venv}/prove-trace" 2>/dev/null || true)"
   rm -rf "${venv}"
-  _ft_prove_verdict "${wheel}" "${rc}" "${out}"
+  _ft_prove_verdict "${wheel}" "${rc}" "${out}" "" "${dying}"
 }
 
-# <wheel> <rc> <output>: the proof's one line, on stdout when it held, else on stderr with rc 1.
+# <rc>: how the proof process ended; 128+N is a signal (qemu-user re-raises the target's on itself).
+_ft_exit_status() {
+  local sig
+  if [ "$1" -gt 128 ] && sig="$(kill -l "$(($1 - 128))" 2>/dev/null)"; then
+    printf 'killed by SIG%s, exit status %s' "${sig#SIG}" "$1"
+  else
+    printf 'exit status %s' "$1"
+  fi
+}
+
+# <wheel> <rc> <output> [where] [trace]: the proof's verdict, on stdout when it held, else on stderr with rc 1; never an empty reason.
 _ft_prove_verdict() {
+  local where="${4:+ (${4})}" dying="${5:+; it died loading ${5}}"
   if [ "$2" -ne 0 ]; then
-    printf 'free-threaded: %s is not proved: %s\n' "${1##*/}" "$3" >&2
+    # The trace holds a module name only when that module's load never returned (FT_PROVE_TRACE).
+    printf 'free-threaded: %s is not proved: %s (%s%s)%s\n' "${1##*/}" "${3:-the proof printed nothing}" "$(_ft_exit_status "$2")" "${dying}" "${where}" >&2
     return 1
   fi
-  printf 'free-threaded: %s: %s\n' "${1##*/}" "$3"
+  printf 'free-threaded: %s: %s%s\n' "${1##*/}" "$3" "${where}"
 }
 
 # <arch>: the root under which qemu-user finds the target's dynamic loader (the multiarch / or the cross sysroot).
@@ -307,7 +320,7 @@ _ft_target_cxx_runtime_dir() {
 
 # <wheel> <dist> <helper>: the cross twin unpacked beside the target's own 3.14t, which loads every compiled module under qemu-user.
 ft_prove_wheel_on_target() {
-  local wheel="$1" dist="$2" helper="$3" qemu sysroot site out rc=0 d triplet cxxrt
+  local wheel="$1" dist="$2" helper="$3" qemu sysroot site out rc=0 d triplet cxxrt trace
   [ -n "${FT_TARGET_PYTHON:-}" ] || ft_target_resolve || return 1
   qemu="$(cross_target_qemu_runner 2>/dev/null || true)"
   [ -n "${qemu}" ] || { printf 'free-threaded: %s cannot be proved: no qemu-user for %s\n' "${wheel##*/}" "${FT_TARGET_ARCH}" >&2; return 1; }
@@ -329,16 +342,16 @@ for data in site.glob("*.data"):
 ' "${wheel}" "${site}" 2>&1)"; then
     cxxrt="$(_ft_target_cxx_runtime_dir "${triplet}")"
     d="${FT_TARGET_PREFIX}/lib:${cxxrt:+${cxxrt}:}${sysroot%/}/lib/${triplet}:${sysroot%/}/usr/lib/${triplet}:${sysroot%/}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-    out="$(cd / && "${qemu}" -L "${sysroot}" -E "LD_LIBRARY_PATH=${d}" -U PYTHONPATH -U PYTHONHOME \
+    out="$(cd / && "${qemu}" -L "${sysroot}" -E "LD_LIBRARY_PATH=${d}" -E "FT_PROVE_TRACE=${site}.trace" -U PYTHONPATH -U PYTHONHOME \
       "${FT_TARGET_PYTHON}" -I -c 'import runpy, sys; sys.path.insert(0, sys.argv[1]); sys.argv = sys.argv[2:]; runpy.run_path(sys.argv[0], run_name="__main__")' \
       "${site}" "${helper}" prove "${dist}" 2>&1)" || rc=$?
-    out="${out} (on ${FT_TARGET_ARCH} under ${qemu##*/})"
   else
     out="${wheel##*/} does not unpack: ${out}"
     rc=1
   fi
-  rm -rf "${site}"
-  _ft_prove_verdict "${wheel}" "${rc}" "${out}"
+  trace="$(cat "${site}.trace" 2>/dev/null || true)"
+  rm -rf "${site}" "${site}.trace"
+  _ft_prove_verdict "${wheel}" "${rc}" "${out}" "on ${FT_TARGET_ARCH} under ${qemu##*/}" "${trace}"
 }
 
 # <wheel> <store>: gate, proof, then the store; nothing unproved is ever stored.

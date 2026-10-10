@@ -8,9 +8,13 @@ Exit 0 yes, 1 no, 2 cannot tell. See docs/python-ci.md#two-wheels-gil-and-free-t
 """
 
 import argparse
+import contextlib
+import faulthandler
 import importlib.machinery
 import importlib.metadata
 import importlib.util
+import io
+import os
 import re
 import sys
 import sysconfig
@@ -74,17 +78,52 @@ def extension_modules(dist: str) -> list[tuple[str, str]]:
     return sorted(found)
 
 
+def enclose(name: str) -> None:
+    """Import the package enclosing NAME; if that fails, register it with its body unrun, as an import in progress leaves it.
+
+    torch._C's init imports torch: unimportable (a --no-deps venv lacks typing_extensions) and unregistered, it re-entered
+    torch._C's own init. numpy's test modules need the real numpy, so the import comes first.
+    """
+    parent = name.rpartition(".")[0]
+    if not parent or parent in sys.modules:
+        return
+    before = set(sys.modules)
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            importlib.import_module(parent)
+        return
+    except Exception:  # noqa: BLE001 -- a package whose body cannot run here is registered unrun instead
+        for partial in set(sys.modules) - before:
+            del sys.modules[partial]
+    parts = parent.split(".")
+    for i in range(1, len(parts) + 1):
+        package = ".".join(parts[:i])
+        if package in sys.modules:
+            continue
+        spec = importlib.util.find_spec(package)
+        if spec is None or spec.submodule_search_locations is None:
+            return
+        sys.modules[package] = importlib.util.module_from_spec(spec)
+
+
 def load_all(modules: list[tuple[str, str]]) -> tuple[list[str], list[str]]:
     """Create each module without running its body (CPython decides about the GIL there): GIL offenders, failures."""
     offenders, failures = [], []
+    # A module that kills the process leaves no verdict; FT_PROVE_TRACE names the one being loaded.
+    trace = Path(os.environ["FT_PROVE_TRACE"]) if os.environ.get("FT_PROVE_TRACE") else None
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         for name, path in modules:
+            if trace:
+                trace.write_text(name)
             try:
+                enclose(name)
                 spec = importlib.util.spec_from_file_location(name, path)
                 importlib.util.module_from_spec(spec)
             except Exception as exc:  # noqa: BLE001 -- every failure is reported, none may stop the census
                 failures.append(f"{name}: {exc}")
+    if trace:
+        trace.write_text("")
     for w in caught:
         m = GIL_WARNING.search(str(w.message))
         if m:
@@ -94,6 +133,7 @@ def load_all(modules: list[tuple[str, str]]) -> tuple[list[str], list[str]]:
 
 def prove(dist: str) -> int:
     """Return 0 when every compiled module of the distribution loads with the GIL still disabled."""
+    faulthandler.enable()  # a module that segfaults or aborts says where, instead of nothing
     if not sysconfig.get_config_var("Py_GIL_DISABLED"):
         print(f"ERROR: {sys.executable} is not a free-threaded interpreter", file=sys.stderr)
         return 2

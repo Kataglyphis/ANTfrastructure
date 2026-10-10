@@ -6,6 +6,31 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-10 — the riscv64 torch twin compiles against the target 3.14t, and a failed proof is never silent (CON79 1b)
+
+- **Root cause.** The twin pass appended its Python overrides to the GIL pass's `CMAKE_ARGS`, which kept
+  `-DPYTHON_INCLUDE_DIR=/opt/python-cross/riscv64/usr/local/include/python3.14`. `torch/CMakeLists.txt` puts that dir
+  first on `torch_python`'s include path, so the "twin" recompiled nothing. Its `libtorch_python.so` and `_C` were
+  byte-identical to the GIL wheel's (sha256 `b3978f91…`). That library imports `_Py_Dealloc` and no free-threaded
+  refcount symbol. Under qemu-riscv64 the target 3.14t segfaulted in `dlopen`, in its initializers, and printed nothing.
+- **The fix.** `_torch_build_free_threaded_wheel` builds its arguments afresh through `_torch_cmake_args`, now shared
+  with the GIL pass. `append_common_cross_cmake_args` takes the target from `CROSS_PYTHON_*` when set. The twin adds
+  `-U _Python* -U Python_NumPy* -U Python3_NumPy*`. The pass takes 233 s warm instead of 70 s, and its
+  `libtorch_python.so` imports `_Py_DecRefShared`, `_Py_MergeZeroLocalRefcount` and `PyUnstable_Module_SetGIL`.
+- **The proof could not prove any torch.** `torch._C`'s init imports `torch`, whose body needs `typing_extensions`, which
+  a `--no-deps` venv lacks. PyPI's amd64 cp314t torch failed the same way. With `typing_extensions` present, the body
+  re-imported `torch._C` inside its own init (`SystemError: bad call flags`). `free-threaded-wheel.py` now imports a
+  module's enclosing package first. When that fails, it registers the package unrun, as an import in progress leaves
+  it. numpy, av, apache-tvm-ffi, onnxruntime, pyyaml and markupsafe from PyPI give the same verdicts as before.
+- **Never an empty reason.** The helper enables `faulthandler` and writes the module it is loading to `FT_PROVE_TRACE`.
+  `_ft_prove_verdict` adds the exit status or signal. The unfixed twin now reads `… (killed by SIGSEGV, exit status
+  139; it died loading torch._C) (on riscv64 under qemu-riscv64)` after the stack.
+- **Proved.** A full riscv64 `build_torch_wheel` in `:cross-sdk-riscv64` stored the twin: `1 compiled module(s) of torch
+  loaded on free-threaded 3.14.8; the GIL stayed disabled (on riscv64 under qemu-riscv64)`. `import torch` there runs
+  with the GIL off. `FT_TORCH_TWIN=1` again in `versions.env` and both `Dockerfile.media` ARGs.
+- Tests, red before and green after: the twin's arguments carry no GIL path; a crash names the signal and the module;
+  `FT_PROVE_TRACE`; the enclosing-package import and its fallback.
+
 ## 2026-10-10 — FT_TORCH_TWIN off until the riscv64 torch twin's qemu proof works (CON79 1b)
 
 - Run 20261009-233208 proved every arm64 and riscv64 cross twin but torch: riscv64's cp314t torch built in 70 s in the warm

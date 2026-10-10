@@ -749,7 +749,7 @@ support also ships as a proved `cp314t` twin, in a store of its own: `/opt/wheel
   | libcamera's pycamera, OpenCV's `cv2` | GIL only | no marker, and they ship in the tree, not as wheels |
 
 - **A knob row.** `twin:<KNOB>` names a `versions.env` switch: the row is a twin only while
-  that key is `1`. `FT_TORCH_TWIN=0` is the default until the riscv64 torch twin's qemu proof works (BACKLOG CON79 1b), and `Dockerfile.media` takes it in the
+  that key is `1`. `FT_TORCH_TWIN=1` is the default, and `Dockerfile.media` takes it in the
   app-wheelhouse RUN, which builds the twin, and in the final RUN, whose store check expects
   it. Windows reads such a row as no twin.
 - **How a twin is built.** Each build runs a second pass on a `3.14t` venv whose build
@@ -792,7 +792,12 @@ support also ships as a proved `cp314t` twin, in a store of its own: `/opt/wheel
   - IREE reconfigures its runtime tree with the target `3.14t` include dir and library.
   - ORT passes `Python_INCLUDE_DIR` to `build.sh`.
   - The riscv64 torch reruns its warm scikit-build tree with the target `3.14t` on the
-    command line, where the toolchain file's cache entries cannot reach.
+    command line, where the toolchain file's cache entries cannot reach. Its `CMAKE_ARGS` are
+    built afresh rather than appended to the GIL pass's: that pass's `-DPYTHON_INCLUDE_DIR` heads
+    `torch_python`'s include path, so a twin that kept it compiled against the GIL `pyconfig.h`.
+    That twin's `libtorch_python.so` was byte-identical to the GIL wheel's, and it segfaulted in
+    `dlopen` under the target `3.14t` (2026-10-10). The fixed pass takes about 240 s warm, and its
+    `libtorch_python.so` imports `_Py_DecRefShared` and `PyUnstable_Module_SetGIL`.
 
   A cross build that is missing the target tree fails its twin, rather than skipping it.
 - **How a twin is proved.** Before it is stored, `ft_soabi_gate` wants a `cp3XY-cp3XYt` name
@@ -803,6 +808,12 @@ support also ships as a proved `cp314t` twin, in a store of its own: `/opt/wheel
   the target's own `3.14t` under qemu-user (`ft_prove_wheel_on_target`): `-L` names the root
   holding the target's loader, and the target tree's `lib` leads `LD_LIBRARY_PATH`. A bare `.so` counts as a module only when it exports
   `PyInit_<name>`, so ORT's bundled `libonnxruntime_providers_shared.so` is not loaded as one.
+  Before a module loads, its enclosing package is imported. A package whose body cannot run in a
+  `--no-deps` venv is registered unrun instead, as an import in progress leaves it: `torch._C`'s
+  init imports `torch`, whose body needs `typing_extensions`. numpy's test modules need the real
+  `numpy`, which is why the import is tried first.
+  A proof never fails with an empty reason. `faulthandler` prints a segfault's stack, the verdict
+  names the exit status or signal, and `FT_PROVE_TRACE` names the module that was loading.
   A twin that fails any of it fails its RUN; inside TVM's best-effort build that withdraws
   TVM, as any failure there does.
 - **How the stores stay apart.** `collect-artifacts.sh` moves the twins into `FT_WHEELS_DIR`
