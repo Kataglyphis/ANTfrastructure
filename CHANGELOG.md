@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-10 — `:latest` republished: the cross cp314t twins, the riscv64 uv seed and the lint tools are in (CON75, CON79 1b, CON83)
+
+- Index sha256:30dea85c2b3fbb89b79f042333cfd5e4940eb20027b44ed5c35639bd49fb0eea (amd64 ef6b32bd, arm64 f2a72d27,
+  riscv64 0043342b), chain runs 20261010-002002 (riscv64 media) and 20261010-010337 (android, runtime) on hub 381431d1.
+- `FT-STORE` passes on all three arches. amd64 keeps its five native twins; arm64 and riscv64 each prove apache-tvm-ffi,
+  av, iree-base-runtime and onnxruntime_webgpu under the target 3.14t with the GIL off. `FT_TORCH_TWIN` was 0 for this
+  run; the fixed torch twin (9e3b7cba) lands with the next chain.
+- riscv64 builds hadolint 2.15.1 from source once (about 4 h under QEMU) and seeds `/opt/uv-cache-seed` with 8 wheels,
+  proved by a fresh sync that builds nothing. Every arch's contract reads `OK lint-tools shellcheck=0.11.0 hadolint=2.15.1`.
+- Runtime smokes: amd64 and arm64 15/15; riscv64 14/15 with its known warning (no `iree.compiler` on riscv64).
+
 ## 2026-10-10 — the arm64 fan-in: VVL compiles without sccache, and the target deps gate reads markers
 
 - **The arm64 VVL build hung in sccache, twice.** On Vulkan SDK 1.4.363 the compile of
