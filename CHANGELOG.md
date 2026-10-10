@@ -6,6 +6,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-10 — FT_TORCH_TWIN off until the riscv64 torch twin's qemu proof works (CON79 1b)
+
+- Run 20261009-233208 proved every arm64 and riscv64 cross twin but torch: riscv64's cp314t torch built in 70 s in the warm
+  tree, and its qemu-riscv64 proof returned non-zero with no output. `build_torch_wheel` then returned 1, which drops the
+  whole riscv64 torch cross wheel to the native torch stage, and the store would expect a twin that never landed.
+- `FT_TORCH_TWIN=0` in `versions.env` and both `Dockerfile.media` ARGs; the store records `skip torch FT_TORCH_TWIN=0`.
+  BACKLOG CON79 1b keeps the root cause open.
+
 ## 2026-10-10 — a cross stage's store defers a twin that only lacks target libraries to the target image (CON79 1b)
 
 - **Run 20261009-224520** proved all four arm64 twins at build time (tvm-ffi, ORT, PyAV with 50 modules, IREE runtime),

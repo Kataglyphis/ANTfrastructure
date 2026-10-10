@@ -749,7 +749,7 @@ support also ships as a proved `cp314t` twin, in a store of its own: `/opt/wheel
   | libcamera's pycamera, OpenCV's `cv2` | GIL only | no marker, and they ship in the tree, not as wheels |
 
 - **A knob row.** `twin:<KNOB>` names a `versions.env` switch: the row is a twin only while
-  that key is `1`. `FT_TORCH_TWIN=1` is the default, and `Dockerfile.media` takes it in the
+  that key is `1`. `FT_TORCH_TWIN=0` is the default until the riscv64 torch twin's qemu proof works (BACKLOG CON79 1b), and `Dockerfile.media` takes it in the
   app-wheelhouse RUN, which builds the twin, and in the final RUN, whose store check expects
   it. Windows reads such a row as no twin.
 - **How a twin is built.** Each build runs a second pass on a `3.14t` venv whose build
