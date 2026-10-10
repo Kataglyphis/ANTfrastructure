@@ -6,6 +6,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-10 — `Get-SelectedConfigurations` returns the set, and a cleared selection selects nothing
+
+- BeschleunigerBallett's `Build-Windows.ps1 -SkipBuild` died after its format gate: `Cannot bind argument to parameter
+  'SelectedConfigurations' because it is an empty string`. The bare `return` unrolled the HashSet into an array, whose
+  `.Clear()` only nulls the elements, and a single selection (its agentic loop's `-Configurations clangcl-debug`) came
+  back a string that has no `.Clear()` at all.
+- `Get-SelectedConfigurations` returns the set itself (`return , $set`), and `Test-ConfigurationSelected` takes an empty
+  one (`[AllowEmptyCollection()]`). A test in `WindowsConfig.Common.Tests.ps1` needs both; without either half it fails.
+
 ## 2026-10-10 — DeepStream's build-stage gates load /opt/gstreamer's core, as the final image does (CON42)
 
 - With the components building, run 20261010-193517 stopped in `deepstream-verify.sh`: `one GStreamer` (every plugin's
@@ -23,6 +32,7 @@
 - A new gate, `dsv_check_gst_core`, fails when `gst-inspect-1.0` itself loads a core outside `/opt/gstreamer`, so a
   registration verdict can no longer be made against another GStreamer. The local stage build passes every gate
   (48 components, 9/9 elements). `test-deepstream.sh` covers the conf, its order in `ds_build` and the new gate.
+
 
 ## 2026-10-10 — DeepStream's components find /opt/gstreamer through pkg-config in the media build stage (CON42)
 
