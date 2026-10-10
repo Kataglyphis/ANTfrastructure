@@ -281,8 +281,8 @@ $archArgs = @{
 # Floors from measured counts minus headroom (arm64's import walk covers ~606); never lower one to turn a run green.
 $archArgs['ARCH_GATE_MIN_INSPECTED'] = if ($TargetArch -eq 'amd64') { '650' } else { '580' }
 if ($TargetArch -ne 'amd64') {
-    # The host site-packages .pyds are the x64 build interpreter's: a reported allowlist skip, never silently out of scope.
-    $archArgs['ARCH_GATE_HOST_TOOLS'] = 'protoc\.exe|flatc\.exe|\\_deps\\|\\cpython\\Lib\\site-packages\\'
+    # Replaces the Dockerfile default, so it repeats all of it; the host site-packages .pyds are the x64 interpreter's, a reported skip.
+    $archArgs['ARCH_GATE_HOST_TOOLS'] = 'protoc\.exe|flatc\.exe|\\_deps\\|\\distlib\\[tw](32|64)[^\\]*\.exe|\\setuptools\\(cli|gui)[^\\]*\.exe|\\cpython\\Lib\\site-packages\\'
 }
 # A drop in wheel or requirement count is a finding, not a greener gate.
 $archArgs['DEPS_MIN_BUNDLE_WHEELS'] = '6'

@@ -56,6 +56,27 @@ function ConvertTo-CmdSafeRequirement([string]$Requirement) {
     # PEP 508 markers may quote strings with double quotes; cmd.exe strips those, so pass the equivalent single-quoted form.
     return ($Requirement -replace '"', "'")
 }
+# A marker such as python_version < '3.11' decides for the TARGET, so pip's vendored packaging evaluates it there (PEP 508).
+function Select-ActiveRequirement([string]$PythonExe, [string]$PythonVersion, [string]$PlatformMachine, [string[]]$Requirement) {
+    $marked = @($Requirement | Where-Object { $_ -match ';' })
+    if ($marked.Count -eq 0) { return @($Requirement) }
+    $code = @'
+import sys
+from pip._vendor.packaging.requirements import Requirement
+env = dict(python_version=sys.argv[1], python_full_version=sys.argv[1] + '.0', platform_machine=sys.argv[2],
+           sys_platform='win32', os_name='nt', platform_system='Windows', implementation_name='cpython',
+           platform_python_implementation='CPython', extra='')
+for line in sys.stdin.read().splitlines():
+    if line.strip():
+        print(int(Requirement(line).marker.evaluate(env)))
+'@
+    $verdicts = @($marked | & $PythonExe -c $code $PythonVersion $PlatformMachine)
+    if ($LASTEXITCODE -ne 0 -or $verdicts.Count -ne $marked.Count) {
+        throw "Target python deps: could not evaluate the markers of $($marked.Count) requirement(s) (exit $LASTEXITCODE): $($marked -join ' | ')"
+    }
+    $inactive = @(for ($i = 0; $i -lt $marked.Count; $i++) { if ("$($verdicts[$i])".Trim() -eq '0') { $marked[$i] } })
+    return @($Requirement | Where-Object { $_ -notin $inactive })
+}
 function Get-WheelRequirements([string]$WheelPath) {
     $zip = [System.IO.Compression.ZipFile]::OpenRead($WheelPath)
     try {
@@ -118,9 +139,10 @@ foreach ($w in $store) {
     if ($w.Name -match "-$targetTag\.whl$") { Assert-WheelTargetArch -WheelPath $w.FullName }
     elseif ($w.Name -notmatch '-none-any\.whl$') { throw "Target python deps: $($w.Name) is neither a pure wheel (none-any) nor tagged $targetTag -- a wrong-platform wheel landed in the store" }
 }
+$machine = switch ($targetTag) { 'win_arm64' { 'ARM64' } 'win_amd64' { 'AMD64' } default { throw "Target python deps: no platform_machine for $targetTag" } }
 $missing = @()
 foreach ($w in $store) {
-    foreach ($r in (Get-WheelRequirements $w.FullName)) {
+    foreach ($r in (Select-ActiveRequirement -PythonExe $py.Exe -PythonVersion $pyVer -PlatformMachine $machine -Requirement @(Get-WheelRequirements $w.FullName))) {
         $n = Get-RequirementName $r
         if ($n -and -not $available.ContainsKey($n)) { $missing += "$($w.Name) -> $r" }
     }
