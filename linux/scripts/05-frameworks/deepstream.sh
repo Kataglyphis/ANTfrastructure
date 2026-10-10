@@ -231,6 +231,14 @@ ds_component_compiler() {
   esac
 }
 
+# The media build stages export no PKG_CONFIG_PATH for /opt/gstreamer; the components' Makefiles ask pkg-config for gstreamer-1.0.
+ds_gst_pkgconfig_path() {
+  local pc
+  pc="$(find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -name gstreamer-1.0.pc -type f 2>/dev/null | head -1 || true)"
+  [ -n "${pc}" ] || ds_die "no gstreamer-1.0.pc under ${GSTREAMER_PREFIX:-/opt/gstreamer}/lib"
+  printf '%s%s' "$(dirname "${pc}")" "${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+}
+
 # nvstreammux is a static archive gst-nvmultistream2 links, so it is built but not installed, as in build.sh.
 ds_build_component() {
   local src="$1" dir="$2" log="$3" cxx cc jobs
@@ -260,6 +268,8 @@ ds_build_components() {
   export CPATH="${trt}/include${CPATH:+:${CPATH}}"
   export LIBRARY_PATH="${trt}/lib:/usr/local/cuda-${DS_CUDA_VER}/lib64:/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs${LIBRARY_PATH:+:${LIBRARY_PATH}}"
   export NVCC_PREPEND_FLAGS="${NVCC_PREPEND_FLAGS:-} -include ${logdir}/gcc16-compat.h"
+  PKG_CONFIG_PATH="$(ds_gst_pkgconfig_path)"
+  export PKG_CONFIG_PATH
   # gst-nvvideotestsrc hard-codes /usr/include/gstreamer-1.0 for nvcc; its Makefile appends to this.
   NVCC_CFLAGS="$(pkg-config --cflags-only-I gstreamer-1.0)"
   export NVCC_CFLAGS

@@ -45,6 +45,14 @@ t_assert_eq "" "$(_ds ds_gate_problem ENABLE_NVIDIA=true CUDA_HOME="${_T}/cuda")
 t_assert_contains "$(_ds ds_gate_problem ENABLE_NVIDIA=true CUDA_HOME="${_T}/nocuda")" "no nvcc"
 t_assert_eq "13.4" "$(_ds ds_cuda_ver CUDA_HOME="${_T}/cuda")"
 
+t_case "the components find /opt/gstreamer's pkg-config dir though the build stage exports none"
+mkdir -p "${_T}/gst/lib/x86_64-linux-gnu/pkgconfig"
+: > "${_T}/gst/lib/x86_64-linux-gnu/pkgconfig/gstreamer-1.0.pc"
+t_assert_eq "${_T}/gst/lib/x86_64-linux-gnu/pkgconfig" "$(_ds ds_gst_pkgconfig_path GSTREAMER_PREFIX="${_T}/gst" PKG_CONFIG_PATH=)"
+t_assert_eq "${_T}/gst/lib/x86_64-linux-gnu/pkgconfig:/a" "$(_ds ds_gst_pkgconfig_path GSTREAMER_PREFIX="${_T}/gst" PKG_CONFIG_PATH=/a)"
+t_assert_contains "$(_ds ds_gst_pkgconfig_path GSTREAMER_PREFIX="${_T}/nogst")" "no gstreamer-1.0.pc under ${_T}/nogst/lib"
+t_assert_eq "1" "$(grep -c 'PKG_CONFIG_PATH="$(ds_gst_pkgconfig_path)"' "${DS}")" "ds_build_components sets it before its first pkg-config"
+
 t_case "the component list: build.sh's order, minus the documented exclusions"
 _S="${_T}/src"
 for d in src/gst-utils/gstnvcustomhelper src/gst-utils/gst-nvdssr src/gst-utils/gstnvdscustomhelper src/utils/nvds_rest_server \
