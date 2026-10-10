@@ -9,8 +9,8 @@ The CON1–CON6 prefix history is in
 **State 2026-10-10**, read from the registry (hub = the image's `revision` label, digest =
 the per-arch manifest). Published: `:latest` (2026-10-09, hub 655a2c4e, index `af7252a0…`;
 amd64 `ba3115f1…`, arm64 `15a905c6…`, riscv64 `81db10eb…`), `:winamd64` (2026-10-08, hub 5dfeb42d, `e96203a8…`), `:winamd64-nvidia` (2026-10-10, hub 93708b28, `75bbe6f6…`),
-`:winamd64-rocm` (2026-10-09, hub aa7a8086, `32c7cc51…`), `:winarm64` (2026-10-04, hub
-80647a9a, `97bbcd35…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-nvidia`
+`:winamd64-rocm` (2026-10-09, hub aa7a8086, `32c7cc51…`), `:winarm64` (2026-10-10, hub
+222f2fa9, `ba6bfaae…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-nvidia`
 (2026-10-02, hub b4d5fdd5, amd64 `95c3a343…`, built without DeepStream) and `:latest-rocm`
 (2026-10-02, hub b4d5fdd5, amd64 `bdfcb731…`). Every Linux image gap up to CON41 shipped
 and was checked in the published children (git history). Decisions and gaps checked closed live in
@@ -245,7 +245,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         three arches), Flutter 3.47.6 (amd64, arm64), the IREE v3.12.0 and PyAV 19.0.1 cp314t twins
         (FT-STORE, amd64), Node 26.11.0 and Chrome for Testing 155. The chain's fixes are in the
         CHANGELOG of 2026-10-08/09.
-      Open: a `:winarm64` built from this hub and passing its bundle gate.
+      - `:winarm64`: published 2026-10-10 from hub 222f2fa9 (`ba6bfaae…`), smoke gate 147 assertions
+        passed, 17 skipped (cross bundle). The chain needed HailoRT patch 001's include guard (d0ae037e)
+        and 28833e74: VVL without sccache, a marker-aware target deps gate, the launchers in the cross
+        arch gate.
+      All three images are proved; what remains of CON72 is the consumer side below.
 
       **OrchestrANT's Linux x64 and arm64 lanes were red on the old `:latest`** (c33edb3, run
       37597200372): its hub pin carries `PYTHON_VERSION=3.14.8`, and `python-app-bundle.sh`
