@@ -483,7 +483,8 @@ the package stage (against the wired plugin link) and by the runtime smoke
   third-party libraries built for `nvds_rest_server` get an `$ORIGIN` `RUNPATH`, since their
   own install paths do not exist in the image.
 - **One GStreamer**: every plugin resolves `libgst*-1.0.so.0` from `/opt/gstreamer`, and the
-  tree ships no GStreamer core library.
+  tree ships no GStreamer core library. `gst-inspect-1.0`, which the registration gate runs,
+  must load its core from there too.
 - **No libv4l2 hijack**: the lib dir is on no `ld.so.conf`, and `libv4l2.so.0` resolves to the
   distro's.
 - **Only plugins in `gst-plugins/`**, and a registry scan that does not crash. The check
@@ -495,6 +496,19 @@ the package stage (against the wired plugin link) and by the runtime smoke
 - **Registration** of `nvinfer`, `nvstreammux`, `nvvideoconvert`, `nvtracker`, `nvdsosd`,
   `nvv4l2decoder`, `nvmultistreamtiler`, `nvstreamdemux` and `nvurisrcbin`, with CUDA's stub
   `libcuda`/`libnvidia-ml` standing in for the driver.
+
+**The build stage resolves like the final image.** The `deepstream` stage is FROM
+`gstreamer`, which still carries a distro GStreamer 1.28 core: the toolchain's
+`software-properties-common` pulls in `packagekit` and with it `libgstreamer1.0-0`, and the
+gstreamer stage's `gir1.2-gstreamer-1.0` and `libgtk-4-dev` add the base, GL and extra
+libraries. The final image purges them (`03-media/runtime/install-deps.sh`) and ranks
+`/opt/gstreamer` first through `configure-runtime.sh`'s `000-gstreamer.conf`; the build
+stage had neither. So `ld.so` gave even `/opt/gstreamer/bin/gst-inspect-1.0` the 1.28 core,
+which refused every component built against 1.29 (`has incompatible version (plugin: 1.29,
+gst: 1.28), not loading`), and `libgstrtspserver-1.0.so.0`, which only the prefix has, did
+not resolve at all (run 20261010-193517). `ds_build` therefore writes the same
+`000-gstreamer.conf` before its gates. The stage's `/etc` never reaches the image, which
+copies only `/opt/nvidia` from it.
 
 Not covered by the gates: inference, NVDEC, a TensorRT engine build. The GPU run above
 covered them once; no lane has a GPU.
