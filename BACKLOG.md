@@ -417,6 +417,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       publish from a cache hit into a 4:45 h rebuild, and the rebuilt toolchain cost sccache its hits
       (TVM took 60 min against 25 min the night before). Bake only the keys the Windows scripts read,
       as a filtered file or as ARGs, and prove that a Linux-key edit then leaves the chain cached.
+      The Windows Dockerfiles also mount `linux/scripts/03-media/free-threaded-twins.txt` and
+      `linux/scripts/02-toolchain/python/free-threaded-wheel.py`. A Linux-lane edit to the second
+      (9e3b7cba) turned the 2026-10-10 `:winarm64` publish into a media rebuild.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON64 — the Vulkan validation layer in `C:\runtime\vulkan-layers`** [S, ★★]. Owner rule
