@@ -41,5 +41,13 @@ Describe 'WindowsConfig.Common' {
       { Get-SelectedConfigurations -Configurations @('unknown') -AvailableConfigurations @('x') } |
         Should -Throw
     }
+
+    It 'returns the set itself for a single selection, and the cleared set selects nothing' {
+      $set = Get-SelectedConfigurations -Configurations @('clangcl-debug') -AvailableConfigurations @('clangcl-debug', 'msvc-debug')
+
+      $set.GetType().Name | Should -Be 'HashSet`1'
+      $set.Clear()
+      Test-ConfigurationSelected -Name 'clangcl-debug' -SelectedConfigurations $set | Should -BeFalse
+    }
   }
 }

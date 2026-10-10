@@ -53,11 +53,12 @@ function Get-SelectedConfigurations {
     }
   }
 
-  return $selectedConfigurations
+  # The comma keeps the set: unrolled, one selection came back a string and -SkipBuild's .Clear() threw.
+  return , $selectedConfigurations
 }
 
 function Test-ConfigurationSelected {
-  param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][System.Collections.Generic.HashSet[string]]$SelectedConfigurations)
+  param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][AllowEmptyCollection()][System.Collections.Generic.HashSet[string]]$SelectedConfigurations)
   return $SelectedConfigurations.Contains($Name)
 }
 
