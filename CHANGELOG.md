@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-10 — HailoRT's patch 001 guards the x86 include too, so arm64 compiles with the patches
+
+- **The first `:winarm64` chain after CON85 stopped in `hailort.cpp`.** clang's `immintrin.h` refused the aarch64
+  target (`This header is only meant to be used on x86 and x64 architecture`). `quantization.hpp` includes it under
+  `#if defined(_MSC_VER)`, which clang-cl defines on every arch. `001-quantization-msvc-guard.patch` had narrowed only
+  the guard in `bankers_round`, while the inline fallback that ran in every build until CON85 rewrote every
+  `#if defined(_MSC_VER)` in the file. So the patch was never complete, and the fallback hid it.
+- **Fix:** 001 narrows the include guard too, regenerated with `git diff` against the 5.4.0 tarball. Its result now
+  equals the fallback's except for the comment block. GNU patch and `git apply` take all four forward and reverse, and
+  the patch gate passes them. 002 to 004 already matched their fallbacks.
+
 ## 2026-10-10 — the riscv64 torch twin compiles against the target 3.14t, and a failed proof is never silent (CON79 1b)
 
 - **Root cause.** The twin pass appended its Python overrides to the GIL pass's `CMAKE_ARGS`, which kept
@@ -49,6 +60,7 @@
   shared object is logged as deferred, naming the libraries; the runtime image smoke's FT-STORE proves the twin on the
   target, where the closure is installed. A GIL re-enable, a bad symbol or a wrong arch still fails; native builds are
   unchanged. `test-free-threaded-store.sh` 86 -> 90, two failing without the fix.
+
 
 ## 2026-10-10 — the IREE cross twin's reconfigure moves both FindPython spellings (CON79 1b)
 
