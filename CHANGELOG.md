@@ -6,6 +6,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-10 — DeepStream's components find /opt/gstreamer through pkg-config in the media build stage (CON42)
+
+- The first nvidia chain with DeepStream on by default (run 20261010-125556) stopped in `Dockerfile.media`'s `deepstream`
+  stage: `Package 'gstreamer-1.0' not found`. The spike ran FROM the published image, whose final stage exports a
+  `PKG_CONFIG_PATH` naming `/opt/gstreamer`; the build stage (FROM `gstreamer`) exports none.
+- `ds_build_components` now prepends the directory of `/opt/gstreamer`'s `gstreamer-1.0.pc` (`ds_gst_pkgconfig_path`), and
+  refuses by name when there is none. `test-deepstream.sh` covers both.
+
 ## 2026-10-10 — `:latest` republished: the cross cp314t twins, the riscv64 uv seed and the lint tools are in (CON75, CON79 1b, CON83)
 
 - Index sha256:30dea85c2b3fbb89b79f042333cfd5e4940eb20027b44ed5c35639bd49fb0eea (amd64 ef6b32bd, arm64 f2a72d27,
