@@ -210,13 +210,18 @@ else
   printf '  SKIP [%s] no free-threaded interpreter at %s\n' "${_T_CASE}" "${FT_PY}"
 fi
 
-# _modules <site root> <file>...: the helper's module list for a fake distribution whose files sit under that root.
-_modules() {
-  python3 -I - "${HELPER}" "$@" <<'PY'
-import importlib.util, sys
-spec = importlib.util.spec_from_file_location("ftw", sys.argv[1])
+# _ftw [args]: the Python on stdin, with the helper imported as ftw and the args from sys.argv[2].
+_ftw() {
+  python3 -I -c "import importlib.util, sys
+spec = importlib.util.spec_from_file_location('ftw', sys.argv[1])
 ftw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ftw)
+exec(sys.stdin.read())" "${HELPER}" "$@"
+}
+
+# _modules <site root> <file>...: the helper's module list for a fake distribution whose files sit under that root.
+_modules() {
+  _ftw "$@" <<'PY'
 class Rec(str):
     def locate(self):
         return sys.argv[2] + "/" + self
@@ -240,6 +245,44 @@ printf 'x\0PyInit_capi\0' > "${_work}/site/ort/capi/__init__.so"
 t_assert_eq "ort.capi ort.capi.onnxruntime_pybind11_state" \
   "$(_modules "${_work}/site" ort/capi/onnxruntime_pybind11_state.so ort/capi/libonnxruntime_providers_shared.so ort/capi/__init__.so)" \
   "a symbol that merely begins with the library's name does not count either"
+
+t_case "prove: FT_PROVE_TRACE names each module while it loads and is empty once every load returned"
+t_assert_eq "seen app.a seen app.b left ''" "$(FT_PROVE_TRACE="${_work}/trace" _ftw <<'PY'
+import os
+trace = os.environ["FT_PROVE_TRACE"]
+seen = []
+ftw.importlib.util.spec_from_file_location = lambda name, path: name
+def load(name):
+    seen.append("seen " + open(trace).read())
+ftw.importlib.util.module_from_spec = load
+ftw.load_all([("app.a", "/a.so"), ("app.b", "/b.so")])
+print(" ".join(seen), "left %r" % open(trace).read())
+PY
+)" "a module that kills the process leaves its name behind for the cross proof's verdict"
+
+t_case "prove: a module whose init imports its own package gets the real package, or else one registered unrun (torch._C, CON79 1b)"
+# pkg cannot run here (torch without typing_extensions); okpkg can (numpy, whose test modules need numpy.add).
+mkdir -p "${_work}/encl/pkg/sub" "${_work}/encl/okpkg"
+printf 'print("noise")\nimport missing_dependency_of_pkg\n' > "${_work}/encl/pkg/__init__.py"
+: > "${_work}/encl/pkg/sub/__init__.py"
+printf 'import pkg, sys\nINIT = sorted(n for n in sys.modules if n.startswith("pkg"))\n' > "${_work}/encl/pkg/sub/mod.py"
+printf 'VALUE = 7\n' > "${_work}/encl/okpkg/__init__.py"
+printf 'import okpkg\nINIT = okpkg.VALUE\n' > "${_work}/encl/okpkg/mod.py"
+t_assert_eq "[] ['pkg', 'pkg.sub'] 7 ['pkg', 'pkg.sub']" "$(_ftw "${_work}/encl" <<'PY'
+sys.path.insert(0, sys.argv[2])
+seen = []
+real = ftw.importlib.util.module_from_spec
+def create(spec):
+    module = real(spec)
+    if spec.name in ("pkg.sub.mod", "okpkg.mod"):  # the init a single-phase extension runs inside create_module
+        spec.loader.exec_module(module)
+        seen.append(module.INIT)
+    return module
+ftw.importlib.util.module_from_spec = create
+offenders, failures = ftw.load_all([("pkg.sub.mod", sys.argv[2] + "/pkg/sub/mod.py"), ("okpkg.mod", sys.argv[2] + "/okpkg/mod.py")])
+print(failures, *seen, sorted(n for n in sys.modules if n.startswith("pkg") and n != "pkg.sub.mod"))
+PY
+)" "and the failed import's output never reaches the verdict"
 
 t_case "the bundle takes the wheel built for its runtime's ABI, never the free-threaded twin"
 eval "$(t_fn_src "${SCRIPTS}/06-packaging/python-app-bundle.sh" select_app_wheel)" || exit 1

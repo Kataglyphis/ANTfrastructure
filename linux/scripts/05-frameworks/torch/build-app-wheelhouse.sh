@@ -284,9 +284,15 @@ append_common_cross_cmake_args() {
 
     resolved_ar="$(resolve_cross_gcc_tool ar 2>/dev/null || true)"
     resolved_ranlib="$(resolve_cross_gcc_tool ranlib 2>/dev/null || true)"
-    target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
-    target_python_arch_include="$(cross_target_python_arch_include_dir 2>/dev/null || true)"
-    target_python_library="$(cross_target_python_library 2>/dev/null || true)"
+    # CROSS_PYTHON_*: the cp314t twin's target 3.14t, whose one include dir holds its pyconfig.h; else the target GIL Python.
+    if [ -n "${CROSS_PYTHON_INCLUDE_DIR:-}" ]; then
+        target_python_include="${CROSS_PYTHON_INCLUDE_DIR}"
+        target_python_library="${CROSS_PYTHON_LIBRARY:-}"
+    else
+        target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
+        target_python_arch_include="$(cross_target_python_arch_include_dir 2>/dev/null || true)"
+        target_python_library="$(cross_target_python_library 2>/dev/null || true)"
+    fi
     host_numpy_include="$("${BUILD_PYTHON}" -c 'import numpy; print(numpy.get_include())' 2>/dev/null || true)"
     qemu_runner="$(cross_target_qemu_runner 2>/dev/null || true)"
 
@@ -522,14 +528,7 @@ build_torch_wheel() {
     _torch_build_host_protoc
     _torch_detect_system_sleef
 
-    append_common_cross_cmake_args cmake_args
-    cmake_args+=("-DBLAS=OpenBLAS")
-    # Cache the multi-hour aten compile; without a launcher the build runs plain.
-    compiler_cache_launcher_env 2>/dev/null || true
-    _cc_l="$(compiler_cache_launcher 2>/dev/null || true)"
-    if [ -n "${_cc_l}" ]; then
-        cmake_args+=("-DCMAKE_C_COMPILER_LAUNCHER=${_cc_l}" "-DCMAKE_CXX_COMPILER_LAUNCHER=${_cc_l}")
-    fi
+    _torch_cmake_args cmake_args
     cmake_args_string="$(shell_quote_args "${cmake_args[@]}")"
 
     if ! _torch_run_setup_py; then
@@ -541,6 +540,21 @@ build_torch_wheel() {
     _torch_build_free_threaded_wheel
 }
 
+# <array name>: torch's CMAKE_ARGS for BUILD_PYTHON and the target Python (CROSS_PYTHON_* for the twin).
+_torch_cmake_args() {
+    local -n _tca_ref="$1"
+    local _cc_l
+    append_common_cross_cmake_args _tca_ref
+    _tca_ref+=("-DBLAS=OpenBLAS")
+    # Cache the multi-hour aten compile; without a launcher the build runs plain.
+    compiler_cache_launcher_env 2>/dev/null || true
+    _cc_l="$(compiler_cache_launcher 2>/dev/null || true)"
+    if [ -n "${_cc_l}" ]; then
+        _tca_ref+=("-DCMAKE_C_COMPILER_LAUNCHER=${_cc_l}" "-DCMAKE_CXX_COMPILER_LAUNCHER=${_cc_l}")
+    fi
+    return 0
+}
+
 # The torch twin, gated by FT_TORCH_TWIN through its table row: the warm tree again on a cp314t venv, so only what sees Python rebuilds.
 _torch_build_free_threaded_wheel() {
     local venv="${APP_WHEELHOUSE_BUILD_ROOT}/torch-ft-venv" t0
@@ -549,16 +563,20 @@ _torch_build_free_threaded_wheel() {
         || { [ $? -eq 1 ] && return 0; return 1; }
     t0="$(date +%s)"
     local BUILD_PYTHON="${venv}/bin/python" dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-torch-cp314t"
-    local python_sysconfig_export cmake_args_string="${cmake_args_string}"
+    local python_sysconfig_export cmake_args_string
+    local CROSS_PYTHON_INCLUDE_DIR="${FT_TARGET_INCLUDE}" CROSS_PYTHON_LIBRARY="${FT_TARGET_LIBRARY}"
+    local -a cmake_args=()
     python_sysconfig_export="$(ft_target_env)"
-    # On the command line: the toolchain file's CACHE sets cannot move the GIL pass's cached Python.
-    cmake_args_string+=" $(shell_quote_args "-DPython_EXECUTABLE=${BUILD_PYTHON}" "-DPython3_EXECUTABLE=${BUILD_PYTHON}" \
-        "-DPython_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPython3_INCLUDE_DIR=${FT_TARGET_INCLUDE}" \
-        "-DPython_LIBRARY=${FT_TARGET_LIBRARY}" "-DPython3_LIBRARY=${FT_TARGET_LIBRARY}")"
+    # Built afresh, not the GIL pass's string plus overrides: its -DPYTHON_INCLUDE_DIR heads torch_python's include path (CON79 1b).
+    _torch_cmake_args cmake_args
+    # On the command line: the toolchain file's CACHE sets cannot move the GIL pass's cached Python, nor its FindPython results.
+    cmake_args+=("-U" "_Python*" "-U" "Python_NumPy*" "-U" "Python3_NumPy*"
+        "-DPython_INCLUDE_DIR=${FT_TARGET_INCLUDE}" "-DPython3_INCLUDE_DIRS=${FT_TARGET_INCLUDE}" "-DPython_LIBRARY=${FT_TARGET_LIBRARY}")
+    cmake_args_string="$(shell_quote_args "${cmake_args[@]}")"
     rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
     # The GIL pass's module would otherwise ride into the twin, as IREE's did.
     rm -f "${src_dir}"/torch/_C.cpython-*.so
-    if ! CROSS_PYTHON_INCLUDE_DIR="${FT_TARGET_INCLUDE}" CROSS_PYTHON_LIBRARY="${FT_TARGET_LIBRARY}" _torch_run_setup_py; then
+    if ! _torch_run_setup_py; then
         warn "torch: the cp314t pass over ${src_dir} failed"
         return 1
     fi

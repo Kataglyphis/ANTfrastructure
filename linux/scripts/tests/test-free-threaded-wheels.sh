@@ -60,8 +60,8 @@ t_assert_eq unknown "$(ft_wheel_verdict pillow)" "a wheel nobody classified"
 t_case "the knob rows: torch and numpy declare free-threading, and the riscv64 torch twin follows FT_TORCH_TWIN"
 t_assert_eq "twin:FT_TORCH_TWIN" "$(ft_wheel_verdict torch)"
 t_assert_eq "twin:FT_TORCH_TWIN" "$(ft_wheel_verdict numpy)"
-t_assert_eq 1 "$(grep -c -x -e 'FT_TORCH_TWIN=0' "${VERSIONS}")" "off until its qemu proof stops dying silently (BACKLOG CON79 1b)"
-t_assert_eq 2 "$(grep -c -x -e 'ARG FT_TORCH_TWIN=0' "${MEDIA}")" "app-wheelhouse and the final RUN's store agree with versions.env"
+t_assert_eq 1 "$(grep -c -x -e 'FT_TORCH_TWIN=1' "${VERSIONS}")" "on: the twin is proved under qemu-riscv64 since 2026-10-10 (BACKLOG CON79 1b)"
+t_assert_eq 2 "$(grep -c -x -e 'ARG FT_TORCH_TWIN=1' "${MEDIA}")" "app-wheelhouse builds it, the final RUN's store expects it"
 t_assert_eq 0 "$(FT_TORCH_TWIN=1 t_rc ft_twin_expected torch)"
 t_assert_eq 1 "$(FT_TORCH_TWIN=0 t_rc ft_twin_expected torch)"
 t_assert_eq 1 "$(unset FT_TORCH_TWIN; t_rc ft_twin_expected torch)" "an unset knob is off"
@@ -225,7 +225,10 @@ mkdir -p "${_work}/sysroot/lib"; : > "${_work}/sysroot/lib/ld-linux-riscv64-lp64
 cat > "${_work}/qemu-riscv64" <<'QEMU'
 #!/usr/bin/env bash
 printf 'qemu %s\n' "$*" >> "${CALLS}"
-while [ "${1#-}" != "$1" ]; do shift 2; done
+trace=""
+while [ "${1#-}" != "$1" ]; do case "$2" in FT_PROVE_TRACE=*) trace="${2#*=}" ;; esac; shift 2; done
+# A module that segfaults: the helper has named it in the trace, and the process says nothing at all.
+if [ -n "${QEMU_SEGV_IN:-}" ]; then printf '%s' "${QEMU_SEGV_IN}" > "${trace}"; exit 139; fi
 # The target python, -I -c <bootstrap>, then the unpacked site dir, the helper, prove, the dist.
 site="$5"
 [ -f "${site}/m/x.cpython-314t-riscv64-linux-gnu.so" ] && [ -d "${site}/rv-1.dist-info" ] && [ -f "${site}/m/data.txt" ] || { echo "the wheel was not unpacked whole"; exit 3; }
@@ -241,7 +244,8 @@ _out="$(FT_QEMU_SYSROOT="${_work}/sysroot" LD_LIBRARY_PATH=/opt/ffmpeg/lib _qx "
 t_assert_eq 0 "${_rc}" "${_out}"
 t_assert_contains "${_out}" "free-threaded: rvp-1-cp314-cp314t-linux_riscv64.whl: 1 compiled module(s) of rv loaded on free-threaded 3.14.8; the GIL stayed disabled (on riscv64 under qemu-riscv64)"
 t_assert_contains "$(cat "${CALLS}")" "qemu -L ${_work}/sysroot -E LD_LIBRARY_PATH=${_work}/rv/riscv64/opt/python-freethreaded/lib:"
-t_assert_contains "$(cat "${CALLS}")" ":/opt/ffmpeg/lib -U PYTHONPATH -U PYTHONHOME ${_work}/rv/riscv64/opt/python-freethreaded/bin/python3.14t -I -c"
+t_assert_contains "$(cat "${CALLS}")" ":/opt/ffmpeg/lib -E FT_PROVE_TRACE=${_work}/ft-prove."
+t_assert_contains "$(cat "${CALLS}")" ".trace -U PYTHONPATH -U PYTHONHOME ${_work}/rv/riscv64/opt/python-freethreaded/bin/python3.14t -I -c"
 mkdir -p "${_work}/gcc16/riscv64-linux-gnu/lib" "${_work}/xbin"; : > "${_work}/gcc16/riscv64-linux-gnu/lib/libstdc++.so.6"
 printf '#!/usr/bin/env bash\necho "%s/gcc16/lib/gcc/riscv64-linux-gnu/16.2.0/../../../../riscv64-linux-gnu/lib/libstdc++.so.6"\n' "${_work}" > "${_work}/xbin/riscv64-linux-gnu-g++"
 chmod +x "${_work}/xbin/riscv64-linux-gnu-g++"; mkdir -p "${_work}/gcc16/lib/gcc/riscv64-linux-gnu/16.2.0"
@@ -251,11 +255,54 @@ t_assert_contains "$(cat "${CALLS}")" "LD_LIBRARY_PATH=${_work}/rv/riscv64/opt/p
   "the cross GCC's target libstdc++ comes before the sysroot's older one (an ORT twin needs GLIBCXX_3.4.36)"
 t_assert_contains "$(cat "${CALLS}")" "free-threaded-wheel.py prove rv"
 t_assert_eq "" "$(compgen -G "${_work}/ft-prove.*")" "the unpacked site is gone"
-_out="$(QEMU_RC=1 QEMU_SAYS="ERROR: the GIL was re-enabled, first by m.x" FT_QEMU_SYSROOT="${_work}/sysroot" _qx "${_work}/rvp-1-cp314-cp314t-linux_riscv64.whl" rv 2>&1)"; _rc=$?
+# _qrv: the riscv64 fixture twin proved against the fixture sysroot.
+_qrv() { FT_QEMU_SYSROOT="${_work}/sysroot" _qx "${_work}/rvp-1-cp314-cp314t-linux_riscv64.whl" rv; }
+_out="$(QEMU_RC=1 QEMU_SAYS="ERROR: the GIL was re-enabled, first by m.x" _qrv 2>&1)"; _rc=$?
 t_assert_eq 1 "${_rc}"
-t_assert_contains "${_out}" "is not proved: ERROR: the GIL was re-enabled, first by m.x (on riscv64 under qemu-riscv64)"
+t_assert_contains "${_out}" "is not proved: ERROR: the GIL was re-enabled, first by m.x (exit status 1) (on riscv64 under qemu-riscv64)"
+
+t_case "cross: a twin that kills the target interpreter is never an empty verdict: the signal and the module it died loading"
+_out="$(QEMU_SEGV_IN=torch._C _qrv 2>&1)"; _rc=$?
+t_assert_eq 1 "${_rc}"
+t_assert_contains "${_out}" "is not proved: the proof printed nothing (killed by SIGSEGV, exit status 139; it died loading torch._C) (on riscv64 under qemu-riscv64)" \
+  "the riscv64 torch twin once failed as 'is not proved:  (on riscv64 under qemu-riscv64)' (CON79 1b)"
+t_assert_eq "" "$(compgen -G "${_work}/ft-prove.*")" "the unpacked site and its trace are gone"
+t_assert_eq "exit status 2" "$(_ft_exit_status 2)"
+t_assert_eq "killed by SIGABRT, exit status 134" "$(_ft_exit_status 134)"
 t_assert_contains "$(FT_QEMU_SYSROOT="${_work}/nosysroot" _qx "${_work}/rvp-1-cp314-cp314t-linux_riscv64.whl" rv 2>&1)" "no ld-linux-riscv64-lp64d.so.1"
-t_assert_contains "$(QEMU='' FT_QEMU_SYSROOT="${_work}/sysroot" _qx "${_work}/rvp-1-cp314-cp314t-linux_riscv64.whl" rv 2>&1)" "no qemu-user for riscv64"
+t_assert_contains "$(QEMU='' _qrv 2>&1)" "no qemu-user for riscv64"
+
+t_case "torch twin: its CMAKE_ARGS name only the target 3.14t, never the GIL pass's Python (CON79 1b)"
+# The GIL pass's -DPYTHON_INCLUDE_DIR heads torch_python's include path, so a twin that kept it was GIL code named cp314t.
+# shellcheck disable=SC2034  # the globals below are read by the eval'd build-app-wheelhouse.sh functions
+_twin_args() (
+  _wh="${SCRIPTS}/05-frameworks/torch/build-app-wheelhouse.sh"
+  for _f in append_common_cross_cmake_args _torch_cmake_args _torch_build_free_threaded_wheel; do
+    eval "$(t_fn_src "${_wh}" "${_f}" 2>/dev/null)"
+  done
+  eval "$(t_fn_src "${SCRIPTS}/01-core/common.sh" shell_quote_args)"
+  warn() { :; }; log() { :; }; resolve_cross_gcc_tool() { return 1; }; cross_target_qemu_runner() { return 1; }
+  compiler_cache_launcher_env() { :; }; compiler_cache_launcher() { echo ccache; }
+  cross_target_python_include_dir() { echo /gil/include/python3.14; }
+  cross_target_python_arch_include_dir() { echo /gil/include/riscv64-linux-gnu/python3.14; }
+  cross_target_python_library() { echo /gil/lib/libpython3.14.so; }
+  ft_twin_start() { return 0; }; ft_target_env() { :; }
+  _torch_run_setup_py() { printf '%s\n' "${cmake_args_string}"; return 1; }
+  BUILD_PYTHON=/gil/bin/python3; APP_WHEELHOUSE_BUILD_ROOT="${_work}/awh"; src_dir="${_work}/awh/pytorch"
+  FT_TARGET_INCLUDE=/ft/include/python3.14t; FT_TARGET_LIBRARY=/ft/lib/libpython3.14t.so
+  # The GIL pass's string, as build_torch_wheel leaves it in the twin's dynamic scope.
+  cmake_args=(); append_common_cross_cmake_args cmake_args; cmake_args+=("-DBLAS=OpenBLAS")
+  cmake_args_string="$(shell_quote_args "${cmake_args[@]}")"
+  _torch_build_free_threaded_wheel
+)
+_out="$(_twin_args)"
+t_assert_contains "${_out}" "-DPython3_INCLUDE_DIRS=/ft/include/python3.14t" "the twin's own include dir"
+t_assert_eq 0 "$(grep -c -e /gil/ <<<"${_out}")" "no GIL header, library or interpreter reaches the twin's configure: ${_out}"
+for _k in PYTHON_INCLUDE_DIR Python_INCLUDE_DIR Python3_INCLUDE_DIR; do
+  t_assert_contains "${_out}" "-D${_k}=/ft/include/python3.14t"
+done
+t_assert_contains "${_out}" "-U _Python\\* -U Python_NumPy\\* -U Python3_NumPy\\*" "FindPython's cached GIL results are dropped"
+t_assert_contains "${_out}" "-DBLAS=OpenBLAS -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache" "the GIL pass's other arguments are kept"
 
 t_case "ft_twin_start: 0 with a venv for a twin, 1 for a package without one, 2 for an error"
 _start() { PATH="${_work}/bin:${PATH}" PYTHON_FT_PREFIX="${_work}/gilpy" bash -c 'source "$1"; shift; ft_twin_start "$@"' _ "${LIB}" "$@"; }

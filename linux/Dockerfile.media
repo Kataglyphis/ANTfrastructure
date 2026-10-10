@@ -440,7 +440,7 @@ ARG PYTORCH_VERSION=v2.14.1
 ARG TORCHVISION_VERSION=v0.29.1
 ARG IREE_VERSION=v3.12.0
 # 1 builds the riscv64 torch twin here; the final RUN's store check reads the same knob.
-ARG FT_TORCH_TWIN=0
+ARG FT_TORCH_TWIN=1
 
 # No cargo mount: build-app-wheelhouse.sh never runs cargo, and an inert mount reads as coverage.
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
@@ -836,7 +836,7 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packagi
 COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh
 
 # free-threaded-store.sh expects the riscv64 torch twin while it is 1, as app-wheelhouse built it.
-ARG FT_TORCH_TWIN=0
+ARG FT_TORCH_TWIN=1
 RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \

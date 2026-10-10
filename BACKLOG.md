@@ -90,12 +90,22 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
              image, loaded all 50 modules with the GIL off.
            - A minimal C module went through `ft_store_twin` under qemu-riscv64, and its `Py_mod_gil`-less
              control was refused.
-         - **The torch twin is off** (`FT_TORCH_TWIN=0`, 2026-10-10). Chain run 20261009-233208 built it
-           (`torch: the cp314t pass took 70s in the warm tree`), but its qemu-riscv64 proof ended with no output at
-           all (`torch-2.14.1a0+git5c48869-cp314-cp314t-linux_riscv64.whl is not proved:  (on riscv64 under
-           qemu-riscv64)`), and the failure dropped the whole riscv64 torch cross wheel to the native fallback. Open:
-           find why the proof dies silently (a crash loading libtorch under qemu-user?), then turn the knob back on;
-           the store records `skip torch FT_TORCH_TWIN=0` meanwhile.
+         - **The torch twin is on again** (`FT_TORCH_TWIN=1`, 2026-10-10). Chain run 20261009-233208's twin
+           failed its qemu-riscv64 proof with an empty reason, so the knob was off for a day. Reproduced in
+           `:cross-sdk-riscv64`, the twin pass appended its overrides to the GIL pass's `CMAKE_ARGS`. That kept
+           `-DPYTHON_INCLUDE_DIR=<target GIL include>`, which heads `torch_python`'s include path. The 70 s twin
+           therefore shipped the GIL wheel's `libtorch_python.so` byte for byte: it imports `_Py_Dealloc` and none
+           of `_Py_DecRefShared`, `_Py_MergeZeroLocalRefcount` or `PyUnstable_Module_SetGIL`. Under the target
+           3.14t it segfaulted in `dlopen`, in that library's initializers, before Python could print anything. Fixed:
+           - The twin builds its `CMAKE_ARGS` afresh for the target 3.14t, with `-U _Python*`. Its pass takes 233 s.
+           - The proof helper registers a package whose body cannot run with `--no-deps` unrun. `torch._C`'s init
+             imports `torch`, which needs `typing_extensions`. This failure blocked every torch twin, PyPI's
+             amd64 cp314t torch included.
+           - A failed proof prints the stack, the signal and the module that was loading.
+           - The full riscv64 `build_torch_wheel` then stored the twin: `1 compiled module(s) of torch loaded on
+             free-threaded 3.14.8; the GIL stayed disabled (on riscv64 under qemu-riscv64)`. `import torch` there
+             ran `torch.ones(3)*2` with `sys._is_gil_enabled() == False`.
+           - The chain's `FT-STORE` on riscv64 is still to read.
          - **numpy** has a row (`twin:FT_TORCH_TWIN`) but no chain build, so nothing expects its twin. A
            riscv64 `cp314t` numpy for consumers is CON83's wheel-store question. torchvision stays `none`.
          - Left: the chain. Each cross arch's `FT-STORE` must list its twins as `PASS` and end on `the store
