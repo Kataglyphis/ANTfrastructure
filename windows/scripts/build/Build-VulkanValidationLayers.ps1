@@ -108,8 +108,10 @@ if ($arch -eq 'amd64') {
     Write-Host "=== Vulkan-ValidationLayers vulkan-sdk-$VulkanVersion ($arch) ==="
     $vvlBuild = Join-Path $WorkDir 'build\Vulkan-ValidationLayers'
     $vvlPrefix = Join-Path $WorkDir 'install'
+    # No sccache here: on 1.4.363 the arm64 compile of vk_validation_error_messages.cpp hung in the server twice (2026-10-10).
     Invoke-CmakeConfigure -SourceDir $vvlSource -BuildDir $vvlBuild -InstallPrefix $vvlPrefix -TargetArch $arch `
-        -ExtraArgs ($common + @('-DUPDATE_DEPS=OFF', '-DBUILD_WERROR=OFF', '-DBUILD_TESTS=OFF'))
+        -ExtraArgs ($common + @('-DUPDATE_DEPS=OFF', '-DBUILD_WERROR=OFF', '-DBUILD_TESTS=OFF',
+            '-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=', '-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH='))
     Invoke-NinjaBuildWithRetry -BuildDir $vvlBuild -Install -InstallConfig 'Release'
     foreach ($name in "$LayerName.dll", "$LayerName.json") {
         $built = @(Get-ChildItem -LiteralPath $vvlPrefix -Recurse -File -Filter $name)

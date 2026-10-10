@@ -117,3 +117,40 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
         Assert-True $threw 'missing METADATA throws, not silently empty'
     }
 }
+
+BeforeDiscovery {
+    # The markers are evaluated by pip's vendored packaging, so these cases need a host Python that carries pip.
+    $script:hostPy = Get-Command python -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
+    if ($script:hostPy) { & $script:hostPy -c 'import pip._vendor.packaging.requirements' 2>$null; if ($LASTEXITCODE -ne 0) { $script:hostPy = $null } }
+}
+
+Describe 'stage-target-python-deps: requirement markers decide for the target' -Skip:(-not $script:hostPy) {
+
+    BeforeAll {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Copy-TargetPythonDeps.ps1' -FunctionName 'Select-ActiveRequirement')
+        $script:py = Get-Command python | Select-Object -First 1 -ExpandProperty Source
+        # The active requirements for one target, joined so a whole verdict is one comparison.
+        function script:Get-ActiveJoined([string]$Version, [string]$Machine, [string[]]$Reqs) {
+            @(Select-ActiveRequirement -PythonExe $script:py -PythonVersion $Version -PlatformMachine $Machine -Requirement $Reqs) -join '|'
+        }
+    }
+
+    It 'drops a python_version < 3.11 requirement for a 3.14 target and keeps it for 3.10 (pytest 9.1.1, 2026-10-10)' {
+        $reqs = @('pluggy<2,>=1.5', 'exceptiongroup>=1; python_version < "3.11"', 'tomli>=1; python_version < "3.11"')
+        Assert-Equal 'pluggy<2,>=1.5' (Get-ActiveJoined '3.14' 'ARM64' $reqs) 'only the unmarked requirement is active on 3.14'
+        Assert-Equal ($reqs -join '|') (Get-ActiveJoined '3.10' 'ARM64' $reqs) 'all three are active on 3.10'
+    }
+
+    It 'evaluates sys_platform and platform_machine for a Windows target' {
+        $reqs = @('colorama; sys_platform == "win32"', 'uvloop; sys_platform != "win32"', 'armonly; platform_machine == "ARM64"')
+        Assert-Equal "$($reqs[0])|$($reqs[2])" (Get-ActiveJoined '3.14' 'ARM64' $reqs) 'win32 and ARM64 hold on win_arm64'
+        Assert-Equal $reqs[0] (Get-ActiveJoined '3.14' 'AMD64' $reqs) 'the ARM64-only requirement drops on win_amd64'
+    }
+
+    It 'returns unmarked requirements without starting Python, and throws on a marker it cannot evaluate' {
+        $active = @(Select-ActiveRequirement -PythonExe 'C:\no-such\python.exe' -PythonVersion '3.14' -PlatformMachine 'ARM64' -Requirement @('numpy', 'protobuf>=4'))
+        Assert-Equal 'numpy|protobuf>=4' ($active -join '|') 'no marker, no Python'
+        Assert-Throws { Select-ActiveRequirement -PythonExe $script:py -PythonVersion '3.14' -PlatformMachine 'ARM64' -Requirement @('foo; not a marker') } `
+            -MessagePattern 'could not evaluate the markers'
+    }
+}

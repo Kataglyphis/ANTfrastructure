@@ -6,6 +6,28 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-10 — the arm64 fan-in: VVL compiles without sccache, and the target deps gate reads markers
+
+- **The arm64 VVL build hung in sccache, twice.** On Vulkan SDK 1.4.363 the compile of
+  `vk_validation_error_messages.cpp` sat in the sccache server with no compiler running: 70 minutes at `-j9`, then
+  again in the driver's `-j1` retry, until both processes were stopped by hand. The file emits thousands of
+  `-Wc++98-compat` warnings. Without sccache it compiles in 82 s. `Build-VulkanValidationLayers.ps1` now
+  clears the C/C++ launchers for the layer itself; its dependencies keep sccache. Only the arm64 lane builds the
+  layer from source, since amd64 takes the SDK's.
+- **The target deps gate failed on two requirements that do not apply.** pytest 9.1.1, now a bundle wheel, declares
+  `exceptiongroup>=1; python_version < "3.11"` and `tomli>=1; python_version < "3.11"`. The pip download skipped them
+  for cp314, but `Copy-TargetPythonDeps.ps1`'s gate dropped only `extra ==` markers, so it called both missing.
+  `Select-ActiveRequirement` now evaluates each marker for the target (python_version, `platform_machine` from the
+  wheel tag, win32) with pip's vendored packaging, and a marker it cannot evaluate fails the gate. The next arm64
+  solve passed it: 53 wheels, every Requires-Dist resolved. `SourceBuild.StageTargetPythonDeps.Tests.ps1` covers it
+  with three cases on the host Python.
+- **The arm64 arch gate then failed on 26 launcher EXEs in pure wheels**: pip's distlib `t32/t64/w32/w64.exe` and
+  setuptools' `cli/gui(-32|-64).exe`, in both target CPythons' `ensurepip` and `test\wheeldata` and in the store's
+  setuptools 84.0.0. The merge Dockerfile's `ARCH_GATE_HOST_TOOLS` default already skips those launchers, but
+  `Build-Buildkit.ps1` replaces it on the cross lane with an older list that never had them. The launchers only
+  arrived with the two target CPythons of 2026-10-07. The driver's pattern now repeats every alternative of the
+  default, and `Driver.ArchGateHostTools.Tests.ps1` fails when one is dropped; against the old driver it names the two.
+
 ## 2026-10-10 — HailoRT's patch 001 guards the x86 include too, so arm64 compiles with the patches
 
 - **The first `:winarm64` chain after CON85 stopped in `hailort.cpp`.** clang's `immintrin.h` refused the aarch64
