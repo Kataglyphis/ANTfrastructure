@@ -90,12 +90,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
              image, loaded all 50 modules with the GIL off.
            - A minimal C module went through `ft_store_twin` under qemu-riscv64, and its `Py_mod_gil`-less
              control was refused.
-         - **The torch twin is on** (`FT_TORCH_TWIN=1`). The owner's rule puts it behind a knob that
-           defaults off only if it roughly doubles the stage, and it does not. The chain log of
-           2026-10-08 built the riscv64 torch in 1121 s of a 5056 s app-wheelhouse RUN. The twin pass reuses torch's persistent `build/` tree, and torch adds the
-           Python include dirs per target, not globally (`cmake/Dependencies.cmake` at v2.14.1), so it
-           rebuilds `torch_python` and `_C` only: an estimated 10-20 min, about +20 %. `FT_TORCH_TWIN=0`
-           turns it off, and the store then records `skip torch FT_TORCH_TWIN=0`.
+         - **The torch twin is off** (`FT_TORCH_TWIN=0`, 2026-10-10). Chain run 20261009-233208 built it
+           (`torch: the cp314t pass took 70s in the warm tree`), but its qemu-riscv64 proof ended with no output at
+           all (`torch-2.14.1a0+git5c48869-cp314-cp314t-linux_riscv64.whl is not proved:  (on riscv64 under
+           qemu-riscv64)`), and the failure dropped the whole riscv64 torch cross wheel to the native fallback. Open:
+           find why the proof dies silently (a crash loading libtorch under qemu-user?), then turn the knob back on;
+           the store records `skip torch FT_TORCH_TWIN=0` meanwhile.
          - **numpy** has a row (`twin:FT_TORCH_TWIN`) but no chain build, so nothing expects its twin. A
            riscv64 `cp314t` numpy for consumers is CON83's wheel-store question. torchvision stays `none`.
          - Left: the chain. Each cross arch's `FT-STORE` must list its twins as `PASS` and end on `the store
