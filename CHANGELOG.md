@@ -6,6 +6,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — the hub gates its own arm64 bundle; no consumer lane hosts it any more
+
+- The bundle device gate grades the image's whole `C:\runtime`: GStreamer and WebRTC, HailoRT, IREE, ORT and the
+  Python wheels. Since 2026-10-03 it ran inside consumer cross lanes that set `bundle-artifact-name`, and only
+  BeschleunigerBallett did. Its first WebRTC failure (run 38156104572) turned the renderer's lane red and skipped its
+  GPU suites, which hang off the whole `container-ci-windows.yml` call, over a component the renderer never uses.
+- `windows-arm64.yml` ("Windows arm64 · bundle device gate") now runs it, daily and on a push to the gate's files. A
+  `windows-2025` job pulls the published `:winarm64` and packs its bundle with `Export-Arm64Bundle.ps1`. A
+  `windows-11-arm` job runs `Test-Arm64Bundle.ps1`, and uploads `winarm64-bundle-webrtc-logs` when it fails.
+- `container-ci-windows.yml` loses `bundle-artifact-name`, its export and upload steps and the `bundle-gate` job.
+  BeschleunigerBallett dropped the input first (9e029676).
+
 ## 2026-10-11 — the WebRTC loopback says why it stalls, and the arm64 device job keeps its logs (CON63)
 
 - Its first device run timed out: BeschleunigerBallett run 38156104572 passed 16 of 17 on `windows-11-arm`, and

@@ -124,16 +124,6 @@ on:
         required: false
         type: number
         default: 1
-      bundle-artifact-name:
-        description: >-
-          arm64 only: when set, the build job packs the image's runtime bundle (C:\runtime)
-          with Test-Arm64Bundle.ps1 and uploads both under this artifact name, and a
-          windows-11-arm job runs that gate against the extracted bundle - the device half
-          the cross lanes otherwise lack. Empty = no bundle job.
-          See docs/windows-cross-builds.md - Verification.
-        required: false
-        type: string
-        default: ''
       timeout-minutes:
         description: Time limit of the build job.
         required: false
@@ -271,17 +261,6 @@ jobs:
           file-args: ${{ inputs.build-args }}
           extra-args: ${{ steps.env.outputs.args }}
 
-      # The device half of a cross lane: the image's own C:\runtime is the bundle, packed while the image is warm.
-      - name: Export the arm64 bundle
-        if: ${{ inputs.target-arch == 'arm64' && inputs.bundle-artifact-name != '' }}
-        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
-        with:
-          target-arch: ${{ inputs.target-arch }}
-          file: C:\ws\third_party\ANTfrastructure\windows\scripts\build\Export-Arm64Bundle.ps1
-          file-args: |
-            -OutDir
-            C:\ws\dist\windows-arm64-bundle
-
       # Default-branch pushes only, like compiler-cache-save's `auto`; other runs restore without spending quota.
       - name: Save the compiler cache
         if: >-
@@ -369,14 +348,6 @@ jobs:
           path: ${{ steps.prep.outputs.workspace }}/${{ inputs.test-artifact-dir }}
           if-no-files-found: error
 
-      - name: Upload the bundle
-        if: ${{ inputs.target-arch == 'arm64' && inputs.bundle-artifact-name != '' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ${{ inputs.bundle-artifact-name }}
-          path: ${{ steps.prep.outputs.workspace }}/dist/windows-arm64-bundle
-          if-no-files-found: error
-
   run-arm64:
     name: run on windows-11-arm
     if: ${{ inputs.target-arch == 'arm64' && (inputs.run-command != '' || inputs.test-command != '') }}
@@ -450,40 +421,3 @@ jobs:
           path: tests/${{ inputs.test-results-path }}
           # A test-command that produced no results is a staging regression, not a warn.
           if-no-files-found: error
-
-  # Its own job: the gate needs ~15 minutes of python and GStreamer on the device, and run-arm64's 30-minute cap is the product's.
-  bundle-gate:
-    name: bundle device gate (windows-11-arm)
-    if: ${{ inputs.target-arch == 'arm64' && inputs.bundle-artifact-name != '' }}
-    needs: build
-    runs-on: windows-11-arm
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      - name: Download the bundle
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ${{ inputs.bundle-artifact-name }}
-          path: bundle
-
-      # The floor is the gate's own default: a device that ran nothing must not read as green.
-      - name: Run the gate on the device
-        shell: pwsh
-        working-directory: bundle
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $PSNativeCommandUseErrorActionPreference = $true
-          if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw "the bundle gate must run on arm64, not $env:PROCESSOR_ARCHITECTURE" }
-          # C:\runtime, the bundle's baked root: BUNDLE-ENV.ps1 and cv2's config.py carry absolute paths into it.
-          & ./Test-Arm64Bundle.ps1 -ZipPath ./bundle.zip
-          if ($LASTEXITCODE) { throw "the bundle gate exited $LASTEXITCODE" }
-
-      # The WebRTC step's four process logs, whose tails alone do not say why a pair never connected (CON63).
-      - name: Upload the gate's WebRTC logs
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ${{ inputs.bundle-artifact-name }}-webrtc-logs
-          path: ${{ runner.temp }}/bundle-webrtc
-          if-no-files-found: ignore

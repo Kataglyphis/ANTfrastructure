@@ -41,9 +41,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `C:\runtime\python-freethreaded` (`python3.14t.exe`, `libs\python314t.lib`, the venv
       launchers, no `python.exe`), `BUNDLE-ENV` appends it last to `PATH`, and
       `Test-Arm64Bundle.ps1` runs it on a device when the bundle carries it. Left:
-      1. **Republish `:winarm64`.** The published one (2026-10-04, hub 80647a9a) has no tree. Then
-         read the first `bundle-gate` job of a cross lane with `bundle-artifact-name` for the step
-         `free-threaded interpreter: GIL off, stdlib extensions import`.
+      1. Done: the `:winarm64` of 2026-10-10 (`ba6bfaae…`) carries the tree, and BeschleunigerBallett run
+         38100828628 passed `free-threaded interpreter: GIL off, stdlib extensions import` on `windows-11-arm`.
       2. **[b] python-ci-windows.yml's arm64 job — owner decision.** It runs on the bare runner,
          and `Invoke-PythonTestLegs.ps1 -InstallUv` lets uv download a python-build-standalone
          3.14t. No image runs on `windows-11-arm`, so the tree has to arrive as an artifact:
@@ -118,8 +117,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          - Left: the next `:latest` chain with the fixed torch twin (9e3b7cba). riscv64's `FT-STORE` must add the torch
            twin as `PASS` and the family list must end on `onnxruntime torch`.
       2. **arm64 cross twins (Windows): the device proof.** In source since 2026-10-07 (CHANGELOG), proved
-         statically in `:winarm64`. Left: republish `:winarm64`, then read the first `bundle-gate` job's step
-         `free-threaded wheels: every cp314t twin loads with the GIL off`. Also left: cp314t `win_arm64` wheels
+         statically in `:winarm64`; on the device, BeschleunigerBallett run 38100828628 passed `free-threaded
+         wheels: every cp314t twin loads with the GIL off` (2026-10-11). Left: cp314t `win_arm64` wheels
          for the twins' dependencies (numpy and ORT's requirements, `Copy-TargetPythonDeps.ps1`), without which
          a consumer installs a twin `--no-deps`.
       3. **The ROCm torch twin** (`Build-TorchRocmFromSource.ps1`; `Dockerfile.torch` already mounts the module,
@@ -475,8 +474,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       **First device run, BeschleunigerBallett run 38156104572 (`:winarm64` `ba6bfaae…`): 16 of 17, the
       loopback timed out.** webrtcsrc reached PLAYING and decoded nothing in 90 s, and neither process
       wrote an error. The loopback now runs with `GST_DEBUG` at INFO for webrtcsink, webrtcsrc, webrtcbin,
-      nice and DTLS, its failure carries 12 lines of each log, and the device job uploads the logs as
-      `<bundle-artifact-name>-webrtc-logs`. Open: read them from the next arm64 run, then fix the bundle.
+      nice and DTLS, and its failure carries 12 lines of each log. The gate lives in the hub's
+      `windows-arm64.yml` since then, which uploads the logs as `winarm64-bundle-webrtc-logs`; the
+      renderer's lane no longer hosts it. Open: read them from its first run, then fix the bundle.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
@@ -501,9 +501,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         pipeline), `iree-run-module`, and the bundle's own Python 3.14.7 importing
         numpy 2.5.3, onnxruntime 1.30.0 (DmlExecutionProvider + CPUExecutionProvider),
         av 18.1.0 and cv2 5.0.0 - the wheels installed offline from its store.
-      - The gate runs per push since 2026-10-03: a cross lane that sets `bundle-artifact-name`
-        packs `C:\runtime` in the build job and the `windows-11-arm` job runs
+      - The gate runs in the hub's `windows-arm64.yml` since 2026-10-11, daily and on a push to its files: a
+        `windows-2025` job packs the published image's `C:\runtime` and a `windows-11-arm` job runs
         `Test-Arm64Bundle.ps1` over it ([`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) - Verification).
+        BeschleunigerBallett's cross lane hosted it from 2026-10-03 until then.
       - Still unproven on a device: an inference, a camera/plugin pipeline, and the
         consumer run jobs' apps (those jobs loaded the bundle's DLLs only; runs
         36136967538, 36142875090, 36142882316).

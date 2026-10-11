@@ -10,6 +10,7 @@
 
 [![Linux x64](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/linux-x64.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/linux-x64.yml)
 [![Windows x64](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/windows-x64.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/windows-x64.yml)
+[![Windows arm64](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/windows-arm64.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/windows-arm64.yml)
 [![GHCR cleanup](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ghcr-cleanup.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/ghcr-cleanup.yml)
 [![Consumers inventory](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/consumer-inventory.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/consumer-inventory.yml)
 [![Composite actions self-test](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/actions-selftest.yml/badge.svg)](https://github.com/Kataglyphis/ANTfrastructure/actions/workflows/actions-selftest.yml)
@@ -337,6 +338,7 @@ Both name columns follow the family's
 |----------|----------|---------|
 | `linux-x64.yml` | Linux x64 · preflight + mutation gate | On push/PR: the shell preflight gate suite, its mutation gate as four sharded jobs, + docs validation/build |
 | `windows-x64.yml` | Windows x64 · script tests | PowerShell lint + the `windows/scripts/tests` suite |
+| `windows-arm64.yml` | Windows arm64 · bundle device gate | Daily, and on a push to the gate's files: a `windows-2025` job packs the published `:winarm64` runtime bundle, a `windows-11-arm` job runs `Test-Arm64Bundle.ps1` over it |
 | `build-docs.yml` | Docs · build (reusable) | Reusable workflow for docs build |
 | `python-ci-linux.yml` | Python CI · Linux (reusable) | Reusable (`workflow_call`) — Python lint/tests on Linux, for consumer repos; never triggers here. `arches` picks the rows (default `x64 arm64`) |
 | `python-ci-windows.yml` | Python CI · Windows (reusable) | Reusable (`workflow_call`) — the same for Windows |

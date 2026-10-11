@@ -1,0 +1,88 @@
+# The hub proves its own :winarm64 bundle, not a consumer lane; named per docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names
+name: Windows arm64 · bundle device gate
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'windows/scripts/build/Test-Arm64Bundle.ps1'
+      - 'windows/scripts/build/Export-Arm64Bundle.ps1'
+      - 'windows/scripts/modules/WindowsGstPlugins.Common.psm1'
+      - 'windows/scripts/modules/WindowsTargetArch.Common.psm1'
+      - 'linux/scripts/02-toolchain/python/free-threaded-wheel.py'
+      - '.github/workflows/windows-arm64.yml'
+  # A republished :winarm64 changes no file here, so the published image is graded daily as well.
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per ref: a newer push supersedes the in-flight run.
+concurrency:
+  group: windows-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The bundle is the image's own C:\runtime, so an x64 host runs the image and packs it with the gate beside it.
+  export:
+    name: export the bundle (windows-2025)
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - name: Prepare the Windows container host
+        id: prep
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-windows-container-host@develop
+        with:
+          target-arch: arm64
+          submodules: 'false'
+
+      - name: Export the arm64 bundle
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
+        with:
+          target-arch: arm64
+          file: C:\ws\windows\scripts\build\Export-Arm64Bundle.ps1
+          file-args: |
+            -OutDir
+            C:\ws\dist\windows-arm64-bundle
+
+      - name: Upload the bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: winarm64-bundle
+          path: ${{ steps.prep.outputs.workspace }}/dist/windows-arm64-bundle
+          if-no-files-found: error
+
+  # Its own job: the gate needs ~15 minutes of python and GStreamer on the device.
+  gate:
+    name: bundle device gate (windows-11-arm)
+    needs: export
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    steps:
+      - name: Download the bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: winarm64-bundle
+          path: bundle
+
+      # The floor is the gate's own default: a device that ran nothing must not read as green.
+      - name: Run the gate on the device
+        shell: pwsh
+        working-directory: bundle
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw "the bundle gate must run on arm64, not $env:PROCESSOR_ARCHITECTURE" }
+          # C:\runtime, the bundle's baked root: BUNDLE-ENV.ps1 and cv2's config.py carry absolute paths into it.
+          & ./Test-Arm64Bundle.ps1 -ZipPath ./bundle.zip
+          if ($LASTEXITCODE) { throw "the bundle gate exited $LASTEXITCODE" }
+
+      # The WebRTC step's four process logs, whose tails alone do not say why a pair never connected (CON63).
+      - name: Upload the gate's WebRTC logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: winarm64-bundle-webrtc-logs
+          path: ${{ runner.temp }}/bundle-webrtc
+          if-no-files-found: ignore
