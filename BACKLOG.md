@@ -422,6 +422,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       first activation of the MIGraphX stage's fresh `migraphxmods` COPY layer failed with the
       same 0x20, and there the driver's retry read it. Defender's exclusions were not checked
       (admin only). Find the cause, then drop the two views when a bind of the image reads again.
+      **2026-10-11, a direct-bind probe** (`buildctl`, no view, one `--mount=type=bind,from=<image>` per run):
+      - `bk-windows-media-tvm` (2026-10-08) and `-rocm` (2026-10-09): `site-packages` lists 49 entries and opens
+        none. In the same images `Lib\json` opens 7 of 7, and a RUN on the image reads `cython.py` (661 bytes).
+      - `bk-windows-media-tvm-nvidia` (2026-10-10) opens 49 of 49, and every `media-core` variant 43 of 43.
+      - A RUN on the image before the bind did not help, so the layer's activation is not it. It is one
+        directory of particular images, reproducible on every run, which argues against Defender.
+      - Next, admin only: compare that directory's node in the top layers of the default and the nvidia
+        `media-tvm` (`ctr -n buildkit`, then its reparse and attribute flags).
 - [ ] **CON87 — a Linux-only `versions.env` edit rebuilds the whole Windows chain** [M, ★★].
       `Dockerfile.base` COPYs all of `linux/scripts/01-core/versions.env` into its tail
       (`Import-Versions.ps1`), so any key changes base's digest and re-keys every stage above it;
