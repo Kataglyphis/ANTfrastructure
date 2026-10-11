@@ -91,6 +91,8 @@ Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsScripts.Share
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsTargetArch.Common.psm1') -Force
 # Shared transient-failure engine; the BK lane passes its own pattern below.
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildDriver.Common.psm1') -Force
+# What the Dockerfiles bake and mount: without the Linux-only keys, whose edits would re-key the whole chain (CON87).
+$null = Write-WindowsVersionsEnv -RepoRoot $repoRoot
 
 <#
 .SYNOPSIS

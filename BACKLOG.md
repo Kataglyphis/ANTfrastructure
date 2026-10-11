@@ -428,11 +428,17 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       the toolchain stage also bind-mounts the file into its RUNs. On 2026-10-09 the riscv64-only,
       `noforward` `CMAKE_VERSION_RISCV64` 4.4.2 → 4.4.4 (655a2c4e) turned the `:winamd64-rocm`
       publish from a cache hit into a 4:45 h rebuild, and the rebuilt toolchain cost sccache its hits
-      (TVM took 60 min against 25 min the night before). Bake only the keys the Windows scripts read,
-      as a filtered file or as ARGs, and prove that a Linux-key edit then leaves the chain cached.
-      The Windows Dockerfiles also mount `linux/scripts/03-media/free-threaded-twins.txt` and
-      `linux/scripts/02-toolchain/python/free-threaded-wheel.py`. A Linux-lane edit to the second
-      (9e3b7cba) turned the 2026-10-10 `:winarm64` publish into a media rebuild.
+      (TVM took 60 min against 25 min the night before).
+      **In source 2026-10-11:** `Build-Buildkit.ps1` writes `windows/generated/versions.env`
+      (`Write-WindowsVersionsEnv`), without comments and without the 101 Linux-only keys nothing under
+      `windows/` names. The base COPY, both toolchain mounts and the merge re-COPY read it
+      (`BuildDriver.WindowsVersionsEnv.Tests.ps1`). Proved on base: after `CMAKE_VERSION_RISCV64` and
+      `DEEPSTREAM_VERSION` moved and a comment was added, `-Stages base` was CACHED end to end, manifest
+      `1b332f1d…` both times. Open: the first chain run after this rebuilds above base once; the run after
+      a Linux-only edit then has to show toolchain and merge cached too.
+      The two free-threaded files stay mounted on purpose: Windows proves its twins with
+      `free-threaded-wheel.py` and reads its verdicts from `free-threaded-twins.txt`, so an edit to
+      either can change a Windows result (9e3b7cba's `enclose()` runs in Windows' `load_all` too).
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON64 — the Vulkan validation layer in `C:\runtime\vulkan-layers`** [S, ★★]. Owner rule

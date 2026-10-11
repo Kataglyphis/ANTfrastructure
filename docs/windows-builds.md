@@ -1309,7 +1309,7 @@ Meson+clang-cl with wrap pre-extraction; loads `versions.env` via `Import-Versio
 
 #### `Import-Versions.ps1`
 
-Reads `C:\temp\versions.env` (COPY'd from `linux/scripts/01-core/versions.env`) and sets matching process env vars so Windows build scripts consume the same canonical versions as Linux
+Reads `C:\temp\versions.env` and sets matching process env vars so Windows build scripts consume the same canonical versions as Linux. The file is `windows/generated/versions.env`, which `Build-Buildkit.ps1` writes from `linux/scripts/01-core/versions.env` on every run (`Write-WindowsVersionsEnv`, CON87): the same keys in the same order, minus comments and the Linux-only keys nothing under `windows/` names, so a riscv64 or Android pin bump no longer re-keys the base and every stage above it. A Linux-only key is one `$script:LinuxOnlyVersionKeyPattern` matches; a key that also says `WINDOWS`, or that a Windows script, Dockerfile or mounted Linux file names, always stays, so a gap in the pattern costs a rebuild and never a missing pin.
 
 A key counts as an explicit override only when its process value differs from its Machine value: the base bakes every key into the Machine environment and every container process inherits it, so presence alone proves nothing. An override wins the RUN and is also written back to Machine, so the image records what it was built with, including the base's own ARG-mirrored keys; every other key is refreshed from the file. That is why media stages take pins as build-args instead of re-COPYing `versions.env`.
 

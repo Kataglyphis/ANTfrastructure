@@ -31,6 +31,9 @@ linux/webserver/dist/
 # Dev-only litert-lm fast-rebuild harness.
 .cxxtest.Dockerfile
 
+# Build-Buildkit.ps1 writes the Windows chain's filtered versions.env here on every run.
+windows/generated/
+
 # Login-gated, EULA-bound SDK drops staged by hand; only the READMEs are committed.
 windows/qnn-sdk/*
 !windows/qnn-sdk/README.md

@@ -6,6 +6,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — a Linux-only `versions.env` edit leaves the Windows chain cached (CON87)
+
+- `Dockerfile.base` copied all of `linux/scripts/01-core/versions.env`, and the toolchain stage mounted it into
+  its LLVM RUN, so a riscv64 pin bump (655a2c4e) turned the 2026-10-09 `:winamd64-rocm` publish into a 4:45 h
+  rebuild. `Build-Buildkit.ps1` now writes `windows/generated/versions.env` on every run
+  (`Write-WindowsVersionsEnv`), and the base COPY, both toolchain mounts and the merge re-COPY read it instead.
+- The filtered file keeps every key in source order and drops comments, plus the Linux-only keys: those
+  `$script:LinuxOnlyVersionKeyPattern` matches (Android, DeepStream, Chrome, riscv64, Linux tarballs and the like),
+  unless the name says `WINDOWS` or a Windows script, Dockerfile or mounted Linux file names it. Today that is 101 of
+  412 keys; `CMAKE_POLICY_VERSION_MINIMUM`, which CMake reads from the environment, stays.
+- Proved on the base stage: with `CMAKE_VERSION_RISCV64` and `DEEPSTREAM_VERSION` moved and a comment added, a
+  second `-Stages base` was CACHED end to end, manifest `1b332f1d…` both times. The next chain run rebuilds above
+  base once. `BuildDriver.WindowsVersionsEnv.Tests.ps1` checks the filter, that every key a Windows stage is
+  forwarded or declares stays, and that no chain Dockerfile reads the unfiltered file.
+
 ## 2026-10-11 — the arch gate reports pip's and setuptools' launcher templates instead of failing on them
 
 - OrchestrANT's Windows x64 app bundle failed its gate on the new pin (run 38086634222): `4 violation(s)`, all in the
