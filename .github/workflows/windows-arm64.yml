@@ -74,6 +74,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw "the bundle gate must run on arm64, not $env:PROCESSOR_ARCHITECTURE" }
+          # Never empty, so the log upload can insist on files even when the gate stopped before the WebRTC step.
+          $logs = New-Item -ItemType Directory -Force -Path (Join-Path $env:RUNNER_TEMP 'bundle-webrtc')
+          Set-Content -LiteralPath (Join-Path $logs 'README.txt') -Value "Test-Arm64Bundle.ps1's WebRTC loopback logs, $(Get-Date -Format s)"
           # C:\runtime, the bundle's baked root: BUNDLE-ENV.ps1 and cv2's config.py carry absolute paths into it.
           & ./Test-Arm64Bundle.ps1 -ZipPath ./bundle.zip
           if ($LASTEXITCODE) { throw "the bundle gate exited $LASTEXITCODE" }
@@ -85,4 +88,4 @@ jobs:
         with:
           name: winarm64-bundle-webrtc-logs
           path: ${{ runner.temp }}/bundle-webrtc
-          if-no-files-found: ignore
+          if-no-files-found: error
