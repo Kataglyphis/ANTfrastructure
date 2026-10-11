@@ -129,9 +129,7 @@ windows/scripts/         Windows lane, GROUPED since #108 (2026-08-20):
                          download_webdav_files.py — see its README.md),
                          python/ + rust/ (consumer CI-lane drivers).
                          Also ungrouped: patches/ (the static source-build
-                         patches, catalogued in its README.md) and hip/
-                         (TheRock's clang config + the MSVC cmath overlay,
-                         docs/windows-rocm.md).
+                         patches, catalogued in its README.md).
                          modules/*.psm1 (reusable PS modules: SourceBuild,
                          Build.Common, ContainerBuild.Reuse, AgenticLoop,
                          CMake, Config, Formatting, Msix.{Common,Signing},
