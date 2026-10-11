@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — the WebRTC loopback waits for the producer to register (CON63)
+
+- The first `windows-arm64.yml` run uploaded the loopback's logs, and they show a race in the harness, not a broken
+  bundle. The consumer started as soon as the signalling server listened, and its `list` reached the server 19 ms
+  before webrtcsink registered as a producer. With `connect-to-first-producer` and no listener role it never heard of
+  the producer, and the pipeline sat in PLAYING until the 90 s timeout.
+- On arm64 webrtcsink needs ~0.8 s to pick its H.264 encoder: it probes Media Foundation devices and lands on
+  `mfh264enc`. On amd64 the choice is quick, so the producer won the race there.
+- `Invoke-GstWebRtcLoopback` now waits up to 30 s for `registered as [Producer]` in the server's log before it starts the
+  consumer, and fails with that sentence if the line never comes. It still passes in `:winamd64`.
+
 ## 2026-10-11 — the hub gates its own arm64 bundle; no consumer lane hosts it any more
 
 - The bundle device gate grades the image's whole `C:\runtime`: GStreamer and WebRTC, HailoRT, IREE, ORT and the

@@ -377,6 +377,18 @@ function Invoke-GstWebRtcLoopback {
             $result.Detail = @("the producer's signalling server never listened on 127.0.0.1:$port (producer exited: $($producer.HasExited))")
             return $result
         }
+        # The port listens before webrtcsink registers; a consumer that lists first finds no producer and waits for good (arm64, CON63).
+        $readShared = { param([string]$Path) $fs = [IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite'); try { [IO.StreamReader]::new($fs).ReadToEnd() } finally { $fs.Dispose() } }
+        $deadline = [DateTime]::UtcNow.AddSeconds(30)
+        $registered = $false
+        while (-not $registered -and -not $producer.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+            $registered = (Test-Path -LiteralPath $logs['producer-out']) -and ((& $readShared $logs['producer-out']) -match 'registered as \[Producer\]')
+            if (-not $registered) { Start-Sleep -Milliseconds 250 }
+        }
+        if (-not $registered) {
+            $result.Detail = @("webrtcsink never registered as a producer with the signalling server on 127.0.0.1:$port (producer exited: $($producer.HasExited))")
+            return $result
+        }
         $consumer = Start-Process -FilePath $exe -ArgumentList $consumerArgs -PassThru -NoNewWindow `
             -RedirectStandardOutput $logs['consumer-out'] -RedirectStandardError $logs['consumer-err']
         $null = $consumer.Handle
