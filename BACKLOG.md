@@ -70,9 +70,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          each pass FT-STORE with `onnxruntime_migraphx` / `onnxruntime_gpu` 1.30.0 cp314t and `onnxruntime_dnnl` loaded with
          the GIL off, and the ORT census; both twin passes rebuilt no CUDA/HIP object. Each next nvidia and rocm chain re-reads: the twin pass rebuilds no CUDA/HIP
          object (`.cu.o`/HIP count 0 between `free-threaded: build venv` and `rebuilt for`), and FT-STORE ends on
-         `onnxruntime` among the families with the flavour's own twin proved. FT-STORE on arm64 is green since the cross `:latest` of 2026-10-10 (1b). Windows — a `:winamd64` image build carrying all five twins, so smoke section 20 checks its
-         exact set; the IREE v3.12.0 clang-cl fixes and the `iree-base-compiler` twin are proved locally on the
-         full compiler tree since 2026-10-07. Optional: keep the GIL interpreter in IREE's VM ISA genrule for
+         `onnxruntime` among the families with the flavour's own twin proved. FT-STORE on arm64 is green since the cross `:latest` of 2026-10-10 (1b). **Windows is proved:** the published `:winamd64` (`e96203a8…`) carries all five twins, and smoke section 20
+         holds its cp314t store to exactly that set and loads each twin with the GIL off (run 2026-10-11, again in
+         chain 20261011-222153). Optional: keep the GIL interpreter in IREE's VM ISA genrule for
          the Windows twin, as `Set-OrtNinjaCommandPython` does for ORT (56 of its 137 edges go away).
       1b. **Linux cross twins: proved in the published `:latest` of 2026-10-10 (index sha256:30dea85c), all but torch.**
          The arm64 cross and riscv64 builds make the same twins as native: av, apache-tvm-ffi,
@@ -188,8 +188,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
       Windows 4–6 are proved: the `:winamd64-rocm` published 2026-10-09 (hub aa7a8086, `32c7cc51…`)
       built MIGraphX 2.18.0, the EP and `ggml-hip` in BuildKit. Its smoke gate passed 265 assertions, 1
-      skipped, with eleven rocm-checks and `torch 2.14.1+rocm10.1.0`, HIP 7.16.26385. Still open there:
-      a build without the `hip-msvc-cmath` overlay.
+      skipped, with eleven rocm-checks and `torch 2.14.1+rocm10.1.0`, HIP 7.16.26385. **The overlay is out of
+      the tree since 2026-10-11:** on that image `hipcc`, `clang -x hip` and `amdclang++ -x hip` compile the probe's
+      kernel without it (`--no-default-config`). Open there: the next rocm chain builds MIGraphX, the EP,
+      `ggml-hip` and torch without it.
       **Both, on a real GPU (RX 9070 XT, gfx1201):** a MIGraphX EP session, torch HIP, and a small model on
       ggml-hip against its CPU result. With no bundled runtime a bare Windows host's loader takes Adrenalin's
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or

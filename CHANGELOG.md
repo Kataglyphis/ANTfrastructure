@@ -6,6 +6,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — TheRock's clang ships as AMD builds it: the HIP/MSVC `<cmath>` overlay is retired (CON78)
+
+- Since 2026-09-25 the rocm image has carried `windows/scripts/hip`: two wrapper headers that rename `isgreater` and its five
+  siblings around clang's HIP math headers, loaded by a `clang.cfg` and `clang++.cfg` beside TheRock's `clang.exe`. Without
+  them, every HIP compile against MSVC 14.51's `<cmath>` failed with 20 errors.
+- TheRock 10.1.0 no longer needs them. In the published `:winamd64-rocm` (`32c7cc51…`; MSVC 14.51.36231, AMD clang
+  24.0.0git), the probe compiled its kernel with `--no-default-config`, which drops the overlay, through `hipcc`,
+  `clang -x hip` and `amdclang++ -x hip`.
+- `Dockerfile.rocm` no longer installs the configs or the headers. The overlay, both configs and the probe
+  `Test-HipMsvcCmath.ps1` left the tree, and `Rocm.Migraphx.Tests.ps1` now holds every rocm Dockerfile free of them.
+- The smoke gate's one-line `hipcc` kernel stays the canary: a toolset or TheRock bump that brings the clash back fails it
+  with the same 20 errors. The next rocm chain has to build MIGraphX, the EP, `ggml-hip` and torch without the overlay.
+
 ## 2026-10-11 — CON63, CON80, CON82 and CON87 proved, CON71's Windows half done
 
 - **CON63:** the hub's own device gate passed 17 of 17 on `windows-11-arm`, the WebRTC loopback included

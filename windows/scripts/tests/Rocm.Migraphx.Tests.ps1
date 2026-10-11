@@ -172,24 +172,13 @@ Describe 'WindowsMigraphx.Common: facts read from fetched trees' {
     }
 }
 
-Describe 'the image''s HIP/MSVC <cmath> overlay (windows/scripts/hip)' {
-    $hipDir = Join-Path $script:MgxRepo 'windows\scripts\hip'
-
-
-    It 'installs it with configs beside TheRock''s clang that name the very directory it lands in' {
-        $joined = ([System.IO.File]::ReadAllText((Join-Path $script:MgxRepo 'windows\Dockerfile.rocm'))) -replace '`\r?\n', ' '
-        $dest = [regex]::Match($joined, '(?m)^COPY windows\\scripts\\hip\\hip-msvc-cmath (C:\\\S+)').Groups[1].Value
-        Assert-True ([bool]$dest) 'the overlay is COPYed into the image'
-        Assert-Match ([regex]::Escape('COPY windows\scripts\hip\clang.cfg windows\scripts\hip\clang++.cfg C:\TheRock\build\lib\llvm\bin\')) $joined 'both configs sit beside clang.exe'
-        foreach ($cfg in 'clang.cfg', 'clang++.cfg') {
-            $options = @([System.IO.File]::ReadAllLines((Join-Path $hipDir $cfg)) | Where-Object { $_ -and -not $_.StartsWith('#') })
-            Assert-Equal "-isystem $($dest -replace '\\', '/')" ($options -join '|') "$cfg carries one option, the install dir"
+Describe 'TheRock''s clang as AMD ships it (the HIP/MSVC <cmath> overlay retired, CON78)' {
+    It 'gives no Dockerfile a clang config or the overlay to copy' {
+        foreach ($name in 'Dockerfile.rocm', 'Dockerfile.rocm-llama', 'Dockerfile.rocm-migraphx', 'Dockerfile.torch') {
+            $text = [System.IO.File]::ReadAllText((Join-Path $script:MgxRepo "windows\$name"))
+            Assert-False ($text -match 'windows\\scripts\\hip|hip-msvc-cmath|clang\+*\.cfg') "$name must not install the retired overlay or a clang config"
         }
-    }
-
-    It 'no longer installs it from Dockerfile.rocm-llama (the move to the sdk slot, CON34)' {
-        $llama = [System.IO.File]::ReadAllText((Join-Path $script:MgxRepo 'windows\Dockerfile.rocm-llama'))
-        Assert-False ($llama -match 'windows\\scripts\\hip') 'the llama stage must not carry the overlay COPYs'
+        Assert-False (Test-Path -LiteralPath (Join-Path $script:MgxRepo 'windows\scripts\hip')) 'windows\scripts\hip is gone with the overlay'
     }
 }
 

@@ -18,10 +18,6 @@ COPY windows\scripts\host\Install-Rocm.ps1 C:\temp\scripts\
 
 RUN & 'C:\temp\scripts\Install-Rocm.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\TheRock\build'
 
-# Beside the driver, so every clang name loads the overlay; see docs/windows-rocm.md, HIP compiles against MSVC 14.51.
-COPY windows\scripts\hip\clang.cfg windows\scripts\hip\clang++.cfg C:\TheRock\build\lib\llvm\bin\
-COPY windows\scripts\hip\hip-msvc-cmath C:\runtime\opt\hip-msvc-cmath
-
 # Loader into System32 because FFmpeg's dlopen and Python never read PATH; after the ROCm RUN so a Vulkan bump keeps that layer.
 ARG VULKAN_VERSION=1.4.363.0
 ARG VULKAN_RT_WINDOWS_ZIP_SHA256=a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42d897c8ab32695769a
