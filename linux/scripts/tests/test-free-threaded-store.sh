@@ -241,13 +241,17 @@ t_case "the smoke: a proved twin whose GIL package left /opt/venv makes the fami
 t_assert_contains "$(_bad "$(printf '%s\n' "${_P_NATIVE}" | grep -v -e '^FTS GIL apache_tvm_ffi$')")" \
   "the store holds the families [apache-tvm-ffi av iree-base-compiler iree-base-runtime onnxruntime], /opt/venv wants [av iree-base-compiler iree-base-runtime onnxruntime]"
 
-t_case "the smoke: a GPU store carries both ORT twins, and the installed flavour's own twin is required"
-_gpu="$(printf '%s\n' "${_P_NATIVE}" | sed 's/^FTS GIL onnxruntime_dnnl$/FTS GIL onnxruntime_gpu/')"
-t_assert_contains "$(_bad "${_gpu}")" "/opt/venv carries onnxruntime_gpu, whose verdict is twin, and the store has no cp314t twin of it"
-_gpu="${_gpu/FTS DONE/FTS WHEEL onnxruntime_gpu-1.30.0-cp314-cp314t-linux_x86_64.whl
-FTS PROVED onnxruntime_gpu 1 compiled module(s)
+t_case "the smoke: a GPU store (nvidia, rocm) carries both ORT twins, and the installed flavour's own twin is required"
+for _fl in gpu migraphx; do
+  _gpu="$(printf '%s\n' "${_P_NATIVE}" | sed "s/^FTS GIL onnxruntime_dnnl\$/FTS GIL onnxruntime_${_fl}/")"
+  t_assert_contains "$(_bad "${_gpu}")" "/opt/venv carries onnxruntime_${_fl}, whose verdict is twin, and the store has no cp314t twin of it"
+  _gpu="${_gpu/FTS DONE/FTS WHEEL onnxruntime_${_fl}-1.30.0-cp314-cp314t-linux_x86_64.whl
+FTS PROVED onnxruntime_${_fl} 1 compiled module(s)
 FTS DONE}"
-t_assert_eq "" "$(_bad "${_gpu}")"
+  t_assert_eq "" "$(_bad "${_gpu}")"
+  t_assert_contains "$(_bad "$(printf '%s\n' "${_gpu}" | sed "s/^FTS PROVED onnxruntime_${_fl} .*/FTS UNPROVED onnxruntime_${_fl} ERROR: the GIL was re-enabled/")")" \
+    "onnxruntime_${_fl}-1.30.0-cp314-cp314t-linux_x86_64.whl is not proved on python3.14t"
+done
 
 _P_RV='FTS ENV /opt/wheels-cp314t
 FTS RECORD mode=cross

@@ -65,8 +65,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          `PYTHON_WHEELS_CP314T=/opt/wheels-cp314t` passes FT-STORE (chain run 20261009-022859); the ORT census
          grades the twin's four members against `ort-provenance-cp314t.sha256` with chain roots and passes; and a
          3.14t venv holding PyPI onnxruntime 1.31.0 is reconciled by `uv_reconcile_chain_ort` onto the twin
-         (venv census PASS, `import onnxruntime` with the GIL off, 8 threads run one session). Open: the nvidia
-         and rocm ORT twins (one call each), FT-STORE on arm64 is green since the cross `:latest` of 2026-10-10 (1b). Windows — a `:winamd64` image build carrying all five twins, so smoke section 20 checks its
+         (venv census PASS, `import onnxruntime` with the GIL off, 8 threads run one session). **The GPU ORT
+         twins are proved in the published images** (2026-10-11 CHANGELOG): `:latest-rocm` (index sha256:a5d68fbe, run
+         20261009-152508) and `:latest-nvidia` (index sha256:810f36b3, run 20261011-040056, media from 20261010-202726)
+         each pass FT-STORE with `onnxruntime_migraphx` / `onnxruntime_gpu` 1.30.0 cp314t and `onnxruntime_dnnl` loaded with
+         the GIL off, and the ORT census; both twin passes rebuilt no CUDA/HIP object. Each next nvidia and rocm chain re-reads: the twin pass rebuilds no CUDA/HIP
+         object (`.cu.o`/HIP count 0 between `free-threaded: build venv` and `rebuilt for`), and FT-STORE ends on
+         `onnxruntime` among the families with the flavour's own twin proved. FT-STORE on arm64 is green since the cross `:latest` of 2026-10-10 (1b). Windows — a `:winamd64` image build carrying all five twins, so smoke section 20 checks its
          exact set; the IREE v3.12.0 clang-cl fixes and the `iree-base-compiler` twin are proved locally on the
          full compiler tree since 2026-10-07. Optional: keep the GIL interpreter in IREE's VM ISA genrule for
          the Windows twin, as `Set-OrtNinjaCommandPython` does for ORT (56 of its 137 edges go away).

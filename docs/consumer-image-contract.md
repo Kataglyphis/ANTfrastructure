@@ -759,10 +759,19 @@ support also ships as a proved `cp314t` twin, in a store of its own: `/opt/wheel
   | Package | Twin pass, cold compiler cache | Warm | What the twin pass rebuilds |
   | --- | --- | --- | --- |
   | ONNX Runtime CPU (GIL pass: 760 s at `-j11`) | 97 s | 11-40 s | 539 of 3206 objects, every target whose compile line carries the Python and NumPy include dirs; of the wheel's four libraries only `onnxruntime_pybind11_state.so` differs |
+  | ONNX Runtime CUDA, `:latest-nvidia` (GIL RUN: 12 672 s, 578 CUDA objects) | 192 s | 32 s | no CUDA object; the C++ targets that see Python, from the compiler cache |
+  | ONNX Runtime MIGraphX, `:latest-rocm` (GIL RUN: 1311 s, 590 HIP objects) | | 57 s | no HIP object; 106 C++ objects |
   | PyAV | 28 s | 14 s | all 50 extensions, re-Cythonized because the fresh venv's Cython includes are newer: all of PyAV sees Python |
   | apache-tvm-ffi | 29 s | | all 34 steps: scikit-build-core's reconfigure rebuilds the small C++ core too |
   | IREE compiler and runtime (GIL pass: 55 s configure, 2334 s build at `-j16`) | 25 s | | 58 of 5452 objects, the bindings alone (below) |
 
+  The GPU rows are chain runs, not the 32-core measurement: nvidia 20261010-125556 (first) and
+  20261010-202726 (warm), rocm 20261009-152508. Each GPU build hands the pass its own
+  `BUILD_ARGS` and build dir, and the pass appends only `Python_EXECUTABLE`, as the last define. No GPU script passes a Python include dir, so FindPython
+  re-resolves the `3.14t` headers, NumPy include and SOABI in the warm cache (CMake 4.4.4, checked
+  on a scratch project). A carried GIL `Python_INCLUDE_DIR` would survive that reconfigure, which
+  is the riscv64 torch twin's bug below. `test-free-threaded-wheels.sh` holds both GPU flavours
+  to that.
   The IREE row is from a cold compiler cache, the full in-tree LLVM, and a settled GIL tree.
   The runtime-only tree, before the settle, took 130 s at `-j4` and recompiled 464 of its 723
   objects.
@@ -841,13 +850,16 @@ support also ships as a proved `cp314t` twin, in a store of its own: `/opt/wheel
   a foreign arch. A `/opt/venv` package whose family the record does not want gets an `OK`
   line naming it: PyPI's torch on amd64 and arm64, and PyPI's IREE compiler on a cross arch,
   whose chain builds the IREE runtime only.
+  The GPU images pass it with both ORT twins: `:latest-nvidia` (2026-10-11, index
+  sha256:810f36b3) proves `onnxruntime_gpu` and `onnxruntime_dnnl`, `:latest-rocm` (2026-10-09,
+  index sha256:a5d68fbe) `onnxruntime_migraphx` and `onnxruntime_dnnl`, and the ORT census
+  grades each twin's members against the flavour's `ort-provenance-cp314t.sha256`.
 - **Not covered yet.** The cross twins are in source since 2026-10-09 and unproved until a
   chain publishes them. Proved so far without a chain: PyAV 19.0.1's twin, cross-built against
   the published riscv64 image's FFmpeg and `3.14t` tree. All 50 modules loaded with the GIL off
   on riscv64 under QEMU, through `FT-STORE`'s own probe and verdict. A minimal C module went
   through `ft_store_twin` the same way, and its `Py_mod_gil`-less control was refused. Windows
-  builds no twin of a knob row. The GPU ORT flavours call the same pass and are unproven until
-  a chain runs them. The IREE compiler twin was proved locally in
+  builds no twin of a knob row. The IREE compiler twin was proved locally in
   `:latest` amd64 on 2026-10-07, but not yet in a chain:
   - `prove` loaded its 14 compiled modules with the GIL off.
   - A 3.14t venv parsed MLIR in-process, compiled an `add` function to a VMFB and ran it on

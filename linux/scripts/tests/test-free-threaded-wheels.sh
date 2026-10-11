@@ -356,11 +356,63 @@ _ort_steps=0
 for _s in "${ORT_BUILD}"/30-build-native*.sh; do
   _ort_steps=$((_ort_steps + 1))
   t_assert_eq 1 "$(grep -c -e '^onnx_build_free_threaded_wheel ' "${_s}")" "${_s##*/} builds its ORT flavour's twin"
+  t_assert_contains "$(sed '/^[[:space:]]*$/d' "${_s}" | tail -n 1)" 'onnx_build_free_threaded_wheel "${NATIVE_' "${_s##*/}: the twin pass is last, after every GIL output is final"
+  t_assert_contains "$(sed '/^[[:space:]]*$/d' "${_s}" | tail -n 1)" ' BUILD_ARGS' "${_s##*/}: over the very args its GIL build.sh took"
+  t_assert_eq "" "$(grep -i -e 'python3*_include' "${_s}" || true)" "${_s##*/}: no Python include define the twin pass would inherit"
 done
 t_assert_eq 3 "${_ort_steps}" "the CPU build and both GPU flavours"
 t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=pyav /opt/pyav/wheels-cp314t /opt/wheels-cp314t"
 t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=tvm /opt/tvm/wheels-cp314t /opt/tvm-wheels-cp314t"
 t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=app-wheelhouse /opt/app-wheels-cp314t /opt/app-wheels-cp314t"
+
+t_case "the ORT twin pass: each GPU flavour's GIL args again over its warm tree, then the 3.14t venv's interpreter, never a GIL include"
+_oft="${_work}/oft"; mkdir -p "${_oft}/a/b/c/lib" "${_oft}/ort" "${_oft}/tmp"
+# The library the function sources, four levels above lib/ as in the repo, with the venv and the store stubbed.
+cat > "${_oft}/free-threaded-wheels.sh" <<'STUB'
+ft_twin_start() { echo "START $1 $2" >> "${OFT_LOG}"; mkdir -p "$2/bin"; }
+ft_target_env() { :; }
+ft_twin_store_built() { echo "STORE $1 $2" >> "${OFT_LOG}"; }
+STUB
+printf '#!/usr/bin/env bash\nprintf "ARG %%s\\n" "$@" >> "${OFT_LOG}"\necho "ENV ${Python_EXECUTABLE} ${Python3_EXECUTABLE} ${PYTHON_EXECUTABLE} ${PATH%%%%:*}" >> "${OFT_LOG}"\nexit "${OFT_RC:-0}"\n' > "${_oft}/ort/build.sh"
+chmod +x "${_oft}/ort/build.sh"
+_oft_fn="$(t_fn_src "${ORT_BUILD}/lib/common.sh" onnx_build_free_threaded_wheel)" || exit 1
+# <build dir> <output dir> <GIL build args...>: the pass in its own bash; its log, then RC=<n>.
+_oft_run() {
+  : > "${_oft}/log"
+  OFT_LOG="${_oft}/log" TMPDIR="${_oft}/tmp" FN="${_oft_fn}" ROOT="${_oft}" bash -c '
+    info() { :; }; err() { echo "ERR $*" >> "${OFT_LOG}"; exit 1; }
+    host_python_bin() { echo /opt/python/.venv/bin/python; }
+    retag_directory_wheels() { echo "RETAG $*" >> "${OFT_LOG}"; }
+    eval "${FN}"
+    _ONNX_LIB_DIR="${ROOT}/a/b/c/lib" ORT_SRC_DIR="${ROOT}/ort"
+    b="$1" o="$2"; shift 2; GIL_ARGS=("$@")
+    onnx_build_free_threaded_wheel "${b}" Release "${o}" GIL_ARGS' _ "$@"
+  echo "RC=$?"; cat "${_oft}/log"
+}
+_ftpy="${_oft}/tmp/onnxruntime-ft-venv/bin/python"
+_nv=(--build_dir /ort/build_native_gpu --config Release --build_shared_lib --skip_tests --build_wheel --use_cuda --cuda_home /usr/local/cuda
+  --cudnn_home /usr --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=86;87;89;120" --use_tensorrt --use_full_protobuf --tensorrt_home /tmp/tensorrt --no_telemetry)
+_mgx=(--build_dir /ort/build_native_gpu_migraphx --config Release --build_shared_lib --skip_tests --cmake_extra_defines hip_DIR=/opt/rocm/core-10.1/lib/cmake/hip
+  --cmake_extra_defines CMAKE_PREFIX_PATH=/opt/rocm/core-10.1/lib/cmake --use_migraphx --migraphx_home /opt/rocm/extras-10 --no_telemetry --build_wheel)
+for _fl in nv mgx; do
+  declare -n _ga="_${_fl}"
+  _b="${_ga[1]}"
+  _out="$(_oft_run "${_b}" /out/gpu "${_ga[@]}")"
+  t_assert_contains "${_out}" "RC=0"
+  t_assert_eq "$(printf 'ARG %s\n' "${_ga[@]}" --cmake_extra_defines "Python_EXECUTABLE=${_ftpy}")" "$(grep '^ARG ' <<<"${_out}")" \
+    "${_fl}: the GIL args unchanged (same --build_dir, no --clean), the 3.14t interpreter as the last define, so CMake takes it"
+  t_assert_eq "" "$(grep -i -e 'include' <<<"${_out}" || true)" "${_fl}: no include define, so FindPython re-resolves the 3.14t headers in the warm cache"
+  t_assert_contains "${_out}" "ENV ${_ftpy} ${_ftpy} ${_ftpy} ${_ftpy%/python}"
+  t_assert_contains "${_out}" "START onnxruntime ${_oft}/tmp/onnxruntime-ft-venv"
+  t_assert_contains "${_out}" "STORE ${_b}/Release/dist /out/gpu/wheels-cp314t"
+  t_assert_fails test -e "${_ftpy%/bin/python}"
+  unset -n _ga
+done
+_out="$(OFT_RC=1 _oft_run /ort/build_native_gpu /out/gpu "${_nv[@]}")"
+t_assert_contains "${_out}" "ERR ONNX Runtime: the free-threaded pass over /ort/build_native_gpu failed"
+t_assert_eq "" "$(grep '^STORE' <<<"${_out}" || true)" "a failed pass stores nothing"
+_out="$(_oft_run /ort/build_native_gpu_migraphx /out/gpu "${_mgx[@]:0:${#_mgx[@]}-1}")"
+t_assert_eq "RC=0" "${_out}" "a MIGraphX cross build without --build_wheel has no GIL wheel to twin, and runs no pass"
 
 t_case "wiring: the GIL store is verified before the twins are touched, and only it is installed"
 _line() { grep -n -e "$1" "${MEDIA}" | cut -d: -f1 | head -n 1; }
