@@ -125,7 +125,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          (the merge's gate), then the device run on the `:winarm64` it publishes.
       3. **The ROCm torch twin** (`Build-TorchRocmFromSource.ps1`; `Dockerfile.torch` already mounts the module,
          and must mount `linux/scripts/03-media/free-threaded-twins.txt` at `C:\bkmnt\free-threaded-twins.txt`
-         once it asks `Get-FreeThreadedTwinPlan`).
+         once it asks `Get-FreeThreadedTwinPlan`). Measured 2026-10-12, what makes it harder than the Linux twin:
+         - No PyTorch build file names `Py_GIL_DISABLED` (code search over pytorch/pytorch).
+         - The image's `C:\python-freethreaded\include\pyconfig.h` only tests the macro, and its
+           `#pragma comment(lib)` picks `python314t.lib` only when the macro is set.
+         - So the twin must define `Py_GIL_DISABLED=1` on torch_python's compile lines itself. A global
+           `CMAKE_CXX_FLAGS` would recompile every C++ object of torch.
+         - The Windows twin plan also skips a `twin:<KNOB>` row, which is torch's verdict.
       5. **Upstream**: IREE's bare-`python3` genrule (`runtime/src/iree/vm/bytecode/isa/CMakeLists.txt`) and its
          Windows `cpython-NNt` SOABI detection (`CMakeLists.txt:782-791`); onnxruntime-genai's
          `PYBIND11_MODULE` (`src/python/python.cpp:468`) plus a thread-safety audit of its global log callback.
