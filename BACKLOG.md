@@ -132,12 +132,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 - [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
       yarn.lock today). (3) Consumers to follow: OmniAccelerANT's `environment: flutter: '>=3.41.6'`
       floor (its lock now needs 3.47.0), and optionally OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule
-      into the preset. (4) OmniAccelerANT's lock maintenance (go_router 18.0.2, sqlite3 3.7.0 and the wasm) waits
-      locally for its hub gitlink to move past this commit, which waits for the published images (CON72). (5) npm,
+      into the preset. (4) Done: OmniAccelerANT's lock maintenance (go_router 18.0.2, sqlite3 3.7.0 and the wasm) is
+      7ecfa18, and its hub gitlink is past the published images (CON72). (5) npm,
       poetry, pdm and pnpm locks report `behind: unknown`: none has a dry run that diffs the lock (measured 2026-10-08).
-      (6) jotrockenmitlocken carries sqlite3 3.7.0 and the 3.7.0 `web/sqlite3.wasm` since 93083c3 (2026-10-09), but its
-      own hub pin (ef7ddb9d) still sets `setup-sqlite3-wasm.sh` to 3.3.1, so a manual run fetches the old asset until that
-      gitlink moves past 77690147 (with the CON72 consumer moves).
+      (6) Done: jotrockenmitlocken's hub pin moved past 77690147 in 401acff (2026-10-10), so `setup-sqlite3-wasm.sh`
+      fetches the 3.7.0 asset its `web/sqlite3.wasm` already carries.
 
 - [ ] **CON83 — the riscv64 Python lane: seed its sync, and test the cross wheel** [M, ★★]. Found while fixing
       OrchestrANT's riscv64 lane (2026-10-07): its emulated `uv sync` of the `test` extra built numpy, matplotlib,
@@ -260,16 +259,24 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       The riscv64 lane (37672555206) was not waited for. Lesson: a
       consumer's pin bump that moves `PYTHON_VERSION` or `UV_VERSION` waits for the image.
 
-      **Once the images are published, every consumer moves its hub gitlink**, and these wait on it:
-      - **OmniAccelerANT**: its local lock-maintenance commits (go_router 18.0.2, sqlite3 3.7.0 with
-        `web/sqlite3.wasm`; CON84) go with the bump, and `check-rust-toolchain.sh` then grades rustc 1.99.0.
-      - **OrchestrANT**: the riscv64 packaging fix (sysroot libc, 2026-10-07) arrives with it. Its cp314t
-        wheel needs the image's `3.14t` (CON66); `free-threaded-wheel: off` (CON77) is the interim switch
-        should the pin have to move first.
-      - **BeschleunigerBallett**: drop its local sccache override and its format counter, which the
-        hub's guarded launcher and the pinned clang-format replace.
-      - **AccelerANTgine**: `scan-build-21` → `scan-build` (CON71 wires the pinned LLVM's tools).
-      - **OxidANT, WebDavClient, DocumANTation, ANThology**: the gitlink only.
+      **Every consumer's hub gitlink moved on 2026-10-10**, past the published images (06e65481, or
+      8bd24220 where a repo needed that fix). What is left is their lanes on those pins:
+      - **OmniAccelerANT** 4d209d6 (hub 8bd24220, AccelerANTgine a9e7323, OxidANT d6fa857). The
+        lock maintenance (CON84) landed first, in 7ecfa18, and the hub bump to 06e65481 before that,
+        in 8ad8984, with the cat cam fix (OxidANT's chain-ORT check ignores the path separator,
+        1761c77). Open: `check-rust-toolchain.sh` grading rustc 1.99.0 on the Linux and Android lanes.
+      - **OrchestrANT** e2f959c (06e65481): the riscv64 packaging fix (sysroot libc) rides along.
+        Open: the riscv64 lane, and the cp314t wheel on the image's `3.14t` (CON66;
+        `free-threaded-wheel: off`, CON77, is the fallback).
+      - **BeschleunigerBallett** c918a645 (8bd24220): its sccache override and its format counter
+        are gone, since the hub's `Cache.cmake` (5710cf9e) and `Invoke-ClangFormatCheck
+        -FailOnDeviation -ExpectedVersion` do the same. clang-format 23.1.3 finds 0 of 217 files deviating,
+        in `:winamd64` and in `:latest`. The pin also brings 8bd24220, which BB's `-SkipBuild` needed.
+      - **AccelerANTgine** 711b2cb (`scan-build` from the pinned LLVM) and a9e7323 (hub 8bd24220).
+      - **OxidANT** d6fa857, **WebDavClient** d783f16 and **jotrockenmitlocken** 401acff: the gitlink
+        only (06e65481).
+      - **DocumANTation and ANThology** have no hub gitlink, so there was nothing to move (checked
+        2026-10-10).
 
 ## Open — Linux image (all arches)
 
