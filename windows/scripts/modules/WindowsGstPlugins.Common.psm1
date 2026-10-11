@@ -358,6 +358,9 @@ function Invoke-GstWebRtcLoopback {
     $producer = $null
     $consumer = $null
     $result = [pscustomobject]@{ ExitCode = -1; TimedOut = $false; Port = $port; Detail = @(); TeardownError = @() }
+    # The WebRTC path at INFO: a pair that never connects (no ICE pair, no DTLS) otherwise stalls without a line (CON63, arm64).
+    $callerDebug = $env:GST_DEBUG
+    if (-not $callerDebug) { $env:GST_DEBUG = '2,webrtcsink:4,webrtcsrc:4,webrtcbin:4,nice:4,dtlsconnection:4' }
     try {
         $producer = Start-Process -FilePath $exe -ArgumentList $producerArgs -PassThru -NoNewWindow `
             -RedirectStandardOutput $logs['producer-out'] -RedirectStandardError $logs['producer-err']
@@ -384,12 +387,14 @@ function Invoke-GstWebRtcLoopback {
             $result.TimedOut = $true
         }
     } finally {
+        $env:GST_DEBUG = $callerDebug
         foreach ($p in @($consumer, $producer)) {
             if ($p -and -not $p.HasExited) { try { $p.Kill($true) } catch { Write-Verbose "loopback: kill failed: $($_.Exception.Message)" } }
         }
-        foreach ($n in 'consumer-err', 'consumer-out', 'producer-err') {
-            if (Test-Path $logs[$n]) { $result.Detail += @(Get-Content $logs[$n] -Tail 6 | ForEach-Object { "${n}: $_" }) }
+        foreach ($n in 'consumer-err', 'consumer-out', 'producer-err', 'producer-out') {
+            if (Test-Path $logs[$n]) { $result.Detail += @(Get-Content $logs[$n] -Tail 12 | ForEach-Object { "${n}: $_" }) }
         }
+        $result.Detail += "full logs: $LogDir\webrtc-loopback-$port-*.log"
     }
     if ($result.ExitCode -ne 0 -and -not $result.TimedOut -and (Test-Path $logs['consumer-out']) -and (Test-Path $logs['consumer-err'])) {
         $teardown = @(Get-GstLoopbackTeardownError -ConsumerOut (Get-Content -Raw $logs['consumer-out']) `
@@ -415,7 +420,7 @@ function Assert-GstWebRtcLoopback {
     $r = Invoke-GstWebRtcLoopback -GstLaunch $GstLaunch -Frames $Frames -TimeoutSeconds $TimeoutSeconds -LogDir $LogDir
     if ($r.ExitCode -ne 0) {
         throw ("webrtcsrc did not decode $Frames frames from webrtcsink (consumer exit $($r.ExitCode)$(if ($r.TimedOut) { ', timed out' })): " +
-            (@($r.Detail | Select-Object -Last 8) -join ' | '))
+            (@($r.Detail) -join ' | '))
     }
     if (@($r.TeardownError).Count -eq 0) { return '' }
     return "the frames arrived, then webrtcsrc's signaller failed in teardown (BACKLOG CON68): $(@($r.TeardownError) -join ' | ')"

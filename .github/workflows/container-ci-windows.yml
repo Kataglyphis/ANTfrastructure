@@ -478,3 +478,12 @@ jobs:
           # C:\runtime, the bundle's baked root: BUNDLE-ENV.ps1 and cv2's config.py carry absolute paths into it.
           & ./Test-Arm64Bundle.ps1 -ZipPath ./bundle.zip
           if ($LASTEXITCODE) { throw "the bundle gate exited $LASTEXITCODE" }
+
+      # The WebRTC step's four process logs, whose tails alone do not say why a pair never connected (CON63).
+      - name: Upload the gate's WebRTC logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.bundle-artifact-name }}-webrtc-logs
+          path: ${{ runner.temp }}/bundle-webrtc
+          if-no-files-found: ignore
