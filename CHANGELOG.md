@@ -6,6 +6,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — the registry blacklist check scans a GPU-less nvidia image with the CUDA driver stubs (CON42)
+
+- The first `:latest-nvidia` runtime smoke with DeepStream (run 20261011e) passed `check_deepstream` but failed
+  `_gst_check_blacklist`: 30 DeepStream plugins link the driver's `libcuda.so.1`, which a GPU-less smoke container lacks, so
+  the core registry blacklisted them.
+- The probe now links `libcuda.so.1` and `libnvidia-ml.so.1` to `${CUDA_HOME}/lib64/stubs` on a private registry when the image
+  has the stubs and no driver libcuda, as `deepstream-verify.sh`'s element check does. In that image only
+  `libnvdsgst_ucx.so` stays blacklisted (`libucs.so.0`, documented in `DSV_ALLOWED_MISSING`), which the check reports as a
+  documented exception; every other blacklisted plugin still fails it. `test-gst-validate-ssim.sh` covers both.
+
 ## 2026-10-10 — `Get-SelectedConfigurations` returns the set, and a cleared selection selects nothing
 
 - BeschleunigerBallett's `Build-Windows.ps1 -SkipBuild` died after its format gate: `Cannot bind argument to parameter

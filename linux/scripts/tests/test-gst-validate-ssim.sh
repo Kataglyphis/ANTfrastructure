@@ -47,6 +47,9 @@ cat > "${_SB}/bin/gst-inspect-1.0" <<'SH'
 [ "${1:-}" = -b ] || exit 0
 echo "Blacklisted files:"
 for f in ${FAKE_BLACKLIST:-}; do echo "  ${f}"; done
+# A plugin linking the driver libcuda loads only when a libcuda.so.1 is on the loader path.
+_cuda=""; for d in $(printf '%s' "${LD_LIBRARY_PATH:-}" | tr ':' ' '); do [ -e "${d}/libcuda.so.1" ] && _cuda=1; done
+[ -n "${_cuda}" ] || for f in ${FAKE_NEEDS_CUDA:-}; do echo "  ${f}"; done
 echo ""
 echo "Total count: $(echo ${FAKE_BLACKLIST:-} | wc -w) blacklisted files"
 SH
@@ -80,6 +83,20 @@ _out="$(FAKE_BLACKLIST='libgstgtk4.so' _probe '_gst_check_blacklist arm64' "_PAR
 t_assert_contains "${_out}" "FAILURES=0"
 t_assert_contains "${_out}" "documented arm64 exception"
 t_assert_contains "$(t_rt_recorded "${_RT}" '' _gst_check_blacklist amd64)" "FAILURES=1"
+
+t_case "a GPU-less nvidia image scans with the CUDA driver stubs, so only a real load failure is blacklisted"
+mkdir -p "${_SB}/cuda/lib64/stubs" "${_SB}/noldc"
+: > "${_SB}/cuda/lib64/stubs/libcuda.so"; : > "${_SB}/cuda/lib64/stubs/libnvidia-ml.so"
+printf '#!/usr/bin/env bash\n' > "${_SB}/noldc/ldconfig"; chmod +x "${_SB}/noldc/ldconfig"
+_nv="export CUDA_HOME='${_SB}/cuda' LD_LIBRARY_PATH= PATH='${_SB}/noldc':\"\${PATH}\""
+_out="$(FAKE_NEEDS_CUDA='libnvdsgst_infer.so libgstnvvideoconvert.so' _probe '_gst_check_blacklist amd64' "${_nv}")"
+t_assert_contains "${_out}" "FAILURES=0"
+t_assert_contains "${_out}" "scanned with the CUDA driver stubs"
+_out="$(FAKE_NEEDS_CUDA='libnvdsgst_infer.so' _probe '_gst_check_blacklist amd64' "export CUDA_HOME='${_SB}/nocuda' LD_LIBRARY_PATH=")"
+t_assert_contains "${_out}" "blacklists libnvdsgst_infer.so on amd64" "without stubs a driver-linked plugin stays blacklisted"
+_out="$(FAKE_BLACKLIST='libnvdsgst_ucx.so libgstfoo.so' _probe '_gst_check_blacklist amd64' "${_nv}")"
+t_assert_contains "${_out}" "libnvdsgst_ucx.so is blacklisted -- documented: libucs.so.0 is not shipped"
+t_assert_contains "${_out}" "blacklists libgstfoo.so on amd64" "a stub never excuses another plugin"
 
 t_case "the blacklist is read even when the scanner pass did not complete"
 t_assert_contains "$(t_rt_recorded "${_RT}" $'BLACKLISTED libgstvalidatessim.so\nGST_BLACKLIST_DONE' \
