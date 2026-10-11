@@ -517,19 +517,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       the source. **Owner decision 2026-10-07: DeepStream is in every amd64 nvidia build, at
       full size** (TensorRT 10's builder resources for every GPU generation stay, so the RTX
       2080's sm_75 keeps working). `stage-defs.sh` defaults `ENABLE_DEEPSTREAM=true` for an
-      amd64 nvidia chain; `=false` opts a run out. One thing left:
-      1. **The next nvidia variant chain run**, which now builds it without being asked. Started
-         2026-10-01 21:34 (amd64, from `gpu`, hub 629afe5d); done when `:latest-nvidia` is
-         published with `check_deepstream` green. The `:latest-nvidia` published 2026-10-02
-         (hub b4d5fdd5, amd64 `95c3a343…`) is not that run: its build args carry an empty
-         `ENABLE_DEEPSTREAM` and its `USE_NEW_NVSTREAMMUX` is empty. Until then everything
-         below was proven in throwaway containers FROM the published `:latest` amd64 child
-         plus the variant's CUDA install. It is also the first build of
-         the GPU run's three fixes in a chain. GStreamer and libcamera without libunwind are in
-         every variant by owner decision (2026-10-01, "everywhere"): the `:latest` published
-         2026-10-01 proves it in all three children (no shared object under `/opt` or
-         `/usr/local` needs `libunwind.so.8`), and so does the `:latest-rocm` of 2026-10-02
-         (CON51, closed).
+      amd64 nvidia chain; `=false` opts a run out. **Published 2026-10-11**: `:latest-nvidia`
+      index sha256:810f36b3 (amd64 sha256:23e3cc9e, chain run 20261011-040056, hub aabebdbc) carries
+      DeepStream 9.1; its runtime smoke passes `check_deepstream` (all nine elements register) and the
+      registry blacklist check, scanned with the CUDA driver stubs (only the documented UCX plugin is
+      blacklisted). The chain needed three fixes first (CHANGELOG 2026-10-10/11): pkg-config and the
+      loader find `/opt/gstreamer` in the build stage, and the blacklist probe uses the driver stubs.
+      GStreamer and libcamera without libunwind are in every variant by owner decision (2026-10-01,
+      "everywhere"; CON51, closed).
 
       Measured 2026-10-01 (DeepStream v9.1.0, commit 581889df; runtime
       `deepstream-binaries-x86_9.1.0_amd64.deb`; GStreamer 1.29.2; CUDA 13.4.2; GCC 16.2):
@@ -568,8 +563,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         whole by owner decision (2026-10-07).
       - **Phase 7 (arm64)**: out of scope until CON31 has an arm64 CUDA route. The Jetson
         runtime `.deb` is pinned (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it.
-      - **Phase 8**: `consumer-image-contract.md` names (`DEEPSTREAM_ROOT`, the plugin link,
-        `USE_NEW_NVSTREAMMUX`) and OmniAccelerANT's `nvinfer` path, after a published image exists.
+      - **Phase 8 — unblocked** (the image is published): `consumer-image-contract.md` names
+        (`DEEPSTREAM_ROOT`, the plugin link, `USE_NEW_NVSTREAMMUX`) and OmniAccelerANT's `nvinfer` path.
+      - **A GPU run of the published image** (the RTX 2080 pipeline of phase 2, now FROM `:latest-nvidia`).
       - Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only). The v9.1.0 release
         also hosts 9.1.1 assets for NVIDIA's `develop` branch; the pin stays on 9.1.0.
 
