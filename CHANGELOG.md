@@ -33,7 +33,8 @@
 - Proved on the base stage: with `CMAKE_VERSION_RISCV64` and `DEEPSTREAM_VERSION` moved and a comment added, a
   second `-Stages base` was CACHED end to end, manifest `1b332f1d…` both times. The next chain run rebuilds above
   base once. `BuildDriver.WindowsVersionsEnv.Tests.ps1` checks the filter, that every key a Windows stage is
-  forwarded or declares stays, and that no chain Dockerfile reads the unfiltered file.
+  forwarded or declares stays, and that no chain Dockerfile reads the unfiltered file. The context-path gate
+  (`verify_dockerfile_context_paths.py`) lists the file under `GENERATED` with the driver as its producer.
 
 ## 2026-10-11 — the arch gate reports pip's and setuptools' launcher templates instead of failing on them
 

@@ -31,11 +31,17 @@ GENERATED_CONTEXT: dict[str, str] = {
     "windows/scripts/diagnostics/probe-build-copy/Dockerfile.heavy": "Test-BuildCopy.ps1",
 }
 
+WINDOWS_VERSIONS_PRODUCER = "windows/Build-Buildkit.ps1 (Write-WindowsVersionsEnv)"
+
 # Sources a named producer writes into the context before the build, per Dockerfile.
 GENERATED: dict[str, dict[str, str]] = {
     "linux/llm-stack/Dockerfile": {
         "ollama-binary.tar.zst": "linux/llm-stack/scripts/download-ollama.sh",
     },
+    # The filtered versions.env every Windows chain run writes first (CON87); spelled as each Dockerfile spells it.
+    "windows/Dockerfile.base": {"windows\\generated\\versions.env": WINDOWS_VERSIONS_PRODUCER},
+    "windows/Dockerfile.media-merge-builder": {"windows\\generated\\versions.env": WINDOWS_VERSIONS_PRODUCER},
+    "windows/Dockerfile.toolchain-builder": {"windows/generated/versions.env": WINDOWS_VERSIONS_PRODUCER},
 }
 
 # A floor under `git ls-files`, which reports nothing in a checkout git refuses.
