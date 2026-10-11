@@ -6,15 +6,15 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-10**, read from the registry (hub = the image's `revision` label, digest =
-the per-arch manifest). Published: `:latest` (2026-10-09, hub 655a2c4e, index `af7252a0…`;
-amd64 `ba3115f1…`, arm64 `15a905c6…`, riscv64 `81db10eb…`), `:winamd64` (2026-10-08, hub 5dfeb42d, `e96203a8…`), `:winamd64-nvidia` (2026-10-10, hub 93708b28, `75bbe6f6…`),
-`:winamd64-rocm` (2026-10-09, hub aa7a8086, `32c7cc51…`), `:winarm64` (2026-10-10, hub
-222f2fa9, `ba6bfaae…`, without NVIDIA; no `:winarm64-nvidia` tag exists), `:latest-nvidia`
-(2026-10-02, hub b4d5fdd5, amd64 `95c3a343…`, built without DeepStream) and `:latest-rocm`
-(2026-10-02, hub b4d5fdd5, amd64 `bdfcb731…`). Every Linux image gap up to CON41 shipped
-and was checked in the published children (git history). Decisions and gaps checked closed live in
-[`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
+**State 2026-10-12**, read from the registry (hub = the image's `revision` label, digest =
+the per-arch manifest). Published: `:latest` (2026-10-11, hub 7d8d0363, index `b52f8c34…`;
+amd64 `624a8a63…`, arm64 `448591ff…`, riscv64 `7689579f…`), `:latest-nvidia` (2026-10-11, hub aabebdbc,
+index `810f36b3…`, amd64 `23e3cc9e…`, with DeepStream 9.1), `:latest-rocm` (2026-10-09, hub f0e360b8, index
+`a5d68fbe…`, amd64 `d58be41b…`), `:winamd64` (2026-10-08, hub 5dfeb42d, `e96203a8…`), `:winamd64-nvidia`
+(2026-10-10, hub 93708b28, `75bbe6f6…`), `:winamd64-rocm` (2026-10-09, hub aa7a8086, `32c7cc51…`) and
+`:winarm64` (2026-10-10, hub 222f2fa9, `ba6bfaae…`, without NVIDIA; no `:winarm64-nvidia` tag exists).
+Every Linux image gap up to CON41 shipped and was checked in the published children (git history).
+Decisions and gaps checked closed live in [`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
 here is a date's measurement.**
 
 ## Protocol
@@ -74,48 +74,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          holds its cp314t store to exactly that set and loads each twin with the GIL off (run 2026-10-11, again in
          chain 20261011-222153). Optional: keep the GIL interpreter in IREE's VM ISA genrule for
          the Windows twin, as `Set-OrtNinjaCommandPython` does for ORT (56 of its 137 edges go away).
-      1b. **Linux cross twins: proved in the published `:latest` of 2026-10-10 (index sha256:30dea85c), all but torch.**
-         The arm64 cross and riscv64 builds make the same twins as native: av, apache-tvm-ffi,
-         iree-base-runtime (cross builds no IREE compiler) and their ORT flavour. On riscv64 they also
-         make torch, through the new `torch|twin:FT_TORCH_TWIN` row. `ft_target_resolve` reads the target
-         `EXT_SUFFIX` from `/opt/python-cross-ft/<arch>`, and `ft_soabi_gate` gates against it, platform tag
-         included. `ft_prove_wheel_on_target` proves each twin with the target `3.14t` under qemu-user, at
-         build time and again on the repaired store. The runtime smoke then proves it in the target image,
-         as on amd64. `free-threaded-store.sh` holds a cross store to the table, and its record names each
-         expected family (`want <family>`). `FT-STORE` checks exactly those, so PyPI's torch (amd64/arm64)
-         and PyPI's IREE compiler (cross arches) want no twin.
-         - **Proved without a chain** in the published `:latest` (riscv64, sha256:af7252a0):
-           - PyAV 19.0.1's twin, cross-built against that image's FFmpeg and `3.14t` tree, gated
-             `.cpython-314t-riscv64-linux-gnu.so`. `FT-STORE`'s probe and verdict, run in the riscv64
-             image, loaded all 50 modules with the GIL off.
-           - A minimal C module went through `ft_store_twin` under qemu-riscv64, and its `Py_mod_gil`-less
-             control was refused.
-         - **The torch twin is on again** (`FT_TORCH_TWIN=1`, 2026-10-10). Chain run 20261009-233208's twin
-           failed its qemu-riscv64 proof with an empty reason, so the knob was off for a day. Reproduced in
-           `:cross-sdk-riscv64`, the twin pass appended its overrides to the GIL pass's `CMAKE_ARGS`. That kept
-           `-DPYTHON_INCLUDE_DIR=<target GIL include>`, which heads `torch_python`'s include path. The 70 s twin
-           therefore shipped the GIL wheel's `libtorch_python.so` byte for byte: it imports `_Py_Dealloc` and none
-           of `_Py_DecRefShared`, `_Py_MergeZeroLocalRefcount` or `PyUnstable_Module_SetGIL`. Under the target
-           3.14t it segfaulted in `dlopen`, in that library's initializers, before Python could print anything. Fixed:
-           - The twin builds its `CMAKE_ARGS` afresh for the target 3.14t, with `-U _Python*`. Its pass takes 233 s.
-           - The proof helper registers a package whose body cannot run with `--no-deps` unrun. `torch._C`'s init
-             imports `torch`, which needs `typing_extensions`. This failure blocked every torch twin, PyPI's
-             amd64 cp314t torch included.
-           - A failed proof prints the stack, the signal and the module that was loading.
-           - The full riscv64 `build_torch_wheel` then stored the twin: `1 compiled module(s) of torch loaded on
-             free-threaded 3.14.8; the GIL stayed disabled (on riscv64 under qemu-riscv64)`. `import torch` there
-             ran `torch.ones(3)*2` with `sys._is_gil_enabled() == False`.
-           - Chain run 20261011 (hub 7d8d0363) built and proved it again in the media stage: `1 compiled module(s)
-             of torch loaded on free-threaded 3.14.8; the GIL stayed disabled (on riscv64 under qemu-riscv64)`, and stored it.
-             The runtime smoke's riscv64 `FT-STORE` of that run is still to read.
-         - **numpy** has a row (`twin:FT_TORCH_TWIN`) but no chain build, so nothing expects its twin. A
-           riscv64 `cp314t` numpy for consumers is CON83's wheel-store question. torchvision stays `none`.
-         - **Proved by the chain** (runs 20261010-002002 and 20261010-010337, hub 381431d1): arm64 and riscv64
-           `FT-STORE` pass apache-tvm-ffi, av (50 modules), iree-base-runtime and onnxruntime_webgpu with the GIL off and
-           end on `the store holds exactly the twin families of /opt/venv: apache-tvm-ffi av iree-base-runtime onnxruntime`.
-           That run had `FT_TORCH_TWIN=0`, so its riscv64 store records torch as skipped.
-         - Left: the next `:latest` chain with the fixed torch twin (9e3b7cba). riscv64's `FT-STORE` must add the torch
-           twin as `PASS` and the family list must end on `onnxruntime torch`.
+      1b. **Linux cross twins: done** (CHANGELOG 2026-10-09..12). The published `:latest` of 2026-10-11 (index
+         sha256:b52f8c34, run 20261011-125540) passes `FT-STORE` on all three arches; riscv64 proves
+         `torch-2.14.1a0+git5c48869-cp314-cp314t-linux_riscv64.whl: 1 compiled module(s) of torch loaded on free-threaded
+         3.14.8; the GIL stayed disabled` and ends on `apache-tvm-ffi av iree-base-runtime onnxruntime torch`.
+         **numpy** keeps its row (`twin:FT_TORCH_TWIN`) without a chain build; torchvision stays `none`.
       2. **arm64 cross twins (Windows): the device proof.** In source since 2026-10-07 (CHANGELOG), proved
          statically in `:winarm64`; on the device, BeschleunigerBallett run 38100828628 passed `free-threaded
          wheels: every cp314t twin loads with the GIL off` (2026-10-11). **The twins' dependencies are in source since
@@ -137,39 +100,21 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          `PYBIND11_MODULE` (`src/python/python.cpp:468`) plus a thread-safety audit of its global log callback.
 
 - [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
-      yarn.lock today). (3) OmniAccelerANT's floors (`sdk: >=3.11.4`, `flutter: >=3.41.6`) trail its lock (3.13.0, 3.47.0).
-      Raising them is a reformat: a Dart floor of 3.13 moves `dart format` to the newer style and 8 committed files,
-      the frb bindings among them, change (tried and reverted 2026-10-11, 429fef3/b0903f9). Optional: its
-      `dev.flutter.flutter-plugin-loader` gradle rule into the preset. (5) npm, poetry, pdm and pnpm locks report
+      yarn.lock today). (3) Optional: OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule into the
+      preset (its floors follow its lock since 467ca34, 2026-10-12: regenerate `lib/src/rust/` and `lib/l10n/` after a
+      floor change, AGENTS.md § 4). (5) npm, poetry, pdm and pnpm locks report
       `behind: unknown`: none has a dry run that diffs the lock (measured 2026-10-08).
 
-- [ ] **CON83 — the riscv64 Python lane: seed its sync, and test the cross wheel** [M, ★★]. Found while fixing
-      OrchestrANT's riscv64 lane (2026-10-07): its emulated `uv sync` of the `test` extra built numpy, matplotlib,
-      contourpy, pillow, line-profiler, psutil and pyyaml from source, 108 min of the runner's 6 h; the cross-built
-      riscv64 wheel was never installed; shellcheck and hadolint were missing (their bench rows report SKIPPED).
-      **In source since 2026-10-09** (CHANGELOG): the riscv64 uv cache seed (`/opt/uv-cache-seed`,
-      `PYTHON_UV_CACHE_SEED`, restored by `ci_tests.sh`), `ci-wheel-smoke.sh` on the packaged riscv64 row, and
-      shellcheck plus hadolint on every arch (riscv64's hadolint built from source in the `hadolint-build` stage).
-      Proved without a chain: the seed builder on OrchestrANT 3bdf80a7 in `:latest`'s riscv64 child (8 wheels, 21 MB,
-      3172 s cold, 89 s warm, proof passed), a seeded consumer sync and the wheel smoke under QEMU,and
-      riscv64's hadolint built from source (5.1 h under QEMU) and installed with shellcheck in `:latest`'s riscv64
-      child by `install-lint-tools.sh`.
-      **The chain half is done** (`:latest` of 2026-10-10, index sha256:30dea85c): the riscv64 wrapper built hadolint
-      2.15.1 from source (wrapper step 18394 s, about 4 h of it the hadolint build) and logged `[uv-cache-seed] seeded
-      for riscv64: 8 wheel(s), proved`; the contract rows read `OK uv-cache-seed 8 wheel(s), proved` (riscv64), `not
-      seeded on amd64/arm64, by its record`, and `OK lint-tools shellcheck=0.11.0 hadolint=2.15.1` on all three.
-      **Left, the lane:**
-      - OrchestrANT's hub pin must move past the CON83 commit, or its riscv64 row fails at the wheel smoke's pin
-        check. Then its riscv64 run must show `uv cache seeded from /opt/uv-cache-seed` and no `Building numpy` in
-        the test leg, `wheel smoke passed`, and the bench rows without `[shellcheck SKIPPED` / `[hadolint SKIPPED`.
-      - The seed covers the lock of the commit the image was built from; a version OrchestrANT moves later builds as
-        before until the next chain.
-      OrchestrANT-side, owner calls from the same analysis: import `matplotlib.pyplot` lazily in
-      `orchestrant/__init__` (31-37 s per subprocess under QEMU; `bench_agent.py --list` takes 41.9 s
-      against a 60 s timeout, but the change touches Cython-built modules and tests that patch
-      `plotting.plt`); hermetic grading (`PYTEST_DISABLE_PLUGIN_AUTOLOAD`) in bench_agent's own
-      grading runs, which changes product behaviour; and re-measuring the process ceiling per launch
-      on a busy shared box (about 0.37 s per launch under QEMU).
+- [b] **CON83 — OrchestrANT's riscv64 lane: the owner calls left** [S, ★]. The image and lane halves are
+      done (CHANGELOG 2026-10-10/12): OrchestrANT run 38171396906 (b599448, hub 00feaf7a) logged `uv cache seeded
+      from /opt/uv-cache-seed`, built no numpy, passed `wheel smoke passed: orchestrant-0.0.30-cp314-cp314-linux_riscv64.whl`,
+      had no `[shellcheck SKIPPED` / `[hadolint SKIPPED` bench row, and ran 2539 tests green. The seed covers the
+      lock of the commit the image was built from; a version OrchestrANT moves later builds as before until the next
+      chain. Owner calls from the same analysis: import `matplotlib.pyplot` lazily in `orchestrant/__init__` (31-37 s
+      per subprocess under QEMU; `bench_agent.py --list` takes 41.9 s against a 60 s timeout, but the change touches
+      Cython-built modules and tests that patch `plotting.plt`); hermetic grading (`PYTEST_DISABLE_PLUGIN_AUTOLOAD`)
+      in bench_agent's own grading runs, which changes product behaviour; and re-measuring the process ceiling per
+      launch on a busy shared box (about 0.37 s per launch under QEMU).
 
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
       (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.
@@ -186,6 +131,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          `rocm-*` alternatives links; `publish_rocm_ld_path` writing `extras-10/lib`; the ORT G6 census.
       3. The wrapper smoke: `torch.version.hip` with the rocm7.14 wheels over a 10.1 system tree, and
          `MIGraphXExecutionProvider` listed. Then the image size (21.7 GB of ROCm before the runtime copy).
+      **Linux 0–3 are proved** by the `:latest-rocm` published 2026-10-09 (run 20261009-152508, index `a5d68fbe…`):
+      the media stage built ORT CPU and MIGraphX (`migraphx_home = /opt/rocm/extras-10`); the runtime smoke passed
+      15/15, the ORT census and `FT-STORE`, with torch 2.14.1+rocm7.14 (HIP build 7.14.60850) and
+      `MIGraphXExecutionProvider` available. Read in that image on 2026-10-12: `/opt/rocm/extras-10/lib` holds
+      `libmigraphx_c.so.3`; no absolute and no dangling link is left under `/opt/rocm`, and `core-10` → `core-10.1` is
+      relative; `000-rocm.conf` lists `core-10.1/lib`, `extras-10/lib` and `lib`, so `ldconfig -p` resolves
+      `libmigraphx_c.so.3` and `libamdhip64.so.7`; ORT's `libonnxruntime_providers_migraphx.so` loads without a GPU.
+      The image is 29 GB compressed.
       **Windows**, a `Build-Buildkit.ps1 -Variant rocm` run:
       4. The whole rocm chain on the 10.1 sdk layer, then `Test-RocmImage.ps1` with every rocm-check clean;
          MIGraphX 2.18.0 and the EP inside BuildKit (`prefuse_ops.cpp` is the stage's critical path).
@@ -205,79 +158,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
       re-bundle TheRock's three runtime DLLs and the byte-identity check that went with them.
 
-- [ ] **CON72 — the 2026-10-07 Renovate bumps reach a published image** [L, ★★]. In source on
-      2026-10-07 (CHANGELOG): LLVM 23.1.3, Rust 1.99.0, CPython 3.14.8, CMake 4.4.4, uv 0.12.23,
-      TVM v0.27.0, IREE v3.12.0, GenAI v0.17.0, LiteRT-LM 0.18.0 (protoc 36.1), PyAV 19.0.1,
-      torch 2.14.1/torchvision 0.29.1, llama.cpp b11460 (since b11476, CON82), Ollama 0.40.0, Flutter 3.47.6, cuDNN
-      9.27.0.42 and the tool pins. Every hash was checked, and the patches were applied to the new
-      sources. What only a chain can prove:
-      - **TVM v0.27.0** is 141 commits past the proven `994e0216`, built by GCC 16 and clang-cl
-        23.1.3. Its tvm-ffi bump changes how the arm64 and riscv64 ffi wheels find Python.
-      - **IREE v3.12.0** bundles LLVM 24.0.0git, and the cross builds (arm64 clang-cl, riscv64)
-        meet a new async proactor, the local-task executor and new tools. OrchestrANT's lock carries
-        iree-base-compiler/runtime 3.12.0 since c33edb3 (a 3.12 runtime does not load a 3.11 VMFB).
-      - **GenAI v0.17.0** is a 487-file refactor, on GCC 16, clang-cl and nvcc. On Windows,
-        configure needs `nuget.exe` on the media-core `PATH`, DirectML/D3D12/DXC restore unhashed
-        from nuget.org, and `D3D12Core.dll` must land beside the DLL.
-      - **LiteRT-LM 0.18.0** (Windows, Bazel) adds WORKSPACE repos (rules_go, gazelle, rules_android
-        0.7.0, whose toolchain names `@androidsdk`) and moves LiteRT to `26895c9f` under MSVC. The
-        rocm GPU path now loads `webgpu_dawn.dll`, which only the rocm check's load probe proves.
-      - **LLVM 23.1.3** rebuilds both toolchains, and the Windows patched LLVM.
-      - **PyAV 19.0.1** against FFmpeg n9.0.2, with Cython ≥ 3.3.
-      - **torch 2.14.1**: the riscv64 source build and the Windows rocm source build at the new
-        commits. OrchestrANT's lock (APP_REF=develop) must carry the same pair, or the torch
-        stage's pin check stops.
-
-      Found during the bump, older than it: `Build-TvmFromSource.ps1`'s cross path versions the
-      win-arm64 `apache_tvm` wheel with `TVM_COMMIT`'s hash, which is not PEP 440 and makes
-      `tvm\_version.py` invalid Python. It has been live since `TVM_COMMIT` reached Windows
-      (2026-08-28); no arm64 gate imports tvm. Done when a published `:latest` (all arches),
-      `:winamd64` and `:winarm64` built from this hub pass their smokes. Done so far:
-      - `:winamd64`: published 2026-10-08 from hub 5dfeb42d (`e96203a8…`), smoke gate 268 assertions
-        passed, 1 skipped. That chain also needed x265 4.2's `advapi32` (98db1797).
-      - `:latest`: published 2026-10-09 from hub 655a2c4e, all three wrapper smokes and runtime smokes
-        clean. Proven in it: LLVM 23.1.3, Rust 1.99.0, CPython 3.14.8, CMake 4.4.4 and uv 0.12.23 (all
-        three arches), Flutter 3.47.6 (amd64, arm64), the IREE v3.12.0 and PyAV 19.0.1 cp314t twins
-        (FT-STORE, amd64), Node 26.11.0 and Chrome for Testing 155. The chain's fixes are in the
-        CHANGELOG of 2026-10-08/09.
-      - `:winarm64`: published 2026-10-10 from hub 222f2fa9 (`ba6bfaae…`), smoke gate 147 assertions
-        passed, 17 skipped (cross bundle). The chain needed HailoRT patch 001's include guard (d0ae037e)
-        and 28833e74: VVL without sccache, a marker-aware target deps gate, the launchers in the cross
-        arch gate.
-      All three images are proved; what remains of CON72 is the consumer side below.
-
-      **OrchestrANT's Linux x64 and arm64 lanes were red on the old `:latest`** (c33edb3, run
-      37597200372): its hub pin carries `PYTHON_VERSION=3.14.8`, and `python-app-bundle.sh`
-      asked that image's uv 0.12.17 for a 3.14.8 runtime it did not know (`No download
-      found for request: cpython-3.14.8-linux-x86_64-gnu`). The 2026-10-09 `:latest` carries uv
-      0.12.23, which serves it. Rerun 2026-10-09 on that image (digest `af7252a0`): run 37672555194
-      (x64) and 37672555211 (arm64) passed; the app bundle downloaded `cpython-3.14.8-linux-x86_64-gnu`.
-      The riscv64 lane (37672555206) was not waited for. Lesson: a
-      consumer's pin bump that moves `PYTHON_VERSION` or `UV_VERSION` waits for the image.
-
-      **Every consumer's hub gitlink moved on 2026-10-10**, past the published images (06e65481, or
-      8bd24220 where a repo needed that fix). What is left is their lanes on those pins:
-      - **OmniAccelerANT** 4d209d6 (hub 8bd24220, AccelerANTgine a9e7323, OxidANT d6fa857). The
-        lock maintenance (CON84) landed first, in 7ecfa18, and the hub bump to 06e65481 before that,
-        in 8ad8984, with the cat cam fix (OxidANT's chain-ORT check ignores the path separator,
-        1761c77). `check-rust-toolchain.sh` grades rustc 1.99.0: Linux x64 run 38100830611 logged
-        `liboxidant.so: rustc 1.99.0`, and Android run 38100830275 passed.
-      - **OrchestrANT** e2f959c (06e65481): the riscv64 packaging fix (sysroot libc) rides along, and the
-        riscv64 lane passed (38086634296). Windows x64 failed (38086634222): the app bundle's arch gate
-        counted pip's launcher templates in `ensurepip`. Hub a7490c15 reports them instead, and a local
-        lane run on that pin passed every step. OrchestrANT 179e1e1 pins 0cc69b42, which carries it.
-        Open: the cp314t wheel on the image's `3.14t` (CON66; `free-threaded-wheel: off`, CON77, is
-        the fallback).
-      - **BeschleunigerBallett** c918a645 (8bd24220): its sccache override and its format counter
-        are gone, since the hub's `Cache.cmake` (5710cf9e) and `Invoke-ClangFormatCheck
-        -FailOnDeviation -ExpectedVersion` do the same. clang-format 23.1.3 finds 0 of 217 files deviating,
-        in `:winamd64` and in `:latest`. The pin also brings 8bd24220, which BB's `-SkipBuild` needed.
-      - **AccelerANTgine** 711b2cb (`scan-build` from the pinned LLVM) and a9e7323 (hub 8bd24220).
-      - **OxidANT** d6fa857, **WebDavClient** d783f16 and **jotrockenmitlocken** 401acff: the gitlink
-        only (06e65481).
-      - **DocumANTation and ANThology** have no hub gitlink, so there was nothing to move (checked
-        2026-10-10).
-
 ## Open — Linux image (all arches)
 
 - [ ] **CON66 — the consumers' `3.14t` legs on the image's free-threaded Python** [S, ★★]. The image
@@ -285,18 +165,15 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `/opt/python-freethreaded` with python3.14t 3.14.8 and `sys._is_gil_enabled() == False` on amd64,
       arm64 and riscv64, and passes the `free-threaded-python` row, prefix check included
       (`docs/consumer-image-contract.md` § The free-threaded Python). Open:
-      - **Seen on 2026-10-09, without a pin move:** reruns on that image (digest `af7252a0`) of
-        OrchestrANT x64/arm64 (runs 37672555194, 37672555211) and WebDavClient x64/arm64 (37675558500,
-        37675558605) passed, and each `3.14t` leg resolved `CPython 3.14.8+freethreaded` at
-        `/usr/local/bin/python3.14t` instead of downloading one. riscv64 not checked.
-      - **`UV_PYTHON_DOWNLOADS=never` is in source since 2026-10-11** (CHANGELOG): in the shipped image a
-        `3.14` or `3.14t` leg takes the image's interpreter or fails, and never downloads one. Proved in the
-        `:latest` amd64 child with WebDavClient's suite: both legs logged `the image's own interpreter,
-        UV_PYTHON_DOWNLOADS=never`, and with `python3.14t` hidden the old code downloaded one and passed, the
-        new one fails the leg. Left: a consumer run on a pin with it, on x64, arm64 and riscv64.
-      - Since 2026-10-11 both run their suite on the installed cp314t wheel on Linux x64/arm64 (OrchestrANT
-        de144d1, WebDavClient 3096c57), and AccelerANTgine builds and proves a cp314t binding wheel (5ce2d8d).
-        A hub step for "test the installed wheel" would replace the two consumer-local scripts.
+      - **The consumer half is done (2026-10-12).** In the shipped image a `3.14` or `3.14t` leg takes the image's
+        interpreter or fails, and never downloads one (hub 00feaf7a, CHANGELOG 2026-10-11). On that pin OrchestrANT
+        (b599448) and WebDavClient (5ab44f4) logged `the image's own interpreter, UV_PYTHON_DOWNLOADS=never` for both
+        legs on x64 and arm64 (`/usr` 3.14.4, `/opt/python-freethreaded` 3.14.8), and OrchestrANT's riscv64 row for its
+        `3.14` leg (run 38171396906). Its riscv64 row runs no `3.14t` leg, so `uv_venv_create 3.14t` ran in the published
+        riscv64 child (`7689579f…`) under QEMU: `/opt/python-freethreaded` 3.14.8, `gil=False`,
+        `cpython-314t-riscv64-linux-gnu`, nothing in uv's managed store. Both consumers also run their suite on the
+        installed cp314t wheel (OrchestrANT de144d1, WebDavClient 3096c57); a hub step for "test the installed wheel"
+        would replace their two local scripts.
       - The toolchain stage's added time on a CI runner (estimate 25-40 min on 4 cores); a local chain
         time is not that number.
       - A native arm64 toolchain build (PGO on arm64).
@@ -334,8 +211,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       21-tool check, every tool at clang-cl's 23.1.3 (smoke run 2026-10-11: 268 passed, 0 failed, 1 skipped).
       AccelerANTgine runs `scan-build` from the pinned LLVM (711b2cb) and is formatted under 23.1.3 (e96b31b),
       and BeschleunigerBallett's sweep already used 23.
-      **Open:** OmniAccelerANT's native plugin re-runs clang-format 23 over its C++ and commits the result
-      (25 of its 26 files drifted on 2026-10-06). It gates no C++ formatting, so nothing reds meanwhile.
+      AccelerANTgine's Linux format step now checks instead of rewriting (e96b31b: 0 of 39 files deviate, and it
+      refuses a clang-format other than `LLVM_RELEASE`).
+      **Open:** OmniAccelerANT's native plugin. It has no `.clang-format`; the owner chose the hub's canonical
+      config on 2026-10-12 (14 of its 15 hand-written files change) and a Linux format check after it.
 
 - [b] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
       (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
@@ -344,7 +223,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       the Rust rewrite, published the day the switch landed. And some build must link
       faster with it than with lld: none measured did (`docs/shared-script-libraries.md`
       § *linker-select.sh*), BeschleunigerBallett included (2026-10-06: 0.32 s against
-      lld's 0.20 s for its `commitTestSuite` Debug relink). Re-checked 2026-10-07: rui314/mold's
+      lld's 0.20 s for its `commitTestSuite` Debug relink). Re-checked 2026-10-12: rui314/mold's
       newest release is still v3.0.0 (2026-10-05).
 
 - [b] **CON44 — `LP_NATIVE_VECTOR_WIDTH=256` in the image** [S, ★★]. Mesa 26.0.8's lavapipe
@@ -355,7 +234,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       proves it in all three children (`check_lavapipe_subgroup`: 8 lanes on amd64, arm64 and
       riscv64), and BeschleunigerBallett's `run-ctest.sh` no longer exports its own. Open:
       - Retire the `ENV` once the image's Mesa has upstream ebcfbe60 (2026-08-22), which
-        deletes that sort. **No Mesa release carries it yet** (checked 2026-10-07 against the
+        deletes that sort. **No Mesa release carries it yet** (checked 2026-10-12 against the
         tags: 26.2.4, the newest, lacks it), so it arrives with 26.3, and in the image only
         when Ubuntu's `mesa-vulkan-drivers` moves to it. Sooner means a source-built lavapipe
         with ebcfbe60 cherry-picked, an owner decision.
