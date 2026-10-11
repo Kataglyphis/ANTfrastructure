@@ -6,6 +6,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — the arm64 device gate runs all 17 steps on every bundle, the WebRTC loopback among them (CON63, CON64, CON67)
+
+- The published `:winarm64` (`ba6bfaae…`) passed its device gate on `windows-11-arm` in BeschleunigerBallett run
+  38100828628: 16 of 16, the validation layer loading in `vulkaninfo` (CON64) and the pinned pytest stack, pytest 9.1.1,
+  installing offline from the wheel store (CON67). OrchestrANT's arm64 run 38086634226 staged its tests from that store.
+- So the four steps that ran only in a bundle that shipped their component (the free-threaded interpreter, the cp314t
+  twins, the pytest stack, the validation layer) now run on every bundle, and `Invoke-ShippedBundleStep` is gone.
+- A new step runs the amd64 smoke gate's WebRTC loopback with the bundle's `gst-launch-1.0.exe`: webrtcsink to
+  webrtcsrc, 60 frames over DTLS-SRTP (CON63). Both gates grade it through the new `Assert-GstWebRtcLoopback`, which
+  `Test-Container.ps1`'s copy of that verdict moved into. `Export-Arm64Bundle.ps1` puts `WindowsGstPlugins.Common.psm1`
+  and its arch sibling beside the gate. In that layout the step passed in `:winamd64`.
+  Its first device run is the next BeschleunigerBallett arm64 run on a hub pin that has it.
+- `-MinPassed` defaults to 17, every step, and `Smoke.Arm64Bundle.Tests.ps1` holds the floor to the step count.
+
 ## 2026-10-11 — a Linux-only `versions.env` edit leaves the Windows chain cached (CON87)
 
 - `Dockerfile.base` copied all of `linux/scripts/01-core/versions.env`, and the toolchain stage mounted it into

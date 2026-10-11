@@ -6,7 +6,7 @@
 Describe 'Test-Arm64Bundle: the floor decides the verdict' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -FunctionName 'Get-BundleVerdict', 'Invoke-BundleStep', 'Invoke-ShippedBundleStep', 'Invoke-TwinDeviceProof')
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -FunctionName 'Get-BundleVerdict', 'Invoke-BundleStep', 'Invoke-TwinDeviceProof')
         $script:ok = [pscustomobject]@{ Name = 'a'; Ok = $true; Detail = '' }
         $script:bad = [pscustomobject]@{ Name = 'b'; Ok = $false; Detail = 'exit 1' }
         $script:gateText = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-Arm64Bundle.ps1'))
@@ -47,14 +47,16 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
         Assert-True $results[0].Ok 'a quiet body is a pass'
     }
 
-    It 'counts a component''s step only in a bundle that ships it, and names its absence otherwise' {
-        Invoke-InTestDir { param($d)
-            New-Item -ItemType File -Force (Join-Path $d 'python-freethreaded\python3.14t.exe') | Out-Null
-            $results = [System.Collections.Generic.List[object]]::new()
-            Invoke-ShippedBundleStep 'shipped' (Join-Path $d 'python-freethreaded\python3.*t.exe') { } $results
-            Invoke-ShippedBundleStep 'not shipped' (Join-Path $d 'wheels\pytest-*-py3-none-any.whl') { throw 'must not run' } $results
-            Assert-Equal 'shipped' (($results | ForEach-Object Name) -join ',') 'the absent component is neither run nor counted'
-        }
+    It 'the default floor is every step, so a bundle that lacks a component fails instead of passing short (mutation)' {
+        $steps = [regex]::Matches($script:gateText, "(?m)^Invoke-BundleStep '").Count
+        Assert-Match "\[int\]\`$MinPassed = $steps," $script:gateText "the floor equals the $steps steps"
+        Assert-False ($script:gateText -match 'Invoke-ShippedBundleStep') 'no step is skipped for a bundle that does not ship its component'
+    }
+
+    It 'runs the WebRTC loopback with the bundle''s gst-launch and the module Export-Arm64Bundle.ps1 puts beside it' {
+        Assert-Match "Invoke-BundleStep 'WebRTC loopback: webrtcsink -> webrtcsrc decodes 60 frames over DTLS-SRTP'" $script:gateText 'the CON63 step'
+        Assert-Match "Assert-GstWebRtcLoopback -GstLaunch \(Join-Path \`$BundleRoot 'bin\\gst-launch-1\.0\.exe'\) -Frames 60" $script:gateText 'the bundle''s own GStreamer, graded as the smoke gate grades it'
+        Assert-Match "'WindowsGstPlugins\.Common\.psm1', '\.\.\\modules\\WindowsGstPlugins\.Common\.psm1'" $script:gateText 'beside the gate or in a hub checkout'
     }
 
     It 'runs the free-threaded interpreter isolated, and fails it unless the GIL is off on ARM64' {
@@ -63,7 +65,7 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
     }
 
     It 'proves every shipped cp3XYt twin with the helper Export-Arm64Bundle.ps1 puts beside it' {
-        Assert-Match "Invoke-ShippedBundleStep 'free-threaded wheels: every cp314t twin loads with the GIL off' \(Join-Path \`$BundleRoot 'wheels-cp314t\\\*\.whl'\)" $script:gateText 'counted only in a bundle that ships twins'
+        Assert-Match "Invoke-BundleStep 'free-threaded wheels: every cp314t twin loads with the GIL off' \{" $script:gateText 'a step every bundle runs'
         Assert-Match "-Helper \(Join-Path \`$PSScriptRoot 'free-threaded-wheel\.py'\)" $script:gateText 'the helper travels beside the gate'
         Assert-Match "& \`$venvPy -I \`$Helper prove " $script:gateText 'the build lanes'' own proof'
         Assert-Match '--no-index --no-deps' $script:gateText 'each twin alone and offline'

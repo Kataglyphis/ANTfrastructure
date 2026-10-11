@@ -270,9 +270,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         lock maintenance (CON84) landed first, in 7ecfa18, and the hub bump to 06e65481 before that,
         in 8ad8984, with the cat cam fix (OxidANT's chain-ORT check ignores the path separator,
         1761c77). Open: `check-rust-toolchain.sh` grading rustc 1.99.0 on the Linux and Android lanes.
-      - **OrchestrANT** e2f959c (06e65481): the riscv64 packaging fix (sysroot libc) rides along.
-        Open: the riscv64 lane, and the cp314t wheel on the image's `3.14t` (CON66;
-        `free-threaded-wheel: off`, CON77, is the fallback).
+      - **OrchestrANT** e2f959c (06e65481): the riscv64 packaging fix (sysroot libc) rides along, and the
+        riscv64 lane passed (38086634296). Windows x64 failed (38086634222): the app bundle's arch gate
+        counted pip's launcher templates in `ensurepip`. Hub a7490c15 reports them instead, and a local
+        lane run on that pin passed every step. Open: its next pin bump, and the cp314t wheel on the
+        image's `3.14t` (CON66; `free-threaded-wheel: off`, CON77, is the fallback).
       - **BeschleunigerBallett** c918a645 (8bd24220): its sccache override and its format counter
         are gone, since the hub's `Cache.cmake` (5710cf9e) and `Invoke-ClangFormatCheck
         -FailOnDeviation -ExpectedVersion` do the same. clang-format 23.1.3 finds 0 of 217 files deviating,
@@ -449,34 +451,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       either can change a Windows result (9e3b7cba's `enclose()` runs in Windows' `load_all` too).
 ## Open — the Windows arm64 bundle and unpublished variants
 
-- [ ] **CON64 — the Vulkan validation layer in `C:\runtime\vulkan-layers`** [S, ★★]. Owner rule
-      2026-10-06: what a lane needs goes into the image, not into a CI step. BeschleunigerBallett's
-      Windows arm64 GPU suites ran unvalidated, because the image's SDK has an x64 layer only and
-      LunarG's ARM64 SDK installer runs only on ARM64. In source the same day: the merge stage
-      builds the layer for arm64 from Khronos sources at `vulkan-sdk-<VULKAN_VERSION>` and copies
-      the SDK's for amd64 (`Build-VulkanValidationLayers.ps1`, `docs/windows-cross-builds.md`
-      § The Vulkan validation layer). `Test-Arm64Bundle.ps1` loads it when the bundle carries it.
-      Done when a published `:winarm64` passes that step; then raise the gate's floor to 13 and
-      fail a bundle without the layer. BeschleunigerBallett's `-StageTests` already stages it
-      from there on both arches (BB 17aa94ff) and warns until the bundle carries it.
-      2026-10-10: the published `:winarm64` (`ba6bfaae…`) carries `VkLayer_khronos_validation.dll`,
-      built from source without sccache (28833e74). Open: the device step and the floor.
-- [ ] **CON67 — the test runner's wheels in the `:winarm64` wheel store** [S, ★]. OrchestrANT's
-      `Stage-Arm64Tests.ps1` installed pytest and six plugins (cov, benchmark, md, md-report,
-      html, requests) for win_arm64 from PyPI at cross-build time, versions unpinned. In source
-      2026-10-06:
-      - `versions.env` pins the 31 cp314 wheels by URL and SHA256 (`PYTEST_WINDOWS_ARM64_*`),
-        the versions OrchestrANT's lock runs on x64; jinja2 and setuptools are the torch stack's.
-      - `Copy-Arm64TorchWheels.ps1` stages them beside the torch stack, and the three native
-        ones pass `Assert-WheelTargetArch`.
-      - `Test-Arm64Bundle.ps1` installs them offline and imports them, in a bundle that has them.
-      - Docs: `docs/windows-cross-builds.md` § A consumer's test runner, pinned.
-      Done when a published `:winarm64` passes that step on the device and OrchestrANT's
-      `Stage-Arm64Tests.ps1` installs from the wheel store instead of PyPI.
-      2026-10-10: the published `:winarm64` (`ba6bfaae…`) carries the pinned wheels, pytest 9.1.1
-      among them; its marker-aware deps gate passed (28833e74). Open: the device step and
-      OrchestrANT's switch.
-
 - [ ] **CON63 — prove the WebRTC contract on the next arm64 chain** [S, ★★]. The
       2026-10-05 Windows WebRTC fixes (`docs/windows-builds.md` § libffi's type exports,
       § DTLS with OpenSSL 4, § gst-plugins-rs on Windows) were built and run on amd64
@@ -489,7 +463,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       which has no WebRTC step yet.
       2026-10-10: the `:winarm64` merge passed the cross half. gst-plugins-rs built for
       `aarch64-pc-windows-msvc`, and the aarch64 `ffi-7.dll` passed the libffi type-export
-      check. Open: the loopback on the device, and that `Test-Arm64Bundle.ps1` step.
+      check. 2026-10-11: `Test-Arm64Bundle.ps1` runs the amd64 smoke gate's loopback
+      (`Invoke-GstWebRtcLoopback`, webrtcsink -> webrtcsrc, 60 frames over DTLS-SRTP) with the bundle's
+      `gst-launch-1.0.exe`, and `Export-Arm64Bundle.ps1` puts its two modules beside the gate. In that
+      layout the step passed in `:winamd64`. Open: its first run on `windows-11-arm`, which is the
+      next BeschleunigerBallett arm64 run on a hub pin that has it.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC

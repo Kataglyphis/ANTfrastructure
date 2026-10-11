@@ -263,7 +263,7 @@ Optional AArch64 features belong only on dispatched kernels.
 
 The image and the bundle carry Mesa's lavapipe; what ships and why:
 [`consumer-image-contract.md` § The Windows image ships lavapipe](consumer-image-contract.md#the-windows-image-ships-lavapipe)
-(CON50). For this lane, `Test-Arm64Bundle.ps1`'s device step (floor 12) is the gate that
+(CON50). For this lane, `Test-Arm64Bundle.ps1`'s device step (17 steps, floor 17 since 2026-10-11) is the gate that
 proves the bundle's device, and `:winamd64` carries it since the 2026-10-04 republish; `:winarm64` followed the same day and its device gate passed 12/12.
 
 ## The Vulkan validation layer
@@ -284,8 +284,8 @@ The tag pins the whole set, as Linux's `vulkan.sh` does. Copying the JSON beside
 the manifest's `.\VkLayer_khronos_validation.dll` needs. An elevated loader ignores
 `VK_ADD_LAYER_PATH`, so a consumer registers the JSON under
 `HKLM\SOFTWARE\Khronos\Vulkan\ExplicitLayers` for its run (the bundle README shows the command).
-`Test-Arm64Bundle.ps1` forces the layer into a `vulkaninfo` instance, which loads the DLL; a bundle
-published before the layer joined it is named in the log and not counted.
+`Test-Arm64Bundle.ps1` forces the layer into a `vulkaninfo` instance, which loads the DLL. Every bundle
+runs that step since the published `:winarm64` of 2026-10-10 passed it (BeschleunigerBallett run 38100828628).
 
 ## Verification
 
@@ -296,7 +296,7 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor**; with `-ImportWalk` every wheel's native members too, and every module of a `cp3XYt` wheel imports `python3XYt.dll` and no GIL runtime |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, in a bundle that carries it the cp314 pytest stack installs offline from it, in a bundle that carries it `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, in a bundle that carries them every `cp314t` twin in `wheels-cp314t` installs alone, offline, into a venv of that interpreter and loads with the GIL off (`free-threaded-wheel.py prove`), `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), and, in a bundle that carries it, the validation layer loads |
+| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, the cp314 pytest stack installs offline from it, `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, every `cp314t` twin in `wheels-cp314t` installs alone, offline, into a venv of that interpreter and loads with the GIL off (`free-threaded-wheel.py prove`), `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), the validation layer loads, and a `webrtcsink` -> `webrtcsrc` loopback decodes 60 frames over DTLS-SRTP (CON63) |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
@@ -329,8 +329,8 @@ windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 -MinInspe
 windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 `
     -HostToolPattern 'protoc\.exe|flatc\.exe|\\_deps\\'
 
-# on an arm64 device, from a bundle zip: twelve steps, floor twelve
-windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 12
+# on an arm64 device, from a bundle zip: seventeen steps, and the default floor is all of them
+windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip
 ```
 
 Free native validation is available: this repo is public, so GitHub's `windows-11-arm` runners
@@ -396,7 +396,8 @@ is the same file an x64 lane uses with `target-arch: amd64`:
    - A lane is renamed `Windows arm64 · cross build + test` only once its tests gate.
 7. With a `bundle-artifact-name` (2026-10-03), the build job also packs the image's own runtime
    bundle (`C:\runtime`, ~290 MB zipped, by `windows/scripts/build/Export-Arm64Bundle.ps1`) and
-   uploads it beside `Test-Arm64Bundle.ps1`. A third job on `windows-11-arm` extracts the zip and
+   uploads it beside `Test-Arm64Bundle.ps1`, `free-threaded-wheel.py` and the two GStreamer test modules the
+   WebRTC step imports. A third job on `windows-11-arm` extracts the zip and
    runs the gate, so the bundle's executability is proven by the same push that builds the product.
 
 Three inputs serve the x64 lanes that moved onto the same file (the family's next sharing step,

@@ -931,14 +931,8 @@ if (Test-Path $requiredGstModule) {
     }
     # Signals, DTLS, SRTP and H.264 in one pipeline pair: a zeroed libffi and OpenSSL 4's BIO EOF each passed every check above.
     Assert-Test -Name 'WebRTC loopback: webrtcsink -> webrtcsrc decodes 60 frames over DTLS-SRTP' -Condition {
-        $r = Invoke-GstWebRtcLoopback -Frames 60 -TimeoutSeconds 90 -LogDir (Join-Path $env:TEMP 'smoke-webrtc')
-        if ($r.ExitCode -ne 0) {
-            throw ("webrtcsrc did not decode 60 frames from webrtcsink (consumer exit $($r.ExitCode)$(if ($r.TimedOut) { ', timed out' })): " +
-                (@($r.Detail | Select-Object -Last 8) -join ' | '))
-        }
-        if (@($r.TeardownError).Count -gt 0) {
-            Write-Host "  [WARN] the frames arrived, then webrtcsrc's signaller failed in teardown (BACKLOG CON68): $(@($r.TeardownError) -join ' | ')" -ForegroundColor Yellow
-        }
+        $note = Assert-GstWebRtcLoopback -Frames 60 -TimeoutSeconds 90 -LogDir (Join-Path $env:TEMP 'smoke-webrtc')
+        if ($note) { Write-Host "  [WARN] $note" -ForegroundColor Yellow }
         $true
     } -FailMessage 'the WebRTC loopback did not pass'
 } else {

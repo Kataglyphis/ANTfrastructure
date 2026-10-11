@@ -31,6 +31,10 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
         Assert-True (Test-Path (Join-Path $out 'Test-Arm64Bundle.ps1')) 'the gate script travels with it'
         $helper = Join-Path (Get-RepoRoot) 'linux\scripts\02-toolchain\python\free-threaded-wheel.py'
         Assert-Equal (Get-FileHash $helper).Hash (Get-FileHash (Join-Path $out 'free-threaded-wheel.py')).Hash 'and the helper the gate proves the cp3XYt twins with'
+        foreach ($module in 'WindowsGstPlugins.Common.psm1', 'WindowsTargetArch.Common.psm1') {
+            $src = Join-Path (Get-RepoRoot) "windows\scripts\modules\$module"
+            Assert-Equal (Get-FileHash $src).Hash (Get-FileHash (Join-Path $out $module)).Hash "and $module, which the WebRTC step imports"
+        }
     }
 
     It 'the zip expands to the bundle markers' {
