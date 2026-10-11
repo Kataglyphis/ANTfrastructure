@@ -14,17 +14,17 @@
 .PARAMETER ZipPath
     Optional bundle zip; extracted into the root when it has no python.exe yet.
 .PARAMETER MinPassed
-    Minimum passing steps for the run to count; 0 needs -AllowEmptyRun.
+    Minimum passing steps for the run to count, every step by default; 0 needs -AllowEmptyRun.
 .PARAMETER AllowEmptyRun
     Permits -MinPassed 0, for probing a partial tree.
 .EXAMPLE
-    .\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip -MinPassed 12
+    .\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip
 #>
 [CmdletBinding()]
 param(
     [string]$BundleRoot = 'C:\runtime',
     [string]$ZipPath = '',
-    [int]$MinPassed = 12,
+    [int]$MinPassed = 17,
     [switch]$AllowEmptyRun
 )
 
@@ -62,19 +62,6 @@ function Invoke-BundleStep {
     $ok = -not $detail
     Write-Host ("   {0}{1}" -f $(if ($ok) { 'ok' } else { 'FAIL' }), $(if ($detail) { ": $detail" } else { '' }))
     $Results.Add([pscustomobject]@{ Name = $Name; Ok = $ok; Detail = $detail })
-}
-
-function Invoke-ShippedBundleStep {
-    # A bundle published before the component joined it is named and not counted, so it keeps its floor.
-    param(
-        [Parameter(Mandatory)][string]$Name,
-        # A path or wildcard into the bundle; the step runs only when something matches.
-        [Parameter(Mandatory)][string]$Shipped,
-        [Parameter(Mandatory)][scriptblock]$Body,
-        [Parameter(Mandatory)][AllowEmptyCollection()][System.Collections.Generic.List[object]]$Results
-    )
-    if (Test-Path -Path $Shipped) { Invoke-BundleStep $Name $Body $Results; return }
-    Write-Host "`n== ${Name}: NOT IN THIS BUNDLE ($Shipped); the floor stays 12 until :winarm64 carries it"
 }
 
 function Invoke-TwinDeviceProof {
@@ -146,6 +133,8 @@ if ($ZipPath -and -not (Test-Path (Join-Path $BundleRoot 'python\python.exe'))) 
 }
 
 $py = Join-Path $BundleRoot 'python\python.exe'
+# The wheel store only: a device step that reached PyPI would prove nothing about the bundle.
+$offlinePip = @('-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', '--no-index', '--find-links', (Join-Path $BundleRoot 'wheels'))
 if (-not (Test-Path $py)) { throw "no bundle python at $py - pass -ZipPath or point -BundleRoot at the bundle" }
 . (Join-Path $BundleRoot 'BUNDLE-ENV.ps1')
 
@@ -156,6 +145,7 @@ Invoke-BundleStep 'gst-inspect-1.0 --version' { & (Join-Path $BundleRoot 'bin\gs
 Invoke-BundleStep 'gst-launch pipeline (videotestsrc -> fakesink)' { & (Join-Path $BundleRoot 'bin\gst-launch-1.0.exe') -q videotestsrc num-buffers=1 '!' fakesink } $results
 Invoke-BundleStep 'iree-run-module --help' { & (Join-Path $BundleRoot 'iree\bin\iree-run-module.exe') --help | Out-Null } $results
 Invoke-BundleStep 'python ensurepip' { & $py -m ensurepip | Out-Null } $results
+# Spelled out: verify-critical-fixes.sh (fix11) reads --no-index on every line that installs onnxruntime.
 Invoke-BundleStep 'pip install from the wheel store (offline)' { & $py -m pip install --quiet --disable-pip-version-check --no-index --find-links (Join-Path $BundleRoot 'wheels') onnxruntime onnxruntime-genai-directml av } $results
 Invoke-BundleStep 'python imports + ORT providers' {
     & $py -c "import sys, numpy, onnxruntime, av; print('PY', sys.version.split()[0], '| numpy', numpy.__version__, '| ort', onnxruntime.__version__, '| av', av.__version__); print('providers:', onnxruntime.get_available_providers()); assert 'CPUExecutionProvider' in onnxruntime.get_available_providers()"
@@ -163,13 +153,13 @@ Invoke-BundleStep 'python imports + ORT providers' {
 Invoke-BundleStep 'cv2 import' { & $py -c "import cv2; print('cv2', cv2.__version__)" } $results
 $ftPython = Join-Path $BundleRoot 'python-freethreaded\python3.*t.exe'
 # BACKLOG CON74 added the free-threaded tree.
-Invoke-ShippedBundleStep 'free-threaded interpreter: GIL off, stdlib extensions import' $ftPython {
+Invoke-BundleStep 'free-threaded interpreter: GIL off, stdlib extensions import' {
     $exe = @(Resolve-Path -Path $ftPython)[0].Path
     # -I keeps PYTHON_GIL out: it could re-enable the GIL and hide a build that never disabled it.
     & $exe -I -c "import sys, sysconfig, ssl, sqlite3, zlib, ctypes, bz2, lzma, hashlib, socket; g = sys._is_gil_enabled(); d = sysconfig.get_config_var('Py_GIL_DISABLED'); print('PY', sys.version.split()[0], '| sys._is_gil_enabled()', g, '| Py_GIL_DISABLED', d); assert not g and d == 1 and 'ARM64' in sys.version, sys.version"
 } $results
 # BACKLOG CON79 added the twins; the cross build could check only their tags, imports and PE machine.
-Invoke-ShippedBundleStep 'free-threaded wheels: every cp314t twin loads with the GIL off' (Join-Path $BundleRoot 'wheels-cp314t\*.whl') {
+Invoke-BundleStep 'free-threaded wheels: every cp314t twin loads with the GIL off' {
     $homes = @($env:PATH -split ';' | Where-Object { $_ -and $_.StartsWith($BundleRoot, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -Unique)
     Invoke-TwinDeviceProof -Interpreter (@(Resolve-Path -Path $ftPython)[0].Path) -Store (Join-Path $BundleRoot 'wheels-cp314t') `
         -Helper (Join-Path $PSScriptRoot 'free-threaded-wheel.py') -DllDirectory $homes
@@ -214,20 +204,31 @@ Invoke-BundleStep 'vulkaninfo lists llvmpipe (lavapipe ICD + loader run)' {
 } $results
 
 # BACKLOG CON67 added the pytest stack.
-Invoke-ShippedBundleStep 'pytest stack from the wheel store (offline, cp314)' (Join-Path $BundleRoot 'wheels\pytest-*-py3-none-any.whl') {
-    & $py -m pip install --quiet --disable-pip-version-check --no-index --find-links (Join-Path $BundleRoot 'wheels') pytest pytest-cov pytest-benchmark pytest-html pytest-md pytest-md-report requests
+Invoke-BundleStep 'pytest stack from the wheel store (offline, cp314)' {
+    & $py @offlinePip pytest pytest-cov pytest-benchmark pytest-html pytest-md pytest-md-report requests
     if ($LASTEXITCODE -ne 0) { throw "pip could not install the pytest stack offline (exit $LASTEXITCODE)" }
     & $py -c "import pytest, pytest_cov, pytest_benchmark, pytest_html, pytest_md_report, requests, coverage; print('pytest', pytest.__version__, '| coverage', coverage.__version__)"
 } $results
 
 $layerJson = Join-Path $BundleRoot 'vulkan-layers\VkLayer_khronos_validation.json'
 # BACKLOG CON64 added the validation layer.
-Invoke-ShippedBundleStep 'vulkaninfo loads the validation layer' $layerJson {
+Invoke-BundleStep 'vulkaninfo loads the validation layer' {
     # Forcing the layer makes vkCreateInstance load the DLL; listing it alone would only read the JSON.
     $env:VK_INSTANCE_LAYERS = 'VK_LAYER_KHRONOS_validation'
     $env:VK_ADD_LAYER_PATH = Split-Path $layerJson
     try { Assert-VulkanInfoSummary -Kind ExplicitLayers -Manifest $layerJson -Expect 'VK_LAYER_KHRONOS_validation' }
     finally { Remove-Item Env:VK_INSTANCE_LAYERS, Env:VK_ADD_LAYER_PATH -ErrorAction SilentlyContinue }
+} $results
+
+# BACKLOG CON63: signalling, DTLS, SRTP and H.264 in one pipeline pair, as the amd64 smoke gate runs them.
+Invoke-BundleStep 'WebRTC loopback: webrtcsink -> webrtcsrc decodes 60 frames over DTLS-SRTP' {
+    # Beside the gate in the device artifact (Export-Arm64Bundle.ps1), under ..\modules in a hub checkout.
+    $gstModule = @('WindowsGstPlugins.Common.psm1', '..\modules\WindowsGstPlugins.Common.psm1') | ForEach-Object { Join-Path $PSScriptRoot $_ } |
+        Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $gstModule) { throw "no WindowsGstPlugins.Common.psm1 beside $PSCommandPath" }
+    Import-Module $gstModule -Force -DisableNameChecking
+    $note = Assert-GstWebRtcLoopback -GstLaunch (Join-Path $BundleRoot 'bin\gst-launch-1.0.exe') -Frames 60 -TimeoutSeconds 90 -LogDir (Join-Path $env:TEMP 'bundle-webrtc')
+    if ($note) { Write-Host "   $note" }
 } $results
 
 $verdict = Get-BundleVerdict -Results $results -MinPassed $MinPassed -AllowEmptyRun:$AllowEmptyRun

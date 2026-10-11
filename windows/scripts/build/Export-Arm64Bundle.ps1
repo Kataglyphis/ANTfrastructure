@@ -5,8 +5,8 @@
 .SYNOPSIS
     Packs the arm64 runtime bundle (C:\runtime) into a zip for the device gate on windows-11-arm.
 .DESCRIPTION
-    Runs inside the :winarm64 image, whose C:\runtime is the bundle. The zip, Test-Arm64Bundle.ps1 and
-    free-threaded-wheel.py land in -OutDir, become a workflow artifact, and the arm64 job extracts and runs them.
+    Runs inside the :winarm64 image, whose C:\runtime is the bundle. The zip, Test-Arm64Bundle.ps1, free-threaded-wheel.py
+    and the two GStreamer test modules land in -OutDir, become a workflow artifact, and the arm64 job extracts and runs them.
     See docs/windows-cross-builds.md - Verification.
 #>
 [CmdletBinding()]
@@ -39,4 +39,8 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Test-Arm64Bundle.ps1') -Destina
 $helper = Join-Path $PSScriptRoot '..\..\..\linux\scripts\02-toolchain\python\free-threaded-wheel.py'
 if (-not (Test-Path -LiteralPath $helper)) { throw "no free-threaded-wheel.py at $helper; the device gate needs it to prove the cp3XYt twins" }
 Copy-Item -LiteralPath $helper -Destination $OutDir
-Write-Host ("bundle zip: {0} ({1:N2} GB), gate script and free-threaded-wheel.py beside it" -f $zip, ((Get-Item $zip).Length / 1GB))
+# The WebRTC loopback step imports the hub's GStreamer module, which loads its arch sibling from beside itself.
+foreach ($module in 'WindowsGstPlugins.Common.psm1', 'WindowsTargetArch.Common.psm1') {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\modules\$module") -Destination $OutDir
+}
+Write-Host ("bundle zip: {0} ({1:N2} GB), gate script, free-threaded-wheel.py and the GStreamer test modules beside it" -f $zip, ((Get-Item $zip).Length / 1GB))

@@ -402,6 +402,25 @@ function Invoke-GstWebRtcLoopback {
     return $result
 }
 
+function Assert-GstWebRtcLoopback {
+    # The image's smoke gate and the arm64 device gate both grade the loopback here; returns a teardown note (BACKLOG CON68) or ''.
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [string]$GstLaunch = 'gst-launch-1.0',
+        [int]$Frames = 60,
+        [int]$TimeoutSeconds = 90,
+        [string]$LogDir = $env:TEMP
+    )
+    $r = Invoke-GstWebRtcLoopback -GstLaunch $GstLaunch -Frames $Frames -TimeoutSeconds $TimeoutSeconds -LogDir $LogDir
+    if ($r.ExitCode -ne 0) {
+        throw ("webrtcsrc did not decode $Frames frames from webrtcsink (consumer exit $($r.ExitCode)$(if ($r.TimedOut) { ', timed out' })): " +
+            (@($r.Detail | Select-Object -Last 8) -join ' | '))
+    }
+    if (@($r.TeardownError).Count -eq 0) { return '' }
+    return "the frames arrived, then webrtcsrc's signaller failed in teardown (BACKLOG CON68): $(@($r.TeardownError) -join ' | ')"
+}
+
 Export-ModuleMember -Function Get-RequiredGstPlugin, Write-PkgConfigFile,
     Get-LibraryLinkName, Assert-PkgConfigModule, Get-GstRustCargoPlan, Get-GstRustSourceMirrorConfig, Invoke-GstWebRtcLoopback,
-    Get-GstLoopbackTeardownError
+    Assert-GstWebRtcLoopback, Get-GstLoopbackTeardownError

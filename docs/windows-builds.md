@@ -308,7 +308,7 @@ Windows `3.14t` leg had uv download a python-build-standalone interpreter.
   - The same function, run on an x64 free-threaded build of that checkout, gave a tree that ran on the host.
     `uv venv --python 3.14t` with `UV_PYTHON_DOWNLOADS=never` took it, and its venv reported
     `sys._is_gil_enabled()` False.
-  - Only `windows-11-arm` can run the ARM64 tree. `Test-Arm64Bundle.ps1` does that in a bundle that has one, and
+  - Only `windows-11-arm` can run the ARM64 tree. `Test-Arm64Bundle.ps1` does that on every bundle, and
     fails unless the GIL is off.
 
 #### The free-threaded wheels
@@ -461,8 +461,8 @@ The host's x64 3.14t runs every build, and the target tree's `C:\runtime\python-
   (`Get-FreeThreadedStoreFinding`); smoke section 20, which checks that on `:winamd64`, cannot run a cross bundle.
   `Test-TargetArch.ps1 -ImportWalk` machine-checks every wheel's native members, which it only walked before, and fails
   a `cp3XYt` wheel module that imports a GIL runtime. The bundle ships both runtimes, so the walk alone resolves either.
-- **The device.** `Export-Arm64Bundle.ps1` puts `free-threaded-wheel.py` beside `Test-Arm64Bundle.ps1`. In a bundle
-  that carries twins, the gate installs each one alone, offline, into a `python3.14t.exe -m venv` and runs
+- **The device.** `Export-Arm64Bundle.ps1` puts `free-threaded-wheel.py` beside `Test-Arm64Bundle.ps1`. The gate
+  installs each twin alone, offline, into a `python3.14t.exe -m venv` and runs
   `free-threaded-wheel.py prove`, with the bundle's DLL homes registered in the venv's `sitecustomize.py`.
 - **What only the device proves:** that the ARM64 modules load and keep the GIL off. A module that declares nothing
   passes every static gate and fails only there.
