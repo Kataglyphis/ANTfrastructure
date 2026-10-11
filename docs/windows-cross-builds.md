@@ -296,16 +296,17 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor**; with `-ImportWalk` every wheel's native members too, and every module of a `cp3XYt` wheel imports `python3XYt.dll` and no GIL runtime |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device, or a cross lane's `bundle-artifact-name` job | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, the cp314 pytest stack installs offline from it, `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, every `cp314t` twin in `wheels-cp314t` installs alone, offline, into a venv of that interpreter and loads with the GIL off (`free-threaded-wheel.py prove`), `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), the validation layer loads, and a `webrtcsink` -> `webrtcsrc` loopback decodes 60 frames over DTLS-SRTP (CON63) |
+| `Test-Arm64Bundle.ps1` | an arm64 device, or the hub's `windows-arm64.yml` | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, the cp314 pytest stack installs offline from it, `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, every `cp314t` twin in `wheels-cp314t` installs alone, offline, into a venv of that interpreter and loads with the GIL off (`free-threaded-wheel.py prove`), `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), the validation layer loads, and a `webrtcsink` -> `webrtcsrc` loopback decodes 60 frames over DTLS-SRTP (CON63) |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
 cannot look green. The first device run (2026-10-03, Snapdragon X, the published `:winarm64` of
 that day) passed all eleven steps; the lavapipe step (2026-10-04, CON50) made it twelve — the bundle
-executes, not just loads. The consumer apps' cross
-lanes run the same gate per push when their workflow sets `bundle-artifact-name`: the build job
-packs the image's `C:\runtime` and the arm64 job extracts and runs it
-([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)).
+executes, not just loads. The hub's own `windows-arm64.yml` runs the gate daily and on a push to
+its files: a `windows-2025` job packs the published image's `C:\runtime` with
+`Export-Arm64Bundle.ps1`, and a `windows-11-arm` job extracts and runs it. Consumer lanes hosted it
+from 2026-10-03 to 2026-10-11, until a WebRTC defect turned BeschleunigerBallett's renderer lane red
+and skipped its GPU suites over a component the renderer never uses.
 
 `Test-TargetArch.ps1` is the Windows twin of the Linux lane's ELF check in
 `validate-media-runtime.sh`. Three design points, each learned from a gate that could not fail:
@@ -394,11 +395,11 @@ is the same file an x64 lane uses with `target-arch: amd64`:
      suite that the product's own `python.exe` runs. The gate still refuses any non-arm64 PE file
      in it, but needs none, and runs no import walk, since its DLLs live in the product tree.
    - A lane is renamed `Windows arm64 · cross build + test` only once its tests gate.
-7. With a `bundle-artifact-name` (2026-10-03), the build job also packs the image's own runtime
-   bundle (`C:\runtime`, ~290 MB zipped, by `windows/scripts/build/Export-Arm64Bundle.ps1`) and
-   uploads it beside `Test-Arm64Bundle.ps1`, `free-threaded-wheel.py` and the two GStreamer test modules the
-   WebRTC step imports. A third job on `windows-11-arm` extracts the zip and
-   runs the gate, so the bundle's executability is proven by the same push that builds the product.
+7. The image's runtime bundle is not a consumer lane's to gate (2026-10-11). The hub's
+   `windows-arm64.yml` packs it (`C:\runtime`, ~290 MB zipped, by `Export-Arm64Bundle.ps1`) beside
+   `Test-Arm64Bundle.ps1`, `free-threaded-wheel.py` and the two GStreamer test modules the WebRTC step
+   imports, and runs the gate on `windows-11-arm`. A consumer gates what its product uses, such as
+   BeschleunigerBallett's GPU suites with the validation layer `-StageTests` stages.
 
 Three inputs serve the x64 lanes that moved onto the same file (the family's next sharing step,
 2026-09-25: OxidANT's `windows-x64.yml` first, then AccelerANTgine's, and BeschleunigerBallett's on 2026-09-26):
