@@ -306,4 +306,27 @@ Describe 'verify-target-arch: the import walk opens every wheel' {
             Assert-Match 'FREE-THREADED ABI: .*av-1\.0-cp314-cp314t-win_arm64\.whl has no module importing its free-threaded runtime' $out 'and none imports its own'
         }
     }
+
+    It 'reports the launcher templates of a real pip wheel, one per arch, and still fails a foreign binary beside them (mutation)' {
+        Invoke-InTestDir { param($d)
+            $rt = Join-Path $d 'runtime'
+            New-OrtTestPe -Path (Join-Path $rt 'python314.dll') -Machine 0x8664 -Import 'kernel32.dll'
+            $whl = Join-Path $rt 'Lib\ensurepip\_bundled\pip-26.2.1-py3-none-any.whl'
+            $templates = @{}
+            foreach ($t in @(@('t32', 0x014C), @('w32', 0x014C), @('t64', 0x8664), @('w64', 0x8664), @('t64-arm', 0xAA64), @('w64-arm', 0xAA64))) {
+                $templates["pip\_vendor\distlib\$($t[0]).exe"] = @{ Machine = $t[1]; Import = 'kernel32.dll' }
+            }
+            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-TargetArch.ps1') -Path $rt -Arch amd64 -MinInspected 1 -ImportWalk -Standalone 2>&1) -join "`n" }
+            [void](New-TestWheel -Path $whl -Member $templates)
+            $out = & $gate
+            Assert-Equal 0 $LASTEXITCODE "the six templates pass an amd64 bundle: $out"
+            Assert-Match 'launcher templates, one per arch by design, skipped 6 file\(s\)' $out 'reported, not counted'
+            Remove-Item -LiteralPath $whl
+            $templates['pip\_vendor\rich\arm64-helper.exe'] = @{ Machine = 0xAA64; Import = 'kernel32.dll' }
+            [void](New-TestWheel -Path $whl -Member $templates)
+            $out = & $gate
+            Assert-True ($LASTEXITCODE -ne 0) 'an ARM64 binary that is no template still fails'
+            Assert-Match 'arm64-helper\.exe  is 0xAA64 \(ARM64\), expected 0x8664 \(AMD64\)' $out 'named'
+        }
+    }
 }
