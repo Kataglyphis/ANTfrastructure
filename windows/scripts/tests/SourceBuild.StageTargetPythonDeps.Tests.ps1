@@ -154,3 +154,52 @@ Describe 'stage-target-python-deps: requirement markers decide for the target' -
             -MessagePattern 'could not evaluate the markers'
     }
 }
+
+Describe 'stage-target-python-deps: the cp3XYt twins'' dependencies (CON79)' {
+
+    BeforeAll {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Copy-TargetPythonDeps.ps1' -FunctionName 'Get-WheelDistName', 'Get-RequirementName',
+            'Get-WheelRequirements', 'Select-ActiveRequirement', 'Get-TargetRequirement', 'Get-UnresolvedTargetRequirement', 'Get-ForeignAbiWheel')
+        $script:depsScript = Get-Content -Raw -LiteralPath (Join-Path (Get-RepoRoot) 'windows\scripts\build\Copy-TargetPythonDeps.ps1')
+        # A wheel of METADATA alone, which is all the requirement walk reads.
+        function script:New-MetadataWheel([string]$Dir, [string]$FileName, [string[]]$RequiresDist) {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $zip = [System.IO.Compression.ZipFile]::Open((Join-Path $Dir $FileName), 'Create')
+            try {
+                $writer = New-Object System.IO.StreamWriter($zip.CreateEntry("$($FileName.Split('-')[0]).dist-info/METADATA").Open())
+                try { $writer.Write("Metadata-Version: 2.1`nName: x`nVersion: 1.0`n" + (@($RequiresDist | ForEach-Object { "Requires-Dist: $_`n" }) -join '') + "`n") } finally { $writer.Dispose() }
+            } finally { $zip.Dispose() }
+        }
+    }
+
+    It 'names each requirement edge no wheel of the store resolves' {
+        Invoke-InTestDir { param($d)
+            New-MetadataWheel $d 'foo-1.0-py3-none-any.whl' @('bar', 'baz>=1')
+            New-MetadataWheel $d 'bar-1.0-py3-none-any.whl' @()
+            $edges = @(Get-UnresolvedTargetRequirement -Wheel @(Get-ChildItem -LiteralPath $d -Filter '*.whl') -TargetTag 'win_arm64' -PythonExe 'C:\no-such\python.exe' -PythonVersion '3.14' -Machine 'ARM64')
+            Assert-Equal 'foo-1.0-py3-none-any.whl -> baz>=1' ($edges -join '|') 'bar is in the store, baz is not'
+        }
+    }
+
+    It 'refuses a wheel that is neither pure nor tagged for the target' {
+        Invoke-InTestDir { param($d)
+            New-MetadataWheel $d 'qux-1.0-cp314-cp314-win_amd64.whl' @()
+            Assert-Throws { Get-UnresolvedTargetRequirement -Wheel @(Get-ChildItem -LiteralPath $d -Filter '*.whl') -TargetTag 'win_arm64' -PythonExe 'C:\no-such\python.exe' -PythonVersion '3.14' -Machine 'ARM64' } `
+                -MessagePattern 'qux-1\.0-cp314-cp314-win_amd64\.whl is neither a pure wheel'
+        }
+    }
+
+    It 'lets a cp3XYt or ABI-free wheel into deps\ and names a GIL or abi3 one' {
+        Invoke-InTestDir { param($d)
+            $names = 'numpy-2.5.4-cp314-cp314t-win_arm64.whl', 'protobuf-7.36.2-py3-none-any.whl', 'numpy-2.5.3-cp314-cp314-win_arm64.whl', 'iree_base_runtime-3.12.0-cp312-abi3-win_arm64.whl'
+            $foreign = @(Get-ForeignAbiWheel -Wheel @($names | Sort-Object | ForEach-Object { New-Item -ItemType File -Path (Join-Path $d $_) }) -Abi 'cp314t')
+            Assert-Equal 'iree_base_runtime-3.12.0-cp312-abi3-win_arm64.whl|numpy-2.5.3-cp314-cp314-win_arm64.whl' ($foreign -join '|') 'a free-threaded venv loads neither'
+        }
+    }
+
+    It 'downloads the twins'' requirements without abi3 into deps\, then gates twins and deps as one store' {
+        Assert-Match "Join-Path \`$FreeThreadedWheelDir 'deps'" $script:depsScript 'the twins'' store keeps its top for twins'
+        Assert-Match "Save-TargetRequirement -Requirement \`$ftRequirements -Dir \`$ftDepsDir -Abi @\(\`$ftAbi, 'none'\)" $script:depsScript 'no abi3: the free-threaded ABI has no limited API'
+        Assert-Match "Get-UnresolvedTargetRequirement -Wheel \(@\(\`$twins\) \+ @\(\`$ftDeps\)\)" $script:depsScript 'every edge resolves inside the two directories'
+    }
+}

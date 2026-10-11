@@ -462,12 +462,19 @@ The host's x64 3.14t runs every build, and the target tree's `C:\runtime\python-
   `Test-TargetArch.ps1 -ImportWalk` machine-checks every wheel's native members, which it only walked before, and fails
   a `cp3XYt` wheel module that imports a GIL runtime. The bundle ships both runtimes, so the walk alone resolves either.
 - **The device.** `Export-Arm64Bundle.ps1` puts `free-threaded-wheel.py` beside `Test-Arm64Bundle.ps1`. The gate
-  installs each twin alone, offline, into a `python3.14t.exe -m venv` and runs
-  `free-threaded-wheel.py prove`, with the bundle's DLL homes registered in the venv's `sitecustomize.py`.
+  installs each twin offline into a `python3.14t.exe -m venv`, with its dependencies from `deps\` (below), and runs
+  `free-threaded-wheel.py prove`, with the bundle's DLL homes registered in the venv's `sitecustomize.py`. A bundle
+  without `deps\` gets each twin alone (`--no-deps`), as before 2026-10-11.
 - **What only the device proves:** that the ARM64 modules load and keep the GIL off. A module that declares nothing
   passes every static gate and fails only there.
-- **Their dependencies have no `cp314t` wheels in the bundle.** `numpy` and ORT's other requirements are staged for
-  cp314 only, so a consumer installs a twin with `--no-deps`, and the device proof does the same.
+- **Their dependencies sit in `wheels-cp314t\deps`** (CON79, in source since 2026-10-11). After the GIL store,
+  `Copy-TargetPythonDeps.ps1` reads each twin's `Requires-Dist` and downloads the requirements for the target as
+  `cp314t` or ABI-free wheels, never `abi3`, which the free-threaded ABI cannot load. Today that means numpy and
+  ml_dtypes as `cp314t-win_arm64`, plus flatbuffers, packaging, protobuf and typing-extensions as pure wheels.
+  - It fails when a downloaded wheel carries another ABI, or when a twin's or a dependency's requirement resolves in
+    neither directory.
+  - The store's top keeps the twins alone, which the mirror gate reads.
+  - A consumer installs a twin offline with `--find-links` on both directories.
 
 **Measured in `:winarm64` on 2026-10-07**, the published image of 2026-10-04 with an x64 3.14t built from v3.14.7
 (104 s) and the ARM64 trees of this checkout's `Build-TargetCpython.ps1` (212 s for both). Each script ran unmodified

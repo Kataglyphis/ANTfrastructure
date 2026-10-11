@@ -68,7 +68,9 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
         Assert-Match "Invoke-BundleStep 'free-threaded wheels: every cp314t twin loads with the GIL off' \{" $script:gateText 'a step every bundle runs'
         Assert-Match "-Helper \(Join-Path \`$PSScriptRoot 'free-threaded-wheel\.py'\)" $script:gateText 'the helper travels beside the gate'
         Assert-Match "& \`$venvPy -I \`$Helper prove " $script:gateText 'the build lanes'' own proof'
-        Assert-Match '--no-index --no-deps' $script:gateText 'each twin alone and offline'
+        Assert-Match '--disable-pip-version-check --no-index @resolve ' $script:gateText 'every install offline'
+        Assert-Match "\{ @\('--find-links', \`$Store, '--find-links', \`$deps\) \} else \{ @\('--no-deps'\) \}" $script:gateText `
+            'with the dependencies Copy-TargetPythonDeps.ps1 staged in deps\, and alone in a bundle that has none (CON79)'
     }
 
     It 'the twin proof refuses a missing helper or an empty store, and names every twin that fails (mutation)' {

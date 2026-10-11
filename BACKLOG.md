@@ -118,9 +118,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
            twin as `PASS` and the family list must end on `onnxruntime torch`.
       2. **arm64 cross twins (Windows): the device proof.** In source since 2026-10-07 (CHANGELOG), proved
          statically in `:winarm64`; on the device, BeschleunigerBallett run 38100828628 passed `free-threaded
-         wheels: every cp314t twin loads with the GIL off` (2026-10-11). Left: cp314t `win_arm64` wheels
-         for the twins' dependencies (numpy and ORT's requirements, `Copy-TargetPythonDeps.ps1`), without which
-         a consumer installs a twin `--no-deps`.
+         wheels: every cp314t twin loads with the GIL off` (2026-10-11). **The twins' dependencies are in source since
+         2026-10-11:** `Copy-TargetPythonDeps.ps1` stages them as `cp314t` or pure wheels in `wheels-cp314t\deps` and
+         fails when an edge resolves nowhere, and the device installs each twin with them, offline. PyPI carries all
+         six today: numpy 2.5.4 and ml_dtypes 0.6.0 as `cp314t-win_arm64`, and four pure wheels. Left: an arm64 chain
+         (the merge's gate), then the device run on the `:winarm64` it publishes.
       3. **The ROCm torch twin** (`Build-TorchRocmFromSource.ps1`; `Dockerfile.torch` already mounts the module,
          and must mount `linux/scripts/03-media/free-threaded-twins.txt` at `C:\bkmnt\free-threaded-twins.txt`
          once it asks `Get-FreeThreadedTwinPlan`).

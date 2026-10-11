@@ -65,7 +65,7 @@ function Invoke-BundleStep {
 }
 
 function Invoke-TwinDeviceProof {
-    # Each cp3XYt twin alone, offline, in a fresh venv of -Interpreter: free-threaded-wheel.py prove, the build lanes' own proof.
+    # A fresh venv of -Interpreter per cp3XYt twin, offline, with the deps it declares: free-threaded-wheel.py prove, the build lanes' own proof.
     param(
         [Parameter(Mandatory)][string]$Interpreter,
         [Parameter(Mandatory)][string]$Store,
@@ -76,6 +76,9 @@ function Invoke-TwinDeviceProof {
     if (-not (Test-Path -LiteralPath $Helper -PathType Leaf)) { throw "no $Helper to prove the twins with (Export-Arm64Bundle.ps1 puts it beside this script)" }
     # Exit codes are read below, so a failing proof keeps the helper's verdict instead of throwing it away.
     $PSNativeCommandUseErrorActionPreference = $false
+    # Copy-TargetPythonDeps.ps1 stages the twins' dependencies in deps\ (CON79); a bundle without one proves each twin alone.
+    $deps = [IO.Path]::Combine($Store, 'deps')
+    $resolve = if ([IO.Directory]::Exists($deps)) { @('--find-links', $Store, '--find-links', $deps) } else { @('--no-deps') }
     $wheels = @(Get-ChildItem -LiteralPath $Store -Filter '*.whl' -File)
     if ($wheels.Count -eq 0) { throw "no wheel in $Store" }
     $failures = foreach ($whl in $wheels) {
@@ -84,7 +87,7 @@ function Invoke-TwinDeviceProof {
             & $Interpreter -I -m venv $venv
             if ($LASTEXITCODE) { throw "venv exited $LASTEXITCODE" }
             $venvPy = Join-Path $venv 'Scripts\python.exe'
-            & $venvPy -I -m pip install --quiet --disable-pip-version-check --no-index --no-deps $whl.FullName
+            & $venvPy -I -m pip install --quiet --disable-pip-version-check --no-index @resolve $whl.FullName
             if ($LASTEXITCODE) { throw "pip install exited $LASTEXITCODE" }
             $site = Join-Path $venv 'Lib\site-packages'
             $dirs = @($DllDirectory) + @(Get-ChildItem -LiteralPath $site -Recurse -Filter '*.dll' -File | ForEach-Object DirectoryName | Sort-Object -Unique)
