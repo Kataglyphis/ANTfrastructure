@@ -6,6 +6,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — the Linux backlog closes CON72, the CON83 lane and CON66's consumer half; CON78 Linux and CON79 1b proved
+
+- **CON72 is done:** every consumer is green on its post-image pin, Linux and Windows lanes alike: OmniAccelerANT
+  5a6492c, OrchestrANT b599448, WebDavClient 5ab44f4, BeschleunigerBallett b693d37, AccelerANTgine 2aefb1d/4b5dffd,
+  OxidANT 4412001, jotrockenmitlocken 401acff.
+- **CON79 1b is done:** the `:latest` of 2026-10-11 (index sha256:b52f8c34, run 20261011-125540) proves the riscv64
+  torch twin in `FT-STORE` and every cross twin on arm64 and riscv64.
+- **CON83's lane is done:** OrchestrANT run 38171396906 (riscv64) restored the uv cache seed, built no numpy, passed the
+  cross wheel's smoke and ran its bench rows with shellcheck and hadolint; 2539 tests green. The owner calls stay `[b]`.
+- **CON66's consumer half is done:** both consumers' `3.14` and `3.14t` legs log `the image's own interpreter,
+  UV_PYTHON_DOWNLOADS=never` on x64 and arm64, OrchestrANT's riscv64 `3.14` leg too, and `uv_venv_create 3.14t` in the
+  published riscv64 child took `/opt/python-freethreaded` 3.14.8 with the GIL off.
+- **CON78, Linux 0–3:** read in the published `:latest-rocm` — `extras-10` copied, no absolute or dangling link under
+  `/opt/rocm`, `000-rocm.conf` resolving `libmigraphx_c` and `libamdhip64`, the MIGraphX provider library loading.
+- **CON82's last Linux item:** OmniAccelerANT's app flatpak (Linux x64 run 38158462860) and its cat cam flatpak (web run
+  38158462452, x64 and arm64, installed and removed by `test-catcam-package.sh`) build on `org.freedesktop.Platform/26.08`.
+- **CON84 (3):** OmniAccelerANT's Dart and Flutter floors follow its lock (467ca34), with the frb bindings and l10n
+  regenerated rather than hand-formatted.
+
 ## 2026-10-11 — the arm64 bundle carries its cp314t twins' dependencies (CON79)
 
 - The `:winarm64` bundle has shipped `cp314t` twins of onnxruntime, av, apache-tvm-ffi and iree-base-runtime since
