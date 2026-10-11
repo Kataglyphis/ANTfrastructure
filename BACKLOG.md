@@ -106,7 +106,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
            - The full riscv64 `build_torch_wheel` then stored the twin: `1 compiled module(s) of torch loaded on
              free-threaded 3.14.8; the GIL stayed disabled (on riscv64 under qemu-riscv64)`. `import torch` there
              ran `torch.ones(3)*2` with `sys._is_gil_enabled() == False`.
-           - The chain's `FT-STORE` on riscv64 is still to read.
+           - Chain run 20261011 (hub 7d8d0363) built and proved it again in the media stage: `1 compiled module(s)
+             of torch loaded on free-threaded 3.14.8; the GIL stayed disabled (on riscv64 under qemu-riscv64)`, and stored it.
+             The runtime smoke's riscv64 `FT-STORE` of that run is still to read.
          - **numpy** has a row (`twin:FT_TORCH_TWIN`) but no chain build, so nothing expects its twin. A
            riscv64 `cp314t` numpy for consumers is CON83's wheel-store question. torchvision stays `none`.
          - **Proved by the chain** (runs 20261010-002002 and 20261010-010337, hub 381431d1): arm64 and riscv64
@@ -135,13 +137,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `--force-reinstall` leaves `cython\` and still fails.
 
 - [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
-      yarn.lock today). (3) Consumers to follow: OmniAccelerANT's `environment: flutter: '>=3.41.6'`
-      floor (its lock now needs 3.47.0), and optionally OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule
-      into the preset. (4) Done: OmniAccelerANT's lock maintenance (go_router 18.0.2, sqlite3 3.7.0 and the wasm) is
-      7ecfa18, and its hub gitlink is past the published images (CON72). (5) npm,
-      poetry, pdm and pnpm locks report `behind: unknown`: none has a dry run that diffs the lock (measured 2026-10-08).
-      (6) Done: jotrockenmitlocken's hub pin moved past 77690147 in 401acff (2026-10-10), so `setup-sqlite3-wasm.sh`
-      fetches the 3.7.0 asset its `web/sqlite3.wasm` already carries.
+      yarn.lock today). (3) Optional: OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule into the preset
+      (its Flutter floor follows its lock since 2026-10-11, `>=3.47.0`). (5) npm, poetry, pdm and pnpm locks report
+      `behind: unknown`: none has a dry run that diffs the lock (measured 2026-10-08).
 
 - [ ] **CON83 — the riscv64 Python lane: seed its sync, and test the cross wheel** [M, ★★]. Found while fixing
       OrchestrANT's riscv64 lane (2026-10-07): its emulated `uv sync` of the `test` extra built numpy, matplotlib,
@@ -297,7 +295,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         37675558605) passed, and each `3.14t` leg resolved `CPython 3.14.8+freethreaded` at
         `/usr/local/bin/python3.14t` instead of downloading one. riscv64 not checked.
       - Left: those legs set `UV_PYTHON_DOWNLOADS=never`, so a missing interpreter fails instead of
-        downloading, once their hub gitlinks move (CON72).
+        downloading. Both consumers' hub gitlinks are at 06e65481 (past CON72's images) since 2026-10-10.
+      - Since 2026-10-11 both run their suite on the installed cp314t wheel on Linux x64/arm64 (OrchestrANT
+        de144d1, WebDavClient 3096c57), and AccelerANTgine builds and proves a cp314t binding wheel (5ce2d8d).
+        A hub step for "test the installed wheel" would replace the two consumer-local scripts.
       - The toolchain stage's added time on a CI runner (estimate 25-40 min on 4 cores); a local chain
         time is not that number.
       - A native arm64 toolchain build (PGO on arm64).
