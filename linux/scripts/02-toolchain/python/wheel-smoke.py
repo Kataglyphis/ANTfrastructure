@@ -47,8 +47,7 @@ def smoke(dist: str, package: str, require_compiled: bool) -> int:
         print(f"ERROR: {dist} owns no compiled module, so its wheel is no binary build", file=sys.stderr)
         return 2
     failures = [f"{path}: installed outside {prefix}" for _, path in modules if not inside(path, prefix)]
-    # Loaded, not executed: a module body may import an optional extra the core install lacks.
-    failures += ftw.load_all(modules)[1]
+    # Before load_all: its enclose() registers a package whose import fails unrun, which then imports without an error.
     try:
         where = getattr(importlib.import_module(package), "__file__", None) or ""
     except Exception as exc:  # noqa: BLE001 -- the import error is the verdict
@@ -56,6 +55,8 @@ def smoke(dist: str, package: str, require_compiled: bool) -> int:
     else:
         if not inside(where, prefix):
             failures.append(f"import {package}: came from {where or 'nowhere'}, not from {prefix}")
+    # Loaded, not executed: a module body may import an optional extra the core install lacks.
+    failures += ftw.load_all(modules)[1]
     for failure in failures:
         print(f"ERROR: {failure}", file=sys.stderr)
     if failures:

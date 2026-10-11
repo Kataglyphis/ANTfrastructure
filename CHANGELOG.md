@@ -6,6 +6,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — the hub's own lanes are green again: the wheel smoke grades the import, two Windows tests caught up
+
+- **The riscv64 wheel smoke passed a package whose import raises.** Since 9e3b7cba, `free-threaded-wheel.py`'s
+  `enclose()` registers a package whose import fails with its body unrun, so the compiled modules under it can load.
+  `wheel-smoke.py` called `load_all` first, and its own `import_module` then returned that stub without an error.
+  `test-wheel-smoke.sh` failed on it in every preflight since, and the three `wheel-smoke.*` mutations read as vacuous.
+  The smoke now imports the package before `load_all`; 18/18 assertions pass in `:latest` and all three mutations bite.
+- **`media-core-view` and `media-tvm-view` redeclare `WINDOWS_TARGET_ARCH`**, as `TargetArch.Common.Tests.ps1` asks of
+  every stage that RUNs over an external image (CON86's views had none). The next Windows chain rebuilds the two empty
+  views and the merge above them.
+- **`Get-FreeThreadedTwinPlan`'s test names an unlisted distribution that stays unlisted.** It used `numpy`, which
+  6276a9be added to the twin table (`twin:FT_TORCH_TWIN`), so the expected throw never came.
+
 ## 2026-10-11 — the nvidia and rocm ORT cp314t twins are proved in the published images (CON79 1)
 
 - BACKLOG CON79 1 listed them as open ("one call each"). The call has been in `30-build-native-nvidia.sh` and
@@ -58,6 +71,7 @@
   has the stubs and no driver libcuda, as `deepstream-verify.sh`'s element check does. In that image only
   `libnvdsgst_ucx.so` stays blacklisted (`libucs.so.0`, documented in `DSV_ALLOWED_MISSING`), which the check reports as a
   documented exception; every other blacklisted plugin still fails it. `test-gst-validate-ssim.sh` covers both.
+
 
 ## 2026-10-10 — `Get-SelectedConfigurations` returns the set, and a cleared selection selects nothing
 
