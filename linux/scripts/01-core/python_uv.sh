@@ -76,6 +76,13 @@ uv_python_request() {
   if [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then printf '%s+gil' "$1"; else printf '%s' "$1"; fi
 }
 
+# The shipped image's ENV names its own two interpreters; a download for either would hide an image that lost one (CON66).
+uv_image_ships_python() {
+  [ -n "${PYTHON_CROSS_ACTIVE_ROOT:-}" ] && [ -n "${PYTHON_MAJOR_MINOR:-}" ] || return 1
+  case "$1" in "${PYTHON_MAJOR_MINOR}" | "${PYTHON_MAJOR_MINOR}t") return 0 ;; esac
+  return 1
+}
+
 # Installs the interpreter through uv when missing; the name keeps a free-threaded `t`, so `3.14t` never matches `python3.14`.
 uv_ensure_python_available() {
   local req_version="$1"
@@ -91,6 +98,11 @@ uv_ensure_python_available() {
   if command -v "${exe_name}" >/dev/null 2>&1; then
     info "Found interpreter: ${exe_name}"
     return 0
+  fi
+
+  if uv_image_ships_python "${req_version}"; then
+    warn "${exe_name} is missing, though this image ships it (docs/consumer-image-contract.md#the-free-threaded-python); not downloading one: pull a current image"
+    return 1
   fi
 
   info "Interpreter ${exe_name} not found. Trying to install via uv..."
@@ -127,13 +139,21 @@ uv_venv_create() {
   fi
 
   local uv_args=(venv --seed "$venv_path")
+  local -a uv_env=()
   if [ -n "$python_version" ]; then
-    # Best effort; callers can pass an explicit interpreter path instead.
-    uv_ensure_python_available "$python_version" || true
+    if uv_image_ships_python "$python_version"; then
+      uv_ensure_python_available "$python_version" || return 1
+      # A caller's own UV_PYTHON_DOWNLOADS still wins.
+      uv_env=(env "UV_PYTHON_DOWNLOADS=${UV_PYTHON_DOWNLOADS:-never}")
+    else
+      # Best effort; callers can pass an explicit interpreter path instead.
+      uv_ensure_python_available "$python_version" || true
+    fi
     uv_args+=("--python=$(uv_python_request "$python_version")")
   fi
 
-  uv "${uv_args[@]}" $clear_flag || return 1
+  "${uv_env[@]}" uv "${uv_args[@]}" $clear_flag || return 1
+  [ "${#uv_env[@]}" -eq 0 ] || info "Python ${python_version}: the image's own interpreter, ${uv_env[1]} ($("$venv_path/bin/python" -c 'import sys; print(sys.base_prefix, sys.version.split()[0])' 2>/dev/null))"
   _CURRENT_VENV_PATH="$venv_path"
   # Explicit: the trailing assignment would otherwise BE the exit status.
   return 0

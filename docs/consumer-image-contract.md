@@ -674,7 +674,8 @@ every run's `uv sync --extra test`: 108 min of a 6 h job, numpy alone 107 min
 ### The free-threaded Python
 
 The image ships the free-threaded twin of `PYTHON_VERSION` (`3.14.8t` today) on every
-arch, riscv64 included (CON66), so a `3.14t` leg downloads no interpreter.
+arch, riscv64 included (CON66), so a `3.14t` leg downloads no interpreter. Since 2026-10-11 the hub's
+Python legs refuse to: a missing one fails the leg ([`python-ci.md` § Free-threaded and GIL legs](python-ci.md#free-threaded-and-gil-legs-in-one-container)).
 
 - **It is built from source in the toolchain stage**, from the same SHA256-pinned
   tarball as the GIL build (owner decision 2026-10-07). Until then the package stage

@@ -297,8 +297,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         OrchestrANT x64/arm64 (runs 37672555194, 37672555211) and WebDavClient x64/arm64 (37675558500,
         37675558605) passed, and each `3.14t` leg resolved `CPython 3.14.8+freethreaded` at
         `/usr/local/bin/python3.14t` instead of downloading one. riscv64 not checked.
-      - Left: those legs set `UV_PYTHON_DOWNLOADS=never`, so a missing interpreter fails instead of
-        downloading. Both consumers' hub gitlinks are at 06e65481 (past CON72's images) since 2026-10-10.
+      - **`UV_PYTHON_DOWNLOADS=never` is in source since 2026-10-11** (CHANGELOG): in the shipped image a
+        `3.14` or `3.14t` leg takes the image's interpreter or fails, and never downloads one. Proved in the
+        `:latest` amd64 child with WebDavClient's suite: both legs logged `the image's own interpreter,
+        UV_PYTHON_DOWNLOADS=never`, and with `python3.14t` hidden the old code downloaded one and passed, the
+        new one fails the leg. Left: a consumer run on a pin with it, on x64, arm64 and riscv64.
       - Since 2026-10-11 both run their suite on the installed cp314t wheel on Linux x64/arm64 (OrchestrANT
         de144d1, WebDavClient 3096c57), and AccelerANTgine builds and proves a cp314t binding wheel (5ce2d8d).
         A hub step for "test the installed wheel" would replace the two consumer-local scripts.

@@ -6,6 +6,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — a Python leg in the image takes the image's interpreter or fails; it never downloads one (CON66)
+
+- `uv_venv_create` (`linux/scripts/01-core/python_uv.sh`) runs `uv venv` with `UV_PYTHON_DOWNLOADS=never` for
+  `PYTHON_MAJOR_MINOR` and its `t` twin when the shipped image's ENV (`PYTHON_MAJOR_MINOR`, `PYTHON_CROSS_ACTIVE_ROOT`)
+  says the image ships them, and `uv_ensure_python_available` no longer runs `uv python install` for those. A missing
+  one fails the leg with `python3.14t is missing, though this image ships it`. Other versions, runs outside the image
+  and a caller's own `UV_PYTHON_DOWNLOADS` keep their behaviour.
+- Proved in the `:latest` amd64 child against WebDavClient 3096c57: the `3.14` leg took `/usr` 3.14.4 and the `3.14t`
+  leg `/opt/python-freethreaded` 3.14.8, both with downloads off, 22 and 23 tests green. With `python3.14t` hidden from
+  `PATH`, the previous code downloaded a free-threaded CPython and the leg passed; this one fails it.
+- `test-uv-python-request.sh` covers the image, a missing interpreter, the GIL leg, a version the image does not ship,
+  the caller's override and a bare host; with the image check disabled, 5 of its 21 assertions fail.
+
 ## 2026-10-11 — the WebRTC loopback waits for the producer to register (CON63)
 
 - The first `windows-arm64.yml` run uploaded the loopback's logs, and they show a race in the harness, not a broken
@@ -16,6 +29,7 @@
   `mfh264enc`. On amd64 the choice is quick, so the producer won the race there.
 - `Invoke-GstWebRtcLoopback` now waits up to 30 s for `registered as [Producer]` in the server's log before it starts the
   consumer, and fails with that sentence if the line never comes. It still passes in `:winamd64`.
+
 
 ## 2026-10-11 — the hub gates its own arm64 bundle; no consumer lane hosts it any more
 
