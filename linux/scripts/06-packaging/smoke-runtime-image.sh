@@ -2087,20 +2087,39 @@ echo "GST_SCAN_DONE"' 2>/dev/null)" || true
     echo ""
 }
 
+# DeepStream's UCX plugin needs libucs, which deepstream-verify.sh documents as missing (Ubuntu's libucx0 pulls ROCm's HIP runtime).
+_GST_BLACKLIST_DOCUMENTED="amd64:libnvdsgst_ucx.so"
+_GST_BLACKLIST_DOCUMENTED_WHY="documented: libucs.so.0 is not shipped (deepstream-verify.sh DSV_ALLOWED_MISSING)"
+_gst_blacklist_documented() {
+  case " ${_GST_BLACKLIST_DOCUMENTED} " in *" $1:$2 "*) return 0 ;; *) return 1 ;; esac
+}
+
 # The registry blacklists a plugin whose dlopen or plugin_init failed, with no scanner line; docs/failure-modes.md#the-core-registry-blacklists-libgstvalidatessimso
 _gst_check_blacklist() {
   local target_arch="$1" out p undocumented=""
   out="$(_rt_run bash -lc 'gi="$(command -v gst-inspect-1.0 || echo /opt/gstreamer/bin/gst-inspect-1.0)"
+stubs="${CUDA_HOME:-/usr/local/cuda}/lib64/stubs"
+if [ -f "${stubs}/libcuda.so" ] && ! ldconfig -p 2>/dev/null | grep -q "libcuda\.so\.1 "; then
+  d="$(mktemp -d)"; ln -s "${stubs}/libcuda.so" "${d}/libcuda.so.1"; ln -s "${stubs}/libnvidia-ml.so" "${d}/libnvidia-ml.so.1"
+  export LD_LIBRARY_PATH="${d}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" GST_REGISTRY="${d}/registry.bin"
+  echo "DRIVER_STUBS ${stubs}"
+fi
 "$gi" -b 2>/dev/null | sed -n "s/^  *\([^ ]*\.so\)\$/BLACKLISTED \1/p"
 echo "GST_BLACKLIST_DONE"' 2>/dev/null)" || true
   if ! printf '%s\n' "${out}" | grep -q '^GST_BLACKLIST_DONE$'; then
     fail "the GStreamer registry blacklist could not be read in the ${target_arch} image"
     return 0
   fi
+  # A GPU-less smoke has no driver libcuda; the CUDA stubs stand in, as deepstream-verify.sh's element check does.
+  if printf '%s\n' "${out}" | grep -q '^DRIVER_STUBS '; then
+    echo "  ~~   scanned with the CUDA driver stubs ($(printf '%s\n' "${out}" | sed -n 's/^DRIVER_STUBS //p' | head -1)): no GPU in this container"
+  fi
   while IFS= read -r p; do
     [ -n "${p}" ] || continue
     p="${p##*/}"
-    if _parity_gst_plugin_known "${target_arch}" "${p}"; then
+    if _gst_blacklist_documented "${target_arch}" "${p}"; then
+      echo "  ~~   ${p} is blacklisted -- ${_GST_BLACKLIST_DOCUMENTED_WHY}"
+    elif _parity_gst_plugin_known "${target_arch}" "${p}"; then
       echo "  ~~   ${p} is blacklisted -- documented ${target_arch} exception (_parity_gst_plugin_known)"
     else
       undocumented="${undocumented} ${p}"
