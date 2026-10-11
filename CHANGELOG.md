@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — the arch gate reports pip's and setuptools' launcher templates instead of failing on them
+
+- OrchestrANT's Windows x64 app bundle failed its gate on the new pin (run 38086634222): `4 violation(s)`, all in the
+  runtime's `ensurepip\_bundled\pip-26.2.1-py3-none-any.whl` — distlib's `t32`/`w32` (I386) and `t64-arm`/`w64-arm`
+  (ARM64). The gate machine-checks wheel members since fbf9c369, and pip ships one launcher template per arch on
+  purpose: the installer copies the target's when it writes a script. The image gate never saw it, because the
+  Dockerfile's `ARCH_GATE_HOST_TOOLS` already names those paths; `New-PythonAppBundle.ps1` passes no pattern.
+- `Test-TargetArch.ps1 -LauncherTemplatePattern` (on by default) lists distlib's `t32`, `t64`, `t64-arm`, `w32`, `w64`,
+  `w64-arm` and setuptools' `cli`/`gui` launchers per arch as templates, prints them and leaves them out of the count. A new test
+  packs all six into a pip wheel: the amd64 bundle passes, and an ARM64 binary that is no template still fails beside them.
+
 ## 2026-10-11 — the hub's own lanes are green again: the wheel smoke grades the import, two Windows tests caught up
 
 - **The riscv64 wheel smoke passed a package whose import raises.** Since 9e3b7cba, `free-threaded-wheel.py`'s

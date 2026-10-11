@@ -17,6 +17,8 @@
     Minimum number of binaries inspected for the run to count; 0 needs -AllowEmptyTree.
 .PARAMETER HostToolPattern
     Regex of full paths allowed to stay host-architecture (build tools that never ship).
+.PARAMETER LauncherTemplatePattern
+    Regex of pip's (distlib) and setuptools' launcher templates, reported but never counted; an empty string counts them.
 .PARAMETER IncludeArchives
     Also verify .lib archives; off by default because vendor static archives are noisy.
 .EXAMPLE
@@ -31,6 +33,8 @@ param(
     [string]$Arch = '',
     [int]$MinInspected = 1,
     [string]$HostToolPattern = '',
+    # pip's and setuptools' script-launcher templates: every arch ships by design, and the installer copies the target's.
+    [string]$LauncherTemplatePattern = '\\distlib\\[tw](32|64)(-arm)?\.exe$|\\setuptools\\(cli|gui)(-32|-64|-arm64)?\.exe$',
     [switch]$IncludeArchives,
     # Resolves every import against bundle, API sets and System32 (never the CRT on cross): the 0xC0000135 class; extracts and machine-checks every wheel too.
     [switch]$ImportWalk,
@@ -172,6 +176,7 @@ function Get-ArchiveMachine {
 function Add-MachineVerdict {
     param([Parameter(Mandatory)][string]$LiteralPath, [Parameter(Mandatory)][string]$Label, [switch]$Archive)
     if ($HostToolPattern -and $LiteralPath -match $HostToolPattern) { $script:skippedHostTools += $Label; return $false }
+    if ($LauncherTemplatePattern -and $LiteralPath -match $LauncherTemplatePattern) { $script:launcherTemplates += $Label; return $false }
     $machine = if ($Archive) { Get-ArchiveMachine -LiteralPath $LiteralPath } else { Get-CoffMachine -LiteralPath $LiteralPath }
     if ($null -eq $machine) { $script:unreadable += $Label; return $false }
     $script:inspected++
@@ -186,6 +191,7 @@ if ($IncludeArchives) { $extensions += '.lib' }
 
 $inspected = 0
 $skippedHostTools = @()
+$launcherTemplates = @()
 $unreadable = @()
 $violations = @()
 $script:peFiles = @()
@@ -296,6 +302,10 @@ if ($skippedHostTools.Count -gt 0) {
     # Printed: an over-broad allowlist is only noticed by what it swallowed.
     Write-Host ("  host-tool allowlist skipped {0} file(s) (pattern: {1}):" -f $skippedHostTools.Count, $HostToolPattern)
     $skippedHostTools | ForEach-Object { Write-Host "    - $_" }
+}
+if ($launcherTemplates.Count -gt 0) {
+    Write-Host ("  launcher templates, one per arch by design, skipped {0} file(s) (pattern: {1}):" -f $launcherTemplates.Count, $LauncherTemplatePattern)
+    $launcherTemplates | ForEach-Object { Write-Host "    - $_" }
 }
 if ($unreadable.Count -gt 0) {
     Write-Host ("  not PE/COFF, ignored: {0} file(s)" -f $unreadable.Count)
