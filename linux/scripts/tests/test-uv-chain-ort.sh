@@ -160,7 +160,10 @@ FTSITE="$("${FTPY}" "${FIX}" site)"
 # <dir>: every wheel there retagged cp3XY-cp3XYt, as the twin store holds them.
 _twin_tags() {
   local f
-  for f in "$1"/*.whl; do mv "${f}" "$(printf '%s' "${f}" | sed -E 's/-(cp[0-9]+)-cp[0-9]+-/-\1-\1t-/')"; done
+  for f in "$1"/*.whl; do
+    case "${f}" in *-cp[0-9]*t-*) continue ;; esac
+    mv "${f}" "$(printf '%s' "${f}" | sed -E 's/-(cp[0-9]+)-cp[0-9]+-/-\1-\1t-/')"
+  done
 }
 # The image after a 3.14t leg's uv sync: PyPI ORT in the venv, the dnnl flavour in the GIL store, two ORT flavours and PyAV among the twins.
 _ft_venv() {
@@ -187,6 +190,23 @@ t_assert_eq "" "$(grep -e 'pip install' "${LOG}" | grep -e 'onnxruntime_gpu' -e 
   "not the other flavour's twin, not PyAV, nothing of the GIL store"
 t_assert_ok "${FTPY}" -I "${CENSUS}" --check --store "${TWINS}"
 t_assert_contains "${_out}" "ORT-CENSUS PASS"
+
+t_case "in a GPU image (nvidia, rocm) a free-threaded venv takes its GPU flavour's twin, not the CPU one beside it"
+for _fl in gpu migraphx; do
+  _ft_venv
+  "${VPY}" "${FIX}" reset "${STORE}"
+  "${VPY}" "${FIX}" pypi "${FTSITE}" onnxruntime-gpu 1.27.0 onnxruntime "pypi gpu"
+  "${VPY}" "${FIX}" wheel "${STORE}" "onnxruntime-${_fl}" 1.30.0 onnxruntime "chain ${_fl}"
+  if [ "${_fl}" != gpu ]; then
+    "${VPY}" "${FIX}" wheel "${TWINS}" "onnxruntime-${_fl}" 1.30.0 onnxruntime "twin ${_fl}"
+    _twin_tags "${TWINS}"
+  fi
+  _out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T="${TWINS}" _reconcile "${FTVENV}")"
+  t_assert_contains "${_out}" "rc=0 NO_SYNC=1"
+  t_assert_contains "$(grep -e 'pip install' "${LOG}")" "/twins/onnxruntime_${_fl}-1.30.0-" "${_fl}: the installed flavour's twin"
+  t_assert_eq "" "$(grep -e 'pip install' "${LOG}" | grep -e 'onnxruntime_dnnl' -e '/store/' || true)" "${_fl}: not the CPU twin, nothing of the GIL store"
+  t_assert_ok "${FTPY}" -I "${CENSUS}" --check --store "${TWINS}"
+done
 
 t_case "a GIL venv keeps the GIL store while the twins are advertised"
 _pypi_venv

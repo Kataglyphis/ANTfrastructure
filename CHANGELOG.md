@@ -6,6 +6,41 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — the nvidia and rocm ORT cp314t twins are proved in the published images (CON79 1)
+
+- BACKLOG CON79 1 listed them as open ("one call each"). The call has been in `30-build-native-nvidia.sh` and
+  `30-build-native-amd.sh` since e2651106 (2026-10-07), and both published GPU images already carry and prove the twin.
+  The build logs show it:
+  - **rocm**, chain run 20261009-152508 (`:latest-rocm`, index sha256:a5d68fbe). The MIGraphX pass over
+    `build_native_gpu_migraphx` took 57 s and rebuilt no HIP object (the GIL pass built 590) and 106 C++ objects. It
+    stored `onnxruntime_migraphx-1.30.0-cp314-cp314t`.
+  - **nvidia**, media run 20261010-202726 (`:latest-nvidia`, index sha256:810f36b3, run 20261011-040056). The CUDA pass
+    over `build_native_gpu` took 32 s, 192 s on the first run, 20261010-125556. It rebuilt no CUDA object (the GIL pass
+    built 578), and its 664 C++ compiles came from the compiler cache. It stored `onnxruntime_gpu-1.30.0-cp314-cp314t`.
+  - Both runtime smokes pass `FT-STORE`, with the flavour's twin and `onnxruntime_dnnl` loaded with the GIL off. They
+    pass the ORT census, which grades the twin's members against the GPU `ort-provenance-cp314t.sha256`.
+- **Proved without a chain: the pass compiles against `3.14t`.** It reruns `build.sh` with the GPU build's own
+  `BUILD_ARGS` and build dir and appends only `Python_EXECUTABLE=<3.14t venv>`. On a scratch project with ORT's
+  `find_package(Python 3.10 COMPONENTS Interpreter Development.Module NumPy)`, CMake 4.4.4 then re-resolved a warm GIL
+  cache to the `3.14t` include dir, NumPy include and `cpython-314t` SOABI, and its module built behind an
+  `#ifndef Py_GIL_DISABLED #error` guard. With a GIL `Python_INCLUDE_DIR` carried in the args, the include dir stayed
+  the GIL one: the riscv64 torch twin's bug of 2026-10-10.
+- **Tests.**
+  - `test-free-threaded-wheels.sh` runs `onnx_build_free_threaded_wheel` against a stub `build.sh` with CUDA-shaped
+    and MIGraphX-shaped args. The pass must keep the GIL args (same `--build_dir`) and put the venv interpreter last,
+    in argv and in the environment. It must name no include dir and store into `<output>/wheels-cp314t`. A failed
+    pass stores nothing, and a cross MIGraphX build without `--build_wheel` runs none. The wiring case also holds
+    each `30-build-native*.sh` to ending on the pass over its own `BUILD_ARGS`, with no Python include define.
+    8 mutations, all red: drop or reorder the override, add a GIL include, drop the env, store into `wheels`,
+    use a fresh build dir, move the nvidia call up, add an include define to the rocm args.
+  - `test-free-threaded-store.sh`: `FT-STORE` requires the installed flavour's own twin for `onnxruntime_migraphx`
+    as well as `onnxruntime_gpu`, and fails it unproved.
+  - `test-uv-chain-ort.sh`: in a GPU image, a `3.14t` venv's reconcile takes the `onnxruntime_gpu` or
+    `onnxruntime_migraphx` twin and never the `onnxruntime_dnnl` one beside it. It fails when the flavour filter in
+    `_uv_chain_ort_wheels` is dropped.
+- Docs: `consumer-image-contract.md` § *The free-threaded wheels* (the GPU rows of the twin-pass table, why the warm
+  reconfigure takes the `3.14t` headers, and the GPU images' `FT-STORE`), `linux-accelerator-images.md`.
+
 ## 2026-10-11 — `:latest-nvidia` published with DeepStream 9.1 (CON42)
 
 - Index sha256:810f36b38714b423652902ed35f4b221d36f868639a83a3b4da47c476b4a033e (amd64
