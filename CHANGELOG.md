@@ -6,6 +6,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — the WebRTC loopback says why it stalls, and the arm64 device job keeps its logs (CON63)
+
+- Its first device run timed out: BeschleunigerBallett run 38156104572 passed 16 of 17 on `windows-11-arm`, and
+  webrtcsrc reached PLAYING and decoded nothing in 90 s without a single error line from either process.
+- `Invoke-GstWebRtcLoopback` sets `GST_DEBUG` to warnings plus INFO for webrtcsink, webrtcsrc, webrtcbin, nice and
+  DTLS when the caller set none, and restores it. A failure now carries 12 lines of all four logs and their path.
+  In `:winamd64` the loopback still passes, with 66 INFO lines in its stderr logs.
+- The device gate writes them under `RUNNER_TEMP`, and `container-ci-windows.yml` uploads them as
+  `<bundle-artifact-name>-webrtc-logs` when the gate fails.
+
 ## 2026-10-11 — the arm64 device gate runs all 17 steps on every bundle, the WebRTC loopback among them (CON63, CON64, CON67)
 
 - The published `:winarm64` (`ba6bfaae…`) passed its device gate on `windows-11-arm` in BeschleunigerBallett run

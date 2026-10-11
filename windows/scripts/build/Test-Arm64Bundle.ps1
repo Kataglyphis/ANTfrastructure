@@ -227,7 +227,7 @@ Invoke-BundleStep 'WebRTC loopback: webrtcsink -> webrtcsrc decodes 60 frames ov
         Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
     if (-not $gstModule) { throw "no WindowsGstPlugins.Common.psm1 beside $PSCommandPath" }
     Import-Module $gstModule -Force -DisableNameChecking
-    $note = Assert-GstWebRtcLoopback -GstLaunch (Join-Path $BundleRoot 'bin\gst-launch-1.0.exe') -Frames 60 -TimeoutSeconds 90 -LogDir (Join-Path $env:TEMP 'bundle-webrtc')
+    $note = Assert-GstWebRtcLoopback -GstLaunch (Join-Path $BundleRoot 'bin\gst-launch-1.0.exe') -Frames 60 -TimeoutSeconds 90 -LogDir (Join-Path ($env:RUNNER_TEMP ?? $env:TEMP) 'bundle-webrtc')
     if ($note) { Write-Host "   $note" }
 } $results
 

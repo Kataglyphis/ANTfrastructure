@@ -471,8 +471,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       check. 2026-10-11: `Test-Arm64Bundle.ps1` runs the amd64 smoke gate's loopback
       (`Invoke-GstWebRtcLoopback`, webrtcsink -> webrtcsrc, 60 frames over DTLS-SRTP) with the bundle's
       `gst-launch-1.0.exe`, and `Export-Arm64Bundle.ps1` puts its two modules beside the gate. In that
-      layout the step passed in `:winamd64`. Open: its first run on `windows-11-arm`, which is the
-      next BeschleunigerBallett arm64 run on a hub pin that has it.
+      layout the step passed in `:winamd64`.
+      **First device run, BeschleunigerBallett run 38156104572 (`:winarm64` `ba6bfaae…`): 16 of 17, the
+      loopback timed out.** webrtcsrc reached PLAYING and decoded nothing in 90 s, and neither process
+      wrote an error. The loopback now runs with `GST_DEBUG` at INFO for webrtcsink, webrtcsrc, webrtcbin,
+      nice and DTLS, its failure carries 12 lines of each log, and the device job uploads the logs as
+      `<bundle-artifact-name>-webrtc-logs`. Open: read them from the next arm64 run, then fix the bundle.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
