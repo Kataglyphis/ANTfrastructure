@@ -6,6 +6,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — the arm64 bundle carries its cp314t twins' dependencies (CON79)
+
+- The `:winarm64` bundle has shipped `cp314t` twins of onnxruntime, av, apache-tvm-ffi and iree-base-runtime since
+  2026-10-07. Their dependencies were staged for cp314 only, so a consumer installed a twin with `--no-deps`, and the
+  device proof did the same.
+- `Copy-TargetPythonDeps.ps1` now runs a second pass after the GIL store. It reads each twin's `Requires-Dist` and
+  downloads the requirements for the target into `wheels-cp314t\deps`, as `cp314t` or ABI-free wheels. It passes no
+  `abi3`, which the free-threaded ABI cannot load.
+- The pass fails when a staged wheel carries another ABI, or when a twin's or a dependency's requirement resolves in
+  neither directory. The store's top keeps the twins alone, so the merge's mirror gate reads it as before.
+- PyPI carries all six dependencies today: numpy 2.5.4 and ml_dtypes 0.6.0 as `cp314t-win_arm64`, and flatbuffers,
+  packaging, protobuf and typing-extensions as pure wheels.
+- The device gate installs each twin with `--find-links` on both directories, offline, before `free-threaded-wheel.py
+  prove`. A bundle without `deps\` still gets each twin alone.
+- The download and the requirement gate are now functions that both passes share (`Save-TargetRequirement`,
+  `Get-UnresolvedTargetRequirement`), and `SourceBuild.StageTargetPythonDeps.Tests.ps1` covers them.
+
 ## 2026-10-11 — TheRock's clang ships as AMD builds it: the HIP/MSVC `<cmath>` overlay is retired (CON78)
 
 - Since 2026-09-25 the rocm image has carried `windows/scripts/hip`: two wrapper headers that rename `isgreater` and its five
