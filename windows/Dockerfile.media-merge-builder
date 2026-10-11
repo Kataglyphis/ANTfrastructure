@@ -132,7 +132,7 @@ ENV PATH=C:\runtime\cuda-runtime\bin;$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\bin;$
     PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;C:\runtime\lib\pkgconfig
 
 # Re-COPY: the base bakes a stale versions.env, and the build scripts re-read it at run time.
-COPY linux\scripts\01-core\versions.env C:\temp\versions.env
+COPY windows\generated\versions.env C:\temp\versions.env
 
 # Declared globally so the driver's --build-arg binds, then redeclared in `built`, whose RUN reads them.
 ARG DEPS_MIN_BUNDLE_WHEELS=0
