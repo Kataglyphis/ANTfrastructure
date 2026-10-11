@@ -476,7 +476,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       wrote an error. The loopback now runs with `GST_DEBUG` at INFO for webrtcsink, webrtcsrc, webrtcbin,
       nice and DTLS, and its failure carries 12 lines of each log. The gate lives in the hub's
       `windows-arm64.yml` since then, which uploads the logs as `winarm64-bundle-webrtc-logs`; the
-      renderer's lane no longer hosts it. Open: read them from its first run, then fix the bundle.
+      renderer's lane no longer hosts it. Its first run's logs named the cause, a race in the loopback, not
+      the bundle: on arm64 webrtcsink spends ~0.8 s finding an H.264 encoder (it lands on `mfh264enc`), so the
+      consumer listed producers before the producer registered, found none and waited for good. The loopback
+      now waits for `registered as [Producer]` in the signalling server's log. Open: the device run of that.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
