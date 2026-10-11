@@ -267,12 +267,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - **OmniAccelerANT** 4d209d6 (hub 8bd24220, AccelerANTgine a9e7323, OxidANT d6fa857). The
         lock maintenance (CON84) landed first, in 7ecfa18, and the hub bump to 06e65481 before that,
         in 8ad8984, with the cat cam fix (OxidANT's chain-ORT check ignores the path separator,
-        1761c77). Open: `check-rust-toolchain.sh` grading rustc 1.99.0 on the Linux and Android lanes.
+        1761c77). `check-rust-toolchain.sh` grades rustc 1.99.0: Linux x64 run 38100830611 logged
+        `liboxidant.so: rustc 1.99.0`, and Android run 38100830275 passed.
       - **OrchestrANT** e2f959c (06e65481): the riscv64 packaging fix (sysroot libc) rides along, and the
         riscv64 lane passed (38086634296). Windows x64 failed (38086634222): the app bundle's arch gate
         counted pip's launcher templates in `ensurepip`. Hub a7490c15 reports them instead, and a local
-        lane run on that pin passed every step. Open: its next pin bump, and the cp314t wheel on the
-        image's `3.14t` (CON66; `free-threaded-wheel: off`, CON77, is the fallback).
+        lane run on that pin passed every step. OrchestrANT 179e1e1 pins 0cc69b42, which carries it.
+        Open: the cp314t wheel on the image's `3.14t` (CON66; `free-threaded-wheel: off`, CON77, is
+        the fallback).
       - **BeschleunigerBallett** c918a645 (8bd24220): its sccache override and its format counter
         are gone, since the hub's `Cache.cmake` (5710cf9e) and `Invoke-ClangFormatCheck
         -FailOnDeviation -ExpectedVersion` do the same. clang-format 23.1.3 finds 0 of 217 files deviating,
