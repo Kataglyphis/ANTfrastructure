@@ -6,6 +6,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — `:latest-nvidia` published with DeepStream 9.1 (CON42)
+
+- Index sha256:810f36b38714b423652902ed35f4b221d36f868639a83a3b4da47c476b4a033e (amd64
+  sha256:23e3cc9e5bbbfc64d8395e1d171faa56c89e9b09cbb95bedcba225110fe4bdd5), chain run 20261011-040056-e2d41cc6 on hub aabebdbc;
+  media and android from runs 20261010-202726 (c9f638f0 + 804227fd).
+- The first nvidia build with `ENABLE_DEEPSTREAM=true` by default: 48 DeepStream components built from 581889df, the media
+  stage's DeepStream gates and the runtime smoke's `check_deepstream` pass, wrapper-smoke and the 15/15 runtime checks pass.
+
 ## 2026-10-11 — the registry blacklist check scans a GPU-less nvidia image with the CUDA driver stubs (CON42)
 
 - The first `:latest-nvidia` runtime smoke with DeepStream (run 20261011e) passed `check_deepstream` but failed
