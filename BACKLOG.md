@@ -137,8 +137,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `--force-reinstall` leaves `cython\` and still fails.
 
 - [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
-      yarn.lock today). (3) Optional: OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule into the preset
-      (its Flutter floor follows its lock since 2026-10-11, `>=3.47.0`). (5) npm, poetry, pdm and pnpm locks report
+      yarn.lock today). (3) OmniAccelerANT's floors (`sdk: >=3.11.4`, `flutter: >=3.41.6`) trail its lock (3.13.0, 3.47.0).
+      Raising them is a reformat: a Dart floor of 3.13 moves `dart format` to the newer style and 8 committed files,
+      the frb bindings among them, change (tried and reverted 2026-10-11, 429fef3/b0903f9). Optional: its
+      `dev.flutter.flutter-plugin-loader` gradle rule into the preset. (5) npm, poetry, pdm and pnpm locks report
       `behind: unknown`: none has a dry run that diffs the lock (measured 2026-10-08).
 
 - [ ] **CON83 — the riscv64 Python lane: seed its sync, and test the cross wheel** [M, ★★]. Found while fixing
