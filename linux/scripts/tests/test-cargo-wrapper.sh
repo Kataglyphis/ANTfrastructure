@@ -35,7 +35,8 @@ t_assert_eq "1" "$(_safe_dirs | wc -w | tr -d ' ')"
 _install_pinned() {
   local home bin; home="$(mktemp -d "${_WORK}/pin.XXXXXX")"; bin="${home}/bin"
   mkdir -p "${bin}"
-  [ -n "$1" ] && printf '#!/usr/bin/env bash\necho "cargo-deny %s"\n' "$1" > "${bin}/cargo-deny"
+  # No version is a missing tool (exit 127); with no fake at all, :latest's own pinned cargo-deny would answer.
+  if [ -n "$1" ]; then printf '#!/usr/bin/env bash\necho "cargo-deny %s"\n' "$1"; else printf '#!/usr/bin/env bash\nexit 127\n'; fi > "${bin}/cargo-deny"
   printf '#!/usr/bin/env bash\necho "cargo $*" >> "%s/cargo.log"\n' "${home}" > "${bin}/cargo"
   chmod +x "${bin}"/*
   touch "${home}/cargo.log"
