@@ -158,6 +158,7 @@ TVM_WORKDIR
 UBUNTU_SOURCES_ROOT
 UV_CACHE_DIR  # uv's own: its cache dir, a fetch cache G2 (03-media/ort-provenance.sh) grades
 UV_PROJECT_ENVIRONMENT  # uv's own: where an unpinned uv sync installs, so uv_sync_project reconciles chain ORT there
+UV_PYTHON_DOWNLOADS  # uv's own: a caller's value beats uv_venv_create's never for the image's interpreters
 UV_SYNC_EXTRAS
 VERSION_CODENAME
 VULKAN_ENV_STRICT

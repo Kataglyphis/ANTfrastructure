@@ -462,7 +462,17 @@ Since CON66 the image ships the free-threaded interpreter itself, at
 Since 2026-10-07 it is the toolchain stage's `--disable-gil` source build of
 `PYTHON_VERSION`, no longer uv's python-build-standalone download
 ([`consumer-image-contract.md` § The free-threaded Python](consumer-image-contract.md#the-free-threaded-python)).
-On an older image the leg still downloads one, and the rest of this section applies.
+Since 2026-10-11 the leg also cannot download one. In the shipped image, whose ENV names
+`PYTHON_MAJOR_MINOR` and `PYTHON_CROSS_ACTIVE_ROOT`, `uv_venv_create` runs `uv venv` for
+`PYTHON_MAJOR_MINOR` and for its `t` twin with `UV_PYTHON_DOWNLOADS=never`, and logs the interpreter
+it took (`the image's own interpreter, UV_PYTHON_DOWNLOADS=never (/opt/python-freethreaded 3.14.8)`).
+When the image lacks that interpreter, the leg fails with `python3.14t is missing, though this image
+ships it` instead of downloading one. Other versions, and runs outside the image, still let uv
+download, and a caller's own `UV_PYTHON_DOWNLOADS` wins. Measured in the `:latest` amd64 child on
+2026-10-11 with `python3.14t` hidden from `PATH`: the old code downloaded a free-threaded CPython and
+WebDavClient's `3.14t` leg passed, 23 tests green; the new code fails the leg. Test:
+`linux/scripts/tests/test-uv-python-request.sh`. An image older than 2026-10-07 has no
+`python3.14t`, so its `3.14t` leg now fails, and the rest of this section is history.
 
 uv 0.12 lets a plain `3.14` request take a free-threaded build: once a `3.14t` leg has
 downloaded `3.14.7+freethreaded` into uv's managed store, a later `uv venv --python 3.14`
