@@ -6,6 +6,41 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-11 — CON63, CON80, CON82 and CON87 proved, CON71's Windows half done
+
+- **CON63:** the hub's own device gate passed 17 of 17 on `windows-11-arm`, the WebRTC loopback included
+  (`windows-arm64.yml` run 38170783445 on 5bcd214c, `:winarm64` `ba6bfaae…`). The arm64 WebRTC contract holds:
+  the cross-built gst-plugins-rs and the aarch64 `ffi-7.dll` (proved at the 2026-10-10 merge) carry a
+  webrtcsink → webrtcsrc call over DTLS-SRTP on the device.
+- **CON80:** the in-place site-packages merge passes in the published images. In `:winamd64` (`e96203a8…`, smoke run
+  2026-10-11), `Cython.Shadow` imports and all 31 RECORD files spell their entries as on disk. The `:winarm64`
+  (`ba6bfaae…`) passed the same two checks over its 12 distributions at its chain's smoke gate (run
+  20261010-121545).
+- **CON82, the Windows items:**
+  - The published `:winamd64` resolves `VULKAN_SDK` to scoop's vulkan 1.4.363.0, with `Bin-ARM64` and
+    `Lib-ARM64`.
+  - The published `:winamd64-rocm` (`32c7cc51…`) ships the 1.4.363.0 loader (`C:\vulkan-loader` and the lavapipe
+    copy). Its FFmpeg lists the `vulkan` hwaccel, and `llama-cli --version` reports build 11476, commit 988190680.
+  - x265 4.2 built and verified its SHA256 in the 2026-10-11 chain.
+  - The arm64 Vulkan-ValidationLayers load in `vulkaninfo` on the device (run 38170783445).
+  - OmniAccelerANT built and installed its flatpaks on runtime 26.08: `web.yml` run 38158462452 and Linux x64 run
+    38158462860, both on fafa9f3.
+
+  With the Linux half proved on 2026-10-09, the row is closed.
+- **CON87:** the Windows chain no longer rebuilds over a Linux-only `versions.env` edit.
+  - The first full chain on it (20261011-184301, 3:37 h) rebuilt above base once. Smoke: 268 passed, 0 failed,
+    1 skipped.
+  - Then `CMAKE_VERSION_RISCV64` moved 4.4.4 → 4.4.9, a temporary edit, and the next chain (20261011-222153) took
+    14 min. base, toolchain, all seven media stages and the merge came back CACHED, with the same manifests as the
+    run before (base `1b332f1d…`, toolchain `f1353638…`).
+  - Only torch re-ran, because OrchestrANT's develop had moved 179e1e1 → b599448f. final followed it.
+  - Smoke: 268 passed, 0 failed, 1 skipped. The publish gate was clean.
+- **CON71, Windows:** the published `:winamd64` passes `Test-Container.ps1`'s 21-tool check, every tool at 23.1.3.
+  The native plugin's reformat in OmniAccelerANT is the row's last item.
+- **CON88, new:** Python in the Windows images trusts only the 18 roots that the Server Core store ships, so
+  `ftp.osuosl.org`, the target of downloads.xiph.org's redirect, fails `CERTIFICATE_VERIFY_FAILED`. Meson's
+  wraps fall back to GitHub; `truststore` verifies the same URL. Cause and fix in the BACKLOG.
+
 ## 2026-10-11 — a Python leg in the image takes the image's interpreter or fails; it never downloads one (CON66)
 
 - `uv_venv_create` (`linux/scripts/01-core/python_uv.sh`) runs `uv venv` with `UV_PYTHON_DOWNLOADS=never` for

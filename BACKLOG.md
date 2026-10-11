@@ -127,13 +127,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       5. **Upstream**: IREE's bare-`python3` genrule (`runtime/src/iree/vm/bytecode/isa/CMakeLists.txt`) and its
          Windows `cpython-NNt` SOABI detection (`CMakeLists.txt:782-791`); onnxruntime-genai's
          `PYBIND11_MODULE` (`src/python/python.cpp:468`) plus a thread-safety audit of its global log callback.
-- [ ] **CON80 — prove the in-place site-packages merge in the next Windows chain run** [S, ★]. The cause
-      (a COPY over a lower layer's file stores it lowercased) and the fix landed 2026-10-07 (CHANGELOG): the
-      fan-in merges in one RUN, refuses mixed versions and lost RECORD spelling. Proved in a replay only.
-      Rebuild `:winamd64` and `:winarm64`: smoke section 2 must pass `import Cython.Shadow` and the RECORD
-      check. Until then, images built before the fix take `pip uninstall -y cython` and
-      `pip install cython==3.3.0` in two separate RUNs (verified on bk-windows-media); a one-layer
-      `--force-reinstall` leaves `cython\` and still fails.
 
 - [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
       yarn.lock today). (3) OmniAccelerANT's floors (`sdk: >=3.11.4`, `flutter: >=3.41.6`) trail its lock (3.13.0, 3.47.0).
@@ -169,17 +162,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `plotting.plt`); hermetic grading (`PYTEST_DISABLE_PLUGIN_AUTOLOAD`) in bench_agent's own
       grading runs, which changes product behaviour; and re-measuring the process ceiling per launch
       on a busy shared box (about 0.37 s per launch under QEMU).
-
-- [ ] **CON82 — prove the 2026-10-07 pin bumps in the images** [M, ★★]. **The Linux items are proven**
-      in the `:latest` published 2026-10-09 (hub 655a2c4e): the Vulkan 1.4.363.0 loader on all three arches,
-      the foreign SDK at 24/24 components on arm64 and riscv64 without the retired slang patch, the runtime
-      smoke advertising 1.4.363.0, Chrome for Testing 155.0.8059.39 rendering headless, Node 26.11.0, the
-      26.08 flatpak refs on amd64 and arm64, and vvdec 3.2.1 (`libvvdec.pc` and `libvvdec.so.3.2.1` on all
-      three). The foreign SDK also needed vkprofiles' PyInstaller step skipped on foreign arches (f3b9ebb4).
-      Open: Windows base (scoop vulkan 1.4.363.0 and the arm64 component), the rocm loader zip, arm64
-      Vulkan-ValidationLayers at vulkan-sdk-1.4.363.0, the rocm FFmpeg against VK_HEADER_VERSION 363, the
-      media x265 4.2 build and the rocm llama stage's ggml-hip from b11476; then OmniAccelerANT's flatpak and
-      catcam lanes on runtime 26.08 once its hub gitlink moves.
 
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
       (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.
@@ -338,12 +320,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       **The Linux half is done:** the `:latest` published 2026-10-09 (hub 655a2c4e) reports
       `clang-format`, `clang-tidy`, `llvm-tblgen`, `FileCheck`, `lldb` and `ld.lld` at 23.1.3 on all three
       arches, and `validate-compilers.sh smoke` passes all 26 tools (`llvm-tblgen` after 02801990).
-      Open: a published `:winamd64` passing `Test-Container.ps1`'s 21-tool check. Then:
-      - AccelerANTgine switches `scan-build-21` to `scan-build`;
-      - each consumer re-runs its formatter under clang-format 23 and commits the result.
-      Measured the same day: AccelerANTgine's 38 C++ files drift in 25 under clang-format 21 and
-      26 under 23, the native plugin's 26 files in 25 under both. Neither gates C++ formatting, so
-      the switch reds nothing there; BeschleunigerBallett's sweep already uses 23.
+      **The Windows half is done:** the published `:winamd64` (`e96203a8…`) passes `Test-Container.ps1`'s
+      21-tool check, every tool at clang-cl's 23.1.3 (smoke run 2026-10-11: 268 passed, 0 failed, 1 skipped).
+      AccelerANTgine runs `scan-build` from the pinned LLVM (711b2cb) and is formatted under 23.1.3 (e96b31b),
+      and BeschleunigerBallett's sweep already used 23.
+      **Open:** OmniAccelerANT's native plugin re-runs clang-format 23 over its C++ and commits the result
+      (25 of its 26 files drifted on 2026-10-06). It gates no C++ formatting, so nothing reds meanwhile.
 
 - [b] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
       (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
@@ -439,50 +421,22 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         directory of particular images, reproducible on every run, which argues against Defender.
       - Next, admin only: compare that directory's node in the top layers of the default and the nvidia
         `media-tvm` (`ctr -n buildkit`, then its reparse and attribute flags).
-- [ ] **CON87 — a Linux-only `versions.env` edit rebuilds the whole Windows chain** [M, ★★].
-      `Dockerfile.base` COPYs all of `linux/scripts/01-core/versions.env` into its tail
-      (`Import-Versions.ps1`), so any key changes base's digest and re-keys every stage above it;
-      the toolchain stage also bind-mounts the file into its RUNs. On 2026-10-09 the riscv64-only,
-      `noforward` `CMAKE_VERSION_RISCV64` 4.4.2 → 4.4.4 (655a2c4e) turned the `:winamd64-rocm`
-      publish from a cache hit into a 4:45 h rebuild, and the rebuilt toolchain cost sccache its hits
-      (TVM took 60 min against 25 min the night before).
-      **In source 2026-10-11:** `Build-Buildkit.ps1` writes `windows/generated/versions.env`
-      (`Write-WindowsVersionsEnv`), without comments and without the 101 Linux-only keys nothing under
-      `windows/` names. The base COPY, both toolchain mounts and the merge re-COPY read it
-      (`BuildDriver.WindowsVersionsEnv.Tests.ps1`). Proved on base: after `CMAKE_VERSION_RISCV64` and
-      `DEEPSTREAM_VERSION` moved and a comment was added, `-Stages base` was CACHED end to end, manifest
-      `1b332f1d…` both times. Open: the first chain run after this rebuilds above base once; the run after
-      a Linux-only edit then has to show toolchain and merge cached too.
-      The two free-threaded files stay mounted on purpose: Windows proves its twins with
-      `free-threaded-wheel.py` and reads its verdicts from `free-threaded-twins.txt`, so an edit to
-      either can change a Windows result (9e3b7cba's `enclose()` runs in Windows' `load_all` too).
+- [ ] **CON88 — Python in the Windows images trusts only the roots the Server Core store ships** [S, ★].
+      Found in the 2026-10-11 `:winamd64` chain: meson's `ogg` wrap failed `CERTIFICATE_VERIFY_FAILED` on
+      `https://downloads.xiph.org/…` and fell back to its GitHub mirror, so the build did not notice. Measured in
+      the published `:winamd64` (`e96203a8…`):
+      - downloads.xiph.org itself verifies. It answers with a 302 to `ftp.osuosl.org`, whose chain ends at
+        `emSign Root CA - G1` (InCommon OVG2C, then emSign Root TLS CA - G1).
+      - Python 3.14.8 (OpenSSL 3.5.9) reads the Windows stores as they are: 18 roots in the container, 43 on the
+        dev host, where Windows had fetched more on demand. emSign is not among the 18. Unsetting `OPENSSL_CONF`
+        and `OPENSSL_MODULES` changes nothing.
+      - With `truststore` 0.10.4 the same URL verifies: CryptoAPI fetches the missing root, and the store then
+        holds 19. The image has no `truststore`, and meson's `wrap.py` uses it whenever it imports.
+      Fix: `truststore` in the image's CPython, pinned and hashed like the other wheels, so meson in the chain and
+      in consumers verifies through CryptoAPI. Prove it in the next chain: no `CERTIFICATE_VERIFY_FAILED` in the
+      merge stage's log.
 ## Open — the Windows arm64 bundle and unpublished variants
 
-- [ ] **CON63 — prove the WebRTC contract on the next arm64 chain** [S, ★★]. The
-      2026-10-05 Windows WebRTC fixes (`docs/windows-builds.md` § libffi's type exports,
-      § DTLS with OpenSSL 4, § gst-plugins-rs on Windows) were built and run on amd64
-      only. On the cross lane four things have never run: the gst-plugins-rs cross build
-      for `aarch64-pc-windows-msvc` (`Get-GstRustCargoPlan`'s target env), the host link
-      without `/FORCE:MULTIPLE`, the native file's `c_args = ['-fcommon']` for the
-      build machine's `ffi-7.dll`, and `Assert-LibffiTypeExport` on an aarch64 DLL. The
-      first arm64 merge either passes them or names the failing crate or symbol. Then
-      run the WebRTC loopback on the Snapdragon device through `Test-Arm64Bundle.ps1`,
-      which has no WebRTC step yet.
-      2026-10-10: the `:winarm64` merge passed the cross half. gst-plugins-rs built for
-      `aarch64-pc-windows-msvc`, and the aarch64 `ffi-7.dll` passed the libffi type-export
-      check. 2026-10-11: `Test-Arm64Bundle.ps1` runs the amd64 smoke gate's loopback
-      (`Invoke-GstWebRtcLoopback`, webrtcsink -> webrtcsrc, 60 frames over DTLS-SRTP) with the bundle's
-      `gst-launch-1.0.exe`, and `Export-Arm64Bundle.ps1` puts its two modules beside the gate. In that
-      layout the step passed in `:winamd64`.
-      **First device run, BeschleunigerBallett run 38156104572 (`:winarm64` `ba6bfaae…`): 16 of 17, the
-      loopback timed out.** webrtcsrc reached PLAYING and decoded nothing in 90 s, and neither process
-      wrote an error. The loopback now runs with `GST_DEBUG` at INFO for webrtcsink, webrtcsrc, webrtcbin,
-      nice and DTLS, and its failure carries 12 lines of each log. The gate lives in the hub's
-      `windows-arm64.yml` since then, which uploads the logs as `winarm64-bundle-webrtc-logs`; the
-      renderer's lane no longer hosts it. Its first run's logs named the cause, a race in the loopback, not
-      the bundle: on arm64 webrtcsink spends ~0.8 s finding an H.264 encoder (it lands on `mfh264enc`), so the
-      consumer listed producers before the producer registered, found none and waited for good. The loopback
-      now waits for `registered as [Producer]` in the signalling server's log. Open: the device run of that.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC

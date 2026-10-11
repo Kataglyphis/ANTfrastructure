@@ -20,8 +20,8 @@ just works: `torch` is dropped from the DEFAULT stage list with a notice (asking
 Which components are through is tracked in the status banner of `docs/windows-cross-builds.md` —
 do not restate it here, it moves). **Since 2026-08-26 the two lanes are at RUNTIME parity**: same
 GStreamer plugin set (200 DLLs, six contract plugins, `gst-ptp-helper`; the contract has
-thirteen since CON28 on 2026-10-05, and the seven WebRTC ones are unproven on arm64 until
-CON63), same media/inference
+thirteen since CON28 on 2026-10-05, and the seven WebRTC ones run on an arm64 device since
+2026-10-11), same media/inference
 surface, and the same six python wheels — the TVM/IREE **runtime** python packages are
 cross-built and assembled on this lane (#133). What stays amd64-only is a short, closed list:
 classic TensorRT (CUDA/cuDNN are cross-built since #176, 2026-09-20), the TVM and IREE
