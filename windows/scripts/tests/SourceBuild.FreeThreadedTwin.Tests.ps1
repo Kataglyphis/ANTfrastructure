@@ -73,7 +73,7 @@ Describe 'Get-FreeThreadedTwinPlan' {
                 Assert-Match '^free-threaded: no cp314t twin of onnxruntime_genai_directml: gil, pybind11 2\.13\.6' $gil.Reason
                 Assert-Match 'none, pyproject\.toml: wheel\.py-api = "py3"' (Get-FreeThreadedTwinPlan -Distribution 'apache-tvm').Reason
                 Assert-Throws { Get-FreeThreadedTwinPlan -Distribution 'onnxruntime' } -MessagePattern 'needs a cp314t twin, and this image has no .*python3\.14t\.exe to build it with'
-                Assert-Throws { Get-FreeThreadedTwinPlan -Distribution 'numpy' } -MessagePattern 'numpy is not in Get-FreeThreadedTwinTable'
+                Assert-Throws { Get-FreeThreadedTwinPlan -Distribution 'no-such-chain-wheel' } -MessagePattern 'no-such-chain-wheel is not in Get-FreeThreadedTwinTable'
             }
         }
     }

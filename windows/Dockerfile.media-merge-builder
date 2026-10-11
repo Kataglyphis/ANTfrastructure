@@ -14,8 +14,10 @@ FROM ${TVM_IMAGE} AS media-tvm
 
 # The merge binds these, not the images: a bind of media-tvm's own top layer listed its files but opened none (2026-10-09).
 FROM ${CORE_IMAGE} AS media-core-view
+ARG WINDOWS_TARGET_ARCH=amd64
 RUN cmd /c exit 0
 FROM ${TVM_IMAGE} AS media-tvm-view
+ARG WINDOWS_TARGET_ARCH=amd64
 RUN cmd /c exit 0
 
 # A script, not a COPY, flattens the spaced, nested CUDA/cuDNN DLL dirs; on BASE_IMAGE so media-core rebuilds never re-run it.
