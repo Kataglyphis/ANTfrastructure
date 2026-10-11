@@ -21,8 +21,8 @@ produce, and which gates keep it honest.
 >
 > Same media and inference surface: GStreamer with
 > an identical plugin set (200 linked plugin DLLs, all six contract plugins incl. `webrtc`/`nice`,
-> plus `gst-ptp-helper`; the seven entries CON28 added on 2026-10-05 are unproven here until
-> CON63, § WebRTC on the cross lane), ONNX Runtime + GenAI with DirectML, OpenCV 5 (NEON dispatch:
+> plus `gst-ptp-helper`; the seven entries CON28 added on 2026-10-05 run on an arm64 device since
+> 2026-10-11, § WebRTC on the cross lane), ONNX Runtime + GenAI with DirectML, OpenCV 5 (NEON dispatch:
 > `NEON_DOTPROD NEON_FP16 NEON_BF16`), FFmpeg with NEON asm + PyAV, LiteRT with the `tflite`
 > plugin, and the TVM/IREE **runtimes together with their python packages** — 6 wheels, the same
 > count as amd64.
@@ -1153,6 +1153,12 @@ like this:
   as the target linker, and `clang-cl --target=aarch64-pc-windows-msvc` with
   `llvm-lib` for the C and assembly that `ring` compiles. Build scripts and proc
   macros stay host binaries, linked by rustc's own MSVC lookup.
+
+**Proved on the device on 2026-10-11 (CON63).** The 2026-10-10 merge built all seven, and the aarch64
+`ffi-7.dll` passed `Assert-LibffiTypeExport`. Then `Test-Arm64Bundle.ps1` ran its WebRTC step on
+`windows-11-arm` with the bundle's `gst-launch-1.0.exe`: webrtcsink to webrtcsrc, 60 frames decoded over
+DTLS-SRTP (hub run 38170783445). On arm64 webrtcsink needs about 0.8 s to settle on `mfh264enc`, so the
+loopback waits for the producer to register before the consumer lists producers.
 
 ## aarch64 OpenSSL is a base prerequisite too
 
