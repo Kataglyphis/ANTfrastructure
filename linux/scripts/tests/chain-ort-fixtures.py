@@ -80,7 +80,9 @@ def uv(argv):
         python = next(p for p in (os.path.join(env, "bin", "python"), os.path.join(env, "Scripts", "python.exe"))
                       if os.path.exists(p))
         feed = os.environ["STUB_SYNC_WHEELS"]
-        argv = ["pip", "install", "--python", python] + [os.path.join(feed, w) for w in sorted(os.listdir(feed))]
+        skip = {argv[i + 1].replace("_", "-").lower() for i, a in enumerate(argv) if a == "--no-install-package"}
+        wheels = [w for w in sorted(os.listdir(feed)) if w.split("-")[0].replace("_", "-").lower() not in skip]
+        argv = ["pip", "install", "--python", python] + [os.path.join(feed, w) for w in wheels]
     if argv[:2] not in (["pip", "uninstall"], ["pip", "install"]):
         return 0
     python = argv[argv.index("--python") + 1]
