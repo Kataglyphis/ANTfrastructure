@@ -36,6 +36,12 @@ write_conf() {
   done
 }
 
+# Only a TensorRT build has the lib dir; DeepStream's TensorRT 10 has its own conf, and a missing dir is a dead loader path.
+write_tensorrt_conf() {
+  local lib="${TENSORRT_HOME:-/usr/local/tensorrt}/lib" conf="${1:-/etc/ld.so.conf.d/tensorrt.conf}"
+  if [ -d "${lib}" ]; then write_conf "${conf}" "${lib}"; else rm -f "${conf}"; fi
+}
+
 triplet="$(resolve_triplet)"
 
 # The libdir that really carries gstreamer-1.0.pc: native meson uses lib/<triplet>, cross builds lib/.
@@ -87,7 +93,7 @@ write_conf /etc/ld.so.conf.d/gcc.conf "/opt/gcc-${GCC_VERSION:-16.2.0}/lib64" "/
 
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   write_conf /etc/ld.so.conf.d/cuda.conf "${CUDA_HOME:-/usr/local/cuda}/lib64"
-  write_conf /etc/ld.so.conf.d/tensorrt.conf "${TENSORRT_HOME:-/usr/local/tensorrt}/lib"
+  write_tensorrt_conf
 elif [ "${ENABLE_AMD:-false}" = "true" ]; then
   write_conf /etc/ld.so.conf.d/migraphx.conf "/opt/rocm/lib" "/opt/rocm/lib64"
 fi

@@ -98,6 +98,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       5. **Upstream**: IREE's bare-`python3` genrule (`runtime/src/iree/vm/bytecode/isa/CMakeLists.txt`) and its
          Windows `cpython-NNt` SOABI detection (`CMakeLists.txt:782-791`); onnxruntime-genai's
          `PYBIND11_MODULE` (`src/python/python.cpp:468`) plus a thread-safety audit of its global log callback.
+         **Drafts written 2026-10-12, not posted** (owner reviews first; `~/upstream-drafts/2026-10-12/` on the build
+         host): none of the three is reported or fixed upstream. IREE: a 13-line `iree_genrule.cmake` fix that swaps a
+         leading `python3` for `${Python3_EXECUTABLE}` in all five genrules, and a 4-line SOABI fix (cosmetic today).
+         onnxruntime-genai: `py::mod_gil_not_used()` alone is not safe (the binding leans on the GIL to serialise a C API
+         documented as not thread safe); the issue lists what needs a lock, and the patch locks the log callback only.
 
 - [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
       yarn.lock today). (3) Optional: OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule into the
@@ -358,9 +363,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         consumer run jobs' apps (those jobs loaded the bundle's DLLs only; runs
         36136967538, 36142875090, 36142882316).
 - [b] **CON31 — Variants that are not published** [L, ★]. Blocked on owner decisions.
-      - `:latest-nvidia`: no `libnvinfer` in the runtime payload, and no arm64 route. Published
-        for amd64 since 2026-10-02 (hub b4d5fdd5); whether that payload has `libnvinfer` is
-        unchecked.
+      - `:latest-nvidia`: no arm64 route, and no TensorRT 11 (`ENABLE_TENSORRT=false`). Read in the published image on
+        2026-10-12 (`23e3cc9e…`): the only `libnvinfer` is DeepStream's TensorRT 10.16.1 under
+        `/opt/nvidia/deepstream/tensorrt-10.16.1.11/lib`, which `ldconfig -p` resolves; ONNX Runtime has no TensorRT EP.
+        The stale `tensorrt.conf` naming the absent `/usr/local/tensorrt/lib` is gone from the source since 2026-10-12;
+        the next nvidia chain proves it.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
         the device as shipped.
       - `:winamd64-rocm`: published (first 2026-09-28 at ad08bc30, again 2026-10-03 at
@@ -368,62 +375,23 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         § Redistribution.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
-- [ ] **CON42 — DeepStream in `:latest-nvidia`** [L, ★★]. Owner request 2026-09-30. Spike
-      (phases 1–3) done 2026-10-01, the GPU gate passed the same day; phases 4 and 6 are in
-      the source. **Owner decision 2026-10-07: DeepStream is in every amd64 nvidia build, at
-      full size** (TensorRT 10's builder resources for every GPU generation stay, so the RTX
-      2080's sm_75 keeps working). `stage-defs.sh` defaults `ENABLE_DEEPSTREAM=true` for an
-      amd64 nvidia chain; `=false` opts a run out. **Published 2026-10-11**: `:latest-nvidia`
-      index sha256:810f36b3 (amd64 sha256:23e3cc9e, chain run 20261011-040056, hub aabebdbc) carries
-      DeepStream 9.1; its runtime smoke passes `check_deepstream` (all nine elements register) and the
-      registry blacklist check, scanned with the CUDA driver stubs (only the documented UCX plugin is
-      blacklisted). The chain needed three fixes first (CHANGELOG 2026-10-10/11): pkg-config and the
-      loader find `/opt/gstreamer` in the build stage, and the blacklist probe uses the driver stubs.
-      GStreamer and libcamera without libunwind are in every variant by owner decision (2026-10-01,
-      "everywhere"; CON51, closed).
-
-      Measured 2026-10-01 (DeepStream v9.1.0, commit 581889df; runtime
-      `deepstream-binaries-x86_9.1.0_amd64.deb`; GStreamer 1.29.2; CUDA 13.4.2; GCC 16.2):
-      - **Phase 1 — passes.** 48 source components build against `/opt/gstreamer`; all nine
-        checked elements register without a GPU. Fixes, exclusions and the soname closure:
-        `docs/linux-accelerator-images.md` § DeepStream.
-      - **Phase 2 — passes on the GPU** (RTX 2080, sm_75, driver 595.58.03, CDI with rootless
-        nerdctl): TensorRT 10.16 builds the sample engine for sm_75, NVDEC decodes through the
-        distro `libv4l2`, and decode → `nvstreammux` → `nvinfer` → `nvtracker` →
-        `nvmultistreamtiler` → `nvdsosd` (GPU mode) runs with detections and tracker ids in the
-        metadata, as root and as uid 1001. `nvstreamdemux` and `nvurisrcbin` run too. TensorRT 10
-        sits beside the variant's 11 (`ENABLE_TENSORRT` stays false; DeepStream does not need it).
-        Pass/fail only; the licence forbids publishing benchmark results.
-      - **Phase 3 — passes.** NVIDIA's CUDA 13.2 builds (`libnvbufsurftransform`, the tracker,
-        TensorRT 10.16) run their sm_75 kernels on CUDA 13.4.92.
-      - **The GPU run found four defects, all fixed in the source** (doc § The GPU run): the
-        builder resources TensorRT `dlopen()`s by file name need links in the default lib dir;
-        NVDEC needs NVIDIA's plugin linked into the distro `libv4l2`'s plugin dir; NVIDIA's
-        prebuilt legacy `nvstreammux` reads `GstMapInfo.data` after unmap, which GStreamer
-        ≥ 1.28 clears, so the image sets `USE_NEW_NVSTREAMMUX=yes`; and `libunwind.so.8`, linked
-        by GStreamer core and libcamera, turned an exception through `std::call_once` into a
-        segfault (`docs/failure-modes.md`).
-      - **Phases 4 and 6 — in the source.** `05-frameworks/deepstream.sh` (media stage `build`,
-        package `stage-runtime` / `assert-absent`), `deepstream-verify.sh` (closure, one
-        GStreamer, no `libv4l2` hijack, the two `dlopen()` links, plugin dir, registration; also
-        `check_deepstream` in the runtime smoke), `DEEPSTREAM_*` pins with SHA256s, the
-        `ENABLE_DEEPSTREAM` refusals outside the nvidia variant, `test-deepstream.sh` and 22
-        `deepstream.*` mutation entries.
-      - **Phase 5 — decided**: the owner allowed publishing it (doc § Licence).
-
-      Still to do:
-      - Other prebuilt NVIDIA plugins may read `GstMapInfo` after unmap like the legacy mux.
-        The GPU run exercised `nvvideoconvert`, `nvv4l2decoder`, `nvmultistreamtiler` and the
-        tracker; `deepstream_bins`, `dewarper`, `of`, `segvisual` and the rest were not run.
-      - Size: TensorRT 10 alone is 2.6 GB (builder resources for every GPU generation). Kept
-        whole by owner decision (2026-10-07).
-      - **Phase 7 (arm64)**: out of scope until CON31 has an arm64 CUDA route. The Jetson
-        runtime `.deb` is pinned (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it.
-      - **Phase 8 — unblocked** (the image is published): `consumer-image-contract.md` names
-        (`DEEPSTREAM_ROOT`, the plugin link, `USE_NEW_NVSTREAMMUX`) and OmniAccelerANT's `nvinfer` path.
-      - **A GPU run of the published image** (the RTX 2080 pipeline of phase 2, now FROM `:latest-nvidia`).
-      - Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only). The v9.1.0 release
-        also hosts 9.1.1 assets for NVIDIA's `develop` branch; the pin stays on 9.1.0.
+- [b] **CON42 — DeepStream in `:latest-nvidia`: what is left after the publish** [M, ★]. **Done:** DeepStream 9.1
+      ships in every amd64 nvidia build (owner 2026-10-07, full TensorRT 10), published 2026-10-11 (`:latest-nvidia`
+      index `810f36b3…`, amd64 `23e3cc9e…`). **The GPU run on the published image passed on 2026-10-12** (RTX 2080,
+      sm_75, driver 595.58.03, CDI; `docs/linux-accelerator-images.md` § The GPU run on the published image): an sm_75
+      engine build, 1442 frames with 30214 objects through `nvdsosd`, the NvDCF tracker over two sources, demux,
+      `nvurisrcbin`, all again as uid 1001. Phase 8's contract is in `docs/consumer-image-contract.md` § DeepStream in
+      `:latest-nvidia`. Of the prebuilt plugins, only `nvblender` reads `GstMapInfo` after unmap like the legacy mux
+      (every blend drops its buffer; with two inputs it also hangs, on GStreamer 1.24.2 too); 14 others reached EOS with
+      correct output. Left, each an owner call:
+      - `nvblender`: documented "do not use". An opt-in shim that restores the mapping would also revive the legacy mux,
+        but it turns off a GStreamer check for the whole process, and the two-input hang stays (NVIDIA's own).
+      - NVIDIA's stock `config_preprocess.txt` names `lib/gst-plugins/libcustom2d_preprocess.so`, which the image moved to
+        `lib/` (documented). Making stock configs work unchanged means a plugins-only link target and a chain rebuild.
+      - OmniAccelerANT's `nvinfer` path: later, by owner decision (2026-10-12).
+      - **Phase 7 (arm64)**: out of scope until CON31 has an arm64 CUDA route. The Jetson runtime `.deb` is pinned
+        (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it.
+      Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.
 
 ## Open — hub tooling and the dev host
 
