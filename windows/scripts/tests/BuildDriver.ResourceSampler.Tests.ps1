@@ -51,6 +51,14 @@ Describe 'A stopped BK run keeps its record (hub #184)' {
         Assert-Match "Write-RunManifest -Status 'ok' -Elapsed \`$elapsed" $script:drv 'the green run'
         Assert-Match '(?s)\} finally \{.*RunSucceeded.*-eq \$false.*Write-RunManifest -Status "failed:\$\(\$script:CurrentPhase\)"' $script:drv 'the stopped run, before the sampler teardown'
         Assert-Match '(?s)function Invoke-BkStage.*\$script:CurrentPhase = \$Label\s*\r?\n.*\r?\n\s*Assert-StageDiskHeadroom' $script:drv 'a refusal names the stage it refused'
+        Assert-Match '(?s)OK in \$\(\$script:StageTimings\[\$Label\]\)s"\s*\r?\n.*\r?\n\s*\$script:CurrentPhase = "after \$Label"' $script:drv 'a throw between stages is not charged to the one that passed'
+        Assert-Match 'Get-Variable -Name started -Scope Script' $script:drv 'never a caller''s $started'
+    }
+
+    It 'gives each -ConcurrentAux child the parent''s run id with its branch, so their logs and manifests never collide' {
+        Assert-Match "'-MediaBranches', \`$aux, '-MediaMemoryGb', \`$auxMem, '-ParentRunId', \`$script:RunId\)" $script:drv 'the parent passes its id'
+        Assert-Match "\`$script:RunId = if \(\`$ParentRunId\) \{ `"\`$ParentRunId-\`$\(\`$MediaBranches -join '\+'\)`" \}" $script:drv 'the child names its run after it'
+        Assert-Match "\[ValidatePattern\('\^\(\\d\{8\}-\\d\{6\}\)\?\$'\)\]\[string\]\`$ParentRunId" $script:drv 'only a run id, never a path'
     }
 
     It 'the manifest names its status and every finished stage (mutation)' {
