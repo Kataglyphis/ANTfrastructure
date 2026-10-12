@@ -96,9 +96,9 @@ if ($arch -eq 'amd64') {
 
     $plan = Get-VvlDependencyPlan -KnownGoodJson (Get-Content -LiteralPath (Join-Path $vvlSource 'scripts\known_good.json') -Raw) -WorkDir $WorkDir
     $common = @("-DCMAKE_PREFIX_PATH=$($depsPrefix.Replace('\', '/'))", "-DPython3_EXECUTABLE=$($py.Exe)") + (Get-LlvmArchiverCmakeArg)
-    # VVL's -Wall is clang-cl's -Weverything: 1.36 M warning lines, 97.9 % of a 768 MB merge log; clang-cl appends _CL_ (hub #183).
-    $callerCl = $env:_CL_
-    $env:_CL_ = '/w'
+    # VVL's -Wall is clang-cl's -Weverything: 1.36 M warning lines, 97.9 % of a 768 MB merge log; CL, as _CL_ lands after `--` (hub #183).
+    $callerCl = $env:CL
+    $env:CL = '/w'
     try {
         foreach ($dep in $plan) {
             Write-Host "=== $($dep.Name) @ $($dep.Commit) ($arch) ==="
@@ -117,7 +117,7 @@ if ($arch -eq 'amd64') {
             -ExtraArgs ($common + @('-DUPDATE_DEPS=OFF', '-DBUILD_WERROR=OFF', '-DBUILD_TESTS=OFF',
                 '-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=', '-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH='))
         Invoke-NinjaBuildWithRetry -BuildDir $vvlBuild -Install -InstallConfig 'Release'
-    } finally { if ($null -eq $callerCl) { Remove-Item Env:_CL_ -ErrorAction SilentlyContinue } else { $env:_CL_ = $callerCl } }
+    } finally { if ($null -eq $callerCl) { Remove-Item Env:CL -ErrorAction SilentlyContinue } else { $env:CL = $callerCl } }
     foreach ($name in "$LayerName.dll", "$LayerName.json") {
         $built = @(Get-ChildItem -LiteralPath $vvlPrefix -Recurse -File -Filter $name)
         if ($built.Count -ne 1) { throw "expected one $name under $vvlPrefix, found $($built.Count)" }

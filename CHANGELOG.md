@@ -29,8 +29,9 @@
   it at scale.
 - **#183:** the Vulkan validation layers' and x265's GCC-style `-Wall` reaches clang-cl as `-Weverything`: the arm64
   VVL alone was 6,228,195 lines, 752 MB of a 768 MB merge log, and x265 added 27,423 `-Wunsafe-buffer-usage` lines to
-  every ffmpeg branch. Both builds run with `_CL_=/w`, which clang-cl appends after its own flags and sccache does not
-  hash, and restore the caller's `_CL_` after it.
+  every ffmpeg branch. Both builds run with `CL=/w`, which clang-cl reads before its own flags and sccache does not
+  hash, and restore the caller's `CL` after it. The first fix used `_CL_`, which clang-cl appends: behind CMake's
+  `-- <source>` the `/w` read as a file name and failed x265's compiler check (bk-20261012-190400).
 
 ## 2026-10-12 — CON91, first half: the Windows drivers and syncs follow the Python pin
 

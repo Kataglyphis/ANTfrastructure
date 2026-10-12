@@ -127,16 +127,16 @@ $x265Cml = Join-Path $x265Root 'source\CMakeLists.txt'
 $x265Old = @(Select-String -LiteralPath $x265Cml -Pattern 'cmake_policy\s*\(\s*SET\s+CMP\d+\s+OLD\s*\)' | ForEach-Object { $_.Line.Trim() })
 if ($x265Old.Count -gt 0) { throw "x265 $x265Version CMakeLists.txt sets a policy OLD, which CMake 4 refuses: $($x265Old -join '; ')" }
 $x265Build = Join-Path $WorkDir 'x265-build'
-# x265's -Wall is clang-cl's -Weverything (27,423 -Wunsafe-buffer-usage lines a build); clang-cl appends _CL_ to every compile (hub #183).
-$callerCl = $env:_CL_
-$env:_CL_ = '/w'
+# x265's -Wall is clang-cl's -Weverything (27,423 -Wunsafe-buffer-usage lines); CL, not _CL_, which lands after CMake's `--` (hub #183).
+$callerCl = $env:CL
+$env:CL = '/w'
 try {
     Invoke-CmakeConfigure -SourceDir (Join-Path $x265Root 'source') -BuildDir $x265Build -InstallPrefix $Prefix -Generator 'Ninja' `
         -ExtraArgs (@('-DENABLE_SHARED=OFF', '-DENABLE_CLI=OFF', '-DENABLE_ASSEMBLY=ON', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
             # The static CRT, like dav1d/x264 above and FFmpeg itself: x265's own switch rewrites /MD to /MT.
             '-DSTATIC_LINK_CRT=ON') + @(Get-LlvmArchiverCmakeArg)) | Out-Host
     Invoke-NinjaBuildWithRetry -BuildDir $x265Build -Install -InstallConfig 'Release' | Out-Host
-} finally { if ($null -eq $callerCl) { Remove-Item Env:_CL_ -ErrorAction SilentlyContinue } else { $env:_CL_ = $callerCl } }
+} finally { if ($null -eq $callerCl) { Remove-Item Env:CL -ErrorAction SilentlyContinue } else { $env:CL = $callerCl } }
 Copy-CodecStaticLib -From 'x265-static.lib' -PcName 'x265.pc'
 # 4.2's threadpool.cpp reads the CPU frequency from the registry (RegOpenKeyExA), and x265.pc does not say so.
 Add-CodecPcSystemLib -Pc (Join-Path $libDir 'pkgconfig\x265.pc') -Name 'advapi32'

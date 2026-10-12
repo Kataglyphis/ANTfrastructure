@@ -140,9 +140,12 @@ this repo's cp314 pin).
   wrap, find the regenerate trigger with `ninja -d explain`, and set `RUSTC_WRAPPER`.
 - **#183 — vendored code compiles under clang-cl's `/Wall`: 1.36 M warning lines in one arm64
   merge vertex (opened 2026-10-12, #153; `BACKLOG.md` CON89's VVL item). VVL and x265 are
-  FIXED IN SOURCE the same day:** both builds run with `_CL_=/w`, which clang-cl appends after
-  its own flags (probed in `:winamd64`: 3 warnings without it, 0 with it). sccache ignores
-  `_CL_`, and `/w` changes no code. Abseil in ORT and OpenCV's `matx.hpp` stay open; they
+  FIXED IN SOURCE the same day:** both builds run with `CL=/w`, which clang-cl reads before its
+  own flags, and `/w` still beats a later `-Weverything` (probed in `:winamd64`: 3 warnings
+  without it, 0 with it). The first fix used `_CL_`, which clang-cl appends after them; CMake
+  calls clang-cl as `... -- <source>`, so `/w` landed after the `--` and read as a file name,
+  failing x265's compiler check in bk-20261012-190400. sccache hashes neither variable, and
+  `/w` changes no code. Abseil in ORT and OpenCV's `matx.hpp` stay open; they
   warn from inside our own builds, where a blanket `/w` would hide our warnings too. VVL's GCC-style
   `-Wall` reaches clang-cl as `/Wall`, which is `-Weverything`. In bk-20261010-121545 that
   vertex is 6,228,195 lines and 752 MB of the 768 MB merge log (97.9 %); the "about 110k"
