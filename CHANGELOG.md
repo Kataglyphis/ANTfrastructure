@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — CON42: `nvblender` stays unusable, and the helper libraries stay out of `lib/gst-plugins/`
+
+Two owner calls, taken with the recommended option:
+- **No `nvblender` shim.** The `LD_PRELOAD` shim that restores `GstMapInfo` after unmap makes its blends succeed, but it
+  switches GStreamer's check off for every caller in the process, and the two-input hang is NVIDIA's own (1.24.2 too).
+  `nvblender` stays documented as "do not use"; a forum draft for NVIDIA waits for the owner's review, unposted.
+- **NVIDIA's stock configs keep needing one edit.** A plugins-only link target would let `config_preprocess.txt` name
+  `lib/gst-plugins/libcustom2d_preprocess.so` unchanged, but the registry scan would then segfault for anyone who puts
+  NVIDIA's documented `lib/gst-plugins/` on `GST_PLUGIN_PATH` (it `dlclose()`s the helper libraries). The stock config
+  fails loudly instead (`Could not parse custom lib path`), and `docs/consumer-image-contract.md` names the edit.
+
 ## 2026-10-12 — CON66: the suite on the installed cp314t wheel is a hub step
 
 - **`linux/scripts/02-toolchain/python/test-free-threaded-wheel.sh`** runs a project's tests on the `cp314t` wheel
