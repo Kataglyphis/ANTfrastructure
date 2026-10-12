@@ -191,6 +191,12 @@ t_assert_eq "" "$(grep -e 'pip install' "${LOG}" | grep -e 'onnxruntime_gpu' -e 
 t_assert_ok "${FTPY}" -I "${CENSUS}" --check --store "${TWINS}"
 t_assert_contains "${_out}" "ORT-CENSUS PASS"
 
+t_case "an image built before 2026-10-12 names the twins PYTHON_WHEELS_CP314T, and a free-threaded venv still finds them"
+_ft_venv
+_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T="${TWINS}" _reconcile "${FTVENV}")"
+t_assert_contains "${_out}" "rc=0 NO_SYNC=1"
+t_assert_contains "$(grep -e 'pip install' "${LOG}")" "/twins/onnxruntime_dnnl-1.30.0-" "the twin, from the older images' variable"
+
 t_case "in a GPU image (nvidia, rocm) a free-threaded venv takes its GPU flavour's twin, not the CPU one beside it"
 for _fl in gpu migraphx; do
   _ft_venv
@@ -261,6 +267,28 @@ t_assert_contains "$(head -1 "${LOG}")" "uv sync --dev --all-extras" "the sync r
 t_assert_contains "$(sed -n 2p "${LOG}")" "pip uninstall --python " "then the reconcile"
 t_assert_contains "$(sed -n 2p "${LOG}")" " onnxruntime-directml" "removes the synced PyPI dist"
 t_assert_ok _census_ok
+
+t_case "in our image a locked sync leaves the lock's ORT to the chain, so a Python PyPI's ORT lacks still syncs"
+_pypi_venv
+"${VPY}" "${FIX}" reset "${SITE}"
+"${VPY}" "${FIX}" wheel "${FEED}" onnxruntime 1.27.0 onnxruntime "pypi core, no wheel for a new Python"
+"${VPY}" "${FIX}" wheel "${FEED}" tvm 0.25.0 tvm "a non-ORT dependency"
+printf 'version = 1\n\n[[package]]\nname = "onnxruntime"\n\n[[package]]\nname = "onnxruntime-genai"\n\n[[package]]\nname = "tvm"\n' > "${_work}/proj/uv.lock"
+_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" _sync)"
+t_assert_contains "${_out}" "rc=0 NO_SYNC=1"
+t_assert_contains "$(head -1 "${LOG}")" "--no-install-package onnxruntime --no-install-package onnxruntime-genai" "every ORT name of the lock, nothing else"
+t_assert_eq "" "$(head -1 "${LOG}" | grep -e '--no-install-package tvm' || true)" "a non-ORT dependency still syncs"
+t_assert_eq "" "$(grep -e 'pip uninstall' "${LOG}" || true)" "nothing of PyPI's ORT reached the venv to remove"
+t_assert_contains "$(grep -e 'pip install --python' "${LOG}" | tail -1)" "/store/onnxruntime-1.30.0-" "the chain core wheel stands in"
+t_assert_ok _census_ok
+
+t_case "outside our images a locked sync installs the lock's ORT as it is"
+_pypi_venv
+"${VPY}" "${FIX}" reset "${SITE}"
+"${VPY}" "${FIX}" wheel "${FEED}" onnxruntime 1.27.0 onnxruntime "pypi core"
+_out="$(_sync)"
+t_assert_eq "" "$(head -1 "${LOG}" | grep -e '--no-install-package' || true)" "no store, so nothing is left out"
+rm -f "${_work}/proj/uv.lock"
 
 t_case "a failed uv sync fails uv_sync_project and is not papered over by the reconcile"
 _pypi_venv

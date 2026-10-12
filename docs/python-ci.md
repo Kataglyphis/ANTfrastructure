@@ -307,6 +307,12 @@ installed whatever the lock named, so OrchestrANT's CI tested on PyPI `onnxrunti
 `onnxruntime-gpu` and `onnxruntime-genai` (plus the `-directml` pair on Windows), all
 overlapping in one `site-packages/onnxruntime`.
 
+**Inside our images the Linux sync installs no PyPI ORT at all** (since 2026-10-12). With a
+`uv.lock` and `ORT_CHAIN_WHEEL_DIR` set, `uv_sync_project` passes `--no-install-package` for every
+lock entry the census counts as ONNX Runtime (`onnxruntime` and `onnxruntime-*`), and the reconcile
+installs the chain wheels in their place. The chain's ORT then serves a Python that PyPI's has no
+wheel for yet: 1.31.0 stopped at cp314 when 3.15.0 came out, and a locked sync on 3.15 failed on it.
+
 Every `uv_sync_project` (Linux) and `Sync-UvProjectDependencies` (Windows) now ends by
 reconciling the venv it synced:
 

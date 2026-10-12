@@ -332,6 +332,8 @@ uv_sync_project() {
     info "No uv.lock found — performing non-locked sync"
   fi
   
+  _uv_chain_ort_skip_args sync_args
+
   if [ $no_wxpython -eq 1 ]; then
     sync_args+=(--no-build-isolation-package wxpython)
   elif [ -f pyproject.toml ] && grep -q "wxpython" pyproject.toml 2>/dev/null; then
@@ -407,7 +409,7 @@ _uv_chain_ort_names() {
 # Moves the venv's ORT onto the chain wheels. docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
 uv_reconcile_chain_ort() {
   local venv="$1" store="${ORT_CHAIN_WHEEL_DIR:-}" gil py names
-  local -a drop=() wheels=()
+  local -a drop=() wheels=() installed=()
   py="${venv}/bin/python"
   [ -x "${py}" ] || py="${venv}/Scripts/python.exe"
   _uv_chain_ort_preflight "${store}" "${py}" || return 1
@@ -419,6 +421,8 @@ uv_reconcile_chain_ort() {
     return 0
   fi
   [ -z "${names}" ] || mapfile -t drop <<< "${names}"
+  installed=("${drop[@]}")
+  _uv_chain_ort_add_skipped drop
   if [ "${#drop[@]}" -eq 0 ] || [ -z "${store}" ]; then
     _uv_chain_ort_notice "${venv}" "${py}" "${store}" "${drop[@]}"
     return
@@ -430,13 +434,42 @@ uv_reconcile_chain_ort() {
   fi
   _uv_chain_ort_abi_fits "${venv}" "${py}" "${wheels[@]}" || return 1
   info "chain ORT: replacing ${drop[*]} in ${venv} with ${wheels[*]##*/}"
-  uv pip uninstall --python "${py}" "${drop[@]}" || return 1
+  _uv_chain_ort_uninstall "${py}" "${installed[@]}" || return 1
   uv pip install --python "${py}" --no-index --no-deps --force-reinstall "${wheels[@]}" || {
     printf 'ERROR: chain ORT: %s does not take the chain wheels [%s]\n' "${venv}" "${wheels[*]##*/}" >&2
     return 1
   }
   _uv_chain_ort_prove "${venv}" "${py}" "${store}" || return 1
   _uv_chain_ort_hold_sync hold
+}
+
+# <array name>: inside our images the sync leaves the lock's ORT to the chain wheels, since PyPI's lag a new Python by months.
+_uv_chain_ort_skip_args() {
+  local -n _args="$1"
+  local ort
+  _UV_CHAIN_ORT_SKIPPED=""
+  [ -n "${ORT_CHAIN_WHEEL_DIR:-}" ] && [ -f uv.lock ] || return 0
+  for ort in $(sed -n 's/^name = "\(onnxruntime[a-z0-9-]*\)"$/\1/p' uv.lock | grep -E '^onnxruntime(-|$)' | sort -u); do
+    _args+=(--no-install-package "${ort}")
+    _UV_CHAIN_ORT_SKIPPED+="${ort} "
+  done
+  [ -z "${_UV_CHAIN_ORT_SKIPPED}" ] || info "chain ORT: the sync leaves ${_UV_CHAIN_ORT_SKIPPED% } to the chain wheels"
+}
+
+# <array name>: what the sync left out on purpose needs the chain wheels as much as what PyPI installed.
+_uv_chain_ort_add_skipped() {
+  local -n _drop="$1"
+  local skipped
+  for skipped in ${_UV_CHAIN_ORT_SKIPPED:-}; do
+    [[ " ${_drop[*]} " == *" ${skipped} "* ]] || _drop+=("${skipped}")
+  done
+}
+
+# <py> <dist>...: removes the PyPI ORT that reached the venv; a skipped one never did.
+_uv_chain_ort_uninstall() {
+  local py="$1"
+  shift
+  [ "$#" -eq 0 ] || uv pip uninstall --python "${py}" "$@"
 }
 
 # Inside our images (a store is declared) the store, the interpreter and the census must all exist.
@@ -450,7 +483,8 @@ _uv_chain_ort_preflight() {
 
 # <store> <py> <venv>: a cp3XYt venv inside our images takes the twins (PYTHON_WHEELS_FREE_THREADED), the same chain build, as Windows' Select-UvChainOrtWheelStore does.
 _uv_chain_ort_store() {
-  local twins="${PYTHON_WHEELS_FREE_THREADED:-}"
+  # Images built before 2026-10-12 name the twin store PYTHON_WHEELS_CP314T.
+  local twins="${PYTHON_WHEELS_FREE_THREADED:-${PYTHON_WHEELS_CP314T:-}}"
   if [ -n "$1" ] && [ -n "${twins}" ] && [ -d "${twins}" ]; then
     case "$(_uv_chain_ort_abi "$2" 2>/dev/null)" in
       cp*t) info "chain ORT: $3 is free-threaded, so it takes the twins in ${twins}" >&2; printf '%s\n' "${twins}"; return 0 ;;

@@ -243,7 +243,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `WindowsTvm.Common.psm1`); and the twin store's name, `C:\runtime\wheels-cp314t` and `PYTHON_WHEELS_CP314T`,
       which Linux now spells `wheels-free-threaded` / `PYTHON_WHEELS_FREE_THREADED`. The three readers take the new
       name first already (hub, 2026-10-12), so the Dockerfile, the arm64 bundle's folder and their tests can move
-      next. Derive each from `PYTHON_VERSION` like Linux does, so the next upgrade is one line here too.
+      next. Derive each from `PYTHON_VERSION` like Linux does, so the next upgrade is one line here too. And
+      `Sync-UvProjectDependencies` should leave the lock's ORT to the chain wheels as Linux's sync does since
+      2026-10-12 (`--no-install-package`, `docs/python-ci.md` § Trap 3): PyPI's onnxruntime has no cp315 wheel.
+      **Red until decided:** `Torch.Rocm.Tests.ps1`'s "every cp wheel pinned matches PYTHON_VERSION" fails, since
+      ai-edge-litert has no cp315 `win_amd64` wheel (2.3.0, the newest, stops at cp314; checked 2026-10-12). The ROCm
+      image's venv either goes without LiteRT until upstream ships one, or builds it from source: an owner call there.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294

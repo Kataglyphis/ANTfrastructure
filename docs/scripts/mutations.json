@@ -7771,6 +7771,22 @@
   "why": "a docs page that links pytest-report.html would break on the first Python upgrade"
  },
  {
+  "id": "uv-chain-ort.sync-skips-pypi-ort",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "    _args+=(--no-install-package \"${ort}\")\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+  "why": "a locked sync on a Python that PyPI's ORT has no wheel for fails before the chain wheels can stand in"
+ },
+ {
+  "id": "uv-chain-ort.reconcile-installs-for-skipped",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "    [[ \" ${_drop[*]} \" == *\" ${skipped} \"* ]] || _drop+=(\"${skipped}\")\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
+  "why": "the ORT the sync left out would never be installed, and the venv would run without ONNX Runtime"
+ },
+ {
   "id": "python.ci-docs-default-coverage-is-the-image-interpreter",
   "target": "linux/scripts/02-toolchain/python/ci_build_docs.sh",
   "find": "COVERAGE_VERSION=\"${1:-${COVERAGE_VERSION:-${DEFAULT_PYTHON_VERSION:?no pinned Python: keep versions.env beside python_uv.sh, or pass a version}}}\"",

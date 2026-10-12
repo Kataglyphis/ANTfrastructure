@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — CON90: consumers name no Python version, and the image's ORT no longer waits for PyPI
+
+- **`pinned` in a leg list.** `ci_tests.sh` reads `pinned` as the pinned X.Y and `pinnedt` as its twin, so a row that
+  picks its legs (OrchestrANT's riscv64 row wants the GIL one only) names no version; `ci_build_docs.sh` publishes the
+  default leg's reports as `pytest-report.html`/`.md` and `pytest-report-free-threaded.html` beside the versioned ones.
+- **Inside our images the Linux sync installs no PyPI ORT.** `uv_sync_project` passes `--no-install-package` for every
+  ORT entry of the lock when `ORT_CHAIN_WHEEL_DIR` is set, and the reconcile installs the chain wheels in their place.
+  Measured with uv 0.13.0 on python-build-standalone 3.15.0: a locked sync of a lock naming onnxruntime 1.31.0 fails
+  (`only has wheels with ... cp314, cp314t`), and with the flag it syncs the rest. A free-threaded venv also finds the
+  twins under the older images' `PYTHON_WHEELS_CP314T`. Windows' sync: BACKLOG CON91.
+
 ## 2026-10-12 — CON90: Python 3.15.0, and an upgrade is one line
 
 - **`PYTHON_VERSION=3.15.0`** (owner request; released 2026-10-09). `PYTHON_TGZ_SHA256` was computed from python.org's
