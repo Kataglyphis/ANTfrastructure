@@ -72,8 +72,18 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
         Assert-Match "Import-GateModule 'WindowsPythonWheel\.Common\.psm1'" $script:gateText 'the proof is the wheel module''s, shared with the consumer kit'
         Assert-Match "& \`$venvPy -I \`$Helper prove " $script:wheelModuleText 'the build lanes'' own proof'
         Assert-Match '--disable-pip-version-check --no-index @resolve ' $script:wheelModuleText 'every install offline'
-        Assert-Match "\{ @\('--find-links', \`$Store, '--find-links', \`$deps\) \} else \{ @\('--no-deps'\) \}" $script:wheelModuleText `
-            'with the dependencies Copy-TargetPythonDeps.ps1 staged in deps\, and alone in a bundle that has none (CON79)'
+        Assert-Match '\$resolve = Get-TwinInstallArgument -Store \$Store' $script:wheelModuleText 'the resolve words come from the one helper'
+    }
+
+    It 'resolves each twin alone, or with the deps\ beside it, as whole words a native command receives (mutation)' {
+        Invoke-InTestDir { param($d)
+            $alone = Get-TwinInstallArgument -Store $d
+            Assert-Equal 1 $alone.Count 'one word, not a string the splat cuts into characters'
+            Assert-Equal '--no-deps' ((& cmd /c echo @alone) -join '') 'device gate runs 38180134179 to 38209436310 handed pip ''- - n o - d e p s'''
+            $null = New-Item -ItemType Directory -Path (Join-Path $d 'deps')
+            $withDeps = Get-TwinInstallArgument -Store $d
+            Assert-Equal "--find-links|$d|--find-links|$(Join-Path $d 'deps')" ($withDeps -join '|') 'the store and its deps\ (CON79)'
+        }
     }
 
 

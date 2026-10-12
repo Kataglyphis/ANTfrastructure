@@ -311,6 +311,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       Fix: `truststore` in the image's CPython, pinned and hashed like the other wheels, so meson in the chain and
       in consumers verifies through CryptoAPI. Prove it in the next chain: no `CERTIFICATE_VERIFY_FAILED` in the
       merge stage's log.
+- [ ] **CON89 — what rides the next full Windows chain** [M, ★]. Each item re-keys `Dockerfile.base` or the media
+      stages, so landing one alone would cost a rebuild of its own. They go in with the next planned full rebuild, which is
+      CON79 item 2's arm64 chain or CON88:
+      - `WindowsScripts.Shared.psm1`'s `vswhere` selector is `if ($All) { @() } else { @('-latest') }`. Splatted, the unrolled
+        string hands vswhere `- l a t e s t`, so every chain logs `vswhere returned no installation; using filesystem fallback`.
+        The fix is `@(if ...)`. `Lint.ScalarSplat.Tests.ps1` allows this one site until then.
+      - Pin every pip install in the chain. `Build-FfmpegCodecs.ps1` installs a floating `meson`, and IREE, OpenCV, GenAI, ORT
+        and TVM each install at least one unpinned package through `Invoke-CpythonPip`.
+      - Silence the arm64 Vulkan-ValidationLayers warning flood: about 110k warnings in one vertex of the merge log.
+      - IREE's VM ISA genrule on the GIL interpreter (`IREE_ISA_PYTHON`, CON79 item 1, optional).
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner

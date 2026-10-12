@@ -178,6 +178,21 @@ function Invoke-FreeThreadedWheelVenvProof {
     }
 }
 
+function Get-TwinInstallArgument {
+    <#
+    .SYNOPSIS
+        pip's resolve arguments for the wheels in -Store: --find-links on it and its deps\ (CON79) when that exists, else --no-deps.
+    .DESCRIPTION
+        Always a [string[]]: a one-element array that an if/else unrolls to a string splats into its characters, and pip then
+        refused '-' for every twin (device gate runs 38180134179 to 38209436310).
+    #>
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)][string]$Store)
+    $deps = [IO.Path]::Combine($Store, 'deps')
+    if ([IO.Directory]::Exists($deps)) { return , [string[]]@('--find-links', $Store, '--find-links', $deps) }
+    return , [string[]]@('--no-deps')
+}
+
 function Invoke-TwinDeviceProof {
     <#
     .SYNOPSIS
@@ -197,8 +212,7 @@ function Invoke-TwinDeviceProof {
     if (-not (Test-Path -LiteralPath $Helper -PathType Leaf)) { throw "no $Helper to prove the twins with (the packing step puts it beside the gate)" }
     # Exit codes are read below, so a failing proof keeps the helper's verdict instead of throwing it away.
     $PSNativeCommandUseErrorActionPreference = $false
-    $deps = [IO.Path]::Combine($Store, 'deps')
-    $resolve = if ([IO.Directory]::Exists($deps)) { @('--find-links', $Store, '--find-links', $deps) } else { @('--no-deps') }
+    $resolve = Get-TwinInstallArgument -Store $Store
     $wheels = @(Get-ChildItem -LiteralPath $Store -Filter '*.whl' -File)
     if ($wheels.Count -eq 0) { throw "no wheel in $Store" }
     $failures = foreach ($whl in $wheels) {
@@ -321,5 +335,5 @@ function Get-WheelMemberDifference {
 
 Export-ModuleMember -Function Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PythonWheelAbiTag, Find-UvPython,
     Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof,
-    Invoke-FreeThreadedWheelVenvProof, Invoke-TwinDeviceProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,
+    Invoke-FreeThreadedWheelVenvProof, Get-TwinInstallArgument, Invoke-TwinDeviceProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,
     Get-WheelMemberDifference

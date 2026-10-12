@@ -6,6 +6,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — the device gate's twin proof installs again: a one-element array no longer splats into characters
+
+- Since a2ce8627 (CON79), `Invoke-TwinDeviceProof` built pip's arguments as `$resolve = if (...) { @(...) } else { @('--no-deps') }`.
+  PowerShell unrolls a one-element array that an `if` returns into a string, and `@resolve` then splatted it one character
+  per argument. pip refused `-` for all four twins, so `windows-arm64.yml` failed three runs in a row (38180134179,
+  38205155401, 38209436310). OrchestrANT's CON75 kit runs the same proof, so its device run would have failed the same way.
+- `Get-TwinInstallArgument` returns the words as a `[string[]]` in every case. A behavioural test splats them into
+  `cmd /c echo` and expects `--no-deps` whole, and `--find-links` on the store and its `deps\` when that exists.
+- `WindowsFormatting.Common.psm1` had the same shape: without a format config, `$mode + @($cmakeFile)` concatenated
+  `--check` onto the file name. It is wrapped in `@()` now.
+- `Lint.ScalarSplat.Tests.ps1` scans `windows\scripts` for an `if/else` with a one-element `@(...)` branch whose variable is
+  splatted. It allows one known site, the `vswhere -latest` selector in `WindowsScripts.Shared.psm1`, and BACKLOG CON89 keeps
+  it. That splat is why every chain logs `vswhere returned no installation; using filesystem fallback`. Fixing it re-keys
+  `Dockerfile.base`, so it waits for the next planned full rebuild.
+- `windows-arm64.yml` also runs on a change to `WindowsPythonWheel.Common.psm1`, which the gate now imports.
+
 ## 2026-10-12 — the canonical `.clang-format` no longer reflows comments; CON71 is done
 
 - `shared/config/.clang-format` sets `ReflowComments: Never`, by owner decision today. With `true` at

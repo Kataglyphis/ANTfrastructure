@@ -8,6 +8,7 @@ on:
       - 'windows/scripts/build/Export-Arm64Bundle.ps1'
       - 'windows/scripts/modules/WindowsGstPlugins.Common.psm1'
       - 'windows/scripts/modules/WindowsTargetArch.Common.psm1'
+      - 'windows/scripts/modules/WindowsPythonWheel.Common.psm1'
       - 'linux/scripts/02-toolchain/python/free-threaded-wheel.py'
       - '.github/workflows/windows-arm64.yml'
   # A republished :winarm64 changes no file here, so the published image is graded daily as well.
