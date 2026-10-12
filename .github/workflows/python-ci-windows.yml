@@ -126,10 +126,14 @@ on:
         type: boolean
         default: false
       arm64-python-versions:
-        description: Space-separated Python legs for the arm64 job; a `t` suffix is a free-threaded leg.
+        description: >-
+          Space-separated Python legs for the arm64 job; a `t` suffix is a
+          free-threaded leg. Empty (the default) runs the pinned X.Y of
+          versions.env, and the word `pinned` stands for that X.Y (`pinnedt`
+          its free-threaded twin), so a Python upgrade moves every leg.
         required: false
         type: string
-        default: '3.14'
+        default: ''
       arm64-extras:
         description: Comma-separated extras each arm64 leg syncs. Empty syncs all extras, as the Linux lane does.
         required: false
@@ -137,7 +141,7 @@ on:
         default: ''
       free-threaded-extras:
         description: >-
-          Extras a free-threaded arm64 leg (`3.14t`) syncs instead of
+          Extras a free-threaded arm64 leg (`pinnedt`, X.Yt) syncs instead of
           `arm64-extras`, as in python-ci-linux.yml.
         required: false
         type: string

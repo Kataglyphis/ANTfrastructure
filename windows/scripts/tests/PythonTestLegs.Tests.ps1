@@ -79,4 +79,20 @@ Describe 'Invoke-PythonTestLegs.ps1' {
             Assert-Throws { Invoke-FakeLegs -Dir $d -Arguments $install } -MessagePattern 'UV_WINDOWS_ARM64_SHA256 is not set'
         }
     }
+
+    It 'runs the pinned X.Y when no leg is named, and reads pinned and pinnedt in a list as X.Y and X.Yt (CON91)' {
+        Invoke-InTestDir { param($d)
+            $envFile = Join-Path $d 'versions.env'
+            Set-Content -LiteralPath $envFile -Value 'PYTHON_VERSION=9.87.6'
+            Invoke-WithEnv @{ PYTHON_VERSION = $null } {
+                Invoke-FakeLegs -Dir $d -FakeOnPath -Arguments @{ VersionsEnvPath = $envFile }
+                Assert-Match '^python find 9\.87\+gil\|venv --python 9\.87\+gil --clear <d>\\\.venv-ci-9\.87\|' (Get-FakeUvCall $d) 'one GIL leg, the pin'
+                Remove-Item -LiteralPath (Join-Path $d 'uv-calls.log')
+                Invoke-FakeLegs -Dir $d -FakeOnPath -Arguments @{ VersionsEnvPath = $envFile; PythonVersions = 'pinned pinnedt 3.13' }
+                $calls = Get-FakeUvCall $d
+                foreach ($leg in '9.87', '9.87t', '3.13') { Assert-Match "\.venv-ci-$([regex]::Escape($leg))\|" $calls "the $leg leg" }
+                Assert-False ($calls -match 'pinned') 'no leg keeps the word'
+            }
+        }
+    }
 }

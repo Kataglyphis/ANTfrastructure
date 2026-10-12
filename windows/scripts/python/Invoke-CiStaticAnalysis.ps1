@@ -7,7 +7,7 @@
 .SYNOPSIS
     Runs the Python static-analysis gates (codespell, bandit, vulture, ruff, ty) on Windows.
 .PARAMETER PythonVersion
-    Python version to use.
+    Python X.Y; empty takes the pin (the image ENV PYTHON_VERSION, else versions.env).
 .PARAMETER PackageName
     Package to analyse; derived from pyproject.toml when empty.
 .PARAMETER RepoRoot
@@ -20,7 +20,7 @@
 
 [CmdletBinding()]
 Param(
-    [string]$PythonVersion = "3.14",
+    [string]$PythonVersion = '',
     [string]$PackageName = "",
     [string]$RepoRoot = '',
     [string[]]$ExtraPaths = @(),
@@ -32,7 +32,8 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
 # $RepoRoot and $repoRoot are one variable: this deliberately replaces the raw value with the resolved path.
-$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot -RepoRoot $RepoRoot
+$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common', 'WindowsPythonWheel.Common') -EnterRepoRoot -RepoRoot $RepoRoot
+if (-not $PythonVersion) { $PythonVersion = (Get-PinnedPythonVersion).MajorMinor }
 
 $PackageName = Get-PyprojectPackageName -RepoRoot $repoRoot -Default $PackageName
 
