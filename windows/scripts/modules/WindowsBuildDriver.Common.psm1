@@ -140,8 +140,8 @@ function Get-MediaBranchVersionArg {
                 LITERT_LM_WEBGPU_DAWN_SHA256        = Get-VersionTableValue $VersionTable 'LITERT_LM_WEBGPU_DAWN_SHA256'
                 LITERT_LM_DXC_ZIP_SHA256            = Get-VersionTableValue $VersionTable 'LITERT_LM_DXC_ZIP_SHA256'
                 # Build-LitertLmBazel.ps1's tools, refused unless their SHA256 matches (hub #185).
-                BAZELISK_WINDOWS_VERSION            = Get-VersionTableValue $VersionTable 'BAZELISK_WINDOWS_VERSION'
-                BAZELISK_WINDOWS_AMD64_SHA256       = Get-VersionTableValue $VersionTable 'BAZELISK_WINDOWS_AMD64_SHA256'
+                LITERT_LM_BAZEL_WINDOWS_VERSION       = Get-VersionTableValue $VersionTable 'LITERT_LM_BAZEL_WINDOWS_VERSION'
+                LITERT_LM_BAZEL_WINDOWS_AMD64_SHA256  = Get-VersionTableValue $VersionTable 'LITERT_LM_BAZEL_WINDOWS_AMD64_SHA256'
                 TEMURIN_JDK_WINDOWS_VERSION         = Get-VersionTableValue $VersionTable 'TEMURIN_JDK_WINDOWS_VERSION'
                 TEMURIN_JDK_WINDOWS_X64_SHA256      = Get-VersionTableValue $VersionTable 'TEMURIN_JDK_WINDOWS_X64_SHA256'
                 GIT_LFS_WINDOWS_VERSION             = Get-VersionTableValue $VersionTable 'GIT_LFS_WINDOWS_VERSION'
@@ -194,7 +194,7 @@ function Get-MediaMergeVersionArg {
         'LITERT_LM_WEBGPU_ACCELERATOR_SHA256', 'LITERT_LM_WEBGPU_SAMPLER_SHA256',
         'LITERT_LM_WEBGPU_DAWN_SHA256', 'LITERT_LM_DXC_ZIP_SHA256',
         # media-litert: the bazel tool pins (hub #185).
-        'BAZELISK_WINDOWS_VERSION', 'BAZELISK_WINDOWS_AMD64_SHA256', 'TEMURIN_JDK_WINDOWS_VERSION',
+        'LITERT_LM_BAZEL_WINDOWS_VERSION', 'LITERT_LM_BAZEL_WINDOWS_AMD64_SHA256', 'TEMURIN_JDK_WINDOWS_VERSION',
         'TEMURIN_JDK_WINDOWS_X64_SHA256', 'GIT_LFS_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_AMD64_SHA256',
         # media-litert: the ai-edge-litert wheel's source, bazel and accelerator pins (CON91).
         'LITERT_WINDOWS_SOURCE_COMMIT', 'LITERT_BAZEL_WINDOWS_VERSION', 'LITERT_BAZEL_WINDOWS_AMD64_SHA256',

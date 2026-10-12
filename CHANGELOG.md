@@ -6,6 +6,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-13 — LiteRT-LM compiles with clang-cl, from a pinned bazel (CON92)
+
+- **The LiteRT-LM lane left MSVC.** `Build-LitertLmBazel.ps1` passed only `--config=windows`, so Bazel picked its default
+  `msvc_x64` toolchain: `cl.exe`, `link.exe` and `lib.exe`, against the clang-cl rule. It now builds with Bazel's own
+  clang-cl toolchain (CON91's recipe), and an aquery gate fails the stage on any other compiler. Probe LM2 built
+  `litert_lm_main` that way: 5244 actions in 539 s, all 3829 compile, link and archive actions on LLVM tools, `--help`
+  OK.
+- **Two floating fetches are gone.** bazelisk downloaded bazel 7.6.1 without a hash check; the lane now fetches that
+  bazel binary by its SHA256 (`LITERT_LM_BAZEL_WINDOWS_*`) and refuses a clone whose `.bazelversion` differs. LiteRT-LM's
+  WORKSPACE pulled the unhashed 744 MB OpenVINO nightly on every build; `OPENVINO_NATIVE_DIR` now names an empty dir.
+  Probe LM1 showed `litert_lm_main` never uses it.
+- **Bazel's user root moved out of the profile** to `C:\bzl-user`, so the cleanup removes it with the rest. `Get-TreeGb`
+  no longer throws on an empty tree. Rides the next chain.
+
 ## 2026-10-12 — ai-edge-litert for Python 3.15, built from source with clang-cl (CON91)
 
 - **The Windows images build ai-edge-litert themselves.** No release has a cp315 `win_amd64` wheel or sdist, so

@@ -167,7 +167,8 @@ this repo's cp314 pin).
   through scoop, none SHA-checked. `Get-PinnedTool` now fetches bazelisk v1.29.0, Temurin
   21.0.5+11 and git-lfs v3.8.0 by their `versions.env` pins (`BAZELISK_WINDOWS_*`,
   `TEMURIN_JDK_WINDOWS_*`, `GIT_LFS_WINDOWS_*`) into the tool cache, refuses any other bytes and
-  re-fetches a corrupt cache entry. **Still open:** serve pinned source archives from a cache
+  re-fetches a corrupt cache entry. bazelisk itself gave way to the pinned bazel binary
+  (`LITERT_LM_BAZEL_WINDOWS_*`, the clone's `.bazelversion`) on 2026-10-13 (CON92). **Still open:** serve pinned source archives from a cache
   mount keyed by commit, bake the aarch64 rust-std into the toolchain image, and build the
   target CPython once and keep its externals. Rides the next full chain.
 - **#178 — fold `Expand-PinnedArchive` into `Expand-SourceTarball` at the next media
@@ -289,8 +290,8 @@ this repo's cp314 pin).
   8.7 GB removed (6.66 + 1.72 + 0.33 GB), and the layer's export took 52.9 s, against 1,126 s
   in bk-20261011-184301. Its unpack took 1,047 s, against 396 s there and 1,337 s in
   bk-20261011-233025, so unpack time follows the host, not this layer, and the stage came to
-  2,415 s against 2,728 s. bazel's user root (1.21 GB) and bazelisk's cache (0.11 GB) stay,
-  too small to move. Bazel's progress now reaches the stage log once per 30 s. Not done: a
+  2,415 s against 2,728 s. bazel's user root (1.21 GB) and bazelisk's cache (0.11 GB) stayed;
+  since CON92 the user root is `C:\bzl-user` and leaves with the rest, and bazelisk is gone. Bazel's progress now reaches the stage log once per 30 s. Not done: a
   remote action cache for the 3,603 actions every rebuild compiles afresh.
 
 - **#180 — the patched clang-cl relinks reproducibly. DONE in source 2026-10-12.** CMake's
