@@ -42,6 +42,42 @@ Describe 'Resolve-FreeThreadedWheelMode and Get-FreeThreadedTarget' {
     }
 }
 
+Describe 'Get-PinnedPythonVersion (CON91)' {
+
+    It 'takes the image ENV first, and versions.env without it, a quoted value and a comment line included' {
+        Invoke-InTestDir { param($d)
+            $envFile = Join-Path $d 'versions.env'
+            Set-Content -LiteralPath $envFile -Value @('# PYTHON_VERSION=1.2.3 in a comment', 'PYTHON_VERSION="9.87.6"  # the pin')
+            Invoke-WithEnv @{ PYTHON_VERSION = '8.76.5' } {
+                $p = Get-PinnedPythonVersion -VersionsEnvPath $envFile
+                Assert-Equal '8.76.5|8.76|cp876|cp876t' "$($p.Version)|$($p.MajorMinor)|$($p.AbiTag)|$($p.FreeThreadedAbiTag)" 'the ENV wins'
+            }
+            Invoke-WithEnv @{ PYTHON_VERSION = $null } {
+                $p = Get-PinnedPythonVersion -VersionsEnvPath $envFile
+                Assert-Equal '9.87.6|9.87|cp987|cp987t' "$($p.Version)|$($p.MajorMinor)|$($p.AbiTag)|$($p.FreeThreadedAbiTag)" 'versions.env'
+            }
+        }
+    }
+
+    It 'reads the hub''s own versions.env by default' {
+        $pin = (ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'))['PYTHON_VERSION']
+        Invoke-WithEnv @{ PYTHON_VERSION = $null } { Assert-Equal $pin (Get-PinnedPythonVersion).Version 'the checkout pin' }
+    }
+
+    It 'throws without a pin, and on a value that is no X.Y[.Z] (mutation)' {
+        Invoke-InTestDir { param($d)
+            Invoke-WithEnv @{ PYTHON_VERSION = $null } {
+                Assert-Throws { Get-PinnedPythonVersion -VersionsEnvPath (Join-Path $d 'absent.env') } -MessagePattern 'no pinned Python'
+            }
+            foreach ($bad in '3', 'latest', '3.15.0rc1') {
+                Invoke-WithEnv @{ PYTHON_VERSION = $bad } {
+                    Assert-Throws { Get-PinnedPythonVersion -VersionsEnvPath (Join-Path $d 'absent.env') } -MessagePattern "no pinned Python: PYTHON_VERSION is '$bad'"
+                }
+            }
+        }
+    }
+}
+
 Describe 'Get-FreeThreadedWheelPlan' {
 
     It 'builds when the helper finds the classifier, and hands it the pyproject; a cross arch with a target tree too (CON75)' {
