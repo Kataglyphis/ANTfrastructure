@@ -6,6 +6,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — `tensorrt.conf` only where a TensorRT build put its lib dir (CON31)
+
+- The published `:latest-nvidia` (`23e3cc9e…`) carried `/etc/ld.so.conf.d/tensorrt.conf` naming `/usr/local/tensorrt/lib`,
+  which no nvidia build ships with `ENABLE_TENSORRT=false`. `configure-runtime.sh`'s `write_tensorrt_conf` writes it only
+  when the lib dir exists, and removes a stale one otherwise; DeepStream's TensorRT 10 keeps its own
+  `010-deepstream-tensorrt.conf`. `test-soname-precedence.sh` covers both; the next nvidia chain proves it in the image.
+
 ## 2026-10-12 — DeepStream runs on the published `:latest-nvidia`; `nvblender` does not (CON42, CON31)
 
 - **The GPU run on the published image passed.** `:latest-nvidia`, index sha256:810f36b3 (amd64

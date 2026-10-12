@@ -43,6 +43,18 @@ for _t in gstreamer ffmpeg opencv libcamera armnn; do
   t_assert_contains "${_conf}" "000-${_t}.conf" "${_t} must sort before the multiarch dir"
 done
 
+t_case "tensorrt.conf names TensorRT's lib dir only where a TensorRT build put one (CON31)"
+_cr="${TESTS_DIR}/../03-media/runtime/configure-runtime.sh"
+_fns="$(t_fn_src "${_cr}" write_conf)"$'\n'"$(t_fn_src "${_cr}" write_tensorrt_conf)" || exit 1
+_trt="$(mktemp -d)"
+mkdir -p "${_trt}/with/lib"; printf 'stale\n' > "${_trt}/old.conf"
+TENSORRT_HOME="${_trt}/with" bash -c "${_fns}"$'\n''write_tensorrt_conf "$1"' _ "${_trt}/with.conf"
+t_assert_eq "${_trt}/with/lib" "$(cat "${_trt}/with.conf")"
+TENSORRT_HOME="${_trt}/none" bash -c "${_fns}"$'\n''write_tensorrt_conf "$1"' _ "${_trt}/old.conf"
+t_assert_fails test -e "${_trt}/old.conf"
+t_assert_contains "${_conf}" "  write_tensorrt_conf" "the nvidia branch calls it"
+rm -rf "${_trt}"
+
 t_case "ArmNN + ACL actually reach the package image"
 _pkg="$(cat "${TESTS_DIR}/../../Dockerfile.package")"
 t_assert_contains "${_pkg}" "artifact-source /opt/armnn /opt/armnn" \
