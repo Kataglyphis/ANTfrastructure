@@ -6,6 +6,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — the patched clang-cl relinks reproducibly (#180), and a stopped BuildKit run keeps its record (#184)
+
+- **#180: LLVM builds with the pinned clang-cl, so `/Brepro` applies.** CMake's default compiler for the patched LLVM was
+  MSVC `cl`, and LLVM's `HandleLLVMOptions.cmake` appends `/Brepro` only for a Clang compiler. Every relink therefore
+  stamped `clang-cl.exe` with the link time, and sccache, which keys on the compiler's bytes, missed nearly every media
+  compile after a toolchain re-run (#153: onnx 9/1332, litert 0/5374). `Build-LlvmFromSource.ps1` now names the base
+  image's clang-cl (`LLVM_USER_BIN`) and refuses to fall back to `cl`. `Assert-ReproducibleLink` fails the stage when
+  `clang-cl.exe` still carries a link-time PE stamp. A local toolchain stage (bk-20261012-144845) compiled LLVM cold
+  with clang-cl in about 12 min, and the new `clang-cl.exe` carries the content hash 0x35341D1A. This re-keys the
+  toolchain stage, so the next full chain rebuilds the media lane once (CON89).
+- **#184: the driver records what the console alone lost.**
+  - The manifest carries `status=ok`, or, written from the `finally`, `status=failed:<stage>` with every finished stage.
+    Stage seconds use the invariant culture: a German host wrote `patched-llvm=778,9` beside `total_s=13058`.
+  - `bk-<run>-driver.log` records the run, stage starts, ends and failures, retry verdicts with the line that made them
+    transient, and disk-gate verdicts.
+  - The resource CSV gains `diskFreeGB`, and the summary `MinDiskFreeGB`.
+  - buildctl's output is decoded as UTF-8, so an em dash no longer arrives as `ÔÇö`.
+
 ## 2026-10-12 — CON90: consumers name no Python version, and the image's ORT no longer waits for PyPI
 
 - **`pinned` in a leg list.** `ci_tests.sh` reads `pinned` as the pinned X.Y and `pinnedt` as its twin, so a row that

@@ -165,7 +165,15 @@ run later with
 `MinFreeGB` per phase shows which step pushed the host hardest, and an
 `AvgCpuPct` far below 100 during a compile phase means the step was memory-bound
 (`jobs = min(cores, MEMORY_LIMIT_GB/perJob)`), not CPU-bound. Disable with
-`-NoResourceLog`.
+`-NoResourceLog`. Since 2026-10-12 each row also carries `diskFreeGB` for the build drive, and
+the summary its per-phase minimum (`MinDiskFreeGB`): export and unpack slow down as it nears a
+stage's disk floor.
+
+**Per-run record.** Beside the stage logs, every run writes `bk-<run>-driver.log`: the run, each
+stage's start, end and failure, every retry verdict with the line that made it transient, and
+every disk-gate verdict, none of which a stage log holds. `bk-<run>-manifest.txt` carries
+`status=ok`, or `status=failed:<stage>` with every stage that finished, so a stopped run keeps its
+stage seconds too (hub #184).
 
 > **Why the reserve is 22 GB, not ~8 (learned the hard way).** An earlier default
 > of `-HostReserveGb 8` auto-sized media-core to **53 GB**, which **hung the build**:
