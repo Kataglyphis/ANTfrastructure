@@ -237,18 +237,16 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 - [ ] **CON91 — the Windows lanes follow the Python pin** [M, ★★]. The Windows images read the same
       `PYTHON_VERSION` (3.15.0 since 2026-10-12, CON90), so their next chains build CPython 3.15. What still names
       3.14 there, for the Windows host: the cp314 wheel pins in `versions.env` (`PYTEST_WINDOWS_ARM64_*`,
-      `TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*`); the drivers' literal defaults (`Invoke-PythonTestLegs.ps1`,
-      `Invoke-CiPackaging.ps1`, `Invoke-CiStaticAnalysis.ps1`, `WindowsUv.Common.psm1`) and
-      `python-ci-windows.yml`'s `arm64-python-versions: '3.14'`; the tvm-ffi wheel tags (`Build-TvmFromSource.ps1`,
+      `TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*`); the tvm-ffi wheel tags (`Build-TvmFromSource.ps1`,
       `WindowsTvm.Common.psm1`); and the twin store's name, `C:\runtime\wheels-cp314t` and `PYTHON_WHEELS_CP314T`,
       which Linux now spells `wheels-free-threaded` / `PYTHON_WHEELS_FREE_THREADED`. The three readers take the new
       name first already (hub, 2026-10-12), so the Dockerfile, the arm64 bundle's folder and their tests can move
-      next. Derive each from `PYTHON_VERSION` like Linux does, so the next upgrade is one line here too. And
-      `Sync-UvProjectDependencies` should leave the lock's ORT to the chain wheels as Linux's sync does since
-      2026-10-12 (`--no-install-package`, `docs/python-ci.md` § Trap 3): PyPI's onnxruntime has no cp315 wheel.
-      **Red until decided:** `Torch.Rocm.Tests.ps1`'s "every cp wheel pinned matches PYTHON_VERSION" fails, since
-      ai-edge-litert has no cp315 `win_amd64` wheel (2.3.0, the newest, stops at cp314; checked 2026-10-12). The ROCm
-      image's venv either goes without LiteRT until upstream ships one, or builds it from source: an owner call there.
+      next. Derive each from `PYTHON_VERSION` like Linux does, so the next upgrade is one line here too.
+      **Done (hub, 2026-10-12):** `Get-PinnedPythonVersion`; the drivers' defaults and the arm64 job's legs
+      (`pinned`/`pinnedt`); `Sync-UvProjectDependencies` leaves the lock's ORT to the chain wheels, as on Linux.
+      **Owner decision 2026-10-12: ai-edge-litert is built from source** for the pinned Python, since it has no
+      cp315 `win_amd64` wheel (2.3.0, the newest, stops at cp314). Until that lands, `Torch.Rocm.Tests.ps1`'s
+      "every cp wheel pinned matches PYTHON_VERSION" stays red.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294

@@ -21,7 +21,7 @@ function script:New-ChainOrtFixture {
     return [pscustomobject]@{ Venv = $venv; Store = $store }
 }
 
-# -ViaSync goes through Sync-UvProjectDependencies instead, with the real interpreter runner.
+# -ViaSync goes through Sync-UvProjectDependencies instead, with the real interpreter runner unless -StubPython; -Lock is its uv.lock.
 function script:Invoke-ChainOrtCase {
     param(
         [Parameter(Mandatory)][pscustomobject]$Fixture,
@@ -32,13 +32,21 @@ function script:Invoke-ChainOrtCase {
         [string]$Abi = 'cp314',
         [int]$UnownedExit = 0,
         [switch]$FailInstall,
-        [switch]$ViaSync
+        [switch]$ViaSync,
+        [string[]]$Skipped = @(),
+        [string[]]$Lock,
+        [ValidateSet('ORT_CHAIN_WHEEL_DIR', 'PYTHON_WHEELS')][string]$StoreVar = 'ORT_CHAIN_WHEEL_DIR',
+        [switch]$StubPython,
+        [switch]$UseLocked,
+        [switch]$RetryWithoutLocked,
+        [switch]$StaleLock
     )
     $state = [pscustomobject]@{ Uv = [System.Collections.Generic.List[string]]::new(); Log = [System.Collections.Generic.List[string]]::new(); Error = ''; NoSync = '' }
     $runner = {
         param($exe, $arguments)
         $state.Uv.Add(($arguments -join ' '))
         if ($FailInstall -and $arguments[1] -eq 'install') { throw 'uv: the wheel is not supported on this platform' }
+        if ($StaleLock -and $arguments -contains '--locked') { throw 'The lockfile at `uv.lock` needs to be updated, but `--locked` was provided.' }
     }.GetNewClosure()
     $python = {
         param($exe, $arguments)
@@ -50,12 +58,15 @@ function script:Invoke-ChainOrtCase {
         return [pscustomobject]@{ ExitCode = $CheckExit; Output = @($verdict) }
     }.GetNewClosure()
     $log = { param($m) $state.Log.Add("$m") }.GetNewClosure()
-    $syncEnv = @{ ORT_CHAIN_WHEEL_DIR = $(if ($Store) { $Store } else { $null }); PYTHON_WHEELS = $null; UV_PROJECT_ENVIRONMENT = $Fixture.Venv; UV_SYNC_EXTRAS = $null }
+    $syncEnv = @{ ORT_CHAIN_WHEEL_DIR = $null; PYTHON_WHEELS = $null; UV_PROJECT_ENVIRONMENT = $Fixture.Venv; UV_SYNC_EXTRAS = $null }
+    if ($Store) { $syncEnv[$StoreVar] = $Store }
+    if ($Lock) { Set-Content -LiteralPath (Join-Path $Fixture.Venv 'uv.lock') -Value $Lock -Encoding utf8NoBOM }
+    $sync = @{ UseLocked = $UseLocked; RetryWithoutLocked = $RetryWithoutLocked; PythonRunner = $(if ($StubPython) { $python } else { $null }) }
     try {
         if ($ViaSync) {
-            Invoke-WithEnv $syncEnv { Sync-UvProjectDependencies -PyprojectPath (Join-Path $Fixture.Venv 'pyproject.toml') -CommandRunner $runner -LogWarning $log }
+            Invoke-WithEnv $syncEnv { Sync-UvProjectDependencies -PyprojectPath (Join-Path $Fixture.Venv 'pyproject.toml') -CommandRunner $runner -LogInfo $log -LogWarning $log @sync }
         } else {
-            Sync-UvChainOnnxRuntime -VenvPath $Fixture.Venv -WheelStore $Store -CommandRunner $runner -PythonRunner $python -LogInfo $log -LogWarning $log
+            Sync-UvChainOnnxRuntime -VenvPath $Fixture.Venv -WheelStore $Store -Skipped $Skipped -CommandRunner $runner -PythonRunner $python -LogInfo $log -LogWarning $log
         }
     } catch { $state.Error = $_.Exception.Message }
     $state.NoSync = "$env:UV_NO_SYNC"
@@ -237,6 +248,90 @@ Describe 'WindowsUv.Common: Sync-UvChainOnnxRuntime, and Sync-UvProjectDependenc
             $outside = Invoke-ChainOrtCase -ViaSync -Fixture $f -Store ''
             Assert-Equal '' $outside.Error 'outside our images nothing fails, even when the venv cannot be inspected'
             Assert-Equal 1 $outside.Uv.Count 'and uv is asked for nothing but the sync'
+        }
+    }
+}
+
+# A uv.lock with -Name's [[package]] tables, each with an indented dependency reference that is no table.
+function script:New-ChainOrtLock([string[]]$Name) {
+    $lines = @('version = 1', '')
+    foreach ($n in $Name) { $lines += '[[package]]', "name = ""$n""", 'version = "1.0"', 'dependencies = [', '    { name = "numpy" },', ']', '' }
+    return $lines
+}
+
+# A sync inside our images over an ORT lock, with no ORT left in the venv for the census to list.
+function script:Invoke-OrtSkipSync([pscustomobject]$Fixture, [hashtable]$Case = @{}) {
+    return Invoke-ChainOrtCase -ViaSync -StubPython -Fixture $Fixture -Store $Fixture.Store -Lock (New-ChainOrtLock 'numpy', 'onnxruntime', 'onnxruntime-directml', 'onnxruntime_genai', 'orchestrant') -Listed @() @Case
+}
+
+Describe 'WindowsUv.Common: inside our images the sync leaves the lock''s ORT to the chain wheels (CON91)' {
+    $skip = '--no-install-package onnxruntime --no-install-package onnxruntime-directml --no-install-package onnxruntime-genai'
+
+    It 'the image''s PYTHON_WHEELS alone skips every ORT of the lock, and the reconcile installs the chain wheels with nothing to uninstall' {
+        Use-ChainOrtFixture { param($f)
+            $r = Invoke-OrtSkipSync $f @{ StoreVar = 'PYTHON_WHEELS' }
+            Assert-Equal '' $r.Error 'no failure'
+            Assert-Equal "-v sync --dev --all-extras $skip" $r.Uv[0] 'the sync names every lock ORT, normalised'
+            Assert-Equal 2 $r.Uv.Count 'the sync and one install, no uninstall'
+            Assert-Match '^pip install --python .*onnxruntime-1\.30\.0-cp314-cp314-win_amd64\.whl' $r.Uv[1] 'the chain wheels go in'
+            Assert-Equal '1' $r.NoSync 'UV_NO_SYNC held'
+            Assert-True (@($r.Log) -match '^chain ORT: the sync leaves onnxruntime onnxruntime-directml onnxruntime-genai to the chain wheels$') 'the skip is logged'
+        }
+    }
+
+    It 'the unlocked retry keeps the skip' {
+        Use-ChainOrtFixture { param($f)
+            $r = Invoke-OrtSkipSync $f @{ UseLocked = $true; RetryWithoutLocked = $true; StaleLock = $true }
+            Assert-Equal '' $r.Error 'the retry passed'
+            Assert-Equal "-v sync --dev --all-extras --locked $skip" $r.Uv[0] 'the locked attempt'
+            Assert-Equal "-v sync --dev --all-extras $skip" $r.Uv[1] 'the retry'
+        }
+    }
+
+    It 'outside our images the lock is not read: no skip, and a malformed lock fails nothing' {
+        if (Test-Path -LiteralPath 'C:\runtime\wheels') { return }
+        Use-ChainOrtFixture { param($f)
+            $r = Invoke-ChainOrtCase -ViaSync -Fixture $f -Store '' -Lock @('[[package]]', 'version = "1"')
+            Assert-Equal '' $r.Error 'not read'
+            Assert-Equal '-v sync --dev --all-extras' $r.Uv[0] 'no skip'
+        }
+    }
+
+    It 'inside our images a lock it cannot read fails before the sync (mutation)' {
+        Use-ChainOrtFixture { param($f)
+            $r = Invoke-ChainOrtCase -ViaSync -StubPython -Fixture $f -Store $f.Store -Lock @('[[package]]', 'version = "1"')
+            Assert-Match '^chain ORT: cannot read the packages of .*uv\.lock: 0 name\(s\) for 1 \[\[package\]\] table\(s\)' $r.Error 'the count guard'
+            Assert-Equal 0 $r.Uv.Count 'no sync'
+        }
+    }
+
+    It 'a skipped name joins the census list once, and only the installed ones are uninstalled; no ORT wheel then fails (mutation)' {
+        Use-ChainOrtFixture { param($f)
+            $r = Invoke-ChainOrtCase -Fixture $f -Store $f.Store -Listed @('ORT-CENSUS PURGE onnxruntime') -Skipped 'onnxruntime', 'onnxruntime-genai'
+            Assert-Equal '' $r.Error 'no failure'
+            Assert-Equal "pip uninstall --python $($f.Venv)\Scripts\python.exe onnxruntime" $r.Uv[0] 'the installed one alone'
+            Assert-True (@($r.Log) -match '^chain ORT: replacing onnxruntime onnxruntime-genai in ') 'both are replaced'
+        }
+        Use-ChainOrtFixture -NoOrtWheel { param($f)
+            $r = Invoke-ChainOrtCase -Fixture $f -Store $f.Store -Listed @() -Skipped 'onnxruntime'
+            Assert-Match 'holds no onnxruntime wheel for onnxruntime' $r.Error 'a skipped ORT with no chain wheel would leave the venv without one'
+        }
+    }
+}
+
+Describe 'Get-UvLockOrtName (CON91)' {
+    It 'returns the lock''s ORT names normalised and once, ignores dependency references, and reads a CRLF lock' {
+        Invoke-InTestDir { param($d)
+            $lock = Join-Path $d 'uv.lock'
+            Set-Content -LiteralPath $lock -Value (New-ChainOrtLock 'onnxruntime_GenAI', 'onnxruntime', 'onnxruntime.genai', 'numpy', 'onnxruntimex')
+            Assert-Equal 'onnxruntime|onnxruntime-genai' ((Get-UvLockOrtName -LockPath $lock) -join '|') 'normalised, deduplicated, onnxruntimex is no ORT'
+            [IO.File]::WriteAllText($lock, ((New-ChainOrtLock 'onnxruntime-directml') -join "`r`n"))
+            Assert-Equal 'onnxruntime-directml' ((Get-UvLockOrtName -LockPath $lock) -join '|') 'CRLF'
+            Assert-Equal 0 @(Get-UvLockOrtName -LockPath (Join-Path $d 'absent.lock')).Count 'no lock, no names'
+            Set-Content -LiteralPath $lock -Value @('[[package]]', 'name = "onnxruntime"', '[[package]]')
+            Assert-Throws { Get-UvLockOrtName -LockPath $lock } -MessagePattern '1 name\(s\) for 2 \[\[package\]\] table\(s\)'
+            Set-Content -LiteralPath $lock -Value @('[[package]]', 'name = "onnxruntime-x y"')
+            Assert-Throws { Get-UvLockOrtName -LockPath $lock } -MessagePattern 'pins an ORT name uv sync cannot be handed: onnxruntime-x y'
         }
     }
 }

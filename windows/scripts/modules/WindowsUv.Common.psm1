@@ -8,6 +8,9 @@ Set-StrictMode -Version Latest
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+# Get-PinnedPythonVersion, for Test-ExperimentalPython's default.
+$pythonWheelPath = Join-Path $PSScriptRoot 'WindowsPythonWheel.Common.psm1'
+if (-not (Get-Module -Name 'WindowsPythonWheel.Common')) { Import-Module $pythonWheelPath }
 
 function Invoke-UvCommand {
     param(
@@ -89,9 +92,9 @@ function Remove-UvProjectEnvironment {
 function Get-UvPythonRequest {
     <#
     .SYNOPSIS
-        uv's discovery request for a version: X.Y[.Z] becomes X.Y[.Z]+gil; 3.14t, paths and variants pass unchanged.
+        uv's discovery request for a version: X.Y[.Z] becomes X.Y[.Z]+gil; X.Yt, paths and variants pass unchanged.
     .DESCRIPTION
-        uv 0.12 lets a plain 3.14 take a free-threaded build a 3.14t leg downloaded; the twin of python_uv.sh's uv_python_request.
+        uv 0.12 lets a plain X.Y take a free-threaded build an X.Yt leg downloaded; the twin of python_uv.sh's uv_python_request.
     #>
     [OutputType([string])]
     param([Parameter(Mandatory)][string]$Version)
@@ -290,10 +293,31 @@ function Get-UvExtrasToExclude {
     return $drop.ToArray()
 }
 
+<#
+.SYNOPSIS
+    The ONNX Runtime distributions -LockPath pins (onnxruntime, onnxruntime-*), PEP 503 normalised; @() without a lock.
+#>
+function Get-UvLockOrtName {
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)][string]$LockPath)
+    if (-not (Test-Path -LiteralPath $LockPath -PathType Leaf)) { return @() }
+    $text = [System.IO.File]::ReadAllText($LockPath)
+    $tables = [regex]::Matches($text, '(?m)^\[\[package\]\]\r?$').Count
+    $names = @([regex]::Matches($text, '(?m)^name = "([^"\r\n]*)"\r?$') | ForEach-Object { ($_.Groups[1].Value -replace '[-_.]+', '-').ToLowerInvariant() })
+    if (-not $tables -or $names.Count -ne $tables) { throw "chain ORT: cannot read the packages of ${LockPath}: $($names.Count) name(s) for $tables [[package]] table(s)" }
+    $ort = @($names | Where-Object { $_ -cmatch '^onnxruntime(-|$)' } | Sort-Object -Unique)
+    $bad = @($ort | Where-Object { $_ -cnotmatch '^[a-z0-9]+(-[a-z0-9]+)*$' })
+    if ($bad.Count) { throw "chain ORT: ${LockPath} pins an ORT name uv sync cannot be handed: $($bad -join ', ')" }
+    return $ort
+}
+
 function Sync-UvProjectDependencies {
     <#
     .SYNOPSIS
         `uv sync --dev --all-extras` minus conflicting extras, optionally --locked, then Sync-UvChainOnnxRuntime.
+    .DESCRIPTION
+        Inside our images the sync leaves the lock's ONNX Runtime to the chain wheels, as Linux's uv_sync_project does.
     .PARAMETER RetryWithoutLocked
         With -UseLocked, retry once unlocked on a stale lockfile; never on the lane that guards the lockfile.
     #>
@@ -304,6 +328,8 @@ function Sync-UvProjectDependencies {
         # Defaults to the current directory's, the one `uv sync` reads too.
         [string]$PyprojectPath = (Join-Path (Get-Location).Path 'pyproject.toml'),
         [scriptblock]$CommandRunner,
+        # Test seam for Sync-UvChainOnnxRuntime's interpreter calls.
+        [scriptblock]$PythonRunner,
         [scriptblock]$LogInfo,
         [scriptblock]$LogWarning
     )
@@ -327,10 +353,17 @@ function Sync-UvProjectDependencies {
         }
     }
 
+    # PyPI's ORT lags a new Python by months; the reconcile below installs the chain's for what the sync leaves out.
+    $wheelStore = Get-ChainOrtWheelStore
+    $skippedOrt = @(if ($wheelStore) { Get-UvLockOrtName -LockPath (Join-Path (Split-Path -Parent $PyprojectPath) 'uv.lock') })
+    $skipArgs = @($skippedOrt | ForEach-Object { '--no-install-package', $_ })
+    if ($skippedOrt.Count -gt 0 -and $LogInfo) { & $LogInfo "chain ORT: the sync leaves $($skippedOrt -join ' ') to the chain wheels" }
+
     $buildArgs = {
         param([bool]$Locked)
         $a = @('-v', 'sync', '--dev') + $extraArgs
         if ($Locked) { $a += '--locked' }
+        $a += $skipArgs
         if ($NoBuildIsolationPackageWxPython) { $a += @('--no-build-isolation-package', 'wxpython') }
         return $a
     }
@@ -349,7 +382,7 @@ function Sync-UvProjectDependencies {
     }
 
     $projectEnv = if ($env:UV_PROJECT_ENVIRONMENT) { $env:UV_PROJECT_ENVIRONMENT } else { Join-Path (Split-Path -Parent $PyprojectPath) '.venv' }
-    Sync-UvChainOnnxRuntime -VenvPath $projectEnv -CommandRunner $CommandRunner -LogInfo $LogInfo -LogWarning $LogWarning
+    Sync-UvChainOnnxRuntime -VenvPath $projectEnv -WheelStore $wheelStore -Skipped $skippedOrt -CommandRunner $CommandRunner -PythonRunner $PythonRunner -LogInfo $LogInfo -LogWarning $LogWarning
     Sync-UvChainOpenCv -VenvPath $projectEnv -CommandRunner $CommandRunner -LogInfo $LogInfo
 }
 
@@ -434,7 +467,7 @@ function Set-UvChainOrtSyncHold {
     }
 }
 
-# The interpreter's wheel ABI tag (cp313, cp314t), and which ORT import packages it can find.
+# The interpreter's wheel ABI tag (cpXY, cpXYt), and which ORT import packages it can find.
 $script:ChainOrtAbiCode = 'import sys, sysconfig; print(''cp%d%d%s'' % (*sys.version_info[:2], ''t'' if sysconfig.get_config_var(''Py_GIL_DISABLED'') else ''''))'
 $script:ChainOrtFindCode = 'import importlib.util as u, sys; hits = [p for p in (''onnxruntime'', ''onnxruntime_genai'', ''onnxruntime_extensions'') if u.find_spec(p)]; print(*hits); sys.exit(1 if hits else 0)'
 
@@ -475,6 +508,8 @@ function Assert-UvChainOrtNoUnownedImport {
     Moves a synced venv's ONNX Runtime onto the image's chain wheels, proven by the census; outside our images warns.
 .DESCRIPTION
     See docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+.PARAMETER Skipped
+    ORT distributions the sync left out on purpose; they need the chain wheels as much as what PyPI installed.
 .PARAMETER PythonRunner
     Test seam: { param($python, $arguments) } returning @{ ExitCode; Output }. Default runs the interpreter.
 #>
@@ -484,6 +519,7 @@ function Sync-UvChainOnnxRuntime {
         [Parameter(Mandatory)][string]$VenvPath,
         [AllowEmptyString()][string]$WheelStore = (Get-ChainOrtWheelStore),
         [string]$CensusPath = '',
+        [AllowEmptyCollection()][string[]]$Skipped = @(),
         [scriptblock]$CommandRunner,
         [scriptblock]$PythonRunner,
         [scriptblock]$LogInfo,
@@ -522,7 +558,8 @@ function Sync-UvChainOnnxRuntime {
         & $warn $why
         return
     }
-    $names = @(@($listed.Output) | ForEach-Object { if ("$_" -match '^ORT-CENSUS PURGE ([a-z0-9][a-z0-9-]*)$') { $Matches[1] } })
+    $installed = @(@($listed.Output) | ForEach-Object { if ("$_" -match '^ORT-CENSUS PURGE ([a-z0-9][a-z0-9-]*)$') { $Matches[1] } })
+    $names = @($installed) + @($Skipped | Where-Object { $_ -and $_ -notin $installed })
     if ($names.Count -eq 0) {
         if ($inImage) { Assert-UvChainOrtNoUnownedImport -VenvPath $VenvPath -Python $python -WheelStore $WheelStore -CensusPath $CensusPath -Runner $run }
         Set-UvChainOrtSyncHold -Hold $false
@@ -539,7 +576,8 @@ function Sync-UvChainOnnxRuntime {
     if ($wheels.Count -eq 0) { throw "chain ORT: the store $WheelStore holds no onnxruntime wheel for $($names -join ' ')" }
     Assert-UvChainOrtAbiFit -VenvPath $VenvPath -Python $python -Wheels $wheels -Runner $run
     & $say "chain ORT: replacing $($names -join ' ') in $VenvPath with $(($wheels | ForEach-Object { Split-Path $_ -Leaf }) -join ' ')"
-    Invoke-UvCommand -Arguments (@('pip', 'uninstall', '--python', $python) + $names) -CommandRunner $CommandRunner -LogInfo $LogInfo
+    # A skipped distribution never reached the venv, so only the installed ones are uninstalled.
+    if ($installed.Count -gt 0) { Invoke-UvCommand -Arguments (@('pip', 'uninstall', '--python', $python) + $installed) -CommandRunner $CommandRunner -LogInfo $LogInfo }
     try {
         Invoke-UvCommand -Arguments (@('pip', 'install', '--python', $python, '--no-index', '--no-deps', '--force-reinstall') + $wheels) `
             -CommandRunner $CommandRunner -LogInfo $LogInfo
@@ -617,9 +655,9 @@ function Remove-TrackedUvEnvironment {
 .SYNOPSIS
     True when the fleet permits this interpreter version to fail without gating CI.
 .DESCRIPTION
-    Reads EXPERIMENTAL_PYTHON_VERSIONS with the same default as python_uv.sh, so one export sets both halves.
+    Reads EXPERIMENTAL_PYTHON_VERSIONS with the same default as python_uv.sh (the pin's X.Yt), so one export sets both halves.
 .PARAMETER Version
-    Interpreter version as the matrix spells it, e.g. "3.14" or "3.14t".
+    Interpreter version as the matrix spells it, X.Y or X.Yt.
 #>
 function Test-ExperimentalPython {
     param(
@@ -628,7 +666,7 @@ function Test-ExperimentalPython {
     )
 
     $configured = $env:EXPERIMENTAL_PYTHON_VERSIONS
-    if ([string]::IsNullOrWhiteSpace($configured)) { $configured = "3.14t" }
+    if ([string]::IsNullOrWhiteSpace($configured)) { $configured = try { "$((Get-PinnedPythonVersion).MajorMinor)t" } catch { '' } }
     $permitted = $configured -split "[,\s]+" | Where-Object { $_ }
     return ($permitted -contains $Version)
 }
@@ -643,6 +681,7 @@ Export-ModuleMember -Function @(    'Get-UvPythonRequest',
     'Sync-UvChainOnnxRuntime',
     'Sync-UvChainOpenCv',
     'Get-ChainOrtWheelStore',
+    'Get-UvLockOrtName',
     'Get-UvOrtCensusPath',
     'Get-UvConflictGroups',
     'Get-UvExtrasToExclude',

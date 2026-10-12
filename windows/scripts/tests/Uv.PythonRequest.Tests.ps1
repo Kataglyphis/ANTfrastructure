@@ -47,3 +47,20 @@ Describe 'New-UvProjectEnvironment' {
         Assert-Equal "0|venv --python 3.14t" "$($ft.Asked)|$(($ft.Calls[0] -split ' --clear')[0])" 'no find, no install, the request unchanged'
     }
 }
+
+Describe 'Test-ExperimentalPython (CON91)' {
+
+    It 'defaults to the pin''s X.Yt like python_uv.sh, and EXPERIMENTAL_PYTHON_VERSIONS replaces it' {
+        Invoke-WithEnv @{ EXPERIMENTAL_PYTHON_VERSIONS = $null; PYTHON_VERSION = '9.87.6' } {
+            Assert-True (Test-ExperimentalPython -Version '9.87t') 'the free-threaded twin of the pin'
+            Assert-False (Test-ExperimentalPython -Version '9.87') 'the GIL leg gates'
+        }
+        Invoke-WithEnv @{ EXPERIMENTAL_PYTHON_VERSIONS = $null; PYTHON_VERSION = $null } {
+            $pin = (ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'))['PYTHON_VERSION']
+            Assert-True (Test-ExperimentalPython -Version "$(($pin -split '\.')[0..1] -join '.')t") 'versions.env without the image ENV'
+        }
+        Invoke-WithEnv @{ EXPERIMENTAL_PYTHON_VERSIONS = '3.13, 9.87t'; PYTHON_VERSION = '9.87.6' } {
+            Assert-True (Test-ExperimentalPython -Version '3.13') 'the list wins'
+        }
+    }
+}
