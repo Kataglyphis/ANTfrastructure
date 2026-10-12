@@ -35,7 +35,7 @@ function Resolve-FreeThreadedWheelMode {
 function Get-FreeThreadedTarget {
     <#
     .SYNOPSIS
-        The free-threaded twin of -PythonVersion as a uv request and a wheel ABI tag: 3.14 and 3.14.4 give 3.14t and cp314t.
+        The free-threaded twin of -PythonVersion as a uv request and a wheel ABI tag: X.Y and X.Y.Z give X.Yt and cpXYt.
     #>
     param([Parameter(Mandatory)][string]$PythonVersion)
     if ($PythonVersion -notmatch '^(\d+)\.(\d+)') { throw "$PythonVersion is not an X.Y[.Z] Python version" }
@@ -62,7 +62,7 @@ function Get-PinnedPythonVersion {
 function Get-PythonWheelAbiTag {
     <#
     .SYNOPSIS
-        The ABI field of a wheel file name: cp314t, cp314, abi3 or none.
+        The ABI field of a wheel file name: cpXYt, cpXY, abi3 or none.
     #>
     [OutputType([string])]
     param([Parameter(Mandatory)][string]$Name)

@@ -84,7 +84,7 @@ function Invoke-PythonAppLayout {
 function Get-PythonAbiTag {
     <#
     .SYNOPSIS
-        The ABI tag -Python's binary wheels carry: cp314 for a GIL build, cp314t for a free-threaded one.
+        The ABI tag -Python's binary wheels carry: cpXY for a GIL build, cpXYt for a free-threaded one.
     #>
     [OutputType([string])]
     param([Parameter(Mandatory)][string]$Python)

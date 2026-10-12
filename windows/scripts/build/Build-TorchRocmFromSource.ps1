@@ -10,7 +10,7 @@
     Follows TheRock's build_prod_wheels.py; Build-TorchvisionRocmFromSource.ps1 dot-sources this file for its helpers.
     See docs/windows-rocm.md § PyTorch on the rocm lane (torch stage).
 .PARAMETER OutputDir
-    Receives exactly torch-<v>+rocm<r>-cp314-cp314-win_amd64.whl.
+    Receives exactly torch-<v>+rocm<r>-<cpXY>-<cpXY>-win_amd64.whl.
 .PARAMETER WorkDir
     Sources, build venv and tree, short for Windows path limits; the venv stays for the torchvision RUN.
 #>

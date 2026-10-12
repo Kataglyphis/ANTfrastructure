@@ -68,7 +68,7 @@ Invoke-CpythonPcbuild -SourceDir $src
 $pyExe = "$src\PCbuild\amd64\python.exe"
 if (-not (Test-Path $pyExe)) { throw 'Python build failed - interpreter not found' }
 
-# The 3.14t legs' interpreter, from the same checkout while its externals are still here; see docs/windows-builds.md § The free-threaded CPython.
+# The X.Yt legs' interpreter, from the same checkout while its externals are still here; see docs/windows-builds.md § The free-threaded CPython.
 Invoke-CpythonPcbuild -SourceDir $src -FreeThreaded
 if (-not $FreeThreadedRoot) { $FreeThreadedRoot = Get-CpythonFreeThreadedRoot }
 Install-CpythonFreeThreadedLayout -SourceDir $src -Destination $FreeThreadedRoot -LayoutPython $pyExe

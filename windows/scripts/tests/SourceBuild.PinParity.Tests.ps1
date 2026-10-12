@@ -511,7 +511,6 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
                 'Build-FfmpegFromSource.ps1|NV_CODEC_HEADERS_REF',
                 'Build-LitertLmBazel.ps1|LITERT_LM_VERSION',
                 'Build-TorchApp.ps1|APP_REF',
-                'Build-OpencvFromSource.ps1|PYTHON_VERSION',
                 'Build-GstreamerFromSource.ps1|LIBFFI_MESON_VERSION',
                 'Build-ToolchainAll.ps1|NUGET_VERSION',
                 'Install-Vcpkg.ps1|VCPKG_REF',

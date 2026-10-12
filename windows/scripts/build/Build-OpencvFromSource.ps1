@@ -159,8 +159,8 @@ function Get-OcvPythonQueryResult {
 # OpenCV's scripts override CMAKE_MODULE_PATH, so the stub goes in OpenCV's own cmake dir.
 $pythonModuleDir = Join-Path $mainSrc 'cmake'
 $pyExePath = $ocvPy.Exe -replace '\\', '/'
-# Version derived from canonical PYTHON_VERSION (versions.env via load-versions/ENV)
-$pyVersion = if (-not [string]::IsNullOrWhiteSpace($env:PYTHON_VERSION)) { $env:PYTHON_VERSION } else { '3.15.0' }
+# The interpreter the stub names reports its own version, so the stub can never disagree with the build.
+$pyVersion = Get-OcvPythonQueryResult -PythonExe $ocvPy.Exe -Code 'import platform; print(platform.python_version())' -Label 'python version'
 $pyParts = $pyVersion -split '\.'
 if ($pyParts.Count -lt 2) { throw "PYTHON_VERSION '$pyVersion' is not MAJOR.MINOR[.PATCH] -- cannot derive PYTHON_VERSION_MAJOR/MINOR" }
 $findPythonInterpStub = @"

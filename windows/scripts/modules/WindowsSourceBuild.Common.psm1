@@ -409,7 +409,7 @@ function Get-CpythonFreeThreadedRoot {
 function Get-CpythonFreeThreadedExeName {
     # PC\layout names the free-threaded entry point python<X.Y>t.exe and ships no python.exe beside it.
     param([string]$Version = $env:PYTHON_VERSION)
-    if ([string]::IsNullOrWhiteSpace($Version)) { $Version = '3.14' }
+    if ([string]::IsNullOrWhiteSpace($Version)) { $Version = (Get-PinnedPythonVersion).Version }
     return 'python{0}t.exe' -f ((@($Version -split '\.') | Select-Object -First 2) -join '.')
 }
 
@@ -429,7 +429,7 @@ function Get-CpythonPcbuildArguments {
     .SYNOPSIS
         PCbuild\build.bat's arguments, MSBuild properties last; -FreeThreaded adds --disable-gil and its own output and object trees.
     .DESCRIPTION
-        The free-threaded binaries land outside PCbuild\<arch>, so the GIL tree on PATH never carries a python3.14t.exe whose
+        The free-threaded binaries land outside PCbuild\<arch>, so the GIL tree on PATH never carries a python3XYt.exe whose
         site-packages it would share.
     #>
     [OutputType([string[]])]
@@ -470,7 +470,7 @@ function Install-CpythonFreeThreadedLayout {
     .SYNOPSIS
         Lays the free-threaded build of -SourceDir out as an install at -Destination with CPython's own PC\layout.
     .DESCRIPTION
-        Its own prefix, so the GIL tree's later site-packages (pip, cp314 wheels, the platform shim) never reaches the
+        Its own prefix, so the GIL tree's later site-packages (pip, cpXY wheels, the platform shim) never reaches the
         free-threaded interpreter. -LayoutPython runs PC\layout, which refuses a source tree of another version than its own.
     #>
     param(
@@ -616,7 +616,7 @@ function Install-CpythonTargetTree {
     if (Test-Path $tgtSitePackages) { Get-ChildItem -LiteralPath $tgtSitePackages -Force | Remove-Item -Recurse -Force }
     New-Item -Path $tgtSitePackages -ItemType Directory -Force | Out-Null
     if ($FreeThreaded) {
-        # Where PC\layout --include-venv puts them: with no python.exe to copy, uv venv has no other way to make a 3.14t venv (measured 2026-10-07).
+        # Where PC\layout --include-venv puts them: with no python.exe to copy, uv venv has no other way to make an X.Yt venv (measured 2026-10-07).
         $venvScripts = New-Item -Path (Join-Path $pyRoot 'Lib\venv\scripts\nt') -ItemType Directory -Force
         foreach ($launcher in 'venvlaunchert.exe', 'venvwlaunchert.exe') {
             $src = Join-Path $BuildDir $launcher
@@ -721,7 +721,7 @@ function Get-TargetBuildPython {
         Exe       = $hostPy.Exe
         Include   = $hostPy.Include
         LibDir    = $tgtOutDir
-        Lib       = if ($tgtLib) { $tgtLib.FullName } else { Join-Path $tgtOutDir 'python314.lib' }
+        Lib       = if ($tgtLib) { $tgtLib.FullName } else { Join-Path $tgtOutDir ('python{0}.lib' -f (Get-PinnedPythonVersion).AbiTag.Substring(2)) }
         Available = [bool]$tgtLib
     }
 }
@@ -1092,10 +1092,10 @@ function Get-FreeThreadedWheelStore {
 }
 
 function Get-FreeThreadedAbiTag {
-    # PYTHON_VERSION's free-threaded wheel ABI tag, 3.14 when unset, as Get-CpythonFreeThreadedExeName assumes.
+    # PYTHON_VERSION's free-threaded wheel ABI tag (cpXYt); the pin when -Version is empty.
     [OutputType([string])]
     param([string]$Version = $env:PYTHON_VERSION)
-    if ([string]::IsNullOrWhiteSpace($Version)) { $Version = '3.14' }
+    if ([string]::IsNullOrWhiteSpace($Version)) { return (Get-PinnedPythonVersion).FreeThreadedAbiTag }
     return (Get-FreeThreadedTarget -PythonVersion $Version).AbiTag
 }
 
@@ -1126,7 +1126,7 @@ function Get-FreeThreadedTwinPlan {
 }
 
 function Assert-NinjaFreeThreadedDefine {
-    # 3.14's PC\pyconfig.h leaves Py_GIL_DISABLED undefined: compile lines without it build a GIL module. Returns the line count.
+    # PC\pyconfig.h leaves Py_GIL_DISABLED undefined (3.14 and 3.15.0 alike): compile lines without it build a GIL module. Returns the line count.
     [OutputType([int])]
     param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$Label)
     $ninja = Join-Path $BuildDir 'build.ninja'
@@ -1844,7 +1844,7 @@ if _platform_name and sysconfig.get_platform() == 'win32' and sys.maxsize > 2**3
 #    unaffected (the import system reads the C-level suffix list, not
 #    sysconfig). sysconfig.get_config_vars() returns the live cache, so
 #    get_config_var('EXT_SUFFIX') sees the pin too. A free-threaded build
-#    interpreter keeps its 't': .cp314t-<tag>.pyd.
+#    interpreter keeps its 't': .cpXYt-<tag>.pyd.
 _target_tag = '$CrossExtTag'
 if _target_tag:
     _abi = 't' if sysconfig.get_config_var('Py_GIL_DISABLED') else ''
@@ -2377,8 +2377,9 @@ Export-ModuleMember -Function @(
     'Get-FreeThreadedWheelImportFinding',
     'Save-FreeThreadedWheel',
     'Get-FreeThreadedStoreFinding',
-    # Re-exported from WindowsPythonWheel.Common for the build scripts' same-build check.
+    # Re-exported from WindowsPythonWheel.Common for the build scripts' same-build check, and the pin.
     'Get-WheelMemberDifference',
+    'Get-PinnedPythonVersion',
     'Test-PythonImport',
     'Remove-SourceBuildTree',
     'Complete-SourceBuild',

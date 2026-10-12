@@ -29,8 +29,8 @@ function Write-AssembledWheelDistInfo {
         [Parameter(Mandatory)][string]$Name,        # distribution name, e.g. apache-tvm-ffi
         [Parameter(Mandatory)][string]$Version,     # PEP 440
         [Parameter(Mandatory)][string]$PackageRoot, # dir whose child dirs are the top-level packages
-        [string]$PythonTag = 'cp314',
-        [string]$AbiTag = 'cp314',
+        [Parameter(Mandatory)][string]$PythonTag,
+        [Parameter(Mandatory)][string]$AbiTag,
         [string]$PlatformTag = 'win_arm64',
         [string[]]$RequiresDist = @(),
         [string]$RequiresPython = '',
