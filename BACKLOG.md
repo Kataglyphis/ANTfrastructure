@@ -104,17 +104,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       floor change, AGENTS.md § 4). (5) npm, poetry, pdm and pnpm locks report
       `behind: unknown`: none has a dry run that diffs the lock (measured 2026-10-08).
 
-- [b] **CON83 — OrchestrANT's riscv64 lane: the owner calls left** [S, ★]. The image and lane halves are
-      done (CHANGELOG 2026-10-10/12): OrchestrANT run 38171396906 (b599448, hub 00feaf7a) logged `uv cache seeded
-      from /opt/uv-cache-seed`, built no numpy, passed `wheel smoke passed: orchestrant-0.0.30-cp314-cp314-linux_riscv64.whl`,
-      had no `[shellcheck SKIPPED` / `[hadolint SKIPPED` bench row, and ran 2539 tests green. The seed covers the
-      lock of the commit the image was built from; a version OrchestrANT moves later builds as before until the next
-      chain. Owner calls from the same analysis: import `matplotlib.pyplot` lazily in `orchestrant/__init__` (31-37 s
-      per subprocess under QEMU; `bench_agent.py --list` takes 41.9 s against a 60 s timeout, but the change touches
-      Cython-built modules and tests that patch `plotting.plt`); hermetic grading (`PYTEST_DISABLE_PLUGIN_AUTOLOAD`)
-      in bench_agent's own grading runs, which changes product behaviour; and re-measuring the process ceiling per
-      launch on a busy shared box (about 0.37 s per launch under QEMU).
-
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
       (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.
       **Linux**, a rocm chain run (`CROSS_VARIANT=rocm`):
