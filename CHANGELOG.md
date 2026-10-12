@@ -6,6 +6,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — the canonical `.clang-format` no longer reflows comments; CON71 is done
+
+- `shared/config/.clang-format` sets `ReflowComments: Never`, by owner decision today. With `true` at
+  `ColumnLimit: 120`, clang-format split a one-line comment over 120 columns into two lines, which
+  `verify_comment_size.py` rejects. OmniAccelerANT's plugin sweep hit it (`linux/runtime_paths.cc:1`, shortened in
+  its 39833e7). `Never` is the spelling clang-format 23.1.3 dumps.
+- Measured in `:latest` (`b52f8c34…`) over each consumer's format file set: nothing changes in AccelerANTgine (39
+  files) or OmniAccelerANT's plugin (15). In BeschleunigerBallett 2 of 217 files change: three two-line trailing
+  comments lose the alignment of their second line. `shared/config/README.md` § *`ReflowComments: Never`* says to join
+  such a pair into one line.
+- **CON71 is done and pruned from BACKLOG.md.** The Linux half shipped in the `:latest` of 2026-10-09 (hub 655a2c4e),
+  the Windows half in `:winamd64` `e96203a8…` (21 tools at 23.1.3). Every consumer formats and checks with 23.1.3:
+  AccelerANTgine e96b31b and its Linux format check, BeschleunigerBallett's sweep d59d210f, and OmniAccelerANT's
+  plugin f3a0994 with its gate eca72a0.
+
 ## 2026-10-12 — `tensorrt.conf` only where a TensorRT build put its lib dir (CON31)
 
 - The published `:latest-nvidia` (`23e3cc9e…`) carried `/etc/ld.so.conf.d/tensorrt.conf` naming `/usr/local/tensorrt/lib`,

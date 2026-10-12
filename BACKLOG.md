@@ -202,44 +202,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         time is not that number.
       - A native arm64 toolchain build (PGO on arm64).
 
-- [ ] **CON71 — every LLVM tool is the pinned release, on Linux and Windows** [M, ★★]. Owner
-      decision 2026-10-06, reversing CON15's "clang-format and llvm-config stay 21". Measured on
-      the published images the same day:
-      - `:latest` (amd64 and arm64): 86 unversioned `/usr/bin` LLVM names were LLVM 21, among
-        them `clang-format`, `clang-tidy`, `clang-cl`, `llvm-config`, `llvm-cov` and `ld.lld`. Only
-        `PATH`'s `/usr/local/bin` links reached 23.1.1.
-      - `:winamd64`: IREE's `clang`, `llvm-link` and `FileCheck` (23.0.0git) and the MSVC
-        `llvm-symbolizer` (23.0.0git) came first on `PATH`.
-
-      In source the same day:
-      - `wire_pinned_llvm_tools` diverts every unversioned distro LLVM name to the pinned tree or
-        off `PATH`.
-      - `llvm-cross.sh` builds lldb and installs the utilities, so lldb, `FileCheck`,
-        `yaml2obj` and `llvm-tblgen` exist at 23.1.1. This rebuilds the toolchain stage on all
-        three arches.
-      - `validate-compilers.sh smoke` grades 26 tools against `LLVM_RELEASE` and fails any
-        distro name under an unversioned `/usr/bin` name.
-      - Windows: the entrypoint puts `C:\llvm-patched\bin` first, `Build-LlvmFromSource.ps1`
-        installs the utilities, and `Test-Container.ps1` checks 21 tools against clang-cl.
-
-      Proven before the chain:
-      - The wiring on a throwaway `:latest`: every existing tool reports 23.1.1, and a reinstall
-        of the distro packages keeps the wiring.
-      - A configure of llvm-project 23.1.1 with the new flags installs all 13 missing names.
-      - On `:winamd64`, the new entrypoint leaves only IREE's `FileCheck` off the pin.
-
-      **The Linux half is done:** the `:latest` published 2026-10-09 (hub 655a2c4e) reports
-      `clang-format`, `clang-tidy`, `llvm-tblgen`, `FileCheck`, `lldb` and `ld.lld` at 23.1.3 on all three
-      arches, and `validate-compilers.sh smoke` passes all 26 tools (`llvm-tblgen` after 02801990).
-      **The Windows half is done:** the published `:winamd64` (`e96203a8…`) passes `Test-Container.ps1`'s
-      21-tool check, every tool at clang-cl's 23.1.3 (smoke run 2026-10-11: 268 passed, 0 failed, 1 skipped).
-      AccelerANTgine runs `scan-build` from the pinned LLVM (711b2cb) and is formatted under 23.1.3 (e96b31b),
-      and BeschleunigerBallett's sweep already used 23.
-      AccelerANTgine's Linux format step now checks instead of rewriting (e96b31b: 0 of 39 files deviate, and it
-      refuses a clang-format other than `LLVM_RELEASE`).
-      **Open:** OmniAccelerANT's native plugin. It has no `.clang-format`; the owner chose the hub's canonical
-      config on 2026-10-12 (14 of its 15 hand-written files change) and a Linux format check after it.
-
 - [b] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
       (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
       it in (an `install_mold_pinned` beside `install_sccache_pinned`, apt's 2.40.4 cannot link

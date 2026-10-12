@@ -186,6 +186,23 @@ All three fixed here and written out to the consumers. The lesson for anyone
 reading a `-Check` failure: confirm which side is actually right before running
 `-Write`.
 
+## `ReflowComments: Never` (2026-10-12)
+
+The family rule is one-line comments (AGENTS.md § *Comments: one line, only the
+why*), and `linux/scripts/verify_comment_size.py` enforces it. With
+`ReflowComments: true` at `ColumnLimit: 120`, clang-format split any one-line
+comment longer than 120 columns into two lines, which that gate then rejects. The
+OmniAccelerANT plugin sweep hit it in `linux/runtime_paths.cc`. With `Never`,
+clang-format leaves comment text as written, so a long comment stays one line and
+the fix is to shorten it.
+
+`Never` is the spelling clang-format 23 dumps; the old `false` maps to it.
+Turning reflow off changes one thing in formatted code: a `//` line that continues
+the trailing comment above it is no longer aligned under that comment. It moves to
+the code's indent, where it reads as a comment on the next line. `IndentOnly` does
+the same. Join such a pair into one line. BeschleunigerBallett had three. The
+other consumers had none.
+
 ## The template trees are owners too
 
 `shared/windows/templates/Resolve-BuildModule.ps1` and
