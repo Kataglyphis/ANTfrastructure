@@ -154,10 +154,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
       Windows 4–6 are proved: the `:winamd64-rocm` published 2026-10-09 (hub aa7a8086, `32c7cc51…`)
       built MIGraphX 2.18.0, the EP and `ggml-hip` in BuildKit. Its smoke gate passed 265 assertions, 1
-      skipped, with eleven rocm-checks and `torch 2.14.1+rocm10.1.0`, HIP 7.16.26385. **The overlay is out of
-      the tree since 2026-10-11:** on that image `hipcc`, `clang -x hip` and `amdclang++ -x hip` compile the probe's
-      kernel without it (`--no-default-config`). Open there: the next rocm chain builds MIGraphX, the EP,
-      `ggml-hip` and torch without it.
+      skipped, with eleven rocm-checks and `torch 2.14.1+rocm10.1.0`, HIP 7.16.26385. **The overlay is gone and
+      proved** (CHANGELOG 2026-10-12). Hub 28daad33's rocm chain built every stage without it: MIGraphX with the
+      EP, `ggml-hip` (gfx1201 and gfx1200), and torch 2.14.1+rocm10.1.0 with HIP 7.16.26385. Smoke: 265 passed,
+      0 failed, 1 skipped, and all eleven rocm-checks passed (`kernel compiled for gfx1201`). Only the GPU
+      runs below are left on Windows.
       **Both, on a real GPU (RX 9070 XT, gfx1201):** a MIGraphX EP session, torch HIP, and a small model on
       ggml-hip against its CPU result. With no bundled runtime a bare Windows host's loader takes Adrenalin's
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
@@ -305,7 +306,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       The fault survived a no-cache rebuild of media-tvm and a restart of containerd and
       buildkitd. The RX 9070 XT was disabled throughout, so the RDNA4 lock is ruled out. The
       first activation of the MIGraphX stage's fresh `migraphxmods` COPY layer failed with the
-      same 0x20, and there the driver's retry read it. Defender's exclusions were not checked
+      same 0x20, and there the driver's retry read it. So did the llama stage's first RUN in the rocm
+      chain of 2026-10-11 (`hcsshim::ActivateLayer` on snapshot 9950, process isolation, GPU disabled). Defender's exclusions were not checked
       (admin only). Find the cause, then drop the two views when a bind of the image reads again.
       **2026-10-11, a direct-bind probe** (`buildctl`, no view, one `--mount=type=bind,from=<image>` per run):
       - `bk-windows-media-tvm` (2026-10-08) and `-rocm` (2026-10-09): `site-packages` lists 49 entries and opens
