@@ -6,6 +6,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — two WCOW probes settle #177's precondition and narrow #179; clang-cl needs `initialize()` first
+
+- **#177: a secret reaches a Windows RUN as an env var, and leaves no trace.** A buildctl probe over `bk-windows-toolchain`
+  (buildkitd v0.33.0) sets `SCCACHE_WEBDAV_ENDPOINT` through `--mount=type=secret,…,env=` in its RUN. The next RUN no
+  longer sees it, and no file is left behind. The file form (`target=`) does leak on WCOW: the file stays in the
+  snapshot, so the next RUN reads it and the layer carries it. Left: the ten compiling stages, at one planned re-key.
+- **#179: the ~120 s tail follows sccache's graceful end.** One RUN per variant shows the tail with
+  `sccache --stop-server` on either backend, with or without a compile, and with the server process already gone. A
+  server killed with `Stop-Process -Force` costs 1 s, as no sccache does. TIME_WAIT under Windows' 120 s
+  `TcpTimedWaitDelay` is the leading suspect, not yet isolated.
+- **`docs/python-ci.md`: a project that sets the compiler's `cc` to `clang-cl` must `initialize()` it first.** The first
+  `compile()` initializes lazily and puts `cl.exe` back. OrchestrANT (563e0fb) and WebDavClient (3a7aa8c) compiled
+  their first extension with MSVC's `cl` until today. setuptools 84 never calls a `spawn` hook, so one cannot catch it.
+
 ## 2026-10-12 — #153 closes on three fresh chains; CON75's wheel loads on the device
 
 - **#153, the step-time and silent-retry sweep, is done.** The 2026-09-01/02 logs it named were pruned, so it read the

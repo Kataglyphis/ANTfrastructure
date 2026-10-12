@@ -630,6 +630,10 @@ because `clang-cl` otherwise compiles for the host.
   gates (2026-10-12).
 - On `windows-11-arm` it then loaded: OrchestrANT run 38221408508 imported all 64 compiled
   modules on free-threaded 3.14.8 with the GIL disabled (2026-10-12).
+- A project that sets the compiler's `cc` to `clang-cl` must `initialize()` the compiler first.
+  The first `compile()` initializes lazily and puts `cl.exe` back, so OrchestrANT's and
+  WebDavClient's first extension compiled with MSVC's `cl` until 2026-10-12. A `spawn` hook does
+  not catch it, because setuptools 84 never calls one.
 
 **The app bundles pick by their runtime's ABI.** `python-app-bundle.sh` and
 `Select-PythonAppWheel` take the `cp314` wheel for their GIL runtime. A binary built for
