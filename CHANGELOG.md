@@ -6,6 +6,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — meson in the Windows images verifies TLS through CryptoAPI (CON88)
+
+- **truststore beside every meson the chain installs.** Python in Server Core trusts only the store's 18 roots, so
+  meson's `ogg` wrap failed `CERTIFICATE_VERIFY_FAILED` on downloads.xiph.org (whose chain ends at emSign) and fell back
+  to a GitHub mirror unnoticed. meson's `wrap.py` uses truststore whenever it imports, and truststore lets CryptoAPI
+  fetch the missing root. truststore 0.10.4 (`PY_TRUSTSTORE_VERSION`) now installs with meson in the GStreamer and
+  FFmpeg-codec builds, media-core's site-packages carry it into the image for consumers' meson too, and smoke section 2
+  imports it beside `mesonbuild`. The next chain proves it: no `CERTIFICATE_VERIFY_FAILED` in the merge log.
+
 ## 2026-10-12 — every pip install in the Windows chain is pinned (CON89)
 
 - **No build installs a floating Python package any more.** FFmpeg's codecs installed an unpinned `meson`, and the

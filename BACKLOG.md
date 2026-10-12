@@ -305,7 +305,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         holds 19. The image has no `truststore`, and meson's `wrap.py` uses it whenever it imports.
       Fix: `truststore` in the image's CPython, pinned and hashed like the other wheels, so meson in the chain and
       in consumers verifies through CryptoAPI. Prove it in the next chain: no `CERTIFICATE_VERIFY_FAILED` in the
-      merge stage's log.
+      merge stage's log. **In source since 2026-10-12:** truststore 0.10.4 (`PY_TRUSTSTORE_VERSION`) installs beside
+      both meson installs (GStreamer, FFmpeg's codecs), media-core's site-packages carry it into the image, and smoke
+      section 2 imports it beside `mesonbuild`.
 - [ ] **CON89 — what rides the next full Windows chain** [M, ★]. Each item re-keys `Dockerfile.base` or the media
       stages, so landing one alone would cost a rebuild of its own. They go in with the next planned full rebuild, which is
       CON79 item 2's arm64 chain or CON88:
