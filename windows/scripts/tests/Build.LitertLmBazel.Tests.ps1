@@ -17,7 +17,7 @@ Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
             $null = New-TreeFile $d 'bzl\execroot\a\out.obj'
             $null = New-Item -ItemType Junction -Path (Join-Path $d 'bzl\external_local_jdk') -Target (Split-Path $keep)
             $log = New-TreeFile $d 'bazel-build.log'
-            Remove-LitertLmBuildTree -OutputBase (Join-Path $d 'bzl') -Path @((Join-Path $d 'bzl'), $log, (Join-Path $d 'absent')) -Bazelisk (Join-Path $d 'no-bazelisk.exe')
+            Remove-LitertLmBuildTree -Path @((Join-Path $d 'bzl'), $log, (Join-Path $d 'absent')) -JdkRoot (Join-Path $d 'no-jdk')
             Assert-False (Test-Path -LiteralPath (Join-Path $d 'bzl')) 'the output base is gone'
             Assert-False (Test-Path -LiteralPath $log) 'the log is gone'
             Assert-True (Test-Path -LiteralPath $keep) 'the junction''s target survives'
@@ -26,7 +26,7 @@ Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
     }
 
     It 'runs after the install and its contract check, outside the checkout it deletes' {
-        Assert-Match '(?s)throw \("LiteRT-LM install does not satisfy.*\} finally \{.*Pop-Location\s*\r?\n\}\s*\r?\nRemove-LitertLmBuildTree -OutputBase \$outputBase' $script:LlmBazelText 'after the finally that leaves C:\llm'
+        Assert-Match '(?s)throw \("LiteRT-LM install does not satisfy.*\} finally \{.*Pop-Location\s*\r?\n\}\s*\r?\nRemove-LitertLmBuildTree\s*\r?\n' $script:LlmBazelText 'after the finally that leaves C:\llm'
         Assert-Match "\[string\[\]\]\`$Path = @\('C:\\bzl', 'C:\\llm', 'C:\\bzl-tools', 'C:\\bazel-build\.log'\)" $script:LlmBazelText 'the four paths the sweep measured'
     }
 
