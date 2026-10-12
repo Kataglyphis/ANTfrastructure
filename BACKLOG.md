@@ -29,30 +29,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
-- [ ] **CON75 — the free-threaded wheel on the cross lanes** [M, ★]. The Windows arm64 cross lane
-      skips `cp314t` with a logged reason: it builds no Cython wheel at all. Its target interpreter
-      exists since CON74 half 1, and `New-FreeThreadedBuildPython` pins a cross venv's `EXT_SUFFIX`
-      since CON79 item 2. **The Linux half is done** (`:latest` of 2026-10-10, index sha256:30dea85c, hub 381431d1): each
-      cross arch's `FT-STORE` passes `the store records a cross build` and loads every twin with the GIL off.
-      Left: the Windows arm64 half. Done when it ships a wheel proved on the target. **In source since 2026-10-12**
-      (CHANGELOG): the hub builds, gates and packs the wheel with its device kit, and the arm64 run job proves it.
-      Proved in `:winarm64` up to the kit with OrchestrANT 0.0.30. Left: OrchestrANT's `--target` line and its hub pin,
-      then its arm64 run job's proof. What it took, read 2026-10-12:
-      - **The consumer's `setup.py` (OrchestrANT).** `Get-FreeThreadedWheelPlan` still skips a cross arch with "no
-        free-threaded target interpreter", which CON74 made untrue. Behind it, OrchestrANT's `ClangBuildExt` swaps
-        `cl.exe` for `clang-cl` and `link.exe` for `lld-link` at spawn and passes no `--target`, so a cross build
-        compiles for the host. It must add `--target=aarch64-pc-windows-msvc` when `build_ext`'s `plat_name` is
-        `win-arm64`.
-      - **The compiler environment.** OrchestrANT's `setup.py` sets `DISTUTILS_USE_SDK=1`, so setuptools takes the
-        current environment and never runs vcvarsall for `--plat-name`. The lane must enter the x64_arm64 VS
-        environment itself.
-      - **The hub's `Invoke-CiPackaging.ps1`.** It runs the build in a venv of the host's x64 3.14t that pins
-        `EXT_SUFFIX` (`New-FreeThreadedBuildPython`): `build_ext --plat-name win-arm64 -L <the target's
-        python-freethreaded\libs>`, then `bdist_wheel --plat-name win_arm64`, then the static gates (tags, imports,
-        `Assert-WheelTargetArch`). The wheel stays out of `dist\`, where `Select-PythonAppWheel` throws on a binary
-        wheel of another ABI.
-      - **The device.** The run job needs a 3.14t: the bundle's `python-freethreaded`, staged into the test
-        artifact. It also needs the wheel's runtime dependencies as `cp314t` (CON79 item 2 stages the twins').
 - [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
       [M, ★]. Half 1 is in the scripts since 2026-10-07 (CHANGELOG): media-core's
       `Build-TargetCpython.ps1` stages the `--disable-gil` ARM64 build into
@@ -319,7 +295,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         The fix is `@(if ...)`. `Lint.ScalarSplat.Tests.ps1` allows this one site until then.
       - Pin every pip install in the chain. `Build-FfmpegCodecs.ps1` installs a floating `meson`, and IREE, OpenCV, GenAI, ORT
         and TVM each install at least one unpinned package through `Invoke-CpythonPip`.
-      - Silence the arm64 Vulkan-ValidationLayers warning flood: about 110k warnings in one vertex of the merge log.
+      - Silence the vendored-code warning floods. The arm64 VVL vertex alone is 1.36 M warning lines, 97.9 % of the 768 MB
+        merge log (`docs/windows-refactor-backlog.md` #183).
+      - Pin bazelisk, the LiteRT JDK fallback and git-lfs by version and SHA256 (`docs/windows-refactor-backlog.md` #185).
       - IREE's VM ISA genrule on the GIL interpreter (`IREE_ISA_PYTHON`, CON79 item 1, optional).
 ## Open — the Windows arm64 bundle and unpublished variants
 

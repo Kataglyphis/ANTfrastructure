@@ -75,6 +75,100 @@ this repo's cp314 pin).
 
 ### Open items
 
+- **#179 — every RUN that started an sccache server idles ~120 s before DONE: 16 to 27 min
+  per chain (opened 2026-10-12, #153's sweep).** Counted from a RUN's last output line to
+  its DONE, the gap is 114 to 124 s in every such RUN: 9 RUNs and 1,077 s in
+  bk-20261011-184301, 14 RUNs and 1,642 s (8.4 % of 19,592 s) in -233025, 8 RUNs and 955 s
+  (13.2 %) in bk-20261010-121545. RUNs without a server close 1 to 9 s after their last
+  line, a multi-GB `Install-Rocm` extract included, and the arm64 VVL RUN, whose launchers
+  are cleared, closes 1.3 s after 513 s of compiling. The size of the RUN makes no
+  difference. `SCCACHE_IDLE_TIMEOUT=0`, so no script of ours waits 120 s; Windows' default
+  `TcpTimedWaitDelay` is 120 s and is one candidate. First a buildctl probe, no chain needed:
+  the webdav backend with a stop, a local-disk backend, launchers only, and no sccache, each
+  logging every second whether `sccache.exe` lives and the webdav port's TIME_WAIT entries.
+  Then the fix in `Complete-SccacheServerSession`: a bounded wait for the server to exit once
+  the write-through has landed, then `Stop-Process`; the servers the launchers alone started
+  (hailo, merge 2/9) get stopped too. In the same function, webdav `NotFound (permanent)`
+  404s are cache misses rather than failures, and the `-Last 60` dump contradicts its
+  "Failures in full" comment. Before `upstream/hcsshim-teardown-timeout/ISSUE.md` is filed,
+  re-measure its "legitimate 117 s teardown": that OpenCV specimen ran sccache as well.
+  Rides the next full chain, since `WindowsSourceBuild.Common` is mounted into every media
+  layer.
+- **#180 — a toolchain re-run relinks clang-cl, and every media stage then compiles almost
+  cold (opened 2026-10-12, #153).** In bk-20261011-184301 and -233025 the patched-llvm stage
+  re-ran at 4233/4233 sccache hits yet relinked `clang.exe`. Afterwards every stage compiling
+  with `C:\llvm-patched\bin\clang-cl.exe` missed nearly everything (184301: onnx 9/1332,
+  ffmpeg 14/2361, opencv 24/1727, litert 0/5374, tvm 639/6970). The controls hit: torch, built
+  with TheRock's unchanged clang-cl, at 97.8 %, and arm64's onnx at 1150/1150 in
+  bk-20261010-121545, whose toolchain stayed cached. Likely cause, unproven: nothing passes
+  `/Brepro`, so a relinked exe differs in its timestamp and PDB GUID, and sccache keys on the
+  compiler's bytes. Confirm by hashing `clang-cl.exe` in two images relinked from the same
+  cache; if they differ, add `/Brepro` to the LLVM link flags in `Build-LlvmFromSource.ps1`
+  and prove it with two patched-llvm builds. On a toolchain re-key this is most of the media
+  lane's compile time. Rides the next full chain.
+- **#181 — the LiteRT layer keeps bazel's output base, its checkout and the JDK: 25 to 44 min
+  of export per rebuild (opened 2026-10-12, #153).** Exporting the layer outlasts building
+  it: 1,522 s in bk-20261011-184301 (export 1,126 s, unpack 396 s) after a 1,206 s RUN, and
+  2,653 s in -233025 at 9 % CPU. Every other stage exports in 4 to 109 s, torch in 314 to
+  573 s. `Build-LitertLmBazel.ps1` leaves `C:\bzl` (the output base), `C:\llm` (the clone
+  with 516 MiB of git-LFS prebuilts), `C:\bzl-tools` and `C:\bazel-build.log` in the layer
+  and runs no `bazel shutdown`, while the merge copies only `C:\runtime\lib\litert{,-lm}`
+  out of it. Fix: measure the four, then `bazelisk --output_base=C:\bzl shutdown` and a
+  long-path-safe delete after the contract check; the gate is an export of tens of seconds.
+  In the same script, stream bazel's progress instead of `Select-Object -Last 20`, which
+  hides 447 to 454 s, and weigh a remote action cache on the webdav host: every rebuild
+  compiles its 3,603 actions afresh. Feeds #163's owed litert measurement. Rides the next
+  full chain.
+- **#182 — GStreamer's meson build bypasses sccache on both arches, and its setup fetches
+  ~50 wraps live (opened 2026-10-12, #153).** `Build-GstreamerFromSource.ps1` sets
+  `CC/CXX='sccache clang-cl'` and logs "sccache enabled for meson", but meson records a bare
+  `clang-cl`, and the server counts 16 requests for 5,143 ninja steps (bk-20261011-184301).
+  arm64's cross file names `['sccache','clang-cl',…]` and still gets 0 compile requests
+  (bk-20261010-121545). Every merge rebuild therefore compiles cold: 663 s, 515 s, 612 s.
+  Meson setup takes 422 to 557 s and downloads 48 to 51 wrap sources live (the prefetch
+  covers about 9), ninja then regenerates the build files once more (79 s, 161 s), and
+  gst-plugins-rs (135 to 151 s) runs without `RUSTC_WRAPPER`. Fix: confirm with
+  `ninja -t commands`, put the wrapper where meson keeps it, make `Write-SccacheStats` fail a
+  phase that enabled sccache yet served under ~1 % of its steps, put meson's packagecache on
+  a cache mount or prefetch every wrap, find the regenerate trigger with `ninja -d explain`,
+  and set `RUSTC_WRAPPER`. Rides the next full chain.
+- **#183 — vendored code compiles under clang-cl's `/Wall`: 1.36 M warning lines in one arm64
+  merge vertex (opened 2026-10-12, #153; `BACKLOG.md` CON89's VVL item).** VVL's GCC-style
+  `-Wall` reaches clang-cl as `/Wall`, which is `-Weverything`. In bk-20261010-121545 that
+  vertex is 6,228,195 lines and 752 MB of the 768 MB merge log (97.9 %); the "about 110k"
+  CON89 quoted is one translation unit, `vk_validation_error_messages.cpp`. The same class,
+  smaller: x265's 27,423 `-Wunsafe-buffer-usage` lines in ffmpeg, abseil's 19,001 to 29,957
+  `-Wdeprecated-attributes` in onnx, 7,200 from OpenCV's `matx.hpp`. Fix: `-w` for vendored
+  code (VVL's `$common`, x265 in `Build-FfmpegCodecs.ps1`, ORT's abseil flags), retry VVL
+  with the sccache launchers back (cleared after the server hung twice on that unit), build
+  it at -j19 rather than -j9, and `$null =` the two `Invoke-GitClone` calls that print a stray
+  `True`. Rides the next full chain with CON89.
+- **#184 — the BuildKit driver keeps no record of a stopped run (opened 2026-10-12, #153).**
+  `Build-Buildkit.ps1` writes `bk-<run>-manifest.txt` inside its `try`, so a failed run
+  leaves none: bk-20261011-233025 stopped on the disk gate after 19,592 s, and the sweep
+  rebuilt its stage seconds from file times. The retry verdict (`WindowsBuildDriver.Common`)
+  and the disk-gate verdict reach the console only, so a stage log's `attempt N/M` header is
+  the one on-disk trace of a retry. `resources-<run>.csv` samples free RAM but not free disk,
+  although export and unpack slowed near the gate (litert's unpack took 1,337 s there against
+  396 s in -184301). `--progress plain` carries no wall clock, so ~61 s before the first RUN
+  of three stages cannot be placed, and the driver decodes buildctl's UTF-8 with the OEM code
+  page (`—` arrives as `ÔÇö`). Fix: write the manifest from the `finally` with
+  `status=ok|failed:<stage>`, append both verdicts to a `bk-<run>-driver.log`, add a free-disk
+  column to the sampler, keep a `--progress rawjson` copy, and set `[Console]::OutputEncoding`
+  to UTF-8. Host-side only, so it re-keys no stage.
+- **#185 — chain RUNs fetch live on every rebuild, and three fetches are unpinned (opened
+  2026-10-12, #153).** Against the everything-in-the-image rule, a rebuild fetches the PyTorch
+  clone and submodules (262 s in bk-20261011-233025), the LiteRT sources (88 s, 244 s), the
+  IREE clone (~218 s), the aarch64 rust-std, the crates.io index for gst-plugins-rs, CPython's
+  PCbuild externals (the toolchain layer deletes them, and arm64 builds the target CPython
+  twice per chain) and 32 wheels the uv cache mount still downloaded for torch. **Unpinned and
+  unchecked:** `Build-LitertLmBazel.ps1` takes bazelisk from `releases/latest`, falls back to
+  Adoptium's `latest/21/ga` JDK when the pinned 21.0.5+11 asset fails, and installs `git-lfs`
+  through scoop. None is SHA-checked, so a cold tool cache takes whatever is newest. Fix: pin
+  bazelisk, the JDK and git-lfs by version and SHA256 in `versions.env` beside CON89's pip
+  pins, serve pinned source archives from a cache mount keyed by commit, bake the aarch64
+  rust-std into the toolchain image, and build the target CPython once and keep its
+  externals. Rides the next full chain.
 - **#178 — fold `Expand-PinnedArchive` into `Expand-SourceTarball` at the next media
   rebuild (opened 2026-09-25).** `Expand-PinnedArchive` (`WindowsMigraphx.Common`) is
   `Expand-SourceTarball`'s two 7-Zip passes, except that it skips the links 7-Zip 25+
@@ -97,24 +191,6 @@ this repo's cp314 pin).
   this host's buildkitd supports secret mounts with `env=` in a Windows RUN, then
   change all ten compiling stages at one planned re-key. Context:
   [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
-- **#153 — the clipped-log forensics can never be re-audited; the corpus is gone.**
-  INVESTIGATED 2026-08-31, and the premise I wrote was wrong. `out/windows-build-logs/`
-  holds 92 `.log` files and **every one of them is from 2026-08-30/31** — 100 % post-fix.
-  The 42 older run ids (bk-20260817-221952 … bk-20260829-140708) survive only as
-  67-598-byte `*-manifest.txt` stubs; their step logs were pruned. So the 49-run
-  analysis cannot be re-checked, only SUPERSEDED by future runs.
-  What the surviving corpus does prove: the 2026-08-14 buildkitd env fix is live —
-  **0 clip events in 90 logs**, and 12 individual RUN vertices now exceed the old
-  2 MiB ceiling that used to truncate them. Treat every pre-2026-08-30 forensic
-  conclusion in the archives as unverifiable, not as evidence.
-  STILL OPEN, re-scoped 2026-09-02: the corpus now EXISTS — the two full dual-lane
-  runs of 2026-09-01/02 (amd64 to 222/0/0, arm64 to 97/0/15) left complete
-  per-stage logs, the first uncorrupted end-to-end set. Only the step-time /
-  silent-retry sweep over them is still owed. NB for that analysis: every RUN in
-  this corpus carries the ~7.5 min lost-notification lifecycle tax (441.3 s floor),
-  and the two merge fan-ins each show the first-mount `ActivateLayer 0x20`
-  self-heal (2 retries) — subtract both patterns before reading step times.
-
 - **#155 — LiteRT QNN: the real flags, and why wiring them now would be a fourth
   silent no-op.** RESEARCHED 2026-08-31. DO NOT integrate before reading this.
   The genuine switches, all verified defined at v2.2.0:
@@ -199,6 +275,20 @@ this repo's cp314 pin).
   rested on.
 
 ### CLOSED (pointers — full narratives in the dated archives)
+
+- **#153 — the step-time / silent-retry sweep. DONE 2026-10-12.** The 2026-09-01/02 logs it
+  named were pruned (only manifests survive), so it ran over the three complete chains left,
+  51 logs: bk-20261011-184301 (amd64, 13,058 s, smoke 268/0/1), bk-20261011-233025 with
+  -20261012-051453 (amd64 rocm, 19,592 s to the disk gate, then final and smoke) and
+  bk-20261010-121545 (arm64, 7,211 s, smoke 147/0/17). **The 441.3 s lifecycle floor is
+  gone:** a trivial `RUN cmd /c exit 0` takes 4.9 to 9.0 s. **One silent retry in three
+  chains:** rocm-llama's first RUN over the fresh migraphx image hit `ActivateLayer 0x20`,
+  and attempt 2/3 went green for about 70 s; the merge fan-in self-heal did not recur (every
+  merge log is `attempt 1/5`, with no `ActivateLayer`). **No clipped output** in the 51 logs,
+  the 6.2 M-line VVL vertex included. **The rule for reading step times now:** subtract
+  ~120 s from each RUN that started an sccache server, and nothing from the others (#179).
+  What the sweep found beyond its question is #179 to #185. Before 2026-08-30 the corpus was
+  pruned too, so those forensic conclusions stay unverifiable.
 
 - **#158 / #159 / #160 / #164 / #167 / #168-#174 / #175 — the 2026-09-17
   batch: the thirteen audited defects, the eight settled-probe deletions, the
