@@ -298,7 +298,7 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor**; with `-ImportWalk` every wheel's native members too, and every module of a `cp3XYt` wheel imports `python3XYt.dll` and no GIL runtime |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device, or the hub's `windows-arm64.yml` | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers, an ORT session over the smoke suite's 63-byte Identity model on the CPU EP, with DirectML's outcome printed only), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, the cp314 pytest stack installs offline from it, `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, every `cp3XYt` twin in `wheels-cp314t` installs alone, offline, into a venv of that interpreter and loads with the GIL off (`free-threaded-wheel.py prove`), `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), the validation layer loads, and a `webrtcsink` -> `webrtcsrc` loopback decodes 60 frames over DTLS-SRTP (CON63) |
+| `Test-Arm64Bundle.ps1` | an arm64 device, or the hub's `windows-arm64.yml` | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers, an ORT session over the smoke suite's 63-byte Identity model on the CPU EP, with DirectML's outcome printed only), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, the pinned cpXY pytest stack installs offline from it, `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, every `cp3XYt` twin in `wheels-cp314t` installs alone, offline, into a venv of that interpreter and loads with the GIL off (`free-threaded-wheel.py prove`), `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), the validation layer loads, and a `webrtcsink` -> `webrtcsrc` loopback decodes 60 frames over DTLS-SRTP (CON63) |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
@@ -781,7 +781,7 @@ lane's replacement for `Install-StagedPythonWheel`/`Test-PythonImport`, which st
 
 ### A consumer's test runner, pinned (CON67, 2026-10-06)
 
-The wheel store also carries the cp314 pytest stack a consumer runs its suite with on the
+The wheel store also carries the pinned cpXY pytest stack a consumer runs its suite with on the
 device. That is pytest 9.1.1, pytest-cov 7.1.0, pytest-benchmark 5.2.3, pytest-html 4.2.0,
 pytest-md 0.2.0, pytest-md-report 0.8.0 and requests 2.34.2, with their dependency closure:
 the versions OrchestrANT's lock runs on x64. Before, OrchestrANT's `Stage-Arm64Tests.ps1`

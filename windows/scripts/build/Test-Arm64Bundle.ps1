@@ -185,7 +185,7 @@ Invoke-BundleStep 'vulkaninfo lists llvmpipe (lavapipe ICD + loader run)' {
 } $results
 
 # BACKLOG CON67 added the pytest stack.
-Invoke-BundleStep 'pytest stack from the wheel store (offline, cp314)' {
+Invoke-BundleStep 'pytest stack from the wheel store (offline, the bundle interpreter''s tag)' {
     & $py @offlinePip pytest pytest-cov pytest-benchmark pytest-html pytest-md pytest-md-report requests
     if ($LASTEXITCODE -ne 0) { throw "pip could not install the pytest stack offline (exit $LASTEXITCODE)" }
     & $py -c "import pytest, pytest_cov, pytest_benchmark, pytest_html, pytest_md_report, requests, coverage; print('pytest', pytest.__version__, '| coverage', coverage.__version__)"

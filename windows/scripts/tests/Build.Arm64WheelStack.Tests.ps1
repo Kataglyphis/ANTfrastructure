@@ -9,8 +9,9 @@ Describe 'Copy-Arm64TorchWheels: every staged wheel is pinned' {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Copy-Arm64TorchWheels.ps1' -FunctionName 'Get-Arm64WheelStack')
         $script:stacks = Get-Arm64WheelStack
         $script:pins = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
-        # torch has no cp314 win_arm64 wheel upstream; the pytest stack runs on the bundle's own cp314.
-        $script:abi = @{ TORCH_WINDOWS_ARM64 = 'cp313'; PYTEST_WINDOWS_ARM64 = 'cp314' }
+        # torch ships no newer win_arm64 wheel upstream; the pytest stack runs on the bundle's own interpreter, PYTHON_VERSION.
+        $p = $script:pins['PYTHON_VERSION'] -split '\.'
+        $script:abi = @{ TORCH_WINDOWS_ARM64 = 'cp313'; PYTEST_WINDOWS_ARM64 = "cp$($p[0])$($p[1])" }
     }
 
     It 'has a URL and a 64-hex SHA256 for every key in both stacks' {
