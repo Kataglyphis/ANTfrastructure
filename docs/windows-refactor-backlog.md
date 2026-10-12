@@ -139,7 +139,11 @@ this repo's cp314 pin).
   runs without `RUSTC_WRAPPER`. Put meson's packagecache on a cache mount or prefetch every
   wrap, find the regenerate trigger with `ninja -d explain`, and set `RUSTC_WRAPPER`.
 - **#183 — vendored code compiles under clang-cl's `/Wall`: 1.36 M warning lines in one arm64
-  merge vertex (opened 2026-10-12, #153; `BACKLOG.md` CON89's VVL item).** VVL's GCC-style
+  merge vertex (opened 2026-10-12, #153; `BACKLOG.md` CON89's VVL item). VVL and x265 are
+  FIXED IN SOURCE the same day:** both builds run with `_CL_=/w`, which clang-cl appends after
+  its own flags (probed in `:winamd64`: 3 warnings without it, 0 with it). sccache ignores
+  `_CL_`, and `/w` changes no code. Abseil in ORT and OpenCV's `matx.hpp` stay open; they
+  warn from inside our own builds, where a blanket `/w` would hide our warnings too. VVL's GCC-style
   `-Wall` reaches clang-cl as `/Wall`, which is `-Weverything`. In bk-20261010-121545 that
   vertex is 6,228,195 lines and 752 MB of the 768 MB merge log (97.9 %); the "about 110k"
   CON89 quoted is one translation unit, `vk_validation_error_messages.cpp`. The same class,
