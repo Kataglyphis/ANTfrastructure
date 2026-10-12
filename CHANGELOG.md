@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — CON83 closes: OrchestrANT imports pyplot lazily, its other two calls stay
+
+- **`import orchestrant` loads no `matplotlib.pyplot` (OrchestrANT 9dbb86b).** pyplot was 0.72 s of the import's
+  0.80 s on x64, and under riscv64 QEMU the import cost 31-37 s per subprocess (`bench_agent.py --list` took 41.9 s
+  against a 60 s timeout). Now 86 ms on x64. `MetricsPlotter` imports pyplot on its first plot, and a test fails when
+  the package import loads it again; no test patched `plotting.plt`, and the Cython build needs nothing new.
+- **The other two owner calls stay as they are.** bench_agent's own grading keeps the venv's pytest plugins: its
+  self-tests already disable their autoload for nested runs, where the QEMU cost was, and a native run pays 1 s, so a
+  change would only move verdicts against older reports. The process ceiling stays probed once per process, so it
+  cannot drift between launch and assertion (`bench_coding._nproc_ceiling`).
+
 ## 2026-10-12 — two WCOW probes settle #177's precondition and narrow #179; clang-cl needs `initialize()` first
 
 - **#177: a secret reaches a Windows RUN as an env var, and leaves no trace.** A buildctl probe over `bk-windows-toolchain`
