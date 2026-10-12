@@ -296,9 +296,12 @@ function Get-OrtChainWheel {
 }
 
 function Get-OrtChainWheelStore {
-    # The GIL store (PYTHON_WHEELS) and the free-threaded twins' (PYTHON_WHEELS_CP314T), with the image's defaults.
+    # The GIL store (PYTHON_WHEELS) and the free-threaded twins' (PYTHON_WHEELS_FREE_THREADED, else the older PYTHON_WHEELS_CP314T).
     param([switch]$FreeThreaded)
-    if ($FreeThreaded) { return $(if ($env:PYTHON_WHEELS_CP314T) { $env:PYTHON_WHEELS_CP314T } else { 'C:\runtime\wheels-cp314t' }) }
+    if ($FreeThreaded) {
+        foreach ($v in @($env:PYTHON_WHEELS_FREE_THREADED, $env:PYTHON_WHEELS_CP314T)) { if ($v) { return $v } }
+        return 'C:\runtime\wheels-cp314t'
+    }
     return $(if ($env:PYTHON_WHEELS) { $env:PYTHON_WHEELS } else { 'C:\runtime\wheels' })
 }
 

@@ -485,7 +485,7 @@ try:
 except RuntimeError as e:
     print("refused:", e)
 print("derived", sorted(set(bv.derived_keys().values())), len(bv.derived_keys()))
-bv.read_env = lambda: {"GSTREAMER_VERSION": "1.30.0", "PYTORCH_VERSION": "v2.14.1"}
+bv.read_env = lambda: {"GSTREAMER_VERSION": "1.30.0", "PYTORCH_VERSION": "v2.14.1", "PYTHON_VERSION": "3.14.8"}
 bv.http_text = lambda url: {
     "https://gitlab.freedesktop.org/gstreamer/gstreamer/-/raw/1.30.0/subprojects/x264.wrap":
         "[wrap-git]\nurl = https://gitlab.example/x264.git\nrevision = 165.0-meson\n",
@@ -506,7 +506,7 @@ t_assert_contains "${_out}" "derived ['CUDA_VERSION', 'DEEPSTREAM_VERSION'] 13" 
 t_assert_contains "${_out}" "x264 ('165.0-meson', {'X264_MESON_COMMIT': 'https://gitlab.example/x264.git#165.0-meson'}) ('165.0-meson', {})" \
   "the branch is the wrap's revision at GSTREAMER_VERSION, and a new one re-pins its head commit"
 t_assert_contains "${_out}" "rocm ('rocm7.14', {})" \
-  "the newest rocm line by number (7.14 over 7.2) for cp314 at PYTORCH_VERSION, not a cp313 or a newer torch's line"
+  "the newest rocm line by number (7.14 over 7.2) for PYTHON_VERSION's tag (cp314 here) at PYTORCH_VERSION, not a cp313 or a newer torch's line"
 
 t_case "spec_shellcheck --write refreshes all three shellcheck assets, the aarch64 tarball included (offline)"
 _out="$(_bv_offline <<'PY'

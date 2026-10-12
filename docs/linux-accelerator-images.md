@@ -75,8 +75,8 @@ What the variant changes, all in `build-cross-chain.sh` / `stage-defs.sh`:
 - **The runtime lane budgets 180 GB** (`CROSS_RUNTIME_LANE_GB`), not 120.
 - The wrappers take `onnxruntime-gpu` + `pytorch-cu130` unless you pin
   `ONNX_PACKAGE` / `PYTORCH_EXTRA`, and only that one onnxruntime flavour: the
-  amd64 CPU `onnxruntime_dnnl` wheel is pruned from a GPU venv. Both flavours' `cp314t`
-  twins stay in `/opt/wheels-cp314t`, and a `3.14t` venv takes the one its GIL store names
+  amd64 CPU `onnxruntime_dnnl` wheel is pruned from a GPU venv. Both flavours' `cp3XYt`
+  twins stay in `/opt/wheels-free-threaded`, and an X.Yt venv takes the one its GIL store names
   ([free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)). The manifest is
   `:latest-nvidia` over the `:latest-nvidia-<arch>` the run built. There is no
   route yet to add an arm64 entry: the Jetson lane's image is host-infixed and
@@ -721,7 +721,7 @@ The ROCm variant chain inserts `Dockerfile.amd` as its `gpu` stage **after** the
   `MIGRAPHX_VERSION` moves together with `ROCM_VERSION`.
 - MIGraphX packages come from a separate repo path (`/rocm/migraphx/packages/ubuntu2604/`) on the same `stable.repo.amd.com` host. The toolchain image pins the AMD repo to provide only ROCm/MIGraphX packages via an apt pin on Origin "AMD ROCm".
 - The ONNX Runtime MIGraphX Execution Provider replaces the older ROCm EP. The build script passes `--use_migraphx --migraphx_home <MIGraphX's prefix>` (`/opt/rocm/extras-10` on 10.1, [below](#where-rocm-101-puts-migraphx)) instead of `--use_rocm`.
-- The build produces an `onnxruntime-migraphx` Python wheel (instead of `onnxruntime-rocm`), and its `cp314t` twin from the same tree ([free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)).
+- The build produces an `onnxruntime-migraphx` Python wheel (instead of `onnxruntime-rocm`), and its `cp3XYt` twin from the same tree ([free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)).
 - The media stage strips all external apt sources from the SDK base image and configures clean resolute-only sources to prevent cross-distro package conflicts. 01-core modules are bind-mounted into build stages so `media_common_init()` can locate cross-build helpers.
 
 **Build (orchestrated):**

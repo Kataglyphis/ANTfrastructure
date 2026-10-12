@@ -2,7 +2,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# The repaired cp314t store, proved again and checked against the GIL wheelhouse, plus the record the runtime smoke reads. See docs/consumer-image-contract.md#the-free-threaded-wheels
+# The repaired free-threaded store, proved again and checked against the GIL wheelhouse, plus the record the runtime smoke reads. See docs/consumer-image-contract.md#the-free-threaded-wheels
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -48,7 +48,7 @@ ft_store_check_set() {
     fi
   done
   for d in $(LC_ALL=C comm -23 <(printf '%s\n' "${want}" | sed '/^$/d') <(printf '%s\n' "${have}" | sed '/^$/d')); do
-    echo "ERROR: ${d} ships a GIL wheel in ${WHEELS_DIR} and its table verdict is twin, but ${FT_WHEELS_DIR} has no cp314t twin of it" >&2
+    echo "ERROR: ${d} ships a GIL wheel in ${WHEELS_DIR} and its table verdict is twin, but ${FT_WHEELS_DIR} has no free-threaded twin of it" >&2
     bad=1
   done
   for d in $(LC_ALL=C comm -13 <(printf '%s\n' "${want}" | sed '/^$/d') <(printf '%s\n' "${have}" | sed '/^$/d')); do

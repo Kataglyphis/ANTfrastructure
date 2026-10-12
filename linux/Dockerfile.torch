@@ -12,7 +12,7 @@ FROM ${WHEELS_IMAGE} AS wheels-source
 # RUNTIME_WHEELS_SOURCE=export: docs/linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries
 FROM scratch AS wheels-export
 COPY --link --from=wheels-source /opt/wheels /opt/wheels
-COPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t
+COPY --link --from=wheels-source /opt/wheels-free-threaded /opt/wheels-free-threaded
 # hadolint publishes no riscv64 binary; elsewhere this stage is an empty /out. docs/consumer-image-contract.md#shellcheck-and-hadolint
 FROM ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST} AS hadolint-build
 ARG TARGETARCH
@@ -200,9 +200,9 @@ RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -l -u ${RUNTIME_UID} -s /bin
     find / -xdev -perm -4000 -name 'sudo*' -type f -delete 2>/dev/null || true
 
 # Late, so a new twin re-keys no venv or Hailo layer; no GIL path reads them: docs/consumer-image-contract.md#the-free-threaded-wheels
-COPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t
+COPY --link --from=wheels-source /opt/wheels-free-threaded /opt/wheels-free-threaded
 # Windows' name for its twin store; uv_reconcile_chain_ort takes a cp3XYt venv's ORT from it, and here it re-keys no venv layer.
-ENV PYTHON_WHEELS_CP314T=/opt/wheels-cp314t
+ENV PYTHON_WHEELS_FREE_THREADED=/opt/wheels-free-threaded
 
 # /opt/venv is root-owned; no .pyc writes also keeps the image runnable --read-only.
 ENV PYTHONDONTWRITEBYTECODE=1

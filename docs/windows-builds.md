@@ -313,7 +313,7 @@ Windows `3.14t` leg had uv download a python-build-standalone interpreter.
 
 #### The free-threaded wheels
 
-Every wheel the media stages build, on `:winamd64` and on the arm64 cross lane, gets a `cp314-cp314t` twin beside its
+Every wheel the media stages build, on `:winamd64` and on the arm64 cross lane, gets a `cp3XY-cp3XYt` twin beside its
 unchanged `cp314` wheel, but only when the package's own code declares free-threading (owner request 2026-10-07). The
 twins are built with the interpreter of [§ The free-threaded CPython](#the-free-threaded-cpython), on the image's VS 2026
 and clang-cl.
@@ -330,7 +330,7 @@ and clang-cl.
     reads it. A missing table throws; it never reads as an empty list.
 - **The store is separate.** The twins go to `C:\runtime\wheels-cp314t` (`PYTHON_WHEELS_CP314T`), never into
   `PYTHON_WHEELS`, and `Save-PythonWheel` refuses a `cp3XYt` wheel there. A 3.14t venv can be given both stores:
-  pip and uv take only `cp314t` and `py3-none` wheels on that interpreter. `Sync-UvChainOnnxRuntime` reads the twins'
+  pip and uv take only `cp3XYt` and `py3-none` wheels on that interpreter. `Sync-UvChainOnnxRuntime` reads the twins'
   store for a `cp3XYt` venv ([`python-ci.md` § Free-threaded and GIL legs](python-ci.md#free-threaded-and-gil-legs-in-one-container)).
 - **Nothing installs into `C:\python-freethreaded`.** Its `site-packages` stays empty, as the interpreter's contract
   says, and a consumer installs the twins into a venv. The GIL interpreter is unchanged.
@@ -453,7 +453,7 @@ The host's x64 3.14t runs every build, and the target tree's `C:\runtime\python-
 
 **Proved statically on the build host, on the device by the bundle gate.** No ARM64 module loads on the x64 host, so
 `Save-FreeThreadedWheel` runs no venv proof on a cross lane. It stores a twin after three static gates instead: the tags
-(`cp314-cp314t`, `win_arm64`, every tagged `.pyd` `.cp314t-win_arm64.pyd`), the imports (every module imports
+(`cp3XY-cp3XYt`, `win_arm64`, every tagged `.pyd` `.cp314t-win_arm64.pyd`), the imports (every module imports
 `python314t.dll`, never `python314.dll` or `python3.dll`), and `Assert-WheelTargetArch` (every PE member `0xAA64`).
 
 - **The merge** checks the store twice. `Write-BundleManifest.ps1` refuses a cross bundle unless every twin-verdict GIL
@@ -469,7 +469,7 @@ The host's x64 3.14t runs every build, and the target tree's `C:\runtime\python-
   passes every static gate and fails only there.
 - **Their dependencies sit in `wheels-cp314t\deps`** (CON79, in source since 2026-10-11). After the GIL store,
   `Copy-TargetPythonDeps.ps1` reads each twin's `Requires-Dist` and downloads the requirements for the target as
-  `cp314t` or ABI-free wheels, never `abi3`, which the free-threaded ABI cannot load. Today that means numpy and
+  `cp3XYt` or ABI-free wheels, never `abi3`, which the free-threaded ABI cannot load. Today that means numpy and
   ml_dtypes as `cp314t-win_arm64`, plus flatbuffers, packaging, protobuf and typing-extensions as pure wheels.
   - It fails when a downloaded wheel carries another ABI, or when a twin's or a dependency's requirement resolves in
     neither directory.
@@ -495,7 +495,7 @@ the time from the GIL wheel to the stored twin:
   `:winarm64`, 982 → 1074 on `:winamd64`, 0 violations each.
 - **The device step**, run on the x64 3.14t there: a module declaring `Py_MOD_GIL_NOT_USED` passed in 4.8 s, one
   declaring nothing failed with `the GIL was re-enabled, first by gilneed`, and a missing helper stopped the step.
-- **A GIL module dressed as a twin** (`ftmod.cp314-win_arm64.pyd` in a `cp314t` wheel) failed the tag gate, and the
+- **A GIL module dressed as a twin** (`ftmod.cp314-win_arm64.pyd` in a `cp3XYt` wheel) failed the tag gate, and the
   import gate named `python314.dll`. Without `-L`, the cross PyAV-style link failed `LNK2001: __imp_PyModuleDef_Init`.
 
 #### ONNX Runtime (pin: `ONNXRUNTIME_VERSION`)

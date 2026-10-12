@@ -6,6 +6,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — CON90: Python 3.15.0, and an upgrade is one line
+
+- **`PYTHON_VERSION=3.15.0`** (owner request; released 2026-10-09). `PYTHON_TGZ_SHA256` was computed from python.org's
+  tarball twice, by hand and by `bump_versions.py`. uv moves to 0.13.0, the first release that knows 3.15.0; numpy to
+  2.5.4, which ships cp315 and cp315t wheels (its twin-table row re-read at that pin).
+- **The images ship the source-built interpreter on every arch.** `Dockerfile.package` mounts the toolchain's staged
+  `/opt/python-cross/<arch>` into its setup RUN, and `install_staged_target_python` installs it without the fat-LTO
+  static libpython and checks it reports `PYTHON_VERSION` exactly. The distro `python3` (Ubuntu's 3.14) stays apt's
+  alone. arm64 and riscv64 no longer copy apt's numpy, gi, cairo and contourpy into the venvs (they were built for the
+  distro interpreter); uv builds them from sdists, and the `pycairo==1.27.0` constraint that matched apt's copy is gone.
+- **Nothing else names a version.** X.Y, the wheel tags and the drivers' defaults derive from the pin
+  (`python_pinned_major_minor`, `PYTHON_ABI_TAG`/`PYTHON_FT_ABI_TAG`); `ci_tests.sh` runs X.Y, plus X.Yt for a project
+  that declares free-threading; the free-threaded store is `/opt/wheels-free-threaded` (`PYTHON_WHEELS_FREE_THREADED`),
+  which Windows' readers take first too; the uv seed, the app bundle, the GStreamer cross paths, the smokes and the
+  hub's own workflows read the pin; Renovate's rule names no version; `bump_versions.py` refills the tarball checksum
+  after a hand-edited minor. `Dockerfile.toolchain` declares the Python ARGs right above the CPython RUN, so the next
+  upgrade leaves GCC, LLVM and Rust cached. The procedure: `docs/python-ci.md` § Upgrading Python.
+- **Not built yet:** the chain (BACKLOG CON90), and the Windows half (CON91).
+
 ## 2026-10-12 — CON42: `nvblender` stays unusable, and the helper libraries stay out of `lib/gst-plugins/`
 
 Two owner calls, taken with the recommended option:

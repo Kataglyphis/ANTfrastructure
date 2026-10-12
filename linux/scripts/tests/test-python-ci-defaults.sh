@@ -9,8 +9,10 @@ IMAGE_PY="$(sed -n 's/^PYTHON_VERSION=\([0-9][0-9]*\.[0-9][0-9]*\)\..*/\1/p' "${
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
 WS="${_work}/ws"; REC="${_work}/calls"; TREE="${_work}/tree"
 mkdir -p "${WS}/docs" "${_work}/bin" "${TREE}/01-core" "${TREE}/02-toolchain/python"
-cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${TREE}/01-core/"
-cp "${SCRIPTS}/02-toolchain/python/ci_tests.sh" "${SCRIPTS}/02-toolchain/python/ci_build_docs.sh" "${TREE}/02-toolchain/python/"
+# versions.env sits beside python_uv.sh, as in every checkout: the drivers' defaults derive from it.
+cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${SCRIPTS}/01-core/versions.env" "${TREE}/01-core/"
+cp "${SCRIPTS}/02-toolchain/python/ci_tests.sh" "${SCRIPTS}/02-toolchain/python/ci_build_docs.sh" \
+  "${SCRIPTS}/02-toolchain/python/free-threaded-wheel.py" "${TREE}/02-toolchain/python/"
 printf '#!/usr/bin/env bash\nprintf "make %%s\\n" "$*" >> "${REC}"\n' > "${_work}/bin/make"; chmod +x "${_work}/bin/make"
 # The real python_uv.sh (is_experimental_python and its knob), with every uv and workspace effect recorded instead.
 cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
@@ -40,11 +42,23 @@ t_assert_ok test -n "${IMAGE_PY}"
 
 t_case "ci_tests.sh with no version runs one leg, on the image interpreter the chain ORT wheels are built for"
 t_assert_ok _driver ci_tests
-t_assert_eq "${IMAGE_PY}" "$(_legs)" "no other stable leg: a cp313 venv cannot take a cp314 chain wheel"
+t_assert_eq "${IMAGE_PY}" "$(_legs)" "no other stable leg: an older venv cannot take the chain's wheels for the pinned tag"
 
 t_case "the empty positional the reusable lane passes falls through to the same default"
 t_assert_ok _driver ci_tests pkg ''
 t_assert_eq "${IMAGE_PY}" "$(_legs)"
+
+t_case "a project that declares free-threading gets the free-threaded twin leg too, from the same pin"
+printf '[project]\nname = "pkg"\nclassifiers = ["Programming Language :: Python :: Free Threading :: 2 - Beta"]\n' > "${WS}/pyproject.toml"
+t_assert_ok _driver ci_tests
+t_assert_eq "${IMAGE_PY} ${IMAGE_PY}t" "$(_legs)"
+rm -f "${WS}/pyproject.toml"
+
+t_case "the image's own PYTHON_MAJOR_MINOR wins over the checkout's pin"
+_driver_mm() { : > "${REC}"; env -u PY_VERSIONS PYTHON_MAJOR_MINOR=3.99 PATH="${_work}/bin:${PATH}" REC="${REC}" FIXTURE_WS="${WS}" \
+  GIT_CONFIG_GLOBAL="${_work}/gitconfig" CI_TESTS_LOG_FILE="${_work}/tests.log" bash "${TREE}/02-toolchain/python/ci_tests.sh" > "${_work}/out" 2>&1; }
+t_assert_ok _driver_mm
+t_assert_eq "3.99" "$(_legs)"
 
 t_case "a consumer's own list still wins"
 t_assert_ok _driver ci_tests pkg "${IMAGE_PY} ${IMAGE_PY}t"

@@ -50,9 +50,9 @@ PY
 
 write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu
 write_ort_wheel_manifest /usr/local/lib/onnxruntime-gpu
-# The cp314t twins keep their own manifest, so neither store's repair ever reads the other's rows.
-write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu "" wheels-cp314t ort-provenance-cp314t.sha256
-write_ort_wheel_manifest /usr/local/lib/onnxruntime-gpu "" wheels-cp314t ort-provenance-cp314t.sha256
+# The free-threaded twins keep their own manifest, so neither store's repair ever reads the other's rows.
+write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu "" wheels-free-threaded ort-provenance-free-threaded.sha256
+write_ort_wheel_manifest /usr/local/lib/onnxruntime-gpu "" wheels-free-threaded ort-provenance-free-threaded.sha256
 
 wheel_source_dirs=(
   /usr/local/lib/onnxruntime-cpu/wheels
@@ -75,10 +75,10 @@ rm -rf "${wheel_source_dirs[@]}"
 
 # The twins never enter WHEELS_DIR: every GIL path (verify, install, census) reads that one only.
 ft_wheel_source_dirs=(
-  /usr/local/lib/onnxruntime-cpu/wheels-cp314t
-  /usr/local/lib/onnxruntime-gpu/wheels-cp314t
-  /opt/app-wheels-cp314t
-  /opt/tvm-wheels-cp314t
+  /usr/local/lib/onnxruntime-cpu/wheels-free-threaded
+  /usr/local/lib/onnxruntime-gpu/wheels-free-threaded
+  /opt/app-wheels-free-threaded
+  /opt/tvm-wheels-free-threaded
 )
 
 mkdir -p "${FT_WHEELS_DIR}"

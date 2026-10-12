@@ -8,6 +8,9 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 
 CF_SMOKE_ROOT="${CF_SMOKE_ROOT:-}"
 PYTHON_CROSS_ROOT="${CF_SMOKE_ROOT}/opt/python-cross"
+# X.Y of the staged trees: the image's PYTHON_MAJOR_MINOR, else the PYTHON_VERSION the compiler image sets.
+_cf_pv="${PYTHON_VERSION:-}"
+PY_MM="${PYTHON_MAJOR_MINOR:-${_cf_pv%.*}}"
 LITERT_INCLUDE_DIRS=("${CF_SMOKE_ROOT}/usr/local/include" "${CF_SMOKE_ROOT}/opt/litert/include"
                      "${CF_SMOKE_ROOT}/usr/local/include/litert" "${CF_SMOKE_ROOT}/usr/local/include/tensorflow/lite")
 LITERT_HEADER_DIRS=("${CF_SMOKE_ROOT}/usr/local/include/tflite" "${CF_SMOKE_ROOT}/usr/local/include/c"
@@ -27,25 +30,25 @@ fix1_python_pc() {
   echo "--- Fix 1: gst-python staged libpython (python pkg-config rewrite) ---"
   local found=0 arch pc prefix
   for arch in $(smoke_arch_words "${CROSS_DEFAULT_ARCHES:-amd64,arm64,riscv64}"); do
-    pc="${PYTHON_CROSS_ROOT}/${arch}/usr/local/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR:-3.14}.pc"
+    pc="${PYTHON_CROSS_ROOT}/${arch}/usr/local/lib/pkgconfig/python-${PY_MM}.pc"
     if [ -f "${pc}" ]; then
       found=1
       prefix="$(resolved_pc_prefix "${pc}" || true)"
       case "${prefix}" in
         "${PYTHON_CROSS_ROOT}/${arch}"|"${PYTHON_CROSS_ROOT}/${arch}"/*)
-          pass "python-${PYTHON_MAJOR_MINOR:-3.14}.pc prefix resolves to ${prefix} (${arch})" ;;
+          pass "python-${PY_MM}.pc prefix resolves to ${prefix} (${arch})" ;;
         *)
-          fail "python-${PYTHON_MAJOR_MINOR:-3.14}.pc prefix resolves to '${prefix}', outside ${PYTHON_CROSS_ROOT}/${arch} (${arch})" ;;
+          fail "python-${PY_MM}.pc prefix resolves to '${prefix}', outside ${PYTHON_CROSS_ROOT}/${arch} (${arch})" ;;
       esac
       if grep -q "^libdir=${PYTHON_CROSS_ROOT}" "${pc}" 2>/dev/null || \
          grep -q 'libdir=${prefix}/lib' "${pc}" 2>/dev/null; then
-        pass "python-${PYTHON_MAJOR_MINOR:-3.14}.pc libdir resolves inside staging tree (${arch})"
+        pass "python-${PY_MM}.pc libdir resolves inside staging tree (${arch})"
       else
-        fail "python-${PYTHON_MAJOR_MINOR:-3.14}.pc libdir may point outside staging tree (${arch})"
+        fail "python-${PY_MM}.pc libdir may point outside staging tree (${arch})"
       fi
     fi
   done
-  { [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch python-${PYTHON_MAJOR_MINOR:-3.14}.pc found (not a cross-compiler image)"; } || true
+  { [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch python-${PY_MM}.pc found (not a cross-compiler image)"; } || true
 }
 
 # The header that demands absl, so a missing absl is reported only where a consumer hits it.
@@ -83,7 +86,7 @@ fix3_libdynload_dangling() {
   echo "--- Fix 3: cross lib-dynload no dangling symlinks ---"
   local found=0 arch dir count
   for arch in $(smoke_arch_words "${CROSS_DEFAULT_ARCHES:-amd64,arm64,riscv64}"); do
-    dir="${PYTHON_CROSS_ROOT}/${arch}/usr/local/lib/python${PYTHON_MAJOR_MINOR:-3.14}/lib-dynload"
+    dir="${PYTHON_CROSS_ROOT}/${arch}/usr/local/lib/python${PY_MM}/lib-dynload"
     if [ -d "${dir}" ]; then
       found=1
       count=$(find "${dir}" -xtype l 2>/dev/null | wc -l)
@@ -134,6 +137,11 @@ echo "=== Critical Fixes: in-image probes ==="
 echo ""
 
 IMAGE_FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine)
+# fix1 and fix3 name the staged tree by X.Y; without one they fail once rather than guess.
+if [ -z "${PY_MM}" ]; then
+  fail "no PYTHON_MAJOR_MINOR or PYTHON_VERSION in the environment, so no staged tree can be named"
+  IMAGE_FIX_FUNCS=(fix2_abseil_span fix4_cc_dumpmachine)
+fi
 for _fix_fn in "${IMAGE_FIX_FUNCS[@]}"; do
   "${_fix_fn}"
   echo ""

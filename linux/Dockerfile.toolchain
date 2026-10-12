@@ -17,9 +17,6 @@ ARG BUILD_MODE=native
 # Divides usable RAM so --parallel-archs builds don't collectively overcommit the host.
 ARG BUILD_MEM_DIVISOR=1
 ARG CROSS_TARGETS=amd64,arm64,riscv64
-ARG PYTHON_VERSION=3.14.8
-# Must reach the Python RUN, or build_python.sh downloads CPython unverified.
-ARG PYTHON_TGZ_SHA256=a65b20a728f169f4e66ae143f40b1bd3d33c38d770251663f627c9767b79b210
 ARG GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE=0
 ARG GCC_HOST_BOOTSTRAP=0
 # Opt-in concurrent per-target GCC builds; stage-defs.sh forwards it from the host env.
@@ -39,7 +36,6 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GCC_VERSION=${GCC_VERSION} \
     GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
     LLVM_RELEASE=${LLVM_RELEASE} \
-    PYTHON_VERSION=${PYTHON_VERSION} \
     PATH="/usr/local/cargo/bin:${PATH}" \
     CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
@@ -167,6 +163,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
     --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/toolchain/install-rust.sh
 
+# Declared here, not at the top: a Python upgrade then leaves the GCC, LLVM and Rust layers above cached.
+ARG PYTHON_VERSION=3.15.0
+# Must reach the Python RUN, or build_python.sh downloads CPython unverified.
+ARG PYTHON_TGZ_SHA256=438596cac081036d3c1d532ab7e7335eeb35567bc961749a0d5797176db0db68
+ENV PYTHON_VERSION=${PYTHON_VERSION}
 # Source-built CPython, shared by every downstream venv, and its free-threaded twin; docs/consumer-image-contract.md#the-free-threaded-python
 RUN --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \

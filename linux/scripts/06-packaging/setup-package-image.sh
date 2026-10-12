@@ -69,7 +69,7 @@ add_prefix_python_paths_to_venv() {
 
 # The source-built target Python the cross build stages at /opt/python-cross, if present.
 install_staged_target_python() {
-    local python_mm="$1"
+    local python_mm="$1" report
     local target_arch="${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
     local staged_python_root="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${target_arch}"
 
@@ -79,18 +79,28 @@ install_staged_target_python() {
                 echo "Installing source-built target Python ${python_mm} from ${staged_python_root}/usr/local"
                 cp -a "${staged_python_root}/usr/local/bin"/* /usr/local/bin/
                 cp -a "${staged_python_root}/usr/local/lib"/python"${python_mm}" /usr/local/lib/
-                cp -a "${staged_python_root}/usr/local/lib"/libpython* /usr/local/lib/
+                cp -a "${staged_python_root}/usr/local/lib"/libpython*.so* /usr/local/lib/
+                # The fat-LTO static libpython links nothing in the image and weighs 155-435 MB per arch.
+                rm -f /usr/local/lib/python"${python_mm}"/config-"${python_mm}"*/libpython*.a
                 cp -a "${staged_python_root}/usr/local/lib"/pkgconfig /usr/local/lib/
                 cp -a "${staged_python_root}/usr/local/include"/python* /usr/local/include/
                 echo "/usr/local/lib" > "/etc/ld.so.conf.d/python-local.conf"
                 ldconfig
+                # PYTHON_VERSION is the build ARG; the modules a consumer's sync needs must have built.
+                report="$("/usr/local/bin/python${python_mm}" -c 'import ssl, sqlite3, zlib, lzma, bz2, platform; print(platform.python_version())' 2>&1)" || true
+                if [ -n "${PYTHON_VERSION:-}" ] && [ "${report}" != "${PYTHON_VERSION}" ]; then
+                    echo "ERROR: python${python_mm} reports '${report}', expected PYTHON_VERSION ${PYTHON_VERSION}" >&2
+                    return 1
+                fi
+                echo "OK: source-built CPython ${report} at /usr/local/bin/python${python_mm}"
             elif [ -e "${staged_python_root}" ]; then
                 # Staged tree present but unusable: never fall through to the distro python.
                 echo "ERROR: ${staged_python_root} exists but carries no executable usr/local/bin/python${python_mm}" >&2
                 return 1
             else
-                # Expected: Dockerfile.package stages none, so PYTHON_VERSION is not advertised.
-                echo "No staged target Python at ${staged_python_root}; using the distro python${python_mm}."
+                # Dockerfile.package mounts it, and the distro python3 is a different version.
+                echo "ERROR: no staged target Python at ${staged_python_root}; the image ships PYTHON_VERSION, not the distro python3" >&2
+                return 1
             fi
             ;;
     esac
@@ -306,26 +316,23 @@ wire_cargo_symlinks() {
     fi
 }
 
-# riscv64 takes apt packages via --system-site-packages: compiled wheels fail under QEMU.
+# The staged PYTHON_VERSION on every arch; apt's python3-* belong to the distro python3, a different version.
 create_runtime_venv() {
     local python_mm="$1"
+    # These fallbacks are the live values (nothing loads versions.env here); verify-arg-consistency keeps them equal.
+    local -a pkgs=("wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}"
+        "meson==${PY_MESON_VERSION:-1.12.1}" "ninja==${PY_NINJA_VERSION:-1.13.2}" "cmake==${PY_CMAKE_VERSION:-4.4.4}"
+        "packaging==${PY_PACKAGING_VERSION:-26.3}")
 
     rm -rf "${VIRTUAL_ENV}"
     uv venv --seed --python "/usr/local/bin/python${python_mm}" "${VIRTUAL_ENV}"
     if [ "${TARGET_ARCH:-}" = "riscv64" ] || [ "$(uname -m)" = "riscv64" ]; then
-        # QEMU-riscv64 cannot run the gcc preprocessor.
-        rm -rf "${VIRTUAL_ENV}"
-        # Not ml_dtypes: this venv never sees the distro python's dist-packages (assemble-torch-app.sh builds it).
-        apt-get install -y --no-install-recommends \
-            python3-numpy python3-meson python3-ninja python3-cmake \
-            python3-wheel python3-setuptools python3-packaging 2>/dev/null || true
-        uv venv --seed --system-site-packages --python "/usr/local/bin/python${python_mm}" "${VIRTUAL_ENV}"
-        # These fallbacks are the live values (nothing loads versions.env here); verify-arg-consistency keeps them equal.
-        uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" "cmake==${PY_CMAKE_VERSION:-4.4.4}" "packaging==${PY_PACKAGING_VERSION:-26.3}"
+        # PyPI has no riscv64 numpy, and this stage compiles nothing under QEMU; /opt/venv's comes from the torch stage.
+        echo "riscv64: no numpy in ${VIRTUAL_ENV}; the torch stage builds /opt/venv's from the sdist"
     else
-        # numpy only here: riscv64 takes apt's python3-numpy.
-        uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" "numpy==${PY_NUMPY_VERSION:-2.5.2}" "meson==${PY_MESON_VERSION:-1.12.1}" "ninja==${PY_NINJA_VERSION:-1.13.0}" "cmake==${PY_CMAKE_VERSION:-4.4.4}" "packaging==${PY_PACKAGING_VERSION:-26.3}"
+        pkgs+=("numpy==${PY_NUMPY_VERSION:-2.5.4}")
     fi
+    uv pip install --python "${VIRTUAL_ENV}/bin/python" "${pkgs[@]}"
 }
 
 # Safety net for configure-runtime.sh's multiarch link, run before the dev surface is asserted.
@@ -487,7 +494,7 @@ install_cargo_qa_tools() {
     done
 }
 
-# The free-threaded twin of PYTHON_VERSION for the 3.14t legs (CON66). See docs/consumer-image-contract.md § The free-threaded Python
+# The free-threaded twin of PYTHON_VERSION for the X.Yt legs (CON66). See docs/consumer-image-contract.md § The free-threaded Python
 install_free_threaded_python() {
     local root="${1:-/opt/python-freethreaded}" version exe mm report
 

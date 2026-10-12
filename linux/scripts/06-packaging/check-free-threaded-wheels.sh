@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The shipped cp314t store: the twins of /opt/venv's free-threading packages, each proved again on the image's python3.14t. See docs/consumer-image-contract.md#the-free-threaded-wheels
+# The shipped free-threaded store: the twins of /opt/venv's free-threading packages, each proved again on the image's pythonX.Yt. See docs/consumer-image-contract.md#the-free-threaded-wheels
 
 # Sourced by smoke-runtime-image.sh; sets no shell options.
 _FTS_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,12 +16,12 @@ _ft_store_table() {
   ft_wheel_table >/dev/null 2>&1 || { echo "BAD the twin table is not at ${_FTS_HERE}/../03-media/free-threaded-twins.txt"; return 1; }
 }
 
-# The in-image probe: the store's record, its wheels, /opt/venv's distributions, and one 3.14t proof per wheel.
+# The in-image probe: the store's record, its wheels, /opt/venv's distributions, and one X.Yt proof per wheel.
 ft_store_probe_script() {
   cat <<'PROBE'
 set -uo pipefail
-printf 'FTS ENV %s\n' "${PYTHON_WHEELS_CP314T:-<unset>}"
-store=/opt/wheels-cp314t
+printf 'FTS ENV %s\n' "${PYTHON_WHEELS_FREE_THREADED:-<unset>}"
+store=/opt/wheels-free-threaded
 helper=/opt/scripts/toolchain/python/free-threaded-wheel.py
 [ -d "${store}" ] || { echo "FTS NOSTORE"; echo "FTS DONE"; exit 0; }
 if [ -f "${store}/free-threaded-store.txt" ]; then sed 's/^/FTS RECORD /' "${store}/free-threaded-store.txt"; else echo "FTS NORECORD"; fi
@@ -29,9 +29,9 @@ ls -1 /opt/venv/lib/python3*/site-packages 2>/dev/null | sed -n 's/^\(.*\)-[^-]*
 work="$(mktemp -d /tmp/fts.XXXXXX)"
 export UV_CACHE_DIR="${work}/cache"
 if compgen -G "${store}/*.whl" >/dev/null; then
-  uv venv --quiet --python /usr/local/bin/python3.14t "${work}/venv" >/dev/null 2>&1 \
+  uv venv --quiet --python "/usr/local/bin/python${PYTHON_MAJOR_MINOR}t" "${work}/venv" >/dev/null 2>&1 \
     && uv pip install --quiet --offline --no-deps --python "${work}/venv/bin/python" "${store}"/*.whl >/dev/null 2>&1 \
-    || echo "FTS NOINSTALL the store does not install into a python3.14t venv"
+    || echo "FTS NOINSTALL the store does not install into a python${PYTHON_MAJOR_MINOR}t venv"
 fi
 for w in "${store}"/*.whl; do
   [ -f "${w}" ] || continue
@@ -54,8 +54,8 @@ ft_store_verdict() {
   _ft_store_table || return 0
   case "${probe}" in *"FTS DONE"*) ;; *) echo "BAD the in-image probe never finished"; return 0 ;; esac
   _ft_store_env_verdict "${probe}"
-  case "${probe}" in *"FTS NOSTORE"*) echo "BAD /opt/wheels-cp314t is missing; every arch ships the store"; return 0 ;; esac
-  case "${probe}" in *"FTS NORECORD"*) echo "BAD /opt/wheels-cp314t has no free-threaded-store.txt, so nothing says how its arch was built"; return 0 ;; esac
+  case "${probe}" in *"FTS NOSTORE"*) echo "BAD /opt/wheels-free-threaded is missing; every arch ships the store"; return 0 ;; esac
+  case "${probe}" in *"FTS NORECORD"*) echo "BAD /opt/wheels-free-threaded has no free-threaded-store.txt, so nothing says how its arch was built"; return 0 ;; esac
   mode="$(printf '%s\n' "${probe}" | sed -n 's/^FTS RECORD mode=//p' | head -n 1)"
   have="$(printf '%s\n' "${probe}" | sed -n 's/^FTS WHEEL //p')"
   case "${mode}" in
@@ -73,14 +73,14 @@ _ft_store_wants() {
   esac
 }
 
-# <probe>: the image advertises the store as Windows does, since uv_reconcile_chain_ort finds a 3.14t venv's ORT twin only through it.
+# <probe>: the image advertises the store as Windows does, since uv_reconcile_chain_ort finds a free-threaded venv's ORT twin only through it.
 _ft_store_env_verdict() {
   local env
   env="$(printf '%s\n' "$1" | sed -n 's/^FTS ENV //p' | head -n 1)"
-  if [ "${env}" = /opt/wheels-cp314t ]; then
-    echo "OK PYTHON_WHEELS_CP314T names /opt/wheels-cp314t for the chain-ORT reconcile"
+  if [ "${env}" = /opt/wheels-free-threaded ]; then
+    echo "OK PYTHON_WHEELS_FREE_THREADED names /opt/wheels-free-threaded for the chain-ORT reconcile"
   else
-    echo "BAD PYTHON_WHEELS_CP314T is '${env:-<no probe line>}', not /opt/wheels-cp314t, so a 3.14t venv's chain-ORT reconcile cannot find the ORT twin"
+    echo "BAD PYTHON_WHEELS_FREE_THREADED is '${env:-<no probe line>}', not /opt/wheels-free-threaded, so a free-threaded venv's chain-ORT reconcile cannot find the ORT twin"
   fi
 }
 
@@ -96,7 +96,7 @@ _ft_store_verdict_native() {
     fi
     fam_want+="$(ft_wheel_row "${d}" | cut -d'|' -f1)"$'\n'
     printf '%s\n' "${have}" | grep -q -i -e "^${d//[-_.]/[-_.]}-[^-]*-cp3[0-9]*-cp3[0-9]*t-" \
-      || echo "BAD /opt/venv carries ${d}, whose verdict is twin, and the store has no cp314t twin of it"
+      || echo "BAD /opt/venv carries ${d}, whose verdict is twin, and the store has no free-threaded twin of it"
   done
   for w in ${have}; do
     case "${w}" in *-cp3[0-9]*-cp3[0-9]*t-*.whl) ;; *) echo "BAD ${w} is not a cp3XY-cp3XYt wheel" ;; esac
@@ -105,7 +105,7 @@ _ft_store_verdict_native() {
     if printf '%s\n' "${probe}" | grep -q -e "^FTS PROVED ${w%%-*} "; then
       echo "OK ${w}: $(printf '%s\n' "${probe}" | sed -n "s/^FTS PROVED ${w%%-*} //p" | head -n 1)"
     else
-      echo "BAD ${w} is not proved on python3.14t: $(printf '%s\n' "${probe}" | sed -n "s/^FTS UNPROVED ${w%%-*} //p" | head -n 1)"
+      echo "BAD ${w} is not proved on the free-threaded python: $(printf '%s\n' "${probe}" | sed -n "s/^FTS UNPROVED ${w%%-*} //p" | head -n 1)"
     fi
   done
   fam_want="$(printf '%s' "${fam_want}" | LC_ALL=C sort -u | tr '\n' ' ')"
@@ -121,7 +121,7 @@ _ft_store_verdict_native() {
 check_free_threaded_wheels() {
   # shellcheck disable=SC2034  # _rt_run reads image_tag by dynamic scope
   local image_tag="$1" target_arch="$2" probe line
-  echo "--- Free-threaded wheels: the cp314t store on python3.14t (${target_arch}) ---"
+  echo "--- Free-threaded wheels: the free-threaded store on the free-threaded python (${target_arch}) ---"
   probe="$(_rt_run bash -lc "$(ft_store_probe_script)" 2>/dev/null)" || true
   while IFS= read -r line; do
     case "${line}" in

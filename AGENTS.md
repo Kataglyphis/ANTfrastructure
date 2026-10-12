@@ -898,8 +898,8 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` ย
   its own stage:
   [`consumer-image-contract.md` ยง The riscv64 uv cache seed](docs/consumer-image-contract.md#the-riscv64-uv-cache-seed).
 
-- **A native media wheel whose own code declares free-threading ships a proved `cp314t`
-  twin, in `/opt/wheels-cp314t` and never in `/opt/wheels`** (owner request 2026-10-07).
+- **A native media wheel whose own code declares free-threading ships a proved `cp3XYt`
+  twin, in `/opt/wheels-free-threaded` and never in `/opt/wheels`** (owner request 2026-10-07).
   `03-media/free-threaded-twins.txt` decides, row by row against a `versions.env` pin, so a
   bump re-reads the evidence; it is the one table both lanes read (`ft_wheel_table`, Windows'
   `Get-FreeThreadedTwinTable`), so never copy a row into either reader. A wheel the table does

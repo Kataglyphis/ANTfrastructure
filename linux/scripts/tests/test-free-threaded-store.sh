@@ -73,27 +73,27 @@ t_case "collect-artifacts.sh: the twins keep an ORT manifest of their own, from 
 eval "$(t_fn_src "${RT}/collect-artifacts.sh" write_ort_wheel_manifest)" || exit 1
 _p="${_work}/pfx"
 _whl "${_p}/wheels" onnxruntime_dnnl-1.30.0-cp314-cp314-linux_x86_64.whl onnxruntime/capi/onnxruntime_pybind11_state.so
-_whl "${_p}/wheels-cp314t" onnxruntime_dnnl-1.30.0-cp314-cp314t-linux_x86_64.whl onnxruntime/capi/onnxruntime_pybind11_state.so
+_whl "${_p}/wheels-free-threaded" onnxruntime_dnnl-1.30.0-cp314-cp314t-linux_x86_64.whl onnxruntime/capi/onnxruntime_pybind11_state.so
 ONNXRUNTIME_VERSION=v1.30.0 write_ort_wheel_manifest "${_p}" >/dev/null
-ONNXRUNTIME_VERSION=v1.30.0 write_ort_wheel_manifest "${_p}" "" wheels-cp314t ort-provenance-cp314t.sha256 >/dev/null
+ONNXRUNTIME_VERSION=v1.30.0 write_ort_wheel_manifest "${_p}" "" wheels-free-threaded ort-provenance-free-threaded.sha256 >/dev/null
 t_assert_contains "$(cat "${_p}/ort-provenance.sha256")" "onnxruntime_dnnl-1.30.0-cp314-cp314-linux_x86_64.whl!onnxruntime/capi/onnxruntime_pybind11_state.so"
 t_assert_eq 0 "$(grep -c cp314t "${_p}/ort-provenance.sha256")" "the GIL manifest names no twin"
-t_assert_contains "$(cat "${_p}/ort-provenance-cp314t.sha256")" "onnxruntime_dnnl-1.30.0-cp314-cp314t-linux_x86_64.whl!onnxruntime/capi/onnxruntime_pybind11_state.so"
-t_assert_eq 1 "$(wc -l < "${_p}/ort-provenance-cp314t.sha256" | tr -d ' ')" "and the twins' names only it"
+t_assert_contains "$(cat "${_p}/ort-provenance-free-threaded.sha256")" "onnxruntime_dnnl-1.30.0-cp314-cp314t-linux_x86_64.whl!onnxruntime/capi/onnxruntime_pybind11_state.so"
+t_assert_eq 1 "$(wc -l < "${_p}/ort-provenance-free-threaded.sha256" | tr -d ' ')" "and the twins' names only it"
 _coll="$(cat "${RT}/collect-artifacts.sh")"
 for _d in onnxruntime-cpu/wheels onnxruntime-gpu/wheels app tvm; do
-  case "${_d}" in onnxruntime-*) _d="/usr/local/lib/${_d}-cp314t" ;; *) _d="/opt/${_d}-wheels-cp314t" ;; esac
+  case "${_d}" in onnxruntime-*) _d="/usr/local/lib/${_d}-free-threaded" ;; *) _d="/opt/${_d}-wheels-free-threaded" ;; esac
   t_assert_contains "${_coll}" "  ${_d}"$'\n' "${_d} is collected into the twin store"
 done
 t_assert_contains "${_coll}" 'collect_component_wheels "${ft_source_dir}" "${FT_WHEELS_DIR}"'
 for _pfx in cpu gpu; do
-  t_assert_contains "${_coll}" "write_ort_wheel_manifest /usr/local/lib/onnxruntime-${_pfx} \"\" wheels-cp314t ort-provenance-cp314t.sha256"$'\n'
+  t_assert_contains "${_coll}" "write_ort_wheel_manifest /usr/local/lib/onnxruntime-${_pfx} \"\" wheels-free-threaded ort-provenance-free-threaded.sha256"$'\n'
 done
 
 t_case "repair-wheels.sh: --free-threaded repairs the twin store against the twins' manifest only"
 _rep="$(cat "${RT}/repair-wheels.sh")"
 t_assert_contains "${_rep}" '--free-threaded) FREE_THREADED=1; WHEELS_DIR="${FT_WHEELS_DIR}" ;;'
-t_assert_contains "${_rep}" '_ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance-cp314t.sha256)'
+t_assert_contains "${_rep}" '_ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance-free-threaded.sha256)'
 t_assert_eq 2 "$(t_rc env WHEELS_DIR="${_g}" bash "${RT}/repair-wheels.sh" --bogus)"
 
 # The store script without its main call, beside its siblings, over fixture stores; cross_build_is_active is stubbed after it.
@@ -122,7 +122,7 @@ _stores "${_GIL}" "${_FT}"
 t_assert_ok _store native ft_store_check_set native
 _stores "${_GIL}" "onnxruntime_dnnl-1.30.0-cp314-cp314t-linux_x86_64.whl"
 t_assert_fails _store native ft_store_check_set native
-t_assert_contains "$(_store native ft_store_check_set native 2>&1)" "av ships a GIL wheel in ${_work}/s-gil and its table verdict is twin, but ${_work}/s-ft has no cp314t twin of it"
+t_assert_contains "$(_store native ft_store_check_set native 2>&1)" "av ships a GIL wheel in ${_work}/s-gil and its table verdict is twin, but ${_work}/s-ft has no free-threaded twin of it"
 _stores "${_GIL}" "${_FT} onnxruntime_genai-0.17.0-cp314-cp314t-linux_x86_64.whl"
 t_assert_contains "$(_store native ft_store_check_set native 2>&1)" "holds onnxruntime_genai, which is no twin of a GIL wheel this native build ships"
 
@@ -139,10 +139,10 @@ _RV_FT="av-19.0.1-cp314-cp314t-linux_riscv64.whl apache_tvm_ffi-0.1.14-cp314-cp3
 _stores "${_RV_GIL}" "${_RV_FT} torch-2.14.1-cp314-cp314t-linux_riscv64.whl"
 t_assert_ok _k 1 _store cross ft_store_check_set cross
 _stores "${_RV_GIL}" "${_RV_FT}"
-t_assert_contains "$(FT_TORCH_TWIN=1 _store cross ft_store_check_set cross 2>&1)" "torch ships a GIL wheel in ${_work}/s-gil and its table verdict is twin, but ${_work}/s-ft has no cp314t twin of it"
+t_assert_contains "$(FT_TORCH_TWIN=1 _store cross ft_store_check_set cross 2>&1)" "torch ships a GIL wheel in ${_work}/s-gil and its table verdict is twin, but ${_work}/s-ft has no free-threaded twin of it"
 t_assert_ok _k 0 _store cross ft_store_check_set cross
 _stores "${_RV_GIL}" "$(printf '%s\n' ${_RV_FT} | grep -v '^av-')"
-t_assert_contains "$(FT_TORCH_TWIN=0 _store cross ft_store_check_set cross 2>&1)" "av ships a GIL wheel in ${_work}/s-gil and its table verdict is twin, but ${_work}/s-ft has no cp314t twin of it"
+t_assert_contains "$(FT_TORCH_TWIN=0 _store cross ft_store_check_set cross 2>&1)" "av ships a GIL wheel in ${_work}/s-gil and its table verdict is twin, but ${_work}/s-ft has no free-threaded twin of it"
 _stores "${_RV_GIL}" ""
 t_assert_fails _k 0 _store cross ft_store_check_set cross
 
@@ -194,13 +194,13 @@ t_case "the smoke: without the twin table beside the library every verdict is on
 mkdir -p "${_work}/smoke-notable/06-packaging" "${_work}/smoke-notable/03-media"
 cp "${SCRIPTS}/06-packaging/check-free-threaded-wheels.sh" "${_work}/smoke-notable/06-packaging/"
 cp "${SCRIPTS}/03-media/free-threaded-wheels.sh" "${_work}/smoke-notable/03-media/"
-_out="$(bash -c 'source "$1"; ft_store_verdict "FTS ENV /opt/wheels-cp314t
+_out="$(bash -c 'source "$1"; ft_store_verdict "FTS ENV /opt/wheels-free-threaded
 FTS DONE"' _ "${_work}/smoke-notable/06-packaging/check-free-threaded-wheels.sh" 2>&1)"
 t_assert_eq "BAD the twin table is not at ${_work}/smoke-notable/06-packaging/../03-media/free-threaded-twins.txt" "${_out}"
 
 # shellcheck source=../06-packaging/check-free-threaded-wheels.sh
 source "${SCRIPTS}/06-packaging/check-free-threaded-wheels.sh"
-_P_NATIVE='FTS ENV /opt/wheels-cp314t
+_P_NATIVE='FTS ENV /opt/wheels-free-threaded
 FTS RECORD mode=native
 FTS RECORD want apache-tvm-ffi
 FTS RECORD want av
@@ -232,8 +232,8 @@ t_assert_eq "" "$(_bad "${_P_NATIVE}")"
 t_assert_contains "$(ft_store_verdict "${_P_NATIVE}")" "OK the store holds exactly the twin families of /opt/venv: apache-tvm-ffi av iree-base-compiler iree-base-runtime onnxruntime"
 
 t_case "the smoke: a missing, an unproved, a stray and a GIL-tagged twin each fail"
-t_assert_contains "$(_bad "$(printf '%s\n' "${_P_NATIVE}" | grep -v -e '^FTS WHEEL av-' -e '^FTS PROVED av ')")" "/opt/venv carries av, whose verdict is twin, and the store has no cp314t twin of it"
-t_assert_contains "$(_bad "$(printf '%s\n' "${_P_NATIVE}" | sed 's/^FTS PROVED av .*/FTS UNPROVED av ERROR: the GIL was re-enabled/')")" "av-19.0.1-cp314-cp314t-linux_x86_64.whl is not proved on python3.14t: ERROR: the GIL was re-enabled"
+t_assert_contains "$(_bad "$(printf '%s\n' "${_P_NATIVE}" | grep -v -e '^FTS WHEEL av-' -e '^FTS PROVED av ')")" "/opt/venv carries av, whose verdict is twin, and the store has no free-threaded twin of it"
+t_assert_contains "$(_bad "$(printf '%s\n' "${_P_NATIVE}" | sed 's/^FTS PROVED av .*/FTS UNPROVED av ERROR: the GIL was re-enabled/')")" "av-19.0.1-cp314-cp314t-linux_x86_64.whl is not proved on the free-threaded python: ERROR: the GIL was re-enabled"
 t_assert_contains "$(_bad "${_P_NATIVE}"$'\n''FTS WHEEL onnxruntime_genai-0.17.0-cp314-cp314t-linux_x86_64.whl')" "onnxruntime_genai-0.17.0-cp314-cp314t-linux_x86_64.whl is no twin the table allows"
 t_assert_contains "$(_bad "$(printf '%s\n' "${_P_NATIVE}" | sed 's/^FTS WHEEL av-19.0.1-cp314-cp314t-/FTS WHEEL av-19.0.1-cp314-cp314-/')")" "is not a cp3XY-cp3XYt wheel"
 
@@ -244,16 +244,16 @@ t_assert_contains "$(_bad "$(printf '%s\n' "${_P_NATIVE}" | grep -v -e '^FTS GIL
 t_case "the smoke: a GPU store (nvidia, rocm) carries both ORT twins, and the installed flavour's own twin is required"
 for _fl in gpu migraphx; do
   _gpu="$(printf '%s\n' "${_P_NATIVE}" | sed "s/^FTS GIL onnxruntime_dnnl\$/FTS GIL onnxruntime_${_fl}/")"
-  t_assert_contains "$(_bad "${_gpu}")" "/opt/venv carries onnxruntime_${_fl}, whose verdict is twin, and the store has no cp314t twin of it"
+  t_assert_contains "$(_bad "${_gpu}")" "/opt/venv carries onnxruntime_${_fl}, whose verdict is twin, and the store has no free-threaded twin of it"
   _gpu="${_gpu/FTS DONE/FTS WHEEL onnxruntime_${_fl}-1.30.0-cp314-cp314t-linux_x86_64.whl
 FTS PROVED onnxruntime_${_fl} 1 compiled module(s)
 FTS DONE}"
   t_assert_eq "" "$(_bad "${_gpu}")"
   t_assert_contains "$(_bad "$(printf '%s\n' "${_gpu}" | sed "s/^FTS PROVED onnxruntime_${_fl} .*/FTS UNPROVED onnxruntime_${_fl} ERROR: the GIL was re-enabled/")")" \
-    "onnxruntime_${_fl}-1.30.0-cp314-cp314t-linux_x86_64.whl is not proved on python3.14t"
+    "onnxruntime_${_fl}-1.30.0-cp314-cp314t-linux_x86_64.whl is not proved on the free-threaded python"
 done
 
-_P_RV='FTS ENV /opt/wheels-cp314t
+_P_RV='FTS ENV /opt/wheels-free-threaded
 FTS RECORD mode=cross
 FTS RECORD arch=riscv64
 FTS RECORD want apache-tvm-ffi
@@ -285,34 +285,34 @@ t_case "the smoke: a cross-built arch is held to the table like a native one, it
 t_assert_eq "" "$(_bad "${_P_RV}")"
 t_assert_contains "$(ft_store_verdict "${_P_RV}")" "OK the store records a cross build; its twins are held to the table as on any arch"
 t_assert_contains "$(ft_store_verdict "${_P_RV}")" "OK the store holds exactly the twin families of /opt/venv: apache-tvm-ffi av iree-base-runtime onnxruntime torch"
-t_assert_contains "$(_bad 'FTS ENV /opt/wheels-cp314t
+t_assert_contains "$(_bad 'FTS ENV /opt/wheels-free-threaded
 FTS RECORD mode=cross
 FTS RECORD want av
 FTS GIL av
-FTS DONE')" "/opt/venv carries av, whose verdict is twin, and the store has no cp314t twin of it"
+FTS DONE')" "/opt/venv carries av, whose verdict is twin, and the store has no free-threaded twin of it"
 t_assert_contains "$(ft_store_verdict "${_P_RV}")" "OK iree_base_compiler declares free-threading, but the record wants no twin of it" "PyPI's compiler on a cross arch, whose chain builds the runtime only"
-t_assert_contains "$(_bad "$(printf '%s\n' "${_P_RV}" | grep -v -e '^FTS WHEEL torch-' -e '^FTS PROVED torch ')")" "/opt/venv carries torch, whose verdict is twin, and the store has no cp314t twin of it"
+t_assert_contains "$(_bad "$(printf '%s\n' "${_P_RV}" | grep -v -e '^FTS WHEEL torch-' -e '^FTS PROVED torch ')")" "/opt/venv carries torch, whose verdict is twin, and the store has no free-threaded twin of it"
 _nowant="$(printf '%s\n' "${_P_RV}" | grep -v -e '^FTS RECORD want torch$')"
 t_assert_contains "$(_bad "${_nowant}")" "torch-2.14.1-cp314-cp314t-linux_riscv64.whl is no twin the table allows here (verdict twin:FT_TORCH_TWIN)"
 t_assert_eq "" "$(_bad "$(printf '%s\n' "${_nowant}" | grep -v -e '^FTS WHEEL torch-' -e '^FTS PROVED torch ')")" "knob off: PyPI's torch in /opt/venv wants no twin, as on amd64"
 
 t_case "the smoke: a missing store, record or probe end is red"
 t_assert_contains "$(_bad 'FTS NOSTORE
-FTS DONE')" "/opt/wheels-cp314t is missing"
+FTS DONE')" "/opt/wheels-free-threaded is missing"
 t_assert_contains "$(_bad 'FTS NORECORD
 FTS DONE')" "has no free-threaded-store.txt"
 t_assert_contains "$(_bad 'FTS RECORD mode=native')" "the in-image probe never finished"
 t_assert_contains "$(_bad 'FTS RECORD mode=sideways
 FTS DONE')" "records mode 'sideways'"
 
-t_case "the smoke: the image names the store in PYTHON_WHEELS_CP314T, the uv reconcile's pointer, on every arch"
-t_assert_contains "$(ft_store_verdict "${_P_NATIVE}")" "OK PYTHON_WHEELS_CP314T names /opt/wheels-cp314t"
-for _env in '<unset>' /opt/wheels '/opt/wheels-cp314t/'; do
-  t_assert_contains "$(_bad "${_P_NATIVE/FTS ENV \/opt\/wheels-cp314t/FTS ENV ${_env}}")" "PYTHON_WHEELS_CP314T is '${_env}', not /opt/wheels-cp314t" "${_env}"
+t_case "the smoke: the image names the store in PYTHON_WHEELS_FREE_THREADED, the uv reconcile's pointer, on every arch"
+t_assert_contains "$(ft_store_verdict "${_P_NATIVE}")" "OK PYTHON_WHEELS_FREE_THREADED names /opt/wheels-free-threaded"
+for _env in '<unset>' /opt/wheels '/opt/wheels-free-threaded/'; do
+  t_assert_contains "$(_bad "${_P_NATIVE/FTS ENV \/opt\/wheels-free-threaded/FTS ENV ${_env}}")" "PYTHON_WHEELS_FREE_THREADED is '${_env}', not /opt/wheels-free-threaded" "${_env}"
 done
 t_assert_contains "$(_bad 'FTS RECORD mode=cross
-FTS DONE')" "PYTHON_WHEELS_CP314T is '<no probe line>'"
-t_assert_contains "$(ft_store_probe_script)" "printf 'FTS ENV %s\\n' \"\${PYTHON_WHEELS_CP314T:-<unset>}\""
+FTS DONE')" "PYTHON_WHEELS_FREE_THREADED is '<no probe line>'"
+t_assert_contains "$(ft_store_probe_script)" "printf 'FTS ENV %s\\n' \"\${PYTHON_WHEELS_FREE_THREADED:-<unset>}\""
 
 t_case "the smoke: its probe is valid bash, and main() runs the gate on every arch"
 t_assert_ok bash -n <(ft_store_probe_script)

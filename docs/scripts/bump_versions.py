@@ -614,14 +614,15 @@ def spec_wix_firewall(cur):
 
 
 def spec_python(cur):
-    minor = ".".join(cur.split(".")[:2])  # stay on the pinned minor (3.14.x)
+    # Patches only: a minor upgrade is a hand edit of PYTHON_VERSION, and this run then fills its checksum.
+    minor = ".".join(cur.split(".")[:2])
     tag = gh_latest("python/cpython", pattern=rf"^v{re.escape(minor)}\.\d+$")
     v = tag.lstrip("v")
     extras = {}
-    if v != cur and WRITE_MODE:
-        extras["PYTHON_TGZ_SHA256"] = sha256_of_url(
-            f"https://www.python.org/ftp/python/{v}/Python-{v}.tgz"
-        )
+    if WRITE_MODE:
+        sha = sha256_of_url(f"https://www.python.org/ftp/python/{v}/Python-{v}.tgz")
+        if sha != read_env().get("PYTHON_TGZ_SHA256"):
+            extras["PYTHON_TGZ_SHA256"] = sha
     return v, extras
 
 
@@ -1005,13 +1006,15 @@ def spec_webdavclient(cur):
 
 
 def spec_pytorch_rocm_index(cur):
-    """The newest download.pytorch.org rocmX.Y line carrying a cp314 x86_64 torch at PYTORCH_VERSION."""
-    torch = read_env()["PYTORCH_VERSION"].lstrip("v")
+    """The newest download.pytorch.org rocmX.Y line carrying an x86_64 torch at PYTORCH_VERSION for PYTHON_VERSION's tag."""
+    env = read_env()
+    torch = env["PYTORCH_VERSION"].lstrip("v")
+    cp = "cp" + "".join(env["PYTHON_VERSION"].split(".")[:2])
     html = http_text("https://download.pytorch.org/whl/torch/")
     found = set(re.findall(
-        rf"torch-{re.escape(torch)}(?:\+|%2B)(rocm\d+(?:\.\d+)+)-cp314-cp314-manylinux[\w.]*_x86_64\.whl", html))
+        rf"torch-{re.escape(torch)}(?:\+|%2B)(rocm\d+(?:\.\d+)+)-{cp}-{cp}-manylinux[\w.]*_x86_64\.whl", html))
     if not found:
-        raise RuntimeError(f"download.pytorch.org lists no rocm cp314 x86_64 wheel of torch {torch}")
+        raise RuntimeError(f"download.pytorch.org lists no rocm {cp} x86_64 wheel of torch {torch}")
     return max(found, key=_vkey), {}
 
 
@@ -1444,7 +1447,10 @@ def _record(key, latest, extras, updates):
 
 
 def _safe_row(key, cur, latest, extras, impact, holds, updates, write):
-    if latest == cur:
+    if latest == cur and write and extras:
+        print(f"{key:32} {cur:22} {latest:22} up to date; refreshing {', '.join(sorted(extras))}")
+        _record(key, latest, extras, updates)
+    elif latest == cur:
         print(f"{key:32} {cur:22} {latest:22} up to date")
     elif key in holds:
         print(f"{key:32} {cur:22} {latest:22} HELD (bump:hold in versions.env)")

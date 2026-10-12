@@ -502,8 +502,9 @@ ever* `SKIP` gets in, the same hole `verify_advertised_keys.py` emptied
 silently dropped row is that failure wearing a new name. A key the image
 deliberately does not advertise belongs in `verify_advertised_keys.py`'s `EXCUSED`
 table rather than in a row that cannot fail — `PYTHON_VERSION` is `ARG`-only by
-design (nothing stages `/opt/python-cross` into the runtime image, so it ships the
-distro Python), and `PYTHON_MAJOR_MINOR` is the ENV that *is* checked.
+design (the python-ci drivers read it as their own knob, so an image ENV would turn every
+default into the full X.Y.Z; the package stage checks the staged interpreter reports it
+exactly), and `PYTHON_MAJOR_MINOR` is the ENV that *is* checked.
 
 **B. Venv package set vs the app's own declared graph**
 (`check_venv_package_set`, fail). Measured live, the shipped venvs held

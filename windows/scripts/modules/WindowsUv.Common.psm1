@@ -450,10 +450,11 @@ function Assert-UvChainOrtAbiFit {
     }
 }
 
-# A free-threaded venv takes the image's cp3XYt twins (PYTHON_WHEELS_CP314T), the same chain build; docs/windows-builds.md#the-free-threaded-wheels
+# A free-threaded venv takes the image's cp3XYt twins (PYTHON_WHEELS_FREE_THREADED, else the older images' PYTHON_WHEELS_CP314T); docs/windows-builds.md#the-free-threaded-wheels
 function Select-UvChainOrtWheelStore {
     param([string]$WheelStore, [string]$Python, [scriptblock]$Runner)
-    $twins = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS_CP314T')
+    $twins = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS_FREE_THREADED')
+    if (-not $twins) { $twins = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS_CP314T') }
     if (-not $twins -or -not (Test-Path -LiteralPath $twins -PathType Container)) { return $WheelStore }
     $probe = & $Runner $Python @('-I', '-c', $script:ChainOrtAbiCode)
     if ($probe.ExitCode -eq 0 -and "$(@($probe.Output) | Select-Object -Last 1)".Trim() -match '^cp\d+t$') { return $twins }

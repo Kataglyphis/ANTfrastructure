@@ -12,7 +12,7 @@ source "$SCRIPT_DIR/../../01-core/gates.sh" || { echo "Error: failed to source g
 detect_workspace
 
 ARCH="${1:-${ARCH:-}}"
-PYTHON_VERSION="${2:-${PYTHON_VERSION:-3.14}}"
+PYTHON_VERSION="${2:-${PYTHON_VERSION:-${DEFAULT_PYTHON_VERSION:?no pinned Python: keep versions.env beside python_uv.sh, or pass a version}}}"
 PACKAGE_NAME="$(derive_package_name "${3:-${PACKAGE_NAME:-}}")"
 
 info "Using Python version: $PYTHON_VERSION"

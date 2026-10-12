@@ -22,6 +22,8 @@ cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'STUB'
 # python_uv.sh -- a second copy of the fallbacks here would be one more of the
 # drifted copies this tree keeps finding.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../01-core/logging.sh"
+# What python_uv.sh derives from versions.env; the driver's default reads it.
+DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.14}"
 detect_workspace() { WORKSPACE_ROOT="${STUB_WORKSPACE}"; export WORKSPACE_ROOT; }
 derive_package_name() { printf '%s' "${1:-fixture_pkg}"; }
 uv_venv_ensure() { printf 'venv_ensure %s\n' "$1" >> "${STUB_LOG}"; eval "$4=0"; }

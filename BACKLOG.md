@@ -149,6 +149,20 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON90 — Python 3.15 in the published images, built from the one pin** [L, ★★★]. Owner request 2026-10-12:
+      `PYTHON_VERSION=3.15.0` (released 2026-10-09), and an upgrade must stay that one line
+      (`docs/python-ci.md` § Upgrading Python). In source: every image ships the source-built interpreter on every
+      arch, GIL and free-threaded, never the distro `python3.14`; the free-threaded store has a version-free name
+      (`/opt/wheels-free-threaded`, `PYTHON_WHEELS_FREE_THREADED`); the drivers default to the pinned X.Y (and X.Yt
+      for a project that declares free-threading); arm64 and riscv64 build numpy, PyGObject, pycairo and contourpy
+      from sdists instead of copying apt's. uv moved to 0.13.0 with it (the first to know 3.15.0). Open:
+      1. The default chain from `compiler` (amd64, arm64, riscv64), published, with every per-ABI wheel rebuilt for
+         cp315/cp315t: ONNX Runtime and its twins, GenAI, IREE, PyAV, tvm-ffi, LiteRT, cv2, riscv64 torch.
+      2. Then `:latest-nvidia` and `:latest-rocm`, serially.
+      3. The consumers' fallout once `:latest` moves: OrchestrANT and WebDavClient drop their literal `3.14 3.14t`
+         legs, their locks need cp315 wheels (numpy 2.5.4 has them; PyPI onnxruntime has none, the chain's serves
+         the image), and AccelerANTgine's `ci-python-bindings.sh` defaults to the image's X.Y.
+
 - [ ] **CON66 — the consumers' `3.14t` legs on the image's free-threaded Python** [S, ★★]. The image
       half is proven: the `:latest` published 2026-10-09 (hub 655a2c4e) carries
       `/opt/python-freethreaded` with python3.14t 3.14.8 and `sys._is_gil_enabled() == False` on amd64,
@@ -219,6 +233,17 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       OmniAccelerANT's riscv64 coverage is OxidANT's and AccelerANTgine's own lanes.
 
 ## Open — Windows `:winamd64`
+
+- [ ] **CON91 — the Windows lanes follow the Python pin** [M, ★★]. The Windows images read the same
+      `PYTHON_VERSION` (3.15.0 since 2026-10-12, CON90), so their next chains build CPython 3.15. What still names
+      3.14 there, for the Windows host: the cp314 wheel pins in `versions.env` (`PYTEST_WINDOWS_ARM64_*`,
+      `TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*`); the drivers' literal defaults (`Invoke-PythonTestLegs.ps1`,
+      `Invoke-CiPackaging.ps1`, `Invoke-CiStaticAnalysis.ps1`, `WindowsUv.Common.psm1`) and
+      `python-ci-windows.yml`'s `arm64-python-versions: '3.14'`; the tvm-ffi wheel tags (`Build-TvmFromSource.ps1`,
+      `WindowsTvm.Common.psm1`); and the twin store's name, `C:\runtime\wheels-cp314t` and `PYTHON_WHEELS_CP314T`,
+      which Linux now spells `wheels-free-threaded` / `PYTHON_WHEELS_FREE_THREADED`. The three readers take the new
+      name first already (hub, 2026-10-12), so the Dockerfile, the arm64 bundle's folder and their tests can move
+      next. Derive each from `PYTHON_VERSION` like Linux does, so the next upgrade is one line here too.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294

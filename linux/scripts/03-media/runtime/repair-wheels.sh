@@ -25,7 +25,7 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${_SCRIPT_DIR}/media-env.sh"
 
-# --free-threaded repairs the cp314t store, against its own ORT manifest; the GIL run is the default.
+# --free-threaded repairs the free-threaded store, against its own ORT manifest; the GIL run is the default.
 FREE_THREADED=0
 case "${1:-}" in
   --free-threaded) FREE_THREADED=1; WHEELS_DIR="${FT_WHEELS_DIR}" ;;
@@ -106,7 +106,7 @@ PY
 }
 _ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance.sha256)
 if [ "${FREE_THREADED}" = 1 ]; then
-  _ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance-cp314t.sha256)
+  _ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance-free-threaded.sha256)
 fi
 ort_manifest_rows check "${WHEELS_DIR}" "${_ORT_MANIFESTS[@]}"
 

@@ -408,22 +408,22 @@ finalize_onnx_native_output() {
   symlink_output_libraries_into_usr_local "${output_dir}"
 }
 
-# <build_dir> <config> <output_dir> <build-args array name>: build.sh again on a cp314t venv in the warm tree, so only what sees Python rebuilds.
+# <build_dir> <config> <output_dir> <build-args array name>: build.sh again on a free-threaded venv in the warm tree, so only what sees Python rebuilds.
 onnx_build_free_threaded_wheel() {
   local build_dir="$1" config="$2" output_dir="$3" ftpy="${TMPDIR:-/tmp}/onnxruntime-ft-venv/bin/python" started
   local -n _oft_args="$4"
   local a has_wheel=0
   for a in "${_oft_args[@]}"; do [ "${a}" != --build_wheel ] || has_wheel=1; done
   # A cross build without the target's Python dev files builds no GIL wheel, so there is nothing to twin.
-  [ "${has_wheel}" = 1 ] || { info "ONNX Runtime: no GIL wheel in this build, so no cp314t twin"; return 0; }
+  [ "${has_wheel}" = 1 ] || { info "ONNX Runtime: no GIL wheel in this build, so no free-threaded twin"; return 0; }
   # The repo path is also the RUN's per-file mount: lib/ sits four levels below 03-media in both.
   # shellcheck source=../../../../free-threaded-wheels.sh
   source "${_ONNX_LIB_DIR}/../../../../free-threaded-wheels.sh" || err "ONNX Runtime: free-threaded-wheels.sh is not mounted; its RUN needs the per-file mount"
   ft_twin_start onnxruntime "${ftpy%/bin/python}" "$(host_python_bin)" numpy packaging setuptools wheel \
-    || { [ $? -eq 1 ] && return 0; err "ONNX Runtime: the cp314t twin cannot be built (see above)"; }
+    || { [ $? -eq 1 ] && return 0; err "ONNX Runtime: the free-threaded twin cannot be built (see above)"; }
   started="${SECONDS}"
   local -a ft_defines=("Python_EXECUTABLE=${ftpy}")
-  # A cross twin compiles against the target's 3.14t headers; native leaves FindPython to the venv.
+  # A cross twin compiles against the target's X.Yt headers; native leaves FindPython to the venv.
   [ -z "${FT_TARGET_INCLUDE:-}" ] || ft_defines+=("Python_INCLUDE_DIR=${FT_TARGET_INCLUDE}")
   (
     eval "$(ft_target_env)"
@@ -434,7 +434,7 @@ onnx_build_free_threaded_wheel() {
   if [ -n "${FT_TARGET_PLATFORM_TAG:-}" ]; then
     retag_directory_wheels "${build_dir}/${config}/dist" "*-cp3*t" "${FT_TARGET_PLATFORM_TAG}" "${ftpy}"
   fi
-  ft_twin_store_built "${build_dir}/${config}/dist" "${output_dir}/wheels-cp314t" || err "ONNX Runtime: no proved cp314t twin (see above)"
+  ft_twin_store_built "${build_dir}/${config}/dist" "${output_dir}/wheels-free-threaded" || err "ONNX Runtime: no proved free-threaded twin (see above)"
   rm -rf "${ftpy%/bin/python}"
 }
 

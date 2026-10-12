@@ -70,7 +70,8 @@ _app() {
   printf 'edited 9.9.9 sdist\n' >> "$1/deps.txt"
 }
 _app "${_work}/app"
-_seed() { bash "${SEED}" "$@"; }
+# The image's ENV names X.Y; the seed builds for it unless --python says otherwise.
+_seed() { PYTHON_MAJOR_MINOR="${PYTHON_MAJOR_MINOR:-3.14}" bash "${SEED}" "$@"; }
 
 t_case "an arch outside --arches gets a record that says so, and no cache"
 t_assert_ok _seed build --app-dir "${_work}/app" --out "${_work}/none" --work-cache "${_work}/w0" --arches not-an-arch
@@ -102,15 +103,20 @@ _out="$(t_out _seed build --app-dir "${_work}/app" --out "${_work}/s2" --work-ca
 t_assert_contains "${_out}" "built this run: nothing, the work cache held every wheel"
 t_assert_eq 2 "$(grep -c '^built ' "${_work}/s2/seed-record.txt")"
 
+t_case "with no --python the seed takes the image's PYTHON_MAJOR_MINOR, and refuses when there is none"
+t_assert_eq 1 "$(t_rc env -u PYTHON_MAJOR_MINOR bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s0" --work-cache "${_work}/w0" --arches "${ARCH}")"
+t_assert_contains "$(t_out env -u PYTHON_MAJOR_MINOR bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s0" --work-cache "${_work}/w0" --arches "${ARCH}")" \
+  "no --python, and no PYTHON_MAJOR_MINOR in the environment"
+
 t_case "a proof sync that has to build fails the seed: the copy must cover the lock on its own"
-_out="$(t_out env FAKE_UV_FORGET_IN=proof-cache bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s3" --work-cache "${_work}/w1" --arches "${ARCH}")"
-t_assert_eq 1 "$(t_rc env FAKE_UV_FORGET_IN=proof-cache bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s3" --work-cache "${_work}/w1" --arches "${ARCH}")"
+_out="$(t_out env PYTHON_MAJOR_MINOR=3.14 FAKE_UV_FORGET_IN=proof-cache bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s3" --work-cache "${_work}/w1" --arches "${ARCH}")"
+t_assert_eq 1 "$(t_rc env PYTHON_MAJOR_MINOR=3.14 FAKE_UV_FORGET_IN=proof-cache bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s3" --work-cache "${_work}/w1" --arches "${ARCH}")"
 t_assert_contains "${_out}" "the seed does not cover the lock, the proof sync built: line-profiler 5.0.0 pyyaml 6.0.3"
 t_assert_fails grep -q '^proof' "${_work}/s3/seed-record.txt"
 t_assert_fails _seed verify "${_work}/s3"
 
 t_case "a failed seed sync fails the build"
-t_assert_eq 1 "$(t_rc env FAKE_UV_SYNC_FAIL=1 bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s4" --work-cache "${_work}/w4" --arches "${ARCH}")"
+t_assert_eq 1 "$(t_rc env PYTHON_MAJOR_MINOR=3.14 FAKE_UV_SYNC_FAIL=1 bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s4" --work-cache "${_work}/w4" --arches "${ARCH}")"
 
 t_case "the app commit can be fetched instead of handed over: the shipped tree has no .git"
 _sha="$(git -C "${_work}/app" rev-parse HEAD)"

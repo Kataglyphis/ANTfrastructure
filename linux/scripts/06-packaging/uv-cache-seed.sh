@@ -112,7 +112,7 @@ seed_prove() {
 
 # Sets APP URL REF OUT WORK EXTRAS PY ARCHES from build's flags.
 parse_build_args() {
-  APP="" URL="" REF="" OUT="" WORK="" EXTRAS="test" PY="3.14" ARCHES="riscv64"
+  APP="" URL="" REF="" OUT="" WORK="" EXTRAS="test" PY="${PYTHON_MAJOR_MINOR:-}" ARCHES="riscv64"
   local -A flag=([--app-dir]=APP [--app-url]=URL [--app-ref]=REF [--out]=OUT [--work-cache]=WORK
     [--extras]=EXTRAS [--python]=PY [--arches]=ARCHES)
   while [ "$#" -gt 1 ]; do
@@ -128,6 +128,8 @@ parse_build_args() {
 cmd_build() {
   parse_build_args "$@"
   local app="${APP}" out="${OUT}" work="${WORK}" extras="${EXTRAS}" python="${PY}" arches="${ARCHES}" arch tmp commit built
+  # The image's own X.Y by default, so a Python upgrade reseeds for the new interpreter.
+  [ -n "${python}" ] || die "build: no --python, and no PYTHON_MAJOR_MINOR in the environment"
   arch="$(uname -m)"
   rm -rf "${out}"
   mkdir -p "${out}" "${work}"

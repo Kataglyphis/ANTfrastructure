@@ -36,10 +36,10 @@
       "allowedVersions": "<27.0.0"
     },
     {
-      "description": "PYTHON_VERSION may only move within its minor: the CPython source build and its patch set are re-verified per minor (bump_versions.py SAFE tier: same-minor only).",
+      "description": "PYTHON_VERSION: reported like any pin, a new minor included, since an upgrade is that one line plus bump_versions.py's checksum run (docs/python-ci.md#upgrading-python). No version is named here, so an upgrade never edits this file; bump_versions.py itself moves patches only.",
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["python"],
-      "allowedVersions": "<3.15.0"
+      "dependencyDashboardApproval": true
     },
     {
       "description": "WIX_VERSION / WIX_UI_EXT_VERSION / WIX_FIREWALL_EXT_VERSION stay on WiX 7: the owner accepted the wix7 OSMF EULA (2026-10-01), and a new major is a new licence decision; bump_versions.py same-major-locks them too.",

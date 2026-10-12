@@ -33,7 +33,7 @@ source_module cpython-dev-packages.sh
 
 install_err_trap
 
-PYTHON_VERSION="${PYTHON_VERSION:-${1:-3.14.8}}"
+PYTHON_VERSION="${PYTHON_VERSION:-${1:?usage: build_python.sh <X.Y.Z>, versions.env PYTHON_VERSION}}"
 PYTHON_MAJOR_MINOR="${PYTHON_MAJOR_MINOR:-$(version_major_minor "${PYTHON_VERSION}")}"
 PYTHON_TARBALL="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}-$$.tgz"
 PYTHON_SOURCE_DIR="${TMPDIR:-/tmp}/Python-${PYTHON_VERSION}"
@@ -70,9 +70,9 @@ python_variant_select() {
       PY_PREFIX="${PYTHON_FT_PREFIX}"
       PY_STAGE_ROOT="${PYTHON_FT_CROSS_STAGE_ROOT}"
       PY_SOURCE_DIR="${PYTHON_FT_SOURCE_PARENT}/Python-${PYTHON_VERSION}"
-      # _NODIST keeps the rpath out of sysconfig's LDFLAGS, so a cp314t wheel built against it inherits none.
+      # _NODIST keeps the rpath out of sysconfig's LDFLAGS, so a free-threaded wheel built against it inherits none.
       PY_CONFIGURE_EXTRA=( --disable-gil "LDFLAGS_NODIST=-Wl,-rpath,${PYTHON_FT_PREFIX}/lib" )
-      # The tree ships in the image, where its fat-LTO libpython3.14t.a (155-435 MB per arch) links nothing.
+      # The tree ships in the image, where its fat-LTO libpythonX.Yt.a (155-435 MB per arch) links nothing.
       PY_CONFIGURE_EXTRA+=( --without-static-libpython )
       ;;
     *)

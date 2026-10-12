@@ -380,7 +380,8 @@ SYMS
     cat \"\${SB}/uv-args\" 2>/dev/null || echo UV-NOT-RUN"
 }
 
-t_case "install_pyhailort: the module installed into /opt/venv is checked; the 3.14 import only warns"
+t_case "install_pyhailort: the module installed into /opt/venv is checked; the X.Y import only warns"
+export PYTHON_MAJOR_MINOR=3.14
 _out="$(_install off)"
 t_assert_contains "${_out}" "exports PyInit__pyhailort"
 t_assert_contains "${_out}" "[INFO] pyhailort installed into"

@@ -85,10 +85,15 @@ jobs:
         with:
           fetch-depth: 1
 
+      # The X.Y versions.env pins, so a Python upgrade needs no edit here.
+      - name: Read the pinned Python
+        id: python
+        run: echo "version=$(sed -n 's/^PYTHON_VERSION=\([0-9]*\.[0-9]*\)\..*/\1/p' linux/scripts/01-core/versions.env)" >> "$GITHUB_OUTPUT"
+
       - name: Install Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: ${{ steps.python.outputs.version }}
 
       # The curated document is generated but committed, so it can drift.
       - name: Verify the curated SBOM matches deps.json

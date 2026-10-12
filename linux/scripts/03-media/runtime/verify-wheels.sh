@@ -27,7 +27,7 @@ _vw_say() {
   esac
 }
 
-# --free-threaded grades the cp314t store against the free-threaded interpreter; both runs are ABI-exact, so a misplaced wheel fails either.
+# --free-threaded grades the free-threaded store against the free-threaded interpreter; both runs are ABI-exact, so a misplaced wheel fails either.
 FREE_THREADED=0
 PY=python
 case "${1:-}" in
@@ -62,7 +62,7 @@ _wheel_tag_fits() {
   case "${abi}:${pyt}" in
     none:py3 | none:py2.py3 | none:"${PY_TAG}") return 0 ;;
   esac
-  # A cp3Y-abi3 wheel runs on any GIL cp3Z with Z >= Y (IREE upstream ships cp312-abi3); a 3.14t interpreter loads no abi3.
+  # A cp3Y-abi3 wheel runs on any GIL cp3Z with Z >= Y (IREE upstream ships cp312-abi3); a free-threaded interpreter loads no abi3.
   if [ "${abi}" = abi3 ] && [[ "${pyt}" =~ ^cp${PY_MAJOR}([0-9]+)$ ]] && [ "${BASH_REMATCH[1]}" -le "${PY_MINOR}" ]; then
     return 0
   fi

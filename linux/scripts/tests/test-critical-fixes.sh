@@ -464,7 +464,14 @@ t_assert_contains "${_dead}" "=== Results: 1 failure(s) ==="
 
 # In-image half: CF_SMOKE_ROOT lets a fixture root stand in for a shipped image.
 
-_img() { CF_SMOKE_ROOT="$1" TARGET_ARCH="${2:-}" bash "${IMAGE_SMOKE}"; }
+# The fixtures stage a 3.14 tree; the probe names it from the image's X.Y, so the test passes one.
+_img() { CF_SMOKE_ROOT="$1" TARGET_ARCH="${2:-}" PYTHON_MAJOR_MINOR=3.14 bash "${IMAGE_SMOKE}"; }
+
+t_case "fix1/fix3 — an image that names no Python version fails rather than guessing one"
+_noversion_root="$(mktemp -d)"
+_noversion_out="$(env -u PYTHON_MAJOR_MINOR -u PYTHON_VERSION CF_SMOKE_ROOT="${_noversion_root}" bash "${IMAGE_SMOKE}" 2>&1 || true)"
+t_assert_contains "${_noversion_out}" "no PYTHON_MAJOR_MINOR or PYTHON_VERSION in the environment, so no staged tree can be named"
+rm -rf "${_noversion_root}"
 
 # _pc <root> <arch> <prefix line> — one staged python-3.14.pc.
 _pc() {

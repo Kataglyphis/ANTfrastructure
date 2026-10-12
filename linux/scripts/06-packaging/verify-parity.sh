@@ -207,7 +207,7 @@ check_versions() {
     "gcc --version"
     "g++ --version"
     "clang --version"
-    "python3.14 --version"
+    "python${PYTHON_MAJOR_MINOR:?} --version"
     "python3 --version"
     "cmake --version"
     "node --version"

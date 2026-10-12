@@ -57,7 +57,7 @@ setup_torch_venv() {
   fi
 
   local python_bin
-  python_bin="$(command -v python3.14 || command -v python3 || true)"
+  python_bin="$(command -v "python${PYTHON_MAJOR_MINOR:-}" || command -v python3 || true)"
   if [ -z "${python_bin}" ]; then
     python_bin="$(find /usr/local/bin -name 'python3.*' -type f 2>/dev/null | head -1 || true)"
   fi
@@ -68,12 +68,8 @@ setup_torch_venv() {
     exit 1
   }
 
-  local venv_args=(--seed --python="${python_bin}")
-  # Under QEMU the source-built GCC may fail to fork cc1, so sdists like pycairo come from apt.
-  if [ "$(uname -m)" != "x86_64" ]; then
-    venv_args+=(--system-site-packages)
-  fi
-  uv venv "${venv_args[@]}" "${VENV}"
+  # No --system-site-packages: apt's python3-* belong to the distro python3, not the image's PYTHON_VERSION.
+  uv venv --seed --python="${python_bin}" "${VENV}"
 }
 
 seed_opencv5_bindings() {
@@ -113,7 +109,6 @@ seed_opencv5_bindings() {
 _install_cv2_runtime_apt() {
   apt-get install -y --no-install-recommends \
     libgirepository-2.0-dev libcairo2-dev libgirepository1.0-dev \
-    python3-gi python3-cairo python3-cairo-dev python3-gi-cairo \
     gir1.2-glib-2.0 gir1.2-gtk-3.0 \
     git libopenblas-dev liblapack-dev \
     libgtk-3-dev \
@@ -206,25 +201,13 @@ setup_torch_deps() {
   mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
 }
 
-seed_riscv64_apt_packages() {
-  # PyPI has almost no riscv64 wheels; seed apt's with dist-info, but not numpy, which uv builds anyway.
+install_riscv64_runtime_libs() {
   apt-get update
-  apt-get install -y --no-install-recommends python3-numpy python3-cairo python3-gi python3-gi-cairo
-  apt-get install -y --no-install-recommends python3-contourpy \
-    || echo "WARNING: python3-contourpy not available via apt"
   # The riscv64 torch links libsleef.so.3 dynamically and is never auditwheel-repaired.
   apt-get install -y --no-install-recommends libsleef3 \
     || echo "WARNING: libsleef3 unavailable via apt; import torch will fail (libsleef.so.3 missing)"
   # Skip the wipe on a cache mount.
   mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
-  local _sp
-  _sp="$(venv_site_packages)"
-  if [ -d /usr/lib/python3/dist-packages ] && [ -n "${_sp}" ] && [ -d "${_sp}" ]; then
-    for pkg in cairo gi contourpy PyGObject-*.egg-info pycairo-*.egg-info contourpy-*.egg-info contourpy-*.dist-info; do
-      cp -a /usr/lib/python3/dist-packages/"${pkg}" "${_sp}/" 2>/dev/null || true
-    done
-    echo "Seeded apt Python packages into venv (QEMU riscv64 mode)"
-  fi
 }
 
 torch_wheel_missing_fallback() {
@@ -294,13 +277,6 @@ configure_foreign_arch_compiler_env() {
     echo "sccache bypass: CC=${CC} CXX=${CXX} (host ${host_arch})"
     # Abort in seconds, not after a multi-minute source build.
     verify_native_source_headers || exit 1
-    local _sp
-    _sp="$(venv_site_packages)"
-    if [ -d /usr/lib/python3/dist-packages ] && [ -n "${_sp}" ] && [ -d "${_sp}" ]; then
-      cp -a /usr/lib/python3/dist-packages/cairo     "${_sp}/" 2>/dev/null || true
-      cp -a /usr/lib/python3/dist-packages/pycairo-*.egg-info "${_sp}/" 2>/dev/null || true
-      echo "Copied system pycairo into venv"
-    fi
   fi
 }
 
@@ -311,18 +287,6 @@ apply_torch_app_env_defaults() {
   export ONNX_PACKAGE PYTORCH_EXTRA SKIP_TORCH_TEST_EXTRAS
 }
 
-pin_pycairo_constraint_for_foreign_arch() {
-  local host_arch="$1"
-  if [ "${host_arch}" != "x86_64" ]; then
-    local constraint_file
-    constraint_file="$(mktemp)"
-    echo "pycairo==1.27.0" > "${constraint_file}"
-    export PIP_CONSTRAINT="${constraint_file}"
-    export UV_CONSTRAINT="${constraint_file}"
-    echo "Pinned pycairo to 1.27.0 via constraint ${constraint_file}"
-  fi
-}
-
 setup_torch_app() {
   cross_skip "torch application install" && return 0
 
@@ -331,7 +295,7 @@ setup_torch_app() {
 
   # Only riscv64 torch is a local wheel; amd64/arm64 resolve it in uv sync, so gate only riscv64.
   if [ "${host_arch}" = "riscv64" ]; then
-    seed_riscv64_apt_packages
+    install_riscv64_runtime_libs
     if ! compgen -G "/opt/wheels/torch-*.whl" >/dev/null; then
       torch_wheel_missing_fallback "${host_arch}"
       return 0
@@ -342,7 +306,6 @@ setup_torch_app() {
   configure_foreign_arch_compiler_env "${host_arch}"
 
   apply_torch_app_env_defaults
-  pin_pycairo_constraint_for_foreign_arch "${host_arch}"
   /opt/scripts/03-media/final/assemble-torch-app.sh "${TORCH_APP_MODE}"
 
   verify_torch_import_or_fail "${host_arch}"

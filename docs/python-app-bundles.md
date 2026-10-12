@@ -16,7 +16,7 @@ wheels the consumer's CI tested, the Cython-compiled app wheel included.
 | Lane | Builder | Runtime |
 |---|---|---|
 | Windows (`:winamd64`) | [`windows/scripts/python/New-PythonAppBundle.ps1`](../windows/scripts/python/New-PythonAppBundle.ps1) | the image's own source-built CPython, laid out by `PC\layout` |
-| Linux (`:latest`) | [`linux/scripts/06-packaging/python-app-bundle.sh`](../linux/scripts/06-packaging/python-app-bundle.sh) | python-build-standalone via `uv python install`, because the image's distro Python is not relocatable |
+| Linux (`:latest`) | [`linux/scripts/06-packaging/python-app-bundle.sh`](../linux/scripts/06-packaging/python-app-bundle.sh) | python-build-standalone via `uv python install` at `PYTHON_VERSION`, because the image's own build is not relocatable |
 
 First consumer: OrchestrANT (`yolo-monitor`, `orchestrant-bench`, `orchestrant-smoke`).
 Measured on 2026-09-30/10-01: Windows 561 MB, Linux x86_64 666 MB. Both builders were also
@@ -70,8 +70,8 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
 2. **Packages.**
    - `uv export --locked --extra <extras>`, then install into the runtime.
    - The app wheel goes in with `--no-deps`; the compiled wheel wins over the pure one.
-     It must carry the runtime's ABI tag (`cp314`, or `abi3`), so the `cp314t` twin beside it
-     is never taken. A `cp314t` wheel alone is refused, not swapped for the pure one
+     It must carry the runtime's ABI tag (`cp3XY`, or `abi3`), so the `cp3XYt` twin beside it
+     is never taken. A `cp3XYt` wheel alone is refused, not swapped for the pure one
      (`Select-PythonAppWheel`, and `select_app_wheel` in `python-app-bundle.sh`).
    - The PyPI `onnxruntime` is swapped for the chain wheel. See
      [`onnxruntime-single-source.md`](onnxruntime-single-source.md).

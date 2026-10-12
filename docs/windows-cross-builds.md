@@ -298,7 +298,7 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor**; with `-ImportWalk` every wheel's native members too, and every module of a `cp3XYt` wheel imports `python3XYt.dll` and no GIL runtime |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device, or the hub's `windows-arm64.yml` | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers, an ORT session over the smoke suite's 63-byte Identity model on the CPU EP, with DirectML's outcome printed only), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, the cp314 pytest stack installs offline from it, `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, every `cp314t` twin in `wheels-cp314t` installs alone, offline, into a venv of that interpreter and loads with the GIL off (`free-threaded-wheel.py prove`), `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), the validation layer loads, and a `webrtcsink` -> `webrtcsrc` loopback decodes 60 frames over DTLS-SRTP (CON63) |
+| `Test-Arm64Bundle.ps1` | an arm64 device, or the hub's `windows-arm64.yml` | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers, an ORT session over the smoke suite's 63-byte Identity model on the CPU EP, with DirectML's outcome printed only), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, the cp314 pytest stack installs offline from it, `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, every `cp3XYt` twin in `wheels-cp314t` installs alone, offline, into a venv of that interpreter and loads with the GIL off (`free-threaded-wheel.py prove`), `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), the validation layer loads, and a `webrtcsink` -> `webrtcsrc` loopback decodes 60 frames over DTLS-SRTP (CON63) |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
@@ -727,7 +727,7 @@ evening as step 2.
 **A free-threaded twin since 2026-10-07 (CON74).** The same stage builds the checkout again with
 `--disable-gil` and stages it into `C:\runtime\python-freethreaded` through the same staging
 function: [`windows-builds.md` § The free-threaded CPython](windows-builds.md#the-free-threaded-cpython).
-Its `python314t.lib` links the `cp314t` twins of the chain wheels in `C:\runtime\wheels-cp314t`
+Its `python314t.lib` links the `cp3XYt` twins of the chain wheels in `C:\runtime\wheels-cp314t`
 (CON79): [`windows-builds.md` § The arm64 cross twins](windows-builds.md#the-arm64-cross-twins).
 
 ## The Python consumers are built for the target (#120 step 2)
