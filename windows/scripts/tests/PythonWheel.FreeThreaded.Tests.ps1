@@ -44,12 +44,15 @@ Describe 'Resolve-FreeThreadedWheelMode and Get-FreeThreadedTarget' {
 
 Describe 'Get-FreeThreadedWheelPlan' {
 
-    It 'builds when the helper finds the classifier, and hands it the pyproject' {
+    It 'builds when the helper finds the classifier, and hands it the pyproject; a cross arch with a target tree too (CON75)' {
         Invoke-InTestDir { param($d)
-            $plan = Invoke-WithFakePython -Dir $d -Text 'Programming Language :: Python :: Free Threading :: 2 - Beta' { param($py)
-                Get-FreeThreadedWheelPlan -Mode 'auto' -PyprojectPath 'C:\p\pyproject.toml' -Python $py }
-            Assert-True $plan.Build
-            Assert-Equal "free-threaded wheel: the project declares 'Programming Language :: Python :: Free Threading :: 2 - Beta'" $plan.Reason
+            $lib = New-Item -ItemType File -Path (Join-Path $d 'python314t.lib')
+            foreach ($cross in @(@{}, @{ CrossArch = 'arm64'; TargetLib = $lib.FullName })) {
+                $plan = Invoke-WithFakePython -Dir $d -Text 'Programming Language :: Python :: Free Threading :: 2 - Beta' { param($py)
+                    Get-FreeThreadedWheelPlan -Mode 'auto' -PyprojectPath 'C:\p\pyproject.toml' -Python $py @cross }
+                Assert-True $plan.Build
+                Assert-Equal "free-threaded wheel: the project declares 'Programming Language :: Python :: Free Threading :: 2 - Beta'" $plan.Reason
+            }
             Assert-Match 'free-threaded-wheel\.py declares C:\\p\\pyproject\.toml' (Get-Content -Raw (Join-Path $d 'py.log')) 'the shared helper, with -I'
         }
     }
@@ -68,10 +71,10 @@ Describe 'Get-FreeThreadedWheelPlan' {
         }
     }
 
-    It 'skips a cross arch and off without asking the helper' {
+    It 'skips a cross arch without a target tree, and off, without asking the helper' {
         Invoke-InTestDir { param($d)
-            $cross = Invoke-WithFakePython -Dir $d { param($py) Get-FreeThreadedWheelPlan -Mode 'on' -PyprojectPath 'p' -Python $py -CrossArch 'arm64' }
-            Assert-Equal 'free-threaded wheel skipped: the arm64 cross build has no free-threaded target interpreter' $cross.Reason
+            $cross = Invoke-WithFakePython -Dir $d { param($py) Get-FreeThreadedWheelPlan -Mode 'on' -PyprojectPath 'p' -Python $py -CrossArch 'arm64' -TargetLib "$d\no.lib" }
+            Assert-Equal "free-threaded wheel skipped: the arm64 image carries no free-threaded target tree: no $d\no.lib" $cross.Reason
             $off = Get-FreeThreadedWheelPlan -Mode 'off' -PyprojectPath 'p'
             Assert-Equal 'free-threaded wheel skipped: PYTHON_FREE_THREADED_WHEEL=off' $off.Reason
             Assert-False ($cross.Build -or $off.Build)

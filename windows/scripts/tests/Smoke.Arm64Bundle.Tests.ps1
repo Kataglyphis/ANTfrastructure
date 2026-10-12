@@ -6,7 +6,9 @@
 Describe 'Test-Arm64Bundle: the floor decides the verdict' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -FunctionName 'Get-BundleVerdict', 'Invoke-BundleStep', 'Invoke-TwinDeviceProof')
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -FunctionName 'Get-BundleVerdict', 'Invoke-BundleStep')
+        Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1') -Force -DisableNameChecking
+        $script:wheelModuleText = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1'))
         $script:ok = [pscustomobject]@{ Name = 'a'; Ok = $true; Detail = '' }
         $script:bad = [pscustomobject]@{ Name = 'b'; Ok = $false; Detail = 'exit 1' }
         $script:gateText = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-Arm64Bundle.ps1'))
@@ -56,7 +58,7 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
     It 'runs the WebRTC loopback with the bundle''s gst-launch and the module Export-Arm64Bundle.ps1 puts beside it' {
         Assert-Match "Invoke-BundleStep 'WebRTC loopback: webrtcsink -> webrtcsrc decodes 60 frames over DTLS-SRTP'" $script:gateText 'the CON63 step'
         Assert-Match "Assert-GstWebRtcLoopback -GstLaunch \(Join-Path \`$BundleRoot 'bin\\gst-launch-1\.0\.exe'\) -Frames 60" $script:gateText 'the bundle''s own GStreamer, graded as the smoke gate grades it'
-        Assert-Match "'WindowsGstPlugins\.Common\.psm1', '\.\.\\modules\\WindowsGstPlugins\.Common\.psm1'" $script:gateText 'beside the gate or in a hub checkout'
+        Assert-Match "Import-GateModule 'WindowsGstPlugins\.Common\.psm1'" $script:gateText 'beside the gate or in a hub checkout'
     }
 
     It 'runs the free-threaded interpreter isolated, and fails it unless the GIL is off on ARM64' {
@@ -67,11 +69,13 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
     It 'proves every shipped cp3XYt twin with the helper Export-Arm64Bundle.ps1 puts beside it' {
         Assert-Match "Invoke-BundleStep 'free-threaded wheels: every cp314t twin loads with the GIL off' \{" $script:gateText 'a step every bundle runs'
         Assert-Match "-Helper \(Join-Path \`$PSScriptRoot 'free-threaded-wheel\.py'\)" $script:gateText 'the helper travels beside the gate'
-        Assert-Match "& \`$venvPy -I \`$Helper prove " $script:gateText 'the build lanes'' own proof'
-        Assert-Match '--disable-pip-version-check --no-index @resolve ' $script:gateText 'every install offline'
-        Assert-Match "\{ @\('--find-links', \`$Store, '--find-links', \`$deps\) \} else \{ @\('--no-deps'\) \}" $script:gateText `
+        Assert-Match "Import-GateModule 'WindowsPythonWheel\.Common\.psm1'" $script:gateText 'the proof is the wheel module''s, shared with the consumer kit'
+        Assert-Match "& \`$venvPy -I \`$Helper prove " $script:wheelModuleText 'the build lanes'' own proof'
+        Assert-Match '--disable-pip-version-check --no-index @resolve ' $script:wheelModuleText 'every install offline'
+        Assert-Match "\{ @\('--find-links', \`$Store, '--find-links', \`$deps\) \} else \{ @\('--no-deps'\) \}" $script:wheelModuleText `
             'with the dependencies Copy-TargetPythonDeps.ps1 staged in deps\, and alone in a bundle that has none (CON79)'
     }
+
 
     It 'the twin proof refuses a missing helper or an empty store, and names every twin that fails (mutation)' {
         Invoke-InTestDir { param($d)

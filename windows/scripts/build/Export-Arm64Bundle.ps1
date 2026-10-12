@@ -39,8 +39,8 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Test-Arm64Bundle.ps1') -Destina
 $helper = Join-Path $PSScriptRoot '..\..\..\linux\scripts\02-toolchain\python\free-threaded-wheel.py'
 if (-not (Test-Path -LiteralPath $helper)) { throw "no free-threaded-wheel.py at $helper; the device gate needs it to prove the cp3XYt twins" }
 Copy-Item -LiteralPath $helper -Destination $OutDir
-# The WebRTC loopback step imports the hub's GStreamer module, which loads its arch sibling from beside itself.
-foreach ($module in 'WindowsGstPlugins.Common.psm1', 'WindowsTargetArch.Common.psm1') {
+# The WebRTC loopback imports the GStreamer module (which loads its arch sibling from beside itself), the twin proof the wheel module.
+foreach ($module in 'WindowsGstPlugins.Common.psm1', 'WindowsTargetArch.Common.psm1', 'WindowsPythonWheel.Common.psm1') {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\modules\$module") -Destination $OutDir
 }
 Write-Host ("bundle zip: {0} ({1:N2} GB), gate script, free-threaded-wheel.py and the GStreamer test modules beside it" -f $zip, ((Get-Item $zip).Length / 1GB))

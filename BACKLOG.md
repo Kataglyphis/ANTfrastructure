@@ -34,8 +34,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       exists since CON74 half 1, and `New-FreeThreadedBuildPython` pins a cross venv's `EXT_SUFFIX`
       since CON79 item 2. **The Linux half is done** (`:latest` of 2026-10-10, index sha256:30dea85c, hub 381431d1): each
       cross arch's `FT-STORE` passes `the store records a cross build` and loads every twin with the GIL off.
-      Left: the Windows arm64 half. Done when it ships a wheel proved on the target. Read 2026-10-12, it takes
-      four pieces:
+      Left: the Windows arm64 half. Done when it ships a wheel proved on the target. **In source since 2026-10-12**
+      (CHANGELOG): the hub builds, gates and packs the wheel with its device kit, and the arm64 run job proves it.
+      Proved in `:winarm64` up to the kit with OrchestrANT 0.0.30. Left: OrchestrANT's `--target` line and its hub pin,
+      then its arm64 run job's proof. What it took, read 2026-10-12:
       - **The consumer's `setup.py` (OrchestrANT).** `Get-FreeThreadedWheelPlan` still skips a cross arch with "no
         free-threaded target interpreter", which CON74 made untrue. Behind it, OrchestrANT's `ClangBuildExt` swaps
         `cl.exe` for `clang-cl` and `link.exe` for `lld-link` at spawn and passes no `--target`, so a cross build
