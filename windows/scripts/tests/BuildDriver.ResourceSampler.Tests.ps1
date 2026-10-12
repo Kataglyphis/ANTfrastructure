@@ -68,7 +68,11 @@ Describe 'A stopped BK run keeps its record (hub #184)' {
             # The driver's own script variables, which the lifted function reads by name.
             Set-Variable -Name TargetArch -Value 'amd64'; Set-Variable -Name Variant -Value 'rocm'
             Set-Variable -Name Stages -Value @('base', 'toolchain', 'media'); Set-Variable -Name isNvidia -Value $false
-            $path = Write-RunManifest -Status 'failed:media-core' -Elapsed ([timespan]::FromSeconds(42.04))
+            # A comma-decimal culture, as on the owner's host: an en-US runner would never see the regression.
+            $culture = [cultureinfo]::CurrentCulture
+            [cultureinfo]::CurrentCulture = [cultureinfo]::GetCultureInfo('de-DE')
+            try { $path = Write-RunManifest -Status 'failed:media-core' -Elapsed ([timespan]::FromSeconds(42.04)) }
+            finally { [cultureinfo]::CurrentCulture = $culture }
             $lines = @(Get-Content -LiteralPath $path)
             Assert-Equal 'run=20261012-120000 status=failed:media-core arch=amd64 variant=rocm stages=base,toolchain,media gpu=False total_s=42' $lines[0] 'the header line'
             Assert-Equal 'Dockerfile.base=1.5|toolchain-builder=30.2' ($lines[1..2] -join '|') 'the finished stages'
