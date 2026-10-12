@@ -96,23 +96,28 @@ if ($arch -eq 'amd64') {
 
     $plan = Get-VvlDependencyPlan -KnownGoodJson (Get-Content -LiteralPath (Join-Path $vvlSource 'scripts\known_good.json') -Raw) -WorkDir $WorkDir
     $common = @("-DCMAKE_PREFIX_PATH=$($depsPrefix.Replace('\', '/'))", "-DPython3_EXECUTABLE=$($py.Exe)") + (Get-LlvmArchiverCmakeArg)
-    foreach ($dep in $plan) {
-        Write-Host "=== $($dep.Name) @ $($dep.Commit) ($arch) ==="
-        Invoke-GitClone -RepoUrl $dep.Url -SourceDir $dep.SourceDir -Tag $dep.Commit
-        $buildDir = Join-Path $WorkDir "build\$($dep.Name)"
-        Invoke-CmakeConfigure -SourceDir $dep.SourceDir -BuildDir $buildDir -InstallPrefix $depsPrefix `
-            -ExtraArgs ($common + $dep.CmakeOptions) -TargetArch $arch
-        Invoke-NinjaBuildWithRetry -BuildDir $buildDir -Install -InstallConfig 'Release'
-    }
+    # VVL's -Wall is clang-cl's -Weverything: 1.36 M warning lines, 97.9 % of a 768 MB merge log; clang-cl appends _CL_ (hub #183).
+    $callerCl = $env:_CL_
+    $env:_CL_ = '/w'
+    try {
+        foreach ($dep in $plan) {
+            Write-Host "=== $($dep.Name) @ $($dep.Commit) ($arch) ==="
+            Invoke-GitClone -RepoUrl $dep.Url -SourceDir $dep.SourceDir -Tag $dep.Commit
+            $buildDir = Join-Path $WorkDir "build\$($dep.Name)"
+            Invoke-CmakeConfigure -SourceDir $dep.SourceDir -BuildDir $buildDir -InstallPrefix $depsPrefix `
+                -ExtraArgs ($common + $dep.CmakeOptions) -TargetArch $arch
+            Invoke-NinjaBuildWithRetry -BuildDir $buildDir -Install -InstallConfig 'Release'
+        }
 
-    Write-Host "=== Vulkan-ValidationLayers vulkan-sdk-$VulkanVersion ($arch) ==="
-    $vvlBuild = Join-Path $WorkDir 'build\Vulkan-ValidationLayers'
-    $vvlPrefix = Join-Path $WorkDir 'install'
-    # No sccache here: on 1.4.363 the arm64 compile of vk_validation_error_messages.cpp hung in the server twice (2026-10-10).
-    Invoke-CmakeConfigure -SourceDir $vvlSource -BuildDir $vvlBuild -InstallPrefix $vvlPrefix -TargetArch $arch `
-        -ExtraArgs ($common + @('-DUPDATE_DEPS=OFF', '-DBUILD_WERROR=OFF', '-DBUILD_TESTS=OFF',
-            '-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=', '-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH='))
-    Invoke-NinjaBuildWithRetry -BuildDir $vvlBuild -Install -InstallConfig 'Release'
+        Write-Host "=== Vulkan-ValidationLayers vulkan-sdk-$VulkanVersion ($arch) ==="
+        $vvlBuild = Join-Path $WorkDir 'build\Vulkan-ValidationLayers'
+        $vvlPrefix = Join-Path $WorkDir 'install'
+        # No sccache here: on 1.4.363 the arm64 compile of vk_validation_error_messages.cpp hung in the server twice (2026-10-10).
+        Invoke-CmakeConfigure -SourceDir $vvlSource -BuildDir $vvlBuild -InstallPrefix $vvlPrefix -TargetArch $arch `
+            -ExtraArgs ($common + @('-DUPDATE_DEPS=OFF', '-DBUILD_WERROR=OFF', '-DBUILD_TESTS=OFF',
+                '-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=', '-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH='))
+        Invoke-NinjaBuildWithRetry -BuildDir $vvlBuild -Install -InstallConfig 'Release'
+    } finally { if ($null -eq $callerCl) { Remove-Item Env:_CL_ -ErrorAction SilentlyContinue } else { $env:_CL_ = $callerCl } }
     foreach ($name in "$LayerName.dll", "$LayerName.json") {
         $built = @(Get-ChildItem -LiteralPath $vvlPrefix -Recurse -File -Filter $name)
         if ($built.Count -ne 1) { throw "expected one $name under $vvlPrefix, found $($built.Count)" }
