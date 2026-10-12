@@ -330,6 +330,20 @@ function Get-TorchAppOrtSyncArg {
     return (@($locked | ForEach-Object { "--no-install-package $_" }) -join ' ')
 }
 
+# `uv sync` args keeping the lock's ai-edge-litert out when the chain built one, or when the lock has no wheel for -AbiTag.
+function Get-TorchAppLitertSyncArg {
+    param([Parameter(Mandatory)][string]$LockPath, [Parameter(Mandatory)][string]$Store, [Parameter(Mandatory)][string]$AbiTag)
+    $text = [System.IO.File]::ReadAllText($LockPath)
+    if ($text -notmatch '(?m)^name = "ai-edge-litert"\r?$') { return '' }
+    if (@(Get-ChildItem -LiteralPath $Store -Filter 'ai_edge_litert-*.whl' -File -ErrorAction SilentlyContinue).Count) {
+        Write-Host "uv sync skips the lock's ai-edge-litert (the chain wheel replaces it)"
+        return '--no-install-package ai-edge-litert'
+    }
+    if ($text -match "ai_edge_litert-[^/`"]+-$AbiTag-$AbiTag-win_amd64\.whl") { return '' }
+    Write-Warning "ai-edge-litert: uv.lock has no $AbiTag win_amd64 wheel and $Store no chain wheel; the venv goes without it until the chain builds one (CON91)"
+    return '--no-install-package ai-edge-litert'
+}
+
 function Install-TorchAppEnvironment {
     Write-Host "=== torch app: clone $AppRef + uv sync (extras: ml-ai docs $PytorchExtra test) ==="
     if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force }
@@ -345,7 +359,7 @@ function Install-TorchAppEnvironment {
         [void](Invoke-ShieldedNative -Label 'git clone (app)' -CommandLine "git clone --branch $AppRef --depth 1 $appRepo ""$AppDir""")
     }
 
-    # The source-built CPython matches our cp314 wheels; copy mode, as hardlinks do not survive layer boundaries.
+    # The source-built CPython matches the chain's cpXY wheels; copy mode, as hardlinks do not survive layer boundaries.
     $env:UV_PYTHON = $cpythonExe
     $env:UV_LINK_MODE = 'copy'
     # No uv cache: gigabytes of torch/onnxruntime wheels would otherwise be committed into the torch layer.
@@ -358,19 +372,21 @@ function Install-TorchAppEnvironment {
         if ($env:SKIP_TORCH_TEST_EXTRAS -ne 'true') { $extraArgs += ' --extra test' }
         $baseSyncArgs = "--find-links ""$WheelDir"" $extraArgs"
         $lockPath = Join-Path $AppDir 'uv.lock'
+        $venvTag = "$(& $cpythonExe -I -c "import sys; print('cp%d%d' % sys.version_info[:2])")".Trim()
+        if ($venvTag -notmatch '^cp\d+$') { throw "$cpythonExe did not report its wheel tag (got '$venvTag')" }
 
         # Frozen first; regenerate on failure, since the upstream lock may not cover this Python/platform.
         $haveLock = Test-Path $lockPath
         $frozenOk = $false
         if ($haveLock) {
             # Outside the try: a missing chain wheel stops the stage instead of regenerating the lock.
-            $syncArgs = "$baseSyncArgs $(Get-TorchAppOrtSyncArg -LockPath $lockPath -Store $WheelDir)"
+            $syncArgs = "$baseSyncArgs $(Get-TorchAppOrtSyncArg -LockPath $lockPath -Store $WheelDir) $(Get-TorchAppLitertSyncArg -LockPath $lockPath -Store $WheelDir -AbiTag $venvTag)"
             try { [void](Invoke-ShieldedNative -Label 'uv sync --frozen' -CommandLine "uv sync $syncArgs --frozen"); $frozenOk = $true }
             catch { Write-Warning "frozen upstream uv.lock failed for this Python/platform -- regenerating a local lock ($($_.Exception.Message))" }
         }
         if (-not $frozenOk) {
             [void](Invoke-ShieldedNative -Label 'uv lock' -CommandLine "uv lock --find-links ""$WheelDir""")
-            $syncArgs = "$baseSyncArgs $(Get-TorchAppOrtSyncArg -LockPath $lockPath -Store $WheelDir)"
+            $syncArgs = "$baseSyncArgs $(Get-TorchAppOrtSyncArg -LockPath $lockPath -Store $WheelDir) $(Get-TorchAppLitertSyncArg -LockPath $lockPath -Store $WheelDir -AbiTag $venvTag)"
             [void](Invoke-ShieldedNative -Label 'uv sync' -CommandLine "uv sync $syncArgs")
         }
 
@@ -384,7 +400,7 @@ function Install-TorchAppEnvironment {
         # --no-deps is required: genai-cuda names onnxruntime-gpu, which our combined onnxruntime wheel replaces.
         [void](Invoke-ShieldedNative -Label 'force-reinstall local wheels (no-deps)' `
                 -CommandLine "uv pip install --python ""$venvPython"" --force-reinstall --no-deps $($localWheels -join ' ')")
-        # From base site-packages, which venvs do not see: cv2 has no wheel, tvm_ffi and ml_dtypes no usable cp314 one.
+        # From base site-packages, which venvs do not see: cv2 has no wheel, tvm_ffi and ml_dtypes no usable wheel for the image's tag.
         foreach ($staged in @('cv2', 'tvm_ffi', 'ml_dtypes', 'sitecustomize.py')) {
             $src = Join-Path $baseSite $staged
             if (Test-Path $src) {

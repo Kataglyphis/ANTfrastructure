@@ -1144,9 +1144,9 @@
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, eula-review"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-Python-ai-edge-litert-wheel-libLiteRt.d-77c3fb1b",
-      "name": "LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv: the pinned 2.2.0 on the rocm variant, the app lock's 2.1.6 on the default and nvidia images)",
-      "versionInfo": "2.2.0 (cp314 win_amd64; URL + SHA256 pinned as TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*)",
+      "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-Python-ai-edge-litert-wheel-libLiteRt.d-a7d2a217",
+      "name": "LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv on every amd64 variant: built from source for PYTHON_VERSION, CON91)",
+      "versionInfo": "LITERT_VERSION from source for PYTHON_VERSION's cpXY (CON91); its libLiteRtWebGpuAccelerator.dll from the 2.2.0 PyPI wheel, pinned as LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256",
       "downloadLocation": "https://github.com/google-ai-edge/LiteRT",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -2397,7 +2397,7 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LiteRT-Python-ai-edge-litert-wheel-libLiteRt.d-77c3fb1b"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LiteRT-Python-ai-edge-litert-wheel-libLiteRt.d-a7d2a217"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

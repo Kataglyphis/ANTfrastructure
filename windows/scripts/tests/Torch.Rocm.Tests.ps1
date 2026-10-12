@@ -6,11 +6,14 @@
 $script:TorchRocmScript = 'windows\scripts\build\Install-TorchRocm.ps1'
 $script:TorchRocmCheck = 'windows\scripts\build\rocm-checks\Torch.ps1'
 # Everything the pinned-set functions call, lifted together.
-$script:TorchRocmSetFunction = @('Get-TorchRocmPinMap', 'Get-TorchRocmExtraPinMap', 'ConvertFrom-TorchRocmFileName',
-    'Get-TorchRocmPinnedFile', 'Get-TorchRocmGpuTarget', 'Get-TorchRocmWheelSet', 'Get-TorchRocmExtraWheel', 'Get-TorchRocmBuiltWheel')
+$script:TorchRocmSetFunction = @('Get-TorchRocmPinMap', 'ConvertFrom-TorchRocmFileName',
+    'Get-TorchRocmPinnedFile', 'Get-TorchRocmGpuTarget', 'Get-TorchRocmWheelSet', 'Get-TorchRocmBuiltWheel')
 # The torch-rocm-wheels stage's two wheels as this versions.env builds them: their local version is the ROCm release.
-$script:TorchRocmRelease = (ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'))['ROCM_WINDOWS_RELEASE']
-$script:TorchRocmBuiltName = @("torch-2.14.0+rocm$($script:TorchRocmRelease)-cp314-cp314-win_amd64.whl", "torchvision-0.29.0+rocm$($script:TorchRocmRelease)-cp314-cp314-win_amd64.whl")
+$script:TorchRocmVersions = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
+$script:TorchRocmRelease = $script:TorchRocmVersions['ROCM_WINDOWS_RELEASE']
+# The app venv's tag: the image interpreter, PYTHON_VERSION.
+$script:TorchRocmVenvTag = 'cp' + (($script:TorchRocmVersions['PYTHON_VERSION'] -split '\.')[0..1] -join '')
+$script:TorchRocmBuiltName = @('torch-2.14.0', 'torchvision-0.29.0' | ForEach-Object { "$_+rocm$($script:TorchRocmRelease)-$($script:TorchRocmVenvTag)-$($script:TorchRocmVenvTag)-win_amd64.whl" })
 
 # A WheelDir holding $Name (default: the two built wheels) as small fake files.
 function New-TorchRocmBuiltWheelDir {
@@ -45,11 +48,11 @@ function Get-TorchRocmTestPin {
     return $pins
 }
 
-# The real pinned set as the build resolves it, carrying its versions.env as .Pins and the PyPI extras as .Extras.
+# The real pinned set as the build resolves it, carrying its versions.env as .Pins.
 function Get-TorchRocmTestSet {
     $pins = Get-TorchRocmTestPin
     $set = Get-TorchRocmWheelSet -Pins $pins -Release $pins['ROCM_WINDOWS_RELEASE']
-    return ($set | Add-Member -NotePropertyMembers @{ Pins = $pins; Extras = @(Get-TorchRocmExtraWheel -Pins $pins) } -PassThru)
+    return ($set | Add-Member -NotePropertyMembers @{ Pins = $pins } -PassThru)
 }
 
 # Each case edits a fresh versions.env copy (Key = Value) and/or names a Release; $Resolve must throw matching P.
@@ -174,9 +177,9 @@ Describe 'Install-TorchRocm: lane gate (cpu and nvidia unchanged)' {
 Describe 'Install-TorchRocm: pinned set (versions.env)' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmScript -FunctionName $script:TorchRocmSetFunction)
 
-    It 'versions.env carries one URL and one SHA256 key per pin name, AMD''s and the PyPI extras alike, plus the two source commits' {
+    It 'versions.env carries one URL and one SHA256 key per pin name, plus the two source commits' {
         $pins = Get-TorchRocmTestPin
-        $names = @((Get-TorchRocmPinMap).Keys) + @((Get-TorchRocmExtraPinMap).Keys)
+        $names = @((Get-TorchRocmPinMap).Keys)
         $expected = @(@($names | ForEach-Object { "TORCH_ROCM_WINDOWS_${_}_URL"; "TORCH_ROCM_WINDOWS_${_}_SHA256" }) +
             'TORCH_ROCM_WINDOWS_PYTORCH_COMMIT', 'TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT' | Sort-Object)
         $actual = @($pins.Keys | Where-Object { $_ -like 'TORCH_ROCM_WINDOWS_*' } | Sort-Object)
@@ -204,13 +207,15 @@ Describe 'Install-TorchRocm: pinned set (versions.env)' {
         Assert-Equal '' (@((Get-TorchRocmPinMap).Values | Where-Object { $_ -match '^(torch|torchvision)$' }) -join ',') 'pin map'
     }
 
-    It 'every cp wheel pinned matches PYTHON_VERSION, the interpreter the app venv is built on' {
-        $set = Get-TorchRocmTestSet
-        $parts = $set.Pins['PYTHON_VERSION'] -split '\.'
-        $tag = "cp$($parts[0])$($parts[1])"
-        $cp = @(@($set.Wheels) + @($set.Extras) | Where-Object { $_.PythonTag -like 'cp*' })
-        Assert-Equal 1 $cp.Count 'cp wheels pinned (ai-edge-litert; the built wheels are held to the venv at install)'
-        foreach ($w in $cp) { Assert-Equal $tag $w.PythonTag $w.FileName; Assert-Equal $tag $w.AbiTag $w.FileName }
+    It 'no cp wheel is pinned: the built torch/torchvision are held to the venv at install, ai-edge-litert comes from the chain (CON91)' {
+        $cp = @((Get-TorchRocmTestSet).Wheels | Where-Object { $_.PythonTag -like 'cp*' })
+        Assert-Equal '' (($cp | ForEach-Object { $_.FileName }) -join ',') 'cp wheels pinned'
+    }
+
+    It 'no prebuilt ORT EP and no PyPI extra is pinned (owner rule 2026-09-23: the chain ORT builds its WebGPU EP; CON91)' {
+        $pins = Get-TorchRocmTestPin
+        Assert-Equal '' (@($pins.Keys | Where-Object { $_ -match 'ORT_EP|EP_WEBGPU|^TORCH_ROCM_WINDOWS_AI_EDGE' }) -join ',') 'versions.env keys'
+        Assert-False ((Get-TorchDockerfileText) -match 'onnxruntime[_-]ep|ai_edge_litert') 'Dockerfile.torch'
     }
 
     It 'the GPU targets belong to ROCM_WINDOWS_GFX_FAMILY, the tarball the sdk layer installs' {
@@ -298,54 +303,18 @@ Describe 'Install-TorchRocm: the source-built wheels (torch-rocm-wheels stage)' 
     }
 }
 
-Describe 'Install-TorchRocm: the venv''s PyPI extra (ai-edge-litert)' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmScript -FunctionName $script:TorchRocmSetFunction)
-
-    It 'the real pin parses: ai-edge-litert, from PyPI, as a cp314 Windows x64 wheel' {
-        $extras = @((Get-TorchRocmTestSet).Extras)
-        Assert-Equal 'ai-edge-litert' (($extras | ForEach-Object { $_.Distribution }) -join ',') 'extras, in pin order'
-        foreach ($w in $extras) {
-            Assert-Equal 'win_amd64' $w.Platform $w.FileName
-            Assert-Equal 'cp314' $w.PythonTag $w.FileName
-            Assert-True $w.Url.StartsWith('https://files.pythonhosted.org/packages/') "PyPI host: $($w.Url)"
-        }
-    }
-
-    It 'no prebuilt ORT EP is pinned any more (owner rule 2026-09-23: the chain ORT builds its WebGPU EP)' {
-        $pins = Get-TorchRocmTestPin
-        Assert-Equal '' (@($pins.Keys | Where-Object { $_ -match 'ORT_EP|EP_WEBGPU' }) -join ',') 'versions.env keys'
-        Assert-Equal '' (@((Get-TorchRocmExtraPinMap).Values | Where-Object { $_ -match 'onnxruntime' }) -join ',') 'extra pin map'
-        Assert-False ((Get-TorchDockerfileText) -match 'onnxruntime[_-]ep') 'Dockerfile.torch'
-    }
-
-    It 'refuses another host (AMD''s too), another distribution, a non-Windows wheel and a bad SHA256' {
-        $pypi = 'https://files.pythonhosted.org/packages/aa/bb/cc'
-        # Pin key -> (bad value -> the refusal it must raise).
-        $bad = [ordered]@{
-            TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_URL    = [ordered]@{
-                'https://pypi.org/simple/ai_edge_litert-2.2.0-cp314-cp314-win_amd64.whl'                          = 'files\.pythonhosted\.org'
-                'https://stable.repo.amd.com/rocm/core/whl-next/x/ai_edge_litert-2.2.0-cp314-cp314-win_amd64.whl' = 'files\.pythonhosted\.org'
-                "$pypi/ai_edge_litert_nightly-2.3.0-cp314-cp314-win_amd64.whl"                                     = 'expected ai-edge-litert'
-                "$pypi/ai_edge_litert-2.2.0-cp314-cp314-manylinux_2_27_x86_64.whl"                                 = 'win_amd64'
-            }
-            TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_SHA256 = [ordered]@{ 'not-a-sha' = 'AI_EDGE_LITERT_SHA256' }
-        }
-        $cases = foreach ($key in $bad.Keys) { foreach ($value in $bad[$key].Keys) { @{ Key = $key; Value = $value; P = $bad[$key][$value] } } }
-        Assert-TorchRocmPinRefusal -Resolve { param($Pins) @(Get-TorchRocmExtraWheel -Pins $Pins) } -Case $cases
-    }
-}
 
 Describe 'Install-TorchRocm: the wheels must fit the app venv' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmScript -FunctionName ($script:TorchRocmSetFunction + 'Assert-TorchRocmVenvMatch'))
     $testSet = Get-TorchRocmTestSet
-    $script:TorchRocmWheels = @(Get-TorchRocmBuiltWheelFact) + @($testSet.Wheels) + @($testSet.Extras)
+    $script:TorchRocmWheels = @(Get-TorchRocmBuiltWheelFact) + @($testSet.Wheels)
     function New-TorchRocmVenvFact { param([hashtable]$Override = @{})
-        $v = @{ tag = 'cp314'; torch = '2.14.0+cpu'; torchvision = '0.29.0+cpu'; setuptools = '83.0.0' }
+        $v = @{ tag = $script:TorchRocmVenvTag; torch = '2.14.0+cpu'; torchvision = '0.29.0+cpu'; setuptools = '83.0.0' }
         foreach ($k in $Override.Keys) { $v[$k] = $Override[$k] }
         return $v
     }
 
-    It 'accepts the venv uv sync builds today (cp314, the app lock''s torch 2.14.0 / torchvision 0.29.0)' {
+    It 'accepts the venv uv sync builds today (the pinned cpXY, the app lock''s torch 2.14.0 / torchvision 0.29.0)' {
         Assert-TorchRocmVenvMatch -Wheels $script:TorchRocmWheels -Venv (New-TorchRocmVenvFact)
         Assert-True $true 'no throw'
     }
@@ -353,7 +322,7 @@ Describe 'Install-TorchRocm: the wheels must fit the app venv' {
     It 'refuses another interpreter, another app torch, no torch and no setuptools' {
         foreach ($case in @(
                 @{ O = @{ tag = 'cp313' }; P = 'cp313' }
-                @{ O = @{ tag = 'cp314t' }; P = 'cp314t' }
+                @{ O = @{ tag = "$($script:TorchRocmVenvTag)t" }; P = "$($script:TorchRocmVenvTag)t" }
                 @{ O = @{ torch = '2.13.0+cpu' }; P = 'PYTORCH_VERSION/TORCHVISION_VERSION' }
                 @{ O = @{ torchvision = '0.28.0' }; P = 'the ROCm build is 0\.29\.0' }
                 @{ O = @{ torch = '' }; P = 'PYTORCH_EXTRA' }
@@ -363,12 +332,6 @@ Describe 'Install-TorchRocm: the wheels must fit the app venv' {
         }
     }
 
-    It 'the cp-tagged ai-edge-litert pin is held to the venv''s interpreter too' {
-        $pins = Get-TorchRocmTestPin
-        $pins['TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_URL'] = $pins['TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_URL'] -replace 'cp314', 'cp313'
-        $wheels = @(Get-TorchRocmBuiltWheelFact) + @($testSet.Wheels) + @(Get-TorchRocmExtraWheel -Pins $pins)
-        Assert-Throws { Assert-TorchRocmVenvMatch -Wheels $wheels -Venv (New-TorchRocmVenvFact) } 'litert cp313 in a cp314 venv' -MessagePattern 'ai_edge_litert-2\.2\.0-cp313'
-    }
 }
 
 Describe 'Install-TorchRocm: rocBLAS GPU coverage and the chain onnxruntime' {
@@ -404,14 +367,14 @@ Describe 'Install-TorchRocm: offline install inputs' {
         $set = Get-TorchRocmTestSet
         $pins = $set.Pins
         $built = @(Get-TorchRocmBuiltWheelFact)
-        $lines = @(Get-TorchRocmRequirement -Wheels ($built + @($set.Wheels) + @($set.Extras)) -CacheDir 'C:\uvcache\torch-rocm')
-        Assert-Equal 8 $lines.Count 'requirement lines (2 built, 5 AMD runtime, 1 PyPI extra)'
+        $lines = @(Get-TorchRocmRequirement -Wheels ($built + @($set.Wheels)) -CacheDir 'C:\uvcache\torch-rocm')
+        Assert-Equal 7 $lines.Count 'requirement lines (2 built, 5 AMD runtime)'
         foreach ($l in @($lines | Select-Object -Skip 2)) { Assert-Match '^[a-z0-9-]+ @ file:///C:/uvcache/torch-rocm/[0-9a-f]{64}/\S+ --hash=sha256:[0-9a-f]{64}$' $l 'pinned requirement shape' }
         Assert-Equal "torch @ file:///C:/bkmnt/torch-rocm-wheels/$($script:TorchRocmBuiltName[0]) --hash=sha256:$('a' * 64)" $lines[0] 'the built torch, from its mount'
         Assert-Equal "torchvision @ file:///C:/bkmnt/torch-rocm-wheels/$($script:TorchRocmBuiltName[1]) --hash=sha256:$('a' * 64)" $lines[1] 'the built torchvision'
         $core = @($lines | Where-Object { $_ -like 'rocm-sdk-core @ *' })[0]
         Assert-True $core.EndsWith("--hash=sha256:$($pins['TORCH_ROCM_WINDOWS_SDK_CORE_SHA256'])") 'rocm-sdk-core hash'
-        foreach ($dist in 'rocm', 'rocm-sdk-libraries', 'rocm-sdk-device-gfx1200', 'rocm-sdk-device-gfx1201', 'ai-edge-litert') {
+        foreach ($dist in 'rocm', 'rocm-sdk-libraries', 'rocm-sdk-device-gfx1200', 'rocm-sdk-device-gfx1201') {
             Assert-Equal 1 @($lines | Where-Object { $_ -like "$dist @ *" }).Count "one line for $dist"
         }
     }
@@ -759,14 +722,14 @@ Describe 'rocm-checks\Torch.ps1: the one venv probe, shared with Install-TorchRo
 
     It 'Install-TorchRocm refuses, before any download, a missing source-built wheel directory' {
         Invoke-InTestDir { param($dir)
-            $r = Invoke-TorchRocmInstallerTo -Dir $dir -Venv "@{ tag = 'cp314'; torch = '2.14.0+cpu'; torchvision = '0.29.0+cpu'; setuptools = '83.0.0' }" -WheelDir (Join-Path $dir 'nowhere')
+            $r = Invoke-TorchRocmInstallerTo -Dir $dir -Venv "@{ tag = '$($script:TorchRocmVenvTag)'; torch = '2.14.0+cpu'; torchvision = '0.29.0+cpu'; setuptools = '83.0.0' }" -WheelDir (Join-Path $dir 'nowhere')
             Assert-TorchRocmInstallRefused $r 'no source-built wheels at' 'the torch-rocm-wheels mount is required'
         }
     }
 
     It 'Install-TorchRocm refuses, before any download, a rocBLAS GPU the device pins miss, and a missing ROCm root' {
         Invoke-InTestDir { param($dir)
-            $venv = "@{ tag = 'cp314'; torch = '2.14.0+cpu'; torchvision = '0.29.0+cpu'; setuptools = '83.0.0'; onnxruntime_record = 'x' }"
+            $venv = "@{ tag = '$($script:TorchRocmVenvTag)'; torch = '2.14.0+cpu'; torchvision = '0.29.0+cpu'; setuptools = '83.0.0'; onnxruntime_record = 'x' }"
             $lib = Join-Path $dir 'rocm\bin\rocblas\library'
             New-Item -ItemType Directory -Force -Path $lib | Out-Null
             foreach ($gfx in 'gfx1036', 'gfx1200', 'gfx1201') { [System.IO.File]::WriteAllText((Join-Path $lib "TensileLibrary_lazy_$gfx.dat"), 'x') }
