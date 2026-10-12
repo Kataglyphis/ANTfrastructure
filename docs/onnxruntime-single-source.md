@@ -23,7 +23,7 @@ for Windows and `AGENTS.md` § Linux Build Rules for Linux.
 |---|---|---|
 | Built by | `windows/scripts/build/Build-OnnxFromSource.ps1` | `linux/scripts/03-media/build/onnxruntime/` |
 | Installed at | `C:\runtime\lib\onnxruntime-source` (`ONNX_ROOT`): `bin\onnxruntime.dll`, `lib\onnxruntime.lib`, flat headers in `include\onnxruntime\` | `/usr/local/lib/onnxruntime-cpu` on every variant, plus `/usr/local/lib/onnxruntime-gpu` on the GPU variants |
-| Python wheel | `C:\runtime\wheels` (`PYTHON_WHEELS`) | `/opt/wheels` at build time; the installed flavour is kept in `/opt/onnxruntime-wheels` (`ORT_CHAIN_WHEEL_DIR`). Its `cp3XYt` twin, built natively from the same tree, ships in `/opt/wheels-cp314t` ([`consumer-image-contract.md` § The free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)) |
+| Python wheel | `C:\runtime\wheels` (`PYTHON_WHEELS`) | `/opt/wheels` at build time; the installed flavour is kept in `/opt/onnxruntime-wheels` (`ORT_CHAIN_WHEEL_DIR`). Its `cp3XYt` twin, built natively from the same tree, ships in `/opt/wheels-free-threaded` ([`consumer-image-contract.md` § The free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)) |
 | Source root compiled into it | `C:\temp\onnx-src` | `/opt/onnxruntime` (`/opt/onnxruntime-android` for Android) |
 
 The last row is the fingerprint every guard uses. ORT compiles its source paths
