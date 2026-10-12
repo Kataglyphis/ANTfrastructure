@@ -96,9 +96,6 @@ ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_URL=https://stable.repo.amd.com/rocm/core/whl-
 ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_SHA256=56085e8f865b6b96c230fe8d1731074103553d0d958a31be13907d01e558fd0e
 ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_URL=https://stable.repo.amd.com/rocm/core/whl-next/rocm-sdk-device-gfx1200/rocm_sdk_device_gfx1200-10.1.0-py3-none-win_amd64.whl
 ARG TORCH_ROCM_WINDOWS_SDK_DEVICE_GFX1200_SHA256=8b670bee24ca4fc6c13c1eb58e9c6c39929913107ce00a8661c4db9d3e39d9fa
-# The venv's ai-edge-litert (PyPI, published SHA256), installed --no-deps in the same offline step.
-ARG TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_URL=https://files.pythonhosted.org/packages/3c/33/1e7b4ac36d983aa6153b10f1e8686d7f6ff47bda1216d6d8f047a19f3cc6/ai_edge_litert-2.2.0-cp314-cp314-win_amd64.whl
-ARG TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_SHA256=4e5e35da364495fdf0abefd6ef32d299133619df4cbab757941b0462066e93bc
 # -TorchRocm 1 is literal: an env read could fail open to CPU torch.
 RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
     --mount=type=bind,from=torch-rocm-wheels,source=/torch-rocm-wheels,target=C:\bkmnt\torch-rocm-wheels `

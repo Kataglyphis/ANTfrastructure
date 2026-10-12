@@ -25,7 +25,7 @@ belongs on the bare host.
 | LiteRT-LM | GPU backend (WebGPU over Dawn on D3D12) | D3D12 | no |
 | ONNX Runtime | CPU + DirectML, plus the in-tree WebGPU EP as a **spike** (`ORT_WEBGPU=1`). ORT >= 1.23 has no ROCm EP | DirectML, WebGPU (Dawn on D3D12) | no |
 | PyTorch | torch 2.14.1+rocm10.1.0, torchvision 0.29.1+rocm10.1.0, built from source here for gfx1201 and gfx1200 | ROCm/HIP (AMD's runtime wheels) | no |
-| App venv LiteRT | `ai-edge-litert` 2.2.0 with its WebGPU accelerator | WebGPU (Dawn on D3D12) | no |
+| App venv LiteRT | `ai-edge-litert` with its WebGPU accelerator, built from source for the pinned Python (CON91; absent until that lands) | WebGPU (Dawn on D3D12) | no |
 | llama.cpp HIP | `ggml-hip` built from source at b11476 against the image's TheRock (gfx1200, gfx1201), with the same tag's official CPU tools, `C:\runtime\opt\llama.cpp-hip` | ROCm/HIP | yes: TheRock's clang, HIP runtime, hipBLAS/rocBLAS |
 | llama.cpp Vulkan | the same build's official Windows Vulkan zip (`ggml-vulkan`), `C:\runtime\opt\llama.cpp-vulkan` | Vulkan (the sdk layer's loader) | no |
 | MIGraphX + ORT plugin EP | MIGraphX 2.18.0 from source, `migraphx-ep.dll` as a **spike** | ROCm/HIP | yes |
@@ -708,7 +708,7 @@ On cpu and nvidia, the Bazel command stays `build //runtime/engine:litert_lm_mai
 
 ## PyTorch on the rocm lane (torch stage)
 
-The rocm image's app venv (`C:\opt\OrchestrANT\.venv`) runs **PyTorch built from source in this repository** (owner decision 2026-09-29). It has torch 2.14.1+rocm10.1.0 and torchvision 0.29.1+rocm10.1.0 (cp314, win_amd64), built from the upstream `v2.14.1` / `v0.29.1` tags that `PYTORCH_VERSION` / `TORCHVISION_VERSION` name. They are compiled against this image's ROCm 10.1 SDK (`C:\TheRock\build`) for both GPUs of the pinned gfx120X-all family: gfx1201 (RX 9070 series) and gfx1200 (RX 9060 series). They load ROCm the way AMD's wheels do, from AMD's `rocm[libraries]` 10.1.0 runtime and a device wheel per GPU. The venv also gets `ai-edge-litert` (§ The LiteRT extra, below). The cpu and nvidia images are unchanged.
+The rocm image's app venv (`C:\opt\OrchestrANT\.venv`) runs **PyTorch built from source in this repository** (owner decision 2026-09-29). It has torch 2.14.1+rocm10.1.0 and torchvision 0.29.1+rocm10.1.0 (the image interpreter's cpXY, win_amd64), built from the upstream `v2.14.1` / `v0.29.1` tags that `PYTORCH_VERSION` / `TORCHVISION_VERSION` name. They are compiled against this image's ROCm 10.1 SDK (`C:\TheRock\build`) for both GPUs of the pinned gfx120X-all family: gfx1201 (RX 9070 series) and gfx1200 (RX 9060 series). They load ROCm the way AMD's wheels do, from AMD's `rocm[libraries]` 10.1.0 runtime and a device wheel per GPU. The venv also needs `ai-edge-litert` (§ The LiteRT extra, below). The cpu and nvidia images are unchanged.
 
 Why here and not AMD's: AMD's Windows wheels for ROCm 10.0 stop at torch 2.13.0, and the app locks 2.14.1. torch 2.14 exists for ROCm 7.14 (pytorch.org, Linux only) and for ROCm 10.1 release candidates (`rc.repo.amd.com`), but not for 10.0.
 
@@ -753,9 +753,9 @@ WebGPU for ONNX Runtime comes from the chain ORT itself ([§ ONNX Runtime WebGPU
 
 **What the installer does.**
 
-- **Pins.** Six files are pinned by URL + SHA256 in `versions.env` (`TORCH_ROCM_WINDOWS_<NAME>_URL` / `_SHA256`, next to `ROCM_WINDOWS_*`): AMD's `rocm` sdist, `rocm-sdk-core`, `rocm-sdk-libraries` and one device wheel per GPU, plus `ai-edge-litert` from PyPI. They reach the stage as ARG defaults that `sync_versions.py` keeps in step. AMD publishes no hashes and its index carries no `#sha256=` fragments, so every SHA256 is self-measured (`curl -fL <url> | sha256sum`).
+- **Pins.** Five files are pinned by URL + SHA256 in `versions.env` (`TORCH_ROCM_WINDOWS_<NAME>_URL` / `_SHA256`, next to `ROCM_WINDOWS_*`): AMD's `rocm` sdist, `rocm-sdk-core`, `rocm-sdk-libraries` and one device wheel per GPU. They reach the stage as ARG defaults that `sync_versions.py` keeps in step. AMD publishes no hashes and its index carries no `#sha256=` fragments, so every SHA256 is self-measured (`curl -fL <url> | sha256sum`).
 - **The built wheels** (`Get-TorchRocmBuiltWheel`): the mounted `C:\bkmnt\torch-rocm-wheels` must hold exactly one torch and one torchvision wheel, each win_amd64 and a `+rocm<release>` build. Their SHA256 is taken on the spot, so the install stays `--require-hashes`.
-- **Coupling, checked at build time.** Every AMD file must be built for `ROCM_WINDOWS_RELEASE`. The venv must be `cp314`. The app lock's torch/torchvision must be the release this build made, so a torch move in the app needs `PYTORCH_VERSION`/`TORCHVISION_VERSION` and their commits to follow. **Bump the whole `TORCH_ROCM_WINDOWS_*` block with `ROCM_WINDOWS_RELEASE`.**
+- **Coupling, checked at build time.** Every AMD file must be built for `ROCM_WINDOWS_RELEASE`. The venv must be the image interpreter's `cpXY` (`PYTHON_VERSION`). The app lock's torch/torchvision must be the release this build made, so a torch move in the app needs `PYTORCH_VERSION`/`TORCHVISION_VERSION` and their commits to follow. **Bump the whole `TORCH_ROCM_WINDOWS_*` block with `ROCM_WINDOWS_RELEASE`.**
 - **One device wheel per GPU.** `TORCH_ROCM_WINDOWS_SDK_DEVICE[_<GFX>]` names the GPU (`Get-TorchRocmGpuTarget`). The unsuffixed one is gfx1201; gfx1200 uses `_GFX1200`.
 - **rocBLAS coverage.** Before any download, every GPU the image's rocBLAS ships kernels for (`%HIP_PATH%\bin\rocblas\library\TensileLibrary_lazy_<gfx>.dat`, the files `rocm-checks\LlamaCpp.ps1` reads too) must have a device pin (`Assert-TorchRocmGpuCoverage`). Pinning more GPUs is allowed. A `ROCM_WINDOWS_GFX_FAMILY` change therefore fails the torch stage until the device pins follow.
 - **Offline install.** Pinned files are cached by hash on the torch stage's uv cache mount (`C:\uvcache\torch-rocm\<sha256>\<file>`) and re-hashed before reuse. Each is downloaded to its cache path directly, never as a `.part` renamed into place. On the mount that rename failed with `Could not find a part of the path` for the first wheel with a 68-character name, after two shorter ones had moved fine (2026-09-25). That is the create-then-rename class of [windows-build-lanes.md § Run-side wcifs symptoms](windows-build-lanes.md#run-side-wcifs-symptoms-process-isolation). A partial file is never used: a failed download deletes what it wrote, and every reuse re-hashes. The install is `uv pip install --force-reinstall --no-deps --no-index --no-build-isolation --require-hashes`. No index is contacted and nothing is resolved. The `rocm` sdist builds on the venv's setuptools (83.0.0 from the app lock).
@@ -778,10 +778,11 @@ It never calls `torch.cuda`, and `torch.cuda.is_available()` is False in the con
 
 ### The LiteRT extra
 
-`ai-edge-litert` 2.2.0 (`TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*`, pinned by PyPI URL and PyPI's SHA256) goes into the rocm venv through the same offline, hash-pinned, `--no-deps` install. It is LiteRT's Python package with its prebuilt WebGPU accelerator `libLiteRtWebGpuAccelerator.dll` (Dawn statically linked), so it works on any vendor's D3D12 GPU; it is on the rocm lane by owner decision.
-- It is the newest release with a cp314 win_amd64 wheel. The app lock records 2.1.6, but the app's pyproject leaves it unpinned.
-- The app's `uv sync` still excludes it on every lane (`--no-install-package`), so cpu and nvidia are unchanged.
-- Its requirements are already in the venv: the lock's own ai-edge-litert dependencies, plus `ml_dtypes`, which `Build-TorchApp.ps1` copies in from the base interpreter.
+`ai-edge-litert` is LiteRT's Python package with its prebuilt WebGPU accelerator `libLiteRtWebGpuAccelerator.dll` (Dawn statically linked), so it works on any vendor's D3D12 GPU; it is on the rocm lane by owner decision, and `rocm-checks\Torch.ps1` requires it.
+- **Until 2026-10-12 it was a PyPI pin**, 2.2.0's cp314 wheel, installed `--no-deps` in `rocm-1`. PyPI has no cp315 wheel (2.3.0, the newest, stops at cp314), so the Python 3.15 pin ended that.
+- **It is built from source for the pinned Python** (owner decision 2026-10-12, BACKLOG CON91) into the chain's wheel store, and `Build-TorchApp.ps1` installs it on every amd64 variant with the other store wheels. The accelerator stays the 2.2.0 wheel's closed-source DLL (ML Drift has no public source), pinned as `LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256` and taken from `LITERT_WINDOWS_ACCELERATOR_WHEEL_*`.
+- **Until that wheel lands, the venv has none**: `Build-TorchApp.ps1` leaves the lock's ai-edge-litert out of `uv sync` with a warning when neither the store nor the lock has a wheel for the image's tag, and `rocm-1` fails on `Torch.ps1`'s LiteRT check. That red is on purpose; the check is not relaxed for the gap.
+- Its requirements are in the venv: the lock's own ai-edge-litert dependencies, plus `ml_dtypes`, which `Build-TorchApp.ps1` copies in from the base interpreter.
 - Its Dawn falls back to FXC when DXC is absent. Whether Dawn accepts the WARP adapter a container can see is unverified.
 
 **Limits.**

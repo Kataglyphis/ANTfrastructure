@@ -5,7 +5,7 @@
 
 <#
 .SYNOPSIS
-    rocm lane only: replaces the app venv's CPU torch with the ROCm torch built from source, and adds ai-edge-litert.
+    rocm lane only: replaces the app venv's CPU torch with the ROCm torch built from source.
 .DESCRIPTION
     Dockerfile.torch's rocm-1 stage runs it on the venv Build-TorchApp.ps1 built. torch and torchvision
     are the torch-rocm-wheels stage's wheels (Build-TorchRocmFromSource.ps1); AMD's rocm[libraries]
@@ -43,16 +43,6 @@ function Get-TorchRocmPinMap {
         SDK_LIBRARIES      = 'rocm-sdk-libraries'
         SDK_DEVICE         = '*'
         SDK_DEVICE_GFX1200 = '*'
-    }
-}
-
-<#
-.SYNOPSIS
-    Pin name -> distribution of the venv's PyPI extras: not AMD's, not tied to ROCM_WINDOWS_RELEASE.
-#>
-function Get-TorchRocmExtraPinMap {
-    return [ordered]@{
-        AI_EDGE_LITERT = 'ai-edge-litert'
     }
 }
 
@@ -204,18 +194,6 @@ function Get-TorchRocmBuiltWheel {
 
 <#
 .SYNOPSIS
-    The venv's PyPI extras (TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*) -> checked files, PyPI only.
-#>
-function Get-TorchRocmExtraWheel {
-    param([Parameter(Mandatory)][System.Collections.IDictionary]$Pins)
-    $map = Get-TorchRocmExtraPinMap
-    foreach ($name in $map.Keys) {
-        Get-TorchRocmPinnedFile -Pins $Pins -Name $name -Distribution $map[$name] -UrlPrefix 'https://files.pythonhosted.org/packages/'
-    }
-}
-
-<#
-.SYNOPSIS
     Every GPU ROCm's rocBLAS serves (rocm-checks\Torch.ps1 reads that set) must have its device wheels pinned.
 #>
 function Assert-TorchRocmGpuCoverage {
@@ -348,7 +326,7 @@ foreach ($module in 'WindowsScripts.Shared.psm1', 'WindowsNative.Common.psm1') {
 
 $release = "$env:ROCM_WINDOWS_RELEASE"
 $pins = @{}
-foreach ($name in @((Get-TorchRocmPinMap).Keys) + @((Get-TorchRocmExtraPinMap).Keys)) {
+foreach ($name in @((Get-TorchRocmPinMap).Keys)) {
     foreach ($kind in 'URL', 'SHA256') {
         $key = "TORCH_ROCM_WINDOWS_${name}_$kind"
         $pins[$key] = [Environment]::GetEnvironmentVariable($key)
@@ -356,9 +334,9 @@ foreach ($name in @((Get-TorchRocmPinMap).Keys) + @((Get-TorchRocmExtraPinMap).K
 }
 $set = Get-TorchRocmWheelSet -Pins $pins -Release $release
 $built = @(Get-TorchRocmBuiltWheel -WheelDir $WheelDir -Release $release)
-$pinned = @($set.Wheels) + @(Get-TorchRocmExtraWheel -Pins $pins)
+$pinned = @($set.Wheels)
 $wheels = @($built) + $pinned
-Write-Host "=== torch app: source-built $($built.FileName -join ', ') + ROCm $release runtime for $($set.GfxTargets -join ', ') + LiteRT ($($pinned.Count) pinned files) ==="
+Write-Host "=== torch app: source-built $($built.FileName -join ', ') + ROCm $release runtime for $($set.GfxTargets -join ', ') ($($pinned.Count) pinned files) ==="
 
 $venvPython = Join-Path $AppDir '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) { throw "venv python missing at $venvPython - Build-TorchApp.ps1 builds it first" }
@@ -377,7 +355,7 @@ foreach ($wheel in $pinned) { [void](Save-TorchRocmWheel -Wheel $wheel -CacheDir
 $requirements = Join-Path ([System.IO.Path]::GetTempPath()) "torch-rocm-$([guid]::NewGuid().ToString('N')).txt"
 try {
     Set-Content -LiteralPath $requirements -Value @(Get-TorchRocmRequirement -Wheels $wheels -CacheDir $WheelCache) -Encoding utf8
-    [void](Invoke-ShieldedNative -Label 'uv pip install (ROCm torch + LiteRT)' `
+    [void](Invoke-ShieldedNative -Label 'uv pip install (ROCm torch)' `
             -CommandLine (Get-TorchRocmInstallCommand -VenvPython $venvPython -RequirementsFile $requirements -GfxTarget $set.GfxTarget))
 } finally {
     Remove-Item -LiteralPath $requirements -Force -ErrorAction SilentlyContinue

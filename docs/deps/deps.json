@@ -853,9 +853,9 @@
               "spdx": "BSD-3-Clause AND MIT AND Apache-2.0 AND LicenseRef-Proprietary-EULA"
             },
             {
-              "name": "LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv: the pinned 2.2.0 on the rocm variant, the app lock's 2.1.6 on the default and nvidia images)",
+              "name": "LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv on every amd64 variant: built from source for PYTHON_VERSION, CON91)",
               "var": null,
-              "version_fixed": "2.2.0 (cp314 win_amd64; URL + SHA256 pinned as TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*)",
+              "version_fixed": "LITERT_VERSION from source for PYTHON_VERSION's cpXY (CON91); its libLiteRtWebGpuAccelerator.dll from the 2.2.0 PyPI wheel, pinned as LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256",
               "url": "https://github.com/google-ai-edge/LiteRT",
               "license": "Apache 2.0 (the wheel's METADATA; the wheel carries no licence or NOTICE text). libLiteRtWebGpuAccelerator.dll is a closed Google binary: LiteRT's Apache-2.0 wrapper around ML Drift, which LiteRT's WORKSPACE declares with no public URL; it imports only system DLLs, so Dawn/Tint (BSD 3-Clause) are linked in statically",
               "spdx": "Apache-2.0 AND BSD-3-Clause"

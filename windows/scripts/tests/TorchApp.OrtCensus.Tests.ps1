@@ -182,6 +182,41 @@ Describe 'Build-TorchApp.ps1: uv sync leaves the lock''s ORT to the chain wheels
     }
 }
 
+Describe 'Build-TorchApp.ps1: uv sync leaves ai-edge-litert out when the chain has it or the lock has no wheel for the tag (CON91)' {
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchAppPath -FunctionName 'Get-TorchAppLitertSyncArg')
+    # A lock listing ai-edge-litert's win_amd64 wheels for -Tag, as uv records them.
+    $litertLock = { param([string]$Dir, [string[]]$Tag, [string]$Eol = "`n")
+        $wheels = foreach ($t in $Tag) { "    { url = `"https://files.pythonhosted.org/packages/aa/ai_edge_litert-2.1.6-$t-$t-win_amd64.whl`", hash = `"sha256:00`" }," }
+        $path = Join-Path $Dir 'uv.lock'
+        [System.IO.File]::WriteAllText($path, ((@('version = 1', '', '[[package]]', 'name = "ai-edge-litert"', 'version = "2.1.6"', 'wheels = [') + $wheels + ']') -join $Eol) + $Eol)
+        $path
+    }
+    $skip = '--no-install-package ai-edge-litert'
+
+    It 'skips it for a chain wheel without a warning, keeps it for a lock wheel of the tag, skips with a warning otherwise, and reads a CRLF lock' {
+        Invoke-InTestDir { param($dir)
+            $store = (New-Item -ItemType Directory -Force -Path (Join-Path $dir 'wheels')).FullName
+            $lock = & $litertLock $dir 'cp313', 'cp314'
+            Assert-Equal '' (Get-TorchAppLitertSyncArg -LockPath $lock -Store $store -AbiTag 'cp314' 3>$null 6>$null) 'the lock has the tag''s wheel'
+            $warned = $null
+            Assert-Equal $skip (Get-TorchAppLitertSyncArg -LockPath $lock -Store $store -AbiTag 'cp987' -WarningVariable warned -WarningAction SilentlyContinue 6>$null) 'no cp987 wheel anywhere'
+            Assert-Match 'uv\.lock has no cp987 win_amd64 wheel' "$warned" 'the venv going without it is said'
+            Set-Content -LiteralPath (Join-Path $store 'ai_edge_litert-2.2.0-cp987-cp987-win_amd64.whl') -Value 'whl'
+            $warned = $null
+            Assert-Equal $skip (Get-TorchAppLitertSyncArg -LockPath $lock -Store $store -AbiTag 'cp314' -WarningVariable warned -WarningAction SilentlyContinue 6>$null) 'the chain wheel wins over the lock''s'
+            Assert-Equal '' "$warned" 'no warning then'
+            # No chain store at all: the lock alone decides.
+            $store = Join-Path $dir 'no-store'
+            $lock = Join-Path $dir 'uv.lock'
+            [System.IO.File]::WriteAllText($lock, "version = 1`n`n[[package]]`nname = `"numpy`"`n")
+            Assert-Equal '' (Get-TorchAppLitertSyncArg -LockPath $lock -Store $store -AbiTag 'cp987' 3>$null 6>$null) 'nothing to skip'
+            $lock = & $litertLock $dir 'cp987' "`r`n"
+            Assert-Equal '' (Get-TorchAppLitertSyncArg -LockPath $lock -Store $store -AbiTag 'cp987' 3>$null 6>$null) 'CRLF: the tag''s wheel is found'
+            Assert-Equal $skip (Get-TorchAppLitertSyncArg -LockPath $lock -Store $store -AbiTag 'cp986' 3>$null 6>$null) 'CRLF: the name is found'
+        }
+    }
+}
+
 Describe 'Build-TorchApp.ps1: the census gates install and verify' {
     $script:TorchAppFns = @{}
     foreach ($def in (Get-Command $script:TorchAppPath).ScriptBlock.Ast.EndBlock.Statements) {
@@ -243,7 +278,7 @@ Describe 'Build-TorchApp.ps1: the census gates install and verify' {
         $lock = @(Find-TorchAppCall 'Install-TorchAppEnvironment' 'Invoke-ShieldedNative' 'CommandLine "uv lock ')
         Assert-Equal '2 2 1' "$($syncs.Count) $($reads.Count) $($lock.Count)" 'two uv syncs, one lock read each, one uv lock'
         Assert-True (@($syncs | Where-Object { $_.Extent.Text -cnotmatch '-CommandLine "uv sync \$syncArgs( --frozen)?"$' }).Count -eq 0) 'every uv sync takes $syncArgs'
-        $want = '$syncArgs = "$baseSyncArgs $(Get-TorchAppOrtSyncArg -LockPath $lockPath -Store $WheelDir)"'
+        $want = '$syncArgs = "$baseSyncArgs $(Get-TorchAppOrtSyncArg -LockPath $lockPath -Store $WheelDir) $(Get-TorchAppLitertSyncArg -LockPath $lockPath -Store $WheelDir -AbiTag $venvTag)"'
         Assert-Equal "$want|$want" (($reads | ForEach-Object { (Get-TorchAppAssignment $_).Extent.Text }) -join '|') 'the skips join the base args'
         # Only the two reads and the two syncs may name syncArgs: a reset, Set-Variable or -replace in between drops the skips.
         $own = @($reads | ForEach-Object { (Get-TorchAppAssignment $_).Left.Extent }) + @($syncs | ForEach-Object { $_.Extent })
