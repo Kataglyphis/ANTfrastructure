@@ -15,7 +15,7 @@ Describe 'TVM assembled-wheel helpers' {
     AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
 
     It 'writes a binary-wheel dist-info with the target tag, the requirements and the top-level package' {
-        $di = Write-AssembledWheelDistInfo -Name 'apache-tvm-ffi' -Version '0.1.13.post3' -PackageRoot (Join-Path $script:tmp 'root') -RequiresDist @('typing-extensions>=4.5') -RequiresPython '>=3.9' -Summary 'fixture'
+        $di = Write-AssembledWheelDistInfo -Name 'apache-tvm-ffi' -Version '0.1.13.post3' -PackageRoot (Join-Path $script:tmp 'root') -PythonTag 'cp987' -AbiTag 'cp987' -RequiresDist @('typing-extensions>=4.5') -RequiresPython '>=3.9' -Summary 'fixture'
         Assert-True ($di -like '*apache_tvm_ffi-0.1.13.post3.dist-info') "dist-info dir name ($di)"
         $meta = Get-Content (Join-Path $di 'METADATA')
         Assert-True ($meta -contains 'Name: apache-tvm-ffi') 'Name'
@@ -23,9 +23,16 @@ Describe 'TVM assembled-wheel helpers' {
         Assert-True ($meta -contains 'Requires-Dist: typing-extensions>=4.5') 'Requires-Dist'
         Assert-True ($meta -contains 'Requires-Python: >=3.9') 'Requires-Python'
         $wheel = Get-Content (Join-Path $di 'WHEEL')
-        Assert-True ($wheel -contains 'Tag: cp314-cp314-win_arm64') 'Tag line drives the archive name'
+        Assert-True ($wheel -contains 'Tag: cp987-cp987-win_arm64') 'Tag line drives the archive name'
         Assert-True ($wheel -contains 'Root-Is-Purelib: false') 'binary wheel'
         Assert-Equal 'tvm_ffi' ((Get-Content (Join-Path $di 'top_level.txt')) -join ',') 'top_level excludes the dist-info itself'
+    }
+
+    It 'Build-TvmFromSource tags the GIL wheel with the pin and the twin cpXY-cpXYt (CON91)' {
+        $tvm = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-TvmFromSource.ps1'))
+        Assert-Match '(?s)New-TvmFfiCrossWheel -Python \$tvmTargetPy .*?-AbiTag \(Get-PinnedPythonVersion\)\.AbiTag' $tvm 'the GIL wheel carries the pin''s cpXY, not a default'
+        Assert-Match "-PythonTag \(\`$AbiTag -replace 't\$', ''\) -AbiTag \`$AbiTag" $tvm 'the python tag drops the free-threaded t'
+        Assert-False ($tvm -match "AbiTag = 'cp3") 'no literal tag default'
     }
 
     It 'normalises the submodule tag and falls back to the pyproject bound' {

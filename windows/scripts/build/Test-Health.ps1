@@ -52,7 +52,7 @@ Check "onnxruntime DLL" {
     Write-Host "  Found: $($dll.FullName)"
 }
 
-# Python interpreter (source-built CPython 3.14)
+# Python interpreter (source-built CPython, PYTHON_VERSION)
 Check "python --version" {
     $v = & python --version 2>&1
     if ($LASTEXITCODE -ne 0) { throw "python --version failed: $v" }

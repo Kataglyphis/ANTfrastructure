@@ -170,7 +170,7 @@ function New-TvmFfiCrossWheel {
         [Parameter(Mandatory)][string]$Version,
         [Parameter(Mandatory)][string]$PackExe,
         [string[]]$RequiresDist = @(),
-        [string]$AbiTag = 'cp314',
+        [Parameter(Mandatory)][string]$AbiTag,
         [string]$BuildType = 'Release',
         [string]$Summary = ''
     )
@@ -211,7 +211,8 @@ function New-TvmFfiCrossWheel {
             Copy-Item -Path (Join-Path $srcDir '*') -Destination $dst -Recurse -Force
         }
     }
-    [void](Write-AssembledWheelDistInfo -Name 'apache-tvm-ffi' -Version $Version -PackageRoot $StageDir -AbiTag $AbiTag -PlatformTag $wantExt `
+    # The twin is cpXY-cpXYt: the python tag drops the ABI's 't'.
+    [void](Write-AssembledWheelDistInfo -Name 'apache-tvm-ffi' -Version $Version -PackageRoot $StageDir -PythonTag ($AbiTag -replace 't$', '') -AbiTag $AbiTag -PlatformTag $wantExt `
         -RequiresDist $RequiresDist -RequiresPython '>=3.9' -Summary $Summary)
     New-Item -Path $OutDir -ItemType Directory -Force | Out-Null
     $before = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.whl' -File | ForEach-Object FullName)
@@ -476,8 +477,8 @@ if ($tvmCross) {
         $wheelOut = Join-Path $stage 'dist'
         $ffiSummary = "tvm-ffi runtime for $wantExt, assembled from the tvm-ffi submodule TVM $TvmVersion vendors (Kataglyphis cross build)"
         [void](New-TvmFfiCrossWheel -Python $tvmTargetPy -TvmFfiSrc $tvmFfiSrc -BuildDir (Join-Path $buildDir 'tvm-ffi-py') -StageDir (Join-Path $stage 'ffi') `
-                -OutDir $wheelOut -Version $ffiVersion -PackExe $py.Exe -RequiresDist $ffiDeps -BuildType $BuildType -Summary $ffiSummary)
-        # apache-tvm (runtime-only): no CPython module of its own, so py3-none like upstream's wheel.py-api, which a 3.14t venv installs too.
+                -OutDir $wheelOut -Version $ffiVersion -PackExe $py.Exe -RequiresDist $ffiDeps -AbiTag (Get-PinnedPythonVersion).AbiTag -BuildType $BuildType -Summary $ffiSummary)
+        # apache-tvm (runtime-only): no CPython module of its own, so py3-none like upstream's wheel.py-api, which an X.Yt venv installs too.
         $tvmRoot = Join-Path $stage 'tvm'
         New-Item -Path (Join-Path $tvmRoot 'tvm\lib') -ItemType Directory -Force | Out-Null
         Copy-Item -Path (Join-Path $SourceDir 'python\tvm\*') -Destination (Join-Path $tvmRoot 'tvm') -Recurse -Force

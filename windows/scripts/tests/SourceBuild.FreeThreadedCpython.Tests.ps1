@@ -62,6 +62,9 @@ Describe 'Get-SourceBuildPython' {
             Assert-Equal 'C:\python-freethreaded' (Get-CpythonFreeThreadedRoot) 'the Dockerfile ENV value'
         }
         Assert-Equal 'python3.15t.exe' (Get-CpythonFreeThreadedExeName -Version '3.15.0') 'minor version only'
+        Invoke-WithEnv @{ PYTHON_VERSION = $null } {
+            Assert-Equal "python$((Get-PinnedPythonVersion).MajorMinor)t.exe" (Get-CpythonFreeThreadedExeName) 'the versions.env pin when unset (CON91)'
+        }
     }
 }
 

@@ -12,7 +12,7 @@
     Upstream vision at TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT (TORCHVISION_VERSION), HIP ops for the
     ROCM_WINDOWS_GFX_FAMILY targets; image IO is off. docs/windows-rocm.md § PyTorch on the rocm lane.
 .PARAMETER OutputDir
-    Holds the torch wheel on entry; afterwards exactly it and torchvision-<v>+rocm<r>-cp314-cp314-win_amd64.whl.
+    Holds the torch wheel on entry; afterwards exactly it and torchvision-<v>+rocm<r>-<cpXY>-<cpXY>-win_amd64.whl.
 .PARAMETER WorkDir
     The torch RUN's work dir with its build venv. Removed at the end.
 #>

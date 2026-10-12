@@ -90,12 +90,12 @@ function Edit-IreeCleanEggInfo {
     }
 }
 
-# The configure args for the cp3XYt twins: the GIL pass's, Python pointed at the free-threaded venv, and no abi3, which 3.14t cannot load.
+# The configure args for the cp3XYt twins: the GIL pass's, Python pointed at the free-threaded venv, and no abi3, which X.Yt cannot load.
 function Get-IreeFreeThreadedCmakeArgs {
     param([Parameter(Mandatory)][string[]]$CmakeExtra, [Parameter(Mandatory)][hashtable]$Python, [Parameter(Mandatory)][string]$NumPyIncludeDir)
-    # Upstream turns abi3 on unless SOABI starts cpython-NNt, which Windows' cp314t-win_amd64 never does (CMakeLists.txt:782-791).
+    # Upstream turns abi3 on unless SOABI starts cpython-NNt, which Windows' cpXYt-win_amd64 never does (CMakeLists.txt:782-791).
     $abi3Off = @('-DIREE_ENABLE_PYTHON_STABLE_ABI=OFF', '-DMLIR_ENABLE_PYTHON_STABLE_ABI=OFF')
-    # nanobind caches the GIL pass's .cp314-win_amd64.pyd suffix, which 3.14t never imports; -U makes it ask the venv again.
+    # nanobind caches the GIL pass's .cpXY-win_amd64.pyd suffix, which X.Yt never imports; -U makes it ask the venv again.
     return @($CmakeExtra | Where-Object { $_ -notmatch '^-DPython3?_(EXECUTABLE|INCLUDE_DIR|LIBRARY|NumPy_INCLUDE_DIR)=' }) +
         @(Get-PythonCMakeHintArgs -Python $Python -Prefix @('Python3', 'Python') -ForwardSlash -NumPyIncludeDir $NumPyIncludeDir) +
         $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')

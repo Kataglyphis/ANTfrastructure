@@ -35,10 +35,11 @@ Describe 'Free-threaded twin store and ABI tag' {
         Invoke-WithEnv @{ PYTHON_WHEELS_FREE_THREADED = $null; PYTHON_WHEELS_CP314T = $null } { Assert-Equal 'C:\runtime\wheels-cp314t' (Get-FreeThreadedWheelStore) 'the default' }
     }
 
-    It 'derives the cp3XYt tag from PYTHON_VERSION, 3.14 when unset' {
+    It 'derives the cp3XYt tag from PYTHON_VERSION, the versions.env pin when unset (CON91)' {
         Assert-Equal 'cp314t' (Get-FreeThreadedAbiTag -Version '3.14.8')
         Assert-Equal 'cp315t' (Get-FreeThreadedAbiTag -Version '3.15.0')
-        Invoke-WithEnv @{ PYTHON_VERSION = $null } { Assert-Equal 'cp314t' (Get-FreeThreadedAbiTag) 'unset' }
+        Invoke-WithEnv @{ PYTHON_VERSION = '9.87.6' } { Assert-Equal 'cp987t' (Get-FreeThreadedAbiTag) 'the image ENV' }
+        Invoke-WithEnv @{ PYTHON_VERSION = $null } { Assert-Equal (Get-PinnedPythonVersion).FreeThreadedAbiTag (Get-FreeThreadedAbiTag) 'the versions.env pin' }
     }
 
     It 'never stages a cp3XYt wheel into the GIL store, which still takes its own wheels (mutation)' {

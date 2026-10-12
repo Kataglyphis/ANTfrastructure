@@ -333,8 +333,12 @@ if ($cmakeExpected) {
 
 Write-TestHeader '2. Python (source-built)'
 Assert-CommandExists 'python'
+# No fallback version: grading against an old literal would pass an image that never got the pin.
+$pyExpected = Get-ExpectedVersion 'PYTHON_VERSION' ''
+Assert-Test -Name 'PYTHON_VERSION is pinned (image ENV or versions.env)' -Condition { $pyExpected -match '^\d+\.\d+' } `
+    -FailMessage "PYTHON_VERSION is '$pyExpected' -- neither the image ENV nor versions.env names the pin"
 # Select-Object -First 2, not [0..1]: a single-part version would pad with $null and yield '3.'.
-$pyMajorMinor = ((Get-ExpectedVersion 'PYTHON_VERSION' '3.14') -split '\.' | Select-Object -First 2) -join '.'
+$pyMajorMinor = ($pyExpected -split '\.' | Select-Object -First 2) -join '.'
 Assert-Test -Name "Python is $pyMajorMinor.x" -Condition {
     $ver = & python --version 2>&1
     return $ver -match ([regex]::Escape($pyMajorMinor) + '\.')
@@ -355,7 +359,6 @@ Assert-Test -Name "Python pip available" -Condition {
 } -FailMessage "pip not available"
 
 # Exact pin: a stale toolchain layer would still pass the x.y check above.
-$pyExpected = Get-ExpectedVersion 'PYTHON_VERSION' ''
 if ($pyExpected) {
     Assert-Test -Name "python matches versions.env pin ($pyExpected)" -Condition {
         (& python --version 2>&1) -match [regex]::Escape($pyExpected)
@@ -368,14 +371,14 @@ Assert-PythonSnippet -Name "Python stdlib extension modules import (ssl/sqlite3/
     -ExpectMatch @('stdlib-ok') `
     -FailMessage "one or more stdlib extension modules failed to import (dep missing at CPython build time?)"
 
-# The 3.14t legs' interpreter, built beside the GIL one; see docs/windows-builds.md § The free-threaded CPython.
+# The X.Yt legs' interpreter, built beside the GIL one; see docs/windows-builds.md § The free-threaded CPython.
 $ftBin = [Environment]::GetEnvironmentVariable('PYTHON_FREETHREADED_BIN')
 $ftExe = Join-Path ($ftBin ?? 'C:\python-freethreaded') "python${pyMajorMinor}t.exe"
 $ftVersion = if ($pyExpected) { $pyExpected } else { $pyMajorMinor }
 Assert-PythonSnippet -Python $ftExe -Name "free-threaded Python $ftVersion runs with the GIL off ($ftExe)" `
     -Code "import sys, sysconfig, ssl, sqlite3, ctypes; print('ft', sys.version.split()[0], sys._is_gil_enabled(), sysconfig.get_config_var('Py_GIL_DISABLED'))" `
     -ExpectMatch @("ft $([regex]::Escape($ftVersion))\S* False 1") `
-    -FailMessage "$ftExe is missing, is not $ftVersion, or has the GIL on -- a 3.14t leg would download or test a GIL build"
+    -FailMessage "$ftExe is missing, is not $ftVersion, or has the GIL on -- an ${pyMajorMinor}t leg would download or test a GIL build"
 Assert-Test -Name "uv finds ${pyMajorMinor}t there and ${pyMajorMinor}+gil in $cpythonDir, downloads off" -Condition {
     $resolved = foreach ($request in "${pyMajorMinor}t", "${pyMajorMinor}+gil") { "$(& uv python find --no-python-downloads $request 2>&1)|$LASTEXITCODE" }
     ($resolved -join ';') -ieq "$ftExe|0;$cpythonDir\PCbuild\amd64\python.exe|0"
