@@ -161,14 +161,15 @@ this repo's cp314 pin).
   clone and submodules (262 s in bk-20261011-233025), the LiteRT sources (88 s, 244 s), the
   IREE clone (~218 s), the aarch64 rust-std, the crates.io index for gst-plugins-rs, CPython's
   PCbuild externals (the toolchain layer deletes them, and arm64 builds the target CPython
-  twice per chain) and 32 wheels the uv cache mount still downloaded for torch. **Unpinned and
-  unchecked:** `Build-LitertLmBazel.ps1` takes bazelisk from `releases/latest`, falls back to
-  Adoptium's `latest/21/ga` JDK when the pinned 21.0.5+11 asset fails, and installs `git-lfs`
-  through scoop. None is SHA-checked, so a cold tool cache takes whatever is newest. Fix: pin
-  bazelisk, the JDK and git-lfs by version and SHA256 in `versions.env` beside CON89's pip
-  pins, serve pinned source archives from a cache mount keyed by commit, bake the aarch64
-  rust-std into the toolchain image, and build the target CPython once and keep its
-  externals. Rides the next full chain.
+  twice per chain) and 32 wheels the uv cache mount still downloaded for torch. **The three
+  unpinned fetches are pinned in source (2026-10-12):** `Build-LitertLmBazel.ps1` took bazelisk
+  from `releases/latest`, fell back to Adoptium's `latest/21/ga` JDK and installed `git-lfs`
+  through scoop, none SHA-checked. `Get-PinnedTool` now fetches bazelisk v1.29.0, Temurin
+  21.0.5+11 and git-lfs v3.8.0 by their `versions.env` pins (`BAZELISK_WINDOWS_*`,
+  `TEMURIN_JDK_WINDOWS_*`, `GIT_LFS_WINDOWS_*`) into the tool cache, refuses any other bytes and
+  re-fetches a corrupt cache entry. **Still open:** serve pinned source archives from a cache
+  mount keyed by commit, bake the aarch64 rust-std into the toolchain image, and build the
+  target CPython once and keep its externals. Rides the next full chain.
 - **#178 — fold `Expand-PinnedArchive` into `Expand-SourceTarball` at the next media
   rebuild (opened 2026-09-25).** `Expand-PinnedArchive` (`WindowsMigraphx.Common`) is
   `Expand-SourceTarball`'s two 7-Zip passes, except that it skips the links 7-Zip 25+

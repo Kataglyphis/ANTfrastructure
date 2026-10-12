@@ -6,6 +6,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — the LiteRT-LM bazel build fetches only pinned, checked tools (#185)
+
+- **bazelisk, the JDK and git-lfs are pinned by version and SHA256.** `Build-LitertLmBazel.ps1` took bazelisk from
+  `releases/latest`, fell back to Adoptium's `latest/21/ga` JDK when the pinned asset failed, and installed git-lfs
+  through scoop; nothing was SHA-checked, so a cold tool cache took whatever was newest. `Get-PinnedTool` now fetches
+  bazelisk v1.29.0, Temurin 21.0.5+11 and git-lfs v3.8.0 from their release URLs, checks each against its
+  `versions.env` pin (the releases' own digests), re-fetches a corrupt cache entry and refuses anything else. The pins
+  reach `media-litert-env` as ARGs and stay out of the merge.
+
 ## 2026-10-12 — CON91, second half: the Windows build side names no Python, and the twin store is Linux's
 
 - **The arm64 tvm-ffi wheels carry the pin's tag.** `New-TvmFfiCrossWheel`'s tags defaulted to cp314: on 3.15 the GIL

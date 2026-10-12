@@ -36,3 +36,48 @@ Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
         Assert-Match "TotalSeconds -ge 30\) \{ Write-Host \`$line; \`$lastProgress = Get-Date \}" $script:LlmBazelText 'progress throttled'
     }
 }
+
+Describe 'Build-LitertLmBazel: bazelisk, the JDK and git-lfs are pinned and checked (hub #185)' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-LitertLmBazel.ps1' -FunctionName 'Get-PinnedTool', 'Get-LitertLmToolPin')
+    # The download is a copy from -Uri, so a case controls the bytes that arrive.
+    function Get-UrlWithRetry { param($Uri, $OutFile) Copy-Item -LiteralPath $Uri -Destination $OutFile -Force }
+    $pins = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
+
+    It 'fetches once, hits the cache while the bytes match, re-fetches a corrupt entry and refuses wrong bytes or no pin (mutation)' {
+        Invoke-InTestDir { param($d)
+            Set-Content -LiteralPath "$d\good.bin" -Value 'tool' -NoNewline
+            Set-Content -LiteralPath "$d\bad.bin" -Value 'evil' -NoNewline
+            $sha = (Get-FileHash -LiteralPath "$d\good.bin" -Algorithm SHA256).Hash
+            Invoke-WithEnv @{ WBT_TOOL_SHA256 = $sha } {
+                Get-PinnedTool -Uri "$d\good.bin" -Path "$d\cache.bin" -PinKey WBT_TOOL_SHA256 6>$null
+                Assert-Equal 'tool' (Get-Content -LiteralPath "$d\cache.bin" -Raw) 'fetched'
+                Get-PinnedTool -Uri "$d\absent.bin" -Path "$d\cache.bin" -PinKey WBT_TOOL_SHA256 6>$null
+                Set-Content -LiteralPath "$d\cache.bin" -Value 'rot' -NoNewline
+                Get-PinnedTool -Uri "$d\good.bin" -Path "$d\cache.bin" -PinKey WBT_TOOL_SHA256 6>$null
+                Assert-Equal 'tool' (Get-Content -LiteralPath "$d\cache.bin" -Raw) 'a corrupt cache entry is fetched again'
+                Assert-Throws { Get-PinnedTool -Uri "$d\bad.bin" -Path "$d\other.bin" -PinKey WBT_TOOL_SHA256 6>$null } -MessagePattern 'pins'
+                Assert-False (Test-Path -LiteralPath "$d\other.bin") 'wrong bytes do not stay in the cache'
+            }
+            Invoke-WithEnv @{ WBT_TOOL_SHA256 = $null } {
+                Assert-Throws { Get-PinnedTool -Uri "$d\good.bin" -Path "$d\x.bin" -PinKey WBT_TOOL_SHA256 } -MessagePattern 'refusing an unpinned x\.bin'
+            }
+        }
+    }
+
+    It 'builds the three release URLs from the versions.env pins, and every pin key is set' {
+        $env = @{}
+        foreach ($k in 'BAZELISK_WINDOWS_VERSION', 'TEMURIN_JDK_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_VERSION') { $env[$k] = $pins[$k] }
+        $tools = Invoke-WithEnv $env { Get-LitertLmToolPin }
+        Assert-Equal 3 $tools.Count 'bazelisk, JDK, git-lfs'
+        Assert-Match '^https://github\.com/bazelbuild/bazelisk/releases/download/v[\d.]+/bazelisk-windows-amd64\.exe$' $tools[0].Uri 'bazelisk, never releases/latest'
+        Assert-Match '^https://github\.com/adoptium/temurin21-binaries/releases/download/jdk-21\.[\d.]+%2B\d+/OpenJDK21U-jdk_x64_windows_hotspot_21\.[\d.]+_\d+\.zip$' $tools[1].Uri 'the Temurin release asset'
+        Assert-Match '^https://github\.com/git-lfs/git-lfs/releases/download/v[\d.]+/git-lfs-windows-amd64-v[\d.]+\.zip$' $tools[2].Uri 'git-lfs'
+        foreach ($t in $tools) { Assert-Match '^[0-9a-f]{64}$' $pins[$t.PinKey] $t.PinKey }
+        Invoke-WithEnv @{ BAZELISK_WINDOWS_VERSION = $null } { Assert-Throws { Get-LitertLmToolPin } -MessagePattern 'BAZELISK_WINDOWS_VERSION is unset' }
+    }
+
+    It 'has no floating fetch left: no releases/latest, no Adoptium latest API, no scoop install' {
+        $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-LitertLmBazel.ps1'))
+        foreach ($floating in 'releases/latest', 'api.adoptium.net', 'scoop install') { Assert-False ($text.Contains($floating)) $floating }
+    }
+}

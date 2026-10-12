@@ -6,6 +6,11 @@ $script:WbtCodecPins = @{
     DAV1D_VERSION = 'dav1d-20'; DAV1D_SHA256 = 'dav1dsha-21'; X264_MESON_BRANCH = 'x264b-22'
     X264_MESON_COMMIT = 'x264c-23'; X265_VERSION = 'x265-24'; X265_SHA256 = 'x265sha-25'
 }
+# Build-LitertLmBazel.ps1's bazel tool pins: media-litert keys, never the merge's (hub #185).
+$script:WbtBazelToolPins = @{
+    BAZELISK_WINDOWS_VERSION = 'bzk-30'; BAZELISK_WINDOWS_AMD64_SHA256 = 'bzksha-31'; TEMURIN_JDK_WINDOWS_VERSION = 'jdk-32'
+    TEMURIN_JDK_WINDOWS_X64_SHA256 = 'jdksha-33'; GIT_LFS_WINDOWS_VERSION = 'lfs-34'; GIT_LFS_WINDOWS_AMD64_SHA256 = 'lfssha-35'
+}
 
 function New-WbtFakeMediaVersionTable {
     $table = @{
@@ -42,6 +47,7 @@ function New-WbtFakeMediaVersionTable {
         PY_CYTHON_VERSION                   = 'cy-26'
     }
     foreach ($k in $script:WbtCodecPins.Keys) { $table[$k] = $script:WbtCodecPins[$k] }
+    foreach ($k in $script:WbtBazelToolPins.Keys) { $table[$k] = $script:WbtBazelToolPins[$k] }
     return $table
 }
 
@@ -93,6 +99,7 @@ Describe 'Get-MediaBranchVersionArg' {
         )
         # media-core also forwards FFmpeg's codec pins, from the one table the fixture merges too.
         foreach ($k in $script:WbtCodecPins.Keys) { $cases[0].Expected[$k] = $script:WbtCodecPins[$k] }
+        foreach ($k in $script:WbtBazelToolPins.Keys) { $cases[1].Expected[$k] = $script:WbtBazelToolPins[$k] }
         foreach ($case in $cases) {
             $actual = Get-MediaBranchVersionArg -Branch $case.Branch -VersionTable $table
             $expectedKeys = @($case.Expected.Keys | Sort-Object) -join ','
