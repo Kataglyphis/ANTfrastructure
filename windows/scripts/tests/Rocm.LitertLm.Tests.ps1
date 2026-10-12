@@ -26,11 +26,11 @@ Describe 'Build-LitertLmBazel: the bazel command per lane' {
         $calls = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
                     $n.CommandElements[0].Extent.Text -eq 'Invoke-BazelLogged' }, $true))
         Assert-Equal 1 $calls.Count 'one bazelisk invocation'
-        Assert-Equal 'Invoke-BazelLogged -Bazel C:\bzl-tools\bazelisk.exe -Argument (@($bazelArgs) + @($bazelCmd)) -LogPath C:\bazel-build.log' `
+        Assert-Equal 'Invoke-BazelLogged -Bazel C:\bzl-tools\bazel.exe -Argument (@($bazelArgs) + @($bazelCmd) + @($toolchainOpts)) -LogPath C:\bazel-build.log' `
             $calls[0].Extent.Text 'through Invoke-BazelLogged, with its arguments'
         $text = Get-Content -LiteralPath (Join-Path (Get-RepoRoot) $script:LlmBazel) -Raw
         Assert-Match ([regex]::Escape("`$outputBase = 'C:\bzl'")) $text 'output base'
-        Assert-Match ([regex]::Escape('$bazelArgs = @("--output_base=$outputBase")')) $text 'startup option'
+        Assert-Match ([regex]::Escape('$bazelArgs = @(''--output_user_root=C:\bzl-user'', "--output_base=$outputBase")')) $text 'startup options'
         Assert-Match ([regex]::Escape('$bazelCmd = Get-LitertLmBazelArg -GpuType $gpuType')) $text 'command from the function'
     }
 

@@ -17,7 +17,11 @@ Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
             $null = New-TreeFile $d 'bzl\execroot\a\out.obj'
             $null = New-Item -ItemType Junction -Path (Join-Path $d 'bzl\external_local_jdk') -Target (Split-Path $keep)
             $log = New-TreeFile $d 'bazel-build.log'
-            Remove-BazelBuildTree -Path @((Join-Path $d 'bzl'), $log, (Join-Path $d 'absent')) -ServerRoot (Join-Path $d 'no-jdk')
+            # An empty dir, like the OpenVINO stub: Get-TreeGb on it threw under StrictMode until probe LM2.
+            $empty = (New-Item -ItemType Directory -Force -Path (Join-Path $d 'empty')).FullName
+            Assert-Equal 0 (Get-TreeGb -Path $empty) 'an empty tree measures 0 GB'
+            Remove-BazelBuildTree -Path @((Join-Path $d 'bzl'), $log, $empty, (Join-Path $d 'absent')) -ServerRoot (Join-Path $d 'no-jdk')
+            Assert-False (Test-Path -LiteralPath $empty) 'the empty dir is gone'
             Assert-False (Test-Path -LiteralPath (Join-Path $d 'bzl')) 'the output base is gone'
             Assert-False (Test-Path -LiteralPath $log) 'the log is gone'
             Assert-True (Test-Path -LiteralPath $keep) 'the junction''s target survives'
@@ -27,12 +31,13 @@ Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
 
     It 'runs after the install and its contract check, outside the checkout it deletes' {
         Assert-Match '(?s)throw \("LiteRT-LM install does not satisfy.*\} finally \{.*Pop-Location\s*\r?\n\}\s*\r?\n#[^\n]*\r?\nRemove-BazelBuildTree ' $script:LlmBazelText 'after the finally that leaves C:\llm'
-        Assert-Match "Remove-BazelBuildTree -Path @\('C:\\bzl', 'C:\\llm', 'C:\\bzl-tools', 'C:\\bazel-build\.log'\) -ServerRoot @\('C:\\bzl-tools\\jdk'\)" $script:LlmBazelText 'the four paths the sweep measured, and the JDK its server runs from'
+        Assert-Match "Remove-BazelBuildTree -Path @\('C:\\bzl', 'C:\\bzl-user', 'C:\\llm', 'C:\\bzl-tools', 'C:\\bzl-openvino-absent', 'C:\\bazel-build\.log'\) ``\r?\n\s+-ServerRoot @\('C:\\bzl-user', 'C:\\bzl-tools\\jdk'\)" $script:LlmBazelText 'every tree it wrote, and both roots a bazel server can run from'
+        Assert-Match "\`$bazelArgs = @\('--output_user_root=C:\\bzl-user', `"--output_base=\`$outputBase`"\)" $script:LlmBazelText 'the user root is one of those trees'
     }
 
     It 'streams bazel to the stage log, its progress at most once per 30 s, and the whole of it to the log file' {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsBazel.Common.psm1' -FunctionName 'Invoke-BazelLogged')
-        Assert-Match 'Invoke-BazelLogged -Bazel C:\\bzl-tools\\bazelisk\.exe -Argument .* -LogPath C:\\bazel-build\.log' $script:LlmBazelText 'the driver streams through it'
+        Assert-Match 'Invoke-BazelLogged -Bazel C:\\bzl-tools\\bazel\.exe -Argument .* -LogPath C:\\bazel-build\.log' $script:LlmBazelText 'the driver streams through it'
         Invoke-InTestDir { param($d)
             $fake = Join-Path $d 'bazel.cmd'
             Set-Content -LiteralPath $fake -Encoding ASCII -Value @('@echo off', 'echo [1 / 9] one', 'echo [2 / 9] two', 'echo INFO: done', 'exit /b 3')
@@ -45,7 +50,7 @@ Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
     }
 }
 
-Describe 'Build-LitertLmBazel: bazelisk, the JDK and git-lfs are pinned and checked (hub #185)' {
+Describe 'Build-LitertLmBazel: bazel, the JDK and git-lfs are pinned and checked (hub #185, CON92)' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsBazel.Common.psm1' -FunctionName 'Get-PinnedTool', 'Get-BazelPin')
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-LitertLmBazel.ps1' -FunctionName 'Get-LitertLmToolPin')
     # The download is a copy from -Uri, so a case controls the bytes that arrive.
@@ -75,18 +80,18 @@ Describe 'Build-LitertLmBazel: bazelisk, the JDK and git-lfs are pinned and chec
 
     It 'builds the three release URLs from the versions.env pins, and every pin key is set' {
         $env = @{}
-        foreach ($k in 'BAZELISK_WINDOWS_VERSION', 'TEMURIN_JDK_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_VERSION') { $env[$k] = $pins[$k] }
+        foreach ($k in 'LITERT_LM_BAZEL_WINDOWS_VERSION', 'TEMURIN_JDK_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_VERSION') { $env[$k] = $pins[$k] }
         $tools = Invoke-WithEnv $env { Get-LitertLmToolPin }
-        Assert-Equal 3 $tools.Count 'bazelisk, JDK, git-lfs'
-        Assert-Match '^https://github\.com/bazelbuild/bazelisk/releases/download/v[\d.]+/bazelisk-windows-amd64\.exe$' $tools[0].Uri 'bazelisk, never releases/latest'
+        Assert-Equal 3 $tools.Count 'bazel, JDK, git-lfs'
+        Assert-Match '^https://github\.com/bazelbuild/bazel/releases/download/(\d+\.\d+\.\d+)/bazel-\1-windows-x86_64\.exe$' $tools[0].Uri 'bazel itself at its release tag, never bazelisk'
         Assert-Match '^https://github\.com/adoptium/temurin21-binaries/releases/download/jdk-21\.[\d.]+%2B\d+/OpenJDK21U-jdk_x64_windows_hotspot_21\.[\d.]+_\d+\.zip$' $tools[1].Uri 'the Temurin release asset'
         Assert-Match '^https://github\.com/git-lfs/git-lfs/releases/download/v[\d.]+/git-lfs-windows-amd64-v[\d.]+\.zip$' $tools[2].Uri 'git-lfs'
         foreach ($t in $tools) { Assert-Match '^[0-9a-f]{64}$' $pins[$t.PinKey] $t.PinKey }
-        Invoke-WithEnv @{ BAZELISK_WINDOWS_VERSION = $null } { Assert-Throws { Get-LitertLmToolPin } -MessagePattern 'BAZELISK_WINDOWS_VERSION is unset' }
+        Invoke-WithEnv @{ LITERT_LM_BAZEL_WINDOWS_VERSION = $null } { Assert-Throws { Get-LitertLmToolPin } -MessagePattern 'LITERT_LM_BAZEL_WINDOWS_VERSION is unset' }
     }
 
     It 'has no floating fetch left: no releases/latest, no Adoptium latest API, no scoop install' {
         $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-LitertLmBazel.ps1'))
-        foreach ($floating in 'releases/latest', 'api.adoptium.net', 'scoop install') { Assert-False ($text.Contains($floating)) $floating }
+        foreach ($floating in 'releases/latest', 'api.adoptium.net', 'scoop install', 'bazelisk') { Assert-False ($text.Contains($floating)) $floating }
     }
 }

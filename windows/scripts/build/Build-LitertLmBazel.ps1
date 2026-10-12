@@ -26,18 +26,18 @@ if ([string]::IsNullOrWhiteSpace($LitertLmVersion)) {
 }
 $tag = if ($LitertLmVersion -match '^v') { $LitertLmVersion } else { "v$LitertLmVersion" }
 
-# bazelisk, the JDK and git-lfs as release URLs from their versions.env pins, in install order.
+# bazel itself (LiteRT-LM's .bazelversion), the JDK and git-lfs as release URLs from their versions.env pins, in install order.
 function Get-LitertLmToolPin {
-    $pin = Get-BazelPin -Name 'BAZELISK_WINDOWS_VERSION', 'TEMURIN_JDK_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_VERSION' `
-        -Context 'the bazel tools are pinned in versions.env (hub #185)'
+    $pin = Get-BazelPin -Name 'LITERT_LM_BAZEL_WINDOWS_VERSION', 'TEMURIN_JDK_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_VERSION' `
+        -Context 'the bazel tools are pinned in versions.env (hub #185, CON92)'
     $jdk = $pin['TEMURIN_JDK_WINDOWS_VERSION']
     if ($jdk -notmatch '^(\d+)[.\d]*\+\d+$') { throw "TEMURIN_JDK_WINDOWS_VERSION '$jdk' is not <major>.<minor>.<patch>+<build>" }
     $major = $Matches[1]
-    $bazelisk = $pin['BAZELISK_WINDOWS_VERSION']
+    $bazel = $pin['LITERT_LM_BAZEL_WINDOWS_VERSION']
     $lfs = $pin['GIT_LFS_WINDOWS_VERSION']
     return @(
-        [pscustomobject]@{ File = "bazelisk-$bazelisk.exe"; PinKey = 'BAZELISK_WINDOWS_AMD64_SHA256'
-            Uri = "https://github.com/bazelbuild/bazelisk/releases/download/$bazelisk/bazelisk-windows-amd64.exe" }
+        [pscustomobject]@{ File = "bazel-$bazel-windows-x86_64.exe"; PinKey = 'LITERT_LM_BAZEL_WINDOWS_AMD64_SHA256'
+            Uri = "https://github.com/bazelbuild/bazel/releases/download/$bazel/bazel-$bazel-windows-x86_64.exe" }
         [pscustomobject]@{ File = "jdk-$($jdk -replace '\+', '_').zip"; PinKey = 'TEMURIN_JDK_WINDOWS_X64_SHA256'
             Uri = "https://github.com/adoptium/temurin$major-binaries/releases/download/jdk-$($jdk -replace '\+', '%2B')/OpenJDK${major}U-jdk_x64_windows_hotspot_$($jdk -replace '\+', '_').zip" }
         [pscustomobject]@{ File = "git-lfs-$lfs.zip"; PinKey = 'GIT_LFS_WINDOWS_AMD64_SHA256'
@@ -103,16 +103,16 @@ function Install-LitertLmGpuPayload {
 
 $gpuType = [string]$env:GPU_TYPE
 
-Write-Host "=== [1/6] prerequisites: long paths + bazelisk + JDK (LiteRT-LM $tag) ==="
+Write-Host "=== [1/6] prerequisites: long paths + bazel + JDK (LiteRT-LM $tag) ==="
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f | Out-Null
 New-Item -ItemType Directory -Force -Path C:\bzl-tools | Out-Null
 
-# bazelisk, the JDK and git-lfs are cached on the mount: a live JDK download per build is unreliable.
+# bazel, the JDK and git-lfs are cached on the mount: a live JDK download per build is unreliable.
 $toolCache = if ($RepositoryCache) { Join-Path $RepositoryCache 'toolcache' } else { 'C:\bzl-tools' }
 New-Item -ItemType Directory -Force -Path $toolCache | Out-Null
 $tools = Get-LitertLmToolPin
 foreach ($tool in $tools) { Get-PinnedTool -Uri $tool.Uri -Path (Join-Path $toolCache $tool.File) -PinKey $tool.PinKey }
-Copy-Item (Join-Path $toolCache $tools[0].File) C:\bzl-tools\bazelisk.exe -Force
+Copy-Item (Join-Path $toolCache $tools[0].File) C:\bzl-tools\bazel.exe -Force
 & 7z x (Join-Path $toolCache $tools[1].File) -oC:\bzl-tools\jdk -y -bd | Out-Null
 $env:JAVA_HOME = (Get-ChildItem C:\bzl-tools\jdk -Directory | Select-Object -First 1).FullName
 & 7z x (Join-Path $toolCache $tools[2].File) -oC:\bzl-tools\git-lfs -y -bd | Out-Null
@@ -127,6 +127,10 @@ Push-Location C:\llm
 $restoreEnv = $null
 try {
     & git lfs pull 2>&1 | Select-Object -Last 2
+    $wantedBazel = (Get-Content -LiteralPath C:\llm\.bazelversion -Raw).Trim()
+    if ($wantedBazel -ne $env:LITERT_LM_BAZEL_WINDOWS_VERSION) {
+        throw "LiteRT-LM $tag pins bazel $wantedBazel, LITERT_LM_BAZEL_WINDOWS_VERSION is $env:LITERT_LM_BAZEL_WINDOWS_VERSION"
+    }
 
     Write-Host '=== [3/6] neutralize the WORKSPACE Android repository rules ==='
     $ws = Get-Content C:\llm\WORKSPACE -Raw
@@ -143,29 +147,40 @@ try {
     [Environment]::SetEnvironmentVariable('ANDROID_NDK_VERSION', $null, 'Machine')
     # Remove-Item: SetEnvironmentVariable($null) leaves it defined-empty for native children.
     Remove-Item -Path Env:ANDROID_NDK_VERSION -ErrorAction SilentlyContinue
-    # The bazel server inherits this env at start, so hide the ROCm tree before the first bazelisk call.
+    # The bazel server inherits this env at start, so hide the ROCm tree before the first bazel call.
     $envScrub = Get-BazelRocmEnvScrub -GpuType $gpuType -Environment ([Environment]::GetEnvironmentVariables())
     if ($envScrub.Count -gt 0) {
         $restoreEnv = Set-BazelProcessEnv -Values $envScrub
         Write-Host "  rocm lane: ROCm tree hidden from bazel ($(@($envScrub.Keys | Sort-Object) -join ', ')); + DXC target"
     }
     $outputBase = 'C:\bzl'
-    $bazelArgs = @("--output_base=$outputBase")
+    # An explicit user root keeps bazel's install base and server out of the profile, so the cleanup below removes them too.
+    $bazelArgs = @('--output_user_root=C:\bzl-user', "--output_base=$outputBase")
     $bazelCmd = Get-LitertLmBazelArg -GpuType $gpuType
+    # Bazel's own clang-cl toolchain, never its default msvc_x64 (CON92); LiteRT-LM's TF pin defines the platform.
+    $toolchain = Get-BazelClangClArg -Platform '@org_tensorflow//tensorflow/tools/toolchains/win:x64_windows-clang-cl' `
+        -VcRoot 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC' -BashPath 'C:\Program Files\Git\usr\bin\bash.exe'
+    $null = Set-BazelProcessEnv -Values $toolchain.Env
+    # An empty dir instead of the unhashed OpenVINO nightly WORKSPACE:579-581 fetches; litert_lm_main never uses it (probe LM1).
+    New-Item -ItemType Directory -Force -Path C:\bzl-openvino-absent | Out-Null
+    $toolchainOpts = @($toolchain.Flags) + @('--repo_env=OPENVINO_NATIVE_DIR=C:/bzl-openvino-absent', '--linkopt=/DEBUG:NONE', '--host_linkopt=/DEBUG:NONE')
     # No --repository_cache on the mount: bazel renames temp files into it, which the wcifs mount breaks.
-    $env:BAZEL_VC = 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC'
     $py = 'C:\temp\cpython\PCbuild\amd64'
     if (Test-Path "$py\python.exe") { $env:PATH = "$py;$env:PATH" }
     $env:PATH = "C:\bzl-tools;$env:JAVA_HOME\bin;$env:PATH"
 
-    Write-Host '=== [5/6] bazelisk build //runtime/engine:litert_lm_main --config=windows ==='
-    $bexit = Invoke-BazelLogged -Bazel C:\bzl-tools\bazelisk.exe -Argument (@($bazelArgs) + @($bazelCmd)) -LogPath C:\bazel-build.log
+    Write-Host '=== [5/6] bazel build //runtime/engine:litert_lm_main --config=windows (clang-cl) ==='
+    $bexit = Invoke-BazelLogged -Bazel C:\bzl-tools\bazel.exe -Argument (@($bazelArgs) + @($bazelCmd) + @($toolchainOpts)) -LogPath C:\bazel-build.log
     if ($bexit -ne 0) {
         [Console]::Error.WriteLine("--- bazel build failed ($bexit); last 60 log lines ---")
         Get-Content C:\bazel-build.log -Tail 60 | ForEach-Object { [Console]::Error.WriteLine($_) }
         Start-Sleep -Seconds 2
         throw "bazel build failed ($bexit)"
     }
+    # The same options as the build, so no repo rule re-runs; a cl.exe, link.exe or lib.exe action throws.
+    $aqueryOpts = @($bazelCmd | Where-Object { $_ -like '--*' }) + $toolchainOpts
+    $aquery = & C:\bzl-tools\bazel.exe @bazelArgs aquery @aqueryOpts "mnemonic('CppCompile|CppLink|CppArchive', deps(//runtime/engine:litert_lm_main))" --output=jsonproto 2>$null | Out-String
+    Write-Host "  $(Assert-BazelActionCompiler -AqueryJson $aquery) compile/link/archive actions, all clang-cl, lld-link or llvm-lib"
 
     Write-Host '=== [6/6] install exe + runtime DLLs, smoke-run ==='
     $exe = 'C:\llm\bazel-bin\runtime\engine\litert_lm_main.exe'
@@ -233,8 +248,9 @@ try {
     Pop-Location
 }
 # The merge copies only lib\litert-lm out of this layer, so bazel's trees left here cost 25 to 44 min of export (hub #181).
-Remove-BazelBuildTree -Path @('C:\bzl', 'C:\llm', 'C:\bzl-tools', 'C:\bazel-build.log') -ServerRoot @('C:\bzl-tools\jdk')
-# Measured only: bazel's user root (install base, repository cache) and bazelisk's cache stay; their size says whether moving them out pays (hub #181).
-foreach ($kept in @(Get-ChildItem -LiteralPath $env:USERPROFILE -Directory -Filter '_bazel_*' -ErrorAction SilentlyContinue) + @(Get-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'bazelisk') -ErrorAction SilentlyContinue)) {
-    Write-Host ('  kept in the layer: {0} ({1:N2} GB)' -f $kept.FullName, (Get-TreeGb -Path $kept.FullName))
+Remove-BazelBuildTree -Path @('C:\bzl', 'C:\bzl-user', 'C:\llm', 'C:\bzl-tools', 'C:\bzl-openvino-absent', 'C:\bazel-build.log') `
+    -ServerRoot @('C:\bzl-user', 'C:\bzl-tools\jdk')
+# Nothing should remain in the profile now that the user root is explicit; a leftover means a bazel call ran without it.
+foreach ($kept in @(Get-ChildItem -LiteralPath $env:USERPROFILE -Directory -Filter '_bazel_*' -ErrorAction SilentlyContinue)) {
+    Write-Warning ('  kept in the layer: {0} ({1:N2} GB)' -f $kept.FullName, (Get-TreeGb -Path $kept.FullName))
 }

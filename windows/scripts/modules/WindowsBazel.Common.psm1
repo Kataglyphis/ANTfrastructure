@@ -175,7 +175,10 @@ function Get-TreeGb {
         The size of -Path in GB; Get-ChildItem does not follow junctions, so a tree is counted once.
     #>
     param([Parameter(Mandatory)][string]$Path)
-    return (Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1GB
+    $files = @(Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue)
+    # Measure-Object emits nothing for no input, and .Sum on that throws under StrictMode (probe LM2).
+    if ($files.Count -eq 0) { return 0 }
+    return ($files | Measure-Object -Property Length -Sum).Sum / 1GB
 }
 
 function Remove-BazelBuildTree {

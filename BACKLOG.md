@@ -271,7 +271,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         to `PCbuild\freethreaded\amd64t` (fixed 824bf848), and `_CL_` landed after CMake's `-- <source>` (fixed
         e008021e). ONNX Runtime's cp315 and cp315t wheels build and load with the GIL off.
 - [ ] **CON92 — the LiteRT-LM bazel lane compiles with MSVC `cl`, against the clang-cl rule** [S, ★★]. Found
-      2026-10-12 while designing CON91's LiteRT wheel:
+      2026-10-12 while designing CON91's LiteRT wheel. **Fixed in source (2026-10-13):** the pinned bazel 7.6.1 replaces
+      bazelisk, CON91's clang-cl recipe and an aquery gate build `litert_lm_main`, `OPENVINO_NATIVE_DIR` stops the
+      nightly download, and `--output_user_root=C:\bzl-user` takes bazel's install base out of the profile. Probe LM2
+      ran the production driver: 5244 actions in 539 s, all 3829 compile/link/archive actions on LLVM tools, `--help`
+      OK. It also found `Get-TreeGb` throwing on an empty dir under StrictMode, now fixed. **Left:** the next amd64
+      chain proves it; the rocm variant's DXC/WebGPU payload has not been built with clang-cl yet.
       - `Build-LitertLmBazel.ps1` sets only `BAZEL_VC` and passes only `--config=windows`. LiteRT-LM v0.18.0's
         `.bazelrc` picks no compiler, so Bazel takes its default `msvc_x64` toolchain: `cl.exe`, `link.exe` and `lib.exe`.
         The rocm variant's `bk-181` log probes that toolchain's `cl.exe`.
