@@ -6,6 +6,26 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — #153 closes on three fresh chains; CON75's wheel loads on the device
+
+- **#153, the step-time and silent-retry sweep, is done.** The 2026-09-01/02 logs it named were pruned, so it read the
+  three complete chains left: bk-20261011-184301 and bk-20261011-233025 (amd64, the second rocm) and bk-20261010-121545
+  (arm64), 51 logs in all. The 441.3 s lifecycle floor is gone, since a trivial RUN takes 4.9 to 9.0 s. One silent retry
+  turned up in three chains: an `ActivateLayer 0x20` on rocm-llama's first RUN, green on attempt 2/3. No log has clipped
+  output.
+- **What it found beyond its question is seven new rows**, `docs/windows-refactor-backlog.md` #179 to #185:
+  - #179: every RUN that started an sccache server idles ~120 s before DONE, 16 to 27 min per chain.
+  - #180: a toolchain re-run relinks clang-cl, and the media stages then compile almost cold.
+  - #181: the LiteRT layer keeps bazel's output base and checkout, which costs 25 to 44 min of export.
+  - #182: GStreamer's meson build bypasses sccache on both arches, although the docs called it done.
+  - #183: vendored code compiles under clang-cl's `/Wall`, so the arm64 VVL vertex is 97.9 % of a 768 MB log.
+  - #184: the driver keeps no manifest of a failed run.
+  - #185: bazelisk, the LiteRT JDK fallback and git-lfs are fetched unpinned and unchecked.
+
+  CON89 points at #183 and #185, and the failure-modes and lanes docs are corrected where the sweep contradicts them.
+- **CON75 is done.** OrchestrANT run 38221408508 (9964cc1, hub 7a5ab23c) built `cp314-cp314t-win_arm64` on the cross
+  lane. Its `windows-11-arm` job imported all 64 compiled modules on free-threaded 3.14.8 with the GIL disabled.
+
 ## 2026-10-12 — the arm64 device gate runs an inference, not only an import (CON30)
 
 - `Test-Arm64Bundle.ps1` has an eighteenth step, and the floor follows to 18. It builds an ONNX Runtime session over

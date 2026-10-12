@@ -628,6 +628,8 @@ because `clang-cl` otherwise compiles for the host.
   variable.
 - In `:winarm64` (`ba6bfaae…`), OrchestrANT 0.0.30's wheel built this way and passed all three
   gates (2026-10-12).
+- On `windows-11-arm` it then loaded: OrchestrANT run 38221408508 imported all 64 compiled
+  modules on free-threaded 3.14.8 with the GIL disabled (2026-10-12).
 
 **The app bundles pick by their runtime's ABI.** `python-app-bundle.sh` and
 `Select-PythonAppWheel` take the `cp314` wheel for their GIL runtime. A binary built for

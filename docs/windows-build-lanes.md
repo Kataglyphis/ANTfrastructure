@@ -866,7 +866,7 @@ steps; the remaining work is the Dockerfile surgery):
   pin it (the released 0.18.0 zip since 2026-09-18), and `Test-Toolchain.ps1`
   asserts the version —
   [`windows-build-resources.md`](windows-build-resources.md) § Persistent compile cache (sccache).
-- **sccache for the merge/GStreamer builder**: DONE 2026-08-04 —
+- **sccache for the merge/GStreamer builder**: NOT EFFECTIVE, found 2026-10-12 (`windows-refactor-backlog.md` #182): meson records a bare `clang-cl`, and the server counts 16 requests for 5,143 ninja steps. Landed 2026-08-04 as follows —
   Build-GstreamerFromSource.ps1 sets `CC/CXX='sccache clang-cl'` for meson
   when the remote backend is configured (this build previously ran fully
   uncached, ~30 min hot, because the merge builder never wired the endpoint).
@@ -930,6 +930,8 @@ steps; the remaining work is the Dockerfile surgery):
   Reason: under the 2026-08-31 lost-notification regression the fixed 45 min
   made EVERY RUN cost 2841.2 s; with the 5 min knob the same RUN measures
   441.3 s, and 5 min still covers the legitimate 117 s worst case 2.5×.
+  (That 117 s specimen ran sccache, and every sccache RUN idles ~120 s before DONE;
+  re-measure it before citing it, `windows-refactor-backlog.md` #179.)
   Two corrections to the paragraph above that only bit once the env variant
   went live: the values are **Go duration strings** (`5m`, never a bare `300` —
   unparseable silently means stock 30 s), and while a pure binary swap needs no
