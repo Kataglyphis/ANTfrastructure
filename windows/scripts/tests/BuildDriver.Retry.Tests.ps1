@@ -95,29 +95,41 @@ Describe 'Mount contention: classified transient AND exempt from the determinism
 
 Describe 'The driver log keeps what the console alone loses (hub #184)' {
 
-    It 'records each retry verdict and each disk-gate verdict, and nothing once the log is cleared (mutation)' {
-        Invoke-InTestDir { param($d)
-            $log = Join-Path $d 'bk-run-driver.log'
-            # Earlier cases set the pattern too; this one names its own.
-            Initialize-BuildDriverContext -DriverLog $log -TransientPattern 'ttrpc: closed'
-            try {
-                $null = Invoke-TransientCooldown -Tail "#9 4.2 step`nfailed to create shim task: ttrpc: closed" -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -Label 'bk:t'
-                $null = Invoke-TransientCooldown -Tail 'ttrpc: closed' -Attempt 3 -MaxAttempts 3 -CooldownSeconds 0 -Label 'bk:t'
-                $null = Invoke-TransientCooldown -Tail 'error C2039' -PreviousTail 'error C2039' -Attempt 2 -MaxAttempts 3 -CooldownSeconds 0 -Label 'bk:t'
-                Assert-StageDiskHeadroom -Label 'gate' -FloorGb 1
-                Assert-StageDiskHeadroom -Label 'gate' -FloorGb 100000000 -Force -WarningAction SilentlyContinue
-                Assert-Throws { Assert-StageDiskHeadroom -Label 'gate' -FloorGb 100000000 } -MessagePattern 'REFUSING to start'
-            } finally { Initialize-BuildDriverContext -DriverLog '' }
-            $lines = @(Get-Content -LiteralPath $log)
-            Assert-Equal 6 $lines.Count "one record per verdict: $($lines -join ' | ')"
-            Assert-Match '^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d \[bk:t\] attempt 1/3 failed transiently: retry 1/2 in 0s \(failed to create shim task: ttrpc: closed\)$' $lines[0] 'the retry and the line that made it transient'
-            Assert-Match '\[bk:t\] attempt 3/3 failed: no attempt left, no retry$' $lines[1] 'the exhausted retry'
-            Assert-Match '\[bk:t\] attempt 2/3 failed identically to the previous one: deterministic, not retried$' $lines[2] 'the deterministic failure'
-            Assert-Match '\[gate\] disk OK: [\d.]+ GB free on C: \(stage floor 1 GB\)$' $lines[3] 'the passed gate'
-            Assert-Match '\[gate\] disk below floor: .*continued under the host-check override$' $lines[4] 'the override'
-            Assert-Match '\[gate\] REFUSED: [\d.]+ GB free on C:, below the 100000000 GB floor$' $lines[5] 'the refusal'
-            Write-DriverRecord 'after clearing'
-            Assert-Equal 6 @(Get-Content -LiteralPath $log).Count 'a cleared context writes nothing'
+    # The records -Body leaves in a fresh driver log; the context is cleared again whatever -Body does.
+    function Get-DriverRecord([string]$Pattern, [scriptblock]$Body) {
+        $dir = New-TestDir
+        Initialize-BuildDriverContext -DriverLog (Join-Path $dir 'driver.log') -TransientPattern $Pattern
+        try { & $Body } finally { Initialize-BuildDriverContext -DriverLog '' }
+        $records = @(Get-Content -LiteralPath (Join-Path $dir 'driver.log') -ErrorAction SilentlyContinue)
+        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+        return , $records
+    }
+
+    It 'records each retry verdict and each disk-gate verdict (mutation)' {
+        $lines = Get-DriverRecord -Pattern 'ttrpc: closed' -Body {
+            $null = Invoke-TransientCooldown -Tail "#9 4.2 step`nfailed to create shim task: ttrpc: closed" -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -Label 'bk:t'
+            $null = Invoke-TransientCooldown -Tail 'ttrpc: closed' -Attempt 3 -MaxAttempts 3 -CooldownSeconds 0 -Label 'bk:t'
+            $null = Invoke-TransientCooldown -Tail 'error C2039' -PreviousTail 'error C2039' -Attempt 2 -MaxAttempts 3 -CooldownSeconds 0 -Label 'bk:t'
+            Assert-StageDiskHeadroom -Label 'gate' -FloorGb 1
+            Assert-StageDiskHeadroom -Label 'gate' -FloorGb 100000000 -Force -WarningAction SilentlyContinue
+            Assert-Throws { Assert-StageDiskHeadroom -Label 'gate' -FloorGb 100000000 } -MessagePattern 'REFUSING to start'
         }
+        Assert-Equal 6 $lines.Count "one record per verdict: $($lines -join ' | ')"
+        Assert-Match '^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d \[bk:t\] attempt 1/3 failed transiently: retry 1/2 in 0s \(failed to create shim task: ttrpc: closed\)$' $lines[0] 'the retry and the line that made it transient'
+        Assert-Match '\[bk:t\] attempt 3/3 failed: no attempt left, no retry$' $lines[1] 'the exhausted retry'
+        Assert-Match '\[bk:t\] attempt 2/3 failed identically to the previous one: deterministic, not retried$' $lines[2] 'the deterministic failure'
+        Assert-Match '\[gate\] disk OK: [\d.]+ GB free on C: \(stage floor 1 GB\)$' $lines[3] 'the passed gate'
+        Assert-Match '\[gate\] disk below floor: .*continued under the host-check override$' $lines[4] 'the override'
+        Assert-Match '\[gate\] REFUSED: [\d.]+ GB free on C:, below the 100000000 GB floor$' $lines[5] 'the refusal'
+    }
+
+    It 'records a snapshot-mount contention retry once, as the retry it is, and nothing once the log is cleared' {
+        $tail = 'error: failed to mount {windows-layer abc}: hcsshim busy'
+        $lines = Get-DriverRecord -Pattern 'failed to mount \{windows-layer' -Body {
+            Assert-True (Invoke-TransientCooldown -Tail $tail -PreviousTail $tail -Attempt 2 -MaxAttempts 5 -CooldownSeconds 0 -Label 'bk:m') 'contention is retried'
+        }
+        Assert-Equal 1 $lines.Count "one record: $($lines -join ' | ')"
+        Assert-Match '\[bk:m\] attempt 2/5 failed transiently: retry 2/4 in 0s' $lines[0] 'the retry, not a deterministic verdict'
+        Assert-Equal 0 @(Write-DriverRecord 'with no log' 3>&1).Count 'a cleared context neither writes nor warns'
     }
 }

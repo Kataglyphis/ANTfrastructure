@@ -55,7 +55,6 @@ function Invoke-TransientCooldown {
     # A flake changes between attempts, a poisoned snapshot does not: docs/failure-modes.md § `ImportLayer ... (0xb7)` on the SAME chain-IDs across retries
     if ($PreviousTail -and ($RetryDespiteIdenticalPattern -and $Tail -match $RetryDespiteIdenticalPattern)) {
         Write-Host "[$Label] identical failure, but it is snapshot-mount contention — retrying anyway (measured to go green on a later attempt)." -ForegroundColor Yellow
-        Write-DriverRecord "[$Label] attempt $Attempt/$MaxAttempts failed identically, snapshot-mount contention: retrying anyway"
     } elseif ($PreviousTail) {
         $normalise = { param($t) (($t -replace '(?m)^#\d+\s+[\d.]+\s+', '') -replace '\s+', ' ').Trim() }
         if ((& $normalise $Tail) -eq (& $normalise $PreviousTail)) {

@@ -65,6 +65,8 @@ param(
     [string]$ImportCacheRef = '',
     # Opt-in: litert and tvm in concurrent child drivers after media-core, each on half the memory budget.
     [switch]$ConcurrentAux,
+    # Set by -ConcurrentAux for its children: they share the parent's run id, so their logs and manifest do not collide.
+    [ValidatePattern('^(\d{8}-\d{6})?$')][string]$ParentRunId = '',
     # buildctl forwards the client's docker credential store, so a prior docker login suffices.
     [string]$PushRef = '',
     # Skips the disk and shim preflight gates; deliberate exceptions only.
@@ -197,7 +199,7 @@ $isNvidia = $Variant -eq 'nvidia'
 $script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
 # Per-run id in every stage-log name, so run N never truncates run N-1's evidence.
-$script:RunId = (Get-Date).ToString('yyyyMMdd-HHmmss')
+$script:RunId = if ($ParentRunId) { "$ParentRunId-$($MediaBranches -join '+')" } else { (Get-Date).ToString('yyyyMMdd-HHmmss') }
 # Retry and disk-gate verdicts and where a run stopped, which the console alone would lose (hub #184).
 $script:DriverLog = Join-Path $script:LogDir ("bk-" + $script:RunId + "-driver.log")
 $script:RunSucceeded = $false
@@ -448,6 +450,8 @@ function Invoke-BkStage {
     $stageClock.Stop()
     $script:StageTimings[$Label] = [math]::Round($stageClock.Elapsed.TotalSeconds, 1)
     Write-DriverRecord "[bk:$Label] OK in $($script:StageTimings[$Label])s"
+    # A throw between stages is then not charged to the stage that just passed.
+    $script:CurrentPhase = "after $Label"
     if ($Tag) { $null = $script:BkBuiltTags.Add($Tag) }
     Write-Host ("[bk:{0}] OK -> {1}  ({2:hh\:mm\:ss})" -f $Label, $dest, $stageClock.Elapsed) -ForegroundColor Green
 }
@@ -693,7 +697,7 @@ if ($Stages -contains 'media') {
         }
         foreach ($aux in 'media-litert', 'media-tvm') {
             $auxArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath,
-                '-Stages', 'media', '-MediaBranches', $aux, '-MediaMemoryGb', $auxMem)
+                '-Stages', 'media', '-MediaBranches', $aux, '-MediaMemoryGb', $auxMem, '-ParentRunId', $script:RunId)
             # Without it an arm64 parent's children build under amd64 tags and the merge fans in stale trees.
             if ($TargetArch -ne 'amd64') { $auxArgs += @('-TargetArch', $TargetArch) }
             if ($isNvidia) { $auxArgs += '-Gpu' }
@@ -726,6 +730,7 @@ if ($Stages -contains 'media') {
             # Start-Process -ArgumentList joins with spaces and never quotes, so spaced paths would split.
             $auxArgsQuoted = @($auxArgs | ForEach-Object { if ("$_" -match '\s') { '"{0}"' -f $_ } else { "$_" } })
             $auxProcs += Start-Process -FilePath 'pwsh' -ArgumentList $auxArgsQuoted -PassThru -NoNewWindow
+            Write-DriverRecord "[bk:aux] child $aux started (pid $($auxProcs[-1].Id)), run $($script:RunId)-$aux"
         }
         # Fail fast on the first dead child, and never orphan the other's buildctl tree.
         try {
@@ -913,7 +918,7 @@ Write-Host ("`n[bk] Done in {0:hh\:mm\:ss}. Stages: {1}{2}" -f $elapsed, ($Stage
     # A stopped run keeps its stage seconds and where it stopped; guarded so it never replaces the real exception.
     try {
         if ((Get-Variable -Name RunSucceeded -Scope Script -ValueOnly -ErrorAction SilentlyContinue) -eq $false) {
-            $runStart = Get-Variable -Name started -ValueOnly -ErrorAction SilentlyContinue
+            $runStart = Get-Variable -Name started -Scope Script -ValueOnly -ErrorAction SilentlyContinue
             $runElapsed = if ($runStart) { (Get-Date) - $runStart } else { [timespan]::Zero }
             $manifest = Write-RunManifest -Status "failed:$($script:CurrentPhase)" -Elapsed $runElapsed
             Write-DriverRecord "run $($script:RunId) stopped in $($script:CurrentPhase); manifest $manifest"
