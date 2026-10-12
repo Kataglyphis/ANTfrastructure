@@ -587,6 +587,37 @@ Any other value fails the run. A caller sets it with the `free-threaded-wheel` i
 target interpreter and logs `free-threaded wheel skipped: the riscv64 cross build has no
 free-threaded target interpreter`. The Windows arm64 cross lane builds it, as below.
 
+### The suite on the installed wheel
+
+The proof loads the wheel's modules; it runs none of their code. The `3.14t` test leg runs
+the code, but from the sources, not the Cython build. A project that wants its tests on the
+compiled modules runs `linux/scripts/02-toolchain/python/test-free-threaded-wheel.sh` after
+`ci_packaging.sh`, from its own packaging wrapper:
+
+```bash
+bash "$(antfrastructure_path linux/scripts/02-toolchain/python/test-free-threaded-wheel.sh)" \
+  --python-version "${1:-3.14}" --extra test --copy tests/unit/test_thread_safety.py \
+  --env ORCHESTRANT_REQUIRE_COMPILED=1 --isolated -- -W error tests/unit/test_thread_safety.py
+```
+
+- **What it installs.** A fresh venv of the image's free-threaded interpreter, found and never
+  downloaded, gets the lock's set (`uv export --locked --no-emit-project`, with `--extra` if
+  given), then the shipped `cp314t` wheel of this arch with `--no-deps`.
+- **Where it runs.** Each `--copy` is staged at its relative path in a temporary directory,
+  and pytest runs there, because from the checkout the sources would shadow the installed
+  modules. Do not copy the package itself. `--isolated` adds `python -I`; leave it off when
+  the tests import siblings by package path (`from tests.helpers import …`), which needs the
+  run directory on `sys.path`.
+- **What it passes on.** `--env NAME=VALUE` reaches the pytest process only, and everything
+  after `--` goes to pytest. The project's pytest config is not copied unless a `--copy` names
+  it, so pass its warning filters there.
+- **When it skips.** In the three cases above in which the driver builds no free-threaded
+  wheel: a cross build, `PYTHON_FREE_THREADED_WHEEL=off`, and `auto` without the classifier.
+  A declared project with no `cp314t` wheel of this arch in `dist/` fails, and so does a call
+  without `--copy`.
+
+OrchestrANT runs its thread-safety tests this way, WebDavClient its whole suite.
+
 ### The arm64 cross lane's free-threaded wheel
 
 Since 2026-10-12 (CON75) the Windows arm64 cross lane ships `cp314-cp314t-win_arm64`. The

@@ -6,6 +6,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — CON66: the suite on the installed cp314t wheel is a hub step
+
+- **`linux/scripts/02-toolchain/python/test-free-threaded-wheel.sh`** runs a project's tests on the `cp314t` wheel
+  `ci_packaging.sh` left in `dist/`: a fresh venv of the image's free-threaded interpreter gets the lock's set (`uv export
+  --locked --no-emit-project`, `--extra` if given) and the wheel with `--no-deps`, and pytest runs in a directory outside
+  the checkout that holds only the `--copy` paths, so the sources cannot shadow the compiled modules. `--env` reaches the
+  pytest process, `--isolated` adds `python -I`, and the arguments after `--` go to pytest. It skips where the driver
+  builds no twin (a cross build, `PYTHON_FREE_THREADED_WHEEL=off`, `auto` without the classifier), and fails on a declared
+  project without a `cp314t` wheel of this arch. It replaces OrchestrANT's `ci_free_threaded_wheel_tests.sh` and
+  WebDavClient's `test-free-threaded-wheel.sh`, which differed only in those knobs (`docs/python-ci.md` § The suite on the
+  installed wheel). `tests/test-python-free-threaded-wheel-tests.sh`, 36 assertions, drives it against a fake uv.
+
 ## 2026-10-12 — CON83 closes: OrchestrANT imports pyplot lazily, its other two calls stay
 
 - **`import orchestrant` loads no `matplotlib.pyplot` (OrchestrANT 9dbb86b).** pyplot was 0.72 s of the import's
