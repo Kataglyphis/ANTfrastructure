@@ -24,9 +24,10 @@ Describe 'Build-LitertLmBazel: the bazel command per lane' {
     It 'the script launches bazel once, through that function, with the unchanged startup option' {
         $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-RepoRoot) $script:LlmBazel), [ref]$null, [ref]$null)
         $calls = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
-                    $n.CommandElements[0].Extent.Text -eq 'C:\bzl-tools\bazelisk.exe' }, $true))
+                    $n.CommandElements[0].Extent.Text -eq 'Invoke-BazelLogged' }, $true))
         Assert-Equal 1 $calls.Count 'one bazelisk invocation'
-        Assert-Equal '@bazelArgs @bazelCmd' (@($calls[0].CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.Extent.Text }) -join ' ') 'its arguments'
+        Assert-Equal 'Invoke-BazelLogged -Bazel C:\bzl-tools\bazelisk.exe -Argument (@($bazelArgs) + @($bazelCmd)) -LogPath C:\bazel-build.log' `
+            $calls[0].Extent.Text 'through Invoke-BazelLogged, with its arguments'
         $text = Get-Content -LiteralPath (Join-Path (Get-RepoRoot) $script:LlmBazel) -Raw
         Assert-Match ([regex]::Escape("`$outputBase = 'C:\bzl'")) $text 'output base'
         Assert-Match ([regex]::Escape('$bazelArgs = @("--output_base=$outputBase")')) $text 'startup option'
@@ -76,7 +77,7 @@ Describe 'Build-LitertLmBazel: the script body wires the rocm gate' {
             })
         $conds -join ' && '
     }
-    $script:LlmBazelCall = @(Get-LlmCall 'C:\bzl-tools\bazelisk.exe')
+    $script:LlmBazelCall = @(Get-LlmCall 'Invoke-BazelLogged')
     $script:LlmTry = Get-LlmAncestor $script:LlmBazelCall[0] ([System.Management.Automation.Language.TryStatementAst])
 
     It 'reads GPU_TYPE once, from the lane env' {
@@ -88,19 +89,19 @@ Describe 'Build-LitertLmBazel: the script body wires the rocm gate' {
     }
 
     It 'hides the ROCm tree before the bazel server starts, and restores it in finally' {
-        $scrub = @(Get-LlmCall 'Get-LitertLmRocmEnvScrub')
+        $scrub = @(Get-LlmCall 'Get-BazelRocmEnvScrub')
         Assert-Equal 1 $scrub.Count 'one scrub computation'
-        Assert-Equal 'Get-LitertLmRocmEnvScrub -GpuType $gpuType -Environment ([Environment]::GetEnvironmentVariables())' $scrub[0].Extent.Text 'over the live env, gated on the lane'
+        Assert-Equal 'Get-BazelRocmEnvScrub -GpuType $gpuType -Environment ([Environment]::GetEnvironmentVariables())' $scrub[0].Extent.Text 'over the live env, gated on the lane'
         Assert-Equal '$envScrub' (Get-LlmAncestor $scrub[0] ([System.Management.Automation.Language.AssignmentStatementAst])).Left.Extent.Text 'kept in $envScrub'
-        $set = @(Get-LlmCall 'Set-LitertLmProcessEnv')
-        $apply = @($set | Where-Object { $_.Extent.Text -ceq 'Set-LitertLmProcessEnv -Values $envScrub' })
+        $set = @(Get-LlmCall 'Set-BazelProcessEnv')
+        $apply = @($set | Where-Object { $_.Extent.Text -ceq 'Set-BazelProcessEnv -Values $envScrub' })
         Assert-Equal 1 $apply.Count 'the scrub is applied'
         Assert-Equal '$restoreEnv' (Get-LlmAncestor $apply[0] ([System.Management.Automation.Language.AssignmentStatementAst])).Left.Extent.Text 'its previous values kept'
         Assert-Equal '$envScrub.Count -gt 0' (Get-LlmIfChain $apply[0] $script:LlmTry.Body) 'applied whenever there is something to hide'
         Assert-True ($scrub[0].Extent.EndOffset -lt $apply[0].Extent.StartOffset) 'computed, then applied'
         Assert-True ($apply[0].Extent.EndOffset -lt $script:LlmBazelCall[0].Extent.StartOffset) 'before the first bazelisk call'
         Assert-True (Test-LlmWithin $apply[0] $script:LlmTry.Body) 'inside the try that restores it'
-        $restore = @($set | Where-Object { $_.Extent.Text -ceq 'Set-LitertLmProcessEnv -Values $restoreEnv' })
+        $restore = @($set | Where-Object { $_.Extent.Text -ceq 'Set-BazelProcessEnv -Values $restoreEnv' })
         Assert-Equal 1 $restore.Count 'one restore'
         Assert-True (Test-LlmWithin $restore[0] $script:LlmTry.Finally) 'in the finally block'
         Assert-Equal '$restoreEnv' (Get-LlmIfChain $restore[0] $script:LlmTry.Finally) 'only when something was hidden'
@@ -131,7 +132,7 @@ Describe 'Build-LitertLmBazel: the script body wires the rocm gate' {
 }
 
 Describe 'Build-LitertLmBazel: the ROCm tree is hidden from bazel on the rocm lane' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:LlmBazel -FunctionName 'Get-LitertLmRocmEnvScrub', 'Set-LitertLmProcessEnv')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsBazel.Common.psm1' -FunctionName 'Get-BazelRocmEnvScrub', 'Set-BazelProcessEnv')
 
     function New-RocmLaneEnv {
         # Case-sensitive keys, like [Environment]::GetEnvironmentVariables().
@@ -148,12 +149,12 @@ Describe 'Build-LitertLmBazel: the ROCm tree is hidden from bazel on the rocm la
 
     It 'is empty on the cpu and nvidia lanes, even beside a ROCm-looking env' {
         foreach ($t in @($null, '', 'cpu', 'nvidia')) {
-            Assert-Equal 0 (Get-LitertLmRocmEnvScrub -GpuType $t -Environment (New-RocmLaneEnv)).Count "GPU_TYPE='$t'"
+            Assert-Equal 0 (Get-BazelRocmEnvScrub -GpuType $t -Environment (New-RocmLaneEnv)).Count "GPU_TYPE='$t'"
         }
     }
 
     It 'unsets the ROCm-layer vars and drops ROCm entries from list vars, nothing else' {
-        $s = Get-LitertLmRocmEnvScrub -GpuType 'rocm' -Environment (New-RocmLaneEnv)
+        $s = Get-BazelRocmEnvScrub -GpuType 'rocm' -Environment (New-RocmLaneEnv)
         Assert-Equal 'HIP_DEVICE_LIB_PATH,HIP_PATH,HIP_PLATFORM,INCLUDE,LLVM_PATH,Path,PKG_CONFIG_PATH,ROCM_PATH' (@($s.Keys | Sort-Object) -join ',') 'scrubbed names'
         foreach ($n in 'ROCM_PATH', 'HIP_PATH', 'HIP_PLATFORM', 'HIP_DEVICE_LIB_PATH', 'LLVM_PATH', 'PKG_CONFIG_PATH') { Assert-Null $s[$n] "$n unset" }
         Assert-Equal 'C:\runtime\bin;C:\Windows\System32' $s['Path'] 'PATH keeps its non-ROCm entries in order (slash and case spellings caught)'
@@ -161,21 +162,21 @@ Describe 'Build-LitertLmBazel: the ROCm tree is hidden from bazel on the rocm la
     }
 
     It 'leaves GPU_TYPE, the release pin and a same-prefix sibling tree alone' {
-        $s = Get-LitertLmRocmEnvScrub -GpuType 'rocm' -Environment (New-RocmLaneEnv)
+        $s = Get-BazelRocmEnvScrub -GpuType 'rocm' -Environment (New-RocmLaneEnv)
         foreach ($n in 'GPU_TYPE', 'ROCM_WINDOWS_RELEASE', 'OTHER_TREE') { Assert-False $s.ContainsKey($n) "$n untouched" }
     }
 
-    It 'reads the live process environment and round-trips it through Set-LitertLmProcessEnv' {
+    It 'reads the live process environment and round-trips it through Set-BazelProcessEnv' {
         Invoke-InTestDir { param($dir)
             $vars = @{ GPU_TYPE = 'rocm'; ROCM_PATH = $dir; HIP_PATH = $null; HIP_PLATFORM = 'amd'; PATH = "$dir\bin;$env:PATH" }
             Invoke-WithEnv $vars {
                 $before = $env:PATH
-                $s = Get-LitertLmRocmEnvScrub -GpuType 'rocm' -Environment ([Environment]::GetEnvironmentVariables())
-                $prev = Set-LitertLmProcessEnv -Values $s
+                $s = Get-BazelRocmEnvScrub -GpuType 'rocm' -Environment ([Environment]::GetEnvironmentVariables())
+                $prev = Set-BazelProcessEnv -Values $s
                 Assert-Null ([Environment]::GetEnvironmentVariable('ROCM_PATH')) 'ROCM_PATH really removed, not set empty'
                 Assert-Null ([Environment]::GetEnvironmentVariable('HIP_PLATFORM')) 'HIP_PLATFORM removed'
                 Assert-False ($env:PATH -like "*$dir\bin*") 'ROCm bin gone from PATH'
-                $null = Set-LitertLmProcessEnv -Values $prev
+                $null = Set-BazelProcessEnv -Values $prev
                 Assert-Equal $dir $env:ROCM_PATH 'ROCM_PATH restored'
                 Assert-Equal 'amd' $env:HIP_PLATFORM 'HIP_PLATFORM restored'
                 Assert-Equal $before $env:PATH 'PATH restored'

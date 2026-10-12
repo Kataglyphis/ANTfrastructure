@@ -1379,11 +1379,11 @@ Write-TestHeader '20. Python bindings (wheels + imports + inference)'
 if ($smokeCross) {
     Skip-Test "section 20 (Python bindings (wheels + imports + inference)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
 } else {
-# cv2 ships installed in place only; LiteRT has no python bindings here.
+# cv2 ships installed in place only; ai-edge-litert is a bazel wheel for the pinned Python (CON91).
 $wheelStore = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS')
 if ($wheelStore -and (Test-Path $wheelStore)) {
 
-    foreach ($wheelPattern in @('onnxruntime-*.whl', '*genai*.whl', '*tvm*.whl', 'av-*.whl', '*iree*compiler*.whl', '*iree*runtime*.whl')) {
+    foreach ($wheelPattern in @('onnxruntime-*.whl', '*genai*.whl', '*tvm*.whl', 'av-*.whl', '*iree*compiler*.whl', '*iree*runtime*.whl', 'ai_edge_litert-*.whl')) {
         $wp = $wheelPattern
         Assert-Test -Name "wheel staged: $wheelPattern" -Condition {
             @(Get-ChildItem -Path $wheelStore -Filter $wp -ErrorAction SilentlyContinue).Count -gt 0

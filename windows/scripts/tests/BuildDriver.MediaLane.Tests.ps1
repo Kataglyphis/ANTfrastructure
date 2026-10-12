@@ -6,10 +6,13 @@ $script:WbtCodecPins = @{
     DAV1D_VERSION = 'dav1d-20'; DAV1D_SHA256 = 'dav1dsha-21'; X264_MESON_BRANCH = 'x264b-22'
     X264_MESON_COMMIT = 'x264c-23'; X265_VERSION = 'x265-24'; X265_SHA256 = 'x265sha-25'
 }
-# Build-LitertLmBazel.ps1's bazel tool pins: media-litert keys, never the merge's (hub #185).
+# The bazel builds' pins (LiteRT-LM tools, hub #185; the ai-edge-litert wheel, CON91): media-litert keys, never the merge's.
 $script:WbtBazelToolPins = @{
     BAZELISK_WINDOWS_VERSION = 'bzk-30'; BAZELISK_WINDOWS_AMD64_SHA256 = 'bzksha-31'; TEMURIN_JDK_WINDOWS_VERSION = 'jdk-32'
     TEMURIN_JDK_WINDOWS_X64_SHA256 = 'jdksha-33'; GIT_LFS_WINDOWS_VERSION = 'lfs-34'; GIT_LFS_WINDOWS_AMD64_SHA256 = 'lfssha-35'
+    LITERT_WINDOWS_SOURCE_COMMIT = 'lrtc-36'; LITERT_BAZEL_WINDOWS_VERSION = 'bzl-37'; LITERT_BAZEL_WINDOWS_AMD64_SHA256 = 'bzlsha-38'
+    LITERT_WINDOWS_ACCELERATOR_WHEEL_URL = 'accurl-39'; LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256 = 'accsha-40'
+    LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256 = 'webgpusha-41'
 }
 
 function New-WbtFakeMediaVersionTable {
