@@ -510,7 +510,7 @@ runner-native job above, which runs without an image.
 
 **The chain's own twins.** The same `:winamd64` ships `cp3XY-cp3XYt` builds of the chain wheels
 whose code declares free-threading (ONNX Runtime, PyAV, apache-tvm-ffi and the two IREE
-packages) in `PYTHON_WHEELS_CP314T` (`C:\runtime\wheels-cp314t`), apart from the GIL store
+packages) in `PYTHON_WHEELS_FREE_THREADED` (`C:\runtime\wheels-free-threaded`), apart from the GIL store
 ([`windows-builds.md` § The free-threaded wheels](windows-builds.md#the-free-threaded-wheels)).
 `Sync-UvChainOnnxRuntime` reads that store for a venv whose ABI tag is `cp3XYt`, so a Windows
 `3.14t` leg of an ORT project gets the chain ORT like its GIL legs. Without the store it fails

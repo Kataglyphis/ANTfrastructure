@@ -839,8 +839,8 @@ support also ships as a proved free-threaded (`cp3XYt`) twin, in a store of its 
 - **What ships.** `Dockerfile.torch` copies `/opt/wheels-free-threaded` into `:latest`, late, so a
   new twin re-keys no venv layer, and the export delivery seals it with `/opt/wheels`. Nothing
   installs a twin: an X.Yt venv takes them with `uv pip install /opt/wheels-free-threaded/<wheel>`.
-  The image names the store in `PYTHON_WHEELS_FREE_THREADED`, which Windows reads first too (its
-  images still set the older `PYTHON_WHEELS_CP314T`), and `uv_reconcile_chain_ort` gives an X.Yt
+  The image names the store in `PYTHON_WHEELS_FREE_THREADED`, as Windows' does since CON91 (its
+  older images set `PYTHON_WHEELS_CP314T`, which every reader still takes), and `uv_reconcile_chain_ort` gives an X.Yt
   venv's ONNX Runtime from it
   ([`python-ci.md` § Trap 3](python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi)).
 - **How the shipped image proves it.** The runtime smoke's `FT-STORE` gate

@@ -29,10 +29,10 @@ function script:New-PeTestWheel {
 
 Describe 'Free-threaded twin store and ABI tag' {
 
-    It 'stores apart from PYTHON_WHEELS: PYTHON_WHEELS_FREE_THREADED, else PYTHON_WHEELS_CP314T, else C:\runtime\wheels-cp314t' {
+    It 'stores apart from PYTHON_WHEELS: PYTHON_WHEELS_FREE_THREADED, else PYTHON_WHEELS_CP314T, else C:\runtime\wheels-free-threaded' {
         Invoke-WithEnv @{ PYTHON_WHEELS_FREE_THREADED = 'Y:\ft'; PYTHON_WHEELS_CP314T = 'X:\ft' } { Assert-Equal 'Y:\ft' (Get-FreeThreadedWheelStore) 'the version-free name first' }
         Invoke-WithEnv @{ PYTHON_WHEELS_FREE_THREADED = $null; PYTHON_WHEELS_CP314T = 'X:\ft' } { Assert-Equal 'X:\ft' (Get-FreeThreadedWheelStore) 'an older image ENV' }
-        Invoke-WithEnv @{ PYTHON_WHEELS_FREE_THREADED = $null; PYTHON_WHEELS_CP314T = $null } { Assert-Equal 'C:\runtime\wheels-cp314t' (Get-FreeThreadedWheelStore) 'the default' }
+        Invoke-WithEnv @{ PYTHON_WHEELS_FREE_THREADED = $null; PYTHON_WHEELS_CP314T = $null } { Assert-Equal 'C:\runtime\wheels-free-threaded' (Get-FreeThreadedWheelStore) 'the default, as on Linux (CON91)' }
     }
 
     It 'derives the cp3XYt tag from PYTHON_VERSION, the versions.env pin when unset (CON91)' {
@@ -229,7 +229,7 @@ Describe 'Free-threaded cross twins (arm64): static gates, the venv pin and the 
             $twin = New-PeTestWheel -Path "$d\made\m-1.0-cp314-cp314t-win_arm64.whl" -Member @{ 'm.cp314t-win_arm64.pyd' = @('python314t.dll') }
             Set-Content -LiteralPath "$d\py.cmd" -Encoding ascii -Value @('@echo %*> "%~dp0args.txt"', "@copy /y ""$twin"" ""%~dp0dist\"" >nul")
             $null = New-Item -ItemType Directory -Force -Path "$d\dist"
-            Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64'; PYTHON_VERSION = '3.14.8'; PYTHON_WHEELS_CP314T = "$d\store" } {
+            Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64'; PYTHON_VERSION = '3.14.8'; PYTHON_WHEELS_FREE_THREADED = "$d\store" } {
                 $stored = Invoke-PythonWheelBuild -Python @{ Exe = "$d\py.cmd"; FreeThreaded = $true } -WorkingDir $d -Arguments 'setup.py bdist_wheel' `
                     -ModuleName 'm' -FreeThreaded -Distribution 'm' -DistDir "$d\dist"
                 Assert-Equal 'setup.py bdist_wheel --plat-name win_arm64' "$(Get-Content "$d\args.txt")".Trim() 'the target tag, added once'
@@ -326,13 +326,14 @@ Describe 'Free-threaded twin wiring' {
         Assert-Equal 3 ([regex]::Matches($media, [regex]::Escape($table))).Count 'the twin table in the same three RUNs, one level above modules\'
         Assert-Match 'WindowsPythonWheel\.Common\.psm1 `\s+C:\\bkmods\\' $media 'media buildmods carries the module'
         $merge = Get-TwinWiringText 'windows\Dockerfile.media-merge-builder'
-        Assert-Match 'PYTHON_WHEELS_CP314T="C:\\runtime\\wheels-cp314t"' $merge 'the image ENV'
-        Assert-Match 'COPY --from=media-tvm C:\\runtime\\wheels-cp314t C:\\runtime\\wheels-cp314t' $merge 'the media-tvm fan-in'
+        Assert-Match 'PYTHON_WHEELS_FREE_THREADED="C:\\runtime\\wheels-free-threaded"' $merge 'the image ENV'
+        Assert-False ($merge -match 'PYTHON_WHEELS_CP314T|wheels-cp314t') 'the old name is gone from the image (CON91)'
+        Assert-Match 'COPY --from=media-tvm C:\\runtime\\wheels-free-threaded C:\\runtime\\wheels-free-threaded' $merge 'the media-tvm fan-in'
         Assert-Match 'New-Item -Path \(Get-FreeThreadedWheelStore\)' (Get-TwinWiringText 'windows\scripts\build\Build-MediaTvmAll.ps1') 'media-tvm creates it on every lane'
         Assert-Match 'free-threaded-wheel\.py linux\\scripts\\03-media\\free-threaded-twins\.txt C:\\temp\\scripts\\' (Get-TwinWiringText 'windows\Dockerfile') 'the final image bakes the helper and the table'
         $smoke = Get-TwinWiringText 'windows\scripts\build\Test-Container.ps1'
         Assert-Match 'Get-FreeThreadedTwinTable -Path \$ftTable' $smoke 'section 20 reads the image''s own table, as the gate mounts windows/scripts alone'
-        Assert-Match "'PYTHON_WHEELS', 'PYTHON_WHEELS_CP314T'" $smoke 'section 19 checks the pointer'
+        Assert-Match "'PYTHON_WHEELS', 'PYTHON_WHEELS_FREE_THREADED'" $smoke 'section 19 checks the pointer'
         Assert-Match 'Invoke-FreeThreadedWheelVenvProof' $smoke 'section 20 proves every twin again'
     }
 }

@@ -312,12 +312,15 @@ Describe 'ORT census: verdicts (image mode)' {
                 $null = New-Item -ItemType Directory -Force -Path (Split-Path "$dir\$n" -Parent)
                 Set-Content -LiteralPath "$dir\$n" 'x' -Encoding ASCII
             }
-            Invoke-WithEnv @{ PYTHON_WHEELS = "$dir\gil"; PYTHON_WHEELS_CP314T = "$dir\ft" } {
+            Invoke-WithEnv @{ PYTHON_WHEELS = "$dir\gil"; PYTHON_WHEELS_FREE_THREADED = $null; PYTHON_WHEELS_CP314T = "$dir\ft" } {
                 $refs = @(Get-OrtChainReferenceWheel -OrtVersion 'v1.30.0' | ForEach-Object { Split-Path $_ -Leaf })
                 Assert-Equal 'onnxruntime-1.30.0-cp314-cp314-win_amd64.whl,onnxruntime-1.30.0-cp314-cp314t-win_amd64.whl' ($refs -join ',') 'one wheel per store'
             }
-            Invoke-WithEnv @{ PYTHON_WHEELS = $null; PYTHON_WHEELS_CP314T = $null } {
-                Assert-Equal 'C:\runtime\wheels|C:\runtime\wheels-cp314t' "$(Get-OrtChainWheelStore)|$(Get-OrtChainWheelStore -FreeThreaded)" 'the image defaults'
+            Invoke-WithEnv @{ PYTHON_WHEELS = "$dir\gil"; PYTHON_WHEELS_FREE_THREADED = "$dir\ft"; PYTHON_WHEELS_CP314T = 'X:\old' } {
+                Assert-Equal "$dir\ft" (Get-OrtChainWheelStore -FreeThreaded) 'the CON91 name wins over the older one'
+            }
+            Invoke-WithEnv @{ PYTHON_WHEELS = $null; PYTHON_WHEELS_FREE_THREADED = $null; PYTHON_WHEELS_CP314T = $null } {
+                Assert-Equal 'C:\runtime\wheels|C:\runtime\wheels-free-threaded' "$(Get-OrtChainWheelStore)|$(Get-OrtChainWheelStore -FreeThreaded)" 'the image defaults'
             }
         }
         $census = (Get-Command Invoke-OrtImageCensus).ScriptBlock.ToString()

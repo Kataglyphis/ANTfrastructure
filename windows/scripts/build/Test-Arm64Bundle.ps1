@@ -64,10 +64,16 @@ function Invoke-BundleStep {
     $Results.Add([pscustomobject]@{ Name = $Name; Ok = $ok; Detail = $detail })
 }
 
+# The first of -Name under -Root that exists, else $null.
+function Find-FirstPath {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string[]]$Name)
+    return @($Name | ForEach-Object { Join-Path $Root $_ } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1)[0]
+}
+
 function Import-GateModule {
     # A hub module the packing step put beside this gate (..\modules in a hub checkout).
     param([Parameter(Mandatory)][string]$Name)
-    $path = @($Name, "..\modules\$Name") | ForEach-Object { Join-Path $PSScriptRoot $_ } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    $path = Find-FirstPath -Root $PSScriptRoot -Name $Name, "..\modules\$Name"
     if (-not $path) { throw "no $Name beside $PSCommandPath" }
     Import-Module $path -Force -DisableNameChecking
 }
@@ -139,10 +145,13 @@ Invoke-BundleStep 'free-threaded interpreter: GIL off, stdlib extensions import'
     & $exe -I -c "import sys, sysconfig, ssl, sqlite3, zlib, ctypes, bz2, lzma, hashlib, socket; g = sys._is_gil_enabled(); d = sysconfig.get_config_var('Py_GIL_DISABLED'); print('PY', sys.version.split()[0], '| sys._is_gil_enabled()', g, '| Py_GIL_DISABLED', d); assert not g and d == 1 and 'ARM64' in sys.version, sys.version"
 } $results
 # BACKLOG CON79 added the twins; the cross build could check only their tags, imports and PE machine.
-Invoke-BundleStep 'free-threaded wheels: every cp314t twin loads with the GIL off' {
+Invoke-BundleStep 'free-threaded wheels: every twin loads with the GIL off' {
     $homes = @($env:PATH -split ';' | Where-Object { $_ -and $_.StartsWith($BundleRoot, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -Unique)
     Import-GateModule 'WindowsPythonWheel.Common.psm1'
-    Invoke-TwinDeviceProof -Interpreter (@(Resolve-Path -Path $ftPython)[0].Path) -Store (Join-Path $BundleRoot 'wheels-cp314t') `
+    # A bundle exported before CON91 names the store wheels-cp314t.
+    $store = Find-FirstPath -Root $BundleRoot -Name 'wheels-free-threaded', 'wheels-cp314t'
+    if (-not $store) { throw "$BundleRoot has no free-threaded wheel store" }
+    Invoke-TwinDeviceProof -Interpreter (@(Resolve-Path -Path $ftPython)[0].Path) -Store $store `
         -Helper (Join-Path $PSScriptRoot 'free-threaded-wheel.py') -DllDirectory $homes
 } $results
 Invoke-BundleStep 'torch win-arm64 wheel stack present (cp313)' {

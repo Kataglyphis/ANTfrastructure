@@ -328,8 +328,9 @@ and clang-cl.
   - **Where the file is.** The three twin RUNs of `Dockerfile.media-builder` mount it at `C:\bkmnt\free-threaded-twins.txt`,
     one level above `modules\` as the helper is, and the final image bakes it into `C:\temp\scripts`, where section 20
     reads it. A missing table throws; it never reads as an empty list.
-- **The store is separate.** The twins go to `C:\runtime\wheels-cp314t` (`PYTHON_WHEELS_CP314T`), never into
-  `PYTHON_WHEELS`, and `Save-PythonWheel` refuses a `cp3XYt` wheel there. A 3.14t venv can be given both stores:
+- **The store is separate.** The twins go to `C:\runtime\wheels-free-threaded` (`PYTHON_WHEELS_FREE_THREADED`, as on
+  Linux; images before CON91 named it `wheels-cp314t` / `PYTHON_WHEELS_CP314T`, which every reader still takes), never
+  into `PYTHON_WHEELS`, and `Save-PythonWheel` refuses a `cp3XYt` wheel there. An X.Yt venv can be given both stores:
   pip and uv take only `cp3XYt` and `py3-none` wheels on that interpreter. `Sync-UvChainOnnxRuntime` reads the twins'
   store for a `cp3XYt` venv ([`python-ci.md` § Free-threaded and GIL legs](python-ci.md#free-threaded-and-gil-legs-in-one-container)).
 - **Nothing installs into `C:\python-freethreaded`.** Its `site-packages` stays empty, as the interpreter's contract
@@ -467,7 +468,7 @@ The host's x64 3.14t runs every build, and the target tree's `C:\runtime\python-
   without `deps\` gets each twin alone (`--no-deps`), as before 2026-10-11.
 - **What only the device proves:** that the ARM64 modules load and keep the GIL off. A module that declares nothing
   passes every static gate and fails only there.
-- **Their dependencies sit in `wheels-cp314t\deps`** (CON79, in source since 2026-10-11). After the GIL store,
+- **Their dependencies sit in `wheels-free-threaded\deps`** (CON79, in source since 2026-10-11). After the GIL store,
   `Copy-TargetPythonDeps.ps1` reads each twin's `Requires-Dist` and downloads the requirements for the target as
   `cp3XYt` or ABI-free wheels, never `abi3`, which the free-threaded ABI cannot load. Today that means numpy and
   ml_dtypes as `cp314t-win_arm64`, plus flatbuffers, packaging, protobuf and typing-extensions as pure wheels.
