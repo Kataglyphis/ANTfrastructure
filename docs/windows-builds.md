@@ -244,7 +244,7 @@ The **authoritative per-library build reference** for the Windows lane (AGENTS.m
 | ONNX GenAI (pin: `ONNXRUNTIME_GENAI_VERSION`) | CMake (Ninja) | clang-cl, lld-link | [details](#onnx-genai-pin-onnxruntime_genai_version) |
 | OpenCV 5.x | Ninja | clang-cl, lld-link | [details](#opencv-5x) |
 | LiteRT (pin: `LITERT_VERSION`) | Ninja | clang-cl, lld-link | [details](#litert-pin-litert_version) |
-| LiteRT-LM (pin: `LITERT_LM_VERSION`) | **Bazel** | clang-cl, lld-link | [details](#litert-lm-pin-litert_lm_version) |
+| LiteRT-LM (pin: `LITERT_LM_VERSION`) | **Bazel** | MSVC `cl`, `link` today: Bazel's default toolchain, against the clang-cl rule (BACKLOG CON92) | [details](#litert-lm-pin-litert_lm_version) |
 | TVM (pin: `TVM_REF`) | Ninja | clang-cl, lld-link | [details](#tvm-pin-tvm_ref) |
 | IREE (pin: `IREE_VERSION`) | Ninja | clang-cl, lld-link | Two configures on the arm64 cross lane (§ TVM and IREE in [`windows-cross-builds.md`](windows-cross-builds.md)) |
 | HailoRT (pin: `HAILORT_VERSION`) | Ninja | clang-cl, lld-link | Four static patches (§ Source Patch Policy) |
