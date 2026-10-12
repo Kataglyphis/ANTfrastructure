@@ -719,15 +719,23 @@ One line moves every image, lane and default: `PYTHON_VERSION` in
   default leg's reports as `pytest-report.html`/`.md` and `pytest-report-free-threaded.html`, so a
   docs page links names without a version.
 - The free-threaded store's names carry no version: `/opt/wheels-free-threaded`,
-  `PYTHON_WHEELS_FREE_THREADED`.
+  `PYTHON_WHEELS_FREE_THREADED`, and on Windows `C:\runtime\wheels-free-threaded` under the same variable.
+- Windows' build side: `Get-PinnedPythonVersion` feeds the free-threaded interpreter's name, the twin tag,
+  the arm64 tvm-ffi wheel tags and the target's `pythonXY.lib`; OpenCV's `FindPythonInterp` stub asks the
+  interpreter for its version; `Test-Container` grades the pin and fails without one.
 - The riscv64 uv cache seed, the app bundle's python-build-standalone, and the hub's own workflows,
   which read X.Y from `versions.env`.
 - Renovate reports every new release, a minor included, and its rule names no version.
 
 **What still needs a look:** a consumer's lock needs wheels (or buildable sdists) for the new tag,
 since only the image's own wheels come from the chain; PyPI packages whose `requires-python` stops
-below the new version (pyhailort says `<3.14`); and the Windows lanes, which read the same
-`PYTHON_VERSION` but keep their own wheel pins (BACKLOG).
+below the new version (pyhailort says `<3.14`). On Windows, two pin sets stay version-bound:
+- the arm64 bundle's three native pytest wheels (`PYTEST_WINDOWS_ARM64_CHARSET_NORMALIZER/COVERAGE/MARKUPSAFE`),
+  which `Build.Arm64WheelStack.Tests.ps1` names as soon as `PYTHON_VERSION` moves;
+- the arm64 torch stack (`TORCH_WINDOWS_ARM64_*`), cp313 until PyTorch ships newer `win_arm64` wheels.
+
+`ai-edge-litert` has no wheel for a new tag until the chain builds it from source (BACKLOG CON91); until
+then the Windows app venvs go without it.
 
 ## Which Linux image
 

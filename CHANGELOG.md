@@ -6,6 +6,32 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — CON91, second half: the Windows build side names no Python, and the twin store is Linux's
+
+- **The arm64 tvm-ffi wheels carry the pin's tag.** `New-TvmFfiCrossWheel`'s tags defaulted to cp314: on 3.15 the GIL
+  wheel would have been tagged cp314 around a `core.pyd` linking `python315.lib`, and the twin `cp314-cp315t`. The GIL
+  call passes the pin's `cpXY`, the twin's python tag drops the ABI's `t`, and both tags are mandatory.
+- **No literal 3.14 is left on the build side.** `Get-CpythonFreeThreadedExeName`, `Get-FreeThreadedAbiTag` and the
+  placeholder `python314.lib` take `Get-PinnedPythonVersion`; OpenCV's `FindPythonInterp` stub asks the interpreter
+  for its version; `Test-Container` fails without a pin instead of grading 3.14.
+- **The twin store is `C:\runtime\wheels-free-threaded` (`PYTHON_WHEELS_FREE_THREADED`)**, Linux's name, in the
+  merge stage's ENV and COPY, both producers' default, the ORT census, the bundle manifest and the smoke's env
+  contract. Every reader still takes `PYTHON_WHEELS_CP314T`, and the device gate the `wheels-cp314t` folder of an
+  older bundle. `Test-Container` fails when the image names a store that is not there, where it skipped.
+
+## 2026-10-12 — GStreamer compiles through sccache (#182), and two vendored builds stop flooding the logs (#183)
+
+- **#182:** meson's `compilers/detect.py` keeps an `sccache` prefix for MSVC's compiler class and drops it for
+  clang-cl, so the `CC='sccache clang-cl'` of 2026-08-04 never cached a compile: 16 sccache requests for 5,143 ninja
+  steps, and every merge rebuild compiled GStreamer cold (515-663 s). `New-SccacheCompilerShim` builds a `clang-cl.exe`
+  that runs sccache with the pinned clang-cl and the caller's arguments, meson gets it as `CC`/`CXX`, and the stage
+  fails when sccache counted fewer than 100 compile requests. Proven by a local buildctl probe; the next chain proves
+  it at scale.
+- **#183:** the Vulkan validation layers' and x265's GCC-style `-Wall` reaches clang-cl as `-Weverything`: the arm64
+  VVL alone was 6,228,195 lines, 752 MB of a 768 MB merge log, and x265 added 27,423 `-Wunsafe-buffer-usage` lines to
+  every ffmpeg branch. Both builds run with `_CL_=/w`, which clang-cl appends after its own flags and sccache does not
+  hash, and restore the caller's `_CL_` after it.
+
 ## 2026-10-12 — CON91, first half: the Windows drivers and syncs follow the Python pin
 
 - **`Get-PinnedPythonVersion`** (`WindowsPythonWheel.Common`) is the Windows twin of `python_pinned_major_minor`:

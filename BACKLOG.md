@@ -240,10 +240,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       **Done (hub, 2026-10-12):** `Get-PinnedPythonVersion`; the drivers' defaults and the arm64 job's legs
       (`pinned`/`pinnedt`); `Sync-UvProjectDependencies` leaves the lock's ORT to the chain wheels, as on Linux;
       the arm64 bundle's native pytest wheels are cp315; the rocm venv's PyPI LiteRT extra and its cp314 pin are gone.
-      **Left:** the tvm-ffi wheel tags (`Build-TvmFromSource.ps1`, `WindowsTvm.Common.psm1`) and the remaining
-      literal fallbacks; the twin store's name, `C:\runtime\wheels-cp314t` / `PYTHON_WHEELS_CP314T`, which Linux
-      spells `wheels-free-threaded` / `PYTHON_WHEELS_FREE_THREADED` (the readers take the new name first already);
-      and **ai-edge-litert built from source** for the pinned Python (owner decision 2026-10-12): no release has a
+      Also done: the tvm-ffi wheel tags and the remaining literal fallbacks; the twin store is
+      `C:\runtime\wheels-free-threaded` / `PYTHON_WHEELS_FREE_THREADED`, as on Linux.
+      **Left:** **ai-edge-litert built from source** for the pinned Python (owner decision 2026-10-12): no release has a
       cp315 `win_amd64` wheel (2.3.0 stops at cp314). Until it lands the cpu and nvidia venvs go without it (one app
       smoke WARN), and the rocm variant's `rocm-1` fails on `Torch.ps1`'s LiteRT check, on purpose. The accelerator
       DLL it needs is pinned already (`LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256`), so landing the build re-keys no
