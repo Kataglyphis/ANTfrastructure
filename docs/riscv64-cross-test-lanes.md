@@ -143,7 +143,11 @@ Ubuntu 26.04's `qemu-user` 10.2.1 runs them too. `riscv64_cross_env` sets
 - **GPU suites.** No GPU under QEMU. lavapipe does run: OxidANT's whole workspace with
   `KATAGLYPHIS_REQUIRE_GPU=1` passed on riscv64 lavapipe in 16 min 55 s on this 32-core
   host, against 2 min 52 s without it, which on a 4-vCPU runner would eat most of the
-  budget. The lanes skip GPU suites and keep a knob to run them.
+  budget. The per-push lanes skip GPU suites and keep a knob to run them. BeschleunigerBallett
+  runs its GPU suites on lavapipe once a week instead, in eleven shards of up to 6 h each
+  (since 2026-10-06; that repo's AGENTS.md lists the shards). A path-traced frame there costs 98-189 s,
+  so its four longest path-tracing tests run a lighter history on riscv64 only
+  (`KATAGLYPHIS_PT_GOLDEN_VARIANT=light`, since 2026-10-12).
 - **Sanitizers and coverage.** The cross clang (22) has no riscv64 compiler-rt; the
   image's riscv64 runtimes belong to LLVM 23 and pair only with its instrumentation. The
   amd64 and arm64 lanes keep both.
@@ -155,7 +159,7 @@ Ubuntu 26.04's `qemu-user` 10.2.1 runs them too. `riscv64_cross_env` sets
 | --- | --- | --- | --- |
 | OxidANT | `linux-riscv64.yml` | `cargo test --workspace`: 358 tests (local 2 min 52 s) | GPU rendering (skips without an adapter; `RISCV64_GPU_TESTS=1`) |
 | AccelerANTgine | `linux-riscv64.yml` | Debug ctest (commit, compile, FuzzTest unit mode) + `first_fuzz_test` | sanitizers, coverage, TSan build, perf |
-| BeschleunigerBallett | `linux-riscv64.yml` | Debug ctest | `Integration`, `GoldenRender` (GPU), sanitizers, coverage |
+| BeschleunigerBallett | `linux-riscv64.yml` | Debug ctest on every push; `GoldenRender` and `Integration` (GPU, lavapipe) weekly in eleven shards, four path-traced tests in their light variant | sanitizers, coverage |
 | OrchestrANT | `linux-riscv64.yml` | pytest + the arch-specific Cython wheel through `python-ci-linux.yml`'s `arches: riscv64` row with `package-emulated` (the riscv64 image under QEMU, `test` extra): 139 min tests-only on 2026-10-02, the 300-minute budget since 2026-10-03 | static analysis, docs, the `3.14t` leg, the amd64-arm64 app packages |
 | OmniAccelerANT | none | — | waits for Flutter in the riscv64 image |
 
