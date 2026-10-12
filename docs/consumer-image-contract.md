@@ -1083,3 +1083,44 @@ docker run --device /dev/kvm --group-add "$(stat -c %g /dev/kvm)" \
 - **What the image cannot prove.** The build host has no KVM, so the runtime smoke never
   boots it. Its `android-emulator` row checks the parts as uid 1001: the emulator runs,
   both versions equal the pins, and `android-avd.sh` is on `PATH`.
+
+## DeepStream in `:latest-nvidia`
+
+`:latest-nvidia` (amd64) carries NVIDIA DeepStream 9.1 (CON42). What a consumer can rely on was
+measured on the published index `sha256:810f36b3…` on 2026-10-12, on an RTX 2080. How the tree
+is built and gated, and every pipeline that ran:
+[`linux-accelerator-images.md` § DeepStream](linux-accelerator-images.md#deepstream-nvidia-variant).
+
+| What | Where, or what to do |
+| --- | --- |
+| DeepStream root | `/opt/nvidia/deepstream/deepstream`, a link to the versioned `/opt/nvidia/deepstream/deepstream-9.1`; the SDK headers are in its `sources/includes` |
+| GStreamer plugins | the link `/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0/deepstream` puts them on the image's own plugin path. They registered with `GST_PLUGIN_PATH` unset, replaced or appended to, so a consumer sets nothing |
+| `nvstreammux` | `ENV USE_NEW_NVSTREAMMUX=yes` selects the new mux, the only one that runs here. It has no `width`/`height`; a source with several surfaces per frame, such as `nvdewarper`, needs `num-surfaces-per-frame` |
+| TensorRT | DeepStream's TensorRT 10.16.1, on the loader path through `/etc/ld.so.conf.d/010-deepstream-tensorrt.conf`: `libnvinfer.so.10` resolves to `/opt/nvidia/deepstream/tensorrt-10.16.1.11/lib`. The image has no TensorRT 11 |
+| Helper libraries | `libcustom2d_preprocess.so`, `libpostprocess_impl.so` and `libcustom_videoimpl.so` live in `…/deepstream/lib/`, not in `lib/gst-plugins/`. NVIDIA configs that name the latter need editing |
+| Sample data | not in the image. NVIDIA's `deepstream-sample-data_9.1.0.deb` installs into the tree with `dpkg -i`, as root |
+
+**A GPU host.** Every pipeline ran with the GPU handed in as a CDI device, on
+`nvidia-container-toolkit` 1.20.1 and driver 595.58.03, the minimum NVIDIA names for DeepStream
+9.1; `--gpus all` exposed the GPU as well. The host setup, rootless included, is linked from
+[§ What needs a GPU host](linux-accelerator-images.md#what-needs-a-gpu-host). The toolkit may
+load the image's CUDA 13.4 compat driver in place of the host's, which is why `nvidia-smi`
+inside reports CUDA 13.4. DeepStream ran on either.
+
+**How it is proven.** The runtime smoke's `check_deepstream` registers the elements with
+CUDA's driver stubs on every nvidia image. Everything else needs a GPU, which no lane has, so it
+was measured by hand.
+
+Three traps:
+- **No GPU, no DeepStream.** Without the driver's `libcuda.so.1` the plugins cannot load, and the
+  GStreamer registry blacklists them. Reused once a GPU is there, that registry still hides
+  them: 30 files stayed blacklisted. The image ships no registry; never carry
+  `~/.cache/gstreamer-1.0` from a GPU-less run into a GPU one.
+- **A root-owned tree.** The runtime user (uid 1001) ran the decode, inference, tracker and
+  demux pipelines and built its own engine, but `nvinfer` cannot store an engine next to a model
+  in the root-owned DeepStream tree. It logs `failed to serialize cude engine` and builds the
+  engine again on every start. Give `model-engine-file` a writable path.
+- **Two elements do not work here:** the legacy `nvstreammux` and `nvblender`. Both are
+  NVIDIA's prebuilt code, and both read a buffer's mapping after releasing it, which GStreamer
+  1.28 and newer turn into a NULL pointer. `nvblender` also stalls with two inputs, on
+  GStreamer 1.24 too.
