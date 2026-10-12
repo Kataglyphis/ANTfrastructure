@@ -24,7 +24,7 @@
 param(
     [string]$BundleRoot = 'C:\runtime',
     [string]$ZipPath = '',
-    [int]$MinPassed = 17,
+    [int]$MinPassed = 18,
     [switch]$AllowEmptyRun
 )
 
@@ -119,6 +119,16 @@ Invoke-BundleStep 'python ensurepip' { & $py -m ensurepip | Out-Null } $results
 Invoke-BundleStep 'pip install from the wheel store (offline)' { & $py -m pip install --quiet --disable-pip-version-check --no-index --find-links (Join-Path $BundleRoot 'wheels') onnxruntime onnxruntime-genai-directml av } $results
 Invoke-BundleStep 'python imports + ORT providers' {
     & $py -c "import sys, numpy, onnxruntime, av; print('PY', sys.version.split()[0], '| numpy', numpy.__version__, '| ort', onnxruntime.__version__, '| av', av.__version__); print('providers:', onnxruntime.get_available_providers()); assert 'CPUExecutionProvider' in onnxruntime.get_available_providers()"
+} $results
+# BACKLOG CON30: an import proves the DLLs load, only a session proves ORT computes. Test-Container.ps1's 63-byte Identity model.
+$identityOnnxHex = '08083a370a100a017812017922084964656e746974791201675a0f0a0178120a0a08080112040a020801620f0a0179120a0a08080112040a0208014202100d'
+Invoke-BundleStep 'ORT inference: the Identity model returns its input (CPU EP)' {
+    $session = "import sys, numpy, onnxruntime as ort; s = ort.InferenceSession(bytes.fromhex('$identityOnnxHex'), providers=[sys.argv[1]]); y = float(s.run(['y'], {'x': numpy.array([42.0], numpy.float32)})[0][0]); print('ort', ort.__version__, '|', s.get_providers()[0], '| Identity(42.0) =', y); assert y == 42.0, y"
+    # DirectML needs a GPU or WARP that a runner may lack, so its outcome is printed and never graded.
+    $PSNativeCommandUseErrorActionPreference = $false
+    Write-Host '   DirectML, printed only:'
+    & $py -c $session DmlExecutionProvider 2>&1 | ForEach-Object { Write-Host "     $_" }
+    & $py -c $session CPUExecutionProvider
 } $results
 Invoke-BundleStep 'cv2 import' { & $py -c "import cv2; print('cv2', cv2.__version__)" } $results
 $ftPython = Join-Path $BundleRoot 'python-freethreaded\python3.*t.exe'

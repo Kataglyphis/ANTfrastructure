@@ -61,6 +61,33 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
         Assert-Match "Import-GateModule 'WindowsGstPlugins\.Common\.psm1'" $script:gateText 'beside the gate or in a hub checkout'
     }
 
+    It 'runs a real ORT session over the smoke suite''s Identity model, graded on the CPU EP alone (CON30)' {
+        Assert-Match "\`$identityOnnxHex = '$(Get-IdentityOnnxHex)'" $script:gateText 'the same 63 bytes as Test-Container.ps1'
+        Assert-Match "Invoke-BundleStep 'ORT inference: the Identity model returns its input \(CPU EP\)' \{" $script:gateText 'a step every bundle runs'
+        Assert-Match "InferenceSession\(bytes\.fromhex\('\`$identityOnnxHex'\), providers=\[sys\.argv\[1\]\]\).*assert y == 42\.0, y`"" $script:gateText 'a session that computes, not an import'
+        # The CPU run is the body's last command, so its exit code is the one Invoke-BundleStep grades.
+        Assert-Match "& \`$py -c \`$session DmlExecutionProvider 2>&1 \| ForEach-Object \{ Write-Host .*\}\r?\n\s*& \`$py -c \`$session CPUExecutionProvider\r?\n\} \`$results" $script:gateText 'DirectML printed, CPU graded'
+    }
+
+    It 'grades the ORT step by the CPU run''s exit code, whatever DirectML did, under the workflow''s native-error preference (mutation)' {
+        $ast = [System.Management.Automation.Language.Parser]::ParseInput($script:gateText, [ref]$null, [ref]$null)
+        $step = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and "$($n.CommandElements[0])" -eq 'Invoke-BundleStep' -and "$($n.CommandElements[1])" -match "^'ORT inference" }, $true)
+        $body = $step.CommandElements[2].ScriptBlock.GetScriptBlock()
+        Invoke-InTestDir { param($d)
+            # The body interpolates it by name; the stand-in never reads the model.
+            Set-Variable -Name identityOnnxHex -Value '00'
+            $PSNativeCommandUseErrorActionPreference = $true
+            foreach ($case in @(@{ Dml = 7; Cpu = 0; Ok = $true }, @{ Dml = 0; Cpu = 3; Ok = $false })) {
+                # A stand-in python: its third argument is the provider the gate asks for.
+                $py = Join-Path $d "py-$($case.Dml)-$($case.Cpu).cmd"
+                Set-Content -LiteralPath $py -Value "@if `"%~3`"==`"DmlExecutionProvider`" exit /b $($case.Dml)`r`n@exit /b $($case.Cpu)"
+                $results = [System.Collections.Generic.List[object]]::new()
+                Invoke-BundleStep 'ort' $body $results
+                Assert-Equal $case.Ok $results[0].Ok "DirectML exit $($case.Dml), CPU exit $($case.Cpu): $($results[0].Detail)"
+            }
+        }
+    }
+
     It 'runs the free-threaded interpreter isolated, and fails it unless the GIL is off on ARM64' {
         Assert-Match "Join-Path \`$BundleRoot 'python-freethreaded\\python3\.\*t\.exe'" $script:gateText 'found by pattern, not by a pinned version'
         Assert-Match "& \`$exe -I -c `".*assert not g and d == 1 and 'ARM64' in sys\.version" $script:gateText 'sys._is_gil_enabled(), Py_GIL_DISABLED and the arch marker'

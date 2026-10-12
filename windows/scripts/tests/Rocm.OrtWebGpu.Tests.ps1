@@ -510,11 +510,7 @@ Describe 'rocm-checks\OrtWebGpu.ps1: the spike mode, the DXC pair and each inter
 
     It 'the probe: the identity model is the smoke suite''s, stdout is captured around the fallback, dxil loads first, GenAI asks for webgpu' {
         $src = Get-OrtWebGpuProbeSource
-        $tc = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-Container.ps1'))
-        $bytes = [regex]::Match($tc, '(?s)\$script:identityOnnxBytes = \[byte\[\]\]@\((.*?)\)').Groups[1].Value
-        $hex = -join ([regex]::Matches($bytes, '0x([0-9A-Fa-f]{2})') | ForEach-Object { $_.Groups[1].Value.ToLowerInvariant() })
-        Assert-True ($hex.Length -eq 126) "identity model in Test-Container.ps1: $($hex.Length / 2) bytes"
-        Assert-Match "bytes\.fromhex\(`"$hex`"\)" $src 'the same 63-byte Identity model'
+        Assert-Match "bytes\.fromhex\(`"$(Get-IdentityOnnxHex)`"\)" $src 'the same 63-byte Identity model'
         Assert-Match 'contextlib\.redirect_stdout\(printed\)' $src 'the fallback''s printed EP error is captured'
         Assert-True ($src.IndexOf('"dxil.dll", "dxcompiler.dll"') -gt $src.IndexOf('og.Model(og.Config(model_dir))')) 'DXC loads last, dxil first (as Dawn does)'
         Assert-Match '"provider_options": \[\{"webgpu": \{\}\}\]' $src 'GenAI asks for its webgpu provider'

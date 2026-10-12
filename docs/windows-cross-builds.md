@@ -71,12 +71,14 @@ produce, and which gates keep it honest.
 > not installed**; the smoke gate runs only host-toolchain and static sections (1-6, 14-16, 19
 > arch-filtered, 23, 25), and sections 14/15 compile **for** the target and assert the produced PE
 > machine rather than run anything. A green build proves the code compiles and links for the
-> target, and nothing more. The `windows-11-arm` runner remains the only path to execution
-> proof. The owner declined it for this repo, and took it for the consumer apps' cross lanes on
-> 2026-09-25 ([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)). Their
-> first runs load the bundle's VC++ runtime and GLib/GStreamer, and AccelerANTgine's also its
-> chain ONNX Runtime — as far as loading only. Nothing runs an inference, a GStreamer pipeline
-> or a plugin, and the bundle's own tools and Python never execute (`BACKLOG.md` CON30).
+> target, and nothing more. Execution needs a `windows-11-arm` runner, and two kinds of job use
+> one. The consumer apps' cross lanes run their own products there since 2026-09-25
+> ([§ Consumer cross lanes](#consumer-cross-lanes-container-ci-windowsyml)). The hub's
+> `windows-arm64.yml` runs `Test-Arm64Bundle.ps1` over the published bundle since 2026-10-11
+> ([§ Verification](#verification)). There the bundle's tools and Python execute, two GStreamer
+> pipelines run (the WebRTC loopback is one), and since 2026-10-12 an ONNX Runtime session computes
+> on the CPU EP. No runner has a camera or a GPU, so neither a capture pipeline nor a GPU EP has
+> run on arm64 (`BACKLOG.md` CON30).
 >
 > How the lane got here, run by run (#116, #128, #131, #133 narratives, including the three meson
 > build-only-subproject defects and the seven fix-and-rerun cycles of the runtime-python work):
@@ -263,7 +265,7 @@ Optional AArch64 features belong only on dispatched kernels.
 
 The image and the bundle carry Mesa's lavapipe; what ships and why:
 [`consumer-image-contract.md` § The Windows image ships lavapipe](consumer-image-contract.md#the-windows-image-ships-lavapipe)
-(CON50). For this lane, `Test-Arm64Bundle.ps1`'s device step (17 steps, floor 17 since 2026-10-11) is the gate that
+(CON50). For this lane, `Test-Arm64Bundle.ps1`'s device step (18 steps, floor 18 since 2026-10-12) is the gate that
 proves the bundle's device, and `:winamd64` carries it since the 2026-10-04 republish; `:winarm64` followed the same day and its device gate passed 12/12.
 
 ## The Vulkan validation layer
@@ -296,7 +298,7 @@ With nothing runnable on the build host, verification is layered:
 | `Test-Toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `Test-TargetArch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor**; with `-ImportWalk` every wheel's native members too, and every module of a `cp3XYt` wheel imports `python3XYt.dll` and no GIL runtime |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| `Test-Arm64Bundle.ps1` | an arm64 device, or the hub's `windows-arm64.yml` | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, the cp314 pytest stack installs offline from it, `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, every `cp314t` twin in `wheels-cp314t` installs alone, offline, into a venv of that interpreter and loads with the GIL off (`free-threaded-wheel.py prove`), `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), the validation layer loads, and a `webrtcsink` -> `webrtcsrc` loopback decodes 60 frames over DTLS-SRTP (CON63) |
+| `Test-Arm64Bundle.ps1` | an arm64 device, or the hub's `windows-arm64.yml` | the bundle's tools and Python **execute** (HailoRT, a GStreamer pipeline, IREE, the offline wheel install, the ORT providers, an ORT session over the smoke suite's 63-byte Identity model on the CPU EP, with DirectML's outcome printed only), the shipped aarch64 ASan and OpenMP runtimes are real ARM64 PEs, the cp313 torch stack is in the wheel store, the cp314 pytest stack installs offline from it, `python-freethreaded\python3.14t.exe` imports its stdlib extensions with `sys._is_gil_enabled()` False, every `cp314t` twin in `wheels-cp314t` installs alone, offline, into a venv of that interpreter and loads with the GIL off (`free-threaded-wheel.py prove`), `vulkaninfo --summary` lists the bundle's lavapipe (llvmpipe), the validation layer loads, and a `webrtcsink` -> `webrtcsrc` loopback decodes 60 frames over DTLS-SRTP (CON63) |
 
 This repo's own lane has no native execution gate, so `Test-Arm64Bundle.ps1` is the device half:
 every step is exit-code-checked and the run must pass `-MinPassed`, so a device that ran nothing
@@ -330,7 +332,7 @@ windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 -MinInspe
 windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 `
     -HostToolPattern 'protoc\.exe|flatc\.exe|\\_deps\\'
 
-# on an arm64 device, from a bundle zip: seventeen steps, and the default floor is all of them
+# on an arm64 device, from a bundle zip: eighteen steps, and the default floor is all of them
 windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip
 ```
 
@@ -365,7 +367,8 @@ is the same file an x64 lane uses with `target-arch: amd64`:
    does an import that a clean device cannot resolve (the CRT has to ship with the product).
 4. The product is uploaded.
 5. With a `run-command`, a second job on `windows-11-arm` downloads the product and runs that
-   command in it natively. This is the only execution an arm64 binary from the family gets.
+   command in it natively. The hub's bundle device gate ([§ Verification](#verification)) is the
+   other place an arm64 binary from the family executes.
 6. With a `test-artifact-dir` and a `test-command` (CON43, 2026-10-01), the build also stages
    test binaries. They get the same arch gate as the product, because Windows on Arm runs x64
    code transparently and an amd64 test would pass there by emulation. They are uploaded as

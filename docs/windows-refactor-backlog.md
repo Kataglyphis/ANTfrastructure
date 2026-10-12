@@ -57,11 +57,12 @@ probe-proven 2026-09-19 — `AA64 machine (ARM64)` — once the arm64 library
 archives are staged). Wiring that into the lane is **#176**. The **QNN EP is PRESENT and PROVEN 2026-08-31** (build-time path;
 runtime execution still needs a Snapdragon host — see #121 below).
 
-**The honest caveat, barely changed:** until 2026-09-25 nothing the arm64 lane produces had
-been *executed*. Since then the consumer cross lanes' `windows-11-arm` run jobs load the bundle's
-VC++ runtime, GLib/GStreamer and (AccelerANTgine) the chain ONNX Runtime, as far as loading only
-(`BACKLOG.md` CON30). Its wheels ship staged, not installed, and every verdict above is a static
-check — PE machine type, import resolution, exported symbols. The 15 skipped smoke assertions are the ones that would have
+**The honest caveat, smaller now:** until 2026-09-25 nothing the arm64 lane produces had been
+*executed*. The consumer cross lanes' `windows-11-arm` run jobs run their products since then, and
+the hub's `windows-arm64.yml` runs the published bundle's tools, Python, GStreamer pipelines and,
+since 2026-10-12, an ONNX Runtime session on the CPU EP (`BACKLOG.md` CON30). Inside the cross
+build itself every verdict above is still a static check — PE machine type, import resolution,
+exported symbols. The 15 skipped smoke assertions are the ones that would have
 to run the aarch64 payload on an x64 host.
 
 **Permanently out of reach — do not re-litigate without new upstream facts:** classic TensorRT

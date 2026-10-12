@@ -6,6 +6,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — the arm64 device gate runs an inference, not only an import (CON30)
+
+- `Test-Arm64Bundle.ps1` has an eighteenth step, and the floor follows to 18. It builds an ONNX Runtime session over
+  `Test-Container.ps1`'s 63-byte Identity model and asserts that `Identity(42.0)` returns 42.0 on the CPU EP. The step
+  before it only imported onnxruntime and listed its providers, which proves the DLLs load and nothing computes.
+- DirectML is tried first and its outcome printed, never graded: a `windows-11-arm` runner has no adapter. The CPU run
+  is the step's last command, so its exit code alone decides, also under the workflow's
+  `$PSNativeCommandUseErrorActionPreference`. In `:winamd64` the step passed with DirectML falling back on
+  `No devices detected that match the filter criteria`.
+- `Get-IdentityOnnxHex` in `TestHarness.psm1` reads the model's bytes from `Test-Container.ps1`. The arm64 gate's copy
+  and the WebGPU probe's are both held equal to it. A mutation test runs the step's own body against a stand-in
+  python that fails DirectML or the CPU run.
+- `docs/windows-cross-builds.md`, `docs/windows-refactor-backlog.md` and `BACKLOG.md` CON30 no longer say that nothing
+  executes on arm64 or that the gate has nine or seventeen steps. A camera and a GPU EP are what stays unproven.
+
 ## 2026-10-12 — the device gate's twin proof installs again: a one-element array no longer splats into characters
 
 - Since a2ce8627 (CON79), `Invoke-TwinDeviceProof` built pip's arguments as `$resolve = if (...) { @(...) } else { @('--no-deps') }`.
