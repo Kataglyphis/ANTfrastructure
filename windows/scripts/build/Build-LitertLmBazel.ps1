@@ -131,6 +131,34 @@ function Install-LitertLmGpuPayload {
     }
 }
 
+function Get-TreeGb {
+    # Get-ChildItem does not follow junctions, so a tree is counted once.
+    param([Parameter(Mandatory)][string]$Path)
+    return (Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1GB
+}
+
+function Remove-LitertLmBuildTree {
+    # The merge copies only lib\litert-lm out of this layer, so bazel's trees left here cost 25 to 44 min of export (hub #181).
+    param(
+        [Parameter(Mandatory)][string]$OutputBase,
+        [string[]]$Path = @('C:\bzl', 'C:\llm', 'C:\bzl-tools', 'C:\bazel-build.log'),
+        [string]$Bazelisk = 'C:\bzl-tools\bazelisk.exe'
+    )
+    # The server's java.exe holds the output base open, and a held handle fails the layer's finalize.
+    if (Test-Path -LiteralPath $Bazelisk) {
+        & $Bazelisk "--output_base=$OutputBase" shutdown 2>&1 | Select-Object -Last 2 | ForEach-Object { Write-Host "  bazel shutdown: $_" }
+    }
+    foreach ($p in $Path) {
+        if (-not $p -or -not (Test-Path -LiteralPath $p)) { continue }
+        Write-Host ('  removing {0} ({1:N2} GB)' -f $p, (Get-TreeGb -Path $p))
+        # rd removes a junction, never its target.
+        if (Test-Path -LiteralPath $p -PathType Container) { & cmd.exe /c "rd /s /q ""$p""" 2>$null }
+        if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $p) { Write-Warning "  $p survived its removal and stays in the layer" }
+    }
+    $global:LASTEXITCODE = 0
+}
+
 $gpuType = [string]$env:GPU_TYPE
 
 Write-Host "=== [1/6] prerequisites: long paths + bazelisk + JDK (LiteRT-LM $tag) ==="
@@ -198,8 +226,14 @@ try {
     $env:PATH = "C:\bzl-tools;$env:JAVA_HOME\bin;$env:PATH"
 
     Write-Host '=== [5/6] bazelisk build //runtime/engine:litert_lm_main --config=windows ==='
+    # All of it to the log file; to the stage log every line but bazel's progress, of which one per 30 s says it is alive (hub #181).
+    $lastProgress = [datetime]::MinValue
     & C:\bzl-tools\bazelisk.exe @bazelArgs @bazelCmd 2>&1 |
-        Tee-Object -FilePath C:\bazel-build.log | Select-Object -Last 20
+        Tee-Object -FilePath C:\bazel-build.log | ForEach-Object {
+            $line = "$_"
+            if ($line -notmatch '^\[[\d,]+ / [\d,]+\]') { Write-Host $line }
+            elseif (((Get-Date) - $lastProgress).TotalSeconds -ge 30) { Write-Host $line; $lastProgress = Get-Date }
+        }
     $bexit = $LASTEXITCODE
     if ($bexit -ne 0) {
         [Console]::Error.WriteLine("--- bazel build failed ($bexit); last 60 log lines ---")
@@ -272,4 +306,9 @@ try {
     # The caller's later steps (Get-GpuEnvironment) need the rocm env back.
     if ($restoreEnv) { $null = Set-LitertLmProcessEnv -Values $restoreEnv }
     Pop-Location
+}
+Remove-LitertLmBuildTree -OutputBase $outputBase
+# Measured only: bazel's user root (install base, repository cache) and bazelisk's cache stay; their size says whether moving them out pays (hub #181).
+foreach ($kept in @(Get-ChildItem -LiteralPath $env:USERPROFILE -Directory -Filter '_bazel_*' -ErrorAction SilentlyContinue) + @(Get-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'bazelisk') -ErrorAction SilentlyContinue)) {
+    Write-Host ('  kept in the layer: {0} ({1:N2} GB)' -f $kept.FullName, (Get-TreeGb -Path $kept.FullName))
 }
