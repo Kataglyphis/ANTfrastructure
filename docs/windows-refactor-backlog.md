@@ -92,15 +92,33 @@ this repo's cp314 pin).
     running costs the same.
   - `Stop-Process -Force` on the server instead: DONE 1 s after the end, as without sccache.
     Killing an unrelated detached process costs nothing either.
-  - So it is neither webdav, nor a live process, nor the size of the RUN. A graceful close
-    leaves sockets in TIME_WAIT and a kill resets them, and Windows' default
-    `TcpTimedWaitDelay` is 120 s. That is the leading suspect, but no probe has isolated it
-    yet: a loopback pair outside sccache, closed cleanly, still has to show the same tail.
-  The fix in `Complete-SccacheServerSession` must keep the write-through that the graceful
-  stop exists for (#91), and since the server is gone at once, a kill after the stop changes
-  nothing. Either the server is killed once its writes have landed (a reliable sign of that is
-  still to find), or the host's `TcpTimedWaitDelay` drops to 30 s (an owner decision). Either
-  way, the servers that the launchers alone started (hailo, merge 2/9) need the same. In the same function, webdav `NotFound (permanent)`
+  - **Proven the same day: any TIME_WAIT in the container holds its teardown until it
+    expires** (Windows' default `TcpTimedWaitDelay`, 120 s). One loopback pair without
+    sccache, closed cleanly, costs 123 to 126 s; the same pair closed with a reset leaves no
+    TIME_WAIT and costs 1 s.
+  - **The TIME_WAIT is the client's.** sccache 0.18.0's client always closes first
+    (`commands.rs` drops the connection after reading the response; the server reads to EOF),
+    so every compile and every `--show-stats` leaves one on its ephemeral port. Killing the
+    server therefore cannot help: compile + stats + `Stop-Process -Force` still cost 128 s.
+  - **Nothing in the container removes it.** `SetTcpEntry(DELETE_TCB)` refuses a TIME_WAIT
+    row (317). The registry value inside the container changes nothing (the stack is the
+    host's). `SCCACHE_SERVER_UDS` is ignored on Windows: 0.18.0 still listens on
+    127.0.0.1:4226.
+  - **The graceful stop protects no cache write in this chain.** With
+    `SCCACHE_MULTILEVEL_CHAIN` unset (webdav only), each compile awaits its PUT before the
+    client gets `CompileFinished`. Under `disk,webdav` the webdav writes are detached tasks
+    that the stop does not wait for either (`multilevel.rs`, `write_remaining_levels_async`).
+  Two fixes remain, both owner decisions:
+  - **A patched sccache.** The client sets `SO_LINGER {on, 0}` after connecting, and the
+    server takes the resulting reset as a disconnect rather than logging `Failed to bind
+    socket`. The patch is 56 lines on v0.18.0 (`net.rs`, `server.rs`, a windows-sys feature).
+    The hub would build sccache from source again, as before 2026-09-18 (#114). The end step
+    then kills the server instead of `--stop-server`, which also resets its pooled webdav
+    connections. That removes the whole tail. The probe that builds and times it is written
+    but has not run.
+  - **The host's `TcpTimedWaitDelay` at 30 s** (admin, reboot). That cuts each tail to about
+    30 s with no image change. Not yet measured in a container either.
+  The servers that the launchers alone started (hailo, merge 2/9) need the same end step. In the same function, webdav `NotFound (permanent)`
   404s are cache misses rather than failures, and the `-Last 60` dump contradicts its
   "Failures in full" comment. Before `upstream/hcsshim-teardown-timeout/ISSUE.md` is filed,
   re-measure its "legitimate 117 s teardown": that OpenCV specimen ran sccache as well.
