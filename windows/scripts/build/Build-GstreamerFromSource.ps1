@@ -87,6 +87,8 @@ foreach ($leafModule in @('WindowsMeson.Common.psm1', 'WindowsRustToolchain.Comm
 # Resolved once, up front: five decisions far apart in this file depend on it.
 $script:GstTargetArch = Get-WindowsTargetArch
 $script:GstCross      = Test-WindowsCrossTarget -Arch $script:GstTargetArch
+# Set in phase 3 when meson compiles through the sccache shim.
+$script:GstSccacheShim = $null
 
 $InstallDir = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
 
@@ -181,6 +183,50 @@ function Restore-GstRocmPath {
 }
 
 # rocm lane, after install: what a lost AMD path left out (bin\gsthip-0.dll is the library gsthip.dll imports).
+function New-SccacheCompilerShim {
+    # Meson drops an sccache prefix for clang-cl (compilers/detect.py), so meson's compiler is this shim, which runs sccache (hub #182).
+    param([Parameter(Mandatory)][string]$Sccache, [Parameter(Mandatory)][string]$Compiler, [Parameter(Mandatory)][string]$OutDir)
+    $cPath = { param($p) $p -replace '\\', '\\' }
+    $source = @"
+/* "<sccache>" "<clang-cl>" <the caller's arguments, verbatim>; a host exe, so the arm64 cross file can use it too. */
+#include <windows.h>
+#include <stdio.h>
+#include <wchar.h>
+int wmain(void) {
+const wchar_t *p = GetCommandLineW();
+if (*p == L'"') { p++; while (*p && *p != L'"') p++; if (*p) p++; } else { while (*p && *p != L' ' && *p != L'\t') p++; }
+while (*p == L' ' || *p == L'\t') p++;
+static const wchar_t sccache[] = L"$(& $cPath $Sccache)", compiler[] = L"$(& $cPath $Compiler)";
+size_t n = wcslen(sccache) + wcslen(compiler) + wcslen(p) + 8;
+wchar_t *cmd = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, n * sizeof(wchar_t));
+if (!cmd) return 1;
+swprintf(cmd, n, L"\"%ls\" \"%ls\" %ls", sccache, compiler, p);
+STARTUPINFOW si; PROCESS_INFORMATION pi; DWORD code = 1;
+ZeroMemory(&si, sizeof si); si.cb = sizeof si;
+si.dwFlags = STARTF_USESTDHANDLES;
+si.hStdInput = GetStdHandle(STD_INPUT_HANDLE); si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE); si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+if (!CreateProcessW(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) { fwprintf(stderr, L"sccache shim: cannot start %ls (error %lu)\n", sccache, GetLastError()); return 1; }
+WaitForSingleObject(pi.hProcess, INFINITE);
+GetExitCodeProcess(pi.hProcess, &code);
+return (int)code;
+}
+"@
+    $null = New-Item -ItemType Directory -Force -Path $OutDir
+    $src = Join-Path $OutDir 'sccache-shim.c'
+    [IO.File]::WriteAllText($src, $source)
+    $exe = Join-Path $OutDir 'clang-cl.exe'
+    # An x64 host exe on every lane: the cross lane's LIB names the target's libraries, so clang-cl finds VS and the SDK itself.
+    $saved = @{ LIB = $env:LIB; INCLUDE = $env:INCLUDE }
+    Remove-Item Env:LIB, Env:INCLUDE -ErrorAction SilentlyContinue
+    try {
+        & $Compiler --target=x86_64-pc-windows-msvc -fuse-ld=lld /nologo /O2 /W3 $src "/Fe$exe" "/Fo$(Join-Path $OutDir 'sccache-shim.obj')" 2>&1 | ForEach-Object { Write-Host "  shim| $_" }
+    } finally {
+        foreach ($k in $saved.Keys) { if ($null -ne $saved[$k]) { Set-Item -Path "Env:$k" -Value $saved[$k] } }
+    }
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $exe)) { throw "the sccache compiler shim did not build (exit $LASTEXITCODE)" }
+    return $exe
+}
+
 function Get-GstRocmMissingArtifact {
     param([Parameter(Mandatory)][string]$InstallDir)
     $plugins = foreach ($p in 'gsthip', 'gstamfcodec', 'gstd3d11', 'gstd3d12') { "lib\gstreamer-1.0\$p.dll" }
@@ -277,9 +323,12 @@ try {
     Start-SccacheServerSession
     if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) {
         if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
-        $env:CC  = 'sccache clang-cl'
-        $env:CXX = 'sccache clang-cl'
-        log "sccache enabled for meson (remote backend, max $env:SCCACHE_MAX_JOBS jobs)"
+        # 'sccache clang-cl' reached meson as a bare clang-cl: 16 sccache requests for 5,143 ninja steps (hub #182).
+        $shim = New-SccacheCompilerShim -Sccache (Get-Command sccache.exe).Source -Compiler $clangCheck.Source -OutDir 'C:\temp\gst-sccache-shim'
+        $env:CC  = $shim
+        $env:CXX = $shim
+        $script:GstSccacheShim = $shim
+        log "sccache enabled for meson through $shim (remote backend, max $env:SCCACHE_MAX_JOBS jobs)"
     } else {
         log 'sccache disabled (no remote backend configured or sccache.exe missing)'
     }
@@ -1379,6 +1428,14 @@ cpp_link_args = [$buildLinkArgs]
 
     # Not chain-run, so dump the sccache counters here; they die with the container otherwise.
     Write-SccacheStats -Label 'gstreamer'
+    # A bypassed compiler wrapper builds green and cold, which is how #182 went unnoticed.
+    if ($script:GstSccacheShim) {
+        $requests = [regex]::Match((@(Get-SccacheStatsText -RequireRemote) -join "`n"), '(?m)^Compile requests\s+(\d+)')
+        if (-not $requests.Success) { Write-Warning 'sccache stats unreadable: the shim check is skipped' }
+        elseif ([int]$requests.Groups[1].Value -lt 100) {
+            throw "sccache counted $($requests.Groups[1].Value) compile request(s) for the whole GStreamer build: meson bypassed $($script:GstSccacheShim) (hub #182)"
+        }
+    }
     # The error-log dump only means something after a clean server stop.
     Complete-SccacheServerSession
 

@@ -866,7 +866,7 @@ steps; the remaining work is the Dockerfile surgery):
   pin it (the released 0.18.0 zip since 2026-09-18), and `Test-Toolchain.ps1`
   asserts the version —
   [`windows-build-resources.md`](windows-build-resources.md) § Persistent compile cache (sccache).
-- **sccache for the merge/GStreamer builder**: NOT EFFECTIVE, found 2026-10-12 (`windows-refactor-backlog.md` #182): meson records a bare `clang-cl`, and the server counts 16 requests for 5,143 ninja steps. Landed 2026-08-04 as follows —
+- **sccache for the merge/GStreamer builder**: FIXED IN SOURCE 2026-10-12 (`windows-refactor-backlog.md` #182). Meson drops an `sccache` prefix in front of clang-cl, so what landed on 2026-08-04 never cached a compile (16 requests for 5,143 ninja steps); a `clang-cl.exe` shim that runs sccache is meson's compiler now. Landed 2026-08-04 as follows —
   Build-GstreamerFromSource.ps1 sets `CC/CXX='sccache clang-cl'` for meson
   when the remote backend is configured (this build previously ran fully
   uncached, ~30 min hot, because the merge builder never wired the endpoint).

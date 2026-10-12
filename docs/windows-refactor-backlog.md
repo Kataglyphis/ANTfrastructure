@@ -125,18 +125,19 @@ this repo's cp314 pin).
   Rides the next full chain, since `WindowsSourceBuild.Common` is mounted into every media
   layer.
 - **#182 — GStreamer's meson build bypasses sccache on both arches, and its setup fetches
-  ~50 wraps live (opened 2026-10-12, #153).** `Build-GstreamerFromSource.ps1` sets
-  `CC/CXX='sccache clang-cl'` and logs "sccache enabled for meson", but meson records a bare
-  `clang-cl`, and the server counts 16 requests for 5,143 ninja steps (bk-20261011-184301).
-  arm64's cross file names `['sccache','clang-cl',…]` and still gets 0 compile requests
-  (bk-20261010-121545). Every merge rebuild therefore compiles cold: 663 s, 515 s, 612 s.
-  Meson setup takes 422 to 557 s and downloads 48 to 51 wrap sources live (the prefetch
-  covers about 9), ninja then regenerates the build files once more (79 s, 161 s), and
-  gst-plugins-rs (135 to 151 s) runs without `RUSTC_WRAPPER`. Fix: confirm with
-  `ninja -t commands`, put the wrapper where meson keeps it, make `Write-SccacheStats` fail a
-  phase that enabled sccache yet served under ~1 % of its steps, put meson's packagecache on
-  a cache mount or prefetch every wrap, find the regenerate trigger with `ninja -d explain`,
-  and set `RUSTC_WRAPPER`. Rides the next full chain.
+  ~50 wraps live (opened 2026-10-12, #153). The bypass is FIXED IN SOURCE the same day:**
+  meson's `compilers/detect.py` passes an `sccache` prefix to the MSVC compiler class but
+  drops it for clang-cl. `Build-GstreamerFromSource.ps1` now builds a `clang-cl.exe` shim (an
+  x64 host exe, so the arm64 cross file can use it) that runs `"<sccache>" "<clang-cl>" <args>`.
+  It hands the shim to meson as `CC`/`CXX`, and the stage fails when sccache counted fewer than
+  100 compile requests. A buildctl probe on `bk-windows-toolchain` showed meson 1.12.1
+  detecting it as `clang-cl 23.1.3` with lld-link, the linker it had before, and every ninja
+  compile reaching sccache. The compile it saves is 663 s, 515 s and 612 s per merge rebuild in
+  the swept chains. The next full chain proves it on GStreamer. Still open: meson setup takes
+  422 to 557 s and downloads 48 to 51 wrap sources live (the prefetch covers about 9), ninja
+  then regenerates the build files once more (79 s, 161 s), and gst-plugins-rs (135 to 151 s)
+  runs without `RUSTC_WRAPPER`. Put meson's packagecache on a cache mount or prefetch every
+  wrap, find the regenerate trigger with `ninja -d explain`, and set `RUSTC_WRAPPER`.
 - **#183 — vendored code compiles under clang-cl's `/Wall`: 1.36 M warning lines in one arm64
   merge vertex (opened 2026-10-12, #153; `BACKLOG.md` CON89's VVL item).** VVL's GCC-style
   `-Wall` reaches clang-cl as `/Wall`, which is `-Weverything`. In bk-20261010-121545 that

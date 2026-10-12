@@ -328,9 +328,12 @@ dufs C:\sccache-cache -A -p 5000
 
 CMake-based builds (every configure through `Invoke-CmakeConfigure`: ONNX, GenAI,
 OpenCV, LiteRT, LiteRT-LM, TVM, IREE, HailoRT, and on the rocm lane MIGraphX and
-the AMD GPU EP) then route clang-cl through sccache, and since 2026-08-04 GStreamer
-(Meson) is cached too (`Build-GstreamerFromSource.ps1` sets `CC`/`CXX` to
-`'sccache clang-cl'` when the remote backend is configured). FFmpeg (clang-cl +
+the AMD GPU EP) then route clang-cl through sccache. GStreamer (Meson) is cached since
+2026-10-12 (#182): meson drops an `sccache` prefix in front of clang-cl, so the
+`'sccache clang-cl'` of 2026-08-04 never reached a compile (16 requests for 5,143 ninja
+steps). `Build-GstreamerFromSource.ps1` now builds a `clang-cl.exe` shim that runs sccache on
+the patched clang-cl, hands it to meson as `CC`/`CXX`, and fails the stage when sccache counted
+fewer than 100 compile requests. FFmpeg (clang-cl +
 make) is cached since 2026-08-20 (#100): the launcher goes in at make time
 (`make CC='sccache clang-cl'`), never into configure's `--cc`, and
 `FFMPEG_SCCACHE=0` opts out.
