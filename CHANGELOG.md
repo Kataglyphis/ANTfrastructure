@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — the torch venv's sdists compile with clang-cl and link (CON93)
+
+- **The in-tree CPython links extensions like an install.** Under 3.15, line-profiler 5.0.2 and pyyaml 6.0.3 have no
+  cp315 wheel, so the torch stage's `uv sync` builds them. setuptools then failed `LNK1104 python315.lib`: it links
+  against `sys.base_exec_prefix\libs`, which the in-tree build lacked. The toolchain stage now copies `python3XY.lib`
+  and `python3.lib` there (`Install-CpythonInTreeImportLib`), and smoke section 2 checks them.
+- **The sdists compile with clang-cl, not VS's cl.** setuptools took VS's `cl.exe` and `link.exe`. The torch stage now
+  syncs with copies of clang-cl, lld-link and llvm-lib first on `PATH` as `cl`, `link` and `lib`, under
+  `DISTUTILS_USE_SDK`. A gate fails the stage when a PE of a distribution uv built from source carries MSVC's Rich
+  header. Probe P13 built and imported line-profiler that way on the 3.15 image. Rides the next chain.
+
 ## 2026-10-12 — meson in the Windows images verifies TLS through CryptoAPI (CON88)
 
 - **truststore beside every meson the chain installs.** Python in Server Core trusts only the store's 18 roots, so

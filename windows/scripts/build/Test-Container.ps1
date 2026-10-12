@@ -352,6 +352,12 @@ Assert-Test -Name "Python source-built from $cpythonDir" -Condition {
     (Test-Path "$cpythonDir\PCbuild\amd64\python3.dll")
 } -FailMessage "Python source build artifacts not found at $cpythonDir"
 
+# setuptools links an extension against sys.base_exec_prefix\libs, which a venv of the in-tree build reaches (CON93).
+$pyLibName = "python$($pyMajorMinor -replace '\.', '').lib"
+Assert-Test -Name "$cpythonDir\libs holds $pyLibName and python3.lib" -Condition {
+    (Test-Path -LiteralPath "$cpythonDir\libs\$pyLibName" -PathType Leaf) -and (Test-Path -LiteralPath "$cpythonDir\libs\python3.lib" -PathType Leaf)
+} -FailMessage "no $pyLibName or python3.lib in $cpythonDir\libs, so an sdist's C extension fails to link in a venv (LNK1104)"
+
 Assert-Test -Name "Python pip available" -Condition {
     # Exit-code based: with stderr merged, a failing pip still emits a first object.
     & python -m pip --version 2>&1 | Out-Null

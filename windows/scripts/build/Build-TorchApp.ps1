@@ -22,6 +22,9 @@ $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScrip
 $nativeModulePath = Join-Path $scriptAssetRoot 'modules\WindowsNative.Common.psm1'
 if (-not (Test-Path $nativeModulePath)) { throw "Required module not found: $nativeModulePath" }
 Import-Module $nativeModulePath -Force
+# Test-PeRichHeader for the install's sdist compiler gate; verify mode runs from mounts that may lack it.
+$targetArchModulePath = Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1'
+if (Test-Path $targetArchModulePath) { Import-Module $targetArchModulePath -Force }
 
 # The else-literal must equal versions.env APP_REF; SourceBuild.PinParity gates it.
 if ([string]::IsNullOrWhiteSpace($AppRef)) { $AppRef = if ($env:APP_REF) { $env:APP_REF } else { 'develop' } }
@@ -344,6 +347,43 @@ function Get-TorchAppLitertSyncArg {
     return '--no-install-package ai-edge-litert'
 }
 
+# setuptools compiles an sdist with VS's cl.exe unless cl, link and lib on PATH are LLVM's, under DISTUTILS_USE_SDK (CON93).
+function Enable-TorchAppClangClSdist {
+    param([Parameter(Mandatory)][string]$ShimDir, [string]$LlvmBin = 'C:\llvm-patched\bin')
+    $shim = [ordered]@{ 'cl.exe' = 'clang-cl.exe'; 'link.exe' = 'lld-link.exe'; 'lib.exe' = 'llvm-lib.exe' }
+    $missing = @($shim.Values | Where-Object { -not (Test-Path -LiteralPath (Join-Path $LlvmBin $_) -PathType Leaf) })
+    if ($missing.Count) { throw "the sdist compiler shim needs $($missing -join ', ') in $LlvmBin" }
+    New-Item -ItemType Directory -Force -Path $ShimDir | Out-Null
+    $shim.GetEnumerator() | ForEach-Object { Copy-Item -LiteralPath (Join-Path $LlvmBin $_.Value) -Destination (Join-Path $ShimDir $_.Key) -Force }
+    # What the finally puts back.
+    $previous = @{ DISTUTILS_USE_SDK = $env:DISTUTILS_USE_SDK; MSSdk = $env:MSSdk; PATH = $env:PATH }
+    $env:DISTUTILS_USE_SDK = '1'
+    $env:MSSdk = '1'
+    $env:PATH = "$ShimDir;$env:PATH"
+    return $previous
+}
+
+# Each distribution uv reports as built from source must have linked every PE under -SitePackages with lld-link (CON93).
+function Assert-TorchAppSdistCompiler {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$SyncOutput, [Parameter(Mandatory)][string]$SitePackages)
+    $built = @($SyncOutput | ForEach-Object { if ("$_" -match '^\s*Built (\S+?)(==| @ )') { $Matches[1] } } | Sort-Object -Unique)
+    Write-Host "uv built from source: $(if ($built.Count) { $built -join ', ' } else { 'nothing' })"
+    $msvc = @(foreach ($name in $built) {
+            $norm = $name -replace '[-_.]+', '_'
+            $infos = @(Get-ChildItem -LiteralPath $SitePackages -Directory -Filter '*.dist-info' -ErrorAction SilentlyContinue |
+                    Where-Object { ($_.Name -replace '-[^-]+\.dist-info$', '' -replace '[-_.]+', '_') -ieq $norm })
+            if ($infos.Count -eq 0) { throw "uv built $name, but $SitePackages has no dist-info for it" }
+            foreach ($line in [IO.File]::ReadAllLines((Join-Path $infos[0].FullName 'RECORD'))) {
+                $rel = ($line -split ',')[0]
+                # Scripts\*.exe are uv's own launchers, outside site-packages.
+                if ($rel -notmatch '\.(pyd|dll|exe)$' -or $rel.StartsWith('..')) { continue }
+                $pe = Join-Path $SitePackages $rel
+                if ((Test-Path -LiteralPath $pe -PathType Leaf) -and (Test-PeRichHeader -Path $pe)) { "${name}: $rel" }
+            }
+        })
+    if ($msvc.Count) { throw "uv built these with MSVC's linker, not the clang-cl shim: $($msvc -join '; ')" }
+}
+
 function Install-TorchAppEnvironment {
     Write-Host "=== torch app: clone $AppRef + uv sync (extras: ml-ai docs $PytorchExtra test) ==="
     if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force }
@@ -378,17 +418,26 @@ function Install-TorchAppEnvironment {
         # Frozen first; regenerate on failure, since the upstream lock may not cover this Python/platform.
         $haveLock = Test-Path $lockPath
         $frozenOk = $false
-        if ($haveLock) {
-            # Outside the try: a missing chain wheel stops the stage instead of regenerating the lock.
-            $syncArgs = "$baseSyncArgs $(Get-TorchAppOrtSyncArg -LockPath $lockPath -Store $WheelDir) $(Get-TorchAppLitertSyncArg -LockPath $lockPath -Store $WheelDir -AbiTag $venvTag)"
-            try { [void](Invoke-ShieldedNative -Label 'uv sync --frozen' -CommandLine "uv sync $syncArgs --frozen"); $frozenOk = $true }
-            catch { Write-Warning "frozen upstream uv.lock failed for this Python/platform -- regenerating a local lock ($($_.Exception.Message))" }
+        $syncOut = @()
+        $shimDir = 'C:\temp\clangcl-sdist-shim'
+        $sdistEnv = Enable-TorchAppClangClSdist -ShimDir $shimDir
+        try {
+            if ($haveLock) {
+                # Outside the try: a missing chain wheel stops the stage instead of regenerating the lock.
+                $syncArgs = "$baseSyncArgs $(Get-TorchAppOrtSyncArg -LockPath $lockPath -Store $WheelDir) $(Get-TorchAppLitertSyncArg -LockPath $lockPath -Store $WheelDir -AbiTag $venvTag)"
+                try { $syncOut = @(Invoke-ShieldedNative -Label 'uv sync --frozen' -CommandLine "uv sync $syncArgs --frozen"); $frozenOk = $true }
+                catch { Write-Warning "frozen upstream uv.lock failed for this Python/platform -- regenerating a local lock ($($_.Exception.Message))" }
+            }
+            if (-not $frozenOk) {
+                [void](Invoke-ShieldedNative -Label 'uv lock' -CommandLine "uv lock --find-links ""$WheelDir""")
+                $syncArgs = "$baseSyncArgs $(Get-TorchAppOrtSyncArg -LockPath $lockPath -Store $WheelDir) $(Get-TorchAppLitertSyncArg -LockPath $lockPath -Store $WheelDir -AbiTag $venvTag)"
+                $syncOut = @(Invoke-ShieldedNative -Label 'uv sync' -CommandLine "uv sync $syncArgs")
+            }
+        } finally {
+            foreach ($name in $sdistEnv.Keys) { [Environment]::SetEnvironmentVariable($name, $sdistEnv[$name]) }
+            Remove-Item -LiteralPath $shimDir -Recurse -Force -ErrorAction SilentlyContinue
         }
-        if (-not $frozenOk) {
-            [void](Invoke-ShieldedNative -Label 'uv lock' -CommandLine "uv lock --find-links ""$WheelDir""")
-            $syncArgs = "$baseSyncArgs $(Get-TorchAppOrtSyncArg -LockPath $lockPath -Store $WheelDir) $(Get-TorchAppLitertSyncArg -LockPath $lockPath -Store $WheelDir -AbiTag $venvTag)"
-            [void](Invoke-ShieldedNative -Label 'uv sync' -CommandLine "uv sync $syncArgs")
-        }
+        Assert-TorchAppSdistCompiler -SyncOutput $syncOut -SitePackages $venvSite
 
         # Reconcile: uninstall PyPI builds of our families (ORT names from the census, never a list) before reinstalling ours.
         $ortPurge = @(Get-TorchAppOrtPurgeName -Python $venvPython -Store $WheelDir)

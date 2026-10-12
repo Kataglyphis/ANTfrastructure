@@ -197,6 +197,19 @@ function Get-PeFileMachine {
     } finally { $fs.Dispose() }
 }
 
+<#
+.SYNOPSIS
+    True when the PE carries the 'Rich' block MSVC's link.exe writes into the DOS stub; lld-link writes none.
+.DESCRIPTION
+    Throws on a non-PE file, so "not a PE" can never pass as "no Rich header".
+#>
+function Test-PeRichHeader {
+    param([Parameter(Mandatory)][string]$Path)
+    $bytes = (Read-PeLayout -Path $Path -Caller 'Test-PeRichHeader').Bytes
+    $stubEnd = [BitConverter]::ToUInt32($bytes, 0x3C)
+    return $stubEnd -gt 0x40 -and [System.Text.Encoding]::ASCII.GetString($bytes, 0x40, $stubEnd - 0x40).Contains('Rich')
+}
+
 function Read-PeLayout {
     # The bytes, sections and data directories every PE directory reader needs; throws on a non-PE, naming $Caller.
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Caller)
@@ -613,6 +626,7 @@ Export-ModuleMember -Function @(
     'Get-VsDevCmdArch',
     'Get-PeMachineType',
     'Get-PeFileMachine',
+    'Test-PeRichHeader',
     'Get-PeImportNames',
     'Get-PeExportNames',
     'Assert-PeTargetMachine',

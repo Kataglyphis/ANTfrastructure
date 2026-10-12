@@ -179,12 +179,37 @@ Describe 'Install-CpythonFreeThreadedLayout' {
     }
 }
 
+Describe 'Install-CpythonInTreeImportLib' {
+
+    It 'puts the GIL build''s python3XY.lib and python3.lib, and no free-threaded lib, into the tree''s libs (CON93)' {
+        Invoke-InTestDir { param($d)
+            $null = New-ImportLibSet (Join-Path $d 'PCbuild\amd64')
+            $libs = Install-CpythonInTreeImportLib -SourceDir $d
+            Assert-Equal (Join-Path $d 'libs') $libs 'returns <tree>\libs'
+            Assert-Equal 'python3.lib,python314.lib' ((Get-ChildItem $libs | Sort-Object Name | ForEach-Object Name) -join ',') 'exactly the two GIL libs'
+        }
+    }
+
+    It 'throws when the build left no python3XY.lib, so a later extension link cannot fail far from its cause' {
+        Invoke-InTestDir { param($d)
+            New-Item -ItemType Directory -Force (Join-Path $d 'PCbuild\amd64') | Out-Null
+            Set-Content (Join-Path $d 'PCbuild\amd64\python3.lib') 'x'
+            Assert-Throws { Install-CpythonInTreeImportLib -SourceDir $d } -MessagePattern 'lacks python3XY\.lib'
+            Assert-False (Test-Path (Join-Path $d 'libs')) 'nothing staged'
+        }
+    }
+}
+
 Describe 'the toolchain stage wires the free-threaded build in' {
 
     BeforeAll {
         $script:toolchain, $script:dockerfile = foreach ($rel in 'windows\scripts\build\Build-ToolchainAll.ps1', 'windows\Dockerfile.toolchain-builder') {
             [IO.File]::ReadAllText((Join-Path $script:repo $rel))
         }
+    }
+
+    It 'stages the GIL import libs right after the GIL build' {
+        Assert-Match '(?m)^\$pyExe = .*\r?\n.*\r?\n\$null = Install-CpythonInTreeImportLib -SourceDir \$src\r?$' $script:toolchain
     }
 
     It 'builds it before the scrub deletes the externals it reuses, and proves both interpreters after' {
