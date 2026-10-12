@@ -444,7 +444,7 @@ function Invoke-BkStage {
             Write-Host $tail
             Write-Host "--- end of tail (full log: $stageLog) ---`n" -ForegroundColor Yellow
         }
-        Write-DriverRecord ("[bk:$Label] FAILED (exit $LASTEXITCODE) after {0:N1}s: $stageLog" -f $stageClock.Elapsed.TotalSeconds)
+        Write-DriverRecord "[bk:$Label] FAILED (exit $LASTEXITCODE) after $([math]::Round($stageClock.Elapsed.TotalSeconds, 1))s: $stageLog"
         throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — full log: $stageLog"
     }
     $stageClock.Stop()
@@ -905,7 +905,8 @@ if ($Stages -notcontains 'final') {
 $elapsed = (Get-Date) - $started
 # The run manifest is the only record of a green run's per-stage cost.
 $script:RunSucceeded = $true
-Write-DriverRecord ("run $($script:RunId) done in {0:N1}s" -f $elapsed.TotalSeconds)
+# Interpolated, so invariant: -f wrote "2.415,0s" on a German host.
+Write-DriverRecord "run $($script:RunId) done in $([math]::Round($elapsed.TotalSeconds, 1))s"
 if ($script:StageTimings.Count -gt 0) {
     $manifest = Write-RunManifest -Status 'ok' -Elapsed $elapsed
     Write-Host "`n[bk] per-stage timings:" -ForegroundColor Cyan

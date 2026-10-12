@@ -81,6 +81,7 @@ Describe 'A stopped BK run keeps its record (hub #184)' {
 
     It 'routes the driver log, decodes buildctl as UTF-8 and restores the console encoding' {
         Assert-Match 'Initialize-BuildDriverContext -DriverLog \$script:DriverLog' $script:drv 'the run''s driver log'
+        Assert-False ($script:drv -match 'Write-DriverRecord \(".*\{\d:N\d\}') 'no record formats a number in the host''s culture ("2.415,0s")'
         Assert-Match '\[Console\]::OutputEncoding = \[System\.Text\.UTF8Encoding\]::new\(\$false\)' $script:drv 'UTF-8 for buildctl'
         Assert-Match '(?s)\} finally \{.*\[Console\]::OutputEncoding = \$script:PreviousOutputEncoding' $script:drv 'restored on every exit'
     }
