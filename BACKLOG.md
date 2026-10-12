@@ -34,7 +34,23 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       exists since CON74 half 1, and `New-FreeThreadedBuildPython` pins a cross venv's `EXT_SUFFIX`
       since CON79 item 2. **The Linux half is done** (`:latest` of 2026-10-10, index sha256:30dea85c, hub 381431d1): each
       cross arch's `FT-STORE` passes `the store records a cross build` and loads every twin with the GIL off.
-      Left: the Windows arm64 half. Done when it ships a wheel proved on the target.
+      Left: the Windows arm64 half. Done when it ships a wheel proved on the target. Read 2026-10-12, it takes
+      four pieces:
+      - **The consumer's `setup.py` (OrchestrANT).** `Get-FreeThreadedWheelPlan` still skips a cross arch with "no
+        free-threaded target interpreter", which CON74 made untrue. Behind it, OrchestrANT's `ClangBuildExt` swaps
+        `cl.exe` for `clang-cl` and `link.exe` for `lld-link` at spawn and passes no `--target`, so a cross build
+        compiles for the host. It must add `--target=aarch64-pc-windows-msvc` when `build_ext`'s `plat_name` is
+        `win-arm64`.
+      - **The compiler environment.** OrchestrANT's `setup.py` sets `DISTUTILS_USE_SDK=1`, so setuptools takes the
+        current environment and never runs vcvarsall for `--plat-name`. The lane must enter the x64_arm64 VS
+        environment itself.
+      - **The hub's `Invoke-CiPackaging.ps1`.** It runs the build in a venv of the host's x64 3.14t that pins
+        `EXT_SUFFIX` (`New-FreeThreadedBuildPython`): `build_ext --plat-name win-arm64 -L <the target's
+        python-freethreaded\libs>`, then `bdist_wheel --plat-name win_arm64`, then the static gates (tags, imports,
+        `Assert-WheelTargetArch`). The wheel stays out of `dist\`, where `Select-PythonAppWheel` throws on a binary
+        wheel of another ABI.
+      - **The device.** The run job needs a 3.14t: the bundle's `python-freethreaded`, staged into the test
+        artifact. It also needs the wheel's runtime dependencies as `cp314t` (CON79 item 2 stages the twins').
 - [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
       [M, ★]. Half 1 is in the scripts since 2026-10-07 (CHANGELOG): media-core's
       `Build-TargetCpython.ps1` stages the `--disable-gil` ARM64 build into
