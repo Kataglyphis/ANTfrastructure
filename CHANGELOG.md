@@ -60,6 +60,19 @@
 - **CON84 (3):** OmniAccelerANT's Dart and Flutter floors follow its lock (467ca34), with the frb bindings and l10n
   regenerated rather than hand-formatted.
 
+## 2026-10-12 — the rocm chain builds without the HIP/MSVC `<cmath>` overlay (CON78)
+
+- Hub 28daad33's `:winamd64-rocm` chain (20261011-233025, then `-Stages final` as 20261012-051453) built every stage with
+  TheRock's clang as AMD ships it, with no `clang.cfg` and no overlay:
+  - MIGraphX 2.18.0 and its EP in 11:44 min;
+  - `ggml-hip` with device code for gfx1201 and gfx1200;
+  - torch 2.14.1+rocm10.1.0 (HIP 7.16.26385) and torchvision 0.29.1 in 59 min.
+- Smoke gate: 265 passed, 0 failed, 1 skipped. All eleven rocm-checks passed, among them `kernel compiled for gfx1201`.
+  The publish gate was clean, and the image's manifest is `cea5c3fb…`.
+- The first run stopped before the final stage on the disk gate: 18.4 GB free, below the stage's 40 GB. BuildKit freed
+  space on its own, so `-Stages final` ran on cached stages at 46.8 GB.
+- The llama stage's first RUN failed at layer activation with `0x20` (CON86), and the driver's retry built it.
+
 ## 2026-10-11 — the arm64 bundle carries its cp314t twins' dependencies (CON79)
 
 - The `:winarm64` bundle has shipped `cp314t` twins of onnxruntime, av, apache-tvm-ffi and iree-base-runtime since
