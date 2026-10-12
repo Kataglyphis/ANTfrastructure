@@ -391,6 +391,12 @@ Assert-PythonSnippet -Python "$cpythonDir\PCbuild\amd64\python.exe" -Name "Cytho
     -Code "import Cython, Cython.Shadow, Cython.Compiler.Main; print('cython', Cython.__version__)" `
     -ExpectMatch @($cythonWant) `
     -FailMessage "Cython is missing, unimportable or not PY_CYTHON_VERSION '$cythonPin' -- see docs/failure-modes.md § A Python module imports nowhere though its distribution is installed"
+# meson's wrap.py verifies through truststore whenever it imports; without it Server Core's 18 roots fail xiph.org (CON88).
+$trustPin = Get-ExpectedVersion 'PY_TRUSTSTORE_VERSION' ''
+Assert-PythonSnippet -Python "$cpythonDir\PCbuild\amd64\python.exe" -Name "truststore $trustPin imports in $cpythonDir beside meson" `
+    -Code "import truststore, mesonbuild; print('truststore', truststore.__version__)" `
+    -ExpectMatch @($(if ($trustPin) { "truststore $([regex]::Escape($trustPin))" } else { 'truststore \S+' })) `
+    -FailMessage "truststore is missing beside meson in $cpythonDir, so meson's wraps verify against Server Core's store alone (CON88)"
 # NTFS opens any spelling, CPython's import only the one RECORD names: a lowercased file is a module that imports nowhere.
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsSitePackages.Common.psm1') -Force -DisableNameChecking
 $baseSitePackages = Join-Path $cpythonDir 'Lib\site-packages'

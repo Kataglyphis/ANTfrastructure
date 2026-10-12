@@ -269,9 +269,11 @@ try {
     # Pinned: the build-subproject fixes below match meson's source by regex, and a floating meson moves under them.
     $mesonPin = [string]$env:PY_MESON_VERSION
     if ([string]::IsNullOrWhiteSpace($mesonPin)) { throw 'PY_MESON_VERSION is not set (versions.env not loaded?) -- refusing an unpinned meson' }
-    log "Installing Meson $mesonPin via pip..."
+    # truststore lets meson's wrap downloads verify through CryptoAPI, which fetches roots Server Core's store lacks (CON88).
+    $trustPin = Get-PipPin truststore
+    log "Installing Meson $mesonPin and $trustPin via pip..."
     $pipLog = Join-Path $resolvedLogDir 'pip-install.log'
-    & cmd.exe /c """$pyExe"" -m pip install meson==$mesonPin > ""$pipLog"" 2>&1"
+    & cmd.exe /c """$pyExe"" -m pip install meson==$mesonPin $trustPin > ""$pipLog"" 2>&1"
     $pipExit = $LASTEXITCODE
     Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
     # Fail here, not later as a misleading 'meson.exe not found'.
