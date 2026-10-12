@@ -28,9 +28,10 @@ on:
         default: ''
       test-python-versions:
         description: >-
-          Space-separated interpreter list for ci_tests.sh, e.g. "3.15 3.15t".
-          Empty (the default) runs the pinned X.Y of versions.env, plus X.Yt when
-          pyproject.toml declares free-threading, so a Python upgrade moves every leg.
+          Space-separated interpreter list for ci_tests.sh. Empty (the default) runs the
+          pinned X.Y of versions.env, plus X.Yt when pyproject.toml declares free-threading;
+          the word pinned stands for that X.Y ("pinned" alone is the GIL leg, "pinnedt" its
+          twin), so a Python upgrade moves every leg without an edit here.
         required: false
         type: string
         default: ''

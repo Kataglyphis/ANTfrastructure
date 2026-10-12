@@ -7755,6 +7755,22 @@
   "why": "a project that declares free-threading would lose its X.Yt leg whenever it passes no version list"
  },
  {
+  "id": "python.ci-tests-pinned-token",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "  PY_VERSIONS=\"${PY_VERSIONS//pinned/${DEFAULT_PYTHON_VERSION:?no pinned Python for the pinned leg: keep versions.env beside python_uv.sh}}\"\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+  "why": "a row that names its legs as pinned would ask uv for an interpreter called pinned"
+ },
+ {
+  "id": "python.ci-docs-report-without-a-version",
+  "target": "linux/scripts/02-toolchain/python/ci_build_docs.sh",
+  "find": "  [ ! -f \"$SRC/pytest-report-${COVERAGE_VERSION}.${ext}\" ] || cp \"$SRC/pytest-report-${COVERAGE_VERSION}.${ext}\" \"$dst/pytest-report.${ext}\"\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+  "why": "a docs page that links pytest-report.html would break on the first Python upgrade"
+ },
+ {
   "id": "python.ci-docs-default-coverage-is-the-image-interpreter",
   "target": "linux/scripts/02-toolchain/python/ci_build_docs.sh",
   "find": "COVERAGE_VERSION=\"${1:-${COVERAGE_VERSION:-${DEFAULT_PYTHON_VERSION:?no pinned Python: keep versions.env beside python_uv.sh, or pass a version}}}\"",
