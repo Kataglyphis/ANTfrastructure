@@ -94,7 +94,8 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
     }
 
     It 'proves every shipped cp3XYt twin with the helper Export-Arm64Bundle.ps1 puts beside it' {
-        Assert-Match "Invoke-BundleStep 'free-threaded wheels: every cp314t twin loads with the GIL off' \{" $script:gateText 'a step every bundle runs'
+        Assert-Match "Invoke-BundleStep 'free-threaded wheels: every twin loads with the GIL off' \{" $script:gateText 'a step every bundle runs'
+        Assert-Match "Find-FirstPath -Root \`$BundleRoot -Name 'wheels-free-threaded', 'wheels-cp314t'" $script:gateText 'the CON91 name first, then the one older bundles carry'
         Assert-Match "-Helper \(Join-Path \`$PSScriptRoot 'free-threaded-wheel\.py'\)" $script:gateText 'the helper travels beside the gate'
         Assert-Match "Import-GateModule 'WindowsPythonWheel\.Common\.psm1'" $script:gateText 'the proof is the wheel module''s, shared with the consumer kit'
         Assert-Match "& \`$venvPy -I \`$Helper prove " $script:wheelModuleText 'the build lanes'' own proof'

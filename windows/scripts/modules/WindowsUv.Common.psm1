@@ -483,7 +483,7 @@ function Assert-UvChainOrtAbiFit {
     }
 }
 
-# A free-threaded venv takes the image's cp3XYt twins (PYTHON_WHEELS_FREE_THREADED, else the older images' PYTHON_WHEELS_CP314T); docs/windows-builds.md#the-free-threaded-wheels
+# A free-threaded venv takes the image's cp3XYt twins (PYTHON_WHEELS_FREE_THREADED, else images before CON91's PYTHON_WHEELS_CP314T); docs/windows-builds.md#the-free-threaded-wheels
 function Select-UvChainOrtWheelStore {
     param([string]$WheelStore, [string]$Python, [scriptblock]$Runner)
     $twins = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS_FREE_THREADED')

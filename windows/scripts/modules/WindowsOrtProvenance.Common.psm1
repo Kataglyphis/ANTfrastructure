@@ -300,7 +300,7 @@ function Get-OrtChainWheelStore {
     param([switch]$FreeThreaded)
     if ($FreeThreaded) {
         foreach ($v in @($env:PYTHON_WHEELS_FREE_THREADED, $env:PYTHON_WHEELS_CP314T)) { if ($v) { return $v } }
-        return 'C:\runtime\wheels-cp314t'
+        return 'C:\runtime\wheels-free-threaded'
     }
     return $(if ($env:PYTHON_WHEELS) { $env:PYTHON_WHEELS } else { 'C:\runtime\wheels' })
 }

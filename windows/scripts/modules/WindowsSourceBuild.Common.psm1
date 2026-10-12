@@ -1088,7 +1088,7 @@ function Get-FreeThreadedWheelStore {
     param()
     if ($env:PYTHON_WHEELS_FREE_THREADED) { return $env:PYTHON_WHEELS_FREE_THREADED }
     if ($env:PYTHON_WHEELS_CP314T) { return $env:PYTHON_WHEELS_CP314T }
-    return 'C:\runtime\wheels-cp314t'
+    return 'C:\runtime\wheels-free-threaded'
 }
 
 function Get-FreeThreadedAbiTag {

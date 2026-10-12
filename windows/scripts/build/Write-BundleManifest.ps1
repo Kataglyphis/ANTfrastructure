@@ -32,7 +32,7 @@ $cross = Test-WindowsCrossTarget -Arch $arch
 
 # 1. DLL homes: the merge RUN's ENV that exists, named as the GStreamer probe and the final PATH name them
 $envNames = @('FFMPEG_BIN', 'OPENCV_BIN', 'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'LITERT_BIN', 'LITERT_LM_ROOT', 'GSTREAMER_BIN',
-              'GST_PLUGIN_PATH', 'GST_PLUGIN_SYSTEM_PATH', 'TVM_ROOT', 'IREE_ROOT', 'IREE_BIN', 'PYTHON_WHEELS', 'PYTHON_WHEELS_CP314T',
+              'GST_PLUGIN_PATH', 'GST_PLUGIN_SYSTEM_PATH', 'TVM_ROOT', 'IREE_ROOT', 'IREE_BIN', 'PYTHON_WHEELS', 'PYTHON_WHEELS_FREE_THREADED',
               'VULKAN_SDK', 'LP_NATIVE_VECTOR_WIDTH')
 $envRows = @()
 foreach ($n in $envNames) {
@@ -51,14 +51,14 @@ $dllHomes = @($dllHomes | Select-Object -Unique)
 # 2. Python: the target interpreter on a cross lane, the image's host CPython on the native lane
 $targetPython = Join-Path $InstallDir 'python'
 $pythonRoot = if (Test-Path (Join-Path $targetPython 'python.exe')) { $targetPython } else { '' }
-# Build-TargetCpython.ps1's free-threaded twin: last on PATH and without a python.exe, so only a 3.14t request finds it.
+# Build-TargetCpython.ps1's free-threaded twin: last on PATH and without a python.exe, so only an X.Yt request finds it.
 $ftPythonRoot = Join-Path $InstallDir 'python-freethreaded'
 $ftExeName = Get-CpythonFreeThreadedExeName
 $ftPythonExe = if (Test-Path (Join-Path $ftPythonRoot $ftExeName)) { Join-Path $ftPythonRoot $ftExeName } else { '' }
 $wheelDir = Join-Path $InstallDir 'wheels'
 $wheels = @(if (Test-Path $wheelDir) { Get-ChildItem -Path $wheelDir -Filter '*.whl' -File | ForEach-Object { $_.Name } })
 # The cp3XYt twins' own store; see docs/windows-builds.md#the-free-threaded-wheels.
-$ftWheelDir = Join-Path $InstallDir 'wheels-cp314t'
+$ftWheelDir = Join-Path $InstallDir (Split-Path -Leaf (Get-FreeThreadedWheelStore))
 $ftWheels = @(if (Test-Path $ftWheelDir) { Get-ChildItem -Path $ftWheelDir -Filter '*.whl' -File | ForEach-Object { $_.Name } })
 if ($cross) {
     # Smoke section 20 cannot run a cross bundle, so the store is checked here: every twin-verdict GIL wheel has its twin.
