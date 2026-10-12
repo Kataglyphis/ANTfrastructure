@@ -13,11 +13,23 @@ if (-not (Get-Command Resolve-LatestVersionTag -ErrorAction SilentlyContinue)) {
 # The one transient-failure pattern every retry loop classifies against.
 $script:BuildDriverContext = @{
     TransientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
+    DriverLog        = ''
 }
 
 function Initialize-BuildDriverContext {
-    param([string]$TransientPattern = '')
+    param([string]$TransientPattern = '', [AllowEmptyString()][string]$DriverLog = '')
     if ($TransientPattern) { $script:BuildDriverContext.TransientPattern = $TransientPattern }
+    # Bound and empty clears it, so a caller can end its records.
+    if ($PSBoundParameters.ContainsKey('DriverLog')) { $script:BuildDriverContext.DriverLog = $DriverLog }
+}
+
+function Write-DriverRecord {
+    # The console is no record: a retry or disk-gate verdict also lands in the run's driver log, when one is set (hub #184).
+    param([Parameter(Mandatory)][string]$Message)
+    $log = $script:BuildDriverContext.DriverLog
+    if (-not $log) { return }
+    try { Add-Content -LiteralPath $log -Value ('{0:yyyy-MM-ddTHH:mm:ss} {1}' -f (Get-Date), $Message) -Encoding utf8 -ErrorAction Stop }
+    catch { Write-Warning "driver log write failed ($log): $($_.Exception.Message)" }
 }
 
 function Test-TransientDockerFailure {
@@ -43,20 +55,25 @@ function Invoke-TransientCooldown {
     # A flake changes between attempts, a poisoned snapshot does not: docs/failure-modes.md § `ImportLayer ... (0xb7)` on the SAME chain-IDs across retries
     if ($PreviousTail -and ($RetryDespiteIdenticalPattern -and $Tail -match $RetryDespiteIdenticalPattern)) {
         Write-Host "[$Label] identical failure, but it is snapshot-mount contention — retrying anyway (measured to go green on a later attempt)." -ForegroundColor Yellow
+        Write-DriverRecord "[$Label] attempt $Attempt/$MaxAttempts failed identically, snapshot-mount contention: retrying anyway"
     } elseif ($PreviousTail) {
         $normalise = { param($t) (($t -replace '(?m)^#\d+\s+[\d.]+\s+', '') -replace '\s+', ' ').Trim() }
         if ((& $normalise $Tail) -eq (& $normalise $PreviousTail)) {
             Write-Host ("[$Label] IDENTICAL failure to the previous attempt — deterministic, not transient. " +
                 'Not retrying. If this is a poisoned snapshot (hcsshim ImportLayer/ExportLayer during finalize), ' +
                 "the fix is -NoCache on this stage alone, NOT a retry — see AGENTS.md Common Failure Modes.") -ForegroundColor Red
+            Write-DriverRecord "[$Label] attempt $Attempt/$MaxAttempts failed identically to the previous one: deterministic, not retried"
             return $false
         }
     }
     if ($Attempt -lt $MaxAttempts -and ($AssumeTransient -or (Test-TransientDockerFailure -Tail $Tail))) {
         Write-Host "[$Label] transient container-infrastructure failure — retry $Attempt/$($MaxAttempts - 1) in ${CooldownSeconds}s" -ForegroundColor Yellow
+        $cause = @(($Tail -split "`r?`n") | Where-Object { $_ -match $script:BuildDriverContext.TransientPattern } | Select-Object -Last 1)
+        Write-DriverRecord "[$Label] attempt $Attempt/$MaxAttempts failed transiently: retry $Attempt/$($MaxAttempts - 1) in ${CooldownSeconds}s ($(if ($cause) { $cause[0].Trim() } else { 'classified by the caller' }))"
         Start-Sleep -Seconds $CooldownSeconds
         return $true
     }
+    Write-DriverRecord "[$Label] attempt $Attempt/$MaxAttempts failed: $(if ($Attempt -ge $MaxAttempts) { 'no attempt left' } else { 'not transient' }), no retry"
     return $false
 }
 
@@ -531,18 +548,25 @@ function Assert-StageDiskHeadroom {
     if (-not $psDrive -or $null -eq $psDrive.Free) {
         # Silence would read as "plenty of space" in the build log.
         Write-Warning "[$Label] disk headroom NOT checked: drive '$Drive' has no readable free space (network drive, or wrong letter?)."
+        Write-DriverRecord "[$Label] disk headroom NOT checked: drive '$Drive' has no readable free space"
         return
     }
     $freeGb = [math]::Round($psDrive.Free / 1GB, 1)
     if ($freeGb -ge $FloorGb) {
         Write-Host "[$Label] disk OK: ${freeGb} GB free (stage floor ${FloorGb} GB)" -ForegroundColor DarkGray
+        Write-DriverRecord "[$Label] disk OK: ${freeGb} GB free on ${Drive}: (stage floor ${FloorGb} GB)"
         return
     }
     $msg = ("[$Label] C: has ${freeGb} GB free, below the ${FloorGb} GB this stage needs. Entering it anyway walks " +
         'into the band where hcsshim fails dishonestly, and the only escape (killing the solve) poisons a snapshot. ' +
         'Reclaim first — docs/windows-builds.md § Store GC: admin `nerdctl --namespace buildkit rmi` on superseded ' +
         'bk-* stage tags, then `buildctl prune --free-storage <MB above disk size>`.')
-    if ($Force) { Write-Warning "$msg Continuing because the host-check override was passed."; return }
+    if ($Force) {
+        Write-Warning "$msg Continuing because the host-check override was passed."
+        Write-DriverRecord "[$Label] disk below floor: ${freeGb} GB free, floor ${FloorGb} GB; continued under the host-check override"
+        return
+    }
+    Write-DriverRecord "[$Label] REFUSED: ${freeGb} GB free on ${Drive}:, below the ${FloorGb} GB floor"
     throw "REFUSING to start: $msg"
 }
 
@@ -725,7 +749,7 @@ function Publish-PreseedFile {
     Write-Host "preseed: $Name staged at $onDav"
 }
 
-Export-ModuleMember -Function Initialize-BuildDriverContext,
+Export-ModuleMember -Function Initialize-BuildDriverContext, Write-DriverRecord,
     Test-TransientDockerFailure, Invoke-TransientCooldown,
     Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
     Get-WindowsVersionsEnvLine, Get-WindowsVersionsEnvCorpus, Write-WindowsVersionsEnv,

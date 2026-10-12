@@ -10,6 +10,7 @@
 .DESCRIPTION
     Appends a phase-tagged CSV row every -IntervalSeconds until killed; -Summarize ranks phases by lowest free RAM.
     Reads CIM, not Get-Counter (its paths are localized); freeGB excludes the standby cache.
+    diskFreeGB is -Drive's free space: export and unpack slow down as it nears the stage floor (hub #184).
 
 .EXAMPLE
     # sample every 20s into a CSV, phase-tagged (how the driver invokes it)
@@ -23,6 +24,7 @@ param(
     [Parameter(Mandatory)][string]$CsvPath,
     [string]$PhaseFile = '',
     [int]$IntervalSeconds = 20,
+    [string]$Drive = 'C',
     [switch]$Summarize
 )
 
@@ -57,10 +59,12 @@ if ($Summarize) {
             MinFreeGB    = [math]::Round(($g | Measure-Object -Property freeGB -Minimum).Minimum, 1)
             MaxVmmemGB   = [math]::Round(($g | Measure-Object -Property vmmemGB -Maximum).Maximum, 1)
             MaxCommitGB  = [math]::Round(($g | Measure-Object -Property committedGB -Maximum).Maximum, 1)
+            # A CSV from before the column has none, and an empty cell is no measurement.
+            MinDiskFreeGB = $(if ($g[0].PSObject.Properties['diskFreeGB']) { $d = @($g | Where-Object { $_.diskFreeGB -match '^\d' }); if ($d) { [math]::Round(($d | Measure-Object -Property diskFreeGB -Minimum).Minimum, 1) } else { $null } } else { $null })
         }
     } | Sort-Object MinFreeGB
     $summary | Format-Table -AutoSize | Out-String | Write-Host
-    Write-Host "  MinFreeGB = lowest host free RAM during the phase (the 'exhaustion' metric)." -ForegroundColor DarkGray
+    Write-Host "  MinFreeGB = lowest host free RAM during the phase (the 'exhaustion' metric); MinDiskFreeGB = lowest free space on the build drive." -ForegroundColor DarkGray
     Write-Host "  AvgCpuPct persistently far below 100 during a compile phase = memory-bound (jobs = min(cores, MEMORY_LIMIT_GB/perJob))." -ForegroundColor DarkGray
     return
 }
@@ -69,7 +73,7 @@ if ($Summarize) {
 $csvDir = Split-Path -Parent $CsvPath
 if ($csvDir -and -not (Test-Path $csvDir)) { New-Item -ItemType Directory -Force $csvDir | Out-Null }
 if (-not (Test-Path $CsvPath)) {
-    'ts,phase,cpuPct,freeGB,usedGB,committedGB,vmmemGB' | Set-Content -Path $CsvPath
+    'ts,phase,cpuPct,freeGB,usedGB,committedGB,vmmemGB,diskFreeGB' | Set-Content -Path $CsvPath
 }
 while ($true) {
     try {
@@ -83,13 +87,15 @@ while ($true) {
         $committedGB = [math]::Round(($os.TotalVirtualMemorySize - $os.FreeVirtualMemory) / 1MB, 1)
         $vmmem = (Get-Process -Name 'vmmem*' -ErrorAction SilentlyContinue | Measure-Object -Property WorkingSet64 -Sum).Sum
         $vmmemGB = if ($vmmem) { [math]::Round($vmmem / 1GB, 1) } else { 0 }
+        $disk = Get-PSDrive -Name $Drive -ErrorAction SilentlyContinue
+        $diskFreeGB = if ($disk -and $null -ne $disk.Free) { [math]::Round($disk.Free / 1GB, 1) } else { '' }
         # phase strings come from driver labels (no commas), but sanitize anyway
         $phase = $phase -replace ',', ';'
-        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$phase,$cpu,$freeGB,$usedGB,$committedGB,$vmmemGB" | Add-Content -Path $CsvPath
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$phase,$cpu,$freeGB,$usedGB,$committedGB,$vmmemGB,$diskFreeGB" | Add-Content -Path $CsvPath
     } catch {
         # A transient CIM hiccup must not kill the series, but the row carries its reason.
         $why = ($_.Exception.Message -replace '[,\r\n]', ';')
-        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),sample-error,$why,,,," | Add-Content -Path $CsvPath -ErrorAction SilentlyContinue
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),sample-error,$why,,,,," | Add-Content -Path $CsvPath -ErrorAction SilentlyContinue
     }
     Start-Sleep -Seconds $IntervalSeconds
 }

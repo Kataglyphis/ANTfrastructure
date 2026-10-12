@@ -198,6 +198,13 @@ $script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
 # Per-run id in every stage-log name, so run N never truncates run N-1's evidence.
 $script:RunId = (Get-Date).ToString('yyyyMMdd-HHmmss')
+# Retry and disk-gate verdicts and where a run stopped, which the console alone would lose (hub #184).
+$script:DriverLog = Join-Path $script:LogDir ("bk-" + $script:RunId + "-driver.log")
+$script:RunSucceeded = $false
+$script:CurrentPhase = 'preflight'
+# buildctl writes UTF-8, and decoding it with the OEM code page turned every em dash in the logs into mojibake.
+$script:PreviousOutputEncoding = [Console]::OutputEncoding
+try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch { Write-Verbose "console encoding unchanged: $_" }
 # Stage -> seconds; the run manifest below is the only record of per-stage cost.
 $script:StageTimings = [ordered]@{}
 # The detached resource sampler tags each CSV row with the phase written here.
@@ -206,7 +213,18 @@ $script:ResourceCsv = $null
 $script:SamplerProc = $null
 function Set-BuildPhase {
     param([Parameter(Mandatory)][string]$Name)
+    $script:CurrentPhase = $Name
     try { Set-Content -Path $script:PhaseFile -Value $Name -ErrorAction Stop } catch { Write-Verbose "phase write skipped: $_" }
+}
+function Write-RunManifest {
+    # The only record of per-stage cost; a stopped run writes one too, with where it stopped (hub #184).
+    param([Parameter(Mandatory)][string]$Status, [Parameter(Mandatory)][timespan]$Elapsed)
+    $manifest = Join-Path $script:LogDir ("bk-" + $script:RunId + "-manifest.txt")
+    $lines = @("run=$($script:RunId) status=$Status arch=$TargetArch variant=$(if ($Variant) { $Variant } else { 'default' }) stages=$($Stages -join ',') gpu=$($isNvidia) total_s=$([math]::Round($Elapsed.TotalSeconds,1))")
+    # Invariant, like total_s: a German host wrote 'patched-llvm=778,9' beside 'total_s=13058'.
+    foreach ($k in $script:StageTimings.Keys) { $lines += [string]::Format([cultureinfo]::InvariantCulture, '{0}={1}', $k, $script:StageTimings[$k]) }
+    Set-Content -Path $manifest -Value $lines -Encoding utf8
+    return $manifest
 }
 function Assert-NoCacheStageMatched {
     param([string[]]$Requested = $NoCacheStage)
@@ -234,7 +252,8 @@ $cniForm = Get-CniConfFormIssue
 if ($cniForm) { throw $cniForm }
 
 # Retry only re-pays finalize; the reimport lookahead keeps a real ExportLayer 0x3 defect failing loudly.
-Initialize-BuildDriverContext -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot(?!.*ExportLayer)|failed to write compressed diff|failed to extract layer|failed to mount \{windows-layer|failed to calculate checksum of ref'
+Initialize-BuildDriverContext -DriverLog $script:DriverLog -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot(?!.*ExportLayer)|failed to write compressed diff|failed to extract layer|failed to mount \{windows-layer|failed to calculate checksum of ref'
+Write-DriverRecord "run $($script:RunId): arch=$TargetArch variant=$(if ($Variant) { $Variant } else { 'default' }) stages=$($Stages -join ',')"
 
 # --- versions (single source of truth) ---
 $versions = ConvertFrom-VersionsEnv -Path (Join-Path $repoRoot 'linux\scripts\01-core\versions.env')
@@ -346,6 +365,8 @@ function Invoke-BkStage {
             'from a fresh driver process.')
     }
 
+    # Before the disk gate, so a refusal is recorded against the stage it refused.
+    $script:CurrentPhase = $Label
     # Per stage too: one heavy stage can walk the disk into hcsshim's dishonest-failure band.
     Assert-StageDiskHeadroom -Label $Label -Drive (Split-Path -Qualifier $repoRoot).TrimEnd(':') -Force:$SkipHostChecks
     $dfDir = Split-Path (Join-Path $repoRoot $Dockerfile) -Parent
@@ -400,6 +421,7 @@ function Invoke-BkStage {
     Set-BuildPhase $Label
     $stageClock = [System.Diagnostics.Stopwatch]::StartNew()
     $dest = if ($NoOutput) { '(warm solve, no output)' } else { $Tag }
+    Write-DriverRecord "[bk:$Label] start -> $dest"
     # Appended per attempt: truncating would destroy attempt 1's real compile error.
     Remove-Item -Path $stageLog -Force -ErrorAction SilentlyContinue
     $previousTail = ''
@@ -420,10 +442,12 @@ function Invoke-BkStage {
             Write-Host $tail
             Write-Host "--- end of tail (full log: $stageLog) ---`n" -ForegroundColor Yellow
         }
+        Write-DriverRecord ("[bk:$Label] FAILED (exit $LASTEXITCODE) after {0:N1}s: $stageLog" -f $stageClock.Elapsed.TotalSeconds)
         throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — full log: $stageLog"
     }
     $stageClock.Stop()
     $script:StageTimings[$Label] = [math]::Round($stageClock.Elapsed.TotalSeconds, 1)
+    Write-DriverRecord "[bk:$Label] OK in $($script:StageTimings[$Label])s"
     if ($Tag) { $null = $script:BkBuiltTags.Add($Tag) }
     Write-Host ("[bk:{0}] OK -> {1}  ({2:hh\:mm\:ss})" -f $Label, $dest, $stageClock.Elapsed) -ForegroundColor Green
 }
@@ -519,7 +543,8 @@ if (-not $NoResourceLog) {
     $samplerScript = Join-Path $repoRoot 'windows\scripts\build\Build-ResourceSampler.ps1'
     $script:SamplerProc = Start-Process -FilePath ((Get-Process -Id $PID).Path) -PassThru -WindowStyle Hidden -ArgumentList @(
         '-NoProfile', '-File', $samplerScript,
-        '-CsvPath', $script:ResourceCsv, '-PhaseFile', $script:PhaseFile, '-IntervalSeconds', '20')
+        '-CsvPath', $script:ResourceCsv, '-PhaseFile', $script:PhaseFile, '-IntervalSeconds', '20',
+        '-Drive', (Split-Path -Qualifier $repoRoot).TrimEnd(':'))
     Write-Host "Resource log: $script:ResourceCsv (20s samples, phase-tagged; disable with -NoResourceLog)"
 }
 
@@ -874,11 +899,10 @@ if ($Stages -notcontains 'final') {
 
 $elapsed = (Get-Date) - $started
 # The run manifest is the only record of a green run's per-stage cost.
+$script:RunSucceeded = $true
+Write-DriverRecord ("run $($script:RunId) done in {0:N1}s" -f $elapsed.TotalSeconds)
 if ($script:StageTimings.Count -gt 0) {
-    $manifest = Join-Path $script:LogDir ("bk-" + $script:RunId + "-manifest.txt")
-    $lines = @("run=$($script:RunId) arch=$TargetArch variant=$(if ($Variant) { $Variant } else { 'default' }) stages=$($Stages -join ',') gpu=$($isNvidia) total_s=$([math]::Round($elapsed.TotalSeconds,1))")
-    foreach ($k in $script:StageTimings.Keys) { $lines += ("{0}={1}" -f $k, $script:StageTimings[$k]) }
-    Set-Content -Path $manifest -Value $lines -Encoding utf8
+    $manifest = Write-RunManifest -Status 'ok' -Elapsed $elapsed
     Write-Host "`n[bk] per-stage timings:" -ForegroundColor Cyan
     foreach ($k in $script:StageTimings.Keys) { Write-Host ("  {0,8:N1}s  {1}" -f $script:StageTimings[$k], $k) }
     Write-Host "[bk] manifest: $manifest"
@@ -886,6 +910,21 @@ if ($script:StageTimings.Count -gt 0) {
 Write-Host ("`n[bk] Done in {0:hh\:mm\:ss}. Stages: {1}{2}" -f $elapsed, ($Stages -join ', '), $(if ($Variant) { " ($Variant)" } else { ' (CPU)' })) -ForegroundColor Green
 
 } finally {
+    # A stopped run keeps its stage seconds and where it stopped; guarded so it never replaces the real exception.
+    try {
+        if ((Get-Variable -Name RunSucceeded -Scope Script -ValueOnly -ErrorAction SilentlyContinue) -eq $false) {
+            $runStart = Get-Variable -Name started -ValueOnly -ErrorAction SilentlyContinue
+            $runElapsed = if ($runStart) { (Get-Date) - $runStart } else { [timespan]::Zero }
+            $manifest = Write-RunManifest -Status "failed:$($script:CurrentPhase)" -Elapsed $runElapsed
+            Write-DriverRecord "run $($script:RunId) stopped in $($script:CurrentPhase); manifest $manifest"
+            Write-Host "[bk] stopped in $($script:CurrentPhase); manifest: $manifest" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Warning "failure manifest not written (build verdict above is unaffected): $($_.Exception.Message)"
+    }
+    if (Get-Variable -Name PreviousOutputEncoding -Scope Script -ErrorAction SilentlyContinue) {
+        try { [Console]::OutputEncoding = $script:PreviousOutputEncoding } catch { Write-Verbose "console encoding not restored: $_" }
+    }
     # Sampler summary on failure too; guarded so it never replaces the real exception or skips Pop-Location.
     try {
         Set-BuildPhase 'done'
