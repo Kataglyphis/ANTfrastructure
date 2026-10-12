@@ -1315,7 +1315,7 @@ MANUAL = [
 
 # Hand-pinned wheel stores: each <prefix>*_URL with a *_SHA256 beside it is that wheel's version, moved with the SHA.
 WHEEL_URL_GROUPS = {
-    "PYTEST_WINDOWS_ARM64_": "cp314 win_arm64 pytest closure at the versions OrchestrANT's x64 lock runs (CON67)",
+    "PYTEST_WINDOWS_ARM64_": "PYTHON_VERSION's cpXY win_arm64 pytest closure at the versions OrchestrANT's x64 lock runs (CON67)",
     "TORCH_WINDOWS_ARM64_": "cp313 win_arm64 torch stack; torch/torchvision follow PYTORCH_VERSION/TORCHVISION_VERSION",
 }
 

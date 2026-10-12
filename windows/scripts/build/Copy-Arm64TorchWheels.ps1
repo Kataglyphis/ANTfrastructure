@@ -3,7 +3,7 @@
 
 #requires -Version 7.0
 
-# Two pinned win-arm64 stacks go into the wheel store: cp313 torch, which has no cp314 wheel upstream, and the cp314 pytest stack (docs/windows-cross-builds.md).
+# Two pinned win-arm64 stacks go into the wheel store: cp313 torch, which has no newer wheel upstream, and PYTHON_VERSION's cpXY pytest stack (docs/windows-cross-builds.md).
 
 param(
     [string]$WheelDir = 'C:\runtime\wheels',
@@ -44,7 +44,7 @@ function Get-Arm64WheelStack {
         JINJA2      = $false
         FSSPEC      = $false
     }
-    # The cp314 pytest stack the bundle's own interpreter runs a consumer's suite with (CON67); it shares jinja2 and setuptools with the torch stack.
+    # PYTHON_VERSION's cpXY pytest stack the bundle's own interpreter runs a consumer's suite with (CON67); it shares jinja2 and setuptools with the torch stack.
     [ordered]@{
         TORCH_WINDOWS_ARM64  = $torch
         PYTEST_WINDOWS_ARM64 = [ordered]@{
