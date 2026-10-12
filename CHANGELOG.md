@@ -6,6 +6,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — CON91, first half: the Windows drivers and syncs follow the Python pin
+
+- **`Get-PinnedPythonVersion`** (`WindowsPythonWheel.Common`) is the Windows twin of `python_pinned_major_minor`:
+  the image's `PYTHON_VERSION`, else `versions.env`, as X.Y, `cpXY` and `cpXYt`; no literal fallback. It is not in
+  `WindowsScripts.Shared`, which `Dockerfile.base` copies above `Install-Vs`, so an edit there would re-key VS.
+- **The drivers name no Python.** `Invoke-CiPackaging.ps1`, `Invoke-CiStaticAnalysis.ps1` and
+  `Invoke-PythonTestLegs.ps1` defaulted to 3.14; empty now takes the pin, and a leg list reads `pinned`/`pinnedt`
+  as `ci_tests.sh` does. `python-ci-windows.yml`'s `arm64-python-versions` defaults to empty (WebDavClient, its only
+  caller, passes its legs). `Test-ExperimentalPython`'s default is the pin's X.Yt.
+- **Inside our images the Windows sync installs no PyPI ORT**, as Linux's since 2227be6e: `Sync-UvProjectDependencies`
+  passes `--no-install-package` for every ORT entry of `uv.lock` (the unlocked retry too), and the reconcile installs
+  the chain wheels for those, uninstalling only what reached the venv. PyPI's onnxruntime has no cp315 wheel.
+- **The arm64 bundle's pytest stack** moves its three native wheels to cp315 `win_arm64` (PyPI's SHA256s), and
+  `Build.Arm64WheelStack` takes the stack's tag from `PYTHON_VERSION`: red on the cp314 pins, green on these.
+- **ai-edge-litert:** no release has a cp315 `win_amd64` wheel, so the torch app stage leaves it out of `uv sync`
+  (with a warning) until the chain builds one from source (owner decision). The rocm lane's PyPI extra and its cp314
+  pin are gone; the pin becomes the source build's accelerator carrier, and the accelerator DLL's own SHA256 is pinned
+  (the same bytes in the cp313 and cp314 wheels). `Torch.Rocm.Tests.ps1` is green again.
+
 ## 2026-10-12 — the LiteRT layer exports in 53 s instead of 19 min (#181); #184's review fixes
 
 - **#181: bazel's trees leave the LiteRT layer.** `Build-LitertLmBazel.ps1` left `C:\bzl` (the output base), `C:\llm`

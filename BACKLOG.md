@@ -235,18 +235,20 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 ## Open — Windows `:winamd64`
 
 - [ ] **CON91 — the Windows lanes follow the Python pin** [M, ★★]. The Windows images read the same
-      `PYTHON_VERSION` (3.15.0 since 2026-10-12, CON90), so their next chains build CPython 3.15. What still names
-      3.14 there, for the Windows host: the cp314 wheel pins in `versions.env` (`PYTEST_WINDOWS_ARM64_*`,
-      `TORCH_ROCM_WINDOWS_AI_EDGE_LITERT_*`); the tvm-ffi wheel tags (`Build-TvmFromSource.ps1`,
-      `WindowsTvm.Common.psm1`); and the twin store's name, `C:\runtime\wheels-cp314t` and `PYTHON_WHEELS_CP314T`,
-      which Linux now spells `wheels-free-threaded` / `PYTHON_WHEELS_FREE_THREADED`. The three readers take the new
-      name first already (hub, 2026-10-12), so the Dockerfile, the arm64 bundle's folder and their tests can move
-      next. Derive each from `PYTHON_VERSION` like Linux does, so the next upgrade is one line here too.
+      `PYTHON_VERSION` (3.15.0 since 2026-10-12, CON90), so their next chains build CPython 3.15. Derive every
+      version from it, as Linux does, so the next upgrade is one line here too.
       **Done (hub, 2026-10-12):** `Get-PinnedPythonVersion`; the drivers' defaults and the arm64 job's legs
-      (`pinned`/`pinnedt`); `Sync-UvProjectDependencies` leaves the lock's ORT to the chain wheels, as on Linux.
-      **Owner decision 2026-10-12: ai-edge-litert is built from source** for the pinned Python, since it has no
-      cp315 `win_amd64` wheel (2.3.0, the newest, stops at cp314). Until that lands, `Torch.Rocm.Tests.ps1`'s
-      "every cp wheel pinned matches PYTHON_VERSION" stays red.
+      (`pinned`/`pinnedt`); `Sync-UvProjectDependencies` leaves the lock's ORT to the chain wheels, as on Linux;
+      the arm64 bundle's native pytest wheels are cp315; the rocm venv's PyPI LiteRT extra and its cp314 pin are gone.
+      **Left:** the tvm-ffi wheel tags (`Build-TvmFromSource.ps1`, `WindowsTvm.Common.psm1`) and the remaining
+      literal fallbacks; the twin store's name, `C:\runtime\wheels-cp314t` / `PYTHON_WHEELS_CP314T`, which Linux
+      spells `wheels-free-threaded` / `PYTHON_WHEELS_FREE_THREADED` (the readers take the new name first already);
+      and **ai-edge-litert built from source** for the pinned Python (owner decision 2026-10-12): no release has a
+      cp315 `win_amd64` wheel (2.3.0 stops at cp314). Until it lands the cpu and nvidia venvs go without it (one app
+      smoke WARN), and the rocm variant's `rocm-1` fails on `Torch.ps1`'s LiteRT check, on purpose. The accelerator
+      DLL it needs is pinned already (`LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256`), so landing the build re-keys no
+      more than its own stages. All of it must land before the next amd64 chain, which `PYTHON_VERSION` re-keys
+      from `Dockerfile.base` anyway.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294
