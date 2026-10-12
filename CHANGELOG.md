@@ -6,6 +6,34 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — DeepStream runs on the published `:latest-nvidia`; `nvblender` does not (CON42, CON31)
+
+- **The GPU run on the published image passed.** `:latest-nvidia`, index sha256:810f36b3 (amd64
+  sha256:23e3cc9e), ran as pulled on the RTX 2080 (driver 595.58.03, CDI, rootless nerdctl). Every row of
+  the 2026-10-01 table holds:
+  - the gate engine was built for sm_75, and 1442 frames with 30214 objects went through `nvdsosd`;
+  - the NvDCF tracker, the demux and `nvurisrcbin` ran, all as uid 1001 too;
+  - `deepstream-verify.sh` with `DSV_WIRED=1` passed with the GPU attached.
+- **15 of the 21 prebuilt plugin files ran with sample data** (CON42's open question). All reached EOS
+  with sound output, except the known legacy mux and:
+  - `nvblender` takes its output surface from `GstMapInfo.data` after unmap, which GStreamer ≥ 1.28
+    clears. An unmap shim and GStreamer 1.24.2 each give it a valid surface.
+  - The AV1 encoder fails because Turing has none.
+
+  `nvblender` also stalls with two inputs on 1.24.2.
+- **Consumer facts, in a new `consumer-image-contract.md` § DeepStream in `:latest-nvidia`:**
+  - The toolkit's `enable-cuda-compat` hook may run CUDA on the image's compat libcuda. DeepStream ran on
+    it and on the host's.
+  - A GStreamer registry scanned without a GPU keeps DeepStream blacklisted.
+  - NVIDIA's `config_preprocess.txt` names a helper path the image moved.
+  - `nvdewarper` needs `num-surfaces-per-frame` on the new mux.
+  - uid 1001 needs a writable engine path.
+- **CON31:** the published image has no TensorRT 11. Its only `libnvinfer` is DeepStream's TensorRT
+  10.16.1, which `ldconfig -p` resolves. `tensorrt.conf` names a `/usr/local/tensorrt/lib` that does not
+  exist.
+- `docs/linux-accelerator-images.md` no longer calls `:latest-nvidia` unpublished, and no longer claims
+  the compat libcuda is for data-centre GPUs only.
+
 ## 2026-10-12 — the Linux backlog closes CON72, the CON83 lane and CON66's consumer half; CON78 Linux and CON79 1b proved
 
 - **CON72 is done:** every consumer is green on its post-image pin, Linux and Windows lanes alike: OmniAccelerANT

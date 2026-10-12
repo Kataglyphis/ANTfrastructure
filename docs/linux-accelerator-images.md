@@ -24,9 +24,10 @@ and `:latest`. The rules: [`AGENTS.md` § Image and tag naming](../AGENTS.md#ima
 > **Tag: `:latest-nvidia`** (a manifest; today one per-arch wrapper,
 > `:latest-nvidia-amd64` — arm64 joins when the cross-sbsa lane exists),
 > per [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags).
-> **Not published yet.** The old single-arch `:nvidia` (a 2026-04-22 build on
-> the Ubuntu 24.04 base) and its stage tags were deleted from the registry on
-> 2026-09-22.
+> **Published for amd64.** The 2026-10-11 index (`sha256:810f36b3…`) ran on a GPU on 2026-10-12
+> ([§ The GPU run on the published image](#the-gpu-run-on-the-published-image-2026-10-12)).
+> The old single-arch `:nvidia` (a 2026-04-22 build on the Ubuntu 24.04 base) and its stage
+> tags were deleted from the registry on 2026-09-22.
 
 > **Requirements:**
 > - Host driver >= 590.44 (for CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->).
@@ -57,8 +58,9 @@ What the variant changes, all in `build-cross-chain.sh` / `stage-defs.sh`:
 - **It starts at `gpu`** and refuses `--from-stage base|compiler|sdk`: those are
   the default chain's, so run that chain first when they are stale.
 - **`ENABLE_TENSORRT=false` by default** (owner decision 2026-09-22): the runtime
-  payload carries no `libnvinfer` yet. Set `ENABLE_TENSORRT=true` only together
-  with that copy.
+  payload carries no TensorRT 11. Its only `libnvinfer` is DeepStream's TensorRT 10
+  ([§ TensorRT 10 beside 11](#tensorrt-10-beside-11)). Set `ENABLE_TENSORRT=true` only
+  together with a TensorRT 11 copy into the package.
 - **amd64 only, and it pushes only from `CROSS_BUILD_PLATFORM=linux/amd64`.**
   Every target must BE the build platform's arch: `Dockerfile.nvidia` installs
   the build platform's CUDA and the ORT/OpenCV/TVM CUDA builds compile for it,
@@ -115,7 +117,7 @@ every stage as build-args. Change them there, not per command. The apt forms
 | ORT Python Package | `onnxruntime` (the `ONNX_PACKAGE` ARG default in `linux/Dockerfile.torch`) | `onnxruntime-gpu` (via `ONNX_PACKAGE`) |
 | PyTorch Extra | `pytorch-cpu` | `pytorch-cu130` (via `PYTORCH_EXTRA`) |
 | ORT output dir | `/usr/local/lib/onnxruntime-cpu` | Both cpu and `/usr/local/lib/onnxruntime-gpu` |
-| Image tag | `:latest` (3-arch manifest) | `:latest-nvidia` (manifest; not published yet) |
+| Image tag | `:latest` (3-arch manifest) | `:latest-nvidia` (manifest, amd64 only) |
 
 The standard build's release target is the multi-arch manifest `:latest`
 ([`linux-build-basics.md` § Image Hierarchy](linux-build-basics.md#image-hierarchy)
@@ -284,16 +286,25 @@ the six TensorRT 10 debs (from the CUDA repo's `Packages` index), and the source
 - **The driver's own libraries**: `libcuda.so.1` and `libnvidia-ml.so.1` come from the host,
   injected by `nvidia-container-toolkit` (`--gpus all`, or `--device nvidia.com/gpu=all`
   through CDI; rootless nerdctl: [`linux-host-setup.md` § B2c](linux-host-setup.md#b2c-a-gpu-container-on-an-x86-desktop-with-rootless-nerdctl)).
-  NVIDIA states driver 595.58.03 or newer for DeepStream 9.1. The image's `cuda-compat`
-  libcuda is forward compatibility for data-centre GPUs only, so a GeForce card needs a new
-  enough host driver itself.
+  NVIDIA states driver 595.58.03 or newer for DeepStream 9.1.
+- **The image's `cuda-compat` libcuda (615.71.09) can take over.** The CDI spec of
+  `nvidia-container-toolkit` 1.20.1 runs `nvidia-cdi-hook enable-cuda-compat
+  --host-driver-version=595.58.03`. In the container it left an
+  `/etc/ld.so.conf.d/00-compat-<uuid>.conf` naming `/usr/local/cuda-13.4/compat`, so
+  `libcuda.so.1` resolves to the image's compat driver before the host's, and `nvidia-smi`
+  reports CUDA 13.4 (the host: 13.2). Measured 2026-10-12 on the RTX 2080, a GeForce card, with
+  the 595.58.03 open kernel module: CUDA initialises through the compat libcuda, and DeepStream
+  runs on it and on the host's own libcuda alike.
 - **Everything beyond registration.** Without a GPU the gates prove the elements load and
   register. Measured without a driver, `nvstreammux` stops at PAUSED with
   `Cuda failure: status=100` and `Unable to set device in gst_nvstreammux_change_state`
   (100 is `cudaErrorNoDevice`).
 
-The gate command, from the sample data asset (`deepstream-sample-data_9.1.0.deb`, sha256
-`21ee7ddc…5e98`, not in the image), in the image's environment, which sets
+The gate command, from the sample data asset (not in the image):
+[`deepstream-sample-data_9.1.0.deb`](https://github.com/NVIDIA/DeepStream/releases/download/v9.1.0/deepstream-sample-data_9.1.0.deb),
+671818070 bytes, sha256 `21ee7ddcfdda83d56924f25ed124e314689bf65af8ca971b7404fdb292685e98`
+(GitHub's asset digest, checked against the download), installed with `dpkg -i`. It runs in
+the image's environment, which sets
 `USE_NEW_NVSTREAMMUX=yes` (§ [nvstreammux: the new one only](#nvstreammux-the-new-one-only)):
 
 ```bash
@@ -337,10 +348,87 @@ stub's SONAME `libcuda.so.1` then stands in for the driver for the rest of the s
 `plugin_init` logs `Cuda failure: status=34` (`cudaErrorStubLibrary`). The build stages have
 no GPU, so only a hand-run gate meets this.
 
-Three defects surfaced, each fixed in the source (they need an nvidia chain run to reach an
-image): the builder-resource links, the libv4l2 plugin link, and the mux switch below. A
-fourth, outside DeepStream, turned the first into a segfault:
+Three defects surfaced, each fixed in the source: the builder-resource links, the libv4l2
+plugin link, and the mux switch below. The published image carries all three, and the
+2026-10-12 run used each of them. A fourth, outside DeepStream, turned the first into a
+segfault:
 [`failure-modes.md` § An exception through std::call_once segfaults in libunwind](failure-modes.md#an-exception-through-stdcall_once-segfaults-in-libunwind).
+
+### The GPU run on the published image (2026-10-12)
+
+**Passed, except `nvblender`.** The published `:latest-nvidia` ran as pulled: index
+`sha256:810f36b38714b423652902ed35f4b221d36f868639a83a3b4da47c476b4a033e`, amd64 manifest
+`sha256:23e3cc9e5bbbfc64d8395e1d171faa56c89e9b09cbb95bedcba225110fe4bdd5`, built 2026-10-11 from
+hub aabebdbc. The host is the one of 2026-10-01: the RTX 2080 (sm_75), driver 595.58.03 with
+the open kernel module, rootless nerdctl 2.4.0 with CDI from `nvidia-container-toolkit` 1.20.1.
+Every pipeline ran through the image's entrypoint, in its own `ENV`, as root unless a row says
+uid 1001. A pad-probe program, compiled in the image against `sources/includes`, counted the
+metadata. Pass/fail and functional facts only (§ [Licence](#licence-the-owner-decision)).
+
+| Check | Result |
+| --- | --- |
+| `nvidia-smi` in the container | pass: driver 595.58.03, `CUDA Version: 13.4`, from the compat libcuda (§ [What needs a GPU host](#what-needs-a-gpu-host)) |
+| The nine gate elements, fresh registry, real driver, as uid 1001 | pass: no `Cuda failure` and no segfault in the scan; only `libnvdsgst_ucx.so` is blacklisted, the documented UCX exception; `nvh264dec`, `nvh264enc` and `cudaconvert` register too |
+| `deepstream-verify.sh` with `DSV_WIRED=1`, as `check_deepstream` runs it, GPU attached | pass: `DeepStream gates passed` |
+| The gate command above, no engine file | pass: `serialize cuda engine to file: …onnx_b30_gpu0_fp16.engine successfully`, then `Got EOS from element "pipeline0"`. The process loaded `libnvinfer_builder_resource_sm75.so.10.16.1` through its default-dir link, and reached NVDEC through the distro `libv4l2` and the plugin link |
+| decode → `nvstreammux` → `nvinfer` → `nvvideoconvert` → `nvdsosd` (`process-mode=1`) | pass: 1442 frames, all `NVBUF_MEM_CUDA_DEVICE`, 30214 objects in four classes, as on 2026-10-01. A frame copied out to JPEG shows boxes and labels |
+| Two sources, batch 2, `nvinfer` → `nvtracker` (NvDCF) → `nvmultistreamtiler` → `nvdsosd` | pass: 2884 frames from both pads, every object carries a tracker id |
+| `nvstreamdemux` to two branches; `nvurisrcbin` on an MP4 | pass: 1442 frames on each branch; 1442 frames |
+| All of the above as uid 1001, with uid 1001 building the engine in its own copy of the samples | pass |
+| CUDA 13.4 under NVIDIA's CUDA 13.2 builds | pass: `libcudart.so.13.4.92` |
+| The host's libcuda 595.58.03 in place of the compat one | pass: the `nvdsosd` pipeline, same counts |
+| The legacy `nvstreammux` (`USE_NEW_NVSTREAMMUX` unset) | **fail**, as documented: `streaming stopped, reason error (-5)` |
+
+The plugins no run had covered (CON42's open question). Of the 40 files in `lib/gst-plugins/`,
+21 are NVIDIA's prebuilt ones (their `.comment` reads Ubuntu GCC 13.3.0, marked P below); the
+rest were built here with GCC 16.2.0.
+
+| Element | Result |
+| --- | --- |
+| `nvv4l2h264enc`, `nvv4l2h265enc` (P) | pass: 1442 frames to MP4, decoded back to 1442 by `nvv4l2decoder`, clean |
+| `nvv4l2av1enc` (P) | fail on this GPU: `Device '/dev/v4l2-nvenc' has no supported format`. Turing's NVENC has no AV1 encoder |
+| `nvv4l2decoder` on H.265 (P) | pass: 1443 frames |
+| `nvjpegdec`, `nvjpegenc` (P) | pass: a JPEG round trip, the MJPEG sample (1442 frames), 1442 frames encoded |
+| `nvof` → `nvofvisual` (P) | pass: optical-flow metadata on all 1442 frames; the picture colours the moving bus, cyclist and car |
+| `nvsegvisual` (P) | pass: a class map on all 1442 frames. The samples carry no segmentation model, so `nvinfer` (`network-type=2`) ran a 1x1-convolution ONNX exported in the image |
+| `nvdslogger`, `nvdsxfer` (P) | pass: 1442 frames each |
+| `nvinferaudio` (P) | pass: the SONYC classifier on the sample WAV, two sources batched, labels on all 490 audio frames |
+| `deepstream_bins` (P): `nvinferbin` → `nvtrackerbin` → `nvtilerbin` → `nvosdbin` → `nvvideoencfilesinkbin`; `nvanalyticsbin`; `nvrtspoutsinkbin`; `nvdewarperbin` | pass: the MP4 decodes back to 1442 frames with boxes and tracker ids; analytics metadata on every frame; EOS; 120 frames dewarped to 480 surfaces |
+| `nvunixfdsink` → `nvunixfdsrc` (P), two processes | pass for the frames: 1141 crossed as CUDA surfaces, intact. EOS does not cross the socket |
+| `nv3dsink` (P), under the image's Xvfb | pass |
+| `nveglglessink` (P) | not run: under Xvfb it gets Mesa's EGL, no `EGLDisplay`, and segfaults. It needs an NVIDIA-driven display |
+| `nvblender` (P) | **fail**: § [nvblender](#nvblender-a-read-after-unmap-and-a-second-pad-it-ignores) |
+| `nvds3dbridge`, `nvds3dfilter`, `nvds3dmixer`, `nvdsvisionencoder` (P) | not run: their samples need a RealSense camera, Triton (not built), a model outside the sample data, or a GL display |
+| `nvdewarper`, built here around NVIDIA's `libnvds_dewarper.so` | pass: 120 frames to 480 coherent surfaces, once the new mux has `num-surfaces-per-frame=4` (§ [nvstreammux: the new one only](#nvstreammux-the-new-one-only)) |
+| `nvmultiurisrcbin`, `nvdspreprocess`, `nvdspostprocess`, `nvdsvideotemplate`, `nvdsanalytics`, `nvvideotestsrc`, `nvimagedec`/`nvimageenc`, `dsexample`, all built here | pass, each to EOS. `nvdspreprocess` only once its config names `lib/libcustom2d_preprocess.so` (§ [What the build changes against upstream](#what-the-build-changes-against-upstream)) |
+
+A pipeline that decodes an MP4 through `nvv4l2decoder` prints `gst_meta_api_type_has_tag:
+assertion 'tag != 0' failed` two to four times. It does so on GStreamer 1.24.2 as well (below),
+and nothing fails. Two consumer traps came out of the run, a registry scanned without a GPU and
+an engine cache in the root-owned tree:
+[`consumer-image-contract.md` § DeepStream in `:latest-nvidia`](consumer-image-contract.md#deepstream-in-latest-nvidia).
+
+#### nvblender: a read after unmap, and a second pad it ignores
+
+`nvblender` blends nothing on GStreamer 1.29.2. Every `NvBufSurfTransformCompositeBlend` call
+fails with `Error(-3) in NvBufSurfTransformCompositeBlend dropping buffer`, and the plugin's
+own debug line names the cause: `op_surf = (nil)`. It takes its output surface from
+`GstMapInfo.data` after `gst_buffer_unmap()`, the read the legacy mux makes. Two measurements
+prove it:
+
+- An `LD_PRELOAD` shim that restores `GstMapInfo` after unmap, as GStreamer < 1.28 left it,
+  gives a valid `op_surf` on every frame, and the blends succeed while input frames arrive. As
+  a control, the same shim makes the legacy mux run: 1442 frames, 30214 objects.
+- Ubuntu 24.04's GStreamer 1.24.2, loaded in the same container with NVIDIA's prebuilt
+  plugins, gives a valid `op_surf` without the shim.
+
+The second defect is NVIDIA's own. With two inputs `nvblender` never reaches EOS, on 1.24.2 as
+on 1.29.2: it passes none of `sink_1`'s events (caps, segment, EOS) to `GstVideoAggregator`, so
+the aggregator waits for `sink_1` forever. Its criticals (`invalid cast from 'GstNvblenderPad'
+to 'GstVideoAggregatorConvertPad'`, a NULL debug category, `tag != 0`) appear on 1.24.2 too.
+
+The image cannot fix either: the plugin is NVIDIA's binary, and the shim switches GStreamer's
+check off for every caller in the process. Do not use `nvblender` in this image.
 
 ### TensorRT builder resources, by file name
 
@@ -383,12 +471,18 @@ The new mux (`gst-nvmultistream2`, Apache-2.0 source, built here) has no such re
 NVIDIA's other readers of the switch (`libnvdsgst_customhelper.so`, `libnvds_yml_parser.so`)
 follow the same variable. So `Dockerfile.package` sets `ENV USE_NEW_NVSTREAMMUX=yes` when
 `ENABLE_DEEPSTREAM=true` and leaves it empty otherwise. Applications built for the legacy mux
-must use the new mux's properties (`config-file-path`, no `width`/`height`).
+must use the new mux's properties (`config-file-path`, no `width`/`height`). A source with
+several surfaces per frame, such as `nvdewarper`, needs `num-surfaces-per-frame` set: the new
+mux asks upstream only when the property is 0, and it defaults to 1. Without it, measured on
+2026-10-12, the mux takes no dewarped frame and pushes empty batches in a tight loop.
 
-Other prebuilt NVIDIA plugins may carry the same read. The run exercised `nvvideoconvert`,
-`nvv4l2decoder`, `nvmultistreamtiler` and the tracker library, all without failures; the
-rest of the prebuilt plugins (`deepstream_bins`, `dewarper`, `of`, `segvisual`, …) were not
-run.
+Other prebuilt NVIDIA plugins could carry the same read. The 2026-10-12 run drove 15 of the 21
+prebuilt plugin files with sample data
+([§ The GPU run on the published image](#the-gpu-run-on-the-published-image-2026-10-12)):
+`nvblender` carries it. The others ran to EOS with sound output, apart from the legacy mux
+itself and the AV1 encoder, which Turing lacks. Not run: the three ds3d
+plugins and `nvdsvisionencoder` (nothing in the sample data drives them), `nveglglessink`
+(needs an NVIDIA-driven display) and UCX (not loadable).
 
 **GPU architectures.** NVIDIA's prebuilt kernels carry SASS for sm_75, 80, 89, 90, 100,
 110, 120 and 121, plus PTX for sm_90. The two source components with CUDA code
@@ -430,6 +524,14 @@ directly, or `dlopen`s it with `RTLD_GLOBAL`, must not also run DeepStream's `nv
 
 `ENABLE_TENSORRT` stays `false` for the variant; DeepStream does not need it.
 
+So the published image carries no TensorRT 11 at all, and the clash above cannot happen in it
+as shipped. Measured 2026-10-12: its only `libnvinfer` files are this TensorRT 10 (the library,
+`libnvinfer_plugin`, `libnvonnxparser` and the eight builder resources), and `ldconfig -p`
+resolves `libnvinfer.so.10`, `libnvinfer_plugin.so.10` and `libnvonnxparser.so.10` to its
+prefix. ONNX Runtime's GPU build has the CUDA EP only. `/etc/ld.so.conf.d/tensorrt.conf` still
+names `/usr/local/tensorrt/lib`, which does not exist: `configure-runtime.sh` writes it for every
+nvidia build.
+
 ### CUDA 13.2 vs 13.4
 
 The runtime is built against CUDA 13.2, the variant ships 13.4.2. Measured: every CUDA
@@ -458,7 +560,9 @@ Each of these is a measured failure of NVIDIA's own `build/build.sh` flow in thi
   `libcustom2d_preprocess.so` there. The registry scan `dlclose()`s them, which unloads
   libraries that registered static quark strings, and the next plugin segfaults in
   `g_quark_from_static_string` (seen with `nvmultistreamtiler`, from a clean registry). The
-  build moves them to `lib/`.
+  build moves them to `lib/`. NVIDIA's configs still name the old place: measured 2026-10-12,
+  the sample data's `config_preprocess.txt` stops with `Could not parse custom lib path` until
+  its `custom-lib-path` names `lib/libcustom2d_preprocess.so`.
 - **Headers at `sources/includes`**, placed before the build: `ds3d/dataloader/lidarsource`
   includes from there, the full SDK's layout.
 - **`/opt/nvidia/deepstream/deepstream`**, also before the build: `nvmsgbroker`,
@@ -512,8 +616,9 @@ not resolve at all (run 20261010-193517). `ds_build` therefore writes the same
 `000-gstreamer.conf` before its gates. The stage's `/etc` never reaches the image, which
 copies only `/opt/nvidia` from it.
 
-Not covered by the gates: inference, NVDEC, a TensorRT engine build. The GPU run above
-covered them once; no lane has a GPU.
+Not covered by the gates: inference, NVDEC, a TensorRT engine build. The GPU runs above
+covered them, in a throwaway container on 2026-10-01 and on the published image on
+2026-10-12; no lane has a GPU.
 
 ### Licence: the owner decision
 
