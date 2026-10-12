@@ -64,6 +64,26 @@ function Install-TargetCompilerRt {
     }
 }
 
+function Get-PeTimeDateStamp {
+    # The COFF header's TimeDateStamp, 8 bytes past the 'PE\0\0' signature that e_lfanew points at.
+    param([Parameter(Mandatory)][string]$Path)
+    $head = [byte[]]::new(4096)
+    $fs = [IO.File]::OpenRead($Path)
+    try { $null = $fs.Read($head, 0, $head.Length) } finally { $fs.Dispose() }
+    $pe = [BitConverter]::ToInt32($head, 0x3C)
+    if ($pe -lt 0 -or $pe + 12 -gt $head.Length -or [BitConverter]::ToUInt32($head, $pe) -ne 0x00004550) { throw "Get-PeTimeDateStamp: $Path is not a PE file" }
+    return [BitConverter]::ToUInt32($head, $pe + 8)
+}
+
+function Assert-ReproducibleLink {
+    # /Brepro writes a content hash where the link time would go, so a stamp within a day of $Now means it did not apply.
+    param([Parameter(Mandatory)][string]$Path, [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow)
+    $stamp = Get-PeTimeDateStamp -Path $Path
+    if ([Math]::Abs(($Now - [DateTimeOffset]::FromUnixTimeSeconds($stamp)).TotalHours) -lt 24) {
+        throw ("$(Split-Path $Path -Leaf) carries a link-time PE stamp (0x{0:X8}): /Brepro did not apply, so its next relink empties the media lane's sccache (hub #180)." -f $stamp)
+    }
+}
+
 $clangCl = Join-Path $InstallPrefix 'bin\clang-cl.exe'
 if ($SkipIfPresent -and (Test-Path $clangCl)) {
     # Not a bare return: an older cached prefix lacks the aarch64 builtins and would never gain them.
@@ -95,6 +115,12 @@ if ($text -notmatch 'isSEHInstruction\(MI\)\s*\)?\s*\r?\n?\s*return 0;') {
 
 Enter-VsDevCmdEnvironment
 
+# The base image's pinned clang-cl, never CMake's default cl: LLVM adds /Brepro only for a Clang compiler, and without it every relink re-keys sccache (hub #180).
+$bootstrapClangCl = Join-Path "$env:LLVM_USER_BIN" 'clang-cl.exe'
+if (-not $env:LLVM_USER_BIN -or -not (Test-Path -LiteralPath $bootstrapClangCl)) {
+    throw "No pinned clang-cl at '$bootstrapClangCl' (LLVM_USER_BIN) to build LLVM with; refusing CMake's default MSVC cl."
+}
+
 $buildDir = Join-Path $SourceRoot 'build'
 $null = New-Item -ItemType Directory -Force -Path $buildDir
 
@@ -104,6 +130,8 @@ $cmakeArgs = @(
     '-S', (Join-Path $srcDir 'llvm'),
     '-B', $buildDir,
     '-DCMAKE_BUILD_TYPE=Release',
+    "-DCMAKE_C_COMPILER=$bootstrapClangCl",
+    "-DCMAKE_CXX_COMPILER=$bootstrapClangCl",
     # Only a clang-tidy from this tree reads this clang's BMIs, which record its (empty) repository string.
     '-DLLVM_ENABLE_PROJECTS=clang;lld;clang-tools-extra',
     '-DCLANG_ENABLE_CLANGD=OFF',
@@ -152,6 +180,7 @@ Write-SccacheStatsToStderr -Advanced -RequireRemote
 Complete-SccacheServerSession
 
 if (-not (Test-Path $clangCl)) { throw "clang-cl.exe not found at $clangCl after install." }
+Assert-ReproducibleLink -Path $clangCl
 $banner = (& $clangCl --version | Select-Object -First 1)
 Write-Host "Installed: $banner"
 # Test-Toolchain.ps1's provenance gate rejects a banner without the pinned version.
