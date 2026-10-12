@@ -317,6 +317,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - Silence the vendored-code warning floods. The arm64 VVL vertex alone is 1.36 M warning lines, 97.9 % of the 768 MB
         merge log (`docs/windows-refactor-backlog.md` #183). VVL and x265 are in source since 2026-10-12.
       - Pin bazelisk, the LiteRT JDK fallback and git-lfs by version and SHA256 (`docs/windows-refactor-backlog.md` #185).
+        In source since 2026-10-12.
       - IREE's VM ISA genrule on the GIL interpreter (`IREE_ISA_PYTHON`, CON79 item 1, optional).
       - Already in source, and re-keying the toolchain stage: the patched LLVM builds with the pinned clang-cl, so
         `clang-cl.exe` relinks reproducibly (`docs/windows-refactor-backlog.md` #180). The chain that carries it rebuilds

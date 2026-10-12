@@ -38,6 +38,43 @@ function Get-UrlWithRetry {
     }
 }
 
+# A cached download that must match its versions.env SHA256 pin; a stale or corrupt cache entry is fetched again (hub #185).
+function Get-PinnedTool {
+    param([Parameter(Mandatory)][string]$Uri, [Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$PinKey)
+    $want = [Environment]::GetEnvironmentVariable($PinKey)
+    if ($want -notmatch '^[0-9a-fA-F]{64}$') { throw "$PinKey is not a SHA256 ('$want'): refusing an unpinned $(Split-Path -Leaf $Path)" }
+    $hash = { if (Test-Path -LiteralPath $Path -PathType Leaf) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash } else { '' } }
+    if ((& $hash) -eq $want) { Write-Host "  $(Split-Path -Leaf $Path): cache hit"; return }
+    Get-UrlWithRetry -Uri $Uri -OutFile $Path
+    $got = & $hash
+    if ($got -ne $want) {
+        Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+        throw "$Uri has SHA256 $got, versions.env $PinKey pins $want"
+    }
+}
+
+# bazelisk, the JDK and git-lfs as release URLs from their versions.env pins, in install order.
+function Get-LitertLmToolPin {
+    $pin = @{}
+    foreach ($key in 'BAZELISK_WINDOWS_VERSION', 'TEMURIN_JDK_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_VERSION') {
+        $pin[$key] = [Environment]::GetEnvironmentVariable($key)
+        if ([string]::IsNullOrWhiteSpace($pin[$key])) { throw "$key is unset: the bazel tools are pinned in versions.env (hub #185)" }
+    }
+    $jdk = $pin['TEMURIN_JDK_WINDOWS_VERSION']
+    if ($jdk -notmatch '^(\d+)[.\d]*\+\d+$') { throw "TEMURIN_JDK_WINDOWS_VERSION '$jdk' is not <major>.<minor>.<patch>+<build>" }
+    $major = $Matches[1]
+    $bazelisk = $pin['BAZELISK_WINDOWS_VERSION']
+    $lfs = $pin['GIT_LFS_WINDOWS_VERSION']
+    return @(
+        [pscustomobject]@{ File = "bazelisk-$bazelisk.exe"; PinKey = 'BAZELISK_WINDOWS_AMD64_SHA256'
+            Uri = "https://github.com/bazelbuild/bazelisk/releases/download/$bazelisk/bazelisk-windows-amd64.exe" }
+        [pscustomobject]@{ File = "jdk-$($jdk -replace '\+', '_').zip"; PinKey = 'TEMURIN_JDK_WINDOWS_X64_SHA256'
+            Uri = "https://github.com/adoptium/temurin$major-binaries/releases/download/jdk-$($jdk -replace '\+', '%2B')/OpenJDK${major}U-jdk_x64_windows_hotspot_$($jdk -replace '\+', '_').zip" }
+        [pscustomobject]@{ File = "git-lfs-$lfs.zip"; PinKey = 'GIT_LFS_WINDOWS_AMD64_SHA256'
+            Uri = "https://github.com/git-lfs/git-lfs/releases/download/$lfs/git-lfs-windows-amd64-$lfs.zip" }
+    )
+}
+
 # rocm adds the WebGPU (Dawn -> D3D12) backend; `$GpuType -eq 'rocm'` stands in for HasRocm. See docs/windows-builds.md § ROCm layer
 
 function Get-LitertLmBazelArg {
@@ -166,29 +203,20 @@ Write-Host "=== [1/6] prerequisites: long paths + bazelisk + JDK (LiteRT-LM $tag
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f | Out-Null
 New-Item -ItemType Directory -Force -Path C:\bzl-tools | Out-Null
 
-# bazelisk and the JDK are cached on the mount: a live JDK download per build is unreliable.
+# bazelisk, the JDK and git-lfs are cached on the mount: a live JDK download per build is unreliable.
 $toolCache = if ($RepositoryCache) { Join-Path $RepositoryCache 'toolcache' } else { 'C:\bzl-tools' }
 New-Item -ItemType Directory -Force -Path $toolCache | Out-Null
-$cachedBazelisk = Join-Path $toolCache 'bazelisk.exe'
-$cachedJdkZip = Join-Path $toolCache 'jdk.zip'
-if (-not (Test-Path $cachedBazelisk) -or (Get-Item $cachedBazelisk).Length -eq 0) {
-    Get-UrlWithRetry -Uri 'https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-windows-amd64.exe' -OutFile $cachedBazelisk
-} else { Write-Host '  bazelisk: cache hit' }
-if (-not (Test-Path $cachedJdkZip) -or (Get-Item $cachedJdkZip).Length -eq 0) {
-    # The GitHub release asset first; the api.adoptium.net redirect is flaky.
-    try {
-        Get-UrlWithRetry -Uri 'https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jdk_x64_windows_hotspot_21.0.5_11.zip' -OutFile $cachedJdkZip
-    } catch {
-        Write-Host '  github JDK asset failed - falling back to api.adoptium.net'
-        Get-UrlWithRetry -Uri 'https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jdk/hotspot/normal/eclipse?project=jdk' -OutFile $cachedJdkZip
-    }
-} else { Write-Host '  JDK: cache hit' }
-Copy-Item $cachedBazelisk C:\bzl-tools\bazelisk.exe -Force
-& 7z x $cachedJdkZip -oC:\bzl-tools\jdk -y -bd | Out-Null
+$tools = Get-LitertLmToolPin
+foreach ($tool in $tools) { Get-PinnedTool -Uri $tool.Uri -Path (Join-Path $toolCache $tool.File) -PinKey $tool.PinKey }
+Copy-Item (Join-Path $toolCache $tools[0].File) C:\bzl-tools\bazelisk.exe -Force
+& 7z x (Join-Path $toolCache $tools[1].File) -oC:\bzl-tools\jdk -y -bd | Out-Null
 $env:JAVA_HOME = (Get-ChildItem C:\bzl-tools\jdk -Directory | Select-Object -First 1).FullName
+& 7z x (Join-Path $toolCache $tools[2].File) -oC:\bzl-tools\git-lfs -y -bd | Out-Null
+$gitLfs = @(Get-ChildItem -LiteralPath C:\bzl-tools\git-lfs -Recurse -Filter git-lfs.exe -File)
+if ($gitLfs.Count -ne 1) { throw "the git-lfs zip holds $($gitLfs.Count) git-lfs.exe, not one" }
+$env:PATH = "$($gitLfs[0].DirectoryName);$env:PATH"
 
 Write-Host "=== [2/6] clone $tag + git lfs (prebuilt libs) ==="
-if (-not (Get-Command git-lfs -ErrorAction SilentlyContinue)) { & scoop install main/git-lfs 2>&1 | Select-Object -Last 1 }
 & git lfs install --skip-repo 2>&1 | Out-Null
 & git clone --depth 1 --branch $tag https://github.com/google-ai-edge/LiteRT-LM.git C:\llm 2>&1 | Select-Object -Last 2
 Push-Location C:\llm
