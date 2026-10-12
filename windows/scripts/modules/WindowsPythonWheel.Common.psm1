@@ -42,6 +42,23 @@ function Get-FreeThreadedTarget {
     return [pscustomobject]@{ Version = "$($Matches[1]).$($Matches[2])t"; AbiTag = "cp$($Matches[1])$($Matches[2])t" }
 }
 
+function Get-PinnedPythonVersion {
+    <#
+    .SYNOPSIS
+        PYTHON_VERSION as Version, MajorMinor, AbiTag (cpXY) and FreeThreadedAbiTag (cpXYt): the image ENV, else versions.env; throws without either.
+    #>
+    [CmdletBinding()]
+    param([string]$VersionsEnvPath = (Resolve-SharedLinuxScriptFile -RepoPath 'linux\scripts\01-core\versions.env'))
+    $v = "$env:PYTHON_VERSION".Trim()
+    if (-not $v -and (Test-Path -LiteralPath $VersionsEnvPath -PathType Leaf)) {
+        $m = [regex]::Match([IO.File]::ReadAllText($VersionsEnvPath), '(?m)^PYTHON_VERSION=([^\r\n#]*)')
+        if ($m.Success) { $v = $m.Groups[1].Value.Trim().Trim('"', "'") }
+    }
+    if ($v -notmatch '^(\d+)\.(\d+)(\.\d+)?$') { throw "no pinned Python: PYTHON_VERSION is '$v' (image ENV, else $VersionsEnvPath)" }
+    $xy = "$($Matches[1])$($Matches[2])"
+    return [pscustomobject]@{ Version = $v; MajorMinor = "$($Matches[1]).$($Matches[2])"; AbiTag = "cp$xy"; FreeThreadedAbiTag = "cp${xy}t" }
+}
+
 function Get-PythonWheelAbiTag {
     <#
     .SYNOPSIS
@@ -333,7 +350,7 @@ function Get-WheelMemberDifference {
     }
 }
 
-Export-ModuleMember -Function Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PythonWheelAbiTag, Find-UvPython,
+Export-ModuleMember -Function Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PinnedPythonVersion, Get-PythonWheelAbiTag, Find-UvPython,
     Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof,
     Invoke-FreeThreadedWheelVenvProof, Get-TwinInstallArgument, Invoke-TwinDeviceProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,
     Get-WheelMemberDifference
