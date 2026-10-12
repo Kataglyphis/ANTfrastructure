@@ -124,18 +124,6 @@ this repo's cp314 pin).
   re-measure its "legitimate 117 s teardown": that OpenCV specimen ran sccache as well.
   Rides the next full chain, since `WindowsSourceBuild.Common` is mounted into every media
   layer.
-- **#180 — a toolchain re-run relinks clang-cl, and every media stage then compiles almost
-  cold (opened 2026-10-12, #153).** In bk-20261011-184301 and -233025 the patched-llvm stage
-  re-ran at 4233/4233 sccache hits yet relinked `clang.exe`. Afterwards every stage compiling
-  with `C:\llvm-patched\bin\clang-cl.exe` missed nearly everything (184301: onnx 9/1332,
-  ffmpeg 14/2361, opencv 24/1727, litert 0/5374, tvm 639/6970). The controls hit: torch, built
-  with TheRock's unchanged clang-cl, at 97.8 %, and arm64's onnx at 1150/1150 in
-  bk-20261010-121545, whose toolchain stayed cached. Likely cause, unproven: nothing passes
-  `/Brepro`, so a relinked exe differs in its timestamp and PDB GUID, and sccache keys on the
-  compiler's bytes. Confirm by hashing `clang-cl.exe` in two images relinked from the same
-  cache; if they differ, add `/Brepro` to the LLVM link flags in `Build-LlvmFromSource.ps1`
-  and prove it with two patched-llvm builds. On a toolchain re-key this is most of the media
-  lane's compile time. Rides the next full chain.
 - **#181 — the LiteRT layer keeps bazel's output base, its checkout and the JDK: 25 to 44 min
   of export per rebuild (opened 2026-10-12, #153).** Exporting the layer outlasts building
   it: 1,522 s in bk-20261011-184301 (export 1,126 s, unpack 396 s) after a 1,206 s RUN, and
@@ -173,19 +161,6 @@ this repo's cp314 pin).
   with the sccache launchers back (cleared after the server hung twice on that unit), build
   it at -j19 rather than -j9, and `$null =` the two `Invoke-GitClone` calls that print a stray
   `True`. Rides the next full chain with CON89.
-- **#184 — the BuildKit driver keeps no record of a stopped run (opened 2026-10-12, #153).**
-  `Build-Buildkit.ps1` writes `bk-<run>-manifest.txt` inside its `try`, so a failed run
-  leaves none: bk-20261011-233025 stopped on the disk gate after 19,592 s, and the sweep
-  rebuilt its stage seconds from file times. The retry verdict (`WindowsBuildDriver.Common`)
-  and the disk-gate verdict reach the console only, so a stage log's `attempt N/M` header is
-  the one on-disk trace of a retry. `resources-<run>.csv` samples free RAM but not free disk,
-  although export and unpack slowed near the gate (litert's unpack took 1,337 s there against
-  396 s in -184301). `--progress plain` carries no wall clock, so ~61 s before the first RUN
-  of three stages cannot be placed, and the driver decodes buildctl's UTF-8 with the OEM code
-  page (`—` arrives as `ÔÇö`). Fix: write the manifest from the `finally` with
-  `status=ok|failed:<stage>`, append both verdicts to a `bk-<run>-driver.log`, add a free-disk
-  column to the sampler, keep a `--progress rawjson` copy, and set `[Console]::OutputEncoding`
-  to UTF-8. Host-side only, so it re-keys no stage.
 - **#185 — chain RUNs fetch live on every rebuild, and three fetches are unpinned (opened
   2026-10-12, #153).** Against the everything-in-the-image rule, a rebuild fetches the PyTorch
   clone and submodules (262 s in bk-20261011-233025), the LiteRT sources (88 s, 244 s), the
@@ -310,6 +285,27 @@ this repo's cp314 pin).
   rested on.
 
 ### CLOSED (pointers — full narratives in the dated archives)
+
+- **#180 — the patched clang-cl relinks reproducibly. DONE in source 2026-10-12.** CMake's
+  default compiler for the LLVM build was MSVC `cl`, and LLVM appends `/Brepro` only for a
+  Clang compiler, so each relink stamped `clang-cl.exe` with the link time (0x6ACBBE2C in
+  bk-20261011-184301, 0x6AC6CAC6 in the published `:winamd64`, same 92,396,032 bytes) and
+  sccache, which keys on the compiler's bytes, missed nearly every media compile after it.
+  `Build-LlvmFromSource.ps1` now builds with the base image's pinned clang-cl
+  (`LLVM_USER_BIN`) and fails the stage when the installed `clang-cl.exe` still carries a
+  link-time stamp (`Assert-ReproducibleLink`). Proven on a local toolchain stage
+  (bk-20261012-144845, 18:23): LLVM compiled cold with clang-cl in about 12 min, and
+  `clang-cl.exe` carries the content hash 0x35341D1A. The next full chain rebuilds the media
+  lane once against it; the relink after that is the one that keeps its hits.
+- **#184 — a stopped BuildKit run keeps its record. DONE 2026-10-12.** `Build-Buildkit.ps1`
+  writes `bk-<run>-manifest.txt` with `status=ok` or, from its `finally`,
+  `status=failed:<stage>` and every finished stage, in the invariant culture (a German host
+  had written `patched-llvm=778,9` beside `total_s=13058`). `bk-<run>-driver.log` records the
+  run, each stage's start, end and failure, every retry verdict with the line that made it
+  transient, and every disk-gate verdict (`Write-DriverRecord`). The resource CSV gains
+  `diskFreeGB` for the build drive and `-Summarize` a `MinDiskFreeGB` column. buildctl's
+  output is decoded as UTF-8. Left out: a `--progress rawjson` copy, since buildctl takes one
+  progress mode; the driver log's stage stamps place the time before a stage's first RUN.
 
 - **#153 — the step-time / silent-retry sweep. DONE 2026-10-12.** The 2026-09-01/02 logs it
   named were pruned (only manifests survive), so it ran over the three complete chains left,

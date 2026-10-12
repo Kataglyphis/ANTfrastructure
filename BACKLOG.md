@@ -319,6 +319,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         merge log (`docs/windows-refactor-backlog.md` #183).
       - Pin bazelisk, the LiteRT JDK fallback and git-lfs by version and SHA256 (`docs/windows-refactor-backlog.md` #185).
       - IREE's VM ISA genrule on the GIL interpreter (`IREE_ISA_PYTHON`, CON79 item 1, optional).
+      - Already in source, and re-keying the toolchain stage: the patched LLVM builds with the pinned clang-cl, so
+        `clang-cl.exe` relinks reproducibly (`docs/windows-refactor-backlog.md` #180). The chain that carries it rebuilds
+        the media lane once.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
