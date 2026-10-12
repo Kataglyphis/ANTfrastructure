@@ -82,13 +82,25 @@ this repo's cp314 pin).
   (13.2 %) in bk-20261010-121545. RUNs without a server close 1 to 9 s after their last
   line, a multi-GB `Install-Rocm` extract included, and the arm64 VVL RUN, whose launchers
   are cleared, closes 1.3 s after 513 s of compiling. The size of the RUN makes no
-  difference. `SCCACHE_IDLE_TIMEOUT=0`, so no script of ours waits 120 s; Windows' default
-  `TcpTimedWaitDelay` is 120 s and is one candidate. First a buildctl probe, no chain needed:
-  the webdav backend with a stop, a local-disk backend, launchers only, and no sccache, each
-  logging every second whether `sccache.exe` lives and the webdav port's TIME_WAIT entries.
-  Then the fix in `Complete-SccacheServerSession`: a bounded wait for the server to exit once
-  the write-through has landed, then `Stop-Process`; the servers the launchers alone started
-  (hailo, merge 2/9) get stopped too. In the same function, webdav `NotFound (permanent)`
+  difference. **Probed 2026-10-12** with buildctl over `bk-windows-toolchain`, one RUN per
+  variant and its own cache mount id. The tail comes from the sccache server ending
+  *gracefully*:
+  - A RUN with no sccache reaches DONE 1 s after its script ends.
+  - With `sccache --stop-server`, DONE comes 120 to 123 s after the end. That holds for the
+    webdav and the local-disk backend, with or without a compile, and also when the server
+    process is gone 0.1 s after the stop and no process of the RUN is left. A server left
+    running costs the same.
+  - `Stop-Process -Force` on the server instead: DONE 1 s after the end, as without sccache.
+    Killing an unrelated detached process costs nothing either.
+  - So it is neither webdav, nor a live process, nor the size of the RUN. A graceful close
+    leaves sockets in TIME_WAIT and a kill resets them, and Windows' default
+    `TcpTimedWaitDelay` is 120 s. That is the leading suspect, but no probe has isolated it
+    yet: a loopback pair outside sccache, closed cleanly, still has to show the same tail.
+  The fix in `Complete-SccacheServerSession` must keep the write-through that the graceful
+  stop exists for (#91), and since the server is gone at once, a kill after the stop changes
+  nothing. Either the server is killed once its writes have landed (a reliable sign of that is
+  still to find), or the host's `TcpTimedWaitDelay` drops to 30 s (an owner decision). Either
+  way, the servers that the launchers alone started (hailo, merge 2/9) need the same. In the same function, webdav `NotFound (permanent)`
   404s are cache misses rather than failures, and the `-Last 60` dump contradicts its
   "Failures in full" comment. Before `upstream/hcsshim-teardown-timeout/ISSUE.md` is filed,
   re-measure its "legitimate 117 s teardown": that OpenCV specimen ran sccache as well.
@@ -187,8 +199,13 @@ this repo's cp314 pin).
   one. Nothing reads history at run time, so consumers are unaffected; it still
   publishes an RFC1918 address. The fix is to pass the endpoint as a secret
   (`RUN --mount=type=secret,id=sccache_endpoint,env=SCCACHE_WEBDAV_ENDPOINT`, with
-  `buildctl --secret`), which records nothing. Untested on WCOW: verify first that
-  this host's buildkitd supports secret mounts with `env=` in a Windows RUN, then
+  `buildctl --secret`), which records nothing. **Verified on WCOW 2026-10-12**
+  (buildkitd v0.33.0, a buildctl probe over `bk-windows-toolchain`): the `env=` form
+  sets the variable in its RUN, the next RUN no longer sees it, and no file is left
+  in `C:\`, `C:\run`, `%TEMP%`, `C:\Windows\Temp` or `C:\ProgramData`. Its value also
+  stays out of the cache key, which an ARG's does not. **Never the file form on WCOW:**
+  a `target=C:\…` secret mount stays in the snapshot, so the next RUN still reads the
+  file and the layer carries it (an upstream defect to report, owner's call). Left:
   change all ten compiling stages at one planned re-key. Context:
   [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
 - **#155 — LiteRT QNN: the real flags, and why wiring them now would be a fourth
