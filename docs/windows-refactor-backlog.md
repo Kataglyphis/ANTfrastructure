@@ -124,19 +124,6 @@ this repo's cp314 pin).
   re-measure its "legitimate 117 s teardown": that OpenCV specimen ran sccache as well.
   Rides the next full chain, since `WindowsSourceBuild.Common` is mounted into every media
   layer.
-- **#181 — the LiteRT layer keeps bazel's output base, its checkout and the JDK: 25 to 44 min
-  of export per rebuild (opened 2026-10-12, #153).** Exporting the layer outlasts building
-  it: 1,522 s in bk-20261011-184301 (export 1,126 s, unpack 396 s) after a 1,206 s RUN, and
-  2,653 s in -233025 at 9 % CPU. Every other stage exports in 4 to 109 s, torch in 314 to
-  573 s. `Build-LitertLmBazel.ps1` leaves `C:\bzl` (the output base), `C:\llm` (the clone
-  with 516 MiB of git-LFS prebuilts), `C:\bzl-tools` and `C:\bazel-build.log` in the layer
-  and runs no `bazel shutdown`, while the merge copies only `C:\runtime\lib\litert{,-lm}`
-  out of it. Fix: measure the four, then `bazelisk --output_base=C:\bzl shutdown` and a
-  long-path-safe delete after the contract check; the gate is an export of tens of seconds.
-  In the same script, stream bazel's progress instead of `Select-Object -Last 20`, which
-  hides 447 to 454 s, and weigh a remote action cache on the webdav host: every rebuild
-  compiles its 3,603 actions afresh. Feeds #163's owed litert measurement. Rides the next
-  full chain.
 - **#182 — GStreamer's meson build bypasses sccache on both arches, and its setup fetches
   ~50 wraps live (opened 2026-10-12, #153).** `Build-GstreamerFromSource.ps1` sets
   `CC/CXX='sccache clang-cl'` and logs "sccache enabled for meson", but meson records a bare
@@ -285,6 +272,17 @@ this repo's cp314 pin).
   rested on.
 
 ### CLOSED (pointers — full narratives in the dated archives)
+
+- **#181 — the LiteRT layer no longer exports bazel's trees. DONE 2026-10-12.**
+  `Build-LitertLmBazel.ps1` stops the bazel server and removes `C:\bzl`, `C:\llm`,
+  `C:\bzl-tools` and the bazel log after the install's contract check; the merge copies only
+  `lib\litert-lm` out of the layer. Proven on a local media-litert stage (bk-20261012-152007):
+  8.7 GB removed (6.66 + 1.72 + 0.33 GB), and the layer's export took 52.9 s, against 1,126 s
+  in bk-20261011-184301. Its unpack took 1,047 s, against 396 s there and 1,337 s in
+  bk-20261011-233025, so unpack time follows the host, not this layer, and the stage came to
+  2,415 s against 2,728 s. bazel's user root (1.21 GB) and bazelisk's cache (0.11 GB) stay,
+  too small to move. Bazel's progress now reaches the stage log once per 30 s. Not done: a
+  remote action cache for the 3,603 actions every rebuild compiles afresh.
 
 - **#180 — the patched clang-cl relinks reproducibly. DONE in source 2026-10-12.** CMake's
   default compiler for the LLVM build was MSVC `cl`, and LLVM appends `/Brepro` only for a

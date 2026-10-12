@@ -6,6 +6,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — the LiteRT layer exports in 53 s instead of 19 min (#181); #184's review fixes
+
+- **#181: bazel's trees leave the LiteRT layer.** `Build-LitertLmBazel.ps1` left `C:\bzl` (the output base), `C:\llm`
+  (the checkout with its git-LFS prebuilts), `C:\bzl-tools` and the bazel log in the layer, and the merge copies only
+  `lib\litert-lm` out of it. After the install's contract check, `Remove-LitertLmBuildTree` now stops the bazel
+  server's `java.exe` and removes them; a junction inside never takes its target along (tested). On a local
+  media-litert stage (bk-20261012-152007) 8.7 GB left the layer, and its export took 52.9 s against 1,126 s. The
+  unpack, 1,047 s there, varies with the host. Bazel's output streams to the stage log, its progress throttled to one
+  line per 30 s, where `Select-Object -Last 20` used to hide 450 s.
+- **#184's adversarial review found four defects, all fixed.**
+  - A throw between stages was charged to the stage that had just passed.
+  - The failure manifest could read a caller's `$started`.
+  - A snapshot-mount contention retry was recorded twice.
+  - `-ConcurrentAux` children shared one driver log and manifest. The parent now passes `-ParentRunId`, and a child's
+    run is `<parent>-<branch>`.
+
+  The manifest culture test runs under de-DE, so an en-US runner catches that regression too. The first real run with
+  the driver log showed `done in 2.415,0s`, so its timed records are culture-invariant now.
+
 ## 2026-10-12 — the patched clang-cl relinks reproducibly (#180), and a stopped BuildKit run keeps its record (#184)
 
 - **#180: LLVM builds with the pinned clang-cl, so `/Brepro` applies.** CMake's default compiler for the patched LLVM was
