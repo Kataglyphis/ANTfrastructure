@@ -580,7 +580,7 @@ $py = Initialize-ToolchainPythonEnvironment
 # The bindings need numpy headers at compile time, the wheel step setuptools and wheel.
 Install-CpythonPip -Python $py
 Switch-BuildPhase '2. python deps + cmake args'
-Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setuptools', 'wheel', 'packaging')
+Install-CpythonPipPin -Python $py -Name numpy, setuptools, wheel, packaging
 
 # x86-only features atop the SIMD base; AVX-512/AMX go per TU below (docs/windows-cross-builds.md § SIMD: the failure that hides inside a green build).
 $onnxTargetArch = Get-WindowsTargetArch

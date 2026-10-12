@@ -239,7 +239,7 @@ if ($ireeCross -and -not $SkipPython) {
         $pythonBindings = 'ON'
         Install-CpythonPip -Python $py
         Initialize-PythonPlatformTag | Out-Null   # EXT_SUFFIX -> target tag for the .pyd name
-        Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'wheel', 'setuptools', 'numpy')
+        Install-CpythonPipPin -Python $py -Name wheel, setuptools, numpy
         $ireeNumpyInc = (Invoke-ShieldedNative -Label 'numpy include probe' -CommandLine """$($py.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
         if (-not $ireeNumpyInc -or -not (Test-Path (Join-Path $ireeNumpyInc 'numpy\arrayobject.h'))) {
             throw "IREE: numpy include dir not usable ('$ireeNumpyInc') -- numpy must be importable by the build interpreter $($py.Exe) before configure"
@@ -258,7 +258,7 @@ if ($ireeCross -and -not $SkipPython) {
     $pythonBindings = 'ON'
     Install-CpythonPip -Python $py
     # numpy: required by the runtime bindings at import; nanobind is vendored.
-    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'wheel', 'setuptools', 'numpy')
+    Install-CpythonPipPin -Python $py -Name wheel, setuptools, numpy
 }
 
 # Neither the CUDA HAL driver (dlopens nvcuda.dll) nor the NVPTX target needs nvcc.

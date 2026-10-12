@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — every pip install in the Windows chain is pinned (CON89)
+
+- **No build installs a floating Python package any more.** FFmpeg's codecs installed an unpinned `meson`, and the
+  ONNX Runtime, GenAI, OpenCV, IREE and TVM builds installed numpy, setuptools, wheel, packaging, requests,
+  scikit-build-core, setuptools-scm, typing_extensions, ml_dtypes, cloudpickle and psutil at whatever PyPI served that
+  day. `Install-CpythonPipPin` (`WindowsSourceBuild.Common`) installs each at its `PY_*_VERSION` pin and throws for a
+  package without one; five pins are new (requests 2.34.2, typing_extensions 4.16.0, ml_dtypes 0.6.0, cloudpickle
+  3.1.2, psutil 7.2.2, each with a cp315, abi3 or pure wheel). The Cython both media branches install comes through
+  it too. `Build.PipPins.Tests.ps1` fails on a bare package name in any `Invoke-CpythonPip install`. Rides the next
+  chain.
+
 ## 2026-10-12 — the LiteRT-LM bazel build fetches only pinned, checked tools (#185)
 
 - **bazelisk, the JDK and git-lfs are pinned by version and SHA256.** `Build-LitertLmBazel.ps1` took bazelisk from
