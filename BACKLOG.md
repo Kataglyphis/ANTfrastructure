@@ -161,8 +161,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         `3.14` leg (run 38171396906). Its riscv64 row runs no `3.14t` leg, so `uv_venv_create 3.14t` ran in the published
         riscv64 child (`7689579f…`) under QEMU: `/opt/python-freethreaded` 3.14.8, `gil=False`,
         `cpython-314t-riscv64-linux-gnu`, nothing in uv's managed store. Both consumers also run their suite on the
-        installed cp314t wheel (OrchestrANT de144d1, WebDavClient 3096c57); a hub step for "test the installed wheel"
-        would replace their two local scripts.
+        installed cp314t wheel, through the hub's `test-free-threaded-wheel.sh` since 2026-10-12 (hub 9ade0dd1, OrchestrANT
+        0f6def5, WebDavClient 5663983; their two local scripts are gone). Proved locally in `:latest`; their next Linux
+        x64 and arm64 runs prove it in CI.
       - The toolchain stage's added time on a CI runner (estimate 25-40 min on 4 cores); a local chain
         time is not that number.
       - A native arm64 toolchain build (PGO on arm64).
@@ -345,12 +346,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `nvurisrcbin`, all again as uid 1001. Phase 8's contract is in `docs/consumer-image-contract.md` § DeepStream in
       `:latest-nvidia`. Of the prebuilt plugins, only `nvblender` reads `GstMapInfo` after unmap like the legacy mux
       (every blend drops its buffer; with two inputs it also hangs, on GStreamer 1.24.2 too); 14 others reached EOS with
-      correct output. Left, each an owner call:
-      - `nvblender`: documented "do not use". An opt-in shim that restores the mapping would also revive the legacy mux,
-        but it turns off a GStreamer check for the whole process, and the two-input hang stays (NVIDIA's own).
-      - NVIDIA's stock `config_preprocess.txt` names `lib/gst-plugins/libcustom2d_preprocess.so`, which the image moved to
-        `lib/` (documented). Making stock configs work unchanged means a plugins-only link target and a chain rebuild.
+      correct output. Left:
       - OmniAccelerANT's `nvinfer` path: later, by owner decision (2026-10-12).
+      - `nvblender` upstream: a forum draft (both defects, with the RTX 2080's repro) waits for the owner's review in
+        `~/upstream-drafts/2026-10-12/nvidia-deepstream/` on the build host; nothing is posted.
       - **Phase 7 (arm64)**: out of scope until CON31 has an arm64 CUDA route. The Jetson runtime `.deb` is pinned
         (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it.
       Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.

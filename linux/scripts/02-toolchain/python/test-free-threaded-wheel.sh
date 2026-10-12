@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
-# Runs a project's tests on its installed cp3XYt wheel after ci_packaging.sh; see docs/python-ci.md#the-suite-on-the-installed-wheel
-#
-# Usage: test-free-threaded-wheel.sh [--python-version 3.14] [--extra NAME] [--copy PATH]... [--env NAME=VALUE]...
-#                                    [--isolated] [-- PYTEST_ARG...]
-#   --copy      a test file or directory, staged at its relative path in a run directory outside the checkout
-#   --extra     the lock's extra the tests need, exported with the lock's default groups
-#   --env       set for the pytest process only
-#   --isolated  run pytest under python -I: no PYTHONPATH, and the run directory is not on sys.path
+# Runs a project's tests on its installed cp3XYt wheel after ci_packaging.sh; flags in docs/python-ci.md#the-suite-on-the-installed-wheel
 
 set -euo pipefail
 
