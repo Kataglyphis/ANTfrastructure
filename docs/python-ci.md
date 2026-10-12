@@ -307,10 +307,11 @@ installed whatever the lock named, so OrchestrANT's CI tested on PyPI `onnxrunti
 `onnxruntime-gpu` and `onnxruntime-genai` (plus the `-directml` pair on Windows), all
 overlapping in one `site-packages/onnxruntime`.
 
-**Inside our images the Linux sync installs no PyPI ORT at all** (since 2026-10-12). With a
-`uv.lock` and `ORT_CHAIN_WHEEL_DIR` set, `uv_sync_project` passes `--no-install-package` for every
-lock entry the census counts as ONNX Runtime (`onnxruntime` and `onnxruntime-*`), and the reconcile
-installs the chain wheels in their place. The chain's ORT then serves a Python that PyPI's has no
+**Inside our images the sync installs no PyPI ORT at all** (since 2026-10-12). With a `uv.lock`
+and a chain store (step 1 below: `ORT_CHAIN_WHEEL_DIR` on Linux; on Windows also the image's
+`PYTHON_WHEELS`), `uv_sync_project` and `Sync-UvProjectDependencies` pass `--no-install-package` for
+every lock entry the census counts as ONNX Runtime (`onnxruntime` and `onnxruntime-*`), the unlocked
+retry too, and the reconcile installs the chain wheels in their place. The chain's ORT then serves a Python that PyPI's has no
 wheel for yet: 1.31.0 stopped at cp314 when 3.15.0 came out, and a locked sync on 3.15 failed on it.
 
 Every `uv_sync_project` (Linux) and `Sync-UvProjectDependencies` (Windows) now ends by
@@ -336,7 +337,8 @@ reconciling the venv it synced:
    lanes, § Free-threaded and GIL legs). On Linux it takes only the twins of the flavours
    `ORT_CHAIN_WHEEL_DIR` holds, since a GPU image's twin store carries two ORT flavours and a
    venv given both has two cores.
-5. **The replacement:** `uv pip uninstall` every listed distribution, then
+5. **The replacement:** `uv pip uninstall` every listed distribution that reached the venv (a
+   skipped one never did), then
    `uv pip install --no-index --no-deps --force-reinstall` every `onnxruntime[-_]*.whl`
    in the store. Then two proofs, and **either one failing fails the sync**:
    `--check --store` (each ORT distribution byte-identical to a store wheel,
