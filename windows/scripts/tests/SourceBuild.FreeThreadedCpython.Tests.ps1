@@ -81,6 +81,18 @@ Describe 'Get-CpythonPcbuildArguments' {
         Assert-Equal $want ($a -join ' ') 'build.bat stops parsing its own options at the first /p:'
         Assert-Equal 'C:\temp\cpython\PCbuild\freethreaded\amd64' (Get-CpythonFreeThreadedBuildDir -SourceDir 'C:\temp\cpython' -Arch amd64) 'PCbuild appends the arch'
     }
+
+    It 'follows python.props into the t-suffixed arch dir, where 3.15 writes the free-threaded binaries' {
+        Invoke-InTestDir { param($d)
+            $null = New-Item -ItemType Directory -Force -Path "$d\PCbuild"
+            Set-Content -LiteralPath "$d\PCbuild\python.props" -Value '<BuildPath64 Condition="''$(Py_OutDir)'' != ''''">$(Py_OutDir)\amd64\</BuildPath64>'
+            Assert-Equal "$d\PCbuild\freethreaded\amd64" (Get-CpythonFreeThreadedBuildDir -SourceDir $d -Arch amd64) '3.14: no t-suffixed build path'
+            Add-Content -LiteralPath "$d\PCbuild\python.props" -Value '<BuildPath64t Condition="''$(Py_OutDir)'' != ''''">$(Py_OutDir)\amd64t\</BuildPath64t>'
+            Assert-Equal "$d\PCbuild\freethreaded\amd64t" (Get-CpythonFreeThreadedBuildDir -SourceDir $d -Arch amd64) '3.15: amd64t (bk-20261012-185459)'
+            Assert-Equal "$d\PCbuild\freethreaded\arm64t" (Get-CpythonFreeThreadedBuildDir -SourceDir $d -Arch arm64) 'the cross lane''s arm64t'
+            Assert-Equal "$d\PCbuild\freethreaded" (Get-CpythonFreeThreadedBuildDir -SourceDir $d) 'Py_OutDir itself stays'
+        }
+    }
 }
 
 Describe 'Assert-CpythonInterpreter' {
