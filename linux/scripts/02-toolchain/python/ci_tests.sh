@@ -11,7 +11,8 @@ detect_workspace
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "Usage: ci_tests.sh [package_name] [py_versions_string]"
   echo "  package_name defaults to \$PACKAGE_NAME or derived from pyproject.toml"
-  echo "  py_versions_string defaults to \$PY_VERSIONS, else the pinned X.Y, plus X.Yt when pyproject.toml declares free-threading"
+  echo "  py_versions_string defaults to \$PY_VERSIONS, else the pinned X.Y, plus X.Yt when pyproject.toml declares free-threading;"
+  echo "  the word pinned in it stands for that X.Y (pinnedt for its free-threaded twin)"
   echo "  log file defaults to \$CI_TESTS_LOG_FILE or 'docs/test_results/ci_tests-<timestamp>.log'"
   echo "  \$PYTEST_PATHS (comma list) narrows pytest; empty runs the project's configured testpaths"
   echo "  \$FREE_THREADED_SYNC_EXTRAS (comma list) makes a free-threaded leg sync only those extras and gate"
@@ -31,6 +32,10 @@ default_py_versions() {
   fi
 }
 PY_VERSIONS="${2:-${PY_VERSIONS:-$(default_py_versions)}}"
+# `pinned` in a caller's list is the pinned X.Y (`pinnedt` its twin), so a row that picks its legs names no version.
+if [[ " ${PY_VERSIONS} " == *pinned* ]]; then
+  PY_VERSIONS="${PY_VERSIONS//pinned/${DEFAULT_PYTHON_VERSION:?no pinned Python for the pinned leg: keep versions.env beside python_uv.sh}}"
+fi
 # EXPERIMENTAL_PYTHON_VERSIONS is owned and read by 01-core/python_uv.sh; nothing to set here.
 
 # Empty runs the project's own testpaths: a hard-coded subdir once left a consumer's real suite on no lane.

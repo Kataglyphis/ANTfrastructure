@@ -704,7 +704,10 @@ One line moves every image, lane and default: `PYTHON_VERSION` in
   `PYTHON_FT_ABI_TAG` (`common.sh`).
 - The drivers' defaults. `ci_tests.sh` runs X.Y, plus X.Yt when `pyproject.toml` declares
   free-threading; the packaging, static-analysis, docs, wheel-smoke and wheel-test drivers take X.Y. A
-  consumer that passes no version follows the image.
+  consumer that passes no version follows the image, and one that picks its legs writes `pinned`
+  (`pinned` alone for the GIL leg, `pinnedt` for its twin). `ci_build_docs.sh` also publishes the
+  default leg's reports as `pytest-report.html`/`.md` and `pytest-report-free-threaded.html`, so a
+  docs page links names without a version.
 - The free-threaded store's names carry no version: `/opt/wheels-free-threaded`,
   `PYTHON_WHEELS_FREE_THREADED`.
 - The riscv64 uv cache seed, the app bundle's python-build-standalone, and the hub's own workflows,

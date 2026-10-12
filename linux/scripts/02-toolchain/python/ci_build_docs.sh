@@ -81,6 +81,13 @@ for md_file in "$SRC"/pytest-report-*.md; do
   fi
 done
 
+# The published leg and its free-threaded twin under names without a version, so a docs page survives a Python upgrade.
+for ext in html md; do
+  dst="$TEST_RESULTS_DST"; [ "$ext" = md ] && dst="$STATIC_DIR"
+  [ ! -f "$SRC/pytest-report-${COVERAGE_VERSION}.${ext}" ] || cp "$SRC/pytest-report-${COVERAGE_VERSION}.${ext}" "$dst/pytest-report.${ext}"
+  [ ! -f "$SRC/pytest-report-${COVERAGE_VERSION}t.${ext}" ] || cp "$SRC/pytest-report-${COVERAGE_VERSION}t.${ext}" "$dst/pytest-report-free-threaded.${ext}"
+done
+
 cd "$WORKSPACE_ROOT/docs"
 make html
 

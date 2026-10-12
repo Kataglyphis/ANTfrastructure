@@ -64,6 +64,12 @@ t_case "a consumer's own list still wins"
 t_assert_ok _driver ci_tests pkg "${IMAGE_PY} ${IMAGE_PY}t"
 t_assert_eq "${IMAGE_PY} ${IMAGE_PY}t" "$(_legs)"
 
+t_case "the word pinned in a caller's list is the pinned X.Y, pinnedt its free-threaded twin"
+t_assert_ok _driver ci_tests pkg "pinned"
+t_assert_eq "${IMAGE_PY}" "$(_legs)" "a row that wants only the GIL leg names no version"
+t_assert_ok _driver ci_tests pkg "pinned pinnedt"
+t_assert_eq "${IMAGE_PY} ${IMAGE_PY}t" "$(_legs)"
+
 t_case "ci_build_docs.sh with no version publishes the coverage of the default leg, not another leg's beside it"
 t_assert_ok _driver ci_tests
 _html="$(sed -n 's/^run pytest .*--cov-report=html:\([^ ]*\) .*/\1/p' "${REC}")"
@@ -77,6 +83,15 @@ t_assert_eq "${IMAGE_PY}" "$(_legs)" "the docs venv syncs on the image interpret
 t_assert_eq "default leg" "$(cat "${WS}/docs/source/_static/coverage/index.html" 2>&1)"
 t_assert_eq "default leg" "$(cat "${WS}/docs/source/_static/coverage.xml" 2>&1)"
 t_assert_contains "$(cat "${REC}")" "make html" "and the docs are built"
+
+t_case "ci_build_docs.sh also publishes the default leg's reports under names without a version"
+echo "gil report" > "${WS}/docs/test_results/pytest-report-${IMAGE_PY}.html"
+echo "ft report" > "${WS}/docs/test_results/pytest-report-${IMAGE_PY}t.html"
+echo "gil md" > "${WS}/docs/test_results/pytest-report-${IMAGE_PY}.md"
+t_assert_ok _driver ci_build_docs
+t_assert_eq "gil report" "$(cat "${WS}/docs/source/_static/test_results/pytest-report.html" 2>&1)" "a docs page links one name across Python upgrades"
+t_assert_eq "ft report" "$(cat "${WS}/docs/source/_static/test_results/pytest-report-free-threaded.html" 2>&1)"
+t_assert_eq "gil md" "$(cat "${WS}/docs/source/_static/pytest-report.md" 2>&1)"
 
 t_case "with no PYTEST_PATHS pytest runs the project's own testpaths, not a hard-coded subdirectory"
 t_assert_ok _driver ci_tests
