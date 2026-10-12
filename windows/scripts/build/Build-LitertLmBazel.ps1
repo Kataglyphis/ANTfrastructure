@@ -140,13 +140,14 @@ function Get-TreeGb {
 function Remove-LitertLmBuildTree {
     # The merge copies only lib\litert-lm out of this layer, so bazel's trees left here cost 25 to 44 min of export (hub #181).
     param(
-        [Parameter(Mandatory)][string]$OutputBase,
         [string[]]$Path = @('C:\bzl', 'C:\llm', 'C:\bzl-tools', 'C:\bazel-build.log'),
-        [string]$Bazelisk = 'C:\bzl-tools\bazelisk.exe'
+        [string]$JdkRoot = 'C:\bzl-tools\jdk'
     )
-    # The server's java.exe holds the output base open, and a held handle fails the layer's finalize.
-    if (Test-Path -LiteralPath $Bazelisk) {
-        & $Bazelisk "--output_base=$OutputBase" shutdown 2>&1 | Select-Object -Last 2 | ForEach-Object { Write-Host "  bazel shutdown: $_" }
+    # The server's java.exe holds the output base open; `bazel shutdown` started a fresh server instead and died on its command line.
+    foreach ($server in @(Get-Process -Name java -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($JdkRoot, [StringComparison]::OrdinalIgnoreCase) })) {
+        Write-Host "  stopping the bazel server (java.exe pid $($server.Id))"
+        Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+        $null = $server.WaitForExit(30000)
     }
     foreach ($p in $Path) {
         if (-not $p -or -not (Test-Path -LiteralPath $p)) { continue }
@@ -307,7 +308,7 @@ try {
     if ($restoreEnv) { $null = Set-LitertLmProcessEnv -Values $restoreEnv }
     Pop-Location
 }
-Remove-LitertLmBuildTree -OutputBase $outputBase
+Remove-LitertLmBuildTree
 # Measured only: bazel's user root (install base, repository cache) and bazelisk's cache stay; their size says whether moving them out pays (hub #181).
 foreach ($kept in @(Get-ChildItem -LiteralPath $env:USERPROFILE -Directory -Filter '_bazel_*' -ErrorAction SilentlyContinue) + @(Get-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'bazelisk') -ErrorAction SilentlyContinue)) {
     Write-Host ('  kept in the layer: {0} ({1:N2} GB)' -f $kept.FullName, (Get-TreeGb -Path $kept.FullName))
