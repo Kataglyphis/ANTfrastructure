@@ -117,7 +117,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/
 # Inherited UV_PYTHON points into the venv `--clear` deletes, so seed from the base CPython without it.
 RUN set -euo pipefail; \
     _base_py=/usr/local/bin/python3; \
-    [ -x "${_base_py}" ] || _base_py="$(command -v python3.14 || command -v python3)"; \
+    _pv="${PYTHON_VERSION:-}"; [ -x "${_base_py}" ] || _base_py="$(command -v "python${_pv%.*}" || command -v python3)"; \
     env -u UV_PYTHON uv venv --clear --python "${_base_py}" /opt/python/.venv; \
     UV_PYTHON="/opt/python/.venv/bin/python" uv pip install \
         --upgrade pip setuptools wheel cython pybind11 numpy
@@ -372,7 +372,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scri
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    mkdir -p /opt/tvm/wheels /opt/tvm/wheels-cp314t /opt/tvm/lib; \
+    mkdir -p /opt/tvm/wheels /opt/tvm/wheels-free-threaded /opt/tvm/lib; \
     # Best-effort: a failure ships without TVM; EXP_TVM=<ver> in the smoke is what makes it mandatory.
     echo "TVM build: target=${TARGET_ARCH:-amd64} BUILD_MODE=${BUILD_MODE:-native}"; \
     if bash /opt/scripts/05-frameworks/tvm.sh --ref "${TVM_REF}" --prefix /opt/tvm --workdir /tmp/tvm-src; then \
@@ -380,7 +380,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scri
         [ -d /opt/tvm/lib64 ] && cp -a /opt/tvm/lib64/. /opt/tvm/lib/ 2>/dev/null || true; \
     else \
         echo "WARNING: TVM build failed for target=${TARGET_ARCH:-?}; shipping media image without TVM python (non-fatal)"; \
-        rm -f /opt/tvm/wheels/*.whl /opt/tvm/wheels-cp314t/*.whl 2>/dev/null || true; \
+        rm -f /opt/tvm/wheels/*.whl /opt/tvm/wheels-free-threaded/*.whl 2>/dev/null || true; \
     fi
 
 # OpenCV stage
@@ -461,7 +461,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
     case "${TARGET_ARCH:-amd64}" in \
       amd64|arm64|riscv64) ;; \
       *) echo "Skipping app-wheelhouse (unsupported arch ${TARGET_ARCH})"; \
-         mkdir -p /opt/app-wheels /opt/app-wheels-cp314t; \
+         mkdir -p /opt/app-wheels /opt/app-wheels-free-threaded; \
          exit 0 ;; \
     esac; \
     if ! command -v uv >/dev/null 2>&1; then \
@@ -470,7 +470,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
     fi; \
     export PYTORCH_VERSION="${PYTORCH_VERSION}" TORCHVISION_VERSION="${TORCHVISION_VERSION}" IREE_VERSION="${IREE_VERSION}" FT_TORCH_TWIN="${FT_TORCH_TWIN}"; \
     bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh; \
-    mkdir -p /opt/app-wheels-cp314t; \
+    mkdir -p /opt/app-wheels-free-threaded; \
     if [ ! -d /opt/app-wheels ] || [ -z "$(ls -A /opt/app-wheels 2>/dev/null)" ]; then \
         mkdir -p /opt/app-wheels; \
         touch /opt/app-wheels/.placeholder; \
@@ -581,7 +581,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    # libavfilter needs the chain ORT, which media-inputs puts on LD_LIBRARY_PATH; the cp314t proof loads every module.
+    # libavfilter needs the chain ORT, which media-inputs puts on LD_LIBRARY_PATH; the free-threaded proof loads every module.
     export LD_LIBRARY_PATH="/usr/local/lib/onnxruntime-cpu/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"; \
     bash /opt/scripts/03-media/build/pyav/build-pyav.sh
 
@@ -790,8 +790,8 @@ ARG GSTREAMER_PREFIX=/opt/gstreamer
 ARG FFMPEG_PREFIX=/opt/ffmpeg
 ARG LIBCAMERA_PREFIX=/opt/libcamera
 ARG GCC_VERSION=16.2.0
-ARG PYTHON_VERSION=3.14.8
-# Derived; an empty PYTHON_VERSION falls through to the :-3.14 defaults below.
+ARG PYTHON_VERSION=3.15.0
+# Derived: versions.env only defines PYTHON_VERSION.
 ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}
 
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
@@ -803,8 +803,8 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     FFMPEG_PREFIX=/opt/ffmpeg \
     LIBCAMERA_PREFIX=/opt/libcamera \
     GCC_VERSION=${GCC_VERSION:-16.2.0} \
-    PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR:-3.14} \
-    PYTHONPATH="${OPENCV_OUTPUT_DIR}/lib/python${PYTHON_MAJOR_MINOR:-3.14}/site-packages:${PYTHONPATH}"
+    PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR} \
+    PYTHONPATH="${OPENCV_OUTPUT_DIR}/lib/python${PYTHON_MAJOR_MINOR}/site-packages:${PYTHONPATH}"
 
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 
@@ -813,15 +813,15 @@ COPY --link --from=litert /usr/local/lib/litert-web /usr/local/lib/litert-web
 COPY --link --from=litert /usr/local/lib/litert-lm-web /usr/local/lib/litert-lm-web
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-web /usr/local/lib/onnxruntime-web
 COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
-# The cp314t twins travel beside the GIL wheels into a store of their own: docs/consumer-image-contract.md#the-free-threaded-wheels
-COPY --link --from=app-wheelhouse /opt/app-wheels-cp314t /opt/app-wheels-cp314t
+# The free-threaded twins travel beside the GIL wheels into a store of their own: docs/consumer-image-contract.md#the-free-threaded-wheels
+COPY --link --from=app-wheelhouse /opt/app-wheels-free-threaded /opt/app-wheels-free-threaded
 # Dir-to-dir COPYs tolerate the empty (skipped or failed) TVM build.
 COPY --link --from=tvm /opt/tvm/wheels /opt/tvm-wheels
-COPY --link --from=tvm /opt/tvm/wheels-cp314t /opt/tvm-wheels-cp314t
+COPY --link --from=tvm /opt/tvm/wheels-free-threaded /opt/tvm-wheels-free-threaded
 COPY --link --from=tvm /opt/tvm/lib/ /usr/local/lib/
 # collect-artifacts.sh keeps wheels already in /opt/wheels, so PyAV joins the normal repair/verify path.
 COPY --link --from=pyav /opt/pyav/wheels /opt/wheels
-COPY --link --from=pyav /opt/pyav/wheels-cp314t /opt/wheels-cp314t
+COPY --link --from=pyav /opt/pyav/wheels-free-threaded /opt/wheels-free-threaded
 # Must follow the media-inputs tree: the pass-2 OpenCV replaces pass 1.
 COPY --link --from=opencv-gst ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}

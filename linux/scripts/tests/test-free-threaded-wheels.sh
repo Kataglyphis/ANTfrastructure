@@ -68,18 +68,18 @@ t_assert_eq 1 "$(unset FT_TORCH_TWIN; t_rc ft_twin_expected torch)" "an unset kn
 t_assert_eq 0 "$(t_rc ft_twin_expected av)"
 t_assert_eq 1 "$(t_rc ft_twin_expected apache-tvm)"
 t_assert_eq 1 "$(FT_TORCH_TWIN=0 t_rc ft_twin_wanted torch)"
-t_assert_contains "$(FT_TORCH_TWIN=0 ft_twin_wanted torch)" "no cp314t twin of torch: the FT_TORCH_TWIN knob is off"
+t_assert_contains "$(FT_TORCH_TWIN=0 ft_twin_wanted torch)" "no free-threaded twin of torch: the FT_TORCH_TWIN knob is off"
 
 t_case "ft_twin_wanted: GIL-only and py3 packages say why in one line, an unknown one is an error"
 t_assert_eq 1 "$(t_rc ft_twin_wanted onnxruntime-genai)"
-t_assert_contains "$(ft_twin_wanted onnxruntime-genai)" "no cp314t twin of onnxruntime-genai (gil): pybind11 2.13.6"
-t_assert_contains "$(ft_twin_wanted apache-tvm)" "no cp314t twin of apache-tvm (none): pyproject.toml: wheel.py-api"
+t_assert_contains "$(ft_twin_wanted onnxruntime-genai)" "no free-threaded twin of onnxruntime-genai (gil): pybind11 2.13.6"
+t_assert_contains "$(ft_twin_wanted apache-tvm)" "no free-threaded twin of apache-tvm (none): pyproject.toml: wheel.py-api"
 t_assert_eq 2 "$(t_rc ft_twin_wanted pillow)"
 t_assert_contains "$(ft_twin_wanted pillow 2>&1)" "pillow is not in ft_wheel_table"
 
 t_case "ft_twin_wanted: a native build without the interpreter is an error"
 t_assert_eq 2 "$(cross_build_is_active() { return 1; }; PYTHON_FT_PREFIX="${_work}/none" t_rc ft_twin_wanted av)"
-# A cross target's staged 3.14t tree (CON66's /opt/python-cross-ft/<arch>), with its sysconfigdata and headers.
+# A cross target's staged X.Yt tree (CON66's /opt/python-cross-ft/<arch>), with its sysconfigdata and headers.
 _tgt() {
   local root="$1" arch="$2" suffix="$3"
   mkdir -p "${root}/bin" "${root}/include/python3.14t" "${root}/lib/python3.14t"
@@ -106,16 +106,16 @@ linux_riscv64
 _sysconfigdata_t_linux_riscv64-linux-gnu" "${_out}"
 _tgt "${_work}/a64/arm64/opt/python-freethreaded" aarch64 .cpython-314t-aarch64-linux-gnu.so
 t_assert_eq ".cpython-314t-aarch64-linux-gnu.so linux_aarch64" "$(XARCH=arm64 _x "${_work}/a64" 'ft_target_resolve && echo "${FT_TARGET_EXT_SUFFIX} ${FT_TARGET_PLATFORM_TAG}"')" "the arm64 cross lane reads its own tree"
-t_assert_contains "$(XARCH=arm64 _x "${_work}/rv" ft_target_resolve 2>&1)" "the arm64 3.14t tree ${_work}/rv/arm64/opt/python-freethreaded has no bin/python3.*t" "never another arch's tree"
+t_assert_contains "$(XARCH=arm64 _x "${_work}/rv" ft_target_resolve 2>&1)" "the arm64 X.Yt tree ${_work}/rv/arm64/opt/python-freethreaded has no bin/python3.*t" "never another arch's tree"
 t_assert_fails _x "${_work}/rvbad" ft_target_resolve
 t_assert_contains "$(_x "${_work}/rvbad" ft_target_resolve 2>&1)" "not a free-threaded riscv64 one"
 t_assert_contains "$(_x "${_work}/none" ft_target_resolve 2>&1)" "has no bin/python3.*t or _sysconfigdata_t_*.py"
 
 t_case "cross: ft_twin_wanted builds the twin against the target tree; without one it is an error, not a skip"
 t_assert_eq 0 "$(_x "${_work}/rv" 'ft_twin_wanted av >/dev/null; echo $?')"
-t_assert_contains "$(_x "${_work}/rv" ft_twin_wanted av)" "building the cp314t twin of av for riscv64 (.cpython-314t-riscv64-linux-gnu.so"
+t_assert_contains "$(_x "${_work}/rv" ft_twin_wanted av)" "building the free-threaded twin of av for riscv64 (.cpython-314t-riscv64-linux-gnu.so"
 t_assert_eq 2 "$(_x "${_work}/none" 'ft_twin_wanted av >/dev/null 2>&1; echo $?')"
-t_assert_contains "$(_x "${_work}/none" ft_twin_wanted av 2>&1)" "this cross build has no target 3.14t tree to build it against"
+t_assert_contains "$(_x "${_work}/none" ft_twin_wanted av 2>&1)" "this cross build has no target X.Yt tree to build it against"
 t_assert_eq 1 "$(_x "${_work}/rv" 'ft_twin_wanted onnxruntime-genai >/dev/null; echo $?')" "a GIL-only package stays a skip"
 
 t_case "cross: ft_target_env hands a wheel build the target's sysconfig and platform; native gets nothing"
@@ -348,7 +348,7 @@ t_assert_eq "" "$(compgen -G "${SCRIPTS}/03-media/core/*free-threaded*"; compgen
 t_case "wiring: each build asks the table for its own package and stores into the dir the final stage collects"
 _onnx_fn="$(t_fn_src "${ORT_BUILD}/lib/common.sh" onnx_build_free_threaded_wheel)" || exit 1
 t_assert_contains "${_onnx_fn}" 'ft_twin_start onnxruntime '
-t_assert_contains "${_onnx_fn}" '"${output_dir}/wheels-cp314t"'
+t_assert_contains "${_onnx_fn}" '"${output_dir}/wheels-free-threaded"'
 t_assert_contains "$(t_fn_src "${SCRIPTS}/03-media/build/pyav/build-pyav.sh" pyav_build_free_threaded_wheel)" 'ft_twin_start av '
 t_assert_contains "$(t_fn_src "${SCRIPTS}/05-frameworks/tvm-python.sh" _tvm_stage_ffi_wheel_free_threaded)" 'ft_twin_start apache-tvm-ffi '
 t_assert_contains "$(t_fn_src "${SCRIPTS}/05-frameworks/torch/build-app-wheelhouse.sh" _iree_package_free_threaded_wheels)" 'ft_twin_wanted "iree-base-${_proj}"'
@@ -361,9 +361,9 @@ for _s in "${ORT_BUILD}"/30-build-native*.sh; do
   t_assert_eq "" "$(grep -i -e 'python3*_include' "${_s}" || true)" "${_s##*/}: no Python include define the twin pass would inherit"
 done
 t_assert_eq 3 "${_ort_steps}" "the CPU build and both GPU flavours"
-t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=pyav /opt/pyav/wheels-cp314t /opt/wheels-cp314t"
-t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=tvm /opt/tvm/wheels-cp314t /opt/tvm-wheels-cp314t"
-t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=app-wheelhouse /opt/app-wheels-cp314t /opt/app-wheels-cp314t"
+t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=pyav /opt/pyav/wheels-free-threaded /opt/wheels-free-threaded"
+t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=tvm /opt/tvm/wheels-free-threaded /opt/tvm-wheels-free-threaded"
+t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=app-wheelhouse /opt/app-wheels-free-threaded /opt/app-wheels-free-threaded"
 
 t_case "the ORT twin pass: each GPU flavour's GIL args again over its warm tree, then the 3.14t venv's interpreter, never a GIL include"
 _oft="${_work}/oft"; mkdir -p "${_oft}/a/b/c/lib" "${_oft}/ort" "${_oft}/tmp"
@@ -404,7 +404,7 @@ for _fl in nv mgx; do
   t_assert_eq "" "$(grep -i -e 'include' <<<"${_out}" || true)" "${_fl}: no include define, so FindPython re-resolves the 3.14t headers in the warm cache"
   t_assert_contains "${_out}" "ENV ${_ftpy} ${_ftpy} ${_ftpy} ${_ftpy%/python}"
   t_assert_contains "${_out}" "START onnxruntime ${_oft}/tmp/onnxruntime-ft-venv"
-  t_assert_contains "${_out}" "STORE ${_b}/Release/dist /out/gpu/wheels-cp314t"
+  t_assert_contains "${_out}" "STORE ${_b}/Release/dist /out/gpu/wheels-free-threaded"
   t_assert_fails test -e "${_ftpy%/bin/python}"
   unset -n _ga
 done
@@ -420,6 +420,6 @@ t_assert_ok test "$(_line 'runtime/verify-wheels.sh &&')" -lt "$(_line 'runtime/
 t_assert_ok test "$(_line 'runtime/repair-wheels.sh --free-threaded &&')" -lt "$(_line 'runtime/verify-wheels.sh --free-threaded &&')"
 t_assert_ok test "$(_line 'runtime/verify-wheels.sh --free-threaded &&')" -lt "$(_line 'runtime/free-threaded-store.sh &&')"
 t_assert_ok test "$(_line 'runtime/free-threaded-store.sh &&')" -lt "$(_line 'uv pip install --no-deps /opt/wheels/\*\.whl')"
-t_assert_eq 0 "$(grep -c -e 'uv pip install.*wheels-cp314t' "${MEDIA}")" "no GIL venv ever installs a twin"
+t_assert_eq 0 "$(grep -c -e 'uv pip install.*wheels-free-threaded' "${MEDIA}")" "no GIL venv ever installs a twin"
 
 t_summary

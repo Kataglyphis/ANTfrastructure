@@ -7741,15 +7741,23 @@
  {
   "id": "python.ci-tests-default-leg-is-the-image-interpreter",
   "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
-  "find": "PY_VERSIONS=\"${2:-${PY_VERSIONS:-3.14}}\"",
-  "replace": "PY_VERSIONS=\"${2:-${PY_VERSIONS:-3.13 3.14}}\"",
+  "find": "    printf '%s\\n' \"$DEFAULT_PYTHON_VERSION\"\n",
+  "replace": "    printf '%s\\n' \"3.13 $DEFAULT_PYTHON_VERSION\"\n",
   "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
-  "why": "a default stable leg on another interpreter cannot take the cp314-only chain ORT wheels, so every ORT consumer on the default matrix fails its sync"
+  "why": "a default stable leg on another interpreter cannot take the chain's wheels for the pinned tag, so every ORT consumer on the default matrix fails its sync"
+ },
+ {
+  "id": "python.ci-tests-default-adds-the-free-threaded-leg",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "    printf '%s %st\\n' \"$DEFAULT_PYTHON_VERSION\" \"$DEFAULT_PYTHON_VERSION\"\n",
+  "replace": "    printf '%s\\n' \"$DEFAULT_PYTHON_VERSION\"\n",
+  "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+  "why": "a project that declares free-threading would lose its X.Yt leg whenever it passes no version list"
  },
  {
   "id": "python.ci-docs-default-coverage-is-the-image-interpreter",
   "target": "linux/scripts/02-toolchain/python/ci_build_docs.sh",
-  "find": "COVERAGE_VERSION=\"${1:-${COVERAGE_VERSION:-3.14}}\"",
+  "find": "COVERAGE_VERSION=\"${1:-${COVERAGE_VERSION:-${DEFAULT_PYTHON_VERSION:?no pinned Python: keep versions.env beside python_uv.sh, or pass a version}}}\"",
   "replace": "COVERAGE_VERSION=\"${1:-${COVERAGE_VERSION:-3.13}}\"",
   "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
   "why": "the docs venv syncs on that interpreter too, and the page would publish the coverage of a leg the default matrix no longer runs"
@@ -12893,15 +12901,15 @@
  {
   "id": "wheels.ft-ort-manifest-own",
   "target": "linux/scripts/03-media/runtime/collect-artifacts.sh",
-  "find": "write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu \"\" wheels-cp314t ort-provenance-cp314t.sha256\n",
-  "replace": "write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu \"\" wheels-cp314t ort-provenance.sha256\n",
+  "find": "write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu \"\" wheels-free-threaded ort-provenance-free-threaded.sha256\n",
+  "replace": "write_ort_wheel_manifest /usr/local/lib/onnxruntime-cpu \"\" wheels-free-threaded ort-provenance.sha256\n",
   "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
   "why": "the twin's rows would overwrite the GIL manifest, and the GIL repair would then find no chain wheel"
  },
  {
   "id": "wheels.ft-repair-own-manifest",
   "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
-  "find": "  _ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance-cp314t.sha256)\n",
+  "find": "  _ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance-free-threaded.sha256)\n",
   "replace": "  _ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance.sha256)\n",
   "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
   "why": "the twin store's repair would check the GIL manifest, whose wheels are not there, and stop the media stage"
@@ -12973,8 +12981,8 @@
  {
   "id": "wheels.ft-store-set-missing",
   "target": "linux/scripts/03-media/runtime/free-threaded-store.sh",
-  "find": "    echo \"ERROR: ${d} ships a GIL wheel in ${WHEELS_DIR} and its table verdict is twin, but ${FT_WHEELS_DIR} has no cp314t twin of it\" >&2\n    bad=1\n",
-  "replace": "    echo \"ERROR: ${d} ships a GIL wheel in ${WHEELS_DIR} and its table verdict is twin, but ${FT_WHEELS_DIR} has no cp314t twin of it\" >&2\n",
+  "find": "    echo \"ERROR: ${d} ships a GIL wheel in ${WHEELS_DIR} and its table verdict is twin, but ${FT_WHEELS_DIR} has no free-threaded twin of it\" >&2\n    bad=1\n",
+  "replace": "    echo \"ERROR: ${d} ships a GIL wheel in ${WHEELS_DIR} and its table verdict is twin, but ${FT_WHEELS_DIR} has no free-threaded twin of it\" >&2\n",
   "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
   "why": "a native media stage could ship without a twin it owes"
  },
@@ -13077,15 +13085,15 @@
  {
   "id": "ort-census.ft-store-ort-only",
   "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
-  "find": "    /opt/wheels-cp314t/onnxruntime*.whl!*) return 0 ;;\n",
-  "replace": "    /opt/wheels-cp314t/*.whl!*) return 0 ;;\n",
+  "find": "    /opt/wheels-free-threaded/onnxruntime*.whl!*) return 0 ;;\n",
+  "replace": "    /opt/wheels-free-threaded/*.whl!*) return 0 ;;\n",
   "test": "bash linux/scripts/tests/test-ort-census.sh",
   "why": "any twin in the store could carry a chain ORT copy unnoticed"
  },
  {
   "id": "ort-census.ft-manifests-read",
   "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
-  "find": " /usr/local/lib/onnxruntime-cpu/ort-provenance-cp314t.sha256 /usr/local/lib/onnxruntime-gpu/ort-provenance-cp314t.sha256\"",
+  "find": " /usr/local/lib/onnxruntime-cpu/ort-provenance-free-threaded.sha256 /usr/local/lib/onnxruntime-gpu/ort-provenance-free-threaded.sha256\"",
   "replace": "\"",
   "test": "bash linux/scripts/tests/test-ort-census.sh",
   "why": "G1 would call the shipped ORT twin's pybind module STALE"
@@ -13117,15 +13125,15 @@
  {
   "id": "wheels-source.ft-context-exports-twins",
   "target": "linux/scripts/01-core/context-management.sh",
-  "find": "tar -xpf - -C \"$2\" opt/wheels opt/wheels-cp314t",
+  "find": "tar -xpf - -C \"$2\" opt/wheels opt/wheels-free-threaded",
   "replace": "tar -xpf - -C \"$2\" opt/wheels",
   "test": "bash linux/scripts/tests/test-runtime-wheels-context.sh",
-  "why": "a --no-push wrapper build would find no /opt/wheels-cp314t to copy and fail"
+  "why": "a --no-push wrapper build would find no /opt/wheels-free-threaded to copy and fail"
  },
  {
   "id": "wheels-source.ft-wrapper-ships-store",
   "target": "linux/Dockerfile.torch",
-  "find": "# Late, so a new twin re-keys no venv or Hailo layer; no GIL path reads them: docs/consumer-image-contract.md#the-free-threaded-wheels\nCOPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t\n",
+  "find": "# Late, so a new twin re-keys no venv or Hailo layer; no GIL path reads them: docs/consumer-image-contract.md#the-free-threaded-wheels\nCOPY --link --from=wheels-source /opt/wheels-free-threaded /opt/wheels-free-threaded\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
   "why": ":latest would ship no twin at all"
@@ -13237,10 +13245,10 @@
  {
   "id": "probe.ft-store-env",
   "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
-  "find": "  if [ \"${env}\" = /opt/wheels-cp314t ]; then\n",
+  "find": "  if [ \"${env}\" = /opt/wheels-free-threaded ]; then\n",
   "replace": "  if true; then\n",
   "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
-  "why": "an image without PYTHON_WHEELS_CP314T leaves every 3.14t venv refused by the chain-ORT reconcile"
+  "why": "an image without PYTHON_WHEELS_FREE_THREADED leaves every 3.14t venv refused by the chain-ORT reconcile"
  },
  {
   "id": "uv-chain-ort.ft-twin-store",
@@ -13269,7 +13277,7 @@
  {
   "id": "uv-chain-ort.ft-torch-env",
   "target": "linux/Dockerfile.torch",
-  "find": "ENV PYTHON_WHEELS_CP314T=/opt/wheels-cp314t\n",
+  "find": "ENV PYTHON_WHEELS_FREE_THREADED=/opt/wheels-free-threaded\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-uv-chain-ort.sh",
   "why": "without the advertisement the reconcile never finds the twins the image ships"

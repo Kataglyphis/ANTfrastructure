@@ -29,9 +29,10 @@ function script:New-PeTestWheel {
 
 Describe 'Free-threaded twin store and ABI tag' {
 
-    It 'stores apart from PYTHON_WHEELS: PYTHON_WHEELS_CP314T, else C:\runtime\wheels-cp314t' {
-        Invoke-WithEnv @{ PYTHON_WHEELS_CP314T = 'X:\ft' } { Assert-Equal 'X:\ft' (Get-FreeThreadedWheelStore) 'the image ENV' }
-        Invoke-WithEnv @{ PYTHON_WHEELS_CP314T = $null } { Assert-Equal 'C:\runtime\wheels-cp314t' (Get-FreeThreadedWheelStore) 'the default' }
+    It 'stores apart from PYTHON_WHEELS: PYTHON_WHEELS_FREE_THREADED, else PYTHON_WHEELS_CP314T, else C:\runtime\wheels-cp314t' {
+        Invoke-WithEnv @{ PYTHON_WHEELS_FREE_THREADED = 'Y:\ft'; PYTHON_WHEELS_CP314T = 'X:\ft' } { Assert-Equal 'Y:\ft' (Get-FreeThreadedWheelStore) 'the version-free name first' }
+        Invoke-WithEnv @{ PYTHON_WHEELS_FREE_THREADED = $null; PYTHON_WHEELS_CP314T = 'X:\ft' } { Assert-Equal 'X:\ft' (Get-FreeThreadedWheelStore) 'an older image ENV' }
+        Invoke-WithEnv @{ PYTHON_WHEELS_FREE_THREADED = $null; PYTHON_WHEELS_CP314T = $null } { Assert-Equal 'C:\runtime\wheels-cp314t' (Get-FreeThreadedWheelStore) 'the default' }
     }
 
     It 'derives the cp3XYt tag from PYTHON_VERSION, 3.14 when unset' {

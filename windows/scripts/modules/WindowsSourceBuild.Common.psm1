@@ -1083,9 +1083,10 @@ function Assert-WheelTargetArch {
 }
 
 function Get-FreeThreadedWheelStore {
-    # The cp3XYt twins' own store (image ENV PYTHON_WHEELS_CP314T), apart from PYTHON_WHEELS so no GIL install resolves one.
+    # The cp3XYt twins' own store (image ENV PYTHON_WHEELS_FREE_THREADED, else the older PYTHON_WHEELS_CP314T), apart from PYTHON_WHEELS.
     [OutputType([string])]
     param()
+    if ($env:PYTHON_WHEELS_FREE_THREADED) { return $env:PYTHON_WHEELS_FREE_THREADED }
     if ($env:PYTHON_WHEELS_CP314T) { return $env:PYTHON_WHEELS_CP314T }
     return 'C:\runtime\wheels-cp314t'
 }

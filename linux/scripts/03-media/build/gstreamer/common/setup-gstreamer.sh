@@ -198,13 +198,15 @@ _gst_xpy_resolve_target_paths() {
     target_python_pkgconfig_dir="$(cross_target_python_pkgconfig_dir 2>/dev/null || true)"
   fi
   # The resolvers can return the host's /usr/local Python; use the staged cross Python instead.
-  if [ "${target_python_include}" = "/usr/local/include/python3.14" ] && \
+  local _py_pv="${PYTHON_VERSION:-}"
+  local _py_mm="${PYTHON_MAJOR_MINOR:-${_py_pv%.*}}"
+  if [ "${target_python_include}" = "/usr/local/include/python${_py_mm}" ] && \
      [ -n "${target_triplet}" ]; then
     local _cross_arch="${target_triplet%%-*}"
     local _cross_stage="/opt/python-cross/${_cross_arch}/usr/local"
     if [ -d "${_cross_stage}" ]; then
-      target_python_include="${_cross_stage}/include/python3.14"
-      target_python_library="${_cross_stage}/lib/libpython3.14.so"
+      target_python_include="${_cross_stage}/include/python${_py_mm}"
+      target_python_library="${_cross_stage}/lib/libpython${_py_mm}.so"
       target_python_pkgconfig_dir="${_cross_stage}/lib/pkgconfig"
     fi
   fi

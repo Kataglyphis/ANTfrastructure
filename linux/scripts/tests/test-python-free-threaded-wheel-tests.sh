@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-free-threaded-wheel.sh: a project's tests on its installed cp314t wheel; see docs/python-ci.md#the-suite-on-the-installed-wheel
+# test-free-threaded-wheel.sh: a project's tests on its installed free-threaded wheel; see docs/python-ci.md#the-suite-on-the-installed-wheel
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -10,7 +10,7 @@ t_skip_unless "a POSIX python3 (the helper reads the fixture's pyproject.toml)" 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
 WS="${_work}/ws"; TREE="${_work}/tree"; CALLS="${_work}/calls"; OUT="${_work}/out"; BIN="${_work}/bin"
 mkdir -p "${TREE}/01-core" "${TREE}/02-toolchain/python" "${WS}/tests/unit" "${WS}/fixture_app" "${BIN}"
-cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${TREE}/01-core/"
+cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${SCRIPTS}/01-core/versions.env" "${TREE}/01-core/"
 cp "${SCRIPTS}/02-toolchain/python/test-free-threaded-wheel.sh" "${SCRIPTS}/02-toolchain/python/free-threaded-wheel.py" \
   "${TREE}/02-toolchain/python/"
 cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
@@ -26,14 +26,14 @@ cat > "${BIN}/uv" <<'UV'
 #!/usr/bin/env bash
 printf 'uv %s\n' "$*" >> "${CALLS}"
 case "$1 $2" in
-  "python find") [ -z "${FAKE_NO_FT:-}" ] || exit 2; printf '%s\n' "${FAKE_BIN}/python3.14t" ;;
+  "python find") [ -z "${FAKE_NO_FT:-}" ] || exit 2; printf '%s\n' "${FAKE_BIN}/python-free-threaded" ;;
   "export --locked") while [ $# -gt 0 ]; do [ "$1" != -o ] || : > "$2"; shift; done ;;
   "venv --python")
     dir="${!#}"
     mkdir -p "${dir}/bin"
     cat > "${dir}/bin/python" <<'FAKE_INTERPRETER'
 #!/usr/bin/env bash
-[ "$1" != -VV ] || { echo "Python 3.14.8 free-threading build"; exit 0; }
+[ "$1" != -VV ] || { echo "Python X.Y.Z free-threading build"; exit 0; }
 printf 'pytest %s | cwd %s | FIXTURE_COMPILED=%s | staged %s\n' "$*" "${PWD}" "$(printenv FIXTURE_COMPILED)" \
   "$(cd "${PWD}" && find . -type f | sort | tr '\n' ' ')" >> "${CALLS}"
 exit "${FAKE_PYTEST_RC:-0}"
@@ -45,7 +45,10 @@ exit 0
 UV
 chmod +x "${BIN}/uv"
 
-WHEEL="fixture_app-1.0-cp314-cp314t-manylinux_2_17_$(uname -m).whl"
+# The pin's own tags: the step defaults to versions.env's X.Y, so the fixture follows a Python upgrade.
+MM="$(sed -n 's/^PYTHON_VERSION=\([0-9]*\.[0-9]*\)\..*/\1/p' "${SCRIPTS}/01-core/versions.env")"
+CP="cp${MM//./}"
+WHEEL="fixture_app-1.0-${CP}-${CP}t-manylinux_2_17_$(uname -m).whl"
 DECLARED='"Programming Language :: Python :: Free Threading :: 2 - Beta"'
 _pyproject() { printf '[project]\nname = "fixture_app"\nclassifiers = [%s]\n' "$1" > "${WS}/pyproject.toml"; }
 # _dist <wheel>...: what ci_packaging.sh left in dist/.
@@ -58,11 +61,11 @@ _run() {
 }
 ARGS=(--extra test --copy tests/unit/test_threads.py --env FIXTURE_COMPILED=1 --isolated -- -W error tests/unit/test_threads.py)
 
-t_case "a declared project's tests run on the installed cp314t wheel, outside the checkout"
+t_case "a declared project's tests run on the installed free-threaded wheel, outside the checkout"
 _pyproject "${DECLARED}"
-_dist "fixture_app-1.0-py3-none-any.whl" "fixture_app-1.0-cp314-cp314-manylinux_2_17_$(uname -m).whl" "${WHEEL}"
+_dist "fixture_app-1.0-py3-none-any.whl" "fixture_app-1.0-${CP}-${CP}-manylinux_2_17_$(uname -m).whl" "${WHEEL}"
 t_assert_ok _run "${ARGS[@]}"
-t_assert_contains "$(cat "${CALLS}")" "uv python find 3.14t" "the image's interpreter, found"
+t_assert_contains "$(cat "${CALLS}")" "uv python find ${MM}t" "the image's interpreter, found"
 t_assert_contains "$(cat "${CALLS}")" "uv export --locked --no-emit-project --extra test --format requirements.txt" "the lock's set with the test extra, without the project"
 t_assert_contains "$(cat "${CALLS}")" "uv pip install --python ${_work}/tmp." "into a fresh venv"
 t_assert_contains "$(cat "${CALLS}")" "--no-deps dist/${WHEEL}" "the shipped wheel, without re-resolving its dependencies"
@@ -83,7 +86,7 @@ t_assert_contains "$(cat "${OUT}")" "the tests failed against ${WHEEL}"
 
 t_case "the cases in which ci_packaging.sh builds no free-threaded wheel skip, and say why"
 PACKAGING_CROSS_TARGET=riscv64 t_assert_ok _run "${ARGS[@]}"
-t_assert_contains "$(cat "${OUT}")" "free-threaded wheel tests skipped: the riscv64 cross build ships no cp314t wheel"
+t_assert_contains "$(cat "${OUT}")" "free-threaded wheel tests skipped: the riscv64 cross build ships no ${CP}t wheel"
 PYTHON_FREE_THREADED_WHEEL=off t_assert_ok _run "${ARGS[@]}"
 t_assert_contains "$(cat "${OUT}")" "free-threaded wheel tests skipped: PYTHON_FREE_THREADED_WHEEL=off"
 _pyproject '"Programming Language :: Python :: 3.14"'
@@ -95,16 +98,16 @@ t_case "PYTHON_FREE_THREADED_WHEEL=on tests an undeclared project's wheel, as th
 PYTHON_FREE_THREADED_WHEEL=on t_assert_ok _run "${ARGS[@]}"
 t_assert_contains "$(cat "${OUT}")" "free-threaded wheel tests passed"
 
-t_case "a declared project with no cp314t wheel of this arch fails, and lists what dist/ holds"
+t_case "a declared project with no free-threaded wheel of this arch fails, and lists what dist/ holds"
 _pyproject "${DECLARED}"
-_dist "fixture_app-1.0-py3-none-any.whl" "fixture_app-1.0-cp314-cp314-manylinux_2_17_$(uname -m).whl"
+_dist "fixture_app-1.0-py3-none-any.whl" "fixture_app-1.0-${CP}-${CP}-manylinux_2_17_$(uname -m).whl"
 t_assert_fails _run "${ARGS[@]}"
-t_assert_contains "$(cat "${OUT}")" "expected one cp314t $(uname -m) wheel in dist/, found 0 among: fixture_app-1.0-cp314-cp314-manylinux"
+t_assert_contains "$(cat "${OUT}")" "expected one ${CP}t $(uname -m) wheel in dist/, found 0 among: fixture_app-1.0-${CP}-${CP}-manylinux"
 
 t_case "no free-threaded interpreter fails, and none is downloaded"
 _dist "${WHEEL}"
 FAKE_NO_FT=1 t_assert_fails _run "${ARGS[@]}"
-t_assert_contains "$(cat "${OUT}")" "no 3.14t interpreter for the wheel tests"
+t_assert_contains "$(cat "${OUT}")" "no ${MM}t interpreter for the wheel tests"
 t_assert_eq "0" "$(grep -c 'python install' "${CALLS}")"
 
 t_case "a call without --copy, with a bad --env or with a missing path fails before any test"

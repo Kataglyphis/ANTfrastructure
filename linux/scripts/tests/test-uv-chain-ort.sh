@@ -180,9 +180,9 @@ _ft_venv() {
   _twin_tags "${TWINS}"
 }
 
-t_case "a free-threaded venv takes the twin of the GIL store's ORT flavour from PYTHON_WHEELS_CP314T, proven against the twins"
+t_case "a free-threaded venv takes the twin of the GIL store's ORT flavour from PYTHON_WHEELS_FREE_THREADED, proven against the twins"
 _ft_venv
-_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T="${TWINS}" _reconcile "${FTVENV}")"
+_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_FREE_THREADED="${TWINS}" _reconcile "${FTVENV}")"
 t_assert_contains "${_out}" "rc=0 NO_SYNC=1"
 t_assert_contains "${_out}" "is free-threaded, so it takes the twins in ${TWINS}"
 t_assert_contains "$(grep -e 'pip install' "${LOG}")" "/twins/onnxruntime_dnnl-1.30.0-" "the installed flavour's twin"
@@ -201,7 +201,7 @@ for _fl in gpu migraphx; do
     "${VPY}" "${FIX}" wheel "${TWINS}" "onnxruntime-${_fl}" 1.30.0 onnxruntime "twin ${_fl}"
     _twin_tags "${TWINS}"
   fi
-  _out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T="${TWINS}" _reconcile "${FTVENV}")"
+  _out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_FREE_THREADED="${TWINS}" _reconcile "${FTVENV}")"
   t_assert_contains "${_out}" "rc=0 NO_SYNC=1"
   t_assert_contains "$(grep -e 'pip install' "${LOG}")" "/twins/onnxruntime_${_fl}-1.30.0-" "${_fl}: the installed flavour's twin"
   t_assert_eq "" "$(grep -e 'pip install' "${LOG}" | grep -e 'onnxruntime_dnnl' -e '/store/' || true)" "${_fl}: not the CPU twin, nothing of the GIL store"
@@ -213,14 +213,14 @@ _pypi_venv
 "${VPY}" "${FIX}" reset "${TWINS}"
 "${VPY}" "${FIX}" wheel "${TWINS}" onnxruntime 1.30.0 onnxruntime "twin core"
 _twin_tags "${TWINS}"
-_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T="${TWINS}" _reconcile)"
+_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_FREE_THREADED="${TWINS}" _reconcile)"
 t_assert_contains "${_out}" "rc=0 NO_SYNC=1"
 t_assert_eq "" "$(grep -e '/twins/' "${LOG}" || true)" "a cp3XY venv never takes a twin"
 t_assert_ok _census_ok
 
 t_case "a free-threaded venv without advertised twins still fails on the ABI, before the venv is touched"
 _ft_venv
-_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T='' _reconcile "${FTVENV}")"
+_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_FREE_THREADED='' _reconcile "${FTVENV}")"
 t_assert_contains "${_out}" "rc=1 NO_SYNC=<unset>"
 t_assert_contains "${_out}" "t venv, and the chain wheels are built for the image interpreter"
 t_assert_eq "" "$(grep -e 'pip ' "${LOG}" || true)"
@@ -228,7 +228,7 @@ t_assert_eq "" "$(grep -e 'pip ' "${LOG}" || true)"
 t_case "twins without the installed flavour's twin fail before the venv is touched, naming both stores"
 _ft_venv
 rm -f "${TWINS}"/onnxruntime_dnnl-*.whl
-_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_CP314T="${TWINS}" _reconcile "${FTVENV}")"
+_out="$(ORT_CHAIN_WHEEL_DIR="${STORE}" PYTHON_WHEELS_FREE_THREADED="${TWINS}" _reconcile "${FTVENV}")"
 t_assert_contains "${_out}" "rc=1 NO_SYNC=<unset>"
 t_assert_contains "${_out}" "the store ${TWINS} holds no onnxruntime wheel for onnxruntime"
 t_assert_contains "${_out}" "twin store of this free-threaded venv, and holds no twin of an ORT flavour in ${STORE}"
@@ -236,9 +236,9 @@ t_assert_eq "" "$(grep -e 'pip ' "${LOG}" || true)" "a second core wheel is neve
 
 t_case "the image advertises the twins under Windows' name, after their late COPY, so no venv layer re-keys"
 _line() { grep -n -e "$1" "${_torch_df}" | cut -d: -f1 | tail -n 1; }
-t_assert_ok test -n "$(_line '^ENV PYTHON_WHEELS_CP314T=/opt/wheels-cp314t$')"
-t_assert_ok test "$(_line '^ENV PYTHON_WHEELS_CP314T=')" -gt "$(_line '^COPY --link --from=wheels-source /opt/wheels-cp314t /opt/wheels-cp314t$')"
-t_assert_contains "$(cat "${TESTS_DIR}/../../../windows/scripts/modules/WindowsUv.Common.psm1")" "GetEnvironmentVariable('PYTHON_WHEELS_CP314T')" \
+t_assert_ok test -n "$(_line '^ENV PYTHON_WHEELS_FREE_THREADED=/opt/wheels-free-threaded$')"
+t_assert_ok test "$(_line '^ENV PYTHON_WHEELS_FREE_THREADED=')" -gt "$(_line '^COPY --link --from=wheels-source /opt/wheels-free-threaded /opt/wheels-free-threaded$')"
+t_assert_contains "$(cat "${TESTS_DIR}/../../../windows/scripts/modules/WindowsUv.Common.psm1")" "GetEnvironmentVariable('PYTHON_WHEELS_FREE_THREADED')" \
   "the variable Windows' Select-UvChainOrtWheelStore reads"
 
 # _sync [venv pinned via _CURRENT_VENV_PATH, as uv_venv_create leaves it]; empty uses UV_PROJECT_ENVIRONMENT.

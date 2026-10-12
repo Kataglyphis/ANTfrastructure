@@ -15,7 +15,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 PACKAGE_NAME="$(derive_package_name "${1:-${PACKAGE_NAME:-}}")"
-PYTHON_VERSION="${2:-${PYTHON_VERSION:-3.14}}"
+PYTHON_VERSION="${2:-${PYTHON_VERSION:-${DEFAULT_PYTHON_VERSION:?no pinned Python: keep versions.env beside python_uv.sh, or pass a version}}}"
 
 prepare_ci_workspace --cd
 

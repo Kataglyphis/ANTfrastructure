@@ -151,8 +151,8 @@ _gst_monorepo_python_config() {
     if [ "${target_python_libdir}" = "/usr/local/lib" ] && \
        [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" = "true" ]; then
       local _cross_arch="${TARGET_MACHINE_ARCH:-riscv64}"
-      local _cross_python_lib="/opt/python-cross/${_cross_arch}/usr/local/lib"
-      if [ -d "${_cross_python_lib}" ] && [ -f "${_cross_python_lib}/libpython3.14.so" ]; then
+      local _cross_python_lib="/opt/python-cross/${_cross_arch}/usr/local/lib" _py_pv="${PYTHON_VERSION:-}"
+      if [ -d "${_cross_python_lib}" ] && [ -f "${_cross_python_lib}/libpython${PYTHON_MAJOR_MINOR:-${_py_pv%.*}}.so" ]; then
         target_python_libdir="${_cross_python_lib}"
       fi
     fi

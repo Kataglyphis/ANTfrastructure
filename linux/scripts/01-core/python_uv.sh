@@ -10,10 +10,21 @@ _PYTHON_UV_LOADED=1
 _MODULE_DIR="${BASH_SOURCE[0]%/*}"
 source "$_MODULE_DIR/logging.sh" || { echo "Error: failed to source logging.sh" >&2; exit 1; }
 
-# Keep the default aligned with the images' source-built interpreter.
-declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-3.14t}"
-# Derived from PYTHON_MAJOR_MINOR, which common.sh derives from PYTHON_VERSION.
-declare -g DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-${PYTHON_MAJOR_MINOR:-3.14}}"
+# X.Y of the pinned interpreter: the image's own ENV, else versions.env beside this file. docs/python-ci.md#upgrading-python
+python_pinned_major_minor() {
+  local mm="${PYTHON_MAJOR_MINOR:-}"
+  if [ -z "${mm}" ] && [ -f "${_MODULE_DIR}/versions.env" ]; then
+    mm="$(sed -n 's/^PYTHON_VERSION=\([0-9]*\.[0-9]*\)\..*/\1/p' "${_MODULE_DIR}/versions.env" | head -n 1)"
+  fi
+  [ -n "${mm}" ] || { echo "python_uv.sh: no PYTHON_MAJOR_MINOR, and no PYTHON_VERSION in ${_MODULE_DIR}/versions.env" >&2; return 1; }
+  printf '%s\n' "${mm}"
+}
+# Best effort here: a caller that needs the default fails where it reads it (${DEFAULT_PYTHON_VERSION:?...}).
+if [ -z "${DEFAULT_PYTHON_VERSION:-}" ]; then
+  DEFAULT_PYTHON_VERSION="$(python_pinned_major_minor 2>/dev/null)" || DEFAULT_PYTHON_VERSION=""
+fi
+declare -g DEFAULT_PYTHON_VERSION
+declare -g EXPERIMENTAL_PYTHON_VERSIONS="${EXPERIMENTAL_PYTHON_VERSIONS:-${DEFAULT_PYTHON_VERSION:+${DEFAULT_PYTHON_VERSION}t}}"
 declare -g _CURRENT_VENV_PATH=""
 # The ORT census: the checkout's copy, else the torch image's (Dockerfile.torch COPYs it into final/).
 declare -g _UV_ORT_CENSUS
@@ -83,7 +94,7 @@ uv_image_ships_python() {
   return 1
 }
 
-# Installs the interpreter through uv when missing; the name keeps a free-threaded `t`, so `3.14t` never matches `python3.14`.
+# Installs the interpreter through uv when missing; the name keeps a free-threaded `t`, so `X.Yt` never matches `pythonX.Y`.
 uv_ensure_python_available() {
   local req_version="$1"
   local exe_ver
@@ -437,9 +448,9 @@ _uv_chain_ort_preflight() {
   return 0
 }
 
-# <store> <py> <venv>: a cp3XYt venv inside our images takes the twins (PYTHON_WHEELS_CP314T), the same chain build, as Windows' Select-UvChainOrtWheelStore does.
+# <store> <py> <venv>: a cp3XYt venv inside our images takes the twins (PYTHON_WHEELS_FREE_THREADED), the same chain build, as Windows' Select-UvChainOrtWheelStore does.
 _uv_chain_ort_store() {
-  local twins="${PYTHON_WHEELS_CP314T:-}"
+  local twins="${PYTHON_WHEELS_FREE_THREADED:-}"
   if [ -n "$1" ] && [ -n "${twins}" ] && [ -d "${twins}" ]; then
     case "$(_uv_chain_ort_abi "$2" 2>/dev/null)" in
       cp*t) info "chain ORT: $3 is free-threaded, so it takes the twins in ${twins}" >&2; printf '%s\n' "${twins}"; return 0 ;;
@@ -464,7 +475,7 @@ _uv_chain_ort_wheels() {
   done
 }
 
-# The wheel ABI tag of interpreter $1 (cp313, cp314t); rc 1 with its output.
+# The wheel ABI tag of interpreter $1 (cp3XY, cp3XYt); rc 1 with its output.
 _uv_chain_ort_abi() {
   local abi
   abi="$("$1" -I -c 'import sys, sysconfig; print("cp%d%d%s" % (*sys.version_info[:2], "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""))' 2>&1)" || {
@@ -475,7 +486,7 @@ _uv_chain_ort_abi() {
   printf '%s\n' "${abi##*$'\n'}"
 }
 
-# Every store wheel must fit this venv's ABI tag (cp313, cp314t) before uv touches anything.
+# Every store wheel must fit this venv's ABI tag (cp3XY, cp3XYt) before uv touches anything.
 _uv_chain_ort_abi_fits() {
   local venv="$1" py="$2" abi w tag bad=""
   shift 2

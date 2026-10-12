@@ -692,7 +692,7 @@ Python legs refuse to: a missing one fails the leg ([`python-ci.md` § Free-thre
   stay the GIL build's. A `3.14t` request finds it on `PATH`. A plain `3.14` request
   never takes it ([`python-ci.md` § Free-threaded and GIL legs](python-ci.md#free-threaded-and-gil-legs-in-one-container)).
   The binary finds `libpython3.14t.so` through its own RUNPATH, set with `LDFLAGS_NODIST`
-  so that it stays out of sysconfig: a `cp314t` wheel built against it inherits none.
+  so that it stays out of sysconfig: a `cp3XYt` wheel built against it inherits none.
 - **Every artifact stages one tree per arch**, at
   `/opt/python-cross-ft/<arch>/opt/python-freethreaded`, the build arch's included and in
   either build mode, so `Dockerfile.package` takes the target arch's with one COPY.
@@ -705,7 +705,7 @@ Python legs refuse to: a missing one fails the leg ([`python-ci.md` § Free-thre
   - No staged tree carries the test suite. The cross trees are built `--disable-test-modules`,
     and the build arch's stage drops `lib/python3.14t/test` to match.
   - `pip` is in the build arch's tree only; the cross builds run `--without-ensurepip`.
-- **The build stages keep it too**, for the `cp314t` wheel builds: toolchain, media and
+- **The build stages keep it too**, for the `cp3XYt` wheel builds: toolchain, media and
   android carry the build arch's interpreter at `/opt/python-freethreaded` and
   `/usr/local/bin/python3.14t`, and each `CROSS_TARGETS` arch's tree under
   `/opt/python-cross-ft/`. The media stage builds its twins with it
@@ -724,8 +724,8 @@ Python legs refuse to: a missing one fails the leg ([`python-ci.md` § Free-thre
 ### The free-threaded wheels
 
 Every wheel the media stage builds for a package whose own code declares free-threading
-support also ships as a proved `cp314t` twin, in a store of its own: `/opt/wheels-cp314t`
-(owner request 2026-10-07). That holds for the cross-built arches too, arm64 and riscv64, since
+support also ships as a proved free-threaded (`cp3XYt`) twin, in a store of its own: `/opt/wheels-free-threaded`
+(owner request 2026-10-07; no version in the name since 2026-10-12, so a Python upgrade renames nothing). That holds for the cross-built arches too, arm64 and riscv64, since
 2026-10-09 in source (CON75, CON79 1b). The GIL wheels are built exactly as before.
 
 - **Which packages.** One table decides, `linux/scripts/03-media/free-threaded-twins.txt`, and
@@ -827,20 +827,21 @@ support also ships as a proved `cp314t` twin, in a store of its own: `/opt/wheel
   A twin that fails any of it fails its RUN; inside TVM's best-effort build that withdraws
   TVM, as any failure there does.
 - **How the stores stay apart.** `collect-artifacts.sh` moves the twins into `FT_WHEELS_DIR`
-  only, and the ORT twin gets its own manifest, `ort-provenance-cp314t.sha256`.
-  `verify-wheels.sh` is ABI-exact on both stores: a `cp314t` wheel or module in `/opt/wheels`
-  fails it, and so does anything but `cp314-cp314t` in the twin store. The final RUN then
+  only, and the ORT twin gets its own manifest, `ort-provenance-free-threaded.sha256`.
+  `verify-wheels.sh` is ABI-exact on both stores: a `cp3XYt` wheel or module in `/opt/wheels`
+  fails it, and so does anything but `cp3XY-cp3XYt` in the twin store. The final RUN then
   repairs and verifies the twins with `--free-threaded`, and `free-threaded-store.sh` proves
   them again on the repaired bytes. A cross build proves them under qemu-user again. A build,
   native or cross, fails there when the store is not exactly one twin per GIL wheel the table
   expects a twin of, or when a GIL wheel has no row. It writes `free-threaded-store.txt`: the
   build mode, each twin, one `want <family>` line per family it expects, and one line per package
   without one, with its reason.
-- **What ships.** `Dockerfile.torch` copies `/opt/wheels-cp314t` into `:latest`, late, so a
+- **What ships.** `Dockerfile.torch` copies `/opt/wheels-free-threaded` into `:latest`, late, so a
   new twin re-keys no venv layer, and the export delivery seals it with `/opt/wheels`. Nothing
-  installs a twin: a `3.14t` venv takes them with `uv pip install /opt/wheels-cp314t/<wheel>`.
-  The image names the store in `PYTHON_WHEELS_CP314T`, Windows' variable for its own, and
-  `uv_reconcile_chain_ort` gives a `3.14t` venv's ONNX Runtime from it
+  installs a twin: an X.Yt venv takes them with `uv pip install /opt/wheels-free-threaded/<wheel>`.
+  The image names the store in `PYTHON_WHEELS_FREE_THREADED`, which Windows reads first too (its
+  images still set the older `PYTHON_WHEELS_CP314T`), and `uv_reconcile_chain_ort` gives an X.Yt
+  venv's ONNX Runtime from it
   ([`python-ci.md` § Trap 3](python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi)).
 - **How the shipped image proves it.** The runtime smoke's `FT-STORE` gate
   (`06-packaging/check-free-threaded-wheels.sh`) wants the store, its record and that variable
@@ -854,7 +855,7 @@ support also ships as a proved `cp314t` twin, in a store of its own: `/opt/wheel
   The GPU images pass it with both ORT twins: `:latest-nvidia` (2026-10-11, index
   sha256:810f36b3) proves `onnxruntime_gpu` and `onnxruntime_dnnl`, `:latest-rocm` (2026-10-09,
   index sha256:a5d68fbe) `onnxruntime_migraphx` and `onnxruntime_dnnl`, and the ORT census
-  grades each twin's members against the flavour's `ort-provenance-cp314t.sha256`.
+  grades each twin's members against the flavour's `ort-provenance-free-threaded.sha256`.
 - **Not covered yet.** The cross twins are in source since 2026-10-09 and unproved until a
   chain publishes them. Proved so far without a chain: PyAV 19.0.1's twin, cross-built against
   the published riscv64 image's FFmpeg and `3.14t` tree. All 50 modules loaded with the GIL off
@@ -938,8 +939,8 @@ run at the next image build.
   `setup-torch-venv.sh stage_chain_ort_wheels` proves the venv against it at build
   time. The census that proof runs ships at
   `/opt/scripts/03-media/final/ort-venv-census.py`; its command line and output
-  lines are a contract that `python_uv.sh` and `setup-torch-venv.sh` read. The `cp314t`
-  twins of those flavours sit in `/opt/wheels-cp314t` (`PYTHON_WHEELS_CP314T`).
+  lines are a contract that `python_uv.sh` and `setup-torch-venv.sh` read. The free-threaded
+  twins of those flavours sit in `/opt/wheels-free-threaded` (`PYTHON_WHEELS_FREE_THREADED`).
 - **Windows:** the same wheels sit in `C:\runtime\wheels` (`PYTHON_WHEELS`). The
   census ships at `C:\temp\scripts\ort-venv-census.py`, beside the module copy whose
   `Sync-UvChainOnnxRuntime` runs it; `Build-TorchApp.ps1` embeds its own copy.

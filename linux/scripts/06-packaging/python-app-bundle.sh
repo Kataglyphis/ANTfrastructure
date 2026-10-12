@@ -10,7 +10,8 @@ REPO_ROOT="${PWD}"
 CONFIG="packaging/app.json"
 WHEEL_DIR="dist"
 OUT_DIR=""
-PYTHON_VERSION="3.14.8"
+# The pinned interpreter, from versions.env beside the scripts: docs/python-ci.md#upgrading-python
+PYTHON_VERSION="$(sed -n 's/^PYTHON_VERSION=//p' "${SCRIPT_DIR}/../01-core/versions.env" 2>/dev/null | head -n 1)"
 ORT_WHEEL_DIR="${ORT_CHAIN_WHEEL_DIR:-/opt/onnxruntime-wheels}"
 WORK_DIR=""
 
@@ -41,6 +42,7 @@ esac
 [ -n "${OUT_DIR}" ] || OUT_DIR="dist/linux-${ARCH}/bundle"
 [ -n "${WORK_DIR}" ] || WORK_DIR="$(mktemp -d)"
 [ -f "${CONFIG}" ] || err "no app config at ${CONFIG}"
+[ -n "${PYTHON_VERSION}" ] || err "no PYTHON_VERSION: pass --python-version, or keep versions.env beside the scripts"
 
 # One JSON read per key, with the image's python; the bundle's interpreter does not exist yet.
 cfg() { python3 -c 'import json, sys; v = json.load(open(sys.argv[1]))[sys.argv[2]]; print("\n".join(v) if isinstance(v, list) else v)' "${CONFIG}" "$1"; }
@@ -92,14 +94,14 @@ done
 [ -n "${ort_wheel}" ] || err "no chain ONNX Runtime wheel in ${ORT_WHEEL_DIR}: the family ships only the chain ORT"
 info "chain ORT wheel: $(basename "${ort_wheel}")"
 
-info "== runtime: python-build-standalone ${PYTHON_VERSION} (the image's distro Python is not relocatable)"
+info "== runtime: python-build-standalone ${PYTHON_VERSION} (the image's own build is not relocatable)"
 uv python install "${PYTHON_VERSION}" --install-dir "${WORK_DIR}/python" --no-bin
 python_home="$(find "${WORK_DIR}/python" -mindepth 1 -maxdepth 1 -type d -name "cpython-${PYTHON_VERSION}-linux-*" | head -n 1)"
 [ -n "${python_home}" ] || err "uv installed no cpython-${PYTHON_VERSION} into ${WORK_DIR}/python"
 cp -a "${python_home}" "${RUNTIME}"
 PY="${RUNTIME}/bin/python3"
 "${PY}" -c 'import sys; print(sys.version)'
-# The runtime decides: ci_packaging.sh ships a cp314t twin beside the cp314 wheel, and only one of them installs here.
+# The runtime decides: ci_packaging.sh ships a free-threaded twin beside the GIL wheel, and only one of them installs here.
 abi="$("${PY}" -I -c 'import sys, sysconfig; print("cp%d%d%s" % (*sys.version_info[:2], "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""))')"
 app_wheel="$(select_app_wheel "${WHEEL_DIR}" "${dist_key}" "${ARCH}" "${abi}")" || err "${app_wheel}"
 info "app wheel for the ${abi} runtime: $(basename "${app_wheel}")"

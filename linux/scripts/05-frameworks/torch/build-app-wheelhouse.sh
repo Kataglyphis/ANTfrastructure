@@ -30,7 +30,7 @@ for _qnnmod in \
 done
 unset _qnnmod
 
-# The cp314t twin helpers sit two levels up in the repo and in the RUN's per-file mount alike; a missing one fails the twin pass.
+# The free-threaded twin helpers sit two levels up in the repo and in the RUN's per-file mount alike; a missing one fails the twin pass.
 _ftw="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../03-media/free-threaded-wheels.sh"
 if [ -f "${_ftw}" ]; then
     # shellcheck source=../../03-media/free-threaded-wheels.sh
@@ -61,7 +61,7 @@ done
 unset _evf
 
 : "${APP_WHEELHOUSE_DIR:=/opt/app-wheels}"
-: "${APP_WHEELHOUSE_FT_DIR:=/opt/app-wheels-cp314t}"
+: "${APP_WHEELHOUSE_FT_DIR:=/opt/app-wheels-free-threaded}"
 : "${APP_WHEELHOUSE_BUILD_ROOT:=/tmp/app-wheelhouse}"
 : "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.13.0}}"
 : "${PYTORCH_VERSION:=${PYTORCH_REF#v}}"
@@ -229,7 +229,7 @@ EOF
     fi
     # Without these pytorch silently turns BUILD_PYTHON off and the link fails on -ltorch_python.
     local py_inc py_lib
-    # CROSS_PYTHON_*: the cp314t twin's target 3.14t; else the target GIL Python.
+    # CROSS_PYTHON_*: the free-threaded twin's target X.Yt; else the target GIL Python.
     py_inc="${CROSS_PYTHON_INCLUDE_DIR:-$(cross_target_python_include_dir 2>/dev/null || true)}"
     py_lib="${CROSS_PYTHON_LIBRARY:-$(cross_target_python_library 2>/dev/null || true)}"
     if [ -n "${py_inc}" ] && [ -d "${py_inc}" ] && [ -n "${py_lib}" ] && [ -f "${py_lib}" ]; then
@@ -284,7 +284,7 @@ append_common_cross_cmake_args() {
 
     resolved_ar="$(resolve_cross_gcc_tool ar 2>/dev/null || true)"
     resolved_ranlib="$(resolve_cross_gcc_tool ranlib 2>/dev/null || true)"
-    # CROSS_PYTHON_*: the cp314t twin's target 3.14t, whose one include dir holds its pyconfig.h; else the target GIL Python.
+    # CROSS_PYTHON_*: the free-threaded twin's target X.Yt, whose one include dir holds its pyconfig.h; else the target GIL Python.
     if [ -n "${CROSS_PYTHON_INCLUDE_DIR:-}" ]; then
         target_python_include="${CROSS_PYTHON_INCLUDE_DIR}"
         target_python_library="${CROSS_PYTHON_LIBRARY:-}"
@@ -366,7 +366,7 @@ _torch_ensure_c_extension() {
         return 0
     fi
 
-    # cmake links the ABI-mangled name; a literal torch/_C.so never appears. The wheel's own ABI, as the cp314t twin's tree holds both.
+    # cmake links the ABI-mangled name; a literal torch/_C.so never appears. The wheel's own ABI, as the free-threaded twin's tree holds both.
     build_torch_dir="${APP_WHEELHOUSE_BUILD_ROOT}/pytorch/torch"
     pyabi="$(basename "${wheel_path}" | sed -nE 's/.*-cp[0-9]+-cp([0-9]+t?)-.*/\1/p')"
     [ -n "${pyabi}" ] || pyabi="314"
@@ -555,14 +555,14 @@ _torch_cmake_args() {
     return 0
 }
 
-# The torch twin, gated by FT_TORCH_TWIN through its table row: the warm tree again on a cp314t venv, so only what sees Python rebuilds.
+# The torch twin, gated by FT_TORCH_TWIN through its table row: the warm tree again on a free-threaded venv, so only what sees Python rebuilds.
 _torch_build_free_threaded_wheel() {
     local venv="${APP_WHEELHOUSE_BUILD_ROOT}/torch-ft-venv" t0
     declare -F ft_twin_start >/dev/null || { warn "torch: free-threaded-wheels.sh is not mounted; its RUN needs the per-file mount"; return 1; }
     ft_twin_start torch "${venv}" "${BUILD_PYTHON}" pip setuptools wheel numpy packaging pyyaml typing-extensions six \
         || { [ $? -eq 1 ] && return 0; return 1; }
     t0="$(date +%s)"
-    local BUILD_PYTHON="${venv}/bin/python" dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-torch-cp314t"
+    local BUILD_PYTHON="${venv}/bin/python" dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-torch-free-threaded"
     local python_sysconfig_export cmake_args_string
     local CROSS_PYTHON_INCLUDE_DIR="${FT_TARGET_INCLUDE}" CROSS_PYTHON_LIBRARY="${FT_TARGET_LIBRARY}"
     local -a cmake_args=()
@@ -577,10 +577,10 @@ _torch_build_free_threaded_wheel() {
     # The GIL pass's module would otherwise ride into the twin, as IREE's did.
     rm -f "${src_dir}"/torch/_C.cpython-*.so
     if ! _torch_run_setup_py; then
-        warn "torch: the cp314t pass over ${src_dir} failed"
+        warn "torch: the free-threaded pass over ${src_dir} failed"
         return 1
     fi
-    log "torch: the cp314t pass took $(( $(date +%s) - t0 ))s in the warm tree"
+    log "torch: the free-threaded pass took $(( $(date +%s) - t0 ))s in the warm tree"
     _torch_ensure_c_extension "${dist_dir}" || return 1
     retag_directory_wheels "${dist_dir}" torch "${wheel_platform}" "${BUILD_PYTHON}"
     ft_twin_store_built "${dist_dir}" "${APP_WHEELHOUSE_FT_DIR}" || return 1
@@ -955,7 +955,7 @@ _iree_build_target_native() {
     fi
 }
 
-# Empty iree_wheel_projects means both, and the cp314t pass after it reads the list this sets.
+# Empty iree_wheel_projects means both, and the free-threaded pass after it reads the list this sets.
 _iree_package_wheels() {
     rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
     local _proj _pkg
@@ -985,9 +985,9 @@ _iree_package_wheels() {
     log "Built IREE wheels: $(cd "${dist_dir}" && echo iree_base_*-*.whl)"
 }
 
-# The wheels again on a cp314t venv in the warm target tree, so only the nanobind modules rebuild.
+# The wheels again on a free-threaded venv in the warm target tree, so only the nanobind modules rebuild.
 _iree_package_free_threaded_wheels() {
-    local venv="${APP_WHEELHOUSE_BUILD_ROOT}/iree-ft-venv" ft_dist="${APP_WHEELHOUSE_BUILD_ROOT}/dist-iree-cp314t"
+    local venv="${APP_WHEELHOUSE_BUILD_ROOT}/iree-ft-venv" ft_dist="${APP_WHEELHOUSE_BUILD_ROOT}/dist-iree-free-threaded"
     local _proj t0
     declare -F ft_twin_start >/dev/null || { warn "IREE: free-threaded-wheels.sh is not mounted; its RUN needs the per-file mount"; return 1; }
     ft_twin_start iree-base-runtime "${venv}" "${BUILD_PYTHON}" pip setuptools wheel numpy || { [ $? -eq 1 ] && return 0; return 1; }
@@ -997,11 +997,11 @@ _iree_package_free_threaded_wheels() {
     rm -rf "${ft_dist}"
     for _proj in "${iree_wheel_projects[@]}"; do
         ft_twin_wanted "iree-base-${_proj}" || return 1
-        # setup.py installs into the build/ beside it, where the GIL pass's modules would ride into the cp314t wheel.
+        # setup.py installs into the build/ beside it, where the GIL pass's modules would ride into the free-threaded wheel.
         rm -rf "${target_build:?}/${_proj}/build"
         if ! "${venv}/bin/python" -m pip wheel "${target_build}/${_proj}" -w "${ft_dist}/${_proj}" --no-deps --no-build-isolation \
                 > "${target_build}.${_proj}-ft-wheel.log" 2>&1; then
-            warn "IREE ${_proj} cp314t wheel packaging failed"
+            warn "IREE ${_proj} free-threaded wheel packaging failed"
             tail -n 60 "${target_build}.${_proj}-ft-wheel.log" 2>/dev/null
             return 1
         fi

@@ -19,7 +19,7 @@ case "${1:-}" in
     echo "  PYAV_VERSION     PyAV release tag without the leading v (required)"
     echo "  FFMPEG_PREFIX    FFmpeg install prefix (default: /opt/ffmpeg)"
     echo "  PYAV_WHEELS_DIR  Wheel output dir (default: /opt/pyav/wheels)"
-    echo "  PYAV_FT_WHEELS_DIR  cp314t twin output dir (default: /opt/pyav/wheels-cp314t)"
+    echo "  PYAV_FT_WHEELS_DIR  free-threaded twin output dir (default: /opt/pyav/wheels-free-threaded)"
     echo "  USE_CCACHE       Compile through ccache when available (default: true)"
     exit 0
     ;;
@@ -28,7 +28,7 @@ esac
 # No PYAV_VERSION default on purpose: Dockerfile.media and versions.env (via media_common_init) set it.
 : "${FFMPEG_PREFIX:=/opt/ffmpeg}"
 : "${PYAV_WHEELS_DIR:=/opt/pyav/wheels}"
-: "${PYAV_FT_WHEELS_DIR:=/opt/pyav/wheels-cp314t}"
+: "${PYAV_FT_WHEELS_DIR:=/opt/pyav/wheels-free-threaded}"
 : "${PYAV_SRC:=${TMPDIR:-/tmp}/pyav-$$}"
 
 BUILD_PYTHON=""
@@ -143,7 +143,7 @@ pyav_build_wheel() {
     if cross_build_is_active; then
         local py_mm py_inc py_arch_inc
         if [ -n "${PYAV_TARGET_INCLUDE:-}" ]; then
-            # The cp314t twin: the target's 3.14t headers and suffix, from ft_target_resolve.
+            # The free-threaded twin: the target's X.Yt headers and suffix, from ft_target_resolve.
             py_inc="${PYAV_TARGET_INCLUDE}" py_arch_inc="${PYAV_TARGET_INCLUDE}" ext_suffix="${PYAV_TARGET_EXT_SUFFIX:?}"
         else
             py_mm="$(cross_target_python_major_minor)" || pyav_skip "cannot resolve the target Python version"
@@ -195,19 +195,19 @@ PY
     done
 }
 
-# The same tree again on a cp314t venv; every PyAV extension sees Python, so all of them recompile.
+# The same tree again on a free-threaded venv; every PyAV extension sees Python, so all of them recompile.
 pyav_build_free_threaded_wheel() {
     local ftvenv="${TMPDIR:-/tmp}/pyav-ft-venv" ftdist="${TMPDIR:-/tmp}/pyav-ft-dist" t0
     # shellcheck source=../../free-threaded-wheels.sh
     source "${SCRIPT_DIR}/../../free-threaded-wheels.sh" || err "PyAV: free-threaded-wheels.sh is not mounted; its RUN needs the per-file mount"
     ft_twin_start av "${ftvenv}" "${BUILD_PYTHON}" setuptools cython wheel \
-        || { [ $? -eq 1 ] && return 0; err "PyAV: the cp314t twin cannot be built (see above)"; }
+        || { [ $? -eq 1 ] && return 0; err "PyAV: the free-threaded twin cannot be built (see above)"; }
     t0="$(date +%s)"
-    # Empty on a native build; a cross one compiles against the target's 3.14t tree.
+    # Empty on a native build; a cross one compiles against the target's X.Yt tree.
     PYAV_TARGET_INCLUDE="${FT_TARGET_INCLUDE:-}" PYAV_TARGET_EXT_SUFFIX="${FT_TARGET_EXT_SUFFIX:-}" \
         pyav_build_wheel "${ftvenv}/bin/python" "${ftdist}" || err "PyAV: the free-threaded setup.py bdist_wheel failed (see the log above)"
-    info "PyAV: cp314t extensions built in $(( $(date +%s) - t0 ))s"
-    ft_twin_store_built "${ftdist}" "${PYAV_FT_WHEELS_DIR}" || err "PyAV: no proved cp314t twin (see above)"
+    info "PyAV: free-threaded extensions built in $(( $(date +%s) - t0 ))s"
+    ft_twin_store_built "${ftdist}" "${PYAV_FT_WHEELS_DIR}" || err "PyAV: no proved free-threaded twin (see above)"
     rm -rf "${ftvenv}" "${ftdist}"
 }
 

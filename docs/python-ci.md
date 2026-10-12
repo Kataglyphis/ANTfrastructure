@@ -132,7 +132,7 @@ the consumer's lock moved since builds as before.
 
 **The cross wheel is installed where it runs.** After packaging, the row runs
 `ci-wheel-smoke.sh` in the riscv64 image under QEMU (CON83). It takes the one
-`cp314` riscv64 wheel from `dist/`, installs it into a fresh venv over the lock's
+`cp3XY` riscv64 wheel from `dist/`, installs it into a fresh venv over the lock's
 core dependencies (`uv sync --locked --no-dev --no-install-project`, from the
 same seed), imports the package outside the checkout and loads every compiled
 module the wheel owns without running its body, since a module may import an
@@ -326,7 +326,7 @@ reconciling the venv it synced:
    (cp314 today), and uv installs a path wheel of another ABI tag without complaint.
    So before the venv is touched, each store ORT wheel's tag must fit the venv's own
    (`abi3` and `none` fit any), or the sync fails naming the misfits. A `cp3XYt` venv is
-   given the image's twins instead, when `PYTHON_WHEELS_CP314T` names their store (both
+   given the image's twins instead, when `PYTHON_WHEELS_FREE_THREADED` names their store (both
    lanes, § Free-threaded and GIL legs). On Linux it takes only the twins of the flavours
    `ORT_CHAIN_WHEEL_DIR` holds, since a GPU image's twin store carries two ORT flavours and a
    venv given both has two cores.
@@ -499,7 +499,7 @@ ships `C:\python-freethreaded\python3.14t.exe`, source-built beside the GIL buil
 `UV_PYTHON_DOWNLOADS=never`. An older image still has uv download one, and so does the arm64
 runner-native job above, which runs without an image.
 
-**The chain's own twins.** The same `:winamd64` ships `cp314-cp314t` builds of the chain wheels
+**The chain's own twins.** The same `:winamd64` ships `cp3XY-cp3XYt` builds of the chain wheels
 whose code declares free-threading (ONNX Runtime, PyAV, apache-tvm-ffi and the two IREE
 packages) in `PYTHON_WHEELS_CP314T` (`C:\runtime\wheels-cp314t`), apart from the GIL store
 ([`windows-builds.md` § The free-threaded wheels](windows-builds.md#the-free-threaded-wheels)).
@@ -508,8 +508,8 @@ packages) in `PYTHON_WHEELS_CP314T` (`C:\runtime\wheels-cp314t`), apart from the
 on the ABI as before. The arm64 bundle carries the same store with `win_arm64` twins, minus the
 IREE compiler ([`windows-builds.md` § The arm64 cross twins](windows-builds.md#the-arm64-cross-twins)).
 
-Linux does the same since 2026-10-07. `:latest` names its twin store, `/opt/wheels-cp314t`, in
-the same variable, and `uv_reconcile_chain_ort` reads it for a `cp3XYt` venv
+Linux does the same since 2026-10-07. `:latest` names its twin store, `/opt/wheels-free-threaded`, in
+`PYTHON_WHEELS_FREE_THREADED`, a name with no version that Windows reads first as well, and `uv_reconcile_chain_ort` reads it for a `cp3XYt` venv
 ([`consumer-image-contract.md` § The free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)).
 An image without the variable still refuses the leg on the ABI, and the runtime smoke's
 `FT-STORE` gate fails it. Test: `linux/scripts/tests/test-uv-chain-ort.sh`.
@@ -524,7 +524,7 @@ creates the `+gil` venv. Measured in `:winamd64`: 3.12 is installed and its venv
 
 `uv build` is a second door into the same trap. It discovers its own interpreter and
 ignores the venv, so `Invoke-CiPackaging.ps1` and `ci_packaging.sh` pass it the same
-`--python X.Y+gil`. Without that flag, OrchestrANT's only Windows binary wheel was `cp314-cp314t`
+`--python X.Y+gil`. Without that flag, OrchestrANT's only Windows binary wheel was `cp3XY-cp3XYt`
 (2026-10-01). The app bundle's GIL runtime could not install it.
 
 The GIL interpreter `uv build` then finds is the image's in-tree build
@@ -536,8 +536,8 @@ install. The binaries step therefore puts the interpreter's directory on `LIB` w
 
 ## Two wheels: GIL and free-threaded
 
-A project that declares free-threading support ships two binary wheels: `cp314-cp314` for
-the GIL interpreter and `cp314-cp314t` for the free-threaded one. The sdist and the pure
+A project that declares free-threading support ships two binary wheels: `cp3XY-cp3XY` for
+the GIL interpreter and `cp3XY-cp3XYt` for the free-threaded one. The sdist and the pure
 `py3-none-any` wheel are built once, because they serve both.
 
 **Opting in** is the official trove classifier, in `pyproject.toml`'s `[project]` table:
@@ -557,11 +557,11 @@ re-enables the GIL when it loads, and the proof below fails.
 with `linux/scripts/02-toolchain/python/free-threaded-wheel.py declares`. When it is there:
 
 1. **The build.** After the GIL Cython wheel, the same `CYTHONIZE=True` build runs on the
-   free-threaded twin of the packaging version (`3.14` gives `3.14t`). The interpreter is
+   free-threaded twin of the packaging version (`3.15` gives `3.15t`). The interpreter is
    the image's, found by `uv python find` and never downloaded
    ([`consumer-image-contract.md` § The free-threaded Python](consumer-image-contract.md#the-free-threaded-python)).
    Without one the step fails and says so.
-2. **The tag.** The build must leave one `cp314t` wheel. On Linux it is auditwheel-repaired
+2. **The tag.** The build must leave one `cp3XYt` wheel. On Linux it is auditwheel-repaired
    like the GIL wheel. A pure result is logged and dropped.
 3. **The proof.** A fresh venv of the same interpreter installs the shipped wheel without
    its dependencies, and `free-threaded-wheel.py prove` loads every compiled module the
@@ -602,7 +602,7 @@ bash "$(antfrastructure_path linux/scripts/02-toolchain/python/test-free-threade
 
 - **What it installs.** A fresh venv of the image's free-threaded interpreter, found and never
   downloaded, gets the lock's set (`uv export --locked --no-emit-project`, with `--extra` if
-  given), then the shipped `cp314t` wheel of this arch with `--no-deps`.
+  given), then the shipped `cp3XYt` wheel of this arch with `--no-deps`.
 - **Where it runs.** Each `--copy` is staged at its relative path in a temporary directory,
   and pytest runs there, because from the checkout the sources would shadow the installed
   modules. Do not copy the package itself. `--isolated` adds `python -I`; leave it off when
@@ -613,7 +613,7 @@ bash "$(antfrastructure_path linux/scripts/02-toolchain/python/test-free-threade
   it, so pass its warning filters there.
 - **When it skips.** In the three cases above in which the driver builds no free-threaded
   wheel: a cross build, `PYTHON_FREE_THREADED_WHEEL=off`, and `auto` without the classifier.
-  A declared project with no `cp314t` wheel of this arch in `dist/` fails, and so does a call
+  A declared project with no `cp3XYt` wheel of this arch in `dist/` fails, and so does a call
   without `--copy`.
 
 OrchestrANT runs its thread-safety tests this way, WebDavClient its whole suite.
@@ -680,6 +680,41 @@ Tests: `linux/scripts/tests/test-python-free-threaded-wheel.sh` and
 Inside `:latest` the Linux suite also runs `prove` for real: it compiles two C
 extensions against `/opt/python-freethreaded` (or `FT_PYTHON`), one declaring
 `Py_MOD_GIL_NOT_USED` and one not. A host without a free-threaded interpreter logs a SKIP line for that case.
+
+## Upgrading Python
+
+One line moves every image, lane and default: `PYTHON_VERSION` in
+`linux/scripts/01-core/versions.env` (owner rule 2026-10-12: an upgrade must stay that easy).
+
+1. Set `PYTHON_VERSION=X.Y.Z` and run `python3 docs/scripts/bump_versions.py --write --only PYTHON_VERSION`.
+   It moves to the newest X.Y patch and writes `PYTHON_TGZ_SHA256` from python.org's tarball.
+2. `python3 docs/scripts/sync_versions.py --write` copies the pin into the Dockerfiles' ARG defaults.
+3. Rebuild the chain from `compiler`. Its GCC, LLVM and Rust layers stay cached, because the Python ARGs
+   sit right above the CPython RUN; every stage after it builds again, and so does every wheel the chain
+   builds per Python ABI (ONNX Runtime and its twins, GenAI, IREE, PyAV, tvm-ffi, LiteRT, OpenCV's cv2,
+   riscv64's torch).
+
+**What follows without an edit:**
+
+- The images ship the source-built interpreter on every arch, GIL (`/usr/local/bin/pythonX.Y`) and
+  free-threaded (`/opt/python-freethreaded`), never the distro's `python3`, so Ubuntu's own Python
+  version does not matter. arm64 and riscv64 build what apt used to supply for it (numpy, PyGObject,
+  pycairo, contourpy) from sdists.
+- `PYTHON_MAJOR_MINOR`, which the image advertises, and the wheel tags `PYTHON_ABI_TAG` and
+  `PYTHON_FT_ABI_TAG` (`common.sh`).
+- The drivers' defaults. `ci_tests.sh` runs X.Y, plus X.Yt when `pyproject.toml` declares
+  free-threading; the packaging, static-analysis, docs, wheel-smoke and wheel-test drivers take X.Y. A
+  consumer that passes no version follows the image.
+- The free-threaded store's names carry no version: `/opt/wheels-free-threaded`,
+  `PYTHON_WHEELS_FREE_THREADED`.
+- The riscv64 uv cache seed, the app bundle's python-build-standalone, and the hub's own workflows,
+  which read X.Y from `versions.env`.
+- Renovate reports every new release, a minor included, and its rule names no version.
+
+**What still needs a look:** a consumer's lock needs wheels (or buildable sdists) for the new tag,
+since only the image's own wheels come from the chain; PyPI packages whose `requires-python` stops
+below the new version (pyhailort says `<3.14`); and the Windows lanes, which read the same
+`PYTHON_VERSION` but keep their own wheel pins (BACKLOG).
 
 ## Which Linux image
 

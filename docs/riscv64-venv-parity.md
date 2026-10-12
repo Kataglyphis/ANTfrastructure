@@ -113,8 +113,8 @@ absent even if `uv sync` worked here: `mlflow` (and its ~60-package closure),
 `boto3`, `captum`, `onnxruntime`/`onnxruntime-genai` (ANTfrastructure ships local
 wheels instead), and `iree-base-compiler` — riscv64 builds IREE runtime-only.
 
-`pycairo`/`pygobject` show as missing in `uv pip list` on riscv64 but are
-present as copied system packages; `import gi` works. Not a gap.
+`pycairo`/`pygobject` are built from their sdists for the image's own
+`PYTHON_VERSION` since 2026-10-12; apt's copies belonged to the distro `python3`.
 
 `captum` is deliberately NOT in the assert list below: it comes from the
 `pytorch-*` extra, and `PYTORCH_EXTRA=none` is a supported operator override,

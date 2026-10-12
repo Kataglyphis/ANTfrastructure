@@ -392,7 +392,7 @@ echo "$o" | grep -Eq "\b5(\.0+)?\b" || exit 2' 2>&1)"; then
       elif [ "${target_arch}" = "riscv64" ]; then
         # Warn on riscv64 only: LLVM rejects QEMU's synthetic max-ISA CPU, an emulation limit.
         echo "  WARN IREE native compile/run FAILED under QEMU on riscv64 (non-fatal) --"
-        echo "       cp314 wheels build/install/import; codegen unverifiable under QEMU's"
+        echo "       wheels for the pinned Python build/install/import; codegen unverifiable under QEMU's"
         echo "       synthetic max-ISA CPU (LLVM RISC-V subtarget rejects it). Verify on-device."
         printf '%s\n' "${iree_out}" | tail -6
       else
@@ -500,7 +500,7 @@ _consumer_contract_symptom() {
     chrome)        printf '%s' 'flutter doctor reports "Cannot find Chrome executable at google-chrome" and "flutter test --platform chrome" has no browser, so the web lane tests nothing in one' ;;
     android-emulator) printf '%s' 'an Android lane has no device to install on: adb reports "no devices/emulators found" and every on-device test is skipped' ;;
     cargo-qa-tools) printf '%s' 'every OxidANT security and coverage step cargo-installs cargo-audit, cargo-deny and cargo-tarpaulin from crates.io first, minutes of compiles per run' ;;
-    free-threaded-python) printf '%s' 'every 3.14t leg has uv download a free-threaded CPython first, its patch version unpinned' ;;
+    free-threaded-python) printf '%s' 'every X.Yt leg has uv download a free-threaded CPython first, its patch version unpinned' ;;
     lint-tools)    printf '%s' 'OrchestrANT'"'"'s coding bench reports "[shellcheck SKIPPED: not on PATH]" and "[hadolint SKIPPED: not on PATH]" on every row, so no bash or Dockerfile answer is linted' ;;
     uv-cache-seed) printf '%s' 'the riscv64 Python lane'"'"'s uv sync of the test extra builds numpy, matplotlib, contourpy, pillow, line-profiler, psutil and pyyaml under QEMU: 108 min of a 6 h job' ;;
     *)             printf '%s' 'no symptom recorded for this row' ;;

@@ -11,7 +11,7 @@ detect_workspace
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "Usage: ci_tests.sh [package_name] [py_versions_string]"
   echo "  package_name defaults to \$PACKAGE_NAME or derived from pyproject.toml"
-  echo "  py_versions_string defaults to \$PY_VERSIONS or '3.14'"
+  echo "  py_versions_string defaults to \$PY_VERSIONS, else the pinned X.Y, plus X.Yt when pyproject.toml declares free-threading"
   echo "  log file defaults to \$CI_TESTS_LOG_FILE or 'docs/test_results/ci_tests-<timestamp>.log'"
   echo "  \$PYTEST_PATHS (comma list) narrows pytest; empty runs the project's configured testpaths"
   echo "  \$FREE_THREADED_SYNC_EXTRAS (comma list) makes a free-threaded leg sync only those extras and gate"
@@ -21,7 +21,16 @@ fi
 
 PACKAGE_NAME="$(derive_package_name "${1:-${PACKAGE_NAME:-}}")"
 
-PY_VERSIONS="${2:-${PY_VERSIONS:-3.14}}"
+# The pinned X.Y, and its free-threaded twin for a project that declares support, so a Python upgrade moves every leg.
+default_py_versions() {
+  : "${DEFAULT_PYTHON_VERSION:?no pinned Python: keep versions.env beside python_uv.sh, or pass a version}"
+  if python3 -I "$SCRIPT_DIR/free-threaded-wheel.py" declares "$WORKSPACE_ROOT/pyproject.toml" >/dev/null 2>&1; then
+    printf '%s %st\n' "$DEFAULT_PYTHON_VERSION" "$DEFAULT_PYTHON_VERSION"
+  else
+    printf '%s\n' "$DEFAULT_PYTHON_VERSION"
+  fi
+}
+PY_VERSIONS="${2:-${PY_VERSIONS:-$(default_py_versions)}}"
 # EXPERIMENTAL_PYTHON_VERSIONS is owned and read by 01-core/python_uv.sh; nothing to set here.
 
 # Empty runs the project's own testpaths: a hard-coded subdir once left a consumer's real suite on no lane.

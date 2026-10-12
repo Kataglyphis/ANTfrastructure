@@ -208,7 +208,7 @@ build_pyhailort() {
     || die "pyhailort: cannot apply HAILO_PYHAILORT_IPO=${ipo}"
   mkdir -p "${wheel_dir}"
   info "building the pyhailort wheel (scikit-build-core)"
-  # pip will not even build a wheel whose requires-python (upstream: <3.14) rejects the image's 3.14.
+  # pip will not even build a wheel whose requires-python (upstream: <3.14) rejects the image's Python.
   sed -i 's/^requires-python = .*/requires-python = ">=3.10"/' "${platform_dir}/pyproject.toml"
   python3 -m pip install --quiet --disable-pip-version-check \
     "scikit-build-core>=0.10" "pybind11>=2.13.6,<3" \
@@ -255,7 +255,7 @@ install_pyhailort() {
     if /opt/venv/bin/python -c 'import hailo_platform' >/dev/null 2>&1; then
       info "pyhailort installed into /opt/venv and imports"
     else
-      warn "pyhailort installed but 'import hailo_platform' fails on Python 3.14 (upstream declares <3.14)"
+      warn "pyhailort installed but 'import hailo_platform' fails on Python ${PYTHON_MAJOR_MINOR:-?} (upstream declares <3.14)"
     fi
   else
     printf '%s\n' "${out}" | tail -n 20 >&2

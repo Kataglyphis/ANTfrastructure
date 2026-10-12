@@ -65,6 +65,11 @@ fi
 if [ -z "${PYTHON_MAJOR_MINOR:-}" ] && [ -n "${PYTHON_VERSION:-}" ]; then
   PYTHON_MAJOR_MINOR="$(version_major_minor "${PYTHON_VERSION}")"
 fi
+# Its wheel tags (cp315, cp315t): derived, so a Python upgrade is the one PYTHON_VERSION line. docs/python-ci.md#upgrading-python
+if [ -n "${PYTHON_MAJOR_MINOR:-}" ]; then
+  : "${PYTHON_ABI_TAG:=cp${PYTHON_MAJOR_MINOR//./}}"
+  : "${PYTHON_FT_ABI_TAG:=${PYTHON_ABI_TAG}t}"
+fi
 
 APT_OPTS=(-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 APT_FLAGS=(-qq --no-install-recommends "${APT_OPTS[@]}")

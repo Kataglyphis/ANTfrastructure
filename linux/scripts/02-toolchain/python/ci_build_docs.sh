@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sphinx docs; COVERAGE_VERSION (arg 1, default 3.14) must name the ci_tests.sh leg whose coverage is published.
+# Sphinx docs; COVERAGE_VERSION (arg 1, default the pinned X.Y) must name the ci_tests.sh leg whose coverage is published.
 
 set -euo pipefail
 
@@ -8,7 +8,7 @@ source "$SCRIPT_DIR/ci-common.sh" || { echo "Error: failed to source ci-common.s
 
 detect_workspace
 
-COVERAGE_VERSION="${1:-${COVERAGE_VERSION:-3.14}}"
+COVERAGE_VERSION="${1:-${COVERAGE_VERSION:-${DEFAULT_PYTHON_VERSION:?no pinned Python: keep versions.env beside python_uv.sh, or pass a version}}}"
 
 prepare_ci_workspace
 

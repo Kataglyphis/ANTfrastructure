@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The cp314t twins of the image's wheels: which get one, and the venv, gate and proof each twin passes. See docs/consumer-image-contract.md#the-free-threaded-wheels
+# The free-threaded twins of the image's wheels: which get one, and the venv, gate and proof each twin passes. See docs/consumer-image-contract.md#the-free-threaded-wheels
 
 # Mounted per file, never under core/ or runtime/, so an edit re-keys only the RUNs that build or store a twin.
 _FTW_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,7 +54,7 @@ ft_wheel_verdict() {
   printf '%s\n' "${row%%|*}"
 }
 
-# The host 3.14t must not see a GIL cross build's target sysconfig, which build-app-wheelhouse.sh exports for its own wheels.
+# The host X.Yt must not see a GIL cross build's target sysconfig, which build-app-wheelhouse.sh exports for its own wheels.
 _ft_host() {
   env -u _PYTHON_SYSCONFIGDATA_NAME -u _PYTHON_HOST_PLATFORM -u PYTHONPATH "$@"
 }
@@ -85,7 +85,7 @@ ft_twin_expected() {
   esac
 }
 
-# 0 in a cross build of this image; the twin then builds on the host's 3.14t against the target's.
+# 0 in a cross build of this image; the twin then builds on the host's X.Yt against the target's.
 _ft_cross() {
   declare -F cross_build_is_active >/dev/null 2>&1 || return 1
   cross_build_is_active
@@ -101,7 +101,7 @@ _ft_machine() {
   esac
 }
 
-# The cross target's 3.14t tree into FT_TARGET_*: prefix, interpreter, include, libpython, EXT_SUFFIX, wheel platform, sysconfig; rc 1 says why.
+# The cross target's X.Yt tree into FT_TARGET_*: prefix, interpreter, include, libpython, EXT_SUFFIX, wheel platform, sysconfig; rc 1 says why.
 ft_target_resolve() {
   local arch machine prefix sc
   arch="$(cross_target_arch 2>/dev/null || true)"
@@ -110,7 +110,7 @@ ft_target_resolve() {
   FT_TARGET_PYTHON="$(compgen -G "${prefix}/bin/python3.*t" | head -1 || true)"
   sc="$(compgen -G "${prefix}/lib/python3.*t/_sysconfigdata_t_*.py" | head -1 || true)"
   if [ -z "${FT_TARGET_PYTHON}" ] || [ -z "${sc}" ]; then
-    printf 'free-threaded: the %s 3.14t tree %s has no bin/python3.*t or _sysconfigdata_t_*.py (the toolchain stages it, CON66)\n' "${arch}" "${prefix}" >&2
+    printf 'free-threaded: the %s X.Yt tree %s has no bin/python3.*t or _sysconfigdata_t_*.py (the toolchain stages it, CON66)\n' "${arch}" "${prefix}" >&2
     return 1
   fi
   FT_TARGET_EXT_SUFFIX="$("${FT_PYTHON:?ft_python_resolve first}" -I -c 'import runpy, sys; print(runpy.run_path(sys.argv[1])["build_time_vars"]["EXT_SUFFIX"])' "${sc}")" || return 1
@@ -132,14 +132,14 @@ ft_target_resolve() {
   [ -f "${FT_TARGET_INCLUDE}/Python.h" ] || { printf 'free-threaded: no %s/Python.h\n' "${FT_TARGET_INCLUDE}" >&2; return 1; }
 }
 
-# Eval-able exports that make the host 3.14t report the target's EXT_SUFFIX and platform to a wheel build; empty on a native build.
+# Eval-able exports that make the host X.Yt report the target's EXT_SUFFIX and platform to a wheel build; empty on a native build.
 ft_target_env() {
   _ft_cross || return 0
   printf 'export _PYTHON_SYSCONFIGDATA_NAME=%q _PYTHON_HOST_PLATFORM=%q; export PYTHONPATH=%q${PYTHONPATH:+:${PYTHONPATH}}\n' \
     "${FT_TARGET_SYSCONFIG_NAME:?ft_target_resolve first}" "${FT_TARGET_PLATFORM_TAG}" "${FT_TARGET_SYSCONFIG_DIR}"
 }
 
-# <dist>: 0 when this build makes the distribution's cp314t twin, else 1 with its one-line reason; 2 for a dist the table lacks.
+# <dist>: 0 when this build makes the distribution's free-threaded twin, else 1 with its one-line reason; 2 for a dist the table lacks.
 ft_twin_wanted() {
   local dist="$1" row rc=0 verdict
   row="$(ft_wheel_row "${dist}")" || rc=$?
@@ -152,15 +152,15 @@ ft_twin_wanted() {
     twin) ;;
     twin:*)
       if ! ft_twin_expected "${dist}"; then
-        printf 'free-threaded: no cp314t twin of %s: the %s knob is off (%s)\n' "${dist}" "${verdict#twin:}" "${row##*|}"
+        printf 'free-threaded: no free-threaded twin of %s: the %s knob is off (%s)\n' "${dist}" "${verdict#twin:}" "${row##*|}"
         return 1
       fi ;;
-    *) printf 'free-threaded: no cp314t twin of %s (%s): %s\n' "${dist}" "${verdict}" "${row##*|}"; return 1 ;;
+    *) printf 'free-threaded: no free-threaded twin of %s (%s): %s\n' "${dist}" "${verdict}" "${row##*|}"; return 1 ;;
   esac
-  ft_python_resolve || { printf 'free-threaded: %s needs a cp314t twin, and this image has no interpreter to build it with\n' "${dist}" >&2; return 2; }
+  ft_python_resolve || { printf 'free-threaded: %s needs a free-threaded twin, and this image has no interpreter to build it with\n' "${dist}" >&2; return 2; }
   if _ft_cross; then
-    ft_target_resolve || { printf 'free-threaded: %s needs a cp314t twin, and this cross build has no target 3.14t tree to build it against\n' "${dist}" >&2; return 2; }
-    printf 'free-threaded: building the cp314t twin of %s for %s (%s, %s)\n' "${dist}" "${FT_TARGET_ARCH}" "${FT_TARGET_EXT_SUFFIX}" "${FT_TARGET_PYTHON}"
+    ft_target_resolve || { printf 'free-threaded: %s needs a free-threaded twin, and this cross build has no target X.Yt tree to build it against\n' "${dist}" >&2; return 2; }
+    printf 'free-threaded: building the free-threaded twin of %s for %s (%s, %s)\n' "${dist}" "${FT_TARGET_ARCH}" "${FT_TARGET_EXT_SUFFIX}" "${FT_TARGET_PYTHON}"
   fi
 }
 
@@ -204,7 +204,7 @@ ft_twin_start() {
 ft_soabi_gate() {
   local wheel="$1" want="${2:-}" out
   if [ -z "${want}" ] && _ft_cross; then
-    # The target's suffix: the host 3.14t's would pass an x86_64 module in a riscv64 twin.
+    # The target's suffix: the host X.Yt's would pass an x86_64 module in a riscv64 twin.
     [ -n "${FT_TARGET_EXT_SUFFIX:-}" ] || ft_target_resolve || return 1
     want="${FT_TARGET_EXT_SUFFIX}"
   fi
@@ -232,7 +232,7 @@ print("\n".join(bad))
 PY
 )" || return 1
   if [ -n "${out}" ]; then
-    printf 'free-threaded: %s fails the cp314t SOABI gate:\n%s\n' "${wheel##*/}" "${out}" >&2
+    printf 'free-threaded: %s fails the free-threaded SOABI gate:\n%s\n' "${wheel##*/}" "${out}" >&2
     return 1
   fi
 }
@@ -318,7 +318,7 @@ _ft_target_cxx_runtime_dir() {
   return 0
 }
 
-# <wheel> <dist> <helper>: the cross twin unpacked beside the target's own 3.14t, which loads every compiled module under qemu-user.
+# <wheel> <dist> <helper>: the cross twin unpacked beside the target's own X.Yt, which loads every compiled module under qemu-user.
 ft_prove_wheel_on_target() {
   local wheel="$1" dist="$2" helper="$3" qemu sysroot site out rc=0 d triplet cxxrt trace
   [ -n "${FT_TARGET_PYTHON:-}" ] || ft_target_resolve || return 1

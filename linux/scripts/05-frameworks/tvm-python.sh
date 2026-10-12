@@ -146,25 +146,25 @@ _tvm_stage_ffi_wheel() {
     return 0
 }
 
-# [mode]: tvm-ffi again on a cp314t venv in the GIL pass's build dir, so only its Cython core recompiles; apache-tvm is py3 and needs none.
+# [mode]: tvm-ffi again on a free-threaded venv in the GIL pass's build dir, so only its Cython core recompiles; apache-tvm is py3 and needs none.
 _tvm_stage_ffi_wheel_free_threaded() {
-    local mode="${1:-native}" ft_venv="${tvm_dir}/.venv-cp314t" ft_out="${tvm_dir}/dist-cp314t" ft_log="${tvm_dir}/tvm-ffi-wheel-build-cp314t.log" since
+    local mode="${1:-native}" ft_venv="${tvm_dir}/.venv-free-threaded" ft_out="${tvm_dir}/dist-free-threaded" ft_log="${tvm_dir}/tvm-ffi-wheel-build-free-threaded.log" since
     compgen -G "${TVM_WHEEL_DIR}/apache_tvm_ffi-*.whl" >/dev/null || return 0
     # shellcheck source=../03-media/free-threaded-wheels.sh
     source "${SCRIPT_DIR}/../03-media/free-threaded-wheels.sh" || die "TVM: free-threaded-wheels.sh is not mounted; its RUN needs the per-file mount"
     ft_twin_start apache-tvm-ffi "${ft_venv}" "${venv_python}" scikit-build-core cython setuptools-scm setuptools wheel build \
-      || { [ $? -eq 1 ] && return 0; die "TVM: the apache-tvm-ffi cp314t twin cannot be built (see above)"; }
+      || { [ $? -eq 1 ] && return 0; die "TVM: the apache-tvm-ffi free-threaded twin cannot be built (see above)"; }
     since="${SECONDS}"
     (
-      # A cross twin takes the target 3.14t's sysconfig, as the GIL pass takes the target GIL one.
+      # A cross twin takes the target X.Yt's sysconfig, as the GIL pass takes the target GIL one.
       venv_python="${ft_venv}/bin/python" TVM_WHEEL_DIR="${ft_out}" tvm_wheel_sysconfig_export="$(ft_target_env)"
       _tvm_run_wheel_build "ffi-${mode}" "${ft_log}" "${tvm_dir}/3rdparty/tvm-ffi"
     ) || die "TVM: the free-threaded apache-tvm-ffi build failed (${ft_log})"
-    log "TVM: build-wheel-ffi-${mode} rebuilt for cp314t in $(( SECONDS - since ))s"
+    log "TVM: build-wheel-ffi-${mode} rebuilt free-threaded in $(( SECONDS - since ))s"
     if [ -n "${FT_TARGET_PLATFORM_TAG:-}" ]; then
       retag_directory_wheels "${ft_out}" apache_tvm_ffi "${FT_TARGET_PLATFORM_TAG}" "${ft_venv}/bin/python"
     fi
-    ft_twin_store_built "${ft_out}" "${prefix}/wheels-cp314t" || die "TVM: no proved apache-tvm-ffi cp314t twin (see above)"
+    ft_twin_store_built "${ft_out}" "${prefix}/wheels-free-threaded" || die "TVM: no proved apache-tvm-ffi free-threaded twin (see above)"
     rm -rf "${ft_venv}" "${ft_out}"
 }
 

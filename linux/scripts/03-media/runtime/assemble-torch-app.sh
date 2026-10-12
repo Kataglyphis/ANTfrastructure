@@ -218,7 +218,7 @@ build_uv_sync_args() {
   local -n _locked_skip="$2"
   local package_name
 
-  # No GUI extra: it pulls wxPython, which is unused here and fails on Python 3.14.
+  # No GUI extra: it pulls wxPython, which is unused here and has no wheel for every pinned Python.
   _sync_args=(--find-links /opt/wheels --active \
     --extra "ml-ai" \
     --extra "docs")

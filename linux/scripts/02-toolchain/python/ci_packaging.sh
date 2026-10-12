@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the sdist and wheels (GIL, plus free-threaded when declared), auditwheel-repairing platform wheels, then any packaging/app.json app; PYTHON_VERSION (arg 1) defaults to 3.14.
+# Builds the sdist and wheels (GIL, plus free-threaded when declared), auditwheel-repairing platform wheels, then any packaging/app.json app; PYTHON_VERSION (arg 1) defaults to the pinned X.Y.
 
 set -euo pipefail
 
@@ -8,7 +8,7 @@ source "$SCRIPT_DIR/ci-common.sh" || { echo "Error: failed to source ci-common.s
 
 detect_workspace
 
-PYTHON_VERSION="${1:-${PYTHON_VERSION:-3.14}}"
+PYTHON_VERSION="${1:-${PYTHON_VERSION:-${DEFAULT_PYTHON_VERSION:?no pinned Python: keep versions.env beside python_uv.sh, or pass a version}}}"
 info "Using Python version: $PYTHON_VERSION"
 
 prepare_ci_workspace --cd
@@ -88,7 +88,7 @@ package_build() {
     uv build --sdist
     _PYTHON_HOST_PLATFORM="${PYTHON_HOST_PLATFORM_TARGET}" "${venv}/bin/python" -m pip wheel . --no-deps -w dist
   else
-    # uv build ignores the venv; +gil, as a plain request may take the image's python3.14t.
+    # uv build ignores the venv; +gil, as a plain request may take the image's free-threaded python.
     uv build --python "$(uv_python_request "${PYTHON_VERSION}")"
   fi
 }

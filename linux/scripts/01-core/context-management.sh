@@ -164,7 +164,7 @@ runtime_refresh_stage_context() {
 
 # A directory, not a second OCI context: docs/failure-modes.md#a-no-push-wrapper-build-cannot-find-its-own-android-image
 _export_cid_wheels() {
-  "$1" export "$3" | tar -xpf - -C "$2" opt/wheels opt/wheels-cp314t
+  "$1" export "$3" | tar -xpf - -C "$2" opt/wheels opt/wheels-free-threaded
 }
 
 runtime_wheels_context_dir() {

@@ -28,8 +28,9 @@ on:
         default: ''
       test-python-versions:
         description: >-
-          Space-separated interpreter list for ci_tests.sh, e.g. "3.14 3.14t".
-          Empty keeps the driver's default.
+          Space-separated interpreter list for ci_tests.sh, e.g. "3.15 3.15t".
+          Empty (the default) runs the pinned X.Y of versions.env, plus X.Yt when
+          pyproject.toml declares free-threading, so a Python upgrade moves every leg.
         required: false
         type: string
         default: ''
@@ -42,7 +43,7 @@ on:
         default: ''
       free-threaded-extras:
         description: >-
-          Comma-separated extras a free-threaded leg (e.g. 3.14t) syncs instead of
+          Comma-separated extras a free-threaded leg (X.Yt) syncs instead of
           all of them. Set, that leg gates like any other; empty keeps it
           experimental, and a failed sync is reported as a warning annotation.
         required: false
@@ -84,7 +85,7 @@ on:
       free-threaded-wheel:
         description: >-
           PYTHON_FREE_THREADED_WHEEL for ci_packaging.sh - auto builds the proved
-          cp314t wheel when pyproject.toml declares the Free Threading classifier,
+          free-threaded wheel when pyproject.toml declares the Free Threading classifier,
           on forces it, off skips it. Anything else fails the packaging step.
         required: false
         type: string

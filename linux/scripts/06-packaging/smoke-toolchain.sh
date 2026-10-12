@@ -19,8 +19,8 @@ done
 unset _sve _vef
 : "${GCC_VERSION:=16.2.0}"
 : "${LLVM_RELEASE:=23.1.3}"   # was 22.1.8 — a whole MAJOR stale, uncovered by any gate
-: "${PYTHON_VERSION:=3.14.8}"
-: "${PYTHON_MAJOR_MINOR:=3.14}"
+: "${PYTHON_VERSION:?versions.env carries PYTHON_VERSION; no fallback, so an upgrade is one line}"
+: "${PYTHON_MAJOR_MINOR:=${PYTHON_VERSION%.*}}"
 : "${GCC_PREFIX:=/opt/gcc-${GCC_VERSION}}"
 
 # Source shared smoke utilities
