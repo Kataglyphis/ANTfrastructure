@@ -7,7 +7,7 @@
 .SYNOPSIS
     Builds the sdist and the Windows wheels of a Python package, the binary one twice when the project declares free-threading.
 .PARAMETER PythonVersion
-    Python version to use.
+    Python X.Y; empty takes the pin (the image ENV PYTHON_VERSION, else versions.env).
 .PARAMETER RepoRoot
     Root of the repo being built; empty means the ANTfrastructure checkout, so a consumer must pass its own.
 .PARAMETER TargetArch
@@ -19,7 +19,7 @@
 
 [CmdletBinding()]
 Param(
-    [string]$PythonVersion = "3.14",
+    [string]$PythonVersion = '',
     [string]$RepoRoot = '',
     [string]$TargetArch = '',
     [string]$FreeThreadedWheel = ''
@@ -30,6 +30,7 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
 # $RepoRoot and $repoRoot are one variable: this deliberately replaces the raw value with the resolved path.
 $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common', 'WindowsTargetArch.Common', 'WindowsPythonWheel.Common') -EnterRepoRoot -RepoRoot $RepoRoot
+if (-not $PythonVersion) { $PythonVersion = (Get-PinnedPythonVersion).MajorMinor }
 $arch = Get-WindowsTargetArch -Arch $TargetArch
 $cross = Test-WindowsCrossTarget -Arch $arch
 $ftMode = Resolve-FreeThreadedWheelMode -Value $FreeThreadedWheel
@@ -43,7 +44,7 @@ function Invoke-SiblingScript([string]$Name, [string[]]$Arguments) {
     Invoke-BuildExternal -Context $script:BuildContext -File 'pwsh' -Parameters (@('-NoProfile', '-File', (Join-Path $PSScriptRoot $Name)) + $Arguments) | Out-Null
 }
 
-# uv build picks its own interpreter, not the venv's: a plain 3.14 built OrchestrANT's wheel as cp314t.
+# uv build picks its own interpreter, not the venv's: a plain X.Y built OrchestrANT's wheel as cpXYt.
 $pythonRequest = Get-UvPythonRequest -Version $PythonVersion
 $buildArgs = @('build', '--python', $pythonRequest)
 

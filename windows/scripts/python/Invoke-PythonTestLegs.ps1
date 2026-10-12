@@ -8,13 +8,14 @@
     Syncs and tests each -PythonVersions leg with uv, and fails naming every leg that failed.
 .DESCRIPTION
     The runner-native twin of linux/scripts/02-toolchain/python/ci_tests.sh: the project's own testpaths unless
-    -TestPaths names others, -Extras for every leg (empty: all extras), and a free-threaded leg (3.14t) that syncs only
+    -TestPaths names others, -Extras for every leg (empty: all extras), and a free-threaded leg (X.Yt) that syncs only
     -FreeThreadedExtras when set. Every leg gates, and a failed leg does not stop the next one. -InstallUv first puts
-    the uv that versions.env pins (UV_VERSION, UV_WINDOWS_<ARCH>_SHA256) on PATH.
+    the uv that versions.env pins (UV_VERSION, UV_WINDOWS_<ARCH>_SHA256) on PATH. Empty -PythonVersions runs the pinned
+    X.Y, and `pinned` in the list stands for it (`pinnedt` its twin).
 #>
 [CmdletBinding()]
 param(
-    [string]$PythonVersions = '3.14',
+    [string]$PythonVersions = '',
     [string]$Extras = '',
     [string]$FreeThreadedExtras = '',
     [string]$TestPaths = '',
@@ -30,6 +31,7 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsScripts.Shared.psm1')
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsUv.Common.psm1')
+Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsPythonWheel.Common.psm1')
 
 # Comma or space separated, as the workflow inputs are.
 function Split-List([string]$Value) { return @($Value -split '[,\s]+' | Where-Object { $_ }) }
@@ -50,6 +52,11 @@ if ($InstallUv) {
     $env:PATH = "$uvDir;$env:PATH"
 }
 
+# Empty runs the pinned X.Y; `pinned` in a list is that X.Y (`pinnedt` its twin), as in ci_tests.sh.
+if (-not $PythonVersions -or $PythonVersions -match 'pinned') {
+    $mm = (Get-PinnedPythonVersion -VersionsEnvPath $VersionsEnvPath).MajorMinor
+    $PythonVersions = if ($PythonVersions) { $PythonVersions -creplace 'pinned', $mm } else { $mm }
+}
 $legs = @(Split-List $PythonVersions)
 if ($legs.Count -eq 0) { throw '-PythonVersions names no leg' }
 $paths = @(Split-List $TestPaths)
@@ -60,7 +67,7 @@ foreach ($leg in $legs) {
     $syncArgs += if ($legExtras) { Split-List $legExtras | ForEach-Object { '--extra', $_ } } else { '--all-extras' }
     if (Test-Path -LiteralPath 'uv.lock') { $syncArgs += '--locked' }
     Write-Host "=== Python ${leg}: uv $($syncArgs -join ' ')"
-    # A venv per leg, and 3.14 as 3.14+gil: uv would otherwise hand a bare 3.14 the free-threaded build a 3.14t leg fetched.
+    # A venv per leg, and X.Y as X.Y+gil: uv would otherwise hand a bare X.Y the free-threaded build an X.Yt leg fetched.
     try { $null = New-UvProjectEnvironment -Workspace (Get-Location).Path -EnvName ".venv-ci-$leg" -PythonVersion $leg }
     catch { $failed.Add("$leg (venv: $($_.Exception.Message))"); continue }
     & uv @syncArgs

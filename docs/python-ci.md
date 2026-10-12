@@ -441,10 +441,11 @@ ANTfrastructure pin and runs `windows/scripts/python/Invoke-PythonTestLegs.ps1 -
 
 - **uv** is the `UV_VERSION` release zip, checked against `UV_WINDOWS_ARM64_SHA256` in
   `versions.env`. `bump_versions.py` refreshes that pin with the Linux ones.
-- **Legs** come from `arm64-python-versions` (default `3.14`). Each leg gets its own venv
-  through `New-UvProjectEnvironment`, so a bare `3.14` asks for `3.14+gil`. Without that, a
-  `3.14t` leg earlier in the same job would hand it the free-threaded build (§ Free-threaded
-  and GIL legs in one container).
+- **Legs** come from `arm64-python-versions` (default: the pinned X.Y; `pinned` and `pinnedt`
+  in a list stand for X.Y and X.Yt). Each leg gets its own venv through
+  `New-UvProjectEnvironment`, so a bare `X.Y` asks for `X.Y+gil`. Without that, an `X.Yt` leg
+  earlier in the same job would hand it the free-threaded build (§ Free-threaded and GIL legs
+  in one container).
 - **Extras:** `arm64-extras` (empty means all extras), `free-threaded-extras` for a `t` leg,
   and `test-paths`, all as on Linux. Every leg gates. A failed leg does not stop the next one,
   and the error names every failed leg and its step: venv, sync or pytest.
@@ -709,9 +710,10 @@ One line moves every image, lane and default: `PYTHON_VERSION` in
 - `PYTHON_MAJOR_MINOR`, which the image advertises, and the wheel tags `PYTHON_ABI_TAG` and
   `PYTHON_FT_ABI_TAG` (`common.sh`).
 - The drivers' defaults. `ci_tests.sh` runs X.Y, plus X.Yt when `pyproject.toml` declares
-  free-threading; the packaging, static-analysis, docs, wheel-smoke and wheel-test drivers take X.Y. A
-  consumer that passes no version follows the image, and one that picks its legs writes `pinned`
-  (`pinned` alone for the GIL leg, `pinnedt` for its twin). `ci_build_docs.sh` also publishes the
+  free-threading; the packaging, static-analysis, docs, wheel-smoke and wheel-test drivers take X.Y, and
+  so do Windows' `Invoke-CiPackaging.ps1`, `Invoke-CiStaticAnalysis.ps1` and `Invoke-PythonTestLegs.ps1`
+  (`Get-PinnedPythonVersion`). A consumer that passes no version follows the image, and one that picks
+  its legs writes `pinned` (`pinned` alone for the GIL leg, `pinnedt` for its twin). `ci_build_docs.sh` also publishes the
   default leg's reports as `pytest-report.html`/`.md` and `pytest-report-free-threaded.html`, so a
   docs page links names without a version.
 - The free-threaded store's names carry no version: `/opt/wheels-free-threaded`,
