@@ -224,6 +224,15 @@ function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 }
 
+# Test-Container.ps1's 63-byte Identity model as lowercase hex, the form a Python probe or the arm64 gate embeds.
+function Get-IdentityOnnxHex {
+    $tc = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-Container.ps1'))
+    $bytes = [regex]::Match($tc, '(?s)\$script:identityOnnxBytes = \[byte\[\]\]@\((.*?)\)').Groups[1].Value
+    $hex = -join ([regex]::Matches($bytes, '0x([0-9A-Fa-f]{2})') | ForEach-Object { $_.Groups[1].Value.ToLowerInvariant() })
+    if ($hex.Length -ne 126) { throw "the identity model in Test-Container.ps1 is $($hex.Length / 2) bytes, not 63" }
+    return $hex
+}
+
 # The seeds plus their transitive sibling imports, i.e. what a RUN must mount; a seed with no file stays so the mount check names it.
 function Get-ModuleImportClosure {
     param([string[]]$Seed = @(), [string]$ModuleDir = (Join-Path (Get-RepoRoot) 'windows' 'scripts' 'modules'))
@@ -317,6 +326,6 @@ function Invoke-WithFunctionModule {
     }
 }
 
-Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, `
+Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, `
     Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
     Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel

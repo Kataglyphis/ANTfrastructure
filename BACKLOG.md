@@ -342,7 +342,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         pinned; upstream builds no cp314 wheel the bundle's own interpreter
         could use), Flutter, classic TensorRT, TAPPAS.
       - The bundle EXECUTES on hardware since 2026-10-03 (Snapdragon X, summy-server; the
-        gate is `windows/scripts/build/Test-Arm64Bundle.ps1`, nine steps, floor nine):
+        gate is `windows/scripts/build/Test-Arm64Bundle.ps1`, nine steps then, eighteen and floor eighteen since 2026-10-12):
         HailoRT-CLI 5.4.0, GStreamer 1.29.2 (`gst-inspect` + a videotestsrc->fakesink
         pipeline), `iree-run-module`, and the bundle's own Python 3.14.7 importing
         numpy 2.5.3, onnxruntime 1.30.0 (DmlExecutionProvider + CPUExecutionProvider),
@@ -351,9 +351,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         `windows-2025` job packs the published image's `C:\runtime` and a `windows-11-arm` job runs
         `Test-Arm64Bundle.ps1` over it ([`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) - Verification).
         BeschleunigerBallett's cross lane hosted it from 2026-10-03 until then.
-      - Still unproven on a device: an inference, a camera/plugin pipeline, and the
-        consumer run jobs' apps (those jobs loaded the bundle's DLLs only; runs
-        36136967538, 36142875090, 36142882316).
+      - An inference runs on the device since 2026-10-12: the gate's ORT step builds a session over
+        Test-Container.ps1's 63-byte Identity model and asserts Identity(42.0) = 42.0 on the CPU EP.
+        DirectML is tried first and printed, never graded, since a runner has no adapter (in `:winamd64`
+        it falls back with `No devices detected that match the filter criteria`).
+      - Still unproven on a device: a camera pipeline and a GPU execution provider. No `windows-11-arm`
+        runner has either; the Snapdragon X's DirectML is the one adapter in reach.
 - [b] **CON31 — Variants that are not published** [L, ★]. Blocked on owner decisions.
       - `:latest-nvidia`: no arm64 route, and no TensorRT 11 (`ENABLE_TENSORRT=false`). Read in the published image on
         2026-10-12 (`23e3cc9e…`): the only `libnvinfer` is DeepStream's TensorRT 10.16.1 under
