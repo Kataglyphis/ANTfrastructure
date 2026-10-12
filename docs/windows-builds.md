@@ -281,6 +281,12 @@ Windows `3.14t` leg had uv download a python-build-standalone interpreter.
   `libs`. 3.14's `PC\pyconfig.h` does not define `Py_GIL_DISABLED` itself, so an extension built against the install
   must pass `Py_GIL_DISABLED=1`. setuptools does that; a hand-written CMake or clang-cl build must too. A clang-cl
   extension built that way imported with the GIL still off.
+- **The GIL tree links extensions like an install.** Right after the GIL build, `Install-CpythonInTreeImportLib`
+  copies `python3XY.lib` and `python3.lib` from `PCbuild\amd64` into `C:\temp\cpython\libs` (CON93). setuptools
+  links an extension against `sys.base_exec_prefix\libs`, and its `PCbuild\<arch>` entry follows a venv's prefix, not
+  the tree's. Without the copy, every sdist with a C extension failed `LNK1104 python315.lib` in a venv of the image's
+  Python, uv's isolated build environments included (probe P13, 2026-10-12). Under 3.14 nothing hit it, because every
+  locked package had a cp314 wheel. Smoke section 2 checks both files.
 - **Checked twice.** `Build-ToolchainAll.ps1` stops unless both interpreters report `PYTHON_VERSION`, the `AMD64`
   marker and their GIL state after the scrub (`Assert-CpythonInterpreter`). Section 2 of the smoke test checks the
   free-threaded one again and uv's resolution with downloads off. Tests: `SourceBuild.FreeThreadedCpython.Tests.ps1`.
@@ -1204,6 +1210,15 @@ which the final image builds FROM:
   given, with no lookup; an unreachable remote stops the stage. `-LatestApp`
   tracks the newest release tag instead. The Linux lane does the same:
   [`linux-cross-builds.md`](linux-cross-builds.md#the-app-the-wrapper-builds).
+- **Sdists compile with clang-cl** (CON93). Under 3.15, line-profiler 5.0.2 and pyyaml 6.0.3 have no cp315 wheel, so
+  uv builds them, and setuptools takes VS's `cl.exe` and `link.exe`. For both syncs, `Enable-TorchAppClangClSdist`
+  puts copies of `clang-cl`, `lld-link` and `llvm-lib` first on `PATH`, named `cl`, `link` and `lib`, with
+  `DISTUTILS_USE_SDK=1` and `MSSdk=1`. clang-cl and lld-link find VS and the SDK themselves.
+  - After the sync, `Assert-TorchAppSdistCompiler` fails the stage if any distribution uv reports as `Built` has a PE
+    under site-packages with MSVC's Rich header. uv's own `Scripts\*.exe` launchers are outside site-packages.
+  - Probe P13: line-profiler built this way has no Rich header and imports on 3.15. pyyaml compiles `_yaml` with
+    clang-cl, finds no `yaml.h` and falls back to pure Python, as designed.
+  - The shim is for native builds only, because a cross target would need `--target`.
 - **Environment**: `uv sync` on the source-built CPython (extras `ml-ai`,
   `docs`, `pytorch-cpu` — `pytorch-cu130` on the nvidia lane — and `test`; the
   wxPython GUI extra excluded, like linux),

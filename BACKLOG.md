@@ -271,6 +271,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - `docs/windows-builds.md`'s compiler table said "clang-cl, lld-link" for it.
       - Fix: CON91's clang-cl recipe. LiteRT-LM's TF pin d9a8da7 defines the same `x64_windows-clang-cl` platform.
         Prove it with an aquery gate: every `CppCompile`/`CppLink` action of the target runs `clang-cl`/`lld-link`.
+- [ ] **CON93 — the torch venv's sdists compile with VS's `cl` and cannot link against the in-tree CPython**
+      [S, ★★]. Found 2026-10-12 by probe P13 on the 3.15 toolchain image. line-profiler 5.0.2 and pyyaml 6.0.3 have no
+      cp315 wheel, so `uv sync` builds them with setuptools.
+      - setuptools takes VS's `HostX86\x64\cl.exe` and `link.exe`, against the clang-cl rule.
+      - The link fails `LNK1104 python315.lib`: setuptools looks in `sys.base_exec_prefix\libs`, which the in-tree
+        build lacks, and in the venv's `PCbuild\amd64`.
+      - Fixed in source: the toolchain copies the GIL import libs into `C:\temp\cpython\libs`. The torch stage syncs
+        under a clang-cl/lld-link/llvm-lib shim (`DISTUTILS_USE_SDK`), and a Rich-header gate checks what uv built.
+        Smoke section 2 checks the libs.
+      - **Left:** the next amd64 chain proves it. Consumer lanes (`Invoke-PythonTestLegs.ps1`, `Invoke-CiPackaging.ps1`)
+        still build third-party sdists with VS's `cl`. OrchestrANT's own `setup.py` switches to clang-cl but links with
+        `link.exe`, so moving those lanes onto the shim changes its linker too and needs its own proof.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294

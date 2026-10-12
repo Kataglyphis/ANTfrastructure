@@ -506,6 +506,28 @@ function Install-CpythonFreeThreadedLayout {
     return $Destination
 }
 
+function Install-CpythonInTreeImportLib {
+    <#
+    .SYNOPSIS
+        Copies the in-tree GIL build's python3XY.lib and python3.lib into -SourceDir\libs and returns that directory.
+    .DESCRIPTION
+        setuptools links an extension against sys.base_exec_prefix\libs; its PCbuild\<arch> entry follows a venv's prefix,
+        so without this every sdist with a C extension fails to link in a venv of the image's Python (CON93).
+    #>
+    param([Parameter(Mandatory)][string]$SourceDir, [string]$Arch = 'amd64')
+    $buildDir = Join-Path $SourceDir "PCbuild\$(Get-CpythonOutputDir -Arch $Arch)"
+    $gilLib = Select-CpythonImportLib -LibDir $buildDir
+    $stableLib = Join-Path $buildDir 'python3.lib'
+    if (-not $gilLib -or -not (Test-Path -LiteralPath $stableLib -PathType Leaf)) {
+        throw "CPython import libs: $buildDir lacks python3XY.lib or python3.lib, so no extension could link against the in-tree build"
+    }
+    $libs = Join-Path $SourceDir 'libs'
+    New-Item -ItemType Directory -Force -Path $libs | Out-Null
+    Copy-Item -LiteralPath $gilLib.FullName, $stableLib -Destination $libs -Force
+    Write-Host "CPython import libs: $($gilLib.Name), python3.lib -> $libs"
+    return $libs
+}
+
 function Assert-CpythonInterpreter {
     <#
     .SYNOPSIS
@@ -2342,6 +2364,7 @@ Export-ModuleMember -Function @(
     'Get-CpythonFreeThreadedBuildDir',
     'Get-CpythonPcbuildArguments',
     'Invoke-CpythonPcbuild',
+    'Install-CpythonInTreeImportLib',
     'Install-CpythonFreeThreadedLayout',
     'Assert-CpythonInterpreter',
     'Install-CpythonTargetTree',

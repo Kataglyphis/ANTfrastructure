@@ -67,6 +67,7 @@ $env:NUGET_URL = $nugetUrl
 Invoke-CpythonPcbuild -SourceDir $src
 $pyExe = "$src\PCbuild\amd64\python.exe"
 if (-not (Test-Path $pyExe)) { throw 'Python build failed - interpreter not found' }
+$null = Install-CpythonInTreeImportLib -SourceDir $src
 
 # The X.Yt legs' interpreter, from the same checkout while its externals are still here; see docs/windows-builds.md § The free-threaded CPython.
 Invoke-CpythonPcbuild -SourceDir $src -FreeThreaded
