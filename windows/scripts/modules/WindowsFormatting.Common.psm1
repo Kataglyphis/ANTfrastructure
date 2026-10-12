@@ -158,7 +158,8 @@ function Invoke-CmakeFormatStep {
     return
   }
 
-  $mode = if ($Check) { @('--check') } else { @('--in-place') }
+  # @() outside the if: a one-element array it unrolls is a string, and string + array concatenated '--check' onto the file name.
+  $mode = @(if ($Check) { '--check' } else { '--in-place' })
   foreach ($cmakeFile in $cmakeFiles) {
     $parameters = if (Test-Path $formatConfig) { @('-c', $formatConfig) + $mode + @($cmakeFile) }
                   else { $mode + @($cmakeFile) }
