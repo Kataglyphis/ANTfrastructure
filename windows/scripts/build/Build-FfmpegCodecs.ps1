@@ -65,7 +65,7 @@ function Initialize-CodecMeson {
     if (Get-Command meson -ErrorAction SilentlyContinue) { return }
     $py = Initialize-ToolchainPythonEnvironment
     Install-CpythonPip -Python $py | Out-Host
-    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'meson') | Out-Host
+    Install-CpythonPipPin -Python $py -Name meson | Out-Host
     $scripts = (& $py.Exe -c "import sysconfig; print(sysconfig.get_path('scripts'))" | Select-Object -First 1)
     $scripts = @("$scripts".Trim(), (Join-Path (Split-Path $py.Exe -Parent) 'Scripts')) |
         Where-Object { $_ -and (Test-Path (Join-Path $_ 'meson.exe')) } | Select-Object -First 1

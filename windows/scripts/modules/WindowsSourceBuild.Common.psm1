@@ -774,6 +774,30 @@ function Install-CpythonPip {
     Remove-Item $pipScript -Force -ErrorAction SilentlyContinue
 }
 
+function Get-PipPin {
+    <#
+    .SYNOPSIS
+        '<name>==<PY_<NAME>_VERSION>' per -Name, from versions.env; throws for a package without a pin, so no build installs a floating version (CON89).
+    #>
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)][string[]]$Name)
+    foreach ($n in $Name) {
+        $key = 'PY_{0}_VERSION' -f ($n.ToUpperInvariant() -replace '[-.]', '_')
+        $v = [Environment]::GetEnvironmentVariable($key)
+        if ([string]::IsNullOrWhiteSpace($v)) { throw "$key is not set: refusing a floating pip install of $n (versions.env pins every build-time package)" }
+        "$n==$v"
+    }
+}
+
+function Install-CpythonPipPin {
+    <#
+    .SYNOPSIS
+        pip install --quiet of -Name at their versions.env pins (Get-PipPin), -Option first; -Optional only warns on failure.
+    #>
+    param([Parameter(Mandatory)][hashtable]$Python, [Parameter(Mandatory)][string[]]$Name, [string[]]$Option = @(), [switch]$Optional)
+    Invoke-CpythonPip -Python $Python -Arguments (@('install', '--quiet') + $Option + @(Get-PipPin -Name $Name)) -Optional:$Optional
+}
+
 function Invoke-CpythonPip {
     param(
         [Parameter(Mandatory)][hashtable]$Python,
@@ -2394,6 +2418,8 @@ Export-ModuleMember -Function @(
     'Complete-BuildPhase',
     'Write-BuildPhaseSummary',
     'Install-CpythonPip',
+    'Get-PipPin',
+    'Install-CpythonPipPin',
     'Invoke-CpythonPip',
     'Copy-BuildArtifact',
     'Copy-SidecarDll',

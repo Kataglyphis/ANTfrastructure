@@ -178,7 +178,7 @@ Write-Host "Created FindPythonInterp.cmake stub for Python $pyVersion"
 
 # cv2 needs numpy at configure + compile time; the platform-tag shim above already ran.
 Install-CpythonPip -Python $ocvPy
-Invoke-CpythonPip -Python $ocvPy -Arguments @('install', '--quiet', 'numpy')
+Install-CpythonPipPin -Python $ocvPy -Name numpy
 $numpyInclude = (Get-OcvPythonQueryResult -PythonExe $ocvPy.Exe -Code 'import numpy; print(numpy.get_include())' -Label 'numpy include dir') -replace '\\', '/'
 if (-not (Test-Path $numpyInclude)) { throw "numpy include dir not resolved (got '$numpyInclude')" }
 Write-Host "numpy include: $numpyInclude"

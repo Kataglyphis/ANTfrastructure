@@ -43,7 +43,7 @@ Install-CpythonPip -Python $py
 
 # No cmake/ninja here: the image ships both on PATH (scoop).
 Write-Host 'Installing requests, setuptools, wheel via pip...'
-Invoke-CpythonPip -Python $py -Arguments @('install', 'requests', 'setuptools', 'wheel', '--no-warn-script-location', '--quiet')
+Install-CpythonPipPin -Python $py -Name requests, setuptools, wheel -Option '--no-warn-script-location'
 
 Initialize-ToolchainPythonEnvironment | Out-Null
 
