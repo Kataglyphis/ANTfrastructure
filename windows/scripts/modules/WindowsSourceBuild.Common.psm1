@@ -414,14 +414,17 @@ function Get-CpythonFreeThreadedExeName {
 }
 
 function Get-CpythonFreeThreadedBuildDir {
-    # Py_OutDir of the free-threaded build without -Arch; with it, the directory PCbuild writes that arch's binaries to.
+    # Py_OutDir of the free-threaded build without -Arch; with it, that arch's binaries, in <arch>t where python.props says so (3.15+).
     param(
         [Parameter(Mandatory)][string]$SourceDir,
         [string]$Arch = ''
     )
     $root = Join-Path $SourceDir 'PCbuild\freethreaded'
     if ([string]::IsNullOrWhiteSpace($Arch)) { return $root }
-    return Join-Path $root (Get-CpythonOutputDir -Arch $Arch)
+    $leaf = Get-CpythonOutputDir -Arch $Arch
+    $props = Join-Path $SourceDir 'PCbuild\python.props'
+    if ((Test-Path -LiteralPath $props -PathType Leaf) -and [IO.File]::ReadAllText($props) -match '<BuildPath64t\b') { $leaf += 't' }
+    return Join-Path $root $leaf
 }
 
 function Get-CpythonPcbuildArguments {
