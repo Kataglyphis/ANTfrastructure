@@ -242,12 +242,35 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       the arm64 bundle's native pytest wheels are cp315; the rocm venv's PyPI LiteRT extra and its cp314 pin are gone.
       Also done: the tvm-ffi wheel tags and the remaining literal fallbacks; the twin store is
       `C:\runtime\wheels-free-threaded` / `PYTHON_WHEELS_FREE_THREADED`, as on Linux.
-      **Left:** **ai-edge-litert built from source** for the pinned Python (owner decision 2026-10-12): no release has a
-      cp315 `win_amd64` wheel (2.3.0 stops at cp314). Until it lands the cpu and nvidia venvs go without it (one app
-      smoke WARN), and the rocm variant's `rocm-1` fails on `Torch.ps1`'s LiteRT check, on purpose. The accelerator
-      DLL it needs is pinned already (`LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256`), so landing the build re-keys no
-      more than its own stages. All of it must land before the next amd64 chain, which `PYTHON_VERSION` re-keys
-      from `Dockerfile.base` anyway.
+      **Left:** **ai-edge-litert built from source** for the pinned Python: no release has a cp315 `win_amd64` wheel
+      or sdist (2.3.0 and the 2.4.0.dev nightlies stop at cp314). Until it lands, the cpu and nvidia venvs go without it
+      (one app smoke WARN), and the rocm variant's `rocm-1` fails on `Torch.ps1`'s LiteRT check, on purpose.
+      - **Owner decisions 2026-10-12:**
+        - Build the full bazel wheel `//ci/tools/python/wheel:litert_wheel` at `LITERT_VERSION`, with clang-cl.
+          Rejected: a hybrid that rebuilds only `pywrap_litert_common.dll` and takes 77 members from the cp314 wheel,
+          and an interpreter-only CMake wheel, which would pass the rocm WebGPU check without any code ever loading the
+          accelerator.
+        - Only `libLiteRtWebGpuAccelerator.dll` comes from the pinned PyPI wheel.
+        - Bazel's external repos may be fetched in the RUN against upstream's WORKSPACE commit and SHA256 pins. The hub
+          pins what floats: `@litert_prebuilts` (a `latest` zip), the OpenVINO nightly and the bazel binary.
+      - **The clang-cl recipe** (read from Bazel 7.7.0 and TF bcdab1a, not built yet):
+        - env `BAZEL_LLVM=C:\llvm-patched` plus `BAZEL_VC`;
+        - flags `--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl` and `--compiler=clang-cl`;
+        - `@org_tensorflow//tensorflow/tools/toolchains/win:x64_windows-clang-cl` as the execution and host platform.
+      - **The hermetic Python:** rules_python takes the image's CPython 3.15 through `HERMETIC_PYTHON_URL/SHA256/PREFIX`
+        and a hub-written 3.15 requirements lock. TF's pin ships locks only up to 3.14.
+      - **Next:** the design, its 12 probes and their order are worked out; the build waits for a quiet host.
+      - **Found in the first 3.15 chain (bk-20261012-185459 to -203943):** CPython 3.15 writes its free-threaded build
+        to `PCbuild\freethreaded\amd64t` (fixed 824bf848), and `_CL_` landed after CMake's `-- <source>` (fixed
+        e008021e). ONNX Runtime's cp315 and cp315t wheels build and load with the GIL off.
+- [ ] **CON92 — the LiteRT-LM bazel lane compiles with MSVC `cl`, against the clang-cl rule** [S, ★★]. Found
+      2026-10-12 while designing CON91's LiteRT wheel:
+      - `Build-LitertLmBazel.ps1` sets only `BAZEL_VC` and passes only `--config=windows`. LiteRT-LM v0.18.0's
+        `.bazelrc` picks no compiler, so Bazel takes its default `msvc_x64` toolchain: `cl.exe`, `link.exe` and `lib.exe`.
+        The rocm variant's `bk-181` log probes that toolchain's `cl.exe`.
+      - `docs/windows-builds.md`'s compiler table said "clang-cl, lld-link" for it.
+      - Fix: CON91's clang-cl recipe. LiteRT-LM's TF pin d9a8da7 defines the same `x64_windows-clang-cl` platform.
+        Prove it with an aquery gate: every `CppCompile`/`CppLink` action of the target runs `clang-cl`/`lld-link`.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294
