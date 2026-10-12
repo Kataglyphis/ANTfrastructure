@@ -583,9 +583,51 @@ Any other value fails the run. A caller sets it with the `free-threaded-wheel` i
 `python-ci-linux.yml` (passed to the packaging container) and of `python-ci-windows.yml`
 (passed to the build container, where `Invoke-CiPackaging.ps1` reads it).
 
-**Cross lanes skip it.** The riscv64 cross build (`PACKAGING_CROSS_TARGET`) and the Windows
-arm64 cross lane have no free-threaded target interpreter. They log `free-threaded wheel
-skipped: the <arch> cross build has no free-threaded target interpreter`.
+**The riscv64 cross build skips it** (`PACKAGING_CROSS_TARGET`). It has no free-threaded
+target interpreter and logs `free-threaded wheel skipped: the riscv64 cross build has no
+free-threaded target interpreter`. The Windows arm64 cross lane builds it, as below.
+
+### The arm64 cross lane's free-threaded wheel
+
+Since 2026-10-12 (CON75) the Windows arm64 cross lane ships `cp314-cp314t-win_arm64`. The
+`:winarm64` image carries both halves. The host's x64 `C:\python-freethreaded` runs the
+build, and the target tree `C:\runtime\python-freethreaded` (CON74) supplies `python314t.lib`.
+`Invoke-CiPackaging.ps1` starts `New-CrossFreeThreadedWheel.ps1` as a child process, so the VS
+environment it enters ends with it:
+
+1. **The plan.** The classifier decides, as natively. The step is skipped when the image has no
+   target tree.
+2. **The environment.** The script enters VS's x64_arm64 environment. A uv venv of the host's
+   3.14t holds `[build-system].requires` as declared. Its `sitecustomize` pins `EXT_SUFFIX` to
+   `.cp314t-win_arm64.pyd` (`New-FreeThreadedBuildPython`).
+3. **The target, for every `build_ext`.** `DIST_EXTRA_CONFIG` sets `plat_name = win-arm64` and the
+   target's `libs\` as `library_dirs` for `build_ext`, and the platform for `bdist_wheel`.
+   - A command-line `build_ext -L` reaches only the first instance.
+   - OrchestrANT's `CleanBuildPy` wipes `build\lib`, so `bdist_wheel` relinks. With `-L` on the
+     command line, that relink took the host's x64 `python314t.lib`.
+4. **The build and the gates.** `uv build --wheel --no-build-isolation` runs with that venv. Then
+   the static gates check the tags, the imports (`python314t.dll` only) and
+   `Assert-WheelTargetArch`.
+5. **The kit.** The wheel goes to `dist\windows-arm64\free-threaded\`, never `dist\`, because
+   `Select-PythonAppWheel` refuses a binary wheel of another ABI. Beside it go the target tree as
+   `python\`, `free-threaded-wheel.py`, `WindowsPythonWheel.Common.psm1` and
+   `Test-FreeThreadedWheel.ps1`.
+
+**The device.** `container-ci-windows.yml`'s arm64 run job starts `Test-FreeThreadedWheel.ps1`
+from the downloaded product. It runs `Invoke-TwinDeviceProof`, the bundle gate's own proof:
+- the wheel installs offline into a venv of the packed `python3.14t.exe`;
+- then `free-threaded-wheel.py prove` runs on it.
+
+A product without the directory logs one line and passes.
+
+**The project's part.** setuptools' own MSVC compiler needs nothing: `plat_name = win-arm64`
+selects the ARM64 `cl.exe`. A project that swaps in `clang-cl` must also name the target,
+because `clang-cl` otherwise compiles for the host.
+- OrchestrANT adds `--target=aarch64-pc-windows-msvc` to its extensions'
+  `extra_compile_args` when `VSCMD_ARG_TGT_ARCH` is `arm64`. VS's cross environment sets that
+  variable.
+- In `:winarm64` (`ba6bfaae…`), OrchestrANT 0.0.30's wheel built this way and passed all three
+  gates (2026-10-12).
 
 **The app bundles pick by their runtime's ABI.** `python-app-bundle.sh` and
 `Select-PythonAppWheel` take the `cp314` wheel for their GIL runtime. A binary built for

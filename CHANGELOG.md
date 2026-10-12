@@ -60,6 +60,25 @@
 - **CON84 (3):** OmniAccelerANT's Dart and Flutter floors follow its lock (467ca34), with the frb bindings and l10n
   regenerated rather than hand-formatted.
 
+## 2026-10-12 — the Windows arm64 cross lane ships a free-threaded wheel and proves it on the device (CON75)
+
+- `Invoke-CiPackaging.ps1` no longer skips `cp314t` on a cross arch. It starts `New-CrossFreeThreadedWheel.ps1`, which
+  builds the wheel and gates it.
+  - **The build.** The host's x64 3.14t runs it in VS's x64_arm64 environment, from a venv that pins `EXT_SUFFIX` to the
+    target. A `DIST_EXTRA_CONFIG` names the target for every `build_ext` and `bdist_wheel` instance. The link uses the
+    target tree's `python314t.lib`.
+  - **The gates.** It checks the tags, the `python314t.dll` imports and the ARM64 machine of every PE member.
+  - **The kit.** It packs the wheel into `dist\windows-arm64\free-threaded\` with the target interpreter and the proof.
+- `container-ci-windows.yml`'s arm64 run job proves the wheel there with `Test-FreeThreadedWheel.ps1`. A product without
+  the directory passes with one line.
+- `Invoke-TwinDeviceProof` moved from `Test-Arm64Bundle.ps1` into `WindowsPythonWheel.Common.psm1`, so the bundle gate
+  and the consumer kit run one proof. The gate imports its modules through `Import-GateModule`, and
+  `Export-Arm64Bundle.ps1` packs the wheel module beside it.
+- `Get-FreeThreadedWheelPlan` takes `-TargetLib`. A cross arch is skipped only when the image has no target tree.
+- In `:winarm64` (`ba6bfaae…`), OrchestrANT 0.0.30 built `orchestrant-0.0.30-cp314-cp314t-win_arm64.whl` this way.
+  The wheel passed all three gates, and the kit came out complete. The project's half is one line: `clang-cl` needs
+  `--target=aarch64-pc-windows-msvc` on a cross build.
+
 ## 2026-10-12 — the rocm chain builds without the HIP/MSVC `<cmath>` overlay (CON78)
 
 - Hub 28daad33's `:winamd64-rocm` chain (20261011-233025, then `-Stages final` as 20261012-051453) built every stage with

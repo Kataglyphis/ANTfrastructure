@@ -64,45 +64,12 @@ function Invoke-BundleStep {
     $Results.Add([pscustomobject]@{ Name = $Name; Ok = $ok; Detail = $detail })
 }
 
-function Invoke-TwinDeviceProof {
-    # A fresh venv of -Interpreter per cp3XYt twin, offline, with the deps it declares: free-threaded-wheel.py prove, the build lanes' own proof.
-    param(
-        [Parameter(Mandatory)][string]$Interpreter,
-        [Parameter(Mandatory)][string]$Store,
-        [Parameter(Mandatory)][string]$Helper,
-        # The bundle's DLL homes; a venv's modules never search PATH, so its sitecustomize registers these and the wheel's own.
-        [string[]]$DllDirectory = @()
-    )
-    if (-not (Test-Path -LiteralPath $Helper -PathType Leaf)) { throw "no $Helper to prove the twins with (Export-Arm64Bundle.ps1 puts it beside this script)" }
-    # Exit codes are read below, so a failing proof keeps the helper's verdict instead of throwing it away.
-    $PSNativeCommandUseErrorActionPreference = $false
-    # Copy-TargetPythonDeps.ps1 stages the twins' dependencies in deps\ (CON79); a bundle without one proves each twin alone.
-    $deps = [IO.Path]::Combine($Store, 'deps')
-    $resolve = if ([IO.Directory]::Exists($deps)) { @('--find-links', $Store, '--find-links', $deps) } else { @('--no-deps') }
-    $wheels = @(Get-ChildItem -LiteralPath $Store -Filter '*.whl' -File)
-    if ($wheels.Count -eq 0) { throw "no wheel in $Store" }
-    $failures = foreach ($whl in $wheels) {
-        $venv = Join-Path ([IO.Path]::GetTempPath()) ('ft-twin-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        try {
-            & $Interpreter -I -m venv $venv
-            if ($LASTEXITCODE) { throw "venv exited $LASTEXITCODE" }
-            $venvPy = Join-Path $venv 'Scripts\python.exe'
-            & $venvPy -I -m pip install --quiet --disable-pip-version-check --no-index @resolve $whl.FullName
-            if ($LASTEXITCODE) { throw "pip install exited $LASTEXITCODE" }
-            $site = Join-Path $venv 'Lib\site-packages'
-            $dirs = @($DllDirectory) + @(Get-ChildItem -LiteralPath $site -Recurse -Filter '*.dll' -File | ForEach-Object DirectoryName | Sort-Object -Unique)
-            Set-Content -LiteralPath (Join-Path $site 'sitecustomize.py') -Encoding ascii -Value (
-                @('import os') + @($dirs | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { "os.add_dll_directory(r'$_')" }))
-            $verdict = @(& $venvPy -I $Helper prove $whl.Name.Split('-')[0] 2>&1 | ForEach-Object { "$_" }) -join ' | '
-            Write-Host "   $($whl.Name): $verdict"
-            if ($LASTEXITCODE) { "$($whl.Name): $verdict" }
-        } catch {
-            "$($whl.Name): $($_.Exception.Message)"
-        } finally {
-            Remove-Item -LiteralPath $venv -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-    if (@($failures).Count -gt 0) { throw "$(@($failures).Count) of $($wheels.Count) twin(s) failed: $($failures -join '; ')" }
+function Import-GateModule {
+    # A hub module the packing step put beside this gate (..\modules in a hub checkout).
+    param([Parameter(Mandatory)][string]$Name)
+    $path = @($Name, "..\modules\$Name") | ForEach-Object { Join-Path $PSScriptRoot $_ } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $path) { throw "no $Name beside $PSCommandPath" }
+    Import-Module $path -Force -DisableNameChecking
 }
 
 function Assert-VulkanInfoSummary {
@@ -164,6 +131,7 @@ Invoke-BundleStep 'free-threaded interpreter: GIL off, stdlib extensions import'
 # BACKLOG CON79 added the twins; the cross build could check only their tags, imports and PE machine.
 Invoke-BundleStep 'free-threaded wheels: every cp314t twin loads with the GIL off' {
     $homes = @($env:PATH -split ';' | Where-Object { $_ -and $_.StartsWith($BundleRoot, [StringComparison]::OrdinalIgnoreCase) } | Select-Object -Unique)
+    Import-GateModule 'WindowsPythonWheel.Common.psm1'
     Invoke-TwinDeviceProof -Interpreter (@(Resolve-Path -Path $ftPython)[0].Path) -Store (Join-Path $BundleRoot 'wheels-cp314t') `
         -Helper (Join-Path $PSScriptRoot 'free-threaded-wheel.py') -DllDirectory $homes
 } $results
@@ -225,11 +193,7 @@ Invoke-BundleStep 'vulkaninfo loads the validation layer' {
 
 # BACKLOG CON63: signalling, DTLS, SRTP and H.264 in one pipeline pair, as the amd64 smoke gate runs them.
 Invoke-BundleStep 'WebRTC loopback: webrtcsink -> webrtcsrc decodes 60 frames over DTLS-SRTP' {
-    # Beside the gate in the device artifact (Export-Arm64Bundle.ps1), under ..\modules in a hub checkout.
-    $gstModule = @('WindowsGstPlugins.Common.psm1', '..\modules\WindowsGstPlugins.Common.psm1') | ForEach-Object { Join-Path $PSScriptRoot $_ } |
-        Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-    if (-not $gstModule) { throw "no WindowsGstPlugins.Common.psm1 beside $PSCommandPath" }
-    Import-Module $gstModule -Force -DisableNameChecking
+    Import-GateModule 'WindowsGstPlugins.Common.psm1'
     $note = Assert-GstWebRtcLoopback -GstLaunch (Join-Path $BundleRoot 'bin\gst-launch-1.0.exe') -Frames 60 -TimeoutSeconds 90 -LogDir (Join-Path ($env:RUNNER_TEMP ?? $env:TEMP) 'bundle-webrtc')
     if ($note) { Write-Host "   $note" }
 } $results

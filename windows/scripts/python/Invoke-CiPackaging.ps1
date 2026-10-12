@@ -11,8 +11,8 @@
 .PARAMETER RepoRoot
     Root of the repo being built; empty means the ANTfrastructure checkout, so a consumer must pass its own.
 .PARAMETER TargetArch
-    amd64 or arm64; empty takes the image's WINDOWS_TARGET_ARCH. arm64 builds no Cython wheel and lays the app out in
-    dist\windows-arm64 (bundle, packages), where the arm64 lane picks it up.
+    amd64 or arm64; empty takes the image's WINDOWS_TARGET_ARCH. arm64 builds no GIL Cython wheel and lays the app out in
+    dist\windows-arm64 (bundle, packages), where the arm64 lane picks it up; its cp3XYt wheel and device kit go to free-threaded\ there.
 .PARAMETER FreeThreadedWheel
     auto, on or off; empty takes PYTHON_FREE_THREADED_WHEEL, else auto (docs/python-ci.md § Two wheels: GIL and free-threaded).
 #>
@@ -35,6 +35,14 @@ $cross = Test-WindowsCrossTarget -Arch $arch
 $ftMode = Resolve-FreeThreadedWheelMode -Value $FreeThreadedWheel
 
 $script:BuildContext = New-CiSession -RepoRoot $repoRoot -WithUvDelegates
+# A cross lane's products, which its arm64 lane picks up from here.
+$laneDir = Join-Path $repoRoot "dist\windows-$(Get-WindowsPackageArch -Arch $arch)"
+
+# A sibling script in its own pwsh process, logged and failed like any external step.
+function Invoke-SiblingScript([string]$Name, [string[]]$Arguments) {
+    Invoke-BuildExternal -Context $script:BuildContext -File 'pwsh' -Parameters (@('-NoProfile', '-File', (Join-Path $PSScriptRoot $Name)) + $Arguments) | Out-Null
+}
+
 # uv build picks its own interpreter, not the venv's: a plain 3.14 built OrchestrANT's wheel as cp314t.
 $pythonRequest = Get-UvPythonRequest -Version $PythonVersion
 $buildArgs = @('build', '--python', $pythonRequest)
@@ -82,8 +90,13 @@ try {
 
     # The binary build again on the image's free-threaded interpreter, then a fresh venv of it must load the wheel GIL-free.
     Invoke-BuildStep -Context $script:BuildContext -StepName "Packaging (free-threaded binaries)" -Script {
-        $gilPython = if ($cross -or $ftMode -ceq 'off') { '' } else { Find-UvPython -Request $pythonRequest }
-        $plan = Get-FreeThreadedWheelPlan -Mode $ftMode -PyprojectPath (Join-Path $repoRoot 'pyproject.toml') -Python $gilPython -CrossArch $(if ($cross) { $arch } else { '' })
+        # A cross arch builds against the image's target tree in a child process, whose VS cross environment ends with it (CON75).
+        if ($cross) {
+            Invoke-SiblingScript 'New-CrossFreeThreadedWheel.ps1' @('-RepoRoot', $repoRoot, '-OutDir', (Join-Path $laneDir 'free-threaded'), '-Mode', $ftMode)
+            return
+        }
+        $gilPython = if ($ftMode -ceq 'off') { '' } else { Find-UvPython -Request $pythonRequest }
+        $plan = Get-FreeThreadedWheelPlan -Mode $ftMode -PyprojectPath (Join-Path $repoRoot 'pyproject.toml') -Python $gilPython
         Write-CiLog $plan.Reason
         if (-not $plan.Build) { return }
         $ft = Get-FreeThreadedTarget -PythonVersion $PythonVersion
@@ -115,13 +128,10 @@ try {
     # packaging/app.json opts a consumer in: the app bundle, then its packages, each started once (docs/python-app-bundles.md § Packages).
     if (Test-Path -LiteralPath (Join-Path $repoRoot 'packaging\app.json') -PathType Leaf) {
         Invoke-BuildStep -Context $script:BuildContext -StepName "Packaging (app bundle + installers)" -Script {
-            $laneDir = Join-Path $repoRoot "dist\windows-$(Get-WindowsPackageArch -Arch $arch)"
             $bundle = if ($cross) { Join-Path $laneDir 'bundle' } else { Join-Path $repoRoot 'build\app-bundle' }
             $packages = if ($cross) { Join-Path $laneDir 'packages' } else { Join-Path $repoRoot 'dist\packages' }
-            Invoke-BuildExternal -Context $script:BuildContext -File 'pwsh' -Parameters @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'New-PythonAppBundle.ps1'),
-                '-RepoRoot', $repoRoot, '-WheelDir', 'dist', '-OutDir', $bundle, '-TargetArch', $arch) | Out-Null
-            Invoke-BuildExternal -Context $script:BuildContext -File 'pwsh' -Parameters @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'New-PythonAppPackage.ps1'),
-                '-RepoRoot', $repoRoot, '-Bundle', $bundle, '-OutDir', $packages) | Out-Null
+            Invoke-SiblingScript 'New-PythonAppBundle.ps1' @('-RepoRoot', $repoRoot, '-WheelDir', 'dist', '-OutDir', $bundle, '-TargetArch', $arch)
+            Invoke-SiblingScript 'New-PythonAppPackage.ps1' @('-RepoRoot', $repoRoot, '-Bundle', $bundle, '-OutDir', $packages)
         } | Out-Null
     }
 

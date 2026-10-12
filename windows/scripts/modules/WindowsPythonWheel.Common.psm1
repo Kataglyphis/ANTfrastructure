@@ -85,17 +85,22 @@ function Get-FreeThreadedWheelPlan {
     .SYNOPSIS
         Whether this run builds the free-threaded wheel, and the one log line saying why.
     .PARAMETER Python
-        Any 3.11+ interpreter, which reads -PyprojectPath for the Free Threading classifier; unused for a cross arch or off.
+        Any 3.11+ interpreter, which reads -PyprojectPath for the Free Threading classifier; unused when off or a cross arch has no target tree.
+    .PARAMETER TargetLib
+        A cross arch's python3XYt.lib in the image's target tree (CON74); without it a cross arch builds no twin.
     #>
     param(
         [Parameter(Mandatory)][string]$Mode,
         [Parameter(Mandatory)][string]$PyprojectPath,
         [string]$Python = '',
-        [string]$CrossArch = ''
+        [string]$CrossArch = '',
+        [string]$TargetLib = ''
     )
     $skip = { param([string]$Why) [pscustomobject]@{ Build = $false; Reason = "free-threaded wheel skipped: $Why" } }
-    if ($CrossArch) { return & $skip "the $CrossArch cross build has no free-threaded target interpreter" }
     if ($Mode -ceq 'off') { return & $skip 'PYTHON_FREE_THREADED_WHEEL=off' }
+    if ($CrossArch -and -not ($TargetLib -and (Test-Path -LiteralPath $TargetLib -PathType Leaf))) {
+        return & $skip "the $CrossArch image carries no free-threaded target tree$(if ($TargetLib) { ": no $TargetLib" })"
+    }
     if (-not $Python) { throw 'Get-FreeThreadedWheelPlan needs -Python to read the classifiers' }
     $verdict = Invoke-FreeThreadedHelper -Python $Python -Arguments @('declares', $PyprojectPath)
     if ($verdict.Code -eq 0) { return [pscustomobject]@{ Build = $true; Reason = "free-threaded wheel: the project declares '$($verdict.Text)'" } }
@@ -171,6 +176,53 @@ function Invoke-FreeThreadedWheelVenvProof {
     } finally {
         Remove-Item -LiteralPath $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Invoke-TwinDeviceProof {
+    <#
+    .SYNOPSIS
+        Proves every cp3XYt wheel in -Store on the device it was built for: a fresh venv of -Interpreter each, offline, then free-threaded-wheel.py prove.
+    .DESCRIPTION
+        No uv: a windows-11-arm runner has the bundle's interpreter and pip, nothing else. A deps\ beside the wheels (Copy-TargetPythonDeps.ps1,
+        CON79) installs each one with its dependencies; without it each installs alone. Throws naming every wheel that failed.
+    .PARAMETER DllDirectory
+        The bundle's DLL homes; a venv's modules never search PATH, so its sitecustomize registers these and the wheel's own.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Interpreter,
+        [Parameter(Mandatory)][string]$Store,
+        [Parameter(Mandatory)][string]$Helper,
+        [string[]]$DllDirectory = @()
+    )
+    if (-not (Test-Path -LiteralPath $Helper -PathType Leaf)) { throw "no $Helper to prove the twins with (the packing step puts it beside the gate)" }
+    # Exit codes are read below, so a failing proof keeps the helper's verdict instead of throwing it away.
+    $PSNativeCommandUseErrorActionPreference = $false
+    $deps = [IO.Path]::Combine($Store, 'deps')
+    $resolve = if ([IO.Directory]::Exists($deps)) { @('--find-links', $Store, '--find-links', $deps) } else { @('--no-deps') }
+    $wheels = @(Get-ChildItem -LiteralPath $Store -Filter '*.whl' -File)
+    if ($wheels.Count -eq 0) { throw "no wheel in $Store" }
+    $failures = foreach ($whl in $wheels) {
+        $venv = Join-Path ([IO.Path]::GetTempPath()) ('ft-twin-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        try {
+            & $Interpreter -I -m venv $venv
+            if ($LASTEXITCODE) { throw "venv exited $LASTEXITCODE" }
+            $venvPy = Join-Path $venv 'Scripts\python.exe'
+            & $venvPy -I -m pip install --quiet --disable-pip-version-check --no-index @resolve $whl.FullName
+            if ($LASTEXITCODE) { throw "pip install exited $LASTEXITCODE" }
+            $site = Join-Path $venv 'Lib\site-packages'
+            $dirs = @($DllDirectory) + @(Get-ChildItem -LiteralPath $site -Recurse -Filter '*.dll' -File | ForEach-Object DirectoryName | Sort-Object -Unique)
+            Set-Content -LiteralPath (Join-Path $site 'sitecustomize.py') -Encoding ascii -Value (
+                @('import os') + @($dirs | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { "os.add_dll_directory(r'$_')" }))
+            $verdict = @(& $venvPy -I $Helper prove $whl.Name.Split('-')[0] 2>&1 | ForEach-Object { "$_" }) -join ' | '
+            Write-Host "   $($whl.Name): $verdict"
+            if ($LASTEXITCODE) { "$($whl.Name): $verdict" }
+        } catch {
+            "$($whl.Name): $($_.Exception.Message)"
+        } finally {
+            Remove-Item -LiteralPath $venv -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    if (@($failures).Count -gt 0) { throw "$(@($failures).Count) of $($wheels.Count) twin(s) failed: $($failures -join '; ')" }
 }
 
 function Get-FreeThreadedTwinTable {
@@ -269,5 +321,5 @@ function Get-WheelMemberDifference {
 
 Export-ModuleMember -Function Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PythonWheelAbiTag, Find-UvPython,
     Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof,
-    Invoke-FreeThreadedWheelVenvProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,
+    Invoke-FreeThreadedWheelVenvProof, Invoke-TwinDeviceProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,
     Get-WheelMemberDifference

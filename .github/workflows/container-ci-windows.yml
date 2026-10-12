@@ -379,6 +379,18 @@ jobs:
           & $script
           if ($LASTEXITCODE) { throw "run-command exited $LASTEXITCODE" }
 
+      # A cross lane's cp3XYt wheel and its kit (New-CrossFreeThreadedWheel.ps1); a product without one says so and passes.
+      - name: Prove the free-threaded wheel natively
+        shell: pwsh
+        working-directory: product
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $kit = Join-Path $PWD 'free-threaded\Test-FreeThreadedWheel.ps1'
+          if (-not (Test-Path -LiteralPath $kit)) { Write-Host 'This product carries no free-threaded wheel.'; return }
+          if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw "the proof must run on arm64, not $env:PROCESSOR_ARCHITECTURE" }
+          & $kit
+
       - name: Download the tests
         if: ${{ inputs.test-command != '' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
