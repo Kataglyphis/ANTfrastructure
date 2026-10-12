@@ -1311,6 +1311,8 @@ MANUAL = [
     "TEMURIN_JDK_WINDOWS_X64_SHA256", "GIT_LFS_WINDOWS_VERSION", "GIT_LFS_WINDOWS_AMD64_SHA256",
     # The source-built ai-edge-litert's accelerator carrier: URL + PyPI's digest, and the DLL's own (recipe in versions.env).
     "LITERT_WINDOWS_ACCELERATOR_WHEEL_URL", "LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256", "LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256",
+    # LITERT_VERSION's commit and its .bazelversion's bazel, moved with it; Build-LitertWheelBazel.ps1 throws on a mismatch.
+    "LITERT_WINDOWS_SOURCE_COMMIT", "LITERT_BAZEL_WINDOWS_VERSION", "LITERT_BAZEL_WINDOWS_AMD64_SHA256",
     # The CUDA line and apt repo NVIDIA builds TensorRT 10 for; spec_deepstream_trt reads them, nothing publishes a successor.
     "DEEPSTREAM_TENSORRT_CUDA", "DEEPSTREAM_TENSORRT_REPO",
 ]

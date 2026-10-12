@@ -242,9 +242,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       the arm64 bundle's native pytest wheels are cp315; the rocm venv's PyPI LiteRT extra and its cp314 pin are gone.
       Also done: the tvm-ffi wheel tags and the remaining literal fallbacks; the twin store is
       `C:\runtime\wheels-free-threaded` / `PYTHON_WHEELS_FREE_THREADED`, as on Linux.
-      **Left:** **ai-edge-litert built from source** for the pinned Python: no release has a cp315 `win_amd64` wheel
-      or sdist (2.3.0 and the 2.4.0.dev nightlies stop at cp314). Until it lands, the cpu and nvidia venvs go without it
-      (one app smoke WARN), and the rocm variant's `rocm-1` fails on `Torch.ps1`'s LiteRT check, on purpose.
+      **ai-edge-litert from source: built (2026-10-12).** No release has a cp315 `win_amd64` wheel or sdist (2.3.0 and the
+      2.4.0.dev nightlies stop at cp314), so media-litert's second RUN builds it (`Build-LitertWheelBazel.ps1`).
+      Probe P12 ran the production driver on the 3.15 toolchain image. `ai_edge_litert-2.2.0-cp315-cp315-win_amd64.whl`
+      built from 5619 bazel actions in 272 s (530 s for the whole RUN, a 6.0 GB work tree). All 4522 compile, link and
+      archive actions ran clang-cl, lld-link or llvm-lib.
+      The wheel passed its contract and a CPU smoke through `Interpreter` and `CompiledModel`. The one clang-cl fix it needed:
+      snappy takes `_bzhi_u32` under `_MSC_VER`, so `-mbmi2` for snappy, which the AVX2 floor implies.
+      **Left:** the next amd64 chain proves the stage, the merge COPY and the venvs.
       - **Owner decisions 2026-10-12:**
         - Build the full bazel wheel `//ci/tools/python/wheel:litert_wheel` at `LITERT_VERSION`, with clang-cl.
           Rejected: a hybrid that rebuilds only `pywrap_litert_common.dll` and takes 77 members from the cp314 wheel,
@@ -253,13 +258,15 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         - Only `libLiteRtWebGpuAccelerator.dll` comes from the pinned PyPI wheel.
         - Bazel's external repos may be fetched in the RUN against upstream's WORKSPACE commit and SHA256 pins. The hub
           pins what floats: `@litert_prebuilts` (a `latest` zip), the OpenVINO nightly and the bazel binary.
-      - **The clang-cl recipe** (read from Bazel 7.7.0 and TF bcdab1a, not built yet):
+      - **The clang-cl recipe** (read from Bazel 7.7.0 and TF bcdab1a, proven by probes P4 and P12):
         - env `BAZEL_LLVM=C:\llvm-patched` plus `BAZEL_VC`;
         - flags `--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl` and `--compiler=clang-cl`;
         - `@org_tensorflow//tensorflow/tools/toolchains/win:x64_windows-clang-cl` as the execution and host platform.
       - **The hermetic Python:** rules_python takes the image's CPython 3.15 through `HERMETIC_PYTHON_URL/SHA256/PREFIX`
-        and a hub-written 3.15 requirements lock. TF's pin ships locks only up to 3.14.
-      - **Next:** the design, its 12 probes and their order are worked out; the build waits for a quiet host.
+        and a hub-written 3.15 requirements lock. TF's pin ships locks only up to 3.14. TF's rules_python runs its own pip
+        24.3.1, which dies on 3.15's `typing`. `@pypi__pip` is CPython's own ensurepip wheel.
+      - **No floating fetch:** `OPENVINO_NATIVE_DIR` names an empty dir. Without it, `@intel_openvino` downloads an
+        unhashed 744 MB nightly at load time, although nothing in the wheel's closure uses it (probe P5b).
       - **Found in the first 3.15 chain (bk-20261012-185459 to -203943):** CPython 3.15 writes its free-threaded build
         to `PCbuild\freethreaded\amd64t` (fixed 824bf848), and `_CL_` landed after CMake's `-- <source>` (fixed
         e008021e). ONNX Runtime's cp315 and cp315t wheels build and load with the GIL off.
@@ -271,6 +278,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - `docs/windows-builds.md`'s compiler table said "clang-cl, lld-link" for it.
       - Fix: CON91's clang-cl recipe. LiteRT-LM's TF pin d9a8da7 defines the same `x64_windows-clang-cl` platform.
         Prove it with an aquery gate: every `CppCompile`/`CppLink` action of the target runs `clang-cl`/`lld-link`.
+      - **Probe LM1 (2026-10-12):** `//runtime/engine:litert_lm_main` analyses under that recipe (601 packages, 19154
+        targets). `somepath` to `@intel_openvino` is empty.
+      - **Two floating fetches to close with it:**
+        - LiteRT-LM's WORKSPACE:579-581 calls `openvino_configure()`, so every media-litert build downloads the
+          unhashed 744 MB OpenVINO nightly. `OPENVINO_NATIVE_DIR=<empty dir>` stops that, as in CON91's wheel.
+        - bazelisk fetches bazel 7.6.1 without our SHA256 check. Pin the binary like the wheel's 7.7.0:
+          `1c7a1609700e085d6a707a444a97e03bad593a99475bb91ff4945868d295dc96`.
+      - LiteRT-LM's hermetic Python is a python-build-standalone 3.13, sha-pinned by its rules_python.
 - [ ] **CON93 — the torch venv's sdists compile with VS's `cl` and cannot link against the in-tree CPython**
       [S, ★★]. Found 2026-10-12 by probe P13 on the 3.15 toolchain image. line-profiler 5.0.2 and pyyaml 6.0.3 have no
       cp315 wheel, so `uv sync` builds them with setuptools.
@@ -283,6 +298,27 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - **Left:** the next amd64 chain proves it. Consumer lanes (`Invoke-PythonTestLegs.ps1`, `Invoke-CiPackaging.ps1`)
         still build third-party sdists with VS's `cl`. OrchestrANT's own `setup.py` switches to clang-cl but links with
         `link.exe`, so moving those lanes onto the shim changes its linker too and needs its own proof.
+- [ ] **CON94 — fine-tuning in the one chain ONNX Runtime (`--enable_training`) on every lane** [L, ★★★]. Owner
+      decision 2026-10-12, after two rounds of alternatives: the ONE chain ORT itself trains (variant 2), not a separate
+      training flavour. Uses: Python (OrchestrANT, scripts), the apps (OxidANT's ort `training` feature, AccelerANTgine,
+      the cat cam), the browser and Android. CPU first everywhere, CUDA training on nvidia after.
+      - **Facts accepted with it** (ORT 1.30 source, research workflow wf_0e3f0082-310):
+        - Upstream deprecated every training package in 1.20.0. Its CI still compiles one Linux x64 CPU training leg.
+        - `--enable_training_apis` with Python is a CMake FATAL_ERROR, so Python training needs full `--enable_training`.
+        - That defines `ENABLE_TRAINING`, `_CORE` and `STRIDED_TENSORS` globally, which reaches 61 inference-core files.
+          LayerNorm fusion gains two outputs, and the allocation planner and strided tensors change. The training pybind
+          replaces the inference module.
+        - MIGraphX stops setting the external-data path (`migraphx_execution_provider.cc:1369-1373`, `:1491-1495`).
+      - **Patches to carry:**
+        - keep today's wheel names (`setup.py` renames to `onnxruntime-training`);
+        - lazy optim/amp imports in `training/__init__.py`;
+        - a free-threading decision for the training pybind (cp315t twin);
+        - the training headers into the Linux prefix;
+        - `-Donnxruntime_ENABLE_LAZY_TENSOR=OFF` for the raw-CMake Windows configure.
+        - Artifacts need `onnx==1.22.0`: ORT 1.30 reads IR 13 at most, and onnx 1.23 writes IR 14.
+      - **Next:** the implementation plan (workflow wf_eebfa5d8-245), then a local feasibility probe on Linux amd64. It
+        must show the wheel name kept, a training step with falling loss, `GetTrainingApi` non-NULL, inference parity,
+        build time and sizes.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294

@@ -245,6 +245,7 @@ The **authoritative per-library build reference** for the Windows lane (AGENTS.m
 | OpenCV 5.x | Ninja | clang-cl, lld-link | [details](#opencv-5x) |
 | LiteRT (pin: `LITERT_VERSION`) | Ninja | clang-cl, lld-link | [details](#litert-pin-litert_version) |
 | LiteRT-LM (pin: `LITERT_LM_VERSION`) | **Bazel** | MSVC `cl`, `link` today: Bazel's default toolchain, against the clang-cl rule (BACKLOG CON92) | [details](#litert-lm-pin-litert_lm_version) |
+| ai-edge-litert wheel (pins: `LITERT_VERSION`, `LITERT_WINDOWS_SOURCE_COMMIT`, `LITERT_BAZEL_WINDOWS_*`) | **Bazel** | clang-cl, lld-link, llvm-lib: Bazel 7's own clang-cl toolchain, proven by an aquery gate | [details](#the-ai-edge-litert-wheel) |
 | TVM (pin: `TVM_REF`) | Ninja | clang-cl, lld-link | [details](#tvm-pin-tvm_ref) |
 | IREE (pin: `IREE_VERSION`) | Ninja | clang-cl, lld-link | Two configures on the arm64 cross lane (§ TVM and IREE in [`windows-cross-builds.md`](windows-cross-builds.md)) |
 | HailoRT (pin: `HAILORT_VERSION`) | Ninja | clang-cl, lld-link | Four static patches (§ Source Patch Policy) |
@@ -530,6 +531,45 @@ GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exp
 #### LiteRT-LM (pin: `LITERT_LM_VERSION`)
 
 On-device LLM inference, built via `Build-LitertLmBazel.ps1` (bazelisk + Temurin JDK, `bazelisk build //runtime/engine:litert_lm_main --config=windows`) → `litert_lm_main.exe`, through the smoke-RUN gate. Bazel is the only path Google CI-tests, so it survives version bumps. The old CMake export-bridge path (`Build-LitertLmFromSource.ps1`, 5 condition-gated self-retiring patches for v0.14's never-functional OSS CMake export — see § Source Patch Policy #7) is a **frozen fallback**.
+
+#### The ai-edge-litert wheel
+
+PyPI has no `ai-edge-litert` wheel or sdist for cp315, so the media-litert stage builds it for the pinned Python
+(owner decision 2026-10-12, CON91): upstream's own target `//ci/tools/python/wheel:litert_wheel` at `LITERT_VERSION`,
+by `Build-LitertWheelBazel.ps1` in the stage's second RUN. That RUN follows the LiteRT/LiteRT-LM one, so a wheel edit
+never re-runs them.
+
+- **Compiler.** Bazel 7's built-in clang-cl toolchain from `C:\llvm-patched` (`Get-BazelClangClArg`): `BAZEL_LLVM`,
+  `--compiler=clang-cl`, `--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl`, and TF's
+  `x64_windows-clang-cl` platform as target, host and execution platform. After the build, `Assert-BazelActionCompiler`
+  reads an aquery and throws on any action that is not `clang-cl`, `lld-link` or `llvm-lib`. No shipped PE may carry
+  MSVC's Rich header. `--linkopt=/DEBUG:NONE` drops the PDBs LiteRT's `.bazelrc` asks for; lld-link honours the last
+  `/DEBUG` (probe P4).
+- **Python.** Bazel's hermetic Python is the image's own CPython: a `PC\layout` copy, tarred and handed to
+  rules_ml_toolchain through `HERMETIC_PYTHON_URL/SHA256/PREFIX/VERSION`. Its `@pypi` closure is numpy, setuptools and
+  wheel, hash-pinned in `windows/scripts/patches/litert/requirements_lock_<X>_<Y>.txt` at the `PY_*` pins (probe P5b).
+  TF's rules_python runs its own pinned pip (24.3.1), which dies on 3.15's `typing` (probe P5). `@pypi__pip` is
+  therefore overridden with CPython's `ensurepip` wheel; the driver logs which pip it replaced.
+- **No floating fetch.** `@litert_prebuilts`, upstream's `latest` zip, is overridden with a local repo holding only
+  `libLiteRtWebGpuAccelerator.dll`. That DLL is closed source and comes from the pinned PyPI wheel
+  (`LITERT_WINDOWS_ACCELERATOR_WHEEL_*`), checked against `LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256`.
+  `OPENVINO_NATIVE_DIR` names an empty directory, so the unhashed OpenVINO nightly is never downloaded (744 MB, probe
+  P5b). Patch `001` drops the two OpenVINO plugins, which the wheel cannot ship. Every other external comes from
+  upstream's WORKSPACE with its sha256 (probe P6: 175 repos fetched, none unhashed).
+- **Source fixes.** Upstream's post-fetch rewrites for MSVC's STL, which clang-cl shares, run throw-on-miss in
+  `Invoke-LitertExternalRewrite`: absl's `std::source_location` off, protobuf's java `field_common.h`, `UntypedMessage`
+  held by `unique_ptr`, the protoc objc/rust generators dropped, and highwayhash's alignment as a leading
+  `__declspec(align)`. Patch `002` puts `backports.strenum` behind `python_version<"3.11"`, where it is imported.
+  snappy takes `_bzhi_u32` whenever `_MSC_VER` is set, and clang-cl wants the target feature, so snappy alone gets
+  `-mbmi2`; the AVX2 floor already implies BMI2.
+- **Measured (probe P12, 2026-10-12, 32 CPUs):** the production driver on the 3.15 toolchain image. The bazel build took
+  272 s from 5619 actions, all 4522 compile, link and archive actions on LLVM tools. The whole RUN took 530 s, and the
+  work tree reached 6.0 GB before the cleanup removed it.
+- **Gates.** The wheel must be `ai_edge_litert-<version>-cpXY-cpXY-win_amd64.whl`, hold the four `_pywrap_litert_*`
+  extensions, have `pywrap_litert_common.dll` import `pythonXY.dll`, carry the pinned accelerator and no OpenVINO
+  vendor dir, and no PE may import an ONNX Runtime. A CPU smoke then runs `simple_floor_op.tflite` through the
+  `Interpreter` and `CompiledModel` APIs.
+- **Cross.** The arm64 lane leaves the store empty with an ABSENT marker: upstream has no windows-arm64 config.
 
 #### TVM (pin: `TVM_REF`)
 
@@ -1178,8 +1218,8 @@ harvested into `lib\`, missing import libs are regenerated from their `.def`
 via `lib.exe`, and the PyAV step logs the lib inventory up front so the next
 layout drift fails loudly with data. `cv2` ships installed into CPython's
 site-packages (the opencv repo has no wheel machinery — opencv-python is a
-separate upstream project); LiteRT has no python bindings on this lane
-(bazel-only python package). All bindings are pre-installed with their PyPI
+separate upstream project); `ai-edge-litert` is media-litert's bazel wheel
+(§ The ai-edge-litert wheel). All bindings are pre-installed with their PyPI
 deps, so `python -c "import onnxruntime, onnxruntime_genai, cv2, tvm, av"`
 works out of the box — on amd64; on arm64 the wheels ship staged (install them
 on the target host) and no import has ever been executed anywhere.
@@ -1310,6 +1350,10 @@ Ninja+clang-cl; GPU delegate (Vulkan+OpenCL), XNNPACK, external CUDA delegate. I
 #### `Build-LitertLmBazel.ps1`
 
 **PRIMARY LiteRT-LM builder.** Self-installs bazelisk + Temurin JDK; `bazelisk build //runtime/engine:litert_lm_main --config=windows` → `litert_lm_main.exe` through the smoke gate. Neutralizes the base image's Android env/WORKSPACE pollution; patches the WORKSPACE zlib URL to the GitHub release mirror (zlib.net is flaky). `output_base` stays container-local (wcifs rename hazard)
+
+#### `Build-LitertWheelBazel.ps1`
+
+The `ai-edge-litert` wheel for the pinned Python with Bazel's clang-cl toolchain, gated and smoke-tested, then stored in `C:\runtime\wheels`; see § The ai-edge-litert wheel
 
 #### `Build-LitertLmFromSource.ps1`
 

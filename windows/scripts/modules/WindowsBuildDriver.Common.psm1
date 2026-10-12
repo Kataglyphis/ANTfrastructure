@@ -146,6 +146,13 @@ function Get-MediaBranchVersionArg {
                 TEMURIN_JDK_WINDOWS_X64_SHA256      = Get-VersionTableValue $VersionTable 'TEMURIN_JDK_WINDOWS_X64_SHA256'
                 GIT_LFS_WINDOWS_VERSION             = Get-VersionTableValue $VersionTable 'GIT_LFS_WINDOWS_VERSION'
                 GIT_LFS_WINDOWS_AMD64_SHA256        = Get-VersionTableValue $VersionTable 'GIT_LFS_WINDOWS_AMD64_SHA256'
+                # Build-LitertWheelBazel.ps1: the ai-edge-litert wheel for the pinned Python (CON91).
+                LITERT_WINDOWS_SOURCE_COMMIT             = Get-VersionTableValue $VersionTable 'LITERT_WINDOWS_SOURCE_COMMIT'
+                LITERT_BAZEL_WINDOWS_VERSION             = Get-VersionTableValue $VersionTable 'LITERT_BAZEL_WINDOWS_VERSION'
+                LITERT_BAZEL_WINDOWS_AMD64_SHA256        = Get-VersionTableValue $VersionTable 'LITERT_BAZEL_WINDOWS_AMD64_SHA256'
+                LITERT_WINDOWS_ACCELERATOR_WHEEL_URL     = Get-VersionTableValue $VersionTable 'LITERT_WINDOWS_ACCELERATOR_WHEEL_URL'
+                LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256  = Get-VersionTableValue $VersionTable 'LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256'
+                LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256 = Get-VersionTableValue $VersionTable 'LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256'
             }
         }
         'media-tvm' {
@@ -189,6 +196,9 @@ function Get-MediaMergeVersionArg {
         # media-litert: the bazel tool pins (hub #185).
         'BAZELISK_WINDOWS_VERSION', 'BAZELISK_WINDOWS_AMD64_SHA256', 'TEMURIN_JDK_WINDOWS_VERSION',
         'TEMURIN_JDK_WINDOWS_X64_SHA256', 'GIT_LFS_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_AMD64_SHA256',
+        # media-litert: the ai-edge-litert wheel's source, bazel and accelerator pins (CON91).
+        'LITERT_WINDOWS_SOURCE_COMMIT', 'LITERT_BAZEL_WINDOWS_VERSION', 'LITERT_BAZEL_WINDOWS_AMD64_SHA256',
+        'LITERT_WINDOWS_ACCELERATOR_WHEEL_URL', 'LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256', 'LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256',
         'IREE_ROCM_DEVICE_BC_SHA256'          # media-tvm: IREE rocm target's device-bitcode pin
     )
     $merge = @{}

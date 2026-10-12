@@ -4,7 +4,7 @@
 # Hub #181: the LiteRT layer exported bazel's output base, checkout and JDK, 25 to 44 min per rebuild.
 
 Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-LitertLmBazel.ps1' -FunctionName 'Get-TreeGb', 'Remove-LitertLmBuildTree')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsBazel.Common.psm1' -FunctionName 'Get-TreeGb', 'Remove-BazelBuildTree')
     $script:LlmBazelText = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-LitertLmBazel.ps1'))
 
     # An empty file at $Rel under $Root, its directories made on the way.
@@ -17,7 +17,7 @@ Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
             $null = New-TreeFile $d 'bzl\execroot\a\out.obj'
             $null = New-Item -ItemType Junction -Path (Join-Path $d 'bzl\external_local_jdk') -Target (Split-Path $keep)
             $log = New-TreeFile $d 'bazel-build.log'
-            Remove-LitertLmBuildTree -Path @((Join-Path $d 'bzl'), $log, (Join-Path $d 'absent')) -JdkRoot (Join-Path $d 'no-jdk')
+            Remove-BazelBuildTree -Path @((Join-Path $d 'bzl'), $log, (Join-Path $d 'absent')) -ServerRoot (Join-Path $d 'no-jdk')
             Assert-False (Test-Path -LiteralPath (Join-Path $d 'bzl')) 'the output base is gone'
             Assert-False (Test-Path -LiteralPath $log) 'the log is gone'
             Assert-True (Test-Path -LiteralPath $keep) 'the junction''s target survives'
@@ -26,19 +26,28 @@ Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
     }
 
     It 'runs after the install and its contract check, outside the checkout it deletes' {
-        Assert-Match '(?s)throw \("LiteRT-LM install does not satisfy.*\} finally \{.*Pop-Location\s*\r?\n\}\s*\r?\nRemove-LitertLmBuildTree\s*\r?\n' $script:LlmBazelText 'after the finally that leaves C:\llm'
-        Assert-Match "\[string\[\]\]\`$Path = @\('C:\\bzl', 'C:\\llm', 'C:\\bzl-tools', 'C:\\bazel-build\.log'\)" $script:LlmBazelText 'the four paths the sweep measured'
+        Assert-Match '(?s)throw \("LiteRT-LM install does not satisfy.*\} finally \{.*Pop-Location\s*\r?\n\}\s*\r?\n#[^\n]*\r?\nRemove-BazelBuildTree ' $script:LlmBazelText 'after the finally that leaves C:\llm'
+        Assert-Match "Remove-BazelBuildTree -Path @\('C:\\bzl', 'C:\\llm', 'C:\\bzl-tools', 'C:\\bazel-build\.log'\) -ServerRoot @\('C:\\bzl-tools\\jdk'\)" $script:LlmBazelText 'the four paths the sweep measured, and the JDK its server runs from'
     }
 
     It 'streams bazel to the stage log, its progress at most once per 30 s, and the whole of it to the log file' {
-        Assert-False ($script:LlmBazelText -match 'bazel-build\.log \| Select-Object -Last 20') 'no 450 s of silence'
-        Assert-Match 'Tee-Object -FilePath C:\\bazel-build\.log \| ForEach-Object' $script:LlmBazelText 'every line passes through'
-        Assert-Match "TotalSeconds -ge 30\) \{ Write-Host \`$line; \`$lastProgress = Get-Date \}" $script:LlmBazelText 'progress throttled'
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsBazel.Common.psm1' -FunctionName 'Invoke-BazelLogged')
+        Assert-Match 'Invoke-BazelLogged -Bazel C:\\bzl-tools\\bazelisk\.exe -Argument .* -LogPath C:\\bazel-build\.log' $script:LlmBazelText 'the driver streams through it'
+        Invoke-InTestDir { param($d)
+            $fake = Join-Path $d 'bazel.cmd'
+            Set-Content -LiteralPath $fake -Encoding ASCII -Value @('@echo off', 'echo [1 / 9] one', 'echo [2 / 9] two', 'echo INFO: done', 'exit /b 3')
+            $log = Join-Path $d 'build.log'
+            $shown = @(& { $script:BazelExit = Invoke-BazelLogged -Bazel $fake -Argument @('build') -LogPath $log } 6>&1 | ForEach-Object { "$_" })
+            Assert-Equal 3 $script:BazelExit 'bazel''s exit code comes back'
+            Assert-Equal 3 @(Get-Content -LiteralPath $log).Count 'every line in the log file'
+            Assert-Equal '[1 / 9] one|INFO: done' ($shown -join '|') 'the second progress line within 30 s stays out of the stage log'
+        }
     }
 }
 
 Describe 'Build-LitertLmBazel: bazelisk, the JDK and git-lfs are pinned and checked (hub #185)' {
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-LitertLmBazel.ps1' -FunctionName 'Get-PinnedTool', 'Get-LitertLmToolPin')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsBazel.Common.psm1' -FunctionName 'Get-PinnedTool', 'Get-BazelPin')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-LitertLmBazel.ps1' -FunctionName 'Get-LitertLmToolPin')
     # The download is a copy from -Uri, so a case controls the bytes that arrive.
     function Get-UrlWithRetry { param($Uri, $OutFile) Copy-Item -LiteralPath $Uri -Destination $OutFile -Force }
     $pins = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')

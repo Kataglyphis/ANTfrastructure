@@ -16,50 +16,20 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
+# The stage mounts WindowsBazel.Common beside the shared closure, a checkout keeps it in modules\.
+$bazelModule = @('bazelmods', 'modules', '..\modules') | ForEach-Object { Join-Path $PSScriptRoot "$_\WindowsBazel.Common.psm1" } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $bazelModule) { throw "WindowsBazel.Common.psm1 is neither in $PSScriptRoot\bazelmods nor in $PSScriptRoot\modules" }
+Import-Module $bazelModule -DisableNameChecking
+
 if ([string]::IsNullOrWhiteSpace($LitertLmVersion)) {
     $LitertLmVersion = if ($env:LITERT_LM_VERSION) { $env:LITERT_LM_VERSION } else { '0.18.0' }
 }
 $tag = if ($LitertLmVersion -match '^v') { $LitertLmVersion } else { "v$LitertLmVersion" }
 
-# Self-contained retry: this script also runs standalone, without the build modules.
-function Get-UrlWithRetry {
-    param([Parameter(Mandatory)][string]$Uri, [Parameter(Mandatory)][string]$OutFile, [int]$Retries = 4)
-    for ($i = 1; $i -le $Retries; $i++) {
-        try {
-            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -TimeoutSec 300
-            if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) { return }
-            throw 'downloaded file is missing or empty'
-        } catch {
-            Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
-            if ($i -eq $Retries) { throw "download failed after $Retries attempts [$Uri]: $($_.Exception.Message)" }
-            Write-Host ("  download attempt {0}/{1} failed [{2}]: {3} - retrying in {4}s" -f $i, $Retries, $Uri, $_.Exception.Message, ($i * 5))
-            Start-Sleep -Seconds ($i * 5)
-        }
-    }
-}
-
-# A cached download that must match its versions.env SHA256 pin; a stale or corrupt cache entry is fetched again (hub #185).
-function Get-PinnedTool {
-    param([Parameter(Mandatory)][string]$Uri, [Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$PinKey)
-    $want = [Environment]::GetEnvironmentVariable($PinKey)
-    if ($want -notmatch '^[0-9a-fA-F]{64}$') { throw "$PinKey is not a SHA256 ('$want'): refusing an unpinned $(Split-Path -Leaf $Path)" }
-    $hash = { if (Test-Path -LiteralPath $Path -PathType Leaf) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash } else { '' } }
-    if ((& $hash) -eq $want) { Write-Host "  $(Split-Path -Leaf $Path): cache hit"; return }
-    Get-UrlWithRetry -Uri $Uri -OutFile $Path
-    $got = & $hash
-    if ($got -ne $want) {
-        Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
-        throw "$Uri has SHA256 $got, versions.env $PinKey pins $want"
-    }
-}
-
 # bazelisk, the JDK and git-lfs as release URLs from their versions.env pins, in install order.
 function Get-LitertLmToolPin {
-    $pin = @{}
-    foreach ($key in 'BAZELISK_WINDOWS_VERSION', 'TEMURIN_JDK_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_VERSION') {
-        $pin[$key] = [Environment]::GetEnvironmentVariable($key)
-        if ([string]::IsNullOrWhiteSpace($pin[$key])) { throw "$key is unset: the bazel tools are pinned in versions.env (hub #185)" }
-    }
+    $pin = Get-BazelPin -Name 'BAZELISK_WINDOWS_VERSION', 'TEMURIN_JDK_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_VERSION' `
+        -Context 'the bazel tools are pinned in versions.env (hub #185)'
     $jdk = $pin['TEMURIN_JDK_WINDOWS_VERSION']
     if ($jdk -notmatch '^(\d+)[.\d]*\+\d+$') { throw "TEMURIN_JDK_WINDOWS_VERSION '$jdk' is not <major>.<minor>.<patch>+<build>" }
     $major = $Matches[1]
@@ -83,43 +53,6 @@ function Get-LitertLmBazelArg {
     $targets = @('//runtime/engine:litert_lm_main')
     if ($GpuType -eq 'rocm') { $targets += '@directx_shader_compiler//:dxc_dlls' }
     return @('build') + $targets + @('--config=windows', '--repo_env=ANDROID_NDK_VERSION=')
-}
-
-function Get-LitertLmRocmEnvScrub {
-    # rocm lane: name -> value ($null unsets) for env entries into the ROCm tree and HIP_PLATFORM, hiding TheRock from bazel.
-    param([string]$GpuType, [Parameter(Mandatory)][System.Collections.IDictionary]$Environment)
-    $scrub = @{}
-    if ($GpuType -ne 'rocm') { return $scrub }
-    $norm = { param([string]$p) $p.Trim().Replace('/', '\').TrimEnd('\') }
-    $roots = @(foreach ($name in @($Environment.Keys)) {
-            $value = [string]$Environment[$name]
-            if ($name -in 'ROCM_PATH', 'HIP_PATH' -and $value.Trim()) { & $norm $value }
-        })
-    $inRocm = { param([string]$entry)
-        $e = & $norm $entry
-        foreach ($r in $roots) { if ($e -ieq $r -or $e.StartsWith("$r\", [StringComparison]::OrdinalIgnoreCase)) { return $true } }
-        return $false
-    }
-    foreach ($name in @($Environment.Keys)) {
-        if ($name -ieq 'HIP_PLATFORM') { $scrub[$name] = $null; continue }
-        $entries = @(([string]$Environment[$name]) -split ';')
-        $kept = @($entries | Where-Object { -not (& $inRocm $_) })
-        if ($kept.Count -eq $entries.Count) { continue }
-        $scrub[$name] = if (@($kept | Where-Object { $_.Trim() }).Count -eq 0) { $null } else { $kept -join ';' }
-    }
-    return $scrub
-}
-
-function Set-LitertLmProcessEnv {
-    # Sets name -> value in this process ($null removes it) and returns the previous values for the restore.
-    param([Parameter(Mandatory)][System.Collections.IDictionary]$Values)
-    $previous = @{}
-    foreach ($name in @($Values.Keys)) {
-        $previous[$name] = [Environment]::GetEnvironmentVariable($name)
-        if ($null -eq $Values[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
-        else { Set-Item -LiteralPath "Env:$name" -Value $Values[$name] }
-    }
-    return $previous
 }
 
 function Assert-LitertLmDxcPin {
@@ -168,35 +101,6 @@ function Install-LitertLmGpuPayload {
     }
 }
 
-function Get-TreeGb {
-    # Get-ChildItem does not follow junctions, so a tree is counted once.
-    param([Parameter(Mandatory)][string]$Path)
-    return (Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1GB
-}
-
-function Remove-LitertLmBuildTree {
-    # The merge copies only lib\litert-lm out of this layer, so bazel's trees left here cost 25 to 44 min of export (hub #181).
-    param(
-        [string[]]$Path = @('C:\bzl', 'C:\llm', 'C:\bzl-tools', 'C:\bazel-build.log'),
-        [string]$JdkRoot = 'C:\bzl-tools\jdk'
-    )
-    # The server's java.exe holds the output base open; `bazel shutdown` started a fresh server instead and died on its command line.
-    foreach ($server in @(Get-Process -Name java -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($JdkRoot, [StringComparison]::OrdinalIgnoreCase) })) {
-        Write-Host "  stopping the bazel server (java.exe pid $($server.Id))"
-        Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
-        $null = $server.WaitForExit(30000)
-    }
-    foreach ($p in $Path) {
-        if (-not $p -or -not (Test-Path -LiteralPath $p)) { continue }
-        Write-Host ('  removing {0} ({1:N2} GB)' -f $p, (Get-TreeGb -Path $p))
-        # rd removes a junction, never its target.
-        if (Test-Path -LiteralPath $p -PathType Container) { & cmd.exe /c "rd /s /q ""$p""" 2>$null }
-        if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue }
-        if (Test-Path -LiteralPath $p) { Write-Warning "  $p survived its removal and stays in the layer" }
-    }
-    $global:LASTEXITCODE = 0
-}
-
 $gpuType = [string]$env:GPU_TYPE
 
 Write-Host "=== [1/6] prerequisites: long paths + bazelisk + JDK (LiteRT-LM $tag) ==="
@@ -240,9 +144,9 @@ try {
     # Remove-Item: SetEnvironmentVariable($null) leaves it defined-empty for native children.
     Remove-Item -Path Env:ANDROID_NDK_VERSION -ErrorAction SilentlyContinue
     # The bazel server inherits this env at start, so hide the ROCm tree before the first bazelisk call.
-    $envScrub = Get-LitertLmRocmEnvScrub -GpuType $gpuType -Environment ([Environment]::GetEnvironmentVariables())
+    $envScrub = Get-BazelRocmEnvScrub -GpuType $gpuType -Environment ([Environment]::GetEnvironmentVariables())
     if ($envScrub.Count -gt 0) {
-        $restoreEnv = Set-LitertLmProcessEnv -Values $envScrub
+        $restoreEnv = Set-BazelProcessEnv -Values $envScrub
         Write-Host "  rocm lane: ROCm tree hidden from bazel ($(@($envScrub.Keys | Sort-Object) -join ', ')); + DXC target"
     }
     $outputBase = 'C:\bzl'
@@ -255,15 +159,7 @@ try {
     $env:PATH = "C:\bzl-tools;$env:JAVA_HOME\bin;$env:PATH"
 
     Write-Host '=== [5/6] bazelisk build //runtime/engine:litert_lm_main --config=windows ==='
-    # All of it to the log file; to the stage log every line but bazel's progress, of which one per 30 s says it is alive (hub #181).
-    $lastProgress = [datetime]::MinValue
-    & C:\bzl-tools\bazelisk.exe @bazelArgs @bazelCmd 2>&1 |
-        Tee-Object -FilePath C:\bazel-build.log | ForEach-Object {
-            $line = "$_"
-            if ($line -notmatch '^\[[\d,]+ / [\d,]+\]') { Write-Host $line }
-            elseif (((Get-Date) - $lastProgress).TotalSeconds -ge 30) { Write-Host $line; $lastProgress = Get-Date }
-        }
-    $bexit = $LASTEXITCODE
+    $bexit = Invoke-BazelLogged -Bazel C:\bzl-tools\bazelisk.exe -Argument (@($bazelArgs) + @($bazelCmd)) -LogPath C:\bazel-build.log
     if ($bexit -ne 0) {
         [Console]::Error.WriteLine("--- bazel build failed ($bexit); last 60 log lines ---")
         Get-Content C:\bazel-build.log -Tail 60 | ForEach-Object { [Console]::Error.WriteLine($_) }
@@ -333,10 +229,11 @@ try {
     }
 } finally {
     # The caller's later steps (Get-GpuEnvironment) need the rocm env back.
-    if ($restoreEnv) { $null = Set-LitertLmProcessEnv -Values $restoreEnv }
+    if ($restoreEnv) { $null = Set-BazelProcessEnv -Values $restoreEnv }
     Pop-Location
 }
-Remove-LitertLmBuildTree
+# The merge copies only lib\litert-lm out of this layer, so bazel's trees left here cost 25 to 44 min of export (hub #181).
+Remove-BazelBuildTree -Path @('C:\bzl', 'C:\llm', 'C:\bzl-tools', 'C:\bazel-build.log') -ServerRoot @('C:\bzl-tools\jdk')
 # Measured only: bazel's user root (install base, repository cache) and bazelisk's cache stay; their size says whether moving them out pays (hub #181).
 foreach ($kept in @(Get-ChildItem -LiteralPath $env:USERPROFILE -Directory -Filter '_bazel_*' -ErrorAction SilentlyContinue) + @(Get-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'bazelisk') -ErrorAction SilentlyContinue)) {
     Write-Host ('  kept in the layer: {0} ({1:N2} GB)' -f $kept.FullName, (Get-TreeGb -Path $kept.FullName))

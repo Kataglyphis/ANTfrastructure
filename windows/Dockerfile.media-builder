@@ -292,7 +292,31 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
     --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
+    --mount=type=bind,source=windows/scripts/modules/WindowsBazel.Common.psm1,target=C:\bkmnt\bazelmods\WindowsBazel.Common.psm1 `
     $env:BAZEL_REPO_CACHE = 'C:\bzl-repo-cache'; & 'C:\bkmnt\Build-LitertAll.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
+
+# The ai-edge-litert wheel (CON91) in its own RUN, after the one above, so a wheel edit never re-runs LiteRT and LiteRT-LM.
+ARG LITERT_WINDOWS_SOURCE_COMMIT=145c7523ff08d5e57ab5c582141775eea47da9c7
+ARG LITERT_BAZEL_WINDOWS_VERSION=7.7.0
+ARG LITERT_BAZEL_WINDOWS_AMD64_SHA256=36f82b752d59948a9b839738d7c96f1bcca384154619b3cdb041cabdbf105ae1
+ARG LITERT_WINDOWS_ACCELERATOR_WHEEL_URL=https://files.pythonhosted.org/packages/3c/33/1e7b4ac36d983aa6153b10f1e8686d7f6ff47bda1216d6d8f047a19f3cc6/ai_edge_litert-2.2.0-cp314-cp314-win_amd64.whl
+ARG LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256=4e5e35da364495fdf0abefd6ef32d299133619df4cbab757941b0462066e93bc
+ARG LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256=9b05488c1921fdb60ea10cac108d6df8a1c974209862a1e7972b6330bc9a44a4
+ENV LITERT_WINDOWS_SOURCE_COMMIT="${LITERT_WINDOWS_SOURCE_COMMIT}" `
+    LITERT_BAZEL_WINDOWS_VERSION="${LITERT_BAZEL_WINDOWS_VERSION}" `
+    LITERT_BAZEL_WINDOWS_AMD64_SHA256="${LITERT_BAZEL_WINDOWS_AMD64_SHA256}" `
+    LITERT_WINDOWS_ACCELERATOR_WHEEL_URL="${LITERT_WINDOWS_ACCELERATOR_WHEEL_URL}" `
+    LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256="${LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256}" `
+    LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256="${LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256}"
+# WindowsBazel.Common is mounted per file, never into buildmods, so no other media RUN re-keys on it.
+RUN --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
+    --mount=type=bind,source=windows/scripts/build/Build-LitertWheelBazel.ps1,target=C:\bkmnt\Build-LitertWheelBazel.ps1 `
+    --mount=type=bind,source=windows/scripts/build/litert-wheel-smoke.py,target=C:\bkmnt\litert-wheel-smoke.py `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsBazel.Common.psm1,target=C:\bkmnt\bazelmods\WindowsBazel.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/patches/litert,target=C:\bkmnt\patches\litert `
+    & 'C:\bkmnt\Build-LitertWheelBazel.ps1' -ScriptDir 'C:\bkmnt' -ToolCache 'C:\bzl-repo-cache\toolcache'
 
 # tvm: direct solve, same mount pattern.
 FROM media-tvm-env AS media-tvm-built

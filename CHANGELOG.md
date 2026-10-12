@@ -6,6 +6,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-12 — ai-edge-litert for Python 3.15, built from source with clang-cl (CON91)
+
+- **The Windows images build ai-edge-litert themselves.** No release has a cp315 `win_amd64` wheel or sdist, so
+  media-litert's second RUN builds upstream's own target `//ci/tools/python/wheel:litert_wheel` at `LITERT_VERSION`
+  (`Build-LitertWheelBazel.ps1`). The merge copies the wheel into `C:\runtime\wheels`, and the torch venvs install it.
+- **Compiler and pins:**
+  - Bazel 7.7.0 (pinned by SHA256) builds with its own clang-cl toolchain from `C:\llvm-patched`. An aquery gate fails
+    the stage on any action that is not clang-cl, lld-link or llvm-lib.
+  - Bazel's hermetic Python is the image's CPython 3.15, with a hash-pinned numpy/setuptools/wheel lock.
+  - Only the closed-source WebGPU accelerator comes from the pinned PyPI wheel.
+  - The floating `@litert_prebuilts` zip and the unhashed OpenVINO nightly are never fetched.
+- **Proven by probe P12.** The production driver built the wheel in 272 s (530 s for the RUN); all 4522 compile,
+  link and archive actions ran LLVM tools. It passed the wheel contract and a CPU smoke through both Python APIs.
+- **The rocm check now needs CompiledModel and Environment.create().** An interpreter-only wheel with the accelerator
+  copied in can no longer pass it. `WindowsBazel.Common` now owns the helpers both bazel drivers share. Rides the next
+  chain.
+
 ## 2026-10-12 — the torch venv's sdists compile with clang-cl and link (CON93)
 
 - **The in-tree CPython links extensions like an install.** Under 3.15, line-profiler 5.0.2 and pyyaml 6.0.3 have no

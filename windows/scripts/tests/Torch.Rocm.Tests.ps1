@@ -471,7 +471,8 @@ Describe 'rocm-checks\Torch.ps1: findings' {
                 'rocm-sdk-device-gfx1201' = '10.0.0'; 'rocm-sdk-device-gfx1200' = '10.0.0'
             }
             ort = @{ dml = $true }
-            litert = @{ version = '2.2.0'; unmet = @(); interpreter = $true; accelerator = 'C:\x\libLiteRtWebGpuAccelerator.dll'; accelerator_entry = $true }
+            litert = @{ version = '2.2.0'; unmet = @(); interpreter = $true; compiled_model = $true; environment = $true
+                accelerator = 'C:\x\libLiteRtWebGpuAccelerator.dll'; accelerator_entry = $true }
         }
         foreach ($k in $Override.Keys) { $r[$k] = $Override[$k] }
         return $r
@@ -571,6 +572,8 @@ Describe 'rocm-checks\Torch.ps1: findings' {
                 @{ O = @{ ort = @{ dml = $false } }; P = 'no DmlExecutionProvider' }
                 @{ O = @{ litert = @{ error = 'import ai_edge_litert.interpreter: ModuleNotFoundError: No module named ''ai_edge_litert''' } }; P = 'ai-edge-litert: import ai_edge_litert' }
                 @{ O = @{ litert = (& $with $lite @{ interpreter = $false }) }; P = 'has no Interpreter' }
+                @{ O = @{ litert = (& $with $lite @{ compiled_model = $false }) }; P = 'has no CompiledModel or no Environment' }
+                @{ O = @{ litert = (& $with $lite @{ environment = $false }) }; P = 'has no CompiledModel or no Environment' }
                 @{ O = @{ litert = (& $with $lite @{ accelerator = '' }) }; P = 'ships no libLiteRtWebGpuAccelerator\.dll' }
                 @{ O = @{ litert = (& $with $lite @{ accelerator_entry = $false }) }; P = 'without its LiteRtAcceleratorImpl export' }
                 @{ O = @{ litert = (& $with $lite @{ unmet = @('ml_dtypes') }) }; P = 'ai-edge-litert is installed --no-deps and the venv lacks its requirement ml_dtypes' })) {

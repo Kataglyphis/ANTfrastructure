@@ -59,6 +59,9 @@ try:
     with contextlib.redirect_stderr(err):
         import ai_edge_litert, ai_edge_litert.interpreter as tfl
         lite.update(version=version("ai-edge-litert"), unmet=unmet("ai-edge-litert"), interpreter=hasattr(tfl, "Interpreter"))
+        step = "import ai_edge_litert.compiled_model and create its Environment"
+        import ai_edge_litert.compiled_model as lite_cm, ai_edge_litert.environment as lite_env
+        lite.update(compiled_model=hasattr(lite_cm, "CompiledModel"), environment=lite_env.Environment.create() is not None)
         step = "load libLiteRtWebGpuAccelerator.dll"
         path = os.path.join(os.path.dirname(ai_edge_litert.__file__), "libLiteRtWebGpuAccelerator.dll")
         lite["accelerator"] = path if os.path.isfile(path) else ""
@@ -103,6 +106,8 @@ function Get-TorchRocmExtraFinding {
     elseif (-not $ort['dml']) { "Torch: the venv's onnxruntime lists no DmlExecutionProvider: it is not the chain's CPU+DML wheel" }
     if ($lite['error']) { "Torch: ai-edge-litert: $($lite['error'])" }
     elseif (-not $lite['interpreter']) { 'Torch: ai-edge-litert: ai_edge_litert.interpreter has no Interpreter' }
+    # An interpreter-only wheel with the DLL copied in would pass the checks below without any code that loads it (CON91).
+    elseif (-not $lite['compiled_model'] -or -not $lite['environment']) { 'Torch: ai-edge-litert has no CompiledModel or no Environment, so nothing in it can load the WebGPU accelerator' }
     elseif (-not $lite['accelerator']) { 'Torch: ai-edge-litert ships no libLiteRtWebGpuAccelerator.dll: its WebGPU path is gone' }
     elseif (-not $lite['accelerator_entry']) { 'Torch: libLiteRtWebGpuAccelerator.dll loaded without its LiteRtAcceleratorImpl export' }
     foreach ($name in @($lite['unmet'] | Where-Object { $_ })) { "Torch: ai-edge-litert is installed --no-deps and the venv lacks its requirement $name" }
