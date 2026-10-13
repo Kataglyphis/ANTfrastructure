@@ -119,6 +119,9 @@ source "${SCRIPT_DIR}/android/litert-eigen-fetch.sh"
 # shellcheck source=android/litert-qairt-guard.sh
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/android/litert-qairt-guard.sh"
+# shellcheck source=android/litert-tensor-examples.sh
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/android/litert-tensor-examples.sh"
 
 litert_cross_wheel_platform_tag() {
     if command -v cross_wheel_platform_tag >/dev/null 2>&1; then
@@ -184,6 +187,7 @@ _litert_configure_cross_host_flatbuffers() {
 configure_litert() {
     info Configuring LiteRT build...
 
+    litert_prune_tensor_examples "${LITERT_SRC}"
     cd "${LITERT_SRC}/litert"
 
     local host_cc host_cxx
@@ -263,11 +267,22 @@ build_litert() {
     run_cmake_build_with_fallback "$(litert_build_subdir)" "${NPROC}"
 }
 
+# tensorflow/lite -> tflite/; since v2.3.0 a real tensorflow/lite holding only a bazel BUILD alias stands in its place.
+_litert_link_tensorflow_lite() {
+    local link="${LITERT_SRC}/tensorflow/lite" stray
+    mkdir -p "${LITERT_SRC}/tensorflow"
+    if [ -d "${link}" ] && [ ! -L "${link}" ]; then
+        stray="$(find "${link}" -type f ! -name BUILD ! -name '*.bzl' -print -quit)"
+        [ -z "${stray}" ] || err "${link} holds sources (${stray}), not just bazel files; refusing to replace it with the tflite link"
+        rm -rf "${link:?}"
+    fi
+    ln -snf "${LITERT_SRC}/tflite" "${link}"
+}
+
 # The C API CMakeLists expects tensorflow/lite under TF_SOURCE_DIR, but LiteRT keeps it in tflite/.
 _tflite_c_prepare_symlink() {
     info Creating tensorflow/lite symlink for C API build compatibility...
-    mkdir -p "${LITERT_SRC}/tensorflow"
-    ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
+    _litert_link_tensorflow_lite
 }
 
 _tflite_c_cmake_args() {
@@ -420,8 +435,7 @@ _litert_wheel_prepare_env() {
     export TENSORFLOW_TARGET="native"
     export TENSORFLOW_VERSION="${LITERT_VERSION#v}"
 
-    mkdir -p "${LITERT_SRC}/tensorflow"
-    ln -snf "${LITERT_SRC}/tflite" "${LITERT_SRC}/tensorflow/lite"
+    _litert_link_tensorflow_lite
 
     # The patched pip script passes EXTRA_CMAKE_FLAGS, word-split, to every cmake call.
     extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5} -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON}"

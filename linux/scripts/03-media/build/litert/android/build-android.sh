@@ -13,6 +13,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/litert-eigen-fetch.sh"
 # shellcheck source=litert-qairt-guard.sh
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/litert-qairt-guard.sh"
+# shellcheck source=litert-tensor-examples.sh
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/litert-tensor-examples.sh"
 
 android_build_preamble_init "Android LiteRT build" "${ANDROID_API_LEVEL:-34}"
 
@@ -28,6 +31,7 @@ android_clone_shallow "https://github.com/google-ai-edge/LiteRT.git" "${LITERT_V
 
 # cwd is the clone root after android_clone_shallow.
 _litert_disable_qairt_header_download "${PWD}"
+litert_prune_tensor_examples "${PWD}"
 
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
 

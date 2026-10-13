@@ -122,8 +122,20 @@
 - **The patch-drift gate covers LiteRT.** `Test-PatchesApplyClean.ps1` had no `litert` mapping, so CI's `patch-drift`
   job failed on `001` and `002` from CON91 on. It now clones `LITERT_VERSION`, and it no longer asks to check out a file
   that a patch creates. All 23 patches apply, by both `git apply` and GNU patch.
-- **Linux and Android.** The CMake path needs no change. The pip-script patch still applies, and the pip script is
-  unchanged. tflite's vendored protobuf is still `90b73ac3`, so `LITERT_TFLITE_PROTOC_VERSION` stays 21.9. The QAIRT
+- **Linux and Android needed two fixes, both in `build-litert.sh` and the Android build.**
+  - v2.3.0 tracks `tensorflow/lite/tools/BUILD` (a bazel alias), so a real `tensorflow/lite` directory stood where the
+    hub links `tflite/`. `ln -snf` then created `tensorflow/lite/tflite`, and tflite's C API configure found no
+    `CMakeLists.txt`. `_litert_link_tensorflow_lite` replaces a directory that holds only bazel files with the link and
+    refuses one that holds sources. The C API build and the pip wheel step both use it.
+  - `tensor/CMakeLists.txt` adds every example it finds, and the gemma3 one fetches sentencepiece v0.2.0, whose
+    `sentencepiece_processor.h` lacks `<cstdint>` under clang (`unknown type name 'uint32_t'`). It broke v2.2.0's tree
+    in today's image too. `litert_prune_tensor_examples` (`android/litert-tensor-examples.sh`, sourced by both lanes)
+    removes `tensor/examples` before configure; no image ships those demos. `test-litert-tensor-examples.sh` covers it.
+  - Proven in `:latest` on amd64 with the media stage's `install-deps.sh` and `build-litert.sh` at v2.3.0 (4352e261,
+    with the image's own `LITERT_VERSION=v2.2.0` overridden): 1306 s, `libLiteRt.so`, `libLiteRtDispatch_Arm.so`,
+    `libLiteRtDispatch_GoogleTensor.so`, `libtensorflowlite_c.so` and `ai_edge_litert-2.3.0` built. The Android NDK
+    build and the arm64/riscv64 cross builds still wait for the chain.
+  - The pip-script patch still applies, and the pip script is unchanged. tflite's vendored protobuf is still `90b73ac3`, so `LITERT_TFLITE_PROTOC_VERSION` stays 21.9. The QAIRT
   anchor is still there, and the LiteCore default URL is still the 404 one that the Android lane replaces. v2.3.0 adds an
   Arm dispatch plugin that needs only LiteRT's own headers. It also adds SafeInt (a commit-pinned fetch) and
   `find_package(Eigen3)`, which tflite's `FindEigen3.cmake` serves.

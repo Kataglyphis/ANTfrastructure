@@ -74,7 +74,7 @@ change fails immediately with a clear message instead of deep inside a compile.
 ## No staged SDK: upstream's unhashed 1.5 GB download
 
 When `QAIRT_HEADERS_DIR` is empty, upstream `file(DOWNLOAD)`s QAIRT
-2.47.0.260601 from softwarecenter.qualcomm.com — **no `EXPECTED_HASH`, no
+2.50.0.260828 (LiteRT v2.3.0's `litert/vendors/CMakeLists.txt`) from softwarecenter.qualcomm.com — **no `EXPECTED_HASH`, no
 `STATUS` check**, and *not* gated on `LITERT_ENABLE_QUALCOMM`, so it fires even
 on builds that want no NPU.
 
