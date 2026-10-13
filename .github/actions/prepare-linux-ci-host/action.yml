@@ -1,8 +1,9 @@
 name: 'Prepare Linux CI host'
 description: >-
-  The prologue every containerised Linux CI job repeats: reclaim runner disk,
-  check the repository out, log in to the registry and pull the build image
-  with retries. Four steps and ~25 lines per job collapse to one `uses:`.
+  The prologue every containerised Linux CI job repeats: log in to the registry,
+  start the pull with retries, reclaim runner disk and check the repository out
+  while it runs, then wait for it (pull-first: 'false' restores the old serial
+  order). Four steps and ~25 lines per job collapse to one `uses:`.
 
   Written for fan-out. A pipeline that splits its builds across parallel jobs
   pays this prologue once per job, so it stops being boilerplate in one place
@@ -66,21 +67,21 @@ inputs:
     default: 'true'
   free-disk-space:
     description: >-
-      Reclaim runner disk. 'true' runs the full jlumbroso set (tool cache, Android,
-      .NET, Haskell, large apt packages, swap; 1.6-4.4 min on x64), 'fast' only its
-      quick part (.NET, Haskell, swap; ~9 GB in seconds), 'false' nothing. The
-      images here are large enough that a stock runner cannot hold one plus
-      several build trees without some of it.
+      Reclaim runner disk. 'fast' (the default) runs the quick part of the jlumbroso
+      set (.NET, Haskell, swap), which leaves 58 GB free on x64 and 86 GB on arm64
+      once the image is in. 'true' runs the full set (tool cache, Android, large apt
+      packages too: 78 and 91 GB free, 2-3 min beside the pull on x64), for a lane
+      whose build trees outgrow that. 'false' runs none.
     required: false
-    default: 'true'
+    default: 'fast'
   pull-first:
     description: >-
-      'true' logs in and starts the pull in the background before the cleanup and
-      the checkout, then waits for it as the last step, so the cleanup no longer
-      sits in front of the pull. 'false' keeps the old order: cleanup, checkout,
-      login, pull.
+      'true' (the default) logs in and starts the pull in the background before the
+      cleanup and the checkout, then waits for it as the last step, so the cleanup
+      no longer sits in front of the pull. 'false' keeps the old order: cleanup,
+      checkout, login, pull.
     required: false
-    default: 'false'
+    default: 'true'
   pull-attempts:
     description: 'How many times to try `docker pull` before giving up.'
     required: false

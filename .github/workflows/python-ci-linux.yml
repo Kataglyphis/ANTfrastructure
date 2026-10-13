@@ -197,6 +197,8 @@ jobs:
           registry-password: ${{ secrets.GHCR_PAT }}
           fetch-depth: '1'
           submodules: recursive
+          # The riscv64 row pulls the riscv64 child as a second image, which the fast cleanup leaves too little room for.
+          free-disk-space: ${{ matrix.arch == 'riscv64' && 'true' || 'fast' }}
 
       # The riscv64 test row runs the riscv64 image under QEMU; the packaging step crosses on the native row, so it needs the sysroot.
       - name: Register QEMU binfmt (riscv64)

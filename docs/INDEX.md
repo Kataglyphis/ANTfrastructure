@@ -75,6 +75,7 @@ The two halves of one topic often split:
 | **Signing a consumer's MSIX** — `Invoke-MsixPackage -Sign -SigningRoot <repo root>` and the certificate scripts | [`adopting-in-a-new-project.md` § 7](adopting-in-a-new-project.md#7-certificates--packaging-windows) |
 | Bind mount vs tar-pipe, **Dev Drive filter setup**, container reuse, measured timings | [`windows-container-build-performance.md`](windows-container-build-performance.md) |
 | **The image does not fit on C:** — moving Docker's data-root to the big drive | [`windows-container-build-performance.md`](windows-container-build-performance.md#the-image-does-not-fit-on-c-and-that-is-the-default) |
+| **The CI prologue on hosted runners** — the Windows cleanup after the pull, the Linux pull first, measured per mode | [`windows-container-build-performance.md`](windows-container-build-performance.md#the-prologue-on-hosted-runners) |
 | Setting up a brand-new Windows host | [`windows-host-setup.md`](windows-host-setup.md) |
 | **`git@github.com` auth on Windows** — two OpenSSH agents, why `ssh-add` reaches the wrong one, and the two different causes behind one `Permission denied (publickey)` | [`windows-host-setup.md`](windows-host-setup.md#b0-ssh-agent--one-passphrase-then-never-again) |
 | The agentic loop's PowerShell module and its API | [`windows-agentic-loop.md`](windows-agentic-loop.md) |
