@@ -38,6 +38,11 @@ on:
         required: false
         type: string
         default: 'SCCACHE_CACHE_SIZE=2G CCACHE_MAXSIZE=2G'
+      sysroot-mode:
+        description: setup-riscv64-cross's `sysroot-mode`, `skopeo` or `export`; `export` is the old path, kept switchable.
+        required: false
+        type: string
+        default: 'export'
       timeout-minutes:
         description: The job's limit. Cross builds run natively; only the tests run under QEMU.
         required: false
@@ -66,6 +71,8 @@ jobs:
       - name: Set up riscv64 cross testing
         id: rv
         uses: Kataglyphis/ANTfrastructure/.github/actions/setup-riscv64-cross@develop
+        with:
+          sysroot-mode: ${{ inputs.sysroot-mode }}
 
       - name: Restore the compiler cache
         id: cc

@@ -2,8 +2,8 @@ name: 'Set up riscv64 cross testing'
 description: >-
   Lets an amd64 Linux lane cross-build for riscv64 and run the tests under QEMU.
   Registers QEMU's riscv64 binfmt handler with the F flag, so containers execute
-  riscv64 binaries without a qemu inside them, and exports the family image's
-  riscv64 child into a sysroot directory. Run it after prepare-linux-ci-host
+  riscv64 binaries without a qemu inside them, and builds a sysroot directory
+  from the family image's riscv64 child. Run it after prepare-linux-ci-host
   pulled the amd64 image: the sysroot then matches that image's index. Pass
   docker-args to run-in-linux-container's extra-args; inside the container,
   source linux/scripts/lib/riscv64-cross.sh and call riscv64_cross_env.
@@ -32,6 +32,14 @@ inputs:
       for a lane that runs the riscv64 image itself under QEMU.
     required: false
     default: 'true'
+  sysroot-mode:
+    description: >-
+      How the sysroot is built. 'skopeo' fetches only the riscv64 child's layer
+      blobs with the runner's skopeo and extracts the allowlist from them;
+      'export' pulls the child into docker and pipes its export through tar,
+      which suits a lane whose later steps run the riscv64 image anyway.
+    required: false
+    default: 'export'
 
 outputs:
   docker-args:
@@ -63,11 +71,12 @@ runs:
       env:
         IMAGE: ${{ inputs.image }}
         MOUNT_TARGET: ${{ inputs.mount-target }}
+        SYSROOT_MODE: ${{ inputs.sysroot-mode }}
         SYSROOT: ${{ runner.temp }}/riscv64-sysroot
       run: |
         set -euo pipefail
         bash "${GITHUB_ACTION_PATH}/../../../linux/scripts/02-toolchain/riscv64-sysroot.sh" \
-          --dest "${SYSROOT}" --image "${IMAGE}" --engine docker --remove-image
+          --dest "${SYSROOT}" --image "${IMAGE}" --engine docker --mode "${SYSROOT_MODE}" --remove-image
         df -h / | tail -n 1
         echo "sysroot=${SYSROOT}" >> "${GITHUB_OUTPUT}"
         echo "docker-args=-v ${SYSROOT}:${MOUNT_TARGET}:ro -e RISCV64_SYSROOT=${MOUNT_TARGET}" >> "${GITHUB_OUTPUT}"

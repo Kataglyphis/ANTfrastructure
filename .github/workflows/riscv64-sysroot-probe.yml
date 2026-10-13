@@ -1,0 +1,95 @@
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+
+# Builds the riscv64 sysroot both ways on fresh runners, times them, diffs the trees and runs a cross smoke on each. See docs/riscv64-cross-test-lanes.md#the-sysroot-from-the-registry-skopeo
+
+name: Linux x64 · riscv64 sysroot probe
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: riscv64-sysroot-probe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sysroot:
+    name: sysroot (${{ matrix.mode }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    strategy:
+      # Each mode's tree and timing is evidence on its own.
+      fail-fast: false
+      matrix:
+        mode: [export, skopeo]
+    steps:
+      - name: Prepare the CI host
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
+        with:
+          fetch-depth: '1'
+          submodules: 'false'
+
+      - name: Start the clock
+        run: echo "SYSROOT_START=$(date +%s)" >> "${GITHUB_ENV}"
+
+      - name: Set up riscv64 cross testing
+        id: rv
+        uses: ./.github/actions/setup-riscv64-cross
+        with:
+          sysroot: 'true'
+          sysroot-mode: ${{ matrix.mode }}
+
+      - name: List the tree
+        env:
+          MODE: ${{ matrix.mode }}
+          SYSROOT: ${{ steps.rv.outputs.sysroot }}
+        run: |
+          set -euo pipefail
+          seconds=$(( $(date +%s) - SYSROOT_START ))
+          mkdir -p "${RUNNER_TEMP}/probe"
+          printf '%s %s\n' "${MODE}" "${seconds}" > "${RUNNER_TEMP}/probe/seconds-${MODE}.txt"
+          echo "### ${MODE}: binfmt + sysroot in ${seconds} s" >> "${GITHUB_STEP_SUMMARY}"
+          python3 linux/scripts/tests/tree-manifest.py "${SYSROOT}" > "${RUNNER_TEMP}/probe/tree-${MODE}.jsonl"
+          wc -l "${RUNNER_TEMP}/probe/tree-${MODE}.jsonl"
+          du -sh "${SYSROOT}"
+
+      - name: Upload the tree list
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: riscv64-sysroot-${{ matrix.mode }}
+          path: ${{ runner.temp }}/probe/
+          if-no-files-found: error
+
+      - name: Cross build and run C, C++, GStreamer and Rust under QEMU
+        uses: ./.github/actions/run-in-linux-container
+        with:
+          extra-args: --platform linux/amd64 ${{ steps.rv.outputs.docker-args }}
+          script: bash linux/scripts/02-toolchain/riscv64-cross-smoke.sh
+
+  compare:
+    name: compare the trees
+    needs: sysroot
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Download both lists
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: riscv64-sysroot-*
+          path: ${{ runner.temp }}/probe
+          merge-multiple: true
+
+      - name: Diff export against skopeo
+        run: |
+          set -euo pipefail
+          cat "${RUNNER_TEMP}"/probe/seconds-*.txt | tee -a "${GITHUB_STEP_SUMMARY}"
+          python3 linux/scripts/tests/tree-manifest.py --diff \
+            "${RUNNER_TEMP}/probe/tree-export.jsonl" "${RUNNER_TEMP}/probe/tree-skopeo.jsonl" | tee -a "${GITHUB_STEP_SUMMARY}"

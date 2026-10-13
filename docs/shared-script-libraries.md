@@ -487,7 +487,7 @@ download.
 ## `riscv64-cross.sh` — cross-build for riscv64, test under QEMU
 
 `riscv64_cross_env` turns the amd64 image into a riscv64 cross environment over a
-sysroot exported from the image's riscv64 child (`RISCV64_SYSROOT`, default
+sysroot built from the image's riscv64 child (`RISCV64_SYSROOT`, default
 `/opt/riscv64-sysroot`). It writes triple-named clang wrappers, exports the cc-rs, Cargo
 and pkg-config variables for `riscv64gc-unknown-linux-gnu`, names the CMake toolchain in
 `RISCV64_CMAKE_TOOLCHAIN_FILE`, sets the QEMU CPU model, and fails when a riscv64 binary

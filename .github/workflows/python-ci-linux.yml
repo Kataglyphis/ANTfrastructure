@@ -205,6 +205,8 @@ jobs:
         uses: Kataglyphis/ANTfrastructure/.github/actions/setup-riscv64-cross@develop
         with:
           sysroot: ${{ inputs.package-emulated }}
+          # The QEMU test step runs the riscv64 image, so export's pull is paid once and reused there.
+          sysroot-mode: export
 
       - name: Python static analysis
         if: matrix.arch != 'riscv64'
