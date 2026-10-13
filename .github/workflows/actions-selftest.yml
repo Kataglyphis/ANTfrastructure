@@ -535,6 +535,9 @@ jobs:
       run:
         shell: pwsh
     steps:
+      # A local action needs the tree first (the first dispatch with deep, run 38486829937, found none); its checkout input then re-checks it out.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: prepare-windows-container-host
         id: prep
         uses: ./.github/actions/prepare-windows-container-host
