@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.27.1
+# syntax=docker/dockerfile:1.28.0
 # ARG defaults are safety nets for manual builds; build-runtime-manifest.sh passes versions.env values.
 
 # Keyed on TARGETARCH so a plain `docker build` uses its own platform's base, not the amd64-only cross tag.
@@ -147,7 +147,7 @@ ENV FLUTTER_RUST_BRIDGE_VERSION=${FLUTTER_RUST_BRIDGE_VERSION}
 # Advertised as ENV (ARG never reaches the image config) for consumers and the advertised-vs-actual smoke.
 ARG UBUNTU_VERSION=26.04
 ARG CMAKE_VERSION=4.4.4
-ARG NODE_VERSION=26.11.0
+ARG NODE_VERSION=26.11.1
 ARG UV_VERSION=0.13.0
 ARG OPENCV_VERSION=5.0.0
 ARG ONNXRUNTIME_VERSION=v1.30.0

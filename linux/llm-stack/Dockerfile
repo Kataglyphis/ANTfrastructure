@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.27.1
+# syntax=docker/dockerfile:1.28.0
 # Builds standalone, so these defaults are load-bearing; sync_versions.py keeps them equal to versions.env.
 ARG UBUNTU_VERSION=26.04
 ARG UBUNTU_DIGEST=sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7
