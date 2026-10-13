@@ -146,8 +146,8 @@ mutation-family:gst-validate-ssim
 mutation-family:cuda-stack
 mutation-family:cmake-arch
 mutation-family:tvm-llvm
-# The riscv64 consumer lanes' sysroot export, cross env and index lookup: library and
-# host scripts no slug owns. Proof: linux/scripts/tests/test-riscv64-cross.sh.
+# The riscv64 consumer lanes' sysroot build (export and skopeo), cross env and index lookup: library and
+# host scripts no slug owns. Proof: test-riscv64-cross.sh and test-oci-layers-extract.sh.
 mutation-family:riscv64-cross
 # CON50's browser and emulator installers, the AVD helper and their contract rows: package-stage and
 # runtime scripts no slug owns. Proof: test-chrome-and-emulator.sh and test-runtime-image-gates.sh.

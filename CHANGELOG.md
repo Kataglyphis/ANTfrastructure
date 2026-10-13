@@ -6,6 +6,26 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-13 — CI: the riscv64 sysroot from the registry (`sysroot-mode: skopeo`), export kept
+
+- **Why.** Every riscv64 cross job (OxidANT, AccelerANTgine, BeschleunigerBallett) pulled the whole riscv64 child
+  (8.51 GB, 72 layers) after the amd64 image, only to pipe `docker export` through `tar` for the 5 GB sysroot. The
+  `Set up riscv64 cross testing` step took a median of 366 s (OxidANT), 354 s (AccelerANTgine) and 373 s
+  (BeschleunigerBallett) over each repo's last six runs.
+- **`riscv64-sysroot.sh --mode skopeo`.** It fetches the child's layer blobs with the runner's skopeo, pinned to the
+  `linux/riscv64` digest of the index the amd64 image was pulled from. The new `oci-layers-extract.py` then applies them
+  in order with OCI whiteouts and opaque directories, decompressing one layer per process and keeping only
+  `RISCV64_SYSROOT_PATHS`. On the riscv64 base layer it wrote the same tree as GNU tar, mode for mode and byte for byte.
+  It refuses `..` members and never writes through a symlink.
+- **The switch.** `setup-riscv64-cross` and `container-ci-riscv64.yml` take `sysroot-mode` (`export` or `skopeo`).
+  The default stays `export` until the probe below has measured both. `python-ci-linux.yml` passes `export`, because its
+  riscv64 row runs the riscv64 image afterwards and reuses export's pull.
+- **The probe.** `riscv64-sysroot-probe.yml` (dispatch only) builds the sysroot both ways on fresh runners, times them,
+  diffs the trees with `tree-manifest.py` and runs `riscv64-cross-smoke.sh` (C, C++, a GStreamer link, Rust under QEMU)
+  against each.
+- Suite `test-oci-layers-extract.sh`, ten mutations in the `riscv64-cross` family.
+  `docs/riscv64-cross-test-lanes.md` § *The sysroot from the registry (skopeo)*.
+
 ## 2026-10-13 — Pins: Renovate's 2026-10-13 app bumps (Flutter 3.47.7, Ollama 0.40.3, llama.cpp b11583, TensorRT 11.4.0.106, …)
 
 - **Flutter 3.47.6 → 3.47.7.** `FLUTTER_SDK_SHA256` measured by full download of the Linux tarball (1,578,092,224 B),

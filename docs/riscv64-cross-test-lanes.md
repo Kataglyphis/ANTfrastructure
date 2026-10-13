@@ -20,8 +20,11 @@ the riscv64 image carries no Flutter SDK.
 
 | piece | where it runs | what it does |
 | --- | --- | --- |
-| `.github/actions/setup-riscv64-cross` | runner host | registers QEMU's riscv64 binfmt handler with the `F` flag, builds the sysroot, outputs `docker-args` |
-| `linux/scripts/02-toolchain/riscv64-sysroot.sh` | runner host or dev box | exports an allowlist of the family image's riscv64 child into a directory |
+| `.github/actions/setup-riscv64-cross` | runner host | registers QEMU's riscv64 binfmt handler with the `F` flag, builds the sysroot (`sysroot-mode`), outputs `docker-args` |
+| `linux/scripts/02-toolchain/riscv64-sysroot.sh` | runner host or dev box | writes an allowlist of the family image's riscv64 child into a directory, by `--mode export` or `--mode skopeo` |
+| `linux/scripts/02-toolchain/oci-layers-extract.py` | runner host or dev box | the skopeo mode's extractor: applies the layer blobs in order, whiteouts included, and keeps only the allowlist |
+| `linux/scripts/02-toolchain/riscv64-cross-smoke.sh` | inside the amd64 image | cross-builds C, C++, a GStreamer link and Rust against the sysroot and runs each under QEMU |
+| `.github/workflows/riscv64-sysroot-probe.yml` | GitHub, on dispatch | builds the sysroot both ways on fresh runners, times them, diffs the trees, runs the smoke on each |
 | `linux/scripts/lib/riscv64-cross.sh` | inside the amd64 image | `riscv64_cross_env`: compiler wrappers, Cargo, cc-rs, pkg-config, CMake and QEMU settings; fails when riscv64 ELF cannot run |
 | `cmake/toolchains/riscv64-linux-gnu.cmake` | CMake | the cross toolchain; `$RISCV64_CMAKE_TOOLCHAIN_FILE` names it |
 | `.github/workflows/container-ci-riscv64.yml` | GitHub | the reusable lane: host prep, the action, the compiler cache, one container step |
@@ -103,6 +106,64 @@ whether it runs at all:
 
 Ubuntu 26.04's `qemu-user` 10.2.1 runs them too. `riscv64_cross_env` sets
 `QEMU_CPU=rva23u64`: the profile the image is built for, not whatever `max` grows into.
+
+## The sysroot from the registry (skopeo)
+
+**Why.** A cross job pulls the amd64 `:latest` in `prepare-linux-ci-host` and then, for
+`--mode export`, the whole riscv64 child as well (8.51 GB compressed, 72 layers), only to
+pipe `docker export` through `tar` for the 5 GB the allowlist keeps. In OxidANT job
+115174508048 that second pull plus the export took 457 s; in OrchestrANT job 115220586540,
+590 s (a 315 s pull, a 275 s export).
+
+**What `--mode skopeo` does instead.**
+
+1. `skopeo copy docker://<repo>@<riscv64 digest> dir:<layout>` fetches the child's
+   manifest and layer blobs, nothing else. The digest is the same `linux/riscv64` entry
+   of the index the amd64 image was pulled from (`RepoDigests`), so the pairing stays
+   exact; skopeo verifies every blob against it. `skopeo` is on the `ubuntu-26.04` runner
+   image, so nothing is downloaded to get it.
+2. `oci-layers-extract.py` decompresses the layers in parallel, one process per layer,
+   largest first, each into its own staging tree, and keeps only the allowlisted members.
+3. It then applies the staged layers in manifest order, as the OCI layer rules say:
+   - a `.wh.<name>` whiteout deletes `<name>` from the lower layers, and so does a whiteout
+     of an ancestor of an allowlisted path;
+   - a `.wh..wh..opq` marker empties its directory of lower content;
+   - a directory merges, anything else replaces what was there.
+
+   Each staged tree is moved in by `rename`, so applying costs almost nothing.
+
+**It writes what a non-root GNU tar writes from `docker export`.** Measured on the riscv64
+base layer (802 MB): the same 8428 entries, modes, sizes, link targets, file mtimes, link
+counts and bytes. The rules that make it so:
+
+- File and directory modes get the umask and lose setuid, setgid and sticky, as tar does
+  for an ordinary user.
+- A hard link inside the allowlist stays a hard link. One whose target lies outside the
+  allowlist gets the target's bytes as its own file; tar's export would fail on it.
+- A path missing from the final tree fails the extract, as tar's `Not found in archive` does.
+- A device node fails, as it does for an unprivileged tar.
+
+**What it refuses**, all with a test in `test-oci-layers-extract.sh`:
+
+- a `..` member;
+- a member under a symlink of its own layer;
+- a write through a lower layer's symlink. An upper layer's directory replaces that link,
+  so an absolute link such as `/usr/lib/...` never routes files onto the runner.
+
+**Two switches stay.**
+
+- `sysroot-mode: export` on `setup-riscv64-cross` or `container-ci-riscv64.yml` is the old
+  path, unchanged.
+- `riscv64-sysroot.sh` defaults to `export` too, because a dev box may have no skopeo.
+
+`python-ci-linux.yml` passes `export` on purpose. Its riscv64 row runs the riscv64 image
+under QEMU afterwards, so export's pull is reused there, while skopeo would fetch the
+child's bytes a second time.
+
+**The probe.** `riscv64-sysroot-probe.yml` (dispatch only) builds the sysroot once per
+mode, each on a fresh runner, and records how long the action took. It then diffs the two
+trees with `linux/scripts/tests/tree-manifest.py` and cross-runs
+`riscv64-cross-smoke.sh` against each.
 
 ## Traps, each found by a failing run
 

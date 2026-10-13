@@ -11955,6 +11955,86 @@
   "why": "matching on the OS alone takes whichever linux manifest comes first, and an amd64 sysroot under a riscv64 compiler fails only at link time"
  },
  {
+  "id": "riscv64-cross.extract-applies-whiteouts",
+  "target": "linux/scripts/02-toolchain/oci-layers-extract.py",
+  "find": "                rec[\"whiteouts\"].append(target)",
+  "replace": "                pass",
+  "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
+  "why": "a file an upper layer deleted stays in the sysroot, where a link or the loader can still pick it"
+ },
+ {
+  "id": "riscv64-cross.extract-applies-opaque-dirs",
+  "target": "linux/scripts/02-toolchain/oci-layers-extract.py",
+  "find": "                rec[\"opaque\"].append(parent)",
+  "replace": "                pass",
+  "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
+  "why": "an opaque directory keeps the lower layers' files, so a replaced tree carries stale files beside its new ones"
+ },
+ {
+  "id": "riscv64-cross.extract-whiteout-of-an-ancestor",
+  "target": "linux/scripts/02-toolchain/oci-layers-extract.py",
+  "find": " or any(p.startswith(name + \"/\") for p in self.paths)",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
+  "why": "a whiteout of an allowlisted path's ancestor (/.wh.opt under opt/gcc) would leave the deleted tree in the sysroot"
+ },
+ {
+  "id": "riscv64-cross.extract-refuses-climbing-members",
+  "target": "linux/scripts/02-toolchain/oci-layers-extract.py",
+  "find": "            raise ExtractError(\"member %r climbs out of the image root\" % name)",
+  "replace": "            continue",
+  "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
+  "why": "a '..' member read as a path instead of refused is a registry blob choosing where on the runner it writes"
+ },
+ {
+  "id": "riscv64-cross.extract-never-writes-through-symlinks",
+  "target": "linux/scripts/02-toolchain/oci-layers-extract.py",
+  "find": "        if is_real_dir(s) and is_real_dir(d):",
+  "replace": "        if is_real_dir(s) and os.path.isdir(d):",
+  "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
+  "why": "a lower layer's absolute symlink would route an upper layer's files onto the host directory it names"
+ },
+ {
+  "id": "riscv64-cross.extract-modes-as-tar",
+  "target": "linux/scripts/02-toolchain/oci-layers-extract.py",
+  "find": "    os.chmod(path, member.mode & 0o777 & ~umask)",
+  "replace": "    os.chmod(path, member.mode)",
+  "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
+  "why": "export mode's non-root tar applies the umask and drops setuid; without the same rule the two modes build different sysroots"
+ },
+ {
+  "id": "riscv64-cross.extract-outside-link-target",
+  "target": "linux/scripts/02-toolchain/oci-layers-extract.py",
+  "find": "        copy_link_targets(blob, staging, outside, umask)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
+  "why": "a hard link into the allowlist whose target lies outside it would vanish from the sysroot without an error"
+ },
+ {
+  "id": "riscv64-cross.sysroot-skopeo-fetches-the-child-digest",
+  "target": "linux/scripts/02-toolchain/riscv64-sysroot.sh",
+  "find": "\"docker://${ref}\" \"dir:${layout}\"",
+  "replace": "\"docker://${ref%@*}:latest\" \"dir:${layout}\"",
+  "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
+  "why": "a fetch by tag can take a newer push than the amd64 image the lane pulled, pairing a mismatched sysroot and toolchain"
+ },
+ {
+  "id": "riscv64-cross.sysroot-skopeo-missing-stops",
+  "target": "linux/scripts/02-toolchain/riscv64-sysroot.sh",
+  "find": "command -v \"${skopeo}\" >/dev/null 2>&1 || die",
+  "replace": "command -v \"${skopeo}\" >/dev/null 2>&1 || return 0 || die",
+  "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
+  "why": "without skopeo the step would report success over a sysroot it never built"
+ },
+ {
+  "id": "riscv64-cross.sysroot-mode-is-validated",
+  "target": "linux/scripts/02-toolchain/riscv64-sysroot.sh",
+  "find": "    export | skopeo) ;;",
+  "replace": "    export | skopeo | *) ;;",
+  "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
+  "why": "an unknown mode falls through to export, so a caller's misspelt sysroot-mode would pass unnoticed"
+ },
+ {
   "id": "chrome-emulator.wrapper-no-sandbox",
   "target": "linux/scripts/06-packaging/install-chrome-for-testing.sh",
   "find": "--no-sandbox --no-zygote",
