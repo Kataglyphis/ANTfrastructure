@@ -55,7 +55,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Arm Compute Library (arm64) | v53.3.1 | [github.com/ARM-software/ComputeLibrary](https://github.com/ARM-software/ComputeLibrary) | MIT |
 | libcamera | v0.7.2 | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
 | Abseil | 20260817.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
-| FreeType | 2.14.3 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |
+| FreeType | 2.15.0 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |
 | nv-codec-headers | n13.1.15.0 | [git.videolan.org/git/ffmpeg/nv-codec-headers.git](https://git.videolan.org/git/ffmpeg/nv-codec-headers.git) | MIT |
 | GObject-Introspection | 1.86.0 | [gitlab.gnome.org/GNOME/gobject-introspection](https://gitlab.gnome.org/GNOME/gobject-introspection) | LGPLv2+ |
 | IREE | v3.12.0 | [iree.dev](https://iree.dev/) | Apache 2.0 with LLVM Exception |
@@ -77,7 +77,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | CUDA Toolkit | 13.4.2 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
 | cuDNN | 9.27.0.42 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
-| TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
+| TensorRT | 11.4.0.106 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
 ### Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only) (`Dockerfile.media`)
 
@@ -115,7 +115,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | PyTorch | v2.14.1 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
 | TorchVision | v0.29.1 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
-| Flutter SDK | 3.47.6 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.7 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Test runtimes (`Dockerfile.package`)
 
@@ -136,7 +136,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Ollama | 0.40.0 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
+| Ollama | 0.40.3 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
 
 ### Build Tooling (build-time only, not in runtime images)
 
@@ -175,7 +175,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Vulkan SDK | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
-| Flutter SDK | 3.47.6 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.7 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### GPU Layer
 
@@ -183,7 +183,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | CUDA | 13.4.2 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
 | cuDNN | 9.27.0.42 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
-| TensorRT | 11.3.0.99 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
+| TensorRT | 11.4.0.106 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 | AMD ROCm for Windows (TheRock tarball, C:\TheRock\build; rocm variant only) | 10.1.0 | [github.com/ROCm/TheRock](https://github.com/ROCm/TheRock) | per component: MIT (rocBLAS, hipBLASLt, MIOpen, rocFFT, rocRAND, rocSPARSE, hipcc, ...), BSD (rocSOLVER, hipCUB), Apache-2.0 (rocThrust, LLVM WITH LLVM-exception); the notices in share\doc ship with the tree. The HIP and OpenCL runtime DLLs carry no licence file and link AMD's prebuilt PAL: redistribution in a PUBLIC image is an owner decision |
 | Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\vulkan-loader, on PATH in the default and nvidia images; the arm64 bundle's copy and licence in C:\runtime\lavapipe) | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 (Khronos Vulkan-Loader) with MIT components (cJSON, Dave Gamble; joseph werle); VulkanRT-License.txt ships in C:\vulkan-loader |
 | Mesa lavapipe (the CPU Vulkan ICD: lvp_icd.x86_64/aarch64.json + vulkan_lvp.dll in C:\runtime\lavapipe; mmozeiko/build-mesa, SHA256-pinned) | 26.2.4 | [github.com/mmozeiko/build-mesa](https://github.com/mmozeiko/build-mesa) | MIT (Mesa 3D; the 7z carries no licence text, so this release repository and mesa3d.org are the pointer) |
@@ -221,14 +221,14 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Dawn WebGPU + Tint (statically linked into the chain onnxruntime.dll and onnxruntime_pybind11_state.pyd: C:\runtime\lib\onnxruntime-source and every chain onnxruntime wheel) | v20260818.211311 | [github.com/google/dawn](https://github.com/google/dawn) | BSD 3-Clause (Dawn/Tint; the text ships in the wheel's onnxruntime\ThirdPartyNotices.txt as ORT's own 'dawn' entry) + Apache 2.0 (SPIRV-Tools: Dawn configures it, and the header-only SPIRV-Headers, whenever DAWN_USE_BUILT_DXC is ON; listed until a link map shows the D3D12-only, SPIR-V-off build leaves it out). jinja2 and markupsafe (BSD 3-Clause) run at build time only, as Dawn's code generator, and are not shipped |
-| DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll, dxil.dll beside the chain onnxruntime.dll and in onnxruntime\capi of every chain wheel) | v1.9.2607 | [github.com/microsoft/DirectXShaderCompiler](https://github.com/microsoft/DirectXShaderCompiler) | NCSA (LLVM) + Microsoft Software License Terms (LICENSE-MS.txt, read as applying until reviewed, as for the LiteRT-LM copy); all three texts ship in C:\runtime\lib\onnxruntime-source\licenses\directx-shader-compiler and are appended to the wheel's onnxruntime\ThirdPartyNotices.txt |
+| DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll, dxil.dll beside the chain onnxruntime.dll and in onnxruntime\capi of every chain wheel) | v1.9.2609 | [github.com/microsoft/DirectXShaderCompiler](https://github.com/microsoft/DirectXShaderCompiler) | NCSA (LLVM) + Microsoft Software License Terms (LICENSE-MS.txt, read as applying until reviewed, as for the LiteRT-LM copy); all three texts ship in C:\runtime\lib\onnxruntime-source\licenses\directx-shader-compiler and are appended to the wheel's onnxruntime\ThirdPartyNotices.txt |
 
 ### llama.cpp HIP and Vulkan (rocm variant only)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip) | 11476 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
-| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 11476 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
+| llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip) | 11583 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
+| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 11583 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
 | LLVM OpenMP runtime (libomp.dll, bundled in both llama.cpp zips: CPU and Vulkan) | as bundled in the pinned llama.cpp zips (sha256-pinned; the two copies are byte-identical) | [github.com/llvm/llvm-project/tree/main/openmp](https://github.com/llvm/llvm-project/tree/main/openmp) | Apache 2.0 with LLVM Exceptions (older code also under the legacy NCSA/MIT terms); LICENSE-LLVM-OpenMP ships beside each copy, in C:\runtime\opt\llama.cpp-hip and C:\runtime\opt\llama.cpp-vulkan |
 
 ### MIGraphX + ORT plugin EP (rocm variant only)
@@ -390,7 +390,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** GPL-2.0-or-later OR FTL
 - **Source:** <https://download.savannah.gnu.org/releases/freetype/>
-- **Revision:** 2.14.3
+- **Revision:** 2.15.0
 - Dual-licensed. This project elects the FTL, which needs only notice and text; the source pointer is provided anyway.
 
 ### GObject-Introspection — Linux Images

@@ -13,7 +13,7 @@ default chain's tags. Before 2026-09-22 `ENABLE_NVIDIA=true` changed only the
 build args, and a GPU run pushed its bytes under the default `cross-media-<arch>`
 and `:latest`. The rules: [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags).
 
-- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.27.0.42<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.3.0.99<!-- /generated:tensorrt --> (off by default), NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. The chain's `gpu` stage, after `:cross-sdk-<arch>`.
+- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.27.0.42<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.4.0.106<!-- /generated:tensorrt --> (off by default), NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. The chain's `gpu` stage, after `:cross-sdk-<arch>`.
 - `linux/Dockerfile.media`: Builds media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true`.
 - `linux/Dockerfile.android`: Android SDK/NDK on top of the NVIDIA media layer.
 - `linux/Dockerfile.torch`: Torch/Python add-on on top of the Android NVIDIA layer.
@@ -40,7 +40,7 @@ The NVIDIA variant chain inserts `Dockerfile.nvidia` as its `gpu` stage **after*
 
 | File | Purpose |
 | --- | --- |
-| `linux/Dockerfile.nvidia` | Installs CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.27.0.42<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.3.0.99<!-- /generated:tensorrt -->, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
+| `linux/Dockerfile.nvidia` | Installs CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.27.0.42<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.4.0.106<!-- /generated:tensorrt -->, NCCL, cuBLAS, cuSPARSE, cuFFT, NVTX |
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the NVIDIA media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
@@ -108,7 +108,7 @@ every stage as build-args. Change them there, not per command. The apt forms
 | --- | --- | --- |
 | CUDA Toolkit | Not installed | CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda --> |
 | cuDNN | Not installed | cuDNN 9 |
-| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.3.0.99<!-- /generated:tensorrt --> with `ENABLE_TENSORRT=true` (off by default) |
+| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.4.0.106<!-- /generated:tensorrt --> with `ENABLE_TENSORRT=true` (off by default) |
 | NCCL | Not installed | Installed |
 | cuBLAS/cuSPARSE/cuFFT | Not installed | Installed |
 | NVTX | Not installed | Installed |

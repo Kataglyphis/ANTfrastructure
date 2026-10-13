@@ -6,6 +6,44 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-13 — Pins: Renovate's 2026-10-13 app bumps (Flutter 3.47.7, Ollama 0.40.3, llama.cpp b11583, TensorRT 11.4.0.106, …)
+
+- **Flutter 3.47.6 → 3.47.7.** `FLUTTER_SDK_SHA256` measured by full download of the Linux tarball (1,578,092,224 B),
+  equal to `releases_linux.json`, which names 3.47.7 the current stable. The Windows zip that scoop installs is in
+  `releases_windows.json`, and the Extras bucket's manifest carries the same URL and hash.
+- **Ollama 0.40.0 → 0.40.3.** `OLLAMA_AMD64_SHA256` and `OLLAMA_ARM64_SHA256` measured by full download of both
+  `.tar.zst`, equal to the release's `sha256sum.txt` and to GitHub's asset digests. 0.40.4-rc1 is a pre-release.
+- **llama.cpp b11476 → b11583** (Windows rocm lane). It is the newest build that publishes both the win-cpu-x64 and the
+  win-vulkan-x64 zip; Renovate already sees the tags b11584 and b11586, which have no release yet. The whole
+  `LLAMA_CPP_*` set moves:
+  - `_COMMIT` is the lightweight tag's commit; `git ls-remote` and the API agree.
+  - `_SOURCE_SHA256` is equal over two full downloads (github.com's archive and codeload), and the tarball's pax
+    header names that commit.
+  - `_CPU_SHA256` and `_VULKAN_SHA256` are measured by full download, equal to GitHub's digests. The LICENSE is
+    byte-identical.
+  - Both zips list the 51 files of the b11472 test fixture. The Vulkan zip adds `ggml-vulkan.dll`, at the same CRC32s.
+  - At b11583, release.yml still builds `windows-rocm` against TheRock 10.0.0, and every CMake option the `ggml-hip`
+    build passes still exists. `windows-rocm.md` follows.
+- **freetype 2.14.3 → 2.15.0** (OpenCV's cross fallback). The key stays dotted: `install-deps.sh` derives the tag
+  `VER-2-15-0` from it, and its fallback default moves too. The tag sits at the same commit on the GitHub mirror and on
+  gitlab.freedesktop.org, and savannah publishes `freetype-2.15.0`. The annotation needs no `extractVersion`, because
+  its `versioning=regex` reads `2.15.0` and `VER-2-15-0` as one version. A Renovate report over the new file no longer
+  lists freetype. Every `FT_DISABLE_*` option the fallback passes still exists in 2.15.0.
+- **DXC v1.9.2607 → v1.9.2609** for the ORT WebGPU EP (rocm lane). `ORT_WEBGPU_WINDOWS_DXC_ASSET` becomes
+  `dxc_2026_09_29.zip`, and `_SHA256` is measured by full download, equal to GitHub's digest. The zip still carries the
+  six members `Expand-OrtWebGpuDxc` takes, and `Rocm.OrtWebGpu.Tests.ps1` asserts the new asset name. v1.10.2605.37 is a
+  pre-release.
+- **TensorRT 11.3.0.99 → 11.4.0.106.** NVIDIA's ubuntu2604 apt repo builds it for cuda13.4 on x86_64 and sbsa, so
+  `tensorrt-dev=11.4.0.106*` resolves against the pinned CUDA 13.4.2, and CUDA stays.
+  - `TENSORRT_ZIP_SHA256` named the 11.2.1.2 zip until now. It now pins
+    `TensorRT-Enterprise-11.4.0.106-Windows-amd64-cuda-13.4-Release-external.zip` (1,984,616,374 B).
+  - That zip was downloaded in full from NVIDIA's CDN, which served it without a login. Its top directory is
+    `TensorRT-11.4.0.106`, and its S3 multipart ETag, recomputed from the bytes, equals the CDN's.
+  - DeepStream's private TensorRT stays at 10.16.1.11 for CUDA 13.2. It is still the newest TensorRT 10 that NVIDIA
+    builds, and DeepStream 9.1.0 is still the newest release.
+- `sync_versions.py` and `generate_sbom.py` regenerated the derived files. Not in this batch: ONNX Runtime, LiteRT and
+  `WEBDAVCLIENT_REF`.
+
 ## 2026-10-13 — Pins: Renovate's 2026-10-13 tool bumps (ruff 0.17.0, Renovate 44.155.2, Node 26.11.1, pandoc 3.12.1, …)
 
 - **Node 26.11.0 → 26.11.1** (same major). `NODE_AMD64_SHA256` and `NODE_ARM64_SHA256` measured by full download of

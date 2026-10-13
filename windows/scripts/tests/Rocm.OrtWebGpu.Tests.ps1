@@ -70,7 +70,7 @@ Describe 'Build-OnnxFromSource WebGPU: plan and pins (cpu/nvidia never enter the
         $pin = Get-OrtWebGpuPin -Source (Get-OrtWebGpuTestPin)
         $entry = Get-OrtDawnDepsEntry -DepsLine @('#Name;Url;SHA1', $script:OrtDawnRow) -DawnVersion $pin.DAWN_VERSION
         Assert-Equal '10e42c94f70fc222ecbafebbd1cfbb5482593d59' $entry.Sha1 'ORT''s SHA1'
-        Assert-Equal 'dxc_2026_07_29.zip' $pin.DXC_ASSET 'DXC asset'
+        Assert-Equal 'dxc_2026_09_29.zip' $pin.DXC_ASSET 'DXC asset'
         Assert-Equal 'v1.30.0' (Get-OrtWebGpuTestPin)['ONNXRUNTIME_VERSION'] 'the row above is v1.30.0''s: re-capture it with ORT'
     }
 

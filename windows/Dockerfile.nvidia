@@ -8,9 +8,9 @@ ARG BASE_IMAGE=local/kataglyphis:windows-base
 # TensorRT extract: only the tree ships; the build context is windows/ so the zip stays out of every other stage's context.
 FROM ${BASE_IMAGE} AS trt-extract
 
-ARG TENSORRT_VERSION=11.3.0.99
+ARG TENSORRT_VERSION=11.4.0.106
 # ARG, since the base-baked value is stale after a bump; empty = no check (the EULA zip varies per user).
-ARG TENSORRT_ZIP_SHA256="9cdb433f0f3803bc854d4b13eb7bd42a4aef1962749349be62d97c0f64c8f9b6"
+ARG TENSORRT_ZIP_SHA256="b6fd86301ad803492adf7a06de29ce45e3968d29637a1437d0fb0994f412c980"
 ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
@@ -70,7 +70,7 @@ RUN & 'C:\temp\scripts\Install-Cuda.ps1' -TempDir $env:TEMP_DIR
 COPY --from=trt-extract C:\tensorrt C:\tensorrt
 
 # PATH is a separate ENV because a same-instruction ${} reference would not resolve.
-ARG TENSORRT_VERSION=11.3.0.99
+ARG TENSORRT_VERSION=11.4.0.106
 ENV GPU_TYPE="nvidia" `
     CUDA_ROOT="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}" `
     CUDA_PATH="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}" `
