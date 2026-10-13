@@ -31,6 +31,8 @@ jobs:
         with:
           fetch-depth: '1'
           submodules: 'false'
+          # The same disk the lanes give each mode: export pulls the riscv64 child as a second image.
+          free-disk-space: ${{ matrix.mode == 'export' && 'true' || 'fast' }}
 
       - name: Start the clock
         run: echo "SYSROOT_START=$(date +%s)" >> "${GITHUB_ENV}"
