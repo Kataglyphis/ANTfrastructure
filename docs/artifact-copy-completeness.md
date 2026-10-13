@@ -237,9 +237,10 @@ image sees it — and it reads bytes, not behaviour:
 
 ### What is exempt, and why the arm names the tree
 
-`_RT_TREE_ARCH_EXEMPT` holds two trees. `/opt/android-sdk` is one linux-x86_64 SDK
-copied unchanged into all three images, so its arch says nothing about this image
-either way. `/opt/android` carries the Android target's ABI (`ANDROID_TARGET_ABI`,
+`_RT_TREE_ARCH_EXEMPT` holds two trees. `/opt/android-sdk` is one linux-x86_64 SDK,
+copied unchanged into every image whose `HOST_PAYLOAD` is on (amd64 by default,
+[below](#the-host-payload-stays-with-the-host-that-runs-it)), so its arch says nothing
+about this image either way. `/opt/android` carries the Android target's ABI (`ANDROID_TARGET_ABI`,
 default `arm64-v8a`), not the image's, so `check_android_abi` judges it against the
 ABI the image advertises instead
 ([`linux-cross-builds.md` § The Android ABI is a target, not the build host](linux-cross-builds.md#the-android-abi-is-a-target-not-the-build-host)).
@@ -314,6 +315,59 @@ image, so a prune that took the prefix the image actually runs would otherwise h
 passed a load-only check on the distro copy. On the three shipped images today that
 path is `<ver>/aarch64/lib`, `<ver>/riscv64/lib` and — via `setup-env.sh` —
 `<ver>/x86_64/lib/VulkanLoader/lib`.
+
+### The host payload stays with the host that runs it
+
+Read from the published `:latest` of 2026-10-11 (index `b52f8c34…`): its arm64 and riscv64
+children each carried three layers byte-identical to amd64's, **3.41 GB compressed** of the
+arm64 child's 10.11 GB and of riscv64's 8.51 GB. None of it runs on those arches:
+
+| tree (layer, compressed) | why an arm64 or riscv64 image cannot use it |
+|---|---|
+| `/opt/android-sdk` (1 816 MB) | `adb`, `aapt2` and the NDK's only prebuilt toolchain are linux-x86_64 ([why](linux-cross-builds.md#android-sdk-environment-in-the-runtime-image)) |
+| `/opt/android` (850 MB) | arm64-v8a libraries for an Android app, which only that NDK links |
+| `/usr/local/rustup` (745 MB) | the cross builder's x86_64 toolchain, deleted again one layer later by `ensure_native_rust_toolchain` ([why](failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch)) |
+
+`prune-host-payload.sh` runs in `Dockerfile.package`'s `artifact-source` stage, ahead of
+the four COPYs, like the Vulkan prune above. With `HOST_PAYLOAD=off` it:
+
+* empties `/opt/android-sdk` and `/opt/android`, and writes
+  `/opt/android/.android-payload-off`, the marker `smoke-android.sh`, the emulator
+  installer and the contract gate already read. A marker the android stage wrote on a
+  non-amd64 build host is kept as it is.
+* empties `/usr/local/rustup`, and `/usr/local/cargo` but its `registry`, when the
+  toolchain is not the target's. That is `ensure_native_rust_toolchain`'s own rule, one
+  stage earlier, so no shipped file changes: the package stage installs the native
+  toolchain over an empty tree, as it did over the deleted one. A native artifact's
+  toolchain, and amd64's, stays.
+
+The directories stay, so the COPYs, this page's manifest and the ARCH-PARITY table are
+unchanged. The package stage sets `ANDROID_HOME`, `ANDROID_SDK_ROOT` and the six Android
+root variables to empty and appends nothing to `PATH`, the way `CHROME_EXECUTABLE` is empty
+on riscv64. `ANDROID_TARGET_ABI` stays: it is a pin, not a path.
+
+`runtime_host_payload` (`01-core/runtime-build-fns.sh`) passes `HOST_PAYLOAD` per arch.
+It is `on` for the arches in `HOST_PAYLOAD_ARCHES`, and `off` for the rest and for every
+artifact that no amd64 host built, since the android stage installs the SDK only there:
+
+| `HOST_PAYLOAD_ARCHES` | amd64 | arm64, riscv64 |
+|---|---|---|
+| unset (`amd64`) | as before | empty trees, the marker, empty variables |
+| `amd64,arm64,riscv64` | as before | the images as published until 2026-10-13 |
+| `none` | no SDK either | as the default |
+
+The chain and both runtime orchestrators refuse any other value (exit 2) before they
+build. Measured over the real trees on 2026-10-13, with the amd64 `:latest` running the
+script for an arm64 target: 2 193 MB of rustup, 230 MB of cargo, 8 167 MB of SDK (the
+emulator included, which only amd64 installs) and 3 490 MB of `/opt/android` emptied in
+9.6 s. The arm64 and riscv64 pulls lose the three layers: at the ~51 MB/s (compressed)
+the arm64 pulls unpack at, about 67 s of every arm64 job's pull, an estimate until a
+chain publishes it.
+
+What holds it: `test-host-payload.sh` (the prune on fixture trees, its place in the
+Dockerfile, the per-arch resolver), the contract row `android-home`, which skips a
+payload-off image and fails one that still sets `ANDROID_HOME`, and `check_android_abi`,
+which skips it and fails one whose `/opt/android` still carries objects.
 
 ### The llvm-target prefix fills what it needs, and nothing else
 

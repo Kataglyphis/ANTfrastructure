@@ -765,12 +765,18 @@ _consumer_android_verdict() {
     printf 'NOFACT %s no FACT android-payload-off line' "${row}"
     return 0
   fi
-  if [ "${off}" = yes ]; then
-    printf 'SKIP %s the android payload is off for this build host (/opt/android/.android-payload-off)' "${row}"
-    return 0
-  fi
   val="$(_consumer_contract_fact "$2" ENV android-home)"
   root="$(_consumer_contract_fact "$2" ENV android-sdk-root)"
+  if [ "${off}" = yes ]; then
+    # An empty /opt/android-sdk behind ANDROID_HOME is the same "No Android SDK found", one probe later.
+    if [ -n "${val}" ] || [ -n "${root}" ]; then
+      printf 'BAD %s ANDROID_HOME=%s / ANDROID_SDK_ROOT=%s while /opt/android/.android-payload-off says the image ships no SDK' \
+        "${row}" "${val:-<unset>}" "${root:-<unset>}"
+    else
+      printf 'SKIP %s the android payload is off for this image (/opt/android/.android-payload-off)' "${row}"
+    fi
+    return 0
+  fi
   dir="$(_consumer_contract_fact "$2" DIR android-platform-tools)"
   onpath="$(_consumer_contract_fact "$2" FACT android-path)"
   if [ -z "${dir}" ] || [ -z "${onpath}" ]; then
@@ -2506,7 +2512,20 @@ check_android_abi() {
 
     echo "--- Functional: Android SDK ABI ---"
     out="$(_rt_run /bin/sh -c "echo \"ABI \${ANDROID_TARGET_ABI:-unset}\"; \
+      [ ! -f /opt/android/.android-payload-off ] || echo OFF; \
       /opt/venv/bin/python -c \"$(_android_abi_py | sed 's/"/\\"/g')\"" 2>&1)" || true
+
+    # A payload-off image has no ABI to judge, but an object under /opt/android makes the marker a lie.
+    if printf '%s\n' "${out}" | grep -qx OFF; then
+      total="$(printf '%s\n' "${out}" | awk '$1 == "MACH" {n += $3} END {print n + 0}')"
+      if [ "${total}" -gt 0 ]; then
+        fail "/opt/android/.android-payload-off says the ${target_arch} image ships no Android payload, yet /opt/android carries ${total} ELF object(s)"
+      else
+        echo "  SKIP the Android payload is off for this image (/opt/android/.android-payload-off)"
+      fi
+      echo ""
+      return 0
+    fi
 
     abi="$(printf '%s' "${out}" | sed -n 's/^ABI //p' | head -1)"
     if [ -z "${abi}" ] || [ "${abi}" = unset ]; then

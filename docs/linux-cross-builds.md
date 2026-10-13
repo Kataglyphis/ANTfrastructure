@@ -1052,6 +1052,7 @@ destroys it, and what replacing it costs is in
 | `CROSS_IMAGE_PRUNE=0` | Leave the containerd IMAGE store alone (`01-core/disk-guard.sh`). The lever runs only where nothing is in flight — between stages and at runtime-lane entry — and removes dangling images plus this chain's own stage tags the run no longer needs. |
 | `VULKAN_CROSS_REQUIRED=''` | Empty the list of Vulkan components whose cross-build failure is fatal (`vulkan.sh`, default: loader, SPIRV-Tools, glslang, shaderc, Vulkan-Tools, ValidationLayers). Everything else in `_VK_TARGET_COMPONENTS` is non-fatal either way. |
 | `WHEEL_SOABI_STRICT=1` | Promote the vendored-wheel SOABI gate (`verify-wheels.sh`) from advisory WARN to fatal. It fires when a vendored wheel's native `.cpython-*.so` carries a SOABI for a different arch than the target triple — a host-SOABI leak that only fails at `import`. The triple is derived from `TARGET_ARCH`, not the running interpreter. |
+| `HOST_PAYLOAD_ARCHES=amd64` | The arches whose package image keeps the x86_64-host Android SDK, its payloads and a Rust toolchain built for another host: a comma list, or `none`. The rest get `HOST_PAYLOAD=off` and ship those trees empty. `amd64,arm64,riscv64` builds the images as published until 2026-10-13. [Why](artifact-copy-completeness.md#the-host-payload-stays-with-the-host-that-runs-it). |
 | `WEB_LANE_TOOLS_SOURCE=auto\|cross\|native\|legacy` | Where riscv64's from-source `wasm-pack` / `flutter_rust_bridge_codegen` come from: android's cross build when usable (`auto`, default), only that (`cross`), a gated, cached compile in the package stage with rv64gc Rust and vendored C (`native`), or the package stage's pre-2026-09-23 `cargo install` verbatim (`legacy`). [Contract](consumer-image-contract.md#building-the-web-lane-tools-from-source). |
 | `WEB_LANE_TOOLS_CACHE=on\|refresh\|off` | Their package-stage binary cache: read and write (default), rebuild and re-store, or bypass. |
 | `WEB_LANE_TOOLS_CROSS_ARCHES=riscv64` | Targets the android producer cross-builds them for: a comma list, or `none` to turn it off. |
@@ -1064,6 +1065,10 @@ value reaches every stage the way a `versions.env` key does, and an unset one se
 no `--build-arg` at all. They are kept out of `versions.env` because any byte there
 re-keys the chain from base. The chain and both runtime orchestrators refuse an
 unknown `HAILO_*` value (exit 2) before they build anything.
+
+`HOST_PAYLOAD_ARCHES` is no Dockerfile ARG. The runtime lane resolves it per arch into
+`Dockerfile.package`'s `HOST_PAYLOAD` (`runtime_host_payload`), and refuses a bad list the
+same way.
 
 ### Clang cross wrappers
 
@@ -1271,8 +1276,8 @@ cause. The image now sets:
 
 | variable | value | true on |
 | --- | --- | --- |
-| `ANDROID_HOME` | `/opt/android-sdk` | all three arches |
-| `ANDROID_SDK_ROOT` | `/opt/android-sdk` | all three arches |
+| `ANDROID_HOME` | `/opt/android-sdk` | amd64; empty on arm64 and riscv64 since 2026-10-13 |
+| `ANDROID_SDK_ROOT` | `/opt/android-sdk` | amd64; empty on arm64 and riscv64 since 2026-10-13 |
 
 `PATH` gains `${ANDROID_HOME}/cmdline-tools/latest/bin` and
 `${ANDROID_HOME}/platform-tools`, **appended**, where `Dockerfile.android`
@@ -1296,7 +1301,9 @@ toolchain is `linux-x86_64`, so on arm64/riscv64 they are data, not programs
 shape, not a packaging defect, and it is why `/opt/android-sdk` is already an
 `_RT_TREE_ARCH_EXEMPT` tree —
 [`artifact-copy-completeness.md`](artifact-copy-completeness.md#what-is-exempt-and-why-the-arm-names-the-tree).
-Build Android artifacts from the amd64 image.
+Build Android artifacts from the amd64 image. Since 2026-10-13 the arm64 and riscv64
+images ship the SDK directories empty and the variables above empty, so `PATH` gains
+nothing there ([why](artifact-copy-completeness.md#the-host-payload-stays-with-the-host-that-runs-it)).
 
 ### Non-amd64 build hosts
 
@@ -1324,6 +1331,7 @@ answer rather than asking the arch again.
 | `android-build-preamble.sh` (5 lib stages) | builds | exits 0 via the same predicate |
 | `Dockerfile.android` | populated `/opt/android/*` | the same directories, empty (they are `mkdir`'d after the script returns) |
 | `smoke-android.sh` | runs all seven checks | reads the marker, prints `SKIP` per check, exits 0 |
+| `runtime_host_payload` (runtime lane) | `HOST_PAYLOAD` per `HOST_PAYLOAD_ARCHES` | `off` for every arch: its `ARTIFACT_PLATFORM` is not `linux/amd64`, so the artifact has no SDK, and `Dockerfile.package` leaves `ANDROID_HOME` empty |
 | `swap-native-gcc.sh` | swaps in the Canadian cross GCC | target == build host, so the host GCC already IS native |
 | `cross_android_tag` | `:cross-android-<arch>` | `:cross-android-host<host>-<arch>` |
 

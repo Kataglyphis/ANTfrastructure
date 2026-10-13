@@ -299,6 +299,7 @@ main() {
   runtime_post_parse_setup TARGET_ARCHES "${IMAGE_NAME}"
   runtime_wheels_setup || exit $?
   hailo_validate_knobs || exit 2
+  runtime_host_payload_arches >/dev/null || exit 2
 
   # One run-id for every wrapper so the coherence gate passes on a same-run push.
   : "${CROSS_RUN_ID:=runtime-$(date -u +%Y%m%d-%H%M%S)-$$}"

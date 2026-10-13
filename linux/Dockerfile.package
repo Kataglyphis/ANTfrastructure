@@ -34,6 +34,8 @@ ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
 # Dockerfile.torch's `useradd kataglyphis` uid; trees the runtime user writes are chown'd to it at COPY time.
 ARG RUNTIME_UID=1001
+# on|off per arch from runtime_host_payload, off on arm64/riscv64: docs/artifact-copy-completeness.md#the-host-payload-stays-with-the-host-that-runs-it
+ARG HOST_PAYLOAD=on
 
 FROM --platform=${ARTIFACT_PLATFORM} ${ARTIFACT_IMAGE} AS artifact-source
 
@@ -53,6 +55,13 @@ RUN --mount=type=bind,source=linux/scripts/06-packaging/prune-vulkan-host-sdk.sh
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/platform.sh,ro \
     set -euo pipefail; \
     bash /tmp/prune-vulkan-host-sdk.sh "${TARGET_ARCH:-${TARGETARCH}}"
+
+# Before the Android and Rust COPYs, so the pruned bytes never become a layer.
+ARG HOST_PAYLOAD
+RUN --mount=type=bind,source=linux/scripts/06-packaging/prune-host-payload.sh,target=/tmp/prune-host-payload.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/platform.sh,ro \
+    set -euo pipefail; \
+    HOST_PAYLOAD="${HOST_PAYLOAD}" bash /tmp/prune-host-payload.sh "${TARGET_ARCH:-${TARGETARCH}}"
 
 # The mkdir keeps an older android image mountable: docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 FROM artifact-source AS web-lane-tools-src
@@ -221,17 +230,20 @@ ENV ORT_PREFER_DYNAMIC_LINK=1
 ENV ORT_SKIP_DOWNLOAD=1
 ENV ORT_DYLIB_PATH=${ONNXRUNTIME_OUTPUT_DIR}/lib/libonnxruntime.so
 
+ARG HOST_PAYLOAD
+# Empty where the payload is pruned, so no arch advertises an SDK it lacks.
+ARG ANDROID_PAYLOAD_ON=${HOST_PAYLOAD/off/}
 # Unadvertised, flutter reports no Android SDK: docs/linux-cross-builds.md#android-sdk-environment-in-the-runtime-image
-ENV ANDROID_HOME=/opt/android-sdk \
-    ANDROID_SDK_ROOT=/opt/android-sdk
+ENV ANDROID_HOME=${ANDROID_PAYLOAD_ON:+/opt/android-sdk} \
+    ANDROID_SDK_ROOT=${ANDROID_PAYLOAD_ON:+/opt/android-sdk}
 
 # Never a bare OpenCV_DIR, which would hijack Linux find_package(OpenCV): docs/consumer-image-contract.md#the-android-sdk-roots-are-advertised
-ENV GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer
-ENV ONNXRUNTIME_ROOT_ANDROID=/opt/android/onnxruntime
-ENV LITERT_ROOT_ANDROID=/opt/android/litert
-ENV OPENCV_ROOT_ANDROID=/opt/android/opencv
-ENV IREE_ROOT_ANDROID=/opt/android/iree
-ENV OPENCV_ANDROID_JNI_DIR=/opt/android/opencv/sdk/native/jni
+ENV GSTREAMER_ROOT_ANDROID=${ANDROID_PAYLOAD_ON:+/opt/android/gstreamer}
+ENV ONNXRUNTIME_ROOT_ANDROID=${ANDROID_PAYLOAD_ON:+/opt/android/onnxruntime}
+ENV LITERT_ROOT_ANDROID=${ANDROID_PAYLOAD_ON:+/opt/android/litert}
+ENV OPENCV_ROOT_ANDROID=${ANDROID_PAYLOAD_ON:+/opt/android/opencv}
+ENV IREE_ROOT_ANDROID=${ANDROID_PAYLOAD_ON:+/opt/android/iree}
+ENV OPENCV_ANDROID_JNI_DIR=${ANDROID_PAYLOAD_ON:+/opt/android/opencv/sdk/native/jni}
 ARG ANDROID_TARGET_ABI=arm64-v8a
 ENV ANDROID_TARGET_ABI=${ANDROID_TARGET_ABI}
 
@@ -244,7 +256,7 @@ ARG CHROME_ON=${CHROME_ARCH/riscv64/}
 ENV CHROME_EXECUTABLE=${CHROME_ON:+/usr/local/bin/chrome}
 
 # Appended: platform-tools' own mke2fs would otherwise shadow /usr/sbin/mke2fs.
-ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools"
+ENV PATH="${PATH}${ANDROID_HOME:+:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools}"
 
 # A login shell rebuilds PATH from /etc/profile; `:=` keeps a caller's CARGO_HOME, the case guard stays idempotent.
 RUN printf '%s\n' \
