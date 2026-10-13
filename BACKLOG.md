@@ -249,7 +249,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       archive actions ran clang-cl, lld-link or llvm-lib.
       The wheel passed its contract and a CPU smoke through `Interpreter` and `CompiledModel`. The one clang-cl fix it needed:
       snappy takes `_bzhi_u32` under `_MSC_VER`, so `-mbmi2` for snappy, which the AVX2 floor implies.
-      **Left:** the next amd64 chain proves the stage, the merge COPY and the venvs.
+      **Proven by chain bk-20261013-004816 (hub 355a1d14, 2026-10-13):** media-litert built the cp315 wheel again (4522
+      compile/link/archive actions, all LLVM, `LITERT-WHEEL-SMOKE PASS`), the merge staged it in `C:\runtime\wheels`, the
+      torch venv installed it from there, and smoke section 20 found it. All 16 stages ran green in 10347 s; the smoke
+      gate passed 273, failed 0 and skipped 1 (CUDA on the CPU image). **Left:** publishing that `:winamd64`, and the
+      rocm and nvidia chains proving their venvs (rocm's `rocm-1` LiteRT check).
       - **Owner decisions 2026-10-12:**
         - Build the full bazel wheel `//ci/tools/python/wheel:litert_wheel` at `LITERT_VERSION`, with clang-cl.
           Rejected: a hybrid that rebuilds only `pywrap_litert_common.dll` and takes 77 members from the cp314 wheel,
@@ -275,8 +279,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       bazelisk, CON91's clang-cl recipe and an aquery gate build `litert_lm_main`, `OPENVINO_NATIVE_DIR` stops the
       nightly download, and `--output_user_root=C:\bzl-user` takes bazel's install base out of the profile. Probe LM2
       ran the production driver: 5244 actions in 539 s, all 3829 compile/link/archive actions on LLVM tools, `--help`
-      OK. It also found `Get-TreeGb` throwing on an empty dir under StrictMode, now fixed. **Left:** the next amd64
-      chain proves it; the rocm variant's DXC/WebGPU payload has not been built with clang-cl yet.
+      OK. It also found `Get-TreeGb` throwing on an empty dir under StrictMode, now fixed. **Proven by chain
+      bk-20261013-004816 (2026-10-13):** 3829 compile/link/archive actions, all clang-cl, lld-link or llvm-lib, and
+      `litert_lm_main.exe --help` OK. **Left:** the rocm variant's DXC/WebGPU payload has not been built with clang-cl yet.
       - `Build-LitertLmBazel.ps1` sets only `BAZEL_VC` and passes only `--config=windows`. LiteRT-LM v0.18.0's
         `.bazelrc` picks no compiler, so Bazel takes its default `msvc_x64` toolchain: `cl.exe`, `link.exe` and `lib.exe`.
         The rocm variant's `bk-181` log probes that toolchain's `cl.exe`.
@@ -300,7 +305,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - Fixed in source: the toolchain copies the GIL import libs into `C:\temp\cpython\libs`. The torch stage syncs
         under a clang-cl/lld-link/llvm-lib shim (`DISTUTILS_USE_SDK`), and a Rich-header gate checks what uv built.
         Smoke section 2 checks the libs.
-      - **Left:** the next amd64 chain proves it. Consumer lanes (`Invoke-PythonTestLegs.ps1`, `Invoke-CiPackaging.ps1`)
+      - **Proven by chain bk-20261013-004816 (2026-10-13):** the toolchain staged `python315.lib` and `python3.lib` in
+        `C:\temp\cpython\libs`. The torch stage built antlr4-python3-runtime, line-profiler, orchestrant and pyyaml from
+        source under the shim and passed the Rich-header gate. Smoke section 2 passed the libs check.
+      - **Left:** consumer lanes (`Invoke-PythonTestLegs.ps1`, `Invoke-CiPackaging.ps1`)
         still build third-party sdists with VS's `cl`. OrchestrANT's own `setup.py` switches to clang-cl but links with
         `link.exe`, so moving those lanes onto the shim changes its linker too and needs its own proof.
 - [ ] **CON94 — fine-tuning in the one chain ONNX Runtime (`--enable_training`) on every lane** [L, ★★★]. Owner
