@@ -1,0 +1,255 @@
+# Times the image prologue's variants side by side on real runners; docs/windows-container-build-performance.md § The prologue on hosted runners.
+name: CI host · prologue speed probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: Run the windows-2025 variants (each pulls the ~17 GB winamd64).
+        type: boolean
+        default: true
+      linux:
+        description: Run the ubuntu-26.04 and ubuntu-26.04-arm variants.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-host-speed-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: windows ${{ matrix.variant }}
+    if: ${{ inputs.windows }}
+    runs-on: windows-2025
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: win-today
+            stage-temp: ''
+            cleanup: ''
+          - variant: win-staged-off
+            stage-temp: 'D:\docker-tmp'
+            cleanup: 'off'
+          - variant: win-staged-afterpull
+            stage-temp: 'D:\docker-tmp'
+            cleanup: 'after-pull'
+          - variant: win-cstage-off
+            stage-temp: ''
+            cleanup: 'off'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # The local actions below are what this probe measures, so the tree comes first.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      # Every 5 s: free space on C: and D:, and hcsshim's staging directories in both temp roots.
+      - name: Start the disk sampler
+        run: |
+          $sampler = Join-Path $env:RUNNER_TEMP 'probe-sampler.ps1'
+          $csv = Join-Path $env:RUNNER_TEMP 'probe-disk.csv'
+          Set-Content -LiteralPath $csv -Value 'epoch,c_free_gb,d_free_gb,hcs_c,hcs_d'
+          Set-Content -LiteralPath $sampler -Value @'
+          param([string]$Csv)
+          while ($true) {
+            $c = [math]::Round((Get-PSDrive C).Free / 1GB, 2)
+            $d = [math]::Round((Get-PSDrive D).Free / 1GB, 2)
+            $hc = @(Get-ChildItem -LiteralPath 'C:\Windows\SystemTemp' -Directory -Filter 'hcs*' -Force -ErrorAction SilentlyContinue).Count
+            $hd = @(Get-ChildItem -LiteralPath 'D:\docker-tmp' -Directory -Filter 'hcs*' -Force -ErrorAction SilentlyContinue).Count
+            Add-Content -LiteralPath $Csv -Value ("{0},{1},{2},{3},{4}" -f [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(), $c, $d, $hc, $hd)
+            Start-Sleep -Seconds 5
+          }
+          '@
+          $p = Start-Process -FilePath (Get-Process -Id $PID).Path -PassThru -ArgumentList @('-NoProfile', '-File', "`"$sampler`"", '-Csv', "`"$csv`"")
+          Write-Host "sampler pid $($p.Id)"
+          "PROBE_T0=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" >> $env:GITHUB_ENV
+
+      - name: prepare-windows-container-host (${{ matrix.variant }})
+        id: prep
+        uses: ./.github/actions/prepare-windows-container-host
+        with:
+          registry-password: ${{ secrets.GHCR_PAT }}
+          short-path-target: /d/ws
+          stage-temp: ${{ matrix.stage-temp }}
+          cleanup: ${{ matrix.cleanup }}
+
+      - name: The prologue is done
+        run: |
+          "PROBE_T1=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" >> $env:GITHUB_ENV
+          docker info 2>&1 | Where-Object { $_ -match 'Root Dir|Storage Driver|Server Version|Isolation' } | ForEach-Object { Write-Host $_.Trim() }
+          docker system df
+
+      # Fixed work, so its duration shows what a cleanup running beside it costs a build.
+      - name: Container workload (writes to the bind mount and the scratch layer, then hashes)
+        uses: ./.github/actions/run-in-windows-container
+        with:
+          command: |
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            $buf = [byte[]]::new(64MB)
+            [Random]::new(7).NextBytes($buf)
+            foreach ($dir in 'C:\ws\probe-out', 'C:\probe-scratch') {
+              New-Item -ItemType Directory -Force -Path $dir | Out-Null
+              foreach ($i in 1..48) { [IO.File]::WriteAllBytes((Join-Path $dir "f$i.bin"), $buf) }
+            }
+            foreach ($round in 1..2) { $null = Get-ChildItem 'C:\ws\probe-out', 'C:\probe-scratch' -File | Get-FileHash -Algorithm SHA256 }
+            $s = [int]$sw.Elapsed.TotalSeconds
+            Set-Content -LiteralPath 'C:\ws\probe-workload.txt' -Value $s
+            Write-Host "WORKLOAD seconds=$s"
+          memory: 8g
+
+      - name: Host-side copy onto C
+        id: hostcopy
+        run: |
+          "PROBE_T2=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" >> $env:GITHUB_ENV
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          New-Item -ItemType Directory -Force -Path 'C:\probe-host' | Out-Null
+          Copy-Item -Path 'D:\ws\probe-out\*' -Destination 'C:\probe-host' -Force
+          $s = [int]$sw.Elapsed.TotalSeconds
+          Write-Host "host copy of $([math]::Round((Get-ChildItem C:\probe-host -File | Measure-Object Length -Sum).Sum / 1GB, 1)) GB to C: took $s s"
+          "seconds=$s" >> $env:GITHUB_OUTPUT
+
+      - name: TIMING
+        if: ${{ always() }}
+        env:
+          VARIANT: ${{ matrix.variant }}
+          STAGE_TEMP: ${{ matrix.stage-temp }}
+          CLEANUP_MODE: ${{ steps.prep.outputs.cleanup }}
+          PULL_SECONDS: ${{ steps.prep.outputs.pull-seconds }}
+          HOST_COPY_SECONDS: ${{ steps.hostcopy.outputs.seconds }}
+        run: |
+          $rows = @(Import-Csv -LiteralPath (Join-Path $env:RUNNER_TEMP 'probe-disk.csv'))
+          function Read-Marker([string]$name) {
+            $f = Join-Path $env:RUNNER_TEMP $name
+            if (Test-Path -LiteralPath $f) { (Get-Content -LiteralPath $f -Raw).Trim() } else { '' }
+          }
+          $done = Read-Marker 'disk-cleanup.done'
+          $cleanupS = if ($done -match 'seconds=(\d+)') { $Matches[1] } else { '0' }
+          $waited = Read-Marker 'disk-cleanup.waited'
+          $workload = if (Test-Path 'D:\ws\probe-workload.txt') { (Get-Content 'D:\ws\probe-workload.txt' -Raw).Trim() } else { '' }
+          $prologue = [int]$env:PROBE_T1 - [int]$env:PROBE_T0
+          $runStep = if ($env:PROBE_T2) { [int]$env:PROBE_T2 - [int]$env:PROBE_T1 } else { '' }
+          $line = ('TIMING variant={0} cleanup={1} stage_temp={2} prologue_s={3} cleanup_s={4} pull_s={5} run_step_s={6} workload_s={7} cleanup_waited_s={8} host_copy_s={9} min_c_free_gb={10} min_d_free_gb={11} hcs_c_max={12} hcs_d_max={13} samples={14}' -f
+            $env:VARIANT, $env:CLEANUP_MODE, $(if ($env:STAGE_TEMP) { $env:STAGE_TEMP } else { 'default' }), $prologue, $cleanupS,
+            $env:PULL_SECONDS, $runStep, $workload, $waited, $env:HOST_COPY_SECONDS,
+            ($rows | ForEach-Object { [double]$_.c_free_gb } | Measure-Object -Minimum).Minimum,
+            ($rows | ForEach-Object { [double]$_.d_free_gb } | Measure-Object -Minimum).Minimum,
+            ($rows | ForEach-Object { [int]$_.hcs_c } | Measure-Object -Maximum).Maximum,
+            ($rows | ForEach-Object { [int]$_.hcs_d } | Measure-Object -Maximum).Maximum,
+            $rows.Count)
+          Write-Host $line
+          $line >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload the disk samples
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: probe-disk-${{ matrix.variant }}
+          path: ${{ runner.temp }}/probe-disk.csv
+          if-no-files-found: error
+
+  linux:
+    name: linux ${{ matrix.variant }}
+    if: ${{ inputs.linux }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: linux-today
+            runner: ubuntu-26.04
+            pull-first: 'false'
+            free-disk-space: 'true'
+          - variant: linux-pullfirst
+            runner: ubuntu-26.04
+            pull-first: 'true'
+            free-disk-space: 'true'
+          - variant: linux-pullfirst-fast
+            runner: ubuntu-26.04
+            pull-first: 'true'
+            free-disk-space: 'fast'
+          - variant: linux-today-arm64
+            runner: ubuntu-26.04-arm
+            pull-first: 'false'
+            free-disk-space: 'true'
+          - variant: linux-pullfirst-arm64
+            runner: ubuntu-26.04-arm
+            pull-first: 'true'
+            free-disk-space: 'true'
+          - variant: linux-pullfirst-fast-arm64
+            runner: ubuntu-26.04-arm
+            pull-first: 'true'
+            free-disk-space: 'fast'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      # Every 5 s: bytes used and available on the root filesystem, which holds the image store.
+      - name: Start the disk sampler
+        shell: bash
+        run: |
+          csv="${RUNNER_TEMP}/probe-disk.csv"
+          echo 'epoch,used_b,avail_b' > "${csv}"
+          sample() {
+            while true; do
+              echo "$(date +%s),$(df -B1 --output=used,avail / | tail -1 | awk '{print $1","$2}')" >> "${csv}"
+              sleep 5
+            done
+          }
+          sample > /dev/null 2>&1 < /dev/null &
+          echo "PROBE_T0=$(date +%s)" >> "${GITHUB_ENV}"
+          df -h /
+
+      - name: prepare-linux-ci-host (${{ matrix.variant }})
+        id: prep
+        uses: ./.github/actions/prepare-linux-ci-host
+        with:
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GHCR_PAT }}
+          fetch-depth: '1'
+          submodules: 'false'
+          pull-first: ${{ matrix.pull-first }}
+          free-disk-space: ${{ matrix.free-disk-space }}
+
+      - name: The prologue is done
+        shell: bash
+        run: |
+          echo "PROBE_T1=$(date +%s)" >> "${GITHUB_ENV}"
+          docker info 2>/dev/null | grep -E 'Server Version|Storage Driver|driver-type|Docker Root Dir|containerd' || true
+          docker system df
+          df -h /
+
+      - name: TIMING
+        if: ${{ always() }}
+        shell: bash
+        env:
+          VARIANT: ${{ matrix.variant }}
+          PULL_SECONDS: ${{ steps.prep.outputs.pull-seconds }}
+          CLEANUP_SECONDS: ${{ steps.prep.outputs.cleanup-seconds }}
+        run: |
+          csv="${RUNNER_TEMP}/probe-disk.csv"
+          stats="$(awk -F, 'NR > 1 { if ($2 > mu) mu = $2; if (ma == "" || $3 < ma) ma = $3; n++ } END { printf "%.1f %.1f %d", mu / 1e9, ma / 1e9, n }' "${csv}")"
+          read -r max_used min_avail samples <<< "${stats}"
+          avail_end="$(df -B1 --output=avail / | tail -1 | awk '{printf "%.1f", $1 / 1e9}')"
+          line="TIMING variant=${VARIANT} prologue_s=$(( ${PROBE_T1:-0} - PROBE_T0 )) cleanup_s=${CLEANUP_SECONDS} pull_s=${PULL_SECONDS} max_used_gb=${max_used} min_avail_gb=${min_avail} avail_end_gb=${avail_end} samples=${samples}"
+          echo "${line}"
+          echo "${line}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload the disk samples
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: probe-disk-${{ matrix.variant }}
+          path: ${{ runner.temp }}/probe-disk.csv
+          if-no-files-found: error

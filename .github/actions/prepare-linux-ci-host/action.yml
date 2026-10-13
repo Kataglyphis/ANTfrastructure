@@ -66,10 +66,21 @@ inputs:
     default: 'true'
   free-disk-space:
     description: >-
-      Reclaim runner disk before pulling. The images here are large enough
-      that a stock ubuntu runner cannot hold one plus several build trees.
+      Reclaim runner disk. 'true' runs the full jlumbroso set (tool cache, Android,
+      .NET, Haskell, large apt packages, swap; 1.6-4.4 min on x64), 'fast' only its
+      quick part (.NET, Haskell, swap; ~9 GB in seconds), 'false' nothing. The
+      images here are large enough that a stock runner cannot hold one plus
+      several build trees without some of it.
     required: false
     default: 'true'
+  pull-first:
+    description: >-
+      'true' logs in and starts the pull in the background before the cleanup and
+      the checkout, then waits for it as the last step, so the cleanup no longer
+      sits in front of the pull. 'false' keeps the old order: cleanup, checkout,
+      login, pull.
+    required: false
+    default: 'false'
   pull-attempts:
     description: 'How many times to try `docker pull` before giving up.'
     required: false
@@ -79,9 +90,58 @@ inputs:
     required: false
     default: '900'
 
+outputs:
+  pull-seconds:
+    description: 'How long the pull took, in seconds (under pull-first it overlapped the cleanup and the checkout).'
+    value: ${{ steps.pull.outputs.seconds || steps.pull-wait.outputs.seconds }}
+  cleanup-seconds:
+    description: 'How long the disk cleanup took, in seconds (0 when free-disk-space is false).'
+    value: ${{ steps.cleanup-end.outputs.seconds || '0' }}
+
 runs:
   using: 'composite'
   steps:
+    - name: Check the prologue inputs
+      shell: bash
+      env:
+        FREE_DISK_SPACE: ${{ inputs.free-disk-space }}
+        PULL_FIRST: ${{ inputs.pull-first }}
+      run: |
+        case "${FREE_DISK_SPACE}" in true|fast|false) ;; *) echo "::error::free-disk-space must be true, fast or false, not '${FREE_DISK_SPACE}'"; exit 1 ;; esac
+        case "${PULL_FIRST}" in true|false) ;; *) echo "::error::pull-first must be true or false, not '${PULL_FIRST}'"; exit 1 ;; esac
+        echo "disk cleanup: ${FREE_DISK_SPACE}; pull first: ${PULL_FIRST}"
+
+    - name: Log in to the container registry (before the pull)
+      if: inputs.pull-first == 'true' && inputs.registry-password != ''
+      shell: bash
+      # Secret via env keeps it out of the composed script file.
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        REGISTRY_USERNAME: ${{ inputs.registry-username }}
+        REGISTRY_PASSWORD: ${{ inputs.registry-password }}
+      run: printf '%s' "${REGISTRY_PASSWORD}" | docker login "${REGISTRY}" -u "${REGISTRY_USERNAME}" --password-stdin
+
+    # Its unpack is disk-bound, so the cleanup and the checkout ride along instead of going first.
+    - name: Start the image pull in the background
+      if: inputs.pull-first == 'true'
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        ATTEMPTS: ${{ inputs.pull-attempts }}
+        TIMEOUT: ${{ inputs.pull-timeout-seconds }}
+      run: |
+        state="${RUNNER_TEMP}/prologue-pull"
+        rm -f "${state}.rc" "${state}.seconds" "${state}.log" "${state}.pid"
+        nohup bash "${GITHUB_ACTION_PATH}/pull-image.sh" "${IMAGE}" "${ATTEMPTS}" "${TIMEOUT}" "${state}" \
+          > "${state}.log" 2>&1 < /dev/null &
+        echo "$!" > "${state}.pid"
+        echo "Pulling ${IMAGE} in the background (pid $!); the last step of this action waits for it."
+
+    - name: Mark the cleanup start
+      if: inputs.free-disk-space != 'false'
+      shell: bash
+      run: date +%s > "${RUNNER_TEMP}/prologue-cleanup.start"
+
     - name: Free disk space on host
       if: inputs.free-disk-space == 'true'
       uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main 2026-08-08
@@ -95,6 +155,28 @@ runs:
         docker-images: false
         swap-storage: true
 
+    # The three removals that take seconds; Android, the large apt packages and the tool cache take minutes.
+    - name: Free disk space on host (fast)
+      if: inputs.free-disk-space == 'fast'
+      uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main 2026-08-08
+      with:
+        tool-cache: false
+        android: false
+        dotnet: true
+        haskell: true
+        large-packages: false
+        docker-images: false
+        swap-storage: true
+
+    - name: Mark the cleanup end
+      id: cleanup-end
+      if: inputs.free-disk-space != 'false'
+      shell: bash
+      run: |
+        seconds=$(( $(date +%s) - $(cat "${RUNNER_TEMP}/prologue-cleanup.start") ))
+        echo "disk cleanup (${{ inputs.free-disk-space }}): ${seconds} s"
+        echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+
     - name: Checkout
       if: inputs.checkout == 'true'
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -103,7 +185,7 @@ runs:
         submodules: ${{ inputs.submodules }}
 
     - name: Log in to the container registry
-      if: inputs.registry-password != ''
+      if: inputs.pull-first != 'true' && inputs.registry-password != ''
       shell: bash
       # Secret via env keeps it out of the composed script file.
       env:
@@ -112,18 +194,54 @@ runs:
         printf '%s' "${REGISTRY_PASSWORD}" \
           | docker login "${{ inputs.registry }}" -u "${{ inputs.registry-username }}" --password-stdin
 
-    # Multi-GB pulls on shared runners fail often; timeout bounds a hung pull so the retry actually happens.
+    # Multi-GB pulls on shared runners fail often; pull-image.sh retries them.
     - name: Pull the container image
+      id: pull
+      if: inputs.pull-first != 'true'
       shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        ATTEMPTS: ${{ inputs.pull-attempts }}
+        TIMEOUT: ${{ inputs.pull-timeout-seconds }}
       run: |
-        for attempt in $(seq 1 "${{ inputs.pull-attempts }}"); do
-          echo "Attempt ${attempt}/${{ inputs.pull-attempts }}: docker pull ${{ inputs.image }}"
-          if timeout "${{ inputs.pull-timeout-seconds }}" docker pull "${{ inputs.image }}"; then
-            echo "Pulled ${{ inputs.image }}"
-            exit 0
+        state="${RUNNER_TEMP}/prologue-pull"
+        rc=0
+        bash "${GITHUB_ACTION_PATH}/pull-image.sh" "${IMAGE}" "${ATTEMPTS}" "${TIMEOUT}" "${state}" || rc=$?
+        echo "docker pull: $(cat "${state}.seconds") s"
+        echo "seconds=$(cat "${state}.seconds")" >> "${GITHUB_OUTPUT}"
+        exit "${rc}"
+
+    - name: Wait for the image pull
+      id: pull-wait
+      if: inputs.pull-first == 'true'
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        ATTEMPTS: ${{ inputs.pull-attempts }}
+        TIMEOUT: ${{ inputs.pull-timeout-seconds }}
+      run: |
+        state="${RUNNER_TEMP}/prologue-pull"
+        pid="$(cat "${state}.pid")"
+        # pull-image.sh bounds itself; this only catches a pull that outlives every attempt it was allowed.
+        limit=$(( ATTEMPTS * (TIMEOUT + 30) + 120 ))
+        waited=0
+        while [ ! -f "${state}.rc" ] && kill -0 "${pid}" 2>/dev/null; do
+          if [ "${waited}" -ge "${limit}" ]; then
+            echo "::error::the background pull of ${IMAGE} ran past ${limit} s; stopping it"
+            kill "${pid}" 2>/dev/null || true
+            break
           fi
-          echo "Pull failed; retrying in 30s"
-          sleep 30
+          sleep 2
+          waited=$(( waited + 2 ))
         done
-        echo "::error::Failed to pull ${{ inputs.image }} after ${{ inputs.pull-attempts }} attempts"
-        exit 1
+        echo "::group::docker pull of ${IMAGE} (ran in the background)"
+        cat "${state}.log"
+        echo "::endgroup::"
+        rc="$(cat "${state}.rc" 2>/dev/null || echo 1)"
+        seconds="$(cat "${state}.seconds" 2>/dev/null || echo 0)"
+        echo "docker pull: ${seconds} s, overlapped with the cleanup and the checkout; this step waited ${waited} s"
+        echo "seconds=${seconds}" >> "${GITHUB_OUTPUT}"
+        if [ "${rc}" != 0 ]; then
+          echo "::error::the background pull of ${IMAGE} failed (exit ${rc}); its log is above"
+          exit 1
+        fi
