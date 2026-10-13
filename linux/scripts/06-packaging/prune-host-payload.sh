@@ -68,7 +68,8 @@ prune_android_payload() {
 main() {
   local target_arch="${1:-${TARGET_ARCH:-${TARGETARCH:-}}}"
   local root="${2:-}"
-  local mode="${HOST_PAYLOAD:-on}"
+  # Unset means on; an empty value is refused, because Dockerfile.package reads empty as off for the ENV lines.
+  local mode="${HOST_PAYLOAD-on}"
 
   _host_payload_platform || {
     echo "ERROR: prune-host-payload.sh found no platform.sh defining arch_rust_target_triple_for" >&2

@@ -1259,9 +1259,10 @@ different device.
 
 ### Android SDK environment in the runtime image
 
-`Dockerfile.package` COPYs `/opt/android-sdk` unconditionally, so the tree is in
-**all three** shipped `:latest-cross-<arch>` images — measured 2026-09-04, 3.6 GB
-and byte-identical on amd64/arm64/riscv64, with `build-tools/36.0.0`,
+Until CON96 (2026-10-13) `Dockerfile.package` COPYed `/opt/android-sdk` unconditionally,
+so the tree was in **all three** shipped images; since then only amd64 keeps it, unless
+`HOST_PAYLOAD_ARCHES` names another arch. Measured 2026-09-04: 3.6 GB,
+byte-identical on amd64/arm64/riscv64, with `build-tools/36.0.0`,
 `cmdline-tools/latest`, `licenses`, `ndk/29.0.14206865`, `platforms/android-36`
 and `platform-tools` all present. Since 2026-09-17 `platforms/android-37.0` and
 `build-tools/37.0.0` are installed alongside them (CON5): API 37's base platform

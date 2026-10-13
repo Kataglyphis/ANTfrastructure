@@ -94,6 +94,7 @@ t_case "an unknown mode or arch is a hard error, never a guess"
 _fixture
 t_assert_eq 1 "$(t_rc env HOST_PAYLOAD=maybe bash "${PRUNE}" arm64 "${ROOT}")"
 t_assert_contains "$(_run arm64 maybe)" "HOST_PAYLOAD='maybe' (want on or off)"
+t_assert_contains "$(_run arm64 '')" "HOST_PAYLOAD='' (want on or off)"
 t_assert_eq 1 "$(t_rc env HOST_PAYLOAD=off bash "${PRUNE}" not-an-arch "${ROOT}")"
 # A refused run removed nothing.
 t_assert_ok test -f "${ROOT}/opt/android-sdk/platform-tools/adb"
