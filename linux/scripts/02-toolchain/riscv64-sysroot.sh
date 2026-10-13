@@ -91,11 +91,15 @@ export_child() {
 
 # skopeo_child <repo@digest> <dest>: the allowlist from the child's layer blobs, fetched without an engine pull.
 skopeo_child() {
-  local ref="$1" dest="$2" skopeo="${RISCV64_SYSROOT_SKOPEO:-skopeo}" layout="${2}.layout" rc=0 start="${SECONDS}"
+  local ref="$1" dest="$2" skopeo="${RISCV64_SYSROOT_SKOPEO:-skopeo}" layout="${2}.layout" rc=0 start="${SECONDS}" help
+  local -a parallel=()
   command -v "${skopeo}" >/dev/null 2>&1 || die "skopeo not found (${skopeo}); use --mode export on a host without it"
   rm -rf "${layout}" "${dest}"
+  # Six blobs at a time, the default, queued the 2.4 GB layer behind small ones: 99 s for 8.5 GB on a runner.
+  help="$("${skopeo}" copy --help 2>/dev/null || true)"
+  case "${help}" in *--image-parallel-copies*) parallel=(--image-parallel-copies 24) ;; esac
   # The digest pin, which skopeo verifies blob by blob, is the trust anchor; a host without containers-common has no policy.json.
-  "${skopeo}" --insecure-policy copy --retry-times 3 "docker://${ref}" "dir:${layout}" || rc=$?
+  "${skopeo}" --insecure-policy copy --retry-times 3 "${parallel[@]}" "docker://${ref}" "dir:${layout}" || rc=$?
   printf 'riscv64 sysroot: skopeo copy rc=%s in %ss\n' "${rc}" "$((SECONDS - start))"
   if [ "${rc}" -eq 0 ]; then
     python3 -I "${SCRIPT_DIR}/oci-layers-extract.py" --layout "${layout}" --dest "${dest}" --delete-blobs \
