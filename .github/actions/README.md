@@ -276,9 +276,9 @@ builds a sysroot from the family image's riscv64 child
 (`linux/scripts/02-toolchain/riscv64-sysroot.sh`). Run it after
 `prepare-linux-ci-host`, so the sysroot matches the pulled amd64 image's index.
 Inputs: `image`, `mount-target` (default `/opt/riscv64-sysroot`),
-`binfmt-image`, `sysroot`, `sysroot-mode` (`skopeo` fetches only the child's
-layer blobs and extracts the allowlist; `export` pulls the child into docker and
-exports it). Outputs: `docker-args` (the read-only mount and
+`binfmt-image`, `sysroot`, `sysroot-mode` (`skopeo`, the default, fetches only
+the child's layer blobs and extracts the allowlist; `export` pulls the child into
+docker and exports it). Outputs: `docker-args` (the read-only mount and
 `RISCV64_SYSROOT`), `sysroot`. Inside the container a lane sources
 `linux/scripts/lib/riscv64-cross.sh` and calls `riscv64_cross_env`. The reusable
 `container-ci-riscv64.yml` wraps it with the compiler cache and one container

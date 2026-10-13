@@ -150,11 +150,15 @@ counts and bytes. The rules that make it so:
 - a write through a lower layer's symlink. An upper layer's directory replaces that link,
   so an absolute link such as `/usr/lib/...` never routes files onto the runner.
 
-**Two switches stay.**
+**skopeo copies 24 blobs at once** (`--image-parallel-copies`, passed only when `skopeo copy
+--help` lists it). At its default of six, the 2.36 GB layer waited 34 s behind small ones,
+and the copy took 99 s instead of 39 s.
 
-- `sysroot-mode: export` on `setup-riscv64-cross` or `container-ci-riscv64.yml` is the old
-  path, unchanged.
-- `riscv64-sysroot.sh` defaults to `export` too, because a dev box may have no skopeo.
+**The default is `skopeo`, and the old path stays one input away.**
+
+- `sysroot-mode: export` on `setup-riscv64-cross` or `container-ci-riscv64.yml` brings back
+  the pull and the export, unchanged.
+- `riscv64-sysroot.sh` itself defaults to `export`, because a dev box may have no skopeo.
 
 `python-ci-linux.yml` passes `export` on purpose. Its riscv64 row runs the riscv64 image
 under QEMU afterwards, so export's pull is reused there, while skopeo would fetch the
@@ -163,7 +167,18 @@ child's bytes a second time.
 **The probe.** `riscv64-sysroot-probe.yml` (dispatch only) builds the sysroot once per
 mode, each on a fresh runner, and records how long the action took. It then diffs the two
 trees with `linux/scripts/tests/tree-manifest.py` and cross-runs
-`riscv64-cross-smoke.sh` against each.
+`riscv64-cross-smoke.sh` against each. Measured on 2026-10-13 against `:latest` index
+`b52f8c34` (riscv64 `7689579f`), binfmt registration included:
+
+| run | export | skopeo | trees | smoke (C, C++, GStreamer 1.29.2, Rust) |
+| --- | --- | --- | --- | --- |
+| 38426729036 | 415 s (pull 250 s, export 154 s) | 155 s (copy 99 s at six blobs, extract 41 s) | identical, 32791 entries | passes on both |
+| 38455969715 | 357 s (pull 215 s, export 131 s) | 78 s (copy 39 s at 24 blobs, extract 32 s) | identical, 32791 entries | passes on both |
+
+"Identical" covers path, type, mode, size, link count, file mtime, link target and content.
+Before the switch, the consumer lanes' `Set up riscv64 cross testing` step had a median of
+366 s in OxidANT, 354 s in AccelerANTgine and 373 s in BeschleunigerBallett, over each
+repo's last six runs.
 
 ## Traps, each found by a failing run
 
