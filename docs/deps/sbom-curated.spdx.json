@@ -340,7 +340,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-FreeType-fa7cf36e",
       "name": "FreeType",
-      "versionInfo": "2.14.3",
+      "versionInfo": "2.15.0",
       "downloadLocation": "https://download.savannah.gnu.org/releases/freetype/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -348,7 +348,7 @@
       "licenseConcluded": "GPL-2.0-or-later OR FTL",
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
-      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://download.savannah.gnu.org/releases/freetype/ at 2.14.3"
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://download.savannah.gnu.org/releases/freetype/ at 2.15.0"
     },
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-nv-codec-headers-909a557e",
@@ -496,7 +496,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-TensorRT-49ee4087",
       "name": "TensorRT",
-      "versionInfo": "11.3.0.99",
+      "versionInfo": "11.4.0.106",
       "downloadLocation": "https://developer.nvidia.com/tensorrt",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -730,7 +730,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Flutter-SDK-36007425",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.6",
+      "versionInfo": "3.47.7",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -808,7 +808,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Ollama-229f7e80",
       "name": "Ollama",
-      "versionInfo": "0.40.0",
+      "versionInfo": "0.40.3",
       "downloadLocation": "https://github.com/ollama/ollama",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1042,7 +1042,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Flutter-SDK-0ac793ed",
       "name": "Flutter SDK",
-      "versionInfo": "3.47.6",
+      "versionInfo": "3.47.7",
       "downloadLocation": "https://flutter.dev/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1081,7 +1081,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-TensorRT-5571ddd1",
       "name": "TensorRT",
-      "versionInfo": "11.3.0.99",
+      "versionInfo": "11.4.0.106",
       "downloadLocation": "https://developer.nvidia.com/tensorrt",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1380,7 +1380,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-DirectX-Shader-Compiler-for-the-ORT-WebGPU-EP--bea204b8",
       "name": "DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll, dxil.dll beside the chain onnxruntime.dll and in onnxruntime\\capi of every chain wheel)",
-      "versionInfo": "v1.9.2607",
+      "versionInfo": "v1.9.2609",
       "downloadLocation": "https://github.com/microsoft/DirectXShaderCompiler",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1393,7 +1393,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-HIP-ggml-hip.dll-built-from-the-pinn-eeb95eb7",
       "name": "llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip)",
-      "versionInfo": "11476",
+      "versionInfo": "11583",
       "downloadLocation": "https://github.com/ggml-org/llama.cpp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1406,7 +1406,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-Vulkan-rel-968cbee2",
       "name": "llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools)",
-      "versionInfo": "11476",
+      "versionInfo": "11583",
       "downloadLocation": "https://github.com/ggml-org/llama.cpp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",

@@ -709,7 +709,9 @@ TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's
 EULA. To include TensorRT:
 
 1. Download from https://developer.nvidia.com/tensorrt (e.g.,
-   `TensorRT-Enterprise-11.2.1.2-Windows-amd64-cuda-13.3-Release-external.zip`).
+   `TensorRT-Enterprise-11.4.0.106-Windows-amd64-cuda-13.4-Release-external.zip`,
+   which NVIDIA's CDN serves under
+   `developer.download.nvidia.com/compute/machine-learning/tensorrt/11.4.0/zip/`; measured 2026-10-13).
    The owner directive that governs this — always take the newest release,
    never lower the pin to match a zip — is
    [`../AGENTS.md`](../AGENTS.md) § TensorRT Setup.
