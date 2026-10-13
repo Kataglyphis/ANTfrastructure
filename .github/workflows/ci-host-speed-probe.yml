@@ -183,6 +183,7 @@ jobs:
       - name: Write the container workload
         run: |
           Set-Content -LiteralPath 'D:\ws\probe-workload.ps1' -Value @'
+          param([string]$Out)
           $sw = [Diagnostics.Stopwatch]::StartNew()
           $buf = [byte[]]::new(64MB)
           [Random]::new(7).NextBytes($buf)
@@ -205,7 +206,7 @@ jobs:
           }
           $s = [int]$sw.Elapsed.TotalSeconds
           Write-Host "WORKLOAD io_seconds=$io cpu_seconds=$($s - $io) cores=$cores"
-          Set-Content -LiteralPath 'C:\ws\probe-workload.txt' -Value $s
+          Set-Content -LiteralPath $Out -Value $s
           Write-Host "WORKLOAD seconds=$s"
           '@
 
@@ -214,6 +215,19 @@ jobs:
         uses: ./.github/actions/run-in-windows-container
         with:
           file: C:\ws\probe-workload.ps1
+          file-args: |
+            -Out
+            C:\ws\probe-workload.txt
+          memory: 8g
+
+      # The same work on the same runner after the wait, so runner-to-runner speed cancels out of the comparison.
+      - name: Container workload again, after the cleanup
+        uses: ./.github/actions/run-in-windows-container
+        with:
+          file: C:\ws\probe-workload.ps1
+          file-args: |
+            -Out
+            C:\ws\probe-workload-2.txt
           memory: 8g
 
       - name: Host-side copy onto C
@@ -244,15 +258,16 @@ jobs:
           $cleanupS = if ($done -match 'seconds=(\d+)') { $Matches[1] } else { '0' }
           $waited = Read-Marker 'disk-cleanup.waited'
           $workload = if (Test-Path 'D:\ws\probe-workload.txt') { (Get-Content 'D:\ws\probe-workload.txt' -Raw).Trim() } else { '' }
+          $workload2 = if (Test-Path 'D:\ws\probe-workload-2.txt') { (Get-Content 'D:\ws\probe-workload-2.txt' -Raw).Trim() } else { '' }
           $prologue = [int]$env:PROBE_T1 - [int]$env:PROBE_T0
           $runStep = if ($env:PROBE_T2) { [int]$env:PROBE_T2 - [int]$env:PROBE_T1 } else { '' }
-          $line = ('TIMING variant={0} cleanup={1} prologue_s={2} cleanup_s={3} pull_s={4} run_step_s={5} workload_s={6} cleanup_waited_s={7} host_copy_s={8} min_c_free_gb={9} min_d_free_gb={10} docker_tmp_max={11} samples={12}' -f
+          $line = ('TIMING variant={0} cleanup={1} prologue_s={2} cleanup_s={3} pull_s={4} run_step_s={5} workload_s={6} cleanup_waited_s={7} host_copy_s={8} min_c_free_gb={9} min_d_free_gb={10} docker_tmp_max={11} samples={12} workload_again_s={13}' -f
             $env:VARIANT, $env:CLEANUP_MODE, $prologue, $cleanupS,
             $env:PULL_SECONDS, $runStep, $workload, $waited, $env:HOST_COPY_SECONDS,
             ($rows | ForEach-Object { [double]$_.c_free_gb } | Measure-Object -Minimum).Minimum,
             ($rows | ForEach-Object { [double]$_.d_free_gb } | Measure-Object -Minimum).Minimum,
             ($rows | ForEach-Object { [int]$_.docker_tmp } | Measure-Object -Maximum).Maximum,
-            $rows.Count)
+            $rows.Count, $workload2)
           Write-Host $line
           $line >> $env:GITHUB_STEP_SUMMARY
 
