@@ -6,6 +6,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-13 — the first all-3.15 `:winamd64` chain is green (CON91, CON92, CON93)
+
+- **What ran.** Local BuildKit chain bk-20261013-004816 from hub 355a1d14, all 16 stages, 10347 s, no retries.
+  media-litert took 1608 s and torch 1701 s. The smoke gate passed 273, failed 0 and skipped 1, the CUDA section
+  on a CPU image. The target-arch walk passed 1378 binaries.
+- **What it proves:**
+  - **CON91:** media-litert built `ai_edge_litert-2.2.0-cp315-cp315-win_amd64.whl` (4522 compile, link and archive
+    actions, all LLVM) and passed its smoke. The merge staged it in `C:\runtime\wheels`, and the torch venv installed
+    it from there.
+  - **CON92:** LiteRT-LM's 3829 compile, link and archive actions all ran clang-cl, lld-link or llvm-lib, and
+    `litert_lm_main.exe --help` answered.
+  - **CON93:** the toolchain staged `python315.lib` and `python3.lib` in `C:\temp\cpython\libs`. The torch stage built
+    antlr4-python3-runtime, line-profiler, orchestrant and pyyaml from source with clang-cl and passed the Rich-header
+    gate.
+- **Not published yet.** The push to `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` is the owner's
+  (`Build-Buildkit.ps1 -Stages final -PushRef …`, which rebuilds only the final stage from cache).
+
 ## 2026-10-13 — LiteRT-LM compiles with clang-cl, from a pinned bazel (CON92)
 
 - **The LiteRT-LM lane left MSVC.** `Build-LitertLmBazel.ps1` passed only `--config=windows`, so Bazel picked its default
@@ -18,7 +35,7 @@
   WORKSPACE pulled the unhashed 744 MB OpenVINO nightly on every build; `OPENVINO_NATIVE_DIR` now names an empty dir.
   Probe LM1 showed `litert_lm_main` never uses it.
 - **Bazel's user root moved out of the profile** to `C:\bzl-user`, so the cleanup removes it with the rest. `Get-TreeGb`
-  no longer throws on an empty tree. Rides the next chain.
+  no longer throws on an empty tree. Proven by chain bk-20261013-004816 (the entry above).
 
 ## 2026-10-12 — ai-edge-litert for Python 3.15, built from source with clang-cl (CON91)
 
