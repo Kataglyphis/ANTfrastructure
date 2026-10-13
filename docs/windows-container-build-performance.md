@@ -391,13 +391,14 @@ the staging follows the data-root. Setting the service's `SystemTemp` to
 so the prologue has no input for it.
 
 The cleanup is therefore not needed for the pull. `prepare-windows-container-host`'s
-`cleanup` input says when it runs, with the old path kept:
+`cleanup` input says whether and when it runs, with the old paths kept:
 
 | `cleanup` | What runs |
 |---|---|
-| `after-pull` (the default since 2026-10-13) | The pull, then the cleanup as a detached process; `run-in-windows-container` waits for it after its container run |
+| `hide` (the default since 2026-10-14) | No deletion; every `PATH` entry under a directory the cleanup deletes leaves `PATH` for the later steps |
+| `after-pull` (the default on 2026-10-13) | The pull, then the cleanup as a detached process; `run-in-windows-container` waits for it after its container run |
 | `before` | The cleanup, then the pull: the old order |
-| `off` | No cleanup |
+| `off` | No cleanup, `PATH` untouched |
 
 Measured on `windows-2025`, the same image, one job per mode and run
 (`ci-host-speed-probe.yml`; prologue = everything before the container step):
@@ -419,13 +420,32 @@ Measured on `windows-2025`, the same image, one job per mode and run
   without redirection, and the WMI one, outlived it. If WMI fails, the cleanup runs
   in the foreground with a warning.
 
-`after-pull` keeps the host steps' view of C: what it was: they run after the first
-container step, and by then the cleanup has finished. `off` leaves the runner's own
-toolchains (Strawberry, LLVM, CMake, the tool cache) installed and on `PATH`, so a
-host step that runs a built binary with an unscrubbed `PATH` could load a DLL from
-them that the product failed to bundle. That is why `off` is not the default:
-OmniAccelerANT's `Test-LaunchSmoke.ps1` and AccelerANTgine's `Start-Windows.ps1`
-both keep the inherited `PATH`.
+**`after-pull` slowed the builds it ran beside.** Its first consumer runs
+(2026-10-13) waited 0-181 s for the cleanup, but their container builds ran 23-54 %
+longer:
+
+- OxidANT x64 1087 → 1334 s;
+- AccelerANTgine x64 1420 → 1682 s, and its arm64 cross 1001 → 1546 s;
+- OmniAccelerANT's clang build was unchanged (1086 → 1048 s).
+
+The probe's synthetic workload did not reproduce that, and a probe whose first
+container step is short waits for the cleanup instead. Run 38473550649, from the
+prologue's start to the end of two container steps:
+
+| `before` | `after-pull` | `after-pull`, idle priority | `off` |
+|---|---|---|---|
+| 2400 s (cleanup 672) | 2259 s (waited 387) | 2060 s (waited 293) | 1718 s, C: never below 28.87 GB free |
+
+**`hide` is `off` with the host steps' view of `PATH` kept.** The cleanup frees C:,
+and a container lane writes little there: the image, the container's scratch layer
+and the bind-mounted tree are on D:. What it also did was take the runner's toolchains
+(Strawberry, LLVM, CMake, the tool cache) off `PATH`. A host step that runs a built
+binary with the inherited `PATH` would otherwise load a DLL from them that the
+product failed to bundle: OmniAccelerANT's `Test-LaunchSmoke.ps1` and
+AccelerANTgine's `Start-Windows.ps1` both search it. `hide` writes the shortened
+`PATH` to `GITHUB_ENV`, and the cleanup's own two lists are the roots, so the two
+modes cannot drift apart (`DiskCleanup.Hide.Tests.ps1`). A job that builds on the
+host and needs those toolchains passes `cleanup: off`.
 
 **Linux has the same shape at a smaller scale.** `prepare-linux-ci-host` ran the
 full jlumbroso cleanup before a pull whose unpack is serial and disk-bound,

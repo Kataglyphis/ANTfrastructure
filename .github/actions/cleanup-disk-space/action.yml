@@ -1,7 +1,8 @@
 name: 'Cleanup Disk Space'
 description: >-
   Aggressively cleans up disk space on Windows runners: now, or detached while the
-  job goes on (`mode`).
+  job goes on (`mode`). Or it deletes nothing and only takes those directories off
+  PATH (`mode: hide`).
 
 inputs:
   mode:
@@ -11,6 +12,9 @@ inputs:
       out the TEMP purge and the Docker prune, which would race the steps running
       beside it. wait blocks until a background run has ended and prints its log;
       with none running it does nothing. run-in-windows-container waits by itself.
+      hide deletes nothing. It removes every PATH entry under a directory the others
+      delete, for the job's later steps (Hide-CleanupRoots.ps1). A host step then
+      finds programs and DLLs as on a cleaned runner, at no cost in time.
     required: false
     default: 'foreground'
   priority:
@@ -30,8 +34,8 @@ runs:
         CLEANUP_MODE: ${{ inputs.mode }}
         CLEANUP_PRIORITY: ${{ inputs.priority }}
       run: |
-        if ($env:CLEANUP_MODE -notin 'foreground', 'background', 'wait') {
-          throw "cleanup-disk-space: mode must be foreground, background or wait, not '$env:CLEANUP_MODE'"
+        if ($env:CLEANUP_MODE -notin 'foreground', 'background', 'wait', 'hide') {
+          throw "cleanup-disk-space: mode must be foreground, background, wait or hide, not '$env:CLEANUP_MODE'"
         }
         if ($env:CLEANUP_PRIORITY -notin 'normal', 'below-normal', 'idle') {
           throw "cleanup-disk-space: priority must be normal, below-normal or idle, not '$env:CLEANUP_PRIORITY'"
@@ -60,6 +64,70 @@ runs:
         $cFreeBefore = [math]::Round((Get-PSDrive -Name C).Free / 1GB, 1)
         $state = $env:RUNNER_TEMP
         $self = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+
+        # Deleted in this order, Visual Studio first; the build runs inside the container, so host toolchains can go.
+        $removeFirst = @(
+            "C:\Program Files\Microsoft Visual Studio\2022",
+            "C:\Program Files\Microsoft Visual Studio\2019",
+            "C:\Program Files (x86)\Microsoft Visual Studio",
+            "$env:ProgramData\Microsoft\VisualStudio",
+            "C:\hostedtoolcache\CodeQL",
+            "C:\hostedtoolcache\go",
+            "C:\hostedtoolcache\PyPy",
+            "C:\hostedtoolcache\Ruby",
+            "C:\hostedtoolcache\node",
+            "C:\hostedtoolcache\Python\*\x86",
+            "C:\SeleniumWebDrivers",
+            "C:\vcpkg",
+            "C:\tools\boost",
+            "C:\tools\msys64",
+            "C:\Program Files\MySQL",
+            "C:\Program Files\PostgreSQL",
+            "C:\Program Files\MongoDB",
+            "C:\tools\mysql",
+            "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0",
+            "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.5",
+            "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.5.1",
+            "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.5.2",
+            "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.6",
+            "C:\Windows\System32\inetsrv",
+            "C:\inetpub"
+        )
+        # After the cache purges below, which still run dotnet and pip from some of these.
+        $removeLast = @(
+          "C:\hostedtoolcache",
+          "C:\Program Files\dotnet",
+          "C:\Program Files (x86)\Android",
+          "C:\Program Files (x86)\Android\android-sdk",
+          "C:\Program Files (x86)\Android\android-ndk",
+          "C:\Program Files\Android",
+          "C:\Program Files (x86)\Windows Kits",
+          "C:\Program Files (x86)\Microsoft SDKs",
+          "C:\Program Files\Microsoft SDKs",
+          "C:\tools\ghc",
+          "C:\tools\julia",
+          "C:\Strawberry",
+          "C:\Miniconda",
+          "C:\Miniconda3",
+          "C:\Program Files\LLVM",
+          "C:\Program Files\PostgreSQL",
+          "C:\Program Files\MongoDB",
+          "C:\Program Files\Microsoft SQL Server",
+          "C:\Program Files (x86)\Microsoft SQL Server",
+          "C:\Program Files\Unity",
+          "C:\Program Files\R",
+          "C:\Program Files (x86)\Microsoft\Edge\Application",
+          "C:\Program Files\Google\Chrome",
+          "C:\Program Files (x86)\Google",
+          "C:\npm\prefix",
+          "C:\Program Files\CMake"
+        )
+
+        # Hide deletes nothing: host steps then resolve programs and DLLs as on a cleaned runner.
+        if ($env:ANTF_CLEANUP_MODE -eq 'hide') {
+          & (Join-Path $env:GITHUB_ACTION_PATH 'Hide-CleanupRoots.ps1') -Roots ($removeFirst + $removeLast)
+          exit $LASTEXITCODE
+        }
 
         # Background reruns this very script detached; it is copied first because the runner deletes the original after the step.
         if ($env:ANTF_CLEANUP_MODE -eq 'background' -and -not $self) {
@@ -99,63 +167,8 @@ runs:
           }
         }
 
-        # Remove ENTIRE Visual Studio installation (do this FIRST, before partial removals)
-        Write-Host "Removing Visual Studio completely..."
-        Fast-Remove "C:\Program Files\Microsoft Visual Studio\2022"
-        Fast-Remove "C:\Program Files\Microsoft Visual Studio\2019"
-        Fast-Remove "C:\Program Files (x86)\Microsoft Visual Studio"
-        Fast-Remove "$env:ProgramData\Microsoft\VisualStudio"
-
-        # Remove more language toolchains you don't need
-        $toolchainsRemove = @(
-            "C:\hostedtoolcache\CodeQL",
-            "C:\hostedtoolcache\go",
-            "C:\hostedtoolcache\PyPy",
-            "C:\hostedtoolcache\Ruby",
-            "C:\hostedtoolcache\node",
-            "C:\hostedtoolcache\Python\*\x86",
-            "C:\SeleniumWebDrivers",
-            "C:\vcpkg",
-            "C:\tools\boost",
-            "C:\tools\msys64"
-        )
-
-        foreach ($path in $toolchainsRemove) {
-            Fast-Remove $path
-        }
-
-        # Remove databases if not needed
-        $dbRemove = @(
-            "C:\Program Files\MySQL",
-            "C:\Program Files\PostgreSQL",
-            "C:\Program Files\MongoDB",
-            "C:\tools\mysql"
-        )
-
-        foreach ($path in $dbRemove) {
-            Fast-Remove $path
-        }
-
-        # Remove old .NET Framework reference assemblies
-        $netRemove = @(
-            "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0",
-            "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.5",
-            "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.5.1",
-            "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.5.2",
-            "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.6"
-        )
-
-        foreach ($path in $netRemove) {
-            Fast-Remove $path
-        }
-
-        # Remove IIS if not needed
-        $iisRemove = @(
-            "C:\Windows\System32\inetsrv",
-            "C:\inetpub"
-        )
-
-        foreach ($path in $iisRemove) {
+        Write-Host "Removing Visual Studio, toolchains, databases, old .NET reference assemblies and IIS..."
+        foreach ($path in $removeFirst) {
             Fast-Remove $path
         }
 
@@ -220,37 +233,7 @@ runs:
         }
 
         Write-Host "Removing Android, Windows SDKs, and other big known folders (if present)..."
-        # The build runs inside the container, so host toolchains can go; the image import needs more free space than the default cleanup leaves.
-        $maybeRemove = @(
-          "C:\hostedtoolcache",
-          "C:\Program Files\dotnet",
-          "C:\Program Files (x86)\Android",
-          "C:\Program Files (x86)\Android\android-sdk",
-          "C:\Program Files (x86)\Android\android-ndk",
-          "C:\Program Files\Android",
-          "C:\Program Files (x86)\Windows Kits",
-          "C:\Program Files (x86)\Microsoft SDKs",
-          "C:\Program Files\Microsoft SDKs",
-          "C:\tools\ghc",
-          "C:\tools\julia",
-          "C:\Strawberry",
-          "C:\Miniconda",
-          "C:\Miniconda3",
-          "C:\Program Files\LLVM",
-          "C:\Program Files\PostgreSQL",
-          "C:\Program Files\MongoDB",
-          "C:\Program Files\Microsoft SQL Server",
-          "C:\Program Files (x86)\Microsoft SQL Server",
-          "C:\Program Files\Unity",
-          "C:\Program Files\R",
-          "C:\Program Files (x86)\Microsoft\Edge\Application",
-          "C:\Program Files\Google\Chrome",
-          "C:\Program Files (x86)\Google",
-          "C:\npm\prefix",
-          "C:\Program Files\CMake"
-        )
-
-        foreach ($path in $maybeRemove) {
+        foreach ($path in $removeLast) {
           Fast-Remove $path
         }
 

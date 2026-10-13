@@ -6,6 +6,27 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — CI prologue: Windows deletes nothing by default, it only hides the cleanup's directories from PATH
+
+- **`prepare-windows-container-host` defaults to `cleanup: hide`.** No directory is deleted. Every `PATH` entry under
+  one that `cleanup-disk-space` deletes leaves `PATH` for the job's later steps (`mode: hide`, `Hide-CleanupRoots.ps1`,
+  through `GITHUB_ENV`). A host step that runs a built binary still finds no DLL there that the product failed to
+  bundle, the reason the cleanup could not simply go. `after-pull`, `before` and `off` stay selectable; `off` is for a
+  job that builds on the host. `free-disk-space: 'false'` still means `off`.
+- **Why:** `after-pull` (yesterday's default) slowed the container builds it ran beside by 23-54 %. OxidANT x64 went
+  1087 → 1334 s, AccelerANTgine x64 1420 → 1682 s and its arm64 cross 1001 → 1546 s. Probe run 38473550649, from the
+  prologue to the end of the container work:
+  - `before` 2400 s (cleanup 672 s);
+  - `after-pull` 2259 s (waited 387 s), at idle priority 2060 s;
+  - no cleanup 1718 s, about 11.4 min less than `before`.
+  - With no cleanup, C: stayed at 28.87 GB free or more: the image, the container's scratch layer and the mounted
+    tree are on D:.
+- `cleanup-disk-space` keeps its removal roots in two lists, `$removeFirst` and `$removeLast`. The deletions and `hide`
+  both read them, in the same order as before. Suite `DiskCleanup.Hide.Tests.ps1` covers wildcard roots, a sibling
+  sharing a root's prefix, an unexpanded `%VAR%` entry and a missing `GITHUB_ENV`. The deep Windows job of
+  `actions-selftest.yml` checks the default on a real runner: the tool cache is still on disk and none of its entries
+  is on `PATH`.
+
 ## 2026-10-13 — CI prologue: the Windows cleanup moves behind the pull, the Linux pull starts first
 
 - **Windows: `prepare-windows-container-host` runs `cleanup-disk-space` after the pull, in the background** (input

@@ -2,9 +2,9 @@ name: 'Prepare Windows container host'
 description: >-
   The prologue every containerised Windows CI job repeats: enable long paths,
   check the repository out, clone the submodule tree into a short path, move
-  Docker's data-root onto the big drive, log in to the registry, pull the image
-  and reclaim runner disk (`cleanup` says when). Six to seven steps and ~40 lines
-  per job collapse to one `uses:`.
+  Docker's data-root onto the big drive, log in to the registry and pull the image.
+  `cleanup` says whether and when it reclaims runner disk. Six to seven steps and
+  ~40 lines per job collapse to one `uses:`.
 
   Windows twin of prepare-linux-ci-host, and it exists for the same reason plus
   one Windows-only one: the prologue is not just repetitive here, it is where the
@@ -135,21 +135,33 @@ inputs:
     default: '70'
   free-disk-space:
     description: >-
-      Run cleanup-disk-space at all; `cleanup` says when. 'false' is the same as
-      `cleanup: off`.
+      'false' is the same as `cleanup: off`. 'true' leaves the choice to `cleanup`,
+      whose empty default is hide.
     required: false
     default: 'true'
   cleanup:
     description: >-
-      When cleanup-disk-space runs. after-pull: started in the background after the
-      pull, and run-in-windows-container waits for it after its container run, so
-      host steps after that see the same cleaned C: as before (a host step between
-      this action and the first container run, or a job without one, calls
-      cleanup-disk-space with mode: wait itself). before: ahead of the pull, the old
-      path, which puts its 9-13 min on the critical path. off: none; host steps then
-      see the runner's own toolchains on PATH. The pull needs none of it: it stages
-      under the data-root on D:. Empty (the default) follows free-disk-space:
-      'true' -> after-pull, 'false' -> off.
+      Whether and when cleanup-disk-space runs. The pull needs none of it: it stages
+      under the data-root on D:.
+
+      hide deletes nothing. The directories the cleanup would delete leave PATH for
+      every later step, so a host step that runs a built binary finds no DLL there
+      that the product failed to bundle. Only a job that writes more than ~28 GB to
+      C: needs another mode.
+
+      after-pull starts the deletions in the background after the pull.
+      run-in-windows-container waits for them after its container run. A host step
+      before the first container run, or a job without one, calls
+      cleanup-disk-space with mode: wait itself. Container builds beside it ran
+      23-54 % longer.
+
+      before deletes ahead of the pull, the oldest path, with 9-13 min on the
+      critical path.
+
+      off: no cleanup, and the runner's toolchains stay on PATH, for a job that
+      builds on the host.
+
+      Empty (the default) follows free-disk-space: 'true' -> hide, 'false' -> off.
     required: false
     default: ''
   cleanup-priority:
@@ -187,7 +199,7 @@ outputs:
       would resolve against the submodule-less checkout instead.
     value: ${{ steps.ws.outputs.path }}
   cleanup:
-    description: 'When the disk cleanup ran or runs: before, after-pull or off.'
+    description: 'The cleanup mode that ran or runs: hide, before, after-pull or off.'
     value: ${{ steps.cleanup.outputs.mode }}
   pull-seconds:
     description: 'How long `docker pull` took, in seconds.'
@@ -222,8 +234,8 @@ runs:
         FREE_DISK_SPACE: ${{ inputs.free-disk-space }}
       run: |
         $ErrorActionPreference = 'Stop'
-        $mode = if ($env:CLEANUP) { $env:CLEANUP } elseif ($env:FREE_DISK_SPACE -eq 'true') { 'after-pull' } else { 'off' }
-        if ($mode -notin 'before', 'after-pull', 'off') { throw "cleanup must be before, after-pull or off, not '$mode'" }
+        $mode = if ($env:CLEANUP) { $env:CLEANUP } elseif ($env:FREE_DISK_SPACE -eq 'true') { 'hide' } else { 'off' }
+        if ($mode -notin 'hide', 'before', 'after-pull', 'off') { throw "cleanup must be hide, before, after-pull or off, not '$mode'" }
         Write-Host "disk cleanup: $mode"
         "mode=$mode" >> $env:GITHUB_OUTPUT
 
@@ -262,6 +274,13 @@ runs:
     - name: Cleanup disk space
       if: ${{ steps.cleanup.outputs.mode == 'before' }}
       uses: Kataglyphis/ANTfrastructure/.github/actions/cleanup-disk-space@develop
+
+    # Probe run 38473550649 without a cleanup: 1718 s through the container work, against 2400 s (before) and 2259 s (after-pull).
+    - name: Take the cleanup's directories off PATH
+      if: ${{ steps.cleanup.outputs.mode == 'hide' }}
+      uses: Kataglyphis/ANTfrastructure/.github/actions/cleanup-disk-space@develop
+      with:
+        mode: hide
 
     - name: Log in to the registry
       if: ${{ inputs.registry-password != '' }}
