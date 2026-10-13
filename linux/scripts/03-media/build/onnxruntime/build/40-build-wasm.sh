@@ -84,21 +84,18 @@ rm -rf "${BUILD_DIR}"
 "${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads --use_jsep --use_webnn
 find "${BUILD_DIR}/${WASM_CONFIG}" -type f \( -name "ort-wasm-simd-threaded.jsep.*" -o -name "ort-wasm-simd-threaded.webnn.*" \) -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
 
-info ">>> Pass 3: Training APIs"
-rm -rf "${BUILD_DIR}"
-"${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads --enable_training_apis
-find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "ort-training*" -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
+# No training pass: upstream deprecated on-device training and removed it from onnxruntime-web (CON94, dropped 2026-10-13).
 
 # ORT's CMake names the WebGPU outputs .asyncify/.jspi itself; the ort.webgpu*/ort.jspi* bundles load them.
 if [ "${ORT_WASM_WEBGPU_FLAVORS}" = "true" ]; then
-  if run_optional_flavor_pass "Pass 4: WebGPU (asyncify)" \
+  if run_optional_flavor_pass "Pass 3: WebGPU (asyncify)" \
       "${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads \
       --use_webgpu --use_webnn --target onnxruntime_webassembly \
       "${REDUCED_SIZE_ARGS[@]}"; then
     collect_wasm_artifacts "ort-wasm-simd-threaded.asyncify.*"
   fi
 
-  if run_optional_flavor_pass "Pass 5: WebGPU (JSPI)" \
+  if run_optional_flavor_pass "Pass 4: WebGPU (JSPI)" \
       "${BUILD_SH}" "${JSPI_COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads \
       --use_webgpu --use_webnn --enable_wasm_jspi --target onnxruntime_webassembly \
       "${REDUCED_SIZE_ARGS[@]}"; then

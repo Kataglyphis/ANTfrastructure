@@ -6,6 +6,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-13 — no ONNX Runtime training (CON94 dropped)
+
+- **Owner decision: the chain ORT stays inference-only.** Upstream deprecated on-device training in 1.20.0: the last
+  training packages are 1.19.2's, onnxruntime-web dropped its `training` export, the training CI pipelines are gone,
+  and commits under `orttraining/` are down to security fixes. A training build also changes inference: LayerNorm fusion
+  and Dropout elimination behave differently, and so do the allocation planner and strided tensors. Carrying that
+  needed eight hub patches to re-port on every ORT bump. Fine-tuning belongs in PyTorch, with the result exported to
+  ONNX for the chain ORT.
+- **The one training build the image carried goes.** `40-build-wasm.sh` compiled a third wasm pass with
+  `--enable_training_apis` and copied `ort-training*` with `|| true`, though nothing loaded it. The WebGPU passes are
+  now 3 and 4. The shared wasm cache id moves to `-wgpu2`, so no cached training files ship.
+- **The shared wasm cache can no longer be stamped empty.** A non-amd64 target skips the wasm step with rc 0, and the
+  RUN then stamped its empty directory complete. Under a fresh cache id, an arm64 or riscv64 stage that ran before the
+  amd64 one would have left every arch without wasm. The stamp now waits for a `*.wasm`.
+- **No `onnx` package either.** It was planned only for training artifacts; no family repo imports it.
+
 ## 2026-10-13 — the first all-3.15 `:winamd64` chain is green (CON91, CON92, CON93)
 
 - **What ran.** Local BuildKit chain bk-20261013-004816 from hub 355a1d14, all 16 stages, 10347 s, no retries.

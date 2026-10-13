@@ -311,27 +311,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - **Left:** consumer lanes (`Invoke-PythonTestLegs.ps1`, `Invoke-CiPackaging.ps1`)
         still build third-party sdists with VS's `cl`. OrchestrANT's own `setup.py` switches to clang-cl but links with
         `link.exe`, so moving those lanes onto the shim changes its linker too and needs its own proof.
-- [ ] **CON94 — fine-tuning in the one chain ONNX Runtime (`--enable_training`) on every lane** [L, ★★★]. Owner
-      decision 2026-10-12, after two rounds of alternatives: the ONE chain ORT itself trains (variant 2), not a separate
-      training flavour. Uses: Python (OrchestrANT, scripts), the apps (OxidANT's ort `training` feature, AccelerANTgine,
-      the cat cam), the browser and Android. CPU first everywhere, CUDA training on nvidia after.
-      - **Facts accepted with it** (ORT 1.30 source, research workflow wf_0e3f0082-310):
-        - Upstream deprecated every training package in 1.20.0. Its CI still compiles one Linux x64 CPU training leg.
-        - `--enable_training_apis` with Python is a CMake FATAL_ERROR, so Python training needs full `--enable_training`.
-        - That defines `ENABLE_TRAINING`, `_CORE` and `STRIDED_TENSORS` globally, which reaches 61 inference-core files.
-          LayerNorm fusion gains two outputs, and the allocation planner and strided tensors change. The training pybind
-          replaces the inference module.
-        - MIGraphX stops setting the external-data path (`migraphx_execution_provider.cc:1369-1373`, `:1491-1495`).
-      - **Patches to carry:**
-        - keep today's wheel names (`setup.py` renames to `onnxruntime-training`);
-        - lazy optim/amp imports in `training/__init__.py`;
-        - a free-threading decision for the training pybind (cp315t twin);
-        - the training headers into the Linux prefix;
-        - `-Donnxruntime_ENABLE_LAZY_TENSOR=OFF` for the raw-CMake Windows configure.
-        - Artifacts need `onnx==1.22.0`: ORT 1.30 reads IR 13 at most, and onnx 1.23 writes IR 14.
-      - **Next:** the implementation plan (workflow wf_eebfa5d8-245), then a local feasibility probe on Linux amd64. It
-        must show the wheel name kept, a training step with falling loss, `GetTrainingApi` non-NULL, inference parity,
-        build time and sizes.
+- [ ] **CON95 — the chain ORT moves from v1.30.0 to v1.31.0** [M, ★★]. Released 2026-10-09; PyPI's 1.31.0 already reached
+      the consumers' locks (python-ci.md). What moves with it, read from the two tags' `cmake/deps.txt`:
+      - Dawn v20260818.211311 → v20260916.214021, so `ORT_WEBGPU_WINDOWS_DAWN_VERSION`/`_SHA256` are re-derived (the
+        Windows build refuses a deps.txt naming another tag); KleidiAI v1.20.0 → v1.30.0; the D3D12 agility SDK
+        1.721.0 → 1.721.3-preview; google_benchmark, coremltools and the 1DS SDK.
+      - The vendored onnx stays 1.22.0, pybind11 stays v3.0.2.
+      - `patches/onnxruntime/001-gcc16-epilogue-scalars-reference.patch` goes: v1.31.0's
+        `moe_gemm_tma_ws_launcher.inl:535` carries upstream's own `std::remove_reference_t` fix (only the macro's
+        trailing padding differs, which is why the reverse check fails). `001-android-gradle-agp8-compat.patch` still
+        applies.
+      - The new Dawn archive, measured 2026-10-13: SHA256
+        `507949fd45d7ca0cfc672617fd1e06ee02ce23c4f32856b342c48133e71d682e`, its SHA1 equal to deps.txt's `514e914f…`.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294
