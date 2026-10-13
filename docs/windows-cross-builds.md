@@ -39,7 +39,7 @@ produce, and which gates keep it honest.
 > `clang-cl /P /EP /TC /U__clang__` then armasm64. ORT gets that tree as
 > `FETCHCONTENT_SOURCE_DIR_KLEIDIAI`. Proven in `:winamd64`: 178/178 objects, SME2 kernels in
 > `kleidiai.lib`. **Not available at the pinned versions, checked against their sources:**
-> - XNNPACK in LiteRT v2.2.0 forces `XNNPACK_ENABLE_KLEIDIAI` OFF on Windows with a plain `SET`.
+> - XNNPACK in LiteRT v2.3.0 (`d89ef666`) forces `XNNPACK_ENABLE_KLEIDIAI` OFF on Windows with a plain `SET`.
 > - OpenCV 5.0.0 offers `WITH_KLEIDICV` only for `ANDROID OR UNIX`.
 > - Arm NN v26.07 has no Windows support, and ACL v53.3.0 calls Windows builds experimental and
 >   native-only.

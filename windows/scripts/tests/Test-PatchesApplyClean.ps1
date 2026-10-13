@@ -48,6 +48,7 @@ $defaultRefs = @{
     LLVM        = 'llvmorg-23.1.0'
     HAILORT     = 'v5.4.0'
     MIGRAPHX    = '95672916ed289d4be9d230a9be732e1bbad97e8c'
+    LITERT      = 'v2.3.0'
 }
 if (Test-Path $versionsFile) {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force
@@ -61,7 +62,9 @@ if (Test-Path $versionsFile) {
             # The tag Build-HailortFromSource.ps1 downloads (archive/refs/tags/v<ver>).
             @{ Ref = 'HAILORT';     Key = 'HAILORT_VERSION';      Fmt = 'v{0}' },
             # A commit, not a tag: the one Build-MigraphxFromSource.ps1 downloads (archive/<sha>).
-            @{ Ref = 'MIGRAPHX';    Key = 'MIGRAPHX_WINDOWS_COMMIT' }
+            @{ Ref = 'MIGRAPHX';    Key = 'MIGRAPHX_WINDOWS_COMMIT' },
+            # The tag Build-LitertWheelBazel.ps1 clones; its patches feed the ai-edge-litert wheel.
+            @{ Ref = 'LITERT';      Key = 'LITERT_VERSION' }
         )) {
         if ($fileVersions.Contains($entry.Key)) {
             $val = $fileVersions[$entry.Key]
@@ -81,14 +84,18 @@ $repoMap = @{
     'llvm'           = @{ Url = 'https://github.com/llvm/llvm-project.git';       Ref = $defaultRefs.LLVM }
     'hailo'          = @{ Url = 'https://github.com/hailo-ai/hailort.git';        Ref = $defaultRefs.HAILORT }
     'migraphx'       = @{ Url = 'https://github.com/ROCm/AMDMIGraphX.git';        Ref = $defaultRefs.MIGRAPHX }
+    'litert'         = @{ Url = 'https://github.com/google-ai-edge/LiteRT.git';   Ref = $defaultRefs.LITERT }
 }
 
 function Get-PatchTargetPaths {
     param([string]$PatchFile)
     # Pull the b/<path> side of every diff header; return the unique parent dirs for sparse-checkout.
     $paths = [System.Collections.Generic.List[string]]::new()
+    $previous = ''
     foreach ($line in [System.IO.File]::ReadAllLines($PatchFile)) {
-        if ($line -match '^\+\+\+ b/(.+?)\s*$') { $paths.Add($Matches[1]) }
+        # A file the patch creates (--- /dev/null) is not there to check out yet.
+        if ($line -match '^\+\+\+ b/(.+?)\s*$' -and $previous -ne '--- /dev/null') { $paths.Add($Matches[1]) }
+        $previous = $line
     }
     return $paths
 }

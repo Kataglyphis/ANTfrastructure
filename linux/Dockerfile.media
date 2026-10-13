@@ -4,7 +4,7 @@
 # Safety-net defaults; the orchestrator passes versions.env values via append_version_build_args.
 ARG ONNXRUNTIME_VERSION="v1.31.0"
 ARG ONNXRUNTIME_GENAI_VERSION="v0.17.0"
-ARG LITERT_VERSION="v2.2.0"
+ARG LITERT_VERSION="v2.3.0"
 ARG OPENCV_VERSION="5.0.0"
 ARG GSTREAMER_VERSION="1.29.2"
 

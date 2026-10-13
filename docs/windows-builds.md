@@ -548,8 +548,11 @@ never re-runs them.
 - **Python.** Bazel's hermetic Python is the image's own CPython: a `PC\layout` copy, tarred and handed to
   rules_ml_toolchain through `HERMETIC_PYTHON_URL/SHA256/PREFIX/VERSION`. Its `@pypi` closure is numpy, setuptools and
   wheel, hash-pinned in `windows/scripts/patches/litert/requirements_lock_<X>_<Y>.txt` at the `PY_*` pins (probe P5b).
-  TF's rules_python runs its own pinned pip (24.3.1), which dies on 3.15's `typing` (probe P5). `@pypi__pip` is
-  therefore overridden with CPython's `ensurepip` wheel; the driver logs which pip it replaced.
+  At v2.2.0, TF's rules_python ran its own pinned pip (24.3.1), which dies on 3.15's `typing` (probe P5). `@pypi__pip`
+  stays overridden with CPython's `ensurepip` wheel, so the pip comes from the image too; the driver logs which pip it
+  replaced (26.0.1 at v2.3.0). Since v2.3.0, LiteRT pins rules_python 2.2.0 itself, which takes `base_urls`, while
+  rules_ml_toolchain's `HERMETIC_PYTHON_URL` branch still passes `base_url` and fails the WORKSPACE. Patch `003` adds a
+  fix for rules_ml_toolchain to LiteRT's own `litert_workspace.bzl`.
 - **No floating fetch.** `@litert_prebuilts`, upstream's `latest` zip, is overridden with a local repo holding only
   `libLiteRtWebGpuAccelerator.dll`. That DLL is closed source and comes from the pinned PyPI wheel
   (`LITERT_WINDOWS_ACCELERATOR_WHEEL_*`), checked against `LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256`.
@@ -565,6 +568,10 @@ never re-runs them.
 - **Measured (probe P12, 2026-10-12, 32 CPUs):** the production driver on the 3.15 toolchain image. The bazel build took
   272 s from 5619 actions, all 4522 compile, link and archive actions on LLVM tools. The whole RUN took 530 s, and the
   work tree reached 6.0 GB before the cleanup removed it.
+- **Measured at v2.3.0 (probe `probe-litert-230`, 2026-10-13):** the same driver, with the Pester suite running beside
+  it. The bazel build took 390 s from 5655 actions, all 4545 compile, link and archive actions on LLVM tools, and the
+  rewrites moved 21 `HH_ALIGNAS` lines. The whole RUN took 799 s and peaked at 6.2 GB. v2.3.0 brings its own absl
+  20260526.0 and protobuf 6.31.1 (v2.2.0 took TF's 20250814.1 and 33.6); every rewrite anchor is still there.
 - **Gates.** The wheel must be `ai_edge_litert-<version>-cpXY-cpXY-win_amd64.whl`, hold the four `_pywrap_litert_*`
   extensions, have `pywrap_litert_common.dll` import `pythonXY.dll`, carry the pinned accelerator and no OpenVINO
   vendor dir, and no PE may import an ONNX Runtime. A CPU smoke then runs `simple_floor_op.tflite` through the

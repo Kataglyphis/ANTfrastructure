@@ -93,7 +93,7 @@ function Invoke-LiteRtLmSupportGraft {
         return
     }
     # Twin of Build-LitertFromSource.ps1's default, or the graft comes from a different LiteRT than the one built.
-    $litertRef = Get-SourceBuildVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.2.0'
+    $litertRef = Get-SourceBuildVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.3.0'
     $supportClone = 'C:\temp\litert-support-src'
     if (Test-Path $supportClone) { Remove-Item $supportClone -Recurse -Force }
     Write-Host "[LiteRTLM-winfix support-graft] sparse-cloning LiteRT $litertRef support/ tree..."

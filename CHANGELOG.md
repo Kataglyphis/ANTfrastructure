@@ -100,6 +100,39 @@
   move. The agility SDK, google_benchmark and coremltools move, but the hub builds none of them.
 - **Not proven:** anything only a chain build shows. CON95 lists it.
 
+## 2026-10-13 — LiteRT v2.2.0 → v2.3.0 on every lane, and the cp315 wheel builds again
+
+- **The pins.** `LITERT_VERSION` v2.3.0 (released 2026-10-07). `LITERT_WINDOWS_SOURCE_COMMIT` 4352e261 is the commit the
+  tag names (GitHub API). Its `.bazelversion` is still 7.7.0, so the bazel pin stays; that SHA256 equals GitHub's asset
+  digest. The accelerator wheel is PyPI's `ai_edge_litert-2.3.0-cp314-cp314-win_amd64.whl`. Its SHA256 was measured by
+  full download and equals PyPI's digest. Its `libLiteRtWebGpuAccelerator.dll` (`1cf8b23c…`) is byte-identical to the
+  cp313 wheel's and still imports only system DLLs. The Dockerfile ARG defaults, the Windows script fallbacks, the
+  licence pages and the SBOM follow through `sync_versions.py`. `build-litert.sh`'s stale v2.1.6 default moves too.
+- **v2.3.0 moved its Python rules, and the wheel build needed patch `003`.** LiteRT now declares its own externals:
+  rules_python 2.2.0, absl 20260526.0 and protobuf 6.31.1, no longer TF's. rules_python 2.2.0 takes `base_urls`, but
+  rules_ml_toolchain still passes `base_url = ""` when `HERMETIC_PYTHON_URL` is set, so the first probe stopped at the
+  WORKSPACE. `003-rules-ml-toolchain-base-urls.patch` gives rules_ml_toolchain a patch that drops that argument, through
+  LiteRT's own `litert_workspace.bzl`. A URL with `://` is used as given, so `base_urls` is not needed. Patches `001` and
+  `002` were regenerated against v2.3.0 (`002` had moved one line). Every external rewrite still finds its anchor, and
+  TF 5c0b7a59 still defines `x64_windows-clang-cl`.
+- **Proven in a probe** (`probe-litert-230`, the P12 shape, on the 3.15 toolchain image). It built
+  `ai_edge_litert-2.3.0-cp315-cp315-win_amd64.whl` from 5655 bazel actions in 390 s. All 4545 compile, link and archive
+  actions ran clang-cl, lld-link or llvm-lib. The wheel passed its contract and `LITERT-WHEEL-SMOKE PASS`. The RUN took
+  799 s and peaked at 6.2 GB.
+- **The patch-drift gate covers LiteRT.** `Test-PatchesApplyClean.ps1` had no `litert` mapping, so CI's `patch-drift`
+  job failed on `001` and `002` from CON91 on. It now clones `LITERT_VERSION`, and it no longer asks to check out a file
+  that a patch creates. All 23 patches apply, by both `git apply` and GNU patch.
+- **Linux and Android.** The CMake path needs no change. The pip-script patch still applies, and the pip script is
+  unchanged. tflite's vendored protobuf is still `90b73ac3`, so `LITERT_TFLITE_PROTOC_VERSION` stays 21.9. The QAIRT
+  anchor is still there, and the LiteCore default URL is still the 404 one that the Android lane replaces. v2.3.0 adds an
+  Arm dispatch plugin that needs only LiteRT's own headers. It also adds SafeInt (a commit-pinned fetch) and
+  `find_package(Eigen3)`, which tflite's `FindEigen3.cmake` serves.
+- **Smaller fits.** `TFLITE_ENABLE_LABEL_IMAGE` is gone from tflite's CMake, so the Windows build no longer passes it.
+  The free-threaded twin row is re-read at v2.3.0: none of the wheel's 13 extension modules passes
+  `py::mod_gil_not_used()`; only `_pywrap_converter_api` does, and the wheel does not ship it. The wheel target now names
+  LiteRT's LICENSE, PyPI's 2.3.0 wheel carries it in its dist-info, and the licence row says so. XNNPACK `d89ef666`
+  still forces KleidiAI off on Windows.
+
 ## 2026-10-13 — Pins: Renovate's 2026-10-13 tool bumps (ruff 0.17.0, Renovate 44.155.2, Node 26.11.1, pandoc 3.12.1, …)
 
 - **Node 26.11.0 → 26.11.1** (same major). `NODE_AMD64_SHA256` and `NODE_ARM64_SHA256` measured by full download of
