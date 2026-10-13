@@ -2675,10 +2675,11 @@ follows `lint-env-knobs.sh`'s ramp — the three checks with a backlog **report 
 pass** until `WORKFLOW_CONVENTIONS_GATE` arms them (`1`, `all`, or a
 comma-separated list, so a repository can clear one convention at a time;
 `0`/`off`/`no`/`none`/`false`/empty disarms them again), while `runner-ban` is
-armed always. `preflight.sh` runs the gate with `permissions` armed, the way it
-runs `lint-env-knobs.sh` with `KNOB_GATE=1`: this repo is measured clean of that
-one, so a workflow added here without a `permissions:` block is red the day it
-lands.
+armed always. `preflight.sh` runs the gate with `permissions` and `job-timeout`
+armed, the way it runs `lint-env-knobs.sh` with `KNOB_GATE=1`: this repo is
+measured clean of both (`job-timeout` since 2026-10-14), so a workflow added here
+without a `permissions:` block or a job without `timeout-minutes` is red the day
+it lands.
 
 **The ratchet, which is what makes "advisory" safe.** A report-and-pass check can
 grow for ever with nothing turning red, so each repository's count per RAMPING
