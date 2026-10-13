@@ -133,12 +133,12 @@ that its GenAI reports `is_dml_available()`. It also requires that the venv's on
 is the chain wheel: the only owner of the package, the chain version, and every
 `.pyd`/`.dll` byte-identical to `C:\runtime\wheels\onnxruntime-*.whl`. Both are
 compiled-in facts, so no device is needed. The bytes matter because PyPI also ships
-onnxruntime 1.30.0 for cp314 win_amd64, without DirectML.
+onnxruntime 1.31.0 for cp314 win_amd64, without DirectML.
 
 **CMake isolation.** With `C:\TheRock\build\bin` on PATH, CMake treats `C:\TheRock\build` as a
 package prefix: a PATH entry ending in `bin` makes its parent a search prefix. TheRock ships
 `lib/cmake/{flatbuffers,llvm,clang,lld,hip,...}` and `share/cmake/nlohmann_json` there. ORT
-v1.30.0 asks for flatbuffers (`FIND_PACKAGE_ARGS 23.5.9`) and nlohmann_json (`3.10`) through
+v1.31.0 asks for flatbuffers (`FIND_PACKAGE_ARGS 23.5.9`) and nlohmann_json (`3.10`) through
 `find_package` first.
 
 - `Invoke-CmakeConfigure` therefore appends `-DCMAKE_IGNORE_PREFIX_PATH=<ROCm tree>` on the rocm
@@ -377,9 +377,9 @@ gate fails if Dawn's `fetch_dawn_dependencies` runs.
 | Input | Source | Pin |
 | --- | --- | --- |
 | Dawn at the tag ORT's `cmake/deps.txt` names (`ORT_WEBGPU_WINDOWS_DAWN_VERSION`) | the GitHub tag archive | `ORT_WEBGPU_WINDOWS_DAWN_SHA256`, **and** a SHA1 equal to deps.txt's; the build refuses a deps.txt naming another tag |
-| ORT's six Dawn patches | ORT's own tree, read from `onnxruntime_external_deps.cmake` in PATCH_COMMAND order | ORT's pin. Applied with GNU `patch --binary --ignore-whitespace -p1` (Git's `usr\bin\patch.exe`), because `git apply` rejects three of them |
+| ORT's six Dawn patches | ORT's own tree, read from `onnxruntime_external_deps.cmake` in PATCH_COMMAND order | ORT's pin. Applied with GNU `patch --binary --ignore-whitespace -p1` (Git's `usr\bin\patch.exe`), because five of them need fuzz against Dawn v20260916.214021 and `git apply` has none |
 | Dawn DEPS `jinja2`, `markupsafe`, `spirv-headers`, `spirv-tools` | as Dawn's `DEPS` names them | the commit read from DEPS; each checkout must equal it |
-| DXC release (`ORT_WEBGPU_WINDOWS_DXC_VERSION`, `_ASSET`) | the DirectXShaderCompiler GitHub release | `ORT_WEBGPU_WINDOWS_DXC_SHA256`; uses the x64 `dxcompiler.dll`, `dxil.dll`, `dxcompiler.lib` and the three licence texts |
+| DXC release (`ORT_WEBGPU_WINDOWS_DXC_VERSION`, `_ASSET`) | the DirectXShaderCompiler GitHub release | `ORT_WEBGPU_WINDOWS_DXC_SHA256`; uses the x64 `dxcompiler.dll`, `dxcompiler.lib` and the three licence texts. `dxil.dll` stays in the zip: since ORT v1.31.0, Dawn creates the DXIL validator from `dxcompiler.dll` |
 
 ORT's other `cmake/deps.txt` downloads are unchanged: ORT fetches them itself, SHA1-pinned
 by ORT. Every rocm onnx build fetches these inputs again; there is no preseed yet.
@@ -395,14 +395,17 @@ back to FXC. The patch refuses to run if that block moves.
 **Dawn and Tint under clang-cl.** Both have upstream clang-cl branches, `DAWN_WERROR` is off
 by default, and no flags or patches are added. That was read from source, and the rocm
 chain proved it: the image it built by 2026-09-25 carries the spike and passed
-`OrtWebGpu.ps1`.
+`OrtWebGpu.ps1`. That was Dawn v20260818.211311; ORT v1.31.0's v20260916.214021 waits for
+the next rocm chain.
 
 **What ships.**
-- `<ort>\bin\dxcompiler.dll` and `dxil.dll`, beside `onnxruntime.dll`, which loads them at
-  run time. The build refuses an `onnxruntime.dll` that imports them.
-- The same pair in the chain wheel's `onnxruntime\capi\`, checked byte for byte.
+- `<ort>\bin\dxcompiler.dll`, beside `onnxruntime.dll`, which loads it at run time. The
+  build refuses an `onnxruntime.dll` that imports it or `dxil.dll`.
+- The same DLL in the chain wheel's `onnxruntime\capi\`, checked byte for byte.
+- No `dxil.dll`. ORT v1.31.0 stopped shipping it, because Dawn v20260916.214021 creates the
+  DXIL validator from `dxcompiler.dll` and loads nothing else.
 - `<ort>\ROCM-FEATURES.txt`, the marker: `ORT_WEBGPU=0|1` and, when on, `DAWN_VERSION`,
-  `DXC_VERSION`, `DXCOMPILER_SHA256` and `DXIL_SHA256`.
+  `DXC_VERSION` and `DXCOMPILER_SHA256`.
 
 **Licences.** Dawn and Tint are linked statically into `onnxruntime.dll` and
 `onnxruntime_pybind11_state.pyd`; their BSD 3-Clause text is already ORT's own `dawn`
@@ -417,8 +420,8 @@ requires.
   `DAWN_FETCH_DEPENDENCIES=OFF`, `DAWN_USE_BUILT_DXC=ON`, D3D12 on, Vulkan off and the
   prebuilt-DXC log line, and throws otherwise.
 - After the wheel, `Get-OrtWebGpuWheelFinding` requires `WebGpuExecutionProvider` in the
-  installed wheel, the literal `dxcompiler.dll`/`dxil.dll` pair in capi equal to the
-  staged hashes, and the DXC notice entry.
+  installed wheel, capi's `dxcompiler.dll` equal to the staged hash, no `dxil.dll` there,
+  and the DXC notice entry.
 
 **Smoke (`rocm-checks\OrtWebGpu.ps1`, GPU-less).** It reads the marker and fails on a mode
 that does not match `EXPECT_ROCM_SPIKES` (a stale parent) or a DLL hash that does not
@@ -429,7 +432,8 @@ and in the app venv, it checks that:
   `Failed to get a WebGPU adapter`;
 - `onnxruntime_genai` loads that same `capi\onnxruntime.dll` and creates a WebGPU model, or
   fails for want of an adapter;
-- `dxil.dll` then `dxcompiler.dll` load from capi and export `DxcCreateInstance`.
+- `dxcompiler.dll` loads from capi and exports `DxcCreateInstance`, and no `dxil.dll` sits in
+  capi or beside `onnxruntime.dll`.
 
 Any other outcome fails. The whole-script test runs it against a real venv and a shim
 `python`, and each finding carries its `[base]` or `[venv]` label.
@@ -915,7 +919,7 @@ What it produces:
 | Path | Contents |
 |---|---|
 | `C:\runtime\lib\migraphx` (`MIGRAPHX_ROOT`) | AMD MIGraphX 2.18.0 (the head of `release/rocm-rel-10.1`, pinned by commit; no `rocm-10.1` tag yet) built from source: `bin\migraphx*.dll`, `migraphx-driver.exe`, `migraphx-hiprtc-driver.exe`, `lib\cmake\migraphx`, headers |
-| `C:\runtime\lib\onnxruntime-ep-amdgpu` (`ORT_AMDGPU_EP_ROOT`) | AMD's out-of-tree ONNX Runtime plugin EP `migraphx-ep.dll` ([onnxruntime/onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu), commit on `gpuep-releases/gpuep-rel-2611`), built against the image's ORT 1.30.0, with its MIGraphX closure and TheRock's `amdhip64_7`/`amd_comgr`/`hiprtc*` beside it |
+| `C:\runtime\lib\onnxruntime-ep-amdgpu` (`ORT_AMDGPU_EP_ROOT`) | AMD's out-of-tree ONNX Runtime plugin EP `migraphx-ep.dll` ([onnxruntime/onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu), commit on `gpuep-releases/gpuep-rel-2611`), built against the image's ORT 1.31.0, with its MIGraphX closure and TheRock's `amdhip64_7`/`amd_comgr`/`hiprtc*` beside it |
 
 The MIGraphX stage leaves ORT and GenAI untouched. On this lane they are built with the cpu lane's feature flags, DirectML included, on the rocm sdk layer and with the rocm-lane `CMAKE_IGNORE_PREFIX_PATH`. ORT also carries the WebGPU spike, which is on whenever this stage builds ([§ ONNX Runtime WebGPU EP](#onnx-runtime-webgpu-ep-rocm-lane-spike)). Nobody has compared their bytes with the cpu image's. The EP is built against that chain ORT and is loaded at run time with `onnxruntime.register_execution_provider_library(<name>, r"C:\runtime\lib\onnxruntime-ep-amdgpu\migraphx-ep.dll")`.
 
@@ -953,7 +957,7 @@ Evidence:
 - [onnxruntime-ep-amdgpu src/CMakeLists.txt@99ab5cb](https://github.com/onnxruntime/onnxruntime-ep-amdgpu/blob/99ab5cb43caa421e0b19870fa4ce9323117e5e56/src/CMakeLists.txt)
 - [src/migraphx/CMakeLists.txt (/DELAYLOAD, POST_BUILD closure)](https://github.com/onnxruntime/onnxruntime-ep-amdgpu/blob/99ab5cb43caa421e0b19870fa4ce9323117e5e56/src/migraphx/CMakeLists.txt)
 - [src/shared/CMakeLists.txt (HIP DLL list without amd_comgr.dll)](https://github.com/onnxruntime/onnxruntime-ep-amdgpu/blob/99ab5cb43caa421e0b19870fa4ce9323117e5e56/src/shared/CMakeLists.txt)
-- [ORT v1.30.0 CMake package install](https://github.com/microsoft/onnxruntime/blob/v1.30.0/cmake/CMakeLists.txt)
+- [ORT v1.31.0 CMake package install](https://github.com/microsoft/onnxruntime/blob/v1.31.0/cmake/CMakeLists.txt)
 - [TheRock ml-libs MIOPEN_USE_MLIR=OFF](https://github.com/ROCm/TheRock/blob/therock-10.1/ml-libs/CMakeLists.txt)
 - [AMDMIGraphX#4252](https://github.com/ROCm/AMDMIGraphX/issues/4252)
 
@@ -972,7 +976,7 @@ keeps `LicenseRef-Proprietary-EULA` for the runtime: the id describes the licenc
 permission.
 
 The Vulkan loader is LunarG's signed build of the Khronos Vulkan-Loader, Apache-2.0 with
-MIT parts; its `VulkanRT-License.txt` ships in `C:\vulkan-loader`. The DXC pair beside the
+MIT parts; its `VulkanRT-License.txt` ships in `C:\vulkan-loader`. The DXC `dxcompiler.dll` beside the
 chain ORT carries Microsoft's licence terms (`LICENSE-MS.txt`) next to NCSA, the same
 review question as the LiteRT-LM copy. `ai-edge-litert`'s wheel ships no licence or NOTICE
 text of its own.

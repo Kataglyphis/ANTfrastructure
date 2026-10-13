@@ -22,10 +22,13 @@ function Read-OrtWebGpuMarker {
 
 # DXC DLL -> the marker key holding the SHA256 the build staged.
 function Get-OrtWebGpuDxcKey {
-    return [ordered]@{ 'dxcompiler.dll' = 'DXCOMPILER_SHA256'; 'dxil.dll' = 'DXIL_SHA256' }
+    return [ordered]@{ 'dxcompiler.dll' = 'DXCOMPILER_SHA256' }
 }
 
-# The spike mode the run asked for vs the marker, and the DXC pair beside onnxruntime.dll.
+# Since ORT v1.31.0 Dawn takes the DXIL validator from dxcompiler.dll, so a dxil.dll anywhere is a leftover.
+function Get-OrtWebGpuRetiredDxcDll { return @('dxil.dll') }
+
+# The spike mode the run asked for vs the marker, and the DXC DLLs beside onnxruntime.dll.
 function Get-OrtWebGpuMarkerFinding {
     param(
         [AllowNull()][hashtable]$Marker, [Parameter(Mandatory)][string]$MarkerPath,
@@ -47,6 +50,10 @@ function Get-OrtWebGpuMarkerFinding {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { "OrtWebGpu: $path missing beside onnxruntime.dll"; continue }
         $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
         if ($got -ne $want) { "OrtWebGpu: $path is $got, the build staged $want" }
+    }
+    foreach ($dll in Get-OrtWebGpuRetiredDxcDll) {
+        $path = Join-Path $OrtRoot "bin\$dll"
+        if (Test-Path -LiteralPath $path) { "OrtWebGpu: $path ships, but nothing loads it since ORT v1.31.0" }
     }
     if ($mode -eq '1' -and -not (Test-Path -LiteralPath (Join-Path $OrtRoot 'licenses\directx-shader-compiler\LICENSE-MS.txt'))) {
         "OrtWebGpu: DXC's licence texts are missing under $OrtRoot\licenses\directx-shader-compiler"
@@ -107,7 +114,7 @@ if "providers" in r and sys.argv[1:] == ["webgpu"] and "WebGpuExecutionProvider"
     except Exception as exc:
         r["genai_error"] = "%s: %s" % (type(exc).__name__, exc)
 if "capi" in r:
-    for name in ("dxil.dll", "dxcompiler.dll"):
+    for name in ("dxcompiler.dll", "dxil.dll"):
         path = os.path.join(r["capi"], name)
         if os.path.isfile(path):
             with open(path, "rb") as f:
@@ -155,6 +162,7 @@ function Get-OrtWebGpuInterpreterFinding {
         if ("$($d['sha256'])" -ne "$($Marker[$keys[$dll]])") { "${tag}: onnxruntime\capi\$dll is $($d['sha256']), the build staged $($Marker[$keys[$dll]])" }
         if ($d['entry'] -ne $true) { "${tag}: onnxruntime\capi\$dll does not load or lacks DxcCreateInstance" }
     }
+    foreach ($dll in @(Get-OrtWebGpuRetiredDxcDll | Where-Object { $dlls.Contains($_) })) { "${tag}: onnxruntime\capi carries $dll, which nothing loads since ORT v1.31.0" }
     if ($Report['genai_error']) { return "${tag}: import onnxruntime_genai failed: $($Report['genai_error'])" }
     $capiOrt = [System.IO.Path]::GetFullPath((Join-Path "$($Report['capi'])" 'onnxruntime.dll'))
     $genaiOrt = if ($Report['genai_ort']) { [System.IO.Path]::GetFullPath("$($Report['genai_ort'])") } else { '' }

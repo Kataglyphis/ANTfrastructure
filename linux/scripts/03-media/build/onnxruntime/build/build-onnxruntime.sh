@@ -49,13 +49,6 @@ done
 parse_common_args "${FORWARDED_ARGS[@]}"
 
 run_gpu_build_step() {
-  # GCC 16 cannot construct the decltype'd reference EpilogueScalars (moe_gemm_tma_ws_launcher.inl:82); ports upstream's post-v1.30.0 fix.
-  if [ -f "/opt/scripts/patches/onnxruntime/001-gcc16-epilogue-scalars-reference.patch" ]; then
-    bash /opt/scripts/core/apply-patch.sh \
-      /opt/scripts/patches/onnxruntime/001-gcc16-epilogue-scalars-reference.patch \
-      "${ORT_SRC_DIR}" \
-      "ORT GCC 16: decay the epilogue scalars decltype to a class type"
-  fi
   if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     bash "${SCRIPT_DIR}/30-build-native-nvidia.sh" "${FORWARDED_ARGS[@]}"
   elif [ "${ENABLE_AMD:-false}" = "true" ]; then

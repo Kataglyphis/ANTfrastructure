@@ -236,11 +236,11 @@ function Expand-OrtZipMember {
     return @($written)
 }
 
-# The DXC release's x64 pair, the import lib Dawn's target links and the licence texts; all six must exist.
+# The DXC release's x64 dxcompiler.dll, the import lib Dawn's target links and the licence texts; all five must exist.
 function Expand-OrtWebGpuDxc {
     param([Parameter(Mandatory)][string]$Zip, [Parameter(Mandatory)][string]$Destination)
     $members = [ordered]@{
-        'bin/x64/dxcompiler.dll' = 'dxcompiler.dll'; 'bin/x64/dxil.dll' = 'dxil.dll'; 'lib/x64/dxcompiler.lib' = 'dxcompiler.lib'
+        'bin/x64/dxcompiler.dll' = 'dxcompiler.dll'; 'lib/x64/dxcompiler.lib' = 'dxcompiler.lib'
         'LICENSE-LLVM.txt' = 'licenses\LICENSE-LLVM.txt'; 'LICENSE-MS.txt' = 'licenses\LICENSE-MS.txt'; 'LICENCE-MIT.txt' = 'licenses\LICENCE-MIT.txt'
     }
     $got = @(Expand-OrtZipMember -Zip $Zip -Destination $Destination -Map { param($n) $members[$n] }.GetNewClosure())
@@ -264,14 +264,12 @@ function Invoke-DawnPrebuiltDxcPatch {
     param([Parameter(Mandatory)][string]$DawnSrc)
     $cmake = @'
 if (DAWN_USE_BUILT_DXC AND DAWN_PREBUILT_DXC_DIR)
-    # [ANTfrastructure prebuilt DXC] the pinned release's DLLs stand in for a DXC build.
+    # [ANTfrastructure prebuilt DXC] the pinned release's dxcompiler.dll stands in for a DXC build.
     message(STATUS "Dawn: prebuilt DXC from ${DAWN_PREBUILT_DXC_DIR}")
     add_library(dxcompiler SHARED IMPORTED GLOBAL)
     set_target_properties(dxcompiler PROPERTIES
         IMPORTED_LOCATION "${DAWN_PREBUILT_DXC_DIR}/dxcompiler.dll"
         IMPORTED_IMPLIB "${DAWN_PREBUILT_DXC_DIR}/dxcompiler.lib")
-    add_custom_target(copy_dxil_dll COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${DAWN_PREBUILT_DXC_DIR}/dxil.dll" "${CMAKE_BINARY_DIR}/dxil.dll")
 elseif (DAWN_USE_BUILT_DXC)
     AddSubdirectoryDXC()
 endif()
@@ -285,7 +283,7 @@ endif()
     if (-not $applied) { throw "$path : the 'if (DAWN_USE_BUILT_DXC) AddSubdirectoryDXC() endif()' block moved; re-derive Invoke-DawnPrebuiltDxcPatch" }
 }
 
-# ORT applies its Dawn patches with GNU patch, fuzz included (git apply rejects three at v1.30.0).
+# ORT applies its Dawn patches with GNU patch, fuzz included (five of the six need fuzz at v1.31.0, which git apply lacks).
 function Resolve-GnuPatchExe {
     $onPath = Get-Command patch.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($onPath) { return $onPath.Source }
@@ -351,7 +349,7 @@ function Get-OrtWebGpuConfigureFinding {
     if ($LogText -match 'Running fetch_dawn_dependencies') { 'WebGPU EP: Dawn ran fetch_dawn_dependencies, a fetch this build does not pin' }
 }
 
-# cmake --install skips Dawn's DXC pair; onnxruntime.dll must load it at run time, as upstream does.
+# cmake --install skips Dawn's dxcompiler.dll; onnxruntime.dll must load it at run time, as upstream does.
 function Install-OrtWebGpuRuntime {
     param([Parameter(Mandatory)][string]$DxcDir, [Parameter(Mandatory)][string]$OrtInstallDir)
     $bin = Join-Path $OrtInstallDir 'bin'
@@ -359,34 +357,31 @@ function Install-OrtWebGpuRuntime {
     if (-not (Test-Path -LiteralPath $ortDll -PathType Leaf)) { throw "WebGPU EP: $ortDll missing after the install" }
     $linked = @(Get-PeImportNames -Path $ortDll -IncludeDelayLoad | Where-Object { $_ -in @('dxcompiler.dll', 'dxil.dll') })
     if ($linked.Count -gt 0) { throw "onnxruntime.dll imports $($linked -join ', '): Dawn must open DXC at run time, not at load time" }
-    $sha = @{}
-    foreach ($dll in 'dxcompiler.dll', 'dxil.dll') {
-        Copy-Item -LiteralPath (Join-Path $DxcDir $dll) -Destination $bin -Force
-        $sha[$dll] = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $bin $dll)).Hash.ToLowerInvariant()
-    }
+    Copy-Item -LiteralPath (Join-Path $DxcDir 'dxcompiler.dll') -Destination $bin -Force
+    $sha = @{ 'dxcompiler.dll' = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $bin 'dxcompiler.dll')).Hash.ToLowerInvariant() }
     $licences = Join-Path $OrtInstallDir 'licenses\directx-shader-compiler'
     [void](New-Item -ItemType Directory -Force -Path $licences)
     Copy-Item -Path (Join-Path $DxcDir 'licenses\*') -Destination $licences -Force
     return $sha
 }
 
-# The installed wheel (native lane): does it list the EP, do its capi DXC bytes equal the staged pair, does it carry DXC's notice?
+# The installed wheel (native lane): does it list the EP, is capi's dxcompiler.dll the staged one, does it carry DXC's notice?
 function Get-OrtWebGpuWheelFinding {
     param([AllowNull()][hashtable]$Report, [Parameter(Mandatory)][AllowEmptyCollection()][hashtable]$DllSha256)
     if ($null -eq $Report) { return 'WebGPU EP: the wheel probe printed no report' }
     if ($Report['error']) { return "WebGPU EP: the installed wheel does not import: $($Report['error'])" }
     if (@($Report['providers']) -notcontains 'WebGpuExecutionProvider') { "WebGPU EP: the wheel lists [$(@($Report['providers']) -join ', ')], no WebGpuExecutionProvider" }
     $capi = if ($Report['dlls'] -is [System.Collections.IDictionary]) { $Report['dlls'] } else { @{} }
-    foreach ($dll in 'dxcompiler.dll', 'dxil.dll') {
-        $want = "$($DllSha256[$dll])"
-        if ($want -cnotmatch '^[0-9a-f]{64}$') { "WebGPU EP: the staged $dll hash is '$want', not a SHA256: nothing to hold capi's copy to"; continue }
-        if ("$($capi[$dll])" -cne $want) { "WebGPU EP: onnxruntime\capi\$dll is '$($capi[$dll])', the staged $dll is $want" }
-    }
+    $want = "$($DllSha256['dxcompiler.dll'])"
+    if ($want -cnotmatch '^[0-9a-f]{64}$') { "WebGPU EP: the staged dxcompiler.dll hash is '$want', not a SHA256: nothing to hold capi's copy to" }
+    elseif ("$($capi['dxcompiler.dll'])" -cne $want) { "WebGPU EP: onnxruntime\capi\dxcompiler.dll is '$($capi['dxcompiler.dll'])', the staged dxcompiler.dll is $want" }
+    # Since ORT v1.31.0 Dawn takes the validator from dxcompiler.dll, so a dxil.dll in capi is a leftover.
+    if ($capi.Contains('dxil.dll')) { 'WebGPU EP: onnxruntime\capi carries dxil.dll, which nothing loads since ORT v1.31.0' }
     if ($Report['dxc_notice'] -ne $true) { "WebGPU EP: the wheel's ThirdPartyNotices.txt lacks '$(Get-OrtDxcNoticeTitle)'" }
 }
 
-# The ThirdPartyNotices.txt entry title for the DXC pair: ORT's own notices cover Dawn/Tint, not DXC.
-function Get-OrtDxcNoticeTitle { return 'DirectXShaderCompiler (onnxruntime/capi/dxcompiler.dll, dxil.dll)' }
+# The ThirdPartyNotices.txt entry title for DXC: ORT's own notices cover Dawn/Tint, not DXC.
+function Get-OrtDxcNoticeTitle { return 'DirectXShaderCompiler (onnxruntime/capi/dxcompiler.dll)' }
 
 # Appends DXC's licence texts to the notices file the wheel packs, so a wheel copied out keeps them. Idempotent.
 function Add-OrtWebGpuWheelNotice {
@@ -401,7 +396,7 @@ function Add-OrtWebGpuWheelNotice {
     [System.IO.File]::AppendAllText($notices, "`n_____`n`n$title $DxcVersion`n`nhttps://github.com/microsoft/DirectXShaderCompiler`n`n$body`n")
 }
 
-# The installed wheel's own view, one JSON line on stdout: providers, the SHA256 of capi's DXC pair, DXC's notice.
+# The installed wheel's own view, one JSON line on stdout: providers, the SHA256 of capi's DXC DLLs, DXC's notice.
 function Get-OrtWebGpuWheelReport {
     param([Parameter(Mandatory)][string]$Python)
     $probe = @'
@@ -433,7 +428,7 @@ function Get-OrtWebGpuFeatureMarker {
         "ORT_WEBGPU=$(if ($Plan.WebGpu) { '1' } else { '0' })")
     if ($Plan.WebGpu) {
         $lines += "DAWN_VERSION=$($Pin.DAWN_VERSION)", "DXC_VERSION=$($Pin.DXC_VERSION)",
-            "DXCOMPILER_SHA256=$($DllSha256['dxcompiler.dll'])", "DXIL_SHA256=$($DllSha256['dxil.dll'])"
+            "DXCOMPILER_SHA256=$($DllSha256['dxcompiler.dll'])"
     }
     return $lines
 }
@@ -530,7 +525,7 @@ function Invoke-OrtFreeThreadedTwin {
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-$OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.30.0' -StripVPrefix
+$OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.31.0' -StripVPrefix
 
 Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GPU_TYPE) { $env:GPU_TYPE } else { 'none' })) ==="
 

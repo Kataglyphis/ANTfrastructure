@@ -1199,16 +1199,23 @@ invalidate `windows/scripts/patches/llvm/*.patch`, which are written against
 23.1.0's `AArch64InstrInfo.cpp` (they still apply to 23.1.3);
 `Invoke-SourcePatch` stops loudly on one that no longer applies.
 
-ONNX Runtime bump note (2026-09-23): three things follow `ONNXRUNTIME_VERSION`.
+ONNX Runtime bump note (2026-09-23, 2026-10-13): four things follow `ONNXRUNTIME_VERSION`.
 - `ORT_WEBGPU_WINDOWS_DAWN_VERSION` and its SHA256 (`bump:hold`) are the Dawn tag
   ORT's own `cmake/deps.txt` names. Re-derive both from that `dawn` row; the rocm
   onnx stage refuses a deps.txt that names another tag, so a forgotten pair fails
   loudly, never silently.
-- `Build-OpencvFromSource.ps1` carries a second `1.30.0` default next to
-  `Build-OnnxFromSource.ps1`'s. An ORT bump changes both, and
-  `SourceBuild.PinParity` flags the one left behind.
+- `Build-OpencvFromSource.ps1` and `Build-GstreamerFromSource.ps1` carry ORT
+  defaults next to `Build-OnnxFromSource.ps1`'s. `sync_versions.py --write` moves
+  all three, and `SourceBuild.PinParity` flags one left behind.
 - Consumers built against the chain now need an ORT at least as new as the one
   they compiled against: GenAI's Windows DLL refuses an older `onnxruntime.dll`.
+- GenAI compiles against ORT's experimental header, which promises nothing. v1.31.0
+  moved the model-package entries GenAI v0.17.0 resolves into the stable
+  `OrtModelPackageApi` table, so both lanes apply
+  `linux/scripts/patches/onnxruntime-genai/002-ort-1.31-model-package-api.patch`
+  ([`upstreamable-patches.md`](upstreamable-patches.md) entry 23). Before a chain,
+  syntax-check GenAI's `src/models/onnxruntime_api.h` against the new ORT's
+  `include/onnxruntime/core/session` with GCC and clang, as CON95 did.
 
 Vulkan and llama.cpp coupled pins (2026-09-23): `bump_versions.py` `spec_vulkan`
 refreshes `VULKAN_RT_WINDOWS_ZIP_SHA256` whenever `VULKAN_VERSION` moves (LunarG's

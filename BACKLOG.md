@@ -312,17 +312,33 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         still build third-party sdists with VS's `cl`. OrchestrANT's own `setup.py` switches to clang-cl but links with
         `link.exe`, so moving those lanes onto the shim changes its linker too and needs its own proof.
 - [ ] **CON95 — the chain ORT moves from v1.30.0 to v1.31.0** [M, ★★]. Released 2026-10-09; PyPI's 1.31.0 already reached
-      the consumers' locks (python-ci.md). What moves with it, read from the two tags' `cmake/deps.txt`:
-      - Dawn v20260818.211311 → v20260916.214021, so `ORT_WEBGPU_WINDOWS_DAWN_VERSION`/`_SHA256` are re-derived (the
-        Windows build refuses a deps.txt naming another tag); KleidiAI v1.20.0 → v1.30.0; the D3D12 agility SDK
-        1.721.0 → 1.721.3-preview; google_benchmark, coremltools and the 1DS SDK.
-      - The vendored onnx stays 1.22.0, pybind11 stays v3.0.2.
-      - `patches/onnxruntime/001-gcc16-epilogue-scalars-reference.patch` goes: v1.31.0's
-        `moe_gemm_tma_ws_launcher.inl:535` carries upstream's own `std::remove_reference_t` fix (only the macro's
-        trailing padding differs, which is why the reverse check fails). `001-android-gradle-agp8-compat.patch` still
-        applies.
-      - The new Dawn archive, measured 2026-10-13: SHA256
-        `507949fd45d7ca0cfc672617fd1e06ee02ce23c4f32856b342c48133e71d682e`, its SHA1 equal to deps.txt's `514e914f…`.
+      the consumers' locks (python-ci.md). **In source since 2026-10-13 (CHANGELOG); a chain has to prove it.**
+      What moved with it, read from the two tags' `cmake/deps.txt` and sources:
+      - Dawn v20260818.211311 → v20260916.214021: `ORT_WEBGPU_WINDOWS_DAWN_SHA256` is
+        `507949fd45d7ca0cfc672617fd1e06ee02ce23c4f32856b342c48133e71d682e` (full download, 2026-10-13), its SHA1 equal
+        to deps.txt's `514e914f…`. ORT's six Dawn patches apply to it with GNU patch, five with fuzz.
+      - That Dawn creates the DXIL validator from `dxcompiler.dll`, and v1.31.0 ships no `dxil.dll`. The rocm spike
+        stages only `dxcompiler.dll`, and its build gate and smoke now fail on a leftover `dxil.dll`.
+      - GenAI v0.17.0 does not compile against v1.31.0's headers: the model-package entries it resolves left the
+        experimental header for the stable `OrtModelPackageApi` table (64 GCC errors). Both lanes apply
+        `onnxruntime-genai/002-ort-1.31-model-package-api.patch`. A syntax-only compile in `:latest` passes with GCC
+        and clang against both ORT versions. GenAI `main` and `rel-0.17.1` still carry the old code.
+      - KleidiAI v1.20.0 → v1.30.0, SHA1 equal to deps.txt's `36aebdd5…`: one `enable_language(ASM_MARMASM)` and no
+        rule of its own, so the arm64 rule patch still applies. Its new SVE2p1 `.S` files are new to armasm64.
+      - The D3D12 agility SDK, google_benchmark, coremltools and the 1DS SDK move too; the hub builds none of them
+        (no `DAWN_USE_AGILITY_SDK`, no benchmarks, telemetry off). The vendored onnx stays 1.22.0, pybind11 v3.0.2,
+        flatbuffers 23.5.26.
+      - `patches/onnxruntime/001-gcc16-epilogue-scalars-reference.patch` is gone: v1.31.0's
+        `moe_gemm_tma_ws_launcher.inl:535` carries upstream's own `std::remove_reference_t` fix.
+        `001-android-gradle-agp8-compat.patch` and the five Windows ORT patches apply to v1.31.0.
+      - Every build.py flag and CMake define the native, nvidia, amd, wasm, android, GenAI and Windows builds pass
+        still exists. The free-threaded twin row was re-read at v1.31.0.
+      - **Left for a chain:** the Linux CPU, wasm and android media builds, and the nvidia lane's CUDA build
+        without the GCC 16 patch. Every GenAI build with the patch, on both lanes; Windows uses clang-cl and
+        CUDA. The Windows arm64 KleidiAI assembly. The rocm spike on the new Dawn: its WebGPU EP, the wheel
+        gate, and `OrtWebGpu.ps1` with `dxcompiler.dll` alone. `migraphx-ep.dll` built against v1.31.0. ORT
+        configure still builds onnx from source: v1.31.0 fails on a found ONNX package with a different protobuf.
+        After the images publish, OxidANT moves to `ort` 2.0.0-rc.14.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294

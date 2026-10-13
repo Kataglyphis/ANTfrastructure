@@ -8,9 +8,10 @@ RVA23 switch; the RVA23 rebuild it waited for ran on 2026-09-01/02
 **This page is the Linux chain.** The Windows chain keeps its own register,
 same grading scale, at
 [`upstream-windows-patches.md`](upstream-windows-patches.md); its prepared
-submissions live under `windows/upstream/`. Two entries are shared between the
-lanes and are owned here — the OpenCV FFmpeg 8/9 port (entry 2) and the gst-libav
-codec IDs FFmpeg 8 removed (entry 12).
+submissions live under `windows/upstream/`. Three entries are shared between the
+lanes and are owned here — the OpenCV FFmpeg 8/9 port (entry 2), the gst-libav
+codec IDs FFmpeg 8 removed (entry 12) and the onnxruntime-genai port to ORT v1.31.0's
+model-package table (entry 23).
 
 The patches themselves live in `linux/scripts/patches/<component>/NNN-name.patch`
 and are applied by `linux/scripts/01-core/apply-patch.sh`, which is idempotent
@@ -39,6 +40,7 @@ the branch you intend to target before filing.
 | 1 | [libstdc++ `-nostdinc++` for `src/c++23`](#1-libstdc--nostdinc-for-srcc23) | GCC | **A** | ★★★ |
 | 2 | [OpenCV: port the FFmpeg 8 fixes to 5.x](#2-opencv-ffmpeg-8-removed-avcodecpix_fmts-and-supported_framerates) | OpenCV | **A** (port, not a new fix) | ★★★ |
 | 3 | [onnxruntime-genai: riscv64 target](#3-onnxruntime-genai-riscv64-is-not-a-known-target-platform) | onnxruntime-genai | **A** | ★★★ |
+| 23 | [onnxruntime-genai: ORT v1.31.0's model-package table](#23-onnxruntime-genai-ort-v1310-moved-the-model-package-entries-out-of-the-experimental-api) | onnxruntime-genai | **A** | ★★★ |
 | 4 | [libcamera: missing libtiff dependency](#4-libcamera-apps_lib-uses-libtiff-but-does-not-depend-on-it) | libcamera | **A** | ★★ |
 | 5 | [GStreamer: lame probe ignores the library](#5-gstreamer-the-lame-probe-checks-the-header-and-ignores-the-library) | gst-plugins-good | **A** | ★★ |
 | 17 | [cerbero: glib misses its libiconv dep](#17-cerbero-glib-does-not-declare-its-libiconv-dependency-on-android) | cerbero | **A** | ★★ |
@@ -59,10 +61,10 @@ the branch you intend to target before filing.
 | 16 | [libyuv: RVV rows are clang-gated](#16-libyuv-the-rvv-rows-are-clang-gated) | libyuv | **✔** | ★★★ |
 | 21 | [~~slang: riscv64 pointer size and byte order~~](#21-slang-riscv64-pointer-size-and-byte-order) | slang (Vulkan SDK) | **✔** (retired) | ★★ |
 
-Sorted by how ready each one is, not by number. Eight are ready to write today;
+Sorted by how ready each one is, not by number. Nine are ready to write today;
 the rest need the rework named in their entry.
 
-**Thirteen entries carry a ready-to-send message; the others deliberately do not.**
+**Fourteen entries carry a ready-to-send message; the others deliberately do not.**
 11 and 14 need the patch itself reshaped before any message would be
 honest — writing the text now would only make a diff look sendable that is not.
 8 and 9 are withdrawn, 15 is grade C, and 10, 12, 16 and 21 are already fixed
@@ -310,7 +312,7 @@ stub, expect that counter-proposal — the PR message above says so up front.
 
 `linux/scripts/patches/onnxruntime/001-android-gradle-agp8-compat.patch` ·
 applied by `03-media/build/onnxruntime/android/build-android.sh` ·
-applies to **v1.30.0**.
+applies to **v1.31.0**.
 
 Bumps `com.android.tools.build:gradle` from 7.4.2 to 8.3.1 in two build files and
 adds the `buildFeatures { buildConfig = true }` that AGP 8 requires now that
@@ -807,6 +809,51 @@ every core registry blacklist libgstvalidatessim.so. Return TRUE without
 registering anything, as the gapplication plugin does; gst-validate's own
 registry still loads and initializes it.
 ```
+
+---
+
+## 23. onnxruntime-genai: ORT v1.31.0 moved the model-package entries out of the experimental API
+
+`linux/scripts/patches/onnxruntime-genai/002-ort-1.31-model-package-api.patch` ·
+applied by `03-media/build/onnxruntime/build/60-build-genai.sh` on every arch and by
+`windows/scripts/build/Build-OnnxGenaiFromSource.ps1` (mounted per file) ·
+applies to **v0.17.0**; `rel-0.17.1` and `main` (0deac7c, checked 2026-10-13) take it unchanged.
+
+GenAI resolves thirteen `OrtModelPackageApi_*` entries through
+`GetExperimentalFunction`, typed by the `OrtExperimental_*_SinceV28_Fn` typedefs of
+`onnxruntime_experimental_c_api.inc`. ORT v1.31.0 removed them from the experimental
+header and serves the same functions, same signatures, from the stable table
+`OrtApi::GetModelPackageApi()`. Its `ORT_API_VERSION` is 31 and the experimental header
+still exists, so `ORT_GENAI_HAS_MODEL_PACKAGE` stays 1 and every TU that includes
+`src/models/onnxruntime_api.h` stops: GCC reports 64 errors, starting with
+`'OrtExperimental_OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28_Fn'
+does not name a type`. Under `ORT_API_VERSION >= 31` the patch takes the typedef names from
+`decltype(::OrtModelPackageApi::<entry>)` and fills the cache from the stable table; an
+older ORT keeps the experimental path.
+
+**Measured 2026-10-13** with a syntax-only compile of the header in `:latest`: GCC 16 and
+clang, ORT v1.30.0 and v1.31.0 headers, pristine and patched. Pristine fails only against
+v1.31.0; patched passes all four.
+
+**Why it is a good contribution.** Any GenAI build against ORT v1.31.0 headers hits it,
+the fix keeps both ORT generations working, and it touches only the two wrapper headers.
+
+**PR message**
+
+```
+Resolve the model package API from ORT 1.31's stable table
+
+ONNX Runtime 1.31 removed the OrtModelPackageApi experimental functions and
+serves the same entries from OrtApi::GetModelPackageApi(). With 1.31 headers
+ORT_GENAI_HAS_MODEL_PACKAGE is still 1, so onnxruntime_api.h names the
+OrtExperimental_*_SinceV28_Fn typedefs that no longer exist and the build stops.
+
+For ORT_API_VERSION >= 31 this takes the function types from the stable table
+and fills ModelPackageApi from it; older ORT keeps the experimental lookup.
+```
+
+**Before filing:** upstream may prefer dropping the experimental path once its minimum
+ORT reaches 1.31. Check `main` for its own port first.
 
 ---
 

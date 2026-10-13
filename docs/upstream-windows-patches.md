@@ -128,6 +128,7 @@ inline fallback. The grades are the owner's call.
 | `hailo/003-windows-lockedfile-dtor.patch` | The Windows `filesystem.cpp` stub declares `LockedFile::~LockedFile` and never defines it (undefined symbol at link) | `Build-HailortFromSource.ps1` |
 | `hailo/004-cmake-target-arch-macro.patch` | `CMakeLists.txt` defines `_AMD64_=1` for any 64-bit build, ARM64 included; now `_ARM64_=1` there | `Build-HailortFromSource.ps1` |
 | `opencv_contrib/002-arm64-cudafilters-popcount.patch` | `wavelet_matrix_2d.cuh` uses the x86-only `_mm_popcnt_u64` under `_MSC_VER`; a software popcount on `_M_ARM64` (#176) | `Build-OpencvFromSource.ps1` (applied without a fallback) |
+| `linux/scripts/patches/onnxruntime-genai/002-ort-1.31-model-package-api.patch`, shared with the Linux lane and graded there (`upstreamable-patches.md` entry 23) | GenAI v0.17.0 names experimental typedefs ORT v1.31.0 removed; it takes the model-package entries from the stable `OrtModelPackageApi` table instead | `Build-OnnxGenaiFromSource.ps1` (applied without a fallback) |
 
 ## C — never file these
 

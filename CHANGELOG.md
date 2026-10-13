@@ -44,6 +44,42 @@
 - `sync_versions.py` and `generate_sbom.py` regenerated the derived files. Not in this batch: ONNX Runtime, LiteRT and
   `WEBDAVCLIENT_REF`.
 
+## 2026-10-13 — ONNX Runtime v1.31.0 in source, with the GenAI and DXC changes it needs (CON95)
+
+- **ONNX Runtime v1.30.0 → v1.31.0** (`ONNXRUNTIME_VERSION`). `sync_versions.py --write` moved the four Dockerfile
+  ARGs, the three Windows build-script defaults, README, overview, the licence tables and the SBOM. The free-threaded
+  twin row moves to v1.31.0 after a re-read: `onnxruntime_pybind_module.cc` still passes `py::mod_gil_not_used()`
+  under `Py_GIL_DISABLED`, and pybind11 is still v3.0.2.
+- **Dawn v20260818.211311 → v20260916.214021** for the rocm WebGPU spike, the tag v1.31.0's `cmake/deps.txt` names.
+  `ORT_WEBGPU_WINDOWS_DAWN_SHA256` is `507949fd…`, measured by a full download; its SHA1 equals deps.txt's
+  `514e914f…`. ORT's six Dawn patches apply to it in order with GNU patch (five with fuzz), and the prebuilt-DXC
+  block `Invoke-DawnPrebuiltDxcPatch` rewrites is unchanged.
+- **The spike ships `dxcompiler.dll` alone.** That Dawn creates the DXIL validator from `dxcompiler.dll` and loads
+  nothing else, and v1.31.0's CMake no longer copies or depends on `dxil.dll`. The build stages and hashes only
+  `dxcompiler.dll`, and the marker drops `DXIL_SHA256`. The wheel gate and `rocm-checks\OrtWebGpu.ps1` fail on a
+  leftover `dxil.dll`. The `copy_dxil_dll` target goes from the Dawn patch, because the new Dawn no longer depends on
+  it. The licence rows now name `dxcompiler.dll` only.
+- **GenAI v0.17.0 does not compile against v1.31.0, so it carries a patch.** ORT moved the thirteen model-package
+  entries GenAI resolves out of the experimental header into the stable `OrtModelPackageApi` table. GenAI's
+  `onnxruntime_api.h` still names the removed `OrtExperimental_*_SinceV28_Fn` typedefs: 64 GCC errors.
+  `linux/scripts/patches/onnxruntime-genai/002-ort-1.31-model-package-api.patch` takes the types and pointers from
+  the stable table when `ORT_API_VERSION >= 31`, and keeps the experimental path below that. `60-build-genai.sh`
+  applies it on every arch. `Build-OnnxGenaiFromSource.ps1` applies the same file, mounted per file into the GenAI
+  RUN. A syntax-only compile of the header in `:latest` covered GCC 16 and clang, ORT v1.30.0 and v1.31.0 headers,
+  pristine and patched: pristine fails only against v1.31.0, and patched passes all four. GenAI `main` and the
+  untagged `rel-0.17.1` still carry the old code. The patch registers are `upstreamable-patches.md` entry 23 and a
+  row in `upstream-windows-patches.md`.
+- **The GCC 16 epilogue patch goes.** v1.31.0's `moe_gemm_tma_ws_launcher.inl:535` carries upstream's own
+  `std::remove_reference_t` fix. With the patch go its apply step in `build-onnxruntime.sh` and the patches mount of
+  the ORT GPU RUN, so `Dockerfile.media`'s size budget drops from 880 to 879.
+- **Checked against v1.31.0's sources, unchanged:** every `build.py` flag the native, nvidia, amd, wasm and android
+  builds pass, and every CMake define of the Windows raw-CMake build. The five Windows ORT patches and the android AGP
+  patch apply. KleidiAI v1.30.0 (SHA1 `36aebdd5…`, measured) has one `enable_language(ASM_MARMASM)` and no rule of its
+  own, so the arm64 rule patch holds. Telemetry stays off: 1DS is now the default backend, but `--no_telemetry` and
+  the raw-CMake default still disable it. onnx 1.22.0, protobuf 33.6, flatbuffers 23.5.26 and pybind11 v3.0.2 do not
+  move. The agility SDK, google_benchmark and coremltools move, but the hub builds none of them.
+- **Not proven:** anything only a chain build shows. CON95 lists it.
+
 ## 2026-10-13 — Pins: Renovate's 2026-10-13 tool bumps (ruff 0.17.0, Renovate 44.155.2, Node 26.11.1, pandoc 3.12.1, …)
 
 - **Node 26.11.0 → 26.11.1** (same major). `NODE_AMD64_SHA256` and `NODE_ARM64_SHA256` measured by full download of

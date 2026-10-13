@@ -139,7 +139,7 @@ halves fit together and why neither is sufficient alone.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| ONNX Runtime | v1.30.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| ONNX Runtime | v1.31.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.17.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
@@ -296,7 +296,7 @@ halves fit together and why neither is sufficient alone.
 | GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …) | per wrap files | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ / GPL (x264) / BSD (openh264) |
 | GStreamer Rust plugins rswebrtc and rsrtp (gst-plugins-rs net/webrtc, net/rtp) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
 | Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, …) | pinned by gst-plugins-rs's Cargo.lock at the GStreamer tag | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MIT / Apache 2.0 / ISC / BSD / Unicode-3.0 / CDLA-Permissive-2.0 (per crate, 337 crates on 2026-10-05) |
-| ONNX Runtime | v1.30.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| ONNX Runtime | v1.31.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.17.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | FFmpeg | n9.0.2 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
@@ -318,8 +318,8 @@ halves fit together and why neither is sufficient alone.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Dawn WebGPU + Tint (statically linked into the chain onnxruntime.dll and onnxruntime_pybind11_state.pyd: C:\runtime\lib\onnxruntime-source and every chain onnxruntime wheel) | v20260818.211311 | [github.com/google/dawn](https://github.com/google/dawn) | BSD 3-Clause (Dawn/Tint; the text ships in the wheel's onnxruntime\ThirdPartyNotices.txt as ORT's own 'dawn' entry) + Apache 2.0 (SPIRV-Tools: Dawn configures it, and the header-only SPIRV-Headers, whenever DAWN_USE_BUILT_DXC is ON; listed until a link map shows the D3D12-only, SPIR-V-off build leaves it out). jinja2 and markupsafe (BSD 3-Clause) run at build time only, as Dawn's code generator, and are not shipped |
-| DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll, dxil.dll beside the chain onnxruntime.dll and in onnxruntime\capi of every chain wheel) | v1.9.2609 | [github.com/microsoft/DirectXShaderCompiler](https://github.com/microsoft/DirectXShaderCompiler) | NCSA (LLVM) + Microsoft Software License Terms (LICENSE-MS.txt, read as applying until reviewed, as for the LiteRT-LM copy); all three texts ship in C:\runtime\lib\onnxruntime-source\licenses\directx-shader-compiler and are appended to the wheel's onnxruntime\ThirdPartyNotices.txt |
+| Dawn WebGPU + Tint (statically linked into the chain onnxruntime.dll and onnxruntime_pybind11_state.pyd: C:\runtime\lib\onnxruntime-source and every chain onnxruntime wheel) | v20260916.214021 | [github.com/google/dawn](https://github.com/google/dawn) | BSD 3-Clause (Dawn/Tint; the text ships in the wheel's onnxruntime\ThirdPartyNotices.txt as ORT's own 'dawn' entry) + Apache 2.0 (SPIRV-Tools: Dawn configures it, and the header-only SPIRV-Headers, whenever DAWN_USE_BUILT_DXC is ON; listed until a link map shows the D3D12-only, SPIR-V-off build leaves it out). jinja2 and markupsafe (BSD 3-Clause) run at build time only, as Dawn's code generator, and are not shipped |
+| DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll beside the chain onnxruntime.dll and in onnxruntime\capi of every chain wheel) | v1.9.2609 | [github.com/microsoft/DirectXShaderCompiler](https://github.com/microsoft/DirectXShaderCompiler) | NCSA (LLVM) + Microsoft Software License Terms (LICENSE-MS.txt, read as applying until reviewed, as for the LiteRT-LM copy); all three texts ship in C:\runtime\lib\onnxruntime-source\licenses\directx-shader-compiler and are appended to the wheel's onnxruntime\ThirdPartyNotices.txt |
 
 ### llama.cpp HIP and Vulkan (rocm variant only)
 
