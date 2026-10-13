@@ -151,14 +151,6 @@ inputs:
       'true' -> before, 'false' -> off.
     required: false
     default: ''
-  stage-temp:
-    description: >-
-      Forwarded to set-docker-data-root: the directory hcsshim stages each layer in
-      before importing it. Empty (the default) leaves that on C:, where it needs the
-      free space the cleanup makes; D:\docker-tmp moves it beside the data-root.
-      Needs a non-empty data-root, since it rides the same daemon restart.
-    required: false
-    default: ''
   measure-data-root:
     description: >-
       Add a third probe to the disk report after the pull: the size of the
@@ -221,14 +213,11 @@ runs:
       env:
         CLEANUP: ${{ inputs.cleanup }}
         FREE_DISK_SPACE: ${{ inputs.free-disk-space }}
-        STAGE_TEMP: ${{ inputs.stage-temp }}
-        DATA_ROOT: ${{ inputs.data-root }}
       run: |
         $ErrorActionPreference = 'Stop'
         $mode = if ($env:CLEANUP) { $env:CLEANUP } elseif ($env:FREE_DISK_SPACE -eq 'true') { 'before' } else { 'off' }
         if ($mode -notin 'before', 'after-pull', 'off') { throw "cleanup must be before, after-pull or off, not '$mode'" }
-        if ($env:STAGE_TEMP -and -not $env:DATA_ROOT) { throw 'stage-temp needs a data-root: it is set during the same daemon restart.' }
-        Write-Host "disk cleanup: $mode; hcsshim staging: $(if ($env:STAGE_TEMP) { $env:STAGE_TEMP } else { 'C:\Windows\SystemTemp (unchanged)' })"
+        Write-Host "disk cleanup: $mode"
         "mode=$mode" >> $env:GITHUB_OUTPUT
 
     # A deep submodule path fails the checkout itself without this; not sufficient alone (see short-path-target).
@@ -262,7 +251,6 @@ runs:
       with:
         data-root: ${{ inputs.data-root }}
         required-free-gb: ${{ inputs.required-free-gb }}
-        stage-temp: ${{ inputs.stage-temp }}
 
     - name: Cleanup disk space
       if: ${{ steps.cleanup.outputs.mode == 'before' }}

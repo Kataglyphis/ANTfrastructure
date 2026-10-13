@@ -12,15 +12,107 @@ on:
         description: Run the ubuntu-26.04 and ubuntu-26.04-arm variants.
         type: boolean
         default: true
+      detach:
+        description: Run the windows-2025 detach checks (no image pull, minutes).
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
+# Per input set, so a quick detach-only dispatch does not cancel a full run.
 concurrency:
-  group: ci-host-speed-probe-${{ github.ref }}
+  group: ci-host-speed-probe-${{ github.ref }}-${{ inputs.windows }}-${{ inputs.linux }}-${{ inputs.detach }}
   cancel-in-progress: true
 
 jobs:
+  # Does a process a step starts outlive that step? Heartbeats say, per launch method.
+  windows-detach:
+    name: windows detach (${{ matrix.method }})
+    if: ${{ inputs.detach }}
+    runs-on: windows-2025
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [start-process, start-process-redirect, cim]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Start a 60 s heartbeat (${{ matrix.method }})
+        env:
+          METHOD: ${{ matrix.method }}
+        run: |
+          $beat = Join-Path $env:RUNNER_TEMP 'beat.txt'
+          $script = Join-Path $env:RUNNER_TEMP 'beat.ps1'
+          Set-Content -LiteralPath $script -Value "foreach (`$i in 1..60) { Add-Content -LiteralPath '$beat' -Value ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds()); Start-Sleep -Seconds 1 }"
+          $pwsh = (Get-Process -Id $PID).Path
+          if ($env:METHOD -eq 'start-process') {
+            $p = Start-Process -FilePath $pwsh -ArgumentList @('-NoProfile', '-File', "`"$script`"") -PassThru
+            Write-Host "started pid $($p.Id)"
+          } elseif ($env:METHOD -eq 'start-process-redirect') {
+            $out = Join-Path $env:RUNNER_TEMP 'beat.log'
+            $p = Start-Process -FilePath $pwsh -ArgumentList @('-NoProfile', '-File', "`"$script`"") -PassThru -RedirectStandardOutput $out -RedirectStandardError "$out.err"
+            Write-Host "started pid $($p.Id) with redirected output"
+          } else {
+            $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = "`"$pwsh`" -NoProfile -File `"$script`"" }
+            Write-Host "Win32_Process.Create returned $($r.ReturnValue), pid $($r.ProcessId)"
+          }
+          Start-Sleep -Seconds 3
+          "STEP_END=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" >> $env:GITHUB_ENV
+
+      - name: Let it run
+        run: Start-Sleep -Seconds 20
+
+      - name: DETACH
+        env:
+          METHOD: ${{ matrix.method }}
+        run: |
+          $beats = @(Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'beat.txt') -ErrorAction SilentlyContinue | ForEach-Object { [long]$_ })
+          $after = @($beats | Where-Object { $_ -gt [long]$env:STEP_END + 2 }).Count
+          Write-Host "DETACH method=$env:METHOD beats=$($beats.Count) beats_after_step=$after survived=$(if ($after -gt 0) { 'yes' } else { 'no' })"
+
+  # The real background cleanup and its wait, without an image pull in front of it.
+  windows-cleanup-background:
+    name: windows cleanup background + wait
+    if: ${{ inputs.detach }}
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: 'C: before'
+        run: '"C_BEFORE=$([math]::Round((Get-PSDrive C).Free / 1GB, 1))" >> $env:GITHUB_ENV'
+
+      - name: cleanup-disk-space (background)
+        uses: ./.github/actions/cleanup-disk-space
+        with:
+          mode: background
+
+      - name: Work beside it
+        run: Start-Sleep -Seconds 120
+
+      - name: cleanup-disk-space (wait)
+        uses: ./.github/actions/cleanup-disk-space
+        with:
+          mode: wait
+
+      - name: DETACH
+        run: |
+          $done = Join-Path $env:RUNNER_TEMP 'disk-cleanup.done'
+          $marker = if (Test-Path -LiteralPath $done) { (Get-Content -LiteralPath $done -Raw).Trim() } else { 'none' }
+          $waited = (Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'disk-cleanup.waited') -Raw -ErrorAction SilentlyContinue)
+          $after = [math]::Round((Get-PSDrive C).Free / 1GB, 1)
+          Write-Host "DETACH method=action-background c_before_gb=$env:C_BEFORE c_after_gb=$after waited_s=$("$waited".Trim()) marker=[$marker] state=$env:ANTF_DISK_CLEANUP"
+          if (-not (Test-Path -LiteralPath $done)) { throw 'the background cleanup left no done marker' }
+
   windows:
     name: windows ${{ matrix.variant }}
     if: ${{ inputs.windows }}
@@ -31,17 +123,11 @@ jobs:
       matrix:
         include:
           - variant: win-today
-            stage-temp: ''
             cleanup: ''
-          - variant: win-staged-off
-            stage-temp: 'D:\docker-tmp'
+          - variant: win-off
             cleanup: 'off'
-          - variant: win-staged-afterpull
-            stage-temp: 'D:\docker-tmp'
+          - variant: win-afterpull
             cleanup: 'after-pull'
-          - variant: win-cstage-off
-            stage-temp: ''
-            cleanup: 'off'
     defaults:
       run:
         shell: pwsh
@@ -52,22 +138,19 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      # Every 5 s: free space on C: and D:, and hcsshim's staging directories in both temp roots.
+      # Every 5 s: free space on C: and D:, and the entries in the daemon's temp under the data-root.
       - name: Start the disk sampler
         run: |
           $sampler = Join-Path $env:RUNNER_TEMP 'probe-sampler.ps1'
           $csv = Join-Path $env:RUNNER_TEMP 'probe-disk.csv'
-          Set-Content -LiteralPath $csv -Value 'epoch,c_free_gb,d_free_gb,hcs_c,hcs_d,docker_tmp,systemtemp_readable'
+          Set-Content -LiteralPath $csv -Value 'epoch,c_free_gb,d_free_gb,docker_tmp'
           Set-Content -LiteralPath $sampler -Value @'
           param([string]$Csv)
           while ($true) {
             $c = [math]::Round((Get-PSDrive C).Free / 1GB, 2)
             $d = [math]::Round((Get-PSDrive D).Free / 1GB, 2)
-            $hc = @(Get-ChildItem -LiteralPath 'C:\Windows\SystemTemp' -Directory -Filter 'hcs*' -Force -ErrorAction SilentlyContinue).Count
-            $hd = @(Get-ChildItem -LiteralPath 'D:\docker-tmp' -Directory -Filter 'hcs*' -Force -ErrorAction SilentlyContinue).Count
             $dt = @(Get-ChildItem -LiteralPath 'D:\docker\tmp' -Force -ErrorAction SilentlyContinue).Count
-            $readable = try { $null = [IO.Directory]::GetDirectories('C:\Windows\SystemTemp'); 1 } catch { 0 }
-            Add-Content -LiteralPath $Csv -Value ("{0},{1},{2},{3},{4},{5},{6}" -f [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(), $c, $d, $hc, $hd, $dt, $readable)
+            Add-Content -LiteralPath $Csv -Value ("{0},{1},{2},{3}" -f [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(), $c, $d, $dt)
             Start-Sleep -Seconds 5
           }
           '@
@@ -81,7 +164,6 @@ jobs:
         with:
           registry-password: ${{ secrets.GHCR_PAT }}
           short-path-target: /d/ws
-          stage-temp: ${{ matrix.stage-temp }}
           cleanup: ${{ matrix.cleanup }}
 
       - name: The prologue is done
@@ -129,7 +211,6 @@ jobs:
         if: ${{ always() }}
         env:
           VARIANT: ${{ matrix.variant }}
-          STAGE_TEMP: ${{ matrix.stage-temp }}
           CLEANUP_MODE: ${{ steps.prep.outputs.cleanup }}
           PULL_SECONDS: ${{ steps.prep.outputs.pull-seconds }}
           HOST_COPY_SECONDS: ${{ steps.hostcopy.outputs.seconds }}
@@ -145,15 +226,12 @@ jobs:
           $workload = if (Test-Path 'D:\ws\probe-workload.txt') { (Get-Content 'D:\ws\probe-workload.txt' -Raw).Trim() } else { '' }
           $prologue = [int]$env:PROBE_T1 - [int]$env:PROBE_T0
           $runStep = if ($env:PROBE_T2) { [int]$env:PROBE_T2 - [int]$env:PROBE_T1 } else { '' }
-          $line = ('TIMING variant={0} cleanup={1} stage_temp={2} prologue_s={3} cleanup_s={4} pull_s={5} run_step_s={6} workload_s={7} cleanup_waited_s={8} host_copy_s={9} min_c_free_gb={10} min_d_free_gb={11} hcs_c_max={12} hcs_d_max={13} docker_tmp_max={14} systemtemp_readable={15} samples={16}' -f
-            $env:VARIANT, $env:CLEANUP_MODE, $(if ($env:STAGE_TEMP) { $env:STAGE_TEMP } else { 'default' }), $prologue, $cleanupS,
+          $line = ('TIMING variant={0} cleanup={1} prologue_s={2} cleanup_s={3} pull_s={4} run_step_s={5} workload_s={6} cleanup_waited_s={7} host_copy_s={8} min_c_free_gb={9} min_d_free_gb={10} docker_tmp_max={11} samples={12}' -f
+            $env:VARIANT, $env:CLEANUP_MODE, $prologue, $cleanupS,
             $env:PULL_SECONDS, $runStep, $workload, $waited, $env:HOST_COPY_SECONDS,
             ($rows | ForEach-Object { [double]$_.c_free_gb } | Measure-Object -Minimum).Minimum,
             ($rows | ForEach-Object { [double]$_.d_free_gb } | Measure-Object -Minimum).Minimum,
-            ($rows | ForEach-Object { [int]$_.hcs_c } | Measure-Object -Maximum).Maximum,
-            ($rows | ForEach-Object { [int]$_.hcs_d } | Measure-Object -Maximum).Maximum,
             ($rows | ForEach-Object { [int]$_.docker_tmp } | Measure-Object -Maximum).Maximum,
-            ($rows | ForEach-Object { [int]$_.systemtemp_readable } | Measure-Object -Minimum).Minimum,
             $rows.Count)
           Write-Host $line
           $line >> $env:GITHUB_STEP_SUMMARY

@@ -53,23 +53,22 @@ runs:
         if ($env:ANTF_CLEANUP_MODE -eq 'background' -and -not $self) {
           Write-Host '::warning::cleanup-disk-space cannot find its own script to detach; cleaning up in the foreground instead.'
         } elseif ($env:ANTF_CLEANUP_MODE -eq 'background') {
-          foreach ($n in 'done', 'waited', 'pid') { Remove-Item -LiteralPath (Join-Path $state "disk-cleanup.$n") -ErrorAction SilentlyContinue }
+          foreach ($n in 'done', 'waited', 'pid', 'log') { Remove-Item -LiteralPath (Join-Path $state "disk-cleanup.$n") -ErrorAction SilentlyContinue }
           $copy = Join-Path $state 'disk-cleanup.ps1'
-          Copy-Item -LiteralPath $self -Destination $copy -Force
-          $env:ANTF_CLEANUP_MODE = 'detached'
-          # File redirection, not a pipe: the child must outlive this step's process.
-          $detach = @{
-            FilePath               = (Get-Process -Id $PID).Path
-            ArgumentList           = @('-NoProfile', '-NonInteractive', '-File', "`"$copy`"")
-            RedirectStandardOutput = (Join-Path $state 'disk-cleanup.log')
-            RedirectStandardError  = (Join-Path $state 'disk-cleanup.err.log')
-            PassThru               = $true
+          $log = Join-Path $state 'disk-cleanup.log'
+          # The copy starts outside this step's environment, so it carries its own mode and state directory.
+          Set-Content -LiteralPath $copy -Value (@("`$env:ANTF_CLEANUP_MODE = 'detached'; `$env:RUNNER_TEMP = '$state'") + @(Get-Content -LiteralPath $self))
+          $line = "`"$((Get-Process -Id $PID).Path)`" -NoProfile -NonInteractive -Command `"& '$copy' *> '$log'`""
+          # WMI starts it outside the step's process tree, which the runner kills when the step ends (a Start-Process child died with it).
+          $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $line; CurrentDirectory = $state }
+          $proc = if ($created.ReturnValue -eq 0) { Get-Process -Id $created.ProcessId -ErrorAction SilentlyContinue }
+          if ($proc) {
+            Set-Content -LiteralPath (Join-Path $state 'disk-cleanup.pid') -Value "$($proc.Id) $($proc.StartTime.ToUniversalTime().Ticks)"
+            Add-Content -LiteralPath $env:GITHUB_ENV -Value 'ANTF_DISK_CLEANUP=running'
+            Write-Host "Disk cleanup continues in the background (pid $($proc.Id)); run-in-windows-container waits for it after its container run."
+            exit 0
           }
-          $proc = Start-Process @detach
-          Set-Content -LiteralPath (Join-Path $state 'disk-cleanup.pid') -Value "$($proc.Id) $($proc.StartTime.ToUniversalTime().Ticks)"
-          Add-Content -LiteralPath $env:GITHUB_ENV -Value 'ANTF_DISK_CLEANUP=running'
-          Write-Host "Disk cleanup continues in the background (pid $($proc.Id)); run-in-windows-container waits for it after its container run."
-          exit 0
+          Write-Host "::warning::cleanup-disk-space could not detach (Win32_Process.Create returned $($created.ReturnValue)); cleaning up in the foreground instead."
         }
 
         # cmd's rmdir is minutes faster than the PowerShell cmdlet on trees of many small files.

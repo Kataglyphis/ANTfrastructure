@@ -53,15 +53,13 @@ below), `image-arm64` (optional — defaults to the arm64 cross bundle, pulled
 instead of `image` under `target-arch: arm64`), `registry`, `registry-username`,
 `registry-password`, `checkout`, `fetch-depth`, `submodules`,
 `short-path-target`, `exclude-submodules`, `token`, `data-root`,
-`required-free-gb`, `free-disk-space`, `cleanup`, `stage-temp`,
-`measure-data-root`. Outputs: `image` (the ref that was pulled), `data-root`,
-`workspace`, `cleanup` (the mode that ran), `pull-seconds`.
+`required-free-gb`, `free-disk-space`, `cleanup`, `measure-data-root`.
+Outputs: `image` (the ref that was pulled), `data-root`, `workspace`, `cleanup`
+(the mode that ran), `pull-seconds`.
 
 `cleanup` says when `cleanup-disk-space` runs: `before` the pull (the old path),
-`after-pull` in the background, or `off`. Empty follows `free-disk-space`.
-`stage-temp` moves hcsshim's per-layer staging off C: (see `set-docker-data-root`).
-Why neither the cleanup nor C: is needed for the pull any more, and the measured
-prologue of each combination:
+`after-pull` in the background, or `off`. Empty follows `free-disk-space`. The
+pull itself never touches C: once the data-root is on D:. Measured per mode:
 [`docs/windows-container-build-performance.md` § The prologue on hosted runners](../../docs/windows-container-build-performance.md#the-prologue-on-hosted-runners).
 
 `submodules` reaches the checkout only when `short-path-target` is empty — with
@@ -103,15 +101,7 @@ writes. See
 Points the Docker daemon's data-root at another drive **before the image is
 pulled**, so a multi-GB Windows image lands where there is room. Inputs:
 `data-root` (default `D:\docker`), `service-name`, `required-free-gb`,
-`ready-timeout-seconds`, `stage-temp`. Outputs: `data-root`, `free-gb`,
-`stage-temp`.
-
-`stage-temp` is the other half of a pull's disk use. hcsshim writes every layer to
-a staging directory before importing it into the data-root, and for the SYSTEM
-docker service that directory is `C:\Windows\SystemTemp`, whatever `TMP` and
-`TEMP` say. A directory here becomes the service's `SystemTemp` (the one variable
-`GetTempPath2` honours for SYSTEM), ACL'd to SYSTEM and Administrators, during the
-same restart.
+`ready-timeout-seconds`. Outputs: `data-root`, `free-gb`.
 
 Why it exists, measured on a windows-2025 runner 2026-08-11:
 

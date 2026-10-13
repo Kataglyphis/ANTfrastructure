@@ -379,21 +379,24 @@ Before the container step, every Windows lane spent 23-34 min in
 - **The pull**: 13.4-15.6 min for the 16.7 GB `:winamd64`. About 1.5 min of that
   is download; the rest is hcsshim importing one layer after another.
 
-**hcsshim stages every layer on C:, whatever the data-root says.** It writes each
-non-base layer to `os.MkdirTemp("", "hcs")`, imports it into the data-root and
-removes the staging tree. Go asks `GetTempPath2`, which for a SYSTEM process such
-as the docker service ignores `TMP` and `TEMP` and returns
-`C:\Windows\SystemTemp`, unless a `SystemTemp` variable names another directory.
-So every layer was written to C:, copied to D: and deleted from C:. The cleanup's
-free space is what kept that staging away from the band below ~25 GB where
-hcsshim misbehaves ([`failure-modes.md`](failure-modes.md)).
+**The pull does not use C: at all once the data-root is on D:.** hcsshim writes each
+layer to a staging directory before importing it, and the expectation was that the
+SYSTEM docker service stages under `C:\Windows\SystemTemp`. It does not here.
+Measured with a 5-second sampler in run 38425248553, with no cleanup before the
+pull: C: stayed between 31.71 and 31.92 GB free for the whole pull, while D: dropped
+and recovered by up to 12.8 GB at a time as each large layer was staged and
+removed: the staging follows the data-root to D:. Setting the service's `SystemTemp` to
+`D:\docker-tmp` changed nothing (pulls of 904 and 920 s against 874 s without it),
+so the prologue has no input for it.
 
-The prologue's switches, each with the old path kept:
+The cleanup is therefore not needed for the pull. `prepare-windows-container-host`'s
+`cleanup` input says when it runs, with the old path kept:
 
-| Input | Values | What it does |
-|---|---|---|
-| `stage-temp` | empty, or a directory such as `D:\docker-tmp` | Sets the docker service's `SystemTemp` there (ACL'd to SYSTEM and Administrators) during the data-root restart, so staging moves to D: |
-| `cleanup` | `before`, `after-pull`, `off` | When `cleanup-disk-space` runs. `after-pull` starts it detached once the pull is done; `run-in-windows-container` waits for it after its container run |
+| `cleanup` | What runs |
+|---|---|
+| `before` | The cleanup, then the pull: the old order |
+| `after-pull` | The pull, then the cleanup as a detached process; `run-in-windows-container` waits for it after its container run |
+| `off` | No cleanup |
 
 `after-pull` keeps the host steps' view of C: what it was: they run after the first
 container step, and by then the cleanup has finished. `off` leaves the runner's own
