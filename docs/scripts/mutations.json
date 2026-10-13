@@ -13549,10 +13549,18 @@
  {
   "id": "packaging.host-payload-abi-off-marker-honest",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "      if [ \"${total}\" -gt 0 ]; then\n        fail \"/opt/android/.android-payload-off says",
-  "replace": "      if false; then\n        fail \"/opt/android/.android-payload-off says",
+  "find": "      elif [ \"${total}\" -gt 0 ]; then\n        fail \"/opt/android/.android-payload-off says",
+  "replace": "      elif false; then\n        fail \"/opt/android/.android-payload-off says",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "the ABI gate skips a payload-off image, so a marker left over a real payload would skip the one gate that judges /opt/android"
+ },
+ {
+  "id": "packaging.host-payload-amd64-must-carry",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "      if [ \"${target_arch}\" = amd64 ]; then\n        fail \"the amd64 image carries no Android payload",
+  "replace": "      if false; then\n        fail \"the amd64 image carries no Android payload",
+  "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+  "why": "a HOST_PAYLOAD_ARCHES without amd64 would publish an amd64 image with every Android gate skipped, and the Android lane breaks after the publish"
  },
  {
   "id": "packaging.host-payload-chain-checks-early",

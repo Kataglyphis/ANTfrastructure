@@ -624,5 +624,8 @@ Environment overrides:
                                 (default, = image), image (the android image, as
                                 before 2026-09-24) or export (a directory copied
                                 out before each package build)
+  HOST_PAYLOAD_ARCHES          Arches whose package keeps the x86_64-host Android
+                                SDK and Rust toolchain: amd64 (default), a comma
+                                list, or none
 EOF
 }

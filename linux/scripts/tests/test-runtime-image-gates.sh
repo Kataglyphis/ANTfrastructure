@@ -1253,7 +1253,7 @@ _abi_gate() {
     _rt_run() { printf "%s\n" "${ABI_OUT}"; }
     '"$(_extract _android_abi_want)"'
     '"$(_extract check_android_abi)"'
-    check_android_abi img arm64' 2>&1
+    check_android_abi img "${ABI_ARCH:-arm64}"' 2>&1
 }
 
 # Machine 62 (x86-64) is the broken stage's output; 183 (AArch64) is the fixed one's.
@@ -1300,6 +1300,10 @@ OFF")" "SKIP the Android payload is off" "an arm64 image without the payload has
 t_assert_contains "$(_abi_gate "ABI arm64-v8a
 OFF
 MACH 183 4 /opt/android/x.so")" "yet /opt/android carries 4 ELF object(s)" "a marker over a payload is a lie"
+
+t_case "an amd64 image with the payload off fails: the Android lane builds there"
+t_assert_contains "$(ABI_ARCH=amd64 _abi_gate "ABI arm64-v8a
+OFF")" "the amd64 image carries no Android payload" "a HOST_PAYLOAD_ARCHES without amd64 must not publish green"
 
 # An exemption is only legitimate when another gate, here check_android_abi, takes the tree over.
 t_case "/opt/android is exempt from tree-arch and owned by the ABI gate instead"

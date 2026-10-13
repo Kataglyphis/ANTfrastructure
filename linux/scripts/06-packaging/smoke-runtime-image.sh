@@ -759,7 +759,7 @@ _consumer_jdk_verdict() {
 
 _consumer_android_verdict() {
   local row="$1" val root dir onpath off
-  # The NDK is linux-x86_64 only, so the build host decides; read android-sdk.sh's payload-off record.
+  # The NDK is linux-x86_64 only; prune-host-payload.sh (or android-sdk.sh on a foreign host) writes the marker.
   off="$(_consumer_contract_fact "$2" FACT android-payload-off)"
   if [ -z "${off}" ]; then
     printf 'NOFACT %s no FACT android-payload-off line' "${row}"
@@ -962,7 +962,7 @@ _consumer_chrome_verdict() {
 _consumer_emulator_verdict() {
   local row="$1" p="$2" want="$3" img="$4" have got
   case "$(_consumer_contract_fact "${p}" FACT android-payload-off)" in
-    yes) printf 'SKIP %s the android payload is off for this build host' "${row}"; return 0 ;;
+    yes) printf 'SKIP %s the android payload is off for this image' "${row}"; return 0 ;;
     no) ;;
     *)  printf 'NOFACT %s no FACT android-payload-off line' "${row}"; return 0 ;;
   esac
@@ -2518,7 +2518,10 @@ check_android_abi() {
     # A payload-off image has no ABI to judge, but an object under /opt/android makes the marker a lie.
     if printf '%s\n' "${out}" | grep -qx OFF; then
       total="$(printf '%s\n' "${out}" | awk '$1 == "MACH" {n += $3} END {print n + 0}')"
-      if [ "${total}" -gt 0 ]; then
+      # The Android lane builds only on amd64, so an amd64 image without the payload breaks it after the publish.
+      if [ "${target_arch}" = amd64 ]; then
+        fail "the amd64 image carries no Android payload (/opt/android/.android-payload-off): the Android lane runs on amd64, so HOST_PAYLOAD_ARCHES must keep amd64"
+      elif [ "${total}" -gt 0 ]; then
         fail "/opt/android/.android-payload-off says the ${target_arch} image ships no Android payload, yet /opt/android carries ${total} ELF object(s)"
       else
         echo "  SKIP the Android payload is off for this image (/opt/android/.android-payload-off)"

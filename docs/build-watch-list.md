@@ -119,9 +119,9 @@ report **0** compile requests, not another container's hundreds.
 |---|---|
 | PASS | amd64: `host-payload: HOST_PAYLOAD=on for amd64; the Android SDK, its payloads and the Rust toolchain are copied as built` |
 | PASS | arm64, riscv64: `host-payload: emptying /usr/local/rustup and /usr/local/cargo but its registry (… -- <arch> runs <triple>, …)`, then `host-payload: emptying /opt/android-sdk and /opt/android (HOST_PAYLOAD=off for <arch>)`; later in the package RUN, `Rust toolchain in /usr/local/rustup is not <triple>: -- reinstalling natively` |
-| FAIL | any `host-payload: emptying` on amd64 — the Android lane loses its SDK |
+| FAIL | any `host-payload: emptying` on amd64 — the Android lane loses its SDK; the smoke's `check_android_abi` fails such an image too |
 | FAIL | the smoke's `BAD android-home … says the image ships no SDK`: the ENV and the pruned trees disagree |
-| on the bytes | `nerdctl run --platform linux/arm64 <image> sh -c 'du -sh /opt/android-sdk /opt/android; echo "${ANDROID_HOME:-empty}"'` prints `4.0K`, `8.0K` and `empty`; the arm64 child's compressed size falls by about 3.4 GB against 10.11 GB |
+| on the bytes | `nerdctl run --platform linux/arm64 <image> sh -c 'du -sh /opt/android-sdk /opt/android; echo "${ANDROID_HOME:-empty}"'` prints `4.0K`, about `8.0K` (the `.android-payload-off` marker, plus `.android-emulator-off` where the emulator installer wrote one) and `empty`; the arm64 child's compressed size falls by about 3.4 GB against 10.11 GB |
 
 ### absl, the defect the corrected probe found (CL1)
 
