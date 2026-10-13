@@ -571,6 +571,20 @@ jobs:
           docker image inspect $image --format '{{.Os}}' | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "output image '$image' is not the image that was pulled" }
 
+      # free-disk-space 'true' with no cleanup input is the default, hide: the toolchains stay on disk but leave PATH.
+      - name: The default cleanup deletes nothing and hides the toolchains from PATH
+        run: |
+          $mode = '${{ steps.prep.outputs.cleanup }}'
+          if ($mode -ne 'hide') { throw "prepare-windows-container-host output cleanup='$mode', expected the default hide" }
+          if (-not (Test-Path -LiteralPath 'C:\hostedtoolcache')) { throw 'hide deleted C:\hostedtoolcache' }
+          $roots = 'C:\hostedtoolcache', 'C:\Strawberry', 'C:\Program Files\LLVM', 'C:\Program Files\CMake', 'C:\Program Files\dotnet'
+          $left = @($env:PATH -split ';' | Where-Object { $e = $_.TrimEnd('\'); $roots | Where-Object { $e -like $_ -or $e -like "$_\*" } })
+          if ($left) { throw "still on PATH after hide: $($left -join '; ')" }
+          foreach ($tool in 'git', 'docker', 'pwsh') {
+            if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "hide took $tool off PATH" }
+          }
+          Write-Host "hide OK: $(@($env:PATH -split ';').Count) PATH entries left, the tool cache still on disk"
+
       # Unlike the Linux sibling, extra-args here is one literal argv element per line.
       - name: run-in-windows-container (-Command)
         uses: ./.github/actions/run-in-windows-container

@@ -27,8 +27,10 @@ Input `mode`: `foreground` (default) deletes now. `background` starts the same
 deletions as a detached process and returns; it leaves out the TEMP purge and the
 Docker prune, which would race the steps running beside it. `wait` blocks until
 that run has ended and prints its log (`Wait-DiskCleanup.ps1`); with none running
-it does nothing. `prepare-windows-container-host` starts the background run by
-default (`cleanup: after-pull`), and `run-in-windows-container` waits for it after
+it does nothing. `hide` deletes nothing. It takes every `PATH` entry under a directory
+the other modes delete off `PATH` for the job's later steps (`Hide-CleanupRoots.ps1`),
+which is what `prepare-windows-container-host` runs by default. Under its
+`cleanup: after-pull`, `run-in-windows-container` waits for the background run after
 its container run. A job that runs host steps before its first container run, or has
 none, calls this action with `mode: wait` itself.
 
@@ -57,8 +59,12 @@ instead of `image` under `target-arch: arm64`), `registry`, `registry-username`,
 Outputs: `image` (the ref that was pulled), `data-root`, `workspace`, `cleanup`
 (the mode that ran), `pull-seconds`.
 
-`cleanup` says when `cleanup-disk-space` runs: `after-pull` in the background
-(the default), `before` the pull (the old path, 9.8-13.1 min longer), or `off`.
+`cleanup` says whether and when `cleanup-disk-space` runs:
+- `hide` (the default) deletes nothing and takes the cleanup's directories off `PATH`.
+- `after-pull` deletes in the background beside the first container run.
+- `before` deletes ahead of the pull, the old path, 9.8-13.1 min longer.
+- `off` changes nothing.
+
 Empty follows `free-disk-space`. The pull itself never touches C: once the
 data-root is on D:. Measured per mode:
 [`docs/windows-container-build-performance.md` § The prologue on hosted runners](../../docs/windows-container-build-performance.md#the-prologue-on-hosted-runners).
