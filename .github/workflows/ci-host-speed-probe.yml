@@ -124,10 +124,16 @@ jobs:
         include:
           - variant: win-today
             cleanup: 'before'
+            priority: 'normal'
           - variant: win-off
             cleanup: 'off'
+            priority: 'normal'
           - variant: win-afterpull
             cleanup: 'after-pull'
+            priority: 'normal'
+          - variant: win-afterpull-idle
+            cleanup: 'after-pull'
+            priority: 'idle'
     defaults:
       run:
         shell: pwsh
@@ -165,6 +171,7 @@ jobs:
           registry-password: ${{ secrets.GHCR_PAT }}
           short-path-target: /d/ws
           cleanup: ${{ matrix.cleanup }}
+          cleanup-priority: ${{ matrix.priority }}
 
       - name: The prologue is done
         run: |
@@ -184,7 +191,20 @@ jobs:
             foreach ($i in 1..48) { [IO.File]::WriteAllBytes((Join-Path $dir "f$i.bin"), $buf) }
           }
           foreach ($round in 1..2) { $null = Get-ChildItem 'C:\ws\probe-out', 'C:\probe-scratch' -File | Get-FileHash -Algorithm SHA256 }
+          $io = [int]$sw.Elapsed.TotalSeconds
+          # A compile's shape: a phase on every core, then a serial one like a link.
+          $cores = [Environment]::ProcessorCount
+          foreach ($round in 1..40) {
+            1..$cores | ForEach-Object -ThrottleLimit $cores -Parallel {
+              $sha = [Security.Cryptography.SHA256]::Create()
+              $b = [byte[]]::new(64MB)
+              foreach ($i in 1..120) { $null = $sha.ComputeHash($b) }
+            }
+            $sha = [Security.Cryptography.SHA256]::Create()
+            foreach ($i in 1..60) { $null = $sha.ComputeHash($buf) }
+          }
           $s = [int]$sw.Elapsed.TotalSeconds
+          Write-Host "WORKLOAD io_seconds=$io cpu_seconds=$($s - $io) cores=$cores"
           Set-Content -LiteralPath 'C:\ws\probe-workload.txt' -Value $s
           Write-Host "WORKLOAD seconds=$s"
           '@

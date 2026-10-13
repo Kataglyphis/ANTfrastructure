@@ -13,6 +13,13 @@ inputs:
       with none running it does nothing. run-in-windows-container waits by itself.
     required: false
     default: 'foreground'
+  priority:
+    description: >-
+      Priority class of a background run and every process it starts: normal (the
+      default), below-normal or idle. A lower class yields the CPU to a container
+      build running beside it.
+    required: false
+    default: 'normal'
 
 runs:
   using: 'composite'
@@ -21,9 +28,13 @@ runs:
       shell: pwsh
       env:
         CLEANUP_MODE: ${{ inputs.mode }}
+        CLEANUP_PRIORITY: ${{ inputs.priority }}
       run: |
         if ($env:CLEANUP_MODE -notin 'foreground', 'background', 'wait') {
           throw "cleanup-disk-space: mode must be foreground, background or wait, not '$env:CLEANUP_MODE'"
+        }
+        if ($env:CLEANUP_PRIORITY -notin 'normal', 'below-normal', 'idle') {
+          throw "cleanup-disk-space: priority must be normal, below-normal or idle, not '$env:CLEANUP_PRIORITY'"
         }
 
     - name: Disk space BEFORE cleanup (all drives)
@@ -42,6 +53,7 @@ runs:
       shell: pwsh
       env:
         ANTF_CLEANUP_MODE: ${{ inputs.mode }}
+        ANTF_CLEANUP_PRIORITY: ${{ inputs.priority }}
       run: |
         $ErrorActionPreference = 'Continue'
         $cleanupStart = Get-Date
@@ -59,13 +71,16 @@ runs:
           # The copy starts outside this step's environment, so it carries its own mode and state directory.
           Set-Content -LiteralPath $copy -Value (@("`$env:ANTF_CLEANUP_MODE = 'detached'; `$env:RUNNER_TEMP = '$state'") + @(Get-Content -LiteralPath $self))
           $line = "`"$((Get-Process -Id $PID).Path)`" -NoProfile -NonInteractive -Command `"& '$copy' *> '$log'`""
+          # Win32 priority classes; the children it starts (cmd's rmdir) inherit idle and below-normal.
+          $class = @{ 'normal' = 32; 'below-normal' = 16384; 'idle' = 64 }[$env:ANTF_CLEANUP_PRIORITY]
+          $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ PriorityClass = [uint32]$class }
           # WMI, not Start-Process: a child with redirected output died seconds after its step ended (probe run 38455303000).
-          $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $line; CurrentDirectory = $state }
+          $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $line; CurrentDirectory = $state; ProcessStartupInformation = $startup }
           $proc = if ($created.ReturnValue -eq 0) { Get-Process -Id $created.ProcessId -ErrorAction SilentlyContinue }
           if ($proc) {
             Set-Content -LiteralPath (Join-Path $state 'disk-cleanup.pid') -Value "$($proc.Id) $($proc.StartTime.ToUniversalTime().Ticks)"
             Add-Content -LiteralPath $env:GITHUB_ENV -Value 'ANTF_DISK_CLEANUP=running'
-            Write-Host "Disk cleanup continues in the background (pid $($proc.Id)); run-in-windows-container waits for it after its container run."
+            Write-Host "Disk cleanup continues in the background (pid $($proc.Id), priority $($proc.PriorityClass)); run-in-windows-container waits for it after its container run."
             exit 0
           }
           Write-Host "::warning::cleanup-disk-space could not detach (Win32_Process.Create returned $($created.ReturnValue)); cleaning up in the foreground instead."

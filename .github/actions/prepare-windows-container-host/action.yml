@@ -152,6 +152,12 @@ inputs:
       'true' -> after-pull, 'false' -> off.
     required: false
     default: ''
+  cleanup-priority:
+    description: >-
+      Priority class of the after-pull cleanup: normal, below-normal or idle
+      (cleanup-disk-space's priority input).
+    required: false
+    default: 'normal'
   measure-data-root:
     description: >-
       Add a third probe to the disk report after the pull: the size of the
@@ -326,6 +332,7 @@ runs:
       uses: Kataglyphis/ANTfrastructure/.github/actions/cleanup-disk-space@develop
       with:
         mode: background
+        priority: ${{ inputs.cleanup-priority }}
 
     - name: Resolve the workspace path
       id: ws
