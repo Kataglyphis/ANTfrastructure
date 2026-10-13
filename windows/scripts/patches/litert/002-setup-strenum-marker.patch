@@ -1,8 +1,8 @@
 diff --git a/ci/tools/python/wheel/setup_with_binary.py b/ci/tools/python/wheel/setup_with_binary.py
-index 3463777..259b23b 100644
+index 766047e..00ee1ad 100644
 --- a/ci/tools/python/wheel/setup_with_binary.py
 +++ b/ci/tools/python/wheel/setup_with_binary.py
-@@ -189,7 +189,7 @@ setuptools.setup(
+@@ -190,7 +190,7 @@ setuptools.setup(
          ]
      },
      install_requires=[

@@ -254,6 +254,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       torch venv installed it from there, and smoke section 20 found it. All 16 stages ran green in 10347 s; the smoke
       gate passed 273, failed 0 and skipped 1 (CUDA on the CPU image). **Left:** publishing that `:winamd64`, and the
       rocm and nvidia chains proving their venvs (rocm's `rocm-1` LiteRT check).
+      **LiteRT v2.3.0 (2026-10-13):** probe `probe-litert-230` built `ai_edge_litert-2.3.0-cp315-cp315-win_amd64.whl`
+      with the production driver. It needed patch `003`, because rules_ml_toolchain passes `base_url` to LiteRT's new
+      rules_python 2.2.0. All 4545 compile, link and archive actions ran on LLVM tools, and the smoke passed. No chain has
+      built v2.3.0 yet.
       - **Owner decisions 2026-10-12:**
         - Build the full bazel wheel `//ci/tools/python/wheel:litert_wheel` at `LITERT_VERSION`, with clang-cl.
           Rejected: a hybrid that rebuilds only `pywrap_litert_common.dll` and takes 77 members from the cp314 wheel,
@@ -349,10 +353,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       Close when a production toolset ships #6298.
 - [b] **CON54 — Let the litert-lm CMake superbuild consume the already-built LiteRT
       install** [M, ★★]. The hub flow builds LiteRT (bazel, `LITERT_VERSION=v2.2.0` =
-      145c7523, 2026-08-06) and then litert-lm's superbuild builds LiteRT a SECOND time
+      145c7523, 2026-08-06; v2.3.0 = 4352e261, 2026-10-07, since 2026-10-13) and then
+      litert-lm's superbuild builds LiteRT a SECOND time
       from `litert.cmake`'s `GIT_TAG main` — two different copies in one product, both
       floating (v0.17.1's WORKSPACE pins 9fe5be45, 2026-08-27, 3 weeks NEWER than the
-      prebuilt). The harness already sends `CMAKE_PREFIX_PATH=C:\runtime\lib\litert`
+      v2.2.0 prebuilt, 6 weeks older than v2.3.0). The harness already sends `CMAKE_PREFIX_PATH=C:\runtime\lib\litert`
       but the lane has no consumer for it: the top-level orchestrator is LANGUAGES NONE,
       and litert.cmake defines litert_external unconditionally (its "already installed"
       message prints on every path; the only skip fallback sits behind a FATAL_ERROR
@@ -362,7 +367,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       from the graph — the chunk where google-ai-edge/LiteRT#tensor/examples
       (gemma3's find_package(Protobuf REQUIRED)) fires, and the largest slice of the
       superbuild's wall time. The direct-consumption build is also the sharpest
-      API-skew probe: if v2.2.0 lacks what litert-lm's sources use, the compile fails
+      API-skew probe: if the pinned LiteRT lacks what litert-lm's sources use, the compile fails
       with the missing member visible. Repro: litertlm-harness runs 1-19, Oct 4 2026.
 - [ ] **CON86 — find why a bind of a branch image opens none of its files** [M, ★]. Since
       2026-10-09 the media fan-in binds `media-core-view` and `media-tvm-view`, which add one

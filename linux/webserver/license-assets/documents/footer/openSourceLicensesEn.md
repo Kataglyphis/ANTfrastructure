@@ -43,7 +43,7 @@ its own license terms.
 | --- | --- | --- | --- |
 | ONNX Runtime | v1.31.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.17.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
-| LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
+| LiteRT (TensorFlow Lite) | v2.3.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | GStreamer Rust plugins (gst-plugins-rs) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
@@ -188,7 +188,7 @@ its own license terms.
 | Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\vulkan-loader, on PATH in the default and nvidia images; the arm64 bundle's copy and licence in C:\runtime\lavapipe) | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 (Khronos Vulkan-Loader) with MIT components (cJSON, Dave Gamble; joseph werle); VulkanRT-License.txt ships in C:\vulkan-loader |
 | Mesa lavapipe (the CPU Vulkan ICD: lvp_icd.x86_64/aarch64.json + vulkan_lvp.dll in C:\runtime\lavapipe; mmozeiko/build-mesa, SHA256-pinned) | 26.2.4 | [github.com/mmozeiko/build-mesa](https://github.com/mmozeiko/build-mesa) | MIT (Mesa 3D; the 7z carries no licence text, so this release repository and mesa3d.org are the pointer) |
 | PyTorch + TorchVision for ROCm (built from upstream source against TheRock's ROCm 10.1.0 SDK, kernels for gfx1201 and gfx1200, on AMD's rocm[libraries] runtime; rocm variant only) | torch 2.14.1+rocm10.1.0 and torchvision 0.29.1+rocm10.1.0 from the v2.14.1 / v0.29.1 tags (commits pinned as TORCH_ROCM_WINDOWS_*_COMMIT), with AMD's rocm-sdk runtime and device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*) | [github.com/pytorch/pytorch](https://github.com/pytorch/pytorch) | BSD 3-Clause (PyTorch, TorchVision); the bundled ROCm runtime as above (MIT/BSD/Apache-2.0 plus the HIP runtime without a licence file) |
-| LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv on every amd64 variant: built from source for PYTHON_VERSION, CON91) | LITERT_VERSION from source for PYTHON_VERSION's cpXY (CON91); its libLiteRtWebGpuAccelerator.dll from the 2.2.0 PyPI wheel, pinned as LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256 | [github.com/google-ai-edge/LiteRT](https://github.com/google-ai-edge/LiteRT) | Apache 2.0 (the wheel's METADATA; the wheel carries no licence or NOTICE text). libLiteRtWebGpuAccelerator.dll is a closed Google binary: LiteRT's Apache-2.0 wrapper around ML Drift, which LiteRT's WORKSPACE declares with no public URL; it imports only system DLLs, so Dawn/Tint (BSD 3-Clause) are linked in statically |
+| LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv on every amd64 variant: built from source for PYTHON_VERSION, CON91) | LITERT_VERSION from source for PYTHON_VERSION's cpXY (CON91); its libLiteRtWebGpuAccelerator.dll from the 2.3.0 PyPI wheel, pinned as LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256 | [github.com/google-ai-edge/LiteRT](https://github.com/google-ai-edge/LiteRT) | Apache 2.0 (the wheel's METADATA, and since 2.3.0 LiteRT's LICENSE in its dist-info; no NOTICE text). libLiteRtWebGpuAccelerator.dll is a closed Google binary: LiteRT's Apache-2.0 wrapper around ML Drift, which LiteRT's WORKSPACE declares with no public URL; it imports only system DLLs, so Dawn/Tint (BSD 3-Clause) are linked in statically |
 
 ### Media Layer
 
@@ -202,7 +202,7 @@ its own license terms.
 | ONNX Runtime GenAI | v0.17.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | FFmpeg | n9.0.2 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
-| LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
+| LiteRT (TensorFlow Lite) | v2.3.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | LiteRT-LM | 0.18.0 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
 | Apache TVM | v0.27.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
 | AMD AMF SDK headers (FFmpeg --enable-amf; rocm variant only) | v1.5.3 | [github.com/GPUOpen-LibrariesAndSDKs/AMF](https://github.com/GPUOpen-LibrariesAndSDKs/AMF) | MIT |

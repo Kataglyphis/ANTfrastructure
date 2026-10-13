@@ -20,7 +20,7 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 # Export-LitertLmBridge.ps1 carries the same default: a LiteRT bump updates both.
-$LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.2.0'
+$LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.3.0'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 
 Write-Host "=== LiteRT source build ($LiteRtVersion, Ninja+clang-cl) ==="
@@ -95,7 +95,6 @@ if (Test-Path (Join-Path $SourceDir 'BUILD')) { Remove-Item (Join-Path $SourceDi
 $gpuEnv = Get-GpuEnvironment
 $cmakeExtra = @(
     '-DTFLITE_ENABLE_INSTALL=OFF'
-    '-DTFLITE_ENABLE_LABEL_IMAGE=OFF'
     '-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF'
     '-DTFLITE_ENABLE_RUY=ON'
     '-DTFLITE_ENABLE_RESOURCE=ON'
@@ -127,7 +126,7 @@ if (Test-WindowsCrossTarget) {
     # Composed first: `-ExtraArgs @(...) + (...)` would bind the `+` operand as a positional argument.
     $hostToolArgs = @(
         '-DTFLITE_ENABLE_INSTALL=OFF', '-DTFLITE_ENABLE_XNNPACK=OFF', '-DTFLITE_ENABLE_GPU=OFF',
-        '-DTFLITE_ENABLE_RUY=OFF', '-DTFLITE_ENABLE_LABEL_IMAGE=OFF', '-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF'
+        '-DTFLITE_ENABLE_RUY=OFF', '-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF'
     ) + @(Get-LlvmArchiverCmakeArg)
     # The link environment around the host pass is logged: a target configure after it once lost kernel32.lib.
     $probeVars = @('LIB', 'LIBPATH', 'VCToolsInstallDir', 'VSCMD_ARG_TGT_ARCH', 'WindowsSdkDir', 'UniversalCRTSdkDir')

@@ -1,0 +1,40 @@
+diff --git a/litert_workspace.bzl b/litert_workspace.bzl
+index f67bbea..fb5fcb0 100644
+--- a/litert_workspace.bzl
++++ b/litert_workspace.bzl
+@@ -230,6 +230,7 @@ def litert_workspace():
+     # Rules ML Toolchain
+     tf_http_archive(
+         name = "rules_ml_toolchain",
++        patch_file = ["//third_party/py:rules_ml_toolchain_base_urls.patch"],
+         sha256 = "3b05687842427041c65d1bc2f4aeda3a3079557120f5be8c34690087a88c5de5",
+         strip_prefix = "rules_ml_toolchain-2eddbc595cc0bbe650c2640204f66b14f015f1a8",
+         urls = tf_mirror_urls(
+diff --git a/third_party/py/BUILD b/third_party/py/BUILD
+index 40c1eda..fbce275 100644
+--- a/third_party/py/BUILD
++++ b/third_party/py/BUILD
+@@ -19,4 +19,5 @@ exports_files([
+     "python_wheel.bzl",
+     "rules_python_scope.patch",
+     "rules_python_freethreaded.patch",
++    "rules_ml_toolchain_base_urls.patch",
+ ])
+diff --git a/third_party/py/rules_ml_toolchain_base_urls.patch b/third_party/py/rules_ml_toolchain_base_urls.patch
+new file mode 100644
+index 0000000..4997635
+--- /dev/null
++++ b/third_party/py/rules_ml_toolchain_base_urls.patch
+@@ -0,0 +1,12 @@
++diff --git a/py/python_register_toolchain.bzl b/py/python_register_toolchain.bzl
++index 64fbb28..9697b50 100644
++--- a/py/python_register_toolchain.bzl
+++++ b/py/python_register_toolchain.bzl
++@@ -64,7 +64,6 @@ def python_register_toolchain(name = "python", python_version = None, **kwargs):
++ 
++         python_register_toolchains(
++             name = get_toolchain_name_per_python_version(name),
++-            base_url = "",
++             ignore_root_user_error = True,
++             python_version = tool_version,
++             # NOTE: @rules_python//python/config_settings:py_freethreaded=yes/no

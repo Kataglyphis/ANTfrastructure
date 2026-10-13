@@ -36,7 +36,7 @@ HOST_CXX="$(resolve_host_compiler cxx)"
 
 mkdir -p litert/build-android && cd litert/build-android
 
-# v2.2.0's default LiteCore URL went 404 (upstream main dropped its 1.1.0/ path segment), and file(DOWNLOAD) checks neither status nor hash.
+# The default LiteCore URL (v2.2.0 and v2.3.0 alike) went 404 (upstream main dropped its 1.1.0/ path segment), and file(DOWNLOAD) checks neither status nor hash.
 litecore_url="https://soc-developer.semiconductor.samsung.com/api/v1/resource/download-file/ai-litecore-ubuntu2404-v1.1.0.tar.gz"
 litecore_sha256="7d79a04db47227b8585bdf9abb0a7b52f2ec497d8a64ecc3e66ef502e41a07b2"
 litecore_root="${PWD}/_litecore"

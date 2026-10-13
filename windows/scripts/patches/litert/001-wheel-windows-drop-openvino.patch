@@ -1,5 +1,5 @@
 diff --git a/ci/tools/python/wheel/BUILD b/ci/tools/python/wheel/BUILD
-index e925608..07cfee9 100644
+index f1caf3b..710ad8a 100644
 --- a/ci/tools/python/wheel/BUILD
 +++ b/ci/tools/python/wheel/BUILD
 @@ -166,8 +166,6 @@ PACKAGE_DATA = select({

@@ -494,7 +494,7 @@ upstream's simply removes the comparisons.
 ## 13. LiteRT: the pip build script hardcodes what a cross build must override
 
 `linux/scripts/patches/litert/001-env-var-overrides.patch` ·
-applied by `03-media/build/litert/build-litert.sh` · applies to **v2.2.0**.
+applied by `03-media/build/litert/build-litert.sh` · applies to **v2.3.0**.
 
 Four kinds of change to `tflite/tools/pip_package/build_pip_package_with_cmake.sh`:
 
