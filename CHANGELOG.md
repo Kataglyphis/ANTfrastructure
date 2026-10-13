@@ -6,6 +6,41 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-13 — The arm64 and riscv64 images stop carrying the x86_64 host payload (CON96)
+
+- **3.41 GB of each foreign child goes.** The published `:latest` of 2026-10-11 ships three layers in its arm64
+  and riscv64 children that are byte-identical to amd64's (manifests `448591ff…`, `7689579f…`):
+  - `/opt/android-sdk`, 1 816 MB compressed. `adb`, `aapt2` and the NDK's only prebuilt toolchain are linux-x86_64.
+  - `/opt/android`, 850 MB. These libraries link only through that NDK.
+  - `/usr/local/rustup`, 745 MB. It is the cross builder's x86_64 toolchain, and `ensure_native_rust_toolchain`
+    deleted it again one layer later.
+
+  The Android lane runs on amd64 only.
+- **`prune-host-payload.sh`** runs in `Dockerfile.package`'s `artifact-source`, before the four COPYs, as the Vulkan
+  prune does. With `HOST_PAYLOAD=off` it empties the SDK and `/opt/android`, and writes
+  `/opt/android/.android-payload-off`, which `smoke-android.sh`, the emulator installer and the contract gate already
+  read. It also empties a Rust toolchain that is not the target's, and `/usr/local/cargo` but its registry, by
+  `ensure_native_rust_toolchain`'s own rule, so no shipped file changes there. Every directory stays, so the COPYs, the
+  manifest and the ARCH-PARITY table are unchanged.
+- **The ENV follows the payload.** `ANDROID_HOME`, `ANDROID_SDK_ROOT` and the six Android root variables are empty where
+  `HOST_PAYLOAD=off`, and `PATH` gains no Android entry there, the way `CHROME_EXECUTABLE` is empty on riscv64.
+  `ANDROID_TARGET_ABI` stays, since it names an ABI, not a path. Checked in Rancher's BuildKit with the
+  `dockerfile:1.28.0` frontend: `on` gives the old values and the old `PATH` byte for byte, `off` gives empty values.
+- **One switch, the old shape one step away.** `runtime_host_payload` passes `HOST_PAYLOAD` per arch. It is `on` for
+  the arches in `HOST_PAYLOAD_ARCHES` (default `amd64`). It is `off` for the rest, and for any artifact that no amd64
+  host built, which has no SDK anyway. `HOST_PAYLOAD_ARCHES=amd64,arm64,riscv64` rebuilds the images as published until
+  now. The chain and both runtime orchestrators refuse a bad list with exit 2. A manual `docker build` without the arg
+  keeps the old shape. A native arm64 or riscv64 chain keeps its own Rust toolchain.
+- **Gates.** The contract row `android-home` still skips a payload-off image, and now fails one that sets
+  `ANDROID_HOME` or `ANDROID_SDK_ROOT` anyway. `check_android_abi` skips a payload-off image, and fails one whose
+  `/opt/android` still holds objects. `test-host-payload.sh` covers the prune on fixture trees, its place in the
+  Dockerfile, the eight variables and the resolver. Ten new mutation entries bite, and so do the three
+  `android-env.*` entries rewritten for the new lines.
+- **Measured locally.** The script ran over the real trees in the amd64 `:latest`, for an arm64 target. It emptied
+  2 193 MB of rustup, 230 MB of cargo, 8 167 MB of SDK (with the emulator, which only amd64 installs) and 3 490 MB of
+  `/opt/android` in 9.6 s. A second run changed nothing, and a bad `HOST_PAYLOAD` exited 1.
+- **Left for the next chain** (BACKLOG CON96): the arm64 and riscv64 children published without the three layers, the
+  package-stage log lines in `build-watch-list.md`, and the arm64 pull time against the 4.19 min median.
 ## 2026-10-13 — CI: the riscv64 sysroot from the registry (`sysroot-mode: skopeo`), export kept
 
 - **Why.** Every riscv64 cross job (OxidANT, AccelerANTgine, BeschleunigerBallett) pulled the whole riscv64 child

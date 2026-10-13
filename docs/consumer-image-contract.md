@@ -25,7 +25,7 @@ and no extra `-e`:
 |---|---|---|
 | 1 | `CCACHE_DIR` and `SCCACHE_DIR` point **outside** `/workspace` and are writable | the cache is written into the consumer's bind-mounted checkout, pollutes their working tree, can be swept into CI artifacts, and on a non-ext4 host mount `flatpak-builder` aborts: *"Can't initialize ccache use: Failed to set permissions of /workspace/.ccache/disabled/ccache.conf: Operation not permitted"* |
 | 2 | `$RUSTUP_HOME/tmp` and `$CARGO_HOME` are writable | *"could not create temp file …: Permission denied (os error 13)"* — Corrosion, cargokit and `flutter_rust_bridge_codegen` cannot run. Not workaroundable by redirecting the variable: the toolchains live in that tree, and `rustup toolchain install` (fRB asks for the `nightly` channel, the image pins a dated nightly) writes there too |
-| 3 | `ANDROID_HOME` and `ANDROID_SDK_ROOT` are set, `$ANDROID_HOME/platform-tools` exists, and the SDK's `cmdline-tools/latest/bin` + `platform-tools` are on `PATH` | `flutter build apk` stops with *"[!] No Android SDK found"*. Under CodeQL's `database create --command=…` the exit 1 aborts before the database is finalised, so the lane reports *"bundle source directory not found: build/app/outputs/flutter-apk"* — three steps from the cause |
+| 3 | `ANDROID_HOME` and `ANDROID_SDK_ROOT` are set, `$ANDROID_HOME/platform-tools` exists, and the SDK's `cmdline-tools/latest/bin` + `platform-tools` are on `PATH` (amd64; arm64 and riscv64 ship no SDK and leave both empty, [why](#per-arch-exemptions)) | `flutter build apk` stops with *"[!] No Android SDK found"*. Under CodeQL's `database create --command=…` the exit 1 aborts before the database is finalised, so the lane reports *"bundle source directory not found: build/app/outputs/flutter-apk"* — three steps from the cause |
 | 4 | `java` is on `PATH` and `JAVA_HOME` names a JDK with `bin/javac` | Gradle stops the Android lane with *"JAVA_HOME is not set and no 'java' command could be found in your PATH"*, and `flutter doctor` reports *"No Java Development Kit (JDK) found"* |
 | 5 | `appimagetool` is READABLE by the image user, not merely executable | it is an AppImage and reads `/proc/self/exe` for its own squashfs offset, so mode 711 gives *"Cannot open /proc/self/exe: Permission denied"* and produces no `.AppImage` |
 | 6 | Every path under `/opt/flutter` is owned by uid 1001, `packages/flutter_tools/.dart_tool` included | `flutter pub get` fails with *"Cannot open file … package_config.json (OS Error: Permission denied, errno = 13)"* |
@@ -156,13 +156,22 @@ have read as a documented exception on that arch. Until 2026-09-05 the
 fact, so a riscv64 appimagetool could never have been noticed; that is what
 `_consumer_exempt_fact` fixes.
 
-The Android SDK is **not** exempt anywhere. `/opt/android-sdk/platform-tools`
-was measured present in all three shipped arches on 2026-09-04, and the parity
-table already asserts the `android-sdk` prefix on every arch. The row is
-*skipped*, not exempted, only when the image says it ships no SDK: an android
-stage built on a non-amd64 host has no NDK to install (upstream ships it for
-`linux-x86_64` only), and `android-sdk.sh` records that in
-`/opt/android/.android-payload-off`. A missing fact is still `NOFACT`.
+The Android SDK is **not** exempt anywhere. The parity table asserts the
+`android-sdk` prefix on every arch. The row is *skipped*, not exempted, only when the
+image says it ships no SDK, in `/opt/android/.android-payload-off`. Two writers put it
+there:
+
+- `android-sdk.sh`, when the android stage runs on a non-amd64 host. Upstream ships the
+  NDK for `linux-x86_64` only, so there is nothing to install.
+- `prune-host-payload.sh`, for every arch whose `HOST_PAYLOAD` is off. That is arm64 and
+  riscv64 by default since 2026-10-13
+  ([why](artifact-copy-completeness.md#the-host-payload-stays-with-the-host-that-runs-it)).
+  Until then `/opt/android-sdk/platform-tools` was in all three shipped arches, as
+  measured on 2026-09-04, though only amd64 can run it.
+
+A payload-off image leaves `ANDROID_HOME` and `ANDROID_SDK_ROOT` empty. The row fails one
+that still sets either, because a consumer would find an empty SDK behind the variable.
+A missing fact is still `NOFACT`.
 
 ### The Flatpak runtimes ship with the image
 
@@ -392,6 +401,7 @@ lane runs on the next `:latest`.
 | `gst-inspect-1.0 -b` on amd64 (CON47) | lists `libgstvalidatessim.so` | lists nothing; the SSIM plugin still works under `gst-validate-1.0` ([why](failure-modes.md#the-core-registry-blacklists-libgstvalidatessimso)) |
 | A browser for `flutter test --platform chrome` (CON50) | none; `flutter doctor` reports *"Cannot find Chrome executable"* | Chrome for Testing and its chromedriver on amd64 and arm64, `CHROME_EXECUTABLE` set ([how](#browser-tests-run-in-chrome-for-testing)) |
 | An Android device on amd64 (CON50) | none; Android tests ran on the x64 VM only | the emulator and an x86_64 system image with ARM translation, booted by `android-avd.sh` on `/dev/kvm` ([how](#the-android-emulator-runs-on-amd64-with-kvm)) |
+| The Android SDK on arm64 and riscv64 (CON96) | `/opt/android-sdk`, `/opt/android` and the builder's x86_64 rustup ship in both, 3.41 GB of layers no arm64 or riscv64 host can run; `ANDROID_HOME` points at x86_64 tools | both trees empty, with `/opt/android/.android-payload-off`; `ANDROID_HOME`, `ANDROID_SDK_ROOT` and the six Android roots empty, nothing Android on `PATH`. Build Android from the amd64 image, as before. `HOST_PAYLOAD_ARCHES=amd64,arm64,riscv64` builds the old shape ([why](artifact-copy-completeness.md#the-host-payload-stays-with-the-host-that-runs-it)) |
 | `VULKAN_SDK` and the variables `setup-env.sh` derives from it, after the entrypoint (CON48) | `/opt/vulkan/<version>/<arch>`; a riscv64 lane under QEMU in the amd64 image overrides `VULKAN_SDK` and `VK_ADD_LAYER_PATH` (`riscv64_cross_env`) | `/opt/vulkan/active` on every arch; the boot smoke fails an arch dir ([why](failure-modes.md#vulkan-env-names-an-arch-specific-sdk-dir)) |
 
 ## The Android SDK roots are advertised
@@ -400,7 +410,9 @@ lane runs on the next `:latest`.
 COPYs the payload those names point at but, until 2026-09-05, never re-declared the
 names. A consumer that found `/opt/android` in the runtime image therefore still had
 no way to be told where anything inside it was, and every Android lane hardcoded the
-paths or re-downloaded the SDKs. The runtime image now re-declares all six:
+paths or re-downloaded the SDKs. The runtime image now re-declares all six. They are
+empty on arm64 and riscv64, which ship no Android payload
+([why](artifact-copy-completeness.md#the-host-payload-stays-with-the-host-that-runs-it)):
 
 | variable | value |
 | --- | --- |

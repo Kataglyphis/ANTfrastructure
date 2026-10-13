@@ -152,14 +152,39 @@ runtime_build_base_image() {
   runtime_refresh_stage_context base "${arch}" "${tag}"
 }
 
+# Arches whose package keeps the host payload; amd64 alone runs the x86_64-host Android SDK. docs/artifact-copy-completeness.md#the-host-payload-stays-with-the-host-that-runs-it
+runtime_host_payload_arches() {
+  local list="${HOST_PAYLOAD_ARCHES:-amd64}" re='^(,(amd64|arm64|riscv64))+,$'
+  if [ "${list}" = none ] || [[ ",${list}," =~ ${re} ]]; then
+    printf '%s' "${list}"
+    return 0
+  fi
+  printf '[ERROR] HOST_PAYLOAD_ARCHES=%s: expected a comma list of amd64, arm64 and riscv64, or none\n' "${list}" >&2
+  return 2
+}
+
+# <arch> -> on|off, Dockerfile.package's HOST_PAYLOAD for that arch's package image.
+runtime_host_payload() {
+  local arch="$1" list plat
+  list="$(runtime_host_payload_arches)" || return 2
+  # Only an amd64 build host installs the SDK (android_build_host_supported), so no other artifact has one to keep.
+  plat="$(runtime_artifact_platform "${arch}")" || return 1
+  [ "${plat}" = linux/amd64 ] || { printf '%s' off; return 0; }
+  case ",${list}," in
+    *",${arch},"*) printf '%s' on ;;
+    *) printf '%s' off ;;
+  esac
+}
+
 # Per-stage build args, appended after append_common_build_args
 append_package_build_args() {
   local -n _apba_out=$1
   local arch="$2" parent_image="$3" artifact_image="$4" package_base_stage="$5"
   # A local, so a failure stops here instead of an empty ARTIFACT_PLATFORM letting BuildKit pick the wrong image.
-  local _apba_plat
+  local _apba_plat _apba_payload
   _apba_plat="$(runtime_artifact_platform "${arch}")" || return 1
   [ -n "${_apba_plat}" ] || { err "ARTIFACT_PLATFORM resolved empty for ${arch}"; return 1; }
+  _apba_payload="$(runtime_host_payload "${arch}")" || return 1
   _apba_out+=(
     --build-arg "BASE_IMAGE=${parent_image}"
     --build-arg "ARTIFACT_IMAGE=${artifact_image}"
@@ -167,6 +192,7 @@ append_package_build_args() {
     --build-arg "ARTIFACT_PLATFORM=${_apba_plat}"
     --build-arg "BUILD_MODE=${ARTIFACT_BUILD_MODE}"
     --build-arg "TARGET_ARCH=${arch}"
+    --build-arg "HOST_PAYLOAD=${_apba_payload}"
   )
 }
 

@@ -19,10 +19,10 @@ ${GSTREAMER_PREFIX} | GStreamer + the source-built plugins
 /opt/acl | ARM Compute Library, ArmNN's backend
 /opt/flutter | Flutter SDK (amd64/arm64; empty dir on riscv64) — added 2026-09-03
 /opt/vulkan | Vulkan SDK + loader/layers
-/opt/android-sdk | Android SDK
-/opt/android | Android build outputs (litert/onnxruntime/opencv/gstreamer .so)
+/opt/android-sdk | Android SDK (empty where HOST_PAYLOAD=off: arm64/riscv64 by default)
+/opt/android | Android build outputs (litert/onnxruntime/opencv/gstreamer .so); only the payload-off marker where HOST_PAYLOAD=off
 /opt/gcc-${GCC_VERSION} | the pinned GCC toolchain
-/usr/local/rustup | Rust toolchain (rustup home)
+/usr/local/rustup | Rust toolchain (rustup home); a foreign one is emptied and the package stage installs the native one
 /usr/local/cargo | Rust cargo home + cargo-installed bins
 /opt/llvm-target | LLVM target libs (relocated to /usr/local/llvm-target)
 /opt/python-cross-ft/${TARGET_ARCH:-${TARGETARCH}}/opt/python-freethreaded | the target arch's free-threaded CPython (relocated to /opt/python-freethreaded) — added 2026-10-07

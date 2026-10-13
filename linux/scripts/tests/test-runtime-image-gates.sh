@@ -618,9 +618,18 @@ t_case "an SDK that is set and present but not on PATH still fails"
 t_assert_contains "$(_cc_android yes no)" "is on PATH" "half a wiring is not the contract"
 
 t_case "a payload-off image SKIPs the row instead of failing it"
-# The NDK is linux-x86_64 only, so a non-amd64-hosted android stage legitimately ships empty directories.
-t_assert_contains "$(_cc_android no no yes)" "SKIP android-home" \
+# The NDK is linux-x86_64 only, and arm64/riscv64 prune the SDK (HOST_PAYLOAD=off): empty directories, no variables.
+t_assert_contains "$(_cc_verdicts "ENV android-home
+ENV android-sdk-root
+DIR android-platform-tools no
+FACT android-path no
+FACT android-payload-off yes
+CCPROBE_DONE" arm64 android-home)" "SKIP android-home" \
   "an image that RECORDED why the SDK is absent must not be judged as if it hid it"
+
+t_case "a payload-off image that still advertises ANDROID_HOME fails"
+t_assert_contains "$(_cc_android no no yes)" "says the image ships no SDK" \
+  "an ANDROID_HOME over an empty /opt/android-sdk is the consumer's 'No Android SDK found' again"
 
 t_case "a MISSING payload-off fact is NOFACT, never a silent grant"
 # An absent fact is unknown, not false, so an old probe cannot restore the old verdict by omission.
@@ -1284,6 +1293,13 @@ MACH 62 20 /opt/android/gstreamer/libgstreamer-1.0.a")" \
 t_case "an empty tree warns instead of passing silently"
 t_assert_contains "$(_abi_gate "ABI arm64-v8a")" \
   "no Android ELF objects" "nothing found is not the same as everything correct"
+
+t_case "a payload-off image skips the ABI, and fails if /opt/android still ships objects"
+t_assert_contains "$(_abi_gate "ABI arm64-v8a
+OFF")" "SKIP the Android payload is off" "an arm64 image without the payload has no ABI to judge"
+t_assert_contains "$(_abi_gate "ABI arm64-v8a
+OFF
+MACH 183 4 /opt/android/x.so")" "yet /opt/android carries 4 ELF object(s)" "a marker over a payload is a lie"
 
 # An exemption is only legitimate when another gate, here check_android_abi, takes the tree over.
 t_case "/opt/android is exempt from tree-arch and owned by the ABI gate instead"

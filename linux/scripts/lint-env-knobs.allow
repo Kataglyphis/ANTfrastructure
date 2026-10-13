@@ -474,3 +474,7 @@ CUDA_CROSS_TARGET_DIR
 CARGO_ENCODED_RUSTFLAGS
 KATAGLYPHIS_LINKER
 LINKER_SELECT_CACHE_DIR
+# runtime-build-fns.sh (2026-10-13): the arches whose package keeps the x86_64-host
+# Android SDK and a foreign Rust toolchain (default amd64; a comma list, or none).
+# Resolved per arch into Dockerfile.package's HOST_PAYLOAD; never set in-repo.
+HOST_PAYLOAD_ARCHES

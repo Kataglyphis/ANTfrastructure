@@ -95,8 +95,9 @@ t_assert_ok "${PY}" "${GATE}" "${_all[@]}"
 
 # The smoke checks ANDROID_HOME in the built image; only this can check the Dockerfile sets it.
 t_case "Dockerfile.package advertises ANDROID_HOME and ANDROID_SDK_ROOT"
-t_assert_ok grep -qE '^ENV ANDROID_HOME=/opt/android-sdk ' "${PKG}"
-t_assert_ok grep -qE '^ +ANDROID_SDK_ROOT=/opt/android-sdk$' "${PKG}"
+# Empty only where HOST_PAYLOAD=off prunes the SDK (test-host-payload.sh).
+t_assert_ok grep -qE '^ENV ANDROID_HOME=\$\{ANDROID_PAYLOAD_ON:\+/opt/android-sdk\} ' "${PKG}"
+t_assert_ok grep -qE '^ +ANDROID_SDK_ROOT=\$\{ANDROID_PAYLOAD_ON:\+/opt/android-sdk\}$' "${PKG}"
 
 t_case "the advertised root is a tree this Dockerfile actually copies in"
 t_assert_ok grep -qE '^COPY .*--from=artifact-source /opt/android-sdk /opt/android-sdk$' "${PKG}"

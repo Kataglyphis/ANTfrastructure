@@ -75,6 +75,7 @@ main() {
   runtime_post_parse_setup TARGET_ARCHES "${IMAGE_PREFIX}"
   runtime_wheels_setup || exit $?
   hailo_validate_knobs || exit 2
+  runtime_host_payload_arches >/dev/null || exit 2
   # Resolved ONCE: every arch below builds the same OrchestrANT commit.
   runtime_resolve_app_ref
 

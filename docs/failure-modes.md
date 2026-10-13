@@ -799,7 +799,10 @@ what `wire_cargo_symlinks` links in that case — one minor version behind the
 pin, an accepted skew). amd64 is a no-op: the copied toolchain *is* native
 there. The native install downloads the pinned stable + clippy + rustfmt +
 `wasm32-unknown-unknown` and the pinned nightly, same set as amd64, so the
-three arches ship the same toolchain surface.
+three arches ship the same toolchain surface. Since 2026-10-13 `prune-host-payload.sh`
+empties the foreign toolchain in `artifact-source`, before the COPY, so the 745 MB
+x86_64 layer no longer ships only to be deleted; this function then installs over
+an empty tree ([why](artifact-copy-completeness.md#the-host-payload-stays-with-the-host-that-runs-it)).
 
 **Guards.** `check_rust_toolchain` in `smoke-runtime-image.sh` executes
 `rustc --version` in the shipped image, requires the `RUST_VERSION` pin, reads

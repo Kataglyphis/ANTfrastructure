@@ -343,6 +343,19 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         gate, and `OrtWebGpu.ps1` with `dxcompiler.dll` alone. `migraphx-ep.dll` built against v1.31.0. ORT
         configure still builds onnx from source: v1.31.0 fails on a found ONNX package with a different protobuf.
         After the images publish, OxidANT moves to `ort` 2.0.0-rc.14.
+- [ ] **CON96 — the arm64 and riscv64 children without the x86_64 host payload** [S, ★★]. Owner request
+      2026-10-13 (CI prologue measures, item 5). **In source since 2026-10-13 (CHANGELOG); the next chain proves it.**
+      `prune-host-payload.sh` empties `/opt/android-sdk`, `/opt/android` and the builder's rustup in `artifact-source`
+      for every arch outside `HOST_PAYLOAD_ARCHES` (default `amd64`), and the package stage leaves the eight Android
+      variables empty there. Proved without a chain: the BuildKit ENV expansion, and the script over the real trees of
+      the amd64 `:latest`. Left for the chain:
+      - The package log lines in [`build-watch-list.md` § The host payload](docs/build-watch-list.md#the-host-payload-con96-new-2026-10-13)
+        on all three arches, and the arm64 package RUN's native Rust reinstall over the empty tree.
+      - The smoke green on arm64 and riscv64: `SKIP android-home`, the ABI gate's `SKIP`, ARCH-PARITY still finding
+        `android` and `android-sdk`.
+      - The published arm64 child about 3.4 GB smaller than `448591ff…` (10.11 GB), and riscv64 against `7689579f…`
+        (8.51 GB), with amd64 unchanged in content.
+      - One arm64 consumer pull timed against the 4.19 min median: about 1.1-1.3 min less is expected.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294
