@@ -52,15 +52,6 @@ inputs:
     description: 'How long to wait for the daemon to come back after the restart.'
     required: false
     default: '180'
-  stage-temp:
-    description: >-
-      Where hcsshim stages each layer before importing it. Empty (the default) leaves
-      it in C:\Windows\SystemTemp on the small system drive. A directory here becomes
-      the docker service's SystemTemp, the one temp variable GetTempPath2 honours for
-      SYSTEM, ACL'd to SYSTEM and Administrators as Microsoft asks; put it on the same
-      big drive as the data-root (D:\docker-tmp) and a pull no longer needs C: space.
-    required: false
-    default: ''
 
 outputs:
   data-root:
@@ -69,9 +60,6 @@ outputs:
   free-gb:
     description: 'Free GB on the target drive after the move.'
     value: ${{ steps.move.outputs.free-gb }}
-  stage-temp:
-    description: "The docker service's SystemTemp after the restart (empty when stage-temp was not set)."
-    value: ${{ steps.move.outputs.stage-temp }}
 
 runs:
   using: 'composite'
@@ -79,8 +67,6 @@ runs:
     - name: Point the Docker data-root at ${{ inputs.data-root }}
       id: move
       shell: pwsh
-      env:
-        STAGE_TEMP: ${{ inputs.stage-temp }}
       run: |
         $ErrorActionPreference = 'Stop'
 
@@ -140,22 +126,6 @@ runs:
         ($cfg | ConvertTo-Json -Depth 10) | Set-Content -Path $cfgPath -Encoding ascii
         Write-Host "Wrote $cfgPath :"; Get-Content $cfgPath | Write-Host
 
-        # hcsshim stages every layer under os.MkdirTemp, which for the SYSTEM service is SystemTemp; docs/windows-container-build-performance.md § The prologue on hosted runners.
-        $stageTemp = $env:STAGE_TEMP
-        if ($stageTemp) {
-          New-Item -ItemType Directory -Path $stageTemp -Force | Out-Null
-          & icacls.exe $stageTemp /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "icacls could not restrict $stageTemp to SYSTEM and Administrators (exit $LASTEXITCODE)." }
-          $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$svc"
-          $envNow = @((Get-ItemProperty -LiteralPath $svcKey -Name Environment -ErrorAction SilentlyContinue).Environment)
-          # Merge, not overwrite, like daemon.json: only our own variable is replaced.
-          $envNew = @($envNow | Where-Object { $_ -and $_ -notmatch '^SystemTemp=' }) + "SystemTemp=$stageTemp"
-          New-ItemProperty -LiteralPath $svcKey -Name Environment -PropertyType MultiString -Value $envNew -Force | Out-Null
-          $envRead = @((Get-ItemProperty -LiteralPath $svcKey -Name Environment).Environment)
-          if ($envRead -notcontains "SystemTemp=$stageTemp") { throw "The '$svc' service environment did not take SystemTemp=$stageTemp (it reads: $($envRead -join '; '))." }
-          Write-Host "Service '$svc' environment: $($envRead -join '; ')"
-        }
-
         Write-Host "Starting service '$svc'..."
         Start-Service -Name $svc
 
@@ -209,8 +179,6 @@ runs:
 
         "data-root=$dataRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
         "free-gb=$freeGb"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        "stage-temp=$stageTemp" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        if ($stageTemp) { Write-Host "hcsshim stages layers under $stageTemp (the docker service's SystemTemp)." }
 
         Write-Host '=== Volumes AFTER moving the data-root ==='
         Get-Volume | Where-Object DriveLetter | Sort-Object DriveLetter |
