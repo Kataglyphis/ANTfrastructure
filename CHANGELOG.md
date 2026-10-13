@@ -6,6 +6,39 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-13 — CI prologue: the Windows cleanup moves behind the pull, the Linux pull starts first
+
+- **Windows: `prepare-windows-container-host` runs `cleanup-disk-space` after the pull, in the background** (input
+  `cleanup`, default `after-pull`; `before` is the old order, `off` none). `run-in-windows-container` waits for it after
+  its container run, so host steps after that see the cleaned C: as before. Measured on `windows-2025` with
+  `ci-host-speed-probe.yml`, prologue before the container step:
+  - run 38425248553: `before` 1761 s (cleanup 786, pull 932), `after-pull` 974 s, `off` 927 s;
+  - run 38455306377: `before` 1630 s (cleanup 652, pull 927), `after-pull` 1043 s, `off` 1183 s (a 1137 s pull).
+  - So 9.8-13.1 min off every Windows container job and its workflow's critical path.
+- **The pull never needed the cleanup.** With no cleanup, C: stayed at 31.71-31.92 GB free through the whole pull
+  while D: carried the staging (`D:\docker\tmp`, up to 49 entries). A `SystemTemp` for the docker service on D: changed
+  nothing (904 and 920 s pulls against 874 s), so `set-docker-data-root` has no input for it.
+- **The background cleanup is detached through WMI.** A `Start-Process` child with redirected output died seconds after
+  its step ended (run 38455303000, and the first probe's job 115392832642); the WMI one finished its 552 s cleanup and
+  the wait found its marker. Beside a fixed container workload it cost nothing measurable: 43 s against 46 s with no
+  cleanup. If WMI fails, the cleanup runs in the foreground with a warning.
+- **`off` is not the default**: without the cleanup, the runner's own toolchains stay on `PATH`, and host steps that run
+  built binaries with the inherited `PATH` (OmniAccelerANT's `Test-LaunchSmoke.ps1`, AccelerANTgine's
+  `Start-Windows.ps1`) could load a DLL the product failed to bundle.
+- **Linux: `prepare-linux-ci-host` logs in, starts the pull in the background and runs the cleanup and the checkout
+  beside it** (`pull-first`, default `'true'`), and the cleanup keeps its quick part (`free-disk-space`, default
+  `fast`: .NET, Haskell, swap; `'true'` is the full set). Run 38425248553: `ubuntu-26.04` 444 → 311 s (58.1 GB free
+  after the pull, against 78.4 with the full set), `ubuntu-26.04-arm` 323 → 229 s (85.6 GB free).
+- **The riscv64 lanes keep the full cleanup**: `container-ci-riscv64.yml` under `sysroot-mode: export` and
+  `python-ci-linux.yml`'s riscv64 row pull the riscv64 child as a second image after the prologue.
+- `python-ci-windows.yml` no longer walks the data-root after the pull (`measure-data-root`, 22-26 s per job).
+- `cleanup-disk-space` takes `mode: foreground | background | wait` (`Wait-DiskCleanup.ps1`, suite
+  `DiskCleanup.Wait.Tests.ps1`); both prepare actions report `pull-seconds`, the Linux one `cleanup-seconds` too.
+  `Invoke-Lint.ps1`'s default scope takes `.github/actions`. Docs:
+  [`windows-container-build-performance.md` § The prologue on hosted runners](docs/windows-container-build-performance.md#the-prologue-on-hosted-runners).
+- Found on the way: a multi-line `command:` to `run-in-windows-container` reached the container's pwsh as its first line
+  only and exited 0 (job 115392832215). The probe uses `file:`; the action is unchanged.
+
 ## 2026-10-13 — CI: riscv64 cross jobs build the sysroot with skopeo by default
 
 - **`sysroot-mode` defaults to `skopeo`** in `setup-riscv64-cross` and `container-ci-riscv64.yml`, so the cross lanes

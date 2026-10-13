@@ -370,7 +370,7 @@ Things worth knowing before you copy this:
 
 ## The prologue on hosted runners
 
-Before the container step, every Windows lane spent 23-34 min in
+Until 2026-10-13 every Windows lane spent 23-34 min in
 `prepare-windows-container-host`, about half its job time:
 
 - **The cleanup** (`cleanup-disk-space`): 9.0-16.5 min, run before the pull. It
@@ -385,7 +385,8 @@ SYSTEM docker service stages under `C:\Windows\SystemTemp`. It does not here.
 Measured with a 5-second sampler in run 38425248553, with no cleanup before the
 pull: C: stayed between 31.71 and 31.92 GB free for the whole pull, while D: dropped
 and recovered by up to 12.8 GB at a time as each large layer was staged and
-removed: the staging follows the data-root to D:. Setting the service's `SystemTemp` to
+removed. `D:\docker\tmp` held up to 49 entries during every pull of run 38455306377:
+the staging follows the data-root. Setting the service's `SystemTemp` to
 `D:\docker-tmp` changed nothing (pulls of 904 and 920 s against 874 s without it),
 so the prologue has no input for it.
 
@@ -394,23 +395,56 @@ The cleanup is therefore not needed for the pull. `prepare-windows-container-hos
 
 | `cleanup` | What runs |
 |---|---|
+| `after-pull` (the default since 2026-10-13) | The pull, then the cleanup as a detached process; `run-in-windows-container` waits for it after its container run |
 | `before` | The cleanup, then the pull: the old order |
-| `after-pull` | The pull, then the cleanup as a detached process; `run-in-windows-container` waits for it after its container run |
 | `off` | No cleanup |
+
+Measured on `windows-2025`, the same image, one job per mode and run
+(`ci-host-speed-probe.yml`; prologue = everything before the container step):
+
+| Run | `before` | `after-pull` | `off` |
+|---|---|---|---|
+| 38425248553 | 1761 s (cleanup 786, pull 932) | 974 s (pull 920) | 927 s (pull 874) |
+| 38455306377 | 1630 s (cleanup 652, pull 927) | 1043 s (pull 895) | 1183 s (pull 1137) |
+
+- **The saving is the cleanup**: 9.8-13.1 min per Windows job. What is left of the
+  prologue is the pull plus about a minute; the pull alone varies by 4 min between
+  runners.
+- **The background cleanup costs the container little.** It took 731 s beside a
+  fixed container workload that ran 43 s, against 46 s with no cleanup at all. A real
+  lane's first container step runs far longer than the cleanup, so the wait after
+  it is about 0; the probe's short workload waited 483 s.
+- **It is detached through WMI** (`Win32_Process.Create`). A `Start-Process` child
+  with redirected output died seconds after its step ended (run 38455303000); one
+  without redirection, and the WMI one, outlived it. If WMI fails, the cleanup runs
+  in the foreground with a warning.
 
 `after-pull` keeps the host steps' view of C: what it was: they run after the first
 container step, and by then the cleanup has finished. `off` leaves the runner's own
 toolchains (Strawberry, LLVM, CMake, the tool cache) installed and on `PATH`, so a
 host step that runs a built binary with an unscrubbed `PATH` could load a DLL from
-them that the product failed to bundle.
+them that the product failed to bundle. That is why `off` is not the default:
+OmniAccelerANT's `Test-LaunchSmoke.ps1` and AccelerANTgine's `Start-Windows.ps1`
+both keep the inherited `PATH`.
 
 **Linux has the same shape at a smaller scale.** `prepare-linux-ci-host` ran the
-full jlumbroso cleanup (1.6-4.4 min on x64, ~1 min on arm64) before a pull whose
-unpack is serial and disk-bound, although the runner starts with 91 GB (x64) or
-111 GB (arm64) free against an image that needs about 49 GB.
-`pull-first: 'true'` starts the pull before the cleanup and the checkout and waits
-for it last; `free-disk-space: fast` keeps only the cleanup's quick part (.NET,
-Haskell, swap).
+full jlumbroso cleanup before a pull whose unpack is serial and disk-bound,
+although the runner starts with 91 GB (x64) or 112 GB (arm64) free against an image
+that needs about 49 GB. Since 2026-10-13 it logs in, starts the pull in the
+background, runs the cleanup and the checkout beside it and waits for the pull last
+(`pull-first`), and the cleanup keeps only its quick part (`free-disk-space: fast`:
+.NET, Haskell, swap). Run 38425248553:
+
+| Runner | old order, full cleanup | pull first, full | pull first, fast |
+|---|---|---|---|
+| `ubuntu-26.04` | 444 s (cleanup 122, pull 321) | 331 s | 311 s, 58.1 GB free after |
+| `ubuntu-26.04-arm` | 323 s (cleanup 64, pull 257) | 269 s | 229 s, 85.6 GB free after |
+
+The full cleanup left 78.4 (x64) and 90.6 GB (arm64) free after the pull. A lane
+whose build trees need more than the fast tier leaves passes
+`free-disk-space: 'true'`, as the riscv64 lanes do while they pull the riscv64 child as
+a second image (`container-ci-riscv64.yml` with `sysroot-mode: export`, the riscv64 row
+of `python-ci-linux.yml`). `pull-first: 'false'` restores the old order.
 
 `.github/workflows/ci-host-speed-probe.yml` times every combination side by side on
 the hosted runners and prints one `TIMING` line per job, with the lowest free space

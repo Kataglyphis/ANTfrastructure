@@ -27,9 +27,9 @@ Input `mode`: `foreground` (default) deletes now. `background` starts the same
 deletions as a detached process and returns; it leaves out the TEMP purge and the
 Docker prune, which would race the steps running beside it. `wait` blocks until
 that run has ended and prints its log (`Wait-DiskCleanup.ps1`); with none running
-it does nothing. `prepare-windows-container-host`'s `cleanup: after-pull` starts
-the background run, and `run-in-windows-container` waits for it after its
-container run. A job that runs host steps before its first container run, or has
+it does nothing. `prepare-windows-container-host` starts the background run by
+default (`cleanup: after-pull`), and `run-in-windows-container` waits for it after
+its container run. A job that runs host steps before its first container run, or has
 none, calls this action with `mode: wait` itself.
 
 ### `install-deps`
@@ -57,9 +57,10 @@ instead of `image` under `target-arch: arm64`), `registry`, `registry-username`,
 Outputs: `image` (the ref that was pulled), `data-root`, `workspace`, `cleanup`
 (the mode that ran), `pull-seconds`.
 
-`cleanup` says when `cleanup-disk-space` runs: `before` the pull (the old path),
-`after-pull` in the background, or `off`. Empty follows `free-disk-space`. The
-pull itself never touches C: once the data-root is on D:. Measured per mode:
+`cleanup` says when `cleanup-disk-space` runs: `after-pull` in the background
+(the default), `before` the pull (the old path, 9.8-13.1 min longer), or `off`.
+Empty follows `free-disk-space`. The pull itself never touches C: once the
+data-root is on D:. Measured per mode:
 [`docs/windows-container-build-performance.md` § The prologue on hosted runners](../../docs/windows-container-build-performance.md#the-prologue-on-hosted-runners).
 
 `submodules` reaches the checkout only when `short-path-target` is empty — with
@@ -255,12 +256,14 @@ still pull public images), `fetch-depth`, `submodules`, `checkout`,
 `free-disk-space` (`true`, `fast` or `false`), `pull-first`, `pull-attempts`,
 `pull-timeout-seconds`. Outputs: `pull-seconds`, `cleanup-seconds`.
 
-`pull-first: 'true'` logs in and starts the pull in the background before the
-cleanup and the checkout, and waits for it as the last step. The pull is mostly
-a serial unpack, so the cleanup no longer sits in front of it. `free-disk-space:
-fast` keeps only the quick part of the cleanup (.NET, Haskell, swap). Both were
-measured beside the Windows prologue, in the page `prepare-windows-container-host`
-links above.
+`pull-first` (default `'true'`) logs in and starts the pull in the background
+before the cleanup and the checkout, and waits for it as the last step. The pull
+is mostly a serial unpack, so the cleanup no longer sits in front of it.
+`free-disk-space` defaults to `fast`, the quick part of the cleanup (.NET,
+Haskell, swap); `'true'` is the full set for a lane that needs the extra ~20 GB.
+Together they took the x64 prologue from 444 to 311 s and the arm64 one from 323
+to 229 s, measured beside the Windows prologue in the page
+`prepare-windows-container-host` links above.
 
 Written for **fan-out**: a pipeline that splits its builds across parallel
 jobs pays this prologue once per job, so the four steps stop being

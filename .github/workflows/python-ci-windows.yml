@@ -200,8 +200,6 @@ jobs:
           fetch-depth: ${{ inputs.fetch-depth }}
           submodules: recursive
           short-path-target: ''
-          # Free space cannot say where the image landed, since cleanup frees C: in the same job.
-          measure-data-root: 'true'
 
       # The action runs the payload under pwsh; the hub's modules need 7.0 and fail opaquely under 5.1.
       - name: Run container

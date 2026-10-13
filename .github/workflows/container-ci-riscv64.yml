@@ -67,6 +67,8 @@ jobs:
         with:
           registry-username: ${{ github.actor }}
           registry-password: ${{ secrets.GHCR_PAT }}
+          # export pulls the whole riscv64 child as a second image, which the fast cleanup leaves too little room for.
+          free-disk-space: ${{ inputs.sysroot-mode == 'export' && 'true' || 'fast' }}
 
       - name: Set up riscv64 cross testing
         id: rv

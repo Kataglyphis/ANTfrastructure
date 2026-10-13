@@ -59,7 +59,7 @@ runs:
           # The copy starts outside this step's environment, so it carries its own mode and state directory.
           Set-Content -LiteralPath $copy -Value (@("`$env:ANTF_CLEANUP_MODE = 'detached'; `$env:RUNNER_TEMP = '$state'") + @(Get-Content -LiteralPath $self))
           $line = "`"$((Get-Process -Id $PID).Path)`" -NoProfile -NonInteractive -Command `"& '$copy' *> '$log'`""
-          # WMI starts it outside the step's process tree, which the runner kills when the step ends (a Start-Process child died with it).
+          # WMI, not Start-Process: a child with redirected output died seconds after its step ended (probe run 38455303000).
           $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $line; CurrentDirectory = $state }
           $proc = if ($created.ReturnValue -eq 0) { Get-Process -Id $created.ProcessId -ErrorAction SilentlyContinue }
           if ($proc) {

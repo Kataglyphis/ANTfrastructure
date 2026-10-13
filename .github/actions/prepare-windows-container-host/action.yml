@@ -2,9 +2,9 @@ name: 'Prepare Windows container host'
 description: >-
   The prologue every containerised Windows CI job repeats: enable long paths,
   check the repository out, clone the submodule tree into a short path, move
-  Docker's data-root onto the big drive, reclaim runner disk, log in to the
-  registry and pull the image. Six to seven steps and ~40 lines per job collapse
-  to one `uses:`.
+  Docker's data-root onto the big drive, log in to the registry, pull the image
+  and reclaim runner disk (`cleanup` says when). Six to seven steps and ~40 lines
+  per job collapse to one `uses:`.
 
   Windows twin of prepare-linux-ci-host, and it exists for the same reason plus
   one Windows-only one: the prologue is not just repetitive here, it is where the
@@ -141,14 +141,15 @@ inputs:
     default: 'true'
   cleanup:
     description: >-
-      When cleanup-disk-space runs. before: ahead of the pull, the old path, which
-      puts its 9-16 min on the critical path. after-pull: started in the background
-      after the pull, and run-in-windows-container waits for it after its container
-      run, so host steps after that see the same cleaned C: as before (a host step
-      between this action and the first container run, or a job without one, calls
-      cleanup-disk-space with mode: wait itself). off: none; host steps then see the
-      runner's own toolchains on PATH. Empty (the default) follows free-disk-space:
-      'true' -> before, 'false' -> off.
+      When cleanup-disk-space runs. after-pull: started in the background after the
+      pull, and run-in-windows-container waits for it after its container run, so
+      host steps after that see the same cleaned C: as before (a host step between
+      this action and the first container run, or a job without one, calls
+      cleanup-disk-space with mode: wait itself). before: ahead of the pull, the old
+      path, which puts its 9-13 min on the critical path. off: none; host steps then
+      see the runner's own toolchains on PATH. The pull needs none of it: it stages
+      under the data-root on D:. Empty (the default) follows free-disk-space:
+      'true' -> after-pull, 'false' -> off.
     required: false
     default: ''
   measure-data-root:
@@ -215,7 +216,7 @@ runs:
         FREE_DISK_SPACE: ${{ inputs.free-disk-space }}
       run: |
         $ErrorActionPreference = 'Stop'
-        $mode = if ($env:CLEANUP) { $env:CLEANUP } elseif ($env:FREE_DISK_SPACE -eq 'true') { 'before' } else { 'off' }
+        $mode = if ($env:CLEANUP) { $env:CLEANUP } elseif ($env:FREE_DISK_SPACE -eq 'true') { 'after-pull' } else { 'off' }
         if ($mode -notin 'before', 'after-pull', 'off') { throw "cleanup must be before, after-pull or off, not '$mode'" }
         Write-Host "disk cleanup: $mode"
         "mode=$mode" >> $env:GITHUB_OUTPUT
