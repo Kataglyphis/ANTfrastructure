@@ -1,10 +1,33 @@
 name: 'Cleanup Disk Space'
-description: 'Aggressively cleans up disk space on Windows runners'
+description: >-
+  Aggressively cleans up disk space on Windows runners: now, or detached while the
+  job goes on (`mode`).
+
+inputs:
+  mode:
+    description: >-
+      foreground (default) deletes now, as before the input existed. background
+      starts the same deletions as a detached process and returns at once; it leaves
+      out the TEMP purge and the Docker prune, which would race the steps running
+      beside it. wait blocks until a background run has ended and prints its log;
+      with none running it does nothing. run-in-windows-container waits by itself.
+    required: false
+    default: 'foreground'
 
 runs:
   using: 'composite'
   steps:
+    - name: Check the cleanup mode
+      shell: pwsh
+      env:
+        CLEANUP_MODE: ${{ inputs.mode }}
+      run: |
+        if ($env:CLEANUP_MODE -notin 'foreground', 'background', 'wait') {
+          throw "cleanup-disk-space: mode must be foreground, background or wait, not '$env:CLEANUP_MODE'"
+        }
+
     - name: Disk space BEFORE cleanup (all drives)
+      if: ${{ inputs.mode == 'foreground' }}
       shell: pwsh
       run: |
         Write-Host '=== Volumes BEFORE cleanup ==='
@@ -15,9 +38,39 @@ runs:
             FileSystemLabel -AutoSize | Out-String | Write-Host
 
     - name: Aggressive cleanup
+      if: ${{ inputs.mode != 'wait' }}
       shell: pwsh
+      env:
+        ANTF_CLEANUP_MODE: ${{ inputs.mode }}
       run: |
         $ErrorActionPreference = 'Continue'
+        $cleanupStart = Get-Date
+        $cFreeBefore = [math]::Round((Get-PSDrive -Name C).Free / 1GB, 1)
+        $state = $env:RUNNER_TEMP
+        $self = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+
+        # Background reruns this very script detached; it is copied first because the runner deletes the original after the step.
+        if ($env:ANTF_CLEANUP_MODE -eq 'background' -and -not $self) {
+          Write-Host '::warning::cleanup-disk-space cannot find its own script to detach; cleaning up in the foreground instead.'
+        } elseif ($env:ANTF_CLEANUP_MODE -eq 'background') {
+          foreach ($n in 'done', 'waited', 'pid') { Remove-Item -LiteralPath (Join-Path $state "disk-cleanup.$n") -ErrorAction SilentlyContinue }
+          $copy = Join-Path $state 'disk-cleanup.ps1'
+          Copy-Item -LiteralPath $self -Destination $copy -Force
+          $env:ANTF_CLEANUP_MODE = 'detached'
+          # File redirection, not a pipe: the child must outlive this step's process.
+          $detach = @{
+            FilePath               = (Get-Process -Id $PID).Path
+            ArgumentList           = @('-NoProfile', '-NonInteractive', '-File', "`"$copy`"")
+            RedirectStandardOutput = (Join-Path $state 'disk-cleanup.log')
+            RedirectStandardError  = (Join-Path $state 'disk-cleanup.err.log')
+            PassThru               = $true
+          }
+          $proc = Start-Process @detach
+          Set-Content -LiteralPath (Join-Path $state 'disk-cleanup.pid') -Value "$($proc.Id) $($proc.StartTime.ToUniversalTime().Ticks)"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value 'ANTF_DISK_CLEANUP=running'
+          Write-Host "Disk cleanup continues in the background (pid $($proc.Id)); run-in-windows-container waits for it after its container run."
+          exit 0
+        }
 
         # cmd's rmdir is minutes faster than the PowerShell cmdlet on trees of many small files.
         function Fast-Remove($pathPattern) {
@@ -197,6 +250,24 @@ runs:
           Write-Host "Could not clear SoftwareDistribution: $_"
         }
 
+        $cleanupSeconds = [int]((Get-Date) - $cleanupStart).TotalSeconds
+        $cFreeAfter = [math]::Round((Get-PSDrive -Name C).Free / 1GB, 1)
+        Write-Host "disk cleanup: $cleanupSeconds s, C: free $cFreeBefore -> $cFreeAfter GB"
+        # Renamed into place, so a waiter never reads half a marker.
+        if ($state -and (Test-Path -LiteralPath $state)) {
+          $marker = Join-Path $state 'disk-cleanup.done'
+          Set-Content -LiteralPath "$marker.tmp" -Value "seconds=$cleanupSeconds c_before_gb=$cFreeBefore c_after_gb=$cFreeAfter"
+          Move-Item -LiteralPath "$marker.tmp" -Destination $marker -Force
+        }
+        exit 0
+
+    # Foreground only: a detached run must not empty a TEMP or prune a Docker that the steps beside it are using.
+    - name: Aggressive cleanup (TEMP, caches, Docker)
+      if: ${{ inputs.mode == 'foreground' }}
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Continue'
+
         # Temp folders
         Write-Host "Clearing TEMP folders..."
         Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
@@ -228,6 +299,7 @@ runs:
         exit 0
 
     - name: Disk space AFTER cleanup (all drives)
+      if: ${{ inputs.mode == 'foreground' }}
       shell: pwsh
       run: |
         Write-Host '=== Volumes AFTER cleanup ==='
@@ -241,3 +313,8 @@ runs:
         Write-Host ("Docker data-root: " + $dataRoot)
         # Diagnostic only: after the prune `docker info` may fail, and the pwsh wrapper would exit with its code.
         $global:LASTEXITCODE = 0
+
+    - name: Wait for the background cleanup
+      if: ${{ inputs.mode == 'wait' }}
+      shell: pwsh
+      run: '& (Join-Path $env:GITHUB_ACTION_PATH "Wait-DiskCleanup.ps1")'

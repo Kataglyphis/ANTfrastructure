@@ -363,8 +363,55 @@ Things worth knowing before you copy this:
 - **D: is the ephemeral temp disk on hosted runners** — wiped between jobs,
   which is right for CI and wrong for a self-hosted machine you expect to keep
   a layer cache on. Point `data-root` somewhere persistent there.
-- **`cleanup-disk-space` still earns its place** — checkout, toolchain and build
-  live on C: — but it is no longer what makes the image fit.
+- **`cleanup-disk-space` is not what makes the image fit.** The short-path clone
+  is on D:, and the build runs in a container whose files are under the data-root
+  and the D:\ws bind mount. What still used C: was hcsshim's staging, next
+  section.
+
+## The prologue on hosted runners
+
+Before the container step, every Windows lane spent 23-34 min in
+`prepare-windows-container-host`, about half its job time:
+
+- **The cleanup** (`cleanup-disk-space`): 9.0-16.5 min, run before the pull. It
+  frees C: from about 29 to 68 GB, while the data-root and the image already sit
+  on D:, and its Docker prune reclaims 0 B.
+- **The pull**: 13.4-15.6 min for the 16.7 GB `:winamd64`. About 1.5 min of that
+  is download; the rest is hcsshim importing one layer after another.
+
+**hcsshim stages every layer on C:, whatever the data-root says.** It writes each
+non-base layer to `os.MkdirTemp("", "hcs")`, imports it into the data-root and
+removes the staging tree. Go asks `GetTempPath2`, which for a SYSTEM process such
+as the docker service ignores `TMP` and `TEMP` and returns
+`C:\Windows\SystemTemp`, unless a `SystemTemp` variable names another directory.
+So every layer was written to C:, copied to D: and deleted from C:. The cleanup's
+free space is what kept that staging away from the band below ~25 GB where
+hcsshim misbehaves ([`failure-modes.md`](failure-modes.md)).
+
+The prologue's switches, each with the old path kept:
+
+| Input | Values | What it does |
+|---|---|---|
+| `stage-temp` | empty, or a directory such as `D:\docker-tmp` | Sets the docker service's `SystemTemp` there (ACL'd to SYSTEM and Administrators) during the data-root restart, so staging moves to D: |
+| `cleanup` | `before`, `after-pull`, `off` | When `cleanup-disk-space` runs. `after-pull` starts it detached once the pull is done; `run-in-windows-container` waits for it after its container run |
+
+`after-pull` keeps the host steps' view of C: what it was: they run after the first
+container step, and by then the cleanup has finished. `off` leaves the runner's own
+toolchains (Strawberry, LLVM, CMake, the tool cache) installed and on `PATH`, so a
+host step that runs a built binary with an unscrubbed `PATH` could load a DLL from
+them that the product failed to bundle.
+
+**Linux has the same shape at a smaller scale.** `prepare-linux-ci-host` ran the
+full jlumbroso cleanup (1.6-4.4 min on x64, ~1 min on arm64) before a pull whose
+unpack is serial and disk-bound, although the runner starts with 91 GB (x64) or
+111 GB (arm64) free against an image that needs about 49 GB.
+`pull-first: 'true'` starts the pull before the cleanup and the checkout and waits
+for it last; `free-disk-space: fast` keeps only the cleanup's quick part (.NET,
+Haskell, swap).
+
+`.github/workflows/ci-host-speed-probe.yml` times every combination side by side on
+the hosted runners and prints one `TIMING` line per job, with the lowest free space
+its 5-second sampler saw.
 
 ## Gotchas that cost real time
 

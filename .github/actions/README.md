@@ -20,8 +20,17 @@ Aggressively frees space on **Windows** runners so large container images (e.g.
 the ~54 GB `:winamd64`) can be pulled/imported. Removes Visual Studio, the whole
 `hostedtoolcache`, dotnet, SDKs, DB engines, host toolchains, caches, and prunes
 Docker, then prints per-drive free space before and after. Fully self-contained
-(pure PowerShell) — no inputs, no consumer-repo dependencies. Best-effort:
-individual removals never fail the job (`exit 0`).
+(pure PowerShell), no consumer-repo dependencies. Best-effort: individual
+removals never fail the job (`exit 0`).
+
+Input `mode`: `foreground` (default) deletes now. `background` starts the same
+deletions as a detached process and returns; it leaves out the TEMP purge and the
+Docker prune, which would race the steps running beside it. `wait` blocks until
+that run has ended and prints its log (`Wait-DiskCleanup.ps1`); with none running
+it does nothing. `prepare-windows-container-host`'s `cleanup: after-pull` starts
+the background run, and `run-in-windows-container` waits for it after its
+container run. A job that runs host steps before its first container run, or has
+none, calls this action with `mode: wait` itself.
 
 ### `install-deps`
 Prepares a Linux runner's toolchain PATH: cargo/rustup (installs a stable
@@ -44,8 +53,16 @@ below), `image-arm64` (optional — defaults to the arm64 cross bundle, pulled
 instead of `image` under `target-arch: arm64`), `registry`, `registry-username`,
 `registry-password`, `checkout`, `fetch-depth`, `submodules`,
 `short-path-target`, `exclude-submodules`, `token`, `data-root`,
-`required-free-gb`, `free-disk-space`, `measure-data-root`. Outputs:
-`image` (the ref that was pulled), `data-root`, `workspace`.
+`required-free-gb`, `free-disk-space`, `cleanup`, `stage-temp`,
+`measure-data-root`. Outputs: `image` (the ref that was pulled), `data-root`,
+`workspace`, `cleanup` (the mode that ran), `pull-seconds`.
+
+`cleanup` says when `cleanup-disk-space` runs: `before` the pull (the old path),
+`after-pull` in the background, or `off`. Empty follows `free-disk-space`.
+`stage-temp` moves hcsshim's per-layer staging off C: (see `set-docker-data-root`).
+Why neither the cleanup nor C: is needed for the pull any more, and the measured
+prologue of each combination:
+[`docs/windows-container-build-performance.md` § The prologue on hosted runners](../../docs/windows-container-build-performance.md#the-prologue-on-hosted-runners).
 
 `submodules` reaches the checkout only when `short-path-target` is empty — with
 a short-path clone the checkout takes none and the clone brings the tree in, so
@@ -86,7 +103,15 @@ writes. See
 Points the Docker daemon's data-root at another drive **before the image is
 pulled**, so a multi-GB Windows image lands where there is room. Inputs:
 `data-root` (default `D:\docker`), `service-name`, `required-free-gb`,
-`ready-timeout-seconds`. Outputs: `data-root`, `free-gb`.
+`ready-timeout-seconds`, `stage-temp`. Outputs: `data-root`, `free-gb`,
+`stage-temp`.
+
+`stage-temp` is the other half of a pull's disk use. hcsshim writes every layer to
+a staging directory before importing it into the data-root, and for the SYSTEM
+docker service that directory is `C:\Windows\SystemTemp`, whatever `TMP` and
+`TEMP` say. A directory here becomes the service's `SystemTemp` (the one variable
+`GetTempPath2` honours for SYSTEM), ACL'd to SYSTEM and Administrators, during the
+same restart.
 
 Why it exists, measured on a windows-2025 runner 2026-08-11:
 
@@ -237,7 +262,15 @@ Inputs: `image` (optional — defaults to the family Linux image; see above),
 `registry`, `registry-username`,
 `registry-password` (login is skipped when empty, so fork PRs without secrets
 still pull public images), `fetch-depth`, `submodules`, `checkout`,
-`free-disk-space`, `pull-attempts`, `pull-timeout-seconds`.
+`free-disk-space` (`true`, `fast` or `false`), `pull-first`, `pull-attempts`,
+`pull-timeout-seconds`. Outputs: `pull-seconds`, `cleanup-seconds`.
+
+`pull-first: 'true'` logs in and starts the pull in the background before the
+cleanup and the checkout, and waits for it as the last step. The pull is mostly
+a serial unpack, so the cleanup no longer sits in front of it. `free-disk-space:
+fast` keeps only the quick part of the cleanup (.NET, Haskell, swap). Both were
+measured beside the Windows prologue, in the page `prepare-windows-container-host`
+links above.
 
 Written for **fan-out**: a pipeline that splits its builds across parallel
 jobs pays this prologue once per job, so the four steps stop being

@@ -18,13 +18,14 @@ $scriptsDir = $PSScriptRoot                                         # windows/sc
 $windowsDir = Split-Path -Parent $scriptsDir                        # windows
 $settings = Join-Path $windowsDir 'PSScriptAnalyzerSettings.psd1'
 
-# Default scope: all of windows\ plus the shared\windows templates consumer repos use.
+# Default scope: all of windows\, the shared\windows templates consumer repos use, and the scripts composite actions ship.
 $roots = if ($Path) {
     $Path
 } else {
     @(
         $windowsDir
         Join-Path (Split-Path -Parent $windowsDir) 'shared\windows'
+        Join-Path (Split-Path -Parent $windowsDir) '.github\actions'
     )
 }
 

@@ -287,3 +287,10 @@ runs:
         if ($LASTEXITCODE -ne 0) {
           throw "docker run failed with exit code $LASTEXITCODE"
         }
+
+    # prepare-windows-container-host's after-pull cleanup ran beside the container; host steps after this see it finished.
+    - name: Wait for the background disk cleanup
+      if: ${{ env.ANTF_DISK_CLEANUP == 'running' }}
+      uses: Kataglyphis/ANTfrastructure/.github/actions/cleanup-disk-space@develop
+      with:
+        mode: wait
