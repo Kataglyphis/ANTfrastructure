@@ -99,9 +99,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          documented as not thread safe); the issue lists what needs a lock, and the patch locks the log callback only.
 
 - [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
-      yarn.lock today). (3) Optional: OmniAccelerANT's `dev.flutter.flutter-plugin-loader` gradle rule into the
-      preset (its floors follow its lock since 467ca34, 2026-10-12: regenerate `lib/src/rust/` and `lib/l10n/` after a
-      floor change, AGENTS.md § 4). (5) npm, poetry, pdm and pnpm locks report
+      yarn.lock today). (5) npm, poetry, pdm and pnpm locks report
       `behind: unknown`: none has a dry run that diffs the lock (measured 2026-10-08).
 
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump

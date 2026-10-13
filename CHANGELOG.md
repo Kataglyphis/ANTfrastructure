@@ -6,6 +6,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — Renovate preset: the Flutter SDK's Gradle plugin loader is never looked up (CON84)
+
+- `default.json` disables `dev.flutter.flutter-plugin-loader` for the `gradle` manager. An Android app's
+  `settings.gradle.kts` includes it from the Flutter SDK, no Maven repository serves it, and every lookup failed.
+  OmniAccelerANT carried the rule alone; jotrockenmitlocken includes the same plugin and now gets it too. That was
+  CON84's item (3).
+
 ## 2026-10-14 — Workflow conventions: every hub job is bounded, `job-timeout` is armed here
 
 - `python-ci-windows.yml`'s container build job, the hub's last job without a bound, takes `timeout-minutes` (default
