@@ -43,6 +43,8 @@
   sharing a root's prefix, an unexpanded `%VAR%` entry and a missing `GITHUB_ENV`. The deep Windows job of
   `actions-selftest.yml` checks the default on a real runner: the tool cache is still on disk and none of its entries
   is on `PATH`.
+- That job never ran before: deep is off by default, and its first dispatch (run 38486829937) stopped at the
+  local action, because the job checked nothing out first. It now checks out first, as its Linux twin does.
 
 ## 2026-10-13 — CI prologue: the Windows cleanup moves behind the pull, the Linux pull starts first
 
