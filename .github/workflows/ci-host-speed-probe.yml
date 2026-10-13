@@ -57,7 +57,7 @@ jobs:
         run: |
           $sampler = Join-Path $env:RUNNER_TEMP 'probe-sampler.ps1'
           $csv = Join-Path $env:RUNNER_TEMP 'probe-disk.csv'
-          Set-Content -LiteralPath $csv -Value 'epoch,c_free_gb,d_free_gb,hcs_c,hcs_d'
+          Set-Content -LiteralPath $csv -Value 'epoch,c_free_gb,d_free_gb,hcs_c,hcs_d,docker_tmp,systemtemp_readable'
           Set-Content -LiteralPath $sampler -Value @'
           param([string]$Csv)
           while ($true) {
@@ -65,7 +65,9 @@ jobs:
             $d = [math]::Round((Get-PSDrive D).Free / 1GB, 2)
             $hc = @(Get-ChildItem -LiteralPath 'C:\Windows\SystemTemp' -Directory -Filter 'hcs*' -Force -ErrorAction SilentlyContinue).Count
             $hd = @(Get-ChildItem -LiteralPath 'D:\docker-tmp' -Directory -Filter 'hcs*' -Force -ErrorAction SilentlyContinue).Count
-            Add-Content -LiteralPath $Csv -Value ("{0},{1},{2},{3},{4}" -f [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(), $c, $d, $hc, $hd)
+            $dt = @(Get-ChildItem -LiteralPath 'D:\docker\tmp' -Force -ErrorAction SilentlyContinue).Count
+            $readable = try { $null = [IO.Directory]::GetDirectories('C:\Windows\SystemTemp'); 1 } catch { 0 }
+            Add-Content -LiteralPath $Csv -Value ("{0},{1},{2},{3},{4},{5},{6}" -f [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(), $c, $d, $hc, $hd, $dt, $readable)
             Start-Sleep -Seconds 5
           }
           '@
@@ -88,22 +90,28 @@ jobs:
           docker info 2>&1 | Where-Object { $_ -match 'Root Dir|Storage Driver|Server Version|Isolation' } | ForEach-Object { Write-Host $_.Trim() }
           docker system df
 
+      # A file, not command: a multi-line command reached the container's pwsh as its first line only (job 115392832215).
+      - name: Write the container workload
+        run: |
+          Set-Content -LiteralPath 'D:\ws\probe-workload.ps1' -Value @'
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          $buf = [byte[]]::new(64MB)
+          [Random]::new(7).NextBytes($buf)
+          foreach ($dir in 'C:\ws\probe-out', 'C:\probe-scratch') {
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            foreach ($i in 1..48) { [IO.File]::WriteAllBytes((Join-Path $dir "f$i.bin"), $buf) }
+          }
+          foreach ($round in 1..2) { $null = Get-ChildItem 'C:\ws\probe-out', 'C:\probe-scratch' -File | Get-FileHash -Algorithm SHA256 }
+          $s = [int]$sw.Elapsed.TotalSeconds
+          Set-Content -LiteralPath 'C:\ws\probe-workload.txt' -Value $s
+          Write-Host "WORKLOAD seconds=$s"
+          '@
+
       # Fixed work, so its duration shows what a cleanup running beside it costs a build.
       - name: Container workload (writes to the bind mount and the scratch layer, then hashes)
         uses: ./.github/actions/run-in-windows-container
         with:
-          command: |
-            $sw = [Diagnostics.Stopwatch]::StartNew()
-            $buf = [byte[]]::new(64MB)
-            [Random]::new(7).NextBytes($buf)
-            foreach ($dir in 'C:\ws\probe-out', 'C:\probe-scratch') {
-              New-Item -ItemType Directory -Force -Path $dir | Out-Null
-              foreach ($i in 1..48) { [IO.File]::WriteAllBytes((Join-Path $dir "f$i.bin"), $buf) }
-            }
-            foreach ($round in 1..2) { $null = Get-ChildItem 'C:\ws\probe-out', 'C:\probe-scratch' -File | Get-FileHash -Algorithm SHA256 }
-            $s = [int]$sw.Elapsed.TotalSeconds
-            Set-Content -LiteralPath 'C:\ws\probe-workload.txt' -Value $s
-            Write-Host "WORKLOAD seconds=$s"
+          file: C:\ws\probe-workload.ps1
           memory: 8g
 
       - name: Host-side copy onto C
@@ -137,13 +145,15 @@ jobs:
           $workload = if (Test-Path 'D:\ws\probe-workload.txt') { (Get-Content 'D:\ws\probe-workload.txt' -Raw).Trim() } else { '' }
           $prologue = [int]$env:PROBE_T1 - [int]$env:PROBE_T0
           $runStep = if ($env:PROBE_T2) { [int]$env:PROBE_T2 - [int]$env:PROBE_T1 } else { '' }
-          $line = ('TIMING variant={0} cleanup={1} stage_temp={2} prologue_s={3} cleanup_s={4} pull_s={5} run_step_s={6} workload_s={7} cleanup_waited_s={8} host_copy_s={9} min_c_free_gb={10} min_d_free_gb={11} hcs_c_max={12} hcs_d_max={13} samples={14}' -f
+          $line = ('TIMING variant={0} cleanup={1} stage_temp={2} prologue_s={3} cleanup_s={4} pull_s={5} run_step_s={6} workload_s={7} cleanup_waited_s={8} host_copy_s={9} min_c_free_gb={10} min_d_free_gb={11} hcs_c_max={12} hcs_d_max={13} docker_tmp_max={14} systemtemp_readable={15} samples={16}' -f
             $env:VARIANT, $env:CLEANUP_MODE, $(if ($env:STAGE_TEMP) { $env:STAGE_TEMP } else { 'default' }), $prologue, $cleanupS,
             $env:PULL_SECONDS, $runStep, $workload, $waited, $env:HOST_COPY_SECONDS,
             ($rows | ForEach-Object { [double]$_.c_free_gb } | Measure-Object -Minimum).Minimum,
             ($rows | ForEach-Object { [double]$_.d_free_gb } | Measure-Object -Minimum).Minimum,
             ($rows | ForEach-Object { [int]$_.hcs_c } | Measure-Object -Maximum).Maximum,
             ($rows | ForEach-Object { [int]$_.hcs_d } | Measure-Object -Maximum).Maximum,
+            ($rows | ForEach-Object { [int]$_.docker_tmp } | Measure-Object -Maximum).Maximum,
+            ($rows | ForEach-Object { [int]$_.systemtemp_readable } | Measure-Object -Minimum).Minimum,
             $rows.Count)
           Write-Host $line
           $line >> $env:GITHUB_STEP_SUMMARY
