@@ -36,10 +36,10 @@ inputs:
     description: >-
       How the sysroot is built. 'skopeo' fetches only the riscv64 child's layer
       blobs with the runner's skopeo and extracts the allowlist from them;
-      'export' pulls the child into docker and pipes its export through tar,
-      which suits a lane whose later steps run the riscv64 image anyway.
+      'export', the old path, pulls the child into docker and pipes its export
+      through tar, which suits a lane whose later steps run the riscv64 image anyway.
     required: false
-    default: 'export'
+    default: 'skopeo'
 
 outputs:
   docker-args:

@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-13 — CI: riscv64 cross jobs build the sysroot with skopeo by default
+
+- **`sysroot-mode` defaults to `skopeo`** in `setup-riscv64-cross` and `container-ci-riscv64.yml`, so the cross lanes
+  of OxidANT, AccelerANTgine and BeschleunigerBallett take it on their next run, BeschleunigerBallett's weekly GPU
+  shards included. `sysroot-mode: export` brings the old path back. `python-ci-linux.yml` still passes `export`.
+- **Measured** with `riscv64-sysroot-probe.yml`, binfmt registration included:
+  - Run 38455969715 at 24 parallel blobs: export took 357 s and skopeo 78 s (a 39 s copy, then a 32 s extract).
+  - Run 38426729036 at skopeo's default of six: export took 415 s and skopeo 155 s.
+  - Both runs: identical trees of 32791 entries, and the C, C++, GStreamer and Rust smoke passed on each.
+  - Before the switch, the lanes' step had a median of 354-373 s, so about 4.6 min come off every riscv64 cross job.
+
 ## 2026-10-13 — The arm64 and riscv64 images stop carrying the x86_64 host payload (CON96)
 
 - **3.41 GB of each foreign child goes.** The published `:latest` of 2026-10-11 ships three layers in its arm64

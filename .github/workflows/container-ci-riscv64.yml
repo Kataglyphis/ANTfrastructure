@@ -42,7 +42,7 @@ on:
         description: setup-riscv64-cross's `sysroot-mode`, `skopeo` or `export`; `export` is the old path, kept switchable.
         required: false
         type: string
-        default: 'export'
+        default: 'skopeo'
       timeout-minutes:
         description: The job's limit. Cross builds run natively; only the tests run under QEMU.
         required: false
