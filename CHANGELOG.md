@@ -58,6 +58,11 @@
 - **The probe.** `riscv64-sysroot-probe.yml` (dispatch only) builds the sysroot both ways on fresh runners, times them,
   diffs the trees with `tree-manifest.py` and runs `riscv64-cross-smoke.sh` (C, C++, a GStreamer link, Rust under QEMU)
   against each.
+- **First probe, run 38426729036.** The two trees were identical: 32791 entries, with the same types, modes, sizes,
+  link counts, file mtimes, link targets and bytes. The smoke passed on both. The sysroot took 406 s by export (a
+  250 s pull, then 154 s of export and tar) and 143 s by skopeo (a 99 s copy, then a 41 s extract).
+- **skopeo copies 24 blobs at once** (`--image-parallel-copies`, when the skopeo has it). Its default of six held the
+  2.36 GB layer back until 34 s into the copy.
 - Suite `test-oci-layers-extract.sh`, ten mutations in the `riscv64-cross` family.
   `docs/riscv64-cross-test-lanes.md` § *The sysroot from the registry (skopeo)*.
 

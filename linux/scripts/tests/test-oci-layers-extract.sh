@@ -165,17 +165,28 @@ _bin="${_tmp}/bin"
 mkdir -p "${_bin}"
 cat > "${_bin}/skopeo" <<EOF
 #!/bin/sh
+case " \$* " in *" --help "*) [ -n "\${STUB_OLD:-}" ] || echo "      --image-parallel-copies uint"; exit 0 ;; esac
 printf '%s\n' "\$*" > "${_tmp}/skopeo.args"
 for a in "\$@"; do case "\$a" in dir:*) cp -r "${_tmp}/stack-src" "\${a#dir:}" ;; esac; done
 EOF
 chmod +x "${_bin}/skopeo"
 _layout "${_tmp}/stack-src" stack
-_out="$(RISCV64_SYSROOT_SKOPEO="${_bin}/skopeo" bash -c "source '${SYSROOT_SH}'; RISCV64_SYSROOT_PATHS=(usr/lib/x lib); EXTRA_PATHS=(); skopeo_child ghcr.io/k/img@sha256:rv '${_tmp}/k'" 2>&1)"; _rc=$?
+# _skopeo_child <dest>: riscv64-sysroot.sh's skopeo path through the stub; sets _out and _rc.
+_skopeo_child() {
+  _out="$(RISCV64_SYSROOT_SKOPEO="${_bin}/skopeo" bash -c "source '${SYSROOT_SH}'; RISCV64_SYSROOT_PATHS=(usr/lib/x lib); EXTRA_PATHS=(); skopeo_child ghcr.io/k/img@sha256:rv '$1'" 2>&1)"; _rc=$?
+}
+_skopeo_child "${_tmp}/k"
 t_assert_eq 0 "${_rc}" "the skopeo path must build the tree: ${_out}"
 t_assert_contains "$(cat "${_tmp}/skopeo.args")" "docker://ghcr.io/k/img@sha256:rv dir:${_tmp}/k.layout" \
   "the fetch must name the riscv64 child by digest, so it matches the amd64 image's index"
+t_assert_contains "$(cat "${_tmp}/skopeo.args")" "--image-parallel-copies 24" \
+  "a skopeo that has the flag fetches more than six blobs at once, so the largest layer is not queued"
 t_assert_eq "a2" "$(cat "${_tmp}/k/usr/lib/x/a.so")" "the extract applied every layer"
 t_assert_fails test -e "${_tmp}/k.layout"
+STUB_OLD=1 _skopeo_child "${_tmp}/k2"
+t_assert_eq 0 "${_rc}" "an older skopeo still builds the tree: ${_out}"
+t_assert_eq "" "$(grep -o -e '--image-parallel-copies' "${_tmp}/skopeo.args" || true)" \
+  "a skopeo without the flag must not be handed it, or it refuses the copy"
 _out="$(RISCV64_SYSROOT_SKOPEO="${_tmp}/none/skopeo" bash -c "source '${SYSROOT_SH}'; skopeo_child r@sha256:x '${_tmp}/m'" 2>&1)"; _rc=$?
 t_assert_eq 1 "${_rc}" "no skopeo must stop the lane, not fall back"
 t_assert_contains "${_out}" "--mode export" "the error names the other mode"
