@@ -36,7 +36,7 @@ and the PyPI GPU wheel carries `N:\_work\1\s`. Two consequences:
 - Moving either source directory, or adding `-ffile-prefix-map` /
   `-fmacro-prefix-map` to the ORT build, breaks every guard and every consumer
   repo at once. They fail closed, but they all fail.
-- A version is not provenance. PyPI publishes onnxruntime 1.30.0 for cp314 too,
+- A version is not provenance. PyPI publishes onnxruntime 1.31.0 for cp314 too,
   without DirectML, so a name-and-version check cannot tell it from the chain
   wheel. The guards compare bytes.
 
@@ -199,7 +199,7 @@ OpenCV 5.0.0 had two defects on every Windows lane:
   `out/build-logs/rebuild-push-amd64-20260922-034439.log` lines 307666, 308144
   and 308502.
 - G-API's `dml_ep.cpp` compiled to a stub that throws. `FindONNX.cmake:93` looks
-  for `include/onnxruntime/core/providers/dml/`, but ORT 1.30 installs
+  for `include/onnxruntime/core/providers/dml/`, but ORT (1.30 and 1.31 alike) installs
   `dml_provider_factory.h` flat into `include/onnxruntime/`.
 
 `Build-OpencvFromSource.ps1` fixes both without a source patch:
@@ -226,8 +226,8 @@ OpenCV 5.0.0 had two defects on every Windows lane:
   `HAVE_ONNX_COREML` define, or a gapi link without the four `/DELAYLOAD`s.
 
 What changes in the shipped bytes on every lane: `opencv_dnn500.dll` and
-`opencv_gapi500.dll` compile against the 1.30 headers and need an
-`onnxruntime.dll` of 1.30 or later. `dml_ep.cpp` is compiled with
+`opencv_gapi500.dll` compile against the chain's headers (1.31 since 2026-10-13) and need an
+`onnxruntime.dll` of that version or later. `dml_ep.cpp` is compiled with
 `HAVE_ONNX_DML` instead of the stub that throws; no DirectML session has run
 yet. On the arm64 cross lane `opencv_gapi500.dll` is the first
 PE that imports `dxcore.dll`. servercore:ltsc2025 carries it (measured
@@ -515,7 +515,7 @@ EP stage ran G2 and hit the third red below, on the EP's own intermediate `.tar`
 (fixed the same day, [`windows-rocm.md`](windows-rocm.md)). For every other lane
 the first run is still the real test. The likeliest first reds, all fail-closed:
 
-- GenAI and OpenCV's G-API DirectML EP compiling against the 1.30 headers under
+- GenAI and OpenCV's G-API DirectML EP compiling against the 1.31 headers under
   clang-cl for the first time.
 - A distro package in the Linux media closure that depends on `libonnxruntime1.x`
   (Ubuntu's `gstreamer1.0-plugins-bad` does).

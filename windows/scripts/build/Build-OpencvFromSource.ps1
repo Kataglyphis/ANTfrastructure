@@ -333,7 +333,7 @@ function Get-OpencvOrtCmakeArgs {
 }
 
 $ortRoot = Join-Path $InstallDir 'lib\onnxruntime-source'
-$ortVersion = Get-SourceBuildVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.30.0' -StripVPrefix
+$ortVersion = Get-SourceBuildVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.31.0' -StripVPrefix
 $ortShimRoot = New-OpencvOrtNestedInclude -OrtRoot $ortRoot -ShimRoot (Join-Path $SourceDir 'ort-nested')
 $ocvHooksDir = Join-Path $scriptAssetRoot 'patches\opencv\cmake-hooks'
 if (-not (Test-Path -LiteralPath (Join-Path $ocvHooksDir 'POST_CREATE_MODULE_LIBRARY_opencv_gapi.cmake') -PathType Leaf)) {

@@ -5,13 +5,13 @@ $script:ortScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
 
 Describe 'Get-OrtKleidiaiDepsEntry' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:ortScript -FunctionName 'Get-OrtDepsRow', 'Get-OrtKleidiaiDepsEntry')
-    $script:row = 'kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.20.0.tar.gz;6895e72b3d5cf1173358164cb3d64c9d7d33cc84'
+    $script:row = 'kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.30.0.tar.gz;36aebdd5bd28c40b1943eb93498ae42e703510e5'
 
-    It 'reads the one kleidiai row (the real v1.30.0 line), not the qmx fork beside it' {
+    It 'reads the one kleidiai row (the real v1.31.0 line), not the qmx fork beside it' {
         $e = Get-OrtKleidiaiDepsEntry -DepsLine @('dawn;https://x;0000000000000000000000000000000000000000', $script:row,
             'kleidiai-qmx;https://github.com/qualcomm/kleidiai/archive/2f10c9a8.zip;5e855730a2d69057a569f43dd7532db3b2d2a05c')
-        Assert-Equal 'https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.20.0.tar.gz' $e.Url
-        Assert-Equal '6895e72b3d5cf1173358164cb3d64c9d7d33cc84' $e.Sha1
+        Assert-Equal 'https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.30.0.tar.gz' $e.Url
+        Assert-Equal '36aebdd5bd28c40b1943eb93498ae42e703510e5' $e.Sha1
     }
 
     It 'refuses a missing or duplicated row, a foreign URL and a non-SHA1 pin (mutation)' {
@@ -24,7 +24,7 @@ Describe 'Get-OrtKleidiaiDepsEntry' {
 
 Describe 'Edit-KleidiaiMarmasmRule' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:ortScript -FunctionName 'Edit-KleidiaiMarmasmRule')
-    # KleidiAI v1.20.0's lines 13-17, the anchor and its neighbours.
+    # KleidiAI v1.30.0's lines 13-17 (v1.20.0's too), the anchor and its neighbours.
     $script:cml = "project(KleidiAI)`n`nif(MSVC)`n    enable_language(ASM_MARMASM)`nelse()`n    enable_language(ASM)`nendif()`n"
 
     It 'sets the rule on the line right after enable_language(ASM_MARMASM), indented alike, forward slashes' {

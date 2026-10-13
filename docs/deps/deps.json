@@ -1044,7 +1044,7 @@
               "spdx": "BSD-3-Clause AND Apache-2.0"
             },
             {
-              "name": "DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll, dxil.dll beside the chain onnxruntime.dll and in onnxruntime\\capi of every chain wheel)",
+              "name": "DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll beside the chain onnxruntime.dll and in onnxruntime\\capi of every chain wheel)",
               "var": "ORT_WEBGPU_WINDOWS_DXC_VERSION",
               "url": "https://github.com/microsoft/DirectXShaderCompiler",
               "license": "NCSA (LLVM) + Microsoft Software License Terms (LICENSE-MS.txt, read as applying until reviewed, as for the LiteRT-LM copy); all three texts ship in C:\\runtime\\lib\\onnxruntime-source\\licenses\\directx-shader-compiler and are appended to the wheel's onnxruntime\\ThirdPartyNotices.txt",

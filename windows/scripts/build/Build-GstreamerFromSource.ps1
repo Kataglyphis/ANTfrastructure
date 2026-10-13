@@ -700,7 +700,7 @@ int _isatty(int);
         $ortInclude = Join-Path $ortRoot 'include'
         if (-not (Test-Path (Join-Path $ortLib 'onnxruntime.lib'))) { throw "onnxruntime.lib not found in $ortLib — cannot describe ONNX Runtime to pkg-config." }
         # Same env-name order as Build-OnnxFromSource.ps1, or a standalone run writes a stale version into the .pc.
-        $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.30.0' -StripVPrefix
+        $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.31.0' -StripVPrefix
         # Some layouts put ORT's headers under include\onnxruntime\core\session too.
         $ortIncludes = @($ortInclude, (Join-Path $ortInclude 'onnxruntime'),
             (Join-Path $ortInclude 'onnxruntime\core\session')) | Where-Object { Test-Path $_ }

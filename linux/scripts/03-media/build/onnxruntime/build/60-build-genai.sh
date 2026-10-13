@@ -85,6 +85,13 @@ info "Found onnxruntime_c_api.h at ${NATIVE_CPU_OUTPUT_DIR}/include/onnxruntime_
 
 [[ -d "${GENAI_SRC_DIR}" ]] || err "GenAI source not found at ${GENAI_SRC_DIR}. Run 20-fetch.sh first."
 
+# ORT v1.31.0 moved the model-package entries GenAI resolves into a stable table; see docs/upstreamable-patches.md entry 23.
+_genai_ort_patch="/opt/scripts/patches/onnxruntime-genai/002-ort-1.31-model-package-api.patch"
+[ -f "${_genai_ort_patch}" ] \
+  || err "GenAI ORT 1.31 patch not found at ${_genai_ort_patch} — is linux/scripts/patches/onnxruntime-genai bind-mounted into the genai RUN (Dockerfile.media)?"
+bash /opt/scripts/core/apply-patch.sh "${_genai_ort_patch}" "${GENAI_SRC_DIR}" \
+  "onnxruntime-genai: model-package entries from ORT v1.31.0's stable OrtModelPackageApi table"
+
 # See docs/gen1-riscv64-genai.md § The upstream patch: `cmake/target_platform.cmake`
 if [ "${ARCH}" = "riscv64" ]; then
   _genai_apply_patch="/opt/scripts/core/apply-patch.sh"

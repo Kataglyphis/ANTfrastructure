@@ -2,7 +2,7 @@
 # Media libraries layer; cache-id keying: docs/build-cache-tiers.md#13-cache-mount-ids-and-source-checkouts
 
 # Safety-net defaults; the orchestrator passes versions.env values via append_version_build_args.
-ARG ONNXRUNTIME_VERSION="v1.30.0"
+ARG ONNXRUNTIME_VERSION="v1.31.0"
 ARG ONNXRUNTIME_GENAI_VERSION="v0.17.0"
 ARG LITERT_VERSION="v2.2.0"
 ARG OPENCV_VERSION="5.0.0"
@@ -205,7 +205,6 @@ RUN --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-cpu
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=bind,source=linux/scripts/patches/onnxruntime,target=/opt/scripts/patches/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
@@ -224,7 +223,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"; \
     fi
 
-# The patches mount carries the riscv64 target_platform patch; docs/gen1-riscv64-genai.md
+# The patches mount carries the ORT v1.31.0 model-package port and the riscv64 target_platform patch (docs/gen1-riscv64-genai.md).
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/onnxruntime-genai,target=/opt/scripts/patches/onnxruntime-genai,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \

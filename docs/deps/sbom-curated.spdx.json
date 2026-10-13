@@ -158,7 +158,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-ONNX-Runtime-53539972",
       "name": "ONNX Runtime",
-      "versionInfo": "v1.30.0",
+      "versionInfo": "v1.31.0",
       "downloadLocation": "https://github.com/microsoft/onnxruntime",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1211,7 +1211,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-ONNX-Runtime-bf008cdb",
       "name": "ONNX Runtime",
-      "versionInfo": "v1.30.0",
+      "versionInfo": "v1.31.0",
       "downloadLocation": "https://github.com/microsoft/onnxruntime",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1367,7 +1367,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Dawn-WebGPU-Tint-statically-linked-into-the-ch-eb2d4171",
       "name": "Dawn WebGPU + Tint (statically linked into the chain onnxruntime.dll and onnxruntime_pybind11_state.pyd: C:\\runtime\\lib\\onnxruntime-source and every chain onnxruntime wheel)",
-      "versionInfo": "v20260818.211311",
+      "versionInfo": "v20260916.214021",
       "downloadLocation": "https://github.com/google/dawn",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1378,8 +1378,8 @@
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
-      "SPDXID": "SPDXRef-Package-Windows-Image-DirectX-Shader-Compiler-for-the-ORT-WebGPU-EP--bea204b8",
-      "name": "DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll, dxil.dll beside the chain onnxruntime.dll and in onnxruntime\\capi of every chain wheel)",
+      "SPDXID": "SPDXRef-Package-Windows-Image-DirectX-Shader-Compiler-for-the-ORT-WebGPU-EP--069a157b",
+      "name": "DirectX Shader Compiler for the ORT WebGPU EP (dxcompiler.dll beside the chain onnxruntime.dll and in onnxruntime\\capi of every chain wheel)",
       "versionInfo": "v1.9.2609",
       "downloadLocation": "https://github.com/microsoft/DirectXShaderCompiler",
       "filesAnalyzed": false,
@@ -2487,7 +2487,7 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-DirectX-Shader-Compiler-for-the-ORT-WebGPU-EP--bea204b8"
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-DirectX-Shader-Compiler-for-the-ORT-WebGPU-EP--069a157b"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

@@ -65,6 +65,13 @@ a `sys.version` without `AMD64`.
 `ffmpeg/makedef` is **not** a patch — it is a replacement `makedef` script staged over FFmpeg's (a
 whole-file swap, not a diff).
 
+One `.patch` both lanes apply lives on the Linux side and is mounted per file into the GenAI RUN:
+`linux/scripts/patches/onnxruntime-genai/002-ort-1.31-model-package-api.patch` (microsoft/onnxruntime-genai
+**`ONNXRUNTIME_GENAI_VERSION`**). It takes GenAI's model-package entries from ORT v1.31.0's stable
+`OrtModelPackageApi` table, where ORT moved them out of the experimental header. `Build-OnnxGenaiFromSource.ps1`
+applies it with `Invoke-SourcePatch -IgnoreWhitespace`, without a fallback; graded in
+[`docs/upstreamable-patches.md`](../../../docs/upstreamable-patches.md) entry 23.
+
 ## Deliberately kept inline (NOT `.patch` files) — and why
 
 These are documented here so a reviewer knows the omission is intentional, not an oversight:
