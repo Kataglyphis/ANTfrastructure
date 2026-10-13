@@ -6,6 +6,37 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-13 — Pins: Renovate's 2026-10-13 tool bumps (ruff 0.17.0, Renovate 44.155.2, Node 26.11.1, pandoc 3.12.1, …)
+
+- **Node 26.11.0 → 26.11.1** (same major). `NODE_AMD64_SHA256` and `NODE_ARM64_SHA256` measured by full download of
+  both `.tar.xz`, equal to nodejs.org's `SHASUMS256.txt`. Its clearsigned copy verifies against release key
+  `5BE8A3F6…B168D356`, which nodejs/node's README lists. `node --version` ran from the measured x64 bytes in
+  `:latest`; the arm64 `node` is ELF aarch64.
+- **pandoc 3.12 → 3.12.1.** `PANDOC_SHA256_AMD64/ARM64` measured by full download, equal to GitHub's asset digests.
+  `pandoc --version` ran from the measured amd64 `.deb` in `:latest`. DocumANTation's Dockerfile ARGs follow through
+  `sync_versions.py` (gitlink 3736dd5 → cb6809f), and its 23 real-pandoc filter tests pass on 3.12.1.
+- **ruff 0.16.10 → 0.17.0** (`tool-pins.env`). The gate pass (`E9,F63,F7,F82`) is clean on all 122 files. 0.17.0 now
+  prints unsafe fixes in the advisory pass, which does not grade. OrchestrANT, WebDavClient and DocumANTation repeat
+  the pin, so their `consumer pins` gate fails until each follows.
+- **Renovate 44.144.1 → 44.155.2**, one patch past the report's 44.155.1, published after it. `engines.node` is still
+  `^24.11.0` (npm registry), so `RENOVATE_NODE_VERSION` stays at 24.21.0, the newest 24.x. 44.155.2 ran on that Node
+  in `:latest` over this tree: every detected manager reports nothing behind, and `custom.regex` lists only keys other
+  batches own.
+- **cargo-c 0.10.25 → 0.10.26** (crates.io's `0.10.26+cargo-0.100.0`, MSRV 1.97). `cargo install --locked --version
+  0.10.26 cargo-c` built it in `:latest` with Rust 1.99.0.
+- **truststore 0.10.4 → 0.10.5.** Neither it nor cargo-c has a SHA pair: pip installs the pinned version, and cargo
+  checks the crates.io checksum.
+- **`# syntax=docker/dockerfile:1.28.0`** in all eleven Linux Dockerfiles. 1.28.0 refuses `COPY --link --chown=<name>`
+  at parse time (moby/buildkit#7134). The three `--link --chown` copies in `Dockerfile.package` use the numeric
+  `RUNTIME_UID`. A probe of that form built under the 1.28.0 frontend in Rancher Desktop's BuildKit, and the by-name
+  form was refused.
+- **Actions:** `github/codeql-action/upload-sarif` v4.38.2 → v4.38.3 (`24c54180`), `astral-sh/setup-uv` v10.2.0 →
+  v10.3.0 (`1c37ad07`). Each digest was resolved from its tag through the GitHub API.
+- **llm-stack compose:** Open WebUI v0.11.4 → v0.12.0, Glances 4.5.7-full → 4.5.8-full. The file pins tags, not
+  digests; both tags resolve in their registries.
+- Not in this batch: ONNX Runtime, LiteRT, Flutter, Ollama, llama.cpp, freetype, DXC, TensorRT and `WEBDAVCLIENT_REF`.
+  protobuf 36.2 stays held, slaved to LiteRT-LM 0.18.0's v36.1.
+
 ## 2026-10-13 — no ONNX Runtime training (CON94 dropped)
 
 - **Owner decision: the chain ORT stays inference-only.** Upstream deprecated on-device training in 1.20.0: the last

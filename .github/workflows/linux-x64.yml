@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # uvx runs lint-python.sh's pinned ruff (RUFF_PIN); this runner has neither ruff nor uv.
       - name: Install uv (provides uvx for the python-lint gate)
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       # The runner image ships no pytest, and without it every mutation baseline fails unmutated.
       - name: Install pytest (mutation-gate baselines)
         run: pip install --quiet pytest
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Same setup as preflight: without pytest and PyYAML the baselines fail unmutated.
       - name: Install uv (provides uvx for the python-lint gate)
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Install pytest (mutation-gate baselines)
         run: pip install --quiet pytest
       - name: Install PyYAML (renovate_audit.py's real YAML parser)

@@ -31,7 +31,7 @@ services:
 
   open-webui:
     # Pinned: a moving tag breaks benchmark comparability, and a volume written by a newer image may not migrate back.
-    image: ghcr.io/open-webui/open-webui:v0.11.4
+    image: ghcr.io/open-webui/open-webui:v0.12.0
     ports:
       # Loopback-only by default; see docker-compose.lan.yml for LAN exposure.
       - "127.0.0.1:3000:8080"
@@ -46,7 +46,7 @@ services:
     restart: unless-stopped
 
   glances:
-    image: nicolargo/glances:4.5.7-full
+    image: nicolargo/glances:4.5.8-full
     ports:
       # Loopback only: Glances exposes full host telemetry unauthenticated.
       - "127.0.0.1:61208:61208"

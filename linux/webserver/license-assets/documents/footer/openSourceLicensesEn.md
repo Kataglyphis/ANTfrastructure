@@ -18,7 +18,7 @@ its own license terms.
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
 | CMake | 4.4.4 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Node.js | 26.11.0 | [nodejs.org](https://nodejs.org/) | MIT |
+| Node.js | 26.11.1 | [nodejs.org](https://nodejs.org/) | MIT |
 | uv | 0.13.0 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
@@ -268,7 +268,7 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
-| Pandoc | 3.12 | [github.com/jgm/pandoc](https://github.com/jgm/pandoc) | GPLv2+ |
+| Pandoc | 3.12.1 | [github.com/jgm/pandoc](https://github.com/jgm/pandoc) | GPLv2+ |
 | TeX Live (texlive-full) | Ubuntu apt | [tug.org/texlive](https://tug.org/texlive/) | Collection; per package LPPL / GPL / X11 / modified BSD |
 | Latin Modern fonts (lmodern) | Ubuntu apt | [www.gust.org.pl/projects/e-foundry/latin-modern](http://www.gust.org.pl/projects/e-foundry/latin-modern) | GUST Font License (LPPL-style) |
 | Ghostscript | Ubuntu apt | [www.ghostscript.com](https://www.ghostscript.com/) | AGPLv3+ |
@@ -513,7 +513,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** GPL-2.0-or-later
 - **Source:** <https://github.com/jgm/pandoc>
-- **Revision:** 3.12
+- **Revision:** 3.12.1
 
 ### TeX Live (texlive-full) — Documentation Image
 
