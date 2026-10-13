@@ -49,6 +49,9 @@
   - Run 38426729036 at skopeo's default of six: export took 415 s and skopeo 155 s.
   - Both runs: identical trees of 32791 entries, and the C, C++, GStreamer and Rust smoke passed on each.
   - Before the switch, the lanes' step had a median of 354-373 s, so about 4.6 min come off every riscv64 cross job.
+- **The first lane runs after the switch**, dispatched together, all tests green: OxidANT 38458259151 took 110 s,
+  AccelerANTgine 38458264112 96 s and BeschleunigerBallett 38458268864 111 s for the step, against medians of 366,
+  354 and 373 s. That is about 4.3 min off each job.
 
 ## 2026-10-13 — The arm64 and riscv64 images stop carrying the x86_64 host payload (CON96)
 

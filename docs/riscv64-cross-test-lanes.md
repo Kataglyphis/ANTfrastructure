@@ -176,9 +176,18 @@ trees with `linux/scripts/tests/tree-manifest.py` and cross-runs
 | 38455969715 | 357 s (pull 215 s, export 131 s) | 78 s (copy 39 s at 24 blobs, extract 32 s) | identical, 32791 entries | passes on both |
 
 "Identical" covers path, type, mode, size, link count, file mtime, link target and content.
-Before the switch, the consumer lanes' `Set up riscv64 cross testing` step had a median of
-366 s in OxidANT, 354 s in AccelerANTgine and 373 s in BeschleunigerBallett, over each
-repo's last six runs.
+
+The consumer lanes' `Set up riscv64 cross testing` step, before the switch (median of each
+repo's last six runs) and in the first dispatch after it (2026-10-13, the three lanes at
+once, all tests green):
+
+| repo | before | after | run | job wall after |
+| --- | --- | --- | --- | --- |
+| OxidANT | 366 s | 110 s (copy 71 s, extract 31 s) | 38458259151 | 13.5 min |
+| AccelerANTgine | 354 s | 96 s (copy 56 s, extract 31 s) | 38458264112 | 15.9 min |
+| BeschleunigerBallett | 373 s | 111 s (copy 72 s, extract 32 s) | 38458268864 | 24.6 min |
+
+The copy ran slower than in the probe because three jobs fetched the same blobs at once.
 
 ## Traps, each found by a failing run
 
