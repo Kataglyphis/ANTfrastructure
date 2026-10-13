@@ -6,6 +6,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — Workflow conventions: every hub job is bounded, `job-timeout` is armed here
+
+- `python-ci-windows.yml`'s container build job, the hub's last job without a bound, takes `timeout-minutes` (default
+  150). OrchestrANT's ran 39-61 min over its last nine finished runs.
+- `preflight.sh` arms `job-timeout` beside `permissions`, so a hub job added without `timeout-minutes` is red the day
+  it lands. The hub's census row for it is gone.
+- BeschleunigerBallett's two census rows are gone too. Its 64834207 bounds `clang-tests` (150 min), `gcc` (90) and
+  `pester-tests` (15) from their last five runs, and fails an empty Linux package upload. The gate reads 0 findings
+  there.
+
 ## 2026-10-14 — CI prologue: Windows deletes nothing by default, it only hides the cleanup's directories from PATH
 
 - **`prepare-windows-container-host` defaults to `cleanup: hide`.** No directory is deleted. Every `PATH` entry under

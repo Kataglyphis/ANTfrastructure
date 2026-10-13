@@ -237,7 +237,7 @@ fi
 run_check dockerfile-lint "dockerfile lint (hadolint)" bash linux/scripts/lint-dockerfiles.sh
 
 # 9. Arm a ramped workflow convention here once the repo is clean of it; until then workflow-conventions.allow holds it.
-run_check workflow-lint "workflow lint (actionlint)" env WORKFLOW_CONVENTIONS_GATE=permissions bash linux/scripts/lint-workflows.sh
+run_check workflow-lint "workflow lint (actionlint)" env WORKFLOW_CONVENTIONS_GATE=permissions,job-timeout bash linux/scripts/lint-workflows.sh
 
 # Python gate: hard-fails only on real-error classes; full ruleset is advisory.
 run_check python-lint "python lint (ruff)" bash linux/scripts/lint-python.sh

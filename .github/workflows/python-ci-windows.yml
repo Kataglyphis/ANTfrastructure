@@ -158,6 +158,13 @@ on:
         required: false
         type: string
         default: ''
+      timeout-minutes:
+        description: >-
+          Time limit of the container build job. OrchestrANT's ran 39-61 min over
+          its last nine finished runs (2026-10-12/13), about half of it the prologue.
+        required: false
+        type: number
+        default: 150
     secrets:
       GHCR_PAT:
         description: >-
@@ -179,6 +186,7 @@ jobs:
   build-test-python-package-on-windows:
     if: ${{ inputs.build-python-package }}
     runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
 
     steps:
       # An empty secret would otherwise fail as a docker login error that never names the input.

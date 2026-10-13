@@ -621,7 +621,7 @@ t_assert_contains "$(t_out _conv_at "${hubk}" "${clean_root}")" "consumers.json 
 t_case "preflight ARMS the ramp; a knob with no caller ramps nothing"
 # Without a caller, "advisory until armed" is a promise nobody keeps.
 t_assert_contains "$(cat "${SCRIPTS}/preflight.sh")" \
-  "env WORKFLOW_CONVENTIONS_GATE=permissions bash linux/scripts/lint-workflows.sh"
+  "env WORKFLOW_CONVENTIONS_GATE=permissions,job-timeout bash linux/scripts/lint-workflows.sh"
 
 t_case "the SHIPPED allow file parses and its census is EXACT for this repo"
 # A fresh repo with this origin, because the mutation gate runs this suite from a copy with no .git.
