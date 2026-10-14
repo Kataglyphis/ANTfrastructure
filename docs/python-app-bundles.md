@@ -16,7 +16,7 @@ wheels the consumer's CI tested, the Cython-compiled app wheel included.
 | Lane | Builder | Runtime |
 |---|---|---|
 | Windows (`:winamd64`) | [`windows/scripts/python/New-PythonAppBundle.ps1`](../windows/scripts/python/New-PythonAppBundle.ps1) | the image's own source-built CPython, laid out by `PC\layout` |
-| Linux (`:latest`) | [`linux/scripts/06-packaging/python-app-bundle.sh`](../linux/scripts/06-packaging/python-app-bundle.sh) | python-build-standalone via `uv python install` at `PYTHON_VERSION`, because the image's own build is not relocatable |
+| Linux (`:latest`) | [`linux/scripts/06-packaging/python-app-bundle.sh`](../linux/scripts/06-packaging/python-app-bundle.sh) | python-build-standalone via `uv python install` at the version of the image's `python3`, which built the wheels (`versions.env`'s `PYTHON_VERSION` only without one), because the image's own build is not relocatable |
 
 First consumer: OrchestrANT (`yolo-monitor`, `orchestrant-bench`, `orchestrant-smoke`).
 Measured on 2026-09-30/10-01: Windows 561 MB, Linux x86_64 666 MB. Both builders were also

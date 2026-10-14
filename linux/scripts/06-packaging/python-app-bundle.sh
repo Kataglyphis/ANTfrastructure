@@ -10,8 +10,14 @@ REPO_ROOT="${PWD}"
 CONFIG="packaging/app.json"
 WHEEL_DIR="dist"
 OUT_DIR=""
-# The pinned interpreter, from versions.env beside the scripts: docs/python-ci.md#upgrading-python
-PYTHON_VERSION="$(sed -n 's/^PYTHON_VERSION=//p' "${SCRIPT_DIR}/../01-core/versions.env" 2>/dev/null | head -n 1)"
+# The image's interpreter built the wheels, so its X.Y.Z decides; the pin runs ahead of a published image (CON90).
+runtime_python_version() {
+  local v
+  v="$(python3 -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null)" || v=""
+  [ -n "${v}" ] || v="$(sed -n 's/^PYTHON_VERSION=//p' "${SCRIPT_DIR}/../01-core/versions.env" 2>/dev/null | head -n 1)"
+  printf '%s' "${v}"
+}
+PYTHON_VERSION="$(runtime_python_version)"
 ORT_WHEEL_DIR="${ORT_CHAIN_WHEEL_DIR:-/opt/onnxruntime-wheels}"
 WORK_DIR=""
 

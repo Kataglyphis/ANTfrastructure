@@ -306,4 +306,17 @@ t_case "the bundle refuses binaries built for another ABI instead of falling bac
 t_assert_eq "1" "$(t_rc _pick cp314 fixture_app-1.0-cp314-cp314t-linux_x86_64.whl fixture_app-1.0-py3-none-any.whl)"
 t_assert_contains "$(_pick cp314 fixture_app-1.0-cp314-cp314t-linux_x86_64.whl)" "no cp314 wheel in ${_work}/pick, only fixture_app-1.0-cp314-cp314t-linux_x86_64.whl"
 
+t_case "the bundle's runtime is the image interpreter's version, the pin only without one (CON90)"
+eval "$(t_fn_src "${SCRIPTS}/06-packaging/python-app-bundle.sh" runtime_python_version)" || exit 1
+_rt="${_work}/rt"
+mkdir -p "${_rt}/scripts/01-core" "${_rt}/scripts/06-packaging" "${_rt}/img" "${_rt}/none"
+printf 'PYTHON_VERSION=3.15.0\n' > "${_rt}/scripts/01-core/versions.env"
+printf '#!/bin/sh\necho 3.14.8\n' > "${_rt}/img/python3"
+printf '#!/bin/sh\nexit 1\n' > "${_rt}/none/python3"
+chmod +x "${_rt}/img/python3" "${_rt}/none/python3"
+t_assert_eq "3.14.8" "$(SCRIPT_DIR="${_rt}/scripts/06-packaging" PATH="${_rt}/img:${PATH}" runtime_python_version)" \
+  "an image still on 3.14.8 builds cp314 wheels, so a 3.15.0 runtime would install none of them"
+t_assert_eq "3.15.0" "$(SCRIPT_DIR="${_rt}/scripts/06-packaging" PATH="${_rt}/none:${PATH}" runtime_python_version)" \
+  "with no working python3 the pin beside the scripts decides"
+
 t_summary

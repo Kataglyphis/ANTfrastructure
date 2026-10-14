@@ -13569,5 +13569,13 @@
   "replace": "  hailo_validate_knobs || exit 2\n",
   "test": "bash linux/scripts/tests/test-host-payload.sh",
   "why": "the runtime lane reads HOST_PAYLOAD_ARCHES hours after the chain starts; a typo must stop the chain before its first stage, not at the first package build"
+ },
+ {
+  "id": "python.app-bundle.runtime-follows-the-image",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "  v=\"$(python3 -c 'import sys; print(\"%d.%d.%d\" % sys.version_info[:3])' 2>/dev/null)\" || v=\"\"\n",
+  "replace": "  v=\"\"\n",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "the pin runs ahead of the published image during an upgrade (CON90: 3.15.0 against an image on 3.14.8), and a runtime the wheels were not built for installs none of them"
  }
 ]
