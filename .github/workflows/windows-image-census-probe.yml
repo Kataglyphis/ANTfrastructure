@@ -1,0 +1,73 @@
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+
+# What the published :winamd64 holds on disk, by layer and by directory: the uncompressed bytes and file counts hcsshim imports serially on every pull.
+
+name: Windows x64 · image census probe
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+jobs:
+  census:
+    name: winamd64 by layer and directory
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # The local actions below load from the tree.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare the Windows container host
+        id: prep
+        uses: ./.github/actions/prepare-windows-container-host
+        with:
+          registry-password: ${{ secrets.GHCR_PAT }}
+
+      - name: Layer sizes on disk
+        env:
+          IMAGE: ${{ steps.prep.outputs.image }}
+        run: |
+          docker history --no-trunc --format '{{.Size}}|{{.CreatedBy}}' $env:IMAGE | ForEach-Object {
+            $size, $cmd = $_ -split '\|', 2
+            $script = [regex]::Match($cmd, "[\w-]+\.ps1|COPY \S+|Apply image \S+|Install update \S+").Value
+            '{0,10}  {1}' -f $size, ($(if ($script) { $script } else { $cmd.Substring(0, [Math]::Min(120, $cmd.Length)) }))
+          }
+
+      # One pass in C#: PowerShell's own loop over ~10^6 files would take most of the job.
+      - name: Directories of 150 MB or more, five levels deep
+        uses: ./.github/actions/run-in-windows-container
+        with:
+          command: |
+            Add-Type -TypeDefinition @'
+            using System; using System.IO; using System.Collections.Generic;
+            public static class Census {
+              public static Dictionary<string, long[]> Run(string root, int depth) {
+                var d = new Dictionary<string, long[]>(StringComparer.OrdinalIgnoreCase);
+                var o = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
+                foreach (var f in new DirectoryInfo(root).EnumerateFiles("*", o)) {
+                  var parts = f.FullName.Substring(root.Length).Split('\\');
+                  var key = root.TrimEnd('\\');
+                  for (int i = 0; i < Math.Min(depth, parts.Length - 1); i++) {
+                    key += "\\" + parts[i];
+                    long[] v;
+                    if (!d.TryGetValue(key, out v)) { v = new long[2]; d[key] = v; }
+                    v[0] += f.Length; v[1]++;
+                  }
+                }
+                return d;
+              }
+            }
+            '@
+            $d = [Census]::Run('C:\', 5)
+            $total = ($d.GetEnumerator() | Where-Object { $_.Key -notmatch '^C:\\[^\\]+\\' } | ForEach-Object { $_.Value[0] } | Measure-Object -Sum).Sum
+            Write-Host ('total {0:N2} GB (hard links in C:\Windows count once per name)' -f ($total / 1GB))
+            $d.GetEnumerator() | Where-Object { $_.Value[0] -ge 150MB } | Sort-Object Key | ForEach-Object {
+              Write-Host ('{0,8:N2} GB {1,9:N0} files  {2}' -f ($_.Value[0] / 1GB), $_.Value[1], $_.Key)
+            }
+          memory: 8g

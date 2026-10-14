@@ -6,6 +6,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — A census of what the Windows image holds
+
+- `windows-image-census-probe.yml` (dispatch only) pulls `:winamd64` on `windows-2025` and prints two tables. The first
+  is `docker history`'s on-disk size per layer. The second lists every directory of 150 MB or more, five levels deep,
+  with its file count, from one pass inside the container. Those are the bytes and files hcsshim imports serially on
+  every pull, about 14 of a Windows job's 16 prologue minutes since `cleanup: hide`. It is the measurement behind
+  slimming the image.
+
 ## 2026-10-14 — The Linux app bundle runs the Python its wheels were built for
 
 - **`python-app-bundle.sh` installs the version of the image's `python3`, not `versions.env`'s pin.** Since CON90 moved
