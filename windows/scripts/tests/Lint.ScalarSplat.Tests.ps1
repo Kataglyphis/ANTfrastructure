@@ -5,9 +5,9 @@
 
 Describe 'no array assigned from an if/else is splatted unwrapped' {
 
-    It 'finds every $x = if (...) with a one-element @(...) branch that an @x splats, outside the one that waits for a base re-key' {
-        # The first waits for the next base re-key (CON89: Dockerfile.base COPYs it); the second is this file's own demonstration.
-        $known = @('windows/scripts/modules/WindowsScripts.Shared.psm1|selector', 'windows/scripts/tests/Lint.ScalarSplat.Tests.ps1|bare')
+    It 'finds every $x = if (...) with a one-element @(...) branch that an @x splats' {
+        # This file's own demonstration; the vswhere selector it waited for was fixed with the 2026-10-14 base re-key (CON89).
+        $known = @('windows/scripts/tests/Lint.ScalarSplat.Tests.ps1|bare')
         $root = Get-RepoRoot
         $hits = foreach ($file in Get-ChildItem -LiteralPath (Join-Path $root 'windows\scripts') -Recurse -File -Include '*.ps1', '*.psm1') {
             $text = [IO.File]::ReadAllText($file.FullName)

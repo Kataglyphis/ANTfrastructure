@@ -420,7 +420,7 @@ function Get-VisualStudioInstallPath {
     }
 
     # -nologo, or the banner returns as the first path; retries then a filesystem fallback, as a fresh container's vswhere can return nothing.
-    $selector = if ($All) { @() } else { @('-latest') }
+    $selector = @(if (-not $All) { '-latest' })
     $vsPaths = @()
     foreach ($attempt in 1..3) {
         $vsPaths = @(& $vswhere -nologo @selector -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath |
