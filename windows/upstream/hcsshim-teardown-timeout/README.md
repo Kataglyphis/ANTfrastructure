@@ -8,6 +8,10 @@
 > **Rebased 2026-09-22** onto upstream `main` `0e1f18b7`: head `5e9df53c`
 > (was `19251429`), same patch-id. The PR is open, no longer a draft, and
 > GitHub reports it mergeable.
+> **Updated 2026-10-14** by merging upstream `main` `bd97a054` into the branch
+> (a merge, so no force-push): head `04a9bdaa`. Upstream did not touch
+> `cmd/containerd-shim-runhcs-v1/` in between, so the patch is unchanged and
+> #2855 is still unreviewed.
 
 Everything needed to file the `microsoft/hcsshim` issue and PR that would let
 this project retire its locally patched shim. Kept in-tree because the local
