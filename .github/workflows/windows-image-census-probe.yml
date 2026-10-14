@@ -10,6 +10,19 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      roots:
+        description: Directories to walk, separated by ';'
+        type: string
+        default: 'C:\'
+      depth:
+        description: Levels below each root to report
+        type: number
+        default: 5
+      min-mb:
+        description: Smallest directory reported, in MB
+        type: number
+        default: 150
 
 jobs:
   census:
@@ -40,7 +53,7 @@ jobs:
           }
 
       # One pass in C#: PowerShell's own loop over ~10^6 files would take most of the job.
-      - name: Directories of 150 MB or more, five levels deep
+      - name: Directories of min-mb or more, depth levels below each root
         uses: ./.github/actions/run-in-windows-container
         with:
           command: |
@@ -51,7 +64,7 @@ jobs:
                 var d = new Dictionary<string, long[]>(StringComparer.OrdinalIgnoreCase);
                 var o = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
                 foreach (var f in new DirectoryInfo(root).EnumerateFiles("*", o)) {
-                  var parts = f.FullName.Substring(root.Length).Split('\\');
+                  var parts = f.FullName.Substring(root.TrimEnd('\\').Length + 1).Split('\\');
                   var key = root.TrimEnd('\\');
                   for (int i = 0; i < Math.Min(depth, parts.Length - 1); i++) {
                     key += "\\" + parts[i];
@@ -64,10 +77,20 @@ jobs:
               }
             }
             '@
-            $d = [Census]::Run('C:\', 5)
-            $total = ($d.GetEnumerator() | Where-Object { $_.Key -notmatch '^C:\\[^\\]+\\' } | ForEach-Object { $_.Value[0] } | Measure-Object -Sum).Sum
-            Write-Host ('total {0:N2} GB (hard links in C:\Windows count once per name)' -f ($total / 1GB))
-            $d.GetEnumerator() | Where-Object { $_.Value[0] -ge 150MB } | Sort-Object Key | ForEach-Object {
-              Write-Host ('{0,8:N2} GB {1,9:N0} files  {2}' -f ($_.Value[0] / 1GB), $_.Value[1], $_.Key)
+            foreach ($root in $env:CENSUS_ROOTS -split ';' | Where-Object { $_ }) {
+              if (-not (Test-Path -LiteralPath $root)) { Write-Host "${root}: not in the image"; continue }
+              $d = [Census]::Run($root, [int]$env:CENSUS_DEPTH)
+              $top = @($d.GetEnumerator() | Where-Object { $_.Key.Substring($root.TrimEnd('\').Length + 1) -notmatch '\\' })
+              Write-Host ('{0}: {1:N2} GB in {2:N0} files' -f $root, (($top | ForEach-Object { $_.Value[0] } | Measure-Object -Sum).Sum / 1GB), ($top | ForEach-Object { $_.Value[1] } | Measure-Object -Sum).Sum)
+              $d.GetEnumerator() | Where-Object { $_.Value[0] -ge [long]$env:CENSUS_MIN_MB * 1MB } | Sort-Object Key | ForEach-Object {
+                Write-Host ('{0,8:N2} GB {1,9:N0} files  {2}' -f ($_.Value[0] / 1GB), $_.Value[1], $_.Key)
+              }
             }
+          extra-args: |
+            -e
+            CENSUS_ROOTS=${{ inputs.roots }}
+            -e
+            CENSUS_DEPTH=${{ inputs.depth }}
+            -e
+            CENSUS_MIN_MB=${{ inputs.min-mb }}
           memory: 8g
