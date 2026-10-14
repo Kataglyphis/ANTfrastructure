@@ -6,6 +6,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — sqlite3's web wasm 3.7.1, and WebDavClient's lock maintenance
+
+- `SQLITE3_WASM_VERSION` 3.7.0 -> 3.7.1 with its SHA256 (`87c1869b...`, the `sqlite3-3.7.1` release's
+  `sqlite3.wasm`). The day's lock maintenance moved the `sqlite3` Dart package to 3.7.1 in OmniAccelerANT and
+  jotrockenmitlocken, and OmniAccelerANT's `pinned_artefacts_test.dart` requires the committed `web/sqlite3.wasm`, this
+  pin and the lock to move together.
+- `WEBDAVCLIENT_REF` -> `a53b013e`, its uv.lock maintenance (more-itertools 11.2.0, ty 0.0.87).
+
 ## 2026-10-14 — A census of what the Windows image holds
 
 - `windows-image-census-probe.yml` (dispatch only) pulls `:winamd64` on `windows-2025` and prints two tables. The first
