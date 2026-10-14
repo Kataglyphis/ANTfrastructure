@@ -470,7 +470,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-CUDA-Toolkit-9221b61d",
       "name": "CUDA Toolkit",
-      "versionInfo": "13.4.2",
+      "versionInfo": "13.4.3",
       "downloadLocation": "https://developer.nvidia.com/cuda-toolkit",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1055,7 +1055,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-CUDA-9080d584",
       "name": "CUDA",
-      "versionInfo": "13.4.2",
+      "versionInfo": "13.4.3",
       "downloadLocation": "https://developer.nvidia.com/cuda-toolkit",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1393,7 +1393,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-HIP-ggml-hip.dll-built-from-the-pinn-eeb95eb7",
       "name": "llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip)",
-      "versionInfo": "11583",
+      "versionInfo": "11617",
       "downloadLocation": "https://github.com/ggml-org/llama.cpp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1406,7 +1406,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-llama.cpp-official-prebuilt-Windows-Vulkan-rel-968cbee2",
       "name": "llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools)",
-      "versionInfo": "11583",
+      "versionInfo": "11617",
       "downloadLocation": "https://github.com/ggml-org/llama.cpp",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
