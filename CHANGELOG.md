@@ -6,6 +6,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — The Linux app bundle runs the Python its wheels were built for
+
+- **`python-app-bundle.sh` installs the version of the image's `python3`, not `versions.env`'s pin.** Since CON90 moved
+  the pin to 3.15.0, OrchestrANT's Linux lanes had failed every run (x64 and arm64 since run 38265793839, 2026-10-12):
+  `uv python install 3.15.0` found no download in the published image's uv 0.12.23, and the wheels it would have
+  installed were cp314, built by that image's 3.14.8. The pin runs ahead of the published images during an upgrade,
+  so the interpreter that built the wheels decides; the pin is the fallback when no `python3` runs. The Windows bundle
+  already used the image's own CPython. Suite `test-python-free-threaded-wheel.sh` (in WSL: 62 passed) and mutation
+  `python.app-bundle.runtime-follows-the-image`.
+
 ## 2026-10-14 — Renovate preset: the Flutter SDK's Gradle plugin loader is never looked up (CON84)
 
 - `default.json` disables `dev.flutter.flutter-plugin-loader` for the `gradle` manager. An Android app's
