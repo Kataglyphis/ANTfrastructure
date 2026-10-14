@@ -49,7 +49,7 @@ Phases:
 
 - **A** — one-time host provisioning **[admin]**
 - **B** — repo checkout + gate tooling **[non-admin]**
-- **C** — build-service tuning **[admin]** (debug flags, log limit, GC policy, Defender, sccache/dufs)
+- **C** — build-service tuning **[admin]** (debug flags, log limit, GC policy, Defender, sccache/dufs, TIME_WAIT)
 - **D** — per-boot / per-run checks
 - **E** — first build + verification
 - **R** — recovering after a Stevedore reinstall / repair **[admin]**
@@ -67,7 +67,8 @@ Phases:
 > deployed with `TEARDOWN_TIMEOUT=5m`), and dufs (scooped if missing, started
 > serving the cache dir, ONLOGON task registered, machine
 > `SCCACHE_WEBDAV_ENDPOINT` set to the host's LAN IP; § C5 has the
-> session-independent task that replaces the ONLOGON one).
+> session-independent task that replaces the ONLOGON one), and the host's
+> `TcpTimedWaitDelay` of 30 s (§ C6; it takes effect after a reboot).
 >
 > ```pwsh
 > pwsh -File windows\scripts\host\Install-NewHost.ps1 -ReportOnly   # plan first (safe, non-admin)
@@ -705,6 +706,26 @@ Verify:
 [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT','Machine')               # set (new shells inherit)
 ```
 
+### C6. `TcpTimedWaitDelay` = 30 s (REQUIRED for a chain without idle tails)
+
+A container's teardown waits until every TIME_WAIT it left has expired, and Windows keeps one for
+120 s by default. sccache's client closes first after every compile and every `--show-stats`, so
+**every RUN that started an sccache server reached DONE about 120 s after its last output line**:
+16 to 27 min per chain (`windows-refactor-backlog.md` #179). The stack is the host's. Nothing
+inside the container shortens it, and the registry value inside the container changes nothing.
+`Install-NewHost.ps1` sets the host value; by hand, elevated:
+
+```pwsh
+Set-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters TcpTimedWaitDelay 30 -Type DWord
+Restart-Computer    # the stack reads the value at boot; until then the old 120 s stays live
+```
+
+30 is the lowest value Windows accepts. `Test-HostSetup.ps1` checks the registry value, which
+cannot show whether the host has rebooted since. The chain shows it: measured in the from-base chain
+of 2026-10-14 (`bk-20261014-cpu`), the sccache RUNs (ONNX Runtime 1.31, FFmpeg) reached DONE 29.9 s
+and 30.2 s after their last line, against 114 to 124 s before. A tail of ~120 s after an sccache
+RUN means the value is missing or the reboot is still due.
+
 ---
 
 
@@ -956,6 +977,14 @@ filesystem-heavy container (the OpenCV canary in
 [`windows-build-lanes.md`](windows-build-lanes.md#defect-solved)) and confirm it finalizes and exports
 without `0x3`. A disposable canary snapshot is the right thing to risk; a chain
 run is not.
+
+**The timing tells a working shim apart from a broken one.** Count from a RUN's last output line to
+its `DONE`. The fork build `04a9bdaa` with the 5m knob, deployed 2026-10-14, closed every RUN without an
+sccache server 0.9 to 3.3 s after its last line in the from-base chain `bk-20261014-cpu`. Visual
+Studio's install was among them, at 199.9 s of output and `DONE 202.3s`. About 180 s means the knob
+is gone from the containerd service, about 450 s means the defect with the knob, and about 2841 s means
+the 45 min build (`failure-modes.md`, the recurrence playbook). An sccache RUN adds the host's
+TIME_WAIT on top, which is § C6, not the shim.
 
 Run it from an admin shell, and **never while a build is running** — the service
 stop kills every in-flight solve, and the binary cannot be replaced while a shim

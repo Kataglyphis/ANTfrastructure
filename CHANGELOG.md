@@ -6,6 +6,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — Both host fixes measured in the from-base chain; `Install-NewHost` sets `TcpTimedWaitDelay`
+
+- **The fork shim `04a9bdaa` works.** In `bk-20261014-cpu` every RUN without an sccache server reached DONE
+  0.9 to 3.3 s after its last output line, Visual Studio's install included (199.9 s of output, `DONE 202.3s`).
+  `windows-host-setup.md` § R1 and the recurrence playbook in `failure-modes.md` record the timing signatures.
+- **#179 is cut to ~30 s by the host's `TcpTimedWaitDelay` = 30 s.** The sccache RUNs (ONNX Runtime 1.31, FFmpeg)
+  reached DONE 29.9 s and 30.2 s after their last line, against 114 to 124 s in the chains of 2026-10-10/11. That
+  is about 90 s per sccache RUN, 12 to 21 min per chain. The patched sccache stays the option for the remaining 30 s.
+- `Install-NewHost.ps1` sets the value as step 5 (`-TcpTimedWaitDelay`, default 30, `-SkipTcpTimeWait`) and says
+  when a reboot is due. `Get-TcpTimeWaitChange` decides and is tested (`NewHost.TcpTimeWait.Tests.ps1`).
+  `Test-HostSetup.ps1` warns on any other value. The new `windows-host-setup.md` § C6 has the manual recipe.
+- AGENTS.md § Stevedore Fixes After Install names both fixes, where they are scripted, and the tails that tell
+  them apart.
+
 ## 2026-10-14 — The hcsshim fork takes upstream main: `Install-NewHost` builds `04a9bdaa`
 
 - **`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` merges upstream `main` `bd97a054`** (16 commits:

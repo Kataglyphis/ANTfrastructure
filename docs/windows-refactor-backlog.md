@@ -76,7 +76,8 @@ this repo's cp314 pin).
 ### Open items
 
 - **#179 — every RUN that started an sccache server idles ~120 s before DONE: 16 to 27 min
-  per chain (opened 2026-10-12, #153's sweep).** Counted from a RUN's last output line to
+  per chain (opened 2026-10-12, #153's sweep). Cut to ~30 s on 2026-10-14 by the host's
+  `TcpTimedWaitDelay`; the patched sccache below would remove the rest.** Counted from a RUN's last output line to
   its DONE, the gap is 114 to 124 s in every such RUN: 9 RUNs and 1,077 s in
   bk-20261011-184301, 14 RUNs and 1,642 s (8.4 % of 19,592 s) in -233025, 8 RUNs and 955 s
   (13.2 %) in bk-20261010-121545. RUNs without a server close 1 to 9 s after their last
@@ -108,7 +109,7 @@ this repo's cp314 pin).
     `SCCACHE_MULTILEVEL_CHAIN` unset (webdav only), each compile awaits its PUT before the
     client gets `CompileFinished`. Under `disk,webdav` the webdav writes are detached tasks
     that the stop does not wait for either (`multilevel.rs`, `write_remaining_levels_async`).
-  Two fixes remain, both owner decisions:
+  Two fixes, both owner decisions; the second is in place:
   - **A patched sccache.** The client sets `SO_LINGER {on, 0}` after connecting, and the
     server takes the resulting reset as a disconnect rather than logging `Failed to bind
     socket`. The patch is 56 lines on v0.18.0 (`net.rs`, `server.rs`, a windows-sys feature).
@@ -116,8 +117,11 @@ this repo's cp314 pin).
     then kills the server instead of `--stop-server`, which also resets its pooled webdav
     connections. That removes the whole tail. The probe that builds and times it is written
     but has not run.
-  - **The host's `TcpTimedWaitDelay` at 30 s** (admin, reboot). That cuts each tail to about
-    30 s with no image change. Not yet measured in a container either.
+  - **The host's `TcpTimedWaitDelay` at 30 s, adopted 2026-10-14.** `Install-NewHost.ps1` sets
+    it and `Test-HostSetup.ps1` checks it (`windows-host-setup.md` § C6); it takes effect after
+    a reboot. In the from-base chain `bk-20261014-cpu` the sccache RUNs (ONNX Runtime, FFmpeg)
+    reached DONE 29.9 s and 30.2 s after their last line, and the RUNs without a server 0.9
+    to 3.3 s. That is about 90 s less per sccache RUN, 12 to 21 min per chain at the counts above.
   The servers that the launchers alone started (hailo, merge 2/9) need the same end step. In the same function, webdav `NotFound (permanent)`
   404s are cache misses rather than failures, and the `-Last 60` dump contradicts its
   "Failures in full" comment. Before `upstream/hcsshim-teardown-timeout/ISSUE.md` is filed,
