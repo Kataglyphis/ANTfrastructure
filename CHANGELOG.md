@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — Every pin at its newest: uv 0.13.1, ollama 0.40.4, Chrome 155.0.8059.79, Renovate 44.157.0
+
+- `bump_versions.py --write`, the safe tier: `UV_VERSION` 0.13.0 -> 0.13.1 with the amd64, arm64, riscv64 and Windows
+  arm64 archive SHA256s; `OLLAMA_VERSION` 0.40.3 -> 0.40.4 with both arches'; `CHROME_FOR_TESTING_VERSION`
+  155.0.8059.39 -> 155.0.8059.79 with Chrome's and chromedriver's for both arches. DocumANTation's Dockerfile
+  mirrors the uv pin (its `ca062a0`), so its gitlink moves too.
+- `RENOVATE_VERSION` 44.155.2 -> 44.157.0, npm's latest; Node stays at 24.21.0, the newest 24.x.
+- Still held, each for its stated reason: `PROTOC_VERSION` 36.1 (slaved to LiteRT-LM v0.18.0's `protobuf.cmake`, the
+  newest LiteRT-LM release), GenAI v0.17.0 (the newest GitHub tag; 0.18.0 is on PyPI only, and the chain builds from
+  the tag).
+
 ## 2026-10-14 — CUDA 13.4.3 and llama.cpp b11617 for the GPU variants
 
 - `CUDA_VERSION` 13.4.2 -> 13.4.3 for the nvidia variants (Linux and Windows), through `bump_versions.py`'s own

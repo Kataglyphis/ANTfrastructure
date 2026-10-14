@@ -19,7 +19,7 @@ its own license terms.
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
 | CMake | 4.4.4 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Node.js | 26.11.1 | [nodejs.org](https://nodejs.org/) | MIT |
-| uv | 0.13.0 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.13.1 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
@@ -121,8 +121,8 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Chrome for Testing (amd64, arm64) | 155.0.8059.39 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | Google Chrome Terms of Service (the zip's ABOUT names chrome://terms); Chromium's notices at chrome://credits |
-| chromedriver (amd64, arm64) | 155.0.8059.39 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | BSD 3-Clause (LICENSE.chromedriver and THIRD_PARTY_NOTICES.chromedriver in the zip) |
+| Chrome for Testing (amd64, arm64) | 155.0.8059.79 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | Google Chrome Terms of Service (the zip's ABOUT names chrome://terms); Chromium's notices at chrome://credits |
+| chromedriver (amd64, arm64) | 155.0.8059.79 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | BSD 3-Clause (LICENSE.chromedriver and THIRD_PARTY_NOTICES.chromedriver in the zip) |
 | Android Emulator (amd64) | 37.2.12 | [developer.android.com/studio/run/emulator](https://developer.android.com/studio/run/emulator) | Android SDK License; Apache 2.0 (LICENSE), a QEMU derivative (GPLv2), per-component NOTICE.csv |
 | Android 15 (API 35) system image, Google APIs x86_64 (amd64) | 9 | [developer.android.com/studio/run/managing-avds](https://developer.android.com/studio/run/managing-avds) | Android SDK License; AOSP components under their own licences (NOTICE.txt in the image), the kernel GPLv2 |
 
@@ -136,7 +136,7 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Ollama | 0.40.3 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
+| Ollama | 0.40.4 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
 
 ### Build Tooling (build-time only, not in runtime images)
 
@@ -279,7 +279,7 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Python | Ubuntu apt (python3-full) | [python.org](https://python.org/) | PSF License |
-| uv | 0.13.0 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.13.1 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Pygments | pinned by uv.lock | [pygments.org](https://pygments.org/) | BSD 2-Clause |
 
 ### Base Utilities (`third_party/DocumANTation/Dockerfile`)

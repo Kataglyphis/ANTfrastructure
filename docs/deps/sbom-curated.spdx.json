@@ -67,7 +67,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-uv-758d77ac",
       "name": "uv",
-      "versionInfo": "0.13.0",
+      "versionInfo": "0.13.1",
       "downloadLocation": "https://github.com/astral-sh/uv",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -743,7 +743,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Chrome-for-Testing-amd64-arm64-cbacc559",
       "name": "Chrome for Testing (amd64, arm64)",
-      "versionInfo": "155.0.8059.39",
+      "versionInfo": "155.0.8059.79",
       "downloadLocation": "https://googlechromelabs.github.io/chrome-for-testing/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -756,7 +756,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-chromedriver-amd64-arm64-25d99c2d",
       "name": "chromedriver (amd64, arm64)",
-      "versionInfo": "155.0.8059.39",
+      "versionInfo": "155.0.8059.79",
       "downloadLocation": "https://googlechromelabs.github.io/chrome-for-testing/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -808,7 +808,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Ollama-229f7e80",
       "name": "Ollama",
-      "versionInfo": "0.40.3",
+      "versionInfo": "0.40.4",
       "downloadLocation": "https://github.com/ollama/ollama",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1770,7 +1770,7 @@
     {
       "SPDXID": "SPDXRef-Package-Documentation-Image-uv-53092da1",
       "name": "uv",
-      "versionInfo": "0.13.0",
+      "versionInfo": "0.13.1",
       "downloadLocation": "https://github.com/astral-sh/uv",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
