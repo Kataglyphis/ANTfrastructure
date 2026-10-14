@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — CUDA 13.4.3 and llama.cpp b11617 for the GPU variants
+
+- `CUDA_VERSION` 13.4.2 -> 13.4.3 for the nvidia variants (Linux and Windows), through `bump_versions.py`'s own
+  `spec_cuda`: the Windows installer's SHA256 from a download, and the arm64 redist components re-read from
+  `redistrib_13.4.3.json`, where only cuSOLVER moved (12.3.4.7 -> 12.3.5.3).
+- `LLAMA_CPP_HIP_BUILD` 11583 -> 11617 for the rocm variant (`spec_llama_cpp_hip`): the tag's commit, the source
+  archive and the CPU and Vulkan release assets re-hashed; the licence is unchanged.
+- Both report-tier keys were written alone; `--write-all` would also have taken the safe tier's uv, ollama and
+  Chrome bumps, which wait. `sync_versions.py` carried the values into the nvidia and rocm-llama Dockerfiles' ARG
+  defaults, the README and the licence pages.
+
 ## 2026-10-14 — The Windows base re-key: vswhere's selector, PowerShell 7.6.7, the October servercore
 
 - **The next Windows chain rebuilds from `Dockerfile.base`, so the base items ride it together** (CON89):

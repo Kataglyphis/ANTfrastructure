@@ -75,7 +75,7 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| CUDA Toolkit | 13.4.2 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
+| CUDA Toolkit | 13.4.3 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
 | cuDNN | 9.27.0.42 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 | TensorRT | 11.4.0.106 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 
@@ -181,7 +181,7 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| CUDA | 13.4.2 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
+| CUDA | 13.4.3 | [developer.nvidia.com/cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) | NVIDIA EULA |
 | cuDNN | 9.27.0.42 | [developer.nvidia.com/cudnn](https://developer.nvidia.com/cudnn) | NVIDIA cuDNN EULA |
 | TensorRT | 11.4.0.106 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 | AMD ROCm for Windows (TheRock tarball, C:\TheRock\build; rocm variant only) | 10.1.0 | [github.com/ROCm/TheRock](https://github.com/ROCm/TheRock) | per component: MIT (rocBLAS, hipBLASLt, MIOpen, rocFFT, rocRAND, rocSPARSE, hipcc, ...), BSD (rocSOLVER, hipCUB), Apache-2.0 (rocThrust, LLVM WITH LLVM-exception); the notices in share\doc ship with the tree. The HIP and OpenCL runtime DLLs carry no licence file and link AMD's prebuilt PAL: redistribution in a PUBLIC image is an owner decision |
@@ -227,8 +227,8 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip) | 11583 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
-| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 11583 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
+| llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip) | 11617 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
+| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 11617 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
 | LLVM OpenMP runtime (libomp.dll, bundled in both llama.cpp zips: CPU and Vulkan) | as bundled in the pinned llama.cpp zips (sha256-pinned; the two copies are byte-identical) | [github.com/llvm/llvm-project/tree/main/openmp](https://github.com/llvm/llvm-project/tree/main/openmp) | Apache 2.0 with LLVM Exceptions (older code also under the legacy NCSA/MIT terms); LICENSE-LLVM-OpenMP ships beside each copy, in C:\runtime\opt\llama.cpp-hip and C:\runtime\opt\llama.cpp-vulkan |
 
 ### MIGraphX + ORT plugin EP (rocm variant only)

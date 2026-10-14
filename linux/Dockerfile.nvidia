@@ -6,7 +6,7 @@ ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE}
 
 # Pins come from versions.env and are shared with windows/Dockerfile.nvidia.
-ARG CUDA_VERSION=13.4.2
+ARG CUDA_VERSION=13.4.3
 ARG CUDNN_VERSION=9.27.0.42
 ARG TENSORRT_VERSION=11.4.0.106
 # false = CUDA + cuDNN without TensorRT (Jetson); gates both the install and the strict verify.
