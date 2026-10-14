@@ -5,12 +5,12 @@
 
 ARG WINDOWS_LTSC=2025
 # The :ltsc tag floats monthly; the digest makes OS revisions deliberate (the wcifs commit bug is version-skew-sensitive).
-ARG WINDOWS_BASE_DIGEST=sha256:e18a49cbc074dfaa8e106296d51cebd62bbf6effb999f134a5c48eed1c2334e1
+ARG WINDOWS_BASE_DIGEST=sha256:1d3cd3d02eb8496f47d00636b62d41904b63d0dc52ab5cfa4aa61292d3b9a26e
 # The tag is cosmetic: a WINDOWS_LTSC bump without a digest bump changes nothing.
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC}@${WINDOWS_BASE_DIGEST}
 # The hash rides as an ARG: this bootstrap runs before any module or versions.env bake exists.
-ARG PWSH_VERSION=7.6.6
-ARG PWSH_ZIP_SHA256=02fe458be20493fbdf43f61ea20610b811ee6c738ab1676c61b9cfcd1a33c860
+ARG PWSH_VERSION=7.6.7
+ARG PWSH_ZIP_SHA256=d2f952ebdbf24386cb8923553aa58e41a846db35a6155ea04c58142a4b16dbb7
 
 # TEMP_DIR sits above the VS layer because the pwsh bootstrap RUN reads it.
 ENV TEMP_DIR="C:\temp"

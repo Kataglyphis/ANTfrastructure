@@ -6,6 +6,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — The Windows base re-key: vswhere's selector, PowerShell 7.6.7, the October servercore
+
+- **The next Windows chain rebuilds from `Dockerfile.base`, so the base items ride it together** (CON89):
+  - `WindowsScripts.Shared.psm1`'s vswhere selector is `@(if (-not $All) { '-latest' })`. The old
+    `if ($All) { @() } else { @('-latest') }` unrolled to a string and splatted vswhere `- l a t e s t`, so every chain
+    logged `vswhere returned no installation; using filesystem fallback`. `Lint.ScalarSplat.Tests.ps1` no longer allows
+    the site.
+  - PowerShell 7.6.6 -> 7.6.7 (`PWSH_VERSION`, released 2026-10-13). `PWSH_ZIP_SHA256` is GitHub's asset digest for
+    `PowerShell-7.6.7-win-x64.zip`, `d2f952eb...`, which a download hashed to the same value.
+  - `WINDOWS_BASE_DIGEST` -> `sha256:1d3cd3d0...`, MCR's `servercore:ltsc2025` manifest list on 2026-10-14. The pin
+    moves only with a from-base rebuild, which this is.
+- `Dockerfile.base` COPYs the module before the VS install, so any of the three re-keys the base. Measured on the last
+  chain (`bk-con91-cpu-6`, base from cache): C: fell from 89.2 to 48.9 GB free, so a from-base chain wants clearly more
+  headroom than that before it starts.
+
 ## 2026-10-14 — sqlite3's web wasm 3.7.1, and WebDavClient's lock maintenance
 
 - `SQLITE3_WASM_VERSION` 3.7.0 -> 3.7.1 with its SHA256 (`87c1869b...`, the `sqlite3-3.7.1` release's

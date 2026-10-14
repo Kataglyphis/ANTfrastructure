@@ -420,7 +420,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       CON79 item 2's arm64 chain or CON88:
       - `WindowsScripts.Shared.psm1`'s `vswhere` selector is `if ($All) { @() } else { @('-latest') }`. Splatted, the unrolled
         string hands vswhere `- l a t e s t`, so every chain logs `vswhere returned no installation; using filesystem fallback`.
-        The fix is `@(if ...)`. `Lint.ScalarSplat.Tests.ps1` allows this one site until then.
+        The fix is `@(if ...)`. **In source since 2026-10-14**, with PowerShell 7.6.7 and the October `servercore`
+        digest in the same base re-key; `Lint.ScalarSplat.Tests.ps1` no longer allows the site.
       - Pin every pip install in the chain. `Build-FfmpegCodecs.ps1` installs a floating `meson`, and IREE, OpenCV, GenAI, ORT
         and TVM each install at least one unpinned package through `Invoke-CpythonPip`. In source since 2026-10-12:
         `Install-CpythonPipPin` takes every version from a `PY_*_VERSION` pin, and `Build.PipPins.Tests.ps1` fails on a bare
