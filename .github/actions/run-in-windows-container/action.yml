@@ -40,12 +40,14 @@ inputs:
     default: 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winarm64'
   command:
     description: >-
-      PowerShell script text executed inside the container via
-      `pwsh -NoProfile -ExecutionPolicy Bypass -Command`. Passed to docker as
-      a single argument (it may span multiple lines). It is delivered through
-      an environment variable - never string-interpolated into this action's
-      own script - so quotes and dollar signs inside it are taken literally by
-      the host and interpreted only by the container's pwsh.
+      PowerShell script text executed inside the container by
+      `pwsh -NoProfile -ExecutionPolicy Bypass -EncodedCommand`. It may span
+      multiple lines. It is delivered through an environment variable - never
+      string-interpolated into this action's own script - and reaches the
+      container base64-encoded, because the image's entrypoint.cmd re-parses
+      its arguments (`%*`): plain -Command text broke there at a newline, a
+      quote or a brace. Up to about 2,600 characters; a longer script belongs
+      in `file`.
       Mutually exclusive with `file`; exactly one of the two is required.
     required: false
     default: ''
@@ -189,7 +191,12 @@ runs:
           $entryArgs = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $file) +
                        (ConvertTo-ArgList $env:RUN_IN_CONTAINER_FILE_ARGS)
         } else {
-          $entryArgs = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $command)
+          # entrypoint.cmd re-parses %*: -Command text stopped at a newline (job 115392832215) or a brace (job 115605163947).
+          $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+          if ($encoded.Length -gt 7000) {
+            throw "run-in-windows-container: 'command' is $($command.Length) characters ($($encoded.Length) encoded), more than the image's cmd entrypoint passes on (8191 per line); put it in a script and use 'file'."
+          }
+          $entryArgs = @('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded)
         }
 
         # An array, not backtick continuations: under autocrlf a backtick escapes the CR instead of the newline.

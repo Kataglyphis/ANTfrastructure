@@ -45,6 +45,11 @@
   is on `PATH`.
 - That job never ran before: deep is off by default, and its first dispatch (run 38486829937) stopped at the
   local action, because the job checked nothing out first. It now checks out first, as its Linux twin does.
+- **`run-in-windows-container`'s `command` reaches the container base64-encoded (`-EncodedCommand`).** The image's
+  `entrypoint.cmd` runs `%*`, so cmd re-parsed the text: a multi-line command ran only its first line and exited 0
+  (job 115392832215), and the selftest's failed at a brace (`\" } was unexpected at this time.`, job 115605163947).
+  Base64 has no character cmd reads. A command over ~2,600 characters now fails with a pointer to `file`, which
+  never had the problem.
 
 ## 2026-10-13 — CI prologue: the Windows cleanup moves behind the pull, the Linux pull starts first
 
