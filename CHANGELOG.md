@@ -6,6 +6,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — `CUDA_INSTALLER_SHA256` names the network installer again; `spec_cuda` checks NVIDIA's MD5
+
+- **The CUDA 13.4.3 bump below pinned the wrong file.** `spec_cuda` hashed the ~4 GB full installer
+  (`local_installers/cuda_13.4.3_windows_x86_64.exe`, `35296d52…`), but `Install-Cuda.ps1` has downloaded the network
+  installer since 13.4, because the full one dies in-container with `0xE0E00064`. The nvidia chain of 2026-10-14
+  refused it after 54 s (`SHA256 mismatch … got C4F4DCDE…`); the CPU chain before it was green.
+- The pin is `c4f4dcde…`, the SHA256 of `network_installers/cuda_13.4.3_windows_x86_64_network.exe` (9 476 200 B),
+  whose MD5 `d6b30212…` is the one NVIDIA lists in `docs/sidebar/md5sum.txt`. That is the provenance `versions.env`
+  states for this key.
+- `spec_cuda` now goes through `cuda_network_installer_sha256`: it hashes the network installer and refuses a pin
+  whose MD5 is not NVIDIA's. `test-bump-versions.sh` covers it offline (the network URL is the hashed one, the full
+  installer never is, a wrong MD5 raises): 105 of 105 pass in `:latest`.
+
 ## 2026-10-14 — Both host fixes measured in the from-base chain; `Install-NewHost` sets `TcpTimedWaitDelay`
 
 - **The fork shim `04a9bdaa` works.** In `bk-20261014-cpu` every RUN without an sccache server reached DONE

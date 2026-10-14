@@ -567,4 +567,38 @@ PY
 t_assert_contains "${_out}" "picked ('9.1.0', {}) ['v9.1.0.2', 'v9.1.0.1', 'v9.1.0']" \
   "release-less tags are skipped newest-first, never pinned"
 
+t_case "spec_cuda: the pin is the NETWORK installer's SHA256, taken only when its MD5 is NVIDIA's (offline)"
+# 2026-10-14: the full installer's digest was pinned, and the nvidia chain refused the network installer it downloads.
+_out="$(_bv_offline <<'PY'
+import hashlib
+blob = b"network installer bytes"
+md5 = {"ok": hashlib.md5(blob, usedforsecurity=False).hexdigest(), "bad": "0" * 32}
+mode = {"md5": "ok"}
+fetched = []
+bv.nvidia_redist_latest = lambda product: "13.4.3"
+bv.http_json = lambda url: {}
+bv.cuda_windows_arm64_pins = lambda manifest: {}
+def http_text(url):
+    fetched.append(url)
+    return f"{'f' * 32} cuda_13.4.3_windows_x86_64.exe\n{md5[mode['md5']]} cuda_13.4.3_windows_x86_64_network.exe\n"
+bv.http_text = http_text
+bv.http_bytes = lambda url: fetched.append(url) or blob
+bv.sha256_of_url = lambda url: fetched.append(url) or "e" * 64
+bv.WRITE_MODE = True
+print("bump", bv.spec_cuda("13.4.2")[1]["CUDA_INSTALLER_SHA256"] == hashlib.sha256(blob).hexdigest())
+print("urls", fetched)
+print("full", any("local_installers" in u for u in fetched))
+mode["md5"] = "bad"
+try:
+    bv.spec_cuda("13.4.2")
+except RuntimeError as e:
+    print("raised", e)
+PY
+)"
+t_assert_contains "${_out}" "bump True" "the pin is the SHA256 of the bytes whose MD5 NVIDIA published"
+t_assert_contains "${_out}" "/network_installers/cuda_13.4.3_windows_x86_64_network.exe" \
+  "the hashed file is the network installer Install-Cuda.ps1 runs"
+t_assert_contains "${_out}" "full False" "the ~4 GB full installer is never the pinned file"
+t_assert_contains "${_out}" "raised cuda_13.4.3_windows_x86_64_network.exe: MD5" "an MD5 that is not NVIDIA's refuses the pin"
+
 t_summary
