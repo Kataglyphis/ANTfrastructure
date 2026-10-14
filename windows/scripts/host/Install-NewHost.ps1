@@ -247,7 +247,7 @@ function Invoke-BuildPatchedShim {
     # The fork carries the env-var patch, so the build asserts it instead of applying one; see docs/windows-host-setup.md § R1.
     $forkUrl = 'https://github.com/Kataglyphis/hcsshim.git'
     $forkBranch = 'feature/configurable-teardown-timeout'
-    $forkPin = '5e9df53c58f59d1282f18730acdea52689303bfe'
+    $forkPin = '04a9bdaaffdcdb13148de4581fe93271a19eedf8'
     $work = Join-Path $env:TEMP 'kataglyphis-hcsshim-fork'
     $src = Join-Path $work 'cmd\containerd-shim-runhcs-v1\task_hcs.go'
     $exeOut = Join-Path $work 'containerd-shim-runhcs-v1.exe'

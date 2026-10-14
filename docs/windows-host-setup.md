@@ -908,7 +908,7 @@ An existing clone after the branch was rebased: `git fetch origin`, then
 `git checkout -B feature/configurable-teardown-timeout origin/feature/configurable-teardown-timeout`.
 A plain `git pull` stops on the diverged history. `Install-NewHost.ps1` does
 not follow the branch head: it builds the pinned commit (`$forkPin`,
-`5e9df53c` since 2026-09-22) and refuses a tree without the teardown knob.
+`04a9bdaa` since 2026-10-14) and refuses a tree without the teardown knob.
 
 **It skips the shim only while the live binary's SHA256 equals the record's**
 (`Test-RecordedShimLive`, since 2026-10-06). Before that, the record file alone
@@ -917,8 +917,9 @@ made it skip, and that is exactly what a Stevedore update leaves behind. On
 back still reported `recorded patched shim already installed - skipping`, while
 `Build-Buildkit.ps1`'s `Assert-ShimPatch` refused the same binary.
 
-~15-21 s. The 2026-09-22 build of the rebased head `5e9df53c` was
-**25 890 304 bytes** with Go 1.27.1 (the 2026-09-01 build of `19251429`:
+~15-21 s. The 2026-10-14 build of `04a9bdaa` (upstream `main` `bd97a054`
+merged in) was **25 971 200 bytes** with Go 1.27.2 (the 2026-09-22 build of
+`5e9df53c`: 25 890 304 with Go 1.27.1; the 2026-09-01 build of `19251429`:
 25 998 336 with Go 1.27.0). Stock measured 23 279 616 until Stevedore's
 2026-09-21 update and 25 975 296 after it — the exact size drifts with the Go release and the branch
 head, which is why the gate keys on the SHA256 that `Publish-ShimPatch.ps1`

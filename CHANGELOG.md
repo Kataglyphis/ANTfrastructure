@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-14 — The hcsshim fork takes upstream main: `Install-NewHost` builds `04a9bdaa`
+
+- **`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` merges upstream `main` `bd97a054`** (16 commits:
+  go-winio v0.6.4, containerd v2.3.6, grpc 1.84.0 and others). A merge, not a rebase, so the branch moved without a
+  force-push; the fork's `main` is synced to the same commit. Upstream did not touch `cmd/containerd-shim-runhcs-v1/`
+  in between, so the patch is unchanged and #2855 stays open, unreviewed.
+- `Install-NewHost.ps1` pins `$forkPin = 04a9bdaa…`. Verified on Go 1.27.2: `gofmt -l` and `go vet` clean, the shim
+  package's tests pass (`Test_resolveTeardownTimeouts`, 7 cases). The build is 25 971 200 B, sha256 `8C9ECBA3…`,
+  in `out\shim-builds\containerd-shim-runhcs-v1-fork-04a9bdaa.exe`, deployed like the last one:
+  `Publish-ShimPatch.ps1 -ShimPath <it> -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m`.
+
 ## 2026-10-14 — Every pin at its newest: uv 0.13.1, ollama 0.40.4, Chrome 155.0.8059.79, Renovate 44.157.0
 
 - `bump_versions.py --write`, the safe tier: `UV_VERSION` 0.13.0 -> 0.13.1 with the amd64, arm64, riscv64 and Windows
