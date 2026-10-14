@@ -31,7 +31,7 @@ ARG CUDA_VERSION=13.4.3
 ARG CUDA_VERSION_MAJOR_MINOR=13.4
 ARG CUDNN_VERSION=9.27.0.42
 # Hashes are ARGs (the base-baked ones go stale on a bump); TENSORRT_VERSION sits below the CUDA RUN so it cannot re-key it.
-ARG CUDA_INSTALLER_SHA256=35296d52a972c931a70cf8084120e3a0f0479de13f12527fcebfe8fbcaf5399c
+ARG CUDA_INSTALLER_SHA256=c4f4dcde14545e878cdfa5769bac46d751d64ad9f1476cb83b59bbbec12ebf29
 ARG CUDNN_ZIP_SHA256=15595c7b52896262a0e590f02b3b3851c6a2c9046a72047526deaf59a9cbf7d5
 # arm64 has no CUDA installer, so the cross lane fetches per-component redists; inert on amd64.
 ARG WINDOWS_TARGET_ARCH=amd64

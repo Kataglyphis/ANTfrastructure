@@ -731,14 +731,31 @@ def cuda_windows_arm64_pins(manifest) -> dict[str, str]:
     return pins
 
 
+def cuda_network_installer_sha256(v: str) -> str:
+    """SHA256 of the network installer Install-Cuda.ps1 runs (13.4+), taken only once its MD5 is NVIDIA's own."""
+    # NVIDIA publishes MD5 only; the full installer's digest pinned the wrong file on 2026-10-14.
+    name = f"cuda_{v}_windows_x86_64_network.exe"
+    base = f"https://developer.download.nvidia.com/compute/cuda/{v}"
+    published = {}
+    for line in http_text(f"{base}/docs/sidebar/md5sum.txt").splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            published[parts[1]] = parts[0].lower()
+    if name not in published:
+        raise RuntimeError(f"NVIDIA's md5sum.txt for CUDA {v} lists no {name}")
+    blob = http_bytes(f"{base}/network_installers/{name}")
+    md5 = hashlib.md5(blob, usedforsecurity=False).hexdigest()
+    if md5 != published[name]:
+        raise RuntimeError(f"{name}: MD5 {md5} is not NVIDIA's {published[name]}")
+    return hashlib.sha256(blob).hexdigest()
+
+
 def spec_cuda(cur):
-    """CUDA from the redist index; a changed version re-downloads the ~4 GB Windows installer (13.4+ name) for its hash."""
+    """CUDA from the redist index; a changed version re-hashes the network installer Install-Cuda.ps1 downloads."""
     v = nvidia_redist_latest("cuda")
     extras = {}
     if v and v != cur and WRITE_MODE:
-        extras["CUDA_INSTALLER_SHA256"] = sha256_of_url(
-            f"https://developer.download.nvidia.com/compute/cuda/{v}/local_installers/cuda_{v}_windows_x86_64.exe"
-        )
+        extras["CUDA_INSTALLER_SHA256"] = cuda_network_installer_sha256(v)
         extras.update(cuda_windows_arm64_pins(
             http_json(f"https://developer.download.nvidia.com/compute/cuda/redist/redistrib_{v}.json")))
     return v, extras
