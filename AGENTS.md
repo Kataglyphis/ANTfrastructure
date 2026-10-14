@@ -548,6 +548,22 @@ fails with `exec format error` when it is not.
 
 Apply the post-install fixes documented in `docs/windows-stevedore-and-docker.md` § Stevedore Setup Fixes (Defender exclusions, daemon.json cleanup, default runtime change, verification). Those instructions are the canonical source — keep them in sync instead of duplicating here.
 
+**Two host fixes keep the BK lane's RUN steps from idling.** `Install-NewHost.ps1` (admin) sets both,
+`Test-HostSetup.ps1` checks both, and the from-base chain of 2026-10-14 measured both:
+
+- **The patched runhcs shim**, built from the owner's hcsshim fork at `Install-NewHost.ps1`'s `$forkPin`
+  and deployed with `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m`
+  ([`windows-host-setup.md` § R1](docs/windows-host-setup.md#r1-rebuild--deploy-the-patched-shim)).
+  Every Stevedore update reverts it, and the driver's `Assert-ShimPatch` then refuses to build. When it
+  works, a RUN reaches DONE 1 to 3 s after its last output line.
+- **`TcpTimedWaitDelay` = 30 s** on the host, live after a reboot
+  ([§ C6](docs/windows-host-setup.md#c6-tcptimedwaitdelay--30-s-required-for-a-chain-without-idle-tails)).
+  A RUN that started an sccache server then reaches DONE ~30 s after its last line, not ~120 s (#179).
+
+A RUN's tail names the missing one: ~120 s after an sccache RUN is the TIME_WAIT, while ~180, ~450 and
+~2841 s are the shim. The recurrence playbook in `docs/failure-modes.md` (§ Every RUN step reports
+`DONE 2841.2s`) decodes them.
+
 ### Supported Platforms
 
 `linux/amd64`, `linux/arm64`, `linux/riscv64` on the Linux lane;

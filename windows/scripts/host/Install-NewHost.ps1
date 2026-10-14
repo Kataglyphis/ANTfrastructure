@@ -17,6 +17,9 @@ param(
     # Extra dufs serve arguments: -A allows all read/write; restrictable per host.
     [string]$DufsExtraArgs = '-A',
 
+    # Seconds a closed connection stays in TIME_WAIT, which every container teardown waits out (#179); 30 is the floor.
+    [ValidateRange(30, 300)][int]$TcpTimedWaitDelay = 30,
+
     # Skip rebuilding/deploying the shim (you are SURE it is patched already).
     [switch]$SkipShim,
     # Skip the CNI conflist authorship + apply-containerd-config (incl. .conf).
@@ -25,6 +28,8 @@ param(
     [switch]$SkipGcPolicy,
     # Skip installing/configuring dufs + the SCCACHE_WEBDAV_ENDPOINT env.
     [switch]$SkipDufs,
+    # Skip the host's TcpTimedWaitDelay.
+    [switch]$SkipTcpTimeWait,
     # Skip the live-build guard (you are SURE nothing is solving right now).
     [switch]$Force,
     # Only print what would change; sub-scripts run with their -ReportOnly.
@@ -370,13 +375,42 @@ function Invoke-StepDufs {
     }
 }
 
+# ── Step 5: TcpTimedWaitDelay (#179) ───────────────────────────────────────────
+
+# $null when nothing changes, else the change as text; a pure function so the decision is testable without the registry.
+function Get-TcpTimeWaitChange {
+    param([AllowNull()][object]$Current, [Parameter(Mandatory)][int]$Desired)
+    if ($null -ne $Current -and [int]$Current -eq $Desired) { return $null }
+    $was = if ($null -eq $Current) { 'unset (the 120 s default)' } else { "$Current s" }
+    return "$was -> $Desired s"
+}
+
+function Invoke-StepTcpTimeWait {
+    # The stack is the host's, so a container's own registry cannot shorten its TIME_WAIT.
+    $key = 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters'
+    $props = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+    $value = if ($props) { $props.PSObject.Properties['TcpTimedWaitDelay'] } else { $null }
+    $change = Get-TcpTimeWaitChange -Current $(if ($value) { $value.Value }) -Desired $TcpTimedWaitDelay
+    if (-not $change) {
+        Write-Step "tcp        : TcpTimedWaitDelay already $TcpTimedWaitDelay s"
+    } elseif ($ReportOnly) {
+        Write-Step "tcp        : would set TcpTimedWaitDelay $change (live from the next boot)" 'Yellow'
+    } else {
+        Set-ItemProperty -Path $key -Name 'TcpTimedWaitDelay' -Type DWord -Value $TcpTimedWaitDelay
+        $script:RebootNeeded = $true
+        Write-Step "tcp        : TcpTimedWaitDelay $change; the stack reads it at boot, so REBOOT before the next chain" 'Yellow'
+    }
+}
+
 # ── run ─────────────────────────────────────────────────────────────────────────
 Write-Step ('setup-new-host {0}' -f $(if ($ReportOnly) { 'REPORT ONLY' } else { 'APPLY' }))
+$script:RebootNeeded = $false
 
-if (-not $SkipCni)      { Invoke-StepCni }
-if (-not $SkipGcPolicy) { Invoke-StepGcPolicy }
-if (-not $SkipShim)     { Invoke-StepShim }
-if (-not $SkipDufs)     { Invoke-StepDufs }
+if (-not $SkipCni)         { Invoke-StepCni }
+if (-not $SkipGcPolicy)    { Invoke-StepGcPolicy }
+if (-not $SkipShim)        { Invoke-StepShim }
+if (-not $SkipDufs)        { Invoke-StepDufs }
+if (-not $SkipTcpTimeWait) { Invoke-StepTcpTimeWait }
 
 # One restart makes the new CNI .conf and step-log env live; guarded, since it kills in-flight solves.
 if (-not $ReportOnly) {
@@ -397,6 +431,7 @@ if (-not $ReportOnly) {
     }
 }
 
+if ($script:RebootNeeded) { Write-Step 'reboot     : needed for TcpTimedWaitDelay; Test-HostSetup.ps1 reads only the registry' 'Yellow' }
 $lan = Get-LanIpv4Address
 Write-Step ('DONE ({0}). Verify with:  pwsh -File windows\scripts\host\Test-HostSetup.ps1 -SccacheEndpoint http://{1}:{2}' -f
     $(if ($ReportOnly) { 'nothing changed' } else { 'applied' }), $lan, $SccachePort) 'Cyan'

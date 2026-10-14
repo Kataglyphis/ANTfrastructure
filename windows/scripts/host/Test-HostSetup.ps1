@@ -188,6 +188,18 @@ if ($cEnv -and ($cEnv -join ';') -match 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIME
         'pwsh -File windows\scripts\host\Set-ContainerdConfig.ps1  (admin)'
 }
 
+# #179: a container's teardown waits out every TIME_WAIT it left, and only the host's value bounds it (read at boot).
+$tcpProps = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' -ErrorAction SilentlyContinue
+$tcpWait = if ($tcpProps -and $tcpProps.PSObject.Properties.Name -contains 'TcpTimedWaitDelay') { [int]$tcpProps.TcpTimedWaitDelay } else { $null }
+$tcpFix = 'pwsh -File windows\scripts\host\Install-NewHost.ps1 -SkipCni -SkipGcPolicy -SkipShim -SkipDufs  (admin), then reboot'
+if ($tcpWait -eq 30) {
+    Write-Check PASS 'TcpTimedWaitDelay 30 s: an sccache RUN reaches DONE ~30 s after its last line, not ~120 s (live from the boot after it was set)'
+} elseif ($null -eq $tcpWait) {
+    Write-Check WARN 'TcpTimedWaitDelay unset, so the 120 s default' 'every RUN that started an sccache server idles ~120 s before DONE (#179)' $tcpFix
+} else {
+    Write-Check WARN "TcpTimedWaitDelay $tcpWait s, not the 30 s the host setup sets" 'it bounds the idle tail of every sccache RUN (#179)' $tcpFix
+}
+
 $cImage = if ($cProps) { [string]$cProps.ImagePath } else { '' }
 if ($cImage -match '--log-level\s+debug') { Write-Check PASS 'containerd debug logging on (owner policy)' }
 else { Write-Check WARN 'containerd debug logging OFF' 'the next snapshotter incident will carry no evidence' 'pwsh -File windows\scripts\host\Set-ContainerdConfig.ps1  (admin)' }
