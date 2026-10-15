@@ -7,7 +7,8 @@
 
 .DESCRIPTION
     Writes the five KATAGLYPHIS_SCCACHE_S3_* variables to the user's environment, which Build-Buildkit.ps1 reads even from a
-    shell that started earlier. The secret is asked for without echo and never passes a command line.
+    shell that started earlier. The secret is asked for without echo and never passes a command line. With s5cmd on PATH
+    the key is tried against the bucket first, and a key the server refuses is not written.
     Level 0 stays the host's own WebDAV (Install-NewHost.ps1). docs/windows-build-resources.md § Two cache levels
 .EXAMPLE
     pwsh -File windows/scripts/host/Set-SccacheS3Level.ps1 -Endpoint http://192.168.188.216:3900 -AccessKeyId GK0123456789abcdef01234567
@@ -68,6 +69,21 @@ if (-not (Test-UrlPortOpen $Endpoint)) {
 $secure = Read-Host -Prompt "Secret key for $AccessKeyId" -AsSecureString
 $secret = [Net.NetworkCredential]::new('', $secure).Password
 if (-not $secret) { throw 'No secret entered; nothing was changed.' }
+# A pasted command line instead of the key was stored once (2026-10-15) and surfaced only as 403s in every build.
+if ($secret -match '\s') { throw 'The secret contains whitespace, so the paste was probably something else (the command line?); nothing was changed.' }
+$s5cmd = (Get-Command s5cmd -ErrorAction SilentlyContinue).Source
+if (-not $s5cmd) {
+    Write-Host 'Not checked against the server: s5cmd is not on PATH (scoop install s5cmd).'
+} else {
+    $answer = (@(Invoke-S5cmdWithKey -S5cmdPath $s5cmd -AccessKeyId $AccessKeyId -SecretAccessKey $secret -Region $Region -Arguments @('--endpoint-url', $Endpoint, 'ls', "s3://$Bucket") 2>&1) -join ' ')
+    if ($answer -match 'AccessDenied|InvalidAccessKeyId|SignatureDoesNotMatch|Invalid signature') {
+        throw "The server refuses this key ($($answer.Trim())); nothing was changed."
+    } elseif ($LASTEXITCODE -ne 0 -and $answer -notmatch 'no object found') {
+        Write-Warning "The key could not be checked against $Endpoint ($($answer.Trim())); it is written anyway."
+    } else {
+        Write-Host "The server accepts the key for bucket $Bucket."
+    }
+}
 
 $values = @{ Endpoint = $Endpoint; Bucket = $Bucket; Region = $Region; AccessKeyId = $AccessKeyId; Secret = $secret }
 foreach ($key in $names.Keys) { [Environment]::SetEnvironmentVariable($names[$key], $values[$key], 'User') }

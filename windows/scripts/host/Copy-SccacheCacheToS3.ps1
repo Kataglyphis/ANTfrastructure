@@ -46,31 +46,23 @@ $count = 0; $bytes = 0L
 foreach ($f in $files) { if ($f -notmatch '\\preseed\\' -and -not $f.EndsWith('.sccache_check')) { $count++; $bytes += ([IO.FileInfo]$f).Length } }
 Write-Host ("Seeding {0:N0} objects ({1:N1} GB) from {2} into s3://{3} at {4}" -f $count, ($bytes / 1GB), $SourceDir, $bucket, $endpoint)
 
-# s5cmd reads the key from its environment, so this process holds it only while s5cmd runs.
-$awsEnv = @{ AWS_ACCESS_KEY_ID = $keyId; AWS_SECRET_ACCESS_KEY = $secret; AWS_REGION = $(if ($region) { $region } else { 'us-east-1' }) }
-$priorEnv = @(Get-ChildItem Env: | Where-Object Name -In $awsEnv.Keys)
-$awsEnv.GetEnumerator() | ForEach-Object { Set-Item -LiteralPath "Env:$($_.Key)" -Value $_.Value }
-try {
-    # --size-only skips what the bucket holds, so a rerun resumes; a real run logs errors only (750k objects).
-    $s5Args = @('--endpoint-url', $endpoint, '--numworkers', $Workers, '--log', $(if ($DryRun) { 'info' } else { 'error' }))
-    if ($DryRun) { $s5Args += '--dry-run' }
-    $s5Args += @('sync', '--size-only', '--exclude', 'preseed/*', '--exclude', '.sccache_check', (Join-Path $SourceDir '*'), "s3://$bucket/")
-    $clock = [Diagnostics.Stopwatch]::StartNew()
-    if ($DryRun) {
-        $planned = @(& $s5cmd @s5Args)
-        $planned | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" }
-        Write-Host "($($planned.Count) operation(s) planned)"
-    } else {
-        & $s5cmd @s5Args | ForEach-Object { Write-Host "  $_" }
-    }
-    if ($LASTEXITCODE -ne 0) { throw "s5cmd exited $LASTEXITCODE" }
-    Write-Host ("Done in {0:N0} s." -f $clock.Elapsed.TotalSeconds)
-    if (-not $DryRun) {
-        $listed = @(& $s5cmd --endpoint-url $endpoint ls "s3://$bucket/0/0/0/*" 2>$null | Select-Object -First 3)
-        Write-Host "Sample of the bucket (0/0/0/*):"
-        $listed | ForEach-Object { Write-Host "  $_" }
-    }
-} finally {
-    $awsEnv.Keys | ForEach-Object { Remove-Item -LiteralPath "Env:$_" -ErrorAction SilentlyContinue }
-    $priorEnv | ForEach-Object { Set-Item -LiteralPath "Env:$($_.Name)" -Value $_.Value }
+$key = @{ S5cmdPath = $s5cmd; AccessKeyId = $keyId; SecretAccessKey = $secret; Region = $region }
+# --size-only skips what the bucket holds, so a rerun resumes; a real run logs errors only (750k objects).
+$s5Args = @('--endpoint-url', $endpoint, '--numworkers', $Workers, '--log', $(if ($DryRun) { 'info' } else { 'error' }))
+if ($DryRun) { $s5Args += '--dry-run' }
+$s5Args += @('sync', '--size-only', '--exclude', 'preseed/*', '--exclude', '.sccache_check', (Join-Path $SourceDir '*'), "s3://$bucket/")
+$clock = [Diagnostics.Stopwatch]::StartNew()
+if ($DryRun) {
+    $planned = @(Invoke-S5cmdWithKey @key -Arguments $s5Args)
+    $planned | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" }
+    Write-Host "($($planned.Count) operation(s) planned)"
+} else {
+    Invoke-S5cmdWithKey @key -Arguments $s5Args | ForEach-Object { Write-Host "  $_" }
+}
+if ($LASTEXITCODE -ne 0) { throw "s5cmd exited $LASTEXITCODE" }
+Write-Host ("Done in {0:N0} s." -f $clock.Elapsed.TotalSeconds)
+if (-not $DryRun) {
+    $listed = @(Invoke-S5cmdWithKey @key -Arguments @('--endpoint-url', $endpoint, 'ls', "s3://$bucket/0/0/0/*") 2>$null | Select-Object -First 3)
+    Write-Host "Sample of the bucket (0/0/0/*):"
+    $listed | ForEach-Object { Write-Host "  $_" }
 }

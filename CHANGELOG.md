@@ -37,6 +37,11 @@
   - `Copy-SccacheCacheToS3.ps1` seeds the bucket 1:1 from the dufs tree with s5cmd; both backends
     use the key `a/b/c/<hash>`.
   - `Test-HostSetup.ps1` reports the level as unset, half set, reachable or unreachable.
+- **Validated end to end the same day.** A BuildKit probe wrote 20 objects to both levels (0
+  failures, drained at once), and a fresh S3-only server hit all 20. `Set-SccacheS3Level.ps1`
+  now refuses a secret with whitespace and, with s5cmd on PATH, a key the bucket refuses: the
+  first attempt had stored the command line as the secret, which only surfaced as
+  `Invalid signature`.
 - **The server is in the repo:** `linux/sccache-s3/` holds the runbook (WireGuard, Garage v2.4.1
   pinned by digest, the bucket and keys, ufw, the size cap with s5cmd 2.3.0), `garage.toml`, the
   units and the eviction script.
