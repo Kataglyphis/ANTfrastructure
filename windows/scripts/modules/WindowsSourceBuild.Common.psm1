@@ -2044,9 +2044,20 @@ function Start-SccacheServerSession {
             }
         }
 
+        # $true when the server came up; the client gives up after 10 s, which is what a stalled level costs.
+        $startServer = {
+            $out = @(& $SccachePath --start-server 2>&1 | ForEach-Object { "$_" })
+            $code = $LASTEXITCODE
+            $out | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+            return ($code -eq 0 -and -not (($out -join "`n") -match 'Timed out waiting for server startup|Server startup failed'))
+        }
         Push-Location 'C:\'
         try {
-            & $SccachePath --start-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+            # One level that fails its startup check stops the whole server (multilevel.rs), so a dead bucket would leave every compile uncached.
+            if (-not (& $startServer) -and (Remove-SccacheS3Level -Reason 'the server did not start with it')) {
+                & $SccachePath --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+                if (-not (& $startServer)) { Write-Warning 'sccache: the server did not start without the S3 level either; compiles run uncached' }
+            }
         } finally { Pop-Location }
     } catch {
         Write-Verbose "sccache prologue skipped: $($_.Exception.Message)"

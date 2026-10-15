@@ -397,6 +397,28 @@ function Get-SccacheS3Level {
     return $level
 }
 
+function Set-SccacheChainWithout {
+    # Takes -Level out of SCCACHE_MULTILEVEL_CHAIN and returns the chain left: one level needs none, and a chain naming a missing level fails the server.
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Level)
+    $chain = "$env:SCCACHE_MULTILEVEL_CHAIN"
+    $levels = @($chain.Split(',').Trim() -ne '')
+    $kept = @($levels | Where-Object { $Level -notcontains $_ })
+    if ($kept.Count -eq $levels.Count) { return $chain }
+    if ($kept.Count -le 1) { Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue } else { $env:SCCACHE_MULTILEVEL_CHAIN = $kept -join ',' }
+    return "$env:SCCACHE_MULTILEVEL_CHAIN"
+}
+
+function Remove-SccacheS3Level {
+    # Drops the S3 level from this process and its chain, warning with -Reason; $false when there was none to drop.
+    param([Parameter(Mandatory)][string]$Reason)
+    $bucket = "$env:SCCACHE_BUCKET"
+    if (-not $bucket) { return $false }
+    foreach ($name in 'SCCACHE_BUCKET', 'SCCACHE_ENDPOINT', 'SCCACHE_REGION', 'SCCACHE_S3_USE_SSL') { Remove-Item "Env:\$name" -ErrorAction SilentlyContinue }
+    $chain = Set-SccacheChainWithout -Level 's3'
+    Write-Warning "sccache: the S3 level (bucket $bucket) is dropped for this process: $Reason; the build runs on '$(if ($chain) { $chain } else { 'its other level' })'."
+    return $true
+}
+
 function Test-SccacheRemoteConfigured {
     # No remote means no cache that outlives the RUN; SCCACHE_FORCE_LOCAL=1 is a diagnostic for the disk level only.
     if ($env:SCCACHE_FORCE_LOCAL -eq '1') { return $true }
@@ -775,6 +797,8 @@ Export-ModuleMember -Function @(
     'Invoke-S5cmdWithKey',
     'Invoke-WithProcessEnvironment',
     'Get-SccacheS3Level',
+    'Set-SccacheChainWithout',
+    'Remove-SccacheS3Level',
     'Test-SccacheRemoteConfigured',
     'Get-SccacheStatsText',
     'Write-SccacheStatsToStderr',

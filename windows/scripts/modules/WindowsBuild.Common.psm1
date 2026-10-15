@@ -786,11 +786,7 @@ function Clear-UnreachableSccacheEndpoint {
     if ($removed.Count -eq 0) { return $false }
 
     $chain = "$env:SCCACHE_MULTILEVEL_CHAIN"
-    $levels = @($chain.Split(',').Trim() -ne '')
-    $kept = @($levels | Where-Object { $removed -notcontains $_ })
-    if ($kept.Count -ne $levels.Count) {
-        # A chain naming a removed level fails the server; one level left needs no chain.
-        if ($kept.Count -le 1) { Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue } else { $env:SCCACHE_MULTILEVEL_CHAIN = $kept -join ',' }
+    if ((Set-SccacheChainWithout -Level $removed) -ne $chain) {
         Write-Warning "sccache: SCCACHE_MULTILEVEL_CHAIN=$chain lost $($removed -join ', '); it is now '$("$env:SCCACHE_MULTILEVEL_CHAIN")'."
     }
     return $true

@@ -6,6 +6,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-16 — a bucket that stalls sccache's startup check no longer stops a build
+
+- **What happened.** The VPS stopped answering through the tunnel at about 00:49, while the first
+  nvidia chain with the S3 level was running.
+  - ORT finished, with 608 of 2364 level-1 writes failed.
+  - FFmpeg's sccache server then timed out in its startup check, and every compile failed. One level
+    that fails its check stops the whole server (`multilevel.rs`).
+- **The fix.**
+  - `Start-SccacheServerSession` drops the S3 level (`Remove-SccacheS3Level`, Shared) when the server
+    does not start with it, and starts the server again on WebDAV.
+  - The app builds' exec passes `SCCACHE_SKIP_CACHE_CHECK=true`.
+  - `Set-SccacheChainWithout` is the one owner of the chain edit, `Clear-UnreachableSccacheEndpoint`
+    included.
+- **The same chain measured ORT's new launcher, cold for CUDA:** the exemption hit
+  `onnxruntime_providers_cuda_llm`, nvcc made 292 hits and 277 misses, and the stage took 4746 s
+  against 4956 s bare.
 ## 2026-10-16 — One release script for every repo
 
 - **`06-packaging/publish-github-release.sh`** publishes `v<version>` at `HEAD` with a directory's

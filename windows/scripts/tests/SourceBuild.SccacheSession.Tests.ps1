@@ -1,6 +1,25 @@
 #requires -Version 7.0
 # Per-stage truncation matters: an append-only log on the shared mount replays old failures as live ones.
 
+# A fake whose --start-server fails as a stalled level makes it fail: while a bucket is set, or -Always.
+$newRefusingSccache = {
+    param($dir, [switch]$Always)
+    $refuse = if ($Always) { 'goto refuse' } else { 'if defined SCCACHE_BUCKET goto refuse' }
+    $lines = @(
+        '@echo off',
+        'echo SCCACHE %1 [%SCCACHE_BUCKET%] >> "%WBT_SCC_LOG%"',
+        'if not "%1"=="--start-server" exit /b 0',
+        $refuse,
+        'exit /b 0',
+        ':refuse',
+        'echo sccache: error: Timed out waiting for server startup 1>&2',
+        'exit /b 2'
+    )
+    $path = Join-Path $dir 'sccache.cmd'
+    Set-Content -LiteralPath $path -Value ($lines -join "`r`n") -Encoding ASCII
+    return $path
+}
+
 # File scope: both Describes below use the same fake (WBT_SCC_LOG appender).
 $newFakeSccache = {
     param($dir)
@@ -43,6 +62,33 @@ Describe 'Start-SccacheServerSession' {
                 Start-SccacheServerSession -SccachePath $fake 6>$null
             }.GetNewClosure()
             Assert-True (Test-Path (Split-Path $errLog)) 'parent chain was created so the server can open the log'
+        }
+    }
+
+    It 'drops a bucket the server will not start with, and starts it again on the other levels' {
+        Invoke-InTestDir { param($dir)
+            $fake = & $newRefusingSccache $dir
+            $callLog = Join-Path $dir 'calls.log'
+            Invoke-WithEnv @{ WBT_SCC_LOG = $callLog; SCCACHE_ERROR_LOG = ''; SCCACHE_BUCKET = 'sccache'; SCCACHE_ENDPOINT = 'http://192.0.2.1:3900'
+                SCCACHE_REGION = 'garage'; SCCACHE_S3_USE_SSL = 'false'; SCCACHE_MULTILEVEL_CHAIN = 'webdav,s3' } {
+                Start-SccacheServerSession -SccachePath $fake -WarningVariable w -WarningAction SilentlyContinue 6>$null
+                Assert-Null $env:SCCACHE_BUCKET 'the bucket is gone for this RUN'
+                Assert-Null $env:SCCACHE_MULTILEVEL_CHAIN 'WebDAV alone needs no chain'
+                Assert-Match 'did not start with it' "$($w[0])"
+            }.GetNewClosure()
+            $calls = @(Get-Content -LiteralPath $callLog)
+            Assert-Equal 'SCCACHE --stop-server [sccache],SCCACHE --start-server [sccache],SCCACHE --stop-server [],SCCACHE --start-server []' (($calls | ForEach-Object { $_.Trim() }) -join ',')
+        }
+    }
+
+    It 'does not retry a failed start that had no S3 level to drop' {
+        Invoke-InTestDir { param($dir)
+            $fake = & $newRefusingSccache $dir -Always
+            $callLog = Join-Path $dir 'calls.log'
+            Invoke-WithEnv @{ WBT_SCC_LOG = $callLog; SCCACHE_ERROR_LOG = ''; SCCACHE_BUCKET = $null } {
+                Start-SccacheServerSession -SccachePath $fake 6>$null
+            }.GetNewClosure()
+            Assert-Equal 2 @(Get-Content -LiteralPath $callLog).Count 'stop and one start'
         }
     }
 
