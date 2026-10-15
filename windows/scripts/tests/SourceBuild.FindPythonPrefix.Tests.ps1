@@ -33,8 +33,8 @@ Describe 'FindPython prefix: ORT and GenAI ask the helper for the names their CM
         foreach ($pair in @(@{ Name = 'ORT'; Text = $script:ort }, @{ Name = 'GenAI'; Text = $script:genai }, @{ Name = 'PyAV'; Text = $script:ffmpeg })) {
             Assert-True ($pair.Text -cmatch '-CrossStage') "$($pair.Name): the wheel call carries -CrossStage"
         }
-        # PyAV's build_ext needs the target platform too, or the x86_arm64 cross tools are not picked.
-        Assert-True ($script:ffmpeg -cmatch 'build_ext --plat-name \$distutilsPlat bdist_wheel --plat-name \$\(Get-PythonWheelTag\)') 'PyAV cross: build_ext plat + bdist_wheel tag'
+        # build_ext needs the target platform (the x86_arm64 tools) and the target's libs\ first, or the host's x64 lib wins.
+        Assert-True ($script:ffmpeg -cmatch 'build_ext --plat-name \$distutilsPlat -L ""\$\(\$ffTargetPy\.LibDir\)"" bdist_wheel --plat-name \$\(Get-PythonWheelTag\)') 'PyAV cross: build_ext plat, the target lib dir first, bdist_wheel tag'
         Assert-True ($script:ffmpeg -cnotmatch 'Assert-WheelTargetArch -WheelPath') 'PyAV no longer hand-rolls the stage+assert the helper owns'
     }
 }
