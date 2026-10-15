@@ -51,4 +51,18 @@ t_case "--github-env writes VERSION and the four-part MSIX_VERSION from a Cargo.
 (cd "${work}" && GITHUB_ENV="${work}/env" REF_NAME=develop RUN_NUMBER=1 bash "${UTIL}" --github-env ws/Cargo.toml >/dev/null 2>&1)
 t_assert_eq "VERSION=2.3.4 MSIX_VERSION=2.3.4.0" "$(tr '\n' ' ' < "${work}/env" | sed 's/ $//')"
 
+t_case "--file-version: a pubspec.yaml's version without its +build"
+printf 'name: app\nversion: 2.1.0+3\n' > "${work}/pubspec.yaml"
+t_assert_eq "2.1.0" "$(bash "${UTIL}" --file-version "${work}/pubspec.yaml" 2>/dev/null)"
+
+t_case "--file-version: a Cargo.toml's and a VERSION.txt's"
+t_assert_eq "2.3.4" "$(bash "${UTIL}" --file-version "${work}/ws/Cargo.toml" 2>/dev/null)"
+t_assert_eq "2.3.4" "$(bash "${UTIL}" --file-version "${work}/VERSION.txt" 2>/dev/null)"
+
+t_case "--file-version fails without a version: a release never falls back to the ref name"
+t_assert_fails bash "${UTIL}" --file-version "${work}/nover/Cargo.toml"
+t_assert_fails bash "${UTIL}" --file-version "${work}/missing.txt"
+printf '# Changelog\n' > "${work}/CHANGELOG.md"
+t_assert_fails bash "${UTIL}" --file-version "${work}/CHANGELOG.md"
+
 t_summary

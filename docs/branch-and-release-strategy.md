@@ -113,6 +113,15 @@ A red lane means no tag and no release. A flaky failure is rerun with `gh run re
 <id> --failed`, and the release job follows once the rerun is green. A real failure is
 fixed on `develop` and merged again.
 
+Both the version check and the release job run the hub's
+`linux/scripts/06-packaging/publish-github-release.sh`: `--version-file` names `pubspec.yaml`,
+`Cargo.toml` or a `VERSION.txt` (read by `version_util.sh --file-version`, which never falls
+back to a branch name), `--changelog` the file whose `## <version>` or `## [<version>]` section
+becomes the notes, `--name` the release title, then `--check` or `--assets <dir>`. It refuses a
+version that is released already, a version without a section, notes over GitHub's 125000
+characters, a GitHub that does not answer and an empty directory
+(`test-publish-github-release.sh`, 27 assertions).
+
 ## How a repository implements it
 
 | File | Triggers |
@@ -151,8 +160,9 @@ A calling job looks the same in both:
   names must differ across lanes.
 - **Pushes, not tags, start a release.** The tag is the release job's output. Nothing
   listens for `push: tags`.
-- OmniAccelerANT is the reference: its `on-request.yml`, `release.yml` and
-  `scripts/linux/publish-release.sh`.
+- OmniAccelerANT is the reference: its `on-request.yml` and `release.yml`. Its release job
+  fetches only the hub submodule (`git submodule update --init --depth 1
+  third_party/ANTfrastructure`), not the others, to run the script.
 
 ## Why this shape
 
