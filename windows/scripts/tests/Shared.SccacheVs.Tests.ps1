@@ -73,3 +73,19 @@ Describe 'Get-MsvcToolsRoots' {
         }
     }
 }
+
+Describe 'Test-UrlPortOpen' {
+
+    It 'answers $false for a malformed or host-less URL instead of throwing' {
+        Assert-False (Test-UrlPortOpen 'not a url') 'no scheme'
+        Assert-False (Test-UrlPortOpen '') 'empty'
+    }
+
+    It 'answers $true for a listening port and $false once it closes' {
+        $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+        $listener.Start()
+        $url = "http://127.0.0.1:$($listener.LocalEndpoint.Port)"
+        try { Assert-True (Test-UrlPortOpen $url) 'listening' } finally { $listener.Stop() }
+        Assert-False (Test-UrlPortOpen $url -TimeoutSeconds 1) 'closed'
+    }
+}

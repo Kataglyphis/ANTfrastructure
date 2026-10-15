@@ -17,6 +17,8 @@ BUILD_HOST_NAME = re.compile(
     r"^SCCACHE_(?:WEBDAV_\w+|REDIS\w*|MEMCACHED\w*|GCS_\w+|AZURE_\w+|S3_\w+|OSS_\w+|"
     r"COS_\w+|GHA_\w+|BUCKET|ENDPOINT|REGION|MULTILEVEL_CHAIN|FORCE_LOCAL)$",
     re.IGNORECASE)
+# The S3 level's key reaches a RUN only as a BuildKit secret; as a variable it would publish with the image.
+CREDENTIAL_NAME = re.compile(r"^AWS_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN)$", re.IGNORECASE)
 PRIVATE_V4 = tuple(ipaddress.ip_network(n) for n in
                    ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"))
 IPV4 = re.compile(r"(?<![\w.])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])")
@@ -50,6 +52,8 @@ def leak_reasons(name, value):
     reasons = []
     if BUILD_HOST_NAME.match(name):
         reasons.append("build-host sccache setting (the image may carry local defaults only)")
+    if CREDENTIAL_NAME.match(name):
+        reasons.append("object-store credential (a key must never ship in an image)")
     return reasons + address_reasons(name, value)
 
 

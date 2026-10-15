@@ -732,40 +732,67 @@ function Test-TcpEndpointReachable {
 
 <#
 .SYNOPSIS
-    Removes an SCCACHE_WEBDAV_ENDPOINT this process cannot reach, so sccache falls back to its disk cache.
+    Removes every sccache level this process cannot use, so sccache keeps the others instead of failing every compile.
 .DESCRIPTION
     sccache exits at server start on an unreachable store, killing every compile: docs/windows-build-resources.md#the-consumer-side-probe
+    The WebDAV endpoint and the S3 level are judged apart; a chain loses only the levels removed here.
 .OUTPUTS
-    [bool] - $true when the endpoint was removed.
+    [bool] - $true when a level was removed.
 #>
 function Clear-UnreachableSccacheEndpoint {
     [CmdletBinding()]
     [OutputType([bool])]
     param([ValidateRange(100, 60000)][int]$TimeoutMs = 2000)
 
-    $endpoint = [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT')
-    # sccache ignores an empty value, so there is nothing to probe.
-    if ([string]::IsNullOrEmpty($endpoint)) { return $false }
-
-    $uri = $null
-    $why = ''
-    if (-not [Uri]::TryCreate($endpoint.Trim(), [UriKind]::Absolute, [ref]$uri) -or -not $uri.DnsSafeHost) {
-        $why = 'is not an absolute URL with a host'
-    } elseif (-not (Test-TcpEndpointReachable -HostName $uri.DnsSafeHost -Port $uri.Port -TimeoutMs $TimeoutMs)) {
-        $why = "is unreachable (TCP $($uri.DnsSafeHost):$($uri.Port), no connection within $TimeoutMs ms)"
+    # Why a store URL cannot be used, or '' when it answers.
+    $problem = {
+        param([string]$Url)
+        $uri = $null
+        if (-not [Uri]::TryCreate($Url.Trim(), [UriKind]::Absolute, [ref]$uri) -or -not $uri.DnsSafeHost) { return 'is not an absolute URL with a host' }
+        if (-not (Test-TcpEndpointReachable -HostName $uri.DnsSafeHost -Port $uri.Port -TimeoutMs $TimeoutMs)) {
+            return "is unreachable (TCP $($uri.DnsSafeHost):$($uri.Port), no connection within $TimeoutMs ms)"
+        }
+        return ''
     }
-    if (-not $why) { return $false }
-
-    Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue
-    $chainNote = ''
-    if ("$env:SCCACHE_MULTILEVEL_CHAIN" -match 'webdav') {
-        Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue
-        $chainNote = ' SCCACHE_MULTILEVEL_CHAIN named webdav and was removed too.'
-    }
+    $removed = @()
     $cacheDir = if ($env:SCCACHE_DIR) { $env:SCCACHE_DIR } else { "sccache's default directory" }
-    Write-Warning ("sccache: SCCACHE_WEBDAV_ENDPOINT=$endpoint $why - removed for this process, so sccache " +
-        "caches on local disk ($cacheDir) instead of failing every compile.$chainNote An image that " +
-        "publishes its build host's endpoint is the usual cause: docs/windows-build-resources.md#the-consumer-side-probe")
+
+    # sccache ignores an empty value, so there is nothing to probe.
+    $endpoint = [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT')
+    $why = if ([string]::IsNullOrEmpty($endpoint)) { '' } else { & $problem $endpoint }
+    if ($why) {
+        Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue
+        $removed += 'webdav'
+        Write-Warning ("sccache: SCCACHE_WEBDAV_ENDPOINT=$endpoint $why - removed for this process, so sccache " +
+            "caches on its other levels or on local disk ($cacheDir) instead of failing every compile. An image that " +
+            "publishes its build host's endpoint is the usual cause: docs/windows-build-resources.md#the-consumer-side-probe")
+    }
+
+    # Without its key a bucket answers every request with 403, and sccache counts each as a failed write.
+    $bucket = [Environment]::GetEnvironmentVariable('SCCACHE_BUCKET')
+    if (-not [string]::IsNullOrEmpty($bucket)) {
+        $s3 = [Environment]::GetEnvironmentVariable('SCCACHE_ENDPOINT')
+        $why = if ([string]::IsNullOrEmpty($env:AWS_ACCESS_KEY_ID) -or [string]::IsNullOrEmpty($env:AWS_SECRET_ACCESS_KEY)) {
+            'has no key in this RUN (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY come from the BuildKit secrets)'
+        } elseif ($s3) { & $problem $s3 } else { '' }
+        if ($why) {
+            foreach ($name in 'SCCACHE_BUCKET', 'SCCACHE_ENDPOINT', 'SCCACHE_REGION', 'SCCACHE_S3_USE_SSL') {
+                Remove-Item "Env:\$name" -ErrorAction SilentlyContinue
+            }
+            $removed += 's3'
+            Write-Warning "sccache: the S3 level (bucket $bucket at $s3) $why - removed for this process; the other levels stay."
+        }
+    }
+    if ($removed.Count -eq 0) { return $false }
+
+    $chain = "$env:SCCACHE_MULTILEVEL_CHAIN"
+    $levels = @($chain.Split(',').Trim() -ne '')
+    $kept = @($levels | Where-Object { $removed -notcontains $_ })
+    if ($kept.Count -ne $levels.Count) {
+        # A chain naming a removed level fails the server; one level left needs no chain.
+        if ($kept.Count -le 1) { Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue } else { $env:SCCACHE_MULTILEVEL_CHAIN = $kept -join ',' }
+        Write-Warning "sccache: SCCACHE_MULTILEVEL_CHAIN=$chain lost $($removed -join ', '); it is now '$("$env:SCCACHE_MULTILEVEL_CHAIN")'."
+    }
     return $true
 }
 

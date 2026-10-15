@@ -151,6 +151,10 @@ ARG SCCACHE_WEBDAV_ENDPOINT
 ARG SCCACHE_LOG="warn"
 # Unset (remote-only) like media-builder's `common`; change both together, see docs/windows-build-resources.md § Persistent compile cache (sccache).
 ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_ENDPOINT
+ARG SCCACHE_BUCKET
+ARG SCCACHE_REGION
+ARG SCCACHE_S3_USE_SSL
 # Kept identical to media-builder's sccache block.
 ARG SCCACHE_DIR="C:\sccache\v2"
 ARG SCCACHE_FORCE_LOCAL
@@ -161,6 +165,7 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_IDLE_TIMEOUT="0"
 # Same cache id as the media builder: the same clang-cl TUs make a shared L0 a hit, not a conflict.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
+    --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-GstreamerFromSource.ps1,target=C:\bkmnt\Build-GstreamerFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
@@ -171,6 +176,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
 
 # OpenCV's standalone GStreamer videoio plugin, after GStreamer exists; getBuildInformation() still says NO, hasBackend() is the truth.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
+    --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-OpencvGstreamerPlugin.ps1,target=C:\bkmnt\Build-OpencvGstreamerPlugin.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
@@ -193,6 +199,7 @@ ENV LP_NATIVE_VECTOR_WIDTH=256
 
 # The validation layer in C:\runtime\vulkan-layers on both arches; no SDK the container can install has an arm64 one (CON64).
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
+    --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-VulkanValidationLayers.ps1,target=C:\bkmnt\Build-VulkanValidationLayers.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `

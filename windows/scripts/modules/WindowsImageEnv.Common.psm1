@@ -8,6 +8,8 @@ Set-StrictMode -Version Latest
 # Every sccache remote backend and host cache layout; local defaults such as SCCACHE_DIR are allowed.
 $script:BuildHostName = '^SCCACHE_(?:WEBDAV_\w+|REDIS\w*|MEMCACHED\w*|GCS_\w+|AZURE_\w+|S3_\w+|OSS_\w+|' +
     'COS_\w+|GHA_\w+|BUCKET|ENDPOINT|REGION|MULTILEVEL_CHAIN|FORCE_LOCAL)$'
+# The S3 level's key reaches a RUN only as a BuildKit secret; as a variable it would publish with the image.
+$script:CredentialName = '^AWS_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN)$'
 $script:Ipv4 = [regex]'(?<![\w.])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])'
 $script:Ipv6LinkLocal = [regex]::new('(?:^|[\s,;=\[@"''(])(fe[89ab][0-9a-f]:[0-9a-f:.%]*)', 'IgnoreCase')
 $script:Lead = " `t,;=`"'(["
@@ -44,6 +46,9 @@ function Get-ImageEnvLeak {
     # Emitted one per line, so `@(Get-ImageEnvLeak ...).Count` is the number of reasons.
     if ($Name -match $script:BuildHostName) {
         'build-host sccache setting (the image may carry local defaults only)'
+    }
+    if ($Name -match $script:CredentialName) {
+        'object-store credential (a key must never ship in an image)'
     }
     foreach ($m in $script:Ipv4.Matches($Value)) {
         $g = $m.Groups[1]

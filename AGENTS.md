@@ -669,6 +669,11 @@ The tiers, the measurements and every failure class:
 `USE_SCCACHE`, `USE_LLD` accept `0/false/no/off`;
 `ENABLE_SCCACHE_RUST`/`ENABLE_SCCACHE_CUDA` are strict `0/1`.
 
+The Windows lane's compile cache has two levels since 2026-10-15: each host's WebDAV,
+then an S3 bucket all hosts share, whose key travels only as BuildKit secrets
+([`windows-build-resources.md` § Two cache levels](docs/windows-build-resources.md#two-cache-levels);
+the server: [`linux/sccache-s3/README.md`](linux/sccache-s3/README.md)).
+
 The rules an agent must never violate:
 
 1. **Freeze the closure.** A touched file inside it re-keys the compiler image,

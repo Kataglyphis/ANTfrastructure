@@ -6,6 +6,45 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-15 — sccache gets a second level: a shared S3 bucket behind each host's WebDAV
+
+- **The Windows lane can chain `webdav,s3`.** Level 0 stays the host's dufs. Level 1 is a Garage
+  bucket on a VPS that every build host reaches over the FritzBox's WireGuard, so one host's
+  compiles become hits on the others. sccache writes level 0 in the compile and level 1 in the
+  background.
+- **Why not a disk level 0.** Windows BuildKit cache mounts still lose writes:
+  `Invoke-SccacheWriteProbe.ps1` lost 165 of 250 writes in its second run, and none in a plain
+  directory. Two WebDAV levels cannot chain either, because sccache allows each backend type once.
+- **The key travels only as env-sourced BuildKit secrets.**
+  - `Build-Buildkit.ps1` passes `--secret id=sccache_s3_key_id,env=…` and `id=sccache_s3_secret,env=…`.
+  - All 16 sccache RUNs mount them as `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
+    (`--mount=type=secret,…,env=…`), and declare the bucket's four settings as ARGs.
+  - Probed with a dummy secret: it is set in its RUN, gone in the next, and a build without it
+    still runs.
+  - The publish gate and its Python twin now fail an image environment carrying an `AWS_*` credential.
+- **No upload is lost at the end of a RUN.**
+  - A stopping sccache server drops its unfinished background writes (`multilevel.rs`).
+  - `Complete-SccacheServerSession` therefore waits in `Wait-SccacheUploadDrain` until level 1's
+    writes plus failures reach level 0's writes, at most 600 s.
+- **A missing level never stops a build.**
+  - `Get-BkSccacheConfig` leaves the S3 level out, with a warning, when anything is missing.
+  - The driver drops it when the host cannot reach it.
+  - `Clear-UnreachableSccacheEndpoint` drops either level inside a RUN (no key, unreachable)
+    and takes only that level out of the chain.
+- **Client scripts:**
+  - `Set-SccacheS3Level.ps1` writes the five `KATAGLYPHIS_SCCACHE_S3_*` user variables; the
+    secret is asked without echo.
+  - `Copy-SccacheCacheToS3.ps1` seeds the bucket 1:1 from the dufs tree with s5cmd; both backends
+    use the key `a/b/c/<hash>`.
+  - `Test-HostSetup.ps1` reports the level as unset, half set, reachable or unreachable.
+- **The server is in the repo:** `linux/sccache-s3/` holds the runbook (WireGuard, Garage v2.4.1
+  pinned by digest, the bucket and keys, ufw, the size cap with s5cmd 2.3.0), `garage.toml`, the
+  units and the eviction script.
+- **Re-key and docs.** The RUN changes re-key every sccache stage once; they compile warm from level 0.
+  Docs: `windows-build-resources.md` § Two cache levels, `windows-host-setup.md` § C7, INDEX, AGENTS.md.
+- **Tests:** `BuildDriver.SccacheLevels.Tests.ps1`, `SourceBuild.SccacheUploadDrain.Tests.ps1`,
+  the S3 cases in `Build.SccacheEndpointProbe.Tests.ps1`, and the fixture's credential rows.
+
 ## 2026-10-15 — GStreamer's arm64 cross file keeps the sccache shim and `--target` apart
 
 - **`meson setup` of the arm64 merge stopped at once** with `Unknown compiler(s): [['C:/temp/gst-sccache-shim/clang-cl.exe--target=aarch64-pc-windows-msvc']]`.

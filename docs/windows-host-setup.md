@@ -726,6 +726,23 @@ of 2026-10-14 (`bk-20261014-cpu`), the sccache RUNs (ONNX Runtime 1.31, FFmpeg) 
 and 30.2 s after their last line, against 114 to 124 s before. A tail of ~120 s after an sccache
 RUN means the value is missing or the reboot is still due.
 
+### C7. The shared S3 level (optional: compile hits from your other build hosts)
+
+C5's dufs is this host's own cache, level 0. A second level, an S3 bucket every build host
+shares, makes one host's compiles hits on the others
+([`windows-build-resources.md` § Two cache levels](windows-build-resources.md#two-cache-levels)).
+Needs the VPN to the bucket's server (its runbook:
+[`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md)). Non-admin:
+
+```pwsh
+pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -Endpoint http://192.168.188.216:3900 -AccessKeyId <key id>
+pwsh -File windows\scripts\host\Test-HostSetup.ps1           # [PASS] sccache S3 level reachable
+```
+
+The script asks for the secret without echo and stores the five `KATAGLYPHIS_SCCACHE_S3_*`
+user variables. `-ReportOnly` shows them and `-Clear` removes them. The first host may seed
+the bucket with its own cache: `Copy-SccacheCacheToS3.ps1` (needs `scoop install s5cmd`).
+
 ---
 
 

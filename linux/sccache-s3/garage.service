@@ -1,0 +1,18 @@
+[Unit]
+Description=Garage S3 object store (sccache level 1)
+# It binds the WireGuard address, which exists only once wg0 is up.
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+Requires=wg-quick@wg0.service
+
+[Service]
+Environment='RUST_LOG=garage=info' 'RUST_BACKTRACE=1'
+ExecStart=/usr/local/bin/garage server
+StateDirectory=garage
+DynamicUser=true
+ProtectHome=true
+NoNewPrivileges=true
+LimitNOFILE=42000
+
+[Install]
+WantedBy=multi-user.target

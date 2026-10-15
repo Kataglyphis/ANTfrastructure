@@ -2054,6 +2054,55 @@ function Start-SccacheServerSession {
     $global:LASTEXITCODE = 0
 }
 
+function Wait-SccacheUploadDrain {
+    <#
+    .SYNOPSIS
+        Waits until every level-0 write of a multi-level chain has reached the slower levels, or until -TimeoutSec.
+    .DESCRIPTION
+        sccache writes level 0 in the compile and every slower level in a background task, which a stopping server drops.
+        Each level-0 write starts one write per slower level, so a level has drained when its writes plus failures reach
+        level 0's writes. docs/windows-build-resources.md § Two cache levels
+    .OUTPUTS
+        [long] - the uploads still pending when it returned; 0 when drained, or when there is no chain to wait for.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$SccachePath,
+        [int]$TimeoutSec = 600,
+        [int]$PollSec = 2
+    )
+    if ("$env:SCCACHE_MULTILEVEL_CHAIN" -notmatch ',') { return 0 }
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $reportedAt = -30
+    while ($true) {
+        try {
+            $levels = @((((& $SccachePath --show-stats --stats-format json 2>$null) -join "`n") | ConvertFrom-Json).stats.multi_level)
+        } catch { $levels = @() }
+        if ($levels.Count -lt 2) {
+            Write-Host '  sccache-drain| no per-level counters from the server; not waiting'
+            return 0
+        }
+        $pending = [long]0
+        foreach ($level in $levels[1..($levels.Count - 1)]) {
+            $pending = [Math]::Max($pending, [long]$levels[0].writes - [long]$level.writes - [long]$level.write_failures)
+        }
+        $elapsed = [int]$clock.Elapsed.TotalSeconds
+        $tally = ($levels[1..($levels.Count - 1)] | ForEach-Object { "$($_.name): $($_.writes) written, $($_.write_failures) failed" }) -join '; '
+        if ($pending -le 0) {
+            Write-Host "  sccache-drain| every upload done after $elapsed s ($tally of $($levels[0].writes))"
+            return 0
+        }
+        if ($elapsed -ge $TimeoutSec) {
+            Write-Warning "sccache: $pending upload(s) still pending after $TimeoutSec s ($tally of $($levels[0].writes)); the stop drops them, and a later build uploads them again"
+            return $pending
+        }
+        if ($elapsed - $reportedAt -ge 30) {
+            Write-Host "  sccache-drain| $pending upload(s) pending after $elapsed s ($tally of $($levels[0].writes))"
+            $reportedAt = $elapsed
+        }
+        Start-Sleep -Seconds $PollSec
+    }
+}
+
 function Complete-SccacheServerSession {
     # With SCCACHE_IDLE_TIMEOUT=0 the server never exits, so stop it to flush its error log and webdav tail.
     [CmdletBinding()]
@@ -2066,6 +2115,7 @@ function Complete-SccacheServerSession {
         if ($sccacheCmd) { $SccachePath = $sccacheCmd.Source }
     }
     if ($SccachePath) {
+        $null = Wait-SccacheUploadDrain -SccachePath $SccachePath
         Write-Host 'Stopping the sccache server so its error log + webdav tail flush before the layer closes...'
         try {
             & $SccachePath --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache| $_" }
@@ -2349,6 +2399,7 @@ Export-ModuleMember -Function @(
     'Complete-SourceBuildChain',
     'Start-SccacheServerSession',
     'Complete-SccacheServerSession',
+    'Wait-SccacheUploadDrain',
     # Stop-LingeringBuildProcess stays internal.
     'Export-BuildHandoff',
     'Import-BuildHandoff',
