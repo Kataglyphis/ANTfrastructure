@@ -823,7 +823,8 @@ $pyavDir = (Get-ChildItem $pyavSrcRoot -Directory | Select-Object -First 1).Full
 $env:LIB = "$($ffTargetPy.LibDir);$env:LIB"
 $pyavBuildCmd = if ($ffCross) {
     $distutilsPlat = (Get-PythonWheelTag) -replace '_', '-'   # win_arm64 -> win-arm64 (distutils spelling)
-    "setup.py --ffmpeg-dir=""$prefix"" build_ext --plat-name $distutilsPlat bdist_wheel --plat-name $(Get-PythonWheelTag)"
+    # As the twin's: LIB comes after /LIBPATH, and the host's libs\ holds an x64 python3XY.lib since CON93.
+    "setup.py --ffmpeg-dir=""$prefix"" build_ext --plat-name $distutilsPlat -L ""$($ffTargetPy.LibDir)"" bdist_wheel --plat-name $(Get-PythonWheelTag)"
 } else {
     "setup.py --ffmpeg-dir=""$prefix"" bdist_wheel"
 }

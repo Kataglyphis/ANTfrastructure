@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-15 — PyAV's arm64 wheel links the target's `python315.lib` again; a failing `setup.py` shows its error
+
+- **The arm64 PyAV wheel failed with 207 unresolved Python symbols** (`LNK1120`, `__imp_PyBaseObject_Type` and the rest)
+  in the first arm64 chain since CON93. CON93 (2026-10-12) put the host's x64 `python3XY.lib` into `C:\temp\cpython\libs`,
+  and setuptools lists that directory first on the link line, ahead of the target's from `LIB`. The free-threaded twin
+  already passed the target's `libs\` with `-L`; the GIL build now does the same, and `SourceBuild.FindPythonPrefix.Tests.ps1`
+  requires it. The arm64 media-core branch then built in 16:34 min, both PyAV wheels (`cp315`, `cp315t`) included.
+- **Every failing wheel build now shows its own output.** `Invoke-PythonWheelBuild` returned the GIL build's log as
+  pipeline output, and every caller drops or indexes it, so the failure above read only `exit 1`. The log goes to the
+  host now, and a test proves a failing build's line reaches it when the caller drops the result.
+
 ## 2026-10-15 — The arm64 target's free-threaded CPython 3.15 drops its byte-identical `python.exe`
 
 - **The first arm64 cross chain on CPython 3.15.0 stopped in media-core** (bk-20261015-102101, phase 6 of the target
