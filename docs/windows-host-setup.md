@@ -740,8 +740,16 @@ pwsh -File windows\scripts\host\Test-HostSetup.ps1           # [PASS] sccache S3
 ```
 
 The script asks for the secret without echo and stores the five `KATAGLYPHIS_SCCACHE_S3_*`
-user variables. `-ReportOnly` shows them and `-Clear` removes them. The first host may seed
-the bucket with its own cache: `Copy-SccacheCacheToS3.ps1` (needs `scoop install s5cmd`).
+user variables. `-ReportOnly` shows them and `-Clear` removes them.
+
+- **Install s5cmd first** (`scoop install s5cmd`, 2.3.0, the runbook's pin). With it the script
+  tries the key against the bucket and stores nothing the server refuses. Without it the key is
+  stored unchecked.
+- **Do not copy the command after the key.** That replaces the key in the clipboard, and the
+  paste at the prompt is the command (2026-10-15). The script now refuses a secret with
+  whitespace, so that mistake stops there.
+- **Seeding.** The first host may seed the bucket with its own cache:
+  `Copy-SccacheCacheToS3.ps1 -DryRun`, then without `-DryRun`.
 
 ---
 

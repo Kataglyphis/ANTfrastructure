@@ -456,6 +456,23 @@ build host, so the shared level speaks S3 instead.
   preprocessor entries count in neither. A cold stage over a slow upload therefore ends with a
   wait, not with lost objects; whatever is left after 600 s, a later build uploads again.
 
+**Measured end to end on 2026-10-15** (BuildKit probe on `bk-windows-toolchain`, sccache 0.18.0,
+clang-cl, 20 fresh one-function C files, the real key as env secrets):
+
+| Phase | Result |
+|---|---|
+| `webdav,s3`, cold | 20 misses; level 0 and level 1 each 20 writes, 0 write failures |
+| `Wait-SccacheUploadDrain` | `every upload done after 0 s (L1 (s3): 20 written, 0 failed of 20)` |
+| A fresh server on `s3` alone, same files | 20 hits, 0 misses: the objects came from the bucket |
+| The next RUN | neither `AWS_*` variable set |
+
+The JSON counters the drain reads look like this, one object per level:
+`{"name":"L1 (s3)","writes":20,"write_failures":0,"hits":0,"misses":20,"backfills_from":0,"backfills_to":0,…}`.
+A wrong secret does not fail quietly: the server does not start at all
+(`Server startup failed: … S3Error { code: "AccessDenied", message: "Forbidden: Invalid signature", resource: "/sccache/.sccache_check" }`),
+so the compiles of that RUN run uncached. That is how the first probe found a command line
+stored as the secret.
+
 **The key never enters an argument, a layer or the image history.** `Build-Buildkit.ps1`
 passes it as two env-sourced BuildKit secrets, `--secret id=sccache_s3_key_id,env=…` and
 `id=sccache_s3_secret,env=…`. Every sccache RUN mounts them as `AWS_ACCESS_KEY_ID` and
@@ -475,7 +492,7 @@ The publish gate fails an image whose environment carries `AWS_ACCESS_KEY_ID`,
 **Setting up a client host** (once per host, after `Install-NewHost.ps1`):
 
 ```pwsh
-# asks for the secret without echo; writes the five KATAGLYPHIS_SCCACHE_S3_* user variables
+# asks for the secret without echo, tries it against the bucket, writes the five KATAGLYPHIS_SCCACHE_S3_* user variables
 pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -Endpoint http://192.168.188.216:3900 -AccessKeyId <key id>
 pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -ReportOnly       # what is set (the secret as set/missing)
 pwsh -File windows\scripts\host\Test-HostSetup.ps1                        # "sccache S3 level reachable"
@@ -487,6 +504,12 @@ pwsh -File windows\scripts\host\Copy-SccacheCacheToS3.ps1 -DryRun         # opti
   parameters `-SccacheS3Endpoint`, `-SccacheS3Bucket` and `-SccacheS3Region` override them.
   The run then prints `sccache levels: webdav … -> s3 …`.
 - **Defaults.** Bucket `sccache`, region `garage`.
+- **The secret is checked before it is stored.** One with whitespace is refused (a pasted
+  command line was stored once, 2026-10-15). With s5cmd on PATH the script lists the bucket
+  with the key first: `AccessDenied` or `Invalid signature` stores nothing, an unreachable
+  server only warns.
+- **Copy the command before the key, or take it from the history.** Copying the command after
+  the key replaces the key in the clipboard, and the paste at the prompt is the command.
 - **Server side.** [`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md) has the
   VPS: WireGuard through the FritzBox, Garage, the firewall rule and the size cap.
 - **Seeding.** `Copy-SccacheCacheToS3.ps1` copies the dufs tree into the bucket 1:1. Both
@@ -501,7 +524,7 @@ pwsh -File windows\scripts\host\Copy-SccacheCacheToS3.ps1 -DryRun         # opti
 | Half of them set | The driver warns, names what is missing and leaves the S3 level out |
 | The bucket's port does not answer the host | The driver warns and builds on WebDAV alone |
 | Inside a RUN: no key, or the endpoint unreachable | `Clear-UnreachableSccacheEndpoint` drops the S3 variables and takes `s3` out of the chain, which then runs on WebDAV alone; an unreachable WebDAV level goes the same way and leaves the bucket |
-| A wrong key | Every level-1 write counts as a failure in the stats; level 0 still serves |
+| A wrong key | The server refuses to start (`AccessDenied`, `Invalid signature`), so that RUN compiles uncached; `Set-SccacheS3Level.ps1` refuses such a key when s5cmd is on PATH |
 
 Adding the secret mounts and ARGs changed the RUN instructions, so the chain after 2026-10-15
 re-keys every sccache stage once. Those stages compile warm from level 0.

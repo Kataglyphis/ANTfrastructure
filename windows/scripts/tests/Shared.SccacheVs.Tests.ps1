@@ -89,3 +89,27 @@ Describe 'Test-UrlPortOpen' {
         Assert-False (Test-UrlPortOpen $url -TimeoutSeconds 1) 'closed'
     }
 }
+
+Describe 'Invoke-S5cmdWithKey' {
+
+    It 'gives s5cmd the key and puts the caller''s environment back afterwards' {
+        Invoke-InTestDir { param($d)
+            $stub = Join-Path $d 's5cmd.ps1'
+            Set-Content -LiteralPath $stub -Value '"id=$env:AWS_ACCESS_KEY_ID secret=$env:AWS_SECRET_ACCESS_KEY region=$env:AWS_REGION args=$args"'
+            Invoke-WithEnv @{ AWS_ACCESS_KEY_ID = 'caller-id'; AWS_SECRET_ACCESS_KEY = $null; AWS_REGION = $null } {
+                $seen = Invoke-S5cmdWithKey -S5cmdPath $stub -AccessKeyId 'GKtest' -SecretAccessKey 'sec' -Region 'garage' -Arguments @('ls', 's3://b')
+                Assert-Equal 'id=GKtest secret=sec region=garage args=ls s3://b' "$seen"
+                Assert-Equal 'caller-id' $env:AWS_ACCESS_KEY_ID 'a value the caller had comes back'
+                Assert-True ($null -eq $env:AWS_SECRET_ACCESS_KEY) 'a value the caller lacked is gone again'
+            }
+        }
+    }
+
+    It 'defaults the region to us-east-1, which S3 clients expect when none is set' {
+        Invoke-InTestDir { param($d)
+            $stub = Join-Path $d 's5cmd.ps1'
+            Set-Content -LiteralPath $stub -Value '"$env:AWS_REGION"'
+            Assert-Equal 'us-east-1' "$(Invoke-S5cmdWithKey -S5cmdPath $stub -AccessKeyId 'a' -SecretAccessKey 'b' -Arguments @('ls'))"
+        }
+    }
+}

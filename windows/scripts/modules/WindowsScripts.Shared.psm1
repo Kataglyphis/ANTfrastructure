@@ -328,6 +328,26 @@ function Test-UrlPortOpen {
     return [bool](Test-Connection -TargetName $uri.Host -TcpPort $uri.Port -Quiet -TimeoutSeconds $TimeoutSeconds)
 }
 
+function Invoke-S5cmdWithKey {
+    # s5cmd reads the S3 key from its environment, so this process holds it only while s5cmd runs.
+    param(
+        [Parameter(Mandatory)][string]$S5cmdPath,
+        [Parameter(Mandatory)][string]$AccessKeyId,
+        [Parameter(Mandatory)][string]$SecretAccessKey,
+        [string]$Region = '',
+        [Parameter(Mandatory)][string[]]$Arguments
+    )
+    $awsEnv = @{ AWS_ACCESS_KEY_ID = $AccessKeyId; AWS_SECRET_ACCESS_KEY = $SecretAccessKey; AWS_REGION = $(if ($Region) { $Region } else { 'us-east-1' }) }
+    $priorEnv = @(Get-ChildItem Env: | Where-Object Name -In $awsEnv.Keys)
+    $awsEnv.GetEnumerator() | ForEach-Object { Set-Item -LiteralPath "Env:$($_.Key)" -Value $_.Value }
+    try {
+        & $S5cmdPath @Arguments
+    } finally {
+        $awsEnv.Keys | ForEach-Object { Remove-Item -LiteralPath "Env:$_" -ErrorAction SilentlyContinue }
+        $priorEnv | ForEach-Object { Set-Item -LiteralPath "Env:$($_.Name)" -Value $_.Value }
+    }
+}
+
 function Test-SccacheRemoteConfigured {
     # No remote means no cache that outlives the RUN; SCCACHE_FORCE_LOCAL=1 is a diagnostic for the disk level only.
     if ($env:SCCACHE_FORCE_LOCAL -eq '1') { return $true }
@@ -703,6 +723,7 @@ Export-ModuleMember -Function @(
     'Expand-ArchiveSubdirectory',
     'Get-HostSettingValue',
     'Test-UrlPortOpen',
+    'Invoke-S5cmdWithKey',
     'Test-SccacheRemoteConfigured',
     'Get-SccacheStatsText',
     'Write-SccacheStatsToStderr',
