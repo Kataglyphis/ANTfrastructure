@@ -99,6 +99,26 @@ jobs:
           fi
           "${Rust_COMPILER}" --version
 
+      # Whatever this push's own commits ask for, the request input adds both Windows lanes and nothing that is not a lane.
+      - name: requested-lanes
+        id: lanes
+        uses: ./.github/actions/requested-lanes
+        with:
+          lanes: linux-arm64 windows-x64 windows-arm64
+          request: 'windows'
+
+      - name: requested-lanes picked both Windows lanes
+        env:
+          PICKED: ${{ steps.lanes.outputs.lanes }}
+        run: |
+          set -euo pipefail
+          for lane in windows-x64 windows-arm64; do
+            case "${PICKED}" in
+              *" ${lane} "*) echo "picked ${lane}" ;;
+              *) echo "::error::requested-lanes left out ${lane} for request 'windows': '${PICKED}'"; exit 1 ;;
+            esac
+          done
+
   # clone-into-short-path (Linux half: the submodule-exclusion logic)
   linux-clone:
     name: clone-into-short-path (exclusion logic)

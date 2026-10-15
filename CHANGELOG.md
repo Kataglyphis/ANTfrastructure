@@ -6,6 +6,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-15 — Branches, CI rounds and releases: one rule for every repo
+
+- **Owner rule, written down in `docs/branch-and-release-strategy.md`.** A push to
+  `develop` runs the Linux x64 lane only. Every other lane runs when a commit message
+  asks with `[ci <lane>]` (`[ci windows]`, `[ci arm64]`, `[ci all]`) or by hand. `main`
+  moves only by a fast-forward to a fully green `develop` commit, and every push to it
+  runs every lane and releases only when all are green. It replaces the 2026-09-24
+  rule of every lane on every push; `ci-build-triggers.md` lists which repo has moved.
+- **New action `requested-lanes`.** It reads the `[ci <word>]` tokens of every commit
+  in a push, plus a dispatch's words, and says which lanes they pick; a lane
+  `<os>-<arch>` answers to each part of its name. `test-requested-lanes.sh` has 14
+  checks, and four planted bugs each fail one or more. The self-test calls it.
+- AGENTS.md's *Which CI lanes run when* becomes *Branches, CI rounds and releases*,
+  and the consumer template's § 2 table gets the row.
+
 ## 2026-10-15 — ORT's nvcc keeps sccache, and the LiteRT bazel builds get a cache
 
 - **ONNX Runtime's CUDA kernels go through sccache again on a Blackwell arch list.**

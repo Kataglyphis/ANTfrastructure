@@ -206,6 +206,7 @@ Common development targets:
    slang-shader-compilation
    python-ci
    python-app-bundles
+   branch-and-release-strategy
    ci-build-triggers
    ftp-deploys
    github-cli-pipeline-monitoring

@@ -1,0 +1,34 @@
+name: 'Requested lanes'
+description: >-
+  Which of a repository's on-request lanes a push asks for: every `[ci <word>]`
+  in the messages of the pushed commits, plus the words of `request`. A lane
+  named `<os>-<arch>` answers to `all`, `<os>-<arch>`, `<os>` and `<arch>`, so
+  `[ci windows]` picks both Windows lanes and `[ci arm64]` both arm64 ones.
+  The fleet's rule behind it: docs/branch-and-release-strategy.md.
+
+inputs:
+  lanes:
+    description: 'The lanes to choose from: workflow file names without .yml, separated by spaces.'
+    required: true
+  request:
+    description: 'More words to ask with, such as a workflow_dispatch input ("all", "windows android").'
+    required: false
+    default: ''
+
+outputs:
+  lanes:
+    description: >-
+      The chosen lanes between single spaces, with one at each end, so a job
+      tests `contains(needs.<job>.outputs.lanes, ' <lane> ')`.
+    value: ${{ steps.pick.outputs.lanes }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read the [ci ...] tokens
+      id: pick
+      shell: bash
+      env:
+        LANES: ${{ inputs.lanes }}
+        REQUEST: ${{ inputs.request }}
+      run: bash "${GITHUB_ACTION_PATH}/requested-lanes.sh"
