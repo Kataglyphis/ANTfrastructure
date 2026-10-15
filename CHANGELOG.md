@@ -13,7 +13,8 @@
   It started as OmniAccelerANT's `publish-release.sh`, which knew only `pubspec.yaml`; OxidANT's
   release takes its version from `Cargo.toml`. It refuses a released version, a version without
   a section, notes over GitHub's 125000 characters, an unanswering GitHub and an empty directory.
-  `test-publish-github-release.sh`: 27 assertions; a loose heading match, a dropped `[` strip, a dropped release check and a dropped
+  `test-publish-github-release.sh`: 34 assertions, each refusal checked for its message and for
+  no release asked of GitHub; a loose heading match, a dropped `[` strip, a dropped release check and a dropped
   "not found" check each fail.
 - **`version_util.sh --file-version <file>`** prints the version a `VERSION.txt`, `Cargo.toml` or
   `pubspec.yaml` (without its `+build`) states, and fails without one: a release never falls back
