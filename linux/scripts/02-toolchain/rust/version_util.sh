@@ -36,26 +36,33 @@ cargo_toml_version() {
     ' "$1"
 }
 
+# The version a file states, empty when none: a Cargo.toml's, a pubspec.yaml's without its +build, else a plain file's first line.
+file_version() {
+    local version_file="$1" line trimmed
+    [[ -f "$version_file" ]] || return 0
+    case "$(basename "$version_file")" in
+        Cargo.toml) cargo_toml_version "$version_file"; return 0 ;;
+        pubspec.yaml) sed -n 's/^version:[[:space:]]*\([0-9][0-9.]*\).*/\1/p' "$version_file" | head -n 1; return 0 ;;
+    esac
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        trimmed="${line//$'\r'/}"
+        trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
+        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+        if [[ -n "$trimmed" ]]; then
+            printf '%s\n' "$trimmed"
+            return 0
+        fi
+    done < "$version_file"
+}
+
 # docs/cross-build-verification.md#resolve_ci_version-the-version-a-ci-run-stamps
 resolve_ci_version() {
     local version_file="${1:-VERSION.txt}"
     local ref_name="${2:-${REF_NAME:-}}"
     local run_number="${3:-${RUN_NUMBER:-}}"
-    local file_ver="" line trimmed ver
+    local file_ver ver
 
-    if [[ -f "$version_file" && "$(basename "$version_file")" == Cargo.toml ]]; then
-        file_ver="$(cargo_toml_version "$version_file")"
-    elif [[ -f "$version_file" ]]; then
-        while IFS= read -r line || [[ -n "$line" ]]; do
-            trimmed="${line//$'\r'/}"
-            trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
-            trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-            if [[ -n "$trimmed" ]]; then
-                file_ver="$trimmed"
-                break
-            fi
-        done < "$version_file"
-    fi
+    file_ver="$(file_version "$version_file")"
 
     if [[ -n "$file_ver" ]]; then
         ver="${file_ver#v}"
@@ -96,6 +103,11 @@ elif [[ "${1:-}" == "--sanitize" ]]; then
 elif [[ "${1:-}" == "--resolve-ci" ]]; then
     shift
     resolve_ci_version "${1:-VERSION.txt}"
+elif [[ "${1:-}" == "--file-version" ]]; then
+    shift
+    ver="$(file_version "${1:?--file-version needs a file}")"
+    [[ "$ver" =~ ^v?[0-9] ]] || err "no version in ${1}"
+    printf '%s\n' "${ver#v}"
 elif [[ "${1:-}" == "--github-env" ]]; then
     shift
     emit_github_version "${1:-VERSION.txt}"
@@ -104,5 +116,6 @@ else
     info "  --normalize <version>   - Normalize to Major.Minor.Build.Revision"
     info "  --sanitize  <version>   - Sanitize for filenames (replace slashes)"
     info "  --resolve-ci [file]     - Resolve the CI version (VERSION.txt or a Cargo.toml / REF_NAME / RUN_NUMBER)"
+    info "  --file-version <file>   - The version a VERSION.txt, Cargo.toml or pubspec.yaml states; fails without one"
     info "  --github-env [file]     - Resolve and write VERSION + MSIX_VERSION to GITHUB_ENV/OUTPUT"
 fi

@@ -6,6 +6,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-16 — One release script for every repo
+
+- **`06-packaging/publish-github-release.sh`** publishes `v<version>` at `HEAD` with a directory's
+  files, a `SHA256SUMS` and the version's CHANGELOG section (`## <version>` or `## [<version>]`).
+  It started as OmniAccelerANT's `publish-release.sh`, which knew only `pubspec.yaml`; OxidANT's
+  release takes its version from `Cargo.toml`. It refuses a released version, a version without
+  a section, notes over GitHub's 125000 characters, an unanswering GitHub and an empty directory.
+  `test-publish-github-release.sh`: 27 assertions; a loose heading match, a dropped `[` strip, a dropped release check and a dropped
+  "not found" check each fail.
+- **`version_util.sh --file-version <file>`** prints the version a `VERSION.txt`, `Cargo.toml` or
+  `pubspec.yaml` (without its `+build`) states, and fails without one: a release never falls back
+  to a branch name. `test-version-util.sh` grows to 13 assertions.
+
 ## 2026-10-15 — `version_util.sh` reads a `Cargo.toml`
 
 - **A Rust repo keeps its version in `Cargo.toml` alone** (owner, for OxidANT). Handed a file
