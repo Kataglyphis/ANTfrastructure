@@ -375,27 +375,11 @@ function Get-BkSccacheConfig {
     )
     $config = @{ BuildArgs = @{ SCCACHE_WEBDAV_ENDPOINT = $WebdavEndpoint }; Secrets = @(); Levels = @(); Note = '' }
     if ($WebdavEndpoint) { $config.Levels += "webdav $WebdavEndpoint" }
-    if (-not ($S3Endpoint -or $S3Bucket)) { return $config }
-
-    $missing = @(
-        if (-not $S3Endpoint) { 'the endpoint' }
-        if (-not $S3Bucket) { 'the bucket' }
-        foreach ($variable in $KeyIdVariable, $SecretVariable) {
-            if ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($variable))) { $variable }
-        }
-    )
-    $uri = $null
-    if ($S3Endpoint -and -not [Uri]::TryCreate($S3Endpoint, [UriKind]::Absolute, [ref]$uri)) { $missing += "an absolute endpoint URL (got '$S3Endpoint')" }
-    if ($missing.Count -gt 0) {
-        $config.Note = "the S3 level is left out: it needs $($missing -join ', ')"
-        return $config
-    }
-    $config.BuildArgs['SCCACHE_ENDPOINT'] = $S3Endpoint
-    $config.BuildArgs['SCCACHE_BUCKET'] = $S3Bucket
-    if ($S3Region) { $config.BuildArgs['SCCACHE_REGION'] = $S3Region }
-    $config.BuildArgs['SCCACHE_S3_USE_SSL'] = if ($uri.Scheme -eq 'https') { 'true' } else { 'false' }
-    # Without a WebDAV level the bucket is sccache's only backend, which needs no chain.
-    if ($WebdavEndpoint) { $config.BuildArgs['SCCACHE_MULTILEVEL_CHAIN'] = 'webdav,s3' }
+    $s3 = Get-SccacheS3Level -WebdavEndpoint $WebdavEndpoint -S3Endpoint $S3Endpoint -S3Bucket $S3Bucket -S3Region $S3Region `
+        -KeyIdVariable $KeyIdVariable -SecretVariable $SecretVariable
+    $config.Note = $s3.Note
+    if ($s3.Settings.Count -eq 0) { return $config }
+    foreach ($name in $s3.Settings.Keys) { $config.BuildArgs[$name] = $s3.Settings[$name] }
     $config.Secrets = @('--secret', "id=sccache_s3_key_id,env=$KeyIdVariable", '--secret', "id=sccache_s3_secret,env=$SecretVariable")
     $config.Levels += "s3 $S3Endpoint bucket $S3Bucket"
     return $config

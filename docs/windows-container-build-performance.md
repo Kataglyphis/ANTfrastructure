@@ -525,7 +525,9 @@ for the bind-mount transport (probed first; the tar-pipe takes over when the
 mount does not attach), `-FreshContainer` for the reset switch of rail 2, and
 `-VerifyDirs` for the delivery check of rail 4. It also hands the container
 this host's sccache remote tier
-([`windows-build-resources.md`](windows-build-resources.md#the-build-hosts-remote-tier-at-run-time)).
+([`windows-build-resources.md`](windows-build-resources.md#the-build-hosts-remote-tier-at-run-time)),
+and the shared S3 level per `docker exec`, by name only
+([`windows-build-resources.md` § Two cache levels](windows-build-resources.md#two-cache-levels)).
 The BeschleunigerBallett driver named at the top of this page is built on it.
 
 Its parts are exported for a caller that needs only some of them:

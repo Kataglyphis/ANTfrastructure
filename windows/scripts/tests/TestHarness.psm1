@@ -326,6 +326,13 @@ function Invoke-WithFunctionModule {
     }
 }
 
-Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, `
+function Start-LoopbackListener {
+    # A started TcpListener on a free loopback port; after Stop() nothing answers on that port.
+    $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+    $listener.Start()
+    return $listener
+}
+
+Export-ModuleMember -Function Start-LoopbackListener, Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, `
     Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
     Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel
