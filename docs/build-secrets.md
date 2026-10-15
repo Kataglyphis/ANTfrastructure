@@ -77,6 +77,30 @@ EOF
 - **Requires BuildKit.** Both `docker buildx build` and `nerdctl build` use it;
   a legacy `DOCKER_BUILDKIT=0` build rejects `--secret`.
 
+## Windows: a secret from the environment (the sccache S3 key)
+
+The Windows lane's one build secret is the key to sccache's shared S3 bucket
+([`windows-build-resources.md` § Two cache levels](windows-build-resources.md#two-cache-levels)).
+It never exists as a file, on either side of the build:
+
+| Where | What holds the key |
+|---|---|
+| The build host | Two user environment variables, `KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID` and `KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY`. `Set-SccacheS3Level.ps1` asks for the secret without echo and stores it there. |
+| The build call | `--secret id=sccache_s3_secret,env=KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY`: buildctl reads the variable and sends the value, never the command line. |
+| The RUN | `--mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY`: set for that RUN only, with nothing left in the layer (probed 2026-10-15). |
+| The image | Nothing. The publish gate fails an image environment carrying `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` or `AWS_SESSION_TOKEN`. |
+| The server | `/root/sccache-s3-key.txt` and `/etc/sccache-evict.env`, both mode 600. |
+| The repositories | Placeholders only: `REPLACE_ME`, `GKEXAMPLE0000`, `GK0123456789abcdef01234567`. |
+
+On Windows, prefer the `env=` form over a file target. A file target works too,
+but it needs a forward-slash path (`target=C:/…`) and it leaves a 0-byte
+placeholder in the layer.
+
+A secret pasted into a chat, an issue or a log has left the machine: rotate it.
+On the server that is `garage key create`, then `garage bucket allow`, then
+`garage key delete` on the old key ([`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md)).
+The objects in the bucket stay valid. Then run `Set-SccacheS3Level.ps1` again on each host.
+
 ## Runtime secrets: Compose, not BuildKit
 
 Everything above is **build**-time. A secret a *running* container needs is a
