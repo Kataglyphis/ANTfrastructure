@@ -90,6 +90,20 @@ garage bucket allow --read --write sccache --key sccache-evict
 
 Keep the client secret root-only: on this server it is in `/root/sccache-s3-key.txt` (600).
 That is where the user copies it from into `Set-SccacheS3Level.ps1` on each client.
+It never goes into a repository; the files here carry `REPLACE_ME` instead.
+
+**Rotating the client key** (after it leaked into a chat or a log, or on a schedule). The
+objects stay valid, because the cache keys do not depend on the access key:
+
+```bash
+garage key create sccache-client-2                    # new id and secret, shown once
+garage bucket allow --read --write sccache --key sccache-client-2
+garage key info sccache-client-2 --show-secret | install -m 600 /dev/stdin /root/sccache-s3-key.txt
+garage key delete --yes sccache-client                # the old key stops working at once
+```
+
+Then, on each Windows client, run `Set-SccacheS3Level.ps1` with the new key id. Copy the
+command first and the secret last, so the clipboard holds the secret at the prompt.
 
 ## 3. Firewall
 
