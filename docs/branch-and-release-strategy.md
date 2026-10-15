@@ -120,7 +120,7 @@ back to a branch name), `--changelog` the file whose `## <version>` or `## [<ver
 becomes the notes, `--name` the release title, then `--check` or `--assets <dir>`. It refuses a
 version that is released already, a version without a section, notes over GitHub's 125000
 characters, a GitHub that does not answer and an empty directory
-(`test-publish-github-release.sh`, 27 assertions).
+(`test-publish-github-release.sh`, 34 assertions).
 
 ## How a repository implements it
 

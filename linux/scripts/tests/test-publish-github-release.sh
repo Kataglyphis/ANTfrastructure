@@ -60,32 +60,39 @@ t_assert_ok run rust --version-file Cargo.toml --changelog CHANGELOG.md --name O
 t_assert_contains "$(cat "${work}/gh-args")" "OxidANT 2.3.4"
 t_assert_eq "One version." "$(grep -v '^$' "${work}/gh-notes")"
 
+# refused <message> <repo> <args...>: the script fails, says why, and asks GitHub for no release.
+refused() {
+  local message="$1"; shift
+  rm -f "${work}/gh-args"
+  t_assert_fails run "$@"
+  t_assert_contains "$(cat "${work}/log")" "$message"
+  t_assert_fails test -e "${work}/gh-args"
+}
+
 t_case "a released version is neither checked through nor published again"
-rm -f "${work}/gh-args"
 touch "${work}/released-v2.1.0"
-t_assert_fails run flutter "${flutter_args[@]}" --check
-t_assert_contains "$(cat "${work}/log")" "already released"
-t_assert_fails run flutter "${flutter_args[@]}" --assets "${work}/pkgs"
-t_assert_fails test -e "${work}/gh-args"
+refused "already released" flutter "${flutter_args[@]}" --check
+refused "already released" flutter "${flutter_args[@]}" --assets "${work}/pkgs"
 rm -f "${work}/released-v2.1.0"
 
 t_case "a GitHub that does not answer is not 'not released'"
 t_assert_fails env GH_DOWN=1 bash -c "cd '${work}/flutter' && PATH='${work}/bin:${PATH}' bash '${PUBLISH}' ${flutter_args[*]} --check"
 
-t_case "a version without a CHANGELOG section, a version file without a version, an empty directory"
+t_case "a version the CHANGELOG has no section for"
 sed -i 's/^version: .*/version: 2.2.0+4/' "${work}/flutter/pubspec.yaml"
-t_assert_fails run flutter "${flutter_args[@]}" --check
+refused "has no section for 2.2.0" flutter "${flutter_args[@]}" --check
 sed -i 's/^version: .*/version: 2.1.0+3/' "${work}/flutter/pubspec.yaml"
-t_assert_fails run rust --version-file CHANGELOG.md --changelog CHANGELOG.md --name X --check
-t_assert_contains "$(cat "${work}/log")" "states no version"
-t_assert_fails run flutter "${flutter_args[@]}" --assets "${work}/empty"
-t_assert_fails test -e "${work}/gh-args"
+
+t_case "a version file that states no version"
+refused "states no version" rust --version-file CHANGELOG.md --changelog CHANGELOG.md --name X --check
+
+t_case "an empty directory"
+refused "no files in" flutter "${flutter_args[@]}" --assets "${work}/empty"
 
 t_case "notes over GitHub's 125000 characters stop the check, not the release run's end"
 cp "${work}/rust/CHANGELOG.md" "${work}/rust/CHANGELOG.keep"
 { printf '# Changelog\n\n## [2.3.4]\n\n'; head -c 130000 /dev/zero | tr '\0' 'x'; printf '\n'; } > "${work}/rust/CHANGELOG.md"
-t_assert_fails run rust --version-file Cargo.toml --changelog CHANGELOG.md --name OxidANT --check
-t_assert_contains "$(cat "${work}/log")" "over GitHub's 125000"
+refused "over GitHub's 125000" rust --version-file Cargo.toml --changelog CHANGELOG.md --name OxidANT --check
 mv "${work}/rust/CHANGELOG.keep" "${work}/rust/CHANGELOG.md"
 
 t_case "missing arguments are a usage error"
