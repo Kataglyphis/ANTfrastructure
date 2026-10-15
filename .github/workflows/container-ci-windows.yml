@@ -131,7 +131,8 @@ on:
         default: 180
       version-file:
         description: >-
-          A version file, RELATIVE TO THE REPOSITORY ROOT (e.g. VERSION.txt). When set,
+          A version file, RELATIVE TO THE REPOSITORY ROOT: a VERSION.txt, or a Cargo.toml
+          (its [workspace.package] version, else [package]'s). When set,
           the hub's version_util.sh resolves VERSION and MSIX_VERSION on the host, from
           that file, the ref name and the run number, and the container gets both as
           environment. Empty = none.

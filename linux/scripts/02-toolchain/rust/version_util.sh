@@ -23,6 +23,19 @@ sanitize_version() {
     echo "$version"
 }
 
+# A Cargo.toml's version: [workspace.package] first, else [package]; "version.workspace = true" is no version.
+cargo_toml_version() {
+    awk '
+      /^[[:space:]]*\[/ { section = $0; gsub(/[[:space:]]/, "", section); next }
+      /^[[:space:]]*version[[:space:]]*=[[:space:]]*"/ {
+        v = $0; sub(/^[^"]*"/, "", v); sub(/".*/, "", v)
+        if (section == "[workspace.package]") { ws = v }
+        else if (section == "[package]" && pkg == "") { pkg = v }
+      }
+      END { if (ws != "") print ws; else if (pkg != "") print pkg }
+    ' "$1"
+}
+
 # docs/cross-build-verification.md#resolve_ci_version-the-version-a-ci-run-stamps
 resolve_ci_version() {
     local version_file="${1:-VERSION.txt}"
@@ -30,7 +43,9 @@ resolve_ci_version() {
     local run_number="${3:-${RUN_NUMBER:-}}"
     local file_ver="" line trimmed ver
 
-    if [[ -f "$version_file" ]]; then
+    if [[ -f "$version_file" && "$(basename "$version_file")" == Cargo.toml ]]; then
+        file_ver="$(cargo_toml_version "$version_file")"
+    elif [[ -f "$version_file" ]]; then
         while IFS= read -r line || [[ -n "$line" ]]; do
             trimmed="${line//$'\r'/}"
             trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
@@ -88,6 +103,6 @@ else
     info "Version utility"
     info "  --normalize <version>   - Normalize to Major.Minor.Build.Revision"
     info "  --sanitize  <version>   - Sanitize for filenames (replace slashes)"
-    info "  --resolve-ci [file]     - Resolve the CI version (VERSION.txt / REF_NAME / RUN_NUMBER)"
+    info "  --resolve-ci [file]     - Resolve the CI version (VERSION.txt or a Cargo.toml / REF_NAME / RUN_NUMBER)"
     info "  --github-env [file]     - Resolve and write VERSION + MSIX_VERSION to GITHUB_ENV/OUTPUT"
 fi
