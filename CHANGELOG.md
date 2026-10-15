@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-15 — The arm64 target's free-threaded CPython 3.15 drops its byte-identical `python.exe`
+
+- **The first arm64 cross chain on CPython 3.15.0 stopped in media-core** (bk-20261015-102101, phase 6 of the target
+  CPython). 3.15's `PCbuild` builds `python.exe` and `pythonw.exe` in `arm64t` and copies each to `python3.15t.exe` and
+  `pythonw3.15t.exe` (`CopyFreethreadedBinary`). `Install-CpythonTargetTree` copied `python*.exe`, so the free-threaded
+  tree held a `python.exe`, and the gate refused it.
+- The staging now drops `python.exe` and `pythonw.exe` from the free-threaded tree when each is byte-identical to its
+  `X.Yt` twin. A `python.exe` with other bytes still trips the gate, as `SourceBuild.TargetCpythonTree.Tests.ps1`'s
+  refusal row asserts; a new row covers the duplicate (14 of 14 pass). The amd64 host's free-threaded tree was never
+  affected, since `PC\layout` writes only the `X.Yt` names.
+
 ## 2026-10-14 — `CUDA_INSTALLER_SHA256` names the network installer again; `spec_cuda` checks NVIDIA's MD5
 
 - **The CUDA 13.4.3 bump below pinned the wrong file.** `spec_cuda` hashed the ~4 GB full installer

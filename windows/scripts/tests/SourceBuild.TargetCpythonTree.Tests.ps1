@@ -34,6 +34,17 @@ BeforeAll {
         foreach ($n in 'vcruntime140.dll', 'msvcp140.dll') { New-TestPeFile -Path (Join-Path $redist $n) -Machine 0xAA64 -Tag "redist-$n" }
         return @{ Src = $src; Build = $build; Redist = $redist }
     }
+    # A free-threaded build staged as 3.14.8; -Twins first adds the plain-named copies 3.15's PCbuild writes beside the X.Yt exes.
+    function script:Install-FreeThreadedTestTree {
+        param([Parameter(Mandatory)][string]$Dir, [switch]$Twins)
+        $b = New-TargetBuild -Dir $Dir -FreeThreaded
+        if ($Twins) { foreach ($n in 'python', 'pythonw') { Copy-Item (Join-Path $b.Build "${n}3.14t.exe") (Join-Path $b.Build "$n.exe") } }
+        $root = Join-Path $Dir 'runtime\python-freethreaded'
+        $r = Invoke-WithEnv @{ PYTHON_VERSION = '3.14.8' } {
+            Install-CpythonTargetTree -BuildDir $b.Build -SourceDir $b.Src -Destination $root -Arch arm64 -FreeThreaded -RedistDir $b.Redist
+        }
+        return @{ Root = $root; Result = $r }
+    }
     # Both sides sorted the same way, so the expectation never depends on how a culture orders '_' and case.
     function script:Join-Sorted { param([string[]]$Name) return (@($Name) | Sort-Object) -join ',' }
     function script:Get-TreeFiles {
@@ -67,11 +78,8 @@ Describe 'Install-CpythonTargetTree' {
 
     It 'stages the free-threaded tree with its own exe, python314t.lib, python3t.lib and venv launchers, an empty site-packages and no bundle bin' {
         Invoke-InTestDir { param($d)
-            $b = New-TargetBuild -Dir $d -FreeThreaded
-            $root = Join-Path $d 'runtime\python-freethreaded'
-            $r = Invoke-WithEnv @{ PYTHON_VERSION = '3.14.8' } {
-                Install-CpythonTargetTree -BuildDir $b.Build -SourceDir $b.Src -Destination $root -Arch arm64 -FreeThreaded -RedistDir $b.Redist
-            }
+            $t = Install-FreeThreadedTestTree -Dir $d
+            $root, $r = $t.Root, $t.Result
             $want = Join-Sorted @('DLLs\_ssl.cp314t-win_arm64.pyd', 'DLLs\libcrypto-3-arm64.dll', 'DLLs\vcruntime140.dll', 'include\cpython\object.h',
                 'include\Python.h', 'include\pyconfig.h', 'Lib\ensurepip\_bundled\pip-25.3-py3-none-any.whl', 'Lib\os.py',
                 'Lib\venv\scripts\nt\venvlaunchert.exe', 'Lib\venv\scripts\nt\venvwlaunchert.exe', 'libs\python314t.lib', 'libs\python3t.lib', 'msvcp140.dll',
@@ -80,6 +88,15 @@ Describe 'Install-CpythonTargetTree' {
             Assert-True (Test-Path (Join-Path $root 'Lib\site-packages') -PathType Container) 'site-packages exists, empty'
             Assert-False (Test-Path (Join-Path $d 'runtime\bin')) 'the GIL tree owns the bundle bin'
             Assert-Equal "$root\python3.14t.exe|$root\libs\python314t.lib" "$($r.Exe)|$($r.Lib)" 'the returned facts'
+        }
+    }
+
+    It 'drops a python.exe and pythonw.exe that are byte-identical twins of the X.Yt exes, as 3.15''s PCbuild writes them' {
+        Invoke-InTestDir { param($d)
+            $plain = Install-FreeThreadedTestTree -Dir (Join-Path $d 'plain')
+            $twins = Install-FreeThreadedTestTree -Dir (Join-Path $d 'twins') -Twins
+            Assert-Equal (Get-TreeFiles $plain.Root) (Get-TreeFiles $twins.Root) 'the same tree as a build without the plain-named copies'
+            Assert-Equal "$($twins.Root)\python3.14t.exe" $twins.Result.Exe 'the returned exe'
         }
     }
 
