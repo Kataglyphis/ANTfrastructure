@@ -6,6 +6,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-15 — GStreamer's arm64 cross file keeps the sccache shim and `--target` apart
+
+- **`meson setup` of the arm64 merge stopped at once** with `Unknown compiler(s): [['C:/temp/gst-sccache-shim/clang-cl.exe--target=aarch64-pc-windows-msvc']]`.
+  The cross file built its compiler list as `(($env:CC -split '\s+') | Where-Object { $_ }) + @("--target=…")`. Since
+  #182 (2026-10-12) `CC` is the one-word shim path, the pipeline yields a plain string, and `+` appended `--target` as
+  text. The two-word `sccache clang-cl` had hidden it.
+- `Format-MesonExeList` builds all four lists (cross and native, C and C++) through `@()`.
+  `Build.GstreamerSccacheShim.Tests.ps1` checks the one-word shim, a padded two-word command and the native form, and
+  that every list goes through it. The dupes budget of the script's self-pair falls from 51 to 33.
+
 ## 2026-10-15 — PyAV's arm64 wheel links the target's `python315.lib` again; a failing `setup.py` shows its error
 
 - **The arm64 PyAV wheel failed with 207 unresolved Python symbols** (`LNK1120`, `__imp_PyBaseObject_Type` and the rest)

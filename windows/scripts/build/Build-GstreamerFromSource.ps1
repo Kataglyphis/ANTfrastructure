@@ -227,6 +227,13 @@ return (int)code;
     return $exe
 }
 
+function Format-MesonExeList {
+    # @() keeps a one-word command a list; a bare string plus @(...) glued the shim path to --target (2026-10-15).
+    param([Parameter(Mandatory)][string]$Command, [string[]]$Extra = @())
+    $words = @(($Command -split '\s+') | Where-Object { $_ }) + @($Extra)
+    return (@($words) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+}
+
 function Get-GstRocmMissingArtifact {
     param([Parameter(Mandatory)][string]$InstallDir)
     $plugins = foreach ($p in 'gsthip', 'gstamfcodec', 'gstd3d11', 'gstd3d12') { "lib\gstreamer-1.0\$p.dll" }
@@ -884,8 +891,8 @@ int _isatty(int);
             default { throw "build-gstreamer: no meson cpu_family mapping for target arch '$gstTargetArch' - add one before building it." }
         }
         # --target in the exelist: meson derives the linker's and archiver's /MACHINE from `<exelist> --version`.
-        $ccList = (((($env:CC -split '\s+') | Where-Object { $_ }) + @("--target=$gstTriple")) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
-        $cxxList = (((($env:CXX -split '\s+') | Where-Object { $_ }) + @("--target=$gstTriple")) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+        $ccList = Format-MesonExeList -Command $env:CC -Extra "--target=$gstTriple"
+        $cxxList = Format-MesonExeList -Command $env:CXX -Extra "--target=$gstTriple"
         # Target rust (for gst-ptp-helper) is proven first: a failing rust entry fails setup, an absent one skips the helper.
         $rustTargetLine = ''
         $rustTriple = Get-RustTargetTriple -Arch $gstTargetArch
@@ -935,8 +942,8 @@ cpu = '$gstCpuFamily'
 endian = 'little'
 "@
         # A native file gives the build machine its compilers; without one the build-machine glib fallback and webrtc/nice die.
-        $nccList = ((($env:CC -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
-        $ncxxList = ((($env:CXX -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+        $nccList = Format-MesonExeList -Command $env:CC
+        $ncxxList = Format-MesonExeList -Command $env:CXX
         # LIB names the target's dirs; /vctoolsdir: and /winsdkdir: pick the arch from /machine:, unlike /LIBPATH under clang-cl.
         $vcToolsDir = $null; $winSdkDir = $null; $winSdkVer = $null
         foreach ($entry in @(($env:LIB -split ';') | Where-Object { $_ })) {
