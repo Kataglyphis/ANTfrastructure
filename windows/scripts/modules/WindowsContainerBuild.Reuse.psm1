@@ -604,6 +604,8 @@ function Get-HostSccacheS3ExecEnv {
     foreach ($name in $s3.Settings.Keys) { $execEnv[$name] = $s3.Settings[$name] }
     $execEnv['AWS_ACCESS_KEY_ID'] = & $hostValue 'KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID'
     $execEnv['AWS_SECRET_ACCESS_KEY'] = & $hostValue 'KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY'
+    # The app's own build starts its server, with no fallback: a bucket that stalls the startup check must not stop it.
+    $execEnv['SCCACHE_SKIP_CACHE_CHECK'] = 'true'
     return $execEnv
 }
 

@@ -29,6 +29,7 @@ Describe 'Get-HostSccacheS3ExecEnv' {
             Assert-Equal 'webdav,s3' $s3Env['SCCACHE_MULTILEVEL_CHAIN']
             Assert-Equal 'GKEXAMPLE0000' $s3Env['AWS_ACCESS_KEY_ID']
             Assert-Equal 'not-a-real-secret' $s3Env['AWS_SECRET_ACCESS_KEY']
+            Assert-Equal 'true' $s3Env['SCCACHE_SKIP_CACHE_CHECK'] 'a stalled bucket must not stop the app build''s server'
         } finally { $listener.Stop() }
     }
 

@@ -427,7 +427,11 @@ after a decision history worth keeping:
     (`sccache-ptx-exempt: nvcc stays bare for onnxruntime_providers_cuda_llm; …`).
   - **Tests.** `SourceBuild.OrtCudaLauncher.Tests.ps1` runs CMake on a stand-in project:
     a `-virtual` target loses the launcher, in a subdirectory too, and a real-only one keeps it.
-  - **Not yet measured in a chain;** the three canaries above apply before it counts as proven.
+  - **First chain, 2026-10-16** (nvidia, hub `8a4ef0fa`, the first with the launcher on ORT 1.31's
+    CUDA, so cold): configure printed `nvcc stays bare for onnxruntime_providers_cuda_llm`, nvcc
+    went through sccache (292 CUDA hits, 277 misses, where it had made none), and the stage took
+    4746 s against 4956 s with nvcc bare. The warm rerun and the three canaries above are still
+    to come.
   - Drop both when a released sccache fixes #2862. OpenCV passes `-real` archs only and is
     unaffected.
 
@@ -567,7 +571,17 @@ the bucket does not reach them.
 | Half of them set | The driver warns, names what is missing and leaves the S3 level out |
 | The bucket's port does not answer the host | The driver warns and builds on WebDAV alone |
 | Inside a RUN: no key, or the endpoint unreachable | `Clear-UnreachableSccacheEndpoint` drops the S3 variables and takes `s3` out of the chain, which then runs on WebDAV alone; an unreachable WebDAV level goes the same way and leaves the bucket |
-| A wrong key | The server refuses to start (`AccessDenied`, `Invalid signature`), so that RUN compiles uncached; `Set-SccacheS3Level.ps1` refuses such a key when s5cmd is on PATH |
+| A wrong key | The server refuses to start (`AccessDenied`, `Invalid signature`); `Set-SccacheS3Level.ps1` refuses such a key when s5cmd is on PATH, and the row below catches one that slips through |
+| The bucket stalls the server's startup check | One level that fails its check stops the whole sccache server (`multilevel.rs`), and the client gives up after 10 s. `Start-SccacheServerSession` then drops the S3 level (`Remove-SccacheS3Level`) and starts the server again on WebDAV. The app builds' exec passes `SCCACHE_SKIP_CACHE_CHECK=true` instead, because their own build starts the server |
+| The bucket dies in the middle of a RUN | Writes fail and are counted; reads wait for the TCP connect on each level-0 miss. The RUN finishes slower, it does not fail |
+
+**Measured on 2026-10-16: a flaky bucket stopped a chain, which the startup fallback above now
+prevents.** The VPS stopped answering through the tunnel at about 00:49 (no TCP connect, no ping).
+The nvidia ORT stage, which was still compiling, finished: 608 of 2364 level-1 writes failed, and
+level 0 lost none. The next stage, FFmpeg, passed the 2 s TCP probe. Its server still timed out
+in the startup check (`Timed out waiting for server startup. Maybe the remote service is
+unreachable?`), and every compile failed. Before the fallback, the bucket was a hard dependency
+of every RUN that named it.
 
 Adding the secret mounts and ARGs changed the RUN instructions, so the chain after 2026-10-15
 re-keys every sccache stage once. Those stages compile warm from level 0.
