@@ -163,7 +163,8 @@ try {
     $null = Set-BazelProcessEnv -Values $toolchain.Env
     # An empty dir instead of the unhashed OpenVINO nightly WORKSPACE:579-581 fetches; litert_lm_main never uses it (probe LM1).
     New-Item -ItemType Directory -Force -Path C:\bzl-openvino-absent | Out-Null
-    $toolchainOpts = @($toolchain.Flags) + @('--repo_env=OPENVINO_NATIVE_DIR=C:/bzl-openvino-absent', '--linkopt=/DEBUG:NONE', '--host_linkopt=/DEBUG:NONE')
+    $toolchainOpts = @($toolchain.Flags) + @('--repo_env=OPENVINO_NATIVE_DIR=C:/bzl-openvino-absent', '--linkopt=/DEBUG:NONE', '--host_linkopt=/DEBUG:NONE') +
+        @(Get-BazelRemoteCacheArg)
     # No --repository_cache on the mount: bazel renames temp files into it, which the wcifs mount breaks.
     $py = 'C:\temp\cpython\PCbuild\amd64'
     if (Test-Path "$py\python.exe") { $env:PATH = "$py;$env:PATH" }

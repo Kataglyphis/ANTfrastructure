@@ -6,6 +6,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-15 — ORT's nvcc keeps sccache, and the LiteRT bazel builds get a cache
+
+- **ONNX Runtime's CUDA kernels go through sccache again on a Blackwell arch list.**
+  - Since 2026-09-26, `Disable-OrtCudaLauncherForPtx` had dropped the nvcc launcher for all of
+    ORT, because one target compiles `120-virtual` on MSVC and sccache aborts PTX-only output
+    (mozilla/sccache#2862). The nvidia ORT stage then took 83 min, the longest step of any chain.
+  - `sccache-ptx-exempt.cmake` now clears the launcher only on targets with a `-virtual` arch:
+    `onnxruntime_providers_cuda_llm`, and the CUDA plugin's `_llm` twin when it is built.
+  - The suite runs CMake on a stand-in project.
+- **Bazel's HTTP cache on the host's dufs.**
+  - The LiteRT-LM build (5244 actions, ~400 s) and the ai-edge-litert wheel (5655 actions, ~226 s)
+    ran in full in every variant.
+  - `Get-BazelRemoteCacheArg` points both at `<SCCACHE_WEBDAV_ENDPOINT>/bazel` with every output
+    downloaded, and leaves the option out when the endpoint is missing or silent.
+  - dufs answers the protocol as it is (PUT 201, GET 200, missing 404).
+  - The S3 seed skips `bazel/`.
+- Neither is measured in a chain yet: docs/windows-build-resources.md § Persistent compile cache
+  (sccache) and § Bazel's cache.
+
 ## 2026-10-15 — sccache gets a second level: a shared S3 bucket behind each host's WebDAV
 
 - **The Windows lane can chain `webdav,s3`.** Level 0 stays the host's dufs. Level 1 is a Garage

@@ -530,14 +530,15 @@ GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exp
 
 #### LiteRT-LM (pin: `LITERT_LM_VERSION`)
 
-On-device LLM inference, built via `Build-LitertLmBazel.ps1` (the pinned bazel `LITERT_LM_BAZEL_WINDOWS_VERSION`, which must equal the clone's `.bazelversion`, plus Temurin JDK; `bazel build //runtime/engine:litert_lm_main --config=windows` on Bazel's own clang-cl toolchain, the recipe of § The ai-edge-litert wheel) → `litert_lm_main.exe`, through the smoke-RUN gate. An aquery gate after the build throws on any action that is not clang-cl, lld-link or llvm-lib. `OPENVINO_NATIVE_DIR` names an empty dir, so LiteRT-LM's WORKSPACE no longer downloads the unhashed 744 MB OpenVINO nightly, which `litert_lm_main` never uses. `--output_user_root=C:\bzl-user` keeps bazel's install base out of the profile, so the cleanup removes it with the rest (CON92). Probe LM2 (2026-10-13): 5244 actions in 539 s, all 3829 compile, link and archive actions on LLVM tools, `--help` OK. Bazel is the only path Google CI-tests, so it survives version bumps. The old CMake export-bridge path (`Build-LitertLmFromSource.ps1`, 5 condition-gated self-retiring patches for v0.14's never-functional OSS CMake export — see § Source Patch Policy #7) is a **frozen fallback**.
+On-device LLM inference, built via `Build-LitertLmBazel.ps1` (the pinned bazel `LITERT_LM_BAZEL_WINDOWS_VERSION`, which must equal the clone's `.bazelversion`, plus Temurin JDK; `bazel build //runtime/engine:litert_lm_main --config=windows` on Bazel's own clang-cl toolchain, the recipe of § The ai-edge-litert wheel) → `litert_lm_main.exe`, through the smoke-RUN gate. An aquery gate after the build throws on any action that is not clang-cl, lld-link or llvm-lib. `OPENVINO_NATIVE_DIR` names an empty dir, so LiteRT-LM's WORKSPACE no longer downloads the unhashed 744 MB OpenVINO nightly, which `litert_lm_main` never uses. `--output_user_root=C:\bzl-user` keeps bazel's install base out of the profile, so the cleanup removes it with the rest (CON92). Probe LM2 (2026-10-13): 5244 actions in 539 s, all 3829 compile, link and archive actions on LLVM tools, `--help` OK. Bazel is the only path Google CI-tests, so it survives version bumps. Its actions are cached on the host's dufs ([`windows-build-resources.md` § Bazel's cache](windows-build-resources.md#bazels-cache)). The old CMake export-bridge path (`Build-LitertLmFromSource.ps1`, 5 condition-gated self-retiring patches for v0.14's never-functional OSS CMake export — see § Source Patch Policy #7) is a **frozen fallback**.
 
 #### The ai-edge-litert wheel
 
 PyPI has no `ai-edge-litert` wheel or sdist for cp315, so the media-litert stage builds it for the pinned Python
 (owner decision 2026-10-12, CON91): upstream's own target `//ci/tools/python/wheel:litert_wheel` at `LITERT_VERSION`,
 by `Build-LitertWheelBazel.ps1` in the stage's second RUN. That RUN follows the LiteRT/LiteRT-LM one, so a wheel edit
-never re-runs them.
+never re-runs them. Its actions are cached on the host's dufs
+([`windows-build-resources.md` § Bazel's cache](windows-build-resources.md#bazels-cache)).
 
 - **Compiler.** Bazel 7's built-in clang-cl toolchain from `C:\llvm-patched` (`Get-BazelClangClArg`): `BAZEL_LLVM`,
   `--compiler=clang-cl`, `--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl`, and TF's

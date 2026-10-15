@@ -341,7 +341,8 @@ $restoreEnv = Set-BazelProcessEnv -Values ([ordered]@{
         ANDROID_NDK_HOME = $null; ANDROID_NDK_VERSION = $null; ANDROID_HOME = $null; ANDROID_SDK_ROOT = $null
     })
 $startup = @("--output_user_root=$WorkRoot\u", "--output_base=$WorkRoot\o", '--max_idle_secs=900')
-$opts = Get-LitertWheelBazelArg -WorkRoot $WorkRoot -ToolchainFlag $toolchain.Flags -PythonTarballSha256 $tarball.Sha256 -PythonMajorMinor $python.MajorMinor
+$opts = @(Get-LitertWheelBazelArg -WorkRoot $WorkRoot -ToolchainFlag $toolchain.Flags -PythonTarballSha256 $tarball.Sha256 -PythonMajorMinor $python.MajorMinor) +
+    @(Get-BazelRemoteCacheArg)
 $target = '//ci/tools/python/wheel:litert_wheel'
 $log = Join-Path $WorkRoot 'bazel-build.log'
 

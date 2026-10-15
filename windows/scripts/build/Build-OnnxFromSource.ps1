@@ -20,13 +20,15 @@ $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
 # sccache aborts PTX-only nvcc output (mozilla/sccache#2862), which ORT's Blackwell LLM kernels are on MSVC.
-function Disable-OrtCudaLauncherForPtx {
-    param([string]$Architectures = (Get-CudaArchitectureList))
-    if ($env:SCCACHE_CUDA_LAUNCHER -ne '1') { return $false }
-    if (-not @($Architectures -split ';' | Where-Object { $_ -match '^12[01]' }).Count) { return $false }
-    $env:SCCACHE_CUDA_LAUNCHER = ''
-    Write-Host "nvcc stays bare for ONNX Runtime: CUDA_ARCHITECTURES=$Architectures names Blackwell, whose LLM kernels compile as PTX only, which sccache cannot cache (mozilla/sccache#2862)"
-    return $true
+function Get-OrtPtxLauncherExemptArg {
+    # Only the targets with a -virtual arch go bare (sccache-ptx-exempt.cmake); dropping the launcher for all of ORT cost 83 min a chain.
+    param([string]$Architectures = (Get-CudaArchitectureList), [Parameter(Mandatory)][string]$PatchDir)
+    if ($env:SCCACHE_CUDA_LAUNCHER -ne '1') { return @() }
+    if (-not @($Architectures -split ';' | Where-Object { $_ -match '^12[01]' }).Count) { return @() }
+    $include = Join-Path $PatchDir 'sccache-ptx-exempt.cmake'
+    if (-not (Test-Path -LiteralPath $include)) { throw "ONNX: $include is missing; a Blackwell arch list then aborts nvcc under sccache (mozilla/sccache#2862)" }
+    Write-Host "nvcc keeps sccache for ONNX Runtime but its PTX-only targets: CUDA_ARCHITECTURES=$Architectures names Blackwell (mozilla/sccache#2862); configure prints which"
+    return @("-DCMAKE_PROJECT_onnxruntime_INCLUDE=$($include -replace '\\', '/')")
 }
 
 # rocm-lane WebGPU EP spike; see docs/windows-rocm.md § ONNX Runtime WebGPU EP (rocm lane, spike).
@@ -585,7 +587,7 @@ $cxxFlags = (@('/WX-', $baseSimdFlags, $x86OnlyFlags,
                '/clang:-Wno-invalid-specialization', '/clang:-Wno-unused-value',
                (Get-WarningNoiseSuppressionFlags)) | Where-Object { $_ }) -join ' '
 
-# CUDA stays bare unless SCCACHE_CUDA_LAUNCHER=1, and Blackwell takes it back; see docs/windows-build-resources.md.
+# CUDA stays bare unless SCCACHE_CUDA_LAUNCHER=1, and Blackwell takes it back from the PTX-only targets; see docs/windows-build-resources.md.
 
 # GPU detection; ONNX_FORCE_CPU=1 is a dev knob that skips the hour of CUDA and TensorRT kernels.
 $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU'
@@ -594,7 +596,7 @@ $gpuArgs = @()
 $cudaUsable = $gpuEnv.HasCuda -and ((-not $onnxCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
 if ($cudaUsable) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
-    $null = Disable-OrtCudaLauncherForPtx
+    $gpuArgs += Get-OrtPtxLauncherExemptArg -PatchDir (Join-Path $scriptAssetRoot 'patches\onnxruntime')
     $cudaRoot = $gpuEnv.CudaRoot
     $cudnnRoot = $gpuEnv.CudnnRoot
     # Shared cuDNN import-lib finder (prefers cudnn.lib over the 9.x split sub-libs); $null when absent.
