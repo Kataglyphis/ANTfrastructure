@@ -42,6 +42,7 @@ Start at
 | Topic | Where |
 | --- | --- |
 | Wiring this repo to ANTfrastructure (resolver, actions, libraries) | `docs/adopting-in-a-new-project.md` |
+| Branches, CI rounds and releases: Linux x64 on every push to `develop`, `[ci <lane>]` or a dispatch for the rest, a release only when every lane is green | `docs/branch-and-release-strategy.md` |
 | The Windows image, its entrypoint and known traps | `docs/windows-builds.md` |
 | Bind mount vs tar-pipe, Dev Drive filter setup, container reuse | `docs/windows-container-build-performance.md` |
 | Linux container builds | `docs/linux-build-basics.md` |

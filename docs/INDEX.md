@@ -151,7 +151,8 @@ The two halves of one topic often split:
 | **Every checkout on its branch tip** — the superproject and every submodule, recursively, fast-forward only (`git-sync-branches.sh`) | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#putting-every-checkout-on-its-branch) |
 | **Submodule conflicts on merge**, bumping the pin, shallow fetches | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#submodule-maintenance) |
 | Broken submodule checkout, `core.longpaths`, `git clean -fdx`, ssh-agent on Windows | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#recovering-a-broken-submodule-checkout) |
-| Which CI lanes run when — every platform lane on every push and PR since 2026-09-24; what is still path-filtered or gated | [`ci-build-triggers.md`](ci-build-triggers.md) |
+| **Branches, CI rounds and releases** — `develop` runs Linux x64 on every push, `[ci <lane>]` or a dispatch runs the rest, `main` moves by fast-forward to a fully green commit and every push to it releases only when every lane is green | [`branch-and-release-strategy.md`](branch-and-release-strategy.md) |
+| Which CI lanes run when, per repository, while the repositories move to that rule; what is still path-filtered or gated | [`ci-build-triggers.md`](ci-build-triggers.md) |
 | **Publishing docs or a site over FTP** — the one composite action, its pin, and why a failed publish always fails the job | [`ftp-deploys.md`](ftp-deploys.md) |
 | Reading pipeline status from the terminal | [`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md) |
 | **Mistral Vibe + GLM-5.2** — setting up the Z.ai GLM-5.2 coding agent (CLI + VS Code) on Mistral La Plateforme | [`mistral-vibe-glm-setup.md`](mistral-vibe-glm-setup.md) |

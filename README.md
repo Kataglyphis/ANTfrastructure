@@ -379,10 +379,11 @@ clones the prose gate cannot see; deliberate twins are budgeted in
 
 **None of these builds a container image.** The image lanes are not CI here —
 they run on the build host (`windows/Build-Buildkit.ps1`, `linux/scripts/…`).
-No workflow above reacts to a commit-message token, and since 2026-09-24 the
-consumer repos' platform lanes do not either: every one runs on every push and
-PR. Which lanes run when, and what is still path-filtered:
-[docs/ci-build-triggers.md](docs/ci-build-triggers.md).
+No workflow above reacts to a commit-message token. The consumer repos follow
+[docs/branch-and-release-strategy.md](docs/branch-and-release-strategy.md) (2026-10-15):
+Linux x64 on every push to `develop`, the other lanes on `[ci <lane>]` or by hand,
+and a release on `main` only when every lane is green. Which repo has moved, and
+what is still path-filtered: [docs/ci-build-triggers.md](docs/ci-build-triggers.md).
 
 <!-- generated:version-snapshot:start -->
 ## Source-Controlled Version Snapshot

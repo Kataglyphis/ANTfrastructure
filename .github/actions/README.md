@@ -171,6 +171,19 @@ otherwise exit 0 with `FailedCount` 0 - green having run nothing. Inputs:
 `path` (required), `version`.
 
 
+### `requested-lanes`
+Which of a repository's on-request lanes a push asks for, for a workflow such as
+OmniAccelerANT's `on-request.yml` that calls each lane only when asked. It reads
+every `[ci <word>]` in the messages of the pushed commits (not only the head's),
+plus the words of `request` (a dispatch input), case-insensitively. A lane
+`<os>-<arch>` answers to `all`, `<os>-<arch>`, `<os>` and `<arch>`: `[ci windows]`
+picks `windows-x64` and `windows-arm64`, `[ci arm64]` both arm64 lanes, and a word
+that names no lane is a warning. Inputs: `lanes` (required, the workflow file names
+without `.yml`), `request`. Output: `lanes`, the chosen ones between single spaces
+with one at each end, for `contains(needs.<job>.outputs.lanes, ' <lane> ')`. The rule
+it serves: [`docs/branch-and-release-strategy.md`](../../docs/branch-and-release-strategy.md);
+its cases: `linux/scripts/tests/test-requested-lanes.sh`.
+
 ### `upload-codeql-sarif`
 Probes for CodeQL SARIF results with a *step* and uploads them, instead of
 gating on `hashFiles()`. Inputs: `workspace` (required - the absolute path of
@@ -412,7 +425,7 @@ inputs.
 `.github/workflows/actions-selftest.yml` is the only thing standing between an
 edit here and the 84 consumer call sites (counted 2026-09-14) that resolve these
 actions at `@develop` - which the submodule pin does not freeze. It `uses:` all
-fifteen directories here, and it fires on any change under `.github/actions/`.
+seventeen directories here, and it fires on any change under `.github/actions/`.
 Read its header before trusting a green run; the short version:
 
 **`deploy-over-ftp` is covered statically, and at runtime only on request.** Its

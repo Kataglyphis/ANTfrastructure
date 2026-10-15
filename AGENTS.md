@@ -251,12 +251,17 @@ pointing at the Windows host. Setup, the model matrix, the measured numbers and
 the debugging trail:
 [`geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md).
 
-### Which CI lanes run when
+### Branches, CI rounds and releases
 
-**Every platform lane in the family runs on every push and PR** (owner decision
-2026-09-24): the `[build-win]` / `[build-arm]` commit-message opt-ins are
-retired, and no platform job carries an `if:`. What is still path-filtered or
-gated, and this repo's own triggers:
+**Owner rule for every repo of the family (2026-10-15).** `develop` is the default
+branch, and every push to it runs the Linux x64 lane. Every other lane runs when a
+commit message asks for it (`[ci windows]`, `[ci arm64]`, `[ci all]`, …) or when
+started by hand; every lane workflow has `workflow_dispatch`. `main` moves only by a
+fast-forward to a `develop` commit whose full round is green, and only the owner moves
+it. Every push to `main` runs every lane again and releases `v<version>` only when all
+are green. The tokens, the merge steps and the workflow shape:
+[`docs/branch-and-release-strategy.md`](docs/branch-and-release-strategy.md). Which
+repo follows it yet, and this repo's own triggers:
 [`docs/ci-build-triggers.md`](docs/ci-build-triggers.md).
 
 ### Reading CI status with the GitHub CLI

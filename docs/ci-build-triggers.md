@@ -1,22 +1,29 @@
 # CI Build Triggers: which lanes run when
 
-**Every platform lane runs on every push and PR** (owner decision 2026-09-24,
-fleet-wide). The `[build-win]` and `[build-arm]` commit-message opt-ins are
-retired: no workflow in the family reads them, and no platform job carries an
-`if:`. The file names changed the same day, to one file per platform and arch
+**The rule is [`branch-and-release-strategy.md`](branch-and-release-strategy.md)**
+(owner, 2026-10-15): a push to `develop` runs the Linux x64 lane, every other lane
+runs when a commit message asks with `[ci <lane>]` or when started by hand, and a
+push to `main` runs every lane and releases only when all are green. The
+repositories move to it one at a time, so this page says what each one does today.
+The file names are one per platform and arch since 2026-09-24
 ([`adopting-in-a-new-project.md` § Workflow file names and display names](adopting-in-a-new-project.md#workflow-file-names-and-display-names)).
 
 ## The consumer lanes
 
-| Lane | Workflow files | Trigger |
+| Repository | On every push to `develop` | On request, and on `main` |
 |---|---|---|
-| Linux x64 and arm64 (build + test) | `linux-x64.yml`, `linux-arm64.yml`, most over a shared `reusable-linux.yml` (OrchestrANT: one `ubuntu-26.04-amd64-arm64.yml` for both) | every push and PR to `main`/`develop` |
-| Windows x64 | `windows-x64.yml` | the same |
-| Windows arm64 (cross build, then a run on `windows-11-arm`) | `windows-arm64-cross.yml` in OxidANT, AccelerANTgine and BeschleunigerBallett | the same |
-| Android, web | OmniAccelerANT's `android.yml` and `web.yml` | the same |
+| OmniAccelerANT (since 2026-10-15) | `linux-x64.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `windows-x64`, `windows-arm64`, `android`, `web` through `on-request.yml`; all of them through `release.yml` on `main` |
+| OxidANT, AccelerANTgine, BeschleunigerBallett, OrchestrANT | every platform lane, on every push and PR to `main`/`develop`: the 2026-09-24 rule, until each moves | by hand where a lane has `workflow_dispatch` |
 
-Measured 2026-09-25 against the consumer checkouts. What is left is not a
-commit-message token on a platform lane:
+The lanes those four still run on every push, measured 2026-09-25:
+
+| Lane | Workflow files |
+|---|---|
+| Linux x64 and arm64 (build + test) | `linux-x64.yml`, `linux-arm64.yml`, most over a shared `reusable-linux.yml` (OrchestrANT: one `ubuntu-26.04-amd64-arm64.yml` for both) |
+| Windows x64 | `windows-x64.yml` |
+| Windows arm64 (cross build, then a run on `windows-11-arm`) | `windows-arm64-cross.yml` in OxidANT, AccelerANTgine and BeschleunigerBallett |
+
+What else decides whether a lane runs:
 
 - **Path filters.** BeschleunigerBallett's four platform lanes ignore a push that
   touches only `**.md` or `docs/**`. Most `submodule-pins.yml` callers run only
@@ -52,10 +59,16 @@ A job with an `if:` reports `skipped` when the condition is false, and a badge o
 arm64` and a `run-command`). Read the conclusion per job:
 [`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md).
 
+## 2026-09-24 to 2026-10-15
+
+Every platform lane ran on every push and PR, with no commit-message opt-in and no
+`if:` on any platform job. The repositories that have not moved still work this way.
+
 ## Before 2026-09-24
 
 The Windows lane and the Linux arm64 lane were opt-in per commit: `[build-win]` or
 `[build-arm]` had to be in the pushed HEAD commit's message
 (`github.event.head_commit.message`), or the workflow reported `skipped`. A
 consumer note, a run log or a commit message from before that date may still
-name the tokens; nothing acts on them any more.
+name those two tokens; nothing acts on them any more. Today's tokens have a
+different form, `[ci <lane>]`, and are read by `on-request.yml`.
