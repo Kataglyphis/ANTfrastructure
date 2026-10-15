@@ -39,6 +39,10 @@ ARG BUILD_PATCHED_LLVM=1
 # Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
 ARG SCCACHE_WEBDAV_ENDPOINT
 ARG SCCACHE_MULTILEVEL_CHAIN
+ARG SCCACHE_ENDPOINT
+ARG SCCACHE_BUCKET
+ARG SCCACHE_REGION
+ARG SCCACHE_S3_USE_SSL
 ARG SCCACHE_FORCE_LOCAL
 ARG SCCACHE_LOG="warn"
 ARG SCCACHE_DIR="C:\sccache\v2"
@@ -49,6 +53,7 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_IDLE_TIMEOUT="0"
 # Per-file module mounts: a whole-dir mount would re-key this LLVM compile on every module edit.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
+    --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-LlvmFromSource.ps1,target=C:\bkmnt\Build-LlvmFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `

@@ -1,0 +1,10 @@
+[Unit]
+Description=Keep the sccache S3 bucket under its size cap, oldest objects first
+After=garage.service
+Requires=garage.service
+
+[Service]
+Type=oneshot
+# The eviction key and the cap; mode 600, never the clients' key.
+EnvironmentFile=/etc/sccache-evict.env
+ExecStart=/usr/local/bin/sccache-evict.sh

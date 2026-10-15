@@ -414,14 +414,102 @@ after a decision history worth keeping:
   whenever `CUDA_ARCHITECTURES` names 120 or 121; C/C++ keep the launcher. Drop it when a
   released sccache fixes #2862. OpenCV passes `-real` archs only and is unaffected.
 
-**The disk level (L0) is off**: Windows BuildKit cache mounts lose writes into a directory
-an earlier RUN populated, so `SCCACHE_MULTILEVEL_CHAIN` stays unset and the WebDAV remote is
-the only tier; re-enable it with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav` only after
+**The disk level is off**: Windows BuildKit cache mounts lose writes into a directory
+an earlier RUN populated, so no chain names `disk`, and the host's WebDAV is level 0 (§ Two
+cache levels below). Re-tested 2026-10-15 with `Invoke-SccacheWriteProbe.ps1`, run twice: the
+first run wrote without an error, the second lost **165 of 250** writes on the mount and none
+in a plain directory. Re-enable it with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav` only after
 `Test-SccacheWrite.ps1` and a media build with zero genai write errors say so. The `C:\sccache` mounts use
 `sharing=shared` because `locked` made the concurrent litert and tvm solves take turns;
 with L0 on, that means two sccache servers on one directory, which has never been measured
 here. A damaged L0 tree fails path-dependently with `os error 3`: point `SCCACHE_DIR` at a
 fresh subdirectory (`C:\sccache\v3`) instead of debugging it.
+
+### Two cache levels
+
+**Since 2026-10-15 a build can use two levels: the host's own WebDAV (level 0) and an S3
+bucket that every host shares (level 1).** A second machine then gets hits for what this
+one compiled, without each compile waiting on the slower link.
+
+```
+SCCACHE_MULTILEVEL_CHAIN = webdav,s3
+   level 0: this host's dufs, http://<host-lan-ip>:5000   (~1 ms, one per host)
+   level 1: the shared bucket, http://192.168.188.216:3900 (Garage on a VPS, WireGuard only)
+```
+
+**Why these two backends.** sccache allows each backend type once per chain, so two WebDAV
+servers cannot be chained. A disk level would be the natural level 0, but it loses writes on
+the cache mounts (above). The host's dufs is already set up by `Install-NewHost.ps1` on every
+build host, so the shared level speaks S3 instead.
+
+**How sccache 0.18 runs a chain** (`src/cache/multilevel.rs`, checked 2026-10-15):
+
+- **Reads** try level 0 first. A hit on level 1 is copied back to level 0 in a background task.
+- **Writes** go to level 0 inside the compile (`SCCACHE_MULTILEVEL_WRITE_ERROR_POLICY`
+  default `l0`). Every slower level gets its write in a background task, so no compile
+  waits on the upload.
+- **A stopping server drops the background tasks that have not finished.**
+  `Complete-SccacheServerSession` therefore calls `Wait-SccacheUploadDrain` before
+  `--stop-server`. It polls `--show-stats --stats-format json` until level 1's writes plus
+  write failures reach level 0's writes, and gives up after 600 s with a warning. Each level-0
+  write starts exactly one write per slower level; backfills count apart (`backfills_to`), and
+  preprocessor entries count in neither. A cold stage over a slow upload therefore ends with a
+  wait, not with lost objects; whatever is left after 600 s, a later build uploads again.
+
+**The key never enters an argument, a layer or the image history.** `Build-Buildkit.ps1`
+passes it as two env-sourced BuildKit secrets, `--secret id=sccache_s3_key_id,env=…` and
+`id=sccache_s3_secret,env=…`. Every sccache RUN mounts them as `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` (`--mount=type=secret,…,env=…`). Probed on this host with a dummy
+secret (2026-10-15):
+- The variable is set inside the RUN, and is gone in the next RUN.
+- A build without the secret runs, with the variable unset.
+- A file-target secret also works, but needs a forward-slash target (`target=C:/…`), and it
+  leaves a 0-byte placeholder in the layer. The env form leaves nothing.
+
+The bucket's endpoint, name, region and `SCCACHE_S3_USE_SSL` are ordinary build args, so they
+appear in the image history next to the WebDAV endpoint. They are reachable only over the VPN.
+The publish gate fails an image whose environment carries `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY` or `AWS_SESSION_TOKEN` (`WindowsImageEnv.Common`, and
+`verify_image_env.py` with the shared fixture).
+
+**Setting up a client host** (once per host, after `Install-NewHost.ps1`):
+
+```pwsh
+# asks for the secret without echo; writes the five KATAGLYPHIS_SCCACHE_S3_* user variables
+pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -Endpoint http://192.168.188.216:3900 -AccessKeyId <key id>
+pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -ReportOnly       # what is set (the secret as set/missing)
+pwsh -File windows\scripts\host\Test-HostSetup.ps1                        # "sccache S3 level reachable"
+pwsh -File windows\scripts\host\Copy-SccacheCacheToS3.ps1 -DryRun         # optional: seed the bucket from this host
+```
+
+- **Variables.** `Build-Buildkit.ps1` reads them from the process, the user and the machine
+  environment, in that order, so a shell that started before them still finds them. The
+  parameters `-SccacheS3Endpoint`, `-SccacheS3Bucket` and `-SccacheS3Region` override them.
+  The run then prints `sccache levels: webdav … -> s3 …`.
+- **Defaults.** Bucket `sccache`, region `garage`.
+- **Server side.** [`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md) has the
+  VPS: WireGuard through the FritzBox, Garage, the firewall rule and the size cap.
+- **Seeding.** `Copy-SccacheCacheToS3.ps1` copies the dufs tree into the bucket 1:1. Both
+  backends store an object under the same key, `a/b/c/<hash>` (`normalize_key`), with no key
+  prefix. `preseed\` and `.sccache_check` stay out.
+
+**What happens when a level is missing**, so neither level can stop a build:
+
+| Situation | Effect |
+|---|---|
+| No `KATAGLYPHIS_SCCACHE_S3_*` set | WebDAV alone, as before 2026-10-15 |
+| Half of them set | The driver warns, names what is missing and leaves the S3 level out |
+| The bucket's port does not answer the host | The driver warns and builds on WebDAV alone |
+| Inside a RUN: no key, or the endpoint unreachable | `Clear-UnreachableSccacheEndpoint` drops the S3 variables and takes `s3` out of the chain, which then runs on WebDAV alone; an unreachable WebDAV level goes the same way and leaves the bucket |
+| A wrong key | Every level-1 write counts as a failure in the stats; level 0 still serves |
+
+Adding the secret mounts and ARGs changed the RUN instructions, so the chain after 2026-10-15
+re-keys every sccache stage once. Those stages compile warm from level 0.
+
+Tests: `BuildDriver.SccacheLevels.Tests.ps1` (the config, the secrets, and every one of the
+16 sccache RUNs carrying both mounts and the ARGs), `Build.SccacheEndpointProbe.Tests.ps1`
+(§ the S3 level), `SourceBuild.SccacheUploadDrain.Tests.ps1`, and the publish gate's
+credential cases.
 
 ### What the published image carries
 

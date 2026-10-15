@@ -26,6 +26,8 @@ windows/downloads/** -text
 # Extensionless bash entry points; same reason as *.sh.
 linux/host-config/git-hooks/* text eol=lf
 linux/nextcloud-aio/custom-bin/* text eol=lf
+# Copied verbatim onto the Linux server the runbook sets up.
+linux/sccache-s3/** text eol=lf
 shared/linux/templates/git-hooks/* text eol=lf
 # Preflight gates read these with awk/grep; LF so a Windows checkout grades the bytes CI does.
 linux/Dockerfile* text eol=lf

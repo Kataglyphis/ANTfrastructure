@@ -310,6 +310,24 @@ function Expand-ArchiveSubdirectory {
 
 # --- sccache stats (the invocation is shared, each caller keeps its own sink) ---
 
+function Get-HostSettingValue {
+    # A shell that started before a user or machine variable was set does not see it, so the registry scopes back up the process.
+    param([Parameter(Mandatory)][string]$Name)
+    foreach ($scope in 'Process', 'User', 'Machine') {
+        $value = [Environment]::GetEnvironmentVariable($Name, $scope)
+        if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+    }
+    return ''
+}
+
+function Test-UrlPortOpen {
+    # A TCP connect to a URL's host and port; a malformed URL is closed, not an error.
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Url, [int]$TimeoutSeconds = 3)
+    $uri = $null
+    if (-not [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$uri) -or -not $uri.Host) { return $false }
+    return [bool](Test-Connection -TargetName $uri.Host -TcpPort $uri.Port -Quiet -TimeoutSeconds $TimeoutSeconds)
+}
+
 function Test-SccacheRemoteConfigured {
     # No remote means no cache that outlives the RUN; SCCACHE_FORCE_LOCAL=1 is a diagnostic for the disk level only.
     if ($env:SCCACHE_FORCE_LOCAL -eq '1') { return $true }
@@ -683,6 +701,8 @@ Export-ModuleMember -Function @(
     # OxidANT's Build-Windows.ps1 pins cargo-audit and cargo-deny with it (CON55).
     'Get-ANTfrastructurePin',
     'Expand-ArchiveSubdirectory',
+    'Get-HostSettingValue',
+    'Test-UrlPortOpen',
     'Test-SccacheRemoteConfigured',
     'Get-SccacheStatsText',
     'Write-SccacheStatsToStderr',

@@ -26,6 +26,8 @@ function New-ListeningLoopbackPort {
 # Every variable the probe and the wiring touch, unset: the host's own values must not leak in.
 $script:probeEnv = @{
     SCCACHE_WEBDAV_ENDPOINT = $null; SCCACHE_MULTILEVEL_CHAIN = $null; SCCACHE_DIR = $null
+    SCCACHE_BUCKET = $null; SCCACHE_ENDPOINT = $null; SCCACHE_REGION = $null; SCCACHE_S3_USE_SSL = $null
+    AWS_ACCESS_KEY_ID = $null; AWS_SECRET_ACCESS_KEY = $null
     CMAKE_C_COMPILER_LAUNCHER = $null; CMAKE_CXX_COMPILER_LAUNCHER = $null; RUSTC_WRAPPER = $null
     CC_WRAPPER = $null; CXX_WRAPPER = $null; SCCACHE_MAX_JOBS = $null
     GLOBAL_CACHE_DIR = $null; CARGO_HOME = $null; PUB_CACHE = $null
@@ -175,6 +177,75 @@ Describe 'Clear-UnreachableSccacheEndpoint' {
         Invoke-WithProbeEnv @{ SCCACHE_WEBDAV_ENDPOINT = 'http://kata-probe.invalid:5000' } {
             Assert-Equal $true (Clear-UnreachableSccacheEndpoint -TimeoutMs 500 -WarningAction SilentlyContinue)
             Assert-Null $env:SCCACHE_WEBDAV_ENDPOINT
+        }
+    }
+}
+
+Describe 'Clear-UnreachableSccacheEndpoint: the S3 level' {
+
+    # $Body runs with WebDAV on a listening port and the S3 level on $S3 (listen or refuse), the key set unless -NoKey.
+    function Invoke-WithTwoLevels {
+        param([ValidateSet('listen', 'refuse')][string]$Webdav = 'listen', [ValidateSet('listen', 'refuse')][string]$S3 = 'listen',
+            [string]$Chain = 'webdav,s3', [switch]$NoKey, [Parameter(Mandatory)][scriptblock]$Body)
+        $socks = @{}
+        foreach ($level in 'webdav', 's3') {
+            $mode = if ($level -eq 'webdav') { $Webdav } else { $S3 }
+            $socks[$level] = if ($mode -eq 'listen') { New-ListeningLoopbackPort } else { New-ClosedLoopbackPort }
+        }
+        $port = { param($s) if ($s -is [System.Net.Sockets.TcpListener]) { $s.LocalEndpoint.Port } else { $s.LocalEndPoint.Port } }
+        try {
+            $vars = @{
+                SCCACHE_WEBDAV_ENDPOINT = "http://127.0.0.1:$(& $port $socks.webdav)"; SCCACHE_MULTILEVEL_CHAIN = $Chain
+                SCCACHE_BUCKET = 'sccache'; SCCACHE_ENDPOINT = "http://127.0.0.1:$(& $port $socks.s3)"; SCCACHE_REGION = 'garage'; SCCACHE_S3_USE_SSL = 'false'
+            }
+            if (-not $NoKey) { $vars.AWS_ACCESS_KEY_ID = 'GKtest'; $vars.AWS_SECRET_ACCESS_KEY = 'not-a-secret' }
+            Invoke-WithProbeEnv $vars $Body
+        } finally {
+            foreach ($s in $socks.Values) { if ($s -is [System.Net.Sockets.TcpListener]) { $s.Stop() } else { $s.Dispose() } }
+        }
+    }
+
+    It 'keeps both levels and the chain when both answer and the key is there' {
+        Invoke-WithTwoLevels -Body {
+            Assert-Equal $false (Clear-UnreachableSccacheEndpoint -WarningVariable w -WarningAction SilentlyContinue)
+            Assert-Equal 'webdav,s3' $env:SCCACHE_MULTILEVEL_CHAIN
+            Assert-Equal 'sccache' $env:SCCACHE_BUCKET
+            Assert-Equal 0 @($w).Count 'no WARN for two healthy levels'
+        }
+    }
+
+    It 'drops a bucket without its key, keeps WebDAV, and lets the one level left run without a chain' {
+        Invoke-WithTwoLevels -NoKey -Body {
+            Assert-Equal $true (Clear-UnreachableSccacheEndpoint -WarningVariable w -WarningAction SilentlyContinue)
+            foreach ($name in 'SCCACHE_BUCKET', 'SCCACHE_ENDPOINT', 'SCCACHE_REGION', 'SCCACHE_S3_USE_SSL', 'SCCACHE_MULTILEVEL_CHAIN') {
+                Assert-Null ([Environment]::GetEnvironmentVariable($name)) "$name is gone"
+            }
+            Assert-NotNull $env:SCCACHE_WEBDAV_ENDPOINT 'the WebDAV level stays'
+            Assert-Match 'has no key' "$($w[0])"
+        }
+    }
+
+    It 'drops an unreachable bucket and keeps WebDAV' {
+        Invoke-WithTwoLevels -S3 refuse -Body {
+            Assert-Equal $true (Clear-UnreachableSccacheEndpoint -WarningAction SilentlyContinue)
+            Assert-Null $env:SCCACHE_BUCKET
+            Assert-NotNull $env:SCCACHE_WEBDAV_ENDPOINT
+        }
+    }
+
+    It 'drops an unreachable WebDAV level and keeps the bucket, which sccache then uses alone' {
+        Invoke-WithTwoLevels -Webdav refuse -Body {
+            Assert-Equal $true (Clear-UnreachableSccacheEndpoint -WarningAction SilentlyContinue)
+            Assert-Null $env:SCCACHE_WEBDAV_ENDPOINT
+            Assert-Null $env:SCCACHE_MULTILEVEL_CHAIN 'one level needs no chain'
+            Assert-Equal 'sccache' $env:SCCACHE_BUCKET
+        }
+    }
+
+    It 'takes only the removed level out of a longer chain' {
+        Invoke-WithTwoLevels -Webdav refuse -Chain 'disk, webdav,s3' -Body {
+            $null = Clear-UnreachableSccacheEndpoint -WarningAction SilentlyContinue
+            Assert-Equal 'disk,s3' $env:SCCACHE_MULTILEVEL_CHAIN
         }
     }
 }

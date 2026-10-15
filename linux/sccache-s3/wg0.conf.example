@@ -1,0 +1,13 @@
+# /etc/wireguard/wg0.conf, root:root mode 600: the FritzBox's export for one device, with AllowedIPs cut to the home LAN.
+[Interface]
+PrivateKey = REPLACE_ME
+Address = 192.168.188.216/24
+# No DNS line: the VPS keeps its own resolver.
+
+[Peer]
+PublicKey = REPLACE_ME
+PresharedKey = REPLACE_ME
+# Split tunnel: only the home LAN goes through the FritzBox; the rest stays on the VPS's own uplink.
+AllowedIPs = 192.168.188.0/24
+Endpoint = REPLACE_ME.myfritz.net:REPLACE_ME
+PersistentKeepalive = 25

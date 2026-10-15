@@ -200,6 +200,25 @@ if ($tcpWait -eq 30) {
     Write-Check WARN "TcpTimedWaitDelay $tcpWait s, not the 30 s the host setup sets" 'it bounds the idle tail of every sccache RUN (#179)' $tcpFix
 }
 
+# sccache's shared S3 level is optional, but half of it builds on the WebDAV level alone without a word in the log.
+$s3Names = 'KATAGLYPHIS_SCCACHE_S3_ENDPOINT', 'KATAGLYPHIS_SCCACHE_S3_BUCKET', 'KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID', 'KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY'
+$s3Value = @{}
+foreach ($n in $s3Names) { $s3Value[$n] = Get-HostSettingValue $n }
+$s3Missing = @($s3Names | Where-Object { -not $s3Value[$_] })
+$s3Fix = 'pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -Endpoint <url> -AccessKeyId <id>  (docs/windows-build-resources.md § Two cache levels)'
+if ($s3Missing.Count -eq $s3Names.Count) {
+    Write-Check INFO 'sccache S3 level not configured: builds use the WebDAV level alone (optional, shared across hosts)'
+} elseif ($s3Missing.Count -gt 0) {
+    Write-Check WARN ('sccache S3 level half configured, missing ' + ($s3Missing -join ', ')) 'Build-Buildkit.ps1 leaves the level out' $s3Fix
+} else {
+    $s3Url = $s3Value['KATAGLYPHIS_SCCACHE_S3_ENDPOINT']
+    if (Test-UrlPortOpen $s3Url) {
+        Write-Check PASS "sccache S3 level reachable ($s3Url, bucket $($s3Value['KATAGLYPHIS_SCCACHE_S3_BUCKET']))"
+    } else {
+        Write-Check WARN "sccache S3 level unreachable ($s3Url)" 'builds fall back to the WebDAV level; is the VPN up?' $s3Fix
+    }
+}
+
 $cImage = if ($cProps) { [string]$cProps.ImagePath } else { '' }
 if ($cImage -match '--log-level\s+debug') { Write-Check PASS 'containerd debug logging on (owner policy)' }
 else { Write-Check WARN 'containerd debug logging OFF' 'the next snapshotter incident will carry no evidence' 'pwsh -File windows\scripts\host\Set-ContainerdConfig.ps1  (admin)' }

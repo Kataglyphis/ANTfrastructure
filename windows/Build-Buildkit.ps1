@@ -47,6 +47,10 @@ param(
     [int]$MediaMemoryGb = 0,
     [int]$HostReserveGb = 22,
     [string]$SccacheEndpoint = $env:SCCACHE_WEBDAV_ENDPOINT,
+    # sccache's level 1, an S3 bucket shared by every host; empty takes KATAGLYPHIS_SCCACHE_S3_* (docs/windows-build-resources.md § Two cache levels).
+    [string]$SccacheS3Endpoint = '',
+    [string]$SccacheS3Bucket = '',
+    [string]$SccacheS3Region = '',
     [switch]$NoSccache,
     [switch]$LatestApp,
     [string]$FinalTar = '',
@@ -419,6 +423,8 @@ function Invoke-BkStage {
         }
         $bkArgs += @('--opt', "build-arg:$extra")
     }
+    # Env-sourced, so the key is in no argument; a stage without the secret mounts ignores them.
+    if ($script:BkSecretArgs) { $bkArgs += $script:BkSecretArgs }
     $stageLog = Join-Path $script:LogDir ("bk-" + $script:RunId + "-" + ($Label -replace '[:\\/]', '-') + ".log")
     Set-BuildPhase $Label
     $stageClock = [System.Diagnostics.Stopwatch]::StartNew()
@@ -471,7 +477,25 @@ function Invoke-BkPublishGate {
     Write-Host "[bk:$Label] $Image carries no build-host setting" -ForegroundColor Green
 }
 
-$sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
+if (-not $SccacheS3Endpoint) { $SccacheS3Endpoint = Get-HostSettingValue 'KATAGLYPHIS_SCCACHE_S3_ENDPOINT' }
+if (-not $SccacheS3Bucket) { $SccacheS3Bucket = Get-HostSettingValue 'KATAGLYPHIS_SCCACHE_S3_BUCKET' }
+if (-not $SccacheS3Region) { $SccacheS3Region = Get-HostSettingValue 'KATAGLYPHIS_SCCACHE_S3_REGION' }
+# buildctl reads the key from this process, which a shell older than the variables would not carry.
+foreach ($keyVariable in 'KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID', 'KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY') {
+    if (-not [Environment]::GetEnvironmentVariable($keyVariable)) {
+        [Environment]::SetEnvironmentVariable($keyVariable, (Get-HostSettingValue $keyVariable))
+    }
+}
+$sccacheConfig = Get-BkSccacheConfig -WebdavEndpoint $SccacheEndpoint -S3Endpoint $SccacheS3Endpoint -S3Bucket $SccacheS3Bucket -S3Region $SccacheS3Region
+if ($sccacheConfig.Note) { Write-Warning "sccache: $($sccacheConfig.Note)" }
+# Level 1 is an accelerator, so an unreachable bucket costs its hits, never the build.
+if ($sccacheConfig.Secrets.Count -gt 0 -and -not (Test-UrlPortOpen $SccacheS3Endpoint)) {
+    Write-Warning "sccache: the S3 level $SccacheS3Endpoint does not answer from the host (TCP); building on the WebDAV level alone"
+    $sccacheConfig = Get-BkSccacheConfig -WebdavEndpoint $SccacheEndpoint
+}
+Write-Host ("sccache levels: " + $(if ($sccacheConfig.Levels.Count -gt 0) { $sccacheConfig.Levels -join ' -> ' } else { 'none' })) -ForegroundColor Cyan
+$sccache = $sccacheConfig.BuildArgs
+$script:BkSecretArgs = $sccacheConfig.Secrets
 
 # Preseed the Vulkan SDK on the webdav: sdk.lunarg.com stalls inside containers; fail-open to their direct download.
 if ($SccacheEndpoint) {

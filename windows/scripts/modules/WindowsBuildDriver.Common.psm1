@@ -354,6 +354,53 @@ function Assert-SccacheEndpoint {
     }
 }
 
+function Get-BkSccacheConfig {
+    <#
+    .SYNOPSIS
+        sccache's build args and buildctl secrets: level 0 the host's WebDAV, level 1 an optional S3 bucket shared by every host.
+    .DESCRIPTION
+        The S3 level joins only with its endpoint, bucket and both key halves in the process environment. The key reaches
+        buildctl as env-sourced secrets, never as an argument or a build arg, so no layer or image history carries it.
+        docs/windows-build-resources.md § Two cache levels
+    .OUTPUTS
+        @{ BuildArgs; Secrets; Levels; Note } - Note says why a configured S3 level was left out.
+    #>
+    param(
+        [string]$WebdavEndpoint = '',
+        [string]$S3Endpoint = '',
+        [string]$S3Bucket = '',
+        [string]$S3Region = '',
+        [string]$KeyIdVariable = 'KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID',
+        [string]$SecretVariable = 'KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY'
+    )
+    $config = @{ BuildArgs = @{ SCCACHE_WEBDAV_ENDPOINT = $WebdavEndpoint }; Secrets = @(); Levels = @(); Note = '' }
+    if ($WebdavEndpoint) { $config.Levels += "webdav $WebdavEndpoint" }
+    if (-not ($S3Endpoint -or $S3Bucket)) { return $config }
+
+    $missing = @(
+        if (-not $S3Endpoint) { 'the endpoint' }
+        if (-not $S3Bucket) { 'the bucket' }
+        foreach ($variable in $KeyIdVariable, $SecretVariable) {
+            if ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($variable))) { $variable }
+        }
+    )
+    $uri = $null
+    if ($S3Endpoint -and -not [Uri]::TryCreate($S3Endpoint, [UriKind]::Absolute, [ref]$uri)) { $missing += "an absolute endpoint URL (got '$S3Endpoint')" }
+    if ($missing.Count -gt 0) {
+        $config.Note = "the S3 level is left out: it needs $($missing -join ', ')"
+        return $config
+    }
+    $config.BuildArgs['SCCACHE_ENDPOINT'] = $S3Endpoint
+    $config.BuildArgs['SCCACHE_BUCKET'] = $S3Bucket
+    if ($S3Region) { $config.BuildArgs['SCCACHE_REGION'] = $S3Region }
+    $config.BuildArgs['SCCACHE_S3_USE_SSL'] = if ($uri.Scheme -eq 'https') { 'true' } else { 'false' }
+    # Without a WebDAV level the bucket is sccache's only backend, which needs no chain.
+    if ($WebdavEndpoint) { $config.BuildArgs['SCCACHE_MULTILEVEL_CHAIN'] = 'webdav,s3' }
+    $config.Secrets = @('--secret', "id=sccache_s3_key_id,env=$KeyIdVariable", '--secret', "id=sccache_s3_secret,env=$SecretVariable")
+    $config.Levels += "s3 $S3Endpoint bucket $S3Bucket"
+    return $config
+}
+
 function Assert-DiskHeadroom {
     # Every drive the build touches, context included: docs/failure-modes.md § `ExportLayer 0x3`, spawn flakes, `ExportLayer 0x70` — disk exhaustion in costume
     param(
@@ -768,7 +815,7 @@ function Publish-PreseedFile {
     Write-Host "preseed: $Name staged at $onDav"
 }
 
-Export-ModuleMember -Function Initialize-BuildDriverContext, Write-DriverRecord,
+Export-ModuleMember -Function Initialize-BuildDriverContext, Write-DriverRecord, Get-BkSccacheConfig,
     Test-TransientDockerFailure, Invoke-TransientCooldown,
     Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
     Get-WindowsVersionsEnvLine, Get-WindowsVersionsEnvCorpus, Write-WindowsVersionsEnv,

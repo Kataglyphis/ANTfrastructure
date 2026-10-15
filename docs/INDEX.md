@@ -66,6 +66,8 @@ The two halves of one topic often split:
 | **Rules you must not regress** when editing the Windows chain (49, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
 | **Which lane to build on**: BuildKit, nerdctl, the removed classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
 | CPU/memory envelope, the sccache wiring, GPU in containers, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
+| **sccache across build hosts**: the host's WebDAV as level 0, a shared S3 bucket as level 1, the key as BuildKit secrets, the upload drain, the client scripts | [`windows-build-resources.md` § Two cache levels](windows-build-resources.md#two-cache-levels) |
+| **The shared bucket's server**: Garage on a VPS behind the FritzBox's WireGuard, firewall, size cap, rebuild runbook | [`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md) |
 | **clang-cl sanitizers**: why `-shared-libsan`, trap-mode UBSan, Microsoft's ASan runtime over LLVM's, and who stages the DLL | [`windows-clang-cl-sanitizers.md`](windows-clang-cl-sanitizers.md) |
 | Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | Open refactor work on the Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
