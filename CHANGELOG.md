@@ -6,6 +6,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-15 — The Dart gate can write coverage from its own test run
+
+- **`flutter_checks.sh --coverage <file>`** runs the gate's `flutter test` with
+  `--coverage --coverage-path <file>`, so a lane's coverage floor reads that report instead of
+  testing everything a second time (55 s per push on OmniAccelerANT's native lane). Refused
+  with `--test-platform chrome`. `test-flutter-checks-platform.sh` covers both cases.
+
 ## 2026-10-15 — the app builds reach the S3 level, and cargo goes through sccache
 
 - **Reused build containers get the shared S3 level per `docker exec`.**
