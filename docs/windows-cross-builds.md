@@ -730,6 +730,12 @@ function: [`windows-builds.md` § The free-threaded CPython](windows-builds.md#t
 Its `python3XYt.lib` links the `cp3XYt` twins of the chain wheels in `C:\runtime\wheels-free-threaded`
 (CON79): [`windows-builds.md` § The arm64 cross twins](windows-builds.md#the-arm64-cross-twins).
 
+**From 3.15 the free-threaded build also writes a `python.exe` and a `pythonw.exe`.** CPython's
+`CopyFreethreadedBinary` target then duplicates each to its `X.Yt` name. The staging drops the plain
+names only when they are byte-identical to that copy, because the tree must not answer a GIL request
+for `python.exe`. Any other `python.exe` still stops the stage. The first 3.15 arm64 chain
+(2026-10-15) stopped there before the staging learned this.
+
 ## The Python consumers are built for the target (#120 step 2)
 
 Since 2026-08-24 evening (arm64 run 3) the four consumers build against the target CPython:

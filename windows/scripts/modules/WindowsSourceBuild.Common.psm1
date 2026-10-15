@@ -605,6 +605,19 @@ function Install-CpythonTargetTree {
     # Sidecar DLLs the pyds need (libffi, ssl/crypto, sqlite, tk if built).
     Get-ChildItem $BuildDir -Filter '*.dll' -File | Where-Object { $_.Name -notmatch '^python' } |
         ForEach-Object { Copy-Item $_.FullName "$pyRoot\DLLs" -Force }
+    if ($FreeThreaded) {
+        # 3.15's PCbuild builds python.exe and pythonw.exe and copies each to its X.Yt name; only a byte-identical copy may go.
+        foreach ($plainName in 'python.exe', 'pythonw.exe') {
+            $twinName = $exeName -replace '^python', ($plainName -replace '\.exe$', '')
+            $plain = Join-Path $pyRoot $plainName
+            $twin = Join-Path $pyRoot $twinName
+            if ((Test-Path -LiteralPath $plain) -and (Test-Path -LiteralPath $twin) -and
+                ((Get-FileHash -LiteralPath $plain).Hash -eq (Get-FileHash -LiteralPath $twin).Hash)) {
+                Remove-Item -LiteralPath $plain -Force
+                Write-Host "${label}: dropped $plainName, the byte-identical twin of $twinName"
+            }
+        }
+    }
     if ($FreeThreaded -and (Test-Path (Join-Path $pyRoot 'python.exe'))) {
         throw "${label}: $pyRoot\python.exe exists, so a GIL request could resolve to the free-threaded build"
     }
