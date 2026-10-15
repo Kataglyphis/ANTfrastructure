@@ -138,6 +138,10 @@ A calling job looks the same in both:
   `cancel-in-progress: true`, so a newer request for the same lane on the same branch
   replaces an older one. A skipped calling job never starts the lane, so an ordinary
   push never cancels a round someone asked for.
+- **The group is the lane's literal name, never `${{ github.workflow }}`.** Inside a
+  called workflow `github.workflow` is the caller's name, so every lane
+  `on-request.yml` calls would share one group and cancel or queue behind each other.
+  OxidANT's lanes used it until they moved (2026-10-15).
 - **Artifacts.** `release.yml` holds every lane's uploads in one run, so artifact
   names must differ across lanes.
 - **Pushes, not tags, start a release.** The tag is the release job's output. Nothing
