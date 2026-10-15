@@ -4,9 +4,10 @@ set -euo pipefail
 # Dart/Flutter equivalent of 02-toolchain/rust/cargo_fmt_clippy.sh + cargo_test.sh.
 # Docs: docs/code-quality-tooling.md#dart-file-enumeration
 #
-# Usage: flutter_checks.sh [--strict <bool>] [--extra-package <dir>]... [--test-platform <vm|chrome>]
+# Usage: flutter_checks.sh [--strict <bool>] [--extra-package <dir>]... [--test-platform <vm|chrome>] [--coverage <file>]
 #   --strict false  reports failures and continues (default: true)
 #   --test-platform chrome  tests in the image's Chrome; the VM where none ships (riscv64)
+#   --coverage <file>  the same test run writes its lcov there, so a coverage gate needs no second run (VM only)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../01-core/logging.sh"
@@ -16,12 +17,14 @@ source "$SCRIPT_DIR/../../lib/code-quality.sh"   # code_quality_find_tracked_fil
 STRICT="true"
 EXTRA_PACKAGES=()
 TEST_PLATFORM="vm"
+COVERAGE_PATH=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --strict) STRICT="${2:?--strict needs a value}"; shift 2 ;;
     --extra-package) EXTRA_PACKAGES+=("${2:?--extra-package needs a dir}"); shift 2 ;;
     --test-platform) TEST_PLATFORM="${2:?--test-platform needs vm or chrome}"; shift 2 ;;
+    --coverage) COVERAGE_PATH="${2:?--coverage needs a file}"; shift 2 ;;
     *) err "flutter_checks.sh: unknown argument: $1"; exit 2 ;;
   esac
 done
@@ -29,6 +32,10 @@ case "${TEST_PLATFORM}" in
   vm|chrome) ;;
   *) err "flutter_checks.sh: --test-platform must be vm or chrome, not '${TEST_PLATFORM}'" ;;
 esac
+# flutter test collects coverage on the VM only.
+if [ -n "${COVERAGE_PATH}" ] && [ "${TEST_PLATFORM}" != vm ]; then
+  err "flutter_checks.sh: --coverage needs --test-platform vm"
+fi
 
 _run() {
   if is_truthy "$STRICT"; then
@@ -162,7 +169,11 @@ else
   if [ "${TEST_PLATFORM}" = chrome ]; then
     warn "flutter_checks: no CHROME_EXECUTABLE on $(uname -m); running the tests on the VM instead."
   fi
-  _run flutter test
+  if [ -n "${COVERAGE_PATH}" ]; then
+    _run flutter test --coverage --coverage-path "${COVERAGE_PATH}"
+  else
+    _run flutter test
+  fi
 fi
 
 info "Flutter checks completed."

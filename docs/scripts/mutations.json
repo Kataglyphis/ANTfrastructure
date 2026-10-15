@@ -13577,5 +13577,21 @@
   "replace": "  v=\"\"\n",
   "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
   "why": "the pin runs ahead of the published image during an upgrade (CON90: 3.15.0 against an image on 3.14.8), and a runtime the wheels were not built for installs none of them"
+ },
+ {
+  "id": "flutter-checks.coverage-dropped",
+  "target": "linux/scripts/05-frameworks/flutter/flutter_checks.sh",
+  "find": "_run flutter test --coverage --coverage-path \"${COVERAGE_PATH}\"",
+  "replace": "_run flutter test",
+  "test": "bash linux/scripts/tests/test-flutter-checks-platform.sh",
+  "why": "--coverage must reach the gate's one test run; dropped, a lane's coverage floor reads a report nobody wrote, or runs the suite a second time"
+ },
+ {
+  "id": "flutter-checks.coverage-on-chrome",
+  "target": "linux/scripts/05-frameworks/flutter/flutter_checks.sh",
+  "find": "if [ -n \"${COVERAGE_PATH}\" ] && [ \"${TEST_PLATFORM}\" != vm ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-flutter-checks-platform.sh",
+  "why": "flutter test collects coverage on the VM only; without the refusal, --coverage with --test-platform chrome silently writes no report"
  }
 ]

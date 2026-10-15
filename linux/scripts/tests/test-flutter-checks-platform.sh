@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# flutter_checks.sh --test-platform: Chrome where the image ships it, the VM otherwise. See docs/consumer-image-contract.md#browser-tests-run-in-chrome-for-testing
+# flutter_checks.sh --test-platform and --coverage: Chrome where the image ships it, the VM otherwise. See docs/consumer-image-contract.md#browser-tests-run-in-chrome-for-testing
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -41,5 +41,11 @@ t_assert_eq "0|flutter test" "$(_checks '' --test-platform chrome)"
 
 t_case "an unknown platform is refused before anything runs"
 t_assert_eq "1|" "$(_checks /usr/local/bin/chrome --test-platform firefox)"
+
+t_case "--coverage: the one test run writes its lcov to the given file"
+t_assert_eq "0|flutter test --coverage --coverage-path build/cov/lcov.info" "$(_checks /usr/local/bin/chrome --coverage build/cov/lcov.info)"
+
+t_case "--coverage with Chrome is refused before anything runs: flutter collects coverage on the VM only"
+t_assert_eq "1|" "$(_checks /usr/local/bin/chrome --test-platform chrome --coverage build/cov/lcov.info)"
 
 t_summary

@@ -208,6 +208,12 @@ package, which every other gate in this family exempts — so it graded a packag
 nobody in this fleet writes. A caller that copies the `case` arms instead of
 calling this helper drifts the same way.
 
+**One test run, coverage included (2026-10-15).** `flutter_checks.sh --coverage <file>`
+makes the gate's own `flutter test` write its lcov there, so a lane with a coverage floor
+reads that file instead of running the suite a second time. OmniAccelerANT's native lane
+ran it twice, 70 s and then 55 s for the coverage report. It is refused with
+`--test-platform chrome`, since `flutter test` collects coverage on the VM only.
+
 **Never `dart format .` in a CI lane.** The recursive walk reaches every
 directory under the root, `third_party/` and `build/` included. The Linux lanes
 used to install the Flutter SDK inside the mounted workspace
