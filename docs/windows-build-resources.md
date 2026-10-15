@@ -405,14 +405,28 @@ after a decision history worth keeping:
   compiles through the launcher, link green).
 - Opt out per run with `-BuildArg SCCACHE_CUDA_LAUNCHER=`; **never flip the
   default off silently.**
-- **Except with Blackwell in the arch list (2026-09-26).** sccache 0.18.0 aborts an nvcc
-  compile whose output is PTX only (`Missing "cubin" file output`, mozilla/sccache#2862,
-  open), and ORT compiles `onnxruntime_providers_cuda_llm` for 120/121 as `compute_12x` PTX
-  on MSVC (`REPLACE_SM120_REAL_WITH_VIRTUAL`: native `sm_120a` pulls tcgen05 headers MSVC
-  cannot host). The first chain with `120` died at [2323/2383] on `fpA_intB_gemm`, so
-  `Build-OnnxFromSource.ps1` `Disable-OrtCudaLauncherForPtx` keeps nvcc bare, and says so,
-  whenever `CUDA_ARCHITECTURES` names 120 or 121; C/C++ keep the launcher. Drop it when a
-  released sccache fixes #2862. OpenCV passes `-real` archs only and is unaffected.
+- **Except ORT's PTX-only targets when Blackwell is in the arch list (2026-09-26, narrowed
+  2026-10-15).** sccache 0.18.0 aborts an nvcc compile whose output for one arch is PTX only
+  (`Missing "cubin" file output`, mozilla/sccache#2862, open). The first chain with `120` died
+  at [2323/2383] on `fpA_intB_gemm`.
+  - **Which targets.** ORT turns `86;87;89;120` into `86-real;87-real;89-real;120a-real`
+    (`cmake/external/cuda_configuration.cmake`). Only `onnxruntime_providers_cuda_llm` (and
+    the CUDA plugin's `_llm` twin) gets `120-virtual` instead, on MSVC alone
+    (`REPLACE_SM120_REAL_WITH_VIRTUAL`: native `sm_120a` pulls tcgen05 headers MSVC cannot
+    host). Every other target compiles cubins only, which sccache caches.
+  - **Until 2026-10-15** `Disable-OrtCudaLauncherForPtx` kept nvcc bare for all of ORT, and
+    the nvidia ORT stage took 83 min (4956 s in the chain of 2026-10-14, the longest step of
+    any chain).
+  - **Now** `Get-OrtPtxLauncherExemptArg` keeps the launcher and passes
+    `-DCMAKE_PROJECT_onnxruntime_INCLUDE=…/patches/onnxruntime/sccache-ptx-exempt.cmake`.
+    That file, deferred to the end of ORT's configure, clears `CUDA_COMPILER_LAUNCHER` on
+    every target with a `-virtual` arch and prints them
+    (`sccache-ptx-exempt: nvcc stays bare for onnxruntime_providers_cuda_llm; …`).
+  - **Tests.** `SourceBuild.OrtCudaLauncher.Tests.ps1` runs CMake on a stand-in project:
+    a `-virtual` target loses the launcher, in a subdirectory too, and a real-only one keeps it.
+  - **Not yet measured in a chain;** the three canaries above apply before it counts as proven.
+  - Drop both when a released sccache fixes #2862. OpenCV passes `-real` archs only and is
+    unaffected.
 
 **The disk level is off**: Windows BuildKit cache mounts lose writes into a directory
 an earlier RUN populated, so no chain names `disk`, and the host's WebDAV is level 0 (§ Two
@@ -533,6 +547,33 @@ Tests: `BuildDriver.SccacheLevels.Tests.ps1` (the config, the secrets, and every
 16 sccache RUNs carrying both mounts and the ARGs), `Build.SccacheEndpointProbe.Tests.ps1`
 (§ the S3 level), `SourceBuild.SccacheUploadDrain.Tests.ps1`, and the publish gate's
 credential cases.
+
+### Bazel's cache
+
+**The two LiteRT bazel builds keep their actions on the host's dufs too (2026-10-15).**
+sccache never sees Bazel's compiles, and each build starts from an empty output base. Until
+now the LiteRT-LM build (5244 actions, ~400 s) and the ai-edge-litert wheel (5655 actions,
+~226 s) therefore ran in full in every variant: cpu, nvidia and rocm alike in the chain of
+2026-10-14.
+
+- **The option.** `Get-BazelRemoteCacheArg` (`WindowsBazel.Common`) adds
+  `--remote_cache=<SCCACHE_WEBDAV_ENDPOINT>/bazel` and `--remote_download_outputs=all` to the
+  option list each build shares with its aquery. With no endpoint in the RUN it adds nothing.
+  With one that does not answer a HEAD within 3 s it adds nothing and warns. The build then
+  runs as before.
+- **dufs as the cache.** dufs speaks Bazel's HTTP cache protocol as it is (checked
+  2026-10-15): a PUT to `bazel/cas/<sha256>` creates the directories (201), a GET returns the
+  object, HEAD answers 200, and a missing key is a 404.
+- **Every output is downloaded,** not Bazel 7's `toplevel` default, because the install steps
+  copy files from `bazel-bin` that are not top-level outputs.
+- **The variants share it.** cpu, nvidia and rocm run the same actions, so the second and
+  third variant of a cold chain hit on the first.
+- **Where it lives.** Bazel's objects sit under `bazel\` in the dufs directory, beside
+  sccache's. Nothing evicts them; delete `bazel\` to reset. `Copy-SccacheCacheToS3.ps1`
+  leaves the directory out of the bucket, which only sccache reads. Bazel cannot speak S3, so
+  this cache stays on each host.
+- **Tests.** `Bazel.RemoteCache.Tests.ps1`: no endpoint, a dead one, a live HTTP stub that
+  answers 404, and both scripts and the seed wired. Not yet measured in a chain.
 
 ### What the published image carries
 

@@ -7,7 +7,7 @@
 
 .DESCRIPTION
     WebDAV and S3 store an object under the same key, a/b/c/<hash>, so the dufs directory copies 1:1 with no key prefix.
-    preseed\ (the driver's installers) and .sccache_check stay out. Runs s5cmd (scoop install s5cmd) with the key from
+    preseed\ (the driver's installers), bazel\ (Bazel's own cache, which sccache never reads) and .sccache_check stay out. Runs s5cmd (scoop install s5cmd) with the key from
     Set-SccacheS3Level.ps1, which reaches only the s5cmd process. docs/windows-build-resources.md § Two cache levels
 .EXAMPLE
     pwsh -File windows/scripts/host/Copy-SccacheCacheToS3.ps1 -DryRun
@@ -43,14 +43,14 @@ if (-not $s5cmd) { throw 's5cmd is not on PATH: scoop install s5cmd' }
 
 $files = [IO.Directory]::EnumerateFiles($SourceDir, '*', [IO.SearchOption]::AllDirectories)
 $count = 0; $bytes = 0L
-foreach ($f in $files) { if ($f -notmatch '\\preseed\\' -and -not $f.EndsWith('.sccache_check')) { $count++; $bytes += ([IO.FileInfo]$f).Length } }
+foreach ($f in $files) { if ($f -notmatch '\\(preseed|bazel)\\' -and -not $f.EndsWith('.sccache_check')) { $count++; $bytes += ([IO.FileInfo]$f).Length } }
 Write-Host ("Seeding {0:N0} objects ({1:N1} GB) from {2} into s3://{3} at {4}" -f $count, ($bytes / 1GB), $SourceDir, $bucket, $endpoint)
 
 $key = @{ S5cmdPath = $s5cmd; AccessKeyId = $keyId; SecretAccessKey = $secret; Region = $region }
 # --size-only skips what the bucket holds, so a rerun resumes; a real run logs errors only (750k objects).
 $s5Args = @('--endpoint-url', $endpoint, '--numworkers', $Workers, '--log', $(if ($DryRun) { 'info' } else { 'error' }))
 if ($DryRun) { $s5Args += '--dry-run' }
-$s5Args += @('sync', '--size-only', '--exclude', 'preseed/*', '--exclude', '.sccache_check', (Join-Path $SourceDir '*'), "s3://$bucket/")
+$s5Args += @('sync', '--size-only', '--exclude', 'preseed/*', '--exclude', 'bazel/*', '--exclude', '.sccache_check', (Join-Path $SourceDir '*'), "s3://$bucket/")
 $clock = [Diagnostics.Stopwatch]::StartNew()
 if ($DryRun) {
     $planned = @(Invoke-S5cmdWithKey @key -Arguments $s5Args)

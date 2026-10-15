@@ -208,5 +208,30 @@ function Remove-BazelBuildTree {
     $global:LASTEXITCODE = 0
 }
 
+function Get-BazelRemoteCacheArg {
+    <#
+    .SYNOPSIS
+        Bazel's HTTP cache on the build host's dufs, <SCCACHE_WEBDAV_ENDPOINT>/bazel, or no option when there is no endpoint or it does not answer.
+    .DESCRIPTION
+        dufs speaks the protocol as it is: a PUT creates ac/ and cas/, a missing key is a 404. Every output is downloaded, as without the cache,
+        because the install steps read intermediate files from bazel-bin. docs/windows-build-resources.md § Bazel's cache
+    #>
+    [CmdletBinding()]
+    param([AllowEmptyString()][string]$Endpoint = $env:SCCACHE_WEBDAV_ENDPOINT, [int]$TimeoutSec = 3)
+    if ([string]::IsNullOrWhiteSpace($Endpoint)) {
+        Write-Host '  bazel remote cache: none (no SCCACHE_WEBDAV_ENDPOINT in this RUN)'
+        return @()
+    }
+    $cache = "$($Endpoint.Trim().TrimEnd('/'))/bazel"
+    try {
+        $null = Invoke-WebRequest -Uri "$cache/" -Method Head -TimeoutSec $TimeoutSec -UseBasicParsing -SkipHttpErrorCheck
+    } catch {
+        Write-Warning "bazel remote cache: $cache does not answer ($($_.Exception.Message)); building without it"
+        return @()
+    }
+    Write-Host "  bazel remote cache: $cache"
+    return @("--remote_cache=$cache", '--remote_download_outputs=all')
+}
+
 Export-ModuleMember -Function Get-UrlWithRetry, Get-PinnedTool, Get-BazelPin, Get-BazelClangClArg, Assert-BazelActionCompiler, Get-BazelRocmEnvScrub,
-    Set-BazelProcessEnv, Invoke-BazelLogged, Get-TreeGb, Remove-BazelBuildTree
+    Set-BazelProcessEnv, Invoke-BazelLogged, Get-TreeGb, Remove-BazelBuildTree, Get-BazelRemoteCacheArg
