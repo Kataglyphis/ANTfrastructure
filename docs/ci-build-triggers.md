@@ -13,7 +13,7 @@ The file names are one per platform and arch since 2026-09-24
 | Repository | On every push to `develop` | On request, and on `main` |
 |---|---|---|
 | OmniAccelerANT (since 2026-10-15) | `linux-x64.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `windows-x64`, `windows-arm64`, `android`, `web` through `on-request.yml`; all of them through `release.yml` on `main` |
-| OxidANT (since 2026-10-15) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64` (also weekly), `windows-x64`, `windows-arm64-cross` through `on-request.yml`. No `release.yml` yet: it waits for the owner's choice of version source, so `linux-x64.yml` still runs on pushes to `main` |
+| OxidANT (since 2026-10-15) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64` (also weekly), `windows-x64`, `windows-arm64-cross` through `on-request.yml`; all five through `release.yml` on `main` (since 2026-10-16; the version is `Cargo.toml`'s) |
 | AccelerANTgine, BeschleunigerBallett, OrchestrANT | every platform lane, on every push and PR to `main`/`develop`: the 2026-09-24 rule, until each moves | by hand where a lane has `workflow_dispatch` |
 
 The lanes those three still run on every push, measured 2026-09-25:
