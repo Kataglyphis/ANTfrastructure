@@ -1095,8 +1095,8 @@ function Invoke-PythonWheelBuild {
     if (-not $DistDir) { $DistDir = Join-Path $WorkingDir 'dist' }
     Push-Location $WorkingDir
     try {
-        # The twin's build log goes to the host, so the stored wheel's path is all a -FreeThreaded call returns.
-        cmd.exe /c """$($Python.Exe)"" $Arguments 2>&1" | ForEach-Object { if ($FreeThreaded) { Write-Host $_ } else { $_ } }
+        # To the host: callers drop or index the output, which hid each failing setup.py's own error (2026-10-15).
+        cmd.exe /c """$($Python.Exe)"" $Arguments 2>&1" | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -ne 0) { throw "python wheel build failed (exit $LASTEXITCODE): $Arguments" }
     } finally { Pop-Location }
     if ($FreeThreaded) {
