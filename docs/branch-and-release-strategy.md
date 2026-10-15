@@ -43,6 +43,9 @@ chore(release): 2.1.0+3 [ci all]
 - **Every commit of a push counts**, not only the newest: a token in the second of
   five commits still runs its lanes.
 - Case does not matter. `[ci-windows]` or `(ci windows)` is not a token.
+- **A token anywhere in the message counts, prose included.** A body that says "the earlier
+  `[ci all]` round was green" asks for every lane: OmniAccelerANT's f827b20 started all five
+  that way when it meant only `[ci web]`. To mention a token, leave out its brackets.
 - A word that names no lane is a warning in the run's log, not an error.
 - `[skip ci]` is GitHub's own and still skips every workflow, Linux x64 included.
 
