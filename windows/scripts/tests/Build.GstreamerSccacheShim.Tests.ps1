@@ -5,6 +5,7 @@
 
 Describe 'Build-GstreamerFromSource: meson compiles through the sccache shim (hub #182)' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -FunctionName 'New-SccacheCompilerShim')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -FunctionName 'Format-MesonExeList')
     $script:GstText = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-GstreamerFromSource.ps1'))
 
     It 'writes a shim that runs the named sccache on the named compiler, builds it for the x64 host with LIB cleared, and restores LIB (mutation)' {
@@ -40,5 +41,17 @@ exit 0
         Assert-Match "\`$env:CC  = \`$shim\s*\r?\n\s*\`$env:CXX = \`$shim\s*\r?\n\s*\`$script:GstSccacheShim = \`$shim" $script:GstText 'C and C++ through the shim'
         Assert-Match "New-SccacheCompilerShim -Sccache \(Get-Command sccache\.exe\)\.Source -Compiler \`$clangCheck\.Source" $script:GstText 'the clang-cl PATH resolves, the patched one'
         Assert-Match "\[int\]\`$requests\.Groups\[1\]\.Value -lt 100\) \{\s*\r?\n\s*throw `"sccache counted" $script:GstText 'a bypass fails the stage'
+    }
+
+    It 'keeps the one-word shim a list in the meson files, so --target stays its own entry (mutation)' {
+        # 2026-10-15: the arm64 cross file read c = ['C:/temp/gst-sccache-shim/clang-cl.exe--target=aarch64-pc-windows-msvc'].
+        Assert-Equal "'C:/temp/gst-sccache-shim/clang-cl.exe', '--target=aarch64-pc-windows-msvc'" `
+            (Format-MesonExeList -Command 'C:\temp\gst-sccache-shim\clang-cl.exe' -Extra '--target=aarch64-pc-windows-msvc') 'the shim and the target, two entries'
+        Assert-Equal "'sccache', 'clang-cl', '--target=aarch64-pc-windows-msvc'" `
+            (Format-MesonExeList -Command ' sccache  clang-cl ' -Extra '--target=aarch64-pc-windows-msvc') 'every word its own entry'
+        Assert-Equal "'clang-cl'" (Format-MesonExeList -Command 'clang-cl') 'the native file, no target'
+        foreach ($list in 'ccList', 'cxxList', 'nccList', 'ncxxList') {
+            Assert-Match "\`$$list = Format-MesonExeList -Command " $script:GstText "$list goes through the helper"
+        }
     }
 }
