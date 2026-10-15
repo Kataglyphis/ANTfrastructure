@@ -258,7 +258,7 @@ branch, and every push to it runs the Linux x64 lane. Every other lane runs when
 commit message asks for it (`[ci windows]`, `[ci arm64]`, `[ci all]`, …) or when
 started by hand; every lane workflow has `workflow_dispatch`. `main` moves only by a
 fast-forward to a `develop` commit whose full round is green, and only the owner moves
-it. Every push to `main` runs every lane again and releases `v<version>` only when all
+it, or an agent the owner tells to in that turn. Every push to `main` runs every lane again and releases `v<version>` only when all
 are green. The tokens, the merge steps and the workflow shape:
 [`docs/branch-and-release-strategy.md`](docs/branch-and-release-strategy.md). Which
 repo follows it yet, and this repo's own triggers:

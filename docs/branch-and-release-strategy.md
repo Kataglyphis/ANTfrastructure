@@ -67,7 +67,9 @@ same way. The run uses that branch's newest commit at the moment it starts.
 
 ## Merging into `main`
 
-Only the owner moves `main`; an agent prepares the merge and stops there.
+Only the owner moves `main`. An agent prepares the merge and stops there, unless the owner
+tells it in that turn to push; it then checks step 2 itself and pushes exactly that commit
+(OmniAccelerANT's 2.1.0, 2026-10-15).
 
 1. **Prepare the release on `develop`.** Raise the version in the repository's
    manifest and turn the CHANGELOG's `## Unreleased` into `## <version> — <date>`,
