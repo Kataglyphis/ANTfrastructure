@@ -336,7 +336,10 @@ the patched clang-cl, hands it to meson as `CC`/`CXX`, and fails the stage when 
 fewer than 100 compile requests. FFmpeg (clang-cl +
 make) is cached since 2026-08-20 (#100): the launcher goes in at make time
 (`make CC='sccache clang-cl'`), never into configure's `--cc`, and
-`FFMPEG_SCCACHE=0` opts out.
+`FFMPEG_SCCACHE=0` opts out. gst-plugins-rs (cargo, phase `8b` of the GStreamer build) goes
+through the same server since 2026-10-15: `RUSTC_WRAPPER` plus `CARGO_INCREMENTAL=0`, whenever
+meson's compiles do. The crates' rlibs hit; the two plugin cdylibs cannot. The step took about
+2 min uncached in every variant on 2026-10-14.
 The first build populates the cache; subsequent `--no-cache` rebuilds and
 version bumps reuse unchanged object files.
 
@@ -529,6 +532,32 @@ pwsh -File windows\scripts\host\Copy-SccacheCacheToS3.ps1 -DryRun         # opti
 - **Seeding.** `Copy-SccacheCacheToS3.ps1` copies the dufs tree into the bucket 1:1. Both
   backends store an object under the same key, `a/b/c/<hash>` (`normalize_key`), with no key
   prefix. `preseed\` and `.sccache_check` stay out.
+
+**The app builds in a reused container get the level too (2026-10-15).** `Invoke-ContainerBuild`,
+which the Windows lanes of OmniAccelerANT, AccelerANTgine and Ballett call through
+`Invoke-RepoContainerBuild.ps1`, hands it to the build's `docker exec`:
+
+- **By name only.** `Get-HostSccacheS3ExecEnv` (`WindowsContainerBuild.Reuse`) reads the five
+  `KATAGLYPHIS_SCCACHE_S3_*` settings and returns `SCCACHE_ENDPOINT`, `SCCACHE_BUCKET`,
+  `SCCACHE_REGION`, `SCCACHE_S3_USE_SSL`, the chain and both `AWS_*` key halves.
+  `Invoke-WithProcessEnvironment` sets them for the docker CLI alone, and the exec gets a value-less
+  `-e NAME` for each, which docker resolves from its own environment. The key is on no command line,
+  and the reused container's config never holds it.
+- **Per exec, never on the `docker run`.** A reused container keeps whatever its run was given, so a
+  setting added later would never reach it.
+- **Left out when incomplete or unreachable,** with a warning. A sccache server whose S3 level fails
+  its startup check (403, or no answer) caches nothing at all, which the image chain saw once as
+  `Server startup failed … AccessDenied`.
+- **The bind-mount transport does not get it.** That container is kept after a failure for
+  inspection, and its config would then hold the key. CI has no route to the bucket anyway.
+- **A server outlives the exec in a reused container.** Background uploads therefore finish without a
+  drain. A server started before the level was set keeps its old configuration until its idle timeout
+  (600 s) or `sccache --stop-server` in the container.
+- **Not yet run against a live Stevedore engine** (dockerd was stopped on 2026-10-15); the suite is
+  `ContainerBuild.SccacheS3.Tests.ps1`.
+
+The Linux lanes have no remote sccache tier at all yet, only the cache inside the container, so
+the bucket does not reach them.
 
 **What happens when a level is missing**, so neither level can stop a build:
 

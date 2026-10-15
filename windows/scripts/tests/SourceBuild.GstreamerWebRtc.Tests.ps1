@@ -121,6 +121,14 @@ Describe 'Get-GstRustCargoPlan' {
         Assert-Equal 'C:\t\aarch64-pc-windows-msvc\release\gstrswebrtc.dll' @($plan.Dlls)[0].Path
     }
 
+    It 'compiles through sccache, not incrementally, only when the stage has a sccache' {
+        $plan = Get-GstRustCargoPlan -Plugin $contract -Arch 'amd64' -TargetDir 'C:\t' -PkgConfigDir 'C:\p' -Sccache 'C:\cargo\bin\sccache.exe'
+        Assert-Equal 'C:\cargo\bin\sccache.exe' $plan.Env['RUSTC_WRAPPER']
+        Assert-Equal '0' $plan.Env['CARGO_INCREMENTAL']
+        $bare = Get-GstRustCargoPlan -Plugin $contract -Arch 'amd64' -TargetDir 'C:\t' -PkgConfigDir 'C:\p'
+        Assert-False ($bare.Env.Contains('RUSTC_WRAPPER')) 'no sccache, no wrapper'
+    }
+
     It 'refuses a contract without cargo entries, so the step cannot pass by building nothing' {
         $cOnly = @($contract | Where-Object { $_.Detection -ne 'cargo' })
         Assert-Throws { Get-GstRustCargoPlan -Plugin $cOnly -TargetDir 'C:\t' -PkgConfigDir 'C:\p' } -MessagePattern 'nothing to build'

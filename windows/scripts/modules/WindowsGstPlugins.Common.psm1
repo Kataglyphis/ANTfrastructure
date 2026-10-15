@@ -266,7 +266,9 @@ function Get-GstRustCargoPlan {
         [Parameter(Mandatory)][string]$TargetDir,
         [Parameter(Mandatory)][string]$PkgConfigDir,
         [string]$Arch = '',
-        [int]$Jobs = 0
+        [int]$Jobs = 0,
+        # sccache.exe when the stage compiles through sccache; the crates' rlibs then hit, the plugin cdylibs cannot.
+        [string]$Sccache = ''
     )
     $cargoPlugins = @($Plugin | Where-Object { $_.Detection -eq 'cargo' })
     if ($cargoPlugins.Count -eq 0) { throw 'Get-GstRustCargoPlan: no contract entry has Detection cargo, so there is nothing to build' }
@@ -276,6 +278,11 @@ function Get-GstRustCargoPlan {
     foreach ($p in $cargoPlugins) { $cargoArgs += @('-p', $p.CargoPackage) }
     if ($Jobs -gt 0) { $cargoArgs += @('--jobs', "$Jobs") }
     $cargoEnv = [ordered]@{ PKG_CONFIG_PATH = $PkgConfigDir }
+    if ($Sccache) {
+        $cargoEnv['RUSTC_WRAPPER'] = $Sccache
+        # sccache refuses incremental rustc calls; release builds are not incremental, this keeps it so.
+        $cargoEnv['CARGO_INCREMENTAL'] = '0'
+    }
     $outDir = Join-Path $TargetDir 'release'
     if (Test-WindowsCrossTarget -Arch $gstArch) {
         $triple = Get-RustTargetTriple -Arch $gstArch

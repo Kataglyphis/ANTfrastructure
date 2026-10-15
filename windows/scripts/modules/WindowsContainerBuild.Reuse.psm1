@@ -3,6 +3,11 @@
 
 Set-StrictMode -Version Latest
 
+# Only if absent, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
+if (-not (Get-Command Get-SccacheS3Level -ErrorAction SilentlyContinue)) {
+    Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -DisableNameChecking
+}
+
 <#
 .SYNOPSIS
   Returns a reusable build container, creating or recreating it as needed.
@@ -569,6 +574,41 @@ function Add-HostSccacheRemoteEnv {
 
 <#
 .SYNOPSIS
+  This host's shared S3 level for one docker exec: the variables the docker CLI passes on by name, or none.
+.DESCRIPTION
+  A value-less -e NAME makes docker exec read the value from its own environment, so the key is on no command line and
+  in no container config. The level needs all its settings and an answering port, because a sccache server whose S3
+  level fails its startup check caches nothing. docs/windows-build-resources.md § Two cache levels
+.OUTPUTS
+  [ordered] NAME -> value; empty when the level is not configured, incomplete or unreachable.
+#>
+function Get-HostSccacheS3ExecEnv {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()][string]$WebdavEndpoint = [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT'),
+        # Reads a KATAGLYPHIS_SCCACHE_S3_* setting by name; the default also finds one set after this shell started.
+        [scriptblock]$Lookup = { param($name) Get-HostSettingValue $name }
+    )
+
+    $hostValue = $Lookup
+    $endpoint = & $hostValue 'KATAGLYPHIS_SCCACHE_S3_ENDPOINT'
+    $s3 = Get-SccacheS3Level -WebdavEndpoint $WebdavEndpoint -S3Endpoint $endpoint -S3Bucket (& $hostValue 'KATAGLYPHIS_SCCACHE_S3_BUCKET') `
+        -S3Region (& $hostValue 'KATAGLYPHIS_SCCACHE_S3_REGION') -Lookup $hostValue
+    if ($s3.Note) { Write-Warning "sccache: $($s3.Note); the build runs on its other levels" }
+    if ($s3.Settings.Count -eq 0) { return [ordered]@{} }
+    if (-not (Test-UrlPortOpen $endpoint)) {
+        Write-Warning "sccache: the S3 level $endpoint does not answer from the host; the build runs on its other levels"
+        return [ordered]@{}
+    }
+    $execEnv = [ordered]@{}
+    foreach ($name in $s3.Settings.Keys) { $execEnv[$name] = $s3.Settings[$name] }
+    $execEnv['AWS_ACCESS_KEY_ID'] = & $hostValue 'KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID'
+    $execEnv['AWS_SECRET_ACCESS_KEY'] = & $hostValue 'KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY'
+    return $execEnv
+}
+
+<#
+.SYNOPSIS
   Normalises -BuildCommand into the argv executed inside the container.
 .DESCRIPTION
   A scriptblock gets the in-container workspace path; tokens must be space-free, as they travel via cmd /S /C and %*.
@@ -768,8 +808,14 @@ function Invoke-ContainerBuild {
             & $DockerExe exec $container cmd /c "if exist $stale\CMakeFiles rmdir /s /q $stale\CMakeFiles 2>nul" | Out-Host
         }
 
+        # The S3 level rides on this exec alone, by name: a reused container keeps whatever its docker run was given.
+        $s3Env = Get-HostSccacheS3ExecEnv
+        $s3Args = @($s3Env.Keys | ForEach-Object { '-e', $_ })
+        if ($s3Args) { Write-Host "Forwarding this host's sccache S3 level into the build by name: $(@($s3Env.Keys) -join ', ')" }
         # docker exec bypasses the entrypoint, which provides the VS environment and the ASan runtime on PATH.
-        & $DockerExe exec -w $WorkspacePath $container cmd /S /C $EntrypointPath @buildArgs | Out-Host
+        Invoke-WithProcessEnvironment -Environment $s3Env -ScriptBlock {
+            & $DockerExe exec @s3Args -w $WorkspacePath $container cmd /S /C $EntrypointPath @buildArgs | Out-Host
+        }
         $buildExit = $LASTEXITCODE
 
         Write-Host 'Streaming build trees and logs back to the working tree...'
@@ -820,6 +866,7 @@ function Invoke-ContainerBuild {
 Export-ModuleMember -Function @(
     'Get-ReusableBuildContainer',
     'Get-ContainerEnvArgs',
+    'Get-HostSccacheS3ExecEnv',
     'Get-SccacheContainerEnv',
     'Resolve-ContainerBuildCommand',
     'Invoke-ContainerBuild',

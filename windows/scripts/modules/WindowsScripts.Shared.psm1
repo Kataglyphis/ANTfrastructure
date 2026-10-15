@@ -328,6 +328,19 @@ function Test-UrlPortOpen {
     return [bool](Test-Connection -TargetName $uri.Host -TcpPort $uri.Port -Quiet -TimeoutSeconds $TimeoutSeconds)
 }
 
+function Invoke-WithProcessEnvironment {
+    # Runs -ScriptBlock with -Environment set in this process, then puts every variable back; a child it starts inherits them.
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Environment, [Parameter(Mandatory)][scriptblock]$ScriptBlock)
+    $priorEnv = @(Get-ChildItem Env: | Where-Object Name -In @($Environment.Keys))
+    foreach ($name in @($Environment.Keys)) { Set-Item -LiteralPath "Env:$name" -Value $Environment[$name] }
+    try {
+        & $ScriptBlock
+    } finally {
+        foreach ($name in @($Environment.Keys)) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
+        $priorEnv | ForEach-Object { Set-Item -LiteralPath "Env:$($_.Name)" -Value $_.Value }
+    }
+}
+
 function Invoke-S5cmdWithKey {
     # s5cmd reads the S3 key from its environment, so this process holds it only while s5cmd runs.
     param(
@@ -338,14 +351,50 @@ function Invoke-S5cmdWithKey {
         [Parameter(Mandatory)][string[]]$Arguments
     )
     $awsEnv = @{ AWS_ACCESS_KEY_ID = $AccessKeyId; AWS_SECRET_ACCESS_KEY = $SecretAccessKey; AWS_REGION = $(if ($Region) { $Region } else { 'us-east-1' }) }
-    $priorEnv = @(Get-ChildItem Env: | Where-Object Name -In $awsEnv.Keys)
-    $awsEnv.GetEnumerator() | ForEach-Object { Set-Item -LiteralPath "Env:$($_.Key)" -Value $_.Value }
-    try {
-        & $S5cmdPath @Arguments
-    } finally {
-        $awsEnv.Keys | ForEach-Object { Remove-Item -LiteralPath "Env:$_" -ErrorAction SilentlyContinue }
-        $priorEnv | ForEach-Object { Set-Item -LiteralPath "Env:$($_.Name)" -Value $_.Value }
+    Invoke-WithProcessEnvironment -Environment $awsEnv -ScriptBlock { & $S5cmdPath @Arguments }
+}
+
+function Get-SccacheS3Level {
+    <#
+    .SYNOPSIS
+        sccache's S3 level as the SCCACHE_* settings it needs, or the reason it is left out; the key itself is never returned.
+    .DESCRIPTION
+        The level joins only with its endpoint, bucket and both key halves, which -Lookup reads by variable name (the process
+        environment by default). docs/windows-build-resources.md § Two cache levels
+    .OUTPUTS
+        @{ Settings; Note } - both empty when no S3 level is configured, Settings empty and Note set when one is incomplete.
+    #>
+    param(
+        [string]$WebdavEndpoint = '',
+        [string]$S3Endpoint = '',
+        [string]$S3Bucket = '',
+        [string]$S3Region = '',
+        [string]$KeyIdVariable = 'KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID',
+        [string]$SecretVariable = 'KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY',
+        [scriptblock]$Lookup = { param($name) [Environment]::GetEnvironmentVariable($name) }
+    )
+    $level = @{ Settings = [ordered]@{}; Note = '' }
+    if (-not ($S3Endpoint -or $S3Bucket)) { return $level }
+    $missing = @(
+        if (-not $S3Endpoint) { 'the endpoint' }
+        if (-not $S3Bucket) { 'the bucket' }
+        foreach ($variable in $KeyIdVariable, $SecretVariable) {
+            if ([string]::IsNullOrEmpty((& $Lookup $variable))) { $variable }
+        }
+    )
+    $uri = $null
+    if ($S3Endpoint -and -not [Uri]::TryCreate($S3Endpoint, [UriKind]::Absolute, [ref]$uri)) { $missing += "an absolute endpoint URL (got '$S3Endpoint')" }
+    if ($missing.Count -gt 0) {
+        $level.Note = "the S3 level is left out: it needs $($missing -join ', ')"
+        return $level
     }
+    $level.Settings['SCCACHE_ENDPOINT'] = $S3Endpoint
+    $level.Settings['SCCACHE_BUCKET'] = $S3Bucket
+    if ($S3Region) { $level.Settings['SCCACHE_REGION'] = $S3Region }
+    $level.Settings['SCCACHE_S3_USE_SSL'] = if ($uri.Scheme -eq 'https') { 'true' } else { 'false' }
+    # Without a WebDAV level the bucket is sccache's only backend, which needs no chain.
+    if ($WebdavEndpoint) { $level.Settings['SCCACHE_MULTILEVEL_CHAIN'] = 'webdav,s3' }
+    return $level
 }
 
 function Test-SccacheRemoteConfigured {
@@ -724,6 +773,8 @@ Export-ModuleMember -Function @(
     'Get-HostSettingValue',
     'Test-UrlPortOpen',
     'Invoke-S5cmdWithKey',
+    'Invoke-WithProcessEnvironment',
+    'Get-SccacheS3Level',
     'Test-SccacheRemoteConfigured',
     'Get-SccacheStatsText',
     'Write-SccacheStatsToStderr',

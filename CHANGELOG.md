@@ -6,6 +6,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-15 — the app builds reach the S3 level, and cargo goes through sccache
+
+- **Reused build containers get the shared S3 level per `docker exec`.**
+  - `Get-HostSccacheS3ExecEnv` returns the settings and both key halves only when all of them exist
+    and the bucket answers.
+  - `Invoke-ContainerBuild` passes them as value-less `-e NAME`, which docker resolves from its own
+    environment, so the key reaches no command line and no container config.
+  - The bind-mount transport, kept for inspection after a failure, does not get it.
+- **One owner for the S3 settings:** `Get-SccacheS3Level` (Shared) now serves both the image chain's
+  `Get-BkSccacheConfig` and the container path; `Invoke-WithProcessEnvironment` serves the docker
+  call and `Invoke-S5cmdWithKey`.
+- **gst-plugins-rs compiles through sccache:** `RUSTC_WRAPPER` and `CARGO_INCREMENTAL=0` whenever
+  meson's compiles do; the step took about 2 min uncached in every variant.
+- The Linux lanes have no remote sccache tier yet, so the bucket does not reach them.
 ## 2026-10-15 — Branches, CI rounds and releases: one rule for every repo
 
 - **Owner rule, written down in `docs/branch-and-release-strategy.md`.** A push to

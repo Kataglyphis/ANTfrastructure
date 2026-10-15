@@ -4,7 +4,7 @@
 # The two LiteRT bazel builds keep their actions on the host's dufs, which an uncached build re-ran in full for every variant.
 
 # A loopback port nothing listens on once this returns.
-$freePort = { $l = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0); $l.Start(); $p = $l.LocalEndpoint.Port; $l.Stop(); $p }
+$freePort = { $l = Start-LoopbackListener; $p = $l.LocalEndpoint.Port; $l.Stop(); $p }
 
 Describe 'Get-BazelRemoteCacheArg' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsBazel.Common.psm1' -FunctionName 'Get-BazelRemoteCacheArg')
