@@ -238,6 +238,17 @@ Describe 'Free-threaded cross twins (arm64): static gates, the venv pin and the 
         }
     }
 
+    It 'Invoke-PythonWheelBuild shows a failing build''s own output, even to a caller that drops the result (mutation)' {
+        Invoke-InTestDir { param($d)
+            Set-Content -LiteralPath "$d\py.cmd" -Encoding ascii -Value @('@echo error: the real reason the extension did not build', '@exit /b 1')
+            $shown = & {
+                Assert-Throws { Invoke-PythonWheelBuild -Python @{ Exe = "$d\py.cmd" } -WorkingDir $d -Arguments 'setup.py bdist_wheel' -ModuleName 'm' | Out-Null } `
+                    -MessagePattern 'python wheel build failed \(exit 1\)'
+            } 6>&1 | Out-String
+            Assert-Match 'the real reason the extension did not build' $shown 'the build''s own error reaches the log'
+        }
+    }
+
     It 'the cross build venv''s shim names a free-threaded module .cp3XYt-<tag>.pyd and a GIL one .cp3XY-<tag>.pyd (mutation)' {
         Invoke-InTestDir { param($d)
             $shim = [System.IO.File]::ReadAllText((Write-PythonDllDirectoryShim -SitePackages $d -OpenCvArchDir 'arm64' -CrossExtTag 'win_arm64'))
