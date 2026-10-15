@@ -6,6 +6,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-15 — `version_util.sh` reads a `Cargo.toml`
+
+- **A Rust repo keeps its version in `Cargo.toml` alone** (owner, for OxidANT). Handed a file
+  named `Cargo.toml`, `version_util.sh` reads `[workspace.package]`'s `version`, else
+  `[package]`'s, never a dependency's; `container-ci-windows.yml`'s `version-file` passes it
+  through. `test-version-util.sh` is new (7 assertions: both file kinds, a dependency table,
+  the fallbacks, `--github-env`); dropping the section check or the `Cargo.toml` branch fails 2
+  and 4 of them.
+
 ## 2026-10-15 — The Dart gate can write coverage from its own test run
 
 - **`flutter_checks.sh --coverage <file>`** runs the gate's `flutter test` with

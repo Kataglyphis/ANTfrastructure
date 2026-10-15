@@ -407,7 +407,8 @@ is the same file an x64 lane uses with `target-arch: amd64`:
 Three inputs serve the x64 lanes that moved onto the same file (the family's next sharing step,
 2026-09-25: OxidANT's `windows-x64.yml` first, then AccelerANTgine's, and BeschleunigerBallett's on 2026-09-26):
 - `version-file` resolves the CI version on the host with the hub's `version_util.sh` and hands
-  `VERSION` and `MSIX_VERSION` to the container.
+  `VERSION` and `MSIX_VERSION` to the container. It may name a `VERSION.txt` or a `Cargo.toml`,
+  whose `[workspace.package]` version it reads.
 - `host-command` runs on the runner host after the build, in the workspace the container built
   into. It is for what Server Core cannot run because it lacks `opengl32.dll`: OxidANT's WebGPU
   renderer tests, and a run of the x64 product.

@@ -1046,6 +1046,13 @@ Before 2026-09-08 the two pockets happened to agree.
 `02-toolchain/rust/version_util.sh`. Resolve the version a CI run should stamp, from the sources every consumer
 has: a VERSION.txt at the repo root, else the ref name, else the run number.
 
+**A `Cargo.toml` is a version file too (2026-10-15).** Handed a file named `Cargo.toml`, it
+reads `[workspace.package]`'s `version`, else `[package]`'s, and never a dependency's or a
+member's `version.workspace = true`; with neither, the ref name and run number follow as
+below. A Rust repo then keeps its version in one place: OxidANT dropped its `VERSION.txt` for
+it, and passes `version-file: Cargo.toml`. `linux/scripts/tests/test-version-util.sh` holds
+both file kinds and the fallbacks.
+
 Lifted out of a consumer (OxidANT's
 scripts/compute_version.sh) because every repo with a CI lane needs exactly
 this and had to reimplement it around the primitives above.
