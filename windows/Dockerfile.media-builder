@@ -158,7 +158,7 @@ ARG PY_CYTHON_VERSION=3.3.0
 ARG NV_CODEC_HEADERS_REF=n13.1.15.0
 # AMF headers: every lane carries the pin, only the rocm lane fetches them (GPU_TYPE=rocm).
 ARG AMF_HEADERS_VERSION=v1.5.3
-ARG AMF_HEADERS_SHA256=570c8f6593b8c24a6e47a0a9c59b216a7198138e660ba4011590ae913343d5c3
+ARG AMF_HEADERS_SHA256=0f521ad98041f8001147cded4a660127f18b1c27a801a5cd691bda1fa48381be
 # FFmpeg's static software codecs (Build-FfmpegCodecs.ps1, amd64); versions.env owns the values.
 ARG DAV1D_VERSION=1.4.1
 ARG DAV1D_SHA256=8d407dd5fe7986413c937b14e67f36aebd06e1fa5cfec679d10e548476f2d5f8
