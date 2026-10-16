@@ -6,6 +6,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-16 — Linux packages that start outside the image
+
+- **AccelerANTgine 0.0.1's Linux packages started nowhere but in the image.** They needed GCC
+  16.2's `libstdc++` (`GLIBCXX_3.4.36`) and the chain ORT, carried neither, and the executable
+  could not find its own `lib/`. BeschleunigerBallett's and OmniAccelerANT's need `GLIBC_2.43`.
+  Nothing noticed, because every check ran inside the image.
+- **`kataglyphis_install_linux_closure`** (`cmake/CPackCommon.cmake`): at install time, what the
+  installed files need beyond glibc, glib, the graphics stack and `SYSTEM` goes to
+  `lib/<PRIVATE_DIR>` with `$ORIGIN` RUNPATHs, the compiler's own `libstdc++` first.
+  `python-app-closure.sh` gained `--system`. `test-linux-closure-install.sh`: 15 assertions.
+- **The `clean-host-package-check` action** installs a `.deb` with apt on a bare `ubuntu-26.04`
+  runner, scans every installed ELF with `ldd` and starts a command with `LD_BIND_NOW=1`.
+- **Left: Debian 13 and Ubuntu 24.04** (glibc 2.41, 2.39) need the image's loader and libc in the
+  package, as ObservANT does: CON97.
+
 ## 2026-10-16 — the AMF header pin follows AMD's re-upload of v1.5.3
 
 - **AMD replaced the asset `AMF-headers-v1.5.3.tar.gz` at 19:36 UTC**, two weeks after the release

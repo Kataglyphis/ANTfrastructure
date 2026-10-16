@@ -283,6 +283,31 @@ nerdctl build --platform linux/amd64 \
 
 For a full hands-off cross build of `:latest`, prefer the orchestrator `linux/scripts/build-cross-chain.sh`. It chains `base -> compiler -> sdk -> media -> android -> runtime` with digest-pinned stage handoff. See `docs/linux-cross-builds.md` for the full pipeline and `AGENTS.md` for the stage handoff rules.
 
+## Linux packages that run outside the image
+
+A package built in `:latest` links what only the image has, and the image hides that: every
+library is there, so a check inside it passes. On 2026-10-16 AccelerANTgine 0.0.1's `.deb`,
+tarball and AppImage started nowhere else: GCC 16.2's `libstdc++` (`GLIBCXX_3.4.36`, newer than
+any distro's, Ubuntu 26.04's included) and the chain ONNX Runtime were neither bundled nor
+declared, and the executable had no RUNPATH to its own `lib/`.
+
+- **What a package carries:** `kataglyphis_install_linux_closure` in `cmake/CPackCommon.cmake`,
+  the Linux twin of `kataglyphis_install_package_dlls`. At install time, so in every CPack
+  generator's staged tree and in the flatpak's `cmake --install`, it runs
+  `06-packaging/python-app-closure.sh`: every library the installed files need goes to
+  `lib/<PRIVATE_DIR>`, found through `$ORIGIN` RUNPATHs. The C++ compiler's runtime directory is
+  searched first, since the image has two `libstdc++`. `SYSTEM` names what the package's
+  `Depends` bring instead (a distro's GStreamer); `PROTECT` copies the chain ORT unpatched for G6.
+  Never `lib/` itself: `ldconfig` would serve a bundled `libstdc++` to every program.
+- **What it still needs:** glibc 2.43, which the image builds against. The packages therefore run
+  on the image's own base, Ubuntu 26.04, and newer. Debian 13 and Ubuntu 24.04 need the image's
+  loader and libc as well, which ObservANT already ships: BACKLOG CON97.
+- **The proof:** the `clean-host-package-check` action, in a job on `ubuntu-26.04` /
+  `ubuntu-26.04-arm` after the lane. It installs the `.deb` with apt, which resolves `Depends` as
+  on a user's machine, runs `ldd` over every installed ELF, and starts a command with
+  `LD_BIND_NOW=1`; the tarball unpacked anywhere and the AppImage get the same.
+  `linux/scripts/tests/test-linux-closure-install.sh` covers the CMake function itself.
+
 ## Consumer bash libraries (`linux/scripts/lib/`)
 
 Reusable libraries consumer repos source directly from the submodule. The full
