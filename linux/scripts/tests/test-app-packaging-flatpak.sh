@@ -348,4 +348,10 @@ t_case "package_cmake_install_flatpak: a failing build-bundle stops the run"
 _call STUB_BUNDLE_RC=1 -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v9"
 t_assert_eq "1" "${rc}"
 
+t_case "detect_bundle_binary: a bundle wrapped by bundle-loader.sh --beside names its launcher, not the loader or the .bin"
+_wrapped="${_work}/wrapped"
+mkdir -p "${_wrapped}/lib"
+for f in ld-linux-aarch64.so.1 omni_accelerant omni_accelerant.bin; do printf 'x' > "${_wrapped}/${f}"; chmod +x "${_wrapped}/${f}"; done
+t_assert_eq "omni_accelerant" "$(bash -c 'source "$1"; app_packaging_detect_bundle_binary "$2"' _ "${LIB}" "${_wrapped}")"
+
 t_summary

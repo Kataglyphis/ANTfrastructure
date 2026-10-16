@@ -217,7 +217,8 @@ app_packaging_detect_bundle_binary() {
   while IFS= read -r candidate; do
     local base
     base="$(basename "$candidate")"
-    if [[ "$base" == *.so || "$base" == *.sh ]]; then
+    # bundle-loader.sh --beside leaves the loader (ld-linux-*.so.N) and <name>.bin beside the launcher.
+    if [[ "$base" == *.so || "$base" == *.so.* || "$base" == *.sh || "$base" == *.bin ]]; then
       continue
     fi
     binary="$base"
