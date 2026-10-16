@@ -41,6 +41,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       2. The flatpak: the Flutter one installs the bundle whole since 2026-10-17, so its runner
          finds `data/`; that it starts on org.freedesktop.Platform's older glibc is unproven.
       3. AccelerANTgine's `kataglyphis_inference` wheels: the same closure, through auditwheel.
+      4. Python app bundles (OrchestrANT 0.0.31, measured 2026-10-17 on himbeere2): numpy, OpenCV
+         and Pillow import on Debian 13, the chain ORT does not (`GLIBC_2.43 not found`); the `.deb`
+         says `libc6 (>= 2.43)` and apt refuses it there, honestly. The launchers could start
+         `runtime/bin/python3` through the bundled loader, but every child that runs
+         `sys.executable` (multiprocessing, subprocess) would bypass it.
 
       Done when AccelerANTgine's, BeschleunigerBallett's and OmniAccelerANT's packages start on
       himbeere2 and in the clean-host job.
