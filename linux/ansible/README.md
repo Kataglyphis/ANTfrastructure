@@ -14,6 +14,7 @@ SSH config for this machine's fleet live here.
 | `pi-2` | Raspberry Pi 3, Debian 13 | SSH |
 | `tabblscatcam` | Raspberry Pi 5 (cat cam), Debian 13 | SSH |
 | `pi-3` | Raspberry Pi 4, Debian 13 | SSH |
+| `srv-1` | Ubuntu 26.04 server, reached over WireGuard | SSH (as root) |
 | `mintberrycrunch` | SpacemiT K3 (riscv-class SBC), Ubuntu 26.04 | SSH |
 | `summy-server` | Windows 11 ARM Pro | SSH + PowerShell (`ansible.windows`) |
 
