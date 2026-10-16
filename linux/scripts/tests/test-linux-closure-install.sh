@@ -95,6 +95,9 @@ t_assert_eq "#!/bin/sh" "$(head -1 "${_work}/stage/bin/app")" "bin/app is the la
 t_assert_ok test -f "${_work}/stage/lib/fixture/app"
 t_assert_ok test -f "${_work}/stage/lib/fixture/libc.so.6"
 t_assert_eq 1 "$(find "${_work}/stage/lib/fixture" -name 'ld-linux*' | wc -l)" "the loader travels"
+t_assert_eq "${_work}/stage/lib/fixture/libstdc++.so.6" \
+  "$(env -i ldd "${_work}/stage/lib/fixture/app" | awk '$1 == "libstdc++.so.6" { print $3 }' | xargs realpath)" \
+  "the moved program's own RUNPATH finds the bundled libstdc++, launcher or not"
 mv "${_work}/stage" "${_work}/moved"
 t_assert_eq "closure-ok 42" "$(env -i LD_BIND_NOW=1 "${_work}/moved/bin/app" 2>&1)" "relocated launcher runs"
 mv "${_work}/moved" "${_work}/stage"
