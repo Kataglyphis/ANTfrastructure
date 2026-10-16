@@ -12,6 +12,9 @@ keep="${ANSIBLE_UPDATE_KEEP_RUNS:-20}"
 mkdir -p "${state}/runs" "${status_dir}"
 started="$(date -Is)"
 log="${state}/runs/$(date +%Y%m%d-%H%M%S).log"
+# profile_tasks ends the log with the slowest tasks, which status.json and Home Assistant show.
+export ANSIBLE_CALLBACKS_ENABLED="${ANSIBLE_CALLBACKS_ENABLED:+${ANSIBLE_CALLBACKS_ENABLED},}ansible.posix.profile_tasks"
+export PROFILE_TASKS_TASK_OUTPUT_LIMIT="${PROFILE_TASKS_TASK_OUTPUT_LIMIT:-10}"
 # tee: the journal still gets every line, and the file outlives the volatile journal.
 (cd "${here}" && exec "${ANSIBLE_PLAYBOOK:-${HOME}/venvs/ansible/bin/ansible-playbook}" "${playbook}") 2>&1 | tee "${log}"
 rc=${PIPESTATUS[0]}

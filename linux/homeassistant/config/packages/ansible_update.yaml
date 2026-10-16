@@ -19,6 +19,7 @@ command_line:
         - hosts_unreachable
         - hosts_changed
         - notes
+        - slowest
         - history
         - log_file
         - log_tail
