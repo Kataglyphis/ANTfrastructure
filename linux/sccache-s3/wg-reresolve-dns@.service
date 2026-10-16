@@ -1,0 +1,7 @@
+[Unit]
+Description=Re-resolve DNS of stale WireGuard endpoints on %i
+After=wg-quick@%i.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wg-reresolve-dns /etc/wireguard/%i.conf

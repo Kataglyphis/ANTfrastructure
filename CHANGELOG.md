@@ -6,6 +6,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-16 — the sccache bucket's runbook carries the live server's files
+
+- **The outage's cause, and its fix on the VPS.**
+  - The FritzBox's IPv6 prefix changed overnight. `wg` had resolved the endpoint's MyFritz name
+    once, so the bucket was unreachable for about 8 hours.
+  - `wg-reresolve-dns@wg0.timer` runs wireguard-tools' own `reresolve-dns.sh` every 30 s; a peer
+    whose handshake is older than 135 s gets its name resolved again. Recovery: about 20 s.
+- **`linux/sccache-s3/` now holds what the server runs**, with every secret, the MyFritz name and
+  the IPv6 prefix as placeholders:
+  - Garage as the system user `garage` in `/srv/garage`, `/etc/garage/garage.toml` 640, zone `vps`.
+  - `sccache-s3-evict`, which checks the bucket size through the admin API before it lists anything.
+  - The key files `/root/sccache-s3-key.txt` and `/etc/garage/evict-key.txt`.
+  - The two re-resolve units.
+- The reconstructed `sccache-evict.sh` and `sccache-evict.env.example` are gone.
+
 ## 2026-10-16 — a bucket that stalls sccache's startup check no longer stops a build
 
 - **What happened.** The VPS stopped answering through the tunnel at about 00:49, while the first

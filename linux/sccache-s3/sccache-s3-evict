@@ -1,0 +1,21 @@
+#!/bin/bash
+# Size cap for the sccache bucket: sccache never deletes, so the oldest objects (LastModified) go until 90% of CAP_GB.
+set -euo pipefail
+CAP=$(( ${CAP_GB:-60} * 1024**3 )); TARGET=$(( CAP * 9 / 10 ))
+KEYFILE=/etc/garage/evict-key.txt
+AWS_ACCESS_KEY_ID=$(grep -oP 'Key ID:\s*\K\S+' "$KEYFILE")
+AWS_SECRET_ACCESS_KEY=$(grep -oP 'Secret key:\s*\K\S+' "$KEYFILE")
+export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION=garage
+S5="s5cmd --endpoint-url http://192.168.188.216:3900"
+# cheap check first so the bucket is only listed when it is over the cap
+ADMIN_TOKEN=$(grep -oP '^admin_token = "\K[^"]+' /etc/garage/garage.toml)
+BUCKET_SIZE=$(curl -sf -H "Authorization: Bearer $ADMIN_TOKEN" 'http://127.0.0.1:3903/v2/GetBucketInfo?globalAlias=sccache' | python3 -c 'import json,sys; print(json.load(sys.stdin)["bytes"])')
+[ "$BUCKET_SIZE" -le "$CAP" ] && exit 0
+WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
+$S5 ls 's3://sccache/*' | awk '{print $1"T"$2, $3, $4}' > "$WORK/list"
+USED=$(awk '{s+=$2} END{print s+0}' "$WORK/list")
+[ "$USED" -le "$CAP" ] && exit 0
+sort -k1,1 "$WORK/list" | awk -v free=$(( USED - TARGET )) \
+  '{ if (free <= 0) exit; print "rm \"s3://sccache/" $3 "\""; free -= $2 }' > "$WORK/cmds"
+$S5 --numworkers 64 run "$WORK/cmds" >/dev/null
+logger -t sccache-evict "garage: deleted $(wc -l < "$WORK/cmds") objects, was $USED bytes (cap ${CAP_GB:-60}G)"

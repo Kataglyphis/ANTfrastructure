@@ -1,22 +1,23 @@
-# /etc/garage.toml on the VPS: Garage v2.4.1, one node, the S3 API on the WireGuard address only.
-# Generate both secrets with `openssl rand -hex 32`; never commit the real file.
-metadata_dir = "/var/lib/garage/meta"
-data_dir = "/var/lib/garage/data"
+# /etc/garage/garage.toml, root:garage 640: one node, S3 on the WireGuard address only, RPC and admin on localhost.
+metadata_dir = "/srv/garage/meta"
+data_dir = "/srv/garage/data"
 db_engine = "lmdb"
+metadata_auto_snapshot_interval = "6h"
 replication_factor = 1
-# sccache objects are zstd already.
+# sccache objects are already zstd-compressed and content-addressed
 compression_level = "none"
 
-# A single node talks to itself only.
 rpc_bind_addr = "127.0.0.1:3901"
 rpc_public_addr = "127.0.0.1:3901"
+# openssl rand -hex 32
 rpc_secret = "REPLACE_ME"
 
 [s3_api]
 s3_region = "garage"
 api_bind_addr = "192.168.188.216:3900"
-root_domain = ".s3.garage"
+root_domain = ".s3.garage.invalid"
 
 [admin]
 api_bind_addr = "127.0.0.1:3903"
+# openssl rand -base64 32; sccache-s3-evict reads it for the bucket size
 admin_token = "REPLACE_ME"

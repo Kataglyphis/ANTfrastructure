@@ -1,10 +1,9 @@
 [Unit]
-Description=Hourly size cap for the sccache S3 bucket
+Description=Hourly sccache size-cap eviction
 
 [Timer]
 OnCalendar=hourly
 Persistent=true
-RandomizedDelaySec=120
 
 [Install]
 WantedBy=timers.target
