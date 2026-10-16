@@ -234,9 +234,9 @@ function Add-RequirementHash {
     return [string[]]$out
 }
 
-# Builds each -PureBuild package the requirements pin from uv.lock's sdist, with its env, as a py3-none-any wheel; returns how many.
+# Builds each -PureBuild package the requirements pin from uv.lock's sdist, with its env, as a py3-none-any wheel; returns their names.
 function Add-PurePythonWheel {
-    [OutputType([int])]
+    [OutputType([string[]])]
     param(
         [Parameter(Mandatory)][string]$Requirements,
         [Parameter(Mandatory)][string]$Lock,
@@ -244,9 +244,9 @@ function Add-PurePythonWheel {
         [Parameter(Mandatory)][string]$OutDir,
         [Parameter(Mandatory)][hashtable]$PureBuild
     )
-    if (-not (Test-Path -LiteralPath $Requirements -PathType Leaf)) { return 0 }
+    if (-not (Test-Path -LiteralPath $Requirements -PathType Leaf)) { return @() }
     [string[]]$lines = Get-Content -LiteralPath $Requirements
-    $built = 0
+    $built = [Collections.Generic.List[string]]::new()
     foreach ($name in $PureBuild.Keys) {
         $pin = $lines | Where-Object { $_ -match "^$([regex]::Escape($name))==" } | Select-Object -First 1
         if (-not $pin) { continue }
@@ -255,7 +255,7 @@ function Add-PurePythonWheel {
         $archive = Join-Path $OutDir ([IO.Path]::GetFileName(([uri]$sdist.Url).AbsolutePath))
         Invoke-DownloadWithRetry -Url $sdist.Url -DestinationPath $archive -ExpectedSha256 $sdist.Sha256 -Description "$name $version sdist"
         Invoke-WithProcessEnvironment -Environment $PureBuild[$name] -ScriptBlock {
-            Invoke-AppUv -What "building $name $version as pure Python" -Arguments @('build', '--wheel', '--python', $HostPython, '--out-dir', $OutDir, $archive)
+            Invoke-AppUv -What "building $name $version as pure Python" -Arguments @('build', '--wheel', '--python', $HostPython, '--out-dir', $OutDir, $archive) | Out-Host
         }
         $stem = ($name -replace '[-.]+', '_')
         $wheel = @(Get-ChildItem -LiteralPath $OutDir -File -Filter "*-$version-*.whl" | Where-Object { $_.Name -like "$stem-*" })
@@ -265,10 +265,10 @@ function Add-PurePythonWheel {
         try { $binaries = @($zip.Entries | Where-Object { $_.FullName -match '\.(pyd|dll|so|exe)$' } | ForEach-Object FullName) } finally { $zip.Dispose() }
         if ($binaries.Count -gt 0) { throw "$($wheel[0].Name) carries $($binaries -join ', '): no pure-Python build" }
         $lines = Add-RequirementHash -Lines $lines -Name $name -Sha256 (Get-FileHash -LiteralPath $wheel[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-        $built++
+        $built.Add($name)
     }
-    if ($built -gt 0) { Set-Content -LiteralPath $Requirements -Value $lines -Encoding utf8NoBOM }
-    return $built
+    if ($built.Count -gt 0) { Set-Content -LiteralPath $Requirements -Value $lines -Encoding utf8NoBOM }
+    return [string[]]$built
 }
 
 function Install-PythonAppCrossPackage {
@@ -302,10 +302,11 @@ function Install-PythonAppCrossPackage {
     $requirements = Join-Path $WorkDir 'requirements.cross.txt'
     Export-AppRequirement -RepoRoot $RepoRoot -Extras $Extras -Exclude $Exclude -OutFile $requirements
     $pure = Join-Path $WorkDir 'pure-wheels'
-    $built = Add-PurePythonWheel -Requirements $requirements -Lock (Join-Path $RepoRoot 'uv.lock') -HostPython $HostPython -OutDir $pure -PureBuild $PureBuild
+    $built = @(Add-PurePythonWheel -Requirements $requirements -Lock (Join-Path $RepoRoot 'uv.lock') -HostPython $HostPython -OutDir $pure -PureBuild $PureBuild)
     $common = @('pip', 'install', '--python', $HostPython, '--target', $SitePackages, '--python-platform', $Platform,
         '--python-version', $PythonVersion, '--compile-bytecode')
-    $findLinks = if ($built -gt 0) { @('--find-links', $pure) } else { @() }
+    # --only-binary: with the registry's sdist in view, uv builds it rather than take the --find-links wheel (measured).
+    $findLinks = if ($built.Count -gt 0) { @('--find-links', $pure) + @($built | ForEach-Object { '--only-binary', $_ }) } else { @() }
     Invoke-AppUv -What 'installing the locked dependencies' -Arguments ($common + $findLinks + @('--requirement', $requirements))
     Invoke-AppUv -What "installing $AppWheel" -Arguments ($common + @('--no-deps', $AppWheel))
     Invoke-AppUv -What "installing the chain ORT wheel $OrtWheel" -Arguments ($common + @('--no-index', '--no-deps', $OrtWheel))

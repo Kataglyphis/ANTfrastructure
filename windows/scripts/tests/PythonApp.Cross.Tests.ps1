@@ -114,7 +114,7 @@ Describe 'Add-PurePythonWheel' {
     # Builds pyyaml from a file:// sdist the lock pins, with a fake uv build writing a wheel of -Entries; returns the build's env and count.
     function script:Invoke-PureBuild {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'the fake uv runs in the module''s scope; only the global scope reaches it')]
-        param([Parameter(Mandatory)][string]$Dir, [string[]]$Entries = @('yaml/__init__.py'))
+        param([Parameter(Mandatory)][string]$Dir, [string[]]$Entries = @('yaml/__init__.py'), [switch]$Whole)
         $sdist = Join-Path $Dir 'pyyaml-6.0.3.tar.gz'
         Set-Content -LiteralPath $sdist -Value 'the sdist'
         $sha = (Get-FileHash -LiteralPath $sdist -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -123,7 +123,13 @@ Describe 'Add-PurePythonWheel' {
         Set-Content -LiteralPath (Join-Path $Dir 'req.txt') -Value @('pyyaml==6.0.3 \', '    --hash=sha256:111', 'rich==14.0')
         $global:FakeEntries = $Entries
         $global:FakeBuildEnv = $null
+        $global:FakeCalls = [Collections.Generic.List[string]]::new()
         Set-Item function:global:uv {
+            $global:FakeCalls.Add($args -join ' ')
+            $global:LASTEXITCODE = 0
+            $outFile = [array]::IndexOf($args, '--output-file')
+            if ($outFile -ge 0) { Copy-Item -LiteralPath (Join-Path (Split-Path $args[$outFile + 1]) 'req.txt') -Destination $args[$outFile + 1]; return }
+            if ($args[0] -ne 'build') { return }
             $global:FakeBuildEnv = $env:PYYAML_FORCE_LIBYAML
             Add-Type -AssemblyName System.IO.Compression.FileSystem
             $zip = [IO.Compression.ZipFile]::Open((Join-Path $args[[array]::IndexOf($args, '--out-dir') + 1] 'pyyaml-6.0.3-py3-none-any.whl'), 'Create')
@@ -131,13 +137,18 @@ Describe 'Add-PurePythonWheel' {
             $global:LASTEXITCODE = 0
         }
         try {
+            if ($Whole) {
+                Install-PythonAppCrossPackage -HostPython 'py' -SitePackages (Join-Path $Dir 'site') -RepoRoot $Dir -AppWheel 'a.whl' -Extras 'app' `
+                    -OrtWheel 'o.whl' -WorkDir $Dir -Platform 'aarch64-pc-windows-msvc' -PythonVersion '3.15'
+                return [pscustomobject]@{ Calls = @($global:FakeCalls) }
+            }
             $built = & (Get-Module WindowsPythonApp.Common) {
                 Add-PurePythonWheel -Requirements $args[0] -Lock $args[1] -HostPython 'py' -OutDir $args[2] -PureBuild @{ pyyaml = @{ PYYAML_FORCE_LIBYAML = '0' } }
             } (Join-Path $Dir 'req.txt') (Join-Path $Dir 'uv.lock') (Join-Path $Dir 'pure')
             return [pscustomobject]@{ Built = $built; Env = $global:FakeBuildEnv }
         } finally {
             Remove-Item -Path Function:\uv
-            Remove-Variable -Name FakeEntries, FakeBuildEnv -Scope Global
+            Remove-Variable -Name FakeEntries, FakeBuildEnv, FakeCalls -Scope Global
         }
     }
 
@@ -145,11 +156,20 @@ Describe 'Add-PurePythonWheel' {
         Invoke-InTestDir { param($d)
             $env:PYYAML_FORCE_LIBYAML = $null
             $run = Invoke-PureBuild -Dir $d
-            Assert-Equal 1 $run.Built 'one pure wheel'
+            Assert-Equal 'pyyaml' ($run.Built -join ',') 'one pure wheel, by name'
             Assert-Equal '0' $run.Env 'the build saw PYYAML_FORCE_LIBYAML=0'
             Assert-True ($null -eq $env:PYYAML_FORCE_LIBYAML) 'and the variable is gone again'
             $wheelHash = (Get-FileHash -LiteralPath (Join-Path $d 'pure\pyyaml-6.0.3-py3-none-any.whl') -Algorithm SHA256).Hash.ToLowerInvariant()
             Assert-Match "--hash=sha256:$wheelHash" ((Get-Content -LiteralPath (Join-Path $d 'req.txt')) -join "`n") 'the requirement accepts the wheel'
+        }
+    }
+
+    It 'makes the dependency install take the pure wheel: --find-links, and --only-binary so uv does not build the sdist instead' {
+        Invoke-InTestDir { param($d)
+            $run = Invoke-PureBuild -Dir $d -Whole
+            $deps = @($run.Calls | Where-Object { $_ -like 'pip install *--requirement *' })
+            Assert-Equal 1 $deps.Count 'one install of the locked dependencies'
+            Assert-Match "--find-links $([regex]::Escape((Join-Path $d 'pure-wheels'))) --only-binary pyyaml --requirement " $deps[0] 'the built wheel, and no fallback to building the sdist'
         }
     }
 

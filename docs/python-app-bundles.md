@@ -252,7 +252,9 @@ packages to `dist\windows-arm64`:
   its sdist from the URL in `uv.lock` and checks it against the lock's sha256, builds it with the
   package's switch (`PYYAML_FORCE_LIBYAML=0`), refuses anything but one `py3-none-any` wheel without
   a `.pyd`, `.dll`, `.so` or `.exe`, and adds that wheel's own hash to the requirement, so the
-  hash-checked install takes it from `--find-links`. Building the sdist the usual way failed:
+  hash-checked install takes it from `--find-links`, with `--only-binary` for that package: given the
+  registry's sdist too, uv builds it rather than take the local wheel (OrchestrANT's first run of
+  this, 2026-10-16, measured again in `:latest`). Building the sdist the usual way failed:
   uv resolves build requirements for the target platform too, so the x64 host got an arm64 Cython.
 - **Excluded from the lock export:** the PyPI ONNX Runtime and OpenCV. PyPI has no win_arm64
   `opencv-python`, so the image's own cv2 (`C:\runtime\python\Lib\site-packages\cv2`) stands in.

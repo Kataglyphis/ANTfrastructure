@@ -458,6 +458,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         aarch64-pc-windows-msvc --python-version 3.15 --no-build --find-links` installs it, while
         without it uv demands a build. `PythonApp.Cross.Tests.ps1` covers the lock lookup, the hash
         line, the build with its env and the refusal of a wheel with a binary.
+      - **The first CI run (OrchestrANT 38951118108) built the wheel, then uv built the sdist anyway:**
+        with the registry's sdist in view it preferred building it to the `--find-links` wheel, which
+        `:latest` reproduced. The install passes `--only-binary <package>` now; a test fails without it.
       - Done when OrchestrANT's `windows-arm64-cross` packages on 3.15.
 
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
