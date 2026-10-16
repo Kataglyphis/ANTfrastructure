@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-16 — the AMF header pin follows AMD's re-upload of v1.5.3
+
+- **AMD replaced the asset `AMF-headers-v1.5.3.tar.gz` at 19:36 UTC**, two weeks after the release
+  (2026-09-29). The new file is 88,584 bytes with GitHub digest `0f521ad9…`.
+- The rocm chain fetched the old one at 17:05 UTC. The nvidia chain's FFmpeg stage refused the new
+  one four times (`SHA256 mismatch`) and stopped, as the pin is meant to.
+- **The contents did not change.** All 57 headers in the new tarball equal the blobs at the git tag
+  `v1.5.3`, byte for byte (the full tree, not truncated). Only the archive was repacked.
+- `AMF_HEADERS_SHA256` in `versions.env` and the ARG default in `Dockerfile.media-builder` now name
+  the new digest. The note above the pin records why.
+
 ## 2026-10-16 — VS Build Tools from VS 18's own channel name
 
 - **`aka.ms/vs/18/release/vs_buildtools.exe` redirects to Bing.** Every base build of the day got
