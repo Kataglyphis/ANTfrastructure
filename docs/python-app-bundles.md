@@ -247,6 +247,13 @@ packages to `dist\windows-arm64`:
 - **The packages:** `uv pip install --target` with `--python-platform aarch64-pc-windows-msvc`,
   from the host. A dependency with no wheel at all (`antlr4-python3-runtime`) is built by the
   host, so a compiled one would carry x64 binaries; the arch gate refuses those.
+- A dependency with no wheel for the target but a pure-Python build goes in as that build
+  (`-PureBuild`; since 2026-10-16 pyyaml, which has no `cp315` win_arm64 wheel). The host fetches
+  its sdist from the URL in `uv.lock` and checks it against the lock's sha256, builds it with the
+  package's switch (`PYYAML_FORCE_LIBYAML=0`), refuses anything but one `py3-none-any` wheel without
+  a `.pyd`, `.dll`, `.so` or `.exe`, and adds that wheel's own hash to the requirement, so the
+  hash-checked install takes it from `--find-links`. Building the sdist the usual way failed:
+  uv resolves build requirements for the target platform too, so the x64 host got an arm64 Cython.
 - **Excluded from the lock export:** the PyPI ONNX Runtime and OpenCV. PyPI has no win_arm64
   `opencv-python`, so the image's own cv2 (`C:\runtime\python\Lib\site-packages\cv2`) stands in.
 - **The launchers:** compiled with `/clang:--target=aarch64-pc-windows-msvc`.
