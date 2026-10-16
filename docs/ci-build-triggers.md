@@ -14,10 +14,10 @@ The file names are one per platform and arch since 2026-09-24
 |---|---|---|
 | OmniAccelerANT (since 2026-10-15) | `linux-x64.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `windows-x64`, `windows-arm64`, `android`, `web` through `on-request.yml`; all of them through `release.yml` on `main` |
 | OxidANT (since 2026-10-15) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64` (also weekly), `windows-x64`, `windows-arm64-cross` through `on-request.yml`; all five through `release.yml` on `main` (since 2026-10-16; the version is `Cargo.toml`'s) |
-| AccelerANTgine (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64`, `windows-x64`, `windows-arm64-cross` through `on-request.yml`; no `release.yml` yet |
+| AccelerANTgine (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64`, `windows-x64`, `windows-arm64-cross` through `on-request.yml`; all five through `release.yml` on `main` (since 2026-10-16; the version is `CMakeLists.txt`'s `project()`) |
 | BeschleunigerBallett (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` | `linux-arm64`, `linux-riscv64` (its GPU shards also weekly), `windows-x64`, `windows-arm64-cross` through `on-request.yml`; no `release.yml` yet |
 | OrchestrANT (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64`, `windows-x64`, `windows-arm64-cross` through `on-request.yml`; no `release.yml` yet, and a pushed `v*` tag still runs the four releasing lanes, which attach their packages, so `on-request.yml` grants three of them `contents: write` |
-| WebDavClient (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml` | `linux-arm64`, `windows-x64`, `windows-arm64` through `on-request.yml`; no `release.yml` yet |
+| WebDavClient (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml` | `linux-arm64`, `windows-x64`, `windows-arm64` through `on-request.yml`; all four through `release.yml` on `main` (since 2026-10-16; the version is `VERSION.txt`'s) |
 
 jotrockenmitlocken builds and deploys its site on every push (`web.yml`), and ANThology
 and DocumANTation run only their docs; none of the three has a platform lane to request.
