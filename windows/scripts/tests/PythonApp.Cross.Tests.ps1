@@ -83,3 +83,79 @@ Describe 'New-PythonAppCrossRuntime' {
         }
     }
 }
+
+Describe 'Get-LockSdist and Add-RequirementHash' {
+
+    It 'reads one package''s sdist URL and sha256 from uv.lock, and names a package it lacks' {
+        Invoke-InTestDir { param($d)
+            $lock = Join-Path $d 'uv.lock'
+            Set-Content -LiteralPath $lock -Value @(
+                '[[package]]', 'name = "pyyaml"', 'version = "6.0.3"', 'source = { registry = "https://pypi.org/simple" }',
+                "sdist = { url = ""https://files.example/pyyaml-6.0.3.tar.gz"", hash = ""sha256:$('a' * 64)"", size = 1 }",
+                '', '[[package]]', 'name = "wheel-only"', 'version = "1.0"', 'wheels = []')
+            $sdist = & (Get-Module WindowsPythonApp.Common) { Get-LockSdist -Lock $args[0] -Name 'pyyaml' -Version '6.0.3' } $lock
+            Assert-Equal 'https://files.example/pyyaml-6.0.3.tar.gz' $sdist.Url 'the URL'
+            Assert-Equal ('a' * 64) $sdist.Sha256 'the hash'
+            Assert-Throws { & (Get-Module WindowsPythonApp.Common) { Get-LockSdist -Lock $args[0] -Name 'wheel-only' -Version '1.0' } $lock } -MessagePattern 'no sdist for wheel-only'
+            Assert-Throws { & (Get-Module WindowsPythonApp.Common) { Get-LockSdist -Lock $args[0] -Name 'absent' -Version '1' } $lock } -MessagePattern 'no package absent 1'
+        }
+    }
+
+    It 'adds the built wheel''s hash to its own requirement only, keeping the line continuations' {
+        $lines = @('pyyaml==6.0.3 \', '    --hash=sha256:111 \', '    --hash=sha256:222', '    # via app', 'rich==14.0 \', '    --hash=sha256:333')
+        $out = & (Get-Module WindowsPythonApp.Common) { Add-RequirementHash -Lines $args[0] -Name 'pyyaml' -Sha256 'fff' } $lines
+        Assert-Equal "pyyaml==6.0.3 \|    --hash=sha256:111 \|    --hash=sha256:222 \|    --hash=sha256:fff|    # via app|rich==14.0 \|    --hash=sha256:333" ($out -join '|') 'one more hash, continued'
+        Assert-Throws { & (Get-Module WindowsPythonApp.Common) { Add-RequirementHash -Lines @('pyyaml==6.0.3') -Name 'pyyaml' -Sha256 'f' } } -MessagePattern 'no hashed requirement for pyyaml'
+    }
+}
+
+Describe 'Add-PurePythonWheel' {
+
+    # Builds pyyaml from a file:// sdist the lock pins, with a fake uv build writing a wheel of -Entries; returns the build's env and count.
+    function script:Invoke-PureBuild {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'the fake uv runs in the module''s scope; only the global scope reaches it')]
+        param([Parameter(Mandatory)][string]$Dir, [string[]]$Entries = @('yaml/__init__.py'))
+        $sdist = Join-Path $Dir 'pyyaml-6.0.3.tar.gz'
+        Set-Content -LiteralPath $sdist -Value 'the sdist'
+        $sha = (Get-FileHash -LiteralPath $sdist -Algorithm SHA256).Hash.ToLowerInvariant()
+        Set-Content -LiteralPath (Join-Path $Dir 'uv.lock') -Value @('[[package]]', 'name = "pyyaml"', 'version = "6.0.3"',
+            "sdist = { url = ""$([uri]::new($sdist).AbsoluteUri)"", hash = ""sha256:$sha"", size = 9 }")
+        Set-Content -LiteralPath (Join-Path $Dir 'req.txt') -Value @('pyyaml==6.0.3 \', '    --hash=sha256:111', 'rich==14.0')
+        $global:FakeEntries = $Entries
+        $global:FakeBuildEnv = $null
+        Set-Item function:global:uv {
+            $global:FakeBuildEnv = $env:PYYAML_FORCE_LIBYAML
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $zip = [IO.Compression.ZipFile]::Open((Join-Path $args[[array]::IndexOf($args, '--out-dir') + 1] 'pyyaml-6.0.3-py3-none-any.whl'), 'Create')
+            try { foreach ($e in $global:FakeEntries) { $null = $zip.CreateEntry($e) } } finally { $zip.Dispose() }
+            $global:LASTEXITCODE = 0
+        }
+        try {
+            $built = & (Get-Module WindowsPythonApp.Common) {
+                Add-PurePythonWheel -Requirements $args[0] -Lock $args[1] -HostPython 'py' -OutDir $args[2] -PureBuild @{ pyyaml = @{ PYYAML_FORCE_LIBYAML = '0' } }
+            } (Join-Path $Dir 'req.txt') (Join-Path $Dir 'uv.lock') (Join-Path $Dir 'pure')
+            return [pscustomobject]@{ Built = $built; Env = $global:FakeBuildEnv }
+        } finally {
+            Remove-Item -Path Function:\uv
+            Remove-Variable -Name FakeEntries, FakeBuildEnv -Scope Global
+        }
+    }
+
+    It 'builds pyyaml from the lock''s hash-checked sdist with its env, and pins the wheel by its own hash' {
+        Invoke-InTestDir { param($d)
+            $env:PYYAML_FORCE_LIBYAML = $null
+            $run = Invoke-PureBuild -Dir $d
+            Assert-Equal 1 $run.Built 'one pure wheel'
+            Assert-Equal '0' $run.Env 'the build saw PYYAML_FORCE_LIBYAML=0'
+            Assert-True ($null -eq $env:PYYAML_FORCE_LIBYAML) 'and the variable is gone again'
+            $wheelHash = (Get-FileHash -LiteralPath (Join-Path $d 'pure\pyyaml-6.0.3-py3-none-any.whl') -Algorithm SHA256).Hash.ToLowerInvariant()
+            Assert-Match "--hash=sha256:$wheelHash" ((Get-Content -LiteralPath (Join-Path $d 'req.txt')) -join "`n") 'the requirement accepts the wheel'
+        }
+    }
+
+    It 'refuses a wheel that carries a binary, which would be the build host''s arch' {
+        Invoke-InTestDir { param($d)
+            Assert-Throws { $null = Invoke-PureBuild -Dir $d -Entries 'yaml/__init__.py', 'yaml/_yaml.cp315-win_amd64.pyd' } -MessagePattern 'carries yaml/_yaml\.cp315-win_amd64\.pyd'
+        }
+    }
+}

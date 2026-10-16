@@ -6,7 +6,7 @@
 Set-StrictMode -Version Latest
 
 # Guarded, never -Force: a forced nested import unloads the caller's top-level copy.
-foreach ($sibling in 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common') {
+foreach ($sibling in 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common', 'WindowsScripts.Shared') {
     if (-not (Get-Module -Name $sibling)) { Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking }
 }
 
@@ -200,6 +200,77 @@ function New-PythonAppCrossRuntime {
     return Invoke-PythonAppLayout -HostPython $HostPython -SourceDir $SourceDir -Destination $Destination -Arguments @('--build', $flat, '--arch', $Arch)
 }
 
+# uv.lock's sdist of -Name -Version: its URL and sha256, the bytes a pure-Python build may start from.
+function Get-LockSdist {
+    param([Parameter(Mandatory)][string]$Lock, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Version)
+    $text = Get-Content -LiteralPath $Lock -Raw
+    $pattern = '(?ms)^\[\[package\]\]\r?\nname = "' + [regex]::Escape($Name) + '"\r?\nversion = "' + [regex]::Escape($Version) + '"\r?\n(?<body>.*?)(?=^\[\[package\]\]|\z)'
+    $block = [regex]::Match($text, $pattern)
+    if (-not $block.Success) { throw "uv.lock has no package $Name $Version" }
+    $sdist = [regex]::Match($block.Groups['body'].Value, '(?m)^sdist = \{ url = "(?<url>[^"]+)", hash = "sha256:(?<sha>[0-9a-f]{64})"')
+    if (-not $sdist.Success) { throw "uv.lock records no sdist for $Name $Version" }
+    [pscustomobject]@{ Url = $sdist.Groups['url'].Value; Sha256 = $sdist.Groups['sha'].Value }
+}
+
+# -Lines with one more --hash on -Name's requirement, so a hash-checked install accepts the wheel built here.
+function Add-RequirementHash {
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)][string[]]$Lines, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Sha256)
+    $out = [Collections.Generic.List[string]]::new()
+    $inside = $false
+    $added = $false
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        $line = $Lines[$i]
+        if ($line -match "^$([regex]::Escape($Name))==") { $inside = $true }
+        elseif ($inside -and $line -notmatch '^\s+--hash=') { $inside = $false }
+        $last = $inside -and $line -match '^\s+--hash=' -and ($i + 1 -ge $Lines.Count -or $Lines[$i + 1] -notmatch '^\s+--hash=')
+        if ($last) {
+            $out.Add($line.TrimEnd(' ', '\') + ' \')
+            $out.Add("    --hash=sha256:$Sha256")
+            $added = $true
+        } else { $out.Add($line) }
+    }
+    if (-not $added) { throw "no hashed requirement for $Name to add the built wheel's hash to" }
+    return [string[]]$out
+}
+
+# Builds each -PureBuild package the requirements pin from uv.lock's sdist, with its env, as a py3-none-any wheel; returns how many.
+function Add-PurePythonWheel {
+    [OutputType([int])]
+    param(
+        [Parameter(Mandatory)][string]$Requirements,
+        [Parameter(Mandatory)][string]$Lock,
+        [Parameter(Mandatory)][string]$HostPython,
+        [Parameter(Mandatory)][string]$OutDir,
+        [Parameter(Mandatory)][hashtable]$PureBuild
+    )
+    if (-not (Test-Path -LiteralPath $Requirements -PathType Leaf)) { return 0 }
+    [string[]]$lines = Get-Content -LiteralPath $Requirements
+    $built = 0
+    foreach ($name in $PureBuild.Keys) {
+        $pin = $lines | Where-Object { $_ -match "^$([regex]::Escape($name))==" } | Select-Object -First 1
+        if (-not $pin) { continue }
+        $version = [regex]::Match($pin, '==([^\s;\\]+)').Groups[1].Value
+        $sdist = Get-LockSdist -Lock $Lock -Name $name -Version $version
+        $archive = Join-Path $OutDir ([IO.Path]::GetFileName(([uri]$sdist.Url).AbsolutePath))
+        Invoke-DownloadWithRetry -Url $sdist.Url -DestinationPath $archive -ExpectedSha256 $sdist.Sha256 -Description "$name $version sdist"
+        Invoke-WithProcessEnvironment -Environment $PureBuild[$name] -ScriptBlock {
+            Invoke-AppUv -What "building $name $version as pure Python" -Arguments @('build', '--wheel', '--python', $HostPython, '--out-dir', $OutDir, $archive)
+        }
+        $stem = ($name -replace '[-.]+', '_')
+        $wheel = @(Get-ChildItem -LiteralPath $OutDir -File -Filter "*-$version-*.whl" | Where-Object { $_.Name -like "$stem-*" })
+        if ($wheel.Count -ne 1 -or $wheel[0].Name -notlike '*-py3-none-any.whl') { throw "$name $version built $($wheel.Name -join ', '), not one py3-none-any wheel" }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [IO.Compression.ZipFile]::OpenRead($wheel[0].FullName)
+        try { $binaries = @($zip.Entries | Where-Object { $_.FullName -match '\.(pyd|dll|so|exe)$' } | ForEach-Object FullName) } finally { $zip.Dispose() }
+        if ($binaries.Count -gt 0) { throw "$($wheel[0].Name) carries $($binaries -join ', '): no pure-Python build" }
+        $lines = Add-RequirementHash -Lines $lines -Name $name -Sha256 (Get-FileHash -LiteralPath $wheel[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $built++
+    }
+    if ($built -gt 0) { Set-Content -LiteralPath $Requirements -Value $lines -Encoding utf8NoBOM }
+    return $built
+}
+
 function Install-PythonAppCrossPackage {
     <#
     .SYNOPSIS
@@ -209,6 +280,9 @@ function Install-PythonAppCrossPackage {
         run here. A dependency with no wheel at all (antlr4-python3-runtime) is built by the host; a compiled one would
         carry host binaries, which the bundle's arch gate refuses. -Exclude leaves packages out of the lock export: the
         PyPI ORT the chain wheel replaces, and an OpenCV the chain cv2 replaces (PyPI has no win_arm64 opencv-python).
+        -PureBuild names packages with no wheel for the target but a pure-Python build (pyyaml on cp315 win_arm64):
+        each is built here from uv.lock's hash-checked sdist with its env, must come out py3-none-any without binaries,
+        and goes in by its own hash.
     #>
     [CmdletBinding()]
     param(
@@ -221,14 +295,18 @@ function Install-PythonAppCrossPackage {
         [Parameter(Mandatory)][string]$WorkDir,
         [Parameter(Mandatory)][string]$Platform,
         [Parameter(Mandatory)][string]$PythonVersion,
-        [string[]]$Exclude = @('onnxruntime')
+        [string[]]$Exclude = @('onnxruntime'),
+        [hashtable]$PureBuild = @{ pyyaml = @{ PYYAML_FORCE_LIBYAML = '0' } }
     )
 
     $requirements = Join-Path $WorkDir 'requirements.cross.txt'
     Export-AppRequirement -RepoRoot $RepoRoot -Extras $Extras -Exclude $Exclude -OutFile $requirements
+    $pure = Join-Path $WorkDir 'pure-wheels'
+    $built = Add-PurePythonWheel -Requirements $requirements -Lock (Join-Path $RepoRoot 'uv.lock') -HostPython $HostPython -OutDir $pure -PureBuild $PureBuild
     $common = @('pip', 'install', '--python', $HostPython, '--target', $SitePackages, '--python-platform', $Platform,
         '--python-version', $PythonVersion, '--compile-bytecode')
-    Invoke-AppUv -What 'installing the locked dependencies' -Arguments ($common + @('--requirement', $requirements))
+    $findLinks = if ($built -gt 0) { @('--find-links', $pure) } else { @() }
+    Invoke-AppUv -What 'installing the locked dependencies' -Arguments ($common + $findLinks + @('--requirement', $requirements))
     Invoke-AppUv -What "installing $AppWheel" -Arguments ($common + @('--no-deps', $AppWheel))
     Invoke-AppUv -What "installing the chain ORT wheel $OrtWheel" -Arguments ($common + @('--no-index', '--no-deps', $OrtWheel))
     # uv's script trampolines match the HOST arch; the bundle has launchers of its own, and the arch gate would refuse these.
