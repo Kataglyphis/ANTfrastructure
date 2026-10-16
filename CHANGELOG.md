@@ -20,6 +20,11 @@
   - The key files `/root/sccache-s3-key.txt` and `/etc/garage/evict-key.txt`.
   - The two re-resolve units.
 - The reconstructed `sccache-evict.sh` and `sccache-evict.env.example` are gone.
+- **The tunnel and Garage come back by themselves.**
+  - `wg-quick@wg0.service.d/retry.conf` retries a tunnel whose endpoint name did not resolve at
+    boot, every 30 s with no start limit.
+  - `garage.service` is also wanted by `wg-quick@wg0`, so the `BindsTo` stop is followed by a start
+    when the tunnel returns. Tested by restarting `wg0`.
 
 ## 2026-10-16 — a bucket that stalls sccache's startup check no longer stops a build
 

@@ -24,12 +24,14 @@ all of them, so one host's compiles are hits on the next.
 > and its IPv6 prefix are placeholders too (`<name>`, `<port>`, `<ula-prefix>`): they point at
 > the home connection. `sccache-s3-evict` differs from the live copy in two places only: it
 > exports the key in its own statement (shellcheck SC2155), and its header is one comment line.
+> `garage.service` carries one comment line more, on its `WantedBy`.
 
 ## Files
 
 | File | Goes to | Owner, mode |
 |---|---|---|
 | `wg0.conf.example` | `/etc/wireguard/wg0.conf` | root, 600 |
+| `wg-quick@wg0.retry.conf` | `/etc/systemd/system/wg-quick@wg0.service.d/retry.conf` | root, 644 |
 | `wg-reresolve-dns@.service`, `wg-reresolve-dns@.timer` | `/etc/systemd/system/` | root, 644 |
 | `garage.toml.example` | `/etc/garage/garage.toml` | root:garage, 640 |
 | `garage.service` | `/etc/systemd/system/garage.service` | root, 644 |
@@ -52,6 +54,7 @@ all of them, so one host's compiles are hits on the next.
 ```bash
 sudo apt-get install -y wireguard
 sudo chmod 600 /etc/wireguard/wg0.conf
+sudo install -D -m 644 wg-quick@wg0.retry.conf /etc/systemd/system/wg-quick@wg0.service.d/retry.conf
 sudo install -m 755 /usr/share/doc/wireguard-tools/examples/reresolve-dns/reresolve-dns.sh /usr/local/sbin/wg-reresolve-dns
 sudo install -m 644 wg-reresolve-dns@.service wg-reresolve-dns@.timer /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -67,6 +70,10 @@ script is wireguard-tools' own example (GPL-2.0, Jason A. Donenfeld), installed 
 package rather than copied here. For each peer whose last handshake is older than 135 s it runs
 `wg set <if> peer <key> endpoint <name>`, which resolves the name again. Recovery measured at
 about 20 s.
+
+**And the boot.** `wg-quick@wg0` resolves the name when it starts; if DNS is not up yet it
+fails once, and without the drop-in the tunnel stays down until someone starts it. The drop-in
+retries every 30 s with no start limit.
 
 ## 2. Garage
 
@@ -89,7 +96,10 @@ sudo systemctl enable --now garage
 ```
 
 `garage.service` binds to `wg-quick@wg0`: without the tunnel the S3 address does not exist,
-and Garage would fail to bind it.
+and Garage would fail to bind it. `BindsTo` stops Garage when the tunnel stops. Its
+`WantedBy=… wg-quick@wg0.service` starts it again when the tunnel comes back; tested on
+2026-10-16 by restarting `wg0`. After editing the `[Install]` section of an installed unit, run
+`sudo systemctl daemon-reload && sudo systemctl reenable garage`.
 
 Then the layout, the bucket and the two keys. Check each command against
 `garage <command> --help` of the installed version:
