@@ -81,20 +81,22 @@ $proc = $null
 
 try {
     Write-Host 'Downloading Visual Studio Build Tools Installer...'
-    # The major-pinned alias is published late for new majors, so stable is the fallback; no SHA pin, the bootstrapper refreshes in-channel.
-        $vsUrls = @(
+    # VS 18 names its channel stable (its /release/ alias redirects to Bing, 2026-10-16), 17 and older release; the floating alias is last; no SHA pin, the bootstrapper refreshes in-channel.
+    $vsFloatingUrl = 'https://aka.ms/vs/stable/vs_buildtools.exe'
+    $vsUrls = @(
+        "https://aka.ms/vs/$script:VsMajor/stable/vs_buildtools.exe",
         "https://aka.ms/vs/$script:VsMajor/release/vs_buildtools.exe",
-        'https://aka.ms/vs/stable/vs_buildtools.exe'
+        $vsFloatingUrl
     )
     $vsDownloaded = $false
     foreach ($vsUrl in $vsUrls) {
         try {
             # MZ rejects an HTML page served in place of the binary; 3 pinned attempts ride out a transient aka.ms hiccup.
-            $attempts = if ($vsUrl -match 'stable') { 4 } else { 3 }
+            $attempts = if ($vsUrl -eq $vsFloatingUrl) { 4 } else { 3 }
             Invoke-DownloadWithRetry -Url $vsUrl -DestinationPath $installer `
                 -Description "VS Build Tools installer ($vsUrl)" -ExpectSignature MZ -MaxAttempts $attempts
             $vsDownloaded = $true
-            if ($vsUrl -match 'stable') {
+            if ($vsUrl -eq $vsFloatingUrl) {
                 Write-Warning "major-pinned VS alias unavailable — used floating 'stable' channel (currently VS $script:VsMajor; the VsDevCmd check below fails the build if it ever is not)."
             }
             break
