@@ -88,6 +88,26 @@ cmake -S "${_work}/parent" -B "${_work}/pbuild" >/dev/null && cmake --build "${_
 t_assert_ok test -f "${_work}/pstage/bin/app"
 t_assert_fails test -e "${_work}/pstage/lib/fixture"
 
+t_case "LOADER: a launcher takes the executable's place and starts it with the bundled loader and glibc"
+_project 'LOADER PROTECT "lib/fixture/libvendor*"'
+t_assert_ok _install
+t_assert_eq "#!/bin/sh" "$(head -1 "${_work}/stage/bin/app")" "bin/app is the launcher"
+t_assert_ok test -f "${_work}/stage/lib/fixture/app"
+t_assert_ok test -f "${_work}/stage/lib/fixture/libc.so.6"
+t_assert_eq 1 "$(find "${_work}/stage/lib/fixture" -name 'ld-linux*' | wc -l)" "the loader travels"
+mv "${_work}/stage" "${_work}/moved"
+t_assert_eq "closure-ok 42" "$(env -i LD_BIND_NOW=1 "${_work}/moved/bin/app" 2>&1)" "relocated launcher runs"
+mv "${_work}/moved" "${_work}/stage"
+
+t_case "the AppImage generator's patchelf leaves glibc as built and passes everything else on"
+_keep="${CMAKE_MODULES}/../linux/scripts/06-packaging/patchelf-keep-glibc.sh"
+printf '#!/bin/sh\necho "patched $*"\n' > "${_work}/stub-patchelf"
+chmod +x "${_work}/stub-patchelf"
+t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/ld-linux-x86-64.so.2)" "loader kept"
+t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/libc.so.6)" "libc kept"
+t_assert_eq "patched --set-rpath x /a/libfoo.so" \
+  "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/libfoo.so)" "others patched"
+
 t_case "an unresolvable library fails the install instead of shipping"
 _project ''
 mv "${_work}/vendor/libvendor.so.1" "${_work}/vendor/hidden.so"

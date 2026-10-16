@@ -301,9 +301,17 @@ declared, and the executable had no RUNPATH to its own `lib/`.
   Never `lib/` itself: `ldconfig` would serve a bundled `libstdc++` to every program. Only the
   top-level project's call counts: AccelerANTgine, embedded in OmniAccelerANT's plugin by
   `add_subdirectory`, would otherwise rewrite the Flutter bundle, chain ORT included.
-- **What it still needs:** glibc 2.43, which the image builds against. The packages therefore run
-  on the image's own base, Ubuntu 26.04, and newer. Debian 13 and Ubuntu 24.04 need the image's
-  loader and libc as well, which ObservANT already ships: BACKLOG CON97.
+- **glibc travels too, with `LOADER`** (2026-10-17). The image links against glibc 2.43, newer than
+  Debian 13's 2.41 and Ubuntu 24.04's 2.39. `06-packaging/bundle-loader.sh` moves each executable
+  into `lib/<PRIVATE_DIR>` beside the image's loader and glibc libraries and leaves a launcher in
+  its place, which runs it through that loader with `--library-path`, as ObservANT's does. The
+  launcher keeps `/proc/self/exe` pointing at the loader, so a program that finds its data from
+  there (a Flutter runner) needs the loader beside it instead. `LOADER` turns `dpkg-shlibdeps` off
+  (it reads the bundled glibc as the system's and pins `libc6 (<< 2.44)`), so `DEBIAN_DEPENDS`
+  names what the system still brings, and hands CPack's AppImage generator
+  `patchelf-keep-glibc.sh`: it patches every library without a RUNPATH, and a patched loader
+  segfaults. AccelerANTgine's `.deb`, tarball and AppImage start on Debian 13 (himbeere2) and
+  Ubuntu 26.04 this way. Without `LOADER` the packages need glibc 2.43: Ubuntu 26.04 and newer.
 - **The proof:** the `clean-host-package-check` action, in a job on `ubuntu-26.04` /
   `ubuntu-26.04-arm` after the lane. It installs the `.deb` with apt, which resolves `Depends` as
   on a user's machine, runs `ldd` over every installed ELF, and starts a command with
