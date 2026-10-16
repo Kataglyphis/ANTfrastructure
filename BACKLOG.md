@@ -436,33 +436,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         the media lane once.
 ## Open — the Windows arm64 bundle and unpublished variants
 
-- [ ] **The arm64 app bundle cannot install pyyaml for CPython 3.15** [M, ★★]. **Fixed in source 2026-10-16; OrchestrANT's lane has to prove it.** OrchestrANT's
-      `windows-arm64-cross` lane went red on 2026-10-16 (run 38863787616, job 116851917359) in
-      *Packaging (app bundle + installers)*, after the pin moved to 3.15 (CON90, 16c4560a).
-      - PyPI has no `cp315` win_arm64 wheel of pyyaml 6.0.3, so `Install-PythonAppCrossPackage`
-        builds it from the sdist; uv resolves the build requirements for `--python-platform`
-        too, so the x64 host gets an arm64 Cython (`failed to import Cython: DLL load failed ...
-        not a valid Win32 application`), and pyyaml's backend stops at `Cython does not appear to
-        be installed`.
-      - pyyaml has a pure-Python mode: `PYYAML_FORCE_LIBYAML=0` makes `ext_status` skip the
-        `_yaml` extension (setup.py, 6.0.3). Unproven whether uv then accepts the host-tagged
-        wheel for the arm64 target; a wheel built on an arm64 runner, or a SHA-pinned one in
-        `:winarm64`'s wheel store (as CON67 does for the device's pytest stack), are the other ways.
-      - The x64 bundle's twin of this, the PyPI `onnxruntime` with no `cp315` wheel, is fixed
-        in f10d0bba (the export leaves it out); the x64 bundle needs no build, pyyaml has cp315
-        win_amd64 wheels.
-      - **In source (2026-10-16):** `Install-PythonAppCrossPackage -PureBuild` builds pyyaml from
-        uv.lock's hash-checked sdist with `PYYAML_FORCE_LIBYAML=0` into a `py3-none-any` wheel and pins it
-        by its own hash (docs/python-app-bundles.md). Measured in `:latest` first: the build gives
-        `pyyaml-6.0.3-py3-none-any.whl` with no binary, and `uv pip install --python-platform
-        aarch64-pc-windows-msvc --python-version 3.15 --no-build --find-links` installs it, while
-        without it uv demands a build. `PythonApp.Cross.Tests.ps1` covers the lock lookup, the hash
-        line, the build with its env and the refusal of a wheel with a binary.
-      - **The first CI run (OrchestrANT 38951118108) built the wheel, then uv built the sdist anyway:**
-        with the registry's sdist in view it preferred building it to the `--find-links` wheel, which
-        `:latest` reproduced. The install passes `--only-binary <package>` now; a test fails without it.
-      - Done when OrchestrANT's `windows-arm64-cross` packages on 3.15.
-
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
