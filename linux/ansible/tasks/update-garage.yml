@@ -1,0 +1,99 @@
+---
+# Garage is one binary outside apt; a new major needs Garage's own migration, so only same-major releases install.
+- name: Installed Garage version
+  ansible.builtin.command: "{{ garage_bin }} --version"
+  register: garage_installed
+  changed_when: false
+
+- name: Garage's releases
+  ansible.builtin.uri:
+    url: "{{ garage_releases_url | default('https://git.deuxfleurs.fr/api/v1/repos/Deuxfleurs/garage/releases?limit=30') }}"
+    return_content: true
+  register: garage_releases
+
+- name: Pick the newest stable release of the installed major version
+  vars:
+    garage_stable: "{{ garage_releases.json | rejectattr('draft') | rejectattr('prerelease')
+      | map(attribute='tag_name') | map('regex_replace', '^v', '')
+      | select('match', '^[0-9]+[.][0-9]+[.][0-9]+$') | list }}"
+    garage_real: "{{ garage_installed.stdout.split()[1] | regex_replace('^v', '') }}"
+    garage_major: "{{ (garage_current | default(garage_real)).split('.')[0] }}"
+  ansible.builtin.set_fact:
+    garage_real_version: "{{ garage_real }}"
+    garage_target: "{{ garage_stable | select('match', '^' ~ garage_major ~ '[.]')
+      | community.general.version_sort | last }}"
+    garage_newer_major: "{{ garage_stable | reject('match', '^' ~ garage_major ~ '[.]')
+      | select('version', garage_real, '>') | community.general.version_sort | last | default('') }}"
+
+- name: A new Garage major is out — its migration is manual (garagehq.deuxfleurs.fr, "Upgrading Garage")
+  ansible.builtin.debug:
+    msg: "GARAGE: v{{ garage_newer_major }} is out, installed v{{ garage_real_version }}; not installed automatically"
+  when: garage_newer_major | length > 0
+
+- name: Install the newer Garage, and put the old one back if it does not come up
+  # garage_force reinstalls the same version, which is how the swap is tested without a release.
+  tags: [garage-install]
+  when: garage_target is version(garage_real_version, '>') or
+    (garage_force | default(false) and garage_target == garage_real_version)
+  block:
+    - name: Snapshot Garage's metadata before the swap
+      ansible.builtin.command: "{{ garage_bin }} -c {{ garage_config }} meta snapshot"
+      changed_when: true
+
+    - name: Download Garage {{ garage_target }}
+      ansible.builtin.get_url:
+        url: "https://garagehq.deuxfleurs.fr/_releases/v{{ garage_target }}/{{ ansible_architecture }}-unknown-linux-musl/garage"
+        dest: "{{ garage_bin }}.new"
+        mode: "0755"
+        force: true
+
+    - name: The download is the version it claims (Garage publishes no checksums)
+      ansible.builtin.command: "{{ garage_bin }}.new --version"
+      register: garage_new_version
+      changed_when: false
+      failed_when: ('v' ~ garage_target) not in garage_new_version.stdout.split()
+
+    - name: Keep the running binary for a rollback
+      ansible.builtin.copy:
+        src: "{{ garage_bin }}"
+        dest: "{{ garage_bin }}.prev"
+        remote_src: true
+        mode: "0755"
+
+    - name: Swap in the new binary
+      ansible.builtin.command: mv -f "{{ garage_bin }}.new" "{{ garage_bin }}"
+      changed_when: true
+
+    - name: Restart Garage on it
+      ansible.builtin.systemd_service:
+        name: "{{ garage_service }}"
+        state: restarted
+
+    - name: Garage is healthy, on the new version, and serves S3 again
+      ansible.builtin.shell: |
+        set -o pipefail
+        {{ garage_bin }} -c {{ garage_config }} status | grep -q 'HEALTHY NODES'
+        {{ garage_bin }} -c {{ garage_config }} status | grep -qw 'v{{ garage_target }}'
+        ss -Hltn 'sport = :{{ garage_s3_port }}' | grep -q .
+      args:
+        executable: /bin/bash
+      register: garage_health
+      retries: 12
+      delay: 5
+      until: garage_health.rc == 0
+      changed_when: false
+
+  rescue:
+    - name: Put the previous Garage back
+      ansible.builtin.command: mv -f "{{ garage_bin }}.prev" "{{ garage_bin }}"
+      changed_when: true
+      failed_when: false
+
+    - name: Restart Garage on the previous binary
+      ansible.builtin.systemd_service:
+        name: "{{ garage_service }}"
+        state: restarted
+
+    - name: Garage update failed and was rolled back — surface it (the run goes on)
+      ansible.builtin.debug:
+        msg: "GARAGE: update to v{{ garage_target }} failed and v{{ garage_real_version }} is back; see the task above"

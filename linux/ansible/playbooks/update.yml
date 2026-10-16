@@ -96,6 +96,15 @@
           register: update_compose_up
           changed_when: true
 
+    - name: Update Garage, the S3 store (one binary outside apt)
+      ansible.builtin.include_tasks: ../tasks/update-garage.yml
+      when: update_garage | default(false)
+      vars:
+        garage_bin: "{{ garage_binary | default('/usr/local/bin/garage') }}"
+        garage_config: "{{ garage_config_file | default('/etc/garage/garage.toml') }}"
+        garage_service: "{{ garage_systemd_unit | default('garage') }}"
+        garage_s3_port: "{{ garage_s3_api_port | default(3900) }}"
+
     - name: Installed nerdctl version
       ansible.builtin.command:
         cmd: nerdctl --version
