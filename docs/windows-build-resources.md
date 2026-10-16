@@ -581,7 +581,10 @@ The nvidia ORT stage, which was still compiling, finished: 608 of 2364 level-1 w
 level 0 lost none. The next stage, FFmpeg, passed the 2 s TCP probe. Its server still timed out
 in the startup check (`Timed out waiting for server startup. Maybe the remote service is
 unreachable?`), and every compile failed. Before the fallback, the bucket was a hard dependency
-of every RUN that named it.
+of every RUN that named it. The cause was on the network side: the FritzBox's IPv6 prefix
+changed, and `wg` had resolved the endpoint's name once, so the VPS kept sending to the old
+address for about 8 hours. `wg-reresolve-dns@wg0.timer` now follows such a change in about 20 s
+(the runbook's [WireGuard section](../linux/sccache-s3/README.md#1-wireguard-into-the-home-lan)).
 
 Adding the secret mounts and ARGs changed the RUN instructions, so the chain after 2026-10-15
 re-keys every sccache stage once. Those stages compile warm from level 0.

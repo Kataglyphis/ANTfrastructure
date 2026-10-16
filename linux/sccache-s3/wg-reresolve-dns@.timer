@@ -1,0 +1,8 @@
+[Unit]
+Description=Periodically re-resolve WireGuard endpoints on %i (home IP/IPv6 prefix changes)
+
+[Timer]
+OnCalendar=*:*:0/30
+
+[Install]
+WantedBy=timers.target
