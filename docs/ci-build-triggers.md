@@ -15,19 +15,16 @@ The file names are one per platform and arch since 2026-09-24
 | OmniAccelerANT (since 2026-10-15) | `linux-x64.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `windows-x64`, `windows-arm64`, `android`, `web` through `on-request.yml`; all of them through `release.yml` on `main` |
 | OxidANT (since 2026-10-15) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64` (also weekly), `windows-x64`, `windows-arm64-cross` through `on-request.yml`; all five through `release.yml` on `main` (since 2026-10-16; the version is `Cargo.toml`'s) |
 | AccelerANTgine (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64`, `windows-x64`, `windows-arm64-cross` through `on-request.yml`; no `release.yml` yet |
-| BeschleunigerBallett, OrchestrANT | every platform lane, on every push and PR to `main`/`develop`: the 2026-09-24 rule, until each moves | by hand where a lane has `workflow_dispatch` |
+| BeschleunigerBallett (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` | `linux-arm64`, `linux-riscv64` (its GPU shards also weekly), `windows-x64`, `windows-arm64-cross` through `on-request.yml`; no `release.yml` yet |
+| OrchestrANT (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64`, `windows-x64`, `windows-arm64-cross` through `on-request.yml`; no `release.yml` yet, and a pushed `v*` tag still runs the four releasing lanes, which attach their packages, so `on-request.yml` grants three of them `contents: write` |
+| WebDavClient (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml` | `linux-arm64`, `windows-x64`, `windows-arm64` through `on-request.yml`; no `release.yml` yet |
 
-The lanes those two still run on every push, measured 2026-09-25:
-
-| Lane | Workflow files |
-|---|---|
-| Linux x64 and arm64 (build + test) | `linux-x64.yml`, `linux-arm64.yml`, most over a shared `reusable-linux.yml` (OrchestrANT: one `ubuntu-26.04-amd64-arm64.yml` for both) |
-| Windows x64 | `windows-x64.yml` |
-| Windows arm64 (cross build, then a run on `windows-11-arm`) | `windows-arm64-cross.yml` in BeschleunigerBallett |
+jotrockenmitlocken builds and deploys its site on every push (`web.yml`), and ANThology
+and DocumANTation run only their docs; none of the three has a platform lane to request.
 
 What else decides whether a lane runs:
 
-- **Path filters.** BeschleunigerBallett's four platform lanes ignore a push that
+- **Path filters.** BeschleunigerBallett's Linux x64 lane ignores a push that
   touches only `**.md` or `docs/**`. Most `submodule-pins.yml` callers run only
   when `.gitmodules` or `third_party/**` changes. A workflow that a path filter
   leaves out does not start at all; it does not report `skipped`.
