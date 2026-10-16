@@ -122,6 +122,23 @@ version that is released already, a version without a section, notes over GitHub
 characters, a GitHub that does not answer and an empty directory
 (`test-publish-github-release.sh`, 34 assertions).
 
+### Before a repository's first release
+
+The five consumers that followed OmniAccelerANT on 2026-10-16 met three traps:
+
+1. **The version file can lag the CHANGELOG.** WebDavClient's `VERSION.txt` said 0.0.1 while its
+   CHANGELOG already recorded 0.9.0, so its first release would have gone backwards: pick a version
+   above every one the CHANGELOG names, and keep the version in one file (its docs read it).
+2. **A version may be released already** under an older scheme (OrchestrANT's v0.0.30, a pushed
+   tag): `--check` refuses it, so raise it first.
+3. **The `[Unreleased]` entries become the version's section** (`## [<version>] - <date>`, a new
+   empty `[Unreleased]` above it); `--check` then says `v<version> is not released yet and has its
+   CHANGELOG section`.
+
+Then a dry run on `develop` (`gh workflow run release.yml --ref develop -f dry-run=true`; the input
+is `dry-run`, not `dry_run`) runs every lane and lists the release's files, and the owner's
+fast-forward of `main` releases that commit.
+
 ## How a repository implements it
 
 | File | Triggers |
