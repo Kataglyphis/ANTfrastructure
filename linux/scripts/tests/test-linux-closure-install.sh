@@ -99,6 +99,24 @@ mv "${_work}/stage" "${_work}/moved"
 t_assert_eq "closure-ok 42" "$(env -i LD_BIND_NOW=1 "${_work}/moved/bin/app" 2>&1)" "relocated launcher runs"
 mv "${_work}/moved" "${_work}/stage"
 
+t_case "--beside: the program keeps its directory, so data/ beside /proc/self/exe is found; a rerun changes nothing"
+_loader="${CMAKE_MODULES}/../linux/scripts/06-packaging/bundle-loader.sh"
+mkdir -p "${_work}/beside/lib" "${_work}/beside/data"
+cat > "${_work}/runner.cpp" <<'EOF'
+#include <filesystem>
+#include <iostream>
+int main() {
+  auto dir = std::filesystem::read_symlink("/proc/self/exe").parent_path();
+  std::cout << (std::filesystem::is_directory(dir / "data") ? "data-found" : "data-missing") << '\n';
+}
+EOF
+c++ -std=c++17 -o "${_work}/beside/runner" "${_work}/runner.cpp"
+t_assert_ok bash "${_loader}" --beside "${_work}/beside" "${_work}/beside/lib" runner
+t_assert_ok bash "${_loader}" --beside "${_work}/beside" "${_work}/beside/lib" runner
+t_assert_ok test -f "${_work}/beside/runner.bin"
+t_assert_ok test -f "${_work}/beside/lib/libc.so.6"
+t_assert_eq "data-found" "$(env -i "${_work}/beside/runner")" "the runner finds data/ through the launcher"
+
 t_case "the AppImage generator's patchelf leaves glibc as built and passes everything else on"
 _keep="${CMAKE_MODULES}/../linux/scripts/06-packaging/patchelf-keep-glibc.sh"
 printf '#!/bin/sh\necho "patched $*"\n' > "${_work}/stub-patchelf"
