@@ -13,7 +13,8 @@ one() {
   find "${dir}" -maxdepth 1 -name "$1"
 }
 
-is_elf() { [ -f "$1" ] && [ "$(head -c 4 -- "$1" 2>/dev/null)" = $'\x7fELF' ]; }
+# tr: a file opening with NUL bytes would make the substitution warn for every one of them.
+is_elf() { [ -f "$1" ] && [ "$(head -c 4 -- "$1" 2>/dev/null | tr -d '\0')" = $'\x7fELF' ]; }
 
 # A missing library and a missing symbol version both print "not found"; the image hides either.
 scan_elves() {
