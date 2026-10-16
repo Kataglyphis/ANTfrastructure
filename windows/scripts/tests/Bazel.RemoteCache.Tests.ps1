@@ -26,7 +26,7 @@ Describe 'Get-BazelRemoteCacheArg' {
         $http.Start()
         try {
             $answer = $http.GetContextAsync()
-            $job = Start-ThreadJob { param($t) $c = $t.GetAwaiter().GetResult(); $c.Response.StatusCode = 404; $c.Response.Close(); $c.Request.HttpMethod } -ArgumentList $answer
+            $job = Start-ThreadJob { $c = ($using:answer).GetAwaiter().GetResult(); $c.Response.StatusCode = 404; $c.Response.Close(); $c.Request.HttpMethod }
             $r = @(Get-BazelRemoteCacheArg -Endpoint "http://localhost:$port/ " 6>$null)
             Assert-Equal 'HEAD' (Receive-Job $job -Wait -AutoRemoveJob) 'one HEAD request'
             Assert-Equal "--remote_cache=http://localhost:$port/bazel" $r[0] 'trailing slash and space trimmed'
