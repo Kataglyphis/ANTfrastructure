@@ -298,7 +298,9 @@ declared, and the executable had no RUNPATH to its own `lib/`.
   `lib/<PRIVATE_DIR>`, found through `$ORIGIN` RUNPATHs. The C++ compiler's runtime directory is
   searched first, since the image has two `libstdc++`. `SYSTEM` names what the package's
   `Depends` bring instead (a distro's GStreamer); `PROTECT` copies the chain ORT unpatched for G6.
-  Never `lib/` itself: `ldconfig` would serve a bundled `libstdc++` to every program.
+  Never `lib/` itself: `ldconfig` would serve a bundled `libstdc++` to every program. Only the
+  top-level project's call counts: AccelerANTgine, embedded in OmniAccelerANT's plugin by
+  `add_subdirectory`, would otherwise rewrite the Flutter bundle, chain ORT included.
 - **What it still needs:** glibc 2.43, which the image builds against. The packages therefore run
   on the image's own base, Ubuntu 26.04, and newer. Debian 13 and Ubuntu 24.04 need the image's
   loader and libc as well, which ObservANT already ships: BACKLOG CON97.

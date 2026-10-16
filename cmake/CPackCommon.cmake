@@ -64,7 +64,8 @@ set(_KATAGLYPHIS_ELF_CLOSURE "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/06-pack
 
 # The Linux twin of kataglyphis_install_package_dlls; arguments: docs/linux-build-basics.md#linux-packages-that-run-outside-the-image
 function(kataglyphis_install_linux_closure)
-  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # Embedded (AccelerANTgine in OmniAccelerANT's plugin), it would rewrite the parent's install tree, ORT included.
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT PROJECT_IS_TOP_LEVEL)
     return()
   endif()
   cmake_parse_arguments(

@@ -15,7 +15,10 @@
 - **`kataglyphis_install_linux_closure`** (`cmake/CPackCommon.cmake`): at install time, what the
   installed files need beyond glibc, glib, the graphics stack and `SYSTEM` goes to
   `lib/<PRIVATE_DIR>` with `$ORIGIN` RUNPATHs, the compiler's own `libstdc++` first.
-  `python-app-closure.sh` gained `--system`. `test-linux-closure-install.sh`: 15 assertions.
+  `python-app-closure.sh` gained `--system`. `test-linux-closure-install.sh`: 17 assertions.
+- **Only the top-level project's call counts.** AccelerANTgine, which OmniAccelerANT's plugin
+  pulls in by `add_subdirectory`, would otherwise rewrite the Flutter bundle on install, the
+  chain ORT that G6 grades included; the test fails without the guard.
 - **The `clean-host-package-check` action** installs a `.deb` with apt on a bare `ubuntu-26.04`
   runner, scans every installed ELF with `ldd` and starts a command with `LD_BIND_NOW=1`.
 - **Left: Debian 13 and Ubuntu 24.04** (glibc 2.41, 2.39) need the image's loader and libc in the
