@@ -5738,7 +5738,7 @@ includes that header. amd64 was not affected. Mechanism, gates and cost:
 ## 2026-09-23 - The published image no longer carries the build host's sccache endpoint
 
 **What broke.** `:winamd64` (digest `3137eebe…`, built 2026-09-22 from hub `0d85b8c1`)
-shipped `SCCACHE_WEBDAV_ENDPOINT=http://192.168.188.116:5000` — the owner's LAN WebDAV — plus
+shipped `SCCACHE_WEBDAV_ENDPOINT=http://<webdav-lan-ip>:5000` — the owner's LAN WebDAV — plus
 the build host's chain, force-local and cache settings, from the ENV blocks of four
 Dockerfiles (`patched-llvm` from #164, media-builder's `common`, the merge `built` stage,
 `rocm-migraphx`). The consumer wiring turns the sccache launchers on whenever sccache is on

@@ -11,7 +11,7 @@
     the key is tried against the bucket first, and a key the server refuses is not written.
     Level 0 stays the host's own WebDAV (Install-NewHost.ps1). docs/windows-build-resources.md § Two cache levels
 .EXAMPLE
-    pwsh -File windows/scripts/host/Set-SccacheS3Level.ps1 -Endpoint http://192.168.188.216:3900 -AccessKeyId GK0123456789abcdef01234567
+    pwsh -File windows/scripts/host/Set-SccacheS3Level.ps1 -Endpoint http://<s3-server-lan-ip>:3900 -AccessKeyId GK0123456789abcdef01234567
     Asks for the secret, then sets bucket sccache and region garage, the defaults.
 
 .EXAMPLE
@@ -61,7 +61,7 @@ if ($Clear) {
 }
 
 if ($Endpoint -notmatch '^https?://[^/:]+(:\d+)?/?$') {
-    throw "-Endpoint '$Endpoint' is not an http(s) URL such as http://192.168.188.216:3900"
+    throw "-Endpoint '$Endpoint' is not an http(s) URL such as http://10.0.0.26:3900"
 }
 if (-not (Test-UrlPortOpen $Endpoint)) {
     Write-Warning "$Endpoint does not answer from here; is the VPN up? The settings are written anyway."

@@ -14,7 +14,7 @@ rpc_secret = "REPLACE_ME"
 
 [s3_api]
 s3_region = "garage"
-api_bind_addr = "192.168.188.216:3900"
+api_bind_addr = "<s3-server-lan-ip>:3900"
 root_domain = ".s3.garage.invalid"
 
 [admin]

@@ -6,7 +6,7 @@ Describe 'Get-BkSccacheConfig' {
     $script:keyEnv = @{ KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID = 'GKEXAMPLE0000'; KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY = 'not-a-real-secret' }
 
     It 'passes the WebDAV endpoint alone when no bucket is configured' {
-        $c = Get-BkSccacheConfig -WebdavEndpoint 'http://192.168.188.116:5000'
+        $c = Get-BkSccacheConfig -WebdavEndpoint 'http://10.0.0.16:5000'
         Assert-Equal 'SCCACHE_WEBDAV_ENDPOINT' (($c.BuildArgs.Keys | Sort-Object) -join ',')
         Assert-Equal 0 @($c.Secrets).Count
         Assert-Equal '' $c.Note
@@ -14,9 +14,9 @@ Describe 'Get-BkSccacheConfig' {
 
     It 'chains webdav,s3 with the bucket''s settings as build args and the key as two env-sourced secrets' {
         Invoke-WithEnv $script:keyEnv {
-            $c = Get-BkSccacheConfig -WebdavEndpoint 'http://192.168.188.116:5000' -S3Endpoint 'http://192.168.188.216:3900' -S3Bucket 'sccache' -S3Region 'garage'
+            $c = Get-BkSccacheConfig -WebdavEndpoint 'http://10.0.0.16:5000' -S3Endpoint 'http://10.0.0.26:3900' -S3Bucket 'sccache' -S3Region 'garage'
             Assert-Equal 'webdav,s3' $c.BuildArgs['SCCACHE_MULTILEVEL_CHAIN']
-            Assert-Equal 'http://192.168.188.216:3900|sccache|garage|false' ("{0}|{1}|{2}|{3}" -f $c.BuildArgs['SCCACHE_ENDPOINT'], $c.BuildArgs['SCCACHE_BUCKET'],
+            Assert-Equal 'http://10.0.0.26:3900|sccache|garage|false' ("{0}|{1}|{2}|{3}" -f $c.BuildArgs['SCCACHE_ENDPOINT'], $c.BuildArgs['SCCACHE_BUCKET'],
                 $c.BuildArgs['SCCACHE_REGION'], $c.BuildArgs['SCCACHE_S3_USE_SSL'])
             Assert-Equal ('--secret|id=sccache_s3_key_id,env=KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID|--secret|' +
                 'id=sccache_s3_secret,env=KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY') ($c.Secrets -join '|')
@@ -33,7 +33,7 @@ Describe 'Get-BkSccacheConfig' {
 
     It 'uses the bucket alone, without a chain, when there is no WebDAV level' {
         Invoke-WithEnv $script:keyEnv {
-            $c = Get-BkSccacheConfig -S3Endpoint 'http://192.168.188.216:3900' -S3Bucket 'sccache'
+            $c = Get-BkSccacheConfig -S3Endpoint 'http://10.0.0.26:3900' -S3Bucket 'sccache'
             Assert-False $c.BuildArgs.ContainsKey('SCCACHE_MULTILEVEL_CHAIN')
             Assert-Equal 'sccache' $c.BuildArgs['SCCACHE_BUCKET']
         }
@@ -45,7 +45,7 @@ Describe 'Get-BkSccacheConfig' {
             @{ Why = 'the bucket is missing'; Env = @{ KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID = 'k'; KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY = 'x' }; Bucket = ''; Pattern = 'the bucket' })) {
         It "leaves the S3 level out, and says why, when $($case.Why)" {
             Invoke-WithEnv $case.Env {
-                $c = Get-BkSccacheConfig -WebdavEndpoint 'http://192.168.188.116:5000' -S3Endpoint 'http://192.168.188.216:3900' -S3Bucket $case.Bucket
+                $c = Get-BkSccacheConfig -WebdavEndpoint 'http://10.0.0.16:5000' -S3Endpoint 'http://10.0.0.26:3900' -S3Bucket $case.Bucket
                 Assert-Equal 0 @($c.Secrets).Count 'no secrets without the whole key'
                 Assert-False $c.BuildArgs.ContainsKey('SCCACHE_BUCKET')
                 Assert-False $c.BuildArgs.ContainsKey('SCCACHE_MULTILEVEL_CHAIN') 'a chain naming a missing level would fail the server'

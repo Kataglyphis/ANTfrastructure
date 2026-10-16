@@ -57,7 +57,7 @@ Describe 'WindowsImageEnv.Common: the matcher' {
     }
 
     It 'names the reason, so a red gate says what to fix' {
-        $r = @(Get-ImageEnvLeak -Name 'SCCACHE_WEBDAV_ENDPOINT' -Value 'http://192.168.188.116:5000')
+        $r = @(Get-ImageEnvLeak -Name 'SCCACHE_WEBDAV_ENDPOINT' -Value 'http://10.0.0.16:5000')
         Assert-Equal 2 $r.Count 'the name rule and the address rule both fire on the 2026-09-23 value'
         Assert-Match '192\.168\.188\.116' ($r -join ' ')
     }
@@ -90,7 +90,7 @@ Describe 'WindowsImageEnv.Common: Assert-ImageEnvPublishable' {
 
     It 'fails a Machine-scope leak and names the scope (a RUN that set it publishes it too)' {
         $leaky = [ordered]@{ Process = $clean.Process; Machine = @{} + $clean.Machine; User = @{} }
-        $leaky.Machine['SCCACHE_WEBDAV_ENDPOINT'] = 'http://192.168.188.116:5000'
+        $leaky.Machine['SCCACHE_WEBDAV_ENDPOINT'] = 'http://10.0.0.16:5000'
         Assert-Throws { Assert-ImageEnvPublishable -Scopes $leaky 6>$null } -MessagePattern 'SCCACHE_WEBDAV_ENDPOINT'
         # The throw is asserted above; here only the LEAK lines it printed first matter.
         $lines = @(& { try { Assert-ImageEnvPublishable -Scopes $leaky } catch { $null = $_ } } 6>&1 | ForEach-Object { "$_" })

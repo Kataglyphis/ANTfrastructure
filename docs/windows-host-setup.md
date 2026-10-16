@@ -735,7 +735,7 @@ Needs the VPN to the bucket's server (its runbook:
 [`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md)). Non-admin:
 
 ```pwsh
-pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -Endpoint http://192.168.188.216:3900 -AccessKeyId <key id>
+pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -Endpoint http://<s3-server-lan-ip>:3900 -AccessKeyId <key id>
 pwsh -File windows\scripts\host\Test-HostSetup.ps1           # [PASS] sccache S3 level reachable
 ```
 

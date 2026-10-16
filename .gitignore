@@ -83,4 +83,5 @@ linux/hailo-sdk/*
 
 # Agent scratch: transient patch/probe files, never part of the repo.
 .agentout/
-
+# The home network's real addresses (site.local.env.example names them); never published.
+/site.local.env
