@@ -12,6 +12,9 @@ RECAP = re.compile(
 )
 NOTE = re.compile(r"(GARAGE: [^\"]*|TOOLCHAIN: [^\"]*|\S+ did not answer, so it was not updated)")
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
+# profile_tasks' summary line: the task's name, a ruler of dashes, its seconds.
+TIMING = re.compile(r"^(.+?) -{3,} ([0-9.]+)s$")
+SLOWEST = 10
 COUNTS = ("ok", "changed", "unreachable", "failed", "skipped", "rescued", "ignored")
 TAIL_LINES = 60
 # Home Assistant's recorder drops a state whose attributes pass 16 KB; the tail stays well below.
@@ -29,11 +32,18 @@ def host_status(counts):
 
 
 def parse(lines):
-    """The PLAY RECAP's hosts and the notes the playbooks print, in the order they appear."""
-    hosts, notes, in_recap = [], [], False
+    """The PLAY RECAP's hosts, profile_tasks' slowest tasks and the notes the playbooks print, in log order."""
+    hosts, notes, slowest, in_recap, in_timing = [], [], [], False, False
     for line in lines:
         if line.startswith("PLAY RECAP"):
             in_recap = True
+            continue
+        if line.startswith("TASKS RECAP"):
+            in_recap, in_timing = False, True
+            continue
+        timing = TIMING.match(line) if in_timing else None
+        if timing and len(slowest) < SLOWEST:
+            slowest.append({"task": timing.group(1).strip(), "seconds": float(timing.group(2))})
             continue
         match = RECAP.match(line) if in_recap else None
         if match:
@@ -43,7 +53,7 @@ def parse(lines):
         for note in NOTE.findall(line):
             if note not in notes:
                 notes.append(note)
-    return hosts, notes
+    return hosts, notes, slowest
 
 
 def tail(lines):
@@ -63,7 +73,7 @@ def seconds_between(started, finished):
 def build(args, previous):
     with open(args.log, encoding="utf-8", errors="replace") as handle:
         lines = [ANSI.sub("", line.rstrip("\n")) for line in handle]
-    hosts, notes = parse(lines)
+    hosts, notes, slowest = parse(lines)
     # No recap means ansible stopped before it could report; that is a failed run whatever rc says.
     result = "ok" if args.rc == 0 and hosts else "failed"
     run = {"finished": args.finished, "result": result, "rc": args.rc, "playbook": args.playbook}
@@ -81,6 +91,7 @@ def build(args, previous):
         "hosts_unreachable": sum(h["status"] == "unreachable" for h in hosts),
         "hosts_changed": sum(h["status"] == "changed" for h in hosts),
         "notes": notes,
+        "slowest": slowest,
         "history": ([run] + previous.get("history", []))[:HISTORY],
         "log_file": os.path.basename(args.log),
         "log_tail": tail(lines),

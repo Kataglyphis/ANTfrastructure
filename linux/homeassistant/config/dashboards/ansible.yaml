@@ -54,6 +54,20 @@ views:
           {% endfor %}{% else %}Nothing to report.{% endif %}
 
       - type: markdown
+        title: Slowest steps
+        content: |
+          {% set steps = state_attr('sensor.ansible_update', 'slowest') or [] %}
+          {% if steps %}
+          | Step | Seconds |
+          |---|---|
+          {% for s in steps -%}
+          | {{ s.task }} | {{ s.seconds | round(1) }} |
+          {% endfor %}
+          {% else %}
+          Not measured in this run.
+          {% endif %}
+
+      - type: markdown
         title: Last runs
         content: |
           {% set runs = state_attr('sensor.ansible_update', 'history') or [] %}

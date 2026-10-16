@@ -136,7 +136,7 @@ one click in the device's web UI — `bitShake SMR öffnen` → `Update`.
 **Ansible** in the sidebar (since 2026-10-16) shows the weekly fleet update
 (`../ansible/README.md`, *The run status in Home Assistant*): the last run's result, when it ended,
 how long it took and when the next one is due; a table of every host with its PLAY RECAP counts;
-the notes the playbook printed; the last 10 runs; and the end of the log.
+the notes the playbook printed; its 10 slowest steps; the last 10 runs; and the end of the log.
 
 | File | What |
 | --- | --- |

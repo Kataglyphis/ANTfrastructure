@@ -24,6 +24,8 @@ recap() {
   printf 'TASK [Apply available updates] ***\nchanged: [pi-2]\nPLAY RECAP ***\n'
   recap pi-1 12 0 0 0 9 0 0
   recap pi-2 14 2 0 0 7 0 0
+  printf '\nTASKS RECAP ***\nFriday 16 October 2026  19:38:20 +0200 (0:00:01.656)       0:31:49.802 ***\n'
+  printf 'Apply available updates %s 612.40s\nRecreate the containers on the new images %s 95.07s\n' "--------" "--------"
 } > "${_work}/green.log"
 
 t_case "a green run: result ok, each host with its counts, no notes"
@@ -35,6 +37,10 @@ t_assert_eq "14" "$(field "${_work}/green.json" 'd["hosts"][1]["ok"]')"
 t_assert_eq "[]" "$(field "${_work}/green.json" 'd["notes"]')"
 t_assert_eq "700" "$(field "${_work}/green.json" 'd["duration_s"]')"
 t_assert_eq "Sun 2026-10-25 04:49:38 CET" "$(field "${_work}/green.json" 'd["next_run"]')"
+
+t_case "profile_tasks' summary: the slowest tasks with their seconds, and the hosts above it untouched"
+t_assert_eq "Apply available updates:612.4 Recreate the containers on the new images:95.07" \
+  "$(field "${_work}/green.json" '" ".join(s["task"]+":"+str(s["seconds"]) for s in d["slowest"])')"
 
 {
   printf '    "msg": "GARAGE: v3.0.0 is out, installed v2.4.1; not installed automatically"\n'
@@ -63,6 +69,7 @@ printf 'ERROR! the playbook could not be read\n' > "${_work}/crash.log"
 status "${_work}/crash.log" 0 "${_work}/crash.json"
 t_assert_eq "failed" "$(field "${_work}/crash.json" 'd["result"]')"
 t_assert_eq "0" "$(field "${_work}/crash.json" 'd["hosts_total"]')"
+t_assert_eq "[]" "$(field "${_work}/crash.json" 'd["slowest"]')"
 
 t_case "the history keeps the newest runs first and at most ten"
 for _ in $(seq 1 11); do status "${_work}/green.log" 0 "${_work}/many.json"; done
