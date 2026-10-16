@@ -188,7 +188,7 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    > `buildkitsandbox` carried Storage, MappedDirectories and MappedPipes but
    > **no networking block**. Restoring the `.conf` and restarting buildkitd
    > fixed it immediately (IPv4 `172.31.44.107`, gateway `172.31.32.1`, DNS
-   > `192.168.188.1`, `github.com` resolved).
+   > `<router-lan-ip>`, `github.com` resolved).
    >
    > `Build-Buildkit.ps1` now fail-fasts on this in milliseconds
    > (`Get-CniConfFormIssue`). Note the subnet-drift guard does **not** catch it:

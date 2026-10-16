@@ -41,11 +41,11 @@ t_assert_ok test "$((_total - _leaks))" -ge 8
 
 # --- --env-file: the publish gate's own mode ---------------------------------
 t_case "the 2026-09-23 value fails and the finding names it"
-printf 'PATH=/usr/bin\nSCCACHE_WEBDAV_ENDPOINT=http://192.168.188.116:5000\n' > "${_work}/leak.env"
+printf 'PATH=/usr/bin\nSCCACHE_WEBDAV_ENDPOINT=http://10.0.0.16:5000\n' > "${_work}/leak.env"
 t_assert_eq "1" "$(t_rc "${PY}" "${GATE}" --env-file "${_work}/leak.env")"
 _out="$(t_out "${PY}" "${GATE}" --env-file "${_work}/leak.env" --label img:x)"
-t_assert_contains "${_out}" "LEAK img:x: SCCACHE_WEBDAV_ENDPOINT=http://192.168.188.116:5000"
-t_assert_contains "${_out}" "RFC1918/link-local address 192.168.188.116"
+t_assert_contains "${_out}" "LEAK img:x: SCCACHE_WEBDAV_ENDPOINT=http://10.0.0.16:5000"
+t_assert_contains "${_out}" "RFC1918/link-local address 10.0.0.16"
 
 t_case "local defaults pass, and the count read is printed"
 printf 'PATH=/usr/bin\nSCCACHE_DIR=/var/cache/sccache\nSCCACHE_CACHE_SIZE=30G\n' > "${_work}/clean.env"

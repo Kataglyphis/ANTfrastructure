@@ -9,21 +9,26 @@ all of them, so one host's compiles are hits on the next.
 | | |
 |---|---|
 | Host | Ubuntu 26.04 VPS, 4 cores, 7.7 GiB RAM; the disk is shared with Nextcloud (91 GB free after the setup) |
-| Network | WireGuard split tunnel into the FritzBox: the VPS is `192.168.188.216` (and `<ula-prefix>::216`) in the home LAN and routes only the home LAN through it, ~20 ms RTT |
+| Network | WireGuard split tunnel into the FritzBox: the VPS is `<s3-server-lan-ip>` (and `<ula-prefix>::216`) in the home LAN and routes only the home LAN through it, ~20 ms RTT |
 | Endpoint | The FritzBox's MyFritz name. `wg-reresolve-dns@wg0.timer` resolves it again every 30 s while the handshake is stale |
 | Store | Garage v2.4.1 as the system user `garage`, one node in zone `vps`, data and LMDB metadata in `/srv/garage`, metadata snapshot every 6 h, compression off, `MemoryMax=1G` |
-| S3 | `http://192.168.188.216:3900`, region `garage`; RPC on `127.0.0.1:3901`, admin API on `127.0.0.1:3903` |
+| S3 | `http://<s3-server-lan-ip>:3900`, region `garage`; RPC on `127.0.0.1:3901`, admin API on `127.0.0.1:3903` |
 | Bucket | `sccache`, no key prefix, path-style addressing; 754,214 objects (48.9 GiB) after the seed on 2026-10-16 |
 | Keys | `sccache-client` (read and write on `sccache` only, for the clients) in `/root/sccache-s3-key.txt`; `sccache-evict` (the size cap's own) in `/etc/garage/evict-key.txt`; both 600 |
-| Firewall | ufw allows `3900/tcp` only on `wg0` from `192.168.188.0/24`; the public IP has no listener on 3900 |
+| Firewall | ufw allows `3900/tcp` only on `wg0` from `<home-lan-cidr>`; the public IP has no listener on 3900 |
 | Size cap | hourly: over 60 GiB, delete oldest `LastModified` first down to 90 % (54 GiB) |
 | Removed | the dufs/WebDAV service that ran there first (its unit, the port 5000 rule, its data dir) |
+
+> **Addresses.** `<s3-server-lan-ip>`, `<webdav-lan-ip>`, `<router-lan-ip>` and `<home-lan-cidr>`
+> stand for the home network's real addresses, which live in the repository root's
+> `site.local.env` (gitignored; `site.local.env.example` lists the names).
 
 > **Provenance.** The files here are the live server's, sent by the server session on
 > 2026-10-16, with every secret replaced by `REPLACE_ME`. The FritzBox's MyFritz name, its port
 > and its IPv6 prefix are placeholders too (`<name>`, `<port>`, `<ula-prefix>`): they point at
-> the home connection. `sccache-s3-evict` differs from the live copy in two places only: it
-> exports the key in its own statement (shellcheck SC2155), and its header is one comment line.
+> the home connection. `sccache-s3-evict` differs from the live copy in three places only: it
+> exports the key in its own statement (shellcheck SC2155), its header is one comment line, and it
+> reads the S3 address from `garage.toml`'s `[s3_api]` instead of naming it.
 > `garage.service` carries one comment line more, on its `WantedBy`.
 
 ## Files
@@ -42,10 +47,10 @@ all of them, so one host's compiles are hits on the next.
 
 1. FritzBox: *Internet → Freigaben → VPN (WireGuard) → Verbindung hinzufügen → Einzelnes
    Gerät verbinden*. Name it after the VPS and download the configuration file it offers.
-   The FritzBox gives the device an address in the home LAN (here `192.168.188.216`).
+   The FritzBox gives the device an address in the home LAN (here `<s3-server-lan-ip>`).
 2. On the VPS, write that file to `/etc/wireguard/wg0.conf` and make two edits
    (`wg0.conf.example` shows the result):
-   - `AllowedIPs` names only the home LAN (`192.168.188.0/24` and the ULA `/64`). The
+   - `AllowedIPs` names only the home LAN (`<home-lan-cidr>` and the ULA `/64`). The
      export routes everything (`0.0.0.0/0`) through the FritzBox; the split tunnel keeps
      the VPS's own traffic on its own uplink.
    - Comment the `DNS =` lines out, so the VPS keeps its own resolver.
@@ -60,7 +65,7 @@ sudo install -m 644 wg-reresolve-dns@.service wg-reresolve-dns@.timer /etc/syste
 sudo systemctl daemon-reload
 sudo systemctl enable --now wg-quick@wg0 wg-reresolve-dns@wg0.timer
 wg show                              # a recent handshake
-ping -c 3 192.168.188.1              # the FritzBox, through the tunnel
+ping -c 3 <router-lan-ip>              # the FritzBox, through the tunnel
 ```
 
 **Why the re-resolution (outage of 2026-10-16).** `wg` resolves an `Endpoint` name once, when
@@ -134,11 +139,11 @@ command first and the secret last, so the clipboard holds the secret at the prom
 ## 3. Firewall
 
 ```bash
-sudo ufw allow in on wg0 from 192.168.188.0/24 to 192.168.188.216 port 3900 proto tcp comment 'sccache S3 over WireGuard'
+sudo ufw allow in on wg0 from <home-lan-cidr> to <s3-server-lan-ip> port 3900 proto tcp comment 'sccache S3 over WireGuard'
 sudo ufw status verbose
 ```
 
-Garage binds only `192.168.188.216`, so the public address has no listener on 3900. Check
+Garage binds only `<s3-server-lan-ip>`, so the public address has no listener on 3900. Check
 it from outside, e.g. a phone off the WLAN: `curl -m 5 http://<public-ip>:3900` must time out.
 
 ## 4. The size cap
@@ -170,11 +175,11 @@ On the VPS, with the client key exported as `AWS_ACCESS_KEY_ID` / `AWS_SECRET_AC
 and `AWS_REGION=garage`:
 
 ```bash
-s5cmd --endpoint-url http://192.168.188.216:3900 cp /etc/hostname s3://sccache/probe/a/b/c
-s5cmd --endpoint-url http://192.168.188.216:3900 ls 's3://sccache/probe/*'
-s5cmd --endpoint-url http://192.168.188.216:3900 cat s3://sccache/probe/a/b/c
-s5cmd --endpoint-url http://192.168.188.216:3900 rm 's3://sccache/probe/*'
-AWS_SECRET_ACCESS_KEY=wrong s5cmd --endpoint-url http://192.168.188.216:3900 ls 's3://sccache/*'   # 403, invalid signature
+s5cmd --endpoint-url http://<s3-server-lan-ip>:3900 cp /etc/hostname s3://sccache/probe/a/b/c
+s5cmd --endpoint-url http://<s3-server-lan-ip>:3900 ls 's3://sccache/probe/*'
+s5cmd --endpoint-url http://<s3-server-lan-ip>:3900 cat s3://sccache/probe/a/b/c
+s5cmd --endpoint-url http://<s3-server-lan-ip>:3900 rm 's3://sccache/probe/*'
+AWS_SECRET_ACCESS_KEY=wrong s5cmd --endpoint-url http://<s3-server-lan-ip>:3900 ls 's3://sccache/*'   # 403, invalid signature
 garage bucket info sccache                                    # size and object count
 systemctl list-timers 'wg-reresolve-dns@*' sccache-evict.timer
 ```

@@ -462,7 +462,7 @@ one compiled, without each compile waiting on the slower link.
 ```
 SCCACHE_MULTILEVEL_CHAIN = webdav,s3
    level 0: this host's dufs, http://<host-lan-ip>:5000   (~1 ms, one per host)
-   level 1: the shared bucket, http://192.168.188.216:3900 (Garage on a VPS, WireGuard only)
+   level 1: the shared bucket, http://<s3-server-lan-ip>:3900 (Garage on a VPS, WireGuard only)
 ```
 
 **Why these two backends.** sccache allows each backend type once per chain, so two WebDAV
@@ -521,7 +521,7 @@ The publish gate fails an image whose environment carries `AWS_ACCESS_KEY_ID`,
 
 ```pwsh
 # asks for the secret without echo, tries it against the bucket, writes the five KATAGLYPHIS_SCCACHE_S3_* user variables
-pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -Endpoint http://192.168.188.216:3900 -AccessKeyId <key id>
+pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -Endpoint http://<s3-server-lan-ip>:3900 -AccessKeyId <key id>
 pwsh -File windows\scripts\host\Set-SccacheS3Level.ps1 -ReportOnly       # what is set (the secret as set/missing)
 pwsh -File windows\scripts\host\Test-HostSetup.ps1                        # "sccache S3 level reachable"
 pwsh -File windows\scripts\host\Copy-SccacheCacheToS3.ps1 -DryRun         # optional: seed the bucket from this host
@@ -649,7 +649,7 @@ now the LiteRT-LM build (5244 actions, ~400 s) and the ai-edge-litert wheel (565
 four Dockerfiles ENV'd them: the `patched-llvm` stage (#164), media-builder's
 `common` stage, the merge stage and `Dockerfile.rocm-migraphx`. `:winamd64`
 (digest `3137eebe…`, built 2026-09-22 from hub `0d85b8c1`) shipped
-`SCCACHE_WEBDAV_ENDPOINT=http://192.168.188.116:5000`, the owner's LAN WebDAV. On
+`SCCACHE_WEBDAV_ENDPOINT=http://<webdav-lan-ip>:5000`, the owner's LAN WebDAV. On
 a GitHub runner that address is unreachable. sccache 0.18.0 checks its storage
 when the server starts and exits when the check fails (`tcp connect error`).
 Every client then times out after 10-12 s with exit 2, CMake reports clang-cl as
@@ -785,8 +785,8 @@ one WARN naming the endpoint, and sccache caches on local disk instead of failin
 every compile:
 
 ```text
-WARNING: sccache: SCCACHE_WEBDAV_ENDPOINT=http://192.168.188.116:5000 is unreachable
-(TCP 192.168.188.116:5000, no connection within 2000 ms) - removed for this process, ...
+WARNING: sccache: SCCACHE_WEBDAV_ENDPOINT=http://<webdav-lan-ip>:5000 is unreachable
+(TCP <webdav-lan-ip>:5000, no connection within 2000 ms) - removed for this process, ...
 ```
 
 The image build does NOT use this path. Its compile stages wire sccache through

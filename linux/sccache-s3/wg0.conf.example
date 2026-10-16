@@ -2,9 +2,9 @@
 [Interface]
 PrivateKey = REPLACE_ME
 # The address the FritzBox gave this device, IPv4 and its IPv6 ULA (the export's own prefix).
-Address = 192.168.188.216/32,<ula-prefix>::216/128
+Address = <s3-server-lan-ip>/32,<ula-prefix>::216/128
 # The export's DNS lines stay commented, so the VPS keeps its own resolver.
-# DNS = 192.168.188.1
+# DNS = <router-lan-ip>
 # DNS = fritz.box
 
 [Peer]
@@ -12,7 +12,7 @@ Address = 192.168.188.216/32,<ula-prefix>::216/128
 PublicKey = REPLACE_ME
 PresharedKey = REPLACE_ME
 # The split tunnel: the export routes 0.0.0.0/0, which would send the VPS's own traffic home.
-AllowedIPs = 192.168.188.0/24, <ula-prefix>::/64
+AllowedIPs = <home-lan-cidr>, <ula-prefix>::/64
 # The FritzBox's MyFritz name; wg resolves it once, so wg-reresolve-dns@wg0.timer follows an address change.
 Endpoint = <name>.myfritz.net:<port>
 PersistentKeepalive = 25

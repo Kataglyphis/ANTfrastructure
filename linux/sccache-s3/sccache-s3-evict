@@ -6,7 +6,9 @@ KEYFILE=/etc/garage/evict-key.txt
 AWS_ACCESS_KEY_ID=$(grep -oP 'Key ID:\s*\K\S+' "$KEYFILE")
 AWS_SECRET_ACCESS_KEY=$(grep -oP 'Secret key:\s*\K\S+' "$KEYFILE")
 export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION=garage
-S5="s5cmd --endpoint-url http://192.168.188.216:3900"
+# The S3 endpoint is what [s3_api] binds; [admin] has an api_bind_addr too.
+S3_ADDR=$(awk -F'"' '/^\[/{s=($0=="[s3_api]")} s && /^api_bind_addr/{print $2; exit}' /etc/garage/garage.toml)
+S5="s5cmd --endpoint-url http://${S3_ADDR}"
 # cheap check first so the bucket is only listed when it is over the cap
 ADMIN_TOKEN=$(grep -oP '^admin_token = "\K[^"]+' /etc/garage/garage.toml)
 BUCKET_SIZE=$(curl -sf -H "Authorization: Bearer $ADMIN_TOKEN" 'http://127.0.0.1:3903/v2/GetBucketInfo?globalAlias=sccache' | python3 -c 'import json,sys; print(json.load(sys.stdin)["bytes"])')

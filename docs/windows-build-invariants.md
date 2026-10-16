@@ -363,7 +363,7 @@ is in `AGENTS.md` § Linux Build Rules.
 ### A build-host setting is an ARG, never ENV — the publish gate refuses one
 
 **Anything that describes the BUILD HOST reaches a RUN as an ARG and never lands in an
-ENV (2026-09-23).** `:winamd64` shipped `SCCACHE_WEBDAV_ENDPOINT=http://192.168.188.116:5000`
+ENV (2026-09-23).** `:winamd64` shipped `SCCACHE_WEBDAV_ENDPOINT=http://<webdav-lan-ip>:5000`
 from four ENV blocks, and on every consumer runner sccache 0.18 died on the unreachable
 endpoint, so CMake reported clang-cl broken. Do not regress any of these:
 
@@ -693,7 +693,7 @@ either") and that error cost a launched chain on 2026-08-07: the `.conf` was
 converted away to fix nerdctl, which silently killed buildkitd's networking,
 and nothing caught it because no chain build ran in between. Restoring the
 `.conf` beside the `.conflist` + `Restart-Service buildkitd -Force` fixed it
-on the spot (IPv4 172.31.44.107, GW 172.31.32.1, DNS 192.168.188.1,
+on the spot (IPv4 172.31.44.107, GW 172.31.32.1, DNS `<router-lan-ip>`,
 github.com resolved). `Build-Buildkit.ps1` now fail-fasts via
 `Get-CniConfFormIssue`. **When you edit one file, edit both** — nothing
 detects the two drifting apart in CONTENT, only absence.
