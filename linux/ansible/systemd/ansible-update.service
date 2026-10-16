@@ -6,6 +6,7 @@ Description=Weekly Raspberry Pi fleet update (ansible)
 [Service]
 Type=oneshot
 WorkingDirectory=%h/ANTfrastructure/linux/ansible
-ExecStart=%h/venvs/ansible/bin/ansible-playbook playbooks/update.yml
+# The wrapper keeps each run's log and writes the status Home Assistant's Ansible page shows.
+ExecStart=%h/ANTfrastructure/linux/ansible/scripts/run-update.sh
 # PrivateTmp would break nothing here, but ansible's ssh needs a writable
 # HOME for its control sockets — keep the user session environment.

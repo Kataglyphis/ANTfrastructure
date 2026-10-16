@@ -131,6 +131,24 @@ instead. A `ufsu` "Nicht genug Speicherplatz" right after flashing is
 transient; retry. With the SMR app installed (step 3), future updates are
 one click in the device's web UI — `bitShake SMR öffnen` → `Update`.
 
+## The Ansible page
+
+**Ansible** in the sidebar (since 2026-10-16) shows the weekly fleet update
+(`../ansible/README.md`, *The run status in Home Assistant*): the last run's result, when it ended,
+how long it took and when the next one is due; a table of every host with its PLAY RECAP counts;
+the notes the playbook printed; the last 10 runs; and the end of the log.
+
+| File | What |
+| --- | --- |
+| `config/packages/ansible_update.yaml` | `sensor.ansible_update`: a `command_line` sensor that reads `/config/ansible/status.json` every 5 min; its state is `ok` or `failed`, everything else is an attribute. `binary_sensor.ansible_update_needs_a_look`: on after a failed run, before the first one, or when none ran for 8 days |
+| `config/dashboards/ansible.yaml` | the page itself, a YAML dashboard registered under `lovelace: dashboards: ansible-update` in `configuration.yaml` |
+| `config/ansible/status.json` | the data, written by `linux/ansible/scripts/run-update.sh` after each run; gitignored, since it names hosts |
+
+`configuration.yaml` loads every file in `config/packages/` (`homeassistant: packages:
+!include_dir_named packages`), so a feature like this one is one file, not edits all over
+`configuration.yaml`. `binary_sensor.ansible_update_needs_a_look` is there to be used in an
+automation, such as a phone notification; none is set up.
+
 ## Backups
 
 Automatic backups run daily into `config/backups/`, retention 3 copies. The
