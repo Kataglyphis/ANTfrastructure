@@ -148,14 +148,21 @@ A calling job looks the same in both:
 - **Permissions.** A called workflow's jobs get at most what the calling job grants.
   Grant less than a lane's job declares and GitHub rejects the whole run before any
   job starts: *The nested job '…' is requesting '…', but is only allowed '…'*.
-- **Concurrency.** Each lane keeps its own `group: <lane>-${{ github.ref }}` with
-  `cancel-in-progress: true`, so a newer request for the same lane on the same branch
-  replaces an older one. A skipped calling job never starts the lane, so an ordinary
-  push never cancels a round someone asked for.
-- **The group is the lane's literal name, never `${{ github.workflow }}`.** Inside a
-  called workflow `github.workflow` is the caller's name, so every lane
-  `on-request.yml` calls would share one group and cancel or queue behind each other.
-  OxidANT's lanes used it until they moved (2026-10-15).
+- **Concurrency: `group: <lane>-${{ github.ref }}-${{ github.workflow }}`** with
+  `cancel-in-progress: true`. Inside a called workflow `github.workflow` is the caller's
+  name, so a standalone run, `on-request.yml`'s call and `release.yml`'s call each get a
+  group of their own, and a newer run from the same caller on the same branch replaces an
+  older one. A skipped calling job never starts the lane, so an ordinary push cancels no
+  round someone asked for.
+  - **Not the lane name alone.** `linux-x64-${{ github.ref }}` is the group every push to
+    `develop` starts the lane in, so a push during a dry run of `release.yml` on `develop`
+    cancelled the dry run's lane (OmniAccelerANT, 2026-10-16).
+  - **Not `${{ github.workflow }}` alone.** Every lane `on-request.yml` calls would share
+    one group and cancel or queue behind each other; OxidANT's lanes did until they moved
+    (2026-10-15).
+- **A dry run.** OmniAccelerANT's `release.yml` takes a `dry-run` input: dispatched on
+  `develop`, it runs every lane and collects the release, lists its files in the run's
+  summary and publishes nothing, which is the full round before a merge as well.
 - **Artifacts.** `release.yml` holds every lane's uploads in one run, so artifact
   names must differ across lanes.
 - **Pushes, not tags, start a release.** The tag is the release job's output. Nothing
