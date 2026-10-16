@@ -78,6 +78,16 @@ t_assert_ok _install
 t_assert_fails test -e "${_work}/stage/lib/fixture/libvendor.so.1"
 t_assert_ok test -f "${_work}/stage/lib/fixture/libstdc++.so.6"
 
+t_case "an embedded project adds no closure: it would rewrite its parent's install tree"
+_project 'PROTECT "lib/fixture/libvendor*"'
+mkdir -p "${_work}/parent"
+printf 'cmake_minimum_required(VERSION 3.25)\nproject(parent CXX)\nadd_subdirectory("%s" fixture)\n' "${_work}/src" > "${_work}/parent/CMakeLists.txt"
+rm -rf "${_work}/pbuild" "${_work}/pstage"
+cmake -S "${_work}/parent" -B "${_work}/pbuild" >/dev/null && cmake --build "${_work}/pbuild" >/dev/null &&
+  cmake --install "${_work}/pbuild" --prefix "${_work}/pstage" >/dev/null 2>&1
+t_assert_ok test -f "${_work}/pstage/bin/app"
+t_assert_fails test -e "${_work}/pstage/lib/fixture"
+
 t_case "an unresolvable library fails the install instead of shipping"
 _project ''
 mv "${_work}/vendor/libvendor.so.1" "${_work}/vendor/hidden.so"
