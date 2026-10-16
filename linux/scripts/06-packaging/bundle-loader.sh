@@ -6,8 +6,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../01-core/logging.sh
 source "${SCRIPT_DIR}/../01-core/logging.sh"
 
+# --beside keeps the executable's directory (as <name>.bin): /proc/self/exe names the loader, and Flutter finds data/ there.
+BESIDE=false
+if [ "${1:-}" = --beside ]; then BESIDE=true; shift; fi
 if [ $# -lt 3 ]; then
-  printf 'usage: %s BUNDLE LIB-DIR EXECUTABLE...  (each executable relative to BUNDLE)\n' "$0" >&2
+  printf 'usage: %s [--beside] BUNDLE LIB-DIR EXECUTABLE...  (each executable relative to BUNDLE)\n' "$0" >&2
   exit 2
 fi
 BUNDLE="$(realpath -m "$1")"
@@ -43,25 +46,34 @@ move_runpath() {
 for rel in "${EXES[@]}"; do
   exe="${BUNDLE}/${rel}"
   [ -f "${exe}" ] || err "no executable at ${exe}"
+  # A second run finds the launcher it wrote: the program already sits beside its loader.
+  if [ "$(head -c 2 -- "${exe}")" = '#!' ] && grep -q -- '--library-path' "${exe}"; then
+    info "  ${rel}: already a launcher"
+    continue
+  fi
   interp="$(interpreter "${exe}")"
   [ -n "${interp}" ] || err "${rel} names no program interpreter"
   loader="$(basename "${interp}")"
   glibc_dir="$(dirname "$(realpath "${interp}")")"
-  [ -e "${LIB_DIR}/${loader}" ] || cp -L "${interp}" "${LIB_DIR}/${loader}"
+  exe_dir="$(dirname "${exe}")"
+  to_lib="$(realpath -m --relative-to="${exe_dir}" "${LIB_DIR}")"
+  if [ "${BESIDE}" = true ]; then home="${exe_dir}"; to_home="."; else home="${LIB_DIR}"; to_home="${to_lib}"; fi
+  [ -e "${home}/${loader}" ] || cp -L "${interp}" "${home}/${loader}"
   for soname in "${GLIBC_SONAMES[@]}"; do
     [ -e "${glibc_dir}/${soname}" ] && [ ! -e "${LIB_DIR}/${soname}" ] && cp -L "${glibc_dir}/${soname}" "${LIB_DIR}/${soname}"
   done
 
   name="$(basename "${exe}")"
-  mv "${exe}" "${LIB_DIR}/${name}"
-  move_runpath "$(dirname "${exe}")" "${LIB_DIR}/${name}"
-  to_lib="$(realpath -m --relative-to="$(dirname "${exe}")" "${LIB_DIR}")"
+  real="${name}"
+  [ "${BESIDE}" = true ] && real="${name}.bin"
+  mv "${exe}" "${home}/${real}"
+  move_runpath "${exe_dir}" "${home}/${real}"
   cat > "${exe}" <<LAUNCHER
 #!/bin/sh
 # Starts ${name} with the loader and C library it was built against, whatever glibc the host has.
 here="\$(cd -- "\$(dirname -- "\$(readlink -f -- "\$0")")" && pwd)"
-exec "\$here/${to_lib}/${loader}" --library-path "\$here/${to_lib}" --argv0 "\$0" "\$here/${to_lib}/${name}" "\$@"
+exec "\$here/${to_home}/${loader}" --library-path "\$here/${to_lib}" --argv0 "\$0" "\$here/${to_home}/${real}" "\$@"
 LAUNCHER
   chmod 0755 "${exe}"
-  info "  ${rel}: launcher -> ${to_lib}/${name} through ${loader} (glibc from ${glibc_dir})"
+  info "  ${rel}: launcher -> ${to_home}/${real} through ${loader} (glibc from ${glibc_dir})"
 done

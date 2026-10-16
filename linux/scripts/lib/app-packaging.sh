@@ -564,6 +564,7 @@ app_packaging_package_linux_bundle_flatpak() {
     cp "$icon_file" "$manifest_dir/files/${app_id}.png"
   fi
 
+  # The bundle stays whole: a Flutter runner finds data/ beside /proc/self/exe, as in the AppImage.
   cat > "$manifest_file" <<EOF
 app-id: ${app_id}
 runtime: org.freedesktop.Platform
@@ -576,10 +577,9 @@ modules:
   - name: ${package_name}
     buildsystem: simple
     build-commands:
-      - mkdir -p /app/bin /app/lib /app/data
-      - install -Dm755 ${binary_name} /app/bin/${package_name}
-      - if [ -d lib ]; then cp -a lib/. /app/lib/; fi
-      - if [ -d data ]; then cp -a data/. /app/data/; fi
+      - mkdir -p /app/bin /app/lib/${package_name}
+      - find . -mindepth 1 -maxdepth 1 ! -name '${app_id}.*' -exec cp -a {} /app/lib/${package_name}/ ';'
+      - ln -s ../lib/${package_name}/${binary_name} /app/bin/${package_name}
       - install -Dm644 ${app_id}.desktop /app/share/applications/${app_id}.desktop
       - install -Dm644 ${app_id}.png /app/share/icons/hicolor/$(app_packaging_icon_size "$icon_file")/apps/${app_id}.png
     sources:

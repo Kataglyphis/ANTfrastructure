@@ -35,11 +35,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       that run outside the image): the packages start on the image's base and newer. The image's
       loader and glibc travel with `LOADER` since 2026-10-17: AccelerANTgine's `.deb`, tarball and
       AppImage start on himbeere2's Debian 13. Left:
-      1. OmniAccelerANT's main app: its Flutter runner finds `data/` from `/proc/self/exe`, which
-         names the loader under a launcher, so the loader has to sit beside it in the bundle root,
-         not in `lib/`. Its launch smoke under Xvfb on Debian 13 is the proof.
-      2. The flatpak: org.freedesktop.Platform's glibc is older than 2.43 as well; `LOADER` may
-         carry it there too, unproven.
+      1. OmniAccelerANT's main app takes `bundle-loader.sh --beside` (2026-10-17): its launch smoke
+         holds in the image, and on Debian 13 it reaches GTK. Left: a launch under a display on
+         Debian 13, and its CI rounds.
+      2. The flatpak: the Flutter one installs the bundle whole since 2026-10-17, so its runner
+         finds `data/`; that it starts on org.freedesktop.Platform's older glibc is unproven.
       3. AccelerANTgine's `kataglyphis_inference` wheels: the same closure, through auditwheel.
 
       Done when AccelerANTgine's, BeschleunigerBallett's and OmniAccelerANT's packages start on

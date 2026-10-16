@@ -6,6 +6,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — a Flutter bundle through the loader, and a flatpak that keeps the bundle whole
+
+- **`bundle-loader.sh --beside`** keeps the program in its directory as `<name>.bin` with the loader
+  next to it: under the launcher `/proc/self/exe` names the loader, and a Flutter runner finds
+  `data/` from that directory. OmniAccelerANT's October 12 bundle, wrapped this way, held its
+  20 s launch smoke under Xvfb in the image and reached GTK on himbeere2's Debian 13. A second run
+  finds its own launcher and changes nothing. GStreamer then scans plugins in-process, since its
+  external scanner is handed `/proc/self/exe`.
+- **The Flutter flatpak installs the bundle whole** under `/app/lib/<package>/`, with
+  `/app/bin/<package>` a link to its runner, as the AppImage does. It installed the runner alone
+  in `/app/bin` and `data/` in `/app/data`, where the runner never looks.
+- `test-linux-closure-install.sh`: 31 assertions.
+
 ## 2026-10-17 — `LOADER`: Linux packages start on Debian 13 too
 
 - **`kataglyphis_install_linux_closure(LOADER ...)`** ships the image's loader and glibc:
