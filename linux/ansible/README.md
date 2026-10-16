@@ -79,7 +79,7 @@ from this directory is required — `ansible.cfg`, `ssh_config` and the
 
 | Playbook | What it does |
 | --- | --- |
-| `playbooks/update.yml` | per host: apt safe-upgrade + autoremove, then (host_vars flags) container-stack update, nerdctl drift report, Tasmota device report, venv upgrade; reboot only when required |
+| `playbooks/update.yml` | first pings every host and skips one that does not answer; then per host: apt safe-upgrade + autoremove, then (host_vars flags) container-stack update, nerdctl drift report, Tasmota device report, venv upgrade; reboot only when required |
 | `playbooks/update-tasmota.yml` | stock Tasmota plugs: REAL gated updates — the version comparison is OURS (the native `Upgrade 1` re-flashes even at the same version, probed live); flash + wait + MQTT health only when the release differs |
 | `playbooks/update-windows.yml` | summy-server: Windows Update via PSWindowsUpdate (`-AcceptAll -IgnoreReboot`), reboot inline only when pending |
 | `playbooks/update-bitshake.yml` | on-demand: the bitShake SmartMeterReader firmware + SMR app (HTTP-driven, never scheduled — a failed flash kills the energy data). Procedure + traps: [HA README § bitShake](../homeassistant/README.md#the-bitshake-smartmeterreader-firmware-updates) |
@@ -122,6 +122,13 @@ so a host that was off catches up on boot. `playbooks/schedule.yml` installs
 and arms them. Logs: `journalctl --user -u
 ansible-update.service`. To move the checkout, re-run `schedule.yml` after —
 the units hardcode `%h/ANTfrastructure/linux/ansible`.
+
+**A host that is off does not stop the run** (2026-10-16). Under `serial: 1` every host is its own
+batch, and Ansible ends a play when a whole batch fails (`playbook_executor.py`): one camera
+switched off on a Sunday used to cost every host after it, pi-1 included, its update. `update.yml`
+now pings the fleet first, updates only the hosts that answered (`fleet:&update_reachable`, in
+inventory order), and fails at the end once per host that did not, so the journal still names it.
+A host that answers but fails during its update still stops the run, as before.
 
 **Reboot policy — two traps, both load-bearing:**
 
