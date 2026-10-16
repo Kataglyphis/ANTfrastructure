@@ -11,6 +11,7 @@ LIB_DIR=""
 CHECK_ONLY=false
 SEARCH=()
 PROTECT=()
+EXTRA_SYSTEM=()
 declare -A ALLOWED_UNRESOLVED=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -19,8 +20,9 @@ while [ $# -gt 0 ]; do
     --search) [ -d "${2:?}" ] && SEARCH+=("$(realpath "$2")"); shift 2 ;;
     --allow-unresolved) ALLOWED_UNRESOLVED[${2:?}]=1; shift 2 ;;
     --protect) PROTECT+=("${2:?}"); shift 2 ;;
+    --system) EXTRA_SYSTEM+=("${2:?}"); shift 2 ;;
     --check) CHECK_ONLY=true; shift ;;
-    -h|--help) printf 'usage: %s --bundle DIR --lib-dir DIR [--search DIR]... [--allow-unresolved SONAME]... [--protect GLOB]... [--check]\n' "$0"; exit 0 ;;
+    -h|--help) printf 'usage: %s --bundle DIR --lib-dir DIR [--search DIR]... [--allow-unresolved SONAME]... [--protect GLOB]... [--system SONAME-GLOB]... [--check]\n' "$0"; exit 0 ;;
     *) printf 'unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
 done
@@ -35,6 +37,8 @@ SYSTEM_SONAMES=(
   'libGL.so.1' 'libEGL.so.1' 'libGLX.so.0' 'libOpenGL.so.0' 'libX11.so.6' 'libXext.so.6' 'libXrender.so.1'
   'libICE.so.6' 'libSM.so.6' 'libglib-2.0.so.0' 'libgobject-2.0.so.0' 'libgthread-2.0.so.0'
 )
+# --system: what the package's own Depends bring, e.g. a distro's GStreamer.
+SYSTEM_SONAMES+=("${EXTRA_SYSTEM[@]}")
 
 is_system() {
   local pattern

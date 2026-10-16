@@ -308,6 +308,17 @@ step: [`docs/riscv64-cross-test-lanes.md`](../../docs/riscv64-cross-test-lanes.m
 Not in the self-test, which would pull the riscv64 child on every action change:
 `riscv64-sysroot-probe.yml` runs it in both modes on dispatch.
 
+### `clean-host-package-check`
+Installs the Linux packages a lane built on the bare runner and starts them: inside the image
+every library they link is present, so only a host without them shows a missing one. Run it in
+a job on `ubuntu-26.04` / `ubuntu-26.04-arm`, the image's own base, that `needs:` the lane.
+Inputs: `artifact` (downloaded), `deb` + `deb-command` (installed with apt, so its `Depends` are
+resolved as on a user's machine; every installed ELF must pass `ldd`), `tarball` +
+`tarball-command` (unpacked anywhere, run in its top directory), `appimage` + `appimage-command`
+(the path in `$APPIMAGE`, run through `APPIMAGE_EXTRACT_AND_RUN`), `apt-packages` (what a user would have, such as
+`mesa-vulkan-drivers`). Every command runs with `LD_BIND_NOW=1`. Background:
+[`linux-build-basics.md`](../../docs/linux-build-basics.md#linux-packages-that-run-outside-the-image).
+
 ### `run-in-linux-container`
 Runs a bash command inside a Linux container image (`docker run --rm`).
 Inputs: `image` (optional — defaults to the family Linux image; see above),
