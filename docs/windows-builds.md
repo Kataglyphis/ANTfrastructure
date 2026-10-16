@@ -970,11 +970,16 @@ against the prefix's own `.pc` files. The cdylibs are the plugin DLLs, so no
 derives the packages from the contract's `CargoPackage` fields and, on the cross
 lane, adds `--target aarch64-pc-windows-msvc`, `PKG_CONFIG_ALLOW_CROSS=1`,
 `lld-link` as the target linker and `clang-cl --target=…` for the C that `ring`
-compiles. With `-Sccache` it adds `RUSTC_WRAPPER` and `CARGO_INCREMENTAL=0`, so the crates
-compile through the stage's sccache server. It also sets `CC` and `CXX` to the real `clang-cl`
-(`-Compiler`). cc-rs wraps whatever `CC` names in `RUSTC_WRAPPER`, and meson's sccache shim,
-which phase 3 leaves in `CC`, made ring's build script run `sccache <shim>`. sccache answered
-`Compiler not supported: ""` (the first chain with the wrapper, 2026-10-16).
+compiles.
+
+**cargo does not go through sccache, on measurement (2026-10-16).** With `RUSTC_WRAPPER`, the step
+took 125 s bare (2026-10-14), 153 s on the first fill, and 131 s warm at 99 % Rust hits (230 of
+250). Its time is the two plugin crates, which are cdylibs that sccache cannot cache (57
+`crate-type` calls). The wrapper also has a trap: cc-rs wraps whatever `CC` names in it, and
+phase 3 leaves meson's sccache shim in `CC`. ring's build script then ran `sccache <shim>`, which
+sccache refused (`Compiler not supported: ""`). The real `clang-cl` in `CC` fixed that, but the
+time did not move, so the wrapper was taken out. The crates' C compiles still go through the
+shim.
 
 - **Default features**, as on Linux: `janus`, `whip`, `web_server`, `whep`,
   `pixelstreaming`. TLS is rustls with `ring`; no AWS or LiveKit SDK, so no

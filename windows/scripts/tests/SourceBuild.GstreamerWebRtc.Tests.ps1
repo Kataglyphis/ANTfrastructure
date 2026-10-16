@@ -121,16 +121,11 @@ Describe 'Get-GstRustCargoPlan' {
         Assert-Equal 'C:\t\aarch64-pc-windows-msvc\release\gstrswebrtc.dll' @($plan.Dlls)[0].Path
     }
 
-    It 'compiles through sccache, not incrementally, only when the stage has a sccache' {
-        $plan = Get-GstRustCargoPlan -Plugin $contract -Arch 'amd64' -TargetDir 'C:\t' -PkgConfigDir 'C:\p' -Sccache 'C:\cargo\bin\sccache.exe' -Compiler 'C:\llvm\bin\clang-cl.exe'
-        Assert-Equal 'C:\cargo\bin\sccache.exe' $plan.Env['RUSTC_WRAPPER']
-        Assert-Equal '0' $plan.Env['CARGO_INCREMENTAL']
-        # 2026-10-16: cc-rs ran "sccache <meson's shim>" and sccache answered "Compiler not supported".
-        Assert-Equal 'C:\llvm\bin\clang-cl.exe' $plan.Env['CC'] 'cc-rs wraps CC in RUSTC_WRAPPER, so CC must be a compiler sccache knows'
-        Assert-Equal 'C:\llvm\bin\clang-cl.exe' $plan.Env['CXX']
-        Assert-Throws { Get-GstRustCargoPlan -Plugin $contract -TargetDir 'C:\t' -PkgConfigDir 'C:\p' -Sccache 'C:\s.exe' } -MessagePattern 'needs -Compiler' 
-        $bare = Get-GstRustCargoPlan -Plugin $contract -Arch 'amd64' -TargetDir 'C:\t' -PkgConfigDir 'C:\p'
-        Assert-False ($bare.Env.Contains('RUSTC_WRAPPER')) 'no sccache, no wrapper'
+    It 'sets no RUSTC_WRAPPER: measured without gain, and cc-rs would wrap meson''s shim in it' {
+        foreach ($arch in 'amd64', 'arm64') {
+            $plan = Get-GstRustCargoPlan -Plugin @(Get-RequiredGstPlugin -Arch $arch) -Arch $arch -TargetDir 'C:\t' -PkgConfigDir 'C:\p'
+            Assert-False ($plan.Env.Contains('RUSTC_WRAPPER')) "no wrapper on $arch"
+        }
     }
 
     It 'refuses a contract without cargo entries, so the step cannot pass by building nothing' {
@@ -186,11 +181,6 @@ Describe 'Build-GstreamerFromSource.ps1: the WebRTC wiring stays in place' {
     It 'fails the build when the DTLS patch neither applies nor is upstream' {
         Assert-Match "ReadAllText\(\`$dtlsConn\)\.Contains\('BIO: no data available, retry later'\)" $text
         Assert-Match 'neither applied nor is upstream' $text
-    }
-
-    It 'hands cargo the real clang-cl beside the sccache wrapper, never the meson shim' {
-        $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-GstreamerFromSource.ps1'))
-        Assert-Match 'Get-GstRustCargoPlan [^\r\n]*-Sccache \$rsSccache -Compiler \$clangCheck\.Source' $text
     }
 
     It 'runs the libffi guard, the OpenSSL staging and the cargo step on both lanes, before the plugin gate' {
