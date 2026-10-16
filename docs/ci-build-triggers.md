@@ -14,15 +14,16 @@ The file names are one per platform and arch since 2026-09-24
 |---|---|---|
 | OmniAccelerANT (since 2026-10-15) | `linux-x64.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `windows-x64`, `windows-arm64`, `android`, `web` through `on-request.yml`; all of them through `release.yml` on `main` |
 | OxidANT (since 2026-10-15) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64` (also weekly), `windows-x64`, `windows-arm64-cross` through `on-request.yml`; all five through `release.yml` on `main` (since 2026-10-16; the version is `Cargo.toml`'s) |
-| AccelerANTgine, BeschleunigerBallett, OrchestrANT | every platform lane, on every push and PR to `main`/`develop`: the 2026-09-24 rule, until each moves | by hand where a lane has `workflow_dispatch` |
+| AccelerANTgine (since 2026-10-16) | `linux-x64.yml` and `lint-gates.yml`; `submodule-pins.yml` when a pin moves | `linux-arm64`, `linux-riscv64`, `windows-x64`, `windows-arm64-cross` through `on-request.yml`; no `release.yml` yet |
+| BeschleunigerBallett, OrchestrANT | every platform lane, on every push and PR to `main`/`develop`: the 2026-09-24 rule, until each moves | by hand where a lane has `workflow_dispatch` |
 
-The lanes those three still run on every push, measured 2026-09-25:
+The lanes those two still run on every push, measured 2026-09-25:
 
 | Lane | Workflow files |
 |---|---|
 | Linux x64 and arm64 (build + test) | `linux-x64.yml`, `linux-arm64.yml`, most over a shared `reusable-linux.yml` (OrchestrANT: one `ubuntu-26.04-amd64-arm64.yml` for both) |
 | Windows x64 | `windows-x64.yml` |
-| Windows arm64 (cross build, then a run on `windows-11-arm`) | `windows-arm64-cross.yml` in AccelerANTgine and BeschleunigerBallett |
+| Windows arm64 (cross build, then a run on `windows-11-arm`) | `windows-arm64-cross.yml` in BeschleunigerBallett |
 
 What else decides whether a lane runs:
 
