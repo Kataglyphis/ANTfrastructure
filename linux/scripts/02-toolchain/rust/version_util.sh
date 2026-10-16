@@ -36,12 +36,27 @@ cargo_toml_version() {
     ' "$1"
 }
 
-# The version a file states, empty when none: a Cargo.toml's, a pubspec.yaml's without its +build, else a plain file's first line.
+# A CMakeLists.txt's version: the first project() call's literal VERSION; a ${VAR} there is no version.
+cmake_project_version() {
+    awk '
+      { sub(/#.*/, ""); text = text " " $0 }
+      END {
+        if (!match(tolower(text), /(^|[^a-z0-9_])project[ \t]*\(/)) exit
+        rest = substr(text, RSTART + RLENGTH); j = index(rest, ")")
+        if (j == 0) exit
+        n = split(substr(rest, 1, j - 1), tok, /[ \t]+/)
+        for (k = 1; k < n; k++) if (tok[k] == "VERSION" && tok[k + 1] ~ /^[0-9]+(\.[0-9]+)*$/) { print tok[k + 1]; exit }
+      }
+    ' "$1"
+}
+
+# The version a file states, empty when none: a Cargo.toml's, a CMakeLists.txt's project(), a pubspec.yaml's without its +build, else a plain file's first line.
 file_version() {
     local version_file="$1" line trimmed
     [[ -f "$version_file" ]] || return 0
     case "$(basename "$version_file")" in
         Cargo.toml) cargo_toml_version "$version_file"; return 0 ;;
+        CMakeLists.txt) cmake_project_version "$version_file"; return 0 ;;
         pubspec.yaml) sed -n 's/^version:[[:space:]]*\([0-9][0-9.]*\).*/\1/p' "$version_file" | head -n 1; return 0 ;;
     esac
     while IFS= read -r line || [[ -n "$line" ]]; do
