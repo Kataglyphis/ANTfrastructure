@@ -68,7 +68,10 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
      `Lib\site-packages`, because the layout copies the image's own packages along with it.
    - Linux: a python-build-standalone of the same version.
 2. **Packages.**
-   - `uv export --locked --extra <extras>`, then install into the runtime.
+   - `uv export --locked --extra <extras>`, then install into the runtime. On Windows the export
+     leaves the PyPI `onnxruntime` out (`--no-emit-package`, since 2026-10-16), as the arm64 export
+     always did: the image's CPython 3.15 has no PyPI wheel of onnxruntime 1.31.0, which stops at
+     cp314, so installing the lock failed before the chain wheel could replace it.
    - The app wheel goes in with `--no-deps`; the compiled wheel wins over the pure one.
      It must carry the runtime's ABI tag (`cp3XY`, or `abi3`), so the `cp3XYt` twin beside it
      is never taken. A `cp3XYt` wheel alone is refused, not swapped for the pure one

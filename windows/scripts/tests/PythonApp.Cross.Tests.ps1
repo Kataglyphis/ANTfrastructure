@@ -22,6 +22,20 @@ function script:Invoke-WithFakeUv {
     }
 }
 
+Describe 'Install-PythonAppPackage' {
+
+    It 'leaves the PyPI ORT out of the lock export, then installs the lock, the app and the chain ORT' {
+        Invoke-InTestDir { param($d)
+            $calls = Invoke-WithFakeUv {
+                Install-PythonAppPackage -Python 'C:\rt\python.exe' -RepoRoot $d -AppWheel 'app.whl' -Extras 'app' -OrtWheel 'ort.whl' -WorkDir $d
+            }
+            Assert-Match '^export .*--extra app --no-emit-package onnxruntime --output-file ' $calls[0] 'a runtime newer than PyPI ORT''s wheels (cp315) cannot install it'
+            Assert-Match '--requirement .*requirements\.lock\.txt$' $calls[1] 'the lock first'
+            Assert-Match '--no-index --no-deps ort\.whl$' $calls[-1] 'the chain ORT last'
+        }
+    }
+}
+
 Describe 'Install-PythonAppCrossPackage' {
 
     It 'installs the lock, the app and the chain ORT for the target, and drops the host-arch trampolines' {

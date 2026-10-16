@@ -121,6 +121,15 @@ function Invoke-AppUv {
     if ($LASTEXITCODE -ne 0) { throw "$What failed (exit $LASTEXITCODE)" }
 }
 
+# The lock as requirements.txt in -OutFile, without the project and without -Exclude, which chain wheels replace.
+function Export-AppRequirement {
+    param([Parameter(Mandatory)][string]$RepoRoot, [string[]]$Extras = @(), [string[]]$Exclude = @(), [Parameter(Mandatory)][string]$OutFile)
+    $export = @('export', '--locked', '--no-dev', '--no-emit-project', '--format', 'requirements.txt') +
+        @($Extras | ForEach-Object { '--extra', $_ }) + @($Exclude | ForEach-Object { '--no-emit-package', $_ }) + @('--output-file', $OutFile)
+    Push-Location $RepoRoot
+    try { Invoke-AppUv -What 'uv export' -Arguments $export } finally { Pop-Location }
+}
+
 # Uninstalls every distribution in -Python whose name matches -Pattern.
 function Remove-AppDistribution {
     param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Pattern)
@@ -134,7 +143,9 @@ function Install-PythonAppPackage {
         Installs the locked dependencies, the app wheel and the chain ORT wheel into the runtime interpreter.
     .DESCRIPTION
         The dependencies come from uv.lock with their hashes; the app wheel goes in without dependencies; then
-        every PyPI ONNX Runtime is swapped for the chain wheel, the only ORT the family ships.
+        every PyPI ONNX Runtime is swapped for the chain wheel, the only ORT the family ships. -Exclude leaves the
+        PyPI ORT out of the lock export, as Install-PythonAppCrossPackage does: a runtime newer than its wheels
+        (the image's CPython 3.15, onnxruntime 1.31.0 up to cp314) cannot install it, and it is replaced anyway.
     #>
     [CmdletBinding()]
     param(
@@ -143,15 +154,12 @@ function Install-PythonAppPackage {
         [Parameter(Mandatory)][string]$AppWheel,
         [Parameter(Mandatory)][string[]]$Extras,
         [Parameter(Mandatory)][string]$OrtWheel,
-        [Parameter(Mandatory)][string]$WorkDir
+        [Parameter(Mandatory)][string]$WorkDir,
+        [string[]]$Exclude = @('onnxruntime')
     )
 
     $requirements = Join-Path $WorkDir 'requirements.lock.txt'
-    $extraArgs = @($Extras | ForEach-Object { '--extra', $_ })
-    Push-Location $RepoRoot
-    try {
-        Invoke-AppUv -What 'uv export' -Arguments (@('export', '--locked', '--no-dev', '--no-emit-project', '--format', 'requirements.txt') + $extraArgs + @('--output-file', $requirements))
-    } finally { Pop-Location }
+    Export-AppRequirement -RepoRoot $RepoRoot -Extras $Extras -Exclude $Exclude -OutFile $requirements
 
     Invoke-AppUv -What 'installing the locked dependencies' -Arguments @('pip', 'install', '--python', $Python, '--compile-bytecode', '--requirement', $requirements)
     Invoke-AppUv -What "installing $AppWheel" -Arguments @('pip', 'install', '--python', $Python, '--compile-bytecode', '--no-deps', $AppWheel)
@@ -217,10 +225,7 @@ function Install-PythonAppCrossPackage {
     )
 
     $requirements = Join-Path $WorkDir 'requirements.cross.txt'
-    $export = @('export', '--locked', '--no-dev', '--no-emit-project', '--format', 'requirements.txt') +
-        @($Extras | ForEach-Object { '--extra', $_ }) + @($Exclude | ForEach-Object { '--no-emit-package', $_ }) + @('--output-file', $requirements)
-    Push-Location $RepoRoot
-    try { Invoke-AppUv -What 'uv export' -Arguments $export } finally { Pop-Location }
+    Export-AppRequirement -RepoRoot $RepoRoot -Extras $Extras -Exclude $Exclude -OutFile $requirements
     $common = @('pip', 'install', '--python', $HostPython, '--target', $SitePackages, '--python-platform', $Platform,
         '--python-version', $PythonVersion, '--compile-bytecode')
     Invoke-AppUv -What 'installing the locked dependencies' -Arguments ($common + @('--requirement', $requirements))
