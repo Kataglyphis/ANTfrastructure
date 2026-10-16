@@ -436,6 +436,23 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         the media lane once.
 ## Open — the Windows arm64 bundle and unpublished variants
 
+- [ ] **The arm64 app bundle cannot install pyyaml for CPython 3.15** [M, ★★]. OrchestrANT's
+      `windows-arm64-cross` lane went red on 2026-10-16 (run 38863787616, job 116851917359) in
+      *Packaging (app bundle + installers)*, after the pin moved to 3.15 (CON90, 16c4560a).
+      - PyPI has no `cp315` win_arm64 wheel of pyyaml 6.0.3, so `Install-PythonAppCrossPackage`
+        builds it from the sdist; uv resolves the build requirements for `--python-platform`
+        too, so the x64 host gets an arm64 Cython (`failed to import Cython: DLL load failed ...
+        not a valid Win32 application`), and pyyaml's backend stops at `Cython does not appear to
+        be installed`.
+      - pyyaml has a pure-Python mode: `PYYAML_FORCE_LIBYAML=0` makes `ext_status` skip the
+        `_yaml` extension (setup.py, 6.0.3). Unproven whether uv then accepts the host-tagged
+        wheel for the arm64 target; a wheel built on an arm64 runner, or a SHA-pinned one in
+        `:winarm64`'s wheel store (as CON67 does for the device's pytest stack), are the other ways.
+      - The x64 bundle's twin of this, the PyPI `onnxruntime` with no `cp315` wheel, is fixed
+        in f10d0bba (the export leaves it out); the x64 bundle needs no build, pyyaml has cp315
+        win_amd64 wheels.
+      - Done when OrchestrANT's `windows-arm64-cross` packages on 3.15.
+
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
