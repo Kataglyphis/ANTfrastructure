@@ -1,0 +1,36 @@
+# The weekly Ansible update's last run, as linux/ansible/scripts/run-update.sh writes it (status.json is gitignored).
+command_line:
+  - sensor:
+      name: Ansible update
+      unique_id: ansible_update_last_run
+      icon: mdi:ansible
+      command: cat /config/ansible/status.json
+      value_template: "{{ value_json.result }}"
+      json_attributes:
+        - playbook
+        - rc
+        - started
+        - finished
+        - duration_s
+        - next_run
+        - hosts
+        - hosts_total
+        - hosts_failed
+        - hosts_unreachable
+        - hosts_changed
+        - notes
+        - history
+        - log_file
+        - log_tail
+      scan_interval: 300
+
+template:
+  - binary_sensor:
+      - name: Ansible update needs a look
+        unique_id: ansible_update_needs_a_look
+        device_class: problem
+        # A failed run, no run yet, or none for 8 days (the timer fires weekly) all need the owner.
+        state: >-
+          {% set finished = state_attr('sensor.ansible_update', 'finished') %}
+          {{ states('sensor.ansible_update') != 'ok' or finished is none
+             or (now() - as_datetime(finished)).days >= 8 }}

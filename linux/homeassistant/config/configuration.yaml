@@ -32,6 +32,8 @@ logger:
     aiodhcpwatcher: critical
 
 homeassistant:
+  # One file per feature in packages/ (packages/ansible_update.yaml: the weekly Ansible run).
+  packages: !include_dir_named packages
   customize:
     # Tasmota counters arrive without the metadata the Energy dashboard needs.
     sensor.bitshake_smartmeterreader_e320_e_in:
@@ -80,3 +82,12 @@ switch:
 
 shell_command:
   turn_off_rechenkiste: !secret cmd_turn_off_rechenkiste
+
+lovelace:
+  dashboards:
+    ansible-update:
+      mode: yaml
+      title: Ansible
+      icon: mdi:ansible
+      show_in_sidebar: true
+      filename: dashboards/ansible.yaml

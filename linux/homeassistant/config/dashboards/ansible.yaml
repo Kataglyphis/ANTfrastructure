@@ -1,0 +1,73 @@
+# The Ansible sidebar page: the last weekly update, host by host, its notes, the runs before it and the log's end.
+title: Ansible
+views:
+  - title: Ansible
+    path: ansible
+    icon: mdi:ansible
+    cards:
+      - type: entities
+        title: Last run
+        entities:
+          - entity: sensor.ansible_update
+            name: Result
+          - entity: binary_sensor.ansible_update_needs_a_look
+            name: Needs a look
+          - type: attribute
+            entity: sensor.ansible_update
+            attribute: finished
+            name: Finished
+          - type: attribute
+            entity: sensor.ansible_update
+            attribute: duration_s
+            name: Took
+            suffix: s
+          - type: attribute
+            entity: sensor.ansible_update
+            attribute: next_run
+            name: Next run
+          - type: attribute
+            entity: sensor.ansible_update
+            attribute: playbook
+            name: Playbook
+
+      - type: markdown
+        title: Hosts
+        content: |
+          {% set icon = {'ok': '✅', 'changed': '🔄', 'failed': '❌', 'unreachable': '📴'} %}
+          {% set hosts = state_attr('sensor.ansible_update', 'hosts') or [] %}
+          {% if hosts %}
+          | Host | Result | ok | changed | failed | unreachable | rescued |
+          |---|---|---|---|---|---|---|
+          {% for h in hosts -%}
+          | {{ h.name }} | {{ icon.get(h.status, '') }} {{ h.status }} | {{ h.ok }} | {{ h.changed }} | {{ h.failed }} | {{ h.unreachable }} | {{ h.rescued }} |
+          {% endfor %}
+          {% else %}
+          No run recorded yet.
+          {% endif %}
+
+      - type: markdown
+        title: Notes
+        content: |
+          {% set notes = state_attr('sensor.ansible_update', 'notes') or [] %}
+          {% if notes %}{% for n in notes %}
+          - {{ n }}
+          {% endfor %}{% else %}Nothing to report.{% endif %}
+
+      - type: markdown
+        title: Last runs
+        content: |
+          {% set runs = state_attr('sensor.ansible_update', 'history') or [] %}
+          | Finished | Result | rc | Playbook |
+          |---|---|---|---|
+          {% for r in runs -%}
+          | {{ r.finished[:16] | replace('T', ' ') }} | {{ '✅' if r.result == 'ok' else '❌' }} {{ r.result }} | {{ r.rc }} | {{ r.playbook }} |
+          {% endfor %}
+
+      - type: markdown
+        title: Log (end of the last run)
+        content: |
+          Full log on pi-1: `~/.local/state/ansible-update/runs/{{ state_attr('sensor.ansible_update', 'log_file') }}`
+
+          ```
+          {{ state_attr('sensor.ansible_update', 'log_tail') }}
+          ```

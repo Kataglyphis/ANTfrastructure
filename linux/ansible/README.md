@@ -122,9 +122,36 @@ ssh-keyscan -t ed25519 <address> >> .ssh/known_hosts
 pi-1 (linger is enabled — the rootless containerd stack requires it).
 They fire **Sundays 04:30 Europe/Berlin + 30 min jitter**, `Persistent=true`
 so a host that was off catches up on boot. `playbooks/schedule.yml` installs
-and arms them. Logs: `journalctl --user -u
-ansible-update.service`. To move the checkout, re-run `schedule.yml` after —
-the units hardcode `%h/ANTfrastructure/linux/ansible`.
+and arms them. The service runs `scripts/run-update.sh`, which runs
+`playbooks/update.yml` and keeps what it printed (next section). To move the checkout, re-run
+`schedule.yml` after — the units hardcode `%h/ANTfrastructure/linux/ansible`.
+
+## The run status in Home Assistant
+
+Since 2026-10-16 every scheduled run leaves a record, and Home Assistant shows it on an
+**Ansible** page in its sidebar (`linux/homeassistant/README.md`, *The Ansible page*).
+
+| Where | What |
+| --- | --- |
+| `~/.local/state/ansible-update/runs/<date>-<time>.log` on pi-1 | each run's full output, the newest 20 kept. The user journal on pi-1 is volatile, so `journalctl --user -u ansible-update.service` only reaches back to the last boot |
+| `linux/homeassistant/config/ansible/status.json` (gitignored) | the last run: result, exit code, start, end, duration, the timer's next date, every host's PLAY RECAP counts and a one-word status (`ok`, `changed`, `failed`, `unreachable`), the notes the playbook prints (`GARAGE:`, `TOOLCHAIN:`, a host that did not answer), the last 10 runs, and the log's last 60 lines |
+
+`scripts/run-update.sh [playbook]` writes both: it runs the playbook (default
+`playbooks/update.yml`) with its output `tee`d to the journal and the log file, then
+`scripts/ansible_run_status.py` reads the log and writes `status.json` beside the previous one,
+whose history it carries on. A run without a PLAY RECAP counts as failed whatever its exit code,
+because ansible stopped before it could report. To refresh the page by hand without updating
+anything, `scripts/run-update.sh playbooks/ping.yml`. Overrides, all optional:
+`ANSIBLE_UPDATE_STATE` (the log directory's parent), `ANSIBLE_UPDATE_STATUS_DIR`,
+`ANSIBLE_UPDATE_KEEP_RUNS`. `linux/scripts/tests/test-ansible-run-status.sh` checks the status
+against sample logs: a green run, a host that did not answer with Garage and toolchain notes, a
+rescued task, a run that crashed before its recap, the history's length and the size of the
+log's end.
+
+**Nothing of it is published.** The status and the logs name hosts and print what the hosts
+answered, so `status.json` sits in a gitignored directory and the logs outside the repository.
+The tracked pieces (`run-update.sh`, `ansible_run_status.py`, the Home Assistant package and
+dashboard) carry no address and no secret.
 
 **A host that is off does not stop the run** (2026-10-16). Under `serial: 1` every host is its own
 batch, and Ansible ends a play when a whole batch fails (`playbook_executor.py`): one camera
