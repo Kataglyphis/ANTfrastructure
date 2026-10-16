@@ -115,7 +115,7 @@ fixed on `develop` and merged again.
 
 Both the version check and the release job run the hub's
 `linux/scripts/06-packaging/publish-github-release.sh`: `--version-file` names `pubspec.yaml`,
-`Cargo.toml` or a `VERSION.txt` (read by `version_util.sh --file-version`, which never falls
+`Cargo.toml`, a `CMakeLists.txt` (its first `project()` call's literal `VERSION`) or a `VERSION.txt` (read by `version_util.sh --file-version`, which never falls
 back to a branch name), `--changelog` the file whose `## <version>` or `## [<version>]` section
 becomes the notes, `--name` the release title, then `--check` or `--assets <dir>`. It refuses a
 version that is released already, a version without a section, notes over GitHub's 125000
