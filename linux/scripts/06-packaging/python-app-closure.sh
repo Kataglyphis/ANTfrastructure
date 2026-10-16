@@ -107,7 +107,10 @@ add_origin_runpath() {
   rel="$(realpath --relative-to="$(dirname "$(realpath "${file}")")" "${LIB_DIR}")"
   token='$ORIGIN'
   [ "${rel}" = "." ] || token="\$ORIGIN/${rel}"
-  readelf -d "${file}" 2>/dev/null | grep -qF -- "${token}" && return 0
+  local raw
+  raw="$(readelf -d "${file}" 2>/dev/null | awk '/\((RUNPATH|RPATH)\)/ { gsub(/[][]/, "", $NF); print $NF }')"
+  # Whole entries: a substring test reads $ORIGIN/.. as $ORIGIN, and the needed entry never lands (2026-10-17).
+  case ":${raw}:" in *":${token}:"*) return 0 ;; esac
   chmod u+w "${file}"
   patchelf --add-rpath "${token}" "${file}"
 }

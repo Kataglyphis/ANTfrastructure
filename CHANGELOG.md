@@ -6,6 +6,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — the closure tool compares RUNPATH entries whole
+
+- **`python-app-closure.sh` skipped a needed `$ORIGIN`** whenever an entry such as `$ORIGIN/..`
+  already contained it as text. Under `LOADER` the moved program carries `$ORIGIN/..`, so it never
+  got `$ORIGIN`: AccelerANTgine's clean-host job (x64 and arm64, 6ad3b09) found its
+  `lib/accelerantgine/AccelerANTgine` taking the distro's `libstdc++` (`GLIBCXX_3.4.36 not found`)
+  and no ORT. The launcher hid it (`--library-path`), and so did the image (its ld.so cache has
+  GCC 16's `libstdc++` and ORT). The check now matches whole entries; a new assertion in
+  `test-linux-closure-install.sh` (32) resolves the moved program with the system loader and fails
+  on the old tool.
+
 ## 2026-10-17 — a Flutter bundle through the loader, and a flatpak that keeps the bundle whole
 
 - **`bundle-loader.sh --beside`** keeps the program in its directory as `<name>.bin` with the loader
