@@ -112,7 +112,7 @@ skopeo_child() {
 main() {
   local index_ref repo child start="${SECONDS}"
   parse_args "$@"
-  [ -n "${IMAGE}" ] || IMAGE="$(bash "${SCRIPT_DIR}/../ci-image-ref.sh" linux)"
+  [ -n "${IMAGE}" ] || IMAGE="$(bash "${SCRIPT_DIR}/../ci-image-ref.sh" --linux)"
   if [ -z "${ENGINE}" ]; then
     if command -v docker >/dev/null 2>&1; then ENGINE=docker; else ENGINE=nerdctl; fi
   fi

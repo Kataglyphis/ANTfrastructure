@@ -122,4 +122,9 @@ if command -v cmake >/dev/null 2>&1; then
   t_assert_contains "${_out}" "riscv64_cross_env" "an unprepared shell fails with the fix, not a host build"
 fi
 
+
+t_case "without --image the sysroot script resolves the family image and reaches the engine check"
+_out="$(bash "${SYSROOT_SH}" --dest "${_tmp}/no-image" --engine "${_tmp}/no-such-engine" 2>&1)"
+t_assert_contains "${_out}" "container engine not found" "the default image resolved, so the run got as far as the engine"
+t_assert_eq "" "$(printf '%s' "${_out}" | grep 'unknown argument' || true)" "ci-image-ref.sh takes --linux, not linux"
 t_summary
