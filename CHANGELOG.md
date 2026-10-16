@@ -6,6 +6,28 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-16 — the cache work, measured on two nvidia chains; cargo's wrapper goes
+
+- **ONNX Runtime with nvcc through sccache.**
+  - nvidia stage: 83 min with nvcc bare (2026-10-14), 79 min on the first fill.
+  - **22 min warm** (1332 s), 569 of 569 CUDA files hit, 0 misses in 6134 requests.
+  - The exemption kept `onnxruntime_providers_cuda_llm` bare every time.
+  - `onnxruntime_providers_cuda` linked from hits, and the smoke gate passed 301 assertions.
+- **Bazel's cache on dufs.**
+  - LiteRT-LM 429 s cold → 204 s warm (3618 of 3619 actions from the cache).
+  - The ai-edge-litert wheel 238 s → **23.5 s** (3925 of 3925).
+  - The stage: 1379 s → 927 s.
+- **The S3 level in a full chain:** both levels at every server start, 179 and 36 writes with none
+  failed, every drain 0 s.
+- **cargo's `RUSTC_WRAPPER` is taken out again.**
+  - 99 % Rust hits left gst-plugins-rs at 131 s against 125 s bare, because its plugin crates are
+    cdylibs.
+  - It had also brought a failure: cc-rs wrapped meson's shim, and sccache refused it.
+  - `SourceBuild.GstreamerWebRtc.Tests.ps1` now checks that the cargo plan sets no wrapper on
+    either arch.
+- Docs: `windows-build-resources.md` (§ Persistent compile cache, § Two cache levels, § Bazel's
+  cache) and `windows-builds.md` § gst-plugins-rs on Windows carry the numbers.
+
 ## 2026-10-16 — the sccache bucket's runbook carries the live server's files
 
 - **The outage's cause, and its fix on the VPS.**

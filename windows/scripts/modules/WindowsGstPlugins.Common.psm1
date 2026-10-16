@@ -266,11 +266,7 @@ function Get-GstRustCargoPlan {
         [Parameter(Mandatory)][string]$TargetDir,
         [Parameter(Mandatory)][string]$PkgConfigDir,
         [string]$Arch = '',
-        [int]$Jobs = 0,
-        # sccache.exe when the stage compiles through sccache; the crates' rlibs then hit, the plugin cdylibs cannot.
-        [string]$Sccache = '',
-        # The real clang-cl, required with -Sccache: cc-rs wraps CC in RUSTC_WRAPPER, and sccache cannot run meson's shim.
-        [string]$Compiler = ''
+        [int]$Jobs = 0
     )
     $cargoPlugins = @($Plugin | Where-Object { $_.Detection -eq 'cargo' })
     if ($cargoPlugins.Count -eq 0) { throw 'Get-GstRustCargoPlan: no contract entry has Detection cargo, so there is nothing to build' }
@@ -279,15 +275,8 @@ function Get-GstRustCargoPlan {
     $cargoArgs = @('build', '--release', '--locked', '--target-dir', $TargetDir)
     foreach ($p in $cargoPlugins) { $cargoArgs += @('-p', $p.CargoPackage) }
     if ($Jobs -gt 0) { $cargoArgs += @('--jobs', "$Jobs") }
+    # No RUSTC_WRAPPER: 99 % Rust hits saved nothing, the plugin cdylibs are the step (docs/windows-builds.md § gst-plugins-rs on Windows).
     $cargoEnv = [ordered]@{ PKG_CONFIG_PATH = $PkgConfigDir }
-    if ($Sccache) {
-        if (-not $Compiler) { throw 'Get-GstRustCargoPlan: -Sccache needs -Compiler, the real clang-cl, or cc-rs hands sccache the meson shim' }
-        $cargoEnv['RUSTC_WRAPPER'] = $Sccache
-        $cargoEnv['CC'] = $Compiler
-        $cargoEnv['CXX'] = $Compiler
-        # sccache refuses incremental rustc calls; release builds are not incremental, this keeps it so.
-        $cargoEnv['CARGO_INCREMENTAL'] = '0'
-    }
     $outDir = Join-Path $TargetDir 'release'
     if (Test-WindowsCrossTarget -Arch $gstArch) {
         $triple = Get-RustTargetTriple -Arch $gstArch

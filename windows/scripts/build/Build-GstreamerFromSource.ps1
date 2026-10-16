@@ -1239,9 +1239,7 @@ cpp_link_args = [$buildLinkArgs]
     # The tag and plain cargo build the Linux lane uses; see docs/windows-builds.md § gst-plugins-rs on Windows.
     $rsSrcDir = Join-Path $resolvedSrcDir 'gst-plugins-rs'
     $rsPluginDir = Join-Path $resolvedInstallDir 'lib\gstreamer-1.0'
-    # The same sccache server as meson's compiles (phase 3), or none when that phase found no remote cache.
-    $rsSccache = if ($script:GstSccacheShim) { (Get-Command sccache.exe).Source } else { '' }
-    $rsPlan = Get-GstRustCargoPlan -Plugin $requiredPlugins -Arch $script:GstTargetArch -Jobs $gstJobs -Sccache $rsSccache -Compiler $clangCheck.Source `
+    $rsPlan = Get-GstRustCargoPlan -Plugin $requiredPlugins -Arch $script:GstTargetArch -Jobs $gstJobs `
         -TargetDir (Join-Path $resolvedBuildDir 'gst-plugins-rs-target') -PkgConfigDir (Join-Path $resolvedInstallDir 'lib\pkgconfig')
     $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $env:USERPROFILE '.cargo' }
     # Only caches this run creates, so the cleanup never whites out a lower layer's bytes.

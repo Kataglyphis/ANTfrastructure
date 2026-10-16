@@ -336,10 +336,10 @@ the patched clang-cl, hands it to meson as `CC`/`CXX`, and fails the stage when 
 fewer than 100 compile requests. FFmpeg (clang-cl +
 make) is cached since 2026-08-20 (#100): the launcher goes in at make time
 (`make CC='sccache clang-cl'`), never into configure's `--cc`, and
-`FFMPEG_SCCACHE=0` opts out. gst-plugins-rs (cargo, phase `8b` of the GStreamer build) goes
-through the same server since 2026-10-15: `RUSTC_WRAPPER` plus `CARGO_INCREMENTAL=0`, whenever
-meson's compiles do. The crates' rlibs hit; the two plugin cdylibs cannot. The step took about
-2 min uncached in every variant on 2026-10-14.
+`FFMPEG_SCCACHE=0` opts out. gst-plugins-rs (cargo, phase `8b` of the GStreamer build) does not
+go through sccache. Measured 2026-10-16: 99 % Rust hits left the step at 131 s against 125 s
+bare, because its two plugin crates are cdylibs
+([`windows-builds.md` § gst-plugins-rs on Windows](windows-builds.md#gst-plugins-rs-on-windows)).
 The first build populates the cache; subsequent `--no-cache` rebuilds and
 version bumps reuse unchanged object files.
 
@@ -427,11 +427,18 @@ after a decision history worth keeping:
     (`sccache-ptx-exempt: nvcc stays bare for onnxruntime_providers_cuda_llm; …`).
   - **Tests.** `SourceBuild.OrtCudaLauncher.Tests.ps1` runs CMake on a stand-in project:
     a `-virtual` target loses the launcher, in a subdirectory too, and a real-only one keeps it.
-  - **First chain, 2026-10-16** (nvidia, hub `8a4ef0fa`, the first with the launcher on ORT 1.31's
-    CUDA, so cold): configure printed `nvcc stays bare for onnxruntime_providers_cuda_llm`, nvcc
-    went through sccache (292 CUDA hits, 277 misses, where it had made none), and the stage took
-    4746 s against 4956 s with nvcc bare. The warm rerun and the three canaries above are still
-    to come.
+  - **Measured on the nvidia stage, 2026-10-16:**
+
+    | Run | Stage | CUDA through sccache |
+    |---|---|---|
+    | 2026-10-14, nvcc bare | 4956 s | none |
+    | First fill (hub `8a4ef0fa`) | 4746 s | 292 hits, 277 misses |
+    | Warm, chain from an empty BuildKit store (`5499dc91`) | about 30 min | 569 of 569 |
+    | Warm rerun, `-NoCacheStage media-core-built-onnx` (`cfe4774c`) | **1332 s** (ninja 1149 s) | 569 of 569; 6134 requests, 0 misses |
+
+    Configure printed `nvcc stays bare for onnxruntime_providers_cuda_llm` every time. Both warm
+    builds linked `onnxruntime_providers_cuda` from hits, and the chain's smoke gate passed 301
+    assertions with none skipped. `Test-CudaCache.ps1`, the third canary, did not run.
   - Drop both when a released sccache fixes #2862. OpenCV passes `-real` archs only and is
     unaffected.
 
@@ -586,6 +593,11 @@ changed, and `wg` had resolved the endpoint's name once, so the VPS kept sending
 address for about 8 hours. `wg-reresolve-dns@wg0.timer` now follows such a change in about 20 s
 (the runbook's [WireGuard section](../linux/sccache-s3/README.md#1-wireguard-into-the-home-lan)).
 
+**The level in a full chain, 2026-10-16** (nvidia from an empty BuildKit store, `webdav,s3`): the
+patched LLVM hit 4233 of 4233 from level 0 and started its server with both levels. The
+GStreamer merge wrote 179 objects to the bucket with none failed, and the next run 36. Every
+drain ended after 0 s. The smoke gate passed 301 assertions.
+
 Adding the secret mounts and ARGs changed the RUN instructions, so the chain after 2026-10-15
 re-keys every sccache stage once. Those stages compile warm from level 0.
 
@@ -619,7 +631,17 @@ now the LiteRT-LM build (5244 actions, ~400 s) and the ai-edge-litert wheel (565
   leaves the directory out of the bucket, which only sccache reads. Bazel cannot speak S3, so
   this cache stays on each host.
 - **Tests.** `Bazel.RemoteCache.Tests.ps1`: no endpoint, a dead one, a live HTTP stub that
-  answers 404, and both scripts and the seed wired. Not yet measured in a chain.
+  answers 404, and both scripts and the seed wired.
+- **Measured 2026-10-16** (nvidia; the first run filled 32,365 objects, 1.22 GB, into `bazel\`):
+
+  | Build | Cold | Warm | From the cache |
+  |---|---|---|---|
+  | LiteRT-LM (`litert_lm_main`) | 429 s | **204 s** | 3618 of 3619 actions |
+  | ai-edge-litert wheel | 238 s | **23.5 s** | 3925 of 3925 actions |
+  | The stage's two RUNs together | 1379 s | **927 s** | |
+
+  LiteRT-LM's remaining 204 s are mostly the download of every output
+  (`--remote_download_outputs=all`), which its install step needs.
 
 ### What the published image carries
 
