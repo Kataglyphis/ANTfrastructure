@@ -69,6 +69,9 @@ The two halves of one topic often split:
 | **sccache across build hosts**: the host's WebDAV as level 0, a shared S3 bucket as level 1, the key as BuildKit secrets, the upload drain, the client scripts | [`windows-build-resources.md` § Two cache levels](windows-build-resources.md#two-cache-levels) |
 | **Bazel's action cache** on the host's dufs (the LiteRT builds), and ORT's nvcc keeping sccache but for its PTX-only targets | [`windows-build-resources.md` § Bazel's cache](windows-build-resources.md#bazels-cache), [§ Persistent compile cache (sccache)](windows-build-resources.md#persistent-compile-cache-sccache) |
 | **The shared bucket's server**: Garage on a VPS behind the FritzBox's WireGuard, firewall, size cap, rebuild runbook | [`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md) |
+| **The home fleet's weekly update**: Ansible on pi-1, the inventory's obfuscated names, the schedule, a host that is off, Garage, and each run's log and status | [`linux/ansible/README.md`](../linux/ansible/README.md) |
+| **Home Assistant on pi-1**: tracked vs live config, secrets, one file per feature in `packages/`, the Ansible page, the energy meter | [`linux/homeassistant/README.md`](../linux/homeassistant/README.md) |
+| **The home network's addresses**: placeholders in docs and examples, the real values in the gitignored `site.local.env` | [`site.local.env.example`](../site.local.env.example) |
 | **clang-cl sanitizers**: why `-shared-libsan`, trap-mode UBSan, Microsoft's ASan runtime over LLVM's, and who stages the DLL | [`windows-clang-cl-sanitizers.md`](windows-clang-cl-sanitizers.md) |
 | Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | Open refactor work on the Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
