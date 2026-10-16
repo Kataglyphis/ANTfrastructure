@@ -1,7 +1,22 @@
 ---
+# serial: 1 ends the play at the first failed batch, so a host that is off would cost every later host (pi-1 too) its update.
+- name: Find the hosts that answer
+  hosts: fleet
+  gather_facts: false
+  tasks:
+    - name: Reach each host
+      ansible.builtin.ping:
+      ignore_unreachable: true
+      register: update_reach
+
+    - name: Group the hosts that answered
+      ansible.builtin.group_by:
+        key: update_reachable
+      when: not (update_reach.unreachable | default(false))
+
 # serial + order: pi-1 is the control node — it must go LAST and never reboot inline.
 - name: Keep the fleet up to date
-  hosts: fleet
+  hosts: fleet:&update_reachable
   become: true
   serial: 1
   tasks:
@@ -175,3 +190,12 @@
     - name: Schedule a delayed reboot (control node; inline would kill the run)
       ansible.builtin.command: /usr/sbin/shutdown -r +2
       when: update_needs_reboot and ansible_connection == 'local'
+
+- name: Report the hosts that were not updated
+  hosts: fleet
+  gather_facts: false
+  tasks:
+    - name: A host that did not answer fails the run, after every other host is updated
+      ansible.builtin.fail:
+        msg: "{{ inventory_hostname }} did not answer, so it was not updated"
+      when: update_reach.unreachable | default(false)
