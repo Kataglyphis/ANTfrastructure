@@ -134,7 +134,7 @@ setup_ccache() {
 
   # Substring match: the launcher may be the guarded launcher's path, not the literal "sccache".
   case "${_cc_launcher}" in
-    *sccache*) sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' || true ;;
+    *sccache*) sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Cache (read |write )?errors|Cache timeouts|Forced recaches|Non-cacheable|Unsupported|Errors|Cache location|Max cache size)' || true ;;
     *)         ccache --show-stats 2>/dev/null | head -5 || true ;;
   esac
 }
@@ -232,7 +232,7 @@ dump_compiler_cache_stats() {
     _hits="$(sccache --show-stats 2>/dev/null | awk '/^Cache hits[[:space:]]+[0-9]+[[:space:]]*$/ { print $NF; exit }')"
     case "${_req}" in ''|*[!0-9]*) _req=0 ;; esac
     case "${_hits}" in ''|*[!0-9]*) _hits=0 ;; esac
-    sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' >&2 || true
+    sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Cache (read |write )?errors|Cache timeouts|Forced recaches|Non-cacheable|Unsupported|Errors|Cache location|Max cache size)' >&2 || true
     if [ "${_req}" -gt 0 ] && [ "${_hits}" -eq 0 ]; then
       _cc_warn "sccache: ${_req} compile requests, 0 cache hits — cache may be dead"
     fi
