@@ -98,7 +98,7 @@ media_common_init() {
     if declare -F setup_sccache >/dev/null 2>&1; then
       setup_sccache || true
       # grep, not head: the stats output varies in length.
-      { sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' || true; } >&2
+      { sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Cache (read |write )?errors|Cache timeouts|Forced recaches|Non-cacheable|Unsupported|Errors|Cache location|Max cache size)' || true; } >&2
     fi
   fi
   source_module compiler-resolution.sh || true

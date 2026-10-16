@@ -288,7 +288,11 @@ Compile requests executed           521
 Cache hits                          318
 Cache hits (C/C++)                  318
 Cache misses                        203
+Cache read errors                     0
+Cache write errors                   63
 Errors                                0
+Cache location                  Local disk: "/var/cache/sccache"
+Max cache size                      2 GiB
 OUT
 STATS
 chmod +x "${_SC_BIN}/sccache"
@@ -301,6 +305,8 @@ t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -i 'integer expected')" \
   "the counter must be a number, not 'executed<TAB>559'"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep '^WARN')" "a warm cache warns about nothing"
 t_assert_contains "${_out}" "Compile requests" "and the human-readable dump still reaches stderr"
+t_assert_contains "${_out}" "Cache write errors                   63" "a miss that never lands in the cache shows as a write error"
+t_assert_contains "${_out}" 'Cache location                  Local disk: "/var/cache/sccache"' "and where the cache lives, with its cap"
 _out="$(_dump 0)"
 t_assert_contains "${_out}" "WARN sccache: 559 compile requests, 0 cache hits" \
   "a DEAD cache still warns, with the requests count read off the right line"
