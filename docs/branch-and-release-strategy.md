@@ -155,8 +155,9 @@ A calling job looks the same in both:
   older one. A skipped calling job never starts the lane, so an ordinary push cancels no
   round someone asked for.
   - **Not the lane name alone.** `linux-x64-${{ github.ref }}` is the group every push to
-    `develop` starts the lane in, so a push during a dry run of `release.yml` on `develop`
-    cancelled the dry run's lane (OmniAccelerANT, 2026-10-16).
+    `develop` starts the lane in, and a dry run of `release.yml` on `develop` calls the lane
+    in it too, so each cancels the other: OmniAccelerANT's first dry run, dispatched a
+    minute after a push, cancelled that push's Linux x64 run (1914a28, 2026-10-16).
   - **Not `${{ github.workflow }}` alone.** Every lane `on-request.yml` calls would share
     one group and cancel or queue behind each other; OxidANT's lanes did until they moved
     (2026-10-15).
