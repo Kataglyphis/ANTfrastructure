@@ -6,6 +6,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — `LOADER`: Linux packages start on Debian 13 too
+
+- **`kataglyphis_install_linux_closure(LOADER ...)`** ships the image's loader and glibc:
+  `06-packaging/bundle-loader.sh` moves each executable beside them in `lib/<PRIVATE_DIR>` and
+  leaves a launcher that starts it through that loader. Measured on himbeere2 (Debian 13, glibc
+  2.41, GStreamer 1.26) with AccelerANTgine: the tarball, the unpacked `.deb` and the AppImage
+  start with `LD_BIND_NOW=1`, and `apt-get install --simulate` takes the `.deb`.
+- **Two traps on the way, both handled in `LOADER`:** CPack's AppImage generator patches every
+  library without a RUNPATH, the bundled loader included, which then segfaults
+  (`patchelf-keep-glibc.sh` leaves glibc as built); and `dpkg-shlibdeps` read the bundled glibc as
+  the system's and pinned `libc6 (>> 2.43), libc6 (<< 2.44)`, so it is off and `DEBIAN_DEPENDS`
+  names what the system brings.
+- `test-linux-closure-install.sh`: 26 assertions (the launcher, the relocated run, the wrapper).
+
 ## 2026-10-16 — Linux packages that start outside the image
 
 - **AccelerANTgine 0.0.1's Linux packages started nowhere but in the image.** They needed GCC

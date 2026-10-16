@@ -61,6 +61,8 @@ endfunction()
 
 # Captured here: inside a function CMAKE_CURRENT_LIST_DIR is the caller's directory.
 set(_KATAGLYPHIS_ELF_CLOSURE "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/06-packaging/python-app-closure.sh")
+set(_KATAGLYPHIS_BUNDLE_LOADER "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/06-packaging/bundle-loader.sh")
+set(_KATAGLYPHIS_PATCHELF_KEEP_GLIBC "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/06-packaging/patchelf-keep-glibc.sh")
 
 # The Linux twin of kataglyphis_install_package_dlls; arguments: docs/linux-build-basics.md#linux-packages-that-run-outside-the-image
 function(kataglyphis_install_linux_closure)
@@ -70,7 +72,7 @@ function(kataglyphis_install_linux_closure)
   endif()
   cmake_parse_arguments(
     ARG
-    ""
+    "LOADER"
     "PRIVATE_DIR"
     "TARGETS;SEARCH;SYSTEM;PROTECT"
     ${ARGN})
@@ -81,12 +83,14 @@ function(kataglyphis_install_linux_closure)
   include(GNUInstallDirs)
   set(_libdir "${CMAKE_INSTALL_LIBDIR}")
   file(RELATIVE_PATH _bin_to_lib "/${CMAKE_INSTALL_BINDIR}" "/${_libdir}")
+  set(_loader_args "")
   foreach(_target IN LISTS ARG_TARGETS)
     if(NOT TARGET ${_target})
       continue()
     endif()
     get_target_property(_type ${_target} TYPE)
     if(_type STREQUAL "EXECUTABLE")
+      string(APPEND _loader_args " \"${CMAKE_INSTALL_BINDIR}/$<TARGET_FILE_NAME:${_target}>\"")
       set_property(
         TARGET ${_target}
         APPEND
@@ -124,10 +128,27 @@ function(kataglyphis_install_linux_closure)
     string(APPEND _argstr " \"${_arg}\"")
   endforeach()
 
+  # LOADER first: the closure then sees each executable where it will run, beside the loader.
+  set(_loader_step "")
+  if(ARG_LOADER)
+    # The AppImage generator would patch the bundled loader, which then segfaults (measured 2026-10-17).
+    set(CPACK_APPIMAGE_PATCHELF_EXECUTABLE
+        "${_KATAGLYPHIS_PATCHELF_KEEP_GLIBC}"
+        PARENT_SCOPE)
+    # dpkg-shlibdeps reads the bundled glibc as the system's and pins libc6 (<< 2.44); DEBIAN_DEPENDS names the rest.
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS
+        OFF
+        PARENT_SCOPE)
+    set(_loader_step
+        "execute_process(COMMAND bash \"${_KATAGLYPHIS_BUNDLE_LOADER}\" \"\${_kg_root}\"
+  \"\${_kg_root}/${_libdir}/${ARG_PRIVATE_DIR}\"${_loader_args} COMMAND_ERROR_IS_FATAL ANY)
+")
+  endif()
+
   # Last install rule: it walks the staged tree each CPack generator is about to pack.
   install(
     CODE "set(_kg_root \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}\")
-execute_process(COMMAND bash \"${_KATAGLYPHIS_ELF_CLOSURE}\" --bundle \"\${_kg_root}\"
+${_loader_step}execute_process(COMMAND bash \"${_KATAGLYPHIS_ELF_CLOSURE}\" --bundle \"\${_kg_root}\"
   --lib-dir \"\${_kg_root}/${_libdir}/${ARG_PRIVATE_DIR}\"${_argstr} COMMAND_ERROR_IS_FATAL ANY)")
 endfunction()
 
