@@ -20,4 +20,5 @@ LimitNOFILE=65536
 MemoryMax=1G
 
 [Install]
-WantedBy=multi-user.target
+# BindsTo stops Garage with the tunnel; this starts it again when the tunnel comes back.
+WantedBy=multi-user.target wg-quick@wg0.service
