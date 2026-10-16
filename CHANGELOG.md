@@ -6,6 +6,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-16 — VS Build Tools from VS 18's own channel name
+
+- **`aka.ms/vs/18/release/vs_buildtools.exe` redirects to Bing.** Every base build of the day got
+  its HTML page three times before the floating fallback took over. VS 2026 names its channels
+  `stable` and `insiders`; `aka.ms/vs/18/stable/` serves the 5.7 MB bootstrapper.
+- **`Install-Vs.ps1` tries `vs/<major>/stable/` first**, then `vs/<major>/release/` (VS 17 and
+  older), then the floating `vs/stable/`. Only the floating alias triggers the floating-channel
+  warning. Tested in `Host.InstallVsUrls.Tests.ps1`.
+
 ## 2026-10-16 — the cache work, measured on two nvidia chains; cargo's wrapper goes
 
 - **ONNX Runtime with nvcc through sccache.**
