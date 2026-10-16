@@ -971,7 +971,10 @@ derives the packages from the contract's `CargoPackage` fields and, on the cross
 lane, adds `--target aarch64-pc-windows-msvc`, `PKG_CONFIG_ALLOW_CROSS=1`,
 `lld-link` as the target linker and `clang-cl --target=…` for the C that `ring`
 compiles. With `-Sccache` it adds `RUSTC_WRAPPER` and `CARGO_INCREMENTAL=0`, so the crates
-compile through the stage's sccache server.
+compile through the stage's sccache server. It also sets `CC` and `CXX` to the real `clang-cl`
+(`-Compiler`). cc-rs wraps whatever `CC` names in `RUSTC_WRAPPER`, and meson's sccache shim,
+which phase 3 leaves in `CC`, made ring's build script run `sccache <shim>`. sccache answered
+`Compiler not supported: ""` (the first chain with the wrapper, 2026-10-16).
 
 - **Default features**, as on Linux: `janus`, `whip`, `web_server`, `whep`,
   `pixelstreaming`. TLS is rustls with `ring`; no AWS or LiveKit SDK, so no
