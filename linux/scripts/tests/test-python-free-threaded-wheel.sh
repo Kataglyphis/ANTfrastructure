@@ -210,6 +210,26 @@ else
   printf '  SKIP [%s] no free-threaded interpreter at %s\n' "${_T_CASE}" "${FT_PY}"
 fi
 
+t_case "load: a GIL build's compiled modules load, a broken one fails, and a pure or absent distribution is no verdict"
+t_assert_eq "2" "$(t_rc python3 -I "${HELPER}" load pip)" "pip owns no compiled module"
+t_assert_contains "$(python3 -I "${HELPER}" load pip 2>&1)" "ERROR: pip owns no compiled module, so its wheel is no binary build"
+t_assert_contains "$(python3 -I "${HELPER}" load no_such_dist_x 2>&1)" "ERROR: no_such_dist_x is not installed in"
+if python3 -I -c 'import sys, sysconfig, os; sys.exit(not os.path.isfile(os.path.join(sysconfig.get_paths()["include"], "Python.h")))' && command -v cc >/dev/null; then
+  t_assert_ok python3 -m venv --without-pip "${_work}/gilvenv"
+  t_assert_ok _ft_ext "${_work}/gilvenv" gilfix_ok ""
+  _gil_load() { "${_work}/gilvenv/bin/python" -I "${HELPER}" load "$1" 2>&1; }
+  t_assert_eq "0" "$(t_rc _gil_load gilfix_ok)" "a real extension loads"
+  t_assert_contains "$(_gil_load gilfix_ok)" "1 compiled module(s) of gilfix_ok loaded on "
+  # A module file that exports its PyInit_ name but is no shared library.
+  t_assert_ok _ft_ext "${_work}/gilvenv" gilfix_bad ""
+  _bad="$(find "${_work}/gilvenv" -name 'gilfix_bad*.so' | head -1)"
+  printf 'x\0PyInit_gilfix_bad\0' > "${_bad}"
+  t_assert_eq "1" "$(t_rc _gil_load gilfix_bad)" "a module that cannot load fails"
+  t_assert_contains "$(_gil_load gilfix_bad)" "ERROR: cannot load gilfix_bad:"
+else
+  printf '  SKIP [%s] no Python.h or cc for a real extension\n' "${_T_CASE}"
+fi
+
 # _ftw [args]: the Python on stdin, with the helper imported as ftw and the args from sys.argv[2].
 _ftw() {
   python3 -I -c "import importlib.util, sys

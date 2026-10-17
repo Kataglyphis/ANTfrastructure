@@ -70,6 +70,35 @@ function Get-PythonWheelAbiTag {
 }
 
 # A wheel file name's dash-separated fields, the last three being its python, ABI and platform tags; throws for any other name.
+function Resolve-PythonLegList {
+    <#
+    .SYNOPSIS
+        The legs of a comma or space separated -PythonVersions: empty is the pinned X.Y, `pinned` stands for it and `pinnedt` its twin.
+    #>
+    [OutputType([string[]])]
+    param([string]$PythonVersions = '', [string]$VersionsEnvPath = (Resolve-SharedLinuxScriptFile -RepoPath 'linux\scripts\01-core\versions.env'))
+    if (-not $PythonVersions -or $PythonVersions -match 'pinned') {
+        $mm = (Get-PinnedPythonVersion -VersionsEnvPath $VersionsEnvPath).MajorMinor
+        $PythonVersions = if ($PythonVersions) { $PythonVersions -creplace 'pinned', $mm } else { $mm }
+    }
+    $legs = @($PythonVersions -split '[,\s]+' | Where-Object { $_ })
+    if ($legs.Count -eq 0) { throw '-PythonVersions names no leg' }
+    return $legs
+}
+function Get-NativeWheelCheck {
+    <#
+    .SYNOPSIS
+        The proof a leg's binary wheel takes, load for X.Y and prove for X.Yt; throws unless -Name is that leg's cpXY[t] -Platform wheel.
+    #>
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Leg, [Parameter(Mandatory)][string]$Platform)
+    if ($Leg -notmatch '^(\d+)\.(\d+)(?:\.\d+)?(t?)$') { throw "$Leg is no X.Y or X.Yt Python leg" }
+    $abi = "cp$($Matches[1])$($Matches[2])$($Matches[3])"
+    $check = if ($Matches[3]) { 'prove' } else { 'load' }
+    $parts = Split-PythonWheelName -Name $Name
+    if ($parts[-2] -cne $abi -or $parts[-1] -cne $Platform) { throw "Python $Leg built $Name, not a $abi $Platform wheel" }
+    return $check
+}
 function Split-PythonWheelName {
     param([Parameter(Mandatory)][string]$Name)
     $parts = [IO.Path]::GetFileNameWithoutExtension($Name).Split('-')
@@ -152,11 +181,14 @@ function Invoke-FreeThreadedWheelProof {
     <#
     .SYNOPSIS
         Loads every compiled module of -Distribution in -Python's venv and returns the verdict; throws unless the GIL stays off.
+    .PARAMETER Check
+        prove (the default) or load, the helper's GIL-build twin, where every module need only load.
     #>
     [OutputType([string])]
-    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Distribution, [string]$Helper = '')
-    $verdict = Invoke-FreeThreadedHelper -Python $Python -Arguments @('prove', $Distribution) -Helper $Helper
-    if ($verdict.Code -ne 0) { throw "free-threaded proof failed for ${Distribution}: $($verdict.Text)" }
+    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Distribution, [string]$Helper = '',
+        [ValidateSet('prove', 'load')][string]$Check = 'prove')
+    $verdict = Invoke-FreeThreadedHelper -Python $Python -Arguments @($Check, $Distribution) -Helper $Helper
+    if ($verdict.Code -ne 0) { throw "$(if ($Check -eq 'load') { 'load' } else { 'free-threaded' }) proof failed for ${Distribution}: $($verdict.Text)" }
     return $verdict.Text
 }
 
@@ -175,7 +207,8 @@ function Invoke-FreeThreadedWheelVenvProof {
         [Parameter(Mandatory)][string]$Distribution,
         [string[]]$DllDirectory = @(),
         [string]$Helper = '',
-        [string]$VenvDir = (Join-Path ([IO.Path]::GetTempPath()) "ft-proof-$([guid]::NewGuid().ToString('N').Substring(0, 8))")
+        [string]$VenvDir = (Join-Path ([IO.Path]::GetTempPath()) "ft-proof-$([guid]::NewGuid().ToString('N').Substring(0, 8))"),
+        [ValidateSet('prove', 'load')][string]$Check = 'prove'
     )
     try {
         & uv venv --clear --no-cache --quiet --python $Interpreter $VenvDir 2>&1 | Out-Host
@@ -189,7 +222,7 @@ function Invoke-FreeThreadedWheelVenvProof {
         $shim = @('# Written by Invoke-FreeThreadedWheelVenvProof for this proof venv only.', 'import os', 'for _d in (') +
             @($dirs | ForEach-Object { "    r'$_'," }) + @('):', '    os.add_dll_directory(_d)')
         Set-Content -LiteralPath (Join-Path $site 'sitecustomize.py') -Encoding ascii -Value $shim
-        return Invoke-FreeThreadedWheelProof -Python $python -Distribution $Distribution -Helper $Helper
+        return Invoke-FreeThreadedWheelProof -Python $python -Distribution $Distribution -Helper $Helper -Check $Check
     } finally {
         Remove-Item -LiteralPath $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -351,6 +384,7 @@ function Get-WheelMemberDifference {
 }
 
 Export-ModuleMember -Function Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PinnedPythonVersion, Get-PythonWheelAbiTag, Find-UvPython,
+    Resolve-PythonLegList, Get-NativeWheelCheck,
     Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof,
     Invoke-FreeThreadedWheelVenvProof, Get-TwinInstallArgument, Invoke-TwinDeviceProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,
     Get-WheelMemberDifference

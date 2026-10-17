@@ -451,8 +451,8 @@ ANTfrastructure pin and runs `windows/scripts/python/Invoke-PythonTestLegs.ps1 -
 - **Extras:** `arm64-extras` (empty means all extras), `free-threaded-extras` for a `t` leg,
   and `test-paths`, all as on Linux. Every leg gates. A failed leg does not stop the next one,
   and the error names every failed leg and its step: venv, sync or pytest.
-- **Wheels only, in practice.** The runner has MSVC but not the family's clang-cl setup, and
-  a package without a `win_arm64` wheel would build with the default `cl`. Keep such packages
+- **Wheels only, in practice.** The test legs never enter Visual Studio's environment, so a
+  package without a `win_arm64` wheel would build with the default `cl`. Keep such packages
   off ARM64 with a marker, `"<pkg>; platform_machine != 'ARM64'"`. Linux aarch64 reports
   `aarch64`, so the marker leaves Linux alone. WebDavClient does that for py-spy (no
   `win_arm64` wheel) and line_profiler (none for 3.14t). Check a lock before you turn the job
@@ -463,6 +463,30 @@ ANTfrastructure pin and runs `windows/scripts/python/Invoke-PythonTestLegs.ps1 -
 The consumer must pin an ANTfrastructure that ships the script. The job refuses an older pin
 by name instead of failing on a missing file. Test: `windows/scripts/tests/PythonTestLegs.Tests.ps1`
 (a uv stand-in that records each call).
+
+### Native arm64 wheels
+
+`arm64-wheels: true` adds two steps to the same job, after the tests:
+`windows/scripts/python/Invoke-NativeWheelBuild.ps1`, then an upload of `dist/*.whl` as
+`packages-windows-arm64-wheels`. They exist because the `:winarm64` container cross-builds a
+Cython project's free-threaded wheel but no GIL one (`Invoke-CiPackaging.ps1`). Before
+2026-10-17 WebDavClient's releases therefore carried `win_amd64` wheels and nothing for arm64.
+
+- **Compiler:** `VsDevCmd -arch=arm64 -host_arch=arm64`, then Visual Studio's own
+  `Tools\Llvm\ARM64\bin` first on `PATH`, since the family's `setup.py` swaps `cl` and `link`
+  for `clang-cl` and `lld-link`. OmniAccelerANT's arm64 app builds with the same pair on the
+  same runner.
+- **One wheel per leg,** with `CYTHONIZE=True` and the interpreter the test legs already
+  installed (`uv python find`, so nothing downloads twice). It must be that leg's `cpXY` or
+  `cpXYt` wheel for `win_arm64`: an x64 interpreter would build `win_amd64`, and the build
+  stops there.
+- **Each wheel installs alone, offline, into a fresh venv,** and every compiled module must load
+  there. On a GIL leg that is `free-threaded-wheel.py load`; on an `X.Yt` leg, `prove`, which
+  also needs the GIL to stay off.
+
+Tests: `PythonWheel.FreeThreaded.Tests.ps1` (`Resolve-PythonLegList`, `Get-NativeWheelCheck`,
+`-Check load`) and `test-python-free-threaded-wheel.sh` (`load` against a real C extension and a
+broken one). The build itself runs only on the runner.
 
 ## Free-threaded and GIL legs in one container
 
