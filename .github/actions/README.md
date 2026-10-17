@@ -273,7 +273,9 @@ Inputs: `image` (optional — defaults to the family Linux image; see above),
 `registry-password` (login is skipped when empty, so fork PRs without secrets
 still pull public images), `fetch-depth`, `submodules`, `checkout`,
 `free-disk-space` (`true`, `fast` or `false`), `pull-first`, `pull-attempts`,
-`pull-timeout-seconds`. Outputs: `pull-seconds`, `cleanup-seconds`.
+`pull-timeout-seconds`, `max-concurrent-downloads` (empty by default: docker keeps its 3
+parallel layer downloads; a number is merged into `daemon.json` and the daemon restarted before
+the pull, a measurement since 2026-10-17). Outputs: `pull-seconds`, `cleanup-seconds`.
 
 `pull-first` (default `'true'`) logs in and starts the pull in the background
 before the cleanup and the checkout, and waits for it as the last step. The pull
