@@ -285,7 +285,7 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:36-52`, 37 slugs), which is also the vocabulary
+(`preflight.sh:36-53`, 38 slugs), which is also the vocabulary
 `PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
 both membership and run order** — the table below groups them by kind and will
 drift if a slug is added without touching it.
@@ -324,6 +324,7 @@ drift if a slug is added without touching it.
 | `code-size` | `verify_code_size.py` | shell/Python functions over 80 lines and shell/Python/Dockerfile files over 800, against `function-size.allow` / `file-size.allow` |
 | `code-complexity` | `verify_code_complexity.py` | cyclomatic complexity over 15 or nesting over 5 in the `code-size` scan set, against `code-complexity.allow` — the shell counter is heredoc-, comment- and quote-aware |
 | `dead-functions` | `verify_dead_functions.py` | a NEW shell function defined under `linux/scripts` or `linux/host-config` and named nowhere else; dispatch the scanner cannot see is frozen in `dead-functions.allow` |
+| `large-files` | `verify_large_files.py` | a NEW tracked data file over 500 KiB (binary, or a document, media, model, scene or archive format), or a frozen one that changed size; what a repo must track is frozen in `large-files.allow` |
 | `shellcheck-warnings` | `verify_shellcheck_warnings.py` | a new or grown `shellcheck -S warning` finding per (file, code), over exactly `lint-shell.sh --list-files`, against `shellcheck-warnings.allow` |
 | `mutations` | `docs/scripts/verify_mutations.py` | a test that CANNOT fail: each recorded mutant neuters one guarantee and the named test must go red |
 | `shared-config` | inline (`bash shared/config/sync-shared-config.sh --repo-root . --check`, the bash twin, because no hub Linux image ships pwsh) | ANTfrastructure's own root `.cmake-format.yaml` — a consumer copy of the canonical file beside the sync script — drifting from it or deleted; the root `.antfrastructure-shared.manifest` declares it as the one taken file, and the other four canonical names have no root copy here, so they are simply not declared |
@@ -333,7 +334,7 @@ drift if a slug is added without touching it.
 Every check with a script is runnable standalone (same command); `crlf-guard`
 and `stage-graph` are inline in `preflight.sh` and have no separate entry point.
 The pre-commit hook (`linux/host-config/git-hooks/pre-commit`) runs the
-whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 18 fast slugs in
+whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 19 fast slugs in
 `_FAST_SLUGS` (`:88-91`), 6.4 s combined — and then three blocks scoped to the
 STAGED content, so nothing slow runs over the whole tree: `shellcheck -S error`
 plus the warning ratchet on staged `.sh` files (`:102-119`, the binary resolved
