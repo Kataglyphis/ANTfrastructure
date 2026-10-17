@@ -10,6 +10,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — `test-prepush-hook.sh` no longer hangs on an open stdin
+
+- The pre-push hook reads the pushed refs from stdin unless it is a terminal, and three of the
+  suite's calls passed the caller's stdin on. In CI that is empty; a preflight started with an
+  open pipe or socket as stdin waited in that suite for an hour. Those calls now read `/dev/null`.
+
 ## 2026-10-17 — the `large-files` gate: no new data files over 500 KiB
 
 - **New gate `linux/scripts/verify_large_files.py`** (preflight slug `large-files`, also in the
@@ -23,6 +29,7 @@
   the code repositories*.
 - **Rollout**: ANThology runs the hub at `develop` and got its `large-files.allow` first; every
   pinned consumer seeds its freeze file in the commit that moves its hub pin past this one.
+
 ## 2026-10-17 — `git-adopt-rewritten-history.sh`: a checkout after a history rewrite
 
 - **New entry point `linux/scripts/git-adopt-rewritten-history.sh`**, for the family's
