@@ -403,6 +403,8 @@ MODRES_POISON_SOURCED
 # sanitized binary's exit code), passed as NAME=value words.
 SAN_BIN_RC
 STUB_AS_NEEDED
+# Not an operator switch: the stub gst-inspect test-gstreamer-bundle.sh writes reads it as the plugin file's directory.
+STUB_DIR
 STUB_NO_SAN_LIBS
 # Not operator switches: generated probe scripts injected into the smoke
 # container as -e NAME="$(...)" by 06-packaging/smoke-runtime-image.sh and read

@@ -32,12 +32,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 - [ ] **CON100 — every package ships the family's own GStreamer, never the distro's** [M, ★★★].
       Owner rule 2026-10-17. Done: OmniAccelerANT's bundle and ObservANT (plugins bundled, system
       plugin path empty); AccelerANTgine's Linux packages (4f8f874, `--gst_check` on the clean
-      hosts). Left: OrchestrANT starts `gst-launch-1.0` from `PATH`
-      (`orchestrant/pipeline/capture/gstreamer.py`), which on a user's machine is the distro's; its
-      Python app bundles would carry the image's `gst-launch-1.0`, libraries and plugins, with
-      `GST_PLUGIN_SYSTEM_PATH` empty. Three consumers now bundle GStreamer plugins by hand (Omni's
-      `bundle-runtime-closure.sh`, ObservANT's packager, AccelerANTgine's CPack list): one hub
-      helper for the plugin set, the NSS modules and the run-time variables would replace them.
+      hosts); Python app packages through an `app.json` `gstreamer` block (python-app-bundles.md
+      § GStreamer), which OrchestrANT names since 2026-10-18. Left: the hand-made plugin lists of
+      OmniAccelerANT (`bundle-runtime-closure.sh` and its element gate), ObservANT's packager and
+      AccelerANTgine's CPack onto `06-packaging/gstreamer-bundle.sh`.
 
 - [ ] **CON98 — one hub-owned fetcher for the data locks** [M, ★★]. Three consumers fetch
       ModelANT and AssetANT files by the same lock and contract in three languages: OxidANT's

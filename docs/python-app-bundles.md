@@ -42,6 +42,7 @@ proven by moving the bundle elsewhere and running it again.
 `name`, `id`, `distribution`, `extras`, `data_env`, `data_dir` and `self_test` are required.
 The packagers read `description`, `publisher`, `homepage`, `license_file`, `icon`,
 `gui_script` and `msi_upgrade_code`.
+An app that runs GStreamer adds a `gstreamer` block (Linux; [below](#gstreamer)).
 
 What the app itself must do:
 
@@ -194,6 +195,40 @@ built this way in `:latest` (2026-10-18): the tarball's and the AppImage's
 `forkserver` children imported ORT through the bundled loader, and `apt-get install --simulate`
 took the `.deb`, whose `Depends` is `libc6, libgl1, libglib2.0-0t64, libice6, libsm6, libx11-6,
 libxext6`.
+
+## GStreamer
+
+The family's packages carry the image's own GStreamer, never the host's (owner rule,
+2026-10-17). An app that starts GStreamer names what it needs in `app.json`:
+
+```json
+"gstreamer": {
+  "tools": ["gst-launch-1.0"],
+  "plugins": ["coreelements", "videoconvertscale", "videorate", "autodetect", "video4linux2"],
+  "optional": ["libcamera"],
+  "elements": ["autovideosrc", "v4l2src", "videoconvert", "videoscale", "videorate", "capsfilter", "fdsink"]
+}
+```
+
+`python-app-bundle.sh` then:
+
+- copies the plugins from the image's plugin directories into `runtime/lib/gstreamer-1.0`
+  (`gstreamer-bundle.sh copy`; a missing `plugins` entry fails, a missing `optional` one is
+  named) and the tools into `runtime/libexec/gstreamer/`;
+- lets the closure find the GStreamer and libcamera libraries, which the image reaches only
+  through `ld.so.conf`, and puts the bundled loader in front of each tool as in front of the
+  interpreter;
+- writes into every launcher the variables that make GStreamer use the package alone:
+  `GST_PLUGIN_PATH` on the bundle's plugins, an empty `GST_PLUGIN_SYSTEM_PATH` and
+  `GST_PLUGIN_SYSTEM_PATH_1_0`, `GST_REGISTRY_FORK=no` (no scanner travels), a registry per
+  installed copy under `$XDG_CACHE_HOME/<id>/`, and `runtime/libexec/gstreamer` first on
+  `PATH`, so `shutil.which("gst-launch-1.0")` finds the bundled tool;
+- checks every `elements` entry with the image's `gst-inspect-1.0` under that environment
+  (`gstreamer-bundle.sh check`): an element no bundled plugin provides, or one loaded from
+  elsewhere, fails the build. Each tool must start on both glibc paths.
+
+A subprocess that builds its own environment must pass the `GST_` variables on; OrchestrANT's
+`get_gstreamer_env` does since 2026-10-18.
 
 ## Packages
 

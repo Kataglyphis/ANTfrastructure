@@ -59,6 +59,12 @@ DATA_DIR="$(cfg data_dir)"
 mapfile -t EXTRAS < <(cfg extras)
 mapfile -t SCRIPTS < <(cfg scripts)
 mapfile -t SELF_TEST < <(cfg self_test)
+# The optional "gstreamer" block: the image's own GStreamer travels, never the host's (docs/python-app-bundles.md § GStreamer).
+gst_cfg() { python3 -c 'import json, sys; v = json.load(open(sys.argv[1])).get("gstreamer", {}).get(sys.argv[2], []); sys.stdout.write("".join(x + "\n" for x in v))' "${CONFIG}" "$1"; }
+mapfile -t GST_TOOLS < <(gst_cfg tools)
+mapfile -t GST_PLUGINS < <(gst_cfg plugins)
+mapfile -t GST_OPTIONAL < <(gst_cfg optional)
+mapfile -t GST_ELEMENTS < <(gst_cfg elements)
 
 BUNDLE="$(realpath -m "${OUT_DIR}")"
 RUNTIME="${BUNDLE}/runtime"
@@ -125,6 +131,13 @@ uv pip install --python "${PY}" --break-system-packages --compile-bytecode --no-
 "${PY}" -m compileall -q -j 0 -x '/(site-packages|test|tests|idlelib)/' "$("${PY}" -I -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
 
 info "== launchers"
+gst_env=""
+if [ "${#GST_PLUGINS[@]}" -gt 0 ]; then
+  gst_env="export GST_PLUGIN_PATH=\"\$root/runtime/lib/gstreamer-1.0\" GST_PLUGIN_SYSTEM_PATH= GST_PLUGIN_SYSTEM_PATH_1_0= GST_REGISTRY_FORK=no
+copy=\$(printf %s \"\$root\" | cksum | cut -d' ' -f1)
+export GST_REGISTRY=\"\${XDG_CACHE_HOME:-\${HOME:-/tmp}/.cache}/${APP_ID}/gstreamer-\$copy.bin\"
+export PATH=\"\$root/runtime/libexec/gstreamer:\$PATH\""
+fi
 entry_points="$("${PY}" -I -c 'import sys
 from importlib.metadata import distribution
 for ep in distribution(sys.argv[1]).entry_points.select(group="console_scripts"):
@@ -140,6 +153,7 @@ for script in "${SCRIPTS[@]}"; do
 here=\$(dirname "\$(readlink -f "\$0")")
 root=\$(dirname "\$here")
 export ${DATA_ENV}="\$root/${DATA_DIR}"
+${gst_env}
 exec "\$root/runtime/bin/python3" -I -B -c 'import sys; sys.argv[0] = "${script}"; from ${module} import ${func} as _entry; sys.exit(_entry())' "\$@"
 EOF
   chmod 0755 "${BUNDLE}/bin/${script}"
@@ -157,13 +171,28 @@ for item in json.load(open(sys.argv[1])).get("data", []):
     print(f"  {item['from']} -> {item['to']}")
 PY
 
+gst_search=()
+if [ "${#GST_PLUGINS[@]}" -gt 0 ]; then
+  info "== GStreamer: the image's own build, its plugins and tools"
+  gst_args=()
+  for plugin in "${GST_PLUGINS[@]}"; do gst_args+=(--plugin "${plugin}"); done
+  for plugin in "${GST_OPTIONAL[@]}"; do gst_args+=(--optional "${plugin}"); done
+  bash "${SCRIPT_DIR}/gstreamer-bundle.sh" copy --dest "${RUNTIME}/lib/gstreamer-1.0" "${gst_args[@]}"
+  mkdir -p "${RUNTIME}/libexec/gstreamer"
+  for tool in "${GST_TOOLS[@]}"; do cp -L "$(pkg-config --variable=prefix gstreamer-1.0)/bin/${tool}" "${RUNTIME}/libexec/gstreamer/${tool}"; done
+  # Ahead of the multiarch dirs, which hold the distro's GStreamer too; the image reaches these only through ld.so.conf.
+  for dir in "$(pkg-config --variable=libdir gstreamer-1.0)" "${LIBCAMERA_PREFIX:-/opt/libcamera}/lib"; do
+    [ -d "${dir}" ] && gst_search+=(--search "${dir}")
+  done
+fi
+
 info "== ELF closure"
 # G6 needs the chain ORT byte-identical, so it is protected and preloaded; oneDNN is absent image-wide, unloaded unless asked for.
 ALLOWED_UNRESOLVED=(libdnnl.so.3)
 closure_args=()
 for soname in "${ALLOWED_UNRESOLVED[@]}"; do closure_args+=(--allow-unresolved "${soname}"); done
 bash "${SCRIPT_DIR}/python-app-closure.sh" --bundle "${BUNDLE}" --lib-dir "${RUNTIME}/lib" \
-  --search /opt/gcc-*/lib64 --search "/usr/lib/${MULTIARCH}" --search "/lib/${MULTIARCH}" \
+  --search /opt/gcc-*/lib64 "${gst_search[@]}" --search "/usr/lib/${MULTIARCH}" --search "/lib/${MULTIARCH}" \
   --protect '*/site-packages/onnxruntime/*' "${closure_args[@]}"
 site_packages="$("${PY}" -I -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
 cat > "${site_packages}/sitecustomize.py" <<'PY'
@@ -182,8 +211,23 @@ PY
 
 info "== loader: the image's glibc travels, for hosts with an older one"
 # On the interpreter itself: a child that runs sys.executable starts through the same launcher, which --argv0 keeps as its path.
-bash "${SCRIPT_DIR}/bundle-loader.sh" --beside "${BUNDLE}" "${RUNTIME}/lib" "runtime/bin/$(basename "$(readlink -f "${PY}")")"
+gst_tools=()
+for tool in "${GST_TOOLS[@]}"; do gst_tools+=("runtime/libexec/gstreamer/${tool}"); done
+bash "${SCRIPT_DIR}/bundle-loader.sh" --beside "${BUNDLE}" "${RUNTIME}/lib" "runtime/bin/$(basename "$(readlink -f "${PY}")")" "${gst_tools[@]}"
 GLIBC_VERSION="$(getconf GNU_LIBC_VERSION | awk '{ print $2 }')"
+
+if [ "${#GST_ELEMENTS[@]}" -gt 0 ]; then
+  info "== GStreamer: every element from the bundled plugins alone"
+  bash "${SCRIPT_DIR}/gstreamer-bundle.sh" check --plugins "${RUNTIME}/lib/gstreamer-1.0" --lib-dir "${RUNTIME}/lib" "${GST_ELEMENTS[@]}"
+fi
+for tool in "${GST_TOOLS[@]}"; do
+  for bundled in "" 1; do
+    KATAGLYPHIS_BUNDLED_GLIBC="${bundled}" GST_PLUGIN_PATH="${RUNTIME}/lib/gstreamer-1.0" GST_PLUGIN_SYSTEM_PATH='' \
+      GST_PLUGIN_SYSTEM_PATH_1_0='' GST_REGISTRY_FORK=no GST_REGISTRY="${WORK_DIR}/gst-registry.bin" \
+      "${RUNTIME}/libexec/gstreamer/${tool}" --version >/dev/null || err "the bundled ${tool} does not start${bundled:+ through the bundled loader}"
+  done
+  info "  ${tool} starts on both glibc paths"
+done
 
 info "== G6: ONNX Runtime is the chain build"
 bash "${SCRIPT_DIR}/check-ort-provenance.sh" "${BUNDLE}"

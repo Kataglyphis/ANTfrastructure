@@ -12,6 +12,11 @@
 
 ## 2026-10-17 — the family's history is rewritten
 
+- **Python app packages carry the image's own GStreamer (CON100).** An `app.json` `gstreamer`
+  block names tools, plugins and elements; `python-app-bundle.sh` bundles them, puts the loader
+  in front of the tools, gives every launcher the package-only GStreamer environment and fails
+  on an element the package cannot load. `06-packaging/gstreamer-bundle.sh` (`copy`, `check`) is
+  the shared half; its suite plants the five ways it must fail.
 - **Every AppImage takes the image's pinned runtime, not `continuous`.** `appimagetool` 1.9.1
   never reads the runtime `ensure_appimagetool_runtime` stages in `~/.local/share/appimagekit`; it
   downloaded the moving `continuous` one on every build and failed offline. The Flutter AppImage,
