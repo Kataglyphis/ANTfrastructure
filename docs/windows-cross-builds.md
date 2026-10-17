@@ -365,10 +365,18 @@ is the same file an x64 lane uses with `target-arch: amd64`:
 3. The arch gate: `Test-TargetArch.ps1 -Arch arm64 -ImportWalk` over the product, inside the
    same image, from the caller's own hub submodule. An x64 object in the tree fails, and so
    does an import that a clean device cannot resolve (the CRT has to ship with the product).
+   **An NSIS setup `.exe` is the one x86 binary it accepts** (2026-10-17): NSIS has no arm64
+   stub, so the gate recognises the installer by its first header (`0xDEADBEEF` then
+   `NullsoftInst`), reports it, and counts it as nothing. Any other x86 file still fails.
 4. The product is uploaded.
 5. With a `run-command`, a second job on `windows-11-arm` downloads the product and runs that
    command in it natively. The hub's bundle device gate ([§ Verification](#verification)) is the
    other place an arm64 binary from the family executes.
+   - **Each `packages/*.exe` is installed there**, since the gate cannot see into it: silently
+     (`/S /D=<dir>`), emulated. Every `.exe` and `.dll` it laid down must be ARM64 (ARM64EC and
+     ARM64X count). Then `installed-run-command` runs in the install directory, if set
+     (AccelerANTgine: `./bin/AccelerANTgine.exe`), and the uninstaller runs in place (`_?=`).
+     It must leave no DLL behind. A product without a setup `.exe` says so and passes.
 6. With a `test-artifact-dir` and a `test-command` (CON43, 2026-10-01), the build also stages
    test binaries. They get the same arch gate as the product, because Windows on Arm runs x64
    code transparently and an amd64 test would pass there by emulation. They are uploaded as

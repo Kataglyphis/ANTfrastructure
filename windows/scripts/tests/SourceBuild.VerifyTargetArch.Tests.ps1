@@ -307,6 +307,28 @@ Describe 'verify-target-arch: the import walk opens every wheel' {
         }
     }
 
+    It 'skips an NSIS installer, an x86 stub on every arch, and still fails an x86 exe without the NSIS header (mutation)' {
+        Invoke-InTestDir { param($d)
+            $tree = Join-Path $d 'dist'
+            New-OrtTestPe -Path (Join-Path $tree 'bundle\bin\app.exe') -Machine 0xAA64 -Import 'kernel32.dll'
+            $setup = Join-Path $tree 'packages\App-1.0-Release-aarch64.exe'
+            New-OrtTestPe -Path $setup -Machine 0x014C -Import 'kernel32.dll'
+            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-TargetArch.ps1') -Path $tree -Arch arm64 -MinInspected 1 -ImportWalk -Standalone 2>&1) -join "`n" }
+            $out = & $gate
+            Assert-True ($LASTEXITCODE -ne 0) 'an x86 exe without the NSIS header fails'
+            Assert-Match 'App-1\.0-Release-aarch64\.exe  is 0x014C \(I386\)' $out 'named'
+            $header = [byte[]](@(0, 0, 0, 0, 0xEF, 0xBE, 0xAD, 0xDE) + [Text.Encoding]::ASCII.GetBytes('NullsoftInst') + [byte[]]::new(8))
+            $fs = [IO.File]::Open($setup, [IO.FileMode]::Append)
+            try { $fs.Write($header, 0, $header.Length) } finally { $fs.Dispose() }
+            $out = & $gate
+            Assert-Equal 0 $LASTEXITCODE "the NSIS installer passes an arm64 tree: $out"
+            Assert-Match 'NSIS installers, an x86 stub on every arch, skipped 1 file\(s\)' $out 'reported, not counted'
+            New-OrtTestPe -Path (Join-Path $tree 'bundle\bin\helper.exe') -Machine 0x014C -Import 'kernel32.dll'
+            $out = & $gate
+            Assert-True ($LASTEXITCODE -ne 0) 'an x86 binary beside the installer still fails'
+        }
+    }
+
     It 'reports the launcher templates of a real pip wheel, one per arch, and still fails a foreign binary beside them (mutation)' {
         Invoke-InTestDir { param($d)
             $rt = Join-Path $d 'runtime'

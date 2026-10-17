@@ -10,6 +10,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — the arm64 setup .exe: NSIS's x86 stub passes the arch gate, and the device installs it
+
+- **`Test-TargetArch.ps1` reports an NSIS installer instead of failing it.** NSIS has no arm64
+  stub, so AccelerANTgine and BeschleunigerBallett dropped their arm64 setup `.exe` from every
+  release while x64 shipped one. The gate recognises the installer by NSIS's first header
+  (`0xDEADBEEF`, `NullsoftInst`) in its first 8 MiB, lists it under "NSIS installers", and counts
+  it as nothing. An x86 binary without that header still fails. One Pester case in
+  `SourceBuild.VerifyTargetArch.Tests.ps1`.
+- **`container-ci-windows.yml`'s `run-arm64` job installs each `packages/*.exe`** on
+  `windows-11-arm`, silently and emulated. It then checks that every installed `.exe`/`.dll` is
+  ARM64 and runs the new `installed-run-command` in the install directory. Last, it uninstalls in
+  place, and no DLL may stay behind. Owner rule of the same day: every release ships Windows arm64
+  installers next to the x64 ones.
+
 ## 2026-10-17 — native Windows arm64 wheels
 
 - **`python-ci-windows.yml` takes `arm64-wheels`.** After the arm64 test legs, the

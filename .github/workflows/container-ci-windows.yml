@@ -86,6 +86,16 @@ on:
         required: false
         type: string
         default: ''
+      installed-run-command:
+        description: >-
+          arm64 only: PowerShell that runs in the directory the product's NSIS
+          setup .exe installed to (packages/*.exe), after every binary there
+          was graded ARM64 and before the uninstaller runs, e.g.
+          `./bin/app.exe --version`. Empty still installs, grades and
+          uninstalls each setup .exe.
+        required: false
+        type: string
+        default: ''
       test-artifact-dir:
         description: >-
           arm64 only: the directory the build script stages its test binaries in,
@@ -379,6 +389,43 @@ jobs:
           Set-Content -LiteralPath $script -Value $env:RUN_COMMAND -Encoding utf8
           & $script
           if ($LASTEXITCODE) { throw "run-command exited $LASTEXITCODE" }
+
+      # NSIS has no arm64 stub, so the arch gate only reports a setup .exe: install it here, emulated, and grade what it laid down.
+      - name: Install the setup .exe natively
+        shell: pwsh
+        working-directory: product
+        env:
+          INSTALLED_RUN_COMMAND: ${{ inputs.installed-run-command }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $setups = @(Get-ChildItem -Path packages -Filter '*.exe' -File -ErrorAction SilentlyContinue)
+          if ($setups.Count -eq 0) { Write-Host 'This product carries no setup .exe.'; return }
+          if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw "the install must run on arm64, not $env:PROCESSOR_ARCHITECTURE" }
+          foreach ($setup in $setups) {
+            $dir = Join-Path $env:RUNNER_TEMP "setup-$($setup.BaseName)"
+            # /D= comes last and unquoted, as NSIS reads it.
+            $p = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$dir" -Wait -PassThru
+            if ($p.ExitCode) { throw "$($setup.Name) exited $($p.ExitCode)" }
+            $pe = @(Get-ChildItem -Path $dir -Recurse -File -Include '*.exe', '*.dll' | Where-Object Name -ne 'Uninstall.exe')
+            if ($pe.Count -eq 0) { throw "$($setup.Name) installed no binary under $dir" }
+            $foreign = @(foreach ($f in $pe) {
+                $b = [IO.File]::ReadAllBytes($f.FullName)
+                $m = [BitConverter]::ToUInt16($b, [BitConverter]::ToInt32($b, 0x3C) + 4)
+                if ($m -notin 0xAA64, 0xA641, 0xA64E) { '{0} is 0x{1:X4}' -f $f.FullName, $m }
+              })
+            if ($foreign.Count) { throw "$($setup.Name) installed binaries that are no ARM64:`n$($foreign -join "`n")" }
+            Write-Host "$($setup.Name): $($pe.Count) ARM64 binaries under $dir"
+            if ($env:INSTALLED_RUN_COMMAND) {
+              Push-Location $dir
+              try { & ([scriptblock]::Create($env:INSTALLED_RUN_COMMAND)) } finally { Pop-Location }
+            }
+            # _?= keeps the uninstaller in place, so -Wait waits for it.
+            $u = Start-Process -FilePath (Join-Path $dir 'Uninstall.exe') -ArgumentList '/S', "_?=$dir" -Wait -PassThru
+            if ($u.ExitCode) { throw "the uninstaller of $($setup.Name) exited $($u.ExitCode)" }
+            $left = @(Get-ChildItem -Path $dir -Recurse -File -Include '*.dll' -ErrorAction SilentlyContinue)
+            if ($left.Count) { throw "the uninstaller of $($setup.Name) left $($left.Count) DLL(s) behind" }
+          }
 
       # A cross lane's cp3XYt wheel and its kit (New-CrossFreeThreadedWheel.ps1); a product without one says so and passes.
       - name: Prove the free-threaded wheel natively
