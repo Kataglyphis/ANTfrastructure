@@ -7,9 +7,7 @@ source "${TESTS_DIR}/test-harness.sh"
 SYNC="${TESTS_DIR}/../git-sync-branches.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
-export GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=protocol.file.allow GIT_CONFIG_VALUE_0=always
-export GIT_CONFIG_KEY_1=init.defaultBranch GIT_CONFIG_VALUE_1=develop
-export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+source "${TESTS_DIR}/git-fixture-env.sh"
 
 # _remote <owner/repo> [default-branch]: a bare remote under the calling fixture's _root, with one commit on its default branch.
 _remote() {
