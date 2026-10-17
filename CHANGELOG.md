@@ -10,6 +10,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — the README logo is the family's ant
+
+- `images/logo.png` is the ant from OmniAccelerANT's `assets/icons/kataglyphis_app_icon.svg`, as in
+  every other repository of the family (owner: one icon everywhere): 256 px, 8-bit, 20 kB.
+
 ## 2026-10-17 — `test-prepush-hook.sh` no longer hangs on an open stdin
 
 - The pre-push hook reads the pushed refs from stdin unless it is a terminal, and three of the
