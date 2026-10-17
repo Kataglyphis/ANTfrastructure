@@ -46,7 +46,7 @@ ARG LLVM_WINDOWS_VERSION=23.1.3
 ARG NINJA_WINDOWS_VERSION=1.13.2
 ARG NASM_WINDOWS_VERSION=3.02
 # Pinned for a feature gate (below v0.16.0 the multilevel chain is silently ignored); see docs/windows-build-resources.md § Persistent compile cache (sccache).
-ARG SCCACHE_WINDOWS_VERSION=0.18.0
+ARG SCCACHE_WINDOWS_VERSION=0.18.0-1bd7432-pr2809
 # Defaults mirror versions.env; the drivers pass the live values.
 ARG GIT_VERSION=2.56.0
 ARG GIT_WINDOWS_INSTALLER_SHA256=bfe94e7b419b16eee9fecbd1253a98e3d4f49ba8f029630549052278ffe286a6
@@ -91,7 +91,7 @@ ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULK
 # The expensive rust layer comes first in the tail, so edits to the cheap scripts below never re-pay it.
 ARG RUST_VERSION=1.99.0
 ARG FLUTTER_RUST_BRIDGE_VERSION=2.13.0
-ARG SCCACHE_WINDOWS_ZIP_SHA256=8965c74d5e8a225244f741e18ad2f3f504f48228dc1bac948fc22761a348363d
+ARG SCCACHE_WINDOWS_ZIP_SHA256=0c8529046b48b4f464d340fefe667839b17411d59a5bb90df83f35965631ec46
 COPY windows\scripts\host\Install-RustToolchain.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\Install-RustToolchain.ps1'
 

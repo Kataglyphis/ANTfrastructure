@@ -93,7 +93,7 @@ media_common_init() {
   source_module downloads.sh         || true
   source_module compiler-cache.sh    && { setup_ccache; setup_lld_linker; } || true
   source_module qnn-sdk.sh           || true
-  # Rust sccache stays opt-in until a green cross-arch media run; stats go to stderr, which buildkit never clips.
+  # On by default since 2026-10-17 (Dockerfile.media); stats go to stderr, which buildkit never clips.
   if [ "${ENABLE_SCCACHE_RUST:-0}" = "1" ]; then
     if declare -F setup_sccache >/dev/null 2>&1; then
       setup_sccache || true

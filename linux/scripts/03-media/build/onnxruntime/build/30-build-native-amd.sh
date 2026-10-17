@@ -71,8 +71,8 @@ if [ -n "${_hip_config_dir}" ] && [ -f "${_hip_config_dir}/hip-config.cmake" ]; 
 else
   warn "No hip-config.cmake under ${MIGRAPHX_HOME}; letting CMake search its defaults"
 fi
-# ccache cannot wrap hipcc, so HIP takes only an sccache-class launcher.
-if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ]; then
+# ccache cannot wrap hipcc, so HIP takes only an sccache-class launcher, under its own switch (docs/build-cache-tiers.md § 5.4).
+if [ "${ENABLE_SCCACHE_HIP:-0}" = "1" ]; then
   compiler_cache_launcher_env 2>/dev/null || true
   _gpu_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
   case "${_gpu_launcher}" in

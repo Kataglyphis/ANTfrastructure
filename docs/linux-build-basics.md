@@ -132,9 +132,9 @@ blind spots; neither replaces the other:
   for the GPU onnxruntime/opencv builds this is the single biggest cache
   lever in the repo. Gates: `ENABLE_SCCACHE_RUST` (only the
   `media_common_init` call — the gstreamer lane wires Rust regardless, see the
-  Rust row above), `ENABLE_SCCACHE_CUDA` (one gate for nvcc + hipcc launchers
-  in the ONNX GPU/AMD builds and OpenCV's CUDA config; default 0, so nvcc
-  stays uncached).
+  Rust row above), `ENABLE_SCCACHE_CUDA` (nvcc in the ONNX GPU build and OpenCV's CUDA
+  config; default 1 since 2026-10-17) and `ENABLE_SCCACHE_HIP` (hipcc in the
+  ONNX AMD build; default 1 as well, [build-cache-tiers.md § 5.4](build-cache-tiers.md#nvcc--hipcc)).
 - Both need **measurement to stderr** (the stream the 2MiB step-log clip never
   cuts) — an unmeasured cache regresses invisibly (proved live: the launcher
   never reached LLVM's nested sub-builds, 0% gain on identical inputs).

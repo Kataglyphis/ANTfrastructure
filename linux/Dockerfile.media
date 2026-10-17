@@ -36,10 +36,12 @@ ARG ENABLE_AMD=false
 ARG ENABLE_TENSORRT=true
 # Peak (not average) RSS of one cicc; must be an ARG since an env var set around the orchestrator never arrives.
 ARG CUDA_MB_PER_CICC=3500
-# Off pending a cross-arch validation; see 03-media/core/common.sh.
-ARG ENABLE_SCCACHE_RUST=0
-# sccache for nvcc/hipcc, which ccache cannot wrap.
-ARG ENABLE_SCCACHE_CUDA=0
+# Every media stage's cargo through sccache; the first cross-arch chain since 2026-10-17 is its validation.
+ARG ENABLE_SCCACHE_RUST=1
+# nvcc through sccache: the hub's build fixes the PTX-only abort (shared/upstream/sccache/README.md).
+ARG ENABLE_SCCACHE_CUDA=1
+# hipcc through sccache, its own switch: its canary is compile-level only (docs/build-cache-tiers.md § 5.4).
+ARG ENABLE_SCCACHE_HIP=1
 ARG AGGRESSIVE_PARALLELISM
 ARG USE_LLD
 ARG USE_CCACHE
@@ -55,6 +57,7 @@ ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
     ENABLE_AMD=${ENABLE_AMD} \
     ENABLE_SCCACHE_RUST=${ENABLE_SCCACHE_RUST} \
     ENABLE_SCCACHE_CUDA=${ENABLE_SCCACHE_CUDA} \
+    ENABLE_SCCACHE_HIP=${ENABLE_SCCACHE_HIP} \
     BUILD_MODE=${BUILD_MODE} \
     BUILD_MEM_DIVISOR=${BUILD_MEM_DIVISOR} \
     UV_LINK_MODE=copy \

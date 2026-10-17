@@ -480,7 +480,7 @@ install_uv() {
   uv --version
 }
 
-# The distro sccache lacks SCCACHE_BASEDIRS, so lanes silently stop sharing; non-fatal, riscv64 has no asset.
+# The distro sccache lacks SCCACHE_BASEDIRS, so lanes silently stop sharing; non-fatal, a missing pin keeps it.
 install_sccache_pinned() {
   local ver="${SCCACHE_LINUX_VERSION:-}"
   if [ -z "${ver}" ]; then
@@ -493,6 +493,7 @@ install_sccache_pinned() {
   case "${machine}" in
     x86_64)  target="x86_64-unknown-linux-musl";  sha="${SCCACHE_LINUX_X86_64_SHA256:-}" ;;
     aarch64) target="aarch64-unknown-linux-musl"; sha="${SCCACHE_LINUX_AARCH64_SHA256:-}" ;;
+    riscv64) target="riscv64gc-unknown-linux-musl"; sha="${SCCACHE_LINUX_RISCV64_SHA256:-}" ;;
     *) log "No pinned sccache asset for ${machine} -- keeping the apt sccache"; return 0 ;;
   esac
   if [ -z "${sha}" ]; then
@@ -500,7 +501,8 @@ install_sccache_pinned() {
     return 0
   fi
 
-  local url="https://github.com/mozilla/sccache/releases/download/v${ver}/sccache-v${ver}-${target}.tar.gz"
+  # The hub's own build while no release carries its fixes: shared/upstream/sccache/README.md
+  local url="${SCCACHE_DOWNLOAD_BASE:-https://github.com/mozilla/sccache/releases/download/v}${ver}/sccache-v${ver}-${target}.tar.gz"
   local tmp="/tmp/sccache-${ver}.tar.gz"
   local dir="/tmp/sccache-${ver}"
   if ! download_verified_file "${url}" "${sha}" "${tmp}"; then
