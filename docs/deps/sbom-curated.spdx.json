@@ -1640,7 +1640,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-sccache-Windows-lane-16ab13cf",
       "name": "sccache (Windows lane)",
-      "versionInfo": "0.18.0",
+      "versionInfo": "0.18.0-1bd7432-pr2809",
       "downloadLocation": "https://github.com/mozilla/sccache",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",

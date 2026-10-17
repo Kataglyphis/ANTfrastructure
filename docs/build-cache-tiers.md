@@ -898,7 +898,8 @@ are outside this change's scope):
 | target | gate | state | recommendation |
 |---|---|---|---|
 | **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:172-210`, `build-gstreamer-monorepo.sh:649-659`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
-| **nvcc / hipcc** | `ENABLE_SCCACHE_CUDA=1` (one gate, three sites: `build-opencv.sh:647`, `30-build-native-nvidia.sh:244`, `30-build-native-amd.sh:65`) | wiring exists, default OFF | [details](#nvcc--hipcc) |
+| **nvcc** | `ENABLE_SCCACHE_CUDA` (`build-opencv.sh`, `30-build-native-nvidia.sh`) | **ON by default since 2026-10-17**, on the hub's sccache build | [details](#nvcc--hipcc) |
+| **hipcc** | `ENABLE_SCCACHE_HIP` (`30-build-native-amd.sh`) | **ON by default since 2026-10-17** | [details](#nvcc--hipcc) |
 | **C/C++** | — | sccache via the guarded launcher, always on; ccache is the automatic fallback | leave it — this is the owner-directed default since 2026-08-26 (§ 5.1), and both launcher resolvers already pick sccache first (§ 5.2). |
 | **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2) | — | Windows lane only | [details](#cross-machine-tier-sccache_multilevel_chain-webdav-l2) |
 
@@ -912,7 +913,27 @@ The targets whose recommendation needs more than a table cell.
 
 #### **nvcc / hipcc**
 
-**Do not flip on the strength of the hit-rate argument alone.** The theoretical win is large (`CUDA_ARCHITECTURES` compiles each kernel 4×) but a sibling lane produced an evidence-backed verdict that the pinned sccache's **nvcc decomposition silently drops device-conditional code** — a byte-identical link failure across two runs, falsified as cache poisoning, i.e. *silent wrong code*, disqualifying regardless of hit rate (CHANGELOG 2026-08-10/11). Any re-enable needs the three-canary bar recorded there: verify probe + a real kernel compile + a full link canary, on the sccache version actually installed.
+**nvcc is on since 2026-10-17.** The 2026-08-10 verdict (silent loss of `__CUDA_ARCH__`- and
+`-D`-guarded instantiations, visible only at link time) was root-caused to sccache's dryrun
+quote-collapse, mozilla/sccache#2811, which 0.18.0 ships. The Windows chain has wrapped ORT's
+nvcc since 2026-08-18 and passed the three canaries: 569 of 569 CUDA files hit, the provider
+linked from hits, and the smoke gate passed (2026-10-16). What kept Linux off was the abort on a
+PTX-only gencode (mozilla/sccache#2862), which the hub's sccache build fixes
+([`shared/upstream/sccache/README.md`](../shared/upstream/sccache/README.md)). The canary for
+it compiles an arch- and define-guarded kernel bare, cold and warm through sccache. It requires
+identical host symbols, SASS and PTX, and correct results on a GPU, and it passed. The bar still
+stands for every new sccache: that canary, then a real `onnxruntime_providers_cuda` link from hits.
+
+**hipcc is on too, under its own switch (`ENABLE_SCCACHE_HIP`).** sccache treats HIP as a
+clang compile, and `clang -x hip -E` emits every device pass beside the host pass, so a header
+only a device pass includes (under `#if __HIP_DEVICE_COMPILE__`) is part of the cache key.
+Measured with clang 21.1 for `gfx90a` and `gfx1100` (2026-10-17):
+- An edit to such a header made the next compile a miss.
+- A `__gfx1100__`-guarded template compiled bare, cold and warm (one hit) had identical host
+  symbols and identical disassembly per arch, apart from the random `__hip_cuid_*` that differs
+  between two bare builds as well.
+- No AMD GPU here ran the code, which is why HIP has its own switch: `ENABLE_SCCACHE_HIP=0`
+  takes it out without touching nvcc.
 
 #### **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2)
 
@@ -1094,8 +1115,9 @@ The rules an agent must never violate:
 | `SALVAGE_MIN_FREE_GB` | `CROSS_DISK_GUARD_GB` (40) | free-space floor below which the S1 salvage is skipped (`0` = always salvage) |
 | `BUILDKIT_CACHE_DIR` | `~/.cache/kata-buildcache` | where T2 lives |
 | `PUSH_MAX_ATTEMPTS` / `PUSH_RETRY_BASE_SECS` | `4` / `15` | transient-push retry budget |
-| `ENABLE_SCCACHE_RUST` | `0` | **not** the monorepo's Rust switch any more — it only adds `setup_sccache` to `media_common_init`, i.e. it caches `install-rice-proto.sh`'s `cargo cinstall` (§ 5.3 item 1) |
-| `ENABLE_SCCACHE_CUDA` | `0` | sccache as the CUDA/HIP compiler launcher (§ 5.4) |
+| `ENABLE_SCCACHE_RUST` | `1` (since 2026-10-17) | **not** the monorepo's Rust switch any more — it only adds `setup_sccache` to `media_common_init`, i.e. it caches `install-rice-proto.sh`'s `cargo cinstall` (§ 5.3 item 1) |
+| `ENABLE_SCCACHE_CUDA` | `1` (since 2026-10-17) | sccache as nvcc's launcher (§ 5.4) |
+| `ENABLE_SCCACHE_HIP` | `1` (since 2026-10-17) | sccache as hipcc's launcher (§ 5.4) |
 | `USE_CCACHE` / `USE_SCCACHE` / `USE_LLD` | `true` | per-tool switches in `compiler-cache.sh`; note § 5.3 item 3 |
 | `KATAGLYPHIS_LINKER` | unset (`default`) | `lld` or `mold` for a consumer build: `LDFLAGS` plus the host Rust target, fails rather than falls back ([`linker-select.sh`](shared-script-libraries.md#linker-selectsh--an-opt-in-linker)) |
 | `WEB_LANE_TOOLS_CACHE` | `on` | `refresh` rebuilds past the web-lane tool cache and re-stores; `off` bypasses it (§ 1.2) |

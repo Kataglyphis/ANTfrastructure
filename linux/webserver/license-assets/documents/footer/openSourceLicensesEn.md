@@ -256,7 +256,7 @@ its own license terms.
 | --- | --- | --- | --- |
 | Scoop package manager | latest | [scoop.sh](https://scoop.sh/) | Unlicense / MIT |
 | Scoop-installed tools (7-Zip, Git, LLVM, ninja, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet) | latest (scoop) | [scoop.sh](https://scoop.sh/) | various (GPL, Apache 2.0, BSD, zlib) |
-| sccache (Windows lane) | 0.18.0 | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |
+| sccache (Windows lane) | 0.18.0-1bd7432-pr2809 | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |
 | vcpkg | master | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | MIT |
 | vcpkg packages (zlib, protobuf — linked into builds) | vcpkg baseline | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | Zlib / BSD 3-Clause |
 

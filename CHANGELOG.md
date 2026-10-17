@@ -27,6 +27,26 @@
   (file:// submodules, `develop`, one identity); `code-dupes.allow` records two budgets that
   had shrunk (`python-app-bundle.sh` 57 → 56, `verify-parity.sh` 22 → 21).
 
+## 2026-10-17 — the hub's own sccache: GPU device code and clang-cl modules cache
+
+- **Both lanes install sccache from the hub's release `sccache-v0.18.0-1bd7432-pr2809`.**
+  That is upstream `main` at mozilla/sccache#2876 (clang-cl C++20 named modules, merged
+  today) plus #2809, the open fix for #2862 (a PTX-only gencode fails with `Missing "cubin"
+  file output`). `sccache-release.yml` built it in upstream's own musl cross containers and on
+  `windows-2025`. Every log names it (`sccache 0.18.0+1bd7432.pr2809`), and riscv64 gets a
+  pinned sccache for the first time. Why and how back: `shared/upstream/sccache/README.md`.
+- **nvcc goes through sccache on Linux again** (`ENABLE_SCCACHE_CUDA=1`), and so do hipcc
+  (`ENABLE_SCCACHE_HIP=1`, its own switch now) and every media stage's cargo
+  (`ENABLE_SCCACHE_RUST=1`).
+  - The 2026-08-10 miscompile was root-caused to #2811, shipped in 0.18.0.
+  - The canary ran with the released binary on CUDA 13.2 and an RTX 2080. A kernel with an
+    `__CUDA_ARCH__`-guarded and a `-D`-guarded template was compiled for `sm_75`, `sm_86`
+    and PTX `compute_90`, cold and warm (14 of 14 hits). Host symbols, SASS and PTX equal
+    the bare build's, and the kernels gave correct results on the GPU.
+  - HIP with clang 21: a device-only header edit misses, and per-arch code equals bare.
+- The first chain after this re-keys `Dockerfile.media` once and is the cross-arch validation
+  of the Rust switch. Docs: `build-cache-tiers.md` § 5.4. Tests: `test-sccache-pinned-install.sh`.
+
 ## 2026-10-17 — the sccache bucket's size cap is 100 GiB
 
 - **The VPS raised the cap from 60 to 100 GiB** (`CAP_GB=100` in `sccache-evict.service`), at the

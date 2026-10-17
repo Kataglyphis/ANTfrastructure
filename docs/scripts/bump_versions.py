@@ -1283,10 +1283,9 @@ REPORT: list[tuple[str, Callable]] = [
 
 
 MANUAL = [
-    # Pinned for SCCACHE_BASEDIRS (>=0.14.0); a bump needs fresh SHA256s for both targets.
-    "SCCACHE_LINUX_VERSION",
-    "SCCACHE_LINUX_X86_64_SHA256",
-    "SCCACHE_LINUX_AARCH64_SHA256",
+    # The hub's own sccache build: a bump is a new rev, a sccache-release.yml run and its sums (shared/upstream/sccache).
+    "SCCACHE_LINUX_VERSION", "SCCACHE_LINUX_X86_64_SHA256", "SCCACHE_LINUX_AARCH64_SHA256", "SCCACHE_LINUX_RISCV64_SHA256",
+    "SCCACHE_SOURCE_REPO", "SCCACHE_SOURCE_REV", "SCCACHE_BUILD_ID", "SCCACHE_DOWNLOAD_BASE",
     # Slaved to LiteRT's vendored protobuf (bump:hold and recipe in versions.env); no feed of its own.
     "LITERT_TFLITE_PROTOC_VERSION",
     # No reliable programmatic source, platform choices, or deliberate pins.

@@ -176,7 +176,7 @@ Invoke-NativeRustStep -Description 'flutter_rust_bridge_codegen --version' -Comm
 }
 
 #endregion
-#region 3. sccache from the released zip (source build retired 2026-09-18)
+#region 3. sccache from a released zip, the hub's own build since 2026-10-17
 # Into CARGO_BIN, ahead of the scoop shims; see docs/windows-build-resources.md § Persistent compile cache (sccache).
 $sccacheVersion = [string]$env:SCCACHE_WINDOWS_VERSION
 if ([string]::IsNullOrWhiteSpace($sccacheVersion)) {
@@ -187,7 +187,9 @@ if ([string]::IsNullOrWhiteSpace($sccacheSha)) {
     throw 'SCCACHE_WINDOWS_ZIP_SHA256 is not set (versions.env not loaded?) — refusing an unverified sccache download.'
 }
 $sccacheZip = Join-Path $env:TEMP "sccache-v$sccacheVersion-x86_64-pc-windows-msvc.zip"
-$sccacheUrl = "https://github.com/mozilla/sccache/releases/download/v$sccacheVersion/sccache-v$sccacheVersion-x86_64-pc-windows-msvc.zip"
+# The hub's own build while no release carries its fixes (shared/upstream/sccache/README.md); same asset names as upstream.
+$sccacheBase = if ($env:SCCACHE_DOWNLOAD_BASE) { $env:SCCACHE_DOWNLOAD_BASE } else { 'https://github.com/mozilla/sccache/releases/download/v' }
+$sccacheUrl = "$sccacheBase$sccacheVersion/sccache-v$sccacheVersion-x86_64-pc-windows-msvc.zip"
 Write-Host "Installing released sccache v$sccacheVersion into $cargoBin (SHA256-verified)..."
 Invoke-DownloadWithRetry -Url $sccacheUrl -DestinationPath $sccacheZip `
     -Description "sccache v$sccacheVersion zip" -ExpectSignature PK -ExpectedSha256 $sccacheSha
