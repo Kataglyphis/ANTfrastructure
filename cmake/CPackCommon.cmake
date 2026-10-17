@@ -493,6 +493,14 @@ macro(kataglyphis_cpack_common)
 
         list(APPEND CPACK_GENERATOR "AppImage")
         set(CPACK_APPIMAGE_TOOL_EXECUTABLE "${_kgcpack_wrapper}")
+        # appimagetool 1.9 never reads the runtime the image stages; unnamed, it fetches the moving continuous one.
+        foreach(_kgcpack_runtime "$ENV{HOME}/.local/share/appimagekit/runtime-${CMAKE_HOST_SYSTEM_PROCESSOR}"
+                                 "/etc/skel/.local/share/appimagekit/runtime-${CMAKE_HOST_SYSTEM_PROCESSOR}")
+          if(NOT CPACK_APPIMAGE_RUNTIME_FILE AND EXISTS "${_kgcpack_runtime}")
+            set(CPACK_APPIMAGE_RUNTIME_FILE "${_kgcpack_runtime}")
+          endif()
+        endforeach()
+        unset(_kgcpack_runtime)
         set(CPACK_APPIMAGE_DESKTOP_FILE "${KGCPACK_APPIMAGE_DESKTOP_FILE}")
         if(KGCPACK_APPIMAGE_ICON_NAME)
           # A name, resolved against the icons installed under share/icons.

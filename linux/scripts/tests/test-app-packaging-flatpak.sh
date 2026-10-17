@@ -354,4 +354,15 @@ mkdir -p "${_wrapped}/lib"
 for f in ld-linux-aarch64.so.1 omni_accelerant omni_accelerant.bin; do printf 'x' > "${_wrapped}/${f}"; chmod +x "${_wrapped}/${f}"; done
 t_assert_eq "omni_accelerant" "$(bash -c 'source "$1"; app_packaging_detect_bundle_binary "$2"' _ "${LIB}" "${_wrapped}")"
 
+
+t_case "appimage_runtime_file: HOME's staged runtime first, the image's skeleton next, nothing without either"
+_rt="runtime-$(uname -m)"
+_runtime() { HOME="$1" APP_PACKAGING_SKEL_DIR="$2" bash -c 'source "$1"; app_packaging_appimage_runtime_file' _ "${LIB}"; }
+mkdir -p "${_work}/home-rt/.local/share/appimagekit" "${_work}/skel-rt/.local/share/appimagekit"
+printf 'x' > "${_work}/home-rt/.local/share/appimagekit/${_rt}"
+printf 'x' > "${_work}/skel-rt/.local/share/appimagekit/${_rt}"
+t_assert_eq "${_work}/home-rt/.local/share/appimagekit/${_rt}" "$(_runtime "${_work}/home-rt" "${_work}/skel-rt")" "HOME first"
+t_assert_eq "${_work}/skel-rt/.local/share/appimagekit/${_rt}" "$(_runtime "${_work}/home-none" "${_work}/skel-rt")" "the skeleton next"
+t_assert_eq "" "$(_runtime "${_work}/home-none" "${_work}/skel-none")" "none: appimagetool is left to fetch one"
+
 t_summary

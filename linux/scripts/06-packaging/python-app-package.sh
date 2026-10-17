@@ -89,13 +89,14 @@ package_tar() {
 # The installed size in PNG terms: hicolor wants the icon under its real size.
 icon_size() { python3 -c 'import struct, sys; d = open(sys.argv[1], "rb").read(24); print("%dx%d" % struct.unpack(">II", d[16:24]))' "$1"; }
 
-# libc6 at the newest GLIBC_ version any ELF asks for, plus the packages owning the sonames left to the host.
+# The packages owning the sonames left to the host, and libc6: unversioned when the bundle carries its glibc, else at the newest GLIBC_ any ELF asks for.
 deb_depends() {
   python3 - "${BUNDLE}" <<'PY'
 import json, os, re, subprocess, sys
 bundle = sys.argv[1]
 # What the bundle builder waived on purpose (the chain ORT's DNNL provider without oneDNN) is no dependency.
-waived = set(json.load(open(os.path.join(bundle, "bundle.json"))).get("unresolved_allowed", []))
+manifest = json.load(open(os.path.join(bundle, "bundle.json")))
+waived = set(manifest.get("unresolved_allowed", []))
 names, needed, glibc = set(waived), set(), (2, 17)
 for root, _, files in os.walk(bundle):
     for f in files:
@@ -134,7 +135,8 @@ for soname in sorted(needed):
 if missing:
     sys.exit("no installed package provides " + ", ".join(missing) + "; the deb could not name its dependencies")
 packages.discard("libc6")
-print(", ".join([f"libc6 (>= {glibc[0]}.{glibc[1]})"] + sorted(packages)))
+libc6 = "libc6" if manifest.get("glibc") else f"libc6 (>= {glibc[0]}.{glibc[1]})"
+print(", ".join([libc6] + sorted(packages)))
 PY
 }
 
@@ -186,10 +188,11 @@ EOF
 }
 
 package_appimage() {
-  local appdir="${WORK_DIR}/${APP_ID}.AppDir" tool link
+  local appdir="${WORK_DIR}/${APP_ID}.AppDir" tool link runtime_file
   local output="${OUT_DIR}/${APP_ID}-${VERSION}-${UNAME_ARCH}.AppImage"
   [ -n "${ICON}" ] || err "an AppImage needs an icon; app.json names none"
   tool="$(app_packaging_resolve_appimagetool)"
+  runtime_file="$(app_packaging_appimage_runtime_file)"
   rm -rf "${appdir}" && mkdir -p "${appdir}/usr/lib"
   cp -a "${BUNDLE}" "${appdir}/usr/lib/${APP_ID}"
   # ARGV0 is the name the AppImage was started under: a symlink named after a script runs that script.
@@ -205,7 +208,7 @@ EOF
   APP_PACKAGING_COMMENT="${DESCRIPTION}" app_packaging_create_desktop_file \
     "${appdir}/${APP_ID}.desktop" "${APP_ID}" "${APP_NAME}" "AppRun" "${APP_ID}"
   cp "${ICON}" "${appdir}/${APP_ID}.png"
-  APPIMAGE_EXTRACT_AND_RUN=1 NO_APPSTREAM=1 ARCH="${UNAME_ARCH}" "${tool}" "${appdir}" "${output}" > /dev/null
+  APPIMAGE_EXTRACT_AND_RUN=1 NO_APPSTREAM=1 ARCH="${UNAME_ARCH}" "${tool}" ${runtime_file:+--runtime-file "${runtime_file}"} "${appdir}" "${output}" > /dev/null
   app_packaging_assert_artifact "${output}"
   link="${WORK_DIR}/appimage-test/${SELF_TEST[0]}"
   mkdir -p "$(dirname "${link}")" "${WORK_DIR}/appimage-run" && ln -sf "${output}" "${link}"

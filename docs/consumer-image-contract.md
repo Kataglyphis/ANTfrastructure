@@ -386,6 +386,22 @@ absent (riscv64 has no upstream build) or when no squashfs superblock is found i
 a missing runtime costs a consumer one download, and is never worth failing a
 toolchain stage over.
 
+**Staged is not used: `appimagetool` 1.9 must be told** (measured 2026-10-18). The old
+AppImageKit read `~/.local/share/appimagekit/`; 1.9.1 never does, and without `--runtime-file`
+it downloads `continuous` on every build, staged copy or not. Under `--network none` the image's
+own tool failed (`Failed to download runtime file`) with the runtime present in both places. So
+every packager names it:
+
+| packager | how |
+| --- | --- |
+| the Flutter AppImage (`app_packaging_package_linux_bundle_appimage`) and `python-app-package.sh` | `app_packaging_appimage_runtime_file` in `lib/app-packaging.sh`: `$HOME`'s copy, else `/etc/skel`'s, passed as `--runtime-file` |
+| CPack's AppImage generator (`kataglyphis_cpack_common`) | `CPACK_APPIMAGE_RUNTIME_FILE`, set from the same two paths at configure time |
+
+Proven offline the same day: OrchestrANT's AppImage through `python-app-package.sh` and
+AccelerANTgine's through `cpack -G AppImage` both built under `--network none`, and the CPack one
+failed again with the variable emptied. A consumer that calls `appimagetool` itself passes
+`--runtime-file "$(app_packaging_appimage_runtime_file)"` when that prints a path.
+
 ### What changes with the next `:latest`
 
 These are in source and not yet in a published image. Drop the workaround once your
@@ -574,6 +590,8 @@ It is not downloaded. Every AppImage *begins* with that runtime, and
 squashfs superblock in the tool's file and copies the bytes before it out. Pinned
 transitively, correct by construction for whatever arch the tool is. It lands in
 `/etc/skel` as well as root's home, so the runtime user created later inherits it.
+Staged is not enough: `appimagetool` 1.9 uses it only when named with `--runtime-file`
+([how every packager does](#the-appimage-runtime-ships-with-the-tool)).
 
 ### The web-lane toolchain
 

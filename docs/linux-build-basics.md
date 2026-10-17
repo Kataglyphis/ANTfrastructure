@@ -316,7 +316,10 @@ declared, and the executable had no RUNPATH to its own `lib/`.
   for a test or a host whose newer glibc misbehaves. The bundled loader makes `/proc/self/exe`
   name the loader, so a program that finds its data from there (a Flutter runner) takes
   `--beside`: it stays in its directory as `<name>.bin` with the loader next to it, and only
-  glibc goes to `<lib>/glibc`. A second run finds its own launcher and stops. `LOADER` turns `dpkg-shlibdeps` off
+  glibc goes to `<lib>/glibc`. A second run finds its own launcher and stops. The launcher reads the
+  host's version through a command substitution: with `read < <(...)` that child outlived the `exec`
+  as a stray child of the program, which Python's `forkserver` warns about. A Python app bundle puts
+  the same launcher on its interpreter ([`python-app-bundles.md`](python-app-bundles.md#the-images-glibc-travels)). `LOADER` turns `dpkg-shlibdeps` off
   (it reads the bundled glibc as the system's and pins `libc6 (<< 2.44)`), so `DEBIAN_DEPENDS`
   names what the system still brings, and hands CPack's AppImage generator
   `patchelf-keep-glibc.sh`: it patches every library without a RUNPATH, and a patched loader

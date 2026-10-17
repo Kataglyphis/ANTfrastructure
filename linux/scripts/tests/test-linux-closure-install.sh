@@ -106,16 +106,18 @@ t_assert_eq "closure-ok 42" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 LD_BIND_NOW=1 
   "relocated launcher runs through the bundled loader too"
 mv "${_work}/moved" "${_work}/stage"
 
-t_case "--beside: data/ beside /proc/self/exe is found on both paths, argv[0] stays; a rerun changes nothing"
+t_case "--beside: data/ beside /proc/self/exe is found on both paths, argv[0] stays, no child is left behind; a rerun changes nothing"
 _loader="${CMAKE_MODULES}/../linux/scripts/06-packaging/bundle-loader.sh"
 mkdir -p "${_work}/beside/lib" "${_work}/beside/data"
 cat > "${_work}/runner.cpp" <<'EOF'
+#include <sys/wait.h>
 #include <filesystem>
 #include <iostream>
 int main(int, char **argv) {
   auto exe = std::filesystem::read_symlink("/proc/self/exe");
   std::cout << (std::filesystem::is_directory(exe.parent_path() / "data") ? "data-found" : "data-missing") << ' '
-            << exe.filename().string() << ' ' << std::filesystem::path(argv[0]).filename().string() << '\n';
+            << exe.filename().string() << ' ' << std::filesystem::path(argv[0]).filename().string() << ' '
+            << (waitpid(-1, nullptr, WNOHANG) == -1 ? "no-child" : "stray-child") << '\n';
 }
 EOF
 c++ -std=c++17 -o "${_work}/beside/runner" "${_work}/runner.cpp"
@@ -123,13 +125,13 @@ t_assert_ok bash "${_loader}" --beside "${_work}/beside" "${_work}/beside/lib" r
 t_assert_ok bash "${_loader}" --beside "${_work}/beside" "${_work}/beside/lib" runner
 t_assert_ok test -f "${_work}/beside/runner.bin"
 t_assert_ok test -f "${_work}/beside/lib/glibc/libc.so.6"
-t_assert_eq "data-found runner.bin runner" "$(env -i "${_work}/beside/runner")" \
+t_assert_eq "data-found runner.bin runner no-child" "$(env -i "${_work}/beside/runner")" \
   "a host glibc as new as the bundled one runs the program itself, under the launcher's name"
 _bundled="$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 "${_work}/beside/runner")"
 t_assert_contains "${_bundled}" "data-found ld-linux" "KATAGLYPHIS_BUNDLED_GLIBC=1 starts it through the bundled loader"
-t_assert_contains "${_bundled}" " runner" "and keeps argv[0] there too"
+t_assert_contains "${_bundled}" " runner no-child" "and keeps argv[0] there too, with no child of the launcher's left"
 sed 's/-ge [0-9][0-9]* \]/-ge 999 ]/' "${_work}/beside/runner" > "${_work}/beside/runner-old-host"
-sed 's#< <("[^"]*" --version#< <("/nonexistent/ld.so" --version#' "${_work}/beside/runner" > "${_work}/beside/runner-no-loader"
+sed 's#$("[^"]*" --version#$("/nonexistent/ld.so" --version#' "${_work}/beside/runner" > "${_work}/beside/runner-no-loader"
 chmod +x "${_work}/beside/runner-old-host" "${_work}/beside/runner-no-loader"
 t_assert_contains "$(env -i "${_work}/beside/runner-old-host")" "data-found ld-linux" "an older host glibc takes the bundled loader"
 t_assert_contains "$(env -i "${_work}/beside/runner-no-loader")" "data-found ld-linux" "so does a host without that loader"

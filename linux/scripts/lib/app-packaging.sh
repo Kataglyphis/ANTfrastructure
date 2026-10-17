@@ -315,6 +315,20 @@ app_packaging_map_arch_to_flatpak() {
   esac
 }
 
+# appimagetool 1.9 never reads the runtime the image stages, so unnamed it fetches the moving continuous one.
+app_packaging_appimage_runtime_file() {
+  local name candidate
+  name="runtime-$(uname -m)"
+  for candidate in "${HOME:-/root}/.local/share/appimagekit/${name}" \
+    "${APP_PACKAGING_SKEL_DIR:-/etc/skel}/.local/share/appimagekit/${name}"; do
+    if [ -f "${candidate}" ] && [ -r "${candidate}" ]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+  return 0
+}
+
 # Prints the command name; stdout stays clean because the provisioner logs to stderr.
 app_packaging_resolve_appimagetool() {
   app_packaging_ensure_appimagetool_via_antfrastructure >&2 || return 1
@@ -468,7 +482,7 @@ app_packaging_package_linux_bundle_appimage() {
   local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
   local app_name="${2:?app_name is required}"
 
-  local bundle_dir version package_name arch binary_name app_id icon_file icon_name appdir output_name appimagetool_cmd out_dir
+  local bundle_dir version package_name arch binary_name app_id icon_file icon_name appdir output_name appimagetool_cmd out_dir runtime_file
   app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
   arch="$(app_packaging_map_arch_to_appimage "$matrix_arch")"
   icon_name="$package_name"
@@ -479,6 +493,7 @@ app_packaging_package_linux_bundle_appimage() {
   if ! appimagetool_cmd="$(app_packaging_resolve_appimagetool)"; then
     return 1
   fi
+  runtime_file="$(app_packaging_appimage_runtime_file)"
 
   rm -rf "$appdir"
   mkdir -p "$appdir/usr/lib/$package_name"
@@ -505,7 +520,7 @@ EOF
   fi
 
   if ! APPIMAGE_EXTRACT_AND_RUN=1 NO_APPSTREAM=1 ARCH="$arch" \
-      "$appimagetool_cmd" "$appdir" "${out_dir}/${output_name}"; then
+      "$appimagetool_cmd" ${runtime_file:+--runtime-file "$runtime_file"} "$appdir" "${out_dir}/${output_name}"; then
     echo "Error: appimagetool failed for ${out_dir}/${output_name}" >&2
     return 1
   fi

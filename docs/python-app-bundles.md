@@ -90,14 +90,18 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
    - Windows: the VC++ runtime goes beside `python.exe`.
    - Linux: `python-app-closure.sh` copies every missing shared library into `runtime/lib` and
      gives each user an `$ORIGIN` RUNPATH.
+   - Linux: `bundle-loader.sh --beside` puts the image's loader and glibc in front of the
+     runtime's interpreter (below, *The image's glibc travels*).
 7. **Gates**, all fatal:
    - **Import walk** (Windows): `Test-TargetArch.ps1 -ImportWalk -Standalone`. Every DLL that
      any binary imports must be in the bundle or ship with Windows. `-Standalone` makes the
      walk fatal on a native lane, as it is on a cross lane: a bundle has no image `PATH`
      behind it.
    - **G6**: the bundle's ORT is byte-identical to the chain build.
-   - **The self-test**, run from the finished bundle.
-8. **`bundle.json`**: the wheels, the Python version and the self-test report.
+   - **The self-test**, run from the finished bundle; on Linux twice, the second time through the
+     bundled loader (`KATAGLYPHIS_BUNDLED_GLIBC=1`), as on a host with an older glibc.
+8. **`bundle.json`**: the wheels, the Python version, the bundled glibc's version (Linux) and the
+   self-test report.
 
 ```powershell
 # Windows, inside :winamd64
@@ -167,6 +171,30 @@ them.
 but oneDNN is missing from the image itself, so that provider cannot load anywhere. Nothing
 loads it unless DNNL is requested.
 
+### The image's glibc travels
+
+The chain ORT and its Python binding are built against the image's glibc 2.43, newer than
+Debian 13's 2.41 and Ubuntu 24.04's 2.39, so a bundle that took the host's glibc loaded on
+neither (`GLIBC_2.43 not found`, measured with OrchestrANT 0.0.31 and 0.0.32 on Debian 13).
+Since 2026-10-17 `python-app-bundle.sh` runs the family's `bundle-loader.sh --beside` on
+`runtime/bin/python3.X`: the interpreter stays there as `python3.X.bin` beside the image's
+loader, glibc goes to `runtime/lib/glibc`, and `python3.X` becomes the launcher that
+[`linux-build-basics.md`](linux-build-basics.md#linux-packages-that-run-outside-the-image)
+describes. It takes the host's glibc when that is as new as the bundled one, so a newer host's
+GL drivers keep theirs.
+
+**It sits on the interpreter, not on the `bin/` scripts**, because children start from
+`sys.executable`. The bundled loader runs the program with `--argv0` set to the launcher's path,
+so `sys.executable` is the launcher and `sys.prefix` stays `runtime/`; a `subprocess` of
+`sys.executable`, and `multiprocessing`'s `spawn` and `forkserver` children, all start through
+it again. A launcher on the scripts alone would have let every child fall back to the host's
+glibc. Measured on himbeere2 (Debian 13, glibc 2.41) with OrchestrANT 0.0.32's arm64 packages
+built this way in `:latest` (2026-10-18): the tarball's and the AppImage's
+`yolo-monitor --self-test` passed, ONNX Runtime 1.30, OpenCV 5.0 and numpy imported, `spawn` and
+`forkserver` children imported ORT through the bundled loader, and `apt-get install --simulate`
+took the `.deb`, whose `Depends` is `libc6, libgl1, libglib2.0-0t64, libice6, libsm6, libx11-6,
+libxext6`.
+
 ## Packages
 
 The packagers wrap a finished bundle; they never rebuild it. Each package is then started once,
@@ -190,9 +218,9 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
 - **deb:** the bundle goes to `/opt/<id>`, with one `/usr/bin` symlink per script; the
   launchers resolve themselves with `readlink -f`. There is also a desktop file for
   `gui_script` and the icon at its real size.
-  - `Depends` is computed, not written by hand: `libc6` at the newest `GLIBC_` version any
-    bundled ELF asks for, plus the packages (`dpkg -S`) owning every library the bundle leaves
-    to the host. A soname that no installed package provides fails the build. The builder's
+  - `Depends` is computed, not written by hand: the packages (`dpkg -S`) owning every library
+    the bundle leaves to the host, and `libc6`, unversioned since the bundle carries its glibc
+    (`bundle.json`'s `glibc`; a bundle without it asks for the newest `GLIBC_` any ELF needs). A soname that no installed package provides fails the build. The builder's
     waived sonames (`unresolved_allowed` in `bundle.json`) are skipped.
   - `Maintainer` comes from `app.json`'s `maintainer`. Without one it is
     `<publisher> <noreply@invalid>`, which says plainly that no address was given.
@@ -222,12 +250,10 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
   separately), and the launchers pass `-B`. Otherwise an admin's first start leaves
   `__pycache__` behind, which the removal does not delete, and the install folder survives.
 
-**The Linux packages need glibc 2.43 (Ubuntu 26.04 or newer).** Measured on 2026-10-01: the
-deb's computed `Depends` is `libc6 (>= 2.43), libgl1, libglib2.0-0t64, libice6, libsm6,
-libx11-6, libxext6`. Only 2 of the bundle's 142 ELF files ask for `GLIBC_2.43`: the chain
-ORT's `libonnxruntime.so` and its Python binding, both built in the Ubuntu 26.04 image. The
-next newest need 2.38: GCC 16's `libstdc++` and the closure's `libxcb`. Reaching older
-distributions means building the chain ORT against an older glibc, not changing the packager.
+**The Linux packages start on older distributions too** (2026-10-17): the image's glibc 2.43
+travels with them (above), so the computed `Depends` no longer pins `libc6 (>= 2.43)`. Until then
+they needed Ubuntu 26.04 or newer: only 2 of the bundle's 142 ELF files asked for `GLIBC_2.43`,
+the chain ORT's `libonnxruntime.so` and its Python binding.
 
 **aarch64 builds the same three packages.** The arm64 image's chain ORT wheel is
 `onnxruntime_webgpu`, which the builder takes like the CPU one. Measured under QEMU on
@@ -278,7 +304,7 @@ Measured in `:winarm64` on 2026-10-01 for OrchestrANT 0.0.29:
 
 - **An MSIX install test.** Server Core cannot install an MSIX, so the package is proven
   unpacked and by its signature; an install needs a client Windows host.
-- **flatpak.** The bundle needs glibc 2.43 (above). org.freedesktop.Platform 24.08 shipped an
+- **flatpak.** The bundle needed glibc 2.43 before it carried its own. org.freedesktop.Platform 24.08 shipped an
   older one; 26.08, the image's runtime since 2026-10-07, ships glibc 2.44 (`ldd --version` in
   it), so that blocker is gone. No flatpak of a bundle has been built yet.
 - **Size.** OrchestrANT's core dependencies pull in Cython and matplotlib at runtime.

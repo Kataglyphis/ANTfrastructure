@@ -180,17 +180,25 @@ if os.path.exists(_list):
             ctypes.CDLL(os.path.join(_lib, _name), mode=ctypes.RTLD_GLOBAL)
 PY
 
+info "== loader: the image's glibc travels, for hosts with an older one"
+# On the interpreter itself: a child that runs sys.executable starts through the same launcher, which --argv0 keeps as its path.
+bash "${SCRIPT_DIR}/bundle-loader.sh" --beside "${BUNDLE}" "${RUNTIME}/lib" "runtime/bin/$(basename "$(readlink -f "${PY}")")"
+GLIBC_VERSION="$(getconf GNU_LIBC_VERSION | awk '{ print $2 }')"
+
 info "== G6: ONNX Runtime is the chain build"
 bash "${SCRIPT_DIR}/check-ort-provenance.sh" "${BUNDLE}"
 
 info "== self-test: ${SELF_TEST[*]}"
 report="$(python3 "${SCRIPT_DIR}/python-app-selftest.py" --root "${BUNDLE}" -- "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}")" ||
   err "self-test '${SELF_TEST[*]}' failed"
+info "== self-test through the bundled loader, as on a host with an older glibc"
+KATAGLYPHIS_BUNDLED_GLIBC=1 python3 "${SCRIPT_DIR}/python-app-selftest.py" --root "${BUNDLE}" -- "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}" >/dev/null ||
+  err "self-test '${SELF_TEST[*]}' failed through the bundled loader"
 # The packagers read the waived sonames back: a deb must not depend on a library nothing loads.
-python3 - "${BUNDLE}" "${report}" "$(basename "${app_wheel}")" "$(basename "${ort_wheel}")" "${PYTHON_VERSION}" "${ALLOWED_UNRESOLVED[*]}" "${SCRIPTS[@]}" <<'PY'
+python3 - "${BUNDLE}" "${report}" "$(basename "${app_wheel}")" "$(basename "${ort_wheel}")" "${PYTHON_VERSION}" "${GLIBC_VERSION}" "${ALLOWED_UNRESOLVED[*]}" "${SCRIPTS[@]}" <<'PY'
 import json, sys
-bundle, report, wheel, ort, python, allowed, *scripts = sys.argv[1:]
-manifest = {"wheel": wheel, "ort_wheel": ort, "python": python, "scripts": scripts,
+bundle, report, wheel, ort, python, glibc, allowed, *scripts = sys.argv[1:]
+manifest = {"wheel": wheel, "ort_wheel": ort, "python": python, "glibc": glibc, "scripts": scripts,
             "unresolved_allowed": allowed.split(), "self_test": json.loads(report)}
 open(f"{bundle}/bundle.json", "w").write(json.dumps(manifest, indent=2) + "\n")
 PY

@@ -78,7 +78,9 @@ for rel in "${EXES[@]}"; do
 #!/bin/bash
 # Starts ${name} with the host's glibc when it is ${major}.${minor} or newer, else with the bundled loader and glibc.
 here="\$(cd -- "\$(dirname -- "\$(readlink -f -- "\$0")")" && pwd)"
-read -r host_major host_minor < <("${interp}" --version 2>/dev/null | sed -n '1s/.*release version \([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1 \2/p')
+# Not read < <(...): that child would outlive the exec below as a stray child of the program (Python's forkserver warns).
+host_glibc="\$("${interp}" --version 2>/dev/null | sed -n '1s/.*release version \([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1 \2/p')"
+read -r host_major host_minor <<< "\$host_glibc"
 if [ -z "\${KATAGLYPHIS_BUNDLED_GLIBC:-}" ] && [ -n "\${host_minor:-}" ] &&
   { [ "\$host_major" -gt ${major} ] || { [ "\$host_major" -eq ${major} ] && [ "\$host_minor" -ge ${minor} ]; }; }; then
   exec -a "\$0" "\$here/${to_home}/${real}" "\$@"

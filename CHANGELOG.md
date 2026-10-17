@@ -12,6 +12,22 @@
 
 ## 2026-10-17 — the family's history is rewritten
 
+- **Every AppImage takes the image's pinned runtime, not `continuous`.** `appimagetool` 1.9.1
+  never reads the runtime `ensure_appimagetool_runtime` stages in `~/.local/share/appimagekit`; it
+  downloaded the moving `continuous` one on every build and failed offline. The Flutter AppImage,
+  `python-app-package.sh` (`app_packaging_appimage_runtime_file`) and `kataglyphis_cpack_common`
+  (`CPACK_APPIMAGE_RUNTIME_FILE`) now name it; OrchestrANT's and AccelerANTgine's AppImages built
+  under `--network none` (consumer-image-contract.md).
+- **Python app packages start on Debian 13 and Ubuntu 24.04 (CON97 item 4).** The chain ORT needs
+  glibc 2.43, so OrchestrANT's `.deb` said `libc6 (>= 2.43)` and its tarball failed to import ORT
+  on older hosts. `python-app-bundle.sh` now runs `bundle-loader.sh --beside` on the runtime's
+  interpreter, so the image's glibc travels and `sys.executable` children start through the same
+  launcher; the self-test runs a second time through the bundled loader, `bundle.json` records
+  the glibc, and `python-app-package.sh` then writes an unversioned `libc6`.
+- **The bundle-loader launcher leaves no stray child.** It read the host glibc's version with
+  `read < <(...)`, whose child outlived the `exec` as a child of the program; Python's
+  `forkserver` warned `waitpid returned unexpected pid`. A command substitution waits for it.
+  `test-linux-closure-install.sh`'s runner now calls `waitpid(-1, WNOHANG)` and fails on a child.
 - **`git-adopt-rewritten-history.sh` names the local refs that keep the old blobs.** A branch
   without an upstream that holds commits origin lacks, and `refs/original/`, survive the gc with
   every old blob they reach; on himbeere2 such refs kept OmniAccelerANT's pack at 166 MiB.

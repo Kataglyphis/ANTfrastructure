@@ -62,11 +62,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          Mesa needs 2.44; the launcher takes the host's glibc when it is new enough since the same
          day (linux-build-basics.md). Left: a consumer lane that starts its flatpak.
       3. AccelerANTgine's `kataglyphis_inference` wheels: the same closure, through auditwheel.
-      4. Python app bundles (OrchestrANT 0.0.31, measured 2026-10-17 on himbeere2): numpy, OpenCV
-         and Pillow import on Debian 13, the chain ORT does not (`GLIBC_2.43 not found`); the `.deb`
-         says `libc6 (>= 2.43)` and apt refuses it there, honestly. The launchers could start
-         `runtime/bin/python3` through the bundled loader, but every child that runs
-         `sys.executable` (multiprocessing, subprocess) would bypass it.
+      4. Python app bundles: since 2026-10-17 `python-app-bundle.sh` puts `bundle-loader.sh
+         --beside` on the runtime's interpreter, so `sys.executable` children go through it too,
+         and the `.deb` drops `libc6 (>= 2.43)` (python-app-bundles.md § The image's glibc
+         travels). OrchestrANT's arm64 packages built that way pass their self-test on Debian 13
+         and apt takes the `.deb` (2026-10-18). Left: OrchestrANT's hub pin, and its CI round.
 
       Done when AccelerANTgine's, BeschleunigerBallett's and OmniAccelerANT's packages start on
       himbeere2 and in the clean-host job.
