@@ -113,4 +113,24 @@ t_assert_eq "" "$(printf '%s\n' "${out}" | grep -E 'rewritten|dropped')" "no rew
 t_assert_eq "$(git -C "${d}" rev-parse origin/develop)" "$(git -C "${d}" rev-parse develop)" "develop reached origin/develop"
 t_assert_ok test "$(git -C "${d}" reflog | wc -l)" -gt "${reflog}"
 
+t_case "a history longer than a pipe buffer is still seen as rewritten (no SIGPIPE under pipefail)"
+# 2000 commits print ~86 KiB of "sha twin" lines, more than a pipe holds once an early reader has gone.
+root="$(mktemp -d "${_work}/long.XXXXXX")"
+git init -q --bare "${root}/remote.git" && git -C "${root}/remote.git" symbolic-ref HEAD refs/heads/develop
+for i in $(seq 1 2000); do
+  printf 'commit refs/heads/develop\nauthor A <a@example.com> %d +0000\ncommitter A <a@example.com> %d +0000\ndata <<EOM\nc%d after 1234567abc\nEOM\n' \
+    $((1700000000 + i)) $((1700000000 + i)) "${i}"
+done | git -C "${root}/remote.git" fast-import --quiet
+git clone -q "${root}/remote.git" "${root}/clone"
+# The rewrite: same author and date, a new committer date, and the id a subject names remapped (same length).
+git init -q --bare "${root}/new.git"
+git -C "${root}/remote.git" fast-export --all |
+  sed -E -e 's/^(committer .*) [0-9]+ ([+-][0-9]{4})$/\1 1800000000 \2/' -e 's/1234567abc/9876543fed/' | git -C "${root}/new.git" fast-import --quiet
+git -C "${root}/new.git" push -q --force --mirror "${root}/remote.git"
+out="$(t_out bash "${ADOPT}" --backup "${_work}/bk-long" "${root}/clone")"
+t_assert_contains "${out}" "origin's history was rewritten" "2000 local commits, every one with its twin on origin"
+t_assert_eq "$(git -C "${root}/clone" rev-parse origin/develop)" "$(git -C "${root}/clone" rev-parse HEAD)" "develop moved to the rewritten tip"
+# A subject whose commit id was remapped still has its twin, so nothing is reported as unpushed.
+t_assert_fails grep -q "never reached origin" <<< "${out}"
+
 t_summary

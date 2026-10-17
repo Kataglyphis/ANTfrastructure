@@ -88,7 +88,9 @@ record_tree() {
 # local_commits <dir> <rev...>: "sha twin" per commit only the revs reach; twin 1 = origin has its rewrite (same author, date, subject).
 local_commits() {
   local dir="$1"; shift
-  awk -F'\t' 'NR == FNR { seen[$2] = 1; next } { print $1, ($2 in seen) ? 1 : 0 }' \
+  # Hex runs are masked: a rewrite also remaps the commit ids a subject names.
+  awk -F'\t' 'function key(s) { gsub(/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]+/, "#", s); return s }
+    NR == FNR { seen[key($2)] = 1; next } { print $1, (key($2) in seen) ? 1 : 0 }' \
     <(git -C "${dir}" log --remotes=origin --format='%H%x09%an <%ae> %at %s') \
     <(git -C "${dir}" log --reverse --format='%H%x09%an <%ae> %at %s' "$@" --not --remotes=origin --)
 }
@@ -211,7 +213,8 @@ drop_old_history() {
 adopt() {
   local dir="$1" label="$2" head_ref branch upstream rewritten=0
   git -C "${dir}" fetch --quiet --prune --force --tags --no-recurse-submodules origin
-  if local_commits "${dir}" HEAD --branches | grep -q ' 1$'; then
+  # awk reads to the end: grep -q stops early, and pipefail reads awk's SIGPIPE on a long history as no twin.
+  if local_commits "${dir}" HEAD --branches | awk '$2 == 1 { found = 1 } END { exit !found }'; then
     rewritten=1
     say "  ${label}: origin's history was rewritten"
   fi

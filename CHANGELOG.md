@@ -12,6 +12,13 @@
 
 ## 2026-10-17 — the family's history is rewritten
 
+- **`git-adopt-rewritten-history.sh` saw no rewrite in a long history.** Its twin check ended in
+  `| grep -q`, which stops at the first match; under `pipefail` awk's SIGPIPE then read as "no
+  twin" once the local history printed more than a pipe holds (OmniAccelerANT's 1550 commits,
+  the hub's, OxidANT's), so the script left those checkouts alone. awk now reads to the end. The
+  suite builds 2000 commits with fast-import and fails with the old line. Its twin key also masks
+  hex runs, since the rewrite remapped the commit ids subjects name: without that, OmniAccelerANT's
+  checkout listed 183 pushed commits as never pushed.
 - Every binary blob of 500 KB or more that no branch held left the history of all ten family
   repositories (owner): models, scenes, CVs, photos, videos, build output. Every commit was kept,
   so each old id maps to one new one; gitlinks and the commit ids in tracked files moved with
