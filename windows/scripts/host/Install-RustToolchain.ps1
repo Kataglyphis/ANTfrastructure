@@ -188,7 +188,10 @@ if ([string]::IsNullOrWhiteSpace($sccacheSha)) {
 }
 $sccacheZip = Join-Path $env:TEMP "sccache-v$sccacheVersion-x86_64-pc-windows-msvc.zip"
 # The hub's own build while no release carries its fixes (shared/upstream/sccache/README.md); same asset names as upstream.
-$sccacheBase = if ($env:SCCACHE_DOWNLOAD_BASE) { $env:SCCACHE_DOWNLOAD_BASE } else { 'https://github.com/mozilla/sccache/releases/download/v' }
+$sccacheBase = [string]$env:SCCACHE_DOWNLOAD_BASE
+if ([string]::IsNullOrWhiteSpace($sccacheBase)) {
+    throw 'SCCACHE_DOWNLOAD_BASE is not set (versions.env not loaded?) — refusing to guess where the pinned sccache lives.'
+}
 $sccacheUrl = "$sccacheBase$sccacheVersion/sccache-v$sccacheVersion-x86_64-pc-windows-msvc.zip"
 Write-Host "Installing released sccache v$sccacheVersion into $cargoBin (SHA256-verified)..."
 Invoke-DownloadWithRetry -Url $sccacheUrl -DestinationPath $sccacheZip `
