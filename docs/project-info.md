@@ -216,14 +216,9 @@ only tracked binary is `images/logo.png`, at 2 KB. The `.gitignore` rules under
 binary that genuinely belongs here is committed with `git add -f` and named in
 this section.
 
-**The history is NOT being rewritten, and that is a decision, not an oversight.**
-A `filter-repo` pass would reclaim most of the 154 MB and would also change every
-commit id in the repository — which breaks every pin in every consumer
-(`third_party/ANTfrastructure` is a gitlink in every consumer but ANThology), every SHA in every
-changelog entry and every link into this repo that names a commit. 154 MB is a
-one-time clone cost measured in seconds on any connection this project is
-developed on. The cost of the rewrite is paid by everyone, repeatedly, for as
-long as anyone reads an old reference.
+**The history is being rewritten** (owner, 2026-10-17, reversing the decision that it would
+not be), which takes most of the 154 MB: what leaves it, and how a checkout follows, is in
+[data-repositories.md](data-repositories.md).
 
 ## Contact
 
