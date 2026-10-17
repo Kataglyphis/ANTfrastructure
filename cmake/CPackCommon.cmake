@@ -67,7 +67,11 @@ set(_KATAGLYPHIS_PATCHELF_KEEP_GLIBC "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts
 # The Linux twin of kataglyphis_install_package_dlls; arguments: docs/linux-build-basics.md#linux-packages-that-run-outside-the-image
 function(kataglyphis_install_linux_closure)
   # Embedded (AccelerANTgine in OmniAccelerANT's plugin), it would rewrite the parent's install tree, ORT included.
-  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT PROJECT_IS_TOP_LEVEL)
+  if(NOT
+     CMAKE_SYSTEM_NAME
+     STREQUAL
+     "Linux"
+     OR NOT PROJECT_IS_TOP_LEVEL)
     return()
   endif()
   cmake_parse_arguments(
@@ -82,7 +86,11 @@ function(kataglyphis_install_linux_closure)
 
   include(GNUInstallDirs)
   set(_libdir "${CMAKE_INSTALL_LIBDIR}")
-  file(RELATIVE_PATH _bin_to_lib "/${CMAKE_INSTALL_BINDIR}" "/${_libdir}")
+  file(
+    RELATIVE_PATH
+    _bin_to_lib
+    "/${CMAKE_INSTALL_BINDIR}"
+    "/${_libdir}")
   set(_loader_args "")
   foreach(_target IN LISTS ARG_TARGETS)
     if(NOT TARGET ${_target})
@@ -112,16 +120,32 @@ function(kataglyphis_install_linux_closure)
   if(IS_ABSOLUTE "${_stdcxx}" AND EXISTS "${_stdcxx}")
     get_filename_component(_stdcxx_dir "${_stdcxx}" DIRECTORY)
     file(REAL_PATH "${_stdcxx_dir}" _stdcxx_dir)
-    list(APPEND _args --search "${_stdcxx_dir}")
+    list(
+      APPEND
+      _args
+      --search
+      "${_stdcxx_dir}")
   endif()
   foreach(_dir IN LISTS ARG_SEARCH)
-    list(APPEND _args --search "${_dir}")
+    list(
+      APPEND
+      _args
+      --search
+      "${_dir}")
   endforeach()
   foreach(_glob IN LISTS ARG_SYSTEM)
-    list(APPEND _args --system "${_glob}")
+    list(
+      APPEND
+      _args
+      --system
+      "${_glob}")
   endforeach()
   foreach(_glob IN LISTS ARG_PROTECT)
-    list(APPEND _args --protect "${_glob}")
+    list(
+      APPEND
+      _args
+      --protect
+      "${_glob}")
   endforeach()
   set(_argstr "")
   foreach(_arg IN LISTS _args)
@@ -146,8 +170,7 @@ function(kataglyphis_install_linux_closure)
   endif()
 
   # Last install rule: it walks the staged tree each CPack generator is about to pack.
-  install(
-    CODE "set(_kg_root \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}\")
+  install(CODE "set(_kg_root \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}\")
 ${_loader_step}execute_process(COMMAND bash \"${_KATAGLYPHIS_ELF_CLOSURE}\" --bundle \"\${_kg_root}\"
   --lib-dir \"\${_kg_root}/${_libdir}/${ARG_PRIVATE_DIR}\"${_argstr} COMMAND_ERROR_IS_FATAL ANY)")
 endfunction()
