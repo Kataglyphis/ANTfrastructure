@@ -34,7 +34,7 @@ proven by moving the bundle elsewhere and running it again.
   "scripts": ["yolo-monitor", "orchestrant-bench", "orchestrant-smoke"],
   "data_env": "ORCHESTRANT_DATA_DIR",
   "data_dir": "share/orchestrant",
-  "data": [{ "from": "resources/models/yolov26m.onnx", "to": "share/orchestrant/models/yolov26m.onnx" }],
+  "data": [{ "from": "resources/models/deim_dfine_n_coco.onnx", "to": "share/orchestrant/models/deim_dfine_n_coco.onnx" }],
   "self_test": ["yolo-monitor", "--self-test"]
 }
 ```

@@ -29,6 +29,15 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
+- [ ] **CON98 — one hub-owned fetcher for the data locks** [M, ★★]. Three consumers fetch
+      ModelANT and AssetANT files by the same lock and contract in three languages: OxidANT's
+      `fetch-models.sh` with OmniAccelerANT's `Get-Models.ps1`, OrchestrANT's stdlib
+      `fetch_models.py`, and BeschleunigerBallett's `cmake/FetchAssets.cmake`
+      ([data-repositories.md](docs/data-repositories.md)). Move the contract here once: a
+      stdlib Python fetcher every lane has, which a CMake module calls, with one suite for the
+      cache, the hash checks, the atomic writes and the scene stamp. The consumers keep only
+      their locks.
+
 - [ ] **CON97 — Linux packages that start on Debian 13 and Ubuntu 24.04** [L, ★★★]. Owner OK
       2026-10-16. Step 1 is in (`kataglyphis_install_linux_closure`, the
       `clean-host-package-check` action on `ubuntu-26.04`; linux-build-basics.md § Linux packages

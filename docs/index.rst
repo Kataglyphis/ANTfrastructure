@@ -144,6 +144,7 @@ Common development targets:
    INDEX
    failure-modes
    adopting-in-a-new-project
+   data-repositories
    overview
    onnxruntime-single-source
 

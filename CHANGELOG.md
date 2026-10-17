@@ -10,6 +10,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — data repositories: models and scenes outside the code
+
+- **`docs/data-repositories.md`** describes the family's rule of the same day: code
+  repositories track code, ModelANT holds the models, the new AssetANT the 3D scenes. It
+  covers the lock format, the contract every fetcher keeps, the two-field scene stamp (a
+  hash-only stamp reported "up to date" over an emptied directory), and what stays tracked.
+  OrchestrANT dropped its 78 MiB AGPL `yolov26m.onnx` for ModelANT's DEIM-D-FINE-N, and
+  BeschleunigerBallett moved 518 MiB of scenes to AssetANT. `python-app-bundles.md`'s example
+  `app.json` names the new model. BACKLOG CON98: one hub-owned fetcher in place of three.
+
 ## 2026-10-17 — the arm64 setup .exe: NSIS's x86 stub passes the arch gate, and the device installs it
 
 - **`Test-TargetArch.ps1` reports an NSIS installer instead of failing it.** NSIS has no arm64
