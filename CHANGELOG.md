@@ -6,6 +6,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — the MSIX takes a CMake project's version
+
+- **`Get-PackageVersion` reads `CMakeLists.txt`'s `project(... VERSION x.y.z)`** when a workspace
+  has no `VERSION.txt`/`version.txt`. AccelerANTgine has none, so its MSIX stayed at the
+  `0.0.1.0` fallback while CPack stamped 0.0.2 on everything else (its 0.0.2 dry run,
+  38985083941: `AccelerANTgine_0.0.1.0_x64.msix` beside `AccelerANTgine-0.0.2-Release-x86_64.msi`),
+  and an MSIX with an unchanged version does not upgrade an installed one. A version file still
+  wins. Two Pester cases in `WindowsMsix.Common.Tests.ps1`.
+
 ## 2026-10-17 — the closure tool compares RUNPATH entries whole
 
 - **`python-app-closure.sh` skipped a needed `$ORIGIN`** whenever an entry such as `$ORIGIN/..`
