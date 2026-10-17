@@ -59,7 +59,7 @@ Describe 'WindowsImageEnv.Common: the matcher' {
     It 'names the reason, so a red gate says what to fix' {
         $r = @(Get-ImageEnvLeak -Name 'SCCACHE_WEBDAV_ENDPOINT' -Value 'http://10.0.0.16:5000')
         Assert-Equal 2 $r.Count 'the name rule and the address rule both fire on the 2026-09-23 value'
-        Assert-Match '192\.168\.188\.116' ($r -join ' ')
+        Assert-Match '10\.0\.0\.16' ($r -join ' ')
     }
 
     foreach ($mutant in @(
