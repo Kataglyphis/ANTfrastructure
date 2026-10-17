@@ -16,7 +16,7 @@ mount. This bucket is level 1, shared by all of them, so one host's compiles are
 | Bucket | `sccache`, no key prefix, path-style addressing; 754,214 objects (48.9 GiB) after the seed on 2026-10-16 |
 | Keys | `sccache-client` (read and write on `sccache` only, for the clients) in `/root/sccache-s3-key.txt`; `sccache-evict` (the size cap's own) in `/etc/garage/evict-key.txt`; both 600 |
 | Firewall | ufw allows `3900/tcp` only on `wg0` from `<home-lan-cidr>`; the public IP has no listener on 3900 |
-| Size cap | hourly: over 60 GiB, delete oldest `LastModified` first down to 90 % (54 GiB) |
+| Size cap | hourly: over 100 GiB, delete oldest `LastModified` first down to 90 % (90 GiB). Raised from 60 GiB on 2026-10-17, so Linux builds share the bucket; the bucket held 50.1 GiB (756k objects) then, and the shared disk had 87 GB free |
 | Removed | the dufs/WebDAV service that ran there first (its unit, the port 5000 rule, its data dir) |
 
 > **Addresses.** `<s3-server-lan-ip>`, `<webdav-lan-ip>`, `<router-lan-ip>` and `<home-lan-cidr>`
@@ -111,7 +111,7 @@ Then the layout, the bucket and the two keys. Check each command against
 
 ```bash
 garage status                                         # note the node id
-garage layout assign -z vps -c 80G <node-id>          # capacity: what the disk can give
+garage layout assign -z vps -c 120G <node-id>         # a weight on one node; kept above the size cap
 garage layout apply --version 1
 garage bucket create sccache
 (umask 077; garage key create sccache-client > /root/sccache-s3-key.txt)
@@ -166,7 +166,9 @@ sudo systemctl start sccache-evict.service && journalctl -t sccache-evict -n 5
 ```
 
 Change the cap with `CAP_GB` in `sccache-evict.service` (`systemctl edit sccache-evict.service`);
-the target is 90 % of it. A seed from a client gives every object the seed time, so the first
+the target is 90 % of it. Keep the layout's capacity above it (`garage layout assign … -c`, then
+`garage layout apply --version <next>`), and leave the shared disk room for Nextcloud: at the
+cap the bucket takes about 50 GB more than on 2026-10-17. A seed from a client gives every object the seed time, so the first
 evictions go roughly in seed order until real traffic replaces them.
 
 ## 5. Check it
