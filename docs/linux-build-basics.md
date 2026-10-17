@@ -303,11 +303,20 @@ declared, and the executable had no RUNPATH to its own `lib/`.
   `add_subdirectory`, would otherwise rewrite the Flutter bundle, chain ORT included.
 - **glibc travels too, with `LOADER`** (2026-10-17). The image links against glibc 2.43, newer than
   Debian 13's 2.41 and Ubuntu 24.04's 2.39. `06-packaging/bundle-loader.sh` moves each executable
-  into `lib/<PRIVATE_DIR>` beside the image's loader and glibc libraries and leaves a launcher in
-  its place, which runs it through that loader with `--library-path`, as ObservANT's does. The
-  launcher makes `/proc/self/exe` name the loader, so a program that finds its data from there (a
-  Flutter runner) takes `--beside`: it stays in its directory as `<name>.bin` with the loader next
-  to it, and only glibc goes to the lib dir. A second run finds its own launcher and stops. `LOADER` turns `dpkg-shlibdeps` off
+  into `lib/<PRIVATE_DIR>` beside the image's loader, puts glibc's libraries in its `glibc/`, and
+  leaves a launcher in its place. **The launcher takes the bundled glibc only when the host's is
+  older** (2026-10-17): it reads the host loader's `--version`, and on the bundled version or newer
+  it starts the program itself, under its own name (`exec -a`). A host glibc newer than the
+  bundled one must win, because the host's GL drivers are built against it: the app flatpak
+  aborted at start on org.freedesktop.Platform 26.08, whose Mesa needs `GLIBC_2.44`, under the
+  bundled 2.43 (`No provider of eglGetPlatformDisplayEXT found`). The same holds for any distro
+  newer than the image. On an older host it runs the program through the bundled loader with
+  `--library-path <lib>/glibc:<lib>`, as ObservANT's does; glibc sits apart from `<lib>` so the
+  host loader never finds it through a RUNPATH. `KATAGLYPHIS_BUNDLED_GLIBC=1` forces that path,
+  for a test or a host whose newer glibc misbehaves. The bundled loader makes `/proc/self/exe`
+  name the loader, so a program that finds its data from there (a Flutter runner) takes
+  `--beside`: it stays in its directory as `<name>.bin` with the loader next to it, and only
+  glibc goes to `<lib>/glibc`. A second run finds its own launcher and stops. `LOADER` turns `dpkg-shlibdeps` off
   (it reads the bundled glibc as the system's and pins `libc6 (<< 2.44)`), so `DEBIAN_DEPENDS`
   names what the system still brings, and hands CPack's AppImage generator
   `patchelf-keep-glibc.sh`: it patches every library without a RUNPATH, and a patched loader

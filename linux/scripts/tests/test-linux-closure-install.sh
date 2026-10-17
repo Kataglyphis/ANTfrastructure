@@ -88,37 +88,51 @@ cmake -S "${_work}/parent" -B "${_work}/pbuild" >/dev/null && cmake --build "${_
 t_assert_ok test -f "${_work}/pstage/bin/app"
 t_assert_fails test -e "${_work}/pstage/lib/fixture"
 
-t_case "LOADER: a launcher takes the executable's place and starts it with the bundled loader and glibc"
+t_case "LOADER: a launcher takes the executable's place; glibc travels apart from lib/, with the loader"
 _project 'LOADER PROTECT "lib/fixture/libvendor*"'
 t_assert_ok _install
-t_assert_eq "#!/bin/sh" "$(head -1 "${_work}/stage/bin/app")" "bin/app is the launcher"
+t_assert_eq "#!/bin/bash" "$(head -1 "${_work}/stage/bin/app")" "bin/app is the launcher"
 t_assert_ok test -f "${_work}/stage/lib/fixture/app"
-t_assert_ok test -f "${_work}/stage/lib/fixture/libc.so.6"
+t_assert_ok test -f "${_work}/stage/lib/fixture/glibc/libc.so.6"
+# A host loader would find it through the RUNPATH and mix two glibcs.
+t_assert_fails test -e "${_work}/stage/lib/fixture/libc.so.6"
 t_assert_eq 1 "$(find "${_work}/stage/lib/fixture" -name 'ld-linux*' | wc -l)" "the loader travels"
 t_assert_eq "${_work}/stage/lib/fixture/libstdc++.so.6" \
   "$(env -i ldd "${_work}/stage/lib/fixture/app" | awk '$1 == "libstdc++.so.6" { print $3 }' | xargs realpath)" \
   "the moved program's own RUNPATH finds the bundled libstdc++, launcher or not"
 mv "${_work}/stage" "${_work}/moved"
 t_assert_eq "closure-ok 42" "$(env -i LD_BIND_NOW=1 "${_work}/moved/bin/app" 2>&1)" "relocated launcher runs"
+t_assert_eq "closure-ok 42" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 LD_BIND_NOW=1 "${_work}/moved/bin/app" 2>&1)" \
+  "relocated launcher runs through the bundled loader too"
 mv "${_work}/moved" "${_work}/stage"
 
-t_case "--beside: the program keeps its directory, so data/ beside /proc/self/exe is found; a rerun changes nothing"
+t_case "--beside: data/ beside /proc/self/exe is found on both paths, argv[0] stays; a rerun changes nothing"
 _loader="${CMAKE_MODULES}/../linux/scripts/06-packaging/bundle-loader.sh"
 mkdir -p "${_work}/beside/lib" "${_work}/beside/data"
 cat > "${_work}/runner.cpp" <<'EOF'
 #include <filesystem>
 #include <iostream>
-int main() {
-  auto dir = std::filesystem::read_symlink("/proc/self/exe").parent_path();
-  std::cout << (std::filesystem::is_directory(dir / "data") ? "data-found" : "data-missing") << '\n';
+int main(int, char **argv) {
+  auto exe = std::filesystem::read_symlink("/proc/self/exe");
+  std::cout << (std::filesystem::is_directory(exe.parent_path() / "data") ? "data-found" : "data-missing") << ' '
+            << exe.filename().string() << ' ' << std::filesystem::path(argv[0]).filename().string() << '\n';
 }
 EOF
 c++ -std=c++17 -o "${_work}/beside/runner" "${_work}/runner.cpp"
 t_assert_ok bash "${_loader}" --beside "${_work}/beside" "${_work}/beside/lib" runner
 t_assert_ok bash "${_loader}" --beside "${_work}/beside" "${_work}/beside/lib" runner
 t_assert_ok test -f "${_work}/beside/runner.bin"
-t_assert_ok test -f "${_work}/beside/lib/libc.so.6"
-t_assert_eq "data-found" "$(env -i "${_work}/beside/runner")" "the runner finds data/ through the launcher"
+t_assert_ok test -f "${_work}/beside/lib/glibc/libc.so.6"
+t_assert_eq "data-found runner.bin runner" "$(env -i "${_work}/beside/runner")" \
+  "a host glibc as new as the bundled one runs the program itself, under the launcher's name"
+_bundled="$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 "${_work}/beside/runner")"
+t_assert_contains "${_bundled}" "data-found ld-linux" "KATAGLYPHIS_BUNDLED_GLIBC=1 starts it through the bundled loader"
+t_assert_contains "${_bundled}" " runner" "and keeps argv[0] there too"
+sed 's/-ge [0-9][0-9]* \]/-ge 999 ]/' "${_work}/beside/runner" > "${_work}/beside/runner-old-host"
+sed 's#< <("[^"]*" --version#< <("/nonexistent/ld.so" --version#' "${_work}/beside/runner" > "${_work}/beside/runner-no-loader"
+chmod +x "${_work}/beside/runner-old-host" "${_work}/beside/runner-no-loader"
+t_assert_contains "$(env -i "${_work}/beside/runner-old-host")" "data-found ld-linux" "an older host glibc takes the bundled loader"
+t_assert_contains "$(env -i "${_work}/beside/runner-no-loader")" "data-found ld-linux" "so does a host without that loader"
 
 t_case "the AppImage generator's patchelf leaves glibc as built and passes everything else on"
 _keep="${CMAKE_MODULES}/../linux/scripts/06-packaging/patchelf-keep-glibc.sh"

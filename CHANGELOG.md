@@ -10,6 +10,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — `bundle-loader.sh`: the host's glibc when it is new enough
+
+- **The launcher takes the bundled loader and glibc only on an older host.** It reads the host
+  loader's `--version` and, on the bundled version or newer, starts the program itself under its
+  own name. OmniAccelerANT's app flatpak aborted at start on org.freedesktop.Platform 26.08: its
+  Mesa needs `GLIBC_2.44`, and the launcher had put it under the bundled 2.43 (`version
+  GLIBC_2.44 not found (required by .../libLLVM.so.22.1)`, then `No provider of
+  eglGetPlatformDisplayEXT found`). A distro newer than the image would have hit the same.
+- glibc's libraries move to `<lib>/glibc/`, which only the bundled loader's `--library-path` names:
+  a host loader would otherwise find them through a RUNPATH and mix two glibcs. The launcher is
+  bash now, for `exec -a`. `KATAGLYPHIS_BUNDLED_GLIBC=1` forces the bundled path.
+- `test-linux-closure-install.sh` (38 asserts) runs both paths, an older host and a host without
+  that loader, and checks `/proc/self/exe` and `argv[0]` on each; a launcher without `exec -a` and
+  glibc back in `<lib>` both fail it. Docs: linux-build-basics.md.
+
 ## 2026-10-17 — the README logo is the family's ant
 
 - `images/logo.png` is the ant from OmniAccelerANT's `assets/icons/kataglyphis_app_icon.svg`, as in

@@ -48,7 +48,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          holds in the image, and on Debian 13 it reaches GTK. Left: a launch under a display on
          Debian 13, and its CI rounds.
       2. The flatpak: the Flutter one installs the bundle whole since 2026-10-17, so its runner
-         finds `data/`; that it starts on org.freedesktop.Platform's older glibc is unproven.
+         finds `data/`. Under the bundled glibc 2.43 it aborted at start, since Platform 26.08's
+         Mesa needs 2.44; the launcher takes the host's glibc when it is new enough since the same
+         day (linux-build-basics.md). Left: a consumer lane that starts its flatpak.
       3. AccelerANTgine's `kataglyphis_inference` wheels: the same closure, through auditwheel.
       4. Python app bundles (OrchestrANT 0.0.31, measured 2026-10-17 on himbeere2): numpy, OpenCV
          and Pillow import on Debian 13, the chain ORT does not (`GLIBC_2.43 not found`); the `.deb`
