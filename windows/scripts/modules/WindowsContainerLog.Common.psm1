@@ -11,7 +11,7 @@
   scripts/windows/container/Build-RustAll.ps1 and Test-RustAll.ps1), which
   carried two byte-identical copies of it.
 
-  RESTORED 2026-09-14. Deleted in 2eaed40e (2026-09-08, "no consumer") while
+  RESTORED 2026-09-14. Deleted in 6f5aef72 (2026-09-08, "no consumer") while
   OxidANT's Invoke-StevedoreBuild.ps1 resolves it by path and its two
   in-container scripts Import-Module it from C:\host-scratch -- references a
   path grep of this repo cannot see. The consumer inventory

@@ -411,7 +411,7 @@ force-installs `PYTORCH_VERSION` and `TORCHVISION_VERSION` over the app lock, so
 - **Proven:** new cases in `test-version-snapshot.sh`, and the gate's first two mutations
   (`version-snapshot.consumer-pins-tag-prefix`, `version-snapshot.consumer-pins-torch-row`).
 - **Rollout:** a consumer's `lint-gates.yml` runs this from `develop`, so a lagging consumer goes
-  red on its next push. OrchestrANT moved first (`febd7ea`: torch 2.14.0 / torchvision 0.29.0),
+  red on its next push. OrchestrANT moved first (`eae460c`: torch 2.14.0 / torchvision 0.29.0),
   so its lane stays green.
   [`code-quality-tooling.md`](code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons).
 - **OrchestrANT's ROCm extra is now `pytorch-rocm10`** (the `rocm7.14` wheel line, as
@@ -486,7 +486,7 @@ changed since each published image), so none of this adds a re-key.
   only ONNX Runtime (CON33). The Rust driver checks for `cargo fmt`/`cargo clippy` instead
   of `rustup component add` (CON32).
 - Android API 37 (CON14). The `android-sdk-shared` cache id never named the two API 37
-  pins, so every build since 2bb0410f restored an SDK tree cached on 2026-08-22. The id
+  pins, so every build since 5eac94d5 restored an SDK tree cached on 2026-08-22. The id
   names every pin (`tests/test-android-sdk-cache-key.sh`); a restored tree is checked
   against sdkmanager's `package.xml` records, completed and refreshed; the smoke checks
   every platform.
@@ -835,7 +835,7 @@ no cap, a client hang-up closes the lane's connection), loopback-only
 listeners and the hook surviving a hot reload. Details:
 `linux/llm-stack/README.md` § Gateway.
 
-Merging it into `develop` (`6b1532a8`) would have turned preflight's
+Merging it into `develop` (`38b91aa1`) would have turned preflight's
 `workflow-lint` slug red. The two `gateway-e2e` matrix rows were one-line flow
 mappings (`- { arch: x64, runs_on: ubuntu-26.04 }`), which the YAML subset that
 `verify_workflow_conventions.py` reads cannot parse. That failed
@@ -1097,7 +1097,7 @@ runs until the next publish.
 
 `docs/refactoring-backlog.md` gains two arm64 GCC gaps and two Windows LLVM gaps. Each
 cites the run that showed it and says what closes it. CON7 (no libsanitizer in the
-arm64 GCC) is fixed in source by e2de5852 and waits only for a published image. CON8
+arm64 GCC) is fixed in source by e8bfd9bd and waits only for a published image. CON8
 (arm64 GCC configures cannot find libX11) comes with a hypothesis and the check that
 decides it. CON9 (`clang_rt.profile`) and CON10 (clang-tidy) are the two components
 the patched Windows LLVM does not build. No code changed.
@@ -1158,7 +1158,7 @@ argument and no object on its command line (19/19). The new
 
 ## 2026-09-24 - FFmpeg's makedef refuses an empty export list and runs the compiler's own llvm-nm
 
-The rocm chain (hub a943dd94) built base, the ROCm SDK layer, the patched toolchain and ONNX
+The rocm chain (hub a0b3dd34) built base, the ROCm SDK layer, the patched toolchain and ONNX
 Runtime, then failed FFmpeg n9.0.2's `make + install`: `swresample-7.dll` and `swscale-10.dll`
 could not resolve a single libavutil symbol (`av_mallocz`, `av_log`, `av_channel_layout_*`).
 `avutil-61.dll` had linked, but with an empty export list. The replacement
@@ -1214,10 +1214,10 @@ Windows chain from `Dockerfile.base`'s `COPY versions.env` onward.
 
 ## 2026-09-24 - The pre-commit hook checks the derived doc numbers when their inputs move
 
-7482747c added two consumer-inventory mutations and left `docs/code-quality-tooling.md`
+734f0df8 added two consumer-inventory mutations and left `docs/code-quality-tooling.md`
 quoting 1332 entries. The hook said OK. CI's preflight then failed `test-doc-numbers.sh`,
 and every `doc-numbers.*` mutation in all four shards reported a baseline that already
-failed (run 36022089345). 2bba2833 fixed the digit. The hook now runs
+failed (run 36022089345). f1881b57 fixed the digit. The hook now runs
 `test-doc-numbers.sh` whenever `docs/scripts/mutations.json`, the hook itself,
 `docs/code-quality-tooling.md`, `docs/cross-build-verification.md` or `AGENTS.md` is
 staged, and it refuses the commit with the `--update` command to run. It does not run
@@ -1273,7 +1273,7 @@ job-timeout 15 → 13 and permissions 12 → 11, each measured with
 Linux lane splits on `arches`. `test-workflow-lint.sh`'s ramp cases graded a fixture
 named OxidANT against the REAL allow file, so they passed only while the real OxidANT
 still had a backlog; they now carry their own census. `third_party/DocumANTation` moves
-to `2e861fc`, its own rename (`docs.yml`, `linux-x64.yml`).
+to `9555f6a`, its own rename (`docs.yml`, `linux-x64.yml`).
 
 - **Renamed.** `ubuntu26.04.yml` → `linux-x64.yml` ("Linux x64 · preflight + mutation
   gate") and `windows-scripts.yml` → `windows-x64.yml` ("Windows x64 · script tests").
@@ -1517,9 +1517,9 @@ changed: `image` and `export` do what they did.
 - **Two stale hook-span references on this branch**, both fixed on `develop` already
   and repeated here verbatim so this commit could pass the hook:
   `cross-build-verification.md` quoted the staged-shell block as `:101-118` (it is
-  `:102-119` since 57bec177), and the two `pre-commit.doc-span-*` mutations searched
-  for the old spans (as 1b941556 did). The Windows-host floor fix for
-  `verify_doc_links.py` came over from `develop`'s 5a1648d8 as its own commit, de8aed49.
+  `:102-119` since 021d5bdd), and the two `pre-commit.doc-span-*` mutations searched
+  for the old spans (as 66c3c965 did). The Windows-host floor fix for
+  `verify_doc_links.py` came over from `develop`'s 3927ebdc as its own commit, de8aed49.
 - **What re-keys**, correcting the entry below: `Dockerfile.package` COPYs `01-core`
   whole (`:372`), so the package image re-keys from that COPY on, its setup RUNs and
   `wrapper-smoke` included. That is free on a full chain, where android changes
@@ -1580,7 +1580,7 @@ pick: [`linux-cross-builds.md` § The wrapper's wheelhouse](linux-cross-builds.m
   from that layer on (its GCC and LLVM layers still hit), then sdk, media and android
   for every arch on warm compiler caches; the variant chains' `Dockerfile.nvidia` and
   `Dockerfile.amd` RUNs likewise. That rebuild is ALREADY due: the published
-  `cross-compiler-amd64` dates from 2026-09-22 12:15Z, and 57bec177 and d8c31072
+  `cross-compiler-amd64` dates from 2026-09-22 12:15Z, and 021d5bdd and b9a77314
   (2026-09-23) changed `01-core` and `versions.env`, which re-keys from base. So this
   adds nothing to the next chain, if it lands before that chain. Per lane:
   `Dockerfile.torch` (the torch RUN, hailo and final) and `setup-torch-venv.sh`, which
@@ -1764,8 +1764,8 @@ wrong. Details and measurements:
   one-byte-off one, a relative-only ORT). 6 new mutation entries (`ort-census.probe-*`,
   `ort-census.relative-dot`), each verified. `Smoke.OrtCensus.Tests.ps1` 24 → 26.
 - **Reproduced in a local `:latest-cross` (e8eb8a42)** with the REAL `liboxidant.so`
-  built from OxidANT f018bec with the lane's features, inside the 2026-09-17 release
-  bundle, through OmniAccelerANT's own packer and bundle checks. Hub a7ccc896 gives
+  built from OxidANT da6b2e8 with the lane's features, inside the 2026-09-17 release
+  bundle, through OmniAccelerANT's own packer and bundle checks. Hub fd3a8e1f gives
   CI's line and `bundle closure: 1 failure(s) across 42 ELF file(s)`; this change
   gives `ORT census PASS`. Five mutations of that bundle (ORT removed, one byte off,
   foreign, no `$ORIGIN`, a renamed re-rooted ORT) each still fail.
@@ -1829,10 +1829,10 @@ Six review findings on the entry below, each verified before it was applied.
   anyway. Base, the sdk slot and the toolchain are untouched. Linux: nothing re-keys.
 
 
-## 2026-09-23 - The preflight timeout was a regression from 57bec177: fix11 is fast again, the mutation gate is sharded, and four hidden reds are fixed
+## 2026-09-23 - The preflight timeout was a regression from 021d5bdd: fix11 is fast again, the mutation gate is sharded, and four hidden reds are fixed
 
-**This was our regression.** On `a7ccc896` the Ubuntu 26.04 `preflight` job was killed
-at its 45-minute timeout inside the mutation gate. `57bec177` had made fix11 run one awk
+**This was our regression.** On `fd3a8e1f` the Ubuntu 26.04 `preflight` job was killed
+at its 45-minute timeout inside the mutation gate. `021d5bdd` had made fix11 run one awk
 pass over its corpus per rule (~50 per gate run), and `test-critical-fixes.sh` ran the
 whole gate once or twice per knocked-out row: the suite went from 4.4 s to 45-59 s on the
 runner, and its 68 mutation entries each re-ran it (43% of the gate's serial cost). The
@@ -1857,7 +1857,7 @@ killed job printed nothing the gate had found, because the report was buffered.
   Locally, `make preflight` still runs every entry.
 - **`verify_mutations.py` streams.** Each verdict is printed, flushed and tagged `[j/J]`
   as its entry completes; a closing line names the failures in manifest order.
-- **Four reds the timeout hid**, all from `e785e82d`/`57bec177`:
+- **Four reds the timeout hid**, all from `41f56652`/`021d5bdd`:
   `test-version-snapshot.sh` counted 11 `Build-*FromSource.ps1` subjects (13 since the
   MIGraphX and AMD GPU EP scripts); `cross-build-verification.md` cited the hook's
   staged-shell block as `:101-118` (now `:102-119`); `pre-commit.doc-span-fast-slugs` was
@@ -1868,7 +1868,7 @@ killed job printed nothing the gate had found, because the report was buffered.
 Docs: [`code-quality-tooling.md` § The mutation gate in CI, sharded](code-quality-tooling.md#the-mutation-gate-in-ci-sharded),
 [`onnxruntime-single-source.md` § How G4 runs](onnxruntime-single-source.md#how-g4-runs-one-judging-pass).
 Unverified until CI runs: the per-shard wall time on the runner (projected at about 10-16 of
-its 30 minutes, slice 1 up to 4 more, scaled from `41a07927`'s measured CI gate time) and the
+its 30 minutes, slice 1 up to 4 more, scaled from `2943b70d`'s measured CI gate time) and the
 gawk real-tree time there.
 
 
@@ -2008,7 +2008,7 @@ includes that header. amd64 was not affected. Mechanism, gates and cost:
 
 ## 2026-09-23 - The published image no longer carries the build host's sccache endpoint
 
-**What broke.** `:winamd64` (digest `3137eebe…`, built 2026-09-22 from hub `0d85b8c1`)
+**What broke.** `:winamd64` (digest `3137eebe…`, built 2026-09-22 from hub `4dfeaafe`)
 shipped `SCCACHE_WEBDAV_ENDPOINT=http://<webdav-lan-ip>:5000` — the owner's LAN WebDAV — plus
 the build host's chain, force-local and cache settings, from the ENV blocks of four
 Dockerfiles (`patched-llvm` from #164, media-builder's `common`, the merge `built` stage,
@@ -2071,7 +2071,7 @@ why, because `$null = Invoke-ContainerBuild` discarded the build's stdout. Accou
 
 ## 2026-09-23 - Windows Scripts CI is green again: an unmounted CUDA root reads as absent, and the Hailo patches are checked
 
-- **`WindowsSourceBuild.Cuda.psm1`.** `ad5b7d8f` (#176) built `Get-CudnnLibraryDir`'s and
+- **`WindowsSourceBuild.Cuda.psm1`.** `e84fc6ad` (#176) built `Get-CudnnLibraryDir`'s and
   `Test-CudaWindowsArm64Payload`'s paths with `Join-Path`, which resolves the root's drive
   and throws `DriveNotFoundException` on an unmounted one; the contract (and the
   `SourceBuild.Resolve` `X:\` cases) is `$null` / `$false`. Every `lint-and-test` run
@@ -2080,7 +2080,7 @@ why, because `$null = Invoke-ContainerBuild` discarded the build's stdout. Accou
   shape and changes with them. The tests stay as the regression cases.
 - **`Test-PatchesApplyClean.ps1`** maps `patches/hailo/` to `hailo-ai/hailort` at
   `v<HAILORT_VERSION>` (the tag `Build-HailortFromSource.ps1` downloads). Without it the
-  four Hailo patches failed `patch-drift` unchecked since `da14e043`; all four apply
+  four Hailo patches failed `patch-drift` unchecked since `c9b18816`; all four apply
   cleanly at v5.4.0.
 
 

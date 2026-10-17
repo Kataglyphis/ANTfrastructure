@@ -597,7 +597,7 @@
   "find": "  if [ \"${have_torch_family}\" = \"true\" ]; then\n    _backfill_torch_runtime_deps\n  fi",
   "replace": "  [ \"${have_torch_family}\" = \"true\" ] && _backfill_torch_runtime_deps",
   "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
-  "why": "the exact cbbd0da7 shape: a trailing && list makes the function return 1 on every arch without a local torch wheel and set -e kills setup-torch-venv.sh silently (2026-09-03 amd64 build)"
+  "why": "the exact 014e97b5 shape: a trailing && list makes the function return 1 on every arch without a local torch wheel and set -e kills setup-torch-venv.sh silently (2026-09-03 amd64 build)"
  },
  {
   "id": "wheels.chain-no-pre-sync-install",
@@ -741,7 +741,7 @@
   "find": "    return asked | _static_ignores(paths)",
   "replace": "    return asked",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "git check-ignore never reports a TRACKED file and .gitignore re-admits dated run dirs, so trusting git alone puts 66 model-output files back in the scan -- which is how 542b87f6 turned the gate red"
+  "why": "git check-ignore never reports a TRACKED file and .gitignore re-admits dated run dirs, so trusting git alone puts 66 model-output files back in the scan -- which is how 28280c43 turned the gate red"
  },
  {
   "id": "gate-registry.new-unproven",

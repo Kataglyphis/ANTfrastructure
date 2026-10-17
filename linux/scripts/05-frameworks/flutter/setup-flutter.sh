@@ -10,7 +10,7 @@ set -euo pipefail
 #
 # NOTE on --arch: Google publishes NO linux-arm64 Flutter SDK archive, so
 # arm64 DELIBERATELY receives the same x86-64 archive as x64 (see commit
-# ac13fc3); the flag only validates the target. riscv64 is skipped (exit 0)
+# 609a003); the flag only validates the target. riscv64 is skipped (exit 0)
 # — Flutter does not support it.
 
 usage() {

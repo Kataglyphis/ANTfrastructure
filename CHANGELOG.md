@@ -10,6 +10,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — the family's history is rewritten
+
+- Every binary blob of 500 KB or more that no branch held left the history of all ten family
+  repositories (owner): models, scenes, CVs, photos, videos, build output. Every commit was kept,
+  so each old id maps to one new one; gitlinks and the commit ids in tracked files moved with
+  them. Every branch tip is file-for-file what it was. The ten packs went from about 1.9 GiB to
+  0.35 GiB; this hub's from 161 to 20 MiB. The old history is kept offline in one git bundle per
+  repository. A checkout from before moves over with `git-adopt-rewritten-history.sh`;
+  `data-repositories.md` and `project-info.md` § Repository size say what changed.
+
 ## 2026-10-17 — `bundle-loader.sh`: the host's glibc when it is new enough
 
 - **The launcher takes the bundled loader and glibc only on an older host.** It reads the host
@@ -175,7 +185,7 @@
 
 - **`python-app-closure.sh` skipped a needed `$ORIGIN`** whenever an entry such as `$ORIGIN/..`
   already contained it as text. Under `LOADER` the moved program carries `$ORIGIN/..`, so it never
-  got `$ORIGIN`: AccelerANTgine's clean-host job (x64 and arm64, 6ad3b09) found its
+  got `$ORIGIN`: AccelerANTgine's clean-host job (x64 and arm64, 7975d4f) found its
   `lib/accelerantgine/AccelerANTgine` taking the distro's `libstdc++` (`GLIBCXX_3.4.36 not found`)
   and no ORT. The launcher hid it (`--library-path`), and so did the image (its ld.so cache has
   GCC 16's `libstdc++` and ORT). The check now matches whole entries; a new assertion in
@@ -502,7 +512,7 @@
 - `bump_versions.py --write`, the safe tier: `UV_VERSION` 0.13.0 -> 0.13.1 with the amd64, arm64, riscv64 and Windows
   arm64 archive SHA256s; `OLLAMA_VERSION` 0.40.3 -> 0.40.4 with both arches'; `CHROME_FOR_TESTING_VERSION`
   155.0.8059.39 -> 155.0.8059.79 with Chrome's and chromedriver's for both arches. DocumANTation's Dockerfile
-  mirrors the uv pin (its `ca062a0`), so its gitlink moves too.
+  mirrors the uv pin (its `7a65feb`), so its gitlink moves too.
 - `RENOVATE_VERSION` 44.155.2 -> 44.157.0, npm's latest; Node stays at 24.21.0, the newest 24.x.
 - Still held, each for its stated reason: `PROTOC_VERSION` 36.1 (slaved to LiteRT-LM v0.18.0's `protobuf.cmake`, the
   newest LiteRT-LM release), GenAI v0.17.0 (the newest GitHub tag; 0.18.0 is on PyPI only, and the chain builds from
@@ -540,7 +550,7 @@
   `sqlite3.wasm`). The day's lock maintenance moved the `sqlite3` Dart package to 3.7.1 in OmniAccelerANT and
   jotrockenmitlocken, and OmniAccelerANT's `pinned_artefacts_test.dart` requires the committed `web/sqlite3.wasm`, this
   pin and the lock to move together.
-- `WEBDAVCLIENT_REF` -> `a53b013e`, its uv.lock maintenance (more-itertools 11.2.0, ty 0.0.87).
+- `WEBDAVCLIENT_REF` -> `6f73a67c`, its uv.lock maintenance (more-itertools 11.2.0, ty 0.0.87).
 
 ## 2026-10-14 — A census of what the Windows image holds
 
@@ -573,7 +583,7 @@
   150). OrchestrANT's ran 39-61 min over its last nine finished runs.
 - `preflight.sh` arms `job-timeout` beside `permissions`, so a hub job added without `timeout-minutes` is red the day
   it lands. The hub's census row for it is gone.
-- BeschleunigerBallett's two census rows are gone too. Its 64834207 bounds `clang-tests` (150 min), `gcc` (90) and
+- BeschleunigerBallett's two census rows are gone too. Its d1cfea3c bounds `clang-tests` (150 min), `gcc` (90) and
   `pester-tests` (15) from their last five runs, and fails an empty Linux package upload. The gate reads 0 findings
   there.
 
@@ -844,7 +854,7 @@
   `:latest`; the arm64 `node` is ELF aarch64.
 - **pandoc 3.12 → 3.12.1.** `PANDOC_SHA256_AMD64/ARM64` measured by full download, equal to GitHub's asset digests.
   `pandoc --version` ran from the measured amd64 `.deb` in `:latest`. DocumANTation's Dockerfile ARGs follow through
-  `sync_versions.py` (gitlink 3736dd5 → cb6809f), and its 23 real-pandoc filter tests pass on 3.12.1.
+  `sync_versions.py` (gitlink a7d9ce1 → c845d2d), and its 23 real-pandoc filter tests pass on 3.12.1.
 - **ruff 0.16.10 → 0.17.0** (`tool-pins.env`). The gate pass (`E9,F63,F7,F82`) is clean on all 122 files. 0.17.0 now
   prints unsafe fixes in the advisory pass, which does not grade. OrchestrANT, WebDavClient and DocumANTation repeat
   the pin, so their `consumer pins` gate fails until each follows.
@@ -885,7 +895,7 @@
 
 ## 2026-10-13 — the first all-3.15 `:winamd64` chain is green (CON91, CON92, CON93)
 
-- **What ran.** Local BuildKit chain bk-20261013-004816 from hub 355a1d14, all 16 stages, 10347 s, no retries.
+- **What ran.** Local BuildKit chain bk-20261013-004816 from hub 051a78bc, all 16 stages, 10347 s, no retries.
   media-litert took 1608 s and torch 1701 s. The smoke gate passed 273, failed 0 and skipped 1, the CUDA section
   on a CPU image. The target-arch walk passed 1378 binaries.
 - **What it proves:**

@@ -500,7 +500,7 @@ two local wrappers, which carry notes saying exactly that.
 The Ubuntu lane's preflight was red on the mutation gate for a SECOND reason,
 found only after the first was fixed: ten recorded mutations no longer applied
 to their targets. `verify_mutations.py --stale-check` named every one, and the
-pre-batch run at `4f6f516a` (34722813887) named none — so the 27-commit batch
+pre-batch run at `72730743` (34722813887) named none — so the 27-commit batch
 rotted them, the same way it rotted the consumer inventory.
 
 Two mechanical causes, and the manifest simply did not follow the code:
@@ -513,7 +513,7 @@ Two mechanical causes, and the manifest simply did not follow the code:
   moved, the prose was updated to `:87-90` and `:101-118`, the manifest was not.
 
 The tenth, `doc-numbers.total-re-quoted`, targeted a sentence in AGENTS.md that
-`acc61567` moved out when it cut that file from 1863 lines to 900.
+`a0c6dbf6` moved out when it cut that file from 1863 lines to 900.
 `test-doc-numbers.sh` still scans AGENTS.md and `cross-build-verification.md` as
 the two MIRRORS of `code-quality-tooling.md`, so the mirror arm keeps its
 mutation — on the mirror that still carries the sentence.
@@ -530,7 +530,7 @@ Separating cause from coincidence first, because the batch above is 27 commits
 and three of these lanes were already red before it.
 
 **Consumer Inventory — NEW, this batch.** Green at the pre-batch tip
-(run 34816752742 on `4f6f516a`), red at `604294e2` (run 35015536117). The batch
+(run 34816752742 on `72730743`), red at `d339cd52` (run 35015536117). The batch
 taught `ref_re` the backslash so a Windows-spelled hub path is visible at all,
 and that widened capture then swallowed things that are not path separators:
 
@@ -550,15 +550,15 @@ and that widened capture then swallowed things that are not path separators:
 Both are false positives with a test each; a dangling backslash path outside a
 test tree still fails the run, which is the arm the batch added.
 
-**Composite actions self-test — PRE-EXISTING.** Red on `4667b00c`
-(run 34683896775) and `8203965d` (run 34681555187) before the batch, with the
+**Composite actions self-test — PRE-EXISTING.** Red on `f5f22db4`
+(run 34683896775) and `c78e1e53` (run 34681555187) before the batch, with the
 same message: the step asserted `ACTION_DIRS=11` and the container reported 12.
 `deploy-over-ftp` made it twelve on 2026-09-10. The literal was a claim about
 the repository wearing the clothes of a claim about the mount; the step now
 counts the host checkout and compares, which cannot rot and also catches a
 miscount on the host side.
 
-**Ubuntu 26.04 — PRE-EXISTING.** Red at the pre-batch tip on `4f6f516a`
+**Ubuntu 26.04 — PRE-EXISTING.** Red at the pre-batch tip on `72730743`
 (run 34722813887): preflight's mutation gate, one survivor,
 `doc-links.tracked-output-floor`. The mutation deletes the static floor from
 under a HAPPY git, and the test that should have caught it measured the floor
@@ -568,8 +568,8 @@ git-free arm beside it had already been moved to the synthetic probe list for
 exactly this reason; the tracked arm now uses it too, and the mutation bites.
 
 **SBOM — PRE-EXISTING, and not a test problem.** Red on every scheduled run:
-`4f6f516a` (34808919489, 2026-09-14), `2a4e8a9b` (34086038781, 2026-09-07),
-`6a9fd5fb` (33359833450, 2026-08-31). All three arches die the same way, mid
+`72730743` (34808919489, 2026-09-14), `2a8826e6` (34086038781, 2026-09-07),
+`2320684f` (33359833450, 2026-08-31). All three arches die the same way, mid
 layer: `unable to populate layer cache ... disk quota exceeded`. `registry:`
 streams rather than pulling into a daemon, but syft still caches layers under
 `TMPDIR`, and a cross image does not fit on the runner's root volume. The cache
@@ -784,7 +784,7 @@ A cross-repo audit of all nine consumers against this hub (reuse, duplication,
 docs freshness, naming, quality-gate reuse, topic separation) landed the hub
 half of its mechanical fixes here; the consumer halves are one commit per repo.
 
-* **Three files the 2026-09-08 "no consumer" sweep (2eaed40e) deleted are
+* **Three files the 2026-09-08 "no consumer" sweep (6f5aef72) deleted are
   back**: `windows/scripts/modules/WindowsOnnx.Common.psm1` (AccelerANTgine's
   `Build-Windows.ps1` imports it by NAME; its Windows lane was red from the pin
   bump that carried the deletion), `windows/scripts/modules/WindowsContainerLog.Common.psm1`

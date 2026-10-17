@@ -19,10 +19,13 @@ license, and swapping a model or a scene moves one lock line.
 | OrchestrANT | `yolov26m.onnx`, 78 MiB (2026-10-17) | the same AGPL weights, shipped in every package |
 | BeschleunigerBallett | 14 scenes, 518 of 633 MiB at HEAD (2026-10-17) | the code loads two of them, the packages install one |
 
-**The history is rewritten next** (owner, 2026-10-17, superseding OxidANT's decision D4): the
-old blobs leave every family repository's history once the pending patch releases are out, so
-AssetANT's and ModelANT's releases become the data's only copies. Until then a CI checkout that
-wants less clones with `filter: blob:none`.
+**The history was rewritten on 2026-10-17** (owner, superseding OxidANT's decision D4): every
+binary blob of 500 KB or more that no branch held left the history of all ten family
+repositories, so AssetANT's and ModelANT's releases are the data's only copies. Every commit was
+kept, so each old id maps to one new one, and the gitlinks moved with them. The ten packs went
+from about 1.9 GiB to 0.35 GiB (BeschleunigerBallett 1.24 GiB to 146 MiB, OmniAccelerANT
+167 to 12 MiB, this hub 161 to 20 MiB). The history from before is kept offline in one git
+bundle per repository; GitHub serves its old objects until its own garbage collection.
 
 ## A data repository
 

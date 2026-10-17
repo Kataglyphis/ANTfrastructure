@@ -39,7 +39,7 @@ Describe 'WindowsWebDav.Common' {
   Context 'Get-WebDavClientRequirement' {
     It 'installs the pinned commit from its source archive, never through git' {
       # A git requirement recurses into the client's old submodule chain and hits Git for Windows' gitdir limit.
-      $sha = '4f3f116d9ce7d1e223894513b4dc7a90b5085a9f'
+      $sha = 'fa9cb699643cdb48a197ef00db0b40133d3b872a'
       $requirement = Get-WebDavClientRequirement -Ref $sha
       $requirement | Should -Be "kataglyphis_webdavclient @ https://github.com/Kataglyphis/WebDavClient/archive/$sha.tar.gz"
       $requirement | Should -Not -Match 'git\+'
@@ -48,7 +48,7 @@ Describe 'WindowsWebDav.Common' {
     It 'refuses a ref that is not a full commit sha' {
       # A branch name would install whatever that branch was that day.
       { Get-WebDavClientRequirement -Ref 'main' } | Should -Throw
-      { Get-WebDavClientRequirement -Ref '4f3f116' } | Should -Throw
+      { Get-WebDavClientRequirement -Ref 'fa9cb69' } | Should -Throw
     }
   }
 }

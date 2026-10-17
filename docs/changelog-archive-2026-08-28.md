@@ -526,7 +526,7 @@ platform manifest, which is precisely how a prune tool builds a short keep-set
 and deletes something it should not.
 
 **`setup_sccache` pointed `RUSTC_WRAPPER` at BARE sccache.** The Rust caching
-reinstated in 4200f7b never took effect: `build-gstreamer-monorepo.sh` only
+reinstated in 32668ed never took effect: `build-gstreamer-monorepo.sh` only
 assigns the wrapper when the variable is UNSET, and `setup-gstreamer.sh:50`
 calls `setup_sccache` first, which exported `RUSTC_WRAPPER="sccache"`
 unconditionally. Measured on the live media lane — the run logged
@@ -704,7 +704,7 @@ those propagate: an unknown `PREFLIGHT_ONLY` slug returns 2 when the script runs
 directly. Both "observations" were one measurement error —
 `bash preflight.sh | tail | sed; echo $?` reports SED's status, not the
 script's. Demonstrated: `(exit 1) | tail -1 | sed 's/^//'; echo $?` prints 0
-while `(exit 1); echo $?` prints 1. `exit 1` has been in place since 928e745.
+while `(exit 1); echo $?` prints 1. `exit 1` has been in place since 3a8db07.
 The lesson is worth more than the entry was: **never measure an exit code
 through a pipe.**
 
@@ -1535,8 +1535,8 @@ on the cachemounts (15.7 GB / 14.5 GB), so wave6b restarted WARM
 fetch failures. Before this, wave5k and 5l discarded the entire ~50-minute
 bootstrap on every flap.
 
-Also in this window (backlog sweep waves 1-3, commits ee8de5e / ece1c37 /
-2276c8c): log hygiene armed by default, smoke depth (a real GStreamer pipeline
+Also in this window (backlog sweep waves 1-3, commits deac3bf / 9566b0a /
+8aaabce): log hygiene armed by default, smoke depth (a real GStreamer pipeline
 and an ONNX InferenceSession instead of string greps), per-arch component
 parity, a GCC-default SSOT plus a fatal drift gate with a site floor, TS8, the
 NVIDIA deb pick made deterministic and self-reporting, and eigen/cerbero
@@ -1628,7 +1628,7 @@ gates are not — all filed, none release-blocking):
 - **XC3-INERT** - run-id/parent-digest annotations are never written
   (`append_runtime_image_output` is `-t` only), so the mixed-generation gate
   cannot fail. Concretely: this manifest mixes two source revisions
-  (amd64 58e6c325, arm64+riscv64 5105da8f), visible only via image labels.
+  (amd64 58186997, arm64+riscv64 222cf75d), visible only via image labels.
 - **SMK1-3ARCH** - smoke-torch-venv.sh still exempts riscv64 from the cv2
   GStreamer assert and prints "riscv64: gstreamer OFF by design" on the same
   line where the probe reports GStreamer=YES.
@@ -1717,12 +1717,12 @@ of the shipped amd64 wrapper:
 - **Guard-helper wiring** live in both common.sh lanes.
 - Regressions held: S2 (TF absent), GST1 (dev surface resolves), RP6 (PATH clean),
   torch 2.13.0 intact.
-- **AP3 REVERTED mid-run** (80a81eb): the wheelhouse bind-mount sat in the wrong
+- **AP3 REVERTED mid-run** (716a012): the wheelhouse bind-mount sat in the wrong
   RUN — Dockerfile.torch (FROM package) is where setup-torch-venv reads
   /opt/wheels and it has no artifact-source stage → all 3 wrappers failed;
   reverted + runtime stage re-run. Re-filed with the correct approach.
 
-Same day, GPU lane (opt-in, commit e51a0da): **GPU7** — broken `_trt_deb`
+Same day, GPU lane (opt-in, commit 8dbe777): **GPU7** — broken `_trt_deb`
 substitution (`|| true` OUTSIDE `$()`) made the default no-EULA-deb nvidia build
 die at deb staging; **GPU1** TensorRT silent-skip fixed (apt-get update before
 the NVIDIA-repo path; the shared apt-lists cache had been wiped by an earlier
@@ -1750,12 +1750,12 @@ self-link), `/root/.local/bin` gone from PATH, stripped prefix sizes.
   `/root/.local/bin` from the shipped PATH), GST1 root fix (configure-runtime
   resolves the real gstreamer libdir — "dev surface resolves" 3/3), AP4 strip
   (ffmpeg/gstreamer/libcamera), TS1 (appimagetool pinned to 1.9.1).
-- **Bug flushed — smoke-media cv2/numpy** (`0b2b306`): the native cv2 import test
+- **Bug flushed — smoke-media cv2/numpy** (`30903a1`): the native cv2 import test
   hard-failed because numpy is absent in the media BUILD sandbox (it is a
   /opt/venv packaging dep). Gated on `import numpy`; absent → defer to the
   runtime torch-venv smoke, exactly like the onnxruntime test. Killed media-amd64
   first — invisible to the runtime-lane validations because they skip smoke-media.
-- **Bug flushed — GST1 self-referential multiarch symlink** (`22fb812`):
+- **Bug flushed — GST1 self-referential multiarch symlink** (`ab05ba9`):
   `configure-runtime.sh` runs a SECOND time in the package stage on a payload
   that already carries `lib/multiarch`; the resolver glob matched it and
   re-pointed multiarch at itself, and the fail-loud assert killed riscv64 before

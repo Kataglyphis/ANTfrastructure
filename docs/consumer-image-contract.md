@@ -674,7 +674,7 @@ every run's `uv sync --extra test`: 108 min of a 6 h job, numpy alone 107 min
   every listed wheel is in the cache; the `uv-cache-seed` contract row runs it. On
   riscv64 it wants `seeded for riscv64`, elsewhere a `not seeded` record.
 - **What it costs.** Measured 2026-10-09 in `:latest`'s riscv64 child under QEMU on the
-  32-core build host, for OrchestrANT 3bdf80a7: 3172 s cold, building 8 wheels (the 7 above
+  32-core build host, for OrchestrANT 5785f696: 3172 s cold, building 8 wheels (the 7 above
   and the pure-Python sdist `antlr4-python3-runtime`), and 89 s warm, sync, copy and proof
   included. The seed is 21 MB; the work cache 671 MB. A chain pays the cold build once, then
   only for a package whose locked version moved.

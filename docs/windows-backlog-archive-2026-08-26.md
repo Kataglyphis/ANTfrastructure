@@ -506,7 +506,7 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   extraction rather than filename counting.) The amd64 lane is untouched because the flag sits inside the
   cross-only branch and is composed solely from the cross-lane target flag. At the time this landed
   amd64 had **no** nasm path to keep — `--disable-x86asm` had been appended unconditionally since
-  bd6adca4 (2026-06-25, it entered with the file itself), so FFmpeg built no external x86 assembly on
+  dad47f8c (2026-06-25, it entered with the file itself), so FFmpeg built no external x86 assembly on
   either lane. That asymmetry (arm64 with NEON assembly, amd64 with none) was filed as #119 and
   closed the same day by enabling x86asm on the amd64 lane (see #119 below).
 
@@ -662,10 +662,10 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   lld-link-vs-nasm-object question the original entry raised is answered by that link step.
   Found 2026-08-24 while checking whether #112 could regress amd64. It cannot — but the check turned
   up something else: `Build-FfmpegFromSource.ps1` appended `--disable-x86asm` **unconditionally**
-  (present since `bd6adca4`, 2026-06-25 -- it entered with the file itself; an earlier note here blamed `8c5c50e7`, which is only the relicense commit that MOVED the file), so FFmpeg built none of its hand-written x86 SIMD
+  (present since `dad47f8c`, 2026-06-25 -- it entered with the file itself; an earlier note here blamed `802699f6`, which is only the relicense commit that MOVED the file), so FFmpeg built none of its hand-written x86 SIMD
   on either lane. After #112 the cross lane assembled 99 NEON objects while amd64 assembled zero —
   the arm64 bundle was, in this one respect, *ahead* of the shipped amd64 image.
-  **The archaeology was done before the flip, as this entry demanded.** `git show bd6adca4` is a
+  **The archaeology was done before the flip, as this entry demanded.** `git show dad47f8c` is a
   bare "fix" commit (5 files, 347 insertions) that added the whole FFmpeg script; the flag sits
   between `--toolchain=msvc` and the CUDA comment with **no rationale, no failing configure, no
   nasm/lld-link note** — a first-bring-up simplification that later got documented as a premise. The
@@ -1089,7 +1089,7 @@ passes only version pins — no timestamp, VCS ref or GUID reaches this stage);
 — the COPY of `Install-Vs.ps1` itself — is CACHED, so its parent chain and that
 file are byte-identical.
 
-**SOLVED 2026-08-26 (`916c91f0`) — it was the GC reserve, and the answer was
+**SOLVED 2026-08-26 (`8061fcd5`) — it was the GC reserve, and the answer was
 inside `buildkitd.toml` itself.** Its sizing note concludes "150GB is the
 floor this file's own sizing note gives" and "keep reservedSpace >= 150 GB
 regardless"; the value directly beneath it read **40GB** — below the single
@@ -1137,7 +1137,7 @@ would make a correct deploy look failed.
   root signature — **LLVM lays a function out a few bytes SHORT of what it then emits**, so a pass
   picks an encoding the assembler then rejects — and `docs/failure-modes.md` § AArch64 cross
   compile aborts carries the symptom-first write-up, the four "do NOT"s and the local-repro recipe.
-  **(1) Jump-table entry width — FIXED (`eb13d2a2`).** `AArch64CompressJumpTables` picks 1-byte
+  **(1) Jump-table entry width — FIXED (`920ed0da`).** `AArch64CompressJumpTables` picks 1-byte
   entries from an estimate; every `N` measured sat just past the 1020-byte ceiling (256 = 1024 B,
   258, 259, 260, 262, 272, 281, 284). `-Xclang -target-feature -Xclang +force-32bit-jump-tables`
   keeps every table on 4-byte entries. `value evaluated as` went 4 → **0** in the cross build.

@@ -27,14 +27,14 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 
 | # | Class | Representative bug(s) | Fix commit(s) | Caught early by |
 |---|-------|----------------------|---------------|-----------------|
-| 1 | Script not COPY'd into a stage → sourced fn missing at runtime (`command not found`, exit 127) | `media_load_arch_flags` not found (03-media/core never COPY'd into Dockerfile.package) | `da41e19` | **sourced-scripts-present** static check (`verify_script_copy_coverage.py`) |
-| 2 | Relocated native GCC/G++ can't find `/usr/include` for source builds under QEMU — C *and* C++ (`#include_next`) | `string.h: No such file` (Pillow); `<cstdlib>`→`stdlib.h: No such` (numpy) | `3c623fa`, `349e32b`, `dc93d11` | **compile smoke test** (C + C++ `#include_next` + `jpeglib.h`) in `validate-compilers.sh` |
-| 3 | Missing dev headers for QEMU source builds | `jpeglib.h` missing for Pillow (`libjpeg-dev`) | `3c623fa` | same compile smoke test (header presence probe) |
-| 4 | Cross toolchain artifact wrong-arch / not runnable on host | `/opt/llvm-target` clobbered by shared compiler; non-runnable `llvm-config`; missing target linker | `8e66c5f`, `fb634a3`, `b1dd72e`, `312a4d8` | **`validate-compilers.sh`** per-arch ELF/machine check (build-time) **+ compile+link+RUN under qemu** in `smoke-runtime-image.sh` (`bcbd19d`) |
-| 5 | venv/wheel install collision & bad seeding | apt numpy seeded into venv without dist-info → uv install `File exists` | `9f07334` | **torch-venv integrity** smoke (`smoke-torch-venv.sh`) |
+| 1 | Script not COPY'd into a stage → sourced fn missing at runtime (`command not found`, exit 127) | `media_load_arch_flags` not found (03-media/core never COPY'd into Dockerfile.package) | `7379773` | **sourced-scripts-present** static check (`verify_script_copy_coverage.py`) |
+| 2 | Relocated native GCC/G++ can't find `/usr/include` for source builds under QEMU — C *and* C++ (`#include_next`) | `string.h: No such file` (Pillow); `<cstdlib>`→`stdlib.h: No such` (numpy) | `1aea412`, `445154e`, `f3eaadf` | **compile smoke test** (C + C++ `#include_next` + `jpeglib.h`) in `validate-compilers.sh` |
+| 3 | Missing dev headers for QEMU source builds | `jpeglib.h` missing for Pillow (`libjpeg-dev`) | `1aea412` | same compile smoke test (header presence probe) |
+| 4 | Cross toolchain artifact wrong-arch / not runnable on host | `/opt/llvm-target` clobbered by shared compiler; non-runnable `llvm-config`; missing target linker | `04dd0cd`, `54ff723`, `85f50ad`, `f4dbd4a` | **`validate-compilers.sh`** per-arch ELF/machine check (build-time) **+ compile+link+RUN under qemu** in `smoke-runtime-image.sh` (`a19bc4b`) |
+| 5 | venv/wheel install collision & bad seeding | apt numpy seeded into venv without dist-info → uv install `File exists` | `673c8b9` | **torch-venv integrity** smoke (`smoke-torch-venv.sh`) |
 | 6 | Undefined/typo'd bash function or quoting bug | `tvm-detect` undefined; verify-parity venv quoting | (dedup passes) | **shellcheck gate** (`-S error`) in pre-commit |
-| 7 | Include-flag construction bugs | bare `-I -I -I` broke Abseil C++17 probe; missing pybind11/numpy include dirs | `ab3776b`, `5412ec4` | shellcheck + compile smoke test |
-| 8 | Dockerfile ARG / mirror / cache drift | apt not `-y`; cache-to 400; ARG≠versions.env | `bf49676`, `4f27634` | `verify-arg-consistency.sh`, `verify-ubuntu-mirror-consistency.sh` (exist) |
+| 7 | Include-flag construction bugs | bare `-I -I -I` broke Abseil C++17 probe; missing pybind11/numpy include dirs | `3c01262`, `9e3fafd` | shellcheck + compile smoke test |
+| 8 | Dockerfile ARG / mirror / cache drift | apt not `-y`; cache-to 400; ARG≠versions.env | `5cb938b`, `5feea5d` | `verify-arg-consistency.sh`, `verify-ubuntu-mirror-consistency.sh` (exist) |
 
 ## Existing infrastructure (reuse, don't duplicate)
 
@@ -344,7 +344,7 @@ target is staged — at most `PRECOMMIT_MUTATION_CAP` (default 16), newest first
 it prints `SAMPLED n of m` whenever it cut, because a green hook must not imply
 coverage it did not pay for. Measured end to end 2026-09-04: **8.0 s** for a
 one-file commit (no sampling — all 5 matched entries ran) and **27.2 s** for the
-43-file commit `9a5bf8dd` (sampling 6 of 132), against **5m26s** for that same
+43-file commit `06e1e24e` (sampling 6 of 132), against **5m26s** for that same
 commit before the cap; those 132 entries uncapped are **322 s** on their own.
 `make preflight` and CI still run every entry.
 Why it samples rather than running `--changed` whole:
@@ -459,7 +459,7 @@ These validate a built/pulled image and also run during the build to fail fast:
     on the x86_64 build host, so the shipped native GCC (esp. the riscv64
     `--with-isa-spec` toolchain) was previously never actually executed — under qemu
     here it is. The **exceptions+STL** case is the regression guard for the
-    `swap-native-gcc.sh` **wrapper** fix (`c46da5f`): the compiler reaches the runtime
+    `swap-native-gcc.sh` **wrapper** fix (`63ecbbe`): the compiler reaches the runtime
     image's system headers via command-line `-idirafter` wrappers, *not* an installed
     `specs` file — a specs file silently drops `-lgcc_s`/`--eh-frame-hdr` and makes
     every throwing C++ program terminate at runtime. Gate `RUNTIME_COMPILER_SMOKE=0` to skip just this;
@@ -1466,7 +1466,7 @@ for i in cold warm; do
 done
 ```
 
-The mount's `,rw` arrived on 2026-09-22 (fbc91813), between the fast and the slow
+The mount's `,rw` arrived on 2026-09-22 (7cf92025), between the fast and the slow
 samples. The Rancher probe found no cost for rw over ro on a warm source, but that was
 BuildKit 0.28.1 with a containerd worker, while the host runs a rootless OCI worker
 (0.31.2). On the host, drop `,rw` from the probe for one cold run to settle it.
@@ -1618,7 +1618,7 @@ cannot be equal on every arch:
   package there.
 
 Both were true long before the probe could see it — the keys only became
-checkable when `d27cdee1` stopped 11 of 16 gate keys from SKIPping, and the
+checkable when `4414c40f` stopped 11 of 16 gate keys from SKIPping, and the
 first run that reached the gate failed with `ADVERTISES CMAKE_VERSION=4.4.3 but
 actually has 4.4.2` (and Node 26.8.1 vs 22.22.1). The label was wrong, not the
 image.

@@ -161,7 +161,7 @@ rows are deleted, not re-baselined**: `function-size.allow` and
 
 **The registry-cache drop is `_cross_build_drop_registry_cache_after_flake`**
 (`01-core/cross-stage-build.sh`), taking `build_cmd` and `_regcache_fails` by
-nameref. The four `test-cross-stage-build-cmd.sh` cases from `d7fbfd39` were the
+nameref. The four `test-cross-stage-build-cmd.sh` cases from `b333e517` were the
 safety net and ran unchanged; the two mutation entries that neuter the drop were
 re-pointed at the helper's guard lines. [`build-cache-tiers.md`](build-cache-tiers.md)
 now names the function instead of the old line range.

@@ -61,7 +61,7 @@ Earlier tranches: [`2026-08-11`](windows-backlog-archive-2026-08-11.md) ·
 Validates the T3 patch work (#29 DirectML→`.patch`, #30 patch fixes, #25 litert `Edit-SourceFile` migration). `build.ps1 -Gpu -Stages media,final` finished in **02:36:51** (baseline 02:35:09 — no regression), final image tagged, smoke **104/0/1** (identical). In-build confirmations: `[OK] 001/002/003 applied via git` (zero inline fallbacks — cuda-pch ERROR dump gone), all 13 migrated `Edit-SourceFile` blocks logged `Patched` with **zero no-ops/fallbacks**, `litert_lm_main.exe` linked + smoke-ran OK + committed. Items #1 and #2 above both RESOLVED — no open items remain.
 
 ### Rebuild outcome — post-cleanup (2026-07-10/11, `rebuild-postcleanup.log`)
-First rebuild after the code-health pass (commits `8fc1f8c` docs refresh, `5be9b1e` dead-code/CI-fix/gstreamer, `43463bb` litert-lm `#region` markers — plus the earlier `8460c38` #33–36 fixes). `build.ps1 -Gpu -Stages media,final` finished **exit 0** in **~2h18m** (media-core ONNX RT 20:53:26 → final tag 23:11:38; **faster** than the 02:35 baseline — Stevedore updated to **29.6.1** + warm base/toolchain caches). **0 failures across the entire log** (no `does not apply`, no `LNK1xxx`/unresolved, no `error Cxxxx`, no exceptions, no drift-assertion throw). In-build confirmations:
+First rebuild after the code-health pass (commits `afede42` docs refresh, `3e2944a` dead-code/CI-fix/gstreamer, `6a812d5` litert-lm `#region` markers — plus the earlier `ec23f84` #33–36 fixes). `build.ps1 -Gpu -Stages media,final` finished **exit 0** in **~2h18m** (media-core ONNX RT 20:53:26 → final tag 23:11:38; **faster** than the 02:35 baseline — Stevedore updated to **29.6.1** + warm base/toolchain caches). **0 failures across the entire log** (no `does not apply`, no `LNK1xxx`/unresolved, no `error Cxxxx`, no exceptions, no drift-assertion throw). In-build confirmations:
 - **#33 yvals patch:** `Patched MSVC yvals_core.h for clang compat (…MSVC\14.51.36231\…)` applied cleanly; the new drift-assertion stayed **quiet** (no "patch target did not match"); the removed `<experimental/coroutine>` edit is gone and only the pre-existing `-D_SILENCE_CLANG_COROUTINE_MESSAGE` flag remains. GenAI built with `USE_DML=ON`+`USE_CUDA=ON`; `DirectML.dll` staged (DML patch `003` intact).
 - **#43 gstreamer download:** `Downloading GStreamer source tarball …1.29.2.tar.gz` via `Invoke-DownloadWithRetry` (23:00:24) → extracted `gstreamer 1.29.2` (23:06:23) → merge committed. The one functional change, validated.
 - **#39 doc fix:** log shows LiteRT **`vv2.1.6`** (matches the corrected docs).
@@ -300,12 +300,12 @@ its restore stays OPEN in the live backlog, and that copy is the authority.
   3. **`Export-BuildHandoff` / `Import-BuildHandoff` stay on the hot facade.**
      They look host-only, but `Invoke-BkWarm.ps1`'s header keeps them plus
      `Invoke-BkMaterialize.ps1` as the TESTED ROLLBACK PATH, and the retired
-     `media-core-built-opencv` RUN in `c9586c1^` mounts
+     `media-core-built-opencv` RUN in `2cb182e^` mounts
      `WindowsSourceBuild.Common.psm1` into the container precisely so
      `bk-materialize` can call `Import-BuildHandoff`. Moving them breaks that path
      silently. See #149 for why that path is not currently safe anyway.
 
-- **#149 — the `c9586c1^` warm/materialize rollback recipe is DEAD, not merely
+- **#149 — the `2cb182e^` warm/materialize rollback recipe is DEAD, not merely
   stale.** NOTE REPAIRED 2026-08-31 (`Invoke-BkWarm.ps1:5-18`); the restore itself stays
   OPEN until someone needs it. `Invoke-BkWarm.ps1` promised that if the ExportLayer-0x3
   canary fires again you can restore those targets and "these payloads work
@@ -344,7 +344,7 @@ Taken off the live backlog's OPEN list once their work was done or decided:
 correction landed (its one surviving lead is #155, still OPEN), and #156 is a
 decision, not a task. Lean-OPEN-only, per this repo's standing policy.
 
-- **#149 — the `c9586c1^` warm/materialize rollback recipe is DEAD, not merely
+- **#149 — the `2cb182e^` warm/materialize rollback recipe is DEAD, not merely
   stale.** Note repaired 2026-08-31 (`Invoke-BkWarm.ps1:15-22`); THE RESTORE ITSELF IS
   STILL OPEN. All ten retired RUNs mount the same five modules and neither module
   the tree has needed since:
@@ -368,7 +368,7 @@ decision, not a task. Lean-OPEN-only, per this repo's standing policy.
   rather than ten pasted blocks: replace the five per-file module mounts with the
   live `from=buildmods` stage mount (`from=tvmmods` for media-tvm), re-path every
   script, and derive each RUN from the stage that runs that script TODAY. Treat
-  `c9586c1^` as a SHAPE, not a patch. Nothing here is build-verified.
+  `2cb182e^` as a SHAPE, not a patch. Nothing here is build-verified.
 
 
 - **#154 — QNN is integrated in ONE framework, not five.** PARTIALLY FIXED

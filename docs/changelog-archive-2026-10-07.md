@@ -49,7 +49,7 @@ rewording: relative links are re-based on this directory.
 - **`SQLITE3_WASM_VERSION` 3.3.1 -> 3.7.0** (SHA256 by full download = GitHub's asset digest), with OmniAccelerANT's
   sqlite3 package; jotrockenmitlocken (locks 3.6.0) must follow.
 - **pandoc 3.11 -> 3.12** (`PANDOC_SHA256_AMD64/ARM64` at GitHub's digests; `pandoc --version` ran from the measured
-  bytes), with DocumANTation's Dockerfile ARGs (gitlink 7c89684 -> ce1498b, which also carries its lock maintenance,
+  bytes), with DocumANTation's Dockerfile ARGs (gitlink d3acb6f -> 589b0b2, which also carries its lock maintenance,
   the ruff 0.16.10 pin and its lint fixes).
 - **`clone-into-short-path` fetches a pull request's merge commit.** A clone lacks `refs/pull/<n>/merge`, so every PR's
   Windows container jobs died `fatal: unable to read tree` in "Prepare Windows container host" (OmniAccelerANT #45, which
@@ -482,7 +482,7 @@ rewording: relative links are re-based on this directory.
 ## 2026-10-07 — The Windows clang-format check can gate
 
 - **`Invoke-ClangFormatCheck` only ever reported.** BeschleunigerBallett swept its sources to zero
-  deviations with clang-format 23.1.1 (d59d210f) and re-counted them in its own `Build-Windows.ps1`
+  deviations with clang-format 23.1.1 (fb246fbc) and re-counted them in its own `Build-Windows.ps1`
   to fail the build.
 - **Two switches, the default unchanged:**
   - `-FailOnDeviation` throws on any deviating file, and on a missing clang-format instead of
@@ -496,7 +496,7 @@ rewording: relative links are re-based on this directory.
 
 - **`Cache.cmake` handed CMake the bare `sccache`.** When its server died, every compile of
   the job failed (BeschleunigerBallett run 37509585546, `Connection refused`), and BB patched
-  around it in its own `ProjectOptions.cmake` (05c7a338).
+  around it in its own `ProjectOptions.cmake` (b95c846a).
 - **`myproject_enable_cache` now sets the hub's `sccache-launcher.sh` off Windows**, which
   retries once and then compiles directly. ccache and Windows keep their binary.
 - `test-cmake-cache-launcher.sh` covers sccache, ccache and no cache, and the new mutation
@@ -533,7 +533,7 @@ rewording: relative links are re-based on this directory.
 ## 2026-10-06 — The chain wheels are proven once in every `:latest` child (CON52 closed)
 
 - **The fix shipped with the `:latest` of 2026-10-03.** Its three children come from one chain
-  run (`20261002-211215-63e1803b`, hub b4d5fdd5), which carries 9ff5e2a3:
+  run (`20261002-211215-63e1803b`, hub 305a1c92), which carries 90d7414e:
   `reconcile_local_wheels` is the one install point, and `assert_chain_wheels_installed` fails
   the torch stage, under `set -Eeuo pipefail`, when a staged wheel is not the venv's.
 - **Read back from the published venvs on 2026-10-06.** In amd64 and arm64 (under QEMU), every
@@ -554,17 +554,17 @@ rewording: relative links are re-based on this directory.
 
 - **The owner goal of 2026-10-01 is met in all six consumers.** The last open parts closed
   this week:
-  - OmniAccelerANT's release APK runs on the emulator in CI (83f4596).
-  - OrchestrANT's `benchmarks/tests` joined `testpaths` and runs on every lane (7e0d47c,
-    green on 80a587f).
-  - WebDavClient's client has real unit tests (a9ef2cf).
+  - OmniAccelerANT's release APK runs on the emulator in CI (59c98de).
+  - OrchestrANT's `benchmarks/tests` joined `testpaths` and runs on every lane (2d59993,
+    green on 5d3430a).
+  - WebDavClient's client has real unit tests (3ee0a42).
 - **What is left belongs to CON64:** BeschleunigerBallett's Windows arm64 GPU suites validate
   once a published `:winarm64` carries the validation layer. The row moved there.
 
 
 ## 2026-10-06 — The published `:latest-rocm` passes the three media checks (CON51 closes)
 
-- **What was open.** The rocm chain of 2026-10-02 (hub b4d5fdd5) republished
+- **What was open.** The rocm chain of 2026-10-02 (hub 305a1c92) republished
   `:latest-rocm`, amd64 manifest `bdfcb731…`. Nobody had read its runtime smoke verdicts
   for the 2026-10-01 media fixes.
 - **Measured instead, on the published image.** Pulled on 2026-10-06, created
@@ -684,7 +684,7 @@ rewording: relative links are re-based on this directory.
 
 ## 2026-10-06 — `:winamd64` republished: WebRTC works, Rust is pinned, ripgrep ships (CON60 closes)
 
-- **What the image is.** A local BuildKit chain from hub f4c0e2be, on a host whose
+- **What the image is.** A local BuildKit chain from hub 828234f8, on a host whose
   Stevedore had first been repaired (Phase R: the patched runhcs shim, buildkitd's
   step-log env and `--config`, containerd's teardown variable). It was pushed with
   `Build-Buildkit.ps1 -PushRef ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`:
@@ -741,7 +741,7 @@ rewording: relative links are re-based on this directory.
 
 ## 2026-10-06 — the Windows merge stage's lavapipe step reads the version it logs
 
-- **`Install-Lavapipe.ps1` threw on its own log line.** cc1846c2 moved the pins into
+- **`Install-Lavapipe.ps1` threw on its own log line.** 665b4df2 moved the pins into
   `$pinValues`, and `Write-Host "Downloading the Vulkan loader ${vulkanVersion}: …"`
   kept the old local, which strict mode turns into *"The variable '$vulkanVersion'
   cannot be retrieved because it has not been set"*.
@@ -807,7 +807,7 @@ rewording: relative links are re-based on this directory.
   logged an event 1000 for that binary since it started. That is best effort, and read from
   the event's data, not its message, which is localized. Each binary's `-> passed …` line names its exit
   code the same way. One new case in `StagedTests.Tests.ps1` proves both halves.
-- CON50's OmniAccelerANT row: Chrome is closed (814da16, both Dart suites in Chrome since
+- CON50's OmniAccelerANT row: Chrome is closed (5de03d7, both Dart suites in Chrome since
   2026-10-05). The APK on an emulator is what stays open.
 
 
@@ -1547,7 +1547,7 @@ rewording: relative links are re-based on this directory.
 
 ## 2026-10-01 - `:winarm64` rebuilt without NVIDIA; the arm64 lanes run tests
 
-- **`:winarm64` is published again, at hub 59a4bca3.** The image of 2026-09-22 predated
+- **`:winarm64` is published again, at hub 19ab55ff.** The image of 2026-09-22 predated
   the variant split and carried CUDA, cuDNN and TensorRT (`GPU_TYPE=nvidia`). By owner
   decision that stack belongs in `:winarm64-nvidia`, as on amd64.
 - **The rebuild drops the NVIDIA stack.** It is the default variant, so the sdk slot is an
@@ -1663,10 +1663,10 @@ rewording: relative links are re-based on this directory.
 
 ## 2026-10-01 - Windows uv venvs install a missing version before asking for its GIL build
 
-- **Fixed a regression from 88e27ab9.** A version the host lacked stopped the venv:
+- **Fixed a regression from 4f624dde.** A version the host lacked stopped the venv:
   `New-UvProjectEnvironment` asks for `X.Y+gil`, and uv downloads nothing for that request.
   - OmniAccelerANT's CMake format gate, which wants 3.12, failed with `No interpreter found
-    for Python 3.12+gil` on its first run with hub 709d09f3.
+    for Python 3.12+gil` on its first run with hub 067faefb.
   - The function now runs `uv python install X.Y` first when `uv python find` comes back
     empty, as Linux's `uv_ensure_python_available` does.
   - Measured in `:winamd64`: 3.12 is installed and its venv is GIL. 3.14 keeps the image's
@@ -1732,7 +1732,7 @@ For the `:latest` rebuild the owner approved on 2026-10-01. None of it is in a p
 
 ## 2026-10-01 - Windows Python lanes: static analysis runs at all, and wheels are built for the GIL
 
-OrchestrANT's first Windows run on 5cfc5259 failed in three places, and the hub owned two of them.
+OrchestrANT's first Windows run on 45f982c9 failed in three places, and the hub owned two of them.
 
 - **`Invoke-CiStaticAnalysis.ps1` failed all six gates with `Cannot bind argument to parameter
   'Context' because it is null`.** Each gate's script block went through `GetNewClosure()`, and

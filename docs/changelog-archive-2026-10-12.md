@@ -103,7 +103,7 @@ rewording: relative links are re-based on this directory.
   `Invoke-PythonTestLegs.ps1` defaulted to 3.14; empty now takes the pin, and a leg list reads `pinned`/`pinnedt`
   as `ci_tests.sh` does. `python-ci-windows.yml`'s `arm64-python-versions` defaults to empty (WebDavClient, its only
   caller, passes its legs). `Test-ExperimentalPython`'s default is the pin's X.Yt.
-- **Inside our images the Windows sync installs no PyPI ORT**, as Linux's since 2227be6e: `Sync-UvProjectDependencies`
+- **Inside our images the Windows sync installs no PyPI ORT**, as Linux's since 97118139: `Sync-UvProjectDependencies`
   passes `--no-install-package` for every ORT entry of `uv.lock` (the unlocked retry too), and the reconcile installs
   the chain wheels for those, uninstalling only what reached the venv. PyPI's onnxruntime has no cp315 wheel.
 - **The arm64 bundle's pytest stack** moves its three native wheels to cp315 `win_arm64` (PyPI's SHA256s), and
@@ -205,7 +205,7 @@ Two owner calls, taken with the recommended option:
 
 ## 2026-10-12 — CON83 closes: OrchestrANT imports pyplot lazily, its other two calls stay
 
-- **`import orchestrant` loads no `matplotlib.pyplot` (OrchestrANT 9dbb86b).** pyplot was 0.72 s of the import's
+- **`import orchestrant` loads no `matplotlib.pyplot` (OrchestrANT 3763891).** pyplot was 0.72 s of the import's
   0.80 s on x64, and under riscv64 QEMU the import cost 31-37 s per subprocess (`bench_agent.py --list` took 41.9 s
   against a 60 s timeout). Now 86 ms on x64. `MetricsPlotter` imports pyplot on its first plot, and a test fails when
   the package import loads it again; no test patched `plotting.plt`, and the Cython build needs nothing new.
@@ -225,7 +225,7 @@ Two owner calls, taken with the recommended option:
   server killed with `Stop-Process -Force` costs 1 s, as no sccache does. TIME_WAIT under Windows' 120 s
   `TcpTimedWaitDelay` is the leading suspect, not yet isolated.
 - **`docs/python-ci.md`: a project that sets the compiler's `cc` to `clang-cl` must `initialize()` it first.** The first
-  `compile()` initializes lazily and puts `cl.exe` back. OrchestrANT (563e0fb) and WebDavClient (3a7aa8c) compiled
+  `compile()` initializes lazily and puts `cl.exe` back. OrchestrANT (3860e78) and WebDavClient (b5bf84d) compiled
   their first extension with MSVC's `cl` until today. setuptools 84 never calls a `spawn` hook, so one cannot catch it.
 
 ## 2026-10-12 — #153 closes on three fresh chains; CON75's wheel loads on the device
@@ -245,7 +245,7 @@ Two owner calls, taken with the recommended option:
   - #185: bazelisk, the LiteRT JDK fallback and git-lfs are fetched unpinned and unchecked.
 
   CON89 points at #183 and #185, and the failure-modes and lanes docs are corrected where the sweep contradicts them.
-- **CON75 is done.** OrchestrANT run 38221408508 (9964cc1, hub 7a5ab23c) built `cp314-cp314t-win_arm64` on the cross
+- **CON75 is done.** OrchestrANT run 38221408508 (6cde7bb, hub 1855545f) built `cp314-cp314t-win_arm64` on the cross
   lane. Its `windows-11-arm` job imported all 64 compiled modules on free-threaded 3.14.8 with the GIL disabled.
 
 ## 2026-10-12 — the arm64 device gate runs an inference, not only an import (CON30)
@@ -265,7 +265,7 @@ Two owner calls, taken with the recommended option:
 
 ## 2026-10-12 — the device gate's twin proof installs again: a one-element array no longer splats into characters
 
-- Since a2ce8627 (CON79), `Invoke-TwinDeviceProof` built pip's arguments as `$resolve = if (...) { @(...) } else { @('--no-deps') }`.
+- Since db62d860 (CON79), `Invoke-TwinDeviceProof` built pip's arguments as `$resolve = if (...) { @(...) } else { @('--no-deps') }`.
   PowerShell unrolls a one-element array that an `if` returns into a string, and `@resolve` then splatted it one character
   per argument. pip refused `-` for all four twins, so `windows-arm64.yml` failed three runs in a row (38180134179,
   38205155401, 38209436310). OrchestrANT's CON75 kit runs the same proof, so its device run would have failed the same way.
@@ -284,15 +284,15 @@ Two owner calls, taken with the recommended option:
 - `shared/config/.clang-format` sets `ReflowComments: Never`, by owner decision today. With `true` at
   `ColumnLimit: 120`, clang-format split a one-line comment over 120 columns into two lines, which
   `verify_comment_size.py` rejects. OmniAccelerANT's plugin sweep hit it (`linux/runtime_paths.cc:1`, shortened in
-  its 39833e7). `Never` is the spelling clang-format 23.1.3 dumps.
+  its 3720202). `Never` is the spelling clang-format 23.1.3 dumps.
 - Measured in `:latest` (`b52f8c34…`) over each consumer's format file set: nothing changes in AccelerANTgine (39
   files) or OmniAccelerANT's plugin (15). In BeschleunigerBallett 2 of 217 files change: three two-line trailing
   comments lose the alignment of their second line. `shared/config/README.md` § *`ReflowComments: Never`* says to join
   such a pair into one line.
-- **CON71 is done and pruned from BACKLOG.md.** The Linux half shipped in the `:latest` of 2026-10-09 (hub 655a2c4e),
+- **CON71 is done and pruned from BACKLOG.md.** The Linux half shipped in the `:latest` of 2026-10-09 (hub 36e996a7),
   the Windows half in `:winamd64` `e96203a8…` (21 tools at 23.1.3). Every consumer formats and checks with 23.1.3:
-  AccelerANTgine e96b31b and its Linux format check, BeschleunigerBallett's sweep d59d210f, and OmniAccelerANT's
-  plugin f3a0994 with its gate eca72a0.
+  AccelerANTgine 5d37c10 and its Linux format check, BeschleunigerBallett's sweep fb246fbc, and OmniAccelerANT's
+  plugin 447dcb5 with its gate 890bc8d.
 
 ## 2026-10-12 — `tensorrt.conf` only where a TensorRT build put its lib dir (CON31)
 
@@ -332,8 +332,8 @@ Two owner calls, taken with the recommended option:
 ## 2026-10-12 — the Linux backlog closes CON72, the CON83 lane and CON66's consumer half; CON78 Linux and CON79 1b proved
 
 - **CON72 is done:** every consumer is green on its post-image pin, Linux and Windows lanes alike: OmniAccelerANT
-  5a6492c, OrchestrANT b599448, WebDavClient 5ab44f4, BeschleunigerBallett b693d37, AccelerANTgine 2aefb1d/4b5dffd,
-  OxidANT 4412001, jotrockenmitlocken 401acff.
+  4fa2d2e, OrchestrANT 8296f63, WebDavClient 000389d, BeschleunigerBallett 72496a4, AccelerANTgine cd990cb/7a8f04b,
+  OxidANT ae0cce2, jotrockenmitlocken 9c7b5f2.
 - **CON79 1b is done:** the `:latest` of 2026-10-11 (index sha256:b52f8c34, run 20261011-125540) proves the riscv64
   torch twin in `FT-STORE` and every cross twin on arm64 and riscv64.
 - **CON83's lane is done:** OrchestrANT run 38171396906 (riscv64) restored the uv cache seed, built no numpy, passed the
@@ -345,7 +345,7 @@ Two owner calls, taken with the recommended option:
   `/opt/rocm`, `000-rocm.conf` resolving `libmigraphx_c` and `libamdhip64`, the MIGraphX provider library loading.
 - **CON82's last Linux item:** OmniAccelerANT's app flatpak (Linux x64 run 38158462860) and its cat cam flatpak (web run
   38158462452, x64 and arm64, installed and removed by `test-catcam-package.sh`) build on `org.freedesktop.Platform/26.08`.
-- **CON84 (3):** OmniAccelerANT's Dart and Flutter floors follow its lock (467ca34), with the frb bindings and l10n
+- **CON84 (3):** OmniAccelerANT's Dart and Flutter floors follow its lock (0ebcf43), with the frb bindings and l10n
   regenerated rather than hand-formatted.
 
 ## 2026-10-12 — the Windows arm64 cross lane ships a free-threaded wheel and proves it on the device (CON75)
@@ -369,7 +369,7 @@ Two owner calls, taken with the recommended option:
 
 ## 2026-10-12 — the rocm chain builds without the HIP/MSVC `<cmath>` overlay (CON78)
 
-- Hub 28daad33's `:winamd64-rocm` chain (20261011-233025, then `-Stages final` as 20261012-051453) built every stage with
+- Hub c5466f58's `:winamd64-rocm` chain (20261011-233025, then `-Stages final` as 20261012-051453) built every stage with
   TheRock's clang as AMD ships it, with no `clang.cfg` and no overlay:
   - MIGraphX 2.18.0 and its EP in 11:44 min;
   - `ggml-hip` with device code for gfx1201 and gfx1200;
@@ -413,7 +413,7 @@ Two owner calls, taken with the recommended option:
 ## 2026-10-11 — CON63, CON80, CON82 and CON87 proved, CON71's Windows half done
 
 - **CON63:** the hub's own device gate passed 17 of 17 on `windows-11-arm`, the WebRTC loopback included
-  (`windows-arm64.yml` run 38170783445 on 5bcd214c, `:winarm64` `ba6bfaae…`). The arm64 WebRTC contract holds:
+  (`windows-arm64.yml` run 38170783445 on df24511d, `:winarm64` `ba6bfaae…`). The arm64 WebRTC contract holds:
   the cross-built gst-plugins-rs and the aarch64 `ffi-7.dll` (proved at the 2026-10-10 merge) carry a
   webrtcsink → webrtcsrc call over DTLS-SRTP on the device.
 - **CON80:** the in-place site-packages merge passes in the published images. In `:winamd64` (`e96203a8…`, smoke run
@@ -428,7 +428,7 @@ Two owner calls, taken with the recommended option:
   - x265 4.2 built and verified its SHA256 in the 2026-10-11 chain.
   - The arm64 Vulkan-ValidationLayers load in `vulkaninfo` on the device (run 38170783445).
   - OmniAccelerANT built and installed its flatpaks on runtime 26.08: `web.yml` run 38158462452 and Linux x64 run
-    38158462860, both on fafa9f3.
+    38158462860, both on 7af04e4.
 
   With the Linux half proved on 2026-10-09, the row is closed.
 - **CON87:** the Windows chain no longer rebuilds over a Linux-only `versions.env` edit.
@@ -437,7 +437,7 @@ Two owner calls, taken with the recommended option:
   - Then `CMAKE_VERSION_RISCV64` moved 4.4.4 → 4.4.9, a temporary edit, and the next chain (20261011-222153) took
     14 min. base, toolchain, all seven media stages and the merge came back CACHED, with the same manifests as the
     run before (base `1b332f1d…`, toolchain `f1353638…`).
-  - Only torch re-ran, because OrchestrANT's develop had moved 179e1e1 → b599448f. final followed it.
+  - Only torch re-ran, because OrchestrANT's develop had moved 14e8c66 → 8296f632. final followed it.
   - Smoke: 268 passed, 0 failed, 1 skipped. The publish gate was clean.
 - **CON71, Windows:** the published `:winamd64` passes `Test-Container.ps1`'s 21-tool check, every tool at 23.1.3.
   The native plugin's reformat in OmniAccelerANT is the row's last item.
@@ -452,7 +452,7 @@ Two owner calls, taken with the recommended option:
   says the image ships them, and `uv_ensure_python_available` no longer runs `uv python install` for those. A missing
   one fails the leg with `python3.14t is missing, though this image ships it`. Other versions, runs outside the image
   and a caller's own `UV_PYTHON_DOWNLOADS` keep their behaviour.
-- Proved in the `:latest` amd64 child against WebDavClient 3096c57: the `3.14` leg took `/usr` 3.14.4 and the `3.14t`
+- Proved in the `:latest` amd64 child against WebDavClient f3901df: the `3.14` leg took `/usr` 3.14.4 and the `3.14t`
   leg `/opt/python-freethreaded` 3.14.8, both with downloads off, 22 and 23 tests green. With `python3.14t` hidden from
   `PATH`, the previous code downloaded a free-threaded CPython and the leg passed; this one fails it.
 - `test-uv-python-request.sh` covers the image, a missing interpreter, the GIL leg, a version the image does not ship,
@@ -480,7 +480,7 @@ Two owner calls, taken with the recommended option:
   `windows-2025` job pulls the published `:winarm64` and packs its bundle with `Export-Arm64Bundle.ps1`. A
   `windows-11-arm` job runs `Test-Arm64Bundle.ps1`, and uploads `winarm64-bundle-webrtc-logs` when it fails.
 - `container-ci-windows.yml` loses `bundle-artifact-name`, its export and upload steps and the `bundle-gate` job.
-  BeschleunigerBallett dropped the input first (9e029676).
+  BeschleunigerBallett dropped the input first (66a921ae).
 
 ## 2026-10-11 — the WebRTC loopback says why it stalls, and the arm64 device job keeps its logs (CON63)
 
@@ -509,7 +509,7 @@ Two owner calls, taken with the recommended option:
 ## 2026-10-11 — a Linux-only `versions.env` edit leaves the Windows chain cached (CON87)
 
 - `Dockerfile.base` copied all of `linux/scripts/01-core/versions.env`, and the toolchain stage mounted it into
-  its LLVM RUN, so a riscv64 pin bump (655a2c4e) turned the 2026-10-09 `:winamd64-rocm` publish into a 4:45 h
+  its LLVM RUN, so a riscv64 pin bump (36e996a7) turned the 2026-10-09 `:winamd64-rocm` publish into a 4:45 h
   rebuild. `Build-Buildkit.ps1` now writes `windows/generated/versions.env` on every run
   (`Write-WindowsVersionsEnv`), and the base COPY, both toolchain mounts and the merge re-COPY read it instead.
 - The filtered file keeps every key in source order and drops comments, plus the Linux-only keys: those
@@ -526,7 +526,7 @@ Two owner calls, taken with the recommended option:
 
 - OrchestrANT's Windows x64 app bundle failed its gate on the new pin (run 38086634222): `4 violation(s)`, all in the
   runtime's `ensurepip\_bundled\pip-26.2.1-py3-none-any.whl` — distlib's `t32`/`w32` (I386) and `t64-arm`/`w64-arm`
-  (ARM64). The gate machine-checks wheel members since fbf9c369, and pip ships one launcher template per arch on
+  (ARM64). The gate machine-checks wheel members since 7e685d21, and pip ships one launcher template per arch on
   purpose: the installer copies the target's when it writes a script. The image gate never saw it, because the
   Dockerfile's `ARCH_GATE_HOST_TOOLS` already names those paths; `New-PythonAppBundle.ps1` passes no pattern.
 - `Test-TargetArch.ps1 -LauncherTemplatePattern` (on by default) lists distlib's `t32`, `t64`, `t64-arm`, `w32`, `w64`,
@@ -535,7 +535,7 @@ Two owner calls, taken with the recommended option:
 
 ## 2026-10-11 — the hub's own lanes are green again: the wheel smoke grades the import, two Windows tests caught up
 
-- **The riscv64 wheel smoke passed a package whose import raises.** Since 9e3b7cba, `free-threaded-wheel.py`'s
+- **The riscv64 wheel smoke passed a package whose import raises.** Since 7a5ab2c1, `free-threaded-wheel.py`'s
   `enclose()` registers a package whose import fails with its body unrun, so the compiled modules under it can load.
   `wheel-smoke.py` called `load_all` first, and its own `import_module` then returned that stub without an error.
   `test-wheel-smoke.sh` failed on it in every preflight since, and the three `wheel-smoke.*` mutations read as vacuous.
@@ -544,12 +544,12 @@ Two owner calls, taken with the recommended option:
   every stage that RUNs over an external image (CON86's views had none). The next Windows chain rebuilds the two empty
   views and the merge above them.
 - **`Get-FreeThreadedTwinPlan`'s test names an unlisted distribution that stays unlisted.** It used `numpy`, which
-  6276a9be added to the twin table (`twin:FT_TORCH_TWIN`), so the expected throw never came.
+  cc86cf2f added to the twin table (`twin:FT_TORCH_TWIN`), so the expected throw never came.
 
 ## 2026-10-11 — the nvidia and rocm ORT cp314t twins are proved in the published images (CON79 1)
 
 - BACKLOG CON79 1 listed them as open ("one call each"). The call has been in `30-build-native-nvidia.sh` and
-  `30-build-native-amd.sh` since e2651106 (2026-10-07), and both published GPU images already carry and prove the twin.
+  `30-build-native-amd.sh` since 609314f3 (2026-10-07), and both published GPU images already carry and prove the twin.
   The build logs show it:
   - **rocm**, chain run 20261009-152508 (`:latest-rocm`, index sha256:a5d68fbe). The MIGraphX pass over
     `build_native_gpu_migraphx` took 57 s and rebuilt no HIP object (the GIL pass built 590) and 106 C++ objects. It
@@ -584,8 +584,8 @@ Two owner calls, taken with the recommended option:
 ## 2026-10-11 — `:latest-nvidia` published with DeepStream 9.1 (CON42)
 
 - Index sha256:810f36b38714b423652902ed35f4b221d36f868639a83a3b4da47c476b4a033e (amd64
-  sha256:23e3cc9e5bbbfc64d8395e1d171faa56c89e9b09cbb95bedcba225110fe4bdd5), chain run 20261011-040056-e2d41cc6 on hub aabebdbc;
-  media and android from runs 20261010-202726 (c9f638f0 + 804227fd).
+  sha256:23e3cc9e5bbbfc64d8395e1d171faa56c89e9b09cbb95bedcba225110fe4bdd5), chain run 20261011-040056-e2d41cc6 on hub a6dd6992;
+  media and android from runs 20261010-202726 (8ffaa006 + 6d363952).
 - The first nvidia build with `ENABLE_DEEPSTREAM=true` by default: 48 DeepStream components built from 581889df, the media
   stage's DeepStream gates and the runtime smoke's `check_deepstream` pass, wrapper-smoke and the 15/15 runtime checks pass.
 
@@ -639,10 +639,10 @@ Two owner calls, taken with the recommended option:
 ## 2026-10-10 — `:latest` republished: the cross cp314t twins, the riscv64 uv seed and the lint tools are in (CON75, CON79 1b, CON83)
 
 - Index sha256:30dea85c2b3fbb89b79f042333cfd5e4940eb20027b44ed5c35639bd49fb0eea (amd64 ef6b32bd, arm64 f2a72d27,
-  riscv64 0043342b), chain runs 20261010-002002 (riscv64 media) and 20261010-010337 (android, runtime) on hub 381431d1.
+  riscv64 0043342b), chain runs 20261010-002002 (riscv64 media) and 20261010-010337 (android, runtime) on hub 65195e62.
 - `FT-STORE` passes on all three arches. amd64 keeps its five native twins; arm64 and riscv64 each prove apache-tvm-ffi,
   av, iree-base-runtime and onnxruntime_webgpu under the target 3.14t with the GIL off. `FT_TORCH_TWIN` was 0 for this
-  run; the fixed torch twin (9e3b7cba) lands with the next chain.
+  run; the fixed torch twin (7a5ab2c1) lands with the next chain.
 - riscv64 builds hadolint 2.15.1 from source once (about 4 h under QEMU) and seeds `/opt/uv-cache-seed` with 8 wheels,
   proved by a fresh sync that builds nothing. Every arch's contract reads `OK lint-tools shellcheck=0.11.0 hadolint=2.15.1`.
 - Runtime smokes: amd64 and arm64 15/15; riscv64 14/15 with its known warning (no `iree.compiler` on riscv64).
@@ -764,7 +764,7 @@ Two owner calls, taken with the recommended option:
 
 ## 2026-10-09 — the riscv64 wheel smoke warns, not fails, on a consumer pin older than CON83
 
-- `python-ci-linux.yml` resolves at `@develop`, so eda97a90's pin check ("missing ci-wheel-smoke.sh") would have turned
+- `python-ci-linux.yml` resolves at `@develop`, so fa11968d's pin check ("missing ci-wheel-smoke.sh") would have turned
   OrchestrANT's riscv64 row red on its next run, before its own hub gitlink could move. The check now writes
   `present=false` and a `::warning`, and the smoke step runs only when `present == 'true'`. `test-wheel-smoke.sh`
   asserts the gated step.
@@ -783,7 +783,7 @@ cross-builds, and graded its coding bench without shellcheck or hadolint.
 - **Proved at build:** a fresh copy syncs the same lock into a fresh venv and must build nothing (no `Built` line, no new
   wheel under `sdists-v*/`). `uv sync --no-build` cannot be the proof: it refused pyyaml with a cached build present
   (`can't be installed because it is marked as --no-build but has no binary distribution`, uv 0.12.23).
-- **Measured in `:latest`'s riscv64 child under QEMU** (index `af7252a0…`, 32-core host), OrchestrANT 3bdf80a7: cold
+- **Measured in `:latest`'s riscv64 child under QEMU** (index `af7252a0…`, 32-core host), OrchestrANT 5785f696: cold
   3172 s, 8 wheels (the 7 above plus the pure-Python sdist antlr4-python3-runtime), seed 21 MB; warm 89 s; the proof
   passed and `verify` read `seeded for riscv64: 8 wheel(s), proved`.
 - **Consumers copy it.** `ci_tests.sh` and the new `ci-wheel-smoke.sh` call `uv_cache_seed_restore` (`ci-common.sh`),
@@ -833,10 +833,10 @@ The rocm chain `20261009-131840` stopped in the media stage's ORT **CPU** step:
 
 ## 2026-10-09 — WEBDAVCLIENT_REF to WebDavClient's develop head
 
-- `4f3f116d` -> `050dfb2c` (23 commits: lock maintenance, the free-threading declaration, a manylinux packaging extra,
+- `fa9cb699` -> `9be524fe` (23 commits: lock maintenance, the free-threading declaration, a manylinux packaging extra,
   unit tests). `webdav-download.sh` installs the client from the commit's archive: the new archive installs into a 3.14
   venv, and every call `download-webdav-files.py` makes keeps its signature; `webdavclient.py`'s diff is comments only.
-  `bump_versions.py --check` had reported it NEWER AVAILABLE since c40dc4bb.
+  `bump_versions.py --check` had reported it NEWER AVAILABLE since c7340f35.
 
 ## 2026-10-09 — the cp314t twins on the Linux cross lanes: arm64 cross and riscv64 (CON75 Linux half, CON79 1b)
 
@@ -895,7 +895,7 @@ the smoke holds them to it.
 
 ## 2026-10-09 — CON84 item 3: jotrockenmitlocken on sqlite3 3.7.0; ANThology has no lock to maintain
 
-- **jotrockenmitlocken** 93083c3: `sqlite3 ^3.7.0`, lock 3.6.0 -> 3.7.0 (nothing else moved), and `web/sqlite3.wasm`
+- **jotrockenmitlocken** 56d1222: `sqlite3 ^3.7.0`, lock 3.6.0 -> 3.7.0 (nothing else moved), and `web/sqlite3.wasm`
   replaced (it was still 3.3.1) by the 3.7.0 asset, sha256 `fbcd2e82…` = `SQLITE3_WASM_SHA256`. Dart gate in `:latest`:
   122 tests; CI runs 37933329919 (web build + deploy) and 37933328272 (CodeQL) green.
 - **ANThology** is a library: `pubspec.lock` is gitignored, and Renovate reported nothing behind, so there is no commit.
@@ -907,12 +907,12 @@ the smoke holds them to it.
 - **Why the selftest never hit it:** `actions-selftest.yml` had the `pull_request` trigger, but the hub had never had a
   PR, so every run was a `push` or `schedule`, where the SHA is already in the clone. The action also failed for a ref
   NAME such as `refs/pull/<n>/merge`: the fetch fills only `FETCH_HEAD`, so the checkout of the name found nothing.
-- **Fix** (05ea8a26): the action checks out `FETCH_HEAD` after fetching a ref name and reports a `fetched` output; the
+- **Fix** (8b1dfb80): the action checks out `FETCH_HEAD` after fetching a ref name and reports a `fetched` output; the
   selftest asserts `fetched` per event and, on a PR, clones `refs/pull/<n>/merge` by name and checks it is a two-parent
   merge whose second parent is the PR head.
 - **Proved:** draft PR #3 (closed unmerged, branch deleted), run 37931553972: `refs/pull/3/merge is not in the clone;
   fetching it from origin`, `Checked out refs/pull/3/merge at 6d90b8fe… (fetched=true)`, `merge ref checked out at
-  6d90b8fe… (base 05ea8a26…, PR head b4f86936…)`, every job green.
+  6d90b8fe… (base 8b1dfb80…, PR head b4f86936…)`, every job green.
 
 ## 2026-10-09 — `bump_versions.py --audit-unclassified`: all 441 pin-file keys classified, 62 were not
 
@@ -937,12 +937,12 @@ the smoke holds them to it.
   tracked branch.
 - **Verified against upstream:** all 13 derived values and the x264 commit match their sources at the pinned
   versions. All 42 wheel SHAs match PyPI's or download.pytorch.org's published digest. The full `--check` had 0
-  lookup failures. One finding: WebDavClient's default branch is at `050dfb2c`, ahead of the pinned `4f3f116d`. It is
+  lookup failures. One finding: WebDavClient's default branch is at `9be524fe`, ahead of the pinned `fa9cb699`. It is
   reported as NEWER AVAILABLE and was not bumped. No pinned value changed.
 
 ## 2026-10-09 — CON79: the Linux ORT twin proved in the published `:latest` amd64
 
-- **Image:** `:latest` index sha256:af7252a0 (hub 655a2c4e). `/opt/wheels-cp314t` holds
+- **Image:** `:latest` index sha256:af7252a0 (hub 36e996a7). `/opt/wheels-cp314t` holds
   `onnxruntime_dnnl-1.30.0-cp314-cp314t`, and FT-STORE passed it plus `PYTHON_WHEELS_CP314T` in chain run 20261009-022859.
 - **ORT census:** `check-ort-provenance.sh --image` passes in a fresh container. It reads the twin's four `.so`
   members as `BIN` rows rooted at `/opt/onnxruntime` and matches them to `ort-provenance-cp314t.sha256`.
@@ -988,18 +988,18 @@ the smoke holds them to it.
   distribution: `ftfix_free` declares `Py_mod_gil = Py_MOD_GIL_NOT_USED`, `ftfix_gil` does not. The first must prove
   (`1 compiled module(s) of ftfix_free loaded on free-threaded 3.14.8; the GIL stayed disabled`, rc 0), the second
   must fail (`ERROR: the GIL was re-enabled, first by ftfix_gil; …`, rc 1). The stubbed cases are unchanged.
-- **Where:** in the published `:latest` (hub 655a2c4e) on amd64, and on arm64 and riscv64 under QEMU: 58 -> 66
+- **Where:** in the published `:latest` (hub 36e996a7) on amd64, and on arm64 and riscv64 under QEMU: 58 -> 66
   assertions on all three. A host without a free-threaded interpreter, CI's included, prints a `SKIP [<case>]`
   line and stays at 58.
 - **Mutation-checked:** ignoring the GIL verdict, a GIL-warning regex that no longer matches, and a `load_all` that
   never creates the module each turned the suite red in the image (2, 1 and 2 failures); every stubbed case passed
   all three.
 
-## 2026-10-09 — `:latest` published from hub 655a2c4e; CON56/58/65 closed, CON66/71/72/79/82 Linux halves proven
+## 2026-10-09 — `:latest` published from hub 36e996a7; CON56/58/65 closed, CON66/71/72/79/82 Linux halves proven
 
 - **Published** `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`, index
   `sha256:af7252a01f7e5099e54265337fea42c94cc6cf79a0dea1ab9fde0aaa2853af58`: amd64 `sha256:ba3115f1…`, arm64
-  `sha256:15a905c6…`, riscv64 `sha256:81db10eb…`, each labelled revision 655a2c4e. Runtime stage from chain run
+  `sha256:15a905c6…`, riscv64 `sha256:81db10eb…`, each labelled revision 36e996a7. Runtime stage from chain run
   20261009-022859-db31d92c; earlier stages from runs 20261007-221241, 20261007-233233, 20261008-103605 and
   20261008-113607. All three wrapper smokes passed, the runtime-image smoke had 0 failures on every arch.
 - **Closed:** CON56 (`rg` 15.1.0), CON58 (`aarch64-linux-android` installed) and CON65 (`cargo-qa-tools` row on
@@ -1007,7 +1007,7 @@ the smoke holds them to it.
   GIL off), CON71 (26 LLVM tools at 23.1.3), CON72 (the 2026-10-07 pins), CON79 (FT-STORE on amd64 with the av,
   IREE and tvm-ffi twins) and CON82 (Vulkan 1.4.363.0, Chrome for Testing 155, Node 26.11.0, the 26.08 flatpak
   refs, vvdec 3.2.1).
-- **The chain needed** c0fb66be, df0736cd, 815cfebe, 537b60f2, 6c11da0c, 02801990, d5b6d9db, f3b9ebb4 and 655a2c4e,
+- **The chain needed** b62fd6c4, 4ebba264, f34819ed, ab08c43a, 0da7b86b, 6e6f1201, 3539cf91, b6e95922 and 36e996a7,
   each with its own entry above or below.
 
 ## 2026-10-09 — the media fan-in binds view stages, not the branch images

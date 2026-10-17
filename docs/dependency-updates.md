@@ -1032,7 +1032,7 @@ registry indexes, as the report's Renovate lookup does. `--apply`, and
 
 The proof is [`test-renovate-lockmaint.sh`](../linux/scripts/tests/test-renovate-lockmaint.sh)
 (M1 to M16, the dry-run outputs replayed verbatim by stubs) and an end-to-end run on 2026-10-07. `renovate-local.sh` ran with real
-Renovate 44.140.0 over DocumANTation at 4b20d3f, with maintenance on. The report and
+Renovate 44.140.0 over DocumANTation at 4dfdd3e, with maintenance on. The report and
 `--dry-run` listed `uv.lock  uv lock --upgrade`, and `--apply` ran it and moved 19
 packages. The result was the same 45-package lock that `uv lock --upgrade` run by
 hand produced.
@@ -1103,8 +1103,8 @@ by a CR, so it is always dirty — and a dirty submodule makes its parent's gitl
 read as:
 
 ```
--Subproject commit 9cdd84dcba86fd5764156a85f9fcc80a861b2fcd
-+Subproject commit 9cdd84dcba86fd5764156a85f9fcc80a861b2fcd-dirty
+-Subproject commit ff44db93c42300d42aa52132e41f14d4223b2701
++Subproject commit ff44db93c42300d42aa52132e41f14d4223b2701-dirty
 ```
 
 The two shas are **equal**. The whole difference is the `-dirty` suffix git
@@ -1366,9 +1366,9 @@ not changed. Committing that would have removed three translation files under a
 message about `permission_handler`.
 
 Provenance, because a number nobody re-measured is how a page goes wrong: the
-constraint and the 204 lines are read off `fab1e86`, the commit that landed the
+constraint and the 204 lines are read off `599507a`, the commit that landed the
 bump. The three deletions are the **owner's report**, and the commit is
-consistent with it — `fab1e86` touches `pubspec.yaml` and `pubspec.lock` and
+consistent with it — `599507a` touches `pubspec.yaml` and `pubspec.lock` and
 nothing else, so the deletion happened in the working tree and was caught before
 it was staged. Catching it is what this guard makes automatic.
 
@@ -1595,7 +1595,7 @@ run** and says which guarantee it voided.
 
 A lockfile is legitimately rewritten **wholesale** — one constraint bump moved 204
 lines of OmniAccelerANT's `pubspec.lock`, 46 resolved versions across 48 packages
-(read off `fab1e86`, the commit that landed it) — so there is no "exactly
+(read off `599507a`, the commit that landed it) — so there is no "exactly
 one leaf changed" to assert, and pretending otherwise would be the more dishonest
 of the two options. The claim is narrower, and it is printed rather than implied:
 

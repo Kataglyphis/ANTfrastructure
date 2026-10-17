@@ -1365,8 +1365,8 @@ no packages at all, so the compiler stage builds LLVM/Clang from source there
 > that the runtime lane "still pins `--platform linux/amd64` for its artifact
 > source" and "asks binfmt for a handler name that does not exist". Both were
 > fixed the SAME DAY this was written (14:16) and the sentence was never
-> updated: `ec69a976` (17:00) made `runtime_artifact_platform` ask
-> `cross_build_platform` instead of freezing the literal, and `d3566550`
+> updated: `cb50e001` (17:00) made `runtime_artifact_platform` ask
+> `cross_build_platform` instead of freezing the literal, and `acb568f0`
 > (20:08) taught `_binfmt_qemu_name` that the amd64 handler is `qemu-x86_64`.
 > [`test-tag-naming.sh`](../linux/scripts/tests/test-tag-naming.sh) and
 > [`test-native-build-host.sh`](../linux/scripts/tests/test-native-build-host.sh)

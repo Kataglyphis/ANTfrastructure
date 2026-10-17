@@ -7,12 +7,12 @@ The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
 **State 2026-10-12**, read from the registry (hub = the image's `revision` label, digest =
-the per-arch manifest). Published: `:latest` (2026-10-11, hub 7d8d0363, index `b52f8c34…`;
-amd64 `624a8a63…`, arm64 `448591ff…`, riscv64 `7689579f…`), `:latest-nvidia` (2026-10-11, hub aabebdbc,
-index `810f36b3…`, amd64 `23e3cc9e…`, with DeepStream 9.1), `:latest-rocm` (2026-10-09, hub f0e360b8, index
-`a5d68fbe…`, amd64 `d58be41b…`), `:winamd64` (2026-10-08, hub 5dfeb42d, `e96203a8…`), `:winamd64-nvidia`
-(2026-10-10, hub 93708b28, `75bbe6f6…`), `:winamd64-rocm` (2026-10-09, hub aa7a8086, `32c7cc51…`) and
-`:winarm64` (2026-10-10, hub 222f2fa9, `ba6bfaae…`, without NVIDIA; no `:winarm64-nvidia` tag exists).
+the per-arch manifest). Published: `:latest` (2026-10-11, hub 57ba7420, index `b52f8c34…`;
+amd64 `624a8a63…`, arm64 `448591ff…`, riscv64 `7689579f…`), `:latest-nvidia` (2026-10-11, hub a6dd6992,
+index `810f36b3…`, amd64 `23e3cc9e…`, with DeepStream 9.1), `:latest-rocm` (2026-10-09, hub 3f259111, index
+`a5d68fbe…`, amd64 `d58be41b…`), `:winamd64` (2026-10-08, hub 900ed949, `e96203a8…`), `:winamd64-nvidia`
+(2026-10-10, hub 6ba8eb23, `75bbe6f6…`), `:winamd64-rocm` (2026-10-09, hub c0969e22, `32c7cc51…`) and
+`:winarm64` (2026-10-10, hub 1ebd88b6, `ba6bfaae…`, without NVIDIA; no `:winarm64-nvidia` tag exists).
 Every Linux image gap up to CON41 shipped and was checked in the published children (git history).
 Decisions and gaps checked closed live in [`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
 here is a date's measurement.**
@@ -84,7 +84,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
       and Windows amd64 are in source since 2026-10-07 (CHANGELOG). Open:
       1. **Prove in full image builds**: Linux — FT-STORE is green on the published `:latest` amd64
-         (2026-10-09, hub 655a2c4e) with the cp314t twins of av 19.0.1, iree_base_compiler/runtime 3.12.0
+         (2026-10-09, hub 36e996a7) with the cp314t twins of av 19.0.1, iree_base_compiler/runtime 3.12.0
          and apache_tvm_ffi 0.1.14.post0 loaded with the GIL off. Also proved on that image (index
          sha256:af7252a0, 2026-10-09): the `onnxruntime_dnnl` 1.30.0 cp314t twin is in the store and FT-STORE;
          `PYTHON_WHEELS_CP314T=/opt/wheels-cp314t` passes FT-STORE (chain run 20261009-022859); the ORT census
@@ -165,10 +165,10 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       6. The llama stage in BuildKit (`ggml-hip` through the WebDAV sccache, the `llamamods` closure, cleanup,
          `LlamaCpp.ps1` at the smoke gate). Then drop the `hip-msvc-cmath` overlay if 4–6 build without it.
 
-      Windows 4–6 are proved: the `:winamd64-rocm` published 2026-10-09 (hub aa7a8086, `32c7cc51…`)
+      Windows 4–6 are proved: the `:winamd64-rocm` published 2026-10-09 (hub c0969e22, `32c7cc51…`)
       built MIGraphX 2.18.0, the EP and `ggml-hip` in BuildKit. Its smoke gate passed 265 assertions, 1
       skipped, with eleven rocm-checks and `torch 2.14.1+rocm10.1.0`, HIP 7.16.26385. **The overlay is gone and
-      proved** (CHANGELOG 2026-10-12). Hub 28daad33's rocm chain built every stage without it: MIGraphX with the
+      proved** (CHANGELOG 2026-10-12). Hub c5466f58's rocm chain built every stage without it: MIGraphX with the
       EP, `ggml-hip` (gfx1201 and gfx1200), and torch 2.14.1+rocm10.1.0 with HIP 7.16.26385. Smoke: 265 passed,
       0 failed, 1 skipped, and all eleven rocm-checks passed (`kernel compiled for gfx1201`). Only the GPU
       runs below are left on Windows.
@@ -207,19 +207,19 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          the image), and AccelerANTgine's `ci-python-bindings.sh` defaults to the image's X.Y.
 
 - [ ] **CON66 — the consumers' `3.14t` legs on the image's free-threaded Python** [S, ★★]. The image
-      half is proven: the `:latest` published 2026-10-09 (hub 655a2c4e) carries
+      half is proven: the `:latest` published 2026-10-09 (hub 36e996a7) carries
       `/opt/python-freethreaded` with python3.14t 3.14.8 and `sys._is_gil_enabled() == False` on amd64,
       arm64 and riscv64, and passes the `free-threaded-python` row, prefix check included
       (`docs/consumer-image-contract.md` § The free-threaded Python). Open:
       - **The consumer half is done (2026-10-12).** In the shipped image a `3.14` or `3.14t` leg takes the image's
-        interpreter or fails, and never downloads one (hub 00feaf7a, CHANGELOG 2026-10-11). On that pin OrchestrANT
-        (b599448) and WebDavClient (5ab44f4) logged `the image's own interpreter, UV_PYTHON_DOWNLOADS=never` for both
+        interpreter or fails, and never downloads one (hub 295f6fa0, CHANGELOG 2026-10-11). On that pin OrchestrANT
+        (8296f63) and WebDavClient (000389d) logged `the image's own interpreter, UV_PYTHON_DOWNLOADS=never` for both
         legs on x64 and arm64 (`/usr` 3.14.4, `/opt/python-freethreaded` 3.14.8), and OrchestrANT's riscv64 row for its
         `3.14` leg (run 38171396906). Its riscv64 row runs no `3.14t` leg, so `uv_venv_create 3.14t` ran in the published
         riscv64 child (`7689579f…`) under QEMU: `/opt/python-freethreaded` 3.14.8, `gil=False`,
         `cpython-314t-riscv64-linux-gnu`, nothing in uv's managed store. Both consumers also run their suite on the
-        installed cp314t wheel, through the hub's `test-free-threaded-wheel.sh` since 2026-10-12 (hub 9ade0dd1, OrchestrANT
-        0f6def5, WebDavClient 5663983; their two local scripts are gone). Proved locally in `:latest`; their next Linux
+        installed cp314t wheel, through the hub's `test-free-threaded-wheel.sh` since 2026-10-12 (hub ff91d46d, OrchestrANT
+        0aeb53a, WebDavClient cbd1574; their two local scripts are gone). Proved locally in `:latest`; their next Linux
         x64 and arm64 runs prove it in CI.
       - The toolchain stage's added time on a CI runner (estimate 25-40 min on 4 cores); a local chain
         time is not that number.
@@ -251,13 +251,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         AArch64 sometimes fails instruction selection and aborts the process. The error is
         `LLVM ERROR: Cannot select: v4f32 = bitcast … extract_subvector … In function:
         fs_variant_partial`. That reds OxidANT's arm64 renderer tests intermittently:
-        `forward_ambient` in run 37354297722, `headless` in run 37005853556. 9117d46 passed
+        `forward_ambient` in run 37354297722, `headless` in run 37005853556. 82b3677 passed
         on the same image three hours before the first of those, and no amd64 run has
         shown it. Until ebcfbe60 lands, check that the
         crash is gone before calling a red arm64 renderer test a regression. A narrower
         `ENV` (only the BVH build needs the 8-lane subgroup) would also avoid it. The consumers
         that build no BVH narrow it themselves since 2026-10-06: OxidANT's
-        `ci-container-steps.sh` (c8637e5) and BeschleunigerBallett's `run-cargo-tests.sh`
+        `ci-container-steps.sh` (580e097) and BeschleunigerBallett's `run-cargo-tests.sh`
         export 128 on aarch64. Four of about twenty OxidANT arm64 runs since 2026-10-05 had
         died on it, one as a SIGSEGV in `forward_ambient` rather than an `LLVM ERROR`.
 
@@ -292,7 +292,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       archive actions ran clang-cl, lld-link or llvm-lib.
       The wheel passed its contract and a CPU smoke through `Interpreter` and `CompiledModel`. The one clang-cl fix it needed:
       snappy takes `_bzhi_u32` under `_MSC_VER`, so `-mbmi2` for snappy, which the AVX2 floor implies.
-      **Proven by chain bk-20261013-004816 (hub 355a1d14, 2026-10-13):** media-litert built the cp315 wheel again (4522
+      **Proven by chain bk-20261013-004816 (hub 051a78bc, 2026-10-13):** media-litert built the cp315 wheel again (4522
       compile/link/archive actions, all LLVM, `LITERT-WHEEL-SMOKE PASS`), the merge staged it in `C:\runtime\wheels`, the
       torch venv installed it from there, and smoke section 20 found it. All 16 stages ran green in 10347 s; the smoke
       gate passed 273, failed 0 and skipped 1 (CUDA on the CPU image). **Left:** publishing that `:winamd64`, and the
@@ -319,8 +319,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       - **No floating fetch:** `OPENVINO_NATIVE_DIR` names an empty dir. Without it, `@intel_openvino` downloads an
         unhashed 744 MB nightly at load time, although nothing in the wheel's closure uses it (probe P5b).
       - **Found in the first 3.15 chain (bk-20261012-185459 to -203943):** CPython 3.15 writes its free-threaded build
-        to `PCbuild\freethreaded\amd64t` (fixed 824bf848), and `_CL_` landed after CMake's `-- <source>` (fixed
-        e008021e). ONNX Runtime's cp315 and cp315t wheels build and load with the GIL off.
+        to `PCbuild\freethreaded\amd64t` (fixed ae44b6e2), and `_CL_` landed after CMake's `-- <source>` (fixed
+        ea8b34e6). ONNX Runtime's cp315 and cp315t wheels build and load with the GIL off.
 - [ ] **CON92 — the LiteRT-LM bazel lane compiles with MSVC `cl`, against the clang-cl rule** [S, ★★]. Found
       2026-10-12 while designing CON91's LiteRT wheel. **Fixed in source (2026-10-13):** the pinned bazel 7.6.1 replaces
       bazelisk, CON91's clang-cl recipe and an aquery gate build `litert_lm_main`, `OPENVINO_NATIVE_DIR` stops the
@@ -404,7 +404,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294
       is open, its fix #6298 awaits review, and neither 14.52 nor 14.53 Preview carries it.
       The toolset is VS 18's stable channel, not a pin that could move.
-      BeschleunigerBallett's `find_if` stands (a2793e6c). Never set
+      BeschleunigerBallett's `find_if` stands (c2237c0f). Never set
       `_USE_STD_VECTOR_ALGORITHMS=0` image-wide: it turns every vectorized algorithm off.
       Close when a production toolset ships #6298.
 - [b] **CON54 — Let the litert-lm CMake superbuild consume the already-built LiteRT
@@ -523,8 +523,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         the next nvidia chain proves it.
       - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
         the device as shipped.
-      - `:winamd64-rocm`: published (first 2026-09-28 at ad08bc30, again 2026-10-03 at
-        1d910553, with TheRock 10.1 on 2026-10-09 at aa7a8086); the redistribution decision is recorded in `docs/windows-rocm.md`
+      - `:winamd64-rocm`: published (first 2026-09-28 at 73a8dd74, again 2026-10-03 at
+        49fe27ef, with TheRock 10.1 on 2026-10-09 at c0969e22); the redistribution decision is recorded in `docs/windows-rocm.md`
         § Redistribution.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
@@ -547,7 +547,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 ## Open — hub tooling and the dev host
 
 - [b] **CON69 — 23 hub files declare Apache-2.0 under the hub's MIT `LICENSE`** [S, ★]. Owner
-      decision needed (2026-10-06). The hub has carried an MIT `LICENSE` since 709756eb
+      decision needed (2026-10-06). The hub has carried an MIT `LICENSE` since 84709078
       (2026-08-02), but 23 files outside `third_party/` still say
       `SPDX-License-Identifier: Apache-2.0`, most of them under `windows/scripts/`
       (`rg -l 'SPDX-License-Identifier: Apache-2.0' --glob '!third_party/**'`). Moved here from
@@ -559,5 +559,5 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       mounts and no credential trap, but no `--privileged`, `--platform` or `--device`,
       which the lanes pass. Re-evaluate when microsoft/WSL#41545 (privileged/cap-add)
       and #41123 (multi-platform) land. The Dart-only pilot is in: OmniAccelerANT
-      7775b51, `Invoke-DartChecks.ps1 -Engine wslc`, analyze 146 s against nerdctl's
+      953d6f6, `Invoke-DartChecks.ps1 -Engine wslc`, analyze 146 s against nerdctl's
       371 s, format + test 23 s against 32 s (2026-10-06).

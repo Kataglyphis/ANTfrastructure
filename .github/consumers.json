@@ -58,7 +58,7 @@
       "ref": "develop",
       "self": false,
       "confirmed": true,
-      "note": "Rust. Submodule at third_party/ANTfrastructure; bootstraps through scripts/linux/lib/antfrastructure.sh. Its Linux lane calls the 02-toolchain/rust/cargo_*.sh drivers directly by path; three of them were deleted in 2eaed40e (2026-09-08) as unreached because this repo was not declared here, and restored on 2026-09-09. Its container scripts (scripts/windows/container/*.ps1) reach WindowsContainerLog.Common by path; the same sweep deleted that module and windows/scripts/rust/New-Archive.ps1, and 2026-09-14 restored both. No family checkout names New-Archive.ps1 any more (checked 2026-09-25)."
+      "note": "Rust. Submodule at third_party/ANTfrastructure; bootstraps through scripts/linux/lib/antfrastructure.sh. Its Linux lane calls the 02-toolchain/rust/cargo_*.sh drivers directly by path; three of them were deleted in 6f5aef72 (2026-09-08) as unreached because this repo was not declared here, and restored on 2026-09-09. Its container scripts (scripts/windows/container/*.ps1) reach WindowsContainerLog.Common by path; the same sweep deleted that module and windows/scripts/rust/New-Archive.ps1, and 2026-09-14 restored both. No family checkout names New-Archive.ps1 any more (checked 2026-09-25)."
     },
     {
       "name": "AccelerANTgine",
@@ -66,7 +66,7 @@
       "ref": "develop",
       "self": false,
       "confirmed": true,
-      "note": "C++/CMake engine, a submodule of OmniAccelerANT and itself a hub consumer (third_party/ANTfrastructure). Reaches cmake-build, ctest-run, coverage, code-quality, docs-build and 01-core/python_uv via antfrastructure_source; run-lint-gates and renovate-local via antfrastructure_exec; its Windows lane imports WindowsOnnx.Common by NAME through Resolve-BuildModule (deleted in 2eaed40e, restored 2026-09-14)."
+      "note": "C++/CMake engine, a submodule of OmniAccelerANT and itself a hub consumer (third_party/ANTfrastructure). Reaches cmake-build, ctest-run, coverage, code-quality, docs-build and 01-core/python_uv via antfrastructure_source; run-lint-gates and renovate-local via antfrastructure_exec; its Windows lane imports WindowsOnnx.Common by NAME through Resolve-BuildModule (deleted in 6f5aef72, restored 2026-09-14)."
     },
     {
       "name": "ANThology",

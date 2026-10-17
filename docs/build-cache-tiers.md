@@ -211,7 +211,7 @@ and today the only `mode=max` tier is the local one (T2).
 | Symptom | Cause | What the code does by itself | Operator knob |
 |---|---|---|---|
 | `DeadlineExceeded: failed to compute cache key: … httpReadSeeker … no active session` | ghcr cache **import** flake (killed 6 attempts across 2 lanes in one afternoon, 2026-08-18) | retry; after **2** such failures drop the registry cache-from + inline cache-to and finish on the local tier (`_cross_build_drop_registry_cache_after_flake`, cross-stage-build.sh) | `NO_CACHE_EXPORT=1` does the same thing up front |
-| `error writing layer blob: 400 Bad Request` on cache push | ghcr rejecting an oversized `mode=max` cache blob (why T4 was removed in `4f27634`; `195285f` replaced it with T2+T3) | **nothing** — 400 is not in the transient class (`_cross_stage_push_error_is_transient`), so the stage fails | `NO_CACHE_EXPORT=1` |
+| `error writing layer blob: 400 Bad Request` on cache push | ghcr rejecting an oversized `mode=max` cache blob (why T4 was removed in `5feea5d`; `de9e9c3` replaced it with T2+T3) | **nothing** — 400 is not in the transient class (`_cross_stage_push_error_is_transient`), so the stage fails | `NO_CACHE_EXPORT=1` |
 | A stage fails after hours of completed work → T2 exports **nothing** | `--cache-to type=local` only materialises on a successful solve (~8 h of arm64 media work exported ZERO once) | S1 salvage: re-drive the same build per named `--target`, each a pure cache hit, so the export lands anyway (`cross-stage-build.sh:209-247`) | `SALVAGE_CACHE_EXPORT=0` |
 | Disk below 40 G between stages | T2 growth (209 G measured today) | LRU-prune unprotected slugs; stages still to run in **this** chain are protected; if still short, stop writing new exports | `CROSS_DISK_GUARD_GB`, `CROSS_CACHE_MAX_GB`, `CROSS_NO_LOCAL_CACHE_EXPORT=1` |
 | `could not read …/kata-buildcache/…` | empty slug dir, i.e. a clean miss | suppressed: cache-from is only added when `index.json` is non-empty (`cross-stage-build.sh:186-190`) | — |
@@ -690,7 +690,7 @@ Rules the reverted implementation satisfied, and that any future one must keep:
 - **`NO_CACHE_EXPORT=1` still turns everything registry-facing off**, because
   the knob lived inside that guard.
 - **A missing `-buildcache` ref on the first run is a miss, not a fatal.**
-  In-repo evidence: `195285f`'s post-mortem of the never-written `-buildcache`
+  In-repo evidence: `de9e9c3`'s post-mortem of the never-written `-buildcache`
   ref — the importer failed and the stages rebuilt, the solve continued.
 
 **Pilot protocol** (do not skip a step; this is the item that has burned this
@@ -726,7 +726,7 @@ today.
 > **This section previously read "ccache owns C/C++, sccache owns rustc + the
 > GPU compilers … a full switch to sccache was rejected by the owner on
 > 2026-08-17". The owner reversed that on 2026-08-26 and the C/C++ switch is
-> implemented and built (5d94a37, c42091e, d5bafe8).** The old text is kept
+> implemented and built (ece4ab9, 851b48e, 7264b8c).** The old text is kept
 > nowhere but in git history, because a design doc that states a superseded
 > decision reads authoritative and gets followed.
 
@@ -968,7 +968,7 @@ The rules an agent must never violate:
 1. **Closure freeze between runs that should cache-hit.** Editing ANY file in
    the base/toolchain closure changes the compiler image digest and forces
    sdk/media/android to rebuild from scratch on the next run. Since 2026-08-08
-   (A1 applied, commit 5d7a318) **`Dockerfile.base` mounts a traced per-file
+   (A1 applied, commit 52cd2d2) **`Dockerfile.base` mounts a traced per-file
    closure**, not whole directories — 15 bind mounts per block (12× `01-core`
    `.sh` + `versions.env` + `cmake.sh` + `packaging-deps.sh`; the lists live in
    Dockerfile.base itself), one block adding `cpython-dev-packages.sh` and one
@@ -993,7 +993,7 @@ The rules an agent must never violate:
    BETWEEN runs (`systemctl --user restart buildkit`), never while a build
    solves. Do not delete this file.
 3. **sccache is the C/C++ compiler cache; ccache is its FALLBACK. Keep both
-   wired.** Owner directive 2026-08-26 (c42091e), REVERSING the earlier "full
+   wired.** Owner directive 2026-08-26 (851b48e), REVERSING the earlier "full
    switch rejected (2026-08-17)". This is no longer a per-language split:
    every C/C++ launcher resolves at RUNTIME through `compiler_cache_launcher()`
    (`01-core/common.sh`), which returns sccache when its server answers, else
@@ -1013,7 +1013,7 @@ The rules an agent must never violate:
      means "use the compiler cache", not "use ccache". llvm.sh passes it.
    - Both mounts stay on every heavy RUN (ccache AND sccache), because the
      fallback needs somewhere to persist.
-   - **Rust IS cached again (2026-08-27, 4200f7b + 54fc1df) — through the
+   - **Rust IS cached again (2026-08-27, 32668ed + 9cc5d72) — through the
      guarded launcher.** The 2026-08-20 "Rust stays UNCACHED" rule was earned by
      the sccache SERVER dying mid-compile in three media rounds, killing green
      builds at 99% — but that signature was the wrong-server-by-fixed-TCP-port
@@ -1024,7 +1024,7 @@ The rules an agent must never violate:
      build-gstreamer-monorepo.sh's launcher-preferring block, which only fires when
      `RUSTC_WRAPPER` is still UNSET. Both PREFER
      `01-core/sccache-launcher.sh`, so an sccache hiccup costs cache hits, not
-     a build at 99%. Since 26a30740 (2026-08-27, owner decision "immer sccache")
+     a build at 99%. Since f97a9b9e (2026-08-27, owner decision "immer sccache")
      their FALLBACKS AGREE: with no executable launcher on disk both ship BARE
      sccache — build-gstreamer-monorepo.sh's `for _rw in …sccache-launcher.sh` loop
      (`export RUSTC_WRAPPER="${RUSTC_WRAPPER:-sccache}"`) and `setup_sccache`'s
@@ -1043,7 +1043,7 @@ The rules an agent must never violate:
      ([§ The shipped image's cache dirs](#the-shipped-images-cache-dirs)). The size cap
      is `SCCACHE_CACHE_SIZE`; there is no `sccache -M` to call.
    - **PREFER `01-core/sccache-launcher.sh`; fall back to bare `sccache` rather
-     than to nothing.** Superseded 2026-08-27 (`26a30740`): this rule used to
+     than to nothing.** Superseded 2026-08-27 (`f97a9b9e`): this rule used to
      read "NEVER point a launcher at bare `sccache`", and taken literally it
      tells you to delete the default at `compiler-cache.sh:193`
      (`_sc_launcher="sccache"`, upgraded to the launcher when one is on disk) —
@@ -1070,11 +1070,11 @@ The rules an agent must never violate:
      new cache call site, route it through the helper. The duplicated
      resolution in compiler-cache.sh is why this class shipped INERT twice:
      `setup_ccache` hardcoded the string `sccache`, so the guard had no effect
-     on the media lane for three runs (fixed c5b17ce); then `setup_sccache`
+     on the media lane for three runs (fixed 8ef2305); then `setup_sccache`
      exported `RUSTC_WRAPPER="sccache"` unconditionally, and because
      setup-gstreamer.sh:50 runs it BEFORE build-gstreamer-monorepo.sh's
      `[ -z "${RUSTC_WRAPPER+x}" ]` test, every gst-plugins-rs crate went through
-     bare sccache (measured on the live media lane 2026-08-27; fixed 54fc1df).
+     bare sccache (measured on the live media lane 2026-08-27; fixed 9cc5d72).
      Because the class shipped inert twice, `verify-critical-fixes.sh` now
      GATES compiler-cache.sh against
      `export RUSTC_WRAPPER|CMAKE_C{,XX}_COMPILER_LAUNCHER="sccache"`.
@@ -1133,7 +1133,7 @@ keeps the design.
 ## 7. Do-not-repeat list
 
 - Do not add a `--cache-from` whose matching `--cache-to` is gated off. That
-  self-defeating pair made every stage rebuild from scratch until `195285f`.
+  self-defeating pair made every stage rebuild from scratch until `de9e9c3`.
 - Do not add a cache tier that the DeadlineExceeded auto-recovery cannot strip.
 - Do not "align" the ccache/sccache cache-mount ids with the apt ones
   (`Dockerfile.media:26-31`).
@@ -1230,9 +1230,9 @@ does, which is what the next section shows it was.
 
 **This is the root cause of both classes above, and it is a regression of a bug
 this document already carried as fixed (§ 5.4).** `SCCACHE_SERVER_UDS` makes the
-server address container-local. `4aa92fb6` (2026-08-27) exported it from the body
+server address container-local. `9f794436` (2026-08-27) exported it from the body
 of `setup_ccache`, i.e. in the shell that then ran cmake and ninja, and the media
-stage went from 2359 faults to zero. The F2 one-resolver refactor (`8c97cdd8`,
+stage went from 2359 faults to zero. The F2 one-resolver refactor (`caa4aefc`,
 2026-08-30) moved that block, unchanged, into
 `_resolve_compiler_cache_launcher` — a function every caller invokes as
 `$(_resolve_compiler_cache_launcher)`. **A subshell cannot export to its parent.**
@@ -1343,11 +1343,11 @@ on a non-ext4 host mount `flatpak-builder` aborts outright with
 /workspace/.ccache/disabled/ccache.conf: Operation not permitted`. Reported by
 the OmniAccelerANT lane and reproduced as uid 1001.
 
-**Where the value came from.** `eff8deac` (2026-06-01) added `CCACHE_DIR` next to
+**Where the value came from.** `5c65b07d` (2026-06-01) added `CCACHE_DIR` next to
 `CCACHE_SECONDARY_STORAGE=true`, i.e. as one half of a "cache travels with the
-checkout" idea. The other half was wrong and was deleted in `025bf68c` —
+checkout" idea. The other half was wrong and was deleted in `4698373d` —
 `CCACHE_SECONDARY_STORAGE` is a URL and set to `true` it failed *every* ccache
-compile — but the path it was invented for stayed. `d5bafe86` (2026-08-26) then
+compile — but the path it was invented for stayed. `7264b8cc` (2026-08-26) then
 added `SCCACHE_DIR` deliberately alongside it so a consumer would not have a
 ccache dir and no sccache dir; the `/workspace` prefix was inherited from the
 line above, not chosen.
@@ -1389,7 +1389,7 @@ carried only the two dirs, so every consumer's sccache ran with its 10 GiB defau
 purpose: it changes nothing while `SCCACHE_DIR` is set (see below).
 
 **What the shipped image already provides.** `/var/cache/ccache` and
-`/var/cache/sccache` are `drwxrwxrwt` (`Dockerfile.base`, 1777 since `35f83d62`)
+`/var/cache/sccache` are `drwxrwxrwt` (`Dockerfile.base`, 1777 since `64203c3d`)
 and uid 1001 writes to both — verified by running the shipped image. A missing
 cache directory is not an error either: `ccache` creates `CCACHE_DIR` on first
 use, which is how a consumer's `-e CCACHE_DIR=/some/mount` keeps working.

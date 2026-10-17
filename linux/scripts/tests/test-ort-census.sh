@@ -228,7 +228,7 @@ PY
 t_assert_eq '/opt/onnxruntime;C:\temp\onnx-src;/opt/onnxruntime;;;;' "$(_roots)" \
   "__FILE__ paths (.cc, .cpp, a .cuh at the end of the data) count; directory strings (rustc-packed, FFmpeg's configure line) and a path-shaped word without its NUL do not"
 
-# What OxidANT f018bec's liboxidant.so carries: rustc packs &str literals with no NUL between them.
+# What OxidANT da6b2e8's liboxidant.so carries: rustc packs &str literals with no NUL between them.
 OXIDANT_RUN='Failed to run ONNX model (ort)internal error: entered unreachable code: invalid Once state/opt/onnxruntime/onnxruntime/core//workspace/third_party/OxidANT/crates/inferenceresourcesmodelsyolov10m.onnxModel returned no outputs'
 _dl="${_work}/dlopen"
 _elf "${_dl}/lib/liboxidant.so" "" '$ORIGIN' "${OXIDANT_RUN}" OrtGetApiBase

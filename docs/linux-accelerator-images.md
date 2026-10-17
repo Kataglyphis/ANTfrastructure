@@ -359,7 +359,7 @@ segfault:
 **Passed, except `nvblender`.** The published `:latest-nvidia` ran as pulled: index
 `sha256:810f36b38714b423652902ed35f4b221d36f868639a83a3b4da47c476b4a033e`, amd64 manifest
 `sha256:23e3cc9e5bbbfc64d8395e1d171faa56c89e9b09cbb95bedcba225110fe4bdd5`, built 2026-10-11 from
-hub aabebdbc. The host is the one of 2026-10-01: the RTX 2080 (sm_75), driver 595.58.03 with
+hub a6dd6992. The host is the one of 2026-10-01: the RTX 2080 (sm_75), driver 595.58.03 with
 the open kernel module, rootless nerdctl 2.4.0 with CDI from `nvidia-container-toolkit` 1.20.1.
 Every pipeline ran through the image's entrypoint, in its own `ENV`, as root unless a row says
 uid 1001. A pad-probe program, compiled in the image against `sources/includes`, counted the

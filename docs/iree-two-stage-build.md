@@ -117,7 +117,7 @@ sets the target to COMPILER=OFF for exactly this reason. The same class is
 already documented below for iree-compile (IREE_OUTPUT_FORMAT_C=OFF).
 
 WHAT THIS COSTS, plainly: arm64 and riscv64 ship the IREE RUNTIME wheel but
-NOT iree_base_compiler. Commit 9b238e7 wanted both on cross; it set the flag
+NOT iree_base_compiler. Commit 7683a86 wanted both on cross; it set the flag
 without providing a native tblgen, and that configuration cannot build.
 amd64 is NATIVE, never enters this branch, and keeps both wheels.
 IREE_CROSS_BUILD_COMPILER=ON re-tries it once IREE supports the combination.

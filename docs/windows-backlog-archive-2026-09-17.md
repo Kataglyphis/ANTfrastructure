@@ -85,7 +85,7 @@ skips — a fresh volume root carries its own `$RECYCLE.BIN`, which made the cop
 look short.
 
 **Probe mounts.** `Dockerfile.probe` and `Dockerfile.sccache-write-probe` were
-already repaired by `145c17f2`; verified in the tree and left unedited.
+already repaired by `2629d665`; verified in the tree and left unedited.
 
 **`WindowsAgenticLoop.Common.psm1`.** Captured output uses
 `ConcurrentQueue`, not `ConcurrentBag` (the bag enumerates LIFO, reversing every
@@ -242,7 +242,7 @@ All fixed here, verified against the tree before editing:
 
 ## The PascalCase doc anchors — resolved before this wave
 
-`19982134` + `9b819f28` renamed every PowerShell script and left
+`b6fba7fc` + `2b4e379f` renamed every PowerShell script and left
 `docs/windows-builds.md` pointing at six old headings. The anchors now resolve
 against the live headings; `verify_doc_links.py` is green over the whole tree and
 the pre-commit hook no longer needs `--no-verify` for this class.

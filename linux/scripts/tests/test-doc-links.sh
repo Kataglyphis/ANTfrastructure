@@ -194,7 +194,7 @@ if without_git_probe != floor_probe:
     problems.append("no-git path ignored the floor on the probe list")
 # A HAPPY git that reports nothing. check-ignore never names a TRACKED file, and
 # .gitignore re-admits dated run dirs, so a committed benchmark run answers "not
-# ignored" for all 66 of them -- how 542b87f6 put model output back in the scan.
+# ignored" for all 66 of them -- how 28280c43 put model output back in the scan.
 # The mutation mirror has no .git, so only a stub can reach the union line.
 class _Proc:
     returncode, stdout = 1, ""

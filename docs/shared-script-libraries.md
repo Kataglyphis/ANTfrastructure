@@ -595,7 +595,7 @@ the `sphinx_kataglyphis` package.
 
 It did not always find it. Both probes that stood in that script named a hub path
 that resolves to nothing — the hub's own `docs/_static/css/custom.css` was dropped
-in `28425115` (2026-07-15) as a stale fork of that very sheet, and the fallback
+in `fc26b1d1` (2026-07-15) as a stale fork of that very sheet, and the fallback
 pointed one level short, at `linux/docs/_static/`, which has never existed in this
 repository. The block therefore produced an empty `EXT_CSS` on every run and
 rustdoc got no theme at all, silently.

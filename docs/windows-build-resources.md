@@ -432,9 +432,9 @@ after a decision history worth keeping:
     | Run | Stage | CUDA through sccache |
     |---|---|---|
     | 2026-10-14, nvcc bare | 4956 s | none |
-    | First fill (hub `8a4ef0fa`) | 4746 s | 292 hits, 277 misses |
-    | Warm, chain from an empty BuildKit store (`5499dc91`) | about 30 min | 569 of 569 |
-    | Warm rerun, `-NoCacheStage media-core-built-onnx` (`cfe4774c`) | **1332 s** (ninja 1149 s) | 569 of 569; 6134 requests, 0 misses |
+    | First fill (hub `ad4cad96`) | 4746 s | 292 hits, 277 misses |
+    | Warm, chain from an empty BuildKit store (`15bc7d6c`) | about 30 min | 569 of 569 |
+    | Warm rerun, `-NoCacheStage media-core-built-onnx` (`62973b48`) | **1332 s** (ninja 1149 s) | 569 of 569; 6134 requests, 0 misses |
 
     Configure printed `nvcc stays bare for onnxruntime_providers_cuda_llm` every time. Both warm
     builds linked `onnxruntime_providers_cuda` from hits, and the chain's smoke gate passed 301
@@ -651,7 +651,7 @@ now the LiteRT-LM build (5244 actions, ~400 s) and the ai-edge-litert wheel (565
 **The build host's sccache settings are ARGs, never ENV (2026-09-23).** Until then
 four Dockerfiles ENV'd them: the `patched-llvm` stage (#164), media-builder's
 `common` stage, the merge stage and `Dockerfile.rocm-migraphx`. `:winamd64`
-(digest `3137eebe…`, built 2026-09-22 from hub `0d85b8c1`) shipped
+(digest `3137eebe…`, built 2026-09-22 from hub `4dfeaafe`) shipped
 `SCCACHE_WEBDAV_ENDPOINT=http://<webdav-lan-ip>:5000`, the owner's LAN WebDAV. On
 a GitHub runner that address is unreachable. sccache 0.18.0 checks its storage
 when the server starts and exits when the check fails (`tcp connect error`).

@@ -6,7 +6,7 @@ and including 2026-08-21: the post-08-17 numbered entries (#72-#110 with
 their verification evidence), the CURRENT-SEQUENCE ride log (versions.env
 bump ride, the sccache deadlock/miscompile verdict), P0-P7 narratives, and
 the complete P8 refactor-audit cycle (#120-#131, opened AND liquidated
-2026-08-21, commits 48f5733f..891394c4). Standing directives extracted from
+2026-08-21, commits f5a0863a..b2365e85). Standing directives extracted from
 these entries live on in `windows-builds.md` — this file is the record, not
 the rulebook. Earlier tranches: windows-backlog-archive-2026-08-11.md,
 windows-backlog-archive-2026-08-17.md.
@@ -472,7 +472,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   BuildKit upstream report is filed). Only `v2` is referenced. One probe-style
   cleanup RUN reclaims ~200 MiB of the shared 40 GB tier-0 budget. Builder
   disk, not image size. BLOCKED while any build holds the locked mount.
-- **106 [S·★, none] DONE 2026-08-20 - STALE REMAINDER: the '~52 undeclared files' were already normalized by 09f97bab (repo-wide sweep); today's audit finds exactly ONE file without `#requires -Version 7.0` - Initialize-Pwsh.ps1, the DELIBERATE 5.1 exception whose test asserts it must NOT declare 7.0. Entry outlived its fix (same class as #81). Earlier: PARTLY DONE — the 5.1 parse gate shipped and immediately
+- **106 [S·★, none] DONE 2026-08-20 - STALE REMAINDER: the '~52 undeclared files' were already normalized by 095cc1fc (repo-wide sweep); today's audit finds exactly ONE file without `#requires -Version 7.0` - Initialize-Pwsh.ps1, the DELIBERATE 5.1 exception whose test asserts it must NOT declare 7.0. Entry outlived its fix (same class as #81). Earlier: PARTLY DONE — the 5.1 parse gate shipped and immediately
   corrected the entry''s own premise** (only `Initialize-Pwsh.ps1` runs under
   WPS 5.1; setup-vs/setup-scoop declare 7.0 and run after the SHELL switch).
   STILL OPEN: add `#requires -Version 7.0` to the ~52 undeclared files — many
@@ -603,7 +603,7 @@ Upstream follow-ups: see "Pending" at the bottom.
 
 ## P8 — 2026-08-21 REFACTOR AUDIT: FULLY LIQUIDATED same day
 ## (four-agent deep audit → 7 bugs fixed + guards/dedups/driver-convergence
-## in c7d24907..48a87c15, the residue below in f1883cd9..891394c4; every
+## in 78a691bc..1a7549c6, the residue below in 64a700d5..b2365e85; every
 ## entry stamped DONE or CLOSED-with-reason.)
 ###
 ## >>> THE ONE OPEN ITEM: the P8 batch (13 commits total, suite 523→536) is
@@ -664,7 +664,7 @@ Upstream follow-ups: see "Pending" at the bottom.
 - **130 DONE 2026-08-21 with a SMALLER footprint than audited: on close reading most of the 345 comment lines are knob-side operating rules or live recovery pointers, not archaeology — relocated/trimmed the #99 measurement narrative (docs pointer) and rewrote the stale-then-corrected media-core-env header; smoke-gate/base headers judged operative. Original: media-builder comment archaeology (~250 of 345 comment lines)
   → docs/ under stable anchors, 2-4 line summaries + links stay.** Same for
   smoke-gate/base headers. Relocation, NOT deletion — owner-reviewed.
-- **131 CLOSED 2026-08-21 by DECISION (see commit c92c5283): all three root files stay (cargo-retry is the consumer-CI class the 2026-08-08 sweep incident restored), language-lane dirs stay. Original:** Invoke-Lint.ps1/entrypoint.cmd homes;
+- **131 CLOSED 2026-08-21 by DECISION (see commit 830d669e): all three root files stay (cargo-retry is the consumer-CI class the 2026-08-08 sweep incident restored), language-lane dirs stay. Original:** Invoke-Lint.ps1/entrypoint.cmd homes;
   `cargo-retry.cmd` referenced ONLY by AGENTS.md — confirm dead or re-wire;
   certificates/ python/ rust/ are language-lane groupings that cut across the
   verb scheme — decide, don't drift.
@@ -675,12 +675,12 @@ Upstream follow-ups: see "Pending" at the bottom.
 
 Second deep audit (4 agents incl. an adversarial review of the refactor
 batch itself) — 2 build-breakers + 4 wrong-results caught BEFORE the verify
-ride (commits 72d92fb1, e680fb4b), outer-ring/setup/module-tail fixes, and
-the P9 residue below, liquidated the same day (f5f6de07) with consumer
+ride (commits db79dd0f, 4c6dd438), outer-ring/setup/module-tail fixes, and
+the P9 residue below, liquidated the same day (6b832bda) with consumer
 contracts VERIFIED against the local repos. Suite 523 -> 547 over the day.
 
 ## P9 — 2026-08-21 audit ROUND 2 residue (deferred with reasons; the fixes
-## themselves landed same day in 72d92fb1 + e680fb4b, suite 523->537)
+## themselves landed same day in db79dd0f + 4c6dd438, suite 523->537)
 
 - **140 DONE 2026-08-21: ZERO callers verified across ALL local consumer repos (BeschleunigerBallett/Inference-Engine/Orchestr-ANT-ion/RustProjectTemplate/WebDavClient/jotrockenmitlocken + the reusable workflows) — the comment was wrong, the code was unowned. Comment now states the truth (ANTfrastructure checkout root) + explicit -RepoRoot override for vendored consumers. Original: [M·decision] `Initialize-CiEnvironment.ps1` repo-root depth vs its own
   comment.** `..\..\..` from scripts/python resolves to the ANTfrastructure

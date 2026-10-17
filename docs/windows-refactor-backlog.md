@@ -337,7 +337,7 @@ this repo's cp314 pin).
   batch: the thirteen audited defects, the eight settled-probe deletions, the
   compiler-rt verify+tar port, LLVM through sccache, smoke section 23, the
   comment-discipline wave and the three neighbourhood checks. Landed in
-  `2bb0410f` (2026-09-18), unbuilt when archived.
+  `5eac94d5` (2026-09-18), unbuilt when archived.
   Archive: [`windows-backlog-archive-2026-09-17.md`](windows-backlog-archive-2026-09-17.md).
 
 - **The 2026-09-03 doc-drift findings and the PascalCase anchors** — all six
@@ -355,7 +355,7 @@ this repo's cp314 pin).
   (full LLVM + media on both lanes). Narrative:
   [`changelog-archive-2026-09-07.md`](changelog-archive-2026-09-07.md) § 2026-09-01/02.
 
-- **#149** — the `c9586c1^` warm/materialize rollback recipe: DEAD, not stale.
+- **#149** — the `2cb182e^` warm/materialize rollback recipe: DEAD, not stale.
   FOUR independent breakages (every script path, the missing TargetArch + Tvm
   modules, the swapped media-core order, the QAIRT pin). The restore recipe is now
   a derivation rule in `windows-build-lanes.md` § Restoring the warm/materialize rollback — derive each RUN from the stage that
@@ -375,7 +375,7 @@ this repo's cp314 pin).
   `patched-llvm` whole-dir module mount narrowed (and gated), TVM + GStreamer
   helpers moved to their leaf modules, `Set-StrictMode` plus the four latent bugs it
   exposed, the deliberate declines, the dead `build.ps1` permission entries, and the
-  CHANGELOG archive split. Seven commits, `7cc2e95f^..a5eac0dd`. Full narratives:
+  CHANGELOG archive split. Seven commits, `22041fc8^..ebd5457c`. Full narratives:
   [`windows-backlog-archive-2026-08-31.md`](windows-backlog-archive-2026-08-31.md)
   § Backlog wave #147-#151. Its declines are also a standing directive below.
 
@@ -407,7 +407,7 @@ this repo's cp314 pin).
   cross lane (same recipe as Install-ScoopTools.ps1). Chosen over adding the lib to
   the toolchain layer because the media branches derive FROM `bk-windows-toolchain`,
   so that would re-pay ~2 h of media compiles for one lib. Toolchain-level fix
-  LANDED 2026-08-31 (`bd150ae1`, `Install-TargetCompilerRt` in
+  LANDED 2026-08-31 (`017660f4`, `Install-TargetCompilerRt` in
   Build-LlvmFromSource.ps1) and shipped with the 2026-09-01/02 toolchain
   rebuilds — the merge-stage self-heal is now the never-firing fallback.
   Nothing left here. Regression:

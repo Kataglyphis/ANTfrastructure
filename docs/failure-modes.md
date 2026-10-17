@@ -776,7 +776,7 @@ falling back to Ubuntu's.
 
 - `wire_cargo_symlinks` checked `-x` (true for a foreign ELF) and kept the shims.
 - `report_rust_provenance`'s hard gate reads `RUST_VERSION`, which did not reach
-  the script until 7eca29c6 (2026-09-03) — the day it started running was the
+  the script until 497fd319 (2026-09-03) — the day it started running was the
   day it failed. Before that: `NOTE: RUST_VERSION unset; cannot verify`.
 - The runtime smoke's ADV/HAVE table (`_advert_verdicts`) turned an *unreadable*
   actual value into `SKIP`, so `rustc --version` failing under `2>/dev/null` was

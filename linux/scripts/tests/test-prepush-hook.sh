@@ -76,8 +76,8 @@ _push() {  # <remote sha>: one pushed ref on stdin, as git writes it
     HOOK_TEST_ROOT="${_root}" HOOK_TEST_ARGV="${_ARGV}" HOOK_TEST_STALE_RC=0 HOOK_TEST_GATE_RC=0 \
     bash "${HOOK}" >/dev/null 2>&1
 }
-_push 740b9eba
-t_assert_contains "$(_call 2)" "--base 740b9eba" "develop is what the push updates; main lags it by hundreds of entries"
+_push 1282f76d
+t_assert_contains "$(_call 2)" "--base 1282f76d" "develop is what the push updates; main lags it by hundreds of entries"
 _push "${_zero}"
 t_assert_contains "$(_call 2)" "--base origin/main" "a new remote ref has no tip to count from"
 _push 1111aaaa

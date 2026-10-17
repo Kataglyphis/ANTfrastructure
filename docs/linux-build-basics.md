@@ -140,8 +140,8 @@ blind spots; neither replaces the other:
   never reached LLVM's nested sub-builds, 0% gain on identical inputs).
 - `compiler-cache.sh::setup_sccache` has documented this exact division of
   labor all along; 2026-08-08 wired the Rust half behind a gate, and
-  2026-08-27 put it on by default through the guarded launcher (4200f7b, plus
-  54fc1df — `setup_sccache` had been exporting bare `sccache` unconditionally,
+  2026-08-27 put it on by default through the guarded launcher (32668ed, plus
+  9cc5d72 — `setup_sccache` had been exporting bare `sccache` unconditionally,
   which defeated the wiring entirely).
 
 **Roadmap to "everything cached" (all specced, closure-batched):** ccache

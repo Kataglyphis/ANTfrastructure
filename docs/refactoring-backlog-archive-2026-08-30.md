@@ -18,9 +18,9 @@
   server over the fixed TCP port (4226), the wrong server accepted the job
   ("Server sent CompileStarted") and then could not find the caller's files —
   `caused by: No such file or directory (os error 2)`. Fixed 2026-08-27:
-  b4078ad1 (container-local server identity) + 4aa92fb6 (`SCCACHE_SERVER_UDS`
+  1c8a1ae7 (container-local server identity) + 9f794436 (`SCCACHE_SERVER_UDS`
   — the address is a filesystem path in /tmp, private by construction), the
-  same night the guarded launcher (fece3558) started carrying the build past
+  same night the guarded launcher (4412d1d5) started carrying the build past
   the failures. DOCUMENTED at the time in `docs/build-cache-tiers.md` § 5.1:
   "SCCACHE_SERVER_UDS took the media stage from 2359 sccache faults to zero."
   Evidence trail that closes it (log forensics, 2026-08-30):
@@ -82,8 +82,8 @@
     unit- and live-proven at the buildkit level).
 - ✅ **TG1/TG3 residuals — CLOSED 2026-08-30 (they were already implemented).**
   The toolchain-closure trim (TG1) and the RUN-3/3d collapse (TG3) both landed
-  2026-08-24 — f485c132 ("TG1 bounded: lazy cmake/vulkan sourcing + trim their
-  dead toolchain mounts") and 202634c1 ("closure-window-3 wave", which deleted
+  2026-08-24 — 713201cf ("TG1 bounded: lazy cmake/vulkan sourcing + trim their
+  dead toolchain mounts") and 0832329d ("closure-window-3 wave", which deleted
   RUN 3d and unified the superset build into RUN 3) — but were never CLOSED in
   the backlog. The validating rebuild started 2026-08-30 (local compiler build
   with GCC_PARALLEL_TARGETS=1) exercises both: the trimmed per-RUN mounts are
@@ -103,7 +103,7 @@
      The flag was never forwarded into the build — no ARG in
      Dockerfile.toolchain, no --build-arg in the compiler-stage args — so a
      launch-time `GCC_PARALLEL_TARGETS=1` silently did nothing and the
-     sequential path won every validation. Fixed in 92fb9646 (ARG + ENV in
+     sequential path won every validation. Fixed in ff62839f (ARG + ENV in
      Dockerfile.toolchain; `append_optional_build_arg` forwarding in
      stage-defs.sh's compiler case; dry-run now emits `--build-arg
      GCC_PARALLEL_TARGETS=1` when set, absent when not; pinned by
@@ -112,7 +112,7 @@
      per-target `build-gcc.sh` invocations each ran their own
      "Installing build dependencies..." apt_install and collided on
      `/var/lib/apt/lists/lock` ("E: Could not get lock … held by process N").
-     Fixed in 5e8b2470: `GCC_SKIP_BUILD_DEPS=1` gates build-gcc.sh's apt step
+     Fixed in 1085d6fe: `GCC_SKIP_BUILD_DEPS=1` gates build-gcc.sh's apt step
      (deps are already installed by `build_host_gcc`, which runs first) and the
      parallel driver exports it after the serial pre-pass. Sequential path
      unchanged. (The failure was also masked by a bash ERR-trap dynamic-scoping
@@ -139,7 +139,7 @@
   100 % C/C++ hit rate), 27 artifact verifies OK, android pushed. modules.sh
   reorder + the QNN-off fan-out path (litert/tvm/app-wheelhouse/genai with no
   zip) exercised with no regression.
-- ✅ **sccache-launcher server-death gap — FOUND LIVE + FIXED (0371d164).**
+- ✅ **sccache-launcher server-death gap — FOUND LIVE + FIXED (6fc8defc).**
   The F2 validation caught a second failure class the guarded launcher did not
   handle: the sccache SERVER died mid-build under full concurrent-media load
   (`sccache: error: failed to execute compile / caused by: Failed to send data

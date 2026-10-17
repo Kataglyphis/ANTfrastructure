@@ -66,7 +66,7 @@ was staged as a hardlink (0 extra bytes) and removed again afterwards per the
 **The validation earned its keep on the first run:** LiteRT died ~7 min in with
 `QnnLog.h: No such file or directory`, because `QAIRT_HEADERS_DIR` was passed one
 directory too high on a belief the code stated in its own comment and which is
-false for our code path. Fixed in `82b09447` (`_litert_qairt_include_dir`,
+false for our code path. Fixed in `dc6e4f32` (`_litert_qairt_include_dir`,
 covering the configure path AND the wheel path, with an assert), guarded by
 `tests/test-litert-qairt-headers.sh` and two mutation-manifest entries that were
 confirmed to bite. The re-run finished `Cross chain complete.` — 60 stages, 0
@@ -353,8 +353,8 @@ compares the RUNTIME's numeric prefix", and that comparison never executes.
 Were the runtime to drift to 3.10.0, the image would ship advertising
 IREE_VERSION=v3.11.0 and the smoke would print `SKIP IREE_VERSION image sets
 no IREE_VERSION` then `pass all 5 advertised version(s) match`. ROOT CAUSE
-(not in the claim): commit d27cdee1 fixed only the Dockerfile half; `git show
-d27cdee1 -- linux/scripts/06-packaging/smoke-runtime-image.sh` is an empty
+(not in the claim): commit 4414c40f fixed only the Dockerfile half; `git show
+4414c40f -- linux/scripts/06-packaging/smoke-runtime-image.sh` is an empty
 diff. The missing enforcement is in verify-advertised-keys.py:63, which
 computes `checked` from the `_ADVERTISED_VERSION_KEYS` string alone and never
 requires a matching `ADV <key>` printf in the probe — its own FAIL message
@@ -405,7 +405,7 @@ in the 16-key table (smoke:784-787), have working HAVE probes (smoke:692-701)
 and are ENV-set in the shipped image (linux/Dockerfile.package:180-189), yet
 `_advert_verdicts` (smoke:820, 825-826) sees an empty `adv` and emits `SKIP
 <key> image sets no <key> -- nothing advertised to check` — a reason that
-stopped being true when commit d27cdee1 added those ENVs. Gate A therefore
+stopped being true when commit 4414c40f added those ENVs. Gate A therefore
 still asserts 5 rows, not 16. The three guards that should catch this cannot:
 verify-advertised-keys.py:58-64 derives `checked` from the table string alone;
 the vacuous-pass guard (smoke:1009-1010) only fires when *every* key skips;
@@ -923,7 +923,7 @@ local cache-export recreates" sub-case does NOT spin: recreation bumps the
 slug's mtime to now, moving it to the end of `ls -1tr`, so pick_victim
 advances to an older slug. Drop that one; the EPERM/undeletable case is the
 real one. Two things the claim understates, both worth carrying into the fix:
-* The bug is a dead fix, not an oversight — commit 5337d6c4 exists solely to
+* The bug is a dead fix, not an oversight — commit acc47b21 exists solely to
 prevent this spin, so the repo believes it is protected and is not. That also
 means any log line `[disk-guard] could not remove X; skipping it` appearing
 more than once for the same X in a run log is a live sighting of the wedge,
@@ -1061,7 +1061,7 @@ artifact of the chain.
 
 `linux/scripts/tests/test-iree-wheelhouse-stages.sh:233`
 
-**FIXED 2026-09-03** (`aac89983`). PATH is now just the stub dir, which holds the
+**FIXED 2026-09-03** (`50f34737`). PATH is now just the stub dir, which holds the
 git and ninja stubs; nothing in `build_iree_wheels` runs an external command before
 the check. The case also asserts the REASON now, not only the return code — without
 that, deleting the guard still returns 1 and the case still passes, which is exactly
@@ -1138,7 +1138,7 @@ not make, and a refactor of _iree_check_prereqs would be mutation-invisible.
 
 `linux/scripts/tests/test-guard-helpers.sh:57`
 
-**FIXED 2026-09-03** (`dafd45db`). Both cases capture `$?` straight after the
+**FIXED 2026-09-03** (`a13c41e3`). Both cases capture `$?` straight after the
 subshell. **The first fix was no fix:** wrapping the subshell in `if ... then`
 suppresses errexit inside it, so the very abort under test could not happen — the
 suite stayed green with `first_match`'s `|| true` removed. Caught by mutating.
@@ -1244,7 +1244,7 @@ published cross-android tag instead of the image just built — exactly the
 **Evidence.**
 Simulated both helpers verbatim: producer -> /WD/android-artifacts-arm64,
 consumer -> /WD/android-artifacts/arm64. The mismatch was introduced in
-8c97cdd8 ('backlog sweep 2026-08-30: close F1/F2/C'); its own comment at
+caa4aefc ('backlog sweep 2026-08-30: close F1/F2/C'); its own comment at
 build-cross-chain.sh:158 asserts the exporter wrote `<cross workdir>/android-
 artifacts/<arch>`, which cross_stage_context_dir does not do.
 CHANGELOG.md:1322, docs/linux-cross-builds.md:175 and docs/refactoring-
@@ -1254,29 +1254,29 @@ cross-stage-build.sh for the raw read, so it cannot see the orchestrator side.
 
 **Verifier's correction.**
 The mechanism is confirmed, but three parts of the claim need correcting. 1.
-WRONG COMMIT. The break was NOT introduced by 8c97cdd8. That commit
+WRONG COMMIT. The break was NOT introduced by caa4aefc. That commit
 (2026-08-30) wrote the correct slash form as a literal: `local
 artifact_dir="${CROSS_CONTEXT_WORKDIR}/android-artifacts/${arch}"`, matching
-its own comment and all the docs. The regression is commit 3be6b427
+its own comment and all the docs. The regression is commit 7981b8ea
 (2026-09-01, "cross-chain: the --no-push OCI handoff never activated"), which
 replaced that literal with `artifact_dir="$(cross_stage_context_dir android-
 artifacts "${arch}")"` to fix an unrelated `set -u` hazard, not noticing that
 `cross_stage_context_dir` joins the arch with a DASH
 (`${stage}${arch:+-${arch}}`, cross-stage-build.sh:113) while the consumer
 joins with a SLASH (`${ARTIFACT_CONTEXT_ROOT%/}/${arch}`, context-
-management.sh:209). The consumer side was never touched by 3be6b427. So build-
+management.sh:209). The consumer side was never touched by 7981b8ea. So build-
 cross-chain.sh:162 is not the defect — it is the half that still matches the
 documentation; the defect is at linux/scripts/01-core/cross-stage-
 build.sh:502. 2. THE TEST IS WORSE THAN "BLIND". test-cross-oci-
 handoff.sh:180-183 does not merely fail to see the orchestrator side; it
 asserts `grep -c 'CROSS_CONTEXT_WORKDIR}/android-artifacts' cross-stage-
-build.sh` equals 0, i.e. it actively forbids the correct 8c97cdd8 form and
+build.sh` equals 0, i.e. it actively forbids the correct caa4aefc form and
 pins the broken helper call. Restoring the slash path by reverting to the
 literal turns that assertion red. 3. NO STALE-TAG PATH ANY MORE. The claim's
 second half ("when the guard-rail is bypassed the package would copy from the
 stale published cross-android tag") does not occur on current HEAD.
 `runtime_use_local_artifact_context` is true whenever `ARTIFACT_CONTEXT_ROOT`
-is non-empty, and since 3be6b427 mints `CROSS_CONTEXT_WORKDIR` eagerly in
+is non-empty, and since 7981b8ea mints `CROSS_CONTEXT_WORKDIR` eagerly in
 `main()` the orchestrator always sets it under `--no-push`. So the registry-
 fallback branch (runtime-build-fns.sh:290-294) is never taken; the run always
 takes the hard-failure branch instead. The failure is also loud, not silent:
@@ -1735,8 +1735,8 @@ one special case in `lint-shell.sh:123,136` that exists purely so the
 extension-less file still gets shellchecked. CI does not run it either —
 `ubuntu24.04.yml:48` runs `bash linux/scripts/preflight.sh` directly.
 
-It is also **stale**: last touched 2026-08-25 (`928e7451`), while the live hook
-was updated 2026-09-03 (`c0dc4de2`). The two run genuinely different gate sets,
+It is also **stale**: last touched 2026-08-25 (`3a8db076`), while the live hook
+was updated 2026-09-03 (`3f9daa61`). The two run genuinely different gate sets,
 so following the dead one gives a weaker check than the repo actually enforces.
 
 The documentation references are fixed (`AGENTS.md`, `cross-build-verification.md`

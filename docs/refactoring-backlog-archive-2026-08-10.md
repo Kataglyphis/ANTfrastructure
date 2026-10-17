@@ -139,13 +139,13 @@ is GONE from `~/.config/buildkit/buildkitd.toml` (only the registry mirror
 remains, 7 lines). Re-do together with the Batch-0 max-parallelism toml edit.
 
 **36 legacy items are DONE-BUT-UNMARKED — treat as closed.** Biggest clusters:
-via 4aed84d (uv-pip executor pins ×8, verify-parity main() decomposition — the
+via 52ffc24 (uv-pip executor pins ×8, verify-parity main() decomposition — the
 T5 queue entry citing it is STALE, abseil immutable+sha, Vulkan/GStreamer-
-android SHA pins); 9df9414 (BUILD_MEM_DIVISOR wiring — the old
-"--parallel-archs unusable" blocker); d4feb03 (LiteRT pywrap rename);
-d3815e7+9d793d1+d7c3fb1 (the whole GStreamer ship-but-can't-load class:
-rice-proto, missing apt libs, mandatory-plugin gate); 709756e (LICENSE);
-b6ad4c4+2c950f8 (Windows ONNX CUDA launcher + cache verify). Also closed:
+android SHA pins); d855f37 (BUILD_MEM_DIVISOR wiring — the old
+"--parallel-archs unusable" blocker); 55ab11f (LiteRT pywrap rename);
+4efc774+ec1223e+9e6d8da (the whole GStreamer ship-but-can't-load class:
+rice-proto, missing apt libs, mandatory-plugin gate); 8470907 (LICENSE);
+7c1d2f6+8657b02 (Windows ONNX CUDA launcher + cache verify). Also closed:
 ★★★ stale-log core (`.run` marker, cross-stage-build.sh:42 — the residual
 run-dir namespacing is MERGED INTO O2, track only there); verify-runtime-paths
 advisory contract; PYTORCH_EXTRA sentinel guards ×all consumers; ffmpeg
@@ -209,7 +209,7 @@ Dawn-fails finding (→ 07-20 fix, WebGPU live); P5 degraded-plugin re-verify
 
 ## Build efficiency / speed
 
-- **onnxruntime WebAssembly target — RESOLVED (commit 63fd9d3): now build-once,
+- **onnxruntime WebAssembly target — RESOLVED (commit b44b621): now build-once,
   ship-to-all.** Was: compiled amd64-only AND orphaned (never COPY'd anywhere — the
   original "gate it off" note assumed it wasn't wanted). User wants onnx-web shipped
   on ALL arches. Since the WASM is arch-independent, it's now compiled ONCE on amd64
@@ -246,7 +246,7 @@ Dawn-fails finding (→ 07-20 fix, WebGPU live); P5 degraded-plugin re-verify
   (`--extra none` → uv sync fails → whole tree incl torch dropped). Fixed for that
   one call site, but the "none means no extra" convention is fragile — prefer empty
   string / an explicit boolean, and audit other `${PYTORCH_EXTRA}` / sentinel uses. — S · ★★
-- ~~**The riscv64 native-GCC smoke can't actually validate A2.**~~ **DONE (bcbd19d).**
+- ~~**The riscv64 native-GCC smoke can't actually validate A2.**~~ **DONE (a19bc4b).**
   The android-stage smoke runs on the x86_64 host → `Exec format error` → benign
   "cross-build host limitation", so the native riscv64 gcc was never executed.
   Fixed by adding a compile+link+**RUN** check to `smoke-runtime-image.sh`, which
@@ -305,7 +305,7 @@ _(build-log signals collected while 0711f runs — triage into the sections abov
   false-matched a completion watcher, and reads like a warning. Reword to something
   like `INFO: torch deferred to runtime wrapper (expected in media)`. — S · ★
 - **External-source pinning relies on forge auto-archives that aren't byte-stable.**
-  (fixed 9f4a3ce for one case) android cerbero fetched `soundtouch 2.4.1` from
+  (fixed 1969245 for one case) android cerbero fetched `soundtouch 2.4.1` from
   `codeberg.org/soundtouch/soundtouch/archive/2.4.1.tar.gz`; Forgejo regenerated
   the archive → sha256 drift → all 3 android stages died. This is a *class*: any
   recipe/download pinned to a GitHub/GitLab/Codeberg `/archive/<tag>.tar.gz` can
@@ -336,18 +336,18 @@ _(build-log signals collected while 0711f runs — triage into the sections abov
   silence — trivially removes a recurring scary-looking warning. — S · ★
 - _base + compiler: no real defects. A2 (riscv64 GCC `--with-isa-spec`) built
   clean end-to-end (GCC+LLVM+Rust, no `invalid -march`)._
-- **REAL BUG (fixed 7f10bfe): `${SUDO:-} <sudo-flag>` collapses to a bad command
+- **REAL BUG (fixed 12f883f): `${SUDO:-} <sudo-flag>` collapses to a bad command
   when SUDO is empty.** `vulkan.sh:322` ran `${SUDO:-} --preserve-env=... ./vulkansdk`;
   on root cross containers SUDO is empty → `--preserve-env` became the command →
   exit 127, killing sdk-arm64 + sdk-riscv64 (amd64 had SUDO set, survived). Added
-  today in 7e6d627, masked by sdk cache until this no-cache run. **Refactor angle:**
+  today in ab0639a, masked by sdk cache until this no-cache run. **Refactor angle:**
   the `${SUDO:-}` prefix idiom is only safe when the next token is a real command;
   a bare flag after it is a latent bug. Worth a lint rule / a `run_priv()` helper
   that appends `--preserve-env` *only* when actually invoking sudo, instead of the
   raw `${SUDO:-}` sprinkle (24+ call sites in this one file). — M · ★★
   Reinforces the standing lesson: **cache-bust exposes latent bugs** — a from-scratch
   no-cache run is the only thing that exercises foreign-arch-only code paths.
-- **REAL BUG (fixed e3ffb0a): `uv venv --clear` seeded from the venv it deletes.**
+- **REAL BUG (fixed acaa213): `uv venv --clear` seeded from the venv it deletes.**
   `Dockerfile.media:140` ran `uv venv --clear /opt/python/.venv` while the base
   image ENV had `UV_PYTHON=/opt/python/.venv/bin/python`; `--clear` deletes that
   interpreter, so uv had nothing to seed from → "No interpreter found" (exit 2),
@@ -366,11 +366,11 @@ build-runtime-manifest.sh) made the arm64/riscv64 runtime smokes actually EXECUT
 for the first time — amd64's all-green smoke had hidden four real foreign-arch
 breakages. All four now fixed:
 
-- **RESOLVED c46da5f (toolchain): foreign-arch native GCC C++ exceptions.** The
+- **RESOLVED 63ecbbe (toolchain): foreign-arch native GCC C++ exceptions.** The
   Canadian-cross GCC-16 for riscv64/arm64 linked a `try/throw/catch` program that
   then terminated at runtime (rc=134, catch never fired). The earlier RESIDUAL note
   here mis-diagnosed this as a binutils ld-2.46 duplicate-DSO issue; the TRUE root
-  cause was self-inflicted: the header fix in 2500d60 installed a `*self_spec` file,
+  cause was self-inflicted: the header fix in 3545c83 installed a `*self_spec` file,
   and installing *any* specs file RESETS the driver's dynamically-computed link specs
   — it silently drops `-lgcc_s` (from `*libgcc`) and `--eh-frame-hdr` (from the EH
   link spec). Restoring them by hand is fragile whack-a-mole under QEMU (restoring
@@ -382,11 +382,11 @@ breakages. All four now fixed:
   AND C++ (`#include_next`) while leaving the link specs untouched. Validated on
   arm64+riscv64: bare `gcc hello.c`, simple C++, exception-throwing C++ (throw/catch
   + STL sort), std::thread, libm, libatomic, and `-flto` all compile+link+run. The
-  RUNTIME_COMPILER_SMOKE battery (d2da044) regression-guards all of these.
-- _Fixed 2500d60: riscv64 torch libsleef.so.3 (USE_SYSTEM_SLEEF wheel, runtime lib
+  RUNTIME_COMPILER_SMOKE battery (0e8fdc0) regression-guards all of these.
+- _Fixed 3545c83: riscv64 torch libsleef.so.3 (USE_SYSTEM_SLEEF wheel, runtime lib
   never installed → add libsleef3); ffmpeg libopencore-amrwb.so.0 (silent best-effort
   codec install → add a fail-loud `ldd` closure gate in setup_torch_deps); foreign-arch
-  gcc <stdio.h> (baked cross sysroot header dir → superseded by the c46da5f wrapper)._
+  gcc <stdio.h> (baked cross sysroot header dir → superseded by the 63ecbbe wrapper)._
 - **Class lesson (★★★): amd64-green ≠ shipped-green for a multi-arch manifest.** Every
   one of these shipped inside a "validated" `:latest-cross` because the foreign-arch
   smokes silently no-op'd on `exec format error` (no host qemu) and were read as a host
@@ -398,7 +398,7 @@ breakages. All four now fixed:
 
 ## Harvested 2026-07-12 (cont) — new runtime smokes found a GStreamer-plugin gap
 
-Adding the native `.so`-closure gate + functional runtime smokes (commit 19a86a5)
+Adding the native `.so`-closure gate + functional runtime smokes (commit b34b11a)
 immediately surfaced a real class the old smokes missed, on ALL three arches:
 
 - **GStreamer plugins ship but can't load — their runtime `.so` deps aren't installed.**
@@ -461,25 +461,25 @@ Three parallel audits (DRY/reuse, complexity, smoke coverage) after the 3-arch
 `:latest-cross` went green. Done this pass (all shellcheck-clean; build-path items
 validated by the 0717 media→android→runtime rebuild unless noted):
 
-- **DONE (438ac45): freetype/libpng cross-build dedup.** Extracted
+- **DONE (fead96b): freetype/libpng cross-build dedup.** Extracted
   `cross_compile_cmake_lib_from_source` (01-core/cross-env.sh) reused by both
   opencv/install-deps.sh source-build blocks; adopts `download_and_extract`
   (retry + temp-file hygiene). install-deps.sh 172→124 lines.
-- **DONE (26bf2b7): litert platform-tag dedup + verify-parity data-driven dispatch
+- **DONE (ecf00d7): litert platform-tag dedup + verify-parity data-driven dispatch
   + configure-gcc-env decomposed** into 5 `_gcc_env_*` helpers.
   (configure-gcc-env is TOOLCHAIN-stage → validates only on a full from-scratch
   rebuild.)
-- **DONE (5354c9c): swap-native-gcc `main` decomposed** (guard clauses + 5 helpers,
+- **DONE (272dd73): swap-native-gcc `main` decomposed** (guard clauses + 5 helpers,
   nest 4→1; fix6 -idirafter invariant re-verified) **+ setup_torch_deps decomposed**
   into `_install_cv2_runtime_apt`/`_install_ffmpeg_runtime_codecs`/
   `_assert_ffmpeg_so_closure`.
-- **DONE (52ee5b9): build_python multiarch-apt bootstrap extracted** from
+- **DONE (dcff56d): build_python multiarch-apt bootstrap extracted** from
   `_python_cross_configure`. (TOOLCHAIN-stage → full-rebuild validation.)
-- **DONE (52b9618): runtime-image smokes** — HEALTHCHECK now EXECUTED not just
+- **DONE (2d2ef00): runtime-image smokes** — HEALTHCHECK now EXECUTED not just
   parsed (gated); WebRTC signalling-server binary + Vulkan loader probes (WARN).
-- **DONE (app v0.0.26, afbca10): wheel smokes** — JPEG imencode + onnxruntime-EP
+- **DONE (app v0.0.26, 0d9b542): wheel smokes** — JPEG imencode + onnxruntime-EP
   asserts (gated); optional cv2 dnn / tiff-webp-exr codecs / freetype-text checks.
-  ANTfrastructure APP_REF v0.0.24→v0.0.26 (a1e8236).
+  ANTfrastructure APP_REF v0.0.24→v0.0.26 (733b398).
 
 **DEFERRED — `setup_gi_cross_wrappers` decomposition (C1, gstreamer/common/
 pre-setup.sh:190, ~221 lines, M·★★★).** The single largest complexity win, but the
@@ -506,7 +506,7 @@ validation builds (`--from-stage media`, 0714r/u/v — all green) followed by a 
 then succeeded after freeing 151G. Prioritised by time-saved.
 
 ### P1 — Disk (by far the biggest time sink; caused a whole wasted 10h+ run)
-> **Status 2026-07-18: pre-flight disk gate DONE (commit 08c7161)** —
+> **Status 2026-07-18: pre-flight disk gate DONE (commit d9b9bf5)** —
 > `_chain_disk_preflight` refuses to launch below ~60G/arch (base) / ~40G/arch
 > (media+), with a kata-buildcache prune hint; FORCE_LOW_DISK=1 overrides. The
 > kata-buildcache unbounded-growth item stays OPEN (the gate only *hints* to prune;
@@ -538,7 +538,7 @@ then succeeded after freeing 151G. Prioritised by time-saved.
   alone reclaimed 0B because everything was recent-or-referenced.
 
 ### P2 — Speed (reach the goal faster)
-> **Status 2026-07-18: `--no-push` DONE (commit 08c7161)** — CROSS_NO_PUSH builds
+> **Status 2026-07-18: `--no-push` DONE (commit d9b9bf5)** — CROSS_NO_PUSH builds
 > every stage locally and skips the ghcr uploads that dominated each validation
 > run's ~1.5-2h tail; the chain resolves via the local image store. The
 > `--from-stage media` fast-path guidance below stands (it's guidance, not code).
@@ -562,7 +562,7 @@ then succeeded after freeing 151G. Prioritised by time-saved.
 
 ### P3 — Correctness (the two arm64 IREE bugs were a single class)
 - **Cross-wheel SOABI + default-triple preflight (M·★★★).** Both arm64 IREE defects
-  (fixed c1ce2f1) were "cross-build introspected the x86_64 build host, not the
+  (fixed 7665d58) were "cross-build introspected the x86_64 build host, not the
   target": the nanobind ext shipped as `_runtime.cpython-314-x86_64-linux-gnu.so`
   (unimportable on aarch64) and iree-compile defaulted to `embedded-elf-x86_64`.
   Add a post-build assertion per cross wheel: the compiled `.so` SOABI matches the
@@ -574,7 +574,7 @@ then succeeded after freeing 151G. Prioritised by time-saved.
   no such lines. The gating smoke must run in EVERY flow that produces a runtime
   image — investigate & unify so a full rebuild can't publish an unsmoked image.
 - **Shared apt-source/mirror include (S·★★).** Dockerfile.package lacked the
-  ports.ubuntu.com→mirror rewrite that Dockerfile.media had (fixed 7593ccb). Factor
+  ports.ubuntu.com→mirror rewrite that Dockerfile.media had (fixed 34a7e7f). Factor
   the deb822 mirror-rewrite into one include sourced by every Dockerfile that
   apt-installs (media/package/nvidia/amd/android) so the outage-resilience is
   uniform and this class of gap can't recur.
@@ -591,7 +591,7 @@ then succeeded after freeing 151G. Prioritised by time-saved.
   before ENOSPC, instead of relying on a babysitter.
 
 ### P5 — Observable defects harvested from the v2 build log (concrete, evidence-based)
-> **Status 2026-07-17: ALL P5 items FIXED (commits 1305426 + d3815e7).** The
+> **Status 2026-07-17: ALL P5 items FIXED (commits a1a792b + 4efc774).** The
 > non-GStreamer six: libgudev + libcdparanoia added, libvvdec.pc COPY added,
 > python3-ml-dtypes on riscv64, cache-from-local guarded on index.json, auditwheel
 > NOTE collapsed to one/stage, riscv64 uv-lock message → INFO.
@@ -607,7 +607,7 @@ then succeeded after freeing 151G. Prioritised by time-saved.
 > smoke that the degraded-plugin list is empty/minimal.**
 
 ### P6 — Optional python-binding WARNs from the runtime smoke (triaged)
-- **ai-edge-litert `_pywrap_litert_interpreter_wrapper` — FIXED (commit after d3815e7).**
+- **ai-edge-litert `_pywrap_litert_interpreter_wrapper` — FIXED (commit after 4efc774).**
   Real defect: LiteRT v2.1.6's pip build ships the pybind ext FILE as
   `_pywrap_tensorflow_interpreter_wrapper.so` but its PyInit_ symbol + all importers use
   the litert name, so `import` couldn't find the file (fails on ALL arches incl. native
@@ -615,7 +615,7 @@ then succeeded after freeing 151G. Prioritised by time-saved.
   tensorflow name errors "no PyInit__pywrap_tensorflow…", i.e. the binary IS the litert
   module, just misnamed. build-litert.sh now unpacks each staged wheel, renames the ext
   to match its symbol, and repacks (recomputes RECORD).
-- **tvm — amd64 WIRED (commit 0a7d99e); arm64/riscv64 cross = OPEN follow-up.** Root cause:
+- **tvm — amd64 WIRED (commit 11b5058); arm64/riscv64 cross = OPEN follow-up.** Root cause:
   tvm.sh was only COPY'd, never RUN — TVM was never built (0 tvm wheels in the v2 log).
   Added a native `tvm` build stage (FROM base) that runs tvm.sh on amd64 → wheel to
   /opt/tvm-wheels (collect-artifacts → /opt/wheels → runtime venv installs WITH deps) +
@@ -672,21 +672,21 @@ then succeeded after freeing 151G. Prioritised by time-saved.
 ## Harvested 2026-07-18 — deep 3-agent audit of the webval build (log + changes + cross-correctness)
 
 Verified findings (each ground-truthed against the webval log or live images before acting):
-- **FIXED (9d793d1):** web-asset smokes were FATAL under set -e but the vendor is
+- **FIXED (ec1223e):** web-asset smokes were FATAL under set -e but the vendor is
   best-effort → a truncated/partial vendor or an upstream variant-count change would
   break the media build. Downgraded magic/count/node-compile checks to WARN (optional
   browser assets, served not loaded).
-- **FIXED (9d793d1):** GStreamer plugin health check only counted `ldd => not found`
+- **FIXED (ec1223e):** GStreamer plugin health check only counted `ldd => not found`
   (missing .so), MISSING undefined-symbol load failures → reported "0 cannot load"
   while gtk4/gtk were actually broken on arm64/riscv64. Now drives gst-inspect (real
   scanner) — verified it reports the 2 genuinely-broken plugins.
-- **FIXED (9d793d1):** onnx-web WASM compile became load-bearing on any arch (amd64-only
+- **FIXED (ec1223e):** onnx-web WASM compile became load-bearing on any arch (amd64-only
   skip removed) → made best-effort (ships empty on failure, not a build break).
-- **FIXED (d60c166):** gtk4/gtk sinks unloadable on arm64/riscv64 — libgtk-4.so.1
+- **FIXED (f604f5f):** gtk4/gtk sinks unloadable on arm64/riscv64 — libgtk-4.so.1
   `undefined symbol: vkCreateWaylandSurfaceKHR` (cross runtime Vulkan lacks the Wayland
   surface ext amd64's full SDK has). Disabled the gtk plugin on those cross arches
   (display-only, useless headless). Confirm on next rebuild.
-- **FIXED earlier (5d18bc8):** riscv64 ml_dtypes → source-built into the venv.
+- **FIXED earlier (5e540e7):** riscv64 ml_dtypes → source-built into the venv.
 - **FALSE POSITIVE (verified):** an agent flagged the LiteRT cross wheel as shipping a
   host-x86_64 SOABI ext. Live riscv64 image proves otherwise: the ext is
   `_pywrap_litert_interpreter_wrapper.so` (plain name, no SOABI), ELF machine=riscv64,
@@ -709,8 +709,8 @@ Verified findings (each ground-truthed against the webval log or live images bef
 Re-audited the surface changed SINCE the first deep audit (the audit-fix commits
 themselves + TVM cross + orchestrator DX), which the earlier pass never reviewed.
 
-### FIXED (commits 2630844, 48b5a7b)
-- **`install_target_packages` had no per-package fallback (2630844).** The cross
+### FIXED (commits 098ee9b, cdb73a3)
+- **`install_target_packages` had no per-package fallback (098ee9b).** The cross
   primitive every media build routes through did a single atomic `apt-get install`;
   one unresolvable/renamed SONAME aborts the whole transaction (apt installs
   nothing) and callers `|| true` it, so ~20 required libs (gstreamer graphics/HLS/X11
@@ -718,12 +718,12 @@ themselves + TVM cross + orchestrator DX), which the earlier pass never reviewed
   host-side `install_host_packages` fix already addressed, left on the target twin.
   Ported the isolate-and-retry-per-package loop; `cross_package_files_present`
   stays the arbiter (preserves foreign-postinst-noise tolerance).
-- **ELF-arch mismatch check was toothless (2630844).** validate-media-runtime.sh
+- **ELF-arch mismatch check was toothless (098ee9b).** validate-media-runtime.sh
   printed `MISMATCH: <bin> ELF machine=...` for a wrong-arch artifact but exited 0;
   smoke-media skips execution on cross, so nothing caught it. Now counts non-vendor
   mismatches and `exit 1`s (escape hatch `MEDIA_ELF_MISMATCH_FATAL=0`). Directly the
   host-vs-target-triple defect class this whole effort fights.
-- **`--no-push` broke the runtime manifest step (48b5a7b) — HIGH.** First `--no-push`
+- **`--no-push` broke the runtime manifest step (cdb73a3) — HIGH.** First `--no-push`
   run to reach the runtime stage (every prior validation run actually pushed). Under
   --no-push the wrapper tags are never pushed, but create_manifest still ran
   registry-based `nerdctl manifest create` → "no such manifest" → set -e aborts at
@@ -731,7 +731,7 @@ themselves + TVM cross + orchestrator DX), which the earlier pass never reviewed
   --skip-manifest under CROSS_NO_PUSH, AND build-runtime-manifest.sh honors the
   exported env directly (reaches an already-running orchestrator, which reads that
   script live). Per-arch images still build + load locally + boot-smoke.
-- **`gtk_feature` was a global, not `local` (48b5a7b).** Stale `disabled` from a prior
+- **`gtk_feature` was a global, not `local` (cdb73a3).** Stale `disabled` from a prior
   cross arm64/riscv64 call could leak into a later native/amd64 call in the same
   shell. Declared `local` to match its sibling `python_feature`. Latent (each arch
   builds in its own process today).
@@ -777,12 +777,12 @@ the two features are gated OFF so the in-flight tvmval run is unaffected — fli
 combined validating rebuild.
 
 ### DONE — speed
-- **ccache on the cross app-wheelhouse (dcc6ce8).** install_build_dependencies omitted
+- **ccache on the cross app-wheelhouse (9f41403).** install_build_dependencies omitted
   ccache on the arm64/riscv64 paths (only amd64-native had it), so the ~1h IREE
   bundled-LLVM (×2 arches) + multi-hour riscv64 torch aten compiles rebuilt from scratch
   every run despite the persistent /var/cache/ccache mount + already-wired cmake launcher.
   Added ccache to both cross branches; build_torch_wheel now sets the launcher + CCACHE_DIR.
-- **BUILD_MEM_DIVISOR wired (9df9414).** parallelism.sh sizes jobs as RAM/BUILD_MEM_DIVISOR
+- **BUILD_MEM_DIVISOR wired (d855f37).** parallelism.sh sizes jobs as RAM/BUILD_MEM_DIVISOR
   but nothing ever SET the divisor (only read) — so --parallel-archs would N× overcommit RAM
   and OOM. Added cross_build_mem_divisor()=min(MAX_PARALLEL_ARCHS,#arches) under
   PARALLEL_ARCHS, forwarded via append_cross_build_args + ARG/ENV in toolchain/sdk/media/
@@ -791,11 +791,11 @@ combined validating rebuild.
   holds total RAM ~constant vs serial, but verify).
 
 ### DONE — features (gated off; enable in validating rebuild)
-- **ffmpeg libx265 HEVC encode (02f8718).** Was unconditionally --disable-libx265 despite
+- **ffmpeg libx265 HEVC encode (0f4afa5).** Was unconditionally --disable-libx265 despite
   libx265-dev installed. New ffmpeg_probe_libx265 + FFMPEG_ENABLE_X265 gate (versions.env,
   default 0). Flip to 1 to validate; if the old source-x265 compile break recurs, pin a
   known-good x265/ffmpeg pair.
-- **ONNX WebGPU (Dawn) EP (9adcdd5).** Was wired but dormant (ORT_ENABLE_WEBGPU never set).
+- **ONNX WebGPU (Dawn) EP (1059e05).** Was wired but dormant (ORT_ENABLE_WEBGPU never set).
   New onnx_webgpu_enabled_for_target(): amd64 on when ORT_ENABLE_WEBGPU=true; arm64/riscv64
   need ORT_WEBGPU_ALLOW_CROSS=true too (Dawn cross unproven). Validate amd64 first.
 
@@ -832,7 +832,7 @@ combined validating rebuild.
   `nerdctl rmi` the stale feature-less intermediates (cross-media-*/cross-android-*)
   and the re-pullable published `latest-cross-*` locals (they're on ghcr; the new build
   replaces them). containerd 258G→48G.
-- **Wired mid-build guard (56adf0c):** `_chain_stage_disk_guard()` clears the regenerable
+- **Wired mid-build guard (5d4b5cf):** `_chain_stage_disk_guard()` clears the regenerable
   kata-buildcache export between stages when free < CROSS_DISK_GUARD_GB (default 40) —
   the only reclaimable mid-run space. Off with CROSS_DISK_GUARD_GB=0.
 - **Push mode is more disk-friendly than --no-push** — offloads images to ghcr instead of
@@ -915,7 +915,7 @@ of keys. Options, cheapest first:
 Note the scripts re-read `C:\temp\versions.env` at RUN time, so whatever is
 chosen must keep that contract (see the re-COPY comments in the media builders).
 
-### P2 — ✅ DONE (69b860e) — retry engine burned its budget on deterministic failures
+### P2 — ✅ DONE (1225f94) — retry engine burned its budget on deterministic failures
 
 `ImportLayer 0xb7` failed three times today with **byte-identical snapshot IDs**
 (`3p059m2d68o… → o47dumb0ovs4…`). The pattern matched `failed to reimport
@@ -927,7 +927,7 @@ the previous attempt's failure tail and **stop early when the new tail is
 identical** — "deterministic, not transient". Cheap to implement, saves ~10 min
 per occurrence, and the message can point straight at the `-NoCache` remedy.
 
-### P3 — ✅ DONE (69b860e) — disk gate was start-time only, and that is how a snapshot got poisoned
+### P3 — ✅ DONE (1225f94) — disk gate was start-time only, and that is how a snapshot got poisoned
 
 `Assert-DiskHeadroom` passed at 164 GB and the chain still walked down to 23 GB
 mid-run, into the band where hcsshim stops failing honestly. The rescue (killing
@@ -1464,7 +1464,7 @@ environment setup at all. `PREFLIGHT_PYTHON` still overrides.
 versions.env's `0.12.3` (Pandoc already matched), which kept the version-snapshot
 check red and therefore blocked enabling the hooks. `sync_versions.py` includes
 that Dockerfile deliberately — the doc image is meant to follow this repo's pins.
-Committed **in the submodule** (`b0bffd5`); it still needs a push to that
+Committed **in the submodule** (`2388086`); it still needs a push to that
 repository and a pointer bump here. That is a change to a different repo, so it
 is left explicit rather than done silently.
 
@@ -1751,8 +1751,8 @@ deliberately deferred to the post-chain closure batch.
 
 ## 2026-08-08 (night) — audit round 3 (orphans, smoke depth, supply chain, complexity)
 
-Four more lenses applied same-day (commits f049aa4, d7c3fb1, 68bc11e,
-6c34131 + the round-3 leftovers commit). Deferred WITH intent:
+Four more lenses applied same-day (commits d7f1ec0, 9e6d8da, 9609c36,
+221a0dc + the round-3 leftovers commit). Deferred WITH intent:
 
 **Supply chain, remaining (ranked):**
 - **The unpinned `uv pip install` surface (~20 sites)** — the single largest
@@ -1798,8 +1798,8 @@ Four more lenses applied same-day (commits f049aa4, d7c3fb1, 68bc11e,
 A four-agent audit with lenses ORTHOGONAL to the structural map (error-path
 masking / contract drift / test gaps / convention drift) — every top finding
 re-verified against the code before fixing (several agent claims in round 1
-had not survived that step; these did). Applied in commits b814899 (Klasse A,
-9 error-masking paths), 23aca68 (Klasse B, 9 contract-drift gaps), 9e1e466
+had not survived that step; these did). Applied in commits 7314b5a (Klasse A,
+9 error-masking paths), e2c053f (Klasse B, 9 contract-drift gaps), eb7bfe7
 (Klasse D, truthiness + sudo), and the Klasse-C test commit (11 suites / 120
 assertions, zero-assertion suites fail, IFS list helpers newline-safe by
 construction). Full mechanisms in CHANGELOG's four "audit round 2" entries.
@@ -2189,7 +2189,7 @@ relaunch; mirror skew recurs every Ubuntu release. `test-cross-apt.sh` with
 fake apt-get/dpkg-query in a PATH-prepended temp bin + stubbed cross_* fns;
 4 assertions (see agent recipe in session notes).
 
-**T2 — SIGPIPE-under-pipefail: no regression test, no lint.** The 7ca9e4b
+**T2 — SIGPIPE-under-pipefail: no regression test, no lint.** The fc0e175
 case-glob fix is comment-documented only. `test-pipefail-safety.sh` modeled on
 test-ifs-safety.sh: (1) prove the mode (big-producer `| grep -q` returns 141
 on MATCH, 0 on drain, under pipefail); (2) tree-lint unbounded-producer

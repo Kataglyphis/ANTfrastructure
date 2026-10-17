@@ -276,10 +276,10 @@ Kataglyphis-Cpp-Inference, reached through
 Inference-Engine -> NativeInferencePlugin -> native/KataglyphisCppInference -
 and its `Build-Windows.ps1` imports two modules that no longer exist here:
 
-- `WindowsLogging.Common` was FOLDED into `WindowsBuild.Common` (b391a1d), so
+- `WindowsLogging.Common` was FOLDED into `WindowsBuild.Common` (f58327e), so
   the consumer just drops the import; the `Write-BuildLog*` wrappers it
   actually uses are exported from there.
-- `WindowsOnnx.Common` was DELETED outright (f0d12ff) while the consumer still
+- `WindowsOnnx.Common` was DELETED outright (b52d000) while the consumer still
   calls `Get-OnnxPackageLayout`. **Restored here.** This is the third instance
   of the same blind spot (`Sync-BuildArtifacts`, the
   `WindowsToolchain/Flutter/CodeQL` trio, now this): a "zero callers" sweep can
@@ -1142,7 +1142,7 @@ wired with the warn-if-unset pattern:
 
 ## 2026-08-08 (night) — Linux lane: supply-chain round 1 + safe complexity refactors
 
-(See commit 68bc11e: TLS redirect/wget hardening, CPython fail-closed,
+(See commit 9609c36: TLS redirect/wget hardening, CPython fail-closed,
 NodeSource/npmjs pipe-to-shell removal, npm ci lockfile-exact, verified
 Kitware/LLVM host-repo helpers, cerbero tag pinning, meson wrap-update
 removal; lib/ prelude drift + clang-extractor + cross-fallback parity with

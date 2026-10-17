@@ -44,7 +44,7 @@ chore(release): 2.1.0+3 [ci all]
   five commits still runs its lanes.
 - Case does not matter. `[ci-windows]` or `(ci windows)` is not a token.
 - **A token anywhere in the message counts, prose included.** A body that says "the earlier
-  `[ci all]` round was green" asks for every lane: OmniAccelerANT's f827b20 started all five
+  `[ci all]` round was green" asks for every lane: OmniAccelerANT's 3cb1674 started all five
   that way when it meant only `[ci web]`. To mention a token, leave out its brackets.
 - A word that names no lane is a warning in the run's log, not an error.
 - `[skip ci]` is GitHub's own and still skips every workflow, Linux x64 included.
@@ -174,7 +174,7 @@ A calling job looks the same in both:
   - **Not the lane name alone.** `linux-x64-${{ github.ref }}` is the group every push to
     `develop` starts the lane in, and a dry run of `release.yml` on `develop` calls the lane
     in it too, so each cancels the other: OmniAccelerANT's first dry run, dispatched a
-    minute after a push, cancelled that push's Linux x64 run (1914a28, 2026-10-16).
+    minute after a push, cancelled that push's Linux x64 run (047876d, 2026-10-16).
   - **Not `${{ github.workflow }}` alone.** Every lane `on-request.yml` calls would share
     one group and cancel or queue behind each other; OxidANT's lanes did until they moved
     (2026-10-15).

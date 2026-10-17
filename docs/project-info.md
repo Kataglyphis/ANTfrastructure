@@ -197,16 +197,11 @@ the image overlays onto the site at build time.
 
 ## Repository size and large files
 
-A factual note, because the alternative is that somebody rediscovers this with
-`git count-objects` and reaches for a history rewrite.
-
-**The pack is ~154 MB, and almost all of it is one directory.**
-`linux/webserver/dist/` — the built Flutter site the `:webserver` image serves —
-was tracked from the beginning until 2026-09-15: 82 MB in the working tree, and
-several times that in history, because minified web output is rewritten in full
-on every site build and every version of it is a new set of blobs. It is built
-in another repository, from sources that do not exist here, so nothing in this
-repo could ever regenerate it.
+**The pack is ~20 MB since the history rewrite of 2026-10-17; it was ~161 MB.** Almost all of
+that was one directory: `linux/webserver/dist/`, the built Flutter site the `:webserver` image
+serves, tracked from the beginning until 2026-09-15. Minified web output is rewritten in full on
+every site build, so every version of it was a new set of blobs, and it is built in another
+repository, so nothing here could regenerate it.
 
 **What is tracked and large today: nothing.** After that removal the biggest
 tracked files are text — `docs/scripts/mutations.json` (~600 KB on 2026-09-25),
@@ -216,8 +211,8 @@ only tracked binary is `images/logo.png`, at 2 KB. The `.gitignore` rules under
 binary that genuinely belongs here is committed with `git add -f` and named in
 this section.
 
-**The history is being rewritten** (owner, 2026-10-17, reversing the decision that it would
-not be), which takes most of the 154 MB: what leaves it, and how a checkout follows, is in
+**The history was rewritten on 2026-10-17** (owner, reversing the decision that it would not
+be): what left it, and how a checkout from before follows, is in
 [data-repositories.md](data-repositories.md).
 
 ## Contact

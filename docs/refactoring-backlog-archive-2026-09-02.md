@@ -83,7 +83,7 @@ says CLOSED, but four of its items are open work.
   TOOLING noise: the Vulkan SDK's own profile parser (`jsonschema` module
   missing) and GStreamer `.gir` parsing. Exactly ONE was ours, and it is fixed
   (the OpenCV build-stage cv2 import check could never succeed; commit
-  b3dbd32a). Counting warnings by grepping the log OVERCOUNTS badly: BuildKit
+  1d5d076e). Counting warnings by grepping the log OVERCOUNTS badly: BuildKit
   echoes each RUN's command text, so warning strings inside a Dockerfile command
   are matched as if they had fired. Count only real output lines
   (`^#N <time> WARNING`) — that is the difference between "TVM build failed 23×"
@@ -220,7 +220,7 @@ says CLOSED, but four of its items are open work.
   new API returns a count. Swap ours out for theirs.
 
 - **`verify-shipped-wrapper.sh` carried a private `_is_truthy`** — **DONE
-  2026-09-02** (`e2da351c`). It now sources `01-core/platform.sh` via its own
+  2026-09-02** (`aba9e09d`). It now sources `01-core/platform.sh` via its own
   `_here` and uses the canonical `is_truthy` at all three call sites. Safe because
   `platform.sh` has **zero top-level statements**, so sourcing it has no side
   effects; the two `case` arms were byte-identical and a differential test over 21

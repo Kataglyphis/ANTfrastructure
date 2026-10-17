@@ -971,7 +971,7 @@ licence file, and the Windows HIP runtime links AMD's prebuilt PAL. The PyTorch 
 carry copies of the same runtime; neither llama.cpp directory carries one (since b11472 the
 HIP build loads the image's).
 **The owner cleared that question: `:winamd64-rocm` was published on 2026-09-28** (image
-built at ad08bc30), with the runtime shipped as TheRock delivers it. `docs/deps/deps.json`
+built at 73a8dd74), with the runtime shipped as TheRock delivers it. `docs/deps/deps.json`
 keeps `LicenseRef-Proprietary-EULA` for the runtime: the id describes the licence, not the
 permission.
 

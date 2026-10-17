@@ -181,7 +181,7 @@ closure and none has ever executed:
 |---|---|---|
 | `02-toolchain/vulkan.sh` | `_vulkan_prune_sdk_sources` drops `<ver>/source` in the SAME RUN that consumed it | `Pruning the Vulkan SDK build tree at /opt/vulkan/<ver>/source`, and immediately BEFORE it `Vulkan cross-targets <arch>: N/N component(s) built`. The order is the whole safety argument |
 | `linux/Dockerfile.package` | a NEW `RUN` in the `artifact-source` stage prunes `<ver>/x86_64` ahead of the `/opt/vulkan` COPY | the stage fails fast with the script's own `ERROR` line if the bind mount does not land — cheap, and before any COPY |
-| `02-toolchain/materialize-llvm-target.sh` | `_llvm_target_repair_links`, ending in a `find -xtype l` that HARD-FAILS the sdk stage | it has never run on any arch, and the first rebuild attempt already found a self-link bug in it (HEAD `e109f5ad`). A survivor names its exact path |
+| `02-toolchain/materialize-llvm-target.sh` | `_llvm_target_repair_links`, ending in a `find -xtype l` that HARD-FAILS the sdk stage | it has never run on any arch, and the first rebuild attempt already found a self-link bug in it (HEAD `c88945f8`). A survivor names its exact path |
 | `03-media/core/common.sh` | NEW `media_compiler_launcher`, called unqualified by ffmpeg and pyav under `set -e` | **the one failure here that kills a run outright.** `media_compiler_launcher: command not found` in the media stage means the image's copy of `03-media/core/common.sh` is an older layer than the two build scripts |
 | `06-packaging/copy-media-payloads.sh` | `/usr/local/include/absl` added to the copy list | 707 of the 1322 shipped LiteRT headers `#include "absl/"` and no arch shipped absl. `smoke-critical-fixes.sh` must go from 1 FAIL to 0 on all three |
 | `02-toolchain/packaging-deps.sh` | `ensure_appimagetool_runtime` (wired at integration — it had no caller), and `INSTALL_FLATPAK_RUNTIMES` now ON with all seven refs | `Staged AppImage runtime-<arch>` once per arch; the flatpak install adds ~1.9 GB to amd64/arm64 and is skipped outright on riscv64 |
@@ -421,7 +421,7 @@ record:
 `/opt/vulkan/<ver>/x86_64` from the FOREIGN images and is a no-op on amd64, where
 that prefix IS the downloaded SDK. Nothing changed in the code to close this: the
 prune has been wired in `Dockerfile.package`'s `artifact-source` stage since
-`e6287256` and the 2026-09-07 chain already shipped with it — which is where the
+`b853251e` and the 2026-09-07 chain already shipped with it — which is where the
 foreign arches' −2.11 GB / −4.65 GB came from. The decision makes that the
 intended state rather than an unreviewed one, and the coupling resolves the same
 way: the tree-arch gate stays UN-narrowed, asserting the whole `/opt/vulkan` tree,
@@ -618,7 +618,7 @@ the env-knob registry needs no row.
 **CLOSED 2026-09-07 — the registry-cache drop is characterised.** Every earlier
 version of this paragraph said "Nothing covers it" and offered
 `grep -rn DeadlineExceeded linux/scripts/tests/` returning nothing as the proof.
-That grep returns **three** hits today and has since `d7fbfd39`, which landed in the
+That grep returns **three** hits today and has since `b333e517`, which landed in the
 same wave as the grooming that re-asserted the claim — the entry outlived its own
 evidence by one commit. `test-cross-stage-build-cmd.sh` now drives the path with a
 real `_FLAKE` tail and pins the four decisions that matter: one hiccup does NOT drop

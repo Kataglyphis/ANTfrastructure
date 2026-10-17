@@ -108,7 +108,7 @@ Describe 'Install-Lavapipe: the loader-zip layout' {
 }
 
 Describe 'Install-Lavapipe: the script reads no variable it never sets' {
-    # Under strict mode a stale name throws at that line: cc1846c2 left ${vulkanVersion} behind and the merge stage died there.
+    # Under strict mode a stale name throws at that line: 665b4df2 left ${vulkanVersion} behind and the merge stage died there.
     It 'reads only parameters, assigned and loop variables, and automatic ones' {
         $path = Join-Path (Get-RepoRoot) 'windows\scripts\host\Install-Lavapipe.ps1'
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)

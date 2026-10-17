@@ -128,7 +128,7 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
   containerd restarted 2026-08-26, and the runtime stage then failed BOTH
   foreign arches with an empty BuildKit error. The template now sets
   `PartOf=containerd.service` (re-runs the unit on containerd restart) **plus**
-  `wait_for_namespace()` + `Restart=on-failure` (afefdfc) to win the cold-boot
+  `wait_for_namespace()` + `Restart=on-failure` (de08ce1) to win the cold-boot
   race: `After=` orders only the unit start, so on a fresh boot the binfmt unit
   fired before containerd-rootless had unshared and written its `child_pid`,
   dying with `cat: …/child_pid: No such file`. `wait_for_namespace()` polls for

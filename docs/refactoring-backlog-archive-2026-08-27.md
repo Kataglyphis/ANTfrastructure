@@ -35,7 +35,7 @@
   72G** — ENOSPC mid-lane is the expensive way to learn this.
 - ⬜ Run preflight.sh (the full gate battery incl. the GCC-literal gate).
 
-**Phase 1 — pin-bump pass (versions.env window): ✅ DONE (7a2639e)**
+**Phase 1 — pin-bump pass (versions.env window): ✅ DONE (b520e41)**
 - Swept: CMAKE 4.4.3, UV 0.12.6, CARGO_C 0.10.25, OLLAMA 0.33.0 (+ SHA
   pairs). VULKAN deliberately held at 1.4.357.0 with a documented reason
   (1.4.357.1 is a Linux-only republish; windows.txt still says .0 and the key
@@ -55,7 +55,7 @@
   line at smoke-torch-venv.sh:179 must be deleted AFTER the rebuild proves
   0.15.2 ships, not before.
 - ✅ ORPHAN-PINS — PyAV is built (own stage + own script dir); the TVM half
-  closed by 202634c.
+  closed by 0832329.
 - ✅ RV1-FREETYPE — freetype ENABLED against staged static target harfbuzz;
   OFF survives only as the not-staged fallback.
 - ⬜ **LOG2 open half — build the wasm asyncify/jspi flavors.** The only
@@ -93,7 +93,7 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
   script's. Demonstrated: `(exit 1) | tail -1 | sed 's/^//'; echo $?` prints 0,
   while `(exit 1); echo $?` prints 1. I added the "re-confirmed 2026-08-27"
   note to this entry on the strength of that artifact, so the retraction is
-  mine to make. `exit 1` has been in place since 928e745 (2026-08-25).
+  mine to make. `exit 1` has been in place since 3a8db07 (2026-08-25).
   LESSON worth keeping: when checking an exit code, do not pipe.
 
 - ✅ **stdout-as-return-value — CLOSED 2026-08-27 with a GATE, not a sweep.**
@@ -158,7 +158,7 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
 - ✅ **ORPHAN-PINS closed** — PyAV is BUILT (new
   `linux/scripts/03-media/build/pyav/build-pyav.sh` + a `pyav` stage landing
   `av-<ver>-cp314-cp314-linux_<arch>.whl` in /opt/wheels); the TVM half was
-  already closed by 202634c. **Watch:** the PyAV wheel must appear on all
+  already closed by 0832329. **Watch:** the PyAV wheel must appear on all
   three arches and the wheel-smoke warning must disappear.
 - ✅ **RV1-FREETYPE fixed** — riscv64 opencv freetype is ENABLED against staged
   static target harfbuzz; `-DBUILD_opencv_freetype=OFF` survives only as the
@@ -356,7 +356,7 @@ orders the UNIT start only; containerd-rootless still has to unshare and write
 child_pid afterwards, so on a cold boot the binfmt unit wins the race. A manual
 re-run always succeeds because containerd is warm by then, which is exactly why
 the restart test looked green while every boot stayed broken. Fixed for real in
-afefdfc (`wait_for_namespace()` polls for the pid file and a joinable namespace,
+de08ce1 (`wait_for_namespace()` polls for the pid file and a joinable namespace,
 plus `Restart=on-failure`). LESSON: a unit that is `active` proves nothing —
 prove emulation with a real foreign-arch run.
 

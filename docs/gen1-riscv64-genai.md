@@ -567,7 +567,7 @@ no local wheel, silent fallback to the app lock's PyPI genai.
 It was inert **only by accident**: `/opt/wheels` was a read-only bind mount in
 `Dockerfile.torch`, so the `rm` failed and `|| true` swallowed it. Making that
 mount rw would have broken all three arches at once — and it became rw on
-2026-09-22 (`fbc91813`), so the narrowed glob below is now the only thing that
+2026-09-22 (`7cf92025`), so the narrowed glob below is now the only thing that
 keeps the CPU wheel.
 
 Narrowed to the GPU-flavoured variants the arm actually means — it sits beside

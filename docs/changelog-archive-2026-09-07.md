@@ -19,7 +19,7 @@ The out-of-order `## 2026-09-03 — the day with no entry` block travelled with 
 
 **This entry was written on 2026-09-07 from the commit subjects, not from the work.**
 Every other day from 2026-08-29 onward has an entry; 2026-09-03 had 79 commits
-(`7a84c43e`…`f1169ab3`, 75 distinct non-merge subjects) and none, which the
+(`68f690db`…`2f87070b`, 75 distinct non-merge subjects) and none, which the
 2026-09-07 backlog audit found. It is filled in rather than left blank so the gap
 does not read as a quiet day, but read the commits for detail — the prose below
 claims only what a subject line supports.
@@ -97,9 +97,9 @@ candidate left" was true of the scan set, and the scan set was not the repo.
 Asked whether the backlog was up to date and everything fixed. It was not, in two
 separate ways, and both are now closed.
 
-**`main` had moved past the grooming.** Merge `d6fa512f` landed the NAS
+**`main` had moved past the grooming.** Merge `da046d63` landed the NAS
 document-AI stream 23 minutes after the backlog was groomed, and brought four
-defects with it — all from `542b87f6`/`3f300c32`, neither of which had a green
+defects with it — all from `28280c43`/`44fdb274`, neither of which had a green
 preflight:
 
 * Three `census.*` mutations with no `mutation-family:` declaration →
@@ -127,7 +127,7 @@ since CL7), `verify_package_names main` 34 lines (**30**), "the nine libraries"
 of which **45**), CL1's "13 call sites" (**12**), `gate-proofs.allow`'s own header
 "1 of 34" (**0 of 36**), `sync_versions.py`'s "six consumers" (`--check` runs
 **seven**). Two entries had outlived their evidence by one commit: the
-registry-cache drop was still called uncovered after `d7fbfd39` characterised it
+registry-cache drop was still called uncovered after `b333e517` characterised it
 (`grep -rn DeadlineExceeded linux/scripts/tests/` returns three hits, and the
 entry offered that grep returning nothing as its proof), and CS1 was listed as the
 open owner decision in the same file that links its closure.
@@ -935,7 +935,7 @@ this submodule, read the first three before bumping.
 [`docs/adopting-in-a-new-project.md`](adopting-in-a-new-project.md) § 8 has
 demanded that shape since 2026-08-11 and the consumers followed it; this repo
 did not. 101 of its own scripts were not in that shape
-(`19982134`, 100 of them; `9b819f28`, the last, `windows/build-buildkit.ps1` →
+(`b6fba7fc`, 100 of them; `2b4e379f`, the last, `windows/build-buildkit.ps1` →
 `Build-Buildkit.ps1`). Every new name starts with a verb `Get-Verb` approves —
 only 9 of the 39 old prefixes did: `probe-*`/`verify-*` → `Test-*`, `setup-*` →
 `Install-*`, `run-*` → `Invoke-*`, `apply-*` → `Set-*`, `stage-*` → `Copy-*`,
@@ -949,7 +949,7 @@ re-pointed by hand.** Deliberately not renamed:
 exact string in `.claude/settings.json`, and a `PreToolUse` guard that fails to
 register fails OPEN), the `diagnostics/probe-build-copy/` asset directory (a
 Dockerfile and a text file, not a script — `Test-BuildCopy.ps1` still resolves
-it, its docker tag and its log prefix). (`9b819f28` lists three
+it, its docker tag and its log prefix). (`2b4e379f` lists three
 more exemptions that live in consumer repos, not here.) `diagnostics/archive/`
 was *not* exempt — all seven scripts in it were renamed with the rest. The
 convention is now stated in `AGENTS.md` § "When adding here"
@@ -959,19 +959,19 @@ modules and `<Subject>.Tests.ps1` suites — 37 of the 84 are Pester-style, the
 other 47 are written against the zero-dependency `TestHarness.psm1`.
 
 **`#requires -Version 7.0` is on every PowerShell file but two.** A family-wide
-sweep (`193cf8fe`) found 24 of 295 `.ps1`/`.psm1` files with no directive; three
+sweep (`c412f4f2`) found 24 of 295 `.ps1`/`.psm1` files with no directive; three
 of them were here. Without it Windows PowerShell 5.1 dies deep inside the script
 on a 7.x ternary or `??` instead of refusing to start, so the directive goes on
 line 1, before any `param()` block. 241 of the 243 tracked `.ps1`/`.psm1` now
 carry it. The two that do not are
 `windows/scripts/host/Initialize-Pwsh.ps1` — the first `RUN` of
-`Dockerfile.base`, which installs pwsh and therefore cannot demand it (`61ad31f2`
+`Dockerfile.base`, which installs pwsh and therefore cannot demand it (`944e457c`
 took the directive back off after the sweep put it on; pinned by
 `windows/scripts/tests/Bootstrap.Ps51Compat.Tests.ps1`) — and
 `guard-destructive-deletes.ps1`, kept 5.1-parsable for the same fail-open reason
 as above.
 
-**The Linux lanes run on `ubuntu-26.04`** (`1900260a`, `ce752374`). Every Linux
+**The Linux lanes run on `ubuntu-26.04`** (`315c67a2`, `3fa4a931`). Every Linux
 `runs-on:` in `.github/workflows/` is now `ubuntu-26.04` — six of the twelve
 `runs-on:` lines in that directory; the two Windows jobs in
 `windows-scripts.yml` stay on `windows-latest`, and the three reusable
@@ -988,10 +988,10 @@ runner minutes.
 
 **The submodule directory is `third_party/`, not `external/` or `ExternalLib/`**
 — moved 2026-09-05, recorded here because that day's entry had already been cut.
-`08741b47` moved `external/Kataglyphis-DocumANTation` →
+`cd8b1cc9` moved `external/Kataglyphis-DocumANTation` →
 `third_party/DocumANTation` (`.gitmodules`, and `requirements.txt` now installs
 the theme from `./third_party/DocumANTation/sphinx-kataglyphis-theme`), and
-`5c3b3820` fixed the other direction: consumers vendor *this* repo at
+`cba1c9c3` fixed the other direction: consumers vendor *this* repo at
 `third_party/ANTfrastructure`, but the `git submodule add` target in the adoption
 guide and the `shared/` templates copied verbatim into new repos still handed
 out `ExternalLib/Kataglyphis-ANTfrastructure`. The path-exclusion filters in
@@ -999,7 +999,7 @@ out `ExternalLib/Kataglyphis-ANTfrastructure`. The path-exclusion filters in
 entry points had `third_party/` **added** rather than substituted, so a consumer
 mid-migration is not caught between the two layouts.
 
-**The sync-back to the host copies artifacts, never CMake state** (`86e55b66`).
+**The sync-back to the host copies artifacts, never CMake state** (`0b08799b`).
 `Sync-FastLocalArtifactsToHost` (`windows/scripts/modules/WindowsFlutter.Common.psm1`)
 now excludes `CMakeCache.txt` (`/XF`) and `CMakeFiles` (`/XD`) when it robocopies
 the container-local fast build root back onto the bind-mounted host tree. A cache
@@ -1022,7 +1022,7 @@ which now carries a status line per item. Read that page for the per-item
 detail; what follows is what a reader of the numbers has to know.
 
 **Two grader defects were live for the numbers published this morning.** The
-truncation check (`looks_truncated`, regressed in `4d469a22` the day before)
+truncation check (`looks_truncated`, regressed in `83e12f70` the day before)
 could not tell a closing fence from an opener: any syntax-error reply whose
 final ```` ``` ```` was followed by a newline or by prose was graded `CUT` and
 **excluded** from the rate, the interval, determinism and the rank, instead of
@@ -1272,7 +1272,7 @@ calling, the statistics, the plumbing, the documentation — and two researchers
 worked the web for the model-widening and multimodal questions. Every concrete
 defect claim then went to an independent skeptic told to refute it; **36 went in
 and 36 came back confirmed**, most reproduced from a scratch script against the
-imported module. The tree was `b03ac235`, clean, and **it was not modified**.
+imported module. The tree was `5cd00979`, clean, and **it was not modified**.
 
 **New — [`docs/llm-benchmark-review-2026-09-05.md`](https://github.com/Kataglyphis/OrchestrANT/blob/main/benchmarks/docs/llm-benchmark-review-2026-09-05.md).**
 The ranked backlog (`R1`–`R15`), the 32 confirmed defects with a file and line
@@ -1282,7 +1282,7 @@ a `bench_vision.py` on the Snapdragon lanes. Indexed from `docs/INDEX.md`; the
 roadmap carries a banner pointing at it.
 
 **Three findings worth knowing before the next measurement.** The grader's
-truncation check (`looks_truncated`, commit `4d469a22` of 2026-09-04) misreads a
+truncation check (`looks_truncated`, commit `83e12f70` of 2026-09-04) misreads a
 closing fence followed by a newline as an unclosed opener, so a syntax-error
 reply ending in ```` ```\n ```` is graded CUT and excluded rather than counted
 wrong — live for the § 1n coding numbers published this morning. The agent
@@ -1741,7 +1741,7 @@ lost-notification host defect taxed every uncached RUN with ~7.5 min.
 The dual-lane rebuild's amd64 smoke gate went red on exactly ONE assertion —
 the ASAN probe (compile + run `/fsanitize=address`, require the intentional
 overflow to be reported). Root cause: the 2026-08-31 pre-rebuild pass
-(`bd150ae1`, the compiler-rt ride-along) added explicit
+(`017660f4`, the compiler-rt ride-along) added explicit
 `-DCOMPILER_RT_BUILD_*=OFF` switches with the comment "sanitizer … unnecessary"
 — and today's chain was that wave's FIRST real build (#152 said exactly this
 could happen). The freshly built patched LLVM shipped builtins only (158
@@ -2093,7 +2093,7 @@ exported API for other Kataglyphis repos — the never-delete-on-a-zero-referenc
 audit rule in `docs/windows-builds.md`. `Export-BuildHandoff` /
 `Import-BuildHandoff` stay on the facade because `Invoke-BkWarm.ps1`'s header names
 them the TESTED ROLLBACK PATH (restore the warm/materialize targets from
-c9586c1^ and the payloads work unchanged) — but that recipe is ALREADY partially
+2cb182e^ and the payloads work unchanged) — but that recipe is ALREADY partially
 stale: those retired targets mount the pre-#134 module set with no
 `WindowsTvm.Common.psm1`, and `Build-TvmFromSource.ps1` now throws without the
 `tvmmods` mount. Worth repairing before anyone needs the rollback.
@@ -2644,7 +2644,7 @@ The tasks that needed a real rebuild, run and closed:
 
 ### GCC_PARALLEL_TARGETS validation — PASS, and it surfaced two real bugs
 
-- **92fb9646 — the launch flag was silently dropped (the real "missed four
+- **ff62839f — the launch flag was silently dropped (the real "missed four
   times" cause).** No `ARG GCC_PARALLEL_TARGETS` in Dockerfile.toolchain and no
   `--build-arg` in the compiler-stage args, so a launch-time
   `GCC_PARALLEL_TARGETS=1` never reached the container and the sequential path
@@ -2653,7 +2653,7 @@ The tasks that needed a real rebuild, run and closed:
   stage-defs.sh's compiler case (only when set; Dockerfile defaults stay
   authoritative), pinned by test-stage-defs.sh. Dry-runs now emit
   `--build-arg GCC_PARALLEL_TARGETS=1` when set, absent when not.
-- **5e8b2470 — the first parallel launch collided on the dpkg apt lock.**
+- **1085d6fe — the first parallel launch collided on the dpkg apt lock.**
   The concurrent per-target `build-gcc.sh` invocations each ran their own
   "Installing build dependencies..." apt_install; two apt-get at once die on
   `/var/lib/apt/lists/lock`. Fixed: `GCC_SKIP_BUILD_DEPS=1` gates build-gcc.sh's
@@ -2679,7 +2679,7 @@ rate**, 27 artifact-verify OK, android built and pushed. modules.sh reorder and
 the QNN-off fan-out path (litert/tvm/app-wheelhouse/genai with no zip) all ran
 the new code without regression.
 
-### 0371d164 — sccache-launcher server-death gap FOUND live + FIXED
+### 6fc8defc — sccache-launcher server-death gap FOUND live + FIXED
 
 The validation build caught a second failure class the guarded launcher did
 not handle: the sccache **server died mid-build** under full concurrent-media
@@ -2758,7 +2758,7 @@ existing behavior).
   BuildKit steps reaching each other's sccache server on the fixed TCP port;
   `caused by: No such file or directory (os error 2)` — exactly what
   docs/build-cache-tiers.md § 5.1 already recorded as fixed by
-  b4078ad1 + 4aa92fb6), and that the faults appeared in the ORT step too —
+  1c8a1ae7 + 9f794436), and that the faults appeared in the ORT step too —
   not OpenCV-exclusive as claimed. Every post-UDS run has 0 bypass messages,
   including the 2026-08-30 QNN-LINUX arm64 media build, where OpenCV compiled
   all 1660 objects through the launcher and the sibling ffmpeg step recorded a

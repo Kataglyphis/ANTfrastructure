@@ -6,7 +6,7 @@ order a chain reaches them, so it can be read top-to-bottom live.
 
 The wave that produced this list closed eleven backlog entries on **static** proof
 only. A first rebuild attempt already found two build-killing bugs that a full green
-battery had passed (HEAD `e109f5ad`), so treat every "expected" below as a
+battery had passed (HEAD `c88945f8`), so treat every "expected" below as a
 hypothesis the chain is testing, not a fact.
 
 Chain in flight when this page was written: `chain-status.json` run
@@ -52,7 +52,7 @@ baseline for the riscv64 lane rather than the pre-run guesses.
 | verdict | line |
 |---|---|
 | PASS (measured on arm64) | `Cross-building <label> for <arch>` with no following `unavailable` line, for eleven of: `vulkan-headers`, `spirv-headers`, `vulkan-utility-libraries`, `volk`, `vma`, `spirv-cross`, `spirv-reflect`, `shaderc`, `vulkan-tools`, `vulkan-extensionlayer`, `vulkan-validationlayers` |
-| FAIL (was KNOWN FAIL before VK2) | `vulkan-profiles unavailable` — `jsoncpp` and `valijson` are rows of their own in `_VK_TARGET_COMPONENTS` since `c59799b4`, ordered ahead of it, so `find_package(valijson)` has somewhere to look |
+| FAIL (was KNOWN FAIL before VK2) | `vulkan-profiles unavailable` — `jsoncpp` and `valijson` are rows of their own in `_VK_TARGET_COMPONENTS` since `25deff9c`, ordered ahead of it, so `find_package(valijson)` has somewhere to look |
 | FAIL (was KNOWN FAIL before VK2) | `gfxreconstruct unavailable` — and the old diagnosis on this row was wrong. The `:${arch}` packages were already unpacked; `find_library` could not see them because nothing passed `CMAKE_LIBRARY_ARCHITECTURE`, which `_cross_build_sdk_component` now does for every row. The genuinely missing half was GL, added to `install_optional_target_packages` |
 | FAIL (was EXPECTED FAIL before VK2) | `slang unavailable` — and NOT for the reason this row gave. It is not host LLVM `tblgen`; slang cross-compiles its own generators and then cannot run them, so `SLANG_GENERATORS_PATH` points at the host `./vulkansdk` run's copies. `tblgen` is the `dx*` family's problem; `dxc` has been a row since VK4 (2026-09-09), fed the host run's `llvm-tblgen` the same way ([host tools](vulkan-foreign-arch-sdk.md#components-that-need-a-host-tool)) |
 | FAIL (was EXPECTED FAIL before VK2) | `vulkancapsviewer unavailable` — `qt6-base-dev:${arch}` is in the optional set with `QT_HOST_PATH=/usr` and a sysroot `CMAKE_PREFIX_PATH` |

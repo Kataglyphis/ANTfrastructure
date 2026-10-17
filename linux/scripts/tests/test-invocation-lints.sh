@@ -159,7 +159,7 @@ _fr_fixture_hits="$(_fr_violations "${_FIX}")"
 
 t_case "control: the \${SUDO} lint FIRES on an unguarded bare flag"
 t_assert_contains "${_sudo_fixture_hits}" "sudo-bad.sh:3:" \
-  "the lint must detect the 7e6d627 idiom — if this is empty the scan reached no files"
+  "the lint must detect the ab0639a idiom — if this is empty the scan reached no files"
 
 t_case "control: the \${SUDO} lint IGNORES a site guarded by [ -n \"\${SUDO:-}\" ]"
 case "${_sudo_fixture_hits}" in
@@ -174,7 +174,7 @@ esac
 t_assert_eq "clean" "${_c}" "the ban is on code; prose explaining the bug must stay writable"
 
 t_case "control: the uv-venv lint FIRES without --python and stays quiet with it"
-t_assert_contains "${_uv_fixture_hits}" "uv-bad.sh:2:" "the e3ffb0a idiom must be detected"
+t_assert_contains "${_uv_fixture_hits}" "uv-bad.sh:2:" "the acaa213 idiom must be detected"
 case "${_uv_fixture_hits}" in *uv-good.sh*) _u="flagged" ;; *) _u="clean" ;; esac
 t_assert_eq "clean" "${_u}" "an explicit --python must not be flagged"
 
@@ -213,7 +213,7 @@ t_assert_eq "" "${_sudo_hits}" \
 t_case "every 'uv venv' invocation passes an explicit --python"
 _uv_hits="$(_uv_violations "${SCRIPTS_DIR}")"
 t_assert_eq "" "${_uv_hits}" \
-  "uv venv without --python (ambient seeding — the e3ffb0a class):${_uv_hits:+ }${_uv_hits}"
+  "uv venv without --python (ambient seeding — the acaa213 class):${_uv_hits:+ }${_uv_hits}"
 
 t_case "every 'uv pip install --force-reinstall' pairs with --no-deps"
 _fr_hits="$(_fr_violations "${SCRIPTS_DIR}")"

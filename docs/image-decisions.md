@@ -57,8 +57,8 @@ passed in. Every claim the backlog listed holds:
   `cv2.gapi.onnx.ep.DirectML(0)` both run.
 
 The consumer workarounds are gone: BeschleunigerBallett's coverage is ON again
-and neither container script passes `-SkipTidy` (31ae0c51); AccelerANTgine's
-clang-tidy step sets `ModuleImportPattern` to `'(?!)'` (cab49ae).
+and neither container script passes `-SkipTidy` (d98fd52d); AccelerANTgine's
+clang-tidy step sets `ModuleImportPattern` to `'(?!)'` (93dd496).
 `Clear-UnreachableSccacheEndpoint` stays: it is a no-op without an endpoint and
 still guards a host whose own environment names an unreachable one.
 `:winamd64-rocm` still bakes `VOLUME C:\workspace` until its next build (CON34).

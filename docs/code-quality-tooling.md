@@ -611,13 +611,13 @@ nothing (the common commit) copies nothing at all.
 ### The mutation gate in CI, sharded
 
 **What happened (2026-09-23).** The `preflight` job of `linux-x64.yml` (then `ubuntu26.04.yml`) ran every
-slug in one job with a 45-minute timeout, and on `a7ccc896` it was killed inside
+slug in one job with a 45-minute timeout, and on `fd3a8e1f` it was killed inside
 the mutation gate. Nothing it had found was in the log: the report was buffered to
 the end, and Python block-buffers a piped stdout, so not even the gate's header
 arrived. Behind the timeout sat four deterministic reds, each a suite that failed
 unmutated and turned its entries into vacuous bites (CHANGELOG, 2026-09-23).
 
-**Why the gate got slow — a regression from `57bec177`.** fix11 ran one awk pass per
+**Why the gate got slow — a regression from `021d5bdd`.** fix11 ran one awk pass per
 rule, `test-critical-fixes.sh` ran the whole gate once or twice per knocked-out row,
 and 68 entries re-ran that suite: 4.4 s became 45-59 s on the runner, and that one
 suite became 43% of the gate's serial cost. It is fixed at the source
@@ -647,7 +647,7 @@ variables; to time one, give it the runner's 4 CPUs as well (below).
 **Measured 2026-09-24** in the CI-parity container (the image as uid 1001, gawk as
 `awk`, the image's venv python off `PATH`), one run at a time. The serial cost — one
 run of each distinct test command × (entries + 1) — fell from **11469 s** on
-`a7ccc896` to **6633 s**, and `test-critical-fixes.sh`'s share from **6044 s** to
+`fd3a8e1f` to **6633 s**, and `test-critical-fixes.sh`'s share from **6044 s** to
 **901 s**. A second session measured the new tree at 5816 s: sessions differ by up to
 17%, so compare numbers from one session only. The whole 1172-entry manifest took
 **18m39s** at `--jobs 16` on 32 cores; 1164 entries bite, and the 8 under
@@ -660,18 +660,18 @@ the host's 32, so `verify_mutations.py` picks `--jobs 8` where the runner's 4 vC
 give it 4. An early lab slice timed that way (6m16s) is no CI figure. Run as the
 runner runs it — `taskset -c 0-3` plus `PYTHON_CPU_COUNT=4` — slice `1/4` took
 **12m09s**. For the runner, each slice's serial cost is scaled by the gate's measured
-CI time on `41a07927` (843 entries: 1333 s on a fast runner, 1693 s on a slow one)
+CI time on `2943b70d` (843 entries: 1333 s on a fast runner, 1693 s on a slow one)
 over that tree's serial cost in the same session. Three sessions put a slice at
 10.0-12.4 min on a fast runner and 12.7-15.7 min on a slow one; the spread comes from
 the session, not the slice. The scaling spreads over all four slices the one entry
 that sits out the gate's 300-s per-entry timeout (`mutations.timeout-kills-tree`),
-which that slice pays alone. The same scaling puts `a7ccc896`'s whole gate, in one job,
+which that slice pays alone. The same scaling puts `fd3a8e1f`'s whole gate, in one job,
 at 66-84 min; CI killed it at 45. The first CI run is the proof.
 
 ### The pre-commit hook's cost budget
 
 The hook advertised ~11 s. Measured on this tree 2026-09-04, the batch commit
-`9a5bf8dd` (43 files) took it **5m26s**, and the mutation step was all of it: a
+`06e1e24e` (43 files) took it **5m26s**, and the mutation step was all of it: a
 full uncapped run of the 132 entries those files own measures **322 s**. AGENTS.md
 was wrong by a factor of thirty, and a hook that slow is the hook its own header
 warns about — it teaches `--no-verify`, which is worse than no hook.
@@ -1066,7 +1066,7 @@ nothing, which once turned 566 scanned files into 5,467. And WITH `.git`,
 `check-ignore` never reports a **tracked** file, while `.gitignore` deliberately
 re-admits dated run directories (`benchmark_results/*` then
 `!benchmark_results/20*/`) so a run can be committed as a record. The first
-commit to use that (`542b87f6`, 68 files) put 66 model-output files back into
+commit to use that (`28280c43`, 68 files) put 66 model-output files back into
 the scan while git reported nothing ignored at all. The answer is
 `git ∪ UNTRACKED_OUTPUT`; `test-doc-links.sh` pins the two to be equal on the
 real tree, which is what caught it.
