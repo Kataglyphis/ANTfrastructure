@@ -177,6 +177,19 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON99 — measure, then maybe publish `:latest` with zstd layers** [M, ★★]. Every Linux CI
+      job pulls the whole image: `:latest` amd64 is 72 layers, 12.84 GB, all `tar+gzip`
+      (manifest read 2026-10-17). In OmniAccelerANT's Linux x64 run 39041777817 the background
+      pull ran 14:41:48 → 14:48:53, 7 of the job's 16 min: ~30 MB/s for 12.84 GB, far under a
+      hosted runner's ghcr bandwidth, so serial unpacking is the likely cap. The runner image has
+      pigz 2.8, which dockerd may already use, but unpigz decompresses mostly on one thread. The
+      cross stages already push `compression=zstd` (PUSH1); the final publish does not. Measure
+      before switching, without the build host: on a hosted runner `skopeo copy
+      --dest-compress-format zstd` the tag into a scratch package, then `time docker pull` the gzip
+      and the zstd tag in two fresh jobs, and delete the scratch package. The cost is one full re-push of every layer per arch at the build host's
+      ~4.5 MB/s uplink, and every consumer re-downloading once; Docker 23+, containerd and podman
+      all read zstd layers.
+
 - [ ] **CON90 — Python 3.15 in the published images, built from the one pin** [L, ★★★]. Owner request 2026-10-12:
       `PYTHON_VERSION=3.15.0` (released 2026-10-09), and an upgrade must stay that one line
       (`docs/python-ci.md` § Upgrading Python). In source: every image ships the source-built interpreter on every

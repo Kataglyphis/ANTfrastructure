@@ -86,7 +86,7 @@ cd "${_root}"
 # runs it on the staged files only (0.2s each), below. (A comment must not START
 # with the tool's name -- that parses as a directive and errors out.)
 _FAST_SLUGS="crlf-guard,stdout-returns,copy-coverage,patch-integrity,code-dupes,\
-arg-consistency,masked-decls,comment-size,code-size,code-complexity,dead-functions,\
+arg-consistency,masked-decls,comment-size,code-size,code-complexity,dead-functions,large-files,\
 artifact-parity,advert-keys,stage-graph,env-knobs,trailing-conditional,\
 doc-links,gate-registry"
 

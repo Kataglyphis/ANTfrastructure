@@ -149,8 +149,8 @@ _lint_gates_interpreter() {
 # Ratchets are opt-in: a tree without freeze files is red on its first run. See docs/code-quality-tooling.md#the-scan-root-contract
 _LINT_GATES_RATCHET_GATES=(verify_stdout_returns verify_masked_assignments verify_trailing_conditional
   verify_comment_size verify_code_size verify_code_complexity verify_dead_functions verify_shellcheck_warnings)
-# Freeze-free and shell-independent, so it also grades pure Dart and Python consumers.
-_LINT_GATES_RATCHET_DOC_GATES=(docs/scripts/verify_doc_links.py)
+# Shell-independent, so they also grade pure Dart and Python consumers; the large-file freeze is <root>/large-files.allow.
+_LINT_GATES_RATCHET_DOC_GATES=(docs/scripts/verify_doc_links.py linux/scripts/verify_large_files.py)
 # The caller decides an empty shell scope is allowed; exit 0 grade, 1 nothing to grade, 2 unusable root.
 _lint_gates_ratchet_scope() {
   # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line

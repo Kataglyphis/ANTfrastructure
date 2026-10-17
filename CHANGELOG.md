@@ -10,6 +10,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — the `large-files` gate: no new data files over 500 KiB
+
+- **New gate `linux/scripts/verify_large_files.py`** (preflight slug `large-files`, also in the
+  pre-commit hook's fast set and in `run-lint-gates.sh --ratchets` for every consumer). A
+  tracked file over 500 KiB that is binary, or a document, media, model, scene or archive
+  format, fails unless `large-files.allow` freezes it with its size; growth, shrink and stale
+  rows fail as in the other four-way ratchets. The extension list exists because the NUL test
+  alone passed PDFs and `.obj` scenes. The hub tracks none (its one file over the limit,
+  `docs/scripts/mutations.json`, is text). `test-large-files.sh` covers the four-way contract,
+  text vs data, `third_party/` and symlinks. Docs: `data-repositories.md` § *Keeping data out of
+  the code repositories*.
+- **Rollout**: ANThology runs the hub at `develop` and got its `large-files.allow` first; every
+  pinned consumer seeds its freeze file in the commit that moves its hub pin past this one.
 ## 2026-10-17 — `git-adopt-rewritten-history.sh`: a checkout after a history rewrite
 
 - **New entry point `linux/scripts/git-adopt-rewritten-history.sh`**, for the family's
