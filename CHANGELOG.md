@@ -10,6 +10,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — the sccache bucket's size cap is 100 GiB
+
+- **The VPS raised the cap from 60 to 100 GiB** (`CAP_GB=100` in `sccache-evict.service`), at the
+  owner's request, so Linux builds share the bucket. The eviction target follows, at 90 %: 90 GiB.
+- **The Garage layout's capacity is 120G** (was 80G). On one node it is only a weight, kept above
+  the cap.
+- The bucket held 50.1 GiB (756k objects) and the shared disk had 87 GB free.
+  `linux/sccache-s3/README.md` records both and the steps for the next change.
+
 ## 2026-10-17 — data repositories: models and scenes outside the code
 
 - **`docs/data-repositories.md`** describes the family's rule of the same day: code
