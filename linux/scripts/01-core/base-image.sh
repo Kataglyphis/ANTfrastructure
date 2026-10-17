@@ -502,7 +502,11 @@ install_sccache_pinned() {
   fi
 
   # The hub's own build while no release carries its fixes: shared/upstream/sccache/README.md
-  local url="${SCCACHE_DOWNLOAD_BASE:-https://github.com/mozilla/sccache/releases/download/v}${ver}/sccache-v${ver}-${target}.tar.gz"
+  if [ -z "${SCCACHE_DOWNLOAD_BASE:-}" ]; then
+    warn "SCCACHE_DOWNLOAD_BASE unset -- keeping the apt sccache"
+    return 0
+  fi
+  local url="${SCCACHE_DOWNLOAD_BASE}${ver}/sccache-v${ver}-${target}.tar.gz"
   local tmp="/tmp/sccache-${ver}.tar.gz"
   local dir="/tmp/sccache-${ver}"
   if ! download_verified_file "${url}" "${sha}" "${tmp}"; then

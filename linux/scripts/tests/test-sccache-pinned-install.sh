@@ -28,9 +28,10 @@ t_assert_eq "URL ${HUB}0.18.0-1bd7432-pr2809/sccache-v0.18.0-1bd7432-pr2809-aarc
 t_assert_eq "URL ${HUB}0.18.0-1bd7432-pr2809/sccache-v0.18.0-1bd7432-pr2809-riscv64gc-unknown-linux-musl.tar.gz SHA cc" \
   "$(_url riscv64 "${PINS[@]}" SCCACHE_DOWNLOAD_BASE="${HUB}")"
 
-t_case "without a download base it is mozilla's release again"
+t_case "mozilla's release is one pin away, and without a download base nothing is downloaded"
 t_assert_eq "URL https://github.com/mozilla/sccache/releases/download/v0.19.0/sccache-v0.19.0-x86_64-unknown-linux-musl.tar.gz SHA aa" \
-  "$(_url x86_64 SCCACHE_LINUX_VERSION=0.19.0 SCCACHE_LINUX_X86_64_SHA256=aa)"
+  "$(_url x86_64 SCCACHE_LINUX_VERSION=0.19.0 SCCACHE_LINUX_X86_64_SHA256=aa SCCACHE_DOWNLOAD_BASE=https://github.com/mozilla/sccache/releases/download/v)"
+t_assert_contains "$(_url x86_64 "${PINS[@]}")" "WARN SCCACHE_DOWNLOAD_BASE unset"
 
 t_case "no pinned SHA or no asset for the arch: nothing is downloaded"
 t_assert_contains "$(_url riscv64 SCCACHE_LINUX_VERSION=0.18.0)" "WARN no SHA256 pinned for sccache/riscv64gc-unknown-linux-musl"
