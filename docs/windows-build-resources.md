@@ -569,7 +569,9 @@ which the Windows lanes of OmniAccelerANT, AccelerANTgine and Ballett call throu
 
 The Linux image chain uses the same bucket since 2026-10-17, as one BuildKit secret that
 carries the endpoint too ([`build-cache-tiers.md` § The shared S3 level](build-cache-tiers.md#the-shared-s3-level)).
-The Linux app lanes have no remote tier yet, only the cache inside the container.
+A consumer's local Linux lane can join it too: OmniAccelerANT's `Invoke-LinuxLane.ps1` binds the
+host's key at `/run/secrets/sccache_s3`, where the same `sccache_start_server` reads it (2026-10-17).
+In CI the Linux lanes have no route to the bucket and carry their cache through `actions/cache`.
 
 **What happens when a level is missing**, so neither level can stop a build:
 
