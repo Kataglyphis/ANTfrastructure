@@ -82,6 +82,18 @@ $acceptedMachines = @{
     0x8664 = @(0x8664)
     0xAA64 = @(0xAA64, 0xA641, 0xA64E)
 }
+# NSIS's first header: siginfo 0xDEADBEEF, then "NullsoftInst" (exehead/fileform.h).
+$nsisSignature = [Text.Encoding]::Latin1.GetString([byte[]](0xEF, 0xBE, 0xAD, 0xDE)) + 'NullsoftInst'
+# Whether an exe carries that header in its first 8 MiB, where it follows the stub.
+function Test-NsisInstaller {
+    param([Parameter(Mandatory)][string]$LiteralPath)
+    $reader = $null
+    try {
+        $reader = [IO.BinaryReader]::new([IO.File]::OpenRead($LiteralPath))
+        $text = [Text.Encoding]::Latin1.GetString($reader.ReadBytes(8MB))
+    } catch { return $false } finally { if ($reader) { $reader.Dispose() } }
+    return $text.Contains($nsisSignature, [StringComparison]::Ordinal)
+}
 function Format-Machine {
     param([int]$Value)
     $name = if ($machineNames.ContainsKey($Value)) { $machineNames[$Value] } else { 'UNRECOGNIZED' }
@@ -179,6 +191,8 @@ function Add-MachineVerdict {
     if ($LauncherTemplatePattern -and $LiteralPath -match $LauncherTemplatePattern) { $script:launcherTemplates += $Label; return $false }
     $machine = if ($Archive) { Get-ArchiveMachine -LiteralPath $LiteralPath } else { Get-CoffMachine -LiteralPath $LiteralPath }
     if ($null -eq $machine) { $script:unreadable += $Label; return $false }
+    # NSIS has no arm64 stub; Windows on Arm runs the x86 one emulated, and its payload is opaque here (container-ci-windows.yml installs it).
+    if ($machine -eq 0x014C -and $expected -ne 0x014C -and -not $Archive -and (Test-NsisInstaller -LiteralPath $LiteralPath)) { $script:installerStubs += $Label; return $false }
     $script:inspected++
     $ok = if ($acceptedMachines.ContainsKey($expected)) { $acceptedMachines[$expected] -contains $machine } else { $machine -eq $expected }
     if (-not $ok) { $script:violations += [pscustomobject]@{ Path = $Label; Machine = $machine } }
@@ -192,6 +206,7 @@ if ($IncludeArchives) { $extensions += '.lib' }
 $inspected = 0
 $skippedHostTools = @()
 $launcherTemplates = @()
+$installerStubs = @()
 $unreadable = @()
 $violations = @()
 $script:peFiles = @()
@@ -306,6 +321,10 @@ if ($skippedHostTools.Count -gt 0) {
 if ($launcherTemplates.Count -gt 0) {
     Write-Host ("  launcher templates, one per arch by design, skipped {0} file(s) (pattern: {1}):" -f $launcherTemplates.Count, $LauncherTemplatePattern)
     $launcherTemplates | ForEach-Object { Write-Host "    - $_" }
+}
+if ($installerStubs.Count -gt 0) {
+    Write-Host ("  NSIS installers, an x86 stub on every arch, skipped {0} file(s); install them on the device to grade their payload:" -f $installerStubs.Count)
+    $installerStubs | ForEach-Object { Write-Host "    - $_" }
 }
 if ($unreadable.Count -gt 0) {
     Write-Host ("  not PE/COFF, ignored: {0} file(s)" -f $unreadable.Count)
