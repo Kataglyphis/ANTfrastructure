@@ -318,7 +318,11 @@ Inputs: `artifact` (downloaded), `deb` + `deb-command` (installed with apt, so i
 resolved as on a user's machine; every installed ELF must pass `ldd`), `tarball` +
 `tarball-command` (unpacked anywhere, run in its top directory), `appimage` + `appimage-command`
 (the path in `$APPIMAGE`, run through `APPIMAGE_EXTRACT_AND_RUN`), `apt-packages` (what a user would have, such as
-`mesa-vulkan-drivers`). Every command runs with `LD_BIND_NOW=1`. Background:
+`mesa-vulkan-drivers`), `subdir` (where the packages sit inside the artifact: `packages` for a Python
+lane's `dist/`) and `scan-elves` (`false` skips the `ldd` scan and leaves the proof to the commands, for
+a Python app bundle whose unpatched chain ORT resolves through `preload.list`; OrchestrANT runs its
+self-test instead). Every command runs with `LD_BIND_NOW=1`; `test-clean-host-package-check.sh` plants
+a missing library, a failing command and a two-match glob. Background:
 [`linux-build-basics.md`](../../docs/linux-build-basics.md#linux-packages-that-run-outside-the-image).
 
 ### `run-in-linux-container`

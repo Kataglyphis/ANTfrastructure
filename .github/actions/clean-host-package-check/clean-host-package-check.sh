@@ -19,6 +19,11 @@ is_elf() { [ -f "$1" ] && [ "$(head -c 4 -- "$1" 2>/dev/null | tr -d '\0')" = $'
 # A missing library and a missing symbol version both print "not found"; the image hides either.
 scan_elves() {
   local f out
+  if [ "${SCAN_ELVES:-true}" = false ]; then
+    cat >/dev/null
+    echo "  (ldd scan skipped: scan-elves is false; the command below is the proof)"
+    return 0
+  fi
   while IFS= read -r f; do
     is_elf "${f}" || continue
     out="$(ldd "${f}" 2>&1 || true)"

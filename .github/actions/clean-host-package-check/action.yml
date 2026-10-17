@@ -36,6 +36,16 @@ inputs:
     description: 'Shell command that starts "$APPIMAGE", e.g. "$APPIMAGE" --version; extract-and-run, no FUSE.'
     required: false
     default: ''
+  subdir:
+    description: 'The directory inside the artifact that holds the packages, e.g. "packages"; empty is its top.'
+    required: false
+    default: ''
+  scan-elves:
+    description: >-
+      false skips the ldd scan of every installed ELF and leaves the proof to the commands: a Python app
+      bundle loads its unpatched chain ORT through preload.list, which ldd cannot follow.
+    required: false
+    default: 'true'
   apt-packages:
     description: 'More apt packages a user would have, e.g. mesa-vulkan-drivers for a Vulkan app.'
     required: false
@@ -53,7 +63,8 @@ runs:
     - name: Install and start them
       shell: bash
       env:
-        PACKAGES_DIR: ${{ runner.temp }}/clean-host-packages
+        PACKAGES_DIR: ${{ runner.temp }}/clean-host-packages/${{ inputs.subdir }}
+        SCAN_ELVES: ${{ inputs.scan-elves }}
         DEB_GLOB: ${{ inputs.deb }}
         DEB_COMMAND: ${{ inputs.deb-command }}
         TARBALL_GLOB: ${{ inputs.tarball }}

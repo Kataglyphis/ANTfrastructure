@@ -12,6 +12,10 @@
 
 ## 2026-10-17 — the family's history is rewritten
 
+- **`clean-host-package-check` takes `subdir` and `scan-elves`**, so a Python lane can start its
+  packages on a bare runner: they sit in `dist/packages`, and the `ldd` scan cannot follow the
+  chain ORT's `preload.list`, so its self-test is the proof. A suite covers the script for the first
+  time.
 - **Python app packages carry the image's own GStreamer (CON100).** An `app.json` `gstreamer`
   block names tools, plugins and elements; `python-app-bundle.sh` bundles them, puts the loader
   in front of the tools, gives every launcher the package-only GStreamer environment and fails
