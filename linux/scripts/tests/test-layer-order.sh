@@ -5,7 +5,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 CORE_DIR="${TESTS_DIR}/../01-core"
 
-L0=(logging.sh load-versions-env.sh path-helpers.sh platform.sh guard-helpers.sh)
+L0=(logging.sh load-versions-env.sh path-helpers.sh platform.sh guard-helpers.sh sccache-s3-level.sh)
 L1=(arch-mapping.sh ubuntu-mirror.sh downloads.sh parallelism.sh)
 L2=(common.sh)
 L3=(cross-env.sh cross-gcc.sh cross-python.sh cross-apt.sh cross-meson.sh)

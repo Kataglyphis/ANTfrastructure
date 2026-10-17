@@ -13,6 +13,8 @@ export CROSS_BUILD_PLATFORM
 # shellcheck disable=SC1091
 [ -f "${_CROSS_STAGE_BUILD_SH_DIR}/disk-guard.sh" ] \
   && source "${_CROSS_STAGE_BUILD_SH_DIR}/disk-guard.sh"
+# shellcheck disable=SC1091
+source "${_CROSS_STAGE_BUILD_SH_DIR}/sccache-s3-level.sh"
 
 # Log path for <label>, empty when LOG_DIR is unset (the caller then builds unlogged).
 cross_stage_log_redirect() {
@@ -161,6 +163,31 @@ _cross_build_append_cache_args() {
   fi
 }
 
+# The host's S3 level as one BuildKit secret, so neither the key nor the endpoint re-keys a RUN: docs/build-cache-tiers.md#the-shared-s3-level
+_cross_build_append_sccache_s3_secret() {
+  local -n _s3_cmd="$1"
+  local file="${KATAGLYPHIS_SCCACHE_S3_FILE:-${XDG_CONFIG_HOME:-${HOME:-/root}/.config}/kataglyphis/sccache-s3.env}" name endpoint
+  case "${KATAGLYPHIS_SCCACHE_S3:-on}" in 0|off|false|no) return 0 ;; esac
+  [ -f "${file}" ] || return 0
+  if [ -n "$(find "${file}" -perm /077 2>/dev/null)" ]; then
+    warn "sccache S3: ${file} is readable by others (chmod 600 it) -- building without the S3 level"
+    return 0
+  fi
+  for name in SCCACHE_BUCKET SCCACHE_ENDPOINT AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+    if ! grep -q "^${name}=." "${file}"; then
+      warn "sccache S3: ${file} has no ${name} (linux/host-config/set-sccache-s3-level.sh writes it) -- building without the S3 level"
+      return 0
+    fi
+  done
+  endpoint="$(sed -n 's/^SCCACHE_ENDPOINT=//p' "${file}" | tail -n 1)"
+  if ! sccache_s3_endpoint_reachable "${endpoint}"; then
+    warn "sccache S3: ${endpoint} takes no TCP connection from this host within 2 s -- building without the S3 level"
+    return 0
+  fi
+  info "sccache levels: disk -> s3 ${endpoint} (BuildKit secret sccache_s3 from ${file})"
+  _s3_cmd+=(--secret "id=sccache_s3,src=${file}")
+}
+
 # A local cache export only lands on a successful solve, so re-drive each named --target to save finished subtrees.
 _cross_build_salvage_exports() {
   local dockerfile="$1" _cache_dir="$2" _cache_slug="$3"
@@ -255,6 +282,7 @@ _cross_stage_build_impl() {
     "${_cache_dir}" "${_cache_slug}"
 
   append_buildkit_host_arg build_cmd
+  _cross_build_append_sccache_s3_secret build_cmd
   build_cmd+=("${extra[@]}" "${common_args[@]}" .)
 
   if is_dry_run; then

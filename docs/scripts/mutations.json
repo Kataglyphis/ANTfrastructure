@@ -8085,8 +8085,8 @@
  {
   "id": "windows-lane.arm64-inputs-through-env",
   "target": ".github/workflows/python-ci-windows.yml",
-  "find": "-PythonVersions $env:PY_VERSIONS ",
-  "replace": "-PythonVersions '${{ inputs.arm64-python-versions }}' ",
+  "find": "-InstallUv -PythonVersions $env:PY_VERSIONS ",
+  "replace": "-InstallUv -PythonVersions '${{ inputs.arm64-python-versions }}' ",
   "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
   "why": "an input interpolated into the script is a script injection; env carries it as data"
  },

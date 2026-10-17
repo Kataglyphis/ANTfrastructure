@@ -478,3 +478,5 @@ LINKER_SELECT_CACHE_DIR
 # Android SDK and a foreign Rust toolchain (default amd64; a comma list, or none).
 # Resolved per arch into Dockerfile.package's HOST_PAYLOAD; never set in-repo.
 HOST_PAYLOAD_ARCHES
+# sccache-s3-level.sh drain: how long a RUN waits for its S3 uploads (default 600 s); an operator switch, never set in-repo.
+SCCACHE_S3_DRAIN_TIMEOUT

@@ -1531,3 +1531,72 @@ loopback, files, image history) are the same on both lanes, because one case fil
 `linux/scripts/tests/image-env-cases.json`, grades this script and the Windows
 PowerShell twin alike. Tests: `linux/scripts/tests/test-image-env.sh`; mutations
 `dockerfile-lint.image-env-*` and `image-env.*`.
+
+## The shared S3 level
+
+**Since 2026-10-17 the Linux chain's sccache RUNs can use the shared S3 bucket as a second
+level behind their disk cache mount** (`SCCACHE_MULTILEVEL_CHAIN=disk,s3`). It is the
+bucket the Windows chain uses: Garage on the VPS, reached over WireGuard
+([`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md)). One host's compiles are then
+hits on another host, and on this host after a `nerdctl system prune` empties the cachemounts.
+
+**Setting up a host** (once; the key is the `sccache-client` one from the server's
+`/root/sccache-s3-key.txt`): [`linux-host-setup.md` § B9](linux-host-setup.md#b9-the-shared-s3-level-for-sccache).
+
+**How the level reaches a RUN.** Unlike on Windows, everything goes in one BuildKit secret,
+the key and the endpoint alike:
+
+- `_cross_build_append_sccache_s3_secret` (`cross-stage-build.sh`) passes the host's
+  `~/.config/kataglyphis/sccache-s3.env` as `--secret id=sccache_s3,src=…` when it is mode 600,
+  names the bucket, the endpoint and both key halves, and the endpoint takes a TCP connection
+  within 2 s. Otherwise it warns, names why, and the stage builds on disk alone. Each stage's
+  log says `sccache levels: disk -> s3 <endpoint>`. `KATAGLYPHIS_SCCACHE_S3=off` turns it off
+  for a run, and `KATAGLYPHIS_SCCACHE_S3_FILE` names another file.
+- A secret is not part of any cache key, while an ARG in scope re-keys every RUN after it.
+  On this lane the T2/T3 caches (§ 1) cross hosts and runs, so an endpoint ARG would split
+  them by network. The secret also keeps the endpoint out of the image history.
+- Every RUN on the sccache cache mount (23, in `Dockerfile.toolchain`, `.media`, `.android`
+  and `.torch`) carries `--mount=type=secret,id=sccache_s3,required=false`. A build without
+  the secret (CI, a host without the file) runs exactly as before. `Dockerfile.base`'s cache
+  RUN compiles nothing and has no mount.
+- **The key never enters the build's environment.** `sccache_start_server`
+  (`01-core/sccache-s3-level.sh`, called by `ensure_sccache_env` and `compiler-cache.sh`)
+  reads the secret file and hands the six whitelisted names (`SCCACHE_BUCKET`,
+  `SCCACHE_ENDPOINT`, `SCCACHE_REGION`, `SCCACHE_S3_USE_SSL`, `AWS_ACCESS_KEY_ID`,
+  `AWS_SECRET_ACCESS_KEY`) plus the chain to the `sccache --start-server` command alone. The
+  compiles reach that server over its socket. No configure log, `env` dump or wheel metadata
+  can capture the key, and the next RUN has neither the variables nor `/run/secrets`.
+
+**Every such RUN ends with `bash /opt/scripts/core/sccache-s3-level.sh drain`.** sccache
+writes level 0 inside the compile and level 1 in a background task (`multilevel.rs`,
+policy `l0`), and the RUN's end kills the server with whatever is still queued. The drain polls
+`--show-stats --stats-format json` until level 1's writes plus failures reach level 0's
+writes, as `Wait-SccacheUploadDrain` does on Windows, and gives up after 600 s
+(`SCCACHE_S3_DRAIN_TIMEOUT`) with a warning; a later build uploads the rest. It always exits
+0, and without a socket it asks nothing, since asking would start a server.
+
+**What happens when the level is missing:**
+
+| Situation | Effect |
+|---|---|
+| No host file, or `KATAGLYPHIS_SCCACHE_S3=off` | No secret; disk alone, as before 2026-10-17 |
+| The file is readable by others, or lacks a name | The driver warns and passes no secret |
+| The endpoint takes no TCP connection from the host | The driver warns and passes no secret |
+| Inside a RUN: the endpoint unreachable | `sccache_s3_env` names it; the server starts on disk alone |
+| A wrong key, or a startup check that stalls | One level that fails its check stops the whole server, so `sccache_start_server` stops it and starts it again on disk alone, with the reason (`AccessDenied`, `Timed out waiting for server startup`) in the log |
+| sccache older than 0.18, or the TCP server address | The level is not tried: the chain was checked against 0.18 only, and without a socket a running server cannot be told from none |
+| An image without CA certificates | sccache's S3 client panics at startup (`No CA certificates were loaded from the system`); the fallback row above applies. The chain's images carry them |
+
+**Measured on 2026-10-17** (rootless BuildKit 0.33.0 on this host, the pinned sccache 0.18.0,
+gcc, 60 one-function C files; a local Garage v2.4.1 first, then the real bucket):
+
+| Run | Result |
+|---|---|
+| `disk,s3`, cold | 60 misses; level 1 60 writes, 0 failures; `sccache-drain| every upload done after 0 s` |
+| The same RUN on a new, empty disk cache id | 60 hits of 60: the objects came from the bucket |
+| The build's own environment, and the next RUN | no `AWS_*`, no `SCCACHE_BUCKET`, no `/run/secrets` |
+| The real bucket from a RUN on this host (BuildKit runs on host networking) | cold: 60 writes, 29 still queued when the compiles ended, `every upload done after 2 s`; an empty disk cache id then hit 60 of 60 from the VPS |
+
+Adding the mount and the drain changed the RUN instructions, so the first chain after
+2026-10-17 re-keys every sccache stage once, from the GCC build on. Those stages compile warm
+from their disk cache mounts. Tests: `linux/scripts/tests/test-sccache-s3-level.sh`.

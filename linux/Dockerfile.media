@@ -194,10 +194,12 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu
+    bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
@@ -212,6 +214,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -221,7 +224,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-gpu; \
     else \
         echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"; \
-    fi
+    fi; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # The patches mount carries the ORT v1.31.0 model-package port and the riscv64 target_platform patch (docs/gen1-riscv64-genai.md).
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
@@ -230,11 +234,13 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step genai
+    bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step genai; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # Mounted per file: build/onnxruntime/ and runtime/ are mounted/copied whole elsewhere, so either dir would re-key them.
 RUN --mount=type=tmpfs,target=/tmp \
@@ -334,9 +340,11 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    bash /opt/scripts/03-media/build/litert/build-litert.sh "${LITERT_VERSION}"
+    bash /opt/scripts/03-media/build/litert/build-litert.sh "${LITERT_VERSION}"; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
@@ -371,6 +379,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scri
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-tvm \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
@@ -383,7 +392,8 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scri
     else \
         echo "WARNING: TVM build failed for target=${TARGET_ARCH:-?}; shipping media image without TVM python (non-fatal)"; \
         rm -f /opt/tvm/wheels/*.whl /opt/tvm/wheels-free-threaded/*.whl 2>/dev/null || true; \
-    fi
+    fi; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # OpenCV stage
 FROM base AS opencv
@@ -416,6 +426,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,from=onnxruntime,source=/usr/local/lib/onnxruntime-cpu,target=/usr/local/lib/onnxruntime-cpu,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     export OPENCV_COMMIT="${OPENCV_COMMIT}" OPENCV_CONTRIB_COMMIT="${OPENCV_CONTRIB_COMMIT}"; \
@@ -425,7 +436,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         --build-type "${OPENCV_BUILD_TYPE}" \
         --with-contrib "${OPENCV_WITH_CONTRIB}" \
         --with-python "${OPENCV_WITH_PYTHON}" \
-        --skip-dep-install
+        --skip-dep-install; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
@@ -458,6 +470,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     case "${TARGET_ARCH:-amd64}" in \
@@ -477,7 +490,8 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
         mkdir -p /opt/app-wheels; \
         touch /opt/app-wheels/.placeholder; \
         echo "WARNING: app wheelhouse is empty — riscv64 cross wheel builds may have failed; continuing"; \
-    fi
+    fi; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
@@ -505,6 +519,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scri
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=bind,source=linux/scripts/01-core/sccache-s3-level.sh,target=/opt/scripts/core/sccache-s3-level.sh,readonly \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     case "${TARGET_ARCH:-${TARGETARCH:-}}" in \
@@ -515,7 +531,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scri
         *) \
             echo "Skipping Arm NN build (arm64 only, got ${TARGET_ARCH:-${TARGETARCH:-}})"; \
             mkdir -p /opt/armnn /opt/acl ;; \
-    esac
+    esac; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # FFmpeg stage
 FROM base AS ffmpeg
@@ -550,6 +567,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=cache,target=/var/cache/ffmpeg-sdks,id=ffmpeg-sdks-${TARGET_ARCH},sharing=shared \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
@@ -557,7 +575,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     export ENABLE_NVIDIA="${ENABLE_NVIDIA}"; \
     export FFMPEG_COMMIT="${FFMPEG_COMMIT}"; \
     echo "--- ffmpeg build v3: DNN backends (TensorFlow, OpenVINO, ONNX) + CUDA HW accel ---"; \
-    bash /opt/scripts/03-media/build/ffmpeg/build-ffmpeg.sh
+    bash /opt/scripts/03-media/build/ffmpeg/build-ffmpeg.sh; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
@@ -580,12 +599,14 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,from=onnxruntime,source=/usr/local/lib/onnxruntime-cpu,target=/usr/local/lib/onnxruntime-cpu,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     # libavfilter needs the chain ORT, which media-inputs puts on LD_LIBRARY_PATH; the free-threaded proof loads every module.
     export LD_LIBRARY_PATH="/usr/local/lib/onnxruntime-cpu/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"; \
-    bash /opt/scripts/03-media/build/pyav/build-pyav.sh
+    bash /opt/scripts/03-media/build/pyav/build-pyav.sh; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # Media inputs stage: aggregates the library outputs
 FROM base AS media-inputs
@@ -657,6 +678,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -664,7 +686,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     bash /opt/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh \
         "$GSTREAMER_VERSION" \
         "$GSTREAMER_PREFIX" \
-        "$BUILD_TYPE"
+        "$BUILD_TYPE"; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
@@ -695,9 +718,11 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    bash /opt/scripts/03-media/build/libcamera/build-libcamera.sh
+    bash /opt/scripts/03-media/build/libcamera/build-libcamera.sh; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
@@ -731,6 +756,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     export OPENCV_COMMIT="${OPENCV_COMMIT}" OPENCV_CONTRIB_COMMIT="${OPENCV_CONTRIB_COMMIT}"; \
@@ -744,7 +770,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         --build-type "${OPENCV_BUILD_TYPE}" \
         --with-contrib "${OPENCV_WITH_CONTRIB}" \
         --with-python "${OPENCV_WITH_PYTHON}" \
-        --skip-dep-install
+        --skip-dep-install; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
@@ -768,13 +795,15 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/deepstream.sh,target=/o
     --mount=type=cache,target=/var/cache/deepstream,sharing=locked,id=deepstream-downloads-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     set -euo pipefail; \
     mkdir -p /opt/nvidia; \
     if [ "${ENABLE_DEEPSTREAM}" = "true" ]; then \
         DS_DOWNLOAD_CACHE=/var/cache/deepstream TMPDIR=/var/tmp bash /opt/scripts/05-frameworks/deepstream.sh build; \
     else \
         echo "ENABLE_DEEPSTREAM=${ENABLE_DEEPSTREAM}: no DeepStream in this image"; \
-    fi
+    fi; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # Final stage: build scripts are not shipped, only runtime ones
 FROM media-inputs AS final
