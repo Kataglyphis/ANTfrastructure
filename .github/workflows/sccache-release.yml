@@ -1,0 +1,94 @@
+# Builds the hub's sccache (versions.env's SCCACHE_SOURCE_REV + shared/upstream/sccache/patches/) and publishes it as release sccache-v<SCCACHE_BUILD_ID>.
+name: sccache release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    # The upstream release's own toolchains: musl cross containers for Linux, the runner's MSVC for Windows.
+    container: ${{ fromJSON(matrix.container || '{"image":null}') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-26.04
+            # x86_64-musl
+            container: '{"image": "docker.io/messense/rust-musl-cross@sha256:ce75e9174325d4fbb3de85c309e2d7ca29f7500169bc4b5d2c611ff7e86d549a"}'
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-26.04
+            # aarch64-musl
+            container: '{"image": "docker.io/messense/rust-musl-cross@sha256:ecae5dd62d1c938c14f8071d36c16fa699860aace03bfb5284fb1216474d2643"}'
+          - target: riscv64gc-unknown-linux-musl
+            runner: ubuntu-26.04
+            # riscv64gc-musl
+            container: '{"image": "docker.io/messense/rust-musl-cross@sha256:12f2c37f4f41403a058d54f3c3cf0a1602df164a16874516b335b58a43673d90"}'
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust target
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: rustup target add "${{ matrix.target }}"
+
+      - name: Build
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash shared/upstream/sccache/build-sccache.sh "${TARGET}" dist
+
+      - name: Upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sccache-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: publish
+    needs: build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: sccache-*
+          path: dist
+          merge-multiple: true
+
+      # Never --latest: the hub's own releases keep that slot.
+      - name: Publish sccache-v<SCCACHE_BUILD_ID>
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          id="$(sed -n 's/^SCCACHE_BUILD_ID=//p' linux/scripts/01-core/versions.env)"
+          rev="$(sed -n 's/^SCCACHE_SOURCE_REV=//p' linux/scripts/01-core/versions.env)"
+          tag="sccache-v${id}"
+          (cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+          notes="mozilla/sccache at ${rev} with the patches in shared/upstream/sccache/patches/ at ${SHA}. Why: shared/upstream/sccache/README.md"
+          gh release view "${tag}" > /dev/null 2>&1 ||
+            gh release create "${tag}" --target "${SHA}" --title "${tag}" --notes "${notes}" --latest=false
+          gh release upload "${tag}" dist/* --clobber

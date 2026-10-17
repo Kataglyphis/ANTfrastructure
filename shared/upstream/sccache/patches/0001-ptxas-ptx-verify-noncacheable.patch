@@ -1,0 +1,64 @@
+From 27261deda62c423010304afd9a79a142c36824cc Mon Sep 17 00:00:00 2001
+From: Ting Lu <tingl@nvidia.com>
+Date: Fri, 14 Aug 2026 01:22:10 -0700
+Subject: [PATCH] Don't cache ptxas PTX-verification passes
+
+For a virtual-only gencode such as -gencode arch=compute_120,code=compute_120
+there is no SASS to emit, so nvcc runs ptxas purely to syntax-check the PTX and
+passes no -o at all:
+
+  ptxas -arch=compute_120 -m64 kernel.compute_120.ptx
+
+group_nvcc_subcommands_by_compilation_stage marks every ptxas sub-command
+Cacheable::Yes, and the caching path requires an "obj" output that only -o
+populates, so the whole compile dies in cicc::generate_compile_commands with
+`Missing "cubin" file output`. Any target carrying a +PTX architecture can hit
+this; it surfaced building torchao's mxfp8 extension, which appends
+compute_120,code=compute_120 alongside a real compute_100,code=sm_100 gencode.
+
+Decide cacheability at the grouping stage instead. Cacheable::No routes the
+sub-command to the path nvcc.rs already uses for non-cacheable steps: build the
+command and run it directly. Returning CompilerArguments::CannotCache from
+cicc::parse_arguments does not work, because the sub-command dispatch turns
+CannotCache into an error rather than falling back to running the command, so it
+only moves the failure to "Cannot cache(no output file)". Cacheable::No with a
+group is already how the host preprocessor steps are handled.
+
+Test Plan:
+Carried as a source patch in PyTorch CI, where it fixes the inductor build that
+compiles torchao against CUDA 13.2:
+
+```
+python .ci/pytorch/smoke_test/smoke_test.py --package=torchonly
+```
+
+No unit test here: reproducing it needs a mocked nvcc --dryrun emitting the
+virtual-only sub-command shape, which is worth adding separately once the shape
+can be captured from real nvcc output rather than hand-written.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+---
+ src/compiler/nvcc.rs | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/src/compiler/nvcc.rs b/src/compiler/nvcc.rs
+index c10e0592c0..8f618efd44 100644
+--- a/src/compiler/nvcc.rs
++++ b/src/compiler/nvcc.rs
+@@ -792,7 +792,15 @@ where
+                     }
+                     false
+                 });
+-                (env_vars.clone(), Cacheable::Yes, group)
++                // For a virtual-only gencode (e.g. -gencode arch=compute_120,
++                // code=compute_120) nvcc runs ptxas with no -o just to verify the
++                // PTX. There is no artifact to cache, so run it directly.
++                let cacheable = if args.iter().any(|arg| arg == "-o") {
++                    Cacheable::Yes
++                } else {
++                    Cacheable::No
++                };
++                (env_vars.clone(), cacheable, group)
+             }
+             // cudafe++ _must be_ cached, because the `.module_id` file is unique to each invocation (new in CTK 12.8)
+             Some("cudafe++") => {
