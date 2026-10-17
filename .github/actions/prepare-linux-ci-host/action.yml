@@ -90,6 +90,12 @@ inputs:
     description: 'Per-attempt timeout for `docker pull`.'
     required: false
     default: '900'
+  max-concurrent-downloads:
+    description: >-
+      Docker's parallel layer downloads (its default is 3), set in daemon.json before the
+      pull; empty leaves the daemon alone. A measurement for now (2026-10-17).
+    required: false
+    default: ''
 
 outputs:
   pull-seconds:
@@ -111,6 +117,13 @@ runs:
         case "${FREE_DISK_SPACE}" in true|fast|false) ;; *) echo "::error::free-disk-space must be true, fast or false, not '${FREE_DISK_SPACE}'"; exit 1 ;; esac
         case "${PULL_FIRST}" in true|false) ;; *) echo "::error::pull-first must be true or false, not '${PULL_FIRST}'"; exit 1 ;; esac
         echo "disk cleanup: ${FREE_DISK_SPACE}; pull first: ${PULL_FIRST}"
+
+    - name: Raise docker's parallel layer downloads
+      if: inputs.max-concurrent-downloads != ''
+      shell: bash
+      env:
+        DOWNLOADS: ${{ inputs.max-concurrent-downloads }}
+      run: bash "${GITHUB_ACTION_PATH}/set-concurrent-downloads.sh" "${DOWNLOADS}"
 
     - name: Log in to the container registry (before the pull)
       if: inputs.pull-first == 'true' && inputs.registry-password != ''
