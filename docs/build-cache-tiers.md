@@ -1566,6 +1566,12 @@ the key and the endpoint alike:
   `AWS_SECRET_ACCESS_KEY`) plus the chain to the `sccache --start-server` command alone. The
   compiles reach that server over its socket. No configure log, `env` dump or wheel metadata
   can capture the key, and the next RUN has neither the variables nor `/run/secrets`.
+- **The same file works outside BuildKit.** Any container whose compiles start the server
+  through `ensure_sccache_env` or `setup_sccache` joins the level when the file sits at
+  `/run/secrets/sccache_s3` (`SCCACHE_S3_SECRET_FILE` names another path). Call
+  `sccache_s3_drain` before the container exits. OmniAccelerANT's local Linux lanes bind it
+  there, and a native lane with both local caches deleted hit 99.76 % from the bucket
+  (2026-10-17).
 
 **Every such RUN ends with `bash /opt/scripts/core/sccache-s3-level.sh drain`.** sccache
 writes level 0 inside the compile and level 1 in a background task (`multilevel.rs`,
