@@ -8,6 +8,9 @@ _COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Values already in the environment (forwarded ARG/ENV) win over versions.env.
 # shellcheck disable=SC1091
 source "${_COMMON_SH_DIR}/load-versions-env.sh"
+# Absent where common.sh is mounted alone into a RUN that starts no sccache (Dockerfile.base).
+# shellcheck disable=SC1091
+[ ! -f "${_COMMON_SH_DIR}/sccache-s3-level.sh" ] || source "${_COMMON_SH_DIR}/sccache-s3-level.sh"
 if [ -z "${_VERSIONS_ENV_LOADED:-}" ]; then
   load_versions_env "${_COMMON_SH_DIR}/versions.env"
   _VERSIONS_ENV_LOADED=1
@@ -326,7 +329,7 @@ ensure_sccache_env() {
   # Direct mode re-reads inputs that CMake TryCompile already deleted: docs/build-cache-tiers.md#the-rules-as-agentsmd-carried-them-with-their-reasons
   export SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"
   export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
-  sccache --start-server >/dev/null 2>&1 || true
+  sccache_start_server || sccache --start-server >/dev/null 2>&1 || true
   if ! sccache --show-stats >/dev/null 2>&1; then
     warn "sccache server did not answer — caller should fall back to ccache"
     return 1

@@ -567,8 +567,9 @@ which the Windows lanes of OmniAccelerANT, AccelerANTgine and Ballett call throu
 - **Not yet run against a live Stevedore engine** (dockerd was stopped on 2026-10-15); the suite is
   `ContainerBuild.SccacheS3.Tests.ps1`.
 
-The Linux lanes have no remote sccache tier at all yet, only the cache inside the container, so
-the bucket does not reach them.
+The Linux image chain uses the same bucket since 2026-10-17, as one BuildKit secret that
+carries the endpoint too ([`build-cache-tiers.md` § The shared S3 level](build-cache-tiers.md#the-shared-s3-level)).
+The Linux app lanes have no remote tier yet, only the cache inside the container.
 
 **What happens when a level is missing**, so neither level can stop a build:
 

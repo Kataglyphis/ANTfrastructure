@@ -34,6 +34,24 @@
   place, and no DLL may stay behind. Owner rule of the same day: every release ships Windows arm64
   installers next to the x64 ones.
 
+## 2026-10-17 — the Linux chain's sccache gets the shared S3 level
+
+- **Every sccache RUN of the Linux chain can chain the shared bucket behind its disk cache
+  mount** (`disk,s3`), the bucket the Windows chain has used since 2026-10-15. The host's key
+  goes to `nerdctl build` as one secret, `id=sccache_s3`, with the endpoint in it, so neither
+  re-keys a RUN. `sccache_start_server` (`01-core/sccache-s3-level.sh`) hands it to the server
+  alone, never to the build's environment. A refused key or a stalled check restarts the server
+  on disk alone, and each RUN ends with an upload drain. Without the host file every build runs
+  as before.
+- **`linux/host-config/set-sccache-s3-level.sh`** stores the key in
+  `~/.config/kataglyphis/sccache-s3.env` (600), after a signed list request accepts it.
+- 23 RUNs in `Dockerfile.toolchain`, `.media`, `.android` and `.torch` changed, so the next chain
+  re-keys every sccache stage once, from the GCC build on.
+- Measured through rootless BuildKit against the real bucket: 60 cold writes reached level 1, 29
+  of them after the compiles ended (the drain took 2 s), and the same RUN on an empty disk cache
+  id hit 60 of 60. Tests: 27 assertions in
+  `test-sccache-s3-level.sh`, one of them over every Dockerfile RUN on the sccache mount.
+
 ## 2026-10-17 — native Windows arm64 wheels
 
 - **`python-ci-windows.yml` takes `arm64-wheels`.** After the arm64 test legs, the

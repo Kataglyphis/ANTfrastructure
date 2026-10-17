@@ -1,8 +1,8 @@
 # sccache's shared S3 level: Garage on a VPS, reached over WireGuard
 
 The server half of [`windows-build-resources.md` § Two cache levels](../../docs/windows-build-resources.md#two-cache-levels).
-Every Windows build host keeps its own dufs as level 0. This bucket is level 1, shared by
-all of them, so one host's compiles are hits on the next.
+Every Windows build host keeps its own dufs as level 0, and a Linux chain host its disk cache
+mount. This bucket is level 1, shared by all of them, so one host's compiles are hits on the next.
 
 ## As built (2026-10-15, endpoint re-resolution 2026-10-16)
 
@@ -192,3 +192,8 @@ ends with a `sccache-drain|` line.
 
 The page linked at the top covers it: `Set-SccacheS3Level.ps1`, `Copy-SccacheCacheToS3.ps1`
 (the seed), what the driver passes, and how a build behaves when this server is down.
+
+A Linux chain host stores the same key with `linux/host-config/set-sccache-s3-level.sh`
+([`linux-host-setup.md` § B9](../../docs/linux-host-setup.md#b9-the-shared-s3-level-for-sccache)), and
+its chain hands it to every sccache RUN as one BuildKit secret
+([`build-cache-tiers.md` § The shared S3 level](../../docs/build-cache-tiers.md#the-shared-s3-level)).

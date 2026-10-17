@@ -627,6 +627,32 @@ cross manifest, so the native lane has no build path any more. (Superseded
 2026-09-22: the cross manifest was renamed from `:latest-cross` to `:latest`,
 so `:latest` is live again as the default multi-arch index.)
 
+### B9. The shared S3 level for sccache
+
+Optional: compile hits from the other build hosts, and a cache that survives a
+`nerdctl system prune`
+([`build-cache-tiers.md` § The shared S3 level](build-cache-tiers.md#the-shared-s3-level)).
+It needs a route to the bucket's server (its runbook:
+[`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md)) and curl 7.75 or newer, which
+signs the check request. Non-root:
+
+```bash
+linux/host-config/set-sccache-s3-level.sh --endpoint http://<s3-server-lan-ip>:3900 --access-key-id <key id>
+linux/host-config/set-sccache-s3-level.sh --report     # what is stored; the secret shows as (set)
+```
+
+The script asks for the secret without echo, lists the bucket with it, and stores nothing
+the server refuses (403) or that holds whitespace. It writes
+`~/.config/kataglyphis/sccache-s3.env`, mode 600. A server that does not answer only warns,
+and the key is stored unchecked. `--clear` removes the file.
+
+- **Piped input works too**, e.g. on the bucket's own server: `ssh root@<vps> "sed -n
+  's/^Secret key: *//p' /root/sccache-s3-key.txt" | linux/host-config/set-sccache-s3-level.sh …`.
+  Then the secret never passes through a terminal or a clipboard.
+- **What the chain does with it:** the next `build-cross-chain.sh` stage prints
+  `sccache levels: disk -> s3 <endpoint>`, and each sccache RUN ends with a `sccache-drain|`
+  line.
+
 ## Phase C — Performance mode
 
 Build hosts ship in a power-saving governor by default, which costs real

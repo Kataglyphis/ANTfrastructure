@@ -5,6 +5,9 @@
 _COMPILER_CACHE_LOADED=1
 
 _CC_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Absent where compiler-cache.sh is mounted alone; the server then starts on disk only.
+# shellcheck disable=SC1091
+[ ! -f "${_CC_SH_DIR}/sccache-s3-level.sh" ] || source "${_CC_SH_DIR}/sccache-s3-level.sh"
 
 : "${USE_CCACHE:=true}"
 : "${USE_SCCACHE:=true}"
@@ -68,7 +71,7 @@ _resolve_compiler_cache_launcher() {
   fi
   if command -v sccache >/dev/null 2>&1; then
     sccache_export_server_address
-    sccache --start-server >/dev/null 2>&1 || true
+    sccache_start_server || sccache --start-server >/dev/null 2>&1 || true
     if sccache --show-stats >/dev/null 2>&1; then
       # The guarded launcher survives sccache's own fatal errors, which abort a bare sccache build.
       for _scl in "${_CC_SH_DIR:-}/sccache-launcher.sh" /opt/scripts/core/sccache-launcher.sh; do
@@ -173,7 +176,7 @@ setup_sccache() {
   _cc_info "sccache enabled: SCCACHE_DIR=${SCCACHE_DIR}, CACHE_SIZE=${SCCACHE_CACHE_SIZE} [server=${SCCACHE_SERVER_UDS:-tcp:${SCCACHE_SERVER_PORT:-4226}}]"
   _cc_info "RUSTC_WRAPPER=${RUSTC_WRAPPER}"
 
-  sccache --start-server 2>/dev/null || true
+  sccache_start_server || sccache --start-server 2>/dev/null || true
 }
 
 setup_lld_linker() {
