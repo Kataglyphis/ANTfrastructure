@@ -155,6 +155,7 @@ The two halves of one topic often split:
 | Capping CPU so a build leaves the host usable | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md#capping-cpu-so-the-host-stays-usable) |
 | Building on an SBC or small VM: swap, zram, forcing `-j1` | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md#the-other-end-building-on-a-memory-constrained-host) |
 | **Every checkout on its branch tip** — the superproject and every submodule, recursively, fast-forward only (`git-sync-branches.sh`) | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#putting-every-checkout-on-its-branch) |
+| **A checkout after a history rewrite** — local work saved, branches and submodules moved, old blobs dropped (`git-adopt-rewritten-history.sh`) | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#after-a-history-rewrite) |
 | **Submodule conflicts on merge**, bumping the pin, shallow fetches | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#submodule-maintenance) |
 | Broken submodule checkout, `core.longpaths`, `git clean -fdx`, ssh-agent on Windows | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#recovering-a-broken-submodule-checkout) |
 | **Branches, CI rounds and releases** — `develop` runs Linux x64 on every push, `[ci <lane>]` or a dispatch runs the rest, `main` moves by fast-forward to a fully green commit and every push to it releases only when every lane is green | [`branch-and-release-strategy.md`](branch-and-release-strategy.md) |

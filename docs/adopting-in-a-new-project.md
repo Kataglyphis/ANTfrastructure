@@ -74,6 +74,33 @@ rest still syncs.
 - A submodule that a newer parent commit **adds** is not initialised; run
   `git submodule update --init <path>` for it.
 
+### After a history rewrite
+
+When a repository's history is rewritten on GitHub (big blobs purged, every commit id
+new), an existing checkout still holds the old commits and their blobs, and a plain
+`git pull` merges the two histories. Run this once per checkout instead, from the
+superproject, on every machine (Windows: Git Bash):
+
+```bash
+bash third_party/ANTfrastructure/linux/scripts/git-adopt-rewritten-history.sh --dry-run   # the plan
+bash third_party/ANTfrastructure/linux/scripts/git-adopt-rewritten-history.sh             # do it
+```
+
+- **Nothing local is lost.** Before anything moves, uncommitted changes, stashes,
+  commits that never reached origin and local-only tags go to
+  `~/git-rewrite-backup/<timestamp>/` (`--backup DIR`) as patches and lists; the
+  uncommitted changes are re-applied (staged) afterwards.
+- **A rewritten commit is told from unpushed work by its twin**: origin has a commit
+  with the same author, author date and subject. So a background fetch by an IDE
+  before the run does not hide the rewrite.
+- **The old blobs leave the disk**: in each rewritten repository the reflogs are
+  expired and `gc --prune=now` runs. A repository whose remote was not rewritten is
+  only fast-forwarded and keeps its reflog.
+- A detached submodule moves to the superproject's new gitlink; one on a branch, as
+  `git-sync-branches.sh` leaves it, moves with that branch.
+- **It names what it cannot clean**: another remote (a fork) or a linked worktree may
+  still hold the old history, and their objects stay until they are removed.
+
 ### Resolving a submodule conflict on merge
 
 Merges that touch the pin from both sides leave `third_party/` paths unmerged,

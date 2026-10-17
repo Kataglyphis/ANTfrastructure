@@ -10,6 +10,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — `git-adopt-rewritten-history.sh`: a checkout after a history rewrite
+
+- **New entry point `linux/scripts/git-adopt-rewritten-history.sh`**, for the family's
+  purge of big blobs from history. It moves a checkout and its submodules onto the
+  rewritten remotes, saves the local work first (uncommitted changes, stashes, commits
+  that never reached origin, local-only tags) and drops the old objects with
+  `reflog expire` + `gc`. A rewritten commit is recognised by its twin on origin (same
+  author, author date and subject), because the first draft compared against origin's
+  branches before the fetch, and a `--dry-run` (or an IDE's background fetch) had
+  already moved those. `test-git-adopt-rewritten-history.sh` rewrites a superproject
+  and its submodule with `filter-branch` and checks the backups, both submodule states,
+  the dropped blobs and that a second run changes nothing. Docs:
+  `adopting-in-a-new-project.md` § *After a history rewrite*.
+- **`tests/git-fixture-env.sh`** holds the git environment both git fixture suites set
+  (file:// submodules, `develop`, one identity); `code-dupes.allow` records two budgets that
+  had shrunk (`python-app-bundle.sh` 57 → 56, `verify-parity.sh` 22 → 21).
+
 ## 2026-10-17 — the sccache bucket's size cap is 100 GiB
 
 - **The VPS raised the cap from 60 to 100 GiB** (`CAP_GB=100` in `sccache-evict.service`), at the
