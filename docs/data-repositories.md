@@ -19,9 +19,10 @@ license, and swapping a model or a scene moves one lock line.
 | OrchestrANT | `yolov26m.onnx`, 78 MiB (2026-10-17) | the same AGPL weights, shipped in every package |
 | BeschleunigerBallett | 14 scenes, 518 of 633 MiB at HEAD (2026-10-17) | the code loads two of them, the packages install one |
 
-**History is not rewritten.** A rewrite changes every commit id that releases and other
-repositories pin (OxidANT's decision D4). The old blobs stay in the history, and a CI checkout
-that wants less can clone with `filter: blob:none`.
+**The history is rewritten next** (owner, 2026-10-17, superseding OxidANT's decision D4): the
+old blobs leave every family repository's history once the pending patch releases are out, so
+AssetANT's and ModelANT's releases become the data's only copies. Until then a CI checkout that
+wants less clones with `filter: blob:none`.
 
 ## A data repository
 

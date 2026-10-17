@@ -49,7 +49,7 @@ The two halves of one topic often split:
 | **Models and scenes outside the code** — ModelANT, AssetANT, the SHA-256 lock, the fetchers' contract, what stays tracked | [`data-repositories.md`](data-repositories.md) |
 | What is published, what is in it, the feature matrix | [`overview.md`](overview.md) |
 | Prerequisites, tests, roadmap, contribution, contact | [`project-info.md`](project-info.md) |
-| **Why the pack is 154 MB, what is large, and why history is not rewritten** | [`project-info.md` § Repository size](project-info.md#repository-size-and-large-files) |
+| **Why the pack is 154 MB, what is large, and the 2026-10 history rewrite** | [`project-info.md` § Repository size](project-info.md#repository-size-and-large-files) |
 | Licences of bundled software, what each one **obliges this project to do**, and the corresponding source for copyleft components | [`third-party-licenses.md`](third-party-licenses.md) |
 | **Known vulnerabilities** — running `grype`, and why the raw count misleads on these images | [`vulnerability-scanning.md`](vulnerability-scanning.md) |
 | **SBOM** — how to generate it, and what you can do with it (CVE scanning, procurement, release diffs, policy gates) | [`sbom.md`](sbom.md) |
