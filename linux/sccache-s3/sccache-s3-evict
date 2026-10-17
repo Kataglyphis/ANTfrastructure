@@ -1,7 +1,7 @@
 #!/bin/bash
 # Size cap for the sccache bucket: sccache never deletes, so the oldest objects (LastModified) go until 90% of CAP_GB.
 set -euo pipefail
-CAP=$(( ${CAP_GB:-60} * 1024**3 )); TARGET=$(( CAP * 9 / 10 ))
+CAP=$(( ${CAP_GB:-100} * 1024**3 )); TARGET=$(( CAP * 9 / 10 ))
 KEYFILE=/etc/garage/evict-key.txt
 AWS_ACCESS_KEY_ID=$(grep -oP 'Key ID:\s*\K\S+' "$KEYFILE")
 AWS_SECRET_ACCESS_KEY=$(grep -oP 'Secret key:\s*\K\S+' "$KEYFILE")
@@ -20,4 +20,4 @@ USED=$(awk '{s+=$2} END{print s+0}' "$WORK/list")
 sort -k1,1 "$WORK/list" | awk -v free=$(( USED - TARGET )) \
   '{ if (free <= 0) exit; print "rm \"s3://sccache/" $3 "\""; free -= $2 }' > "$WORK/cmds"
 $S5 --numworkers 64 run "$WORK/cmds" >/dev/null
-logger -t sccache-evict "garage: deleted $(wc -l < "$WORK/cmds") objects, was $USED bytes (cap ${CAP_GB:-60}G)"
+logger -t sccache-evict "garage: deleted $(wc -l < "$WORK/cmds") objects, was $USED bytes (cap ${CAP_GB:-100}G)"
