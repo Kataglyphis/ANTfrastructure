@@ -82,3 +82,24 @@ configure fetches before the install rules run.
 
 Three fetchers keep one contract in three languages; one hub-owned implementation is
 BACKLOG CON98.
+
+## Keeping data out of the code repositories
+
+A file in git stays in every clone's history even after it is deleted, so the rule is
+enforced at the commit that adds it. The `large-files` gate
+(`linux/scripts/verify_large_files.py`) fails on any tracked data file over 500 KiB that
+`large-files.allow` does not freeze: a file with a NUL byte in its first 8000 bytes (git's
+own binary test), or a document, media, model, scene or archive format whatever its bytes,
+because a PDF can open without a NUL and `.obj`/`.gltf` scenes are text. Lockfiles and
+generated source are text and pass. `third_party/` is graded by its own repository.
+
+- **Where it runs**: the hub's preflight and pre-commit hook, and every consumer's
+  `run-lint-gates.sh --ratchets`, against `<consumer root>/large-files.allow`.
+- **The freeze** is `<path> | <KiB> | <reason>`, one row per file the repo must track (a
+  runtime the app loads, a document the site serves that has no other home). A frozen file
+  that grows, shrinks, moves or goes fails until its row is updated: each new version is
+  another copy in history, so it should be a conscious edit.
+- **Everything else** moves to ModelANT or AssetANT and is fetched by lock, as above. A
+  history that already holds such files is cleaned by a rewrite, and existing checkouts
+  follow with `git-adopt-rewritten-history.sh`
+  ([adopting-in-a-new-project.md § *After a history rewrite*](adopting-in-a-new-project.md#after-a-history-rewrite)).
