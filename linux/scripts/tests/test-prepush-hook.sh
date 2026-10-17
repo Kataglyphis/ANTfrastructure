@@ -26,7 +26,7 @@ _run_hook() {  # <staleness rc> <gate rc>; prints the hook's output then rc=<n>
   local _o _rc
   rm -f "${_ARGV}"
   _o="$(PATH="${_work}/bin:${PATH}" HOOK_TEST_ROOT="${_root}" HOOK_TEST_ARGV="${_ARGV}" \
-        HOOK_TEST_STALE_RC="${1:-0}" HOOK_TEST_GATE_RC="${2:-0}" bash "${HOOK}" 2>&1)"; _rc=$?
+        HOOK_TEST_STALE_RC="${1:-0}" HOOK_TEST_GATE_RC="${2:-0}" bash "${HOOK}" 2>&1 </dev/null)"; _rc=$?
   printf '%s\nrc=%s\n' "${_o}" "${_rc}"
 }
 _call() { sed -n "$1p" "${_ARGV}"; }
@@ -65,7 +65,7 @@ t_case "the jobs cap is the documented escape hatch, and defaults to 4"
 t_assert_contains "$(_call 2)" "--jobs 4" "eight mirrors of the tree is a lot to hold during a live build"
 rm -f "${_ARGV}"
 PATH="${_work}/bin:${PATH}" HOOK_TEST_ROOT="${_root}" HOOK_TEST_ARGV="${_ARGV}" \
-  HOOK_TEST_STALE_RC=0 HOOK_TEST_GATE_RC=0 PREPUSH_MUTATION_JOBS=1 bash "${HOOK}" >/dev/null 2>&1
+  HOOK_TEST_STALE_RC=0 HOOK_TEST_GATE_RC=0 PREPUSH_MUTATION_JOBS=1 bash "${HOOK}" >/dev/null 2>&1 </dev/null
 t_assert_contains "$(_call 2)" "--jobs 1"
 
 t_case "the gate counts from the remote's tip that git hands the hook, not from origin/main"
@@ -96,7 +96,7 @@ STUB
 rm -f "${_ARGV}"
 PATH="${_work}/bin:${PATH}" HOOK_TEST_ROOT="${_root}" HOOK_TEST_ARGV="${_ARGV}" \
   GIT_DIR=/nonexistent/gitdir GIT_WORK_TREE=/nonexistent GIT_INDEX_FILE=/nonexistent/index GIT_PREFIX=sub/ \
-  bash "${HOOK}" >/dev/null 2>&1
+  bash "${HOOK}" >/dev/null 2>&1 </dev/null
 t_assert_eq "2" "$(_calls)" "both gate calls ran"
 t_assert_eq "0" "$(grep -c 'GIT_' "${_ARGV}")" "a GIT_* variable reached a gate; its fixtures would act on the real repository"
 _stub_gate
