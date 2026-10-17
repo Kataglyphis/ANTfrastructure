@@ -192,6 +192,22 @@ drop_local_tags() {
   return 0
 }
 
+# keeping_refs <dir> <label>: refs nothing moves, which keep their old commits and blobs on disk after the gc.
+keeping_refs() {
+  local dir="$1" label="$2" ref n
+  while IFS= read -r ref; do
+    case "${ref}" in
+      refs/heads/*)
+        git -C "${dir}" rev-parse -q --verify "${ref}@{upstream}" >/dev/null 2>&1 && continue
+        n="$(git -C "${dir}" rev-list --count "${ref}" --not --remotes=origin --)"
+        [ "${n}" -gt 0 ] || continue
+        say "  ${label}: ${ref#refs/heads/} has no upstream and ${n} commit(s) origin lacks; if they predate the rewrite they keep the old blobs: bundle and delete it to free the space" ;;
+      *) say "  ${label}: ${ref} keeps the history it names on disk; bundle and delete it to free the space" ;;
+    esac
+  done < <(git -C "${dir}" for-each-ref --format='%(refname)' refs/heads refs/original)
+  return 0
+}
+
 # drop_old_history <dir> <label>: names what may still hold the old commits, then lets gc drop the rest.
 drop_old_history() {
   local dir="$1" label="$2" remote tree here
@@ -202,6 +218,7 @@ drop_old_history() {
   while IFS= read -r tree; do
     [ "${tree}" = "${here}" ] || say "  ${label}: worktree ${tree} was not moved; adopt it on its own"
   done < <(git -C "${dir}" worktree list --porcelain | awk '/^worktree / {print substr($0, 10)}')
+  keeping_refs "${dir}" "${label}"
   run git -C "${dir}" stash clear
   run git -C "${dir}" reflog expire --expire=now --all
   run git -C "${dir}" gc --quiet --prune=now

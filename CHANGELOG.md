@@ -12,6 +12,10 @@
 
 ## 2026-10-17 — the family's history is rewritten
 
+- **`git-adopt-rewritten-history.sh` names the local refs that keep the old blobs.** A branch
+  without an upstream that holds commits origin lacks, and `refs/original/`, survive the gc with
+  every old blob they reach; on himbeere2 such refs kept OmniAccelerANT's pack at 166 MiB.
+  Each is now named with the way out (bundle, then delete); the suite plants one.
 - **`git-adopt-rewritten-history.sh` saw no rewrite in a long history.** Its twin check ended in
   `| grep -q`, which stops at the first match; under `pipefail` awk's SIGPIPE then read as "no
   twin" once the local history printed more than a pipe holds (OmniAccelerANT's 1550 commits,

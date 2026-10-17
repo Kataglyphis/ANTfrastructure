@@ -98,8 +98,10 @@ bash third_party/ANTfrastructure/linux/scripts/git-adopt-rewritten-history.sh   
   only fast-forwarded and keeps its reflog.
 - A detached submodule moves to the superproject's new gitlink; one on a branch, as
   `git-sync-branches.sh` leaves it, moves with that branch.
-- **It names what it cannot clean**: another remote (a fork) or a linked worktree may
-  still hold the old history, and their objects stay until they are removed.
+- **It names what it cannot clean**: another remote (a fork), a linked worktree, a
+  local branch without an upstream that origin lacks commits of, and `refs/original/`
+  (a local `filter-branch`) may still hold the old history, and their objects stay
+  until they are removed. Bundle such a branch (`git bundle create`) before deleting it.
 
 ### Resolving a submodule conflict on merge
 

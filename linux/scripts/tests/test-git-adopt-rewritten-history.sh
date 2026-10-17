@@ -127,10 +127,12 @@ git init -q --bare "${root}/new.git"
 git -C "${root}/remote.git" fast-export --all |
   sed -E -e 's/^(committer .*) [0-9]+ ([+-][0-9]{4})$/\1 1800000000 \2/' -e 's/1234567abc/9876543fed/' | git -C "${root}/new.git" fast-import --quiet
 git -C "${root}/new.git" push -q --force --mirror "${root}/remote.git"
+git -C "${root}/clone" branch keep-me HEAD~1
 out="$(t_out bash "${ADOPT}" --backup "${_work}/bk-long" "${root}/clone")"
 t_assert_contains "${out}" "origin's history was rewritten" "2000 local commits, every one with its twin on origin"
 t_assert_eq "$(git -C "${root}/clone" rev-parse origin/develop)" "$(git -C "${root}/clone" rev-parse HEAD)" "develop moved to the rewritten tip"
 # A subject whose commit id was remapped still has its twin, so nothing is reported as unpushed.
 t_assert_fails grep -q "never reached origin" <<< "${out}"
+t_assert_contains "${out}" "keep-me has no upstream" "a branch nothing moves is named, since it keeps the old blobs"
 
 t_summary
