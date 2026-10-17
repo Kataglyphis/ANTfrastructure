@@ -119,7 +119,7 @@ function Get-PackageVersion {
     .SYNOPSIS
       The version to stamp a package with, read from the workspace.
     .DESCRIPTION
-      VERSION.txt, or version.txt for the Rust consumers; missing or unparseable falls back to -Default, visibly.
+      VERSION.txt, or version.txt for the Rust consumers, else CMakeLists.txt's project() VERSION; none falls back to -Default.
     .PARAMETER Components
       Component count, 4 for an AppxManifest, which rejects fewer; extras dropped, missing ones zero-filled.
   #>
@@ -136,6 +136,12 @@ function Get-PackageVersion {
       $text = (Get-Content -LiteralPath $candidate -Raw).Trim()
       break
     }
+  }
+  # A CMake project without a version file: CPack stamps project()'s VERSION, so the MSIX takes the same.
+  $cmakeLists = Join-Path $WorkspacePath 'CMakeLists.txt'
+  if ([string]::IsNullOrWhiteSpace($text) -and (Test-Path -LiteralPath $cmakeLists -PathType Leaf) -and
+    ((Get-Content -LiteralPath $cmakeLists -Raw) -match '(?is)\bproject\s*\([^)]*?\bVERSION\s+([0-9]+(?:\.[0-9]+)*)')) {
+    $text = $Matches[1]
   }
   if ([string]::IsNullOrWhiteSpace($text)) { $text = $Default }
 

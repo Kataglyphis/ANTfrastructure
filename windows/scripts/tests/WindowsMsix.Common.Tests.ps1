@@ -62,6 +62,20 @@ Describe 'WindowsMsix.Common' {
       Get-PackageVersion -WorkspacePath $ws | Should -Be '3.4.5.6'
     }
 
+    It 'takes CMakeLists.txt project() VERSION when there is no version file, as CPack does' {
+      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v4') -Force).FullName
+      Set-Content -LiteralPath (Join-Path $ws 'CMakeLists.txt') -Encoding utf8 -Value @(
+        'cmake_minimum_required(VERSION 3.25)', 'project(', '  Demo', '  VERSION 0.0.2', '  LANGUAGES CXX)')
+      Get-PackageVersion -WorkspacePath $ws -Default '0.0.1.0' | Should -Be '0.0.2.0'
+    }
+
+    It 'lets a version file win over CMakeLists.txt' {
+      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v5') -Force).FullName
+      Set-Content -LiteralPath (Join-Path $ws 'CMakeLists.txt') -Value 'project(Demo VERSION 9.9.9)' -Encoding utf8
+      Set-Content -LiteralPath (Join-Path $ws 'VERSION.txt') -Value '1.5.1' -Encoding utf8
+      Get-PackageVersion -WorkspacePath $ws | Should -Be '1.5.1.0'
+    }
+
     It 'falls back to the default when there is no version file' {
       $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v3') -Force).FullName
       Get-PackageVersion -WorkspacePath $ws -Default '0.0.1.0' | Should -Be '0.0.1.0'
