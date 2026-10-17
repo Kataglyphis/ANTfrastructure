@@ -10,6 +10,30 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-17 — native Windows arm64 wheels
+
+- **`python-ci-windows.yml` takes `arm64-wheels`.** After the arm64 test legs, the
+  `windows-11-arm` job builds one binary wheel per leg with Visual Studio's clang-cl
+  (`windows/scripts/python/Invoke-NativeWheelBuild.ps1`) and uploads them as
+  `packages-windows-arm64-wheels`. Each must be that leg's `cpXY`/`cpXYt` `win_arm64` wheel, and
+  it is installed alone into a fresh venv where every compiled module loads. The `:winarm64`
+  container cross-builds no GIL Cython wheel, so WebDavClient v0.10.0 shipped `win_amd64`
+  wheels only. Owner rule of the same day: every release ships Windows arm64 next to x64.
+- **`free-threaded-wheel.py load DIST`**, the GIL build's twin of `prove`: every compiled module
+  loads, on any interpreter. `Invoke-FreeThreadedWheelProof` and
+  `Invoke-FreeThreadedWheelVenvProof` take `-Check load`.
+- **`Resolve-PythonLegList`** reads a leg list (`pinned`, `pinnedt`, either separator) for
+  `Invoke-PythonTestLegs.ps1` and the new script alike.
+- Tests: 10 new assertions in `test-python-free-threaded-wheel.sh` (a real extension loads, a
+  broken one fails) and three Pester cases in `PythonWheel.FreeThreaded.Tests.ps1`.
+
+## 2026-10-17 — docker's parallel layer downloads, as a measurement
+
+- **`prepare-linux-ci-host` takes `max-concurrent-downloads`** (empty by default: docker keeps
+  its 3). A number is merged into `/etc/docker/daemon.json` and the daemon restarted before the
+  pull. OmniAccelerANT's Linux x64 lane sets 10. Its first run pulled the 28 GiB `:latest` in
+  288 s, against 318-325 s over the five runs before (39014164655); one run is no default yet.
+
 ## 2026-10-17 — the MSIX takes a CMake project's version
 
 - **`Get-PackageVersion` reads `CMakeLists.txt`'s `project(... VERSION x.y.z)`** when a workspace

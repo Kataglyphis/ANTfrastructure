@@ -147,13 +147,18 @@ Describe 'Select-FreeThreadedWheel and Get-PythonWheelAbiTag' {
 
 Describe 'Invoke-FreeThreadedWheelProof and Add-PythonLibPath' {
 
-    It 'returns the verdict of a passing proof and throws with the verdict of a failing one' {
+    It 'returns the verdict of a passing proof and throws with the verdict of a failing one, the GIL build''s load check too' {
         Invoke-InTestDir { param($d)
             $ok = Invoke-WithFakePython -Dir $d -Text '3 compiled modules loaded' { param($py) Invoke-FreeThreadedWheelProof -Python $py -Distribution 'app' }
             Assert-Equal '3 compiled modules loaded' $ok
             Assert-Match 'free-threaded-wheel\.py prove app' (Get-Content -Raw (Join-Path $d 'py.log'))
             Assert-Throws { Invoke-WithFakePython -Dir $d -Code 1 -Text 'the GIL was re-enabled by app.core' { param($py) Invoke-FreeThreadedWheelProof -Python $py -Distribution 'app' } } `
                 -MessagePattern 'free-threaded proof failed for app: the GIL was re-enabled by app\.core'
+            $null = Invoke-WithFakePython -Dir $d { param($py) Invoke-FreeThreadedWheelProof -Python $py -Distribution 'app' -Check load }
+            Assert-Match 'free-threaded-wheel\.py load app' (Get-Content -Raw (Join-Path $d 'py.log')) '-Check load'
+            Assert-Throws { Invoke-WithFakePython -Dir $d -Code 1 -Text 'cannot load app.core' { param($py) Invoke-FreeThreadedWheelProof -Python $py -Distribution 'app' -Check load } } `
+                -MessagePattern '^load proof failed for app: cannot load app\.core'
+            Assert-Throws { Invoke-FreeThreadedWheelProof -Python 'python' -Distribution 'app' -Check 'import' } -MessagePattern 'import'
         }
     }
 
@@ -168,5 +173,32 @@ Describe 'Invoke-FreeThreadedWheelProof and Add-PythonLibPath' {
                 Assert-Equal "$($tree.FullName);C:\sdk" $env:LIB
             }
         }
+    }
+}
+
+Describe 'Resolve-PythonLegList and Get-NativeWheelCheck (Invoke-NativeWheelBuild.ps1)' {
+
+    It 'reads empty as the pinned X.Y, pinned and pinnedt as it and its twin, and either separator' {
+        Invoke-InTestDir { param($d)
+            $envFile = Join-Path $d 'versions.env'
+            Set-Content -LiteralPath $envFile -Value 'PYTHON_VERSION=3.14.2'
+            Invoke-WithEnv @{ PYTHON_VERSION = $null } {
+                Assert-Equal '3.14' ((Resolve-PythonLegList -VersionsEnvPath $envFile) -join '|') 'empty'
+                Assert-Equal '3.14|3.14t' ((Resolve-PythonLegList -PythonVersions 'pinned pinnedt' -VersionsEnvPath $envFile) -join '|')
+                Assert-Equal '3.13|3.14t' ((Resolve-PythonLegList -PythonVersions '3.13, 3.14t' -VersionsEnvPath $envFile) -join '|')
+                Assert-Throws { Resolve-PythonLegList -PythonVersions ' , ' -VersionsEnvPath $envFile } -MessagePattern 'names no leg'
+            }
+        }
+    }
+
+    It 'loads an X.Y leg''s wheel, proves an X.Yt leg''s, and refuses any other ABI or platform' {
+        Assert-Equal 'load' (Get-NativeWheelCheck -Name 'app-1.0-cp314-cp314-win_arm64.whl' -Leg '3.14' -Platform 'win_arm64')
+        Assert-Equal 'load' (Get-NativeWheelCheck -Name 'app-1.0-cp314-cp314-win_arm64.whl' -Leg '3.14.2' -Platform 'win_arm64') 'X.Y.Z'
+        Assert-Equal 'prove' (Get-NativeWheelCheck -Name 'app-1.0-cp314-cp314t-win_arm64.whl' -Leg '3.14t' -Platform 'win_arm64')
+        Assert-Throws { Get-NativeWheelCheck -Name 'app-1.0-cp314-cp314-win_amd64.whl' -Leg '3.14' -Platform 'win_arm64' } `
+            -MessagePattern 'built app-1\.0-cp314-cp314-win_amd64\.whl, not a cp314 win_arm64 wheel'
+        Assert-Throws { Get-NativeWheelCheck -Name 'app-1.0-cp314-cp314t-win_arm64.whl' -Leg '3.14' -Platform 'win_arm64' } -MessagePattern 'not a cp314 win_arm64'
+        Assert-Throws { Get-NativeWheelCheck -Name 'app-1.0-py3-none-any.whl' -Leg '3.14t' -Platform 'win_arm64' } -MessagePattern 'not a cp314t win_arm64'
+        Assert-Throws { Get-NativeWheelCheck -Name 'app-1.0-cp314-cp314-win_arm64.whl' -Leg 'latest' -Platform 'win_arm64' } -MessagePattern 'no X\.Y or X\.Yt'
     }
 }

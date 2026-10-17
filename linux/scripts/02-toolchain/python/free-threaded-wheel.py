@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: MIT
 """The free-threaded wheel: does a project declare support, and does its installed wheel keep the GIL off.
 
-`declares PYPROJECT` runs on any 3.11+; `prove DIST` runs as `python -I` in the venv holding the wheel.
-Exit 0 yes, 1 no, 2 cannot tell. See docs/python-ci.md#two-wheels-gil-and-free-threaded
+`declares PYPROJECT` runs on any 3.11+; `prove DIST` runs as `python -I` in the venv holding the wheel, and `load DIST`
+is its GIL-build twin: every compiled module loads, on any interpreter. Exit 0 yes, 1 no, 2 cannot tell. See docs/python-ci.md#two-wheels-gil-and-free-threaded
 """
 
 import argparse
@@ -131,6 +131,39 @@ def load_all(modules: list[tuple[str, str]]) -> tuple[list[str], list[str]]:
     return offenders, failures
 
 
+def installed_modules(dist: str) -> list[tuple[str, str]]:
+    """extension_modules, or none after saying why the distribution has nothing to load."""
+    try:
+        modules = extension_modules(dist)
+    except importlib.metadata.PackageNotFoundError:
+        print(f"ERROR: {dist} is not installed in {sys.prefix}", file=sys.stderr)
+        return []
+    if not modules:
+        print(f"ERROR: {dist} owns no compiled module, so its wheel is no binary build", file=sys.stderr)
+    return modules
+
+
+def load_reporting(modules: list[tuple[str, str]]) -> tuple[list[str], list[str]]:
+    """load_all, each failure printed."""
+    offenders, failures = load_all(modules)
+    for failure in failures:
+        print(f"ERROR: cannot load {failure}", file=sys.stderr)
+    return offenders, failures
+
+
+def load(dist: str) -> int:
+    """Return 0 when every compiled module of the distribution loads on this interpreter, GIL build or not."""
+    faulthandler.enable()  # a module that segfaults or aborts says where, instead of nothing
+    modules = installed_modules(dist)
+    if not modules:
+        return 2
+    if load_reporting(modules)[1]:
+        return 1
+    version = ".".join(map(str, sys.version_info[:3]))
+    print(f"{len(modules)} compiled module(s) of {dist} loaded on {sysconfig.get_platform()} Python {version}")
+    return 0
+
+
 def prove(dist: str) -> int:
     """Return 0 when every compiled module of the distribution loads with the GIL still disabled."""
     faulthandler.enable()  # a module that segfaults or aborts says where, instead of nothing
@@ -140,17 +173,10 @@ def prove(dist: str) -> int:
     if sys._is_gil_enabled():  # noqa: SLF001 -- the documented free-threading probe
         print("ERROR: the GIL is enabled before any import (-X gil=1?)", file=sys.stderr)
         return 2
-    try:
-        modules = extension_modules(dist)
-    except importlib.metadata.PackageNotFoundError:
-        print(f"ERROR: {dist} is not installed in {sys.prefix}", file=sys.stderr)
-        return 2
+    modules = installed_modules(dist)
     if not modules:
-        print(f"ERROR: {dist} owns no compiled module, so its wheel is no binary build", file=sys.stderr)
         return 2
-    offenders, failures = load_all(modules)
-    for failure in failures:
-        print(f"ERROR: cannot load {failure}", file=sys.stderr)
+    offenders, failures = load_reporting(modules)
     if sys._is_gil_enabled() or offenders:  # noqa: SLF001
         # CPython warns once: modules loaded after the first offender find the GIL on already.
         first = offenders[0] if offenders else "an unnamed module"
@@ -164,15 +190,16 @@ def prove(dist: str) -> int:
 
 
 def main(argv: list[str]) -> int:
-    """Dispatch the two subcommands."""
+    """Dispatch the three subcommands."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("declares").add_argument("pyproject")
     sub.add_parser("prove").add_argument("distribution")
+    sub.add_parser("load").add_argument("distribution")
     args = parser.parse_args(argv)
     if args.command == "declares":
         return declares(args.pyproject)
-    return prove(args.distribution)
+    return (load if args.command == "load" else prove)(args.distribution)
 
 
 if __name__ == "__main__":

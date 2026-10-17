@@ -53,12 +53,7 @@ if ($InstallUv) {
 }
 
 # Empty runs the pinned X.Y; `pinned` in a list is that X.Y (`pinnedt` its twin), as in ci_tests.sh.
-if (-not $PythonVersions -or $PythonVersions -match 'pinned') {
-    $mm = (Get-PinnedPythonVersion -VersionsEnvPath $VersionsEnvPath).MajorMinor
-    $PythonVersions = if ($PythonVersions) { $PythonVersions -creplace 'pinned', $mm } else { $mm }
-}
-$legs = @(Split-List $PythonVersions)
-if ($legs.Count -eq 0) { throw '-PythonVersions names no leg' }
+$legs = @(Resolve-PythonLegList -PythonVersions $PythonVersions -VersionsEnvPath $VersionsEnvPath)
 $paths = @(Split-List $TestPaths)
 $failed = [System.Collections.Generic.List[string]]::new()
 foreach ($leg in $legs) {

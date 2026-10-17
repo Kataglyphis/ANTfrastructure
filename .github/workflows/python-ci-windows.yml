@@ -125,6 +125,17 @@ on:
         required: false
         type: boolean
         default: false
+      arm64-wheels:
+        description: >-
+          Also build one binary wheel per arm64 leg on windows-11-arm, after
+          the tests, through the caller's pinned
+          windows/scripts/python/Invoke-NativeWheelBuild.ps1 (Visual Studio's
+          clang-cl, CYTHONIZE=True), load each alone in a fresh venv, and
+          upload them as `packages-windows-arm64-wheels`. Needs `arm64-tests`.
+          Default false; WebDavClient ships them since 2026-10-17.
+        required: false
+        type: boolean
+        default: false
       arm64-python-versions:
         description: >-
           Space-separated Python legs for the arm64 job; a `t` suffix is a
@@ -259,6 +270,26 @@ jobs:
             throw "Missing $legs - arm64-tests needs an ANTfrastructure pin that ships it (CON50)."
           }
           & $legs -InstallUv -PythonVersions $env:PY_VERSIONS -Extras $env:PY_EXTRAS -FreeThreadedExtras $env:FT_EXTRAS -TestPaths $env:TEST_PATHS
+          # The wheel step runs the same pinned uv.
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value (Split-Path -Parent (Get-Command uv).Source)
+
+      # Built where they run: the hub's arm64 container cross-builds no GIL Cython wheel (Invoke-CiPackaging.ps1).
+      - name: Build and load the arm64 wheels
+        if: ${{ inputs.arm64-wheels }}
+        env:
+          PY_VERSIONS: ${{ inputs.arm64-python-versions }}
+        run: |
+          $build = 'third_party/ANTfrastructure/windows/scripts/python/Invoke-NativeWheelBuild.ps1'
+          if (-not (Test-Path -LiteralPath $build)) { throw "Missing $build - arm64-wheels needs an ANTfrastructure pin that ships it." }
+          & $build -PythonVersions $env:PY_VERSIONS -OutDir dist
+
+      - name: Upload the arm64 wheels
+        if: ${{ inputs.arm64-wheels }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages-windows-arm64-wheels
+          path: dist/*.whl
+          if-no-files-found: error
 
   # Independent of the build: a syntax error in the build scripts is exactly when this gate matters.
   lint-powershell:
