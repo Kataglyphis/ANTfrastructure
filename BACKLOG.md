@@ -45,13 +45,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       loader and glibc travel with `LOADER` since 2026-10-17: AccelerANTgine's `.deb`, tarball and
       AppImage start on himbeere2's Debian 13, and so does OmniAccelerANT's app through
       `bundle-loader.sh --beside` (a window drawn on Debian 13, its flatpak started by the lane),
-      and OrchestrANT's Python app packages, whose interpreter carries the launcher (2026-10-18,
-      their clean hosts start them). Left: AccelerANTgine's `kataglyphis_inference` wheels, the
-      same closure through auditwheel; and a recorded start of BeschleunigerBallett's packages on
-      Debian 13 (they take `LOADER` too, per its CHANGELOG).
+      OrchestrANT's Python app packages, whose interpreter carries the launcher (2026-10-18,
+      their clean hosts start them), and BeschleunigerBallett's 1.5.2 tarball, through its bundled
+      loader (`--version`; its engine renders there with the `SV_VulkanVertexID` shaders of
+      `dc8ba245`, 2026-10-18). Left: AccelerANTgine's `kataglyphis_inference` wheels, the
+      same closure through auditwheel.
 
-      Done when AccelerANTgine's, BeschleunigerBallett's and OmniAccelerANT's packages start on
-      himbeere2 and in the clean-host job.
+      Done when those wheels install and import on himbeere2's Debian 13 and in the clean-host job.
 
 - [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
       [M, ★]. Half 1 is in the scripts since 2026-10-07 (CHANGELOG): media-core's
