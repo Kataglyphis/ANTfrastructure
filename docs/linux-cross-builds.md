@@ -1613,6 +1613,36 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --pa
 bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
 ```
 
+### A variant chain starts at `gpu` — and inherits the shared `sdk`
+
+`CROSS_VARIANT=<variant>` refuses `--from-stage` before `gpu`: `base`, `compiler`
+and `sdk` are shared by every variant, so a variant run resumes at the first
+stage it owns.
+
+That inheritance bit on 2026-10-18. Renovate had moved `FLUTTER_VERSION` to
+3.47.7 on 2026-10-13, but the `sdk` images in the registry predated it. Every
+`--from-stage gpu|runtime` run inherited an `sdk` carrying 3.47.6, the per-arch
+package stage bootstrapped *that* checkout, and the runtime gate failed with
+`flutter does not run offline as the image user, or is not FLUTTER_VERSION=3.47.7`
+— after the 20 GB wrapper upload, because the smoke is the first gate that looks
+inside the image.
+
+The rule: after a pin bump that a shared stage bakes, rebuild the base chain
+through that stage first, then the variant.
+
+```bash
+# default variant: refreshes cross-sdk-amd64 with the current pin
+bash linux/scripts/build-cross-chain.sh --target-arches amd64 --only sdk
+
+# verify the pin in the rebuilt image BEFORE the multi-hour variant run
+nerdctl run --rm --platform linux/amd64 --entrypoint bash \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-sdk-amd64 \
+  -lc 'cat /opt/flutter/version'      # 3.47.7
+
+CROSS_VARIANT=nvidia PUSH_MAX_ATTEMPTS=8 \
+  bash linux/scripts/build-cross-chain.sh --target-arches amd64
+```
+
 ## The Android ABI is a target, not the build host
 
 `/opt/android` holds five prebuilt Android SDKs — GStreamer, ONNX Runtime,
