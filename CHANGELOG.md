@@ -10,6 +10,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-18 — ORT 1.31.0's CUDA build on GCC 16: a missing `<cstdint>`
+
+- **The first Linux CUDA build of ORT 1.31.0 stopped** after 5 h, at 84 %:
+  `dynamic_sparse_attention_impl.h(69): error: identifier "uint32_t" is undefined`. The header
+  names `uint32_t` and includes no `<cstdint>`, and GCC 16's `<string>`/`<ostream>` no longer
+  bring it in. Windows passes because MSVC's headers still do.
+  - Not caused by sccache: bare nvcc (CUDA 13.4, GCC 16.2, the chain's `gpu` image) fails the
+    same way on the pattern.
+  - Upstream has it in neither v1.31.0 nor `main`.
+- `linux/scripts/patches/onnxruntime/002-cuda-dynamic-sparse-attention-cstdint.patch` adds the
+  include. `apply_ort_gpu_source_patches` applies it, by name, before the nvidia
+  and the AMD build (ROCm hipifies the same sources), and the GPU RUN mounts the directory again.
+- Rejected, measured: `--pre-include cstdint` makes sccache call every nvcc compile
+  non-cacheable, and `-Xcompiler=-include,cstdint` redefines GCC's `c++config.h` in a host pass.
+- The run's S3 level: about 11,000 objects uploaded, every drain 0-1 s, no write failure.
+
 ## 2026-10-17 — the family's history is rewritten
 
 - **`clean-host-package-check` takes `subdir` and `scan-elves`**, so a Python lane can start its

@@ -126,6 +126,7 @@ ensure_uv_python_packages "${HOST_PYTHON}" numpy wheel setuptools
 
 BUILD_SH="${ORT_SRC_DIR}/build.sh"
 [[ -x "${BUILD_SH}" ]] || err "build.sh not found at ${BUILD_SH}"
+apply_ort_gpu_source_patches
 
 info ">>> Native GPU build (CUDA+TensorRT+cuDNN): ${NATIVE_CPU_CONFIG} (${JOBS} parallel jobs)"
 info "Using Python: ${HOST_PYTHON}"

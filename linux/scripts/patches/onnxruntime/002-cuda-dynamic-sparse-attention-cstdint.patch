@@ -1,0 +1,18 @@
+Include <cstdint> in dynamic_sparse_attention_impl.h, which names uint32_t
+
+GCC 16's <string> and <ostream> no longer pull in <cstdint>, so the CUDA build of
+dynamic_sparse_attention_impl.cu fails on Linux with: identifier "uint32_t" is undefined
+(nvcc with CUDA 13.4, host GCC 16.2; reproduced bare, no cache involved). MSVC's headers
+still include it transitively, which is why Windows builds pass. Fixed in neither
+v1.31.0 nor main (checked 2026-10-18).
+
+--- a/onnxruntime/contrib_ops/cuda/bert/dynamic_sparse_attention_impl.h
++++ b/onnxruntime/contrib_ops/cuda/bert/dynamic_sparse_attention_impl.h
+@@ -4,6 +4,7 @@
+ #pragma once
+ 
+ #include <cuda_runtime.h>
++#include <cstdint>
+ 
+ #include "contrib_ops/cpu/bert/dynamic_sparse_attention_parameters.h"
+ #include "core/common/status.h"

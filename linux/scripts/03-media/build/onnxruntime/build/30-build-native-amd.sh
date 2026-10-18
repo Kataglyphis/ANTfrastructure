@@ -44,6 +44,7 @@ ensure_uv_python_packages "${HOST_PYTHON}" numpy wheel setuptools
 
 BUILD_SH="${ORT_SRC_DIR}/build.sh"
 [[ -x "${BUILD_SH}" ]] || err "build.sh not found at ${BUILD_SH}"
+apply_ort_gpu_source_patches
 
 if cross_build_is_active; then
   warn "Skipping ONNX Runtime MIGraphX wheel build in cross mode; target wheel repair/validation is not supported here"
