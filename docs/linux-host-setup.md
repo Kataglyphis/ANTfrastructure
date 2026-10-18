@@ -1184,27 +1184,43 @@ RustDesk is two halves, and the difference is the whole phase:
 | service, `/usr/bin/rustdesk --service` | root, a systemd unit | registers the ID with the rendezvous server, accepts sessions, starts before login |
 | GUI + tray | the desktop user (`/usr/share/rustdesk/rustdesk --server` / `--tray`) | the window, the ID, the settings; talks to the service over `/tmp/RustDesk-<uid>/ipc` |
 
-**The Flatpak ships the GUI only.** It cannot install a root unit, so it starts,
-shows a window and answers `rustdesk --get-id` — and accepts nothing: the GUI log
-reports `failed to connect to ipc_service` three times and `skipped config sync`,
-and the ID never reaches the rendezvous server. That was the state of
-`neuro-valhalla` on 2026-10-18 ([F5](#f5-troubleshooting)).
+Two packaging facts decide whether a host is reachable at all, and both bit on
+2026-10-18:
 
-### F1. Install the .deb, not the Flatpak
+- **The Flatpak ships the GUI only.** It cannot install a root unit, so it
+  starts, shows a window and answers `rustdesk --get-id` — and accepts nothing:
+  the GUI log reports `failed to connect to ipc_service` three times and
+  `skipped config sync`, and the ID never reaches the rendezvous server.
+- **The plain `.deb` captures Wayland through the portal**, which means a
+  consent/screen-picker dialog *on the machine being controlled*. Nobody is
+  there to click it, and a locked session cannot be shared at all — the client
+  sits on "choose a screen" while the server logs
+  `Failed to accept connection … deadline has elapsed`.
 
-Take a pinned release, not "latest": `rustdesk-<version>-x86_64.deb` from
-<https://github.com/rustdesk/rustdesk/releases>. 1.5.0 is what this host runs
-(2026-10-18).
+The build to install is therefore **`rustdesk-unattended-wayland`**: same
+version, same unit, same ID, but it captures through **DRM/KMS** instead of the
+portal. That works with the session locked and at the login screen — the only
+state a remote user ever finds the host in. Use it as the default, on X11 hosts
+too: it is a drop-in replacement (`Conflicts/Replaces/Provides: rustdesk`).
+
+### F1. Install the unattended-wayland .deb
+
+Take a pinned release, not "latest":
+`rustdesk-unattended-wayland-<version>-x86_64.deb` from
+<https://github.com/rustdesk/rustdesk/releases> — an extra asset beside the
+plain `.deb`. 1.5.0 is what this host runs (2026-10-18).
 
 ```bash
 cd /tmp
-curl -fLO https://github.com/rustdesk/rustdesk/releases/download/1.5.0/rustdesk-1.5.0-x86_64.deb
-sudo apt install -y ./rustdesk-1.5.0-x86_64.deb
+curl -fLO https://github.com/rustdesk/rustdesk/releases/download/1.5.0/rustdesk-unattended-wayland-1.5.0-x86_64.deb
+sudo apt install -y ./rustdesk-unattended-wayland-1.5.0-x86_64.deb
 ```
 
-apt, not `dpkg -i`, so the dependencies resolve. The package installs
-`/usr/bin/rustdesk`, `/usr/share/rustdesk/` (the server and tray binaries) and
-`/usr/lib/systemd/system/rustdesk.service`.
+apt, not `dpkg -i`, so the dependencies resolve and an installed plain
+`rustdesk` is removed in the same step — the packages conflict on purpose. The
+install puts `/usr/bin/rustdesk`, `/usr/share/rustdesk/` (server and tray) and
+`/usr/lib/systemd/system/rustdesk.service` on the host; the postinst enables and
+starts the unit itself.
 
 If a Flatpak was tried first, remove it and its autostart — otherwise two GUIs
 race for the tray:
@@ -1275,6 +1291,33 @@ is set up — change them in the GUI.
 
 ### F5. Troubleshooting
 
+**Connected, and the client sits on "choose a screen".** The host is on Wayland
+and the session is locked: the plain `.deb` captures through the portal, which
+cannot share a locked session and needs a dialog answered on the machine's own
+screen. The server log names it:
+
+```bash
+grep -iE 'drm|pipewire|deadline' ~/.local/share/logs/RustDesk/server/rustdesk_rCURRENT.log
+# Failed to accept connection from 91.19.252.171:61458: deadline has elapsed
+```
+
+Install `rustdesk-unattended-wayland` (F1) and restart the unit. The log then
+shows DRM capture instead of a portal request:
+
+```
+[src/server/drm_capturer.rs:1889] drm: consumer cache warmed (1 displays) at startup
+```
+
+If DRM still yields no picture, the server process — it runs as the desktop
+user — lacks `/dev/dri` access. Put the user in the group and restart:
+
+```bash
+sudo usermod -aG video bigjuicyjones && sudo systemctl restart rustdesk
+```
+
+No re-login is needed: the service starts a fresh server process, which reads the
+group database at exec time.
+
 **The GUI works, the ID is right, and nothing can connect.** Read the GUI log:
 
 ```bash
@@ -1301,11 +1344,10 @@ sudo ufw allow 21115:21119/tcp
 sudo ufw allow 21116/udp
 ```
 
-**Wayland input does not arrive at the login screen.** The standard .deb serves a
-logged-in Wayland session, which autologin gives this host. RustDesk publishes a
-separate asset for the login screen,
-`rustdesk-unattended-wayland-<version>-x86_64.deb`; install that one instead when
-sessions are started from `gdm` without autologin.
+**Autologin is not what makes access work.** The service accepts sessions before
+any login; autologin only decides whether a `--tray` icon exists on the console.
+With the unattended-wayland build the capture is DRM, so a host that boots to the
+greeter and stays there is still reachable.
 
 **A second GUI appears in the tray.** A leftover Flatpak autostart
 (`~/.config/autostart/com.rustdesk.RustDesk.desktop`) is starting its own copy —
