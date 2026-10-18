@@ -1171,6 +1171,148 @@ echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-somevendor:${distro_codename
 ```
 ---
 
+## Phase F — Remote access (RustDesk)
+
+Goal: reach this host from anywhere — after a reboot, with nobody at the console.
+RustDesk is the one piece of software on these hosts that has to work **before a
+login**, and that is the half that is easy to install wrong.
+
+RustDesk is two halves, and the difference is the whole phase:
+
+| Half | Runs as | Its job |
+|---|---|---|
+| service, `/usr/bin/rustdesk --service` | root, a systemd unit | registers the ID with the rendezvous server, accepts sessions, starts before login |
+| GUI + tray | the desktop user (`/usr/share/rustdesk/rustdesk --server` / `--tray`) | the window, the ID, the settings; talks to the service over `/tmp/RustDesk-<uid>/ipc` |
+
+**The Flatpak ships the GUI only.** It cannot install a root unit, so it starts,
+shows a window and answers `rustdesk --get-id` — and accepts nothing: the GUI log
+reports `failed to connect to ipc_service` three times and `skipped config sync`,
+and the ID never reaches the rendezvous server. That was the state of
+`neuro-valhalla` on 2026-10-18 ([F5](#f5-troubleshooting)).
+
+### F1. Install the .deb, not the Flatpak
+
+Take a pinned release, not "latest": `rustdesk-<version>-x86_64.deb` from
+<https://github.com/rustdesk/rustdesk/releases>. 1.5.0 is what this host runs
+(2026-10-18).
+
+```bash
+cd /tmp
+curl -fLO https://github.com/rustdesk/rustdesk/releases/download/1.5.0/rustdesk-1.5.0-x86_64.deb
+sudo apt install -y ./rustdesk-1.5.0-x86_64.deb
+```
+
+apt, not `dpkg -i`, so the dependencies resolve. The package installs
+`/usr/bin/rustdesk`, `/usr/share/rustdesk/` (the server and tray binaries) and
+`/usr/lib/systemd/system/rustdesk.service`.
+
+If a Flatpak was tried first, remove it and its autostart — otherwise two GUIs
+race for the tray:
+
+```bash
+flatpak uninstall --system com.rustdesk.RustDesk
+rm -f ~/.config/autostart/com.rustdesk.RustDesk.desktop
+```
+
+### F2. Enable the service and prove it runs
+
+```bash
+sudo systemctl enable --now rustdesk
+systemctl is-enabled rustdesk          # enabled
+systemctl is-active  rustdesk          # active
+pgrep -af 'rustdesk --service'         # /usr/bin/rustdesk --service
+```
+
+`enable --now` is both halves: start it now, and start it at the next boot,
+before any user logs in.
+
+### F3. Prove it is registered
+
+`rustdesk --get-id` proves nothing on its own — it reads
+`~/.config/rustdesk/RustDesk.toml` and prints the ID (`1038893` on this host)
+whether the service runs or not. The proof is in the server's log:
+
+```bash
+tail -n +1 ~/.local/share/logs/RustDesk/server/rustdesk_rCURRENT.log
+# [INFO] start rendezvous mediator of rs-ny.rustdesk.com
+# [INFO] start udp: rs-ny.rustdesk.com:21116
+# [DEBUG] Latency of rs-ny.rustdesk.com:21116: 18.6ms
+# [DEBUG] Got nat response from rs-ny.rustdesk.com:21115: port=59797
+```
+
+`start rendezvous mediator` plus a NAT response means the service is talking to
+the server. The GUI's log is one level up
+(`~/.local/share/logs/RustDesk/rustdesk_rCURRENT.log`); the `ipc_service` retries
+appear there, never in the server log.
+
+Then the real test: connect from another device with the ID and the permanent
+password.
+
+### F4. Survive a reboot with nobody at the console
+
+Three settings, all three needed for unattended access:
+
+1. **The service is enabled** (F2) — that is what runs before login.
+2. **A permanent password**, set in the GUI (Settings → Security), which writes
+   `verification-method = 'use-permanent-password'` into `~/.config/rustdesk/RustDesk2.toml`.
+   A one-time password changes on every start and cannot be prepared in advance.
+3. **`allow-linux-headless = 'Y'`** in that file's `[options]` table — without it
+   a session without a console user is refused.
+
+Autologin is a separate lever, and only needed for the *tray* to be present; the
+service accepts sessions without it:
+
+```bash
+grep -A1 '^\[daemon\]' /etc/gdm3/custom.conf
+# AutomaticLoginEnable = true
+# AutomaticLogin = bigjuicyjones
+```
+
+The rendezvous server and options live in `~/.config/rustdesk/RustDesk2.toml`
+(`rendezvous_server`, `nat_type`, the `[options]` table); the ID and the
+password material live in `RustDesk.toml`. Do not hand-edit either once the GUI
+is set up — change them in the GUI.
+
+### F5. Troubleshooting
+
+**The GUI works, the ID is right, and nothing can connect.** Read the GUI log:
+
+```bash
+grep -E 'ipc_service|rendezvous' ~/.local/share/logs/RustDesk/rustdesk_rCURRENT.log
+```
+
+`failed to connect to ipc_service` (three tries, then `skipped config sync`)
+means there is **no service**: a Flatpak install, a removed .deb whose unit went
+with it, or a unit that is not running. `rustdesk --get-id` still answers, which
+is what makes this misleading. `systemctl status rustdesk` decides it; if the
+unit does not exist, the .deb is not installed (F1).
+
+**The service runs but the device is offline.** Look for `start rendezvous
+mediator` in the server log (F3). Missing: the service started before the network
+was up — `systemctl restart rustdesk`. Present but no NAT response: the host
+cannot reach `rs-ny.rustdesk.com:21116` (firewall, DNS filter, VPN routing).
+
+**Direct connections fail, relayed ones work.** Normal behind NAT: both peers
+report `SYMMETRIC` and RustDesk falls back to the relay, which needs no inbound
+port at all. To allow direct connections, open these in ufw:
+
+```bash
+sudo ufw allow 21115:21119/tcp
+sudo ufw allow 21116/udp
+```
+
+**Wayland input does not arrive at the login screen.** The standard .deb serves a
+logged-in Wayland session, which autologin gives this host. RustDesk publishes a
+separate asset for the login screen,
+`rustdesk-unattended-wayland-<version>-x86_64.deb`; install that one instead when
+sessions are started from `gdm` without autologin.
+
+**A second GUI appears in the tray.** A leftover Flatpak autostart
+(`~/.config/autostart/com.rustdesk.RustDesk.desktop`) is starting its own copy —
+remove it (F1).
+
+---
+
 ## Troubleshooting
 
 ### Reading the journal
