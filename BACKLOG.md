@@ -29,14 +29,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
-- [ ] **CON100 — every package ships the family's own GStreamer, never the distro's** [M, ★★★].
-      Owner rule 2026-10-17. Done: OmniAccelerANT's bundle and ObservANT (plugins bundled, system
-      plugin path empty); AccelerANTgine's Linux packages (4f8f874, `--gst_check` on the clean
-      hosts); Python app packages through an `app.json` `gstreamer` block (python-app-bundles.md
-      § GStreamer), which OrchestrANT names since 2026-10-18. Left: the hand-made plugin lists of
-      OmniAccelerANT (`bundle-runtime-closure.sh` and its element gate), ObservANT's packager and
-      AccelerANTgine's CPack onto `06-packaging/gstreamer-bundle.sh`.
-
 - [ ] **CON98 — one hub-owned fetcher for the data locks** [M, ★★]. Three consumers fetch
       ModelANT and AssetANT files by the same lock and contract in three languages: OxidANT's
       `fetch-models.sh` with OmniAccelerANT's `Get-Models.ps1`, OrchestrANT's stdlib
@@ -51,20 +43,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `clean-host-package-check` action on `ubuntu-26.04`; linux-build-basics.md § Linux packages
       that run outside the image): the packages start on the image's base and newer. The image's
       loader and glibc travel with `LOADER` since 2026-10-17: AccelerANTgine's `.deb`, tarball and
-      AppImage start on himbeere2's Debian 13. Left:
-      1. OmniAccelerANT's main app takes `bundle-loader.sh --beside` (2026-10-17): its launch smoke
-         holds in the image, and on Debian 13 it reaches GTK. Left: a launch under a display on
-         Debian 13, and its CI rounds.
-      2. The flatpak: the Flutter one installs the bundle whole since 2026-10-17, so its runner
-         finds `data/`. Under the bundled glibc 2.43 it aborted at start, since Platform 26.08's
-         Mesa needs 2.44; the launcher takes the host's glibc when it is new enough since the same
-         day (linux-build-basics.md). Left: a consumer lane that starts its flatpak.
-      3. AccelerANTgine's `kataglyphis_inference` wheels: the same closure, through auditwheel.
-      4. Python app bundles: since 2026-10-17 `python-app-bundle.sh` puts `bundle-loader.sh
-         --beside` on the runtime's interpreter, so `sys.executable` children go through it too,
-         and the `.deb` drops `libc6 (>= 2.43)` (python-app-bundles.md § The image's glibc
-         travels). OrchestrANT's arm64 packages built that way pass their self-test on Debian 13
-         and apt takes the `.deb` (2026-10-18). Left: OrchestrANT's hub pin, and its CI round.
+      AppImage start on himbeere2's Debian 13, and so does OmniAccelerANT's app through
+      `bundle-loader.sh --beside` (a window drawn on Debian 13, its flatpak started by the lane),
+      and OrchestrANT's Python app packages, whose interpreter carries the launcher (2026-10-18,
+      their clean hosts start them). Left: AccelerANTgine's `kataglyphis_inference` wheels, the
+      same closure through auditwheel; and a recorded start of BeschleunigerBallett's packages on
+      Debian 13 (they take `LOADER` too, per its CHANGELOG).
 
       Done when AccelerANTgine's, BeschleunigerBallett's and OmniAccelerANT's packages start on
       himbeere2 and in the clean-host job.
