@@ -29,6 +29,15 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
+- [ ] **CON112 — ModelANT's release build runs on the pinned CPython and the chain ORT** [M, ★★].
+      `.github/workflows/release.yml` builds on `ubuntu-latest` with `actions/setup-python`
+      3.14, and `scripts/build.sh` pip-installs `onnxruntime==1.31.0` from PyPI
+      (`scripts/requirements.txt`), which publishes no cp315 wheel (read 2026-10-20: cp311–cp314
+      only). Both break owner rules: only the pinned CPython, and every ONNX Runtime consumer
+      links the chain ORT. Fix: run `build.sh` in `:latest` on its interpreter, with the chain ORT
+      wheel from the image's store instead of the PyPI pin. Done when a `<name>-v<N>` tag builds
+      in the image and the release's SHA256SUMS still match the export check.
+
 - [ ] **CON101 — the dartdoc guide renderer's parser comes from the image** [S, ★★]. Since
       2026-10-19 `dartdoc_build_prepare_python_env` (`linux/scripts/lib/dartdoc-build.sh`) uses
       `python3` when it imports `markdown-it-py` at the version `dartdoc-guides.requirements.txt`
@@ -350,6 +359,15 @@ owner carries the breakage that costs.
 
 ## Open — Linux arm64 and riscv64
 
+- [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
+      riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
+      the riscv64 job 3 h 52 min for the GIL leg, 137 min of it source builds under QEMU and 74 min
+      pytest. `uv-cache-seed.sh build` seeds one sync, the test extra on `--python` (the image's
+      X.Y), so an X.Yt leg would build every compiled dependency again and run ~7 h, past the
+      360-min job limit. Left: seed the free-threaded test-extra sync too (a second pass on X.Yt
+      into the same seed, proven like the first), then the lane asks for `pinned pinnedt`. Done
+      when both legs pass in one run inside the budget.
+
 - [b] **CON70 — a riscv64 Flutter engine, for OmniAccelerANT's riscv64 lane** [L, ★]. CON48's
       riscv64 consumer lanes (OxidANT, AccelerANTgine, BeschleunigerBallett) cross-build on
       amd64 and test under QEMU since 2026-10-01. OmniAccelerANT has none, because no image
@@ -570,6 +588,22 @@ owner carries the breakage that costs.
         the media lane once.
 ## Open — the Windows arm64 bundle and unpublished variants
 
+- [ ] **CON111 — a free-threaded leg for OrchestrANT's `windows-11-arm` device tests** [M, ★].
+      `Stage-Arm64Tests.ps1` stages one site, and `run-pytest.cmd` runs the bundle's GIL
+      `runtime\python.exe` alone. A cp315t leg needs a second staged site, cp315t `win_arm64`
+      wheels of the test extra's compiled dependencies (psutil, pyyaml, line-profiler; py-spy and
+      the antlr runtime are sdist-only) in `:winarm64`'s `PYTHON_WHEELS`, and a
+      `run-pytest-ft.cmd` on the bundle's free-threaded interpreter. Done when the device job runs
+      both legs.
+- [ ] **CON113 — `python-ci-windows.yml`'s arm64 test job runs on interpreters from
+      `:winarm64`, not uv downloads** [M, ★★]. `test-python-on-windows-arm64` calls
+      `Invoke-PythonTestLegs.ps1 -InstallUv`, which on `windows-11-arm` installs the pinned X.Y
+      and X.Yt through uv: WebDavClient run 39336879640 (2026-10-19, green, legs 3.15 and 3.15t)
+      logged `Downloading cpython-3.15.0-windows-aarch64-none` and
+      `Downloading cpython-3.15.0+freethreaded-windows-aarch64-none`. The versions are right; the
+      source breaks "everything in the image". Fix: stage the bundle's runtime and its
+      free-threaded tree from `:winarm64`, as OrchestrANT's cross build does, and run the legs on
+      those. Done when that job's log has no `Downloading cpython`.
 - [ ] **CON108 — the Windows arm64 device runs OrchestrANT's Flet tests** [S, ★].
       `Stage-Arm64Tests.ps1` stages from `:winarm64`'s `PYTHON_WHEELS`, which has no Flet, so
       `test_view.py`, `test_flet_viewer.py` and `test_streaming.py` skip on the device. flet,
