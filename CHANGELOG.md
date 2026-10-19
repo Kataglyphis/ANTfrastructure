@@ -10,6 +10,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — one fetcher for the data locks (CON98, the hub half)
+
+- **`linux/scripts/lib/fetch-data-lock.py --lock FILE [--dest DIR] [--extract] [--only NAME]...
+  [--cache DIR]`**, stdlib Python, and **`cmake/KataglyphisFetchData.cmake`**'s
+  `kataglyphis_fetch_data(LOCK … [DEST …] [EXTRACT] [ONLY …])`: the one implementation of the
+  contract OxidANT's `fetch-models.sh` and `Get-Models.ps1`, OrchestrANT's `fetch_models.py`
+  and BeschleunigerBallett's `FetchAssets.cmake` each kept. The cache is `<sha256>-<file>` (a
+  bare `<sha256>` still serves); every cached copy, download and target is hashed; writes go by
+  one rename, `0644` under any umask, one fetch per cache at a time; `--extract` unpacks a scene
+  to `<name>/` only, touched to now, and stamps it with its hash and file count
+  ([`data-repositories.md`](docs/data-repositories.md#the-hubs-fetcher)).
+- Read in `:latest` over the consumers' real locks: the same three model files as
+  `fetch-models.sh` and `fetch_models.py`, the same 44 scene files and stamps as
+  `FetchAssets.cmake`, whose stamps it reads as up to date. `data-repositories.md`'s consumer
+  table now lists OmniAccelerANT and AccelerANTgine too, and says `Get-Models.ps1` keeps no
+  cache. `tests/test-fetch-data-lock.sh`; 20 `data-lock.*` mutations (a new declared family).
+
 ## 2026-10-19 — one ELF closure walker for every Linux bundle
 
 - **`linux/scripts/06-packaging/elf-closure.sh`** is `python-app-closure.sh` made language-neutral;

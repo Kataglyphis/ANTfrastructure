@@ -166,3 +166,5 @@ mutation-family:site-links
 mutation-family:docs-site
 # The release collector and the reusable release workflow: collect-release-assets.sh and release-publish.yml; proof: test-collect-release-assets.sh.
 mutation-family:release
+# The data-lock fetcher and its CMake twin: lib/fetch-data-lock.py and cmake/KataglyphisFetchData.cmake; proof: test-fetch-data-lock.sh.
+mutation-family:data-lock

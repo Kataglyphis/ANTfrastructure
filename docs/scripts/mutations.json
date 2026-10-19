@@ -14617,5 +14617,165 @@
   "replace": "exec true",
   "test": "bash linux/scripts/tests/test-elf-closure.sh",
   "why": "CPackCommon.cmake, python-app-bundle.sh and the consumers call the walker by this path"
+ },
+ {
+  "id": "data-lock.download-hash-checked",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "        if got != sha:\n            raise FetchError(f\"{url}: sha256 {got}, the lock says {sha}\")",
+  "replace": "        if False:\n            raise FetchError(f\"{url}: sha256 {got}, the lock says {sha}\")",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "a release that served other bytes would land in the bundle as the locked model"
+ },
+ {
+  "id": "data-lock.cache-rehashed",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "        if matches(candidate, sha):",
+  "replace": "        if candidate.is_file():",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "a corrupt or truncated cached copy would be served for ever"
+ },
+ {
+  "id": "data-lock.legacy-cache-entry",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "    for candidate in (cached, cache / sha):",
+  "replace": "    for candidate in (cached,):",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "fetch-models.sh and fetch_models.py cached as a bare <sha256>; an offline lane would lose its models at the switch"
+ },
+ {
+  "id": "data-lock.target-rehashed",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "            if (up_to_date(target, sha) if archives else matches(target, sha)):",
+  "replace": "            if (up_to_date(target, sha) if archives else target.is_file()):",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "a model that changed on disk would stay, whatever the lock says"
+ },
+ {
+  "id": "data-lock.readable-by-all",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "    part.chmod(0o644)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "ObservANT's service user cannot read a 0600 model"
+ },
+ {
+  "id": "data-lock.plain-file-name",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "        if Path(name).name != name or name in (\".\", \"..\"):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "a lock line ../x would write outside the destination"
+ },
+ {
+  "id": "data-lock.one-line-per-file",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "        if any(name == row[1] for row in rows):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "two hashes for one file name means one of them is never what lands"
+ },
+ {
+  "id": "data-lock.sha-shape",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "        if len(sha) != 64 or any(c not in \"0123456789abcdef\" for c in sha):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "a truncated hash is a lock typo, and the download would fail only after it was made"
+ },
+ {
+  "id": "data-lock.url-scheme",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "    if not url.startswith((\"https://\", \"http://\", \"file:\")):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "urllib also opens ftp: and other schemes a lock has no business naming"
+ },
+ {
+  "id": "data-lock.offline-hint",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "; offline, put the file at {offline_hint}",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "an offline build has one way through, and the error is the only place that says where the file goes"
+ },
+ {
+  "id": "data-lock.only-unknown-fails",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "    if missing:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "a scene renamed in the lock would leave the configure green and the scene missing"
+ },
+ {
+  "id": "data-lock.default-cache-env",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "    if os.getenv(env):\n        return Path(os.environ[env])",
+  "replace": "    if False:\n        return Path(os.environ[env])",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "the lanes point the cache at a persistent volume through these two variables"
+ },
+ {
+  "id": "data-lock.not-an-archive",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "    raise FetchError(f\"{file} is no {', '.join(ARCHIVE_SUFFIXES)} archive\")",
+  "replace": "    return file",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "--extract over a models lock would try to unpack a model"
+ },
+ {
+  "id": "data-lock.stamp-counts-files",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "    return stamp.read_text(encoding=\"utf-8\").strip() == f\"{sha} {file_count(target)}\"",
+  "replace": "    return stamp.read_text(encoding=\"utf-8\").startswith(sha)",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "a rebase that deletes the scene files keeps the ignored stamp, and a hash-only check calls the empty directory up to date (2026-10-17)"
+ },
+ {
+  "id": "data-lock.unstamped-dir-kept",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "        if target.exists():\n            raise FetchError(f\"{target} exists but was not fetched",
+  "replace": "        if False:\n            raise FetchError(f\"{target} exists but was not fetched",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "a scene directory someone put there by hand would be deleted by the configure"
+ },
+ {
+  "id": "data-lock.archive-stays-in-its-dir",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "        if stray:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "an archive is a release asset; one that unpacks elsewhere is not the AssetANT layout and must not write beside the scenes"
+ },
+ {
+  "id": "data-lock.files-touched",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "                    os.utime(path, (now, now))",
+  "replace": "                    pass",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "AssetANT packs with mtime 0, and a build would take every scene file for older than its outputs"
+ },
+ {
+  "id": "data-lock.stamp-written",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "            (fresh / STAMP).write_text(f\"{sha} {file_count(fresh)}\\n\", encoding=\"utf-8\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "without its stamp a fetched scene is refused as not fetched on the next configure"
+ },
+ {
+  "id": "data-lock.cmake-failure-stops",
+  "target": "cmake/KataglyphisFetchData.cmake",
+  "find": "  if(NOT\n     _rc\n     EQUAL\n     0)",
+  "replace": "  if(FALSE)",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "a configure that goes on without its scenes fails later in the tests that read them, for no visible reason"
+ },
+ {
+  "id": "data-lock.cmake-passes-the-lock",
+  "target": "cmake/KataglyphisFetchData.cmake",
+  "find": "  execute_process(COMMAND \"${_python}\" -I \"${_KATAGLYPHIS_FETCH_DATA}\" ${_args} RESULT_VARIABLE _rc)",
+  "replace": "  execute_process(COMMAND \"${_python}\" -I \"${_KATAGLYPHIS_FETCH_DATA}\" RESULT_VARIABLE _rc)",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "the CMake twin is only as good as the arguments it hands the fetcher"
  }
 ]

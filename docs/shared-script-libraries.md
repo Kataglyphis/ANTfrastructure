@@ -662,6 +662,12 @@ flat directory of release files, by `--skip`, `--include`, `--rename`, `--zip`, 
 rest, or one option per line through `--options FILE`. The reusable `release-publish.yml` runs it;
 options and names: [`branch-and-release-strategy.md` § *Collecting the release files*](branch-and-release-strategy.md#collecting-the-release-files).
 
+### `lib/fetch-data-lock.py`
+
+`python3 -I fetch-data-lock.py --lock FILE [--dest DIR] [--extract] [--only NAME]...`: the files
+or scenes a data lock pins, checked by SHA-256, through a cache; CMake reaches it through
+`kataglyphis_fetch_data`. The contract: [`data-repositories.md` § *The hub's fetcher*](data-repositories.md#the-hubs-fetcher).
+
 ### Gate aggregation (`01-core/gates.sh`)
 
 `run_gate` / `gate_skip` / `assert_gates`, the shell half of the fleet's

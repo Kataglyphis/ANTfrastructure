@@ -51,21 +51,40 @@ One line per file, `#` for comments, whitespace-separated:
 225f612fc879d604b79a569648f274672090070a07dcbdef469796df956f8392  deim_dfine_n_coco.onnx  https://github.com/Kataglyphis/ModelANT/releases/download/deim_dfine_n_coco-v1/deim_dfine_n_coco.onnx
 ```
 
-Every fetcher keeps the same contract:
+## The hub's fetcher
 
-- It downloads through a cache keyed by the hash: `KATAGLYPHIS_MODEL_CACHE` or
-  `KATAGLYPHIS_ASSET_CACHE`, else `%LOCALAPPDATA%` or `~/.cache`.
-- It checks the hash of the cached copy and of every download. A model fetcher re-hashes the
-  target too, and the scene fetcher reads its stamp (below).
-- It writes atomically (`.part`, then rename) and retries a failed download three times.
-- The scene fetcher never overwrites what it did not write: a scene directory without its
-  stamp stops the configure.
+`linux/scripts/lib/fetch-data-lock.py --lock FILE [--dest DIR] [--extract] [--only NAME]...
+[--cache DIR]` is stdlib Python, so every lane on both systems runs the same code;
+`cmake/KataglyphisFetchData.cmake`'s `kataglyphis_fetch_data(LOCK <file> [DEST <dir>] [EXTRACT]
+[ONLY <name>...])` runs it at configure or in `cmake -P`, and stops on any failure.
 
-| Consumer | Lock | Fetcher |
-| --- | --- | --- |
-| OxidANT | `resources/models/models.lock` | `scripts/linux/fetch-models.sh`, `scripts/windows/Get-Models.ps1` |
-| OrchestrANT | `resources/models/models.lock` | `scripts/fetch_models.py` (stdlib, Linux and Windows) |
-| BeschleunigerBallett | `Resources/assets.lock` | `cmake/FetchAssets.cmake`, at every configure or as `cmake -P` |
+- **The cache is keyed by the hash**: `<sha256>-<file>` in `--cache`, else
+  `KATAGLYPHIS_MODEL_CACHE` (`KATAGLYPHIS_ASSET_CACHE` with `--extract`), else
+  `kataglyphis-models` or `kataglyphis-assets` under `%LOCALAPPDATA%` or `~/.cache`. A bare
+  `<sha256>` entry, as the first model fetchers wrote it, still serves.
+- **Every cached copy, every download and every target is hashed**; a mismatch fails and leaves
+  neither the target nor a part behind. An http(s) download gets three attempts; a failed one
+  names the cache path an offline copy goes to.
+- **It writes by one rename**, a file `0644` whatever the umask, and one fetch holds a cache at a
+  time (`<cache>/.lock`). It exits 1 on a failed fetch and 2 on bad arguments.
+- **`--extract`** takes each file as `<name>.tar.xz` (or `.tar.gz`, `.tgz`) that unpacks to
+  `<name>/` and nothing else. The scene lands with its stamp by one rename, its files touched to
+  now, since archives are packed with mtime 0. A scene directory without a stamp stops the fetch:
+  it never overwrites what it did not write.
+
+`tests/test-fetch-data-lock.sh` and the `data-lock.*` mutations prove it. Read in `:latest` on
+2026-10-19 over the real locks: OxidANT's `fetch-models.sh` and OrchestrANT's `fetch_models.py`
+wrote the same three files, `0644`, as the hub's fetcher, and BeschleunigerBallett's
+`FetchAssets.cmake` the same 44 scene files and stamps, which the hub's fetcher then read as up
+to date.
+
+| Consumer | Lock | Fetcher today | Onto the hub's |
+| --- | --- | --- | --- |
+| OxidANT | `resources/models/models.lock` | `scripts/linux/fetch-models.sh`; `scripts/windows/Get-Models.ps1`, which keeps no cache | both become a call of `fetch-data-lock.py --lock resources/models/models.lock` |
+| OmniAccelerANT | OxidANT's | OxidANT's two, from `bundle-runtime-closure.sh`, `ci/lane-native-linux.sh`, `observant/package-observant.sh` and `Package-ObservANT.ps1` | no change past OxidANT's |
+| OrchestrANT | `resources/models/models.lock` | `scripts/fetch_models.py`, from `ci_packaging.sh` and both Windows build scripts | the same call; `tests/unit/test_fetch_models.py` goes with it |
+| BeschleunigerBallett | `Resources/assets.lock` | `cmake/FetchAssets.cmake`, at every configure or as `cmake -P` | `kataglyphis_fetch_data(LOCK Resources/assets.lock DEST Resources/Models EXTRACT ONLY crytek-sponza Dinosaurs)` |
+| AccelerANTgine | none | `curl` and `sha256sum` by hand, in `models/README.md` | a lock and the call |
 
 **A fetched scene directory holds a stamp with two fields**: the archive's hash and the number
 of files it extracted. A matching hash alone is not enough. On 2026-10-17 a rebase deleted the
@@ -84,8 +103,7 @@ configure fetches before the install rules run.
   GIF to a 2.1 MiB WebP on 2026-10-17.
 - Shaders, which are code, and a website's own content (ANThology's images and fonts).
 
-Three fetchers keep one contract in three languages; one hub-owned implementation is
-BACKLOG CON98.
+The consumers move onto the hub's fetcher in BACKLOG CON98.
 
 ## Keeping data out of the code repositories
 
