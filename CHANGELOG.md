@@ -10,6 +10,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — New-PortableBundle returns its result object alone
+
+- **`New-PortableBundle`** pipes its `-Runner` call to `Out-Host`: the default runner let cmake's
+  install lines into the return value (a real tree returned 32 objects, 31 of them strings), so a
+  caller reading `.Bundle` got an array. A passed runner's output stays out of the result too.
+- `CrossBundle.Common.Tests.ps1` 11 cases: the new one runs the default runner against a fake
+  `cmake.cmd` on `PATH` and a runner that returns a line; without the `Out-Host` it gets 3 objects.
+
 ## 2026-10-19 — a local run grades the staged tests' verdict line too
 
 - **`Invoke-StagedTests.ps1 -AssertVerdict`** throws after printing

@@ -137,6 +137,24 @@ Describe 'New-PortableBundle' {
         }
     }
 
+    It 'returns its result object alone: cmake''s output, from the default runner or a passed one, goes to the host' {
+        Invoke-InTestDir { param($dir)
+            $bundleArgs = @{ BuildDir = "$dir\build"; DistDir = "$dir\dist"; Arch = 'arm64'; SearchDirectory = (New-ClosureFixture -Dir $dir) }
+            $null = New-Item -ItemType Directory -Force -Path "$dir\tools", $bundleArgs.BuildDir
+            Set-Content -LiteralPath "$dir\tools\cmake.cmd" -Value @('@echo off', 'echo -- Install configuration: "Release"',
+                'mkdir "%~4\bin"', "copy /y `"$dir\app\app.exe`" `"%~4\bin\`" >nul", 'echo -- Installing: %~4\bin\app.exe')
+            $r = @(Invoke-WithEnv @{ PATH = "$dir\tools;$env:PATH" } { New-PortableBundle @bundleArgs })
+            Assert-Equal 1 $r.Count 'the default runner: one object, no cmake line'
+            Assert-Equal "$dir\dist\bundle" $r[0].Bundle
+            Assert-Equal 4 @($r[0].Added).Count 'the fake cmake installed app.exe, and its closure followed'
+            $install = New-FakeInstall $dir
+            $chatty = { param($File, [string[]]$Arguments) '-- Installing: a line a logged runner returns'; & $install $File $Arguments }.GetNewClosure()
+            $r = @(New-PortableBundle @bundleArgs -Runner $chatty)
+            Assert-Equal 1 $r.Count 'a passed runner''s output does not join the result either'
+            Assert-Equal "$dir\dist\packages" $r[0].Packages
+        }
+    }
+
     It 'with -RequireCompleteInstall throws when the closure has to add a DLL, and passes a complete install tree' {
         Invoke-InTestDir { param($dir)
             $search = New-ClosureFixture -Dir $dir

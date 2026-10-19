@@ -152,7 +152,8 @@ function New-PortableBundle {
     $bundle = Join-Path $DistDir 'bundle'
     $packages = Join-Path $DistDir 'packages'
     foreach ($dir in $bundle, $packages) { if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force } }
-    & $Runner 'cmake' @('--install', $BuildDir, '--prefix', $bundle, '--config', $Configuration)
+    # Out-Host: cmake's install lines must not join this function's result.
+    & $Runner 'cmake' @('--install', $BuildDir, '--prefix', $bundle, '--config', $Configuration) | Out-Host
 
     $bin = Join-Path $bundle 'bin'
     $installed = @(Get-ChildItem -LiteralPath $bin -File | ForEach-Object Name)
