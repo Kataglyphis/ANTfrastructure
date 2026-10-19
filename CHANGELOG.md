@@ -10,6 +10,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — New-PortableBundle builds a CMake product's bundle and packages
+
+- **`New-PortableBundle`** (`WindowsCrossBundle.Common`): `cmake --install` of the build dir into
+  `<DistDir>\bundle`, the DLL closure of its `bin` from `Get-ProductDllSearchPath` (or
+  `-SearchDirectory`), and the build dir's `.msi`, `.zip` and the NSIS `.exe` named like one of
+  them in `<DistDir>\packages`. **`-RequireCompleteInstall`** throws when the closure has to add
+  a DLL, as AccelerANTgine's copy did; BeschleunigerBallett's did not, so it is a switch.
+  `-Runner` takes the build's logged cmake call; the module gains no import, since media stages
+  mount it beside `WindowsTargetArch.Common` alone
+  ([`windows-cross-builds.md`](docs/windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml),
+  which no longer says BeschleunigerBallett passes `C:\runtime\bin` itself).
+- `CrossBundle.Common.Tests.ps1` 10 cases over synthetic PE imports; dropping the throw, the
+  installed-names filter or the test-binary exclusion each fail one.
+
 ## 2026-10-19 — Get-BuildConfigurationRow reads a Build-Windows.config.psd1 row
 
 - **`Get-BuildConfigurationRow`** (`WindowsConfig.Common`) returns `Build.Configurations.<Name>`

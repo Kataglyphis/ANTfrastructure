@@ -460,16 +460,19 @@ on a closure DLL of the wrong machine. A DLL loaded by name at run time (ONNX Ru
 `load-dynamic`, a GStreamer plugin) is in neither import table, so the build passes it in as
 a seed. Names found in no search directory are left to the device, and the walk grades them.
 
-OxidANT and AccelerANTgine take the search directories from `Get-ProductDllSearchPath` (each
-in its `scripts/windows/Build-Windows.ps1`), so both look in the same order:
+OxidANT, AccelerANTgine and BeschleunigerBallett take the search directories from
+`Get-ProductDllSearchPath` (each in its `scripts/windows/Build-Windows.ps1`, BeschleunigerBallett's
+checked 2026-10-19), so all three look in the same order:
 1. `$env:ONNX_ROOT\bin`, so an ORT-family import resolves to the chain build;
 2. `C:\runtime\bin`, the media stack;
 3. `VCToolsRedistDir\<x64|arm64>\Microsoft.VC*.CRT`, the VC++ runtime, app-local.
 
-BeschleunigerBallett's cross bundle passes `-SearchDirectory C:\runtime\bin` to
-`Copy-PeImportClosure` itself (its `scripts/windows/Build-Windows.ps1`, checked 2026-09-25). Its
-VC++ runtime comes from the `cmake --install` it bundles, through `CPackCommon.cmake`'s
-`InstallRequiredSystemLibraries`.
+**A CMake product's portable bundle** comes from `New-PortableBundle` (`WindowsCrossBundle.Common`):
+`cmake --install` of the build dir into `dist\windows-<arch>\bundle`, the closure of its `bin`
+added in that order, and the build dir's `.msi`, `.zip` and the NSIS `.exe` named like one of them
+copied to `packages`. With `-RequireCompleteInstall` a DLL the closure has to add throws, because
+the installers pack the install tree and would all lack it; AccelerANTgine wants that, and
+BeschleunigerBallett does not set it yet. `-Runner` takes the build's logged cmake call.
 
 **x64 packages carry the same closure** (owner decision 2026-09-25). A clean x64 PC lacks the
 media stack and may lack the VC++ runtime too. A CMake consumer whose packages come from CPack

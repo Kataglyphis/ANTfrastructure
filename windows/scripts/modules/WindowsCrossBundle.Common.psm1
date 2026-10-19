@@ -123,4 +123,53 @@ function Copy-PeImportClosure {
     return @($copied)
 }
 
-Export-ModuleMember -Function Get-CrossConfigureArgs, Get-WindowsPackageArch, Get-ProductDllSearchPath, Get-PeImportClosure, Copy-PeImportClosure
+<#
+.SYNOPSIS
+    <DistDir>\bundle, the -BuildDir install tree plus the DLLs its binaries import, and <DistDir>\packages, the build's installers.
+.DESCRIPTION
+    The bundle runs on a clean machine. The installers are the build dir's .msi and .zip, and the .exe NSIS names like one of them;
+    its other .exe files are tests. With -RequireCompleteInstall a DLL the closure has to add throws: the installers pack the
+    install tree, so every one of them would lack it.
+.PARAMETER Runner
+    Runs cmake as { param($File, [string[]]$Arguments) }; the default throws on a non-zero exit. A build passes its logged runner.
+.OUTPUTS
+    [pscustomobject] Bundle, Packages, Added (the DLL names the closure copied in) and Installers.
+#>
+function New-PortableBundle {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$BuildDir,
+        [Parameter(Mandatory)][string]$DistDir,
+        [string]$Configuration = 'Release',
+        [string]$Arch = '',
+        [string[]]$SearchDirectory = @(),
+        [switch]$RequireCompleteInstall,
+        [scriptblock]$Runner = { param($File, [string[]]$Arguments) & $File @Arguments; if ($LASTEXITCODE) { throw "$File $($Arguments -join ' ') exited $LASTEXITCODE" } }
+    )
+
+    $target = Get-WindowsTargetArch -Arch $Arch
+    if ($SearchDirectory.Count -eq 0) { $SearchDirectory = @(Get-ProductDllSearchPath -Arch $target) }
+    $bundle = Join-Path $DistDir 'bundle'
+    $packages = Join-Path $DistDir 'packages'
+    foreach ($dir in $bundle, $packages) { if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force } }
+    & $Runner 'cmake' @('--install', $BuildDir, '--prefix', $bundle, '--config', $Configuration)
+
+    $bin = Join-Path $bundle 'bin'
+    $installed = @(Get-ChildItem -LiteralPath $bin -File | ForEach-Object Name)
+    $seeds = @(Get-ChildItem -LiteralPath $bin -File | Where-Object { $_.Extension -in '.exe', '.dll' } | ForEach-Object FullName)
+    $added = @(Copy-PeImportClosure -Path $seeds -SearchDirectory $SearchDirectory -Destination $bin -Arch $target |
+            ForEach-Object { Split-Path $_ -Leaf } | Where-Object { $_ -notin $installed })
+    if ($RequireCompleteInstall -and $added.Count -gt 0) {
+        throw "The install tree lacks $($added -join ', '), which its binaries import, so every installer would ship without it: seed the package DLL closure with the binary that imports it."
+    }
+
+    $null = New-Item -ItemType Directory -Force -Path $packages
+    $installers = @(Get-ChildItem -LiteralPath $BuildDir -File | Where-Object { $_.Extension -in '.msi', '.zip' })
+    $installers += @($installers | ForEach-Object { Join-Path $BuildDir "$($_.BaseName).exe" } | Select-Object -Unique |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Get-Item)
+    $installers | Copy-Item -Destination $packages
+    return [pscustomobject]@{ Bundle = $bundle; Packages = $packages; Added = $added; Installers = @($installers | ForEach-Object Name) }
+}
+
+Export-ModuleMember -Function Get-CrossConfigureArgs, Get-WindowsPackageArch, Get-ProductDllSearchPath, Get-PeImportClosure, Copy-PeImportClosure,
+    New-PortableBundle

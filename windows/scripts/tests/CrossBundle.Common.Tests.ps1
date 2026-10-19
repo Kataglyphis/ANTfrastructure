@@ -108,3 +108,45 @@ Describe 'Copy-PeImportClosure' {
         }
     }
 }
+
+Describe 'New-PortableBundle' {
+    # The fixture's app.exe as the install tree's binary, plus -Extra installed beside it; records the cmake argv.
+    function script:New-FakeInstall([string]$Dir, [string[]]$Extra = @()) {
+        $fixture = $Dir
+        $extraNames = $Extra
+        return {
+            param($File, [string[]]$Arguments)
+            Set-Content -LiteralPath (Join-Path $fixture 'install.log') -Value "$File $($Arguments -join ' ')"
+            $bin = Join-Path $Arguments[$Arguments.IndexOf('--prefix') + 1] 'bin'
+            $null = New-Item -ItemType Directory -Force -Path $bin
+            Copy-Item -LiteralPath "$fixture\app\app.exe" -Destination $bin
+            foreach ($name in $extraNames) { Copy-Item -LiteralPath "$fixture\runtime\bin\$name" -Destination $bin }
+        }.GetNewClosure()
+    }
+
+    It 'installs, adds the imported DLLs, and copies the .msi, .zip and their NSIS .exe but no test binary' {
+        Invoke-InTestDir { param($dir)
+            $search = New-ClosureFixture -Dir $dir
+            $build = Join-Path $dir 'build'
+            foreach ($f in 'app.msi', 'app.zip', 'app.exe', 'unit_tests.exe') { $null = New-Item -ItemType File -Force -Path (Join-Path $build $f) }
+            $r = New-PortableBundle -BuildDir $build -DistDir "$dir\dist" -Arch arm64 -SearchDirectory $search -Runner (New-FakeInstall $dir)
+            Assert-Equal "cmake --install $build --prefix $dir\dist\bundle --config Release" (Get-Content -LiteralPath "$dir\install.log")
+            Assert-Equal 'a.dll,B.DLL,c.dll,d.dll' (@($r.Added | Sort-Object) -join ',') 'the closure of app.exe'
+            Assert-True (Test-Path -LiteralPath "$dir\dist\bundle\bin\d.dll") 'beside the binary'
+            Assert-Equal 'app.exe,app.msi,app.zip' (@(Get-ChildItem -LiteralPath "$dir\dist\packages" -Name | Sort-Object) -join ',')
+        }
+    }
+
+    It 'with -RequireCompleteInstall throws when the closure has to add a DLL, and passes a complete install tree' {
+        Invoke-InTestDir { param($dir)
+            $search = New-ClosureFixture -Dir $dir
+            $null = New-Item -ItemType Directory -Force -Path "$dir\build"
+            Assert-Throws { New-PortableBundle -BuildDir "$dir\build" -DistDir "$dir\dist" -Arch arm64 -SearchDirectory $search -Runner (New-FakeInstall $dir) -RequireCompleteInstall } `
+                -MessagePattern 'The install tree lacks a\.dll, B\.DLL, c\.dll, d\.dll, which its binaries import'
+            Copy-Item -LiteralPath "$dir\ort\bin\B.DLL" -Destination "$dir\runtime\bin\B.DLL"
+            $r = New-PortableBundle -BuildDir "$dir\build" -DistDir "$dir\dist" -Arch arm64 -SearchDirectory $search -RequireCompleteInstall `
+                -Runner (New-FakeInstall $dir -Extra 'a.dll', 'B.DLL', 'c.dll', 'd.dll')
+            Assert-Equal 0 $r.Added.Count 'nothing missing'
+        }
+    }
+}
