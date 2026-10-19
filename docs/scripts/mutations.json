@@ -13985,5 +13985,69 @@
   "replace": "        print(\"OK: every internal link and anchor resolves\")\n    return 0\n",
   "test": "bash linux/scripts/tests/test-site-links.sh",
   "why": "a gate that prints its findings and exits 0 publishes the broken site anyway"
+ },
+ {
+  "id": "docs-site.fileinfo-only",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "ErrorDocument 404 /404.html\n",
+  "replace": "ErrorDocument 404 /404.html\nOptions -Indexes\n",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "Options needs AllowOverride Options, which nothing proves the host grants; a refused directive is a 500 on every page"
+ },
+ {
+  "id": "docs-site.https-redirect",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "every family site answered plain http with 200 (curl, 2026-10-19); the redirect is what moves a reader to https"
+ },
+ {
+  "id": "docs-site.proxy-loop-guard",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "    RewriteCond %{HTTP:X-Forwarded-Proto} !=https\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "behind a proxy that ends TLS, HTTPS is off on every request, so the redirect would loop for ever"
+ },
+ {
+  "id": "docs-site.hsts-year",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "max-age=31536000",
+  "replace": "max-age=300",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "HSTS under a year is not preload-grade and lapses between a reader's visits"
+ },
+ {
+  "id": "docs-site.nosniff",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "    Header always set X-Content-Type-Options \"nosniff\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "without nosniff a browser may run an uploaded text file as script"
+ },
+ {
+  "id": "docs-site.sync-state-denied",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "    RedirectMatch 404 (^|/)\\.ftp-deploy-sync-state\\.json$\n",
+  "replace": "    RedirectMatch 404 ^/\\.ftp-deploy-sync-state\\.json$\n",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "the state file lists every published file with its hash; a server-dir below the root keeps one too"
+ },
+ {
+  "id": "docs-site.error-document",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "ErrorDocument 404 /404.html\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "without it a dead link shows Apache's bare default page instead of the site's way back"
+ },
+ {
+  "id": "docs-site.404-home-link",
+  "target": "linux/webserver/templates/docs-site-404.html",
+  "find": "<a href=\"/\">",
+  "replace": "<a href=\"/home.html\">",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "the 404 page is served at any depth, so its way back must be root-absolute and exist"
  }
 ]

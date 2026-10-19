@@ -43,3 +43,36 @@ Measured 2026-10-19 in `:latest`:
 | OxidANT rustdoc, all 11 crates (`8af8f67`) | 517 | 20 `missing <module>/dispatcher`, one per module of `kataglyphis_webgpu_renderer` |
 
 Suite `linux/scripts/tests/test-site-links.sh`; the `site-links.*` mutations prove it.
+
+## The site's .htaccess
+
+`linux/webserver/templates/docs-site.htaccess` goes into every docs site's root, with
+`docs-site-404.html` as `404.html` when the build wrote none:
+
+| Directive | Why |
+|---|---|
+| `RewriteCond %{HTTPS} !=on` + `RewriteCond %{HTTP:X-Forwarded-Proto} !=https` + `RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]` | plain http answered 200 on every family site; the second condition stops a loop behind a proxy that ends TLS |
+| `Header always set Strict-Transport-Security "max-age=31536000"` | HSTS for a year, this subdomain only |
+| `Header always set X-Content-Type-Options "nosniff"` | no content sniffing |
+| `RedirectMatch 404 (^\|/)\.ftp-deploy-sync-state\.json$` | the FTP library's state file lists every published file with its hash, and it was served |
+| `ErrorDocument 404 /404.html` | a dead link shows a page with a way back, not Apache's default |
+
+**Every directive is in Apache's FileInfo override class**, and the suite fails on any
+other. That class is what the host is proven to allow: `jonasheinle.de`, on the same
+address as every docs site, serves exactly the headers of jotrockenmitlocken's deployed
+`web/.htaccess` (`Header`, `AddType`). A directive the host's `AllowOverride` does not
+grant (`Options`, `Require`, `Order`) would make every page a 500, so the state file is
+denied by `RedirectMatch` rather than `Require all denied`. Each block sits in
+`<IfModule>`: a missing module drops its rules instead of failing the site.
+
+The server, read 2026-10-19 with `curl -sI`: `containerization.jonasheinle.de` and the
+other eight FTP sites answer `Server: Apache` from `85.13.169.97`; `http://` answers 200
+with no redirect; `/.ftp-deploy-sync-state.json` answers 200; an unknown page gets
+Apache's default 404; `/.htaccess` answers 403, so the server config denies `.ht*`
+files itself.
+
+The family image carries no `httpd`, so the directives are checked by
+`linux/scripts/tests/test-docs-site-htaccess.sh` (each directive, the state-file regex
+against sample paths, the 404 page through the link gate) and by `curl -sI` after the
+first publish, not by a server in a container. The `docs-site.*` mutations prove the
+suite.

@@ -1,0 +1,18 @@
+# The docs sites' .htaccess, every directive in Apache's FileInfo class; see docs/docs-sites.md#the-sites-htaccess
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header always set Strict-Transport-Security "max-age=31536000"
+    Header always set X-Content-Type-Options "nosniff"
+</IfModule>
+
+<IfModule mod_alias.c>
+    RedirectMatch 404 (^|/)\.ftp-deploy-sync-state\.json$
+</IfModule>
+
+ErrorDocument 404 /404.html

@@ -10,6 +10,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — one hub-owned .htaccess for the docs sites
+
+- **`linux/webserver/templates/docs-site.htaccess`**: http → https (301, with a guard against a
+  loop behind a TLS proxy), HSTS for a year, `X-Content-Type-Options: nosniff`, the FTP library's
+  `.ftp-deploy-sync-state.json` answered as 404, and `ErrorDocument 404 /404.html`, with
+  `docs-site-404.html` as that page. Read with `curl` the same day: all nine FTP sites are Apache on
+  `85.13.169.97`, answer plain http with 200, serve the state file, and show Apache's default 404
+  ([`docs-sites.md`](docs/docs-sites.md#the-sites-htaccess)).
+- **Every directive is in Apache's FileInfo override class**, the one `jonasheinle.de` on the same
+  host is proven to allow; `tests/test-docs-site-htaccess.sh` fails on any other, since a refused
+  directive is a 500 on every page. The image has no `httpd`, so the suite checks the directives
+  and the state-file regex; eight `docs-site.*` mutations (a new declared family) prove it.
+
 ## 2026-10-19 — a built docs site is checked for dead links before it goes up
 
 - **`linux/scripts/verify_site_links.py <site dir> [--allow FILE] [--print-keys]`** reads a
