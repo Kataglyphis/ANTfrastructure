@@ -15073,5 +15073,29 @@
   "replace": "--no-update-notifier --loglevel=error) \\",
   "test": "bash linux/scripts/tests/test-renovate-bootstrap.sh",
   "why": "node \"$(renovate-local.sh --print-bin)\" must get the path alone, not npm's 'added N packages' line before it"
+ },
+ {
+  "id": "python.preamble-fallback-is-the-pin",
+  "target": "linux/scripts/01-core/install-deps-preamble.sh",
+  "find": "2>/dev/null && return 0\n",
+  "replace": "2>/dev/null || echo \"3.12\"; return 0\n",
+  "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+  "why": "a fallback with its own version builds against an interpreter the image does not carry"
+ },
+ {
+  "id": "lib.cmake-format-py315-fix-runs",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "\"${venv_py}\" -I \"${_CQ_LIB_DIR}/cmakelang-py315.py\" || err",
+  "replace": ": \"${venv_py}\" || err",
+  "test": "bash linux/scripts/tests/test-cmake-format.sh",
+  "why": "cmake-format 0.6.13 dies on Python 3.15's re.Scanner unless the bootstrap patches its lexer"
+ },
+ {
+  "id": "lib.cmakelang-py315-replaces-the-scanner",
+  "target": "linux/scripts/lib/cmakelang-py315.py",
+  "find": "text.replace(\"re.Scanner(\", \"_Py314Scanner(\") + COMPAT",
+  "replace": "text + COMPAT",
+  "test": "bash linux/scripts/tests/test-cmake-format.sh",
+  "why": "a marker without the swap reads as patched while 3.15 still refuses the lexer"
  }
 ]

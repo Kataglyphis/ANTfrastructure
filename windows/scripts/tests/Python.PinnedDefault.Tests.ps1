@@ -30,3 +30,12 @@ Describe 'Invoke-CiPackaging and Invoke-CiStaticAnalysis: the pinned Python by d
         }
     }
 }
+
+Describe 'The shared modules default -PythonVersion to no version literal' {
+
+    It 'no *.psm1 writes a version as a -PythonVersion default, so the pin decides (2026-10-20)' {
+        $modules = Join-Path (Get-RepoRoot) 'windows\scripts\modules\*.psm1'
+        $hits = @(Select-String -Path $modules -Pattern '\$PythonVersion\s*=\s*[''"]\d' | ForEach-Object { "$($_.Filename):$($_.LineNumber)" })
+        Assert-Equal '' ($hits -join ', ') 'Initialize-UvVenv''s 3.12 made :winamd64 download an interpreter it does not carry'
+    }
+}

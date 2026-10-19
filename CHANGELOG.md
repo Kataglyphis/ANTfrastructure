@@ -11,6 +11,33 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — The Windows uv venvs and the host probes take the pinned CPython
+
+- **`Initialize-UvVenv` defaults to the pin's X.Y, not 3.12** (owner, 2026-10-20: only the pinned
+  CPython). Its implicit callers, `Invoke-EarlyWebDavDownload` (BeschleunigerBallett) and
+  OmniAccelerANT's cmake-format venv, made `:winamd64`, which carries 3.15.0 alone, download 3.12
+  through uv. `Initialize-UvVenvPython` (`Invoke-CmakeFormatStep`) passes no version of its own.
+  `Test-UvVenvHealthy -PythonVersion` recreates a venv on another X.Y or X.Yt, so a reused
+  workspace follows a pin bump. Measured in `:winamd64`: the venvs use `C:\temp\cpython`'s 3.15.0,
+  and `uv python list` shows the image's two interpreters before and after, nothing downloaded.
+- **cmake-format 0.6.13 runs on Python 3.15.** 3.15's `re.Scanner` refuses capturing groups
+  (`ValueError: Cannot use capturing groups in re.Scanner`, measured in `:winamd64`), and
+  cmakelang's lexer has them; 0.6.13 is the last release. `linux/scripts/lib/cmakelang-py315.py`
+  swaps in 3.14's `Scanner` verbatim, minus the check, writing a new file so uv's hardlinked cache
+  keeps the wheel's bytes. `Install-UvRequirements` and `code_quality_ensure_cmake_format` run it
+  after each install; below 3.15 it does nothing. Output equals stock 3.14 byte for byte over 79
+  CMake files of the hub, OmniAccelerANT and BeschleunigerBallett. Without it `:latest`'s move to
+  3.15 would red every CMake format gate.
+- **`install-deps-preamble.sh`'s `host_python_major_minor` fallback answers the pin** (the image's
+  `PYTHON_VERSION`, else `versions.env` beside it) where it said 3.12.
+- **`preflight.sh` probes `pythonX.Y` of the pin first**; python3 and the older names stay for a
+  host without it. `windows-host-setup.md` B4 installs the pin's X.Y and says where it lives.
+- Tests: `Uv.PythonRequest.Tests.ps1` (venv reuse per X.Y/X.Yt, the pinned default, the helper
+  after an install), `Python.PinnedDefault.Tests.ps1` (no module's `-PythonVersion` defaults to a
+  literal), `test-python-ci-defaults.sh` (both probes), `test-cmake-format.sh` (the gate under the
+  patched lexer); mutations `python.preamble-fallback-is-the-pin`, `lib.cmake-format-py315-fix-runs`,
+  `lib.cmakelang-py315-replaces-the-scanner`.
+
 ## 2026-10-20 — The arm64 Python job defaults to the pinned X.Y and X.Yt
 
 - **`python-ci-windows.yml`'s empty `arm64-python-versions` runs the pinned X.Y plus X.Yt when

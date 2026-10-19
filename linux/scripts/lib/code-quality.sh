@@ -76,6 +76,11 @@ code_quality_ensure_cmake_format() {
   fi
   (cd "${root}" && "${install_script}")
 
+  # cmake-format 0.6.13 dies on 3.15's re.Scanner; the helper patches its lexer and is a no-op below 3.15.
+  local venv_py="${venv_dir}/bin/python"
+  [[ -x "${venv_py}" ]] || venv_py="${venv_dir}/Scripts/python.exe"
+  "${venv_py}" -I "${_CQ_LIB_DIR}/cmakelang-py315.py" || err "cmakelang-py315.py could not patch cmake-format in ${venv_dir}."
+
   # A Windows-created venv has Scripts/; neither existing is a broken venv, failed by name.
   local activate="${venv_dir}/bin/activate"
   [[ -f "${activate}" ]] || activate="${venv_dir}/Scripts/activate"

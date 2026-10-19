@@ -48,6 +48,57 @@ Describe 'New-UvProjectEnvironment' {
     }
 }
 
+Describe 'Test-UvVenvHealthy' {
+
+    # Whether a venv whose interpreter reports -Actual counts as healthy for -Version.
+    function script:Test-FakeVenv {
+        param([string]$Version, [string]$Actual)
+        $reader = { param($python) $Actual }.GetNewClosure()
+        return Invoke-InTestDir { param($d)
+            $null = New-Item -ItemType File -Force -Path (Join-Path $d 'Scripts\python.exe')
+            Test-UvVenvHealthy -VenvPath $d -PythonVersion $Version -VersionReader $reader
+        }
+    }
+
+    It 'keeps a venv on the requested X.Y or X.Yt' {
+        Assert-True (Test-FakeVenv -Version '3.15' -Actual '3.15') 'X.Y'
+        Assert-True (Test-FakeVenv -Version '3.15.0' -Actual '3.15') 'X.Y.Z compares its X.Y'
+        Assert-True (Test-FakeVenv -Version '3.15t' -Actual '3.15t') 'X.Yt'
+        Assert-True (Test-FakeVenv -Version 'C:\py\python.exe' -Actual '3.12') 'a path checks only that it runs'
+    }
+
+    It 'recreates a venv on another interpreter, so a pin bump reaches a reused workspace' {
+        Assert-False (Test-FakeVenv -Version '3.15' -Actual '3.12') 'the old default'
+        Assert-False (Test-FakeVenv -Version '3.15' -Actual '3.15t') 'the free-threaded twin is not the GIL leg'
+        Assert-False (Test-FakeVenv -Version '3.15t' -Actual '3.15') 'nor the other way round'
+        Assert-False (Test-FakeVenv -Version '3.15' -Actual '') 'an interpreter that does not run'
+    }
+}
+
+Describe 'Initialize-UvVenv and Install-UvRequirements' {
+
+    # Every call either function hands its -CommandRunner, as "<exe> <args>".
+    $calls = [System.Collections.Generic.List[string]]::new()
+    $runner = { param($exe, $argv) $calls.Add("$exe $argv") }.GetNewClosure()
+
+    It 'Initialize-UvVenv creates the venv on the pin when no version is named, never a version literal' {
+        $calls.Clear()
+        Invoke-WithEnv @{ PYTHON_VERSION = '9.87.6'; UV_PROJECT_ENVIRONMENT = $null } {
+            Invoke-InTestDir { param($d) $null = Initialize-UvVenv -Workspace $d -CommandRunner $runner }
+        }
+        Assert-Equal 'uv python install 9.87' $calls[0] 'uv finds no 9.87, so the pin is installed'
+        Assert-Match '^uv venv --python 9\.87\+gil --clear ' $calls[1] 'then the venv on its GIL build'
+    }
+
+    It 'Install-UvRequirements installs, then runs the cmake-format lexer fix for Python 3.15 on the same venv' {
+        $calls.Clear()
+        Install-UvRequirements -VenvPython 'C:\v\Scripts\python.exe' -RequirementsPath 'r.txt' -CommandRunner $runner
+        Assert-Equal 2 $calls.Count 'the install and the fix'
+        Assert-Equal 'uv pip install --python C:\v\Scripts\python.exe -r r.txt' $calls[0] 'the install'
+        Assert-Match '^C:\\v\\Scripts\\python\.exe -I .+\\linux\\scripts\\lib\\cmakelang-py315\.py$' $calls[1] 'the hub''s helper, isolated, on the venv'
+    }
+}
+
 Describe 'Test-ExperimentalPython (CON91)' {
 
     It 'defaults to the pin''s X.Yt like python_uv.sh, and EXPERIMENTAL_PYTHON_VERSIONS replaces it' {

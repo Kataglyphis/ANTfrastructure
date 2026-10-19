@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
-# Get-PinnedPythonVersion, for Test-ExperimentalPython's default.
+# Get-PinnedPythonVersion, for the pinned defaults of Initialize-UvVenv and Test-ExperimentalPython.
 $pythonWheelPath = Join-Path $PSScriptRoot 'WindowsPythonWheel.Common.psm1'
 if (-not (Get-Module -Name 'WindowsPythonWheel.Common')) { Import-Module $pythonWheelPath }
 
@@ -151,7 +151,15 @@ function Test-UvVenvHealthy {
     param(
         [Parameter(Mandatory)]
         [string]$VenvPath,
-        [scriptblock]$LogWarning
+        # X.Y[.Z] or X.Yt: a venv on another interpreter is stale, so a pin bump recreates it; a path checks only that it runs.
+        [string]$PythonVersion = '',
+        [scriptblock]$LogWarning,
+        # Test seam: the venv interpreter's X.Y or X.Yt, nothing when it does not run.
+        [scriptblock]$VersionReader = {
+            param($python)
+            $v = & $python -c "import sys, sysconfig; print('%d.%d%s' % (*sys.version_info[:2], 't' if sysconfig.get_config_var('Py_GIL_DISABLED') else ''))" 2>$null
+            if ($LASTEXITCODE -eq 0) { "$v".Trim() }
+        }
     )
 
     $venvPython = Join-Path $VenvPath 'Scripts\python.exe'
@@ -159,32 +167,33 @@ function Test-UvVenvHealthy {
         return $false
     }
 
-    try {
-        & $venvPython '-c' 'import sys; sys.exit(0)' 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            if ($LogWarning) { & $LogWarning "Existing venv at $VenvPath is not functional; recreating." }
-            return $false
-        }
-    } catch {
+    $actual = try { & $VersionReader $venvPython } catch { $null }
+    if (-not $actual) {
         if ($LogWarning) { & $LogWarning "Existing venv at $VenvPath is not functional; recreating." }
+        return $false
+    }
+    if ($PythonVersion -match '^(\d+)\.(\d+)(?:\.\d+)?(t?)$' -and $actual -cne "$($Matches[1]).$($Matches[2])$($Matches[3])") {
+        if ($LogWarning) { & $LogWarning "Existing venv at $VenvPath runs Python $actual, not $PythonVersion; recreating." }
         return $false
     }
 
     return $true
 }
 
-# Returns the venv's python.exe, reusing a healthy venv and recreating a broken one.
+# Returns the venv's python.exe, reusing a healthy venv and recreating a broken or stale one.
 function Initialize-UvVenv {
     param(
         [Parameter(Mandatory)]
         [string]$Workspace,
-        [string]$PythonVersion = '3.12',
+        # Empty is the pin's X.Y, which the images carry, so uv downloads nothing there.
+        [string]$PythonVersion = '',
         [string]$EnvName = '.venv',
         [scriptblock]$CommandRunner,
         [scriptblock]$LogInfo,
         [scriptblock]$LogWarning
     )
 
+    if (-not $PythonVersion) { $PythonVersion = (Get-PinnedPythonVersion).MajorMinor }
     if ([System.IO.Path]::IsPathRooted($EnvName)) {
         $venvPath = $EnvName
     } else {
@@ -192,7 +201,7 @@ function Initialize-UvVenv {
     }
     $venvPython = Join-Path $venvPath 'Scripts\python.exe'
 
-    if (Test-UvVenvHealthy -VenvPath $venvPath -LogWarning $LogWarning) {
+    if (Test-UvVenvHealthy -VenvPath $venvPath -PythonVersion $PythonVersion -LogWarning $LogWarning) {
         if ($LogInfo) { & $LogInfo "Reusing existing uv venv at: $venvPath" }
     } else {
         New-UvProjectEnvironment -Workspace $Workspace -PythonVersion $PythonVersion -EnvName $EnvName `
@@ -217,6 +226,16 @@ function Install-UvRequirements {
 
     Invoke-UvCommand -Arguments @('pip', 'install', '--python', $VenvPython, '-r', $RequirementsPath) `
         -CommandRunner $CommandRunner -LogInfo $LogInfo
+
+    # cmake-format 0.6.13 dies on 3.15's re.Scanner; the helper patches its lexer and is a no-op without it.
+    $compat = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\linux\scripts\lib\cmakelang-py315.py'))
+    if (-not (Test-Path -LiteralPath $compat -PathType Leaf)) { throw "the hub's $compat is missing: a broken checkout" }
+    if ($CommandRunner) {
+        & $CommandRunner $VenvPython @('-I', $compat)
+        return
+    }
+    & $VenvPython -I $compat
+    if ($LASTEXITCODE -ne 0) { throw "cmakelang-py315.py failed in ${VenvPython} with exit code $LASTEXITCODE" }
 }
 
 <#

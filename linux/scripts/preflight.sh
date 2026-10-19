@@ -9,9 +9,11 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; BOLD='\033[1m'; NC='\
 FAILED=()
 RAN_CHECKS=0
 
-# Probe with -c pass: on Git Bash, python3 can be the Microsoft Store stub.
+# The pinned X.Y first, older ones only for a host without it; -c pass, as python3 can be the Microsoft Store stub on Git Bash.
+_pin="$(sed -n 's/^PYTHON_VERSION=\([0-9]*\.[0-9]*\)\..*/\1/p' linux/scripts/01-core/versions.env)"
+_candidates=(${_pin:+"python${_pin}"} python3 python3.14 python3.13 python3.12 python ${_pin:+"${HOME}/.local/bin/python${_pin}.exe"} "${HOME}/.local/bin/python3.14.exe")
 if [ -z "${PREFLIGHT_PYTHON:-}" ]; then
-  for _py in python3 python3.14 python3.13 python3.12 python "${HOME}/.local/bin/python3.14.exe"; do
+  for _py in "${_candidates[@]}"; do
     if command -v "${_py}" >/dev/null 2>&1 && "${_py}" -c 'pass' >/dev/null 2>&1; then
       PREFLIGHT_PYTHON="${_py}"
       break
@@ -22,7 +24,7 @@ fi
 export PREFLIGHT_PYTHON
 if [ -z "${PREFLIGHT_PYTHON:-}" ]; then
   printf "${RED}✗${NC} no working Python found for the Python-based checks.\n" >&2
-  printf "   Tried: python3, python3.14, python3.13, python3.12, python, ~/.local/bin/python3.14.exe\n" >&2
+  printf "   Tried: %s\n" "${_candidates[*]}" >&2
   printf "   Set PREFLIGHT_PYTHON to a real interpreter, e.g.\n" >&2
   printf "     PREFLIGHT_PYTHON=\"uv run --no-project python\"\n" >&2
   exit 1

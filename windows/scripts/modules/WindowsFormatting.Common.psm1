@@ -107,7 +107,8 @@ function Initialize-UvVenvPython {
     [pscustomobject]$Context,
     [Parameter(Mandatory)]
     [string]$WorkspacePath,
-    [string]$PythonVersion = '3.12',
+    # Empty: Initialize-UvVenv takes the pin.
+    [string]$PythonVersion = '',
     [string]$EnvName = '.venv',
     # Default <workspace>/requirements.txt if present; cmake-format alone needs only linux/scripts/cmake-format.requirements.txt.
     [string]$RequirementsPath = ''

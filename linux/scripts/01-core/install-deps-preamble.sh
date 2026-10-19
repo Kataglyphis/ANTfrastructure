@@ -73,7 +73,12 @@ if ! command -v cross_resolve_target_package >/dev/null 2>&1; then
   cross_resolve_target_package() { printf '%s' "$1"; }
 fi
 if ! command -v host_python_major_minor >/dev/null 2>&1; then
+  # Without a working python3 the pin answers: the image's PYTHON_VERSION, else versions.env beside this file.
   host_python_major_minor() {
-    python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "3.12"
+    python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null && return 0
+    local pin="${PYTHON_VERSION:-}"
+    [ -n "${pin}" ] || pin="$(sed -n 's/^PYTHON_VERSION=//p' "$(dirname "${BASH_SOURCE[0]}")/versions.env" 2>/dev/null | head -n 1)"
+    [[ "${pin}" =~ ^[0-9]+\.[0-9]+ ]] || return 1
+    printf '%s\n' "${BASH_REMATCH[0]}"
   }
 fi

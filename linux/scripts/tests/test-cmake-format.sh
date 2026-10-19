@@ -14,7 +14,7 @@ printf '%s\n' "${FN_SRC}" > "${WORK}/guard.sh"
 TREE="${WORK}/tree"
 mkdir -p "${TREE}/cmake"
 # Every file code-quality.sh sources, or each case below reads "No such file" instead.
-for _m in lib/code-quality.sh lib/log-bootstrap.sh 01-core/python_uv.sh \
+for _m in lib/code-quality.sh lib/log-bootstrap.sh lib/cmakelang-py315.py 01-core/python_uv.sh \
           01-core/logging.sh 01-core/tool-checks.sh cmake-format.requirements.txt; do
   install -D -m 0644 "${REPO_ROOT}/linux/scripts/${_m}" "${TREE}/linux/scripts/${_m}"
 done
@@ -38,6 +38,17 @@ t_case "a well-formatted corpus passes (cmake-format bootstrapped via uv)"
 _guard
 t_assert_eq "0" "${rc}" "clean fixture corpus must pass; output was: ${OUT}"
 t_assert_contains "${OUT}" "checking 1 CMake file(s)" "the walk must report what it checked"
+t_assert_contains "${OUT}" "cmakelang-py315: " "the bootstrap runs the Python 3.15 lexer fix after the install"
+
+# --force patches below 3.15 too, so every case after this one grades with the 3.15 lexer.
+t_case "cmakelang-py315.py patches cmake-format's lexer once, and the verdicts stay those of re.Scanner"
+_vpy="${TREE}/.venv-cmake-format/bin/python"; [ -x "${_vpy}" ] || _vpy="${TREE}/.venv-cmake-format/Scripts/python.exe"
+t_assert_contains "$("${_vpy}" -I "${TREE}/linux/scripts/lib/cmakelang-py315.py" --force 2>&1)" "cmakelang-py315: patched "
+t_assert_contains "$("${_vpy}" -I "${TREE}/linux/scripts/lib/cmakelang-py315.py" --force 2>&1)" "already patched"
+_lex="$("${_vpy}" -I -c 'import cmakelang.lex as m; print(m.__file__)' | tr -d '\r')"
+t_assert_eq "0" "$(grep -c 're\.Scanner(' "${_lex}")" "no call left that 3.15 refuses"
+_guard
+t_assert_eq "0" "${rc}" "the clean corpus still passes with the patched lexer; output was: ${OUT}"
 
 t_case "a mis-formatted file is a red verdict naming the offender"
 printf 'set(_drift    "badly"     "spaced")\n' >> "${TREE}/cmake/Fixture.cmake"

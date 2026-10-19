@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The python-ci drivers default to the image's CPython; see docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
+# The python-ci drivers and the host probes default to the pinned CPython; see docs/python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -125,5 +125,30 @@ export FAIL_SYNC_LEG="${IMAGE_PY}t"
 t_assert_ok _driver ci_tests pkg "${IMAGE_PY} ${IMAGE_PY}t"
 unset FAIL_SYNC_LEG
 t_assert_contains "$(cat "${_work}/out")" "::warning title=Python ${IMAGE_PY}t not tested::"
+
+# _stubs <dir> <name=exit>...: interpreters that answer -c with that exit code, and nothing else on PATH but sed.
+_stubs() {
+  local d="$1" s; shift; rm -rf "${d}"; mkdir -p "${d}"
+  for s in "$@"; do printf '#!/bin/sh\nexit %s\n' "${s#*=}" > "${d}/${s%%=*}"; chmod +x "${d}/${s%%=*}"; done
+}
+_SED_DIR="$(dirname "$(command -v sed)")"
+
+t_case "install-deps-preamble.sh without a working python3 answers the pin, never a version of its own"
+_pre="${_work}/pre"; mkdir -p "${_pre}"; cp "${SCRIPTS}/01-core/versions.env" "${_pre}/"
+# The fallback block alone: in the image the preamble sources cross-env.sh, whose canonical function wins.
+sed -n '/^if ! command -v host_python_major_minor /,/^fi$/p' "${SCRIPTS}/01-core/install-deps-preamble.sh" > "${_pre}/fallback.sh"
+_stubs "${_work}/nopy" python3=1
+_hpmm() { env -u PYTHON_MAJOR_MINOR "$@" PATH="${_work}/nopy:${_SED_DIR}" "${BASH}" -c ". '${_pre}/fallback.sh'; host_python_major_minor"; }
+t_assert_eq "${IMAGE_PY}" "$(_hpmm -u PYTHON_VERSION)" "versions.env beside it, as in the repo and /opt/scripts/core"
+t_assert_eq "9.87" "$(_hpmm PYTHON_VERSION=9.87.6)" "the image's PYTHON_VERSION first"
+
+t_case "preflight.sh tries the pinned X.Y before python3, and a host without it still finds python3"
+_pf_src="$(sed -n '/^# The pinned X.Y first/,/^export PREFLIGHT_PYTHON$/p' "${SCRIPTS}/preflight.sh")"
+mkdir -p "${_work}/pfroot/linux/scripts/01-core"; cp "${SCRIPTS}/01-core/versions.env" "${_work}/pfroot/linux/scripts/01-core/"
+_pf() { (cd "${_work}/pfroot" && env -u PREFLIGHT_PYTHON HOME="${_work}/pfhome" PATH="${_work}/pf:${_SED_DIR}" "${BASH}" -c "${_pf_src}"$'\nprintf %s "${PREFLIGHT_PYTHON}"'); }
+_stubs "${_work}/pf" "python${IMAGE_PY}=0" python3=0
+t_assert_eq "python${IMAGE_PY}" "$(_pf)"
+_stubs "${_work}/pf" "python${IMAGE_PY}=1" python3=0
+t_assert_eq "python3" "$(_pf)" "a pin that does not run, like the Store stub, falls through"
 
 t_summary

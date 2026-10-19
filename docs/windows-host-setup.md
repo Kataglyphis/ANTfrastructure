@@ -459,14 +459,17 @@ Store instead of running). `preflight.sh` provides the escape hatch
 
 ```pwsh
 scoop install uv          # or: winget install astral-sh.uv (install scoop first: https://scoop.sh)
-uv python install 3.14    # puts python3.14.exe into %USERPROFILE%\.local\bin
+uv python install 3.15    # the pin's X.Y; puts python3.15.exe into %USERPROFILE%\.local\bin
 ```
+
+The version is the X.Y of `PYTHON_VERSION` in `linux/scripts/01-core/versions.env`, the
+interpreter the images carry; move this line with it.
 
 Verify:
 
 ```pwsh
 uv run --no-project python -V                              # Python 3.x
-& "$env:USERPROFILE\.local\bin\python3.14.exe" -V          # if installed via uv python install
+& "$env:USERPROFILE\.local\bin\python3.15.exe" -V          # if installed via uv python install
 ```
 
 `PREFLIGHT_PYTHON` is **not** preflight-only, and it is not a `python3` alias
@@ -475,7 +478,7 @@ consumer expands it unquoted. One file answers the question for the standalone
 gates and the hooks — `linux/scripts/01-core/python-probe.sh`, whose
 `preflight_python_require` probes the value with `-c pass` and fails with this
 exact hint rather than dying inside a Python step. `preflight.sh` probes its own
-candidate list instead (uv's `~/.local/bin/python3.14.exe` among them) and
+candidate list instead (the pin's `pythonX.Y` first, uv's `~/.local/bin/pythonX.Y.exe` among them) and
 exports what it finds to every check it runs. Export it once in the shell you
 run gates from and these all honour it: `preflight.sh`, `run-lint-gates.sh`
 (including the `--ratchets` gates), `lint-workflows.sh`, `lint-python.sh` and

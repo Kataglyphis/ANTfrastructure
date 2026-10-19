@@ -554,7 +554,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1884 entries** over **165 distinct test commands**; both digits are
+manifest holds **1887 entries** over **165 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2854,7 +2854,9 @@ An inline preflight function that drives `lib/code-quality.sh` end to end:
 `.venv-cmake-format` when it is not on `PATH` (pins in
 `linux/scripts/cmake-format.requirements.txt` — `pyyaml` is in there because
 `cmake-format==0.6.13` does not depend on it and dies with
-`ModuleNotFoundError` the moment it reads a YAML config),
+`ModuleNotFoundError` the moment it reads a YAML config; after the install
+`lib/cmakelang-py315.py` gives its lexer 3.14's `re.Scanner`, which Python 3.15
+refuses for capturing groups, as `Install-UvRequirements` does on Windows),
 `code_quality_find_cmake_files` walks the tree, and
 `code_quality_run_cmake_format --check` is the verdict. In scope is every
 repo-owned `CMakeLists.txt`/`*.cmake`; excluded are `third_party/`,
