@@ -6,8 +6,11 @@ from __future__ import annotations
 import html
 import os
 import pathlib
+import posixpath
 import re
+import subprocess
 import sys
+from urllib.parse import quote, unquote
 
 from markdown_it import MarkdownIt
 
@@ -22,42 +25,114 @@ RIGHT_END = "  </div>\n</main>"
 LEFT_START = '<div id="dartdoc-sidebar-left"'
 NAV_MARKER = "kg-md-nav-section"
 FOOTER_MARKER = "kg-doc-footer-links"
+# The family links every repository on develop: docs/repository-family.md#the-readme-rule
+BRANCH = "develop"
+GITHUB_REMOTE = re.compile(
+    r"^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)"
+    r"([\w.-]+/[\w.-]+?)(?:\.git)?/?$"
+)
 
 
 def load_config(path):
-    """Parse the tab-separated config: title_suffix, footer_title, guide, footer."""
-    config = {"title_suffix": "", "footer_title": "", "guides": [], "footer": []}
+    """Parse the tab-separated config: title_suffix, footer_title, project_root, repo_url, guide, footer."""
+    config = {"title_suffix": "", "footer_title": "", "project_root": "", "repo_url": "",
+              "guides": [], "sources": {}, "footer": []}
     text = pathlib.Path(path).read_text(encoding="utf-8")
     for lineno, raw in enumerate(text.splitlines(), 1):
         if not raw.strip():
             continue
         fields = raw.split("\t")
         key = fields[0]
-        if key in ("title_suffix", "footer_title") and len(fields) == 2:
+        if key in ("title_suffix", "footer_title", "project_root", "repo_url") and len(fields) == 2:
             config[key] = fields[1]
-        elif key in ("guide", "footer") and len(fields) == 3:
-            config["guides" if key == "guide" else "footer"].append((fields[1], fields[2]))
+        elif key == "guide" and len(fields) == 4:
+            config["guides"].append((fields[1], fields[2]))
+            config["sources"][fields[1]] = fields[3]
+        elif key == "footer" and len(fields) == 3:
+            config["footer"].append((fields[1], fields[2]))
         else:
             raise SystemExit(f"{path}:{lineno}: unrecognised config row: {raw!r}")
     return config
 
 
+def github_url(remote: str) -> str:
+    """https://github.com/<owner>/<repo> for a GitHub remote in any of git's spellings, else ''."""
+    match = GITHUB_REMOTE.match(remote.strip())
+    return f"https://github.com/{match.group(1)}" if match else ""
+
+
+def origin_url(root: str) -> str:
+    """The checkout's origin as a GitHub URL; '' without git, a remote or a GitHub one."""
+    try:
+        out = subprocess.run(["git", "-c", "safe.directory=*", "-C", root, "remote", "get-url", "origin"],
+                             capture_output=True, text=True, check=False)
+    except OSError:
+        return ""
+    return github_url(out.stdout) if out.returncode == 0 else ""
+
+
+def submodule_urls(root: str):
+    """[(path, GitHub URL)] from <root>/.gitmodules, longest path first; a non-GitHub one is left out."""
+    gitmodules = pathlib.Path(root) / ".gitmodules"
+    if not root or not gitmodules.is_file():
+        return []
+    found, path = [], None
+    for line in gitmodules.read_text(encoding="utf-8", errors="ignore").splitlines():
+        key, _, value = (part.strip() for part in line.partition("="))
+        if line.lstrip().startswith("["):
+            path = None
+        elif key == "path":
+            path = value.strip("/")
+        elif key == "url" and path and github_url(value):
+            found.append((path, github_url(value)))
+    return sorted(found, key=lambda item: -len(item[0]))
+
+
+def repo_path(root: str, source: str) -> str:
+    """A guide source's path relative to the project root, in the slashes a link uses."""
+    return os.path.relpath(os.path.abspath(source), os.path.abspath(root)).replace(os.sep, "/")
+
+
+class LinkTargets:
+    """Where a relative `*.md` link in a guide goes: the guide rendered from it, or the file on GitHub."""
+
+    def __init__(self, guide_pages: dict, repo_url: str = "", submodules=()):
+        self.guide_pages = guide_pages
+        self.repo_url = repo_url.rstrip("/")
+        self.submodules = list(submodules)
+
+    def target(self, source_rel: str, path: str) -> str:
+        resolved = posixpath.normpath(posixpath.join(posixpath.dirname(source_rel), unquote(path)))
+        if resolved in self.guide_pages:
+            return self.guide_pages[resolved]
+        if resolved == ".." or resolved.startswith("../"):
+            raise SystemExit(f"{source_rel}: the link {path!r} leaves the repository; "
+                             "link another repository by its absolute URL.")
+        for sub, url in self.submodules:
+            if resolved.startswith(sub + "/"):
+                return f"{url}/blob/{BRANCH}/{quote(resolved[len(sub) + 1:])}"
+        if not self.repo_url:
+            raise SystemExit(f"{source_rel}: the link {path!r} names no guide, and the repository's "
+                             "GitHub URL is unknown (no GitHub origin); set DARTDOC_BUILD_REPO_URL.")
+        return f"{self.repo_url}/blob/{BRANCH}/{quote(resolved)}"
+
+
 def slugify(value: str) -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9\s-]", "", value).strip().lower()
-    return re.sub(r"[\s-]+", "-", cleaned) or "section"
+    """GitHub's heading anchor, so a `page.md#anchor` written for GitHub lands on the guide page too."""
+    return re.sub(r"[^\w\- ]", "", value.strip().lower()).replace(" ", "-") or "section"
 
 
-def rewrite_md_links(rendered_html: str, guide_map: dict) -> str:
-    """Point every relative `*.md` link at the guide page rendered from that file."""
+def rewrite_md_links(rendered_html: str, links: LinkTargets, source_rel: str) -> str:
+    """Point every relative `*.md` link, anchor kept, at its guide page or, failing that, at GitHub."""
 
     def repl(match):
         prefix, href, suffix = match.group(1), match.group(2), match.group(3)
         if href.startswith(("http://", "https://", "#", "mailto:")):
             return match.group(0)
-        path = pathlib.Path(href)
-        if path.suffix.lower() != ".md":
+        path, sep, fragment = href.partition("#")
+        if pathlib.PurePosixPath(path).suffix.lower() != ".md":
             return match.group(0)
-        return f"{prefix}{guide_map.get(path.name, f'guide-{path.stem}.html')}{suffix}"
+        return f"{prefix}{links.target(source_rel, path)}{sep}{fragment}{suffix}"
 
     return re.sub(r'(href\s*=\s*["\'])([^"\']+)(["\'])', repl, rendered_html)
 
@@ -116,9 +191,9 @@ def _splice(page: str, start: str, end: str, replacement: str, where: str) -> st
     return page[:start_idx] + replacement + page[end_idx:]
 
 
-def render_guide_page(shell, nav_title: str, suffix: str, md_text: str, guide_map, slug) -> str:
+def render_guide_page(shell, nav_title: str, suffix: str, md_text: str, links, slug, source_rel) -> str:
     headings = extract_headings(md_text)
-    body = add_heading_ids(rewrite_md_links(RENDERER.render(md_text), guide_map), headings)
+    body = add_heading_ids(rewrite_md_links(RENDERER.render(md_text), links, source_rel), headings)
     title = f"{nav_title} - {suffix}" if suffix else nav_title
     page, n = re.subn(
         r"<title>.*?</title>", f"<title>{html.escape(title)}</title>", shell, count=1, flags=re.S
@@ -193,7 +268,10 @@ def main(argv) -> int:
     root = pathlib.Path(argv[1])
     config = load_config(argv[2])
     guides = config["guides"]
-    guide_map = {f"{slug}.md": f"guide-{slug}.html" for slug, _label in guides}
+    project = config["project_root"] or os.getcwd()
+    sources = {slug: repo_path(project, src) for slug, src in config["sources"].items()}
+    links = LinkTargets({rel: f"guide-{slug}.html" for slug, rel in sources.items()},
+                        config["repo_url"] or origin_url(project), submodule_urls(project))
     shell = (root / "index.html").read_text(encoding="utf-8", errors="ignore")
 
     for slug, label in guides:
@@ -201,7 +279,7 @@ def main(argv) -> int:
         if not source.exists():
             raise SystemExit(f"Staged guide is missing: {source}")
         md_text = source.read_text(encoding="utf-8", errors="ignore")
-        page = render_guide_page(shell, label, config["title_suffix"], md_text, guide_map, slug)
+        page = render_guide_page(shell, label, config["title_suffix"], md_text, links, slug, sources[slug])
         (root / f"guide-{slug}.html").write_text(page, encoding="utf-8")
 
     footer_html = build_footer(config["footer_title"], config["footer"])

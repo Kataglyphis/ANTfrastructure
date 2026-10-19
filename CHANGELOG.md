@@ -10,6 +10,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the dartdoc guide renderer's links land
+
+- **An anchored link between guides is rewritten.** `dartdoc-guides.py` tested the whole
+  href for a `.md` suffix, so `getting-started.md#known-issues` stayed as written and 404ed on
+  the site; it now becomes `guide-getting-started.html#known-issues`.
+- **A link to a Markdown file that is no guide goes to GitHub.** `../AGENTS.md` became
+  `guide-AGENTS.html`, which nothing renders; it now becomes
+  `<repository>/blob/develop/AGENTS.md`, and a path inside a submodule goes to that
+  submodule's repository. The repository is the new `DARTDOC_BUILD_REPO_URL`, else the
+  checkout's `origin`, so OmniAccelerANT's `generate-docs.sh` needs no change. A link out of
+  the repository, or with no URL to use, fails the render.
+- **Links resolve from the guide's source path**, which `dartdoc-build.sh` now hands the
+  renderer: a guide is found by the file a link names, not by a slug that happens to match
+  (`README.md` beside `docs/source/overview.md` is the `docs-readme` guide).
+- **Heading anchors are GitHub's** (`run-lint-gatessh--seven-gates`, not `…sh-seven-gates`).
+- `tests/test-dartdoc-guides.sh` is the renderer's first suite; eight `lib.dartdoc-guides-*`
+  mutations prove it. Rendering OmniAccelerANT's eleven guides in `:latest` leaves no relative
+  `*.md` link and finds every anchor its cross-guide links name.
+
 ## 2026-10-19 — two stale facts: pyhailort's Python, MSIX trust
 
 - **pyhailort is built for `PYTHON_VERSION`, not for "3.14".** `hailo-support.md` and

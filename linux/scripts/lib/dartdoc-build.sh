@@ -187,9 +187,12 @@ _dartdoc_build_write_render_config() {
   : >"${out}"
   printf 'title_suffix\t%s\n' "${DARTDOC_BUILD_TITLE_SUFFIX:-}" >>"${out}"
   printf 'footer_title\t%s\n' "${DARTDOC_BUILD_FOOTER_TITLE:-}" >>"${out}"
+  printf 'project_root\t%s\n' "$(_dartdoc_build_root)" >>"${out}"
+  # Empty: the renderer asks the checkout's origin.
+  printf 'repo_url\t%s\n' "${DARTDOC_BUILD_REPO_URL:-}" >>"${out}"
   rows="$(_dartdoc_build_guide_rows)" || exit 1
   printf '%s\n' "${rows}" |
-    awk -F'\t' 'NF { printf "guide\t%s\t%s\n", $2, $3 }' >>"${out}"
+    awk -F'\t' 'NF { printf "guide\t%s\t%s\t%s\n", $2, $3, $1 }' >>"${out}"
   rows="$(_dartdoc_build_split 2 '<label>|<url>' DARTDOC_BUILD_FOOTER_LINKS \
     ${DARTDOC_BUILD_FOOTER_LINKS[@]+"${DARTDOC_BUILD_FOOTER_LINKS[@]}"})" || exit 1
   printf '%s\n' "${rows}" |

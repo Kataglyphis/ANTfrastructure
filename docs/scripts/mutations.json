@@ -13641,5 +13641,69 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-readme-length.sh",
   "why": "a gate function nothing registers never runs in a consumer lane"
+ },
+ {
+  "id": "lib.dartdoc-guides-anchor-kept",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "        path, sep, fragment = href.partition(\"#\")",
+  "replace": "        path, sep, fragment = href, \"\", \"\"",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "an anchored guide link (getting-started.md#known-issues) has no .md suffix as a whole, was left as written and 404ed on the site"
+ },
+ {
+  "id": "lib.dartdoc-guides-guide-by-path",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "        if resolved in self.guide_pages:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a link to a guide must land on its rendered page, found by the path it resolves to"
+ },
+ {
+  "id": "lib.dartdoc-guides-other-md-to-github",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "        return f\"{self.repo_url}/blob/{BRANCH}/{quote(resolved)}\"",
+  "replace": "        return f\"guide-{posixpath.splitext(posixpath.basename(resolved))[0]}.html\"",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a *.md that is no guide (../AGENTS.md) became guide-AGENTS.html, which nothing renders"
+ },
+ {
+  "id": "lib.dartdoc-guides-submodule-repo",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "            if resolved.startswith(sub + \"/\"):",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "GitHub does not follow a link into a submodule; the file lives in the submodule's own repository"
+ },
+ {
+  "id": "lib.dartdoc-guides-unknown-repo-fails",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "        if not self.repo_url:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "without a repository URL the link would point at a relative /blob/ path that 404s; the render must stop and say so"
+ },
+ {
+  "id": "lib.dartdoc-guides-origin-drops-dot-git",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "    r\"([\\w.-]+/[\\w.-]+?)(?:\\.git)?/?$\"",
+  "replace": "    r\"([\\w.-]+/[\\w.-]+?)/?$\"",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "origin is usually spelled with .git, and a blob URL under <repo>.git is not the repository's page"
+ },
+ {
+  "id": "lib.dartdoc-guides-github-slug",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "    return re.sub(r\"[^\\w\\- ]\", \"\", value.strip().lower()).replace(\" \", \"-\") or \"section\"",
+  "replace": "    return re.sub(r\"[\\s-]+\", \"-\", re.sub(r\"[^a-zA-Z0-9\\s-]\", \"\", value).strip().lower()) or \"section\"",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "anchors are written for GitHub, which keeps one hyphen per space and hyphen; collapsing them misses a heading with a dash"
+ },
+ {
+  "id": "lib.dartdoc-guides-config-carries-source",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "    awk -F'\\t' 'NF { printf \"guide\\t%s\\t%s\\t%s\\n\", $2, $3, $1 }' >>\"${out}\"",
+  "replace": "    awk -F'\\t' 'NF { printf \"guide\\t%s\\t%s\\t\\n\", $2, $3 }' >>\"${out}\"",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a relative link resolves from the guide's own directory, which only its source path says"
  }
 ]

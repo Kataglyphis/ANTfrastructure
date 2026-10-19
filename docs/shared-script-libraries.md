@@ -549,8 +549,17 @@ first line, so rebuilding cannot stack copies of the sheet.
 
 `dartdoc-guides.py` next to it renders the configured Markdown into dartdoc's
 own `index.html` shell, so a guide page carries the same header, sidebars and
-theme as an API page, and rewrites every relative `*.md` link onto the guide
-page rendered from that file.
+theme as an API page. It rewrites every relative `*.md` link, resolved from the
+guide's own source path:
+
+- **to a guide**: that guide's page, anchor kept (`getting-started.md#known-issues`
+  becomes `guide-getting-started.html#known-issues`). Heading anchors are GitHub's,
+  so an anchor written for GitHub lands on the site too;
+- **to any other file**: the file on GitHub, `<repository>/blob/develop/<path>`, and a
+  path inside a submodule goes to that submodule's repository (from `.gitmodules`). The
+  repository is `DARTDOC_BUILD_REPO_URL`, else the checkout's `origin`;
+- **out of the repository, or with no GitHub URL to use**: the render fails, since
+  either link would be a 404 on the site.
 
 **dartdoc emits TWO page shapes, and a third kind of file.** Some pages carry a
 static left sidebar with a bare `<ol>`; the rest carry
@@ -575,6 +584,7 @@ or that configured a footer and footered no page, fails. It prints both numbers
 | `DARTDOC_BUILD_FOOTER_LINKS` | array of `<label>\|<url>` for the page footer | — |
 | `DARTDOC_BUILD_FOOTER_TITLE` | bold name in front of those links | — |
 | `DARTDOC_BUILD_TITLE_SUFFIX` | appended to each guide page's `<title>` | — |
+| `DARTDOC_BUILD_REPO_URL` | GitHub URL a non-guide `*.md` link points into | the checkout's `origin` |
 | `DARTDOC_BUILD_VENV_DIR` | venv for the renderer | `${TMPDIR:-/tmp}/kataglyphis-dartdoc-venv` |
 | `DARTDOC_BUILD_REQUIREMENTS` | its requirements file | `lib/dartdoc-guides.requirements.txt` |
 | `DARTDOC_BUILD_PYTHON` | interpreter for the renderer | the venv's, created on demand |
